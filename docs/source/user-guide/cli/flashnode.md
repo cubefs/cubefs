@@ -17,51 +17,51 @@ Obtain detailed information about each cache node in the system, including its u
 ./cfs-cli flashnode httpStatAll 127.0.0.1:17510
 ```
 
-## Evict the volume flash_cache from a specific FlashNode
+Evict the volume flash_cache from a specific FlashNode
 
 ```bash
 ./cfs-cli flashnode httpEvict 127.0.0.1:17510 flash_cache
 ```
 
 
-## Enable/Disable flashnode
+Enable/Disable flashnode
 
 ```bash
 ./cfs-cli flashnode set 127.0.0.1:17510 true
 ./cfs-cli flashnode set 127.0.0.1:17510 false 
 ```
 
-## Remove flashnode
+remove flashnode
 
 ```bash
 ./cfs-cli flashnode remove 127.0.0.1:17510
 ```
 
-## Create fg
+create fg
 
 ```bash
 ./cfs-cli flashgroup create
 ```
 
-## Set flashgroup  active
+set flashgroup  active
 
 ```bash
 ./cfs-cli flashgroup set 25 true
 ```
 
-## Flashgroup add flashnode
+flashgroup add flashnode
 
 ```bash
 ./cfs-cli flashgroup nodeAdd 13 --zone-name=flashcache --addr="127.0.0.1:17510"
 ```
 
-## List flashgroup
+list flashgroup
 
 ```bash
 ./cfs-cli flashgroup list
 ```
 
-## Show flashgroup graph
+show flashgroup group
 
 ```bash
 ./cfs-cli flashgroup graph
