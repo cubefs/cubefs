@@ -35,7 +35,7 @@ const (
 )
 
 func (mp *metaPartition) fileStats(ino *Inode) {
-	if mp.manager != nil {
+	if mp.manager == nil {
 		return
 	}
 
