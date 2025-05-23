@@ -512,6 +512,13 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	metaNode.ToBeOffline = true
+	if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
+		log.LogErrorf("syncUpdateMetaNode err: %v", err)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
 	if metaNode.MetaPartitionCount == 0 {
 		err = m.cluster.DoMetaNodeOffline(offLineAddr)
 		if err != nil {
