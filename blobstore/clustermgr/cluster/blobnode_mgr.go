@@ -232,6 +232,7 @@ func (b *BlobNodeManager) ListDiskInfo(ctx context.Context, opt *clustermgr.List
 		disk.withRLocked(func() error {
 			heartbeatInfo := disk.info.extraInfo.(*clustermgr.DiskHeartBeatInfo)
 			diskInfo.FreeChunkCnt = heartbeatInfo.FreeChunkCnt
+			diskInfo.OversoldFreeChunkCnt = heartbeatInfo.OversoldFreeChunkCnt
 			diskInfo.UsedChunkCnt = heartbeatInfo.UsedChunkCnt
 			diskInfo.MaxChunkCnt = heartbeatInfo.MaxChunkCnt
 			diskInfo.Free = heartbeatInfo.Free
@@ -812,6 +813,11 @@ func (b *BlobNodeManager) applyHeartBeatDiskInfo(ctx context.Context, infos []*c
 			heartbeatInfo.MaxChunkCnt = info.Size / b.cfg.ChunkSize
 			// use the minimum value as free chunk count
 			heartbeatInfo.FreeChunkCnt = heartbeatInfo.MaxChunkCnt - heartbeatInfo.UsedChunkCnt
+			if b.cfg.ChunkOversoldRatio > 0 {
+				heartbeatInfo.OversoldFreeChunkCnt = int64(float64(heartbeatInfo.MaxChunkCnt)*(1+b.cfg.ChunkOversoldRatio)) - heartbeatInfo.UsedChunkCnt
+			} else {
+				heartbeatInfo.OversoldFreeChunkCnt = 0
+			}
 			freeChunkCnt := info.Free / b.cfg.ChunkSize
 			if freeChunkCnt < heartbeatInfo.FreeChunkCnt {
 				span.Debugf("use minimum free chunk count, disk id[%d], free chunk[%d]", disk.diskID, freeChunkCnt)
@@ -909,6 +915,9 @@ func (b *BlobNodeManager) applyAdminUpdateDisk(ctx context.Context, diskInfo *cl
 		if diskInfo.FreeChunkCnt > 0 {
 			heartbeatInfo.FreeChunkCnt = diskInfo.FreeChunkCnt
 		}
+		if diskInfo.OversoldFreeChunkCnt > 0 {
+			heartbeatInfo.OversoldFreeChunkCnt = diskInfo.OversoldFreeChunkCnt
+		}
 		diskRecord := b.diskInfoToDiskInfoRecord(&clustermgr.BlobNodeDiskInfo{DiskInfo: disk.info.DiskInfo, DiskHeartBeatInfo: *heartbeatInfo})
 		return b.diskTbl.UpdateDisk(diskInfo.DiskID, diskRecord)
 	})
@@ -931,12 +940,13 @@ func (b *BlobNodeManager) diskInfoToDiskInfoRecord(info *clustermgr.BlobNodeDisk
 			DiskSetID:    info.DiskSetID,
 			NodeID:       info.NodeID,
 		},
-		UsedChunkCnt: info.UsedChunkCnt,
-		Used:         info.Used,
-		Size:         info.Size,
-		Free:         info.Free,
-		MaxChunkCnt:  info.MaxChunkCnt,
-		FreeChunkCnt: info.FreeChunkCnt,
+		UsedChunkCnt:         info.UsedChunkCnt,
+		Used:                 info.Used,
+		Size:                 info.Size,
+		Free:                 info.Free,
+		MaxChunkCnt:          info.MaxChunkCnt,
+		FreeChunkCnt:         info.FreeChunkCnt,
+		OversoldFreeChunkCnt: info.OversoldFreeChunkCnt,
 	}
 }
 
@@ -957,13 +967,14 @@ func (b *BlobNodeManager) diskInfoRecordToDiskInfo(infoDB *normaldb.BlobNodeDisk
 		},
 
 		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
-			DiskID:       infoDB.DiskID,
-			Used:         infoDB.Used,
-			Size:         infoDB.Size,
-			Free:         infoDB.Free,
-			MaxChunkCnt:  infoDB.MaxChunkCnt,
-			UsedChunkCnt: infoDB.UsedChunkCnt,
-			FreeChunkCnt: infoDB.FreeChunkCnt,
+			DiskID:               infoDB.DiskID,
+			Used:                 infoDB.Used,
+			Size:                 infoDB.Size,
+			Free:                 infoDB.Free,
+			MaxChunkCnt:          infoDB.MaxChunkCnt,
+			UsedChunkCnt:         infoDB.UsedChunkCnt,
+			FreeChunkCnt:         infoDB.FreeChunkCnt,
+			OversoldFreeChunkCnt: infoDB.OversoldFreeChunkCnt,
 		},
 	}
 }
