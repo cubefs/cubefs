@@ -324,6 +324,7 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 			}
 
 			// use the minimum free size as volume free
+			// or use calculated free size when overboughtRatio is specified as overboughtRatio may set into larger value
 			if vol.volInfoBase.Free > volFree || v.VolumeOverboughtRatio > 0 {
 				vol.volInfoBase.Used = volUsed
 				vol.volInfoBase.Total = volTotal
