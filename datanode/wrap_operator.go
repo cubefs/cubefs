@@ -216,6 +216,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleUpdateVerPacket(p)
 	case proto.OpStopDataPartitionRepair:
 		s.handlePacketToStopDataPartitionRepair(p)
+	case proto.OpSetRepairingStatus:
+		s.handlePacketToSetRepairingStatus(p)
 	case proto.OpRecoverDataReplicaMeta:
 		s.handlePacketToRecoverDataReplicaMeta(p)
 	case proto.OpRecoverBackupDataReplica:
@@ -1754,6 +1756,48 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet, force 
 		return
 	}
 	return
+}
+
+func (s *DataNode) handlePacketToSetRepairingStatus(p *repl.Packet) {
+	task := proto.AdminTask{}
+	err := json.Unmarshal(p.Data, task)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionSetRepairingStatus, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := &proto.SetDataPartitionRepairingStatusRequest{}
+	if task.OpCode != proto.OpSetRepairingStatus {
+		err = fmt.Errorf("action[handlePacketToSetRepairingStatus] illegal opcode ")
+		log.LogWarnf("action[handlePacketToSetRepairingStatus] illegal opcode ")
+		return
+	}
+
+	bytes, _ := json.Marshal(task.Request)
+	p.AddMesgLog(string(bytes))
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		return
+	}
+	dp := s.space.Partition(request.PartitionId)
+	if dp == nil {
+		err = proto.ErrDataPartitionNotExists
+		log.LogWarnf("action[handlePacketToSetRepairStatus] cannot find dp %v", request.PartitionId)
+		return
+	}
+	oldStatus := dp.isRepairing
+	dp.isRepairing = request.RepairingStatus
+	if err = dp.PersistMetadata(); err != nil {
+		log.LogErrorf("action[handlePacketToSetRepairingStatus] persist dp %v metadata failed, err: %v", dp.partitionID, err)
+		dp.isRepairing = oldStatus
+		return
+	}
+	log.LogInfof("action[handlePacketToSetRepairingStatus] %v set repairingStatus %v success", request.PartitionId, request.RepairingStatus)
 }
 
 func (s *DataNode) handlePacketToStopDataPartitionRepair(p *repl.Packet) {

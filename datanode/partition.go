@@ -80,6 +80,7 @@ type DataPartitionMetadata struct {
 	VerList                 []*proto.VolVersionInfo
 	ApplyID                 uint64
 	DiskErrCnt              uint64
+	IsRepairing             bool
 }
 
 func (md *DataPartitionMetadata) Validate() (err error) {
@@ -154,6 +155,7 @@ type DataPartition struct {
 	PersistApplyIdChan chan PersistApplyIdRequest
 
 	readOnlyReasons uint32
+	isRepairing     bool
 }
 
 type PersistApplyIdRequest struct {
@@ -208,6 +210,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 		disk.updateDisk(uint64(request.LeaderSize))
 		// ensure heartbeat report  Recovering
 		dp.partitionStatus = proto.Recovering
+		dp.isRepairing = true
 		dp.leaderSize = request.LeaderSize
 		go dp.StartRaftAfterRepair(false)
 	}
@@ -319,6 +322,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 	dp.stopRecover = meta.StopRecover
 	dp.metaAppliedID = meta.ApplyID
+	dp.isRepairing = meta.IsRepairing
 	dp.computeUsage()
 	dp.ForceSetDataPartitionToLoading()
 	disk.space.AttachPartition(dp)
@@ -855,6 +859,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		VerList:                 dp.volVersionInfoList.VerList,
 		ApplyID:                 dp.appliedID,
 		DiskErrCnt:              atomic.LoadUint64(&dp.diskErrCnt),
+		IsRepairing:             dp.isRepairing,
 	}
 
 	if metaData, err = json.Marshal(md); err != nil {

@@ -2376,6 +2376,9 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				}
 				log.LogDebugf("[DecommissionListTraverse]ns %v(%p) traverse dp(%v)", l.nsId, l, dp.decommissionInfo())
 				if dp.IsDecommissionSuccess() {
+					if err := c.setAllReplicasRepairingStatus(dp, false, false); err != nil {
+						continue
+					}
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
 					dp.ReleaseDecommissionFirstHostToken(c)
@@ -2397,6 +2400,9 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					if !dp.tryRollback(c) {
 						log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for fail",
 							l.nsId, l, dp.PartitionID)
+						if err := c.setAllReplicasRepairingStatus(dp, false, false); err != nil {
+							continue
+						}
 						l.Remove(dp)
 						// if dp is not removed from decommission list, do not reset RestoreReplica
 						dp.setRestoreReplicaStop()

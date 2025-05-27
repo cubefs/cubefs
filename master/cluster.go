@@ -2536,6 +2536,10 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 			err = fmt.Errorf("action[decommissionSingleDp] dp %v addDataReplica %v fail err %v", dp.PartitionID, newAddr, err)
 			goto ERR
 		}
+		if err = c.setAllReplicasRepairingStatus(dp, true, true); err != nil {
+			err = fmt.Errorf("action[decommissionSingleDp] dp %v set all replicas repairingStatus to true fail err %v", dp.PartitionID, err)
+			goto ERR
+		}
 		// if addDataReplica is success, can add to BadDataPartitionIds
 		dp.SetSpecialReplicaDecommissionStep(SpecialDecommissionWaitAddRes)
 		dp.SetDecommissionStatus(DecommissionRunning)
@@ -3060,6 +3064,21 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string, needRollBack, i
 		c.removeHostMember(dp, addPeer)
 		log.LogWarnf("action[addDataReplica] dp %v addr %v createDataReplica err [%v]", dp.PartitionID, addr, err)
 		return
+	}
+	return
+}
+
+func (c *Cluster) setAllReplicasRepairingStatus(dp *DataPartition, repairingStatus bool, needRollBack bool) (err error) {
+	for _, host := range dp.Hosts {
+		if !dp.setReplicaRepairingStatus(host, repairingStatus, c) {
+			err = fmt.Errorf("dp %v addr %v setRepairingStatus failed", dp.PartitionID, host)
+			log.LogWarnf("action[setAllReplicasRepairingStatus] dp %v addr %v setRepairingStatus failed", dp.PartitionID, host)
+			if needRollBack {
+				dp.DecommissionNeedRollback = true
+				c.syncUpdateDataPartition(dp)
+			}
+			return
+		}
 	}
 	return
 }
