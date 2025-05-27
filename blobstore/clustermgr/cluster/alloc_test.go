@@ -31,11 +31,11 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockclustermgr"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -69,7 +69,7 @@ var (
 	defaultRetrySleepIntervalS time.Duration = 2
 	testMockScopeMgr           *mock.MockScopeMgrAPI
 	testMockBlobNode           *mocks.MockStorageAPI
-	testMockShardNode          *MockShardNodeAPI
+	testMockShardNode          *mock.MockShardNodeAPI
 	testIdcs                   = []string{"z0", "z1", "z2"}
 	hostPrefix                 = "test-host-"
 )
@@ -227,7 +227,7 @@ func initTestShardNodeMgr(t *testing.T) (d *ShardNodeManager, closeFunc func()) 
 	if err != nil {
 		t.Log(errors.Detail(err))
 	}
-	testMockShardNode = NewMockShardNodeAPI(ctrl)
+	testMockShardNode = mock.NewMockShardNodeAPI(ctrl)
 	testMockRaftServer := mocks.NewMockRaftServer(ctrl)
 	testMockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 

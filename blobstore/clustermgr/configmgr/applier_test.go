@@ -25,8 +25,8 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockclustermgr"
 )
 
 func TestConfigMgr_Others(t *testing.T) {

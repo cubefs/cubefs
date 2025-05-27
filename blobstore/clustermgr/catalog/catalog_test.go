@@ -24,18 +24,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockclustermgr"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
-
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/require"
 )
 
 var testConfig = Config{
@@ -99,7 +99,7 @@ func initMockCatalogMgr(t testing.TB, conf Config) (*CatalogMgr, func()) {
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockDiskMgr := cluster.NewMockShardNodeManagerAPI(ctr)
-	mockSharNodeAPI := cluster.NewMockShardNodeAPI(ctr)
+	mockSharNodeAPI := mock.NewMockShardNodeAPI(ctr)
 	mockKvMgr := mock.NewMockKvMgrAPI(ctr)
 
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeNVMeSSD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})

@@ -24,11 +24,11 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockclustermgr"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
