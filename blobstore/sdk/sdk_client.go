@@ -925,7 +925,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 			if err != nil {
 				releaseBuffer(parts)
 				span.Error("alloc another parts to put", err)
-				return proto.Location{}, nil, errcode.ErrUnexpected
+				return proto.Location{}, nil, err
 			}
 
 			restPartsLoc = restPartsResp.Location
@@ -950,7 +950,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 		signResp, err1 := s.sign(ctx, &signArgs)
 		if err1 != nil {
 			span.Error("sign location with crc", err1)
-			return proto.Location{}, nil, errcode.ErrUnexpected
+			return proto.Location{}, nil, err
 		}
 		loc = signResp.Location
 	}
