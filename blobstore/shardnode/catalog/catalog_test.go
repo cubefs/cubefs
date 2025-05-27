@@ -24,8 +24,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -37,8 +37,8 @@ var (
 	_, ctx = trace.StartSpanFromContext(context.Background(), "Testing")
 )
 
-func mockTransport(tb testing.TB) *base.MockTransport {
-	tp := allocator.NewMockAllocTransport(tb).(*base.MockTransport)
+func mockTransport(tb testing.TB) *mocks.MockTransport {
+	tp := allocator.NewMockAllocTransport(tb).(*mocks.MockTransport)
 	return tp
 }
 

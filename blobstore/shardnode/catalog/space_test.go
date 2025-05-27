@@ -29,7 +29,7 @@ import (
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/security"
-	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockshardnode"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 

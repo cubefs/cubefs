@@ -36,8 +36,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
@@ -85,7 +85,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 	})
 	require.Nil(tb, err)
 
-	mockShardTp := base.NewMockShardTransport(C(tb))
+	mockShardTp := mocks.NewMockShardTransport(C(tb))
 	mockShardTp.EXPECT().ResolveRaftAddr(A, A).Return("", nil).AnyTimes()
 	mockShardTp.EXPECT().ResolveNodeAddr(A, A).Return("", nil).AnyTimes()
 	mockShardTp.EXPECT().ShardStats(A, A, A).DoAndReturn(

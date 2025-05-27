@@ -22,18 +22,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+
 	cm "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
-	"github.com/golang/mock/gomock"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
 var A = gomock.Any()
 
 func NewMockAllocTransport(t testing.TB) base.Transport {
 	_c := gomock.NewController
-	tp := base.NewMockTransport(_c(t))
+	tp := mocks.NewMockTransport(_c(t))
 	tp.EXPECT().AllocBid(A, A).Return(proto.BlobID(1), nil).AnyTimes()
 	tp.EXPECT().GetConfig(A, A).DoAndReturn(func(ctx context.Context, key string) (ret string, err error) {
 		switch key {

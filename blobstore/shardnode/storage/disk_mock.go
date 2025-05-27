@@ -29,7 +29,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util"
 )
 
@@ -42,7 +42,7 @@ var (
 
 type MockDisk struct {
 	d  *Disk
-	tp *base.MockTransport
+	tp *mocks.MockTransport
 }
 
 func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) {
@@ -59,7 +59,7 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 	cfg.StoreConfig.RaftOption.ColumnFamily = append(cfg.StoreConfig.RaftOption.ColumnFamily, raftWalCF)
 
 	// mock raft transport：for raft manager to resolve node address
-	tp := base.NewMockTransport(C(tb))
+	tp := mocks.NewMockTransport(C(tb))
 	cfg.Transport = tp
 
 	tp.EXPECT().GetNode(A, A).DoAndReturn(func(ctx context.Context, nodeID proto.NodeID) (*clustermgr.ShardNodeInfo, error) {
@@ -85,7 +85,7 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 	})
 
 	// mock shard stat api
-	shardTp := base.NewMockShardTransport(C(tb))
+	shardTp := mocks.NewMockShardTransport(C(tb))
 	shardTp.EXPECT().ResolveRaftAddr(A, A).Return("127.0.0.1:18080", nil).AnyTimes()
 	shardTp.EXPECT().ResolveNodeAddr(A, A).Return("127.0.0.1:9100", nil).AnyTimes()
 	shardTp.EXPECT().ShardStats(A, A, A).Return(shardnode.ShardStats{}, nil).AnyTimes()

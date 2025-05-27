@@ -35,11 +35,11 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
-	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockshardnode"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -78,17 +78,15 @@ func genDiskID() proto.DiskID {
 }
 
 type mockServiceCfg struct {
-	tp     *base.MockTransport
+	tp     *mocks.MockTransport
 	disks  map[proto.DiskID]*storage.MockDisk
 	shards map[proto.Suid]*mock.MockSpaceShardHandler
 }
 
-func newBaseTp(t *testing.T) *base.MockTransport {
+func newBaseTp(t *testing.T) *mocks.MockTransport {
 	// transport with cm
-	tp := allocator.NewMockAllocTransport(t).(*base.MockTransport)
-	tp.EXPECT().GetAllSpaces(A).Return([]cmapi.Space{
-		testSpace,
-	}, nil).AnyTimes()
+	tp := allocator.NewMockAllocTransport(t).(*mocks.MockTransport)
+	tp.EXPECT().GetAllSpaces(A).Return([]cmapi.Space{testSpace}, nil).AnyTimes()
 	tp.EXPECT().RegisterDisk(A, A).Return(nil).AnyTimes()
 	tp.EXPECT().NodeID().Return(proto.NodeID(1)).AnyTimes()
 	return tp

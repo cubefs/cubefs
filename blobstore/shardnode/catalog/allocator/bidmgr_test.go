@@ -28,12 +28,13 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
 type mockBidMgr struct{}
 
 func newMockBidTp(tb testing.TB) base.Transport {
-	tp := base.NewMockTransport(gomock.NewController(tb))
+	tp := mocks.NewMockTransport(gomock.NewController(tb))
 	tp.EXPECT().AllocBid(gomock.Any(), gomock.Any()).Return(proto.BlobID(10001), nil).AnyTimes()
 	return tp
 }
