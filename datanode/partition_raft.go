@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/datanode/storage"
 	syslog "log"
 	"net"
 	"os"
@@ -285,6 +286,22 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 	}
 }
 
+func compareExtentsBySize(toCompareExtents, baseExtents []*storage.ExtentInfo) bool {
+	for _, extent := range toCompareExtents {
+		found := false
+		for _, base := range baseExtents {
+			if base.Size == extent.Size {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 // StartRaftAfterRepair starts the raft after repairing a partition.
 // It can only happens after all the extent files are repaired by the leader.
 // When the repair is finished, the local dp.partitionSize is same as the leader's dp.partitionSize.
@@ -295,6 +312,8 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 		initPartitionSize, initMaxExtentID uint64
 		currLeaderPartitionSize            uint64
 		currLeaderRealUsedSize             uint64
+		currLeaderPartitionNormalExtents   []*storage.ExtentInfo
+		localPartitionNormalExtents        []*storage.ExtentInfo
 		err                                error
 	)
 	timer := time.NewTicker(5 * time.Second)
@@ -352,6 +371,22 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 
 			if initPartitionSize > localSize {
 				log.LogWarnf("action[StartRaftAfterRepair] PartitionID(%v) leader size(%v) local size(%v) wait snapshot recover", dp.partitionID, initPartitionSize, localSize)
+				continue
+			}
+
+			currLeaderPartitionNormalExtents, err = dp.getLeaderPartitionNormalExtentInfo()
+			if err != nil {
+				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) get leader normal extents err(%v)", dp.partitionID, err)
+				continue
+			}
+			localPartitionNormalExtents, _, err = dp.getLocalExtentInfo(proto.NormalExtentType, nil)
+			if err != nil {
+				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) get local normal extents err(%v)", dp.partitionID, err)
+				continue
+			}
+
+			if !compareExtentsBySize(currLeaderPartitionNormalExtents, localPartitionNormalExtents) {
+				log.LogWarnf("action[StartRaftAfterRepair] PartitionID(%v) leader normal extent incomplete match local normal extent, wait snapshot recover", dp.partitionID)
 				continue
 			}
 
@@ -687,6 +722,11 @@ func (dp *DataPartition) findMaxAppliedID(allAppliedIDs []uint64) (maxAppliedID 
 		}
 	}
 	return maxAppliedID, index
+}
+
+func (dp *DataPartition) getLeaderPartitionNormalExtentInfo() (extentInfos []*storage.ExtentInfo, err error) {
+	target := dp.getReplicaAddr(0)
+	return dp.getRemoteExtentInfo(proto.NormalExtentType, nil, target)
 }
 
 // Get the partition size from the leader.
