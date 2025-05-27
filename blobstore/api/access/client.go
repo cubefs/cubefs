@@ -692,7 +692,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (proto.Location, H
 			if err != nil {
 				releaseBuffer(parts)
 				span.Error("alloc another parts to put", err)
-				return proto.Location{}, nil, errcode.ErrUnexpected
+				return proto.Location{}, nil, err
 			}
 
 			restPartsLoc = restPartsResp.Location
@@ -717,7 +717,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (proto.Location, H
 		signResp := &SignResp{}
 		if err := rpcClient.PostWith(ctx, "/sign", signResp, signArgs); err != nil {
 			span.Error("sign location with crc", err)
-			return proto.Location{}, nil, errcode.ErrUnexpected
+			return proto.Location{}, nil, err
 		}
 		loc = signResp.Location
 	}

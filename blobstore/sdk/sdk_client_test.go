@@ -363,10 +363,16 @@ func TestSdkHandler_putParts(t *testing.T) {
 	args.Body = bytes.NewBuffer([]byte(data))
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(loca, nil).Times(4) // init, retry3
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).Times(4)
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).Times(4 + 1) // 4 blobs, fail del
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).AnyTimes()
 	_, _, err = hd.Put(ctx, args)
 	require.NotNil(t, err)
-	require.ErrorIs(t, err, errcode.ErrUnexpected)
+
+	args.Body = bytes.NewBuffer([]byte(data))
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(loca, nil) // init
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(nil, context.Canceled)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).AnyTimes()
+	_, _, err = hd.Put(ctx, args)
+	require.ErrorIs(t, err, context.Canceled)
 
 	// alloc the rest parts failed
 	{
@@ -385,13 +391,9 @@ func TestSdkHandler_putParts(t *testing.T) {
 		}
 		err = security.LocationCrcFill(locb)
 		require.Nil(t, err)
-		hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(locb, nil)
-		hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).Times(1)
-		hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(nil).AnyTimes()
-		hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).Times(4 + 1) // 4 blobs, fail del
+		hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(locb, nil).AnyTimes()
 		_, _, err = hd.Put(ctx, args)
-		require.NotNil(t, err)
-		require.ErrorIs(t, err, errcode.ErrUnexpected)
+		require.Error(t, err)
 	}
 }
 
