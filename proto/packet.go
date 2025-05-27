@@ -164,6 +164,7 @@ const (
 	OpDeleteBackupDirectories       uint8 = 0x80
 	OpDeleteLostDisk                uint8 = 0x8A
 	OpReloadDisk                    uint8 = 0x8B
+	OpSetRepairingStatus            uint8 = 0x8C
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70

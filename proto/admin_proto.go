@@ -739,6 +739,11 @@ type StopDataPartitionRepairResponse struct {
 	PartitionId uint64
 }
 
+type SetDataPartitionRepairingStatusRequest struct {
+	PartitionId     uint64
+	RepairingStatus bool
+}
+
 type RecoverDataReplicaMetaRequest struct {
 	PartitionId uint64
 	Peers       []Peer

@@ -89,6 +89,14 @@ func newStopDataPartitionRepairRequest(ID uint64, stop bool) (req *proto.StopDat
 	return
 }
 
+func newSetRepairingStatusRequest(ID uint64, repairingStatus bool) (req *proto.SetDataPartitionRepairingStatusRequest) {
+	req = &proto.SetDataPartitionRepairingStatusRequest{
+		PartitionId:     ID,
+		RepairingStatus: repairingStatus,
+	}
+	return
+}
+
 func newRecoverDataReplicaMetaRequest(ID uint64, peers []proto.Peer, hosts []string) (req *proto.RecoverDataReplicaMetaRequest) {
 	req = &proto.RecoverDataReplicaMetaRequest{
 		PartitionId: ID,
