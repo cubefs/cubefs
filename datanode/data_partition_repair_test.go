@@ -399,7 +399,11 @@ func mockInitWorker(t *testing.T, role string) *repairWorker {
 
 	require.NoError(t, err)
 	worker.dp = mockMakeDp(path)
-	spaceManager := NewSpaceManager(worker.dp.dataNode)
+	// spaceManager := NewSpaceManager(worker.dp.dataNode)
+	spaceManager := &SpaceManager{
+		dataNode:   worker.dp.dataNode,
+		partitions: make(map[uint64]*DataPartition),
+	}
 	worker.dp.disk, err = NewDisk("/tmp", 200, 2000, 10, spaceManager, false)
 	require.NoError(t, err)
 	spaceManager.partitions[worker.dp.partitionID] = worker.dp
@@ -585,4 +589,125 @@ func TestExtentRepair_512KB(t *testing.T) {
 	testDoNormalRepair(t, normalId, data, crc, true)
 	data, crc = genDataAndGetCrc("snapshot", util.BlockSize)
 	testDoSnapshotRepair(t, normalId, data, crc, false)
+}
+
+func TestExtentRepairWithIOLimit(t *testing.T) {
+	proto.InitBufferPool(int64(32768))
+	t.Logf("TestExtentRepairWithIOLimit initWorker")
+
+	const repairRateLimit = 1 * util.MB
+
+	// normalIds := []uint64{1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032, 1033, 1034}
+	normalIds := make([]uint64, 10)
+	for i := 0; i < 10; i++ {
+		normalIds[i] = uint64(1025 + i)
+	}
+	data, crc := genDataAndGetCrc("normal", util.BlockSize)
+
+	sendWorker = mockInitWorker(t, "sender")
+	recvWorker = mockInitWorker(t, "receiver")
+	sendWorker.dstWorker = recvWorker
+	recvWorker.dstWorker = sendWorker
+
+	sendWorker.dp.disk.limitAsyncRead = util.NewIOLimiter(repairRateLimit, 0)
+	recvWorker.dp.disk.limitAsyncWrite = util.NewIOLimiter(repairRateLimit, 0)
+
+	for _, id := range normalIds {
+		err := sendWorker.dp.extentStore.Create(id)
+		require.NoError(t, err)
+		err = recvWorker.dp.extentStore.Create(id)
+		require.NoError(t, err)
+		extentStoreNormalRwTest(t, sendWorker.dp.extentStore, id, crc, data)
+	}
+
+	defer func() {
+		os.RemoveAll(filepath.Dir(sendWorker.dp.path))
+		os.RemoveAll(filepath.Dir(recvWorker.dp.path))
+	}()
+	testConcurrentRepairs(t, normalIds, repairRateLimit)
+}
+
+func testConcurrentRepairs(t *testing.T, normalIds []uint64, repairRateLimit int64) {
+	var wg sync.WaitGroup
+	exitCh := make(chan struct{})
+	startTime := time.Now()
+
+	defer func() {
+		totalDuration := time.Since(startTime)
+		t.Logf("totalDuration: %v", totalDuration)
+		expectedMinDuration := time.Duration((len(normalIds)*util.BlockSize)/(int(repairRateLimit))) * time.Second
+		t.Logf("expectedMinDuration: %v", expectedMinDuration)
+		assert.True(t, totalDuration > expectedMinDuration,
+			fmt.Sprintf("actural cost time %v should > expected cost time %v", totalDuration, expectedMinDuration))
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		senderRepairWorkerWithConcurrent(t, exitCh)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		recvRepairWorkerWithConcurrent(t, normalIds, exitCh)
+	}()
+
+	wg.Wait()
+	close(exitCh)
+}
+
+func senderRepairWorkerWithConcurrent(t *testing.T, exitCh chan struct{}) {
+	con := new(net.TCPConn)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 10)
+
+	for {
+		select {
+		case pr := <-sendWorker.packChannel:
+			if pr.GetOpcode() == proto.OpExtentRepairRead {
+				sem <- struct{}{}
+				wg.Add(1)
+				go func(p repl.PacketInterface) {
+					defer func() {
+						<-sem
+						wg.Done()
+					}()
+					start := time.Now()
+					t.Logf("Sender: limitAsyncRead %v", sendWorker.dp.disk.limitAsyncRead.Status(false))
+					sendWorker.dp.NormalExtentRepairRead(pr, con, true, nil, sendNewNormalReadResponsePacket)
+					elapsed := time.Since(start)
+					t.Logf("request %d read cost time: %v", pr.GetExtentID(), elapsed)
+				}(pr)
+			}
+		case <-exitCh:
+			wg.Wait()
+			return
+		}
+	}
+}
+
+func recvRepairWorkerWithConcurrent(t *testing.T, ids []uint64, exitCh chan struct{}) {
+	var wg sync.WaitGroup
+	for _, id := range ids {
+		wg.Add(1)
+		go func(eid uint64) {
+			defer wg.Done()
+			ei, err := sendWorker.dp.extentStore.Watermark(eid)
+			require.NoError(t, err)
+			t.Logf("Recver: limitAsyncWrite %v", recvWorker.dp.disk.limitAsyncWrite.Status(false))
+			repairExtent := &RepairExtentInfo{ExtentInfo: *ei}
+			start := time.Now()
+			err = recvWorker.dp.streamRepairExtent(repairExtent,
+				reciverMakeTinyPacket,
+				reciverMakeNormalPacket,
+				reciverMakeExtentWithHoleRepairReadPacket,
+				reciverNewPacket)
+			assert.NoError(t, err)
+			elapsed := time.Since(start)
+			t.Logf("request %d write cost time: %v", eid, elapsed)
+		}(id)
+	}
+	wg.Wait()
+	exitCh <- struct{}{}
 }

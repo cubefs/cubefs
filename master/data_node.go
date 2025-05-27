@@ -137,14 +137,14 @@ func (dataNode *DataNode) checkLiveness() {
 	}
 }
 
-func (dataNode *DataNode) badPartitions(diskPath string, c *Cluster) (partitions []*DataPartition) {
+func (dataNode *DataNode) badPartitions(diskPath string, c *Cluster, ignoreDiscard bool) (partitions []*DataPartition) {
 	partitions = make([]*DataPartition, 0)
 	vols := c.copyVols()
 	if len(vols) == 0 {
 		return partitions
 	}
 	for _, vol := range vols {
-		dps := vol.dataPartitions.checkBadDiskDataPartitions(diskPath, dataNode.Addr)
+		dps := vol.dataPartitions.checkBadDiskDataPartitions(diskPath, dataNode.Addr, ignoreDiscard)
 		partitions = append(partitions, dps...)
 	}
 	return

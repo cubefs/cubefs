@@ -308,12 +308,22 @@ func (s *DataNode) getNormalDeleted(w http.ResponseWriter, r *http.Request) {
 func (s *DataNode) setQosEnable() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var enable common.Bool
-		if err := parseArgs(r, enable.Enable()); err != nil {
+		var qosType common.String
+		if err := parseArgs(r, enable.Enable(), qosType.QosType()); err != nil {
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		s.diskQosEnable = enable.V
-		s.buildSuccessResp(w, "success")
+		switch qosType.V {
+		case "normal":
+			s.diskQosEnable = enable.V
+		case "async":
+			s.diskAsyncQosEnable = enable.V
+		default:
+			err := fmt.Errorf("qos type %v not exist", qosType.V)
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		s.buildSuccessResp(w, fmt.Sprintf("Successfully set %v QosEnable to %v", qosType.V, enable.V))
 	}
 }
 
@@ -334,13 +344,22 @@ func (s *DataNode) setDiskQos(w http.ResponseWriter, r *http.Request) {
 
 	updated := false
 	for key, pVal := range map[string]*int{
-		ConfigDiskReadIocc:   &s.diskReadIocc,
-		ConfigDiskReadIops:   &s.diskReadIops,
-		ConfigDiskReadFlow:   &s.diskReadFlow,
-		ConfigDiskWriteIocc:  &s.diskWriteIocc,
-		ConfigDiskWriteIops:  &s.diskWriteIops,
-		ConfigDiskWriteFlow:  &s.diskWriteFlow,
-		ConfigDiskWQueFactor: &s.diskWQueFactor,
+		ConfigDiskReadIocc:       &s.diskReadIocc,
+		ConfigDiskReadIops:       &s.diskReadIops,
+		ConfigDiskReadFlow:       &s.diskReadFlow,
+		ConfigDiskWriteIocc:      &s.diskWriteIocc,
+		ConfigDiskWriteIops:      &s.diskWriteIops,
+		ConfigDiskWriteFlow:      &s.diskWriteFlow,
+		ConfigDiskWQueFactor:     &s.diskWQueFactor,
+		ConfigDiskAsyncReadIocc:  &s.diskAsyncReadIocc,
+		ConfigDiskAsyncReadIops:  &s.diskAsyncReadIops,
+		ConfigDiskAsyncReadFlow:  &s.diskAsyncReadFlow,
+		ConfigDiskAsyncWriteIocc: &s.diskAsyncWriteIocc,
+		ConfigDiskAsyncWriteIops: &s.diskAsyncWriteIops,
+		ConfigDiskAsyncWriteFlow: &s.diskAsyncWriteFlow,
+		ConfigDiskDeleteIocc:     &s.diskDeleteIocc,
+		ConfigDiskDeleteIops:     &s.diskDeleteIops,
+		ConfigDiskDeleteFlow:     &s.diskDeleteFlow,
 	} {
 		val, err, has := parser(key)
 		if err != nil {
@@ -363,13 +382,25 @@ func (s *DataNode) getDiskQos(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)
 	for _, diskItem := range s.space.GetDisks() {
 		disk := &struct {
-			Path  string             `json:"path"`
-			Read  util.LimiterStatus `json:"read"`
-			Write util.LimiterStatus `json:"write"`
+			Path           string             `json:"path"`
+			QosEnable      bool               `json:"qosEnable"`
+			AsyncQosEnable bool               `json:"asyncQosEnable"`
+			Read           util.LimiterStatus `json:"read"`
+			Write          util.LimiterStatus `json:"write"`
+			AsyncRead      util.LimiterStatus `json:"asyncRead"`
+			AsyncWrite     util.LimiterStatus `json:"asyncWrite"`
+			Delete         util.LimiterStatus `json:"delete"`
+			IopsStatus     proto.IopsStatus   `json:"IopsStatus"`
 		}{
-			Path:  diskItem.Path,
-			Read:  diskItem.limitRead.Status(false),
-			Write: diskItem.limitWrite.Status(false),
+			Path:           diskItem.Path,
+			QosEnable:      s.diskQosEnable || s.diskQosEnableFromMaster,
+			AsyncQosEnable: s.diskAsyncQosEnable,
+			Read:           diskItem.limitRead.Status(false),
+			Write:          diskItem.limitWrite.Status(false),
+			AsyncRead:      diskItem.limitAsyncRead.Status(false),
+			AsyncWrite:     diskItem.limitAsyncWrite.Status(false),
+			Delete:         diskItem.limitDelete.Status(false),
+			IopsStatus:     s.IopsStatus(),
 		}
 		disks = append(disks, disk)
 	}

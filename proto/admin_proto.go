@@ -782,6 +782,14 @@ type QosToDataNode struct {
 	QosFlowWriteLimit uint64
 }
 
+type IopsStatus struct {
+	ReadIops       int
+	WriteIops      int
+	AsyncReadIops  int
+	AsyncWriteIops int
+	DeleteIops     int
+}
+
 // MultiVersionOpRequest defines the request of
 type MultiVersionOpRequest struct {
 	VolumeID   string
@@ -1204,10 +1212,16 @@ const (
 )
 
 const (
-	IopsReadType  uint32 = 0x01
-	IopsWriteType uint32 = 0x02
-	FlowReadType  uint32 = 0x03
-	FlowWriteType uint32 = 0x04
+	IopsReadType       uint32 = 0x01
+	IopsWriteType      uint32 = 0x02
+	FlowReadType       uint32 = 0x03
+	FlowWriteType      uint32 = 0x04
+	IopsAsyncReadType  uint32 = 0x05
+	IopsAsyncWriteType uint32 = 0x06
+	FlowAsyncReadType  uint32 = 0x07
+	FlowAsyncWriteType uint32 = 0x08
+	IopsDeleteType     uint32 = 0x09
+	FlowDeleteType     uint32 = 0x0A
 )
 
 const (
