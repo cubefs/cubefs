@@ -14,37 +14,3 @@ CubeFS的分布式缓存由多个FlashGroup组成，每个FlashGroup负责管理
 
 FlashGroup由缓存节点FlashNode组成，可以分布在不同的zone中。客户端读取缓存数据时，则会通过对FlashNode进行延时分析，选择访问延时最低的FlashNode进行读取。
 
-**FlashNode**
-
-下面为 FlashNode 进程启动所需的配置文件示例：
-
-```text
-{
-    "role": "flashnode",
-    "listen": "18510",
-    "prof": "18511",
-    "logDir": "./logs",
-    "masterAddr": [
-        "xxx",
-        "xxx",
-        "xxx"
-    ],
-    "memTotal": 0,
-    "cachePercent": 0.8,
-    "readRps": 100000,
-    "disableTmpfs": true,
-    "diskDataPath": [
-      "/path/data1:0",
-      "/path/data2:0"
-      ],
-    "zoneName":"default"
-}
-```
-
-**Master**
-
-Master 负责对整个集群中所有分布式缓存的拓扑信息进行持久化存储与统一管理。它接收 FlashNode 的注册信息和心跳消息，以此判断各个 FlashNode 节点的存活状态。master接受cli命令对FlashGroup的slot分配，客户端在读取数据时，会向 Master 请求获取最新的分布式缓存拓扑结构，用于实现数据读取的正确路由。
-
-**Client**
-
-为支持文件缓存读取，客户端将结合卷级别的缓存开关和集群缓存功能状态，决定是否从分布式缓存中获取数据。
