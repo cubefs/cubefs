@@ -26,7 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/proxy/mock"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockproxy"
 )
 
 func TestRetainTaskClose(t *testing.T) {

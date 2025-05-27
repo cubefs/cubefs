@@ -32,7 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/proxy/allocator"
-	"github.com/cubefs/cubefs/blobstore/proxy/mock"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockproxy"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )

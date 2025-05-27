@@ -28,7 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/proxy/mock"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockproxy"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 

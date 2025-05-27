@@ -14,6 +14,12 @@
 
 package mock
 
+// github.com/cubefs/cubefs/blobstore/proxy/... module proxy interfaces
+
+//go:generate mockgen -destination=./mq.go -package=mock -mock_names BlobDeleteHandler=MockBlobDeleteHandler,ShardRepairHandler=MockShardRepairHandler,Producer=MockProducer github.com/cubefs/cubefs/blobstore/proxy/mq BlobDeleteHandler,ShardRepairHandler,Producer
+//go:generate mockgen -destination=./allocator.go -package=mock -mock_names BlobDeleteHandler=MockBlobDeleteHandler,ShardRepairHandler=MockShardRepairHandler,Producer=MockProducer github.com/cubefs/cubefs/blobstore/proxy/allocator VolumeMgr
+//go:generate mockgen -destination=./cacher.go -package=mock -mock_names Cacher=MockCacher github.com/cubefs/cubefs/blobstore/proxy/cacher Cacher
+
 import (
 	"context"
 	"encoding/json"

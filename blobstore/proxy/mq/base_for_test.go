@@ -21,7 +21,7 @@ import (
 	"github.com/golang/mock/gomock"
 
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
-	"github.com/cubefs/cubefs/blobstore/proxy/mock"
+	mock "github.com/cubefs/cubefs/blobstore/testing/mockproxy"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
