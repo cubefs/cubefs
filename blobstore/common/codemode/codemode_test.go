@@ -129,6 +129,7 @@ func TestGlobalStripe(t *testing.T) {
 		{EC12P4, 16},
 		{EC16P4, 20},
 		{EC12P9, 21},
+		{EC24P8, 32},
 	}
 	for _, cs := range cases {
 		tactic := cs.mode.Tactic()
