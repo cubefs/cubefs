@@ -188,7 +188,7 @@ func (m *ClusterService) decommissionDisk(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	badPartitions := node.badPartitions(args.DiskPath, m.cluster)
+	badPartitions := node.badPartitions(args.DiskPath, m.cluster, false)
 	if len(badPartitions) == 0 {
 		err = fmt.Errorf("node[%v] disk[%v] does not have any data partition", node.Addr, args.DiskPath)
 		return nil, err

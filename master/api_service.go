@@ -1457,7 +1457,6 @@ func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosPar
 			}
 		}
 	}
-
 	log.LogInfof("action[parseRequestQos] result %v", qosParam)
 
 	return
@@ -8658,13 +8657,15 @@ func (m *Server) deleteLostDisk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !found {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("disk %v on %v is not lost ", diskPath, addr)})
+		err = errors.NewErrorf("disk %v not found", diskPath)
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	partitions := dataNode.badPartitions(diskPath, m.cluster)
+	partitions := dataNode.badPartitions(diskPath, m.cluster, true)
 	if len(partitions) != 0 {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("disk %v still has partitions not decommission", diskPath)})
+		err = errors.NewErrorf("disk %v not found", diskPath)
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
@@ -8702,14 +8703,22 @@ func (m *Server) reloadDisk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, path := range dataNode.AllDisks {
+	for _, path := range dataNode.LostDisks {
 		if path == diskPath {
 			found = true
 			break
 		}
 	}
 	if !found {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("disk %v not found", diskPath)})
+		err = errors.NewErrorf("disk %v not found", diskPath)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	partitions := dataNode.badPartitions(diskPath, m.cluster, true)
+	if len(partitions) != 0 {
+		err = errors.NewErrorf("disk %v still has partitions not decommission", diskPath)
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 

@@ -4746,7 +4746,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	var partitions []*DataPartition
 	disks := dataNode.getDisks(c)
 	for _, disk := range disks {
-		partitionsFromDisk := dataNode.badPartitions(disk, c)
+		partitionsFromDisk := dataNode.badPartitions(disk, c, false)
 		partitions = append(partitions, partitionsFromDisk...)
 	}
 	// may allocate new dp when dataNode cancel decommission before
@@ -5101,7 +5101,7 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 		// TODO:no dp left on bad disk, notify sre to remove this disk
 		// decommission failed, but lack replica for disk err dp is already removed
 		retry := c.RetryDecommissionDisk(dataNode.Addr, disk.DiskPath)
-		partitions := dataNode.badPartitions(disk.DiskPath, c)
+		partitions := dataNode.badPartitions(disk.DiskPath, c, false)
 		totalDpCnt := len(partitions)
 		if totalDpCnt == 0 && !retry {
 			// msg := fmt.Sprintf("disk(%v_%v) can be removed", dataNode.Addr, disk.DiskPath)
@@ -5191,7 +5191,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		disk.markDecommissionFailed()
 		return
 	}
-	badPartitions = node.badPartitions(disk.DiskPath, c)
+	badPartitions = node.badPartitions(disk.DiskPath, c, false)
 	for _, dp := range badPartitions {
 		badPartitionIds = append(badPartitionIds, dp.PartitionID)
 	}

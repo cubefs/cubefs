@@ -49,3 +49,5 @@ func (s *String) Disk() *Argument          { return s.Key("disk") }
 func (s *String) DiskPath() *Argument      { return s.Key("diskPath") }
 func (s *String) Addr() *Argument          { return s.Key("addr") }
 func (s *String) ZoneName() *Argument      { return s.Key("zoneName") }
+
+func (s *String) QosType() *Argument { return s.Key("qosType") }

@@ -1211,7 +1211,6 @@ func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
 	default:
 		log.LogDebugf("dp %v GetAvailableTinyExtent not found", s.partitionID)
 		return 0, NoAvailableExtentError
-
 	}
 }
 

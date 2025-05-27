@@ -1142,9 +1142,10 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 			continue
 		}
 
-		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
-		err := store.Create(uint64(extentInfo.FileID))
+		var err error
+		dp.disk.diskLimit(OpAsyncWrite, 0, func() {
+			err = store.Create(extentInfo.FileID)
+		})
 		if err != nil {
 			log.LogWarnf("DoExtentStoreRepair dp %v extent %v failed, err:%v",
 				dp.partitionID, extentInfo.FileID, err.Error())
@@ -1306,7 +1307,6 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 				continue
 			}
 			DeleteLimiterWait()
-			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 			// log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
 			// store.MarkDelete(extentID, int64(offset), int64(size))
 			store.RecordTinyDelete(extentID, int64(offset), int64(size))

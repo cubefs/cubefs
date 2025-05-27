@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"path"
 	"sync"
@@ -53,8 +54,11 @@ func newDiskForOperatorTest(t *testing.T, dn *DataNode) (d *Disk) {
 	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
 	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
 	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitFactor[proto.IopsDeleteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
 	d.limitRead = util.NewIOLimiter(1*util.MB, 10)
 	d.limitWrite = util.NewIOLimiter(1*util.MB, 10)
+	d.limitAsyncRead = util.NewIOLimiter(1*util.MB, 10)
+	d.limitDelete = util.NewIOLimiter(1*util.MB, 10)
 	return
 }
 
@@ -89,6 +93,8 @@ func newDataNodeForOperatorTest(t *testing.T) (dn *DataNode) {
 		metrics: &DataNodeMetrics{
 			dataNode: dn,
 		},
+		diskQosEnable:      true,
+		diskAsyncQosEnable: true,
 	}
 	return
 }
@@ -125,6 +131,115 @@ func newPacketForTest(task *proto.AdminTask) *repl.Packet {
 	}
 }
 
+func TestMarkDeleteIopsLimit(t *testing.T) {
+	var (
+		wg sync.WaitGroup
+		c  net.Conn
+	)
+
+	dn := newDataNodeForOperatorTest(t)
+	dp := newDpForOperatorTest(t, dn)
+
+	for i := 100; i < 900; i++ {
+		p := newPacketForOperatorTest(t, dp, uint64(i))
+		p.Opcode = proto.OpCreateExtent
+		dn.handlePacketToCreateExtent(p)
+		require.EqualValues(t, proto.OpOk, p.ResultCode)
+	}
+
+	dp.dataNode.diskAsyncQosEnable = true
+	dp.disk.limitFactor[proto.IopsDeleteType].SetLimit(rate.Limit(200))
+	startTime := time.Now()
+	for i := 100; i < 500; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			p := newPacketForOperatorTest(t, dp, uint64(i))
+			p.Opcode = proto.OpMarkDelete
+			p.ExtentType = 1
+			dn.handleMarkDeletePacket(p, c)
+			require.EqualValues(t, proto.OpOk, p.ResultCode)
+		}(i)
+	}
+	wg.Wait()
+	costTime1 := time.Since(startTime)
+	t.Logf("cost time1(%v)", costTime1)
+
+	time.Sleep(time.Second)
+
+	dp.disk.limitFactor[proto.IopsDeleteType].SetLimit(rate.Limit(50))
+	startTime = time.Now()
+	for i := 500; i < 900; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			p := newPacketForOperatorTest(t, dp, uint64(i))
+			p.Opcode = proto.OpMarkDelete
+			p.ExtentType = 1
+			dn.handleMarkDeletePacket(p, c)
+			require.EqualValues(t, proto.OpOk, p.ResultCode)
+		}(i)
+	}
+	wg.Wait()
+	costTime2 := time.Since(startTime)
+	t.Logf("cost time2(%v)", costTime2)
+
+	require.Greater(t, costTime2, costTime1)
+}
+
+func TestMarkDeleteIoccLimit(t *testing.T) {
+	var (
+		wg sync.WaitGroup
+		c  net.Conn
+	)
+
+	dn := newDataNodeForOperatorTest(t)
+	dp := newDpForOperatorTest(t, dn)
+
+	for i := 100; i < 700; i++ {
+		p := newPacketForOperatorTest(t, dp, uint64(i))
+		p.Opcode = proto.OpCreateExtent
+		dn.handlePacketToCreateExtent(p)
+		require.EqualValues(t, proto.OpOk, p.ResultCode)
+	}
+
+	dp.disk.limitFactor[proto.IopsDeleteType].SetLimit(rate.Limit(100))
+	startTime := time.Now()
+	for i := 100; i < 400; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			p := newPacketForOperatorTest(t, dp, uint64(i))
+			p.Opcode = proto.OpMarkDelete
+			p.ExtentType = 1
+			dn.handleMarkDeletePacket(p, c)
+		}(i)
+	}
+	wg.Wait()
+
+	costTime1 := time.Since(startTime)
+	t.Logf("cost time1(%v)", costTime1)
+
+	dp.disk.limitDelete.ResetIO(2, 0)
+	startTime = time.Now()
+	for i := 400; i < 700; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			p := newPacketForOperatorTest(t, dp, uint64(i))
+			p.Opcode = proto.OpMarkDelete
+			p.ExtentType = 1
+			dn.handleMarkDeletePacket(p, c)
+			require.EqualValues(t, proto.OpOk, p.ResultCode)
+		}(i)
+	}
+	wg.Wait()
+	costTime2 := time.Since(startTime)
+	t.Logf("cost time2(%v)", costTime2)
+
+	require.Greater(t, costTime2, costTime1)
+}
+
 func TestDeleteLostDisk(t *testing.T) {
 	dn := &DataNode{
 		space: &SpaceManager{
@@ -134,31 +249,38 @@ func TestDeleteLostDisk(t *testing.T) {
 		},
 	}
 
-	testDiskPath := "/test/disk1"
+	testDiskPath1 := "/test/disk1"
+	testDiskPath2 := "/test/disk2"
 
-	lostDisk := NewLostDisk(
-		testDiskPath,
+	lostDisk1 := NewLostDisk(
+		testDiskPath1,
 		1*util.TB,
 		0,
 		3,
 		dn.space,
 		true,
 	)
-	dn.space.putDisk(lostDisk)
+	lostDisk2 := NewLostDisk(
+		testDiskPath2,
+		1*util.TB,
+		0,
+		3,
+		dn.space,
+		true,
+	)
+	dn.space.putDisk(lostDisk1)
+	dn.space.putDisk(lostDisk2)
 
 	t.Run("normal delete disk", func(t *testing.T) {
-		req := &proto.DeleteLostDiskRequest{DiskPath: testDiskPath}
+		req := &proto.DeleteLostDiskRequest{DiskPath: testDiskPath1}
 		task := &proto.AdminTask{
 			OpCode:  proto.OpDeleteLostDisk,
 			Request: req,
 		}
 		p := newPacketForTest(task)
-
 		dn.handlePacketToDeleteLostDisk(p)
-
 		require.Equal(t, proto.OpOk, p.ResultCode)
-
-		_, err := dn.space.GetDisk(testDiskPath)
+		_, err := dn.space.GetDisk(testDiskPath1)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not exist")
 	})
@@ -170,11 +292,23 @@ func TestDeleteLostDisk(t *testing.T) {
 			Request: invalidReq,
 		}
 		p := newPacketForTest(task)
-
 		dn.handlePacketToDeleteLostDisk(p)
-
 		require.Equal(t, proto.OpIntraGroupNetErr, p.ResultCode)
 		require.Contains(t, string(p.Data), "not exist")
+	})
+
+	t.Run("delete unlost disk", func(t *testing.T) {
+		lostDisk2.isLost = false
+		invalidReq := &proto.DeleteLostDiskRequest{DiskPath: testDiskPath2}
+		task := &proto.AdminTask{
+			OpCode:  proto.OpDeleteLostDisk,
+			Request: invalidReq,
+		}
+		p := newPacketForTest(task)
+		dn.handlePacketToDeleteLostDisk(p)
+		require.Equal(t, proto.OpIntraGroupNetErr, p.ResultCode)
+		t.Logf("%v", string(p.Data))
+		require.Contains(t, string(p.Data), "not lost")
 	})
 }
 
@@ -184,10 +318,12 @@ func TestReloadDisk(t *testing.T) {
 	require.NoError(t, err)
 
 	dn := &DataNode{
-		diskReadFlow:  1 * util.MB,
-		diskWriteFlow: 1 * util.MB,
-		diskReadIocc:  10,
-		diskWriteIocc: 10,
+		diskReadFlow:      1 * util.MB,
+		diskAsyncReadFlow: 1 * util.MB,
+		diskWriteFlow:     1 * util.MB,
+		diskReadIocc:      10,
+		diskAsyncReadIocc: 10,
+		diskWriteIocc:     10,
 	}
 	sm := &SpaceManager{
 		disks:     make(map[string]*Disk),
@@ -211,13 +347,12 @@ func TestReloadDisk(t *testing.T) {
 	)
 	dn.space.putDisk(disk)
 
-	req := &proto.ReloadDiskRequest{DiskPath: testDiskPath}
-	task := &proto.AdminTask{
-		OpCode:  proto.OpReloadDisk,
-		Request: req,
-	}
-
 	t.Run("normal reload disk", func(t *testing.T) {
+		req := &proto.ReloadDiskRequest{DiskPath: testDiskPath}
+		task := &proto.AdminTask{
+			OpCode:  proto.OpReloadDisk,
+			Request: req,
+		}
 		p := newPacketForTest(task)
 		dn.handlePacketToReloadDisk(p)
 		require.Equal(t, proto.OpOk, p.ResultCode)
@@ -227,38 +362,28 @@ func TestReloadDisk(t *testing.T) {
 		}, 3*time.Second, 100*time.Millisecond, "disk not loaded")
 	})
 
-	t.Run("reload conflict", func(t *testing.T) {
-		var wg sync.WaitGroup
-		results := make(chan uint8, 2)
-		for i := 0; i < 2; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				p := newPacketForTest(&proto.AdminTask{
-					OpCode:  proto.OpReloadDisk,
-					Request: &proto.ReloadDiskRequest{DiskPath: testDiskPath},
-				})
-				dn.handlePacketToReloadDisk(p)
-				results <- p.ResultCode
-			}()
+	t.Run("reload unexist disk", func(t *testing.T) {
+		req := &proto.ReloadDiskRequest{DiskPath: "/invalid/path"}
+		task := &proto.AdminTask{
+			OpCode:  proto.OpReloadDisk,
+			Request: req,
 		}
+		p := newPacketForTest(task)
+		dn.handlePacketToReloadDisk(p)
+		require.Equal(t, proto.OpIntraGroupNetErr, p.ResultCode)
+		require.Contains(t, string(p.Data), "not exist")
+	})
 
-		go func() {
-			wg.Wait()
-			close(results)
-		}()
-
-		var successCount, errorCount int
-		for res := range results {
-			switch res {
-			case proto.OpOk:
-				successCount++
-			case proto.OpIntraGroupNetErr:
-				errorCount++
-			}
+	t.Run("reload unlost disk", func(t *testing.T) {
+		disk.isLost = false
+		req := &proto.ReloadDiskRequest{DiskPath: testDiskPath}
+		task := &proto.AdminTask{
+			OpCode:  proto.OpReloadDisk,
+			Request: req,
 		}
-
-		require.Equal(t, 1, successCount)
-		require.Equal(t, 1, errorCount)
+		p := newPacketForTest(task)
+		dn.handlePacketToReloadDisk(p)
+		require.Equal(t, proto.OpIntraGroupNetErr, p.ResultCode)
+		require.Contains(t, string(p.Data), "not lost")
 	})
 }

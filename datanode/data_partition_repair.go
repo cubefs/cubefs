@@ -292,9 +292,10 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 			continue
 		}
 
-		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
-		err := store.Create(extentInfo.FileID)
+		var err error
+		dp.disk.diskLimit(OpAsyncWrite, 0, func() {
+			err = store.Create(extentInfo.FileID)
+		})
 		if err != nil {
 			log.LogWarnf("DoRepair dp %v extent %v failed, err:%v",
 				dp.partitionID, extentInfo.FileID, err.Error())
@@ -573,11 +574,16 @@ func (dp *DataPartition) ExtentWithHoleRepairRead(request repl.PacketInterface, 
 			reply.SetData(make([]byte, currReadSize))
 		}
 		reply.SetExtentOffset(offset)
-		crc, err = dp.extentStore.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), false, request.GetOpcode() == proto.OpBackupRead)
+
+		dp.disk.diskLimit(OpAsyncRead, currReadSize, func() {
+			crc, err = dp.extentStore.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), false, request.GetOpcode() == proto.OpBackupRead)
+		})
+
 		dp.checkIsDiskError(err, ReadFlag)
 		if err != nil {
 			return
 		}
+
 		reply.SetCRC(crc)
 		reply.SetSize(currReadSize)
 		reply.SetResultCode(proto.OpOk)
@@ -606,6 +612,8 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 	var (
 		metricPartitionIOLabels     map[string]string
 		partitionIOMetric, tpObject *exporter.TimePointCount
+		crc                         uint32
+		opType                      string
 	)
 	shallDegrade := p.ShallDegrade()
 	if !shallDegrade {
@@ -643,16 +651,16 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		p.SetSize(currReadSize)
 		p.SetExtentOffset(offset)
 
-		dp.Disk().allocCheckLimit(proto.IopsReadType, 1)
-		dp.Disk().allocCheckLimit(proto.FlowReadType, currReadSize)
-
-		if rs := dp.disk.limitRead.Run(int(currReadSize), false, func() {
-			var crc uint32
+		if isRepairRead {
+			opType = OpAsyncRead
+		} else {
+			opType = OpRead
+		}
+		dp.disk.diskLimit(opType, currReadSize, func() {
 			crc, err = store.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), isRepairRead, p.GetOpcode() == proto.OpBackupRead)
 			reply.SetCRC(crc)
-		}); err == nil && rs != nil {
-			err = rs
-		}
+		})
+
 		if !shallDegrade && metrics != nil {
 			metrics.MetricIOBytes.AddWithLabels(int64(p.GetSize()), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -890,7 +898,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 			log.LogDebugf("streamRepairExtent dp[%v] extent[%v] localExtentInfo[%v] remote info(remoteAvaliSize[%v],isEmptyResponse[%v],currRecoverySize[%v] currFixOffset[%v]",
 				dp.partitionID, localExtentInfo, remoteExtentInfo, remoteAvaliSize, isEmptyResponse, currRecoverySize, currFixOffset)
 			if storage.IsTinyExtent(localExtentInfo.FileID) {
-				err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.GetData(), reply.GetCRC(), isEmptyResponse)
+				dp.disk.diskLimit(OpAsyncWrite, uint32(currRecoverySize), func() {
+					err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.GetData(), reply.GetCRC(), isEmptyResponse)
+				})
 				if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
 					log.LogInfof("streamRepairTinyExtent(%v) recover fininsh,remoteAvaliSize(%v) "+
 						"hasRecoverySize(%v) currRecoverySize(%v)", dp.applyRepairKey(int(localExtentInfo.FileID)),
@@ -899,19 +909,21 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 				}
 			} else {
 				log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v ", reply.GetSize(), currFixOffset, reply)
-				param := &storage.WriteParam{
-					ExtentID:      uint64(localExtentInfo.FileID),
-					Offset:        int64(currFixOffset),
-					Size:          int64(reply.GetSize()),
-					Data:          reply.GetData(),
-					Crc:           reply.GetCRC(),
-					WriteType:     wType,
-					IsSync:        BufferWrite,
-					IsHole:        isEmptyResponse,
-					IsRepair:      true,
-					IsBackupWrite: request.GetOpcode() == proto.OpBackupWrite,
-				}
-				_, err = store.Write(param)
+				dp.disk.diskLimit(OpAsyncWrite, uint32(reply.GetSize()), func() {
+					param := &storage.WriteParam{
+						ExtentID:      uint64(localExtentInfo.FileID),
+						Offset:        int64(currFixOffset),
+						Size:          int64(reply.GetSize()),
+						Data:          reply.GetData(),
+						Crc:           reply.GetCRC(),
+						WriteType:     wType,
+						IsSync:        BufferWrite,
+						IsHole:        isEmptyResponse,
+						IsRepair:      true,
+						IsBackupWrite: request.GetOpcode() == proto.OpBackupWrite,
+					}
+					_, err = store.Write(param)
+				})
 			}
 			// log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
 			// write to the local extent file

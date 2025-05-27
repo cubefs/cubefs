@@ -262,8 +262,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		return
 	}
 
-	partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-	partition.disk.limitWrite.Run(0, true, func() {
+	partition.disk.diskLimit(OpWrite, 0, func() {
 		err = partition.ExtentStore().Create(p.ExtentID)
 	})
 }
@@ -779,8 +778,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		if err == nil {
 			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
-			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-			partition.disk.limitWrite.Run(0, true, func() {
+			partition.disk.diskLimit(OpDelete, 0, func() {
 				log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, p.ExtentID)
 				err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 				if err != nil {
@@ -791,16 +789,13 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	} else {
 		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)",
 			p.PartitionID, p.ExtentID)
-		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-		if rs := partition.disk.limitWrite.Run(0, true, func() {
-			log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, p.ExtentID)
+		partition.disk.diskLimit(OpDelete, 0, func() {
+			log.LogInfof("[handleMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, p.ExtentID)
 			err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 			if err != nil {
 				log.LogErrorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
 			}
-		}); err == nil && rs != nil {
-			err = rs
-		}
+		})
 	}
 }
 
@@ -847,8 +842,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		}
 
 		log.LogInfof(fmt.Sprintf("[handleBatchMarkDeletePacket] recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
-		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-		writable := partition.disk.limitWrite.TryRun(0, func() {
+		partition.disk.diskLimit(OpDelete, 0, func() {
 			if storage.IsTinyExtent(ext.ExtentId) || ext.IsSnapshotDeletion {
 				log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v), tinyExtent or snapDeletion",
 					partition.config.VolName, partition.partitionID, ext.ExtentId)
@@ -875,12 +869,6 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				}
 			}
 		})
-
-		if !writable {
-			log.LogInfof("[handleBatchMarkDeletePacket] delete limitIo reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
-			err = storage.LimitedIoError
-			return
-		}
 
 		// NOTE: reutrn if meet error
 		if err != nil {
@@ -955,10 +943,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
 
-		partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
-		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
-		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
+		if writable := partition.disk.tryDiskLimit(OpWrite, uint32(p.Size), func() {
 			param := &storage.WriteParam{
 				ExtentID:      p.ExtentID,
 				Offset:        p.ExtentOffset,
@@ -976,6 +961,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			err = storage.LimitedIoError
 			return
 		}
+
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -989,10 +975,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
 
-		partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
-		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
-		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
+		if writable := partition.disk.tryDiskLimit(OpWrite, uint32(p.Size), func() {
 			param := &storage.WriteParam{
 				ExtentID:      p.ExtentID,
 				Offset:        p.ExtentOffset,
@@ -1010,6 +993,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			err = storage.LimitedIoError
 			return
 		}
+
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -1029,10 +1013,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 			}
 
-			partition.disk.allocCheckLimit(proto.FlowWriteType, uint32(currSize))
-			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
-			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
+			if writable := partition.disk.tryDiskLimit(OpWrite, uint32(currSize), func() {
 				param := &storage.WriteParam{
 					ExtentID:      p.ExtentID,
 					Offset:        p.ExtentOffset + int64(offset),
@@ -1050,6 +1031,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				err = storage.LimitedIoError
 				return
 			}
+
 			if !shallDegrade {
 				s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 				partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -2271,6 +2253,12 @@ func (s *DataNode) handlePacketToDeleteLostDisk(p *repl.Packet) {
 		return
 	}
 
+	if !disk.isLost {
+		err = errors.NewErrorf("disk(%v) is not lost", request.DiskPath)
+		log.LogErrorf("action[handlePacketToDeleteLostDisk] disk(%v) is not lost", request.DiskPath)
+		return
+	}
+
 	s.space.deleteDisk(disk)
 	log.LogInfof("action[handlePacketToDeleteLostDisk] delete lost disk (%v) success", request.DiskPath)
 }
@@ -2302,6 +2290,18 @@ func (s *DataNode) handlePacketToReloadDisk(p *repl.Packet) {
 		return
 	}
 	log.LogWarnf("action[handlePacketToReloadDisk] try reload disk %v req %v", request.DiskPath, task.RequestID)
+
+	disk, err := s.space.GetDisk(request.DiskPath)
+	if err != nil {
+		log.LogErrorf("action[handlePacketToReloadDisk] disk(%v) is not found err(%v).", request.DiskPath, err)
+		return
+	}
+
+	if !disk.isLost {
+		err = errors.NewErrorf("disk(%v) is not lost", request.DiskPath)
+		log.LogErrorf("action[handlePacketToReloadDisk] disk(%v) is not lost", request.DiskPath)
+		return
+	}
 
 	err = s.space.reloadDisk(request.DiskPath)
 	if err != nil {

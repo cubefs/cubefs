@@ -1997,7 +1997,7 @@ func TestDeleteLostDisk(t *testing.T) {
 
 func TestReloadDisk(t *testing.T) {
 	addr := mds5Addr
-	disk := "/cfs/disk"
+	disk := "/cfs/disk2"
 	reqUrl := fmt.Sprintf("%v%v?addr=%v&disk=%v", hostAddr, proto.ReloadDisk, addr, disk)
 
 	process(reqUrl, t)
