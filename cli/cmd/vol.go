@@ -99,7 +99,7 @@ const (
 	cmdVolCreateUse                       = "create [VOLUME NAME] [USER ID]"
 	cmdVolCreateShort                     = "Create a new volume"
 	cmdVolDefaultMPCount                  = 3
-	cmdVolDefaultDPCount                  = 10
+	cmdVolDefaultDPCount                  = 3
 	cmdVolDefaultDPSize                   = 120
 	cmdVolDefaultCapacity                 = 10 // 100GB
 	cmdVolDefaultZoneName                 = ""
