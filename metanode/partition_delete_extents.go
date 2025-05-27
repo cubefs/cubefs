@@ -213,7 +213,7 @@ func (mp *metaPartition) batchDeleteExtentsByDp(dpId uint64, extents []*proto.De
 		err = mp.doBatchDeleteExtentsByPartition(dpId, batchEk)
 		if err != nil {
 			msg := fmt.Sprintf("[batchDeleteExtentsByDp] vol(%v) mp(%v) failed to delete dp(%v) extents cnt(%v), err %s", mp.GetVolName(), mp.config.PartitionId, dp.PartitionID, len(batchEk), err.Error())
-			if strings.Contains(msg, "OpLimitedIoErr") || strings.Contains(msg, "OpTinyRecoverErr") {
+			if strings.Contains(msg, "OpLimitedIoErr") || strings.Contains(msg, "OpTinyRecoverErr") || strings.Contains(msg, "OpDpDecommissionRepairErr") {
 				log.LogInfo(msg)
 			} else {
 				log.LogError(msg)
@@ -429,7 +429,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			retry, err = mp.batchDeleteExtentsByDp(dpId, eks)
 			if err != nil {
 				msg := fmt.Sprintf("[deleteExtentsFromList] mp(%v) failed to delete dp(%v) err(%v)", mp.config.PartitionId, dpId, err)
-				if strings.Contains(msg, "OpLimitedIoErr") || strings.Contains(msg, "OpTinyRecoverErr") {
+				if strings.Contains(msg, "OpLimitedIoErr") || strings.Contains(msg, "OpTinyRecoverErr") || strings.Contains(msg, "OpDpDecommissionRepairErr") {
 					log.LogInfo(msg)
 				} else {
 					log.LogError(msg)
