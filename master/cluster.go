@@ -3820,11 +3820,19 @@ func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, targetDpCount int, me
 		return 0, err
 	}
 
-	for retryCount := 0; dpCountOfMediaType < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
+	if targetDpCount < defaultInitDataPartitionCnt {
+		targetDpCount = defaultInitDataPartitionCnt
+	}
+
+	for retryCount := 0; dpCountOfMediaType < targetDpCount && retryCount < 3; retryCount++ {
 		oldDpCountOfMediaType := dpCountOfMediaType
 
 		toCreateCount := targetDpCount - dpCountOfMediaType
-		err = vol.initDataPartitions(c, toCreateCount, mediaType)
+		if toCreateCount <= 0 {
+			break
+		}
+
+		err = c.batchCreateDataPartition(vol, toCreateCount, true, mediaType)
 		if err != nil {
 			log.LogErrorf("action[initDataPartitionsForCreateVol] vol(%v) mediaType(%v) retryCount(%v), init dataPartition error: %v",
 				vol.Name, proto.MediaTypeString(mediaType), retryCount, err.Error())

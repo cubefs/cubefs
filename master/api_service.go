@@ -2972,7 +2972,6 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vol, err = m.cluster.createVol(req); err != nil {
-
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

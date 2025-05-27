@@ -690,16 +690,6 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	return
 }
 
-func (vol *Vol) initDataPartitions(c *Cluster, dpCount int, mediaType uint32) (err error) {
-	if dpCount == 0 {
-		dpCount = defaultInitDataPartitionCnt
-	}
-
-	// initialize k data partitionMap at a time
-	err = c.batchCreateDataPartition(vol, dpCount, true, mediaType)
-	return
-}
-
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
 	vol.SetReadOnlyForVolFull(shouldDpInhibitWriteByVolFull)
@@ -1232,7 +1222,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 			if dpCntOfMediaType < minNumOfRWDataPartitions {
 				log.LogWarnf("autoCreateDataPartitions: vol(%v) mediaType(%v) less than %v, alloc new partitions",
 					vol.Name, proto.MediaTypeString(mediaType), minNumOfRWDataPartitions)
-				c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false, mediaType)
+				c.batchCreateDataPartition(vol, minNumOfRWDataPartitions-dpCntOfMediaType, false, mediaType)
 			}
 		}
 
@@ -1264,7 +1254,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 			log.LogInfof("action[autoCreateDataPartitions] vol(%v) volStorageClass(%v), calculated createDpCount:%v",
 				vol.Name, asc, createDpCount)
 		} else if rwDpCountOfMediaType < minNumOfRWDataPartitions {
-			createDpCount = minNumOfRWDataPartitions
+			createDpCount = minNumOfRWDataPartitions - rwDpCountOfMediaType
 			log.LogInfof("action[autoCreateDataPartitions] vol(%v) volStorageClass(%v), min createDpCount:%v",
 				vol.Name, asc, createDpCount)
 		} else {
