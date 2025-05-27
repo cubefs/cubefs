@@ -432,7 +432,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		if reply.IsWriteOpOfPacketProtoVerForbidden() {
 			log.LogDebugf(err.Error())
-		} else if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError || reply.ResultCode == proto.OpTinyRecoverErr || reply.ResultCode == proto.OpLimitedIoErr {
+		} else if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError || reply.ResultCode == proto.OpTinyRecoverErr || reply.ResultCode == proto.OpLimitedIoErr || reply.ResultCode == proto.OpDpDecommissionRepairErr {
 			log.LogInfof(err.Error())
 		} else if (reply.ResultCode == proto.OpTryOtherAddr && reply.Opcode == proto.OpWrite) ||
 			reply.Opcode == proto.OpReadTinyDeleteRecord ||

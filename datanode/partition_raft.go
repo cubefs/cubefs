@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/datanode/storage"
 	syslog "log"
 	"net"
 	"os"
@@ -27,6 +26,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/datanode/storage"
 
 	"github.com/cubefs/cubefs/datanode/repl"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"

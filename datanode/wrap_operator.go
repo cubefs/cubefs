@@ -109,7 +109,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
 			if p.IsWriteOpOfPacketProtoVerForbidden() || strings.Contains(logContent, raft.ErrNotLeader.Error()) || p.Opcode == proto.OpReadTinyDeleteRecord {
 				log.LogWarnf(logContent)
-			} else if isColdVolExtentDelErr(p) || p.ResultCode == proto.OpTinyRecoverErr || p.ResultCode == proto.OpLimitedIoErr {
+			} else if isColdVolExtentDelErr(p) || p.ResultCode == proto.OpTinyRecoverErr || p.ResultCode == proto.OpLimitedIoErr || p.ResultCode == proto.OpDpDecommissionRepairErr {
 				log.LogInfof(logContent)
 			} else {
 				log.LogErrorf(logContent)
@@ -807,7 +807,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	defer func() {
 		if err != nil {
 			msg := fmt.Sprintf("(%v) error(%v).", p.GetUniqueLogId(), err)
-			if err == storage.LimitedIoError || err == storage.TinyRecoverError {
+			if err == storage.LimitedIoError || err == storage.TinyRecoverError || err == storage.DpDecommissionRepairError {
 				log.LogInfo(msg)
 			} else {
 				log.LogError(msg)
@@ -818,6 +818,12 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+
+	if partition.isRepairing {
+		err = storage.DpDecommissionRepairError
+		return
+	}
+
 	// NOTE: we cannot prevent mark delete
 	// even the partition is forbidden, because
 	// the inode already be deleted in meta partition
@@ -920,6 +926,11 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
 		err = storage.ForbiddenDataPartitionError
+		return
+	}
+
+	if partition.isRepairing {
+		err = storage.DpDecommissionRepairError
 		return
 	}
 
@@ -1079,6 +1090,11 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
 		err = storage.ForbiddenDataPartitionError
+		return
+	}
+
+	if partition.isRepairing {
+		err = storage.DpDecommissionRepairError
 		return
 	}
 
@@ -1759,7 +1775,7 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet, force 
 }
 
 func (s *DataNode) handlePacketToSetRepairingStatus(p *repl.Packet) {
-	task := proto.AdminTask{}
+	task := &proto.AdminTask{}
 	err := json.Unmarshal(p.Data, task)
 	defer func() {
 		if err != nil {

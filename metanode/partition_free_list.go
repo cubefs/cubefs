@@ -312,7 +312,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 			if dpErr != nil {
 				msg := fmt.Sprintf("batchDeleteExtentsByPartition: deleteInode Inode(%v) error(%v)", inode.Inode, dpErr.Error())
 
-				if strings.Contains(msg, "OpLimitedIoErr") || strings.Contains(msg, "OpTinyRecoverErr") {
+				if strings.Contains(msg, "OpLimitedIoErr") || strings.Contains(msg, "OpTinyRecoverErr") || strings.Contains(msg, "OpDpDecommissionRepairErr") {
 					log.LogInfo(msg)
 				} else {
 					log.LogWarn(msg)
