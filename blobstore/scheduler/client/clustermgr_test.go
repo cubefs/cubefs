@@ -14,8 +14,6 @@
 
 package client
 
-//go:generate mockgen -destination=./clustermgr_mock_test.go -package=client -mock_names IClusterManager=MockClusterManager github.com/cubefs/cubefs/blobstore/scheduler/client IClusterManager
-
 import (
 	"context"
 	"encoding/json"

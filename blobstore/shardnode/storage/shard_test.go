@@ -53,7 +53,7 @@ func tempShardTestPath() (string, func()) {
 type mockShard struct {
 	shard         *shard
 	shardSM       *shardSM
-	mockRaftGroup *raft.MockGroup
+	mockRaftGroup *mocks.MockGroup
 	ctl           *gomock.Controller
 }
 
@@ -62,7 +62,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 	dir, pathClean := tempShardTestPath()
 	ctl := C(tb)
 
-	mockRaftGroup := raft.NewMockGroup(ctl)
+	mockRaftGroup := mocks.NewMockGroup(ctl)
 	mockRaftGroup.EXPECT().Close().Return(nil)
 	mockRaftGroup.EXPECT().Propose(A, A).Return(
 		raft.ProposalResponse{

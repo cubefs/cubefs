@@ -22,8 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:generate mockgen -source=./kvstore.go -destination=./kvstore_mock.go -package=kvstore
-
 func TestNewEngine(t *testing.T) {
 	ctx := context.TODO()
 	path, err := genTmpPath()

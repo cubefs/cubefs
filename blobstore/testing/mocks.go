@@ -24,6 +24,9 @@ package testing
 //go:generate mockgen -destination=./mocks/common_rpc.go -package=mocks -mock_names Client=MockRPCClient github.com/cubefs/cubefs/blobstore/common/rpc Client
 //go:generate mockgen -destination=./mocks/common_recordlog.go -package=mocks -mock_names Encoder=MockRecordLogEncoder github.com/cubefs/cubefs/blobstore/common/recordlog Encoder
 //go:generate mockgen -destination=./mocks/common_taskswitch.go -package=mocks -mock_names ISwitcher=MockSwitcher github.com/cubefs/cubefs/blobstore/common/taskswitch ISwitcher,Accessor
+//go:generate mockgen -source=../common/kvstorev2/kvstore.go -destination=./mocks/common_kvstore.go -package=mocks
+//go:generate mockgen -destination=./mocks/common_raftgroup.go -package=mocks -mock_names Group=MockGroup github.com/cubefs/cubefs/blobstore/common/raft Group
+//go:generate mockgen -source=../common/raft/proto.go -destination=../common/raft/proto_gen_mock_test.go -package=raft
 
 // github.com/cubefs/cubefs/blobstore/api/... api interfaces
 //go:generate mockgen -destination=./mocks/api_access.go -package=mocks -mock_names API=MockAccessAPI github.com/cubefs/cubefs/blobstore/api/access API
@@ -35,6 +38,18 @@ package testing
 
 // github.com/cubefs/cubefs/blobstore/access/... access interfaces
 //go:generate mockgen -destination=./mocks/access_stream.go -package=mocks -mock_names StreamHandler=MockStreamHandler github.com/cubefs/cubefs/blobstore/access/stream StreamHandler
+//go:generate mockgen -destination=../access/stream/controller_mock_test.go -package=stream -mock_names ClusterController=MockClusterController,ServiceController=MockServiceController,VolumeGetter=MockVolumeGetter,IShardController=MockShardController,Shard=MockShard github.com/cubefs/cubefs/blobstore/access/controller ClusterController,ServiceController,VolumeGetter,IShardController,Shard
+
+// github.com/cubefs/cubefs/blobstore/blobnode/... blobnode interfaces
+//go:generate mockgen -destination=../blobnode/disk_mock_test.go -package=blobnode -mock_names DiskAPI=MockDiskAPI,Storage=MockStorage,ChunkAPI=MockChunkAPI github.com/cubefs/cubefs/blobstore/blobnode/core DiskAPI,Storage,ChunkAPI
+//go:generate mockgen -destination=../blobnode/shard_client_mock_test.go -package=blobnode -mock_names IShardNode=MockIShardNode github.com/cubefs/cubefs/blobstore/blobnode/client IShardNode
+
+// github.com/cubefs/cubefs/blobstore/scheduler/... scheduler interfaces
+//go:generate mockgen -destination=../scheduler/client_mock_test.go -package=scheduler -mock_names ClusterMgrAPI=MockClusterMgrAPI,BlobnodeAPI=MockBlobnodeAPI,IVolumeUpdater=MockVolumeUpdater,ProxyAPI=MockMqProxyAPI github.com/cubefs/cubefs/blobstore/scheduler/client ClusterMgrAPI,BlobnodeAPI,IVolumeUpdater,ProxyAPI
+//go:generate mockgen -destination=../scheduler/base_mock_test.go -package=scheduler -mock_names KafkaConsumer=MockKafkaConsumer,GroupConsumer=MockGroupConsumer,IProducer=MockProducer github.com/cubefs/cubefs/blobstore/scheduler/base KafkaConsumer,GroupConsumer,IProducer
+//go:generate mockgen -destination=../scheduler/scheduler_mock_test.go -package=scheduler -mock_names ITaskRunner=MockTaskRunner,IVolumeCache=MockVolumeCache,MMigrator=MockMigrater,IVolumeInspector=MockVolumeInspector,IClusterTopology=MockClusterTopology,ShardDiskMigrator=MockShardMigrator github.com/cubefs/cubefs/blobstore/scheduler ITaskRunner,IVolumeCache,MMigrator,IVolumeInspector,IClusterTopology,ShardDiskMigrator
+//go:generate mockgen -destination=../scheduler/base/utils_mock_test.go -package=base -mock_names IAllocVunit=MockAllocVunit github.com/cubefs/cubefs/blobstore/scheduler/base IAllocVunit
+//go:generate mockgen -destination=../scheduler/client/clustermgr_mock_test.go -package=client -mock_names IClusterManager=MockClusterManager github.com/cubefs/cubefs/blobstore/scheduler/client IClusterManager
 
 import (
 	// add package to go.mod for `go generate`

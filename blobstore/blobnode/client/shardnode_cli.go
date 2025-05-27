@@ -24,8 +24,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
-//go:generate mockgen -destination=../mock_shard_client_test.go -package=blobnode -mock_names IShardNode=MockIShardNode github.com/cubefs/cubefs/blobstore/blobnode/client IShardNode
-
 var (
 	LeaderOutdatedErr       = errors.New("leader outdated")
 	SuidNotMemberOfShardErr = errors.New("suid not member of shard")

@@ -22,8 +22,6 @@ import (
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
-//go:generate mockgen -destination=./utils_mock_test.go -package=base -mock_names IAllocVunit=MockAllocVunit github.com/cubefs/cubefs/blobstore/scheduler/base IAllocVunit
-
 const testTopic = "test_topic"
 
 func newBroker(t *testing.T) *sarama.MockBroker {

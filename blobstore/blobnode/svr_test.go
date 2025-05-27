@@ -51,6 +51,11 @@ const (
 	defaultSvrTestDir = "BlobNodeSvrTestDir_"
 )
 
+var (
+	any     = gomock.Any()
+	errMock = errors.New("fake error")
+)
+
 var cleanWG sync.WaitGroup
 
 func TestMain(m *testing.M) {
