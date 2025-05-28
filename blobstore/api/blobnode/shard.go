@@ -33,6 +33,15 @@ const (
 	MaxShardSize = math.MaxUint32
 )
 
+type ShardInfo struct {
+	Vuid   proto.Vuid   `json:"vuid"`
+	Bid    proto.BlobID `json:"bid"`
+	Size   int64        `json:"size"`
+	Crc    uint32       `json:"crc"`
+	Flag   ShardStatus  `json:"flag"` // 1:normal,2:markDelete
+	Inline bool         `json:"inline"`
+}
+
 type ShardStatus uint8
 
 const (

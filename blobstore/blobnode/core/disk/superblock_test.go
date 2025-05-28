@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -54,10 +55,10 @@ func TestNewSuperBlock(t *testing.T) {
 	// add chunk
 	vuid := proto.Vuid(1024)
 	diskid := proto.DiskID(10)
-	chunkid := bnapi.NewChunkId(vuid)
+	chunkid := clustermgr.NewChunkID(vuid)
 	vm := core.VuidMeta{
 		Vuid:    vuid,
-		ChunkId: chunkid,
+		ChunkID: chunkid,
 		DiskID:  diskid,
 	}
 
@@ -72,13 +73,13 @@ func TestNewSuperBlock(t *testing.T) {
 
 	require.Equal(t, vm, vm_read)
 
-	_, err = s.ReadChunk(ctx, bnapi.InvalidChunkId)
+	_, err = s.ReadChunk(ctx, clustermgr.InvalidChunkID)
 	require.Error(t, err)
 
 	err = s.UpsertDisk(ctx, proto.InvalidDiskID, core.DiskMeta{})
 	require.Error(t, err)
 
-	err = s.DeleteChunk(ctx, bnapi.InvalidChunkId)
+	err = s.DeleteChunk(ctx, clustermgr.InvalidChunkID)
 	require.Error(t, err)
 
 	_, _ = s.ReadVuidBind(ctx, vuid)
@@ -158,10 +159,10 @@ func TestSuperBlock_ListChunks(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		vuid := 1024 + i
 		diskid := proto.DiskID(10)
-		chunkid := bnapi.NewChunkId(proto.Vuid(vuid))
+		chunkid := clustermgr.NewChunkID(proto.Vuid(vuid))
 		vm := core.VuidMeta{
 			Vuid:    proto.Vuid(vuid),
-			ChunkId: chunkid,
+			ChunkID: chunkid,
 			DiskID:  diskid,
 		}
 		err = s.UpsertChunk(ctx, chunkid, vm)
@@ -172,10 +173,10 @@ func TestSuperBlock_ListChunks(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 10, len(chunks))
 
-	err = s.CleanChunkSpace(ctx, bnapi.NewChunkId(proto.Vuid(1024)))
+	err = s.CleanChunkSpace(ctx, clustermgr.NewChunkID(proto.Vuid(1024)))
 	require.NoError(t, err)
 
-	err = s.DeleteChunk(ctx, bnapi.NewChunkId(proto.Vuid(1025)))
+	err = s.DeleteChunk(ctx, clustermgr.NewChunkID(proto.Vuid(1025)))
 	require.NoError(t, err)
 }
 
@@ -200,7 +201,7 @@ func TestSuperBlock_ListVuids(t *testing.T) {
 	// create chunk 0
 	for i := 0; i < 10; i++ {
 		vuid := 1024 + i
-		chunkid := bnapi.NewChunkId(proto.Vuid(vuid))
+		chunkid := clustermgr.NewChunkID(proto.Vuid(vuid))
 		err = s.BindVuidChunk(ctx, proto.Vuid(vuid), chunkid)
 		require.NoError(t, err)
 	}
@@ -255,15 +256,15 @@ func TestSuperblockErrorCondition(t *testing.T) {
 
 	vuid := proto.Vuid(1023)
 	diskid := proto.DiskID(1)
-	chunkid := bnapi.NewChunkId(vuid)
+	chunkid := clustermgr.NewChunkID(vuid)
 	vm := core.VuidMeta{
 		Vuid:    vuid,
-		ChunkId: chunkid,
+		ChunkID: chunkid,
 		DiskID:  diskid,
 	}
 
-	var InvalidChunkID bnapi.ChunkId = [16]byte{}
-	// upsert invalid ChunkId
+	var InvalidChunkID clustermgr.ChunkID = [16]byte{}
+	// upsert invalid ChunkID
 	err = s.UpsertChunk(ctx, InvalidChunkID, vm)
 	require.Error(t, err)
 
@@ -291,10 +292,10 @@ func TestCleanChunkSpace(t *testing.T) {
 	// create chunk meta
 	vuid := 1024
 	diskid := proto.DiskID(10)
-	chunkid := bnapi.NewChunkId(proto.Vuid(vuid))
+	chunkid := clustermgr.NewChunkID(proto.Vuid(vuid))
 	vm := core.VuidMeta{
 		Vuid:    proto.Vuid(vuid),
-		ChunkId: chunkid,
+		ChunkID: chunkid,
 		DiskID:  diskid,
 	}
 

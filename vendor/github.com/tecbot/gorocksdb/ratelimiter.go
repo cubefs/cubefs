@@ -24,6 +24,11 @@ func NewNativeRateLimiter(c *C.rocksdb_ratelimiter_t) *RateLimiter {
 	return &RateLimiter{c}
 }
 
+// SetBytesPerSecond set rate limiter bytes per second dynamically
+func (self *RateLimiter) SetBytesPerSecond(val int64) {
+	C.rocksdb_ratelimiter_set_bytes_per_second(self.c, C.int64_t(val))
+}
+
 // Destroy deallocates the RateLimiter object.
 func (self *RateLimiter) Destroy() {
 	C.rocksdb_ratelimiter_destroy(self.c)

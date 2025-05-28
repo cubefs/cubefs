@@ -14,7 +14,16 @@
 
 package clustermgr
 
-/*func TestStateMachine(t *testing.T) {
+import (
+	"testing"
+
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/common/raftserver"
+	"github.com/stretchr/testify/require"
+)
+
+func TestStateMachine(t *testing.T) {
 	srcService, srcClean := initTestService(t)
 	defer srcClean()
 	srcClusterClient := initTestClusterClient(srcService)
@@ -26,7 +35,7 @@ package clustermgr
 	testServiceCfg.RaftConfig.ServerConfig.Members = []raftserver.Member{
 		{NodeID: 1, Host: "127.0.0.1:65342", Learner: false},
 	}
-	testServiceCfg.CodeModePolicies = []codemode.Policy{
+	testServiceCfg.VolumeCodeModePolicies = []codemode.Policy{
 		{
 			ModeName:  codemode.EC15P12.Name(),
 			MinSize:   1048577,
@@ -55,7 +64,13 @@ package clustermgr
 	{
 		snapshot, err := srcService.Snapshot()
 		require.NoError(t, err)
-		err = destService.ApplySnapshot(raftserver.SnapshotMeta{Index: snapshot.Index()}, snapshot)
+
+		memberContext := &clustermgr.MemberContext{NodeHost: "127.0.0.1:10010"}
+		memberContextB, err := memberContext.Marshal()
+		require.NoError(t, err)
+		member := &raftserver.Member{NodeID: 1, Host: "127.0.0.1:65342", Learner: false, Context: memberContextB}
+		members := []*raftserver.Member{member}
+		err = destService.ApplySnapshot(raftserver.SnapshotMeta{Index: snapshot.Index(), Mbs: members}, snapshot)
 		require.NoError(t, err)
 	}
-}*/
+}

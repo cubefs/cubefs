@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,7 +35,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 func addCmdDisk(cmd *grumble.Command) {
@@ -93,7 +95,9 @@ func addCmdDiskDrop(diskCommand *grumble.Command) {
 		Flags: func(f *grumble.Flags) {
 			f.StringL("cm_hosts", "", "required: e.g. [cm_hosts=ip1:9998,xxx] (multi or single)")
 			f.StringL("node_host", "", "required: local blobnode host (to get disk_ids from cm)")
+			f.StringL("disk_ids", "", "is empty: means all disk; else, we will check specify disk [disk_ids=1,2,xxx](multi or single)")
 			f.BoolL("need_db", false, "not required: read local db, specific check chunk. default(false)")
+			f.UintL("log_level", 2, "0:debug; 1:info; 2:warn; 3:error")
 		},
 		Run: dropStatCheck,
 	}
@@ -109,10 +113,11 @@ func dropStatCheck(c *grumble.Context) error {
 
 	vuidCmCnt := 0 // remain cm vuid count, the chunk which is not migration or cleanup
 	vuidBnCnt := 0
-	ctx := context.Background()
+	ctx := common.CmdContext()
 	cmCli := newCmClient(c)
 	fmt.Printf("start time: " + time.Now().Format("2006-01-02 15:04:05") + "\n")
 	printDiskID(diskInfos)
+	log.SetOutputLevel(log.Level(c.Flags.Uint("log_level")))
 
 	// check cm
 	if vuidCmCnt, err = getVuidFromCm(ctx, cmCli, diskInfos); err != nil {
@@ -122,16 +127,19 @@ func dropStatCheck(c *grumble.Context) error {
 	fmt.Printf("done get vuid from cm. diskCnt=%d, remain vuid=%d\n", len(diskInfos), vuidCmCnt)
 
 	// check local blobnode
-	if vuidBnCnt, err = getVuidFromBn(ctx, cmCli, diskInfos, c); err != nil {
+	if vuidBnCnt, err = getVuidFromBn(ctx, c, cmCli, diskInfos); err != nil {
 		fmt.Printf("check blobnode err:%+v \n", err)
 		return err
 	}
-	fmt.Printf("done get vuid from bn. diskCnt=%d, remain vuid=%d\n", len(diskInfos), vuidBnCnt)
+	specify := getSpecifyDiskIDs(c)
+	fmt.Printf("done get vuid from bn. diskCnt=%d, specifyDisk=%v, remain vuid=%d\n", len(diskInfos), specify, vuidBnCnt)
 
 	return nil
 }
 
-func checkDiskDropConf(c *grumble.Context) ([]*blobnode.DiskInfo, error) {
+func checkDiskDropConf(c *grumble.Context) ([]*clustermgr.BlobNodeDiskInfo, error) {
+	ctx := common.CmdContext()
+
 	cmHosts := strings.Split(c.Flags.String("cm_hosts"), ",")
 	if len(cmHosts) == 0 {
 		return nil, fmt.Errorf("invalid cm hosts")
@@ -143,10 +151,35 @@ func checkDiskDropConf(c *grumble.Context) ([]*blobnode.DiskInfo, error) {
 		return nil, fmt.Errorf("--node_host is required")
 	}
 
-	return parseAllLocalDiskIdsByCm(c)
+	return parseAllLocalDiskIdsByCm(ctx, c)
 }
 
-func getVuidFromCm(ctx context.Context, cmCli *clustermgr.Client, dInfos []*blobnode.DiskInfo) (int, error) {
+func getSpecifyDiskIDs(c *grumble.Context) map[proto.DiskID]struct{} {
+	ret := make(map[proto.DiskID]struct{})
+
+	diskStr := c.Flags.String("disk_ids")
+	if diskStr == "" {
+		return ret
+	}
+
+	disks := strings.Split(diskStr, ",")
+	if len(disks) == 0 {
+		return ret
+	}
+
+	for _, disk := range disks {
+		diskID, err := strconv.ParseUint(disk, 10, 32)
+		if err != nil {
+			fmt.Printf("fail to convert string to int, str:%s, err:%+v\n", disk, err)
+			return map[proto.DiskID]struct{}{}
+		}
+		ret[proto.DiskID(diskID)] = struct{}{}
+	}
+
+	return ret
+}
+
+func getVuidFromCm(ctx context.Context, cmCli *clustermgr.Client, dInfos []*clustermgr.BlobNodeDiskInfo) (int, error) {
 	vuidCnt := 0
 	for _, dInfo := range dInfos {
 		// is not repaired or dropped
@@ -178,11 +211,20 @@ func getVuidFromCm(ctx context.Context, cmCli *clustermgr.Client, dInfos []*blob
 	return vuidCnt, nil
 }
 
-func getVuidFromBn(ctx context.Context, cmCli *clustermgr.Client, dInfos []*blobnode.DiskInfo, c *grumble.Context) (int, error) {
+func getVuidFromBn(ctx context.Context, c *grumble.Context, cmCli *clustermgr.Client, dInfos []*clustermgr.BlobNodeDiskInfo) (int, error) {
 	readDb := c.Flags.Bool("need_db")
 	vuidCnt := 0
 
+	specify := getSpecifyDiskIDs(c)
+
 	for _, dInfo := range dInfos {
+		if len(specify) != 0 {
+			_, exist := specify[dInfo.DiskID]
+			if !exist {
+				continue
+			}
+		}
+
 		cnt, err := walkSingleDisk(ctx, cmCli, dInfo, readDb)
 		if err != nil {
 			return 0, err
@@ -194,7 +236,7 @@ func getVuidFromBn(ctx context.Context, cmCli *clustermgr.Client, dInfos []*blob
 	return vuidCnt, nil
 }
 
-func walkSingleDisk(ctx context.Context, cmCli *clustermgr.Client, dh *blobnode.DiskInfo, readDb bool) (int, error) {
+func walkSingleDisk(ctx context.Context, cmCli *clustermgr.Client, dh *clustermgr.BlobNodeDiskInfo, readDb bool) (int, error) {
 	const dataDir = "data"
 	files, err := os.ReadDir(filepath.Join(dh.Path, dataDir))
 	if err != nil {
@@ -214,7 +256,13 @@ func walkSingleDisk(ctx context.Context, cmCli *clustermgr.Client, dh *blobnode.
 			}
 		}
 	}
+	defer func() {
+		if db != nil {
+			db.Close()
+		}
+	}()
 
+	allVuid := getDiskVuid(ctx, cmCli, dh.DiskID)
 	vuidCnt := 0
 	for _, file := range files {
 		if file.IsDir() {
@@ -231,12 +279,13 @@ func walkSingleDisk(ctx context.Context, cmCli *clustermgr.Client, dh *blobnode.
 		vuid := chunkId.VolumeUnitId()
 		newDisk := getNewDiskInfo(ctx, cmCli, vuid)
 		vm := getChunkMeta(db, chunkId)
-		fmt.Printf("  vuid=%d    status=%s    newDisk=%+v\n", vuid, vm.Status.String(), newDisk)
+		_, exist := allVuid[vuid]
+		fmt.Printf("  vuid=%d    status=%s    newDisk=%+v    existInCm=%t\n", vuid, vm.Status.String(), newDisk, exist)
 	}
 	return vuidCnt, nil
 }
 
-func getChunkMeta(db kvstore.KVStore, chunkId blobnode.ChunkId) (vm core.VuidMeta) {
+func getChunkMeta(db kvstore.KVStore, chunkId clustermgr.ChunkID) (vm core.VuidMeta) {
 	if db == nil {
 		return core.VuidMeta{}
 	}
@@ -257,7 +306,7 @@ func getChunkMeta(db kvstore.KVStore, chunkId blobnode.ChunkId) (vm core.VuidMet
 	return vm
 }
 
-func parseChunkNameStr(name string) (chunkId blobnode.ChunkId, err error) {
+func parseChunkNameStr(name string) (chunkId clustermgr.ChunkID, err error) {
 	const chunkFileLen = 33 // 16+1+16
 
 	if len(name) != chunkFileLen {
@@ -290,6 +339,26 @@ func getNewDiskInfo(ctx context.Context, cmCli *clustermgr.Client, vuid proto.Vu
 	return volume.Units[idx]
 }
 
+type diskVuid struct {
+	diskID proto.DiskID
+	vuid   proto.Vuid
+}
+
+func getDiskVuid(ctx context.Context, cmCli *clustermgr.Client, diskID proto.DiskID) map[proto.Vuid]diskVuid {
+	ret, err := cmCli.ListVolumeUnit(ctx, &clustermgr.ListVolumeUnitArgs{DiskID: diskID})
+	if err != nil {
+		fmt.Printf("Err: Fail to list volume unit, err:%+v \n", err)
+		return map[proto.Vuid]diskVuid{}
+	}
+
+	allVuid := make(map[proto.Vuid]diskVuid, len(ret))
+	for i := range ret {
+		allVuid[ret[i].Vuid] = diskVuid{diskID: ret[i].DiskID, vuid: ret[i].Vuid}
+	}
+
+	return allVuid
+}
+
 func newCmClient(c *grumble.Context) *clustermgr.Client {
 	const prefix = "http://"
 
@@ -301,11 +370,11 @@ func newCmClient(c *grumble.Context) *clustermgr.Client {
 	secret := config.ClusterMgrSecret()
 	cfg := &clustermgr.Config{}
 	cfg.LbConfig.Hosts = cmHosts
-	cfg.LbConfig.Config.Tc.Auth = auth.Config{EnableAuth: secret != "", Secret: secret}
+	cfg.LbConfig.Config.Tc.Auth = auth_proto.Config{EnableAuth: secret != "", Secret: secret}
 	return clustermgr.New(cfg)
 }
 
-func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*blobnode.DiskInfo, err error) {
+func parseAllLocalDiskIdsByCm(ctx context.Context, c *grumble.Context) (diskInfos []*clustermgr.BlobNodeDiskInfo, err error) {
 	const prefix = "http://"
 	const maxCnt = 100
 	host := c.Flags.String("node_host")
@@ -313,16 +382,16 @@ func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*blobnode.DiskInf
 	cmCli := newCmClient(c)
 	marker := proto.DiskID(0)
 	ret := clustermgr.ListDiskRet{}
+	allDisk := make(map[proto.DiskID]*clustermgr.BlobNodeDiskInfo)
 	for {
-		ret, err = cmCli.ListDisk(context.Background(),
-			&clustermgr.ListOptionArgs{Host: prefix + host, Count: maxCnt, Marker: marker})
+		ret, err = cmCli.ListDisk(ctx, &clustermgr.ListOptionArgs{Host: prefix + host, Count: maxCnt, Marker: marker})
 		if err != nil {
 			return nil, err
 		}
 
-		diskInfos = append(diskInfos, ret.Disks...)
-		if len(diskInfos) == 0 {
-			return nil, fmt.Errorf("error: empty, invalid disk ids")
+		// there may be previously expired diskID
+		for _, disk := range ret.Disks {
+			allDisk[disk.DiskID] = disk
 		}
 
 		if ret.Marker == proto.InvalidDiskID {
@@ -331,10 +400,31 @@ func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*blobnode.DiskInf
 		marker = ret.Marker
 	}
 
+	diskInfos = removeRedundantDiskID(allDisk)
+	if len(diskInfos) == 0 {
+		return nil, fmt.Errorf("error: empty, invalid disk ids")
+	}
 	return diskInfos, nil
 }
 
-func printDiskID(dInfos []*blobnode.DiskInfo) {
+func removeRedundantDiskID(allDisks map[proto.DiskID]*clustermgr.BlobNodeDiskInfo) []*clustermgr.BlobNodeDiskInfo {
+	uniq := make(map[string]proto.DiskID)
+	for _, disk := range allDisks {
+		id, exist := uniq[disk.Path]
+		// this id is monotonically increasing, so we take the latest(maximum) diskID in the same path
+		if !exist || id < disk.DiskID {
+			uniq[disk.Path] = disk.DiskID
+		}
+	}
+
+	disks := make([]*clustermgr.BlobNodeDiskInfo, 0, len(uniq))
+	for _, id := range uniq {
+		disks = append(disks, allDisks[id])
+	}
+	return disks
+}
+
+func printDiskID(dInfos []*clustermgr.BlobNodeDiskInfo) {
 	diskIDs := make([]proto.DiskID, len(dInfos))
 	for i, dInfo := range dInfos {
 		diskIDs[i] = dInfo.DiskID

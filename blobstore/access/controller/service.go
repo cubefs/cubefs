@@ -24,7 +24,6 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -35,12 +34,8 @@ import (
 )
 
 const (
-	_diskHostServicePrefix = "diskhost"
-
-	// default service punish check valid interval
-	defaultServicePinishValidIntervalS int = 30
-	// default service punish check threshold
-	defaultServicePinishThreshold uint32 = 3
+	_primaryDisk          = "_disk_"
+	_primaryShardnodeDisk = "_sddisk_"
 )
 
 // HostIDC item of host with idc
@@ -68,6 +63,12 @@ type ServiceController interface {
 	// PunishDiskWithThreshold will punish a disk host for
 	// an punishTimeSec interval if disk host failed times satisfied with threshold
 	PunishDiskWithThreshold(ctx context.Context, diskID proto.DiskID, punishTimeSec int)
+	// GetShardnodeHost return shardnode host
+	GetShardnodeHost(ctx context.Context, diskID proto.DiskID) (hostIDC *HostIDC, err error)
+	// PunishShardnode will punish a shardnode disk host for an punishTimeSec interval
+	PunishShardnode(ctx context.Context, diskID proto.DiskID, punishTimeSec int)
+	// IsPunishShardnode return shardnode disk is punish
+	IsPunishShardnode(diskID proto.DiskID) bool
 }
 
 type (
@@ -94,19 +95,23 @@ func (h *hostItem) isPunish() bool {
 
 // ServiceConfig service config
 type ServiceConfig struct {
-	ClusterID                   proto.ClusterID
-	IDC                         string
-	ReloadSec                   int
-	LoadDiskInterval            int
-	ServicePunishThreshold      uint32
-	ServicePunishValidIntervalS int
+	ClusterID proto.ClusterID `json:"-"`
+	IDC       string          `json:"-"`
+
+	ServiceReloadSecs           int    `json:"service_reload_secs"`
+	LoadDiskIntervalS           int    `json:"load_disk_interval_s"`
+	DiskPunishThreshold         uint32 `json:"disk_punish_threshold"`
+	DiskPunishValidIntervalS    int    `json:"disk_punish_valid_interval_s"`
+	ServicePunishThreshold      uint32 `json:"service_punish_threshold"`
+	ServicePunishValidIntervalS int    `json:"service_punish_valid_interval_s"`
 }
 
 type serviceControllerImpl struct {
 	// allServices hold all disk/service host map, use for quickly find out
-	allServices  sync.Map
-	serviceHosts serviceMap
-	brokenDisks  sync.Map
+	allServices   sync.Map
+	serviceHosts  serviceMap
+	brokenDisks   sync.Map
+	sdBrokenDisks sync.Map // shard node broken disks
 
 	group        singleflight.Group
 	serviceLocks map[string]*sync.RWMutex
@@ -120,10 +125,12 @@ type serviceControllerImpl struct {
 func NewServiceController(cfg ServiceConfig,
 	cmCli clustermgr.APIAccess, proxy proxy.Cacher, stopCh <-chan struct{},
 ) (ServiceController, error) {
-	defaulter.Equal(&cfg.ServicePunishThreshold, defaultServicePinishThreshold)
-	defaulter.LessOrEqual(&cfg.ServicePunishValidIntervalS, defaultServicePinishValidIntervalS)
-	defaulter.LessOrEqual(&cfg.LoadDiskInterval, int(300))
-	defaulter.LessOrEqual(&cfg.ReloadSec, int(10))
+	defaulter.IntegerLessOrEqual(&cfg.ServiceReloadSecs, 10)
+	defaulter.IntegerLessOrEqual(&cfg.LoadDiskIntervalS, 300)
+	defaulter.IntegerEqual(&cfg.DiskPunishThreshold, 3)
+	defaulter.IntegerLessOrEqual(&cfg.DiskPunishValidIntervalS, 30)
+	defaulter.IntegerEqual(&cfg.ServicePunishThreshold, 3)
+	defaulter.IntegerLessOrEqual(&cfg.ServicePunishValidIntervalS, 30)
 
 	controller := &serviceControllerImpl{
 		serviceHosts: serviceMap{
@@ -146,7 +153,7 @@ func NewServiceController(cfg ServiceConfig,
 		return controller, nil
 	}
 	go func() {
-		tick := time.NewTicker(time.Duration(cfg.ReloadSec) * time.Second)
+		tick := time.NewTicker(time.Duration(cfg.ServiceReloadSecs) * time.Second)
 		defer tick.Stop()
 		for {
 			select {
@@ -160,13 +167,12 @@ func NewServiceController(cfg ServiceConfig,
 		}
 	}()
 	go func() {
-		controller.loadBrokenDisks()
-		tick := time.NewTicker(time.Duration(cfg.LoadDiskInterval) * time.Second)
+		tick := time.NewTicker(time.Duration(cfg.LoadDiskIntervalS) * time.Second)
 		defer tick.Stop()
 		for {
+			controller.loadBrokenDisks()
 			select {
 			case <-tick.C:
-				controller.loadBrokenDisks()
 			case <-stopCh:
 				return
 			}
@@ -197,7 +203,7 @@ func (s *serviceControllerImpl) load(cid proto.ClusterID, idc string) error {
 	}
 	if len(hostItems) > 0 {
 		for _, item := range hostItems {
-			s.allServices.Store(serviceName+item.host, item)
+			s.allServices.Store(s.getServiceKey(serviceName, item.host), item)
 			span.Debugf("store node %+v", item)
 		}
 		s.serviceHosts[serviceName].Store(hostItems)
@@ -206,7 +212,44 @@ func (s *serviceControllerImpl) load(cid proto.ClusterID, idc string) error {
 }
 
 func (s *serviceControllerImpl) loadBrokenDisks() {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "access_cluster_load_disks")
+	_, ctx := trace.StartSpanFromContext(context.Background(), "access_cluster_load_disks")
+
+	fnBlobnode := func(ctx context.Context, args *clustermgr.ListOptionArgs, diskMap map[proto.DiskID]struct{}) error {
+		list, err := s.cmClient.ListDisk(ctx, args)
+		if err != nil {
+			return err
+		}
+
+		for _, disk := range list.Disks {
+			diskMap[disk.DiskID] = struct{}{}
+		}
+		args.Marker = list.Marker
+		return nil
+	}
+
+	fnShardnode := func(ctx context.Context, args *clustermgr.ListOptionArgs, diskMap map[proto.DiskID]struct{}) error {
+		list, err := s.cmClient.ListShardNodeDisk(ctx, args)
+		if err != nil {
+			return err
+		}
+
+		for _, disk := range list.Disks {
+			diskMap[disk.DiskID] = struct{}{}
+		}
+		args.Marker = list.Marker
+		return nil
+	}
+
+	s.processBrokenDisks(ctx, fnBlobnode, &s.brokenDisks)
+	s.processBrokenDisks(ctx, fnShardnode, &s.sdBrokenDisks)
+}
+
+func (s *serviceControllerImpl) processBrokenDisks(
+	ctx context.Context,
+	fn func(context.Context, *clustermgr.ListOptionArgs, map[proto.DiskID]struct{}) error,
+	disks *sync.Map,
+) {
+	span := trace.SpanFromContextSafe(ctx)
 
 	brokenDiskIDs := make(map[proto.DiskID]struct{})
 	for _, st := range []proto.DiskStatus{proto.DiskStatusBroken, proto.DiskStatusRepairing} {
@@ -214,23 +257,20 @@ func (s *serviceControllerImpl) loadBrokenDisks() {
 
 		args := &clustermgr.ListOptionArgs{Status: st, Count: 1 << 10}
 		for {
-			list, err := s.cmClient.ListDisk(ctx, args)
+			err := fn(ctx, args, brokenDiskIDs)
 			if err != nil {
-				span.Errorf("load disks of cluster %d %s", s.config.ClusterID, err.Error())
+				span.Errorf("load disks of cluster %d, err:%+v", s.config.ClusterID, err)
 				return
 			}
-			for _, disk := range list.Disks {
-				brokenDiskIDs[disk.DiskID] = struct{}{}
-			}
-			if args.Marker = list.Marker; args.Marker <= proto.InvalidDiskID {
+			if args.Marker <= proto.InvalidDiskID {
 				break
 			}
 		}
 	}
 
 	// clean cached disks, ignore cases when concurrency getting disk.
-	s.brokenDisks.Range(func(key, value interface{}) bool {
-		s.brokenDisks.Delete(key)
+	disks.Range(func(key, value interface{}) bool {
+		disks.Delete(key)
 		return true
 	})
 	if len(brokenDiskIDs) == 0 {
@@ -238,7 +278,7 @@ func (s *serviceControllerImpl) loadBrokenDisks() {
 	}
 	span.Warnf("load disks of cluster %d broken %v", s.config.ClusterID, brokenDiskIDs)
 	for diskID := range brokenDiskIDs {
-		s.brokenDisks.Store(diskID, struct{}{})
+		disks.Store(diskID, struct{}{})
 	}
 }
 
@@ -333,7 +373,7 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 
 	_, broken := s.brokenDisks.Load(diskID)
 
-	v, ok := s.allServices.Load(_diskHostServicePrefix + (diskID.ToString()))
+	v, ok := s.allServices.Load(s.getServiceKey(_primaryDisk, diskID))
 	if ok {
 		item := v.(*hostItem)
 		return &HostIDC{
@@ -361,10 +401,48 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 		span.Error("can't get disk host from proxy", err)
 		return nil, errors.Base(err, "get disk info", diskID)
 	}
-	diskInfo := ret.(*blobnode.DiskInfo)
+	diskInfo := ret.(*clustermgr.BlobNodeDiskInfo)
 
 	item := &hostItem{host: diskInfo.Host, idc: diskInfo.Idc}
-	s.allServices.Store(_diskHostServicePrefix+(diskInfo.DiskID.ToString()), item)
+	s.allServices.Store(s.getServiceKey(_primaryDisk, diskInfo.DiskID), item)
+	return &HostIDC{
+		Host:     item.host,
+		IDC:      item.idc,
+		Punished: broken || item.isPunish(),
+	}, nil
+}
+
+func (s *serviceControllerImpl) GetShardnodeHost(ctx context.Context, diskID proto.DiskID) (hostIDC *HostIDC, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	_, broken := s.sdBrokenDisks.Load(diskID)
+	v, ok := s.allServices.Load(s.getServiceKey(_primaryShardnodeDisk, diskID))
+	if ok {
+		item := v.(*hostItem)
+		return &HostIDC{
+			Host:     item.host,
+			IDC:      item.idc,
+			Punished: broken || item.isPunish(),
+		}, nil
+	}
+
+	ret, err, _ := s.group.Do("get-shardnode-diskinfo-"+diskID.ToString(), func() (interface{}, error) {
+		// todo: support proxy get disk host, next version
+		info, err := s.cmClient.ShardNodeDiskInfo(ctx, diskID)
+		if err != nil {
+			return nil, err
+		}
+
+		return info, nil
+	})
+	if err != nil {
+		span.Error("can't get shardnode disk host from cm", err)
+		return nil, errors.Base(err, "get shardnode disk info", diskID)
+	}
+	diskInfo := ret.(*clustermgr.ShardNodeDiskInfo)
+
+	item := &hostItem{host: diskInfo.Host, idc: diskInfo.Idc}
+	s.allServices.Store(s.getServiceKey(_primaryShardnodeDisk, diskInfo.DiskID), item)
 	return &HostIDC{
 		Host:     item.host,
 		IDC:      item.idc,
@@ -374,9 +452,9 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 
 // PunishService will punish an service host for an punishTimeSec interval
 func (s *serviceControllerImpl) PunishService(ctx context.Context, service, host string, punishTimeSec int) {
-	v, ok := s.allServices.Load(service + host)
+	v, ok := s.allServices.Load(s.getServiceKey(service, host))
 	if !ok {
-		panic(fmt.Sprintf("can't find host in all services map, %s-%s", service, host))
+		panic(fmt.Sprintf("can't find host in all services map, %s", s.getServiceKey(service, host)))
 	}
 	item := v.(*hostItem)
 
@@ -386,28 +464,56 @@ func (s *serviceControllerImpl) PunishService(ctx context.Context, service, host
 
 // PunishDisk will punish a disk host for an punishTimeSec interval
 func (s *serviceControllerImpl) PunishDisk(ctx context.Context, diskID proto.DiskID, punishTimeSec int) {
-	s.PunishService(ctx, _diskHostServicePrefix, diskID.ToString(), punishTimeSec)
+	s.PunishService(ctx, _primaryDisk, diskID.ToString(), punishTimeSec)
+}
+
+// PunishShardnode will punish a shardnode disk host for an punishTimeSec interval
+func (s *serviceControllerImpl) PunishShardnode(ctx context.Context, diskID proto.DiskID, punishTimeSec int) {
+	s.PunishService(ctx, _primaryShardnodeDisk, diskID.ToString(), punishTimeSec)
+}
+
+func (s *serviceControllerImpl) IsPunishShardnode(diskID proto.DiskID) bool {
+	return s.isPunishService(_primaryShardnodeDisk, diskID.ToString())
+}
+
+func (s *serviceControllerImpl) isPunishService(primary, secondary string) bool {
+	v, ok := s.allServices.Load(s.getServiceKey(primary, secondary))
+	if !ok {
+		panic(fmt.Sprintf("can't find host in all services map, %s", s.getServiceKey(primary, secondary)))
+	}
+
+	item := v.(*hostItem)
+	return item.isPunish()
 }
 
 // PunishDiskWithThreshold will punish a disk host for
 // an punishTimeSec interval if disk host failed times satisfied with threshold
 func (s *serviceControllerImpl) PunishDiskWithThreshold(ctx context.Context, diskID proto.DiskID, punishTimeSec int) {
-	s.PunishServiceWithThreshold(ctx, _diskHostServicePrefix, diskID.ToString(), punishTimeSec)
+	s.punishWith(ctx, _primaryDisk, diskID.ToString(), punishTimeSec,
+		s.config.DiskPunishThreshold, s.config.DiskPunishValidIntervalS)
 }
 
 // PunishServiceWithThreshold will punish an service host for
 // an punishTimeSec interval if service failed times satisfied with threshold
 func (s *serviceControllerImpl) PunishServiceWithThreshold(ctx context.Context, service, host string, punishTimeSec int) {
-	v, ok := s.allServices.Load(service + host)
+	s.punishWith(ctx, service, host, punishTimeSec, s.config.ServicePunishThreshold, s.config.ServicePunishValidIntervalS)
+}
+
+func (s *serviceControllerImpl) punishWith(ctx context.Context,
+	primary, secondary string, punishTimeSec int,
+	threshold uint32, interval int,
+) {
+	serviceKey := s.getServiceKey(primary, secondary)
+	v, ok := s.allServices.Load(serviceKey)
 	if !ok {
-		panic(fmt.Sprintf("can't can host in all services map, %s-%s", service, host))
+		panic(fmt.Sprintf("can't load host in all services map, %s", serviceKey))
 	}
 	item := v.(*hostItem)
 	new := atomic.AddUint32(&item.failedTimes, 1)
 	// failedTimes larger than threshold, then check the lastModifyTime
-	if new >= s.config.ServicePunishThreshold {
-		if time.Since(time.Unix(atomic.LoadInt64(&item.lastModifyTime), 0)) < time.Duration(s.config.ServicePunishValidIntervalS)*time.Second {
-			s.PunishService(ctx, service, host, punishTimeSec)
+	if new >= threshold {
+		if time.Since(time.Unix(atomic.LoadInt64(&item.lastModifyTime), 0)) < time.Duration(interval)*time.Second {
+			s.PunishService(ctx, primary, secondary, punishTimeSec)
 			return
 		}
 		atomic.AddUint32(&item.failedTimes, -(new - 1))
@@ -417,4 +523,8 @@ func (s *serviceControllerImpl) PunishServiceWithThreshold(ctx context.Context, 
 
 func (s *serviceControllerImpl) getServiceLock(name string) *sync.RWMutex {
 	return s.serviceLocks[name]
+}
+
+func (s *serviceControllerImpl) getServiceKey(primary string, secondary any) string {
+	return fmt.Sprintf("%s/%v", primary, secondary)
 }

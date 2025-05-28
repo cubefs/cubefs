@@ -28,6 +28,7 @@ import (
 	"time"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	bncomm "github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
@@ -60,7 +61,7 @@ const (
 	_chunkHeaderSize      = 4 * 1024
 	_chunkMagicSize       = 4
 	_chunkVerSize         = 1
-	_chunkParentChunkSize = bnapi.ChunkIdLength
+	_chunkParentChunkSize = clustermgr.ChunkIDLength
 	_chunkCreateTimeSize  = 8
 	//_chunkPaddingSize     = _chunkHeaderSize - _chunkMagicSize - _chunkVerSize - _chunkParentChunkSize - _chunkCreateTimeSize
 
@@ -94,7 +95,7 @@ var (
 type ChunkHeader struct {
 	magic       [_chunkMagicSize]byte
 	version     byte
-	parentChunk bnapi.ChunkId
+	parentChunk clustermgr.ChunkID
 	createTime  int64
 }
 
@@ -104,7 +105,7 @@ type datafile struct {
 	wLock sync.RWMutex
 
 	File   string
-	chunk  bnapi.ChunkId
+	chunk  clustermgr.ChunkID
 	header ChunkHeader
 	conf   *core.Config
 
@@ -171,11 +172,11 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		conf.HandleIOError(context.Background(), vm.DiskID, err)
 	}
 
-	ef := core.NewBlobFile(fd, handleIOError, uint64(vm.ChunkId.VolumeUnitId()), ioPools)
+	ef := core.NewBlobFile(fd, handleIOError, uint64(vm.ChunkID.VolumeUnitId()), ioPools)
 
 	cd = &datafile{
 		File:   file,
-		chunk:  vm.ChunkId,
+		chunk:  vm.ChunkID,
 		conf:   conf,
 		closed: false,
 		ef:     ef,

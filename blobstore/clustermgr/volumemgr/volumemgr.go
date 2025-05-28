@@ -26,8 +26,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cm "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/configmgr"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/scopemgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -135,7 +135,7 @@ type VolumeMgr struct {
 	volumeTbl    *volumedb.VolumeTable
 	transitedTbl *volumedb.TransitedTable
 
-	diskMgr        diskmgr.DiskMgrAPI
+	diskMgr        cluster.BlobNodeManagerAPI
 	scopeMgr       scopemgr.ScopeMgrAPI
 	configMgr      configmgr.ConfigMgrAPI
 	blobNodeClient blobnode.StorageAPI
@@ -750,7 +750,7 @@ func (v *VolumeMgr) loop() {
 			span_.Infof("leader node start create volume")
 
 			allocatableVolCounts := v.allocator.StatAllocatable()
-			diskNums := v.diskMgr.Stat(ctx_).TotalDisk
+			diskNums := v.diskMgr.Stat(ctx_, proto.DiskTypeHDD).TotalDisk
 
 		CREATE:
 			for _, modeConfig := range v.codeMode {

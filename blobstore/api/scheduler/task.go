@@ -16,6 +16,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 
@@ -27,9 +28,22 @@ type AcquireArgs struct {
 	IDC string `json:"idc"`
 }
 
-func (c *client) AcquireTask(ctx context.Context, args *AcquireArgs) (ret *proto.MigrateTask, err error) {
+type TaskArgs struct {
+	ModuleType proto.ModuleType `json:"module_type"`
+	TaskType   proto.TaskType   `json:"task_type"`
+	Data       []byte           `json:"data"`
+}
+
+// TaskRet use for query task info
+type TaskRet struct {
+	TaskType proto.TaskType `json:"task_type"`
+	Data     []byte         `json:"data"`
+}
+
+func (c *client) AcquireTask(ctx context.Context, args *AcquireArgs) (ret *proto.Task, err error) {
+	ret = new(proto.Task)
 	err = c.request(func(host string) error {
-		return c.GetWith(ctx, host+PathTaskAcquire+"?idc="+args.IDC, &ret)
+		return c.GetWith(ctx, host+PathTaskAcquire+"?idc="+args.IDC, ret)
 	})
 	return
 }
@@ -50,7 +64,7 @@ func (c *client) RenewalTask(ctx context.Context, args *TaskRenewalArgs) (ret *T
 	return
 }
 
-type TaskReportArgs struct {
+type BlobnodeTaskReportArgs struct {
 	TaskType proto.TaskType `json:"task_type"`
 	TaskID   string         `json:"task_id"`
 
@@ -59,14 +73,34 @@ type TaskReportArgs struct {
 	IncreaseShardCnt     int                  `json:"increase_shard_cnt"`
 }
 
-func (c *client) ReportTask(ctx context.Context, args *TaskReportArgs) (err error) {
+func (t *BlobnodeTaskReportArgs) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *BlobnodeTaskReportArgs) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
+}
+
+func (t *BlobnodeTaskReportArgs) TaskArgs() (*TaskArgs, error) {
+	ret := new(TaskArgs)
+	ret.ModuleType = proto.TypeBlobNode
+	ret.TaskType = t.TaskType
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
+}
+
+func (c *client) ReportTask(ctx context.Context, args *TaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskReport, nil, args)
 	})
 }
 
-// OperateTaskArgs for task action.
-type OperateTaskArgs struct {
+// BlobnodeTaskArgs for blobnode task action.
+type BlobnodeTaskArgs struct {
 	IDC      string                `json:"idc"`
 	TaskID   string                `json:"task_id"`
 	TaskType proto.TaskType        `json:"task_type"`
@@ -75,19 +109,39 @@ type OperateTaskArgs struct {
 	Reason   string                `json:"reason"`
 }
 
-func (c *client) ReclaimTask(ctx context.Context, args *OperateTaskArgs) (err error) {
+func (t *BlobnodeTaskArgs) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *BlobnodeTaskArgs) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
+}
+
+func (t *BlobnodeTaskArgs) TaskArgs() (*TaskArgs, error) {
+	ret := new(TaskArgs)
+	ret.ModuleType = proto.TypeBlobNode
+	ret.TaskType = t.TaskType
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
+}
+
+func (c *client) ReclaimTask(ctx context.Context, args *TaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskReclaim, nil, args)
 	})
 }
 
-func (c *client) CancelTask(ctx context.Context, args *OperateTaskArgs) (err error) {
+func (c *client) CancelTask(ctx context.Context, args *TaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskCancel, nil, args)
 	})
 }
 
-func (c *client) CompleteTask(ctx context.Context, args *OperateTaskArgs) (err error) {
+func (c *client) CompleteTask(ctx context.Context, args *TaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskComplete, nil, args)
 	})
@@ -133,6 +187,10 @@ type MigrateTaskDetail struct {
 	Stat proto.TaskStatistics `json:"stat"`
 }
 
+type ShardTaskDetail struct {
+	Task proto.ShardMigrateTask `json:"task"`
+}
+
 type PerMinStats struct {
 	FinishedCnt    string `json:"finished_cnt"`
 	ShardCnt       string `json:"shard_cnt"`
@@ -152,6 +210,20 @@ type MigrateTasksStat struct {
 	WorkerDoingCnt int         `json:"worker_doing_cnt"`
 	FinishingCnt   int         `json:"finishing_cnt"`
 	StatsPerMin    PerMinStats `json:"stats_per_min"`
+}
+
+type ShardTaskStat struct {
+	Enable         bool `json:"enable"`
+	PreparingCnt   int  `json:"preparing_cnt"`
+	WorkerDoingCnt int  `json:"worker_doing_cnt"`
+	FinishingCnt   int  `json:"finishing_cnt"`
+}
+
+type ShardDiskRepairStat struct {
+	ShardTaskStat
+	RepairingDisks   []proto.DiskID `json:"repairing_disks"`
+	TotalTasksCnt    int            `json:"total_tasks_cnt"`
+	RepairedTasksCnt int            `json:"repaired_tasks_cnt"`
 }
 
 type DiskDropTasksStat struct {
@@ -186,7 +258,7 @@ type RunnerStat struct {
 	ErrStats      []string `json:"err_stats"`
 }
 
-type TasksStat struct {
+type BlobnodeTaskStats struct {
 	DiskRepair    *DiskRepairTasksStat    `json:"disk_repair,omitempty"`
 	DiskDrop      *DiskDropTasksStat      `json:"disk_drop,omitempty"`
 	Balance       *BalanceTasksStat       `json:"balance,omitempty"`
@@ -194,6 +266,15 @@ type TasksStat struct {
 	VolumeInspect *VolumeInspectTasksStat `json:"volume_inspect,omitempty"`
 	ShardRepair   *RunnerStat             `json:"shard_repair"`
 	BlobDelete    *RunnerStat             `json:"blob_delete"`
+}
+
+type ShardTaskStats struct {
+	ShardDiskRepair *ShardDiskRepairStat `json:"shard_disk_repair"`
+}
+
+type TasksStat struct {
+	Blobnode BlobnodeTaskStats `json:"blobnode"`
+	Shard    ShardTaskStats    `json:"shard"`
 }
 
 func (c *client) DetailMigrateTask(ctx context.Context, args *MigrateTaskDetailArgs) (detail MigrateTaskDetail, err error) {
@@ -271,4 +352,62 @@ func hostWithScheme(host string) string {
 		return host
 	}
 	return "http://" + host
+}
+
+// ShardTaskArgs for shard node task action.
+type ShardTaskArgs struct {
+	IDC      string                    `json:"idc"`
+	TaskID   string                    `json:"task_id"`
+	TaskType proto.TaskType            `json:"task_type"`
+	Source   proto.ShardUnitInfoSimple `json:"source"`
+	Dest     proto.ShardUnitInfoSimple `json:"dest"`
+	Leader   proto.ShardUnitInfoSimple `json:"leader"`
+	Learner  bool                      `json:"learner"`
+	Reason   string                    `json:"reason"`
+	Code     int                       `json:"code"`
+}
+
+func (t *ShardTaskArgs) TaskArgs() (*TaskArgs, error) {
+	ret := new(TaskArgs)
+	ret.ModuleType = proto.TypeShardNode
+	ret.TaskType = t.TaskType
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
+}
+
+func (t *ShardTaskArgs) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *ShardTaskArgs) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
+}
+
+type ShardTaskReportArgs struct {
+	TaskType proto.TaskType `json:"task_type"`
+	TaskID   string         `json:"task_id"`
+}
+
+func (t *ShardTaskReportArgs) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *ShardTaskReportArgs) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
+}
+
+func (t *ShardTaskReportArgs) TaskArgs() (*TaskArgs, error) {
+	ret := new(TaskArgs)
+	ret.ModuleType = proto.TypeShardNode
+	ret.TaskType = t.TaskType
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
 }

@@ -15,6 +15,7 @@
 package iostat
 
 import (
+	"context"
 	"io"
 	"time"
 )
@@ -31,6 +32,11 @@ type iostatWriteCloser struct {
 
 type iostatWriterAt struct {
 	underlying io.WriterAt
+	ios        *StatMgr
+}
+
+type iostatWriterAtCtx struct {
+	underlying WriterAtCtx
 	ios        *StatMgr
 }
 
@@ -65,6 +71,15 @@ func (iow *iostatWriteCloser) Close() error {
 	return iow.underlying.Close()
 }
 
+func (iow *iostatWriterAtCtx) WriteAtCtx(ctx context.Context, p []byte, off int64) (n int, err error) {
+	iow.ios.WriteBegin(uint64(len(p)))
+	defer iow.ios.WriteEnd(time.Now())
+
+	n, err = iow.underlying.WriteAtCtx(ctx, p, off)
+
+	return
+}
+
 func (sm *StatMgr) Writer(underlying io.Writer) io.Writer {
 	return &iostatWriter{
 		underlying: underlying,
@@ -74,6 +89,13 @@ func (sm *StatMgr) Writer(underlying io.Writer) io.Writer {
 
 func (sm *StatMgr) WriterAt(underlying io.WriterAt) io.WriterAt {
 	return &iostatWriterAt{
+		underlying: underlying,
+		ios:        sm,
+	}
+}
+
+func (sm *StatMgr) WriterAtCtx(underlying WriterAtCtx) WriterAtCtx {
+	return &iostatWriterAtCtx{
 		underlying: underlying,
 		ios:        sm,
 	}
