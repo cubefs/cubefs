@@ -971,7 +971,7 @@ func (c *CacheEngine) DoInactiveDisk(dataPath string) {
 func (c *CacheEngine) doInactiveFlashNode() (err error) {
 	err = c.mc.NodeAPI().SetFlashNode(c.localAddr, false)
 	log.LogWarnf("do inactive flashNode(%v), err(%v)", c.localAddr, err)
-	auditlog.LogFlashNodeOp("DoInactiveFlashNode", fmt.Sprintf("do inactive flashnode(%v)", c.localAddr), err)
+	auditlog.LogFlashNodeOp("DoInactiveFlashNode", fmt.Sprintf("do inactive remotecache(%v)", c.localAddr), err)
 	return
 }
 
