@@ -28,8 +28,8 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/cmd/common"
-	"github.com/cubefs/cubefs/flashnode/cachengine"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/remotecache/flashnode/cachengine"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
@@ -507,7 +507,7 @@ func (f *FlashNode) register() error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
-		log.LogInfo("to register flashnode")
+		log.LogInfo("to register remotecache")
 		for {
 			ci, err := f.mc.AdminAPI().GetClusterInfo()
 			if err != nil {
@@ -525,11 +525,11 @@ func (f *FlashNode) register() error {
 
 			nodeID, err := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "")
 			if err != nil {
-				log.LogErrorf("action[register] cannot register flashnode to master err(%v).", err)
+				log.LogErrorf("action[register] cannot register remotecache to master err(%v).", err)
 				break
 			}
 			f.nodeID = nodeID
-			log.LogInfof("action[register] flashnode(%d) cluster(%s) localAddr(%s)", f.nodeID, f.clusterID, f.localAddr)
+			log.LogInfof("action[register] remotecache(%d) cluster(%s) localAddr(%s)", f.nodeID, f.clusterID, f.localAddr)
 			return nil
 		}
 

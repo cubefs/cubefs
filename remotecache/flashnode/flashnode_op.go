@@ -24,8 +24,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/flashnode/cachengine"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/remotecache/flashnode/cachengine"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
@@ -39,7 +39,7 @@ func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
 	if (p.Opcode == proto.OpFlashNodeCacheRead || p.Opcode == proto.OpFlashNodeCachePrepare) && !f.readLimiter.Allow() {
 		metric := exporter.NewTPCnt("NodeReqLimit")
 		metric.Set(nil)
-		err := errors.NewErrorf("%s", "flashnode read request was been limited")
+		err := errors.NewErrorf("%s", "remotecache read request was been limited")
 		log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), conn.RemoteAddr())
 		return err
 	}
@@ -107,7 +107,7 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	} else {
 		log.LogWarnf("decode HeartBeatRequest error: %s", err.Error())
 		resp.Status = proto.TaskFailed
-		resp.Result = fmt.Sprintf("flashnode(%v) heartbeat decode err(%v)", f.localAddr, err.Error())
+		resp.Result = fmt.Sprintf("remotecache(%v) heartbeat decode err(%v)", f.localAddr, err.Error())
 		goto end
 	}
 
@@ -194,7 +194,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		hitRateMap := f.cacheEngine.GetHitRate()
 		for dataPath, hitRate := range hitRateMap {
 			if hitRate < f.lowerHitRate {
-				log.LogDebugf("opCacheRead: flashnode %v dataPath(%v) is lower hitrate %v", f.localAddr, dataPath, hitRate)
+				log.LogDebugf("opCacheRead: remotecache %v dataPath(%v) is lower hitrate %v", f.localAddr, dataPath, hitRate)
 				errMetric := exporter.NewCounter("lowerHitRate")
 				errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Disk: dataPath, exporter.Err: "LowerHitRate"})
 			}

@@ -25,8 +25,8 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-// NewServer creates a new flash node instance.
-func NewServer() *FlashNode {
+// NewFlashNode creates a new flash node instance.
+func NewFlashNode() *FlashNode {
 	return &FlashNode{}
 }
 
@@ -44,7 +44,7 @@ func (f *FlashNode) startTcpServer() (err error) {
 
 			select {
 			case <-f.stopCh:
-				log.LogWarn("flashnode tcp server stopped")
+				log.LogWarn("remotecache tcp server stopped")
 				return
 			default:
 			}
@@ -91,7 +91,7 @@ func (f *FlashNode) serveConn(conn net.Conn) {
 		p := proto.NewPacketReqID()
 		if err := p.ReadFromConn(c, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
-				log.LogWarn("flashnode read from remote", err.Error())
+				log.LogWarn("remotecache read from remote", err.Error())
 			}
 			return
 		}

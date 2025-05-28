@@ -17,7 +17,7 @@ package flashnode
 import (
 	"testing"
 
-	"github.com/cubefs/cubefs/flashnode/cachengine"
+	"github.com/cubefs/cubefs/remotecache/flashnode/cachengine"
 	"github.com/cubefs/cubefs/sdk/httpclient"
 	"github.com/stretchr/testify/require"
 )
