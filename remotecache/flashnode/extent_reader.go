@@ -24,8 +24,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/flashnode/cachengine"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/remotecache/flashnode/cachengine"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/bytespool"
 	"github.com/cubefs/cubefs/util/errors"
