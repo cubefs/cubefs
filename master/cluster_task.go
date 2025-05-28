@@ -168,7 +168,8 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		}
 	}
 
-	finalHosts = append(oldHosts, newPeers[0].Addr) // add new one
+	copy(finalHosts, oldHosts)
+	finalHosts = append(finalHosts, newPeers[0].Addr) // add new one
 	for i, host := range finalHosts {
 		if host == srcAddr {
 			finalHosts = append(finalHosts[:i], finalHosts[i+1:]...) // remove old one
