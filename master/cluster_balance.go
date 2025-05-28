@@ -1086,6 +1086,13 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 				c.PlanRun = false
 				return
 			}
+			// switch raft leader if the source is leader. And waiting for the leader to be elected.
+			err = c.changeAndCheckMetaPartitionLeader(mrPlan, mpPlan, mp)
+			if err != nil {
+				log.LogErrorf("changeAndCheckMetaPartitionLeader error: %s", err.Error())
+				c.SetMetaReplicaPlanStatusError(plan, mrPlan)
+				return
+			}
 
 			log.LogDebugf("Start to migrate meta partition(%d) from %s to %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
 			err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp)
@@ -1522,11 +1529,10 @@ func (c *Cluster) DoMetaNodeOffline(offLineAddr string) (err error) {
 	metaNode.MigrateLock.Lock()
 	defer metaNode.MigrateLock.Unlock()
 
-	if !metaNode.ToBeOffline {
-		err = fmt.Errorf("metaNode[%s] is not to be offline", metaNode.Addr)
-		log.LogErrorf(err.Error())
-		return
-	}
+	metaNode.ToBeOffline = true
+	defer func() {
+		metaNode.ToBeOffline = false
+	}()
 
 	mps := c.getAllMetaPartitionsByMetaNode(metaNode.Addr)
 	if len(mps) != 0 {
@@ -1556,4 +1562,64 @@ func convertStructToJson(low map[string]*proto.ZonePressureView) string {
 		return ""
 	}
 	return string(body)
+}
+
+func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition) error {
+	for i := 0; i < CheckLeaderNum; i++ {
+		leader, err := mp.getMetaReplicaLeader()
+		if err != nil {
+			log.LogWarnf("metapartition[%d] has no leader", mp.PartitionID)
+			time.Sleep(WaitTimeSec * time.Second)
+			continue
+		}
+		if leader.Addr != mrPlan.Source {
+			// the leader is not the source node, the meta partition can be migrated.
+			return nil
+		}
+
+		// try to change leader.
+		newLeader := selectOneLeaderAddr(mrPlan, mpPlan, mp)
+		if newLeader == "" {
+			err = fmt.Errorf("selectOneLeaderAddr mp[%d] source: %s failed", mp.PartitionID, mrPlan.Source)
+			log.LogErrorf(err.Error())
+			return err
+		}
+		err = mp.tryToChangeLeaderByHost(newLeader)
+		if err != nil {
+			log.LogErrorf("metapartition[%d] try to change leader to host[%s] failed, err[%s]",
+				mp.PartitionID, newLeader, err.Error())
+		}
+		time.Sleep(WaitTimeSec * time.Second)
+	}
+	leader, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		log.LogErrorf("metapartition[%d] has no leader", mp.PartitionID)
+		return err
+	}
+	return fmt.Errorf("after change leader %d times, it is still is %s. source: %s", CheckLeaderNum, leader.Addr, mrPlan.Source)
+}
+
+func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition) string {
+	// Select one address which is not in the meta partition plan.
+	for _, replica := range mp.Replicas {
+		isSelected := true
+		for _, item := range mpPlan.Plan {
+			if item.Source == replica.Addr {
+				isSelected = false
+				break
+			}
+		}
+		if isSelected {
+			return replica.Addr
+		}
+	}
+
+	// Select one address which is not the current source address.
+	for _, replica := range mp.Replicas {
+		if mrPlan.Source != replica.Addr {
+			return replica.Addr
+		}
+	}
+
+	return ""
 }

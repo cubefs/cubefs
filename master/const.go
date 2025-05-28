@@ -532,4 +532,7 @@ const (
 	ManualPlan  = "manual"
 	AutoPlan    = "auto"
 	OfflinePlan = "offline"
+
+	CheckLeaderNum = 10
+	WaitTimeSec    = 30
 )
