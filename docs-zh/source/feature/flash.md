@@ -6,7 +6,7 @@
 
 ![image](./pic/flash_topo.png)
 
-**数据读取流程**
+## 数据读取流程
 
 CubeFS的分布式缓存由多个FlashGroup组成，每个FlashGroup负责管理一致性哈希环上的一组slot值。
 
