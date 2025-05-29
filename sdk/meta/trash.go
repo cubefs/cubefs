@@ -32,7 +32,6 @@ const (
 	OriginalName        = "OriginalName"
 	DefaultReaddirLimit = 4096
 	TrashPathIgnore     = "trashPathIgnore"
-	OneDayMinutes       = 24 * 60
 	LockExpireSeconds   = 3600 // 1 hour
 )
 
@@ -285,13 +284,6 @@ func (trash *Trash) getDeleteInterval() int64 {
 		checkPointInterval = 1
 	}
 	rand.Seed(time.Now().UnixNano())
-	randomNumber := rand.Intn(50)
-	// If the time interval is longer than one day
-	if checkPointInterval > OneDayMinutes {
-		checkPointInterval += int64(randomNumber * 30)
-	} else {
-		checkPointInterval += int64(randomNumber)
-	}
 	return checkPointInterval
 }
 
