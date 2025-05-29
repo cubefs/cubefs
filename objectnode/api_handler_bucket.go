@@ -123,6 +123,11 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	if err = o.mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
 		log.LogErrorf("createBucketHandler: create bucket fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
 			GetRequestID(r), bucket, param.AccessKey(), err)
+		if err == proto.ErrDuplicateVol {
+			err = DuplicateVol
+		} else {
+			err = InternalErrorCode(err)
+		}
 		return
 	}
 
