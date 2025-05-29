@@ -6,7 +6,7 @@ In the context of modern large AI model training, the scale of datasets and mode
 
 ![image](./pic/flash_topo.png)
 
-**Data Access Flow**
+## Data Access Flow
 
 CubeFS's distributed cache is composed of multiple FlashGroups, each responsible for managing a set of slot values on the consistent hashing ring.
 
