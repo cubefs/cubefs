@@ -59,6 +59,9 @@ type IVolumeCache interface {
 	UpdateVolume(vid proto.Vid) (*client.VolumeInfoSimple, error)
 	GetVolume(vid proto.Vid) (*client.VolumeInfoSimple, error)
 	LoadVolumes() error
+	GetVolumeChunk(vid proto.Vid) (*VolumeChunk, bool)
+	UpdateVolumeChunk(vid proto.Vid, index uint8, errCode int)
+	DeleteVolumeChunk(vid proto.Vid, index uint8)
 }
 
 type clusterTopologyConfig struct {
@@ -103,9 +106,17 @@ type Host struct {
 }
 
 type (
+	VolumeChunkCache struct {
+		errCode int
+	}
+	VolumeChunk struct {
+		sync.RWMutex
+		m map[uint8]*VolumeChunkCache // index of n+m+l =>  chunk errcode
+	}
 	volumeTime struct {
 		time   time.Time
 		volume client.VolumeInfoSimple
+		chunks *VolumeChunk
 	}
 	shardCacher struct {
 		sync.RWMutex
@@ -135,9 +146,19 @@ func (vc *volumeCacher) Get(vid proto.Vid) (*client.VolumeInfoSimple, bool) {
 func (vc *volumeCacher) Set(vid proto.Vid, volume client.VolumeInfoSimple) {
 	shard := vc.getShard(vid)
 	shard.Lock()
+	val, exist := shard.m[vid]
+	var chunks *VolumeChunk
+	if exist {
+		chunks = val.chunks
+	} else {
+		chunks = &VolumeChunk{
+			m: make(map[uint8]*VolumeChunkCache),
+		}
+	}
 	shard.m[vid] = &volumeTime{
 		time:   time.Now(),
 		volume: volume,
+		chunks: chunks,
 	}
 	shard.Unlock()
 }
@@ -151,6 +172,60 @@ func (vc *volumeCacher) Settable(vid proto.Vid) bool {
 		return true
 	}
 	return time.Now().After(val.time.Add(vc.interval))
+}
+
+func (vc *volumeCacher) GetVolumeChunk(vid proto.Vid) (*VolumeChunk, bool) {
+	shard := vc.getShard(vid)
+	shard.RLock()
+	val, exist := shard.m[vid]
+	shard.RUnlock()
+	if exist {
+		return val.chunks, true
+	}
+	return nil, false
+}
+
+func (vc *volumeCacher) UpdateVolumeChunk(vid proto.Vid, index uint8, errCode int) {
+	chunks, exist := vc.GetVolumeChunk(vid)
+	if exist {
+		// use read lock check first
+		chunks.RLock()
+		_, exist := chunks.m[index]
+		if exist {
+			chunks.RUnlock()
+			return
+		}
+		chunks.RUnlock()
+
+		// use write lock update
+		chunks.Lock()
+		_, exist = chunks.m[index]
+		if !exist {
+			chunks.m[index] = &VolumeChunkCache{
+				errCode: errCode,
+			}
+		}
+		chunks.Unlock()
+	}
+}
+
+func (vc *volumeCacher) DeleteVolumeChunk(vid proto.Vid, index uint8) {
+	chunks, exist := vc.GetVolumeChunk(vid)
+	if exist {
+		// use read lock check first
+		chunks.RLock()
+		_, exist := chunks.m[index]
+		if !exist {
+			chunks.RUnlock()
+			return
+		}
+		chunks.RUnlock()
+
+		// use write lock update
+		chunks.Lock()
+		delete(chunks.m, index)
+		chunks.Unlock()
+	}
 }
 
 func newVolumeCacher(interval time.Duration) *volumeCacher {
@@ -269,6 +344,18 @@ func (m *ClusterTopologyMgr) UpdateVolume(vid proto.Vid) (*client.VolumeInfoSimp
 
 func (m *ClusterTopologyMgr) GetVolume(vid proto.Vid) (*client.VolumeInfoSimple, error) {
 	return m.volumeCache.GetVolume(vid)
+}
+
+func (m *ClusterTopologyMgr) GetVolumeChunk(vid proto.Vid) (*VolumeChunk, bool) {
+	return m.volumeCache.GetVolumeChunk(vid)
+}
+
+func (m *ClusterTopologyMgr) UpdateVolumeChunk(vid proto.Vid, index uint8, errCode int) {
+	m.volumeCache.UpdateVolumeChunk(vid, index, errCode)
+}
+
+func (m *ClusterTopologyMgr) DeleteVolumeChunk(vid proto.Vid, index uint8) {
+	m.volumeCache.DeleteVolumeChunk(vid, index)
 }
 
 func (m *ClusterTopologyMgr) LoadVolumes() error {
@@ -473,6 +560,18 @@ func (c *VolumeCache) UpdateVolume(vid proto.Vid) (*client.VolumeInfoSimple, err
 	}
 
 	return val.(*client.VolumeInfoSimple), nil
+}
+
+func (c *VolumeCache) GetVolumeChunk(vid proto.Vid) (*VolumeChunk, bool) {
+	return c.cache.GetVolumeChunk(vid)
+}
+
+func (c *VolumeCache) UpdateVolumeChunk(vid proto.Vid, index uint8, errCode int) {
+	c.cache.UpdateVolumeChunk(vid, index, errCode)
+}
+
+func (c *VolumeCache) DeleteVolumeChunk(vid proto.Vid, index uint8) {
+	c.cache.DeleteVolumeChunk(vid, index)
 }
 
 // DoubleCheckedRun the scheduler updates volume mapping relation asynchronously,
