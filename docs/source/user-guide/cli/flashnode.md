@@ -1,6 +1,6 @@
 # FlashNode Management
 
-## list flash nodes
+## List flash nodes
 
 Obtain detailed information about each cache node in the system, including its unique identifier (ID), network address, and the status of cached data.
 
@@ -8,7 +8,7 @@ Obtain detailed information about each cache node in the system, including its u
 ./cfs-cli flashnode list
 ```
 
-View FlashNode cache statistics
+## View FlashNode cache statistics
 
 ```bash
 // When querying the status of a FlashNode, the associated key does not carry an expiration time.
@@ -17,51 +17,51 @@ View FlashNode cache statistics
 ./cfs-cli flashnode httpStatAll 127.0.0.1:17510
 ```
 
-Evict the volume flash_cache from a specific FlashNode
+## Evict the volume flash_cache from a specific FlashNode
 
 ```bash
 ./cfs-cli flashnode httpEvict 127.0.0.1:17510 flash_cache
 ```
 
 
-Enable/Disable flashnode
+## Enable/Disable flashnode
 
 ```bash
 ./cfs-cli flashnode set 127.0.0.1:17510 true
 ./cfs-cli flashnode set 127.0.0.1:17510 false 
 ```
 
-remove flashnode
+## Remove flashnode
 
 ```bash
 ./cfs-cli flashnode remove 127.0.0.1:17510
 ```
 
-create fg
+## Create fg
 
 ```bash
 ./cfs-cli flashgroup create
 ```
 
-set flashgroup  active
+## Set flashgroup  active
 
 ```bash
 ./cfs-cli flashgroup set 25 true
 ```
 
-flashgroup add flashnode
+## Flashgroup add flashnode
 
 ```bash
 ./cfs-cli flashgroup nodeAdd 13 --zone-name=flashcache --addr="127.0.0.1:17510"
 ```
 
-list flashgroup
+## List flashgroup
 
 ```bash
 ./cfs-cli flashgroup list
 ```
 
-show flashgroup group
+## Show flashgroup graph
 
 ```bash
 ./cfs-cli flashgroup graph
