@@ -41,6 +41,7 @@ func initServiceWithShardData() (*Service, func()) {
 	cfg := *testServiceCfg
 
 	cfg.DBPath = os.TempDir() + "/shard" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10)
+	cfg.RaftConfig.ServerConfig.WalDir = os.TempDir() + "/svrraftwal-" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10)
 	cfg.ShardNodeDiskMgrConfig.HeartbeatExpireIntervalS = 600
 	cfg.CatalogMgrConfig.InitShardNum = 10
 	cfg.ClusterReportIntervalS = 3

@@ -278,3 +278,39 @@ func GetFreePort() int {
 	defer l.Close()
 	return l.Addr().(*net.TCPAddr).Port
 }
+
+func TestBrokenChunkNumReport(t *testing.T) {
+	testService, clean := initServiceWithData()
+	defer clean()
+
+	cmClient := initTestClusterClient(testService)
+	ctx := newCtx()
+	err := cmClient.SetDisk(ctx, 1, proto.DiskStatusBroken)
+	require.NoError(t, err)
+	err = cmClient.SetDisk(ctx, 2, proto.DiskStatusBroken)
+	require.NoError(t, err)
+	err = cmClient.SetDisk(ctx, 1, proto.DiskStatusRepairing)
+	require.NoError(t, err)
+
+	vids := testService.getBrokenVolumes(ctx, 0)
+	require.NotNil(t, vids)
+	testService.reportBrokenChunkNumInVolume(vids)
+}
+
+func TestBrokenShardUnitNumReport(t *testing.T) {
+	testService, clean := initServiceWithShardData()
+	defer clean()
+
+	cmClient := initTestClusterClient(testService)
+	ctx := newCtx()
+	err := cmClient.SetShardNodeDisk(ctx, 1, proto.DiskStatusBroken)
+	require.NoError(t, err)
+	err = cmClient.SetShardNodeDisk(ctx, 2, proto.DiskStatusBroken)
+	require.NoError(t, err)
+	err = cmClient.SetShardNodeDisk(ctx, 1, proto.DiskStatusRepairing)
+	require.NoError(t, err)
+
+	shards := testService.getBrokenShards(ctx, 0)
+	require.NotNil(t, shards)
+	testService.reportBrokenUnitNumInShard(shards)
+}

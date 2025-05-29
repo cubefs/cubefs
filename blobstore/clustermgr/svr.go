@@ -92,6 +92,9 @@ const (
 	defaultShardNodeSetRackCap            = 3
 	defaultShardNodeDiskSetCap            = 36
 	defaultDiskCountPerShardNodeInDiskSet = 3
+
+	defaultBrokenVolumeUnitReportNum = 3
+	defaultBrokenShardUnitReportNum  = 2
 )
 
 var (
@@ -128,6 +131,8 @@ type Config struct {
 	MetricReportIntervalM    int                       `json:"metric_report_interval_m"`
 	ConsistentCheckIntervalM int                       `json:"consistent_check_interval_m"`
 
+	BrokenVolumeUnitReportNum int `json:"broken_volume_unit_report_num"`
+	BrokenShardUnitReportNum  int `json:"broken_shard_unit_report_num"`
 	cmd.Config
 }
 
@@ -634,21 +639,13 @@ func (s *Service) forwardToLeader(w http.ResponseWriter, req *http.Request) {
 func (s *Service) loop() {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "service-loop")
 
-	if s.ClusterReportIntervalS == 0 {
-		s.ClusterReportIntervalS = defaultClusterReportIntervalS
-	}
-	if s.HeartbeatNotifyIntervalS == 0 {
-		s.HeartbeatNotifyIntervalS = defaultHeartbeatNotifyIntervalS
-	}
-	if s.MaxHeartbeatNotifyNum <= 0 {
-		s.MaxHeartbeatNotifyNum = defaultMaxHeartbeatNotifyNum
-	}
-	if s.MetricReportIntervalM <= 0 {
-		s.MetricReportIntervalM = defaultMetricReportIntervalM
-	}
-	if s.ConsistentCheckIntervalM <= 0 {
-		s.ConsistentCheckIntervalM = defaultCheckConsistentIntervalM
-	}
+	defaulter.LessOrEqual(&s.ClusterReportIntervalS, defaultClusterReportIntervalS)
+	defaulter.LessOrEqual(&s.HeartbeatNotifyIntervalS, defaultHeartbeatNotifyIntervalS)
+	defaulter.LessOrEqual(&s.MaxHeartbeatNotifyNum, defaultMaxHeartbeatNotifyNum)
+	defaulter.LessOrEqual(&s.MetricReportIntervalM, defaultMetricReportIntervalM)
+	defaulter.LessOrEqual(&s.ConsistentCheckIntervalM, defaultCheckConsistentIntervalM)
+	defaulter.LessOrEqual(&s.BrokenVolumeUnitReportNum, defaultBrokenVolumeUnitReportNum)
+	defaulter.LessOrEqual(&s.BrokenShardUnitReportNum, defaultBrokenShardUnitReportNum)
 
 	reportTicker := time.NewTicker(time.Duration(s.ClusterReportIntervalS) * time.Second)
 	defer reportTicker.Stop()
@@ -744,6 +741,7 @@ func (s *Service) loop() {
 			if !s.raftNode.IsLeader() {
 				continue
 			}
+			// check volume info between master and follower
 			go func() {
 				clis := make([]*clustermgr.Client, 0)
 				peers := s.raftNode.Status().Peers
@@ -781,6 +779,15 @@ func (s *Service) loop() {
 						s.reportInConsistentVols(actualIVids)
 					}
 				}
+			}()
+
+			go func() {
+				// check broken chunk num in volume
+				vids := s.getBrokenVolumes(ctx, s.BrokenVolumeUnitReportNum)
+				s.reportBrokenChunkNumInVolume(vids)
+				// check broken shard unit num in shard
+				shardIDs := s.getBrokenShards(ctx, s.BrokenShardUnitReportNum)
+				s.reportBrokenUnitNumInShard(shardIDs)
 			}()
 
 		case <-s.closeCh:
@@ -851,6 +858,124 @@ func (s *Service) doubleCheckVolInfos(ctx context.Context, clis []*clustermgr.Cl
 		}
 	}
 	return
+}
+
+// getBrokenVolumes get volumes whose broken unit >= brokenUnitNum
+func (s *Service) getBrokenVolumes(ctx context.Context, brokenUnitNum int) map[proto.Vid]int {
+	span := trace.SpanFromContextSafe(ctx)
+
+	getDisksWithStatus := func(status proto.DiskStatus) ([]*clustermgr.BlobNodeDiskInfo, error) {
+		var disks []*clustermgr.BlobNodeDiskInfo
+		var marker proto.DiskID
+		for {
+			args := &clustermgr.ListOptionArgs{Status: status, Marker: marker, Count: 200}
+			ret, nextMarker, err := s.BlobNodeMgr.ListDiskInfo(ctx, args)
+			if err != nil {
+				return nil, err
+			}
+			disks = append(disks, ret...)
+			if nextMarker == proto.InvalidDiskID {
+				break
+			}
+			marker = nextMarker
+		}
+		return disks, nil
+	}
+	brokenDisks, err := getDisksWithStatus(proto.DiskStatusBroken)
+	if err != nil {
+		span.Errorf("check broken chunk num in volume, ListBrokenDisk err %v", err)
+		return nil
+	}
+	repairingDisks, err := getDisksWithStatus(proto.DiskStatusRepairing)
+	if err != nil {
+		span.Errorf("check broken chunk num in volume, ListRepairingDisk err %v", err)
+		return nil
+	}
+	disks := append(brokenDisks, repairingDisks...)
+
+	// Disk repair task between two list requests may cause disk duplication
+	disksMap := make(map[proto.DiskID]struct{})
+	for _, disk := range disks {
+		disksMap[disk.DiskID] = struct{}{}
+	}
+	vidNumMap := make(map[proto.Vid]int)
+	vids := make(map[proto.Vid]int)
+	for diskID := range disksMap {
+		args := &clustermgr.ListVolumeUnitArgs{DiskID: diskID}
+		vuInfos, err := s.VolumeMgr.ListVolumeUnitInfo(ctx, args)
+		if err != nil {
+			span.Errorf("check broken chunk num in volume, ListVolumeUnitInfo err %v", err)
+			return nil
+		}
+		for _, vuInfo := range vuInfos {
+			vidNumMap[vuInfo.Vuid.Vid()] += 1
+		}
+	}
+	for vid, num := range vidNumMap {
+		if num >= brokenUnitNum {
+			vids[vid] = num
+		}
+	}
+	return vids
+}
+
+// getBrokenShards get shards whose broken unit >= brokenUnitNum
+func (s *Service) getBrokenShards(ctx context.Context, brokenUnitNum int) map[proto.ShardID]int {
+	span := trace.SpanFromContextSafe(ctx)
+
+	getDisksWithStatus := func(status proto.DiskStatus) ([]*clustermgr.ShardNodeDiskInfo, error) {
+		var disks []*clustermgr.ShardNodeDiskInfo
+		var marker proto.DiskID
+		for {
+			args := &clustermgr.ListOptionArgs{Status: status, Marker: marker, Count: 200}
+			ret, nextMarker, err := s.ShardNodeMgr.ListDiskInfo(ctx, args)
+			if err != nil {
+				return nil, err
+			}
+			disks = append(disks, ret...)
+			if nextMarker == proto.InvalidDiskID {
+				break
+			}
+			marker = nextMarker
+		}
+		return disks, nil
+	}
+	brokenDisks, err := getDisksWithStatus(proto.DiskStatusBroken)
+	if err != nil {
+		span.Errorf("check broken shard unit num, ListBrokenDisk err %v", err)
+		return nil
+	}
+	repairingDisks, err := getDisksWithStatus(proto.DiskStatusRepairing)
+	if err != nil {
+		span.Errorf("check broken shard unit num, ListRepairingDisk err %v", err)
+		return nil
+	}
+	disks := append(brokenDisks, repairingDisks...)
+
+	// Disk repair task between two list requests may cause disk duplication
+	disksMap := make(map[proto.DiskID]struct{})
+	for _, disk := range disks {
+		disksMap[disk.DiskID] = struct{}{}
+	}
+	shardIDNumMap := make(map[proto.ShardID]int)
+	shardIDs := make(map[proto.ShardID]int)
+	for diskID := range disksMap {
+		args := &clustermgr.ListShardUnitArgs{DiskID: diskID}
+		suInfos, err := s.CatalogMgr.ListShardUnitInfo(ctx, args)
+		if err != nil {
+			span.Errorf("check broken shard unit num, ListShardUnitInfo err %v", err)
+			return nil
+		}
+		for _, suInfo := range suInfos {
+			shardIDNumMap[suInfo.Suid.ShardID()] += 1
+		}
+	}
+	for shardID, num := range shardIDNumMap {
+		if num >= brokenUnitNum {
+			shardIDs[shardID] = num
+		}
+	}
+	return shardIDs
 }
 
 func getInconsistent(ctx context.Context, allVols []clustermgr.ListVolumes) []proto.Vid {

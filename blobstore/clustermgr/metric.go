@@ -41,7 +41,7 @@ var (
 		},
 		[]string{"region", "cluster", "is_leader", "item"},
 	)
-	VolInconsistencyMetric = prometheus.NewGaugeVec(
+	volInconsistencyMetric = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "blobstore",
 			Subsystem: "clusterMgr",
@@ -59,12 +59,32 @@ var (
 		},
 		[]string{"region", "cluster"},
 	)
+	brokenChunkNumInVolumeMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "clusterMgr",
+			Name:      "broken_chunk_num_in_volume",
+			Help:      "broken chunk num in volume",
+		},
+		[]string{"region", "cluster", "vid"},
+	)
+	brokenShardUnitNumInShardMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "clusterMgr",
+			Name:      "broken_shard_unit_num_in_shard",
+			Help:      "broken shard unit num in shard",
+		},
+		[]string{"region", "cluster", "shard_id"},
+	)
 )
 
 func init() {
 	prometheus.MustRegister(raftStatMetric)
 	prometheus.MustRegister(diskHeartbeatChangeMetric)
-	prometheus.MustRegister(VolInconsistencyMetric)
+	prometheus.MustRegister(volInconsistencyMetric)
+	prometheus.MustRegister(brokenChunkNumInVolumeMetric)
+	prometheus.MustRegister(brokenShardUnitNumInShardMetric)
 }
 
 func (s *Service) report(ctx context.Context) {
@@ -83,14 +103,28 @@ func (s *Service) reportHeartbeatChange(num float64) {
 }
 
 func (s *Service) reportInConsistentVols(vids []proto.Vid) {
-	VolInconsistencyMetric.Reset()
+	volInconsistencyMetric.Reset()
 	isLeader := strconv.FormatBool(s.raftNode.IsLeader())
 	for _, vid := range vids {
-		VolInconsistencyMetric.WithLabelValues(s.Region, s.ClusterID.ToString(), isLeader, "vid").Set(float64(vid))
+		volInconsistencyMetric.WithLabelValues(s.Region, s.ClusterID.ToString(), isLeader, "vid").Set(float64(vid))
 	}
 }
 
 func (s *Service) reportShardNodeHeartbeatChange(num float64) {
 	shardNodeDiskHeartbeatChangeMetric.Reset()
 	shardNodeDiskHeartbeatChangeMetric.WithLabelValues(s.Region, s.ClusterID.ToString()).Set(num)
+}
+
+func (s *Service) reportBrokenChunkNumInVolume(vids map[proto.Vid]int) {
+	brokenChunkNumInVolumeMetric.Reset()
+	for vid, num := range vids {
+		brokenChunkNumInVolumeMetric.WithLabelValues(s.Region, s.ClusterID.ToString(), vid.ToString()).Set(float64(num))
+	}
+}
+
+func (s *Service) reportBrokenUnitNumInShard(shardIDs map[proto.ShardID]int) {
+	brokenShardUnitNumInShardMetric.Reset()
+	for shardID, num := range shardIDs {
+		brokenShardUnitNumInShardMetric.WithLabelValues(s.Region, s.ClusterID.ToString(), shardID.ToString()).Set(float64(num))
+	}
 }
