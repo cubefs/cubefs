@@ -27,13 +27,20 @@ import (
 
 const _limited = "limited"
 
+type qosLimiter interface {
+	ReserveN(t time.Time, n int) *rate.Reservation
+	UpdateQosBpsLimiter()
+	UpdateQosConcurrency()
+}
+
 type rateLimiter struct {
-	readerAt   io.ReaderAt
-	reader     io.Reader
-	writer     io.Writer
-	writerAt   io.WriterAt
-	ctx        context.Context
-	bpsLimiter *rate.Limiter
+	readerAt io.ReaderAt
+	reader   io.Reader
+	writer   io.Writer
+	writerAt io.WriterAt
+	ctx      context.Context
+
+	ctrl qosLimiter
 }
 
 func (l *rateLimiter) Read(p []byte) (n int, err error) {
@@ -89,15 +96,15 @@ func (l *rateLimiter) WriteAt(p []byte, off int64) (n int, err error) {
 }
 
 func (l *rateLimiter) doWithLimit(n int) (err error) {
-	return l.doWithSingleLimit(l.bpsLimiter, n)
+	l.ctrl.UpdateQosBpsLimiter()
+	l.ctrl.UpdateQosConcurrency()
+
+	return l.doWithSingleLimit(n)
 }
 
-func (l *rateLimiter) doWithSingleLimit(limiter *rate.Limiter, n int) (err error) {
-	if limiter == nil {
-		return
-	}
+func (l *rateLimiter) doWithSingleLimit(n int) (err error) {
 	now := time.Now()
-	reserve := limiter.ReserveN(now, n)
+	reserve := l.ctrl.ReserveN(now, n)
 	if !reserve.OK() {
 		return errors.ErrSizeOverBurst
 	}

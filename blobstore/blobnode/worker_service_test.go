@@ -53,7 +53,7 @@ func (m *mBlobNodeCli) StatChunk(ctx context.Context, location proto.VunitLocati
 	return
 }
 
-func (m *mBlobNodeCli) StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (*client.ShardInfo, error) {
+func (m *mBlobNodeCli) StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType bnapi.IOType) (*client.ShardInfo, error) {
 	return nil, nil
 }
 

@@ -34,7 +34,7 @@ var defaultFirstStartBid = proto.BlobID(0)
 // IBlobNode define the interface of blobnode used for worker
 type IBlobNode interface {
 	StatChunk(ctx context.Context, location proto.VunitLocation) (ci *ChunkInfo, err error)
-	StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *ShardInfo, err error)
+	StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (si *ShardInfo, err error)
 	ListShards(ctx context.Context, location proto.VunitLocation) (shards []*ShardInfo, err error)
 	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error)
 	GetShards(ctx context.Context, location proto.VunitLocation, bids []api.BidInfo, ioType api.IOType) (getter api.ShardGetter, err error)
@@ -114,10 +114,10 @@ func (c *BlobNodeClient) GetShard(ctx context.Context, location proto.VunitLocat
 }
 
 // StatShard return shard stat
-func (c *BlobNodeClient) StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *ShardInfo, err error) {
+func (c *BlobNodeClient) StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (si *ShardInfo, err error) {
 	ctx = trace.NewContextFromContext(ctx)
 	span := trace.SpanFromContext(ctx).WithOperation("StatShard")
-	info, err := c.cli.StatShard(ctx, location.Host, &api.StatShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid})
+	info, err := c.cli.StatShard(ctx, location.Host, &api.StatShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid, Type: ioType})
 	if err != nil {
 		if errCode := rpc.DetectStatusCode(err); errCode == errcode.CodeBidNotFound {
 			span.Debugf("StatShard not found and set flag ShardStatusNotExist: location[%+v], bid[%d]", location, bid)

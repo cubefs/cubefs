@@ -24,7 +24,6 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -79,10 +78,6 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		return
 	}
 
-	// set io type
-	convertOldIOType(&args.Type)
-	ctx = bnapi.SetIoType(ctx, args.Type)
-
 	s.lock.RLock()
 	ds, exist := s.Disks[args.DiskID]
 	s.lock.RUnlock()
@@ -102,12 +97,26 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		return
 	}
 
-	qosLmt := ds.GetIoQos()
-	if !qosLmt.TryAcquireIO(ctx, uint64(args.Vuid), qos.IOTypeRead) {
-		c.RespondError(bloberr.ErrOverload)
+	// set io type
+	convertOldIOType(&args.Type)
+	ctx = bnapi.SetIoType(ctx, args.Type)
+	qosLmt, exist := ds.GetIoQos().GetQueueQos(ctx)
+	if !exist {
+		span.Errorf("fail to get qos mgr, disk:%d", cs.Disk().ID())
+		c.RespondError(bloberr.ErrInternal)
 		return
 	}
-	defer qosLmt.ReleaseIO(uint64(args.Vuid), qos.IOTypeRead)
+
+	if err = qosLmt.AcquireBid(uint64(args.Bid)); err != nil {
+		c.RespondError(err)
+		return
+	}
+	defer qosLmt.ReleaseBid(uint64(args.Bid))
+	if err = qosLmt.Acquire(); err != nil {
+		c.RespondError(err)
+		return
+	}
+	defer qosLmt.Release()
 
 	// build shard reader
 	shard := core.NewShardReader(args.Bid, args.Vuid, from, to, w)
@@ -309,7 +318,7 @@ func (s *Service) ShardList(c *rpc.Context) {
 
 /*
  *  method:         GET
- *  url:            /shard/stat/diskid/{diskid}/vuid/{vuidValue}/bid/{bidValue}
+ *  url:            /shard/stat/diskid/{diskid}/vuid/{vuidValue}/bid/{bidValue}?iotype={iotype}
  *  response body:  json.Marshal(ShardMeta)
  */
 func (s *Service) ShardStat(c *rpc.Context) {
@@ -347,6 +356,20 @@ func (s *Service) ShardStat(c *rpc.Context) {
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
+
+	convertOldIOType(&args.Type)
+	ctx = bnapi.SetIoType(ctx, args.Type)
+	qosLmt, exist := ds.GetIoQos().GetQueueQos(ctx)
+	if !exist {
+		span.Errorf("fail to get qos mgr, disk:%d", cs.Disk().ID())
+		c.RespondError(bloberr.ErrInternal)
+		return
+	}
+	if err := qosLmt.Acquire(); err != nil {
+		c.RespondError(err)
+		return
+	}
+	defer qosLmt.Release()
 
 	sm, err := cs.ReadShardMeta(ctx, args.Bid)
 	if err != nil {
@@ -409,42 +432,27 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 		return
 	}
 
-	limitKey := args.Bid
-	err := s.DeleteQpsLimitPerKey.Acquire(limitKey)
-	if err != nil {
-		span.Warnf("Shard mark delete concurrency key. key:%s", limitKey)
-		c.RespondError(bloberr.ErrOverload)
+	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
+	qosLmt, exist := ds.GetIoQos().GetQueueQos(ctx)
+	if !exist {
+		span.Errorf("fail to get qos mgr, disk:%d", cs.Disk().ID())
+		c.RespondError(bloberr.ErrInternal)
 		return
 	}
-	defer s.DeleteQpsLimitPerKey.Release(limitKey)
 
-	perDiskLimitKey := cs.Disk().ID()
-	err = s.DeleteQpsLimitPerDisk.Acquire(perDiskLimitKey)
-	if err != nil {
-		span.Warnf("Shard mark delete overload perdisk. key:%d", cs.Disk().ID())
-		c.RespondError(bloberr.ErrOverload)
-		return
-	}
-	defer s.DeleteQpsLimitPerDisk.Release(perDiskLimitKey)
-
-	qosLmt := ds.GetIoQos() // max io wait
-	if !qosLmt.TryAllow(qos.IOTypeDel) {
-		c.RespondError(bloberr.ErrOverload)
-		return
-	}
-	defer qosLmt.Release(qos.IOTypeDel)
-
-	err = cs.AllowModify()
-	if err != nil {
-		span.Warnf("ChunkStorage can not mark delete: %v", err)
+	if err := qosLmt.AcquireBid(uint64(args.Bid)); err != nil {
 		c.RespondError(err)
 		return
 	}
+	defer qosLmt.ReleaseBid(uint64(args.Bid))
 
-	// set io type
-	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
+	if err := qosLmt.Acquire(); err != nil {
+		c.RespondError(err)
+		return
+	}
+	defer qosLmt.Release()
 
-	err = cs.MarkDelete(ctx, args.Bid)
+	err := cs.MarkDelete(ctx, args.Bid)
 	if err != nil {
 		err = handlerBidNotFoundErr(err)
 		span.Errorf("Failed to mark delete, args:%+v err:%v", args, err)
@@ -491,32 +499,7 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 		return
 	}
 
-	limitKey := args.Bid
-	err := s.DeleteQpsLimitPerKey.Acquire(limitKey)
-	if err != nil {
-		span.Warnf("Shard delete concurrency key. key:%d", args.Bid)
-		c.RespondError(bloberr.ErrOverload)
-		return
-	}
-	defer s.DeleteQpsLimitPerKey.Release(limitKey)
-
-	qosLmt := ds.GetIoQos() // max io wait
-	if !qosLmt.TryAllow(qos.IOTypeDel) {
-		c.RespondError(bloberr.ErrOverload)
-		return
-	}
-	defer qosLmt.Release(qos.IOTypeDel)
-
-	perDiskLimitKey := cs.Disk().ID()
-	err = s.DeleteQpsLimitPerDisk.Acquire(perDiskLimitKey)
-	if err != nil {
-		span.Warnf("Shard delete overload perdisk. key:%d", cs.Disk().ID())
-		c.RespondError(bloberr.ErrOverload)
-		return
-	}
-	defer s.DeleteQpsLimitPerDisk.Release(perDiskLimitKey)
-
-	err = cs.AllowModify()
+	err := cs.AllowModify()
 	if err != nil {
 		span.Warnf("ChunkStorage can not delete: %v", err)
 		c.RespondError(err)
@@ -525,6 +508,24 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 
 	// set io type
 	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
+	qosLmt, exist := ds.GetIoQos().GetQueueQos(ctx)
+	if !exist {
+		span.Errorf("fail to get qos mgr, disk:%d", cs.Disk().ID())
+		c.RespondError(bloberr.ErrInternal)
+		return
+	}
+
+	if err = qosLmt.AcquireBid(uint64(args.Bid)); err != nil {
+		c.RespondError(err)
+		return
+	}
+	defer qosLmt.ReleaseBid(uint64(args.Bid))
+
+	if err = qosLmt.Acquire(); err != nil {
+		c.RespondError(err)
+		return
+	}
+	defer qosLmt.Release()
 
 	err = cs.Delete(ctx, args.Bid)
 	if err != nil {
@@ -574,8 +575,6 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		return
 	}
 
-	ctx = bnapi.SetIoType(ctx, args.Type)
-
 	s.lock.RLock()
 	ds, exist := s.Disks[args.DiskID]
 	s.lock.RUnlock()
@@ -589,6 +588,20 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
+
+	// set io type
+	ctx = bnapi.SetIoType(ctx, args.Type)
+	qosLmt, exist := ds.GetIoQos().GetQueueQos(ctx)
+	if !exist {
+		span.Errorf("fail to get qos mgr, disk:%d", cs.Disk().ID())
+		c.RespondError(bloberr.ErrInternal)
+		return
+	}
+	if err := qosLmt.Acquire(); err != nil {
+		c.RespondError(err)
+		return
+	}
+	defer qosLmt.Release()
 
 	err := cs.AllowModify()
 	if err != nil {

@@ -152,10 +152,10 @@ func (mr *MockDiskAPIMockRecorder) GetDataPath() *gomock.Call {
 }
 
 // GetIoQos mocks base method.
-func (m *MockDiskAPI) GetIoQos() qos.Qos {
+func (m *MockDiskAPI) GetIoQos() *qos.QosMgr {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetIoQos")
-	ret0, _ := ret[0].(qos.Qos)
+	ret0, _ := ret[0].(*qos.QosMgr)
 	return ret0
 }
 

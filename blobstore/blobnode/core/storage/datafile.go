@@ -108,7 +108,7 @@ type datafile struct {
 	header ChunkHeader
 	conf   *core.Config
 
-	ioQos  qos.Qos
+	qosMgr *qos.QosMgr
 	closed bool
 }
 
@@ -151,7 +151,7 @@ func (hdr *ChunkHeader) String() string {
 	return s
 }
 
-func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos, ioPools map[bnapi.IOType]bncomm.IoPool) (
+func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, qosMgr *qos.QosMgr, ioPools map[bnapi.IOType]bncomm.IoPool) (
 	cd *datafile, err error,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
@@ -179,7 +179,7 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		conf:   conf,
 		closed: false,
 		ef:     ef,
-		ioQos:  ioQos,
+		qosMgr: qosMgr,
 	}
 
 	if err = cd.init(&vm); err != nil {
@@ -303,12 +303,6 @@ func (cd *datafile) allocSpace(fsize int64) (pos int64, err error) {
 
 func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
-
-	// If there is too much io, it will discard some low-priority io
-	if !cd.qosAllow(ctx, qos.IOTypeWrite) {
-		return bloberr.ErrOverload
-	}
-	defer cd.qosRelease(qos.IOTypeWrite)
 
 	// allocate space
 	phySize := core.Alignphysize(int64(shard.Size))
@@ -455,10 +449,6 @@ func (cd *datafile) BatchRead(ctx context.Context, bs *core.BatchShard) (rc core
 		return nil, bloberr.ErrInvalidParam
 	}
 
-	if !cd.qosAllow(ctx, qos.IOTypeRead) { // If there is too much io, it will discard some low-priority io
-		return nil, bloberr.ErrOverload
-	}
-	defer cd.qosRelease(qos.IOTypeRead)
 	bids := bs.Bids
 
 	// new reader
@@ -560,29 +550,19 @@ func (cd *datafile) spaceInfo() (size int64, phySpace int64, err error) {
 }
 
 func (cd *datafile) qosReaderAt(ctx context.Context, reader io.ReaderAt) io.ReaderAt {
-	ioType := bnapi.GetIoType(ctx)
-	return cd.ioQos.ReaderAt(ctx, ioType, reader)
+	ioQos, exist := cd.qosMgr.GetQueueQos(ctx)
+	if exist {
+		return ioQos.ReaderAt(ctx, reader)
+	}
+	return reader
 }
 
 func (cd *datafile) qosWriter(ctx context.Context, writer io.Writer) io.Writer {
-	ioType := bnapi.GetIoType(ctx)
-	return cd.ioQos.Writer(ctx, ioType, writer)
-}
-
-func (cd *datafile) qosAllow(ctx context.Context, rwType qos.IOTypeRW) bool {
-	q, ok := cd.ioQos.(*qos.IoQueueQos)
-	if !ok {
-		panic("wrong io qos type")
+	ioQos, exist := cd.qosMgr.GetQueueQos(ctx)
+	if exist {
+		return ioQos.Writer(ctx, writer)
 	}
-	return q.TryAcquireIO(ctx, uint64(cd.chunk.VolumeUnitId()), rwType)
-}
-
-func (cd *datafile) qosRelease(rwType qos.IOTypeRW) {
-	q, ok := cd.ioQos.(*qos.IoQueueQos)
-	if !ok {
-		return
-	}
-	q.ReleaseIO(uint64(cd.chunk.VolumeUnitId()), rwType)
+	return writer
 }
 
 type ShardReadCloser struct {

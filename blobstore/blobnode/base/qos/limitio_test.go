@@ -39,7 +39,7 @@ var (
 )
 
 func TestRateLimiter_Read(t *testing.T) {
-	bpsLimiter := rate.NewLimiter(rate.Limit(2*_mb), 2*(2*_mb))
+	limitBps := rate.NewLimiter(rate.Limit(2*_mb), 2*(2*_mb))
 	now := time.Now()
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -48,9 +48,9 @@ func TestRateLimiter_Read(t *testing.T) {
 		defer wg.Done()
 		buffer1 := make([]byte, bufferSize)
 		rc1 := &rateLimiter{
-			ctx:        context.TODO(),
-			reader:     bytes.NewReader(buffer1),
-			bpsLimiter: bpsLimiter,
+			ctx:    context.TODO(),
+			reader: bytes.NewReader(buffer1),
+			ctrl:   &queueQos{limitBps: limitBps},
 		}
 		b := make([]byte, bufferSize)
 		n, err := io.ReadFull(rc1, b)
@@ -62,9 +62,9 @@ func TestRateLimiter_Read(t *testing.T) {
 		defer wg.Done()
 		buffer2 := make([]byte, bufferSize)
 		rc2 := &rateLimiter{
-			ctx:        context.TODO(),
-			reader:     bytes.NewReader(buffer2),
-			bpsLimiter: bpsLimiter,
+			ctx:    context.TODO(),
+			reader: bytes.NewReader(buffer2),
+			ctrl:   &queueQos{limitBps: limitBps},
 		}
 		b := make([]byte, bufferSize)
 		n, err := io.ReadFull(rc2, b)
@@ -77,7 +77,7 @@ func TestRateLimiter_Read(t *testing.T) {
 }
 
 func TestRateLimiter_Write(t *testing.T) {
-	bpsLimiter := rate.NewLimiter(rate.Limit(2*_mb), 2*(2*_mb))
+	limitBps := rate.NewLimiter(rate.Limit(2*_mb), 2*(2*_mb))
 	now := time.Now()
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -86,9 +86,9 @@ func TestRateLimiter_Write(t *testing.T) {
 		defer wg.Done()
 		w := bytes.NewBuffer(nil)
 		wc := &rateLimiter{
-			ctx:        context.TODO(),
-			writer:     w,
-			bpsLimiter: bpsLimiter,
+			ctx:    context.TODO(),
+			writer: w,
+			ctrl:   &queueQos{limitBps: limitBps},
 		}
 		n, err := io.Copy(wc, bytes.NewReader(buffer))
 		require.NoError(t, err)
@@ -100,9 +100,9 @@ func TestRateLimiter_Write(t *testing.T) {
 		defer wg.Done()
 		w := bytes.NewBuffer(nil)
 		wc := &rateLimiter{
-			ctx:        context.TODO(),
-			writer:     w,
-			bpsLimiter: bpsLimiter,
+			ctx:    context.TODO(),
+			writer: w,
+			ctrl:   &queueQos{limitBps: limitBps},
 		}
 		n, err := io.Copy(wc, bytes.NewReader(buffer))
 		require.NoError(t, err)
@@ -115,13 +115,13 @@ func TestRateLimiter_Write(t *testing.T) {
 }
 
 func TestRateLimiter_Error(t *testing.T) {
-	bpsLimiter3 := rate.NewLimiter(rate.Limit(2*_mb), 3*_mb)
+	limitBps := rate.NewLimiter(rate.Limit(2*_mb), 3*_mb)
 	now := time.Now()
 	w := bytes.NewBuffer(nil)
 	wc := &rateLimiter{
-		ctx:        context.TODO(),
-		writer:     w,
-		bpsLimiter: bpsLimiter3,
+		ctx:    context.TODO(),
+		writer: w,
+		ctrl:   &queueQos{limitBps: limitBps},
 	}
 	n, err := io.Copy(wc, bytes.NewReader(buffer))
 	require.Error(t, err)
@@ -133,7 +133,7 @@ func TestRateLimiter_Error(t *testing.T) {
 }
 
 func TestRateLimiter_WriteAt(t *testing.T) {
-	bpsLimiter := rate.NewLimiter(rate.Limit(2*_mb), 2*(2*_mb))
+	limitBps := rate.NewLimiter(rate.Limit(2*_mb), 2*(2*_mb))
 	workDir, err := os.MkdirTemp(os.TempDir(), "workDir")
 	require.NoError(t, err)
 	defer os.RemoveAll(workDir)
@@ -144,9 +144,9 @@ func TestRateLimiter_WriteAt(t *testing.T) {
 	w, err := os.OpenFile(path1, os.O_CREATE|os.O_RDWR, 0o666)
 	require.NoError(t, err)
 	wc := &rateLimiter{
-		ctx:        context.TODO(),
-		writerAt:   w,
-		bpsLimiter: bpsLimiter,
+		ctx:      context.TODO(),
+		writerAt: w,
+		ctrl:     &queueQos{limitBps: limitBps},
 	}
 
 	now := time.Now()

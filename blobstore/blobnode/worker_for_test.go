@@ -234,7 +234,7 @@ func (getter *MockGetter) Delete(ctx context.Context, vuid proto.Vuid, bid proto
 	getter.vunits[vuid].delete(bid)
 }
 
-func (getter *MockGetter) StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *client.ShardInfo, err error) {
+func (getter *MockGetter) StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (si *client.ShardInfo, err error) {
 	getter.mu.Lock()
 	defer getter.mu.Unlock()
 	vuid := location.Vuid

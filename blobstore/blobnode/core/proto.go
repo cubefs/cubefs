@@ -165,7 +165,7 @@ type DiskAPI interface {
 	Stats() (stat DiskStats)
 	GetChunkStorage(vuid proto.Vuid) (cs ChunkAPI, found bool)
 	GetConfig() (config *Config)
-	GetIoQos() (ioQos qos.Qos)
+	GetIoQos() (ioQos *qos.QosMgr)
 	GetDataPath() (path string)
 	GetMetaPath() (path string)
 	SetStatus(status proto.DiskStatus)

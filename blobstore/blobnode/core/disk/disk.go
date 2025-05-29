@@ -255,7 +255,7 @@ type DiskStorage struct {
 	stats atomic.Value // *core.DiskStats
 
 	// DataQos (include io visualization function)
-	dataQos qos.Qos
+	dataQos *qos.QosMgr
 
 	// status
 	status       proto.DiskStatus
@@ -383,7 +383,7 @@ func (ds *DiskStorage) GetConfig() (config *core.Config) {
 	return ds.Conf
 }
 
-func (ds *DiskStorage) GetIoQos() (ioQos qos.Qos) {
+func (ds *DiskStorage) GetIoQos() (ioQos *qos.QosMgr) {
 	return ds.dataQos
 }
 
@@ -1034,7 +1034,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	conf.DataQos.StatGetter = dataIos
 	conf.DataQos.DiskViewer = diskView
 
-	dataQos, err := qos.NewIoQueueQos(conf.DataQos)
+	dataQos, err := qos.NewQosMgr(conf.DataQos)
 	if err != nil {
 		span.Errorf("Failed new io qos, err:%v", err)
 		return nil, err
@@ -1046,10 +1046,10 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		Host:      conf.HostInfo.Host,
 		DiskID:    uint32(dm.DiskID),
 	}
-	writePool := bncom.NewIOPool(conf.WriteThreadCnt, qos.MaxQueueDepth, bnapi.WriteIO.String(), metricConf)
-	readPool := bncom.NewIOPool(conf.ReadThreadCnt, qos.MaxQueueDepth, bnapi.ReadIO.String(), metricConf)
-	delPool := bncom.NewIOPool(conf.DeleteThreadCnt, qos.MaxQueueDepth, bnapi.DeleteIO.String(), metricConf)
-	backPool := bncom.NewIOPool(conf.BackgroundThreadCnt, qos.MaxQueueDepth, bnapi.BackgroundIO.String(), metricConf)
+	writePool := bncom.NewIOPool(conf.WriteThreadCnt, conf.WriteQueueDepth, bnapi.WriteIO.String(), metricConf)
+	readPool := bncom.NewIOPool(conf.ReadThreadCnt, conf.ReadQueueDepth, bnapi.ReadIO.String(), metricConf)
+	delPool := bncom.NewIOPool(conf.DeleteThreadCnt, conf.DeleteQueueDepth, bnapi.DeleteIO.String(), metricConf)
+	backPool := bncom.NewIOPool(conf.BackgroundThreadCnt, conf.BackgroundQueueDepth, bnapi.BackgroundIO.String(), metricConf)
 
 	ds = &DiskStorage{
 		DiskID:           dm.DiskID,

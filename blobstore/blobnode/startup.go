@@ -447,8 +447,6 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	span.Infof("registered disks are all in config")
 
 	svr.Conf = &conf
-	svr.DeleteQpsLimitPerDisk = keycount.New(conf.DeleteQpsLimitPerDisk)
-	svr.DeleteQpsLimitPerKey = keycount.NewBlockingKeyCountLimit(1)
 	svr.ChunkLimitPerVuid = keycount.New(1)
 	svr.DiskLimitRegister = keycount.New(1)
 	svr.InspectLimiterPerKey = keycount.New(1)

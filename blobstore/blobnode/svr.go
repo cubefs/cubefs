@@ -50,12 +50,10 @@ type Service struct {
 	inspectMgr *DataInspectMgr
 
 	// limiter
-	DeleteQpsLimitPerKey  limit.Limiter
-	DeleteQpsLimitPerDisk limit.ResettableLimiter
-	ChunkLimitPerVuid     limit.Limiter
-	DiskLimitRegister     limit.Limiter
-	InspectLimiterPerKey  limit.Limiter
-	BrokenLimitPerDisk    limit.Limiter
+	ChunkLimitPerVuid    limit.Limiter
+	DiskLimitRegister    limit.Limiter
+	InspectLimiterPerKey limit.Limiter
+	BrokenLimitPerDisk   limit.Limiter
 
 	RequestCount int64
 

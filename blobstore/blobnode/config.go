@@ -18,6 +18,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -25,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/cmd"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -40,8 +42,6 @@ const (
 	DefaultChunkGcIntervalSec          = 30 * 60      // 30 min
 	DefaultChunkProtectionPeriodSec    = 48 * 60 * 60 // 48 hour
 	DefaultDiskStatusCheckIntervalSec  = 2 * 60       // 2 min
-
-	DefaultDeleteQpsLimitPerDisk = 128
 
 	defaultInspectIntervalSec  = 24 * 60 * 60    // 24 hour
 	defaultInspectRate         = 4 * 1024 * 1024 // rate limit 4MB per second
@@ -75,8 +75,6 @@ type Config struct {
 	ChunkProtectionPeriodSec    int `json:"chunk_protection_period_S"`
 	CleanExpiredStatIntervalSec int `json:"clean_expired_stat_interval_S"`
 	DiskStatusCheckIntervalSec  int `json:"disk_status_check_interval_S"`
-
-	DeleteQpsLimitPerDisk int `json:"delete_qps_limit_per_disk"`
 
 	InspectConf DataInspectConf `json:"inspect_conf"`
 	StartMode   StartMode       `json:"start_mode"`
@@ -115,9 +113,6 @@ func configInit(config *Config) {
 		config.CleanExpiredStatIntervalSec = DefaultCleanExpiredStatIntervalSec
 	}
 
-	if config.DeleteQpsLimitPerDisk <= 0 {
-		config.DeleteQpsLimitPerDisk = DefaultDeleteQpsLimitPerDisk
-	}
 	defaulter.LessOrEqual(&config.InspectConf.IntervalSec, defaultInspectIntervalSec)
 	defaulter.LessOrEqual(&config.InspectConf.RateLimit, defaultInspectRate)
 	defaulter.LessOrEqual(&config.InspectConf.Record.ChunkBits, defaultInspectLogChunkSize)
@@ -134,15 +129,22 @@ func configInit(config *Config) {
 func (s *Service) changeLimit(ctx context.Context, c Config) {
 	span := trace.SpanFromContextSafe(ctx)
 	configInit(&c)
-	s.DeleteQpsLimitPerDisk.Reset(c.DeleteQpsLimitPerDisk)
 	span.Info("hot reload limit config success.")
 }
 
-func (s *Service) changeQos(ctx context.Context, c Config) error {
+func (s *Service) changeQos(ctx context.Context, c Config) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	qosConf := c.DiskConfig.DataQos
 	span.Infof("qos config:%v", qosConf)
-	return s.reloadQos(ctx, qosConf)
+
+	for _, ioType := range bnapi.GetAllIOType() {
+		levelConf := qosConf.FlowConf.Level[ioType]
+		if err = s.reloadLevelQos(ctx, ioType, levelConf); err != nil {
+			return err
+		}
+	}
+
+	return s.reloadDiskQos(ctx, qosConf.FlowConf.CommonDiskConfig)
 }
 
 func (s *Service) ConfigReload(c *rpc.Context) {
@@ -156,7 +158,23 @@ func (s *Service) ConfigReload(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("config reload args:%v", args)
 
-	err = s.reloadDataQos(ctx, args)
+	// e.g. /config/reload?key=level.read.concurrency&value=10
+	//      /config/reload?key=disk.disk_bandwidth_mb&value=128
+	splitKeys := strings.Split(args.Key, ".")
+	if len(splitKeys) < 2 {
+		c.RespondWith(http.StatusBadRequest, "", []byte(ErrNotSupportKey.Error()))
+		return
+	}
+
+	switch splitKeys[0] {
+	case "disk":
+		err = s.reloadDiskConf(ctx, splitKeys[1], args.Value)
+	case "level":
+		err = s.reloadQosLevelConf(ctx, args)
+	default:
+		err = ErrNotSupportKey
+	}
+
 	if err != nil {
 		c.RespondWith(http.StatusBadRequest, "", []byte(err.Error()))
 		return
@@ -180,44 +198,115 @@ func (s *Service) ConfigGet(c *rpc.Context) {
 	c.RespondJSON(ret)
 }
 
-func (s *Service) reloadDataQos(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
+func (s *Service) reloadDiskConf(ctx context.Context, diskKey, diskVal string) (err error) {
 	qosConf := &s.Conf.DiskConfig.DataQos
-	value, err := strconv.ParseInt(args.Value, 10, 64)
-	if err != nil {
-		return ErrValueType
-	}
-	if value <= 0 || value > 10000 {
-		return ErrValueOutOfLimit
+	if err = qos.FixQosConfigHotReset(qosConf); err != nil {
+		return err
 	}
 
-	switch args.Key {
-	case "read_mbps":
-		qosConf.ReadMBPS = value
-	case "write_mbps":
-		qosConf.WriteMBPS = value
-	case "background_mbps":
-		qosConf.BackgroundMBPS = value
-	case "read_discard":
-		qosConf.ReadDiscard = int32(value)
-	case "write_discard":
-		qosConf.WriteDiscard = int32(value)
-	case "read_queue_depth":
-		qosConf.ReadQueueDepth = int32(value)
-	case "write_queue_depth":
-		qosConf.WriteQueueDepth = int32(value)
-	case "delete_queue_depth":
-		qosConf.DeleteQueueDepth = int32(value)
+	switch diskKey {
+	case "disk_bandwidth_mb":
+		if qosConf.FlowConf.DiskBandwidthMB, err = parseQosArgsInt(diskVal); err != nil {
+			return err
+		}
+	case "idle_factor":
+		if qosConf.FlowConf.IdleFactor, err = parseQosArgsFloat(diskVal); err != nil {
+			return err
+		}
 	default:
 		return ErrNotSupportKey
 	}
 
-	return s.reloadQos(ctx, *qosConf)
+	return s.reloadDiskQos(ctx, qosConf.FlowConf.CommonDiskConfig)
 }
 
-func (s *Service) reloadQos(ctx context.Context, qosConf qos.Config) error {
+func (s *Service) reloadDiskQos(ctx context.Context, diskConf qos.CommonDiskConfig) (err error) {
 	disks := s.copyDiskStorages(ctx)
 	for _, ds := range disks {
-		ds.GetIoQos().ResetQosLimit(qosConf)
+		qosMgr := ds.GetIoQos()
+		for tp := range bnapi.GetAllIOType() {
+			ioQ, exist := qosMgr.GetQueueQos(bnapi.SetIoType(ctx, bnapi.IOType(tp)))
+			if !exist {
+				return errcode.ErrInternal
+			}
+			ioQ.ResetDiskLimit(diskConf)
+		}
 	}
 	return nil
+}
+
+func (s *Service) reloadQosLevelConf(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
+	splitKeys := strings.Split(args.Key, ".")
+	if len(splitKeys) < 3 {
+		return ErrNotSupportKey
+	}
+
+	qosConf := &s.Conf.DiskConfig.DataQos
+	if err = qos.FixQosConfigHotReset(qosConf); err != nil {
+		return err
+	}
+
+	levelName, field := splitKeys[1], splitKeys[2]
+	if !bnapi.StringToIOType(levelName).IsValid() {
+		return ErrNotSupportKey
+	}
+
+	var value int64
+	paraConf := qosConf.FlowConf.Level[levelName]
+	if field != "factor" {
+		if value, err = parseQosArgsInt(args.Value); err != nil {
+			return err
+		}
+	}
+
+	switch field {
+	case "mbps":
+		paraConf.MBPS = value
+	case "concurrency":
+		paraConf.Concurrency = value
+	case "factor":
+		if paraConf.Factor, err = parseQosArgsFloat(args.Value); err != nil {
+			return err
+		}
+	default:
+		return ErrNotSupportKey
+	}
+
+	return s.reloadLevelQos(ctx, levelName, paraConf)
+}
+
+func (s *Service) reloadLevelQos(ctx context.Context, level string, levelConf qos.LevelFlowConfig) (err error) {
+	ioType := bnapi.StringToIOType(level)
+	disks := s.copyDiskStorages(ctx)
+
+	for _, ds := range disks {
+		ioQ, exist := ds.GetIoQos().GetQueueQos(bnapi.SetIoType(ctx, ioType))
+		if !exist {
+			return errcode.ErrInternal
+		}
+		ioQ.ResetLevelLimit(levelConf)
+	}
+	return nil
+}
+
+func parseQosArgsInt(value string) (int64, error) {
+	ret, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, ErrValueType
+	}
+	if ret <= 0 || ret > 10000 {
+		return 0, ErrValueOutOfLimit
+	}
+	return ret, nil
+}
+
+func parseQosArgsFloat(value string) (float64, error) {
+	ret, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, ErrValueType
+	}
+	if ret <= 0 || ret > 1 {
+		return 0, ErrValueOutOfLimit
+	}
+	return ret, nil
 }

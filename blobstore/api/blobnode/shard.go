@@ -263,6 +263,7 @@ type StatShardArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 	Vuid   proto.Vuid   `json:"vuid"`
 	Bid    proto.BlobID `json:"bid"`
+	Type   IOType       `json:"iotype,omitempty"`
 }
 
 func (c *client) StatShard(ctx context.Context, host string, args *StatShardArgs) (si *ShardInfo, err error) {
@@ -271,8 +272,8 @@ func (c *client) StatShard(ctx context.Context, host string, args *StatShardArgs
 		return
 	}
 
-	urlStr := fmt.Sprintf("%v/shard/stat/diskid/%v/vuid/%v/bid/%v",
-		host, args.DiskID, args.Vuid, args.Bid)
+	urlStr := fmt.Sprintf("%v/shard/stat/diskid/%v/vuid/%v/bid/%v?iotype=%d",
+		host, args.DiskID, args.Vuid, args.Bid, args.Type)
 	si = &ShardInfo{}
 	err = c.GetWith(ctx, urlStr, si)
 

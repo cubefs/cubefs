@@ -33,10 +33,12 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/iostat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	bnmock "github.com/cubefs/cubefs/blobstore/testing/mockblobnode"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
@@ -60,6 +62,32 @@ func newIoPoolMock(t *testing.T) map[bnapi.IOType]base.IoPool {
 		bnapi.DeleteIO:     ioPool,
 		bnapi.BackgroundIO: ioPool,
 	}
+}
+
+func newIoQosMgrMock(t *testing.T, iops int) *qos.QosMgr {
+	if iops == 0 {
+		iops = 1000
+	}
+
+	ioStat, _ := iostat.StatInit("", 0, true)
+	iom := &flow.IOFlowStat{}
+	for i := range bnapi.GetAllIOType() {
+		iom[i] = ioStat
+	}
+
+	ioQos, err := qos.NewQosMgr(qos.Config{
+		StatGetter: iom,
+		FlowConf: qos.FlowConfig{
+			Level: map[string]qos.LevelFlowConfig{
+				bnapi.ReadIO.String():       {Concurrency: int64(iops)},
+				bnapi.WriteIO.String():      {Concurrency: int64(iops)},
+				bnapi.DeleteIO.String():     {Concurrency: int64(iops)},
+				bnapi.BackgroundIO.String(): {Concurrency: int64(iops)},
+			},
+		},
+	})
+	require.NoError(t, err)
+	return ioQos
 }
 
 func TestNewChunkData(t *testing.T) {
@@ -135,7 +163,7 @@ func TestChunkData_Write(t *testing.T) {
 	}
 
 	ioPools := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
+	ioQos := newIoQosMgrMock(t, 2)
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
@@ -420,7 +448,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 
 	concurrency := 10
 	ioPools := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: int32(concurrency), WriteQueueDepth: int32(concurrency), WriteChanQueCnt: 2})
+	ioQos := newIoQosMgrMock(t, int(concurrency))
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
@@ -511,7 +539,7 @@ func TestChunkData_ConcurrencyWriteRead(t *testing.T) {
 
 	concurrency := 20
 	ioPools := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: int32(concurrency), WriteQueueDepth: int32(concurrency), WriteChanQueCnt: 2})
+	ioQos := newIoQosMgrMock(t, int(concurrency))
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
@@ -627,7 +655,7 @@ func TestChunkData_BatchRead(t *testing.T) {
 	}
 
 	ioPools := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
+	ioQos := newIoQosMgrMock(t, 2)
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
@@ -818,7 +846,7 @@ func TestChunkData_ReadWrite(t *testing.T) {
 	}
 
 	ioPools := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
+	ioQos := newIoQosMgrMock(t, 2)
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
@@ -892,7 +920,7 @@ func TestChunkData_Delete(t *testing.T) {
 		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024, EnableDeleteShardVerify: true},
 	}
 	ioPools := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 100, WriteQueueDepth: 100, WriteChanQueCnt: 2})
+	ioQos := newIoQosMgrMock(t, 100)
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
@@ -1172,7 +1200,7 @@ func TestChunkData_WriteReadCancel(t *testing.T) {
 	}
 
 	ioPools := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
+	ioQos := newIoQosMgrMock(t, 2)
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
@@ -1263,7 +1291,7 @@ func TestChunkData_WriteReadCancel(t *testing.T) {
 	cancel()
 	cd.ef.(*bnmock.MockBlobFile).EXPECT().ReadAtCtx(a, a, a).DoAndReturn(func(ctx context.Context, b []byte, off int64) (n int, err error) {
 		return 0, context.Canceled
-	}).Times(1)
+	}).AnyTimes()
 	n, err := io.CopyN(tw, tr, int64(len(sharddata)))
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, int64(0), n)

@@ -808,11 +808,13 @@ func TestShardDeleteConcurrency(t *testing.T) {
 
 	var alreayDelCnt int
 	for _, e := range errList {
-		if e != nil && e.Error() == bloberr.ErrShardMarkDeleted.Error() {
+		if e != nil && (e.Error() == bloberr.ErrShardMarkDeleted.Error() || e.Error() == bloberr.ErrOverload.Error()) {
 			alreayDelCnt++
 		}
 	}
-	require.Equal(t, 29, alreayDelCnt)
+
+	// one mark delete success, others failed
+	require.Equal(t, concurrency-1, alreayDelCnt)
 }
 
 func TestShardRangeGet(t *testing.T) {
@@ -960,7 +962,8 @@ func TestShardGetConcurrency(t *testing.T) {
 				GetShardArgs: bnapi.GetShardArgs{
 					DiskID: diskID,
 					Vuid:   vuid,
-					Bid:    bid,
+					Bid:    key,
+					Type:   bnapi.ReadIO,
 				},
 				Offset: 0,
 				Size:   int64(len(shardData)),
@@ -970,7 +973,7 @@ func TestShardGetConcurrency(t *testing.T) {
 				body.Close() // release connection
 			}
 			errChan <- err
-		}(bid)
+		}(i)
 	}
 	wg.Wait()
 

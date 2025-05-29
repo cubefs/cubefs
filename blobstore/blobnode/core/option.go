@@ -24,7 +24,7 @@ type Option struct {
 	DB               db.MetaHandler
 	Disk             DiskAPI
 	Conf             *Config
-	IoQos            qos.Qos
+	IoQos            *qos.QosMgr
 	CreateDataIfMiss bool
 }
 

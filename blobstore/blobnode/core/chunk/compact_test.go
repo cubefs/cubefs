@@ -45,7 +45,7 @@ type diskMock struct {
 	dataPath string
 	metaPath string
 	stats    core.DiskStats
-	ioQos    qos.Qos
+	ioQos    *qos.QosMgr
 	status   proto.DiskStatus
 }
 
@@ -73,7 +73,7 @@ func (mock *diskMock) GetConfig() (config *core.Config) {
 	return mock.conf
 }
 
-func (mock *diskMock) GetIoQos() (ioQos qos.Qos) {
+func (mock *diskMock) GetIoQos() (ioQos *qos.QosMgr) {
 	return mock.ioQos
 }
 
@@ -180,8 +180,7 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 		},
 	}
 	ioPools := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 300, WriteQueueDepth: 300, WriteChanQueCnt: 2})
-	defer ioQos.Close()
+	ioQos := newIoQosMgrMock(t, 300)
 	chunk, err := NewChunkStorage(ctx, dataPath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = dbHandler

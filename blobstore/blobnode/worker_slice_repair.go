@@ -268,7 +268,7 @@ func (repairer *ShardRepairer) listShardsInfo(ctx context.Context, repls []proto
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			si, err := repairer.cli.StatShard(ctx, location, bid)
+			si, err := repairer.cli.StatShard(ctx, location, bid, api.BackgroundIO)
 			if err == nil {
 				shardInfos[idx] = &ShardInfoEx{err: nil, info: si}
 			} else {
