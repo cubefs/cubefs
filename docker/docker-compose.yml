@@ -1,3 +1,4 @@
+version: '2.1'
 
 x-define-image: &image
     image: ${IMAGE}
@@ -56,6 +57,15 @@ x-define-flashnode: &flashnode
         - "17520"
         - 9500
 
+x-define-flashgroupmaster: &flashgroupmaster
+    <<: *servernode
+    ports:
+        - "5901"
+        - "5902"
+        - "17010"
+        - "17020"
+        - 9500
+
 x-define-command: &command
     <<: [*image, *env]
     volumes:
@@ -102,6 +112,7 @@ services:
             - flashnode1
             - flashnode2
             - flashnode3
+            - flashgroupmaster1
             - console1
             - nginx
         networks:
@@ -323,6 +334,17 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.73
+    flashgroupmaster1:
+        <<: *flashgroupmaster
+        volumes:
+            - ${DiskPath:-./docker_data}/flashgroupmaster1/data:/cfs/data
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/flashgroupmaster1/log:/cfs/log
+            - ./conf/flashgroupmaster1.json:/cfs/conf/flashgroupmaster.json
+            - ./script/start_flashgroupmaster.sh:/cfs/script/start.sh
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.81
 
     console1:
         <<: *servernode
