@@ -154,7 +154,7 @@ func (mp *MetaPartition) checkDentryCount(c *Cluster) (isEqual bool) {
 	if !isEqual {
 		msg := fmt.Sprintf("dentry count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			lrMsg := fmt.Sprintf(msg+lr.Addr, "applyId[%d],committedId[%d],dentryCount[%d]", lr.ApplyID, lr.CommittedID, lr.DentryCount)
+			lrMsg := fmt.Sprintf(msg+"addr[%s],applyId[%d],committedId[%d],dentryCount[%d]", lr.Addr, lr.ApplyID, lr.CommittedID, lr.DentryCount)
 			Warn(c.Name, lrMsg)
 		}
 		c.dentryCountNotEqualMP.Store(mp.PartitionID, mp)
