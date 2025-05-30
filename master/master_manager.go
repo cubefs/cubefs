@@ -52,6 +52,8 @@ func (m *Server) handleLeaderChange(leader uint64) {
 	log.LogWarnf("action[handleLeaderChange] current id [%v] new leader addr [%v] leader id [%v]", m.id, m.leaderInfo.addr, leader)
 	m.reverseProxy = m.newReverseProxy()
 
+	m.metaReady = false
+	m.cluster.metaReady = false
 	if m.id == leader {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] current is leader, leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
