@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
@@ -258,7 +259,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 					continue
 				}
 
-				toRead := minU64(toReadSize, l-off)
+				toRead := util.Min(toReadSize, l-off)
 				if _, e := w.Write(buf[off : off+toRead]); e != nil {
 					err = errors.Info(e, "write to response")
 					break
@@ -607,7 +608,7 @@ func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,
 			break
 		}
 
-		toReadSize := minU64(remainSize, uint64(shardSize-shardOffset))
+		toReadSize := util.Min(remainSize, uint64(shardSize-shardOffset))
 		args := blobnode.RangeGetShardArgs{
 			GetShardArgs: blobnode.GetShardArgs{
 				DiskID: shard.DiskID,
@@ -791,10 +792,10 @@ func genLocationBlobs(location *proto.Location, readSize uint64, offset uint64) 
 			}
 
 			if idx >= firstBlobIdx {
-				toReadSize := minU64(remainSize, blobSize-blobOffset)
+				toReadSize := util.Min(remainSize, blobSize-blobOffset)
 				if toReadSize > 0 {
 					// update the last blob size
-					fixedBlobSize := minU64(location.Size_-idx*blobSize, blobSize)
+					fixedBlobSize := util.Min(location.Size_-idx*blobSize, blobSize)
 
 					sizes, _ := ec.GetBufferSizes(int(fixedBlobSize), tactic)
 					shardSize := sizes.ShardSize

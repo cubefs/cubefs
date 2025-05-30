@@ -26,6 +26,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUtilMath(t *testing.T) {
+	require.True(t, Max(1, math.Inf(1)) == math.Inf(1))
+	require.True(t, Max(-1, math.Inf(-1)) == -1)
+	require.True(t, Max(math.Inf(-1), math.Inf(1)) == math.Inf(1))
+	require.True(t, math.IsNaN(Max(1, math.NaN())))
+
+	require.True(t, Min(1, math.Inf(1)) == 1)
+	require.True(t, Min(-1, math.Inf(-1)) == math.Inf(-1))
+	require.True(t, Min(math.Inf(-1), math.Inf(1)) == math.Inf(-1))
+	require.True(t, math.IsNaN(Max(1, math.NaN())))
+
+	require.True(t, Max[uint16](33, 44) == 44)
+	require.True(t, Min[int8](33, 44) == 33)
+	require.True(t, Max[int32](33, 33) == Min[int32](33, 33))
+}
+
 func TestGenTmpPath(t *testing.T) {
 	path, err := GenTmpPath()
 	require.NoError(t, err)

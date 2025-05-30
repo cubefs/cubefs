@@ -23,3 +23,17 @@ type Integer interface {
 		~int | ~int8 | ~int16 | ~int32 | ~int64 |
 		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
 }
+
+func Max[T Float | Integer](x, y T) T {
+	if x > y {
+		return x
+	}
+	return y
+}
+
+func Min[T Float | Integer](x, y T) T {
+	if x < y {
+		return x
+	}
+	return y
+}

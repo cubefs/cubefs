@@ -26,6 +26,7 @@ import (
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
@@ -189,7 +190,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 			break
 		}
 
-		count := minU64(blobN, uint64(bidRet.BidEnd)-uint64(bidRet.BidStart)+1)
+		count := util.Min(blobN, uint64(bidRet.BidEnd)-uint64(bidRet.BidStart)+1)
 		blobN -= count
 
 		blobs = append(blobs, proto.Slice{

@@ -539,13 +539,6 @@ func blobCount(size uint64, blobSize uint32) uint64 {
 	return (size + uint64(blobSize) - 1) / uint64(blobSize)
 }
 
-func minU64(a, b uint64) uint64 {
-	if a <= b {
-		return a
-	}
-	return b
-}
-
 func errorTimeout(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "Timeout") || strings.Contains(msg, "timeout")
