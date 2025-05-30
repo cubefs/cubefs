@@ -40,6 +40,7 @@ import (
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/objectnode"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/remotecache/flashgroupmaster"
 	"github.com/cubefs/cubefs/remotecache/flashnode"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/config"
@@ -67,25 +68,27 @@ const (
 )
 
 const (
-	RoleMaster    = "master"
-	RoleMeta      = "metanode"
-	RoleData      = "datanode"
-	RoleAuth      = "authnode"
-	RoleObject    = "objectnode"
-	RoleConsole   = "console"
-	RoleLifeCycle = "lcnode"
-	RoleFlash     = "flashnode"
+	RoleMaster           = "master"
+	RoleMeta             = "metanode"
+	RoleData             = "datanode"
+	RoleAuth             = "authnode"
+	RoleObject           = "objectnode"
+	RoleConsole          = "console"
+	RoleLifeCycle        = "lcnode"
+	RoleFlash            = "flashnode"
+	RoleFlashGroupMaster = "flashgroupmaster"
 )
 
 const (
-	ModuleMaster    = "master"
-	ModuleMeta      = "metaNode"
-	ModuleData      = "dataNode"
-	ModuleAuth      = "authNode"
-	ModuleObject    = "objectNode"
-	ModuleConsole   = "console"
-	ModuleLifeCycle = "lcnode"
-	ModuleFlash     = "flashNode"
+	ModuleMaster           = "master"
+	ModuleMeta             = "metaNode"
+	ModuleData             = "dataNode"
+	ModuleAuth             = "authNode"
+	ModuleObject           = "objectNode"
+	ModuleConsole          = "console"
+	ModuleLifeCycle        = "lcnode"
+	ModuleFlash            = "flashNode"
+	ModuleFlashGroupMaster = "flashNodeGroupMaster"
 )
 
 const (
@@ -224,6 +227,9 @@ func main() {
 	case RoleFlash:
 		server = flashnode.NewFlashNode()
 		module = ModuleFlash
+	case RoleFlashGroupMaster:
+		server = flashgroupmaster.NewFlashGroupMaster()
+		module = ModuleFlashGroupMaster
 	default:
 		err = errors.NewErrorf("Fatal: role mismatch: %s", role)
 		fmt.Println(err)
