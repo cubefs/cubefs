@@ -192,9 +192,11 @@ func genTokens(location *proto.Location) []string {
 			if idx == len(location.Slices)-1 && lastSize > 0 {
 				count--
 			}
-			tokens = append(tokens, EncodeToken(NewUploadToken(location.ClusterID,
-				blob.Vid, blob.MinSliceID, count,
-				location.SliceSize, _tokenExpiration, tokenSecretKeys[0][:])))
+			if count > 0 {
+				tokens = append(tokens, EncodeToken(NewUploadToken(location.ClusterID,
+					blob.Vid, blob.MinSliceID, count,
+					location.SliceSize, _tokenExpiration, tokenSecretKeys[0][:])))
+			}
 		}
 
 		// token of the last blob

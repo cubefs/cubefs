@@ -528,8 +528,11 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	}
 
 	if err != nil {
-		if err == errPunishedDisk || err == errCanceledReadShard {
+		if err == errPunishedDisk {
 			span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
+			return shardResult
+		}
+		if err == errCanceledReadShard {
 			return shardResult
 		}
 		span.Warnf("rpc read %s on %s: %s", blob.ID(), vuid.ID(), errors.Detail(err))
