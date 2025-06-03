@@ -505,11 +505,13 @@ func (mgr *BlobDeleteMgr) consume(item *delBlobRet, consumerPause base.ConsumerP
 
 	// if message retry times is greater than MessagePunishThreshold while sleep MessagePunishTimeM minutes
 	if item.delMsg.Retry >= mgr.cfg.MessagePunishThreshold {
-		span.Warnf("punish message for a while: until[%+v], sleep[%+v], retry[%d]",
-			time.Now().Add(mgr.punishTime), mgr.punishTime, item.delMsg.Retry)
-		if ok := sleep(mgr.punishTime, consumerPause); !ok {
-			item.status = DeleteStatusUndo
-			return
+		if mgr.hasNotAllowModifyChunk(item.delMsg.Vid) {
+			span.Warnf("punish message for a while: until[%+v], sleep[%+v], retry[%d]",
+				time.Now().Add(mgr.punishTime), mgr.punishTime, item.delMsg.Retry)
+			if ok := sleep(mgr.punishTime, consumerPause); !ok {
+				item.status = DeleteStatusUndo
+				return
+			}
 		}
 	}
 	now := time.Now().UTC()
@@ -699,11 +701,18 @@ func (mgr *BlobDeleteMgr) deleteShard(ctx context.Context, location proto.VunitL
 
 	if err != nil {
 		errCode = rpc.DetectStatusCode(err)
-		if assumeDeleteSuccess(errCode) {
+		if errCode == errcode.CodeChunkCompacting || errCode == errcode.CodeVUIDReadonly {
+			mgr.clusterTopology.UpdateVolumeChunk(location.Vuid.Vid(), location.Vuid.Index(), errCode)
+		}
+	}
+
+	if assumeDeleteSuccess(errCode) || errCode == 0 {
+		mgr.clusterTopology.DeleteVolumeChunk(location.Vuid.Vid(), location.Vuid.Index())
+		if errCode != 0 {
 			span.Debugf("delete bid failed but assume success: bid[%d], location[%+v], err[%+v] ",
 				bid, location, err)
-			return nil
 		}
+		return nil
 	}
 
 	return
@@ -764,6 +773,20 @@ func (mgr *BlobDeleteMgr) hasBrokenDisk(vid proto.Vid) bool {
 		if mgr.clusterTopology.IsBrokenDisk(unit.DiskID) {
 			return true
 		}
+	}
+	return false
+}
+
+// for chunk compacting or migrating
+func (mgr *BlobDeleteMgr) hasNotAllowModifyChunk(vid proto.Vid) bool {
+	chunks, exist := mgr.clusterTopology.GetVolumeChunk(vid)
+	if exist {
+		chunks.RLock()
+		if len(chunks.m) > 0 {
+			chunks.RUnlock()
+			return true
+		}
+		chunks.RUnlock()
 	}
 	return false
 }
