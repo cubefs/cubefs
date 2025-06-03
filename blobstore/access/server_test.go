@@ -573,6 +573,15 @@ func TestAccessServiceTokens(t *testing.T) {
 			return
 		}
 
+		if loc.Slices[len(loc.Slices)-1].Count == 1 {
+			require.Equal(t, len(loc.Slices), len(tokens))
+			idx := len(loc.Slices) - 1
+			blob := loc.Slices[idx]
+			token := security.DecodeToken(tokens[idx])
+			require.True(t, token.IsValid(loc.ClusterID, blob.Vid, blob.MinSliceID, lastSize, skey))
+			return
+		}
+
 		require.Equal(t, len(loc.Slices)+1, len(tokens))
 		for ii := 0; ii < len(loc.Slices)-1; ii++ {
 			token := security.DecodeToken(tokens[ii])
