@@ -1,4 +1,4 @@
-package flashgroupmaster
+package flashgroupmanager
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func (m *FlashGroupMaster) startHTTPService(modulename string, cfg *config.Config) {
+func (m *FlashGroupManager) startHTTPService(modulename string, cfg *config.Config) {
 	router := mux.NewRouter().SkipClean(true)
 	m.registerAPIRoutes(router)
 	//m.registerAPIMiddleware(router)
@@ -39,7 +39,7 @@ func (m *FlashGroupMaster) startHTTPService(modulename string, cfg *config.Confi
 	m.apiServer = server
 }
 
-func (m *FlashGroupMaster) registerAPIRoutes(router *mux.Router) {
+func (m *FlashGroupManager) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetCluster).
 		HandlerFunc(m.getCluster)
@@ -50,10 +50,25 @@ func (m *FlashGroupMaster) registerAPIRoutes(router *mux.Router) {
 		Methods(http.MethodGet).
 		Path(proto.AdminGetIP).
 		HandlerFunc(m.getIPAddr)
+
+	// APIs for FlashGroup
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupTurn).HandlerFunc(m.turnFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupCreate).HandlerFunc(m.createFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupSet).HandlerFunc(m.setFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupRemove).HandlerFunc(m.removeFlashGroup)
+	//router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupNodeAdd).HandlerFunc(m.flashGroupAddFlashNode)
+	//router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupNodeRemove).HandlerFunc(m.flashGroupRemoveFlashNode)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashGroupGet).HandlerFunc(m.getFlashGroup)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashGroupList).HandlerFunc(m.listFlashGroups)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.ClientFlashGroups).HandlerFunc(m.clientFlashGroups)
+
+	// APIs for FlashNode
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeAdd).HandlerFunc(m.addFlashNode)
+
 }
 
 //TODO
-//func (m *FlashGroupMaster) registerAPIMiddleware(route *mux.Router) {
+//func (m *FlashGroupManager) registerAPIMiddleware(route *mux.Router) {
 //	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
 //		return http.HandlerFunc(
 //			func(w http.ResponseWriter, r *http.Request) {
