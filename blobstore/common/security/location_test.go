@@ -181,6 +181,51 @@ func TestAccessServiceLocationSignCrc(t *testing.T) {
 	}
 }
 
+func TestAccessServiceTokenLast(t *testing.T) {
+	{
+		loc := &proto.Location{
+			ClusterID: 1,
+			Size_:     4097,
+			SliceSize: 1024,
+			Slices: []proto.Slice{{
+				MinSliceID: 11,
+				Vid:        100,
+				Count:      4,
+			}, {
+				MinSliceID: 22,
+				Vid:        200,
+				Count:      1,
+			}},
+		}
+
+		tokens := genTokens(loc)
+		require.Equal(t, 2, len(tokens))
+
+		token := DecodeToken(tokens[0])
+		require.True(t, token.IsValid(1, 100, 11, 1024, TokenSecretKeys()[0][:]))
+		token = DecodeToken(tokens[1])
+		require.True(t, token.IsValid(1, 200, 22, 1, TokenSecretKeys()[0][:]))
+	}
+	{
+		loc := &proto.Location{
+			ClusterID: 1,
+			Size_:     4096,
+			SliceSize: 1024,
+			Slices: []proto.Slice{{
+				MinSliceID: 11,
+				Vid:        100,
+				Count:      4,
+			}},
+		}
+
+		tokens := genTokens(loc)
+		require.Equal(t, 1, len(tokens))
+
+		token := DecodeToken(tokens[0])
+		require.True(t, token.IsValid(1, 100, 11, 1024, TokenSecretKeys()[0][:]))
+	}
+}
+
 func calcCrcWithoutMagic(loc *proto.Location) (uint32, error) {
 	crcWriter := crc32.New(_crcTable)
 
