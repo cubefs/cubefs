@@ -1,4 +1,4 @@
-package flashgroupmaster
+package flashgroupmanager
 
 const (
 	defaultFlashNodeHandleReadTimeout   = 1000

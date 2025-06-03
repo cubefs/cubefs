@@ -1,4 +1,4 @@
-package flashgroupmaster
+package flashgroupmanager
 
 import (
 	"encoding/json"

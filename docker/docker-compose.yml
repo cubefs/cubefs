@@ -57,7 +57,7 @@ x-define-flashnode: &flashnode
         - "17520"
         - 9500
 
-x-define-flashgroupmaster: &flashgroupmaster
+x-define-flashgroupmanager: &flashgroupmanager
     <<: *servernode
     ports:
         - "5901"
@@ -112,7 +112,7 @@ services:
             - flashnode1
             - flashnode2
             - flashnode3
-            - flashgroupmaster1
+            - flashgroupmanager1
             - console1
             - nginx
         networks:
@@ -334,14 +334,14 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.73
-    flashgroupmaster1:
-        <<: *flashgroupmaster
+    flashgroupmanager1:
+        <<: *flashgroupmanager
         volumes:
-            - ${DiskPath:-./docker_data}/flashgroupmaster1/data:/cfs/data
+            - ${DiskPath:-./docker_data}/flashgroupmanager1/data:/cfs/data
             - ./bin:/cfs/bin:ro
-            - ${DiskPath:-./docker_data}/flashgroupmaster1/log:/cfs/log
-            - ./conf/flashgroupmaster1.json:/cfs/conf/flashgroupmaster.json
-            - ./script/start_flashgroupmaster.sh:/cfs/script/start.sh
+            - ${DiskPath:-./docker_data}/flashgroupmanager1/log:/cfs/log
+            - ./conf/flashgroupmanager1.json:/cfs/conf/flashgroupmanager.json
+            - ./script/start_flashgroupmanager.sh:/cfs/script/start.sh
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.81
