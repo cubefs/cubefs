@@ -113,12 +113,28 @@ func (i *Inode) GetExtents() *SortedExtents {
 		return NewSortedExtents()
 	}
 
-	if proto.IsStorageClassReplica(i.StorageClass) && i.HybridCloudExtents.sortedEks != nil {
+	if proto.IsStorageClassReplica(i.StorageClass) &&
+		i.HybridCloudExtents != nil &&
+		i.HybridCloudExtents.sortedEks != nil {
 		return i.HybridCloudExtents.sortedEks.(*SortedExtents)
 	}
 
-	i.HybridCloudExtents.sortedEks = NewSortedExtents()
-	return i.HybridCloudExtents.sortedEks.(*SortedExtents)
+	return NewSortedExtents()
+}
+
+func (i *Inode) GetExtentEks() []proto.ExtentKey {
+	var eks []proto.ExtentKey
+
+	if proto.IsStorageClassBlobStore(i.StorageClass) {
+		return eks
+	}
+
+	if proto.IsStorageClassReplica(i.StorageClass) && i.HybridCloudExtents != nil &&
+		i.HybridCloudExtents.sortedEks != nil {
+		return i.HybridCloudExtents.sortedEks.(*SortedExtents).eks
+	}
+
+	return eks
 }
 
 func (i *Inode) GetMultiVerString() string {
@@ -426,7 +442,7 @@ func (ino *Inode) getAllLayerEks() (rsp []proto.LayerInfo) {
 	layerInfo := proto.LayerInfo{
 		LayerIdx: 0,
 		Info:     rspInodeInfo,
-		Eks:      ino.GetExtents().eks,
+		Eks:      ino.GetExtentEks(),
 	}
 	rsp = append(rsp, layerInfo)
 	// TODO:support hybrid-cloud
@@ -436,7 +452,7 @@ func (ino *Inode) getAllLayerEks() (rsp []proto.LayerInfo) {
 		layerInfo := proto.LayerInfo{
 			LayerIdx: uint32(idx + 1),
 			Info:     rspInodeInfo,
-			Eks:      info.GetExtents().eks,
+			Eks:      info.GetExtentEks(),
 		}
 		rsp = append(rsp, layerInfo)
 		return true
@@ -1510,6 +1526,10 @@ func (i *Inode) MultiLayerClearExtByVer(layer int, dVerSeq uint64) (delExtents [
 	}
 
 	extents := ino.GetExtents()
+	if extents.IsEmpty() {
+		return
+	}
+
 	extents.Lock()
 	defer extents.Unlock()
 
@@ -1599,7 +1619,20 @@ func (i *Inode) RestoreExts2NextLayer(mpId uint64, delExtentsOrigin []proto.Exte
 		return
 	}
 
-	extents := i.multiSnap.multiVersions[idx].GetExtents()
+	if proto.IsStorageClassBlobStore(i.StorageClass) {
+		return nil, fmt.Errorf("not support blobstore %d", i.Inode)
+	}
+
+	extents := NewSortedExtents()
+	vIno := i.multiSnap.multiVersions[idx]
+	if vIno.HybridCloudExtents == nil {
+		vIno.HybridCloudExtents = NewSortedHybridCloudExtents()
+	}
+	if vIno.HybridCloudExtents.sortedEks != nil {
+		extents = vIno.HybridCloudExtents.sortedEks.(*SortedExtents)
+	} else {
+		vIno.HybridCloudExtents.sortedEks = extents
+	}
 
 	extents.Lock()
 	extents.eks = i.mergeExtentArr(mpId, extents.eks, specSnapExtent)
@@ -1624,13 +1657,13 @@ func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlis
 		}
 		// first layer need delete
 		var err error
-		if ext2Del, err = inode.RestoreExts2NextLayer(mpId, inode.GetExtents().eks, mpVer, 0); err != nil {
+		if ext2Del, err = inode.RestoreExts2NextLayer(mpId, inode.GetExtentEks(), mpVer, 0); err != nil {
 			log.LogErrorf("action[getAndDelVerInList] ino[%v] RestoreMultiSnapExts split error %v", inode.Inode, err)
 			status = proto.OpNotExistErr
 			log.LogDebugf("action[unlinkTopLayer] mp[%v] iino[%v]", mpId, ino)
 			return
 		}
-		inode.GetExtents().eks = inode.GetExtents().eks[:0]
+		inode.HybridCloudExtents = NewSortedHybridCloudExtentsExt(NewSortedExtents())
 		log.LogDebugf("action[getAndDelVerInList] mp[%v] ino[%v] verseq [%v] get del exts %v", mpId, inode.Inode, inode.getVer(), ext2Del)
 		inode.DecNLink() // dIno should be inode
 		doMore = true
@@ -1940,7 +1973,7 @@ func (i *Inode) getAndDelVerInList(mpId uint64, dVer uint64, mpVer uint64, verli
 			if i.isTailIndexInList(id) {
 				i.multiSnap.multiVersions = i.multiSnap.multiVersions[:inoVerLen-1]
 				log.LogDebugf("action[getAndDelVerInList] ino[%v] idx %v be dropped", i.Inode, inoVerLen)
-				return mIno.GetExtents().eks, mIno
+				return mIno.GetExtentEks(), mIno
 			}
 			if nVerSeq, err = verlist.GetNextOlderVer(dVer); err != nil {
 				log.LogDebugf("action[getAndDelVerInList] get next version failed, err %v", err)
@@ -1960,14 +1993,14 @@ func (i *Inode) getAndDelVerInList(mpId uint64, dVer uint64, mpVer uint64, verli
 
 				delExtents = i.MultiLayerClearExtByVer(id+1, dVer)
 				ino = i.multiSnap.multiVersions[id]
-				if len(i.multiSnap.multiVersions[id].GetExtents().eks) != 0 {
+				if len(i.multiSnap.multiVersions[id].GetExtentEks()) != 0 {
 					log.LogDebugf("action[getAndDelVerInList] ino[%v]   after clear self still have ext and left", i.Inode)
 					return
 				}
 			} else {
 				log.LogDebugf("action[getAndDelVerInList] ino[%v] ver [%v] nextver [%v] step 3 ver ", i.Inode, mIno.getVer(), nVerSeq)
 				// 3. next layer exist. the deleted version and  next version are neighbor in verlist, thus need restore and delete
-				if delExtents, err = i.RestoreExts2NextLayer(mpId, mIno.GetExtents().eks, dVer, id+1); err != nil {
+				if delExtents, err = i.RestoreExts2NextLayer(mpId, mIno.GetExtentEks(), dVer, id+1); err != nil {
 					log.LogDebugf("action[getAndDelVerInList] ino[%v] RestoreMultiSnapExts split error %v", i.Inode, err)
 					return
 				}

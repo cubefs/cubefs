@@ -35,6 +35,10 @@ func (se *SortedExtents) IsEmpty() bool {
 }
 
 func (se *SortedExtents) String() string {
+	if se == nil {
+		return "empty extents"
+	}
+
 	se.RLock()
 	data, err := json.Marshal(se.eks)
 	se.RUnlock()
