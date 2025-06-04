@@ -691,15 +691,11 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.Authenticate == view2.Authenticate)
 	assert.True(t, view.FollowerRead == view2.FollowerRead)
 	assert.True(t, view.ObjBlockSize == view2.ObjBlockSize)
-	assert.True(t, view.CacheThreshold == view2.CacheThreshold)
-	assert.True(t, view.CacheRule == view2.CacheRule)
 
 	// update
 	cap := 1024
 	desc := "hello_test"
 	blkSize := 6 * 1024
-	threshold := 7 * 1024
-	rule := "test"
 
 	checkParam(volCapacityKey, proto.AdminUpdateVol, req, "tt", cap, t)
 	setParam(descriptionKey, proto.AdminUpdateVol, req, desc, t)
@@ -707,8 +703,6 @@ func TestUpdateVol(t *testing.T) {
 	checkParam(authenticateKey, proto.AdminUpdateVol, req, "tt", true, t)
 	checkParam(followerReadKey, proto.AdminUpdateVol, req, "test", true, t)
 	checkParam(ebsBlkSizeKey, proto.AdminUpdateVol, req, "-1", blkSize, t)
-	checkParam(cacheThresholdKey, proto.AdminUpdateVol, req, "-1", threshold, t)
-	setParam(cacheRuleKey, proto.AdminUpdateVol, req, rule, t)
 	checkParam("remoteCacheEnable", proto.AdminUpdateVol, req, "not-bool", true, t)
 	checkParam("remoteCacheAutoPrepare", proto.AdminUpdateVol, req, "not-bool", false, t)
 	checkParam("remoteCacheTTL", proto.AdminUpdateVol, req, "not-number", int64(77), t)
@@ -724,18 +718,11 @@ func TestUpdateVol(t *testing.T) {
 	// LF vol always be true
 	assert.True(t, view.FollowerRead)
 	assert.True(t, view.ObjBlockSize == blkSize)
-	assert.True(t, view.CacheThreshold == threshold)
-	assert.True(t, view.CacheRule == rule)
 	require.True(t, view.RemoteCacheEnable)
 	require.Equal(t, "a-path,cache-path", view.RemoteCachePath)
 	require.False(t, view.RemoteCacheAutoPrepare)
 	require.Equal(t, int64(77), view.RemoteCacheTTL)
 	require.Equal(t, int64(7), view.RemoteCacheReadTimeout)
-
-	// update cacheRule to empty
-	setUpdateVolParm(emptyCacheRuleKey, req, true, t)
-	view = getSimpleVol(volName, true, t)
-	assert.True(t, view.CacheRule == "")
 
 	for id, name := range []string{"z1", "z2", "z3"} {
 		zone := newZone(name, defaultMediaType)

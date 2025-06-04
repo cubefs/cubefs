@@ -324,7 +324,6 @@ type MountOptions struct {
 	VolType                 int
 	EbsEndpoint             string
 	EbsServicePath          string
-	CacheThreshold          int
 	EbsBlockSize            int
 	EnableBcache            bool
 	BcacheOnlyForNotSSD     bool

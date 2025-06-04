@@ -64,7 +64,6 @@ func init() {
 		ReadConcurrency: 10,
 		FileCache:       false,
 		FileSize:        0,
-		CacheThreshold:  0,
 	}
 	ec := &stream.ExtentClient{}
 	fmt.Println(reflect.ValueOf(MockWriteTrue).Type().Name())
@@ -223,7 +222,6 @@ func TestNewWriter(t *testing.T) {
 		ReadConcurrency: 10,
 		FileCache:       false,
 		FileSize:        0,
-		CacheThreshold:  0,
 	}
 	config.Ec = &stream.ExtentClient{}
 	err := gohook.HookMethod(config.Ec, "Write", MockWriteTrue, nil)

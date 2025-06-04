@@ -82,9 +82,7 @@ type VolVarargs struct {
 
 // nolint: structcheck
 type CacheSubItem struct {
-	EbsBlkSize     int
-	CacheThreshold int
-	CacheRule      string
+	EbsBlkSize int
 }
 
 // nolint: structcheck
@@ -242,8 +240,6 @@ func newVol(vv volValue) (vol *Vol) {
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
-	vol.CacheThreshold = vv.CacheThreshold
-	vol.CacheRule = vv.CacheRule
 	vol.Status = vv.Status
 	vol.remoteCachePath = vv.RemoteCachePath
 	vol.remoteCacheAutoPrepare = vv.RemoteCacheAutoPrepare
@@ -1806,8 +1802,6 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 
 	if args.volStorageClass == proto.StorageClass_BlobStore {
 		coldArgs := args.coldArgs
-		vol.CacheThreshold = coldArgs.cacheThreshold
-		vol.CacheRule = coldArgs.cacheRule
 		vol.EbsBlkSize = coldArgs.objBlockSize
 	}
 
@@ -1846,8 +1840,6 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 func getVolVarargs(vol *Vol) *VolVarargs {
 	args := &coldVolArgs{
 		objBlockSize:            vol.EbsBlkSize,
-		cacheThreshold:          vol.CacheThreshold,
-		cacheRule:               vol.CacheRule,
 		accessTimeValidInterval: vol.AccessTimeValidInterval,
 		trashInterval:           vol.TrashInterval,
 		enablePersistAccessTime: vol.EnablePersistAccessTime,

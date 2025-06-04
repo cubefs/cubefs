@@ -105,9 +105,7 @@ const (
 	cmdVolDefaultZoneName                 = ""
 	cmdVolDefaultCrossZone                = "false"
 	cmdVolDefaultBusiness                 = ""
-	cmdVolDefaultCacheRuleKey             = ""
 	cmdVolDefaultEbsBlkSize               = 8 * 1024 * 1024
-	cmdVolDefaultCacheThreshold           = 10 * 1024 * 1024
 	cmdVolDefaultDpReadOnlyWhenVolFull    = "false"
 	cmdVolDefaultAllowedStorageClass      = ""
 	cmdVolMinRemoteCacheTTL               = 10 * 60
@@ -130,9 +128,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optMetaFollowerRead string
 	var optMaximallyRead string
 	var optZoneName string
-	var optCacheRuleKey string
 	var optEbsBlkSize int
-	var optCacheThreshold int
 	var optDpReadOnlyWhenVolFull string
 	var optEnableQuota string
 	var optTxMask string
@@ -251,9 +247,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  followerRead             : %v\n", followerRead)
 				stdout("  readOnlyWhenFull         : %v\n", dpReadOnlyWhenVolFull)
 				stdout("  zoneName                 : %v\n", optZoneName)
-				stdout("  cacheRuleKey             : %v\n", optCacheRuleKey)
 				stdout("  ebsBlkSize               : %v byte\n", optEbsBlkSize)
-				stdout("  cacheThreshold           : %v byte\n", optCacheThreshold)
 				stdout("  TransactionMask          : %v\n", optTxMask)
 				stdout("  TransactionTimeout       : %v min\n", optTxTimeout)
 				stdout("  TxConflictRetryNum       : %v\n", optTxConflictRetryNum)
@@ -287,7 +281,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
 				optMPCount, optDPCount, int(replicaNum), optDPSize, followerRead,
-				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheThreshold, dpReadOnlyWhenVolFull,
+				optZoneName, optEbsBlkSize, dpReadOnlyWhenVolFull,
 				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
 				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB,
@@ -312,9 +306,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optMetaFollowerRead, CliFlagMetaFollowerRead, "", "Enable read form more hosts, (true|false), default false")
 	cmd.Flags().StringVar(&optMaximallyRead, CliFlagMaximallyRead, "", "Enable read form mp follower, (true|false), default false")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
-	cmd.Flags().StringVar(&optCacheRuleKey, CliFlagCacheRuleKey, cmdVolDefaultCacheRuleKey, "Anything that match this field will be written to the cache")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlk Size[Unit: byte]")
-	cmd.Flags().IntVar(&optCacheThreshold, CliFlagCacheThreshold, cmdVolDefaultCacheThreshold, "Specify cache threshold[Unit: byte]")
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
 		"Enable volume becomes read only when it is full")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
@@ -351,7 +343,6 @@ const (
 
 func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optDescription string
-	var optCacheRule string
 	var optZoneName string
 	var optCrossZone string
 	var optCapacity uint64
@@ -361,7 +352,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optDirectRead string
 	var optIgnoreTinyRecover string
 	var optEbsBlkSize int
-	var optCacheThreshold int
 	var optDpReadOnlyWhenVolFull string
 	var clientIDKey string
 	var optRcEnable string
@@ -643,29 +633,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Tx Operation limit : %v\n", vv.TxOpLimit))
 			}
 
-			if optCacheRule != "" {
-				if vv.VolStorageClass != proto.StorageClass_BlobStore {
-					err = fmt.Errorf("cache-rule can not be set because vol storageClass is not blobstore\n")
-					return
-				}
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheRule         : %v -> %v \n", vv.CacheRule, optCacheRule))
-				vv.CacheRule = optCacheRule
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheRule        : %v \n", vv.CacheRule))
-			}
-			if optCacheThreshold > 0 {
-				if vv.VolStorageClass != proto.StorageClass_BlobStore {
-					err = fmt.Errorf("cache-threshold can not be set because vol storageClass is not blobstore\n")
-					return
-				}
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheThreshold      : %v byte -> %v byte \n", vv.CacheThreshold, optCacheThreshold))
-				vv.CacheThreshold = optCacheThreshold
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheThreshold      : %v byte\n", vv.CacheThreshold))
-			}
-
 			if optDpReadOnlyWhenVolFull != "" {
 				isChange = true
 				var enable bool
@@ -933,8 +900,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optIgnoreTinyRecover, "ignoreTinyRecover", "", "ignore tiny extent recover (true|false, default false)")
 	cmd.Flags().StringVar(&optMaximallyRead, CliFlagMaximallyRead, "", "Enable read more hosts (true|false, default false)")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, 0, "Specify ebsBlk Size[Unit: byte]")
-	cmd.Flags().IntVar(&optCacheThreshold, CliFlagCacheThreshold, 0, "Specify cache threshold[Unit: byte] (default 10M)")
-	cmd.Flags().StringVar(&optCacheRule, CliFlagCacheRule, "", "Specify cache rule")
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, "", "Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: \"create|mkdir|remove|rename|mknod|symlink|link\" or \"off\" or \"all\"")

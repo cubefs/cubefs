@@ -450,23 +450,7 @@ func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err e
 	if vol.volStorageClass != proto.StorageClass_BlobStore {
 		log.LogInfof("[parseColdVolUpdateArgs] vol(%v) storageClass(%v) is not blobstore, skip parse cache args",
 			vol.Name, proto.StorageClassString(vol.volStorageClass))
-		args.cacheThreshold = vol.CacheThreshold
-		args.cacheRule = vol.CacheRule
 		return
-	}
-
-	if args.cacheThreshold, err = extractUintWithDefault(r, cacheThresholdKey, vol.CacheThreshold); err != nil {
-		return
-	}
-
-	args.cacheRule = extractStrWithDefault(r, cacheRuleKey, vol.CacheRule)
-	emptyCacheRule, err := extractBoolWithDefault(r, emptyCacheRuleKey, false)
-	if err != nil {
-		return
-	}
-
-	if emptyCacheRule {
-		args.cacheRule = ""
 	}
 
 	return
@@ -728,8 +712,6 @@ func (qos *qosArgs) isArgsWork() bool {
 
 type coldVolArgs struct {
 	objBlockSize            int
-	cacheThreshold          int
-	cacheRule               string
 	accessTimeValidInterval int64
 	trashInterval           int64
 	enablePersistAccessTime bool
@@ -786,13 +768,7 @@ type createVolReq struct {
 }
 
 func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
-	args.cacheRule = extractStr(r, cacheRuleKey)
-
 	if args.objBlockSize, err = extractUint(r, ebsBlkSizeKey); err != nil {
-		return
-	}
-
-	if args.cacheThreshold, err = extractUint(r, cacheThresholdKey); err != nil {
 		return
 	}
 

@@ -126,30 +126,24 @@ func TestCreateColdVol(t *testing.T) {
 	// check default val of LF vol
 	vol, err = server.cluster.getVol(volName2)
 	require.NoError(t, err)
-	require.EqualValues(t, "", vol.CacheRule)
 	require.EqualValues(t, defaultEbsBlkSize, vol.EbsBlkSize)
-	require.EqualValues(t, vol.CacheThreshold, defaultCacheThreshold)
 	require.EqualValues(t, 0, vol.dpReplicaNum)
 	require.True(t, vol.FollowerRead)
 
 	delVol(volName2, t)
 
 	req[nameKey] = volName3
-	req[cacheRuleKey] = "cacheRule"
 
 	blkSize := 7 * 1024 * 1024
-	threshold := 10 * 1024 * 24
 
 	// check with illegal args
 	checkCreateVolParam(ebsBlkSizeKey, req, -1, blkSize, t)
-	checkCreateVolParam(cacheThresholdKey, req, -1, threshold, t)
 	checkCreateVolParam(followerReadKey, req, -1, true, t)
 
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
 	view := getSimpleVol(volName3, true, t)
 	assert.True(t, view.ObjBlockSize == blkSize)
-	assert.True(t, view.CacheThreshold == threshold)
 
 	delVol(volName3, t)
 

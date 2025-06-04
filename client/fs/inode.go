@@ -74,7 +74,6 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 					ReadConcurrency: f.super.readThreads,
 					FileCache:       false,
 					FileSize:        uint64(fileSize),
-					CacheThreshold:  f.super.CacheThreshold,
 					StorageClass:    f.info.StorageClass,
 				}
 				f.fWriter.FreeCache()

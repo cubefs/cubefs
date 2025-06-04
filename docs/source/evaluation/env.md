@@ -44,9 +44,7 @@ Create a new volume:
   followerRead             : false
   readOnlyWhenFull         : false
   zoneName                 : 
-  cacheRuleKey             : 
   ebsBlkSize               : 8388608 byte
-  cacheThreshold           : 10485760 byte
   TransactionMask          : 
   TransactionTimeout       : 1 min
   TxConflictRetryNum       : 0

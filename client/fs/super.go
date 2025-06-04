@@ -75,7 +75,6 @@ type Super struct {
 	// data lake
 	volType             int
 	ebsEndpoint         string
-	CacheThreshold      int
 	EbsBlockSize        int
 	enableBcache        bool
 	bcacheDir           string
@@ -207,7 +206,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 	s.volType = opt.VolType
 	s.ebsEndpoint = opt.EbsEndpoint
-	s.CacheThreshold = opt.CacheThreshold
 	s.EbsBlockSize = opt.EbsBlockSize
 	s.enableBcache = opt.EnableBcache
 

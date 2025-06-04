@@ -287,8 +287,6 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 
 	if svv.VolType == 1 {
 		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
-		sb.WriteString(fmt.Sprintf("  CacheThreshold       : %v byte\n", svv.CacheThreshold))
-		sb.WriteString(fmt.Sprintf("  CacheRule            : %v\n", svv.CacheRule))
 	}
 
 	for _, c := range svv.QuotaOfStorageClass {

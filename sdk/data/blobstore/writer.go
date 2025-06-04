@@ -57,15 +57,14 @@ type Writer struct {
 	wg           sync.WaitGroup
 	once         sync.Once
 	sync.RWMutex
-	enableBcache   bool
-	buf            []byte
-	fileOffset     int
-	fileCache      bool
-	fileSize       uint64
-	cacheThreshold int
-	dirty          bool
-	blockPosition  int
-	limitManager   *manager.LimitManager
+	enableBcache  bool
+	buf           []byte
+	fileOffset    int
+	fileCache     bool
+	fileSize      uint64
+	dirty         bool
+	blockPosition int
+	limitManager  *manager.LimitManager
 }
 
 func NewWriter(config ClientConfig) (writer *Writer) {
@@ -86,7 +85,6 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 	writer.enableBcache = config.EnableBcache
 	writer.fileCache = config.FileCache
 	writer.fileSize = config.FileSize
-	writer.cacheThreshold = config.CacheThreshold
 	writer.dirty = false
 	writer.allocateCache()
 	writer.limitManager = config.Ec.LimitManager
@@ -95,8 +93,8 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 }
 
 func (writer *Writer) String() string {
-	return fmt.Sprintf("Writer{address(%v),volName(%v),volType(%v),ino(%v),blockSize(%v),fileSize(%v),enableBcache(%v),fileCache(%v),cacheThreshold(%v)},wConcurrency(%v)",
-		&writer, writer.volName, writer.volType, writer.ino, writer.blockSize, writer.fileSize, writer.enableBcache, writer.fileCache, writer.cacheThreshold, writer.wConcurrency)
+	return fmt.Sprintf("Writer{address(%v),volName(%v),volType(%v),ino(%v),blockSize(%v),fileSize(%v),enableBcache(%v),fileCache(%v)},wConcurrency(%v)",
+		&writer, writer.volName, writer.volType, writer.ino, writer.blockSize, writer.fileSize, writer.enableBcache, writer.fileCache, writer.wConcurrency)
 }
 
 func (writer *Writer) WriteWithoutPool(ctx context.Context, offset int, data []byte) (size int, err error) {
