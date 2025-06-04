@@ -1565,11 +1565,11 @@ func convertStructToJson(low map[string]*proto.ZonePressureView) string {
 }
 
 func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition) error {
-	for i := 0; i < CheckLeaderNum; i++ {
+	for i := 0; i < CheckMetaLeaderRetry; i++ {
 		leader, err := mp.getMetaReplicaLeader()
 		if err != nil {
 			log.LogWarnf("metapartition[%d] has no leader", mp.PartitionID)
-			time.Sleep(WaitTimeSec * time.Second)
+			time.Sleep(CheckMetaLeaderInterval * time.Second)
 			continue
 		}
 		if leader.Addr != mrPlan.Source {
@@ -1589,14 +1589,14 @@ func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo,
 			log.LogErrorf("metapartition[%d] try to change leader to host[%s] failed, err[%s]",
 				mp.PartitionID, newLeader, err.Error())
 		}
-		time.Sleep(WaitTimeSec * time.Second)
+		time.Sleep(CheckMetaLeaderInterval * time.Second)
 	}
 	leader, err := mp.getMetaReplicaLeader()
 	if err != nil {
 		log.LogErrorf("metapartition[%d] has no leader", mp.PartitionID)
 		return err
 	}
-	return fmt.Errorf("after change leader %d times, it is still is %s. source: %s", CheckLeaderNum, leader.Addr, mrPlan.Source)
+	return fmt.Errorf("after change leader %d times, it is still is %s. source: %s", CheckMetaLeaderRetry, leader.Addr, mrPlan.Source)
 }
 
 func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition) string {
