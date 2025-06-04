@@ -1,0 +1,10 @@
+{
+  "clusterName": "cubefs01",
+  "id": "1",
+  "role": "flashgroupmanager",
+  "ip": "192.168.0.81",
+  "listen": "17010",
+  "prof": "17020",
+  "logLevel": "debug",
+  "logDir": "/cfs/log"
+}

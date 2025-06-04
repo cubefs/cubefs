@@ -7,9 +7,7 @@
   "logDir": "/cfs/log",
   "logLevel": "debug",
   "masterAddr": [
-    "192.168.0.11:17010",
-    "192.168.0.12:17010",
-    "192.168.0.13:17010"
+    "192.168.0.81:17010"
   ],
   "zoneName": "docker",
   "memTotal": 0,

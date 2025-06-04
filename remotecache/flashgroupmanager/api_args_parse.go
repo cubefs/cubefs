@@ -1,12 +1,14 @@
 package flashgroupmanager
 
 import (
+	"bytes"
 	"encoding/json"
-	"github.com/cubefs/cubefs/util/compressor"
+	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -68,5 +70,20 @@ func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRe
 	}
 
 	send(w, r, reply)
+	return
+}
+
+func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err error) {
+	var body []byte
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if body, err = io.ReadAll(r.Body); err != nil {
+		return
+	}
+	tr = &proto.AdminTask{}
+	decoder := json.NewDecoder(bytes.NewBuffer([]byte(body)))
+	decoder.UseNumber()
+	err = decoder.Decode(tr)
 	return
 }

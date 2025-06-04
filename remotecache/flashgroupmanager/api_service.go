@@ -96,10 +96,11 @@ func (m *FlashGroupManager) clientFlashGroups(w http.ResponseWriter, r *http.Req
 		doStatAndMetric(proto.ClientFlashGroups, metric, err, nil)
 	}()
 
-	if !m.metaReady {
-		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("meta not ready")))
-		return
-	}
+	//TODO
+	//if !m.metaReady {
+	//	sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("meta not ready")))
+	//	return
+	//}
 	cache := m.cluster.flashNodeTopo.getClientResponse()
 	if len(cache) == 0 {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("flash group response cache is empty")))
@@ -352,6 +353,226 @@ func (m *FlashGroupManager) addFlashNode(w http.ResponseWriter, r *http.Request)
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
+func (m *FlashGroupManager) listFlashNodes(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.FlashNodeList))
+	defer func() {
+		doStatAndMetric(proto.FlashNodeList, metric, nil, nil)
+	}()
+	zoneFlashNodes := make(map[string][]*proto.FlashNodeViewInfo)
+	showAll := true
+	active := false
+	if err := r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, exists := r.Form["active"]; exists {
+		showAll = false
+		activeReq, _ := strconv.ParseInt(r.FormValue("active"), 10, 64)
+		if activeReq == -1 {
+			showAll = true
+		} else if activeReq == 1 {
+			active = true
+		}
+	}
+	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
+		flashNode := value.(*FlashNode)
+		if showAll || flashNode.isActiveAndEnable() == active {
+			zoneFlashNodes[flashNode.ZoneName] = append(zoneFlashNodes[flashNode.ZoneName], flashNode.GetFlashNodeViewInfo())
+		}
+		return true
+	})
+	sendOkReply(w, r, newSuccessHTTPReply(zoneFlashNodes))
+}
+
+func (m *FlashGroupManager) setFlashNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr  common.String
+		enable    bool
+		workRole  string
+		flashNode *FlashNode
+		err       error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.FlashNodeSet))
+	defer func() {
+		doStatAndMetric(proto.FlashNodeSet, metric, err, nil)
+	}()
+	if err = parseArgs(r, argParserNodeAddr(&nodeAddr)); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if flashNode, err = m.cluster.peekFlashNode(nodeAddr.V); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if _, exists := r.Form["enable"]; exists {
+		enable, err = strconv.ParseBool(r.FormValue("enable"))
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		}
+		if err = m.cluster.updateFlashNode(flashNode, enable); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	if _, exists := r.Form["workRole"]; exists {
+		workRole = r.FormValue("workRole")
+		if err = m.cluster.updateFlashNodeWorkRole(flashNode, workRole); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply("set flashNode success"))
+}
+
+func (m *FlashGroupManager) removeFlashNode(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.FlashNodeRemove))
+	defer func() {
+		doStatAndMetric(proto.FlashNodeRemove, metric, err, nil)
+	}()
+	var offLineAddr common.String
+	if err = parseArgs(r, argParserNodeAddr(&offLineAddr)); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	var node *FlashNode
+	if node, err = m.cluster.peekFlashNode(offLineAddr.V); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	if node.FlashGroupID != UnusedFlashNodeFlashGroupID {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("to delete a flashnode, it needs to be removed from the flashgroup first")))
+		return
+	}
+
+	if err = m.cluster.removeFlashNode(node); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("delete flash node [%v] successfully", offLineAddr)))
+}
+
+func (m *FlashGroupManager) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Request) {
+	var (
+		err         error
+		removeNodes []*FlashNode
+	)
+	removeAddresses := []string{}
+	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
+		flashNode := value.(*FlashNode)
+		if !flashNode.isActiveAndEnable() && flashNode.FlashGroupID == UnusedFlashNodeFlashGroupID {
+			removeNodes = append(removeNodes, flashNode)
+		}
+		return true
+	})
+	for _, node := range removeNodes {
+		if err = m.cluster.removeFlashNode(node); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		removeAddresses = append(removeAddresses, node.Addr)
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(removeAddresses))
+}
+
+func (m *FlashGroupManager) getFlashNode(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.FlashNodeGet))
+	defer func() {
+		doStatAndMetric(proto.FlashNodeGet, metric, err, nil)
+	}()
+	var nodeAddr common.String
+	if err = parseArgs(r, argParserNodeAddr(&nodeAddr)); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	var flashNode *FlashNode
+	if flashNode, err = m.cluster.peekFlashNode(nodeAddr.V); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(flashNode.GetFlashNodeViewInfo()))
+}
+
+func (m *FlashGroupManager) flashGroupAddFlashNode(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupNodeAdd))
+	defer func() {
+		doStatAndMetric(proto.AdminFlashGroupNodeAdd, metric, err, nil)
+	}()
+	flashGroupID, addr, zoneName, count, err := parseArgsFlashGroupNode(r)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	var flashGroup *FlashGroup
+	if flashGroup, err = m.cluster.flashNodeTopo.getFlashGroup(flashGroupID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if addr != "" {
+		err = m.cluster.addFlashNodeToFlashGroup(addr, flashGroup)
+	} else {
+		err = m.cluster.selectFlashNodesFromZoneAddToFlashGroup(zoneName, count, nil, flashGroup)
+	}
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	m.cluster.flashNodeTopo.updateClientCache()
+	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
+}
+
+func (m *FlashGroupManager) handleFlashNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
+	var (
+		tr  *proto.AdminTask
+		err error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetFlashNodeTaskResponse))
+	defer func() {
+		doStatAndMetric(proto.GetFlashNodeTaskResponse, metric, err, nil)
+	}()
+
+	tr, err = parseRequestToGetTaskResponse(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
+	m.cluster.handleFlashNodeTaskResponse(tr.OperatorAddr, tr)
+}
+
+func (m *FlashGroupManager) flashGroupRemoveFlashNode(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupNodeRemove))
+	defer func() {
+		doStatAndMetric(proto.AdminFlashGroupNodeRemove, metric, err, nil)
+	}()
+	flashGroupID, addr, zoneName, count, err := parseArgsFlashGroupNode(r)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	var flashGroup *FlashGroup
+	if flashGroup, err = m.cluster.flashNodeTopo.getFlashGroup(flashGroupID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if addr != "" {
+		err = m.cluster.removeFlashNodeFromFlashGroup(addr, flashGroup)
+	} else {
+		err = m.cluster.removeFlashNodesFromTargetZone(zoneName, count, flashGroup)
+	}
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	m.cluster.flashNodeTopo.updateClientCache()
+	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
+}
+
 func getSetSlots(r *http.Request) (slots []uint32, err error) {
 	r.ParseForm()
 	slots = make([]uint32, 0)
@@ -412,4 +633,25 @@ func argParserNodeAddr(nodeAddr *common.String) *common.Argument {
 		}
 		return unmatchedKey(new(common.String).Addr().Key())
 	})
+}
+
+func parseArgsFlashGroupNode(r *http.Request) (id uint64, addr, zoneName string, count int, err error) {
+	var (
+		idV    common.Uint
+		addrV  common.String
+		zoneV  common.String
+		countV common.Int
+	)
+	if err = parseArgs(r, idV.ID(), addrV.Addr()); err == nil {
+		id = idV.V
+		addr = addrV.V
+		return
+	}
+	if err = parseArgs(r, idV.ID(), addrV.Addr().OmitEmpty(), zoneV.ZoneName(), countV.Count()); err == nil {
+		id = idV.V
+		addr = addrV.V
+		zoneName = zoneV.V
+		count = int(countV.V)
+	}
+	return
 }
