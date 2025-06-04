@@ -31,6 +31,28 @@ func (zone *FlashNodeZone) putFlashNode(flashNode *FlashNode) {
 	zone.flashNode.Store(flashNode.Addr, flashNode)
 }
 
+func (zone *FlashNodeZone) selectFlashNodes(count int, excludeHosts []string) (newHosts []string, err error) {
+	zone.mu.Lock()
+	defer zone.mu.Unlock()
+	zone.flashNode.Range(func(_, value interface{}) bool {
+		flashNode := value.(*FlashNode)
+		if contains(excludeHosts, flashNode.Addr) {
+			return true
+		}
+		if len(newHosts) >= count {
+			return false
+		}
+		if flashNode.isWriteable() {
+			newHosts = append(newHosts, flashNode.Addr)
+		}
+		return true
+	})
+	if len(newHosts) != count {
+		return nil, fmt.Errorf("expect count:%v newHostsCount:%v,detail:%v,excludeHosts:%v", count, len(newHosts), newHosts, excludeHosts)
+	}
+	return
+}
+
 type FlashNodeTopology struct {
 	mu sync.RWMutex
 
@@ -297,4 +319,13 @@ func (t *FlashNodeTopology) putFlashNode(flashNode *FlashNode) (err error) {
 	}
 	zone.putFlashNode(flashNode)
 	return
+}
+
+func (t *FlashNodeTopology) deleteFlashNode(flashNode *FlashNode) {
+	t.flashNodeMap.Delete(flashNode.Addr)
+	zone, err := t.getZone(flashNode.ZoneName)
+	if err != nil {
+		return
+	}
+	zone.flashNode.Delete(flashNode.Addr)
 }

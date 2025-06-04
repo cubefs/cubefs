@@ -134,3 +134,20 @@ func (fg *FlashGroup) removeFlashNode(addr string) {
 	delete(fg.flashNodes, addr)
 	fg.lock.Unlock()
 }
+
+func (fg *FlashGroup) putFlashNode(fn *FlashNode) {
+	fg.lock.Lock()
+	fg.flashNodes[fn.Addr] = fn
+	fg.lock.Unlock()
+}
+
+func (fg *FlashGroup) getTargetZoneFlashNodeHosts(targetZone string) (hosts []string) {
+	fg.lock.RLock()
+	for _, flashNode := range fg.flashNodes {
+		if flashNode.ZoneName == targetZone {
+			hosts = append(hosts, flashNode.Addr)
+		}
+	}
+	fg.lock.RUnlock()
+	return
+}

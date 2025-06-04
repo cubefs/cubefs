@@ -1,10 +1,20 @@
 package flashgroupmanager
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/log"
+)
+
+const (
+	defaultIntervalToCheckHeartbeat = 6
+	noHeartBeatTimes                = 3
+	defaultNodeTimeOutSec           = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
+	DefaultNodeTimeoutDuration      = defaultNodeTimeOutSec * time.Second
 )
 
 type flashNodeValue struct {
@@ -70,5 +80,57 @@ func (flashNode *FlashNode) isActiveAndEnable() (ok bool) {
 	flashNode.RLock()
 	ok = flashNode.IsActive && flashNode.IsEnable
 	flashNode.RUnlock()
+	return
+}
+
+func (flashNode *FlashNode) clean() {
+	flashNode.TaskManager.exitCh <- struct{}{}
+}
+
+func (flashNode *FlashNode) isWriteable() (ok bool) {
+	flashNode.RLock()
+	if flashNode.FlashGroupID == UnusedFlashNodeFlashGroupID &&
+		time.Since(flashNode.ReportTime) < DefaultNodeTimeoutDuration {
+		ok = true
+	}
+	flashNode.RUnlock()
+	return
+}
+
+func (flashNode *FlashNode) setActive() {
+	flashNode.Lock()
+	flashNode.ReportTime = time.Now()
+	flashNode.IsActive = true
+	flashNode.Unlock()
+}
+
+func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(resp *proto.FlashNodeHeartbeatResponse) {
+	log.LogInfof("updateFlashNodeStatHeartbeat, flashNode:%v, resp[%v], time:%v", flashNode.Addr, resp, time.Now().Format("2006-01-02 15:04:05"))
+	flashNode.Lock()
+	flashNode.DiskStat = resp.Stat
+	flashNode.LimiterStatus = resp.LimiterStatus
+	flashNode.TaskCountLimit = resp.FlashNodeTaskCountLimit
+	flashNode.Unlock()
+}
+
+func (flashNode *FlashNode) checkLiveliness() {
+	flashNode.Lock()
+	if time.Since(flashNode.ReportTime) > DefaultNodeTimeoutDuration {
+		msg := fmt.Sprintf("flashnode[%v] heartbeat lost, last heartbeat time %v", flashNode.Addr, flashNode.ReportTime)
+		auditlog.LogMasterOp("checkLiveliness", msg, nil)
+		flashNode.IsActive = false
+	}
+	flashNode.Unlock()
+}
+
+func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int, flashNodeReadDataNodeTimeout int) (task *proto.AdminTask) {
+	request := &proto.HeartBeatRequest{
+		CurrTime:   time.Now().Unix(),
+		MasterAddr: masterAddr,
+	}
+	request.FlashNodeHandleReadTimeout = flashNodeHandleReadTimeout
+	request.FlashNodeReadDataNodeTimeout = flashNodeReadDataNodeTimeout
+
+	task = proto.NewAdminTask(proto.OpFlashNodeHeartbeat, flashNode.Addr, request)
 	return
 }
