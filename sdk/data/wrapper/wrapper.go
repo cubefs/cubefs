@@ -588,6 +588,11 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 			}
 			return dp, nil
 		}
+
+		if partitionID == 0 {
+			return nil, fmt.Errorf("get from master failed, maybe flush data failed, partition[%v] not exsit, err %s", partitionID, err.Error())
+		}
+
 		return nil, fmt.Errorf("get from master failed, partition[%v] not exsit", partitionID)
 	}
 	if !ok {
