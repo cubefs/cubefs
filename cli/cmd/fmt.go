@@ -879,7 +879,7 @@ func formatTimeToString(t time.Time) string {
 var dataReplicaTableRowPattern = "%-65v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-12v    %-18v    %-10v"
 
 func formatDataReplicaTableHeader() string {
-	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDR", "USEDSIZE", "TOTALSIZE", "ISLEADER", "FILECOUNT", "HASLOADRESPONSE", "NEEDSTOCOMPARE", "STATUS", "DISKPATH", "REPORT TIME")
+	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDR", "USEDSIZE", "TOTALSIZE", "ISLEADER", "FILECOUNT", "HASLOADRESPONSE", "NEEDSTOCOMPARE", "ISREPAIRING", "STATUS", "DISKPATH", "REPORT TIME")
 }
 
 var dataFileInCoreTableRowPattern = "%-12v    %-12v    %-10v    %-10v"
@@ -919,7 +919,7 @@ func formatDataReplica(index int, replica *proto.DataReplica, rowTable bool) str
 	if rowTable {
 		return fmt.Sprintf(dataReplicaTableRowPattern, formatAddr(replica.Addr, replica.DomainAddr),
 			formatSize(replica.Used), formatSize(replica.Total), replica.IsLeader, replica.FileCount,
-			replica.HasLoadResponse, replica.NeedsToCompare, formatDataPartitionStatus(replica.Status),
+			replica.HasLoadResponse, replica.NeedsToCompare, replica.IsRepairing, formatDataPartitionStatus(replica.Status),
 			replica.DiskPath, formatTime(replica.ReportTime))
 	}
 	return alignColumnIndex(index,
@@ -930,6 +930,7 @@ func formatDataReplica(index int, replica *proto.DataReplica, rowTable bool) str
 		arow("FileCount", replica.FileCount),
 		arow("HasLoadResponse", replica.HasLoadResponse),
 		arow("NeedsToCompare", replica.NeedsToCompare),
+		arow("IsRepairing", replica.IsRepairing),
 		arow("Status", formatDataPartitionStatus(replica.Status)),
 		arow("DiskPath", replica.DiskPath),
 		arow("ReportTime", formatTime(replica.ReportTime)),

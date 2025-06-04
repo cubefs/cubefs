@@ -381,6 +381,7 @@ type DataReplica struct {
 	ForbidWriteOpOfProtoVer0   bool
 	ReadOnlyReasons            uint32
 	IsMissingTinyExtent        bool
+	IsRepairing                bool
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas

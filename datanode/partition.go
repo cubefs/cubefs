@@ -501,6 +501,42 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 	return
 }
 
+func (partition *DataPartition) HandleSetRepairingStatusOp(req *proto.SetDataPartitionRepairingStatusRequest) (err error) {
+	var (
+		reqData []byte
+		pItem   *RaftCmdItem
+	)
+	if reqData, err = json.Marshal(req); err != nil {
+		return
+	}
+	pItem = &RaftCmdItem{
+		Op: uint32(proto.OpSetRepairingStatus),
+		K:  []byte("setRepairingStatus"),
+		V:  reqData,
+	}
+	data, _ := MarshalRaftCmd(pItem)
+	_, err = partition.Submit(data)
+	return
+}
+
+func (partition *DataPartition) fsmSetRepairingStatusOp(opItem *RaftCmdItem) (err error) {
+	req := new(proto.SetDataPartitionRepairingStatusRequest)
+	if err = json.Unmarshal(opItem.V, req); err != nil {
+		log.LogErrorf("action[fsmSetRepairingStatusOp] dp[%v] op item %v", partition.partitionID, opItem)
+		return
+	}
+
+	oldStatus := partition.isRepairing
+	partition.isRepairing = req.RepairingStatus
+	if err = partition.PersistMetadata(); err != nil {
+		log.LogErrorf("action[fsmSetRepairingStatusOp] persist dp %v metadata failed, err: %v", partition.partitionID, err)
+		partition.isRepairing = oldStatus
+		return
+	}
+	log.LogInfof("action[fsmSetRepairingStatusOp] %v set repairingStatus %v success", partition.partitionID, req.RepairingStatus)
+	return
+}
+
 func (partition *DataPartition) HandleVersionOp(req *proto.MultiVersionOpRequest) (err error) {
 	var (
 		verData []byte

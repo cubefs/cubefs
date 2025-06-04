@@ -51,6 +51,9 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if opItem.Op == uint32(proto.OpVersionOp) {
 			dp.fsmVersionOp(opItem)
 			return
+		} else if opItem.Op == uint32(proto.OpSetRepairingStatus) {
+			dp.fsmSetRepairingStatusOp(opItem)
+			return
 		}
 		return
 	}
