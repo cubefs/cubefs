@@ -137,7 +137,7 @@ func (m *FlashGroupManager) checkConfig(cfg *config.Config) (err error) {
 
 func (m *FlashGroupManager) initCluster() {
 	log.LogInfo("action[initCluster] begin")
-	m.cluster = newCluster(m.clusterName)
+	m.cluster = newCluster(m.clusterName, m.config)
 	log.LogInfo("action[initCluster] end")
 
 	// in case any limiter on follower

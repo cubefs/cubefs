@@ -235,3 +235,12 @@ func (sender *AdminTaskManager) buildPacket(task *proto.AdminTask) (packet *prot
 	packet.Data = body
 	return packet, nil
 }
+
+func (sender *AdminTaskManager) AddTask(t *proto.AdminTask) {
+	sender.Lock()
+	defer sender.Unlock()
+	_, ok := sender.TaskMap[t.ID]
+	if !ok {
+		sender.TaskMap[t.ID] = t
+	}
+}

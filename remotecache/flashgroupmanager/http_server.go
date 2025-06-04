@@ -56,15 +56,23 @@ func (m *FlashGroupManager) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupCreate).HandlerFunc(m.createFlashGroup)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupSet).HandlerFunc(m.setFlashGroup)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupRemove).HandlerFunc(m.removeFlashGroup)
-	//router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupNodeAdd).HandlerFunc(m.flashGroupAddFlashNode)
-	//router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupNodeRemove).HandlerFunc(m.flashGroupRemoveFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupNodeAdd).HandlerFunc(m.flashGroupAddFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupNodeRemove).HandlerFunc(m.flashGroupRemoveFlashNode)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashGroupGet).HandlerFunc(m.getFlashGroup)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashGroupList).HandlerFunc(m.listFlashGroups)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.ClientFlashGroups).HandlerFunc(m.clientFlashGroups)
 
 	// APIs for FlashNode
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeAdd).HandlerFunc(m.addFlashNode)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.FlashNodeList).HandlerFunc(m.listFlashNodes)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeSet).HandlerFunc(m.setFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeRemove).HandlerFunc(m.removeFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeRemoveAllInactive).HandlerFunc(m.removeAllInactiveFlashNodes)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.FlashNodeGet).HandlerFunc(m.getFlashNode)
 
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetFlashNodeTaskResponse).
+		HandlerFunc(m.handleFlashNodeTaskResponse)
 }
 
 //TODO
