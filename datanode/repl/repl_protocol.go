@@ -437,7 +437,8 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		} else if (reply.ResultCode == proto.OpTryOtherAddr && reply.Opcode == proto.OpWrite) ||
 			reply.Opcode == proto.OpReadTinyDeleteRecord ||
 			(reply.Opcode == proto.OpWrite && proto.IsTinyExtentType(reply.ExtentType) && strings.Contains(err.Error(), "GetAvailableTinyExtent error no available extent")) ||
-			(reply.Opcode == proto.OpWrite && reply.ResultCode == proto.OpLimitedIoErr && strings.Contains(err.Error(), ActionReceiveFromFollower)) {
+			(reply.Opcode == proto.OpWrite && reply.ResultCode == proto.OpLimitedIoErr && strings.Contains(err.Error(), ActionReceiveFromFollower)) ||
+			strings.Contains(err.Error(), proto.ErrDataPartitionNotExists.Error()) {
 			log.LogWarnf(err.Error())
 		} else {
 			log.LogErrorf(err.Error())
