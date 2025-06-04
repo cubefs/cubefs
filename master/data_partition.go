@@ -1132,6 +1132,7 @@ func GetSpecialDecommissionStatusMessage(status uint32) string {
 func (partition *DataPartition) ReleaseDecommissionFirstHostToken(c *Cluster) {
 	key := partition.DecommissionFirstHostDiskTokenKey
 	defer func() {
+		log.LogInfof("action[ReleaseDecommissionFirstHostToken] dp(%v) release first host token(%v) success", partition.PartitionID, partition.DecommissionFirstHostDiskTokenKey)
 		partition.DecommissionFirstHostDiskTokenKey = ""
 	}()
 	keySlice := strings.Split(key, "_")
@@ -1186,8 +1187,11 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 	)
 
 	for _, host := range partition.Hosts {
-		if partition.DecommissionType == AutoAddReplica || partition.isSpecialReplicaCnt() ||
-			(partition.ReplicaNum == 3 && host != partition.DecommissionSrcAddr) {
+		// for AutoAddReplica , firstHost does not need to consider the decommission source address since only adding and not deleting replica
+		// for raftForce specialReplica dp, firstHost does not need to consider the decommission source address since adding before deleting replica
+		// for three replicas dp or non-raftForce specialReplica dp, need to find the first host other than the decommission source address since deleting before adding replica
+		if partition.DecommissionType == AutoAddReplica || (partition.isSpecialReplicaCnt() && !partition.DecommissionRaftForce) ||
+			((partition.ReplicaNum == 3 || partition.isSpecialReplicaCnt() && partition.DecommissionRaftForce) && host != partition.DecommissionSrcAddr) {
 			firstReplica, ok = partition.hasReplica(host)
 			firstHost = host
 			break
@@ -1213,6 +1217,7 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 	}
 	if atomic.LoadUint64(&dataNode.DecommissionFirstHostParallelLimit) != 0 &&
 		atomic.LoadUint64(&dataNodeToRepairDpInfo.CurParallel) >= atomic.LoadUint64(&dataNode.DecommissionFirstHostParallelLimit) {
+		log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire failed, datanode(%v) decommissionFirstHostParallelLimit has been reached", partition.PartitionID, dataNode.Addr)
 		return false
 	}
 	dataNodeToRepairDpInfo.mu.Lock()
@@ -1228,6 +1233,7 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 
 	if atomic.LoadUint64(&c.DecommissionFirstHostDiskParallelLimit) != 0 &&
 		atomic.LoadUint64(&diskToRepairDpInfo.CurParallel) >= atomic.LoadUint64(&c.DecommissionFirstHostDiskParallelLimit) {
+		log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire failed, decommissionFirstHostDiskParallelLimit has been reached", partition.PartitionID)
 		return false
 	}
 
@@ -1241,6 +1247,7 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 	c.DataNodeToDecommissionRepairDpMap.Store(firstReplica.Addr, dataNodeToRepairDpInfo)
 	key = fmt.Sprintf("%v_%v", firstReplica.Addr, firstReplica.DiskPath)
 	partition.DecommissionFirstHostDiskTokenKey = key
+	log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire first host token(%v) success", partition.PartitionID, partition.DecommissionFirstHostDiskTokenKey)
 	return true
 errHandle:
 	partition.markRollbackFailed(false)
@@ -2669,13 +2676,13 @@ func (partition *DataPartition) decommissionInfo() string {
 	}
 
 	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
-		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_weight(%v)_replica(%v)_recoverStartTime(%v)_addr(%p)",
+		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_weight(%v)_firstHostDiskTokenKey(%v)_replica(%v)_recoverStartTime(%v)_addr(%p)",
 		partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
 		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
 		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage, partition.IsDiscard,
-		partition.DecommissionTerm, partition.DecommissionWeight, replicas, partition.RecoverStartTime.Format("2006-01-02 15:04:05"), partition)
+		partition.DecommissionTerm, partition.DecommissionWeight, partition.DecommissionFirstHostDiskTokenKey, replicas, partition.RecoverStartTime.Format("2006-01-02 15:04:05"), partition)
 }
 
 func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {

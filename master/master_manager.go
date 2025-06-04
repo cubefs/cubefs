@@ -18,6 +18,7 @@ import (
 	"fmt"
 	syslog "log"
 	"strings"
+	"sync"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	cfsProto "github.com/cubefs/cubefs/proto"
@@ -307,6 +308,8 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearMetaNodes()
 	m.cluster.clearLcNodes()
 	m.cluster.clearVols()
+
+	m.cluster.DataNodeToDecommissionRepairDpMap = sync.Map{}
 
 	if m.user != nil {
 		// leader change event may be before m.user initialization
