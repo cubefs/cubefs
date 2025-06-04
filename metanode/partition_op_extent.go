@@ -391,7 +391,7 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 		})
 		ino.RangeMultiVer(func(idx int, snapIno *Inode) bool {
 			log.LogInfof("action[GetExtentByVer] read ino[%v] readseq [%v] snapIno ino seq [%v]", ino.Inode, reqVer, snapIno.getVer())
-			for _, ek := range snapIno.GetExtents().eks {
+			for _, ek := range snapIno.GetExtentEks() {
 				if reqVer >= ek.GetSeq() {
 					log.LogInfof("action[GetExtentByVer] get extent ino[%v] readseq [%v] snapIno ino seq [%v], include ek (%v)", ino.Inode, reqVer, snapIno.getVer(), ek.String())
 					rsp.Extents = append(rsp.Extents, ek)
@@ -448,7 +448,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	resp := &proto.GetExtentsResponse{}
 	log.LogInfof("action[ExtentsList] inode[%v] request verseq [%v] ino ver [%v] extent size %v ino.Size %v ino[%v] hist len %v",
-		req.Inode, req.VerSeq, ino.getVer(), len(ino.GetExtents().eks), ino.Size, ino, ino.getLayerLen())
+		req.Inode, req.VerSeq, ino.getVer(), len(ino.GetExtentEks()), ino.Size, ino, ino.getLayerLen())
 
 	resp.LeaseExpireTime = ino.LeaseExpireTime
 	if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
