@@ -1806,14 +1806,15 @@ func (s *DataNode) handlePacketToSetRepairingStatus(p *repl.Packet) {
 		log.LogWarnf("action[handlePacketToSetRepairStatus] cannot find dp %v", request.PartitionId)
 		return
 	}
-	oldStatus := dp.isRepairing
-	dp.isRepairing = request.RepairingStatus
-	if err = dp.PersistMetadata(); err != nil {
-		log.LogErrorf("action[handlePacketToSetRepairingStatus] persist dp %v metadata failed, err: %v", dp.partitionID, err)
-		dp.isRepairing = oldStatus
+
+	_, isLeader := dp.IsRaftLeader()
+	if !isLeader {
+		err = raft.ErrNotLeader
 		return
 	}
-	log.LogInfof("action[handlePacketToSetRepairingStatus] %v set repairingStatus %v success", request.PartitionId, request.RepairingStatus)
+
+	err = dp.HandleSetRepairingStatusOp(request)
+	log.LogInfof("action[handlePacketToSetRepairStatus] opcode %v dpid %v after raft submit err %v resultCode %v", p.Opcode, p.PartitionID, err)
 }
 
 func (s *DataNode) handlePacketToStopDataPartitionRepair(p *repl.Packet) {

@@ -760,6 +760,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			ForbidWriteOpOfProtoVer0:   dpForbid,
 			ReadOnlyReasons:            partition.ReadOnlyReasons(),
 			IsMissingTinyExtent:        partition.extentStore.AvailableTinyExtentCnt()+partition.extentStore.BrokenTinyExtentCnt() < storage.TinyExtentCount,
+			IsRepairing:                partition.isRepairing,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) "+
 			"TriggerDiskError(%v) reqId(%v) testID(%v) cost(%v).",

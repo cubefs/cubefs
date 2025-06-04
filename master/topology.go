@@ -2376,8 +2376,8 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				}
 				log.LogDebugf("[DecommissionListTraverse]ns %v(%p) traverse dp(%v)", l.nsId, l, dp.decommissionInfo())
 				if dp.IsDecommissionSuccess() {
-					if err := c.setAllReplicasRepairingStatus(dp, false, false); err != nil {
-						continue
+					if err := c.setDpRepairingStatus(dp, false, false); err != nil {
+						log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] set repairStatus to false failed, err %v", l.nsId, l, dp.decommissionInfo(), err)
 					}
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
@@ -2400,8 +2400,8 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					if !dp.tryRollback(c) {
 						log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for fail",
 							l.nsId, l, dp.PartitionID)
-						if err := c.setAllReplicasRepairingStatus(dp, false, false); err != nil {
-							continue
+						if err := c.setDpRepairingStatus(dp, false, false); err != nil {
+							log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] set repairStatus to false failed, err %v", l.nsId, l, dp.decommissionInfo(), err)
 						}
 						l.Remove(dp)
 						// if dp is not removed from decommission list, do not reset RestoreReplica
@@ -2419,10 +2419,16 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 						l.nsId, l, dp.PartitionID)
 					dp.ReleaseDecommissionToken(c)
 					dp.ReleaseDecommissionFirstHostToken(c)
+					if err := c.setDpRepairingStatus(dp, false, false); err != nil {
+						log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] set repairStatus to false failed, err %v", l.nsId, l, dp.decommissionInfo(), err)
+					}
 					l.Remove(dp)
 					dp.setRestoreReplicaStop()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionInitial() { // fixed done ,not release token
+					if err := c.setDpRepairingStatus(dp, false, false); err != nil {
+						log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] set repairStatus to false failed, err %v", l.nsId, l, dp.decommissionInfo(), err)
+					}
 					l.Remove(dp)
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)

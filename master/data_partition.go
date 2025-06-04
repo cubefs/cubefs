@@ -217,6 +217,12 @@ func (partition *DataPartition) createTaskToTryToChangeLeader(addr string) (task
 	return
 }
 
+func (partition *DataPartition) createTaskToSetRepairingStatus(addr string, repairingStatus bool) (task *proto.AdminTask, err error) {
+	task = proto.NewAdminTask(proto.OpSetRepairingStatus, addr, newSetRepairingStatusRequest(partition.PartitionID, repairingStatus))
+	partition.resetTaskID(task)
+	return
+}
+
 func (partition *DataPartition) createTaskToAddRaftMember(addPeer proto.Peer, leaderAddr string) (task *proto.AdminTask, err error) {
 	task = proto.NewAdminTask(proto.OpAddDataPartitionRaftMember, leaderAddr, newAddDataPartitionRaftMemberRequest(partition.PartitionID, addPeer))
 	partition.resetTaskID(task)
@@ -732,6 +738,7 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 	replica.ForbidWriteOpOfProtoVer0 = vr.ForbidWriteOpOfProtoVer0
 	replica.ReadOnlyReasons = vr.ReadOnlyReasons
 	replica.IsMissingTinyExtent = vr.IsMissingTinyExtent
+	replica.IsRepairing = vr.IsRepairing
 	partition.setForbidWriteOpOfProtoVer0()
 	if replica.IsLeader {
 		partition.LeaderReportTime = time.Now().Unix()
@@ -1727,7 +1734,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		if err = c.addDataReplica(partition, targetAddr, true, false); err != nil {
 			goto errHandler
 		}
-		if err = c.setAllReplicasRepairingStatus(partition, true, true); err != nil {
+		if err = c.setDpRepairingStatus(partition, true, true); err != nil {
 			goto errHandler
 		}
 		newReplica, _ := partition.getReplica(targetAddr)
@@ -1883,7 +1890,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 		partition.DecommissionErrorMessage = fmt.Sprintf("rollback failed:%v", err.Error())
 		return
 	}
-	err = c.setAllReplicasRepairingStatus(partition, false, false)
+	err = c.setDpRepairingStatus(partition, false, false)
 	if err != nil {
 		// keep decommission status to failed for rollback
 		log.LogWarnf("action[rollback] dp[%v] rollback to set all replicas repairingStatus to false failed:%v",
@@ -2000,40 +2007,6 @@ func (partition *DataPartition) tryRollback(c *Cluster) bool {
 func (partition *DataPartition) IsRollbackFailed() bool {
 	return partition.IsDecommissionFailed() &&
 		atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit
-}
-
-func (partition *DataPartition) setReplicaRepairingStatus(replicaAddr string, repairingStatus bool, c *Cluster) bool {
-	const RetryMax = 5
-	var (
-		dataNode *DataNode
-		err      error
-		retry    = 0
-	)
-	for retry <= RetryMax {
-		if dataNode, err = c.dataNode(replicaAddr); err != nil {
-			retry++
-			time.Sleep(time.Second)
-			log.LogWarnf("action[setReplicaRepairingStatus] dp[%v] can't find dataNode %v", partition.PartitionID, replicaAddr)
-			continue
-		}
-		task := partition.createTaskToSetRepairingStatus(replicaAddr, repairingStatus)
-		packet, err := dataNode.TaskManager.syncSendAdminTask(task)
-		if err != nil {
-			retry++
-			time.Sleep(time.Second)
-			log.LogWarnf("action[setReplicaRepairingStatus] dp[%v] send repairingStatus set task failed %v", partition.PartitionID, err.Error())
-			continue
-		}
-		log.LogDebugf("action[setReplicaRepairingStatus] dp[%v] send repairingStatus set task to replica %v packet %v", partition.PartitionID, replicaAddr, packet)
-		return true
-	}
-	return false
-}
-
-func (partition *DataPartition) createTaskToSetRepairingStatus(addr string, repairingStatus bool) (task *proto.AdminTask) {
-	task = proto.NewAdminTask(proto.OpSetRepairingStatus, addr, newSetRepairingStatusRequest(partition.PartitionID, repairingStatus))
-	partition.resetTaskID(task)
-	return
 }
 
 func (partition *DataPartition) pauseReplicaRepair(replicaAddr string, stop bool, c *Cluster) bool {

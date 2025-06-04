@@ -877,6 +877,7 @@ type DataPartitionReport struct {
 	ForbidWriteOpOfProtoVer0   bool
 	ReadOnlyReasons            uint32
 	IsMissingTinyExtent        bool
+	IsRepairing                bool
 }
 
 type DataNodeQosResponse struct {
