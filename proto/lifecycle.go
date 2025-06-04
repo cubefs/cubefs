@@ -66,7 +66,7 @@ type Expiration struct {
 
 type Filter struct {
 	Prefix  string `json:"Prefix,omitempty" xml:"Prefix,omitempty" bson:"Prefix,omitempty"`
-	MinSize uint64 `json:"MinSize,omitempty" xml:"MinSize,omitempty" bson:"MinSize,omitempty"`
+	MinSize uint64 `json:"MinSize" xml:"MinSize" bson:"MinSize"`
 }
 
 type Transition struct {
