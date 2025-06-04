@@ -8,7 +8,6 @@ import (
 	syslog "log"
 	"os"
 	gopath "path"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -71,8 +70,6 @@ type (
 		servicePath         string
 		volType             int
 		ebsBlockSize        int
-		cacheRuleKey        string
-		cacheThreshold      int
 		subDir              string
 		cluster             string
 		dirChildrenNumLimit uint32
@@ -438,12 +435,6 @@ func (c *Client) OpenFile(path string, flags int, mode uint32) (*File, error) {
 		info = newInfo
 	}
 	var fileCache bool
-	if c.cacheRuleKey == "" {
-		fileCache = false
-	} else {
-		fileCachePattern := fmt.Sprintf(".*%s.*", c.cacheRuleKey)
-		fileCache, _ = regexp.MatchString(fileCachePattern, absPath)
-	}
 	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass)
 	if f == nil {
 		return nil, syscall.EMFILE
@@ -1153,7 +1144,6 @@ func (c *Client) allocFD(ino uint64, flags int, mode uint32, fileCache bool, fil
 			ReadConcurrency: c.cfg.ReadBlockThread,
 			FileCache:       fileCache,
 			FileSize:        fileSize,
-			CacheThreshold:  c.cacheThreshold,
 		}
 		f.fileWriter.FreeCache()
 		switch flags & 0xff {
@@ -1192,8 +1182,6 @@ func (c *Client) loadConfFromMaster(masters []string) (err error) {
 	}
 	c.volType = volumeInfo.VolType
 	c.ebsBlockSize = volumeInfo.ObjBlockSize
-	c.cacheRuleKey = volumeInfo.CacheRule
-	c.cacheThreshold = volumeInfo.CacheThreshold
 	c.volStorageClass = volumeInfo.VolStorageClass
 	c.volAllowedStorageClass = volumeInfo.AllowedStorageClass
 	var clusterInfo *proto.ClusterInfo

@@ -2919,10 +2919,6 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 		args.objBlockSize = defaultEbsBlkSize
 	}
 
-	if args.cacheThreshold == 0 {
-		args.cacheThreshold = defaultCacheThreshold
-	}
-
 	if int(req.dpReplicaNum) > m.cluster.dataNodeCount() {
 		err = fmt.Errorf("dp replicaNum %d can't be large than dataNodeCnt %d", req.dpReplicaNum, m.cluster.dataNodeCount())
 		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
@@ -3128,8 +3124,6 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		DpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 		VolType:                 vol.VolType,
 		ObjBlockSize:            vol.EbsBlkSize,
-		CacheThreshold:          vol.CacheThreshold,
-		CacheRule:               vol.CacheRule,
 		TrashInterval:           vol.TrashInterval,
 		DisableAuditLog:         vol.DisableAuditLog,
 		LatestVer:               vol.VersionMgr.getLatestVer(),

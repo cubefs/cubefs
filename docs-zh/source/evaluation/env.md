@@ -4,11 +4,11 @@
 
 **版本: v3.3.1**
 
-| 节点类型   | 节点数 | CPU | 内存   | 存储           | 网络    | 备注       |
-|--------|--------|-----|--------|----------------|---------|----------|
+| 节点类型   | 节点数 | CPU | 内存   | 存储           | 网络    | 备注        |
+| ---------- | ------ | --- | ------ | -------------- | ------- | ----------- |
 | 管理节点   | 3      | 8   | 32GiB  | 197GiB SSD     | 10 Gb/s | docker 容器 |
-| 元数据节点 | 5      | 80  | 377GiB | 4 x 3.7TiB SSD | 50 Gb/s | 混合部署   |
-| 数据节点   | 5      | 80  | 377GiB | 4 x 3.7TiB SSD | 50 Gb/s | 混合部署   |
+| 元数据节点 | 5      | 80  | 377GiB | 4 x 3.7TiB SSD | 50 Gb/s | 混合部署    |
+| 数据节点   | 5      | 80  | 377GiB | 4 x 3.7TiB SSD | 50 Gb/s | 混合部署    |
 
 
 ## 卷设置
@@ -16,8 +16,8 @@
 **未设置配额，DataNode 未设置流控限速**
 
 | 参数                 | 默认值 | 推荐值         | 说明                          |
-|----------------------|--------|----------------|-----------------------------|
-| FollowerRead         | False  | False          | 是否开启 FollowerRead          |
+| -------------------- | ------ | -------------- | ----------------------------- |
+| FollowerRead         | False  | False          | 是否开启 FollowerRead         |
 | Capacity             | 10 GB  | 300 000 000 GB | 容量                          |
 | Data Replica Number  | 3      | 500            | 数据副本数                    |
 | Meta Replica Number  | 3      | 10             | 元数据副本数                  |
@@ -45,9 +45,7 @@ Create a new volume:
   followerRead             : false
   readOnlyWhenFull         : false
   zoneName                 : 
-  cacheRuleKey             : 
   ebsBlkSize               : 8388608 byte
-  cacheThreshold           : 10485760 byte
   cacheTTL                 : 30 day
   cacheHighWater           : 80
   cacheLowWater            : 60

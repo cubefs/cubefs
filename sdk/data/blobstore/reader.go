@@ -64,8 +64,8 @@ func (s rwSlice) String() string {
 }
 
 func (reader *Reader) String() string {
-	return fmt.Sprintf("Reader{address(%v),volName(%v),volType(%v),ino(%v),fileSize(%v),enableBcache(%v),fileCache(%v),cacheThreshold(%v)},readConcurrency(%v)",
-		&reader, reader.volName, reader.volType, reader.ino, reader.fileLength, reader.enableBcache, reader.fileCache, reader.cacheThreshold, reader.readConcurrency)
+	return fmt.Sprintf("Reader{address(%v),volName(%v),volType(%v),ino(%v),fileSize(%v),enableBcache(%v),fileCache(%v)},readConcurrency(%v)",
+		&reader, reader.volName, reader.volType, reader.ino, reader.fileLength, reader.enableBcache, reader.fileCache, reader.readConcurrency)
 }
 
 type Reader struct {
@@ -81,16 +81,15 @@ type Reader struct {
 	wg              sync.WaitGroup
 	once            sync.Once
 	sync.Mutex
-	close          bool
-	extentKeys     []proto.ExtentKey
-	objExtentKeys  []proto.ObjExtentKey
-	enableBcache   bool
-	fileCache      bool
-	cacheThreshold int
-	fileLength     uint64
-	valid          bool
-	inflightCache  sync.Map
-	limitManager   *manager.LimitManager
+	close         bool
+	extentKeys    []proto.ExtentKey
+	objExtentKeys []proto.ObjExtentKey
+	enableBcache  bool
+	fileCache     bool
+	fileLength    uint64
+	valid         bool
+	inflightCache sync.Map
+	limitManager  *manager.LimitManager
 }
 
 type ClientConfig struct {
@@ -107,7 +106,6 @@ type ClientConfig struct {
 	ReadConcurrency int
 	FileCache       bool
 	FileSize        uint64
-	CacheThreshold  int
 	StorageClass    uint32
 }
 
@@ -124,7 +122,6 @@ func NewReader(config ClientConfig) (reader *Reader) {
 	reader.enableBcache = config.EnableBcache
 	reader.readConcurrency = config.ReadConcurrency
 	reader.fileCache = config.FileCache
-	reader.cacheThreshold = config.CacheThreshold
 
 	reader.limitManager = config.Ec.LimitManager
 	return

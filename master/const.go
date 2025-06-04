@@ -42,8 +42,6 @@ const (
 	volCapacityKey          = "capacity"
 	volDeleteLockTimeKey    = "deleteLockTime"
 	volTypeKey              = "volType"
-	cacheRuleKey            = "cacheRuleKey"
-	emptyCacheRuleKey       = "emptyCacheRule"
 
 	dataNodesetSelectorKey = "dataNodesetSelector"
 	metaNodesetSelectorKey = "metaNodesetSelector"
@@ -54,7 +52,6 @@ const (
 
 	forceDelVolKey                         = "forceDelVol"
 	ebsBlkSizeKey                          = "ebsBlkSize"
-	cacheThresholdKey                      = "cacheThreshold"
 	clientVersion                          = "version"
 	domainIdKey                            = "domainId"
 	volOwnerKey                            = "owner"
@@ -276,8 +273,7 @@ const (
 )
 
 const (
-	defaultEbsBlkSize     = 8 * 1024 * 1024
-	defaultCacheThreshold = 10 * 1024 * 1024
+	defaultEbsBlkSize = 8 * 1024 * 1024
 )
 
 const (

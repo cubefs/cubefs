@@ -314,8 +314,6 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam(proto.VolIgnoreTinyRecover, strconv.FormatBool(vv.IgnoreTinyRecover))
 	request.addParam(proto.MaximallyReadKey, strconv.FormatBool(vv.MaximallyRead))
 	request.addParam("ebsBlkSize", strconv.Itoa(vv.ObjBlockSize))
-	request.addParam("cacheThreshold", strconv.Itoa(vv.CacheThreshold))
-	request.addParam("cacheRuleKey", vv.CacheRule)
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(vv.DpReadOnlyWhenVolFull))
 	request.addParam("replicaNum", strconv.FormatUint(uint64(vv.DpReplicaNum), 10))
 	request.addParam("enableQuota", strconv.FormatBool(vv.EnableQuota))
@@ -405,8 +403,7 @@ func (api *AdminAPI) VolAddAllowedStorageClass(volName string, addAllowedStorage
 }
 
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, deleteLockTime int64, crossZone, normalZonesFirst bool,
-	business string, mpCount, dpCount, replicaNum, dpSize int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
-	cacheThreshold int,
+	business string, mpCount, dpCount, replicaNum, dpSize int, followerRead bool, zoneName string, ebsBlkSize int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
 	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string, optMaximallyRead string,
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
@@ -429,9 +426,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam(proto.MetaFollowerReadKey, optMetaFollowerRead)
 	request.addParam(proto.MaximallyReadKey, optMaximallyRead)
 	request.addParam("zoneName", zoneName)
-	request.addParam("cacheRuleKey", cacheRuleKey)
 	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))
-	request.addParam("cacheThreshold", strconv.Itoa(cacheThreshold))
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
 	request.addParam("enableQuota", optEnableQuota)
 	request.addParam("clientIDKey", clientIDKey)

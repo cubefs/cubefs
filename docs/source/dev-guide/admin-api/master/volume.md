@@ -31,9 +31,7 @@ Parameter List
 | crossZone        | bool   | Whether to cross regions. If set to true, the zoneName parameter cannot be set                                                                                | No       | false                                                                            |
 | normalZonesFirst | bool   | Whether to prioritize writing to normal domains                                                                                                               | No       | false                                                                            |
 | zoneName         | string | Specify the region                                                                                                                                            | No       | default if crossZone is set to false                                             |
-| cacheRuleKey     | string | Used for erasure-coded volume                                                                                                                                 | No       | Only data matching this field will be written to the cache if it is not empty    |
 | ebsBlkSize       | int    | Size of each block, in bytes                                                                                                                                  | No       | Default 8M                                                                       |
-| cacheThreshold   | int    | The minimum size of data to be written to the cache, in bytes                                                                                                 | No       | Default 10M                                                                      |
 
 ## Delete
 
@@ -76,8 +74,6 @@ Response Example
 ``` json
 {
     "Authenticate": false,
-     "CacheRule": "",
-     "CacheThreshold": 10485760,
      "Capacity": 10,
      "CreateTime": "2022-03-31 16:08:31",
      "CrossZone": false,
@@ -225,10 +221,7 @@ Parameter List
 | zoneName       | string | The region where the volume is located after the update. If not set, it will be updated to the default region | Yes      |
 | followerRead   | bool   | Whether to allow reading data from followers                                                                  | No       |
 | enablePosixAcl | bool   | Whether to configure POSIX permission restrictions                                                            | No       |
-| emptyCacheRule | string | Whether to empty the cacheRule                                                                                | No       |
-| cacheRuleKey   | string | Cache rule, used for erasure-coded volume. Only data that meets the corresponding rule will be cached         | No       |
 | ebsBlkSize     | int    | The size of each block of the erasure-coded volume                                                            | No       |
-| cacheThreshold | int    | The size limit of the cached file. Only files smaller than this value will be written to the cache            | No       |
 
 ## Get Volume List
 

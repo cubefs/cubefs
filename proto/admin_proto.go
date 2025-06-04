@@ -1347,12 +1347,10 @@ type SimpleVolView struct {
 	DpReadOnlyWhenVolFull   bool
 	LeaderRetryTimeout      int64
 
-	VolType        int
-	ObjBlockSize   int
-	CacheThreshold int
-	CacheRule      string
-	Uids           []UidSimpleInfo
-	TrashInterval  int64
+	VolType       int
+	ObjBlockSize  int
+	Uids          []UidSimpleInfo
+	TrashInterval int64
 
 	// multi version snapshot
 	LatestVer               uint64

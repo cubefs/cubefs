@@ -91,7 +91,6 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			ReadConcurrency: s.readThreads,
 			FileCache:       false,
 			FileSize:        i.Size,
-			CacheThreshold:  s.CacheThreshold,
 			StorageClass:    i.StorageClass,
 		}
 		log.LogDebugf("Trace NewFile:flag(%v). clientConf(%v)", flag, clientConf)
@@ -269,7 +268,6 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			ReadConcurrency: f.super.readThreads,
 			FileCache:       false,
 			FileSize:        uint64(fileSize),
-			CacheThreshold:  f.super.CacheThreshold,
 			StorageClass:    f.info.StorageClass,
 		}
 		f.fWriter.FreeCache()

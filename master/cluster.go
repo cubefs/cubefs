@@ -4058,10 +4058,8 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		TxConflictRetryNum:      req.txConflictRetryNum,
 		TxConflictRetryInterval: req.txConflictRetryInterval,
 
-		VolType:        req.volType,
-		EbsBlkSize:     req.coldArgs.objBlockSize,
-		CacheThreshold: req.coldArgs.cacheThreshold,
-		CacheRule:      req.coldArgs.cacheRule,
+		VolType:    req.volType,
+		EbsBlkSize: req.coldArgs.objBlockSize,
 
 		VolQosEnable: req.qosLimitArgs.qosEnable,
 		IopsRLimit:   req.qosLimitArgs.iopsRVal,

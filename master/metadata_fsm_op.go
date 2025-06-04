@@ -341,9 +341,7 @@ type volValue struct {
 	DomainId           uint64
 	VolType            int
 
-	EbsBlkSize     int
-	CacheThreshold int
-	CacheRule      string
+	EbsBlkSize int
 
 	EnablePosixAcl bool
 	EnableQuota    bool
@@ -434,8 +432,6 @@ func newVolValue(vol *Vol) (vv *volValue) {
 
 		VolType:             vol.VolType,
 		EbsBlkSize:          vol.EbsBlkSize,
-		CacheThreshold:      vol.CacheThreshold,
-		CacheRule:           vol.CacheRule,
 		VolQosEnable:        vol.qosManager.qosEnable,
 		IopsRLimit:          vol.qosManager.getQosLimit(proto.IopsReadType),
 		IopsWLimit:          vol.qosManager.getQosLimit(proto.IopsWriteType),

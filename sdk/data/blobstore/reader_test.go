@@ -50,7 +50,6 @@ func TestNewReader(t *testing.T) {
 		ReadConcurrency: 0,
 		FileCache:       false,
 		FileSize:        0,
-		CacheThreshold:  0,
 	}
 	ec := &stream.ExtentClient{}
 	err := gohook.HookMethod(ec, "Write", MockWriteTrue, nil)
@@ -284,7 +283,6 @@ func TestAsyncCache(t *testing.T) {
 	for _, tc := range testCase {
 		reader := Reader{}
 		reader.limitManager = manager.NewLimitManager(nil)
-		reader.cacheThreshold = 1000
 		ctx := context.Background()
 		err := gohook.HookMethod(ebsc, "Read", tc.ebsReadFunc, nil)
 		if err != nil {
@@ -364,7 +362,6 @@ func TestReadSliceRange(t *testing.T) {
 		reader.volName = "cfs"
 		reader.ino = 12407
 		reader.fileLength = 10
-		reader.cacheThreshold = 100
 		reader.ec = ec
 		reader.err = make(chan error)
 		rs := &rwSlice{}

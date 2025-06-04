@@ -105,7 +105,6 @@ import (
 	"path"
 	gopath "path"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -259,8 +258,6 @@ type client struct {
 	enableBcache           bool
 	readBlockThread        int
 	writeBlockThread       int
-	cacheRuleKey           string
-	cacheThreshold         int
 	enableSummary          bool
 	secretKey              string
 	accessKey              string
@@ -845,12 +842,6 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		info = newInfo
 	}
 	var fileCache bool
-	if c.cacheRuleKey == "" {
-		fileCache = false
-	} else {
-		fileCachePattern := fmt.Sprintf(".*%s.*", c.cacheRuleKey)
-		fileCache, _ = regexp.MatchString(fileCachePattern, absPath)
-	}
 	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass)
 	if f == nil {
 		return statusEMFILE
@@ -1699,7 +1690,6 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 			ReadConcurrency: c.readBlockThread,
 			FileCache:       fileCache,
 			FileSize:        fileSize,
-			CacheThreshold:  c.cacheThreshold,
 			StorageClass:    storageClass,
 		}
 		f.fileWriter.FreeCache()
@@ -1894,8 +1884,6 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	}
 	c.volType = volumeInfo.VolType
 	c.ebsBlockSize = volumeInfo.ObjBlockSize
-	c.cacheRuleKey = volumeInfo.CacheRule
-	c.cacheThreshold = volumeInfo.CacheThreshold
 	c.volStorageClass = volumeInfo.VolStorageClass
 	c.volAllowedStorageClass = volumeInfo.AllowedStorageClass
 
