@@ -533,6 +533,6 @@ const (
 	AutoPlan    = "auto"
 	OfflinePlan = "offline"
 
-	CheckLeaderNum = 10
-	WaitTimeSec    = 30
+	CheckMetaLeaderRetry    = 10
+	CheckMetaLeaderInterval = 30
 )
