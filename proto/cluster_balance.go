@@ -65,4 +65,5 @@ type ClusterPlan struct {
 	Status  string                       `json:"status" bson:"status"`
 	Expire  time.Time                    `json:"expire" bson:"expire"`
 	Type    string                       `json:"type" bson:"type"`
+	Msg     string                       `json:"msg" bson:"msg"`
 }
