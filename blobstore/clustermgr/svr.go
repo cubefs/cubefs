@@ -32,9 +32,11 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/catalog"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/configmgr"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/raftdb"
@@ -81,10 +83,15 @@ const (
 	defaultMetricReportIntervalM    = 2
 	defaultCheckConsistentIntervalM = 360
 
-	defaultNodeSetCap                = 108
-	defaultNodeSetRackCap            = 6
-	defaultDiskSetCap                = 2160
-	defaultDiskCountPerNodeInDiskSet = 20
+	defaultBlobNodeSetCap                = 24
+	defaultBlobNodeSetRackCap            = 6
+	defaultBlobNodeDiskSetCap            = 120
+	defaultDiskCountPerBlobNodeInDiskSet = 10
+
+	defaultShardNodeSetCap                = 12
+	defaultShardNodeSetRackCap            = 3
+	defaultShardNodeDiskSetCap            = 36
+	defaultDiskCountPerShardNodeInDiskSet = 3
 )
 
 var (
@@ -99,14 +106,17 @@ type Config struct {
 	ClusterID                proto.ClusterID           `json:"cluster_id"`
 	Readonly                 bool                      `json:"readonly"`
 	VolumeMgrConfig          volumemgr.VolumeMgrConfig `json:"volume_mgr_config"`
+	CatalogMgrConfig         catalog.Config            `json:"catalog_mgr_config"`
 	DBPath                   string                    `json:"db_path"`
 	DBCacheSize              uint64                    `json:"db_cache_size"`
 	NormalDBPath             string                    `json:"normal_db_path"`
 	KvDBPath                 string                    `json:"kv_db_path"`
-	CodeModePolicies         []codemode.Policy         `json:"code_mode_policies"`
+	VolumeCodeModePolicies   []codemode.Policy         `json:"code_mode_policies"`
+	ShardCodeModeName        codemode.CodeModeName     `json:"shard_code_mode_name"`
 	ClusterCfg               map[string]interface{}    `json:"cluster_config"`
 	RaftConfig               RaftConfig                `json:"raft_config"`
-	DiskMgrConfig            diskmgr.DiskMgrConfig     `json:"disk_mgr_config"`
+	BlobNodeDiskMgrConfig    cluster.DiskMgrConfig     `json:"disk_mgr_config"`
+	ShardNodeDiskMgrConfig   cluster.DiskMgrConfig     `json:"shard_node_disk_mgr_config"`
 	ClusterReportIntervalS   int                       `json:"cluster_report_interval_s"`
 	ConsulAgentAddr          string                    `json:"consul_agent_addr"`
 	ConsulToken              string                    `json:"consul_token"`
@@ -131,11 +141,13 @@ type Service struct {
 	ConfigMgr  *configmgr.ConfigMgr
 	ScopeMgr   *scopemgr.ScopeMgr
 	ServiceMgr *servicemgr.ServiceMgr
-	// Note: DiskMgr should always list before volumeMgr
-	// cause DiskMgr applier LoadData should be call first, or VolumeMgr LoadData may return error with disk not found
-	DiskMgr   *diskmgr.DiskMgr
-	VolumeMgr *volumemgr.VolumeMgr
-	KvMgr     *kvmgr.KvMgr
+	// Note: BlobNodeMgr should always list before volumeMgr
+	// cause BlobNodeMgr applier LoadData should be call first, or VolumeMgr LoadData may return error with disk not found
+	BlobNodeMgr  *cluster.BlobNodeManager
+	ShardNodeMgr *cluster.ShardNodeManager
+	VolumeMgr    *volumemgr.VolumeMgr
+	CatalogMgr   *catalog.CatalogMgr
+	KvMgr        *kvmgr.KvMgr
 
 	dbs map[string]base.SnapshotDB
 	// status indicate service's current state, like normal/snapshot
@@ -196,6 +208,10 @@ func New(cfg *Config) (*Service, error) {
 	if err != nil {
 		log.Fatalf("open volume database failed, err: %v", err)
 	}
+	catalogDB, err := catalogdb.Open(cfg.CatalogMgrConfig.CatalogDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
+	if err != nil {
+		log.Fatalf("open catalog database failed, err: %v", err)
+	}
 	raftDB, err := raftdb.OpenRaftDB(cfg.RaftConfig.RaftDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatalf("open raft database failed, err: %v", err)
@@ -221,7 +237,7 @@ func New(cfg *Config) (*Service, error) {
 	}
 
 	service := &Service{
-		dbs:          map[string]base.SnapshotDB{"volume": volumeDB, "normal": normalDB, "keyValue": kvDB},
+		dbs:          map[string]base.SnapshotDB{"volume": volumeDB, "normal": normalDB, "keyValue": kvDB, "catalog": catalogDB},
 		Config:       cfg,
 		raftStartCh:  make(chan interface{}),
 		status:       ServiceStatusNormal,
@@ -234,9 +250,14 @@ func New(cfg *Config) (*Service, error) {
 	if err != nil {
 		log.Fatalf("new scopeMgr failed, err: %v", err)
 	}
-	diskMgr, err := diskmgr.New(scopeMgr, normalDB, cfg.DiskMgrConfig)
+	blobNodeMgr, err := cluster.NewBlobNodeMgr(scopeMgr, normalDB, cfg.BlobNodeDiskMgrConfig)
 	if err != nil {
-		log.Fatalf("new diskMgr failed, err: %v", err)
+		log.Fatalf("new blobNodeMgr failed, err: %v", err)
+	}
+
+	shardNodeMgr, err := cluster.NewShardNodeMgr(scopeMgr, normalDB, cfg.ShardNodeDiskMgrConfig)
+	if err != nil {
+		log.Fatalf("new shardNodeMgr failed, err: %v", err)
 	}
 
 	kvMgr, err := kvmgr.NewKvMgr(kvDB)
@@ -251,17 +272,24 @@ func New(cfg *Config) (*Service, error) {
 
 	serviceMgr := servicemgr.NewServiceMgr(normaldb.OpenServiceTable(normalDB))
 
-	volumeMgr, err := volumemgr.NewVolumeMgr(cfg.VolumeMgrConfig, diskMgr, scopeMgr, configMgr, volumeDB)
+	volumeMgr, err := volumemgr.NewVolumeMgr(cfg.VolumeMgrConfig, blobNodeMgr, scopeMgr, configMgr, volumeDB)
 	if err != nil {
 		log.Fatalf("new volumeMgr failed, error: %v", errors.Detail(err))
+	}
+
+	catalogMgr, err := catalog.NewCatalogMgr(cfg.CatalogMgrConfig, shardNodeMgr, scopeMgr, kvMgr, catalogDB)
+	if err != nil {
+		log.Fatalf("new catalogMgr failed, error: %v", errors.Detail(err))
 	}
 
 	service.KvMgr = kvMgr
 	service.VolumeMgr = volumeMgr
 	service.ConfigMgr = configMgr
-	service.DiskMgr = diskMgr
+	service.BlobNodeMgr = blobNodeMgr
 	service.ServiceMgr = serviceMgr
 	service.ScopeMgr = scopeMgr
+	service.ShardNodeMgr = shardNodeMgr
+	service.CatalogMgr = catalogMgr
 
 	// raft server initial
 	applyIndex := uint64(0)
@@ -293,7 +321,11 @@ func New(cfg *Config) (*Service, error) {
 	log.Infof("config members: %+v, raftdb members: %+v", cfg.RaftConfig.RaftNodeConfig.Members, members)
 
 	for _, member := range members {
-		m := raftserver.Member{NodeID: member.ID, Host: member.Host, Learner: member.Learner, Context: []byte(member.NodeHost)}
+		mc, err := marshalMemberContext(member.NodeHost)
+		if err != nil {
+			log.Fatalf("marshal MemberContext, err: %v", err)
+		}
+		m := raftserver.Member{NodeID: member.ID, Host: member.Host, Learner: member.Learner, Context: mc}
 		cfg.RaftConfig.ServerConfig.Members = append(cfg.RaftConfig.ServerConfig.Members, m)
 	}
 	raftServer, err := raftserver.NewRaftServer(&cfg.RaftConfig.ServerConfig)
@@ -303,17 +335,25 @@ func New(cfg *Config) (*Service, error) {
 
 	// set raftServer
 	service.raftNode.SetRaftServer(raftServer)
-	diskMgr.SetRaftServer(raftServer)
+	blobNodeMgr.SetRaftServer(raftServer)
 	scopeMgr.SetRaftServer(raftServer)
 	volumeMgr.SetRaftServer(raftServer)
 	configMgr.SetRaftServer(raftServer)
+	shardNodeMgr.SetRaftServer(raftServer)
+	catalogMgr.SetRaftServer(raftServer)
 
 	// wait for raft start
 	service.waitForRaftStart()
 
+	// start volumeMgr task and refresh blobnode disk expire time after all ready
 	volumeMgr.Start()
-	// refresh disk expire time after all ready
-	diskMgr.RefreshExpireTime()
+	blobNodeMgr.RefreshExpireTime()
+	blobNodeMgr.Start()
+
+	// start catalogMgr task and refresh shardnode disk expire time after all ready
+	catalogMgr.Start()
+	shardNodeMgr.RefreshExpireTime()
+
 	// start raft node background progress
 	go raftNode.Start()
 
@@ -353,7 +393,9 @@ func (s *Service) Close() {
 
 	// 3. close module manager
 	s.VolumeMgr.Close()
-	s.DiskMgr.Close()
+	s.BlobNodeMgr.Close()
+	s.CatalogMgr.Close()
+	s.ShardNodeMgr.Close()
 	time.Sleep(1 * time.Second)
 
 	// 4. close all database
@@ -413,24 +455,25 @@ func (c *Config) checkAndFix() (err error) {
 			return errors.New("ChunkOversoldRatio must be between (1-VolumeOverboughtRatioKey)^2/VolumeOverboughtRatioKey and (1-VolumeOverboughtRatioKey)/VolumeOverboughtRatioKey")
 		}
 		c.VolumeMgrConfig.VolumeOverboughtRatio = volumeOverboughtRatio
-		c.DiskMgrConfig.ChunkOversoldRatio = chunkOversoldRatio
+		c.BlobNodeDiskMgrConfig.ChunkOversoldRatio = chunkOversoldRatio
 	}
 
 	c.VolumeMgrConfig.ChunkSize = c.ChunkSize
-	c.DiskMgrConfig.ChunkSize = int64(c.ChunkSize)
+	c.BlobNodeDiskMgrConfig.ChunkSize = int64(c.ChunkSize)
 	c.ClusterCfg[proto.VolumeChunkSizeKey] = c.ChunkSize
-	c.ClusterCfg[proto.CodeModeConfigKey] = c.CodeModePolicies
+	c.ClusterCfg[proto.CodeModeConfigKey] = c.VolumeCodeModePolicies
 
-	if len(c.CodeModePolicies) == 0 {
-		return errors.New("invalid code mode config")
+	if len(c.VolumeCodeModePolicies) == 0 {
+		return errors.New("invalid volume code mode config")
 	}
-	sort.Slice(c.CodeModePolicies, func(i, j int) bool {
-		return c.CodeModePolicies[i].MinSize < c.CodeModePolicies[j].MinSize
+
+	sort.Slice(c.VolumeCodeModePolicies, func(i, j int) bool {
+		return c.VolumeCodeModePolicies[i].MinSize < c.VolumeCodeModePolicies[j].MinSize
 	})
 	sortedPolicies := make([]codemode.Policy, 0)
-	for i := range c.CodeModePolicies {
-		if c.CodeModePolicies[i].Enable {
-			sortedPolicies = append(sortedPolicies, c.CodeModePolicies[i])
+	for i := range c.VolumeCodeModePolicies {
+		if c.VolumeCodeModePolicies[i].Enable {
+			sortedPolicies = append(sortedPolicies, c.VolumeCodeModePolicies[i])
 		}
 	}
 	if len(sortedPolicies) > 0 {
@@ -438,9 +481,9 @@ func (c *Config) checkAndFix() (err error) {
 			return errors.New("min size range must be started with 0")
 		}
 	} else {
-		for _, modePolicy := range c.CodeModePolicies {
+		for _, modePolicy := range c.VolumeCodeModePolicies {
 			codeMode := modePolicy.ModeName.GetCodeMode()
-			c.DiskMgrConfig.CodeModes = append(c.DiskMgrConfig.CodeModes, codeMode)
+			c.BlobNodeDiskMgrConfig.CodeModes = append(c.BlobNodeDiskMgrConfig.CodeModes, codeMode)
 		}
 	}
 	for i := 0; i < len(sortedPolicies)-1; i++ {
@@ -460,11 +503,11 @@ func (c *Config) checkAndFix() (err error) {
 		if c.UnavailableIDC == "" && codeMode.Tactic().AZCount != len(c.IDC) {
 			return errors.New("idc count not match modeTactic AZCount")
 		}
-		c.DiskMgrConfig.CodeModes = append(c.DiskMgrConfig.CodeModes, codeMode)
+		c.BlobNodeDiskMgrConfig.CodeModes = append(c.BlobNodeDiskMgrConfig.CodeModes, codeMode)
 	}
-	c.VolumeMgrConfig.CodeModePolicies = c.CodeModePolicies
+	c.VolumeMgrConfig.CodeModePolicies = c.VolumeCodeModePolicies
 
-	c.DiskMgrConfig.IDC = c.IDC
+	c.BlobNodeDiskMgrConfig.IDC = c.IDC
 	c.VolumeMgrConfig.IDC = c.IDC
 	c.VolumeMgrConfig.UnavailableIDC = c.UnavailableIDC
 	c.VolumeMgrConfig.Region = c.Region
@@ -487,25 +530,54 @@ func (c *Config) checkAndFix() (err error) {
 		c.KvDBPath = c.DBPath + "/kvdb"
 	}
 
-	copySetConfs := c.DiskMgrConfig.CopySetConfigs
-	if copySetConfs == nil {
-		copySetConfs = make(map[proto.NodeRole]map[proto.DiskType]diskmgr.CopySetConfig)
-		c.DiskMgrConfig.CopySetConfigs = copySetConfs
+	blobNodeCopySetConfs := c.BlobNodeDiskMgrConfig.CopySetConfigs
+	if blobNodeCopySetConfs == nil {
+		blobNodeCopySetConfs = make(map[proto.DiskType]cluster.CopySetConfig)
+		c.BlobNodeDiskMgrConfig.CopySetConfigs = blobNodeCopySetConfs
 	}
-	if copySetConfs[proto.NodeRoleBlobNode] == nil {
-		copySetConfs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]diskmgr.CopySetConfig)
+	blobNodeHDDCopySetConf := blobNodeCopySetConfs[proto.DiskTypeHDD]
+	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetCap, defaultBlobNodeSetCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetRackCap, defaultBlobNodeSetRackCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.DiskSetCap, defaultBlobNodeDiskSetCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerBlobNodeInDiskSet)
+	blobNodeCopySetConfs[proto.DiskTypeHDD] = blobNodeHDDCopySetConf
+	for diskType, copySetConf := range blobNodeCopySetConfs {
+		copySetConf.NodeSetIdcCap = (copySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
+		blobNodeCopySetConfs[diskType] = copySetConf
 	}
-	blobNodeHDDCopySetConf := copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
-	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetCap, defaultNodeSetCap)
-	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetRackCap, defaultNodeSetRackCap)
-	defaulter.Equal(&blobNodeHDDCopySetConf.DiskSetCap, defaultDiskSetCap)
-	defaulter.Equal(&blobNodeHDDCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerNodeInDiskSet)
-	copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = blobNodeHDDCopySetConf
-	for _, copySetConfOfRole := range copySetConfs {
-		for diskType, copySetConf := range copySetConfOfRole {
-			copySetConf.NodeSetIdcCap = (copySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
-			copySetConfOfRole[diskType] = copySetConf
-		}
+
+	shardNodeTactic := c.ShardCodeModeName.GetCodeMode().Tactic()
+	if !shardNodeTactic.IsReplicateMode() {
+		return errors.New("invalid shard code mode config")
+	}
+	if c.UnavailableIDC == "" && c.ShardCodeModeName.Tactic().AZCount != len(c.IDC) {
+		return errors.New("idc count not match shardNode modeTactic AZCount")
+	}
+	c.ShardNodeDiskMgrConfig.CodeModes = append(c.ShardNodeDiskMgrConfig.CodeModes, c.ShardCodeModeName.GetCodeMode())
+	c.ShardNodeDiskMgrConfig.IDC = c.IDC
+	c.ShardNodeDiskMgrConfig.ShardSize = proto.MaxShardSize
+
+	c.CatalogMgrConfig.CodeMode = c.ShardCodeModeName.GetCodeMode()
+	c.CatalogMgrConfig.UnavailableIDC = c.UnavailableIDC
+	if c.CatalogMgrConfig.CatalogDBPath == "" {
+		c.CatalogMgrConfig.CatalogDBPath = c.DBPath + "/catalogdb"
+	}
+	c.CatalogMgrConfig.IDC = c.IDC
+
+	shardNodeCopySetConfs := c.ShardNodeDiskMgrConfig.CopySetConfigs
+	if shardNodeCopySetConfs == nil {
+		shardNodeCopySetConfs = make(map[proto.DiskType]cluster.CopySetConfig)
+		c.ShardNodeDiskMgrConfig.CopySetConfigs = shardNodeCopySetConfs
+	}
+	shardNodeNVMeCopySetConf := shardNodeCopySetConfs[proto.DiskTypeNVMeSSD]
+	defaulter.Equal(&shardNodeNVMeCopySetConf.NodeSetCap, defaultShardNodeSetCap)
+	defaulter.Equal(&shardNodeNVMeCopySetConf.NodeSetRackCap, defaultShardNodeSetRackCap)
+	defaulter.Equal(&shardNodeNVMeCopySetConf.DiskSetCap, defaultShardNodeDiskSetCap)
+	defaulter.Equal(&shardNodeNVMeCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerShardNodeInDiskSet)
+	shardNodeCopySetConfs[proto.DiskTypeNVMeSSD] = shardNodeNVMeCopySetConf
+	for diskType, copySetConf := range shardNodeCopySetConfs {
+		copySetConf.NodeSetIdcCap = (copySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
+		shardNodeCopySetConfs[diskType] = copySetConf
 	}
 
 	return
@@ -597,7 +669,7 @@ func (s *Service) loop() {
 				Readonly:  s.Readonly,
 				Nodes:     make([]string, 0),
 			}
-			spaceStatInfo := s.DiskMgr.Stat(ctx)
+			spaceStatInfo := s.BlobNodeMgr.Stat(ctx, proto.DiskTypeHDD)
 			clusterInfo.Capacity = spaceStatInfo.TotalSpace
 			clusterInfo.Available = spaceStatInfo.WritableSpace
 			// filter learner node
@@ -628,7 +700,8 @@ func (s *Service) loop() {
 			if !s.raftNode.IsLeader() {
 				continue
 			}
-			changes := s.DiskMgr.GetHeartbeatChangeDisks()
+			// blobNode heartbeat change disks
+			changes := s.BlobNodeMgr.GetHeartbeatChangeDisks()
 			// report heartbeat change metric
 			s.reportHeartbeatChange(float64(len(changes)))
 			// in some case, like cm's network problem, it may trigger a mounts of disk heartbeat change
@@ -642,6 +715,23 @@ func (s *Service) loop() {
 				err := s.VolumeMgr.DiskWritableChange(ctx, changes[i].DiskID)
 				if err != nil {
 					span.Error("notify disk heartbeat change failed, err: ", err)
+				}
+			}
+			// shardNode heartbeat change disks
+			changes = s.ShardNodeMgr.GetHeartbeatChangeDisks()
+			// report heartbeat change metric
+			s.reportShardNodeHeartbeatChange(float64(len(changes)))
+			// in some case, like cm's network problem, it may trigger a mounts of disk heartbeat change
+			// in this situation, we need to ignore it and do some alert
+			if len(changes) > s.MaxHeartbeatNotifyNum {
+				span.Error("a lot of shardnode disk heartbeat change happen: ", changes)
+				continue
+			}
+			for i := range changes {
+				span.Debugf("notify shardnode disk heartbeat change, change info: %v", changes[i])
+				err := s.CatalogMgr.UpdateShardUnitStatus(ctx, changes[i].DiskID)
+				if err != nil {
+					span.Error("notify shardnode disk heartbeat change failed, err: ", err)
 				}
 			}
 		case <-metricReportTicker.C:
@@ -699,7 +789,7 @@ func (s *Service) metricReport(ctx context.Context) {
 	isLeader := strconv.FormatBool(s.raftNode.IsLeader())
 	s.report(ctx)
 	s.VolumeMgr.Report(ctx, s.Region, s.ClusterID)
-	s.DiskMgr.Report(ctx, s.Region, s.ClusterID, isLeader)
+	s.BlobNodeMgr.Report(ctx, s.Region, s.ClusterID, isLeader)
 }
 
 func (s *Service) checkVolInfos(ctx context.Context, clis []*clustermgr.Client) ([]proto.Vid, error) {

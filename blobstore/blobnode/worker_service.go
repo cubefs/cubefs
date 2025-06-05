@@ -21,6 +21,7 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	base "github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -29,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/count"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -83,7 +85,8 @@ type WorkerConfig struct {
 	// scheduler client config
 	Scheduler scheduler.Config `json:"scheduler"`
 	// blbonode client config
-	BlobNode bnapi.Config `json:"blobnode"`
+	BlobNode  bnapi.Config     `json:"blobnode"`
+	ShardNode shardnode.Config `json:"shardnode"`
 
 	DroppedBidRecord *recordlog.Config `json:"dropped_bid_record"`
 }
@@ -101,33 +104,23 @@ type WorkerService struct {
 
 	schedulerCli scheduler.IScheduler
 	blobNodeCli  client.IBlobNode
+	shardNodeCli client.IShardNode
 }
 
 func (cfg *WorkerConfig) checkAndFix() {
-	fixConfigItemInt(&cfg.AcquireIntervalMs, 500)
-	fixConfigItemInt(&cfg.MaxTaskRunnerCnt, 1)
-	fixConfigItemInt(&cfg.RepairConcurrency, 1)
-	fixConfigItemInt(&cfg.BalanceConcurrency, 1)
-	fixConfigItemInt(&cfg.DiskDropConcurrency, 1)
-	fixConfigItemInt(&cfg.ManualMigrateConcurrency, 10)
-	fixConfigItemInt(&cfg.ShardRepairConcurrency, 1)
-	fixConfigItemInt(&cfg.InspectConcurrency, 1)
-	fixConfigItemInt(&cfg.DownloadShardConcurrency, 10)
-	fixConfigItemInt64(&cfg.Scheduler.ClientTimeoutMs, 1000)
-	fixConfigItemInt64(&cfg.Scheduler.HostSyncIntervalMs, 1000)
-	fixConfigItemInt64(&cfg.BlobNode.ClientTimeoutMs, 1000)
-}
-
-func fixConfigItemInt(actual *int, defaultVal int) {
-	if *actual <= 0 {
-		*actual = defaultVal
-	}
-}
-
-func fixConfigItemInt64(actual *int64, defaultVal int64) {
-	if *actual <= 0 {
-		*actual = defaultVal
-	}
+	defaulter.LessOrEqual(&cfg.AcquireIntervalMs, 500)
+	defaulter.LessOrEqual(&cfg.MaxTaskRunnerCnt, 1)
+	defaulter.LessOrEqual(&cfg.RepairConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.BalanceConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.DiskDropConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.ManualMigrateConcurrency, 10)
+	defaulter.LessOrEqual(&cfg.ShardRepairConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.InspectConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.DownloadShardConcurrency, 10)
+	defaulter.IntegerLessOrEqual[int64](&cfg.Scheduler.ClientTimeoutMs, 1000)
+	defaulter.IntegerLessOrEqual[int64](&cfg.Scheduler.HostSyncIntervalMs, 1000)
+	defaulter.IntegerLessOrEqual[int64](&cfg.BlobNode.ClientTimeoutMs, 1000)
+	defaulter.IntegerLessOrEqual[time.Duration](&cfg.ShardNode.Timeout.Duration, 5000*time.Millisecond)
 }
 
 // NewWorkerService returns rpc worker_service
@@ -138,6 +131,7 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 
 	schedulerCli := scheduler.New(&cfg.Scheduler, service, clusterID)
 	blobNodeCli := client.NewBlobNodeClient(&cfg.BlobNode)
+	shardNodeClient := client.NewShardNodeClient(cfg.ShardNode)
 
 	renewalConfig := cfg.Scheduler
 	renewalConfig.ClientTimeoutMs = 1000 * proto.RenewalTimeoutS
@@ -163,6 +157,7 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 		blobNodeCli:    blobNodeCli,
 		taskRunnerMgr:  taskRunnerMgr,
 		inspectTaskMgr: inspectTaskMgr,
+		shardNodeCli:   shardNodeClient,
 
 		shardRepairLimit: shardRepairLimit,
 		shardRepairer:    shardRepairer,
@@ -257,21 +252,14 @@ func (s *WorkerService) acquireTask() {
 		}
 		return
 	}
-
-	if !t.IsValid() {
-		span.Errorf("task is illegal: task type[%s], task[%+v]", t.TaskType, t)
-		return
+	switch t.ModuleType {
+	case proto.TypeBlobNode:
+		s.addBlobNodeTask(ctx, t)
+	case proto.TypeShardNode:
+		s.addShardNodeTask(ctx, t)
+	default:
+		span.Errorf(" task not support module[%d]", t.ModuleType)
 	}
-	err = s.taskRunnerMgr.AddTask(ctx, MigrateTaskEx{
-		taskInfo:                 t,
-		downloadShardConcurrency: s.DownloadShardConcurrency,
-		blobNodeCli:              s.blobNodeCli,
-	})
-	if err != nil {
-		span.Errorf("add task failed: taskID[%s], err[%v]", t.TaskID, err)
-		return
-	}
-	span.Infof("acquire task success: task_type[%s], taskID[%s]", t.TaskType, t.TaskID)
 }
 
 // acquire inspect task
@@ -299,4 +287,45 @@ func (s *WorkerService) acquireInspectTask() {
 	}
 
 	span.Infof("acquire inspect task success: taskID[%s] task[%+v]", t.TaskID, t)
+}
+
+func (s *WorkerService) addBlobNodeTask(ctx context.Context, t *proto.Task) {
+	span := trace.SpanFromContextSafe(ctx)
+	task := &proto.MigrateTask{}
+	if err := task.Unmarshal(t.Data); err != nil {
+		span.Errorf("task decode failed: task type[%s], task[%+v]", t.TaskType, t)
+		return
+	}
+
+	if !task.IsValid() {
+		span.Errorf("task is illegal: task type[%s], task[%+v]", task.TaskType, task)
+		return
+	}
+	if err := s.taskRunnerMgr.AddTask(ctx, MigrateTaskEx{
+		taskInfo:                 task,
+		downloadShardConcurrency: s.DownloadShardConcurrency,
+		blobNodeCli:              s.blobNodeCli,
+	}); err != nil {
+		span.Errorf("add task failed: taskID[%s], err[%v]", task.TaskID, err)
+		return
+	}
+	span.Infof("acquire task success: task_type[%s], taskID[%s]", task.TaskType, task.TaskID)
+}
+
+func (s *WorkerService) addShardNodeTask(ctx context.Context, t *proto.Task) {
+	span := trace.SpanFromContextSafe(ctx)
+	task := &proto.ShardMigrateTask{}
+	if err := task.Unmarshal(t.Data); err != nil {
+		span.Errorf("task decode failed: task type[%s], task[%+v]", t.TaskType, t)
+		return
+	}
+	if !task.IsValid() {
+		span.Errorf("task is illegal: task type[%s], task[%+v]", task.TaskType, task)
+		return
+	}
+	if err := s.taskRunnerMgr.AddShardTask(ctx, NewShardWorker(task, s.shardNodeCli, 0)); err != nil {
+		span.Errorf("add task failed: taskID[%s], err[%v]", task.TaskID, err)
+		return
+	}
+	span.Infof("acquire task success: task_type[%s], taskID[%s]", task.TaskType, task.TaskID)
 }

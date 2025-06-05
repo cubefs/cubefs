@@ -21,58 +21,59 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 func TestIsValidChunkId(t *testing.T) {
-	id := InvalidChunkId
-	require.Equal(t, false, IsValidChunkId(id))
+	id := clustermgr.InvalidChunkID
+	require.Equal(t, false, IsValidChunkID(id))
 
-	id = ChunkId{0x1}
-	require.Equal(t, true, IsValidChunkId(id))
+	id = clustermgr.ChunkID{0x1}
+	require.Equal(t, true, IsValidChunkID(id))
 }
 
 func TestChunkIdNew(t *testing.T) {
-	chunkid := NewChunkId(101)
-	require.Equal(t, ChunkIdLength, len(chunkid))
-	require.NotEqual(t, InvalidChunkId, chunkid)
+	chunkid := clustermgr.NewChunkID(101)
+	require.Equal(t, clustermgr.ChunkIDLength, len(chunkid))
+	require.NotEqual(t, clustermgr.InvalidChunkID, chunkid)
 
 	expectedVuid := chunkid.VolumeUnitId()
 	require.Equal(t, expectedVuid, proto.Vuid(101))
 
 	chunkname := chunkid.String()
-	require.Equal(t, ChunkIdEncodeLen, len(chunkname))
+	require.Equal(t, clustermgr.ChunkIDEncodeLen, len(chunkname))
 
-	arrs := strings.Split(chunkname, string(delimiter))
+	arrs := strings.Split(chunkname, "-")
 	require.Equal(t, 2, len(arrs))
 	require.Equal(t, "0000000000000065", arrs[0])
 }
 
 func TestChunkId_Marshal(t *testing.T) {
-	chunkid := NewChunkId(101)
+	chunkid := clustermgr.NewChunkID(101)
 
 	data, err := chunkid.Marshal()
 	require.NoError(t, err)
-	require.Equal(t, ChunkIdEncodeLen, len(data))
+	require.Equal(t, clustermgr.ChunkIDEncodeLen, len(data))
 	log.Infof("data:%s", data)
 
-	var newchunk ChunkId
+	var newchunk clustermgr.ChunkID
 	err = newchunk.Unmarshal(data)
 	require.NoError(t, err)
 	require.Equal(t, chunkid, newchunk)
 }
 
 func TestChunkId_MarshalJSON(t *testing.T) {
-	chunkid := NewChunkId(101)
+	chunkid := clustermgr.NewChunkID(101)
 
 	data, err := json.Marshal(chunkid)
 	require.NoError(t, err)
-	require.Equal(t, ChunkIdEncodeLen+2, len(data))
+	require.Equal(t, clustermgr.ChunkIDEncodeLen+2, len(data))
 
 	log.Infof("data:%s", data)
 
-	var newchunk ChunkId
+	var newchunk clustermgr.ChunkID
 	err = json.Unmarshal(data, &newchunk)
 	require.NoError(t, err)
 	require.Equal(t, chunkid, newchunk)

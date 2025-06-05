@@ -1,0 +1,46 @@
+// Copyright 2022 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+syntax = "proto3";
+
+package cubefs.blobstore.common.proto;
+option go_package = "./;proto";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+import "gogoproto/gogo.proto";
+
+message Location {
+  uint32 cluster_id = 1 [(gogoproto.customname) = "ClusterID", (gogoproto.casttype) = "ClusterID"];
+  uint32 codemode = 2 [(gogoproto.customname) = "CodeMode", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode", (gogoproto.jsontag) = "code_mode"];
+  uint64 size = 3;
+  uint32 slice_size = 4 [(gogoproto.jsontag) = "blob_size"];
+  uint32 crc = 5;
+  repeated Slice slices = 6 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "blobs"];
+}
+
+message Blob {
+  bytes name = 1;
+  Location location = 2 [(gogoproto.nullable) = false];
+  bool sealed = 3;
+}
+
+message Slice {
+  uint64 min_slice_id = 1 [(gogoproto.customname) = "MinSliceID", (gogoproto.casttype) = "BlobID", (gogoproto.jsontag) = "min_bid"];
+  uint32 vid = 2 [(gogoproto.casttype) = "Vid"];
+  uint32 count = 3;
+  uint64 validSize = 4;
+}

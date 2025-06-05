@@ -34,7 +34,7 @@ INSTALL=CGO_ENABLED=0 $(BUILD)
 CGOINSTALL=CGO_ENABLED=1 $(BUILD)
 PROJECTMOD=github.com/cubefs/cubefs/blobstore
 CMDDIR=$(PROJECTMOD)/cmd
-TARGETS=clustermgr blobnode access scheduler proxy cli
+TARGETS=clustermgr blobnode access scheduler proxy cli shardnode
 
 .PHONY: clean all $(TARGETS)
 all:$(TARGETS)
@@ -62,6 +62,10 @@ proxy:
 cli:
 	@echo "building blobstore-cli"
 	@$(CGOINSTALL) -o $(BINDIR)/blobstore-cli $(PROJECTMOD)/cli/cli
+
+shardnode:
+	@echo "building shardnode"
+	@$(CGOINSTALL) $(CMDDIR)/shardnode
 
 clean:
 	@go clean -i ./...

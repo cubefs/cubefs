@@ -23,7 +23,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -107,7 +107,7 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 		return nil, errors.Info(err, "get disk info failed").Detail(err)
 	}
 
-	policy := diskmgr.AllocPolicy{
+	policy := cluster.AllocPolicy{
 		DiskType:   proto.DiskTypeHDD,
 		CodeMode:   vol.volInfoBase.CodeMode,
 		Vuids:      []proto.Vuid{newVuid.(proto.Vuid)},
@@ -297,44 +297,52 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 			continue
 		}
 		idx := chunk.Vuid.Index()
-		vol.lock.Lock()
-		// in some case, the report vuid epoch may not equal epoch in cm, like balance, we should just ignore it and do not modify
-		if vol.vUnits[idx].vuInfo.Vuid != chunk.Vuid {
-			vol.lock.Unlock()
+
+		err_ := vol.withLocked(func() error {
+			if int(idx) >= len(vol.vUnits) {
+				return errors.Newf("report vuid: %d is invalid", chunk.Vuid)
+			}
+			// in some case, the report vuid epoch may not equal epoch in cm, like balance, we should just ignore it and do not modify
+			if vol.vUnits[idx].vuInfo.Vuid != chunk.Vuid {
+				return errors.Newf("report vuid: %d is not equal in CM vuid: %d", chunk.Vuid, vol.vUnits[idx].vuInfo.Vuid)
+			}
+
+			vol.vUnits[idx].vuInfo.Free = chunk.Free
+			vol.vUnits[idx].vuInfo.Used = chunk.Used
+			vol.vUnits[idx].vuInfo.Total = chunk.Total
+
+			dataChunkNum := uint64(v.codeMode[vol.volInfoBase.CodeMode].tactic.N)
+			volFree := vol.vUnits[idx].vuInfo.Free * dataChunkNum
+			volUsed := vol.vUnits[idx].vuInfo.Used * dataChunkNum
+			volTotal := vol.vUnits[idx].vuInfo.Total * dataChunkNum
+			if v.VolumeOverboughtRatio > 0 {
+				volFree = 0
+				_volTotal := uint64(float64(volTotal) * v.VolumeOverboughtRatio)
+				if _volTotal > volUsed {
+					volFree = _volTotal - volUsed
+				}
+			}
+
+			// use the minimum free size as volume free
+			// or use calculated free size when overboughtRatio is specified as overboughtRatio may set into larger value
+			if vol.volInfoBase.Free > volFree || v.VolumeOverboughtRatio > 0 {
+				vol.volInfoBase.Used = volUsed
+				vol.volInfoBase.Total = volTotal
+				vol.smallestVUIdx = idx
+				vol.setFree(ctx, volFree)
+			} else {
+				// ensure volume free size and use size can be update after shard delete or compaction
+				vol.volInfoBase.Used = vol.vUnits[vol.smallestVUIdx].vuInfo.Used * dataChunkNum
+				vol.volInfoBase.Total = vol.vUnits[vol.smallestVUIdx].vuInfo.Total * dataChunkNum
+				vol.setFree(ctx, vol.vUnits[vol.smallestVUIdx].vuInfo.Free*dataChunkNum)
+			}
+			return nil
+		})
+
+		if err_ != nil {
+			span.Warn("applyChunkReport", err_)
 			continue
 		}
-
-		vol.vUnits[idx].vuInfo.Free = chunk.Free
-		vol.vUnits[idx].vuInfo.Used = chunk.Used
-		vol.vUnits[idx].vuInfo.Total = chunk.Total
-
-		dataChunkNum := uint64(v.codeMode[vol.volInfoBase.CodeMode].tactic.N)
-		volUsed := vol.vUnits[idx].vuInfo.Used * dataChunkNum
-		volTotal := vol.vUnits[idx].vuInfo.Total * dataChunkNum
-		volFree := vol.vUnits[idx].vuInfo.Free * dataChunkNum
-		if v.VolumeOverboughtRatio > 0 {
-			volFree = 0
-			_volTotal := uint64(float64(volTotal) * v.VolumeOverboughtRatio)
-			if _volTotal > volUsed {
-				volFree = _volTotal - volUsed
-			}
-		}
-
-		// use the minimum free size as volume free
-		// or use calculated free size when overboughtRatio is specified as overboughtRatio may set into larger value
-		if vol.volInfoBase.Free > volFree || v.VolumeOverboughtRatio > 0 {
-			vol.volInfoBase.Used = volUsed
-			vol.volInfoBase.Total = volTotal
-			vol.smallestVUIdx = idx
-			vol.setFree(ctx, volFree)
-		} else {
-			// ensure volume free size and use size can be update after shard delete or compaction
-			vol.volInfoBase.Used = vol.vUnits[vol.smallestVUIdx].vuInfo.Used * dataChunkNum
-			vol.volInfoBase.Total = vol.vUnits[vol.smallestVUIdx].vuInfo.Total * dataChunkNum
-			vol.setFree(ctx, vol.vUnits[vol.smallestVUIdx].vuInfo.Free*dataChunkNum)
-		}
-		vol.lock.Unlock()
-
 		// put on dirty volumes and flush asynchronously
 		dirty := v.dirty.Load().(*shardedVolumes)
 		dirty.putVol(vol)
