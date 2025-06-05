@@ -17,6 +17,7 @@ package volumemgr
 import (
 	"container/list"
 	"context"
+	"math"
 	"math/rand"
 	"sort"
 	"sync"
@@ -240,7 +241,7 @@ func (a *volumeAllocator) Insert(v *volume, mode codemode.CodeMode) {
 }
 
 // PreAlloc select volumes which can alloc
-// 1. when EnableDiskLoad=false, all volume will range by health, the more healthier volume will range in front of the optional head
+// 1. when EnableDiskLoad=false, all volume will range by health, the healthier volume will range in front of the optional head
 // 2. when EnableDiskLoad=true, if do not hash enough volumes to alloc ,
 //  1. first add disk's load and retry, each time add one until disk's load equal to diskLoadThreshold will set EnableDiskLoad=false
 //  2. second minus volume score and retry , each time minus one until volume's score equal to scoreThreshold
@@ -304,7 +305,8 @@ RETRY:
 				break
 			}
 			if isEnableDiskLoad && diskLoadThreshold < a.allocatableDiskLoadThreshold {
-				diskLoadThreshold += 1
+				// When diskLoad exceeds the threshold, retry 3 times at most
+				diskLoadThreshold += int(math.Ceil(float64(a.allocatableDiskLoadThreshold) / 6.0))
 			} else if isEnableDiskLoad {
 				isEnableDiskLoad = false
 			} else if scoreThreshold > allocatableScoreThreshold {
@@ -322,9 +324,8 @@ RETRY:
 		}
 	}
 	span.Infof("optional vids length is %d, vids is %v", len(optionalVids), optionalVids)
-	if a.isEnableDiskLoad() {
-		optionalVids = a.sortVidByLoad(mode, optionalVids)
-	}
+
+	optionalVids = a.sortVidByHealthAndDiskLoad(mode, optionalVids)
 	ret := idleVolumes.allocFromOptions(optionalVids, count)
 	span.Debugf("preAlloc volume cost time:%v", time.Since(now))
 	return ret, diskLoadThreshold
@@ -426,31 +427,46 @@ func (a *volumeAllocator) getShardNum(mode codemode.CodeMode) int {
 	return modeConf.tactic.N + modeConf.tactic.M + modeConf.tactic.L
 }
 
-func (a *volumeAllocator) sortVidByLoad(mode codemode.CodeMode, vids []proto.Vid) (ret []proto.Vid) {
+func (a *volumeAllocator) sortVidByHealthAndDiskLoad(mode codemode.CodeMode, vids []proto.Vid) (ret []proto.Vid) {
 	if len(vids) <= 1 {
 		return vids
 	}
 
-	var arrVids sortVid
+	var (
+		arrVids sortVid
+		diskIDs []proto.DiskID
+	)
 	for _, vid := range vids {
 		volume := a.idles[mode].get(vid)
 		if volume != nil {
-			load := 0
-			volume.lock.RLock()
-			diskIDs := make([]proto.DiskID, 0, len(volume.vUnits))
-			for _, unit := range volume.vUnits {
-				diskIDs = append(diskIDs, unit.vuInfo.DiskID)
+			health, diskLoad := 0, 0
+			volume.withRLocked(func() error {
+				health = volume.volInfoBase.HealthScore
+				return nil
+			})
+			vl := vidLoad{vid, 0, health}
+			if !a.isEnableDiskLoad() {
+				arrVids = append(arrVids, vl)
+				continue
 			}
-			score := volume.volInfoBase.HealthScore
-			vid := volume.vid
-			volume.lock.RUnlock()
 
+			volume.withRLocked(func() error {
+				if cap(diskIDs) == 0 {
+					diskIDs = make([]proto.DiskID, 0, len(volume.vUnits))
+				}
+				for _, unit := range volume.vUnits {
+					diskIDs = append(diskIDs, unit.vuInfo.DiskID)
+				}
+				return nil
+			})
 			a.actives.RLock()
 			for _, diskID := range diskIDs {
-				load += a.actives.diskLoad[diskID]
+				diskLoad += a.actives.diskLoad[diskID]
 			}
 			a.actives.RUnlock()
-			arrVids = append(arrVids, vidLoad{vid, load, score})
+			vl.load = diskLoad
+			arrVids = append(arrVids, vl)
+			diskIDs = diskIDs[:0]
 		}
 	}
 	sort.Sort(arrVids)

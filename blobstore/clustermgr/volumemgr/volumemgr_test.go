@@ -1056,7 +1056,23 @@ func TestVolumeMgr_PreAlloc(t *testing.T) {
 		})
 		vids, diskLoad := mockVolumeMgr.allocator.PreAlloc(context.Background(), testCase.codemode, testCase.count)
 		require.Equal(t, testCase.lenVids, len(vids))
-		require.Equal(t, testCase.diskLoad, diskLoad)
+		require.LessOrEqual(t, testCase.diskLoad, diskLoad)
+		for i := 0; i < len(vids)-1; i++ {
+			vol := mockVolumeMgr.all.getVol(vids[i])
+			nextVol := mockVolumeMgr.all.getVol(vids[i+1])
+
+			var volDiskLoad, nextVolDiskLoad int
+			mockVolumeMgr.allocator.actives.RLock()
+			for _, unit := range vol.vUnits {
+				volDiskLoad += mockVolumeMgr.allocator.actives.diskLoad[unit.vuInfo.DiskID]
+			}
+			for _, unit := range nextVol.vUnits {
+				nextVolDiskLoad += mockVolumeMgr.allocator.actives.diskLoad[unit.vuInfo.DiskID]
+			}
+			mockVolumeMgr.allocator.actives.RUnlock()
+			require.LessOrEqual(t, nextVol.volInfoBase.HealthScore, vol.volInfoBase.HealthScore)
+			require.LessOrEqual(t, volDiskLoad, nextVolDiskLoad)
+		}
 	}
 }
 
