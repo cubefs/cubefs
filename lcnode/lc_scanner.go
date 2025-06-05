@@ -526,6 +526,9 @@ func isSkipErr(err error) bool {
 	if strings.Contains(err.Error(), "no such file or directory") {
 		return true
 	}
+	if strings.Contains(err.Error(), "ExtentNotFoundError") {
+		return true
+	}
 	return false
 }
 

@@ -796,10 +796,6 @@ func TestUpdateVol(t *testing.T) {
 	// checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
 }
 
-func setUpdateVolParm(key string, req map[string]interface{}, val interface{}, t *testing.T) {
-	setParam(key, proto.AdminUpdateVol, req, val, t)
-}
-
 func delVol(name string, t *testing.T) {
 	req := map[string]interface{}{
 		nameKey:    name,
