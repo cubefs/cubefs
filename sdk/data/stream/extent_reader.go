@@ -150,7 +150,7 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (er
 	}
 	expectCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 	if reply.CRC != expectCrc {
-		err = errors.New(fmt.Sprintf("checkStreamReply: inconsistent CRC, expectCRC(%v) replyCRC(%v)", expectCrc, reply.CRC))
+		err = errors.New(fmt.Sprintf("checkStreamReply: inconsistent CRC, expectCRC(%v) replyCRC(%v), relpy(%v)", expectCrc, reply.CRC, reply.GetNoPrefixMsg()))
 		return
 	}
 	return nil

@@ -597,8 +597,8 @@ func (dp *DataPartition) ExtentWithHoleRepairRead(request repl.PacketInterface, 
 			proto.Buffers.Put(reply.GetData())
 		}
 		if connect.RemoteAddr() != nil { // conn in testcase may not initialize
-			logContent := fmt.Sprintf("action[operatePacket] %v.",
-				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.GetStartT(), err))
+			logContent := fmt.Sprintf("action[operatePacket] reply %v remote %v cost %v err %v",
+				reply.GetNoPrefixMsg(), connect.RemoteAddr().String(), (time.Now().UnixNano()-reply.GetStartT())/1e6, err)
 			log.LogReadf(logContent)
 		}
 	}
@@ -661,6 +661,10 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 			reply.SetCRC(crc)
 		})
 
+		if log.EnableDebug() {
+			log.LogDebugf("[NormalExtentRepairRead] reply op %v data.len %v size %v crc %v err %v", reply.GetOpMsg(), len(reply.GetData()), reply.GetSize(), crc, err)
+		}
+
 		if !shallDegrade && metrics != nil {
 			metrics.MetricIOBytes.AddWithLabels(int64(p.GetSize()), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -688,9 +692,13 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		}
 
 		if log.EnableInfo() && connect.RemoteAddr() != nil {
-			logContent := fmt.Sprintf("action[operatePacket] %v.",
-				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.GetStartT(), err))
+			logContent := fmt.Sprintf("action[operatePacket] reply %v remote %v cost %v err %v",
+				reply.GetNoPrefixMsg(), connect.RemoteAddr().String(), (time.Now().UnixNano()-reply.GetStartT())/1e6, err)
 			log.LogReadf(logContent)
+		}
+
+		if log.EnableDebug() {
+			log.LogDebugf("action[operatePacket] reply %v", reply.GetNoPrefixMsg())
 		}
 	}
 	return
