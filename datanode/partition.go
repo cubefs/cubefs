@@ -906,7 +906,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		return
 	}
 	dp.metaAppliedID = dp.appliedID
-	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(metaData))
+	log.LogWarnf("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(metaData))
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
