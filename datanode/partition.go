@@ -533,7 +533,7 @@ func (partition *DataPartition) fsmSetRepairingStatusOp(opItem *RaftCmdItem) (er
 		partition.isRepairing = oldStatus
 		return
 	}
-	log.LogInfof("action[fsmSetRepairingStatusOp] %v set repairingStatus %v success", partition.partitionID, req.RepairingStatus)
+	log.LogWarnf("action[fsmSetRepairingStatusOp] %v set repairingStatus %v success", partition.partitionID, req.RepairingStatus)
 	return
 }
 

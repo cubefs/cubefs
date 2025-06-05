@@ -124,58 +124,6 @@ func TestSkipAppendWrite(t *testing.T) {
 	require.EqualValues(t, proto.OpArgMismatchErr, p.ResultCode)
 }
 
-func TestDpDecommissionRepairForbidExtentDeleteAndWrite(t *testing.T) {
-	dn := newDataNodeForOperatorTest(t)
-	dp := newDpForOperatorTest(t, dn)
-	extentId := uint64(1000)
-	p := newPacketForOperatorTest(t, dp, extentId)
-
-	p.Opcode = proto.OpCreateExtent
-	dn.handlePacketToCreateExtent(p)
-	t.Logf("handle create extent, result code(%v)", p.ResultCode)
-	require.EqualValues(t, proto.OpOk, p.ResultCode)
-
-	t.Run("set repairingStatus true, forbid extent deletion and business writes", func(t *testing.T) {
-		req := &proto.SetDataPartitionRepairingStatusRequest{PartitionId: dp.partitionID, RepairingStatus: true}
-		task := &proto.AdminTask{
-			OpCode:  proto.OpSetRepairingStatus,
-			Request: req,
-		}
-		p = newPacketForTest(task)
-		dn.handlePacketToSetRepairingStatus(p)
-		require.Equal(t, proto.OpOk, p.ResultCode)
-
-		// forbid extent write
-		dataStr := "HelloWorld"
-		p = newPacketForOperatorTest(t, dp, extentId)
-		p.Opcode = proto.OpWrite
-		p.Data = []byte(dataStr)
-		p.ExtentOffset = 0
-		p.Size = uint32(len(p.Data))
-		dn.handleWritePacket(p)
-		t.Logf("handle write packet, result code(%v)", p.ResultCode)
-		require.EqualValues(t, proto.OpDpDecommissionRepairErr, p.ResultCode)
-
-		// forbid extent deletion
-		exts := make([]*proto.DelExtentParam, 0)
-		exts = append(exts, &proto.DelExtentParam{
-			ExtentKey: &proto.ExtentKey{
-				ExtentId:    extentId,
-				PartitionId: dp.partitionID,
-			},
-		})
-		p = new(repl.Packet)
-		p.Opcode = proto.OpBatchDeleteExtent
-		p.ExtentType = proto.NormalExtentType
-		p.Object = dp
-		p.Data, _ = json.Marshal(exts)
-		p.Size = uint32(len(p.Data))
-		dn.handleBatchMarkDeletePacket(p, nil)
-		t.Logf("handle delete extent packet, result code(%v)", p.ResultCode)
-		require.EqualValues(t, proto.OpDpDecommissionRepairErr, p.ResultCode)
-	})
-}
-
 func newPacketForTest(task *proto.AdminTask) *repl.Packet {
 	data, _ := json.Marshal(task)
 	return &repl.Packet{

@@ -129,7 +129,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			goto end
 		}
 		if !m.useLocalGOGC {
-			if m.gogcValue != req.MetaNodeGOGC {
+			if m.gogcValue != req.MetaNodeGOGC && req.MetaNodeGOGC >= defaultGOGCLowerLimit && req.MetaNodeGOGC <= defaultGOGCUpperLimit {
 				oldGOGC := m.gogcValue
 				debug.SetGCPercent(req.MetaNodeGOGC)
 				m.gogcValue = req.MetaNodeGOGC
