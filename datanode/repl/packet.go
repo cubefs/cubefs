@@ -62,6 +62,7 @@ type PacketInterface interface {
 	SetData(data []byte)
 	SetOpCode(uint8)
 	LogMessage(action, remote string, start int64, err error) (m string)
+	GetNoPrefixMsg() string
 	PackErrorBody(action, msg string)
 	PacketOkReply()
 	SetArglen(len uint32)

@@ -1397,6 +1397,13 @@ func (p *Packet) GetMsg() string {
 	return p.mesg
 }
 
+func (p *Packet) GetNoPrefixMsg() string {
+	return fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
+		"Size(%v)_Opcode(%v)_CRC(%v), m(%s)",
+		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
+		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC, p.mesg)
+}
+
 func (p *Packet) setPacketPrefix() {
 	if !log.EnableDebug() && p.IsReadOperation() {
 		p.noPrefix = true
@@ -1445,7 +1452,6 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v]"+
 			", err[%v]", p.GetUniqueLogId(), p.IsForwardPkt(), remote, err.Error())
 	}
-
 	return
 }
 
