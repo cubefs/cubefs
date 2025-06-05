@@ -564,7 +564,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			_ = json.Unmarshal(marshaled, request)
 			response.Status = proto.TaskSucceeds
 			if !s.useLocalGOGC {
-				if s.gogcValue != request.DataNodeGOGC {
+				if s.gogcValue != request.DataNodeGOGC && request.DataNodeGOGC >= defaultGOGCLowerLimit && request.DataNodeGOGC <= defaultGOGCUpperLimit {
 					oldGOGC := s.gogcValue
 					debug.SetGCPercent(request.DataNodeGOGC)
 					s.gogcValue = request.DataNodeGOGC
@@ -1090,11 +1090,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
 		err = storage.ForbiddenDataPartitionError
-		return
-	}
-
-	if partition.isRepairing {
-		err = storage.DpDecommissionRepairError
 		return
 	}
 
@@ -1814,7 +1809,7 @@ func (s *DataNode) handlePacketToSetRepairingStatus(p *repl.Packet) {
 	}
 
 	err = dp.HandleSetRepairingStatusOp(request)
-	log.LogInfof("action[handlePacketToSetRepairStatus] opcode %v dpid %v after raft submit err %v resultCode %v", p.Opcode, p.PartitionID, err)
+	log.LogInfof("action[handlePacketToSetRepairStatus] opcode %v dpid %v after raft submit err %v", p.Opcode, p.PartitionID, err)
 }
 
 func (s *DataNode) handlePacketToStopDataPartitionRepair(p *repl.Packet) {
