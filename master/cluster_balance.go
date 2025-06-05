@@ -1040,6 +1040,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		if err != nil {
 			log.LogErrorf("VerifyAllDestinationsIsLowLoad err: %s", err.Error())
 			plan.Status = PlanTaskError
+			plan.Msg = err.Error()
 			c.PlanRun = false
 			err1 := c.syncUpdateBalanceTask(plan)
 			if err1 != nil {
@@ -1051,16 +1052,14 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		mp, err = c.getMetaPartitionByID(mpPlan.ID)
 		if err != nil {
 			log.LogErrorf("skip rebalance meta partition(%d) error: %s", mpPlan.ID, err.Error())
+			plan.Msg = err.Error()
 			continue
 		}
 
-		if mp.IsRecover {
-			log.LogWarnf("skip rebalance meta partition(%d), because it is recovering.", mpPlan.ID)
-			continue
-		}
-
-		if !mp.isLeaderExist() {
-			log.LogWarnf("skip rebalance meta partition(%d), because no leader exist.", mpPlan.ID)
+		err = c.waitForMetaPartitionReady(mp)
+		if err != nil {
+			log.LogErrorf("waitForMetaPartitionReady err: %s", err.Error())
+			plan.Msg = err.Error()
 			continue
 		}
 
@@ -1070,6 +1069,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			err = c.syncUpdateBalanceTask(plan)
 			if err != nil {
 				log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
+				plan.Msg = err.Error()
 				return
 			}
 
@@ -1079,6 +1079,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 				err = c.syncUpdateBalanceTask(plan)
 				if err != nil {
 					log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
+					plan.Msg = err.Error()
 				}
 				return
 			}
@@ -1090,7 +1091,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			err = c.changeAndCheckMetaPartitionLeader(mrPlan, mpPlan, mp)
 			if err != nil {
 				log.LogErrorf("changeAndCheckMetaPartitionLeader error: %s", err.Error())
-				c.SetMetaReplicaPlanStatusError(plan, mrPlan)
+				c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())
 				return
 			}
 
@@ -1098,7 +1099,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp)
 			if err != nil {
 				log.LogErrorf("migrateMetaPartition(%d) from %s to %s error: %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination, err.Error())
-				c.SetMetaReplicaPlanStatusError(plan, mrPlan)
+				c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())
 				return
 			}
 
@@ -1109,7 +1110,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			err = c.WaitForMetaPartitionMigrateDone(mp, mrPlan.Destination)
 			if err != nil {
 				log.LogErrorf("WaitForMetaPartitionMigrateDone mpid(%d) meta replica(%s) error: %s", mpPlan.ID, mrPlan.Destination, err.Error())
-				c.SetMetaReplicaPlanStatusError(plan, mrPlan)
+				c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())
 				return
 			}
 
@@ -1118,6 +1119,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			err = c.syncUpdateBalanceTask(plan)
 			if err != nil {
 				log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
+				plan.Msg = err.Error()
 				return
 			}
 			log.LogDebugf("Migrate meta partition(%d) from %s to %s done", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
@@ -1133,19 +1135,22 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	err = c.syncUpdateBalanceTask(plan)
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
+		plan.Msg = err.Error()
 	}
 
 	if plan.Type == OfflinePlan {
 		err = c.offlineMetaNode(plan)
 		if err != nil {
 			log.LogErrorf("offlineMetaNode err: %s", err.Error())
+			plan.Msg = err.Error()
 		}
 	}
 }
 
-func (c *Cluster) SetMetaReplicaPlanStatusError(plan *proto.ClusterPlan, mrPlan *proto.MrBalanceInfo) {
+func (c *Cluster) SetMetaReplicaPlanStatusError(plan *proto.ClusterPlan, mrPlan *proto.MrBalanceInfo, msg string) {
 	c.PlanRun = false
 	plan.Status = PlanTaskError
+	plan.Msg = msg
 	mrPlan.Status = PlanTaskError
 	err := c.syncUpdateBalanceTask(plan)
 	if err != nil {
@@ -1157,6 +1162,8 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	var err error
+	var ready bool
 	for i := 0; i < 600; i++ {
 		select {
 		case <-ticker.C:
@@ -1166,10 +1173,10 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 			if !mp.isLeaderExist() {
 				continue
 			}
-			ready, err := CheckRaftStatus(mp, addr)
+			ready, err = CheckRaftStatus(mp, addr)
 			if err != nil {
-				log.LogErrorf("CheckRaftStatus err: %s", err.Error())
-				return err
+				log.LogWarnf("CheckRaftStatus err: %s", err.Error())
+				continue
 			}
 			if ready {
 				return nil
@@ -1178,6 +1185,9 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 			c.PlanRun = false
 			return fmt.Errorf("cluster is stopping")
 		}
+	}
+	if err != nil {
+		return err
 	}
 
 	return fmt.Errorf("Waiting for meta partition(%d) destination(%s) timeout", mp.PartitionID, addr)
@@ -1622,4 +1632,28 @@ func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalanceP
 	}
 
 	return ""
+}
+
+func (c *Cluster) waitForMetaPartitionReady(mp *MetaPartition) error {
+	for i := 0; i < CheckMetaLeaderRetry; i++ {
+		if !mp.IsRecover && mp.isLeaderExist() {
+			return nil
+		}
+
+		time.Sleep(CheckMetaLeaderInterval * time.Second)
+	}
+
+	if mp.IsRecover {
+		err := fmt.Errorf("skip rebalance meta partition(%d), because it is recovering.", mp.PartitionID)
+		log.LogWarn(err.Error())
+		return err
+	}
+
+	if !mp.isLeaderExist() {
+		err := fmt.Errorf("skip rebalance meta partition(%d), because no leader exist.", mp.PartitionID)
+		log.LogWarn(err.Error())
+		return err
+	}
+
+	return nil
 }
