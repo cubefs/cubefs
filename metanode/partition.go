@@ -798,11 +798,6 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 	mp.startScheduleTask()
-	if err = mp.startFreeList(); err != nil {
-		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
-			mp.config.PartitionId, err.Error())
-		return
-	}
 
 	retryCnt := 0
 	for ; retryCnt < 200; retryCnt++ {
@@ -860,6 +855,12 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 			log.LogInfof("action[onStart] mp(%v) blobStoreAddr(%v), create blobstore client success",
 				mp.config.PartitionId, gClusterInfo.EbsAddr)
 		}
+	}
+
+	if err = mp.startFreeList(); err != nil {
+		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
+			mp.config.PartitionId, err.Error())
+		return
 	}
 
 	go mp.startCheckerEvict()
