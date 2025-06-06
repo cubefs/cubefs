@@ -81,6 +81,7 @@ type ClusterTopoSubItem struct {
 	inodeCountNotEqualMP  *sync.Map
 	maxInodeNotEqualMP    *sync.Map
 	dentryCountNotEqualMP *sync.Map
+	AbnormalRaftMP        *sync.Map
 
 	mnMutex sync.RWMutex // meta node mutex
 	dnMutex sync.RWMutex // data node mutex
@@ -465,6 +466,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.inodeCountNotEqualMP = new(sync.Map)
 	c.maxInodeNotEqualMP = new(sync.Map)
 	c.dentryCountNotEqualMP = new(sync.Map)
+	c.AbnormalRaftMP = new(sync.Map)
 	c.lcMgr = newLifecycleManager()
 	c.lcMgr.cluster = c
 	c.snapshotMgr = newSnapshotManager()

@@ -282,30 +282,24 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 	inodeCountNotEqualMPs = make([]*MetaPartition, 0)
 	maxInodeNotEqualMPs = make([]*MetaPartition, 0)
 	dentryCountNotEqualMPs = make([]*MetaPartition, 0)
-
 	markDeleteVolNames := make(VolNameSet)
-
 	vols := c.copyVols()
 	for _, vol := range vols {
 		if vol.Status == proto.VolStatusMarkDelete {
 			markDeleteVolNames[vol.Name] = struct{}{}
 			continue
 		}
-
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			if uint8(len(mp.Hosts)) < mp.ReplicaNum || uint8(len(mp.getActiveAddrs(defaultMetaPartitionTimeOutSec))) < mp.ReplicaNum {
 				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
 			}
-
 			if !mp.isLeaderExist() && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.MpNoLeaderReportIntervalSec) {
 				noLeaderMetaPartitions = append(noLeaderMetaPartitions, mp)
 			}
-
 			if uint8(len(mp.Hosts)) > mp.ReplicaNum || uint8(len(mp.Replicas)) > mp.ReplicaNum {
 				excessReplicaMetaPartitions = append(excessReplicaMetaPartitions, mp)
 			}
-
 			for _, replica := range mp.Replicas {
 				if replica.Status == proto.Unavailable {
 					unavailableReplicaMPs = append(unavailableReplicaMPs, mp)
@@ -340,6 +334,69 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v]",
 		c.Name, len(lackReplicaMetaPartitions), len(noLeaderMetaPartitions),
 		len(unavailableReplicaMPs), len(excessReplicaMetaPartitions))
+	return
+}
+
+func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartitionDiagnosisV1, err error) {
+	diagnosis = &proto.MetaPartitionDiagnosisV1{}
+	markDeleteVolNames := make(VolNameSet)
+	vols := c.copyVols()
+	for _, vol := range vols {
+		if vol.Status == proto.VolStatusMarkDelete {
+			markDeleteVolNames[vol.Name] = struct{}{}
+			continue
+		}
+
+		vol.mpsLock.RLock()
+		for _, mp := range vol.MetaPartitions {
+			if uint8(len(mp.Hosts)) < mp.ReplicaNum || uint8(len(mp.getActiveAddrs(defaultMetaPartitionTimeOutSec))) < mp.ReplicaNum {
+				diagnosis.LackReplicaMetaPartitionIDs = append(diagnosis.LackReplicaMetaPartitionIDs, mp.PartitionID)
+			}
+
+			if !mp.isLeaderExist() && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.MpNoLeaderReportIntervalSec) {
+				diagnosis.NoLeaderMetaPartitionIDs = append(diagnosis.NoLeaderMetaPartitionIDs, mp.PartitionID)
+			}
+
+			if uint8(len(mp.Hosts)) > mp.ReplicaNum || uint8(len(mp.Replicas)) > mp.ReplicaNum {
+				diagnosis.InConsistRreplicaCntMetaPartitionIDs = append(diagnosis.InConsistRreplicaCntMetaPartitionIDs, mp.PartitionID)
+			}
+
+			for _, replica := range mp.Replicas {
+				if replica.Status == proto.Unavailable {
+					diagnosis.UnavailableMetaPartitionIDs = append(diagnosis.UnavailableMetaPartitionIDs, mp.PartitionID)
+					break
+				}
+			}
+		}
+		vol.mpsLock.RUnlock()
+	}
+
+	setAbnormalIDs := func(mpMap *sync.Map) []uint64 {
+		var resultIDs []uint64
+		mpMap.Range(func(key, value interface{}) bool {
+			mp := value.(*MetaPartition)
+			if _, ok := markDeleteVolNames[mp.volName]; !ok {
+				resultIDs = append(resultIDs, mp.PartitionID)
+			}
+			return true
+		})
+		return resultIDs
+	}
+
+	diagnosis.InodeCountNotEqualIDs = setAbnormalIDs(c.inodeCountNotEqualMP)
+	diagnosis.MaxInodeNotEqualIDs = setAbnormalIDs(c.maxInodeNotEqualMP)
+	diagnosis.DentryCountNotEqualIDs = setAbnormalIDs(c.dentryCountNotEqualMP)
+	diagnosis.AbnormalRaftIDs = setAbnormalIDs(c.AbnormalRaftMP)
+
+	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
+		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v], AbnormalRaftIDs count:[%v]",
+		c.Name, len(diagnosis.LackReplicaMetaPartitionIDs), len(diagnosis.NoLeaderMetaPartitionIDs),
+		len(diagnosis.UnavailableMetaPartitionIDs), len(diagnosis.InConsistRreplicaCntMetaPartitionIDs), len(diagnosis.AbnormalRaftIDs))
+
+	if diagnosis.InactiveMetaNodes, err = c.checkInactiveMetaNodes(); err != nil {
+		return
+	}
+
 	return
 }
 
@@ -619,6 +676,7 @@ func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
 		}(host)
 	}
 	wg.Wait()
+	mp.checkPeerDiffWithRaft(c)
 	select {
 	case err := <-errChannel:
 		msg := fmt.Sprintf("action[doLoadMetaPartition] vol[%v],mpID[%v],err[%v]", mp.volName, mp.PartitionID, err.Error())
