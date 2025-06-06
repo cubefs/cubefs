@@ -4757,13 +4757,23 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v is bad disk", diskPath, onLineAddr)))
 			return
 		}
-		if err = m.cluster.deleteAndSyncDecommissionedDisk(node, diskPath); err != nil {
+		exist, err := m.cluster.deleteAndSyncDecommissionedDisk(node, diskPath)
+		if !exist {
+			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v decommissioned record not exist", diskPath, onLineAddr)))
+			return
+		}
+		if err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 	}
 	if recommissionType == "decommissionSuccess" {
-		if err = m.cluster.deleteAndSyncDecommissionSuccessDisk(node, diskPath); err != nil {
+		exist, err := m.cluster.deleteAndSyncDecommissionSuccessDisk(node, diskPath)
+		if !exist {
+			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v decommissionSuccess record not exist", diskPath, onLineAddr)))
+			return
+		}
+		if err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -8748,11 +8758,11 @@ func (m *Server) resetDecommissionDataNodeStatus(w http.ResponseWriter, r *http.
 		return
 	}
 	for _, disk := range dn.AllDisks {
-		if err = m.cluster.deleteAndSyncDecommissionedDisk(dn, disk); err != nil {
+		if _, err = m.cluster.deleteAndSyncDecommissionedDisk(dn, disk); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
-		if err = m.cluster.deleteAndSyncDecommissionSuccessDisk(dn, disk); err != nil {
+		if _, err = m.cluster.deleteAndSyncDecommissionSuccessDisk(dn, disk); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}

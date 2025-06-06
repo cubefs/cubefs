@@ -239,8 +239,8 @@ func (c *Cluster) addAndSyncDecommissionedDisk(dataNode *DataNode, diskPath stri
 	return
 }
 
-func (c *Cluster) deleteAndSyncDecommissionedDisk(dataNode *DataNode, diskPath string) (err error) {
-	if exist := dataNode.deleteDecommissionedDisk(diskPath); !exist {
+func (c *Cluster) deleteAndSyncDecommissionedDisk(dataNode *DataNode, diskPath string) (exist bool, err error) {
+	if exist = dataNode.deleteDecommissionedDisk(diskPath); !exist {
 		return
 	}
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
@@ -273,8 +273,8 @@ func (c *Cluster) addAndSyncDecommissionSuccessDisk(addr string, diskPath string
 	return
 }
 
-func (c *Cluster) deleteAndSyncDecommissionSuccessDisk(dataNode *DataNode, diskPath string) (err error) {
-	if exist := dataNode.deleteDecommissionSuccessDisk(diskPath); !exist {
+func (c *Cluster) deleteAndSyncDecommissionSuccessDisk(dataNode *DataNode, diskPath string) (exist bool, err error) {
+	if exist = dataNode.deleteDecommissionSuccessDisk(diskPath); !exist {
 		return
 	}
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
