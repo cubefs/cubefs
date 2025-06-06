@@ -161,9 +161,11 @@ func (api *AdminAPI) DiagnoseDataPartition(ignoreDiscardDp bool) (diagnosis *pro
 	return
 }
 
-func (api *AdminAPI) DiagnoseMetaPartition() (diagnosis *proto.MetaPartitionDiagnosis, err error) {
-	diagnosis = &proto.MetaPartitionDiagnosis{}
-	err = api.mc.requestWith(diagnosis, newRequest(get, proto.AdminDiagnoseMetaPartition).Header(api.h))
+func (api *AdminAPI) DiagnoseMetaPartition() (diagnosis *proto.MetaPartitionDiagnosisV1, err error) {
+	diagnosis = &proto.MetaPartitionDiagnosisV1{}
+	err = api.mc.requestWith(diagnosis, newRequest(get, proto.AdminDiagnoseMetaPartition).Header(api.h).Param(
+		anyParam{"v1", "true"},
+	))
 	return
 }
 

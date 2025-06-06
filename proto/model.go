@@ -120,6 +120,7 @@ type MetaPartitionInfo struct {
 // MetaReplica defines the replica of a meta partition
 type MetaReplicaInfo struct {
 	Addr            string
+	NodeID          uint64
 	DomainAddr      string
 	MaxInodeID      uint64
 	ReportTime      int64
@@ -400,6 +401,7 @@ type DataPartitionDiagnosis struct {
 }
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
+
 type MetaPartitionDiagnosis struct {
 	InactiveMetaNodes                          []string
 	CorruptMetaPartitionIDs                    []uint64
@@ -410,6 +412,19 @@ type MetaPartitionDiagnosis struct {
 	InodeCountNotEqualReplicaMetaPartitionIDs  []uint64
 	MaxInodeNotEqualReplicaMetaPartitionIDs    []uint64
 	DentryCountNotEqualReplicaMetaPartitionIDs []uint64
+}
+
+type MetaPartitionDiagnosisV1 struct {
+	InactiveMetaNodes                    []string
+	NoLeaderMetaPartitionIDs             []uint64
+	LackReplicaMetaPartitionIDs          []uint64
+	BadMetaPartitionIDs                  []BadPartitionView
+	UnavailableMetaPartitionIDs          []uint64
+	InConsistRreplicaCntMetaPartitionIDs []uint64
+	InodeCountNotEqualIDs                []uint64
+	MaxInodeNotEqualIDs                  []uint64
+	DentryCountNotEqualIDs               []uint64
+	AbnormalRaftIDs                      []uint64
 }
 
 type FailedDpInfo struct {

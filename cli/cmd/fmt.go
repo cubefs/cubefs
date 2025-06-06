@@ -412,6 +412,14 @@ var (
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS")
 
+	PeerAbnormalRaftPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-12v    %-12v   %v%v%v"
+	PeerAbnormalRaftPartitionInfoHeader       = fmt.Sprintf(PeerAbnormalRaftPartitionInfoTablePattern,
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS", "DIFF-RAFT-MEMBERS", "|DOWN-MEMBERS", "|PEND-MEMBERS")
+
+	badMpReplicaPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-64v    %-24v"
+	badMpReplicaPartitionInfoTableHeader  = fmt.Sprintf(badMpReplicaPartitionInfoTablePattern,
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
+
 	badReplicaPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-64v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
@@ -551,6 +559,65 @@ func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
 	return fmt.Sprintf(partitionInfoTablePattern,
 		partition.PartitionID, partition.VolName, partition.ReplicaNum,
 		formatDataPartitionStatus(partition.Status), "N/A", strings.Join(partition.Hosts, ", "))
+}
+
+func formatMetaPartitionInfoRowWithRaft(partition *proto.MetaPartitionInfo) string {
+	var (
+		info         *proto.MetaPartitionLoadResponse
+		addrArr      = make(map[uint64]string)
+		diffHosts    []string
+		downHosts    []string
+		pendingHosts []string
+	)
+	for _, peer := range partition.Peers {
+		addrArr[peer.ID] = peer.Addr
+	}
+
+	for _, info = range partition.LoadResponse {
+		if info.RaftInfo.RaftStatus.Leader == info.RaftInfo.RaftStatus.NodeID {
+			break
+		}
+	}
+	if info == nil {
+		return ""
+	}
+	for _, peer := range info.RaftInfo.Hosts {
+		if _, ok := addrArr[peer.ID]; ok {
+			continue
+		}
+		diffHosts = append(diffHosts, peer.Addr)
+		addrArr[peer.ID] = peer.Addr
+	}
+
+	for _, dr := range info.RaftInfo.DownReplicas {
+		if host, ok := addrArr[dr.NodeID]; ok {
+			downHosts = append(downHosts, host)
+		}
+	}
+	for _, pr := range info.RaftInfo.PendingPeers {
+		if host, ok := addrArr[pr]; ok {
+			pendingHosts = append(pendingHosts, host)
+		}
+	}
+	var (
+		diffInfo    = "N/A"
+		downInfo    = "N/A"
+		pendingInfo = "N/A"
+	)
+	if len(diffHosts) != 0 {
+		diffInfo = strings.Join(diffHosts, ", ")
+	}
+	if len(downHosts) != 0 {
+		downInfo = strings.Join(downHosts, ", ")
+	}
+	if len(pendingHosts) != 0 {
+		pendingInfo = strings.Join(pendingHosts, ", ")
+	}
+
+	return fmt.Sprintf(PeerAbnormalRaftPartitionInfoTablePattern,
+		partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), "N/A", strings.Join(partition.Hosts, ", "),
+		diffInfo+"|", downInfo+"|", pendingInfo)
 }
 
 func formatBadReplicaMpInfoRow(partition *proto.MetaPartitionInfo) string {

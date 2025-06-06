@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -1091,6 +1093,13 @@ type MetaPartitionLoadRequest struct {
 	PartitionID uint64
 }
 
+type RaftInfo struct {
+	RaftStatus   raft.Status
+	PendingPeers []uint64
+	DownReplicas []raft.DownReplica
+	Hosts        []Peer
+}
+
 // MetaPartitionLoadResponse defines the response to the request of loading meta partition.
 type MetaPartitionLoadResponse struct {
 	PartitionID uint64
@@ -1101,6 +1110,7 @@ type MetaPartitionLoadResponse struct {
 	DentryCount uint64
 	InodeCount  uint64
 	Addr        string
+	RaftInfo    RaftInfo
 }
 
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.

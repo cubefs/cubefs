@@ -4583,7 +4583,7 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
 
-func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
+func (m *Server) diagnoseMetaPartitionDelayDelted(w http.ResponseWriter, r *http.Request) {
 	var (
 		err                             error
 		rstMsg                          *proto.MetaPartitionDiagnosis
@@ -4608,17 +4608,14 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.AdminDiagnoseMetaPartition, metric, err, nil)
 	}()
-
 	corruptMpIDs = make([]uint64, 0)
 	lackReplicaMpIDs = make([]uint64, 0)
 	badReplicaMpIDs = make([]uint64, 0)
 	excessReplicaMpIDs = make([]uint64, 0)
-
 	if inactiveNodes, err = m.cluster.checkInactiveMetaNodes(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-
 	if lackReplicaMps, noLeaderMps, badReplicaMps, excessReplicaMPs,
 		inodeCountNotEqualReplicaMps, maxInodeNotEqualMPs, dentryCountNotEqualReplicaMps, err = m.cluster.checkReplicaMetaPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -4636,14 +4633,12 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 	for _, mp := range excessReplicaMPs {
 		excessReplicaMpIDs = append(excessReplicaMpIDs, mp.PartitionID)
 	}
-
 	for _, mp := range inodeCountNotEqualReplicaMps {
 		inodeCountNotEqualReplicaMpIDs = append(inodeCountNotEqualReplicaMpIDs, mp.PartitionID)
 	}
 	for _, mp := range maxInodeNotEqualMPs {
 		maxInodeNotEqualReplicaMpIDs = append(maxInodeNotEqualReplicaMpIDs, mp.PartitionID)
 	}
-
 	for _, mp := range dentryCountNotEqualReplicaMps {
 		dentryCountNotEqualReplicaMpIDs = append(dentryCountNotEqualReplicaMpIDs, mp.PartitionID)
 	}
@@ -4665,6 +4660,30 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 		m.cluster.Name, inactiveNodes, corruptMpIDs, lackReplicaMpIDs, badReplicaMpIDs, excessReplicaMpIDs,
 		inodeCountNotEqualReplicaMpIDs, dentryCountNotEqualReplicaMpIDs)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		diagnosis interface{}
+	)
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if v1 := r.FormValue("v1"); v1 == "" {
+		m.diagnoseMetaPartitionDelayDelted(w, r)
+		return
+	} else {
+		metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseMetaPartition))
+		defer func() {
+			doStatAndMetric(proto.AdminDiagnoseMetaPartition, metric, err, nil)
+		}()
+		if diagnosis, err = m.cluster.checkReplicaMetaPartitionsV1(); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(diagnosis))
 }
 
 // Decommission a disk. This will decommission all the data partitions on this disk.
@@ -5991,6 +6010,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < len(replicas); i++ {
 			replicas[i] = &proto.MetaReplicaInfo{
 				Addr:            mp.Replicas[i].Addr,
+				NodeID:          mp.Replicas[i].nodeID,
 				DomainAddr:      mp.Replicas[i].metaNode.DomainAddr,
 				MaxInodeID:      mp.Replicas[i].MaxInodeID,
 				ReportTime:      mp.Replicas[i].ReportTime,
