@@ -1431,6 +1431,14 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	resp.DentryCount = uint64(mp.GetDentryTreeLen())
 	resp.ApplyID = mp.getApplyID()
 	resp.CommittedID = mp.getCommittedID()
+
+	resp.RaftInfo.DownReplicas = mp.config.RaftStore.RaftServer().GetDownReplicas(mp.config.PartitionId)
+	resp.RaftInfo.PendingPeers = mp.config.RaftStore.RaftServer().GetPendingReplica(mp.config.PartitionId)
+	if rStatus := mp.config.RaftStore.RaftStatus(mp.config.PartitionId); rStatus != nil {
+		resp.RaftInfo.RaftStatus = *rStatus
+	}
+	resp.RaftInfo.Hosts = mp.config.Peers
+
 	if err != nil {
 		err = errors.Trace(err,
 			"[ResponseLoadMetaPartition] check snapshot")
