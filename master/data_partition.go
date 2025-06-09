@@ -223,8 +223,8 @@ func (partition *DataPartition) createTaskToSetRepairingStatus(addr string, repa
 	return
 }
 
-func (partition *DataPartition) createTaskToAddRaftMember(addPeer proto.Peer, leaderAddr string) (task *proto.AdminTask, err error) {
-	task = proto.NewAdminTask(proto.OpAddDataPartitionRaftMember, leaderAddr, newAddDataPartitionRaftMemberRequest(partition.PartitionID, addPeer))
+func (partition *DataPartition) createTaskToAddRaftMember(addPeer proto.Peer, leaderAddr string, enableSetRepairingStatus bool, repairingStatus bool) (task *proto.AdminTask, err error) {
+	task = proto.NewAdminTask(proto.OpAddDataPartitionRaftMember, leaderAddr, newAddDataPartitionRaftMemberRequest(partition.PartitionID, addPeer, enableSetRepairingStatus, repairingStatus))
 	partition.resetTaskID(task)
 	return
 }
@@ -1734,9 +1734,6 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		if err = c.addDataReplica(partition, targetAddr, true, false); err != nil {
 			goto errHandler
 		}
-		if err = c.setDpRepairingStatus(partition, true, true); err != nil {
-			goto errHandler
-		}
 		newReplica, _ := partition.getReplica(targetAddr)
 		newReplica.Status = proto.Recovering // in case heartbeat response is not arrived
 		partition.isRecover = true
@@ -1890,7 +1887,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 		partition.DecommissionErrorMessage = fmt.Sprintf("rollback failed:%v", err.Error())
 		return
 	}
-	err = c.setDpRepairingStatus(partition, false, false)
+	err = c.setDpRepairingStatus(partition, false)
 	if err != nil {
 		// keep decommission status to failed for rollback
 		log.LogWarnf("action[rollback] dp[%v] rollback to set all replicas repairingStatus to false failed:%v",

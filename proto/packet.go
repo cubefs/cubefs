@@ -739,6 +739,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpFlashNodeScan"
 	case OpFlashNodeTaskCommand:
 		m = "OpFlashNodeTaskCommand"
+	case OpSetRepairingStatus:
+		m = "OpSetRepairingStatus"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}

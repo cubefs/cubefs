@@ -595,7 +595,7 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster) (err error) {
 				continue
 			}
 			if ns.HasDecommissionToken(dp.PartitionID) {
-				if dp.isSpecialReplicaCnt() {
+				if dp.isSpecialReplicaCnt() && !dp.DecommissionRaftForce {
 					if (dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes) || dp.IsDecommissionFailed() {
 						log.LogDebugf("action[CancelDataPartitionDecommission] try delete dp[%v] replica %v",
 							dp.PartitionID, dp.DecommissionDstAddr)
