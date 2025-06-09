@@ -65,6 +65,13 @@ jobs:
           pattern: '^[a-z]+\([a-z0-9_\-\.]+\): .+\n(\n.*)*$'
           error: 'Title likes `<type>(<scope>): <subject>`'
 
+      - name: Check Title Space
+        uses: sejust/commit-message-checker-with-regex@5bedef5c21ee29bb438572bdb715ad65159264f8 # v0.3.3
+        with:
+          commits: ${{ env.JOB_COMMIT_FILE }}
+          pattern: '^[^ ]+(?: [^ ]+)*\n(\n.*)*$'
+          error: 'Title has consecutive spaces'
+
       - name: Check Subject Line Length
         uses: sejust/commit-message-checker-with-regex@5bedef5c21ee29bb438572bdb715ad65159264f8 # v0.3.3
         with:

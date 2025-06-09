@@ -60,7 +60,7 @@ func TestChunkReport(t *testing.T) {
 	require.NoError(t, err)
 
 	cs, _ := ds.GetChunkStorage(vuid)
-	require.Equal(t, false, cs.IsDirty())
+	require.Equal(t, true, cs.IsDirty())
 
 	service.reportChunkInfoToClusterMgr()
 	require.Equal(t, false, cs.IsDirty())

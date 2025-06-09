@@ -50,6 +50,13 @@ func setChunkCompactFn(ctx context.Context, args *cmapi.SetCompactChunkArgs) (er
 	return
 }
 
+func getGlobalConfigFn(ctx context.Context, key string) (val string, err error) {
+	if key == proto.ChunkOversoldRatioKey {
+		return "0.5", nil
+	}
+	return "", nil
+}
+
 func TestNewDiskStorage(t *testing.T) {
 	testDir, err := os.MkdirTemp(os.TempDir(), "NewDiskStorage")
 	require.NoError(t, err)
@@ -634,6 +641,41 @@ func TestDiskStorageWrapper_CreateChunk(t *testing.T) {
 	cs, err := ds.CreateChunk(ctx, proto.Vuid(102), MaxChunkSize+1)
 	require.Error(t, err)
 	require.Nil(t, cs)
+}
+
+func TestDiskStorageWrapper_CreateChunkOversold(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "CreateChunkOversold")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+
+	diskpath := filepath.Join(testDir, "DiskPath")
+	log.Info(diskpath)
+
+	err = os.MkdirAll(diskpath, 0o755)
+	require.NoError(t, err)
+
+	diskConfig := core.Config{
+		BaseConfig: core.BaseConfig{
+			Path:       diskpath,
+			AutoFormat: true,
+		},
+		AllocDiskID:      getDiskIDFn,
+		NotifyCompacting: setChunkCompactFn,
+		HandleIOError:    handleIOErrorFn,
+		GetGlobalConfig:  getGlobalConfigFn,
+	}
+	ds, err := NewDiskStorage(ctx, diskConfig)
+	require.NoError(t, err)
+	require.NotNil(t, ds)
+
+	t.Logf("%+v", ds.Stats())
+	// no error when enable oversold
+	for i := 0; i < 50; i++ {
+		_, err := ds.CreateChunk(ctx, proto.Vuid(100+i), MaxChunkSize)
+		require.NoError(t, err)
+	}
 }
 
 func TestDiskStorage_ReleaseChunk(t *testing.T) {

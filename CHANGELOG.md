@@ -1,3 +1,34 @@
+## Release v3.5.1 - 2025/05/28
+
+### **UPGRAGDE NOTICE**
+
+
+If you are using a CubeFS version earlier than v3.5.0, please refer to the UPGRADE NOTICE in version v3.5.0 for detailed upgrade steps and upgrade to v3.5.0 first.
+
+
+### **Main Feature**
++ `all`: flash cache in cluster. （#2943 @bboyCH4, @longerfly, @slasher, @shuqiang-zheng, @clinx）
++ `flash`: scale out the cache layer by adding more cache nodes to handle increased read traffic.
++ `master`: save the FlashNode topology state and push FlashNode topology data to the client.
++ `client`: data reads are routed to the appropriate cache node based on consistent hashing.
++ `cli`: use CLI commands to query the current cache status and control its behavior.
+
+### **Enhance**
++ `data/meta`: support for dynamic adjustment of gogc. (#3816, @shuqiang-zheng)
++ `client`: actively release part of the client's memory to reduce memory footprint. (@bboyCH4)
++ `client`: support reading data with quorum consistency. (@zhumingze1108)
+
+### **Bugfix**
+* `meta`: tune the retry mechanism for failed volume creation to minimize the impact on volume deletion performance. (@bboyCH4)
+* `data`: no longer allow single replica dp raftForce deletion. (@zhumingze1108)
+* `data`: add CRC check for extent ID allocation. (@leonrayang)
+* `client`: monitor already contains grouping label commit. (@zhumingze1108)
+* `client`: failure to update the local extent cache generation resulted in an LTP failure.(@bboyCH4)
+* `flash`: Removing an fn immediately after a single 200ms timeout on origin fetch is too sensitive. A better approach would be to remove it only after multiple consecutive timeouts. (@longerfly)
+* `object`: copy data between different buckets. (@clinx)
+
+
+
 ## Release v3.5.0 - 2025/03/13
 
 ### **UPGRAGDE NOTICE**

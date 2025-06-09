@@ -84,6 +84,7 @@ type RuntimeConfig struct {
 	WriteThreadCnt               int     `json:"write_thread_cnt"`
 	ReadThreadCnt                int     `json:"read_thread_cnt"`
 	DeleteThreadCnt              int     `json:"delete_thread_cnt"`
+	EnableDeleteShardVerify      bool    `json:"enable_delete_shard_verify"`
 
 	DataQos qos.Config `json:"data_qos"`
 }
@@ -107,6 +108,7 @@ type Config struct {
 	AllocDiskID      func(ctx context.Context) (proto.DiskID, error)
 	HandleIOError    func(ctx context.Context, diskID proto.DiskID, diskErr error)
 	NotifyCompacting func(ctx context.Context, args *cmapi.SetCompactChunkArgs) (err error)
+	GetGlobalConfig  func(ctx context.Context, key string) (value string, err error)
 }
 
 func InitConfig(conf *Config) error {

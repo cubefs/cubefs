@@ -45,6 +45,7 @@ var testDiskMgrConfig = DiskMgrConfig{
 	FlushIntervalS:           300,
 	ChunkSize:                17179869184, // 16G
 	CodeModes:                []codemode.CodeMode{codemode.EC15P12, codemode.EC6P6},
+	ChunkOversoldRatio:       0.5,
 	CopySetConfigs:           make(map[proto.NodeRole]map[proto.DiskType]CopySetConfig),
 }
 

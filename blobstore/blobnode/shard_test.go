@@ -826,14 +826,15 @@ func TestShardRangeGet(t *testing.T) {
 
 	b, err := io.ReadAll(body)
 	require.NoError(t, err)
-	require.Equal(t, expectCrc, getCrc)
+	require.Equal(t, uint32(0), getCrc)
 	require.Equal(t, 1, len(b))
 	require.Equal(t, byte('e'), byte(b[0]))
 
 	getShardArg.Offset = 4
 	getShardArg.Size = 2
-	body, _, err = client.RangeGetShard(ctx, host, getShardArg)
+	body, getCrc, err = client.RangeGetShard(ctx, host, getShardArg)
 	require.NoError(t, err)
+	require.Equal(t, uint32(0), getCrc)
 
 	b, err = io.ReadAll(body)
 	require.NoError(t, err)

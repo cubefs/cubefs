@@ -112,18 +112,21 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		// build http response header
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Transfer-Encoding", "binary")
-		w.Header().Set("CRC", strconv.FormatUint(uint64(shard.Crc), 10))
 
 		from, to := shard.From, shard.To
 		bodySize := int64(shard.Size)
 
 		if rangeBytesStr != "" {
 			bodySize = to - from
+			if bodySize == int64(shard.Size) {
+				w.Header().Set("CRC", strconv.FormatUint(uint64(shard.Crc), 10))
+			}
 			rangeResp := "bytes " + strconv.FormatInt(from, 10) + "-" + strconv.FormatInt(to-1, 10) + "/" + strconv.FormatInt(int64(shard.Size), 10)
 			w.Header().Set("Content-Length", strconv.FormatInt(int64(bodySize), 10))
 			w.Header().Set("Content-Range", rangeResp)
 			c.RespondStatus(http.StatusPartialContent)
 		} else {
+			w.Header().Set("CRC", strconv.FormatUint(uint64(shard.Crc), 10))
 			w.Header().Set("Content-Length", strconv.FormatInt(bodySize, 10))
 			c.RespondStatus(http.StatusOK)
 		}

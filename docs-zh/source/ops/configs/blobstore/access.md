@@ -26,7 +26,8 @@ access的配置是基于[公有配置](./base.md)，以下配置说明主要针�
 | encoder_enableverify      | EC编解码是否启用验证        | 否，默认开启                   |
 | min_read_shards_x         | EC读取并发多下载几个shards  | 否，默认1，越大容错率越高，但带宽也越高     |
 | read_data_only_timeout_ms | 触发直读的超时时间  | 否，默认3000ms，直读超时后再EC修复读     |
-| shard_crc_disabled        | 是否验证blobnode的数据crc | 否，默认开启验证                 |
+| shard_crc_write_disable   | 是否验证write blobnode的数据crc | 否，默认开启验证                 |
+| shard_crc_read_enable     | 是否验证read blobnode的数据crc | 否，默认不开启验证                 |
 | disk_punish_interval_s    | 临时标记坏盘间隔时间         | 否，默认60s                  |
 | service_punish_interval_s | 临时标记坏服务间隔时间        | 否，默认60s                  |
 | blobnode_config           | blobnode rpc 配置    | 参考rpc配置章节[rpc](./rpc.md) |
@@ -147,7 +148,8 @@ v3.2.1版本开始支持`health_port`
         "encoder_enableverify": true,
         "min_read_shards_x": 1,
         "read_data_only_timeout_ms": 3000,
-        "shard_crc_disabled": false,
+        "shard_crc_write_disable": false,
+        "shard_crc_read_enable": false,
         "cluster_config": {
             "region": "region",
             "region_magic": "region",
