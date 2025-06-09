@@ -2371,6 +2371,10 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					log.LogWarnf("ns %v(%p) traverse exit!", l.nsId, l)
 					l.Clear()
 					return
+				case <-c.stopc:
+					log.LogWarnf("ns %v(%p) cluster stopped! traverse exit!", l.nsId, l)
+					l.Clear()
+					return
 				default:
 					// process decommission
 				}
