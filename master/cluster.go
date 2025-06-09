@@ -2616,7 +2616,13 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 					break
 				}
 			} else {
-				masterNode, _ := dp.getReplica(dp.Hosts[0])
+				var masterNode *DataReplica
+				masterNode, err = dp.getReplica(dp.Hosts[0])
+				if err != nil {
+					err = fmt.Errorf("action[decommissionSingleDp] dp %v get first host %v replica failed, err %v", dp.PartitionID, dp.Hosts[0], err)
+					dp.DecommissionNeedRollback = true
+					goto ERR
+				}
 				duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
 				diskErrReplicas := dp.getAllDiskErrorReplica()
 				if isReplicasContainsHost(diskErrReplicas, dp.Hosts[0]) || math.Abs(duration.Minutes()) > 10 {
