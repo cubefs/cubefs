@@ -381,7 +381,11 @@ func (s *Streamer) asyncBlockCache() {
 			} else {
 				data = make([]byte, ek.Size)
 			}
-			reader, _ := s.GetExtentReader(ek, pending.storageClass)
+			reader, err := s.GetExtentReader(ek, pending.storageClass)
+			if err != nil {
+				log.LogErrorf("asyncBlockCache: GetExtentReader err %v", err)
+				return
+			}
 			fullReq := NewExtentRequest(int(ek.FileOffset), int(ek.Size), data, ek)
 			metric := exporter.NewTPCnt("bcache-read-cachedata")
 			readBytes, err := reader.Read(fullReq)

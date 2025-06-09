@@ -118,7 +118,7 @@ func NewStreamConn(dp *wrapper.DataPartition, follower bool, timeout time.Durati
 
 // String returns the string format of the stream connection.
 func (sc *StreamConn) String() string {
-	return fmt.Sprintf("Partition(%v) CurrentAddr(%v) Hosts(%v) LeaderAddr(%v)", sc.dp.PartitionID, sc.currAddr, sc.dp.Hosts, sc.dp.LeaderAddr)
+	return fmt.Sprintf("Partition(%v) CurrentAddr(%v) Hosts(%v)", sc.dp.PartitionID, sc.currAddr, sc.dp.Hosts)
 }
 
 func (sc *StreamConn) getRetryTimeOut() time.Duration {
@@ -132,7 +132,9 @@ func (sc *StreamConn) getRetryTimeOut() time.Duration {
 // or the maximum number of retries is reached.
 func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
 	req.ExtentType |= proto.PacketProtocolVersionFlag
-	log.LogDebugf("sc details: " + sc.String())
+	if log.EnableDebug() {
+		log.LogDebugf("sc details: " + sc.String())
+	}
 	if req.IsReadOperation() && !sc.dp.ClientWrapper.InnerReq() && !sc.dp.ClientWrapper.FollowerRead() {
 		return sc.sendReadToDP(sc.dp, req, retry, getReply)
 	}
