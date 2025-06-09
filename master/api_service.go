@@ -1794,6 +1794,11 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err = m.cluster.dataNode(addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
