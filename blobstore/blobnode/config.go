@@ -39,12 +39,14 @@ const (
 	DefaultChunkReportIntervalSec      = 60           // 1 min
 	DefaultCleanExpiredStatIntervalSec = 60 * 60      // 60 min
 	DefaultChunkGcIntervalSec          = 30 * 60      // 30 min
-	DefaultChunkInspectIntervalSec     = 24 * 60 * 60 // 24 hour
 	DefaultChunkProtectionPeriodSec    = 48 * 60 * 60 // 48 hour
 	DefaultDiskStatusCheckIntervalSec  = 2 * 60       // 2 min
 
 	DefaultDeleteQpsLimitPerDisk = 128
-	DefaultInspectRate           = 4 * 1024 * 1024 // rate limit 4MB per second
+
+	defaultInspectIntervalSec  = 24 * 60 * 60    // 24 hour
+	defaultInspectRate         = 4 * 1024 * 1024 // rate limit 4MB per second
+	defaultInspectLogChunkSize = uint(29)
 )
 
 var (
@@ -109,8 +111,10 @@ func configInit(config *Config) {
 	if config.DeleteQpsLimitPerDisk <= 0 {
 		config.DeleteQpsLimitPerDisk = DefaultDeleteQpsLimitPerDisk
 	}
-	defaulter.LessOrEqual(&config.InspectConf.IntervalSec, DefaultChunkInspectIntervalSec)
-	defaulter.LessOrEqual(&config.InspectConf.RateLimit, DefaultInspectRate)
+	defaulter.LessOrEqual(&config.InspectConf.IntervalSec, defaultInspectIntervalSec)
+	defaulter.LessOrEqual(&config.InspectConf.RateLimit, defaultInspectRate)
+	defaulter.LessOrEqual(&config.InspectConf.Record.ChunkBits, defaultInspectLogChunkSize)
+
 	defaulter.LessOrEqual(&config.HostInfo.DiskType, proto.DiskTypeHDD)
 }
 

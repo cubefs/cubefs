@@ -41,6 +41,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -329,6 +330,7 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
 		Clustermgr:           cc,
 		HeartbeatIntervalSec: 600,
+		InspectConf:          DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
 	}
 	if path == "iopslimit" {
 		ioFlowStat, _ := flow.NewIOFlowStat("default", false)
@@ -407,6 +409,7 @@ func TestService_CmdpChunk(t *testing.T) {
 		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
 		Clustermgr:           cc,
 		HeartbeatIntervalSec: 600,
+		InspectConf:          DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
 	}
 
 	conf.DiskConfig.MustMountPoint = true

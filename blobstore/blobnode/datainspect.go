@@ -18,6 +18,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -38,7 +39,7 @@ var (
 			Name:      "data_inspect",
 			Help:      "blobnode data inspect",
 		},
-		[]string{"cluster_id", "idc", "rack", "host", "disk_id", "vuid", "bid", "error"},
+		[]string{"cluster_id", "idc", "rack", "host", "disk_id"},
 	)
 	errServiceClosed = errors.New("service is closed")
 )
@@ -46,6 +47,8 @@ var (
 type DataInspectConf struct {
 	IntervalSec int `json:"interval_sec"` // next round inspect interval
 	RateLimit   int `json:"rate_limit"`   // max rate limit per second
+
+	Record recordlog.Config `json:"record"`
 }
 
 type DataInspectStat struct {
@@ -59,10 +62,18 @@ type DataInspectMgr struct {
 
 	svr        *Service
 	taskSwitch *taskswitch.TaskSwitch
+
+	recorder recordlog.Encoder
 }
 
 func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch.SwitchMgr) (*DataInspectMgr, error) {
 	taskSwitch, err := switchMgr.AddSwitch(proto.TaskSwitchDataInspect.String())
+	if err != nil {
+		return nil, err
+	}
+
+	// init data inspect record
+	recorder, err := recordlog.NewEncoder(&conf.Record)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +83,7 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch
 		limits:     make(map[proto.DiskID]*rate.Limiter),
 		svr:        svr,
 		taskSwitch: taskSwitch,
+		recorder:   recorder,
 	}
 	return mgr, nil
 }
@@ -90,6 +102,7 @@ func (mgr *DataInspectMgr) loopDataInspect() {
 			mgr.inspectAllDisks(ctx)
 
 		case <-mgr.svr.closeCh:
+			mgr.recorder.Close()
 			span.Warnf("loop inspect data closed.")
 			return
 		}
@@ -124,6 +137,9 @@ func (mgr *DataInspectMgr) inspectAllDisks(ctx context.Context) {
 func (mgr *DataInspectMgr) inspectDisk(ctx context.Context, ds core.DiskAPI, wg *sync.WaitGroup) {
 	defer wg.Done()
 	span := trace.SpanFromContextSafe(ctx)
+
+	// clean metric
+	mgr.cleanDiskInspectMetric(ds)
 
 	chunks, err := ds.ListChunks(ctx)
 	if err != nil {
@@ -220,7 +236,7 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 	}
 
 	err := mgr.ScanShard(ctx, cs, startBid, scanFn)
-	mgr.reportBatchBadShards(cs, badShards)
+	mgr.reportBatchBadShards(ctx, cs, badShards)
 	if err != nil {
 		return nil, err
 	}
@@ -261,8 +277,18 @@ func (mgr *DataInspectMgr) waitNextRoundInspect() {
 	}
 }
 
+func (mgr *DataInspectMgr) cleanDiskInspectMetric(ds core.DiskAPI) {
+	diskInfo := ds.DiskInfo()
+	dataInspectMetric.WithLabelValues(diskInfo.ClusterID.ToString(),
+		diskInfo.Idc,
+		diskInfo.Rack,
+		diskInfo.Host,
+		diskInfo.DiskID.ToString(),
+	).Set(0)
+}
+
 // It was reported only once. When the upper-level user at get/put, an error was found
-func (mgr *DataInspectMgr) reportBadShard(cs core.ChunkAPI, blobID proto.BlobID, err error) {
+func (mgr *DataInspectMgr) reportBadShard(ctx context.Context, cs core.ChunkAPI, blobID proto.BlobID, err error) {
 	if isInspectReportIgnoredError(err) {
 		return
 	}
@@ -274,13 +300,13 @@ func (mgr *DataInspectMgr) reportBadShard(cs core.ChunkAPI, blobID proto.BlobID,
 		diskInfo.Rack,
 		diskInfo.Host,
 		diskInfo.DiskID.ToString(),
-		cs.Vuid().ToString(),
-		bid,
-		err.Error()).Set(1)
+	).Set(1)
+
+	mgr.recordBadBids(ctx, cs, []string{bid}, err.Error())
 }
 
 // Aggregate a batch of errors and report them all at once(the same chunk), Because the repair of data is often at the granularity of chunks
-func (mgr *DataInspectMgr) reportBatchBadShards(cs core.ChunkAPI, items []bnapi.BadShard) int {
+func (mgr *DataInspectMgr) reportBatchBadShards(ctx context.Context, cs core.ChunkAPI, items []bnapi.BadShard) int {
 	if len(items) == 0 {
 		return 0
 	}
@@ -303,21 +329,50 @@ func (mgr *DataInspectMgr) reportBatchBadShards(cs core.ChunkAPI, items []bnapi.
 		return 0
 	}
 
+	// record local log
 	totalBadBid := 0
-	diskInfo := cs.Disk().DiskInfo()
 	for errStr, bids := range uniqueErr {
-		dataInspectMetric.WithLabelValues(diskInfo.ClusterID.ToString(),
-			diskInfo.Idc,
-			diskInfo.Rack,
-			diskInfo.Host,
-			diskInfo.DiskID.ToString(),
-			cs.Vuid().ToString(),
-			strings.Join(bids, ","),
-			errStr).Set(float64(len(bids)))
+		mgr.recordBadBids(ctx, cs, bids, errStr)
 		totalBadBid += len(bids)
 	}
 
+	// report metric
+	diskInfo := cs.Disk().DiskInfo()
+	dataInspectMetric.WithLabelValues(diskInfo.ClusterID.ToString(),
+		diskInfo.Idc,
+		diskInfo.Rack,
+		diskInfo.Host,
+		diskInfo.DiskID.ToString(),
+	).Set(float64(totalBadBid))
+
 	return totalBadBid
+}
+
+type badBidRecord struct {
+	ClusterID proto.ClusterID `json:"cluster_id"`
+	DiskID    proto.DiskID    `json:"disk_id"`
+	Vuid      proto.Vuid      `json:"vuid"`
+	Timestamp int64           `json:"ts"`
+	Bids      string          `json:"bids"`
+	Reason    string          `json:"reason"`
+}
+
+func (mgr *DataInspectMgr) recordBadBids(ctx context.Context, cs core.ChunkAPI, bids []string, errStr string) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	// record local log
+	diskInfo := cs.Disk().DiskInfo()
+	record := badBidRecord{
+		ClusterID: diskInfo.ClusterID,
+		DiskID:    diskInfo.DiskID,
+		Vuid:      cs.Vuid(),
+		Bids:      strings.Join(bids, ","),
+		Timestamp: time.Now().Unix(),
+		Reason:    errStr,
+	}
+	if err := mgr.recorder.Encode(record); err != nil {
+		span.Warnf("fail to write bad data inspect record: record[%v], err[%+v]", record, err)
+	}
 }
 
 func (mgr *DataInspectMgr) setLimiters(disks []core.DiskAPI) {

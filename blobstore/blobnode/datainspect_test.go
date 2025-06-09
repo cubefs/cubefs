@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -21,7 +21,31 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
+	"github.com/cubefs/cubefs/util/errors"
 )
+
+func newDataInspectMgr(t *testing.T, conf DataInspectConf, svr *Service) *DataInspectMgr {
+	ctr := gomock.NewController(t)
+
+	getter := mocks.NewMockAccessor(ctr)
+	getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
+	getter.EXPECT().SetConfig(any, any, any).AnyTimes().Return(nil)
+	switchMgr := taskswitch.NewSwitchMgr(getter)
+	taskSwitch, err := switchMgr.AddSwitch(proto.TaskSwitchDataInspect.String())
+	require.NoError(t, err)
+
+	// init data inspect record
+	recorder := mocks.NewMockRecordLogEncoder(ctr)
+
+	mgr := &DataInspectMgr{
+		conf:       conf,
+		limits:     make(map[proto.DiskID]*rate.Limiter),
+		svr:        svr,
+		taskSwitch: taskSwitch,
+		recorder:   recorder,
+	}
+	return mgr
+}
 
 func TestDataInspect(t *testing.T) {
 	ctr := gomock.NewController(t)
@@ -33,15 +57,11 @@ func TestDataInspect(t *testing.T) {
 		ctx:     context.Background(),
 		closeCh: make(chan struct{}),
 	}
-	cfg := DataInspectConf{IntervalSec: 100, RateLimit: 2}
 
-	getter := mocks.NewMockAccessor(ctr)
-	getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
-	getter.EXPECT().SetConfig(any, any, any).AnyTimes().Return(nil)
-	switchMgr := taskswitch.NewSwitchMgr(getter)
-	mgr, err := NewDataInspectMgr(svr, cfg, switchMgr)
+	var err error
+	cfg := DataInspectConf{IntervalSec: 100, RateLimit: 2}
+	mgr := newDataInspectMgr(t, cfg, svr)
 	svr.inspectMgr = mgr
-	require.NoError(t, err)
 	require.Equal(t, cfg.IntervalSec, mgr.conf.IntervalSec)
 
 	ds1.EXPECT().IsWritable().AnyTimes().Return(true)
@@ -50,8 +70,10 @@ func TestDataInspect(t *testing.T) {
 	{
 		ds1.EXPECT().ID().Times(2).Return(proto.DiskID(11))
 		ds1.EXPECT().ListChunks(any).Return(nil, errMock)
+		ds1.EXPECT().DiskInfo().Times(1)
 		ds2.EXPECT().ID().Times(2).Return(proto.DiskID(22))
 		ds2.EXPECT().ListChunks(any).Return(nil, errMock)
+		ds2.EXPECT().DiskInfo().Times(1)
 		// close(svr.closeCh)
 		mgr.inspectAllDisks(ctx)
 
@@ -72,6 +94,7 @@ func TestDataInspect(t *testing.T) {
 		ds1.EXPECT().ID().Times(1).Return(proto.DiskID(11))
 		ds1.EXPECT().ListChunks(any).Return([]core.VuidMeta{{Vuid: proto.Vuid(1001)}}, nil)
 		ds1.EXPECT().GetChunkStorage(any).Return(cs, true)
+		ds1.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{}).Times(1)
 
 		mgr.inspectDisk(ctx, ds1, &wg)
 	}
@@ -150,10 +173,11 @@ func TestDataInspect(t *testing.T) {
 		ds1.EXPECT().ID().Return(proto.DiskID(11)).Times(1)
 
 		// bad bid report metric
-		cs.EXPECT().Disk().Return(ds1).Times(1)
+		cs.EXPECT().Disk().Return(ds1).Times(1 + 1)
 		// cs.EXPECT().Vuid().Return(proto.Vuid(1001))
-		ds1.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{}).Times(1)
-		ds1.EXPECT().ID().Return(proto.DiskID(11)).Times(2)
+		ds1.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{}).Times(1 + 1)
+		ds1.EXPECT().ID().Return(proto.DiskID(11)).Times(1)
+		mgr.recorder.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Times(1)
 
 		mgr.limits[proto.DiskID(11)].SetLimit(4)
 		mgr.limits[proto.DiskID(11)].SetBurst(8)
@@ -183,7 +207,7 @@ func TestDataInspect(t *testing.T) {
 		cs.EXPECT().Disk().Return(ds1)
 		cs.EXPECT().Read(any, any).Return(int64(0), bloberr.ErrNoSuchBid)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
-		ds1.EXPECT().ID().Return(proto.DiskID(11)).Times(1)
+		ds1.EXPECT().ID().Return(proto.DiskID(11)).Times(2)
 
 		mgr.limits[proto.DiskID(11)].SetLimit(4)
 		mgr.limits[proto.DiskID(11)].SetBurst(8)
@@ -193,9 +217,12 @@ func TestDataInspect(t *testing.T) {
 	}
 
 	close(svr.closeCh)
+	mgr.recorder.(*mocks.MockRecordLogEncoder).EXPECT().Close().Times(1)
+	mgr.loopDataInspect()
 }
 
 func TestDataInspectMetric(t *testing.T) {
+	ctx := context.Background()
 	ctr := gomock.NewController(t)
 	ds1 := NewMockDiskAPI(ctr)
 	svr := &Service{
@@ -204,15 +231,9 @@ func TestDataInspectMetric(t *testing.T) {
 		closeCh: make(chan struct{}),
 	}
 
-	getter := mocks.NewMockAccessor(ctr)
-	getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
-	getter.EXPECT().SetConfig(any, any, any).AnyTimes().Return(nil)
-	switchMgr := taskswitch.NewSwitchMgr(getter)
 	cfg := DataInspectConf{IntervalSec: 100, RateLimit: 2}
-
-	mgr, err := NewDataInspectMgr(svr, cfg, switchMgr)
+	mgr := newDataInspectMgr(t, cfg, svr)
 	svr.inspectMgr = mgr
-	require.NoError(t, err)
 	defer close(svr.closeCh)
 
 	// no bad blob
@@ -227,7 +248,7 @@ func TestDataInspectMetric(t *testing.T) {
 		}
 	}
 
-	badBidCnt := mgr.reportBatchBadShards(cs, bads)
+	badBidCnt := mgr.reportBatchBadShards(ctx, cs, bads)
 	require.Equal(t, 0, badBidCnt)
 
 	// some bad blob
@@ -255,8 +276,6 @@ func TestDataInspectMetric(t *testing.T) {
 		}
 	}
 
-	cs.EXPECT().Disk().Return(ds1)
-	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).Times(2)
 	ds1.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{
 		DiskInfo: clustermgr.DiskInfo{
 			ClusterID: 1,
@@ -266,9 +285,12 @@ func TestDataInspectMetric(t *testing.T) {
 			Path:      "",
 		},
 		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 11},
-	})
+	}).Times(1 + 2)
+	cs.EXPECT().Disk().Return(ds1).Times(1 + 2)
+	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).Times(2)
+	mgr.recorder.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Times(2)
 
-	badBidCnt = mgr.reportBatchBadShards(cs, bads)
+	badBidCnt = mgr.reportBatchBadShards(ctx, cs, bads)
 	require.Equal(t, expectCnt, badBidCnt)
 }
 
