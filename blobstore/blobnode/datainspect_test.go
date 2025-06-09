@@ -68,10 +68,10 @@ func TestDataInspect(t *testing.T) {
 	ds2.EXPECT().IsWritable().AnyTimes().Return(true)
 
 	{
-		ds1.EXPECT().ID().Times(2).Return(proto.DiskID(11))
+		ds1.EXPECT().ID().Times(3).Return(proto.DiskID(11))
 		ds1.EXPECT().ListChunks(any).Return(nil, errMock)
 		ds1.EXPECT().DiskInfo().Times(1)
-		ds2.EXPECT().ID().Times(2).Return(proto.DiskID(22))
+		ds2.EXPECT().ID().Times(3).Return(proto.DiskID(22))
 		ds2.EXPECT().ListChunks(any).Return(nil, errMock)
 		ds2.EXPECT().DiskInfo().Times(1)
 		// close(svr.closeCh)
@@ -91,7 +91,7 @@ func TestDataInspect(t *testing.T) {
 		cs.EXPECT().Disk().Return(ds1)
 		cs.EXPECT().Read(any, any).Return(int64(0), nil)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 1}}, proto.BlobID(123456), nil)
-		ds1.EXPECT().ID().Times(1).Return(proto.DiskID(11))
+		ds1.EXPECT().ID().Times(2).Return(proto.DiskID(11))
 		ds1.EXPECT().ListChunks(any).Return([]core.VuidMeta{{Vuid: proto.Vuid(1001)}}, nil)
 		ds1.EXPECT().GetChunkStorage(any).Return(cs, true)
 		ds1.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{}).Times(1)
@@ -217,6 +217,7 @@ func TestDataInspect(t *testing.T) {
 	}
 
 	close(svr.closeCh)
+	mgr.conf.IntervalSec = 5
 	mgr.recorder.(*mocks.MockRecordLogEncoder).EXPECT().Close().Times(1)
 	mgr.loopDataInspect()
 }

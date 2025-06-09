@@ -45,7 +45,7 @@ var (
 )
 
 type DataInspectConf struct {
-	IntervalSec int `json:"interval_sec"` // next round inspect interval
+	IntervalSec int `json:"interval_sec"` // wait switch, or next round inspect interval
 	RateLimit   int `json:"rate_limit"`   // max rate limit per second
 
 	Record recordlog.Config `json:"record"`
@@ -90,7 +90,7 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch
 
 func (mgr *DataInspectMgr) loopDataInspect() {
 	span, ctx := trace.StartSpanFromContext(mgr.svr.ctx, "")
-	t := time.NewTicker(time.Second * 5) // wait switch
+	t := time.NewTicker(time.Second * time.Duration(mgr.conf.IntervalSec)) // wait switch
 	defer t.Stop()
 
 	for {
@@ -139,7 +139,7 @@ func (mgr *DataInspectMgr) inspectDisk(ctx context.Context, ds core.DiskAPI, wg 
 	span := trace.SpanFromContextSafe(ctx)
 
 	// clean metric
-	mgr.cleanDiskInspectMetric(ds)
+	mgr.cleanDiskInspectMetric(ds, ds.ID())
 
 	chunks, err := ds.ListChunks(ctx)
 	if err != nil {
@@ -277,13 +277,13 @@ func (mgr *DataInspectMgr) waitNextRoundInspect() {
 	}
 }
 
-func (mgr *DataInspectMgr) cleanDiskInspectMetric(ds core.DiskAPI) {
+func (mgr *DataInspectMgr) cleanDiskInspectMetric(ds core.DiskAPI, diskID proto.DiskID) {
 	diskInfo := ds.DiskInfo()
 	dataInspectMetric.WithLabelValues(diskInfo.ClusterID.ToString(),
 		diskInfo.Idc,
 		diskInfo.Rack,
 		diskInfo.Host,
-		diskInfo.DiskID.ToString(),
+		diskID.ToString(),
 	).Set(0)
 }
 
@@ -293,6 +293,9 @@ func (mgr *DataInspectMgr) reportBadShard(ctx context.Context, cs core.ChunkAPI,
 		return
 	}
 
+	// report one bad shard, when the upper-level user at get/put, an error was found
+	// It's possible that this disk has inspected this bid error before, or it might not.
+	// Report with "add" and combine it with "record" for analysis and processing
 	bid := strconv.FormatUint(uint64(blobID), 10)
 	diskInfo := cs.Disk().DiskInfo()
 	dataInspectMetric.WithLabelValues(diskInfo.ClusterID.ToString(),
@@ -300,7 +303,7 @@ func (mgr *DataInspectMgr) reportBadShard(ctx context.Context, cs core.ChunkAPI,
 		diskInfo.Rack,
 		diskInfo.Host,
 		diskInfo.DiskID.ToString(),
-	).Set(1)
+	).Add(1)
 
 	mgr.recordBadBids(ctx, cs, []string{bid}, err.Error())
 }
@@ -336,14 +339,14 @@ func (mgr *DataInspectMgr) reportBatchBadShards(ctx context.Context, cs core.Chu
 		totalBadBid += len(bids)
 	}
 
-	// report metric
+	// report metric, add bad bids of chunk, to this disk. prevent next round will report these bids, it repeated
 	diskInfo := cs.Disk().DiskInfo()
 	dataInspectMetric.WithLabelValues(diskInfo.ClusterID.ToString(),
 		diskInfo.Idc,
 		diskInfo.Rack,
 		diskInfo.Host,
 		diskInfo.DiskID.ToString(),
-	).Set(float64(totalBadBid))
+	).Add(float64(totalBadBid))
 
 	return totalBadBid
 }
@@ -434,6 +437,35 @@ func (s *Service) GetInspectStat(c *rpc.Context) {
 	conf.Open = s.inspectMgr.getSwitch()
 	span.Infof("data inspect args: %+v", conf)
 	c.RespondJSON(&conf)
+}
+
+// CleanInspectMetric set diskID metric is zero, maybe disk is broken/repaired and replace new disk with another diskID
+// 'localhost:${port}/inspect/cleanmetric?cluster_id=1&disk_id=2&idc=xxx&rack=yyy&host=zzz'
+func (s *Service) CleanInspectMetric(c *rpc.Context) {
+	args := new(bnapi.InspectCleanMetricArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	span.Infof("clean data inspect metric args: %+v", args)
+
+	if !bnapi.IsValidDiskID(args.DiskID) {
+		c.RespondError(bloberr.ErrInvalidDiskId)
+		return
+	}
+	s.lock.RLock()
+	ds, exist := s.Disks[args.DiskID]
+	s.lock.RUnlock()
+	if !exist {
+		c.RespondError(bloberr.ErrNoSuchDisk)
+		return
+	}
+
+	s.inspectMgr.cleanDiskInspectMetric(ds, ds.ID())
+	c.Respond()
 }
 
 func init() {

@@ -15,12 +15,16 @@
 package blobnode
 
 import (
+	"context"
 	"path/filepath"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
+	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -145,4 +149,42 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 
 	s.reportOnlineDisk(&diskConf.HostInfo, diskInfo.Path)
 	span.Infof("probe path<%s> diskId:%d success.", probePath, ds.DiskID)
+
+	// find old bad disk, by host+path disk, clean it
+	if err = s.cleanOldDiskInspectMetric(ctx, ds); err != nil {
+		span.Warnf("fail to cleanOldDiskInspectMetric, newID=%d, path=%s, err=%+v", ds.ID(), ds.DataPath, err)
+	}
+}
+
+func (s *Service) cleanOldDiskInspectMetric(ctx context.Context, ds core.DiskAPI) (err error) {
+	marker := proto.DiskID(0)
+	ret := clustermgr.ListDiskRet{}
+	cleanDisks := make([]*clustermgr.BlobNodeDiskInfo, 0, 8)
+	newID := ds.ID()
+	path := ds.DiskInfo().Path
+
+	// 1. get all disk in this host, find old bad disk, by host+path.
+	for {
+		ret, err = s.ClusterMgrClient.ListDisk(ctx, &clustermgr.ListOptionArgs{Host: s.Conf.Host, Count: 200, Marker: marker})
+		if err != nil {
+			return err
+		}
+
+		for _, disk := range ret.Disks {
+			if disk.Path == path && disk.DiskID != newID {
+				cleanDisks = append(cleanDisks, disk)
+			}
+		}
+
+		if ret.Marker == proto.InvalidDiskID {
+			break
+		}
+		marker = ret.Marker
+	}
+
+	// 2. clean metric, old disks
+	for _, disk := range cleanDisks {
+		s.inspectMgr.cleanDiskInspectMetric(ds, disk.DiskID)
+	}
+	return nil
 }
