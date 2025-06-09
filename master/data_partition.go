@@ -2574,6 +2574,38 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		}
 	}
 
+	// find diskErr replica, directly delete it
+	diskErrReplicas := partition.getAllDiskErrorReplica()
+	if len(diskErrReplicas) != 0 {
+		if len(diskErrReplicas) == int(partition.ReplicaNum) || len(diskErrReplicas) == len(partition.Peers) {
+			err = proto.ErrAllReplicaUnavailable
+			auditMsg = fmt.Sprintf("dp(%v) performs diskErr replica check", partition.decommissionInfo())
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			return nil
+		}
+		for _, replica := range diskErrReplicas {
+			partition.removeReplicaByAddr(replica.Addr)
+			var dataNode *DataNode
+			dataNode, err = c.dataNode(replica.Addr)
+			auditMsg = fmt.Sprintf("dp(%v) cannot found datanode for replica %v to delete",
+				partition.decommissionInfo(), replica.Addr)
+			if err != nil {
+				auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+				if strings.Contains(err.Error(), "not found") {
+					continue
+				}
+				return nil
+			}
+			err = c.deleteDataReplica(partition, dataNode, true)
+			auditMsg = fmt.Sprintf("dp(%v) remove diskErr replica on %v for master",
+				partition.decommissionInfo(), replica.Addr)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			if err != nil {
+				return nil
+			}
+		}
+	}
+
 	// find missing replica, add new replica
 	if partition.ReplicaNum > uint8(len(partition.Hosts)) {
 		if partition.ReplicaNum == 1 {

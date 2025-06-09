@@ -2344,6 +2344,10 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					continue
 				}
 				if dp.DecommissionType == AutoDecommission {
+					if dp.lostLeader(c) && !dp.DecommissionRaftForce {
+						dp.DecommissionRaftForce = true
+						log.LogWarnf("action[DecommissionListTraverse] change dp[%v] decommission raftForce from false to true", dp.decommissionInfo())
+					}
 					diskErrReplicas := dp.getAllDiskErrorReplica()
 					if isReplicasContainsHost(diskErrReplicas, dp.DecommissionSrcAddr) {
 						if dp.ReplicaNum == 3 {
