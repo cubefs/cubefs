@@ -440,6 +440,11 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 		}
 	}
 
+	if req.EnableSetRepairingStatus {
+		dp.isRepairing = req.RepairingStatus
+		log.LogWarnf("action[addRaftNode] %v set repairingStatus %v", dp.partitionID, req.RepairingStatus)
+	}
+
 	log.LogInfof("action[addRaftNode] add raft node peer [%v]", req.AddPeer)
 	found := false
 	for _, peer := range dp.config.Peers {

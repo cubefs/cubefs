@@ -58,10 +58,12 @@ func newDeleteDataPartitionRequest(ID uint64, decommissionType uint32, raftForce
 	return
 }
 
-func newAddDataPartitionRaftMemberRequest(ID uint64, addPeer proto.Peer) (req *proto.AddDataPartitionRaftMemberRequest) {
+func newAddDataPartitionRaftMemberRequest(ID uint64, addPeer proto.Peer, enableSetRepairingStatus bool, repairingStatus bool) (req *proto.AddDataPartitionRaftMemberRequest) {
 	req = &proto.AddDataPartitionRaftMemberRequest{
-		PartitionId: ID,
-		AddPeer:     addPeer,
+		PartitionId:              ID,
+		AddPeer:                  addPeer,
+		EnableSetRepairingStatus: enableSetRepairingStatus,
+		RepairingStatus:          repairingStatus,
 	}
 	return
 }
