@@ -42,18 +42,18 @@ $ make server
 ## 分布式缓存配置
 
 ### 创建并启用flashGroup
-通过cli工具的flashGroup create命令创建缓存组flashGroup，并分配到唯一识别该flashGroup的ID。
+通过cli工具的flashgroup create命令创建缓存组flashgroup，并分配到唯一识别该flashgroup的ID。
 
 ```bash
 // fg的slot数量默认为32
-./cfs-cli flashGroup create 
+./cfs-cli flashgroup create 
 ```
 
-通过cli工具的flashGroup set命令启用flashGroup，参数为上一步被分配的ID。
+通过cli工具的flashgroup set命令启用flashGroup，参数为上一步被分配的ID。
 
 ```bash
 // 创建后的flashGroup状态默认是inactive状态，需要设置成active状态
-./cfs-cli flashGroup set 13 true
+./cfs-cli flashgroup set 13 true
 ```
 
 ### flashGroup添加flashNode
