@@ -17,6 +17,7 @@ package raft
 import (
 	"context"
 	"math/rand"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -782,7 +783,11 @@ func (h *internalGroupHandler) worker(wid int, ch chan groupState) {
 			default:
 				err = errors.Newf("group unknown panic, %v", v)
 			}
-			log.Errorf("worker[%d], group[%d] panic: %v", wid, groupID, r)
+
+			buf := make([]byte, 1024)
+			n := runtime.Stack(buf, false)
+			log.Errorf("worker[%d], group[%d] panic: %v, runtime stack: \n%s", wid, groupID, r, buf[:n])
+
 			g.notifyAll(proposalResult{
 				err: err,
 			})
