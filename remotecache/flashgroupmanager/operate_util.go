@@ -29,6 +29,10 @@ func unmatchedKey(name string) (err error) {
 	return errors.NewErrorf("parameter %v not match", name)
 }
 
+func keyNotFound(name string) (err error) {
+	return errors.NewErrorf("parameter %v not found", name)
+}
+
 func contains(arr []string, element string) (ok bool) {
 	if len(arr) == 0 {
 		return

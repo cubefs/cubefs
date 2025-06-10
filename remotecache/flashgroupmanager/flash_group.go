@@ -151,3 +151,23 @@ func (fg *FlashGroup) getTargetZoneFlashNodeHosts(targetZone string) (hosts []st
 	fg.lock.RUnlock()
 	return
 }
+
+func NewFlashGroupFromFgv(fgv flashGroupValue) *FlashGroup {
+	fg := new(FlashGroup)
+	fg.ID = fgv.ID
+	fg.Slots = fgv.Slots
+	fg.SlotStatus = fgv.SlotStatus
+	fg.PendingSlots = fgv.PendingSlots
+	fg.Step = fgv.Step
+	fg.Weight = fgv.Weight
+	fg.Status = fgv.Status
+	fg.flashNodes = make(map[string]*FlashNode)
+	return fg
+}
+
+func (fg *FlashGroup) GetPendingSlotsCount() (count int) {
+	fg.lock.RLock()
+	count = len(fg.PendingSlots)
+	fg.lock.RUnlock()
+	return
+}
