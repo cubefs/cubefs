@@ -1,0 +1,175 @@
+package flashgroupmanager
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
+)
+
+type RaftCmd struct {
+	Op uint32 `json:"op"`
+	K  string `json:"k"`
+	V  []byte `json:"v"`
+}
+
+func (m *RaftCmd) Marshal() ([]byte, error) {
+	return json.Marshal(m)
+}
+
+// Unmarshal converts the byte array to a RaftCmd.
+func (m *RaftCmd) Unmarshal(data []byte) (err error) {
+	return json.Unmarshal(data, m)
+}
+
+type clusterValue struct {
+	Name                         string
+	FlashNodeHandleReadTimeout   int
+	FlashNodeReadDataNodeTimeout int
+}
+
+func newClusterValue(c *Cluster) (cv *clusterValue) {
+	cv = &clusterValue{
+		Name:                         c.Name,
+		FlashNodeHandleReadTimeout:   c.cfg.flashNodeHandleReadTimeout,
+		FlashNodeReadDataNodeTimeout: c.cfg.flashNodeReadDataNodeTimeout,
+	}
+	return cv
+}
+
+func (c *Cluster) loadClusterValue() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadClusterValue],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
+		cv := &clusterValue{}
+		if err = json.Unmarshal(value, cv); err != nil {
+			log.LogErrorf("action[loadClusterValue], unmarshal err:%v", err.Error())
+			return err
+		}
+
+		if cv.Name != c.Name {
+			log.LogErrorf("action[loadClusterValue] clusterName(%v) not match loaded clusterName(%v), n loaded cluster value: %+v",
+				c.Name, cv.Name, cv)
+			continue
+		}
+
+		log.LogDebugf("action[loadClusterValue] loaded cluster value: %+v", cv)
+
+		if cv.FlashNodeHandleReadTimeout == 0 {
+			cv.FlashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
+		}
+		c.cfg.flashNodeHandleReadTimeout = cv.FlashNodeHandleReadTimeout
+
+		if cv.FlashNodeReadDataNodeTimeout == 0 {
+			cv.FlashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
+		}
+		c.cfg.flashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
+		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms)",
+			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout)
+	}
+
+	return
+}
+
+func (c *Cluster) loadFlashNodes() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(flashNodePrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadFlashNodes],err:%v", err.Error())
+		return
+	}
+
+	for _, value := range result {
+		fnv := &flashNodeValue{}
+		if err = json.Unmarshal(value, fnv); err != nil {
+			err = fmt.Errorf("action[loadFlashNodes],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		flashNode := NewFlashNode(fnv.Addr, fnv.ZoneName, c.Name, fnv.Version, fnv.IsEnable)
+		flashNode.ID = fnv.ID
+		// load later in loadFlashTopology
+		flashNode.FlashGroupID = fnv.FlashGroupID
+
+		_, err = c.flashNodeTopo.getZone(flashNode.ZoneName)
+		if err != nil {
+			c.flashNodeTopo.putZoneIfAbsent(NewFlashNodeZone(flashNode.ZoneName))
+			err = nil
+		}
+		c.flashNodeTopo.putFlashNode(flashNode)
+		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v]", flashNode.ID, flashNode.Addr, flashNode.FlashGroupID)
+	}
+	return
+}
+
+func (c *Cluster) loadFlashGroups() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(flashGroupPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadFlashGroups],err:%v", err.Error())
+		return err
+	}
+	for _, value := range result {
+		var fgv flashGroupValue
+		if err = json.Unmarshal(value, &fgv); err != nil {
+			err = fmt.Errorf("action[loadFlashGroups],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		flashGroup := NewFlashGroupFromFgv(fgv)
+		c.flashNodeTopo.flashGroupMap.Store(flashGroup.ID, flashGroup)
+		for _, slot := range flashGroup.Slots {
+			c.flashNodeTopo.slotsMap[slot] = flashGroup.ID
+		}
+		log.LogInfof("action[loadFlashGroups],flashGroup[%v]", flashGroup.ID)
+	}
+	return
+}
+
+func (c *Cluster) loadFlashTopology() (err error) {
+	c.flashNodeTopo.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
+		node := flashNode.(*FlashNode)
+		node.Lock()
+		if gid := node.FlashGroupID; gid != UnusedFlashNodeFlashGroupID {
+			if g, e := c.flashNodeTopo.getFlashGroup(gid); e == nil {
+				g.putFlashNode(node)
+				log.LogInfof("action[loadFlashTopology] load FlashNode[%s] -> FlashGroup[%d]", node.Addr, gid)
+			} else {
+				node.FlashGroupID = UnusedFlashNodeFlashGroupID
+				log.LogErrorf("action[loadFlashTopology] FlashNode[flashNodeId:%v addr:%s flashGroupId:%v] err:%v", node.ID, node.Addr, node.FlashGroupID, e.Error())
+			}
+		}
+		node.Unlock()
+		return true
+	})
+	return
+}
+
+func (m *RaftCmd) setOpType() {
+	keyArr := strings.Split(m.K, keySeparator)
+	if len(keyArr) < 2 {
+		log.LogWarnf("action[setOpType] invalid length[%v]", keyArr)
+		return
+	}
+	switch keyArr[1] {
+	case clusterAcronym:
+		m.Op = opSyncPutCluster
+	case maxCommonIDKey:
+		m.Op = opSyncAllocCommonID
+	default:
+		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
+	}
+}
+
+func (c *Cluster) submit(metadata *RaftCmd) (err error) {
+	cmd, err := metadata.Marshal()
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	if _, err = c.partition.Submit(cmd); err != nil {
+		msg := fmt.Sprintf("action[metadata_submit] err:%v", err.Error())
+		return errors.New(msg)
+	}
+	return
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"net/http"
+	"net/http/httputil"
 	"time"
 
 	"github.com/cubefs/cubefs/util/config"
@@ -50,6 +51,19 @@ func (m *FlashGroupManager) registerAPIRoutes(router *mux.Router) {
 		Methods(http.MethodGet).
 		Path(proto.AdminGetIP).
 		HandlerFunc(m.getIPAddr)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminChangeMasterLeader).
+		HandlerFunc(m.changeMasterLeader)
+
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddRaftNode).
+		HandlerFunc(m.addRaftNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RemoveRaftNode).
+		HandlerFunc(m.removeRaftNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RaftStatus).
+		HandlerFunc(m.getRaftStatus)
 
 	// APIs for FlashGroup
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupTurn).HandlerFunc(m.turnFlashGroup)
@@ -141,3 +155,20 @@ func (m *FlashGroupManager) registerAPIRoutes(router *mux.Router) {
 //	}
 //	route.Use(interceptor)
 //}
+
+func (m *FlashGroupManager) newReverseProxy() *httputil.ReverseProxy {
+	tr := &http.Transport{}
+	if m.config != nil {
+		tr = proto.GetHttpTransporter(&proto.HttpCfg{
+			PoolSize: int(m.config.httpProxyPoolSize),
+		})
+	}
+
+	return &httputil.ReverseProxy{
+		Director: func(request *http.Request) {
+			request.URL.Scheme = "http"
+			request.URL.Host = m.leaderInfo.addr
+		},
+		Transport: tr,
+	}
+}

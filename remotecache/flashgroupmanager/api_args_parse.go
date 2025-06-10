@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/compressor"
@@ -85,5 +86,30 @@ func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err er
 	decoder := json.NewDecoder(bytes.NewBuffer([]byte(body)))
 	decoder.UseNumber()
 	err = decoder.Decode(tr)
+	return
+}
+
+func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var idStr string
+	if idStr = r.FormValue(idKey); idStr == "" {
+		err = keyNotFound(idKey)
+		return
+	}
+
+	if id, err = strconv.ParseUint(idStr, 10, 64); err != nil {
+		return
+	}
+	if host = r.FormValue(addrKey); host == "" {
+		err = keyNotFound(addrKey)
+		return
+	}
+
+	if arr := strings.Split(host, colonSplit); len(arr) < 2 {
+		err = unmatchedKey(addrKey)
+		return
+	}
 	return
 }

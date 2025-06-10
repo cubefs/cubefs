@@ -99,11 +99,10 @@ func (t *FlashNodeTopology) gradualCreateFlashGroup(fgID uint64, c *Cluster, set
 		addedSlotsNum = uint32(len(slots))
 		flashGroup = newFlashGroup(fgID, slots, proto.SlotStatus_Completed, make([]uint32, 0), 0, proto.FlashGroupStatus_Inactive, setWeight)
 	}
-	// TODO
-	//if err = c.syncAddFlashGroup(flashGroup); err != nil {
-	//	t.removeSlots(slots)
-	//	return
-	//}
+	if err = c.syncAddFlashGroup(flashGroup); err != nil {
+		t.removeSlots(slots)
+		return
+	}
 
 	t.flashGroupMap.Store(flashGroup.ID, flashGroup)
 	for _, slot := range slots[:addedSlotsNum] {
@@ -120,11 +119,10 @@ func (t *FlashNodeTopology) createFlashGroup(fgID uint64, c *Cluster, setSlots [
 	sort.Slice(slots, func(i, j int) bool { return slots[i] < slots[j] })
 	flashGroup = newFlashGroup(fgID, slots, proto.SlotStatus_Completed, make([]uint32, 0), 0, proto.FlashGroupStatus_Inactive, setWeight)
 
-	// TODO
-	//if err = c.syncAddFlashGroup(flashGroup); err != nil {
-	//	t.removeSlots(slots)
-	//	return
-	//}
+	if err = c.syncAddFlashGroup(flashGroup); err != nil {
+		t.removeSlots(slots)
+		return
+	}
 	t.flashGroupMap.Store(flashGroup.ID, flashGroup)
 	for _, slot := range slots {
 		t.slotsMap[slot] = flashGroup.ID
@@ -138,14 +136,13 @@ func (t *FlashNodeTopology) removeFlashGroup(flashGroup *FlashGroup, c *Cluster)
 
 	flashGroup.lock.Lock()
 	slots := flashGroup.Slots
-	//oldStatus := flashGroup.Status
+	oldStatus := flashGroup.Status
 	flashGroup.Status = proto.FlashGroupStatus_Inactive
-	//TODO
-	//if err = c.syncDeleteFlashGroup(flashGroup); err != nil {
-	//	flashGroup.Status = oldStatus
-	//	flashGroup.lock.Unlock()
-	//	return
-	//}
+	if err = c.syncDeleteFlashGroup(flashGroup); err != nil {
+		flashGroup.Status = oldStatus
+		flashGroup.lock.Unlock()
+		return
+	}
 	flashGroup.lock.Unlock()
 
 	t.removeSlots(slots)
@@ -248,20 +245,19 @@ func (t *FlashNodeTopology) gradualRemoveFlashGroup(flashGroup *FlashGroup, c *C
 
 func (t *FlashNodeTopology) gradualExpandOrShrinkFlashGroupSlots(flashGroup *FlashGroup, c *Cluster, newSlotStatus proto.SlotStatus, pendingSlots []uint32, step uint32) (err error) {
 	flashGroup.lock.Lock()
-	//oldSlotStatus := flashGroup.SlotStatus
-	//oldStep := flashGroup.Step
-	//oldPendingSlots := flashGroup.PendingSlots
+	oldSlotStatus := flashGroup.SlotStatus
+	oldStep := flashGroup.Step
+	oldPendingSlots := flashGroup.PendingSlots
 	flashGroup.SlotStatus = newSlotStatus
 	flashGroup.PendingSlots = pendingSlots
 	flashGroup.Step = step
-	//TODO:
-	//if err = c.syncUpdateFlashGroup(flashGroup); err != nil {
-	//	flashGroup.SlotStatus = oldSlotStatus
-	//	flashGroup.PendingSlots = oldPendingSlots
-	//	flashGroup.Step = oldStep
-	//	flashGroup.lock.Unlock()
-	//	return
-	//}
+	if err = c.syncUpdateFlashGroup(flashGroup); err != nil {
+		flashGroup.SlotStatus = oldSlotStatus
+		flashGroup.PendingSlots = oldPendingSlots
+		flashGroup.Step = oldStep
+		flashGroup.lock.Unlock()
+		return
+	}
 
 	flashGroup.lock.Unlock()
 
@@ -328,4 +324,22 @@ func (t *FlashNodeTopology) deleteFlashNode(flashNode *FlashNode) {
 		return
 	}
 	zone.flashNode.Delete(flashNode.Addr)
+}
+
+func (t *FlashNodeTopology) clear() {
+	t.flashGroupMap.Range(func(key, _ interface{}) bool {
+		t.flashGroupMap.Delete(key)
+		return true
+	})
+	t.zoneMap.Range(func(key, _ interface{}) bool {
+		t.zoneMap.Delete(key)
+		return true
+	})
+	t.flashNodeMap.Range(func(key, node interface{}) bool {
+		t.flashNodeMap.Delete(key)
+		flashNode := node.(*FlashNode)
+		flashNode.clean()
+		return true
+	})
+	t.clientCache.Store([]byte(nil))
 }
