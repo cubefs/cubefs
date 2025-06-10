@@ -244,8 +244,8 @@ func TestHandleDiskDrop(t *testing.T) {
 	require.Equal(t, di.Status, proto.DiskStatusNormal)
 }
 
-func TestService2(t *testing.T) {
-	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"Service2")
+func TestServiceError(t *testing.T) {
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"ServiceError")
 	require.NoError(t, err)
 	defer os.Remove(workDir)
 
@@ -1163,4 +1163,72 @@ func TestService_RegisterNode(t *testing.T) {
 	svr.Conf.DiskType = 0
 	err = registerNode(ctx, svr.ClusterMgrClient, svr.Conf)
 	require.NotNil(t, err)
+}
+
+func TestService_OnlyWorker(t *testing.T) {
+	mcm := mockClusterMgr{
+		reqIdx: _mockDiskIdBase,
+		disks:  []mockDiskInfo{},
+	}
+
+	mcmURL := runMockClusterMgr(&mcm)
+
+	cc := &cmapi.Config{}
+	cc.Hosts = []string{mcmURL}
+
+	conf := Config{
+		Clustermgr: cc,
+		StartMode:  proto.ServiceNameWorker,
+	}
+
+	_, err := NewService(conf)
+	require.NoError(t, err)
+}
+
+func TestService_OnlyBlobnode(t *testing.T) {
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"OnlyBlobnode")
+	require.NoError(t, err)
+	defer os.RemoveAll(workDir)
+
+	path1 := filepath.Join(workDir, "disk1")
+	path2 := filepath.Join(workDir, "disk2")
+
+	mcm := mockClusterMgr{
+		reqIdx: _mockDiskIdBase,
+		disks:  []mockDiskInfo{},
+	}
+
+	mcmURL := runMockClusterMgr(&mcm)
+
+	cc := &cmapi.Config{}
+	cc.Hosts = []string{mcmURL}
+
+	err = os.MkdirAll(workDir, 0o755)
+	require.NoError(t, err)
+
+	// must create meta dir
+	err = os.MkdirAll(core.GetMetaPath(path1, ""), 0o755)
+	require.NoError(t, err)
+	err = os.MkdirAll(core.GetMetaPath(path2, ""), 0o755)
+	require.NoError(t, err)
+
+	conf := Config{
+		HostInfo: core.HostInfo{
+			IDC:      "testIdc",
+			Rack:     "testRack",
+			DiskType: proto.DiskTypeHDD,
+		},
+		Disks: []core.Config{
+			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
+			{BaseConfig: core.BaseConfig{Path: path2, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
+		},
+		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
+		Clustermgr:           cc,
+		HeartbeatIntervalSec: 600,
+		InspectConf:          DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
+		StartMode:            proto.ServiceNameBlobNode,
+	}
+
+	_, err = NewService(conf)
+	require.NoError(t, err)
 }

@@ -301,11 +301,58 @@ func (s *Service) fixDiskConf(config *core.Config) {
 }
 
 func NewService(conf Config) (svr *Service, err error) {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
+	_, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
 
 	configInit(&conf)
 
 	clusterMgrCli := cmapi.New(conf.Clustermgr)
+
+	svr = &Service{
+		ClusterMgrClient: clusterMgrCli,
+		Disks:            make(map[proto.DiskID]core.DiskAPI),
+		Conf:             &conf,
+		closeCh:          make(chan struct{}),
+	}
+
+	// start worker service
+	if conf.StartMode == proto.ServiceNameWorker || conf.StartMode == defaultServiceBothBlobNodeWorker {
+		startWorkerService(ctx, svr, conf, clusterMgrCli)
+	}
+
+	// start blobndoe service
+	if conf.StartMode == proto.ServiceNameBlobNode || conf.StartMode == defaultServiceBothBlobNodeWorker {
+		err = startBlobnodeService(ctx, svr, conf, clusterMgrCli)
+	}
+
+	return
+}
+
+func startWorkerService(ctx context.Context, svr *Service, conf Config, clusterMgrCli *cmapi.Client) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debug("start worker service...")
+
+	node := cmapi.ServiceNode{
+		ClusterID: uint64(conf.ClusterID),
+		Name:      proto.ServiceNameWorker,
+		Host:      conf.Host,
+		Idc:       conf.IDC,
+	}
+
+	err := clusterMgrCli.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
+	if err != nil {
+		span.Fatalf("worker register to clusterMgr error:%+v", err)
+	}
+
+	svr.WorkerService, err = NewWorkerService(&conf.WorkerConfig, clusterMgrCli, conf.ClusterID, conf.IDC)
+	if err != nil {
+		span.Fatalf("Failed to new worker service, err: %v", err)
+	}
+}
+
+func startBlobnodeService(ctx context.Context, svr *Service, conf Config, clusterMgrCli *cmapi.Client) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debug("start blobnode service...")
+
 	node := cmapi.ServiceNode{
 		ClusterID: uint64(conf.ClusterID),
 		Name:      proto.ServiceNameBlobNode,
@@ -328,42 +375,34 @@ func NewService(conf Config) (svr *Service, err error) {
 
 	if err = registerNode(ctx, clusterMgrCli, &conf); err != nil {
 		span.Fatalf("fail to register node to clusterMgr, err:%+v", err)
-		return nil, err
 	}
 
 	registeredDisks, err := clusterMgrCli.ListHostDisk(ctx, conf.Host)
 	if err != nil {
 		span.Errorf("Failed ListDisk from clusterMgr. err:%+v", err)
-		return nil, err
+		return err
 	}
 	span.Infof("registered disks: %v", registeredDisks)
 
 	check := isAllInConfig(ctx, registeredDisks, &conf)
 	if !check {
 		span.Errorf("no all registered normal disk in config")
-		return nil, errors.New("registered disk not in config")
+		return errors.New("registered disk not in config")
 	}
 	span.Infof("registered disks are all in config")
 
-	svr = &Service{
-		ClusterMgrClient: clusterMgrCli,
-		Disks:            make(map[proto.DiskID]core.DiskAPI),
-		Conf:             &conf,
-
-		DeleteQpsLimitPerDisk: keycount.New(conf.DeleteQpsLimitPerDisk),
-		DeleteQpsLimitPerKey:  keycount.NewBlockingKeyCountLimit(1),
-		ChunkLimitPerVuid:     keycount.New(1),
-		DiskLimitRegister:     keycount.New(1),
-		InspectLimiterPerKey:  keycount.New(1),
-		BrokenLimitPerDisk:    keycount.New(1),
-
-		closeCh: make(chan struct{}),
-	}
+	svr.Conf = &conf
+	svr.DeleteQpsLimitPerDisk = keycount.New(conf.DeleteQpsLimitPerDisk)
+	svr.DeleteQpsLimitPerKey = keycount.NewBlockingKeyCountLimit(1)
+	svr.ChunkLimitPerVuid = keycount.New(1)
+	svr.DiskLimitRegister = keycount.New(1)
+	svr.InspectLimiterPerKey = keycount.New(1)
+	svr.BrokenLimitPerDisk = keycount.New(1)
 
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
 	svr.inspectMgr, err = NewDataInspectMgr(svr, conf.InspectConf, switchMgr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	svr.ctx, svr.cancel = context.WithCancel(context.Background())
@@ -439,7 +478,7 @@ func NewService(conf Config) (svr *Service, err error) {
 
 	if err = setDefaultIOStat(conf.DiskConfig.IOStatFileDryRun); err != nil {
 		span.Errorf("Failed set default iostat file, err:%v", err)
-		return nil, err
+		return err
 	}
 
 	callBackFn := func(conf []byte) error {
@@ -456,12 +495,6 @@ func NewService(conf Config) (svr *Service, err error) {
 		return err
 	}
 	config.Register(callBackFn)
-
-	svr.WorkerService, err = NewWorkerService(&conf.WorkerConfig, clusterMgrCli, conf.ClusterID, conf.IDC)
-	if err != nil {
-		span.Errorf("Failed to new worker service, err: %v", err)
-		return
-	}
 
 	// background loop goroutines
 	go svr.loopHeartbeatToClusterMgr()

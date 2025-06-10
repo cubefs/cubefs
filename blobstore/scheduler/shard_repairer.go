@@ -134,7 +134,7 @@ func NewShardRepairMgr(
 	}
 
 	workerSelector := selector.MakeSelector(60*1000, func() (hosts []string, err error) {
-		return clusterMgrCli.GetService(context.Background(), proto.ServiceNameBlobNode, cfg.ClusterID)
+		return clusterMgrCli.GetService(context.Background(), proto.ServiceNameWorker, cfg.ClusterID)
 	})
 	failMsgSender, err := base.NewMsgSender(cfg.failedProducerConfig())
 	if err != nil {

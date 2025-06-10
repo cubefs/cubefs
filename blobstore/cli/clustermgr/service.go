@@ -31,6 +31,7 @@ func cmdGetService(c *grumble.Context) error {
 		proto.ServiceNameProxy,
 		proto.ServiceNameBlobNode,
 		proto.ServiceNameScheduler,
+		proto.ServiceNameWorker,
 	}
 	name := c.Args.String("name")
 	if name != "" {

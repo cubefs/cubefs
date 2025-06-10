@@ -17,7 +17,6 @@ package blobnode
 import (
 	"context"
 	"net/http"
-	"os"
 	"strconv"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -47,6 +46,8 @@ const (
 	defaultInspectIntervalSec  = 24 * 60 * 60    // 24 hour
 	defaultInspectRate         = 4 * 1024 * 1024 // rate limit 4MB per second
 	defaultInspectLogChunkSize = uint(29)
+
+	defaultServiceBothBlobNodeWorker = "both_blobnode_worker"
 )
 
 var (
@@ -54,6 +55,8 @@ var (
 	ErrValueType       = errors.New("value type not match this key")
 	ErrValueOutOfLimit = errors.New("value out of limit")
 )
+
+type StartMode string
 
 type Config struct {
 	cmd.Config
@@ -76,12 +79,16 @@ type Config struct {
 	DeleteQpsLimitPerDisk int `json:"delete_qps_limit_per_disk"`
 
 	InspectConf DataInspectConf `json:"inspect_conf"`
+	StartMode   StartMode       `json:"start_mode"`
 }
 
 func configInit(config *Config) {
+	if config.StartMode == proto.ServiceNameWorker {
+		return
+	}
+
 	if len(config.Disks) == 0 {
 		log.Fatalf("disk list is empty")
-		os.Exit(1)
 	}
 
 	if config.HeartbeatIntervalSec <= 0 {
@@ -116,6 +123,12 @@ func configInit(config *Config) {
 	defaulter.LessOrEqual(&config.InspectConf.Record.ChunkBits, defaultInspectLogChunkSize)
 
 	defaulter.LessOrEqual(&config.HostInfo.DiskType, proto.DiskTypeHDD)
+
+	defaulter.Empty((*string)(&config.StartMode), defaultServiceBothBlobNodeWorker)
+	// Start the worker process service by the ${StartMode}: only worker, only blobnode, both
+	if config.StartMode != defaultServiceBothBlobNodeWorker && config.StartMode != proto.ServiceNameWorker && config.StartMode != proto.ServiceNameBlobNode {
+		log.Fatalf("fail to start service, mode is %s, please use valid start mode", config.StartMode)
+	}
 }
 
 func (s *Service) changeLimit(ctx context.Context, c Config) {
