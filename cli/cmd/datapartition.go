@@ -189,16 +189,73 @@ The "reset" command will be released in next version`,
 
 			stdoutln()
 			if !showSimplified && (showAll || showBadDp) {
+				typeGroups := make(map[uint32][]struct {
+					Path      string
+					Partition proto.DpRepairInfo
+				})
+				for _, bdpv := range diagnosis.BadDataPartitionInfos {
+					for _, pinfo := range bdpv.PartitionInfos {
+						decommissionType := pinfo.DecommissionType
+						typeGroups[decommissionType] = append(typeGroups[decommissionType], struct {
+							Path      string
+							Partition proto.DpRepairInfo
+						}{bdpv.Path, pinfo})
+					}
+				}
+				typeOrder := []uint32{1, 2, 4, 5}
+				typeNames := map[uint32]string{
+					1: "ManualDecommission",
+					2: "AutoDecommission",
+					4: "AutoAddReplica",
+					5: "ManualAddReplica",
+				}
 				stdoutln("[Bad data partitions(decommission not completed)]:")
 				badPartitionTablePattern := "%-50v    %-10v    %-20v    %-20v"
-				stdoutlnf(badPartitionTablePattern, "PATH", "DP_ID", "REPAIR PROGRESS", "REPAIR STARTTIME")
-				for _, bdpv := range diagnosis.BadDataPartitionInfos {
-					sort.SliceStable(bdpv.PartitionInfos, func(i, j int) bool {
-						return bdpv.PartitionInfos[i].PartitionID < bdpv.PartitionInfos[j].PartitionID
+				// stdoutlnf(badPartitionTablePattern, "PATH", "DP_ID", "REPAIR PROGRESS", "REPAIR STARTTIME")
+				for _, dtype := range typeOrder {
+					if group, ok := typeGroups[dtype]; ok {
+						stdoutln("[" + typeNames[dtype] + "]:")
+						stdoutlnf(badPartitionTablePattern, "PATH", "DP_ID", "REPAIR PROGRESS", "REPAIR STARTTIME")
+
+						sort.SliceStable(group, func(i, j int) bool {
+							return group[i].Partition.PartitionID < group[j].Partition.PartitionID
+						})
+
+						for _, item := range group {
+							percent := strconv.FormatFloat(item.Partition.DecommissionRepairProgress*100, 'f', 2, 64) + "%"
+							stdoutlnf(badPartitionTablePattern,
+								item.Path,
+								item.Partition.PartitionID,
+								percent,
+								item.Partition.RecoverStartTime)
+						}
+						delete(typeGroups, dtype)
+					}
+				}
+
+				if len(typeGroups) > 0 {
+					stdoutln("\n[Other]:")
+					stdoutlnf(badPartitionTablePattern, "PATH", "DP_ID", "REPAIR PROGRESS", "REPAIR STARTTIME")
+
+					var otherGroup []struct {
+						Path      string
+						Partition proto.DpRepairInfo
+					}
+					for _, group := range typeGroups {
+						otherGroup = append(otherGroup, group...)
+					}
+
+					sort.SliceStable(otherGroup, func(i, j int) bool {
+						return otherGroup[i].Partition.PartitionID < otherGroup[j].Partition.PartitionID
 					})
-					for _, pinfo := range bdpv.PartitionInfos {
-						percent := strconv.FormatFloat(pinfo.DecommissionRepairProgress*100, 'f', 2, 64) + "%"
-						stdoutlnf(badPartitionTablePattern, bdpv.Path, pinfo.PartitionID, percent, pinfo.RecoverStartTime)
+
+					for _, item := range otherGroup {
+						percent := strconv.FormatFloat(item.Partition.DecommissionRepairProgress*100, 'f', 2, 64) + "%"
+						stdoutlnf(badPartitionTablePattern,
+							item.Path,
+							item.Partition.PartitionID,
+							percent,
+							item.Partition.RecoverStartTime)
 					}
 				}
 			} else {
