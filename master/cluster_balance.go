@@ -34,6 +34,8 @@ type GetMigrateAddrParam struct {
 	LeastSize  uint64
 }
 
+var NotEnoughResource = fmt.Errorf("not enough resource")
+
 func (c *Cluster) FreezeEmptyMetaPartitionJob(name string, freezeList []*MetaPartition) error {
 	c.mu.Lock()
 	task, ok := c.cleanTask[name]
@@ -540,20 +542,27 @@ func UpdateMetaReplicaPlanCount(mpPlan *proto.MetaBalancePlan, overLoadNodes []*
 	return nil
 }
 
-func FindMigrateDestination(migratePlan *proto.ClusterPlan) error {
-	for _, mp := range migratePlan.Plan {
+func FindMigrateDestination(migratePlan *proto.ClusterPlan) (err error) {
+	for i, mp := range migratePlan.Plan {
 		if mp.CrossZone {
-			err := FindMigrateDestRetainZone(migratePlan, mp)
-			if err != nil {
-				log.LogErrorf("FindMigrateDestRetainZone error: %s", err.Error())
-				return err
-			}
+			err = FindMigrateDestRetainZone(migratePlan, mp)
 		} else {
-			err := FindMigrateDestInOneNodeSet(migratePlan, mp)
-			if err != nil {
-				log.LogErrorf("FindMigrateDestInOneNodeSet error: %s", err.Error())
-				return err
+			err = FindMigrateDestInOneNodeSet(migratePlan, mp)
+		}
+		if err == NotEnoughResource {
+			if i <= 0 {
+				migratePlan.Msg = fmt.Sprintf("require to migrate (%d) mp, but not create plan", len(migratePlan.Plan))
+				log.LogErrorf(migratePlan.Msg)
+				return
 			}
+
+			migratePlan.Msg = fmt.Sprintf("require to migrate (%d) mp, only create (%d) plan", len(migratePlan.Plan), i)
+			migratePlan.Plan = migratePlan.Plan[:i]
+			log.LogWarnf(migratePlan.Msg)
+			return nil
+		} else if err != nil {
+			log.LogErrorf("Fail to find reasonable metanode to create plan: %s", err.Error())
+			return err
 		}
 	}
 
@@ -820,7 +829,7 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 	}
 	if !find {
 		log.LogWarnf("getParam: %+v. mpPlan: %+v. Resource: %+v", getParam, mpPlan, convertStructToJson(migratePlan.Low))
-		return fmt.Errorf("can't find the request low pressure nodes (%d)", getParam.RequestNum)
+		return NotEnoughResource
 	}
 
 	err := MigratePlanOriginalToDest(migratePlan, mpPlan, dests)
@@ -1076,6 +1085,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			if !c.PlanRun {
 				plan.Status = PlanTaskStop
 				c.PlanRun = false
+				plan.Msg = "migrate plan is stopped"
 				err = c.syncUpdateBalanceTask(plan)
 				if err != nil {
 					log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
@@ -1085,6 +1095,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			}
 			if c.partition == nil || !c.partition.IsRaftLeader() {
 				c.PlanRun = false
+				plan.Msg = "master leader is changed"
 				return
 			}
 			// switch raft leader if the source is leader. And waiting for the leader to be elected.
@@ -1143,6 +1154,10 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		if err != nil {
 			log.LogErrorf("offlineMetaNode err: %s", err.Error())
 			plan.Msg = err.Error()
+			err = c.syncUpdateBalanceTask(plan)
+			if err != nil {
+				log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
+			}
 		}
 	}
 }
