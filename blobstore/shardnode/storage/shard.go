@@ -1049,7 +1049,7 @@ func (s *shardState) splitStopWriting() {
 }
 
 func (s *shardState) prepRWCheck(ctx context.Context) error {
-	if atomic.LoadUint32(&s.restartLeaderReadIndex) == needReadIndex {
+	if atomic.LoadUint32(&s.restartLeaderReadIndex) == needReadIndex && s.readIndexFunc != nil {
 		if err := s.readIndexFunc(ctx); err != nil {
 			return err
 		}
