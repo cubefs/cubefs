@@ -3597,6 +3597,7 @@ func (c *Cluster) getBadDataPartitionsRepairView() (bprvs []proto.BadPartitionRe
 				DecommissionRepairProgress: replica.DecommissionRepairProgress,
 				RecoverUpdateTime:          partition.RecoverUpdateTime,
 				RecoverStartTime:           partition.RecoverStartTime,
+				DecommissionType:           partition.DecommissionType,
 			}
 			dpRepairInfos = append(dpRepairInfos, dpRepairInfo)
 			log.LogDebugf("getBadDataPartitionsRepairView: partitionID[%v], addr[%v], dpRepairInfo[%v]",

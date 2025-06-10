@@ -212,6 +212,7 @@ type DpRepairInfo struct {
 	DecommissionRepairProgress float64
 	RecoverStartTime           time.Time
 	RecoverUpdateTime          time.Time
+	DecommissionType           uint32
 }
 
 type BadPartitionRepairView struct {
