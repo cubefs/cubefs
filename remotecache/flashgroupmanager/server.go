@@ -3,12 +3,17 @@ package flashgroupmanager
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/raftstore"
+	syslog "log"
 	"net/http"
+	"net/http/httputil"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -21,10 +26,22 @@ const (
 )
 
 const (
-	ClusterName = "clusterName"
-	IP          = "ip"
-	Stat        = "stat"
-	LogDir      = "logDir"
+	ClusterName         = "clusterName"
+	IP                  = "ip"
+	Stat                = "stat"
+	LogDir              = "logDir"
+	StoreDir            = "storeDir"
+	HttpReversePoolSize = "httpReversePoolSize"
+	ID                  = "id"
+	WalDir              = "walDir"
+	RetainLogs          = "retainLogs"
+	HeartbeatPort       = "heartbeatPort"
+	ReplicaPort         = "replicaPort"
+	Peers               = "peers"
+	TickInterval        = "tickInterval"
+	RaftRecvBufSize     = "raftRecvBufSize"
+	ElectionTick        = "electionTick"
+	GroupID             = 1
 )
 
 const (
@@ -32,16 +49,29 @@ const (
 )
 
 type FlashGroupManager struct {
-	wg          sync.WaitGroup
-	clusterName string
-	config      *clusterConfig
-	ip          string
-	bindIp      bool
-	port        string
-	apiServer   *http.Server
-	cluster     *Cluster
-	logDir      string
-	metaReady   bool //TODO leader change
+	wg              sync.WaitGroup
+	clusterName     string
+	config          *clusterConfig
+	ip              string
+	bindIp          bool
+	port            string
+	apiServer       *http.Server
+	cluster         *Cluster
+	logDir          string
+	metaReady       bool
+	leaderInfo      *LeaderInfo
+	rocksDBStore    *raftstore_db.RocksDBStore
+	storeDir        string
+	reverseProxy    *httputil.ReverseProxy
+	id              uint64
+	walDir          string
+	retainLogs      uint64
+	tickInterval    int
+	raftRecvBufSize int
+	electionTick    int
+	raftStore       raftstore.RaftStore
+	fsm             *MetadataFsm
+	partition       raftstore.Partition
 }
 
 func NewFlashGroupManager() *FlashGroupManager {
@@ -55,13 +85,17 @@ func (m *FlashGroupManager) Start(cfg *config.Config) (err error) {
 		return
 	}
 
-	// TODO
-	// m.leaderInfo = &LeaderInfo{}
+	m.leaderInfo = &LeaderInfo{}
 
-	// TODO
-	// if m.rocksDBStore, err = raftstore_db.NewRocksDBStoreAndRecovery(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
-	// TODO
-	// if err = m.createRaftServer(cfg); err != nil {
+	if m.rocksDBStore, err = raftstore_db.NewRocksDBStoreAndRecovery(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+		return
+	}
+
+	m.reverseProxy = m.newReverseProxy()
+	if err = m.createRaftServer(cfg); err != nil {
+		log.LogError(errors.Stack(err))
+		return
+	}
 
 	m.initCluster()
 
@@ -102,17 +136,15 @@ func (m *FlashGroupManager) Shutdown() {
 	}
 	stat.CloseStat()
 
-	// TODO
-	//if m.fsm != nil {
-	//	m.fsm.Stop()
-	//}
+	if m.fsm != nil {
+		m.fsm.Stop()
+	}
 
 	// NOTE: wait 10 second for background goroutines to exit
 	time.Sleep(10 * time.Second)
-	// TODO
-	//if m.rocksDBStore != nil {
-	//	m.rocksDBStore.Close()
-	//}
+	if m.rocksDBStore != nil {
+		m.rocksDBStore.Close()
+	}
 
 	m.wg.Done()
 }
@@ -127,22 +159,112 @@ func (m *FlashGroupManager) checkConfig(cfg *config.Config) (err error) {
 	m.bindIp = cfg.GetBool(proto.BindIpKey)
 	m.port = cfg.GetString(proto.ListenPort)
 	m.logDir = cfg.GetString(LogDir)
+	m.walDir = cfg.GetString(WalDir)
+	peerAddrs := cfg.GetString(Peers)
 
-	if m.port == "" || m.clusterName == "" {
-		return fmt.Errorf("%v,err:%v,%v,%v", proto.ErrInvalidCfg, "one of (listen,walDir,clusterName) is null",
-			m.ip, m.clusterName)
+	if m.port == "" || m.walDir == "" || m.clusterName == "" || peerAddrs == "" {
+		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (listen,walDir,clusterName) is null",
+			m.ip, m.clusterName, m.walDir, peerAddrs)
 	}
-	return
+
+	m.config.heartbeatPort = cfg.GetInt64(HeartbeatPort)
+	m.config.replicaPort = cfg.GetInt64(ReplicaPort)
+	if m.config.heartbeatPort <= 1024 {
+		m.config.heartbeatPort = raftstore.DefaultHeartbeatPort
+	}
+	if m.config.replicaPort <= 1024 {
+		m.config.replicaPort = raftstore.DefaultReplicaPort
+	}
+	syslog.Printf("heartbeatPort[%v],replicaPort[%v]\n", m.config.heartbeatPort, m.config.replicaPort)
+	if err = m.config.parsePeers(peerAddrs); err != nil {
+		return
+	}
+
+	m.storeDir = cfg.GetString(StoreDir)
+	if m.storeDir == "" {
+		return fmt.Errorf("store dir is empty")
+	}
+
+	retainLogs := cfg.GetString(RetainLogs)
+	if retainLogs != "" {
+		if m.retainLogs, err = strconv.ParseUint(retainLogs, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+	if m.retainLogs <= 0 {
+		m.retainLogs = defaultRetainLogs
+	}
+	syslog.Println("retainLogs=", m.retainLogs)
+
+	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
+		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+	}
+
+	m.config.httpProxyPoolSize = uint64(cfg.GetInt64(HttpReversePoolSize))
+	if m.config.httpProxyPoolSize < defaultHttpReversePoolSize {
+		m.config.httpProxyPoolSize = defaultHttpReversePoolSize
+	}
+	syslog.Printf("http reverse pool size %d \n", m.config.httpProxyPoolSize)
+
+	m.tickInterval = int(cfg.GetFloat(TickInterval))
+	m.raftRecvBufSize = int(cfg.GetInt(RaftRecvBufSize))
+	m.electionTick = int(cfg.GetFloat(ElectionTick))
+	if m.tickInterval <= 300 {
+		m.tickInterval = 500
+	}
+	if m.electionTick <= 3 {
+		m.electionTick = 5
+	}
+	return nil
 }
 
 func (m *FlashGroupManager) initCluster() {
 	log.LogInfo("action[initCluster] begin")
-	m.cluster = newCluster(m.clusterName, m.config)
+	m.cluster = newCluster(m.clusterName, m.config, m.leaderInfo, m.fsm, m.partition)
 	log.LogInfo("action[initCluster] end")
-
 	// in case any limiter on follower
 	log.LogInfo("action[loadApiLimiterInfo] begin")
 	// TODO
 	//m.cluster.loadApiLimiterInfo()
 	log.LogInfo("action[loadApiLimiterInfo] end")
+}
+
+func (m *FlashGroupManager) createRaftServer(cfg *config.Config) (err error) {
+	raftCfg := &raftstore.Config{
+		NodeID:            m.id,
+		RaftPath:          m.walDir,
+		IPAddr:            cfg.GetString(IP),
+		NumOfLogsToRetain: m.retainLogs,
+		HeartbeatPort:     int(m.config.heartbeatPort),
+		ReplicaPort:       int(m.config.replicaPort),
+		TickInterval:      m.tickInterval,
+		ElectionTick:      m.electionTick,
+		RecvBufSize:       m.raftRecvBufSize,
+	}
+	if m.raftStore, err = raftstore.NewRaftStore(raftCfg, cfg); err != nil {
+		return errors.Trace(err, "NewRaftStore failed! id[%v] walPath[%v]", m.id, m.walDir)
+	}
+	syslog.Printf("peers[%v],tickInterval[%v],electionTick[%v]\n", m.config.peers, m.tickInterval, m.electionTick)
+	m.initFsm()
+	partitionCfg := &raftstore.PartitionConfig{
+		ID:      GroupID,
+		Peers:   m.config.peers,
+		Applied: m.fsm.applied,
+		SM:      m.fsm,
+	}
+	if m.partition, err = m.raftStore.CreatePartition(partitionCfg); err != nil {
+		return errors.Trace(err, "CreatePartition failed")
+	}
+	return
+}
+
+func (m *FlashGroupManager) initFsm() {
+	m.fsm = newMetadataFsm(m.rocksDBStore, m.retainLogs, m.raftStore.RaftServer())
+	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
+	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
+
+	// register the handlers for the interfaces defined in the Raft library
+	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
+	m.fsm.registerRaftUserCmdApplyHandler(m.handleRaftUserCmd)
+	m.fsm.restore()
 }

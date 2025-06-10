@@ -2,14 +2,16 @@ package flashgroupmanager
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/cmd/common"
-	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/stat"
@@ -52,17 +54,17 @@ func (m *FlashGroupManager) getCluster(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	//TODO
 	cv := &proto.ClusterView{
-		Name:       m.cluster.Name,
-		CreateTime: time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
-		//LeaderAddr:                   m.leaderInfo.addr,
-		//FlashNodes:                   make([]proto.NodeView, 0),
-		//FlashNodeHandleReadTimeout:   m.cluster.cfg.flashNodeHandleReadTimeout,
-		//FlashNodeReadDataNodeTimeout: m.cluster.cfg.flashNodeReadDataNodeTimeout,
+		Name:                         m.cluster.Name,
+		CreateTime:                   time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
+		LeaderAddr:                   m.leaderInfo.addr,
+		FlashNodes:                   make([]proto.NodeView, 0),
+		FlashNodeHandleReadTimeout:   m.cluster.cfg.flashNodeHandleReadTimeout,
+		FlashNodeReadDataNodeTimeout: m.cluster.cfg.flashNodeReadDataNodeTimeout,
 	}
 	cv.DataNodeStatInfo = new(proto.NodeStatInfo)
 	cv.MetaNodeStatInfo = new(proto.NodeStatInfo)
+	cv.FlashNodes = m.cluster.allFlashNodes()
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
 
@@ -96,11 +98,11 @@ func (m *FlashGroupManager) clientFlashGroups(w http.ResponseWriter, r *http.Req
 		doStatAndMetric(proto.ClientFlashGroups, metric, err, nil)
 	}()
 
-	//TODO
-	//if !m.metaReady {
-	//	sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("meta not ready")))
-	//	return
-	//}
+	if !m.metaReady {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("meta not ready")))
+		return
+	}
+
 	cache := m.cluster.flashNodeTopo.getClientResponse()
 	if len(cache) == 0 {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("flash group response cache is empty")))
@@ -210,13 +212,12 @@ func (m *FlashGroupManager) setFlashGroup(w http.ResponseWriter, r *http.Request
 	oldStatus := flashGroup.Status
 	flashGroup.Status = fgStatus
 	if oldStatus != fgStatus {
-		// TODO
-		//if err = m.cluster.syncUpdateFlashGroup(flashGroup); err != nil {
-		//	flashGroup.Status = oldStatus
-		//	flashGroup.lock.Unlock()
-		//	sendErrReply(w, r, newErrHTTPReply(err))
-		//	return
-		//}
+		if err = m.cluster.syncUpdateFlashGroup(flashGroup); err != nil {
+			flashGroup.Status = oldStatus
+			flashGroup.lock.Unlock()
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
 		m.cluster.flashNodeTopo.updateClientCache()
 	}
 	flashGroup.lock.Unlock()
@@ -573,6 +574,88 @@ func (m *FlashGroupManager) flashGroupRemoveFlashNode(w http.ResponseWriter, r *
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
 
+func (m *FlashGroupManager) addRaftNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		id   uint64
+		addr string
+		err  error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddRaftNode))
+	defer func() {
+		doStatAndMetric(proto.AddRaftNode, metric, err, nil)
+		AuditLog(r, proto.AddRaftNode, fmt.Sprintf("add raft node id :%v, addr:%v", id, addr), err)
+	}()
+
+	var msg string
+	id, addr, err = parseRequestForRaftNode(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.addRaftNode(id, addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("add  raft node id :%v, addr:%v successfully \n", id, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *FlashGroupManager) removeRaftNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		id   uint64
+		addr string
+		err  error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.RemoveRaftNode))
+	defer func() {
+		doStatAndMetric(proto.RemoveRaftNode, metric, err, nil)
+		AuditLog(r, proto.RemoveRaftNode, fmt.Sprintf("del raft node id :%v, addr:%v", id, addr), err)
+	}()
+
+	var msg string
+	id, addr, err = parseRequestForRaftNode(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	err = m.cluster.removeRaftNode(id, addr)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("remove  raft node id :%v,adr:%v successfully\n", id, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *FlashGroupManager) getRaftStatus(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.RaftStatus))
+	defer func() {
+		doStatAndMetric(proto.RaftStatus, metric, nil, nil)
+	}()
+
+	data := m.raftStore.RaftStatus(GroupID)
+	log.LogInfof("get raft status, %s", data.String())
+	sendOkReply(w, r, newSuccessHTTPReply(data))
+}
+
+func (m *FlashGroupManager) changeMasterLeader(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminChangeMasterLeader))
+	defer func() {
+		doStatAndMetric(proto.AdminChangeMasterLeader, metric, err, nil)
+		AuditLog(r, proto.AdminChangeMasterLeader, "", err)
+	}()
+
+	if err = m.cluster.tryToChangeLeaderByHost(); err != nil {
+		log.LogErrorf("changeMasterLeader.err %v", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	rstMsg := " changeMasterLeader. command success send to dest host but need check. "
+	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 func getSetSlots(r *http.Request) (slots []uint32, err error) {
 	r.ParseForm()
 	slots = make([]uint32, 0)
@@ -654,4 +737,9 @@ func parseArgsFlashGroupNode(r *http.Request) (id uint64, addr, zoneName string,
 		count = int(countV.V)
 	}
 	return
+}
+
+func AuditLog(r *http.Request, op, msg string, err error) {
+	head := fmt.Sprintf("%s %s", r.RemoteAddr, op)
+	auditlog.LogMasterOp(head, msg, err)
 }

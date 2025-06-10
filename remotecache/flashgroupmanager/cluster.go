@@ -1,15 +1,18 @@
 package flashgroupmanager
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/sdk/httpclient"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -20,17 +23,23 @@ type Cluster struct {
 	idAlloc       *IDAllocator
 	stopc         chan bool
 	stopFlag      int32
-	wg            sync.WaitGroup //run task?
+	wg            sync.WaitGroup
 	cfg           *clusterConfig
+	leaderInfo    *LeaderInfo
+	fsm           *MetadataFsm
+	partition     raftstore.Partition
 }
 
-func newCluster(name string, cfg *clusterConfig) (c *Cluster) {
+func newCluster(name string, cfg *clusterConfig, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition) (c *Cluster) {
 	c = new(Cluster)
 	c.Name = name
 	c.flashNodeTopo = NewFlashNodeTopology()
 	c.stopc = make(chan bool)
-	c.idAlloc = newIDAllocator()
+	c.fsm = fsm
+	c.partition = partition
 	c.cfg = cfg
+	c.leaderInfo = leaderInfo
+	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 	return
 }
 
@@ -130,13 +139,12 @@ func (c *Cluster) setFlashNodeToUnused(addr string, flashGroupID uint64) (flashN
 		return
 	}
 
-	// oldFgID := flashNode.FlashGroupID
+	oldFgID := flashNode.FlashGroupID
 	flashNode.FlashGroupID = UnusedFlashNodeFlashGroupID
-	// TODO
-	//if err = c.syncUpdateFlashNode(flashNode); err != nil {
-	//	flashNode.FlashGroupID = oldFgID
-	//	return
-	//}
+	if err = c.syncUpdateFlashNode(flashNode); err != nil {
+		flashNode.FlashGroupID = oldFgID
+		return
+	}
 
 	go func() {
 		time.Sleep(time.Duration(DefaultWaitClientUpdateFgTimeSec) * time.Second)
@@ -175,10 +183,9 @@ func (c *Cluster) addFlashNode(nodeAddr, zoneName, version string) (id uint64, e
 		return
 	}
 	flashNode.ID = id
-	//TODO
-	//if err = c.syncAddFlashNode(flashNode); err != nil {
-	//	return
-	//}
+	if err = c.syncAddFlashNode(flashNode); err != nil {
+		return
+	}
 	flashNode.ReportTime = time.Now()
 	flashNode.IsActive = true
 	if err = c.flashNodeTopo.putFlashNode(flashNode); err != nil {
@@ -192,13 +199,12 @@ func (c *Cluster) updateFlashNode(flashNode *FlashNode, enable bool) (err error)
 	flashNode.Lock()
 	defer flashNode.Unlock()
 	if flashNode.IsEnable != enable {
-		//oldState := flashNode.IsEnable
+		oldState := flashNode.IsEnable
 		flashNode.IsEnable = enable
-		// TODO
-		//if err = c.syncUpdateFlashNode(flashNode); err != nil {
-		//	flashNode.IsEnable = oldState
-		//	return
-		//}
+		if err = c.syncUpdateFlashNode(flashNode); err != nil {
+			flashNode.IsEnable = oldState
+			return
+		}
 		if flashNode.FlashGroupID != UnusedFlashNodeFlashGroupID {
 			c.flashNodeTopo.updateClientCache()
 		}
@@ -210,10 +216,9 @@ func (c *Cluster) updateFlashNodeWorkRole(flashNode *FlashNode, workRole string)
 	flashNode.Lock()
 	defer flashNode.Unlock()
 	flashNode.WorkRole = workRole
-	// TODO
-	//if err := c.syncUpdateFlashNode(flashNode); err != nil {
-	//	return err
-	//}
+	if err := c.syncUpdateFlashNode(flashNode); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -253,13 +258,12 @@ func (c *Cluster) deleteFlashNode(flashNode *FlashNode) (oldFlashGroupID uint64,
 	defer flashNode.Unlock()
 	oldFlashGroupID = flashNode.FlashGroupID
 	flashNode.FlashGroupID = UnusedFlashNodeFlashGroupID
-	//TODO
-	//if err = c.syncDeleteFlashNode(flashNode); err != nil {
-	//	log.LogErrorf("action[deleteFlashNode],clusterID[%v] node[%v] offline failed,err[%v]",
-	//		c.Name, flashNode.Addr, err)
-	//	flashNode.FlashGroupID = oldFlashGroupID
-	//	return
-	//}
+	if err = c.syncDeleteFlashNode(flashNode); err != nil {
+		log.LogErrorf("action[deleteFlashNode],clusterID[%v] node[%v] offline failed,err[%v]",
+			c.Name, flashNode.Addr, err)
+		flashNode.FlashGroupID = oldFlashGroupID
+		return
+	}
 	c.delFlashNodeFromCache(flashNode)
 	return
 }
@@ -293,13 +297,12 @@ func (c *Cluster) setFlashNodeToFlashGroup(addr string, flashGroupID uint64) (fl
 		err = fmt.Errorf("flashNode[%v] is inactive lastReportTime:%v", flashNode.Addr, flashNode.ReportTime)
 		return
 	}
-	//oldFgID := flashNode.FlashGroupID
+	oldFgID := flashNode.FlashGroupID
 	flashNode.FlashGroupID = flashGroupID
-	// TODO
-	//if err = c.syncUpdateFlashNode(flashNode); err != nil {
-	//	flashNode.FlashGroupID = oldFgID
-	//	return
-	//}
+	if err = c.syncUpdateFlashNode(flashNode); err != nil {
+		flashNode.FlashGroupID = oldFgID
+		return
+	}
 	log.LogInfo(fmt.Sprintf("action[setFlashNodeToFlashGroup] add flash node:%v to flashGroup:%v success", addr, flashGroupID))
 	return
 }
@@ -331,10 +334,9 @@ func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
 		ticker := time.NewTicker(dur)
 		defer ticker.Stop()
 		for {
-			// TODO
-			//if c.partition != nil && c.partition.IsRaftLeader() {
-			//	c.flashNodeTopo.updateClientResponse()
-			//}
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.flashNodeTopo.updateClientResponse()
+			}
 			select {
 			case <-c.stopc:
 				return
@@ -349,6 +351,7 @@ func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
 func (c *Cluster) scheduleTask() {
 	c.scheduleToUpdateFlashGroupRespCache()
 	c.scheduleToCheckHeartbeat()
+	c.scheduleToUpdateFlashGroupSlots()
 }
 
 func (c *Cluster) peekFlashNode(addr string) (flashNode *FlashNode, err error) {
@@ -381,10 +384,6 @@ func (c *Cluster) handleFlashNodeTaskResponse(nodeAddr string, task *proto.Admin
 	}
 
 	switch task.OpCode {
-	//TODO
-	//case proto.OpFlashNodeScan:
-	//	response := task.Response.(*proto.FlashNodeManualTaskResponse)
-	//	err = c.handleFlashNodeScanResp(task.OperatorAddr, response)
 	case proto.OpFlashNodeHeartbeat:
 		response := task.Response.(*proto.FlashNodeHeartbeatResponse)
 		err = c.handleFlashNodeHeartbeatResp(task.OperatorAddr, response)
@@ -415,8 +414,6 @@ func (c *Cluster) handleFlashNodeHeartbeatResp(nodeAddr string, resp *proto.Flas
 	}
 	node.setActive()
 	node.updateFlashNodeStatHeartbeat(resp)
-	//TODO: preload
-	// c.handleManualTaskProcessing(node, resp)
 	return
 }
 
@@ -452,14 +449,147 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 			tickTime: time.Second * defaultIntervalToCheckHeartbeat,
 			name:     "scheduleToCheckHeartbeat_checkFlashNodeHeartbeat",
 			function: func() (fin bool) {
-				//TODO
-				//if c.partition != nil && c.partition.IsRaftLeader() {
-				//	c.checkLcNodeHeartbeat()
-				//}
-				c.checkFlashNodeHeartbeat()
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkFlashNodeHeartbeat()
+				}
 				return
 			},
 		})
+}
+
+func (c *Cluster) scheduleToUpdateFlashGroupSlots() {
+	c.runTask(
+		&cTask{
+			tickTime: time.Minute,
+			name:     "scheduleToUpdateFlashGroupSlots",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					isNotUpdated := true
+					c.flashNodeTopo.flashGroupMap.Range(func(key, value interface{}) bool {
+						flashGroup := value.(*FlashGroup)
+						c.flashNodeTopo.createFlashGroupLock.Lock()
+						defer c.flashNodeTopo.createFlashGroupLock.Unlock()
+						slotStatus := flashGroup.getSlotStatus()
+						if slotStatus == proto.SlotStatus_Creating && (!flashGroup.GetStatus().IsActive() || len(flashGroup.flashNodes) == 0) {
+							return true
+						}
+						if slotStatus == proto.SlotStatus_Completed {
+							return true
+						} else if slotStatus == proto.SlotStatus_Creating || slotStatus == proto.SlotStatus_Deleting {
+							if err := c.updateFlashGroupSlots(flashGroup); err == nil {
+								isNotUpdated = false
+							}
+							return true
+						} else {
+							log.LogWarnf("scheduleToUpdateFlashGroupSlots failed, flashGroup(%v) has unknown SlotStatus(%v)", flashGroup.ID, flashGroup.SlotStatus)
+							return true
+						}
+					})
+					if !isNotUpdated {
+						c.flashNodeTopo.updateClientCache()
+					}
+				}
+				return
+			},
+		})
+}
+
+func (c *Cluster) updateFlashGroupSlots(flashGroup *FlashGroup) (err error) {
+	var updatedSlotsNum uint32
+	var newSlotStatus proto.SlotStatus
+	var newPendingSlots []uint32
+	var needDeleteFgFlag bool
+
+	if flashGroup.getSlotStatus() == proto.SlotStatus_Deleting {
+		if needDeleteFgFlag, err = c.checkShrinkOrDeleteFlashGroup(flashGroup); err != nil {
+			return
+		}
+	}
+
+	flashGroup.lock.Lock()
+	leftPendingSlotsNum := uint32(len(flashGroup.PendingSlots)) - flashGroup.Step
+	oldSlots := flashGroup.Slots
+	oldPendingSlots := flashGroup.PendingSlots
+	oldSlotStatus := flashGroup.SlotStatus
+	oldStatus := flashGroup.Status
+	if leftPendingSlotsNum > 0 { // previous steps
+		updatedSlotsNum = flashGroup.Step
+		newPendingSlots = oldPendingSlots[updatedSlotsNum:]
+		newSlotStatus = oldSlotStatus
+	} else { // final step
+		updatedSlotsNum = uint32(len(flashGroup.PendingSlots))
+		newPendingSlots = nil
+		newSlotStatus = proto.SlotStatus_Completed
+	}
+	newSlots := getNewSlots(flashGroup.Slots, flashGroup.PendingSlots[:updatedSlotsNum], oldSlotStatus)
+	flashGroup.Slots = newSlots
+	flashGroup.PendingSlots = newPendingSlots
+	flashGroup.SlotStatus = newSlotStatus
+	if needDeleteFgFlag {
+		flashGroup.Status = proto.FlashGroupStatus_Inactive
+		err = c.syncDeleteFlashGroup(flashGroup)
+	} else {
+		err = c.syncUpdateFlashGroup(flashGroup)
+	}
+
+	if err != nil {
+		flashGroup.Slots = oldSlots
+		flashGroup.PendingSlots = oldPendingSlots
+		flashGroup.SlotStatus = oldSlotStatus
+		if needDeleteFgFlag {
+			flashGroup.Status = oldStatus
+		}
+		flashGroup.lock.Unlock()
+		return
+	}
+
+	flashGroup.lock.Unlock()
+
+	if oldSlotStatus == proto.SlotStatus_Creating {
+		for _, slot := range oldPendingSlots[:updatedSlotsNum] {
+			c.flashNodeTopo.slotsMap[slot] = flashGroup.ID
+		}
+	} else {
+		c.flashNodeTopo.removeSlots(oldPendingSlots[:updatedSlotsNum])
+		if needDeleteFgFlag {
+			c.flashNodeTopo.flashGroupMap.Delete(flashGroup.ID)
+		}
+	}
+
+	return
+}
+
+func (c *Cluster) checkShrinkOrDeleteFlashGroup(flashGroup *FlashGroup) (needDeleteFgFlag bool, err error) {
+	leftPendingSlotsNum := uint32(flashGroup.GetPendingSlotsCount()) - flashGroup.Step
+	if (leftPendingSlotsNum <= 0) && (flashGroup.GetPendingSlotsCount() == flashGroup.getSlotsCount()) {
+		needDeleteFgFlag = true
+		// if slots num is reduced to 0, the fn of fg need to be removed
+		if err = c.removeAllFlashNodeFromFlashGroup(flashGroup); err != nil {
+			return
+		}
+	}
+	return
+}
+
+func getNewSlots(slots []uint32, pendingSlots []uint32, flag proto.SlotStatus) (newSlots []uint32) {
+	if flag == proto.SlotStatus_Creating { // expand flashGroup slots
+		newSlots = append(slots, pendingSlots...)
+		sort.Slice(newSlots, func(i, j int) bool { return newSlots[i] < newSlots[j] })
+		return
+	} else { // shrink flashGroup slots
+		slotMap := make(map[uint32]struct{})
+		for _, val := range pendingSlots {
+			if _, ok := slotMap[val]; !ok {
+				slotMap[val] = struct{}{}
+			}
+		}
+		for _, val := range slots {
+			if _, ok := slotMap[val]; !ok {
+				newSlots = append(newSlots, val)
+			}
+		}
+		return
+	}
 }
 
 type cTask struct {
@@ -502,7 +632,73 @@ func (c *Cluster) runTask(task *cTask) {
 }
 
 func (c *Cluster) masterAddr() (addr string) {
-	//TODO
-	//return c.leaderInfo.addr
-	return "tmp"
+	return c.leaderInfo.addr
+}
+
+func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
+	flashNodes = make([]proto.NodeView, 0)
+	c.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
+		flashNode := node.(*FlashNode)
+		isWritable := flashNode.isWriteable()
+		flashNode.RLock()
+		flashNodes = append(flashNodes, proto.NodeView{
+			ID:         flashNode.ID,
+			Addr:       flashNode.Addr,
+			Status:     flashNode.IsActive,
+			IsWritable: isWritable,
+		})
+		flashNode.RUnlock()
+		return true
+	})
+	return
+}
+
+func (c *Cluster) syncAddFlashGroup(flashGroup *FlashGroup) (err error) {
+	return c.syncPutFlashGroupInfo(opSyncAddFlashGroup, flashGroup)
+}
+
+func (c *Cluster) syncDeleteFlashGroup(flashGroup *FlashGroup) (err error) {
+	return c.syncPutFlashGroupInfo(opSyncDeleteFlashGroup, flashGroup)
+}
+
+func (c *Cluster) syncUpdateFlashGroup(flashGroup *FlashGroup) (err error) {
+	return c.syncPutFlashGroupInfo(opSyncUpdateFlashGroup, flashGroup)
+}
+
+func (c *Cluster) syncPutFlashGroupInfo(opType uint32, flashGroup *FlashGroup) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = flashGroupPrefix + strconv.FormatUint(flashGroup.ID, 10)
+	metadata.V, err = json.Marshal(flashGroup.flashGroupValue)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) syncPutFlashNodeInfo(opType uint32, flashNode *FlashNode) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = flashNodePrefix + strconv.FormatUint(flashNode.ID, 10) + keySeparator + flashNode.Addr
+	metadata.V, err = json.Marshal(flashNode.flashNodeValue)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) syncAddFlashNode(flashNode *FlashNode) (err error) {
+	return c.syncPutFlashNodeInfo(opSyncAddFlashNode, flashNode)
+}
+
+func (c *Cluster) syncDeleteFlashNode(flashNode *FlashNode) (err error) {
+	return c.syncPutFlashNodeInfo(opSyncDeleteFlashNode, flashNode)
+}
+
+func (c *Cluster) syncUpdateFlashNode(flashNode *FlashNode) (err error) {
+	return c.syncPutFlashNodeInfo(opSyncUpdateFlashNode, flashNode)
+}
+
+func (c *Cluster) tryToChangeLeaderByHost() error {
+	return c.partition.TryToLeader(1)
 }
