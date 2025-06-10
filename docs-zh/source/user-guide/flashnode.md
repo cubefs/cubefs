@@ -46,23 +46,23 @@ $ make server
 
 ```bash
 // fg的slot数量默认为32
-./cfs-cli flashGroup create 
+./cfs-cli flashgroup create 
 ```
 
 通过cli工具的flashGroup set命令启用flashGroup，参数为上一步被分配的ID。
 
 ```bash
 // 创建后的flashGroup状态默认是inactive状态，需要设置成active状态
-./cfs-cli flashGroup set 13 true
+./cfs-cli flashgroup set 13 true
 ```
 
 ### flashGroup添加flashNode
 
-通过cli工具的flashGroup nodeAdd命令往刚创建的flashGroup中添加缓存节点flashNode
+通过cli工具的flashgroup nodeAdd命令往刚创建的flashGroup中添加缓存节点flashNode
 
 ```bash
 // flashGroup添加flashNode，指定flashGroup的ID以及要添加的flashNode
-./cfs-cli flashGroup nodeAdd 13 --zone-name=default --addr="*.*.*.*:18510"
+./cfs-cli flashgroup nodeAdd 13 --zone-name=default --addr="*.*.*.*:18510"
 ```
 
 通过cli工具的flashNode list命令，查看刚添加的flashNode是否正确。默认新添加的flashNode的active和enable状态都为true。
