@@ -94,6 +94,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getRaftPeers", m.getRaftPeersHandler)
 	http.HandleFunc("/setGOGC", m.setGOGCHandler)
 	http.HandleFunc("/getGOGC", m.getGOGCHandler)
+	http.HandleFunc("/reloadMp", m.reloadMpHandler)
 	return
 }
 
@@ -1277,4 +1278,35 @@ func (m *MetaNode) getGOGCHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.Data = fmt.Sprintf("gogc value is %v", m.metadataManager.(*metadataManager).gogcValue)
+}
+
+func (m *MetaNode) reloadMpHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		id  int
+		err error
+	)
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[reloadMpHandler] response %s", err)
+		}
+	}()
+	if m.metadataManager == nil {
+		err = fmt.Errorf("metadataManager is nil")
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	id, err = strconv.Atoi(r.FormValue("id"))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", id, err)
+		return
+	}
+	err = m.metadataManager.ReloadPartition(id)
 }
