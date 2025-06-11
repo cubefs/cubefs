@@ -842,6 +842,7 @@ func TestSizedBlockCoder(t *testing.T) {
 	crand.Read(buff)
 	rbuff := make([]byte, gBlockSize)
 	rrbuff := make([]byte, gBlockSize*2)
+	payload := BlockPayload(gBlockSize)
 
 	run := func(size int64) {
 		buf := buff[0:size:size]
@@ -872,11 +873,16 @@ func TestSizedBlockCoder(t *testing.T) {
 		}
 
 		for range [7]struct{}{} {
-			from := mrand.Int63n(gBlockSize-1) + 1
-			to := mrand.Int63n(gBlockSize-1) + 1
+			from := mrand.Int63n(size-10) + 1
+			to := mrand.Int63n(size-from-1) + 1
 			to = from + to
 
-			head, tail, rr := NewSizedRangeBlockDecoder(newRc(ebuf), size, from, to, gBlockSize)
+			blocks := from / payload
+			seek := blocks * payload
+			buffOffset := blocks * gBlockSize
+
+			head, tail, rr := NewSizedRangeBlockDecoder(newRc(ebuf[buffOffset:]),
+				size-seek, from-seek, to-seek, gBlockSize)
 			rrbuff = rrbuff[:0]
 			for {
 				n, err := rr.Read(rbuff)
