@@ -173,3 +173,16 @@ func (c *Cluster) submit(metadata *RaftCmd) (err error) {
 	}
 	return
 }
+
+func (c *Cluster) syncPutCluster() (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncPutCluster
+	metadata.K = clusterPrefix + c.Name
+	cv := newClusterValue(c)
+	log.LogInfof("action[syncPutCluster] cluster value:[%+v]", cv)
+	metadata.V, err = json.Marshal(cv)
+	if err != nil {
+		return
+	}
+	return c.submit(metadata)
+}

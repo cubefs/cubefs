@@ -3,8 +3,6 @@ package flashgroupmanager
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/stat"
 	"io"
 	"strconv"
 	"sync"
@@ -13,8 +11,10 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	raftstore "github.com/cubefs/cubefs/raftstore/raftstore_db"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
@@ -138,7 +138,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			panic(err)
 		}
 		// TODO
-	//case opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo:
+	// case opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo:
 	//	mf.UserAppCmdHandler(cmd.Op, cmd.K, cmdMap)
 	//	//if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 	//	//	panic(err)api_args_parse.go

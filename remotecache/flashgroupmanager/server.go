@@ -3,7 +3,6 @@ package flashgroupmanager
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
@@ -225,7 +225,7 @@ func (m *FlashGroupManager) initCluster() {
 	// in case any limiter on follower
 	log.LogInfo("action[loadApiLimiterInfo] begin")
 	// TODO
-	//m.cluster.loadApiLimiterInfo()
+	// m.cluster.loadApiLimiterInfo()
 	log.LogInfo("action[loadApiLimiterInfo] end")
 }
 
