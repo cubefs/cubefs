@@ -2,10 +2,12 @@ package flashgroupmanager
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	syslog "log"
+	"net/http"
 	"strings"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	cfsProto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -117,7 +119,7 @@ func (m *FlashGroupManager) handleRaftUserCmd(opt uint32, key string, cmdMap map
 	log.LogInfof("action[handleRaftUserCmd] opt %v, key %v, map len %v", opt, key, len(cmdMap))
 	switch opt {
 	// TODO
-	//case opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo:
+	// case opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo:
 	//	if m.cluster != nil && !m.partition.IsRaftLeader() {
 	//		m.cluster.apiLimiter.updateLimiterInfoFromLeader(cmdMap[key])
 	//	}
@@ -125,4 +127,34 @@ func (m *FlashGroupManager) handleRaftUserCmd(opt uint32, key string, cmdMap map
 		log.LogErrorf("action[handleRaftUserCmd] opt %v not supported,key %v, map len %v", opt, key, len(cmdMap))
 	}
 	return nil
+}
+
+func (m *FlashGroupManager) getCurrAddr() string {
+	return AddrDatabase[m.id]
+}
+
+func (m *FlashGroupManager) isFollowerRead(r *http.Request) (followerRead bool) {
+	if r.URL.Path == cfsProto.AdminChangeMasterLeader || r.URL.Path == "/metrics" {
+		return true
+	}
+	// TODO
+	//if !m.cluster.cfg.EnableFollowerCache {
+	//	return false
+	//}
+	//
+	//followerRead = false
+	//if r.URL.Path == proto.ClientDataPartitions && !m.partition.IsRaftLeader() {
+	//	if volName, err := parseAndExtractName(r); err == nil {
+	//		log.LogInfof("action[interceptor] followerRead vol[%v]", volName)
+	//		if followerRead = m.cluster.followerReadManager.IsVolViewReady(volName); followerRead {
+	//			log.LogInfof("action[interceptor] vol [%v] followerRead [%v], GetName[%v] IsRaftLeader[%v]",
+	//				volName, followerRead, r.URL.Path, m.partition.IsRaftLeader())
+	//			return
+	//		}
+	//	}
+	//} else if r.URL.Path == proto.AdminOpFollowerPartitionsRead ||
+	//	r.URL.Path == proto.AdminPutDataPartitions {
+	//	followerRead = true
+	//}
+	return false
 }

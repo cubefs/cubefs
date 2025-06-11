@@ -3,8 +3,8 @@ package flashgroupmanager
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"

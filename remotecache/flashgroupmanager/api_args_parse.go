@@ -3,6 +3,7 @@ package flashgroupmanager
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -109,6 +110,43 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 
 	if arr := strings.Split(host, colonSplit); len(arr) < 2 {
 		err = unmatchedKey(addrKey)
+		return
+	}
+	return
+}
+
+func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	noParams := true
+	params = make(map[string]interface{})
+
+	if value = r.FormValue(cfgFlashNodeHandleReadTimeout); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(cfgFlashNodeHandleReadTimeout)
+			return
+		}
+		params[cfgFlashNodeHandleReadTimeout] = val
+	}
+
+	if value = r.FormValue(cfgFlashNodeReadDataNodeTimeout); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(cfgFlashNodeReadDataNodeTimeout)
+			return
+		}
+		params[cfgFlashNodeReadDataNodeTimeout] = val
+	}
+
+	if noParams {
+		err = fmt.Errorf("no key assigned")
 		return
 	}
 	return

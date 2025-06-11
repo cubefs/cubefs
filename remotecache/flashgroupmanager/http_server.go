@@ -2,11 +2,11 @@ package flashgroupmanager
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"net/http"
 	"net/http/httputil"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -16,7 +16,7 @@ import (
 func (m *FlashGroupManager) startHTTPService(modulename string, cfg *config.Config) {
 	router := mux.NewRouter().SkipClean(true)
 	m.registerAPIRoutes(router)
-	//m.registerAPIMiddleware(router)
+	m.registerAPIMiddleware(router)
 	exporter.InitWithRouter(modulename, cfg, router, m.port)
 	addr := fmt.Sprintf(":%s", m.port)
 	if m.bindIp {
@@ -55,6 +55,11 @@ func (m *FlashGroupManager) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminChangeMasterLeader).
 		HandlerFunc(m.changeMasterLeader)
 
+	// TODO: set by zone in future
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetNodeInfo).
+		HandlerFunc(m.setNodeInfoHandler)
+
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddRaftNode).
 		HandlerFunc(m.addRaftNode)
@@ -89,72 +94,66 @@ func (m *FlashGroupManager) registerAPIRoutes(router *mux.Router) {
 		HandlerFunc(m.handleFlashNodeTaskResponse)
 }
 
-//TODO
-//func (m *FlashGroupManager) registerAPIMiddleware(route *mux.Router) {
-//	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
-//		return http.HandlerFunc(
-//			func(w http.ResponseWriter, r *http.Request) {
-//				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
-//
-//				if m.partition.IsRaftLeader() {
-//					if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
-//						log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
-//						errMsg := fmt.Sprintf("too many requests for api: %s", html.EscapeString(r.URL.Path))
-//						http.Error(w, errMsg, http.StatusTooManyRequests)
-//						return
-//					}
-//				} else {
-//					if m.cluster.apiLimiter.IsFollowerLimiter(r.URL.Path) {
-//						if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
-//							log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
-//							errMsg := fmt.Sprintf("too many requests for api: %s", html.EscapeString(r.URL.Path))
-//							http.Error(w, errMsg, http.StatusTooManyRequests)
-//							return
-//						}
-//					}
-//				}
-//
-//				log.LogInfof("action[interceptor] request, remote[%v] method[%v] path[%v] query[%v]",
-//					r.RemoteAddr, r.Method, r.URL.Path, r.URL.Query())
-//				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
-//					next.ServeHTTP(w, r)
-//					return
-//				}
-//
-//				isFollowerRead := m.isFollowerRead(r)
-//				if m.partition.IsRaftLeader() || isFollowerRead {
-//					if m.metaReady || isFollowerRead {
-//						log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
-//						next.ServeHTTP(w, r)
-//						return
-//					}
-//					log.LogWarnf("action[interceptor] leader meta has not ready")
-//					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
-//					return
-//				} else if m.leaderInfo.addr != "" {
-//					if m.isClientPartitionsReq(r) && m.cluster.cfg.EnableFollowerCache {
-//						log.LogErrorf("action[interceptor] request, method[%v] path[%v] query[%v] status [%v]", r.Method, r.URL.Path, r.URL.Query(), isFollowerRead)
-//						http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
-//						return
-//					}
-//
-//					if m.leaderInfo.addr == m.getCurrAddr() {
-//						log.LogErrorf("action[interceptor] request, self is leader addr, no leader now, method[%v] path[%v] query[%v] status [%v]",
-//							r.Method, r.URL.Path, r.URL.Query(), m.leaderInfo.addr)
-//						http.Error(w, "no leader", http.StatusBadRequest)
-//						return
-//					}
-//
-//					m.proxy(w, r)
-//				} else {
-//					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
-//					http.Error(w, "no leader", http.StatusBadRequest)
-//					return
-//				}
-//			})
-//	}
-//	route.Use(interceptor)
-//}
+func (m *FlashGroupManager) registerAPIMiddleware(route *mux.Router) {
+	var interceptor mux.MiddlewareFunc = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
+
+				//TODO
+				//if m.partition.IsRaftLeader() {
+				//	if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
+				//		log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
+				//		errMsg := fmt.Sprintf("too many requests for api: %s", html.EscapeString(r.URL.Path))
+				//		http.Error(w, errMsg, http.StatusTooManyRequests)
+				//		return
+				//	}
+				//} else {
+				//	if m.cluster.apiLimiter.IsFollowerLimiter(r.URL.Path) {
+				//		if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
+				//			log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
+				//			errMsg := fmt.Sprintf("too many requests for api: %s", html.EscapeString(r.URL.Path))
+				//			http.Error(w, errMsg, http.StatusTooManyRequests)
+				//			return
+				//		}
+				//	}
+				//}
+
+				log.LogInfof("action[interceptor] request, remote[%v] method[%v] path[%v] query[%v]",
+					r.RemoteAddr, r.Method, r.URL.Path, r.URL.Query())
+				if mux.CurrentRoute(r).GetName() == proto.AdminGetIP {
+					next.ServeHTTP(w, r)
+					return
+				}
+
+				isFollowerRead := m.isFollowerRead(r)
+				if m.partition.IsRaftLeader() || isFollowerRead {
+					if m.metaReady || isFollowerRead {
+						log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
+						next.ServeHTTP(w, r)
+						return
+					}
+					log.LogWarnf("action[interceptor] leader meta has not ready")
+					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+					return
+				} else if m.leaderInfo.addr != "" {
+					if m.leaderInfo.addr == m.getCurrAddr() {
+						log.LogErrorf("action[interceptor] request, self is leader addr, no leader now, method[%v] path[%v] query[%v] status [%v]",
+							r.Method, r.URL.Path, r.URL.Query(), m.leaderInfo.addr)
+						http.Error(w, "no leader", http.StatusBadRequest)
+						return
+					}
+
+					m.proxy(w, r)
+				} else {
+					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
+					http.Error(w, "no leader", http.StatusBadRequest)
+					return
+				}
+			})
+	}
+	route.Use(interceptor)
+}
 
 func (m *FlashGroupManager) newReverseProxy() *httputil.ReverseProxy {
 	tr := &http.Transport{}
@@ -171,4 +170,8 @@ func (m *FlashGroupManager) newReverseProxy() *httputil.ReverseProxy {
 		},
 		Transport: tr,
 	}
+}
+
+func (m *FlashGroupManager) proxy(w http.ResponseWriter, r *http.Request) {
+	m.reverseProxy.ServeHTTP(w, r)
 }

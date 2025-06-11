@@ -2,7 +2,6 @@ package flashgroupmanager
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,13 +13,11 @@ import (
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
-var (
-	parseArgs = common.ParseArguments
-	newArg    = common.NewArgument
-)
+var parseArgs = common.ParseArguments
 
 func apiToMetricsName(api string) (reqMetricName string) {
 	var builder strings.Builder
@@ -73,7 +70,7 @@ func (m *FlashGroupManager) getNodeInfoHandler(w http.ResponseWriter, r *http.Re
 	defer func() {
 		doStatAndMetric(proto.AdminGetNodeInfo, metric, nil, nil)
 	}()
-	//compatible for cli tool
+	// compatible for cli tool
 	resp := make(map[string]string)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
@@ -654,6 +651,83 @@ func (m *FlashGroupManager) changeMasterLeader(w http.ResponseWriter, r *http.Re
 	}
 	rstMsg := " changeMasterLeader. command success send to dest host but need check. "
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *FlashGroupManager) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		params map[string]interface{}
+		err    error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetNodeInfo))
+	defer func() {
+		doStatAndMetric(proto.AdminSetNodeInfo, metric, err, nil)
+		AuditLog(r, proto.AdminSetNodeInfo, fmt.Sprintf("params: %v", params), err)
+	}()
+
+	if params, err = parseAndExtractSetNodeInfoParams(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if val, ok := params[cfgFlashNodeHandleReadTimeout]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(cfgFlashNodeHandleReadTimeout, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[cfgFlashNodeReadDataNodeTimeout]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(cfgFlashNodeReadDataNodeTimeout, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+}
+
+func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
+	var (
+		fnHandleReadTimeout   int
+		fnReadDataNodeTimeout int
+		oldIntValue           int
+	)
+
+	switch key {
+	case cfgFlashNodeHandleReadTimeout:
+		fnHandleReadTimeout, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		oldIntValue = m.config.flashNodeHandleReadTimeout
+		m.config.flashNodeHandleReadTimeout = fnHandleReadTimeout
+
+	case cfgFlashNodeReadDataNodeTimeout:
+		fnReadDataNodeTimeout, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		oldIntValue = m.config.flashNodeReadDataNodeTimeout
+		m.config.flashNodeReadDataNodeTimeout = fnReadDataNodeTimeout
+
+	default:
+		err = keyNotFound("config")
+		return err
+	}
+
+	if err = m.cluster.syncPutCluster(); err != nil {
+		switch key {
+		case cfgFlashNodeHandleReadTimeout:
+			m.config.flashNodeHandleReadTimeout = oldIntValue
+		case cfgFlashNodeReadDataNodeTimeout:
+			m.config.flashNodeReadDataNodeTimeout = oldIntValue
+		}
+		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
+		return err
+	}
+	return err
 }
 
 func getSetSlots(r *http.Request) (slots []uint32, err error) {

@@ -14,11 +14,17 @@ const (
 	commaSplit = ","
 	colonSplit = ":"
 )
+
 const (
 	defaultFlashNodeHandleReadTimeout   = 1000
 	defaultFlashNodeReadDataNodeTimeout = 3000
 	defaultHttpReversePoolSize          = 1024
 	defaultRetainLogs                   = 20000
+)
+
+const (
+	cfgFlashNodeHandleReadTimeout   = "flashNodeHandleReadTimeout"
+	cfgFlashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
 )
 
 var AddrDatabase = make(map[uint64]string)

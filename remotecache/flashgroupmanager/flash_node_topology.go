@@ -3,14 +3,14 @@ package flashgroupmanager
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/google/uuid"
 	"hash/crc32"
 	"sort"
 	"sync"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/google/uuid"
 )
 
 const (
