@@ -22,6 +22,7 @@ const (
 	flashNodePrefix  = keySeparator + "fn" + keySeparator
 	flashGroupPrefix = keySeparator + "fg" + keySeparator
 )
+
 const (
 	opSyncAllocCommonID    uint32 = 0x0C
 	opSyncAddFlashNode     uint32 = 0x6A
