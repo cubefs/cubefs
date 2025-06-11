@@ -64,6 +64,7 @@ type MetadataManager interface {
 	GetLeaderPartitions() map[uint64]MetaPartition
 	GetAllVolumes() (volumes *util.Set)
 	checkVolVerList() (err error)
+	ReloadPartition(id int) (err error)
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -568,6 +569,82 @@ func (m *metadataManager) getPartition(id uint64) (mp MetaPartition, err error) 
 	return
 }
 
+func (m *metadataManager) ReloadPartition(id int) error {
+	log.LogWarnf("action[ReloadPartition] reloadPartition %v", id)
+	m.mu.RLock()
+	mp, ok := m.partitions[uint64(id)]
+	if !ok {
+		log.LogWarnf("action[ReloadPartition] reloadPartition %v not found", id)
+		m.mu.RUnlock()
+		return fmt.Errorf("not found")
+	}
+	m.mu.RUnlock()
+	mp.Stop()
+
+	return m.loadPartition(partitionPrefix + strconv.Itoa(id))
+}
+
+func (m *metadataManager) loadPartition(fileName string) (err error) {
+	log.LogInfof("action[loadPartitions] load partition filename %s", fileName)
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("action[loadPartitions] recovered when load partition, skip it,"+
+				" partition: %s, error: %s, failed: %v", fileName, err, r)
+			syslog.Printf("load meta partition %v fail: %v", fileName, r)
+		} else if err != nil {
+			log.LogWarnf("action[loadPartitions] failed to load partition, skip it, partition: %s, error: %s",
+				fileName, err)
+		}
+		log.LogInfof("action[loadPartitions] load partition filename %s error: %s",
+			fileName, err)
+	}()
+
+	if len(fileName) < 10 {
+		log.LogWarnf("ignore unknown partition dir: %s", fileName)
+		return
+	}
+	var id uint64
+	partitionId := fileName[len(partitionPrefix):]
+	id, err = strconv.ParseUint(partitionId, 10, 64)
+	if err != nil {
+		log.LogWarnf("action[loadPartitions] ignore path: %s, not partition", partitionId)
+		return
+	}
+
+	partitionConfig := &MetaPartitionConfig{
+		PartitionId: id,
+		NodeId:      m.nodeId,
+		RaftStore:   m.raftStore,
+		RootDir:     path.Join(m.rootDir, fileName),
+		ConnPool:    m.connPool,
+	}
+	partitionConfig.AfterStop = func() {
+		m.detachPartition(id)
+	}
+	// check snapshot dir or backup
+	snapshotDir := path.Join(partitionConfig.RootDir, snapshotDir)
+	if _, err = os.Stat(snapshotDir); err != nil {
+		backupDir := path.Join(partitionConfig.RootDir, snapshotBackup)
+		if _, err = os.Stat(backupDir); err == nil {
+			if err = os.Rename(backupDir, snapshotDir); err != nil {
+				err = errors.Trace(err,
+					fmt.Sprintf(": fail recover backup snapshot %s",
+						snapshotDir))
+				return
+			}
+		}
+		err = nil
+	}
+	partition := NewMetaPartition(partitionConfig, m)
+	err = m.attachPartition(id, partition)
+
+	if err != nil {
+		log.LogErrorf("action[loadPartitions] load partition id=%d failed: %s.",
+			id, err.Error())
+	}
+	return
+}
+
 func (m *metadataManager) loadPartitions() (err error) {
 	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
@@ -587,13 +664,13 @@ func (m *metadataManager) loadPartitions() (err error) {
 	}
 
 	// Check metadataDir directory
-	fileInfo, err := os.Stat(m.rootDir)
+	rfileInfo, err := os.Stat(m.rootDir)
 	if err != nil {
 		os.MkdirAll(m.rootDir, 0o755)
 		err = nil
 		return
 	}
-	if !fileInfo.IsDir() {
+	if !rfileInfo.IsDir() {
 		err = errors.New("metadataDir must be directory")
 		return
 	}
@@ -606,7 +683,6 @@ func (m *metadataManager) loadPartitions() (err error) {
 	var wg sync.WaitGroup
 	for _, fileInfo := range fileInfoList {
 		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
-
 			if isExpiredPartition(fileInfo.Name(), metaNodeInfo.PersistenceMetaPartitions) {
 				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete it manually",
 					fileInfo.Name())
@@ -618,63 +694,8 @@ func (m *metadataManager) loadPartitions() (err error) {
 
 			wg.Add(1)
 			go func(fileName string) {
-				var errload error
-
-				defer func() {
-					if r := recover(); r != nil {
-						log.LogWarnf("action[loadPartitions] recovered when load partition, skip it,"+
-							" partition: %s, error: %s, failed: %v", fileName, errload, r)
-						syslog.Printf("load meta partition %v fail: %v", fileName, r)
-					} else if errload != nil {
-						log.LogWarnf("action[loadPartitions] failed to load partition, skip it, partition: %s, error: %s",
-							fileName, errload)
-					}
-				}()
-
 				defer wg.Done()
-				if len(fileName) < 10 {
-					log.LogWarnf("ignore unknown partition dir: %s", fileName)
-					return
-				}
-				var id uint64
-				partitionId := fileName[len(partitionPrefix):]
-				id, errload = strconv.ParseUint(partitionId, 10, 64)
-				if errload != nil {
-					log.LogWarnf("action[loadPartitions] ignore path: %s, not partition", partitionId)
-					return
-				}
-
-				partitionConfig := &MetaPartitionConfig{
-					PartitionId: id,
-					NodeId:      m.nodeId,
-					RaftStore:   m.raftStore,
-					RootDir:     path.Join(m.rootDir, fileName),
-					ConnPool:    m.connPool,
-				}
-				partitionConfig.AfterStop = func() {
-					m.detachPartition(id)
-				}
-				// check snapshot dir or backup
-				snapshotDir := path.Join(partitionConfig.RootDir, snapshotDir)
-				if _, errload = os.Stat(snapshotDir); errload != nil {
-					backupDir := path.Join(partitionConfig.RootDir, snapshotBackup)
-					if _, errload = os.Stat(backupDir); errload == nil {
-						if errload = os.Rename(backupDir, snapshotDir); errload != nil {
-							errload = errors.Trace(errload,
-								fmt.Sprintf(": fail recover backup snapshot %s",
-									snapshotDir))
-							return
-						}
-					}
-					errload = nil
-				}
-				partition := NewMetaPartition(partitionConfig, m)
-				errload = m.attachPartition(id, partition)
-
-				if errload != nil {
-					log.LogErrorf("action[loadPartitions] load partition id=%d failed: %s.",
-						id, errload.Error())
-				}
+				m.loadPartition(fileName)
 			}(fileInfo.Name())
 		}
 	}
