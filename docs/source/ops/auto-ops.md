@@ -246,12 +246,14 @@ You can view the status of the node through cfs-cli datanode info:
 ...
 Bad disks : []
 Decommissioned disks: []
+DecommissionSuccess disks: []
 Persist partitions :[]
 Backup partitions : []
 ```
 
 - Bad disks: List of bad disks on the current node.
-- Decommissioned disks: List of disks that have been offline on the current node. These disks can no longer create new dp. If you want to uncommission these disks so that they can create dp again, you can use the following interface: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1" | jq .`
+- Decommissioned disks: List of disks that have been executed decommission on the current node. These disks can no longer create new dp. If you want to uncommission these disks so that they can create dp again, you can use the following interface: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1&&recommissionType=decommissioned" | jq .`
+- DecommissionSuccess disks: List of disks that have been successfully decommissioned on the current node. The records of these disks in DataNode info will be retained after the disks are successfully decommissioned. After the maintenance personnel replace the bad disks, they can eliminate the records through the following interface: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1&&recommissionType=decommissionSuccess" | jq .`
 - Persist partitions: dp list on the current node.
 - Backup partitions: The backup directory of dp deleted by raftForce on the current node. This directory will be deleted regularly, and can also be manually deleted in advance to free up space.
 

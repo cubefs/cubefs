@@ -246,12 +246,14 @@ DP_ID       VOLUME      REPLICAS    DP_STATUS    MEMBERS
 ...
 Bad disks           : []
 Decommissioned disks: []
+DecommissionSuccess disks: []
 Persist partitions  :[]
 Backup partitions  : []
 ```
 
 - Bad disks: 当前节点上的坏盘列表。
-- Decommissioned disks: 当前节点上已经下线的磁盘列表。这部分磁盘无法再创建新的dp，如果想解禁这部分磁盘使其重新可以创建dp，可以通过以下接口: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1" | jq .`
+- Decommissioned disks: 当前节点上已经被执行下线的磁盘列表。这部分磁盘无法再创建新的dp，如果想解禁这部分磁盘使其重新可以创建dp，可以通过以下接口: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1&recommissionType=decommissioned" | jq .`
+- DecommissionSuccess disks: 当前节点上已经下线成功的磁盘列表。这部分磁盘在 DataNode info 中的记录在下线磁盘成功后会保留，等运维人员在换完坏盘后，可以通过以下接口消除: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1&recommissionType=decommissionSuccess" | jq .`
 - Persist partitions :当前节点上的dp列表。
 - Backup partitions：当前节点上，通过raftForce删除的dp的备份目录。这部分目录会定期删除，也可以提前人工删除释放空间。
 
