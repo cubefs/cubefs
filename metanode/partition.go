@@ -945,9 +945,7 @@ func (mp *metaPartition) startRaft() (err error) {
 
 func (mp *metaPartition) stopRaft() {
 	if mp.raftPartition != nil {
-		// TODO Unhandled errors
-		// mp.raftPartition.Stop()
-		_ = struct{}{}
+		mp.raftPartition.Stop()
 	}
 }
 
