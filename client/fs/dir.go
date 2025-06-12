@@ -173,7 +173,9 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 	d.super.fslock.Lock()
 	delete(d.super.nodeCache, ino)
 	d.super.fslock.Unlock()
-	d.super.mw.DeleteInoInfoCache(ino)
+	// cannot delete cache when released, trash use this info
+	// to rebuild parent dir
+	// d.super.mw.DeleteInoInfoCache(ino)
 
 	return nil
 }
