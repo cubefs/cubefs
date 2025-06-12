@@ -145,7 +145,7 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		reply.Data = buf[readBytes : readBytes+bufSize]
 		if err = ReadReplyFromConn(reply, conn, timeout); err != nil {
 			if err != nil && strings.Contains(err.Error(), "timeout") {
-				err = fmt.Errorf("%v:read timeout", dnAddr)
+				err = fmt.Errorf("read timeout")
 			}
 			stat.EndStat("ReadFromDN", err, bgTime, 1)
 			return
