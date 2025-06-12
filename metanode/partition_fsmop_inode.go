@@ -1155,8 +1155,8 @@ func (mp *metaPartition) fsmInternalBatchFreeMigrationExtentKey(val []byte) (err
 		if item == nil {
 			err = fmt.Errorf("mpId(%v) inode(%v) not found",
 				mp.config.PartitionId, inoParam.Inode)
-			log.LogErrorf("[fsmInternalBatchFreeMigrationExtentKey] %v", err)
-			return
+			log.LogWarnf("[fsmInternalBatchFreeMigrationExtentKey] %v", err)
+			continue
 		}
 		ino := item.(*Inode)
 
