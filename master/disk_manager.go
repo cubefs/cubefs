@@ -610,7 +610,7 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster) (err error) {
 						if dp.isSpecialReplicaCnt() && dp.IsDecommissionFailed() && dp.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
 							removeAddr = dp.DecommissionSrcAddr
 						}
-						err = dp.removeReplicaByForce(cluster, removeAddr)
+						err = dp.removeReplicaByForce(cluster, removeAddr, true, false)
 						if err != nil {
 							log.LogWarnf("action[CancelDataPartitionDecommission] dp[%v] remove decommission dst replica %v failed: %v",
 								dp.PartitionID, removeAddr, err)
@@ -629,7 +629,7 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster) (err error) {
 							log.LogWarnf("action[CancelDataPartitionDecommission] dp[%v] delete from bad dataPartitionIDs failed:%v", dp.PartitionID, err)
 						}
 						removeAddr := dp.DecommissionDstAddr
-						err = dp.removeReplicaByForce(cluster, removeAddr)
+						err = dp.removeReplicaByForce(cluster, removeAddr, true, false)
 						if err != nil {
 							log.LogWarnf("action[CancelDataPartitionDecommission] dp[%v] remove decommission dst replica %v failed: %v",
 								dp.PartitionID, removeAddr, err)

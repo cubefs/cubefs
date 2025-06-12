@@ -690,18 +690,18 @@ type DataPartitionDecommissionRequest struct {
 
 // AddDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
 type AddDataPartitionRaftMemberRequest struct {
-	PartitionId              uint64
-	AddPeer                  Peer
-	EnableSetRepairingStatus bool
-	RepairingStatus          bool
+	PartitionId     uint64
+	AddPeer         Peer
+	RepairingStatus bool
 }
 
 // RemoveDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
 type RemoveDataPartitionRaftMemberRequest struct {
-	PartitionId uint64
-	RemovePeer  Peer
-	Force       bool
-	AutoRemove  bool
+	PartitionId     uint64
+	RemovePeer      Peer
+	RepairingStatus bool
+	Force           bool
+	AutoRemove      bool
 }
 
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
