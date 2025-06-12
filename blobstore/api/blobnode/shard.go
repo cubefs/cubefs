@@ -16,6 +16,7 @@ package blobnode
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -30,7 +31,8 @@ import (
 )
 
 const (
-	MaxShardSize = math.MaxUint32
+	MaxShardSize        = math.MaxUint32
+	GetShardsHeaderSize = 4
 )
 
 type ShardInfo struct {
@@ -320,7 +322,7 @@ type GetShardsArgs struct {
 	Type   IOType       `json:"type"`
 }
 
-func (c *client) GetShards(ctx context.Context, host string, args *GetShardsArgs) (body io.ReadCloser, err error) {
+func (c *client) GetShards(ctx context.Context, host string, args *GetShardsArgs) (getter ShardGetter, err error) {
 	if !args.Type.IsValid() {
 		err = bloberr.ErrInvalidParam
 		return
@@ -334,12 +336,58 @@ func (c *client) GetShards(ctx context.Context, host string, args *GetShardsArgs
 	resp, err := c.Post(ctx, urlStr, args)
 	if err != nil {
 		err = convertEIO(err)
-		return nil, err
+		return
 	}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
 		err = rpc.ParseResponseErr(resp)
 		return
 	}
-	return resp.Body, nil
+	return &shardGetter{bids: args.Bids, body: resp.Body}, nil
+}
+
+type ShardGetter interface {
+	// NextShard before read next shard must read all data of last shard, if not will get unexpect error
+	NextShard(ctx context.Context) (body io.ReadCloser, err error, ok bool)
+	Close() error
+}
+
+type shardGetter struct {
+	body io.ReadCloser
+	bids []BidInfo
+	idx  int
+}
+
+func (b *shardGetter) NextShard(ctx context.Context) (io.ReadCloser, error, bool) {
+	span := trace.SpanFromContextSafe(ctx)
+	if b.idx >= len(b.bids) {
+		return nil, nil, false
+	}
+	var header ShardsHeader
+	_, err := io.ReadFull(b.body, header[:])
+	if err != nil {
+		return nil, err, true
+	}
+	code := header.Get()
+	if code != 200 {
+		span.Errorf("download shard failed, errCode: %s", code)
+		return nil, bloberr.ErrBidNotMatch, true
+	}
+	bid := b.bids[b.idx]
+	b.idx++
+	return io.NopCloser(io.LimitReader(b.body, bid.Size)), nil, true
+}
+
+func (b *shardGetter) Close() error {
+	return b.body.Close()
+}
+
+type ShardsHeader [GetShardsHeaderSize]byte
+
+func (s *ShardsHeader) Set(code int) {
+	binary.BigEndian.PutUint32(s[:], uint32(code))
+}
+
+func (s *ShardsHeader) Get() int {
+	return int(binary.BigEndian.Uint32(s[:]))
 }

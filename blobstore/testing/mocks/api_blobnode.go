@@ -112,10 +112,10 @@ func (mr *MockStorageAPIMockRecorder) GetShard(arg0, arg1, arg2 interface{}) *go
 }
 
 // GetShards mocks base method.
-func (m *MockStorageAPI) GetShards(arg0 context.Context, arg1 string, arg2 *blobnode.GetShardsArgs) (io.ReadCloser, error) {
+func (m *MockStorageAPI) GetShards(arg0 context.Context, arg1 string, arg2 *blobnode.GetShardsArgs) (blobnode.ShardGetter, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetShards", arg0, arg1, arg2)
-	ret0, _ := ret[0].(io.ReadCloser)
+	ret0, _ := ret[0].(blobnode.ShardGetter)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

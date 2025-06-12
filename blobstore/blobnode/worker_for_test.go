@@ -30,7 +30,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -207,7 +209,7 @@ func (getter *MockGetter) GetShard(ctx context.Context, location proto.VunitLoca
 	return io.NopCloser(reader), crc, err
 }
 
-func (getter *MockGetter) GetShards(ctx context.Context, location proto.VunitLocation, bids []api.BidInfo, ioType api.IOType) (body io.ReadCloser, err error) {
+func (getter *MockGetter) GetShards(ctx context.Context, location proto.VunitLocation, bids []api.BidInfo, ioType api.IOType) (get api.ShardGetter, err error) {
 	getter.mu.Lock()
 	defer getter.mu.Unlock()
 	buf := make([]byte, 0)
@@ -217,7 +219,7 @@ func (getter *MockGetter) GetShards(ctx context.Context, location proto.VunitLoc
 		buf = append(buf, header...)
 		buf = append(buf, getter.vunits[location.Vuid].shards[bid.Bid]...)
 	}
-	return io.NopCloser(bytes.NewReader(buf)), nil
+	return &mockShardGetter{body: io.NopCloser(bytes.NewReader(buf)), bids: bids}, nil
 }
 
 func (getter *MockGetter) MarkDelete(ctx context.Context, vuid proto.Vuid, bid proto.BlobID) {
@@ -400,4 +402,33 @@ func (m *mockVunit) recover(bid proto.BlobID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.bidInfos[bid].Flag = api.ShardStatusNormal
+}
+
+type mockShardGetter struct {
+	body io.ReadCloser
+	bids []api.BidInfo
+	idx  int
+}
+
+func (b *mockShardGetter) NextShard(ctx context.Context) (io.ReadCloser, error, bool) {
+	span := trace.SpanFromContextSafe(ctx)
+	if b.idx >= len(b.bids) {
+		return nil, io.EOF, false
+	}
+	header := make([]byte, api.GetShardsHeaderSize)
+	_, err := io.ReadFull(b.body, header)
+	if err != nil {
+		return nil, err, false
+	}
+	code := binary.BigEndian.Uint32(header)
+	if code != uint32(200) {
+		span.Errorf("download shard failed, errCode: %s", code)
+		return nil, bloberr.ErrBidNotMatch, false
+	}
+	b.idx++
+	return b.body, nil, true
+}
+
+func (b *mockShardGetter) Close() error {
+	return b.body.Close()
 }

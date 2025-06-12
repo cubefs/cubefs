@@ -99,13 +99,9 @@ const (
 	_checksumOffset         = _shardFooterMagicOffset + _shardMagicSize
 	_footerPaddingOffset    = _checksumOffset + _checksumSize
 
-	_shardStatusSize = 4
-
 	CrcSize    = _shardCrcSize
 	HeaderSize = _shardHeaderSize
 	FooterSize = _shardFooterSize
-
-	ShardStatusSize = _shardStatusSize
 )
 
 var (
@@ -382,7 +378,7 @@ func NewBatchShardReader(bids []bnapi.BidInfo, vuid proto.Vuid, writer io.Writer
 			bufferSize = Alignphysize(bid.Size)
 		}
 	}
-	s.Size += int64(len(bids)) * _shardStatusSize
+	s.Size += int64(len(bids)) * bnapi.GetShardsHeaderSize
 
 	s.Bids = bids
 	s.Vuid = vuid

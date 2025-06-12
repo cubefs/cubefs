@@ -16,12 +16,9 @@ package blobnode
 
 import (
 	"context"
-	"encoding/binary"
 	"hash/crc32"
 	"io"
 	"testing"
-
-	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/stretchr/testify/require"
@@ -243,14 +240,11 @@ func TestMigrateExecTasklet(t *testing.T) {
 		}
 		batchShards, err := getter.GetShards(context.Background(), replicas[badi], bidInfos, api.BackgroundIO)
 		require.NoError(t, err)
-		header := make([]byte, client.HeaderSize)
 		for _, shard := range shards {
 			crc := crc32.NewIEEE()
-			_, err = io.ReadFull(batchShards, header)
+			body, err, _ := batchShards.NextShard(context.Background())
 			require.NoError(t, err)
-			code := binary.BigEndian.Uint32(header)
-			require.Equal(t, uint32(200), code)
-			reader := io.TeeReader(batchShards, crc)
+			reader := io.TeeReader(body, crc)
 			_, err = io.CopyN(io.Discard, reader, shard.Size)
 			require.NoError(t, err)
 			require.Equal(t, crc.Sum32(), crcMap[shard.Bid])

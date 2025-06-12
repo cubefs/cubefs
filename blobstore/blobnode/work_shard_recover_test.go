@@ -20,11 +20,10 @@ import (
 	"hash/crc32"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/blobnode/client"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
+	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"

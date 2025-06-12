@@ -17,7 +17,6 @@ package blobnode
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -227,13 +226,10 @@ func TestShardPutAndGet(t *testing.T) {
 	}
 	getShards, err := client.GetShards(ctx, host, args)
 	require.NoError(t, err)
-	header := make([]byte, 4)
-	n, err = io.ReadFull(getShards, header)
+	body, err, _ = getShards.NextShard(ctx)
 	require.NoError(t, err)
-	require.Equal(t, 4, n)
-	require.Equal(t, uint32(200), binary.BigEndian.Uint32(header))
 	sd := make([]byte, len(shardData))
-	n, err = io.ReadFull(getShards, sd)
+	n, err = io.ReadFull(body, sd)
 	require.NoError(t, err)
 	require.Equal(t, len(shardData), n)
 	require.Equal(t, shardData, sd)

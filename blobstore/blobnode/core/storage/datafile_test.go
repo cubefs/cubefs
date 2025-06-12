@@ -17,7 +17,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -677,12 +676,12 @@ func TestChunkData_BatchRead(t *testing.T) {
 		duration := tr.Duration()
 		t.Logf("read time: %v", duration)
 	}
-	code := make([]byte, core.ShardStatusSize)
+	var header bnapi.ShardsHeader
 	for i := 0; i < shardNum; i++ {
-		n, err := io.ReadFull(all, code)
+		n, err := io.ReadFull(all, header[:])
 		require.NoError(t, err)
-		require.Equal(t, n, core.ShardStatusSize)
-		require.Equal(t, binary.BigEndian.Uint32(code), uint32(200))
+		require.Equal(t, n, len(header))
+		require.Equal(t, header.Get(), 200)
 		dst := make([]byte, shards[i].Size)
 		n, err = io.ReadFull(all, dst)
 		require.NoError(t, err)
@@ -701,16 +700,15 @@ func TestChunkData_BatchRead(t *testing.T) {
 	require.NoError(t, err)
 	all.Reset()
 	rc.WriteTo(all)
-	code = make([]byte, core.ShardStatusSize)
 	for i := 0; i < shardNum-1; i++ {
 		j := i
 		if j >= 8 {
 			j = i + 1
 		}
-		n, err := io.ReadFull(all, code)
+		n, err := io.ReadFull(all, header[:])
 		require.NoError(t, err)
-		require.Equal(t, n, core.ShardStatusSize)
-		require.Equal(t, binary.BigEndian.Uint32(code), uint32(200))
+		require.Equal(t, n, len(header))
+		require.Equal(t, header.Get(), 200)
 		dst := make([]byte, shards[j].Size)
 		n, err = io.ReadFull(all, dst)
 		require.NoError(t, err)
@@ -725,20 +723,19 @@ func TestChunkData_BatchRead(t *testing.T) {
 	require.NoError(t, err)
 	all.Reset()
 	rc.WriteTo(all)
-	code = make([]byte, core.ShardStatusSize)
 	p := make([]byte, 1)
 	n, err := io.ReadFull(all, p)
 	require.NoError(t, err)
 	require.Equal(t, n, 1)
-	code[0] = p[0]
+	header[0] = p[0]
 	p = make([]byte, 4)
 	n, err = io.ReadFull(all, p)
 	require.NoError(t, err)
 	require.Equal(t, n, 4)
-	n = copy(code[1:], p)
+	n = copy(header[1:], p)
 	require.Equal(t, n, 3)
 	require.Equal(t, byte(1), p[3])
-	require.Equal(t, binary.BigEndian.Uint32(code), uint32(200))
+	require.Equal(t, header.Get(), 200)
 
 	// read data by part
 	batchShard, err = core.NewBatchShardReader([]bnapi.BidInfo{bidInfo[0]}, 12, nil, diskConfig.BatchBufferSize)
@@ -747,11 +744,10 @@ func TestChunkData_BatchRead(t *testing.T) {
 	require.NoError(t, err)
 	all.Reset()
 	rc.WriteTo(all)
-	code = make([]byte, core.ShardStatusSize)
-	n, err = io.ReadFull(all, code)
+	n, err = io.ReadFull(all, header[:])
 	require.NoError(t, err)
 	require.Equal(t, n, 4)
-	require.Equal(t, binary.BigEndian.Uint32(code), uint32(200))
+	require.Equal(t, header.Get(), 200)
 	need := bidInfo[0].Size
 	data := make([]byte, need)
 	read := int64(0)
@@ -778,10 +774,9 @@ func TestChunkData_BatchRead(t *testing.T) {
 	all.Reset()
 	_, err = rc.WriteTo(all)
 	require.Error(t, err)
-	code = make([]byte, core.ShardStatusSize)
-	_, err = io.ReadFull(all, code)
+	_, err = io.ReadFull(all, header[:])
 	require.NoError(t, err)
-	require.Equal(t, binary.BigEndian.Uint32(code), uint32(bloberr.CodeBidNotMatch))
+	require.Equal(t, header.Get(), bloberr.CodeBidNotMatch)
 
 	// continue read should return EOF
 	n, err = io.ReadFull(all, data)

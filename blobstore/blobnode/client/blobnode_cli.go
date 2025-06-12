@@ -37,7 +37,7 @@ type IBlobNode interface {
 	StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *ShardInfo, err error)
 	ListShards(ctx context.Context, location proto.VunitLocation) (shards []*ShardInfo, err error)
 	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error)
-	GetShards(ctx context.Context, location proto.VunitLocation, bids []api.BidInfo, ioType api.IOType) (body io.ReadCloser, err error)
+	GetShards(ctx context.Context, location proto.VunitLocation, bids []api.BidInfo, ioType api.IOType) (getter api.ShardGetter, err error)
 	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType api.IOType) (err error)
 }
 
@@ -166,7 +166,7 @@ func (c *BlobNodeClient) PutShard(ctx context.Context, location proto.VunitLocat
 }
 
 // GetShards get batch shards
-func (c *BlobNodeClient) GetShards(ctx context.Context, location proto.VunitLocation, bids []api.BidInfo, ioType api.IOType) (body io.ReadCloser, err error) {
+func (c *BlobNodeClient) GetShards(ctx context.Context, location proto.VunitLocation, bids []api.BidInfo, ioType api.IOType) (getter api.ShardGetter, err error) {
 	ctx = trace.NewContextFromContext(ctx)
 	return c.cli.GetShards(ctx, location.Host, &api.GetShardsArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bids: bids, Type: ioType})
 }

@@ -15,7 +15,6 @@
 package storage
 
 import (
-	"encoding/binary"
 	"hash/crc32"
 	"io"
 	"net/http"
@@ -227,7 +226,7 @@ type shardDecoder struct {
 
 	wc          int // record write code cursor
 	err         error
-	cb          [core.ShardStatusSize]byte
+	cb          bnapi.ShardsHeader
 	checked     bool
 	writeHeader bool
 }
@@ -246,9 +245,9 @@ func (d *shardDecoder) WriteTo(w io.Writer) (n int64, err error) {
 		d.err = d.checkHeader()
 		d.checked = true
 		if d.err != nil {
-			d.writeCode(errors.CodeBidNotMatch)
+			d.cb.Set(errors.CodeBidNotMatch)
 		} else {
-			d.writeCode(http.StatusOK)
+			d.cb.Set(http.StatusOK)
 		}
 	}
 	write := 0
@@ -282,10 +281,6 @@ func (d *shardDecoder) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	n, err = d.rc.WriteTo(w)
 	return n + int64(write), err
-}
-
-func (d *shardDecoder) writeCode(status int) {
-	binary.BigEndian.PutUint32(d.cb[:], uint32(status))
 }
 
 func (d *shardDecoder) checkHeader() error {

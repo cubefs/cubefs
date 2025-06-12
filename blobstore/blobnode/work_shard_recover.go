@@ -16,7 +16,6 @@ package blobnode
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"hash/crc32"
 	"io"
@@ -691,23 +690,16 @@ func (r *ShardRecover) batchDownloadReplShards(ctx context.Context, replica prot
 func (r *ShardRecover) batchDownloadShard(ctx context.Context, replica proto.VunitLocation, bidinfos []blobnode.BidInfo) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	body, err := r.shardGetter.GetShards(ctx, replica, bidinfos, r.ioType)
+	getter, err := r.shardGetter.GetShards(ctx, replica, bidinfos, r.ioType)
 	if err != nil {
 		span.Errorf("batch download shard failed, err: %s", err)
 		return
 	}
-	defer body.Close()
-	header := make([]byte, client.HeaderSize)
+	defer getter.Close()
 	for _, info := range bidinfos {
 		bid := info.Bid
-		_, err = io.ReadFull(body, header)
+		body, err, _ := getter.NextShard(ctx)
 		if err != nil {
-			span.Errorf("read headers failed, err: %s", err)
-			return
-		}
-		code := binary.BigEndian.Uint32(header)
-		if code != uint32(200) {
-			span.Errorf("download shard failed, errCode: %s", code)
 			return
 		}
 		err = r.putShardToBuffer(ctx, replica, bid, body, info.Crc)
@@ -750,7 +742,7 @@ func (r *ShardRecover) downloadShard(ctx context.Context, replica proto.VunitLoc
 }
 
 func (r *ShardRecover) putShardToBuffer(ctx context.Context, replica proto.VunitLocation,
-	bid proto.BlobID, data io.ReadCloser, crc1 uint32,
+	bid proto.BlobID, data io.Reader, crc1 uint32,
 ) error {
 	span := trace.SpanFromContextSafe(ctx)
 	err := r.chunksShardsBuf[replica.Vuid.Index()].PutShard(bid, data)
