@@ -549,7 +549,6 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if plan, err = m.cluster.CreateOfflineMetaNodePlan(offLineAddr); err != nil {
-		err = fmt.Errorf("Create plan metanode(%s) err: %s, msg: %s", offLineAddr, err.Error(), plan.Msg)
 		log.LogErrorf(err.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
