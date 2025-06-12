@@ -1138,65 +1138,6 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 	}
 }
 
-func (mw *MetaWrapper) readDir(mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("readDir", err, bgTime, 1)
-		//if err == nil && mw.RemoteCacheBloom != nil {
-		//	cacheBloom := mw.RemoteCacheBloom()
-		//	if cacheBloom.TestUint64(parentID) {
-		//		for _, c := range children {
-		//			cacheBloom.AddUint64(c.Inode)
-		//		}
-		//	}
-		//}
-	}()
-
-	req := &proto.ReadDirRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-		VerSeq:      mw.VerReadSeq,
-	}
-
-	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaReadDir
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogErrorf("readDir: req(%v) err(%v)", *req, err)
-		return
-	}
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
-	}()
-
-	packet, err = mw.sendToMetaPartition(mp, packet)
-	if err != nil {
-		log.LogErrorf("readDir: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
-	}
-
-	status = parseStatus(packet.ResultCode)
-	if status != statusOK {
-		err = errors.New(packet.GetResultMsg())
-		children = make([]proto.Dentry, 0)
-		log.LogErrorf("readDir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-		return
-	}
-
-	resp := new(proto.ReadDirResponse)
-	err = packet.UnmarshalData(resp)
-	if err != nil {
-		log.LogErrorf("readDir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
-		return
-	}
-	log.LogDebugf("readDir: packet(%v) mp(%v) req(%v)", packet, mp, *req)
-	return statusOK, resp.Children, nil
-}
-
 // read limit dentries start from
 func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from string, limit uint64, verSeq uint64, verOpt uint8) (status int, children []proto.Dentry, err error) {
 	bgTime := stat.BeginStat()
