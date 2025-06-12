@@ -688,7 +688,8 @@ func CreateMigratePlanExcludeNodeSet(migratePlan *proto.ClusterPlan, mpPlan *pro
 	// try to find new meta node from the same zone.
 	find, dests := GetMigrateAddrExcludeNodeSet(getParam)
 	if !find {
-		return fmt.Errorf("Can't find %d free nodes from the zone(%s)", getParam.RequestNum, getParam.ZoneName)
+		log.LogErrorf("Can't find %d free nodes from the zone(%s)", getParam.RequestNum, getParam.ZoneName)
+		return NotEnoughResource
 	}
 
 	err := FillMigratePlanArray(migratePlan, mpPlan, srcNode, dests)
