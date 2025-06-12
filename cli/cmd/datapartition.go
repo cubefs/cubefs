@@ -122,7 +122,7 @@ The "reset" command will be released in next version`,
 				errout(err)
 			}()
 
-			showAll := !showNoLeader && !showLack && !showDiscard && !showBadDp &&
+			showAll := !showInactiveNodes && !showNoLeader && !showLack && !showDiscard && !showBadDp &&
 				!showDiff && !showUnavailable && !showExcess && !showDiskError && !showSimplified
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(true); err != nil {
 				return
