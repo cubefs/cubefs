@@ -64,9 +64,13 @@ phony += test
 test:
 	@build/build.sh test $(GOMOD) --threads=$(threads)
 
-phony += testcover
+phony += testcover testcovercubefs testcoverblobstore
 testcover:
 	@build/build.sh testcover $(GOMOD) --threads=$(threads)
+testcovercubefs:
+	@build/build.sh testcovercubefs $(GOMOD) --threads=$(threads)
+testcoverblobstore:
+	@build/build.sh testcoverblobstore $(GOMOD) --threads=$(threads)
 
 phony += mock
 mock:

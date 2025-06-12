@@ -2,6 +2,7 @@
 CurrentPath=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
 gofmtFile=gofmt_results.diff
 pushd ${CurrentPath}/../../
+echo "Run: gofumpt -l -d"
 find . -type f -name "*.go" | \
     grep -v -E '^./vendor/' | \
     grep -v -E '^./depends/' | \
@@ -18,21 +19,12 @@ popd
 
 export PATH=$PATH:/go/bin
 
-for subdir in proto client/blockcache datanode/storage cli lcnode
-do
-    pushd ${CurrentPath}/../../${subdir}
-    go generate ./...
-    if [[ $? -ne 0 ]]; then
-        exit 1
-    fi
-    popd
-done
-
 golintFile=golint.diff
 pushd ${CurrentPath}/../..
 oldldflags="$(go env CGO_LDFLAGS)"
 lpath=$(echo -n ${oldldflags} | awk '{print $1}')
 go env -w CGO_LDFLAGS="${lpath} -ldl -ltcmalloc -lm -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lstdc++"
+echo "Run: go generate ."
 go generate . > ${golintFile}
 go env -w CGO_LDFLAGS="${oldldflags}"
 cat ${golintFile}
