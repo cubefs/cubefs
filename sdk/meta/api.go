@@ -1540,14 +1540,27 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 
 // Read all dentries with parentID
 func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
-	parentMP := mw.getPartitionByInode(parentID)
-	if parentMP == nil {
-		return nil, syscall.ENOENT
-	}
-
-	status, children, err := mw.readDir(parentMP, parentID)
-	if err != nil || status != statusOK {
-		return nil, statusToErrno(status)
+	var (
+		noMore   = false
+		from     = ""
+		children = make([]proto.Dentry, 0)
+	)
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentID, from, DefaultReaddirLimit)
+		if err != nil {
+			return nil, err
+		}
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
 	}
 	return children, nil
 }
