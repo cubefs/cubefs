@@ -724,6 +724,9 @@ func (c *Cluster) scheduleToCheckVolUid() {
 				if c.partition.IsRaftLeader() {
 					vols := c.copyVols()
 					for _, vol := range vols {
+						if vol.uidSpaceManager == nil {
+							continue
+						}
 						vol.uidSpaceManager.scheduleUidUpdate()
 						vol.uidSpaceManager.reCalculate()
 					}
