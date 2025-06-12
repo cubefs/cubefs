@@ -13,7 +13,9 @@ Usage: ./run_docker.sh {cmd} [ -h|--help ]  [ -d|--disk </disk/path> ]
     -d, --disk </disk/path> set CubeFS DataNode local disk path
 
     -b, --build             build binaries of server and so on
-    -t, --test              run all unit testing
+    -t, --test              run unit testing of all
+        --testcubefs        run unit testing of cubefs
+        --testblobstore     run unit testing of blobstore
     -r, --run               start servers, client and monitor
     -s, --server            start server docker images
     -c, --client            start client docker image
@@ -85,6 +87,14 @@ prepare() {
 run_unit_test() {
     prepare
     ${compose} run --rm unit_test
+}
+run_unit_test_cubefs() {
+    prepare
+    ${compose} run --rm unit_test_cubefs
+}
+run_unit_test_blobstore() {
+    prepare
+    ${compose} run --rm unit_test_blobstore
 }
 
 # go format
@@ -199,6 +209,12 @@ for opt in ${ARGS[*]} ; do
         -t|--test)
             cmd=run_test
             ;;
+        --testcubefs)
+            cmd=run_test_cubefs
+            ;;
+        --testblobstore)
+            cmd=run_test_blobstore
+            ;;
         -r|--run)
             cmd=run
             ;;
@@ -287,6 +303,8 @@ case "-$cmd" in
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
     -run_test) run_unit_test ;;
+    -run_test_cubefs) run_unit_test_cubefs ;;
+    -run_test_blobstore) run_unit_test_blobstore ;;
     -run_format) run_format ;;
     -run_s3test) run_s3test ;;
     -run_build_libsdkpre) run_build_libsdkpre ;;

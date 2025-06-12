@@ -325,6 +325,53 @@ run_test_cover() {
     exit 0
 }
 
+run_test_cover_cubefs() {
+    pushd $SrcPath >/dev/null
+    ulimit -n 65536
+    echo -n "${TPATH}"
+
+    go test -trimpath -covermode=count --coverprofile coverage.txt \
+        $(go list ./... | grep -v /cubefs/depends/ | grep -v /cubefs/blobstore)
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+
+    popd > /dev/null
+    exit 0
+}
+
+run_test_cover_blobstore() {
+    pushd $SrcPath >/dev/null
+    export JENKINS_TEST=1
+    ulimit -n 65536
+    echo -n "${TPATH}"
+
+    go test -trimpath -covermode=count --coverprofile coverage.txt \
+        $(go list ./blobstore/... | grep -v /blobstore/shardnode | grep -v /blobstore/cmd | grep -v /blobstore/common/tcmalloc)
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+
+    go test -trimpath -covermode=count --coverprofile cover.txt \
+        $(go list ./blobstore/... | grep /blobstore/shardnode/catalog/allocator)
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    sed '1d' cover.txt >> coverage.txt && rm -f cover.txt
+
+    build_with_tcmalloc
+    go test -trimpath -covermode=count --coverprofile cover.txt \
+        $(go list ./blobstore/... | grep /blobstore/shardnode | grep -v /catalog/allocator)
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    sed '1d' cover.txt >> coverage.txt && rm -f cover.txt
+    export CGO_LDFLAGS="${cgo_ldflags}"
+
+    popd >/dev/null
+    exit 0
+}
+
 build_server() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-server   "
@@ -563,6 +610,12 @@ case "$cmd" in
         ;;
     "testcover")
         run_test_cover
+        ;;
+    "testcovercubefs")
+        run_test_cover_cubefs
+        ;;
+    "testcoverblobstore")
+        run_test_cover_blobstore
         ;;
     "server")
         build_server

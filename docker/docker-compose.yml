@@ -435,6 +435,33 @@ services:
             - https_proxy=
             - HTTP_PROXY=
             - HTTPS_PROXY=
+    unit_test_cubefs:
+        <<: *command
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                mkdir -p ${CFSROOT}/docker/bin &&
+                cd ${CFSROOT} && make testcovercubefs
+        environment:
+            - TZ=Asia/Shanghai
+            - DOCKER_TESTING_LOG_OFF="on"
+            - http_proxy=
+            - https_proxy=
+            - HTTP_PROXY=
+            - HTTPS_PROXY=
+    unit_test_blobstore:
+        <<: *command
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                mkdir -p ${CFSROOT}/docker/bin &&
+                cd ${CFSROOT} && make testcoverblobstore
+        environment:
+            - TZ=Asia/Shanghai
 
     build_libsdkpre:
         <<: *command

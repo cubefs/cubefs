@@ -118,6 +118,4 @@ const (
 var (
 	_ = (*DataPartition).canRemoveSelf
 	_ = (*DataPartition).getMemberExtentIDAndPartitionSize
-	_ = (*DataNode).detachDataPartition
-	_ = (*DataNode).loadDataPartition
 )
