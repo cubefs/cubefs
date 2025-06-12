@@ -1837,6 +1837,12 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 	dp.RecoverUpdateTime = time.Now()
 	dp.SetDecommissionStatus(DecommissionRunning)
 
+	var newReplica *DataReplica
+	if newReplica, err = dp.getReplica(addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	newReplica.Status = proto.Recovering // in case heartbeat response is not arrived
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
 	m.cluster.putBadDataPartitionIDs(nil, addr, dp.PartitionID)
@@ -1885,7 +1891,7 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.removeDataReplica(dp, addr, !force, raftForce); err != nil {
+	if err = m.cluster.removeDataReplica(dp, addr, false, false, !force, raftForce); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

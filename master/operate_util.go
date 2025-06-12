@@ -68,10 +68,12 @@ func newAddDataPartitionRaftMemberRequest(ID uint64, addPeer proto.Peer, enableS
 	return
 }
 
-func newRemoveDataPartitionRaftMemberRequest(ID uint64, removePeer proto.Peer) (req *proto.RemoveDataPartitionRaftMemberRequest) {
+func newRemoveDataPartitionRaftMemberRequest(ID uint64, removePeer proto.Peer, enableSetRepairingStatus bool, repairingStatus bool) (req *proto.RemoveDataPartitionRaftMemberRequest) {
 	req = &proto.RemoveDataPartitionRaftMemberRequest{
-		PartitionId: ID,
-		RemovePeer:  removePeer,
+		PartitionId:              ID,
+		RemovePeer:               removePeer,
+		EnableSetRepairingStatus: enableSetRepairingStatus,
+		RepairingStatus:          repairingStatus,
 	}
 	return
 }

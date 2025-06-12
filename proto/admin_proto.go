@@ -697,10 +697,12 @@ type AddDataPartitionRaftMemberRequest struct {
 
 // RemoveDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
 type RemoveDataPartitionRaftMemberRequest struct {
-	PartitionId uint64
-	RemovePeer  Peer
-	Force       bool
-	AutoRemove  bool
+	PartitionId              uint64
+	RemovePeer               Peer
+	EnableSetRepairingStatus bool
+	RepairingStatus          bool
+	Force                    bool
+	AutoRemove               bool
 }
 
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.

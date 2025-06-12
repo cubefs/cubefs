@@ -229,11 +229,11 @@ func (partition *DataPartition) createTaskToAddRaftMember(addPeer proto.Peer, le
 	return
 }
 
-func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removePeer proto.Peer, force bool, autoRemove bool) (err error) {
+func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removePeer proto.Peer, enableSetRepairingStatus bool, repairingStatus bool, force bool, autoRemove bool) (err error) {
 	doWork := func(leaderAddr string, flag bool) error {
 		log.LogInfof("action[createTaskToRemoveRaftMember] vol[%v],data partition[%v] removePeer %v leaderAddr %v autoRemove %v",
 			partition.VolName, partition.PartitionID, removePeer, leaderAddr, flag)
-		req := newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer)
+		req := newRemoveDataPartitionRaftMemberRequest(partition.PartitionID, removePeer, enableSetRepairingStatus, repairingStatus)
 		req.Force = force
 		req.AutoRemove = autoRemove
 
@@ -1339,25 +1339,31 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			if partition.ReplicaNum == 3 && len(partition.Hosts) == 3 {
 				diskErrReplicas := partition.getAllDiskErrorReplica()
 				if isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) && isReplicasContainsHost(diskErrReplicas, partition.Hosts[1]) {
-					// raftForce delete host0 and host1
-					toDeleteHosts := partition.Hosts[:2]
-					for _, toDeleteHost := range toDeleteHosts {
-						if err = c.removeDataReplica(partition, toDeleteHost, false, true); err != nil {
-							log.LogWarnf("action[MarkDecommissionStatus] dp[%v] replicaNum[%v] remove first data replica[%v] failed, err: %v",
-								partition.PartitionID, partition.ReplicaNum, toDeleteHosts, err)
-							msg := fmt.Sprintf("dp(%v) replicaNum(%v) mark decommission found host(%v) unavailable, raftForce delete it",
-								partition.decommissionInfo(), partition.ReplicaNum, toDeleteHost)
-							auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
-							return
+					if _, ok := partition.hasReplica(partition.Hosts[2]); ok {
+						// raftForce delete host0 and host1
+						toDeleteHosts := partition.Hosts[:2]
+						for _, toDeleteHost := range toDeleteHosts {
+							if err = c.removeDataReplica(partition, toDeleteHost, false, false, false, true); err != nil {
+								log.LogWarnf("action[MarkDecommissionStatus] dp[%v] replicaNum[%v] remove first data replica[%v] failed, err: %v",
+									partition.PartitionID, partition.ReplicaNum, toDeleteHosts, err)
+								msg := fmt.Sprintf("dp(%v) replicaNum(%v) mark decommission found host(%v) unavailable, raftForce delete it",
+									partition.decommissionInfo(), partition.ReplicaNum, toDeleteHost)
+								auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
+								return
+							}
 						}
+						// decommission success, reset status
+						partition.ResetDecommissionStatus()
+						partition.setRestoreReplicaStop()
+						msg := fmt.Sprintf("dp(%v) replicaNum(%v) mark decommission found host0(%v) and host1(%v) unavailable, raftForce delete them",
+							partition.decommissionInfo(), partition.ReplicaNum, toDeleteHosts[0], toDeleteHosts[1])
+						auditlog.LogMasterOp("DataPartitionDecommission", msg, nil)
+						return
+					} else {
+						log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all live replica is unavaliable,"+
+							" cannot handle in auto decommission mode", partition.decommissionInfo())
+						return proto.ErrAllReplicaUnavailable
 					}
-					// decommission success, reset status
-					partition.ResetDecommissionStatus()
-					partition.setRestoreReplicaStop()
-					msg := fmt.Sprintf("dp(%v) replicaNum(%v) mark decommission found host0(%v) and host1(%v) unavailable, raftForce delete them",
-						partition.decommissionInfo(), partition.ReplicaNum, toDeleteHosts[0], toDeleteHosts[1])
-					auditlog.LogMasterOp("DataPartitionDecommission", msg, nil)
-					return
 				}
 			}
 
@@ -1728,7 +1734,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 			goto errHandler
 		}
 	} else {
-		if err = c.removeDataReplica(partition, srcAddr, false, partition.DecommissionRaftForce); err != nil {
+		if err = c.removeDataReplica(partition, srcAddr, false, false, false, partition.DecommissionRaftForce); err != nil {
 			goto errHandler
 		}
 		if err = c.addDataReplica(partition, targetAddr, true, false); err != nil {
@@ -1879,19 +1885,11 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	if err != nil {
 		log.LogWarnf("action[rollback]dp[%v] rollback to del from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
 	}
-	err = partition.removeReplicaByForce(c, partition.DecommissionDstAddr)
+	err = partition.removeReplicaByForce(c, partition.DecommissionDstAddr, true, false)
 	if err != nil {
 		// keep decommission status to failed for rollback
 		log.LogWarnf("action[rollback]dp[%v] rollback to del replica[%v] failed:%v",
 			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
-		partition.DecommissionErrorMessage = fmt.Sprintf("rollback failed:%v", err.Error())
-		return
-	}
-	err = c.setDpRepairingStatus(partition, false)
-	if err != nil {
-		// keep decommission status to failed for rollback
-		log.LogWarnf("action[rollback] dp[%v] rollback to set all replicas repairingStatus to false failed:%v",
-			partition.PartitionID, err.Error())
 		partition.DecommissionErrorMessage = fmt.Sprintf("rollback failed:%v", err.Error())
 		return
 	}
@@ -2269,7 +2267,7 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		if partition.isSpecialReplicaCnt() && partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
 			removeAddr = partition.DecommissionSrcAddr
 		}
-		err = partition.removeReplicaByForce(c, removeAddr)
+		err = partition.removeReplicaByForce(c, removeAddr, true, false)
 		if err != nil {
 			log.LogWarnf("action[needRollback]dp[%v] remove decommission dst replica %v failed: %v",
 				partition.PartitionID, removeAddr, err)
@@ -2288,7 +2286,7 @@ func (partition *DataPartition) markRollbackFailed(needRollback bool) {
 	partition.DecommissionNeedRollback = needRollback
 }
 
-func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string) error {
+func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string, enableSetRepairingStatus bool, repairingStatus bool) error {
 	// del new add replica,may timeout, try rollback next time
 	force := partition.DecommissionRaftForce
 	// if single dp add raft member success but add a replica fails, use force to delete raft member
@@ -2297,7 +2295,7 @@ func (partition *DataPartition) removeReplicaByForce(c *Cluster, peerAddr string
 		force = true
 	}
 	log.LogInfof("action[removeReplicaByForce]dp[%v] rollback to del peer %v force %v", partition.PartitionID, peerAddr, force)
-	err := c.removeDataReplica(partition, peerAddr, false, force)
+	err := c.removeDataReplica(partition, peerAddr, enableSetRepairingStatus, repairingStatus, false, force)
 	if err != nil {
 		log.LogWarnf("action[removeReplicaByForce]dp[%v] rollback to del peer %v force %v failed:%v, delete peer on master"+
 			"", partition.PartitionID, peerAddr, force, err)
@@ -2436,7 +2434,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		if partition.GetDecommissionStatus() == DecommissionInitial {
 			hostLen := len(partition.Hosts)
 			removeReplica := partition.Hosts[hostLen-1]
-			err = c.removeDataReplica(partition, removeReplica, false, false)
+			err = c.removeDataReplica(partition, removeReplica, false, false, false, false)
 			auditMsg = fmt.Sprintf("dp(%v) remove excessive peer %v ", partition.decommissionInfo(), removeReplica)
 			log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
@@ -2451,7 +2449,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				hostLen := len(partition.Hosts)
 				removeReplica = partition.Hosts[hostLen-1]
 			}
-			err = c.removeDataReplica(partition, removeReplica, false, false)
+			err = c.removeDataReplica(partition, removeReplica, false, false, false, false)
 			auditMsg = fmt.Sprintf("dp(%v) remove excessive peer %v ", partition.decommissionInfo(), removeReplica)
 			log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
@@ -2506,7 +2504,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				force = true
 			}
 			// remove raft member
-			err = partition.createTaskToRemoveRaftMember(c, peer, force, true)
+			err = partition.createTaskToRemoveRaftMember(c, peer, false, false, force, true)
 			auditMsg = fmt.Sprintf("dp(%v) remove redundant peer %v force %v:to replica %v: LocalPeers%v",
 				partition.decommissionInfo(), peer, force, replica.Addr, replica.LocalPeers)
 			log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
@@ -2581,16 +2579,43 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			return nil
 		}
 		for _, replica := range diskErrReplicas {
-			partition.removeReplicaByAddr(replica.Addr)
+			// use raftForce to delete redundant peer when dp is leaderless. This progress maybe keep executing util
+			// wal logs with member change be truncated
+			if partition.lostLeader(c) {
+				force = true
+			}
+			peer, ok := findPeerByAddr(partition, replica.Addr)
+			if !ok {
+				auditMsg = fmt.Sprintf("dp(%v) cannot found peer for replica %v",
+					partition.decommissionInfo(), replica.Addr)
+				auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+				return nil
+			}
+			// remove raft member
+			err = partition.createTaskToRemoveRaftMember(c, peer, false, false, force, true)
+			auditMsg = fmt.Sprintf("dp(%v) remove diskErr peer %v force %v:to replica %v: LocalPeers%v",
+				partition.decommissionInfo(), peer, force, replica.Addr, replica.LocalPeers)
+			log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			if err != nil {
+				return nil
+			}
+
+			// remove host member
+			err = c.removeHostMember(partition, peer)
+			auditMsg = fmt.Sprintf("dp(%v) remove diskErr peer %v for master", partition.decommissionInfo(), peer)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			if err != nil {
+				return nil
+			}
+
+			// delete data replica
 			var dataNode *DataNode
 			dataNode, err = c.dataNode(replica.Addr)
 			auditMsg = fmt.Sprintf("dp(%v) cannot found datanode for replica %v to delete",
 				partition.decommissionInfo(), replica.Addr)
 			if err != nil {
 				auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-				if strings.Contains(err.Error(), "not found") {
-					continue
-				}
 				return nil
 			}
 			err = c.deleteDataReplica(partition, dataNode, true)
@@ -2665,6 +2690,16 @@ func findPeersToDeleteByConfig(toCompare, basePeers []proto.Peer) []proto.Peer {
 		}
 	}
 	return redundantPeers
+}
+
+func findPeerByAddr(dp *DataPartition, addr string) (findPeer proto.Peer, ok bool) {
+	for _, peer := range dp.Peers {
+		if peer.Addr == addr {
+			findPeer = peer
+			return findPeer, true
+		}
+	}
+	return findPeer, false
 }
 
 func (partition *DataPartition) lostLeader(c *Cluster) bool {
@@ -2858,6 +2893,21 @@ func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
 		// may be one replica is unavailable
 		if partition.lostLeader(c) {
 			auditMsg := fmt.Sprintf("dp(%v) lost leader skip auto add replica", partition.PartitionID)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
+			return false
+		}
+		return true
+	}
+
+	var diskErrReplicaNum uint8
+	for _, replica := range partition.Replicas {
+		if replica.TriggerDiskError {
+			diskErrReplicaNum++
+		}
+	}
+	if diskErrReplicaNum != 0 {
+		if diskErrReplicaNum == partition.ReplicaNum || diskErrReplicaNum == uint8(len(partition.Peers)) {
+			auditMsg := fmt.Sprintf("dp(%v) performs diskErr replica check, find all replicas unavailable", partition.PartitionID)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
 			return false
 		}
