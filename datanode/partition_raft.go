@@ -440,10 +440,9 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 		}
 	}
 
-	if req.EnableSetRepairingStatus {
-		dp.isRepairing = req.RepairingStatus
-		log.LogWarnf("action[addRaftNode] %v set repairingStatus %v", dp.partitionID, req.RepairingStatus)
-	}
+	dp.isRepairing = req.RepairingStatus
+	log.LogWarnf("action[addRaftNode] %v set repairingStatus %v", dp.partitionID, req.RepairingStatus)
+	isUpdated = true
 
 	log.LogInfof("action[addRaftNode] add raft node peer [%v]", req.AddPeer)
 	found := false
@@ -453,10 +452,10 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 			break
 		}
 	}
-	isUpdated = !found
-	if !isUpdated {
+	if found {
 		return
 	}
+	isUpdated = true
 	data, _ := json.Marshal(req)
 	log.LogInfof("addRaftNode: partitionID(%v) nodeID(%v) index(%v) data(%v) ",
 		req.PartitionId, dp.config.NodeID, index, string(data))
@@ -477,23 +476,29 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 	//if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
 	//	return
 	//}
+
+	dp.isRepairing = req.RepairingStatus
+	log.LogWarnf("action[removeRaftNode] %v set repairingStatus %v", dp.partitionID, req.RepairingStatus)
+	isUpdated = true
+
 	peerIndex := -1
 	data, _ := json.Marshal(req)
-	isUpdated = false
+	found := false
 	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, dp.config.NodeID, string(data))
 	for i, peer := range dp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
 			peerIndex = i
-			isUpdated = true
+			found = true
 			break
 		}
 	}
-	if !isUpdated {
+	if !found {
 		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 			req.PartitionId, dp.config.NodeID, string(data))
 		return
 	}
+	isUpdated = true
 	hostIndex := -1
 	for index, host := range dp.config.Hosts {
 		if host == req.RemovePeer.Addr {

@@ -1837,6 +1837,12 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 	dp.RecoverUpdateTime = time.Now()
 	dp.SetDecommissionStatus(DecommissionRunning)
 
+	var newReplica *DataReplica
+	if newReplica, err = dp.getReplica(addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	newReplica.Status = proto.Recovering // in case heartbeat response is not arrived
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
 	m.cluster.putBadDataPartitionIDs(nil, addr, dp.PartitionID)
@@ -8452,7 +8458,7 @@ func (m *Server) recoverBackupDataReplica(w http.ResponseWriter, r *http.Request
 	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr, HeartbeatPort: dataNode.HeartbeatPort, ReplicaPort: dataNode.ReplicaPort}
 
 	log.LogInfof("action[recoverBackupDataReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, dataNode.ID)
-	if err = m.cluster.addDataPartitionRaftMember(dp, addPeer, false, false, false); err != nil {
+	if err = m.cluster.addDataPartitionRaftMember(dp, addPeer, false, false); err != nil {
 		log.LogWarnf("action[recoverBackupDataReplica] dp %v addr %v try add raft member err [%v]", dp.PartitionID, addr, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

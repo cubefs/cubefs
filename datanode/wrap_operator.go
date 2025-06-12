@@ -1594,9 +1594,9 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	}
 	defer dp.setRestoreReplicaFinish()
 	log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember], req %v (%s) RemoveRaftPeer(%s) dp %v "+
-		"replicaNum %v config.Peer %v replica %v force %v auto %v",
+		"replicaNum %v config.Peer %v replica %v force %v auto %v repairingStatus %v",
 		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum, dp.config.Peers, dp.replicas,
-		req.Force, req.AutoRemove)
+		req.Force, req.AutoRemove, req.RepairingStatus)
 
 	p.PartitionID = req.PartitionId
 	// do not return error to keep master decommission progress go forward
@@ -1637,9 +1637,10 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 					dp.partitionID, peer.Addr, peer.ID, req.RemovePeer.ID)
 				// update reqData for
 				newReq := &proto.RemoveDataPartitionRaftMemberRequest{
-					PartitionId: req.PartitionId,
-					Force:       req.Force,
-					RemovePeer:  removePeer,
+					PartitionId:     req.PartitionId,
+					Force:           req.Force,
+					RemovePeer:      removePeer,
+					RepairingStatus: req.RepairingStatus,
 				}
 				reqData, err = json.Marshal(newReq)
 				if err != nil {
