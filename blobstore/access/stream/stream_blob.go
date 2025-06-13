@@ -315,7 +315,7 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 	}
 
 	lastRange := shard.GetRange()
-	count := args.Count
+	count := int64(args.Count)
 	for count > 0 {
 		var ret shardnode.ListBlobRet
 		interrupt := false
@@ -325,6 +325,7 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 				return interrupt, err
 			}
 			args.Marker = allBlob.NextMarker
+			args.Count = uint64(count)
 			ret, interrupt, err = h.listSingleShardEnough(ctx, args, header)
 			span.Debugf("list blob, shardID=%d, interrupt:%t, length:%d, err:%+v", args.ShardID, interrupt, len(ret.Blobs), err)
 
@@ -339,7 +340,7 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 
 		allBlob.Blobs = append(allBlob.Blobs, ret.Blobs...)
 		allBlob.NextMarker = ret.NextMarker
-		count -= uint64(len(ret.Blobs))
+		count -= int64(len(ret.Blobs))
 		if ret.NextMarker == nil {
 			shard, err = shardMgr.GetNextShard(ctx, lastRange)
 			if err != nil {
