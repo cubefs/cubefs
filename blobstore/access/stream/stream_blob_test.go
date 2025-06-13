@@ -327,17 +327,19 @@ func TestStreamBlobList(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectMarker, actual) // string(ret.NextMarker))
 
-	// list all, from next shard 3
+	// list all, from next shard 3, list twice
 	args.ShardID = 0
-	args.Count = 2
+	args.Count = 4
 	args.Marker = ret.NextMarker
 
-	shardMgr.EXPECT().GetSpaceID().Return(proto.SpaceID(1))
+	shardMgr.EXPECT().GetSpaceID().Return(proto.SpaceID(1)).Times(2)
 	shardMgr.EXPECT().GetShardByRange(gAny, expectMarker.Range).Return(shards[2], nil)
 	shardMgr.EXPECT().GetNextShard(gAny, gAny).Return(nil, errMock)
-	svrCtrl.EXPECT().GetShardnodeHost(gAny, gAny).Return(&controller.HostIDC{Host: "host"}, nil)
+	svrCtrl.EXPECT().GetShardnodeHost(gAny, gAny).Return(&controller.HostIDC{Host: "host"}, nil).Times(2)
 	h.clusterController.(*MockClusterController).EXPECT().GetShardController(gAny).Return(shardMgr, nil).Times(1)
-	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil)
+	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
+	listRet.NextMarker = ret.NextMarker
+	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().ListBlob(gAny, gAny, gAny).Return(listRet, nil)
 	listRet.NextMarker = nil
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().ListBlob(gAny, gAny, gAny).Return(listRet, nil)
 

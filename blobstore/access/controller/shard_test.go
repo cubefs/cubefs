@@ -231,6 +231,16 @@ func TestShardController(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, newShard, *si)
 	}
+
+	{
+		err = svr.UpdateShard(ctx, shardnode.ShardStats{
+			Suid:         1,
+			LeaderDiskID: 2,
+			LeaderSuid:   0,
+			RouteVersion: 1,
+		})
+		require.ErrorIs(t, err, errShardInvalid)
+	}
 }
 
 func TestShardUpdate(t *testing.T) {
@@ -267,7 +277,7 @@ func TestShardUpdate(t *testing.T) {
 
 	ranges := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 1, 10)
 	{
-		// panic
+		// error
 		val := clustermgr.CatalogChangeShardAdd{
 			ShardID: 0,
 		}
@@ -289,9 +299,8 @@ func TestShardUpdate(t *testing.T) {
 		}
 		cmCli.EXPECT().GetCatalogChanges(gAny, gAny).Return(retCatlog, nil)
 
-		require.Panics(t, func() {
-			err = svr.UpdateRoute(ctx)
-		})
+		err = svr.UpdateRoute(ctx)
+		require.ErrorIs(t, err, errCatalogInvalid)
 	}
 
 	{
