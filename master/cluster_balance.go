@@ -1560,9 +1560,9 @@ func (c *Cluster) DoMetaNodeOffline(offLineAddr string) (err error) {
 		metaNode.ToBeOffline = false
 	}()
 
-	mps := c.getAllMetaPartitionsByMetaNode(metaNode.Addr)
-	if len(mps) != 0 {
-		err = fmt.Errorf("metaNode[%s] has persistence meta partitions (%d)", metaNode.Addr, len(mps))
+	count := c.GetMpCountByMetaNode(metaNode.Addr)
+	if count != 0 {
+		err = fmt.Errorf("metaNode[%s] has persistence meta partitions (%d)", metaNode.Addr, count)
 		log.LogErrorf(err.Error())
 		return
 	}
@@ -1672,4 +1672,22 @@ func (c *Cluster) waitForMetaPartitionReady(mp *MetaPartition) error {
 	}
 
 	return nil
+}
+
+func (c *Cluster) GetMpCountByMetaNode(addr string) int {
+	ret := 0
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			vol.mpsLock.RLock()
+			for _, host := range mp.Hosts {
+				if host == addr {
+					ret += 1
+					break
+				}
+			}
+			vol.mpsLock.RUnlock()
+		}
+	}
+	return ret
 }
