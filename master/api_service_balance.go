@@ -512,7 +512,8 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if metaNode.MetaPartitionCount == 0 {
+	count := m.cluster.GetMpCountByMetaNode(metaNode.Addr)
+	if count == 0 {
 		err = m.cluster.DoMetaNodeOffline(offLineAddr)
 		if err != nil {
 			log.LogErrorf("DoMetaNodeOffline(%s) err: %s", offLineAddr, err.Error())
