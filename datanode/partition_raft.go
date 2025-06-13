@@ -440,11 +440,9 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 		}
 	}
 
-	if req.EnableSetRepairingStatus {
-		dp.isRepairing = req.RepairingStatus
-		log.LogWarnf("action[addRaftNode] %v set repairingStatus %v", dp.partitionID, req.RepairingStatus)
-		isUpdated = true
-	}
+	dp.isRepairing = req.RepairingStatus
+	log.LogWarnf("action[addRaftNode] %v set repairingStatus %v", dp.partitionID, req.RepairingStatus)
+	isUpdated = true
 
 	log.LogInfof("action[addRaftNode] add raft node peer [%v]", req.AddPeer)
 	found := false
@@ -478,11 +476,10 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 	//if canRemoveSelf, err = dp.canRemoveSelf(); err != nil {
 	//	return
 	//}
-	if req.EnableSetRepairingStatus {
-		dp.isRepairing = req.RepairingStatus
-		log.LogWarnf("action[removeRaftNode] %v set repairingStatus %v", dp.partitionID, req.RepairingStatus)
-		isUpdated = true
-	}
+
+	dp.isRepairing = req.RepairingStatus
+	log.LogWarnf("action[removeRaftNode] %v set repairingStatus %v", dp.partitionID, req.RepairingStatus)
+	isUpdated = true
 
 	peerIndex := -1
 	data, _ := json.Marshal(req)
