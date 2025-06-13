@@ -213,7 +213,7 @@ func (getter *MockGetter) GetShards(ctx context.Context, location proto.VunitLoc
 	getter.mu.Lock()
 	defer getter.mu.Unlock()
 	buf := make([]byte, 0)
-	header := make([]byte, client.HeaderSize)
+	header := make([]byte, api.GetShardsHeaderSize)
 	for _, bid := range bids {
 		binary.BigEndian.PutUint32(header, 200)
 		buf = append(buf, header...)

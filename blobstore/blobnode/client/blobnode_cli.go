@@ -29,8 +29,6 @@ import (
 
 var defaultFirstStartBid = proto.BlobID(0)
 
-const HeaderSize = 4
-
 // IBlobNode define the interface of blobnode used for worker
 type IBlobNode interface {
 	StatChunk(ctx context.Context, location proto.VunitLocation) (ci *ChunkInfo, err error)

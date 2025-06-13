@@ -382,6 +382,41 @@ func (b *shardGetter) Close() error {
 	return b.body.Close()
 }
 
+type shardWriter struct {
+	header        int
+	headerWritten bool
+
+	shard io.WriterTo
+}
+
+func NewShardWriter(header int, shard io.WriterTo) io.WriterTo {
+	return &shardWriter{header: header, shard: shard}
+}
+
+func (s *shardWriter) WriteTo(w io.Writer) (int64, error) {
+	if s.headerWritten {
+		return s.shard.WriteTo(w)
+	}
+	// write header
+	var header ShardsHeader
+	header.Set(s.header)
+	start := int64(0)
+	for start < int64(len(header)) {
+		n, err := w.Write(header[start:])
+		if err != nil {
+			return start, err
+		}
+		start += int64(n)
+	}
+	s.headerWritten = true
+	if s.header != http.StatusOK {
+		return int64(len(header)), bloberr.ErrBidNotMatch
+	}
+	// write data
+	n, err := s.shard.WriteTo(w)
+	return n + start, err
+}
+
 type ShardsHeader [GetShardsHeaderSize]byte
 
 func (s *ShardsHeader) Set(code int) {

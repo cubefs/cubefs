@@ -207,80 +207,38 @@ func (d *segmentDecoder) readNextShard() error {
 	end := start + core.Alignphysize(bid.Size) - core.FooterSize
 
 	d.idx++
-	if d.sd == nil {
-		d.sd = &shardDecoder{bid: bid.Bid, size: bid.Size, buf: d.buf[start:end], writeHeader: true}
-		return nil
-	}
-	d.sd.reset()
-	d.sd.bid = bid.Bid
-	d.sd.size = bid.Size
-	d.sd.buf = d.buf[start:end]
+	d.sd = &shardDecoder{bid: bid.Bid, size: bid.Size, buf: d.buf[start:end]}
 	return nil
 }
 
 type shardDecoder struct {
-	rc   io.WriterTo
 	bid  proto.BlobID
 	buf  []byte
 	size int64
 
-	wc          int // record write code cursor
-	err         error
-	cb          bnapi.ShardsHeader
-	checked     bool
-	writeHeader bool
-}
-
-func (d *shardDecoder) reset() {
-	d.rc = nil
-	d.wc = 0
-	d.err = nil
-	d.buf = nil
-	d.checked = false
-	d.writeHeader = true
+	checked bool
+	sw      io.WriterTo
 }
 
 func (d *shardDecoder) WriteTo(w io.Writer) (n int64, err error) {
-	if !d.checked {
-		d.err = d.checkHeader()
-		d.checked = true
-		if d.err != nil {
-			d.cb.Set(errors.CodeBidNotMatch)
-		} else {
-			d.cb.Set(http.StatusOK)
-		}
+	if d.checked {
+		return d.sw.WriteTo(w)
 	}
-	write := 0
-	// send bid status code
-	if d.wc < len(d.cb) {
-		write, err = w.Write(d.cb[d.wc:])
-		n = int64(write)
-		d.wc += write
-		if err != nil {
-			return
-		}
-		if d.wc < len(d.cb) {
-			return
-		}
-		if d.err != nil {
-			err = d.err
-			return
-		}
+	header := http.StatusOK
+	err = d.checkHeader()
+	if err != nil {
+		header = errors.CodeBidNotMatch
 	}
-	if d.rc == nil {
-		start := 0
-		if d.writeHeader {
-			start = core.HeaderSize
-		}
-		d.rc = &blockDecoder{
-			buf:      d.buf[start:],
-			remain:   int(d.size),
-			blockLen: core.CrcBlockUnitSize,
-			crcSize:  crc32.Size,
-		}
+	start := core.HeaderSize
+	wt := &blockDecoder{
+		buf:      d.buf[start:],
+		remain:   int(d.size),
+		blockLen: core.CrcBlockUnitSize,
+		crcSize:  crc32.Size,
 	}
-	n, err = d.rc.WriteTo(w)
-	return n + int64(write), err
+	d.sw = bnapi.NewShardWriter(header, wt)
+	d.checked = true
+	return d.sw.WriteTo(w)
 }
 
 func (d *shardDecoder) checkHeader() error {
