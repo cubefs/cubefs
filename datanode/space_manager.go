@@ -577,11 +577,16 @@ func (manager *SpaceManager) selectDisk(decommissionedDisks []string) (d *Disk) 
 	maxStraw := float64(0)
 	for _, disk := range manager.disks {
 		if _, ok := decommissionedDiskMap[disk.Path]; ok {
-			log.LogInfof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
+			log.LogInfof("action[selectDisk] exclude decommissioned disk[%v]", disk.Path)
 			continue
 		}
 		if disk.Status != proto.ReadWrite {
-			log.LogInfof("[minPartitionCnt] disk(%v) is not writable", disk.Path)
+			log.LogInfof("[selectDisk] disk(%v) is lost", disk.Path)
+			continue
+		}
+
+		if disk.isLost {
+			log.LogInfof("[selectDisk] disk(%v) is not writable", disk.Path)
 			continue
 		}
 
