@@ -102,8 +102,8 @@ func TestCheckRegisterChunk(t *testing.T) {
 	diskChunks, err := service.Disks[diskID].ListChunks(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(diskChunks))
-	require.Equal(t, bnapi.ChunkStatusNormal, diskChunks[0].Status)
-	require.Equal(t, bnapi.ChunkStatusNormal, diskChunks[1].Status)
+	require.Equal(t, cmapi.ChunkStatusNormal, diskChunks[0].Status)
+	require.Equal(t, cmapi.ChunkStatusNormal, diskChunks[1].Status)
 
 	_, err = service.ClusterMgrClient.ListVolumeUnit(ctx, &cmapi.ListVolumeUnitArgs{DiskID: diskID})
 	require.NoError(t, err)

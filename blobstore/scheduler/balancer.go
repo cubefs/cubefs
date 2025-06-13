@@ -177,7 +177,7 @@ func (mgr *BalanceMgr) genOneBalanceTask(ctx context.Context, diskInfo *client.D
 
 	span.Debugf("select balance volume unit; vuid[%d], volume_id[%v]", vuid, vuid.Vid())
 	task := &proto.MigrateTask{
-		TaskID:       client.GenMigrateTaskID(proto.TaskTypeBalance, diskInfo.DiskID, vuid.Vid()),
+		TaskID:       client.GenMigrateTaskID(proto.TaskTypeBalance, diskInfo.DiskID, uint32(vuid.Vid())),
 		TaskType:     proto.TaskTypeBalance,
 		State:        proto.MigrateStateInited,
 		SourceIDC:    diskInfo.Idc,

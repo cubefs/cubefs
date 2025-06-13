@@ -169,7 +169,7 @@ func TestBalanceAcquireTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newBalancer(t)
-	mgr.IMigrator.(*MockMigrater).EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeBalance}, nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().AcquireTask(any, any).Return(&proto.Task{TaskType: proto.TaskTypeBalance}, nil)
 	_, err := mgr.AcquireTask(ctx, idc)
 	require.NoError(t, err)
 }
@@ -178,7 +178,7 @@ func TestBalanceCancelTask(t *testing.T) {
 	ctx := context.Background()
 	mgr := newBalancer(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().CancelTask(any, any).Return(nil)
-	err := mgr.CancelTask(ctx, &api.OperateTaskArgs{})
+	err := mgr.CancelTask(ctx, &api.TaskArgs{})
 	require.NoError(t, err)
 }
 
@@ -186,9 +186,10 @@ func TestBalanceReclaimTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newBalancer(t)
-	mgr.IMigrator.(*MockMigrater).EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().ReclaimTask(any, any).Return(nil)
 	t1 := mockGenMigrateTask(proto.TaskTypeBalance, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
-	err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
+	taskArgs := generateTaskArgs(t1, "")
+	err := mgr.ReclaimTask(ctx, taskArgs)
 	require.NoError(t, err)
 }
 
@@ -198,11 +199,12 @@ func TestBalanceCompleteTask(t *testing.T) {
 	mgr := newBalancer(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(nil)
 	t1 := mockGenMigrateTask(proto.TaskTypeBalance, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
-	err := mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+	taskArgs := generateTaskArgs(t1, "")
+	err := mgr.CompleteTask(ctx, taskArgs)
 	require.NoError(t, err)
 
 	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(errMock)
-	err = mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+	err = mgr.CompleteTask(ctx, taskArgs)
 	require.True(t, errors.Is(err, errMock))
 }
 
@@ -262,7 +264,7 @@ func TestBalanceCheckAndClearJunkTasks(t *testing.T) {
 		mgr.IMigrator.(*MockMigrater).EXPECT().DeletedTasks().Return([]DeletedTask{
 			{DiskID: proto.DiskID(1), TaskID: xid.New().String(), DeletedTime: time.Now().Add(-junkMigrationTaskProtectionWindow)},
 		})
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(&proto.MigrateTask{}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(&proto.Task{}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		mgr.IMigrator.(*MockMigrater).EXPECT().ClearDeletedTaskByID(any, any).Return()
 		mgr.checkAndClearJunkTasks()

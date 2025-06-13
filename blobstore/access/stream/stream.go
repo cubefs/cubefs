@@ -22,11 +22,13 @@ import (
 	"strings"
 
 	"github.com/afex/hystrix-go/hystrix"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -56,7 +58,7 @@ type StreamHandler interface {
 	//               codeMode > 0, alloc in this codemode
 	//     return: a location of file
 	Alloc(ctx context.Context, size uint64, blobSize uint32,
-		assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*access.Location, error)
+		assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*proto.Location, error)
 
 	// PutAt access interface /putat, put one blob
 	//     required: rc file reader
@@ -69,7 +71,7 @@ type StreamHandler interface {
 	// Put put one object
 	//     required: size, file size
 	//     optional: hasher map to calculate hash.Hash
-	Put(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap) (*access.Location, error)
+	Put(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap) (*proto.Location, error)
 
 	// Get read file
 	//     required: location, readSize
@@ -93,13 +95,25 @@ type StreamHandler interface {
 	//...
 	//read-9 [d4                                       p5]
 	//failed
-	Get(ctx context.Context, w io.Writer, location access.Location, readSize, offset uint64) (func() error, error)
+	Get(ctx context.Context, w io.Writer, location proto.Location, readSize, offset uint64) (func() error, error)
 
 	// Delete delete all blobs in this location
-	Delete(ctx context.Context, location *access.Location) error
+	Delete(ctx context.Context, location *proto.Location) error
 
 	// Admin returns internal admin interface.
 	Admin() interface{}
+	// GetBlob returns location
+	GetBlob(ctx context.Context, args *access.GetBlobArgs) (*proto.Location, error)
+	// DeleteBlob returns error
+	DeleteBlob(ctx context.Context, args *access.DelBlobArgs) error
+	// SealBlob returns error
+	SealBlob(ctx context.Context, args *access.SealBlobArgs) error
+	// CreateBlob returns location
+	CreateBlob(ctx context.Context, args *access.CreateBlobArgs) (*proto.Location, error)
+	// ListBlob returns blobs
+	ListBlob(ctx context.Context, args *access.ListBlobArgs) (shardnode.ListBlobRet, error)
+	// AllocSlice returns alloc blob
+	AllocSlice(ctx context.Context, args *access.AllocSliceArgs) (shardnode.AllocSliceRet, error)
 }
 
 type StreamAdmin struct {
@@ -108,14 +122,20 @@ type StreamAdmin struct {
 	Controller controller.ClusterController
 }
 
+type ShardnodeConfig struct {
+	shardnode.Config
+}
+
 // StreamConfig access stream handler config
 type StreamConfig struct {
 	IDC string `json:"idc"`
 
 	MaxBlobSize                uint32 `json:"max_blob_size"`
+	VolumePunishIntervalS      int    `json:"volume_punish_interval_s"`
 	DiskPunishIntervalS        int    `json:"disk_punish_interval_s"`
 	DiskTimeoutPunishIntervalS int    `json:"disk_timeout_punish_interval_s"`
-	ServicePunishIntervalS     int    `json:"service_punish_interval_s"`
+	ServicePunishIntervalS     int    `json:"service_punish_interval_s"` // just service of proxy
+	ShardnodePunishIntervalS   int    `json:"shardnode_punish_interval_s"`
 	AllocRetryTimes            int    `json:"alloc_retry_times"`
 	AllocRetryIntervalMS       int    `json:"alloc_retry_interval_ms"`
 	EncoderEnableVerify        bool   `json:"encoder_enableverify"`
@@ -124,6 +144,8 @@ type StreamConfig struct {
 	ReadDataOnlyTimeoutMS      int    `json:"read_data_only_timeout_ms"`
 	ShardCrcWriteDisable       bool   `json:"shard_crc_write_disable"`
 	ShardCrcReadEnable         bool   `json:"shard_crc_read_enable"`
+	ShardnodeRetryTimes        int    `json:"shardnode_retry_times"`
+	ShardnodeRetryIntervalMS   int    `json:"shardnode_retry_interval_ms"`
 
 	LogSlowBaseTimeMS  int     `json:"log_slow_base_time_ms"`
 	LogSlowBaseSpeedKB int     `json:"log_slow_base_speed_kb"`
@@ -135,9 +157,10 @@ type StreamConfig struct {
 	// just for one AZ is down, cant write quorum in all AZs
 	CodeModesPutQuorums map[codemode.CodeMode]int `json:"code_mode_put_quorums"`
 
-	ClusterConfig  controller.ClusterConfig `json:"cluster_config"`
-	BlobnodeConfig blobnode.Config          `json:"blobnode_config"`
-	ProxyConfig    proxy.Config             `json:"proxy_config"`
+	ClusterConfig   controller.ClusterConfig `json:"cluster_config"`
+	BlobnodeConfig  blobnode.Config          `json:"blobnode_config"`
+	ProxyConfig     proxy.Config             `json:"proxy_config"`
+	ShardnodeConfig *ShardnodeConfig         `json:"shardnode_config"`
 
 	// hystrix command config
 	AllocCommandConfig hystrix.CommandConfig `json:"alloc_command_config"`
@@ -166,9 +189,11 @@ type Handler struct {
 	memPool           *resourcepool.MemPool
 	encoder           map[codemode.CodeMode]ec.Encoder
 	clusterController controller.ClusterController
+	groupRun          singleflight.Group
 
-	blobnodeClient blobnode.StorageAPI
-	proxyClient    proxy.Client
+	blobnodeClient  blobnode.StorageAPI
+	proxyClient     proxy.Client
+	shardnodeClient shardnode.AccessAPI
 
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
@@ -183,8 +208,8 @@ func confCheck(cfg *StreamConfig) error {
 	if cfg.IDC == "" {
 		return errors.New("idc config can not be null")
 	}
-	if cfg.ClusterConfig.ConsulAgentAddr == "" && len(cfg.ClusterConfig.Clusters) != 1 {
-		return errors.New("consul can not be empty, or single cluster need to be configured")
+	if cfg.ClusterConfig.ConsulAgentAddr == "" && len(cfg.ClusterConfig.Clusters) == 0 {
+		return errors.New("consul or clusters can not all be empty")
 	}
 	cfg.ClusterConfig.IDC = cfg.IDC
 
@@ -200,12 +225,18 @@ func confCheck(cfg *StreamConfig) error {
 	}
 
 	defaulter.Equal(&cfg.MaxBlobSize, defaultMaxBlobSize)
+	defaulter.IntegerLessOrEqual(&cfg.VolumePunishIntervalS, 60)
 	defaulter.LessOrEqual(&cfg.DiskPunishIntervalS, defaultDiskPunishIntervalS)
 	defaulter.LessOrEqual(&cfg.DiskTimeoutPunishIntervalS, defaultDiskPunishIntervalS/10)
 	defaulter.LessOrEqual(&cfg.ServicePunishIntervalS, defaultServicePunishIntervalS)
+	defaulter.IntegerLessOrEqual(&cfg.ShardnodePunishIntervalS, 60)
 	defaulter.LessOrEqual(&cfg.AllocRetryTimes, defaultAllocRetryTimes)
 	if cfg.AllocRetryIntervalMS <= 100 {
 		cfg.AllocRetryIntervalMS = defaultAllocRetryIntervalMS
+	}
+	defaulter.LessOrEqual(&cfg.ShardnodeRetryTimes, defaultShardnodeRetryTimes)
+	if cfg.ShardnodeRetryIntervalMS <= defaultShardnodeRetryIntervalMS {
+		cfg.ShardnodeRetryIntervalMS = defaultShardnodeRetryIntervalMS
 	}
 	defaulter.LessOrEqual(&cfg.EncoderConcurrency, defaultEncoderConcurrency)
 	defaulter.LessOrEqual(&cfg.MinReadShardsX, defaultMinReadShardsX)
@@ -254,11 +285,17 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 		memPool:           resourcepool.NewMemPool(cfg.MemPoolSizeClasses),
 		clusterController: clusterController,
 
-		blobnodeClient: blobnode.New(&cfg.BlobnodeConfig),
-		proxyClient:    proxyClient,
+		blobnodeClient:  blobnode.New(&cfg.BlobnodeConfig),
+		proxyClient:     proxyClient,
+		shardnodeClient: shardnode.NewNonsupportShardnode(),
 
 		maxObjectSize: defaultMaxObjectSize,
 		StreamConfig:  *cfg,
+	}
+	if cfg.ShardnodeConfig != nil { // enable shard node
+		// Do not use rpc retry, because the stream blob handles retries itself
+		defaulter.LessOrEqual(&cfg.ShardnodeConfig.Config.Retry, int(1))
+		handler.shardnodeClient = shardnode.New(cfg.ShardnodeConfig.Config)
 	}
 
 	rawCodeModePolicies, err := handler.clusterController.GetConfig(context.Background(), proto.CodeModeConfigKey)
@@ -317,7 +354,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 }
 
 // Delete delete all blobs in this location
-func (h *Handler) Delete(ctx context.Context, location *access.Location) error {
+func (h *Handler) Delete(ctx context.Context, location *proto.Location) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("to delete %+v", location)
 	return h.clearGarbage(ctx, location)
@@ -362,6 +399,7 @@ func (h *Handler) sendRepairMsg(ctx context.Context, blob blobIdent, badIdxes []
 	if err := retry.Timed(3, 200).On(func() error {
 		host, err := serviceController.GetServiceHost(ctx, serviceProxy)
 		if err != nil {
+			reportUnhealth(clusterID, "repair.msg", serviceProxy, "-", "failed")
 			span.Warn(err)
 			return err
 		}
@@ -369,14 +407,15 @@ func (h *Handler) sendRepairMsg(ctx context.Context, blob blobIdent, badIdxes []
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
+				reportUnhealth(clusterID, "punish", serviceProxy, host, "failed")
+			} else {
+				reportUnhealth(clusterID, "repair.msg", serviceProxy, host, "failed")
 			}
 			span.Warnf("send to %s repair message(%+v) %s", host, repairArgs, err.Error())
-			reportUnhealth(clusterID, "punish", serviceProxy, host, "failed")
 			err = errors.Base(err, host)
 		}
 		return err
 	}); err != nil {
-		reportUnhealth(clusterID, "repair.msg", serviceProxy, "-", "failed")
 		span.Errorf("send repair message(%+v) failed %s", repairArgs, errors.Detail(err))
 		return
 	}
@@ -384,7 +423,7 @@ func (h *Handler) sendRepairMsg(ctx context.Context, blob blobIdent, badIdxes []
 	span.Infof("send repair message(%+v)", repairArgs)
 }
 
-func (h *Handler) clearGarbage(ctx context.Context, location *access.Location) error {
+func (h *Handler) clearGarbage(ctx context.Context, location *proto.Location) error {
 	span := trace.SpanFromContextSafe(ctx)
 	serviceController, err := h.clusterController.GetServiceController(location.ClusterID)
 	if err != nil {
@@ -412,6 +451,7 @@ func (h *Handler) clearGarbage(ctx context.Context, location *access.Location) e
 	if err := retry.Timed(3, 200).On(func() error {
 		host, err := serviceController.GetServiceHost(ctx, serviceProxy)
 		if err != nil {
+			reportUnhealth(location.ClusterID, "delete.msg", serviceProxy, "-", "failed")
 			span.Warn(err)
 			return err
 		}
@@ -419,14 +459,15 @@ func (h *Handler) clearGarbage(ctx context.Context, location *access.Location) e
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
+				reportUnhealth(location.ClusterID, "punish", serviceProxy, host, "failed")
+			} else {
+				reportUnhealth(location.ClusterID, "delete.msg", serviceProxy, host, "failed")
 			}
 			span.Warnf("send to %s delete message(%+v) %s", host, logMsg, err.Error())
-			reportUnhealth(location.ClusterID, "punish", serviceProxy, host, "failed")
 			err = errors.Base(err, host)
 		}
 		return err
 	}); err != nil {
-		reportUnhealth(location.ClusterID, "delete.msg", serviceProxy, "-", "failed")
 		span.Errorf("send delete message(%+v) failed %s", logMsg, errors.Detail(err))
 		return errors.Base(err, "send delete message:", logMsg)
 	}
@@ -441,19 +482,25 @@ func (h *Handler) getVolume(ctx context.Context, clusterID proto.ClusterID, vid 
 	if err != nil {
 		return nil, err
 	}
-
 	volume := volumeGetter.Get(ctx, vid, isCache)
 	if volume == nil {
 		return nil, errors.Newf("not found volume of (%d %d)", clusterID, vid)
 	}
-
 	return volume, nil
+}
+
+func (h *Handler) updateVolume(ctx context.Context, clusterID proto.ClusterID, vid proto.Vid) {
+	volumeGetter, err := h.clusterController.GetVolumeGetter(clusterID)
+	if err != nil {
+		return
+	}
+	volumeGetter.Update(ctx, vid)
 }
 
 func (h *Handler) punishVolume(ctx context.Context, clusterID proto.ClusterID, vid proto.Vid, host, reason string) {
 	reportUnhealth(clusterID, "punish", "volume", host, reason)
 	if volumeGetter, err := h.clusterController.GetVolumeGetter(clusterID); err == nil {
-		volumeGetter.Punish(ctx, vid, h.DiskPunishIntervalS)
+		volumeGetter.Punish(ctx, vid, h.VolumePunishIntervalS)
 	}
 }
 
@@ -468,6 +515,13 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	reportUnhealth(clusterID, "punish", "diskwith", host, reason)
 	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
 		serviceController.PunishDiskWithThreshold(ctx, diskID, h.DiskTimeoutPunishIntervalS)
+	}
+}
+
+func (h *Handler) punishShardnodeDisk(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID, host, reason string) {
+	reportUnhealth(clusterID, "punish", "shardnode", host, reason)
+	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
+		serviceController.PunishShardnode(ctx, diskID, h.ShardnodePunishIntervalS)
 	}
 }
 

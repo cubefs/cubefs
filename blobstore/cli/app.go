@@ -18,7 +18,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"strings"
 
 	"github.com/desertbit/grumble"
 	"github.com/fatih/color"
@@ -31,6 +30,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/cli/proxy"
 	"github.com/cubefs/cubefs/blobstore/cli/scheduler"
+	"github.com/cubefs/cubefs/blobstore/cli/sdk"
+	"github.com/cubefs/cubefs/blobstore/cli/shardnode"
 	"github.com/cubefs/cubefs/blobstore/cli/toolbox"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -52,11 +53,12 @@ var App = grumble.New(&grumble.Config{
 		flags.VerboseRegister(f)
 		flags.VverboseRegister(f)
 		f.BoolL("silence", false, "disable print output")
+		f.IntL("loglevel", -1, "trace log level")
 	},
 })
 
 func init() {
-	log.SetOutputLevel(log.Lerror)
+	log.SetOutputLevel(log.Lpanic)
 
 	App.OnInit(func(a *grumble.App, fm grumble.FlagMap) error {
 		if path := flags.Config(fm); path != "" {
@@ -73,6 +75,10 @@ func init() {
 			fmt.SetOutput(io.Discard)
 			log.SetOutput(io.Discard)
 		}
+		if loglevel := fm.Int("loglevel"); loglevel >= 0 {
+			config.Set("Flag-Loglevel", loglevel)
+		}
+		log.SetOutputLevel(log.Level(config.Get("Flag-Loglevel").(int)))
 		// build-in flag in grumble
 		if fm.Bool("nocolor") {
 			color.NoColor = true
@@ -81,19 +87,12 @@ func init() {
 	})
 
 	App.SetPrintASCIILogo(func(a *grumble.App) {
-		fmt.Println(strings.Join([]string{
-			` _______ _______ _______ _______ _______ _______ _______ _______ _______     _______ _______ _______ `,
-			`|\     /|\     /|\     /|\     /|\     /|\     /|\     /|\     /|\     /|   |\     /|\     /|\     /|`,
-			`| +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ |   | +---+ | +---+ | +---+ |`,
-			`| |   | | |   | | |   | | |   | | |   | | |   | | |   | | |   | | |   | |   | |   | | |   | | |   | |`,
-			`| |b  | | |l  | | |o  | | |b  | | |s  | | |t  | | |o  | | |r  | | |e  | |   | |c  | | |l  | | |i  | |`,
-			`| +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ | +---+ |   | +---+ | +---+ | +---+ |`,
-			`|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|/_____\|   |/_____\|/_____\|/_____\|`,
-		}, "\r\n"))
+		fmt.Println("|-> Blobstore-cli <-|")
 	})
 
 	registerHistory(App)
 	registerConfig(App)
+	registerRpc2(App)
 	registerUtil(App)
 
 	access.Register(App)
@@ -101,6 +100,8 @@ func init() {
 	scheduler.Register(App)
 	blobnode.Register(App)
 	proxy.Register(App)
+	shardnode.Register(App)
+	sdk.Register(App)
 
 	toolbox.Register(App)
 }

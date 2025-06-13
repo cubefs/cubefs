@@ -17,14 +17,16 @@ package clustermgr
 import (
 	"context"
 	"fmt"
+	"math"
+	"math/rand"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
@@ -37,10 +39,10 @@ import (
 func initServiceWithData() (*Service, func()) {
 	cfg := *testServiceCfg
 
-	cfg.DBPath = "/tmp/tmpsvrdb-" + randID()
+	cfg.DBPath = os.TempDir() + "/volume" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10)
 	cfg.VolumeMgrConfig.FlushIntervalS = 600
 	cfg.VolumeMgrConfig.MinAllocableVolumeCount = 0
-	cfg.DiskMgrConfig.HeartbeatExpireIntervalS = 600
+	cfg.BlobNodeDiskMgrConfig.HeartbeatExpireIntervalS = 600
 	cfg.ClusterReportIntervalS = 3
 	cfg.ClusterCfg[proto.VolumeReserveSizeKey] = "20000000"
 	cfg.RaftConfig.ServerConfig.ListenPort = GetFreePort()
@@ -66,22 +68,22 @@ func initServiceWithData() (*Service, func()) {
 
 func TestService_CreateVolume(t *testing.T) {
 	testServiceCfg.UnavailableIDC = "z0"
-	for i := range testServiceCfg.CodeModePolicies {
-		testServiceCfg.CodeModePolicies[i].Enable = false
+	for i := range testServiceCfg.VolumeCodeModePolicies {
+		testServiceCfg.VolumeCodeModePolicies[i].Enable = false
 	}
 
-	testServiceCfg.CodeModePolicies = append(testServiceCfg.CodeModePolicies,
+	testServiceCfg.VolumeCodeModePolicies = append(testServiceCfg.VolumeCodeModePolicies,
 		codemode.Policy{ModeName: codemode.EC4P4L2.Name(), Enable: true})
 	testService, _ := initServiceWithData()
 	cleanTestService(testService) // waiting closed
 	cleanWG.Done()
 
 	// set EC4P4L2 enable=false
-	for i := range testServiceCfg.CodeModePolicies {
-		if testServiceCfg.CodeModePolicies[i].ModeName == codemode.EC4P4L2.Name() {
-			testServiceCfg.CodeModePolicies[i].Enable = false
+	for i := range testServiceCfg.VolumeCodeModePolicies {
+		if testServiceCfg.VolumeCodeModePolicies[i].ModeName == codemode.EC4P4L2.Name() {
+			testServiceCfg.VolumeCodeModePolicies[i].Enable = false
 		} else {
-			testServiceCfg.CodeModePolicies[i].Enable = true
+			testServiceCfg.VolumeCodeModePolicies[i].Enable = true
 		}
 	}
 	_, clean := initServiceWithData()
@@ -302,6 +304,7 @@ func TestService_UpdateVolume(t *testing.T) {
 }
 
 func TestService_VolumeLock(t *testing.T) {
+	cleanWG.Wait()
 	testService, clean := initServiceWithData()
 	defer clean()
 	cmClient := initTestClusterClient(testService)
@@ -370,10 +373,10 @@ func TestService_ChunkReport(t *testing.T) {
 
 	// chunk report
 	{
-		var chunks []blobnode.ChunkInfo
+		var chunks []clustermgr.ChunkInfo
 		for i := 1; i < 11; i++ {
 			vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(i), 2), 1)
-			chunk := blobnode.ChunkInfo{
+			chunk := clustermgr.ChunkInfo{
 				Vuid:  vuid,
 				Total: uint64(1024 * 2),
 				Free:  uint64(1025),
@@ -530,43 +533,47 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 		return err
 	}
 
-	nodeTable, err := normaldb.OpenNodeTable(normalDB)
+	nodeTable, err := normaldb.OpenBlobNodeTable(normalDB)
 	if err != nil {
 		return err
 	}
 
-	diskTable, err := normaldb.OpenDiskTable(normalDB, true)
+	diskTable, err := normaldb.OpenBlobNodeDiskTable(normalDB, true)
 	if err != nil {
 		return err
 	}
 	for i := 1; i <= unitCount+3; i++ {
-		dr := &normaldb.DiskInfoRecord{
-			Version:      normaldb.DiskInfoVersionNormal,
-			DiskID:       proto.DiskID(i),
-			ClusterID:    proto.ClusterID(1),
-			Path:         "",
-			Status:       proto.DiskStatusNormal,
-			Readonly:     false,
-			UsedChunkCnt: 0,
-			CreateAt:     time.Now(),
-			LastUpdateAt: time.Now(),
+		dr := &normaldb.BlobNodeDiskInfoRecord{
+			DiskInfoRecord: normaldb.DiskInfoRecord{
+				Version:      normaldb.DiskInfoVersionNormal,
+				DiskID:       proto.DiskID(i),
+				ClusterID:    proto.ClusterID(1),
+				Path:         "",
+				Status:       proto.DiskStatusNormal,
+				Readonly:     false,
+				CreateAt:     time.Now(),
+				LastUpdateAt: time.Now(),
+				NodeID:       proto.NodeID(i),
+			},
 			Used:         0,
 			Size:         100000,
 			Free:         100000,
 			MaxChunkCnt:  10,
 			FreeChunkCnt: 10,
-			NodeID:       proto.NodeID(i),
+			UsedChunkCnt: 0,
 		}
-		nr := &normaldb.NodeInfoRecord{
-			Version:   normaldb.NodeInfoVersionNormal,
-			ClusterID: proto.ClusterID(1),
-			NodeID:    proto.NodeID(i),
-			Idc:       "z0",
-			Rack:      "rack1",
-			Host:      "http://127.0.0." + strconv.Itoa(i) + ":80800",
-			Role:      proto.NodeRoleBlobNode,
-			Status:    proto.NodeStatusNormal,
-			DiskType:  proto.DiskTypeHDD,
+		nr := &normaldb.BlobNodeInfoRecord{
+			NodeInfoRecord: normaldb.NodeInfoRecord{
+				Version:   normaldb.NodeInfoVersionNormal,
+				ClusterID: proto.ClusterID(1),
+				NodeID:    proto.NodeID(i),
+				Idc:       "z0",
+				Rack:      "rack1",
+				Host:      "http://127.0.0." + strconv.Itoa(i) + ":80800",
+				Role:      proto.NodeRoleBlobNode,
+				Status:    proto.NodeStatusNormal,
+				DiskType:  proto.DiskTypeHDD,
+			},
 		}
 		if i >= 9 && i < 18 {
 			dr.Idc = "z1"
@@ -654,10 +661,10 @@ func BenchmarkService_ChunkReport(b *testing.B) {
 	cmClient := initTestClusterClient(testService)
 	ctx := newCtx()
 
-	var chunks []blobnode.ChunkInfo
+	var chunks []clustermgr.ChunkInfo
 	for i := 1; i < 11; i++ {
 		vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(i), 2), 1)
-		chunk := blobnode.ChunkInfo{
+		chunk := clustermgr.ChunkInfo{
 			Vuid:  vuid,
 			Total: uint64(1024 * 2),
 			Free:  uint64(1025),

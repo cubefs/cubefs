@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/storage"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
@@ -79,7 +80,7 @@ type SuperBlock struct {
 	db db.MetaHandler
 }
 
-func GenChunkKey(id bnapi.ChunkId) string {
+func GenChunkKey(id clustermgr.ChunkID) string {
 	return fmt.Sprintf("%s/%s", _chunkSpacePrefix, id)
 }
 
@@ -137,8 +138,8 @@ func (s *SuperBlock) readData(ctx context.Context, Key []byte) (data []byte, err
 	return data, nil
 }
 
-func (s *SuperBlock) UpsertChunk(ctx context.Context, id bnapi.ChunkId, vm core.VuidMeta) (err error) {
-	if !bnapi.IsValidChunkId(id) {
+func (s *SuperBlock) UpsertChunk(ctx context.Context, id clustermgr.ChunkID, vm core.VuidMeta) (err error) {
+	if !bnapi.IsValidChunkID(id) {
 		return bloberr.ErrInvalidChunkId
 	}
 
@@ -151,8 +152,8 @@ func (s *SuperBlock) UpsertChunk(ctx context.Context, id bnapi.ChunkId, vm core.
 	return s.writeData(ctx, key, data)
 }
 
-func (s *SuperBlock) BindVuidChunk(ctx context.Context, vuid proto.Vuid, id bnapi.ChunkId) (err error) {
-	if !bnapi.IsValidChunkId(id) {
+func (s *SuperBlock) BindVuidChunk(ctx context.Context, vuid proto.Vuid, id clustermgr.ChunkID) (err error) {
+	if !bnapi.IsValidChunkID(id) {
 		return bloberr.ErrInvalidChunkId
 	}
 
@@ -162,7 +163,7 @@ func (s *SuperBlock) BindVuidChunk(ctx context.Context, vuid proto.Vuid, id bnap
 	return s.writeData(ctx, key, value)
 }
 
-func (s *SuperBlock) UnbindVuidChunk(ctx context.Context, vuid proto.Vuid, id bnapi.ChunkId) (err error) {
+func (s *SuperBlock) UnbindVuidChunk(ctx context.Context, vuid proto.Vuid, id clustermgr.ChunkID) (err error) {
 	key := []byte(GenVuidSpaceKey(vuid))
 
 	err = s.db.Delete(ctx, key)
@@ -173,24 +174,24 @@ func (s *SuperBlock) UnbindVuidChunk(ctx context.Context, vuid proto.Vuid, id bn
 	return nil
 }
 
-func (s *SuperBlock) ReadVuidBind(ctx context.Context, vuid proto.Vuid) (id bnapi.ChunkId, err error) {
+func (s *SuperBlock) ReadVuidBind(ctx context.Context, vuid proto.Vuid) (id clustermgr.ChunkID, err error) {
 	key := []byte(GenVuidSpaceKey(vuid))
 	data, err := s.readData(ctx, key)
 	if err != nil {
-		return bnapi.InvalidChunkId, err
+		return clustermgr.InvalidChunkID, err
 	}
 
-	id, err = bnapi.DecodeChunk(string(data))
+	id, err = clustermgr.DecodeChunk(string(data))
 	if err != nil {
-		return bnapi.InvalidChunkId, err
+		return clustermgr.InvalidChunkID, err
 	}
 	return id, nil
 }
 
-func (s *SuperBlock) ReadChunk(ctx context.Context, id bnapi.ChunkId) (vm core.VuidMeta, err error) {
+func (s *SuperBlock) ReadChunk(ctx context.Context, id clustermgr.ChunkID) (vm core.VuidMeta, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	if !bnapi.IsValidChunkId(id) {
+	if !bnapi.IsValidChunkID(id) {
 		span.Errorf("Invalid chunkid:%v", id)
 		return vm, bloberr.ErrInvalidChunkId
 	}
@@ -252,13 +253,13 @@ func (s *SuperBlock) LoadDiskInfo(ctx context.Context) (dm core.DiskMeta, err er
 	return dm, err
 }
 
-func (s *SuperBlock) ListChunks(ctx context.Context) (chunks map[bnapi.ChunkId]core.VuidMeta, err error) {
+func (s *SuperBlock) ListChunks(ctx context.Context) (chunks map[clustermgr.ChunkID]core.VuidMeta, err error) {
 	iter := s.db.NewIterator(ctx)
 	defer iter.Close()
 
 	prefix := []byte(_chunkSpacePrefix)
 
-	chunks = make(map[bnapi.ChunkId]core.VuidMeta)
+	chunks = make(map[clustermgr.ChunkID]core.VuidMeta)
 	for iter.Seek(prefix); iter.ValidForPrefix(prefix); iter.Next() {
 		v := iter.Value()
 		value := v.Data()
@@ -271,7 +272,7 @@ func (s *SuperBlock) ListChunks(ctx context.Context) (chunks map[bnapi.ChunkId]c
 		}
 		v.Free()
 
-		chunks[vm.ChunkId] = vm
+		chunks[vm.ChunkID] = vm
 	}
 
 	if err = iter.Err(); err != nil {
@@ -281,7 +282,7 @@ func (s *SuperBlock) ListChunks(ctx context.Context) (chunks map[bnapi.ChunkId]c
 	return chunks, nil
 }
 
-func (s *SuperBlock) ListVuids(ctx context.Context) (vuids map[proto.Vuid]bnapi.ChunkId, err error) {
+func (s *SuperBlock) ListVuids(ctx context.Context) (vuids map[proto.Vuid]clustermgr.ChunkID, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	iter := s.db.NewIterator(ctx)
@@ -289,7 +290,7 @@ func (s *SuperBlock) ListVuids(ctx context.Context) (vuids map[proto.Vuid]bnapi.
 
 	prefix := []byte(_vuidSpacePrefix)
 
-	vuids = make(map[proto.Vuid]bnapi.ChunkId)
+	vuids = make(map[proto.Vuid]clustermgr.ChunkID)
 	for iter.Seek(prefix); iter.ValidForPrefix(prefix); iter.Next() {
 		k, v := iter.Key(), iter.Value()
 		key, value := k.Data(), v.Data()
@@ -302,7 +303,7 @@ func (s *SuperBlock) ListVuids(ctx context.Context) (vuids map[proto.Vuid]bnapi.
 			return nil, err
 		}
 
-		chunkid, err := bnapi.DecodeChunk(string(value))
+		chunkid, err := clustermgr.DecodeChunk(string(value))
 		if err != nil {
 			k.Free()
 			v.Free()
@@ -322,7 +323,7 @@ func (s *SuperBlock) ListVuids(ctx context.Context) (vuids map[proto.Vuid]bnapi.
 	return vuids, nil
 }
 
-func (s *SuperBlock) CleanChunkSpace(ctx context.Context, id bnapi.ChunkId) (err error) {
+func (s *SuperBlock) CleanChunkSpace(ctx context.Context, id clustermgr.ChunkID) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	minKeyID := &core.ShardKey{
@@ -348,10 +349,10 @@ func (s *SuperBlock) CleanChunkSpace(ctx context.Context, id bnapi.ChunkId) (err
 	return nil
 }
 
-func (s *SuperBlock) DeleteChunk(ctx context.Context, id bnapi.ChunkId) (err error) {
+func (s *SuperBlock) DeleteChunk(ctx context.Context, id clustermgr.ChunkID) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	if !bnapi.IsValidChunkId(id) {
+	if !bnapi.IsValidChunkID(id) {
 		return bloberr.ErrInvalidChunkId
 	}
 

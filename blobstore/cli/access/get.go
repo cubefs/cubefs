@@ -51,7 +51,7 @@ func getFile(c *grumble.Context) error {
 
 	size := c.Flags.Uint64("readsize")
 	if size == 0 {
-		size = location.Size - c.Flags.Uint64("offset")
+		size = location.Size_ - c.Flags.Uint64("offset")
 	}
 
 	r, err := client.Get(common.CmdContext(), &access.GetArgs{

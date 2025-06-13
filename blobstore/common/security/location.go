@@ -1,0 +1,211 @@
+// Copyright 2024 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+package security
+
+import (
+	"crypto/sha1"
+	"fmt"
+	"hash/crc32"
+	"sync"
+	"time"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
+	"github.com/cubefs/cubefs/blobstore/util/log"
+)
+
+const (
+	// DO NOT CHANGE IT.
+	_crcPoly         = uint32(0x59c8943c)
+	_tokenExpiration = time.Hour * 12
+)
+
+var (
+	// DO NOT CHANGE IT.
+	_crcTable    = crc32.MakeTable(_crcPoly)
+	_crcMagicKey = [20]byte{
+		0x52, 0xe, 0x53, 0x53, 0x81,
+		0x1f, 0x51, 0xb7, 0xa4, 0x72,
+		0x10, 0x33, 0x64, 0xa7, 0x3a,
+		0x10, 0x19, 0xbc, 0x60, 0x7,
+	}
+	_initLocationSecret sync.Once
+
+	// tokenSecretKeys alloc token with the first secret key always,
+	// so that you can change the secret key.
+	//
+	// parse-1: insert a new key at the first index,
+	// parse-2: delete the old key at the last index after _tokenExpiration duration.
+	tokenSecretKeys = [...][20]byte{
+		{0x5f, 0x00, 0x88, 0x96, 0x00, 0xa1, 0xfe, 0x1b},
+		{0xff, 0x1f, 0x2f, 0x4f, 0x7f, 0xaf, 0xef, 0xff},
+	}
+	_initTokenSecret sync.Once
+
+	LocationCrcCalculate = calcCrc
+	LocationCrcFill      = fillCrc
+	LocationCrcVerify    = verifyCrc
+	LocationCrcSign      = signCrc
+	LocationInitSecret   = initLocationSecret
+	StreamGenTokens      = genTokens
+)
+
+// InitWithRegionMagic process init with security region
+func InitWithRegionMagic(regionMagic string) {
+	if regionMagic == "" {
+		log.Warn("no region magic setting, using default secret keys for checksum")
+		return
+	}
+	b := sha1.Sum([]byte(regionMagic))
+	TokenInitSecret(b[:8])
+	LocationInitSecret(b[:8])
+}
+
+func initLocationSecret(b []byte) {
+	_initLocationSecret.Do(func() {
+		copy(_crcMagicKey[7:], b)
+	})
+}
+
+// TokenInitSecret initializate token's secret keys once.
+func TokenInitSecret(b []byte) {
+	_initTokenSecret.Do(func() {
+		for idx := range tokenSecretKeys {
+			copy(tokenSecretKeys[idx][7:], b)
+		}
+	})
+}
+
+// TokenSecretKeys returns const token keys.
+func TokenSecretKeys() [][20]byte {
+	return tokenSecretKeys[:]
+}
+
+func calcCrc(loc *proto.Location) (uint32, error) {
+	crcWriter := crc32.New(_crcTable)
+
+	buf := bytespool.Alloc(1024)
+	defer bytespool.Free(buf)
+
+	n := loc.Encode2(buf)
+	if n < 4 {
+		return 0, fmt.Errorf("no enough bytes(%d) fill into buf", n)
+	}
+
+	if _, err := crcWriter.Write(_crcMagicKey[:]); err != nil {
+		return 0, fmt.Errorf("fill crc %s", err.Error())
+	}
+	if _, err := crcWriter.Write(buf[4:n]); err != nil {
+		return 0, fmt.Errorf("fill crc %s", err.Error())
+	}
+
+	return crcWriter.Sum32(), nil
+}
+
+func fillCrc(loc *proto.Location) error {
+	crc, err := calcCrc(loc)
+	if err != nil {
+		return err
+	}
+	loc.Crc = crc
+	return nil
+}
+
+func verifyCrc(loc *proto.Location) bool {
+	crc, err := calcCrc(loc)
+	if err != nil {
+		return false
+	}
+	return loc.Crc == crc
+}
+
+func signCrc(loc *proto.Location, locs []proto.Location) error {
+	first := locs[0]
+	bids := make(map[proto.BlobID]struct{}, 64)
+
+	if loc.ClusterID != first.ClusterID ||
+		loc.CodeMode != first.CodeMode ||
+		loc.SliceSize != first.SliceSize {
+		return fmt.Errorf("not equal in constant field")
+	}
+
+	for _, l := range locs {
+		if !verifyCrc(&l) {
+			return fmt.Errorf("not equal in crc %d", l.Crc)
+		}
+
+		// assert
+		if l.ClusterID != first.ClusterID ||
+			l.CodeMode != first.CodeMode ||
+			l.SliceSize != first.SliceSize {
+			return fmt.Errorf("not equal in constant field")
+		}
+
+		for _, blob := range l.Slices {
+			for c := 0; c < int(blob.Count); c++ {
+				bids[blob.MinSliceID+proto.BlobID(c)] = struct{}{}
+			}
+		}
+	}
+
+	for _, blob := range loc.Slices {
+		for c := 0; c < int(blob.Count); c++ {
+			bid := blob.MinSliceID + proto.BlobID(c)
+			if _, ok := bids[bid]; !ok {
+				return fmt.Errorf("not equal in blob_id(%d)", bid)
+			}
+		}
+	}
+
+	return fillCrc(loc)
+}
+
+// genTokens generate tokens
+//  1. Returns 0 token if has no blobs.
+//  2. Returns 1 token if file size less than blobsize.
+//  3. Returns len(blobs) tokens if size divided by blobsize.
+//  4. Otherwise returns len(blobs)+1 tokens, the last token
+//     will be used by the last blob, even if the last slice blobs' size
+//     less than blobsize.
+//  5. Each segment blob has its specified token include the last blob.
+func genTokens(location *proto.Location) []string {
+	tokens := make([]string, 0, len(location.Slices)+1)
+
+	hasMultiBlobs := location.Size_ >= uint64(location.SliceSize)
+	lastSize := uint32(location.Size_ % uint64(location.SliceSize))
+	for idx, blob := range location.Slices {
+		// returns one token if size < blobsize
+		if hasMultiBlobs {
+			count := blob.Count
+			if idx == len(location.Slices)-1 && lastSize > 0 {
+				count--
+			}
+			if count > 0 {
+				tokens = append(tokens, EncodeToken(NewUploadToken(location.ClusterID,
+					blob.Vid, blob.MinSliceID, count,
+					location.SliceSize, _tokenExpiration, tokenSecretKeys[0][:])))
+			}
+		}
+
+		// token of the last blob
+		if idx == len(location.Slices)-1 && lastSize > 0 {
+			tokens = append(tokens, EncodeToken(NewUploadToken(location.ClusterID,
+				blob.Vid, blob.MinSliceID+proto.BlobID(blob.Count)-1, 1,
+				lastSize, _tokenExpiration, tokenSecretKeys[0][:])))
+		}
+	}
+
+	return tokens
+}

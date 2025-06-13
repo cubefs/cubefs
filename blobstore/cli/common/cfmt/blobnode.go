@@ -21,17 +21,17 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 )
 
-var chunkStatus2Str = map[blobnode.ChunkStatus]string{
-	blobnode.ChunkStatusNormal:   "normal",
-	blobnode.ChunkStatusReadOnly: "readonly",
-	blobnode.ChunkStatusRelease:  "release",
+var chunkStatus2Str = map[clustermgr.ChunkStatus]string{
+	clustermgr.ChunkStatusNormal:   "normal",
+	clustermgr.ChunkStatusReadOnly: "readonly",
+	clustermgr.ChunkStatusRelease:  "release",
 }
 
 // ChunkidF chunk id
-func ChunkidF(id blobnode.ChunkId) string {
+func ChunkidF(id clustermgr.ChunkID) string {
 	t := id.UnixTime()
 	c := color.New(color.Faint, color.Italic)
 	return fmt.Sprintf("%s (V:%20d T:%20d %s)", id.String(), id.VolumeUnitId(),
@@ -40,12 +40,12 @@ func ChunkidF(id blobnode.ChunkId) string {
 }
 
 // ChunkInfoJoin chunk info
-func ChunkInfoJoin(info *blobnode.ChunkInfo, prefix string) string {
+func ChunkInfoJoin(info *clustermgr.ChunkInfo, prefix string) string {
 	return joinWithPrefix(prefix, ChunkInfoF(info))
 }
 
 // ChunkInfoF chunk info
-func ChunkInfoF(info *blobnode.ChunkInfo) []string {
+func ChunkInfoF(info *clustermgr.ChunkInfo) []string {
 	if info == nil {
 		return nilStrings[:]
 	}
@@ -62,12 +62,12 @@ func ChunkInfoF(info *blobnode.ChunkInfo) []string {
 }
 
 // DiskHeartBeatInfoJoin disk heartbeat info
-func DiskHeartBeatInfoJoin(info *blobnode.DiskHeartBeatInfo, prefix string) string {
+func DiskHeartBeatInfoJoin(info *clustermgr.DiskHeartBeatInfo, prefix string) string {
 	return joinWithPrefix(prefix, DiskHeartBeatInfoF(info))
 }
 
 // DiskHeartBeatInfoF disk heartbeat info
-func DiskHeartBeatInfoF(info *blobnode.DiskHeartBeatInfo) []string {
+func DiskHeartBeatInfoF(info *clustermgr.DiskHeartBeatInfo) []string {
 	if info == nil {
 		return nilStrings[:]
 	}
@@ -80,12 +80,12 @@ func DiskHeartBeatInfoF(info *blobnode.DiskHeartBeatInfo) []string {
 }
 
 // DiskInfoJoin disk info
-func DiskInfoJoin(info *blobnode.DiskInfo, prefix string) string {
+func DiskInfoJoin(info *clustermgr.BlobNodeDiskInfo, prefix string) string {
 	return joinWithPrefix(prefix, DiskInfoF(info))
 }
 
 // DiskInfoF disk info
-func DiskInfoF(info *blobnode.DiskInfo) []string {
+func DiskInfoF(info *clustermgr.BlobNodeDiskInfo) []string {
 	if info == nil {
 		return nilStrings[:]
 	}
@@ -102,12 +102,12 @@ func DiskInfoF(info *blobnode.DiskInfo) []string {
 }
 
 // DiskInfoJoinV disk info verbose
-func DiskInfoJoinV(info *blobnode.DiskInfo, prefix string) string {
+func DiskInfoJoinV(info *clustermgr.BlobNodeDiskInfo, prefix string) string {
 	return joinWithPrefix(prefix, DiskInfoFV(info))
 }
 
 // DiskInfoFV disk info
-func DiskInfoFV(info *blobnode.DiskInfo) []string {
+func DiskInfoFV(info *clustermgr.BlobNodeDiskInfo) []string {
 	if info == nil {
 		return nilStrings[:]
 	}
