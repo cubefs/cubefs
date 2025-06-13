@@ -44,6 +44,7 @@ const (
 var (
 	errCatalogInvalid  = errors.New("invalid catalog")
 	errCatalogNoLeader = errors.New("catalog item no leader")
+	errShardInvalid    = errors.New("invalid shard info")
 )
 
 type IShardController interface {
@@ -248,7 +249,8 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 
 	_, err, _ := s.groupRun.Do("shardID-"+sd.Suid.ShardID().ToString(), func() (interface{}, error) {
 		if isInvalidShardStat(sd) {
-			panic(fmt.Sprintf("invalid shard get from shard node. shard info:%+v", sd))
+			span.Errorf("invalid shard get from shard node. shard info:%+v", sd)
+			return nil, errShardInvalid
 		}
 		// todo: optimize lock at next version; will split smaller Lock or do a copy update
 		s.Lock()
@@ -379,7 +381,7 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 		}
 		if itemErr != nil {
 			span.Errorf("update shard catalog error:%+v, item:%+v", err, item)
-			panic(itemErr)
+			return itemErr
 		}
 		succ++
 	}
