@@ -100,10 +100,20 @@ func Register(app *grumble.App) {
 			if err != nil {
 				return err
 			}
-			fmt.Println("discovery access services on")
-			fmt.Println(common.Readable(services))
-			fmt.Println()
+			fmt.Println("discovery access services on:", config.AccessConsulAddr())
+			if flags.Vverbose(c.Flags) {
+				fmt.Println(common.Readable(services))
+			} else {
+				addresses := make([]string, 0, len(services))
+				for _, service := range services {
+					addresses = append(addresses, service.Service.Address)
+				}
+				fmt.Println(common.Readable(addresses))
+			}
 			return nil
+		},
+		Flags: func(f *grumble.Flags) {
+			flags.VverboseRegister(f)
 		},
 	}
 	app.AddCommand(accessCommand)
