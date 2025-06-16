@@ -884,14 +884,14 @@ func (dataNode *DataNode) createTaskToDeleteBackupDirectories(diskPath string) (
 	return resp, err
 }
 
-func (dataNode *DataNode) createTaskToDeleteLostDisk(diskPath string) (err error) {
+func (dataNode *DataNode) createTaskToDeleteLostDisk(diskPath string) (resp *proto.Packet, err error) {
 	task := proto.NewAdminTask(proto.OpDeleteLostDisk, dataNode.Addr, newDeleteLostDiskRequest(diskPath))
-	_, err = dataNode.TaskManager.syncSendAdminTask(task)
-	return err
+	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
+	return resp, err
 }
 
-func (dataNode *DataNode) createTaskToReloadDisk(diskPath string) (err error) {
+func (dataNode *DataNode) createTaskToReloadDisk(diskPath string) (resp *proto.Packet, err error) {
 	task := proto.NewAdminTask(proto.OpReloadDisk, dataNode.Addr, newReloadDiskRequest(diskPath))
-	_, err = dataNode.TaskManager.syncSendAdminTask(task)
-	return err
+	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
+	return resp, err
 }
