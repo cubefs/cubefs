@@ -1533,6 +1533,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		// Note: To FUSE, ENOSYS means "this server never implements this request."
 		// It would be inappropriate to return ENOSYS for other operations in this
 		// switch that might only be unavailable in some contexts, not all.
+		log.Printf("fuse: request type not found %v: nodeID %v\n", r, r.Hdr().Node)
 		return fuse.ENOSYS
 
 	case *fuse.StatfsRequest:
