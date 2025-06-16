@@ -107,7 +107,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			err = fmt.Errorf("op(%v) error(%v)", p.GetOpMsg(), string(p.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
-			if p.IsWriteOpOfPacketProtoVerForbidden() || strings.Contains(logContent, raft.ErrNotLeader.Error()) || p.Opcode == proto.OpReadTinyDeleteRecord {
+			if p.IsWriteOpOfPacketProtoVerForbidden() || strings.Contains(logContent, raft.ErrNotLeader.Error()) || p.Opcode == proto.OpReadTinyDeleteRecord || p.Opcode == proto.OpNotExistErr {
 				log.LogWarnf(logContent)
 			} else if isColdVolExtentDelErr(p) || p.ResultCode == proto.OpTinyRecoverErr || p.ResultCode == proto.OpLimitedIoErr || p.ResultCode == proto.OpDpDecommissionRepairErr {
 				log.LogInfof(logContent)
