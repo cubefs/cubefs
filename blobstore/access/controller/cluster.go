@@ -38,6 +38,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
+// just for cli write to readonly initialised cluster.
+var ForceWriteReadonlyCluster = false
+
 // AlgChoose algorithm of choose cluster
 type AlgChoose uint32
 
@@ -265,6 +268,9 @@ func (c *clusterControllerImpl) loadWithConfig() error {
 		clusterInfo.Available = stat.BlobNodeSpaceStat.WritableSpace
 		clusterInfo.Nodes = cs.Hosts
 		clusterInfo.Readonly = stat.ReadOnly
+		if clusterInfo.Readonly && ForceWriteReadonlyCluster {
+			clusterInfo.Readonly = false
+		}
 
 		allClusters[cs.ClusterID] = &cluster{client: cmCli, clusterInfo: clusterInfo}
 

@@ -20,6 +20,7 @@ import (
 	"github.com/desertbit/grumble"
 	"github.com/hashicorp/consul/api"
 
+	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/access/stream"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
@@ -163,6 +164,17 @@ func Register(app *grumble.App) {
 	}
 	app.AddCommand(accessCommand)
 
+	accessCommand.AddCommand(&grumble.Command{
+		Name: "writereadonly",
+		Help: "force write to readonly cluster",
+		Run: func(c *grumble.Context) error {
+			controller.ForceWriteReadonlyCluster = c.Flags.Bool("forcewrite")
+			return nil
+		},
+		Flags: func(f *grumble.Flags) {
+			f.BoolL("forcewrite", false, "force write to readonly cluster")
+		},
+	})
 	accessCommand.AddCommand(&grumble.Command{
 		Name: "put",
 		Help: "put file",
