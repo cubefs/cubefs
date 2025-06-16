@@ -109,6 +109,7 @@ func Clusters() (clusters map[string][]string) {
 }
 func ClusterMgrSecret() string { return Get("Key-ClusterMgrSecret").(string) }
 
+func SDKConfigPath() string         { return Get("Key-SDK-ConfigPath").(string) }
 func AccessConnMode() uint8         { return Get("Key-Access-ConnMode").(uint8) }
 func AccessConsulAddr() string      { return Get("Key-Access-ConsulAddr").(string) }
 func AccessServiceIntervalS() int   { return Get("Key-Access-ServiceIntervalS").(int) }

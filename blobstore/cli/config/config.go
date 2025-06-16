@@ -41,6 +41,9 @@ type Config struct {
 	Verbose  bool `json:"verbose" cache:"Flag-Verbose" help:"enable verbose mode"`
 	Vverbose bool `json:"vverbose" cache:"Flag-Vverbose" help:"enable verbose verbose mode"`
 
+	// it is api access's config path
+	SDKConfigPath string `json:"sdk_config_path" cache:"Key-SDK-ConfigPath" help:"sdk service config path"`
+
 	Access struct { // see more in api/access/client.go
 		ConnMode           uint8    `json:"conn_mode" cache:"Key-Access-ConnMode" help:"connection mode, 4 means no timeout"`
 		ConsulAddr         string   `json:"consul_addr" cache:"Key-Access-ConsulAddr" help:"consul address"`
