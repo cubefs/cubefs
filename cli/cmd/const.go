@@ -55,6 +55,7 @@ const (
 	CliOpDpOp                        = "dpop"
 	CliOpDataNodeOp                  = "datanodeop"
 	CliOpVolOp                       = "volop"
+	CliOpToLeader                    = "to-leader"
 
 	CliOpSetDecommissionLimit    = "set-decommission-limit"
 	CliOpQueryDecommissionStatus = "query-decommission-status"

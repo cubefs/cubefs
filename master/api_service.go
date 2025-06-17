@@ -5856,10 +5856,13 @@ func (m *Server) changeMasterLeader(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminChangeMasterLeader, metric, err, nil)
 	}()
 
-	if err = m.cluster.tryToChangeLeaderByHost(); err != nil {
-		log.LogErrorf("changeMasterLeader.err %v", err)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
+	log.LogDebugf("require changeMasterLeader to current node")
+	if !m.cluster.IsLeader() {
+		if err = m.cluster.tryToChangeLeaderByHost(); err != nil {
+			log.LogErrorf("changeMasterLeader.err %v", err)
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
 	}
 	rstMsg := " changeMasterLeader. command success send to dest host but need check. "
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))

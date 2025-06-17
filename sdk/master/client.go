@@ -236,6 +236,55 @@ func (c *MasterClient) request(r *request) error {
 	return c.requestWith(nil, r)
 }
 
+func (c *MasterClient) requestOnce(r *request, host string) (data []byte, err error) {
+	var resp *http.Response
+	var repsData []byte
+
+	schema := "http"
+	if c.useSSL {
+		schema = "https"
+	}
+	url := fmt.Sprintf("%s://%s%s", schema, host, r.path)
+	resp, err = c.httpRequest(r.method, url, r)
+	if err != nil {
+		log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
+		return
+	}
+	stateCode := resp.StatusCode
+	repsData, err = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)
+		return
+	}
+
+	if stateCode != http.StatusOK {
+		err = fmt.Errorf("serveRequest: error status: host(%v) uri(%v) status(%v)", host, url, stateCode)
+		return
+	}
+
+	repsData, err = compressor.New(resp.Header.Get(headerContentEncoding)).Decompress(repsData)
+	if err != nil {
+		log.LogErrorf("serveRequest: decompress response body fail: err(%v)", err)
+		err = fmt.Errorf("decompress response body err:%v", err)
+		return
+	}
+	body := new(proto.HTTPReplyRaw)
+	if err = body.Unmarshal(repsData); err != nil {
+		log.LogErrorf("unmarshal response body err:%v", err)
+		err = fmt.Errorf("unmarshal response body err:%v", err)
+		return
+
+	}
+	if body.Code != proto.ErrCodeSuccess {
+		log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
+		err = errors.New(body.Msg)
+		return
+	}
+	data = body.Bytes()
+	return
+}
+
 // Nodes returns all master addresses.
 func (c *MasterClient) Nodes() (nodes []string) {
 	c.RLock()
