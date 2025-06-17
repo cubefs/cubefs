@@ -2288,7 +2288,6 @@ func (mw *MetaWrapper) getDentrysWithDepthLimit(parentIno uint64, parentPath str
 
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true
@@ -2351,7 +2350,6 @@ func (mw *MetaWrapper) getDentryLimit(parentIno uint64, inodeCh chan<- uint64, e
 
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true
@@ -2373,30 +2371,6 @@ func (mw *MetaWrapper) getDentryLimit(parentIno uint64, inodeCh chan<- uint64, e
 			} else {
 				mw.getDentryLimit(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, false, goroutineNum)
 			}
-		}
-	}
-}
-
-func (mw *MetaWrapper) getDentry(parentIno uint64, inodeCh chan<- uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
-	defer func() {
-		if newGoroutine {
-			atomic.AddInt32(currentGoroutineNum, -1)
-			wg.Done()
-		}
-	}()
-	entries, err := mw.ReadDirOnly_ll(parentIno)
-	if err != nil {
-		errCh <- err
-		return
-	}
-	for _, entry := range entries {
-		inodeCh <- entry.Inode
-		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
-			wg.Add(1)
-			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.getDentry(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, true, goroutineNum)
-		} else {
-			mw.getDentry(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, false, goroutineNum)
 		}
 	}
 }
@@ -2485,7 +2459,7 @@ func (mw *MetaWrapper) getDirAccessFileSummary(accessFileInfo *AccessFileInfo, i
 		errch <- err
 		return
 	}
-	inodes = inodes[0:0]
+
 	for _, xattrInfo := range xattrInfos {
 		if xattrInfo.XAttrs[AccessFileCountSsdKey] != "" {
 			accessList := strings.Split(xattrInfo.XAttrs[AccessFileCountSsdKey], ",")
@@ -2578,7 +2552,6 @@ func (mw *MetaWrapper) getDirAccessFileSummary(accessFileInfo *AccessFileInfo, i
 	accessFileInfo.AccessFileSizeBlobStore = resultSizeBlobStoreStr
 
 	close(errch)
-	return
 }
 
 func getSummaryInfoFromXattrs(cluster string, volName string, xattrInfos []*proto.XAttrInfo, summaryInfo *SummaryInfo) {
@@ -2648,58 +2621,6 @@ func (mw *MetaWrapper) getDirSummary(summaryInfo *SummaryInfo, inodeCh <-chan ui
 	}
 	getSummaryInfoFromXattrs(mw.cluster, mw.volname, xattrInfos, summaryInfo)
 	close(errch)
-}
-
-func (mw *MetaWrapper) getSummaryOrigin(parentIno uint64, summaryCh chan<- SummaryInfo, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
-	defer func() {
-		if newGoroutine {
-			atomic.AddInt32(currentGoroutineNum, -1)
-			wg.Done()
-		}
-	}()
-	var subdirsList []uint64
-	var retSummaryInfo SummaryInfo
-	children, err := mw.ReadDir_ll(parentIno)
-	if err != nil {
-		errCh <- err
-		return
-	}
-	for _, dentry := range children {
-		if proto.IsDir(dentry.Type) {
-			retSummaryInfo.Subdirs += 1
-			subdirsList = append(subdirsList, dentry.Inode)
-		} else {
-			fileInfo, err := mw.InodeGet_ll(dentry.Inode)
-			if err != nil {
-				errCh <- err
-				return
-			}
-			retSummaryInfo.FilesTotal += 1
-			retSummaryInfo.FbytesTotal += int64(fileInfo.Size)
-			if fileInfo.StorageClass == proto.StorageClass_Replica_HDD {
-				retSummaryInfo.FilesHdd += 1
-				retSummaryInfo.FbytesHdd += int64(fileInfo.Size)
-			}
-			if fileInfo.StorageClass == proto.StorageClass_Replica_SSD {
-				retSummaryInfo.FilesSsd += 1
-				retSummaryInfo.FbytesSsd += int64(fileInfo.Size)
-			}
-			if fileInfo.StorageClass == proto.StorageClass_BlobStore {
-				retSummaryInfo.FilesBlobStore += 1
-				retSummaryInfo.FbytesBlobStore += int64(fileInfo.Size)
-			}
-		}
-	}
-	summaryCh <- retSummaryInfo
-	for _, subdirIno := range subdirsList {
-		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
-			wg.Add(1)
-			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.getSummaryOrigin(subdirIno, summaryCh, errCh, wg, currentGoroutineNum, true, goroutineNum)
-		} else {
-			mw.getSummaryOrigin(subdirIno, summaryCh, errCh, wg, currentGoroutineNum, false, goroutineNum)
-		}
-	}
 }
 
 func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, unit string, split string, frequency int, readDirLimit int, batchInodeSize int) error {

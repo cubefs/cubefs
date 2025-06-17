@@ -87,7 +87,6 @@ type Super struct {
 	writeThreads int
 	bc           *bcache.BcacheClient
 	ebsc         *blobstore.BlobStoreClient
-	sc           *SummaryCache
 
 	taskPool []common.TaskPool
 	closeC   chan struct{}
