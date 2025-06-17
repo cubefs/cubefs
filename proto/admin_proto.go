@@ -1330,6 +1330,8 @@ type SimpleVolView struct {
 	RwDpCnt                 int
 	MpCnt                   int
 	DpCnt                   int
+	DpOfSSDCnt              int
+	DpOfHDDCnt              int
 	FollowerRead            bool
 	MetaFollowerRead        bool
 	DirectRead              bool
