@@ -46,14 +46,14 @@ Use the following command to create a new FlashGroup. The system automatically g
 
 ```bash
 // The default number of slots for a FlashGroup (FG) is 32.
-./cfs-cli flashGroup create 
+./cfs-cli flashgroup create 
 ```
 
 Use the flashgroup set command in the CLI tool to enable the FlashGroup, specifying the unique ID that was assigned during its creation.
 
 ```bash
 // After creation, the FlashGroup status is inactive. You must activate it explicitly.
-./cfs-cli flashGroup set 13 true
+./cfs-cli flashgroup set 13 true
 ```
 
 ### flashGroup add flashNode
@@ -62,7 +62,7 @@ To associate cache nodes with a newly created FlashGroup, use the flashgroup nod
 
 ```bash
 // To add a FlashNode to a FlashGroup, specify the unique ID of the FlashGroup and the identifier of the FlashNode that you want to associate with the group.
-./cfs-cli flashGroup nodeAdd 13 --zone-name=default --addr="*.*.*.*:18510"
+./cfs-cli flashgroup nodeAdd 13 --zone-name=default --addr="*.*.*.*:18510"
 ```
 
 After adding a FlashNode to the FlashGroup, use the flashnode list command to confirm that the node appears in the list. By default, a newly added FlashNode is enabled and active, with both the active and enable flags set to true.
