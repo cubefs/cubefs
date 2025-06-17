@@ -151,7 +151,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		}
 	}
 
-	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+	log.LogWarnf("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
@@ -948,7 +948,7 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	if err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile)); err != nil {
 		return
 	}
-	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+	log.LogWarnf("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
