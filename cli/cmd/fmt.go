@@ -243,6 +243,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Dentry count                    : %v\n", svv.DentryCount))
 	sb.WriteString(fmt.Sprintf("  Description                     : %v\n", string([]rune(svv.Description)[:])))
 	sb.WriteString(fmt.Sprintf("  DpCnt                           : %v\n", svv.DpCnt))
+	sb.WriteString(fmt.Sprintf("  DpOfSSDCnt                      : %v\n", svv.DpOfSSDCnt))
+	sb.WriteString(fmt.Sprintf("  DpOfHDDCnt                      : %v\n", svv.DpOfHDDCnt))
 	sb.WriteString(fmt.Sprintf("  DpReplicaNum                    : %v\n", svv.DpReplicaNum))
 	sb.WriteString(fmt.Sprintf("  Follower read                   : %v\n", formatEnabledDisabled(svv.FollowerRead)))
 	sb.WriteString(fmt.Sprintf("  Meta Follower read              : %v\n", formatEnabledDisabled(svv.MetaFollowerRead)))

@@ -3127,6 +3127,8 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		RwDpCnt:                 vol.dataPartitions.readableAndWritableCnt,
 		MpCnt:                   len(vol.MetaPartitions),
 		DpCnt:                   len(vol.dataPartitions.partitionMap),
+		DpOfSSDCnt:              vol.dataPartitions.getDataPartitionsCountOfMediaType(proto.MediaType_SSD),
+		DpOfHDDCnt:              vol.dataPartitions.getDataPartitionsCountOfMediaType(proto.MediaType_HDD),
 		CreateTime:              time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
 		DeleteLockTime:          vol.DeleteLockTime,
 		Description:             vol.description,
