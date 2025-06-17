@@ -284,7 +284,7 @@ func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uin
 			return
 		}
 	} else if status != statusOK {
-		if !(status == statusExist && !ignoreExistError) {
+		if status == statusExist && !ignoreExistError {
 			err = errors.New(packet.GetResultMsg())
 			log.LogErrorf("SendTxPack: packet(%v) mp(%v) req(%v) txInfo(%v) result(%v)",
 				packet, mp, packet.GetOpMsg(), req.GetInfo(), packet.GetResultMsg())
