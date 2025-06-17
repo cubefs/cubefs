@@ -88,12 +88,26 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 	shardTp := base.NewMockShardTransport(C(tb))
 	shardTp.EXPECT().ResolveRaftAddr(A, A).Return("127.0.0.1:18080", nil).AnyTimes()
 	shardTp.EXPECT().ResolveNodeAddr(A, A).Return("127.0.0.1:9100", nil).AnyTimes()
-	shardTp.EXPECT().UpdateShard(A, A, A).Return(nil).AnyTimes()
 	shardTp.EXPECT().ShardStats(A, A, A).Return(shardnode.ShardStats{}, nil).AnyTimes()
 	cfg.ShardBaseConfig.Transport = shardTp
 
 	disk, err := OpenDisk(ctx, cfg)
 	require.NoError(tb, err)
+
+	shardTp.EXPECT().UpdateShard(A, A, A).DoAndReturn(func(ctx context.Context, host string, args shardnode.UpdateShardArgs) error {
+		if args.ShardUpdateType == proto.ShardUpdateTypeRemoveMember {
+			sd, err := disk.getShard(args.Unit.Suid)
+			require.NoError(tb, err)
+			sd.shardInfoMu.Lock()
+			for i, u := range sd.shardInfoMu.Units {
+				if u.Suid == args.Unit.Suid {
+					sd.shardInfoMu.Units = append(sd.shardInfoMu.Units[:i], sd.shardInfoMu.Units[i+1:]...)
+				}
+			}
+			sd.shardInfoMu.Unlock()
+		}
+		return nil
+	}).AnyTimes()
 
 	disk.SetDiskID(diskID)
 	disk.diskInfo.Status = proto.DiskStatusNormal
