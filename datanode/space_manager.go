@@ -581,12 +581,12 @@ func (manager *SpaceManager) selectDisk(decommissionedDisks []string) (d *Disk) 
 			continue
 		}
 		if disk.Status != proto.ReadWrite {
-			log.LogInfof("[selectDisk] disk(%v) is lost", disk.Path)
+			log.LogInfof("[selectDisk] disk(%v) is not writable", disk.Path)
 			continue
 		}
 
 		if disk.isLost {
-			log.LogInfof("[selectDisk] disk(%v) is not writable", disk.Path)
+			log.LogInfof("[selectDisk] disk(%v) is lost", disk.Path)
 			continue
 		}
 

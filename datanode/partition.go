@@ -457,11 +457,11 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
 		partition.partitionType, disk.dataNode.cacheCap, isCreate)
-	partition.extentStore.IsEnableSnapshot = dpCfg.IsEnableSnapshot
 	if err != nil {
 		log.LogWarnf("action[newDataPartition] dp %v NewExtentStore failed %v", partitionID, err.Error())
 		return
 	}
+	partition.extentStore.IsEnableSnapshot = dpCfg.IsEnableSnapshot
 	// store applyid
 	if isCreate {
 		log.LogInfof("action[newDataPartition] init apply id when create dp directly. dp %d", partitionID)
