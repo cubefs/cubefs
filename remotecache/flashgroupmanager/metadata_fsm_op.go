@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -28,13 +29,25 @@ type clusterValue struct {
 	Name                         string
 	FlashNodeHandleReadTimeout   int
 	FlashNodeReadDataNodeTimeout int
+	RemoteCacheTTL               int64
+	RemoteCacheReadTimeout       int64
+	RemoteCacheMultiRead         bool
+	FlashNodeTimeoutCount        int64
+	RemoteCacheSameZoneTimeout   int64
+	RemoteCacheSameRegionTimeout int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
 		Name:                         c.Name,
-		FlashNodeHandleReadTimeout:   c.cfg.flashNodeHandleReadTimeout,
-		FlashNodeReadDataNodeTimeout: c.cfg.flashNodeReadDataNodeTimeout,
+		FlashNodeHandleReadTimeout:   c.cfg.FlashNodeHandleReadTimeout,
+		FlashNodeReadDataNodeTimeout: c.cfg.FlashNodeReadDataNodeTimeout,
+		RemoteCacheTTL:               c.cfg.RemoteCacheTTL,
+		RemoteCacheReadTimeout:       c.cfg.RemoteCacheReadTimeout,
+		RemoteCacheMultiRead:         c.cfg.RemoteCacheMultiRead,
+		FlashNodeTimeoutCount:        c.cfg.FlashNodeTimeoutCount,
+		RemoteCacheSameZoneTimeout:   c.cfg.RemoteCacheSameZoneTimeout,
+		RemoteCacheSameRegionTimeout: c.cfg.RemoteCacheSameRegionTimeout,
 	}
 	return cv
 }
@@ -63,14 +76,41 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.FlashNodeHandleReadTimeout == 0 {
 			cv.FlashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
 		}
-		c.cfg.flashNodeHandleReadTimeout = cv.FlashNodeHandleReadTimeout
-
+		c.cfg.FlashNodeHandleReadTimeout = cv.FlashNodeHandleReadTimeout
 		if cv.FlashNodeReadDataNodeTimeout == 0 {
 			cv.FlashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
 		}
-		c.cfg.flashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
+		c.cfg.FlashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
 		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms)",
 			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout)
+
+		if cv.RemoteCacheTTL == 0 {
+			cv.RemoteCacheTTL = proto.DefaultRemoteCacheTTL
+		}
+		c.cfg.RemoteCacheTTL = cv.RemoteCacheTTL
+
+		if cv.RemoteCacheReadTimeout == 0 {
+			cv.RemoteCacheReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
+		}
+		c.cfg.RemoteCacheReadTimeout = cv.RemoteCacheReadTimeout
+		c.cfg.RemoteCacheMultiRead = cv.RemoteCacheMultiRead
+
+		if cv.FlashNodeTimeoutCount == 0 {
+			cv.FlashNodeTimeoutCount = proto.DefaultFlashNodeTimeoutCount
+		}
+		c.cfg.FlashNodeTimeoutCount = cv.FlashNodeTimeoutCount
+
+		if cv.RemoteCacheSameZoneTimeout == 0 {
+			cv.RemoteCacheSameZoneTimeout = proto.DefaultRemoteCacheSameZoneTimeout
+		}
+		c.cfg.RemoteCacheSameZoneTimeout = cv.RemoteCacheSameZoneTimeout
+
+		if cv.RemoteCacheSameRegionTimeout == 0 {
+			cv.RemoteCacheSameRegionTimeout = proto.DefaultRemoteCacheSameRegionTimeout
+		}
+		c.cfg.RemoteCacheSameRegionTimeout = cv.RemoteCacheSameRegionTimeout
+		log.LogInfof("action[loadClusterValue] remoteCacheTTL(%v), remoteCacheReadTimeout(%v), remoteCacheMultiRead(%v), flashNodeTimeoutCount(%v), remoteCacheSameZoneTimeout(%v), remoteCacheSameRegionTimeout(%v)",
+			cv.RemoteCacheTTL, cv.RemoteCacheReadTimeout, cv.RemoteCacheMultiRead, cv.FlashNodeTimeoutCount, cv.RemoteCacheSameZoneTimeout, cv.RemoteCacheSameRegionTimeout)
 	}
 
 	return

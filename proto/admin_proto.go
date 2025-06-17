@@ -104,6 +104,7 @@ const (
 	AdminAbortDecommissionDisk                        = "/admin/abortDecommissionDisk"
 	AdminResetDataPartitionRestoreStatus              = "/admin/resetDataPartitionRestoreStatus"
 	AdminGetOpLog                                     = "/admin/getOpLog"
+	AdminGetRemoteCacheConfig                         = "/admin/getRemoteCacheConfig"
 
 	// #nosec G101
 	AdminQueryDecommissionToken            = "/admin/queryDecommissionToken"

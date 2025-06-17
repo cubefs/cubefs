@@ -289,6 +289,12 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	dataMediaType := ""
 	handleTimeout := ""
 	readDataNodeTimeout := ""
+	optRcTTL := ""
+	optRcReadTimeout := ""
+	optRemoteCacheMultiRead := ""
+	optFlashNodeTimeoutCount := ""
+	optRemoteCacheSameZoneTimeout := ""
+	optRemoteCacheSameRegionTimeout := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -423,12 +429,71 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if optRcTTL != "" {
+				if tmp, err = strconv.ParseInt(optRcTTL, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optRcTTL)
+					return
+				}
+				if tmp <= cmdVolMinRemoteCacheTTL {
+					err = fmt.Errorf("param remoteCacheTTL(%v) must greater than or equal to %v", optRcTTL, cmdVolMinRemoteCacheTTL)
+					return
+				}
+			}
+			if optRcReadTimeout != "" {
+				if tmp, err = strconv.ParseInt(optRcReadTimeout, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optRcReadTimeout)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("param remoteCacheReadTimeout(%v) must greater than 0", optRcReadTimeout)
+					return
+				}
+			}
+			if optRemoteCacheMultiRead != "" {
+				if _, err = strconv.ParseBool(optRemoteCacheMultiRead); err != nil {
+					err = fmt.Errorf("param remoteCacheMultiRead(%v) should be true or false", optRemoteCacheMultiRead)
+					return
+				}
+			}
+			if optFlashNodeTimeoutCount != "" {
+				if tmp, err = strconv.ParseInt(optFlashNodeTimeoutCount, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optFlashNodeTimeoutCount)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("param flashNodeTimeoutCount(%v) must greater than 0", optFlashNodeTimeoutCount)
+					return
+				}
+			}
+			if optRemoteCacheSameZoneTimeout != "" {
+				if tmp, err = strconv.ParseInt(optRemoteCacheSameZoneTimeout, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optRemoteCacheSameZoneTimeout)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("param remoteCacheSameZoneTimeout(%v) must greater than 0", optRemoteCacheSameZoneTimeout)
+					return
+				}
+			}
+			if optRemoteCacheSameRegionTimeout != "" {
+				if tmp, err = strconv.ParseInt(optRemoteCacheSameRegionTimeout, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optRemoteCacheSameRegionTimeout)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("param remoteCacheSameRegionTimeout(%v) must greater than 0", optRemoteCacheSameRegionTimeout)
+					return
+				}
+			}
+
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
 				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
-				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout); err != nil {
+				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout,
+				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -462,6 +527,13 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&dataMediaType, "clusterDataMediaType", "", "set cluster media type, 1(ssd), 2(hdd)")
 	cmd.Flags().StringVar(&handleTimeout, "flashNodeHandleReadTimeout", "", "Specify flash node handle read timeout (example:1000ms)")
 	cmd.Flags().StringVar(&readDataNodeTimeout, "flashNodeReadDataNodeTimeout", "", "Specify flash node read data node timeout (example:3000ms)")
+	cmd.Flags().StringVar(&optRcTTL, CliFlagRemoteCacheTTL, "", "Remote cache ttl[Unit: s](must >= 10min, default 5day)")
+	cmd.Flags().StringVar(&optRcReadTimeout, CliFlagRemoteCacheReadTimeout, "", "Remote cache read timeout millisecond(must > 0)")
+	cmd.Flags().StringVar(&optRemoteCacheMultiRead, CliFlagRemoteCacheMultiRead, "", "Remote cache follower read(true|false)")
+	cmd.Flags().StringVar(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, "", "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value")
+	cmd.Flags().StringVar(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, "", "Remote cache same zone timeout microsecond(must > 0)")
+	cmd.Flags().StringVar(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, "", "Remote cache same region timeout millisecond(must > 0)")
+
 	return cmd
 }
 
