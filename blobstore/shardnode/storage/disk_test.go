@@ -154,9 +154,9 @@ func TestServerDisk_Shard(t *testing.T) {
 	}
 
 	// UpdateShard
-	{
+	for i := range suids {
 		// add with diff index and diskID, success
-		suid := suids[0]
+		suid := suids[i]
 		err = disk.GetDisk().UpdateShard(ctx, suid, proto.ShardUpdateTypeAddMember, clustermgr.ShardUnit{
 			Suid:    proto.EncodeSuid(suid.ShardID(), suid.Index()+1, 0),
 			DiskID:  diskID + 1,
@@ -222,7 +222,16 @@ func TestServerDisk_Shard(t *testing.T) {
 		require.Equal(t, shardCnt, cnt)
 	}
 
-	// Disk reload shard from storage
+	d.diskInfo.Status = proto.DiskStatusNormal
+	// DeleteShard
+	{
+		for i := range suids {
+			err = d.DeleteShard(ctx, suids[i], 0)
+			require.Nil(t, err)
+		}
+		require.Equal(t, 0, d.GetShardCnt())
+	}
+
 	d.Close()
 	reopenDisk, err := OpenDisk(ctx, d.cfg)
 	require.Nil(t, err)
@@ -230,17 +239,6 @@ func TestServerDisk_Shard(t *testing.T) {
 	reopenDisk.diskInfo.DiskID = diskID
 	err = reopenDisk.Load(ctx)
 	require.Nil(t, err)
-	require.Equal(t, shardCnt, d.GetShardCnt())
-
-	// DeleteShard
-	{
-		for i := range suids {
-			err = reopenDisk.DeleteShard(ctx, suids[i], 0)
-			require.Nil(t, err)
-		}
-		require.Equal(t, 0, reopenDisk.GetShardCnt())
-	}
-	reopenDisk.Close()
 }
 
 func TestServerDisk_Raft(t *testing.T) {

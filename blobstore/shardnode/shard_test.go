@@ -40,7 +40,9 @@ func TestService_Task(t *testing.T) {
 	require.Nil(t, err)
 	defer clear()
 
-	err = d.GetDisk().AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{{DiskID: diskID}})
+	err = d.GetDisk().AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{
+		{DiskID: diskID, Suid: suid},
+	})
 	require.Nil(t, err)
 
 	tasks := make([]clustermgr.ShardTask, 0)
