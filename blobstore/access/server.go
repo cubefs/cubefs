@@ -15,7 +15,6 @@
 package access
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -32,8 +31,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -47,16 +46,6 @@ const (
 	limitNameDelete = "delete"
 	limitNameSign   = "sign"
 )
-
-func initWithRegionMagic(regionMagic string) {
-	if regionMagic == "" {
-		log.Warn("no region magic setting, using default secret keys for checksum")
-		return
-	}
-	b := sha1.Sum([]byte(regionMagic))
-	stream.TokenInitSecret(b[:8])
-	stream.LocationInitSecret(b[:8])
-}
 
 type accessStatus struct {
 	Limit stream.Status       `json:"limit"`
@@ -87,7 +76,7 @@ type Service struct {
 // New returns an access service
 func New(cfg Config) *Service {
 	// add region magic checksum to the secret keys
-	initWithRegionMagic(cfg.Stream.ClusterConfig.RegionMagic)
+	security.InitWithRegionMagic(cfg.Stream.ClusterConfig.RegionMagic)
 
 	cl := closer.New()
 	h, err := stream.NewStreamHandler(&cfg.Stream, cl.Done())
@@ -257,7 +246,7 @@ func (s *Service) Put(c *rpc.Context) {
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
-	if err := stream.LocationCrcFill(loc); err != nil {
+	if err := security.LocationCrcFill(loc); err != nil {
 		span.Error("stream put fill location crc", err)
 		c.RespondError(httpError(err))
 		return
@@ -288,8 +277,8 @@ func (s *Service) PutAt(c *rpc.Context) {
 	}
 
 	valid := false
-	for _, secretKey := range stream.TokenSecretKeys() {
-		token := uptoken.DecodeToken(args.Token)
+	for _, secretKey := range security.TokenSecretKeys() {
+		token := security.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
 			break
@@ -349,7 +338,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 		return
 	}
 
-	if err := stream.LocationCrcFill(location); err != nil {
+	if err := security.LocationCrcFill(location); err != nil {
 		span.Error("stream alloc fill location crc", err)
 		c.RespondError(httpError(err))
 		return
@@ -357,7 +346,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 
 	resp := access.AllocResp{
 		Location: *location,
-		Tokens:   stream.StreamGenTokens(location),
+		Tokens:   security.StreamGenTokens(location),
 	}
 	c.RespondJSON(resp)
 	span.Infof("done /alloc request resp:%+v", resp)
@@ -375,7 +364,7 @@ func (s *Service) Get(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("accept /get request args:%+v", args)
-	if !args.IsValid() || !stream.LocationCrcVerify(&args.Location) {
+	if !args.IsValid() || !security.LocationCrcVerify(&args.Location) {
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
@@ -391,9 +380,9 @@ func (s *Service) Get(c *rpc.Context) {
 
 	w.Header().Set(rpc.HeaderContentType, rpc.MIMEStream)
 	w.Header().Set(rpc.HeaderContentLength, strconv.FormatInt(int64(args.ReadSize), 10))
-	if args.ReadSize > 0 && args.ReadSize != args.Location.Size {
+	if args.ReadSize > 0 && args.ReadSize != args.Location.Size_ {
 		w.Header().Set(rpc.HeaderContentRange, fmt.Sprintf("bytes %d-%d/%d",
-			args.Offset, args.Offset+args.ReadSize-1, args.Location.Size))
+			args.Offset, args.Offset+args.ReadSize-1, args.Location.Size_))
 		c.RespondStatus(http.StatusPartialContent)
 	} else {
 		c.RespondStatus(http.StatusOK)
@@ -451,19 +440,19 @@ func (s *Service) Delete(c *rpc.Context) {
 
 	clusterBlobsN := make(map[proto.ClusterID]int, 4)
 	for _, loc := range args.Locations {
-		if !stream.LocationCrcVerify(&loc) {
+		if !security.LocationCrcVerify(&loc) {
 			span.Infof("invalid crc %+v", loc)
 			err = errcode.ErrIllegalArguments
 			return
 		}
-		clusterBlobsN[loc.ClusterID] += len(loc.Blobs)
+		clusterBlobsN[loc.ClusterID] += len(loc.Slices)
 	}
 
 	if len(args.Locations) == 1 {
 		loc := args.Locations[0]
 		if err := s.streamHandler.Delete(ctx, &loc); err != nil {
 			span.Error("stream delete failed", errors.Detail(err))
-			resp.FailedLocations = []access.Location{loc}
+			resp.FailedLocations = []proto.Location{loc}
 		}
 		return
 	}
@@ -475,12 +464,12 @@ func (s *Service) Delete(c *rpc.Context) {
 	// max delete locations is 1024, one location is max to 5G,
 	// merged message max size about 40MB.
 
-	merged := make(map[proto.ClusterID][]access.SliceInfo, len(clusterBlobsN))
+	merged := make(map[proto.ClusterID][]proto.Slice, len(clusterBlobsN))
 	for id, n := range clusterBlobsN {
-		merged[id] = make([]access.SliceInfo, 0, n)
+		merged[id] = make([]proto.Slice, 0, n)
 	}
 	for _, loc := range args.Locations {
-		merged[loc.ClusterID] = append(merged[loc.ClusterID], loc.Blobs...)
+		merged[loc.ClusterID] = append(merged[loc.ClusterID], loc.Slices...)
 	}
 
 	var wg sync.WaitGroup
@@ -489,7 +478,7 @@ func (s *Service) Delete(c *rpc.Context) {
 	go func() {
 		for id := range failedCh {
 			if resp.FailedLocations == nil {
-				resp.FailedLocations = make([]access.Location, 0, len(args.Locations))
+				resp.FailedLocations = make([]proto.Location, 0, len(args.Locations))
 			}
 			for _, loc := range args.Locations {
 				if loc.ClusterID == id {
@@ -503,10 +492,10 @@ func (s *Service) Delete(c *rpc.Context) {
 	wg.Add(len(merged))
 	for id := range merged {
 		go func(id proto.ClusterID) {
-			if err := s.streamHandler.Delete(ctx, &access.Location{
+			if err := s.streamHandler.Delete(ctx, &proto.Location{
 				ClusterID: id,
-				BlobSize:  1,
-				Blobs:     merged[id],
+				SliceSize: 1,
+				Slices:    merged[id],
 			}); err != nil {
 				span.Error("stream delete failed", id, errors.Detail(err))
 				failedCh <- id
@@ -538,8 +527,8 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 	}
 
 	valid := false
-	for _, secretKey := range stream.TokenSecretKeys() {
-		token := uptoken.DecodeToken(args.Token)
+	for _, secretKey := range security.TokenSecretKeys() {
+		token := security.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
 			break
@@ -551,13 +540,13 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 		return
 	}
 
-	if err := s.streamHandler.Delete(ctx, &access.Location{
+	if err := s.streamHandler.Delete(ctx, &proto.Location{
 		ClusterID: args.ClusterID,
-		BlobSize:  1,
-		Blobs: []access.SliceInfo{{
-			MinBid: args.BlobID,
-			Vid:    args.Vid,
-			Count:  1,
+		SliceSize: 1,
+		Slices: []proto.Slice{{
+			MinSliceID: args.BlobID,
+			Vid:        args.Vid,
+			Count:      1,
 		}},
 	}); err != nil {
 		span.Error("stream delete blob failed", errors.Detail(err))
@@ -588,7 +577,7 @@ func (s *Service) Sign(c *rpc.Context) {
 
 	loc := args.Location
 	crcOld := loc.Crc
-	if err := stream.LocationCrcSign(&loc, args.Locations); err != nil {
+	if err := security.LocationCrcSign(&loc, args.Locations); err != nil {
 		span.Error("stream sign failed", errors.Detail(err))
 		c.RespondError(errcode.ErrIllegalArguments)
 		return

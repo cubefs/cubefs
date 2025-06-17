@@ -10,6 +10,7 @@ import (
 	reflect "reflect"
 
 	access "github.com/cubefs/cubefs/blobstore/api/access"
+	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -37,10 +38,10 @@ func (m *MockAccessAPI) EXPECT() *MockAccessAPIMockRecorder {
 }
 
 // Delete mocks base method.
-func (m *MockAccessAPI) Delete(arg0 context.Context, arg1 *access.DeleteArgs) ([]access.Location, error) {
+func (m *MockAccessAPI) Delete(arg0 context.Context, arg1 *access.DeleteArgs) ([]proto.Location, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", arg0, arg1)
-	ret0, _ := ret[0].([]access.Location)
+	ret0, _ := ret[0].([]proto.Location)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -67,10 +68,10 @@ func (mr *MockAccessAPIMockRecorder) Get(arg0, arg1 interface{}) *gomock.Call {
 }
 
 // Put mocks base method.
-func (m *MockAccessAPI) Put(arg0 context.Context, arg1 *access.PutArgs) (access.Location, access.HashSumMap, error) {
+func (m *MockAccessAPI) Put(arg0 context.Context, arg1 *access.PutArgs) (proto.Location, access.HashSumMap, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Put", arg0, arg1)
-	ret0, _ := ret[0].(access.Location)
+	ret0, _ := ret[0].(proto.Location)
 	ret1, _ := ret[1].(access.HashSumMap)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

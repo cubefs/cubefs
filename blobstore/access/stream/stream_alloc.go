@@ -41,7 +41,7 @@ var errAllocatePunishedVolume = errors.New("allocate punished volume")
 //	return: a location of file
 func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 	assignClusterID proto.ClusterID, codeMode codemode.CodeMode,
-) (*access.Location, error) {
+) (*proto.Location, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("alloc request with size:%d blobsize:%d cluster:%d codemode:%d",
 		size, blobSize, assignClusterID, codeMode)
@@ -72,12 +72,12 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 	}
 	span.Debugf("allocated from %d %+v", clusterID, blobs)
 
-	location := &access.Location{
+	location := &proto.Location{
 		ClusterID: clusterID,
 		CodeMode:  codeMode,
-		Size:      size,
-		BlobSize:  blobSize,
-		Blobs:     blobs,
+		Size_:     size,
+		SliceSize: blobSize,
+		Slices:    blobs,
 	}
 	span.Debugf("alloc ok %+v", location)
 	return location, nil
@@ -85,7 +85,7 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 
 func (h *Handler) allocFromAllocatorWithHystrix(ctx context.Context,
 	codeMode codemode.CodeMode, size uint64, blobSize uint32, clusterID proto.ClusterID,
-) (cid proto.ClusterID, bidRets []access.SliceInfo, err error) {
+) (cid proto.ClusterID, bidRets []proto.Slice, err error) {
 	err = hystrix.Do(allocCommand, func() error {
 		cid, bidRets, err = h.allocFromAllocator(ctx, codeMode, size, blobSize, clusterID)
 		return err
@@ -95,7 +95,7 @@ func (h *Handler) allocFromAllocatorWithHystrix(ctx context.Context,
 
 func (h *Handler) allocFromAllocator(ctx context.Context,
 	codeMode codemode.CodeMode, size uint64, blobSize uint32, clusterID proto.ClusterID,
-) (proto.ClusterID, []access.SliceInfo, error) {
+) (proto.ClusterID, []proto.Slice, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if blobSize == 0 {
@@ -183,7 +183,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 	}
 
 	blobN := blobCount(size, blobSize)
-	blobs := make([]access.SliceInfo, 0, blobN)
+	blobs := make([]proto.Slice, 0, blobN)
 	for _, bidRet := range allocRets {
 		if blobN <= 0 {
 			break
@@ -192,10 +192,10 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		count := minU64(blobN, uint64(bidRet.BidEnd)-uint64(bidRet.BidStart)+1)
 		blobN -= count
 
-		blobs = append(blobs, access.SliceInfo{
-			MinBid: bidRet.BidStart,
-			Vid:    bidRet.Vid,
-			Count:  uint32(count),
+		blobs = append(blobs, proto.Slice{
+			MinSliceID: bidRet.BidStart,
+			Vid:        bidRet.Vid,
+			Count:      uint32(count),
 		})
 	}
 	if blobN > 0 {

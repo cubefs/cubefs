@@ -25,6 +25,7 @@ import (
 	"time"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	bncom "github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
@@ -45,10 +46,10 @@ const (
 	RandomIntervalS = 30
 )
 
-var StateTransitionRules = map[bnapi.ChunkStatus][]bnapi.ChunkStatus{
-	bnapi.ChunkStatusDefault:  {bnapi.ChunkStatusNormal},
-	bnapi.ChunkStatusNormal:   {bnapi.ChunkStatusNormal, bnapi.ChunkStatusReadOnly},
-	bnapi.ChunkStatusReadOnly: {bnapi.ChunkStatusNormal, bnapi.ChunkStatusReadOnly, bnapi.ChunkStatusRelease},
+var StateTransitionRules = map[clustermgr.ChunkStatus][]clustermgr.ChunkStatus{
+	clustermgr.ChunkStatusDefault:  {clustermgr.ChunkStatusNormal},
+	clustermgr.ChunkStatusNormal:   {clustermgr.ChunkStatusNormal, clustermgr.ChunkStatusReadOnly},
+	clustermgr.ChunkStatusReadOnly: {clustermgr.ChunkStatusNormal, clustermgr.ChunkStatusReadOnly, clustermgr.ChunkStatusRelease},
 }
 
 var (
@@ -175,7 +176,7 @@ func (ds *DiskStorage) Close(ctx context.Context) {
 	ds.dataQos.Close()
 }
 
-func (ds *DiskStorage) DiskInfo() (info bnapi.DiskInfo) {
+func (ds *DiskStorage) DiskInfo() (info clustermgr.BlobNodeDiskInfo) {
 	ds.Lock.RLock()
 	defer ds.Lock.RUnlock()
 
@@ -320,18 +321,18 @@ func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid,
 	}
 
 	super := ds.SuperBlock
-	chunkId := bnapi.NewChunkId(vuid)
+	chunkId := clustermgr.NewChunkID(vuid)
 	nowtime := time.Now().UnixNano()
 
 	vm := core.VuidMeta{
 		Version:   _chunkVer[0],
 		Vuid:      vuid,
 		DiskID:    ds.DiskID,
-		ChunkId:   chunkId,
+		ChunkID:   chunkId,
 		ChunkSize: chunksize,
 		Ctime:     nowtime,
 		Mtime:     nowtime,
-		Status:    bnapi.ChunkStatusNormal,
+		Status:    clustermgr.ChunkStatusNormal,
 	}
 
 	// create chunk storage
@@ -348,9 +349,9 @@ func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid,
 	}
 
 	// save to superBlock
-	err = super.UpsertChunk(ctx, vm.ChunkId, vm)
+	err = super.UpsertChunk(ctx, vm.ChunkID, vm)
 	if err != nil {
-		span.Errorf("Failed upsert chunk<%s>, err:%v", vm.ChunkId, err)
+		span.Errorf("Failed upsert chunk<%s>, err:%v", vm.ChunkID, err)
 		return nil, err
 	}
 
@@ -484,7 +485,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	}
 	diskView := flow.NewDiskViewer(dataIos)
 
-	// init Qos Manager
+	// init Qos manager
 	conf.DataQos.StatGetter = dataIos
 	conf.DataQos.DiskViewer = diskView
 
@@ -646,8 +647,8 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 		span.Debugf("vuid:%d, chunkid: %s", vuid, chunkid)
 
 		vm := vuidMetas[chunkid]
-		if vm.Status == bnapi.ChunkStatusRelease {
-			span.Warnf("vuid:%d(chunk:%s) status is release", vm.Vuid, vm.ChunkId)
+		if vm.Status == clustermgr.ChunkStatusRelease {
+			span.Warnf("vuid:%d(chunk:%s) status is release", vm.Vuid, vm.ChunkID)
 			continue
 		}
 		if vm.Compacting {
@@ -717,7 +718,7 @@ func (ds *DiskStorage) ReleaseChunk(ctx context.Context, vuid proto.Vuid, force 
 	}
 
 	// can not convert status
-	if !force && !isValidStateTransition(cs.Status(), bnapi.ChunkStatusRelease) {
+	if !force && !isValidStateTransition(cs.Status(), clustermgr.ChunkStatusRelease) {
 		span.Errorf("can not release chunk(%s) status:%v", cs.ID(), cs.Status())
 		return bloberr.ErrUnexpected
 	}
@@ -743,22 +744,22 @@ func (ds *DiskStorage) ReleaseChunk(ctx context.Context, vuid proto.Vuid, force 
 
 	// update chunk meta
 	vm := cs.VuidMeta()
-	vm.Status = bnapi.ChunkStatusRelease
-	vm.Reason = bnapi.ReleaseForUser
+	vm.Status = clustermgr.ChunkStatusRelease
+	vm.Reason = clustermgr.ReleaseForUser
 	vm.Mtime = time.Now().UnixNano()
 
 	err = ds.SuperBlock.UpsertChunk(ctx, cs.ID(), *vm)
 	if err != nil {
-		span.Errorf("update chunk(%s) status to release failed: %v", vm.ChunkId, err)
+		span.Errorf("update chunk(%s) status to release failed: %v", vm.ChunkID, err)
 		return err
 	}
 
 	// update ChunkStorage status in memory
-	cs.SetStatus(bnapi.ChunkStatusRelease)
+	cs.SetStatus(clustermgr.ChunkStatusRelease)
 
 	cs = nil
 
-	span.Infof("release chunk<%s> success", vm.ChunkId)
+	span.Infof("release chunk<%s> success", vm.ChunkID)
 
 	return nil
 }
@@ -769,7 +770,7 @@ func (ds *DiskStorage) ReleaseChunk(ctx context.Context, vuid proto.Vuid, force 
  * second: change status in memory
  * concurrency safety: only allows serial execution for the same vuid
  */
-func (ds *DiskStorage) UpdateChunkStatus(ctx context.Context, vuid proto.Vuid, status bnapi.ChunkStatus) (err error) {
+func (ds *DiskStorage) UpdateChunkStatus(ctx context.Context, vuid proto.Vuid, status clustermgr.ChunkStatus) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if !bnapi.IsValidChunkStatus(status) {
@@ -811,7 +812,7 @@ func (ds *DiskStorage) UpdateChunkStatus(ctx context.Context, vuid proto.Vuid, s
 
 	err = ds.SuperBlock.UpsertChunk(ctx, cs.ID(), *vm)
 	if err != nil {
-		span.Errorf("update chunk(%s) status to %v failed: %v", vm.ChunkId, status, err)
+		span.Errorf("update chunk(%s) status to %v failed: %v", vm.ChunkID, status, err)
 		return err
 	}
 
@@ -851,7 +852,7 @@ func (ds *DiskStorage) UpdateChunkCompactState(ctx context.Context, vuid proto.V
 	err = ds.SuperBlock.UpsertChunk(ctx, cs.ID(), *vm)
 	if err != nil {
 		span.Errorf("update chunk(%s) status to %v failed: %v",
-			vm.ChunkId, compacting, err)
+			vm.ChunkID, compacting, err)
 		return err
 	}
 
@@ -930,10 +931,10 @@ func (ds *DiskStorage) loopCleanChunk() {
 
 func (ds *DiskStorage) sceneWithoutProtection(ctx context.Context, meta core.VuidMeta) bool {
 	span := trace.SpanFromContextSafe(ctx)
-	if meta.Reason != bnapi.ReleaseForCompact {
+	if meta.Reason != clustermgr.ReleaseForCompact {
 		return false
 	}
-	span.Debugf("id:%s meta:%v without protection", meta.ChunkId, meta)
+	span.Debugf("id:%s meta:%v without protection", meta.ChunkID, meta)
 	return true
 }
 
@@ -955,23 +956,23 @@ func (ds *DiskStorage) cleanReleasedChunks() (err error) {
 	}
 
 	for _, ck := range chunks {
-		if ck.Status != bnapi.ChunkStatusRelease {
+		if ck.Status != clustermgr.ChunkStatusRelease {
 			continue
 		}
 
 		if !ds.sceneWithoutProtection(ctx, ck) && now-ck.Mtime < int64(time.Minute*protectionPeriod) {
-			span.Debugf("%s still in protection period", ck.ChunkId)
+			span.Debugf("%s still in protection period", ck.ChunkID)
 			continue
 		}
 
 		chunkid, err := ds.SuperBlock.ReadVuidBind(ctx, ck.Vuid)
-		if err == nil && chunkid == ck.ChunkId {
-			span.Warnf("can not happen. vuid:%d bind %s. skip", ck.Vuid, ck.ChunkId)
+		if err == nil && chunkid == ck.ChunkID {
+			span.Warnf("can not happen. vuid:%d bind %s. skip", ck.Vuid, ck.ChunkID)
 			continue
 		}
 
-		if err = ds.realCleanChunk(ctx, ck.ChunkId); err != nil {
-			span.Errorf("failed clean chunk:%s, err:%v", ck.ChunkId, err)
+		if err = ds.realCleanChunk(ctx, ck.ChunkID); err != nil {
+			span.Errorf("failed clean chunk:%s, err:%v", ck.ChunkID, err)
 			continue
 		}
 	}
@@ -979,7 +980,7 @@ func (ds *DiskStorage) cleanReleasedChunks() (err error) {
 	return
 }
 
-func (ds *DiskStorage) realCleanChunk(ctx context.Context, id bnapi.ChunkId) (err error) {
+func (ds *DiskStorage) realCleanChunk(ctx context.Context, id clustermgr.ChunkID) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Warnf("will clean chunk:(%s)", id)
 
@@ -1003,7 +1004,7 @@ func (ds *DiskStorage) realCleanChunk(ctx context.Context, id bnapi.ChunkId) (er
 
 // Clean up the space of a chunk, including metadata and data
 // NOTE: Maybe a long time
-func (ds *DiskStorage) cleanChunk(ctx context.Context, id bnapi.ChunkId, toTrash bool) (err error) {
+func (ds *DiskStorage) cleanChunk(ctx context.Context, id clustermgr.ChunkID, toTrash bool) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// clean meta
@@ -1123,7 +1124,7 @@ func (ds *DiskStorage) IsWritable() bool {
 	return ds.Status() == proto.DiskStatusNormal
 }
 
-func isValidStateTransition(src, dest bnapi.ChunkStatus) bool {
+func isValidStateTransition(src, dest clustermgr.ChunkStatus) bool {
 	validStates, exist := StateTransitionRules[src]
 	if !exist {
 		return false

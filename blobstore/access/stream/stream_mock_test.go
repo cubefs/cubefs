@@ -15,7 +15,7 @@
 package stream
 
 // github.com/cubefs/cubefs/blobstore/access/... module access interfaces
-//go:generate mockgen -destination=./controller_mock_test.go -package=stream -mock_names ClusterController=MockClusterController,ServiceController=MockServiceController,VolumeGetter=MockVolumeGetter github.com/cubefs/cubefs/blobstore/access/controller ClusterController,ServiceController,VolumeGetter
+//go:generate mockgen -destination=./controller_mock_test.go -package=stream -mock_names ClusterController=MockClusterController,ServiceController=MockServiceController,VolumeGetter=MockVolumeGetter,IShardController=MockShardController,Shard=MockShard github.com/cubefs/cubefs/blobstore/access/controller ClusterController,ServiceController,VolumeGetter,IShardController,Shard
 
 import (
 	"bytes"
@@ -83,7 +83,7 @@ var (
 	dataVolume  *proxy.VersionVolume
 	dataAllocs  []proxy.AllocRet
 	dataNodes   map[string]clustermgr.ServiceInfo
-	dataDisks   map[proto.DiskID]blobnode.DiskInfo
+	dataDisks   map[proto.DiskID]clustermgr.BlobNodeDiskInfo
 	dataShards  *shardsData
 
 	vuidController *vuidControl
@@ -359,17 +359,17 @@ func initMockData() {
 		Nodes: proxyNodes,
 	}
 
-	dataDisks = make(map[proto.DiskID]blobnode.DiskInfo)
+	dataDisks = make(map[proto.DiskID]clustermgr.BlobNodeDiskInfo)
 	for _, id := range idcID {
-		dataDisks[proto.DiskID(id)] = blobnode.DiskInfo{
-			ClusterID: clusterID, Idc: idc, Host: strconv.Itoa(id),
-			DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{DiskID: proto.DiskID(id)},
+		dataDisks[proto.DiskID(id)] = clustermgr.BlobNodeDiskInfo{
+			DiskInfo:          clustermgr.DiskInfo{ClusterID: clusterID, Idc: idc, Host: strconv.Itoa(id)},
+			DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: proto.DiskID(id)},
 		}
 	}
 	for _, id := range idcOtherID {
-		dataDisks[proto.DiskID(id)] = blobnode.DiskInfo{
-			ClusterID: clusterID, Idc: idcOther, Host: strconv.Itoa(id),
-			DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{DiskID: proto.DiskID(id)},
+		dataDisks[proto.DiskID(id)] = clustermgr.BlobNodeDiskInfo{
+			DiskInfo:          clustermgr.DiskInfo{ClusterID: clusterID, Idc: idcOther, Host: strconv.Itoa(id)},
+			DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: proto.DiskID(id)},
 		}
 	}
 
@@ -400,7 +400,7 @@ func initMockData() {
 	proxycli.EXPECT().GetCacheVolume(gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().Return(dataVolume, nil)
 	proxycli.EXPECT().GetCacheDisk(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*clustermgr.BlobNodeDiskInfo, error) {
 			if val, ok := dataDisks[args.DiskID]; ok {
 				return &val, nil
 			}
@@ -409,11 +409,14 @@ func initMockData() {
 
 	serviceController, _ = controller.NewServiceController(
 		controller.ServiceConfig{
-			ClusterID: clusterID,
-			IDC:       idc,
-			ReloadSec: 1000,
+			ClusterID:         clusterID,
+			IDC:               idc,
+			ServiceReloadSecs: 1000,
 		}, cmcli, proxycli, nil)
-	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxycli, 0)
+	volumeGetter, _ = controller.NewVolumeGetter(controller.VolumeConfig{
+		ClusterID:                  clusterID,
+		VolumeMemcacheExpirationMs: -1,
+	}, serviceController, proxycli, nil)
 
 	ctr = gomock.NewController(&testing.T{})
 	c := NewMockClusterController(ctr)

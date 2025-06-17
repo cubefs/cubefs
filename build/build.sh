@@ -14,6 +14,7 @@ if [ "${use_clang}" != "" ]; then
     cgo_ldflags="-L${BuildDependsLibPath} -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lc++"
 fi
 cgo_cflags="-I${BuildDependsIncludePath}"
+cgo_cxxflags="-I${BuildDependsIncludePath}"
 MODFLAGS=""
 gomod=${2:-"on"}
 
@@ -185,6 +186,27 @@ build_snappy() {
     popd
 }
 
+build_tcmalloc() {
+    TCMALLOC_VER=2.9.1
+    if [ -f "${BuildDependsLibPath}/libtcmalloc.a" ]; then
+        return 0
+    fi
+
+    if [ ! -d ${BuildOutPath}/gperftools-gperftools-${TCMALLOC_VER} ]; then
+        tar -zxf ${DependsPath}/gperftools-gperftools-${TCMALLOC_VER}.tar.gz -C ${BuildOutPath}
+    fi
+
+    echo "build tcmalloc..."
+    # mkdir ${BuildOutPath}/gperftools-gperftools-${TCMALLOC_VER}
+    pushd ${BuildOutPath}/gperftools-gperftools-${TCMALLOC_VER}
+    ./autogen.sh
+    CFLAGS='-fPIC' ./configure --enable-frame-pointers
+    make -j ${PROCESSOR_NUMS}
+    cp -f .libs/libtcmalloc.a ${BuildDependsLibPath}
+    cp -rf src/gperftools ${BuildDependsIncludePath}
+    popd
+}
+
 build_rocksdb() {
     ROCKSDB_VER=6.3.6
     if [ -f "${BuildDependsLibPath}/librocksdb.a" ]; then
@@ -227,6 +249,7 @@ init_gopath() {
 
     mkdir -p $GOPATH/src/github.com/cubefs
     SrcPath=$GOPATH/src/github.com/cubefs/cubefs
+    BlobPath=${SrcPath}/blobstore
     if [ -L "$SrcPath" ]; then
         $RM -f $SrcPath
     fi
@@ -241,12 +264,22 @@ pre_build() {
     build_lz4 $1
     build_zstd $1
     build_snappy $1
+    build_tcmalloc $1
     build_rocksdb $1
 
     export CGO_CFLAGS=${cgo_cflags}
     export CGO_LDFLAGS="${cgo_ldflags}"
+    export CGO_CXXFLAGS=${cgo_cxxflags}
 
     init_gopath
+}
+
+build_with_tcmalloc() {
+    cgo_ldflags_tcmalloc="-L${BuildDependsLibPath} -ldl -ltcmalloc -lm -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lstdc++"
+    if [ "${use_clang}" != "" ]; then
+        cgo_ldflags_tcmalloc="-L${BuildDependsLibPath} -ldl -ltcmalloc -lm -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lc++"
+    fi
+    export CGO_LDFLAGS="${cgo_ldflags_tcmalloc}"
 }
 
 run_test() {
@@ -265,10 +298,31 @@ run_test_cover() {
     export JENKINS_TEST=1
     ulimit -n 65536
     echo -n "${TPATH}"
-    go test -trimpath -covermode=count --coverprofile coverage.txt $(go list ./... | grep -v depends)
-    ret=$?
+
+    go test -trimpath -covermode=count --coverprofile coverage.txt \
+        $(go list ./... | grep -v depends | grep -v /blobstore/shardnode | grep -v /blobstore/cmd | grep -v /blobstore/common/tcmalloc)
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+
+    go test -trimpath -covermode=count --coverprofile cover.txt \
+        $(go list ./... | grep /blobstore/shardnode/catalog/allocator)
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    sed '1d' cover.txt >> coverage.txt && rm -f cover.txt
+
+    build_with_tcmalloc
+    go test -trimpath -covermode=count --coverprofile cover.txt \
+        $(go list ./... | grep /blobstore/shardnode | grep -v /catalog/allocator)
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    sed '1d' cover.txt >> coverage.txt && rm -f cover.txt
+    export CGO_LDFLAGS="${cgo_ldflags}"
+
     popd >/dev/null
-    exit $ret
+    exit 0
 }
 
 build_server() {
@@ -280,48 +334,56 @@ build_server() {
 
 build_clustermgr() {
     pushd $SrcPath/blobstore/cmd/clustermgr >/dev/null
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
 build_blobnode() {
     pushd $SrcPath/blobstore/cmd/blobnode >/dev/null
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
 build_access() {
     pushd $SrcPath/blobstore/cmd/access >/dev/null
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
 build_scheduler() {
     pushd $SrcPath/blobstore/cmd/scheduler >/dev/null
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
 build_proxy() {
     pushd $SrcPath/blobstore/cmd/proxy >/dev/null
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
 build_blobstore_cli() {
     pushd $SrcPath/blobstore/cli/cli >/dev/null
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-cli .
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-cli .
+    popd >/dev/null
+}
+
+build_shardnode() {
+    pushd $SrcPath/blobstore/cmd/shardnode >/dev/null
+    build_with_tcmalloc
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
+    export CGO_LDFLAGS="${cgo_ldflags}"
     popd >/dev/null
 }
 
 build_blobstore_dialtest_bin() {
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-dialtest ${SrcPath}/blobstore/testing/dial/main
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-dialtest ${SrcPath}/blobstore/testing/dial/main
 }
 
 build_blobstore() {
     pushd $SrcPath >/dev/null
     echo -n "build blobstore    "
-    build_clustermgr && build_blobnode && build_access && build_scheduler && build_proxy && build_blobstore_cli && echo "success" || echo "failed"
+    build_clustermgr && build_blobnode && build_access && build_scheduler && build_proxy && build_blobstore_cli && build_shardnode && echo "success" || echo "failed"
     popd >/dev/null
 }
 

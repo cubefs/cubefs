@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -38,11 +37,12 @@ type ClusterInfo struct {
 }
 
 type StatInfo struct {
-	LeaderHost string         `json:"leader_host"`
-	ReadOnly   bool           `json:"read_only"`
-	RaftStatus interface{}    `json:"raft_status"`
-	SpaceStat  SpaceStatInfo  `json:"space_stat"`
-	VolumeStat VolumeStatInfo `json:"volume_stat"`
+	LeaderHost         string         `json:"leader_host"`
+	ReadOnly           bool           `json:"read_only"`
+	RaftStatus         interface{}    `json:"raft_status"`
+	BlobNodeSpaceStat  SpaceStatInfo  `json:"space_stat"`
+	ShardNodeSpaceStat SpaceStatInfo  `json:"shard_node_space_stat"`
+	VolumeStat         VolumeStatInfo `json:"volume_stat"`
 }
 
 func GetConsulClusterPath(region string) string {
@@ -60,13 +60,18 @@ type APIAccess interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetService(ctx context.Context, args GetServiceArgs) (ServiceInfo, error)
 	ListDisk(ctx context.Context, options *ListOptionArgs) (ListDiskRet, error)
+	AuthSpace(ctx context.Context, args *AuthSpaceArgs) (err error)
+	GetSpaceByName(ctx context.Context, args *GetSpaceByNameArgs) (ret *Space, err error)
+	GetCatalogChanges(ctx context.Context, args *GetCatalogChangesArgs) (ret *GetCatalogChangesRet, err error)
+	ShardNodeDiskInfo(ctx context.Context, id proto.DiskID) (ret *ShardNodeDiskInfo, err error)
+	ListShardNodeDisk(ctx context.Context, options *ListOptionArgs) (ret ListShardNodeDiskRet, err error)
 }
 
 // APIProxy sub of cluster manager api for allocator
 type APIProxy interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetVolumeInfo(ctx context.Context, args *GetVolumeArgs) (*VolumeInfo, error)
-	DiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error)
+	DiskInfo(ctx context.Context, id proto.DiskID) (*BlobNodeDiskInfo, error)
 	AllocVolume(ctx context.Context, args *AllocVolumeArgs) (AllocatedVolumeInfos, error)
 	AllocBid(ctx context.Context, args *BidScopeArgs) (*BidScopeRet, error)
 	RetainVolume(ctx context.Context, args *RetainVolumeArgs) (RetainVolumes, error)

@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"encoding/json"
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -43,12 +44,18 @@ const (
 	TaskTypeVolumeInspect TaskType = "volume_inspect"
 	TaskTypeShardRepair   TaskType = "shard_repair"
 	TaskTypeBlobDelete    TaskType = "blob_delete"
+
+	TaskTypeShardInspect    TaskType = "shard_inspect"
+	TaskTypeShardDiskRepair TaskType = "shard_disk_repair"
+	TaskTypeShardMigrate    TaskType = "shard_migrate"
+	TaskTypeShardDiskDrop   TaskType = "shard_disk_drop"
 )
 
 func (t TaskType) Valid() bool {
 	switch t {
 	case TaskTypeDiskRepair, TaskTypeBalance, TaskTypeDiskDrop, TaskTypeManualMigrate,
-		TaskTypeVolumeInspect, TaskTypeShardRepair, TaskTypeBlobDelete:
+		TaskTypeVolumeInspect, TaskTypeShardRepair, TaskTypeBlobDelete,
+		TaskTypeShardInspect, TaskTypeShardDiskRepair, TaskTypeShardMigrate, TaskTypeShardDiskDrop:
 		return true
 	default:
 		return false
@@ -59,13 +66,14 @@ func (t TaskType) String() string {
 	return string(t)
 }
 
+// VunitLocation volume or shard location
 type VunitLocation struct {
 	Vuid   Vuid   `json:"vuid" bson:"vuid"`
 	Host   string `json:"host" bson:"host"`
 	DiskID DiskID `json:"disk_id" bson:"disk_id"`
 }
 
-// for task check
+// CheckVunitLocations for task check
 func CheckVunitLocations(locations []VunitLocation) bool {
 	if len(locations) == 0 {
 		return false
@@ -79,6 +87,26 @@ func CheckVunitLocations(locations []VunitLocation) bool {
 	return true
 }
 
+// ShardUnitInfoSimple shard location
+type ShardUnitInfoSimple struct {
+	Suid    Suid   `json:"suid"`
+	Host    string `json:"host"`
+	DiskID  DiskID `json:"disk_id"`
+	Learner bool   `json:"learner"`
+}
+
+// IsValid for shard task check
+func (s *ShardUnitInfoSimple) IsValid() bool {
+	if s.Suid == InvalidSuid || s.Host == "" || s.DiskID == InvalidDiskID {
+		return false
+	}
+	return true
+}
+
+func (s *ShardUnitInfoSimple) Equal(target *ShardUnitInfoSimple) bool {
+	return s.Learner == target.Learner && s.Suid == target.Suid && s.DiskID == target.DiskID
+}
+
 type MigrateState uint8
 
 const (
@@ -89,6 +117,7 @@ const (
 	MigrateStateFinishedInAdvance
 )
 
+// MigrateTask for blobnode task
 type MigrateTask struct {
 	TaskID   string       `json:"task_id"`   // task id
 	TaskType TaskType     `json:"task_type"` // task type
@@ -111,6 +140,27 @@ type MigrateTask struct {
 	ForbiddenDirectDownload bool `json:"forbidden_direct_download"`
 
 	WorkerRedoCnt uint8 `json:"worker_redo_cnt"` // worker redo task count
+}
+
+func (t *MigrateTask) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *MigrateTask) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
+}
+
+func (t *MigrateTask) ToTask() (*Task, error) {
+	ret := new(Task)
+	ret.ModuleType = TypeBlobNode
+	ret.TaskType = t.TaskType
+	ret.TaskID = t.TaskID
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
 }
 
 func (t *MigrateTask) Vid() Vid {
@@ -154,6 +204,87 @@ func (t *MigrateTask) IsValid() bool {
 	return t.TaskType.Valid() && t.CodeMode.IsValid() &&
 		CheckVunitLocations(t.Sources) &&
 		CheckVunitLocations([]VunitLocation{t.Destination})
+}
+
+type ShardTaskState uint8
+
+const (
+	ShardTaskStateInited ShardTaskState = iota + 1
+	ShardTaskStatePrepared
+	ShardTaskStateWorkCompleted
+	ShardTaskStateFinished
+	ShardTaskStateFinishedInAdvance
+)
+
+// ShardMigrateTask for shard node task
+type ShardMigrateTask struct {
+	TaskID   string         `json:"task_id"`   // task id
+	TaskType TaskType       `json:"task_type"` // task type
+	State    ShardTaskState `json:"state"`     // task state
+
+	SourceIDC string `json:"source_idc"` // source idc
+	Threshold uint64 `json:"threshold"`
+
+	Ctime string `json:"ctime"` // create time
+	MTime string `json:"mtime"` // modify time
+
+	Source         ShardUnitInfoSimple `json:"source"`          // old shard location
+	Leader         ShardUnitInfoSimple `json:"leader"`          // shard leader location
+	Destination    ShardUnitInfoSimple `json:"destination"`     // new shard location
+	BadDestination ShardUnitInfoSimple `json:"bad_destination"` // bad shard location
+}
+
+func (s *ShardMigrateTask) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, s)
+}
+
+func (s *ShardMigrateTask) Marshal() (data []byte, err error) {
+	return json.Marshal(s)
+}
+
+func (s *ShardMigrateTask) ToTask() (*Task, error) {
+	ret := new(Task)
+	ret.TaskID = s.TaskID
+	ret.ModuleType = TypeShardNode
+	ret.TaskType = s.TaskType
+	data, err := s.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, err
+}
+
+func (s *ShardMigrateTask) GetSource() ShardUnitInfoSimple {
+	return s.Source
+}
+
+func (s *ShardMigrateTask) GetLeader() ShardUnitInfoSimple {
+	return s.Leader
+}
+
+func (s *ShardMigrateTask) GetDestination() ShardUnitInfoSimple {
+	return s.Destination
+}
+
+func (s *ShardMigrateTask) SetDestination(dest ShardUnitInfoSimple) {
+	s.Destination = dest
+}
+
+func (s *ShardMigrateTask) GetBadDestination() ShardUnitInfoSimple {
+	return s.BadDestination
+}
+
+func (s *ShardMigrateTask) SetLeader(leader ShardUnitInfoSimple) {
+	s.Leader = leader
+}
+
+func (s *ShardMigrateTask) Running() bool {
+	return s.State == ShardTaskStatePrepared || s.State == ShardTaskStateWorkCompleted
+}
+
+func (s *ShardMigrateTask) IsValid() bool {
+	return s.Source.IsValid() && s.Destination.IsValid()
 }
 
 type VolumeInspectCheckPoint struct {
@@ -258,4 +389,32 @@ func (p *taskProgress) Done() TaskStatistics {
 	st := p.st
 	p.mu.Unlock()
 	return st
+}
+
+type ModuleType uint8
+
+const (
+	TypeMin ModuleType = iota
+	TypeBlobNode
+	TypeShardNode
+	TypeMax
+)
+
+type Task struct {
+	ModuleType ModuleType `json:"module_type"`
+	TaskType   TaskType   `json:"task_type"`
+	TaskID     string     `json:"task_id"`
+	Data       []byte     `json:"data"`
+}
+
+func (mt ModuleType) IsValid() bool {
+	return mt > TypeMin && mt < TypeMax
+}
+
+func (t *Task) Marshal() ([]byte, error) {
+	return json.Marshal(t)
+}
+
+func (t *Task) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
 }

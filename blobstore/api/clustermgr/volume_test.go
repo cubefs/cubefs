@@ -20,7 +20,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -28,9 +27,9 @@ func TestChunkReportArgs(t *testing.T) {
 	vuid1, _ := proto.NewVuid(1, 0, 1)
 	vuid2, _ := proto.NewVuid(1, 1, 1)
 	args := ReportChunkArgs{
-		ChunkInfos: []blobnode.ChunkInfo{
+		ChunkInfos: []ChunkInfo{
 			{
-				Id:     blobnode.NewChunkId(vuid1),
+				Id:     NewChunkID(vuid1),
 				Vuid:   vuid1,
 				DiskID: 1,
 				Free:   1,
@@ -38,7 +37,7 @@ func TestChunkReportArgs(t *testing.T) {
 				Size:   1,
 			},
 			{
-				Id:     blobnode.NewChunkId(vuid2),
+				Id:     NewChunkID(vuid2),
 				Vuid:   vuid2,
 				DiskID: 2,
 				Free:   2,

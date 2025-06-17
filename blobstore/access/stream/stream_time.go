@@ -38,6 +38,16 @@ func (t *timeReadWrite) IncW(dur time.Duration) {
 	atomic.AddInt64(&t.w, int64(dur))
 }
 
+func (t *timeReadWrite) Report(cid, idc string, upload bool) {
+	if upload {
+		reportReadwrite(cid, idc, "upload_read", atomic.LoadInt64(&t.r)/1e6)
+		reportReadwrite(cid, idc, "upload_write", atomic.LoadInt64(&t.w)/1e6)
+	} else {
+		reportReadwrite(cid, idc, "download_read", atomic.LoadInt64(&t.r)/1e6)
+		reportReadwrite(cid, idc, "download_write", atomic.LoadInt64(&t.w)/1e6)
+	}
+}
+
 // String within milliseconds
 func (t *timeReadWrite) String() string {
 	a := atomic.LoadInt64(&t.a) / 1e6

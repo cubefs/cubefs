@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -48,9 +49,9 @@ func (c *client) Close(ctx context.Context, host string) (err error) {
 	return nil
 }
 
-func (c *client) Stat(ctx context.Context, host string) (dis []*DiskInfo, err error) {
+func (c *client) Stat(ctx context.Context, host string) (dis []*clustermgr.BlobNodeDiskInfo, err error) {
 	urlStr := fmt.Sprintf("%v/stat", host)
-	dis = make([]*DiskInfo, 0)
+	dis = make([]*clustermgr.BlobNodeDiskInfo, 0)
 	err = c.GetWith(ctx, urlStr, &dis)
 	return
 }
@@ -68,13 +69,13 @@ type DiskStatArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 }
 
-func (c *client) DiskInfo(ctx context.Context, host string, args *DiskStatArgs) (di *DiskInfo, err error) {
+func (c *client) DiskInfo(ctx context.Context, host string, args *DiskStatArgs) (di *clustermgr.BlobNodeDiskInfo, err error) {
 	if !IsValidDiskID(args.DiskID) {
 		return nil, errors.ErrInvalidDiskId
 	}
 
 	urlStr := fmt.Sprintf("%v/disk/stat/diskid/%v", host, args.DiskID)
-	di = new(DiskInfo)
+	di = new(clustermgr.BlobNodeDiskInfo)
 	err = c.GetWith(ctx, urlStr, di)
 	return
 }
@@ -83,16 +84,16 @@ type StorageAPI interface {
 	String(ctx context.Context, host string) string
 	IsOnline(ctx context.Context, host string) bool
 	Close(ctx context.Context, host string) error
-	Stat(ctx context.Context, host string) (infos []*DiskInfo, err error)
-	DiskInfo(ctx context.Context, host string, args *DiskStatArgs) (di *DiskInfo, err error)
+	Stat(ctx context.Context, host string) (infos []*clustermgr.BlobNodeDiskInfo, err error)
+	DiskInfo(ctx context.Context, host string, args *DiskStatArgs) (di *clustermgr.BlobNodeDiskInfo, err error)
 
 	// chunks
 	CreateChunk(ctx context.Context, host string, args *CreateChunkArgs) (err error)
-	StatChunk(ctx context.Context, host string, args *StatChunkArgs) (ci *ChunkInfo, err error)
+	StatChunk(ctx context.Context, host string, args *StatChunkArgs) (ci *clustermgr.ChunkInfo, err error)
 	ReleaseChunk(ctx context.Context, host string, args *ChangeChunkStatusArgs) (err error)
 	SetChunkReadonly(ctx context.Context, host string, args *ChangeChunkStatusArgs) (err error)
 	SetChunkReadwrite(ctx context.Context, host string, args *ChangeChunkStatusArgs) (err error)
-	ListChunks(ctx context.Context, host string, args *ListChunkArgs) (cis []*ChunkInfo, err error)
+	ListChunks(ctx context.Context, host string, args *ListChunkArgs) (cis []*clustermgr.ChunkInfo, err error)
 
 	// shard
 	GetShard(ctx context.Context, host string, args *GetShardArgs) (body io.ReadCloser, shardCrc uint32, err error)

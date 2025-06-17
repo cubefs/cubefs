@@ -30,6 +30,9 @@ type (
 	NodeID    uint32
 	NodeSetID uint32
 	DiskSetID uint32
+	SpaceID   uint64
+
+	RouteVersion uint64
 )
 
 func (id DiskID) Encode() []byte {
@@ -92,5 +95,13 @@ func (id *NodeID) Decode(b []byte) NodeID {
 }
 
 func (id NodeID) ToString() string {
+	return strconv.FormatUint(uint64(id), 10)
+}
+
+func (id ShardID) ToString() string {
+	return strconv.FormatUint(uint64(id), 10)
+}
+
+func (id SpaceID) ToString() string {
 	return strconv.FormatUint(uint64(id), 10)
 }
