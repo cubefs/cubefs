@@ -221,7 +221,9 @@ func (m *metadataManager) checkForbidWriteOpOfProtoVer0(pktProtoVersion uint32, 
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
-	if log.EnableInfo() {
+	if p.AdminOp() {
+		log.LogWarnf("HandleMetadataOperation input info op (%s), data %s, remote %s", p.String(), string(p.Data), remoteAddr)
+	} else if log.EnableInfo() {
 		log.LogInfof("HandleMetadataOperation input info op (%s), data %s, remote %s", p.String(), string(p.Data), remoteAddr)
 	}
 
@@ -234,7 +236,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 			return
 		}
 
-		if log.EnableInfo() {
+		if p.AdminOp() {
+			log.LogInfof("HandleMetadataOperation out (%s), result (%s), remote %s, cost %s", p.String(),
+				p.GetResultMsg(), remoteAddr, time.Since(start).String())
+		} else if log.EnableInfo() {
 			log.LogInfof("HandleMetadataOperation out (%s), result (%s), remote %s, cost %s", p.String(),
 				p.GetResultMsg(), remoteAddr, time.Since(start).String())
 		}
@@ -756,7 +761,7 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 
 func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
-	log.LogInfof("start create meta Partition, partition %s", partitionId)
+	log.LogWarnf("start create meta Partition, partition %s", partitionId)
 
 	mpc := &MetaPartitionConfig{
 		PartitionId: request.PartitionID,
@@ -794,6 +799,8 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		return
 	}
 
+	log.LogWarnf("meta partition start %v success", request.PartitionID)
+
 	func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
@@ -807,7 +814,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		m.partitions[request.PartitionID] = partition
 	}()
 
-	log.LogInfof("load meta partition %v success", request.PartitionID)
+	log.LogWarnf("load meta partition %v success", request.PartitionID)
 
 	return
 }

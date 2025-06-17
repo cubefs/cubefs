@@ -818,6 +818,9 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 
+	log.LogWarnf("[onStart] vol(%v) mpId(%d) retryCnt(%v), GetVolumeSimpleInfo succ",
+		mp.config.VolName, mp.config.PartitionId, retryCnt)
+
 	volInfo := mp.vol.GetVolView()
 	mp.vol.volDeleteLockTime = volInfo.DeleteLockTime
 	if mp.manager.metaNode.clusterEnableSnapshot {
@@ -852,7 +855,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 				mp.config.PartitionId, gClusterInfo.EbsAddr, err)
 			// not return err here, blobstore client may be created latter
 		} else {
-			log.LogInfof("action[onStart] mp(%v) blobStoreAddr(%v), create blobstore client success",
+			log.LogWarnf("action[onStart] mp(%v) blobStoreAddr(%v), create blobstore client success",
 				mp.config.PartitionId, gClusterInfo.EbsAddr)
 		}
 	}
@@ -865,14 +868,14 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	go mp.startCheckerEvict()
 
-	log.LogDebugf("[before raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
+	log.LogWarnf("[before raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
 	if err = mp.startRaft(); err != nil {
 		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	log.LogDebugf("[after raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
+	log.LogWarnf("[after raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
 	mp.updateSize()
 
@@ -1252,6 +1255,10 @@ func (mp *metaPartition) doFileStats() {
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
+	defer func() {
+		log.LogWarnf("metaPartition %d store apply %v finish", mp.config.PartitionId, sm.applyIndex)
+	}()
+
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
