@@ -15,10 +15,14 @@
 package crc32block
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"hash/crc32"
 	"io"
 	"sync"
+
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 const (
@@ -115,6 +119,7 @@ func readFullOrToEnd(r io.Reader, buffer []byte) (n int, err error) {
 var (
 	_k16        = 16 << 10
 	_buffer16k  = make([]byte, _k16)
+	_bufferZero = make([]byte, _k16)
 	_mapZeroCrc = sync.Map{}
 )
 
@@ -140,4 +145,21 @@ func ConstZeroCrc(size int) uint32 {
 
 	_mapZeroCrc.Store(size, crc)
 	return crc
+}
+
+func IsZeroBuffer(buffer []byte) bool {
+	const width = 8
+	if len(buffer) > width {
+		if binary.BigEndian.Uint64(buffer[:width]) != 0 {
+			return false
+		}
+	}
+	for len(buffer) > 0 {
+		minl := util.Min(len(buffer), _k16)
+		if !bytes.Equal(buffer[:minl], _bufferZero[:minl]) {
+			return false
+		}
+		buffer = buffer[minl:]
+	}
+	return true
 }
