@@ -607,6 +607,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
 	handleTimeout string, readDataNodeTimeout string, rackAware string,
 	distributionOptimizationConDpCnt, distributionOptimizationThreshold string,
+	remoteCacheTTL string, remoteCacheReadTimeout string,
+	remoteCacheMultiRead string, flashNodeTimeoutCount string,
+	remoteCacheSameZoneTimeout string, remoteCacheSameRegionTimeout string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -680,7 +683,25 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	if distributionOptimizationThreshold != "" {
 		request.addParam("distributionOptimizationThreshold", distributionOptimizationThreshold)
 	}
-
+	// remoteCache config
+	if remoteCacheTTL != "" {
+		request.addParamAny("remoteCacheTTL", remoteCacheTTL)
+	}
+	if remoteCacheReadTimeout != "" {
+		request.addParamAny("remoteCacheReadTimeout", remoteCacheReadTimeout)
+	}
+	if remoteCacheMultiRead != "" {
+		request.addParamAny("remoteCacheMultiRead", remoteCacheMultiRead)
+	}
+	if flashNodeTimeoutCount != "" {
+		request.addParamAny("flashNodeTimeoutCount", flashNodeTimeoutCount)
+	}
+	if remoteCacheSameZoneTimeout != "" {
+		request.addParamAny("remoteCacheSameZoneTimeout", remoteCacheSameZoneTimeout)
+	}
+	if remoteCacheSameRegionTimeout != "" {
+		request.addParamAny("remoteCacheSameRegionTimeout", remoteCacheSameRegionTimeout)
+	}
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -1078,5 +1099,11 @@ func (api *AdminAPI) CancelDpDistributionOptimization() (err error) {
 func (api *AdminAPI) QueryDistributionOptimizationStatus() (status *proto.DistributionOptimizationStatus, err error) {
 	status = &proto.DistributionOptimizationStatus{}
 	err = api.mc.requestWith(&status, newRequest(get, proto.AdminQueryDistributionOptimizationStatus).Header(api.h))
+	return
+}
+
+func (api *AdminAPI) GetRemoteCacheConfig() (config *proto.RemoteCacheConfig, err error) {
+	config = &proto.RemoteCacheConfig{}
+	err = api.mc.requestWith(config, newRequest(get, proto.AdminGetRemoteCacheConfig).Header(api.h))
 	return
 }

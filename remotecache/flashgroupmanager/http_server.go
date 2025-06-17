@@ -70,6 +70,9 @@ func (m *FlashGroupManager) registerAPIRoutes(router *mux.Router) {
 		Path(proto.RaftStatus).
 		HandlerFunc(m.getRaftStatus)
 
+	// remoteCache config
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminGetRemoteCacheConfig).HandlerFunc(m.getRemoteCacheConfig)
+
 	// APIs for FlashGroup
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupTurn).HandlerFunc(m.turnFlashGroup)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupCreate).HandlerFunc(m.createFlashGroup)
@@ -100,15 +103,15 @@ func (m *FlashGroupManager) registerAPIMiddleware(route *mux.Router) {
 			func(w http.ResponseWriter, r *http.Request) {
 				log.LogDebugf("action[interceptor] request, method[%v] path[%v] query[%v]", r.Method, r.URL.Path, r.URL.Query())
 
-				//TODO
-				//if m.partition.IsRaftLeader() {
+				// TODO
+				// if m.partition.IsRaftLeader() {
 				//	if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
 				//		log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
 				//		errMsg := fmt.Sprintf("too many requests for api: %s", html.EscapeString(r.URL.Path))
 				//		http.Error(w, errMsg, http.StatusTooManyRequests)
 				//		return
 				//	}
-				//} else {
+				// } else {
 				//	if m.cluster.apiLimiter.IsFollowerLimiter(r.URL.Path) {
 				//		if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
 				//			log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
@@ -117,7 +120,7 @@ func (m *FlashGroupManager) registerAPIMiddleware(route *mux.Router) {
 				//			return
 				//		}
 				//	}
-				//}
+				// }
 
 				log.LogInfof("action[interceptor] request, remote[%v] method[%v] path[%v] query[%v]",
 					r.RemoteAddr, r.Method, r.URL.Path, r.URL.Query())

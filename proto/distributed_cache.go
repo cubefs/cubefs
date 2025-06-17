@@ -374,6 +374,17 @@ type FlashNodeSlotStat struct {
 	SlotStat []*SlotStat
 }
 
+type RemoteCacheConfig struct {
+	FlashNodeHandleReadTimeout   int
+	FlashNodeReadDataNodeTimeout int
+	RemoteCacheTTL               int64
+	RemoteCacheReadTimeout       int64
+	RemoteCacheMultiRead         bool
+	FlashNodeTimeoutCount        int64
+	RemoteCacheSameZoneTimeout   int64
+	RemoteCacheSameRegionTimeout int64
+}
+
 func ComputeSourcesVersion(sources []*DataSource, gen uint64) (version uint32) {
 	if len(sources) == 0 {
 		return 0

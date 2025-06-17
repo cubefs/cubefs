@@ -104,6 +104,10 @@ func NewRemoteCacheClient(masters []string, blockSize uint64, needInitLog bool, 
 		}
 	}
 
+	if proto.Buffers == nil {
+		proto.InitBufferPool(32768)
+	}
+
 	rc = new(RemoteCacheClient)
 	log.LogDebugf("NewRemoteCacheClient")
 	rc.stopC = make(chan struct{})
@@ -114,7 +118,7 @@ func NewRemoteCacheClient(masters []string, blockSize uint64, needInitLog bool, 
 	rc.mc = master.NewMasterClient(masters, false)
 	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, ConnIdelTimeout, 1)
 	rc.TTL = proto.DefaultRemoteCacheTTL
-	rc.RemoteCacheMultiRead = true
+	rc.RemoteCacheMultiRead = false
 	rc.FlashNodeTimeoutCount = proto.DefaultFlashNodeTimeoutCount
 	rc.SameZoneTimeout = proto.DefaultRemoteCacheSameZoneTimeout
 	rc.SameRegionTimeout = proto.DefaultRemoteCacheSameRegionTimeout
@@ -122,7 +126,13 @@ func NewRemoteCacheClient(masters []string, blockSize uint64, needInitLog bool, 
 
 	err = rc.UpdateFlashGroups()
 	if err != nil {
-		log.LogDebugf("NewRemoteCacheClient: updateFlashGroups err %v", err)
+		log.LogErrorf("NewRemoteCacheClient: updateFlashGroups err %v", err)
+		return
+	}
+
+	err = rc.updateRemoteCacheConfig()
+	if err != nil {
+		log.LogErrorf("NewRemoteCacheClient: updateRemoteCacheConfig err %v", err)
 		return
 	}
 
@@ -177,6 +187,9 @@ func (rc *RemoteCacheClient) refreshWithRecover() (panicErr error) {
 		case <-refreshView.C:
 			if err = rc.UpdateFlashGroups(); err != nil {
 				log.LogErrorf("updateFlashGroups err: %v", err)
+			}
+			if err = rc.updateRemoteCacheConfig(); err != nil {
+				log.LogErrorf("updateRemoteCacheConfig err: %v", err)
 			}
 		case <-refreshLatency.C:
 			rc.refreshHostLatency()
@@ -775,7 +788,11 @@ func (rc *RemoteCacheClient) getReadReply(conn *net.TCPConn, reqPacket *proto.Pa
 	return
 }
 
-func (rc *RemoteCacheClient) Get(ctx context.Context, key string, reqId string, from, to int64) (r io.ReadCloser, length int64, shouldCache bool, err error) {
+func (rc *RemoteCacheClient) Name() string {
+	return "remoteCache"
+}
+
+func (rc *RemoteCacheClient) Get(ctx context.Context, reqId, key string, from, to int64) (r io.ReadCloser, length int64, shouldCache bool, err error) {
 	log.LogDebugf("RemoteCacheClient Get: key(%v) reqId(%v) from(%v) to(%v)", key, reqId, from, to)
 	if from < 0 || to-from <= 0 {
 		return nil, 0, false, fmt.Errorf("invalid range: from(%v) to(%v)", from, to)
@@ -788,7 +805,43 @@ func (rc *RemoteCacheClient) Get(ctx context.Context, key string, reqId string, 
 	} else if strings.Contains(err.Error(), proto.ErrorNotExistShouldCache.Error()) {
 		shouldCache = true
 	}
+	return
+}
 
+func (rc *RemoteCacheClient) updateRemoteCacheConfig() (err error) {
+	var config *proto.RemoteCacheConfig
+	if config, err = rc.mc.AdminAPI().GetRemoteCacheConfig(); err != nil {
+		log.LogWarnf("updateRemoteCacheConfig: GetRemoteCacheConfig fail err(%v)", err)
+		return
+	}
+
+	log.LogInfof("updateRemoteCacheConfig: config(%v)", config)
+
+	if rc.TTL != config.RemoteCacheTTL {
+		log.LogInfof("updateRemoteCacheConfig RcTTL: %d -> %d", rc.TTL, config.RemoteCacheTTL)
+		rc.TTL = config.RemoteCacheTTL
+	}
+	if rc.ReadTimeout != config.RemoteCacheReadTimeout {
+		log.LogInfof("updateRemoteCacheConfig RcReadTimeoutSec: %d(ms) -> %d(ms)", rc.ReadTimeout, config.RemoteCacheReadTimeout)
+		rc.ReadTimeout = config.RemoteCacheReadTimeout
+	}
+	if rc.RemoteCacheMultiRead != config.RemoteCacheMultiRead {
+		log.LogInfof("updateRemoteCacheConfig RcMultiRead: %v -> %v", rc.RemoteCacheMultiRead, config.RemoteCacheMultiRead)
+		rc.RemoteCacheMultiRead = config.RemoteCacheMultiRead
+	}
+
+	if rc.FlashNodeTimeoutCount != int32(config.FlashNodeTimeoutCount) {
+		log.LogInfof("updateRemoteCacheConfig RcFlashNodeTimeoutCount: %d -> %d", rc.FlashNodeTimeoutCount, int32(config.FlashNodeTimeoutCount))
+		rc.FlashNodeTimeoutCount = int32(config.FlashNodeTimeoutCount)
+	}
+	if rc.SameZoneTimeout != config.RemoteCacheSameZoneTimeout {
+		log.LogInfof("updateRemoteCacheConfig RcSameZoneTimeout: %d -> %d", rc.SameZoneTimeout, config.RemoteCacheSameZoneTimeout)
+		rc.SameZoneTimeout = config.RemoteCacheSameZoneTimeout
+	}
+	if rc.SameRegionTimeout != config.RemoteCacheSameRegionTimeout {
+		log.LogInfof("updateRemoteCacheConfig RcSameRegionTimeout: %d -> %d", rc.SameRegionTimeout, config.RemoteCacheSameRegionTimeout)
+		rc.SameRegionTimeout = config.RemoteCacheSameRegionTimeout
+	}
 	return
 }
 

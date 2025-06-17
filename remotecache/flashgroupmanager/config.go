@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	cfsProto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 )
 
@@ -25,25 +26,36 @@ const (
 const (
 	cfgFlashNodeHandleReadTimeout   = "flashNodeHandleReadTimeout"
 	cfgFlashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
+	cfgRemoteCacheTTL               = "remoteCacheTTL"
+	cfgRemoteCacheReadTimeout       = "remoteCacheReadTimeout"
+	cfgRemoteCacheMultiRead         = "remoteCacheMultiRead"
+	cfgFlashNodeTimeoutCount        = "flashNodeTimeoutCount"
+	cfgRemoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
+	cfgRemoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
 )
 
 var AddrDatabase = make(map[uint64]string)
 
 type clusterConfig struct {
-	flashNodeHandleReadTimeout   int
-	flashNodeReadDataNodeTimeout int
-	httpProxyPoolSize            uint64
-	heartbeatPort                int64
-	replicaPort                  int64
-	peerAddrs                    []string
-	peers                        []raftstore.PeerAddress
+	cfsProto.RemoteCacheConfig
+	httpProxyPoolSize uint64
+	heartbeatPort     int64
+	replicaPort       int64
+	peerAddrs         []string
+	peers             []raftstore.PeerAddress
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
 	cfg = new(clusterConfig)
 
-	cfg.flashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
-	cfg.flashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
+	cfg.FlashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
+	cfg.FlashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
+	cfg.RemoteCacheTTL = cfsProto.DefaultRemoteCacheTTL
+	cfg.RemoteCacheReadTimeout = cfsProto.DefaultRemoteCacheClientReadTimeout
+	cfg.FlashNodeTimeoutCount = cfsProto.DefaultFlashNodeTimeoutCount
+	cfg.RemoteCacheSameZoneTimeout = cfsProto.DefaultRemoteCacheSameZoneTimeout
+	cfg.RemoteCacheSameRegionTimeout = cfsProto.DefaultRemoteCacheSameRegionTimeout
+
 	return
 }
 
