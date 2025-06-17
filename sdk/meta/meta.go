@@ -293,9 +293,9 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	return mw, nil
 }
 
-func (mw *MetaWrapper) enableTrash() {
+func (mw *MetaWrapper) enableTrash() error {
 	if mw.disableTrash {
-		return
+		return errors.NewErrorf("trash is disabled")
 	}
 	if mw.TrashInterval > 0 {
 		// default value for sdk
@@ -307,10 +307,12 @@ func (mw *MetaWrapper) enableTrash() {
 
 		if err != nil {
 			log.LogErrorf("action[initMetaWrapper] init trash failed, err %s", err.Error())
+			return err
 		} else {
 			mw.trashPolicy.StartScheduleTask()
 		}
 	}
+	return nil
 }
 
 func (mw *MetaWrapper) initMetaWrapper() (err error) {
