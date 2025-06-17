@@ -145,6 +145,72 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[cfgFlashNodeReadDataNodeTimeout] = val
 	}
 
+	if value = r.FormValue(cfgRemoteCacheTTL); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(cfgRemoteCacheTTL)
+			return
+		}
+		params[cfgRemoteCacheTTL] = val
+	}
+
+	if value = r.FormValue(cfgRemoteCacheReadTimeout); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(cfgRemoteCacheReadTimeout)
+			return
+		}
+		params[cfgRemoteCacheReadTimeout] = val
+	}
+
+	if value = r.FormValue(cfgRemoteCacheMultiRead); value != "" {
+		noParams = false
+		val := false
+		val, err = strconv.ParseBool(value)
+		if err != nil {
+			err = unmatchedKey(cfgRemoteCacheMultiRead)
+			return
+		}
+		params[cfgRemoteCacheMultiRead] = val
+	}
+
+	if value = r.FormValue(cfgFlashNodeTimeoutCount); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(cfgFlashNodeTimeoutCount)
+			return
+		}
+		params[cfgFlashNodeTimeoutCount] = val
+	}
+
+	if value = r.FormValue(cfgRemoteCacheSameZoneTimeout); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(cfgRemoteCacheSameZoneTimeout)
+			return
+		}
+		params[cfgRemoteCacheSameZoneTimeout] = val
+	}
+
+	if value = r.FormValue(cfgRemoteCacheSameRegionTimeout); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(cfgRemoteCacheSameRegionTimeout)
+			return
+		}
+		params[cfgRemoteCacheSameRegionTimeout] = val
+	}
+
 	if noParams {
 		err = fmt.Errorf("no key assigned")
 		return
