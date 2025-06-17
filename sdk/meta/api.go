@@ -709,7 +709,9 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
-			mw.enableTrash()
+			if err = mw.enableTrash(); err != nil {
+				goto deleteDirectly
+			}
 		}
 		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
@@ -727,7 +729,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		}
 
 	}
-
+deleteDirectly:
 	var tx *Transaction
 	defer func() {
 		if tx != nil {
@@ -866,7 +868,9 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
-			mw.enableTrash()
+			if err = mw.enableTrash(); err != nil {
+				goto deleteDirectly
+			}
 		}
 		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
@@ -885,7 +889,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		}
 
 	}
-
+deleteDirectly:
 	if isDir {
 		status, inode, mode, err = mw.lookup(parentMP, parentID, name, verSeq)
 		if err != nil || status != statusOK {
