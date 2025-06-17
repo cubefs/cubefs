@@ -65,7 +65,7 @@ func (m *mBlobNodeCli) GetShard(ctx context.Context, location proto.VunitLocatio
 	return nil, 0, nil
 }
 
-func (m *mBlobNodeCli) PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType bnapi.IOType) (err error) {
+func (m *mBlobNodeCli) PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, _ []byte, ioType bnapi.IOType) (err error) {
 	return
 }
 

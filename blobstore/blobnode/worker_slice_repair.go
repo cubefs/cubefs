@@ -15,7 +15,6 @@
 package blobnode
 
 import (
-	"bytes"
 	"context"
 	"sync"
 
@@ -135,7 +134,7 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.Shar
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			err = repairer.cli.PutShard(ctx, dstLocation, task.Bid, shardSize, bytes.NewReader(data), api.BackgroundIO)
+			err = repairer.cli.PutShard(ctx, dstLocation, task.Bid, shardSize, data, api.BackgroundIO)
 			retErrs[i] = err
 		}(badi)
 	}

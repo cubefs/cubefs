@@ -15,7 +15,6 @@
 package blobnode
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -331,7 +330,7 @@ func MigrateBids(ctx context.Context, shardRecover *ShardRecover, badIdx uint8, 
 			return OtherError(err)
 		}
 		err = retry.Timed(3, 1000).On(func() error {
-			return blobnodeCli.PutShard(ctx, destLocation, bid.Bid, bid.Size, bytes.NewReader(data), shardRecover.ioType)
+			return blobnodeCli.PutShard(ctx, destLocation, bid.Bid, bid.Size, data, shardRecover.ioType)
 		})
 		if err != nil {
 			return DstError(err)

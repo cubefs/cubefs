@@ -24,9 +24,11 @@ import (
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
+	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
 	myos "github.com/cubefs/cubefs/blobstore/blobnode/sys"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/config"
 	"github.com/cubefs/cubefs/blobstore/common/diskutil"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -312,6 +314,11 @@ func NewService(conf Config) (svr *Service, err error) {
 	}
 	if err = cmapi.LoadExtendCodemode(ctx, clusterMgrCli); err != nil {
 		span.Fatalf("load extend codemode from clusterMgr error:%+v", err)
+	}
+	for _, ecmode := range codemode.GetECCodeModes() {
+		if alignedSize := ecmode.Tactic().MinShardSize; alignedSize > 0 {
+			client.NopdataSize(alignedSize)
+		}
 	}
 
 	err = clusterMgrCli.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
