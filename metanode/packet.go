@@ -120,3 +120,10 @@ func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *
 
 	return p
 }
+
+func (p *Packet) AdminOp() bool {
+	return p.Opcode == proto.OpAddMetaPartitionRaftMember ||
+		p.Opcode == proto.OpRemoveMetaPartitionRaftMember ||
+		p.Opcode == proto.OpCreateMetaPartition ||
+		p.Opcode == proto.OpDeleteMetaPartition
+}

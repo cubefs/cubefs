@@ -268,15 +268,15 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 			" struct: %s", err.Error())
 		return
 	}
-	log.LogInfof("[%s] [remoteAddr=%s]accept a from"+
-		" master message: %v", p.String(), remoteAddr, adminTask)
+	log.LogWarnf("[%s] [remoteAddr=%s]accept a from"+
+		" master message: %v, reqId %v", p.String(), remoteAddr, adminTask, p.ReqID)
 	// create a new meta partition.
 	if err = m.createPartition(req); err != nil {
 		err = errors.NewErrorf("[opCreateMetaPartition]->%s; request message: %v",
 			err.Error(), adminTask.Request)
 		return
 	}
-	log.LogInfof("%s [%s] create success req:%v; resp: %v", remoteAddr, p.String(),
+	log.LogWarnf("%s [%s] create success req:%v; resp: %v", remoteAddr, p.String(),
 		req, adminTask)
 	return
 }
