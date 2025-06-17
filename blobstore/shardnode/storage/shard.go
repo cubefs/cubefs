@@ -562,6 +562,9 @@ func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node 
 			Context: raw,
 		})
 	case proto.ShardUpdateTypeRemoveMember:
+		if !s.isShardUnitExist(node.GetSuid()) {
+			return nil
+		}
 		s.shardInfoMu.RLock()
 		units := s.shardInfoMu.Units
 		if len(units) < 3 {
@@ -641,6 +644,10 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string, clearData bool
 
 	units := make([]clustermgr.ShardUnit, 0)
 	for _, u := range s.shardInfoMu.Units {
+		if s.disk.isWritable() {
+			units = append(units, u)
+			continue
+		}
 		if u.Suid.Index() != s.suid.Index() {
 			units = append(units, u)
 		}
@@ -654,6 +661,14 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string, clearData bool
 	if err != nil {
 		return err
 	}
+	// wait current shard apply member change done
+	for {
+		if !s.isShardUnitExist(s.suid) {
+			time.Sleep(1 * time.Second)
+			break
+		}
+	}
+
 	span.Warnf("disk[%d] shard[%d] suid[%d] remove from members done", s.diskID, s.suid.ShardID(), s.suid)
 
 	// 2. stop all writing in this shard
@@ -677,7 +692,11 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string, clearData bool
 	if err = kvStore.Write(ctx, batch); err != nil {
 		return errors.Info(err, "kvstore write batch failed")
 	}
-	span.Warnf("disk[%d] shard[%d] suid[%d] kv data cleared", s.diskID, s.suid.ShardID(), s.suid)
+	if err = s.raftGroup.Clear(); err != nil {
+		return errors.Info(err, "clear raft data failed")
+	}
+
+	span.Warnf("disk[%d] shard[%d] suid[%d] all data cleared", s.diskID, s.suid.ShardID(), s.suid)
 	return kvStore.FlushCF(ctx, dataCF)
 }
 

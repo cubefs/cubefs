@@ -415,11 +415,6 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.R
 	d.shardsMu.Lock()
 	defer d.shardsMu.Unlock()
 
-	// remove raft group
-	if err := d.raftManager.RemoveRaftGroup(ctx, uint64(suid.ShardID()), clearData); err != nil {
-		return errors.Info(err, "remove raft group failed")
-	}
-
 	delete(d.shardsMu.shards, suid)
 	delete(d.shardsMu.shardCheck, suid.ShardID())
 	span.Warnf("disk[%d] shard[%d], suid[%d] delete success", d.DiskID(), suid.ShardID(), suid)

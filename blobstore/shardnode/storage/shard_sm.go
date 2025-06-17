@@ -158,6 +158,9 @@ func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
 				break
 			}
 		}
+		if proto.DiskID(cc.NodeID) == s.diskID {
+			s.disk.raftManager.RemoveRaftGroup(ctx, uint64(s.suid.ShardID()), false)
+		}
 	default:
 
 	}

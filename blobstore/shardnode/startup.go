@@ -75,6 +75,10 @@ func (s *service) initDisks(ctx context.Context) error {
 		})
 		// open disk failed, check disk status,
 		if err != nil {
+			if !store.IsEIO(err) {
+				span.Fatalf("open disk[%s] failed: %s", diskPath, err)
+			}
+
 			_, ok := repairedDiskMap[diskPath]
 			if ok {
 				span.Errorf("repaired disk[%s] open failed: %s", diskPath, err)
@@ -96,20 +100,18 @@ func (s *service) initDisks(ctx context.Context) error {
 			// handleEIO when disk path status is normal and err is EIO
 			if store.IsEIO(err) {
 				span.Errorf("open status normal disk[%s] failed: %s, diskinfo: %+v", diskPath, err, registeredDisk)
-				if _err := s.transport.SetDiskBroken(ctx, registeredDisk.DiskID); _err != nil {
-					span.Fatalf("set Disk[%d] broken to cm failed: %s", registeredDisk.DiskID, _err.Error())
-				}
+				s.transport.SetDiskBroken(ctx, registeredDisk.DiskID)
 				continue
 			}
 			// other situation, do fatal log
 			span.Fatalf("open disk[%s] failed: %s", diskPath, err)
 		}
-
 		disks = append(disks, disk)
 	}
 	// compare local disk and remote disk info, alloc new disk id and register new disk
 	// when local disk is not register and local disk is not saved
 	newDisks := make([]*storage.Disk, 0)
+	normalDisks := make([]*storage.Disk, 0)
 	for _, disk := range disks {
 		// unregister disk and the old path disk device has been repaired, then add new disk
 		if !disk.IsRegistered() {
@@ -117,13 +119,32 @@ func (s *service) initDisks(ctx context.Context) error {
 				return errors.Newf("disk device has been replaced but old disk device[%+v] is not repaired", unrepairedDisk)
 			}
 			newDisks = append(newDisks, disk)
+			normalDisks = append(normalDisks, disk)
 			continue
 		}
 		// alloc disk id already but didn't register yet, then add new disk
-		if _, ok := registeredDisksMap[disk.DiskID()]; !ok {
+		_, ok := registeredDisksMap[disk.DiskID()]
+		if !ok {
 			newDisks = append(newDisks, disk)
+			normalDisks = append(normalDisks, disk)
 			continue
 		}
+
+		path := disk.GetDiskInfo().Path
+		registeredInfo, ok := registerDiskPathsMap[path]
+		if !ok {
+			span.Warnf("skip disk repaired but open success, diskinfo: %+v", disk)
+			continue
+		}
+		if !isDiskInfoMatch(registeredInfo, disk.GetDiskInfo()) {
+			return errors.Newf("disk info miss match, registered: %+v, loaded: %+v", disk, registeredInfo)
+		}
+		if registeredInfo.Status != proto.DiskStatusNormal {
+			span.Warnf("disk[%d] status is not normal, diskinfo: %+v", disk.DiskID(), registeredInfo)
+			disk.Close()
+			continue
+		}
+		normalDisks = append(normalDisks, disk)
 	}
 
 	// register disk
@@ -150,9 +171,9 @@ func (s *service) initDisks(ctx context.Context) error {
 
 	// load disk concurrently
 	wg := sync.WaitGroup{}
-	wg.Add(len(disks))
-	for i := range disks {
-		disk := disks[i]
+	wg.Add(len(normalDisks))
+	for i := range normalDisks {
+		disk := normalDisks[i]
 		go func() {
 			defer wg.Done()
 			if err := disk.Load(ctx); err != nil {
@@ -166,7 +187,7 @@ func (s *service) initDisks(ctx context.Context) error {
 	}
 	wg.Wait()
 
-	for _, disk := range disks {
+	for _, disk := range normalDisks {
 		s.addDisk(disk)
 	}
 	return nil
@@ -373,4 +394,13 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.WaitRepairCloseDiskIntervalS, int64(30))
 	defaulter.LessOrEqual(&cfg.WaitReOpenDiskIntervalS, int64(30))
 	defaulter.LessOrEqual(&cfg.ShardCheckAndClearIntervalH, int64(24))
+}
+
+func isDiskInfoMatch(a, b clustermgr.ShardNodeDiskInfo) bool {
+	if a.DiskID != b.DiskID || a.Path != b.Path ||
+		a.NodeID != b.NodeID || a.DiskSetID != b.DiskSetID ||
+		a.ClusterID != b.ClusterID || a.Idc != b.Idc || a.Rack != b.Rack {
+		return false
+	}
+	return true
 }

@@ -19,8 +19,10 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -29,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -86,12 +89,20 @@ func newBaseTp(t *testing.T) *base.MockTransport {
 	tp.EXPECT().GetAllSpaces(A).Return([]cmapi.Space{
 		testSpace,
 	}, nil).AnyTimes()
+	tp.EXPECT().RegisterDisk(A, A).Return(nil).AnyTimes()
+	tp.EXPECT().NodeID().Return(proto.NodeID(1)).AnyTimes()
 	return tp
 }
 
 func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) {
 	s := &service{}
 	s.transport = cfg.tp
+
+	s.cfg.StoreConfig.KVOption.CreateIfMissing = true
+	s.cfg.StoreConfig.RaftOption.CreateIfMissing = true
+	s.cfg.StoreConfig.KVOption.ColumnFamily = append(s.cfg.StoreConfig.KVOption.ColumnFamily, "data")
+	s.cfg.StoreConfig.RaftOption.ColumnFamily = append(s.cfg.StoreConfig.RaftOption.ColumnFamily, "raft-wal")
+	s.cfg.RaftConfig.Transport = &raft.Transport{}
 
 	sg := mock.NewMockShardGetter(C(t))
 	sg.EXPECT().GetShard(A, A).DoAndReturn(
@@ -499,7 +510,64 @@ func TestRpcService_Tcmalloc(t *testing.T) {
 	require.True(t, len(ret.Stats) > 0)
 }
 
-func TestRpcService_InitDisks(t *testing.T) {
+func TestRpcService_InitDisks_OpenFailedEIO(t *testing.T) {
+	path1 := "/tmp/test_init_path1"
+	path2 := "/tmp/test_init_path2"
+	path3 := "/tmp/test_init_path3"
+	path4 := "/tmp/test_init_path4"
+
+	// open eio, report
+	diskID1 := proto.DiskID(1)
+	diskInfo1 := cmapi.ShardNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path1,
+			Status: proto.DiskStatusNormal,
+		},
+		ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{DiskID: diskID1},
+	}
+
+	// open eio, status repairing, skip
+	diskID2 := proto.DiskID(2)
+	disk2 := &storage.Disk{}
+	diskInfo2 := cmapi.ShardNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path2,
+			Status: proto.DiskStatusRepairing,
+		},
+		ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{DiskID: diskID2},
+	}
+	disk2.SetDiskInfo(diskInfo2)
+
+	// open eio, status repaired, skip
+	diskID3 := proto.DiskID(3)
+	diskInfo3 := cmapi.ShardNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path3,
+			Status: proto.DiskStatusRepaired,
+		},
+		ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{DiskID: diskID3},
+	}
+
+	// open success, status repairing, skip
+	diskID4 := proto.DiskID(4)
+	diskInfo4 := cmapi.ShardNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path4,
+			Status: proto.DiskStatusRepairing,
+		},
+		ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{DiskID: diskID4},
+	}
+	disk4 := &storage.Disk{}
+	disk4.SetDiskInfo(diskInfo4)
+
+	patches := gomonkey.ApplyFunc(storage.OpenDisk, func(ctx context.Context, cfg storage.DiskConfig) (*storage.Disk, error) {
+		if cfg.DiskPath != path4 {
+			return nil, syscall.EIO
+		}
+		return disk4, nil
+	})
+	defer patches.Reset()
+
 	tp := newBaseTp(t)
 	s, clear, err := newMockService(t, mockServiceCfg{
 		tp: tp,
@@ -507,25 +575,12 @@ func TestRpcService_InitDisks(t *testing.T) {
 	require.Nil(t, err)
 	defer clear()
 
-	// empty path, not register
-	path1 := "/tmp/test_init_path1"
-	// repairing, path cleared
-	path2 := "/tmp/test_init_path2"
-	// repaired but not clear
-	path3 := "/tmp/test_init_path3"
-	// repairing, open failed
-	path4 := "/tmp/test_init_path4"
-
 	s.cfg.DisksConfig.Disks = []string{
 		path1,
 		path2,
 		path3,
 		path4,
 	}
-	s.cfg.StoreConfig.KVOption.CreateIfMissing = true
-	s.cfg.StoreConfig.RaftOption.CreateIfMissing = true
-	s.cfg.StoreConfig.KVOption.ColumnFamily = append(s.cfg.StoreConfig.KVOption.ColumnFamily, "data")
-	s.cfg.StoreConfig.RaftOption.ColumnFamily = append(s.cfg.StoreConfig.RaftOption.ColumnFamily, "raft-wal")
 
 	defer func() {
 		for _, path := range s.cfg.DisksConfig.Disks {
@@ -533,39 +588,182 @@ func TestRpcService_InitDisks(t *testing.T) {
 		}
 	}()
 
-	for _, path := range s.cfg.DisksConfig.Disks[2:] {
-		path = path + "/sys"
-		err := os.MkdirAll(path, 0o755)
-		require.Nil(t, err)
+	tp.EXPECT().ListDisks(A).Return([]cmapi.ShardNodeDiskInfo{
+		diskInfo1,
+		diskInfo2,
+		diskInfo3,
+		diskInfo4,
+	}, nil)
+	tp.EXPECT().SetDiskBroken(A, A).Return(nil)
+	err = s.initDisks(ctx)
+	require.Nil(t, err)
+	require.Equal(t, 0, len(s.disks))
+}
 
-		filePath := path + "/Disk.meta"
-		file, err := os.Create(filePath)
-		require.Nil(t, err)
-		file.Close()
+func TestRpcService_InitDisks_OpenDiskNormal(t *testing.T) {
+	tp := newBaseTp(t)
+	tp.EXPECT().AllocDiskID(A).Return(genDiskID(), nil)
+	s, clear, err := newMockService(t, mockServiceCfg{
+		tp: tp,
+	})
+	require.Nil(t, err)
+	defer clear()
+
+	path1 := "/tmp/test_init_path1"
+	s.cfg.DisksConfig.Disks = []string{
+		path1,
 	}
 
+	defer func() {
+		for _, path := range s.cfg.DisksConfig.Disks {
+			os.RemoveAll(path)
+		}
+	}()
+
+	tp.EXPECT().ListDisks(A).Return([]cmapi.ShardNodeDiskInfo{}, nil)
+	err = s.initDisks(ctx)
+	require.Nil(t, err)
+	require.Equal(t, 1, len(s.disks))
+}
+
+func TestRpcService_InitDisks_ClearNotRepairedDisk(t *testing.T) {
+	tp := newBaseTp(t)
+	s, clear, err := newMockService(t, mockServiceCfg{
+		tp: tp,
+	})
+	require.Nil(t, err)
+	defer clear()
+
+	path := "/tmp/test_init_path1"
+	diskInfo := cmapi.ShardNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path,
+			Status: proto.DiskStatusRepairing,
+		},
+		ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{DiskID: proto.DiskID(1)},
+	}
+	disk := &storage.Disk{}
+	disk.SetDiskInfo(diskInfo)
+
+	patches := gomonkey.ApplyFunc(storage.OpenDisk, func(ctx context.Context, cfg storage.DiskConfig) (*storage.Disk, error) {
+		_disk := &storage.Disk{}
+		_disk.SetDiskInfo(cmapi.ShardNodeDiskInfo{
+			DiskInfo: cmapi.DiskInfo{
+				Path: path,
+			},
+		})
+		return _disk, nil
+	})
+	defer patches.Reset()
+
+	s.cfg.DisksConfig.Disks = []string{
+		path,
+	}
+
+	defer func() {
+		for _, path := range s.cfg.DisksConfig.Disks {
+			os.RemoveAll(path)
+		}
+	}()
+
 	tp.EXPECT().ListDisks(A).Return([]cmapi.ShardNodeDiskInfo{
-		{
-			DiskInfo: cmapi.DiskInfo{
-				Path:   path2,
-				Status: proto.DiskStatusRepairing,
-			},
-		},
-		{
-			DiskInfo: cmapi.DiskInfo{
-				Path:   path3,
-				Status: proto.DiskStatusRepairing,
-			},
-		},
-		{
-			DiskInfo: cmapi.DiskInfo{
-				Path:   path4,
-				Status: proto.DiskStatusRepairing,
-			},
-		},
+		diskInfo,
 	}, nil)
-	tp.EXPECT().NodeID().Return(proto.NodeID(1)).Times(4)
+
 	err = s.initDisks(ctx)
 	require.NotNil(t, err)
 	require.True(t, strings.Contains(err.Error(), "disk device has been replaced"))
+}
+
+func TestRpcService_InitDisks_InfoMissMatch(t *testing.T) {
+	tp := newBaseTp(t)
+	s, clear, err := newMockService(t, mockServiceCfg{
+		tp: tp,
+	})
+	require.Nil(t, err)
+	defer clear()
+
+	path := "/tmp/test_init_path1"
+	diskInfo1 := cmapi.ShardNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path + "x",
+			Status: proto.DiskStatusRepairing,
+		},
+		ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{DiskID: proto.DiskID(1)},
+	}
+	diskInfo2 := cmapi.ShardNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path,
+			Status: proto.DiskStatusRepairing,
+		},
+		ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{DiskID: proto.DiskID(2)},
+	}
+
+	patches := gomonkey.ApplyFunc(storage.OpenDisk, func(ctx context.Context, cfg storage.DiskConfig) (*storage.Disk, error) {
+		_disk := &storage.Disk{}
+		_disk.SetDiskInfo(cmapi.ShardNodeDiskInfo{
+			DiskInfo: cmapi.DiskInfo{
+				Path: path,
+			},
+			ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{DiskID: proto.DiskID(1)},
+		})
+		return _disk, nil
+	})
+	defer patches.Reset()
+
+	s.cfg.DisksConfig.Disks = []string{
+		path,
+	}
+
+	defer func() {
+		for _, path := range s.cfg.DisksConfig.Disks {
+			os.RemoveAll(path)
+		}
+	}()
+
+	tp.EXPECT().ListDisks(A).Return([]cmapi.ShardNodeDiskInfo{
+		diskInfo1,
+		diskInfo2,
+	}, nil)
+
+	err = s.initDisks(ctx)
+	require.NotNil(t, err)
+	require.True(t, strings.Contains(err.Error(), "disk info miss match"))
+}
+
+func TestRpcService_InitDisks_DiskIDAllocatedNotRegister(t *testing.T) {
+	tp := newBaseTp(t)
+	s, clear, err := newMockService(t, mockServiceCfg{
+		tp: tp,
+	})
+	tp.EXPECT().AllocDiskID(A).Return(proto.DiskID(99), nil)
+	require.Nil(t, err)
+	defer clear()
+
+	path := "/tmp/test_init_path6"
+	s.cfg.DisksConfig.Disks = []string{
+		path,
+	}
+	s.cfg.RaftConfig.Transport = &raft.Transport{}
+
+	defer func() {
+		for _, path := range s.cfg.DisksConfig.Disks {
+			os.RemoveAll(path)
+		}
+	}()
+
+	tp.EXPECT().ListDisks(A).Return([]cmapi.ShardNodeDiskInfo{}, nil)
+	err = s.initDisks(ctx)
+	require.Nil(t, err)
+	require.Equal(t, 1, len(s.disks))
+
+	for i := range s.disks {
+		s.disks[i].Close()
+	}
+	s.disks = make(map[proto.DiskID]*storage.Disk)
+
+	tp.EXPECT().ListDisks(A).Return([]cmapi.ShardNodeDiskInfo{}, nil)
+	err = s.initDisks(ctx)
+	require.Nil(t, err)
+	require.Equal(t, 1, len(s.disks))
 }
