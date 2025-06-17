@@ -315,47 +315,6 @@ func cfs_get_xattr(id C.int64_t, path *C.char, key *C.char) *C.char {
 	return C.CString(string(value))
 }
 
-//export cfs_get_accessFiles
-func cfs_get_accessFiles(id C.int64_t, path *C.char, depth C.int, goroutine_num C.int, accessFileInfo []C.struct_cfs_access_file_info, count C.int) (n C.int) {
-	dstPath := C.GoString(path)
-	maxDepth := int32(depth)
-	goroutineNum := int32(goroutine_num)
-	log.LogInfof("cfs_get_accessFiles path(%v) depth(%v)", dstPath, depth)
-
-	c, exist := getClient(int64(id))
-	if !exist {
-		log.LogErrorf("cfs_get_accessFiles path(%v) failed, client not exist", dstPath)
-		return -1
-	}
-
-	inodeInfo, err := c.lookupPath(c.absPath(dstPath))
-	if err != nil {
-		log.LogErrorf("cfs_get_accessFiles path(%v) failed, not found path", dstPath)
-		return -1
-	}
-
-	ino := inodeInfo.Inode
-	infos, err := c.mw.GetAccessFileInfoSummary(dstPath, ino, maxDepth, goroutineNum)
-
-	n = 0
-	for i, info := range infos {
-		if i >= int(count) {
-			log.LogInfof("cfs_get_accessFiles too many infos, len(%v) count(%v)", len(infos), int(count))
-			break
-		}
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].dir[0]), C.CBytes([]byte(info.Dir)), C.size_t(len(info.Dir)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCountSsd[0]), C.CBytes([]byte(info.AccessFileCountSsd)), C.size_t(len(info.AccessFileCountSsd)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSizeSsd[0]), C.CBytes([]byte(info.AccessFileSizeSsd)), C.size_t(len(info.AccessFileSizeSsd)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCountHdd[0]), C.CBytes([]byte(info.AccessFileCountHdd)), C.size_t(len(info.AccessFileCountHdd)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSizeHdd[0]), C.CBytes([]byte(info.AccessFileSizeHdd)), C.size_t(len(info.AccessFileSizeHdd)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCountBlobStore[0]), C.CBytes([]byte(info.AccessFileCountBlobStore)), C.size_t(len(info.AccessFileCountBlobStore)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSizeBlobStore[0]), C.CBytes([]byte(info.AccessFileSizeBlobStore)), C.size_t(len(info.AccessFileSizeBlobStore)))
-		n++
-	}
-
-	return n
-}
-
 //export cfs_list_vols
 func cfs_list_vols(id C.int64_t, volsInfo []C.struct_cfs_vol_info, count C.int) (n C.int) {
 	c, exist := getClient(int64(id))
