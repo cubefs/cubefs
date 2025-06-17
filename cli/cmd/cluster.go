@@ -50,6 +50,7 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterQueryDataNodeOpCmd(client),
 		newClusterQueryDpOpCmd(client),
 		newClusterQueryDiskOpCmd(client),
+		newClusterChangeMasterLeaderCmd(client),
 	)
 	return clusterCmd
 }
@@ -675,3 +676,20 @@ func newClusterQueryDiskOpCmd(client *master.MasterClient) *cobra.Command {
 //	}
 //	return cmd
 // }
+
+func newClusterChangeMasterLeaderCmd(client *master.MasterClient) *cobra.Command {
+	var leaderAddr string
+	cmd := &cobra.Command{
+		Use:   CliOpToLeader,
+		Short: "Change master leader",
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := client.AdminAPI().ChangeMasterLeader(leaderAddr); err != nil {
+				errout(err)
+				return
+			}
+			stdout("Change master leader successfully, but need to check\n")
+		},
+	}
+	cmd.Flags().StringVar(&leaderAddr, CliFlagAddress, "", "The address of the new master leader")
+	return cmd
+}

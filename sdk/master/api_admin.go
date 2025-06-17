@@ -913,3 +913,9 @@ func (api *AdminAPI) GetUpgradeCompatibleSettings() (upgradeCompatibleSettings *
 	err = api.mc.requestWith(upgradeCompatibleSettings, newRequest(get, proto.AdminGetUpgradeCompatibleSettings).Header(api.h))
 	return
 }
+
+func (api *AdminAPI) ChangeMasterLeader(leaderAddr string) (err error) {
+	req := newRequest(get, proto.AdminChangeMasterLeader).Header(api.h)
+	_, err = api.mc.requestOnce(req, leaderAddr)
+	return
+}
