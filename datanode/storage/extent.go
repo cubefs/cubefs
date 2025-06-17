@@ -856,9 +856,10 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		watermark = watermark + (util.PageSize - watermark%util.PageSize)
 	}
 	e.dataSize = watermark
-	log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
-		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
-
+	if log.EnableDebug() {
+		log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+			"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+	}
 	return
 }
 

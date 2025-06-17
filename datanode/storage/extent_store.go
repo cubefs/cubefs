@@ -1635,6 +1635,14 @@ func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, dat
 		return fmt.Errorf("extent %v not tinyExtent", extentID)
 	}
 
+	s.stopMutex.RLock()
+	defer s.stopMutex.RUnlock()
+	if s.IsClosed() {
+		err = ErrStoreAlreadyClosed
+		log.LogErrorf("[TinyExtentRecover] store(%v) failed to tiny recover, extId %d, off %d, size %d, empyt %v", s.dataPath, extentID, offset, size, isEmptyPacket)
+		return
+	}
+
 	var (
 		e  *Extent
 		ei *ExtentInfo
