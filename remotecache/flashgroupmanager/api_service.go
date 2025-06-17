@@ -55,12 +55,14 @@ func (m *FlashGroupManager) getCluster(w http.ResponseWriter, r *http.Request) {
 		Name:                         m.cluster.Name,
 		CreateTime:                   time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
 		LeaderAddr:                   m.leaderInfo.addr,
+		MasterNodes:                  make([]proto.NodeView, 0),
 		FlashNodes:                   make([]proto.NodeView, 0),
 		FlashNodeHandleReadTimeout:   m.cluster.cfg.flashNodeHandleReadTimeout,
 		FlashNodeReadDataNodeTimeout: m.cluster.cfg.flashNodeReadDataNodeTimeout,
 	}
 	cv.DataNodeStatInfo = new(proto.NodeStatInfo)
 	cv.MetaNodeStatInfo = new(proto.NodeStatInfo)
+	cv.MasterNodes = m.cluster.allMasterNodes()
 	cv.FlashNodes = m.cluster.allFlashNodes()
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
@@ -686,6 +688,7 @@ func (m *FlashGroupManager) setNodeInfoHandler(w http.ResponseWriter, r *http.Re
 			}
 		}
 	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 }
 
 func (m *FlashGroupManager) setConfig(key string, value string) (err error) {

@@ -635,6 +635,18 @@ func (c *Cluster) masterAddr() (addr string) {
 	return c.leaderInfo.addr
 }
 
+func (c *Cluster) allMasterNodes() (masterNodes []proto.NodeView) {
+	masterNodes = make([]proto.NodeView, 0)
+
+	for _, addr := range c.cfg.peerAddrs {
+		split := strings.Split(addr, colonSplit)
+		id, _ := strconv.ParseUint(split[0], 10, 64)
+		masterNode := proto.NodeView{ID: id, Addr: split[1] + ":" + split[2], Status: true}
+		masterNodes = append(masterNodes, masterNode)
+	}
+	return masterNodes
+}
+
 func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
 	flashNodes = make([]proto.NodeView, 0)
 	c.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
