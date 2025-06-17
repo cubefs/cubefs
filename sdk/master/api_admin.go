@@ -754,9 +754,9 @@ func (api *AdminAPI) DiskDetail(addr string, diskPath string) (disk *proto.DiskI
 	return
 }
 
-func (api *AdminAPI) DecommissionDisk(addr string, disk string, weight int) (err error) {
+func (api *AdminAPI) DecommissionDisk(addr string, disk string, weight int, raftForceDel bool) (err error) {
 	return api.mc.request(newRequest(post, proto.DecommissionDisk).Header(api.h).
-		addParam("addr", addr).addParam("disk", disk).addParam("decommissionType", "1").addParam("weight", strconv.Itoa(weight)))
+		addParam("addr", addr).addParam("disk", disk).addParam("decommissionType", "1").addParam("weight", strconv.Itoa(weight)).addParam("raftForceDel", strconv.FormatBool(raftForceDel)))
 }
 
 func (api *AdminAPI) RecommissionDisk(addr string, disk string, recommissionType string) (err error) {
