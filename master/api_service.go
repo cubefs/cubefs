@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -3519,6 +3520,9 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		offLineAddr string
 		err         error
 		node        *DataNode
+		zone        *Zone
+		ns          *nodeSet
+		wg          sync.WaitGroup
 	)
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.PauseDecommissionDataNode))
@@ -3536,6 +3540,22 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if zone, err = m.cluster.t.getZone(node.ZoneName); err != nil {
+		ret := fmt.Sprintf("action[cancelDecommissionDataNode] find datanode[%s] zone failed[%v]",
+			node.Addr, err.Error())
+		log.LogWarnf("%v", ret)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+
+	if ns, err = zone.getNodeSet(node.NodeSetID); err != nil {
+		ret := fmt.Sprintf("action[cancelDecommissionDataNode] find datanode[%s] nodeset[%v] failed[%v]",
+			node.Addr, node.NodeSetID, err.Error())
+		log.LogWarnf("%v", ret)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+
 	// can alloc dp
 	node.ToBeOffline = false
 	if err = m.cluster.syncUpdateDataNode(node); err != nil {
@@ -3546,14 +3566,19 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		key := fmt.Sprintf("%s_%s", node.Addr, disk)
 		if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
 			dd := value.(*DecommissionDisk)
-			dd.cancelDecommission(m.cluster)
-			// remove from decommissioned disk, do not remove bad disk until it is recovered
-			// dp may allocated on bad disk otherwise
-			if !node.isBadDisk(dd.DiskPath) {
-				m.cluster.deleteAndSyncDecommissionedDisk(node, dd.DiskPath)
-			}
+			wg.Add(1)
+			go func() {
+				dd.cancelDecommission(m.cluster, ns)
+				// remove from decommissioned disk, do not remove bad disk until it is recovered
+				// dp may allocated on bad disk otherwise
+				if !node.isBadDisk(dd.DiskPath) {
+					m.cluster.deleteAndSyncDecommissionedDisk(node, dd.DiskPath)
+				}
+				wg.Done()
+			}()
 		}
 	}
+	wg.Wait()
 	rstMsg = fmt.Sprintf("cancel decommission data node [%v] success", offLineAddr)
 	AuditLog(r, "CancelDiskDecommission", rstMsg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
@@ -8297,6 +8322,8 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 		offLineAddr, diskPath string
 		err                   error
 		dataNode              *DataNode
+		zone                  *Zone
+		ns                    *nodeSet
 		key                   string
 	)
 
@@ -8325,6 +8352,21 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if zone, err = m.cluster.t.getZone(dataNode.ZoneName); err != nil {
+		ret := fmt.Sprintf("action[cancelDecommissionDisk] find datanode[%s] zone failed[%v]",
+			dataNode.Addr, err.Error())
+		log.LogWarnf("%v", ret)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+	if ns, err = zone.getNodeSet(dataNode.NodeSetID); err != nil {
+		ret := fmt.Sprintf("action[cancelDecommissionDisk] find datanode[%s] nodeset[%v] failed[%v]",
+			dataNode.Addr, dataNode.NodeSetID, err.Error())
+		log.LogWarnf("%v", ret)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+
 	disk := value.(*DecommissionDisk)
 	status := disk.GetDecommissionStatus()
 	if status == DecommissionSuccess || status == DecommissionFail {
@@ -8333,7 +8375,7 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
 	}
-	if err = disk.cancelDecommission(m.cluster); err != nil {
+	if err = disk.cancelDecommission(m.cluster, ns); err != nil {
 		ret := fmt.Sprintf("action[cancelDecommissionDisk] cancel disk %v decommission failed[%v]",
 			key, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
