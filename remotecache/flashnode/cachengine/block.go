@@ -183,7 +183,7 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 }
 
 // Read reads data from an extent.
-func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64, waitForBlock bool) (crc uint32, err error) {
+func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64, waitForBlock bool, readCrc bool) (crc uint32, err error) {
 	var file *os.File
 	if err = cb.ready(ctx, waitForBlock); err != nil {
 		return
@@ -206,6 +206,11 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64,
 	if realSize >= size {
 		realSize = size
 	}
+
+	if cb.sourceType == SourceTypeBlock {
+		realSize = util.PageSize
+	}
+
 	log.LogDebugf("action[Read] read cache block:%v, offset:%d, allocSize:%d, usedSize:%d", cb.blockKey, offset, cb.allocSize, cb.usedSize)
 
 	if file, err = cb.GetOrOpenFileHandler(); err != nil {
@@ -216,7 +221,19 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64,
 		log.LogErrorf("action[Read] read cacheBlock:%v failed, filename:%v realSize:%d", cb.blockKey, file.Name(), realSize)
 		return
 	}
-	crc = crc32.ChecksumIEEE(data)
+	if readCrc {
+		sliceIndex := offset / proto.PageSize
+		crcOffset := cb.allocSize + HeaderSize + sliceIndex*4
+		crcBuf := make([]byte, 4)
+		if _, err = file.ReadAt(crcBuf, crcOffset); err != nil {
+			log.LogErrorf("action[Read] read crc:%v failed, filename:%v realSize:%d", cb.blockKey, file.Name(), realSize)
+			return
+		}
+		crc = binary.BigEndian.Uint32(crcBuf)
+	} else {
+		crc = crc32.ChecksumIEEE(data)
+	}
+
 	return
 }
 
@@ -876,4 +893,19 @@ func CalcAllocSizeV2(reqLen int) int {
 		reqLen = (reqLen/proto.PageSize + 1) * proto.PageSize
 	}
 	return reqLen
+}
+
+func (cb *CacheBlock) VerifyObjectReq(offset, size uint64) error {
+	end := offset + size - 1
+	if offset/proto.CACHE_OBJECT_BLOCK_SIZE != end/proto.CACHE_OBJECT_BLOCK_SIZE {
+		log.LogErrorf("invalid range offset(%v) size(%v)", offset, size)
+		return fmt.Errorf("invalid range offset(%v) size(%v)", offset, size)
+	}
+
+	if uint64(cb.usedSize) <= end {
+		log.LogWarnf("block is not read, usedSize(%v) offset(%v) size(%v)", cb.usedSize, offset, size)
+		return fmt.Errorf("block is not ready")
+	}
+
+	return nil
 }

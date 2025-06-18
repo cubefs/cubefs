@@ -534,6 +534,10 @@ func (c *CacheEngine) DeleteCacheBlock(key string) {
 
 func (c *CacheEngine) GetCacheBlockForRead(volume string, inode, offset uint64, version uint32, size uint64) (block *CacheBlock, err error) {
 	key := GenCacheBlockKey(volume, inode, offset, version)
+	return c.GetCacheBlockForReadByKey(key)
+}
+
+func (c *CacheEngine) GetCacheBlockForReadByKey(key string) (block *CacheBlock, err error) {
 	v, ok := c.keyToDiskMap.Load(key)
 	if ok {
 		cacheItem := v.(*lruCacheItem)

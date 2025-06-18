@@ -1481,7 +1481,7 @@ var (
 		"STORAGE CLASS", "INODE COUNT", "USED SIZE", "QUOTA")
 	formatFlashNodeSimpleViewTableTitle = arow("Zone", "ID", "Address", "Active", "Enable", "FlashGroupID", "ReportTime")
 	formatFlashNodeViewTableTitle       = append(formatFlashNodeSimpleViewTableTitle[:], "DataPath", "HitRate", "Evicts", "Limit", "MaxAlloc", "HasAlloc", "Num", "Status")
-	formatFlashGroupViewTile            = arow("ID", "Weight", "Slots", "Status", "SlotStatus", "PendingSlots", "Step", "FlashNodeCount")
+	formatFlashGroupViewTile            = arow("ID", "Weight", "Slots", "ReservedSlots", "Status", "SlotStatus", "PendingSlots", "Step", "FlashNodeCount", "ReducingSlots")
 	QosHeader                           = fmt.Sprintf(qosPattern, "NAME", "TOTAL-MB", "USED-MB")
 )
 
@@ -1508,6 +1508,8 @@ func formatFlashGroupView(fg *proto.FlashGroupAdminView) string {
 		fmt.Sprintf("  ID:%v\n", fg.ID) +
 		fmt.Sprintf("  Weight:%v\n", fg.Weight) +
 		fmt.Sprintf("  Slots:%v\n", fg.Slots) +
+		fmt.Sprintf("  ReservedSlots:%v\n", fg.ReservedSlots) +
+		fmt.Sprintf("  IsReducingSlots:%v\n", fg.IsReducingSlots) +
 		fmt.Sprintf("  Status:%v\n", fg.Status) +
 		fmt.Sprintf("  SlotStatus:%v\n", fg.SlotStatus) +
 		fmt.Sprintf("  PedningSlots:%v\n", fg.PendingSlots) +
