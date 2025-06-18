@@ -851,8 +851,8 @@ func (cb *CacheBlock) WriteAtV2(writeParam *proto.FlashWriteParam) (err error) {
 	return
 }
 
-func (cb *CacheBlock) MaybeWriteCompleted() (err error) {
-	if cb.usedSize != cb.allocSize {
+func (cb *CacheBlock) MaybeWriteCompleted(reqLen int64) (err error) {
+	if cb.usedSize != reqLen {
 		return
 	}
 	var file *os.File
@@ -869,4 +869,11 @@ func (cb *CacheBlock) MaybeWriteCompleted() (err error) {
 	}
 	cb.notifyReady()
 	return nil
+}
+
+func CalcAllocSizeV2(reqLen int) int {
+	if reqLen%proto.PageSize != 0 {
+		reqLen = (reqLen/proto.PageSize + 1) * proto.PageSize
+	}
+	return reqLen
 }

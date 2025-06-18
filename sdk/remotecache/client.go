@@ -543,11 +543,11 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		}
 		if n > 0 {
 			conn.SetWriteDeadline(time.Now().Add(proto.WriteDeadlineTime * time.Second))
-			if _, err = conn.Write(buf[:n]); err != nil {
+			if _, err = conn.Write(buf[:proto.PageSize]); err != nil {
 				log.LogErrorf("wirte data to flashnode get err %v", err)
 				return err
 			}
-			binary.BigEndian.PutUint32(crcBuf, crc32.ChecksumIEEE(buf[:n]))
+			binary.BigEndian.PutUint32(crcBuf, crc32.ChecksumIEEE(buf[:proto.PageSize]))
 			if _, err = conn.Write(crcBuf[:4]); err != nil {
 				log.LogErrorf("wirte crc to flashnode get err %v", err)
 				return err
