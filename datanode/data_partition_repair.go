@@ -660,10 +660,12 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		} else {
 			opType = OpRead
 		}
-		dp.disk.diskLimit(opType, currReadSize, func() {
+		if rs := dp.disk.diskLimit(opType, currReadSize, func() {
 			crc, err = store.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), isRepairRead, p.GetOpcode() == proto.OpBackupRead)
 			reply.SetCRC(crc)
-		})
+		}); err == nil && rs != nil {
+			err = rs
+		}
 
 		if log.EnableDebug() {
 			log.LogDebugf("[NormalExtentRepairRead] reply %v crc %v err %v", reply.GetNoPrefixMsg(), crc, err)

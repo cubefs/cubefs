@@ -370,7 +370,7 @@ func (d *Disk) diskLimit(
 	ioType string,
 	operationSize uint32,
 	operationFunc func(),
-) {
+) (err error) {
 	flowType, iopsType, allocCheckFunc, limiter, allowHang := d.getLimitIoConfig(ioType)
 
 	if operationSize > 0 {
@@ -378,9 +378,10 @@ func (d *Disk) diskLimit(
 	}
 	allocCheckFunc(iopsType, 1)
 
-	limiter.Run(int(operationSize), allowHang, func() {
+	err = limiter.Run(int(operationSize), allowHang, func() {
 		operationFunc()
 	})
+	return err
 }
 
 func (d *Disk) tryDiskLimit(
