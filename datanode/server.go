@@ -145,6 +145,7 @@ const (
 	ConfigGcRecyclePercent = "gcRecyclePercent"
 
 	// disk status becomes unavailable if disk error partition count reaches this value
+	ConfigKeyDiskUnavailableErrorCount          = "diskUnavailableErrorCount"
 	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
 	ConfigKeyCacheCap                           = "cacheCap"
 	ConfigExtentCacheTtlByMin                   = "extentCacheTtlByMin"
@@ -234,6 +235,7 @@ type DataNode struct {
 	gcRecyclePercent float64
 	gcTimer          *util.RecycleTimer
 
+	diskUnavailableErrorCount          uint64 // disk status becomes unavailable when disk error count reaches this value
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 	started                            int32
 	dpBackupTimeout                    time.Duration
@@ -471,6 +473,15 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.gcRecyclePercent <= 0 || s.gcRecyclePercent > 1 {
 		s.gcRecyclePercent = defaultGcRecyclePercent
 	}
+
+	diskUnavailableErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailableErrorCount)
+	if diskUnavailableErrorCount <= 0 || diskUnavailableErrorCount > 100 {
+		diskUnavailableErrorCount = DefaultDiskUnavailableErrorCount
+		log.LogDebugf("action[parseConfig] ConfigKeyDiskUnavailableErrorCount(%v) out of range, set as default(%v)",
+			diskUnavailableErrorCount, DefaultDiskUnavailableErrorCount)
+	}
+	s.diskUnavailableErrorCount = uint64(diskUnavailableErrorCount)
+	log.LogDebugf("action[parseConfig] load diskUnavailableErrorCount(%v)", s.diskUnavailableErrorCount)
 
 	diskUnavailablePartitionErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailablePartitionErrorCount)
 	if diskUnavailablePartitionErrorCount <= 0 || diskUnavailablePartitionErrorCount > 100 {
