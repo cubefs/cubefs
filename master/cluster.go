@@ -3350,6 +3350,10 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 		}
 	}
 
+	if err = dp.isLastReplicas(addr); err != nil {
+		return err
+	}
+
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
 		return
