@@ -173,12 +173,36 @@ func (t *FlashNodeTopology) updateClientResponse() []byte {
 func (t *FlashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 	fgv = new(proto.FlashGroupView)
 	fgv.Enable = true
+	fgCount := 0
+	t.flashGroupMap.Range(func(_, _ interface{}) bool {
+		fgCount++
+		return true
+	})
+	disableFlashGroupNum := 0
+	maxDisableFlashGroupCount := fgCount * 2 / 3
+
 	t.flashGroupMap.Range(func(_, value interface{}) bool {
 		fg := value.(*FlashGroup)
 		if fg.GetStatus().IsActive() {
-			hosts := fg.getFlashNodeHostsEnabled()
+			hosts := fg.getFlashNodeHostsEnableAndActive()
 			if len(hosts) == 0 {
-				return true
+				atomic.StoreInt32(&fg.LostAllFlashNode, 1)
+				fg.ReduceSlot()
+			} else if len(fg.ReservedSlots) > 0 {
+				fg.Slots = append(fg.Slots, fg.ReservedSlots...)
+				fg.ReservedSlots = nil
+				atomic.StoreInt32(&fg.LostAllFlashNode, 0)
+				atomic.StoreInt32(&fg.SlotChanged, 1)
+			}
+
+			if len(fg.Slots) == 0 {
+				disableFlashGroupNum++
+				if disableFlashGroupNum >= maxDisableFlashGroupCount && len(fg.ReservedSlots) > 0 {
+					fg.Slots = append(fg.Slots, fg.ReservedSlots...)
+					atomic.StoreInt32(&fg.SlotChanged, 1)
+				} else {
+					return true
+				}
 			}
 			fgv.FlashGroups = append(fgv.FlashGroups, &proto.FlashGroupInfo{
 				ID:    fg.ID,

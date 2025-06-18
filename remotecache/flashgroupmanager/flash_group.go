@@ -1,7 +1,10 @@
 package flashgroupmanager
 
 import (
+	"math/rand"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -12,13 +15,17 @@ const (
 )
 
 type flashGroupValue struct {
-	ID           uint64
-	Slots        []uint32 // FlashGroup's position in hasher ring, set by cli. value is range of crc32.
-	SlotStatus   proto.SlotStatus
-	PendingSlots []uint32
-	Step         uint32
-	Weight       uint32
-	Status       proto.FlashGroupStatus
+	ID               uint64
+	Slots            []uint32 // FlashGroup's position in hasher ring, set by cli. value is range of crc32.
+	ReservedSlots    []uint32
+	SlotStatus       proto.SlotStatus
+	PendingSlots     []uint32
+	Step             uint32
+	Weight           uint32
+	Status           proto.FlashGroupStatus
+	LostAllFlashNode int32
+	ReducingSlots    int32
+	SlotChanged      int32
 }
 
 type FlashGroup struct {
@@ -30,13 +37,15 @@ type FlashGroup struct {
 func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
 	fg.lock.RLock()
 	view = proto.FlashGroupAdminView{
-		ID:           fg.ID,
-		Slots:        fg.Slots,
-		Weight:       fg.Weight,
-		Status:       fg.Status,
-		SlotStatus:   fg.SlotStatus,
-		PendingSlots: fg.PendingSlots,
-		Step:         fg.Step,
+		ID:              fg.ID,
+		Slots:           fg.Slots,
+		ReservedSlots:   fg.ReservedSlots,
+		IsReducingSlots: fg.ReducingSlots != 0,
+		Weight:          fg.Weight,
+		Status:          fg.Status,
+		SlotStatus:      fg.SlotStatus,
+		PendingSlots:    fg.PendingSlots,
+		Step:            fg.Step,
 	}
 	view.ZoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
 	view.FlashNodeCount = len(fg.flashNodes)
@@ -75,6 +84,49 @@ func argConvertFlashGroupStatus(active bool) proto.FlashGroupStatus {
 	return proto.FlashGroupStatus_Inactive
 }
 
+func (fg *FlashGroup) IsLostAllFlashNode() bool {
+	return atomic.LoadInt32(&fg.LostAllFlashNode) != 0
+}
+
+func (fg *FlashGroup) ReduceSlot() {
+	reducingSlots := atomic.LoadInt32(&fg.ReducingSlots) != 0
+	if reducingSlots {
+		return
+	}
+	atomic.StoreInt32(&fg.ReducingSlots, 1)
+
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	go func() {
+		for {
+			<-ticker.C
+			if fg.IsLostAllFlashNode() {
+				fg.executeReduceSlot()
+				atomic.StoreInt32(&fg.SlotChanged, 1)
+			} else {
+				atomic.StoreInt32(&fg.ReducingSlots, 0)
+				return
+			}
+		}
+	}()
+}
+
+func (fg *FlashGroup) executeReduceSlot() {
+	rand.Seed(time.Now().UnixNano())
+	numToSelect := len(fg.Slots) / 4
+	if numToSelect == 0 {
+		return
+	}
+	selectedIndexes := rand.Perm(len(fg.Slots))[:numToSelect]
+	for i := len(selectedIndexes) - 1; i >= 0; i-- {
+		index := selectedIndexes[i]
+		// add selected slot to ReservedSlots
+		fg.ReservedSlots = append(fg.ReservedSlots, fg.Slots[index])
+		// remove selected slot from Slots
+		fg.Slots = append(fg.Slots[:index], fg.Slots[index+1:]...)
+	}
+}
+
 func (fg *FlashGroup) GetStatus() (st proto.FlashGroupStatus) {
 	fg.lock.RLock()
 	st = fg.Status
@@ -82,11 +134,11 @@ func (fg *FlashGroup) GetStatus() (st proto.FlashGroupStatus) {
 	return
 }
 
-func (fg *FlashGroup) getFlashNodeHostsEnabled() (hosts []string) {
+func (fg *FlashGroup) getFlashNodeHostsEnableAndActive() (hosts []string) {
 	hosts = make([]string, 0, len(fg.flashNodes))
 	fg.lock.RLock()
 	for host, flashNode := range fg.flashNodes {
-		if !flashNode.isEnable() {
+		if !flashNode.isActiveAndEnable() {
 			continue
 		}
 		hosts = append(hosts, host)

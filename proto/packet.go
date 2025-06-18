@@ -300,6 +300,7 @@ const (
 	OpFlashNodeCacheRead        uint8 = 0xDC
 	OpFlashNodeCachePutBlock    uint8 = 0xD8
 	OpFlashNodeCacheDelete      uint8 = 0xD9
+	OpFlashNodeCacheReadObject  uint8 = 0xDD
 	OpFlashNodeSetReadIOLimits  uint8 = 0xED
 	OpFlashNodeSetWriteIOLimits uint8 = 0xEE
 	OpFlashNodeScan             uint8 = 0xD4
@@ -1089,6 +1090,40 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
 			if p.Data != nil && p.Size != 0 {
 				_, err = c.Write(p.Data[:p.Size])
+			}
+		}
+	}
+
+	return
+}
+
+func (p *Packet) WriteToConnForOCS(c net.Conn) (err error) {
+	headSize := p.CalcPacketHeaderSize()
+	header, err := Buffers.Get(headSize)
+	if err != nil {
+		header = make([]byte, headSize)
+	}
+	// log.LogErrorf("action[WriteToConn] buffer get nil,opcode %v head len [%v]", p.Opcode, len(header))
+	defer Buffers.Put(header)
+	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
+	p.MarshalHeader(header)
+	if _, err = c.Write(header); err == nil {
+		// write dir version info.
+		if p.IsVersionList() {
+			d, err1 := p.MarshalVersionSlice()
+			if err1 != nil {
+				log.LogErrorf("MarshalVersionSlice: marshal version ifo failed, err %s", err1.Error())
+				return err1
+			}
+
+			_, err = c.Write(d)
+			if err != nil {
+				return err
+			}
+		}
+		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
+			if p.Data != nil && p.Size != 0 {
+				_, err = c.Write(p.Data[:])
 			}
 		}
 	}
