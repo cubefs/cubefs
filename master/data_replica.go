@@ -19,6 +19,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 // DataReplica represents the replica of a data partition
@@ -45,6 +46,17 @@ func (replica *DataReplica) isMissing(interval int64) (isMissing bool) {
 		isMissing = true
 	}
 	return
+}
+
+func (replica *DataReplica) isNormal(id uint64, ReportTime int64) (isNormal bool) {
+	if replica.dataNode.isActive &&
+		(replica.Status == proto.ReadWrite || replica.Status == proto.ReadOnly) &&
+		timeutil.GetCurrentTimeUnix()-replica.ReportTime <= ReportTime {
+		return true
+	}
+	log.LogDebugf("action[isLive] partition %v, replica addr %v, datanode active %v replica status %v and is active %v",
+		id, replica.Addr, replica.dataNode.isActive, replica.Status, replica.ReportTime)
+	return false
 }
 
 func (replica *DataReplica) isLive(id uint64, timeOutSec int64) (isAvailable bool) {

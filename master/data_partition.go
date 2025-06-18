@@ -262,8 +262,14 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removeP
 				if replica.Addr != removePeer.Addr {
 					leaderAddr = replica.Addr
 				}
-				doWork(leaderAddr, autoRemove)
+				err = doWork(leaderAddr, autoRemove)
+				if err != nil {
+					continue
+				}
+				return nil
 			}
+
+			return fmt.Errorf("createTaskToRemoveRaftMember: force delte raft memeber failed, dp %d, err %v", partition.PartitionID, err)
 		} else {
 			err = proto.ErrNoLeader
 			return
@@ -271,7 +277,6 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removeP
 	} else {
 		return doWork(leaderAddr, autoRemove)
 	}
-	return
 }
 
 func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64,
@@ -307,6 +312,28 @@ func (partition *DataPartition) createTaskToDeleteDataPartition(addr string, raf
 func (partition *DataPartition) resetTaskID(t *proto.AdminTask) {
 	t.ID = fmt.Sprintf("%v_DataPartitionID[%v]", t.ID, partition.PartitionID)
 	t.PartitionID = partition.PartitionID
+}
+
+func (partition *DataPartition) isLastReplicas(host string) error {
+	if len(partition.Replicas) == 1 && partition.Replicas[0].Addr == host {
+		return fmt.Errorf("partition %v has only one replica %v", partition.PartitionID, host)
+	}
+	if len(partition.Hosts) == 1 && partition.Hosts[0] == host {
+		return fmt.Errorf("partition %v has only one host %v", partition.PartitionID, host)
+	}
+
+	normalHosts := make([]string, 0, len(partition.Replicas))
+	for _, r := range partition.Replicas {
+		if r.isNormal(partition.PartitionID, defaultDataPartitionTimeOutSec) {
+			normalHosts = append(normalHosts, r.Addr)
+		}
+	}
+
+	if len(normalHosts) == 1 && normalHosts[0] == host {
+		return fmt.Errorf("partition %v only has one normal host, %v", partition.PartitionID, host)
+	}
+
+	return nil
 }
 
 // Check if there is a replica missing or not.
