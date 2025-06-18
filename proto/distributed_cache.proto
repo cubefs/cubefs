@@ -49,3 +49,12 @@ message PutBlockHead {
   int64  BlockLen = 2;
   uint64 TTL = 3;
 }
+message CacheReadRequestBase {
+  option (gogoproto.goproto_stringer) = false;
+
+  string  Key    = 1;
+  int64   TTL    = 2;
+  uint64  Slot   = 3;
+  uint64  Offset = 4;
+  uint64  Size   = 5;
+}

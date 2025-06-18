@@ -55,6 +55,7 @@ func testTCP(t *testing.T) {
 	t.Run("ManualScan", testTCPManualScan)
 	t.Run("CachePutBlock", testTCPCachePutBlock)
 	t.Run("CacheDelete", testTCPCacheDelete)
+	t.Run("CacheReadObject", testTCPObjectCacheRead)
 }
 
 func testTCPHeartbeat(t *testing.T) {
@@ -296,4 +297,42 @@ func testShouldCache(t *testing.T) {
 	t.Logf("error not exist should not cache count: %d", countB)
 	require.Equal(t, countA, int64(2))
 	require.Equal(t, countB, int64(8))
+}
+
+func testTCPObjectCacheRead(t *testing.T) {
+	conn := newTCPConn(t)
+	defer conn.Close()
+	p := proto.NewPacketReqID()
+	r := proto.NewPacket()
+	flashServer.readLimiter.SetBurst(0)
+	flashServer.readLimiter.SetLimit(0)
+	time.Sleep(time.Second)
+	p.Opcode = proto.OpFlashNodeCacheReadObject
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpErr, r.ResultCode) // Read limited
+
+	flashServer.readLimiter.SetBurst(200)
+	flashServer.readLimiter.SetLimit(20)
+	time.Sleep(time.Second)
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpErr, r.ResultCode) // CacheReadRequestBase is nil
+
+	p.Size = 1
+	p.Data = []byte{'{'}
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpErr, r.ResultCode) // CacheReadRequestBase invalid
+
+	req := new(proto.CacheReadRequestBase)
+	req.Key = "1234567"
+	req.Slot = 12345678
+	req.Offset = 0
+	req.Size_ = 1024
+	req.TTL = _ttl
+	p.MarshalDataPb(req)
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpErr, r.ResultCode)
 }

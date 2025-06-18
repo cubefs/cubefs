@@ -330,6 +330,7 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 
 			stdoutln("[Flash Groups]")
 			slots := make([]*slotInfo, 0)
+			reservedSlots := make([]*slotInfo, 0)
 			tbl := table{formatFlashGroupViewTile}
 			for _, group := range fgView.FlashGroups {
 				sort.Slice(group.Slots, func(i, j int) bool {
@@ -341,7 +342,16 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 						slot: slot,
 					})
 				}
-				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), group.Status, group.SlotStatus, len(group.PendingSlots), group.Step, group.FlashNodeCount))
+				sort.Slice(group.ReservedSlots, func(i, j int) bool {
+					return group.ReservedSlots[i] < group.ReservedSlots[j]
+				})
+				for _, slot := range group.ReservedSlots {
+					reservedSlots = append(reservedSlots, &slotInfo{
+						fgID: group.ID,
+						slot: slot,
+					})
+				}
+				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), len(group.ReservedSlots), group.Status, group.SlotStatus, len(group.PendingSlots), group.Step, group.FlashNodeCount, group.IsReducingSlots))
 			}
 			stdoutln(alignTable(tbl...))
 
@@ -352,6 +362,15 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 			for i, info := range slots {
 				if i < len(slots)-1 {
 					info.percent = float64(slots[i+1].slot-info.slot) * 100 / math.MaxUint32
+				} else {
+					info.percent = float64(math.MaxUint32-info.slot) * 100 / math.MaxUint32
+				}
+				stdoutlnf("num:%d slot:%d fg:%d percent:%0.5f%%", i+1, info.slot, info.fgID, info.percent)
+			}
+			stdoutln("ReservedSlots:")
+			for i, info := range reservedSlots {
+				if i < len(reservedSlots)-1 {
+					info.percent = float64(reservedSlots[i+1].slot-info.slot) * 100 / math.MaxUint32
 				} else {
 					info.percent = float64(math.MaxUint32-info.slot) * 100 / math.MaxUint32
 				}
@@ -462,6 +481,7 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 			groupn := make(map[uint64]int)
 			groupStatusMap := make(map[uint64]string)
 			slots := make([]slotInfo, 0)
+			reservedSlots := make([]slotInfo, 0)
 			for _, fg := range fgView.FlashGroups {
 				groups[fg.ID] = fg
 				groupn[fg.ID] = 0
@@ -476,11 +496,22 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 						slot: slot,
 					})
 				}
+				for _, slot := range fg.ReservedSlots {
+					if _, in := set[slot]; in {
+						continue
+					}
+					groupn[fg.ID]++
+					reservedSlots = append(reservedSlots, slotInfo{
+						fgID: fg.ID,
+						slot: slot,
+					})
+				}
 			}
 			sort.Slice(slots, func(i, j int) bool {
 				return slots[i].slot < slots[j].slot
 			})
 			stdoutln("[Flash Groups]")
+			stdoutln("[Slots]")
 			tbl := table{arow("Slot", "ID", "Status", "Count", "Ref", "Proportion")}
 			for idx, slot := range slots {
 				g := groups[slot.fgID]
@@ -493,6 +524,24 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 				tbl = tbl.append(arow(slot.slot, g.ID, g.Status.String(), g.FlashNodeCount, groupn[g.ID], p))
 			}
 			stdoutln(alignTable(tbl...))
+
+			sort.Slice(reservedSlots, func(i, j int) bool {
+				return reservedSlots[i].slot < reservedSlots[j].slot
+			})
+			stdoutln("[ReservedSlots]")
+			tbl1 := table{arow("Slot", "ID", "Status", "Count", "Ref", "Proportion")}
+			for idx, slot := range reservedSlots {
+				g := groups[slot.fgID]
+				var p string
+				if idx == len(reservedSlots)-1 {
+					p = proportion(slot.slot, math.MaxUint32)
+				} else {
+					p = proportion(slot.slot, reservedSlots[idx+1].slot)
+				}
+				tbl1 = tbl1.append(arow(slot.slot, g.ID, g.Status.String(), g.FlashNodeCount, groupn[g.ID], p))
+			}
+
+			stdoutln(alignTable(tbl1...))
 
 			fnView, err := client.NodeAPI().ListFlashNodes(-1)
 			if err != nil {

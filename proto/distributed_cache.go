@@ -13,6 +13,7 @@ import (
 const (
 	PageSize                = 4 * 1024
 	CACHE_BLOCK_SIZE        = 1 << 20
+	CACHE_OBJECT_BLOCK_SIZE = 4 * 1024 * 1024
 	ReadCacheTimeout        = 1 // second
 	DefaultCacheTTLSec      = 5 * 24 * 3600
 	FlashGroupDefaultWeight = 1
@@ -259,20 +260,60 @@ func (pbh *PutBlockHead) String() string {
 	return fmt.Sprintf("PutBlockHead[UniKey(%v) BlockLen(%v) TTL(%v)]", pbh.UniKey, pbh.BlockLen, pbh.TTL)
 }
 
+func (cr *CacheReadRequestBase) DecodeBinaryFrom(b []byte) {
+	keyLen := binary.BigEndian.Uint16(b[:2])
+	cr.Key = string(b[2 : 2+keyLen])
+	off := 2 + uint32(keyLen)
+	cr.TTL = int64(binary.BigEndian.Uint64(b[off : off+8])) // TTL (uint64, 8 bytes)
+	off += 8
+	cr.Slot = binary.BigEndian.Uint64(b[off : off+8]) // Slot (uint64, 8 bytes)
+	off += 8
+	cr.Offset = binary.BigEndian.Uint64(b[off : off+8]) // Offset  (uint64, 8 bytes)
+	off += 8
+	cr.Size_ = binary.BigEndian.Uint64(b[off : off+8]) // Size (uint64, 8 bytes)
+}
+
+func (cr *CacheReadRequestBase) EncodeBinaryTo(b []byte) {
+	binary.BigEndian.PutUint16(b[:2], uint16(len(cr.Key))) // Length of Key (uint16, 2bytes)
+	copy(b[2:2+len(cr.Key)], cr.Key)                       // Key
+	off := 2 + len(cr.Key)
+	binary.BigEndian.PutUint64(b[off:off+8], uint64(cr.TTL)) // TTL (uint64, 8 bytes)
+	off += 8
+	binary.BigEndian.PutUint64(b[off:off+8], cr.Slot) // Slot (uint64, 8 bytes)
+	off += 8
+	binary.BigEndian.PutUint64(b[off:off+8], cr.Offset) // Offset  (uint64, 8 bytes)
+	off += 8
+	binary.BigEndian.PutUint64(b[off:off+8], cr.Size_) // Size (uint64, 8 bytes)
+}
+
+func (cr *CacheReadRequestBase) EncodeBinaryLen() int {
+	return 2 + len(cr.Key) + 8 + 8 + 8 + 8
+}
+
+func (cr *CacheReadRequestBase) String() string {
+	if cr == nil {
+		return ""
+	}
+	return fmt.Sprintf("cacheReadRequestBase[Key(%v) TTL(%v) Slot(%v) Offset(%v) Size(%v)]",
+		cr.Key, cr.TTL, cr.Slot, cr.Offset, cr.Size_)
+}
+
 type FlashGroupsAdminView struct {
 	FlashGroups []FlashGroupAdminView
 }
 
 type FlashGroupAdminView struct {
-	ID             uint64
-	Slots          []uint32
-	Weight         uint32
-	Status         FlashGroupStatus
-	SlotStatus     SlotStatus
-	PendingSlots   []uint32
-	Step           uint32
-	FlashNodeCount int
-	ZoneFlashNodes map[string][]*FlashNodeViewInfo
+	ID              uint64
+	Slots           []uint32
+	ReservedSlots   []uint32
+	IsReducingSlots bool
+	Weight          uint32
+	Status          FlashGroupStatus
+	SlotStatus      SlotStatus
+	PendingSlots    []uint32
+	Step            uint32
+	FlashNodeCount  int
+	ZoneFlashNodes  map[string][]*FlashNodeViewInfo
 }
 
 type FlashNodeViewInfo struct {

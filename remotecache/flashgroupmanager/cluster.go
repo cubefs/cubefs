@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -336,6 +337,16 @@ func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.flashNodeTopo.updateClientResponse()
+				// sync fg if slots changed
+				c.flashNodeTopo.flashGroupMap.Range(func(_, value interface{}) bool {
+					fg := value.(*FlashGroup)
+					slotChanged := atomic.LoadInt32(&fg.SlotChanged) != 0
+					if slotChanged {
+						c.syncUpdateFlashGroup(fg)
+						atomic.StoreInt32(&fg.SlotChanged, 0)
+					}
+					return true
+				})
 			}
 			select {
 			case <-c.stopc:
