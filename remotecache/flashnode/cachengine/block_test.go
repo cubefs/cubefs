@@ -375,7 +375,7 @@ func testWriteSingleFileV2(t *testing.T) {
 	disk.Status = proto.ReadWrite
 	uniKey := t.Name()
 	pDir := MapKeyToDirectory(uniKey)
-	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, 5120, "", disk)
+	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, 8192, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -399,7 +399,7 @@ func testWriteSingleFileV2(t *testing.T) {
 		Crc:      crcBuf[:4],
 		DataSize: 4096,
 	}))
-	bytes = randTestData(1024)
+	bytes = randTestData(4096)
 	crcSum2 := crc32.ChecksumIEEE(bytes)
 	binary.BigEndian.PutUint32(crcBuf[:4], crcSum2)
 	require.NoError(t, cacheBlock.WriteAtV2(&proto.FlashWriteParam{
@@ -410,11 +410,11 @@ func testWriteSingleFileV2(t *testing.T) {
 		DataSize: 1024,
 	}))
 	t.Logf("testWriteSingleFileV2, test:%s cacheBlock.datasize:%d", t.Name(), cacheBlock.usedSize)
-	_ = cacheBlock.MaybeWriteCompleted()
+	_ = cacheBlock.MaybeWriteCompleted(5120)
 	file, _ := cacheBlock.GetOrOpenFileHandler()
-	_, _ = file.ReadAt(crcBuf[:4], 5120+HeaderSize)
+	_, _ = file.ReadAt(crcBuf[:4], 8192+HeaderSize)
 	require.Equal(t, crcSum1, binary.BigEndian.Uint32(crcBuf[:4]))
-	_, _ = file.ReadAt(crcBuf[:4], 5120+HeaderSize+4)
+	_, _ = file.ReadAt(crcBuf[:4], 8192+HeaderSize+4)
 	require.Equal(t, crcSum2, binary.BigEndian.Uint32(crcBuf[:4]))
 }
 
@@ -424,7 +424,7 @@ func testWriteSingleFileErrorV2(t *testing.T) {
 	disk.Status = proto.ReadWrite
 	uniKey := t.Name()
 	pDir := MapKeyToDirectory(uniKey)
-	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, 1024, "", disk)
+	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, 4096, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
