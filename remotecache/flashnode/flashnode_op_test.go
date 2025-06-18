@@ -196,12 +196,12 @@ func testTCPCachePutBlock(t *testing.T) {
 	require.NoError(t, p.WriteToConn(conn))
 	require.NoError(t, r.ReadFromConn(conn, 3))
 	require.Equal(t, proto.OpOk, r.ResultCode)
-	buf := []byte{'{'}
-	n := len(buf)
-	_, err := conn.Write(buf[:n])
+	buf := make([]byte, proto.PageSize)
+	buf[0] = '{'
+	_, err := conn.Write(buf[:proto.PageSize])
 	require.NoError(t, err)
 	crcBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(crcBuf, crc32.ChecksumIEEE(buf[:n]))
+	binary.BigEndian.PutUint32(crcBuf, crc32.ChecksumIEEE(buf[:proto.PageSize]))
 	_, err = conn.Write(crcBuf[:4])
 	require.NoError(t, err)
 }

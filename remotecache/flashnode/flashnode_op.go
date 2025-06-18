@@ -315,11 +315,12 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 			p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 	}
 	missTaskDone := make(chan struct{})
-	err = f.limitWrite.TryRunAsync(context.Background(), int(req.BlockLen), false, func() {
+	allocSize := cachengine.CalcAllocSizeV2(int(req.BlockLen))
+	err = f.limitWrite.TryRunAsync(context.Background(), allocSize, false, func() {
 		defer func() {
 			close(missTaskDone)
 		}()
-		if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(req.BlockLen), conn.RemoteAddr().String()); err2 != nil || created {
+		if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(allocSize), conn.RemoteAddr().String()); err2 != nil || created {
 			err = fmt.Errorf("already create block(%v)", cachengine.GenCacheBlockKeyV2(pDir, uniKey))
 			return
 		} else {
@@ -341,10 +342,10 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 				if totalWritten+int64(readSize) > req.BlockLen {
 					readSize = int(req.BlockLen - totalWritten)
 				}
-				if n, err1 = io.ReadFull(conn, buf[:readSize]); err1 != nil {
+				if n, err1 = io.ReadFull(conn, buf[:proto.PageSize]); err1 != nil {
 					return
 				}
-				if n != readSize {
+				if n != proto.PageSize {
 					err1 = syscall.EBADMSG
 				}
 				if n, err1 = io.ReadFull(conn, crcBuf[:cachengine.CRCLen]); err1 != nil {
@@ -356,11 +357,11 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 				err1 = cb.WriteAtV2(&proto.FlashWriteParam{
 					Offset:   totalWritten,
 					Size:     req.BlockLen,
-					Data:     buf[:readSize],
+					Data:     buf[:proto.PageSize],
 					Crc:      crcBuf[:cachengine.CRCLen],
 					DataSize: int64(readSize),
 				})
-				err1 = cb.MaybeWriteCompleted()
+				err1 = cb.MaybeWriteCompleted(req.BlockLen)
 				if err1 != nil {
 					return
 				}
