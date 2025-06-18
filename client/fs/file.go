@@ -410,7 +410,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	if f.info.Size > uint64(req.Offset) && uint64(req.Offset+int64(req.Size)) >= f.info.Size {
 		// at least read bytes: f.info.Size - req.Offset
 		if size > 0 && uint64(size) < f.info.Size-uint64(req.Offset) {
-			log.LogErrorf("Read: error data size, ino(%v) offset(%v) filesize(%v) reqsize(%v) size(%v)\n", f.info.Inode, req.Offset, f.info.Size, req.Size, size)
+			log.LogWarnf("Read: error data size, ino(%v) offset(%v) filesize(%v) reqsize(%v) size(%v)\n", f.info.Inode, req.Offset, f.info.Size, req.Size, size)
 			errMetric := exporter.NewCounter("fileReadFailed")
 			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
 		}
