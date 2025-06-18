@@ -769,8 +769,8 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		s.partitionID, extentID, offset, size, isRepairRead, s.extentLock)
 	defer func() {
 		if log.EnableDebug() {
-			log.LogDebugf("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v] cost %v",
-				s.partitionID, extentID, offset, size, isRepairRead, s.extentLock, time.Since(begin).String())
+			log.LogDebugf("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v] crc[%v] err[%v] cost %v",
+				s.partitionID, extentID, offset, size, isRepairRead, s.extentLock, crc, err, time.Since(begin).String())
 		}
 	}()
 
@@ -790,7 +790,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	} else {
 		if s.extentLock {
 			if _, ok := s.extentLockMap[extentID]; ok && !isRepairRead {
-				log.LogErrorf("[Read]dp %v gc_extent_lock[%d] is locked， should not be read.", s.partitionID, extentID)
+				log.LogErrorf("[Read]dp %v gc_extent_lock[%d] is locked, should not be read.", s.partitionID, extentID)
 			}
 		}
 	}
@@ -811,8 +811,8 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead)
 	crc, err = e.Read(nbuf, offset, size, isRepairRead, s.DirectRead)
 	if log.EnableDebug() {
-		log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v,cost %v",
-			s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead, time.Since(begin2).String())
+		log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v crc %v err %v,cost %v",
+			s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead, crc, err, time.Since(begin2).String())
 	}
 
 	return

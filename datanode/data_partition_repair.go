@@ -666,7 +666,7 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		})
 
 		if log.EnableDebug() {
-			log.LogDebugf("[NormalExtentRepairRead] reply op %v data.len %v size %v crc %v err %v", reply.GetOpMsg(), len(reply.GetData()), reply.GetSize(), crc, err)
+			log.LogDebugf("[NormalExtentRepairRead] reply %v crc %v err %v", reply.GetNoPrefixMsg(), crc, err)
 		}
 
 		if !shallDegrade && metrics != nil {
