@@ -36,6 +36,10 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	tinyOffsetInvalid = "tiny offset is invalid from empty recover"
+)
+
 type RepairExtentInfo struct {
 	storage.ExtentInfo
 	Source string `json:"src"`
@@ -308,8 +312,8 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 	RETRY:
 		err := dp.streamRepairExtent(extentInfo, repl.NewTinyExtentRepairReadPacket, repl.NewExtentRepairReadPacket, repl.NewNormalExtentWithHoleRepairReadPacket, repl.NewPacketEx)
 		if err != nil {
-			if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) {
-				log.LogDebugf("action[DoRepair] retry dp(%v) extent(%v).", dp.partitionID, extentInfo.FileID)
+			if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) || strings.Contains(err.Error(), tinyOffsetInvalid) {
+				log.LogWarnf("action[DoRepair] retry dp(%v) extent(%v), err(%s).", dp.partitionID, extentInfo.FileID, err.Error())
 				goto RETRY
 			}
 			err = errors.Trace(err, "doStreamExtentFixRepair %v", dp.applyRepairKey(int(extentInfo.FileID)))
@@ -733,8 +737,8 @@ func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExten
 RETRY:
 	err := dp.streamRepairExtent(remoteExtentInfo, repl.NewTinyExtentRepairReadPacket, repl.NewExtentRepairReadPacket, repl.NewNormalExtentWithHoleRepairReadPacket, repl.NewPacketEx)
 	if err != nil {
-		if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) {
-			log.LogWarnf("action[DoRepair] retry dp(%v) extent(%v).", dp.partitionID, remoteExtentInfo.FileID)
+		if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) || strings.Contains(err.Error(), tinyOffsetInvalid) {
+			log.LogWarnf("action[DoRepair] retry dp(%v) extent(%v). err %s ", dp.partitionID, remoteExtentInfo.FileID, err.Error())
 			goto RETRY
 		}
 		// If there are too many extents on the data protection (DP) side,
@@ -940,6 +944,12 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 			// log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
 			// write to the local extent file
 			if err != nil {
+
+				if isEmptyResponse && storage.IsTinyExtent(localExtentInfo.FileID) && strings.Contains(err.Error(), "offset invalid") {
+					err = errors.Trace(err, "streamRepairExtent repair data error, "+tinyOffsetInvalid)
+					return
+				}
+
 				err = errors.Trace(err, "streamRepairExtent repair data error ")
 				return
 			}
