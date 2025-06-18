@@ -616,6 +616,10 @@ func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 	// exporter.Warning(mesg)
 	log.LogWarnf(mesg)
 
+	if d.HasDiskErrPartition(dpId) {
+		return
+	}
+
 	if rwFlag == WriteFlag {
 		d.incWriteErrCnt()
 	} else if rwFlag == ReadFlag {
@@ -628,7 +632,7 @@ func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 	d.AddDiskErrPartition(dpId)
 	diskErrCnt := d.getTotalErrCnt()
 	diskErrPartitionCnt := d.GetDiskErrPartitionCount()
-	if diskErrPartitionCnt >= d.dataNode.diskUnavailablePartitionErrorCount {
+	if diskErrCnt >= d.dataNode.diskUnavailableErrorCount || diskErrPartitionCnt >= d.dataNode.diskUnavailablePartitionErrorCount {
 		msg := fmt.Sprintf("set disk unavailable for too many disk error, "+
 			"disk path(%v), ip(%v), diskErrCnt(%v), diskErrPartitionCnt(%v) threshold(%v)",
 			d.Path, LocalIP, diskErrCnt, diskErrPartitionCnt, d.dataNode.diskUnavailablePartitionErrorCount)
