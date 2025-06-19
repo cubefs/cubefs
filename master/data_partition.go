@@ -259,9 +259,10 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removeP
 	if leaderAddr == "" {
 		if force {
 			for _, replica := range partition.Replicas {
-				if replica.Addr != removePeer.Addr {
-					leaderAddr = replica.Addr
+				if replica.Addr == removePeer.Addr {
+					continue
 				}
+				leaderAddr = replica.Addr
 				err = doWork(leaderAddr, autoRemove)
 				if err != nil {
 					continue
