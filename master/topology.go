@@ -2343,7 +2343,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					dp.markRollbackFailed(false)
 					continue
 				}
-				if dp.DecommissionType == AutoDecommission {
+				if dp.DecommissionType == AutoDecommission && dp.IsMarkDecommission() {
 					if dp.lostLeader(c) && !dp.DecommissionRaftForce {
 						dp.DecommissionRaftForce = true
 						log.LogWarnf("action[DecommissionListTraverse] change dp[%v] decommission raftForce from false to true", dp.decommissionInfo())
