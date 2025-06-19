@@ -291,8 +291,8 @@ func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string
 		return
 	} else if SourceTypeBlock == sourceType {
 		crcSize := (usedSize + proto.PageSize - 1) / proto.PageSize * CRCLen
-		if usedSize+HeaderSize+crcSize != stat.Size() {
-			err = fmt.Errorf("usedSize + headerSize + crsSize [%v] != file real size[%v]", usedSize+HeaderSize+crcSize, stat.Size())
+		if allocSize+HeaderSize+crcSize != stat.Size() {
+			err = fmt.Errorf("allocSize + headerSize + crsSize [%v] != file real size[%v]", allocSize+HeaderSize+crcSize, stat.Size())
 			return
 		}
 	}
