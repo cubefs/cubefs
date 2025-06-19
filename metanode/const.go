@@ -249,6 +249,8 @@ const (
 	cfgServiceIDKey              = "serviceIDKey"
 	cfgEnableGcTimer             = "enableGcTimer" // bool
 	CfgGcRecyclePercent          = "gcRecyclePercent"
+	cfsQosEnable                 = "qosEnable"   // bool
+	cfgReadDirIops               = "readDirIops" // int
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int

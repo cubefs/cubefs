@@ -38,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -52,7 +53,10 @@ const UpdateVolTicket = 2 * time.Minute
 const (
 	gcTimerDuration         = 10 * time.Second
 	defaultGcRecyclePercent = 0.90
+	defaultReadDirIops      = 100
 )
+
+var TryAgainError = errors.New("try again")
 
 // MetadataManager manages all the meta partitions.
 type MetadataManager interface {
@@ -65,6 +69,7 @@ type MetadataManager interface {
 	GetAllVolumes() (volumes *util.Set)
 	checkVolVerList() (err error)
 	ReloadPartition(id int) (err error)
+	UpdateQosLimit()
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -108,6 +113,7 @@ type metadataManager struct {
 	gogcValue            int
 	gcRecyclePercent     float64
 	gcTimer              *util.RecycleTimer
+	limitFactor          map[uint32]*rate.Limiter
 }
 
 func (m *metadataManager) GetAllVolumes() (volumes *util.Set) {
@@ -881,9 +887,30 @@ func (m *metadataManager) GetLeaderPartitions() map[uint64]MetaPartition {
 	return mps
 }
 
+func (m *metadataManager) allocCheckLimit(factorType uint32) error {
+	if !m.metaNode.qosEnable {
+		return nil
+	}
+
+	if !m.limitFactor[factorType].Allow() {
+		return TryAgainError
+	}
+	// ctx := context.Background()
+	// m.limitFactor[factorType].WaitN(ctx, int(used))
+	return nil
+}
+
+func (m *metadataManager) UpdateQosLimit() {
+	if m.metaNode.readDirIops > 0 {
+		m.limitFactor[readDirIops].SetLimit(rate.Limit(m.metaNode.readDirIops))
+		m.limitFactor[readDirIops].SetBurst(m.metaNode.readDirIops / 2)
+	}
+	log.LogWarnf("[UpdataQosLimit] update readDirIops [%v]", m.metaNode.readDirIops)
+}
+
 // NewMetadataManager returns a new metadata manager.
 func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) MetadataManager {
-	return &metadataManager{
+	m := &metadataManager{
 		nodeId:               conf.NodeID,
 		zoneName:             conf.ZoneName,
 		rootDir:              conf.RootDir,
@@ -895,7 +922,11 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		gogcValue:            DefaultGOGCValue,
 		enableGcTimer:        conf.EnableGcTimer,
 		gcRecyclePercent:     conf.GcRecyclePercent,
+		limitFactor:          make(map[uint32]*rate.Limiter),
 	}
+	m.limitFactor[readDirIops] = rate.NewLimiter(rate.Limit(metaNode.readDirIops), metaNode.readDirIops/2)
+
+	return m
 }
 
 // isExpiredPartition return whether one partition is expired
