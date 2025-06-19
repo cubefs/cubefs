@@ -1017,6 +1017,13 @@ func (m *metadataManager) opReadDirOnly(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+	err = m.allocCheckLimit(readDirIops)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		log.LogWarnf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
 	err = mp.ReadDirOnly(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [%v]req: %v , resp: %v, body: %s", remoteAddr,
@@ -1043,6 +1050,13 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = m.allocCheckLimit(readDirIops)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		log.LogWarnf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
 	err = mp.ReadDir(req, p)
