@@ -1325,6 +1325,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	if partition.IsDiscard {
 		goto directly
 	}
+	if partition.isPerformingDecommission(c) {
+		log.LogWarnf("action[MarkDecommissionStatus] dp(%v) is performing decommission",
+			partition.PartitionID)
+		return proto.ErrPerformingDecommission
+	}
 	// set DecommissionType first for recovering replica meta
 	partition.DecommissionType = migrateType
 	if err = partition.tryRecoverReplicaMeta(c, migrateType); err != nil {
@@ -1732,6 +1737,19 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 			goto errHandler
 		}
 	}
+
+	// in the raftForce case, need to check if all replicas except the decommission src addr are diskErr replicas
+	if partition.DecommissionRaftForce && (partition.DecommissionType == AutoDecommission || partition.DecommissionType == ManualDecommission) {
+		if partition.isReplicaAllDiskErrorExceptSrcAddr() {
+			msg = fmt.Sprintf("dp(%v) all replicas except decommission src addr(%v) are diskErr replicas", partition.PartitionID, partition.DecommissionSrcAddr)
+			log.LogWarnf("action[decommissionDataPartition] %s", msg)
+			auditlog.LogMasterOp("DataPartitionDecommission", msg, nil)
+			partition.DecommissionErrorMessage = msg
+			partition.markRollbackFailed(false)
+			return false
+		}
+	}
+
 	// if master change and recover SpecialDecommission, do not need to check dataNode size,
 	// it is checked before
 	if !(partition.isSpecialReplicaCnt() && partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddRes) {
@@ -2400,6 +2418,18 @@ func (partition *DataPartition) getReplicaDiskErrorNum() uint8 {
 	return count
 }
 
+func (partition *DataPartition) isReplicaAllDiskErrorExceptSrcAddr() bool {
+	partition.RLock()
+	defer partition.RUnlock()
+	ok := true
+	for _, replica := range partition.Replicas {
+		if replica.Addr != partition.DecommissionSrcAddr && !replica.TriggerDiskError {
+			ok = false
+		}
+	}
+	return ok
+}
+
 func (partition *DataPartition) getDiskErrorReplica() *DataReplica {
 	partition.RLock()
 	defer partition.RUnlock()
@@ -2769,11 +2799,6 @@ func (partition *DataPartition) tryRecoverReplicaMeta(c *Cluster, migrateType ui
 	// AutoAddReplica do not need to check meta for replica again, only have to check
 	// dp is performing decommission
 	if migrateType == AutoAddReplica {
-		if partition.isPerformingDecommission(c) {
-			log.LogDebugf("action[checkReplicaMeta]dp(%v) is performing decommission, skip it",
-				partition.PartitionID)
-			return proto.ErrPerformingDecommission
-		}
 		return nil
 	}
 	waitTimes := 0
@@ -2852,21 +2877,6 @@ func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
 		// may be one replica is unavailable
 		if partition.lostLeader(c) {
 			auditMsg := fmt.Sprintf("dp(%v) lost leader skip auto add replica", partition.PartitionID)
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
-			return false
-		}
-		return true
-	}
-
-	var diskErrReplicaNum uint8
-	for _, replica := range partition.Replicas {
-		if replica.TriggerDiskError {
-			diskErrReplicaNum++
-		}
-	}
-	if diskErrReplicaNum != 0 {
-		if diskErrReplicaNum == partition.ReplicaNum || diskErrReplicaNum == uint8(len(partition.Peers)) {
-			auditMsg := fmt.Sprintf("dp(%v) performs diskErr replica check, find all replicas unavailable", partition.PartitionID)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
 			return false
 		}
