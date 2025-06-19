@@ -126,9 +126,9 @@ func TestProxyCacherVolumeError(t *testing.T) {
 	_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
 	require.Error(t, err)
 	_, err = c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 2, Flush: true})
-	require.ErrorIs(t, errcode.ErrVolumeNotExist, err)
+	require.ErrorIs(t, err, errcode.ErrVolumeNotExist)
 	_, err = c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1, Flush: false})
-	require.ErrorIs(t, errcode.ErrVolumeNotExist, err)
+	require.ErrorIs(t, err, errcode.ErrVolumeNotExist)
 }
 
 func TestProxyCacherVolumeCacheMiss(t *testing.T) {

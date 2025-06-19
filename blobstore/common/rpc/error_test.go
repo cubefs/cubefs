@@ -39,7 +39,7 @@ func TestErrorBase(t *testing.T) {
 	{
 		errBase := NewError(400, "", errors.New(""))
 		err := NewError(499, "Unknown", errBase)
-		require.ErrorIs(t, errBase, errors.Unwrap(err))
+		require.ErrorIs(t, errors.Unwrap(err), errBase)
 	}
 
 	{
@@ -81,7 +81,7 @@ func TestErrorBase(t *testing.T) {
 		})
 		require.Equal(t, 222, status)
 		require.Equal(t, "CODE", code)
-		require.ErrorIs(t, errBase, err)
+		require.ErrorIs(t, err, errBase)
 	}
 
 	{

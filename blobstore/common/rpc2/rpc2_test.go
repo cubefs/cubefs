@@ -299,7 +299,7 @@ func TestRpc2CodecReader(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, n)
 		_, err = r.Read(buff)
-		require.ErrorIs(t, io.EOF, err)
+		require.ErrorIs(t, err, io.EOF)
 	}
 	{
 		buff := make([]byte, size)
@@ -308,7 +308,7 @@ func TestRpc2CodecReader(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, size, n)
 		_, err = r.Read(buff)
-		require.ErrorIs(t, io.EOF, err)
+		require.ErrorIs(t, err, io.EOF)
 	}
 	{
 		buff := make([]byte, size+1)
@@ -317,7 +317,7 @@ func TestRpc2CodecReader(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, size, n)
 		_, err = r.Read(buff)
-		require.ErrorIs(t, io.EOF, err)
+		require.ErrorIs(t, err, io.EOF)
 	}
 	{
 		req.Parameter = make([]byte, _maxCodecerSize)

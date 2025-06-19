@@ -132,14 +132,14 @@ func TestRetryContext(t *testing.T) {
 		err := retry.Timed(10, 0).OnContext(ctx, func() error {
 			return errTestOnly
 		})
-		require.ErrorIs(t, errTestOnly, err)
+		require.ErrorIs(t, err, errTestOnly)
 	}
 	{
 		ctx, cancel := context.WithCancel(context.Background())
 		err := retry.Timed(10, 0).OnContext(ctx, func() error {
 			return errTestOnly
 		})
-		require.ErrorIs(t, errTestOnly, err)
+		require.ErrorIs(t, err, errTestOnly)
 		cancel()
 	}
 	{
@@ -150,7 +150,7 @@ func TestRetryContext(t *testing.T) {
 			return errTestOnly
 		})
 		require.Equal(t, 3, called) // 0, 400, 800
-		require.ErrorIs(t, errTestOnly, err)
+		require.ErrorIs(t, err, errTestOnly)
 		cancel()
 	}
 	{
@@ -161,7 +161,7 @@ func TestRetryContext(t *testing.T) {
 			return false, errTestOnly
 		})
 		require.Equal(t, 3, called) // 0, 300, 900
-		require.ErrorIs(t, errTestOnly, err)
+		require.ErrorIs(t, err, errTestOnly)
 		cancel()
 	}
 }
@@ -184,7 +184,7 @@ func TestRetryInterrupted(t *testing.T) {
 	})
 	duration := time.Since(st)
 
-	require.ErrorIs(t, errTestInterrupt, err)
+	require.ErrorIs(t, err, errTestInterrupt)
 	require.Equal(t, 2, called)
 	v := int64(duration / time.Millisecond)
 	require.Less(t, int64(380), v, "duration: ", v)
@@ -206,7 +206,7 @@ func TestRetryInterruptedError(t *testing.T) {
 	duration := time.Since(st)
 
 	// get last error if interrupt with ErrRetryNext
-	require.ErrorIs(t, errTestOnly, err)
+	require.ErrorIs(t, err, errTestOnly)
 	require.Equal(t, 1, called)
 	v := int64(duration / time.Millisecond)
 	require.Less(t, int64(190), v, "duration: ", v)
@@ -225,7 +225,7 @@ func TestRetryInterruptedError(t *testing.T) {
 	duration = time.Since(st)
 
 	// ignored the ErrRetryNext
-	require.ErrorIs(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 1, called)
 	v = int64(duration / time.Millisecond)
 	require.Less(t, int64(190), v, "duration: ", v)

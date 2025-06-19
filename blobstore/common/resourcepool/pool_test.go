@@ -63,7 +63,7 @@ func TestPoolNoLimit(t *testing.T) {
 		require.Equal(t, 0, p.Idle())
 
 		_, err := p.Get()
-		require.ErrorIs(t, rp.ErrPoolLimit, err)
+		require.ErrorIs(t, err, rp.ErrPoolLimit)
 	}
 	{
 		p := rp.NewPool(func() interface{} {

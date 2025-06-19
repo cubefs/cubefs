@@ -259,7 +259,7 @@ func TestStreamBlobList(t *testing.T) {
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().ListBlob(gAny, gAny, gAny).Return(shardnode.ListBlobRet{}, errcode.ErrShardRouteVersionNeedUpdate).Times(3)
 	ret, err := h.ListBlob(ctx, &args)
 	require.NotNil(t, err)
-	require.ErrorIs(t, errcode.ErrShardRouteVersionNeedUpdate, err)
+	require.ErrorIs(t, err, errcode.ErrShardRouteVersionNeedUpdate)
 	require.Equal(t, 0, len(ret.Blobs))
 
 	// list one shard, 3 blob

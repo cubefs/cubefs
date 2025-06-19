@@ -149,7 +149,7 @@ func TestConsumerShardRepairMsg(t *testing.T) {
 		mgr.blobnodeCli = blobnode
 		ret := mgr.consume(ctx, msg, commonCloser)
 		require.Equal(t, ShardRepairStatusFailed, ret.status)
-		require.ErrorIs(t, errMock, ret.err)
+		require.ErrorIs(t, ret.err, errMock)
 		mgr.blobnodeCli = oldBlobnode
 	}
 	{
@@ -160,7 +160,7 @@ func TestConsumerShardRepairMsg(t *testing.T) {
 		mgr.blobnodeCli = blobnode
 		ret := mgr.consume(ctx, msg, commonCloser)
 		require.Equal(t, ShardRepairStatusFailed, ret.status)
-		require.ErrorIs(t, errcode.ErrDestReplicaBad, ret.err)
+		require.ErrorIs(t, ret.err, errcode.ErrDestReplicaBad)
 		mgr.blobnodeCli = oldBlobnode
 	}
 	{
@@ -171,7 +171,7 @@ func TestConsumerShardRepairMsg(t *testing.T) {
 		mgr.blobnodeCli = blobnode
 		ret := mgr.consume(ctx, msg, commonCloser)
 		require.Equal(t, ShardRepairStatusOrphan, ret.status)
-		require.ErrorIs(t, errcode.ErrOrphanShard, ret.err)
+		require.ErrorIs(t, ret.err, errcode.ErrOrphanShard)
 		mgr.blobnodeCli = oldBlobnode
 	}
 	{

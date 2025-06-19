@@ -366,7 +366,7 @@ func TestManager_GroupInMultiServer(t *testing.T) {
 		err := groups[leaderIndex].Truncate(ctx, 3)
 		require.NoError(t, err)
 		_, err = groups[leaderIndex].storage.Term(3)
-		require.ErrorIs(t, raft.ErrCompacted, err)
+		require.ErrorIs(t, err, raft.ErrCompacted)
 		term, err := groups[leaderIndex].storage.Term(4)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), term)

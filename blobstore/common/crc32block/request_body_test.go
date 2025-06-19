@@ -114,7 +114,7 @@ func TestBodyDecoderMissmatch(t *testing.T) {
 
 	rb := make([]byte, size)
 	_, err := io.ReadFull(decoder, rb)
-	require.ErrorIs(t, ErrMismatchedCrc, err)
+	require.ErrorIs(t, err, ErrMismatchedCrc)
 }
 
 type closedReader struct {
@@ -145,7 +145,7 @@ func TestBodyReadClosed(t *testing.T) {
 	decoder.Close()
 	rb := make([]byte, size)
 	_, err := io.ReadFull(decoder, rb)
-	require.ErrorIs(t, ErrReadOnClosed, err)
+	require.ErrorIs(t, err, ErrReadOnClosed)
 }
 
 func benchmarkCode(b *testing.B, newFunc func(io.Reader) io.ReadCloser) {

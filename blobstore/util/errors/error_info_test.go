@@ -26,9 +26,9 @@ import (
 func TestErrorBase(t *testing.T) {
 	e := New("base")
 	err := Base(e, "foo.Bar failed: abc", struct{ float float64 }{3.14})
-	require.ErrorIs(t, e, Cause(err))
-	require.ErrorIs(t, e, err.Cause())
-	require.ErrorIs(t, e, err.Unwrap())
+	require.ErrorIs(t, Cause(err), e)
+	require.ErrorIs(t, err.Cause(), e)
+	require.ErrorIs(t, err.Unwrap(), e)
 
 	msg := err.Details()
 	t.Log(msg)
@@ -37,7 +37,7 @@ func TestErrorBase(t *testing.T) {
 
 	// Detail with base error
 	err.Detail(New("basex"))
-	require.NotErrorIs(t, e, err.Unwrap())
+	require.NotErrorIs(t, err.Unwrap(), e)
 	msg = err.Details()
 	t.Log(msg)
 	end = "base ~ foo.Bar failed: abc {float:3.14} --> basex"

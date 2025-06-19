@@ -115,9 +115,9 @@ func TestGetBufferSize(t *testing.T) {
 	require.Equal(t, shardSize*(cm.N+cm.M+cm.L), sizes.ECSize)
 
 	_, err = ec.GetBufferSizes(0, cm)
-	require.ErrorIs(t, ec.ErrShortData, err)
+	require.ErrorIs(t, err, ec.ErrShortData)
 	_, err = ec.GetBufferSizes(-1, cm)
-	require.ErrorIs(t, ec.ErrShortData, err)
+	require.ErrorIs(t, err, ec.ErrShortData)
 }
 
 func TestBufferResize(t *testing.T) {
@@ -132,7 +132,7 @@ func TestBufferResize(t *testing.T) {
 
 	// // pool limited
 	// _, err = ec.NewBuffer(kb, cm, memPool)
-	// require.ErrorIs(t, rp.ErrPoolLimit, err)
+	// require.ErrorIs(t, err, rp.ErrPoolLimit)
 
 	err = buffer.Resize(kb + 512)
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestBufferResize(t *testing.T) {
 
 	// // pool limited
 	// _, err = ec.NewBuffer(kb, cm, memPool)
-	// require.ErrorIs(t, rp.ErrPoolLimit, err)
+	// require.ErrorIs(t, err, rp.ErrPoolLimit)
 
 	// mb pool, release kb64 pool
 	err = buffer.Resize(kb64)

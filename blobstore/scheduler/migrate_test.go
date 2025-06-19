@@ -620,7 +620,7 @@ func TestMigrateQueryTask(t *testing.T) {
 
 	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(nil, errMock)
 	_, err := mgr.QueryTask(ctx, taskID)
-	require.ErrorIs(t, errMock, err)
+	require.ErrorIs(t, err, errMock)
 
 	t1, err := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap).ToTask()
 	require.NoError(t, err)

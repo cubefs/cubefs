@@ -140,7 +140,7 @@ func TestSizedCoderBase(t *testing.T) {
 					require.Equal(t, encodeSize, nn, logName)
 					require.Equal(t, clientBody.rhasher.Sum32(), serverBody.whasher.Sum32(), logName)
 					_, err = decodeBodyWt.WriteTo(serverBody)
-					require.ErrorIs(t, io.EOF, err, logName)
+					require.ErrorIs(t, err, io.EOF, logName)
 				} else {
 					b := make([]byte, size)
 					n, err := io.ReadFull(decodeBody, b)
@@ -149,7 +149,7 @@ func TestSizedCoderBase(t *testing.T) {
 					serverBody.Write(b)
 					require.Equal(t, clientBody.rhasher.Sum32(), serverBody.whasher.Sum32(), logName)
 					_, err = decodeBody.Read(make([]byte, 1))
-					require.ErrorIs(t, io.EOF, err, logName)
+					require.ErrorIs(t, err, io.EOF, logName)
 				}
 				decodeBody.Close()
 				decodeBody = nil

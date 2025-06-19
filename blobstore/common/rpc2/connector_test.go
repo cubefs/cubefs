@@ -125,7 +125,7 @@ func TestConnectorLimited(t *testing.T) {
 	stream, err := c.Get(testCtx, addr)
 	require.NoError(t, err)
 	_, err = c.Get(testCtx, addr)
-	require.ErrorIs(t, ErrConnLimited, err)
+	require.ErrorIs(t, err, ErrConnLimited)
 
 	c.Put(testCtx, stream, false)
 	stream1, err := c.Get(testCtx, addr)
@@ -190,12 +190,12 @@ func TestConnectorWaitTimeout(t *testing.T) {
 	stream, err := c.Get(testCtx, addr)
 	require.NoError(t, err)
 	_, err = c.Get(testCtx, addr)
-	require.ErrorIs(t, ErrConnLimited, err)
+	require.ErrorIs(t, err, ErrConnLimited)
 
 	deadCtx, cancel := context.WithTimeout(testCtx, 100*time.Millisecond)
 	defer cancel()
 	_, err = c.Get(deadCtx, addr)
-	require.ErrorIs(t, context.DeadlineExceeded, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 
 	c.Put(testCtx, stream, false)
 }

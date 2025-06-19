@@ -37,13 +37,13 @@ func TestCountLimit(t *testing.T) {
 
 	require.NoError(t, l.Acquire(key))
 	require.NoError(t, l.Acquire(key))
-	require.ErrorIs(t, limit.ErrLimited, l.Acquire(key))
+	require.ErrorIs(t, l.Acquire(key), limit.ErrLimited)
 	require.Equal(t, 2, l.Running())
 
 	l.Release(key)
 	require.Equal(t, 1, l.Running())
 	require.NoError(t, l.Acquire(key))
-	require.ErrorIs(t, limit.ErrLimited, l.Acquire(key))
+	require.ErrorIs(t, l.Acquire(key), limit.ErrLimited)
 	require.Equal(t, 2, l.Running())
 
 	l.Release(key)
@@ -51,7 +51,7 @@ func TestCountLimit(t *testing.T) {
 	require.Equal(t, 0, l.Running())
 	require.NoError(t, l.Acquire(key))
 	require.NoError(t, l.Acquire(key))
-	require.ErrorIs(t, limit.ErrLimited, l.Acquire(key))
+	require.ErrorIs(t, l.Acquire(key), limit.ErrLimited)
 	require.Equal(t, 2, l.Running())
 }
 

@@ -690,7 +690,7 @@ func TestAccessClientPutMaxBlobsLength(t *testing.T) {
 		}
 
 		_, _, err := client.Put(randCtx(), &args)
-		require.ErrorIs(t, cs.err, err)
+		require.ErrorIs(t, err, cs.err)
 	}
 }
 
@@ -776,12 +776,12 @@ func TestAccessClientDelete(t *testing.T) {
 	{
 		locs, err := client.Delete(randCtx(), nil)
 		require.Nil(t, locs)
-		require.ErrorIs(t, errcode.ErrIllegalArguments, err)
+		require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 	}
 	{
 		locs, err := client.Delete(randCtx(), &access.DeleteArgs{})
 		require.Nil(t, locs)
-		require.ErrorIs(t, errcode.ErrIllegalArguments, err)
+		require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 	}
 	{
 		locs, err := client.Delete(randCtx(), &access.DeleteArgs{
@@ -803,7 +803,7 @@ func TestAccessClientDelete(t *testing.T) {
 		}
 		locs, err := client.Delete(randCtx(), args)
 		require.Equal(t, args.Locations, locs)
-		require.ErrorIs(t, errcode.ErrIllegalArguments, err)
+		require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 	}
 	{
 		loc := proto.Location{Size_: 100, Slices: make([]proto.Slice, 0)}
@@ -892,7 +892,7 @@ func TestAccessClientPutAtToken(t *testing.T) {
 			Body: bytes.NewBuffer(buff),
 		}
 		_, _, err := client.Put(randCtx(), &args)
-		require.ErrorIs(t, errcode.ErrUnexpected, err)
+		require.ErrorIs(t, err, errcode.ErrUnexpected)
 	}
 }
 

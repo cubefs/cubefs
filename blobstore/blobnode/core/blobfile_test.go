@@ -94,7 +94,7 @@ func TestBlobFile_Op(t *testing.T) {
 
 	cancel()
 	n, err = ef.WriteAtCtx(ctx, data, 0)
-	require.ErrorIs(t, context.Canceled, err)
+	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, n)
 
 	// ReadAtCtx
@@ -107,7 +107,7 @@ func TestBlobFile_Op(t *testing.T) {
 
 	cancel()
 	n, err = ef.ReadAtCtx(ctx, buf, 0)
-	require.ErrorIs(t, context.Canceled, err)
+	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, n)
 
 	// stat
@@ -194,7 +194,7 @@ func TestBlobFile_doTaskFnCtxCancel(t *testing.T) {
 		args.TaskFn()
 	})
 	n, err = ef.WriteAtCtx(ctx, data, 0)
-	require.ErrorIs(t, context.Canceled, err)
+	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, n)
 
 	// ReadAtCtx
@@ -213,6 +213,6 @@ func TestBlobFile_doTaskFnCtxCancel(t *testing.T) {
 		args.TaskFn()
 	})
 	n, err = ef.ReadAtCtx(ctx, buf, 0)
-	require.ErrorIs(t, context.Canceled, err)
+	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, n)
 }

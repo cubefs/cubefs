@@ -370,7 +370,7 @@ func TestBlobDeleteConsume(t *testing.T) {
 		ret := delBlobRet{delMsg: msg, ctx: ctx}
 		mgr.consume(&ret, commonCloser)
 		require.Equal(t, DeleteStatusFailed, ret.status)
-		require.ErrorIs(t, errMock, ret.err)
+		require.ErrorIs(t, ret.err, errMock)
 		mgr.clusterTopology = oldClusterTopology
 		mgr.blobnodeCli = oldBlobNode
 	}
@@ -404,7 +404,7 @@ func TestBlobDeleteConsume(t *testing.T) {
 		mgr.consume(&ret, commonCloser)
 		require.Equal(t, DeleteStatusFailed, ret.status)
 		require.Nil(t, msg.BlobDelStages.Stages)
-		require.ErrorIs(t, errcode.ErrDiskBroken, ret.err)
+		require.ErrorIs(t, ret.err, errcode.ErrDiskBroken)
 		mgr.clusterTopology = oldClusterTopology
 		mgr.blobnodeCli = oldBlobNode
 	}
@@ -456,7 +456,7 @@ func TestBlobDeleteConsume(t *testing.T) {
 		mgr.consume(&ret, commonCloser)
 		require.Equal(t, DeleteStatusFailed, ret.status)
 		require.Nil(t, msg.BlobDelStages.Stages)
-		require.ErrorIs(t, errcode.ErrDiskBroken, ret.err)
+		require.ErrorIs(t, ret.err, errcode.ErrDiskBroken)
 
 		mgr.clusterTopology = oldClusterTopology
 		mgr.blobnodeCli = oldBlobNode

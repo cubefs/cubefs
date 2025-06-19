@@ -29,11 +29,11 @@ func TestRpc2Body(t *testing.T) {
 
 	b.remain = 0
 	_, err := b.WriteTo(io.Discard)
-	require.ErrorIs(t, io.EOF, err)
+	require.ErrorIs(t, err, io.EOF)
 
 	b.remain = 1
 	_, err = b.WriteTo(LimitWriter(io.Discard, 2))
-	require.ErrorIs(t, io.ErrShortWrite, err)
+	require.ErrorIs(t, err, io.ErrShortWrite)
 }
 
 func TestRpc2ReadFrame(t *testing.T) {
@@ -48,7 +48,7 @@ func TestRpc2ReadFrame(t *testing.T) {
 		frame.Write([]byte{0xee})
 		conn.WriteFrame(frame)
 		_, err = conn.ReadFrame(testCtx)
-		require.ErrorIs(t, io.EOF, err)
+		require.ErrorIs(t, err, io.EOF)
 	}
 	{
 		conn, err := cli.Connector.Get(testCtx, addr)
@@ -57,7 +57,7 @@ func TestRpc2ReadFrame(t *testing.T) {
 		frame.Write([]byte{0x1, 0x00, 0x00, 0x00})
 		conn.WriteFrame(frame)
 		_, err = conn.ReadFrame(testCtx)
-		require.ErrorIs(t, io.EOF, err)
+		require.ErrorIs(t, err, io.EOF)
 	}
 	{
 		conn, err := cli.Connector.Get(testCtx, addr)
@@ -66,7 +66,7 @@ func TestRpc2ReadFrame(t *testing.T) {
 		frame.Write([]byte{0x1, 0x00, 0x00, 0x00, 0xee})
 		conn.WriteFrame(frame)
 		_, err = conn.ReadFrame(testCtx)
-		require.ErrorIs(t, io.EOF, err)
+		require.ErrorIs(t, err, io.EOF)
 	}
 }
 

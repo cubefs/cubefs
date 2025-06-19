@@ -64,9 +64,9 @@ func TestProxyCacherDiskError(t *testing.T) {
 	_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
 	require.Error(t, err)
 	_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 2, Flush: true})
-	require.ErrorIs(t, errcode.ErrCMDiskNotFound, err)
+	require.ErrorIs(t, err, errcode.ErrCMDiskNotFound)
 	_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1, Flush: false})
-	require.ErrorIs(t, errcode.ErrCMDiskNotFound, err)
+	require.ErrorIs(t, err, errcode.ErrCMDiskNotFound)
 }
 
 func TestProxyCacherDiskCacheMiss(t *testing.T) {

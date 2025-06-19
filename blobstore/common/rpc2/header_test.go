@@ -130,5 +130,5 @@ func TestRpc2FixedHeaderReader(t *testing.T) {
 		Trailer: &header,
 	}
 	_, err := r.Read(nil)
-	require.ErrorIs(t, errLimitedWrite, err)
+	require.ErrorIs(t, err, errLimitedWrite)
 }

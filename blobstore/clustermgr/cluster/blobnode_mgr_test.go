@@ -147,7 +147,7 @@ func TestDiskMgr_Dropping(t *testing.T) {
 
 		// set status when disk is dropping, return ErrChangeDiskStatusNotAllow
 		err = testDiskMgr.SetStatus(ctx, 1, proto.DiskStatusBroken, false)
-		require.ErrorIs(t, apierrors.ErrChangeDiskStatusNotAllow, err)
+		require.ErrorIs(t, err, apierrors.ErrChangeDiskStatusNotAllow)
 
 		droppingList, err = testDiskMgr.ListDroppingDisk(ctx)
 		require.NoError(t, err)

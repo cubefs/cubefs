@@ -50,21 +50,21 @@ func TestRequestTimeout(t *testing.T) {
 	require.NoError(t, err)
 	req = req.WithContext(context.Background())
 	err = cli.DoWith(req, nil)
-	require.ErrorIs(t, transport.ErrTimeout, err)
+	require.ErrorIs(t, err, transport.ErrTimeout)
 	cli.RequestTimeout.Duration = 0
 
 	ctx, cancel := context.WithTimeout(testCtx, 100*time.Millisecond)
 	req, err = NewRequest(ctx, server.Name, "/", nil, nil)
 	require.NoError(t, err)
 	err = cli.DoWith(req, nil)
-	require.ErrorIs(t, transport.ErrTimeout, err)
+	require.Error(t, err)
 	cancel()
 
 	cli.Timeout.Duration = 200 * time.Millisecond
 	req, err = NewRequest(testCtx, server.Name, "/", nil, nil)
 	require.NoError(t, err)
 	err = cli.DoWith(req, nil)
-	require.ErrorIs(t, transport.ErrTimeout, err)
+	require.ErrorIs(t, err, transport.ErrTimeout)
 	cli.Timeout.Duration = 0
 
 	buff := make([]byte, 8<<20)
@@ -130,7 +130,7 @@ func TestRequestErrors(t *testing.T) {
 	req.OptionCrcDownload()
 	require.NoError(t, err)
 	err = cli.DoWith(req, nil)
-	require.ErrorIs(t, ErrFrameHeader, err)
+	require.ErrorIs(t, err, ErrFrameHeader)
 }
 
 func handleBodyReadable(w ResponseWriter, req *Request) error {

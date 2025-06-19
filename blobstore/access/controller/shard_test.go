@@ -671,7 +671,7 @@ func TestShardUpdate(t *testing.T) {
 			},
 		}
 		err = svr.handleShardUpdate(ctx, item)
-		require.ErrorIs(t, errCatalogNoLeader, err)
+		require.ErrorIs(t, err, errCatalogNoLeader)
 
 		sd, exist := svr.getShardNoLock(shardID)
 		require.True(t, exist)
