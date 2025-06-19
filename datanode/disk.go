@@ -298,12 +298,15 @@ func (d *Disk) updateQosLimiter() {
 	}
 	if d.dataNode.diskAsyncReadIops > 0 {
 		d.limitFactor[proto.IopsAsyncReadType].SetLimit(rate.Limit(d.dataNode.diskAsyncReadIops))
+		d.limitFactor[proto.IopsAsyncReadType].SetBurst(d.dataNode.diskAsyncReadIops / 2)
 	}
 	if d.dataNode.diskAsyncWriteIops > 0 {
 		d.limitFactor[proto.IopsAsyncWriteType].SetLimit(rate.Limit(d.dataNode.diskAsyncWriteIops))
+		d.limitFactor[proto.IopsAsyncWriteType].SetBurst(d.dataNode.diskAsyncWriteIops / 2)
 	}
 	if d.dataNode.diskDeleteIops > 0 {
 		d.limitFactor[proto.IopsDeleteType].SetLimit(rate.Limit(d.dataNode.diskDeleteIops))
+		d.limitFactor[proto.IopsDeleteType].SetBurst(d.dataNode.diskDeleteIops / 2)
 	}
 	for i := proto.IopsReadType; i < proto.FlowDeleteType; i++ {
 		log.LogInfof("action[updateQosLimiter] type %v limit %v", proto.QosTypeString(i), d.limitFactor[i].Limit())
@@ -336,6 +339,9 @@ func (d *Disk) allocCheckLimit(factorType uint32, used uint32) error {
 
 func (d *Disk) allocCheckAsyncLimit(factorType uint32, used uint32) error {
 	if !d.dataNode.diskAsyncQosEnable {
+		return nil
+	}
+	if factorType == proto.FlowAsyncReadType || factorType == proto.FlowAsyncWriteType {
 		return nil
 	}
 

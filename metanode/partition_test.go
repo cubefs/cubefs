@@ -15,12 +15,16 @@
 package metanode
 
 import (
+	"encoding/json"
+	"math"
 	"os"
 	"path"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/fileutil"
@@ -246,4 +250,102 @@ func TestDoFileStats(t *testing.T) {
 	mp.doFileStats()
 	duration := time.Since(startTime)
 	t.Logf("DoFileStats cost time %v", duration)
+}
+
+func TestLimitReadDir(t *testing.T) {
+	testPath := "/tmp/testMetaPartition/"
+	os.RemoveAll(testPath)
+	defer os.RemoveAll(testPath)
+	mpC := &MetaPartitionConfig{
+		PartitionId:   1,
+		VolName:       "test_vol",
+		Start:         0,
+		End:           100,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       testPath,
+	}
+	metaM := &metadataManager{
+		nodeId:          1,
+		zoneName:        "test",
+		raftStore:       nil,
+		partitions:      make(map[uint64]MetaPartition),
+		metaNode:        &MetaNode{qosEnable: true},
+		fileStatsConfig: &fileStatsConfig{},
+		limitFactor:     make(map[uint32]*rate.Limiter),
+	}
+	metaM.limitFactor[readDirIops] = rate.NewLimiter(rate.Limit(2), 10)
+
+	partition := NewMetaPartition(mpC, metaM)
+	require.NotNil(t, partition)
+	mp, ok := partition.(*metaPartition)
+	require.True(t, ok)
+	t.Logf("readDirIops:%v", mp.manager.limitFactor[readDirIops].Limit())
+
+	req := &ReadDirLimitReq{
+		PartitionID: partitionId,
+		VolName:     mp.GetVolName(),
+		ParentID:    1,
+		Limit:       math.MaxUint64,
+		VerSeq:      0,
+	}
+
+	const totalRequests = 20
+	var wg sync.WaitGroup
+	start := time.Now()
+
+	for i := 0; i < totalRequests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				err := mp.manager.allocCheckLimit(readDirIops)
+				if err == TryAgainError {
+					time.Sleep(time.Millisecond)
+					continue
+				}
+				resp := mp.readDirLimit(req)
+				_, err = json.Marshal(resp)
+				if err != nil {
+					t.Errorf("readDir err: %v", err)
+				}
+				return
+			}
+		}()
+	}
+
+	wg.Wait()
+	costTime1 := time.Since(start)
+
+	t.Logf("costTime1: %v", costTime1)
+
+	mp.manager.limitFactor[readDirIops].SetLimit(rate.Limit(10))
+	t.Logf("readDirIops:%v", mp.manager.limitFactor[readDirIops].Limit())
+	// mp.manager.metaNode.qosEnable = true
+	start = time.Now()
+
+	for i := 0; i < totalRequests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				err := mp.manager.allocCheckLimit(readDirIops)
+				if err == TryAgainError {
+					time.Sleep(time.Millisecond)
+					continue
+				}
+				resp := mp.readDirLimit(req)
+				_, err = json.Marshal(resp)
+				if err != nil {
+					t.Errorf("readDir err: %v", err)
+				}
+				return
+			}
+		}()
+	}
+	wg.Wait()
+	costTime2 := time.Since(start)
+	t.Logf("costTime2: %v", costTime2)
+
+	require.True(t, costTime1 > costTime2)
 }

@@ -49,6 +49,10 @@ var (
 	legacyReplicaStorageClass uint32 // for compatibility when older version upgrade to hybrid cloud
 )
 
+const (
+	readDirIops uint32 = 0x01
+)
+
 // only used for mp check
 func SetLegacyType(t uint32) {
 	legacyReplicaStorageClass = t
@@ -84,6 +88,8 @@ type MetaNode struct {
 	serviceIDKey                       string
 	nodeForbidWriteOpOfProtoVer0       bool                // whether forbid by node granularity,
 	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
+	qosEnable                          bool
+	readDirIops                        int
 
 	control common.Control
 }
@@ -269,6 +275,14 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("bad cfgRaftReplicaPort config")
 	}
 
+	m.qosEnable = cfg.GetBoolWithDefault(cfsQosEnable, true)
+	m.readDirIops = cfg.GetInt(cfgReadDirIops)
+	if m.readDirIops <= 0 {
+		m.readDirIops = defaultReadDirIops
+	}
+	syslog.Printf("conf qosEnable=%v readDirIops=%v", m.qosEnable, m.readDirIops)
+	log.LogInfof("[parseConfig] qosEnable[%v] readDirIops[%v]", m.qosEnable, m.readDirIops)
+
 	raftRetainLogs := cfg.GetString(cfgRetainLogs)
 	if raftRetainLogs != "" {
 		if m.raftRetainLogs, err = strconv.ParseUint(raftRetainLogs, 10, 64); err != nil {
@@ -446,7 +460,6 @@ func (m *MetaNode) newMetaManager(cfg *config.Config) (err error) {
 			log.LogError(err.Error())
 			return err
 		}
-
 	}
 
 	// load metadataManager
