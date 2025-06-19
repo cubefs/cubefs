@@ -83,6 +83,10 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 	if status != statusOK {
 		// set tx error msg
 		err = errors.New(packet.GetResultMsg())
+		if status == statusFull {
+			log.LogWarnf("txIcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+			return
+		}
 		log.LogErrorf("txIcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -286,7 +290,7 @@ func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uin
 	} else if status != statusOK {
 		if status == statusExist && !ignoreExistError {
 			err = errors.New(packet.GetResultMsg())
-			log.LogErrorf("SendTxPack: packet(%v) mp(%v) req(%v) txInfo(%v) result(%v)",
+			log.LogWarnf("SendTxPack: packet(%v) mp(%v) req(%v) txInfo(%v) result(%v)",
 				packet, mp, packet.GetOpMsg(), req.GetInfo(), packet.GetResultMsg())
 		}
 		return
