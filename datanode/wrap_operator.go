@@ -2124,6 +2124,7 @@ func (s *DataNode) handlePacketToRecoverBadDisk(p *repl.Packet) {
 			partition := s.space.Partition(dpId)
 			if partition == nil {
 				log.LogWarnf("action[handlePacketToRecoverBadDisk]req(%v) bad dp(%v) not found on disk (%v).", task.RequestID, dpId, request.DiskPath)
+				disk.DiskErrPartitionSet.Delete(dpId)
 				continue
 			}
 			partition.resetDiskErrCnt()
