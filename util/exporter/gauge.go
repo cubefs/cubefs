@@ -170,6 +170,10 @@ func (v *GaugeVec) SetBoolWithLabelValues(val bool, lvs ...string) {
 	}
 }
 
+func (v *GaugeVec) Delete(kvs map[string]string) {
+	v.GaugeVec.DeletePartialMatch(kvs)
+}
+
 func (v *GaugeVec) Reset() {
 	v.GaugeVec.Reset()
 }
