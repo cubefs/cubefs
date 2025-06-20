@@ -64,13 +64,14 @@ type PeerAddress struct {
 
 // PartitionConfig defines the configuration properties for the partitions.
 type PartitionConfig struct {
-	ID      uint64
-	Applied uint64
-	Leader  uint64
-	Term    uint64
-	Peers   []PeerAddress
-	SM      PartitionFsm
-	WalPath string
+	ID       uint64
+	Applied  uint64
+	Leader   uint64
+	Term     uint64
+	Peers    []PeerAddress
+	SM       PartitionFsm
+	WalPath  string
+	IsCreate bool
 }
 
 func (p PeerAddress) String() string {
