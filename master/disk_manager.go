@@ -367,6 +367,10 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug, persist 
 		return DecommissionPause, float64(0)
 	}
 
+	if dd.GetDecommissionStatus() == DecommissionCancel {
+		return DecommissionCancel, float64(0)
+	}
+
 	defer func() {
 		if persist {
 			c.syncUpdateDecommissionDisk(dd)
@@ -580,7 +584,7 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 	var (
 		dstNs *nodeSet
 		dps   []*DataPartition
-		wg    sync.WaitGroup
+		dpWg  sync.WaitGroup
 	)
 	begin := time.Now()
 	defer func() {
@@ -595,11 +599,10 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 	dps = cluster.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 
 	for ii := 0; ii < 10; ii++ {
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
 			for dp := range dpCh {
 				if dp.GetDecommissionStatus() == DecommissionSuccess || dp.IsRollbackFailed() {
+					dpWg.Done()
 					continue
 				}
 				if dp.DecommissionDstAddr != "" {
@@ -608,15 +611,17 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 						log.LogWarnf("action[CancelDataPartitionDecommission] dp %v find dst(%v) nodeset failed:%v",
 							dp.PartitionID, dp.DecommissionDstAddr, err.Error())
 						failedDpIds = append(failedDpIds, dp.PartitionID)
+						dpWg.Done()
 						continue
 					}
 					if dstNs.HasDecommissionToken(dp.PartitionID) {
 						if dp.IsDecommissionPrepare() || dp.IsMarkDecommission() {
-							retryTimes, _ := retryDpsMap[dp.PartitionID]
+							retryTimes := retryDpsMap[dp.PartitionID]
 							if retryTimes >= retryTimeLimit {
 								log.LogWarnf("action[CancelDataPartitionDecommission] dp(%v) retry limit exceeded",
 									dp.decommissionInfo())
 								failedDpIds = append(failedDpIds, dp.PartitionID)
+								dpWg.Done()
 							} else {
 								retryDpsMap[dp.PartitionID] = retryTimes + 1
 								dpCh <- dp
@@ -650,6 +655,7 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 								}
 							} else if dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
 								// new replica has been repaired,  let it continue with the subsequent decommission process, skip it this time
+								dpWg.Done()
 								continue
 							}
 						} else {
@@ -680,14 +686,16 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 				cluster.syncUpdateDataPartition(dp)
 				auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
 				dpIds = append(dpIds, dp.PartitionID)
+				dpWg.Done()
 			}
 		}()
 	}
 
 	for _, dp := range dps {
+		dpWg.Add(1)
 		dpCh <- dp
 	}
-	wg.Wait()
+	dpWg.Wait()
 	close(dpCh)
 
 	dd.SetDecommissionStatus(DecommissionCancel)

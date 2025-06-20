@@ -854,6 +854,18 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			response.LostDisks = append(response.LostDisks, d.Path)
 			log.LogErrorf("[buildHeartBeatResponse] disk(%v) lost", d.Path)
 		}
+		bds := proto.DiskStat{
+			Status:            d.Status,
+			DiskPath:          d.Path,
+			Total:             d.Total,
+			Used:              d.Used,
+			Available:         d.Available,
+			IOUtil:            d.space.GetDiskUtil(d),
+			TotalPartitionCnt: d.PartitionCount(),
+
+			DiskErrPartitionList: d.GetDiskErrPartitionList(),
+		}
+		response.DiskStats = append(response.DiskStats, bds)
 		response.BackupDataPartitions = append(response.BackupDataPartitions, d.GetBackupPartitionDirList()...)
 	}
 }
