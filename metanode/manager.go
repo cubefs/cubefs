@@ -686,13 +686,14 @@ func (m *metadataManager) loadPartitions() (err error) {
 	}
 	syslog.Println("Start loadPartitions!!!")
 	var wg sync.WaitGroup
+	curTime := "_" + time.Now().Format(StaleMetadataTimeFormat)
 	for _, fileInfo := range fileInfoList {
 		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
 			if isExpiredPartition(fileInfo.Name(), metaNodeInfo.PersistenceMetaPartitions) {
 				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete it manually",
 					fileInfo.Name())
 				oldName := path.Join(m.rootDir, fileInfo.Name())
-				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name())
+				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name()+curTime)
 				os.Rename(oldName, newName)
 				continue
 			}

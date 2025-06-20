@@ -870,7 +870,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	log.LogWarnf("[before raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
-	if err = mp.startRaft(); err != nil {
+	if err = mp.startRaft(isCreate); err != nil {
 		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
@@ -900,7 +900,7 @@ func (mp *metaPartition) onStop() {
 	}
 }
 
-func (mp *metaPartition) startRaft() (err error) {
+func (mp *metaPartition) startRaft(isCreate bool) (err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -934,10 +934,11 @@ func (mp *metaPartition) startRaft() (err error) {
 	log.LogInfof("start partition id=%d,applyID:%v raft peers: %s",
 		mp.config.PartitionId, mp.applyID, peers)
 	pc := &raftstore.PartitionConfig{
-		ID:      mp.config.PartitionId,
-		Applied: mp.applyID,
-		Peers:   peers,
-		SM:      mp,
+		ID:       mp.config.PartitionId,
+		Applied:  mp.applyID,
+		Peers:    peers,
+		SM:       mp,
+		IsCreate: isCreate,
 	}
 	mp.raftPartition, err = mp.config.RaftStore.CreatePartition(pc)
 	if err == nil {
