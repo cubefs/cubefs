@@ -146,7 +146,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[SecretKey] = MountOption{"secretKey", "Secret Key", "", ""}
 
 	opts[DisableDcache] = MountOption{"disableDcache", "Disable Dentry Cache", "", false}
-	opts[SubDir] = MountOption{"subdir", "Mount sub directory", "", "/"}
+	opts[SubDir] = MountOption{"subdir", "Mount sub directory", "", ""}
 	opts[FsyncOnClose] = MountOption{"fsyncOnClose", "Perform fsync upon file close", "", true}
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
 	opts[ReqChanCnt] = MountOption{"reqChanCnt", "the request chan cnt for stream", "", int64(-1)}
