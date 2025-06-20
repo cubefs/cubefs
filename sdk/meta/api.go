@@ -2481,15 +2481,29 @@ func (mw *MetaWrapper) InodeAccessTimeGet(ino uint64) (accessTime time.Time, err
 }
 
 func (mw *MetaWrapper) ReadDirOnly_ll(parentID uint64) ([]proto.Dentry, error) {
-	parentMP := mw.getPartitionByInode(parentID)
-	if parentMP == nil {
-		return nil, syscall.ENOENT
+	var (
+		noMore   = false
+		from     = ""
+		children = make([]proto.Dentry, 0)
+	)
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentID, from, DefaultReaddirLimit)
+		if err != nil {
+			return nil, err
+		}
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
 	}
 
-	status, children, err := mw.readdironly(parentMP, parentID)
-	if err != nil || status != statusOK {
-		return nil, statusToErrno(status)
-	}
 	return children, nil
 }
 
