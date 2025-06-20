@@ -1010,3 +1010,13 @@ func (c *ExtentClient) shouldRemoteCache(fullPath string) bool {
 	}
 	return false
 }
+
+func (client *ExtentClient) RefCnt(inode uint64) int32 {
+	client.streamerLock.Lock()
+	defer client.streamerLock.Unlock()
+	s, ok := client.streamers[inode]
+	if !ok {
+		return 0
+	}
+	return atomic.LoadInt32(&s.refcnt)
+}
