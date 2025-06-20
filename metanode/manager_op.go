@@ -1551,12 +1551,15 @@ func (m *metadataManager) opUpdateMetaPartition(conn net.Conn, p *Packet,
 		PartitionID: req.PartitionID,
 		End:         req.End,
 	}
-	err = mp.UpdatePartition(req, resp)
-	adminTask.Response = resp
-	adminTask.Request = nil
-	m.respondToMaster(adminTask)
-	log.LogInfof("%s [opUpdateMetaPartition] req[%v], response[%v].",
-		remoteAddr, req, adminTask)
+	go func() {
+		err = mp.UpdatePartition(req, resp)
+		adminTask.Response = resp
+		adminTask.Request = nil
+		m.respondToMaster(adminTask)
+		log.LogInfof("%s [opUpdateMetaPartition] req[%v], response[%v].",
+			remoteAddr, req, adminTask)
+	}()
+
 	return
 }
 
@@ -2815,73 +2818,75 @@ func (m *metadataManager) checkAndPromoteVersion(volName string) (err error) {
 func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
 	remoteAddr string,
 ) (err error) {
+	data := p.Data
 	// For ack to master
 	m.responseAckOKToMaster(conn, p)
 
-	var (
-		opAgain   bool
-		start     = time.Now()
-		data      = p.Data
-		req       = &proto.MultiVersionOpRequest{}
-		resp      = &proto.MultiVersionOpResponse{}
-		adminTask = &proto.AdminTask{
-			Request: req,
-		}
-		decode = json.NewDecoder(bytes.NewBuffer(data))
-	)
+	go func() {
+		var (
+			opAgain   bool
+			start     = time.Now()
+			req       = &proto.MultiVersionOpRequest{}
+			resp      = &proto.MultiVersionOpResponse{}
+			adminTask = &proto.AdminTask{
+				Request: req,
+			}
+			decode = json.NewDecoder(bytes.NewBuffer(data))
+		)
 
-	if !m.metaNode.clusterEnableSnapshot {
-		err = fmt.Errorf("cluster not EnableSnapshot")
-		log.LogErrorf("opMultiVersionOp volume %v", err)
-		goto end
-	}
-
-	decode.UseNumber()
-	if err = decode.Decode(adminTask); err != nil {
-		resp.Status = proto.TaskFailed
-		resp.Result = err.Error()
-		log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
-		goto end
-	}
-	log.LogDebugf("action[opMultiVersionOp] volume %v op [%v]", req.VolumeID, req.Op)
-
-	resp.Status = proto.TaskSucceeds
-	resp.VolumeID = req.VolumeID
-	resp.Addr = req.Addr
-	resp.VerSeq = req.VerSeq
-	resp.Op = req.Op
-
-	if req.Op == proto.CreateVersionPrepare {
-		if err, opAgain = m.prepareCreateVersion(req); err != nil || opAgain {
-			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err)
+		if !m.metaNode.clusterEnableSnapshot {
+			err = fmt.Errorf("cluster not EnableSnapshot")
+			log.LogErrorf("opMultiVersionOp volume %v", err)
 			goto end
 		}
-		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, true); err != nil {
-			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
-			goto end
-		}
-	} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
-		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, false); err != nil {
-			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
-			goto end
-		}
-	}
-end:
-	if err != nil {
-		resp.Result = err.Error()
-	}
-	adminTask.Request = nil
-	adminTask.Response = resp
-	if errRsp := m.respondToMaster(adminTask); errRsp != nil {
-		log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, errRsp %v err %v",
-			remoteAddr, p.String(), req, adminTask, resp, errRsp, err)
-	}
 
-	if log.EnableInfo() {
-		rspData, _ := json.Marshal(resp)
-		log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
-			remoteAddr, p.String(), req, adminTask, string(rspData), time.Since(start).String())
-	}
+		decode.UseNumber()
+		if err = decode.Decode(adminTask); err != nil {
+			resp.Status = proto.TaskFailed
+			resp.Result = err.Error()
+			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
+			goto end
+		}
+		log.LogDebugf("action[opMultiVersionOp] volume %v op [%v]", req.VolumeID, req.Op)
+
+		resp.Status = proto.TaskSucceeds
+		resp.VolumeID = req.VolumeID
+		resp.Addr = req.Addr
+		resp.VerSeq = req.VerSeq
+		resp.Op = req.Op
+
+		if req.Op == proto.CreateVersionPrepare {
+			if err, opAgain = m.prepareCreateVersion(req); err != nil || opAgain {
+				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err)
+				goto end
+			}
+			if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, true); err != nil {
+				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
+				goto end
+			}
+		} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
+			if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, false); err != nil {
+				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
+				goto end
+			}
+		}
+	end:
+		if err != nil {
+			resp.Result = err.Error()
+		}
+		adminTask.Request = nil
+		adminTask.Response = resp
+		if errRsp := m.respondToMaster(adminTask); errRsp != nil {
+			log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, errRsp %v err %v",
+				remoteAddr, p.String(), req, adminTask, resp, errRsp, err)
+		}
+
+		if log.EnableInfo() {
+			rspData, _ := json.Marshal(resp)
+			log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
+				remoteAddr, p.String(), req, adminTask, string(rspData), time.Since(start).String())
+		}
+	}()
 
 	return
 }
