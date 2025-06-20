@@ -434,11 +434,18 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	}
 	var conn *net.TCPConn
 	if conn, err = rc.conns.GetConnect(addr); err != nil {
-		log.LogWarnf("FlashGroup put: reqId(%v) get connection to curr addr failed, addr(%v) key(%v) err(%v)", reqId, addr, key, err)
+		moved := fg.moveToUnknownRank(addr, err, rc.FlashNodeTimeoutCount)
+		log.LogWarnf("FlashGroup put: reqId(%v) get connection to curr addr failed, addr(%v) key(%v) moved(%v) err(%v)", reqId, addr, key, moved, err)
 		return
 	}
+	bgTime := stat.BeginStat()
 	defer func() {
 		rc.conns.PutConnect(conn, err != nil)
+		parts := strings.Split(addr, ":")
+		if len(parts) > 0 && addr != "" {
+			stat.EndStat(fmt.Sprintf("flashPutBlock:%v", parts[0]), err, bgTime, 1)
+		}
+		stat.EndStat("flashPutBlock", err, bgTime, 1)
 	}()
 	req := &proto.PutBlockHead{
 		UniKey:   key,
