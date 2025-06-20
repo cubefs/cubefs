@@ -11,13 +11,13 @@ type MetricStat struct {
 	WriteCount uint64
 }
 
-func updateWriteBytesMetric(size uint64, d string) {
+func UpdateWriteBytesMetric(size uint64, d string) {
 	if stat, ok := StatMap[d]; ok {
 		atomic.AddUint64(&stat.WriteBytes, size)
 	}
 }
 
-func updateWriteCountMetric(d string) {
+func UpdateWriteCountMetric(d string) {
 	if stat, ok := StatMap[d]; ok {
 		atomic.AddUint64(&stat.WriteCount, 1)
 	}

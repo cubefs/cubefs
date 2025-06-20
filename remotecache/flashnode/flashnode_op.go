@@ -282,6 +282,10 @@ func (f *FlashNode) opCacheDelete(conn net.Conn, p *proto.Packet) (err error) {
 }
 
 func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("FlashNode:opCachePutBlock", err, bgTime, 1)
+	}()
 	defer func() {
 		if err != nil {
 			log.LogWarnf("action[opCachePutBlock] end, logMsg:%s",
@@ -330,6 +334,10 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 			if e := p.WriteToConn(conn); e != nil {
 				log.LogErrorf("action[opCachePutBlock] write to conn %v", e)
 			}
+			bgTime1 := stat.BeginStat()
+			defer func() {
+				stat.EndStat("CachePutBlock:Write", err1, bgTime1, 1)
+			}()
 			var (
 				totalWritten int64
 				n            int
@@ -363,6 +371,8 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 					Crc:      crcBuf[:cachengine.CRCLen],
 					DataSize: int64(readSize),
 				})
+				cachengine.UpdateWriteBytesMetric(proto.PageSize, cb.GetRootPath())
+				cachengine.UpdateWriteCountMetric(cb.GetRootPath())
 				err1 = cb.MaybeWriteCompleted(req.BlockLen)
 				if err1 != nil {
 					return
