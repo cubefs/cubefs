@@ -332,6 +332,11 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) (err 
 		}
 	}()
 
+	if len(b.Location.Slices) != len(req.Slices) {
+		span.Errorf("slices length not equal")
+		return apierr.ErrIllegalSlices
+	}
+
 	b.Sealed = true
 	b.Location.Size_ = req.GetSize_()
 

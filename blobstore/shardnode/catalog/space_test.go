@@ -304,37 +304,59 @@ func TestSpace_SealBlob(t *testing.T) {
 	reqSlice := make([]proto.Slice, len(locSlices))
 	copy(reqSlice, locSlices)
 
-	mockSpace.mockHandler.EXPECT().GetBlob(A, A, A).Return(b, nil).Times(12)
+	mockSpace.mockHandler.EXPECT().GetBlob(A, A, A).Return(b, nil).Times(14)
 	mockSpace.mockHandler.EXPECT().UpdateBlob(A, A, A, A).Return(nil).Times(2)
 
-	reqSlice[2].ValidSize = 100
-	reqSlice[3].ValidSize = 110
+	// length not equal
 	args := &shardnode.SealBlobArgs{
 		Header: shardnode.ShardOpHeader{},
 		Name:   name,
-		Size_:  410,
-		Slices: reqSlice,
+		Slices: reqSlice[:2],
 	}
 	err := space.SealBlob(ctx, args)
+	require.NotNil(t, err)
+
+	// seal size too small, can't fill slice in middle
+	reqSlice[2].ValidSize = 100
+	reqSlice[3].ValidSize = 110
+	args = &shardnode.SealBlobArgs{
+		Header: shardnode.ShardOpHeader{},
+		Name:   name,
+		Size_:  290,
+		Slices: reqSlice,
+	}
+	err = space.SealBlob(ctx, args)
+	require.Equal(t, apierr.ErrIllegalLocationSize, err)
+
+	// not full write
+	args.Size_ = 410
+	err = space.SealBlob(ctx, args)
 	require.Nil(t, err)
 
+	// full write
 	reqSlice[3].ValidSize = 200
 	args.Size_ = 500
 	err = space.SealBlob(ctx, args)
 	require.Nil(t, err)
+	/*local blob slice is updated to:
+	[]proto.Slice{
+		{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100},
+		{Vid: 1, MinSliceID: 2, Count: 10, ValidSize: 100},
+		{Vid: 1, MinSliceID: 3, Count: 10, ValidSize: 100},
+		{Vid: 1, MinSliceID: 4, Count: 20, ValidSize: 200},
+	}*/
 
-	args.Size_ = 410
-	err = space.SealBlob(ctx, args)
-	require.Equal(t, apierr.ErrIllegalLocationSize, err)
-
-	args.Size_ = 300
-	err = space.SealBlob(ctx, args)
-	require.Equal(t, apierr.ErrIllegalLocationSize, err)
-
+	// seal size too small than local
 	args.Size_ = 200
 	err = space.SealBlob(ctx, args)
 	require.Equal(t, apierr.ErrIllegalLocationSize, err)
 
+	// seal size too small than local, quit at last slice
+	args.Size_ = 410
+	err = space.SealBlob(ctx, args)
+	require.Equal(t, apierr.ErrIllegalLocationSize, err)
+
+	// seal size too large
 	args.Size_ = 700
 	err = space.SealBlob(ctx, args)
 	require.Equal(t, apierr.ErrIllegalLocationSize, err)
