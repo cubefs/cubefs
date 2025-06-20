@@ -4976,6 +4976,7 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			decommissionProgress := proto.DecommissionProgress{
 				Progress:                 fmt.Sprintf("%.2f%%", progress*float64(100)),
 				StatusMessage:            GetDecommissionStatusMessage(status),
+				TotalDpCnt:               disk.DecommissionDpTotal,
 				IgnoreDps:                disk.IgnoreDecommissionDps,
 				ResidualDps:              disk.residualDecommissionDpsGetAll(),
 				StartTime:                time.Unix(int64(disk.DecommissionTerm), 0).String(),
