@@ -585,6 +585,7 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 		dstNs *nodeSet
 		dps   []*DataPartition
 		dpWg  sync.WaitGroup
+		mu    sync.Mutex
 	)
 	begin := time.Now()
 	defer func() {
@@ -593,7 +594,7 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 
 	dpCh := make(chan *DataPartition, 1024)
 	const retryTimeLimit int = 5
-	retryDpsMap := make(map[uint64]int)
+	retryDpsMap := sync.Map{}
 	dpIds := make([]uint64, 0)
 	failedDpIds := make([]uint64, 0)
 	dps = cluster.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
@@ -610,22 +611,29 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 					if err != nil {
 						log.LogWarnf("action[CancelDataPartitionDecommission] dp %v find dst(%v) nodeset failed:%v",
 							dp.PartitionID, dp.DecommissionDstAddr, err.Error())
+						mu.Lock()
 						failedDpIds = append(failedDpIds, dp.PartitionID)
+						mu.Unlock()
 						dpWg.Done()
 						continue
 					}
 					if dstNs.HasDecommissionToken(dp.PartitionID) {
 						if dp.IsDecommissionPrepare() || dp.IsMarkDecommission() {
-							retryTimes := retryDpsMap[dp.PartitionID]
-							if retryTimes >= retryTimeLimit {
-								log.LogWarnf("action[CancelDataPartitionDecommission] dp(%v) retry limit exceeded",
-									dp.decommissionInfo())
-								failedDpIds = append(failedDpIds, dp.PartitionID)
-								dpWg.Done()
-							} else {
-								retryDpsMap[dp.PartitionID] = retryTimes + 1
-								dpCh <- dp
+							retryTimes := 1
+							if value, ok := retryDpsMap.Load(dp.PartitionID); ok {
+								if value.(int) >= retryTimeLimit {
+									log.LogWarnf("action[CancelDataPartitionDecommission] dp(%v) retry limit exceeded",
+										dp.decommissionInfo())
+									mu.Lock()
+									failedDpIds = append(failedDpIds, dp.PartitionID)
+									mu.Unlock()
+									dpWg.Done()
+									continue
+								}
+								retryTimes = value.(int) + 1
 							}
+							retryDpsMap.Store(dp.PartitionID, retryTimes)
+							dpCh <- dp
 							continue
 						}
 						if dp.isSpecialReplicaCnt() && !dp.DecommissionRaftForce {
@@ -685,7 +693,9 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 				srcNs.decommissionDataPartitionList.Remove(dp)
 				cluster.syncUpdateDataPartition(dp)
 				auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
+				mu.Lock()
 				dpIds = append(dpIds, dp.PartitionID)
+				mu.Unlock()
 				dpWg.Done()
 			}
 		}()
