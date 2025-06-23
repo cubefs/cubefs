@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -1173,10 +1174,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.LogWarnf("action[LoadSnapshot] recovered when load partition partition: %v, failed: %v",
-						mp.config.PartitionId, r)
+					log.LogWarnf("action[LoadSnapshot] recovered when load partition partition: %v, failed: %v, i %d, stack %s",
+						mp.config.PartitionId, r, i, debug.Stack())
 
-					errs[i] = errors.NewErrorf("%v", r)
+					errs[i] = errors.NewErrorf("%v, i %d, stack %s", r, i, debug.Stack())
 				}
 
 				wg.Done()
