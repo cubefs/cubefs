@@ -320,75 +320,82 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		log.LogDebug("action[opCachePutBlock] create block key:"+uniKey+" logMsg:%s",
 			p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 	}
-	missTaskDone := make(chan struct{})
 	allocSize := cachengine.CalcAllocSizeV2(int(req.BlockLen))
-	err = f.limitWrite.TryRunAsync(context.Background(), allocSize, false, func() {
-		defer func() {
-			close(missTaskDone)
-		}()
-		if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(allocSize), conn.RemoteAddr().String()); err2 != nil || created {
-			err = fmt.Errorf("already create block(%v)", cachengine.GenCacheBlockKeyV2(pDir, uniKey))
+	if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(allocSize), conn.RemoteAddr().String()); err2 != nil || created {
+		err = fmt.Errorf("already create block(%v)", cachengine.GenCacheBlockKeyV2(pDir, uniKey))
+		return
+	} else {
+		p.PacketOkReply()
+		if err1 = p.WriteToConn(conn); err1 != nil {
+			log.LogErrorf("action[opCachePutBlock] write to conn %v", err1)
 			return
-		} else {
-			p.PacketOkReply()
-			if e := p.WriteToConn(conn); e != nil {
-				log.LogErrorf("action[opCachePutBlock] write to conn %v", e)
-			}
-			bgTime1 := stat.BeginStat()
-			defer func() {
-				stat.EndStat("CachePutBlock:Write", err1, bgTime1, 1)
-			}()
-			var (
-				totalWritten int64
-				n            int
-				readSize     int
-			)
-			buf := bytespool.Alloc(proto.PageSize)
-			defer bytespool.Free(buf)
-			crcBuf := bytespool.Alloc(cachengine.CRCLen)
-			defer bytespool.Free(crcBuf)
-			for {
-				readSize = proto.PageSize
+		}
+		bgTime1 := stat.BeginStat()
+		defer func() {
+			stat.EndStat("CachePutBlock:Write", err1, bgTime1, 1)
+		}()
+		var (
+			totalWritten int64
+			n            int
+			readSize     int
+		)
+		writeLen := proto.PageSize + 4
+		buf := bytespool.Alloc(writeLen)
+		defer bytespool.Free(buf)
+		for {
+			readSize = proto.PageSize
+			missTaskDone := make(chan struct{})
+			err = f.limitWrite.TryRunAsync(context.Background(), writeLen, false, func() {
+				defer func() {
+					close(missTaskDone)
+				}()
 				if totalWritten+int64(readSize) > req.BlockLen {
 					readSize = int(req.BlockLen - totalWritten)
 				}
-				if n, err1 = io.ReadFull(conn, buf[:proto.PageSize]); err1 != nil {
+				if n, err1 = io.ReadFull(conn, buf[:writeLen]); err1 != nil {
+					log.LogWarnf("action[opCachePutBlock] read data and crc from conn %v", err1)
 					return
 				}
-				if n != proto.PageSize {
+				if n != writeLen {
 					err1 = syscall.EBADMSG
-				}
-				if n, err1 = io.ReadFull(conn, crcBuf[:cachengine.CRCLen]); err1 != nil {
 					return
-				}
-				if n != cachengine.CRCLen {
-					err1 = syscall.EBADMSG
 				}
 				err1 = cb.WriteAtV2(&proto.FlashWriteParam{
 					Offset:   totalWritten,
 					Size:     req.BlockLen,
 					Data:     buf[:proto.PageSize],
-					Crc:      crcBuf[:cachengine.CRCLen],
+					Crc:      buf[proto.PageSize:writeLen],
 					DataSize: int64(readSize),
 				})
+				if err1 != nil {
+					return
+				}
 				cachengine.UpdateWriteBytesMetric(proto.PageSize, cb.GetRootPath())
 				cachengine.UpdateWriteCountMetric(cb.GetRootPath())
 				err1 = cb.MaybeWriteCompleted(req.BlockLen)
 				if err1 != nil {
 					return
 				}
-				totalWritten += int64(readSize)
-				if totalWritten == req.BlockLen {
-					if log.EnableDebug() {
-						log.LogDebugf("action[opCachePutBlock] total write %v", totalWritten)
-					}
+			})
+			if err == nil {
+				<-missTaskDone
+			}
+			if err1 != nil || err != nil {
+				break
+			} else {
+				if err1 = p.WriteToConn(conn); err1 != nil {
+					log.LogErrorf("action[opCachePutBlock] reply to conn %v for write data", err1)
 					break
 				}
 			}
+			totalWritten += int64(readSize)
+			if totalWritten == req.BlockLen {
+				if log.EnableDebug() {
+					log.LogDebugf("action[opCachePutBlock] total write %v", totalWritten)
+				}
+				break
+			}
 		}
-	})
-	if err == nil {
-		<-missTaskDone
 	}
 	if err1 != nil {
 		f.cacheEngine.DeleteCacheBlock(blockKey)

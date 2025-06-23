@@ -52,14 +52,15 @@ type AddressPingStats struct {
 }
 
 type RemoteCacheClient struct {
-	flashGroups *btree.BTree
-	mc          *master.MasterClient
-	conns       *util.ConnectPool
-	hostLatency sync.Map
-	TTL         int64
-	ReadTimeout int64 // ms
-	stopC       chan struct{}
-	wg          sync.WaitGroup
+	flashGroups  *btree.BTree
+	mc           *master.MasterClient
+	conns        *util.ConnectPool
+	hostLatency  sync.Map
+	TTL          int64
+	ReadTimeout  int64 // ms
+	WriteTimeout int64
+	stopC        chan struct{}
+	wg           sync.WaitGroup
 
 	blockSize             uint64
 	clusterEnabled        bool
@@ -101,6 +102,7 @@ func NewRemoteCacheClient(masters []string, blockSize uint64) (rc *RemoteCacheCl
 	rc.stopC = make(chan struct{})
 	rc.flashGroups = btree.New(32)
 	rc.ReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
+	rc.WriteTimeout = proto.DefaultRemoteCacheExtentReadTimeout
 
 	rc.mc = master.NewMasterClient(masters, false)
 	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, ConnIdelTimeout, 1)
@@ -430,7 +432,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	addr := fg.getFlashHost()
 	if addr == "" {
 		err = fmt.Errorf("getFlashHost failed: can not find host")
-		log.LogWarnf("FlashGroup reqId(%v) put failed: err(%v)", reqId, err)
+		log.LogWarnf("FlashGroup fg(%v) reqId(%v) put failed: err(%v)", fg, reqId, err)
 		return
 	}
 	var conn *net.TCPConn
@@ -441,7 +443,8 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	}
 	bgTime := stat.BeginStat()
 	defer func() {
-		rc.conns.PutConnect(conn, err != nil)
+		forceClose := err != nil && !proto.IsFlashNodeLimitError(err)
+		rc.conns.PutConnect(conn, forceClose)
 		parts := strings.Split(addr, ":")
 		if len(parts) > 0 && addr != "" {
 			stat.EndStat(fmt.Sprintf("flashPutBlock:%v", parts[0]), err, bgTime, 1)
@@ -461,23 +464,30 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		return
 	}
 	replyPacket := NewFlashCacheReply()
-	if err = replyPacket.ReadFromConnExt(conn, int(rc.ReadTimeout)); err != nil {
+	if err = replyPacket.ReadFromConnExt(conn, int(rc.WriteTimeout)); err != nil {
 		log.LogWarnf("FlashGroup put: reqId(%v) failed to ReadFromConn, replyPacket(%v), fg host(%v) , err(%v)", reqId, replyPacket, addr, err)
+		return
+	}
+	if replyPacket.ResultCode != proto.OpOk {
+		err = fmt.Errorf("%v", string(replyPacket.Data))
+		if !proto.IsFlashNodeLimitError(err) {
+			log.LogWarnf("getPutBlockReply: ResultCode NOK, req(%v) reply(%v) ResultCode(%v)", reqPacket, replyPacket, replyPacket.ResultCode)
+		}
 		return
 	}
 	defer func() {
 		if err != nil {
-			rc.deleteRemoteBlock(key, conn)
+			log.LogWarnf("FlashGroup put: reqId(%v) remove key %v by err %v", reqId, key, err)
+			rc.deleteRemoteBlock(key, addr)
 		}
 	}()
 	var (
 		totalWritten int64
 		n            int
 	)
-	buf := bytespool.Alloc(proto.PageSize)
+	writeLen := proto.PageSize + 4
+	buf := bytespool.Alloc(writeLen)
 	defer bytespool.Free(buf)
-	crcBuf := bytespool.Alloc(4)
-	defer bytespool.Free(crcBuf)
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -488,18 +498,29 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		}
 		n, err = r.Read(buf[:readSize])
 		if n != readSize {
+			log.LogWarnf("FlashGroup put: expected to read %d bytes, but only read %d", readSize, n)
 			return fmt.Errorf("expected to read %d bytes, but only read %d", readSize, n)
 		}
 		if n > 0 {
+			if log.EnableDebug() {
+				log.LogDebugf("FlashGroup put: write %d bytes total(%d) to fg", n, totalWritten)
+			}
+			binary.BigEndian.PutUint32(buf[proto.PageSize:], crc32.ChecksumIEEE(buf[:proto.PageSize]))
 			conn.SetWriteDeadline(time.Now().Add(proto.WriteDeadlineTime * time.Second))
-			if _, err = conn.Write(buf[:proto.PageSize]); err != nil {
-				log.LogErrorf("wirte data to flashnode get err %v", err)
+			if _, err = conn.Write(buf[:writeLen]); err != nil {
+				log.LogErrorf("wirte data and crc to flashnode get err %v", err)
 				return err
 			}
-			binary.BigEndian.PutUint32(crcBuf, crc32.ChecksumIEEE(buf[:proto.PageSize]))
-			if _, err = conn.Write(crcBuf[:4]); err != nil {
-				log.LogErrorf("wirte crc to flashnode get err %v", err)
-				return err
+			if err = replyPacket.ReadFromConnExt(conn, int(rc.WriteTimeout)); err != nil {
+				log.LogWarnf("FlashGroup put data: reqId(%v) failed to ReadFromConn, replyPacket(%v), fg host(%v) , err(%v)", reqId, replyPacket, addr, err)
+				return
+			}
+			if replyPacket.ResultCode != proto.OpOk {
+				err = fmt.Errorf("%v", string(replyPacket.Data))
+				if !proto.IsFlashNodeLimitError(err) {
+					log.LogWarnf("getPutBlockReply: put data ResultCode NOK, req(%v) reply(%v) ResultCode(%v)", reqPacket, replyPacket, replyPacket.ResultCode)
+				}
+				return
 			}
 			totalWritten += int64(n)
 		}
@@ -509,6 +530,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		} else if err != nil {
 			return err
 		} else if totalWritten == length {
+			log.LogDebugf(" total written %v write size %v to fg", totalWritten, readSize)
 			break
 		}
 	}
@@ -518,13 +540,29 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	return nil
 }
 
-func (rc *RemoteCacheClient) deleteRemoteBlock(key string, conn *net.TCPConn) {
+func (rc *RemoteCacheClient) deleteRemoteBlock(key string, addr string) {
+	var (
+		err  error
+		conn *net.TCPConn
+	)
+	if conn, err = rc.conns.GetConnect(addr); err != nil {
+		log.LogWarnf("FlashGroup delete: get connection to curr addr failed, addr(%v) key(%v)  err(%v)", addr, key, err)
+		return
+	}
+	defer func() {
+		rc.conns.PutConnect(conn, err != nil)
+	}()
 	p := proto.NewPacketReqID()
 	p.Data = ([]byte)(key)
 	p.Opcode = proto.OpFlashNodeCacheDelete
 	p.Size = uint32(len(p.Data))
-	if err := p.WriteToConn(conn); err != nil {
-		log.LogWarnf("FlashGroup put: failed to write to addr(%v) err(%v)", conn.RemoteAddr().String(), err)
+	if err = p.WriteToConn(conn); err != nil {
+		log.LogWarnf("FlashGroup delete: failed to write to addr(%v) err(%v)", conn.RemoteAddr().String(), err)
+		return
+	}
+	replyPacket := NewFlashCacheReply()
+	if err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		log.LogWarnf("FlashGroup delete: failed to ReadFromConn, replyPacket(%v), fg host(%v) err(%v)", replyPacket, addr, err)
 		return
 	}
 }
