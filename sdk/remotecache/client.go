@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -822,9 +823,11 @@ func (reader *RemoteCacheReader) getReadObjectReply(p *proto.Packet) (length int
 }
 
 type RemoteCacheReader struct {
-	conn   *net.TCPConn
-	reader *bufio.Reader
-	rc     *RemoteCacheClient
+	conn           *net.TCPConn
+	reader         *bufio.Reader
+	rc             *RemoteCacheClient
+	needReadLen    int64
+	alreadyReadLen int64
 }
 
 func (rc *RemoteCacheClient) NewRemoteCacheReader(conn *net.TCPConn) *RemoteCacheReader {
@@ -839,6 +842,12 @@ func (rc *RemoteCacheClient) NewRemoteCacheReader(conn *net.TCPConn) *RemoteCach
 func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 	reply := new(proto.Packet)
 	var expectLen int64
+
+	alreadyReadLen := atomic.LoadInt64(&reader.alreadyReadLen)
+	if alreadyReadLen >= reader.needReadLen {
+		return 0, io.EOF
+	}
+
 	expectLen, err = reader.getReadObjectReply(reply)
 	if err != nil {
 		return
@@ -866,6 +875,8 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 
 	extentOffset := reply.ExtentOffset
 	copy(p[:expectLen], buff[extentOffset:extentOffset+expectLen])
+
+	atomic.StoreInt64(&reader.alreadyReadLen, reader.alreadyReadLen+expectLen)
 
 	return int(expectLen), nil
 }
@@ -983,6 +994,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 		}
 
 		reader = rc.NewRemoteCacheReader(conn)
+		reader.needReadLen = int64(req.Size_)
 		break
 	}
 
