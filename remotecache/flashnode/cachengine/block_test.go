@@ -414,8 +414,13 @@ func testWriteSingleFileV2(t *testing.T) {
 	file, _ := cacheBlock.GetOrOpenFileHandler()
 	_, _ = file.ReadAt(crcBuf[:4], 8192+HeaderSize)
 	require.Equal(t, crcSum1, binary.BigEndian.Uint32(crcBuf[:4]))
+	fdata := make([]byte, 4096)
+	_, _ = file.ReadAt(fdata[:4096], HeaderSize)
+	require.Equal(t, crcSum1, crc32.ChecksumIEEE(fdata[:4096]))
 	_, _ = file.ReadAt(crcBuf[:4], 8192+HeaderSize+4)
 	require.Equal(t, crcSum2, binary.BigEndian.Uint32(crcBuf[:4]))
+	_, _ = file.ReadAt(fdata[:4096], HeaderSize+4096)
+	require.Equal(t, crcSum2, crc32.ChecksumIEEE(fdata[:4096]))
 }
 
 func testWriteSingleFileErrorV2(t *testing.T) {

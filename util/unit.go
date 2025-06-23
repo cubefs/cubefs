@@ -22,7 +22,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -41,7 +40,7 @@ const (
 	BlockCount          = 1024
 	BlockSize           = 65536 * 2
 	ReadBlockSize       = BlockSize
-	RepairReadBlockSize = 512 * util.KB
+	RepairReadBlockSize = 512 * KB
 	CacheReadBlockSize  = 4 * MB
 	PerBlockCrcSize     = 4
 	ExtentSize          = BlockCount * BlockSize
@@ -57,7 +56,7 @@ const (
 )
 
 const (
-	PageSize          = 4 * util.KB
+	PageSize          = 4 * KB
 	FallocFLKeepSize  = 1
 	FallocFLPunchHole = 2
 )
