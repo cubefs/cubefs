@@ -447,11 +447,8 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 
 	bgTime2 := stat.BeginStat()
 	// reply to client as quick as possible if hit cache
-	err2 := f.limitRead.RunNoWait(int(req.Size_), false, func() {
-		err = f.doObjectReadRequest(ctx, conn, req, p, block)
-	})
-	if err2 != nil {
-		err = err2
+	err = f.doObjectReadRequest(ctx, conn, req, p, block)
+	if err != nil {
 		stat.EndStat("HitCacheRead", err, bgTime2, 1)
 		return
 	}
@@ -720,57 +717,61 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	// reply data to client
 	end := offset + int64(req.Size_)
 	for {
-		err = nil
-		reply := proto.NewPacket()
-		reply.ReqID = p.ReqID
-		reply.StartT = p.StartT
+		err = f.limitRead.RunNoWait(util.PageSize, false, func() {
+			reply := proto.NewPacket()
+			reply.ReqID = p.ReqID
+			reply.StartT = p.StartT
 
-		var bufOnce sync.Once
-		buf, bufErr := proto.Buffers.Get(util.PageSize)
-		bufRelease := func() {
-			bufOnce.Do(func() {
-				if bufErr == nil {
-					proto.Buffers.Put(reply.Data[:util.PageSize])
-				}
-			})
-		}
-		if bufErr != nil {
-			buf = make([]byte, util.PageSize)
-		}
-		reply.Data = buf
+			var bufOnce sync.Once
+			buf, bufErr := proto.Buffers.Get(util.PageSize)
+			bufRelease := func() {
+				bufOnce.Do(func() {
+					if bufErr == nil {
+						proto.Buffers.Put(reply.Data[:util.PageSize])
+					}
+				})
+			}
+			if bufErr != nil {
+				buf = make([]byte, util.PageSize)
+			}
+			reply.Data = buf
 
-		alignedOffset := offset / util.PageSize * util.PageSize
-		reply.KernelOffset = uint64(offset)
-		reply.ExtentOffset = offset - alignedOffset
-		p.Size = util.PageSize
-		p.ExtentOffset = offset
+			alignedOffset := offset / util.PageSize * util.PageSize
+			reply.KernelOffset = uint64(offset)
+			reply.ExtentOffset = offset - alignedOffset
+			p.Size = util.PageSize
+			p.ExtentOffset = offset
 
-		reply.CRC, err = block.Read(ctx, reply.Data[:], alignedOffset, util.PageSize, f.waitForCacheBlock, true)
+			reply.CRC, err = block.Read(ctx, reply.Data[:], alignedOffset, util.PageSize, f.waitForCacheBlock, true)
+			if err != nil {
+				bufRelease()
+				return
+			}
+			p.CRC = reply.CRC
+			realNeedSize := uint32(util.Min(int(util.PageSize-reply.ExtentOffset), int(end-offset)))
+
+			reply.Size = realNeedSize
+			reply.ResultCode = proto.OpOk
+			reply.Opcode = p.Opcode
+			p.ResultCode = proto.OpOk
+
+			bgTime := stat.BeginStat()
+			if err = reply.WriteToConnForOCS(conn); err != nil {
+				bufRelease()
+				log.LogErrorf("%s key:[%s] %s", action, req.Key,
+					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
+				return
+			}
+			stat.EndStat("HitCacheRead:ReplyToClient", err, bgTime, 1)
+			offset = alignedOffset + util.PageSize
+			bufRelease()
+			if log.EnableInfo() {
+				log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, req.Key,
+					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err), block.String())
+			}
+		})
 		if err != nil {
-			bufRelease()
 			return
-		}
-		p.CRC = reply.CRC
-		realNeedSize := uint32(util.Min(int(util.PageSize-reply.ExtentOffset), int(end-offset)))
-
-		reply.Size = realNeedSize
-		reply.ResultCode = proto.OpOk
-		reply.Opcode = p.Opcode
-		p.ResultCode = proto.OpOk
-
-		bgTime := stat.BeginStat()
-		if err = reply.WriteToConnForOCS(conn); err != nil {
-			bufRelease()
-			log.LogErrorf("%s key:[%s] %s", action, req.Key,
-				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
-			return
-		}
-		stat.EndStat("HitCacheRead:ReplyToClient", err, bgTime, 1)
-		offset = alignedOffset + util.PageSize
-		bufRelease()
-		if log.EnableInfo() {
-			log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, req.Key,
-				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err), block.String())
 		}
 		if uint64(offset) >= req.Offset+req.Size_ {
 			break
