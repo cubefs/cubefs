@@ -12,6 +12,7 @@ type MrBalanceInfo struct {
 	DstNodeSetId uint64 `json:"dstNodeSetId" bson:"dstnodesetid"`
 	DstZoneName  string `json:"dstZoneName" bson:"dstzonename"`
 	Status       string `json:"status" bson:"status"`
+	Msg          string `json:"msg" bson:"msg"`
 }
 
 type MetaBalancePlan struct {
@@ -22,6 +23,7 @@ type MetaBalancePlan struct {
 	Plan       []*MrBalanceInfo `json:"plan" bson:"plan"`
 	PlanNum    int              `json:"planNum" bson:"plannum"`
 	InodeCount uint64           `json:"inodeCount" bson:"inodecount"`
+	Msg        string           `json:"msg" bson:"msg"`
 }
 
 type MetaNodeBalanceInfo struct {
