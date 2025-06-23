@@ -1052,6 +1052,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			plan.Status = PlanTaskError
 			plan.Msg = err.Error()
 			c.PlanRun = false
+			mpPlan.Msg = err.Error()
 			err1 := c.syncUpdateBalanceTask(plan)
 			if err1 != nil {
 				log.LogErrorf("syncUpdateBalanceTask error: %s", err1.Error())
@@ -1063,6 +1064,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		if err != nil {
 			log.LogErrorf("skip rebalance meta partition(%d) error: %s", mpPlan.ID, err.Error())
 			plan.Msg = err.Error()
+			mpPlan.Msg = err.Error()
 			continue
 		}
 
@@ -1070,6 +1072,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		if err != nil {
 			log.LogErrorf("waitForMetaPartitionReady err: %s", err.Error())
 			plan.Msg = err.Error()
+			mpPlan.Msg = err.Error()
 			continue
 		}
 
@@ -1080,6 +1083,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			if err != nil {
 				log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
 				plan.Msg = err.Error()
+				mrPlan.Msg = err.Error()
 				return
 			}
 
@@ -1087,6 +1091,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 				plan.Status = PlanTaskStop
 				c.PlanRun = false
 				plan.Msg = "migrate plan is stopped"
+				mrPlan.Msg = "migrate plan is stopped"
 				err = c.syncUpdateBalanceTask(plan)
 				if err != nil {
 					log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
@@ -1097,6 +1102,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			if c.partition == nil || !c.partition.IsRaftLeader() {
 				c.PlanRun = false
 				plan.Msg = "master leader is changed"
+				mrPlan.Msg = "master leader is changed"
 				return
 			}
 			// switch raft leader if the source is leader. And waiting for the leader to be elected.
@@ -1168,6 +1174,7 @@ func (c *Cluster) SetMetaReplicaPlanStatusError(plan *proto.ClusterPlan, mrPlan 
 	plan.Status = PlanTaskError
 	plan.Msg = msg
 	mrPlan.Status = PlanTaskError
+	mrPlan.Msg = msg
 	err := c.syncUpdateBalanceTask(plan)
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
