@@ -339,11 +339,11 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 			n            int
 			readSize     int
 		)
-		writeLen := proto.PageSize + 4
+		writeLen := proto.CACHE_BLOCK_PACKET_SIZE + 4
 		buf := bytespool.Alloc(writeLen)
 		defer bytespool.Free(buf)
 		for {
-			readSize = proto.PageSize
+			readSize = proto.CACHE_BLOCK_PACKET_SIZE
 			missTaskDone := make(chan struct{})
 			err = f.limitWrite.TryRunAsync(context.Background(), writeLen, false, func() {
 				defer func() {
@@ -363,14 +363,14 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 				err1 = cb.WriteAtV2(&proto.FlashWriteParam{
 					Offset:   totalWritten,
 					Size:     req.BlockLen,
-					Data:     buf[:proto.PageSize],
-					Crc:      buf[proto.PageSize:writeLen],
+					Data:     buf[:proto.CACHE_BLOCK_PACKET_SIZE],
+					Crc:      buf[proto.CACHE_BLOCK_PACKET_SIZE:writeLen],
 					DataSize: int64(readSize),
 				})
 				if err1 != nil {
 					return
 				}
-				cachengine.UpdateWriteBytesMetric(proto.PageSize, cb.GetRootPath())
+				cachengine.UpdateWriteBytesMetric(proto.CACHE_BLOCK_PACKET_SIZE, cb.GetRootPath())
 				cachengine.UpdateWriteCountMetric(cb.GetRootPath())
 				err1 = cb.MaybeWriteCompleted(req.BlockLen)
 				if err1 != nil {
@@ -724,38 +724,38 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	// reply data to client
 	end := offset + int64(req.Size_)
 	for {
-		err = f.limitRead.RunNoWait(util.PageSize, false, func() {
+		err = f.limitRead.RunNoWait(proto.CACHE_BLOCK_PACKET_SIZE, false, func() {
 			reply := proto.NewPacket()
 			reply.ReqID = p.ReqID
 			reply.StartT = p.StartT
 
 			var bufOnce sync.Once
-			buf, bufErr := proto.Buffers.Get(util.PageSize)
+			buf, bufErr := proto.Buffers.Get(proto.CACHE_BLOCK_PACKET_SIZE)
 			bufRelease := func() {
 				bufOnce.Do(func() {
 					if bufErr == nil {
-						proto.Buffers.Put(reply.Data[:util.PageSize])
+						proto.Buffers.Put(reply.Data[:proto.CACHE_BLOCK_PACKET_SIZE])
 					}
 				})
 			}
 			if bufErr != nil {
-				buf = make([]byte, util.PageSize)
+				buf = make([]byte, proto.CACHE_BLOCK_PACKET_SIZE)
 			}
 			reply.Data = buf
 
-			alignedOffset := offset / util.PageSize * util.PageSize
+			alignedOffset := offset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
 			reply.KernelOffset = uint64(offset)
 			reply.ExtentOffset = offset - alignedOffset
-			p.Size = util.PageSize
+			p.Size = proto.CACHE_BLOCK_PACKET_SIZE
 			p.ExtentOffset = offset
 
-			reply.CRC, err = block.Read(ctx, reply.Data[:], alignedOffset, util.PageSize, f.waitForCacheBlock, true)
+			reply.CRC, err = block.Read(ctx, reply.Data[:], alignedOffset, proto.CACHE_BLOCK_PACKET_SIZE, f.waitForCacheBlock, true)
 			if err != nil {
 				bufRelease()
 				return
 			}
 			p.CRC = reply.CRC
-			realNeedSize := uint32(util.Min(int(util.PageSize-reply.ExtentOffset), int(end-offset)))
+			realNeedSize := uint32(util.Min(int(proto.CACHE_BLOCK_PACKET_SIZE-reply.ExtentOffset), int(end-offset)))
 
 			reply.Size = realNeedSize
 			reply.ResultCode = proto.OpOk
@@ -770,7 +770,7 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 				return
 			}
 			stat.EndStat("HitCacheRead:ReplyToClient", err, bgTime, 1)
-			offset = alignedOffset + util.PageSize
+			offset = alignedOffset + proto.CACHE_BLOCK_PACKET_SIZE
 			bufRelease()
 			if log.EnableInfo() {
 				log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, req.Key,
@@ -964,7 +964,7 @@ func (f *FlashNode) shouldCache(key string) error {
 	} else {
 		count = cachengine.AtomicLoadAndAddWithCAS(&cm.MissCount)
 	}
-	if (count-1) == 0 || count == _defaultMissCountThresholdInterval {
+	if count == _defaultMissCountThresholdInterval {
 		return proto.ErrorNotExistShouldCache
 	} else {
 		return proto.ErrorNotExistShouldNotCache

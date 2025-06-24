@@ -12,6 +12,7 @@ import (
 
 const (
 	PageSize                = 4 * 1024
+	CACHE_BLOCK_PACKET_SIZE = 8 * PageSize
 	CACHE_BLOCK_SIZE        = 1 << 20
 	CACHE_OBJECT_BLOCK_SIZE = 4 * 1024 * 1024
 	ReadCacheTimeout        = 1 // second

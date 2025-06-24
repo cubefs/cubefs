@@ -197,10 +197,10 @@ func testTCPCachePutBlock(t *testing.T) {
 	require.NoError(t, p.WriteToConn(conn))
 	require.NoError(t, r.ReadFromConn(conn, 3))
 	require.Equal(t, proto.OpOk, r.ResultCode)
-	buf := make([]byte, proto.PageSize+4)
+	buf := make([]byte, proto.CACHE_BLOCK_PACKET_SIZE+4)
 	buf[0] = '{'
-	binary.BigEndian.PutUint32(buf[proto.PageSize:], crc32.ChecksumIEEE(buf[:proto.PageSize]))
-	_, err := conn.Write(buf[:proto.PageSize+4])
+	binary.BigEndian.PutUint32(buf[proto.CACHE_BLOCK_PACKET_SIZE:], crc32.ChecksumIEEE(buf[:proto.CACHE_BLOCK_PACKET_SIZE]))
+	_, err := conn.Write(buf[:proto.CACHE_BLOCK_PACKET_SIZE+4])
 	require.NoError(t, err)
 }
 
@@ -292,8 +292,8 @@ func testShouldCache(t *testing.T) {
 	flashServer.missCache.Delete(key)
 	t.Logf("error not exist should cache count: %d", countA)
 	t.Logf("error not exist should not cache count: %d", countB)
-	require.Equal(t, countA, int64(2))
-	require.Equal(t, countB, int64(8))
+	require.Equal(t, countA, int64(1))
+	require.Equal(t, countB, int64(9))
 }
 
 func testTCPObjectCacheRead(t *testing.T) {
