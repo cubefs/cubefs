@@ -487,6 +487,32 @@ func (dd *DecommissionDisk) GetLatestDecommissionDP(c *Cluster) (partitions []*D
 	return
 }
 
+func (dd *DecommissionDisk) GetDecommissionTotalDpCnt(c *Cluster) (totalDpCnt int) {
+	status := dd.GetDecommissionStatus()
+	if status == markDecommission {
+		vols := c.copyVols()
+		for _, vol := range vols {
+			dpMapCache := make([]*DataPartition, 0)
+			vol.dataPartitions.RLock()
+			for _, dp := range vol.dataPartitions.partitionMap {
+				dpMapCache = append(dpMapCache, dp)
+			}
+			vol.dataPartitions.RUnlock()
+			for _, dp := range dpMapCache {
+				if dp.IsDiscard {
+					continue
+				}
+				if dp.containsBadDisk(dd.DiskPath, dd.SrcAddr) || (dp.DecommissionSrcAddr == dd.SrcAddr && dp.DecommissionSrcDiskPath == dd.DiskPath) {
+					totalDpCnt += 1
+				}
+			}
+		}
+	} else {
+		totalDpCnt = dd.DecommissionDpTotal
+	}
+	return totalDpCnt
+}
+
 func (dd *DecommissionDisk) GetDecommissionDiskRetryOverLimitDP(c *Cluster) []uint64 {
 	const retryLimit int = 5
 	retryOverLimitDps := make([]uint64, 0)
