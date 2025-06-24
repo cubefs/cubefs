@@ -376,7 +376,9 @@ func (manager *SpaceManager) GetDiskUtils() map[string]float64 {
 func (manager *SpaceManager) GetDiskUtil(disk *Disk) (util float64) {
 	manager.diskMutex.RLock()
 	defer manager.diskMutex.RUnlock()
-	util = manager.diskUtils[disk.diskPartition.Device].Load()
+	if disk.diskPartition != nil {
+		util = manager.diskUtils[disk.diskPartition.Device].Load()
+	}
 	return
 }
 
