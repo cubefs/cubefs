@@ -4981,15 +4981,20 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			decommissionProgress := proto.DecommissionProgress{
 				Progress:                 fmt.Sprintf("%.2f%%", progress*float64(100)),
 				StatusMessage:            GetDecommissionStatusMessage(status),
-				TotalDpCnt:               disk.DecommissionDpTotal,
+				TotalDpCnt:               disk.GetDecommissionTotalDpCnt(m.cluster),
 				IgnoreDps:                disk.IgnoreDecommissionDps,
 				ResidualDps:              disk.residualDecommissionDpsGetAll(),
 				StartTime:                time.Unix(int64(disk.DecommissionTerm), 0).String(),
 				IsManualDecommissionDisk: disk.IsManualDecommissionDisk(),
 			}
-			failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
-			decommissionProgress.FailedDps = failedDps
-			decommissionProgress.RunningDps = runningDps
+			if status == markDecommission {
+				decommissionProgress.FailedDps = make([]proto.FailedDpInfo, 0)
+				decommissionProgress.RunningDps = make([]uint64, 0)
+			} else {
+				failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+				decommissionProgress.FailedDps = failedDps
+				decommissionProgress.RunningDps = runningDps
+			}
 			retryOverLimitDps := disk.GetDecommissionDiskRetryOverLimitDP(m.cluster)
 			decommissionProgress.RetryOverLimitDps = retryOverLimitDps
 			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{
