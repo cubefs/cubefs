@@ -154,6 +154,7 @@ type SpaceStatInfo struct {
 	FreeSpace      int64          `json:"free_space"`     // free physical space which is writable
 	ReadOnlySpace  int64          `json:"readonly_space"` // free physical space which is readonly
 	UsedSpace      int64          `json:"used_space"`     // used physical space
+	ReservedSpace  int64          `json:"reserved_space"` // reserved logical space
 	WritableSpace  int64          `json:"writable_space"` // writable logical space
 	TotalBlobNode  int64          `json:"total_blob_node,omitempty"`
 	TotalShardNode int64          `json:"total_shard_node,omitempty"`

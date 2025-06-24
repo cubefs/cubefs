@@ -245,9 +245,14 @@ func TestNewService(t *testing.T) {
 	cfg.ClusterCfg[proto.VolumeReserveSizeKey] = "20000000"
 	os.Mkdir(cfg.DBPath, 0o755)
 
+	cfg.BlobNodeDiskMgrConfig.ReservedSpace = -1
+	cfg.ShardNodeDiskMgrConfig.ReservedSpace = 1 << 10
+
 	testService, err := New(&cfg)
 	require.NoError(t, err)
 	require.NotNil(t, testService)
+	require.Equal(t, int64(0), cfg.BlobNodeDiskMgrConfig.ReservedSpace)
+	require.Equal(t, int64(1<<10), cfg.ShardNodeDiskMgrConfig.ReservedSpace)
 
 	mc := testService.RaftConfig.ServerConfig.Members[0].Context
 	memberContext := &clustermgr.MemberContext{}

@@ -476,6 +476,9 @@ func (c *Config) checkAndFix() (err error) {
 		return errors.New("invalid volume code mode config")
 	}
 
+	defaulter.IntegerLess(&c.BlobNodeDiskMgrConfig.ReservedSpace, 0)
+	defaulter.IntegerLess(&c.ShardNodeDiskMgrConfig.ReservedSpace, 0)
+
 	sort.Slice(c.VolumeCodeModePolicies, func(i, j int) bool {
 		return c.VolumeCodeModePolicies[i].MinSize < c.VolumeCodeModePolicies[j].MinSize
 	})

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/golang/mock/gomock"
@@ -14,15 +14,13 @@ func TestWritableSpace(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 
-	spaceInfo := &clustermgr.SpaceStatInfo{}
 	idcBlobNodeStgs := make(map[string][]*nodeAllocator)
 	for i := range testDiskMgr.cfg.IDC {
 		for j := 0; j < 16; j++ {
 			idcBlobNodeStgs[testDiskMgr.cfg.IDC[i]] = append(idcBlobNodeStgs[testDiskMgr.cfg.IDC[i]], &nodeAllocator{free: 100 * testDiskMgr.cfg.ChunkSize})
 		}
 	}
-	testDiskMgr.calculateWritable(idcBlobNodeStgs)
-	t.Log("writable space: ", spaceInfo.WritableSpace)
+	t.Log("writable space:", testDiskMgr.calculateWritable(idcBlobNodeStgs))
 }
 
 func TestReadonlySpace(t *testing.T) {
@@ -33,6 +31,20 @@ func TestReadonlySpace(t *testing.T) {
 	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
 	initTestDiskMgrDisksWithReadonly(t, testDiskMgr, 1, 4, testIdcs...)
 	testDiskMgr.refresh(ctx)
+}
+
+func TestReservedSpace(t *testing.T) {
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
+	defer closeTestDiskMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+	initTestDiskMgrDisksWithReadonly(t, testDiskMgr, 1, 4, testIdcs...)
+	for _, space := range []int64{1, 1 << 10, 1 << 30, 1 << 60} {
+		testDiskMgr.cfg.ReservedSpace = space
+		testDiskMgr.refresh(ctx)
+		stat := testDiskMgr.Stat(ctx, proto.DiskTypeHDD)
+		t.Logf("space(%d) reserved(%d) total(%d)", space, stat.ReservedSpace, stat.TotalSpace)
+	}
 }
 
 func TestCheckDroppingNode(t *testing.T) {

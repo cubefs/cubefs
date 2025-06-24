@@ -107,7 +107,6 @@ func showClusterWithConfig() error {
 
 	cs := config.Clusters()
 	for clusterID, hosts := range cs {
-		fmt.Println("====================================")
 		client := config.NewCluster(clusterID, nil, "")
 		stat, err := client.Stat(context.Background())
 		if err != nil {
@@ -127,7 +126,8 @@ func showClusterWithConfig() error {
 		fmt.Println()
 
 		fmt.Printf("\tspace in cluster: %s (%s / %s)\n", clusterID,
-			common.ColorizeInt64(-stat.BlobNodeSpaceStat.WritableSpace, stat.BlobNodeSpaceStat.TotalSpace).Sprint(humanize.IBytes(uint64(stat.BlobNodeSpaceStat.WritableSpace))),
+			common.ColorizeInt64(-stat.BlobNodeSpaceStat.WritableSpace, stat.BlobNodeSpaceStat.TotalSpace).
+				Sprint(humanize.IBytes(uint64(stat.BlobNodeSpaceStat.WritableSpace))),
 			humanize.IBytes(uint64(stat.BlobNodeSpaceStat.TotalSpace)))
 	}
 	return nil

@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -133,6 +134,7 @@ type DiskMgrConfig struct {
 	ShardNodeConfig          shardnode.Config    `json:"shard_node_config"`
 	AllocTolerateBuffer      int64               `json:"alloc_tolerate_buffer"`
 	EnsureIndex              bool                `json:"ensure_index"`
+	ReservedSpace            int64               `json:"reserved_space"`
 	IDC                      []string            `json:"-"`
 	CodeModes                []codemode.CodeMode `json:"-"`
 	ChunkSize                int64               `json:"-"`
@@ -974,6 +976,8 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 		}
 		spaceStatInfo.WritableSpace += d.calculateWritable(idcNodeStgs)
 	}
+	spaceStatInfo.ReservedSpace = util.Min(d.cfg.ReservedSpace, spaceStatInfo.WritableSpace)
+	spaceStatInfo.WritableSpace = util.Max(0, spaceStatInfo.WritableSpace-spaceStatInfo.ReservedSpace)
 
 	return
 }
