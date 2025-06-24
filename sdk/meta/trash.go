@@ -763,6 +763,8 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 					parentIno = info.Inode
 				}
 				continue
+			} else if strings.Contains(err.Error(), "quota exceeded") || strings.Contains(err.Error(), "no space") {
+				trash.deleteTask(parentIno, sub, true, path.Join(parentPath, sub))
 			} else {
 				log.LogWarnf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
 				return

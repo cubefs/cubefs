@@ -723,6 +723,10 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 			parentPathAbsolute := mw.getCurrentPath(parentID)
 			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
 			if err != nil {
+				if strings.Contains(err.Error(), "quota exceeded") || strings.Contains(err.Error(), "no space") {
+					log.LogDebugf("Delete_ll: quota exceeded, delete %v directly, err %v", name, err.Error())
+					goto deleteDirectly
+				}
 				log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
 			}
 			return nil, err
@@ -882,6 +886,11 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 			parentPathAbsolute := mw.getCurrentPath(parentID)
 			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
 			if err != nil {
+				// delete it directly if quota is exceeded
+				if strings.Contains(err.Error(), "quota exceeded") || strings.Contains(err.Error(), "no space") {
+					log.LogDebugf("Delete_ll: quota exceeded, delete %v directly, err %v", name, err.Error())
+					goto deleteDirectly
+				}
 				log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
 			}
 
