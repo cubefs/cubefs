@@ -208,7 +208,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64,
 	}
 
 	if cb.sourceType == SourceTypeBlock {
-		realSize = util.PageSize
+		realSize = proto.CACHE_BLOCK_PACKET_SIZE
 	}
 
 	log.LogDebugf("action[Read] read cache block:%v, offset:%d, allocSize:%d, usedSize:%d", cb.blockKey, offset, cb.allocSize, cb.usedSize)
@@ -222,7 +222,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64,
 		return
 	}
 	if readCrc {
-		sliceIndex := offset / proto.PageSize
+		sliceIndex := offset / proto.CACHE_BLOCK_PACKET_SIZE
 		crcOffset := cb.allocSize + HeaderSize + sliceIndex*4
 		crcBuf := make([]byte, 4)
 		if _, err = file.ReadAt(crcBuf, crcOffset); err != nil {
@@ -856,7 +856,7 @@ func (cb *CacheBlock) WriteAtV2(writeParam *proto.FlashWriteParam) (err error) {
 		log.LogWarnf("[WriteAtV2] WriteAt (%v) data offset %v err %v", cb.filePath, writeParam.Offset+HeaderSize, err)
 		return
 	}
-	n := writeParam.Offset/proto.PageSize*CRCLen + cb.allocSize + HeaderSize
+	n := writeParam.Offset/proto.CACHE_BLOCK_PACKET_SIZE*CRCLen + cb.allocSize + HeaderSize
 	if log.EnableDebug() {
 		log.LogDebugf("[WriteAtV2] file offset %v crc index %v and datasize %v", writeParam.Offset, n, writeParam.DataSize)
 	}
@@ -889,8 +889,8 @@ func (cb *CacheBlock) MaybeWriteCompleted(reqLen int64) (err error) {
 }
 
 func CalcAllocSizeV2(reqLen int) int {
-	if reqLen%proto.PageSize != 0 {
-		reqLen = (reqLen/proto.PageSize + 1) * proto.PageSize
+	if reqLen%proto.CACHE_BLOCK_PACKET_SIZE != 0 {
+		reqLen = (reqLen/proto.CACHE_BLOCK_PACKET_SIZE + 1) * proto.CACHE_BLOCK_PACKET_SIZE
 	}
 	return reqLen
 }

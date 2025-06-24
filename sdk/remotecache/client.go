@@ -485,14 +485,14 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		totalWritten int64
 		n            int
 	)
-	writeLen := proto.PageSize + 4
+	writeLen := proto.CACHE_BLOCK_PACKET_SIZE + 4
 	buf := bytespool.Alloc(writeLen)
 	defer bytespool.Free(buf)
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		readSize := proto.PageSize
+		readSize := proto.CACHE_BLOCK_PACKET_SIZE
 		if totalWritten+int64(readSize) > length {
 			readSize = int(length - totalWritten)
 		}
@@ -505,7 +505,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 			if log.EnableDebug() {
 				log.LogDebugf("FlashGroup put: write %d bytes total(%d) to fg", n, totalWritten)
 			}
-			binary.BigEndian.PutUint32(buf[proto.PageSize:], crc32.ChecksumIEEE(buf[:proto.PageSize]))
+			binary.BigEndian.PutUint32(buf[proto.CACHE_BLOCK_PACKET_SIZE:], crc32.ChecksumIEEE(buf[:proto.CACHE_BLOCK_PACKET_SIZE]))
 			conn.SetWriteDeadline(time.Now().Add(proto.WriteDeadlineTime * time.Second))
 			if _, err = conn.Write(buf[:writeLen]); err != nil {
 				log.LogErrorf("wirte data and crc to flashnode get err %v", err)
@@ -777,7 +777,7 @@ func (rc *RemoteCacheClient) Get(ctx context.Context, key string, reqId string, 
 	if r, length, err = rc.readObjectFromRemoteCache(ctx, key, reqId, uint64(from), uint64(to-from)); err == nil {
 		remoteCacheHitMetric := exporter.NewCounter("readRemoteCacheHit")
 		remoteCacheHitMetric.AddWithLabels(1, map[string]string{"key": key})
-	} else if errors.Is(err, proto.ErrorNotExistShouldCache) {
+	} else if strings.Contains(err.Error(), proto.ErrorNotExistShouldCache.Error()) {
 		shouldCache = true
 	}
 
@@ -806,9 +806,7 @@ func (rc *RemoteCacheClient) readObjectFromRemoteCache(ctx context.Context, key 
 	req.Size_ = size
 
 	if reader, length, err = rc.ReadObject(ctx, fg, reqId, &req); err != nil {
-		if !proto.IsFlashNodeLimitError(err) {
-			log.LogWarnf("readObjectFromRemoteCache: flashGroup read failed. offset(%v) size(%v) fg(%v) req(%v) reqId(%v) err(%v)", offset, size, fg, req, reqId, err)
-		}
+		log.LogWarnf("readObjectFromRemoteCache: flashGroup read failed. offset(%v) size(%v) fg(%v) req(%v) reqId(%v) err(%v)", offset, size, fg, req, reqId, err)
 		return
 	}
 
@@ -891,7 +889,7 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 		return
 	}
 
-	buff := bytespool.Alloc(proto.PageSize)
+	buff := bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
 	defer bytespool.Free(buff)
 
 	_, err = io.ReadFull(reader.conn, buff)
