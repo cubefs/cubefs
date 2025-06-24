@@ -153,9 +153,9 @@ func InitConfig(conf *Config) error {
 		conf.AllowCleanTrash = true
 	}
 
-	defaulter.LessOrEqual(&conf.WriteThreadCnt, defaultWriteThreadCnt)
-	defaulter.LessOrEqual(&conf.ReadThreadCnt, defaultReadThreadCnt)
-	defaulter.LessOrEqual(&conf.DeleteThreadCnt, defaultDeleteThreadCnt)
+	defaulter.Equal(&conf.WriteThreadCnt, defaultWriteThreadCnt)
+	defaulter.Equal(&conf.ReadThreadCnt, defaultReadThreadCnt)
+	defaulter.Equal(&conf.DeleteThreadCnt, defaultDeleteThreadCnt)
 
 	conf.DataQos.WriteChanQueCnt = int32(conf.WriteThreadCnt)
 	qos.InitAndFixQosConfig(&conf.DataQos)

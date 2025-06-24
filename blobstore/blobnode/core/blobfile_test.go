@@ -30,32 +30,21 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
-func TestBlobFile_Op(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "BlobFileOp")
-	require.NoError(t, err)
-	defer os.RemoveAll(testDir)
-
-	posixfilepath := filepath.Join(testDir, "PoxsixFile")
-	log.Info(posixfilepath)
-
-	temppath := filepath.Join(posixfilepath, "xxxtemp")
-	f, err := OpenFile(temppath, false)
-	require.Error(t, err)
-	require.Nil(t, f)
-
-	f, err = OpenFile(posixfilepath, true)
-	require.NoError(t, err)
-
-	require.NotNil(t, f)
-
+func doBlobFileOp(t *testing.T, f *os.File, emptyIoPool bool) {
 	// create
 	syncWorker := mergetask.NewMergeTask(-1, func(interface{}) error { return nil })
 
-	ctr := gomock.NewController(t)
-	ioPool := mocks.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
-		args.TaskFn()
-	}).AnyTimes()
+	ioPool := taskpool.NewReadPool(0, 0, taskpool.IoPoolMetricConf{})
+
+	if !emptyIoPool {
+		ctr := gomock.NewController(t)
+		ioPool = mocks.NewMockIoPool(ctr)
+		ioPool.(*mocks.MockIoPool).EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+			args.TaskFn()
+		}).AnyTimes()
+		// ioPool.EXPECT().IsEmpty().Return(emptyIoPool).AnyTimes()
+	}
+
 	ioPools := map[qos.IOTypeRW]taskpool.IoPool{
 		qos.IOTypeRead:  ioPool,
 		qos.IOTypeWrite: ioPool,
@@ -141,6 +130,35 @@ func TestBlobFile_Op(t *testing.T) {
 	require.Equal(t, int(stat.Blocks), 0)
 }
 
+func TestBlobFile_Op(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "BlobFileOp")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	posixfilepath := filepath.Join(testDir, "PoxsixFile")
+	log.Info(posixfilepath)
+
+	temppath := filepath.Join(posixfilepath, "xxxtemp")
+	f, err := OpenFile(temppath, false)
+	require.Error(t, err)
+	require.Nil(t, f)
+
+	f, err = OpenFile(posixfilepath, true)
+	require.NoError(t, err)
+	require.NotNil(t, f)
+
+	// enable io pools
+	doBlobFileOp(t, f, false)
+
+	// invalid/empty io pools
+	posixfilepath2 := filepath.Join(testDir, "PoxsixFile2")
+	f, err = OpenFile(posixfilepath2, true)
+	require.NoError(t, err)
+	require.NotNil(t, f)
+
+	doBlobFileOp(t, f, true)
+}
+
 func TestBlobFile_doTaskFnCtxCancel(t *testing.T) {
 	testDir, err := os.MkdirTemp(os.TempDir(), "BlobFileTaskCancel")
 	require.NoError(t, err)
@@ -164,6 +182,7 @@ func TestBlobFile_doTaskFnCtxCancel(t *testing.T) {
 
 	ctr := gomock.NewController(t)
 	ioPool := mocks.NewMockIoPool(ctr)
+	// ioPool.EXPECT().IsEmpty().Return(false).AnyTimes()
 	ioPools := map[qos.IOTypeRW]taskpool.IoPool{
 		qos.IOTypeRead:  ioPool,
 		qos.IOTypeWrite: ioPool,

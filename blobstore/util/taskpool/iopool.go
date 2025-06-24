@@ -95,6 +95,11 @@ func NewDeletePool(threadCnt, queueDepth int, conf IoPoolMetricConf) IoPool {
 // $threadCnt: The number of read/write work goroutine, it must be greater than $chanCnt
 // $queueDepth: The number of elements in the queue
 func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) *ioPoolSimple {
+	if threadCnt <= 0 || chanCnt <= 0 || queueDepth <= 0 {
+		// empty io pool, dont limit
+		return &ioPoolSimple{closed: make(chan struct{})}
+	}
+
 	iopoolMetric := prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Namespace:  conf.Namespace,
@@ -175,6 +180,11 @@ func (p *ioPoolSimple) reportMetric(opStage string, tm time.Time) {
 }
 
 func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) {
+	if p.notLimit() {
+		args.TaskFn()
+		return
+	}
+
 	idx, task := p.generateTask(args)
 
 	// if ctx has been cancelled, try to avoid enqueuing as much as possible;
@@ -237,4 +247,9 @@ func (p *ioPoolSimple) Close() {
 	}
 
 	log.Info("close all io pool, exit")
+}
+
+func (p *ioPoolSimple) notLimit() bool {
+	// dont limit: queue is empty
+	return p.queue == nil
 }

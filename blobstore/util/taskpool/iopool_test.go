@@ -13,6 +13,7 @@ import (
 )
 
 func TestIoPoolSimple(t *testing.T) {
+	// normal
 	metricConf := IoPoolMetricConf{
 		ClusterID: 1,
 		IDC:       "idc",
@@ -241,4 +242,33 @@ func TestIoPoolSimple(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, n) // long time task, not raw data
 	}
+
+	// empty, not limit write
+	emptyPool := newCommonIoPool(0, 0, 0, IoPoolMetricConf{})
+	require.True(t, emptyPool.notLimit())
+	defer emptyPool.Close()
+
+	n := 0
+	data := []byte(content)
+	task := IoPoolTaskArgs{
+		TaskFn: func() { n, err = file.WriteAt(data, 0) },
+	}
+
+	emptyPool.Submit(task)
+	require.NoError(t, err)
+	require.Equal(t, len(content), n)
+
+	// empty, not limit read
+	n = 0
+	data = make([]byte, len(content))
+	task = IoPoolTaskArgs{
+		TaskFn: func() { n, err = file.ReadAt(data, 0) },
+	}
+	require.Equal(t, uint8(0), data[0])
+	require.Equal(t, 0, n)
+
+	emptyPool.Submit(task)
+	require.NoError(t, err)
+	require.Equal(t, len(content), n)
+	require.Equal(t, content, string(data))
 }
