@@ -487,6 +487,22 @@ func (dd *DecommissionDisk) GetLatestDecommissionDP(c *Cluster) (partitions []*D
 	return
 }
 
+func (dd *DecommissionDisk) GetDecommissionDiskRetryOverLimitDP(c *Cluster) []uint64 {
+	const retryLimit int = 5
+	retryOverLimitDps := make([]uint64, 0)
+	vols := c.allVols()
+	for _, vol := range vols {
+		partitions := vol.dataPartitions.clonePartitions()
+		for _, dp := range partitions {
+			retryTimes := dp.DecommissionDiskRetryMap[dd.SrcAddr+"_"+dd.DiskPath]
+			if retryTimes > retryLimit {
+				retryOverLimitDps = append(retryOverLimitDps, dp.PartitionID)
+			}
+		}
+	}
+	return retryOverLimitDps
+}
+
 func (dd *DecommissionDisk) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) ([]proto.FailedDpInfo, []uint64) {
 	partitions := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 	var (
