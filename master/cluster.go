@@ -510,6 +510,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleStartBalanceTask()
 	c.scheduleToUpdateFlashGroupSlots()
 	c.scheduleToCheckDataPartitionRepairingStatus()
+	c.scheduleToCheckDataPartitionDecommissionDiskRetryMap()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -6284,6 +6285,39 @@ func (c *Cluster) syncRecoverBackupDataPartitionReplica(host, disk string, dp *D
 		return
 	}
 	return
+}
+
+func (c *Cluster) scheduleToCheckDataPartitionDecommissionDiskRetryMap() {
+	c.runTask(&cTask{
+		tickTime: time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition),
+		name:     "scheduleToCheckDataPartitionDecommissionDiskRetryMap",
+		function: func() (fin bool) {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkDataPartitionDecommissionDiskRetryMap()
+			}
+			return
+		},
+	})
+}
+
+func (c *Cluster) checkDataPartitionDecommissionDiskRetryMap() {
+	vols := c.allVols()
+	for _, vol := range vols {
+		partitions := vol.dataPartitions.clonePartitions()
+		for _, dp := range partitions {
+			for key, _ := range dp.DecommissionDiskRetryMap {
+				arr := strings.Split(key, "_")
+				if len(arr) == 2 {
+					addr := arr[0]
+					disk := arr[1]
+					if (dp.DecommissionSrcAddr == addr && dp.DecommissionSrcDiskPath == disk) || dp.containsBadDisk(disk, addr) {
+						continue
+					}
+				}
+				delete(dp.DecommissionDiskRetryMap, key)
+			}
+		}
+	}
 }
 
 func (c *Cluster) scheduleToCheckDataPartitionRepairingStatus() {

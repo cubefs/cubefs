@@ -59,6 +59,7 @@ type DataPartition struct {
 
 	RdOnly                            bool
 	addReplicaMutex                   sync.RWMutex
+	DecommissionDiskRetryMap          map[string]int
 	DecommissionRetry                 int
 	DecommissionStatus                uint32
 	DecommissionSrcAddr               string
@@ -99,6 +100,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.FileInCoreMap = make(map[string]*FileInCore)
 	partition.FilesWithMissingReplica = make(map[string]int64)
 	partition.MissingNodes = make(map[string]int64)
+	partition.DecommissionDiskRetryMap = make(map[string]int)
 
 	partition.Status = proto.ReadOnly
 	partition.VolName = volName
@@ -2701,10 +2703,10 @@ func (partition *DataPartition) decommissionInfo() string {
 		replicas = append(replicas, replica.Addr)
 	}
 
-	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
+	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_diskRetryMap(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
 		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_weight(%v)_firstHostDiskTokenKey(%v)_replica(%v)_recoverStartTime(%v)_addr(%p)",
 		partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
-		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
+		partition.Hosts, partition.DecommissionDiskRetryMap, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
 		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage, partition.IsDiscard,

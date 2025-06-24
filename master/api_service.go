@@ -2294,6 +2294,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		ReplicaNum:            dp.ReplicaNum,
 		Status:                GetDecommissionStatusMessage(dp.GetDecommissionStatus()),
 		SpecialStep:           GetSpecialDecommissionStatusMessage(dp.GetSpecialReplicaDecommissionStep()),
+		DiskRetryMap:          dp.DecommissionDiskRetryMap,
 		Retry:                 dp.DecommissionRetry,
 		RaftForce:             dp.DecommissionRaftForce,
 		Recover:               dp.isRecover,
@@ -4921,6 +4922,8 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
 	resp.FailedDps = failedDps
 	resp.RunningDps = runningDps
+	retryOverLimitDps := disk.GetDecommissionDiskRetryOverLimitDP(m.cluster)
+	resp.RetryOverLimitDps = retryOverLimitDps
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
 
@@ -4987,6 +4990,8 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
 			decommissionProgress.FailedDps = failedDps
 			decommissionProgress.RunningDps = runningDps
+			retryOverLimitDps := disk.GetDecommissionDiskRetryOverLimitDP(m.cluster)
+			decommissionProgress.RetryOverLimitDps = retryOverLimitDps
 			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{
 				SrcAddr:            disk.SrcAddr,
 				DiskPath:           disk.DiskPath,

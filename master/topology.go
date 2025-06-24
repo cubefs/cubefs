@@ -2392,6 +2392,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					dp.ReleaseDecommissionFirstHostToken(c)
 					msg := fmt.Sprintf("ns %v(%p) dp %v decommission success, cost %v",
 						l.nsId, l, dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
+					delete(dp.DecommissionDiskRetryMap, dp.DecommissionSrcAddr+"_"+dp.DecommissionSrcDiskPath)
 					dp.ResetDecommissionStatus()
 					dp.setRestoreReplicaStop()
 					err := c.syncUpdateDataPartition(dp)
@@ -2412,6 +2413,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 							log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] set repairStatus to false failed, err %v", l.nsId, l, dp.decommissionInfo(), err)
 						}
 						l.Remove(dp)
+						dp.DecommissionDiskRetryMap[dp.DecommissionSrcAddr+"_"+dp.DecommissionSrcDiskPath]++
 						// if dp is not removed from decommission list, do not reset RestoreReplica
 						dp.setRestoreReplicaStop()
 						remove = true
