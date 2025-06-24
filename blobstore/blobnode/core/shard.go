@@ -25,6 +25,7 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
+	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -372,7 +373,12 @@ func NewShardReader(id proto.BlobID, vuid proto.Vuid, from int64, to int64, writ
 
 func NewBatchShardReader(bids []bnapi.BidInfo, vuid proto.Vuid, writer io.Writer, bufferSize int64) (*BatchShard, error) {
 	s := new(BatchShard)
+	lastOff := int64(-1)
 	for _, bid := range bids {
+		if bid.Offset <= lastOff || bid.Size < 0 {
+			return nil, bloberr.ErrInvalidParam
+		}
+		lastOff = bid.Offset
 		s.Size += bid.Size
 		if bufferSize < Alignphysize(bid.Size) {
 			bufferSize = Alignphysize(bid.Size)

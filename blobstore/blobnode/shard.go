@@ -213,7 +213,7 @@ func (s *Service) ShardsGet(c *rpc.Context) {
 	}
 
 	// build shard reader
-	shard, err := core.NewBatchShardReader(args.Bids, args.Vuid, w, s.Conf.DiskConfig.BatchBufferSize)
+	shard, err := core.NewBatchShardReader(args.Bids, args.Vuid, w, ds.GetConfig().BatchBufferSize)
 	if err != nil {
 		c.RespondError(err)
 		return
