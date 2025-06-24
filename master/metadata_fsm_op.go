@@ -184,6 +184,7 @@ type dataPartitionValue struct {
 	PartitionType                  int
 	RdOnly                         bool
 	IsDiscard                      bool
+	DecommissionDiskRetryMap       map[string]int
 	DecommissionRetry              int
 	DecommissionStatus             uint32
 	DecommissionSrcAddr            string
@@ -254,6 +255,9 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 		}
 		dp.afterCreation(rv.Addr, rv.DiskPath, c)
 	}
+	for disk, retryTimes := range dpv.DecommissionDiskRetryMap {
+		dp.DecommissionDiskRetryMap[disk] = retryTimes
+	}
 	return dp
 }
 
@@ -277,6 +281,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		PartitionType:                  dp.PartitionType,
 		RdOnly:                         dp.RdOnly,
 		IsDiscard:                      dp.IsDiscard,
+		DecommissionDiskRetryMap:       make(map[string]int),
 		DecommissionRetry:              dp.DecommissionRetry,
 		DecommissionStatus:             atomic.LoadUint32(&dp.DecommissionStatus),
 		DecommissionSrcAddr:            dp.DecommissionSrcAddr,
@@ -301,6 +306,9 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
 		dpv.Replicas = append(dpv.Replicas, rv)
+	}
+	for disk, retryTimes := range dp.DecommissionDiskRetryMap {
+		dpv.DecommissionDiskRetryMap[disk] = retryTimes
 	}
 	return
 }

@@ -445,6 +445,7 @@ type DecommissionProgress struct {
 	FailedDps                []FailedDpInfo
 	IgnoreDps                []IgnoreDecommissionDP
 	ResidualDps              []IgnoreDecommissionDP
+	RetryOverLimitDps        []uint64
 	StartTime                string
 	IsManualDecommissionDisk bool
 }
@@ -592,6 +593,7 @@ type DecommissionDataPartitionInfo struct {
 	ReplicaNum            uint8
 	Status                string
 	SpecialStep           string
+	DiskRetryMap          map[string]int
 	Retry                 int
 	RaftForce             bool
 	Recover               bool

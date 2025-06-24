@@ -1360,10 +1360,16 @@ func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
 		}
 	}
 	if len(progress.FailedDps) != 0 {
-		sb.WriteString("Failed Dps:       \n")
+		sb.WriteString("Failed Dps:        \n")
 		for i, info := range progress.FailedDps {
 			sb.WriteString(fmt.Sprintf("           [%v/%v] Partition Id  : %v\n", i+1, len(progress.FailedDps), info.PartitionID))
 			sb.WriteString(fmt.Sprintf("                   Error Message : %v\n", info.ErrMsg))
+		}
+	}
+	if len(progress.RetryOverLimitDps) != 0 {
+		sb.WriteString("retryOverLimit Dps:\n")
+		for i, info := range progress.RetryOverLimitDps {
+			sb.WriteString(fmt.Sprintf("           [%v/%v] Partition Id : %v\n", i+1, len(progress.RetryOverLimitDps), info))
 		}
 	}
 	return sb.String()
@@ -1373,6 +1379,7 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("Status:            %v\n", info.Status))
 	sb.WriteString(fmt.Sprintf("SpecialStep:       %v\n", info.SpecialStep))
+	sb.WriteString(fmt.Sprintf("DiskRetryMap:      %v\n", info.DiskRetryMap))
 	sb.WriteString(fmt.Sprintf("Retry:             %v\n", info.Retry))
 	sb.WriteString(fmt.Sprintf("RaftForce:         %v\n", info.RaftForce))
 	sb.WriteString(fmt.Sprintf("Recover:           %v\n", info.Recover))
