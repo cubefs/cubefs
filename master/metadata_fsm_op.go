@@ -1334,6 +1334,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.metaNodeGOGC = cv.MetaNodeGOGC
 		c.cfg.dataNodeGOGC = cv.DataNodeGOGC
 
+		if c.DecommissionFirstHostDiskParallelLimit == 0 {
+			c.DecommissionFirstHostDiskParallelLimit = defaultDecommissionFirstHostDiskParallelLimit
+		}
+
 		if c.cfg.metaNodeGOGC <= 0 {
 			c.cfg.metaNodeGOGC = defaultMetaNodeGOGC
 		}
