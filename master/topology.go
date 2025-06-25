@@ -17,6 +17,7 @@ package master
 import (
 	"container/list"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -2413,7 +2414,12 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 							log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] set repairStatus to false failed, err %v", l.nsId, l, dp.decommissionInfo(), err)
 						}
 						l.Remove(dp)
-						dp.DecommissionDiskRetryMap[dp.DecommissionSrcAddr+"_"+dp.DecommissionSrcDiskPath]++
+						key := dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath
+						if dp.DecommissionDiskRetryMap[key] >= math.MaxInt {
+							dp.DecommissionDiskRetryMap[key] = 0
+						} else {
+							dp.DecommissionDiskRetryMap[key]++
+						}
 						// if dp is not removed from decommission list, do not reset RestoreReplica
 						dp.setRestoreReplicaStop()
 						remove = true
