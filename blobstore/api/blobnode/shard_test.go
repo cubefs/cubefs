@@ -15,13 +15,26 @@
 package blobnode
 
 import (
+	"syscall"
 	"testing"
 
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/stretchr/testify/require"
+
+	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 )
 
 func TestShardStatus(t *testing.T) {
 	require.Equal(t, ShardStatusDefault, ShardStatus(0))
 	require.Equal(t, ShardStatusNormal, ShardStatus(1))
 	require.Equal(t, ShardStatusMarkDelete, ShardStatus(2))
+
+	var err error
+	require.Nil(t, convertEIO(err))
+
+	err = syscall.EIO
+	require.ErrorIs(t, convertEIO(err), bloberr.ErrDiskBroken)
+
+	err = errors.New("input/output error")
+	require.ErrorIs(t, convertEIO(err), bloberr.ErrDiskBroken)
 }

@@ -243,7 +243,8 @@ func (c *client) MarkDeleteShard(ctx context.Context, host string, args *DeleteS
 
 	urlStr := fmt.Sprintf("%v/shard/markdelete/diskid/%v/vuid/%v/bid/%v", host, args.DiskID, args.Vuid, args.Bid)
 	err = c.PostWith(ctx, urlStr, nil, rpc.NoneBody)
-	return
+
+	return convertEIO(err)
 }
 
 func (c *client) DeleteShard(ctx context.Context, host string, args *DeleteShardArgs) (err error) {
@@ -254,7 +255,8 @@ func (c *client) DeleteShard(ctx context.Context, host string, args *DeleteShard
 
 	urlStr := fmt.Sprintf("%v/shard/delete/diskid/%v/vuid/%v/bid/%v", host, args.DiskID, args.Vuid, args.Bid)
 	err = c.PostWith(ctx, urlStr, nil, rpc.NoneBody)
-	return
+
+	return convertEIO(err)
 }
 
 type StatShardArgs struct {
@@ -273,7 +275,8 @@ func (c *client) StatShard(ctx context.Context, host string, args *StatShardArgs
 		host, args.DiskID, args.Vuid, args.Bid)
 	si = &ShardInfo{}
 	err = c.GetWith(ctx, urlStr, si)
-	return
+
+	return si, convertEIO(err)
 }
 
 type ListShardsArgs struct {
@@ -301,6 +304,7 @@ func (c *client) ListShards(ctx context.Context, host string, args *ListShardsAr
 	listRet := ListShardsRet{}
 	err = c.GetWith(ctx, urlStr, &listRet)
 	if err != nil {
+		err = convertEIO(err)
 		return nil, proto.InValidBlobID, err
 	}
 

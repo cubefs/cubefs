@@ -285,6 +285,11 @@ func (s *Service) ShardList(c *rpc.Context) {
 		return
 	}
 
+	if !ds.IsWritable() {
+		c.RespondError(bloberr.ErrDiskBroken)
+		return
+	}
+
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
 		span.Errorf("vuid:%d not exist, diskID:%d", args.Vuid, args.DiskID)
@@ -331,6 +336,11 @@ func (s *Service) ShardStat(c *rpc.Context) {
 	if !exist {
 		span.Errorf("diskid:%v not exist", args.DiskID)
 		c.RespondError(bloberr.ErrNoSuchDisk)
+		return
+	}
+
+	if !ds.IsWritable() {
+		c.RespondError(bloberr.ErrDiskBroken)
 		return
 	}
 

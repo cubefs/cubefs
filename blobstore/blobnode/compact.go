@@ -53,6 +53,11 @@ func (s *Service) ChunkCompact(c *rpc.Context) {
 		return
 	}
 
+	if !ds.IsWritable() {
+		c.RespondError(bloberr.ErrDiskBroken)
+		return
+	}
+
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
 		span.Errorf("vuid:%v not exist", args.Vuid)

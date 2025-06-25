@@ -73,6 +73,11 @@ func (s *Service) ChunkCreate(c *rpc.Context) {
 		return
 	}
 
+	if !ds.IsWritable() {
+		c.RespondError(bloberr.ErrDiskBroken)
+		return
+	}
+
 	cs, err := ds.CreateChunk(ctx, args.Vuid, args.ChunkSize)
 	if err != nil {
 		span.Errorf("Failed register vuid:%v, err:%v", args.DiskID, err)
@@ -108,6 +113,11 @@ func (s *Service) ChunkInspect(c *rpc.Context) {
 	if !exist {
 		span.Errorf("diskID %d not exist", args.DiskID)
 		c.RespondError(bloberr.ErrNoSuchDisk)
+		return
+	}
+
+	if !ds.IsWritable() {
+		c.RespondError(bloberr.ErrDiskBroken)
 		return
 	}
 
