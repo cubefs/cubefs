@@ -85,6 +85,9 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 			e := replyPacket.readFromConn(conn, proto.ReadDeadlineTime)
 
 			if e != nil {
+				if sc.dp.ClientWrapper.FollowerRead() && sc.dp.ClientWrapper.NearRead() && sc.dp.MediaType == proto.MediaType_HDD && strings.Contains(e.Error(), "timeout") {
+					sc.dp.ClientWrapper.AddReadFailedHosts(sc.dp.PartitionID, conn.RemoteAddr().String())
+				}
 				log.LogWarnf("Extent Reader Read: failed to read from connect, ino(%v) req(%v) readBytes(%v) err(%v)", reader.inode, reqPacket, readBytes, e)
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false

@@ -189,6 +189,7 @@ func (sc *StreamConn) readQuorumHosts(dp *wrapper.DataPartition, req *Packet, ge
 
 	wait:
 		if time.Since(start) > sc.getRetryTimeOut() {
+
 			log.LogWarnf("readQuorumHosts failed: retry timeout sc(%v) reqPacket(%v) time(%v)", sc, req, time.Since(start))
 			return
 		}
@@ -330,7 +331,20 @@ func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetRep
 // If param selectAll is true, hosts with status(true) is in front and hosts with status(false) is in behind.
 // If param selectAll is false, only return hosts with status(true).
 func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
-	var failedHosts []string
+	var (
+		failedHosts     []string
+		readFailedHosts []string
+		readFailedList  []struct {
+			addr string
+			time time.Time
+		}
+		readFailedMap map[string]time.Time
+	)
+
+	if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() && dp.MediaType == proto.MediaType_HDD {
+		readFailedMap = dp.ClientWrapper.GetReadFailedHosts(dp.PartitionID)
+	}
+
 	hostsStatus := dp.ClientWrapper.HostsStatus
 	var dpHosts []string
 	if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() {
@@ -345,6 +359,15 @@ func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
 	hosts = make([]string, 0, len(dpHosts))
 
 	for _, addr := range dpHosts {
+		if readFailedMap != nil {
+			if failedTime, exists := readFailedMap[addr]; exists {
+				readFailedList = append(readFailedList, struct {
+					addr string
+					time time.Time
+				}{addr: addr, time: failedTime})
+				continue
+			}
+		}
 		status, ok := hostsStatus[addr]
 		if ok {
 			if status {
@@ -358,10 +381,22 @@ func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
 		}
 	}
 
+	sort.Slice(readFailedList, func(i, j int) bool {
+		return readFailedList[i].time.Before(readFailedList[j].time)
+	})
+	for _, item := range readFailedList {
+		readFailedHosts = append(readFailedHosts, item.addr)
+	}
+
+	hosts = append(hosts, readFailedHosts...)
+
 	if selectAll {
 		hosts = append(hosts, failedHosts...)
 	}
 
+	if log.EnableDebug() {
+		log.LogDebugf("[sortByStatus] dp[%d] hosts[%v] readFailedHosts[%v] failedHosts[%v]", dp.PartitionID, hosts, readFailedHosts, failedHosts)
+	}
 	return
 }
 
