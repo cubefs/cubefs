@@ -1329,6 +1329,8 @@ type SimpleVolView struct {
 	Status                  uint8
 	Capacity                uint64 // GB
 	RwDpCnt                 int
+	RwDpOfSSDCnt            int
+	RwDpOfHDDCnt            int
 	MpCnt                   int
 	DpCnt                   int
 	DpOfSSDCnt              int

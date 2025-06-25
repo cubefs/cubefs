@@ -258,6 +258,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  MpReplicaNum                    : %v\n", svv.MpReplicaNum))
 	sb.WriteString(fmt.Sprintf("  NeedToLowerReplica              : %v\n", formatEnabledDisabled(svv.NeedToLowerReplica)))
 	sb.WriteString(fmt.Sprintf("  RwDpCnt                         : %v\n", svv.RwDpCnt))
+	sb.WriteString(fmt.Sprintf("  RwDpOfSSDCnt                    : %v\n", svv.RwDpOfSSDCnt))
+	sb.WriteString(fmt.Sprintf("  RwDpOfHDDCnt                    : %v\n", svv.RwDpOfHDDCnt))
 	sb.WriteString(fmt.Sprintf("  Status                          : %v\n", formatVolumeStatus(svv.Status)))
 	sb.WriteString(fmt.Sprintf("  ZoneName                        : %v\n", svv.ZoneName))
 	sb.WriteString(fmt.Sprintf("  VolType                         : %v\n", svv.VolType))
