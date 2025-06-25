@@ -1429,6 +1429,7 @@ func (s *ExtentStore) extentWithHeader(ei *ExtentInfo) (e *Extent, err error) {
 			err = fmt.Errorf("load  %v from disk: %v", s.getExtentKey(ei.FileID), err)
 			return nil, err
 		}
+		ei.UpdateExtentInfo(e, 0)
 	}
 	return
 }
