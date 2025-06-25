@@ -149,7 +149,7 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 	if err := s.limiter.Acquire(name); err != nil {
 		span := trace.SpanFromContextSafe(ctx)
 		span.Debugf("access concurrent limited %s, err:%+v", name, err)
-		return nil, errcode.ErrAccessLimited
+		return locations, errcode.ErrAccessLimited
 	}
 	defer s.limiter.Release(name)
 
