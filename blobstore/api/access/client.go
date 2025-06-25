@@ -216,7 +216,11 @@ type API interface {
 	// Get object, range is supported.
 	Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, err error)
 	// Delete all blobs in these locations.
-	// return failed locations which have yet been deleted if error is not nil.
+	//
+	// Returns:
+	// - (nil, nil): all blobs deleted successfully.
+	// - (nil, ErrIllegalArguments): when args is invalid.
+	// - (failedLocations, err): returns the list of locations that have not yet been deleted.
 	Delete(ctx context.Context, args *DeleteArgs) (failedLocations []Location, err error)
 }
 
