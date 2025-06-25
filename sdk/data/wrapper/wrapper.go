@@ -91,6 +91,8 @@ type Wrapper struct {
 	volAllowedStorageClass []uint32
 	volStatByClass         map[uint32]*proto.StatOfStorageClass
 	HostsDelay             sync.Map
+
+	readFailedHosts map[uint64]map[string]time.Time
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -150,6 +152,7 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 	w.verReadSeq = verReadSeq
 	w.SimpleClient = client
 	w.innerReq = innerReq
+	w.readFailedHosts = make(map[uint64]map[string]time.Time)
 	go w.uploadFlowInfoByTick(client)
 	go w.update(client)
 	return
@@ -283,6 +286,9 @@ func (w *Wrapper) update(clientInfo SimpleClientInfo) {
 		w.updateDataNodeStatus()
 		w.CheckPermission()
 		w.updateVerlist(clientInfo)
+		if w.FollowerRead() && w.NearRead() && w.volStorageClass == proto.MediaType_HDD {
+			w.updateReadFailedHosts()
+		}
 	}
 	taskFunc()
 	for {
@@ -560,14 +566,13 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
 		old.IsDiscard = dp.IsDiscard
-		old.NearHosts = dp.Hosts
+		old.NearHosts = dp.NearHosts
 
 		dp.Metrics = old.Metrics
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
+		w.partitions[dp.PartitionID] = dp
 	}
-
-	w.partitions[dp.PartitionID] = dp
 
 	w.Lock.Unlock()
 
@@ -696,4 +701,58 @@ func distanceFromLocal(b string) int {
 	remote := strings.Split(b, ":")[0]
 
 	return iputil.GetDistance(net.ParseIP(LocalIP), net.ParseIP(remote))
+}
+
+func (w *Wrapper) updateReadFailedHosts() {
+	now := time.Now()
+	oneMinuteAgo := now.Add(-time.Minute)
+
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
+
+	for dpId, hostMap := range w.readFailedHosts {
+		newHostsMap := make(map[string]time.Time)
+		for addr, failedTime := range hostMap {
+			if failedTime.After(oneMinuteAgo) {
+				newHostsMap[addr] = failedTime
+			} else if log.EnableDebug() {
+				log.LogDebugf("[updateReadFailedHosts] dp[%v] remove expired addr %v", dpId, addr)
+			}
+		}
+		w.readFailedHosts[dpId] = newHostsMap
+	}
+}
+
+func (w *Wrapper) GetReadFailedHosts(dpId uint64) map[string]time.Time {
+	w.Lock.RLock()
+	defer w.Lock.RUnlock()
+	if hostMap, exists := w.readFailedHosts[dpId]; exists {
+		copiedMap := make(map[string]time.Time, len(hostMap))
+		for addr, t := range hostMap {
+			copiedMap[addr] = t
+		}
+		return copiedMap
+	}
+	return nil
+}
+
+func (w *Wrapper) AddReadFailedHosts(dpId uint64, addr string) {
+	var exist bool
+	if addr == "" {
+		return
+	}
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
+	if _, exist = w.readFailedHosts[dpId]; !exist {
+		w.readFailedHosts[dpId] = make(map[string]time.Time)
+	}
+	_, exist = w.readFailedHosts[dpId][addr]
+	w.readFailedHosts[dpId][addr] = time.Now()
+	if log.EnableDebug() && !exist {
+		log.LogDebugf("AddReadFailedHosts: dp[%v] add read failed addr %v, readFailedHosts %v", dpId, addr, w.readFailedHosts[dpId])
+	}
+}
+
+func (w *Wrapper) InitReadFailedHosts() {
+	w.readFailedHosts = make(map[uint64]map[string]time.Time)
 }
