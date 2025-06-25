@@ -329,6 +329,9 @@ func (s *Stream) Write(b []byte) (n int, err error) {
 		s.numWritten++
 		sent += n
 		if err != nil {
+			s.sess.frameLock.Lock()
+			atomic.StoreInt32(&frame.state, frameFailState)
+			s.sess.frameLock.Unlock()
 			return sent, err
 		}
 	}
