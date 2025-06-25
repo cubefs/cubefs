@@ -2121,6 +2121,12 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	if weight < 0 {
+		err = fmt.Errorf("weight should not be set to less than 0")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	decommissionType, err := parseUintParam(r, DecommissionType)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3403,6 +3409,11 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	if weight < 0 {
+		err = fmt.Errorf("weight should not be set to less than 0")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 
 	if _, err = m.cluster.dataNode(offLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
@@ -3446,6 +3457,11 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 
 	weight, err = parseWeight(r)
 	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if weight < 0 {
+		err = fmt.Errorf("weight should not be set to less than 0")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -4756,6 +4772,12 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	if weight < 0 {
+		err = fmt.Errorf("weight should not be set to less than 0")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if dataNode, err = m.cluster.dataNode(offLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
