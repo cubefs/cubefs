@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -78,6 +79,8 @@ type Session struct {
 
 	shaper chan writeRequest // a shaper for writing
 	writes chan writeRequest
+
+	frameLock sync.Mutex
 }
 
 func newSession(config *Config, conn io.ReadWriteCloser, client bool) *Session {
@@ -453,6 +456,22 @@ func (s *Session) sendLoop() {
 		case <-s.die:
 			return
 		case request := <-s.writes:
+
+			s.frameLock.Lock()
+			state := atomic.LoadInt32(&request.frame.state)
+			if state == frameFailState {
+				s.frameLock.Unlock()
+
+				result := writeResult{
+					n:   0,
+					err: fmt.Errorf("abnormal stream %d", request.frame.sid),
+				}
+
+				request.result <- result
+				close(request.result)
+				continue
+			}
+
 			buf[0] = request.frame.ver
 			buf[1] = request.frame.cmd
 			binary.LittleEndian.PutUint16(buf[2:], uint16(len(request.frame.data)))
@@ -462,8 +481,10 @@ func (s *Session) sendLoop() {
 				vec[0] = buf[:headerSize]
 				vec[1] = request.frame.data
 				n, err = bw.WriteBuffers(vec)
+				s.frameLock.Unlock() // unlock after write to buf
 			} else {
 				copy(buf[headerSize:], request.frame.data)
+				s.frameLock.Unlock() // unlock after copy data
 				n, err = s.conn.Write(buf[:headerSize+len(request.frame.data)])
 			}
 
@@ -485,6 +506,7 @@ func (s *Session) sendLoop() {
 				s.notifyWriteError(err)
 				return
 			}
+
 		}
 	}
 }

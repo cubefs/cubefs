@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/depends/xtaci/smux"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -102,6 +103,32 @@ func handleConnectionV2(conn net.Conn) {
 			return
 		}
 	}
+}
+
+func setupNoReadServer() (addr string, stopfunc func(), err error) {
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		return "", nil, err
+	}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				config := smux.DefaultConfig()
+				session, _ := smux.Server(conn, config)
+				for {
+					if _, err := session.AcceptStream(); err == nil {
+					} else {
+						return
+					}
+				}
+			}(conn)
+		}
+	}()
+	return ln.Addr().String(), func() { ln.Close() }, nil
 }
 
 func newConfig() *SmuxConnPoolConfig {
@@ -614,6 +641,43 @@ func TestTinyReadBuffer(t *testing.T) {
 	if sent != received {
 		t.Fatal("data mimatch")
 	}
+}
+
+func TestWriteTimeOut(t *testing.T) {
+	addr, stop, err := setupNoReadServer()
+	if err != nil {
+		t.Fail()
+	}
+
+	defer stop()
+
+	cfg := DefaultSmuxConnPoolConfig()
+	pool := NewSmuxConnectPool(cfg)
+	data := make([]byte, 32*1024)
+	wg := sync.WaitGroup{}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			stream, err := pool.GetConnect(addr)
+			if err != nil {
+				t.Fail()
+			}
+
+			start := time.Now()
+			stream.SetWriteDeadline(time.Now().Add(time.Second))
+			for {
+				_, err := stream.Write(data)
+				if err != nil {
+					t.Logf("write data failed, err %v, cost %v, idx %d", err, time.Since(start), idx)
+					require.Equal(t, smux.ErrTimeout, err)
+					return
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
 }
 
 func TestKeepAliveTimeout(t *testing.T) {
