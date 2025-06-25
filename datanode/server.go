@@ -45,7 +45,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
 
-	"github.com/xtaci/smux"
+	"github.com/cubefs/cubefs/depends/xtaci/smux"
 )
 
 var (

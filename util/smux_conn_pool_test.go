@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xtaci/smux"
+	"github.com/cubefs/cubefs/depends/xtaci/smux"
 )
 
 func init() {

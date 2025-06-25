@@ -379,7 +379,6 @@ github.com/tklauser/go-sysconf
 github.com/tklauser/numcpus
 # github.com/xtaci/smux v1.5.16
 ## explicit; go 1.13
-github.com/xtaci/smux
 # github.com/yusufpapurcu/wmi v1.2.3
 ## explicit; go 1.16
 github.com/yusufpapurcu/wmi

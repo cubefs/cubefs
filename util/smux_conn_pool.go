@@ -26,8 +26,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cubefs/cubefs/depends/xtaci/smux"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/xtaci/smux"
 )
 
 const (
