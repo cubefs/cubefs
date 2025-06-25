@@ -137,7 +137,7 @@ func (s *service) initDisks(ctx context.Context) error {
 			continue
 		}
 		if !isDiskInfoMatch(registeredInfo, disk.GetDiskInfo()) {
-			return errors.Newf("disk info miss match, registered: %+v, loaded: %+v", disk, registeredInfo)
+			return errors.Newf("disk info miss match, registered: %+v, loaded: %+v", registeredInfo, disk.GetDiskInfo())
 		}
 		if registeredInfo.Status != proto.DiskStatusNormal {
 			span.Warnf("disk[%d] status is not normal, diskinfo: %+v", disk.DiskID(), registeredInfo)
@@ -398,8 +398,7 @@ func initServiceConfig(cfg *Config) {
 
 func isDiskInfoMatch(a, b clustermgr.ShardNodeDiskInfo) bool {
 	if a.DiskID != b.DiskID || a.Path != b.Path ||
-		a.NodeID != b.NodeID || a.DiskSetID != b.DiskSetID ||
-		a.ClusterID != b.ClusterID || a.Idc != b.Idc || a.Rack != b.Rack {
+		a.NodeID != b.NodeID || a.ClusterID != b.ClusterID {
 		return false
 	}
 	return true
