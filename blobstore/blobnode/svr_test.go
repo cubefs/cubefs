@@ -1181,7 +1181,12 @@ func TestService_OnlyWorker(t *testing.T) {
 		StartMode:  proto.ServiceNameWorker,
 	}
 
-	_, err := NewService(conf)
+	svr, err := NewService(conf)
+	require.NoError(t, err)
+	svr.Close()
+
+	// retart
+	_, err = NewService(conf)
 	require.NoError(t, err)
 }
 
@@ -1229,6 +1234,11 @@ func TestService_OnlyBlobnode(t *testing.T) {
 		StartMode:            proto.ServiceNameBlobNode,
 	}
 
+	svr, err := NewService(conf)
+	require.NoError(t, err)
+	svr.Close()
+
+	// restart
 	_, err = NewService(conf)
 	require.NoError(t, err)
 }

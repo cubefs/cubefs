@@ -137,7 +137,9 @@ func (s *Service) Close() {
 
 	s.closed = true
 
-	s.WorkerService.Close()
+	if s.WorkerService != nil {
+		s.WorkerService.Close()
+	}
 
 	span.Info("service close done.")
 }

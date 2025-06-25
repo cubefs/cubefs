@@ -47,7 +47,7 @@ const (
 	defaultInspectRate         = 4 * 1024 * 1024 // rate limit 4MB per second
 	defaultInspectLogChunkSize = uint(29)
 
-	defaultServiceBothBlobNodeWorker = "both_blobnode_worker"
+	defaultServiceBothBlobNodeWorker = "BOTH_BLOBNODE_WORKER"
 )
 
 var (

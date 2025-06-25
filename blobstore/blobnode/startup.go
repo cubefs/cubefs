@@ -17,12 +17,12 @@ package blobnode
 import (
 	"context"
 	"net/http"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
@@ -47,38 +47,6 @@ const (
 	ExpiresTicks   = 60
 	LostDiskCount  = 3
 )
-
-func readFormatInfo(ctx context.Context, diskRootPath string) (
-	formatInfo *core.FormatInfo, err error,
-) {
-	span := trace.SpanFromContextSafe(ctx)
-	_, err = os.ReadDir(diskRootPath)
-	if err != nil {
-		span.Errorf("read disk root path error:%s", diskRootPath)
-		return nil, err
-	}
-	formatInfo, err = core.ReadFormatInfo(ctx, diskRootPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			span.Warnf("format file not exist. must be first register")
-			return new(core.FormatInfo), nil
-		}
-		return nil, err
-	}
-
-	return formatInfo, err
-}
-
-func findDisk(disks []*cmapi.BlobNodeDiskInfo, clusterID proto.ClusterID, diskID proto.DiskID) (
-	*cmapi.BlobNodeDiskInfo, bool,
-) {
-	for _, d := range disks {
-		if d.ClusterID == clusterID && d.DiskID == diskID {
-			return d, true
-		}
-	}
-	return nil, false
-}
 
 func isAllInConfig(ctx context.Context, registeredDisks []*cmapi.BlobNodeDiskInfo, conf *Config) bool {
 	span := trace.SpanFromContextSafe(ctx)
@@ -313,6 +281,7 @@ func NewService(conf Config) (svr *Service, err error) {
 		Conf:             &conf,
 		closeCh:          make(chan struct{}),
 	}
+	svr.ctx, svr.cancel = context.WithCancel(context.Background())
 
 	// start worker service
 	if conf.StartMode == proto.ServiceNameWorker || conf.StartMode == defaultServiceBothBlobNodeWorker {
@@ -405,11 +374,24 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 		return err
 	}
 
-	svr.ctx, svr.cancel = context.WithCancel(context.Background())
-
 	wg := sync.WaitGroup{}
-
 	lostCnt := int32(0)
+
+	registerDiskPathMap := make(map[string]*cmapi.BlobNodeDiskInfo)
+	repairedDiskMap := make(map[string]*cmapi.BlobNodeDiskInfo)
+	for _, disk := range registeredDisks {
+		if disk.Status == proto.DiskStatusRepaired {
+			repairedDiskMap[disk.Path] = disk
+			continue
+		}
+
+		// this id is uniq increasing, so we take the latest(maximum) diskID in the same path
+		_, exist := registerDiskPathMap[disk.Path]
+		if !exist || registerDiskPathMap[disk.Path].DiskID < disk.DiskID {
+			registerDiskPathMap[disk.Path] = disk
+		}
+	}
+
 	for _, diskConf := range conf.Disks {
 		wg.Add(1)
 
@@ -420,39 +402,49 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 			svr.fixDiskConf(&diskConf)
 
 			if diskConf.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
+				span.Errorf("Path is not mount point:%s. skip init", diskConf.Path)
 				lost := atomic.AddInt32(&lostCnt, 1)
-				svr.reportLostDisk(&diskConf.HostInfo, diskConf.Path) // startup check lost disk
-				// skip
-				span.Errorf("Path is not mount point:%s, err:%+v. skip init", diskConf.Path, err)
+				svr.reportLostDisk(&diskConf.HostInfo, diskConf.Path)
 				if lost >= LostDiskCount {
 					log.Fatalf("lost disk count:%d over threshold:%d", lost, LostDiskCount)
 				}
 				return // skip
 			}
-			// read disk meta. get DiskID
-			format, err := readFormatInfo(ctx, diskConf.Path)
-			if err != nil {
-				// todo: report to ums
-				span.Errorf("Failed read diskMeta:%s, err:%+v. skip init", diskConf.Path, err)
-				return // skip
-			}
-
-			span.Debugf("local disk meta: %v", format)
 
 			// found diskInfo store in cluster mgr
-			diskInfo, foundInCluster := findDisk(registeredDisks, conf.ClusterID, format.DiskID)
+			diskInfo, foundInCluster := registerDiskPathMap[diskConf.Path]
 			span.Debugf("diskInfo: %v, foundInCluster:%v", diskInfo, foundInCluster)
 
-			nonNormal := foundInCluster && diskInfo.Status != proto.DiskStatusNormal
-			if nonNormal {
-				// todo: report to ums
-				span.Warnf("disk(%d):path(%s) is not normal, skip init", format.DiskID, diskConf.Path)
+			if foundInCluster && diskInfo.Status != proto.DiskStatusNormal {
+				span.Warnf("disk(%d):path(%s) is not normal, skip init", diskInfo.DiskID, diskConf.Path)
 				return // skip
 			}
 
-			ds, err := disk.NewDiskStorage(svr.ctx, diskConf)
-			if err != nil {
-				span.Fatalf("Failed Open DiskStorage. conf:%v, err:%+v", diskConf, err)
+			ds, err1 := disk.NewDiskStorage(svr.ctx, diskConf)
+			if err1 != nil {
+				if _, ok := repairedDiskMap[diskConf.Path]; ok {
+					span.Errorf("Fail to read disk format info, repaired disk:%s, err:%+v. skip init", diskConf.Path, err1)
+					return // skip
+				}
+
+				diskInfo, exist := registerDiskPathMap[diskConf.Path]
+
+				if exist && diskInfo.Status != proto.DiskStatusNormal {
+					span.Warnf("disk(%d):path(%s) is not normal, skip init", diskInfo.DiskID, diskConf.Path)
+					return
+				}
+
+				if exist && base.IsEIO(err1) {
+					span.Errorf("open status normal disk[%s] failed, err:%+v. skip init", diskConf.Path, err1)
+					_err := svr.ClusterMgrClient.SetDisk(ctx, diskInfo.DiskID, proto.DiskStatusBroken)
+					if _err != nil && rpc.DetectStatusCode(_err) != bloberr.CodeChangeDiskStatusNotAllow {
+						span.Fatalf("set disk[id:%d, path:%s] broken to cm failed: %s", diskInfo.DiskID, diskConf.Path, _err)
+					}
+					return
+				}
+
+				// not exist in cluster, or NewDiskStorage error
+				span.Fatalf("Failed Open DiskStorage. foundInCluster:%t, conf:%v, err:%+v", exist, diskConf, err1)
 				return
 			}
 
@@ -471,7 +463,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 			svr.lock.Unlock()
 
 			svr.reportOnlineDisk(&diskConf.HostInfo, diskConf.Path) // restart, normal disk
-			span.Infof("Init disk storage, cluster:%d, formatID:%d, diskID:%d", conf.ClusterID, format.DiskID, ds.ID())
+			span.Infof("Init disk storage, cluster:%d, diskID:%d", conf.ClusterID, ds.ID())
 		}(diskConf)
 	}
 	wg.Wait()
