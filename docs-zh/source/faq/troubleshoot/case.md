@@ -269,3 +269,53 @@ _描述_：多AZ场景下 metanode的nodeSet组是可以跨zone的对么？
 _描述_：metanode的nodeset代码里也是在zone级别的，multi-raft为防止心跳风暴限制在nodeset级别的，跨zone的volume metanode选择机制又是各个zone里选一些机器放。跨分层存储池的功能有验证过没啥问题？
 
 **回答**：目前支持的。
+
+## 问题46
+_描述_：部分docker容器启动挂载cubefs客户端的时候，只有下面的错误，没有别的错误信息：
+```bash
+2025/06/04 02:20:23 maxprocs: Leaving GOMAXPROCS=48: CPU quota undefined
+Mount failed: startDaemon failed: daemon start failed, ... err(readFromProcess: sub-process: [fuse.go 528] mount failed: fusermount: exit status 1)
+```
+
+**回答**：这个是因为没有root权限，没有/dev/fuse设备。解决方法：启动容器时，添加参数--privileged
+
+**备注**：另外的容器启动时如果遇到类似的问题，可以在客户端的output.log日志里面看到相应的错误：
+```bash
+2025/06/04 14:49:12 mount helper error: fusermount: fuse device not found, try 'modprobe fuse' first
+2025/06/04 14:49:12 [fuse.go 529] mount failed: fusermount: exit status 1
+```
+
+同样的报错，也可能是使用fuse的权限不足，这个在output.log里面会有提示。添加sudo可以解决这类问题。
+总的来说，这类问题都是因为不能正常使用fuse功能，导致报错：exit status 1
+
+## 问题47
+_描述_：客户端的日志报错误ResultCode(136)的错误。
+
+**回答**：OpWriteOpOfProtoVerForbidden （编码值是136）。在客户端和服务端的协议版本不匹配的情况下，可能出现这个问题。
+解决方法：升级客户端，使用新的版本协议。
+
+## 问题48
+_描述_：cubefs在系统重启以后，objectnode启动失败，报错：access client service discovery disconnect.
+因为这个过程中格式化过datanode挂载的磁盘，导致access的日志报： 0 available， total available space 0
+
+**回答**：重启一下datanode，格式化的磁盘会重新注册。
+
+## 问题49
+_描述_：副本模式和纠删码模式，是两套完全不同的部署方式吗？如果使用纠删码模式，是否依赖副本模式的相关服务。
+
+**回答**：是不同的两套方式。两者都使用metanode做元数据服务，但是没有相互依赖。
+
+## 问题50
+_描述_：三副本模式下，集群的可用容量=集群总容量/副本数，对吗？
+
+**回答**：三副本的可用容量的确是总容量的三分之一。如果上面的集群总容量就是datanode可用的总容量，那就是对的。
+
+## 问题51
+_描述_：我有三台机器，每台机器只有一块SSD数据盘，怎么使用纠删码模式？cubefs支持的纠删码中，磁盘需求数量最少的是EC3P3，该如何搭建？
+
+**回答**：把每个SSD盘分成两个分区，单机就有两块盘。3台机器就可以使用EC3P3。
+
+## 问题52
+_描述_：我make的时候，提示golang版本需要1.17，但是我的golang版本是1.13。该如何处理？
+
+**回答**：到官网上面下载1.17.13版本，然后升级golang版本。
