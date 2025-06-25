@@ -623,7 +623,7 @@ func (cs *chunk) MarkDelete(ctx context.Context, bid proto.BlobID) (err error) {
 
 	err = stg.MarkDelete(ctx, bid)
 	if err != nil {
-		span.Errorf("Failed mark delete bid:%d, err:%v", bid, err)
+		span.Errorf("Failed mark delete: diskID:%d, vuid:%d, bid:%d, err:%v", cs.diskID, cs.vuid, bid, err)
 		return err
 	}
 
@@ -651,7 +651,7 @@ func (cs *chunk) Delete(ctx context.Context, bid proto.BlobID) (err error) {
 
 	n, err := stg.Delete(ctx, bid)
 	if err != nil {
-		span.Errorf("Failed delete, bid:%v, err:%v", bid, err)
+		span.Errorf("Failed delete: diskID:%d, vuid:%d, bid:%d, err:%v", cs.diskID, cs.vuid, bid, err)
 		return err
 	}
 
@@ -679,7 +679,7 @@ func (cs *chunk) ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *core.
 
 	shard, err := stg.ReadShardMeta(ctx, bid)
 	if err != nil {
-		span.Errorf("Failed read shardmeta bid:%d, err:%v", bid, err)
+		span.Errorf("Failed read shardmeta: diskID:%d, vuid:%d, bid:%d, err:%v", cs.diskID, cs.vuid, bid, err)
 		return nil, err
 	}
 
@@ -736,7 +736,7 @@ func (cs *chunk) ListShards(ctx context.Context, startBid proto.BlobID, cnt int,
 			span.Debugf("finished scan shard info: err: %v", err)
 			return
 		}
-		span.Errorf("scan vuid:%v shard occur error: %v", cs.vuid, err)
+		span.Errorf("scan diskID:%d vuid:%d shard occur error: %v", cs.diskID, cs.vuid, err)
 		return nil, proto.InValidBlobID, err
 	}
 

@@ -287,14 +287,14 @@ func (s *Service) ShardList(c *rpc.Context) {
 
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
-		span.Errorf("vuid:%v not exist", args.Vuid)
+		span.Errorf("vuid:%d not exist, diskID:%d", args.Vuid, args.DiskID)
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
 
 	sis, next, err := cs.ListShards(ctx, args.StartBid, args.Count, args.Status)
 	if err != nil {
-		span.Errorf("Failed list shard. err:%v", err)
+		span.Errorf("Failed list shard. args:%+v err:%v", args, err)
 		c.RespondError(err)
 		return
 	}
@@ -344,7 +344,7 @@ func (s *Service) ShardStat(c *rpc.Context) {
 	sm, err := cs.ReadShardMeta(ctx, args.Bid)
 	if err != nil {
 		err = handlerBidNotFoundErr(err)
-		span.Errorf("Failed Get stat bid: %d, err:%v", args.Bid, err)
+		span.Errorf("Failed Get stat: args:%+v, err:%v", args, err)
 		c.RespondError(err)
 		return
 	}
@@ -441,7 +441,7 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	err = cs.MarkDelete(ctx, args.Bid)
 	if err != nil {
 		err = handlerBidNotFoundErr(err)
-		span.Errorf("Failed to mark delete, err:%v", err)
+		span.Errorf("Failed to mark delete, args:%+v err:%v", args, err)
 		c.RespondError(err)
 		return
 	}
@@ -524,7 +524,7 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	err = cs.Delete(ctx, args.Bid)
 	if err != nil {
 		err = handlerBidNotFoundErr(err)
-		span.Errorf("Failed to delete, err:%v", err)
+		span.Errorf("Failed to delete, args:%+v, err:%v", args, err)
 		c.RespondError(err)
 		return
 	}
