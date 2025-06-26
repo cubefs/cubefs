@@ -279,7 +279,7 @@ func TestServerDisk_Raft(t *testing.T) {
 	for {
 		shard1, _err := disk1.GetShard(suid1)
 		require.Nil(t, _err)
-		stat, _ := shard1.Stats(ctx)
+		stat, _ := shard1.Stats(ctx, true)
 		if stat.LeaderDiskID != proto.InvalidDiskID {
 			leaderDiskID = stat.LeaderDiskID
 			break
@@ -314,7 +314,7 @@ func TestServerDisk_Raft(t *testing.T) {
 	require.NoError(t, disks[leaderIdx].UpdateShard(ctx, units[leaderIdx].GetSuid(), proto.ShardUpdateTypeAddMember, newUnit))
 
 	for {
-		stat, err := shardLeader.Stats(ctx)
+		stat, err := shardLeader.Stats(ctx, true)
 		require.Nil(t, err)
 		if len(units) == len(stat.RaftStat.Peers) {
 			break
@@ -376,7 +376,7 @@ func TestServerDisk_RaftData(t *testing.T) {
 	for {
 		shard, _err = d.GetShard(suid1)
 		require.Nil(t, _err)
-		stat, _ := shard.Stats(ctx)
+		stat, _ := shard.Stats(ctx, true)
 		if stat.LeaderDiskID != proto.InvalidDiskID {
 			break
 		}

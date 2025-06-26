@@ -78,7 +78,7 @@ type (
 		GetRouteVersion() proto.RouteVersion
 		TransferLeader(ctx context.Context, diskID proto.DiskID) error
 		Checkpoint(ctx context.Context) error
-		Stats(ctx context.Context) (shardnode.ShardStats, error)
+		Stats(ctx context.Context, readIndex bool) (shardnode.ShardStats, error)
 		GetSuid() proto.Suid
 		GetUnits() []clustermgr.ShardUnit
 		CheckAndClearShard(ctx context.Context) error
@@ -445,8 +445,12 @@ func (s *shard) UpdateShardRouteVersion(version proto.RouteVersion) {
 	s.shardInfoMu.Unlock()
 }
 
-func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
-	if err := s.shardState.prepRWCheck(ctx); err != nil {
+func (s *shard) Stats(ctx context.Context, readIndex bool) (shardnode.ShardStats, error) {
+	prepCheck := s.shardState.prepRWCheck
+	if !readIndex {
+		prepCheck = s.shardState.prepRWCheckNoReadIndex
+	}
+	if err := prepCheck(ctx); err != nil {
 		return shardnode.ShardStats{}, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -703,7 +707,7 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string, clearData bool
 func (s *shard) CheckAndClearShard(ctx context.Context) error {
 	span := trace.SpanFromContext(ctx)
 
-	stats, err := s.Stats(ctx)
+	stats, err := s.Stats(ctx, true)
 	if err != nil {
 		return err
 	}
@@ -1074,6 +1078,14 @@ func (s *shardState) prepRWCheck(ctx context.Context) error {
 		}
 		atomic.StoreUint32(&s.restartLeaderReadIndex, noNeedReadIndex)
 	}
+	return s.tryRW()
+}
+
+func (s *shardState) prepRWCheckNoReadIndex(ctx context.Context) error {
+	return s.tryRW()
+}
+
+func (s *shardState) tryRW() error {
 	s.lock.Lock()
 
 	// allow writing check in the list lock arena

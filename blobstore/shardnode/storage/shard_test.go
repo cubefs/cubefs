@@ -266,7 +266,7 @@ func TestServerShard_Stats(t *testing.T) {
 
 	mockShard.mockRaftGroup.EXPECT().Stat().Return(&raft.Stat{}, nil)
 
-	_, err := mockShard.shard.Stats(context.Background())
+	_, err := mockShard.shard.Stats(context.Background(), true)
 	require.Nil(t, err)
 
 	index := mockShard.shard.GetAppliedIndex()
