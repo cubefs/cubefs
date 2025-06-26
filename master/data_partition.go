@@ -1268,8 +1268,7 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 		}
 	}
 
-	if atomic.LoadUint64(&c.DecommissionFirstHostDiskParallelLimit) != 0 &&
-		atomic.LoadUint64(&diskToRepairDpInfo.CurParallel) >= atomic.LoadUint64(&c.DecommissionFirstHostDiskParallelLimit) {
+	if atomic.LoadUint64(&diskToRepairDpInfo.CurParallel) >= atomic.LoadUint64(&c.DecommissionFirstHostDiskParallelLimit) {
 		log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire failed, decommissionFirstHostDiskParallelLimit has been reached", partition.PartitionID)
 		return false
 	}
