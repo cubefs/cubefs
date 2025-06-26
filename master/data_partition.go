@@ -2510,6 +2510,33 @@ func (partition *DataPartition) getAllDiskErrorReplica() []*DataReplica {
 	return diskErrReplicas
 }
 
+func (partition *DataPartition) isInterSectionBetweenMasterAndReplicasEmptySet() bool {
+	masterAddrs := make(map[string]bool, len(partition.Peers))
+	for _, peer := range partition.Peers {
+		masterAddrs[peer.Addr] = true
+	}
+
+	if len(masterAddrs) == 0 {
+		return true
+	}
+
+	for _, replica := range partition.Replicas {
+		replicaAddrs := make(map[string]bool, len(replica.LocalPeers))
+		for _, peer := range replica.LocalPeers {
+			replicaAddrs[peer.Addr] = true
+		}
+		for addr := range masterAddrs {
+			if !replicaAddrs[addr] {
+				delete(masterAddrs, addr)
+			}
+		}
+		if len(masterAddrs) == 0 {
+			return true
+		}
+	}
+	return len(masterAddrs) == 0
+}
+
 func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	var auditMsg string
 
@@ -2518,11 +2545,23 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			partition.PartitionID)
 		return proto.ErrPerformingDecommission
 	}
+
+	if partition.isInterSectionBetweenMasterAndReplicasEmptySet() {
+		log.LogErrorf("action[checkReplicaMeta]dp(%v) interSection between master and replicas is the empty set", partition.PartitionID)
+		c.NoSamePeerDps.Store(partition.PartitionID, struct{}{})
+		return proto.ErrDpNoSamePeer
+	}
+
+	if _, ok := c.NoSamePeerDps.Load(partition.PartitionID); ok {
+		c.NoSamePeerDps.Delete(partition.PartitionID)
+	}
+
 	if !partition.needReplicaMetaRestore(c) {
 		log.LogDebugf("action[checkReplicaMeta]dp(%v) do not need to restore meta",
 			partition.PartitionID)
 		return nil
 	}
+
 	if !partition.setRestoreReplicaRunning() {
 		log.LogDebugf("action[checkReplicaMeta]dp(%v) set RestoreReplicaMetaRunning failed",
 			partition.PartitionID)
@@ -2639,6 +2678,9 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			partition.decommissionInfo(), peer.Addr)
 		if err != nil {
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			if strings.Contains(err.Error(), "not found") {
+				continue
+			}
 			return nil
 		}
 		err = c.deleteDataReplica(partition, dataNode, true)
@@ -2672,6 +2714,9 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				partition.decommissionInfo(), peer.Addr, replica.Addr, replica.LocalPeers)
 			if err != nil {
 				auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+				if strings.Contains(err.Error(), "not found") {
+					continue
+				}
 				return nil
 			}
 			err = c.deleteDataReplica(partition, dataNode, true)

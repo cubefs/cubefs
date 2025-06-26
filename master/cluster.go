@@ -107,6 +107,7 @@ type ClusterDecommission struct {
 	BadMetaPartitionIds                    *sync.Map
 	DecommissionDisks                      sync.Map
 	DataNodeToDecommissionRepairDpMap      sync.Map
+	NoSamePeerDps                          sync.Map
 	DecommissionFirstHostDiskParallelLimit uint64
 	DecommissionLimit                      uint64
 	AutoDecommissionDiskMux                sync.Mutex
