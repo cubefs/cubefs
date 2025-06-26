@@ -520,7 +520,7 @@ func (dd *DecommissionDisk) GetDecommissionDiskRetryOverLimitDP(c *Cluster) []ui
 	for _, vol := range vols {
 		partitions := vol.dataPartitions.clonePartitions()
 		for _, dp := range partitions {
-			retryTimes := dp.DecommissionDiskRetryMap[dd.SrcAddr+"_"+dd.DiskPath]
+			retryTimes := dp.getRetryTimesRecordByDiskPath(dd.SrcAddr + "_" + dd.DiskPath)
 			if retryTimes > retryLimit {
 				retryOverLimitDps = append(retryOverLimitDps, dp.PartitionID)
 			}

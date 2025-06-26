@@ -17,7 +17,6 @@ package master
 import (
 	"container/list"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -2348,7 +2347,7 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 		dp.ReleaseDecommissionFirstHostToken(c)
 		msg := fmt.Sprintf("ns %v(%p) dp %v decommission success, cost %v",
 			l.nsId, l, dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
-		delete(dp.DecommissionDiskRetryMap, dp.DecommissionSrcAddr+"_"+dp.DecommissionSrcDiskPath)
+		dp.deleteRetryTimesRecordByDiskPath(dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath)
 		dp.ResetDecommissionStatus()
 		dp.setRestoreReplicaStop()
 		err := c.syncUpdateDataPartition(dp)
@@ -2370,12 +2369,7 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 				log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] set repairStatus to false failed, err %v", l.nsId, l, dp.decommissionInfo(), err)
 			}
 			l.Remove(dp)
-			key := dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath
-			if dp.DecommissionDiskRetryMap[key] >= math.MaxInt {
-				dp.DecommissionDiskRetryMap[key] = 0
-			} else {
-				dp.DecommissionDiskRetryMap[key]++
-			}
+			dp.addRetryTimesByDiskPath(dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath)
 			// if dp is not removed from decommission list, do not reset RestoreReplica
 			dp.setRestoreReplicaStop()
 			remove = true

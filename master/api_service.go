@@ -2277,10 +2277,11 @@ func (m *Server) resetDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 
 func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *http.Request) {
 	var (
-		dp          *DataPartition
-		partitionID uint64
-		err         error
-		replicas    []string
+		dp           *DataPartition
+		partitionID  uint64
+		err          error
+		replicas     []string
+		diskRetryMap map[string]int
 	)
 
 	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
@@ -2295,12 +2296,13 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	for _, replica := range dp.Replicas {
 		replicas = append(replicas, replica.Addr)
 	}
+	diskRetryMap = dp.cloneDecommissionDiskRetryMap()
 	info := &proto.DecommissionDataPartitionInfo{
 		PartitionId:           partitionID,
 		ReplicaNum:            dp.ReplicaNum,
 		Status:                GetDecommissionStatusMessage(dp.GetDecommissionStatus()),
 		SpecialStep:           GetSpecialDecommissionStatusMessage(dp.GetSpecialReplicaDecommissionStep()),
-		DiskRetryMap:          dp.DecommissionDiskRetryMap,
+		DiskRetryMap:          diskRetryMap,
 		Retry:                 dp.DecommissionRetry,
 		RaftForce:             dp.DecommissionRaftForce,
 		Recover:               dp.isRecover,
