@@ -124,15 +124,15 @@ func NewRemoteCacheClient(masters []string, blockSize uint64, needInitLog bool, 
 	rc.SameRegionTimeout = proto.DefaultRemoteCacheSameRegionTimeout
 	rc.blockSize = blockSize
 
-	err = rc.UpdateFlashGroups()
-	if err != nil {
-		log.LogErrorf("NewRemoteCacheClient: updateFlashGroups err %v", err)
-		return
-	}
-
 	err = rc.updateRemoteCacheConfig()
 	if err != nil {
 		log.LogErrorf("NewRemoteCacheClient: updateRemoteCacheConfig err %v", err)
+		return
+	}
+
+	err = rc.UpdateFlashGroups()
+	if err != nil {
+		log.LogErrorf("NewRemoteCacheClient: updateFlashGroups err %v", err)
 		return
 	}
 
