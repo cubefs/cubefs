@@ -5409,12 +5409,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 				dp.markRollbackFailed(false)
 				dp.DecommissionErrorMessage = err.Error()
 				dp.DecommissionTerm = disk.DecommissionTerm
-				key := dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath
-				if dp.DecommissionDiskRetryMap[key] >= math.MaxInt {
-					dp.DecommissionDiskRetryMap[key] = 0
-				} else {
-					dp.DecommissionDiskRetryMap[key]++
-				}
+				dp.addRetryTimesByDiskPath(dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath)
 				log.LogWarnf("action[TryDecommissionDisk] disk(%v) set dp(%v) DecommissionTerm %v",
 					disk.decommissionInfo(), dp.PartitionID, disk.DecommissionTerm)
 			}
@@ -6314,17 +6309,7 @@ func (c *Cluster) checkDataPartitionDecommissionDiskRetryMap() {
 	for _, vol := range vols {
 		partitions := vol.dataPartitions.clonePartitions()
 		for _, dp := range partitions {
-			for key := range dp.DecommissionDiskRetryMap {
-				arr := strings.Split(key, "_")
-				if len(arr) == 2 {
-					addr := arr[0]
-					disk := arr[1]
-					if (dp.DecommissionSrcAddr == addr && dp.DecommissionSrcDiskPath == disk) || dp.containsBadDisk(disk, addr) {
-						continue
-					}
-				}
-				delete(dp.DecommissionDiskRetryMap, key)
-			}
+			dp.deleteInvalidRetryTimesRecord()
 		}
 	}
 }
