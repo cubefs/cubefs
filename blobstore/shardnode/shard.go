@@ -65,7 +65,7 @@ func (s *service) getShardUintInfo(ctx context.Context, diskID proto.DiskID, sui
 		return
 	}
 
-	shardStat, err := shard.Stats(ctx)
+	shardStat, err := shard.Stats(ctx, true)
 	if err != nil {
 		return
 	}
@@ -86,7 +86,7 @@ func (s *service) getShardStats(ctx context.Context, diskID proto.DiskID, suid p
 		return
 	}
 
-	shardStat, err := shard.Stats(ctx)
+	shardStat, err := shard.Stats(ctx, true)
 	if err != nil {
 		return
 	}
@@ -314,6 +314,7 @@ func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTas
 func (s *service) shardReports(ctx context.Context, shards []storage.ShardHandler, shardReports []clustermgr.ShardUnitInfo, sync bool, taskTypes ...proto.ShardTaskType) error {
 	span, ctx := trace.StartSpanFromContext(ctx, "")
 	disks := s.getAllDisks()
+	readIndex := !sync
 	for _, disk := range disks {
 		shards = shards[:0]
 		disk.RangeShardNoRWCheck(func(s storage.ShardHandler) bool {
@@ -321,7 +322,7 @@ func (s *service) shardReports(ctx context.Context, shards []storage.ShardHandle
 			return true
 		})
 		for _, shard := range shards {
-			stats, err := shard.Stats(ctx)
+			stats, err := shard.Stats(ctx, readIndex)
 			if err != nil {
 				suid := shard.GetSuid()
 				span.Errorf("get shard[%d] stat err: %s, suid[%d]", suid.ShardID(), err.Error(), suid)
