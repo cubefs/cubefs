@@ -2338,7 +2338,9 @@ func updateDecommissionWeight(dps []*DataPartition, c *Cluster) {
 }
 
 func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataPartition, c *Cluster) {
-	if dp.IsDecommissionSuccess() {
+	status := dp.GetDecommissionStatus()
+	switch status {
+	case DecommissionSuccess:
 		if err := c.setDpRepairingStatus(dp, false); err != nil {
 			log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] set repairStatus to false failed, err %v", l.nsId, l, dp.decommissionInfo(), err)
 		}
@@ -2359,7 +2361,7 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 				l.nsId, l, dp.PartitionID)
 		}
 		auditlog.LogMasterOp("TraverseDataPartition", msg, err)
-	} else if dp.IsDecommissionFailed() {
+	case DecommissionFail:
 		remove := false
 		needRollback, needSkip := dp.tryRollback(c)
 		if !needRollback {
@@ -2375,7 +2377,7 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 			remove = true
 		}
 		if needSkip {
-			continue
+			return
 		}
 		// rollback fail/success need release token
 		dp.ReleaseDecommissionToken(c)
@@ -2383,7 +2385,7 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 		c.syncUpdateDataPartition(dp)
 		msg := fmt.Sprintf("ns %v(%p) dp %v decommission failed, remove %v", l.nsId, l, dp.decommissionInfo(), remove)
 		auditlog.LogMasterOp("TraverseDataPartition", msg, nil)
-	} else if dp.IsDecommissionPaused() {
+	case DecommissionPause:
 		log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for paused ",
 			l.nsId, l, dp.PartitionID)
 		dp.ReleaseDecommissionToken(c)
@@ -2394,7 +2396,7 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 		l.Remove(dp)
 		dp.setRestoreReplicaStop()
 		c.syncUpdateDataPartition(dp)
-	} else if dp.IsDecommissionInitial() { // fixed done ,not release token
+	case DecommissionInitial: // fixed done ,not release token
 		if err := c.setDpRepairingStatus(dp, false); err != nil {
 			log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] set repairStatus to false failed, err %v", l.nsId, l, dp.decommissionInfo(), err)
 		}

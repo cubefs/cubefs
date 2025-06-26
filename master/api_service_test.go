@@ -913,6 +913,9 @@ func TestDataPartitionDecommission(t *testing.T) {
 	offlineAddr := partition.Hosts[0]
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&weight=%v",
 		hostAddr, proto.AdminDecommissionDataPartition, vol.Name, partition.PartitionID, offlineAddr, highPriorityDecommissionWeight)
+	for _, replica := range partition.Replicas {
+		replica.LocalPeers = partition.Peers
+	}
 	process(reqURL, t)
 	require.EqualValues(t, markDecommission, partition.GetDecommissionStatus())
 	require.EqualValues(t, highPriorityDecommissionWeight, partition.DecommissionWeight)

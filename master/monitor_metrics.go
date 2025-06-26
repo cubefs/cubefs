@@ -55,6 +55,7 @@ const (
 	MetricDiskLost                  = "disk_lost"
 	MetricDpUnableDecommissionCount = "dp_unable_decommission_count"
 	MetricDpMissingTinyExtent       = "dp_missing_tinyExtent"
+	MetricDpNoSamePeer              = "dp_no_same_peer"
 	MetricDataNodesInactive         = "dataNodes_inactive"
 	MetricInactiveDataNodeInfo      = "inactive_dataNodes_info"
 	MetricMetaNodesInactive         = "metaNodes_inactive"
@@ -129,6 +130,7 @@ type monitorMetrics struct {
 	diskLost                  *exporter.GaugeVec
 	dpUnableDecommissionCount *exporter.Gauge
 	dpMissingTinyExtent       *exporter.GaugeVec
+	dpNoSamePeer              *exporter.GaugeVec
 	dataNodesNotWritable      *exporter.Gauge
 	dataNodesAllocable        *exporter.Gauge
 	metaNodesNotWritable      *exporter.Gauge
@@ -511,6 +513,7 @@ func (mm *monitorMetrics) start() {
 	mm.diskLost = exporter.NewGaugeVec(MetricDiskLost, "", []string{"addr", "path"})
 	mm.dpUnableDecommissionCount = exporter.NewGauge(MetricDpUnableDecommissionCount)
 	mm.dpMissingTinyExtent = exporter.NewGaugeVec(MetricDpMissingTinyExtent, "", []string{"dpId", "addr"})
+	mm.dpNoSamePeer = exporter.NewGaugeVec(MetricDpNoSamePeer, "", []string{"dpId"})
 	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.InactiveDataNodeInfo = exporter.NewGaugeVec(MetricInactiveDataNodeInfo, "", []string{"clusterName", "addr"})
@@ -615,6 +618,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setFlashNodesDiskErrorMetric()
 	mm.setDpUnableDecommissionMetric()
 	mm.setDpMissingTinyExtentMetric()
+	mm.setDpNoSamePeerMetric()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
 	mm.setMpInconsistentErrorMetric()
@@ -951,6 +955,17 @@ func (mm *monitorMetrics) setDpMissingTinyExtentMetric() {
 			}
 		}
 	}
+}
+
+func (mm *monitorMetrics) setDpNoSamePeerMetric() {
+	mm.dpNoSamePeer.Reset()
+
+	mm.cluster.NoSamePeerDps.Range(func(key, value interface{}) bool {
+		dpId := key.(uint64)
+		idStr := strconv.FormatUint(dpId, 10)
+		mm.dpNoSamePeer.SetWithLabelValues(1, idStr)
+		return true
+	})
 }
 
 func (mm *monitorMetrics) setDiskDecommissionedMetric() {
@@ -1337,6 +1352,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.diskLost.Reset()
 	mm.dpUnableDecommissionCount.Set(0)
 	mm.dpMissingTinyExtent.Reset()
+	mm.dpNoSamePeer.Reset()
 	mm.diskDecommissionSuccess.Reset()
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
