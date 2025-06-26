@@ -6027,6 +6027,9 @@ func (c *Cluster) setDecommissionFirstHostParallelLimit(addr string, limit uint6
 }
 
 func (c *Cluster) setDecommissionFirstHostDiskParallelLimit(limit uint64) (err error) {
+	if limit == 0 {
+		limit = defaultDecommissionFirstHostDiskParallelLimit
+	}
 	atomic.StoreUint64(&c.DecommissionFirstHostDiskParallelLimit, limit)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("[setDecommissionFirstHostDiskParallelLimit] failed to set DecommissionFirstHostDiskParallelLimit, err(%v)", err)
