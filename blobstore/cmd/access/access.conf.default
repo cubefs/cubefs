@@ -46,6 +46,10 @@
             "3": 34,
             "4": 14
         },
+        "code_mode_get_ordered": {
+            "12": true,
+            "15": true
+        },
         "alloc_retry_interval_ms": 100,
         "alloc_retry_times": 3,
         "encoder_concurrency": 1000,

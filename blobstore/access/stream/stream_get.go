@@ -193,7 +193,8 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 						}
 
 						// do not use local shards
-						sortedVuids = genSortedVuidByIDC(ctx, serviceController, h.IDC, blobVolume.Units[:tactic.N+tactic.M])
+						ordered := h.CodeModesGetOrdered[blobVolume.CodeMode]
+						sortedVuids = genSortedVuidByIDC(ctx, serviceController, h.IDC, blobVolume.Units[:tactic.N+tactic.M], ordered)
 						span.Debugf("to read %s with read-shard-x:%d active-shard-n:%d of data-n:%d party-n:%d",
 							blob.ID(), h.MinReadShardsX, len(sortedVuids), tactic.N, tactic.M)
 						if len(sortedVuids) < tactic.N {
@@ -832,7 +833,7 @@ func genLocationBlobs(location *proto.Location, readSize uint64, offset uint64) 
 }
 
 func genSortedVuidByIDC(ctx context.Context,
-	serviceController controller.ServiceController, idc string, vuidPhys []controller.Unit,
+	serviceController controller.ServiceController, idc string, vuidPhys []controller.Unit, ordered bool,
 ) []sortedVuid {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -873,9 +874,11 @@ func genSortedVuidByIDC(ctx context.Context,
 
 	for _, dis := range keys {
 		ids := sortMap[dis]
-		rand.Shuffle(len(ids), func(i, j int) {
-			ids[i], ids[j] = ids[j], ids[i]
-		})
+		if !ordered {
+			rand.Shuffle(len(ids), func(i, j int) {
+				ids[i], ids[j] = ids[j], ids[i]
+			})
+		}
 		vuids = append(vuids, ids...)
 		if dis > 1 {
 			span.Debugf("distance: %d punished vuids: %+v", dis, ids)
