@@ -17,6 +17,7 @@ package blobnode
 import (
 	"context"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,6 +48,27 @@ const (
 	ExpiresTicks   = 60
 	LostDiskCount  = 3
 )
+
+func readFormatInfo(ctx context.Context, diskRootPath string) (
+	formatInfo *core.FormatInfo, err error,
+) {
+	span := trace.SpanFromContextSafe(ctx)
+	_, err = os.ReadDir(diskRootPath)
+	if err != nil {
+		span.Errorf("read disk root path error:%s", diskRootPath)
+		return nil, err
+	}
+	formatInfo, err = core.ReadFormatInfo(ctx, diskRootPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			span.Warnf("format file not exist. must be first register")
+			return new(core.FormatInfo), nil
+		}
+		return nil, err
+	}
+
+	return formatInfo, err
+}
 
 func isAllInConfig(ctx context.Context, registeredDisks []*cmapi.BlobNodeDiskInfo, conf *Config) bool {
 	span := trace.SpanFromContextSafe(ctx)
@@ -268,6 +290,43 @@ func (s *Service) fixDiskConf(config *core.Config) {
 	config.MetaConfig = s.Conf.MetaConfig
 }
 
+func (s *Service) handleStartDiskError(ctx context.Context, allUniqDiskPathMap map[string]*cmapi.BlobNodeDiskInfo,
+	diskPath string, diskID proto.DiskID, err error,
+) {
+	// 1. diskID is match: both bn and cm is same disk. [not normal:skip, EIO:skip, other error:fatal]
+	// 2. diskID is not match, not register to cm: bn is new disk, cm is old disk: dont need judge disk status [EIO:skip, other error:fatal]
+	span := trace.SpanFromContextSafe(ctx)
+	diskInfo, found := allUniqDiskPathMap[diskPath]
+
+	if !base.IsEIO(err) {
+		span.Fatalf("disk error: foundInCluster:%t, diskID:%d, path:%s, err:%+v", found, diskID, diskPath, err)
+	}
+
+	// not found, old/new disk
+	if !found {
+		span.Fatalf("not found in cluster: foundInCluster:%t, diskID:%d, path:%s, err:%+v", found, diskID, diskPath, err)
+	}
+
+	// found old/new disk
+	if diskID == diskInfo.DiskID || diskID == 0 {
+		// status is not normal: repaired/broken/repairing/dropped
+		// diskID==0, both bn and cm is same disk, disk status is not normal, skip
+		// diskID==0, bn is new disk, cm is old repaired disk. generally, a newly replaced disk is a broken is almost non-existent, so ignore itss
+		if diskInfo.Status != proto.DiskStatusNormal {
+			span.Warnf("disk[id:%d,status:%d,path:%s] is not normal, err:%+v. skip init", diskInfo.DiskID, diskInfo.Status, diskPath, err)
+			return
+		} else {
+			// set broken disk, may be already mark broken
+			span.Errorf("open normal disk[%d:%s] failed, err:%+v. skip init", diskInfo.DiskID, diskPath, err)
+			_err := s.ClusterMgrClient.SetDisk(ctx, diskInfo.DiskID, proto.DiskStatusBroken)
+			if _err != nil && rpc.DetectStatusCode(_err) != bloberr.CodeChangeDiskStatusNotAllow {
+				span.Fatalf("set disk[%d:%s] broken to cm failed: %s", diskInfo.DiskID, diskPath, _err)
+			}
+			return
+		}
+	}
+}
+
 func NewService(conf Config) (svr *Service, err error) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
 
@@ -377,18 +436,14 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 	wg := sync.WaitGroup{}
 	lostCnt := int32(0)
 
-	registerDiskPathMap := make(map[string]*cmapi.BlobNodeDiskInfo)
-	repairedDiskMap := make(map[string]*cmapi.BlobNodeDiskInfo)
+	foundDiskIDInCluster := make(map[proto.DiskID]*cmapi.BlobNodeDiskInfo)
+	foundDiskPathInCluster := make(map[string]*cmapi.BlobNodeDiskInfo)
 	for _, disk := range registeredDisks {
-		if disk.Status == proto.DiskStatusRepaired {
-			repairedDiskMap[disk.Path] = disk
-			continue
-		}
-
+		foundDiskIDInCluster[disk.DiskID] = disk
 		// this id is uniq increasing, so we take the latest(maximum) diskID in the same path
-		_, exist := registerDiskPathMap[disk.Path]
-		if !exist || registerDiskPathMap[disk.Path].DiskID < disk.DiskID {
-			registerDiskPathMap[disk.Path] = disk
+		_, exist := foundDiskPathInCluster[disk.Path]
+		if !exist || foundDiskPathInCluster[disk.Path].DiskID < disk.DiskID {
+			foundDiskPathInCluster[disk.Path] = disk
 		}
 	}
 
@@ -411,55 +466,57 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 				return // skip
 			}
 
-			// found diskInfo store in cluster mgr
-			diskInfo, foundInCluster := registerDiskPathMap[diskConf.Path]
-			span.Debugf("diskInfo: %v, foundInCluster:%v", diskInfo, foundInCluster)
-
-			if foundInCluster && diskInfo.Status != proto.DiskStatusNormal {
-				span.Warnf("disk(%d):path(%s) is not normal, skip init", diskInfo.DiskID, diskConf.Path)
+			// read disk meta. get DiskID
+			format, err := readFormatInfo(ctx, diskConf.Path)
+			if err != nil {
+				svr.handleStartDiskError(ctx, foundDiskPathInCluster, diskConf.Path, 0, err)
 				return // skip
 			}
+			span.Debugf("local disk meta: %v", format)
 
-			ds, err1 := disk.NewDiskStorage(svr.ctx, diskConf)
-			if err1 != nil {
-				if _, ok := repairedDiskMap[diskConf.Path]; ok {
-					span.Errorf("Fail to read disk format info, repaired disk:%s, err:%+v. skip init", diskConf.Path, err1)
+			// found diskInfo store in cluster mgr
+			var ds core.DiskAPI
+			if format.DiskID == 0 {
+				// new disk
+				diskInfo, foundPathInCluster := foundDiskPathInCluster[diskConf.Path]
+				span.Debugf("diskInfo:%v, foundInCluster:%t", diskInfo, foundPathInCluster)
+				if foundPathInCluster && diskInfo.Status != proto.DiskStatusRepaired {
+					// new disk, old disk is repairing
+					span.Fatalf("disk[%d:%s] is not repaired, refuse replace disk", diskInfo.DiskID, diskConf.Path)
+				}
+			} else {
+				// old disk
+				diskInfo, foundIDInCluster := foundDiskIDInCluster[format.DiskID]
+				if foundIDInCluster && diskConf.Path != diskInfo.Path {
+					span.Fatalf("disk not match, format[%v], diskInfo[%v]", format, diskInfo)
+				}
+				if foundIDInCluster && diskInfo.Status != proto.DiskStatusNormal {
+					// status is repaired/broken/repairing/dropped, skip
+					span.Warnf("disk[%d:%s] is not normal, skip init", diskInfo.DiskID, diskConf.Path)
 					return // skip
 				}
+			}
 
-				diskInfo, exist := registerDiskPathMap[diskConf.Path]
-
-				if exist && diskInfo.Status != proto.DiskStatusNormal {
-					span.Warnf("disk(%d):path(%s) is not normal, skip init", diskInfo.DiskID, diskConf.Path)
-					return
-				}
-
-				if exist && base.IsEIO(err1) {
-					span.Errorf("open status normal disk[%s] failed, err:%+v. skip init", diskConf.Path, err1)
-					_err := svr.ClusterMgrClient.SetDisk(ctx, diskInfo.DiskID, proto.DiskStatusBroken)
-					if _err != nil && rpc.DetectStatusCode(_err) != bloberr.CodeChangeDiskStatusNotAllow {
-						span.Fatalf("set disk[id:%d, path:%s] broken to cm failed: %s", diskInfo.DiskID, diskConf.Path, _err)
-					}
-					return
-				}
-
-				// not exist in cluster, or NewDiskStorage error
-				span.Fatalf("Failed Open DiskStorage. foundInCluster:%t, conf:%v, err:%+v", exist, diskConf, err1)
+			ds, err = disk.NewDiskStorage(svr.ctx, diskConf)
+			if err != nil {
+				svr.handleStartDiskError(ctx, foundDiskPathInCluster, diskConf.Path, format.DiskID, err)
 				return
 			}
 
-			if !foundInCluster {
+			// new disk, register to cm: not found in cm, or format.diskID==0 and old disk is repaired
+			diskInfo, foundIDInCluster := foundDiskIDInCluster[format.DiskID]
+			if format.DiskID == 0 || !foundIDInCluster {
 				span.Warnf("diskInfo:%v not found in cm, will register to cm, nodeID:%d", diskInfo, conf.NodeID)
-				diskInfo := ds.DiskInfo() // get nodeID to add disk
-				err = clusterMgrCli.AddDisk(ctx, &diskInfo)
+				dsInfo := ds.DiskInfo() // get nodeID to add disk
+				err = clusterMgrCli.AddDisk(ctx, &dsInfo)
 				if err != nil {
-					span.Fatalf("Failed register disk: %v, err:%+v", diskInfo, err)
+					span.Fatalf("Failed register disk: %v, err:%+v", dsInfo, err)
 					return
 				}
 			}
 
 			svr.lock.Lock()
-			svr.Disks[ds.DiskID] = ds
+			svr.Disks[ds.ID()] = ds
 			svr.lock.Unlock()
 
 			svr.reportOnlineDisk(&diskConf.HostInfo, diskConf.Path) // restart, normal disk

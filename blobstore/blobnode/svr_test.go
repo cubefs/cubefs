@@ -377,8 +377,8 @@ func TestService_CmdpChunk(t *testing.T) {
 	mcm := mockClusterMgr{
 		reqIdx: _mockDiskIdBase,
 		disks: []mockDiskInfo{
-			{diskId: proto.DiskID(_mockDiskIdBase + 1), path: path1, status: proto.DiskStatusNormal},
-			{diskId: proto.DiskID(_mockDiskIdBase + 2), path: path2, status: proto.DiskStatusNormal},
+			{diskId: proto.DiskID(_mockDiskIdBase + 1), path: path1, status: proto.DiskStatusRepaired},
+			{diskId: proto.DiskID(_mockDiskIdBase + 2), path: path2, status: proto.DiskStatusRepaired},
 		},
 	}
 
