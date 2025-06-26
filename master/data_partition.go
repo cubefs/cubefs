@@ -59,6 +59,7 @@ type DataPartition struct {
 
 	RdOnly                            bool
 	addReplicaMutex                   sync.RWMutex
+	DecommissionDiskRetryMapMutex     sync.RWMutex
 	DecommissionDiskRetryMap          map[string]int
 	DecommissionRetry                 int
 	DecommissionStatus                uint32
@@ -1639,6 +1640,55 @@ func (partition *DataPartition) IsDoingDecommission() bool {
 	return (decommStatus > DecommissionInitial && decommStatus < DecommissionSuccess)
 }
 
+func (partition *DataPartition) cloneDecommissionDiskRetryMap() (result map[string]int) {
+	partition.DecommissionDiskRetryMapMutex.RLock()
+	defer partition.DecommissionDiskRetryMapMutex.RUnlock()
+	result = make(map[string]int)
+	for disk, retryTimes := range partition.DecommissionDiskRetryMap {
+		result[disk] = retryTimes
+	}
+	return result
+}
+
+func (partition *DataPartition) addRetryTimesByDiskPath(diskPath string) {
+	partition.DecommissionDiskRetryMapMutex.Lock()
+	defer partition.DecommissionDiskRetryMapMutex.Unlock()
+	if partition.DecommissionDiskRetryMap[diskPath] >= math.MaxInt {
+		partition.DecommissionDiskRetryMap[diskPath] = 0
+	} else {
+		partition.DecommissionDiskRetryMap[diskPath]++
+	}
+}
+
+func (partition *DataPartition) deleteRetryTimesRecordByDiskPath(diskPath string) {
+	partition.DecommissionDiskRetryMapMutex.Lock()
+	defer partition.DecommissionDiskRetryMapMutex.Unlock()
+	delete(partition.DecommissionDiskRetryMap, diskPath)
+}
+
+func (partition *DataPartition) getRetryTimesRecordByDiskPath(diskPath string) (retryTimes int) {
+	partition.DecommissionDiskRetryMapMutex.RLock()
+	defer partition.DecommissionDiskRetryMapMutex.RUnlock()
+	retryTimes = partition.DecommissionDiskRetryMap[diskPath]
+	return retryTimes
+}
+
+func (partition *DataPartition) deleteInvalidRetryTimesRecord() {
+	partition.DecommissionDiskRetryMapMutex.Lock()
+	defer partition.DecommissionDiskRetryMapMutex.Unlock()
+	for key := range partition.DecommissionDiskRetryMap {
+		arr := strings.Split(key, "_")
+		if len(arr) == 2 {
+			addr := arr[0]
+			disk := arr[1]
+			if (partition.DecommissionSrcAddr == addr && partition.DecommissionSrcDiskPath == disk) || partition.containsBadDisk(disk, addr) {
+				continue
+			}
+		}
+		delete(partition.DecommissionDiskRetryMap, key)
+	}
+}
+
 func (partition *DataPartition) TryToDecommission(c *Cluster) bool {
 	if !partition.IsMarkDecommission() {
 		log.LogWarnf("action[TryToDecommission] failed dp[%v] status expected markDecommission[%v]",
@@ -2708,10 +2758,10 @@ func (partition *DataPartition) decommissionInfo() string {
 		replicas = append(replicas, replica.Addr)
 	}
 
-	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_diskRetryMap(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
+	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
 		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_weight(%v)_firstHostDiskTokenKey(%v)_replica(%v)_recoverStartTime(%v)_addr(%p)",
 		partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
-		partition.Hosts, partition.DecommissionDiskRetryMap, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
+		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
 		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage, partition.IsDiscard,

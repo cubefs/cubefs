@@ -307,7 +307,8 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
 		dpv.Replicas = append(dpv.Replicas, rv)
 	}
-	for disk, retryTimes := range dp.DecommissionDiskRetryMap {
+	retryTimesMap := dp.cloneDecommissionDiskRetryMap()
+	for disk, retryTimes := range retryTimesMap {
 		dpv.DecommissionDiskRetryMap[disk] = retryTimes
 	}
 	return
