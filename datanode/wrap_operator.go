@@ -109,7 +109,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
 			if p.IsWriteOpOfPacketProtoVerForbidden() || strings.Contains(logContent, raft.ErrNotLeader.Error()) || p.Opcode == proto.OpReadTinyDeleteRecord || p.Opcode == proto.OpNotExistErr {
 				log.LogWarnf(logContent)
-			} else if isColdVolExtentDelErr(p) || p.ResultCode == proto.OpTinyRecoverErr || p.ResultCode == proto.OpLimitedIoErr || p.ResultCode == proto.OpDpDecommissionRepairErr {
+			} else if isColdVolExtentDelErr(p) || p.ResultCode == proto.OpTinyRecoverErr || p.ResultCode == proto.OpLimitedIoErr || p.ResultCode == proto.OpDpDecommissionRepairErr || p.ResultCode == proto.OpDpRepairErr {
 				log.LogInfof(logContent)
 			} else {
 				log.LogErrorf(logContent)
