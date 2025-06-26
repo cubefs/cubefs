@@ -2406,6 +2406,10 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					}
 					auditlog.LogMasterOp("TraverseDataPartition", msg, err)
 				} else if dp.IsDecommissionFailed() {
+					if time.Since(dp.DecommissionRetryTime) < defaultDecommissionRetryInternal {
+						log.LogWarnf("[traverse] dp %v should wait for rollback,lastDecommissionRetryTime %v", dp.PartitionID, dp.DecommissionRetryTime)
+						continue
+					}
 					remove := false
 					if !dp.tryRollback(c) {
 						log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for fail",
@@ -2450,7 +2454,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsMarkDecommission() {
 					if time.Since(dp.DecommissionRetryTime) < defaultDecommissionRetryInternal {
-						log.LogWarnf("[traverse] dp %v should wait for decommissionRetry,lasetDecommissionRetryTime %v", dp.PartitionID, dp.DecommissionRetryTime)
+						log.LogWarnf("[traverse] dp %v should wait for decommissionRetry,lastDecommissionRetryTime %v", dp.PartitionID, dp.DecommissionRetryTime)
 						continue
 					}
 					if dp.AcquireDecommissionFirstHostToken(c) {
