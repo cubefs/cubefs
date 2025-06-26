@@ -104,6 +104,7 @@ var (
 	ErrDiskNotExists                           = errors.New("disk not exists")
 	ErrPerformingRestoreReplica                = errors.New("is performing restore replica")
 	ErrPerformingDecommission                  = errors.New("one replica is performing decommission")
+	ErrDpNoSamePeer                            = errors.New("dp has no same peer between master and replicas")
 	ErrWaitForAutoAddReplica                   = errors.New("wait for auto add replica")
 	ErrBufferSizeExceedMaximum                 = errors.New("buffer size exceeds maximum")
 	ErrVolNameRegExpNotMatch                   = errors.New("name can only be number and letters")
