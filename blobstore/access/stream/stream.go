@@ -134,6 +134,12 @@ type StreamConfig struct {
 	// CodeModesPutQuorums
 	// just for one AZ is down, cant write quorum in all AZs
 	CodeModesPutQuorums map[codemode.CodeMode]int `json:"code_mode_put_quorums"`
+	// CodeModesGetOrdered shards with volume unit order to
+	// reduce reedsolom's inverted matrix cache
+	//
+	// EC24P8 in 1AZ, C(32, 8) = 10518300 matrix
+	// Inverted matrix memory: (24 + 24*24 + 24*24*8) * 10518300 ~= 51 GB
+	CodeModesGetOrdered map[codemode.CodeMode]bool `json:"code_mode_get_ordered"`
 
 	ClusterConfig  controller.ClusterConfig `json:"cluster_config"`
 	BlobnodeConfig blobnode.Config          `json:"blobnode_config"`
