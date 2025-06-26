@@ -1939,6 +1939,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 		log.LogWarnf("action[rollback]dp[%v] rollback to del replica[%v] failed:%v",
 			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
 		partition.DecommissionErrorMessage = fmt.Sprintf("rollback failed:%v", err.Error())
+		partition.DecommissionRetryTime = time.Now()
 		return
 	}
 	// err = partition.restoreReplicaMeta(c)
