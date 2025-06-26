@@ -136,6 +136,7 @@ func newService(cfg *Config) *service {
 	})
 	svr.catalog = c
 	go svr.loop(ctx)
+	span.Infof("service started success")
 
 	return svr
 }
