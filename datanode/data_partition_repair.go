@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"math"
 	"net"
 	"strings"
@@ -680,6 +681,11 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		p.SetCRC(reply.GetCRC())
 		if err != nil {
 			if strings.Contains(err.Error(), storage.ExtentHasBeenDeletedError.Error()) {
+				log.LogWarnf("action[operatePacket] err %v", err)
+				return
+			}
+			if err == io.EOF && dp.Status() == proto.Recovering {
+				err = storage.DpRepairError
 				log.LogWarnf("action[operatePacket] err %v", err)
 				return
 			}
