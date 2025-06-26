@@ -127,6 +127,8 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		p.ResultCode = proto.OpTinyRecoverErr
 	} else if strings.Contains(errMsg, storage.DpDecommissionRepairError.Error()) {
 		p.ResultCode = proto.OpDpDecommissionRepairErr
+	} else if strings.Contains(errMsg, storage.DpRepairError.Error()) {
+		p.ResultCode = proto.OpDpRepairErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
@@ -461,6 +463,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpTinyRecoverErr
 	} else if strings.Contains(errMsg, storage.DpDecommissionRepairError.Error()) {
 		p.ResultCode = proto.OpDpDecommissionRepairErr
+	} else if strings.Contains(errMsg, storage.DpRepairError.Error()) {
+		p.ResultCode = proto.OpDpRepairErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {

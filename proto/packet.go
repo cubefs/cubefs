@@ -283,6 +283,7 @@ const (
 	OpReachMaxExtentsErr      uint8 = 0xB3
 	OpTinyRecoverErr          uint8 = 0xB4
 	OpDpDecommissionRepairErr uint8 = 0xB5
+	OpDpRepairErr             uint8 = 0xB6
 
 	// hybirdCloud
 	OpMismatchStorageClass              uint8 = 0x82
