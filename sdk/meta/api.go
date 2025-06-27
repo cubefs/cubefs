@@ -677,7 +677,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
 		if err != nil {
-			log.LogErrorf("Delete_ll: shouldNotMoveToTrash failed:%v", err)
+			log.LogWarnf("Delete_ll: shouldNotMoveToTrash failed:%v", err)
 			return nil, err
 		}
 		if !ret {
