@@ -187,6 +187,7 @@ func (cli *kafkaClient) StartKafkaConsumer(cfg KafkaConsumerCfg, fn func(msg []*
 	config.Version = kafka.DefaultKafkaVersion
 	config.Consumer.Offsets.Initial = sarama.OffsetOldest
 	config.Consumer.Offsets.AutoCommit.Enable = false
+	config.Consumer.Offsets.Retention = 720 * time.Hour
 	config.Consumer.Group.Rebalance.Retry.Max = 10
 
 	consumer := newConsumer(cfg, fn)
