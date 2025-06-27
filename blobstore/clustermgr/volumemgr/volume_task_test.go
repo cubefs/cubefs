@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	apierrs "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -170,4 +171,77 @@ func TestTaskProc(t *testing.T) {
 	task := newVolTask(taskRec.Vid, taskRec.TaskType, taskRec.TaskId, volMgr.setVolumeStatus)
 	err = volMgr.deleteTask(ctx, task)
 	require.NoError(t, err)
+}
+
+func TestSetVolumeStatus(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	raftServer := mocks.NewMockRaftServer(ctrl)
+	raftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	raftServer.EXPECT().IsLeader().AnyTimes().Return(true)
+
+	dnClient := mocks.NewMockStorageAPI(ctrl)
+
+	diskmgr := NewMockDiskMgrAPI(ctrl)
+	diskmgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().Return(&blobnode.DiskInfo{Host: "127.0.0.1:8080"}, nil)
+
+	volMgr := &VolumeMgr{
+		taskMgr:        newTaskManager(10),
+		raftServer:     raftServer,
+		all:            newShardedVolumes(8),
+		diskMgr:        diskmgr,
+		blobNodeClient: dnClient,
+	}
+
+	vunits := []*volumeUnit{
+		{
+			vuidPrefix: proto.EncodeVuidPrefix(1, 0),
+			epoch:      0,
+			nextEpoch:  1,
+			vuInfo: &cm.VolumeUnitInfo{
+				Vuid:   proto.EncodeVuid(proto.EncodeVuidPrefix(1, 0), 0),
+				DiskID: 1000,
+			},
+		},
+		{
+			vuidPrefix: proto.EncodeVuidPrefix(1, 1),
+			epoch:      0,
+			nextEpoch:  1,
+			vuInfo: &cm.VolumeUnitInfo{
+				Vuid:   proto.EncodeVuid(proto.EncodeVuidPrefix(1, 1), 0),
+				DiskID: 2000,
+			},
+		},
+	}
+	vol := &volume{
+		vid:    1,
+		vUnits: vunits,
+		volInfoBase: cm.VolumeInfoBase{
+			CodeMode: 1,
+			Status:   proto.VolumeStatusLock,
+		},
+	}
+	volMgr.all.putVol(vol)
+
+	task := &volTask{
+		vid:      1,
+		taskType: base.VolumeTaskTypeUnlock,
+		taskId:   uuid.NewString(),
+	}
+
+	// test set disk chunk readwrite with DiskNotFound error while disk is dropping, should be success
+	{
+		dnClient.EXPECT().SetChunkReadwrite(gomock.Any(), gomock.Any(), gomock.Any()).Times(2).Return(apierrs.ErrNoSuchDisk)
+		diskmgr.EXPECT().IsDroppingDisk(gomock.Any(), gomock.Any()).Times(2).Return(true, nil)
+		err := volMgr.setVolumeStatus(task)
+		require.NoError(t, err)
+	}
+
+	// test set disk chunk readwrite with DiskNotFound error while disk is is dropping
+	{
+		task.context = nil
+		dnClient.EXPECT().SetChunkReadwrite(gomock.Any(), gomock.Any(), gomock.Any()).Times(2).Return(apierrs.ErrNoSuchDisk)
+		diskmgr.EXPECT().IsDroppingDisk(gomock.Any(), gomock.Any()).Times(2).Return(false, nil)
+		err := volMgr.setVolumeStatus(task)
+		require.ErrorIs(t, err, apierrs.ErrNoSuchDisk)
+	}
 }
