@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 
 	bncom "github.com/cubefs/cubefs/blobstore/blobnode/base"
@@ -30,6 +31,9 @@ var (
 	ErrStopped         = errors.New("db: err stopped")
 	ErrShardMetaNotDir = errors.New("db: shard meta not directory")
 	ErrWrongConfig     = errors.New("db: wrong config item")
+
+	// it means db sst file corruption, disk broken
+	dbCorruption = "corruption: bad table magic number"
 )
 
 type MetaHandler interface {
@@ -52,7 +56,7 @@ type metadb struct {
 }
 
 func (md *metadb) handleError(err error) {
-	if bncom.IsEIO(err) && md.handleIOError != nil {
+	if (bncom.IsEIO(err) || isMetaEIO(err)) && md.handleIOError != nil {
 		md.handleIOError(err)
 	}
 }
@@ -162,4 +166,12 @@ func newMetaDB(path string, config MetaConfig) (md *metadb, err error) {
 
 func NewMetaHandler(dirpath string, config MetaConfig) (mh MetaHandler, err error) {
 	return newMetaDB(dirpath, config)
+}
+
+func isMetaEIO(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, dbCorruption)
 }
