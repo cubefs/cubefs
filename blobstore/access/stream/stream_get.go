@@ -169,6 +169,8 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 			}
 		}
 
+		_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", span.TraceID())
+
 		// data stream flow:
 		// client <--copy-- pipeline <--swap-- readBlob <--copy-- blobnode
 		//

@@ -88,6 +88,7 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clust
 	}
 	c.diskCache.Set(id, disk)
 
+	span, _ = trace.StartSpanFromContextWithTraceID(context.Background(), "diskkv", span.TraceID())
 	go func() {
 		key := diskvKeyDisk(id)
 		fullPath := c.DiskvFilename(key)

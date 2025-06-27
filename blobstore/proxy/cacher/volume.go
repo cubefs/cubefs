@@ -95,6 +95,7 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*p
 	}
 	c.volumeCache.Set(vid, vol)
 
+	span, _ = trace.StartSpanFromContextWithTraceID(context.Background(), "diskkv", span.TraceID())
 	go func() {
 		key := diskvKeyVolume(vid)
 		fullPath := c.DiskvFilename(key)

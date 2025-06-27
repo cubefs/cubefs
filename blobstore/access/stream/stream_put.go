@@ -109,6 +109,8 @@ func (h *Handler) Put(ctx context.Context,
 		ready <- struct{}{}
 	}
 
+	_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", span.TraceID())
+
 	encoder := h.encoder[selectedCodeMode]
 	tactic := selectedCodeMode.Tactic()
 	for _, blob := range location.Spread() {
