@@ -206,6 +206,9 @@ func ReadReplyFromConn(reply *proto.Packet, c net.Conn, timeout int) (err error)
 	}
 
 	size := reply.Size
+	if int(size) > len(reply.Data) {
+		return fmt.Errorf("ReadReplyFromConn: reply wrong, size over data size, size %d, len %d, cap %d, reply %s", size, len(reply.Data), cap(reply.Data), reply.String())
+	}
 
 	if n, err = io.ReadFull(c, reply.Data[:size]); err != nil {
 		return err
