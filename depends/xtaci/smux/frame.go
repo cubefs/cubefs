@@ -26,8 +26,6 @@ const (
 const (
 	// initial peer window guess, a slow-start
 	initialPeerWindow = 262144
-
-	frameFailState = 1
 )
 
 const (
@@ -44,7 +42,6 @@ type Frame struct {
 	cmd  byte
 	sid  uint32
 	data []byte
-	state int32
 }
 
 func newFrame(version byte, cmd byte, sid uint32) Frame {
