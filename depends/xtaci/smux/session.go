@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -28,6 +27,7 @@ type writeRequest struct {
 	prio   uint32
 	frame  Frame
 	result chan writeResult
+	stop   chan struct{}
 }
 
 type writeResult struct {
@@ -458,18 +458,12 @@ func (s *Session) sendLoop() {
 		case request := <-s.writes:
 
 			s.frameLock.Lock()
-			state := atomic.LoadInt32(&request.frame.state)
-			if state == frameFailState {
-				s.frameLock.Unlock()
-
-				result := writeResult{
-					n:   0,
-					err: fmt.Errorf("abnormal stream %d", request.frame.sid),
-				}
-
-				request.result <- result
+			select {
+			case <-request.stop:
 				close(request.result)
+				s.frameLock.Unlock()
 				continue
+			default:
 			}
 
 			buf[0] = request.frame.ver
@@ -518,12 +512,24 @@ func (s *Session) writeFrame(f Frame) (n int, err error) {
 }
 
 // internal writeFrame version to support deadline used in keepalive
-func (s *Session) writeFrameInternal(f Frame, deadline <-chan time.Time, prio uint32) (int, error) {
+func (s *Session) writeFrameInternal(f Frame, deadline <-chan time.Time, prio uint32) (n int, err error) {
 	req := writeRequest{
 		prio:   prio,
 		frame:  f,
 		result: make(chan writeResult, 1),
+		stop:   make(chan struct{}),
 	}
+
+	defer func() {
+		if err != nil {
+			s.frameLock.Lock()
+			close(req.stop)
+			s.frameLock.Unlock()
+			return
+		}
+		close(req.stop)
+	}()
+
 	select {
 	case s.shaper <- req:
 	case <-s.die:
