@@ -128,6 +128,18 @@ func (m *MockVolumeCache) EXPECT() *MockVolumeCacheMockRecorder {
 	return m.recorder
 }
 
+// DeleteVolumeChunk mocks base method.
+func (m *MockVolumeCache) DeleteVolumeChunk(arg0 proto.Vid, arg1 byte) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeleteVolumeChunk", arg0, arg1)
+}
+
+// DeleteVolumeChunk indicates an expected call of DeleteVolumeChunk.
+func (mr *MockVolumeCacheMockRecorder) DeleteVolumeChunk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVolumeChunk", reflect.TypeOf((*MockVolumeCache)(nil).DeleteVolumeChunk), arg0, arg1)
+}
+
 // GetVolume mocks base method.
 func (m *MockVolumeCache) GetVolume(arg0 proto.Vid) (*client.VolumeInfoSimple, error) {
 	m.ctrl.T.Helper()
@@ -141,6 +153,21 @@ func (m *MockVolumeCache) GetVolume(arg0 proto.Vid) (*client.VolumeInfoSimple, e
 func (mr *MockVolumeCacheMockRecorder) GetVolume(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolume", reflect.TypeOf((*MockVolumeCache)(nil).GetVolume), arg0)
+}
+
+// GetVolumeChunk mocks base method.
+func (m *MockVolumeCache) GetVolumeChunk(arg0 proto.Vid) (*VolumeChunk, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolumeChunk", arg0)
+	ret0, _ := ret[0].(*VolumeChunk)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// GetVolumeChunk indicates an expected call of GetVolumeChunk.
+func (mr *MockVolumeCacheMockRecorder) GetVolumeChunk(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeChunk", reflect.TypeOf((*MockVolumeCache)(nil).GetVolumeChunk), arg0)
 }
 
 // LoadVolumes mocks base method.
@@ -170,6 +197,18 @@ func (m *MockVolumeCache) UpdateVolume(arg0 proto.Vid) (*client.VolumeInfoSimple
 func (mr *MockVolumeCacheMockRecorder) UpdateVolume(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVolume", reflect.TypeOf((*MockVolumeCache)(nil).UpdateVolume), arg0)
+}
+
+// UpdateVolumeChunk mocks base method.
+func (m *MockVolumeCache) UpdateVolumeChunk(arg0 proto.Vid, arg1 byte, arg2 int) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "UpdateVolumeChunk", arg0, arg1, arg2)
+}
+
+// UpdateVolumeChunk indicates an expected call of UpdateVolumeChunk.
+func (mr *MockVolumeCacheMockRecorder) UpdateVolumeChunk(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVolumeChunk", reflect.TypeOf((*MockVolumeCache)(nil).UpdateVolumeChunk), arg0, arg1, arg2)
 }
 
 // MockMigrater is a mock of MMigrator interface.
@@ -735,6 +774,18 @@ func (mr *MockClusterTopologyMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockClusterTopology)(nil).Close))
 }
 
+// DeleteVolumeChunk mocks base method.
+func (m *MockClusterTopology) DeleteVolumeChunk(arg0 proto.Vid, arg1 byte) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeleteVolumeChunk", arg0, arg1)
+}
+
+// DeleteVolumeChunk indicates an expected call of DeleteVolumeChunk.
+func (mr *MockClusterTopologyMockRecorder) DeleteVolumeChunk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVolumeChunk", reflect.TypeOf((*MockClusterTopology)(nil).DeleteVolumeChunk), arg0, arg1)
+}
+
 // Done mocks base method.
 func (m *MockClusterTopology) Done() <-chan struct{} {
 	m.ctrl.T.Helper()
@@ -792,6 +843,21 @@ func (mr *MockClusterTopologyMockRecorder) GetVolume(arg0 interface{}) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolume", reflect.TypeOf((*MockClusterTopology)(nil).GetVolume), arg0)
 }
 
+// GetVolumeChunk mocks base method.
+func (m *MockClusterTopology) GetVolumeChunk(arg0 proto.Vid) (*VolumeChunk, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolumeChunk", arg0)
+	ret0, _ := ret[0].(*VolumeChunk)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// GetVolumeChunk indicates an expected call of GetVolumeChunk.
+func (mr *MockClusterTopologyMockRecorder) GetVolumeChunk(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeChunk", reflect.TypeOf((*MockClusterTopology)(nil).GetVolumeChunk), arg0)
+}
+
 // IsBrokenDisk mocks base method.
 func (m *MockClusterTopology) IsBrokenDisk(arg0 proto.DiskID) bool {
 	m.ctrl.T.Helper()
@@ -847,4 +913,16 @@ func (m *MockClusterTopology) UpdateVolume(arg0 proto.Vid) (*client.VolumeInfoSi
 func (mr *MockClusterTopologyMockRecorder) UpdateVolume(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVolume", reflect.TypeOf((*MockClusterTopology)(nil).UpdateVolume), arg0)
+}
+
+// UpdateVolumeChunk mocks base method.
+func (m *MockClusterTopology) UpdateVolumeChunk(arg0 proto.Vid, arg1 byte, arg2 int) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "UpdateVolumeChunk", arg0, arg1, arg2)
+}
+
+// UpdateVolumeChunk indicates an expected call of UpdateVolumeChunk.
+func (mr *MockClusterTopologyMockRecorder) UpdateVolumeChunk(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVolumeChunk", reflect.TypeOf((*MockClusterTopology)(nil).UpdateVolumeChunk), arg0, arg1, arg2)
 }
