@@ -323,6 +323,28 @@ func (c *client) DiskMigratingStats(ctx context.Context, args *DiskMigratingStat
 	return
 }
 
+type CheckTaskExistArgs struct {
+	TaskType proto.TaskType `json:"task_type"`
+	DiskID   proto.DiskID   `json:"disk_id"`
+	Vuid     proto.Vuid     `json:"vuid"`
+}
+
+type CheckTaskExistResp struct {
+	Exist bool `json:"exist"`
+}
+
+func (c *client) CheckTaskExist(ctx context.Context, args *CheckTaskExistArgs) (ret *CheckTaskExistResp, err error) {
+	if args == nil || !args.TaskType.Valid() {
+		err = errcode.ErrIllegalArguments
+		return
+	}
+	err = c.request(func(host string) error {
+		url := fmt.Sprintf("%s%s?task_type=%s&disk_id=%d&vuid=%d", host, PathTaskExistCheck, args.TaskType, args.DiskID, args.Vuid)
+		return c.GetWith(ctx, url, &ret)
+	})
+	return
+}
+
 func (c *client) selectHost() ([]string, error) {
 	hosts := c.selector.GetRandomN(c.hostRetry)
 	if len(hosts) == 0 {

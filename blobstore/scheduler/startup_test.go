@@ -102,7 +102,7 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	balanceMgr := NewMockMigrater(ctr)
 	inspecterMgr := NewMockVolumeInspector(ctr)
 	clusterTopology := NewMockClusterTopology(ctr)
-	volumeUpdater := NewMockVolumeUpdater(ctr)
+	volumeUpdater := NewMockTaskAPI(ctr)
 
 	shardDiskRepair := NewMockShardMigrator(ctr)
 

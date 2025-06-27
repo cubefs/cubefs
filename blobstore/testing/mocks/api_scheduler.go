@@ -108,6 +108,21 @@ func (mr *MockISchedulerMockRecorder) CancelShardTask(arg0, arg1 interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelShardTask", reflect.TypeOf((*MockIScheduler)(nil).CancelShardTask), arg0, arg1)
 }
 
+// CheckTaskExist mocks base method.
+func (m *MockIScheduler) CheckTaskExist(arg0 context.Context, arg1 *scheduler.CheckTaskExistArgs) (*scheduler.CheckTaskExistResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckTaskExist", arg0, arg1)
+	ret0, _ := ret[0].(*scheduler.CheckTaskExistResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckTaskExist indicates an expected call of CheckTaskExist.
+func (mr *MockISchedulerMockRecorder) CheckTaskExist(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckTaskExist", reflect.TypeOf((*MockIScheduler)(nil).CheckTaskExist), arg0, arg1)
+}
+
 // CompleteBlobnodeTask mocks base method.
 func (m *MockIScheduler) CompleteBlobnodeTask(arg0 context.Context, arg1 *scheduler.BlobnodeTaskArgs) error {
 	m.ctrl.T.Helper()

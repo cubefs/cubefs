@@ -414,6 +414,20 @@ func (mr *MockMigraterMockRecorder) IsMigratingDisk(arg0 interface{}) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsMigratingDisk", reflect.TypeOf((*MockMigrater)(nil).IsMigratingDisk), arg0)
 }
 
+// IsTaskExist mocks base method.
+func (m *MockMigrater) IsTaskExist(arg0 proto.DiskID, arg1 proto.Vuid) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsTaskExist", arg0, arg1)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsTaskExist indicates an expected call of IsTaskExist.
+func (mr *MockMigraterMockRecorder) IsTaskExist(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsTaskExist", reflect.TypeOf((*MockMigrater)(nil).IsTaskExist), arg0, arg1)
+}
+
 // ListAllTask mocks base method.
 func (m *MockMigrater) ListAllTask(arg0 context.Context) ([]*proto.MigrateTask, error) {
 	m.ctrl.T.Helper()

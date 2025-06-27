@@ -36,7 +36,7 @@ import (
 func newDiskDroper(t *testing.T) *DiskDropMgr {
 	ctr := gomock.NewController(t)
 	clusterMgr := NewMockClusterMgrAPI(ctr)
-	volumeUpdater := NewMockVolumeUpdater(ctr)
+	volumeUpdater := NewMockTaskAPI(ctr)
 	taskSwitch := mocks.NewMockSwitcher(ctr)
 	taskLogger := mocks.NewMockRecordLogEncoder(ctr)
 	topology := NewMockClusterTopology(ctr)

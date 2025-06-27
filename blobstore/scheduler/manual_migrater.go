@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 )
 
@@ -28,11 +29,12 @@ import (
 type ManualMigrateMgr struct {
 	IMigrator
 
-	clusterMgrCli client.ClusterMgrAPI
+	clusterMgrCli    client.ClusterMgrAPI
+	abnormalReporter *base.AbnormalReporter
 }
 
 // NewManualMigrateMgr returns manual migrate manager
-func NewManualMigrateMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater,
+func NewManualMigrateMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.TaskAPI,
 	taskLogger recordlog.Encoder, conf *MigrateConfig,
 ) *ManualMigrateMgr {
 	mgr := &ManualMigrateMgr{
@@ -40,6 +42,8 @@ func NewManualMigrateMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater clien
 	}
 	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskswitch.NewEnabledTaskSwitch(), taskLogger,
 		conf, proto.TaskTypeManualMigrate)
+	mgr.abnormalReporter = base.NewAbnormalReporter(conf.ClusterID, ShardRepair, base.ChunkMissMigrateAbnormal)
+	conf.reportTaskCallback = mgr.reportMissChuckMigrated
 	return mgr
 }
 
@@ -72,4 +76,8 @@ func (mgr *ManualMigrateMgr) AddManualTask(ctx context.Context, vuid proto.Vuid,
 
 	span.Debugf("add manual migrate task success: task_info[%+v]", task)
 	return nil
+}
+
+func (mgr *ManualMigrateMgr) reportMissChuckMigrated(disk proto.DiskID, vuid proto.Vuid) {
+	mgr.abnormalReporter.CancelAbnormal(disk, vuid)
 }

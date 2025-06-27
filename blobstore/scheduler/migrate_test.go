@@ -61,7 +61,7 @@ func newMigrateMgr(t *testing.T) *MigrateMgr {
 	taskSwitch := mocks.NewMockSwitcher(ctr)
 
 	taskLogger := mocks.NewMockRecordLogEncoder(ctr)
-	volumeUpdater := NewMockVolumeUpdater(ctr)
+	volumeUpdater := NewMockTaskAPI(ctr)
 	conf := &MigrateConfig{
 		ClusterID: 0,
 		TaskCommonConfig: base.TaskCommonConfig{
@@ -311,7 +311,7 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(nil)
 			// release failed and update volume cache failed
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(errMock)
-			mgr.volumeUpdater.(*MockVolumeUpdater).EXPECT().UpdateLeaderVolumeCache(any, any).Return(errMock)
+			mgr.volumeUpdater.(*MockTaskAPI).EXPECT().UpdateLeaderVolumeCache(any, any).Return(errMock)
 			err := mgr.finishTask()
 			require.True(t, errors.Is(err, base.ErrUpdateVolumeCache))
 
@@ -319,7 +319,7 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(errMock)
-			mgr.volumeUpdater.(*MockVolumeUpdater).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
+			mgr.volumeUpdater.(*MockTaskAPI).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
 			// unlock volume failed
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(errMock)
 			err = mgr.finishTask()
@@ -332,7 +332,7 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
-			mgr.volumeUpdater.(*MockVolumeUpdater).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
+			mgr.volumeUpdater.(*MockTaskAPI).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
 			err = mgr.finishTask()
 			require.NoError(t, err)
 		}
@@ -350,7 +350,7 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
-			mgr.volumeUpdater.(*MockVolumeUpdater).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
+			mgr.volumeUpdater.(*MockTaskAPI).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
 			err := mgr.finishTask()
 			require.NoError(t, err)
 		}

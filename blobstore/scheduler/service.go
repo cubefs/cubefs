@@ -49,7 +49,7 @@ type Service struct {
 	shardRepairMgr  ITaskRunner
 	blobDeleteMgr   ITaskRunner
 	clusterTopology IClusterTopology
-	volumeUpdater   client.IVolumeUpdater
+	volumeUpdater   client.TaskAPI
 	kafkaMonitors   []*base.KafkaTopicMonitor
 
 	clusterMgrCli client.ClusterMgrAPI
@@ -87,6 +87,19 @@ func (svr *Service) diskMgrByType(typ proto.TaskType) (DiskProcess, error) {
 	case proto.TaskTypeShardDiskRepair:
 		return svr.shardDiskRepairMgr, nil
 
+	default:
+		return nil, errIllegalTaskType
+	}
+}
+
+func (svr *Service) migratorByType(typ proto.TaskType) (IMigrator, error) {
+	switch typ {
+	case proto.TaskTypeBalance:
+		return svr.balanceMgr.(*BalanceMgr).IMigrator, nil
+	case proto.TaskTypeDiskDrop:
+		return svr.diskDropMgr.(*DiskDropMgr).IMigrator, nil
+	case proto.TaskTypeManualMigrate:
+		return svr.manualMigMgr.(*ManualMigrateMgr).IMigrator, nil
 	default:
 		return nil, errIllegalTaskType
 	}
@@ -435,4 +448,23 @@ func (svr *Service) HTTPUpdateVolume(c *rpc.Context) {
 		return
 	}
 	c.Respond()
+}
+
+// HTTPCheckTaskExist returns if task exist
+func (svr *Service) HTTPCheckTaskExist(c *rpc.Context) {
+	args := new(api.CheckTaskExistArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	mgr, err := svr.migratorByType(args.TaskType)
+	if err != nil {
+		c.RespondError(err)
+		return
+	}
+	exist := mgr.IsTaskExist(args.DiskID, args.Vuid)
+	c.RespondJSON(api.CheckTaskExistResp{
+		Exist: exist,
+	})
 }

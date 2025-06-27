@@ -106,3 +106,15 @@ func TestNewCounter(t *testing.T) {
 	counter := NewCounter(0, "", "")
 	require.NotNil(t, counter)
 }
+
+func TestAbnormalReport(t *testing.T) {
+	rp := NewAbnormalReporter(proto.ClusterID(1), "", "")
+	diskID := proto.DiskID(1)
+	vuid := proto.Vuid(100)
+	rp.ReportAbnormal(diskID, vuid)
+	rp.CancelAbnormal(diskID, vuid)
+
+	rp.SetVuidReported(vuid)
+	require.True(t, rp.IsVuidReported(vuid))
+	require.False(t, rp.IsVuidReported(vuid+1))
+}

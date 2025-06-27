@@ -32,7 +32,7 @@ import (
 func newManualMigrater(t *testing.T) *ManualMigrateMgr {
 	ctr := gomock.NewController(t)
 	clusterMgr := NewMockClusterMgrAPI(ctr)
-	volumeUpdater := NewMockVolumeUpdater(ctr)
+	volumeUpdater := NewMockTaskAPI(ctr)
 	taskLogger := mocks.NewMockRecordLogEncoder(ctr)
 	migrater := NewMockMigrater(ctr)
 	mgr := NewManualMigrateMgr(clusterMgr, volumeUpdater, taskLogger, &MigrateConfig{ClusterID: 1})

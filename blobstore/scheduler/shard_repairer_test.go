@@ -248,7 +248,7 @@ func TestNewShardRepairMgr(t *testing.T) {
 	consumer.EXPECT().Stop().AnyTimes().Return()
 	kafkaClient.EXPECT().StartKafkaConsumer(any, any).AnyTimes().Return(consumer, nil)
 
-	mgr, err := NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli, kafkaClient)
+	mgr, err := NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli, kafkaClient, nil)
 	require.NoError(t, err)
 	require.False(t, mgr.Enabled())
 
@@ -264,7 +264,7 @@ func TestNewShardRepairMgr(t *testing.T) {
 	require.Nil(t, mgr.consumers)
 	mgr.Close()
 
-	_, err = NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli, kafkaClient)
+	_, err = NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli, kafkaClient, nil)
 	require.Error(t, err)
 }
 
@@ -337,5 +337,29 @@ func TestTryRepair(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, doneVolume.EqualWith(volume))
 		require.True(t, doneVolume.EqualWith(newVolume))
+	}
+	{
+		// repair miss migrate chunk
+		mgr := newShardRepairMgr(t)
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(errcode.ErrNoSuchDisk).AnyTimes()
+		mgr.blobnodeCli = blobnode
+
+		clusterMgrCli := NewMockClusterMgrAPI(ctr)
+		clusterMgrCli.EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
+		mgr.clusterMgrCli = clusterMgrCli
+
+		taskCli := NewMockTaskAPI(ctr)
+		taskCli.EXPECT().CheckTaskExist(any, any, any, any).Return(false, nil)
+		mgr.taskCli = taskCli
+
+		mgr.chunkMissMigrateReporter = base.NewAbnormalReporter(proto.ClusterID(1), ShardRepair, base.ChunkMissMigrateAbnormal)
+
+		missIdx := uint8(0)
+		newDisk := MockGenDiskInfo(volume.VunitLocations[missIdx].DiskID, proto.DiskStatusRepaired)
+		clusterMgrCli.EXPECT().GetDiskInfo(any, any).Return(newDisk, nil)
+
+		_, err := mgr.tryRepair(ctx, volume, &proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{missIdx}})
+		require.ErrorIs(t, err, errcode.ErrNoSuchDisk)
 	}
 }

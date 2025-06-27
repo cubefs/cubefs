@@ -43,6 +43,8 @@ const (
 	PathTaskDetail    = "/task/detail"
 	PathTaskDetailURI = PathTaskDetail + "/:type/:id" // "/task/detail/:type/:id"
 	PathUpdateVolume  = "/update/vol"
+
+	PathTaskExistCheck = "/task/exist/check"
 )
 
 const defaultHostSyncIntervalMs = 3600000 // 1 hour
@@ -90,8 +92,9 @@ type IManualMigrator interface {
 	AddManualMigrateTask(ctx context.Context, args *AddManualMigrateArgs) (err error)
 }
 
-// IVolumeUpdater volume updater.
-type IVolumeUpdater interface {
+// ITaskInfoNotifier task information notifier.
+type ITaskInfoNotifier interface {
+	CheckTaskExist(ctx context.Context, args *CheckTaskExistArgs) (ret *CheckTaskExistResp, err error)
 	UpdateVolume(ctx context.Context, host string, vid proto.Vid) (err error)
 }
 
@@ -101,7 +104,7 @@ type IScheduler interface {
 	IInspector
 	ISchedulerStatus
 	IManualMigrator
-	IVolumeUpdater
+	ITaskInfoNotifier
 }
 
 // Config scheduler config.
@@ -150,14 +153,14 @@ func New(cfg *Config, service cmapi.APIService, clusterID proto.ClusterID) ISche
 	}
 }
 
-// NewVolumeUpdater returns volume updater client.
-func NewVolumeUpdater(cfg *Config) IVolumeUpdater {
-	return &client{Client: rpc.NewClient(&cfg.Config)}
-}
-
 // UpdateVolumeArgs argument of volume to update.
 type UpdateVolumeArgs struct {
 	Vid proto.Vid `json:"vid"`
+}
+
+// NewTaskInfoNotifier returns task checker client.
+func NewTaskInfoNotifier(cfg *Config) ITaskInfoNotifier {
+	return &client{Client: rpc.NewClient(&cfg.Config)}
 }
 
 func (c *client) UpdateVolume(ctx context.Context, host string, vid proto.Vid) (err error) {

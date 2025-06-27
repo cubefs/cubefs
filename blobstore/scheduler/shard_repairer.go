@@ -106,12 +106,15 @@ type ShardRepairMgr struct {
 
 	blobnodeCli      client.BlobnodeAPI
 	blobnodeSelector selector.Selector
+	clusterMgrCli    client.ClusterMgrAPI
+	taskCli          client.TaskAPI
 
-	repairSuccessCounter    prometheus.Counter
-	repairSuccessCounterMin *counter.Counter
-	repairFailedCounter     prometheus.Counter
-	repairFailedCounterMin  *counter.Counter
-	errStatsDistribution    *base.ErrorStats
+	repairSuccessCounter     prometheus.Counter
+	repairSuccessCounterMin  *counter.Counter
+	repairFailedCounter      prometheus.Counter
+	repairFailedCounterMin   *counter.Counter
+	errStatsDistribution     *base.ErrorStats
+	chunkMissMigrateReporter *base.AbnormalReporter
 
 	group             singleflight.Group
 	orphanShardLogger recordlog.Encoder
@@ -127,6 +130,7 @@ func NewShardRepairMgr(
 	blobnodeCli client.BlobnodeAPI,
 	clusterMgrCli client.ClusterMgrAPI,
 	kafkaClient base.KafkaConsumer,
+	taskAPI client.TaskAPI,
 ) (*ShardRepairMgr, error) {
 	taskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeShardRepair.String())
 	if err != nil {
@@ -148,6 +152,8 @@ func NewShardRepairMgr(
 
 	return &ShardRepairMgr{
 		blobnodeCli:      blobnodeCli,
+		clusterMgrCli:    clusterMgrCli,
+		taskCli:          taskAPI,
 		taskPool:         taskpool.New(cfg.TaskPoolSize, cfg.TaskPoolSize),
 		taskSwitch:       taskSwitch,
 		clusterTopology:  clusterTopology,
@@ -159,11 +165,12 @@ func NewShardRepairMgr(
 
 		orphanShardLogger: orphanShardsLog,
 
-		repairSuccessCounter:    base.NewCounter(cfg.ClusterID, ShardRepair, base.KindSuccess),
-		repairFailedCounter:     base.NewCounter(cfg.ClusterID, ShardRepair, base.KindFailed),
-		errStatsDistribution:    base.NewErrorStats(),
-		repairSuccessCounterMin: &counter.Counter{},
-		repairFailedCounterMin:  &counter.Counter{},
+		repairSuccessCounter:     base.NewCounter(cfg.ClusterID, ShardRepair, base.KindSuccess),
+		repairFailedCounter:      base.NewCounter(cfg.ClusterID, ShardRepair, base.KindFailed),
+		errStatsDistribution:     base.NewErrorStats(),
+		repairSuccessCounterMin:  &counter.Counter{},
+		repairFailedCounterMin:   &counter.Counter{},
+		chunkMissMigrateReporter: base.NewAbnormalReporter(cfg.ClusterID, ShardRepair, base.ChunkMissMigrateAbnormal),
 
 		cfg:    cfg,
 		Closer: closer.New(),
@@ -373,6 +380,10 @@ func (mgr *ShardRepairMgr) tryRepair(ctx context.Context, volInfo *client.Volume
 		return volInfo, err
 	}
 
+	if isErrDiskNotFound(err) {
+		mgr.processDiskNotFoundErr(ctx, volInfo, repairMsg)
+	}
+
 	newVol, err1 := mgr.clusterTopology.UpdateVolume(volInfo.Vid)
 	if err1 != nil || newVol.EqualWith(volInfo) {
 		// if update volInfo failed or volInfo not updated, don't need retry
@@ -428,6 +439,54 @@ func (mgr *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg *proto
 	base.InsistOn(ctx, "save orphan shard", func() error {
 		return mgr.orphanShardLogger.Encode(shard)
 	})
+}
+
+func isErrDiskNotFound(err error) bool {
+	return rpc.DetectStatusCode(err) == errcode.CodeDiskNotFound
+}
+
+func (mgr *ShardRepairMgr) processDiskNotFoundErr(ctx context.Context, volInfo *client.VolumeInfoSimple, repairMsg *proto.ShardRepairMsg) {
+	span := trace.SpanFromContextSafe(ctx)
+	for _, idx := range repairMsg.BadIdx {
+		vunitInfo := volInfo.VunitLocations[idx]
+
+		if mgr.chunkMissMigrateReporter.IsVuidReported(vunitInfo.Vuid) {
+			span.Warnf("chunk is miss migrate and already reported, vunitInfo: %+v", vunitInfo)
+			continue
+		}
+
+		// check disk status
+		disk, err := mgr.clusterMgrCli.GetDiskInfo(ctx, vunitInfo.DiskID)
+		if err != nil {
+			span.Errorf("get diskinfo failed, vunitInfo: %+v, err: %s", volInfo, err.Error())
+			continue
+		}
+		// maybe disk is broken but not repaired, and restarted, retry repair next time
+		if disk.Status <= proto.DiskStatusRepairing {
+			continue
+		}
+		// disk is repaired or dropped, means volInfo is too old, get new volInfo from cm
+		vol, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, vunitInfo.Vuid.Vid())
+		if err != nil {
+			span.Errorf("get volumeinfo failed, vunitInfo: %+v, err: %s", volInfo, err.Error())
+			continue
+		}
+		if !vol.EqualWith(volInfo) {
+			continue
+		}
+
+		taskExist, err := mgr.taskCli.CheckTaskExist(ctx, proto.TaskTypeManualMigrate, vunitInfo.DiskID, vunitInfo.Vuid)
+		if err != nil {
+			span.Errorf("check task exist failed, vunitInfo: %+v, err: %s", volInfo, err.Error())
+			continue
+		}
+		if taskExist {
+			mgr.chunkMissMigrateReporter.SetVuidReported(vunitInfo.Vuid)
+			continue
+		}
+		mgr.chunkMissMigrateReporter.ReportAbnormal(vunitInfo.DiskID, vunitInfo.Vuid)
+		mgr.chunkMissMigrateReporter.SetVuidReported(vunitInfo.Vuid)
+	}
 }
 
 func isOrphanShard(err error) bool {

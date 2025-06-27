@@ -27,15 +27,35 @@ import (
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 )
 
+func TestCheckTaskExist(t *testing.T) {
+	any := gomock.Any()
+	errMock := errors.New("fake error")
+	cli := NewTaskClient(&api.Config{}, "127.0.0.1:xxx").(*taskClient)
+
+	ctx := context.Background()
+	schedulerCli := mocks.NewMockIScheduler(gomock.NewController(t))
+	schedulerCli.EXPECT().CheckTaskExist(any, any).Return(&api.CheckTaskExistResp{Exist: true}, nil)
+	cli.ITaskInfoNotifier = schedulerCli
+
+	exist, err := cli.CheckTaskExist(ctx, proto.TaskTypeManualMigrate, proto.DiskID(1), proto.Vuid(1))
+	require.NoError(t, err)
+	require.True(t, exist)
+
+	schedulerCli.EXPECT().CheckTaskExist(any, any).Return(nil, errMock)
+	exist, err = cli.CheckTaskExist(ctx, proto.TaskTypeManualMigrate, proto.DiskID(1), proto.Vuid(1))
+	require.True(t, errors.Is(err, errMock))
+	require.False(t, exist)
+}
+
 func TestVolumeUpdate(t *testing.T) {
 	any := gomock.Any()
 	errMock := errors.New("fake error")
-	cli := NewVolumeUpdater(&api.Config{}, "127.0.0.1:xxx").(*volumeUpdater)
+	cli := NewTaskClient(&api.Config{}, "127.0.0.1:xxx").(*taskClient)
 
 	ctx := context.Background()
 	schedulerCli := mocks.NewMockIScheduler(gomock.NewController(t))
 	schedulerCli.EXPECT().UpdateVolume(any, any, any).Return(nil)
-	cli.Client = schedulerCli
+	cli.ITaskInfoNotifier = schedulerCli
 
 	err := cli.UpdateLeaderVolumeCache(ctx, proto.Vid(1))
 	require.NoError(t, err)

@@ -38,7 +38,7 @@ import (
 func newBalancer(t *testing.T) *BalanceMgr {
 	ctr := gomock.NewController(t)
 	clusterMgr := NewMockClusterMgrAPI(ctr)
-	volumeUpdater := NewMockVolumeUpdater(ctr)
+	volumeUpdater := NewMockTaskAPI(ctr)
 	taskSwitch := mocks.NewMockSwitcher(ctr)
 	topologyMgr := NewMockClusterTopology(ctr)
 	taskLogger := mocks.NewMockRecordLogEncoder(ctr)
