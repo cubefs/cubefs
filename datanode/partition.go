@@ -1051,6 +1051,10 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 		return
 	}
 	if err := dp.updateReplicas(false); err != nil {
+		if strings.Contains(err.Error(), proto.ErrDataPartitionNotExists.Error()) {
+			log.LogWarnf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
+			return
+		}
 		log.LogErrorf("action[LaunchRepair] partition(%v) err(%v).", dp.partitionID, err)
 		return
 	}
