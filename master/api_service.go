@@ -8771,7 +8771,7 @@ func (m *Server) deleteLostDisk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !found {
-		err = errors.NewErrorf("lost disk %v not found", diskPath)
+		err = errors.NewErrorf("disk %v is not lost", diskPath)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -8844,7 +8844,7 @@ func (m *Server) reloadDisk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !found {
-		err = errors.NewErrorf("lost disk %v not found", diskPath)
+		err = errors.NewErrorf("disk %v is not lost", diskPath)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
