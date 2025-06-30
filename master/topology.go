@@ -2406,12 +2406,9 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					}
 					auditlog.LogMasterOp("TraverseDataPartition", msg, err)
 				} else if dp.IsDecommissionFailed() {
-					if time.Since(dp.DecommissionRetryTime) < defaultDecommissionRetryInternal {
-						log.LogWarnf("[traverse] dp %v should wait for rollback,lastDecommissionRetryTime %v", dp.PartitionID, dp.DecommissionRetryTime)
-						continue
-					}
 					remove := false
-					if !dp.tryRollback(c) {
+					needRollback, needSkip := dp.tryRollback(c)
+					if !needRollback {
 						log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for fail",
 							l.nsId, l, dp.PartitionID)
 						if err := c.setDpRepairingStatus(dp, false); err != nil {
@@ -2427,6 +2424,9 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 						// if dp is not removed from decommission list, do not reset RestoreReplica
 						dp.setRestoreReplicaStop()
 						remove = true
+					}
+					if needSkip {
+						continue
 					}
 					// rollback fail/success need release token
 					dp.ReleaseDecommissionToken(c)
