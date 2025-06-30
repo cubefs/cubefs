@@ -204,7 +204,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
 			}
 			if body.Code != proto.ErrCodeSuccess {
-				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
+				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, string(body.Data))
 				if body.Code == proto.ErrCodeInternalError && len(body.Msg) != 0 {
 					return nil, errors.New(body.Msg)
 				} else if CliPrint && body.Code == proto.ErrCodeParamError && len(body.Msg) != 0 {
