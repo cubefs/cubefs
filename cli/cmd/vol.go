@@ -15,9 +15,11 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -62,6 +64,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolAddAllowedStorageClassCmd(client),
 		newVolQueryOpCmd(client),
 		newVolGetInodeByIdCmd(client),
+		newVolCheckDomain(client),
 	)
 	return cmd
 }
@@ -1632,5 +1635,193 @@ func newVolGetInodeByIdCmd(client *master.MasterClient) *cobra.Command {
 			return nil
 		},
 	}
+	return cmd
+}
+
+var (
+	cmdVolCheckDomainUse         = "checkDomainUse [VOLUME]"
+	cmdVolCheckDomainDomainShort = "get detail dp&&mp list not inside on domain"
+)
+
+func newVolCheckDomain(client *master.MasterClient) *cobra.Command {
+	var (
+		err           error
+		dpsView       proto.DataPartitionsView
+		mpsView       []*proto.MetaPartitionView
+		topo          *proto.TopologyView
+		mpHost2Domain = map[string]uint64{}
+		dpHost2Domain = map[string]uint64{}
+		displayAllDps bool
+		displayMps    bool
+		volListPath   string
+		vols          []string
+		volName       string
+	)
+	readLines := func(path string) ([]string, error) {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("无法打开文件: %w", err)
+		}
+		defer file.Close()
+
+		var lines []string
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			lines = append(lines, strings.TrimSpace(scanner.Text()))
+		}
+
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("读取文件失败: %w", err)
+		}
+
+		return lines, nil
+	}
+
+	cmd := &cobra.Command{
+		Use:   cmdVolCheckDomainUse,
+		Short: cmdVolCheckDomainDomainShort,
+		Args:  cobra.MinimumNArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if volListPath != "" {
+				if vols, err = readLines(volListPath); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+			} else {
+				vols = append(vols, args[0])
+			}
+			if err != nil {
+				return err
+			}
+
+			if topo, err = client.AdminAPI().Topo(); err != nil {
+				return err
+			}
+
+			for _, zone := range topo.Zones {
+				for id, nodeSet := range zone.NodeSet {
+					for _, node := range nodeSet.DataNodes {
+						dpHost2Domain[node.Addr] = id
+					}
+					for _, node := range nodeSet.MetaNodes {
+						mpHost2Domain[node.Addr] = id
+					}
+				}
+			}
+
+			for _, volName = range vols {
+				var dpsViewTmp *proto.DataPartitionsView
+				dpsViewTmp, err = client.ClientAPI().GetDataPartitionsFromLeader(volName)
+				if err != nil {
+					return err
+				}
+				dpsView.DataPartitions = append(dpsView.DataPartitions, dpsViewTmp.DataPartitions...)
+			}
+
+			fmt.Printf("DataPartition Replicas Have Inconsistent Domains:\n")
+			if displayAllDps {
+				fmt.Printf("DataPartitionID            Host:DomainId\n")
+				fmt.Printf("----------------------------------------\n")
+			}
+
+			twoDomainDps := make(map[uint64]uint64)    // dpid --> domainID
+			threeDomainDps := make(map[uint64]uint64)  // dpid --> domainID
+			destDomains := make(map[uint64]uint64)     // dpid --> domainID
+			destDomainCounts := make(map[uint64]int64) // domainID -> count
+			srcDomainCounts := make(map[uint64]int64)  // domainID -> count
+			for _, dp := range dpsView.DataPartitions {
+				var (
+					hostInfo   = []string{}
+					domainCnts = make(map[uint64]int64)
+					destDomain uint64
+				)
+				for _, host := range dp.Hosts {
+					if replicaDomainid, ok := dpHost2Domain[host]; ok {
+						domainCnts[replicaDomainid]++
+						hostInfo = append(hostInfo, fmt.Sprintf("%v,%v ", host, replicaDomainid))
+						if replicaDomainid > destDomain {
+							destDomain = replicaDomainid
+						}
+					} else {
+						fmt.Printf("Error dp %v host %v not found domainID\n", dp.PartitionID, host)
+					}
+				}
+				if len(domainCnts) > 1 {
+					if displayAllDps {
+						fmt.Printf("%v    %v\n", dp.PartitionID, hostInfo)
+					}
+					if len(domainCnts) == 2 {
+						twoDomainDps[dp.PartitionID] = 0
+						destDomains[dp.PartitionID] = destDomain
+						destDomainCounts[destDomain]++
+						for domainID, cnt := range domainCnts {
+							if cnt == 2 {
+								continue
+							}
+							srcDomainCounts[domainID]++
+							break
+						}
+					} else {
+						threeDomainDps[dp.PartitionID] = 0
+					}
+				}
+			}
+
+			fmt.Printf("\nTotal Dps cnt %v\t2DomainDps cnt %v\t 3DomainDps cnt %v\n", len(dpsView.DataPartitions), len(twoDomainDps), len(threeDomainDps))
+			fmt.Printf("\nRelated Input DomainID  ReplicaCnt\n")
+			for dmID, cnt := range destDomainCounts {
+				fmt.Printf("\t\t %v\t%v\n", dmID, cnt)
+			}
+
+			fmt.Printf("\nRelated Output DomainID  ReplicaCnt\n")
+			for dmID, cnt := range srcDomainCounts {
+				fmt.Printf("\t\t %v\t%v\n", dmID, cnt)
+			}
+
+			//----------------mp-------------------------
+			if displayMps {
+				for _, volName = range vols {
+					mpsViewTmp, err := client.ClientAPI().GetMetaPartitions(volName)
+					if err != nil {
+						return err
+					}
+					mpsView = append(mpsView, mpsViewTmp...)
+				}
+
+				fmt.Printf("MataPartition Replicas Have Inconsistent Domains:\n")
+				fmt.Printf("MataPartitionID            Host:DomainId\n")
+				fmt.Printf("----------------------------------------\n")
+				for _, mp := range mpsView {
+					var (
+						isBadMp    = false
+						hostInfo   = []string{}
+						mpDomainId uint64
+					)
+					for _, host := range mp.Members {
+						if replicaDomainid, ok := mpHost2Domain[host]; ok {
+							hostInfo = append(hostInfo, fmt.Sprintf("%v,%v ", host, replicaDomainid))
+							if mpDomainId != 0 && replicaDomainid != mpDomainId {
+								isBadMp = true
+							}
+							if mpDomainId == 0 {
+								mpDomainId = replicaDomainid
+							}
+						} else {
+							fmt.Printf("Error mp %v host %v not found domainID\n", mp.PartitionID, host)
+						}
+					}
+					if isBadMp {
+						fmt.Printf("%v    %v\n", mp.PartitionID, hostInfo)
+					}
+				}
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&displayAllDps, "displayAllDps", false, "true|false, display all dps not inside one domain")
+	cmd.Flags().BoolVar(&displayMps, "displayMps", false, "true|false, display all mps not inside one domain")
+	cmd.Flags().StringVar(&volListPath, "volListPath", "", "volume list path")
+
 	return cmd
 }
