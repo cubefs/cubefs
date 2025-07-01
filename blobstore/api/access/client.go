@@ -630,7 +630,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (proto.Location, H
 			for i := range parts {
 				token := tokens[currIdx]
 				if restPartsLoc.Size_ > uint64(loc.SliceSize) && parts[i].size < int(loc.SliceSize) {
-					token = tokens[currIdx+1]
+					token = tokens[len(tokens)-1]
 				}
 				parts[i].token = token
 				parts[i].cid = loc.ClusterID
