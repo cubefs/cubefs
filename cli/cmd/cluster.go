@@ -111,6 +111,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			stdout(fmt.Sprintf("  AutoRepairRate     : %v\n", clusterPara[nodeAutoRepairRateKey]))
 			stdout(fmt.Sprintf("  MaxDpCntLimit      : %v\n", clusterPara[nodeMaxDpCntLimit]))
 			stdout(fmt.Sprintf("  MaxMpCntLimit      : %v\n", clusterPara[nodeMaxMpCntLimit]))
+
 			stdout("\n")
 
 			if volStorageClass {

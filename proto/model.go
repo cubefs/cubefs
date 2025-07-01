@@ -175,6 +175,12 @@ type ClusterView struct {
 	FlashNodes                                []NodeView
 	FlashNodeHandleReadTimeout                int
 	FlashNodeReadDataNodeTimeout              int
+	RemoteCacheTTL                            int64
+	RemoteCacheReadTimeout                    int64
+	RemoteCacheMultiRead                      bool
+	FlashNodeTimeoutCount                     int64
+	RemoteCacheSameZoneTimeout                int64
+	RemoteCacheSameRegionTimeout              int64
 }
 
 // ClusterNode defines the structure of a cluster node
