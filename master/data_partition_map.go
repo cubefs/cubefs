@@ -432,7 +432,7 @@ func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr str
 
 	partitions = make([]*DataPartition, 0)
 	for _, dp := range dpMapCache {
-		if !ignoreDiscard && dp.IsDiscard {
+		if ignoreDiscard && dp.IsDiscard {
 			continue
 		}
 		if dp.containsBadDisk(diskPath, nodeAddr) {
