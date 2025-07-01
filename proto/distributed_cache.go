@@ -19,6 +19,7 @@ const (
 	DefaultCacheTTLSec      = 5 * 24 * 3600
 	FlashGroupDefaultWeight = 1
 	FlashGroupMaxWeight     = 30
+	CACHE_BLOCK_CRC_SIZE    = 4
 )
 
 const (

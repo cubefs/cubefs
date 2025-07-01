@@ -49,6 +49,9 @@ fdstore:
 bcache:
 	@build/build.sh bcache $(GOMOD) --threads=$(threads)
 
+rctest:
+	@build/build.sh rctest $(GOMOD) --threads=$(threads)
+
 phony += clean
 clean:
 	@$(RM) -rf build/bin

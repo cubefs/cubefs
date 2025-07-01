@@ -549,6 +549,13 @@ build_bcache(){
     popd >/dev/null
 }
 
+build_rctest(){
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-remotecache-benchmark      "
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-remotecache-benchmark ${SrcPath}/tool/remotecache-benchmark/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
 clean() {
     $RM -rf ${BuildBinPath}
 }
@@ -605,6 +612,7 @@ case "$cmd" in
         build_cli
         build_libsdk
         build_bcache
+        build_rctest
         ;;
     "test")
         run_test
@@ -656,6 +664,9 @@ case "$cmd" in
         ;;
     "bcache")
         build_bcache
+        ;;
+    "rctest")
+        build_rctest
         ;;
     *)
         ;;
