@@ -59,6 +59,12 @@ func (m *FlashGroupManager) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashNodes:                   make([]proto.NodeView, 0),
 		FlashNodeHandleReadTimeout:   m.cluster.cfg.FlashNodeHandleReadTimeout,
 		FlashNodeReadDataNodeTimeout: m.cluster.cfg.FlashNodeReadDataNodeTimeout,
+		RemoteCacheTTL:               m.config.RemoteCacheTTL,
+		RemoteCacheReadTimeout:       m.config.RemoteCacheReadTimeout,
+		RemoteCacheMultiRead:         m.config.RemoteCacheMultiRead,
+		FlashNodeTimeoutCount:        m.config.FlashNodeTimeoutCount,
+		RemoteCacheSameZoneTimeout:   m.config.RemoteCacheSameZoneTimeout,
+		RemoteCacheSameRegionTimeout: m.config.RemoteCacheSameRegionTimeout,
 	}
 	cv.DataNodeStatInfo = new(proto.NodeStatInfo)
 	cv.MetaNodeStatInfo = new(proto.NodeStatInfo)

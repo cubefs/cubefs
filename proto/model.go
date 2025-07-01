@@ -203,6 +203,12 @@ type ClusterView struct {
 	RocksdbMpCount                            uint64
 	MemoryMpCount                             uint64
 	RackAwareLevel                            RackAwareLevel
+	RemoteCacheTTL                            int64
+	RemoteCacheReadTimeout                    int64
+	RemoteCacheMultiRead                      bool
+	FlashNodeTimeoutCount                     int64
+	RemoteCacheSameZoneTimeout                int64
+	RemoteCacheSameRegionTimeout              int64
 }
 
 // ClusterNode defines the structure of a cluster node

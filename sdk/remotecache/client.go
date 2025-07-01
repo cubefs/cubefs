@@ -359,7 +359,7 @@ func (rc *RemoteCacheClient) HeartBeat(addr string) (duration time.Duration, err
 		log.LogWarnf("HeartBeat get connection to addr failed, addr(%v) err(%v)", addr, err)
 		return
 	}
-	start := time.Now().UnixNano()
+	start := time.Now()
 	if err = packet.WriteToConn(conn); err != nil {
 		log.LogWarnf("HeartBeat failed write to addr(%v) err(%v)", addr, err)
 		return
@@ -369,7 +369,7 @@ func (rc *RemoteCacheClient) HeartBeat(addr string) (duration time.Duration, err
 		return
 	}
 
-	duration = time.Duration(time.Now().UnixNano() - start)
+	duration = time.Since(start)
 	log.LogDebugf("HeartBeat from addr(%v) cost(%v)", addr, duration)
 	return
 }
