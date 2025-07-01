@@ -40,7 +40,6 @@ const (
 	HeaderSize         = 40
 	SourceTypeDefault  = ""
 	SourceTypeBlock    = "blocks"
-	CRCLen             = 4
 )
 
 type CacheBlock struct {
@@ -307,7 +306,7 @@ func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string
 		err = fmt.Errorf("usedSize + headerSize[%v] != file real size[%v]", usedSize+HeaderSize, stat.Size())
 		return
 	} else if SourceTypeBlock == sourceType {
-		crcSize := (usedSize + proto.CACHE_BLOCK_PACKET_SIZE - 1) / proto.CACHE_BLOCK_PACKET_SIZE * CRCLen
+		crcSize := (usedSize + proto.CACHE_BLOCK_PACKET_SIZE - 1) / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_CRC_SIZE
 		if allocSize+HeaderSize+crcSize != stat.Size() {
 			err = fmt.Errorf("allocSize + headerSize + crsSize [%v] != file real size[%v]", allocSize+HeaderSize+crcSize, stat.Size())
 			return
@@ -856,11 +855,11 @@ func (cb *CacheBlock) WriteAtV2(writeParam *proto.FlashWriteParam) (err error) {
 		log.LogWarnf("[WriteAtV2] WriteAt (%v) data offset %v err %v", cb.filePath, writeParam.Offset+HeaderSize, err)
 		return
 	}
-	n := writeParam.Offset/proto.CACHE_BLOCK_PACKET_SIZE*CRCLen + cb.allocSize + HeaderSize
+	n := writeParam.Offset/proto.CACHE_BLOCK_PACKET_SIZE*proto.CACHE_BLOCK_CRC_SIZE + cb.allocSize + HeaderSize
 	if log.EnableDebug() {
 		log.LogDebugf("[WriteAtV2] file offset %v crc index %v and datasize %v", writeParam.Offset, n, writeParam.DataSize)
 	}
-	if _, err = file.WriteAt(writeParam.Crc[:CRCLen], n); err != nil {
+	if _, err = file.WriteAt(writeParam.Crc[:proto.CACHE_BLOCK_CRC_SIZE], n); err != nil {
 		log.LogWarnf("[WriteAtV2] WriteAt (%v) crc offset %v err %v", cb.filePath, n, err)
 		return
 	}
