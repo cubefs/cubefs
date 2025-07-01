@@ -447,14 +447,14 @@ func testWriteSingleFileErrorV2(t *testing.T) {
 		Offset:   0,
 		Size:     1024,
 		Data:     bytes,
-		Crc:      make([]byte, CRCLen),
+		Crc:      make([]byte, proto.CACHE_BLOCK_CRC_SIZE),
 		DataSize: 1024,
 	}))
 	require.Error(t, cacheBlock.WriteAtV2(&proto.FlashWriteParam{
 		Offset:   proto.CACHE_BLOCK_SIZE,
 		Size:     2048,
 		Data:     bytes,
-		Crc:      make([]byte, CRCLen),
+		Crc:      make([]byte, proto.CACHE_BLOCK_CRC_SIZE),
 		DataSize: 1024,
 	}))
 	t.Logf("testWriteSingleFileErrorV2, test:%s cacheBlock.datasize:%d", t.Name(), cacheBlock.usedSize)
@@ -487,7 +487,7 @@ func testWriteCacheBlockFullV2(t *testing.T) {
 			Offset:   offset,
 			Size:     proto.CACHE_OBJECT_BLOCK_SIZE,
 			Data:     bytes,
-			Crc:      make([]byte, CRCLen),
+			Crc:      make([]byte, proto.CACHE_BLOCK_CRC_SIZE),
 			DataSize: proto.CACHE_BLOCK_PACKET_SIZE,
 		}); err != nil {
 			break
@@ -534,7 +534,7 @@ func testWriteMultiCacheBlockV2(t *testing.T) {
 					Offset:   offset,
 					Size:     proto.CACHE_BLOCK_PACKET_SIZE * 25,
 					Data:     bytes,
-					Crc:      make([]byte, CRCLen),
+					Crc:      make([]byte, proto.CACHE_BLOCK_CRC_SIZE),
 					DataSize: proto.CACHE_BLOCK_PACKET_SIZE,
 				}); err != nil {
 					break

@@ -534,7 +534,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		totalWritten int64
 		n            int
 	)
-	writeLen := proto.CACHE_BLOCK_PACKET_SIZE + 4
+	writeLen := proto.CACHE_BLOCK_PACKET_SIZE + proto.CACHE_BLOCK_CRC_SIZE
 	buf := bytespool.Alloc(writeLen)
 	defer bytespool.Free(buf)
 	for {
@@ -958,7 +958,7 @@ type RemoteCacheReader struct {
 func (rc *RemoteCacheClient) NewRemoteCacheReader(conn *net.TCPConn) *RemoteCacheReader {
 	r := &RemoteCacheReader{
 		conn:   conn,
-		reader: bufio.NewReaderSize(conn, 4096),
+		reader: bufio.NewReaderSize(conn, proto.CACHE_BLOCK_PACKET_SIZE),
 		rc:     rc,
 	}
 	return r
