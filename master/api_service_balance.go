@@ -511,6 +511,16 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
+	oldRdOnly := metaNode.RdOnly
+	if !oldRdOnly {
+		metaNode.RdOnly = true
+		if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
+			metaNode.RdOnly = oldRdOnly
+			log.LogErrorf("syncUpdateMetaNode(%s) err: %s", offLineAddr, err.Error())
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrInternalError))
+			return
+		}
+	}
 
 	count := m.cluster.GetMpCountByMetaNode(metaNode.Addr)
 	if count == 0 {
