@@ -159,8 +159,17 @@ func NewAheadReadWindow(arc *AheadReadCache, s *Streamer) *AheadReadWindow {
 }
 
 func (arw *AheadReadWindow) backgroundAheadReadTask() {
-	for task := range arw.taskC {
-		go arw.doTask(task)
+	ticker := time.NewTicker(time.Second)
+	for {
+		select {
+		case task := <-arw.taskC:
+			go arw.doTask(task)
+		case <-ticker.C:
+			if !arw.streamer.isOpen {
+				log.LogInfof("stream is closed, exit background task, s %s", arw.streamer.String())
+				return
+			}
+		}
 	}
 }
 
