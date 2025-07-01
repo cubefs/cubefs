@@ -98,6 +98,12 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 
 	sb.WriteString(fmt.Sprintf("  FlashNodeHandleReadTimeout       : %v ms\n", cv.FlashNodeHandleReadTimeout))
 	sb.WriteString(fmt.Sprintf("  FlashNodeReadDataNodeTimeout     : %v ms\n", cv.FlashNodeReadDataNodeTimeout))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheTTL                   : %v s\n", cv.RemoteCacheTTL))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheReadTimeout           : %v ms\n", cv.RemoteCacheReadTimeout))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheMultiRead             : %v\n", cv.RemoteCacheMultiRead))
+	sb.WriteString(fmt.Sprintf("  FlashNodeTimeoutCount            : %v\n", cv.FlashNodeTimeoutCount))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheSameZoneTimeout       : %v microsecond\n", cv.RemoteCacheSameZoneTimeout))
+	sb.WriteString(fmt.Sprintf("  RemoteCacheSameRegionTimeout     : %v millisecond\n", cv.RemoteCacheSameRegionTimeout))
 	return sb.String()
 }
 
