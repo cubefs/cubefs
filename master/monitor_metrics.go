@@ -287,13 +287,13 @@ func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uin
 	}
 
 	m.dpMissingReplicaMutex.Lock()
-	defer m.dpMissingReplicaMutex.Unlock()
-
 	id := strconv.FormatUint(partitionID, 10)
 	if !report {
+		m.dpMissingReplicaMutex.Unlock()
 		m.deleteMissingDp(m.dpMissingReplicaInfo[id], clusterName, id, addr)
 		return
 	}
+	defer m.dpMissingReplicaMutex.Unlock()
 
 	if _, ok := m.dpMissingReplicaInfo[id]; !ok {
 		m.dpMissingReplicaInfo[id] = addrSet{addrs: make(map[string]voidType)}
