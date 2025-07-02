@@ -73,6 +73,7 @@ const (
 	_defaultPrepareLimitPerSecond          = 1000
 	_defaultManualScanLimitBurst           = 1000
 	_slotStatValidPeriod                   = 10 * time.Minute // min
+	_defaultPrepareRoutineNum              = 20
 )
 
 // Configuration keys
@@ -105,6 +106,7 @@ const (
 	cfgManualScanLimitPerSecond     = "manualScanLimitPerSecond"
 	cfgPrepareLimitPerSecond        = "prepareLimitPerSecond"
 	cfgWaitForBlockCache            = "waitForBlockCache"
+	cfgPrepareLoadRoutineNum        = "prepareLoadRoutineNum"
 	paramIocc                       = "iocc"
 	paramFlow                       = "flow"
 	paramFactor                     = "factor"
@@ -165,6 +167,7 @@ type FlashNode struct {
 	scannerMutex                 sync.RWMutex
 	manualScanners               sync.Map // [string]*ManualScanner
 	waitForCacheBlock            bool
+	prepareLoadRoutineNum        int
 
 	slotMap   sync.Map // [uint32]*SlotStat
 	readCount uint64
@@ -400,6 +403,10 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if cacheEvictWorkerNum <= 0 || cacheEvictWorkerNum > 100 {
 		cacheEvictWorkerNum = _defaultCacheEvictWorkerNum
 	}
+	f.prepareLoadRoutineNum = cfg.GetInt(cfgPrepareLoadRoutineNum)
+	if f.prepareLoadRoutineNum <= 0 {
+		f.prepareLoadRoutineNum = _defaultPrepareRoutineNum
+	}
 	f.cacheEvictWorkerNum = cacheEvictWorkerNum
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
 	f.waitForCacheBlock = cfg.GetBoolWithDefault(cfgWaitForBlockCache, false)
@@ -488,6 +495,7 @@ func (f *FlashNode) startCacheEngine() (err error) {
 		return
 	}
 	f.SetTimeout(proto.DefaultRemoteCacheHandleReadTimeout, proto.DefaultRemoteCacheExtentReadTimeout)
+	f.cacheEngine.StartCachePrepareWorkers(f.limitWrite, f.prepareLoadRoutineNum)
 	return f.cacheEngine.Start()
 }
 
