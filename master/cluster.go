@@ -586,6 +586,7 @@ func (c *Cluster) runTask(task *cTask) {
 		for {
 			select {
 			case <-ticker.C:
+				log.LogInfof("runTask %v start!", task.name)
 				if task.function() {
 					log.LogWarnf("runTask %v exit!", task.name)
 					ticker.Stop()
