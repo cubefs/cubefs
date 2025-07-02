@@ -31,15 +31,16 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 	"github.com/cubefs/cubefs/util/tmpfs"
 )
 
 const (
-	prepareWorkers = 20
 	EnvDockerTmpfs = "DOCKER_FLASHNODE_TMPFS_OFF"
 
 	DefaultExpireTime        = 60 * 60
@@ -392,7 +393,6 @@ func (c *CacheEngine) handlerFile(file *cacheLoadFile, cbNum *atomicutil.Int64, 
 }
 
 func (c *CacheEngine) Start() (err error) {
-	c.startCachePrepareWorkers()
 	if !c.enableTmpfs {
 		if err = c.LoadCacheBlock(); err != nil {
 			log.LogErrorf("CacheEngine started failed, err[%v]", err)
@@ -722,8 +722,8 @@ func (c *CacheEngine) usedSize() (size int64) {
 	return size
 }
 
-func (c *CacheEngine) startCachePrepareWorkers() {
-	for ii := range [prepareWorkers]struct{}{} {
+func (c *CacheEngine) StartCachePrepareWorkers(flw *util.IoLimiter, prepareWorkers int) {
+	for ii := 0; ii < prepareWorkers; ii++ {
 		go func(ii int) {
 			for {
 				select {
@@ -732,16 +732,36 @@ func (c *CacheEngine) startCachePrepareWorkers() {
 					return
 				case task := <-c.cachePrepareTaskCh:
 					r := task.request
-					if _, err := c.CreateBlock(r, task.clientIP, true); err != nil {
-						log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) create block failed, err:%v", task.reqID, err)
-						continue
+					reqSize := 0
+					for _, source := range r.Sources {
+						reqSize += int(source.Size_)
 					}
-					block, err := c.PeekCacheBlock(GenCacheBlockKey(r.Volume, r.Inode, r.FixedFileOffset, r.Version))
+					bg := stat.BeginStat()
+					var err error
+					err1 := flw.Run(reqSize, true, func() {
+						bk := GenCacheBlockKey(r.Volume, r.Inode, r.FixedFileOffset, r.Version)
+						if log.EnableDebug() {
+							log.LogDebugf("action[startCachePrepareWorkers] start cache key(%v)", bk)
+						}
+						if _, err = c.CreateBlock(r, task.clientIP, true); err != nil {
+							log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) create block failed, err:%v", task.reqID, err)
+							return
+						}
+						var block *CacheBlock
+						block, err = c.PeekCacheBlock(bk)
+						if err != nil {
+							log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) cache block not found, err:%v", task.reqID, err)
+						} else {
+							block.InitOnce(c, r.Sources)
+						}
+					})
+					if err1 != nil {
+						log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) apply err:%v", task.reqID, err1)
+					}
 					if err != nil {
-						log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) cache block not found, err:%v", task.reqID, err)
-					} else {
-						block.InitOnce(c, r.Sources)
+						err1 = err
 					}
+					stat.EndStat("CachePrepareHandler", err1, bg, 1)
 				}
 			}
 		}(ii + 1)
@@ -749,11 +769,7 @@ func (c *CacheEngine) startCachePrepareWorkers() {
 }
 
 func (c *CacheEngine) PrepareCache(reqID int64, req *proto.CacheRequest, clientIP string) (err error) {
-	select {
-	case c.cachePrepareTaskCh <- cachePrepareTask{reqID: reqID, request: req, clientIP: clientIP}:
-	default:
-		log.LogDebugf("action[PrepareCache] cachePrepareTaskCh has been full")
-	}
+	c.cachePrepareTaskCh <- cachePrepareTask{reqID: reqID, request: req, clientIP: clientIP}
 	return
 }
 

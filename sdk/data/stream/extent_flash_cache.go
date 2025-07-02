@@ -265,13 +265,13 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	rc.sameRegionTimeout = proto.DefaultRemoteCacheSameRegionTimeout
 	rc.clusterEnable = client.enableRemoteCacheCluster
 	rc.mc = master.NewMasterClient(client.extentConfig.Masters, false)
+	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, _connIdelTimeout, 1)
 
 	err = rc.updateFlashGroups()
 	if err != nil {
 		log.LogDebugf("RemoteCache: Init err %v", err)
 		return
 	}
-	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, _connIdelTimeout, 1)
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
 	rc.wg.Add(1)
 	go rc.refresh()
@@ -391,6 +391,10 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 		conn  *net.TCPConn
 		moved bool
 	)
+	bg := stat.BeginStat()
+	defer func() {
+		defer stat.EndStat("prepareCacheBlock", err, bg, 1)
+	}()
 	addr := fg.getFlashHost()
 	if addr == "" {
 		err = fmt.Errorf("getFlashHost failed: can not find host")
@@ -421,7 +425,7 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 	}
 
 	replyPacket := NewFlashCacheReply()
-	if err = replyPacket.ReadFromConnExt(conn, int(rc.ReadTimeout)); err != nil {
+	if err = replyPacket.readFromConn(conn, proto.WriteDeadlineTime); err != nil {
 		log.LogWarnf("FlashGroup Prepare: failed to ReadFromConn, replyPacket(%v), fg host(%v) moved(%v), err(%v)", replyPacket, addr, moved, err)
 		return
 	}
