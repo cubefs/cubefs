@@ -5197,6 +5197,9 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 	dataNode.RUnlock()
 
 	for _, disk := range badDisks {
+		if _, exist := dataNode.DecommissionSuccessDisks.Load(disk.DiskPath); exist {
+			continue
+		}
 		// TODO:no dp left on bad disk, notify sre to remove this disk
 		// decommission failed, but lack replica for disk err dp is already removed
 		retry := c.RetryDecommissionDisk(dataNode.Addr, disk.DiskPath)
