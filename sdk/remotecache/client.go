@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	"github.com/google/uuid"
 )
 
 type ZoneRankType int
@@ -506,6 +507,11 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		TTL:      uint64(rc.TTL),
 	}
 	reqPacket := proto.NewPacketReqID()
+	if len(reqId) == 0 {
+		reqId = uuid.NewString()
+	}
+	reqPacket.Arg = []byte(reqId)
+	reqPacket.ArgLen = uint32(len(reqId))
 	_ = reqPacket.MarshalDataPb(req)
 	reqPacket.Opcode = proto.OpFlashNodeCachePutBlock
 	if err = reqPacket.WriteToConn(conn); err != nil {
