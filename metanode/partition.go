@@ -1783,8 +1783,6 @@ func (mp *metaPartition) CloseAndBackupRaft() (err error) {
 }
 
 func (mp *metaPartition) SetFreeze(req *proto.FreezeMetaPartitionRequest) (err error) {
-	mp.config.Freeze = req.Freeze
-
 	reqData, err := json.Marshal(*req)
 	if err != nil {
 		return

@@ -64,9 +64,20 @@ func (c *Cluster) FreezeEmptyMetaPartitionJob(name string, freezeList []*MetaPar
 			err := c.FreezeEmptyMetaPartition(mp, true)
 			if err != nil {
 				log.LogErrorf("Failed to freeze volume(%s) meta partition(%d), error: %s", name, mp.PartitionID, err.Error())
+				mp.Freeze = proto.FreezeMetaPartitionInit
+				mp.Status = proto.ReadWrite
+				task.ResetCnt += 1
+			} else {
+				mp.Freeze = proto.FreezedMetaPartition
+				task.FreezeCnt += 1
+			}
+
+			// store the meta partition status.
+			err = c.syncUpdateMetaPartition(mp)
+			if err != nil {
+				log.LogErrorf("volume(%s) meta partition(%d) update failed: %s", mp.volName, mp.PartitionID, err.Error())
 				continue
 			}
-			task.FreezeCnt += 1
 		}
 
 		task.Status = CleanTaskFreezed
@@ -164,7 +175,7 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 	deleteMaps := make(map[uint64]*MetaPartition)
 	mps := vol.cloneMetaPartitionMap()
 	for key, mp := range mps {
-		if !mp.IsFreeze {
+		if mp.Freeze != proto.FreezedMetaPartition {
 			continue
 		}
 
@@ -177,7 +188,8 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 				continue
 			}
 
-			mp.IsFreeze = false
+			mp.Freeze = proto.FreezeMetaPartitionInit
+			mp.Status = proto.ReadWrite
 			// store the meta partition status.
 			err = c.syncUpdateMetaPartition(mp)
 			if err != nil {
@@ -189,7 +201,6 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 			err = c.CleanEmptyMetaPartition(mp)
 			if err != nil {
 				log.LogErrorf("action[DoCleanEmptyMetaPartition] clean meta partition(%d) error: %s", mp.PartitionID, err.Error())
-				continue
 			}
 
 			deleteMaps[key] = mp
@@ -213,12 +224,12 @@ func (c *Cluster) CleanEmptyMetaPartition(mp *MetaPartition) error {
 		metaNode, err := c.metaNode(task.OperatorAddr)
 		if err != nil {
 			log.LogErrorf("failed to get metanode(%s), error: %s", task.OperatorAddr, err.Error())
-			return err
+			continue
 		}
 		_, err = metaNode.Sender.syncSendAdminTask(task)
 		if err != nil {
 			log.LogErrorf("action[FreezeEmptyMetaPartition] meta partition(%d), err: %s", mp.PartitionID, err.Error())
-			return err
+			continue
 		}
 	}
 

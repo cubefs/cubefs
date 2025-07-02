@@ -273,7 +273,7 @@ func (mp *metaPartition) IsEquareCreateMetaPartitionRequst(request *proto.Create
 func (mp *metaPartition) fsmSetFreeze(freeze bool) (status uint8,
 	err error,
 ) {
-	if mp.config.Freeze && (mp.GetInodeTreeLen() != 0 || mp.GetDentryTreeLen() != 0) {
+	if freeze && (mp.GetInodeTreeLen() != 0 || mp.GetDentryTreeLen() != 0) {
 		status = proto.OpNotEmpty
 		log.LogErrorf("[fsmSetFreeze] meta partition inode(%d), dentry(%d) is not empty", mp.GetInodeTreeLen(), mp.GetDentryTreeLen())
 		return
