@@ -195,6 +195,7 @@ type dataPartitionValue struct {
 	DecommissionWeight             int
 	SpecialReplicaDecommissionStep uint32
 	DecommissionDstAddrSpecify     bool
+	DecommissionDstNodeSet         uint64
 	DecommissionNeedRollback       bool
 	RecoverStartTime               int64
 	RecoverUpdateTime              int64
@@ -233,6 +234,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionWeight = dpv.DecommissionWeight
 	dp.SpecialReplicaDecommissionStep = dpv.SpecialReplicaDecommissionStep
 	dp.DecommissionDstAddrSpecify = dpv.DecommissionDstAddrSpecify
+	dp.DecommissionDstNodeSet = dpv.DecommissionDstNodeSet
 	dp.DecommissionNeedRollback = dpv.DecommissionNeedRollback
 	dp.RecoverStartTime = time.Unix(dpv.RecoverStartTime, 0)
 	dp.RecoverUpdateTime = time.Unix(dpv.RecoverUpdateTime, 0)
@@ -292,6 +294,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionWeight:             dp.DecommissionWeight,
 		SpecialReplicaDecommissionStep: dp.SpecialReplicaDecommissionStep,
 		DecommissionDstAddrSpecify:     dp.DecommissionDstAddrSpecify,
+		DecommissionDstNodeSet:         dp.DecommissionDstNodeSet,
 		DecommissionNeedRollback:       dp.DecommissionNeedRollback,
 		RecoverStartTime:               dp.RecoverStartTime.Unix(),
 		RecoverUpdateTime:              dp.RecoverUpdateTime.Unix(),

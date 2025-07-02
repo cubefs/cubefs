@@ -154,6 +154,7 @@ const (
 	CliFlagEnablePersistAccessTime      = "enablePersistAccessTime"
 	CliFlagDecommissionRaftForce        = "raftForceDel"
 	CliFLagDecommissionWeight           = "decommissionWeight"
+	CliFlagDecommissionDstNodeSet       = "decommissionDstNodeSet"
 	CliFLagRecommissionType             = "recommissionType"
 	CliFlagAllowedStorageClass          = "allowedStorageClass"
 	CliFlagVolStorageClass              = "volStorageClass"
