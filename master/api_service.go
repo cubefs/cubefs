@@ -6062,7 +6062,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.TxRbInoCnt = mp.TxRbInoCnt
 	mpView.TxRbDenCnt = mp.TxRbDenCnt
 	mpView.IsRecover = mp.IsRecover
-	mpView.IsFreeze = mp.IsFreeze
+	mpView.Freeze = mp.Freeze
 	return
 }
 
@@ -6142,7 +6142,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			OfflinePeerID:             mp.OfflinePeerID,
 			LoadResponse:              mp.LoadResponse,
 			Forbidden:                 forbidden,
-			IsFreeze:                  mp.IsFreeze,
+			Freeze:                    mp.Freeze,
 			StatByStorageClass:        mp.StatByStorageClass,
 			StatByMigrateStorageClass: mp.StatByMigrateStorageClass,
 			ForbidWriteOpOfProtoVer0:  mp.ForbidWriteOpOfProtoVer0,

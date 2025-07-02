@@ -1163,7 +1163,7 @@ type MetaPartitionView struct {
 	Members     []string
 	LeaderAddr  string
 	Status      int8
-	IsFreeze    bool
+	Freeze      int8
 }
 
 type DataNodeDisksRequest struct{}
@@ -1755,3 +1755,9 @@ func IsFlashNodeLimitError(err error) bool {
 	}
 	return false
 }
+
+const (
+	FreezeMetaPartitionInit = 0
+	FreezingMetaPartition   = 1
+	FreezedMetaPartition    = 2
+)

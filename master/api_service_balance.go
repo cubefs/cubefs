@@ -64,7 +64,7 @@ func (m *Server) getMetaPartitionEmptyStatus(w http.ResponseWriter, r *http.Requ
 		volStatus.Total = len(vol.MetaPartitions)
 		mps := vol.getSortMetaPartitions()
 		for _, mp := range mps {
-			if mp.IsFreeze || mp.IsEmptyToBeClean() {
+			if mp.IsMetaPartitionFreezed() || mp.IsEmptyToBeClean() {
 				volStatus.EmptyCount++
 				volStatus.MetaPartitions = append(volStatus.MetaPartitions, getMetaPartitionView(mp))
 			}
@@ -159,7 +159,7 @@ func (m *Server) SetMetaPartitionFrozen(mps []*MetaPartition, cleans int) []*Met
 			continue
 		}
 
-		mp.IsFreeze = true
+		mp.Freeze = proto.FreezingMetaPartition
 		if mp.Status == proto.ReadWrite {
 			mp.Status = proto.ReadOnly
 		}

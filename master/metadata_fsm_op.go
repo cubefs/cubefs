@@ -149,7 +149,7 @@ type metaPartitionValue struct {
 	OfflinePeerID uint64
 	Peers         []proto.Peer
 	IsRecover     bool
-	IsFreeze      bool
+	Freeze        int8
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -165,7 +165,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		Peers:         mp.Peers,
 		OfflinePeerID: mp.OfflinePeerID,
 		IsRecover:     mp.IsRecover,
-		IsFreeze:      mp.IsFreeze,
+		Freeze:        mp.Freeze,
 	}
 	return
 }
@@ -1845,7 +1845,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setPeers(mpv.Peers)
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
-		mp.IsFreeze = mpv.IsFreeze
+		mp.Freeze = mpv.Freeze
 		vol.addMetaPartition(mp)
 		c.addBadMetaParitionIdMap(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
