@@ -1936,6 +1936,9 @@ func (vol *Vol) checkDataReplicaMeta(c *Cluster) (cnt int) {
 	var checkMetaDpWg sync.WaitGroup
 
 	for _, dp := range partitions {
+		if dp.IsDiscard {
+			continue
+		}
 		// NOTE: cluster or enable meta repair
 		if c.getEnableAutoDpMetaRepair() || vol.EnableAutoMetaRepair.Load() {
 			checkMetaDp[dp.PartitionID] = dp
