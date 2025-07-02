@@ -67,7 +67,7 @@ type MetaPartition struct {
 	ReplicaNum                uint8
 	Status                    int8
 	IsRecover                 bool
-	IsFreeze                  bool
+	Freeze                    int8
 	volID                     uint64
 	volName                   string
 	Hosts                     []string
@@ -300,7 +300,7 @@ func (mp *MetaPartition) checkLeader(clusterID string, timeOutSec int64) {
 }
 
 func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64, metaPartitionInodeIdStep uint64, forbiddenVol bool, timeOutSec int64) (doSplit bool) {
-	if mp.IsFreeze {
+	if mp.IsMetaPartitionFreezed() {
 		return
 	}
 
@@ -1067,4 +1067,8 @@ func (mr *MetaReplica) createTaskToGetRaftStatus(partitionID uint64, replicaNum 
 	t = proto.NewAdminTask(proto.OpIsRaftStatusOk, mr.Addr, req)
 	resetMetaPartitionTaskID(t, partitionID)
 	return
+}
+
+func (mp *MetaPartition) IsMetaPartitionFreezed() bool {
+	return mp.Freeze != proto.FreezeMetaPartitionInit
 }
