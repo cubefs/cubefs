@@ -635,8 +635,6 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 	}()
 
 	dpCh := make(chan *DataPartition, 1024)
-	const retryTimeLimit int = 5
-	retryDpsMap := sync.Map{}
 	dpIds := make([]uint64, 0)
 	failedDpIds := make([]uint64, 0)
 	dps = cluster.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
@@ -661,20 +659,6 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 					}
 					if dstNs.HasDecommissionToken(dp.PartitionID) {
 						if dp.IsDecommissionPrepare() || dp.IsMarkDecommission() {
-							retryTimes := 1
-							if value, ok := retryDpsMap.Load(dp.PartitionID); ok {
-								if value.(int) >= retryTimeLimit {
-									log.LogWarnf("action[CancelDataPartitionDecommission] dp(%v) retry limit exceeded",
-										dp.decommissionInfo())
-									mu.Lock()
-									failedDpIds = append(failedDpIds, dp.PartitionID)
-									mu.Unlock()
-									dpWg.Done()
-									continue
-								}
-								retryTimes = value.(int) + 1
-							}
-							retryDpsMap.Store(dp.PartitionID, retryTimes)
 							dpCh <- dp
 							continue
 						}
