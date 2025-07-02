@@ -310,6 +310,8 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	mp.checkReplicas(timeOutSec)
 	liveReplicas := mp.getLiveReplicas(timeOutSec)
 
+	log.LogDebugf("checkStatus: start check mp %d", mp.PartitionID)
+
 	if len(liveReplicas) <= replicaNum/2 {
 		mp.Status = proto.Unavailable
 	} else {
