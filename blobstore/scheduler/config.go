@@ -317,6 +317,7 @@ func (c *Config) fixRegisterConfig() {
 }
 
 func (c *Config) fixShardDiskRepairConfig() {
+	c.ShardDiskRepair.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.ShardDiskRepair.AppliedIndexThreshold, defaultAppliedIndexThreshold)
 	c.ShardDiskRepair.CheckAndFix()
 }
