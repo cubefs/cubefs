@@ -118,6 +118,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Request: req,
 		}
 		volsForbidWriteOpOfProtoVer0 = make(map[string]struct{})
+		fileStatsEnableChange        bool
+		thresholdsChange             bool
 	)
 	start := time.Now()
 	go func() {
@@ -138,9 +140,23 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		}
 
 		if m.fileStatsConfig != nil {
+			m.fileStatsConfig.Lock()
+			fileStatsEnableChange = !m.fileStatsConfig.fileStatsEnable && req.FileStatsEnable
 			m.fileStatsConfig.fileStatsEnable = req.FileStatsEnable
 			if len(req.FileStatsThresholds) != 0 {
-				m.updateFileStatsConfig(req.FileStatsThresholds)
+				thresholdsChange = m.updateFileStatsConfig(req.FileStatsThresholds)
+			}
+			thresholds := m.fileStatsConfig.thresholds
+			m.fileStatsConfig.Unlock()
+			if fileStatsEnableChange || (thresholdsChange && req.FileStatsEnable) {
+				log.LogWarnf("[opMasterHeartbeat] do fileStats")
+				m.mu.RLock()
+				for _, p := range m.partitions {
+					if mp, ok := p.(*metaPartition); ok {
+						mp.doFileStats(thresholds)
+					}
+				}
+				m.mu.RUnlock()
 			}
 		}
 

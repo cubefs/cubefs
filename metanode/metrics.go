@@ -15,9 +15,9 @@
 package metanode
 
 import (
-	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
 )
 
@@ -117,26 +117,28 @@ func (m *MetaNode) updateFileStatsMetrics() {
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()
 
-	numRanges := len(manager.fileStatsConfig.fileRangeLabels)
+	_, labels, _ := manager.GetFileStatsConfig()
+
+	numRanges := len(labels)
 	for _, p := range manager.partitions {
 		mp, ok := p.(*metaPartition)
 		if !ok {
 			continue
 		}
+		fileRange := mp.getFileRange()
 		volName := mp.config.VolName
 		if _, exists := volFileRange[volName]; !exists {
 			volFileRange[volName] = make([]int64, numRanges)
 		}
-		for i := 0; i < numRanges; i++ {
-			if i < len(mp.fileRange) {
-				volFileRange[volName][i] += atomic.LoadInt64(&mp.fileRange[i])
-			}
+		validLength := util.Min(len(fileRange), numRanges)
+		for i := 0; i < validLength; i++ {
+			volFileRange[volName][i] += fileRange[i]
 		}
 	}
 
 	for volName, ranges := range volFileRange {
 		for i, val := range ranges {
-			sizeRange := manager.fileStatsConfig.fileRangeLabels[i]
+			sizeRange := labels[i]
 			m.metrics.MetricFileStats.SetWithLabelValues(float64(val), volName, sizeRange)
 		}
 	}

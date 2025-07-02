@@ -23,6 +23,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -157,11 +158,15 @@ func (mp *metaPartition) loadMetadata() (err error) {
 }
 
 func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
-	var numInodes uint64
+	var (
+		numInodes uint64
+		fileRange []int64
+	)
 	defer func() {
 		if err == nil {
 			log.LogInfof("loadInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
 				mp.config.PartitionId, mp.config.VolName, numInodes)
+			mp.fileRange = fileRange
 		}
 	}()
 	filename := path.Join(rootDir, inodeFile)
@@ -183,7 +188,10 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 
 	inoBuf := make([]byte, 4)
 	crcCheck := crc32.NewIEEE()
-	mp.fileRange = make([]int64, len(mp.manager.fileStatsConfig.thresholds)+1)
+
+	thresholds, _, enable := mp.manager.GetFileStatsConfig()
+	fileRange = make([]int64, len(thresholds)+1)
+
 	for {
 		inoBuf = inoBuf[:4]
 		// first read length
@@ -230,7 +238,13 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 			return err
 		}
 
-		mp.fileStats(ino)
+		if enable && proto.IsRegular(ino.Type) && ino.NLink > 0 {
+			index := calculateFileRangeIndex(ino.Size, thresholds)
+			if index >= 0 && index < len(fileRange) {
+				fileRange[index]++
+			}
+		}
+
 		mp.size += ino.Size
 
 		mp.fsmCreateInode(ino)
@@ -240,6 +254,21 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		}
 		numInodes += 1
 	}
+}
+
+func calculateFileRangeIndex(size uint64, thresholds []uint64) int {
+	if len(thresholds) == 0 {
+		return -1
+	}
+
+	maxSize := thresholds[len(thresholds)-1]
+	if size >= maxSize {
+		return len(thresholds)
+	}
+
+	return sort.Search(len(thresholds), func(i int) bool {
+		return size < thresholds[i]
+	})
 }
 
 // Load dentry from the dentry snapshot.
@@ -1160,7 +1189,10 @@ func (mp *metaPartition) storeInode(rootDir string,
 	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	mp.fileRange = make([]int64, len(mp.manager.fileStatsConfig.thresholds)+1)
+
+	thresholds, _, enable := mp.manager.GetFileStatsConfig()
+	fileRange := make([]int64, len(thresholds)+1)
+
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
 		if sm.uidRebuild {
@@ -1177,7 +1209,12 @@ func (mp *metaPartition) storeInode(rootDir string,
 		data = buf.Bytes()
 
 		size += ino.Size
-		mp.fileStats(ino)
+		if enable && proto.IsRegular(ino.Type) && ino.NLink > 0 {
+			index := calculateFileRangeIndex(ino.Size, thresholds)
+			if index >= 0 && index < len(fileRange) {
+				fileRange[index]++
+			}
+		}
 
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
@@ -1196,6 +1233,8 @@ func (mp *metaPartition) storeInode(rootDir string,
 		}
 		return true
 	})
+
+	mp.fileRange = fileRange
 
 	mp.acucumRebuildFin(sm.uidRebuild)
 	crc = sign.Sum32()
