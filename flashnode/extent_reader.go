@@ -131,18 +131,19 @@ func readFromDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc c
 func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
 	buf := bytespool.Alloc(int(reqPacket.Size))
 	defer bytespool.Free(buf)
-	bgTime := stat.BeginStat()
+
 	addr := conn.RemoteAddr().String()
 	parts := strings.Split(addr, ":")
 	dnAddr := "unknown"
 	if len(parts) > 0 && addr != "" {
 		dnAddr = parts[0]
 	}
-
+	var bgTime *time.Time
 	for readBytes < int(reqPacket.Size) {
 		reply := newReplyPacket(reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		reply.Data = buf[readBytes : readBytes+bufSize]
+		bgTime = stat.BeginStat()
 		if err = ReadReplyFromConn(reply, conn, timeout); err != nil {
 			if err != nil && strings.Contains(err.Error(), "timeout") {
 				err = fmt.Errorf("read timeout")
@@ -150,6 +151,8 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 			stat.EndStat("ReadFromDN", err, bgTime, 1)
 			return
 		}
+		stat.EndStat("MissCacheRead:ReadFromDN", err, bgTime, 1)
+		stat.EndStat(fmt.Sprintf("MissCacheRead:ReadFromDN[%v]", dnAddr), err, bgTime, 1)
 		if err = checkReadReplyValid(reqPacket, reply, bgTime, dnAddr); err != nil {
 			return
 		}
@@ -161,8 +164,6 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		}
 		readBytes += int(reply.Size)
 	}
-	stat.EndStat("MissCacheRead:ReadFromDN", err, bgTime, 1)
-	stat.EndStat(fmt.Sprintf("MissCacheRead:ReadFromDN[%v]", dnAddr), err, bgTime, 1)
 	if afterReadFunc != nil {
 		if err = afterReadFunc(buf[:readBytes], int64(readBytes)); err != nil {
 			return
