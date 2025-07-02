@@ -69,6 +69,7 @@ type DataPartition struct {
 	DecommissionSrcDiskPath           string
 	DecommissionTerm                  uint64
 	DecommissionDstAddrSpecify        bool // if DecommissionDstAddrSpecify is true, donot rollback when add replica fail
+	DecommissionDstNodeSet            uint64
 	DecommissionNeedRollback          bool
 	DecommissionNeedRollbackTimes     uint32
 	DecommissionErrorMessage          string
@@ -116,6 +117,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.DecommissionStatus = DecommissionInitial
 	partition.SpecialReplicaDecommissionStep = SpecialDecommissionInitial
 	partition.DecommissionDstAddrSpecify = false
+	partition.DecommissionDstNodeSet = 0
 	partition.LeaderReportTime = now
 	partition.RepairBlockSize = util.DefaultDataPartitionSize
 	partition.RestoreReplica = RestoreReplicaMetaStop
@@ -1290,9 +1292,9 @@ errHandle:
 	partition.markRollbackFailed(false)
 	partition.DecommissionErrorMessage = err.Error()
 	log.LogWarnf("action[AcquireDecommissionFirstHostToken] clusterID[%v] vol[%v] partitionID[%v]"+
-		" retry [%v] status [%v] DecommissionDstAddrSpecify [%v] DecommissionDstAddr [%v] failed",
+		" retry [%v] status [%v] DecommissionDstAddrSpecify [%v] DecommissionDstAddr [%v]  DecommissionDstNodeSet [%v] failed",
 		c.Name, partition.VolName, partition.PartitionID, partition.DecommissionRetry, partition.GetDecommissionStatus(),
-		partition.DecommissionDstAddrSpecify, partition.DecommissionDstAddr)
+		partition.DecommissionDstAddrSpecify, partition.DecommissionDstAddr, partition.DecommissionDstNodeSet)
 	return false
 }
 
@@ -1305,7 +1307,7 @@ func isReplicasContainsHost(replicas []*DataReplica, host string) bool {
 	return false
 }
 
-func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
+func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, dstNodeSetID uint64, raftForce bool, term uint64,
 	migrateType uint32, weight int, c *Cluster, ns *nodeSet,
 ) (err error) {
 	defer func() {
@@ -1318,6 +1320,13 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	if dstAddr != "" {
 		if err = c.checkDataNodeAddrMediaTypeForMigrate(srcAddr, dstAddr); err != nil {
 			log.LogErrorf("[MarkDecommissionStatus] check mediaType err: %v", err.Error())
+			return
+		}
+	}
+
+	if dstNodeSetID != 0 {
+		if _, err = c.t.getNodeSetByNodeSetId(dstNodeSetID); err != nil {
+			log.LogErrorf("[MarkDecommissionStatus] check dstNodeSetID(%v) err: %v", dstNodeSetID, err.Error())
 			return
 		}
 	}
@@ -1567,6 +1576,7 @@ directly:
 	partition.DecommissionSrcAddr = srcAddr
 	partition.DecommissionDstAddr = dstAddr
 	partition.DecommissionSrcDiskPath = srcDisk
+	partition.DecommissionDstNodeSet = dstNodeSetID
 	partition.DecommissionRaftForce = raftForce
 	partition.DecommissionTerm = term
 	partition.DecommissionWeight = weight
@@ -1952,6 +1962,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionTerm = 0
 	partition.DecommissionWeight = 0
 	partition.DecommissionDstAddrSpecify = false
+	partition.DecommissionDstNodeSet = 0
 	partition.DecommissionNeedRollback = false
 	atomic.StoreUint32(&partition.DecommissionNeedRollbackTimes, 0)
 	partition.SetDecommissionStatus(DecommissionInitial)
@@ -2049,10 +2060,10 @@ func (partition *DataPartition) addToDecommissionList(c *Cluster) {
 		log.LogWarnf("action[addToDecommissionList]dataNode[%v] nodeSet is nil:%v", dataNode.Addr, err.Error())
 		return
 	}
-	log.LogInfof("action[addToDecommissionList]ready to add dp[%v] decommission src[%v] Disk[%v] dst[%v] status[%v] specialStep[%v],"+
+	log.LogInfof("action[addToDecommissionList]ready to add dp[%v] decommission srcAddr[%v] Disk[%v] dstAddr[%v] dstNodeSet[%v] status[%v] specialStep[%v],"+
 		" RollbackTimes(%v) isRecover(%v) host[%v] to  decommission list[%v]",
 		partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath,
-		partition.DecommissionDstAddr, partition.GetDecommissionStatus(), partition.GetSpecialReplicaDecommissionStep(),
+		partition.DecommissionDstAddr, partition.DecommissionDstNodeSet, partition.GetDecommissionStatus(), partition.GetSpecialReplicaDecommissionStep(),
 		partition.DecommissionNeedRollbackTimes, partition.isRecover, partition.Hosts, ns.ID)
 	ns.AddToDecommissionDataPartitionList(partition, c)
 }
@@ -2195,13 +2206,23 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 
 	// the first time for dst addr not specify
 	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
-		// try to find available data node in src nodeset
-		ns, zone, err = getTargetNodeset(partition.DecommissionSrcAddr, c)
-		if err != nil {
-			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v find src nodeset failed:%v",
-				partition.PartitionID, err.Error())
-			goto errHandler
+		if partition.DecommissionDstNodeSet != 0 {
+			ns, err = c.t.getNodeSetByNodeSetId(partition.DecommissionDstNodeSet)
+			if err != nil {
+				log.LogWarnf("action[TryAcquireDecommissionToken]dp %v find given dst nodeset %v failed:%v",
+					partition.PartitionID, partition.DecommissionDstNodeSet, err.Error())
+				goto errHandler
+			}
+		} else {
+			// try to find available data node in src nodeset
+			ns, zone, err = getTargetNodeset(partition.DecommissionSrcAddr, c)
+			if err != nil {
+				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v find src nodeset failed:%v",
+					partition.PartitionID, err.Error())
+				goto errHandler
+			}
 		}
+
 		if partition.isSpecialReplicaCnt() && ns.HasDecommissionToken(partition.PartitionID) {
 			log.LogDebugf("action[TryAcquireDecommissionToken]dp %v has token when reloading meta from nodeset %v",
 				partition.PartitionID, ns.ID)
@@ -2221,6 +2242,12 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		// data nodes in a nodeset has the same mediaType
 		targetHosts, _, err = ns.getAvailDataNodeHosts(excludeHosts, 1)
 		if err != nil {
+			if partition.DecommissionDstNodeSet != 0 {
+				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from given dst nodeset %v failed:%v",
+					partition.PartitionID, partition.DecommissionDstNodeSet, err.Error())
+				goto errHandler
+			}
+
 			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from src nodeset failed:%v",
 				partition.PartitionID, err.Error())
 			if _, ok := c.vols[partition.VolName]; !ok {
@@ -2752,7 +2779,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				partition.PartitionID, addr)
 			return nil
 		}
-		err = c.markDecommissionDataPartition(partition, node, false, AutoAddReplica, highPriorityDecommissionWeight)
+		err = c.markDecommissionDataPartition(partition, node, 0, false, AutoAddReplica, highPriorityDecommissionWeight)
 		auditMsg = fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto add replica",
 			partition.PartitionID, partition.ReplicaNum, len(partition.Hosts))
 		log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)
@@ -2803,9 +2830,9 @@ func (partition *DataPartition) decommissionInfo() string {
 		replicas = append(replicas, replica.Addr)
 	}
 
-	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
+	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_srcAddr(%v)_dstAddr(%v)_dstNodeSet(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
 		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_weight(%v)_firstHostDiskTokenKey(%v)_replica(%v)_recoverStartTime(%v)_addr(%p)",
-		partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
+		partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.DecommissionSrcAddr, partition.DecommissionDstAddr, partition.DecommissionDstNodeSet,
 		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),

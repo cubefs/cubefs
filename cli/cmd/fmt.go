@@ -1386,6 +1386,7 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb.WriteString(fmt.Sprintf("SrcAddress:        %v\n", info.SrcAddress))
 	sb.WriteString(fmt.Sprintf("SrcDiskPath:       %v\n", info.SrcDiskPath))
 	sb.WriteString(fmt.Sprintf("DstAddress:        %v\n", info.DstAddress))
+	sb.WriteString(fmt.Sprintf("DstNodeSet:        %v\n", info.DstNodeSet))
 	sb.WriteString(fmt.Sprintf("Term:              %v\n", info.Term))
 	sb.WriteString(fmt.Sprintf("Weight:            %v\n", info.Weight))
 	sb.WriteString(fmt.Sprintf("Replicas:          %v\n", info.Replicas))

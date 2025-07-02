@@ -186,10 +186,13 @@ func (api *AdminAPI) CreateDataPartition(volName string, count int, clientIDKey 
 	))
 }
 
-func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, raftForce bool, weight int, clientIDKey, decommissionType string) (err error) {
+func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, dstNodeSet uint64, raftForce bool, weight int, clientIDKey, decommissionType string) (err error) {
 	request := newRequest(get, proto.AdminDecommissionDataPartition).Header(api.h)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	if dstNodeSet != 0 {
+		request.addParam("dstNodeSet", strconv.FormatUint(dstNodeSet, 10))
+	}
 	request.addParam("raftForceDel", strconv.FormatBool(raftForce))
 	request.addParam("weight", strconv.Itoa(weight))
 	request.addParam("clientIDKey", clientIDKey)

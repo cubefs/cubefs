@@ -600,6 +600,7 @@ type DecommissionDataPartitionInfo struct {
 	SrcAddress            string
 	SrcDiskPath           string
 	DstAddress            string
+	DstNodeSet            uint64
 	Term                  uint64
 	Weight                int
 	Replicas              []string

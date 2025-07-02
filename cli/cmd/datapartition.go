@@ -413,6 +413,7 @@ The "reset" command will be released in next version`,
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var raftForceDel bool
 	var weight int
+	var dstNodeSet uint64
 	var decommissionType string
 	var clientIDKey string
 	cmd := &cobra.Command{
@@ -432,7 +433,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			if err != nil {
 				return
 			}
-			if err := client.AdminAPI().DecommissionDataPartition(partitionID, address, raftForceDel, weight, clientIDKey, decommissionType); err != nil {
+			if err := client.AdminAPI().DecommissionDataPartition(partitionID, address, dstNodeSet, raftForceDel, weight, clientIDKey, decommissionType); err != nil {
 				stdout(fmt.Sprintf("failed:err(%v)\n", err.Error()))
 				return
 			}
@@ -447,6 +448,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 	}
 	cmd.Flags().BoolVarP(&raftForceDel, CliFlagDecommissionRaftForce, "r", false, "true for raftForceDel")
 	cmd.Flags().IntVar(&weight, CliFLagDecommissionWeight, lowPriorityDecommissionWeight, "decommission weight")
+	cmd.Flags().Uint64Var(&dstNodeSet, CliFlagDecommissionDstNodeSet, 0, "decommission dst nodeSet")
 	cmd.Flags().StringVar(&decommissionType, "decommissionType", "1", "decommission type")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
