@@ -224,8 +224,16 @@ func NewPool(min, max int, timeout, connectTimeout int64, target string) (p *Poo
 }
 
 func (p *Pool) initAllConnect() {
+	var (
+		c   net.Conn
+		err error
+	)
 	for i := 0; i < p.mincap; i++ {
-		c, err := net.Dial("tcp", p.target)
+		if p.connectTimeout != 0 {
+			c, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeout)*time.Second)
+		} else {
+			c, err = net.Dial("tcp", p.target)
+		}
 		if err == nil {
 			conn := c.(*net.TCPConn)
 			conn.SetKeepAlive(true)
