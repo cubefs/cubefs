@@ -247,9 +247,10 @@ func TestDoFileStats(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	mp.doFileStats()
+	mp.doFileStats(metaM.fileStatsConfig.thresholds)
 	duration := time.Since(startTime)
 	t.Logf("DoFileStats cost time %v", duration)
+	require.Equal(t, 10000000, int(mp.fileRange[0]))
 }
 
 func TestLimitReadDir(t *testing.T) {

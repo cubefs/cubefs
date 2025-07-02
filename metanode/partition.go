@@ -1246,13 +1246,19 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 	return nil
 }
 
-func (mp *metaPartition) doFileStats() {
-	mp.fileRange = make([]int64, len(mp.manager.fileStatsConfig.thresholds)+1)
+func (mp *metaPartition) doFileStats(thresholds []uint64) {
+	fileRange := make([]int64, len(thresholds)+1)
 	mp.GetInodeTree().Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
-		mp.fileStats(ino)
+		if proto.IsRegular(ino.Type) && ino.NLink > 0 {
+			index := calculateFileRangeIndex(ino.Size, thresholds)
+			if index >= 0 && index < len(fileRange) {
+				fileRange[index]++
+			}
+		}
 		return true
 	})
+	mp.fileRange = fileRange
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
@@ -1795,4 +1801,10 @@ func (mp *metaPartition) SetFreeze(req *proto.FreezeMetaPartitionRequest) (err e
 	}
 
 	return nil
+}
+
+func (mp *metaPartition) getFileRange() []int64 {
+	fileRangeCopy := make([]int64, len(mp.fileRange))
+	copy(fileRangeCopy, mp.fileRange)
+	return fileRangeCopy
 }
