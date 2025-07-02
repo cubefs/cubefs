@@ -97,6 +97,7 @@ func NewManualScanner(adminTask *proto.AdminTask, f *FlashNode, metaWrapper *met
 func (s *ManualScanner) Start() (err error) {
 	response := s.adminTask.Response.(*proto.FlashNodeManualTaskResponse)
 	parentId, prefixDirs, err := s.FindPrefixInode()
+	log.LogInfof("startScan with parentId(%v) dirs(%v) dirlen(%v)", parentId, prefixDirs, len(prefixDirs))
 	if err != nil {
 		log.LogErrorf("startScan err(%v): volume(%v), task id(%v), scanning done!",
 			err, s.Volume, s.manualTask.Id)
@@ -176,7 +177,7 @@ func (s *ManualScanner) checkScanning() {
 			return
 		case <-taskCheckTimer.C:
 			if s.DoneScanning() {
-				log.LogInfof("checkScanning completed for task(%v)", s.adminTask)
+				log.LogInfof("checkScanning completed for task(%v) eklen(%v)", s.adminTask, s.currentStat.TotalExtentKeyNum)
 				taskCheckTimer.Stop()
 				t := time.Now()
 				response := s.copyResponse()
@@ -215,7 +216,7 @@ func (s *ManualScanner) copyResponse() *proto.FlashNodeManualTaskResponse {
 func (s *ManualScanner) DoneScanning() bool {
 	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v) pause(%v)",
 		s.dirChan.Len(), len(s.fileChan), s.fileRPool.RunningNum(), s.dirRPool.RunningNum(), s.pause)
-	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && atomic.LoadInt32(&s.pause) == 0
+	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && atomic.LoadInt32(&s.pause) == 0 && len(s.RemoteCache.PrepareCh) == 0
 }
 
 func (s *ManualScanner) handleFileChan() {
@@ -243,9 +244,11 @@ func (s *ManualScanner) handleFileChan() {
 				continue
 			}
 
-			job := func() {
-				s.handleFile(dentry)
-			}
+			job := func(d *proto.ScanItem) func() {
+				return func() {
+					s.handleFile(d)
+				}
+			}(dentry)
 			_, err := s.fileRPool.Submit(job)
 			if err != nil {
 				log.LogWarnf("fileRPool.Submit err(%v), id(%v)", err, s.ID)
@@ -317,12 +320,17 @@ func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
 		log.LogWarnf("warmUp: ec OpenStream fail, inode(%v) err: %v", i.Inode, err)
 		return err
 	}
+	if err = s.ec.ForceRefreshExtentsCache(i.Inode); err != nil {
+		log.LogWarnf("warmUp: ec ForceRefreshExtentsCache fail, inode(%v) err: %v", i.Inode, err)
+		return err
+	}
 	for _, extent := range extents {
 		s.prepareLimiter.Wait(context.Background())
-		prepareReq := stream.NewPrepareRemoteCacheRequest(i.Inode, &extent, true, i.WriteGen)
+		prepareReq := stream.NewPrepareRemoteCacheRequest(i.Inode, extent, true, i.WriteGen)
 		s.RemoteCache.PrepareCh <- prepareReq
+		atomic.AddInt64(&s.currentStat.TotalExtentKeyNum, 1)
+		atomic.AddInt64(&s.currentStat.TotalCacheSize, int64(extent.Size))
 	}
-	atomic.AddInt64(&s.currentStat.TotalCacheSize, int64(i.Size))
 	atomic.AddInt64(&s.currentStat.TotalFileCachedNum, 1)
 	s.stopIfOverflow()
 	return nil
@@ -359,13 +367,17 @@ func (s *ManualScanner) handleDirChan() {
 
 			var job func()
 			if s.dirChan.Len() > maxDirChanNum {
-				job = func() {
-					s.handleDirLimitDepthFirst(dentry)
-				}
+				job = func(d *proto.ScanItem) func() {
+					return func() {
+						s.handleDirLimitDepthFirst(d)
+					}
+				}(dentry)
 			} else {
-				job = func() {
-					s.handleDirLimitBreadthFirst(dentry)
-				}
+				job = func(d *proto.ScanItem) func() {
+					return func() {
+						s.handleDirLimitBreadthFirst(d)
+					}
+				}(dentry)
 			}
 			_, err := s.dirRPool.Submit(job)
 			if err != nil {
@@ -544,20 +556,11 @@ func (s *ManualScanner) FindPrefixInode() (inode uint64, prefixDirs []string, er
 	if prefix != "" {
 		dirs = strings.Split(prefix, pathSeparator)
 		log.LogInfof("FindPrefixInode: volume(%v), prefix(%v), dirs(%v), len(%v)", s.Volume, prefix, dirs, len(dirs))
-	}
-	if len(dirs) <= 1 {
+	} else {
 		return proto.RootIno, prefixDirs, nil
 	}
-
 	parentId := proto.RootIno
-	for index, dir := range dirs {
-
-		// Because lookup can only retrieve dentry whose name exactly matches,
-		// so do not lookup the last part.
-		if index+1 == len(dirs) {
-			break
-		}
-
+	for _, dir := range dirs {
 		curIno, curMode, err := s.mw.Lookup_ll(parentId, dir)
 
 		// If the part except the last part does not match exactly the same dentry, there is

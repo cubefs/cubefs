@@ -16,4 +16,5 @@ type ExtentApi interface {
 	Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error)
 	Flush(inode uint64) error
 	Close() error
+	ForceRefreshExtentsCache(inode uint64) error
 }

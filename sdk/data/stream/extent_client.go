@@ -973,7 +973,6 @@ func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRemoteCacheRequest
 		return
 	}
 	if prepareReq.warmUp {
-		s.extents.Append(prepareReq.ek, false)
 		s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek, prepareReq.gen)
 	} else {
 		inodeInfo, err := s.client.getInodeInfo(prepareReq.inode)

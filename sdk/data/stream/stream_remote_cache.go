@@ -35,11 +35,11 @@ type PrepareRemoteCacheRequest struct {
 	gen    uint64
 }
 
-func NewPrepareRemoteCacheRequest(inode uint64, ek *proto.ExtentKey, warmUp bool, gen uint64) *PrepareRemoteCacheRequest {
+func NewPrepareRemoteCacheRequest(inode uint64, ek proto.ExtentKey, warmUp bool, gen uint64) *PrepareRemoteCacheRequest {
 	return &PrepareRemoteCacheRequest{
 		ctx:    context.Background(),
 		inode:  inode,
-		ek:     ek,
+		ek:     &ek,
 		warmUp: warmUp,
 		gen:    gen,
 	}
@@ -79,7 +79,6 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, 
 		log.LogWarnf("Streamer prepareRemoteCache: prepareCacheRequests failed. start(%v), size(%v), err(%v)", ek.FileOffset, ek.Size, err)
 		return
 	}
-
 	for _, req := range cReadRequests {
 		slot, fg, ownerSlot := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
 		if fg == nil {
@@ -96,8 +95,9 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, 
 			log.LogWarnf("Streamer prepareRemoteCache: flashGroup prepare failed. fg(%v) req(%v) err(%v)", fg, prepareReq, err)
 		}
 	}
-
-	log.LogDebugf("prepareRemoteCache: inode(%d), err(%v)", s.inode, err)
+	if log.EnableDebug() {
+		log.LogDebugf("prepareRemoteCache: inode(%d),ek(%v) err(%v)", s.inode, ek, err)
+	}
 }
 
 func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64, cReadRequests []*CacheReadRequest) (total int, err error) {

@@ -362,6 +362,7 @@ type ManualTaskStatistics struct {
 	TotalFileScannedNum int64
 	TotalFileCachedNum  int64
 	TotalDirScannedNum  int64
+	TotalExtentKeyNum   int64
 	ErrorCacheNum       int64
 	ErrorReadDirNum     int64
 	TotalCacheSize      int64
@@ -407,7 +408,7 @@ type ScanItem struct {
 }
 
 func (flt *FlashManualTask) GetPathPrefix() string {
-	return strings.TrimRight(flt.ManualTaskConfig.Prefix, "/")
+	return strings.TrimPrefix(strings.TrimRight(flt.ManualTaskConfig.Prefix, "/"), "/")
 }
 
 func (flt *FlashManualTask) SetResponse(taskRsp *FlashNodeManualTaskResponse) {

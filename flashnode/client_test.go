@@ -130,6 +130,8 @@ func (m *MockExtentClient) Read(inode uint64, data []byte, offset int, size int,
 	return len(data), io.EOF
 }
 
+func (m *MockExtentClient) ForceRefreshExtentsCache(inode uint64) error { return nil }
+
 func (m *MockExtentClient) Flush(inode uint64) error {
 	return nil
 }
