@@ -88,6 +88,7 @@ const (
 	forceKey                               = "force"
 	raftForceDelKey                        = "raftForceDel"
 	weightKey                              = "weight"
+	dstNodeSetKey                          = "dstNodeSet"
 	enablePosixAclKey                      = "enablePosixAcl"
 	enableTxMaskKey                        = "enableTxMask"
 	txTimeoutKey                           = "txTimeout"

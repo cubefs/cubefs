@@ -2092,6 +2092,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		rstMsg      string
 		dp          *DataPartition
 		addr        string
+		dstNodeSet  uint64
 		partitionID uint64
 		raftForce   bool
 		weight      int
@@ -2110,6 +2111,12 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 
 	if dp, err = c.getDataPartitionByID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+
+	dstNodeSet, err = parseDstNodeSet(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	raftForce, err = parseRaftForce(r)
@@ -2143,7 +2150,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce, uint32(decommissionType), weight)
+	err = m.cluster.markDecommissionDataPartition(dp, node, dstNodeSet, raftForce, uint32(decommissionType), weight)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2309,6 +2316,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		SrcAddress:            dp.DecommissionSrcAddr,
 		SrcDiskPath:           dp.DecommissionSrcDiskPath,
 		DstAddress:            dp.DecommissionDstAddr,
+		DstNodeSet:            dp.DecommissionDstNodeSet,
 		Term:                  dp.DecommissionTerm,
 		Weight:                dp.DecommissionWeight,
 		Replicas:              replicas,
@@ -5698,6 +5706,20 @@ func parseWeight(r *http.Request) (int, error) {
 	newVal, err := strconv.Atoi(val)
 	if err != nil {
 		return lowPriorityDecommissionWeight, fmt.Errorf("parse %s int val err, err %s", weightKey, err.Error())
+	}
+
+	return newVal, nil
+}
+
+func parseDstNodeSet(r *http.Request) (uint64, error) {
+	val := r.FormValue(dstNodeSetKey)
+	if val == "" {
+		return 0, nil
+	}
+
+	newVal, err := strconv.ParseUint(val, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s uint64 vaal err, err %s", dstNodeSetKey, err.Error())
 	}
 
 	return newVal, nil
