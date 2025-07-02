@@ -290,16 +290,18 @@ func (f *FlashNode) opCacheDelete(conn net.Conn, p *proto.Packet) (err error) {
 
 func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) {
 	bgTime := stat.BeginStat()
+	reqId := string(p.Arg)
+	logPrefix := fmt.Sprintf("action[opCachePutBlock] reqId(%v)", reqId)
 	defer func() {
 		stat.EndStat("FlashNode:opCachePutBlock", err, bgTime, 1)
 	}()
 	defer func() {
 		if err != nil {
-			log.LogWarnf("action[opCachePutBlock] end, logMsg:%s",
+			log.LogWarnf(logPrefix+" end, logMsg:%s",
 				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 			if e := p.WriteToConn(conn); e != nil {
-				log.LogErrorf("action[opCachePutBlock] write to conn %v", e)
+				log.LogErrorf(logPrefix+" write to conn %v", e)
 			}
 		}
 	}()
@@ -316,7 +318,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 	_, err1 := f.cacheEngine.PeekCacheBlock(blockKey)
 	if err1 == nil {
 		if log.EnableDebug() {
-			log.LogDebug("action[opCachePutBlock] check block key:"+uniKey+" logMsg:%s",
+			log.LogDebug(logPrefix+" check block key:"+uniKey+" logMsg:%s",
 				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 		}
 		err = fmt.Errorf("block %v already exsit", uniKey)
@@ -324,17 +326,21 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 	}
 	err1 = nil
 	if log.EnableDebug() {
-		log.LogDebug("action[opCachePutBlock] create block key:"+uniKey+" logMsg:%s",
+		log.LogDebug(logPrefix+" create block key:"+uniKey+" logMsg:%s",
 			p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 	}
 	allocSize := cachengine.CalcAllocSizeV2(int(req.BlockLen))
 	if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(allocSize), conn.RemoteAddr().String()); err2 != nil || created {
-		err = fmt.Errorf("already create block(%v)", cachengine.GenCacheBlockKeyV2(pDir, uniKey))
+		if err2 != nil {
+			err = fmt.Errorf("create block(%v) error %v", cachengine.GenCacheBlockKeyV2(pDir, uniKey), err2.Error())
+		} else {
+			err = fmt.Errorf("block(%v) already created", cachengine.GenCacheBlockKeyV2(pDir, uniKey))
+		}
 		return
 	} else {
 		p.PacketOkReply()
 		if err1 = p.WriteToConn(conn); err1 != nil {
-			log.LogErrorf("action[opCachePutBlock] write to conn %v", err1)
+			log.LogErrorf(logPrefix+" write to conn %v", err1)
 			return
 		}
 		bgTime1 := stat.BeginStat()
@@ -360,7 +366,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 					readSize = int(req.BlockLen - totalWritten)
 				}
 				if n, err1 = io.ReadFull(conn, buf[:writeLen]); err1 != nil {
-					log.LogWarnf("action[opCachePutBlock] read data and crc from conn %v", err1)
+					log.LogWarnf(logPrefix+" read data and crc from conn %v", err1)
 					return
 				}
 				if n != writeLen {
@@ -391,14 +397,14 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 				break
 			} else {
 				if err1 = p.WriteToConn(conn); err1 != nil {
-					log.LogErrorf("action[opCachePutBlock] reply to conn %v for write data", err1)
+					log.LogErrorf(logPrefix+" reply to conn %v for write data", err1)
 					break
 				}
 			}
 			totalWritten += int64(readSize)
 			if totalWritten == req.BlockLen {
 				if log.EnableDebug() {
-					log.LogDebugf("action[opCachePutBlock] total write %v", totalWritten)
+					log.LogDebugf(logPrefix+" total write %v", totalWritten)
 				}
 				break
 			}
