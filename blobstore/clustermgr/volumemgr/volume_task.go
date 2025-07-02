@@ -23,7 +23,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
+	apierrs "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -99,6 +101,16 @@ func (m *VolumeMgr) setVolumeStatus(task *volTask) error {
 			case base.VolumeTaskTypeUnlock:
 				msg = "readwrite"
 				e = m.blobNodeClient.SetChunkReadwrite(ctx, host, &arg)
+				errCode := rpc.DetectStatusCode(e)
+				if errCode == apierrs.CodeDiskNotFound || errCode == apierrs.CodeDiskBroken {
+					isDroppingDisk, err := m.diskMgr.IsDroppingDisk(ctx, diskID)
+					if err != nil {
+						span.Errorf("check disk[%d] is dropping failed, [task=%s blobnode=%s vuid=%d] error: %s", diskID, task, host, vuids[i], err)
+					} else if isDroppingDisk {
+						span.Warnf("skip dropping disk[%d] when meet blobnode return disk not found error", diskID)
+						e = nil
+					}
+				}
 			case base.VolumeTaskTypeUnlockForce:
 				msg = "readwrite"
 				e = m.blobNodeClient.SetChunkReadwrite(ctx, host, &arg)
