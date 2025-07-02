@@ -4,17 +4,16 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"sync/atomic"
+	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
 type FileSizeRange uint32
 
 type fileStatsConfig struct {
+	sync.RWMutex
 	fileStatsEnable bool
 	thresholds      []uint64
 	fileRangeLabels []string
@@ -33,39 +32,6 @@ const (
 const (
 	fileStatsCheckPeriod = 5 * time.Minute
 )
-
-func (mp *metaPartition) fileStats(ino *Inode) {
-	if mp.manager == nil {
-		return
-	}
-
-	conf := mp.manager.fileStatsConfig
-	if !conf.fileStatsEnable || !proto.IsRegular(ino.Type) || ino.NLink <= 0 {
-		return
-	}
-
-	if len(conf.thresholds) == 0 {
-		log.LogErrorf("[fileStats] Empty file stats thresholds configuration")
-		return
-	}
-
-	var index int
-	maxConfiguredSize := conf.thresholds[len(conf.thresholds)-1]
-	if ino.Size >= maxConfiguredSize {
-		index = len(conf.fileRangeLabels) - 1
-	} else {
-		index = sort.Search(len(conf.thresholds), func(i int) bool {
-			return ino.Size < conf.thresholds[i]
-		})
-	}
-
-	if index < 0 || index > len(conf.fileRangeLabels)-1 {
-		log.LogErrorf("[fileStats] index illegal, index: %d, file size: %d", index, ino.Size)
-		return
-	}
-
-	atomic.AddInt64(&mp.fileRange[index], 1)
-}
 
 func generateSizeLabels(thresholds []uint64) []string {
 	labels := make([]string, len(thresholds)+1)
@@ -99,9 +65,9 @@ func formatSize(bytes uint64) string {
 	}
 }
 
-func (m *metadataManager) updateFileStatsConfig(thresholds []uint64) error {
+func (m *metadataManager) updateFileStatsConfig(thresholds []uint64) bool {
 	if len(thresholds) == 0 {
-		return errors.New("at least one threshold needs to be configured")
+		return false
 	}
 
 	sort.Slice(thresholds, func(i, j int) bool {
@@ -109,7 +75,7 @@ func (m *metadataManager) updateFileStatsConfig(thresholds []uint64) error {
 	})
 
 	if reflect.DeepEqual(thresholds, m.fileStatsConfig.thresholds) {
-		return nil
+		return false
 	}
 
 	log.LogWarnf("[updateFileStatsConfig] thresholds changed, new thresholds: %v", thresholds)
@@ -125,29 +91,15 @@ func (m *metadataManager) updateFileStatsConfig(thresholds []uint64) error {
 
 	labels := generateSizeLabels(uniquethresholds)
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.fileStatsConfig.thresholds = uniquethresholds
 	m.fileStatsConfig.fileRangeLabels = labels
 
-	for _, p := range m.partitions {
-		if mp, ok := p.(*metaPartition); ok {
-			mp.fileRange = make([]int64, len(labels))
-		}
-	}
-
-	for _, p := range m.partitions {
-		if mp, ok := p.(*metaPartition); ok {
-			mp.doFileStats()
-		}
-	}
-
-	return nil
+	return true
 }
 
 func (m *metadataManager) initFileStatsConfig() {
 	m.fileStatsConfig = &fileStatsConfig{
-		fileStatsEnable: true,
+		fileStatsEnable: false,
 		thresholds: []uint64{
 			Size1K,
 			Size1M,
@@ -161,4 +113,12 @@ func (m *metadataManager) initFileStatsConfig() {
 			"<1K", "1K-1M", "1M-16M", "16M-32M", "32M-64M", "64M-128M", "128M-256M", ">256M",
 		},
 	}
+}
+
+func (m *metadataManager) GetFileStatsConfig() (thresholds []uint64, labels []string, enable bool) {
+	m.fileStatsConfig.RLock()
+	defer m.fileStatsConfig.RUnlock()
+	return m.fileStatsConfig.thresholds,
+		m.fileStatsConfig.fileRangeLabels,
+		m.fileStatsConfig.fileStatsEnable
 }
