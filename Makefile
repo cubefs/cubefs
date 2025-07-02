@@ -9,7 +9,7 @@ phony := all
 all: build
 
 phony += build server authtool client cli libsdkpre libsdk fsck fdstore preload bcache blobstore deploy
-build: server authtool client cli libsdk fsck fdstore preload bcache blobstore deploy
+build: server authtool client cli libsdk fsck fdstore preload bcache blobstore deploy bench
 
 server:
 	@build/build.sh server $(GOMOD) --threads=$(threads)
@@ -51,6 +51,8 @@ preload:
 
 bcache:
 	@build/build.sh bcache $(GOMOD) --threads=$(threads)
+bench:
+	@build/build.sh bench $(GOMOD) --threads=$(threads)
 
 phony += clean
 clean:
