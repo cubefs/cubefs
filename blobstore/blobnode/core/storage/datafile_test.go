@@ -782,6 +782,14 @@ func TestChunkData_BatchRead(t *testing.T) {
 	n, err = io.ReadFull(all, data)
 	require.ErrorIs(t, err, io.EOF)
 	require.Equal(t, 0, n)
+
+	batchShard, err = core.NewBatchShardReader([]bnapi.BidInfo{}, 12, nil, diskConfig.BatchBufferSize)
+	require.NoError(t, err)
+	rc, err = cd.BatchRead(ctx, batchShard)
+	require.NoError(t, err)
+	all.Reset()
+	_, err = rc.WriteTo(all)
+	require.ErrorIs(t, err, nil)
 }
 
 func TestChunkData_ReadWrite(t *testing.T) {

@@ -67,6 +67,9 @@ func (d *shardsDecoder) WriteTo(w io.Writer) (n int64, err error) {
 		d.idx = 0
 		err = d.readNextSeg()
 		if err != nil {
+			if err == io.EOF {
+				return 0, nil
+			}
 			return
 		}
 	}
@@ -119,8 +122,8 @@ type segment struct {
 
 // threshold is threshold of trash data size to real data size of the segment
 func (d *shardsDecoder) findContiguousSegments() []segment {
-	if len(d.bids) <= 1 {
-		return []segment{{0, 0}}
+	if len(d.bids) == 0 {
+		return []segment{}
 	}
 
 	bidInfos := d.bids
