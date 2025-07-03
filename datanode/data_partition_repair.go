@@ -745,7 +745,7 @@ func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExten
 RETRY:
 	err := dp.streamRepairExtent(remoteExtentInfo, repl.NewTinyExtentRepairReadPacket, repl.NewExtentRepairReadPacket, repl.NewNormalExtentWithHoleRepairReadPacket, repl.NewPacketEx)
 	if err != nil {
-		if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) || strings.Contains(err.Error(), tinyOffsetInvalid) {
+		if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) || strings.Contains(err.Error(), tinyOffsetInvalid) || strings.Contains(err.Error(), "timeout") {
 			log.LogWarnf("action[DoRepair] retry dp(%v) extent(%v). err %s ", dp.partitionID, remoteExtentInfo.FileID, err.Error())
 			goto RETRY
 		}

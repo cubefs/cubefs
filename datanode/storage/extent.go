@@ -874,8 +874,8 @@ func (e *Extent) getExtentWithHoleAvailableOffset(offset int64) (newOffset, newE
 	if err != nil {
 		return
 	}
-	if newOffset-offset > util.BlockSize {
-		newOffset = offset + util.BlockSize
+	if newOffset-offset > util.ExtentSize {
+		newOffset = offset + util.ExtentSize
 	}
 	if newEnd-newOffset > util.BlockSize {
 		newEnd = newOffset + util.BlockSize
