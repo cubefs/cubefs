@@ -19,9 +19,9 @@ import (
 	"io"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/stretchr/testify/require"
 
-	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -29,12 +29,12 @@ import (
 )
 
 type mockBrokenMeta struct {
-	id bnapi.ChunkId
+	id clustermgr.ChunkID
 }
 
 type mockBrokenData struct{}
 
-func (mm *mockBrokenMeta) ID() bnapi.ChunkId {
+func (mm *mockBrokenMeta) ID() clustermgr.ChunkID {
 	return mm.id
 }
 
@@ -115,13 +115,13 @@ func (mm *mockBrokenData) Close() {
 
 func TestReplStorage_Operations(t *testing.T) {
 	stg := NewStorage(&mockmeta{
-		id:   bnapi.ChunkId{0x1},
+		id:   clustermgr.ChunkID{0x1},
 		bids: map[proto.BlobID]core.ShardMeta{},
 	}, &mockdata{})
 	require.NotNil(t, stg)
 
 	stg1 := NewStorage(&mockmeta{
-		id:   bnapi.ChunkId{0x1},
+		id:   clustermgr.ChunkID{0x1},
 		bids: map[proto.BlobID]core.ShardMeta{},
 	}, &mockdata{})
 	require.NotNil(t, stg)

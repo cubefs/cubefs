@@ -23,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func delFile(c *grumble.Context) error {
@@ -48,7 +49,7 @@ func delFile(c *grumble.Context) error {
 		return nil
 	}
 	deleteArgs := &access.DeleteArgs{
-		Locations: []access.Location{location},
+		Locations: []proto.Location{location},
 	}
 	_, err = client.Delete(common.CmdContext(), deleteArgs)
 	if err != nil {

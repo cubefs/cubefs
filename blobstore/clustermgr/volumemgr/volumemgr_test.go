@@ -29,10 +29,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
@@ -94,13 +93,13 @@ func initMockVolumeMgr(t testing.TB) (*VolumeMgr, func()) {
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockConfigMgr := mock.NewMockConfigMgrAPI(ctr)
-	mockDiskMgr := NewMockDiskMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 
 	// mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(true)
 	mockConfigMgr.EXPECT().Delete(gomock.Any(), "mockKey").AnyTimes().Return(nil)
 	mockConfigMgr.EXPECT().Get(gomock.Any(), proto.VolumeReserveSizeKey).AnyTimes().Return("2097152", nil)
 	mockConfigMgr.EXPECT().Get(gomock.Any(), proto.VolumeChunkSizeKey).AnyTimes().Return("17179869184", nil)
-	mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
+	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 
@@ -123,11 +122,13 @@ func mockIsDiskWritable(_ context.Context, id proto.DiskID) (bool, error) {
 	return id != proto.DiskID(29), nil
 }
 
-func mockGetDiskInfo(_ context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-	return &blobnode.DiskInfo{
-		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{DiskID: id},
-		Idc:               "z0",
-		Host:              "127.0.0.1",
+func mockGetDiskInfo(_ context.Context, id proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
+	return &clustermgr.BlobNodeDiskInfo{
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: id},
+		DiskInfo: clustermgr.DiskInfo{
+			Idc:  "z0",
+			Host: "127.0.0.1",
+		},
 	}, nil
 }
 
@@ -269,7 +270,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockConfigMgr := mock.NewMockConfigMgrAPI(ctr)
-	mockDiskMgr := NewMockDiskMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 
 	codeModeConfg := []codemode.Policy{
 		{
@@ -305,7 +306,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockConfigMgr.EXPECT().Get(gomock.Any(), proto.VolumeChunkSizeKey).AnyTimes().Return("17179869184", nil)
 	mockConfigMgr.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 
-	mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 100})
+	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 100})
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, nil)
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 
@@ -319,7 +320,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(true)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(uint64(31), uint64(31), nil)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
+	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		var diskids []proto.DiskID
 		for i := range policy.Vuids {
 			diskids = append(diskids, proto.DiskID(i+1))

@@ -28,6 +28,7 @@ import (
 	"github.com/hashicorp/consul/api"
 	"gopkg.in/natefinch/lumberjack.v2"
 
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
@@ -88,8 +89,6 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 		Tc: rpc.TransportConfig{
 			// dial timeout
 			DialTimeoutMs: 200,
-			// response header timeout after send the request
-			ResponseHeaderTimeoutMs: 5 * 1000,
 			// IdleConnTimeout is the maximum amount of time an idle
 			// (keep-alive) connection will remain idle before closing
 			// itself.Zero means no limit.
@@ -107,29 +106,21 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 		config.ClientTimeoutMs = getTimeout(getSpeed(40))
 		config.BodyBandwidthMBPs = getSpeed(40)
 		config.BodyBaseTimeoutMs = getBaseTimeout(3 * 1000)
-		config.Tc.DialTimeoutMs = 100
-		config.Tc.ResponseHeaderTimeoutMs = 2 * 1000
 		config.Tc.IdleConnTimeoutMs = 10 * 1000
 	case GeneralConnMode:
 		config.ClientTimeoutMs = getTimeout(getSpeed(20))
 		config.BodyBandwidthMBPs = getSpeed(20)
 		config.BodyBaseTimeoutMs = getBaseTimeout(10 * 1000)
-		config.Tc.DialTimeoutMs = 100
-		config.Tc.ResponseHeaderTimeoutMs = 3 * 1000
 		config.Tc.IdleConnTimeoutMs = 30 * 1000
 	case SlowConnMode:
 		config.ClientTimeoutMs = getTimeout(getSpeed(4))
 		config.BodyBandwidthMBPs = getSpeed(4)
 		config.BodyBaseTimeoutMs = getBaseTimeout(120 * 1000)
-		config.Tc.DialTimeoutMs = 200
-		config.Tc.ResponseHeaderTimeoutMs = 10 * 1000
 		config.Tc.IdleConnTimeoutMs = 60 * 1000
 	case NoLimitConnMode:
 		config.ClientTimeoutMs = 0
 		config.BodyBandwidthMBPs = getSpeed(0)
 		config.BodyBaseTimeoutMs = getBaseTimeout(0)
-		config.Tc.DialTimeoutMs = 0
-		config.Tc.ResponseHeaderTimeoutMs = 0
 		config.Tc.IdleConnTimeoutMs = 600 * 1000
 	default:
 	}
@@ -140,53 +131,53 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 // Config access client config
 type Config struct {
 	// ConnMode rpc connection timeout setting
-	ConnMode RPCConnectMode
+	ConnMode RPCConnectMode `json:"connection_mode"`
 	// ClientTimeoutMs the whole request and response timeout
-	ClientTimeoutMs int64
+	ClientTimeoutMs int64 `json:"client_timeout_ms"`
 	// BodyBandwidthMBPs reading body timeout, request or response
 	//   timeout = ContentLength/BodyBandwidthMBPs + BodyBaseTimeoutMs
-	BodyBandwidthMBPs float64
+	BodyBandwidthMBPs float64 `json:"body_bandwidth_mbps"`
 	// BodyBaseTimeoutMs base timeout for read body
-	BodyBaseTimeoutMs int64
+	BodyBaseTimeoutMs int64 `json:"body_base_timeout_ms"`
 
 	// Consul is consul config for discovering service
-	Consul ConsulConfig
+	Consul ConsulConfig `json:"consul"`
 	// ServiceIntervalS is interval seconds for discovering service hosts,
 	//   at least 5 seconds and default is 5 minutes.
-	ServiceIntervalS int
+	ServiceIntervalS int `json:"service_interval_s"`
 	// PriorityAddrs priority addrs of access service when retry
-	PriorityAddrs []string
+	PriorityAddrs []string `json:"priority_addrs"`
 	// MaxSizePutOnce max size using once-put object interface, default is 256MB.
-	MaxSizePutOnce int64
+	MaxSizePutOnce int64 `json:"max_size_put_once"`
 	// MaxPartRetry max retry times when putting one part, 0 means forever
-	MaxPartRetry int
+	MaxPartRetry int `json:"max_part_retry"`
 	// MaxHostRetry max retry hosts of access, default all hosts.
-	MaxHostRetry int
+	MaxHostRetry int `json:"max_host_retry"`
 	// PartConcurrence concurrence of put parts
-	PartConcurrence int
+	PartConcurrence int `json:"part_concurrence"`
 
 	// rpc selector config
 	// Failure retry interval, default value is 300s,
 	// if FailRetryIntervalS < 0, remove failed hosts will not work.
-	FailRetryIntervalS int
+	FailRetryIntervalS int `json:"fail_retry_interval_s"`
 	// Within MaxFailsPeriodS, if the number of failures is greater than or equal to MaxFails,
 	// the host is considered disconnected.
-	MaxFailsPeriodS int
+	MaxFailsPeriodS int `json:"max_fails_period_s"`
 	// HostTryTimes Number of host failure retries
-	HostTryTimes int
+	HostTryTimes int `json:"host_try_times"`
 
 	// RPCConfig user-defined rpc config
 	// All connections will use the config if it's not nil
 	// ConnMode will be ignored if rpc config is setting
-	RPCConfig *rpc.Config
+	RPCConfig *rpc.Config `json:"rpc_config"`
 
 	// LogLevel client output logging level.
-	LogLevel log.Level
+	LogLevel log.Level `json:"log_level"`
 
 	// Logger trace all logging to the logger if setting.
 	// It is an io.WriteCloser that writes to the specified filename.
 	// YOU should CLOSE it after you do not use the client anymore.
-	Logger *Logger
+	Logger *Logger `json:"logger"`
 }
 
 // ConsulConfig alias of consul api.Config
@@ -212,7 +203,7 @@ type API interface {
 	//
 	// If PutArgs' body is of type *bytes.Buffer, *bytes.Reader, or *strings.Reader,
 	// GetBody is populated, then the Put once request has retry ability.
-	Put(ctx context.Context, args *PutArgs) (location Location, hashSumMap HashSumMap, err error)
+	Put(ctx context.Context, args *PutArgs) (location proto.Location, hashSumMap HashSumMap, err error)
 	// Get object, range is supported.
 	Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, err error)
 	// Delete all blobs in these locations.
@@ -221,7 +212,15 @@ type API interface {
 	// - (nil, nil): all blobs deleted successfully.
 	// - (nil, ErrIllegalArguments): when args is invalid.
 	// - (failedLocations, err): returns the list of locations that have not yet been deleted.
-	Delete(ctx context.Context, args *DeleteArgs) (failedLocations []Location, err error)
+	Delete(ctx context.Context, args *DeleteArgs) (failedLocations []proto.Location, err error)
+}
+
+type Client interface {
+	API
+	ListBlob(ctx context.Context, args *ListBlobArgs) (shardnode.ListBlobRet, error)
+	GetBlob(ctx context.Context, args *GetBlobArgs) (io.ReadCloser, error)
+	DeleteBlob(ctx context.Context, args *DelBlobArgs) error
+	PutBlob(ctx context.Context, args *PutBlobArgs) (proto.ClusterID, HashSumMap, error)
 }
 
 var _ API = (*client)(nil)
@@ -391,13 +390,13 @@ func getClient(cfg *Config, hosts []string) rpc.Client {
 	return rpc.NewLbClient(lbConfig, nil)
 }
 
-func (c *client) Put(ctx context.Context, args *PutArgs) (location Location, hashSumMap HashSumMap, err error) {
+func (c *client) Put(ctx context.Context, args *PutArgs) (location proto.Location, hashSumMap HashSumMap, err error) {
 	if args.Size == 0 {
 		hashSumMap := args.Hashes.ToHashSumMap()
 		for alg := range hashSumMap {
 			hashSumMap[alg] = alg.ToHasher().Sum(nil)
 		}
-		return Location{Blobs: make([]SliceInfo, 0)}, hashSumMap, nil
+		return proto.Location{Slices: make([]proto.Slice, 0)}, hashSumMap, nil
 	}
 
 	ctx = withReqidContext(ctx)
@@ -407,7 +406,7 @@ func (c *client) Put(ctx context.Context, args *PutArgs) (location Location, has
 	return c.putParts(ctx, args)
 }
 
-func (c *client) putObject(ctx context.Context, args *PutArgs) (location Location, hashSumMap HashSumMap, err error) {
+func (c *client) putObject(ctx context.Context, args *PutArgs) (location proto.Location, hashSumMap HashSumMap, err error) {
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
 	urlStr := fmt.Sprintf("/put?size=%d&hashes=%d", args.Size, args.Hashes)
@@ -510,7 +509,7 @@ func (c *client) readerPipeline(span trace.Span, reqBody io.Reader,
 	return ch
 }
 
-func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSumMap, error) {
+func (c *client) putParts(ctx context.Context, args *PutArgs) (proto.Location, HashSumMap, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
@@ -526,7 +525,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 	}
 
 	var (
-		loc    Location
+		loc    proto.Location
 		tokens []string
 	)
 
@@ -544,7 +543,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 			signArgs.Location = loc.Copy()
 			signResp := &SignResp{}
 			if err := rpcClient.PostWith(newCtx, "/sign", signResp, signArgs); err == nil {
-				locations = []Location{signResp.Location.Copy()}
+				locations = []proto.Location{signResp.Location.Copy()}
 			}
 		}
 		if len(locations) > 0 {
@@ -565,7 +564,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 
 	// buffer pipeline
 	closeCh := make(chan struct{})
-	bufferPipe := c.readerPipeline(span, reqBody, closeCh, int(loc.Size), int(loc.BlobSize))
+	bufferPipe := c.readerPipeline(span, reqBody, closeCh, int(loc.Size_), int(loc.SliceSize))
 	defer func() {
 		close(closeCh)
 		// waiting pipeline close if has error
@@ -584,17 +583,17 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 
 	currBlobIdx := 0
 	currBlobCount := uint32(0)
-	remainSize := loc.Size
+	remainSize := loc.Size_
 	restPartsLoc := loc
 
 	readSize := 0
-	for readSize < int(loc.Size) {
+	for readSize < int(loc.Size_) {
 		parts := make([]blobPart, 0, c.config.PartConcurrence)
 
 		// waiting at least one blob
 		buf, ok := <-bufferPipe
-		if !ok && readSize < int(loc.Size) {
-			return Location{}, nil, errcode.ErrAccessReadRequestBody
+		if !ok && readSize < int(loc.Size_) {
+			return proto.Location{}, nil, errcode.ErrAccessReadRequestBody
 		}
 		readSize += len(buf)
 		parts = append(parts, blobPart{size: len(buf), buf: buf})
@@ -604,9 +603,9 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 			select {
 			case buf, ok := <-bufferPipe:
 				if !ok {
-					if readSize < int(loc.Size) {
+					if readSize < int(loc.Size_) {
 						releaseBuffer(parts)
-						return Location{}, nil, errcode.ErrAccessReadRequestBody
+						return proto.Location{}, nil, errcode.ErrAccessReadRequestBody
 					}
 					more = false
 				} else {
@@ -620,9 +619,9 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 
 		tryTimes := c.config.MaxPartRetry
 		for {
-			if len(loc.Blobs) > MaxLocationBlobs {
+			if len(loc.Slices) > MaxLocationBlobs {
 				releaseBuffer(parts)
-				return Location{}, nil, errcode.ErrUnexpected
+				return proto.Location{}, nil, errcode.ErrUnexpected
 			}
 
 			// feed new params
@@ -630,16 +629,16 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 			currCount := currBlobCount
 			for i := range parts {
 				token := tokens[currIdx]
-				if restPartsLoc.Size > uint64(loc.BlobSize) && parts[i].size < int(loc.BlobSize) {
-					token = tokens[currIdx+1]
+				if restPartsLoc.Size_ > uint64(loc.SliceSize) && parts[i].size < int(loc.SliceSize) {
+					token = tokens[len(tokens)-1]
 				}
 				parts[i].token = token
 				parts[i].cid = loc.ClusterID
-				parts[i].vid = loc.Blobs[currIdx].Vid
-				parts[i].bid = loc.Blobs[currIdx].MinBid + proto.BlobID(currCount)
+				parts[i].vid = loc.Slices[currIdx].Vid
+				parts[i].bid = loc.Slices[currIdx].MinSliceID + proto.BlobID(currCount)
 
 				currCount++
-				if loc.Blobs[currIdx].Count == currCount {
+				if loc.Slices[currIdx].Count == currCount {
 					currIdx++
 					currCount = 0
 				}
@@ -651,7 +650,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 					remainSize -= uint64(part.size)
 					currBlobCount++
 					// next blobs
-					if loc.Blobs[currBlobIdx].Count == currBlobCount {
+					if loc.Slices[currBlobIdx].Count == currBlobCount {
 						currBlobIdx++
 						currBlobCount = 0
 					}
@@ -665,7 +664,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 				if tryTimes == 1 {
 					releaseBuffer(parts)
 					span.Error("exceed the max retry limit", c.config.MaxPartRetry)
-					return Location{}, nil, errcode.ErrUnexpected
+					return proto.Location{}, nil, errcode.ErrUnexpected
 				}
 				tryTimes--
 			}
@@ -676,14 +675,14 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 				resp := &AllocResp{}
 				if err := rpcClient.PostWith(ctx, "/alloc", resp, AllocArgs{
 					Size:            remainSize,
-					BlobSize:        loc.BlobSize,
+					BlobSize:        loc.SliceSize,
 					CodeMode:        loc.CodeMode,
 					AssignClusterID: loc.ClusterID,
 				}); err != nil {
 					return true, err
 				}
-				if len(resp.Location.Blobs) > 0 {
-					if newVid := resp.Location.Blobs[0].Vid; newVid == loc.Blobs[currBlobIdx].Vid {
+				if len(resp.Location.Slices) > 0 {
+					if newVid := resp.Location.Slices[0].Vid; newVid == loc.Slices[currBlobIdx].Vid {
 						return false, fmt.Errorf("alloc the same vid %d", newVid)
 					}
 				}
@@ -693,17 +692,17 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 			if err != nil {
 				releaseBuffer(parts)
 				span.Error("alloc another parts to put", err)
-				return Location{}, nil, errcode.ErrUnexpected
+				return proto.Location{}, nil, err
 			}
 
 			restPartsLoc = restPartsResp.Location
 			signArgs.Locations = append(signArgs.Locations, restPartsLoc.Copy())
 
 			if currBlobCount > 0 {
-				loc.Blobs[currBlobIdx].Count = currBlobCount
+				loc.Slices[currBlobIdx].Count = currBlobCount
 				currBlobIdx++
 			}
-			loc.Blobs = append(loc.Blobs[:currBlobIdx], restPartsLoc.Blobs...)
+			loc.Slices = append(loc.Slices[:currBlobIdx], restPartsLoc.Slices...)
 			tokens = append(tokens[:currBlobIdx], restPartsResp.Tokens...)
 
 			currBlobCount = 0
@@ -718,7 +717,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 		signResp := &SignResp{}
 		if err := rpcClient.PostWith(ctx, "/sign", signResp, signArgs); err != nil {
 			span.Error("sign location with crc", err)
-			return Location{}, nil, errcode.ErrUnexpected
+			return proto.Location{}, nil, err
 		}
 		loc = signResp.Location
 	}
@@ -737,7 +736,7 @@ func (c *client) Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, er
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
 	ctx = withReqidContext(ctx)
-	if args.Location.Size == 0 || args.ReadSize == 0 {
+	if args.Location.Size_ == 0 || args.ReadSize == 0 {
 		return noopBody{}, nil
 	}
 
@@ -752,7 +751,7 @@ func (c *client) Get(ctx context.Context, args *GetArgs) (body io.ReadCloser, er
 	return resp.Body, nil
 }
 
-func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, error) {
+func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]proto.Location, error) {
 	if !args.IsValid() {
 		if args == nil {
 			return nil, errcode.ErrIllegalArguments
@@ -762,9 +761,9 @@ func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]Location, erro
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
 	ctx = withReqidContext(ctx)
-	locations := make([]Location, 0, len(args.Locations))
+	locations := make([]proto.Location, 0, len(args.Locations))
 	for _, loc := range args.Locations {
-		if loc.Size > 0 {
+		if loc.Size_ > 0 {
 			locations = append(locations, loc.Copy())
 		}
 	}

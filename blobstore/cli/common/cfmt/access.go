@@ -21,31 +21,32 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 // ParseLocation parst location from json or string
-func ParseLocation(jsonORstr string) (access.Location, error) {
-	var loc access.Location
+func ParseLocation(jsonORstr string) (proto.Location, error) {
+	var loc proto.Location
 	var err error
 	if err = common.Unmarshal([]byte(jsonORstr), &loc); err == nil {
 		return loc, nil
 	}
-	if loc, err = access.DecodeLocationFromHex(jsonORstr); err == nil {
+	if loc, err = proto.DecodeLocationFromHex(jsonORstr); err == nil {
 		return loc, nil
 	}
-	if loc, err = access.DecodeLocationFromBase64(jsonORstr); err == nil {
+	if loc, err = proto.DecodeLocationFromBase64(jsonORstr); err == nil {
 		return loc, nil
 	}
 	return loc, fmt.Errorf("invalid (%s) %s", jsonORstr, err.Error())
 }
 
 // LocationJoin join line into string
-func LocationJoin(loc *access.Location, prefix string) string {
+func LocationJoin(loc *proto.Location, prefix string) string {
 	return joinWithPrefix(prefix, LocationF(loc))
 }
 
 // LocationF fmt pointer of Location
-func LocationF(loc *access.Location) (vals []string) {
+func LocationF(loc *proto.Location) (vals []string) {
 	if loc == nil {
 		return nilStrings[:]
 	}
@@ -54,16 +55,16 @@ func LocationF(loc *access.Location) (vals []string) {
 		fmt.Sprintf("Crc        : %-12d (0x%x)", loc.Crc, loc.Crc),
 		fmt.Sprintf("ClusterID  : %d", loc.ClusterID),
 		fmt.Sprintf("CodeMode   : %-12d (%s)", loc.CodeMode, loc.CodeMode.String()),
-		fmt.Sprintf("Size       : %-12d (%s)", loc.Size, humanize.IBytes(loc.Size)),
-		fmt.Sprintf("BlobSize   : %-12d (%s)", loc.BlobSize, humanize.IBytes(uint64(loc.BlobSize))),
-		fmt.Sprintf("Blobs: (%d) [", len(loc.Blobs)),
+		fmt.Sprintf("Size_       : %-12d (%s)", loc.Size_, humanize.IBytes(loc.Size_)),
+		fmt.Sprintf("SliceSize   : %-12d (%s)", loc.SliceSize, humanize.IBytes(uint64(loc.SliceSize))),
+		fmt.Sprintf("Slices: (%d) [", len(loc.Slices)),
 	}...)
-	for idx, blob := range loc.Blobs {
-		vals = append(vals, fmt.Sprintf(" >:%3d| MinBid: %-20d Vid: %-10d Count: %-10d",
-			idx, blob.MinBid, blob.Vid, blob.Count))
+	for idx, blob := range loc.Slices {
+		vals = append(vals, fmt.Sprintf(" >:%3d| MinSliceID: %-20d Vid: %-10d Count: %-10d",
+			idx, blob.MinSliceID, blob.Vid, blob.Count))
 	}
 	vals = append(vals, "]")
-	vals = append(vals, fmt.Sprintf("--> Encode: %d of %d bytes", len(loc.Encode()), 21+16*len(loc.Blobs)))
+	vals = append(vals, fmt.Sprintf("--> Encode: %d of %d bytes", len(loc.Encode()), 21+16*len(loc.Slices)))
 	vals = append(vals, fmt.Sprintf("--> Hex   : %s", loc.HexString()))
 	vals = append(vals, fmt.Sprintf("--> Base64: %s", loc.Base64String()))
 	return

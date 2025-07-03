@@ -240,11 +240,17 @@ func cmdGetMigratingProgress(c *grumble.Context) error {
 	return nil
 }
 
-func printMigrateTask(task *proto.MigrateTask) {
+func printMigrateTask(t *proto.Task) {
 	type MigrateTaskSimple struct {
 		ID       string             `json:"id"`
 		TaskType proto.TaskType     `json:"task_type"`
 		State    proto.MigrateState `json:"state"`
+	}
+
+	task := &proto.MigrateTask{}
+	err := t.Unmarshal(t.Data)
+	if err != nil {
+		return
 	}
 
 	taskSimple := MigrateTaskSimple{

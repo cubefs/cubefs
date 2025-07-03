@@ -32,7 +32,7 @@ import (
 
 // IAllocVunit define the interface of clustermgr used for volume alloc
 type IAllocVunit interface {
-	AllocVolumeUnit(ctx context.Context, vuid comproto.Vuid) (ret *client.AllocVunitInfo, err error)
+	AllocVolumeUnit(ctx context.Context, vuid comproto.Vuid, excludes []comproto.DiskID) (ret *client.AllocVunitInfo, err error)
 }
 
 // AllocVunitSafe alloc volume unit safe
@@ -41,10 +41,11 @@ func AllocVunitSafe(
 	cli IAllocVunit,
 	vuid comproto.Vuid,
 	volReplicas []comproto.VunitLocation,
+	excludes []comproto.DiskID,
 ) (ret *client.AllocVunitInfo, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	allocVunit, err := cli.AllocVolumeUnit(ctx, vuid)
+	allocVunit, err := cli.AllocVolumeUnit(ctx, vuid, excludes)
 	if err != nil {
 		return nil, err
 	}
@@ -63,6 +64,31 @@ func AllocVunitSafe(
 	return allocVunit, nil
 }
 
+type IAllocShardUnit interface {
+	AllocShardUnit(ctx context.Context, suid comproto.Suid, excludes []comproto.DiskID) (ret *client.AllocShardUnitInfo, err error)
+}
+
+// AllocShardUnitSafe alloc volume unit safe
+func AllocShardUnitSafe(
+	ctx context.Context,
+	cli IAllocShardUnit,
+	src, dest comproto.ShardUnitInfoSimple,
+	excludes []comproto.DiskID,
+) (ret *client.AllocShardUnitInfo, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	allocShardUnit, err := cli.AllocShardUnit(ctx, src.Suid, excludes)
+	if err != nil {
+		return nil, err
+	}
+
+	if allocShardUnit.DiskID == src.DiskID || allocShardUnit.DiskID == dest.DiskID {
+		span.Panic("alloc shad unit and others units are on same disk")
+	}
+
+	return allocShardUnit, nil
+}
+
 // Subtraction c = a - b
 func Subtraction(a, b []comproto.Vuid) (c []comproto.Vuid) {
 	m := make(map[comproto.Vuid]struct{})
@@ -73,6 +99,21 @@ func Subtraction(a, b []comproto.Vuid) (c []comproto.Vuid) {
 	for _, vuid := range a {
 		if _, ok := m[vuid]; !ok {
 			c = append(c, vuid)
+		}
+	}
+	return c
+}
+
+// SubSuids c = a - b
+func SubSuids(a, b []comproto.Suid) (c []comproto.Suid) {
+	m := make(map[comproto.Suid]struct{})
+	for _, suid := range b {
+		m[suid] = struct{}{}
+	}
+
+	for _, suid := range a {
+		if _, ok := m[suid]; !ok {
+			c = append(c, suid)
 		}
 	}
 	return c
@@ -113,11 +154,14 @@ func bytesCntFormat(bytesCnt int) string {
 
 // ShouldAllocAndRedo return true if should alloc and redo task
 func ShouldAllocAndRedo(errCode int) bool {
-	if errCode == errors.CodeNewVuidNotMatch ||
-		errCode == errors.CodeStatChunkFailed {
-		return true
-	}
-	return false
+	return errCode == errors.CodeNewVuidNotMatch ||
+		errCode == errors.CodeStatChunkFailed
+}
+
+// ShouldAllocShardUnitAndRedo return true if should alloc and redo task
+func ShouldAllocShardUnitAndRedo(errCode int) bool {
+	return errCode == errors.CodeNewSuidNotMatch ||
+		errCode == errors.CodeCMGetShardFailed
 }
 
 func InsistOn(ctx context.Context, errMsg string, on func() error) {

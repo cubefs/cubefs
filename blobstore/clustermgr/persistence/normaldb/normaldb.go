@@ -22,23 +22,41 @@ var (
 	nodeCF             = "node"
 	configCF           = "config"
 	diskDropCF         = "disk_drop"
+	nodeDropCF         = "node_drop"
 	serviceCF          = "service"
 	diskStatusIndexCF  = "disk-status"
 	diskHostIndexCF    = "disk-host"
 	diskIDCIndexCF     = "disk-idc"
 	diskIDCRackIndexCF = "disk-idc-rack"
 
+	shardNodeDiskCF             = "sn-disk"
+	shardNodeCF                 = "shard-node"
+	shardNodeDiskStatusIndexCF  = "sn-disk-status"
+	shardNodeDiskHostIndexCF    = "sn-disk-host"
+	shardNodeDiskIDCIndexCF     = "sn-disk-idc"
+	shardNodeDiskIDCRackIndexCF = "sn-disk-idc-rack"
+	shardNodeDiskDropCF         = "sn-disk-drop"
+
 	normalDBCfs = []string{
 		scopeCF,
 		diskCF,
 		nodeCF,
 		diskDropCF,
+		nodeDropCF,
 		configCF,
 		serviceCF,
 		diskStatusIndexCF,
 		diskHostIndexCF,
 		diskIDCIndexCF,
 		diskIDCRackIndexCF,
+
+		shardNodeDiskCF,
+		shardNodeCF,
+		shardNodeDiskStatusIndexCF,
+		shardNodeDiskHostIndexCF,
+		shardNodeDiskIDCIndexCF,
+		shardNodeDiskIDCRackIndexCF,
+		shardNodeDiskDropCF,
 	}
 )
 

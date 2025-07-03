@@ -50,6 +50,15 @@ var (
 		},
 		[]string{"region", "cluster", "is_leader", "item"},
 	)
+	shardNodeDiskHeartbeatChangeMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "clusterMgr",
+			Name:      "shardnode_disk_heartbeat_change",
+			Help:      "shardnode disk heartbeat change",
+		},
+		[]string{"region", "cluster"},
+	)
 )
 
 func init() {
@@ -79,4 +88,9 @@ func (s *Service) reportInConsistentVols(vids []proto.Vid) {
 	for _, vid := range vids {
 		VolInconsistencyMetric.WithLabelValues(s.Region, s.ClusterID.ToString(), isLeader, "vid").Set(float64(vid))
 	}
+}
+
+func (s *Service) reportShardNodeHeartbeatChange(num float64) {
+	shardNodeDiskHeartbeatChangeMetric.Reset()
+	shardNodeDiskHeartbeatChangeMetric.WithLabelValues(s.Region, s.ClusterID.ToString()).Set(num)
 }

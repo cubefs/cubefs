@@ -37,16 +37,16 @@ func (m *MockAllocVunit) EXPECT() *MockAllocVunitMockRecorder {
 }
 
 // AllocVolumeUnit mocks base method.
-func (m *MockAllocVunit) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid) (*client.AllocVunitInfo, error) {
+func (m *MockAllocVunit) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid, arg2 []proto.DiskID) (*client.AllocVunitInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AllocVolumeUnit", arg0, arg1)
+	ret := m.ctrl.Call(m, "AllocVolumeUnit", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*client.AllocVunitInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AllocVolumeUnit indicates an expected call of AllocVolumeUnit.
-func (mr *MockAllocVunitMockRecorder) AllocVolumeUnit(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockAllocVunitMockRecorder) AllocVolumeUnit(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeUnit", reflect.TypeOf((*MockAllocVunit)(nil).AllocVolumeUnit), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeUnit", reflect.TypeOf((*MockAllocVunit)(nil).AllocVolumeUnit), arg0, arg1, arg2)
 }

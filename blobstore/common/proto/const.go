@@ -27,6 +27,7 @@ const (
 	ServiceNameBlobNode  = "BLOBNODE"
 	ServiceNameProxy     = "PROXY"
 	ServiceNameScheduler = "SCHEDULER"
+	ServiceNameShardNode = "SHARDNODE"
 )
 
 type (
@@ -34,6 +35,8 @@ type (
 	NodeStatus uint8
 	DiskType   uint8
 	NodeRole   uint8
+
+	CatalogChangeItemType uint8
 )
 
 // disk status
@@ -179,6 +182,9 @@ const (
 	InvalidCrc32  = uint32(0)
 	InvalidVid    = Vid(0)
 	InvalidVuid   = Vuid(0)
+
+	InvalidSpaceID      = SpaceID(0)
+	InvalidRouteVersion = RouteVersion(0)
 )
 
 const (
@@ -223,11 +229,22 @@ const (
 	VolumeChunkSizeKey       = "volume_chunk_size"
 	VolumeOverboughtRatioKey = "volume_overbought_ratio"
 	ChunkOversoldRatioKey    = "chunk_oversold_ratio"
+	ShardInitDoneKey         = "shard_init_done"
 )
 
 func IsSysConfigKey(key string) bool {
 	switch key {
-	case VolumeChunkSizeKey, VolumeReserveSizeKey, CodeModeConfigKey,
+	case VolumeChunkSizeKey, VolumeReserveSizeKey, CodeModeConfigKey, ShardInitDoneKey,
+		VolumeOverboughtRatioKey, ChunkOversoldRatioKey:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsUnmodifiableSysConfigKey(key string) bool {
+	switch key {
+	case VolumeChunkSizeKey, CodeModeConfigKey, ShardInitDoneKey,
 		VolumeOverboughtRatioKey, ChunkOversoldRatioKey:
 		return true
 	default:
@@ -253,3 +270,12 @@ func (t TaskSwitch) Valid() bool {
 func (t TaskSwitch) String() string {
 	return string(t)
 }
+
+// MaxShardSize max size of a single shard
+const MaxShardSize = 512 << 20
+
+// catalog changeItem type
+const (
+	CatalogChangeItemAddShard = CatalogChangeItemType(iota + 1)
+	CatalogChangeItemUpdateShard
+)
