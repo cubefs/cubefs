@@ -49,44 +49,32 @@ const (
 	LostDiskCount  = 3
 )
 
-func readFormatInfo(ctx context.Context, diskRootPath string) (
-	formatInfo *core.FormatInfo, err error,
-) {
-	span := trace.SpanFromContextSafe(ctx)
-	_, err = os.ReadDir(diskRootPath)
-	if err != nil {
-		span.Errorf("read disk root path error:%s", diskRootPath)
-		return nil, err
+func NewService(conf Config) (svr *Service, err error) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
+
+	configInit(&conf)
+
+	clusterMgrCli := cmapi.New(conf.Clustermgr)
+
+	svr = &Service{
+		ClusterMgrClient: clusterMgrCli,
+		Disks:            make(map[proto.DiskID]core.DiskAPI),
+		Conf:             &conf,
+		closeCh:          make(chan struct{}),
 	}
-	formatInfo, err = core.ReadFormatInfo(ctx, diskRootPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			span.Warnf("format file not exist. must be first register")
-			return new(core.FormatInfo), nil
-		}
-		return nil, err
+	svr.ctx, svr.cancel = context.WithCancel(context.Background())
+
+	// start worker service
+	if conf.StartMode == proto.ServiceNameWorker || conf.StartMode == defaultServiceBothBlobNodeWorker {
+		startWorkerService(ctx, svr, conf)
 	}
 
-	return formatInfo, err
-}
+	// start blobndoe service
+	if conf.StartMode == proto.ServiceNameBlobNode || conf.StartMode == defaultServiceBothBlobNodeWorker {
+		err = startBlobnodeService(ctx, svr, conf)
+	}
 
-func isAllInConfig(ctx context.Context, registeredDisks []*cmapi.BlobNodeDiskInfo, conf *Config) bool {
-	span := trace.SpanFromContextSafe(ctx)
-	configDiskMap := make(map[string]struct{})
-	for i := range conf.Disks {
-		configDiskMap[conf.Disks[i].Path] = struct{}{}
-	}
-	// check all registered normal disks are in config
-	for _, registeredDisk := range registeredDisks {
-		if registeredDisk.Status != proto.DiskStatusNormal {
-			continue
-		}
-		if _, ok := configDiskMap[registeredDisk.Path]; !ok {
-			span.Errorf("disk registered to clustermgr, but is not in config: %v", registeredDisk.Path)
-			return false
-		}
-	}
-	return true
+	return
 }
 
 // call by heartbeat single, or datafile read/write concurrence
@@ -267,15 +255,6 @@ func (s *Service) handleDiskDrop(ctx context.Context, ds core.DiskAPI) {
 	}()
 }
 
-func setDefaultIOStat(dryRun bool) error {
-	ios, err := flow.NewIOFlowStat("default", dryRun)
-	if err != nil {
-		return errors.New("init stat failed")
-	}
-	flow.SetupDefaultIOStat(ios)
-	return nil
-}
-
 func (s *Service) fixDiskConf(config *core.Config) {
 	config.AllocDiskID = s.ClusterMgrClient.AllocDiskID
 	config.NotifyCompacting = s.ClusterMgrClient.SetCompactChunk
@@ -315,47 +294,95 @@ func (s *Service) handleStartDiskError(ctx context.Context, allUniqDiskPathMap m
 		if diskInfo.Status != proto.DiskStatusNormal {
 			span.Warnf("disk[id:%d,status:%d,path:%s] is not normal, err:%+v. skip init", diskInfo.DiskID, diskInfo.Status, diskPath, err)
 			return
-		} else {
-			// set broken disk, may be already mark broken
-			span.Errorf("open normal disk[%d:%s] failed, err:%+v. skip init", diskInfo.DiskID, diskPath, err)
-			_err := s.ClusterMgrClient.SetDisk(ctx, diskInfo.DiskID, proto.DiskStatusBroken)
-			if _err != nil && rpc.DetectStatusCode(_err) != bloberr.CodeChangeDiskStatusNotAllow {
-				span.Fatalf("set disk[%d:%s] broken to cm failed: %s", diskInfo.DiskID, diskPath, _err)
-			}
-			return
+		}
+
+		// set broken disk, may be already mark broken
+		span.Errorf("open normal disk[%d:%s] failed, err:%+v. skip init", diskInfo.DiskID, diskPath, err)
+		_err := s.ClusterMgrClient.SetDisk(ctx, diskInfo.DiskID, proto.DiskStatusBroken)
+		if _err != nil && rpc.DetectStatusCode(_err) != bloberr.CodeChangeDiskStatusNotAllow {
+			span.Fatalf("set disk[%d:%s] broken to cm failed: %s", diskInfo.DiskID, diskPath, _err)
+		}
+		return
+	}
+}
+
+func (s *Service) registerNode(ctx context.Context, conf *Config) error {
+	span := trace.SpanFromContextSafe(ctx)
+	if err := core.CheckNodeConf(&conf.HostInfo); err != nil {
+		return err
+	}
+
+	nodeToCm := cmapi.BlobNodeInfo{
+		NodeInfo: cmapi.NodeInfo{
+			ClusterID: conf.ClusterID,
+			DiskType:  conf.DiskType,
+			Idc:       conf.IDC,
+			Rack:      conf.Rack,
+			Host:      conf.Host,
+			Role:      proto.NodeRoleBlobNode,
+		},
+	}
+
+	nodeID, err := s.ClusterMgrClient.AddNode(ctx, &nodeToCm)
+	if err != nil && rpc.DetectStatusCode(err) != http.StatusCreated {
+		return err
+	}
+
+	conf.NodeID = nodeID // we update nodeID, which can be used in the subsequent process. e.g. to add disk
+	span.Infof("add node success, nodeID=%d", nodeID)
+	return nil
+}
+
+func setDefaultIOStat(dryRun bool) error {
+	ios, err := flow.NewIOFlowStat("default", dryRun)
+	if err != nil {
+		return errors.New("init stat failed")
+	}
+	flow.SetupDefaultIOStat(ios)
+	return nil
+}
+
+func readFormatInfo(ctx context.Context, diskRootPath string) (
+	formatInfo *core.FormatInfo, err error,
+) {
+	span := trace.SpanFromContextSafe(ctx)
+	_, err = os.ReadDir(diskRootPath)
+	if err != nil {
+		span.Errorf("read disk root path error:%s", diskRootPath)
+		return nil, err
+	}
+	formatInfo, err = core.ReadFormatInfo(ctx, diskRootPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			span.Warnf("format file not exist. must be first register")
+			return new(core.FormatInfo), nil
+		}
+		return nil, err
+	}
+
+	return formatInfo, err
+}
+
+func isAllInConfig(ctx context.Context, registeredDisks []*cmapi.BlobNodeDiskInfo, conf *Config) bool {
+	span := trace.SpanFromContextSafe(ctx)
+	configDiskMap := make(map[string]struct{})
+	for i := range conf.Disks {
+		configDiskMap[conf.Disks[i].Path] = struct{}{}
+	}
+	// check all registered normal disks are in config
+	for _, registeredDisk := range registeredDisks {
+		if registeredDisk.Status != proto.DiskStatusNormal {
+			continue
+		}
+		if _, ok := configDiskMap[registeredDisk.Path]; !ok {
+			span.Errorf("disk registered to clustermgr, but is not in config: %v", registeredDisk.Path)
+			return false
 		}
 	}
+	return true
 }
 
-func NewService(conf Config) (svr *Service, err error) {
-	_, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
-
-	configInit(&conf)
-
-	clusterMgrCli := cmapi.New(conf.Clustermgr)
-
-	svr = &Service{
-		ClusterMgrClient: clusterMgrCli,
-		Disks:            make(map[proto.DiskID]core.DiskAPI),
-		Conf:             &conf,
-		closeCh:          make(chan struct{}),
-	}
-	svr.ctx, svr.cancel = context.WithCancel(context.Background())
-
-	// start worker service
-	if conf.StartMode == proto.ServiceNameWorker || conf.StartMode == defaultServiceBothBlobNodeWorker {
-		startWorkerService(ctx, svr, conf, clusterMgrCli)
-	}
-
-	// start blobndoe service
-	if conf.StartMode == proto.ServiceNameBlobNode || conf.StartMode == defaultServiceBothBlobNodeWorker {
-		err = startBlobnodeService(ctx, svr, conf, clusterMgrCli)
-	}
-
-	return
-}
-
-func startWorkerService(ctx context.Context, svr *Service, conf Config, clusterMgrCli *cmapi.Client) {
+func startWorkerService(ctx context.Context, svr *Service, conf Config) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debug("start worker service...")
 
@@ -366,18 +393,18 @@ func startWorkerService(ctx context.Context, svr *Service, conf Config, clusterM
 		Idc:       conf.IDC,
 	}
 
-	err := clusterMgrCli.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
+	err := svr.ClusterMgrClient.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
 	if err != nil {
 		span.Fatalf("worker register to clusterMgr error:%+v", err)
 	}
 
-	svr.WorkerService, err = NewWorkerService(&conf.WorkerConfig, clusterMgrCli, conf.ClusterID, conf.IDC)
+	svr.WorkerService, err = NewWorkerService(&conf.WorkerConfig, svr.ClusterMgrClient, conf.ClusterID, conf.IDC)
 	if err != nil {
 		span.Fatalf("Failed to new worker service, err: %v", err)
 	}
 }
 
-func startBlobnodeService(ctx context.Context, svr *Service, conf Config, clusterMgrCli *cmapi.Client) (err error) {
+func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debug("start blobnode service...")
 
@@ -387,7 +414,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 		Host:      conf.Host,
 		Idc:       conf.IDC,
 	}
-	if err = cmapi.LoadExtendCodemode(ctx, clusterMgrCli); err != nil {
+	if err = cmapi.LoadExtendCodemode(ctx, svr.ClusterMgrClient); err != nil {
 		span.Fatalf("load extend codemode from clusterMgr error:%+v", err)
 	}
 	for _, ecmode := range codemode.GetECCodeModes() {
@@ -396,16 +423,16 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 		}
 	}
 
-	err = clusterMgrCli.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
+	err = svr.ClusterMgrClient.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
 	if err != nil {
 		span.Fatalf("blobnode register to clusterMgr error:%+v", err)
 	}
 
-	if err = registerNode(ctx, clusterMgrCli, &conf); err != nil {
+	if err = svr.registerNode(ctx, &conf); err != nil {
 		span.Fatalf("fail to register node to clusterMgr, err:%+v", err)
 	}
 
-	registeredDisks, err := clusterMgrCli.ListHostDisk(ctx, conf.Host)
+	registeredDisks, err := svr.ClusterMgrClient.ListHostDisk(ctx, conf.Host)
 	if err != nil {
 		span.Errorf("Failed ListDisk from clusterMgr. err:%+v", err)
 		return err
@@ -427,7 +454,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 	svr.InspectLimiterPerKey = keycount.New(1)
 	svr.BrokenLimitPerDisk = keycount.New(1)
 
-	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
+	switchMgr := taskswitch.NewSwitchMgr(svr.ClusterMgrClient)
 	svr.inspectMgr, err = NewDataInspectMgr(svr, conf.InspectConf, switchMgr)
 	if err != nil {
 		return err
@@ -508,7 +535,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 			if format.DiskID == 0 || !foundIDInCluster {
 				span.Warnf("diskInfo:%v not found in cm, will register to cm, nodeID:%d", diskInfo, conf.NodeID)
 				dsInfo := ds.DiskInfo() // get nodeID to add disk
-				err = clusterMgrCli.AddDisk(ctx, &dsInfo)
+				err = svr.ClusterMgrClient.AddDisk(ctx, &dsInfo)
 				if err != nil {
 					span.Fatalf("Failed register disk: %v, err:%+v", dsInfo, err)
 					return
@@ -553,31 +580,4 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config, cluste
 	go svr.inspectMgr.loopDataInspect()
 
 	return
-}
-
-func registerNode(ctx context.Context, clusterMgrCli *cmapi.Client, conf *Config) error {
-	span := trace.SpanFromContextSafe(ctx)
-	if err := core.CheckNodeConf(&conf.HostInfo); err != nil {
-		return err
-	}
-
-	nodeToCm := cmapi.BlobNodeInfo{
-		NodeInfo: cmapi.NodeInfo{
-			ClusterID: conf.ClusterID,
-			DiskType:  conf.DiskType,
-			Idc:       conf.IDC,
-			Rack:      conf.Rack,
-			Host:      conf.Host,
-			Role:      proto.NodeRoleBlobNode,
-		},
-	}
-
-	nodeID, err := clusterMgrCli.AddNode(ctx, &nodeToCm)
-	if err != nil && rpc.DetectStatusCode(err) != http.StatusCreated {
-		return err
-	}
-
-	conf.NodeID = nodeID // we update nodeID, which can be used in the subsequent process. e.g. to add disk
-	span.Infof("add node success, nodeID=%d", nodeID)
-	return nil
 }

@@ -17,19 +17,24 @@ package blobnode
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/golang/mock/gomock"
+	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -44,6 +49,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -1140,7 +1146,7 @@ func TestService_RegisterNode(t *testing.T) {
 
 	// first register
 	svr.Conf.DiskType = proto.DiskTypeHDD
-	err := registerNode(ctx, svr.ClusterMgrClient, svr.Conf)
+	err := svr.registerNode(ctx, svr.Conf)
 	require.NoError(t, err)
 	require.Equal(t, proto.NodeID(1), svr.Conf.HostInfo.NodeID)
 
@@ -1155,13 +1161,13 @@ func TestService_RegisterNode(t *testing.T) {
 		Conf:             &conf2,
 	}
 	svr2.Conf.DiskType = proto.DiskTypeSSD
-	err = registerNode(ctx, svr2.ClusterMgrClient, svr2.Conf)
+	err = svr2.registerNode(ctx, svr2.Conf)
 	require.NoError(t, err)
 	require.Equal(t, proto.NodeID(2), svr2.Conf.HostInfo.NodeID)
 	require.NotEqual(t, svr.Conf.NodeID, svr2.Conf.NodeID)
 
 	svr.Conf.DiskType = 0
-	err = registerNode(ctx, svr.ClusterMgrClient, svr.Conf)
+	err = svr.registerNode(ctx, svr.Conf)
 	require.NotNil(t, err)
 }
 
@@ -1241,4 +1247,294 @@ func TestService_OnlyBlobnode(t *testing.T) {
 	// restart
 	_, err = NewService(conf)
 	require.NoError(t, err)
+}
+
+func TestService_OnlyBlobnode_OpenFailedEIO(t *testing.T) {
+	ctx := context.Background()
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"OnlyBlobnode")
+	require.NoError(t, err)
+	defer os.RemoveAll(workDir)
+
+	path1 := filepath.Join(workDir, "path1")
+	path2 := filepath.Join(workDir, "path2")
+	path3 := filepath.Join(workDir, "path3")
+	path4 := filepath.Join(workDir, "path4")
+	for _, path := range []string{workDir, path1, path2, path3, path4} {
+		err = os.MkdirAll(path, 0o755)
+		require.NoError(t, err)
+	}
+
+	conf := Config{
+		HostInfo: core.HostInfo{
+			IDC:      "testIdc",
+			Rack:     "testRack",
+			DiskType: proto.DiskTypeHDD,
+		},
+		Disks: []core.Config{
+			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
+			{BaseConfig: core.BaseConfig{Path: path2, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
+		},
+		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
+		HeartbeatIntervalSec: 600,
+		InspectConf:          DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
+	}
+
+	// open readFormat eio, report broken disk
+	diskInfo1 := &cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path1,
+			Status: proto.DiskStatusNormal,
+		},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(1)},
+	}
+	// open readFormat eio, status repaired, skip
+	diskInfo2 := &cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path2,
+			Status: proto.DiskStatusRepaired,
+		},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(2)},
+	}
+
+	A := gomock.Any()
+	ctr := gomock.NewController(t)
+	cmCli := mocks.NewMockClientAPI(ctr)
+	cmCli.EXPECT().GetConfig(A, A).Return("[]", nil).AnyTimes()
+	cmCli.EXPECT().RegisterService(A, A, A, A, A).Return(nil).Times(2)
+	cmCli.EXPECT().AddNode(A, A).Return(proto.NodeID(1), nil).Times(2)
+	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskInfo1, diskInfo2}, nil)
+	cmCli.EXPECT().SetDisk(A, A, A).Return(nil)
+
+	patches := gomonkey.ApplyFunc(readFormatInfo, func(ctx context.Context, path string) (*core.FormatInfo, error) {
+		if path == path1 || path == path2 {
+			return nil, syscall.EIO
+		}
+		return &core.FormatInfo{CheckSum: 1}, nil
+	})
+	defer patches.Reset()
+	patches2 := gomonkey.ApplyFunc(disk.NewDiskStorage, func(ctx context.Context, diskConf core.Config) (*disk.DiskStorageWrapper, error) {
+		if diskConf.Path == path3 || diskConf.Path == path4 {
+			return nil, syscall.EIO
+		}
+		disk2 := &disk.DiskStorageWrapper{DiskStorage: &disk.DiskStorage{DiskID: proto.DiskID(2)}}
+		return disk2, nil
+	})
+	defer patches2.Reset()
+
+	configInit(&conf)
+	svr := &Service{
+		ClusterMgrClient: cmCli,
+		Disks:            make(map[proto.DiskID]core.DiskAPI),
+		Conf:             &conf,
+		closeCh:          make(chan struct{}),
+	}
+	svr.ctx, svr.cancel = context.WithCancel(ctx)
+
+	err = startBlobnodeService(ctx, svr, conf)
+	require.Nil(t, err)
+	require.Equal(t, 0, len(svr.Disks))
+
+	conf.Disks = []core.Config{
+		{BaseConfig: core.BaseConfig{Path: path3, AutoFormat: true}, MetaConfig: db.MetaConfig{}},
+	}
+	svr.Conf = &conf
+
+	// newDiskStorage status repaired, skip
+	diskInfo3 := &cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path3,
+			Status: proto.DiskStatusRepaired,
+		},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(3)},
+	}
+	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskInfo3}, nil)
+	err = startBlobnodeService(ctx, svr, conf)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(svr.Disks))
+}
+
+func TestService_OnlyBlobnode_OpenDiskNormal(t *testing.T) {
+	ctx := context.Background()
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"OnlyBlobnode")
+	require.NoError(t, err)
+	defer os.RemoveAll(workDir)
+
+	path1 := filepath.Join(workDir, "path1")
+	err = os.MkdirAll(path1, 0o755)
+	require.NoError(t, err)
+
+	conf := Config{
+		Disks:       []core.Config{{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}}},
+		InspectConf: DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
+	}
+
+	// open disk success
+	diskInfo1 := &cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path1,
+			Status: proto.DiskStatusRepaired,
+		},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(1)},
+	}
+
+	A := gomock.Any()
+	ctr := gomock.NewController(t)
+	cmCli := mocks.NewMockClientAPI(ctr)
+	cmCli.EXPECT().GetConfig(A, A).Return("[]", nil).AnyTimes()
+	cmCli.EXPECT().RegisterService(A, A, A, A, A).Return(nil).Times(1)
+	cmCli.EXPECT().AddNode(A, A).Return(proto.NodeID(1), nil).Times(1)
+	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskInfo1}, nil)
+	cmCli.EXPECT().AllocDiskID(A).Return(proto.DiskID(101), nil)
+	cmCli.EXPECT().AddDisk(A, A).Return(nil)
+
+	configInit(&conf)
+	svr := &Service{
+		ClusterMgrClient: cmCli,
+		Disks:            make(map[proto.DiskID]core.DiskAPI),
+		Conf:             &conf,
+		closeCh:          make(chan struct{}),
+	}
+	svr.ctx, svr.cancel = context.WithCancel(ctx)
+
+	err = startBlobnodeService(ctx, svr, conf)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(svr.Disks))
+}
+
+func TestService_OnlyBlobnode_Fatal(t *testing.T) {
+	ctx := context.Background()
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"OnlyBlobnode")
+	require.NoError(t, err)
+	defer os.RemoveAll(workDir)
+
+	path1 := filepath.Join(workDir, "path1")
+	path2 := filepath.Join(workDir, "path2")
+	for _, path := range []string{path1, path2} {
+		err = os.MkdirAll(path, 0o755)
+		require.NoError(t, err)
+	}
+
+	conf := Config{
+		Disks: []core.Config{
+			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
+			// {BaseConfig: core.BaseConfig{Path: path2, AutoFormat: true}, MetaConfig: db.MetaConfig{}},
+			// {BaseConfig: core.BaseConfig{Path: "wrongPath", AutoFormat: true}, MetaConfig: db.MetaConfig{}},
+		},
+		InspectConf: DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
+	}
+
+	// new disk, read meta fake error
+	diskInfo1 := &cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path1,
+			Status: proto.DiskStatusRepaired,
+		},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(1)},
+	}
+	// old disk is repairing
+	diskInfo2 := &cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path2,
+			Status: proto.DiskStatusRepairing,
+		},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(2)},
+	}
+
+	A := gomock.Any()
+	ctr := gomock.NewController(t)
+	cmCli := mocks.NewMockClientAPI(ctr)
+	cmCli.EXPECT().GetConfig(A, A).Return("[]", nil).AnyTimes()
+	cmCli.EXPECT().RegisterService(A, A, A, A, A).Return(nil).Times(1)
+	cmCli.EXPECT().AddNode(A, A).Return(proto.NodeID(1), nil).Times(1)
+	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskInfo1, diskInfo2}, nil)
+	// cmCli.EXPECT().AllocDiskID(A).Return(proto.DiskID(102), nil)
+
+	patches := gomonkey.ApplyFunc(readFormatInfo, func(ctx context.Context, path string) (*core.FormatInfo, error) {
+		if path == path1 {
+			return nil, errMock
+		}
+		return &core.FormatInfo{}, nil
+	})
+	defer patches.Reset()
+
+	mockSpan := opentracing.GlobalTracer().StartSpan("")
+	patches2 := gomonkey.ApplyMethod(reflect.TypeOf(mockSpan), "Fatalf", func(xx interface{}, format string, v ...interface{}) {
+		fmt.Println("startBlobnodeService fatal")
+	})
+	defer patches2.Reset()
+
+	configInit(&conf)
+	svr := &Service{
+		ClusterMgrClient: cmCli,
+		Disks:            make(map[proto.DiskID]core.DiskAPI),
+		Conf:             &conf,
+		closeCh:          make(chan struct{}),
+	}
+	svr.ctx, svr.cancel = context.WithCancel(ctx)
+
+	// require.Panics(t, func() { startBlobnodeService(ctx, svr, conf) })
+	err = startBlobnodeService(ctx, svr, conf)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(svr.Disks))
+}
+
+func TestService_OnlyBlobnode_OpenOldDisk(t *testing.T) {
+	ctx := context.Background()
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"OnlyBlobnode")
+	require.NoError(t, err)
+	defer os.RemoveAll(workDir)
+
+	path1 := filepath.Join(workDir, "path1")
+	err = os.MkdirAll(path1, 0o755)
+	require.NoError(t, err)
+
+	conf := Config{
+		Disks: []core.Config{
+			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
+		},
+		InspectConf: DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
+	}
+
+	// old disk, repairing, skip
+	diskInfo1 := &cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Path:   path1,
+			Status: proto.DiskStatusRepairing,
+		},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(1)},
+	}
+
+	A := gomock.Any()
+	ctr := gomock.NewController(t)
+	cmCli := mocks.NewMockClientAPI(ctr)
+	cmCli.EXPECT().GetConfig(A, A).Return("[]", nil).AnyTimes()
+	cmCli.EXPECT().RegisterService(A, A, A, A, A).Return(nil).Times(1)
+	cmCli.EXPECT().AddNode(A, A).Return(proto.NodeID(1), nil).Times(1)
+	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskInfo1}, nil)
+
+	format := &core.FormatInfo{
+		FormatInfoProtectedField: core.FormatInfoProtectedField{
+			DiskID:  proto.DiskID(1),
+			Version: 1,
+			Format:  core.FormatMetaTypeV1,
+		},
+	}
+	checkSum, err := format.CalCheckSum()
+	require.NoError(t, err)
+	format.CheckSum = checkSum
+	err = core.SaveDiskFormatInfo(ctx, path1, format)
+	require.NoError(t, err)
+
+	configInit(&conf)
+	svr := &Service{
+		ClusterMgrClient: cmCli,
+		Disks:            make(map[proto.DiskID]core.DiskAPI),
+		Conf:             &conf,
+		closeCh:          make(chan struct{}),
+	}
+	svr.ctx, svr.cancel = context.WithCancel(ctx)
+
+	err = startBlobnodeService(ctx, svr, conf)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(svr.Disks))
 }

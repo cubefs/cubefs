@@ -36,6 +36,35 @@ func (m *MockClientAPI) EXPECT() *MockClientAPIMockRecorder {
 	return m.recorder
 }
 
+// AddDisk mocks base method.
+func (m *MockClientAPI) AddDisk(arg0 context.Context, arg1 *clustermgr.BlobNodeDiskInfo) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddDisk", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddDisk indicates an expected call of AddDisk.
+func (mr *MockClientAPIMockRecorder) AddDisk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddDisk", reflect.TypeOf((*MockClientAPI)(nil).AddDisk), arg0, arg1)
+}
+
+// AddNode mocks base method.
+func (m *MockClientAPI) AddNode(arg0 context.Context, arg1 *clustermgr.BlobNodeInfo) (proto.NodeID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddNode", arg0, arg1)
+	ret0, _ := ret[0].(proto.NodeID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddNode indicates an expected call of AddNode.
+func (mr *MockClientAPIMockRecorder) AddNode(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddNode", reflect.TypeOf((*MockClientAPI)(nil).AddNode), arg0, arg1)
+}
+
 // AllocBid mocks base method.
 func (m *MockClientAPI) AllocBid(arg0 context.Context, arg1 *clustermgr.BidScopeArgs) (*clustermgr.BidScopeRet, error) {
 	m.ctrl.T.Helper()
@@ -49,6 +78,21 @@ func (m *MockClientAPI) AllocBid(arg0 context.Context, arg1 *clustermgr.BidScope
 func (mr *MockClientAPIMockRecorder) AllocBid(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocBid", reflect.TypeOf((*MockClientAPI)(nil).AllocBid), arg0, arg1)
+}
+
+// AllocDiskID mocks base method.
+func (m *MockClientAPI) AllocDiskID(arg0 context.Context) (proto.DiskID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AllocDiskID", arg0)
+	ret0, _ := ret[0].(proto.DiskID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AllocDiskID indicates an expected call of AllocDiskID.
+func (mr *MockClientAPIMockRecorder) AllocDiskID(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocDiskID", reflect.TypeOf((*MockClientAPI)(nil).AllocDiskID), arg0)
 }
 
 // AllocVolume mocks base method.
@@ -170,6 +214,21 @@ func (mr *MockClientAPIMockRecorder) GetVolumeInfo(arg0, arg1 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeInfo", reflect.TypeOf((*MockClientAPI)(nil).GetVolumeInfo), arg0, arg1)
 }
 
+// HeartbeatDisk mocks base method.
+func (m *MockClientAPI) HeartbeatDisk(arg0 context.Context, arg1 []*clustermgr.DiskHeartBeatInfo) ([]*clustermgr.DiskHeartbeatRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HeartbeatDisk", arg0, arg1)
+	ret0, _ := ret[0].([]*clustermgr.DiskHeartbeatRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HeartbeatDisk indicates an expected call of HeartbeatDisk.
+func (mr *MockClientAPIMockRecorder) HeartbeatDisk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeartbeatDisk", reflect.TypeOf((*MockClientAPI)(nil).HeartbeatDisk), arg0, arg1)
+}
+
 // ListDisk mocks base method.
 func (m *MockClientAPI) ListDisk(arg0 context.Context, arg1 *clustermgr.ListOptionArgs) (clustermgr.ListDiskRet, error) {
 	m.ctrl.T.Helper()
@@ -183,6 +242,21 @@ func (m *MockClientAPI) ListDisk(arg0 context.Context, arg1 *clustermgr.ListOpti
 func (mr *MockClientAPIMockRecorder) ListDisk(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDisk", reflect.TypeOf((*MockClientAPI)(nil).ListDisk), arg0, arg1)
+}
+
+// ListHostDisk mocks base method.
+func (m *MockClientAPI) ListHostDisk(arg0 context.Context, arg1 string) ([]*clustermgr.BlobNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListHostDisk", arg0, arg1)
+	ret0, _ := ret[0].([]*clustermgr.BlobNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListHostDisk indicates an expected call of ListHostDisk.
+func (mr *MockClientAPIMockRecorder) ListHostDisk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHostDisk", reflect.TypeOf((*MockClientAPI)(nil).ListHostDisk), arg0, arg1)
 }
 
 // ListShardNodeDisk mocks base method.
@@ -200,6 +274,21 @@ func (mr *MockClientAPIMockRecorder) ListShardNodeDisk(arg0, arg1 interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListShardNodeDisk", reflect.TypeOf((*MockClientAPI)(nil).ListShardNodeDisk), arg0, arg1)
 }
 
+// ListVolumeUnit mocks base method.
+func (m *MockClientAPI) ListVolumeUnit(arg0 context.Context, arg1 *clustermgr.ListVolumeUnitArgs) ([]*clustermgr.VolumeUnitInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListVolumeUnit", arg0, arg1)
+	ret0, _ := ret[0].([]*clustermgr.VolumeUnitInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListVolumeUnit indicates an expected call of ListVolumeUnit.
+func (mr *MockClientAPIMockRecorder) ListVolumeUnit(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVolumeUnit", reflect.TypeOf((*MockClientAPI)(nil).ListVolumeUnit), arg0, arg1)
+}
+
 // RegisterService mocks base method.
 func (m *MockClientAPI) RegisterService(arg0 context.Context, arg1 clustermgr.ServiceNode, arg2, arg3, arg4 uint32) error {
 	m.ctrl.T.Helper()
@@ -212,6 +301,20 @@ func (m *MockClientAPI) RegisterService(arg0 context.Context, arg1 clustermgr.Se
 func (mr *MockClientAPIMockRecorder) RegisterService(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterService", reflect.TypeOf((*MockClientAPI)(nil).RegisterService), arg0, arg1, arg2, arg3, arg4)
+}
+
+// ReportChunk mocks base method.
+func (m *MockClientAPI) ReportChunk(arg0 context.Context, arg1 *clustermgr.ReportChunkArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReportChunk", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReportChunk indicates an expected call of ReportChunk.
+func (mr *MockClientAPIMockRecorder) ReportChunk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportChunk", reflect.TypeOf((*MockClientAPI)(nil).ReportChunk), arg0, arg1)
 }
 
 // RetainVolume mocks base method.
@@ -227,6 +330,48 @@ func (m *MockClientAPI) RetainVolume(arg0 context.Context, arg1 *clustermgr.Reta
 func (mr *MockClientAPIMockRecorder) RetainVolume(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetainVolume", reflect.TypeOf((*MockClientAPI)(nil).RetainVolume), arg0, arg1)
+}
+
+// SetCompactChunk mocks base method.
+func (m *MockClientAPI) SetCompactChunk(arg0 context.Context, arg1 *clustermgr.SetCompactChunkArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetCompactChunk", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetCompactChunk indicates an expected call of SetCompactChunk.
+func (mr *MockClientAPIMockRecorder) SetCompactChunk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCompactChunk", reflect.TypeOf((*MockClientAPI)(nil).SetCompactChunk), arg0, arg1)
+}
+
+// SetConfig mocks base method.
+func (m *MockClientAPI) SetConfig(arg0 context.Context, arg1, arg2 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetConfig", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetConfig indicates an expected call of SetConfig.
+func (mr *MockClientAPIMockRecorder) SetConfig(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetConfig", reflect.TypeOf((*MockClientAPI)(nil).SetConfig), arg0, arg1, arg2)
+}
+
+// SetDisk mocks base method.
+func (m *MockClientAPI) SetDisk(arg0 context.Context, arg1 proto.DiskID, arg2 proto.DiskStatus) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetDisk", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetDisk indicates an expected call of SetDisk.
+func (mr *MockClientAPIMockRecorder) SetDisk(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDisk", reflect.TypeOf((*MockClientAPI)(nil).SetDisk), arg0, arg1, arg2)
 }
 
 // ShardNodeDiskInfo mocks base method.

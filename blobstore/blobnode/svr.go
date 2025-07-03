@@ -44,7 +44,7 @@ type Service struct {
 	WorkerService *WorkerService
 
 	// client handler
-	ClusterMgrClient *cmapi.Client
+	ClusterMgrClient cmapi.APIBlobnode
 
 	Conf       *Config
 	inspectMgr *DataInspectMgr

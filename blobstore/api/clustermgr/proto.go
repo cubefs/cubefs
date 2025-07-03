@@ -53,6 +53,7 @@ func GetConsulClusterPath(region string) string {
 type ClientAPI interface {
 	APIAccess
 	APIProxy
+	APIBlobnode
 }
 
 // APIAccess sub of cluster manager api for access
@@ -81,4 +82,23 @@ type APIProxy interface {
 // APIService sub of cluster manager api for service
 type APIService interface {
 	GetService(ctx context.Context, args GetServiceArgs) (ServiceInfo, error)
+	RegisterService(ctx context.Context, node ServiceNode, tickInterval, heartbeatTicks, expiresTicks uint32) (err error)
+}
+
+type APIBlobnode interface {
+	APIService
+	GetConfig(ctx context.Context, key string) (value string, err error)
+	SetConfig(ctx context.Context, key, value string) error
+	AddNode(ctx context.Context, info *BlobNodeInfo) (proto.NodeID, error)
+	ListHostDisk(ctx context.Context, host string) (ret []*BlobNodeDiskInfo, err error)
+	ListDisk(ctx context.Context, options *ListOptionArgs) (ret ListDiskRet, err error)
+	AddDisk(ctx context.Context, info *BlobNodeDiskInfo) (err error)
+	DiskInfo(ctx context.Context, id proto.DiskID) (ret *BlobNodeDiskInfo, err error)
+	SetDisk(ctx context.Context, id proto.DiskID, status proto.DiskStatus) (err error)
+	AllocDiskID(ctx context.Context) (proto.DiskID, error)
+	SetCompactChunk(ctx context.Context, args *SetCompactChunkArgs) (err error)
+	ListVolumeUnit(ctx context.Context, args *ListVolumeUnitArgs) ([]*VolumeUnitInfo, error)
+	GetVolumeInfo(ctx context.Context, args *GetVolumeArgs) (ret *VolumeInfo, err error)
+	ReportChunk(ctx context.Context, args *ReportChunkArgs) (err error)
+	HeartbeatDisk(ctx context.Context, infos []*DiskHeartBeatInfo) (ret []*DiskHeartbeatRet, err error)
 }
