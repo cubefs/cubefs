@@ -690,4 +690,5 @@ type MetaNodeView struct {
 	ForbidWriteOpOfProtoVer0 bool
 	Ratio                    float64
 	SystemRatio              float64
+	IsRocksdbWritable        bool
 }

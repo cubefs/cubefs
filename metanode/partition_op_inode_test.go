@@ -261,7 +261,7 @@ func appendExtentForInodeTest(t *testing.T, mp MetaPartition, ino uint64, extent
 		Inode:       ino,
 		Extent:      extent,
 	}
-	err := mp.ExtentAppendWithCheck(req, p)
+	err := mp.ExtentAppendWithCheck(req, p, "")
 	require.NoError(t, err)
 	status = p.ResultCode
 	return

@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	raftstoremock "github.com/cubefs/cubefs/metanode/mocktest/raftstore"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/golang/mock/gomock"
@@ -69,12 +68,14 @@ func mockPartitionRaftForFsmInodeTest(t *testing.T, ctrl *gomock.Controller, sto
 
 func prepareInodeForFsmInodeTest(t *testing.T, mp *metaPartition, ino uint64) {
 	inode := NewInode(ino, FileModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status := mp.fsmCreateInode(inode)
 	require.EqualValues(t, proto.OpOk, status)
 }
 
 func prepareDirInodeForFsmInodeTest(t *testing.T, mp *metaPartition, ino uint64) {
 	inode := NewInode(ino, DirModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status := mp.fsmCreateInode(inode)
 	require.EqualValues(t, proto.OpOk, status)
 }
@@ -114,6 +115,7 @@ func testFsmLinkInode(t *testing.T, mp *metaPartition) {
 	prepareInodeForFsmInodeTest(t, mp, ino)
 
 	inode := NewInode(ino, FileModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp := mp.fsmCreateLinkInode(inode, 0)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 
@@ -122,6 +124,7 @@ func testFsmLinkInode(t *testing.T, mp *metaPartition) {
 	const dirIno = 1001
 	prepareDirInodeForFsmInodeTest(t, mp, dirIno)
 	inode = NewInode(dirIno, DirModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp = mp.fsmCreateLinkInode(inode, 0)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 	checkInodeLinkForFsmInodeTest(t, mp, dirIno, 3)
@@ -144,9 +147,11 @@ func testFsmUnlinkInode(t *testing.T, mp *metaPartition) {
 	prepareDirInodeForFsmInodeTest(t, mp, dirIno)
 
 	inode := NewInode(ino, FileModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp := mp.fsmCreateLinkInode(inode, 0)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 	inode = NewInode(dirIno, DirModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp = mp.fsmCreateLinkInode(inode, 0)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 
@@ -154,9 +159,11 @@ func testFsmUnlinkInode(t *testing.T, mp *metaPartition) {
 	checkInodeLinkForFsmInodeTest(t, mp, dirIno, 3)
 
 	inode = NewInode(ino, FileModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp = mp.fsmUnlinkInode(inode, 0)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 	inode = NewInode(dirIno, DirModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp = mp.fsmUnlinkInode(inode, 0)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 
@@ -164,9 +171,11 @@ func testFsmUnlinkInode(t *testing.T, mp *metaPartition) {
 	checkInodeLinkForFsmInodeTest(t, mp, dirIno, 2)
 
 	inode = NewInode(ino, FileModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp = mp.fsmUnlinkInode(inode, 0)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 	inode = NewInode(dirIno, DirModeType)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp = mp.fsmUnlinkInode(inode, 0)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 
@@ -190,40 +199,20 @@ func testFsmAppendInode(t *testing.T, mp *metaPartition) {
 	prepareInodeForFsmInodeTest(t, mp, ino)
 
 	inode := NewInode(ino, FileModeType)
-	extent := proto.ExtentKey{
-		PartitionId:  0,
-		FileOffset:   2 * util.MB,
-		ExtentId:     0,
-		ExtentOffset: 0,
-		Size:         util.MB,
-	}
-	inode.Extents.Append(extent)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status := mp.fsmAppendExtentsWithCheck(inode, false)
 	require.EqualValues(t, proto.OpOk, status)
 
 	var err error
 	inode, err = mp.inodeTree.Get(&Inode{Inode: ino})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, inode.Extents.Len())
 
 	// NOTE: random write to hole
-	extent = proto.ExtentKey{
-		PartitionId:  0,
-		FileOffset:   0,
-		ExtentId:     1,
-		ExtentOffset: 0,
-		Size:         util.MB,
-	}
-	inode = NewInode(ino, FileModeType)
-	inode.Extents.Append(extent)
 	status = mp.fsmAppendExtentsWithCheck(inode, false)
 	require.EqualValues(t, proto.OpOk, status)
 
-	inode, err = mp.inodeTree.Get(&Inode{Inode: ino})
+	_, err = mp.inodeTree.Get(&Inode{Inode: ino})
 	require.NoError(t, err)
-	require.EqualValues(t, 2, inode.Extents.Len())
-	require.EqualValues(t, 1, inode.Extents.eks[0].ExtentId)
-	require.EqualValues(t, 0, inode.Extents.eks[1].ExtentId)
 }
 
 func TestFsmAppendInode(t *testing.T) {
@@ -238,64 +227,34 @@ func TestFsmAppendInode_Rocksdb(t *testing.T) {
 
 func testFsmAppendInodeRandomWrite(t *testing.T, mp *metaPartition) {
 	const ino = 1000
-	const extentStart = 255
 	prepareInodeForFsmInodeTest(t, mp, ino)
 
 	inode := NewInode(ino, FileModeType)
-	extent := proto.ExtentKey{
-		PartitionId:  0,
-		FileOffset:   0,
-		ExtentId:     extentStart,
-		ExtentOffset: 0,
-		Size:         util.MB,
-	}
-	inode.Extents.Append(extent)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status := mp.fsmAppendExtentsWithCheck(inode, false)
 	require.EqualValues(t, proto.OpOk, status)
 
 	var err error
-	inode, err = mp.inodeTree.Get(&Inode{Inode: ino})
+	_, err = mp.inodeTree.Get(&Inode{Inode: ino})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, inode.Extents.Len())
 
-	extent = proto.ExtentKey{
-		PartitionId:  0,
-		FileOffset:   2 * util.MB,
-		ExtentId:     extentStart + 1,
-		ExtentOffset: 0,
-		Size:         util.MB,
-	}
 	inode = NewInode(ino, FileModeType)
-	inode.Extents.Append(extent)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status = mp.fsmAppendExtentsWithCheck(inode, false)
 	require.EqualValues(t, proto.OpOk, status)
 
-	inode, err = mp.inodeTree.Get(&Inode{Inode: ino})
+	_, err = mp.inodeTree.Get(&Inode{Inode: ino})
 	require.NoError(t, err)
-	require.EqualValues(t, 2, inode.Extents.Len())
-	require.EqualValues(t, extentStart, inode.Extents.eks[0].ExtentId)
-	require.EqualValues(t, extentStart+1, inode.Extents.eks[1].ExtentId)
 
 	// NOTE: random write to first extent
-	extent = proto.ExtentKey{
-		PartitionId:  0,
-		FileOffset:   0,
-		ExtentId:     extentStart,
-		ExtentOffset: 0,
-		Size:         2 * util.MB,
-	}
 	inode = NewInode(ino, FileModeType)
-	inode.Extents.Append(extent)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status = mp.fsmAppendExtentsWithCheck(inode, false)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
 
-	inode, err = mp.inodeTree.Get(&Inode{Inode: ino})
+	_, err = mp.inodeTree.Get(&Inode{Inode: ino})
 	require.NoError(t, err)
-	require.EqualValues(t, 2, inode.Extents.Len())
-	require.EqualValues(t, extentStart, inode.Extents.eks[0].ExtentId)
-	require.EqualValues(t, extentStart+1, inode.Extents.eks[1].ExtentId)
-	require.EqualValues(t, 2*util.MB, inode.Extents.eks[0].Size)
 }
 
 func TestFsmAppendInodeRandomWrite(t *testing.T) {
@@ -313,14 +272,7 @@ func testFsmUnlinkFileInode(t *testing.T, mp *metaPartition) {
 	prepareInodeForFsmInodeTest(t, mp, ino)
 
 	inode := NewInode(ino, FileModeType)
-	extent := proto.ExtentKey{
-		PartitionId:  0,
-		FileOffset:   0,
-		ExtentId:     0,
-		ExtentOffset: 0,
-		Size:         util.MB,
-	}
-	inode.Extents.Append(extent)
+	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status := mp.fsmAppendExtentsWithCheck(inode, false)
 	require.EqualValues(t, proto.OpOk, status)
 

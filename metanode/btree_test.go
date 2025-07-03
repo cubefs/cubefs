@@ -177,7 +177,6 @@ func TestInodeTree_Create(t *testing.T) {
 				Generation:   0,
 				LinkTarget:   []byte("linkTarget"),
 				NLink:        3,
-				Extents:      NewSortedExtents(),
 				StorageClass: proto.StorageClass_Replica_SSD,
 
 				HybridCloudExtents: NewSortedHybridCloudExtents(),
@@ -194,7 +193,6 @@ func TestInodeTree_Create(t *testing.T) {
 				Gid:          0,
 				Size:         4096,
 				NLink:        1,
-				Extents:      NewSortedExtents(),
 				StorageClass: proto.StorageClass_Replica_SSD,
 
 				HybridCloudExtents: NewSortedHybridCloudExtents(),

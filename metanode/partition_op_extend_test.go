@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
@@ -138,45 +137,4 @@ func TestRemoveXAttr_Rocksdb(t *testing.T) {
 	defer mockCtrl.Finish()
 	mp := mockPartitionRaftForFsmExtendTest(t, mockCtrl, proto.StoreModeRocksDb)
 	testRemoveXAttr(t, mp)
-}
-
-func testUpdateXAttr(t *testing.T, mp MetaPartition) {
-	ino := prepareInodeForExtendTest(t, mp)
-	p := &Packet{}
-	req := &proto.SetXAttrRequest{
-		VolName:     mp.GetBaseConfig().VolName,
-		PartitionId: mp.GetBaseConfig().PartitionId,
-		Inode:       ino,
-		Key:         "Key",
-		Value:       "0,0,0,0,0,0,0",
-	}
-	err := mp.SetXAttr(req, p)
-	require.NoError(t, err)
-	checkXattrForExtendTest(t, mp, ino, "Key", "0,0,0,0,0,0,0")
-
-	updateReq := &proto.UpdateXAttrRequest{
-		VolName:     mp.GetBaseConfig().VolName,
-		PartitionId: mp.GetBaseConfig().PartitionId,
-		Inode:       ino,
-		Key:         "Key",
-		Value:       "0,0,0,0,0,0,1",
-	}
-	err = mp.UpdateXAttr(updateReq, p)
-	require.NoError(t, err)
-	checkXattrForExtendTest(t, mp, ino, "Key", "0,0,0,0,0,0,1")
-}
-
-func TestUpdateXAttr(t *testing.T) {
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-	mp := mockPartitionRaftForFsmExtendTest(t, mockCtrl, proto.StoreModeMem)
-	testUpdateXAttr(t, mp)
-}
-
-func TestUpdateXAttr_Rocksdb(t *testing.T) {
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-	mp := mockPartitionRaftForFsmExtendTest(t, mockCtrl, proto.StoreModeRocksDb)
-	testUpdateXAttr(t, mp)
-	os.RemoveAll(mp.config.RocksDBDir)
 }

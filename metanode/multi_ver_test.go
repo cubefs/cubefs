@@ -538,7 +538,7 @@ func testAppendList(t *testing.T) {
 	assert.True(t, len(ino.multiSnap.multiVersions[0].GetExtentEks()) == 1)
 	assert.True(t, len(ino.GetExtentEks()) == len(seqArr)+1)
 	// TODO:leonrayang
-	// testCheckExtList(t, ino, seqArr)
+	testCheckExtList(t, ino.Inode, seqArr)
 
 	//--------  split at middle  -----------------------------------------------
 	t.Logf("start split at middle")

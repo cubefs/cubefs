@@ -27,30 +27,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var VolNameForFreeListTest = "TestForFreeList"
-
-func newPartitionForFreeList(conf *MetaPartitionConfig, manager *metadataManager) (mp *metaPartition) {
-	mp = &metaPartition{
-		config:        conf,
-		dentryTree:    NewBtree(),
-		inodeTree:     NewBtree(),
-		extendTree:    NewBtree(),
-		multipartTree: NewBtree(),
-		stopC:         make(chan bool),
-		storeChan:     make(chan *storeMsg, 100),
-		freeList:      newFreeList(),
-		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
-		extReset:      make(chan struct{}),
-		vol:           NewVol(),
-		manager:       manager,
-	}
-	mp.config.Cursor = 0
-	mp.config.End = 100000
-	mp.uidManager = NewUidMgr(conf.VolName, mp.config.PartitionId)
-	mp.mqMgr = NewQuotaManager(conf.VolName, mp.config.PartitionId)
-	return mp
-}
-
 func TestPersistInodesFreeList(t *testing.T) {
 	rootDir, err := os.MkdirTemp("", "")
 	defer os.RemoveAll(rootDir)
@@ -61,7 +37,7 @@ func TestPersistInodesFreeList(t *testing.T) {
 		PartitionType: proto.VolumeTypeHot,
 		RootDir:       rootDir,
 	}
-	mp := newPartitionForFreeList(config, &metadataManager{partitions: make(map[uint64]MetaPartition), fileStatsConfig: &fileStatsConfig{}})
+	mp := newPartition(config, newManager())
 	t.Logf("Persist one inode")
 	mp.persistDeletedInodes([]uint64{0})
 	fileName := path.Join(config.RootDir, DeleteInodeFileExtension)

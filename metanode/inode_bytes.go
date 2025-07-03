@@ -25,7 +25,7 @@ func (i *Inode) MarshalRocksdb() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	buff.Grow(64)
 
-	valBytes, err := i.MarshalValueV2()
+	valBytes, err := i.MarshalRocksdbValue()
 	if err != nil {
 		log.LogErrorf("inode MarshalRocksdb failed, err: %v", err)
 		return
@@ -69,7 +69,7 @@ func (i *Inode) MarshalRocksdb() (result []byte, err error) {
 	return
 }
 
-func (i *Inode) MarshalValueV2() (result []byte, err error) {
+func (i *Inode) MarshalRocksdbValue() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	buff.Grow(64)
 
@@ -130,29 +130,17 @@ func (i *Inode) MarshalValueV2() (result []byte, err error) {
 	if err = binary.Write(buff, binary.BigEndian, &i.LeaseExpireTime); err != nil {
 		panic(err)
 	}
-	if i.Extents != nil && len(i.Extents.eks) > 0 {
-		extData, err := i.Extents.MarshalBinary(true)
-		if err != nil {
-			panic(err)
-		}
-		if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
-			panic(err)
-		}
-		if _, err = buff.Write(extData); err != nil {
-			panic(err)
-		}
-	} else {
-		if err = binary.Write(buff, binary.BigEndian, uint32(0)); err != nil {
-			panic(err)
-		}
-	}
 	if i.HybridCloudExtents != nil && i.HybridCloudExtents.sortedEks != nil {
 		sortExtents, ok := i.HybridCloudExtents.sortedEks.(*SortedExtents)
 		if ok {
-			extData, err := sortExtents.MarshalBinary(true)
+			tmpBuf1 := GetInodeBuf()
+			defer PutInodeBuf(tmpBuf1)
+
+			err := sortExtents.MarshalBinary(tmpBuf1, true)
 			if err != nil {
 				panic(err)
 			}
+			extData := tmpBuf1.Bytes()
 			extSize := uint32(len(extData)) + HybridCloudExtentsTypeLen
 			if err = binary.Write(buff, binary.BigEndian, extSize); err != nil {
 				panic(err)
@@ -193,10 +181,15 @@ func (i *Inode) MarshalValueV2() (result []byte, err error) {
 		sem := i.HybridCloudExtentsMigration
 		replicaExtents, ok := sem.sortedEks.(*SortedExtents)
 		if ok {
-			extData, err := replicaExtents.MarshalBinary(true)
+			tmpBuf := GetInodeBuf()
+			defer PutInodeBuf(tmpBuf)
+
+			err := replicaExtents.MarshalBinary(tmpBuf, true)
 			if err != nil {
 				panic(err)
 			}
+			extData := tmpBuf.Bytes()
+
 			extSize := uint32(len(extData)) + HybridCloudExtentsMigrationLen
 			if err = binary.Write(buff, binary.BigEndian, extSize); err != nil {
 				panic(err)
@@ -268,7 +261,7 @@ func (i *Inode) UnmarshalRocksdbBody(buff *bytes.Buffer) (err error) {
 		return
 	}
 
-	err = i.UnmarshalInodeValueV2(buff)
+	err = i.UnmarshalRocksdbValue(buff)
 	if err != nil {
 		err = errors.NewErrorf("[Unmarshal] inode(%v) UnmarshalValue: %s", i.Inode, err.Error())
 		return
@@ -301,7 +294,7 @@ func (i *Inode) UnmarshalRocksdbBody(buff *bytes.Buffer) (err error) {
 			}
 			err = ino.UnmarshalRocksdbBody(buff)
 			if err != nil {
-				log.LogErrorf("UnmarshalInodeValueV2 err: %s", err.Error())
+				log.LogErrorf("UnmarshalRocksdbBody err: %s", err.Error())
 				return err
 			}
 			i.multiSnap.multiVersions = append(i.multiSnap.multiVersions, ino)
@@ -311,7 +304,7 @@ func (i *Inode) UnmarshalRocksdbBody(buff *bytes.Buffer) (err error) {
 	return
 }
 
-func (i *Inode) UnmarshalInodeValueV2(buff *bytes.Buffer) (err error) {
+func (i *Inode) UnmarshalRocksdbValue(buff *bytes.Buffer) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.Inode); err != nil {
 		err = UnmarshalInodeFiledError("Inode", err)
 		return
@@ -389,32 +382,6 @@ func (i *Inode) UnmarshalInodeValueV2(buff *bytes.Buffer) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.LeaseExpireTime); err != nil {
 		err = UnmarshalInodeFiledError("LeaseExpireTime", err)
 		return
-	}
-
-	extSize := uint32(0)
-	if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
-		err = UnmarshalInodeFiledError("extSize", err)
-		return
-	}
-	if extSize > 0 {
-		if extSize > proto.MaxBufferSize {
-			return proto.ErrBufferSizeExceedMaximum
-		}
-
-		if i.Extents == nil {
-			i.Extents = NewSortedExtents()
-		}
-
-		extBytes := make([]byte, extSize)
-		if _, err = io.ReadFull(buff, extBytes); err != nil {
-			err = UnmarshalInodeFiledError("extBytes", err)
-			return
-		}
-
-		if err, _ = i.Extents.UnmarshalBinary(extBytes, true); err != nil {
-			err = UnmarshalInodeFiledError("extBytes", err)
-			return
-		}
 	}
 
 	sortExtentSize := uint32(0)

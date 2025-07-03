@@ -776,14 +776,6 @@ type createVolReq struct {
 	storeMode proto.StoreMode
 }
 
-func checkCacheAction(action int) error {
-	if action != proto.NoCache && action != proto.RCache && action != proto.RWCache {
-		return fmt.Errorf("cache action is not legal, action [%d]", action)
-	}
-
-	return nil
-}
-
 func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
 	if args.objBlockSize, err = extractUint(r, ebsBlkSizeKey); err != nil {
 		return

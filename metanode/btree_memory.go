@@ -742,7 +742,7 @@ func (i *InodeBTree) Range(start, end *Inode, cb func(i *Inode) bool) error {
 func (i *DentryBTree) Range(start, end *Dentry, cb func(d *Dentry) bool) error {
 	var err error
 	if start == nil {
-		start = &Dentry{0, "", 0, 0, nil}
+		start = &Dentry{0, 0, "", 0, nil}
 	}
 
 	callback := func(i BtreeItem) bool {

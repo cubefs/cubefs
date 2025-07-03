@@ -411,6 +411,7 @@ func TestDoFileStats(t *testing.T) {
 		PartitionType: 1,
 		Peers:         nil,
 		RootDir:       testPath,
+		StoreMode:     proto.StoreModeMem,
 	}
 	metaM := &metadataManager{
 		nodeId:          1,
@@ -427,9 +428,13 @@ func TestDoFileStats(t *testing.T) {
 	mp, ok := partition.(*metaPartition)
 	require.True(t, ok)
 
+	err := mp.initObjects(true)
+	require.NoError(t, err)
+
 	for i := 0; i < 10000000; i++ {
 		ino := NewInode(uint64(i), 0)
-		mp.inodeTree.ReplaceOrInsert(ino, true)
+		_, _, err = mp.inodeTree.ReplaceOrInsert(ino, true)
+		require.NoError(t, err)
 	}
 
 	startTime := time.Now()
@@ -451,6 +456,7 @@ func TestLimitReadDir(t *testing.T) {
 		PartitionType: 1,
 		Peers:         nil,
 		RootDir:       testPath,
+		StoreMode:     proto.StoreModeMem,
 	}
 	metaM := &metadataManager{
 		nodeId:          1,
@@ -467,6 +473,8 @@ func TestLimitReadDir(t *testing.T) {
 	require.NotNil(t, partition)
 	mp, ok := partition.(*metaPartition)
 	require.True(t, ok)
+	err := mp.initObjects(true)
+	require.NoError(t, err)
 	t.Logf("readDirIops:%v", mp.manager.limitFactor[readDirIops].Limit())
 
 	req := &ReadDirLimitReq{
@@ -491,7 +499,7 @@ func TestLimitReadDir(t *testing.T) {
 					time.Sleep(time.Millisecond)
 					continue
 				}
-				resp := mp.readDirLimit(req)
+				resp, _ := mp.readDirLimit(req)
 				_, err = json.Marshal(resp)
 				if err != nil {
 					t.Errorf("readDir err: %v", err)
@@ -521,7 +529,7 @@ func TestLimitReadDir(t *testing.T) {
 					time.Sleep(time.Millisecond)
 					continue
 				}
-				resp := mp.readDirLimit(req)
+				resp, _ := mp.readDirLimit(req)
 				_, err = json.Marshal(resp)
 				if err != nil {
 					t.Errorf("readDir err: %v", err)

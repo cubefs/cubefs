@@ -1,7 +1,6 @@
 package metanode
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,17 +10,18 @@ import (
 )
 
 func TestStoreDentry(t *testing.T) {
-	dTree := NewBtree()
+	mp := newMetaPartition(1024, nil, proto.StoreModeMem)
 	for i := 0; i < 100; i++ {
-		dTree.ReplaceOrInsert(&Dentry{
-			ParentId: uint64(101 + i),
-			Inode:    uint64(201 + i),
-			Name:     fmt.Sprintf("test_%d", i),
-		}, true)
+		_, _, err := mp.inodeTree.ReplaceOrInsert(NewInode(uint64(101+i), DirModeType), true)
+		require.NoError(t, err)
 	}
 
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	defer snap.Close()
 	sm := &storeMsg{
-		dentryTree: dTree,
+		command: 1,
+		snap:    snap,
 	}
 
 	rootDir, err := os.MkdirTemp("", "")
@@ -35,7 +35,6 @@ func TestStoreDentry(t *testing.T) {
 		}
 	}()
 
-	mp := newMetaPartition(1024, nil)
 	crc, err := mp.storeDentry(rootDir, sm)
 	require.NoError(t, err)
 
@@ -48,13 +47,10 @@ func TestStoreDentryCompitable(t *testing.T) {
 	// old date is marshal byte for dtree by old version
 	oldData := []byte{0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 101, 116, 101, 115, 116, 95, 48, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 102, 116, 101, 115, 116, 95, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 202, 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 103, 116, 101, 115, 116, 95, 50, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 203, 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 104, 116, 101, 115, 116, 95, 51, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 204, 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 105, 116, 101, 115, 116, 95, 52, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 205, 0, 0, 0, 0}
 
-	dTree := NewBtree()
+	mp := newMetaPartition(1024, nil, proto.StoreModeMem)
 	for i := 0; i < 5; i++ {
-		dTree.ReplaceOrInsert(&Dentry{
-			ParentId: uint64(101 + i),
-			Inode:    uint64(201 + i),
-			Name:     fmt.Sprintf("test_%d", i),
-		}, true)
+		_, _, err := mp.inodeTree.ReplaceOrInsert(NewInode(uint64(101+i), DirModeType), true)
+		require.NoError(t, err)
 	}
 
 	rootDir, err := os.MkdirTemp("", "")
@@ -68,17 +64,15 @@ func TestStoreDentryCompitable(t *testing.T) {
 		t.Fail()
 	}
 
-	mp := newMetaPartition(1024, nil)
 	err = mp.loadDentry(rootDir, oldCrc)
 	if err != nil {
 		t.Fail()
 	}
 
-	require.True(t, mp.dentryTree.Len() == dTree.Len())
+	require.True(t, mp.dentryTree.Len() == 5)
 }
 
 func TestStoreInode(t *testing.T) {
-	dTree := NewBtree()
 	baseInode := NewInode(1024, uint32(os.ModeDir))
 	baseInode.Uid = 101
 	baseInode.Gid = 102
@@ -91,16 +85,22 @@ func TestStoreInode(t *testing.T) {
 	baseInode.Flag = 109
 	baseInode.StorageClass = proto.StorageClass_Replica_SSD
 
+	mp := newMetaPartition(1024, nil, proto.StoreModeMem)
 	for i := 0; i < 100; i++ {
 		newInode := baseInode.Copy().(*Inode)
 		newInode.Inode = uint64(i + 104)
 		newInode.Size = uint64(100 + i)
 		newInode.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: uint64(100 + i)}})
-		dTree.ReplaceOrInsert(newInode, true)
+		_, _, err := mp.inodeTree.ReplaceOrInsert(newInode, true)
+		require.NoError(t, err)
 	}
 
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	defer snap.Close()
 	sm := &storeMsg{
-		inodeTree: dTree,
+		command: 1,
+		snap:    snap,
 	}
 
 	rootDir, err := os.MkdirTemp("", "")
@@ -114,7 +114,6 @@ func TestStoreInode(t *testing.T) {
 		}
 	}()
 
-	mp := newMetaPartition(1024, nil)
 	crc, err := mp.storeInode(rootDir, sm)
 	require.NoError(t, err)
 
@@ -139,15 +138,6 @@ func TestStoreInodeCompitable(t *testing.T) {
 	baseInode.Flag = 109
 	baseInode.StorageClass = proto.StorageClass_Replica_SSD
 
-	dTree := NewBtree()
-	for i := 0; i < 3; i++ {
-		newInode := baseInode.Copy().(*Inode)
-		newInode.Inode = uint64(i + 104)
-		newInode.Size = uint64(100 + i)
-		newInode.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: uint64(100 + i)}})
-		dTree.ReplaceOrInsert(newInode, true)
-	}
-
 	rootDir, err := os.MkdirTemp("", "")
 	if err != nil {
 		t.Fail()
@@ -159,13 +149,13 @@ func TestStoreInodeCompitable(t *testing.T) {
 		t.Fail()
 	}
 
-	mp := newMetaPartition(1024, nil)
+	mp := newMetaPartition(1024, nil, proto.StoreModeMem)
 	err = mp.loadInode(rootDir, oldCrc)
 	if err != nil {
 		t.Fail()
 	}
 
-	require.True(t, mp.inodeTree.Len() == dTree.Len())
+	require.True(t, mp.inodeTree.Len() == 3)
 
 	err = os.RemoveAll(rootDir)
 	if err != nil {

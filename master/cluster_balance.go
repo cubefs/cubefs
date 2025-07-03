@@ -355,7 +355,7 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 			zoneView.NodeSet[ns.ID] = nsView
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				if !canAllocPartition(metaNode) {
+				if !canAllocPartition(metaNode, MetaNodeType) {
 					return true
 				}
 				nodeMemRatio = CaculateNodeMemoryRatio(metaNode)
@@ -1262,7 +1262,7 @@ func (c *Cluster) VerifyMetaNodeExceedMemMid(addr string) (bool, error) {
 		log.LogErrorf("Failed to get meta node(%s): err: %s", addr, err.Error())
 		return false, err
 	}
-	if !canAllocPartition(metaNode) {
+	if !canAllocPartition(metaNode, MetaNodeType) {
 		return true, nil
 	}
 	nodeMemRatio := CaculateNodeMemoryRatio(metaNode)
