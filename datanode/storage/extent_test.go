@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -206,6 +207,15 @@ func tinyExtentRepairTest(t *testing.T, name string) {
 	for _, v := range data {
 		require.EqualValues(t, v, 0)
 	}
+
+	size = e.Size()
+	size1 := util.ExtentSize
+	err = e.TinyExtentRecover(nil, size, int64(size1), 0, true)
+	require.NoError(t, err)
+	_, err = e.GetFile().Seek(size, storage.SEEK_DATA)
+	require.True(t, strings.Contains(err.Error(), syscall.ENXIO.Error()))
+	require.True(t, e.Size() == int64(size1)+size)
+
 	size = e.Size()
 	data = []byte(dataStr)
 	err = e.TinyExtentRecover(data, size, int64(len(data)), 0, false)
