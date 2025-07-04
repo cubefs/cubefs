@@ -49,6 +49,9 @@ bcache:
 rctest:
 	@build/build.sh rctest $(GOMOD) --threads=$(threads)
 
+rcconfig:
+	@build/build.sh rcconfig $(GOMOD) --threads=$(threads)
+
 phony += clean
 clean:
 	@$(RM) -rf build/bin
