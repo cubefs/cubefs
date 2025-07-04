@@ -244,6 +244,7 @@ func newCancelDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().AbortDiskDecommission(args[0], args[1])
 			if err != nil {
+				err = fmt.Errorf("%v, please exec curl -v http://masterAddr:17010/disk/queryDecommissionProgress?addr=dataAddr:17310&disk=dataPath to check if the disk has been canceled", err)
 				return
 			}
 			stdout("%v\n", "cancel decommission successfully")

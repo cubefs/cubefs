@@ -260,7 +260,7 @@ func newDataNodeCancelDecommissionCmd(client *master.MasterClient) *cobra.Comman
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := client.NodeAPI().QueryCancelDecommissionedDataNode(args[0])
 			if err != nil {
-				stdout("%v", err)
+				stdout("%v, please exec curl -v http://masterAddr:17010/dataNode/queryDecommissionProgress?addr=dataAddr:17310 to check if the datanode has been canceled", err)
 				return err
 			}
 			stdoutln(fmt.Sprintf("Cancel decommission for %v success", args[0]))
