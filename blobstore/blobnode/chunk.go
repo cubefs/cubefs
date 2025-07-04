@@ -245,6 +245,11 @@ func (s *Service) ChunkReadonly(c *rpc.Context) {
 		return
 	}
 
+	if !ds.IsWritable() {
+		c.RespondError(bloberr.ErrDiskBroken)
+		return
+	}
+
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
 		span.Errorf("readonly vuid:%v not found", args.Vuid)
@@ -314,6 +319,11 @@ func (s *Service) ChunkReadwrite(c *rpc.Context) {
 		return
 	}
 
+	if !ds.IsWritable() {
+		c.RespondError(bloberr.ErrDiskBroken)
+		return
+	}
+
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
 		span.Errorf("readwrite vuid:%v not found", args.Vuid)
@@ -374,6 +384,11 @@ func (s *Service) ChunkList(c *rpc.Context) {
 		return
 	}
 
+	if !ds.IsWritable() {
+		c.RespondError(bloberr.ErrDiskBroken)
+		return
+	}
+
 	chunks := make([]core.ChunkAPI, 0)
 	_ = ds.WalkChunksWithLock(ctx, func(cs core.ChunkAPI) (err error) {
 		chunks = append(chunks, cs)
@@ -420,6 +435,11 @@ func (s *Service) ChunkStat(c *rpc.Context) {
 	if !exist {
 		span.Errorf("stat disk:%v not found", args.DiskID)
 		c.RespondError(bloberr.ErrNoSuchDisk)
+		return
+	}
+
+	if !ds.IsWritable() {
+		c.RespondError(bloberr.ErrDiskBroken)
 		return
 	}
 
