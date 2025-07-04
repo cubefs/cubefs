@@ -5184,7 +5184,7 @@ func (c *Cluster) canAutoDecommissionDisk(addr string, diskPath string) (yes boo
 	if value, ok := c.DecommissionDisks.Load(key); ok {
 		d := value.(*DecommissionDisk)
 		status = d.GetDecommissionStatus()
-		yes = status != markDecommission && status != DecommissionRunning && status != DecommissionPause && status != DecommissionCancel
+		yes = status != markDecommission && status != DecommissionRunning && status != DecommissionPause
 		return
 	}
 	yes = true
