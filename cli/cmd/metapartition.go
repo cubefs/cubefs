@@ -158,7 +158,6 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.AbnormalRaftIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					stdout("Partition %v not found, err:[%v]\n", pid, err)
 					continue
 				}
 				if partition != nil {
