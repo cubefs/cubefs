@@ -67,9 +67,13 @@ func mockPartitionRaftForFsmDentryTest(t *testing.T, ctrl *gomock.Controller, st
 }
 
 func prepareInodeForFsmDentryTest(t *testing.T, mp *metaPartition, ino uint64, mode uint32) {
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	inode := NewInode(ino, mode)
-	status := mp.fsmCreateInode(inode)
+	status := mp.fsmCreateInode(handle, inode)
 	require.EqualValues(t, proto.OpOk, status)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 }
 
 func getDentryForFsmDentryTest(t *testing.T, mp *metaPartition, parent uint64, name string) (den *Dentry) {
@@ -139,12 +143,16 @@ func testFsmDeleteDentry(t *testing.T, mp *metaPartition) {
 	den = getDentryForFsmDentryTest(t, mp, dirIno, "test")
 	require.EqualValues(t, ino, den.Inode)
 
+	handle, err = mp.dentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	den = &Dentry{
 		ParentId: dirIno,
 		Name:     "test",
 	}
-	resp := mp.fsmDeleteDentry(den, false)
+	resp := mp.fsmDeleteDentry(handle, den, false)
 	require.EqualValues(t, proto.OpOk, resp.Status)
+	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	inode := getInodeForFsmDentryTest(t, mp, dirIno)
 	require.EqualValues(t, 2, inode.NLink)
@@ -180,13 +188,17 @@ func testFsmUpdateDentry(t *testing.T, mp *metaPartition) {
 	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
+	handle, err = mp.dentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	den = &Dentry{
 		ParentId: dirIno,
 		Name:     "test",
 		Inode:    otherIno,
 	}
-	resp := mp.fsmUpdateDentry(den)
+	resp := mp.fsmUpdateDentry(handle, den)
 	require.EqualValues(t, proto.OpOk, resp.Status)
+	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	den = getDentryForFsmDentryTest(t, mp, dirIno, "test")
 	require.NotNil(t, den)
 	require.EqualValues(t, den.Inode, otherIno)

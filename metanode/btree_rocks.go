@@ -543,29 +543,7 @@ func (r *RocksTree) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []byte) ([]by
 	return r.db.GetBytesWithSnap(snap, r.warpKey(key))
 }
 
-func (r *RocksTree) Put(count *uint64, key []byte, value []byte) error {
-	var err error
-	lock := &r.latch[key[0]]
-	lock.Lock()
-	defer lock.Unlock()
-
-	if count != nil {
-		has, err := r.HasKey(key)
-		if err != nil {
-			return err
-		}
-		if !has {
-			atomic.AddUint64(count, 1)
-		}
-	}
-
-	if err = r.SaveToDb(key, value); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *RocksTree) BatchPut(handle interface{}, count *uint64, key []byte, value []byte) error {
+func (r *RocksTree) Put(handle interface{}, count *uint64, key []byte, value []byte) error {
 	var err error
 	lock := &r.latch[key[0]]
 	lock.Lock()
@@ -587,18 +565,7 @@ func (r *RocksTree) BatchPut(handle interface{}, count *uint64, key []byte, valu
 	return nil
 }
 
-func (r *RocksTree) Update(key []byte, value []byte) (err error) {
-	lock := &r.latch[key[0]]
-	lock.Lock()
-	defer lock.Unlock()
-
-	if err = r.SaveToDb(key, value); err != nil {
-		return
-	}
-	return
-}
-
-func (r *RocksTree) BatchUpdate(handle interface{}, key []byte, value []byte) (err error) {
+func (r *RocksTree) Update(handle interface{}, key []byte, value []byte) (err error) {
 	lock := &r.latch[key[0]]
 	lock.Lock()
 	defer lock.Unlock()
@@ -609,36 +576,7 @@ func (r *RocksTree) BatchUpdate(handle interface{}, key []byte, value []byte) (e
 	return
 }
 
-func (r *RocksTree) Create(count *uint64, key []byte, value []byte, force bool) (ok bool, v []byte, err error) {
-	lock := &r.latch[key[0]]
-	lock.Lock()
-	defer lock.Unlock()
-
-	v, err = r.GetBytes(key)
-	if err != nil {
-		return
-	}
-
-	if len(v) > 0 && !force {
-		return
-	}
-
-	if count != nil {
-		if len(v) <= 0 {
-			// not exist
-			atomic.AddUint64(count, 1)
-		}
-	}
-
-	if err = r.SaveToDb(key, value); err != nil {
-		return
-	}
-	ok = true
-	v = value
-	return
-}
-
-func (r *RocksTree) BatchCreate(handle interface{}, count *uint64, key []byte, value []byte, force bool) (ok bool, v []byte, err error) {
+func (r *RocksTree) Create(handle interface{}, count *uint64, key []byte, value []byte, force bool) (ok bool, v []byte, err error) {
 	lock := &r.latch[key[0]]
 	lock.Lock()
 	defer lock.Unlock()
@@ -664,11 +602,16 @@ func (r *RocksTree) BatchCreate(handle interface{}, count *uint64, key []byte, v
 	}
 	ok = true
 	v = value
+	return
+}
+
+func (r *RocksTree) DelItemToBatch(handle interface{}, key []byte) (err error) {
+	err = r.db.DelItemToBatch(handle, r.warpKey(key))
 	return
 }
 
 // Has checks if the key exists in the btree. return is exist and err
-func (r *RocksTree) Delete(count *uint64, key []byte) (ok bool, err error) {
+func (r *RocksTree) Delete(handle interface{}, count *uint64, key []byte) (ok bool, err error) {
 	has := false
 	lock := &r.latch[key[0]]
 	lock.Lock()
@@ -685,7 +628,7 @@ func (r *RocksTree) Delete(count *uint64, key []byte) (ok bool, err error) {
 	}
 
 	atomic.AddUint64(count, ^uint64(0))
-	if err = r.db.Del(r.warpKey(key)); err != nil {
+	if err = r.DelItemToBatch(handle, key); err != nil {
 		return
 	}
 	ok = true
@@ -707,8 +650,26 @@ func (r *RocksTree) DelRangeToBatch(handle interface{}, start []byte, end []byte
 }
 
 func (r *RocksTree) DeleteMetadata(handle interface{}) (err error) {
+	r.baseInfo.applyId = 0
+	r.baseInfo.inodeCnt = 0
+	r.baseInfo.dentryCnt = 0
+	r.baseInfo.extendCnt = 0
+	r.baseInfo.multiCnt = 0
+	r.baseInfo.persistentApplyId = 0
+	r.baseInfo.cursor = 0
+	r.baseInfo.txCnt = 0
+	r.baseInfo.txRbInodeCnt = 0
+	r.baseInfo.txRbDentryCnt = 0
+	r.baseInfo.txId = 0
+	r.baseInfo.deletedExtentId = 0
+	r.baseInfo.deletedExtentsCnt = 0
+	r.baseInfo.deletedObjExtentsCnt = 0
 	err = r.db.DelItemToBatch(handle, r.warpKey(baseInfoKey))
 	return
+}
+
+func (r *RocksTree) GetStoreMode() proto.StoreMode {
+	return proto.StoreModeRocksDb
 }
 
 var (
@@ -906,7 +867,7 @@ func (b *InodeRocks) GetMaxInode() (uint64, error) {
 	var maxInode uint64 = 0
 	err := b.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
-		if e := inode.UnmarshalRocksdb(v); e != nil {
+		if e := inode.Unmarshal(v); e != nil {
 			return false, e
 		}
 		maxInode = inode.Inode
@@ -1050,7 +1011,7 @@ func (b *InodeRocks) Get(ino *Inode) (*Inode, error) {
 		return nil, nil
 	}
 	inode := NewInode(0, 0)
-	if err = inode.UnmarshalRocksdb(bs); err != nil {
+	if err = inode.Unmarshal(bs); err != nil {
 		log.LogErrorf("[InodeRocks] unmarshal value error : %v", err)
 		return nil, err
 	}
@@ -1226,183 +1187,91 @@ func (b *TransactionRollbackDentryRocks) CopyGet(dentry *TxRollbackDentry) (*TxR
 }
 
 // put inode into rocksdb
-func (b *InodeRocks) Put(inode *Inode) (err error) {
+func (b *InodeRocks) Put(handle interface{}, inode *Inode) (err error) {
 	var bs []byte
-	bs, err = inode.MarshalRocksdb()
+	bs, err = inode.Marshal()
 	if err != nil {
 		log.LogErrorf("InodeRocks inode marshal failed, inode:%v, error:%v", inode, err)
 		return
 	}
-	if err = b.RocksTree.Put(&b.baseInfo.inodeCnt, inodeEncodingKey(inode.Inode), bs); err != nil {
+	if err = b.RocksTree.Put(handle, &b.baseInfo.inodeCnt, inodeEncodingKey(inode.Inode), bs); err != nil {
 		log.LogErrorf("InodeRocks put failed, inode:%v, error:%v", inode, err)
 	}
 	return
 }
 
-func (b *InodeRocks) BatchPut(handle interface{}, inode *Inode) (err error) {
-	var bs []byte
-	bs, err = inode.MarshalRocksdb()
-	if err != nil {
-		log.LogErrorf("InodeRocks inode marshal failed, inode:%v, error:%v", inode, err)
-		return
-	}
-	if err = b.RocksTree.BatchPut(handle, &b.baseInfo.inodeCnt, inodeEncodingKey(inode.Inode), bs); err != nil {
-		log.LogErrorf("InodeRocks put failed, inode:%v, error:%v", inode, err)
-	}
-	return
-}
-
-func (b *DentryRocks) Put(dentry *Dentry) (err error) {
+func (b *DentryRocks) Put(handle interface{}, dentry *Dentry) (err error) {
 	var bs []byte
 	bs, err = dentry.Marshal()
 	if err != nil {
 		log.LogErrorf("DentryRocks dentry marshal failed, dentry:%v, error:%v", dentry, err)
 		return
 	}
-	if err = b.RocksTree.Put(&b.baseInfo.dentryCnt, dentryEncodingKey(dentry.ParentId, dentry.Name), bs); err != nil {
+	if err = b.RocksTree.Put(handle, &b.baseInfo.dentryCnt, dentryEncodingKey(dentry.ParentId, dentry.Name), bs); err != nil {
 		log.LogErrorf("DentryRocks put failed, dentry:%v, error:%v", dentry, err)
 	}
 	return
 }
 
-func (b *DentryRocks) BatchPut(handle interface{}, dentry *Dentry) (err error) {
-	var bs []byte
-	bs, err = dentry.Marshal()
-	if err != nil {
-		log.LogErrorf("DentryRocks dentry marshal failed, dentry:%v, error:%v", dentry, err)
-		return
-	}
-	if err = b.RocksTree.BatchPut(handle, &b.baseInfo.dentryCnt, dentryEncodingKey(dentry.ParentId, dentry.Name), bs); err != nil {
-		log.LogErrorf("DentryRocks put failed, dentry:%v, error:%v", dentry, err)
-	}
-	return
-}
-
-func (b *ExtendRocks) Put(extend *Extend) (err error) {
+func (b *ExtendRocks) Put(handle interface{}, extend *Extend) (err error) {
 	var bs []byte
 	bs, err = extend.Bytes()
 	if err != nil {
 		log.LogErrorf("ExtendRocks extend marshal failed, extend:%v, error:%v", extend, err)
 		return
 	}
-	if err = b.RocksTree.Put(&b.baseInfo.extendCnt, extendEncodingKey(extend.inode), bs); err != nil {
+	if err = b.RocksTree.Put(handle, &b.baseInfo.extendCnt, extendEncodingKey(extend.inode), bs); err != nil {
 		log.LogErrorf("ExtendRocks extend put failed, extend:%v, error:%v", extend, err)
 	}
 	return
 }
 
-func (b *ExtendRocks) BatchPut(handle interface{}, extend *Extend) (err error) {
-	var bs []byte
-	bs, err = extend.Bytes()
-	if err != nil {
-		log.LogErrorf("ExtendRocks extend marshal failed, extend:%v, error:%v", extend, err)
-		return
-	}
-	if err = b.RocksTree.BatchPut(handle, &b.baseInfo.extendCnt, extendEncodingKey(extend.inode), bs); err != nil {
-		log.LogErrorf("ExtendRocks extend put failed, extend:%v, error:%v", extend, err)
-	}
-	return
-}
-
-func (b *MultipartRocks) Put(multipart *Multipart) (err error) {
+func (b *MultipartRocks) Put(handle interface{}, multipart *Multipart) (err error) {
 	var bs []byte
 	bs, err = multipart.Bytes()
 	if err != nil {
 		log.LogErrorf("MultipartRocks multipart marshal failed, multipart:%v, error:%v", multipart, err)
 		return
 	}
-	if err = b.RocksTree.Put(&b.baseInfo.multiCnt, multipartEncodingKey(multipart.key, multipart.id), bs); err != nil {
+	if err = b.RocksTree.Put(handle, &b.baseInfo.multiCnt, multipartEncodingKey(multipart.key, multipart.id), bs); err != nil {
 		log.LogErrorf("MultipartRocks multipart put failed, multipart:%v, error:%v", multipart, err)
 	}
 	return
 }
 
-func (b *MultipartRocks) BatchPut(handle interface{}, multipart *Multipart) (err error) {
-	var bs []byte
-	bs, err = multipart.Bytes()
-	if err != nil {
-		log.LogErrorf("MultipartRocks multipart marshal failed, multipart:%v, error:%v", multipart, err)
-		return
-	}
-	if err = b.RocksTree.BatchPut(handle, &b.baseInfo.multiCnt, multipartEncodingKey(multipart.key, multipart.id), bs); err != nil {
-		log.LogErrorf("MultipartRocks multipart put failed, multipart:%v, error:%v", multipart, err)
-	}
-	return
-}
-
-func (b *TransactionRocks) Put(tx *proto.TransactionInfo) (err error) {
+func (b *TransactionRocks) Put(handle interface{}, tx *proto.TransactionInfo) (err error) {
 	var bs []byte
 	if bs, err = tx.Marshal(); err != nil {
 		log.LogErrorf("TransactionRocks tx marshal failed, tx: %v, error: %v", tx, err)
 		return
 	}
-	if err = b.RocksTree.Put(&b.baseInfo.txCnt, transactionEncodingKey(tx.TxID), bs); err != nil {
+	if err = b.RocksTree.Put(handle, &b.baseInfo.txCnt, transactionEncodingKey(tx.TxID), bs); err != nil {
 		log.LogErrorf("TransactionRocks tx put failed, tx: %v, error: %v", tx, err)
 		return
 	}
 	return
 }
 
-func (b *TransactionRocks) BatchPut(handle interface{}, tx *proto.TransactionInfo) (err error) {
-	var bs []byte
-	if bs, err = tx.Marshal(); err != nil {
-		log.LogErrorf("TransactionRocks tx marshal failed, tx: %v, error: %v", tx, err)
-		return
-	}
-	if err = b.RocksTree.BatchPut(handle, &b.baseInfo.txCnt, transactionEncodingKey(tx.TxID), bs); err != nil {
-		log.LogErrorf("TransactionRocks tx put failed, tx: %v, error: %v", tx, err)
-		return
-	}
-	return
-}
-
-func (b *TransactionRollbackInodeRocks) Put(ino *TxRollbackInode) (err error) {
+func (b *TransactionRollbackInodeRocks) Put(handle interface{}, ino *TxRollbackInode) (err error) {
 	var bs []byte
 	if bs, err = ino.Marshal(); err != nil {
 		log.LogErrorf("TransactionRollbackInodeRocks ino marshal failed, ino: %v, error: %v", ino, err)
 		return
 	}
-	if err = b.RocksTree.Put(&b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(ino.inode.Inode), bs); err != nil {
+	if err = b.RocksTree.Put(handle, &b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(ino.inode.Inode), bs); err != nil {
 		log.LogErrorf("TransactionRollbackInodeRocks ino put failed, ino: %v, error: %v", ino, err)
 		return
 	}
 	return
 }
 
-func (b *TransactionRollbackInodeRocks) BatchPut(handle interface{}, ino *TxRollbackInode) (err error) {
-	var bs []byte
-	if bs, err = ino.Marshal(); err != nil {
-		log.LogErrorf("TransactionRollbackInodeRocks ino marshal failed, ino: %v, error: %v", ino, err)
-		return
-	}
-	if err = b.RocksTree.BatchPut(handle, &b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(ino.inode.Inode), bs); err != nil {
-		log.LogErrorf("TransactionRollbackInodeRocks ino put failed, ino: %v, error: %v", ino, err)
-		return
-	}
-	return
-}
-
-func (b *TransactionRollbackDentryRocks) Put(dentry *TxRollbackDentry) (err error) {
+func (b *TransactionRollbackDentryRocks) Put(handle interface{}, dentry *TxRollbackDentry) (err error) {
 	var bs []byte
 	if bs, err = dentry.Marshal(); err != nil {
 		log.LogErrorf("TransactionRollbackDentryRocks dentry marshal failed, dentry: %v, error: %v", dentry, err)
 		return
 	}
-	err = b.RocksTree.Put(&b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
-	if err != nil {
-		log.LogErrorf("TransactionRollbackDentryRocks dentry put failed, dentry: %v, error: %v", dentry, err)
-		return
-	}
-	return
-}
-
-func (b *TransactionRollbackDentryRocks) BatchPut(handle interface{}, dentry *TxRollbackDentry) (err error) {
-	var bs []byte
-	if bs, err = dentry.Marshal(); err != nil {
-		log.LogErrorf("TransactionRollbackDentryRocks dentry marshal failed, dentry: %v, error: %v", dentry, err)
-		return
-	}
-	err = b.RocksTree.BatchPut(handle, &b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
+	err = b.RocksTree.Put(handle, &b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
 	if err != nil {
 		log.LogErrorf("TransactionRollbackDentryRocks dentry put failed, dentry: %v, error: %v", dentry, err)
 		return
@@ -1411,33 +1280,20 @@ func (b *TransactionRollbackDentryRocks) BatchPut(handle interface{}, dentry *Tx
 }
 
 // update
-func (b *InodeRocks) Update(inode *Inode) (err error) {
+func (b *InodeRocks) Update(handle interface{}, inode *Inode) (err error) {
 	var bs []byte
-	bs, err = inode.MarshalRocksdb()
+	bs, err = inode.Marshal()
 	if err != nil {
 		log.LogErrorf("InodeRocks inode marshal failed, inode:%v, error:%v", inode, err)
 		return
 	}
-	if err = b.RocksTree.Update(inodeEncodingKey(inode.Inode), bs); err != nil {
+	if err = b.RocksTree.Update(handle, inodeEncodingKey(inode.Inode), bs); err != nil {
 		log.LogErrorf("InodeRocks inode update failed, inode:%v, error:%v", inode, err)
 	}
 	return
 }
 
-func (b *InodeRocks) BatchUpdate(handle interface{}, inode *Inode) (err error) {
-	var bs []byte
-	bs, err = inode.MarshalRocksdb()
-	if err != nil {
-		log.LogErrorf("InodeRocks inode marshal failed, inode:%v, error:%v", inode, err)
-		return
-	}
-	if err = b.RocksTree.BatchUpdate(handle, inodeEncodingKey(inode.Inode), bs); err != nil {
-		log.LogErrorf("InodeRocks inode update failed, inode:%v, error:%v", inode, err)
-	}
-	return
-}
-
-func (b *DentryRocks) Update(dentry *Dentry) (err error) {
+func (b *DentryRocks) Update(handle interface{}, dentry *Dentry) (err error) {
 	var bs []byte
 	bs, err = dentry.Marshal()
 	if err != nil {
@@ -1445,70 +1301,70 @@ func (b *DentryRocks) Update(dentry *Dentry) (err error) {
 		return
 	}
 
-	if err = b.RocksTree.Update(dentryEncodingKey(dentry.ParentId, dentry.Name), bs); err != nil {
+	if err = b.RocksTree.Update(handle, dentryEncodingKey(dentry.ParentId, dentry.Name), bs); err != nil {
 		log.LogErrorf("DentryRocks dentry update failed, dentry:%v, error:%v", dentry, err)
 	}
 	return
 }
 
-func (b *ExtendRocks) Update(extend *Extend) (err error) {
+func (b *ExtendRocks) Update(handle interface{}, extend *Extend) (err error) {
 	var bs []byte
 	bs, err = extend.Bytes()
 	if err != nil {
 		log.LogErrorf("ExtendRocks extend marshal failed, extend:%v, error:%v", extend, err)
 		return
 	}
-	if err = b.RocksTree.Update(extendEncodingKey(extend.inode), bs); err != nil {
+	if err = b.RocksTree.Update(handle, extendEncodingKey(extend.inode), bs); err != nil {
 		log.LogErrorf("ExtendRocks extend update failed, extend:%v, error:%v", extend, err)
 	}
 	return
 }
 
-func (b *MultipartRocks) Update(multipart *Multipart) (err error) {
+func (b *MultipartRocks) Update(handle interface{}, multipart *Multipart) (err error) {
 	var bs []byte
 	bs, err = multipart.Bytes()
 	if err != nil {
 		log.LogErrorf("MultipartRocks multipart marshal failed, multipart:%v, error:%v", multipart, err)
 		return
 	}
-	if err = b.RocksTree.Update(multipartEncodingKey(multipart.key, multipart.id), bs); err != nil {
+	if err = b.RocksTree.Update(handle, multipartEncodingKey(multipart.key, multipart.id), bs); err != nil {
 		log.LogErrorf("MultipartRocks multipart update failed, multipart:%v, error:%v", multipart, err)
 	}
 	return
 }
 
-func (b *TransactionRocks) Update(tx *proto.TransactionInfo) (err error) {
+func (b *TransactionRocks) Update(handle interface{}, tx *proto.TransactionInfo) (err error) {
 	var bs []byte
 	if bs, err = tx.Marshal(); err != nil {
 		log.LogErrorf("TransactionRocks tx marshal failed, tx: %v, error: %v", tx, err)
 		return
 	}
-	if err = b.RocksTree.Update(transactionEncodingKey(tx.TxID), bs); err != nil {
+	if err = b.RocksTree.Update(handle, transactionEncodingKey(tx.TxID), bs); err != nil {
 		log.LogErrorf("MultipartRocks tx update failed, tx: %v, error: %v", tx, err)
 	}
 	return
 }
 
-func (b *TransactionRollbackInodeRocks) Update(ino *TxRollbackInode) (err error) {
+func (b *TransactionRollbackInodeRocks) Update(handle interface{}, ino *TxRollbackInode) (err error) {
 	var bs []byte
 	if bs, err = ino.Marshal(); err != nil {
 		log.LogErrorf("TransactionRollbackInodeRocks ino marshal failed, ino: %v, error: %v", ino, err)
 		return
 	}
-	if err = b.RocksTree.Update(transactionRollbackInodeEncodingKey(ino.inode.Inode), bs); err != nil {
+	if err = b.RocksTree.Update(handle, transactionRollbackInodeEncodingKey(ino.inode.Inode), bs); err != nil {
 		log.LogErrorf("TransactionRollbackInodeRocks ino update failed, ino: %v, error: %v", ino, err)
 		return
 	}
 	return
 }
 
-func (b *TransactionRollbackDentryRocks) Update(dentry *TxRollbackDentry) (err error) {
+func (b *TransactionRollbackDentryRocks) Update(handle interface{}, dentry *TxRollbackDentry) (err error) {
 	var bs []byte
 	if bs, err = dentry.Marshal(); err != nil {
 		log.LogErrorf("TransactionRollbackDentryRocks dentry marshal failed, dentry: %v, error: %v", dentry, err)
 		return
 	}
-	err = b.RocksTree.Update(transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
+	err = b.RocksTree.Update(handle, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
 	if err != nil {
 		log.LogErrorf("TransactionRollbackDentryRocks dentry update failed, dentry: %v, error: %v", dentry, err)
 		return
@@ -1517,16 +1373,16 @@ func (b *TransactionRollbackDentryRocks) Update(dentry *TxRollbackDentry) (err e
 }
 
 // Create if exists , return old, false,   if not  return nil , true
-func (b *InodeRocks) ReplaceOrInsert(inode *Inode, replace bool) (ino *Inode, ok bool, err error) {
+func (b *InodeRocks) ReplaceOrInsert(handle interface{}, inode *Inode, replace bool) (ino *Inode, ok bool, err error) {
 	var key, bs, v []byte
 	key = inodeEncodingKey(inode.Inode)
-	bs, err = inode.MarshalRocksdb()
+	bs, err = inode.Marshal()
 	if err != nil {
 		log.LogErrorf("[InodeRocksCreate] haskey error %v, %v", key, err)
 		return
 	}
 
-	ok, v, err = b.RocksTree.Create(&b.baseInfo.inodeCnt, key, bs, replace)
+	ok, v, err = b.RocksTree.Create(handle, &b.baseInfo.inodeCnt, key, bs, replace)
 	if err != nil {
 		log.LogErrorf("[InodeRocksCreate] inodeRocks error %v, %v", key, err)
 		return
@@ -1540,7 +1396,7 @@ func (b *InodeRocks) ReplaceOrInsert(inode *Inode, replace bool) (ino *Inode, ok
 		}
 		// exist
 		ino = NewInode(0, 0)
-		if err = ino.UnmarshalRocksdb(v); err != nil {
+		if err = ino.Unmarshal(v); err != nil {
 			log.LogErrorf("[InodeRocksCreate] unmarshal exist inode value failed, inode:%v, err:%v", inode, err)
 			return
 		}
@@ -1550,40 +1406,7 @@ func (b *InodeRocks) ReplaceOrInsert(inode *Inode, replace bool) (ino *Inode, ok
 	return
 }
 
-func (b *InodeRocks) BatchReplaceOrInsert(handle interface{}, inode *Inode, replace bool) (ino *Inode, ok bool, err error) {
-	var key, bs, v []byte
-	key = inodeEncodingKey(inode.Inode)
-	bs, err = inode.MarshalRocksdb()
-	if err != nil {
-		log.LogErrorf("[InodeRocksCreate] haskey error %v, %v", key, err)
-		return
-	}
-
-	ok, v, err = b.RocksTree.BatchCreate(handle, &b.baseInfo.inodeCnt, key, bs, replace)
-	if err != nil {
-		log.LogErrorf("[InodeRocksCreate] inodeRocks error %v, %v", key, err)
-		return
-	}
-
-	if !ok {
-		if len(v) == 0 {
-			log.LogErrorf("[InodeRocksCreate] invalid value len, inode:%v", inode)
-			err = ErrInvalidRocksdbValueLen
-			return
-		}
-		// exist
-		ino = NewInode(0, 0)
-		if err = ino.UnmarshalRocksdb(v); err != nil {
-			log.LogErrorf("[InodeRocksCreate] unmarshal exist inode value failed, inode:%v, err:%v", inode, err)
-			return
-		}
-		return
-	}
-	ino = inode
-	return
-}
-
-func (b *DentryRocks) ReplaceOrInsert(dentry *Dentry, replace bool) (den *Dentry, ok bool, err error) {
+func (b *DentryRocks) ReplaceOrInsert(handle interface{}, dentry *Dentry, replace bool) (den *Dentry, ok bool, err error) {
 	var key, bs, v []byte
 	key = dentryEncodingKey(dentry.ParentId, dentry.Name)
 	bs, err = dentry.Marshal()
@@ -1592,7 +1415,7 @@ func (b *DentryRocks) ReplaceOrInsert(dentry *Dentry, replace bool) (den *Dentry
 		return
 	}
 
-	ok, v, err = b.RocksTree.Create(&b.baseInfo.dentryCnt, key, bs, replace)
+	ok, v, err = b.RocksTree.Create(handle, &b.baseInfo.dentryCnt, key, bs, replace)
 	if err != nil {
 		log.LogErrorf("[DentryRocks] Create dentry: %v key: %v, err: %v", dentry, key, err)
 		return
@@ -1615,39 +1438,7 @@ func (b *DentryRocks) ReplaceOrInsert(dentry *Dentry, replace bool) (den *Dentry
 	return
 }
 
-func (b *DentryRocks) BatchReplaceOrInsert(handle interface{}, dentry *Dentry, replace bool) (den *Dentry, ok bool, err error) {
-	var key, bs, v []byte
-	key = dentryEncodingKey(dentry.ParentId, dentry.Name)
-	bs, err = dentry.Marshal()
-	if err != nil {
-		log.LogErrorf("[DentryRocks] marshal: %v, err: %v", dentry, err)
-		return
-	}
-
-	ok, v, err = b.RocksTree.BatchCreate(handle, &b.baseInfo.dentryCnt, key, bs, replace)
-	if err != nil {
-		log.LogErrorf("[DentryRocks] Create dentry: %v key: %v, err: %v", dentry, key, err)
-		return
-	}
-
-	if !ok {
-		if len(v) == 0 {
-			err = ErrInvalidRocksdbValueLen
-			log.LogErrorf("[DentryRocks] invalid value len, dentry:%v", dentry)
-			return
-		}
-		den = new(Dentry)
-		if err = den.Unmarshal(v); err != nil {
-			log.LogErrorf("[DentryRocks] unmarshal exist dentry value failed, dentry:%v, err:%v", dentry, err)
-			return
-		}
-		return
-	}
-	den = dentry
-	return
-}
-
-func (b *ExtendRocks) ReplaceOrInsert(extend *Extend, replace bool) (ext *Extend, ok bool, err error) {
+func (b *ExtendRocks) ReplaceOrInsert(handle interface{}, extend *Extend, replace bool) (ext *Extend, ok bool, err error) {
 	var key, bs, v []byte
 	key = extendEncodingKey(extend.inode)
 	bs, err = extend.Bytes()
@@ -1656,7 +1447,7 @@ func (b *ExtendRocks) ReplaceOrInsert(extend *Extend, replace bool) (ext *Extend
 		return
 	}
 
-	ok, v, err = b.RocksTree.Create(&b.baseInfo.extendCnt, key, bs, replace)
+	ok, v, err = b.RocksTree.Create(handle, &b.baseInfo.extendCnt, key, bs, replace)
 	if err != nil {
 		log.LogErrorf("[ExtendRocks] Create extend: %v key: %v, err: %v", extend, key, err)
 		return
@@ -1678,38 +1469,7 @@ func (b *ExtendRocks) ReplaceOrInsert(extend *Extend, replace bool) (ext *Extend
 	return
 }
 
-func (b *ExtendRocks) BatchReplaceOrInsert(handle interface{}, extend *Extend, replace bool) (ext *Extend, ok bool, err error) {
-	var key, bs, v []byte
-	key = extendEncodingKey(extend.inode)
-	bs, err = extend.Bytes()
-	if err != nil {
-		log.LogErrorf("[ExtendRocks] marshal: %v, err: %v", extend, err)
-		return
-	}
-
-	ok, v, err = b.RocksTree.BatchCreate(handle, &b.baseInfo.extendCnt, key, bs, replace)
-	if err != nil {
-		log.LogErrorf("[ExtendRocks] Create extend: %v key: %v, err: %v", extend, key, err)
-		return
-	}
-
-	if !ok {
-		if len(v) == 0 {
-			err = ErrInvalidRocksdbValueLen
-			log.LogErrorf("[ExtendRocks] invalid value len, extend:%v", extend)
-			return
-		}
-		if ext, err = NewExtendFromBytes(v); err != nil {
-			log.LogErrorf("[ExtendRocks] unmarshal exist extend value failed, extend:%v, err:%v", extend, err)
-			return
-		}
-		return
-	}
-	ext = extend
-	return
-}
-
-func (b *MultipartRocks) ReplaceOrInsert(mul *Multipart, replace bool) (multipart *Multipart, ok bool, err error) {
+func (b *MultipartRocks) ReplaceOrInsert(handle interface{}, mul *Multipart, replace bool) (multipart *Multipart, ok bool, err error) {
 	var key, bs, v []byte
 	key = multipartEncodingKey(mul.key, mul.id)
 	bs, err = mul.Bytes()
@@ -1718,7 +1478,7 @@ func (b *MultipartRocks) ReplaceOrInsert(mul *Multipart, replace bool) (multipar
 		return
 	}
 
-	ok, v, err = b.RocksTree.Create(&b.baseInfo.multiCnt, key, bs, replace)
+	ok, v, err = b.RocksTree.Create(handle, &b.baseInfo.multiCnt, key, bs, replace)
 	if err != nil {
 		log.LogErrorf("[MultipartRocks] Create multipart: %v key: %v, err: %v", mul, key, err)
 		return
@@ -1737,35 +1497,7 @@ func (b *MultipartRocks) ReplaceOrInsert(mul *Multipart, replace bool) (multipar
 	return
 }
 
-func (b *MultipartRocks) BatchReplaceOrInsert(handle interface{}, mul *Multipart, replace bool) (multipart *Multipart, ok bool, err error) {
-	var key, bs, v []byte
-	key = multipartEncodingKey(mul.key, mul.id)
-	bs, err = mul.Bytes()
-	if err != nil {
-		log.LogErrorf("[MultipartRocks] marshal: %v, err: %v", mul, err)
-		return
-	}
-
-	ok, v, err = b.RocksTree.BatchCreate(handle, &b.baseInfo.multiCnt, key, bs, replace)
-	if err != nil {
-		log.LogErrorf("[MultipartRocks] Create multipart: %v key: %v, err: %v", mul, key, err)
-		return
-	}
-
-	if !ok {
-		if len(v) == 0 {
-			err = ErrInvalidRocksdbValueLen
-			log.LogErrorf("[MultipartRocks] invalid value len, mul:%v", mul)
-			return
-		}
-		multipart = MultipartFromBytes(v)
-		return
-	}
-	multipart = mul
-	return
-}
-
-func (b *TransactionRocks) ReplaceOrInsert(tx *proto.TransactionInfo, replace bool) (transaction *proto.TransactionInfo, ok bool, err error) {
+func (b *TransactionRocks) ReplaceOrInsert(handle interface{}, tx *proto.TransactionInfo, replace bool) (transaction *proto.TransactionInfo, ok bool, err error) {
 	var key, bs, v []byte
 	key = transactionEncodingKey(tx.TxID)
 	bs, err = tx.Marshal()
@@ -1774,7 +1506,7 @@ func (b *TransactionRocks) ReplaceOrInsert(tx *proto.TransactionInfo, replace bo
 		return
 	}
 
-	ok, v, err = b.RocksTree.Create(&b.baseInfo.txCnt, key, bs, replace)
+	ok, v, err = b.RocksTree.Create(handle, &b.baseInfo.txCnt, key, bs, replace)
 	if err != nil {
 		log.LogErrorf("[TransactionRocks] Create transaction: %v id: %v, err: %v", tx, tx.TxID, err)
 		return
@@ -1796,38 +1528,7 @@ func (b *TransactionRocks) ReplaceOrInsert(tx *proto.TransactionInfo, replace bo
 	return
 }
 
-func (b *TransactionRocks) BatchReplaceOrInsert(handle interface{}, tx *proto.TransactionInfo, replace bool) (transaction *proto.TransactionInfo, ok bool, err error) {
-	var key, bs, v []byte
-	key = transactionEncodingKey(tx.TxID)
-	bs, err = tx.Marshal()
-	if err != nil {
-		log.LogErrorf("[TransactionRocks] marshal: %v, err: %v", tx, err)
-		return
-	}
-
-	ok, v, err = b.RocksTree.BatchCreate(handle, &b.baseInfo.txCnt, key, bs, replace)
-	if err != nil {
-		log.LogErrorf("[TransactionRocks] Create transaction: %v id: %v, err: %v", tx, tx.TxID, err)
-		return
-	}
-
-	if !ok {
-		if len(v) == 0 {
-			err = ErrInvalidRocksdbValueLen
-			log.LogErrorf("[TransactionRocks] invalid value len, tx:%v", tx)
-			return
-		}
-		if err = transaction.Unmarshal(v); err != nil {
-			log.LogErrorf("[TransactionRocks] failed to unmarshal transaction: %v, err: %v", tx.TxID, err)
-			return
-		}
-		return
-	}
-	transaction = tx
-	return
-}
-
-func (b *TransactionRollbackInodeRocks) ReplaceOrInsert(ino *TxRollbackInode, replace bool) (inode *TxRollbackInode, ok bool, err error) {
+func (b *TransactionRollbackInodeRocks) ReplaceOrInsert(handle interface{}, ino *TxRollbackInode, replace bool) (inode *TxRollbackInode, ok bool, err error) {
 	var key, bs, v []byte
 	key = transactionRollbackInodeEncodingKey(ino.inode.Inode)
 	bs, err = ino.Marshal()
@@ -1835,7 +1536,7 @@ func (b *TransactionRollbackInodeRocks) ReplaceOrInsert(ino *TxRollbackInode, re
 		log.LogErrorf("[TransactionRollbackInodeRocks] marshal: %v, err: %v", ino, err)
 		return
 	}
-	ok, v, err = b.RocksTree.Create(&b.baseInfo.txRbInodeCnt, key, bs, replace)
+	ok, v, err = b.RocksTree.Create(handle, &b.baseInfo.txRbInodeCnt, key, bs, replace)
 	if err != nil {
 		log.LogErrorf("[TransactionRollbackInodeRocks] Create ino: %v, err: %v", ino, err)
 		return
@@ -1857,37 +1558,7 @@ func (b *TransactionRollbackInodeRocks) ReplaceOrInsert(ino *TxRollbackInode, re
 	return
 }
 
-func (b *TransactionRollbackInodeRocks) BatchReplaceOrInsert(handle interface{}, ino *TxRollbackInode, replace bool) (inode *TxRollbackInode, ok bool, err error) {
-	var key, bs, v []byte
-	key = transactionRollbackInodeEncodingKey(ino.inode.Inode)
-	bs, err = ino.Marshal()
-	if err != nil {
-		log.LogErrorf("[TransactionRollbackInodeRocks] marshal: %v, err: %v", ino, err)
-		return
-	}
-	ok, v, err = b.RocksTree.BatchCreate(handle, &b.baseInfo.txRbInodeCnt, key, bs, replace)
-	if err != nil {
-		log.LogErrorf("[TransactionRollbackInodeRocks] Create ino: %v, err: %v", ino, err)
-		return
-	}
-
-	if !ok {
-		if len(v) == 0 {
-			err = ErrInvalidRocksdbValueLen
-			log.LogErrorf("[TransactionRollbackInodeRocks] invalid value len, ino:%v", ino)
-			return
-		}
-		if err = inode.Unmarshal(v); err != nil {
-			log.LogErrorf("[TransactionRollbackInodeRocks] failed to unmarshal inode: %v, err: %v", ino.inode.Inode, err)
-			return
-		}
-		return
-	}
-	inode = ino
-	return
-}
-
-func (b *TransactionRollbackDentryRocks) ReplaceOrInsert(den *TxRollbackDentry, replace bool) (dentry *TxRollbackDentry, ok bool, err error) {
+func (b *TransactionRollbackDentryRocks) ReplaceOrInsert(handle interface{}, den *TxRollbackDentry, replace bool) (dentry *TxRollbackDentry, ok bool, err error) {
 	var key, bs, v []byte
 	key = transactionRollbackDentryEncodingKey(den.txDentryInfo.ParentId, den.txDentryInfo.Name)
 	bs, err = den.Marshal()
@@ -1895,36 +1566,7 @@ func (b *TransactionRollbackDentryRocks) ReplaceOrInsert(den *TxRollbackDentry, 
 		log.LogErrorf("[TransactionRollbackDentryRocks] marshal: %v, err: %v", den, err)
 		return
 	}
-	ok, v, err = b.RocksTree.Create(&b.baseInfo.txRbDentryCnt, key, bs, replace)
-	if err != nil {
-		log.LogErrorf("[TransactionRollbackDentryRocks] Create dentry failed, parent: %v, name: %v, err: %v", den.txDentryInfo.ParentId, den.txDentryInfo.Name, err)
-		return
-	}
-
-	if !ok {
-		if len(v) == 0 {
-			err = ErrInvalidRocksdbValueLen
-			log.LogErrorf("[TransactionRollbackDentryRocks] invalid value len, den:%v", den)
-			return
-		}
-		if err = dentry.Unmarshal(v); err != nil {
-			log.LogErrorf("[TransactionRollbackDentryRocks] failed to unmarshal parent: %v, name: %v, err: %v", den.txDentryInfo.ParentId, den.txDentryInfo.Name, err)
-			return
-		}
-		return
-	}
-	return
-}
-
-func (b *TransactionRollbackDentryRocks) BatchReplaceOrInsert(handle interface{}, den *TxRollbackDentry, replace bool) (dentry *TxRollbackDentry, ok bool, err error) {
-	var key, bs, v []byte
-	key = transactionRollbackDentryEncodingKey(den.txDentryInfo.ParentId, den.txDentryInfo.Name)
-	bs, err = den.Marshal()
-	if err != nil {
-		log.LogErrorf("[TransactionRollbackDentryRocks] marshal: %v, err: %v", den, err)
-		return
-	}
-	ok, v, err = b.RocksTree.BatchCreate(handle, &b.baseInfo.txRbDentryCnt, key, bs, replace)
+	ok, v, err = b.RocksTree.Create(handle, &b.baseInfo.txRbDentryCnt, key, bs, replace)
 	if err != nil {
 		log.LogErrorf("[TransactionRollbackDentryRocks] Create dentry failed, parent: %v, name: %v, err: %v", den.txDentryInfo.ParentId, den.txDentryInfo.Name, err)
 		return
@@ -1946,32 +1588,32 @@ func (b *TransactionRollbackDentryRocks) BatchReplaceOrInsert(handle interface{}
 }
 
 // Delete
-func (b *InodeRocks) Delete(inode *Inode) (bool, error) {
-	return b.RocksTree.Delete(&b.baseInfo.inodeCnt, inodeEncodingKey(inode.Inode))
+func (b *InodeRocks) Delete(handle interface{}, inode *Inode) (bool, error) {
+	return b.RocksTree.Delete(handle, &b.baseInfo.inodeCnt, inodeEncodingKey(inode.Inode))
 }
 
-func (b *DentryRocks) Delete(dentry *Dentry) (bool, error) {
-	return b.RocksTree.Delete(&b.baseInfo.dentryCnt, dentryEncodingKey(dentry.ParentId, dentry.Name))
+func (b *DentryRocks) Delete(handle interface{}, dentry *Dentry) (bool, error) {
+	return b.RocksTree.Delete(handle, &b.baseInfo.dentryCnt, dentryEncodingKey(dentry.ParentId, dentry.Name))
 }
 
-func (b *ExtendRocks) Delete(extend *Extend) (bool, error) {
-	return b.RocksTree.Delete(&b.baseInfo.extendCnt, extendEncodingKey(extend.inode))
+func (b *ExtendRocks) Delete(handle interface{}, extend *Extend) (bool, error) {
+	return b.RocksTree.Delete(handle, &b.baseInfo.extendCnt, extendEncodingKey(extend.inode))
 }
 
-func (b *MultipartRocks) Delete(mutipart *Multipart) (bool, error) {
-	return b.RocksTree.Delete(&b.baseInfo.multiCnt, multipartEncodingKey(mutipart.key, mutipart.id))
+func (b *MultipartRocks) Delete(handle interface{}, mutipart *Multipart) (bool, error) {
+	return b.RocksTree.Delete(handle, &b.baseInfo.multiCnt, multipartEncodingKey(mutipart.key, mutipart.id))
 }
 
-func (b *TransactionRocks) Delete(txId string) (bool, error) {
-	return b.RocksTree.Delete(&b.baseInfo.txCnt, transactionEncodingKey(txId))
+func (b *TransactionRocks) Delete(handle interface{}, txId string) (bool, error) {
+	return b.RocksTree.Delete(handle, &b.baseInfo.txCnt, transactionEncodingKey(txId))
 }
 
-func (b *TransactionRollbackInodeRocks) Delete(inode *TxRollbackInode) (bool, error) {
-	return b.RocksTree.Delete(&b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(inode.txInodeInfo.Ino))
+func (b *TransactionRollbackInodeRocks) Delete(handle interface{}, inode *TxRollbackInode) (bool, error) {
+	return b.RocksTree.Delete(handle, &b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(inode.txInodeInfo.Ino))
 }
 
-func (b *TransactionRollbackDentryRocks) Delete(dentry *TxRollbackDentry) (bool, error) {
-	return b.RocksTree.Delete(&b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name))
+func (b *TransactionRollbackDentryRocks) Delete(handle interface{}, dentry *TxRollbackDentry) (bool, error) {
+	return b.RocksTree.Delete(handle, &b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name))
 }
 
 // Range begin
@@ -1989,7 +1631,7 @@ func (b *InodeRocks) Range(start, end *Inode, cb func(i *Inode) bool) error {
 
 	callBackFunc = func(v []byte) (bool, error) {
 		inode := NewInode(0, 0)
-		if err := inode.UnmarshalRocksdb(v); err != nil {
+		if err := inode.Unmarshal(v); err != nil {
 			return false, err
 		}
 		if start != nil && inode.Less(start) {
@@ -2212,7 +1854,7 @@ func (b *InodeRocks) MaxItem() *Inode {
 	defer b.RocksTree.ReleaseSnap(snapshot)
 	err := b.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
-		if e := inode.UnmarshalRocksdb(v); e != nil {
+		if e := inode.Unmarshal(v); e != nil {
 			return false, e
 		}
 		maxItem = inode
@@ -2260,16 +1902,6 @@ func (b *TransactionRollbackDentryRocks) Clear(handle interface{}) (err error) {
 	return
 }
 
-func (b *DeletedExtentsRocks) Clear(handle interface{}) (err error) {
-	err = b.DelRangeToBatch(handle, []byte{byte(DeletedExtentsTable)}, []byte{byte(DeletedExtentsTable + 1)})
-	return
-}
-
-func (b *DeletedObjExtentsRocks) Clear(handle interface{}) (err error) {
-	err = b.DelRangeToBatch(handle, []byte{byte(DeletedObjExtentsTable)}, []byte{byte(DeletedObjExtentsTable + 1)})
-	return
-}
-
 var _ Snapshot = &RocksSnapShot{}
 
 type RocksSnapShot struct {
@@ -2280,6 +1912,10 @@ type RocksSnapShot struct {
 
 func NewRocksSnapShot(mp *metaPartition) Snapshot {
 	var err error
+	if mp.db == nil {
+		log.LogErrorf("NewRocksSnapShot the mp.db is nil")
+		return nil
+	}
 	s := mp.db.OpenSnap()
 	if s == nil {
 		return nil
@@ -2344,7 +1980,7 @@ func (r *RocksSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb f
 		switch tp {
 		case InodeType:
 			inode := NewInode(0, 0)
-			if err := inode.UnmarshalRocksdb(v); err != nil {
+			if err := inode.Unmarshal(v); err != nil {
 				return false, err
 			}
 			return cb(inode), nil
@@ -2390,7 +2026,7 @@ func (r *RocksSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb f
 		switch tp {
 		case InodeType:
 			inode := item.(*Inode)
-			return inode.MarshalRocksdb()
+			return inode.Marshal()
 		case DentryType:
 			dentry := item.(*Dentry)
 			return dentry.Marshal()

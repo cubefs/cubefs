@@ -49,6 +49,7 @@ type MetaReplica struct {
 	metaNode                  *MetaNode
 	ReadOnlyReasons           uint32
 	StoreMode                 proto.StoreMode
+	ConfigStoreMode           proto.StoreMode
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -346,18 +347,14 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 				continue
 			}
 
-			switch replica.StoreMode {
-			case proto.StoreModeMem:
-				if !replica.metaNode.reachesThreshold() && mp.InodeCount < metaPartitionInodeIdStep {
-					continue
-				}
-			case proto.StoreModeRocksDb:
+			if replica.StoreMode == proto.StoreModeRocksDb {
 				if !replica.metaNode.reachesRocksdbDisksThreshold() && mp.InodeCount < metaPartitionInodeIdStep {
 					continue
 				}
-			default:
-				log.LogErrorf("[checkStatus] mp(%v) unknown store mode(%v)", mp.PartitionID, mr.StoreMode)
-				continue
+			} else {
+				if !replica.metaNode.reachesThreshold() && mp.InodeCount < metaPartitionInodeIdStep {
+					continue
+				}
 			}
 
 			if mp.PartitionID == maxPartitionID {
@@ -837,6 +834,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 		}
 	}
 	mr.StoreMode = mgr.StoreMode
+	mr.ConfigStoreMode = mgr.ConfigStoreMode
 }
 
 func (mr *MetaReplica) createTaskToFreezeReplica(partitionID uint64, freeze bool) (t *proto.AdminTask) {
@@ -858,7 +856,7 @@ func (mr *MetaReplica) createTaskToBackupReplica(partitionID uint64) (t *proto.A
 	return
 }
 
-func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster) (err error) {
+func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster, storeMode proto.StoreMode) (err error) {
 	metaNode, err := c.metaNode(nodeAddr)
 	if err != nil {
 		return err
@@ -866,6 +864,7 @@ func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster) (err error) 
 	mr := newMetaReplica(mp.Start, mp.End, metaNode)
 	mr.Status = proto.ReadWrite
 	mr.ReportTime = time.Now().Unix()
+	mr.StoreMode = storeMode
 	mp.addReplica(mr)
 	mp.removeMissingReplica(mr.Addr)
 	return
@@ -1117,9 +1116,28 @@ func (mp *MetaPartition) CheckMetaNodeReachScheduled(metaNode *MetaNode, storeMo
 		return true
 	}
 
-	if storeMode == proto.StoreModeMem {
-		return metaNode.reachesThreshold()
+	if storeMode == proto.StoreModeRocksDb {
+		return metaNode.reachesRocksdbDisksThreshold()
 	}
 
-	return metaNode.reachesRocksdbDisksThreshold()
+	return metaNode.reachesThreshold()
+}
+
+func (mr *MetaReplica) createTaskToSetMpStoreMode(partitionID uint64, storeMode proto.StoreMode) (t *proto.AdminTask) {
+	req := &proto.SetMetaPartitionStoreModeRequest{
+		PartitionID: partitionID,
+		StoreMode:   storeMode,
+	}
+	t = proto.NewAdminTask(proto.OpSetMetaPartitionStoreMode, mr.Addr, req)
+	resetMetaPartitionTaskID(t, partitionID)
+	return
+}
+
+func (mr *MetaReplica) createTaskToReloadMetaPartition(partitionID uint64) (t *proto.AdminTask) {
+	req := &proto.ReloadMetaPartitionRequest{
+		PartitionID: partitionID,
+	}
+	t = proto.NewAdminTask(proto.OpReloadMetaPartition, mr.Addr, req)
+	resetMetaPartitionTaskID(t, partitionID)
+	return
 }

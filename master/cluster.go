@@ -3696,17 +3696,10 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 		wg.Add(1)
 		go func(mp *MetaPartition) {
 			defer wg.Done()
-			vol, err1 := c.getVol(mp.volName)
+			storeMode, err1 := c.getMetaPartitionStoreMode(mp, srcAddr)
 			if err1 != nil {
 				errChannel <- err1
 				return
-			}
-			storeMode := vol.DefaultStoreMode
-			for _, replica := range mp.Replicas {
-				if replica.Addr == srcAddr {
-					storeMode = replica.StoreMode
-					break
-				}
 			}
 			if err1 = c.migrateMetaPartition(srcAddr, targetAddr, mp, storeMode); err1 != nil {
 				errChannel <- err1
@@ -4242,14 +4235,10 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		metaNodes = append(metaNodes, proto.NodeView{
-			ID:                       metaNode.ID,
-			Addr:                     metaNode.Addr,
-			DomainAddr:               metaNode.DomainAddr,
-			Status:                   metaNode.IsActive,
-			IsWritable:               metaNode.isWritable(proto.StoreModeMem),
-			MediaType:                proto.MediaType_Unspecified,
+			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
+			Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
 			ForbidWriteOpOfProtoVer0: metaNode.ReceivedForbidWriteOpOfProtoVer0,
-			IsRocksdbWritable:        metaNode.isWritable(proto.StoreModeRocksDb),
+			IsRocksdbWritable:        metaNode.IsRocksdbWriteAble(),
 		})
 		return true
 	})
@@ -6709,4 +6698,31 @@ func (c *Cluster) checkMultipleReplicasOnSameMachine(hosts []string) (err error)
 		}
 	}
 	return nil
+}
+
+func (c *Cluster) getMetaPartitionStoreMode(mp *MetaPartition, srcAddr string) (storeMode proto.StoreMode, err error) {
+	notFound := true
+	for _, replica := range mp.Replicas {
+		if replica.Addr == srcAddr {
+			storeMode = replica.StoreMode
+			notFound = false
+			break
+		}
+	}
+
+	if notFound {
+		var vol *Vol
+		vol, err = c.getVol(mp.volName)
+		if err != nil {
+			log.LogErrorf("GetMetaPartitionStoreMode get volume(%s) err: %s", mp.volName, err.Error())
+			return
+		}
+		storeMode = vol.DefaultStoreMode
+	}
+
+	if storeMode == proto.StoreModeDef {
+		storeMode = proto.StoreModeMem
+	}
+
+	return
 }

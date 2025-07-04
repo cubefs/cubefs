@@ -78,7 +78,8 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		readyChan := make(chan struct{}, 1)
 		for {
 			if len(msgs) > 0 {
-				if atomic.CompareAndSwapUint32(&scheduleState, common.StateStopped, common.StateRunning) {
+				if atomic.LoadUint32(&scheduleState) == common.StateStopped {
+					atomic.StoreUint32(&scheduleState, common.StateRunning)
 					readyChan <- struct{}{}
 				}
 			}
@@ -114,6 +115,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				if maxMsg != nil {
 					go dumpFunc(maxMsg)
 				} else {
+					if _, ok := mp.IsLeader(); ok {
+						timer.Reset(intervalToPersistData)
+					}
 					atomic.StoreUint32(&scheduleState, common.StateStopped)
 				}
 				msgs = msgs[:0]

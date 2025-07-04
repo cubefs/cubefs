@@ -102,7 +102,14 @@ func InitDentryTree(rocksTree *RocksTree) (memDentryTree, rocksDentryTree Dentry
 }
 
 func inodeCreate(inodeTree InodeTree, inode *Inode, replace bool) (ino *Inode, ok bool, err error) {
-	ino, ok, err = inodeTree.ReplaceOrInsert(inode, replace)
+	var handle interface{}
+	handle, err = inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+
+	ino, ok, err = inodeTree.ReplaceOrInsert(handle, inode, replace)
 	if err != nil {
 		return
 	}
@@ -115,7 +122,14 @@ func inodeCreate(inodeTree InodeTree, inode *Inode, replace bool) (ino *Inode, o
 }
 
 func inodeDelete(inodeTree InodeTree, ino uint64) (ok bool, err error) {
-	ok, err = inodeTree.Delete(&Inode{Inode: ino})
+	var handle interface{}
+	handle, err = inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+
+	ok, err = inodeTree.Delete(handle, &Inode{Inode: ino})
 	if err != nil {
 		return
 	}
@@ -127,7 +141,14 @@ func inodeDelete(inodeTree InodeTree, ino uint64) (ok bool, err error) {
 }
 
 func dentryCreate(dentryTree DentryTree, dentry *Dentry, replace bool) (den *Dentry, ok bool, err error) {
-	den, ok, err = dentryTree.ReplaceOrInsert(dentry, replace)
+	var handle interface{}
+	handle, err = dentryTree.CreateBatchWriteHandle()
+	if err != nil {
+		return
+	}
+	defer dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+
+	den, ok, err = dentryTree.ReplaceOrInsert(handle, dentry, replace)
 	if err != nil {
 		return
 	}

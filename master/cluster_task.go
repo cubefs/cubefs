@@ -105,7 +105,6 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		finalHosts      []string
 		oldHosts        []string
 		zones           []string
-		vol             *Vol
 	)
 
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
@@ -128,16 +127,10 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	mp.RUnlock()
 
 	nodeType := TypeMetaPartition
-	if vol, err = c.getVol(mp.volName); err != nil {
-		goto errHandler
-	}
 	if dstStoreMode == proto.StoreModeDef {
-		dstStoreMode = vol.DefaultStoreMode
-		for _, replica := range mp.Replicas {
-			if replica.Addr == srcAddr {
-				dstStoreMode = replica.StoreMode
-				break
-			}
+		dstStoreMode, err = c.getMetaPartitionStoreMode(mp, srcAddr)
+		if err != nil {
+			goto errHandler
 		}
 	}
 	if dstStoreMode == proto.StoreModeRocksDb {
@@ -576,7 +569,7 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string, storeMod
 	if err = c.createMetaReplica(partition, addPeer, storeMode); err != nil {
 		return
 	}
-	if err = partition.afterCreation(addPeer.Addr, c); err != nil {
+	if err = partition.afterCreation(addPeer.Addr, c, storeMode); err != nil {
 		return
 	}
 	return

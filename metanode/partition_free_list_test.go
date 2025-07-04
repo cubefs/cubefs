@@ -36,6 +36,7 @@ func TestPersistInodesFreeList(t *testing.T) {
 		VolName:       VolNameForTest,
 		PartitionType: proto.VolumeTypeHot,
 		RootDir:       rootDir,
+		StoreMode:     proto.StoreModeMem,
 	}
 	mp := newPartition(config, newManager())
 	t.Logf("Persist one inode")

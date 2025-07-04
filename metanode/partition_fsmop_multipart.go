@@ -19,8 +19,8 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8) {
-	_, ok, err := mp.multipartTree.ReplaceOrInsert(multipart, false)
+func (mp *metaPartition) fsmCreateMultipart(handle interface{}, multipart *Multipart) (status uint8) {
+	_, ok, err := mp.multipartTree.ReplaceOrInsert(handle, multipart, false)
 	if err != nil {
 		return proto.OpErr
 	}
@@ -30,8 +30,8 @@ func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8)
 	return proto.OpOk
 }
 
-func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8) {
-	ok, err := mp.multipartTree.Delete(multipart)
+func (mp *metaPartition) fsmRemoveMultipart(handle interface{}, multipart *Multipart) (status uint8) {
+	ok, err := mp.multipartTree.Delete(handle, multipart)
 	if err != nil {
 		return proto.OpErr
 	}
@@ -41,7 +41,7 @@ func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8)
 	return proto.OpOk
 }
 
-func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.AppendMultipartResponse) {
+func (mp *metaPartition) fsmAppendMultipart(handle interface{}, multipart *Multipart) (resp proto.AppendMultipartResponse) {
 	storedMultipart, err := mp.multipartTree.CopyGet(multipart)
 	if err != nil {
 		resp.Status = proto.OpErr
@@ -63,7 +63,7 @@ func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.Ap
 		}
 	}
 	resp.Status = proto.OpOk
-	if err := mp.multipartTree.Put(storedMultipart); err != nil {
+	if err := mp.multipartTree.Put(handle, storedMultipart); err != nil {
 		resp.Status = proto.OpErr
 		log.LogErrorf("[fsmAppendMultipart] update multipart info failed, multipart id:%s, multipart key:%s, error:%v",
 			multipart.id, multipart.key, err)

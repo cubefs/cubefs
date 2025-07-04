@@ -656,10 +656,7 @@ func (dbInfo *RocksdbOperator) AddItemToBatch(handle interface{}, key, value []b
 	if !ok {
 		return ErrInvalidRocksdbWriteHandle
 	}
-	if err = dbInfo.accessDb(); err != nil {
-		return
-	}
-	defer dbInfo.releaseDb()
+
 	batch.Put(key, value)
 	return nil
 }
@@ -853,7 +850,7 @@ func (dbInfo *RocksdbOperator) Flush() (err error) {
 
 	opts := gorocksdb.NewDefaultFlushOptions()
 	defer opts.Destroy()
-	opts.SetWait(true)
+	opts.SetWait(false)
 
 	err = dbInfo.db.Flush(opts)
 	return

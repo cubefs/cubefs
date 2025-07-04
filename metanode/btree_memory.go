@@ -448,118 +448,78 @@ func (i *TransactionRollbackDentryBTree) CopyGet(dentry *TxRollbackDentry) (*TxR
 }
 
 // put
-func (i *InodeBTree) Update(inode *Inode) error {
+func (i *InodeBTree) Update(handle interface{}, inode *Inode) error {
 	i.BTree.ReplaceOrInsert(inode, false)
 	return nil
 }
 
-func (i *InodeBTree) BatchUpdate(handle interface{}, inode *Inode) error {
-	i.BTree.ReplaceOrInsert(inode, false)
-	return nil
-}
-
-func (i *InodeBTree) Put(inode *Inode) error {
+func (i *InodeBTree) Put(handle interface{}, inode *Inode) error {
 	i.BTree.ReplaceOrInsert(inode, true)
 	return nil
 }
 
-func (i *InodeBTree) BatchPut(handle interface{}, inode *Inode) error {
-	i.BTree.ReplaceOrInsert(inode, true)
-	return nil
-}
-
-func (i *DentryBTree) Update(dentry *Dentry) error {
+func (i *DentryBTree) Update(handle interface{}, dentry *Dentry) error {
 	i.BTree.ReplaceOrInsert(dentry, false)
 	return nil
 }
 
-func (i *DentryBTree) Put(dentry *Dentry) error {
+func (i *DentryBTree) Put(handle interface{}, dentry *Dentry) error {
 	i.BTree.ReplaceOrInsert(dentry, true)
 	return nil
 }
 
-func (i *DentryBTree) BatchPut(handle interface{}, dentry *Dentry) error {
-	i.BTree.ReplaceOrInsert(dentry, true)
-	return nil
-}
-
-func (i *ExtendBTree) Update(extend *Extend) error {
+func (i *ExtendBTree) Update(handle interface{}, extend *Extend) error {
 	i.BTree.ReplaceOrInsert(extend, false)
 	return nil
 }
 
-func (i *ExtendBTree) Put(extend *Extend) error {
+func (i *ExtendBTree) Put(handle interface{}, extend *Extend) error {
 	i.BTree.ReplaceOrInsert(extend, true)
 	return nil
 }
 
-func (i *ExtendBTree) BatchPut(handle interface{}, extend *Extend) error {
-	i.BTree.ReplaceOrInsert(extend, true)
-	return nil
-}
-
-func (i *MultipartBTree) Update(multipart *Multipart) error {
+func (i *MultipartBTree) Update(handle interface{}, multipart *Multipart) error {
 	i.BTree.ReplaceOrInsert(multipart, false)
 	return nil
 }
 
-func (i *MultipartBTree) Put(multipart *Multipart) error {
+func (i *MultipartBTree) Put(handle interface{}, multipart *Multipart) error {
 	i.BTree.ReplaceOrInsert(multipart, true)
 	return nil
 }
 
-func (i *MultipartBTree) BatchPut(handle interface{}, multipart *Multipart) error {
-	i.BTree.ReplaceOrInsert(multipart, true)
-	return nil
-}
-
-func (i *TransactionBTree) Update(tx *proto.TransactionInfo) error {
+func (i *TransactionBTree) Update(handle interface{}, tx *proto.TransactionInfo) error {
 	i.BTree.ReplaceOrInsert(tx, false)
 	return nil
 }
 
-func (i *TransactionBTree) Put(tx *proto.TransactionInfo) error {
+func (i *TransactionBTree) Put(handle interface{}, tx *proto.TransactionInfo) error {
 	i.BTree.ReplaceOrInsert(tx, true)
 	return nil
 }
 
-func (i *TransactionBTree) BatchPut(handle interface{}, tx *proto.TransactionInfo) error {
-	i.BTree.ReplaceOrInsert(tx, true)
-	return nil
-}
-
-func (i *TransactionRollbackInodeBTree) Update(inode *TxRollbackInode) error {
+func (i *TransactionRollbackInodeBTree) Update(handle interface{}, inode *TxRollbackInode) error {
 	i.BTree.ReplaceOrInsert(inode, false)
 	return nil
 }
 
-func (i *TransactionRollbackInodeBTree) Put(inode *TxRollbackInode) error {
+func (i *TransactionRollbackInodeBTree) Put(handle interface{}, inode *TxRollbackInode) error {
 	i.BTree.ReplaceOrInsert(inode, true)
 	return nil
 }
 
-func (i *TransactionRollbackInodeBTree) BatchPut(handle interface{}, inode *TxRollbackInode) error {
-	i.BTree.ReplaceOrInsert(inode, true)
-	return nil
-}
-
-func (i *TransactionRollbackDentryBTree) Update(dentry *TxRollbackDentry) error {
+func (i *TransactionRollbackDentryBTree) Update(handle interface{}, dentry *TxRollbackDentry) error {
 	i.BTree.ReplaceOrInsert(dentry, false)
 	return nil
 }
 
-func (i *TransactionRollbackDentryBTree) Put(dentry *TxRollbackDentry) error {
-	i.BTree.ReplaceOrInsert(dentry, true)
-	return nil
-}
-
-func (i *TransactionRollbackDentryBTree) BatchPut(handle interface{}, dentry *TxRollbackDentry) error {
+func (i *TransactionRollbackDentryBTree) Put(handle interface{}, dentry *TxRollbackDentry) error {
 	i.BTree.ReplaceOrInsert(dentry, true)
 	return nil
 }
 
 // create
-func (i *InodeBTree) ReplaceOrInsert(inode *Inode, replace bool) (*Inode, bool, error) {
+func (i *InodeBTree) ReplaceOrInsert(handle interface{}, inode *Inode, replace bool) (*Inode, bool, error) {
 	item, ok := i.BTree.ReplaceOrInsert(inode, replace)
 	if !ok {
 		return item.(*Inode), ok, nil
@@ -567,15 +527,7 @@ func (i *InodeBTree) ReplaceOrInsert(inode *Inode, replace bool) (*Inode, bool, 
 	return inode, ok, nil
 }
 
-func (i *InodeBTree) BatchReplaceOrInsert(handle interface{}, inode *Inode, replace bool) (*Inode, bool, error) {
-	item, ok := i.BTree.ReplaceOrInsert(inode, replace)
-	if !ok {
-		return item.(*Inode), ok, nil
-	}
-	return inode, ok, nil
-}
-
-func (i *DentryBTree) ReplaceOrInsert(dentry *Dentry, replace bool) (*Dentry, bool, error) {
+func (i *DentryBTree) ReplaceOrInsert(handle interface{}, dentry *Dentry, replace bool) (*Dentry, bool, error) {
 	item, ok := i.BTree.ReplaceOrInsert(dentry, replace)
 	if !ok {
 		return item.(*Dentry), ok, nil
@@ -583,15 +535,7 @@ func (i *DentryBTree) ReplaceOrInsert(dentry *Dentry, replace bool) (*Dentry, bo
 	return dentry, ok, nil
 }
 
-func (i *DentryBTree) BatchReplaceOrInsert(handle interface{}, dentry *Dentry, replace bool) (*Dentry, bool, error) {
-	item, ok := i.BTree.ReplaceOrInsert(dentry, replace)
-	if !ok {
-		return item.(*Dentry), ok, nil
-	}
-	return dentry, ok, nil
-}
-
-func (i *ExtendBTree) ReplaceOrInsert(extend *Extend, replace bool) (*Extend, bool, error) {
+func (i *ExtendBTree) ReplaceOrInsert(handle interface{}, extend *Extend, replace bool) (*Extend, bool, error) {
 	item, ok := i.BTree.ReplaceOrInsert(extend, replace)
 	if !ok {
 		return item.(*Extend), ok, nil
@@ -599,15 +543,7 @@ func (i *ExtendBTree) ReplaceOrInsert(extend *Extend, replace bool) (*Extend, bo
 	return extend, ok, nil
 }
 
-func (i *ExtendBTree) BatchReplaceOrInsert(handle interface{}, extend *Extend, replace bool) (*Extend, bool, error) {
-	item, ok := i.BTree.ReplaceOrInsert(extend, replace)
-	if !ok {
-		return item.(*Extend), ok, nil
-	}
-	return extend, ok, nil
-}
-
-func (i *MultipartBTree) ReplaceOrInsert(mul *Multipart, replace bool) (*Multipart, bool, error) {
+func (i *MultipartBTree) ReplaceOrInsert(handle interface{}, mul *Multipart, replace bool) (*Multipart, bool, error) {
 	item, ok := i.BTree.ReplaceOrInsert(mul, replace)
 	if !ok {
 		return item.(*Multipart), ok, nil
@@ -615,15 +551,7 @@ func (i *MultipartBTree) ReplaceOrInsert(mul *Multipart, replace bool) (*Multipa
 	return mul, ok, nil
 }
 
-func (i *MultipartBTree) BatchReplaceOrInsert(handle interface{}, mul *Multipart, replace bool) (*Multipart, bool, error) {
-	item, ok := i.BTree.ReplaceOrInsert(mul, replace)
-	if !ok {
-		return item.(*Multipart), ok, nil
-	}
-	return mul, ok, nil
-}
-
-func (i *TransactionBTree) ReplaceOrInsert(tx *proto.TransactionInfo, replace bool) (*proto.TransactionInfo, bool, error) {
+func (i *TransactionBTree) ReplaceOrInsert(handle interface{}, tx *proto.TransactionInfo, replace bool) (*proto.TransactionInfo, bool, error) {
 	item, ok := i.BTree.ReplaceOrInsert(tx, replace)
 	if !ok {
 		return item.(*proto.TransactionInfo), ok, nil
@@ -631,15 +559,7 @@ func (i *TransactionBTree) ReplaceOrInsert(tx *proto.TransactionInfo, replace bo
 	return tx, ok, nil
 }
 
-func (i *TransactionBTree) BatchReplaceOrInsert(handle interface{}, tx *proto.TransactionInfo, replace bool) (*proto.TransactionInfo, bool, error) {
-	item, ok := i.BTree.ReplaceOrInsert(tx, replace)
-	if !ok {
-		return item.(*proto.TransactionInfo), ok, nil
-	}
-	return tx, ok, nil
-}
-
-func (i *TransactionRollbackInodeBTree) ReplaceOrInsert(inode *TxRollbackInode, replace bool) (*TxRollbackInode, bool, error) {
+func (i *TransactionRollbackInodeBTree) ReplaceOrInsert(handle interface{}, inode *TxRollbackInode, replace bool) (*TxRollbackInode, bool, error) {
 	item, ok := i.BTree.ReplaceOrInsert(inode, replace)
 	if !ok {
 		return item.(*TxRollbackInode), ok, nil
@@ -647,15 +567,7 @@ func (i *TransactionRollbackInodeBTree) ReplaceOrInsert(inode *TxRollbackInode, 
 	return inode, ok, nil
 }
 
-func (i *TransactionRollbackInodeBTree) BatchReplaceOrInsert(handle interface{}, inode *TxRollbackInode, replace bool) (*TxRollbackInode, bool, error) {
-	item, ok := i.BTree.ReplaceOrInsert(inode, replace)
-	if !ok {
-		return item.(*TxRollbackInode), ok, nil
-	}
-	return inode, ok, nil
-}
-
-func (i *TransactionRollbackDentryBTree) ReplaceOrInsert(dentry *TxRollbackDentry, replace bool) (*TxRollbackDentry, bool, error) {
+func (i *TransactionRollbackDentryBTree) ReplaceOrInsert(handle interface{}, dentry *TxRollbackDentry, replace bool) (*TxRollbackDentry, bool, error) {
 	item, ok := i.BTree.ReplaceOrInsert(dentry, replace)
 	if !ok {
 		return item.(*TxRollbackDentry), ok, nil
@@ -663,57 +575,49 @@ func (i *TransactionRollbackDentryBTree) ReplaceOrInsert(dentry *TxRollbackDentr
 	return dentry, ok, nil
 }
 
-func (i *TransactionRollbackDentryBTree) BatchReplaceOrInsert(handle interface{}, dentry *TxRollbackDentry, replace bool) (*TxRollbackDentry, bool, error) {
-	item, ok := i.BTree.ReplaceOrInsert(dentry, replace)
-	if !ok {
-		return item.(*TxRollbackDentry), ok, nil
-	}
-	return dentry, ok, nil
-}
-
-func (i *InodeBTree) Delete(inode *Inode) (bool, error) {
+func (i *InodeBTree) Delete(handle interface{}, inode *Inode) (bool, error) {
 	if v := i.BTree.Delete(inode); v == nil {
 		return false, nil
 	}
 	return true, nil
 }
 
-func (i *DentryBTree) Delete(dentry *Dentry) (bool, error) {
+func (i *DentryBTree) Delete(handle interface{}, dentry *Dentry) (bool, error) {
 	if v := i.BTree.Delete(dentry); v == nil {
 		return false, nil
 	}
 	return true, nil
 }
 
-func (i *ExtendBTree) Delete(extend *Extend) (bool, error) {
+func (i *ExtendBTree) Delete(handle interface{}, extend *Extend) (bool, error) {
 	if v := i.BTree.Delete(extend); v == nil {
 		return false, nil
 	}
 	return true, nil
 }
 
-func (i *MultipartBTree) Delete(mutipart *Multipart) (bool, error) {
+func (i *MultipartBTree) Delete(handle interface{}, mutipart *Multipart) (bool, error) {
 	if mul := i.BTree.Delete(mutipart); mul == nil {
 		return false, nil
 	}
 	return true, nil
 }
 
-func (i *TransactionBTree) Delete(txId string) (bool, error) {
+func (i *TransactionBTree) Delete(handle interface{}, txId string) (bool, error) {
 	if tx := i.BTree.Delete(&proto.TransactionInfo{TxID: txId}); tx == nil {
 		return false, nil
 	}
 	return true, nil
 }
 
-func (i *TransactionRollbackInodeBTree) Delete(inode *TxRollbackInode) (bool, error) {
+func (i *TransactionRollbackInodeBTree) Delete(handle interface{}, inode *TxRollbackInode) (bool, error) {
 	if inode := i.BTree.Delete(inode); inode == nil {
 		return false, nil
 	}
 	return true, nil
 }
 
-func (i *TransactionRollbackDentryBTree) Delete(dentry *TxRollbackDentry) (bool, error) {
+func (i *TransactionRollbackDentryBTree) Delete(handle interface{}, dentry *TxRollbackDentry) (bool, error) {
 	if dentry := i.BTree.Delete(dentry); dentry == nil {
 		return false, nil
 	}
@@ -1091,4 +995,8 @@ func (b *BTree) Clear(handle interface{}) (err error) {
 
 func (b *BTree) DeleteMetadata(handle interface{}) (err error) {
 	return
+}
+
+func (b *BTree) GetStoreMode() proto.StoreMode {
+	return proto.StoreModeMem
 }

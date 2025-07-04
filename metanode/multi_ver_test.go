@@ -260,7 +260,20 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 		t.Logf("testCreateInode ino[%v]", ino)
 	}
 
-	mp.fsmCreateInode(ino)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	if t != nil {
+		require.NoError(t, err)
+	}
+
+	_ = mp.fsmCreateInode(handle, ino)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	if t != nil {
+		require.NoError(t, err)
+	}
+	ino, err = mp.inodeTree.Get(ino)
+	if t != nil {
+		require.NoError(t, err)
+	}
 	return ino
 }
 
@@ -274,13 +287,16 @@ func testCreateDentry(t *testing.T, parentId uint64, inodeId uint64, name string
 	}
 
 	t.Logf("createDentry dentry %v", dentry)
-	ret := mp.fsmCreateDentry(nil, dentry, false)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	ret := mp.fsmCreateDentry(handle, dentry, false)
 	assert.True(t, proto.OpOk == ret)
 	if ret != proto.OpOk {
 		panic(nil)
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	denParm := &Dentry{ParentId: parentId, Name: name}
-	var err error
 	dentry, err = mp.dentryTree.Get(denParm)
 	require.NoError(t, err)
 	return dentry
@@ -359,7 +375,11 @@ func testSplitKeyDeletion(t *testing.T) {
 	iTmp.StorageClass = proto.StorageClass_Replica_HDD
 	iTmp.HybridCloudExtents.sortedEks = extents
 
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	//TODO: support-hybrid
 	//assert.True(t, testGetSplitSize(t, fileIno) == 1)
@@ -467,6 +487,8 @@ func testAppendList(t *testing.T) {
 	seqArr := seqAllArr[1:index]
 	t.Logf("layer len %v, arr size %v, seqarr(%v)", ino.getLayerLen(), len(seqArr), seqArr)
 	for idx, seq := range seqArr {
+		handle, err := mp.inodeTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
 		exts := buildExtents(seq, uint64(idx*1000), uint64(idx))
 		t.Logf("buildExtents exts[%v]", exts)
 		iTmp := &Inode{
@@ -482,9 +504,11 @@ func testAppendList(t *testing.T) {
 		}
 		mp.verSeq = seq
 
-		if status := mp.fsmAppendExtentsWithCheck(iTmp, false); status != proto.OpOk {
+		if status := mp.fsmAppendExtentsWithCheck(handle, iTmp, false); status != proto.OpOk {
 			t.Errorf("status [%v]", status)
 		}
+		err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
 	}
 	t.Logf("layer len %v, arr size %v, seqarr(%v)", ino.getLayerLen(), len(seqArr), seqArr)
 	// TODO:leonrayang
@@ -519,7 +543,11 @@ func testAppendList(t *testing.T) {
 	}
 	iTmp.StorageClass = proto.StorageClass_Replica_HDD
 	mp.verSeq = iTmp.getVer()
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	ino, err = mp.inodeTree.Get(&Inode{Inode: ino.Inode})
 	require.NoError(t, err)
 	t.Logf("in split at begin")
@@ -562,7 +590,11 @@ func testAppendList(t *testing.T) {
 	}
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
 	mp.verSeq = iTmp.getVer()
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	ino, err = mp.inodeTree.Get(&Inode{Inode: ino.Inode})
 	require.NoError(t, err)
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
@@ -599,7 +631,11 @@ func testAppendList(t *testing.T) {
 	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
 	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].GetExtentEks())
 	mp.verSeq = iTmp.getVer()
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	ino, err = mp.inodeTree.Get(&Inode{Inode: ino.Inode})
 	require.NoError(t, err)
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
@@ -634,7 +670,11 @@ func testAppendList(t *testing.T) {
 	}
 	t.Logf("split key:%v", splitKey)
 	mp.verSeq = iTmp.getVer()
-	mp.fsmAppendExtentsWithCheck(iTmp, true)
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	mp.fsmAppendExtentsWithCheck(handle, iTmp, true)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	ino, err = mp.inodeTree.Get(&Inode{Inode: ino.Inode})
 	require.NoError(t, err)
 
@@ -725,7 +765,9 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	rDirIno := dirIno.Copy().(*Inode)
 	rDirIno.setVerNoCheck(verSeq)
 
-	rspDelIno := mp.fsmUnlinkInode(rDirIno, 0)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	rspDelIno := mp.fsmUnlinkInode(handle, rDirIno, 0)
 
 	t.Logf("rspDelinfo ret %v content %v", rspDelIno.Status, rspDelIno)
 	assert.True(t, rspDelIno.Status == proto.OpOk)
@@ -734,8 +776,10 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	}
 	rDirDentry := dirDentry.Copy().(*Dentry)
 	rDirDentry.setVerSeq(verSeq)
-	rspDelDen := mp.fsmDeleteDentry(rDirDentry, false)
+	rspDelDen := mp.fsmDeleteDentry(handle, rDirDentry, false)
 	assert.True(t, rspDelDen.Status == proto.OpOk)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	for idx, info := range rspReadDir.Children {
 		t.Logf("testDelDirSnapshotVersion: delseq [%v]  to del idx %v infof %v", verSeq, idx, info)
@@ -757,7 +801,12 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 			panic(nil)
 		}
 		rino.setVer(verSeq)
-		rspDelIno = mp.fsmUnlinkInode(rino, 0)
+
+		handle, err = mp.dentryTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
+		rspDelIno = mp.fsmUnlinkInode(handle, rino, 0)
+		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
 
 		assert.True(t, rspDelIno.Status == proto.OpOk || rspDelIno.Status == proto.OpNotExistErr)
 		if rspDelIno.Status != proto.OpOk && rspDelIno.Status != proto.OpNotExistErr {
@@ -782,8 +831,12 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 
 		rDen := iden.Copy().(*Dentry)
 		rDen.multiSnap = NewDentrySnap(verSeq)
-		rspDelDen = mp.fsmDeleteDentry(rDen, false)
+		handle, err = mp.dentryTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
+		rspDelDen = mp.fsmDeleteDentry(handle, rDen, false)
 		assert.True(t, rspDelDen.Status == proto.OpOk)
+		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
 	}
 }
 
@@ -942,9 +995,13 @@ func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 		StorageClass: proto.StorageClass_Replica_HDD,
 	}
 	mp.verSeq = seq
-	if status := mp.fsmAppendExtentsWithCheck(iTmp, false); status != proto.OpOk {
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	if status := mp.fsmAppendExtentsWithCheck(handle, iTmp, false); status != proto.OpOk {
 		t.Errorf("status [%v]", status)
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 }
 
 func testTruncateAndDel(t *testing.T) {
@@ -969,7 +1026,14 @@ func testTruncateAndDel(t *testing.T) {
 		Size:       500,
 		ModifyTime: time.Now().Unix(),
 	}
-	mp.fsmExtentsTruncate(ino)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	mp.fsmExtentsTruncate(handle, ino)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+	fileIno, err = mp.inodeTree.Get(fileIno)
+	require.NoError(t, err)
+	require.NotNil(t, fileIno)
 	log.LogDebugf("TestTruncate start")
 	//TODO: leonrayang hybrid cloud support snapshot
 	//t.Logf("TestTruncate. create new snapshot seq [%v],%v,file verlist size %v [%v]", seq1, seq2, len(fileIno.multiSnap.multiVersions), fileIno.multiSnap.multiVersions)
@@ -1029,7 +1093,11 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 		multiSnap: NewDentrySnap(verSeq),
 	}
 	t.Logf("testDeleteFile seq [%v] %v dentry %v", verSeq, fsmDentry.getSeqFiled(), fsmDentry)
-	assert.True(t, nil != mp.fsmDeleteDentry(fsmDentry, false))
+	handle, err := mp.dentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	assert.True(t, nil != mp.fsmDeleteDentry(handle, fsmDentry, false))
+	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	rino := &Inode{
 		Inode: child.Inode,
@@ -1039,7 +1107,11 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 		},
 	}
 	rino.setVer(verSeq)
-	rspDelIno := mp.fsmUnlinkInode(rino, 0)
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	rspDelIno := mp.fsmUnlinkInode(handle, rino, 0)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	assert.True(t, rspDelIno.Status == proto.OpOk || rspDelIno.Status == proto.OpNotExistErr)
 	if rspDelIno.Status != proto.OpOk && rspDelIno.Status != proto.OpNotExistErr {
@@ -1149,12 +1221,20 @@ func testSnapshotDeletion(t *testing.T, topFirst bool, storeMode proto.StoreMode
 	t.Logf("------------rename dir ----------------------")
 	if renameDen != nil {
 		t.Logf("try to move dir %v", renameDen)
-		assert.True(t, nil != mp.fsmDeleteDentry(renameDen, false))
+		handle, err := mp.dentryTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
+		assert.True(t, nil != mp.fsmDeleteDentry(handle, renameDen, false))
+		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
 		renameDen.Name = fmt.Sprintf("rename_from_%v", renameDen.Name)
 		renameDen.ParentId = renameDstIno
 
 		t.Logf("try to move to dir %v", renameDen)
-		assert.True(t, mp.fsmCreateDentry(nil, renameDen, false) == proto.OpOk)
+		handle, err = mp.dentryTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
+		assert.True(t, mp.fsmCreateDentry(handle, renameDen, false) == proto.OpOk)
+		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
 		testPrintDirTree(t, 1, "root", 0)
 	}
 	delSnapshotList := func() {

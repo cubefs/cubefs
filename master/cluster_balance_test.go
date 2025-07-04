@@ -574,7 +574,7 @@ func TestMigratePlanOverLoadToDest(t *testing.T) {
 	}
 
 	// 调用被测试函数
-	err := MigratePlanOverLoadToDest(migratePlan, mpPlan, dests)
+	err := MigratePlanOverLoadToDest(migratePlan, mpPlan, dests, false)
 	// 验证结果
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
@@ -612,7 +612,7 @@ func TestMigratePlanOriginalToDest(t *testing.T) {
 	}
 
 	// 调用被测试函数
-	err := MigratePlanOriginalToDest(migratePlan, mpPlan, dests)
+	err := MigratePlanOriginalToDest(migratePlan, mpPlan, dests, false)
 	// 验证结果
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
@@ -653,7 +653,7 @@ func TestFillMigratePlanArray(t *testing.T) {
 	}
 
 	// 调用被测试函数
-	err := FillMigratePlanArray(migratePlan, mpPlan, srcNode, dests)
+	err := FillMigratePlanArray(migratePlan, mpPlan, srcNode, dests, false)
 	// 验证结果
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
@@ -1295,7 +1295,8 @@ func TestGetLowMemPressureTopology(t *testing.T) {
 	cluster.t.zoneMap.Store(cluster.t.zones[0].name, cluster.t.zones[0])
 
 	migratePlan := &proto.ClusterPlan{
-		Low: make(map[string]*proto.ZonePressureView),
+		Low:        make(map[string]*proto.ZonePressureView),
+		RocksdbLow: make(map[string]*proto.ZonePressureView),
 	}
 
 	// 调用被测试的方法
@@ -1367,19 +1368,19 @@ func TestVerifyMetaNodeExceedMemMid(t *testing.T) {
 	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8, IsActive: true, MaxMemAvailWeight: size10GB})
 	cluster.metaNodes.Store("node2", &MetaNode{ID: 102, Ratio: 0.5, IsActive: true, MaxMemAvailWeight: size10GB})
 
-	result1, err1 := cluster.VerifyMetaNodeExceedMemMid("node1")
+	result1, err1 := cluster.VerifyMetaNodeExceedMemMid("node1", proto.StoreModeMem)
 	if err1 != nil || !result1 {
 		t.Errorf("Expected true, got %v, err: %v", result1, err1)
 	}
 
 	// 测试用例2: Ratio 小于 metaNodeMemMidPer
-	result2, err2 := cluster.VerifyMetaNodeExceedMemMid("node2")
+	result2, err2 := cluster.VerifyMetaNodeExceedMemMid("node2", proto.StoreModeMem)
 	if err2 != nil || result2 {
 		t.Errorf("Expected false, got %v, err: %v", result2, err2)
 	}
 
 	// 测试用例3: 获取metaNode失败
-	result3, err3 := cluster.VerifyMetaNodeExceedMemMid("node3")
+	result3, err3 := cluster.VerifyMetaNodeExceedMemMid("node3", proto.StoreModeMem)
 	if err3 == nil || result3 {
 		t.Errorf("Expected error, got %v, result: %v", err3, result3)
 	}
@@ -1423,7 +1424,10 @@ func TestUpdateMigrateDestination(t *testing.T) {
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
 	cluster.t.zoneMap.Store(cluster.t.zones[0].name, cluster.t.zones[0])
-	migratePlan := &proto.ClusterPlan{}
+	migratePlan := &proto.ClusterPlan{
+		Low:        map[string]*proto.ZonePressureView{},
+		RocksdbLow: map[string]*proto.ZonePressureView{},
+	}
 	mpPlan := &proto.MetaBalancePlan{
 		CrossZone: true,
 		OverLoad: []*proto.MrBalanceInfo{
@@ -1563,7 +1567,8 @@ func TestAddMetaPartitionIntoPlan(t *testing.T) {
 							Hosts:       []string{"node1"},
 							Replicas: []*MetaReplica{
 								{
-									Addr: "node1",
+									Addr:      "node1",
+									StoreMode: proto.StoreModeMem,
 								},
 							},
 						},
@@ -1573,7 +1578,8 @@ func TestAddMetaPartitionIntoPlan(t *testing.T) {
 							Hosts:       []string{"node1"},
 							Replicas: []*MetaReplica{
 								{
-									Addr: "node1",
+									Addr:      "node1",
+									StoreMode: proto.StoreModeMem,
 								},
 							},
 						},
@@ -1649,13 +1655,16 @@ func TestGetMetaNodePressureView(t *testing.T) {
 							Hosts:       []string{"node4", "node5", "node6"},
 							Replicas: []*MetaReplica{
 								{
-									Addr: "node4",
+									Addr:      "node4",
+									StoreMode: proto.StoreModeMem,
 								},
 								{
-									Addr: "node5",
+									Addr:      "node5",
+									StoreMode: proto.StoreModeMem,
 								},
 								{
-									Addr: "node6",
+									Addr:      "node6",
+									StoreMode: proto.StoreModeMem,
 								},
 							},
 						},

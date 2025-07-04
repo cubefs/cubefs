@@ -73,12 +73,16 @@ func getMultipartForFsmMultipartTest(t *testing.T, mp *metaPartition, key, id st
 }
 
 func testFsmCreateMutlipart(t *testing.T, mp *metaPartition) {
+	handle, err := mp.multipartTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	multipart := &Multipart{
 		key: "test",
 		id:  "id1",
 	}
-	status := mp.fsmCreateMultipart(multipart)
+	status := mp.fsmCreateMultipart(handle, multipart)
 	require.EqualValues(t, proto.OpOk, status)
+	err = mp.multipartTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	gotMultipart := getMultipartForFsmMultipartTest(t, mp, "test", "id1")
 	require.EqualValues(t, multipart.key, gotMultipart.key)
@@ -96,25 +100,43 @@ func TestFsmCreateMultipart_Rocksdb(t *testing.T) {
 }
 
 func testFsmRemoveMultipart(t *testing.T, mp *metaPartition) {
+	handle, err := mp.multipartTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	multipart := &Multipart{
 		key: "test",
 		id:  "id1",
 	}
-	status := mp.fsmCreateMultipart(multipart)
+	status := mp.fsmCreateMultipart(handle, multipart)
+	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
+	err = mp.multipartTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	gotMultipart := getMultipartForFsmMultipartTest(t, mp, "test", "id1")
 	require.EqualValues(t, multipart.key, gotMultipart.key)
 	require.EqualValues(t, multipart.id, gotMultipart.id)
 
-	status = mp.fsmRemoveMultipart(multipart)
+	handle, err = mp.multipartTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+
+	status = mp.fsmRemoveMultipart(handle, multipart)
+	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
+	err = mp.multipartTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	gotMultipart = getMultipartForFsmMultipartTest(t, mp, "test", "id1")
 	require.Nil(t, gotMultipart)
 
-	status = mp.fsmRemoveMultipart(multipart)
+	handle, err = mp.multipartTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+
+	status = mp.fsmRemoveMultipart(handle, multipart)
+	require.NoError(t, err)
 	require.EqualValues(t, proto.OpNotExistErr, status)
+
+	err = mp.multipartTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 }
 
 func TestFsmRemoveMultipart(t *testing.T) {

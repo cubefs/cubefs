@@ -224,7 +224,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				ForbidWriteOpOfProtoVer0:  mpForbidWriteVer0,
 				LocalPeers:                mConf.Peers,
 				ReadOnlyReasons:           0,
-				StoreMode:                 mConf.StoreMode,
+				StoreMode:                 partition.GetStoreMode(),
+				ConfigStoreMode:           mConf.StoreMode,
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt, err = partition.TxGetCnt()
 			if err != nil {
@@ -3301,5 +3302,93 @@ func (m *metadataManager) opIsRaftStatusOk(conn net.Conn, p *Packet,
 
 	p.PacketOkWithBody(data)
 	m.respondToClientWithVer(conn, p)
+	return
+}
+
+func (m *metadataManager) opSetMetaPartitionStoreMode(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	req := &proto.SetMetaPartitionStoreModeRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		log.LogErrorf("opSetMetaPartitionStoreMode decode err: %s", err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		log.LogErrorf("opSetMetaPartitionStoreMode getPartition mpid(%d) store mode(%d) err: %s", req.PartitionID, req.StoreMode, err.Error())
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	err = mp.SetStoreMode(req)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		log.LogErrorf("opSetMetaPartitionStoreMode SetStoreMode mpid(%d) store mode(%d) err: %s", req.PartitionID, req.StoreMode, err.Error())
+		return
+	}
+
+	p.PacketOkReply()
+	m.respondToClientWithVer(conn, p)
+	log.LogInfof("%s [opSetMetaPartitionStoreMode] req[%v] successful", remoteAddr, req)
+	return
+}
+
+func (m *metadataManager) opReloadMetaPartition(conn net.Conn, p *Packet, remoteAddr string,
+) (err error) {
+	req := &proto.ReloadMetaPartitionRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		log.LogErrorf("opReloadMetaPartition decode err: %s", err.Error())
+		return
+	}
+
+	if m.reloading {
+		err = fmt.Errorf("MetaPartition is reloading.")
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		log.LogErrorf("opReloadMetaPartition mpid(%d) err: %s", req.PartitionID, err.Error())
+		return
+	}
+
+	go func() {
+		m.reloading = true
+		defer func() {
+			m.reloading = false
+		}()
+
+		err = m.ReloadPartition(req.PartitionID, false)
+		if err != nil {
+			log.LogErrorf("ReloadPartition mpid(%d) err: %s", req.PartitionID, err.Error())
+			return
+		}
+	}()
+
+	p.PacketOkReply()
+	m.respondToClientWithVer(conn, p)
+	log.LogInfof("action[ReloadPartition] start reloading meta Partition %v in background", req.PartitionID)
 	return
 }

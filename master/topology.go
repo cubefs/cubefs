@@ -418,7 +418,7 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 			}
 			domainGrpManager.nodeSetGrpMap[i].nodeSets[j].metaNodes.Range(func(key, value interface{}) bool {
 				node := value.(*MetaNode)
-				if node.isWritable(proto.StoreModeMem) {
+				if node.IsWriteAble() {
 					metaWorked = true
 					log.LogInfof("action[checkGrpState] nodeset[%v] zonename[%v] used [%v] total [%v] threshold [%v] got available metanode",
 						node.ID, node.ZoneName, node.Used, node.Total, node.Threshold)
@@ -1103,27 +1103,19 @@ func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 func (ns *nodeSet) canWriteForNode(nodes *sync.Map, replicaNum int, nodeType NodeType) bool {
 	var count int
 	nodes.Range(func(key, value interface{}) bool {
-		switch nodeType {
-		case DataNodeType:
+		if nodeType == RocksdbType {
+			node := value.(*MetaNode)
+			if node.IsRocksdbWriteAble() && node.PartitionCntLimited() {
+				count++
+			}
+		} else {
 			node := value.(Node)
 			if node.IsWriteAble() && node.PartitionCntLimited() {
 				count++
 			}
-		case MetaNodeType:
-			node := value.(*MetaNode)
-			if node.isWritable(proto.StoreModeMem) && node.PartitionCntLimited() {
-				count++
-			}
-		case RocksdbType:
-			node := value.(*MetaNode)
-			if node.isWritable(proto.StoreModeRocksDb) && node.PartitionCntLimited() {
-				count++
-			}
-		default:
-			return false
 		}
-		if count < replicaNum {
-			return true
+		if count >= replicaNum {
+			return false
 		}
 		return true
 	})
@@ -1896,7 +1888,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive && metaNode.isWritable(proto.StoreModeMem) {
+		if metaNode.IsActive && metaNode.IsWriteAble() {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -2676,7 +2668,7 @@ func (zone *Zone) getMetaMemoryUsed() (metaNodeUsed uint64, metaNodeTotal uint64
 	defer zone.RUnlock()
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive && metaNode.isWritable(proto.StoreModeMem) {
+		if metaNode.IsActive && metaNode.IsWriteAble() {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -2692,7 +2684,7 @@ func (zone *Zone) getMetaRocksdbUsed() (metaNodeUsed uint64, metaNodeTotal uint6
 	defer zone.RUnlock()
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive && metaNode.isWritable(proto.StoreModeRocksDb) {
+		if metaNode.IsActive && metaNode.IsRocksdbWriteAble() {
 			metaNodeUsed += metaNode.GetRocksdbUsed()
 		} else {
 			metaNodeUsed += metaNode.GetRocksdbTotal()

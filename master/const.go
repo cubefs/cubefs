@@ -169,6 +169,8 @@ const (
 	remoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
 
 	StoreModeKey = "storeMode"
+	StartIdKey   = "start"
+	EndIdKey     = "end"
 )
 
 const (
@@ -498,6 +500,8 @@ const (
 	flashManualTaskPrefix = keySeparator + "flt" + keySeparator
 
 	balanceTaskKey = keySeparator + "balanceTask"
+
+	renewMpStoreModeTaskKey = keySeparator + "renewMpStoreModeTask"
 )
 
 // selector enum
@@ -537,7 +541,9 @@ const (
 	ManualPlan  = "manual"
 	AutoPlan    = "auto"
 	OfflinePlan = "offline"
+	ModifyStore = "modifyStoreMode"
 
 	CheckMetaLeaderRetry    = 10
 	CheckMetaLeaderInterval = 30
+	RetryCheckStatusNum     = 600
 )

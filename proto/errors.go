@@ -118,6 +118,7 @@ var (
 	ErrNoMpMigratePlan                         = errors.New("no meta partition migrate plan")
 	ErrFlashNodeFlowLimited                    = errors.New("flow limited")
 	ErrFlashNodeRunLimited                     = errors.New("run limited")
+	ErrNoRenewMpStoreModeTask                  = errors.New("no renew meta partition store mode task")
 )
 
 // http response error code and error message definitions

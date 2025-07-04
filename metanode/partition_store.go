@@ -100,8 +100,40 @@ func (bf *bufFile) Write(data []byte) (nn int, err error) {
 }
 
 func (mp *metaPartition) loadMetadata() (err error) {
-	mConf, err := mp.loadMetadataFromFile()
+	metaFile := path.Join(mp.config.RootDir, metadataFile)
+	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0o644)
 	if err != nil {
+		err = errors.NewErrorf("[loadMetadata]: OpenFile %s", err.Error())
+		return
+	}
+	defer fp.Close()
+	data, err := io.ReadAll(fp)
+	if err != nil || len(data) == 0 {
+		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
+			string(data))
+		return
+	}
+	mConf := &MetaPartitionConfig{}
+	if err = json.Unmarshal(data, mConf); err != nil {
+		err = errors.NewErrorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s",
+			err.Error())
+		return
+	}
+
+	// compat with old persisted meta partitions, add raft port info
+	lackRaftPort := false
+	if mp.manager.metaNode.raftPartitionCanUsingDifferentPort {
+		for i, peer := range mConf.Peers {
+			if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
+				peer.ReplicaPort = mp.manager.metaNode.raftReplicatePort
+				peer.HeartbeatPort = mp.manager.metaNode.raftHeartbeatPort
+				mConf.Peers[i] = peer
+				lackRaftPort = true
+			}
+		}
+	}
+
+	if mConf.checkMeta() != nil {
 		return
 	}
 	mp.config.PartitionId = mConf.PartitionId
@@ -132,18 +164,8 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		}
 	}
 
-	// compat with old persisted meta partitions, add raft port info
-	lackRaftPort := false
-	if mp.manager.metaNode.raftPartitionCanUsingDifferentPort {
-		for i, peer := range mConf.Peers {
-			if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
-				peer.ReplicaPort = mp.manager.metaNode.raftReplicatePort
-				peer.HeartbeatPort = mp.manager.metaNode.raftHeartbeatPort
-				mConf.Peers[i] = peer
-				lackRaftPort = true
-			}
-		}
-	}
+	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
+	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
 
 	if mp.manager.metaNode.raftPartitionCanUsingDifferentPort && lackRaftPort {
 		if err = mp.persistMetadata(); err != nil {
@@ -252,11 +274,10 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 
 		mp.size += ino.Size
 
-		mp.batchCreateInode(handle, ino)
+		mp.fsmCreateInode(handle, ino)
 		mp.checkAndInsertFreeList(ino)
 		if mp.config.Cursor < ino.Inode {
 			mp.config.Cursor = ino.Inode
-			mp.inodeTree.SetCursor(ino.Inode)
 		}
 		numInodes += 1
 	}
@@ -481,7 +502,7 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 		}
 		multipart := MultipartFromBytes(mem[offset : offset+int(numBytes)])
 		log.LogDebugf("loadMultipart: create multipart from bytes: partitionID（%v) multipartID(%v)", mp.config.PartitionId, multipart.id)
-		mp.batchCreateMultipart(handle, multipart)
+		mp.fsmCreateMultipart(handle, multipart)
 		offset += int(numBytes)
 		if _, err = crcCheck.Write(mem[offset-int(numBytes) : offset]); err != nil {
 			return err
@@ -524,7 +545,9 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		atomic.StoreUint64(&mp.applyID, applyIDInRocksDB)
 
 		cursorInRocksDB = mp.inodeTree.GetCursor()
-		if maxInode, err = mp.inodeTree.GetMaxInode(); err != nil {
+		maxInode, err = mp.ScanInodeTable()
+		if err != nil {
+			log.LogErrorf("mp[%d] scan inode failed: %s", mp.config.PartitionId, err.Error())
 			return
 		}
 
@@ -567,7 +590,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 		log.LogErrorf("[loadTxRbDentry] cannot open write batch, err(%v)", err)
 		return err
 	}
-	defer mp.txProcessor.txResource.txRbDentryTree.ReleaseBatchWriteHandle(handle)
+	defer mp.txProcessor.txResource.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 
 	for {
 		txBuf = txBuf[:4]
@@ -580,7 +603,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 					log.LogErrorf("[loadTxRbDentry]: check crc mismatch, expected[%d], actual[%d]", crc, res)
 					return ErrSnapshotCrcMismatch
 				}
-				break
+				return
 			}
 			err = errors.NewErrorf("[loadTxRbDentry] ReadHeader: %s", err.Error())
 			return
@@ -616,19 +639,12 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 		}
 
 		// mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
-		err = mp.txProcessor.txResource.txRbDentryTree.BatchPut(handle, txRbDentry)
+		err = mp.txProcessor.txResource.txRbDentryTree.Put(handle, txRbDentry)
 		if err != nil {
 			return
 		}
 		numTxRbDentry++
 	}
-
-	err = mp.txProcessor.txResource.txRbDentryTree.CommitBatchWrite(handle, false)
-	if err != nil {
-		log.LogErrorf("[loadTxRbDentry] failed to commit write batch, err(%v)", err)
-		return
-	}
-	return
 }
 
 func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
@@ -659,7 +675,7 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 		log.LogErrorf("[loadTxRbInode] cannot open write batch, err(%v)", err)
 		return
 	}
-	defer mp.txProcessor.txResource.txRbInodeTree.ReleaseBatchWriteHandle(handle)
+	defer mp.txProcessor.txResource.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 
 	for {
 		txBuf = txBuf[:4]
@@ -668,7 +684,7 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 		if err != nil {
 			if err == io.EOF {
 				err = nil
-				break
+				return
 			}
 			err = errors.NewErrorf("[loadTxRbInode] ReadHeader: %s", err.Error())
 			return
@@ -702,18 +718,12 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 			return err
 		}
 
-		err = mp.txProcessor.txResource.txRbInodeTree.BatchPut(handle, txRbInode)
+		err = mp.txProcessor.txResource.txRbInodeTree.Put(handle, txRbInode)
 		if err != nil {
 			return
 		}
 		numTxRbInode++
 	}
-	err = mp.txProcessor.txResource.txRbInodeTree.CommitBatchWrite(handle, false)
-	if err != nil {
-		log.LogErrorf("[loadTxRbInode] failed to commit write batch, err(%v)", err)
-		return
-	}
-	return
 }
 
 func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
@@ -743,7 +753,7 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 		log.LogErrorf("[loadTxInfo] cannot open write batch, err(%v)", err)
 		return
 	}
-	defer mp.txProcessor.txManager.txTree.ReleaseBatchWriteHandle(handle)
+	defer mp.txProcessor.txManager.txTree.CommitAndReleaseBatchWriteHandle(handle, false)
 
 	for {
 		txBuf = txBuf[:4]
@@ -756,7 +766,7 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 					log.LogErrorf("[loadTxInfo]: check crc mismatch, expected[%d], actual[%d]", crc, res)
 					return ErrSnapshotCrcMismatch
 				}
-				break
+				return
 			}
 			err = errors.NewErrorf("[loadTxInfo] ReadHeader: %s", err.Error())
 			return
@@ -791,7 +801,7 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 			return err
 		}
 
-		err = mp.txProcessor.txManager.txTree.BatchPut(handle, txInfo)
+		err = mp.txProcessor.txManager.addTxInfo(handle, txInfo)
 		// NOTE: should never happens in memory store
 		if err != nil {
 			log.LogErrorf("[loadTxInfo]: failed to add tx to tx tree, err(%v)", err)
@@ -799,12 +809,6 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 		}
 		numTxInfos++
 	}
-	err = mp.txProcessor.txManager.txTree.CommitBatchWrite(handle, false)
-	if err != nil {
-		log.LogErrorf("[loadTxInfo] failed to commit write batch, err(%v)", err)
-		return
-	}
-	return
 }
 
 func (mp *metaPartition) loadTxID(rootDir string) (err error) {
@@ -1575,53 +1579,6 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 	return
 }
 
-func (mp *metaPartition) persistSelectedRocksdbDir() (err error) {
-	conf, err := mp.loadMetadataFromFile()
-	if err != nil {
-		return
-	}
-	if conf.RocksDBDir != "" {
-		log.LogDebugf("[persistSelectedRocksdbDir] mp(%v) rocksdb dir(%v)", mp.config.PartitionId, conf.RocksDBDir)
-		return
-	}
-	conf.RocksDBDir = mp.config.RocksDBDir
-	log.LogInfof("[persistSelectedRocksdbDir] mp(%v) persist rocksdb dir(%v)", mp.config.PartitionId, mp.config.RocksDBDir)
-	err = mp.persistMetadata()
-	if err != nil {
-		log.LogErrorf("[persistSelectedRocksdbDir] mp(%v) failed to persist rocksdb dir", mp.config.PartitionId)
-		return
-	}
-	return
-}
-
-func (mp *metaPartition) loadMetadataFromFile() (mConf *MetaPartitionConfig, err error) {
-	metaFile := path.Join(mp.config.RootDir, metadataFile)
-	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0o644)
-	if err != nil {
-		err = errors.NewErrorf("[loadMetadata]: OpenFile %s", err.Error())
-		return
-	}
-	defer fp.Close()
-	data, err := io.ReadAll(fp)
-	if err != nil || len(data) == 0 {
-		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
-			string(data))
-		return
-	}
-	mConf = &MetaPartitionConfig{}
-	if err = json.Unmarshal(data, mConf); err != nil {
-		err = errors.NewErrorf("[loadMetadata]: Unmarshal MetaPartitionConfig %s",
-			err.Error())
-		return
-	}
-
-	if mConf.checkMeta() != nil {
-		return
-	}
-
-	return
-}
-
 func (mp *metaPartition) loadApplyIDFromSnapshot(rootDir string) (applyID, cursor uint64, err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -1652,26 +1609,34 @@ func (mp *metaPartition) loadApplyIDFromSnapshot(rootDir string) (applyID, curso
 	return
 }
 
-func (mp *metaPartition) batchCreateInode(handle interface{}, ino *Inode) (status uint8) {
-	if status = mp.uidManager.addUidSpace(ino.Uid, ino.Inode, nil); status != proto.OpOk {
-		return
-	}
-
-	status = proto.OpOk
-	if _, _, err := mp.inodeTree.BatchReplaceOrInsert(handle, ino, false); err != nil {
-		status = proto.OpExistErr
-	}
-
-	return
-}
-
-func (mp *metaPartition) batchCreateMultipart(handle interface{}, multipart *Multipart) (status uint8) {
-	_, ok, err := mp.multipartTree.BatchReplaceOrInsert(handle, multipart, false)
+func (mp *metaPartition) ScanInodeTable() (uint64, error) {
+	log.LogWarnf("ScanInodeTable vol(%s) mp(%d) storeMode(%d) start", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
+	snap, err := mp.GetSnapShot()
 	if err != nil {
-		return proto.OpErr
+		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
+		return 0, err
 	}
-	if !ok {
-		return proto.OpExistErr
+
+	defer func() {
+		if snap != nil {
+			mp.ReleaseSnapShot(snap)
+		}
+		log.LogWarnf("ScanInodeTable vol(%s) mp(%d) storeMode(%d) end", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
+	}()
+
+	maxInode := uint64(0)
+	err = snap.Range(InodeType, func(i interface{}) bool {
+		ino := i.(*Inode)
+		if ino.Inode > maxInode {
+			maxInode = ino.Inode
+		}
+		mp.checkAndInsertFreeList(ino)
+		return true
+	})
+	if err != nil {
+		log.LogErrorf("ScanInodeTable mp[%d] err: %s", mp.config.PartitionId, err.Error())
+		return 0, err
 	}
-	return proto.OpOk
+
+	return maxInode, nil
 }

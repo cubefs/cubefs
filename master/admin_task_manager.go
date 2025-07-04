@@ -225,7 +225,7 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet
 	}
 	if packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf("result code[%v],msg[%v]", packet.ResultCode, string(packet.Data))
-		log.LogErrorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
+		log.LogInfof("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
 		return
 	}
 	return packet, nil

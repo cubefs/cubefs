@@ -163,7 +163,6 @@ const (
 	SiwKeyCursor
 	SiwKeyUniqId
 	SiwKeyVerList
-	SiwKeyDeletedExtentsId
 )
 
 type SnapItemWrapper struct {

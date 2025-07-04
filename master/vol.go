@@ -1733,20 +1733,24 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	mp.setHosts(hosts)
 	mp.setPeers(peers)
 
+	storeMode := proto.StoreModeMem
+	if vol.DefaultStoreMode == proto.StoreModeRocksDb {
+		storeMode = proto.StoreModeRocksDb
+	}
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(host string) {
 			defer func() {
 				wg.Done()
 			}()
-			if err = c.syncCreateMetaPartitionToMetaNode(host, mp, vol.DefaultStoreMode); err != nil {
+			if err = c.syncCreateMetaPartitionToMetaNode(host, mp, storeMode); err != nil {
 				log.LogErrorf("doCreateMetaPartition: create mp to metanode failed, mp %d, err %s", mp.PartitionID, err.Error())
 				errChannel <- err
 				return
 			}
 			mp.Lock()
 			defer mp.Unlock()
-			if err = mp.afterCreation(host, c); err != nil {
+			if err = mp.afterCreation(host, c, storeMode); err != nil {
 				errChannel <- err
 			}
 		}(host)

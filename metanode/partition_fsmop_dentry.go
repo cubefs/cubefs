@@ -34,8 +34,13 @@ func NewDentryResponse() *DentryResponse {
 	}
 }
 
-func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
-	done := mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID)
+func (mp *metaPartition) fsmTxCreateDentry(handle interface{}, txDentry *TxDentry) (status uint8) {
+	done, err := mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID)
+	if err != nil {
+		status = proto.OpErr
+		log.LogErrorf("fsmTxCreateDentry: tx is already finish. txId %s", txDentry.TxInfo.TxID)
+		return
+	}
 	if done {
 		log.LogWarnf("fsmTxCreateDentry: tx is already finish. txId %s", txDentry.TxInfo.TxID)
 		status = proto.OpTxInfoNotExistErr
@@ -50,7 +55,7 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 	}
 
 	rbDentry := NewTxRollbackDentry(txDentry.Dentry, txDenInfo, TxDelete)
-	status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry)
+	status = mp.txProcessor.txResource.addTxRollbackDentry(handle, rbDentry)
 	if status == proto.OpExistErr {
 		return proto.OpOk
 	}
@@ -61,7 +66,7 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 
 	defer func() {
 		if status != proto.OpOk {
-			mp.txProcessor.txResource.deleteTxRollbackDentry(txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
+			mp.txProcessor.txResource.deleteTxRollbackDentry(handle, txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
 		}
 	}()
 
@@ -76,7 +81,7 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 		return
 	}
 
-	return mp.fsmCreateDentry(nil, txDentry.Dentry, false)
+	return mp.fsmCreateDentry(handle, txDentry.Dentry, false)
 }
 
 // Insert a dentry into the dentry tree.
@@ -88,19 +93,21 @@ func (mp *metaPartition) fsmCreateDentry(handle interface{}, dentry *Dentry,
 		parIno *Inode
 		d      *Dentry
 		ok     bool
+		err    error
 	)
-	parIno, err := mp.inodeTree.Get(&Inode{Inode: dentry.ParentId})
-	if err != nil {
-		log.LogErrorf("action[fsmCreateDentry] mp %v ParentId[%v] dentryname[%v] inode[%v] err: %s", mp.config.PartitionId, dentry.ParentId, dentry.Name, dentry.Inode, err.Error())
-		status = proto.OpErr
-		return
-	}
-	if parIno == nil {
-		log.LogErrorf("action[fsmCreateDentry] mp %v ParentId [%v] not exist, dentry name [%v], inode [%v]", mp.config.PartitionId, dentry.ParentId, dentry.Name, dentry.Inode)
-		status = proto.OpNotExistErr
-		return
-	}
+
 	if !forceUpdate {
+		parIno, err = mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
+		if err != nil {
+			log.LogErrorf("action[fsmCreateDentry] mp %v ParentId[%v] dentryname[%v] inode[%v] err: %s", mp.config.PartitionId, dentry.ParentId, dentry.Name, dentry.Inode, err.Error())
+			status = proto.OpErr
+			return
+		}
+		if parIno == nil {
+			log.LogErrorf("action[fsmCreateDentry] mp %v ParentId [%v] not exist, dentry name [%v], inode [%v]", mp.config.PartitionId, dentry.ParentId, dentry.Name, dentry.Inode)
+			status = proto.OpNotExistErr
+			return
+		}
 		if parIno.ShouldDelete() {
 			log.LogErrorf("action[fsmCreateDentry] mp[%v] ParentId [%v] get [%v] but should del, dentry name [%v], inode[%v]", mp.config.PartitionId, dentry.ParentId, parIno, dentry.Name, dentry.Inode)
 			status = proto.OpNotExistErr
@@ -112,11 +119,8 @@ func (mp *metaPartition) fsmCreateDentry(handle interface{}, dentry *Dentry,
 			return
 		}
 	}
-	if handle != nil {
-		d, ok, err = mp.dentryTree.BatchReplaceOrInsert(handle, dentry, false)
-	} else {
-		d, ok, err = mp.dentryTree.ReplaceOrInsert(dentry, false)
-	}
+
+	d, ok, err = mp.dentryTree.ReplaceOrInsert(handle, dentry, false)
 	if err != nil {
 		status = proto.OpErr
 		return
@@ -144,11 +148,7 @@ func (mp *metaPartition) fsmCreateDentry(handle interface{}, dentry *Dentry,
 			if !forceUpdate {
 				parIno.IncNLink(mp.verSeq)
 				parIno.SetMtime()
-				if handle != nil {
-					err = mp.inodeTree.BatchUpdate(handle, parIno)
-				} else {
-					err = mp.inodeTree.Update(parIno)
-				}
+				err = mp.inodeTree.Update(handle, parIno)
 				if err != nil {
 					log.LogErrorf("action[fsmCreateDentry] update parent inode err:%v", err)
 					status = proto.OpErr
@@ -173,11 +173,7 @@ func (mp *metaPartition) fsmCreateDentry(handle interface{}, dentry *Dentry,
 	if !forceUpdate {
 		parIno.IncNLink(mp.verSeq)
 		parIno.SetMtime()
-		if handle != nil {
-			err = mp.inodeTree.BatchUpdate(handle, parIno)
-		} else {
-			err = mp.inodeTree.Update(parIno)
-		}
+		err = mp.inodeTree.Update(handle, parIno)
 		if err != nil {
 			log.LogErrorf("action[fsmCreateDentry] update parent inode err:%v", err)
 			status = proto.OpErr
@@ -236,10 +232,16 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 	return den, proto.OpNotExistErr
 }
 
-func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResponse) {
+func (mp *metaPartition) fsmTxDeleteDentry(handle interface{}, txDentry *TxDentry) (resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-	if mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID) {
+	done, err := mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID)
+	if err != nil {
+		resp.Status = proto.OpErr
+		log.LogErrorf("fsmTxDeleteDentry: get tx(%s) info err %v", txDentry.TxInfo.TxID, err)
+		return
+	}
+	if done {
 		log.LogWarnf("fsmTxDeleteDentry: tx is already finish. txId %s", txDentry.TxInfo.TxID)
 		resp.Status = proto.OpTxInfoNotExistErr
 		return
@@ -254,7 +256,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 	}
 
 	rbDentry := NewTxRollbackDentry(tmpDen, txDenInfo, TxAdd)
-	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry)
+	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(handle, rbDentry)
 	if resp.Status == proto.OpExistErr {
 		resp.Status = proto.OpOk
 		return
@@ -266,7 +268,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 
 	defer func() {
 		if resp.Status != proto.OpOk {
-			mp.txProcessor.txResource.deleteTxRollbackDentry(txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
+			mp.txProcessor.txResource.deleteTxRollbackDentry(handle, txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
 		}
 	}()
 
@@ -282,7 +284,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 		return
 	}
 
-	if _, err = mp.dentryTree.Delete(tmpDen); err != nil {
+	if _, err = mp.dentryTree.Delete(handle, tmpDen); err != nil {
 		resp.Status = proto.OpErr
 		return
 	}
@@ -292,7 +294,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 }
 
 // Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp *DentryResponse) {
+func (mp *metaPartition) fsmDeleteDentry(handle interface{}, denParm *Dentry, checkInode bool) (resp *DentryResponse) {
 	log.LogDebugf("action[fsmDeleteDentry] mp[%v] delete param (%v) seq [%v]", mp.config.PartitionId, denParm, denParm.getSeqFiled())
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
@@ -334,7 +336,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 				log.LogErrorf("action[fsmDeleteDentry] mp[%v] not found dentry %v", mp.config.PartitionId, denParm)
 			} else if den != nil {
 				// NOTE: still need to update dentry
-				err = mp.dentryTree.Update(den)
+				err = mp.dentryTree.Update(handle, den)
 				if err != nil {
 					return
 				}
@@ -345,21 +347,21 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 
 	// NOTE: snapshot no enable
 	if mp.verSeq == 0 {
-		_, err = mp.dentryTree.Delete(den)
+		_, err = mp.dentryTree.Delete(handle, den)
 		if err != nil {
 			return
 		}
 	} else if clean || (den.getSnapListLen() == 0 && den.isDeleted()) {
 		// NOTE: if not other version, delete directly
 		log.LogDebugf("action[fsmDeleteDentry] mp[%v] dnetry %v really be deleted", mp.config.PartitionId, den)
-		_, err = mp.dentryTree.Delete(den)
+		_, err = mp.dentryTree.Delete(handle, den)
 		if err != nil {
 			return
 		}
 	} else {
 		// NOTE: there are other version in dentry
 		// update it
-		err = mp.dentryTree.Update(den)
+		err = mp.dentryTree.Update(handle, den)
 		if err != nil {
 			return
 		}
@@ -387,7 +389,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 			}
 			log.LogDebugf("action[fsmDeleteDentry] mp %v inode %v be unlinked by child name %v", mp.config.PartitionId, parentIno.Inode, denParm.Name)
 			parentIno.SetMtime()
-			if err = mp.inodeTree.Update(parentIno); err != nil {
+			if err = mp.inodeTree.Update(handle, parentIno); err != nil {
 				return
 			}
 		}
@@ -397,7 +399,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 }
 
 // batch Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse {
+func (mp *metaPartition) fsmBatchDeleteDentry(handle interface{}, db DentryBatch) []*DentryResponse {
 	result := make([]*DentryResponse, 0, len(db))
 	var wrongIndex int
 	var err error
@@ -416,7 +418,7 @@ func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse 
 			result = append(result, &DentryResponse{Status: status})
 			continue
 		}
-		rsp = mp.fsmDeleteDentry(dentry, false)
+		rsp = mp.fsmDeleteDentry(handle, dentry, false)
 		if rsp.Status != proto.OpOk {
 			wrongIndex = index
 			break
@@ -426,11 +428,17 @@ func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse 
 	return result
 }
 
-func (mp *metaPartition) fsmTxUpdateDentry(txUpDateDentry *TxUpdateDentry) (resp *DentryResponse) {
+func (mp *metaPartition) fsmTxUpdateDentry(handle interface{}, txUpDateDentry *TxUpdateDentry) (resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 
-	if mp.txProcessor.txManager.txInRMDone(txUpDateDentry.TxInfo.TxID) {
+	done, err := mp.txProcessor.txManager.txInRMDone(txUpDateDentry.TxInfo.TxID)
+	if err != nil {
+		resp.Status = proto.OpErr
+		log.LogErrorf("fsmTxUpdateDentry: txInRMDone failed. txId %s, err %v", txUpDateDentry.TxInfo.TxID, err)
+		return
+	}
+	if done {
 		log.LogWarnf("fsmTxUpdateDentry: tx is already finish. txId %s", txUpDateDentry.TxInfo.TxID)
 		resp.Status = proto.OpTxInfoNotExistErr
 		return
@@ -459,7 +467,7 @@ func (mp *metaPartition) fsmTxUpdateDentry(txUpDateDentry *TxUpdateDentry) (resp
 	}
 
 	rbDentry := NewTxRollbackDentry(txUpDateDentry.OldDentry, txDenInfo, TxUpdate)
-	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry)
+	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(handle, rbDentry)
 	if resp.Status == proto.OpExistErr {
 		resp.Status = proto.OpOk
 		return
@@ -470,7 +478,7 @@ func (mp *metaPartition) fsmTxUpdateDentry(txUpDateDentry *TxUpdateDentry) (resp
 	}
 
 	d.Inode, newDen.Inode = newDen.Inode, d.Inode
-	if err = mp.dentryTree.Update(d); err != nil {
+	if err = mp.dentryTree.Update(handle, d); err != nil {
 		resp.Status = proto.OpErr
 		return
 	}
@@ -478,7 +486,7 @@ func (mp *metaPartition) fsmTxUpdateDentry(txUpDateDentry *TxUpdateDentry) (resp
 	return
 }
 
-func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
+func (mp *metaPartition) fsmUpdateDentry(handle interface{}, dentry *Dentry) (
 	resp *DentryResponse,
 ) {
 	resp = NewDentryResponse()
@@ -507,7 +515,7 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 	}
 	d.Inode, dentry.Inode = dentry.Inode, d.Inode
 	resp.Msg = dentry
-	if err = mp.dentryTree.Update(d); err != nil {
+	if err = mp.dentryTree.Update(handle, d); err != nil {
 		resp.Status = proto.OpErr
 		return
 	}

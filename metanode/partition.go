@@ -310,6 +310,10 @@ type MetaPartition interface {
 	SetFreeze(req *proto.FreezeMetaPartitionRequest) (err error)
 	GetSnapShot() (Snapshot, error)
 	ReleaseSnapShot(snap Snapshot)
+	SetStoreMode(req *proto.SetMetaPartitionStoreModeRequest) error
+	GetStoreMode() proto.StoreMode
+	IsNeedReload() bool
+	TransferSnapshot() error
 	// NOTE: for debug
 	MetaPartitionDebug
 }
@@ -1091,9 +1095,9 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	loadFuncs := []func(rootDir string, crc uint32) error{
-		nil, // NOTE: we load inode first
+		mp.loadInode,
 		mp.loadDentry,
-		mp.loadExtend,
+		nil, // loading quota info from extend requires mp.loadInode() has been completed, so skip mp.loadExtend() here
 		mp.loadMultipart,
 	}
 
@@ -1117,7 +1121,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		loadFuncs = append(loadFuncs, mp.loadUniqChecker)
 	}
 
-	if crc_count >= CRC_COUNT_MULTI_VER {
+	if crc_count == CRC_COUNT_MULTI_VER {
 		if err = mp.loadMultiVer(snapshotPath, crcs[CRC_COUNT_MULTI_VER-1]); err != nil {
 			return
 		}
@@ -1125,10 +1129,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		mp.storeMultiVersion(snapshotPath, &storeMsg{multiVerList: mp.multiVersionList.VerList})
 	}
 
-	// NOTE: load inodes first
 	errs := make([]error, len(loadFuncs))
-	errs[0] = mp.loadInode(snapshotPath, crcs[0])
-
 	var wg sync.WaitGroup
 	wg.Add(len(loadFuncs))
 	for idx, f := range loadFuncs {
@@ -1163,6 +1164,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		}
 	}
 
+	if err = mp.loadExtend(snapshotPath, crcs[2]); err != nil {
+		return
+	}
+
 	if needLoadTxStuff {
 		if err = mp.loadTxID(snapshotPath); err != nil {
 			return
@@ -1180,7 +1185,6 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 
 func (mp *metaPartition) load(isCreate bool) (err error) {
 	if err = mp.loadMetadata(); err != nil {
-		log.LogErrorf("[load] failed to load metadata, mp(%v) err(%v)", mp.config.PartitionId, err)
 		return
 	}
 
@@ -1188,6 +1192,7 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 		log.LogErrorf("[load] failed to init objects, mp(%v) err(%v)", mp.config.PartitionId, err)
 		return
 	}
+
 	// 1. create new metaPartition, no need to load snapshot
 	// 2. store the snapshot files for new mp, because
 	// mp.load() will check all the snapshot files when mn startup
@@ -1230,7 +1235,7 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 	// we will select a db path and set RocksdbDir config
 	// so we need to persist metadata
 	if mp.HasRocksDBStore() {
-		if err = mp.persistSelectedRocksdbDir(); err != nil {
+		if err = mp.persistMetadata(); err != nil {
 			log.LogErrorf("[load] mp(%v) failed to persist rocksdb dir to metadata file, err(%v)", mp.config.PartitionId, err)
 			return
 		}
@@ -1252,7 +1257,7 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 		log.LogDebugf("[load] mp(%v) tx rb dentry real len(%v)", mp.config.PartitionId, txRbDenTree.RealCount())
 	}
 
-	return
+	return nil
 }
 
 func (mp *metaPartition) doFileStats(thresholds []uint64) {
@@ -1283,17 +1288,20 @@ func (mp *metaPartition) doFileStats(thresholds []uint64) {
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
-	if mp.HasRocksDBStore() {
+	if mp.inodeTree.GetStoreMode() == proto.StoreModeRocksDb {
 		mp.storedApplyId = sm.snap.ApplyID()
 		log.LogInfof("[store] mp(%v) flush rocksdb memory table to sst", mp.config.PartitionId)
 		// NOTE: execute flush
 		if err = mp.inodeTree.Flush(); err != nil {
-			return
+			log.LogErrorf("[store] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
 		}
-		return nil
 	}
-	log.LogDebugf("[store] mp(%v) store snapshot", mp.config.PartitionId)
+
 	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
+	defer func() {
+		log.LogWarnf("metaPartition %d store apply %v finish", mp.config.PartitionId, sm.snap.ApplyID())
+	}()
+
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
@@ -1502,7 +1510,7 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
-	log.LogWarnf("[Reset] reset mp(%v)", mp.config.PartitionId)
+	log.LogWarnf("[Reset] reset mp(%v) storeMode(%d)", mp.config.PartitionId, mp.config.StoreMode)
 	// NOTE: close rocksdb
 	err = mp.Clear()
 	if err != nil {
@@ -1510,13 +1518,9 @@ func (mp *metaPartition) Reset() (err error) {
 		return
 	}
 	mp.txProcessor.Reset()
-	err = mp.inodeTree.Flush()
-	if err != nil {
-		log.LogErrorf("[Reset] mp(%v) failed to clear data, err(%v)", mp.config.PartitionId, err)
-		err = nil
-	}
 	mp.rocksdbManager.CloseRocksdb(mp.db)
 	mp.db = nil
+	log.LogWarnf("[Reset] clear and reset mp(%v) storeMode(%d)", mp.config.PartitionId, mp.config.StoreMode)
 
 	// remove files
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile, verdataFile, txInfoFile, txRbInodeFile, txRbDentryFile, TxIDFile}
@@ -1526,9 +1530,6 @@ func (mp *metaPartition) Reset() (err error) {
 			return
 		}
 		err = nil
-	}
-	if mp.HasMemStore() {
-		mp.cleanMemoryTreeResource()
 	}
 
 	if mp.config.RocksDBDir != "" && mp.rocksdbManager != nil {
@@ -2029,15 +2030,6 @@ func (mp *metaPartition) initRocksDBTree() (err error) {
 	return
 }
 
-func (mp *metaPartition) cleanMemoryTreeResource() {
-	if mp.HasRocksDBStore() {
-		log.LogWarnf("mp[%v] remove mem dir,but has rocksdb store mode", mp.config.PartitionId)
-	}
-	os.RemoveAll(mp.config.RootDir + snapshotDir)
-	os.RemoveAll(mp.config.RootDir + snapshotDirTmp)
-	os.RemoveAll(mp.config.RootDir + snapshotBackup)
-}
-
 func (mp *metaPartition) selectRocksDBDir() (err error) {
 	maxUsedPercent := getMemModeMaxFsUsedPercent()
 	if mp.HasRocksDBStore() {
@@ -2047,9 +2039,9 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 
 	dir, err := mp.manager.rocksdbManager.SelectRocksdbDisk(factor)
 	if err != nil {
-		log.LogErrorf("[selectRocksDBDir] mp(%v) select failed(%v), so set root dir(%s) as rocksdb dir",
-			mp.config.PartitionId, err, mp.manager.rootDir)
-		mp.config.RocksDBDir = mp.manager.rootDir
+		mp.config.RocksDBDir = mp.GetDefaultRocksdbDir()
+		log.LogErrorf("[selectRocksDBDir] mp(%v) select failed(%v), so set dir(%s) as rocksdb dir",
+			mp.config.PartitionId, err, mp.config.RocksDBDir)
 		err = nil
 		return
 	}
@@ -2218,11 +2210,317 @@ func (mp *metaPartition) initObjects(isCreate bool) (err error) {
 		if err = mp.initRocksDBTree(); err != nil {
 			return
 		}
-		if isCreate {
-			mp.cleanMemoryTreeResource()
-		}
 	}
 
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return
+}
+
+func (mp *metaPartition) SetStoreMode(req *proto.SetMetaPartitionStoreModeRequest) error {
+	mp.config.StoreMode = req.StoreMode
+
+	reqData, err := json.Marshal(*req)
+	if err != nil {
+		return err
+	}
+	_, err = mp.submit(opFSMSetStoreMode, reqData)
+	if err != nil {
+		log.LogErrorf("[SetStoreMode] mp(%v) failed to set store mode, err(%v)", mp.config.PartitionId, err)
+		return err
+	}
+
+	return nil
+}
+
+func (mp *metaPartition) GetStoreMode() proto.StoreMode {
+	return mp.inodeTree.GetStoreMode()
+}
+
+func (mp *metaPartition) IsNeedReload() bool {
+	return mp.config.StoreMode != mp.inodeTree.GetStoreMode()
+}
+
+func (mp *metaPartition) GetDefaultRocksdbDir() string {
+	if len(mp.manager.rocksDBDirs) > 0 {
+		return mp.manager.rocksDBDirs[0]
+	}
+
+	return mp.manager.rootDir
+}
+
+// 初始化临时metaPartition
+func (mp *metaPartition) initTempMetaPartition() (*metaPartition, error) {
+	tmpMp := &metaPartition{
+		config:         mp.config,
+		manager:        mp.manager,
+		rocksdbManager: mp.rocksdbManager,
+	}
+
+	// 选择RocksDB目录
+	if tmpMp.config.RocksDBDir == "" {
+		if err := tmpMp.selectRocksDBDir(); err != nil {
+			log.LogErrorf("action[initTempMetaPartition] mp(%v) failed to select rocksdb dir: %v", mp.config.PartitionId, err)
+			return nil, err
+		}
+	}
+
+	// 初始化RocksDB
+	var err error
+	tmpMp.db, err = tmpMp.rocksdbManager.OpenRocksdb(tmpMp.config.RocksDBDir, tmpMp.config.PartitionId)
+	if err != nil {
+		log.LogErrorf("action[initTempMetaPartition] mp(%v) failed to open rocksdb: %v", mp.config.PartitionId, err)
+		return nil, err
+	}
+
+	// 初始化RocksDB树结构
+	if err = tmpMp.initRocksDBTree(); err != nil {
+		log.LogErrorf("action[initTempMetaPartition] mp(%v) failed to init rocksdb tree: %v", mp.config.PartitionId, err)
+		return nil, err
+	}
+
+	// 初始化事务处理器
+	tmpMp.txProcessor = NewTransactionProcessor(tmpMp)
+
+	return tmpMp, nil
+}
+
+// 清理RocksDB中的旧数据
+func (tmpMp *metaPartition) clearRocksDBData() error {
+	handle, err := tmpMp.inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("action[clearRocksDBData] mp(%v) failed to create batch write handle for cleanup: %v", tmpMp.config.PartitionId, err)
+		return err
+	}
+
+	if err = tmpMp.inodeTree.Clear(handle); err != nil {
+		log.LogErrorf("action[clearRocksDBData] mp(%v) failed to clear inode tree: %v", tmpMp.config.PartitionId, err)
+		return err
+	}
+	if err = tmpMp.dentryTree.Clear(handle); err != nil {
+		log.LogErrorf("action[clearRocksDBData] mp(%v) failed to clear dentry tree: %v", tmpMp.config.PartitionId, err)
+		return err
+	}
+	if err = tmpMp.extendTree.Clear(handle); err != nil {
+		log.LogErrorf("action[clearRocksDBData] mp(%v) failed to clear extend tree: %v", tmpMp.config.PartitionId, err)
+		return err
+	}
+	if err = tmpMp.multipartTree.Clear(handle); err != nil {
+		log.LogErrorf("action[clearRocksDBData] mp(%v) failed to clear multipart tree: %v", tmpMp.config.PartitionId, err)
+		return err
+	}
+	if err = tmpMp.inodeTree.DeleteMetadata(handle); err != nil {
+		log.LogErrorf("action[clearRocksDBData] mp(%v) failed to delete metadata: %v", tmpMp.config.PartitionId, err)
+		return err
+	}
+	if err = tmpMp.inodeTree.CommitAndReleaseBatchWriteForClear(handle); err != nil {
+		log.LogErrorf("action[clearRocksDBData] mp(%v) failed to commit clear: %v", tmpMp.config.PartitionId, err)
+		return err
+	}
+
+	return nil
+}
+
+// 存储数据到RocksDB
+func (tmpMp *metaPartition) storeDataToRocksDB(mp *metaPartition, handle interface{}) error {
+	// 获取快照
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("action[storeDataToRocksDB] mp(%v) failed to get snapshot: %v", mp.config.PartitionId, err)
+		return err
+	}
+	defer snap.Close()
+
+	cursor := tmpMp.inodeTree.GetCursor()
+	// 存储inode
+	err = snap.Range(InodeType, func(item interface{}) bool {
+		ino := item.(*Inode)
+		if err = tmpMp.inodeTree.Put(handle, ino); err != nil {
+			log.LogErrorf("action[storeDataToRocksDB] mp(%v) failed to store inode: %v", mp.config.PartitionId, err)
+			return false
+		}
+		if ino.Inode > cursor {
+			cursor = ino.Inode
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	tmpMp.inodeTree.SetCursor(cursor)
+
+	// 存储dentry
+	err = snap.Range(DentryType, func(item interface{}) bool {
+		dentry := item.(*Dentry)
+		if err = tmpMp.dentryTree.Put(handle, dentry); err != nil {
+			log.LogErrorf("action[storeDataToRocksDB] mp(%v) failed to store dentry: %v", mp.config.PartitionId, err)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+
+	// 存储extend
+	err = snap.Range(ExtendType, func(item interface{}) bool {
+		extend := item.(*Extend)
+		if err = tmpMp.extendTree.Put(handle, extend); err != nil {
+			log.LogErrorf("action[storeDataToRocksDB] mp(%v) failed to store extend: %v", mp.config.PartitionId, err)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+
+	// 存储multipart
+	err = snap.Range(MultipartType, func(item interface{}) bool {
+		multipart := item.(*Multipart)
+		if err = tmpMp.multipartTree.Put(handle, multipart); err != nil {
+			log.LogErrorf("action[storeDataToRocksDB] mp(%v) failed to store multipart: %v", mp.config.PartitionId, err)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 存储事务相关数据到RocksDB
+func (tmpMp *metaPartition) storeTransactionToRocksDB(mp *metaPartition, handle interface{}) error {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return err
+	}
+	defer snap.Close()
+
+	// 存储事务相关数据
+	txTree := mp.txProcessor.txManager.txTree
+	err = snap.Range(TransactionType, func(item interface{}) bool {
+		tx := item.(*proto.TransactionInfo)
+		if err = txTree.Put(handle, tx); err != nil {
+			log.LogErrorf("action[storeTransactionToRocksDB] mp(%v) failed to store transaction: %v", mp.config.PartitionId, err)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+
+	txRbInoTree := mp.txProcessor.txResource.txRbInodeTree
+	err = snap.Range(TransactionRollbackInodeType, func(item interface{}) bool {
+		inode := item.(*TxRollbackInode)
+		if err = txRbInoTree.Put(handle, inode); err != nil {
+			log.LogErrorf("action[storeTransactionToRocksDB] mp(%v) failed to store tx rollback inode: %v", mp.config.PartitionId, err)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+
+	txRbDenTree := mp.txProcessor.txResource.txRbDentryTree
+	err = snap.Range(TransactionRollbackDentryType, func(item interface{}) bool {
+		dentry := item.(*TxRollbackDentry)
+		if err = txRbDenTree.Put(handle, dentry); err != nil {
+			log.LogErrorf("action[storeTransactionToRocksDB] mp(%v) failed to store tx rollback dentry: %v", mp.config.PartitionId, err)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 主函数：存储数据到RocksDB
+func (mp *metaPartition) storeRocksdbSnapshot() (err error) {
+	log.LogWarnf("action[storeRocksdbSnapshot] mp(%v) store snapshot to rocksdb start", mp.config.PartitionId)
+	defer log.LogWarnf("action[storeRocksdbSnapshot] mp(%v) store snapshot to rocksdb end", mp.config.PartitionId)
+
+	// 初始化临时metaPartition
+	tmpMp, err := mp.initTempMetaPartition()
+	if err != nil {
+		return
+	}
+	defer func() {
+		if tmpMp.db != nil {
+			tmpMp.rocksdbManager.CloseRocksdb(tmpMp.db)
+			tmpMp.db = nil
+		}
+	}()
+
+	// 清理旧数据
+	if err = tmpMp.clearRocksDBData(); err != nil {
+		return
+	}
+
+	// 创建批量写入句柄
+	handle, err := tmpMp.inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("action[storeRocksdbSnapshot] mp(%v) failed to create batch write handle: %v", mp.config.PartitionId, err)
+		return
+	}
+
+	// 存储数据
+	if err = tmpMp.storeDataToRocksDB(mp, handle); err != nil {
+		return
+	}
+
+	// 存储事务数据
+	if err = tmpMp.storeTransactionToRocksDB(mp, handle); err != nil {
+		return
+	}
+
+	tmpMp.inodeTree.SetApplyID(mp.applyID)
+	txId := mp.txProcessor.txManager.txIdAlloc.getTransactionID()
+	tmpMp.inodeTree.SetTxId(txId)
+
+	// 提交批量写入
+	if err = tmpMp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, true); err != nil {
+		log.LogErrorf("action[storeRocksdbSnapshot] mp(%v) failed to commit batch write: %v", mp.config.PartitionId, err)
+		return
+	}
+
+	// 执行刷盘
+	if err = tmpMp.inodeTree.Flush(); err != nil {
+		log.LogErrorf("action[storeRocksdbSnapshot] mp(%v) failed to flush: %v", mp.config.PartitionId, err)
+		return
+	}
+
+	// 更新原mp的RocksDB目录并持久化
+	mp.config.RocksDBDir = tmpMp.config.RocksDBDir
+	if err = mp.persistMetadata(); err != nil {
+		log.LogErrorf("action[storeRocksdbSnapshot] mp(%v) failed to persist metadata: %v", mp.config.PartitionId, err)
+		return
+	}
+
+	mp.storedApplyId = mp.applyID
+	return nil
+}
+
+func (mp *metaPartition) TransferSnapshot() error {
+	if mp.config.StoreMode == mp.inodeTree.GetStoreMode() {
+		// no need to translate store mode.
+		return nil
+	}
+
+	log.LogWarnf("action[TransferSnapshot] translate snapshot %v start", mp.config.PartitionId)
+	defer log.LogWarnf("action[TransferSnapshot] translate snapshot %v end", mp.config.PartitionId)
+
+	if mp.config.StoreMode == proto.StoreModeRocksDb {
+		// The destination store mode is rocksdb.
+		return mp.storeRocksdbSnapshot()
+	}
+
+	// store mode rocksdb --> memory. It doesn't need to translate. Because the snapshot file is stored before.
+	return nil
 }

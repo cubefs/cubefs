@@ -31,10 +31,14 @@ import (
 func TestInodeGet(t *testing.T) {
 	initMp(t, proto.StoreModeMem)
 
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	inoId := uint64(time.Now().Unix())
 	ino := NewInode(inoId, 0)
 	ino.AccessTime = time.Now().Unix() - 3600
-	mp.inodeTree.ReplaceOrInsert(ino, false)
+	mp.inodeTree.ReplaceOrInsert(handle, ino, false)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	req := &InodeGetReq{
 		Inode: inoId,
@@ -44,7 +48,7 @@ func TestInodeGet(t *testing.T) {
 	time.Sleep(time.Second * 2)
 
 	pkt := &Packet{}
-	err := mp.InodeGet(req, pkt)
+	err = mp.InodeGet(req, pkt)
 
 	require.True(t, pkt.ResultCode == proto.OpOk)
 	require.NoError(t, err)
@@ -69,10 +73,14 @@ func TestInodeGet(t *testing.T) {
 func TestInodeGetPerf(t *testing.T) {
 	initMp(t, proto.StoreModeMem)
 	cnt := 10240000
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	for idx := 1; idx < cnt; idx++ {
 		ino := NewInode(uint64(idx), 0)
-		mp.inodeTree.ReplaceOrInsert(ino, true)
+		mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	testNum := 1024
 	for i := 1; i < 10; i++ {

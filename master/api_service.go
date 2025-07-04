@@ -441,9 +441,9 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
 					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive,
-					IsWritable: metaNode.isWritable(proto.StoreModeMem), MediaType: proto.MediaType_Unspecified,
+					IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
 					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
-					IsRocksdbWritable: metaNode.isWritable(proto.StoreModeRocksDb),
+					IsRocksdbWritable: metaNode.IsRocksdbWriteAble(),
 				})
 				return true
 			})
@@ -617,12 +617,12 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 				Status:     mn.IsActive,
 				DomainAddr: mn.DomainAddr,
 				ID:         mn.ID,
-				IsWritable: mn.isWritable(proto.StoreModeMem),
+				IsWritable: mn.IsWriteAble(),
 				Total:      mn.Total,
 				Used:       mn.Used,
 				Avail:      mn.Total - mn.Used,
 			},
-			IsRocksdbWritable: mn.isWritable(proto.StoreModeRocksDb),
+			IsRocksdbWritable: mn.IsRocksdbWriteAble(),
 			RocksdbTotal:      mn.GetRocksdbTotal(),
 			RocksdbUsed:       mn.GetRocksdbUsed(),
 			RocksdbAvali:      mn.GetRocksdbTotal() - mn.GetRocksdbUsed(),
@@ -4252,12 +4252,13 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 			log.LogInfof("nodeset index[%v], metanode nodeset id[%v],zonename[%v], addr[%v] inner nodesetid[%v]",
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
 
+			rocksdbCount, memoryCount := node.GetRocksdbAndMemoryCount()
 			metaNodeInfo := &proto.MetaNodeInfo{
 				ID:                 node.ID,
 				Addr:               node.Addr,
 				IsActive:           node.IsActive,
-				IsWriteAble:        node.isWritable(proto.StoreModeMem),
-				IsRocksdbWritable:  node.isWritable(proto.StoreModeRocksDb),
+				IsWriteAble:        node.IsWriteAble(),
+				IsRocksdbWritable:  node.IsRocksdbWriteAble(),
 				ZoneName:           node.ZoneName,
 				MaxMemAvailWeight:  node.MaxMemAvailWeight,
 				Total:              node.Total,
@@ -4266,13 +4267,13 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				RocksdbUsed:        node.GetRocksdbUsed(),
 				Ratio:              node.Ratio,
 				SelectCount:        node.SelectCount,
-				MemorySelectCount:  node.SelectCount,
-				RocksdbSelectCount: node.SelectCount,
 				Threshold:          node.Threshold,
 				ReportTime:         node.ReportTime,
 				MetaPartitionCount: node.MetaPartitionCount,
 				NodeSetID:          node.NodeSetID,
 				MaxMpCntLimit:      node.GetPartitionLimitCnt(),
+				MemoryCount:        memoryCount,
+				RocksdbCount:       rocksdbCount,
 			}
 
 			nsStat.MetaNodes = append(nsStat.MetaNodes, metaNodeInfo)
@@ -5290,6 +5291,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
+	rocksdbCount, memoryCount := metaNode.GetRocksdbAndMemoryCount()
 	metaNode.PersistenceMetaPartitions = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
 	metaNodeInfo = &proto.MetaNodeInfo{
 		ID:                        metaNode.ID,
@@ -5298,8 +5300,8 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		RaftReplicaPort:           metaNode.ReplicaPort,
 		DomainAddr:                metaNode.DomainAddr,
 		IsActive:                  metaNode.IsActive,
-		IsWriteAble:               metaNode.isWritable(proto.StoreModeMem),
-		IsRocksdbWritable:         metaNode.isWritable(proto.StoreModeRocksDb),
+		IsWriteAble:               metaNode.IsWriteAble(),
+		IsRocksdbWritable:         metaNode.IsRocksdbWriteAble(),
 		ZoneName:                  metaNode.ZoneName,
 		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
 		Total:                     metaNode.Total,
@@ -5308,8 +5310,6 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		RocksdbUsed:               metaNode.GetRocksdbUsed(),
 		Ratio:                     metaNode.Ratio,
 		SelectCount:               metaNode.SelectCount,
-		MemorySelectCount:         metaNode.SelectCount,
-		RocksdbSelectCount:        metaNode.SelectCount,
 		Threshold:                 metaNode.Threshold,
 		ReportTime:                metaNode.ReportTime,
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
@@ -5319,6 +5319,8 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		CanAllowPartition:         metaNode.IsWriteAble() && metaNode.PartitionCntLimited(),
 		MaxMpCntLimit:             metaNode.GetPartitionLimitCnt(),
 		CpuUtil:                   metaNode.CpuUtil.Load(),
+		MemoryCount:               memoryCount,
+		RocksdbCount:              rocksdbCount,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
@@ -5527,7 +5529,7 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !targetNode.isWritable(proto.StoreModeMem) || !targetNode.PartitionCntLimited() {
+	if !targetNode.IsWriteAble() || !targetNode.PartitionCntLimited() {
 		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

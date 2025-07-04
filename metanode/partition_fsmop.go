@@ -129,7 +129,7 @@ func (mp *metaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberReques
 	return
 }
 
-func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMemberRequest, index uint64) (updated bool, removeSelf bool, err error) {
+func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var canRemoveSelf bool
 	if canRemoveSelf, err = mp.canRemoveSelf(); err != nil {
 		return
@@ -152,7 +152,6 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 	}
 	mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
 	if mp.config.NodeId == req.RemovePeer.ID && !mp.isLoadingMetaPartition && canRemoveSelf {
-		removeSelf = true
 		mp.Stop()
 		mp.DeleteRaft()
 		err = mp.Reset()
@@ -294,5 +293,20 @@ func (mp *metaPartition) fsmSetFreeze(freeze bool) (status uint8,
 		mp.config.Freeze = oldVal
 		log.LogErrorf("[fsmSetFreeze] save meta data failed: %s", err.Error())
 	}
+	return
+}
+
+func (mp *metaPartition) fsmSetStoreMode(req *SetStoreModeReq) (status uint8, err error) {
+	status = proto.OpOk
+
+	oldVal := mp.config.StoreMode
+	mp.config.StoreMode = req.StoreMode
+	if err = mp.PersistMetadata(); err != nil {
+		status = proto.OpDiskErr
+		mp.config.StoreMode = oldVal
+		log.LogErrorf("[fsmSetStoreMode] save meta data failed: %s", err.Error())
+		return
+	}
+
 	return
 }

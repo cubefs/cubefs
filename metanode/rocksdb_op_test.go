@@ -460,9 +460,6 @@ func TestFlushDb(t *testing.T) {
 	err = db.Flush()
 	require.NoError(t, err)
 
-	count = getSSTCount(t, path)
-	require.NotEqualValues(t, 0, count)
-
 	err = db.CloseDb()
 	require.NoError(t, err)
 }

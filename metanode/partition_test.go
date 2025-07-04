@@ -82,14 +82,16 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Nil(t, err)
 
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	// add data to mp
 	ino := NewInode(0, 0)
 	ino.StorageClass = proto.StorageClass_Replica_HDD
-	mp.inodeTree.ReplaceOrInsert(ino, true)
+	mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 	dentry := &Dentry{}
-	mp.dentryTree.ReplaceOrInsert(dentry, true)
+	mp.dentryTree.ReplaceOrInsert(handle, dentry, true)
 	extend := &Extend{}
-	mp.extendTree.ReplaceOrInsert(extend, true)
+	mp.extendTree.ReplaceOrInsert(handle, extend, true)
 
 	multipart := &Multipart{
 		id:       "id",
@@ -98,7 +100,9 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		parts:    Parts{},
 		extend:   MultipartExtend{},
 	}
-	mp.multipartTree.ReplaceOrInsert(multipart, true)
+	mp.multipartTree.ReplaceOrInsert(handle, multipart, true)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	snap, err = mp.GetSnapShot()
 	require.NoError(t, err)
@@ -183,7 +187,11 @@ func TestMetaPartition_LoadHybridCloudMigrationSnapshot(t *testing.T) {
 		FileOffset: 0, PartitionId: 164,
 		ExtentId: 55, ExtentOffset: 0, Size: 1024, CRC: 0,
 	}})
-	mp.inodeTree.ReplaceOrInsert(ino, true)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	mp.inodeTree.ReplaceOrInsert(handle, ino, true)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 	// dentry := &Dentry{}
 	// mp.dentryTree.ReplaceOrInsert(dentry, true)
 	// extend := &Extend{}
@@ -214,7 +222,7 @@ func prepareDataForMpTest(t *testing.T, mp *metaPartition) {
 	require.NoError(t, err)
 
 	ino := NewInode(0, DirModeType)
-	err = mp.inodeTree.BatchPut(handle, ino)
+	_, _, err = mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 	require.NoError(t, err)
 
 	den := &Dentry{
@@ -222,22 +230,22 @@ func prepareDataForMpTest(t *testing.T, mp *metaPartition) {
 		Name:     "test",
 		Inode:    1,
 	}
-	err = mp.dentryTree.BatchPut(handle, den)
+	_, _, err = mp.dentryTree.ReplaceOrInsert(handle, den, true)
 	require.NoError(t, err)
 
-	err = mp.extendTree.BatchPut(handle, &Extend{})
+	_, _, err = mp.extendTree.ReplaceOrInsert(handle, &Extend{}, true)
 	require.NoError(t, err)
 
-	err = mp.multipartTree.BatchPut(handle, &Multipart{})
+	_, _, err = mp.multipartTree.ReplaceOrInsert(handle, &Multipart{}, true)
 	require.NoError(t, err)
 
-	err = mp.txProcessor.txManager.txTree.BatchPut(handle, proto.NewTransactionInfo(0, 0))
+	_, _, err = mp.txProcessor.txManager.txTree.ReplaceOrInsert(handle, proto.NewTransactionInfo(0, 0), true)
 	require.NoError(t, err)
 
-	err = mp.txProcessor.txResource.txRbInodeTree.BatchPut(handle, NewTxRollbackInode(ino, []uint32{}, proto.NewTxInodeInfo("", 0, 0), 0))
+	_, _, err = mp.txProcessor.txResource.txRbInodeTree.ReplaceOrInsert(handle, NewTxRollbackInode(ino, []uint32{}, proto.NewTxInodeInfo("", 0, 0), 0), true)
 	require.NoError(t, err)
 
-	err = mp.txProcessor.txResource.txRbDentryTree.BatchPut(handle, NewTxRollbackDentry(den, proto.NewTxDentryInfo("", 0, "", 0), 0))
+	_, _, err = mp.txProcessor.txResource.txRbDentryTree.ReplaceOrInsert(handle, NewTxRollbackDentry(den, proto.NewTxDentryInfo("", 0, "", 0), 0), true)
 	require.NoError(t, err)
 
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, true)
@@ -354,7 +362,7 @@ func TestLoadAndStoreMetaPartition(t *testing.T) {
 		End:           100,
 		PartitionType: 1,
 		Peers:         nil,
-		RootDir:       "",
+		RootDir:       dbDir,
 		StoreMode:     proto.StoreModeRocksDb,
 		RocksDBDir:    dbDir,
 	}
@@ -366,6 +374,9 @@ func TestLoadAndStoreMetaPartition(t *testing.T) {
 		partitions:     make(map[uint64]MetaPartition),
 		metaNode:       &MetaNode{},
 		rocksdbManager: dbManager,
+		fileStatsConfig: &fileStatsConfig{
+			thresholds: []uint64{},
+		},
 	}
 	partition := NewMetaPartition(&mpC, metaM)
 	require.NotNil(t, partition)
@@ -394,8 +405,6 @@ func TestLoadAndStoreMetaPartition(t *testing.T) {
 	snap.Close()
 	require.NoError(t, err)
 
-	count = getSSTCountForPartitionTest(t, dbDir)
-	require.NotEqualValues(t, 0, count)
 	os.RemoveAll(mp.config.RocksDBDir)
 }
 
@@ -431,11 +440,15 @@ func TestDoFileStats(t *testing.T) {
 	err := mp.initObjects(true)
 	require.NoError(t, err)
 
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	for i := 0; i < 10000000; i++ {
 		ino := NewInode(uint64(i), 0)
-		_, _, err = mp.inodeTree.ReplaceOrInsert(ino, true)
+		_, _, err = mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 		require.NoError(t, err)
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	startTime := time.Now()
 	mp.doFileStats(metaM.fileStatsConfig.thresholds)

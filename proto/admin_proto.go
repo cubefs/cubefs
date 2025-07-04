@@ -104,6 +104,12 @@ const (
 	AdminAbortDecommissionDisk                        = "/admin/abortDecommissionDisk"
 	AdminResetDataPartitionRestoreStatus              = "/admin/resetDataPartitionRestoreStatus"
 	AdminGetOpLog                                     = "/admin/getOpLog"
+	AdminModifyMpStoreMode                            = "/vol/modifyMetaPartitionStoreMode"
+	AdminAddRenewMpStoreModeTask                      = "/vol/addRenewMpStoreModeTask"
+	AdminGetRenewMpStoreModeTask                      = "/vol/getRenewMpStoreModeTask"
+	AdminDelRenewMpStoreModeTask                      = "/vol/delRenewMpStoreModeTask"
+	AdminStopRenewMpStoreModeTask                     = "/vol/stopRenewMpStoreModeTask"
+	AdminRunRenewMpStoreModeTask                      = "/vol/runRenewMpStoreModeTask"
 
 	// #nosec G101
 	AdminQueryDecommissionToken            = "/admin/queryDecommissionToken"
@@ -231,6 +237,7 @@ const (
 	AdminAddMetaReplica                = "/metaReplica/add"
 	AdminDeleteMetaReplica             = "/metaReplica/delete"
 	AdminPutDataPartitions             = "/dataPartitions/set"
+	AdminCreateStoreModeChangePlan     = "/metaPartition/createStoreModeChangePlan"
 
 	// admin multi version snapshot
 	AdminCreateVersion     = "/multiVer/create"
@@ -971,6 +978,7 @@ type MetaPartitionReport struct {
 	LocalPeers                []Peer
 	ReadOnlyReasons           uint32
 	StoreMode                 StoreMode
+	ConfigStoreMode           StoreMode
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -1777,4 +1785,13 @@ type MetaNodeRocksdbInfo struct {
 	UsageRatio     float64
 	Status         int8
 	PartitionCount int
+}
+
+type SetMetaPartitionStoreModeRequest struct {
+	PartitionID uint64
+	StoreMode   StoreMode
+}
+
+type ReloadMetaPartitionRequest struct {
+	PartitionID uint64
 }

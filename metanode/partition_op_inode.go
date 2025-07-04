@@ -789,7 +789,13 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet, remoteAddr st
 		}()
 	}
 	ino := NewInode(req.Inode, 0)
-	if item, err1 := mp.inodeTree.Get(ino); item == nil || err1 != nil {
+	item, err := mp.inodeTree.Get(ino)
+	if err != nil {
+		log.LogErrorf("EvictInode inode(%v) err: %s", req.Inode, err.Error())
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if item == nil {
 		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
 		log.LogWarnf("action[RenewalForbiddenMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
@@ -1061,6 +1067,7 @@ func (mp *metaPartition) InodeGetAccessTime(req *InodeGetReq, p *Packet) (err er
 	ino := NewInode(req.Inode, 0)
 	i, err := mp.inodeTree.Get(ino)
 	if err != nil {
+		log.LogErrorf("InodeGetAccessTime: inode %v err: %s", ino, err.Error())
 		return
 	}
 	if i == nil {
@@ -1092,7 +1099,13 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 	p *Packet, remoteAddr string,
 ) (err error) {
 	ino := NewInode(req.Inode, 0)
-	if item, err1 := mp.inodeTree.Get(ino); item == nil || err1 != nil {
+	item, err := mp.inodeTree.Get(ino)
+	if err != nil {
+		log.LogErrorf("RenewalForbiddenMigration inode(%d) err: %s", req.Inode, err.Error())
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if item == nil {
 		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
 		log.LogErrorf("action[RenewalForbiddenMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
@@ -1126,7 +1139,13 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 ) (err error) {
 	inoParm := NewInode(req.Inode, 0)
 	var oldIno *Inode
-	if oldIno, err = mp.inodeTree.Get(inoParm); oldIno == nil || err != nil {
+	oldIno, err = mp.inodeTree.Get(inoParm)
+	if err != nil {
+		log.LogErrorf("UpdateExtentKeyAfterMigration inode(%d) err: %s", req.Inode, err.Error())
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if oldIno == nil {
 		err = fmt.Errorf("mp(%v) can not find inode(%v)", mp.config.PartitionId, inoParm.Inode)
 		log.LogWarnf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
@@ -1369,7 +1388,13 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 ) (err error) {
 	ino := NewInode(req.Inode, 0)
 	var item *Inode
-	if item, err = mp.inodeTree.Get(ino); item == nil || err != nil {
+	item, err = mp.inodeTree.Get(ino)
+	if err != nil {
+		log.LogErrorf("DeleteMigrationExtentKey inode(%d) err: %s", req.Inode, err.Error())
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if item == nil {
 		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))

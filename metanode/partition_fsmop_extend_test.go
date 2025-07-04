@@ -67,8 +67,12 @@ func mockPartitionRaftForFsmExtendTest(t *testing.T, ctrl *gomock.Controller, st
 }
 
 func prepareInoForFsmExtendTest(t *testing.T, mp *metaPartition, ino uint64) {
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	inode := NewInode(ino, FileModeType)
-	err := mp.inodeTree.Put(inode)
+	err = mp.inodeTree.Put(handle, inode)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 }
 
@@ -143,7 +147,11 @@ func testFsmRemoveXAttr(t *testing.T, mp *metaPartition) {
 	checkExtendForFsmExtendTest(t, mp, ino, "Key", []byte("Value"))
 
 	extend.dataMap["Key"] = []byte{}
-	err = mp.fsmRemoveXAttr(extend)
+	handle, err = mp.extendTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	err = mp.fsmRemoveXAttr(handle, extend)
+	require.NoError(t, err)
+	err = mp.extendTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 	checkExtendNotExistsForFsmExtendTest(t, mp, ino, "Key")
 }

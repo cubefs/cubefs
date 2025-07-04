@@ -242,7 +242,7 @@ func (mp *metaPartition) getInodeQuotaInfos(inode uint64) (quotaInfos map[uint32
 	return
 }
 
-func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
+func (mp *metaPartition) setInodeQuota(handle interface{}, quotaIds []uint32, inode uint64) {
 	extend := NewExtendWithQuota(inode)
 	quotaInfos := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
@@ -269,10 +269,10 @@ func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
 	}
 
 	if e == nil {
-		mp.extendTree.ReplaceOrInsert(extend, true)
+		mp.extendTree.ReplaceOrInsert(handle, extend, true)
 	} else {
 		e.Merge(extend, true)
-		mp.extendTree.Put(e)
+		mp.extendTree.Put(handle, e)
 	}
 	if log.EnableDebug() {
 		log.LogDebugf("setInodeQuota inode[%v] quota [%v] success.", inode, quotaIds)

@@ -273,18 +273,11 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	vol, err := m.cluster.getVol(mp.volName)
-	if err != nil {
-		return nil, err
-	}
 	dstStoreMode := args.dstStoreMode
 	if dstStoreMode == proto.StoreModeDef {
-		dstStoreMode = vol.DefaultStoreMode
-		for _, replica := range mp.Replicas {
-			if replica.Addr == args.NodeAddr {
-				dstStoreMode = replica.StoreMode
-				break
-			}
+		dstStoreMode, err = m.cluster.getMetaPartitionStoreMode(mp, args.NodeAddr)
+		if err != nil {
+			return nil, err
 		}
 	}
 	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, dstStoreMode); err != nil {
@@ -326,9 +319,9 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
 					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive,
-					IsWritable: metaNode.isWritable(proto.StoreModeMem), MediaType: proto.MediaType_Unspecified,
+					IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
 					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
-					IsRocksdbWritable: metaNode.isWritable(proto.StoreModeRocksDb),
+					IsRocksdbWritable: metaNode.IsRocksdbWriteAble(),
 				})
 				return true
 			})

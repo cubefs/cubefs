@@ -1183,11 +1183,9 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
 	sb.WriteString(fmt.Sprintf("  Can alloc partition : %v\n", mn.CanAllowPartition))
 	sb.WriteString(fmt.Sprintf("  Max partition count : %v\n", mn.MaxMpCntLimit))
-	sb.WriteString("  Select count        :\n")
-	sb.WriteString(fmt.Sprintf("      Total           : %v\n", mn.SelectCount))
-	sb.WriteString(fmt.Sprintf("      Memory          : %v\n", mn.MemorySelectCount))
-	sb.WriteString(fmt.Sprintf("      Rocksdb         : %v\n", mn.RocksdbSelectCount))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
+	sb.WriteString(fmt.Sprintf("  MemoryCount         : %v\n", mn.MemoryCount))
+	sb.WriteString(fmt.Sprintf("  RocksdbCount        : %v\n", mn.RocksdbCount))
 	return sb.String()
 }
 
@@ -1567,7 +1565,8 @@ func formatMetaPartitionFreeze(freeze int8) string {
 func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
+			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID              : %v\n", view.ID))
@@ -1575,5 +1574,7 @@ func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	sb.WriteString(fmt.Sprintf("  Writable        : %v\n", formatYesNo(view.IsWritable)))
 	sb.WriteString(fmt.Sprintf("  RocksdbWritable : %v\n", formatYesNo(view.IsRocksdbWritable)))
 	sb.WriteString(fmt.Sprintf("  Active          : %v", formatNodeStatus(view.Status)))
+	sb.WriteString(fmt.Sprintf("  MEDIA           : %v", formatNodeMediaType(view.MediaType)))
+	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
 	return sb.String()
 }

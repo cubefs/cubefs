@@ -103,6 +103,7 @@ func (m *MetaNode) addDisk(path string, isRocksDBDisk bool, reservedSpace uint64
 }
 
 func (m *MetaNode) startDiskStat() error {
+	m.diskStopCh = make(chan struct{})
 	m.disks = make(map[string]*diskmon.FsCapMon)
 	foundRootDir := false
 	for _, rocksDir := range m.rocksDirs {

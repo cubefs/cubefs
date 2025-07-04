@@ -29,7 +29,7 @@ type ExtendOpResult struct {
 	Extend *Extend
 }
 
-func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.LockDirResponse) {
+func (mp *metaPartition) fsmLockDir(handle interface{}, req *proto.LockDirRequest) (resp *proto.LockDirResponse) {
 	if req.Lease == 0 {
 		return mp.fsmUnlockDir(req)
 	}
@@ -60,7 +60,7 @@ func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.Lock
 
 	if treeItem == nil {
 		newExtend.Put([]byte(innerDirLockKey), []byte(newVal), 0)
-		_, _, err = mp.extendTree.ReplaceOrInsert(newExtend, true)
+		_, _, err = mp.extendTree.ReplaceOrInsert(handle, newExtend, true)
 		if err != nil {
 			log.LogErrorf("extendTree.Create(%d) err: %s", req.Inode, err.Error())
 			resp.Status = proto.OpExistErr
@@ -168,11 +168,7 @@ func (mp *metaPartition) fsmSetXAttr(handle interface{}, extend *Extend) (err er
 		return err
 	}
 	if e == nil {
-		if handle != nil {
-			mp.extendTree.BatchReplaceOrInsert(handle, extend, true)
-		} else {
-			mp.extendTree.ReplaceOrInsert(extend, true)
-		}
+		mp.extendTree.ReplaceOrInsert(handle, extend, true)
 	} else {
 		// attr multi-ver copy all attr for simplify management
 		if e.getVersion() != extend.getVersion() {
@@ -183,7 +179,7 @@ func (mp *metaPartition) fsmSetXAttr(handle interface{}, extend *Extend) (err er
 			e.setVersion(extend.getVersion())
 		}
 		e.Merge(extend, true)
-		err = mp.extendTree.Update(e)
+		err = mp.extendTree.Update(handle, e)
 		if err != nil {
 			log.LogErrorf("fsmSetXAttr extendTree(%d) err: %s", extend.inode, err.Error())
 			return err
@@ -194,7 +190,7 @@ func (mp *metaPartition) fsmSetXAttr(handle interface{}, extend *Extend) (err er
 }
 
 // todo(leon chang):check snapshot delete relation with attr
-func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
+func (mp *metaPartition) fsmRemoveXAttr(handle interface{}, reqExtend *Extend) (err error) {
 	e, err := mp.extendTree.CopyGet(reqExtend)
 	if err != nil {
 		log.LogErrorf("[fsmRemoveXAttr] failed to get xattr, ino(%v), err(%v)", reqExtend.inode, err)
@@ -273,7 +269,7 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 		}
 	}
 submit:
-	if err = mp.extendTree.Put(e); err != nil {
+	if err = mp.extendTree.Put(handle, e); err != nil {
 		log.LogErrorf("[fsmRemoveXAttr] failed to put xattr, ino(%v), err(%v)", reqExtend.inode, err)
 	}
 	return

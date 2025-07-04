@@ -385,9 +385,9 @@ func (m *Server) migrateMetaPartitionHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if modeInt == 0 {
-		mode, err = mp.GetMetaReplicaStoreMode(srcAddr)
+		mode, err = m.cluster.getMetaPartitionStoreMode(mp, srcAddr)
 		if err != nil {
-			err = fmt.Errorf("GetMetaReplicaStoreMode mp ID(%d) err: %s", mpid, err.Error())
+			err = fmt.Errorf("getMetaPartitionStoreMode mp ID(%d) err: %s", mpid, err.Error())
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -620,4 +620,435 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 
 	rstMsg = fmt.Sprintf("Offline metanode %s at background successfully", offLineAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) modifyMetaPartitionStoreMode(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminModifyMpStoreMode))
+	defer func() {
+		doStatAndMetric(proto.AdminModifyMpStoreMode, metric, nil, nil)
+	}()
+
+	name, storeMode, err := parseRenewVolumeMpStoreMode(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	err = m.createUpdateMPStoreModeTask(name, storeMode)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	msg := fmt.Sprintf("create renew volume %s mp store mode (%d) success", name, storeMode)
+	AuditLog(r, "modifyMetaPartitionStoreMode", msg, nil)
+
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func parseRenewVolumeMpStoreMode(r *http.Request) (name string, storeMode proto.StoreMode, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		return
+	}
+
+	storeModeStr := r.FormValue(StoreModeKey)
+	if storeModeStr == "" {
+		err = keyNotFound(StoreModeKey)
+		return
+	}
+
+	val := 0
+	val, err = strconv.Atoi(storeModeStr)
+	if err != nil {
+		return
+	}
+	storeMode = proto.StoreMode(val)
+	if storeMode < proto.StoreModeMem || storeMode > proto.StoreModeRocksDb {
+		err = unmatchedKey(StoreModeKey)
+		return
+	}
+
+	return
+}
+
+func (m *Server) getRenewMpStoreModeTask(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetRenewMpStoreModeTask))
+	defer func() {
+		doStatAndMetric(proto.AdminGetRenewMpStoreModeTask, metric, nil, nil)
+	}()
+
+	task, err := m.cluster.loadRenewMpStoreModeTask()
+	if err != nil {
+		if err != proto.ErrNoRenewMpStoreModeTask {
+			log.LogErrorf("loadRenewMpStoreModeTask err: %s", err.Error())
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		} else {
+			sendOkReply(w, r, newSuccessHTTPReply("not found renew volume mp store mode task"))
+		}
+	}
+
+	err = m.calculateMetaPartitionStoreModeStatics(task)
+	if err != nil {
+		log.LogErrorf("calculateMetaPartitionStoreModeStatics err: %s", err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(task))
+}
+
+func (m *Server) delRenewMpStoreModeTask(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDelRenewMpStoreModeTask))
+	defer func() {
+		doStatAndMetric(proto.AdminDelRenewMpStoreModeTask, metric, nil, nil)
+	}()
+
+	err := m.cluster.syncDeleteRenewMpStoreModeTask()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	msg := "delete renew volume meta partition store mode task successfully"
+	AuditLog(r, "delRenewMpStoreModeTask", msg, nil)
+
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) createUpdateMPStoreModeTask(name string, storeMode proto.StoreMode) error {
+	vol, err := m.cluster.getVol(name)
+	if err != nil {
+		return err
+	}
+
+	if vol.Status == proto.VolStatusMarkDelete {
+		err = fmt.Errorf("volume (%s) is deleted already", name)
+		return err
+	}
+
+	m.cluster.mu.Lock()
+	defer m.cluster.mu.Unlock()
+
+	deleteOldTask := false
+	task, err := m.cluster.loadRenewMpStoreModeTask()
+	if err != nil {
+		if err != proto.ErrNoRenewMpStoreModeTask {
+			log.LogErrorf("loadRenewMpStoreModeTask err: %s", err.Error())
+			return err
+		}
+	} else {
+		if task.Status != PlanTaskDone {
+			err = fmt.Errorf("task volume (%s) status(%s) is in progress or waiting manual checking...", task.Name, task.Status)
+			return err
+		}
+		deleteOldTask = true
+	}
+
+	if deleteOldTask {
+		err = m.cluster.syncDeleteRenewMpStoreModeTask()
+		if err != nil {
+			log.LogErrorf("syncDeleteRenewMpStoreModeTask err: %s", err.Error())
+			return err
+		}
+	}
+
+	oldStoreMode := vol.DefaultStoreMode
+	vol.DefaultStoreMode = storeMode
+	if err = m.cluster.syncUpdateVol(vol); err != nil {
+		vol.DefaultStoreMode = oldStoreMode
+		log.LogErrorf("syncUpdateVol err: %s", err.Error())
+		return err
+	}
+
+	newtask := &proto.RenewMpStoreModePlan{
+		Name:      name,
+		StoreMode: storeMode,
+		Status:    PlanTaskInit,
+		Msg:       make(map[uint64]string),
+	}
+
+	err = m.cluster.syncAddRenewMpStoreModeTask(newtask)
+	if err != nil {
+		log.LogErrorf("syncAddRenewMpStoreModeTask err: %s", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (m *Server) addRenewMpStoreModeTask(w http.ResponseWriter, r *http.Request) {
+	var (
+		err  error
+		name string
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAddRenewMpStoreModeTask))
+	defer func() {
+		doStatAndMetric(proto.AdminAddRenewMpStoreModeTask, metric, nil, nil)
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	err = m.validateVolumeMPStoreMode(name)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	err = m.createUpdateMPStoreModeTask(name, proto.StoreModeRocksDb)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	msg := fmt.Sprintf("change volume %s mp store mode from memory to rocksdb in background", name)
+	AuditLog(r, "addRenewMpStoreModeTask", msg, nil)
+
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) validateVolumeMPStoreMode(name string) error {
+	vol, err := m.cluster.getVol(name)
+	if err != nil {
+		log.LogErrorf("getVol: %s", err.Error())
+		return err
+	}
+
+	if vol.Status == proto.VolStatusMarkDelete {
+		log.LogErrorf("volume %s is marked delete", name)
+		return fmt.Errorf("volume %s is marked delete", name)
+	}
+
+	if vol.DefaultStoreMode != proto.StoreModeMem {
+		err = fmt.Errorf("volume %s store mode is memory. Only support change from memory to rocksdb for one time", name)
+		log.LogErrorf(err.Error())
+		return err
+	}
+
+	for _, mp := range vol.MetaPartitions {
+		for _, mr := range mp.Replicas {
+			if mr.StoreMode != proto.StoreModeMem {
+				err = fmt.Errorf("volume %s meta partition %v store mode is %v. Only support change from memory to rocksdb for one time", name, mp.PartitionID, mr.StoreMode)
+				log.LogErrorf(err.Error())
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (m *Server) stopRenewMpStoreModeTask(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminStopRenewMpStoreModeTask))
+	defer func() {
+		doStatAndMetric(proto.AdminStopRenewMpStoreModeTask, metric, nil, nil)
+	}()
+
+	if !m.cluster.PlanRun {
+		sendOkReply(w, r, newSuccessHTTPReply("plan task is not running"))
+		return
+	}
+
+	task, err := m.cluster.loadRenewMpStoreModeTask()
+	if err != nil {
+		if err != proto.ErrNoRenewMpStoreModeTask {
+			log.LogErrorf("loadRenewMpStoreModeTask err: %s", err.Error())
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		} else {
+			sendOkReply(w, r, newSuccessHTTPReply("not found renew volume mp store mode task"))
+		}
+		return
+	}
+
+	m.cluster.PlanRun = false
+	task.Status = PlanTaskStop
+	err = m.cluster.syncUpdateRenewMpStoreModeTask(task)
+	if err != nil {
+		log.LogErrorf("syncUpdateRenewMpStoreModeTask(%s) failed: %v", task.Name, err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	msg := fmt.Sprintf("set renew volume(%s) meta partition task status to stop", task.Name)
+	AuditLog(r, "stopRenewMpStoreModeTask", msg, nil)
+
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) runRenewMpStoreModeTask(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminRunRenewMpStoreModeTask))
+	defer func() {
+		doStatAndMetric(proto.AdminRunRenewMpStoreModeTask, metric, nil, nil)
+	}()
+
+	task, err := m.cluster.loadRenewMpStoreModeTask()
+	if err != nil {
+		if err != proto.ErrNoRenewMpStoreModeTask {
+			log.LogErrorf("loadRenewMpStoreModeTask err: %s", err.Error())
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		} else {
+			sendOkReply(w, r, newSuccessHTTPReply("not found renew volume mp store mode task"))
+		}
+		return
+	}
+
+	task.Status = PlanTaskRun
+	err = m.cluster.syncUpdateRenewMpStoreModeTask(task)
+	if err != nil {
+		log.LogErrorf("syncUpdateRenewMpStoreModeTask(%s) failed: %v", task.Name, err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	msg := fmt.Sprintf("set renew volume(%s) meta partition task status to run", task.Name)
+	AuditLog(r, "runRenewMpStoreModeTask", msg, nil)
+
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) calculateMetaPartitionStoreModeStatics(task *proto.RenewMpStoreModePlan) error {
+	if task == nil {
+		return nil
+	}
+
+	vol, err := m.cluster.getVol(task.Name)
+	if err != nil {
+		log.LogErrorf("get volume(%s) failed: %v", task.Name, err)
+		return err
+	}
+
+	if vol.Status == proto.VolStatusMarkDelete {
+		err = fmt.Errorf("volume(%s) is deleted now.", task.Name)
+		log.LogInfof(err.Error())
+		return err
+	}
+
+	memoryCount := 0
+	rocksdbCount := 0
+	mps := vol.cloneMetaPartitionMap()
+	for _, mp := range mps {
+		for _, mr := range mp.Replicas {
+			if mr.StoreMode == proto.StoreModeRocksDb {
+				rocksdbCount++
+			} else {
+				memoryCount++
+			}
+		}
+	}
+
+	task.Total = memoryCount + rocksdbCount
+	task.MemoryCount = memoryCount
+	task.RocksdbCount = rocksdbCount
+	task.MpCount = len(mps)
+
+	return nil
+}
+
+// parseModifyMetaPartitionStoreModeParams parses and validates parameters for modifying meta partition store mode
+func parseModifyMetaPartitionStoreModeParams(r *http.Request) (name string, startID, endID uint64, mode proto.StoreMode, count int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		return
+	}
+
+	// Extract partition ID range
+	startIDStr := r.FormValue(StartIdKey)
+	if startIDStr != "" {
+		if startID, err = strconv.ParseUint(startIDStr, 10, 64); err != nil {
+			err = fmt.Errorf("invalid start id")
+			return
+		}
+	}
+
+	endIDStr := r.FormValue(EndIdKey)
+	if endIDStr != "" {
+		if endID, err = strconv.ParseUint(endIDStr, 10, 64); err != nil {
+			err = fmt.Errorf("invalid end id")
+			return
+		}
+	}
+
+	if startID > endID && endID != 0 {
+		err = fmt.Errorf("start id cannot be greater than end id")
+		return
+	}
+
+	// Extract store mode
+	var modeInt int
+	modeInt, err = extractStoreMode(r)
+	if err != nil {
+		return
+	}
+	if modeInt != 0 {
+		mode = proto.StoreMode(modeInt)
+		if mode != proto.StoreModeMem && mode != proto.StoreModeRocksDb {
+			err = fmt.Errorf("invalid store mode")
+			return
+		}
+	} else {
+		mode = proto.StoreModeRocksDb // 默认迁移到RocksDB模式
+	}
+
+	count = 0
+	countStr := r.FormValue(countKey)
+	if countStr != "" {
+		if count, err = strconv.Atoi(countStr); err != nil {
+			err = fmt.Errorf("invalid count")
+			return
+		}
+	}
+	if count <= 0 || count > 3 {
+		count = 3
+	}
+
+	return
+}
+
+func (m *Server) createMetaPartitionStoreModeChangePlan(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateStoreModeChangePlan))
+	defer func() {
+		doStatAndMetric(proto.AdminCreateStoreModeChangePlan, metric, nil, nil)
+	}()
+
+	// search the raft storage. Only store one plan
+	plan, err := m.cluster.loadBalanceTask()
+	if err == nil && plan != nil {
+		err = fmt.Errorf("There is a meta partition task plan already. Please remove it before create a new one.")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
+		return
+	}
+
+	name, startID, endID, mode, count, err := parseModifyMetaPartitionStoreModeParams(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	plan, err = m.cluster.CreateModifyMetaPartitionStoreModePlan(name, startID, endID, mode, count)
+	if err != nil {
+		log.LogErrorf("createMetaPartitionStoreModeChangePlan failed volume(%s) start(%d) end(%d) mode(%d) count(%d) err: %s", name, startID, endID, mode, count, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
+		return
+	}
+
+	msg := fmt.Sprintf("volume(%s) start(%d) end(%d) mode(%d) count(%d) successfully", name, startID, endID, mode, count)
+	AuditLog(r, "createMetaPartitionStoreModeChangePlan", msg, nil)
+	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }

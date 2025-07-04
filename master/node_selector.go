@@ -15,7 +15,6 @@
 package master
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -38,8 +37,6 @@ const AvailableSpaceFirstNodeSelectorName = "AvailableSpaceFirst"
 const StrawNodeSelectorName = "Straw"
 
 const DefaultNodeSelectorName = CarryWeightNodeSelectorName
-
-var ErrUnknownNodeResourceType = errors.New("unknown node resource type")
 
 func (ns *nodeSet) getNodes(nodeType NodeType) *sync.Map {
 	switch nodeType {
@@ -98,20 +95,12 @@ func (nodes SortedWeightedNodes) Swap(i, j int) {
 	nodes[i], nodes[j] = nodes[j], nodes[i]
 }
 
-func canAllocPartition(node interface{}, nodeType NodeType) bool {
-	switch nodeType {
-	case DataNodeType:
-		dataNode := node.(*DataNode)
-		return dataNode.IsWriteAble() && dataNode.PartitionCntLimited()
-	case MetaNodeType:
+func canAllocPartition(node Node, nodeType NodeType) bool {
+	if nodeType == RocksdbType {
 		metaNode := node.(*MetaNode)
-		return metaNode.isWritable(proto.StoreModeMem) && metaNode.PartitionCntLimited()
-	case RocksdbType:
-		metaNode := node.(*MetaNode)
-		return metaNode.isWritable(proto.StoreModeRocksDb) && metaNode.PartitionCntLimited()
-	default:
-		panic(ErrUnknownNodeResourceType)
+		return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited()
 	}
+	return node.IsWriteAble() && node.PartitionCntLimited()
 }
 
 func asNodeWrap(node interface{}, nodeType NodeType) Node {

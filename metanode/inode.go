@@ -1168,6 +1168,10 @@ func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
 		i.HybridCloudExtents = NewSortedHybridCloudExtents()
 	}
 
+	if i.HybridCloudExtentsMigration == nil {
+		i.HybridCloudExtentsMigration = NewSortedHybridCloudExtentsMigration()
+	}
+
 	isFile := i.IsFile()
 	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
 	v4 := i.Reserved&V4EnableHybridCloud > 0

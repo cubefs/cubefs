@@ -3,16 +3,17 @@ package proto
 import "time"
 
 type MrBalanceInfo struct {
-	Source       string `json:"source" bson:"source"`
-	SrcMemSize   uint64 `json:"srcMemSize" bson:"srcmemsize"`
-	SrcNodeSetId uint64 `json:"srcNodeSetId" bson:"srcnodesetid"`
-	SrcZoneName  string `json:"srcZoneName" bson:"srczonename"`
-	Destination  string `json:"destination" bson:"destination"`
-	DstId        uint64 `json:"dstID" bson:"dstid"`
-	DstNodeSetId uint64 `json:"dstNodeSetId" bson:"dstnodesetid"`
-	DstZoneName  string `json:"dstZoneName" bson:"dstzonename"`
-	Status       string `json:"status" bson:"status"`
-	Msg          string `json:"msg" bson:"msg"`
+	Source       string    `json:"source" bson:"source"`
+	SrcMemSize   uint64    `json:"srcMemSize" bson:"srcmemsize"`
+	SrcNodeSetId uint64    `json:"srcNodeSetId" bson:"srcnodesetid"`
+	SrcZoneName  string    `json:"srcZoneName" bson:"srczonename"`
+	Destination  string    `json:"destination" bson:"destination"`
+	DstId        uint64    `json:"dstID" bson:"dstid"`
+	DstNodeSetId uint64    `json:"dstNodeSetId" bson:"dstnodesetid"`
+	DstZoneName  string    `json:"dstZoneName" bson:"dstzonename"`
+	Status       string    `json:"status" bson:"status"`
+	Msg          string    `json:"msg" bson:"msg"`
+	StoreMode    StoreMode `json:"storeMode"`
 }
 
 type MetaBalancePlan struct {
@@ -60,12 +61,28 @@ type ZonePressureView struct {
 }
 
 type ClusterPlan struct {
-	Low     map[string]*ZonePressureView `json:"-" bson:"-"`
-	Plan    []*MetaBalancePlan           `json:"plan" bson:"plan"`
-	DoneNum int                          `json:"doneCount" bson:"donenum"`
-	Total   int                          `json:"total" bson:"total"`
-	Status  string                       `json:"status" bson:"status"`
-	Expire  time.Time                    `json:"expire" bson:"expire"`
-	Type    string                       `json:"type" bson:"type"`
-	Msg     string                       `json:"msg" bson:"msg"`
+	Low        map[string]*ZonePressureView `json:"-" bson:"-"`
+	RocksdbLow map[string]*ZonePressureView `json:"-" bson:"-"`
+	Plan       []*MetaBalancePlan           `json:"plan" bson:"plan"`
+	DoneNum    int                          `json:"doneCount" bson:"donenum"`
+	Total      int                          `json:"total" bson:"total"`
+	Status     string                       `json:"status" bson:"status"`
+	Expire     time.Time                    `json:"expire" bson:"expire"`
+	Type       string                       `json:"type" bson:"type"`
+	Msg        string                       `json:"msg" bson:"msg"`
+	Mode       StoreMode                    `json:"storeMode"`
+	ModeCnt    int                          `json:"storeModeCount"`
+	StartId    uint64                       `json:"startId"`
+	EndId      uint64                       `json:"endId"`
+}
+
+type RenewMpStoreModePlan struct {
+	Name         string            `json:"name"`
+	StoreMode    StoreMode         `json:"storeMode"`
+	Status       string            `json:"status"`
+	Total        int               `json:"total"`
+	MemoryCount  int               `json:"memoryCount"`
+	RocksdbCount int               `json:"rocksdbCount"`
+	MpCount      int               `json:"mpCount"`
+	Msg          map[uint64]string `json:"msg"`
 }

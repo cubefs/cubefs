@@ -464,6 +464,24 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminVolAddAllowedStorageClass).
 		HandlerFunc(m.volAddAllowedStorageClass)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminModifyMpStoreMode).
+		HandlerFunc(m.modifyMetaPartitionStoreMode)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetRenewMpStoreModeTask).
+		HandlerFunc(m.getRenewMpStoreModeTask)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDelRenewMpStoreModeTask).
+		HandlerFunc(m.delRenewMpStoreModeTask)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAddRenewMpStoreModeTask).
+		HandlerFunc(m.addRenewMpStoreModeTask)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminStopRenewMpStoreModeTask).
+		HandlerFunc(m.stopRenewMpStoreModeTask)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminRunRenewMpStoreModeTask).
+		HandlerFunc(m.runRenewMpStoreModeTask)
 
 	// multi version snapshot APIs
 	// TODO: hybrid cloud not support snapshot version yet, forbidden AdminCreateVersion until snapshot version is supported
@@ -587,6 +605,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminMetaPartitionGetCleanTask).
 		HandlerFunc(m.getCleanMetaPartitionTask)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreateStoreModeChangePlan).
+		HandlerFunc(m.createMetaPartitionStoreModeChangePlan)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.CreateMetaNodeBalanceTask).
 		HandlerFunc(m.createMetaNodeBalancePlan)

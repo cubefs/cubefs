@@ -357,26 +357,12 @@ func (metaNode *MetaNode) reachesRocksdbDisksThreshold() bool {
 }
 
 func (metaNode *MetaNode) isWritable(storeMode proto.StoreMode) (ok bool) {
-	metaNode.RLock()
-	defer metaNode.RUnlock()
-
-	log.LogDebugf("[isWritable] mn(%v) check writable store mode(%v)", metaNode.Addr, storeMode)
-
-	if metaNode.IsActive {
-		switch storeMode {
-		case proto.StoreModeMem:
-			if metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
-				!metaNode.reachesThreshold() &&
-				metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
-				!metaNode.RdOnly {
-				ok = true
-			}
-		case proto.StoreModeRocksDb:
-			if !metaNode.RdOnly && !metaNode.reachesRocksdbDisksThreshold() {
-				ok = true
-			}
-		default:
-		}
+	switch storeMode {
+	case proto.StoreModeMem:
+		return metaNode.IsWriteAble()
+	case proto.StoreModeRocksDb:
+		return metaNode.IsRocksdbWriteAble()
+	default:
 	}
 	return
 }
@@ -385,4 +371,26 @@ func (metaNode *MetaNode) updateRocksdbDisks(resp *proto.MetaNodeHeartbeatRespon
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.RocksdbDisks = resp.RocksDBDiskInfo
+}
+
+func (metaNode *MetaNode) GetRocksdbAndMemoryCount() (rocksdbCount, memoryCount uint64) {
+	for _, item := range metaNode.metaPartitionInfos {
+		if item.StoreMode == proto.StoreModeRocksDb {
+			rocksdbCount++
+		} else {
+			memoryCount++
+		}
+	}
+	return
+}
+
+func (metaNode *MetaNode) IsRocksdbWriteAble() (ok bool) {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+
+	if metaNode.IsActive && !metaNode.RdOnly && !metaNode.reachesRocksdbDisksThreshold() {
+		ok = true
+	}
+
+	return
 }

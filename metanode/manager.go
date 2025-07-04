@@ -21,6 +21,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,7 +69,7 @@ type MetadataManager interface {
 	GetLeaderPartitions() map[uint64]MetaPartition
 	GetAllVolumes() (volumes *util.Set)
 	checkVolVerList() (err error)
-	ReloadPartition(id int) (err error)
+	ReloadPartition(id uint64, force bool) (err error)
 	UpdateQosLimit()
 }
 
@@ -117,6 +118,8 @@ type metadataManager struct {
 
 	rocksDBDirs    []string
 	rocksdbManager RocksdbManager
+	reloading      bool
+	memFreeing     bool
 }
 
 func (m *metadataManager) GetAllVolumes() (volumes *util.Set) {
@@ -339,6 +342,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opRemoveBackupMetaPartition(conn, p, remoteAddr)
 	case proto.OpIsRaftStatusOk:
 		err = m.opIsRaftStatusOk(conn, p, remoteAddr)
+	case proto.OpSetMetaPartitionStoreMode:
+		err = m.opSetMetaPartitionStoreMode(conn, p, remoteAddr)
+	case proto.OpReloadMetaPartition:
+		err = m.opReloadMetaPartition(conn, p, remoteAddr)
 	// operations for extend attributes
 	case proto.OpMetaSetXAttr:
 		err = m.opMetaSetXAttr(conn, p, remoteAddr)
@@ -583,19 +590,40 @@ func (m *metadataManager) getPartition(id uint64) (mp MetaPartition, err error) 
 	return
 }
 
-func (m *metadataManager) ReloadPartition(id int) error {
-	log.LogWarnf("action[ReloadPartition] reloadPartition %v", id)
+func (m *metadataManager) ReloadPartition(id uint64, force bool) (err error) {
+	log.LogWarnf("action[ReloadPartition] reloadPartition %v force: %v start", id, force)
+	defer func() {
+		log.LogWarnf("action[ReloadPartition] reloadPartition %v force: %v end. result: %v", id, force, err)
+	}()
 	m.mu.RLock()
-	mp, ok := m.partitions[uint64(id)]
-	if !ok {
-		log.LogWarnf("action[ReloadPartition] reloadPartition %v not found", id)
-		m.mu.RUnlock()
-		return fmt.Errorf("not found")
-	}
+	mp, ok := m.partitions[id]
 	m.mu.RUnlock()
-	mp.Stop()
+	if ok {
+		if !force && !mp.IsNeedReload() {
+			return nil
+		}
+		err = mp.TransferSnapshot()
+		if err != nil {
+			log.LogErrorf("[ReloadPartition] failed to transferSnapshot mp(%v) err:%v", id, err)
+			return err
+		}
+		mp.Stop()
+		err = m.deletePartition(id)
+		if err != nil {
+			log.LogErrorf("[ReloadPartition] failed to deletePartition mp(%v) err:%v", id, err)
+			return err
+		}
 
-	return m.loadPartition(partitionPrefix + strconv.Itoa(id))
+		m.startFreeOSMemory()
+	}
+
+	err = m.loadPartition(partitionPrefix + strconv.FormatUint(id, 10))
+	if err != nil {
+		log.LogErrorf("[ReloadPartition] failed to loadPartition mp(%v) err:%v", id, err)
+		return err
+	}
+
+	return err
 }
 
 func (m *metadataManager) loadPartition(fileName string) (err error) {
@@ -777,7 +805,6 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 }
 
 func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
-	var oldMp MetaPartition
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 	log.LogWarnf("start create meta Partition, partition %s", partitionId)
 
@@ -801,16 +828,10 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		m.detachPartition(request.PartitionID)
 	}
 
-	if oldMp, err = m.GetPartition(request.PartitionID); err == nil {
-		err = oldMp.IsEquareCreateMetaPartitionRequst(request)
-		return
-	}
-
 	partition := NewMetaPartition(mpc, m)
 
 	if err = partition.RenameStaleMetadata(); err != nil {
 		log.LogErrorf("[createPartition]->%s", err.Error())
-		return
 	}
 
 	if err = partition.PersistMetadata(); err != nil {
@@ -970,4 +991,17 @@ func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition 
 		}
 	}
 	return true
+}
+
+func (m *metadataManager) startFreeOSMemory() {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if !m.memFreeing {
+		m.memFreeing = true
+		go func() {
+			debug.FreeOSMemory()
+			m.memFreeing = false
+		}()
+	}
 }

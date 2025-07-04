@@ -148,7 +148,12 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 		return nil, fmt.Errorf("init tx by raft failed, %v", proto.GetStatusStr(p.ResultCode))
 	}
 
-	ifo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	ifo, err = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	if err != nil {
+		log.LogErrorf("[txInit] failed to get tx(%v) from tx tree, err(%v)", txInfo.TxID, err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	if ifo == nil {
 		log.LogWarnf("TxCreate: tx is still not exist, info %s", txInfo.String())
 		p.ResultCode = proto.OpTxInfoNotExistErr
@@ -162,7 +167,12 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 func (mp *metaPartition) TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) error {
 	txInfo := req.TransactionInfo.GetCopy()
 
-	ifo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	ifo, err := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	if err != nil {
+		log.LogErrorf("[TxCommitRM] failed to get tx(%v) from tx tree, err(%v)", req.TxID, err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return err
+	}
 	if ifo == nil {
 		log.LogWarnf("TxCommitRM: can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
 		p.PacketErrorWithBody(proto.OpTxInfoNotExistErr, []byte(fmt.Sprintf("tx %s is not exist", txInfo.TxID)))
@@ -195,7 +205,12 @@ func (mp *metaPartition) TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) erro
 func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) error {
 	txInfo := req.TransactionInfo.GetCopy()
 
-	ifo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	ifo, err := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	if err != nil {
+		log.LogErrorf("[TxRollbackRM] failed to get tx(%v) from tx tree, err(%v)", txInfo.TxID, err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return err
+	}
 	if ifo == nil {
 		log.LogWarnf("TxRollbackRM: can't find tx, already rollback or commit, ifo %v", req.TransactionInfo)
 		p.PacketErrorWithBody(proto.OpTxInfoNotExistErr, []byte(fmt.Sprintf("tx %s is not exist", txInfo.TxID)))

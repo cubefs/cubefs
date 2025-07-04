@@ -53,8 +53,8 @@ type MetaNodeInfo struct {
 	IsRocksdbWritable         bool
 	RocksdbTotal              uint64
 	RocksdbUsed               uint64
-	MemorySelectCount         uint64
-	RocksdbSelectCount        uint64
+	MemoryCount               uint64
+	RocksdbCount              uint64
 	ProfPort                  string
 }
 

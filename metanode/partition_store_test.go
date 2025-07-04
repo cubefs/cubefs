@@ -11,10 +11,14 @@ import (
 
 func TestStoreDentry(t *testing.T) {
 	mp := newMetaPartition(1024, nil, proto.StoreModeMem)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	for i := 0; i < 100; i++ {
-		_, _, err := mp.inodeTree.ReplaceOrInsert(NewInode(uint64(101+i), DirModeType), true)
+		_, _, err := mp.inodeTree.ReplaceOrInsert(handle, NewInode(uint64(101+i), DirModeType), true)
 		require.NoError(t, err)
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	snap, err := mp.GetSnapShot()
 	require.NoError(t, err)
@@ -48,10 +52,14 @@ func TestStoreDentryCompitable(t *testing.T) {
 	oldData := []byte{0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 101, 116, 101, 115, 116, 95, 48, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 102, 116, 101, 115, 116, 95, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 202, 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 103, 116, 101, 115, 116, 95, 50, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 203, 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 104, 116, 101, 115, 116, 95, 51, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 204, 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 105, 116, 101, 115, 116, 95, 52, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 205, 0, 0, 0, 0}
 
 	mp := newMetaPartition(1024, nil, proto.StoreModeMem)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	for i := 0; i < 5; i++ {
-		_, _, err := mp.inodeTree.ReplaceOrInsert(NewInode(uint64(101+i), DirModeType), true)
+		_, _, err := mp.inodeTree.ReplaceOrInsert(handle, NewInode(uint64(101+i), DirModeType), true)
 		require.NoError(t, err)
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	rootDir, err := os.MkdirTemp("", "")
 	if err != nil {
@@ -86,14 +94,18 @@ func TestStoreInode(t *testing.T) {
 	baseInode.StorageClass = proto.StorageClass_Replica_SSD
 
 	mp := newMetaPartition(1024, nil, proto.StoreModeMem)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
 	for i := 0; i < 100; i++ {
 		newInode := baseInode.Copy().(*Inode)
 		newInode.Inode = uint64(i + 104)
 		newInode.Size = uint64(100 + i)
 		newInode.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: uint64(100 + i)}})
-		_, _, err := mp.inodeTree.ReplaceOrInsert(newInode, true)
+		_, _, err := mp.inodeTree.ReplaceOrInsert(handle, newInode, true)
 		require.NoError(t, err)
 	}
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	snap, err := mp.GetSnapShot()
 	require.NoError(t, err)

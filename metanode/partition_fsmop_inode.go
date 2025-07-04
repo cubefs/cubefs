@@ -45,9 +45,14 @@ func NewInodeResponse() *InodeResponse {
 }
 
 // Create and inode and attach it to the inode tree.
-func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (status uint8) {
+func (mp *metaPartition) fsmTxCreateInode(handle interface{}, txIno *TxInode, quotaIds []uint32) (status uint8) {
 	status = proto.OpOk
-	if mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID) {
+	done, err := mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID)
+	if err != nil {
+		log.LogErrorf("fsmTxCreateInode: failed to get tx info(%v), err(%v)", txIno.TxInfo.TxID, err)
+		return proto.OpErr
+	}
+	if done {
 		log.LogWarnf("fsmTxCreateInode: tx is already finish. txId %s", txIno.TxInfo.TxID)
 		return proto.OpTxInfoNotExistErr
 	}
@@ -60,14 +65,14 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (st
 	}
 
 	rbInode := NewTxRollbackInode(txIno.Inode, quotaIds, inodeInfo, TxDelete)
-	status = mp.txProcessor.txResource.addTxRollbackInode(rbInode)
+	status = mp.txProcessor.txResource.addTxRollbackInode(handle, rbInode)
 	if status != proto.OpOk {
 		return
 	}
 
 	defer func() {
 		if status != proto.OpOk {
-			retStatus := mp.txProcessor.txResource.deleteTxRollbackInode(txIno.Inode.Inode, txIno.TxInfo.TxID)
+			retStatus := mp.txProcessor.txResource.deleteTxRollbackInode(handle, txIno.Inode.Inode, txIno.TxInfo.TxID)
 			if retStatus != proto.OpOk {
 				log.LogErrorf("[fsmTxCreateInode] failed to delete rb inode(%v)", txIno)
 				return
@@ -75,27 +80,33 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (st
 		}
 	}()
 	// 3.insert inode in inode tree
-	return mp.fsmCreateInode(txIno.Inode)
+	return mp.fsmCreateInode(handle, txIno.Inode)
 }
 
 // Create and inode and attach it to the inode tree.
-func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmCreateInode(handle interface{}, ino *Inode) (status uint8) {
 	if status = mp.uidManager.addUidSpace(ino.Uid, ino.Inode, nil); status != proto.OpOk {
 		return
 	}
 
 	status = proto.OpOk
-	if _, _, err := mp.inodeTree.ReplaceOrInsert(ino, false); err != nil {
+	if _, _, err := mp.inodeTree.ReplaceOrInsert(handle, ino, false); err != nil {
 		status = proto.OpExistErr
 	}
 
 	return
 }
 
-func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmTxCreateLinkInode(handle interface{}, txIno *TxInode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	if mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID) {
+	done, err := mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID)
+	if err != nil {
+		log.LogErrorf("[fsmTxCreateLinkInode] txInRMDone(%v), err(%v)", txIno.TxInfo.TxID, err)
+		resp.Status = proto.OpErr
+		return
+	}
+	if done {
 		log.LogWarnf("fsmTxCreateLinkInode: tx is already finish. txId %s", txIno.TxInfo.TxID)
 		resp.Status = proto.OpTxInfoNotExistErr
 		return
@@ -109,7 +120,7 @@ func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeRespon
 	}
 
 	rbInode := NewTxRollbackInode(txIno.Inode, []uint32{}, inodeInfo, TxDelete)
-	resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode)
+	resp.Status = mp.txProcessor.txResource.addTxRollbackInode(handle, rbInode)
 	if resp.Status == proto.OpExistErr {
 		resp.Status = proto.OpOk
 		resp.Msg = txIno.Inode
@@ -122,14 +133,14 @@ func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeRespon
 
 	defer func() {
 		if resp.Status != proto.OpOk {
-			mp.txProcessor.txResource.deleteTxRollbackInode(txIno.Inode.Inode, txIno.TxInfo.TxID)
+			mp.txProcessor.txResource.deleteTxRollbackInode(handle, txIno.Inode.Inode, txIno.TxInfo.TxID)
 		}
 	}()
 
-	return mp.fsmCreateLinkInode(txIno.Inode, 0)
+	return mp.fsmCreateLinkInode(handle, txIno.Inode, 0)
 }
 
-func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64) (resp *InodeResponse) {
+func (mp *metaPartition) fsmCreateLinkInode(handle interface{}, ino *Inode, uniqID uint64) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 	i, err := mp.inodeTree.CopyGet(ino)
@@ -153,7 +164,7 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64) (resp *In
 		return
 	}
 	i.IncNLink(ino.getVer())
-	if err := mp.inodeTree.Update(i); err != nil {
+	if err := mp.inodeTree.Update(handle, i); err != nil {
 		resp.Status = proto.OpErr
 		return
 	}
@@ -161,7 +172,11 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64) (resp *In
 }
 
 func (mp *metaPartition) getInodeByVer(ino *Inode) (i *Inode) {
-	item, _ := mp.inodeTree.Get(ino)
+	item, err := mp.inodeTree.Get(ino)
+	if err != nil {
+		log.LogErrorf("getInodeByVer inode(%v) err: %s", ino.Inode, err.Error())
+		return nil
+	}
 	if item == nil {
 		log.LogDebugf("action[getInodeByVer] not found ino[%v] verseq [%v]", ino.Inode, ino.getVer())
 		return
@@ -261,7 +276,11 @@ func (mp *metaPartition) getInodeExt(req *GetInodeReq) (resp *InodeResponse) {
 }
 
 func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
-	item, _ := mp.inodeTree.Get(ino)
+	item, err := mp.inodeTree.Get(ino)
+	if err != nil {
+		log.LogErrorf("[hasInode] failed to get inode(%v), err(%v)", ino.Inode, err)
+		return
+	}
 	if item == nil {
 		return
 	}
@@ -273,7 +292,7 @@ func (mp *metaPartition) hasInode(ino *Inode) (ok bool) {
 	return
 }
 
-func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmTxUnlinkInode(handle interface{}, txIno *TxInode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 
@@ -283,7 +302,13 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 		return
 	}
 
-	if mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID) {
+	done, err := mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID)
+	if err != nil {
+		log.LogErrorf("fsmTxUnlinkInode txInRMDone(%v), err(%v)", txIno.TxInfo.TxID, err)
+		resp.Status = proto.OpErr
+		return
+	}
+	if done {
 		log.LogWarnf("fsmTxUnlinkInode: tx is already finish. txId %s", txIno.TxInfo.TxID)
 		resp.Status = proto.OpTxInfoNotExistErr
 		return
@@ -298,10 +323,15 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 	quotaIds, _ = mp.isExistQuota(txIno.Inode.Inode)
 
 	rbInode := NewTxRollbackInode(txIno.Inode, quotaIds, inodeInfo, TxAdd)
-	resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode)
+	resp.Status = mp.txProcessor.txResource.addTxRollbackInode(handle, rbInode)
 	if resp.Status == proto.OpExistErr {
 		resp.Status = proto.OpOk
-		item, _ := mp.inodeTree.Get(txIno.Inode)
+		item, err := mp.inodeTree.Get(txIno.Inode)
+		if err != nil {
+			resp.Status = proto.OpErr
+			log.LogErrorf("get inode(%d) err: %s", txIno.Inode.Inode, err.Error())
+			return
+		}
 		if item != nil {
 			resp.Msg = item
 		}
@@ -313,13 +343,14 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 
 	defer func() {
 		if resp.Status != proto.OpOk {
-			mp.txProcessor.txResource.deleteTxRollbackInode(txIno.Inode.Inode, txIno.TxInfo.TxID)
+			mp.txProcessor.txResource.deleteTxRollbackInode(handle, txIno.Inode.Inode, txIno.TxInfo.TxID)
 		}
 	}()
 
 	item, err := mp.inodeTree.Get(txIno.Inode)
 	if err != nil {
 		resp.Status = proto.OpErr
+		log.LogErrorf("get txIno inode(%d) err: %s", txIno.Inode.Inode, err.Error())
 		return
 	}
 	if item == nil || item.IsTempFile() {
@@ -328,13 +359,13 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 		return
 	}
 
-	resp = mp.fsmUnlinkInode(txIno.Inode, 0)
+	resp = mp.fsmUnlinkInode(handle, txIno.Inode, 0)
 	if resp.Status != proto.OpOk {
 		return
 	}
 
 	if txIno.TxInfo.TxType == proto.TxTypeRename {
-		mp.fsmEvictInode(txIno.Inode)
+		mp.fsmEvictInode(handle, txIno.Inode)
 	}
 
 	return
@@ -344,7 +375,7 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 // snapshot unlink seq is snapshotVersion
 // fsmUnlinkInode delete the specified inode from inode tree.
 
-func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeResponse) {
+func (mp *metaPartition) fsmUnlinkInode(handle interface{}, ino *Inode, uniqID uint64) (resp *InodeResponse) {
 	log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v]", mp.config.PartitionId, ino)
 	var ext2Del []proto.ExtentKey
 
@@ -394,7 +425,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		}
 	}
 
-	if err = mp.inodeTree.Update(inode); err != nil {
+	if err = mp.inodeTree.Update(handle, inode); err != nil {
 		resp.Status = proto.OpErr
 		return
 	}
@@ -407,7 +438,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	if inode.IsEmptyDirAndNoSnapshot() {
 		if inode.NLink < 2 { // snapshot deletion
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v] really be deleted, empty dir", mp.config.PartitionId, inode)
-			_, err = mp.inodeTree.Delete(inode)
+			_, err = mp.inodeTree.Delete(handle, inode)
 			if err != nil {
 				resp.Status = proto.OpErr
 				return
@@ -433,7 +464,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.
-func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeResponse) {
+func (mp *metaPartition) fsmUnlinkInodeBatch(handle interface{}, ib InodeBatch) (resp []*InodeResponse) {
 	var rsp *InodeResponse
 	rsp.Status = proto.OpOk
 	defer func() {
@@ -462,7 +493,7 @@ func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeRespon
 
 		// todo inode info miss
 		log.LogDebugf("[fsmUnlinkInodeBatch] unlink inode(%v)", inodeID)
-		rsp = mp.fsmUnlinkInode(NewInode(inodeID, 0), 0)
+		rsp = mp.fsmUnlinkInode(handle, NewInode(inodeID, 0), 0)
 		if rsp.Status != proto.OpOk {
 			resp = resp[:0]
 			return
@@ -486,6 +517,10 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 	}
 	buf := bytes.NewBuffer(val)
 	ino := NewInode(0, 0)
+	handle, _ := mp.inodeTree.CreateBatchWriteHandle()
+	defer func() {
+		_ = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	}()
 	for {
 		err = binary.Read(buf, binary.BigEndian, &ino.Inode)
 		if err != nil {
@@ -497,11 +532,11 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 		}
 		log.LogDebugf("internalDelete: received internal delete: partitionID(%v) inode[%v]",
 			mp.config.PartitionId, ino.Inode)
-		mp.internalDeleteInode(ino)
+		mp.internalDeleteInode(handle, ino)
 	}
 }
 
-func (mp *metaPartition) internalDeleteBatch(val []byte) error {
+func (mp *metaPartition) internalDeleteBatch(handle interface{}, val []byte) error {
 	if len(val) == 0 {
 		return nil
 	}
@@ -513,20 +548,20 @@ func (mp *metaPartition) internalDeleteBatch(val []byte) error {
 	for _, ino := range inodes {
 		log.LogDebugf("internalDelete: received internal delete: partitionID(%v) inode[%v]",
 			mp.config.PartitionId, ino.Inode)
-		mp.internalDeleteInode(ino)
+		mp.internalDeleteInode(handle, ino)
 	}
 
 	return nil
 }
 
-func (mp *metaPartition) internalDeleteInode(ino *Inode) {
+func (mp *metaPartition) internalDeleteInode(handle interface{}, ino *Inode) {
 	log.LogDebugf("action[internalDeleteInode] vol(%v) mp(%v) ino[%v] really be deleted", mp.config.VolName, mp.config.PartitionId, ino)
-	mp.inodeTree.Delete(ino)
+	mp.inodeTree.Delete(handle, ino)
 	mp.freeList.Remove(ino.Inode)
-	mp.extendTree.Delete(&Extend{inode: ino.Inode}) // Also delete extend attribute.
+	mp.extendTree.Delete(handle, &Extend{inode: ino.Inode}) // Also delete extend attribute.
 }
 
-func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmAppendExtents(handle interface{}, ino *Inode) (status uint8) {
 	ino2, err := mp.inodeTree.CopyGet(ino)
 	if err != nil {
 		status = proto.OpErr
@@ -555,7 +590,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	log.LogInfof("fsmAppendExtents mpId[%v].inode[%v] DecSplitExts deleteExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
 	ino2.DecSplitExts(mp.config.PartitionId, delExtents)
 
-	if err = mp.inodeTree.Put(ino2); err != nil {
+	if err = mp.inodeTree.Put(handle, ino2); err != nil {
 		status = proto.OpErr
 		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Put error:%v",
 			mp.config.PartitionId, ino2.Inode, delExtents, err)
@@ -566,7 +601,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (status uint8) {
+func (mp *metaPartition) fsmAppendExtentsWithCheck(handle interface{}, ino *Inode, isSplit bool) (status uint8) {
 	var (
 		delExtents       []proto.ExtentKey
 		discardExtentKey []proto.ExtentKey
@@ -681,7 +716,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	log.LogInfof("fsmAppendExtentsWithCheck mp[%v] inode[%v] ek(%v) deleteExtents(%v) discardExtents(%v) status(%v), gen %d",
 		mp.config.PartitionId, fsmIno.Inode, eks[0], delExtents, discardExtentKey, status, fsmIno.Generation)
 
-	if err = mp.inodeTree.Update(fsmIno); err != nil {
+	if err = mp.inodeTree.Update(handle, fsmIno); err != nil {
 		status = proto.OpErr
 		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Put error:%v",
 			mp.config.PartitionId, fsmIno.Inode, delExtents, err)
@@ -729,7 +764,7 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmExtentsTruncate(handle interface{}, ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	log.LogDebugf("fsmExtentsTruncate. req ino[%v] mpId(%v)", ino, mp.config.PartitionId)
 	resp.Status = proto.OpOk
@@ -774,8 +809,6 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	if i.getVer() != mp.verSeq {
 		i.CreateVer(mp.verSeq)
 	}
-	i.Lock()
-	defer i.Unlock()
 
 	if err = i.CreateLowerVersion(i.getVer(), mp.multiVersionList); err != nil {
 		return
@@ -784,7 +817,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, insertSplitKey)
 	if len(delExtents) == 0 {
 		// goto submit
-		err = mp.inodeTree.Put(i)
+		err = mp.inodeTree.Put(handle, i)
 		if err != nil {
 			log.LogErrorf("[fsmExtentsTruncate] failed to update inode(%v)", i)
 			resp.Status = proto.OpErr
@@ -801,7 +834,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	i.DecSplitExts(mp.config.PartitionId, delExtents)
 	log.LogDebugf("[fsmExtentsTruncate] mp (%v) inode(%v), put inode", mp.config.PartitionId, i.Inode)
 	// submit:
-	if err = mp.inodeTree.Put(i); err != nil {
+	if err = mp.inodeTree.Put(handle, i); err != nil {
 		resp.Status = proto.OpErr
 		log.LogErrorf("[fsmExtentsTruncate] fsm(%v) action(AppendExtents) inode(%v) exts(%v) Put error:%v",
 			mp.config.PartitionId, i.Inode, delExtents, err)
@@ -812,7 +845,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmEvictInode(handle interface{}, ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	log.LogDebugf("action[fsmEvictInode] inode[%v]", ino)
 	resp.Status = proto.OpOk
@@ -841,7 +874,7 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 		}
 	}
 	if needUpdate {
-		err = mp.inodeTree.Update(i)
+		err = mp.inodeTree.Update(handle, i)
 		if err != nil {
 			log.LogErrorf("[fsmEvictInode] mp(%v) failed to evict inode(%v), err(%v)", mp.config.PartitionId, i, err)
 			resp.Status = proto.OpErr
@@ -852,14 +885,14 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
-func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch) (resp []*InodeResponse) {
+func (mp *metaPartition) fsmBatchEvictInode(handle interface{}, ib InodeBatch) (resp []*InodeResponse) {
 	for _, ino := range ib {
 		status := mp.inodeInTx(ino.Inode)
 		if status != proto.OpOk {
 			resp = append(resp, &InodeResponse{Status: status})
 			continue
 		}
-		rsp := mp.fsmEvictInode(ino)
+		rsp := mp.fsmEvictInode(handle, ino)
 		if rsp.Status == proto.OpErr {
 			resp = resp[:0]
 			goto err
@@ -889,7 +922,7 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
+func (mp *metaPartition) fsmSetAttr(handle interface{}, req *SetattrRequest) (err error) {
 	log.LogDebugf("action[fsmSetAttr] req %v", req)
 	ino := NewInode(req.Inode, req.Mode)
 	ino, err = mp.inodeTree.CopyGet(ino)
@@ -901,7 +934,7 @@ func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 		return
 	}
 	ino.SetAttr(req)
-	if err = mp.inodeTree.Update(ino); err != nil {
+	if err = mp.inodeTree.Update(handle, ino); err != nil {
 		return
 	}
 	return
@@ -921,7 +954,7 @@ func (mp *metaPartition) fsmSendToChan(val []byte, v3 bool) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuotaReuqest) (resp *proto.BatchSetMetaserverQuotaResponse) {
+func (mp *metaPartition) fsmSetInodeQuotaBatch(handle interface{}, req *proto.BatchSetMetaserverQuotaReuqest) (resp *proto.BatchSetMetaserverQuotaResponse) {
 	var files int64
 	var bytes int64
 	resp = &proto.BatchSetMetaserverQuotaResponse{}
@@ -955,7 +988,7 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 
 		if treeItem == nil {
 			quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
-			mp.extendTree.ReplaceOrInsert(extend, true)
+			mp.extendTree.ReplaceOrInsert(handle, extend, true)
 		} else {
 			extend = treeItem
 			value := extend.Quota
@@ -988,12 +1021,12 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 			files += 1
 			bytes += int64(inode.Size)
 		}
-		mp.extendTree.Put(extend)
+		mp.extendTree.Put(handle, extend)
 	}
 	return
 }
 
-func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserverQuotaReuqest) (resp *proto.BatchDeleteMetaserverQuotaResponse) {
+func (mp *metaPartition) fsmDeleteInodeQuotaBatch(handle interface{}, req *proto.BatchDeleteMetaserverQuotaReuqest) (resp *proto.BatchDeleteMetaserverQuotaResponse) {
 	var files int64
 	var bytes int64
 	resp = &proto.BatchDeleteMetaserverQuotaResponse{}
@@ -1063,7 +1096,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 				resp.InodeRes[ino] = proto.OpOk
 				continue
 			}
-			mp.extendTree.Put(extend)
+			mp.extendTree.Put(handle, extend)
 		}
 		files -= 1
 		bytes -= int64(inode.Size)
@@ -1072,7 +1105,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 	return
 }
 
-func (mp *metaPartition) fsmSyncInodeAccessTime(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmSyncInodeAccessTime(handle interface{}, ino *Inode) (status uint8) {
 	status = proto.OpOk
 	i, err := mp.inodeTree.CopyGet(ino)
 	if err != nil {
@@ -1085,11 +1118,17 @@ func (mp *metaPartition) fsmSyncInodeAccessTime(ino *Inode) (status uint8) {
 	}
 
 	i.AccessTime = ino.AccessTime
+	err = mp.inodeTree.Update(handle, i)
+	if err != nil {
+		status = proto.OpErr
+		log.LogErrorf("fsmSyncInodeAccessTime inode [%v] err: %s", i.Inode, err.Error())
+		return
+	}
 	log.LogDebugf("fsmSyncInodeAccessTime inode [%v] AccessTime update to [%v] success.", i.Inode, ino.AccessTime)
 	return
 }
 
-func (mp *metaPartition) fsmBatchSyncInodeAccessTime(bufSlice []byte) (status uint8) {
+func (mp *metaPartition) fsmBatchSyncInodeAccessTime(handle interface{}, bufSlice []byte) (status uint8) {
 	status = proto.OpOk
 	start := time.Now()
 	mpId := mp.config.PartitionId
@@ -1109,6 +1148,11 @@ func (mp *metaPartition) fsmBatchSyncInodeAccessTime(bufSlice []byte) (status ui
 		}
 
 		i.AccessTime = int64(atime)
+		err = mp.inodeTree.Update(handle, i)
+		if err != nil {
+			log.LogErrorf("fsmBatchSyncInodeAccessTime mp(%d) BatchUpdate err: %s", mpId, err.Error())
+			continue
+		}
 		log.LogDebugf("fsmBatchSyncInodeAccessTime: mp(%d) inode (%v) AccessTime (%d) update success.", mpId, i.Inode, atime)
 	}
 
@@ -1267,7 +1311,7 @@ func logCurrentExtentKeys(storageClass uint32, sortedEks interface{}, inode uint
 	}
 }
 
-func (mp *metaPartition) fsmSetCreateTime(req *SetCreateTimeRequest) (err error) {
+func (mp *metaPartition) fsmSetCreateTime(handle interface{}, req *SetCreateTimeRequest) (err error) {
 	log.LogDebugf("[fsmSetCreateTime] req %v", req)
 	ino := NewInode(req.Inode, 0)
 	item, err := mp.inodeTree.CopyGet(ino)
@@ -1284,6 +1328,12 @@ func (mp *metaPartition) fsmSetCreateTime(req *SetCreateTimeRequest) (err error)
 		return
 	}
 	ino.SetCreateTime(req)
+
+	err = mp.inodeTree.Update(handle, ino)
+	if err != nil {
+		log.LogErrorf("[fsmSetCreateTime] inode(%v) update err:%s", req.Inode, err.Error())
+		return
+	}
 	return
 }
 

@@ -72,7 +72,8 @@ var (
 )
 
 func NewSnapshot(mp *metaPartition) (snap Snapshot, err error) {
-	if mp.HasMemStore() {
+	storeMode := mp.inodeTree.GetStoreMode()
+	if storeMode == proto.StoreModeMem {
 		snap = &MemSnapShot{
 			applyID:             mp.GetAppliedID(),
 			txID:                mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
@@ -84,9 +85,7 @@ func NewSnapshot(mp *metaPartition) (snap Snapshot, err error) {
 			transactionRbInode:  &TransactionRollbackInodeBTree{mp.txProcessor.txResource.txRbInodeTree.(*TransactionRollbackInodeBTree).GetTree()},
 			transactionRbDentry: &TransactionRollbackDentryBTree{mp.txProcessor.txResource.txRbDentryTree.(*TransactionRollbackDentryBTree).GetTree()},
 		}
-	}
-
-	if mp.HasRocksDBStore() {
+	} else if storeMode == proto.StoreModeRocksDb {
 		snap = NewRocksSnapShot(mp)
 	}
 
@@ -128,75 +127,67 @@ type Tree interface {
 	SetDeletedExtentId(id uint64)
 	Clear(handle interface{}) (err error)
 	DeleteMetadata(handle interface{}) (err error)
+	GetStoreMode() proto.StoreMode
 }
 
 type InodeTree interface {
 	Tree
 	Get(ino *Inode) (*Inode, error)
 	CopyGet(ino *Inode) (*Inode, error)
-	Put(inode *Inode) error
-	Update(inode *Inode) error
-	ReplaceOrInsert(inode *Inode, replace bool) (*Inode, bool, error)
-	Delete(inode *Inode) (bool, error)
+	Put(handle interface{}, inode *Inode) error
+	Update(handle interface{}, inode *Inode) error
+	ReplaceOrInsert(handle interface{}, inode *Inode, replace bool) (*Inode, bool, error)
+	Delete(handle interface{}, inode *Inode) (bool, error)
 	Range(start, end *Inode, cb func(i *Inode) bool) error
 	Count() uint64
 	Len() int
 	RealCount() uint64
 	MaxItem() *Inode
 	GetMaxInode() (uint64, error)
-	BatchPut(handle interface{}, inode *Inode) error
-	BatchReplaceOrInsert(handle interface{}, inode *Inode, replace bool) (*Inode, bool, error)
-	BatchUpdate(handle interface{}, inode *Inode) error
 }
 
 type DentryTree interface {
 	Tree
 	Get(dent *Dentry) (*Dentry, error)
 	CopyGet(dent *Dentry) (*Dentry, error)
-	Update(dentry *Dentry) error
-	Put(dentry *Dentry) error
-	ReplaceOrInsert(dentry *Dentry, replace bool) (*Dentry, bool, error)
-	Delete(dentry *Dentry) (bool, error)
+	Update(handle interface{}, dentry *Dentry) error
+	Put(handle interface{}, dentry *Dentry) error
+	ReplaceOrInsert(handle interface{}, dentry *Dentry, replace bool) (*Dentry, bool, error)
+	Delete(handle interface{}, dentry *Dentry) (bool, error)
 	Range(start, end *Dentry, cb func(d *Dentry) bool) error
 	RangeWithPrefix(prefix, start, end *Dentry, cb func(d *Dentry) bool) error
 	RealCount() uint64
 	Count() uint64
 	Len() int
-	BatchPut(handle interface{}, dentry *Dentry) error
-	BatchReplaceOrInsert(handle interface{}, dentry *Dentry, replace bool) (*Dentry, bool, error)
 }
 
 type ExtendTree interface {
 	Tree
 	Get(extent *Extend) (*Extend, error)
 	CopyGet(extent *Extend) (*Extend, error)
-	Put(extend *Extend) error
-	Update(extend *Extend) error
-	ReplaceOrInsert(ext *Extend, replace bool) (*Extend, bool, error)
-	Delete(extend *Extend) (bool, error)
+	Put(handle interface{}, extend *Extend) error
+	Update(handle interface{}, extend *Extend) error
+	ReplaceOrInsert(handle interface{}, ext *Extend, replace bool) (*Extend, bool, error)
+	Delete(handle interface{}, extend *Extend) (bool, error)
 	Range(start, end *Extend, cb func(e *Extend) bool) error
 	RealCount() uint64
 	Count() uint64
 	Len() int
-	BatchPut(handle interface{}, extend *Extend) error
-	BatchReplaceOrInsert(handle interface{}, ext *Extend, replace bool) (*Extend, bool, error)
 }
 
 type MultipartTree interface {
 	Tree
 	Get(multi *Multipart) (*Multipart, error)
 	CopyGet(multi *Multipart) (*Multipart, error)
-	Put(mutipart *Multipart) error
-	Update(mutipart *Multipart) error
-	ReplaceOrInsert(mul *Multipart, replace bool) (*Multipart, bool, error)
-	Delete(mutipart *Multipart) (bool, error)
+	Put(handle interface{}, mutipart *Multipart) error
+	Update(handle interface{}, mutipart *Multipart) error
+	ReplaceOrInsert(handle interface{}, mul *Multipart, replace bool) (*Multipart, bool, error)
+	Delete(handle interface{}, mutipart *Multipart) (bool, error)
 	Range(start, end *Multipart, cb func(m *Multipart) bool) error
 	RangeWithPrefix(prefix, start, end *Multipart, cb func(m *Multipart) bool) error
 	RealCount() uint64
 	Count() uint64
 	Len() int
-	BatchPut(handle interface{}, mutipart *Multipart) error
-	BatchReplaceOrInsert(handle interface{}, mul *Multipart, replace bool) (*Multipart, bool, error)
 }
 
 // NOTE: transaction
@@ -204,47 +195,41 @@ type TransactionTree interface {
 	Tree
 	Get(tx *proto.TransactionInfo) (*proto.TransactionInfo, error)
 	CopyGet(tx *proto.TransactionInfo) (*proto.TransactionInfo, error)
-	Put(tx *proto.TransactionInfo) error
-	Update(tx *proto.TransactionInfo) error
-	ReplaceOrInsert(tx *proto.TransactionInfo, replace bool) (*proto.TransactionInfo, bool, error)
-	Delete(txId string) (bool, error)
+	Put(handle interface{}, tx *proto.TransactionInfo) error
+	Update(handle interface{}, tx *proto.TransactionInfo) error
+	ReplaceOrInsert(handle interface{}, tx *proto.TransactionInfo, replace bool) (*proto.TransactionInfo, bool, error)
+	Delete(handle interface{}, txId string) (bool, error)
 	Range(start, end *proto.TransactionInfo, cb func(t *proto.TransactionInfo) bool) error
 	RealCount() uint64
 	Count() uint64
 	Len() int
-	BatchPut(handle interface{}, tx *proto.TransactionInfo) error
-	BatchReplaceOrInsert(handle interface{}, tx *proto.TransactionInfo, replace bool) (*proto.TransactionInfo, bool, error)
 }
 
 type TransactionRollbackInodeTree interface {
 	Tree
 	Get(inode *TxRollbackInode) (*TxRollbackInode, error)
 	CopyGet(inode *TxRollbackInode) (*TxRollbackInode, error)
-	Put(inode *TxRollbackInode) error
-	Update(inode *TxRollbackInode) error
-	ReplaceOrInsert(inode *TxRollbackInode, replace bool) (*TxRollbackInode, bool, error)
-	Delete(inode *TxRollbackInode) (bool, error)
+	Put(handle interface{}, inode *TxRollbackInode) error
+	Update(handle interface{}, inode *TxRollbackInode) error
+	ReplaceOrInsert(handle interface{}, inode *TxRollbackInode, replace bool) (*TxRollbackInode, bool, error)
+	Delete(handle interface{}, inode *TxRollbackInode) (bool, error)
 	Range(start, end *TxRollbackInode, cb func(i *TxRollbackInode) bool) error
 	Count() uint64
 	Len() int
 	RealCount() uint64
-	BatchPut(handle interface{}, inode *TxRollbackInode) error
-	BatchReplaceOrInsert(handle interface{}, inode *TxRollbackInode, replace bool) (*TxRollbackInode, bool, error)
 }
 
 type TransactionRollbackDentryTree interface {
 	Tree
 	Get(dentry *TxRollbackDentry) (*TxRollbackDentry, error)
 	CopyGet(dentry *TxRollbackDentry) (*TxRollbackDentry, error)
-	Update(dentry *TxRollbackDentry) error
-	Put(dentry *TxRollbackDentry) error
-	ReplaceOrInsert(dentry *TxRollbackDentry, replace bool) (*TxRollbackDentry, bool, error)
-	Delete(dentry *TxRollbackDentry) (bool, error)
+	Update(handle interface{}, dentry *TxRollbackDentry) error
+	Put(handle interface{}, dentry *TxRollbackDentry) error
+	ReplaceOrInsert(handle interface{}, dentry *TxRollbackDentry, replace bool) (*TxRollbackDentry, bool, error)
+	Delete(handle interface{}, dentry *TxRollbackDentry) (bool, error)
 	Range(start, end *TxRollbackDentry, cb func(d *TxRollbackDentry) bool) error
 	RangeWithPrefix(prefix, start, end *TxRollbackDentry, cb func(d *TxRollbackDentry) bool) error
 	RealCount() uint64
 	Count() uint64
 	Len() int
-	BatchPut(handle interface{}, dentry *TxRollbackDentry) error
-	BatchReplaceOrInsert(handle interface{}, dentry *TxRollbackDentry, replace bool) (*TxRollbackDentry, bool, error)
 }

@@ -1356,7 +1356,7 @@ func (m *MetaNode) getGOGCHandler(w http.ResponseWriter, r *http.Request) {
 
 func (m *MetaNode) reloadMpHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		id  int
+		id  uint64
 		err error
 	)
 	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
@@ -1377,12 +1377,12 @@ func (m *MetaNode) reloadMpHandler(w http.ResponseWriter, r *http.Request) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	id, err = strconv.Atoi(r.FormValue("id"))
+	id, err = strconv.ParseUint(r.FormValue("id"), 10, 64)
 	if err != nil {
 		err = fmt.Errorf("parse param %v fail: %v", id, err)
 		return
 	}
-	err = m.metadataManager.ReloadPartition(id)
+	err = m.metadataManager.ReloadPartition(id, true)
 }
 
 func (m *MetaNode) setQosEnableHandler(w http.ResponseWriter, r *http.Request) {

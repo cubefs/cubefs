@@ -86,9 +86,13 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 	ino := NewInode(1, 0)
 	ino.StorageClass = proto.StorageClass_Replica_SSD
 	ino.HybridCloudExtents.sortedEks = NewSortedExtents()
-	mp.inodeTree.ReplaceOrInsert(ino, true)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 	dentry := &Dentry{ParentId: 0, Name: "/", Inode: 1}
-	mp.dentryTree.Put(dentry)
+	mp.dentryTree.Put(handle, dentry)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 
 	err = mp.store(msg)
 	require.NoError(t, err)

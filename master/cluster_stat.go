@@ -84,10 +84,10 @@ func (c *Cluster) updateZoneStatInfo() {
 			zs.MetaNodeStat.TotalNodes++
 			node := value.(*MetaNode)
 			if node.IsActive {
-				if node.isWritable(proto.StoreModeMem) {
+				if node.IsWriteAble() {
 					zs.MetaNodeStat.WritableNodes++
 				}
-				if node.isWritable(proto.StoreModeRocksDb) {
+				if node.IsRocksdbWriteAble() {
 					zs.MetaNodeStat.RocksdbWritableNodes++
 				}
 			}
