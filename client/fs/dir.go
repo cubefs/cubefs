@@ -163,7 +163,7 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 		stat.EndStat("Release:dir", nil, bgTime, 1)
 		log.LogDebugf("TRACE Release exit: ino(%v) name(%v)", d.info.Inode, d.name)
 	}()
-	d.dctx.Clear()
+	// d.dctx.Clear()
 	d.dcache.Clear()
 	ino := d.info.Inode
 	d.super.ic.Delete(ino)
@@ -230,7 +230,7 @@ func (d *Dir) Forget() {
 		stat.EndStat("Forget:dir", nil, bgTime, 1)
 		log.LogDebugf("TRACE Forget exit: ino(%v) name(%v)", ino, d.name)
 	}()
-
+	d.dctx.Clear()
 	d.super.ic.Delete(ino)
 	d.dcache.Clear()
 	d.super.fslock.Lock()
