@@ -90,8 +90,10 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 		}
 		p := &Packet{}
 		if err := p.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
-			if err != io.EOF {
-				log.LogError("serve MetaNode: ", err.Error())
+			if strings.Contains(err.Error(), io.EOF.Error()) {
+				log.LogWarnf("serve MetaNode: %v", err)
+			} else {
+				log.LogErrorf("serve MetaNode: %v", err)
 			}
 			return
 		}
@@ -215,8 +217,10 @@ func (m *MetaNode) serveSmuxStream(stream *smux.Stream, remoteAddr string, stopC
 
 		p := &Packet{}
 		if err := p.ReadFromConnWithVer(stream, proto.NoReadDeadlineTime); err != nil {
-			if err != io.EOF {
-				log.LogError("serve MetaNode: ", err.Error())
+			if strings.Contains(err.Error(), io.EOF.Error()) {
+				log.LogWarnf("serve MetaNode: %v", err)
+			} else {
+				log.LogErrorf("serve MetaNode: %v", err)
 			}
 			return
 		}

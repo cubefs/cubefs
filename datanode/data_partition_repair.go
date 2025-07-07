@@ -680,7 +680,8 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		dp.checkIsDiskError(err, ReadFlag)
 		p.SetCRC(reply.GetCRC())
 		if err != nil {
-			if strings.Contains(err.Error(), storage.ExtentHasBeenDeletedError.Error()) {
+			if strings.Contains(err.Error(), storage.ExtentHasBeenDeletedError.Error()) ||
+				strings.Contains(err.Error(), storage.LimitedIoError.Error()) {
 				log.LogWarnf("action[operatePacket] err %v", err)
 				return
 			}
