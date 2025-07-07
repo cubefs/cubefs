@@ -394,6 +394,7 @@ type DataPartitionDiagnosis struct {
 	RepFileCountDifferDpIDs     []uint64
 	RepUsedSizeDifferDpIDs      []uint64
 	ExcessReplicaDpIDs          []uint64
+	MissingTinyExtentDpIDs      []uint64
 	// BadDataPartitionIDs         []BadPartitionView
 	BadDataPartitionInfos       []BadPartitionRepairView
 	BadReplicaDataPartitionIDs  []uint64

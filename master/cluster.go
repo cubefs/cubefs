@@ -1538,12 +1538,13 @@ func (c *Cluster) checkInactiveDataNodes() (inactiveDataNodes []string, err erro
 
 func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
-	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error,
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, missingTinyExtentDPs []*DataPartition, err error,
 ) {
 	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
 	excessReplicaDPs = make([]*DataPartition, 0)
+	missingTinyExtentDPs = make([]*DataPartition, 0)
 
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -1583,7 +1584,13 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 			}
 
 			recordReplicaUnavailable := false
+			recordReplicaMissingTinyExtent := false
 			for _, replica := range dp.Replicas {
+				if !recordReplicaMissingTinyExtent && dp.IsDecommissionRunning() && replica.IsMissingTinyExtent {
+					missingTinyExtentDPs = append(missingTinyExtentDPs, dp)
+					recordReplicaMissingTinyExtent = true
+				}
+
 				if !recordReplicaUnavailable && replica.Status == proto.Unavailable {
 					unavailableReplicaDPs = append(unavailableReplicaDPs, dp)
 					recordReplicaUnavailable = true

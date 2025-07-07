@@ -2171,12 +2171,14 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		repFileCountDifferDps       []*DataPartition
 		repUsedSizeDifferDps        []*DataPartition
 		excessReplicaDPs            []*DataPartition
+		missingTinyExtentDPs        []*DataPartition
 		corruptDpIDs                []uint64
 		lackReplicaDpIDs            []uint64
 		badReplicaDpIDs             []uint64
 		repFileCountDifferDpIDs     []uint64
 		repUsedSizeDifferDpIDs      []uint64
 		excessReplicaDpIDs          []uint64
+		missingTinyExtentDpIDs      []uint64
 		badDataPartitionInfos       []proto.BadPartitionRepairView
 		diskErrorDataPartitionInfos proto.DiskErrPartitionView
 		start                       = time.Now()
@@ -2198,6 +2200,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	repFileCountDifferDpIDs = make([]uint64, 0)
 	repUsedSizeDifferDpIDs = make([]uint64, 0)
 	excessReplicaDpIDs = make([]uint64, 0)
+	missingTinyExtentDpIDs = make([]uint64, 0)
 
 	subStep := time.Now()
 	if inactiveNodes, err = m.cluster.checkInactiveDataNodes(); err != nil {
@@ -2206,7 +2209,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 	log.LogDebugf("diagnoseDataPartition checkInactiveDataNodes cost %v", time.Since(subStep).String())
 	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs,
-		corruptDps, err = m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
+		corruptDps, missingTinyExtentDPs, err = m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2228,6 +2231,9 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	for _, dp := range excessReplicaDPs {
 		excessReplicaDpIDs = append(excessReplicaDpIDs, dp.PartitionID)
 	}
+	for _, dp := range missingTinyExtentDPs {
+		missingTinyExtentDpIDs = append(missingTinyExtentDpIDs, dp.PartitionID)
+	}
 
 	// badDataPartitions = m.cluster.getBadDataPartitionsView()
 	subStep = time.Now()
@@ -2245,6 +2251,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		RepFileCountDifferDpIDs:     repFileCountDifferDpIDs,
 		RepUsedSizeDifferDpIDs:      repUsedSizeDifferDpIDs,
 		ExcessReplicaDpIDs:          excessReplicaDpIDs,
+		MissingTinyExtentDpIDs:      missingTinyExtentDpIDs,
 		DiskErrorDataPartitionInfos: diskErrorDataPartitionInfos,
 	}
 	log.LogInfof("diagnose dataPartition[%v] inactiveNodes:[%v], corruptDpIDs:[%v], "+
