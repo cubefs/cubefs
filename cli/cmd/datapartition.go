@@ -98,6 +98,7 @@ func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command 
 	var showBadDp bool
 	var showUnavailable bool
 	var showExcess bool
+	var showMissingTinyExtent bool
 	var showDiskError bool
 	var showDiscard bool
 	var showDiff bool
@@ -123,7 +124,7 @@ The "reset" command will be released in next version`,
 			}()
 
 			showAll := !showInactiveNodes && !showNoLeader && !showLack && !showDiscard && !showBadDp &&
-				!showDiff && !showUnavailable && !showExcess && !showDiskError && !showSimplified
+				!showDiff && !showUnavailable && !showExcess && !showMissingTinyExtent && !showDiskError && !showSimplified
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(true); err != nil {
 				return
 			}
@@ -354,6 +355,27 @@ The "reset" command will be released in next version`,
 			}
 
 			stdoutln()
+			if !showSimplified && showMissingTinyExtent {
+				stdoutln("[Partition with missing tiny extent]:")
+				stdoutln(partitionInfoTableHeader)
+				sort.SliceStable(diagnosis.MissingTinyExtentDpIDs, func(i, j int) bool {
+					return diagnosis.MissingTinyExtentDpIDs[i] < diagnosis.MissingTinyExtentDpIDs[j]
+				})
+				for _, pid := range diagnosis.MissingTinyExtentDpIDs {
+					var partition *proto.DataPartitionInfo
+					if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+						err = fmt.Errorf("Partition not found[%v], err:[%v] ", pid, err)
+						return
+					}
+					if partition != nil {
+						stdoutln(formatDataPartitionInfoRow(partition))
+					}
+				}
+			} else {
+				stdoutlnf("[Partition with missing tiny extent count]: %v", len(diagnosis.MissingTinyExtentDpIDs))
+			}
+
+			stdoutln()
 			if !showSimplified && (showAll || showDiskError) {
 				stdoutln("[Partition with disk error replicas]:")
 				stdoutln(diskErrorReplicaPartitionInfoTableHeader)
@@ -404,6 +426,7 @@ The "reset" command will be released in next version`,
 	cmd.Flags().BoolVarP(&showUnavailable, "showUnavailable", "u", false, "true for display dp with unavailable replicas")
 	cmd.Flags().BoolVarP(&showBadDp, "showBadDp", "b", false, "true for display bad dp")
 	cmd.Flags().BoolVarP(&showExcess, "showExcess", "e", false, "true for display dp with excess replicas")
+	cmd.Flags().BoolVarP(&showMissingTinyExtent, "showMissingTinyExtent", "m", false, "true for display dp with missing tiny extent")
 	cmd.Flags().BoolVarP(&showDiskError, "showDiskError", "E", false, "true for display dp with disk error replicas")
 	cmd.Flags().BoolVarP(&showDiscard, "showDiscard", "D", false, "true for display discard dp")
 	cmd.Flags().BoolVarP(&showDiff, "showDiff", "d", false, "true for display dp those replica file count count or size differ significantly")

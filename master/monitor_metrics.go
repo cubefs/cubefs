@@ -54,7 +54,6 @@ const (
 	MetricFlashNodesDiskError       = "flashNodes_disk_error"
 	MetricDiskLost                  = "disk_lost"
 	MetricDpUnableDecommissionCount = "dp_unable_decommission_count"
-	MetricDpMissingTinyExtent       = "dp_missing_tinyExtent"
 	MetricDpNoSamePeer              = "dp_no_same_peer"
 	MetricDataNodesInactive         = "dataNodes_inactive"
 	MetricInactiveDataNodeInfo      = "inactive_dataNodes_info"
@@ -129,7 +128,6 @@ type monitorMetrics struct {
 	flashNodesDiskError       *exporter.GaugeVec
 	diskLost                  *exporter.GaugeVec
 	dpUnableDecommissionCount *exporter.Gauge
-	dpMissingTinyExtent       *exporter.GaugeVec
 	dpNoSamePeer              *exporter.GaugeVec
 	dataNodesNotWritable      *exporter.Gauge
 	dataNodesAllocable        *exporter.Gauge
@@ -512,7 +510,6 @@ func (mm *monitorMetrics) start() {
 	mm.flashNodesDiskError = exporter.NewGaugeVec(MetricFlashNodesDiskError, "", []string{"addr", "path"})
 	mm.diskLost = exporter.NewGaugeVec(MetricDiskLost, "", []string{"addr", "path"})
 	mm.dpUnableDecommissionCount = exporter.NewGauge(MetricDpUnableDecommissionCount)
-	mm.dpMissingTinyExtent = exporter.NewGaugeVec(MetricDpMissingTinyExtent, "", []string{"dpId", "addr"})
 	mm.dpNoSamePeer = exporter.NewGaugeVec(MetricDpNoSamePeer, "", []string{"dpId"})
 	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
@@ -617,7 +614,6 @@ func (mm *monitorMetrics) doStat() {
 	mm.setDiskLostMetric()
 	mm.setFlashNodesDiskErrorMetric()
 	mm.setDpUnableDecommissionMetric()
-	mm.setDpMissingTinyExtentMetric()
 	mm.setDpNoSamePeerMetric()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
@@ -938,23 +934,6 @@ func (mm *monitorMetrics) setDpUnableDecommissionMetric() {
 		}
 	}
 	mm.dpUnableDecommissionCount.Set(float64(dpUnableDecommissionCount))
-}
-
-func (mm *monitorMetrics) setDpMissingTinyExtentMetric() {
-	mm.dpMissingTinyExtent.Reset()
-
-	vols := mm.cluster.allVols()
-	for _, vol := range vols {
-		partitions := vol.dataPartitions.clonePartitions()
-		for _, dp := range partitions {
-			for _, replica := range dp.Replicas {
-				if replica.IsMissingTinyExtent {
-					idStr := strconv.FormatUint(dp.PartitionID, 10)
-					mm.dpMissingTinyExtent.SetWithLabelValues(1, idStr, replica.Addr)
-				}
-			}
-		}
-	}
 }
 
 func (mm *monitorMetrics) setDpNoSamePeerMetric() {
@@ -1351,7 +1330,6 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	// mm.diskError.Set(0)
 	mm.diskLost.Reset()
 	mm.dpUnableDecommissionCount.Set(0)
-	mm.dpMissingTinyExtent.Reset()
 	mm.dpNoSamePeer.Reset()
 	mm.diskDecommissionSuccess.Reset()
 	mm.dataNodesInactive.Set(0)

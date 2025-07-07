@@ -154,8 +154,9 @@ type DataPartition struct {
 	responseStatus     uint32
 	PersistApplyIdChan chan PersistApplyIdRequest
 
-	readOnlyReasons uint32
-	isRepairing     bool
+	readOnlyReasons     uint32
+	isMissingTinyExtent bool
+	isRepairing         bool
 }
 
 type PersistApplyIdRequest struct {
