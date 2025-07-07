@@ -503,8 +503,9 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 		return nil, errcode.ErrNoCodemodeVolume
 	}
 
-	if info.backup.Len() < v.DefaultAllocVolsNum {
-		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum-info.backup.Len(), true)
+	backupLen := info.backup.Len()
+	if backupLen < v.DefaultAllocVolsNum {
+		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum-backupLen, true)
 	}
 
 	span.Debugf("codeMode: %v, info.currentTotalFree: %v, info.totalThreshold: %v", args.CodeMode,
@@ -553,6 +554,9 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 		args := <-v.allocChs[mode]
 		span, ctx := trace.StartSpanFromContext(context.Background(), "")
 		requireCount := args.count
+		if requireCount < 1 {
+			continue
+		}
 		for {
 			allocArg := &clustermgr.AllocVolumeArgs{
 				IsInit:   args.isInit,
