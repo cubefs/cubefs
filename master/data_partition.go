@@ -2098,7 +2098,9 @@ func (partition *DataPartition) canMarkDecommission(status uint32, c *Cluster) e
 func (partition *DataPartition) canAddToDecommissionList() bool {
 	status := partition.GetDecommissionStatus()
 	if status == DecommissionInitial ||
-		status == DecommissionPause {
+		status == DecommissionPause ||
+		(status == DecommissionFail && !partition.DecommissionNeedRollback && partition.DecommissionNeedRollbackTimes >= defaultDecommissionRollbackLimit &&
+			partition.RestoreReplica == RestoreReplicaMetaStop) {
 		return false
 	}
 	return true
