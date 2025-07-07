@@ -103,7 +103,6 @@ func TestDataNodeOpStatsDiskFull(t *testing.T) {
 	logName := "test_op.log"
 	fileSize := 1024 * 1024 // rotate over 1m
 	count := 30240          // every file is 1.6M
-	leftCnt := 4
 	tickCnt := 10
 
 	opLog, _ := NewOpLogger(tmpDir, logName, 0, time.Second, 0)
@@ -113,7 +112,7 @@ func TestDataNodeOpStatsDiskFull(t *testing.T) {
 	require.NoError(t, err)
 
 	avail := fs.Bavail * uint64(fs.Bsize)
-	opLog.leftSpace = int64(avail) + int64(leftCnt*fileSize)
+	opLog.leftSpace = int64(avail) * 10
 	// set rotate size as 1M
 	opLog.SetArgs(time.Hour, int64(fileSize))
 
