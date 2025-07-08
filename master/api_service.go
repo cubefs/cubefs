@@ -3602,6 +3602,10 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		key := fmt.Sprintf("%s_%s", node.Addr, disk)
 		if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
 			dd := value.(*DecommissionDisk)
+			status := dd.GetDecommissionStatus()
+			if status == DecommissionSuccess || status == DecommissionFail {
+				continue
+			}
 			wg.Add(1)
 			go func() {
 				dd.cancelDecommission(m.cluster, ns)
@@ -4827,7 +4831,6 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 		node                 *DataNode
 		rstMsg               string
 		onLineAddr, diskPath string
-		recommissionType     string
 		err                  error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.RecommissionDisk))
@@ -4841,56 +4844,45 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if recommissionType, err = parseRecommissionType(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
 	if node, err = m.cluster.dataNode(onLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
 
-	if recommissionType == "decommissioned" {
-		if node.isBadDisk(diskPath) {
-			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v is bad disk", diskPath, onLineAddr)))
+	key := fmt.Sprintf("%s_%s", node.Addr, diskPath)
+	if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
+		dd := value.(*DecommissionDisk)
+		status := dd.GetDecommissionStatus()
+		if status == markDecommission || status == DecommissionRunning {
+			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk.decommissionStatus is %v, can't do recommission", status)))
 			return
 		}
-		exist, err := m.cluster.deleteAndSyncDecommissionedDisk(node, diskPath)
-		if !exist {
-			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v decommissioned record not exist", diskPath, onLineAddr)))
-			return
-		}
+		m.cluster.DecommissionDisks.Delete(key)
+		err := m.cluster.syncDeleteDecommissionDisk(dd)
 		if err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
+			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("remove DecommissionDisk record %v failed %v, please try again", key, err)))
 			return
-		}
-	}
-	if recommissionType == "decommissionSuccess" {
-		exist, err := m.cluster.deleteAndSyncDecommissionSuccessDisk(node, diskPath)
-		if !exist {
-			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v decommissionSuccess record not exist", diskPath, onLineAddr)))
-			return
-		}
-		if err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-		key := fmt.Sprintf("%s_%s", node.Addr, diskPath)
-		if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
-			disk := value.(*DecommissionDisk)
-			m.cluster.DecommissionDisks.Delete(key)
-			err := m.cluster.syncDeleteDecommissionDisk(disk)
-			if err != nil {
-				log.LogWarnf("remove DecommissionDisk %v failed %v", key, err)
-			} else {
-				log.LogDebugf("remove DecommissionDisk %v success", key)
-			}
 		}
 	}
 
-	rstMsg = fmt.Sprintf("receive recommissionDisk node[%v] disk[%v] recommissionType[%v], and recommission successfully",
-		node.Addr, diskPath, recommissionType)
+	_, err = m.cluster.deleteAndSyncDecommissionSuccessDisk(node, diskPath)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("remove DecommissionSuccessDisk record %v failed %v, please try again", key, err)))
+		return
+	}
+
+	if node.isBadDisk(diskPath) {
+		sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v is bad disk, can't delete decommissionedDisk record", diskPath, onLineAddr)))
+		return
+	}
+	_, err = m.cluster.deleteAndSyncDecommissionedDisk(node, diskPath)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("remove DecommissionSuccessDisk record %v failed %v, please try again", key, err)))
+		return
+	}
+
+	rstMsg = fmt.Sprintf("receive recommissionDisk node[%v] disk[%v] task, and recommission successfully",
+		node.Addr, diskPath)
 
 	Warn(m.clusterName, rstMsg)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
@@ -5648,21 +5640,6 @@ func parseNodeAddrAndDisk(r *http.Request) (nodeAddr, diskPath string, err error
 		return
 	}
 
-	return
-}
-
-func parseRecommissionType(r *http.Request) (recommissionType string, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	recommissionType = r.FormValue(RecommissionType)
-	if recommissionType == "" {
-		err = keyNotFound(RecommissionType)
-		return
-	}
-	if recommissionType != "decommissionSuccess" && recommissionType != "decommissioned" {
-		err = unmatchedKey(RecommissionType)
-	}
 	return
 }
 
@@ -8827,8 +8804,6 @@ func (m *Server) deleteLostDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
 
-	m.cluster.deleteAndSyncDecommissionSuccessDisk(dataNode, diskPath)
-	m.cluster.deleteAndSyncDecommissionedDisk(dataNode, diskPath)
 	if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
 		disk := value.(*DecommissionDisk)
 		m.cluster.DecommissionDisks.Delete(key)
@@ -8839,6 +8814,8 @@ func (m *Server) deleteLostDisk(w http.ResponseWriter, r *http.Request) {
 			log.LogDebugf("remove DecommissionDisk %v success", key)
 		}
 	}
+	m.cluster.deleteAndSyncDecommissionSuccessDisk(dataNode, diskPath)
+	m.cluster.deleteAndSyncDecommissionedDisk(dataNode, diskPath)
 
 	rstMsg := fmt.Sprintf("delete lost disk[%s] success", key)
 	AuditLog(r, "DeleteLostDisk", rstMsg, nil)
@@ -8900,8 +8877,6 @@ func (m *Server) reloadDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
 
-	m.cluster.deleteAndSyncDecommissionSuccessDisk(dataNode, diskPath)
-	m.cluster.deleteAndSyncDecommissionedDisk(dataNode, diskPath)
 	if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
 		disk := value.(*DecommissionDisk)
 		m.cluster.DecommissionDisks.Delete(key)
@@ -8912,6 +8887,8 @@ func (m *Server) reloadDisk(w http.ResponseWriter, r *http.Request) {
 			log.LogDebugf("remove DecommissionDisk %v success", key)
 		}
 	}
+	m.cluster.deleteAndSyncDecommissionSuccessDisk(dataNode, diskPath)
+	m.cluster.deleteAndSyncDecommissionedDisk(dataNode, diskPath)
 
 	rstMsg := fmt.Sprintf("reload disk[%s] success", key)
 	AuditLog(r, "ReloadDisk", rstMsg, nil)
@@ -8940,14 +8917,14 @@ func (m *Server) resetDecommissionDataNodeStatus(w http.ResponseWriter, r *http.
 		return
 	}
 	for _, disk := range dn.AllDisks {
-		if _, err = m.cluster.deleteAndSyncDecommissionedDisk(dn, disk); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
+		key := fmt.Sprintf("%s_%s", dn.Addr, disk)
+		if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
+			dd := value.(*DecommissionDisk)
+			m.cluster.DecommissionDisks.Delete(key)
+			m.cluster.syncDeleteDecommissionDisk(dd)
 		}
-		if _, err = m.cluster.deleteAndSyncDecommissionSuccessDisk(dn, disk); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
+		m.cluster.deleteAndSyncDecommissionSuccessDisk(dn, disk)
+		m.cluster.deleteAndSyncDecommissionedDisk(dn, disk)
 	}
 	dn.resetDecommissionStatus()
 	m.cluster.syncUpdateDataNode(dn)

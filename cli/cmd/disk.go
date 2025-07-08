@@ -179,7 +179,6 @@ const (
 )
 
 func newRecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
-	var recommissionType string
 	cmd := &cobra.Command{
 		Use:   CliOpRecommission + " [DATA NODE ADDR] [DISK]",
 		Short: cmdRecommissionDisksShort,
@@ -189,17 +188,12 @@ func newRecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if recommissionType == "" {
-				stdout("no change has been set")
+			if err = client.AdminAPI().RecommissionDisk(args[0], args[1]); err != nil {
 				return
 			}
-			if err = client.AdminAPI().RecommissionDisk(args[0], args[1], recommissionType); err != nil {
-				return
-			}
-			stdout("Mark disk %v:%v recommissionType %v to be recommissioned\n", args[0], args[1], recommissionType)
+			stdout("Mark disk %v:%v to be recommissioned\n", args[0], args[1])
 		},
 	}
-	cmd.Flags().StringVar(&recommissionType, CliFLagRecommissionType, "", "recommission type [decommissioned or decommissionSuccess]")
 	return cmd
 }
 
