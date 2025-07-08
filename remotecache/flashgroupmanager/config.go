@@ -21,6 +21,7 @@ const (
 	defaultFlashNodeReadDataNodeTimeout = 3000
 	defaultHttpReversePoolSize          = 1024
 	defaultRetainLogs                   = 20000
+	defaultFlashHotKeyMissCount         = 5
 )
 
 const (
@@ -32,6 +33,7 @@ const (
 	cfgFlashNodeTimeoutCount        = "flashNodeTimeoutCount"
 	cfgRemoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	cfgRemoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
+	cfgFlashHotKeyMissCount         = "flashHotKeyMissCount"
 )
 
 var AddrDatabase = make(map[uint64]string)
@@ -55,6 +57,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.FlashNodeTimeoutCount = cfsProto.DefaultFlashNodeTimeoutCount
 	cfg.RemoteCacheSameZoneTimeout = cfsProto.DefaultRemoteCacheSameZoneTimeout
 	cfg.RemoteCacheSameRegionTimeout = cfsProto.DefaultRemoteCacheSameRegionTimeout
+	cfg.FlashHotKeyMissCount = defaultFlashHotKeyMissCount
 
 	return
 }

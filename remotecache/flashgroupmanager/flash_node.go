@@ -116,13 +116,14 @@ func (flashNode *FlashNode) checkLiveliness() {
 	flashNode.Unlock()
 }
 
-func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int, flashNodeReadDataNodeTimeout int) (task *proto.AdminTask) {
+func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int, flashNodeReadDataNodeTimeout int, flashHotKeyMissCount int) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,
 	}
 	request.FlashNodeHandleReadTimeout = flashNodeHandleReadTimeout
 	request.FlashNodeReadDataNodeTimeout = flashNodeReadDataNodeTimeout
+	request.FlashHotKeyMissCount = flashHotKeyMissCount
 
 	task = proto.NewAdminTask(proto.OpFlashNodeHeartbeat, flashNode.Addr, request)
 	return

@@ -75,6 +75,7 @@ const (
 
 	flashNodeHandleReadTimeout   = "flashNodeHandleReadTimeout"
 	flashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
+	flashHotKeyMissCount         = "flashHotKeyMissCount"
 )
 
 // default value
@@ -122,6 +123,7 @@ const (
 
 	defaultFlashNodeHandleReadTimeout   = 1000
 	defaultFlashNodeReadDataNodeTimeout = 3000
+	defaultFlashHotKeyMissCount         = 5
 
 	defaultMetaNodeGOGC = 100
 	defaultDataNodeGOGC = 100
@@ -200,6 +202,7 @@ type clusterConfig struct {
 
 	flashNodeHandleReadTimeout   int
 	flashNodeReadDataNodeTimeout int
+	flashHotKeyMissCount         int
 
 	metaNodeGOGC int
 	dataNodeGOGC int
@@ -244,6 +247,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.volDelayDeleteTimeHour = defaultVolDelayDeleteTimeHour
 	cfg.flashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
 	cfg.flashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
+	cfg.flashHotKeyMissCount = defaultFlashHotKeyMissCount
 	cfg.metaNodeGOGC = defaultMetaNodeGOGC
 	cfg.dataNodeGOGC = defaultDataNodeGOGC
 	cfg.metaNodeMemHighPer = defaultMetaNodeMemHighPer

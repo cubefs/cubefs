@@ -967,6 +967,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashNodes:                   make([]proto.NodeView, 0),
 		FlashNodeHandleReadTimeout:   m.cluster.cfg.flashNodeHandleReadTimeout,
 		FlashNodeReadDataNodeTimeout: m.cluster.cfg.flashNodeReadDataNodeTimeout,
+		FlashHotKeyMissCount:         m.cluster.cfg.flashHotKeyMissCount,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -3674,6 +3675,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[flashNodeHandleReadTimeout]; ok {
 		if v, ok := val.(int64); ok {
 			if err = m.setConfig(flashNodeHandleReadTimeout, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[flashHotKeyMissCount]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(flashHotKeyMissCount, strconv.FormatInt(v, 10)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -7141,6 +7151,7 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		autoMigrate              bool
 		fnHandleReadTimeout      int
 		fnReadDataNodeTimeout    int
+		fnHotKeyMissCount        int
 		oldIntValue              int
 	)
 
@@ -7190,6 +7201,14 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		oldIntValue = m.config.flashNodeReadDataNodeTimeout
 		m.config.flashNodeReadDataNodeTimeout = fnReadDataNodeTimeout
 
+	case flashHotKeyMissCount:
+		fnHotKeyMissCount, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		oldIntValue = m.config.flashHotKeyMissCount
+		m.config.flashHotKeyMissCount = fnHotKeyMissCount
+
 	default:
 		err = keyNotFound("config")
 		return err
@@ -7209,6 +7228,8 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.config.flashNodeHandleReadTimeout = oldIntValue
 		case flashNodeReadDataNodeTimeout:
 			m.config.flashNodeReadDataNodeTimeout = oldIntValue
+		case flashHotKeyMissCount:
+			m.config.flashHotKeyMissCount = oldIntValue
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
@@ -7236,6 +7257,8 @@ func (m *Server) getConfig(key string) (value string, err error) {
 		value = strconv.Itoa(m.config.flashNodeHandleReadTimeout)
 	case flashNodeReadDataNodeTimeout:
 		value = strconv.Itoa(m.config.flashNodeReadDataNodeTimeout)
+	case flashHotKeyMissCount:
+		value = strconv.Itoa(m.config.flashHotKeyMissCount)
 	default:
 		err = keyNotFound("config")
 	}
