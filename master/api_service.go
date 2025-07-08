@@ -5268,6 +5268,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		ReportTime:                metaNode.ReportTime,
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
+		RdOnly:                    metaNode.RdOnly,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
 		CanAllowPartition:         metaNode.IsWriteAble() && metaNode.PartitionCntLimited(),
 		MaxMpCntLimit:             metaNode.GetPartitionLimitCnt(),
