@@ -11,8 +11,8 @@ import (
 )
 
 type (
-	streamReq  rpc2.AnyCodec[string]
-	streamResp rpc2.AnyCodec[string]
+	streamReq  struct{ rpc2.AnyCodec[string] }
+	streamResp struct{ rpc2.AnyCodec[string] }
 )
 
 func runStream() {

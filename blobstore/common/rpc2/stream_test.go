@@ -15,6 +15,7 @@
 package rpc2
 
 import (
+	"crypto/rand"
 	"io"
 	"testing"
 
@@ -115,4 +116,45 @@ func TestStreamBase(t *testing.T) {
 	cc.CloseSend()
 	<-waitc
 	require.Equal(t, "bbb", trailer.Get("stream-trailer"))
+}
+
+func TestStreamClientClose(t *testing.T) {
+	handler := &Router{}
+	handler.Register("/", handleStreamFull)
+	server, cli, shutdown := newServer("tcp", handler)
+	defer shutdown()
+	sc := StreamClient[streamReq, streamResp]{Client: cli}
+
+	var para strMessage
+	req, err := NewStreamRequest(testCtx, server.Name, "/", &para)
+	require.NoError(t, err)
+
+	cc, err := sc.Streaming(req, &para)
+	require.NoError(t, err)
+
+	errrecv := make(chan error, 1)
+	go func() {
+		for {
+			if _, errx := cc.Recv(); errx != nil {
+				errrecv <- errx
+				return
+			}
+		}
+	}()
+	for idx := range [10]struct{}{} {
+		var req streamReq
+		req.Value = fmt.Sprintf("request-%d", idx)
+		if idx == 7 {
+			buff := make([]byte, 2<<20)
+			rand.Read(buff)
+			req.Value = string(buff)
+			require.ErrorIs(t, cc.Send(&req), ErrFrameHeader)
+			break
+		}
+		require.NoError(t, cc.Send(&req))
+	}
+	err = cc.CloseSend()
+	require.ErrorIs(t, err, ErrFrameHeader)
+	err = <-errrecv
+	require.ErrorIs(t, err, ErrFrameHeader)
 }

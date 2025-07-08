@@ -18,6 +18,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"sync/atomic"
 )
 
 type ClientStream interface {
@@ -125,6 +126,8 @@ type clientStream struct {
 	req     *Request
 	header  Header // response header
 	trailer Header // response trailer
+
+	closed atomic.Value
 }
 
 var _ ClientStream = (*clientStream)(nil)
@@ -142,9 +145,12 @@ func (cs *clientStream) Trailer() Header {
 }
 
 func (cs *clientStream) CloseSend() error {
+	if err := cs.closedError(); err != nil {
+		return err
+	}
 	req := cs.newRequest()
 	req.StreamCmd = StreamCmd_FIN
-	return req.write(req.client.requestDeadline(req.ctx))
+	return cs.closeIfError(req.write(req.client.requestDeadline(req.ctx)))
 }
 
 func (cs *clientStream) SendMsg(a any) error {
@@ -152,15 +158,18 @@ func (cs *clientStream) SendMsg(a any) error {
 	if !is {
 		panic("rpc2: stream send message must implement rpc2.Codec")
 	}
+	if err := cs.closedError(); err != nil {
+		return err
+	}
 
 	req := cs.newRequest()
 	req.StreamCmd = StreamCmd_PSH
 	if _headerCell+req.RequestHeader.Size()+msg.Size() > req.conn.MaxPayloadSize() {
-		return ErrFrameHeader
+		return cs.closeIfError(ErrFrameHeader)
 	}
 	req.ContentLength = int64(msg.Size())
 	req.Body = clientNopBody(NopCloser(Codec2Reader(msg)))
-	return req.write(req.client.requestDeadline(req.ctx))
+	return cs.closeIfError(req.write(req.client.requestDeadline(req.ctx)))
 }
 
 func (cs *clientStream) RecvMsg(a any) (err error) {
@@ -169,31 +178,34 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 		panic("rpc2: stream recv message must implement rpc2.Codec")
 	}
 	conn := cs.req.conn
+	if err = cs.closedError(); err != nil {
+		return
+	}
 
 	var resp ResponseHeader
 	frame, err := readHeaderFrame(cs.Context(), conn, &resp)
 	if err != nil {
-		return err
+		return cs.closeIfError(err)
 	}
 	defer func() {
 		if errClose := frame.Close(); err == nil {
-			err = errClose
+			err = cs.closeIfError(errClose)
 		}
 	}()
 
 	if resp.Status > 0 { // end
 		cs.trailer.Merge(resp.Trailer.ToHeader())
-		cs.req.client.Connector.Put(cs.req.Context(), cs.req.conn, true)
 		if resp.Status != 200 {
-			return NewError(resp.Status, resp.Reason, resp.Error)
+			err = NewError(resp.Status, resp.Reason, resp.Error)
 		}
-		return io.EOF
+		err = io.EOF
+		return cs.closeIfError(err)
 	}
 
 	if int64(frame.Len()) < resp.ContentLength {
-		return ErrFrameHeader
+		return cs.closeIfError(ErrFrameHeader)
 	}
-	return msg.Unmarshal(frame.Bytes(int(resp.ContentLength)))
+	return cs.closeIfError(msg.Unmarshal(frame.Bytes(int(resp.ContentLength))))
 }
 
 func (cs *clientStream) newRequest() *Request {
@@ -208,6 +220,26 @@ func (cs *clientStream) newRequest() *Request {
 	req.client = cs.req.client
 	req.conn = cs.req.conn
 	return req
+}
+
+func (cs *clientStream) closedError() error {
+	if val := cs.closed.Load(); val != nil {
+		return val.(error)
+	}
+	return nil
+}
+
+func (cs *clientStream) closeIfError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if succ := cs.closed.CompareAndSwap(nil, err); succ {
+		// close connection once
+		cs.req.client.Connector.Put(cs.req.Context(), cs.req.conn, true)
+	} else {
+		err = cs.closed.Load().(error)
+	}
+	return err
 }
 
 type serverStream struct {
