@@ -402,6 +402,9 @@ func (c *Cluster) handleFlashNodeScanResp(nodeAddr string, resp *proto.FlashNode
 func (fltMgr *flashManualTaskManager) LoadManualTaskById(id string) (t *proto.FlashManualTask, ok bool) {
 	var tmp interface{}
 	tmp, ok = fltMgr.flashManualTasks.Load(id)
+	if !ok || tmp == nil {
+		return nil, false
+	}
 	t = tmp.(*proto.FlashManualTask)
 	return
 }
