@@ -1979,12 +1979,8 @@ func (partition *DataPartition) resetRestoreMeta(expected uint32) (ok bool) {
 	return
 }
 
-func (partition *DataPartition) rollback(c *Cluster) bool {
+func (partition *DataPartition) rollback(c *Cluster) {
 	var err error
-	if time.Since(partition.DecommissionRetryTime) < defaultDecommissionRetryInternal {
-		log.LogWarnf("[traverse] dp %v should wait for rollback,lastDecommissionRetryTime %v", partition.PartitionID, partition.DecommissionRetryTime)
-		return true
-	}
 	defer func() {
 		c.syncUpdateDataPartition(partition)
 		auditlog.LogMasterOp("DataPartitionDecommissionRollback",
@@ -2004,7 +2000,7 @@ func (partition *DataPartition) rollback(c *Cluster) bool {
 			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
 		partition.DecommissionErrorMessage = fmt.Sprintf("rollback failed:%v", err.Error())
 		partition.DecommissionRetryTime = time.Now()
-		return false
+		return
 	}
 	// err = partition.restoreReplicaMeta(c)
 	// if err != nil {
@@ -2027,7 +2023,6 @@ func (partition *DataPartition) rollback(c *Cluster) bool {
 		partition.DecommissionDstAddr = ""
 	}
 	log.LogWarnf("action[rollback]dp[%v] rollback success", partition.PartitionID)
-	return false
 }
 
 func (partition *DataPartition) addToDecommissionList(c *Cluster) {
@@ -2110,9 +2105,13 @@ func (partition *DataPartition) tryRollback(c *Cluster) (bool, bool) {
 	if !partition.needRollback(c) {
 		return false, false
 	}
+	if time.Since(partition.DecommissionRetryTime) < defaultDecommissionRetryInternal {
+		log.LogWarnf("[traverse] dp %v should wait for rollback,lastDecommissionRetryTime %v", partition.PartitionID, partition.DecommissionRetryTime)
+		return true, true
+	}
 	atomic.AddUint32(&partition.DecommissionNeedRollbackTimes, 1)
-	skip := partition.rollback(c)
-	return true, skip
+	partition.rollback(c)
+	return true, false
 }
 
 func (partition *DataPartition) IsRollbackFailed() bool {
