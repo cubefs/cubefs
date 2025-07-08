@@ -228,7 +228,7 @@ func (c *Cluster) CleanEmptyMetaPartition(mp *MetaPartition) error {
 		}
 		_, err = metaNode.Sender.syncSendAdminTask(task)
 		if err != nil {
-			log.LogErrorf("action[FreezeEmptyMetaPartition] meta partition(%d), err: %s", mp.PartitionID, err.Error())
+			log.LogErrorf("action[CleanEmptyMetaPartition] meta partition(%d), err: %s", mp.PartitionID, err.Error())
 			continue
 		}
 	}
@@ -354,6 +354,9 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 			zoneView.NodeSet[ns.ID] = nsView
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
+				if !canAllocPartition(metaNode) {
+					return true
+				}
 				nodeMemRatio = CaculateNodeMemoryRatio(metaNode)
 				if metaNode.Ratio <= gConfig.metaNodeMemLowPer && nodeMemRatio <= gConfig.metaNodeMemLowPer {
 					mnView := c.MetaNodeRecord(metaNode)
@@ -1233,6 +1236,9 @@ func (c *Cluster) VerifyMetaNodeExceedMemMid(addr string) (bool, error) {
 		log.LogErrorf("Failed to get meta node(%s): err: %s", addr, err.Error())
 		return false, err
 	}
+	if !canAllocPartition(metaNode) {
+		return true, nil
+	}
 	nodeMemRatio := CaculateNodeMemoryRatio(metaNode)
 	if metaNode.Ratio >= gConfig.metaNodeMemMidPer || nodeMemRatio >= gConfig.metaNodeMemMidPer {
 		return true, nil
@@ -1640,7 +1646,7 @@ func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo,
 		log.LogErrorf("metapartition[%d] has no leader", mp.PartitionID)
 		return err
 	}
-	return fmt.Errorf("after change leader %d times, it is still is %s. source: %s", CheckMetaLeaderRetry, leader.Addr, mrPlan.Source)
+	return fmt.Errorf("Try to change leader failed. leader: %s, migrate source: %s", leader.Addr, mrPlan.Source)
 }
 
 func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition) string {
