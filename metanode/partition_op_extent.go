@@ -460,7 +460,12 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 			resp.Size = vIno.Size
 		}
 	} else {
-		if req.IsMigration {
+		if req.IsCache || proto.IsStorageClassBlobStore(ino.StorageClass) {
+			ino.DoReadFunc(func() {
+				resp.Generation = ino.Generation
+				resp.Size = ino.Size
+			})
+		} else if req.IsMigration {
 			if !proto.IsStorageClassReplica(ino.HybridCloudExtentsMigration.storageClass) {
 				// if HybridCloudExtentsMigration store no migration data, ignore this error
 				if !(ino.HybridCloudExtentsMigration.storageClass == proto.StorageClass_Unspecified &&
