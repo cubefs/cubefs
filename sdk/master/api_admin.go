@@ -609,7 +609,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	distributionOptimizationConDpCnt, distributionOptimizationThreshold string,
 	remoteCacheTTL string, remoteCacheReadTimeout string,
 	remoteCacheMultiRead string, flashNodeTimeoutCount string,
-	remoteCacheSameZoneTimeout string, remoteCacheSameRegionTimeout string,
+	remoteCacheSameZoneTimeout string, remoteCacheSameRegionTimeout string, flashHotKeyMissCount string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -682,6 +682,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if distributionOptimizationThreshold != "" {
 		request.addParam("distributionOptimizationThreshold", distributionOptimizationThreshold)
+	}
+	if flashHotKeyMissCount != "" {
+		request.addParam("flashHotKeyMissCount", flashHotKeyMissCount)
 	}
 	// remoteCache config
 	if remoteCacheTTL != "" {

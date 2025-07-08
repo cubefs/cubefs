@@ -134,6 +134,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[cfgFlashNodeHandleReadTimeout] = val
 	}
 
+	if value = r.FormValue(cfgFlashHotKeyMissCount); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(cfgFlashHotKeyMissCount)
+			return
+		}
+		params[cfgFlashHotKeyMissCount] = val
+	}
+
 	if value = r.FormValue(cfgFlashNodeReadDataNodeTimeout); value != "" {
 		noParams = false
 		val := int64(0)

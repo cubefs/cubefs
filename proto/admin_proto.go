@@ -841,6 +841,7 @@ type TxInfos struct {
 type FlashNodeHeartBeatInfos struct {
 	FlashNodeHandleReadTimeout   int
 	FlashNodeReadDataNodeTimeout int
+	FlashHotKeyMissCount         int
 }
 
 // HeartBeatRequest define the heartbeat request.

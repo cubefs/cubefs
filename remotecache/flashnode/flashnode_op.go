@@ -23,6 +23,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -120,6 +121,9 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err == nil {
 		f.SetTimeout(req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout)
+		if req.FlashHotKeyMissCount != 0 {
+			f.hotKeyMissCount = int32(req.FlashHotKeyMissCount)
+		}
 	} else {
 		log.LogWarnf("decode HeartBeatRequest error: %s", err.Error())
 		resp.Status = proto.TaskFailed
@@ -162,8 +166,8 @@ end:
 	adminTask.Response = resp
 	f.respondToMaster(adminTask)
 	if log.EnableInfo() {
-		log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout %v(ms) readDataNodeTimeout %v(ms)",
-			conn.RemoteAddr().String(), req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout)
+		log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout %v(ms) readDataNodeTimeout %v(ms) hotkeymisscount %v",
+			conn.RemoteAddr().String(), req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout, req.FlashHotKeyMissCount)
 	}
 	return
 }
@@ -419,7 +423,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 }
 
 func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error) {
-	var key string
+	var uniKey string
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("FlashNode:opCacheObjectGet", err, bgTime, 1)
@@ -429,11 +433,11 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 	defer func() {
 		if err != nil {
 			if !proto.IsFlashNodeLimitError(err) {
-				log.LogWarnf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, key,
+				log.LogWarnf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, uniKey,
 					p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 			} else {
 				if log.EnableDebug() {
-					log.LogDebugf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, key,
+					log.LogDebugf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, uniKey,
 						p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 				}
 			}
@@ -456,7 +460,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 		log.LogDebugf("opCacheObjectGet req(%v) id(%v) begin", req, reqID)
 	}
 
-	uniKey := req.Key
+	uniKey = req.Key
 	pDir := cachengine.MapKeyToDirectory(uniKey)
 	blockKey := cachengine.GenCacheBlockKeyV2(pDir, uniKey)
 
@@ -464,7 +468,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 	block, err := f.cacheEngine.GetCacheBlockForReadByKey(blockKey)
 	if err != nil {
 		// if not find block, check whether should cache
-		err = f.shouldCache(key)
+		err = f.shouldCache(uniKey)
 		return
 	}
 
@@ -988,9 +992,9 @@ func (f *FlashNode) shouldCache(key string) error {
 	if cm == nil {
 		count = f.missCache.Increment(key)
 	} else {
-		count = cachengine.AtomicLoadAndAddWithCAS(&cm.MissCount)
+		count = atomic.AddInt32(&cm.MissCount, 1)
 	}
-	if count == _defaultMissCountThresholdInterval {
+	if count == f.hotKeyMissCount {
 		return fmt.Errorf("%v, now hit %v", proto.ErrorNotExistShouldCache.Error(), count)
 	} else {
 		return fmt.Errorf("%v, now hit %v", proto.ErrorNotExistShouldNotCache.Error(), count)

@@ -90,6 +90,7 @@ type clusterValue struct {
 	FlashNodeHandleReadTimeout             int
 	FlashNodeReadDataNodeTimeout           int
 	RackAwareLevel                         uint8
+	FlashHotKeyMissCount                   int
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -145,6 +146,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FlashNodeHandleReadTimeout:             c.cfg.flashNodeHandleReadTimeout,
 		FlashNodeReadDataNodeTimeout:           c.cfg.flashNodeReadDataNodeTimeout,
 		RackAwareLevel:                         uint8(c.cfg.RackAwareLevel),
+		FlashHotKeyMissCount:                   c.cfg.flashHotKeyMissCount,
 	}
 	return cv
 }
@@ -1460,9 +1462,15 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.FlashNodeReadDataNodeTimeout == 0 {
 			cv.FlashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
 		}
+
+		if cv.FlashHotKeyMissCount == 0 {
+			cv.FlashHotKeyMissCount = defaultFlashHotKeyMissCount
+		}
+		c.cfg.flashHotKeyMissCount = cv.FlashHotKeyMissCount
+
 		c.cfg.flashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
-		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms)",
-			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout)
+		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout %v(ms), flashHotKeyMissCount %v",
+			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount)
 	}
 
 	return

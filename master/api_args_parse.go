@@ -1607,6 +1607,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[flashNodeHandleReadTimeout] = val
 	}
 
+	if value = r.FormValue(flashHotKeyMissCount); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(flashHotKeyMissCount)
+			return
+		}
+		params[flashHotKeyMissCount] = val
+	}
+
 	if value = r.FormValue(flashNodeReadDataNodeTimeout); value != "" {
 		noParams = false
 		val := int64(0)
@@ -2223,6 +2234,7 @@ func parseSetConfigParam(r *http.Request) (config map[string]string, err error) 
 		flashNodeHandleReadTimeout,
 		flashNodeReadDataNodeTimeout,
 		cfsMpMigrateThreads,
+		flashHotKeyMissCount,
 	}
 	for _, val := range keyList {
 		key := val

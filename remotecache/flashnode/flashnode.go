@@ -173,9 +173,10 @@ type FlashNode struct {
 	waitForCacheBlock            bool
 	prepareLoadRoutineNum        int
 
-	slotMap   sync.Map // [uint32]*SlotStat
-	readCount uint64
-	missCache *cachengine.MissCache
+	slotMap         sync.Map // [uint32]*SlotStat
+	readCount       uint64
+	missCache       *cachengine.MissCache
+	hotKeyMissCount int32
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -272,7 +273,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if f.readRps < 0 {
 		f.readRps = _defaultReadBurst
 	}
-
+	f.hotKeyMissCount = _defaultMissCountThresholdInterval
 	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
 	percent := cfg.GetFloat(cfgCachePercent)
 	f.diskWriteIocc = cfg.GetInt(cfgDiskWriteIocc)

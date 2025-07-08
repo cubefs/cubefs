@@ -79,17 +79,7 @@ func (mc *MissCache) Increment(key string) int32 {
 		mc.cache[cme.UniKey] = element
 		return 1
 	}
-	return AtomicLoadAndAddWithCAS(&info.MissCount)
-}
-
-func AtomicLoadAndAddWithCAS(addr *int32) int32 {
-	for {
-		old := atomic.LoadInt32(addr)
-		newVal := old + 1
-		if atomic.CompareAndSwapInt32(addr, old, newVal) {
-			return newVal
-		}
-	}
+	return atomic.AddInt32(&info.MissCount, 1)
 }
 
 func (mc *MissCache) Get(uniKey string) *proto.CacheMissEntry {

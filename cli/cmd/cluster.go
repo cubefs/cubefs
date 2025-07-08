@@ -300,6 +300,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 
 	optRcTTL := ""
 	optRcReadTimeout := ""
+	optFlashHotKeyMissCount := ""
 	optRemoteCacheMultiRead := ""
 	optFlashNodeTimeoutCount := ""
 	optRemoteCacheSameZoneTimeout := ""
@@ -504,6 +505,16 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
+			if optFlashHotKeyMissCount != "" {
+				if tmp, err = strconv.ParseInt(optFlashHotKeyMissCount, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optFlashHotKeyMissCount)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("param flashHotKeyMissCount(%v) must greater than 0", optFlashHotKeyMissCount)
+					return
+				}
+			}
 			if optRemoteCacheMultiRead != "" {
 				if _, err = strconv.ParseBool(optRemoteCacheMultiRead); err != nil {
 					err = fmt.Errorf("param remoteCacheMultiRead(%v) should be true or false", optRemoteCacheMultiRead)
@@ -549,7 +560,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware,
 				distributionOptimizationConDpCnt, distributionOptimizationThreshold,
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout); err != nil {
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -594,6 +605,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, "", "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value")
 	cmd.Flags().StringVar(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, "", "Remote cache same zone timeout microsecond(must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, "", "Remote cache same region timeout millisecond(must > 0)")
+	cmd.Flags().StringVar(&optFlashHotKeyMissCount, CliFlagFlashHotKeyMissCount, "", "Flash hot key miss count(must > 0)")
 
 	return cmd
 }
