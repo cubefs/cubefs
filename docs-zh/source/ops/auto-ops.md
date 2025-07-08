@@ -244,16 +244,20 @@ DP_ID       VOLUME      REPLICAS    DP_STATUS    MEMBERS
 [root]# ./cfs-cli datanode info 192.168.66.77:17310  
 [Data node info]
 ...
+AllDisks            : []
 Bad disks           : []
+Lost disks          : []
 Decommissioned disks: []
 DecommissionSuccess disks: []
-Persist partitions  :[]
-Backup partitions  : []
+Persist partitions  : []
+Backup partitions   : []
 ```
 
+- AllDisks: 当前节点上所有已加载的磁盘列表。
 - Bad disks: 当前节点上的坏盘列表。
-- Decommissioned disks: 当前节点上已经被执行下线的磁盘列表。这部分磁盘无法再创建新的dp，如果想解禁这部分磁盘使其重新可以创建dp，可以通过以下接口: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1&recommissionType=decommissioned" | jq .`
-- DecommissionSuccess disks: 当前节点上已经下线成功的磁盘列表。这部分磁盘在 DataNode info 中的记录在下线磁盘成功后会保留，等运维人员在换完坏盘后，可以通过以下接口消除: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1&recommissionType=decommissionSuccess" | jq .`
+- Lost disks: 当前节点上的掉盘列表。
+- Decommissioned disks: 当前节点上已经被执行下线的磁盘列表，这部分磁盘无法再创建新的dp。
+- DecommissionSuccess disks: 当前节点上已经下线成功的磁盘列表，这部分磁盘在运维中用于告警指标，来提示运维人员换盘。
 - Persist partitions :当前节点上的dp列表。
 - Backup partitions：当前节点上，通过raftForce删除的dp的备份目录。这部分目录会定期删除，也可以提前人工删除释放空间。
 
@@ -295,12 +299,16 @@ Backup partitions  : []
 
 可以通过 /dataPartition/resetDecommissionStatus 接口将上述变量都重置为初始值，在某些情况下可以解决 dp 多次下线失败的问题。
 
-### 4.8 故障盘恢复
+### 4.8 故障盘恢复和换盘后操作
 
-坏盘经过人工修复后，可以通过如果下接口进行重置，即可以重新创建新的dp：
+- 坏盘经过人工修复 (非迁移或下线操作) 后，如果需要继续使用该磁盘，可以通过recoverBadDisk接口进行重置，作用是消除磁盘错误计数，重新加载磁盘上的 dp, 并消除 Bad disks 中的记录：
 ```
 curl -v "http://192.168.66.77:17010/disk/recoverBadDisk?addr=datanodeAddr:17310&disk=/home/service/var/data1" | jq .  
 ```
+
+- 坏盘经过迁移流程下线，在运维人员更换新盘后，假设新盘也挂载至原磁盘路径，新盘会报Lost,可以重启data节点或是执行reloadDisk命令重新加载磁盘: `curl "http://172.16.1.101:17010/disk/reloadDisk?addr=172.16.1.101:17310&disk=/home/data/data1/disk"`.reloadDisk接口可避免重启节点导致影响到其他磁盘，同时也会将磁盘路径从DecommissionSuccess和Decommissioned列表中删除,。而如果用重启来加载磁盘，需要手动执行recommmission命令手动将磁盘从DecommissionSuccess和Decommissioned列表中删除，代表重新上线磁盘: `curl "http://172.16.1.101:17010/disk/recommission?addr=172.16.1.101:17310&disk=/home/data/data1/disk"`。
+
+
 
 ### 4.9 副本修复过程卡住
 
@@ -329,3 +337,9 @@ curl -v "http://192.168.66.77:17010/disk/recoverBadDisk?addr=datanodeAddr:17310&
 ```
 curl localhost:17320/reloadDataPartition?id=分区id
 ```
+
+### 4.11 磁盘掉盘
+
+- 在集群运行过程中或是DataNode节点启动过程中发生掉盘，磁盘会被标记为Lost disk, 仍会加载到缓存中。用cli查看DataNode info可以看到Lost disks的记录。重新mount disk即可恢复正常。
+- 特殊情况为下线完成后换新盘，新盘报Lost的情况下，需要执行reloadDisk接口或重启DataNode节点来重新加载磁盘。
+

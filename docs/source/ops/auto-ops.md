@@ -244,16 +244,20 @@ You can view the status of the node through cfs-cli datanode info:
 [root]# ./cfs-cli datanode info 192.168.66.77:17310  
 [Data node info]
 ...
-Bad disks : []
+AllDisks            : []
+Bad disks           : []
+Lost disks          : []
 Decommissioned disks: []
 DecommissionSuccess disks: []
-Persist partitions :[]
-Backup partitions : []
+Persist partitions : []
+Backup partitions  : []
 ```
 
+- AllDisks: List of all disks that are currently loaded on the node.
 - Bad disks: List of bad disks on the current node.
-- Decommissioned disks: List of disks that have been executed decommission on the current node. These disks can no longer create new dp. If you want to uncommission these disks so that they can create dp again, you can use the following interface: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1&&recommissionType=decommissioned" | jq .`
-- DecommissionSuccess disks: List of disks that have been successfully decommissioned on the current node. The records of these disks in DataNode info will be retained after the disks are successfully decommissioned. After the maintenance personnel replace the bad disks, they can eliminate the records through the following interface: `curl -v "http://master:17010/disk/recommission?addr=192.168.66.77:17310&disk=/home/service/var/data1&&recommissionType=decommissionSuccess" | jq .`
+- Lost disks: List of disks that have been lost on the current node
+- Decommissioned disks: List of disks that have been executed decommission on the current node. These disks can no longer create new dp. 
+- DecommissionSuccess disks: List of disks that have been successfully decommissioned on the current node, used as an alarm indicator in operations and maintenance to prompt maintenance personnel to replace the disks. 
 - Persist partitions: dp list on the current node.
 - Backup partitions: The backup directory of dp deleted by raftForce on the current node. This directory will be deleted regularly, and can also be manually deleted in advance to free up space.
 
@@ -297,10 +301,12 @@ The above variables can be reset to their initial values ​​through the /data
 
 ### 4.8 Faulty disk recovery
 
-After the bad disk is repaired manually, it can be reset through the following interface, that is, a new dp can be recreated:
+- If a bad disk has been manually repaired (not through a migration or decommission operation) and needs to be reused, the recoverBadDisk interface can be used to reset it. This action clears the disk error count, reloads the data partitions (dp) on the disk, and removes the record from the Bad disks list:
 ```
 curl -v "http://192.168.66.77:17010/disk/recoverBadDisk?addr=datanodeAddr:17310&disk=/home/service/var/data1" | jq .  
 ```
+
+- If a bad disk has been taken offline through a migration process, and after the maintenance personnel replace it with a new disk (assuming the new disk is mounted to the same original path), the new disk may be reported as Lost. In this case, you can restart the data node or execute the reloadDisk command to reload the disk: `curl "http://172.16.1.101:17010/disk/reloadDisk?addr=172.16.1.101:17310&disk=/home/data/data1/disk"`.The reloadDisk interface avoids the impact on other disks that might occur from restarting the node. It also removes the disk path from the DecommissionSuccess and Decommissioned lists.If you choose to reload the disk by restarting the node, you will need to manually execute the recommission command to remove the disk from the DecommissionSuccess and Decommissioned lists, effectively bringing the disk back online: `curl "http://172.16.1.101:17010/disk/recommission?addr=172.16.1.101:17310&disk=/home/data/data1/disk"`.
 
 ### 4.9 The replica repair process is stuck
 
@@ -329,3 +335,9 @@ In this case, you can perform a reload operation on the node where the leader of
 ```
 curl localhost:17320/reloadDataPartition?id=partition id
 ```
+
+ ### 4.11 Disk Lost
+
+- During the operation of the cluster or during the startup process of the DataNode, if a disk is lost, it will be marked as a Lost disk and will still be loaded into the cache. You can view the record of Lost disks by checking the DataNode info using the CLI. Remounting the disk will restore it to normal.
+
+- In special cases, such as when a new disk is used after the decommission process is completed and the new disk is reported as Lost, it is necessary to execute the `reloadDisk` interface or restart the DataNode to reload the disk.
