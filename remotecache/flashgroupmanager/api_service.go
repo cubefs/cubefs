@@ -59,6 +59,7 @@ func (m *FlashGroupManager) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashNodes:                   make([]proto.NodeView, 0),
 		FlashNodeHandleReadTimeout:   m.cluster.cfg.FlashNodeHandleReadTimeout,
 		FlashNodeReadDataNodeTimeout: m.cluster.cfg.FlashNodeReadDataNodeTimeout,
+		FlashHotKeyMissCount:         m.cluster.cfg.FlashHotKeyMissCount,
 		RemoteCacheTTL:               m.config.RemoteCacheTTL,
 		RemoteCacheReadTimeout:       m.config.RemoteCacheReadTimeout,
 		RemoteCacheMultiRead:         m.config.RemoteCacheMultiRead,
@@ -763,6 +764,15 @@ func (m *FlashGroupManager) setNodeInfoHandler(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	if val, ok := params[cfgFlashHotKeyMissCount]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(cfgFlashHotKeyMissCount, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 }
 
@@ -770,6 +780,7 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 	var (
 		fnHandleReadTimeout          int
 		fnReadDataNodeTimeout        int
+		flashHotKeyMissCount         int
 		remoteCacheTTL               int64
 		remoteCacheReadTimeout       int64
 		remoteCacheMultiRead         bool
@@ -846,6 +857,13 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		}
 		oldInt64Value = m.config.RemoteCacheSameRegionTimeout
 		m.config.RemoteCacheSameRegionTimeout = remoteCacheSameRegionTimeout
+	case cfgFlashHotKeyMissCount:
+		flashHotKeyMissCount, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		oldIntValue = m.config.FlashHotKeyMissCount
+		m.config.FlashHotKeyMissCount = flashHotKeyMissCount
 
 	default:
 		err = keyNotFound("config")
@@ -870,6 +888,8 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 			m.config.RemoteCacheSameZoneTimeout = oldInt64Value
 		case cfgRemoteCacheSameRegionTimeout:
 			m.config.RemoteCacheSameRegionTimeout = oldInt64Value
+		case cfgFlashHotKeyMissCount:
+			m.config.FlashHotKeyMissCount = oldIntValue
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err

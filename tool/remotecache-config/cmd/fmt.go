@@ -30,6 +30,7 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  FlashNodeTimeoutCount            : %v\n", cv.FlashNodeTimeoutCount))
 	sb.WriteString(fmt.Sprintf("  RemoteCacheSameZoneTimeout       : %v microsecond\n", cv.RemoteCacheSameZoneTimeout))
 	sb.WriteString(fmt.Sprintf("  RemoteCacheSameRegionTimeout     : %v millisecond\n", cv.RemoteCacheSameRegionTimeout))
+	sb.WriteString(fmt.Sprintf("  FlashHotKeyMissCount             : %v\n", cv.FlashHotKeyMissCount))
 	return sb.String()
 }
 
