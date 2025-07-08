@@ -240,9 +240,15 @@ func (c *Cluster) addAndSyncDecommissionedDisk(dataNode *DataNode, diskPath stri
 }
 
 func (c *Cluster) deleteAndSyncDecommissionedDisk(dataNode *DataNode, diskPath string) (exist bool, err error) {
-	if exist = dataNode.deleteDecommissionedDisk(diskPath); !exist {
+	if _, exist = dataNode.DecommissionedDisks.Load(diskPath); !exist {
 		return
 	}
+	// if diskPath exist in decommissionSuccessDisk list, can't delete from decommissionedDisk list
+	if _, exist2 := dataNode.DecommissionSuccessDisks.Load(diskPath); exist2 {
+		log.LogWarnf("action[deleteAndSyncDecommissionedDisk] disk[%v] exist in decommissionSuccessDisk list, cant't delete from decommissionedDisk list", diskPath)
+		return
+	}
+	dataNode.deleteDecommissionedDisk(diskPath)
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
 		dataNode.addDecommissionedDisk(diskPath)
 		log.LogWarnf("action[deleteAndSyncDecommissionedDisk]submit raft failed: %v, delete disks[%v], dataNode[%v]",
