@@ -1615,6 +1615,7 @@ func convertStructToJson(low map[string]*proto.ZonePressureView) string {
 }
 
 func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition) error {
+	var newLeader string
 	for i := 0; i < CheckMetaLeaderRetry; i++ {
 		leader, err := mp.getMetaReplicaLeader()
 		if err != nil {
@@ -1628,7 +1629,7 @@ func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo,
 		}
 
 		// try to change leader.
-		newLeader := selectOneLeaderAddr(mrPlan, mpPlan, mp)
+		newLeader = selectOneLeaderAddr(mrPlan, mpPlan, mp, newLeader)
 		if newLeader == "" {
 			err = fmt.Errorf("selectOneLeaderAddr mp[%d] source: %s failed", mp.PartitionID, mrPlan.Source)
 			log.LogErrorf(err.Error())
@@ -1646,10 +1647,10 @@ func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo,
 		log.LogErrorf("metapartition[%d] has no leader", mp.PartitionID)
 		return err
 	}
-	return fmt.Errorf("Try to change leader failed. leader: %s, migrate source: %s", leader.Addr, mrPlan.Source)
+	return fmt.Errorf("Try to change leader to %s failed. leader: %s, migrate source: %s", newLeader, leader.Addr, mrPlan.Source)
 }
 
-func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition) string {
+func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition, leader string) string {
 	// Select one address which is not in the meta partition plan.
 	for _, replica := range mp.Replicas {
 		isSelected := true
@@ -1659,14 +1660,14 @@ func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalanceP
 				break
 			}
 		}
-		if isSelected {
+		if isSelected && replica.Addr != leader {
 			return replica.Addr
 		}
 	}
 
 	// Select one address which is not the current source address.
 	for _, replica := range mp.Replicas {
-		if mrPlan.Source != replica.Addr {
+		if mrPlan.Source != replica.Addr && replica.Addr != leader {
 			return replica.Addr
 		}
 	}
