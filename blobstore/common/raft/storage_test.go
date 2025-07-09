@@ -117,6 +117,52 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 		require.Equal(t, entris[0].Index, entry.Index)
 	}
 
+	// test Entries limit max size
+	{
+		entry1 := raftpb.Entry{Term: 1, Index: 1}
+		rawEntry1, err := entry1.Marshal()
+		require.NoError(t, err)
+
+		entry2 := raftpb.Entry{Term: 1, Index: 2}
+		rawEntry2, err := entry2.Marshal()
+		require.NoError(t, err)
+
+		mockValueGetter := NewMockValGetter(ctrl)
+		mockValueGetter.EXPECT().Value().Return(rawEntry1)
+		mockValueGetter.EXPECT().Value().Return(rawEntry2)
+		mockValueGetter.EXPECT().Close().Return().Times(2)
+
+		mockKeyGetter := NewMockKeyGetter(ctrl)
+		mockKeyGetter.EXPECT().Close().Return().Times(2)
+		mockKeyGetter.EXPECT().Key().Return(EncodeIndexLogKey(cfg.id, entry1.Index)).Times(2)
+		mockKeyGetter.EXPECT().Key().Return(EncodeIndexLogKey(cfg.id, entry2.Index)).Times(2)
+
+		mockIter.EXPECT().SeekTo(gomock.Any()).Return()
+		mockIter.EXPECT().ReadNext().Return(mockKeyGetter, mockValueGetter, nil).Times(2)
+		mockStorage.EXPECT().Iter(gomock.Any()).Return(mockIter)
+		mockIter.EXPECT().Close().Return()
+
+		maxSize := uint64(entry1.Size() + entry2.Size() - 1)
+		entris, err := s.Entries(1, 100, maxSize)
+		require.NoError(t, err)
+		require.Len(t, entris, 1)
+	}
+
+	// test Entries limit max size cache
+	{
+		entry1 := raftpb.Entry{Term: 1, Index: 1}
+		entry2 := raftpb.Entry{Term: 1, Index: 2}
+		entry3 := raftpb.Entry{Term: 1, Index: 3}
+
+		s.caches.put([]raftpb.Entry{entry1, entry2, entry3})
+
+		maxSize := uint64(entry1.Size() + entry2.Size() + entry3.Size() - 1)
+		entris, err := s.Entries(1, 100, uint64(maxSize))
+		require.NoError(t, err)
+		require.Len(t, entris, 2)
+		s.caches = newEntryCache(defaultCachedEntryNum)
+	}
+
 	// test FirstIndex
 	{
 		mockIter := NewMockIterator(ctrl)

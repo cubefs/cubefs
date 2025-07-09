@@ -459,6 +459,7 @@ func (t *Transport) processQueue(
 			}
 			start := time.Now()*/
 
+			budget -= req.Size()
 			batch.Requests = append(batch.Requests, *req)
 			req.Release()
 			// pull off as many queued requests as possible

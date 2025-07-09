@@ -141,7 +141,7 @@ func (s *storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	}
 
 	// get from caches firstly
-	entries := s.caches.getFrom(lo, hi)
+	entries := s.caches.getFrom(lo, hi, maxSize)
 	if entries != nil {
 		// log.Printf("get from caches: %d-%d, enties: %+v, len: %d\n", lo, hi, entries, len(entries))
 		return entries, nil
@@ -153,6 +153,7 @@ func (s *storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	iter.SeekTo(EncodeIndexLogKey(s.id, lo))
 	defer iter.Close()
 
+	size := uint64(0)
 	ret := make([]raftpb.Entry, 0)
 	for {
 		keyGetter, valGetter, err := iter.ReadNext()
@@ -182,11 +183,12 @@ func (s *storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 		}
 		keyGetter.Close()
 		valGetter.Close()
-		ret = append(ret, *entry)
 
-		if uint64(len(ret)) == maxSize {
+		size += uint64(entry.Size())
+		if size >= maxSize && len(ret) > 0 {
 			break
 		}
+		ret = append(ret, *entry)
 	}
 
 	if len(ret) == 0 || ret[0].Index != lo {
@@ -636,7 +638,7 @@ func (r *entryCache) get(index uint64) (entry raftpb.Entry) {
 	return
 }
 
-func (r *entryCache) getFrom(lo, hi uint64) (ret []raftpb.Entry) {
+func (r *entryCache) getFrom(lo, hi, maxSize uint64) (ret []raftpb.Entry) {
 	if r.head == r.tail {
 		return nil
 	}
@@ -649,8 +651,14 @@ func (r *entryCache) getFrom(lo, hi uint64) (ret []raftpb.Entry) {
 	if r.data[i].Index != lo {
 		return
 	}
+
+	size := uint64(0)
 	for {
 		if r.data[i].Index < hi && r.data[i].Index >= lo {
+			size += uint64(r.data[i].Size())
+			if size >= maxSize && len(ret) > 0 {
+				break
+			}
 			ret = append(ret, r.data[i])
 		}
 		if r.data[i].Index >= hi {
