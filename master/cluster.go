@@ -5017,6 +5017,43 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	auditlog.LogMasterOp("DataNodeDecommission", msg, nil)
 }
 
+func (c *Cluster) checkZoneDataMediaTypeForDecommission(srcAddr string, dstNodeSetID uint64) (err error) {
+	var srcNode *DataNode
+	var srcZone *Zone
+	var dstNodeSet *nodeSet
+	var dstZone *Zone
+
+	srcNode, err = c.dataNode(srcAddr)
+	if err != nil {
+		log.LogErrorf("[CheckZoneDataMediaTypeForDecommission] get srcNode(%v) failed: %v", srcAddr, err.Error())
+		return
+	}
+	srcZone, err = c.t.getZone(srcNode.ZoneName)
+	if err != nil {
+		log.LogErrorf("[CheckZoneDataMediaTypeForDecommission] get srcZone(%v) err: %v", srcNode.ZoneName, err.Error())
+		return
+	}
+
+	if dstNodeSet, err = c.t.getNodeSetByNodeSetId(dstNodeSetID); err != nil {
+		log.LogErrorf("[CheckZoneDataMediaTypeForDecommission] get dstNodeSet(%v) failed: %v", dstNodeSetID, err.Error())
+		return
+	}
+	dstZone, err = c.t.getZone(dstNodeSet.zoneName)
+	if err != nil {
+		log.LogErrorf("[CheckZoneDataMediaTypeForDecommission] get dstZone(%v) failed: %v", dstNodeSet.zoneName, err.Error())
+		return
+	}
+
+	if dstZone.GetDataMediaType() != srcZone.GetDataMediaType() {
+		err = fmt.Errorf("dstZone dataMediaType(%v) not match srcZone dataMediaType(%v)",
+			proto.MediaTypeString(dstZone.dataMediaType), proto.MediaTypeString(srcZone.dataMediaType))
+		log.LogErrorf("[CheckZoneDataMediaTypeForDecommission] %v", err.Error())
+		return
+	}
+
+	return nil
+}
+
 func (c *Cluster) checkDataNodesMediaTypeForMigrate(srcNode *DataNode, dstAddr string) (err error) {
 	var dstNode *DataNode
 
