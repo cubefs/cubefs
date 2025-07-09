@@ -1325,8 +1325,8 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	}
 
 	if dstNodeSetID != 0 {
-		if _, err = c.t.getNodeSetByNodeSetId(dstNodeSetID); err != nil {
-			log.LogErrorf("[MarkDecommissionStatus] check dstNodeSetID(%v) err: %v", dstNodeSetID, err.Error())
+		if err = c.checkZoneDataMediaTypeForDecommission(srcAddr, dstNodeSetID); err != nil {
+			log.LogErrorf("[MarkDecommissionStatus] partitionID: %v check dataMediaType err: %v", partition.PartitionID, err.Error())
 			return
 		}
 	}
