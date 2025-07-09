@@ -1083,6 +1083,13 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			continue
 		}
 
+		if checkPlanSourceChanged(mpPlan, mp) {
+			err = fmt.Errorf("skip rebalance meta partition(%d) because source changed", mpPlan.ID)
+			log.LogWarnf(err.Error())
+			mpPlan.Msg = err.Error()
+			continue
+		}
+
 		err = c.waitForMetaPartitionReady(mp)
 		if err != nil {
 			log.LogErrorf("waitForMetaPartitionReady err: %s", err.Error())
@@ -1124,6 +1131,13 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			err = c.changeAndCheckMetaPartitionLeader(mrPlan, mpPlan, mp)
 			if err != nil {
 				log.LogErrorf("changeAndCheckMetaPartitionLeader error: %s", err.Error())
+				c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())
+				return
+			}
+
+			if verifyDestinationInMetaReplicas(mp, mrPlan.Destination) {
+				err = fmt.Errorf("destination %s is in mpid(%d) meta replicas[%v]", mrPlan.Destination, mp.PartitionID, mp.Hosts)
+				log.LogErrorf(err.Error())
 				c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())
 				return
 			}
@@ -1716,4 +1730,31 @@ func (c *Cluster) GetMpCountByMetaNode(addr string) int {
 		}
 	}
 	return ret
+}
+
+func checkPlanSourceChanged(mpPlan *proto.MetaBalancePlan, mp *MetaPartition) bool {
+	for _, item := range mpPlan.Original {
+		found := false
+		for _, mr := range mp.Replicas {
+			if mr.Addr == item.Source {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return true
+		}
+	}
+
+	return false
+}
+
+func verifyDestinationInMetaReplicas(mp *MetaPartition, dst string) bool {
+	for _, item := range mp.Replicas {
+		if item.Addr == dst {
+			return true
+		}
+	}
+
+	return false
 }
