@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetMigrateDestAddr(t *testing.T) {
@@ -1880,4 +1881,42 @@ func TestGetMetaNodePressureView(t *testing.T) {
 	if err == nil {
 		t.Errorf("GetMetaNodePressureView returned an unexpected plan")
 	}
+}
+
+func TestCheckPlanSourceChanged(t *testing.T) {
+	mp := &MetaPartition{
+		Replicas: []*MetaReplica{
+			{Addr: "node1"},
+			{Addr: "node2"},
+			{Addr: "node3"},
+		},
+	}
+	mpPlan := &proto.MetaBalancePlan{
+		Original: []*proto.MrBalanceInfo{
+			{Source: "node1"},
+			{Source: "node2"},
+			{Source: "node3"},
+		},
+	}
+	ret := checkPlanSourceChanged(mpPlan, mp)
+	require.False(t, ret)
+
+	mpPlan.Original[0].Source = "node4"
+	ret = checkPlanSourceChanged(mpPlan, mp)
+	require.True(t, ret)
+}
+
+func TestVerifyDestinationInMetaReplicas(t *testing.T) {
+	mp := &MetaPartition{
+		Replicas: []*MetaReplica{
+			{Addr: "node1"},
+			{Addr: "node2"},
+			{Addr: "node3"},
+		},
+	}
+	ret := verifyDestinationInMetaReplicas(mp, "node1")
+	require.True(t, ret)
+
+	ret = verifyDestinationInMetaReplicas(mp, "node4")
+	require.False(t, ret)
 }

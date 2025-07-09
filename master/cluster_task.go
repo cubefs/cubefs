@@ -118,6 +118,12 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		return fmt.Errorf("migrateMetaPartition src [%s] is not exist in mp(%d)", srcAddr, mp.PartitionID)
 	}
 	oldHosts = mp.Hosts
+	if targetAddr != "" && contains(mp.Hosts, targetAddr) {
+		mp.RUnlock()
+		err = fmt.Errorf("migrateMetaPartition target [%s] is already exist in mp(%d) hosts:[%v]", targetAddr, mp.PartitionID, mp.Hosts)
+		log.LogErrorf(err.Error())
+		return err
+	}
 	mp.RUnlock()
 
 	if err = c.validateDecommissionMetaPartition(mp, srcAddr, false); err != nil {
