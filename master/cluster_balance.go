@@ -45,6 +45,7 @@ func (c *Cluster) FreezeEmptyMetaPartitionJob(name string, freezeList []*MetaPar
 			return fmt.Errorf("The clean task for volume(%s) is %s", name, task.Status)
 		}
 		task.Status = CleanTaskFreezing
+		task.TaskCnt += len(freezeList)
 	} else {
 		task = &CleanTask{
 			Name:    name,
