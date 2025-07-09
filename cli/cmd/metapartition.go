@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"fmt"
 	"sort"
 	"strconv"
 
@@ -126,8 +125,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.NoLeaderMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				stdout("%v\n", formatMetaPartitionInfoRow(partition))
 			}
@@ -141,8 +139,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.LackReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionInfoRow(partition))
@@ -187,8 +184,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.UnavailableMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					badReplicaMpInfoRow := formatBadReplicaMpInfoRow(partition)
@@ -207,8 +203,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.InodeCountNotEqualIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionReplicaInodeNotEqualInfoRow(partition))
@@ -224,8 +219,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.MaxInodeNotEqualIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionReplicaInodeNotEqualInfoRow(partition))
@@ -241,8 +235,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.DentryCountNotEqualIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionReplicaDentryNotEqualInfoRow(partition))
@@ -258,8 +251,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.InConsistRreplicaCntMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionInfoRow(partition))
