@@ -371,7 +371,7 @@ func TestStrawNodeSelector(t *testing.T) {
 	// prepare for datanode
 	tmp := dataNode.AvailableSpace
 	dataNode.Total += dataNode.AvailableSpace
-	dataNode.AvailableSpace *= 2
+	dataNode.AvailableSpace *= 3
 	// select test
 	selector := NewStrawNodeSelector(DataNodeType)
 	for i := 0; i != loopNodeSelectorTestCount; i++ {
@@ -396,7 +396,7 @@ func TestStrawNodeSelector(t *testing.T) {
 
 	// prepare for metanode
 	tmp = metaNode.Total
-	metaNode.Total *= 2
+	metaNode.Total *= 3
 	// select test
 	selector = NewStrawNodeSelector(MetaNodeType)
 	for i := 0; i != loopNodeSelectorTestCount; i++ {
