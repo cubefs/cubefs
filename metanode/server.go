@@ -102,7 +102,8 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 				return
 			}
 			errMsg := err.Error()
-			if strings.Contains(errMsg, "over quota") || strings.Contains(errMsg, "inode ID out of range") || p.ResultCode == proto.OpNotExistErr {
+			if strings.Contains(errMsg, "over quota") || strings.Contains(errMsg, "inode ID out of range") ||
+				strings.Contains(errMsg, "unknown meta partition") || p.ResultCode == proto.OpNotExistErr {
 				log.LogWarnf("serve handlePacket fail: %v", err)
 			} else {
 				log.LogErrorf("serve handlePacket fail: %v", err)
