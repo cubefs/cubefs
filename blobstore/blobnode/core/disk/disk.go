@@ -61,6 +61,158 @@ type DiskStorageWrapper struct {
 	*DiskStorage
 }
 
+/*
+ * 1. Create a new chunk
+ * 2. bind it to vuid
+ */
+func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid, chunksize int64) (
+	cs core.ChunkAPI, err error,
+) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	ds := dsw.DiskStorage
+
+	if chunksize < 0 || chunksize > MaxChunkSize {
+		return nil, bloberr.ErrInvalidParam
+	}
+
+	if ds.isChunksExceeded(ctx, chunksize) {
+		return nil, bloberr.ErrTooManyChunks
+	}
+
+	stats := ds.stats.Load().(*core.DiskStats)
+	if ds.isMountPoint && stats.Free < chunksize {
+		return nil, bloberr.ErrDiskNoSpace
+	}
+
+	// The following logic, for the same vuid, only allows serial execution
+	if ds.ChunkLimitPerKey.Acquire(vuid) != nil {
+		return nil, bloberr.ErrOverload
+	}
+	defer ds.ChunkLimitPerKey.Release(vuid)
+
+	ds.Lock.RLock()
+	_, exist := ds.Chunks[vuid]
+	ds.Lock.RUnlock()
+	if exist {
+		span.Errorf("vuid:%v alread exist.", vuid)
+		return nil, bloberr.ErrAlreadyExist
+	}
+
+	super := ds.SuperBlock
+	chunkId := clustermgr.NewChunkID(vuid)
+	nowtime := time.Now().UnixNano()
+
+	vm := core.VuidMeta{
+		Version:   _chunkVer[0],
+		Vuid:      vuid,
+		DiskID:    ds.DiskID,
+		ChunkID:   chunkId,
+		ChunkSize: chunksize,
+		Ctime:     nowtime,
+		Mtime:     nowtime,
+		Status:    clustermgr.ChunkStatusNormal,
+	}
+
+	// create chunk storage
+	cs, err = chunk.NewChunkStorage(ctx, ds.DataPath, vm, dsw.ioPools, func(option *core.Option) {
+		option.CreateDataIfMiss = true
+		option.DB = ds.SuperBlock.db
+		option.Conf = ds.Conf
+		option.IoQos = ds.dataQos
+		option.Disk = dsw
+	})
+	if err != nil {
+		span.Errorf("Failed new chunk:<%s>, err:%v", ds.DataPath, err)
+		return nil, err
+	}
+
+	// save to superBlock
+	err = super.UpsertChunk(ctx, vm.ChunkID, vm)
+	if err != nil {
+		span.Errorf("Failed upsert chunk<%s>, err:%v", vm.ChunkID, err)
+		return nil, err
+	}
+
+	// update bind it to vuid
+	err = super.BindVuidChunk(ctx, vuid, chunkId)
+	if err != nil {
+		span.Errorf("Failed vuid<%d>, chunkid<%s>, err:%v", vuid, chunkId, err)
+		return nil, err
+	}
+
+	// add to map
+	ds.Lock.Lock()
+	ds.Chunks[vuid] = cs
+	ds.Lock.Unlock()
+
+	return cs, nil
+}
+
+func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	ds := dsw.DiskStorage
+	sb := ds.SuperBlock
+
+	// load chunkmeta
+	vuidMaps, err := sb.ListVuids(ctx)
+	if err != nil {
+		span.Errorf("Failed list chunks: %v", err)
+		return err
+	}
+
+	vuidMetas, err := sb.ListChunks(ctx)
+	if err != nil {
+		span.Errorf("Failed list chunks: %v", err)
+		return err
+	}
+
+	chunks := make(map[proto.Vuid]core.ChunkAPI)
+	for vuid, chunkid := range vuidMaps {
+		span.Debugf("vuid:%d, chunkid: %s", vuid, chunkid)
+
+		vm := vuidMetas[chunkid]
+		if vm.Status == clustermgr.ChunkStatusRelease {
+			span.Warnf("vuid:%d(chunk:%s) status is release", vm.Vuid, vm.ChunkID)
+			continue
+		}
+		if vm.Compacting {
+			vm.Compacting = false
+			err := sb.UpsertChunk(ctx, chunkid, vm)
+			if err != nil {
+				span.Errorf("Failed upsert chunk compacting, chunkid:%s, vm:%v", chunkid, vm)
+				return err
+			}
+			err = ds.notifyCompacting(ctx, vuid, false)
+			if err != nil {
+				span.Errorf("set chunk(%v) compacting false failed: %v", vuid, err)
+				return err
+			}
+		}
+		cs, err := chunk.NewChunkStorage(ctx, ds.DataPath, vm, ds.ioPools, func(o *core.Option) {
+			o.Conf = ds.Conf
+			o.DB = sb.db
+			o.Disk = dsw
+			o.IoQos = ds.dataQos
+			o.CreateDataIfMiss = false
+		})
+		if err != nil {
+			span.Errorf("Failed New chunk, path:%s, vm:%v", ds.DataPath, vm)
+			return err
+		}
+
+		chunks[vm.Vuid] = cs
+	}
+
+	ds.Lock.Lock()
+	ds.Chunks = chunks
+	ds.Lock.Unlock()
+
+	span.Debugf("build ChunkStorage success")
+	return
+}
+
 type DiskStorage struct {
 	DiskID proto.DiskID
 
@@ -108,28 +260,6 @@ type DiskStorage struct {
 
 func (ds *DiskStorage) IsRegister() bool {
 	return false
-}
-
-func (ds *DiskStorage) waitAllLoopsStop(ctx context.Context) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	done := make(chan struct{})
-	go func() {
-		ds.wg.Wait()
-		close(done)
-	}()
-
-	warnTicker := time.NewTicker(30 * time.Second)
-	defer warnTicker.Stop()
-	for {
-		select {
-		case <-warnTicker.C:
-			span.Warnf("=== disk<%v> loop wait timed out. ===", ds.DiskID)
-		case <-done:
-			span.Infof("=== disk<%v> all loops done ===", ds.DiskID)
-			return
-		}
-	}
 }
 
 func (ds *DiskStorage) Close(ctx context.Context) {
@@ -250,441 +380,6 @@ func (ds *DiskStorage) SetStatus(status proto.DiskStatus) {
 	ds.Lock.Lock()
 	ds.status = status
 	ds.Lock.Unlock()
-}
-
-func (ds *DiskStorage) isChunksExceeded(ctx context.Context, chunksize int64) bool {
-	span := trace.SpanFromContextSafe(ctx)
-
-	ds.Lock.RLock()
-	defer ds.Lock.RUnlock()
-
-	if len(ds.Chunks) >= int(ds.Conf.MaxChunks) {
-		return true
-	}
-
-	// unit test skips the following logic
-	if os.Getenv("JENKINS_TEST") != "" {
-		return false
-	}
-	if ds.Conf.GetGlobalConfig != nil {
-		if val, err := ds.Conf.GetGlobalConfig(ctx, proto.ChunkOversoldRatioKey); err == nil && val != "" {
-			return false
-		}
-	}
-
-	stats := ds.stats.Load().(*core.DiskStats)
-	actualTotal := stats.TotalDiskSize - stats.Reserved
-	if int64(len(ds.Chunks)) >= (actualTotal / chunksize) {
-		span.Errorf("current:%v, total:%v, chunksize:%v", len(ds.Chunks), actualTotal, chunksize)
-		return true
-	}
-
-	return false
-}
-
-/*
- * 1. Create a new chunk
- * 2. bind it to vuid
- */
-func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid, chunksize int64) (
-	cs core.ChunkAPI, err error,
-) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	ds := dsw.DiskStorage
-
-	if chunksize < 0 || chunksize > MaxChunkSize {
-		return nil, bloberr.ErrInvalidParam
-	}
-
-	if ds.isChunksExceeded(ctx, chunksize) {
-		return nil, bloberr.ErrTooManyChunks
-	}
-
-	stats := ds.stats.Load().(*core.DiskStats)
-	if ds.isMountPoint && stats.Free < chunksize {
-		return nil, bloberr.ErrDiskNoSpace
-	}
-
-	// The following logic, for the same vuid, only allows serial execution
-	if ds.ChunkLimitPerKey.Acquire(vuid) != nil {
-		return nil, bloberr.ErrOverload
-	}
-	defer ds.ChunkLimitPerKey.Release(vuid)
-
-	ds.Lock.RLock()
-	_, exist := ds.Chunks[vuid]
-	ds.Lock.RUnlock()
-	if exist {
-		span.Errorf("vuid:%v alread exist.", vuid)
-		return nil, bloberr.ErrAlreadyExist
-	}
-
-	super := ds.SuperBlock
-	chunkId := clustermgr.NewChunkID(vuid)
-	nowtime := time.Now().UnixNano()
-
-	vm := core.VuidMeta{
-		Version:   _chunkVer[0],
-		Vuid:      vuid,
-		DiskID:    ds.DiskID,
-		ChunkID:   chunkId,
-		ChunkSize: chunksize,
-		Ctime:     nowtime,
-		Mtime:     nowtime,
-		Status:    clustermgr.ChunkStatusNormal,
-	}
-
-	// create chunk storage
-	cs, err = chunk.NewChunkStorage(ctx, ds.DataPath, vm, dsw.ioPools, func(option *core.Option) {
-		option.CreateDataIfMiss = true
-		option.DB = ds.SuperBlock.db
-		option.Conf = ds.Conf
-		option.IoQos = ds.dataQos
-		option.Disk = dsw
-	})
-	if err != nil {
-		span.Errorf("Failed new chunk:<%s>, err:%v", ds.DataPath, err)
-		return nil, err
-	}
-
-	// save to superBlock
-	err = super.UpsertChunk(ctx, vm.ChunkID, vm)
-	if err != nil {
-		span.Errorf("Failed upsert chunk<%s>, err:%v", vm.ChunkID, err)
-		return nil, err
-	}
-
-	// update bind it to vuid
-	err = super.BindVuidChunk(ctx, vuid, chunkId)
-	if err != nil {
-		span.Errorf("Failed vuid<%d>, chunkid<%s>, err:%v", vuid, chunkId, err)
-		return nil, err
-	}
-
-	// add to map
-	ds.Lock.Lock()
-	ds.Chunks[vuid] = cs
-	ds.Lock.Unlock()
-
-	return cs, nil
-}
-
-func (ds *DiskStorage) loopAttach(f func()) {
-	ds.wg.Add(1)
-	go func() {
-		defer ds.wg.Done()
-		f()
-	}()
-}
-
-// parse disk, make disk storage
-func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err error) {
-	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", conf.Path)
-
-	// init config
-	err = core.InitConfig(&conf)
-	if err != nil {
-		return nil, err
-	}
-	span.Infof("config:%v", conf)
-
-	path, err := filepath.Abs(conf.Path)
-	if err != nil {
-		return nil, err
-	}
-
-	metaRoot := conf.MetaRootPrefix
-	if metaRoot != "" {
-		if exist, err := bncom.IsFileExists(metaRoot); err != nil || !exist {
-			span.Errorf("meta path: %s not exist ( occur err:%v ), exit", metaRoot, err)
-			return nil, errors.New("meta root prefix not exist")
-		}
-	}
-
-	if conf.MustMountPoint {
-		if !myos.IsMountPoint(conf.Path) {
-			span.Errorf("%s must mount point.", conf.Path)
-			return nil, errors.New("must mount point")
-		}
-
-		if metaRoot != "" && !myos.IsMountPoint(metaRoot) {
-			span.Errorf("%s must mount point.", metaRoot)
-			return nil, errors.New("must mount point")
-		}
-	}
-
-	if conf.AutoFormat {
-		span.Warnf("auto format mode, will ensure directory.")
-		err = core.EnsureDiskArea(path, metaRoot)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	diskDataPath := core.GetDataPath(path)
-	diskMetaPath := core.GetMetaPath(path, metaRoot)
-
-	span.Infof("datapath: %v, metapath:%v", diskDataPath, diskMetaPath)
-
-	// load superblock，create or open
-	sb, err := NewSuperBlock(diskMetaPath, &conf)
-	if err != nil {
-		return nil, err
-	}
-
-	var dm core.DiskMeta
-
-	dm, err = sb.LoadDiskInfo(ctx)
-	if err != nil {
-		if os.IsNotExist(err) {
-			span.Warnf("disk not format. will format and register")
-		} else {
-			return nil, err
-		}
-		dm = core.DiskMeta{}
-	}
-
-	if !dm.Registered {
-		exist, err := core.IsFormatConfigExist(path)
-		if err != nil || exist {
-			span.Errorf("unexpected error. format file ( in %s ) should not exist, but, exist:%v err:%v", path, exist, err)
-			return nil, bloberr.ErrUnexpected
-		}
-
-		dm, err = registerDisk(ctx, sb, &conf)
-		if err != nil {
-			span.Errorf("register disk failed: %v", err)
-			return nil, err
-		}
-	}
-
-	span.Infof("diskID:%d", dm.DiskID)
-
-	// check format info
-	formatInfo, err := core.ReadFormatInfo(ctx, path)
-	if err != nil {
-		span.Errorf("Failed read format info, err:%v", err)
-		return nil, err
-	}
-	if formatInfo.DiskID != dm.DiskID {
-		span.Errorf("unexpected error. diskId not match. format:%v, dm:%v", formatInfo, dm)
-		return nil, bloberr.ErrUnexpected
-	}
-
-	// init eio handler
-	sb.SetHandlerIOError(func(err error) {
-		conf.HandleIOError(context.Background(), dm.DiskID, err)
-	})
-
-	// io visualization: init data io stat
-	dataIos, err := flow.NewIOFlowStat(dm.DiskID.ToString(), conf.IOStatFileDryRun)
-	if err != nil {
-		span.Errorf("Failed new dataio flow stat, err:%v", err)
-		return nil, err
-	}
-	diskView := flow.NewDiskViewer(dataIos)
-
-	// init Qos manager
-	conf.DataQos.StatGetter = dataIos
-	conf.DataQos.DiskViewer = diskView
-
-	dataQos, err := qos.NewIoQueueQos(conf.DataQos)
-	if err != nil {
-		span.Errorf("Failed new io qos, err:%v", err)
-		return nil, err
-	}
-
-	// setting io pools
-	metricConf := taskpool.IoPoolMetricConf{
-		ClusterID: uint32(conf.HostInfo.ClusterID),
-		IDC:       conf.HostInfo.IDC,
-		Rack:      conf.HostInfo.Rack,
-		Host:      conf.HostInfo.Host,
-		DiskID:    uint32(dm.DiskID),
-		Namespace: "blobstore",
-		Subsystem: "blobnode",
-	}
-	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, qos.MaxQueueDepth, metricConf)
-	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, qos.MaxQueueDepth, metricConf)
-	delPool := taskpool.NewDeletePool(conf.DeleteThreadCnt, qos.MaxQueueDepth, metricConf)
-
-	ds = &DiskStorage{
-		DiskID:           dm.DiskID,
-		SuperBlock:       sb,
-		DataPath:         diskDataPath,
-		MetaPath:         diskMetaPath,
-		ChunkLimitPerKey: keycount.NewBlockingKeyCountLimit(1),
-		Conf:             &conf,
-		closeCh:          make(chan struct{}),
-		compactCh:        make(chan proto.Vuid),
-		ctx:              ctx,
-		status:           dm.Status,
-		isMountPoint:     myos.IsMountPoint(conf.Path),
-		dataQos:          dataQos,
-		CreateAt:         dm.Ctime,
-		LastUpdateAt:     dm.Mtime,
-		ioPools: map[qos.IOTypeRW]taskpool.IoPool{
-			qos.IOTypeRead:  readPool,
-			qos.IOTypeWrite: writePool,
-			qos.IOTypeDel:   delPool,
-		},
-	}
-
-	if err = ds.fillDiskUsage(ctx); err != nil {
-		span.Errorf("Failed fill disk usage, err:%v", err)
-		return nil, err
-	}
-
-	// background loop
-	ds.loopAttach(ds.loopCleanChunk)
-	ds.loopAttach(ds.loopCompactFile)
-	ds.loopAttach(ds.loopDiskUsage)
-	ds.loopAttach(ds.loopCleanTrash)
-	ds.loopAttach(ds.loopMetricReport)
-
-	return ds, nil
-}
-
-func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrapper, err error) {
-	ds, err := newDiskStorage(ctx, conf)
-	if err != nil {
-		return nil, err
-	}
-
-	dsw = &DiskStorageWrapper{DiskStorage: ds}
-
-	err = dsw.RestoreChunkStorage(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// It will be automatically recycled when gc
-	runtime.SetFinalizer(dsw, func(wapper *DiskStorageWrapper) {
-		wapper.Close(context.Background())
-	})
-
-	return dsw, nil
-}
-
-func registerDisk(ctx context.Context, sb *SuperBlock, conf *core.Config) (dm core.DiskMeta, err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	span.Infof("disk conf:<%v> auto format", conf)
-
-	// allocate global Uniq diskID
-	diskID, err := conf.AllocDiskID(ctx)
-	if err != nil {
-		span.Errorf("Failed alloc diskId: %d, err:%v", dm.DiskID, err)
-		return
-	}
-
-	span.Debugf("diskId: <%v>", diskID)
-
-	now := time.Now().UnixNano()
-
-	format := &core.FormatInfo{
-		FormatInfoProtectedField: core.FormatInfoProtectedField{
-			DiskID:  diskID,
-			Version: _diskVer[0],
-			Format:  core.FormatMetaTypeV1,
-			Ctime:   now,
-		},
-	}
-	checkSum, err := format.CalCheckSum()
-	if err != nil {
-		span.Errorf("cal format info crc failed: %v", err)
-		return
-	}
-	format.CheckSum = checkSum
-
-	// dm.Host =
-	dm = core.DiskMeta{
-		FormatInfo: *format,
-		Mtime:      now,
-		Registered: true,
-		Status:     proto.DiskStatusNormal,
-		Path:       conf.Path,
-	}
-
-	err = sb.UpsertDisk(ctx, dm.DiskID, dm)
-	if err != nil {
-		span.Errorf("Failed upsert disk: %d, err:%v", dm.DiskID, err)
-		return
-	}
-
-	err = core.SaveDiskFormatInfo(ctx, conf.Path, format)
-	if err != nil {
-		span.Errorf("Failed save disk[%s] format info, err:%v", conf.Path, err)
-		return
-	}
-
-	span.Infof("register disk(%v) success", diskID)
-	return
-}
-
-func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	ds := dsw.DiskStorage
-	sb := ds.SuperBlock
-
-	// load chunkmeta
-	vuidMaps, err := sb.ListVuids(ctx)
-	if err != nil {
-		span.Errorf("Failed list chunks: %v", err)
-		return err
-	}
-
-	vuidMetas, err := sb.ListChunks(ctx)
-	if err != nil {
-		span.Errorf("Failed list chunks: %v", err)
-		return err
-	}
-
-	chunks := make(map[proto.Vuid]core.ChunkAPI)
-	for vuid, chunkid := range vuidMaps {
-		span.Debugf("vuid:%d, chunkid: %s", vuid, chunkid)
-
-		vm := vuidMetas[chunkid]
-		if vm.Status == clustermgr.ChunkStatusRelease {
-			span.Warnf("vuid:%d(chunk:%s) status is release", vm.Vuid, vm.ChunkID)
-			continue
-		}
-		if vm.Compacting {
-			vm.Compacting = false
-			err := sb.UpsertChunk(ctx, chunkid, vm)
-			if err != nil {
-				span.Errorf("Failed upsert chunk compacting, chunkid:%s, vm:%v", chunkid, vm)
-				return err
-			}
-			err = ds.notifyCompacting(ctx, vuid, false)
-			if err != nil {
-				span.Errorf("set chunk(%v) compacting false failed: %v", vuid, err)
-				return err
-			}
-		}
-		cs, err := chunk.NewChunkStorage(ctx, ds.DataPath, vm, ds.ioPools, func(o *core.Option) {
-			o.Conf = ds.Conf
-			o.DB = sb.db
-			o.Disk = dsw
-			o.IoQos = ds.dataQos
-			o.CreateDataIfMiss = false
-		})
-		if err != nil {
-			span.Errorf("Failed New chunk, path:%s, vm:%v", ds.DataPath, vm)
-			return err
-		}
-
-		chunks[vm.Vuid] = cs
-	}
-
-	ds.Lock.Lock()
-	ds.Chunks = chunks
-	ds.Lock.Unlock()
-
-	span.Debugf("build ChunkStorage success")
-	return
 }
 
 func (ds *DiskStorage) ResetChunks(ctx context.Context) {
@@ -908,6 +603,63 @@ func (ds *DiskStorage) LoadDiskInfo(ctx context.Context) (dm core.DiskMeta, err 
 	return ds.SuperBlock.LoadDiskInfo(ctx)
 }
 
+func (ds *DiskStorage) GetChunkStorage(vuid proto.Vuid) (cs core.ChunkAPI, found bool) {
+	ds.Lock.RLock()
+	defer ds.Lock.RUnlock()
+
+	cs, ok := ds.Chunks[vuid]
+	if !ok {
+		return nil, false
+	}
+	return cs, true
+}
+
+func (ds *DiskStorage) WalkChunksWithLock(ctx context.Context, walkFn func(cs core.ChunkAPI) error) (err error) {
+	ds.Lock.RLock()
+	defer ds.Lock.RUnlock()
+
+	for _, cs := range ds.Chunks {
+		if err = walkFn(cs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ds *DiskStorage) IsCleanUp(ctx context.Context) bool {
+	span := trace.SpanFromContextSafe(ctx)
+
+	if len(ds.Chunks) != 0 { // all chunks handler in memory
+		span.Debugf("diskID:%d is not clean, used chunk cnt:%d", ds.DiskID, len(ds.Chunks))
+		return false
+	}
+
+	chunks, err := ds.ListChunks(ctx)
+	if err != nil {
+		span.Errorf("%v list chunks failed: %+v", ds.MetaPath, err)
+		return false
+	}
+
+	if len(chunks) != 0 { // all chunks in db
+		span.Debugf("diskID:%d is not clean, db chunk file cnt:%d", ds.DiskID, len(chunks))
+		return false
+	}
+
+	return true
+}
+
+func (ds *DiskStorage) IsWritable() bool {
+	return ds.Status() == proto.DiskStatusNormal
+}
+
+func (ds *DiskStorage) loopAttach(f func()) {
+	ds.wg.Add(1)
+	go func() {
+		defer ds.wg.Done()
+		f()
+	}()
+}
+
 func (ds *DiskStorage) loopCleanChunk() {
 	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", "CleanChunk"+ds.Conf.Path)
 	span.Infof("loop clean chunk start")
@@ -925,6 +677,51 @@ func (ds *DiskStorage) loopCleanChunk() {
 				span.Errorf("Failed exec Cleanchunks. err:%v", err)
 			}
 			resetTimer(ds.Conf.ChunkCleanIntervalSec, timer)
+		}
+	}
+}
+
+// get disk usage
+func (ds *DiskStorage) loopDiskUsage() {
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "DiskUsage"+ds.Conf.Path)
+
+	span.Infof("loop disk usage start")
+
+	timer := initTimer(ds.Conf.DiskUsageIntervalSec)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ds.closeCh:
+			span.Infof("loop disk usage  done")
+			return
+		case <-timer.C:
+			if err := ds.fillDiskUsage(ctx); err != nil {
+				span.Errorf("Failed exec disk usage. err:%v", err)
+			}
+			resetTimer(ds.Conf.DiskUsageIntervalSec, timer)
+		}
+	}
+}
+
+func (ds *DiskStorage) waitAllLoopsStop(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	done := make(chan struct{})
+	go func() {
+		ds.wg.Wait()
+		close(done)
+	}()
+
+	warnTicker := time.NewTicker(30 * time.Second)
+	defer warnTicker.Stop()
+	for {
+		select {
+		case <-warnTicker.C:
+			span.Warnf("=== disk<%v> loop wait timed out. ===", ds.DiskID)
+		case <-done:
+			span.Infof("=== disk<%v> all loops done ===", ds.DiskID)
+			return
 		}
 	}
 }
@@ -1029,40 +826,6 @@ func (ds *DiskStorage) cleanChunk(ctx context.Context, id clustermgr.ChunkID, to
 	}
 }
 
-func (ds *DiskStorage) GetChunkStorage(vuid proto.Vuid) (cs core.ChunkAPI, found bool) {
-	ds.Lock.RLock()
-	defer ds.Lock.RUnlock()
-
-	cs, ok := ds.Chunks[vuid]
-	if !ok {
-		return nil, false
-	}
-	return cs, true
-}
-
-// get disk usage
-func (ds *DiskStorage) loopDiskUsage() {
-	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "DiskUsage"+ds.Conf.Path)
-
-	span.Infof("loop disk usage start")
-
-	timer := initTimer(ds.Conf.DiskUsageIntervalSec)
-	defer timer.Stop()
-
-	for {
-		select {
-		case <-ds.closeCh:
-			span.Infof("loop disk usage  done")
-			return
-		case <-timer.C:
-			if err := ds.fillDiskUsage(ctx); err != nil {
-				span.Errorf("Failed exec disk usage. err:%v", err)
-			}
-			resetTimer(ds.Conf.DiskUsageIntervalSec, timer)
-		}
-	}
-}
-
 func (ds *DiskStorage) fillDiskUsage(ctx context.Context) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -1086,42 +849,279 @@ func (ds *DiskStorage) fillDiskUsage(ctx context.Context) (err error) {
 	return nil
 }
 
-func (ds *DiskStorage) WalkChunksWithLock(ctx context.Context, walkFn func(cs core.ChunkAPI) error) (err error) {
+func (ds *DiskStorage) isChunksExceeded(ctx context.Context, chunksize int64) bool {
+	span := trace.SpanFromContextSafe(ctx)
+
 	ds.Lock.RLock()
 	defer ds.Lock.RUnlock()
 
-	for _, cs := range ds.Chunks {
-		if err = walkFn(cs); err != nil {
-			return err
+	if len(ds.Chunks) >= int(ds.Conf.MaxChunks) {
+		return true
+	}
+
+	// unit test skips the following logic
+	if os.Getenv("JENKINS_TEST") != "" {
+		return false
+	}
+	if ds.Conf.GetGlobalConfig != nil {
+		if val, err := ds.Conf.GetGlobalConfig(ctx, proto.ChunkOversoldRatioKey); err == nil && val != "" {
+			return false
 		}
 	}
-	return nil
+
+	stats := ds.stats.Load().(*core.DiskStats)
+	actualTotal := stats.TotalDiskSize - stats.Reserved
+	if int64(len(ds.Chunks)) >= (actualTotal / chunksize) {
+		span.Errorf("current:%v, total:%v, chunksize:%v", len(ds.Chunks), actualTotal, chunksize)
+		return true
+	}
+
+	return false
 }
 
-func (ds *DiskStorage) IsCleanUp(ctx context.Context) bool {
+func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrapper, err error) {
+	ds, err := newDiskStorage(ctx, conf)
+	if err != nil {
+		return nil, err
+	}
+
+	dsw = &DiskStorageWrapper{DiskStorage: ds}
+
+	err = dsw.RestoreChunkStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// It will be automatically recycled when gc
+	runtime.SetFinalizer(dsw, func(wapper *DiskStorageWrapper) {
+		wapper.Close(context.Background())
+	})
+
+	return dsw, nil
+}
+
+// parse disk, make disk storage
+func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err error) {
+	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", conf.Path)
+
+	// init config
+	err = core.InitConfig(&conf)
+	if err != nil {
+		return nil, err
+	}
+	span.Infof("config:%v", conf)
+
+	path, err := filepath.Abs(conf.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	metaRoot := conf.MetaRootPrefix
+	if metaRoot != "" {
+		if exist, err := bncom.IsFileExists(metaRoot); err != nil || !exist {
+			span.Errorf("meta path: %s not exist ( occur err:%v ), exit", metaRoot, err)
+			return nil, errors.New("meta root prefix not exist")
+		}
+	}
+
+	if conf.MustMountPoint {
+		if !myos.IsMountPoint(conf.Path) {
+			span.Errorf("%s must mount point.", conf.Path)
+			return nil, errors.New("must mount point")
+		}
+
+		if metaRoot != "" && !myos.IsMountPoint(metaRoot) {
+			span.Errorf("%s must mount point.", metaRoot)
+			return nil, errors.New("must mount point")
+		}
+	}
+
+	if conf.AutoFormat {
+		span.Warnf("auto format mode, will ensure directory.")
+		err = core.EnsureDiskArea(path, metaRoot)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	diskDataPath := core.GetDataPath(path)
+	diskMetaPath := core.GetMetaPath(path, metaRoot)
+
+	span.Infof("datapath: %v, metapath:%v", diskDataPath, diskMetaPath)
+
+	// load superblock，create or open
+	sb, err := NewSuperBlock(diskMetaPath, &conf)
+	if err != nil {
+		return nil, err
+	}
+
+	var dm core.DiskMeta
+
+	dm, err = sb.LoadDiskInfo(ctx)
+	if err != nil {
+		if os.IsNotExist(err) {
+			span.Warnf("disk not format. will format and register")
+		} else {
+			return nil, err
+		}
+		dm = core.DiskMeta{}
+	}
+
+	if !dm.Registered {
+		exist, err := core.IsFormatConfigExist(path)
+		if err != nil || exist {
+			span.Errorf("unexpected error. format file ( in %s ) should not exist, but, exist:%v err:%v", path, exist, err)
+			return nil, bloberr.ErrUnexpected
+		}
+
+		dm, err = registerDisk(ctx, sb, &conf)
+		if err != nil {
+			span.Errorf("register disk failed: %v", err)
+			return nil, err
+		}
+	}
+
+	span.Infof("diskID:%d", dm.DiskID)
+
+	// check format info
+	formatInfo, err := core.ReadFormatInfo(ctx, path)
+	if err != nil {
+		span.Errorf("Failed read format info, err:%v", err)
+		return nil, err
+	}
+	if formatInfo.DiskID != dm.DiskID {
+		span.Errorf("unexpected error. diskId not match. format:%v, dm:%v", formatInfo, dm)
+		return nil, bloberr.ErrUnexpected
+	}
+
+	// init eio handler
+	sb.SetHandlerIOError(func(err error) {
+		conf.HandleIOError(context.Background(), dm.DiskID, err)
+	})
+
+	// io visualization: init data io stat
+	dataIos, err := flow.NewIOFlowStat(dm.DiskID.ToString(), conf.IOStatFileDryRun)
+	if err != nil {
+		span.Errorf("Failed new dataio flow stat, err:%v", err)
+		return nil, err
+	}
+	diskView := flow.NewDiskViewer(dataIos)
+
+	// init Qos manager
+	conf.DataQos.StatGetter = dataIos
+	conf.DataQos.DiskViewer = diskView
+
+	dataQos, err := qos.NewIoQueueQos(conf.DataQos)
+	if err != nil {
+		span.Errorf("Failed new io qos, err:%v", err)
+		return nil, err
+	}
+
+	// setting io pools
+	metricConf := taskpool.IoPoolMetricConf{
+		ClusterID: uint32(conf.HostInfo.ClusterID),
+		IDC:       conf.HostInfo.IDC,
+		Rack:      conf.HostInfo.Rack,
+		Host:      conf.HostInfo.Host,
+		DiskID:    uint32(dm.DiskID),
+		Namespace: "blobstore",
+		Subsystem: "blobnode",
+	}
+	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, qos.MaxQueueDepth, metricConf)
+	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, qos.MaxQueueDepth, metricConf)
+	delPool := taskpool.NewDeletePool(conf.DeleteThreadCnt, qos.MaxQueueDepth, metricConf)
+
+	ds = &DiskStorage{
+		DiskID:           dm.DiskID,
+		SuperBlock:       sb,
+		DataPath:         diskDataPath,
+		MetaPath:         diskMetaPath,
+		ChunkLimitPerKey: keycount.NewBlockingKeyCountLimit(1),
+		Conf:             &conf,
+		closeCh:          make(chan struct{}),
+		compactCh:        make(chan proto.Vuid),
+		ctx:              ctx,
+		status:           dm.Status,
+		isMountPoint:     myos.IsMountPoint(conf.Path),
+		dataQos:          dataQos,
+		CreateAt:         dm.Ctime,
+		LastUpdateAt:     dm.Mtime,
+		ioPools: map[qos.IOTypeRW]taskpool.IoPool{
+			qos.IOTypeRead:  readPool,
+			qos.IOTypeWrite: writePool,
+			qos.IOTypeDel:   delPool,
+		},
+	}
+
+	if err = ds.fillDiskUsage(ctx); err != nil {
+		span.Errorf("Failed fill disk usage, err:%v", err)
+		return nil, err
+	}
+
+	// background loop
+	ds.loopAttach(ds.loopCleanChunk)
+	ds.loopAttach(ds.loopCompactFile)
+	ds.loopAttach(ds.loopDiskUsage)
+	ds.loopAttach(ds.loopCleanTrash)
+	ds.loopAttach(ds.loopMetricReport)
+
+	return ds, nil
+}
+
+func registerDisk(ctx context.Context, sb *SuperBlock, conf *core.Config) (dm core.DiskMeta, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	if len(ds.Chunks) != 0 { // all chunks handler in memory
-		span.Debugf("diskID:%d is not clean, used chunk cnt:%d", ds.DiskID, len(ds.Chunks))
-		return false
-	}
+	span.Infof("disk conf:<%v> auto format", conf)
 
-	chunks, err := ds.ListChunks(ctx)
+	// allocate global Uniq diskID
+	diskID, err := conf.AllocDiskID(ctx)
 	if err != nil {
-		span.Errorf("%v list chunks failed: %+v", ds.MetaPath, err)
-		return false
+		span.Errorf("Failed alloc diskId: %d, err:%v", dm.DiskID, err)
+		return
 	}
 
-	if len(chunks) != 0 { // all chunks in db
-		span.Debugf("diskID:%d is not clean, db chunk file cnt:%d", ds.DiskID, len(chunks))
-		return false
+	span.Debugf("diskId: <%v>", diskID)
+
+	now := time.Now().UnixNano()
+
+	format := &core.FormatInfo{
+		FormatInfoProtectedField: core.FormatInfoProtectedField{
+			DiskID:  diskID,
+			Version: _diskVer[0],
+			Format:  core.FormatMetaTypeV1,
+			Ctime:   now,
+		},
+	}
+	checkSum, err := format.CalCheckSum()
+	if err != nil {
+		span.Errorf("cal format info crc failed: %v", err)
+		return
+	}
+	format.CheckSum = checkSum
+
+	// dm.Host =
+	dm = core.DiskMeta{
+		FormatInfo: *format,
+		Mtime:      now,
+		Registered: true,
+		Status:     proto.DiskStatusNormal,
+		Path:       conf.Path,
 	}
 
-	return true
-}
+	err = sb.UpsertDisk(ctx, dm.DiskID, dm)
+	if err != nil {
+		span.Errorf("Failed upsert disk: %d, err:%v", dm.DiskID, err)
+		return
+	}
 
-func (ds *DiskStorage) IsWritable() bool {
-	return ds.Status() == proto.DiskStatusNormal
+	err = core.SaveDiskFormatInfo(ctx, conf.Path, format)
+	if err != nil {
+		span.Errorf("Failed save disk[%s] format info, err:%v", conf.Path, err)
+		return
+	}
+
+	span.Infof("register disk(%v) success", diskID)
+	return
 }
 
 func isValidStateTransition(src, dest clustermgr.ChunkStatus) bool {

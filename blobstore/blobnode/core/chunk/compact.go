@@ -123,6 +123,91 @@ ErrCompact:
 	return ncs, nil
 }
 
+func (cs *chunk) CommitCompact(ctx context.Context, ncs core.ChunkAPI) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	newcs := ncs.(*chunk)
+
+	// replStg -> normal background stg
+	repStg, backgroundStg := cs.getStg(), newcs.getStg()
+
+	span.Infof("compact commit. Change <%s> to <%s>", repStg.ID(), backgroundStg.ID())
+
+	cs.lock.Lock()
+	{
+		// exchange handler
+		cs.setStg(backgroundStg)
+		newcs.setStg(repStg)
+	}
+	cs.lock.Unlock()
+
+	cs.lastCompactTime = time.Now().UnixNano()
+
+	// finally init stats
+	if err = cs.refreshFstat(ctx); err != nil {
+		span.Errorf("Failed refresh fstat. <%s>", cs.ID())
+		return err
+	}
+
+	// wait for all requests before switching handles to complete
+	timestamp := cs.consistent.Synchronize()
+	span.Infof("All requests before the switch handle are completed, timestamp:%v", timestamp)
+
+	return nil
+}
+
+func (cs *chunk) StopCompact(ctx context.Context, ncs core.ChunkAPI) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	cs.lock.Lock()
+	defer cs.lock.Unlock()
+
+	cs.compacting = false
+	cs.resetCompactTask()
+
+	// note: In an abnormal situation, compact fails, but stg is double-written stg
+	curStg := cs.getStg()
+	rawStg := curStg.RawStorage()
+	if rawStg != nil {
+		// If a commit is made, then it will definitely not enter this branch;
+		span.Warnf("cur:%s/raw:%s compact fails, stg is double-written stg", curStg.ID(), rawStg.ID())
+		// restore stg
+		cs.setStg(rawStg)
+	}
+
+	return nil
+}
+
+func (cs *chunk) NeedCompact(ctx context.Context) bool {
+	span := trace.SpanFromContextSafe(ctx)
+
+	stg := cs.getStg()
+
+	stat, err := stg.Stat(context.TODO())
+	if err != nil {
+		span.Errorf("get chunk data space info failed: %v", err)
+		return false
+	}
+
+	size, phySize := stat.FileSize, stat.PhySize
+
+	// file size is too large
+	if size >= cs.conf.CompactTriggerThreshold {
+		span.Debugf("phySize:%v/fsize:%v, threshold:%v",
+			phySize, size, cs.conf.CompactTriggerThreshold)
+		return true
+	}
+
+	// void rate exceeds threshold
+	if size > cs.conf.CompactMinSizeThreshold && (1-float64(phySize)/float64(size)) >= cs.conf.CompactEmptyRateThreshold {
+		span.Debugf("phySize:%v/fsize:%v, minSize:%v threshold:%v",
+			phySize, size, cs.conf.CompactMinSizeThreshold, cs.conf.CompactEmptyRateThreshold)
+		return true
+	}
+
+	return false
+}
+
 func (cs *chunk) handleErrCompact(ctx context.Context, ncs core.ChunkAPI) {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -255,91 +340,6 @@ COMPACT:
 	}
 
 	return nil
-}
-
-func (cs *chunk) CommitCompact(ctx context.Context, ncs core.ChunkAPI) (err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	newcs := ncs.(*chunk)
-
-	// replStg -> normal background stg
-	repStg, backgroundStg := cs.getStg(), newcs.getStg()
-
-	span.Infof("compact commit. Change <%s> to <%s>", repStg.ID(), backgroundStg.ID())
-
-	cs.lock.Lock()
-	{
-		// exchange handler
-		cs.setStg(backgroundStg)
-		newcs.setStg(repStg)
-	}
-	cs.lock.Unlock()
-
-	cs.lastCompactTime = time.Now().UnixNano()
-
-	// finally init stats
-	if err = cs.refreshFstat(ctx); err != nil {
-		span.Errorf("Failed refresh fstat. <%s>", cs.ID())
-		return err
-	}
-
-	// wait for all requests before switching handles to complete
-	timestamp := cs.consistent.Synchronize()
-	span.Infof("All requests before the switch handle are completed, timestamp:%v", timestamp)
-
-	return nil
-}
-
-func (cs *chunk) StopCompact(ctx context.Context, ncs core.ChunkAPI) (err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	cs.lock.Lock()
-	defer cs.lock.Unlock()
-
-	cs.compacting = false
-	cs.resetCompactTask()
-
-	// note: In an abnormal situation, compact fails, but stg is double-written stg
-	curStg := cs.getStg()
-	rawStg := curStg.RawStorage()
-	if rawStg != nil {
-		// If a commit is made, then it will definitely not enter this branch;
-		span.Warnf("cur:%s/raw:%s compact fails, stg is double-written stg", curStg.ID(), rawStg.ID())
-		// restore stg
-		cs.setStg(rawStg)
-	}
-
-	return nil
-}
-
-func (cs *chunk) NeedCompact(ctx context.Context) bool {
-	span := trace.SpanFromContextSafe(ctx)
-
-	stg := cs.getStg()
-
-	stat, err := stg.Stat(context.TODO())
-	if err != nil {
-		span.Errorf("get chunk data space info failed: %v", err)
-		return false
-	}
-
-	size, phySize := stat.FileSize, stat.PhySize
-
-	// file size is too large
-	if size >= cs.conf.CompactTriggerThreshold {
-		span.Debugf("phySize:%v/fsize:%v, threshold:%v",
-			phySize, size, cs.conf.CompactTriggerThreshold)
-		return true
-	}
-
-	// void rate exceeds threshold
-	if size > cs.conf.CompactMinSizeThreshold && (1-float64(phySize)/float64(size)) >= cs.conf.CompactEmptyRateThreshold {
-		span.Debugf("phySize:%v/fsize:%v, minSize:%v threshold:%v",
-			phySize, size, cs.conf.CompactMinSizeThreshold, cs.conf.CompactEmptyRateThreshold)
-		return true
-	}
-
-	return false
 }
 
 func (cs *chunk) compactCheck(ctx context.Context, ncs *chunk) (err error) {

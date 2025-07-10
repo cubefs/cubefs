@@ -106,6 +106,8 @@ func addCmdDiskDrop(diskCommand *grumble.Command) {
 }
 
 func dropStatCheck(c *grumble.Context) error {
+	log.SetOutputLevel(log.Level(c.Flags.Uint("log_level")))
+
 	diskInfos, err := checkDiskDropConf(c)
 	if err != nil {
 		return err
@@ -117,7 +119,6 @@ func dropStatCheck(c *grumble.Context) error {
 	cmCli := newCmClient(c)
 	fmt.Printf("start time: " + time.Now().Format("2006-01-02 15:04:05") + "\n")
 	printDiskID(diskInfos)
-	log.SetOutputLevel(log.Level(c.Flags.Uint("log_level")))
 
 	// check cm
 	if vuidCmCnt, err = getVuidFromCm(ctx, cmCli, diskInfos); err != nil {

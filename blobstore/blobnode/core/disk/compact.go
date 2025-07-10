@@ -31,69 +31,6 @@ const (
 	setCompactInterval      = 100 * time.Millisecond
 )
 
-func (ds *DiskStorage) loopCompactFile() {
-	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", "Compact"+ds.Conf.Path)
-
-	timer := initTimer(ds.Conf.ChunkCompactIntervalSec)
-	defer timer.Stop()
-
-	span.Infof("start compact executor.")
-
-	// consumer
-	ds.loopAttach(func() {
-		for {
-			select {
-			case <-ds.closeCh:
-				span.Warnf("loopCompact done...")
-				return
-			case vuid := <-ds.compactCh:
-				span.Debugf("recv compact message. vuid:[%d]", vuid)
-				if err := ds.ExecCompactChunk(vuid); err != nil {
-					span.Errorf("compact vuid: %d err:%v", vuid, err)
-				}
-			}
-		}
-	})
-
-	span.Infof("start compact checker.")
-
-	// producer
-	for {
-		select {
-		case <-ds.closeCh:
-			span.Warnf("loopCompact done...")
-			return
-		case <-timer.C:
-			ds.runCompactFiles()
-			resetTimer(ds.Conf.ChunkCompactIntervalSec, timer)
-		}
-	}
-}
-
-func (ds *DiskStorage) runCompactFiles() {
-	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", base.BackgroudReqID("Compact"+ds.Conf.Path))
-
-	span.Debugf("find chunks that meet the conditions ===")
-	defer span.Debugf("check compact files done. ===")
-
-	chunks := make([]core.ChunkAPI, 0)
-	ds.Lock.RLock()
-	for _, chunk := range ds.Chunks {
-		chunks = append(chunks, chunk)
-	}
-	ds.Lock.RUnlock()
-
-	for _, chunk := range chunks {
-		if !chunk.NeedCompact(ctx) {
-			continue
-		}
-		span.Infof("will compact vuid:<%d>", chunk.Vuid())
-		ds.EnqueueCompact(ctx, chunk.Vuid())
-		// Once in a round
-		return
-	}
-}
-
 func (ds *DiskStorage) EnqueueCompact(ctx context.Context, vuid proto.Vuid) {
 	ds.compactCh <- vuid
 }
@@ -167,34 +104,6 @@ STOPCOMPACT:
 	return nil
 }
 
-func (ds *DiskStorage) destroyRedundant(ctx context.Context, ncs core.ChunkAPI) (err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	// keep new chunkstorage meta
-	ncsMeta := ncs.VuidMeta()
-
-	// wait old stg all request done；
-	for {
-		time.Sleep(10 * time.Second)
-		if !ncs.HasPendingRequest() {
-			break
-		}
-		span.Debugf("=== wait chunk(%s) all request done ===", ncsMeta.ChunkID)
-	}
-
-	span.Infof("safe here. id:%s request all done.", ncsMeta.ChunkID)
-
-	// isolated. safe
-	ncs.Close(ctx)
-
-	// update chunk status, mark destroy. destroy async
-	ncsMeta.Status = cmapi.ChunkStatusRelease
-	ncsMeta.Reason = cmapi.ReleaseForCompact
-	ncsMeta.Mtime = time.Now().UnixNano()
-
-	return ds.SuperBlock.UpsertChunk(ctx, ncsMeta.ChunkID, *ncsMeta)
-}
-
 func (ds *DiskStorage) ExecCompactChunk(vuid proto.Vuid) (err error) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", base.BackgroudReqID("Compact"+ds.Conf.Path))
 
@@ -233,6 +142,97 @@ func (ds *DiskStorage) ExecCompactChunk(vuid proto.Vuid) (err error) {
 	}
 
 	return nil
+}
+
+func (ds *DiskStorage) loopCompactFile() {
+	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", "Compact"+ds.Conf.Path)
+
+	timer := initTimer(ds.Conf.ChunkCompactIntervalSec)
+	defer timer.Stop()
+
+	span.Infof("start compact executor.")
+
+	// consumer
+	ds.loopAttach(func() {
+		for {
+			select {
+			case <-ds.closeCh:
+				span.Warnf("loopCompact done...")
+				return
+			case vuid := <-ds.compactCh:
+				span.Debugf("recv compact message. vuid:[%d]", vuid)
+				if err := ds.ExecCompactChunk(vuid); err != nil {
+					span.Errorf("compact vuid: %d err:%v", vuid, err)
+				}
+			}
+		}
+	})
+
+	span.Infof("start compact checker.")
+
+	// producer
+	for {
+		select {
+		case <-ds.closeCh:
+			span.Warnf("loopCompact done...")
+			return
+		case <-timer.C:
+			ds.runCompactFiles()
+			resetTimer(ds.Conf.ChunkCompactIntervalSec, timer)
+		}
+	}
+}
+
+func (ds *DiskStorage) runCompactFiles() {
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", base.BackgroudReqID("Compact"+ds.Conf.Path))
+
+	span.Debugf("find chunks that meet the conditions ===")
+	defer span.Debugf("check compact files done. ===")
+
+	chunks := make([]core.ChunkAPI, 0)
+	ds.Lock.RLock()
+	for _, chunk := range ds.Chunks {
+		chunks = append(chunks, chunk)
+	}
+	ds.Lock.RUnlock()
+
+	for _, chunk := range chunks {
+		if !chunk.NeedCompact(ctx) {
+			continue
+		}
+		span.Infof("will compact vuid:<%d>", chunk.Vuid())
+		ds.EnqueueCompact(ctx, chunk.Vuid())
+		// Once in a round
+		return
+	}
+}
+
+func (ds *DiskStorage) destroyRedundant(ctx context.Context, ncs core.ChunkAPI) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	// keep new chunkstorage meta
+	ncsMeta := ncs.VuidMeta()
+
+	// wait old stg all request done；
+	for {
+		time.Sleep(10 * time.Second)
+		if !ncs.HasPendingRequest() {
+			break
+		}
+		span.Debugf("=== wait chunk(%s) all request done ===", ncsMeta.ChunkID)
+	}
+
+	span.Infof("safe here. id:%s request all done.", ncsMeta.ChunkID)
+
+	// isolated. safe
+	ncs.Close(ctx)
+
+	// update chunk status, mark destroy. destroy async
+	ncsMeta.Status = cmapi.ChunkStatusRelease
+	ncsMeta.Reason = cmapi.ReleaseForCompact
+	ncsMeta.Mtime = time.Now().UnixNano()
+
+	return ds.SuperBlock.UpsertChunk(ctx, ncsMeta.ChunkID, *ncsMeta)
 }
 
 func (ds *DiskStorage) notifyCompacting(ctx context.Context, vuid proto.Vuid, compacting bool) (
