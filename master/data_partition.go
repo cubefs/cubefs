@@ -2549,6 +2549,10 @@ func (partition *DataPartition) isInterSectionBetweenMasterAndReplicasEmptySet()
 	}
 
 	for _, replica := range partition.Replicas {
+		// new created replica, no heart beat report, skip
+		if len(replica.LocalPeers) == 0 {
+			continue
+		}
 		replicaAddrs := make(map[string]bool, len(replica.LocalPeers))
 		for _, peer := range replica.LocalPeers {
 			replicaAddrs[peer.Addr] = true
