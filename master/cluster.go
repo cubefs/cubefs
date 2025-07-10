@@ -5213,11 +5213,6 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 		retry := c.RetryDecommissionDisk(dataNode.Addr, disk.DiskPath)
 		partitions := dataNode.badPartitions(disk.DiskPath, c, false)
 		totalDpCnt := len(partitions)
-		if totalDpCnt == 0 && !retry {
-			// msg := fmt.Sprintf("disk(%v_%v) can be removed", dataNode.Addr, disk.DiskPath)
-			// auditlog.LogMasterOp("DiskDecommission", msg, nil)
-			continue
-		}
 		var ratio float64
 		if totalDpCnt != 0 {
 			ratio = float64(len(disk.DiskErrPartitionList)) / float64(totalDpCnt)
