@@ -120,6 +120,7 @@ ErrCompact:
 		return nil, err
 	}
 
+	span.Warnf("compact data sync success, old chunk:%s new chunk:%s", cs.ID(), ncs.ID())
 	return ncs, nil
 }
 

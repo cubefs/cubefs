@@ -32,7 +32,9 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -58,7 +60,7 @@ func getGlobalConfigFn(ctx context.Context, key string) (val string, err error) 
 }
 
 func TestNewDiskStorage(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "NewDiskStorage")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestNewDiskStorage")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -199,7 +201,7 @@ func TestRunCompact(t *testing.T) {
 }
 
 func TestDiskStorage_UpdateChunkStatus(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "UpdateChunkStatus")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestUpdateChunkStatus")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -241,7 +243,7 @@ func TestDiskStorage_UpdateChunkStatus(t *testing.T) {
 }
 
 func TestSuperBlock_UpdateDiskStatus(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "UpdateDiskStatus")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestUpdateDiskStatus")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -290,7 +292,7 @@ func TestSuperBlock_UpdateDiskStatus(t *testing.T) {
 func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "NewBlobNodeService")
 
-	testDir, err := os.MkdirTemp(os.TempDir(), "CompactChunkFile2")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestCompactChunkFile2")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -316,6 +318,7 @@ func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 
 	vuid := proto.Vuid(101)
 
+	ds.Conf.CompactTriggerThreshold = 1
 	cs, err := ds.CreateChunk(context.TODO(), vuid, core.DefaultChunkSize)
 	require.NoError(t, err)
 	require.NotNil(t, cs)
@@ -373,7 +376,7 @@ func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 }
 
 func TestExecCompact(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "ExecCompact")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestExecCompact")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -414,6 +417,7 @@ func TestExecCompact(t *testing.T) {
 
 	vuid1 := proto.Vuid(2001)
 	vuid2 := proto.Vuid(2002)
+	vuid3 := proto.Vuid(2003)
 
 	cs, err := ds.CreateChunk(ctx, vuid1, core.DefaultChunkSize)
 	require.NoError(t, err)
@@ -422,17 +426,32 @@ func TestExecCompact(t *testing.T) {
 	cs, err = ds.CreateChunk(ctx, vuid2, core.DefaultChunkSize)
 	require.NoError(t, err)
 	require.NotNil(t, cs)
-	require.Equal(t, len(ds.Chunks), 2)
 
+	cs, err = ds.CreateChunk(ctx, vuid3, 4096)
+	require.NoError(t, err)
+	require.NotNil(t, cs)
+
+	require.Equal(t, len(ds.Chunks), 3)
+
+	// dont need compact
+	err = ds.ExecCompactChunk(vuid3)
+	require.NoError(t, err)
+
+	// 501, http.StatusNotImplemented
+	ds.Conf.CompactTriggerThreshold = 1
 	err = ds.ExecCompactChunk(vuid1)
 	require.Error(t, err)
+	code := rpc.DetectStatusCode(err)
+	require.Equal(t, http.StatusNotImplemented, code)
 
+	// not found
 	err = ds.ExecCompactChunk(proto.Vuid(2004))
 	require.Error(t, err)
+	require.ErrorIs(t, bloberr.ErrNoSuchVuid, err)
 }
 
 func TestCleanChunk(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "CleanChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestCleanChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -495,7 +514,7 @@ func TestCleanChunk(t *testing.T) {
 }
 
 func TestCheckChunkFile(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "CheckChunkFile")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestCheckChunkFile")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -546,7 +565,7 @@ func TestCheckChunkFile(t *testing.T) {
 }
 
 func TestDiskstorage_Finalizer(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "NewDiskStorage")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestNewDiskStorage")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -612,7 +631,7 @@ func TestDiskstorage_Finalizer(t *testing.T) {
 }
 
 func TestDiskStorageWrapper_CreateChunk(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "CreateChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestCreateChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -644,7 +663,7 @@ func TestDiskStorageWrapper_CreateChunk(t *testing.T) {
 }
 
 func TestDiskStorageWrapper_CreateChunkOversold(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "CreateChunkOversold")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestCreateChunkOversold")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -679,7 +698,7 @@ func TestDiskStorageWrapper_CreateChunkOversold(t *testing.T) {
 }
 
 func TestDiskStorage_ReleaseChunk(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "CreateChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestCreateChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -724,7 +743,7 @@ func TestDiskStorage_ReleaseChunk(t *testing.T) {
 }
 
 func TestDiskStorage_UpdateChunkStatus2(t *testing.T) {
-	testDir, err := os.MkdirTemp(os.TempDir(), "CreateChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestCreateChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -768,4 +787,85 @@ func TestDiskStorage_UpdateChunkStatus2(t *testing.T) {
 
 	err = ds.UpdateChunkStatus(ctx, vuid, 6)
 	require.Error(t, err)
+}
+
+func TestDiskStorage_RedundantChunks(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestRedundantChunks")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+	diskpath := filepath.Join(testDir, "DiskPath")
+	err = os.MkdirAll(diskpath, 0o755)
+	require.NoError(t, err)
+
+	diskConfig := core.Config{
+		BaseConfig: core.BaseConfig{
+			Path:       diskpath,
+			AutoFormat: true,
+		},
+		AllocDiskID:      getDiskIDFn,
+		NotifyCompacting: setChunkCompactFn,
+		HandleIOError:    handleIOErrorFn,
+	}
+
+	ds, err := newDiskStorage(ctx, diskConfig)
+	require.NoError(t, err)
+	require.NotNil(t, ds)
+
+	vuid := proto.Vuid(1001)
+	chunkOld := cmapi.NewChunkID(vuid)
+	metaRedundant := core.VuidMeta{
+		DiskID:     101,
+		Vuid:       vuid,
+		ChunkID:    chunkOld,
+		Mtime:      time.Now().UnixNano(),
+		Compacting: true,
+		Status:     cmapi.ChunkStatusNormal, // 1
+	}
+	err = ds.SuperBlock.UpsertChunk(ctx, metaRedundant.ChunkID, metaRedundant)
+	require.NoError(t, err)
+
+	chunkNew := cmapi.NewChunkID(vuid)
+	metaNew := metaRedundant
+	metaNew.ChunkID = chunkNew
+	metaNew.Mtime = metaRedundant.Mtime + time.Second.Nanoseconds()
+	metaNew.Compacting = false
+	err = ds.SuperBlock.UpsertChunk(ctx, metaNew.ChunkID, metaNew)
+	require.NoError(t, err)
+	err = ds.SuperBlock.BindVuidChunk(ctx, vuid, metaNew.ChunkID)
+	require.NoError(t, err)
+
+	chunkOldFile := filepath.Join(ds.DataPath, chunkOld.String())
+	_, err = os.OpenFile(chunkOldFile, os.O_CREATE, 0o644)
+	require.NoError(t, err)
+	chunkNewFile := filepath.Join(ds.DataPath, chunkNew.String())
+	_, err = os.OpenFile(chunkNewFile, os.O_CREATE, 0o644)
+	require.NoError(t, err)
+
+	dsw := &DiskStorageWrapper{DiskStorage: ds}
+	err = dsw.RestoreChunkStorage(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(dsw.Chunks))
+
+	cs, found := dsw.GetChunkStorage(vuid)
+	require.True(t, found)
+	require.NotNil(t, cs)
+	require.Equal(t, chunkNew, cs.ID())
+
+	vuid2Chunk, err := ds.SuperBlock.ListVuids(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(vuid2Chunk))
+
+	vuidMetas, err := ds.SuperBlock.ListChunks(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(vuidMetas))
+
+	meta := vuidMetas[chunkOld]
+	require.Equal(t, chunkOld, meta.ChunkID)
+	require.Equal(t, cmapi.ChunkStatusRelease, meta.Status)
+
+	meta = vuidMetas[chunkNew]
+	require.Equal(t, chunkNew, meta.ChunkID)
+	require.Equal(t, cmapi.ChunkStatusNormal, meta.Status)
 }

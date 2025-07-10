@@ -77,6 +77,7 @@ func (ds *DiskStorage) CompactChunkInternal(ctx context.Context, vuid proto.Vuid
 		span.Errorf("Failed vuid[%d] bind new chunkfile[%s]", vuid, ncs.ID())
 		goto STOPCOMPACT
 	}
+	span.Warnf("compact insert new chunkmeta, vuid[%d] bind new chunkfile[%s]", vuid, ncs.ID())
 
 	// change memory fd.
 	err = cs.CommitCompact(ctx, ncs)
@@ -93,7 +94,7 @@ STOPCOMPACT:
 		return err
 	}
 
-	// mark destroy ncs
+	// wait old stg all request done, and then mark destroy ncs
 	err = ds.destroyRedundant(ctx, ncs)
 	if err != nil {
 		span.Errorf("Failed update chunk[%s] status. err:%v", ncsMeta.ChunkID, err)
@@ -107,9 +108,14 @@ STOPCOMPACT:
 func (ds *DiskStorage) ExecCompactChunk(vuid proto.Vuid) (err error) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", base.BackgroudReqID("Compact"+ds.Conf.Path))
 
-	_, found := ds.GetChunkStorage(vuid)
+	cs, found := ds.GetChunkStorage(vuid)
 	if !found {
+		span.Errorf("cannot happened. vuid:%d not found", vuid)
 		return bloberr.ErrNoSuchVuid
+	}
+	if !cs.NeedCompact(ctx) {
+		span.Infof("dont need do compact, vuid:%d, chunkFile:%s", vuid, cs.ID())
+		return nil
 	}
 
 	// Persistent compacting field

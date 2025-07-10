@@ -26,6 +26,7 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	bncom "github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
@@ -156,7 +157,7 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 	sb := ds.SuperBlock
 
 	// load chunkmeta
-	vuidMaps, err := sb.ListVuids(ctx)
+	vuid2Chunk, err := sb.ListVuids(ctx)
 	if err != nil {
 		span.Errorf("Failed list chunks: %v", err)
 		return err
@@ -168,9 +169,16 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 		return err
 	}
 
+	// chunkID -> is redundant. we need to find chunkID that is in $vuidMetas but not in $vuid2Chunk
+	chunkRedundant := make(map[cmapi.ChunkID]struct{})
+	for chunkID := range vuidMetas {
+		chunkRedundant[chunkID] = struct{}{}
+	}
+
 	chunks := make(map[proto.Vuid]core.ChunkAPI)
-	for vuid, chunkid := range vuidMaps {
+	for vuid, chunkid := range vuid2Chunk {
 		span.Debugf("vuid:%d, chunkid: %s", vuid, chunkid)
+		delete(chunkRedundant, chunkid)
 
 		vm := vuidMetas[chunkid]
 		if vm.Status == clustermgr.ChunkStatusRelease {
@@ -203,6 +211,22 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 		}
 
 		chunks[vm.Vuid] = cs
+	}
+
+	// these chunks ars not in $vuid2Chunk: need mark redundant chunks -> release
+	// 1. new chunk is not completed, it is invalid/incomplete file, mark it to release
+	// 2. old chunk is completed, it is redundant, mark it to release
+	for chunkID := range chunkRedundant {
+		csMeta := vuidMetas[chunkID]
+		csMeta.Status = cmapi.ChunkStatusRelease
+		csMeta.Reason = cmapi.ReleaseForCompact
+		csMeta.Mtime = time.Now().UnixNano()
+		span.Warnf("chunk(%s) is redundant, mark it to release status", chunkID)
+
+		if err = dsw.SuperBlock.UpsertChunk(ctx, chunkID, csMeta); err != nil {
+			span.Errorf("update chunk(%s) status to release failed: %+v", chunkID, err)
+			return err
+		}
 	}
 
 	ds.Lock.Lock()
