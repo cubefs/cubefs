@@ -641,8 +641,10 @@ func (s *Super) syncMeta() <-chan struct{} {
 		out := make(chan uint64)
 		go func() {
 			for i := s.ic.lruList.Front(); i != nil; i = i.Next() {
-				oldInfo := i.Value.(*proto.InodeInfo)
-				out <- oldInfo.Inode
+				if i.Value != nil {
+					oldInfo := i.Value.(*proto.InodeInfo)
+					out <- oldInfo.Inode
+				}
 			}
 			close(out)
 		}()
