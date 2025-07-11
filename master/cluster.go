@@ -6360,7 +6360,7 @@ func (c *Cluster) checkDataPartitionDecommissionDiskRetryMap() {
 
 func (c *Cluster) scheduleToCheckDataPartitionRepairingStatus() {
 	c.runTask(&cTask{
-		tickTime: time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition),
+		tickTime: time.Minute * time.Duration(c.cfg.IntervalToCheckDataPartition),
 		name:     "scheduleToCheckDataPartitionRepairingStatus",
 		function: func() (fin bool) {
 			if c.partition != nil && c.partition.IsRaftLeader() {
