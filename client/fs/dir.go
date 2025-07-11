@@ -1071,7 +1071,9 @@ func (d *Dir) getCwd() string {
 }
 
 func (d *Dir) needDentrycache() bool {
-	return !DisableMetaCache && d.super.bcacheDir != "" && strings.HasPrefix(d.getCwd(), d.super.bcacheDir)
+	// TODO: cannot find .git when git clone
+	// return !DisableMetaCache && d.super.bcacheDir != "" && strings.HasPrefix(d.getCwd(), d.super.bcacheDir)
+	return false
 }
 
 func dentryExpired(info *proto.DentryInfo) bool {
