@@ -285,9 +285,9 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 					return 0, err
 				}
 
-				if !s.client.RemoteCache.remoteCacheOnlyForNotSSD || (s.client.RemoteCache.remoteCacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
-					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
-						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD)
+				if s.client.forceRemoteCache || !s.client.RemoteCache.remoteCacheOnlyForNotSSD || (s.client.RemoteCache.remoteCacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
+					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v) forceRemoteCache(%v)",
+						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD, s.client.forceRemoteCache)
 					var cacheReadRequests []*CacheReadRequest
 					cacheReadRequests, err = s.prepareCacheRequests(uint64(offset), uint64(size), data, inodeInfo.Generation)
 					if err == nil {

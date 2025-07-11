@@ -84,6 +84,10 @@ const (
 	AheadReadBlockTimeOut
 	AheadReadWindowCnt
 	ReqChanCnt
+
+	// remotecache
+	ForceRemoteCache
+
 	MaxMountOption
 )
 
@@ -183,6 +187,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[AheadReadBlockTimeOut] = MountOption{"aheadReadBlockTimeOut", "ahead read block expiration time", "", int64(3)}
 	opts[AheadReadWindowCnt] = MountOption{"aheadReadWindowCnt", "ahead read window block count", "", int64(8)}
 
+	opts[ForceRemoteCache] = MountOption{"forceRemoteCache", "All read requests are handled by the remote cache.", "", false}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -360,4 +365,7 @@ type MountOptions struct {
 	AheadReadTotalMem     int64
 	AheadReadBlockTimeOut int
 	AheadReadWindowCnt    int
+
+	// remote cache
+	ForceRemoteCache bool
 }
