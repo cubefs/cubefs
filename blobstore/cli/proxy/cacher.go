@@ -18,9 +18,11 @@ import (
 	"github.com/desertbit/grumble"
 	"github.com/fatih/color"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
+	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -76,9 +78,13 @@ func addCmdCacher(cmd *grumble.Command) {
 		},
 	})
 	cacherCommand.AddCommand(&grumble.Command{
-		Name:  "erase",
-		Help:  "erase cache with key or all",
-		Flags: proxyFlags,
+		Name: "erase",
+		Help: "erase cache with key or all",
+		Flags: func(f *grumble.Flags) {
+			proxyFlags(f)
+			f.Int64L("clusterid", 0, "cluster id")
+			f.StringL("idc", "", "idc for proxy service, [ALL or xxx]")
+		},
 		Args: func(a *grumble.Args) {
 			a.String("key", "key of diskv [volume-{vid} or disk-{disk_id} or ALL]")
 		},
@@ -87,7 +93,35 @@ func addCmdCacher(cmd *grumble.Command) {
 			if !common.Confirm("to erase key: " + color.RedString("%s", key)) {
 				return nil
 			}
-			return proxyCli.Erase(common.CmdContext(), c.Flags.String(_host), key)
+			if host := c.Flags.String(_host); host != "" {
+				return proxyCli.Erase(common.CmdContext(), host, key)
+			}
+
+			clusterID := proto.ClusterID(c.Flags.Int64("clusterid"))
+			if clusterID <= 0 {
+				return fmt.Errorf("setting --clusterid please")
+			}
+			cmcli := config.NewCluster(clusterID.ToString(), nil, "")
+			info, err := cmcli.GetService(common.CmdContext(),
+				clustermgr.GetServiceArgs{Name: proto.ServiceNameProxy})
+			if err != nil {
+				return err
+			}
+			idc := c.Flags.String("idc")
+			hosts := make([]string, 0, len(info.Nodes))
+			for _, ii := range info.Nodes {
+				if idc == "ALL" || ii.Idc == idc {
+					hosts = append(hosts, ii.Host)
+				}
+			}
+
+			for _, host := range hosts {
+				fmt.Printf("to erase host:%s key:%s\n", host, key)
+				if err = proxyCli.Erase(common.CmdContext(), host, key); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 	})
 }
