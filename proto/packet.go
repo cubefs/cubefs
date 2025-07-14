@@ -742,6 +742,14 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpFlashNodeTaskCommand"
 	case OpSetRepairingStatus:
 		m = "OpSetRepairingStatus"
+	case OpFreezeEmptyMetaPartition:
+		m = "OpFreezeEmptyMetaPartition"
+	case OpBackupEmptyMetaPartition:
+		m = "OpBackupEmptyMetaPartition"
+	case OpRemoveBackupMetaPartition:
+		m = "OpRemoveBackupMetaPartition"
+	case OpIsRaftStatusOk:
+		m = "OpIsRaftStatusOk"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
