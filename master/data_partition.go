@@ -1090,7 +1090,7 @@ const InvalidDecommissionDpCnt = -1
 const (
 	defaultDecommissionParallelLimit              = 10
 	defaultDecommissionRetryLimit                 = 5
-	defaultDecommissionRetryInternal              = 10 * time.Minute
+	defaultDecommissionRetryInternal              = 5 * time.Minute
 	defaultDecommissionRollbackLimit              = 3
 	defaultSetRestoreReplicaStatusLimit           = 300
 	defaultDecommissionFirstHostDiskParallelLimit = 10
