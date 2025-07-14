@@ -126,6 +126,7 @@ type Server struct {
 	metaReady       bool
 	apiServer       *http.Server
 	cliMgr          *ClientMgr
+	leaderChangeLk  sync.RWMutex
 }
 
 // NewServer creates a new server

@@ -36,6 +36,19 @@ func (m *Server) getCurrAddr() string {
 }
 
 func (m *Server) handleLeaderChange(leader uint64) {
+	m.leaderChangeLk.Lock()
+	defer m.leaderChangeLk.Unlock()
+
+	if m.partition != nil { // parition maybe nil for testcase
+		leaderId, term := m.partition.LeaderTerm()
+		log.LogWarnf("handleLeaderChange: get raft leader %d, term %d, old %d", leaderId, term, leader)
+
+		if leaderId != leader {
+			log.LogWarnf("handleLeaderChange: leader id already changed, old %d, now %d", leader, leaderId)
+			return
+		}
+	}
+
 	if leader == 0 {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
 		if WarnMetrics != nil {
