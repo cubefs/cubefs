@@ -255,6 +255,8 @@ const (
 	highestPriorityDecommissionWeight             = 8
 	diskDecommissionInfoStatType                  = 1
 	dataNodeDecommissionInfoStatType              = 2
+
+	maxTrashInterval = 365 * 24 * 60
 )
 
 const (

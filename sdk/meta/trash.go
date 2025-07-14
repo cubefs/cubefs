@@ -280,7 +280,7 @@ func transferLongFileName(filePath string) (newName, oldName string) {
 
 func (trash *Trash) getDeleteInterval() int64 {
 	checkPointInterval := atomic.LoadInt64(&trash.deleteInterval) / 4
-	if checkPointInterval == 0 {
+	if checkPointInterval <= 0 {
 		checkPointInterval = 1
 	}
 	rand.Seed(time.Now().UnixNano())
