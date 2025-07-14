@@ -547,6 +547,12 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	if req.trashInterval, err = extractInt64WithDefault(r, trashIntervalKey, vol.TrashInterval); err != nil {
 		return
 	}
+
+	if req.trashInterval > maxTrashInterval {
+		err = fmt.Errorf("trash interval can't great than %d, now %d", maxTrashInterval, req.trashInterval)
+		return
+	}
+
 	if req.accessTimeValidInterval, err = extractInt64WithDefault(r, accessTimeIntervalKey, vol.AccessTimeValidInterval); err != nil {
 		return
 	}
@@ -967,6 +973,12 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if req.trashInterval, err = extractInt64WithDefault(r, trashIntervalKey, 0); err != nil {
 		return
 	}
+
+	if req.trashInterval > maxTrashInterval {
+		err = fmt.Errorf("trash interval can't great than %d, now %d", maxTrashInterval, req.trashInterval)
+		return
+	}
+
 	if req.accessTimeValidInterval, err = extractInt64WithDefault(r, accessTimeIntervalKey, proto.DefaultAccessTimeValidInterval); err != nil {
 		return
 	}
@@ -2274,6 +2286,11 @@ func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, inte
 		return
 	}
 	if interval, err = extractInt64WithDefault(r, trashIntervalKey, 0); err != nil {
+		return
+	}
+
+	if interval > maxTrashInterval {
+		err = fmt.Errorf("trash interval can't great than %d, now %d", maxTrashInterval, interval)
 		return
 	}
 	return
