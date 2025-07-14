@@ -166,6 +166,7 @@ type ExtentConfig struct {
 	// remoteCache
 	NeedRemoteCache  bool
 	ForceRemoteCache bool
+	HeartBeatPing    bool
 }
 
 type MultiVerMgr struct {
@@ -401,6 +402,7 @@ retry:
 	}
 	client.extentConfig = config
 	if config.NeedRemoteCache {
+		client.RemoteCache.HeartBeatPing = config.HeartBeatPing
 		client.RemoteCache.Init(client)
 	} else {
 		log.LogInfof("NewExtentClient for (%v) not init remoteCache, config.NeedRemoteCache %v", client.volumeName,

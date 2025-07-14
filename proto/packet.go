@@ -302,6 +302,7 @@ const (
 	OpFlashNodeSetWriteIOLimits uint8 = 0xEE
 	OpFlashNodeScan             uint8 = 0xD4
 	OpFlashNodeTaskCommand      uint8 = 0xD5
+	OpFlashSDKHeartbeat         uint8 = 0xCB
 )
 
 const (
@@ -750,6 +751,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpRemoveBackupMetaPartition"
 	case OpIsRaftStatusOk:
 		m = "OpIsRaftStatusOk"
+	case OpFlashSDKHeartbeat:
+		m = "OpFlashSDKHeartbeat"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
