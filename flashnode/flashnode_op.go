@@ -48,6 +48,8 @@ func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
 
 func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 	switch p.Opcode {
+	case proto.OpFlashSDKHeartbeat:
+		err = f.opClientHeartbeat(conn, p)
 	case proto.OpFlashNodeHeartbeat:
 		err = f.opFlashNodeHeartbeat(conn, p)
 	case proto.OpFlashNodeCachePrepare:
@@ -77,6 +79,17 @@ func (f *FlashNode) SetTimeout(handleReadTimeout int, readDataNodeTimeout int) {
 		f.limitWrite.ResetFlow(f.diskWriteFlow)
 	}
 	f.cacheEngine.SetReadDataNodeTimeout(readDataNodeTimeout)
+}
+
+func (f *FlashNode) opClientHeartbeat(conn net.Conn, p *proto.Packet) (err error) {
+	p.PacketOkReply()
+	if err = p.WriteToConn(conn); err != nil {
+		log.LogErrorf("opClientHeartbeat response: %s", err.Error())
+	}
+	if log.EnableInfo() {
+		log.LogInfof("opClientHeartbeat remoteaddr(%v)", conn.RemoteAddr())
+	}
+	return
 }
 
 func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err error) {
@@ -377,6 +390,7 @@ func (f *FlashNode) getValidViewInfo(req *proto.FlashNodeManualTaskRequest) (met
 			OnForbiddenMigration:        metaWrapper.ForbiddenMigration,
 			MetaWrapper:                 metaWrapper,
 			NeedRemoteCache:             true,
+			HeartBeatPing:               true,
 		}
 		log.LogInfof("[NewS3Scanner] extentConfig: vol(%v) volStorageClass(%v) allowedStorageClass(%v), followerRead(%v)",
 			extentConfig.Volume, extentConfig.VolStorageClass, extentConfig.VolAllowedStorageClass, extentConfig.FollowerRead)
