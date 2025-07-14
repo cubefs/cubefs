@@ -639,7 +639,7 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 				wg.Done()
 				continue
 			}
-			b.taskPool.Run(synchronizedDiskID, func() {
+			b.taskPool.Run(b.getTaskIdx(synchronizedDiskID), func() {
 				// add disk run on fixed goroutine synchronously
 				err = b.applyAddDisk(taskCtx, diskInfo)
 				// don't return error if disk already exist
@@ -656,7 +656,7 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 				wg.Done()
 				continue
 			}
-			b.taskPool.Run(b.getTaskIdx(setStatusArgs.DiskID), func() {
+			b.taskPool.Run(b.getTaskIdx(synchronizedDiskID), func() {
 				errs[idx] = b.SetStatus(taskCtx, setStatusArgs.DiskID, setStatusArgs.Status, true)
 				wg.Done()
 			})
@@ -668,7 +668,7 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 				wg.Done()
 				continue
 			}
-			b.taskPool.Run(b.getTaskIdx(args.DiskID), func() {
+			b.taskPool.Run(b.getTaskIdx(synchronizedDiskID), func() {
 				_, errs[idx] = b.applyDroppingDisk(taskCtx, args.DiskID, true)
 				wg.Done()
 			})
@@ -680,7 +680,7 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 				wg.Done()
 				continue
 			}
-			b.taskPool.Run(b.getTaskIdx(args.DiskID), func() {
+			b.taskPool.Run(b.getTaskIdx(synchronizedDiskID), func() {
 				errs[idx] = b.applyDroppedDisk(taskCtx, args.DiskID)
 				wg.Done()
 			})
@@ -705,7 +705,7 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 				wg.Done()
 				continue
 			}
-			b.taskPool.Run(b.getTaskIdx(args.DiskID), func() {
+			b.taskPool.Run(b.getTaskIdx(synchronizedDiskID), func() {
 				errs[idx] = b.applySwitchReadonly(args.DiskID, args.Readonly)
 				wg.Done()
 			})
@@ -717,7 +717,7 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 				wg.Done()
 				continue
 			}
-			b.taskPool.Run(b.getTaskIdx(args.DiskID), func() {
+			b.taskPool.Run(b.getTaskIdx(synchronizedDiskID), func() {
 				errs[idx] = b.applyAdminUpdateDisk(ctx, args)
 				wg.Done()
 			})

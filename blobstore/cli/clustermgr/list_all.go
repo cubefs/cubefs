@@ -67,17 +67,17 @@ func cmdListAllDB(c *grumble.Context) error {
 		return errors.New("invalid command arguments")
 	}
 
-	volumeDB, err := openVolumeDB(volumeDBPath, false)
+	volumeDB, err := openVolumeDB(volumeDBPath, true)
 	if err != nil {
 		return err
 	}
 	defer volumeDB.Close()
-	normalDB, err := openNormalDB(normalDBPath, false)
+	normalDB, err := openNormalDB(normalDBPath, true)
 	if err != nil {
 		return err
 	}
 	defer normalDB.Close()
-	kvDB, err := openKvDB(kvDBPath, false)
+	kvDB, err := openKvDB(kvDBPath, true)
 	if err != nil {
 		return err
 	}
@@ -101,19 +101,37 @@ func cmdListAllDB(c *grumble.Context) error {
 	}
 	fmt.Println()
 
-	diskTbl, err := normaldb.OpenBlobNodeDiskTable(normalDB, true)
+	blobNodeDiskTbl, err := normaldb.OpenBlobNodeDiskTable(normalDB, false)
 	if err != nil {
 		return err
 	}
-	fmt.Println("list disk: ")
-	err = listAllDisks(diskTbl)
+	fmt.Println("list blobnode disk: ")
+	err = listAllBlobNodeDisks(blobNodeDiskTbl)
 	if err != nil {
 		return err
 	}
 	fmt.Println()
 
-	fmt.Println("list dropping disk: ")
-	err = listAllDroppingDisks(diskTbl)
+	fmt.Println("list blobnode dropping disk: ")
+	err = listAllBlobNodeDroppingDisks(blobNodeDiskTbl)
+	if err != nil {
+		return err
+	}
+	fmt.Println()
+
+	shardNodeDiskTbl, err := normaldb.OpenShardNodeDiskTable(normalDB, false)
+	if err != nil {
+		return err
+	}
+	fmt.Println("list shardnode disk: ")
+	err = listAllShardNodeDisks(shardNodeDiskTbl)
+	if err != nil {
+		return err
+	}
+	fmt.Println()
+
+	fmt.Println("list shardnode dropping disk: ")
+	err = listAllShardNodeDroppingDisks(shardNodeDiskTbl)
 	if err != nil {
 		return err
 	}
@@ -200,10 +218,10 @@ func listAllVolumeUnits(volumeTbl *volumedb.VolumeTable) error {
 	})
 }
 
-func listAllDisks(tbl *normaldb.BlobNodeDiskTable) error {
+func listAllBlobNodeDisks(tbl *normaldb.BlobNodeDiskTable) error {
 	list, err := tbl.GetAllDisks()
 	if err != nil {
-		return fmt.Errorf("list disk failed, err: %s", err.Error())
+		return fmt.Errorf("list blobnode disk failed, err: %s", err.Error())
 	}
 	for i := range list {
 		data, err := json.Marshal(list[i])
@@ -215,10 +233,34 @@ func listAllDisks(tbl *normaldb.BlobNodeDiskTable) error {
 	return nil
 }
 
-func listAllDroppingDisks(tbl *normaldb.BlobNodeDiskTable) error {
+func listAllBlobNodeDroppingDisks(tbl *normaldb.BlobNodeDiskTable) error {
 	list, err := tbl.GetAllDroppingDisk()
 	if err != nil {
-		return fmt.Errorf("list dropping disk failed, err: %s", err.Error())
+		return fmt.Errorf("list blobnode dropping disk failed, err: %s", err.Error())
+	}
+	fmt.Println(list)
+	return nil
+}
+
+func listAllShardNodeDisks(tbl *normaldb.ShardNodeDiskTable) error {
+	list, err := tbl.GetAllDisks()
+	if err != nil {
+		return fmt.Errorf("list shardnode disk failed, err: %s", err.Error())
+	}
+	for i := range list {
+		data, err := json.Marshal(list[i])
+		if err != nil {
+			return fmt.Errorf("json marshal failed, err: %s", err.Error())
+		}
+		fmt.Println(string(data))
+	}
+	return nil
+}
+
+func listAllShardNodeDroppingDisks(tbl *normaldb.ShardNodeDiskTable) error {
+	list, err := tbl.GetAllDroppingDisk()
+	if err != nil {
+		return fmt.Errorf("list shardnode dropping disk failed, err: %s", err.Error())
 	}
 	fmt.Println(list)
 	return nil

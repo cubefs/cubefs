@@ -116,12 +116,31 @@ func TestBlobNodeMgrApplier_Apply(t *testing.T) {
 
 	operTypes := make([]int32, 0)
 	datas := make([][]byte, 0)
+	ctxs := make([]base.ProposeContext, 0)
+
+	// OperTypeSetDiskStatus depends on OperTypeAddDisk
+	operTypes = operTypes[:0]
+	datas = datas[:0]
+	data, err := json.Marshal(&clustermgr.DiskSetArgs{
+		DiskID: proto.DiskID(1),
+		Status: proto.DiskStatusBroken,
+	})
+	require.NoError(t, err)
+	operTypes = append(operTypes, OperTypeSetDiskStatus)
+	datas = append(datas, data)
+	for i := 0; i < len(operTypes); i++ {
+		ctxs = append(ctxs, base.ProposeContext{ReqID: span.TraceID()})
+	}
+	err = testBlobNodeMgr.Apply(ctx, operTypes, datas, ctxs)
+	require.Error(t, err)
 
 	// OperTypeAddNode
+	operTypes = operTypes[:0]
+	datas = datas[:0]
+	ctxs = ctxs[:0]
 	{
 		info := testNodeInfo
 		info.Host = hostPrefix + strconv.Itoa(1)
-
 		operTypes = append(operTypes, OperTypeAddNode)
 		data, err := json.Marshal(&info)
 		require.NoError(t, err)
@@ -135,7 +154,6 @@ func TestBlobNodeMgrApplier_Apply(t *testing.T) {
 			info.DiskID = proto.DiskID(i)
 			info.Host = hostPrefix + strconv.Itoa(i)
 			info.NodeID = testNodeInfo.NodeID
-
 			operTypes = append(operTypes, OperTypeAddDisk)
 			data, err := json.Marshal(&info)
 			require.NoError(t, err)
@@ -143,13 +161,12 @@ func TestBlobNodeMgrApplier_Apply(t *testing.T) {
 		}
 	}
 
-	ctxs := make([]base.ProposeContext, 0)
 	for i := 0; i < len(operTypes); i++ {
 		ctxs = append(ctxs, base.ProposeContext{ReqID: span.TraceID()})
 	}
 
-	// apply add node and disk firstly, as synchronously
-	err := testBlobNodeMgr.Apply(ctx, operTypes, datas, ctxs)
+	// add node and disk must be applied firstly, because other operTypes depend on this.
+	err = testBlobNodeMgr.Apply(ctx, operTypes, datas, ctxs)
 	require.NoError(t, err)
 
 	// OperTypeSetDiskStatus
@@ -216,7 +233,7 @@ func TestBlobNodeMgrApplier_Apply(t *testing.T) {
 	info.NodeID = proto.NodeID(2)
 
 	operTypes = append(operTypes, OperTypeAddNode)
-	data, err := json.Marshal(&info)
+	data, err = json.Marshal(&info)
 	require.NoError(t, err)
 	datas = append(datas, data)
 
@@ -282,8 +299,28 @@ func TestShardNodeMgrApplier_Apply(t *testing.T) {
 
 	operTypes := make([]int32, 0)
 	datas := make([][]byte, 0)
+	ctxs := make([]base.ProposeContext, 0)
+
+	// OperTypeSetDiskStatus depends on OperTypeAddDisk
+	operTypes = operTypes[:0]
+	datas = datas[:0]
+	data, err := json.Marshal(&clustermgr.DiskSetArgs{
+		DiskID: proto.DiskID(1),
+		Status: proto.DiskStatusBroken,
+	})
+	require.NoError(t, err)
+	operTypes = append(operTypes, OperTypeSetDiskStatus)
+	datas = append(datas, data)
+	for i := 0; i < len(operTypes); i++ {
+		ctxs = append(ctxs, base.ProposeContext{ReqID: span.TraceID()})
+	}
+	err = testShardNodeMgr.Apply(ctx, operTypes, datas, ctxs)
+	require.Error(t, err)
 
 	// OperTypeAddNode
+	operTypes = operTypes[:0]
+	datas = datas[:0]
+	ctxs = ctxs[:0]
 	{
 		info := testNodeInfo
 		info.Host = hostPrefix + strconv.Itoa(1)
@@ -309,13 +346,12 @@ func TestShardNodeMgrApplier_Apply(t *testing.T) {
 		}
 	}
 
-	ctxs := make([]base.ProposeContext, 0)
 	for i := 0; i < len(operTypes); i++ {
 		ctxs = append(ctxs, base.ProposeContext{ReqID: span.TraceID()})
 	}
 
 	// apply adds node and disk firstly, as synchronously
-	err := testShardNodeMgr.Apply(ctx, operTypes, datas, ctxs)
+	err = testShardNodeMgr.Apply(ctx, operTypes, datas, ctxs)
 	require.NoError(t, err)
 
 	// OperTypeSetDiskStatus
