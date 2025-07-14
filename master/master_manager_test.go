@@ -18,12 +18,14 @@ func TestHandleLeaderChange(t *testing.T) {
 	leaderID := server.id
 	newLeaderID := leaderID + 1
 	server.handleLeaderChange(newLeaderID)
-	if server.metaReady != false {
+	if !server.metaReady { // leader not changed
 		t.Errorf("logic error,metaReady should be false,metaReady[%v]", server.metaReady)
 		return
 	}
+
+	server.metaReady = false
 	server.handleLeaderChange(leaderID)
-	if server.metaReady == false {
+	if !server.metaReady {
 		t.Errorf("logic error,metaReady should be true,metaReady[%v]", server.metaReady)
 		return
 	}
