@@ -149,6 +149,7 @@ func (dp *DataPartition) repair(extentType uint8) {
 	// every time we need to figure out which extents need to be repaired and which ones do not.
 	dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 
+	dp.isMissingTinyExtent = false
 	// error check
 	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() != storage.TinyExtentCount {
 		dp.isMissingTinyExtent = true
