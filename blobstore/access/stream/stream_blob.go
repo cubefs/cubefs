@@ -70,6 +70,7 @@ func (h *Handler) CreateBlob(ctx context.Context, args *acapi.CreateBlobArgs) (*
 		return nil, err
 	}
 
+	encodeName := encodeShardKeysToName(args.ShardKeys, args.BlobName)
 	var blob shardnode.CreateBlobRet
 	rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
 		header, err := h.getShardOpHeader(ctx, &acapi.GetShardCommonArgs{
@@ -88,8 +89,9 @@ func (h *Handler) CreateBlob(ctx context.Context, args *acapi.CreateBlobArgs) (*
 		}
 
 		blob, err = h.shardnodeClient.CreateBlob(ctx, host, shardnode.CreateBlobArgs{
-			Header:    header,
-			Name:      args.BlobName,
+			Header: header,
+			// Name:      args.BlobName,
+			Name:      encodeName,
 			CodeMode:  args.CodeMode,
 			Size_:     args.Size,
 			SliceSize: args.SliceSize,
@@ -660,4 +662,26 @@ func (h *Handler) fixCreateBlobArgs(ctx context.Context, args *acapi.CreateBlobA
 	}
 
 	return nil
+}
+
+// encode shardKeys and blobName -> {key1}{key2}name
+func encodeShardKeysToName(keys [][]byte, name []byte) []byte {
+	if keys == nil || len(keys) == 0 {
+		return name
+	}
+
+	ret := make([]byte, 0, len(name)+4)
+	for _, key := range keys {
+		ret = append(ret, []byte("{")...)
+		ret = append(ret, key...)
+		ret = append(ret, []byte("}")...)
+	}
+
+	if len(keys) == 1 {
+		ret = append(ret, []byte("{}")...)
+	}
+
+	ret = append(ret, name...)
+
+	return ret
 }

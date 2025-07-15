@@ -163,6 +163,13 @@ func TestStreamBlobCreate(t *testing.T) {
 	loc, err := h.CreateBlob(ctx, &args)
 	require.NoError(t, err)
 	require.Equal(t, ret.Blob.Location, *loc)
+
+	//args.ShardKeys = [][]byte{[]byte("shardkey1"), []byte("shardkey2")}
+	//h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().CreateBlob(gAny, gAny, gAny).Return(ret, nil)
+	//h.clusterController.(*MockClusterController).EXPECT().ChooseOne().Return(&clustermgr.ClusterInfo{ClusterID: 1}, nil)
+	//h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil)
+	//loc, err = h.CreateBlob(ctx, &args)
+	//require.NoError(t, err)
 }
 
 func TestStreamBlobDelete(t *testing.T) {
@@ -515,4 +522,36 @@ func TestStreamBlobOther(t *testing.T) {
 	// interrupt, err1 = convertError(kvstore.ErrNotFound)
 	// require.Equal(t, true, interrupt)
 	// require.ErrorIs(t, err1, errcode.ErrCallShardNodeFail)
+}
+
+func TestStreamBlob_EncodeShardKeysToName(t *testing.T) {
+	// {}{}name
+	args := acapi.CreateBlobArgs{
+		BlobName:  []byte("blob-name"),
+		ShardKeys: nil,
+	}
+	encodeName := encodeShardKeysToName(args.ShardKeys, args.BlobName)
+	keys := sharding.ParseShardKeys(encodeName)
+	require.Equal(t, args.BlobName, keys[0])
+	require.Equal(t, args.BlobName, keys[1])
+
+	// {key1}{}name
+	args = acapi.CreateBlobArgs{
+		BlobName:  []byte("blob-name"),
+		ShardKeys: [][]byte{[]byte("key1")},
+	}
+	encodeName = encodeShardKeysToName(args.ShardKeys, args.BlobName)
+	keys = sharding.ParseShardKeys(encodeName)
+	require.Equal(t, args.ShardKeys[0], keys[0])
+	require.Equal(t, args.ShardKeys[0], keys[1])
+
+	// {key1}{key2}name
+	args = acapi.CreateBlobArgs{
+		BlobName:  []byte("blob-name"),
+		ShardKeys: [][]byte{[]byte("key1"), []byte("key2")},
+	}
+	encodeName = encodeShardKeysToName(args.ShardKeys, args.BlobName)
+	keys = sharding.ParseShardKeys(encodeName)
+	require.Equal(t, args.ShardKeys[0], keys[0])
+	require.Equal(t, args.ShardKeys[0], keys[1])
 }
