@@ -126,11 +126,14 @@ type ClusterDecommission struct {
 type CleanTask struct {
 	Name      string    `json:"name"`
 	Status    string    `json:"status"`
-	TaskCnt   int       `json:"taskCount"`
-	FreezeCnt int       `json:"freezeCount"`
-	CleanCnt  int       `json:"cleanCount"`
-	ResetCnt  int       `json:"resetCount"`
+	TaskCnt   int       `json:"-"`
+	FreezeCnt int       `json:"-"`
+	CleanCnt  int       `json:"-"`
+	ResetCnt  int       `json:"-"`
 	Timeout   time.Time `json:"-"`
+	UnFreeze  int       `json:"unfreeze"`
+	Freezing  int       `json:"freezing"`
+	Freezed   int       `json:"freezed"`
 }
 
 // Cluster stores all the cluster-level information.
