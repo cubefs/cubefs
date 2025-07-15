@@ -214,7 +214,6 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 func (dp *DataPartition) StartRaftLoggingSchedule() {
 	getAppliedIDTimer := time.NewTimer(time.Second * 1)
 	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
-	storeAppliedIDTimer := time.NewTimer(time.Second * 10)
 
 	log.LogDebugf("[startSchedule] hello DataPartition schedule")
 
@@ -224,7 +223,6 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			log.LogDebugf("[startSchedule] stop partition(%v)", dp.partitionID)
 			getAppliedIDTimer.Stop()
 			truncateRaftLogTimer.Stop()
-			storeAppliedIDTimer.Stop()
 			return
 
 		case extentID := <-dp.stopRaftC:
@@ -267,14 +265,6 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
 
-		case <-storeAppliedIDTimer.C:
-			appliedID := atomic.LoadUint64(&dp.appliedID)
-			log.LogDebugf("[StartRaftLoggingSchedule] partition [%v] persist applied id(%v)", dp.partitionID, appliedID)
-			if err := dp.storeAppliedID(appliedID); err != nil {
-				log.LogErrorf("partition [%v] scheduled persist applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
-				dp.checkIsDiskError(err, WriteFlag)
-			}
-			storeAppliedIDTimer.Reset(time.Second * 10)
 		case req := <-dp.PersistApplyIdChan:
 			appliedID := atomic.LoadUint64(&dp.appliedID)
 			log.LogDebugf("[StartRaftLoggingSchedule] partition [%v] persist applied id(%v) immediately", dp.partitionID, appliedID)
