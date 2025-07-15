@@ -82,6 +82,7 @@ type (
 		GetSuid() proto.Suid
 		GetUnits() []clustermgr.ShardUnit
 		CheckAndClearShard(ctx context.Context) error
+		ShardingSubRangeCount() int
 	}
 	OpHeader struct {
 		RouteVersion proto.RouteVersion
@@ -784,6 +785,10 @@ func (s *shard) GetAppliedIndex() uint64 {
 
 func (s *shard) GetSuid() proto.Suid {
 	return s.suid
+}
+
+func (s *shard) ShardingSubRangeCount() int {
+	return len(s.shardInfoMu.shardInfo.Range.Subs)
 }
 
 func (s *shard) GetUnits() []clustermgr.ShardUnit {

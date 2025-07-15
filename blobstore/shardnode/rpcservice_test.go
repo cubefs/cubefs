@@ -165,6 +165,7 @@ func TestRpcService_Blob(t *testing.T) {
 	}
 
 	sh := mock.NewMockSpaceShardHandler(C(t))
+	sh.EXPECT().ShardingSubRangeCount().Return(2).AnyTimes()
 	sh.EXPECT().CreateBlob(A, A, A, A).Return(blob, nil).AnyTimes()
 
 	sh.EXPECT().GetBlob(A, A, A).Return(blob, nil).AnyTimes()
@@ -265,6 +266,7 @@ func TestRpcService_Blob(t *testing.T) {
 
 func TestRpcService_Item(t *testing.T) {
 	sh := mock.NewMockSpaceShardHandler(C(t))
+	sh.EXPECT().ShardingSubRangeCount().Return(2).AnyTimes()
 	sh.EXPECT().InsertItem(A, A, A, A).Return(nil).AnyTimes()
 	// item
 	item := shardnode.Item{

@@ -285,3 +285,8 @@ const (
 	CatalogChangeItemAddShard = CatalogChangeItemType(iota + 1)
 	CatalogChangeItemUpdateShard
 )
+
+const (
+	ShardingTagLeft  = '{'
+	ShardingTagRight = '}'
+)

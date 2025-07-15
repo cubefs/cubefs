@@ -52,6 +52,7 @@ func newMockSpace(tb testing.TB) (*mockSpace, func()) {
 		IndexOption: proto.IndexOptionNull,
 	}
 	handler := mock.NewMockSpaceShardHandler(C(tb))
+	handler.EXPECT().ShardingSubRangeCount().Return(2).AnyTimes()
 
 	sg := mock.NewMockShardGetter(C(tb))
 	sg.EXPECT().GetShard(A, A).Return(handler, nil).AnyTimes()

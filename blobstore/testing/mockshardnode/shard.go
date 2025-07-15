@@ -498,6 +498,20 @@ func (mr *MockSpaceShardHandlerMockRecorder) ListItem(ctx, h, prefix, marker, co
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).ListItem), ctx, h, prefix, marker, count)
 }
 
+// ShardingSubRangeCount mocks base method.
+func (m *MockSpaceShardHandler) ShardingSubRangeCount() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShardingSubRangeCount")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// ShardingSubRangeCount indicates an expected call of ShardingSubRangeCount.
+func (mr *MockSpaceShardHandlerMockRecorder) ShardingSubRangeCount() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShardingSubRangeCount", reflect.TypeOf((*MockSpaceShardHandler)(nil).ShardingSubRangeCount))
+}
+
 // Stats mocks base method.
 func (m *MockSpaceShardHandler) Stats(ctx context.Context, readIndex bool) (shardnode.ShardStats, error) {
 	m.ctrl.T.Helper()
