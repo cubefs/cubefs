@@ -1651,7 +1651,11 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	if !force {
 		err = vol.dataPartitions.CheckReadWritableCntUnderLimit(m.config.MaxWritableDataPartitionCnt, mediaType)
 		if err != nil {
-			log.LogErrorf("createDataPartition vol(%s) count(%d) media(%d) err: %s", volName, reqCreateCount, mediaType, err.Error())
+			if strings.Contains(err.Error(), "reach limit") {
+				log.LogWarnf("createDataPartition vol(%s) count(%d) media(%d) err: %s", volName, reqCreateCount, mediaType, err.Error())
+			} else {
+				log.LogErrorf("createDataPartition vol(%s) count(%d) media(%d) err: %s", volName, reqCreateCount, mediaType, err.Error())
+			}
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
 		}
@@ -4854,7 +4858,7 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 		dd := value.(*DecommissionDisk)
 		status := dd.GetDecommissionStatus()
 		if status == markDecommission || status == DecommissionRunning {
-			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk.decommissionStatus is %v, can't do recommission", status)))
+			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk.decommissionStatus is %v, can't do recommission", GetDecommissionStatusMessage(status))))
 			return
 		}
 		m.cluster.DecommissionDisks.Delete(key)
