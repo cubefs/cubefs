@@ -1758,3 +1758,37 @@ func verifyDestinationInMetaReplicas(mp *MetaPartition, dst string) bool {
 
 	return false
 }
+
+func (c *Cluster) CalculateMetaPartitionFreezeCount(name string) (*CleanTask, error) {
+	vol, err := c.getVol(name)
+	if err != nil {
+		log.LogErrorf("CalculateMetaPartitionFreezeCount get volume(%s) error: %s", name, err.Error())
+		return nil, err
+	}
+
+	if vol.Status == proto.VolStatusMarkDelete {
+		err = fmt.Errorf("volume(%s) is deleted before cleaned empty meta partitions.", name)
+		log.LogInfof(err.Error())
+		return nil, err
+	}
+
+	ret := &CleanTask{
+		Name:     name,
+		UnFreeze: 0,
+		Freezing: 0,
+		Freezed:  0,
+	}
+	mps := vol.cloneMetaPartitionMap()
+	for _, mp := range mps {
+		switch mp.Freeze {
+		case proto.FreezeMetaPartitionInit:
+			ret.UnFreeze += 1
+		case proto.FreezingMetaPartition:
+			ret.Freezing += 1
+		case proto.FreezedMetaPartition:
+			ret.Freezed += 1
+		}
+	}
+
+	return ret, nil
+}

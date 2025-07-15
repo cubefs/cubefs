@@ -269,16 +269,33 @@ func (m *Server) getCleanMetaPartitionTask(w http.ResponseWriter, r *http.Reques
 	m.cluster.mu.Lock()
 	defer m.cluster.mu.Unlock()
 
+	taskList := make([]*CleanTask, 0, len(m.cluster.cleanTask))
 	if name == "" {
-		sendOkReply(w, r, newSuccessHTTPReply(m.cluster.cleanTask))
+		for key, val := range m.cluster.cleanTask {
+			task, err := m.cluster.CalculateMetaPartitionFreezeCount(key)
+			if err != nil {
+				log.LogWarnf("CalculateMetaPartitionFreezeCount volume(%s) err: %s", key, err.Error())
+				continue
+			}
+			task.Status = val.Status
+			taskList = append(taskList, task)
+		}
 	} else {
-		task, ok := m.cluster.cleanTask[name]
+		val, ok := m.cluster.cleanTask[name]
 		if !ok {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("Can't find task for volume(%s)", name)})
 			return
 		}
-		sendOkReply(w, r, newSuccessHTTPReply(task))
+		task, err := m.cluster.CalculateMetaPartitionFreezeCount(name)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+		task.Status = val.Status
+		taskList = append(taskList, task)
 	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(taskList))
 }
 
 func parseMigratePartitionParam(r *http.Request) (srcAddr, targetAddr string, id uint64, err error) {
