@@ -65,7 +65,7 @@ func (s *Service) ChunkCompact(c *rpc.Context) {
 		return
 	}
 
-	if !cs.NeedCompact(ctx) && !s.Conf.DiskConfig.AllowForceCompact {
+	if !cs.NeedCompact(ctx) && !ds.GetConfig().AllowForceCompact {
 		span.Infof("no need compact vuid:%v. skip", args.Vuid)
 		return
 	}
