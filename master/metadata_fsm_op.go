@@ -138,34 +138,36 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 }
 
 type metaPartitionValue struct {
-	PartitionID   uint64
-	Start         uint64
-	End           uint64
-	VolID         uint64
-	ReplicaNum    uint8
-	Status        int8
-	VolName       string
-	Hosts         string
-	OfflinePeerID uint64
-	Peers         []proto.Peer
-	IsRecover     bool
-	Freeze        int8
+	PartitionID        uint64
+	Start              uint64
+	End                uint64
+	VolID              uint64
+	ReplicaNum         uint8
+	Status             int8
+	VolName            string
+	Hosts              string
+	OfflinePeerID      uint64
+	Peers              []proto.Peer
+	IsRecover          bool
+	Freeze             int8
+	LastDelReplicaTime int64
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 	mpv = &metaPartitionValue{
-		PartitionID:   mp.PartitionID,
-		Start:         mp.Start,
-		End:           mp.End,
-		VolID:         mp.volID,
-		ReplicaNum:    mp.ReplicaNum,
-		Status:        mp.Status,
-		VolName:       mp.volName,
-		Hosts:         mp.hostsToString(),
-		Peers:         mp.Peers,
-		OfflinePeerID: mp.OfflinePeerID,
-		IsRecover:     mp.IsRecover,
-		Freeze:        mp.Freeze,
+		PartitionID:        mp.PartitionID,
+		Start:              mp.Start,
+		End:                mp.End,
+		VolID:              mp.volID,
+		ReplicaNum:         mp.ReplicaNum,
+		Status:             mp.Status,
+		VolName:            mp.volName,
+		Hosts:              mp.hostsToString(),
+		Peers:              mp.Peers,
+		OfflinePeerID:      mp.OfflinePeerID,
+		IsRecover:          mp.IsRecover,
+		Freeze:             mp.Freeze,
+		LastDelReplicaTime: mp.LastDelReplicaTime,
 	}
 	return
 }
@@ -1846,6 +1848,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
 		mp.Freeze = mpv.Freeze
+		mp.LastDelReplicaTime = mpv.LastDelReplicaTime
 		vol.addMetaPartition(mp)
 		c.addBadMetaParitionIdMap(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
