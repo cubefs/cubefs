@@ -17,11 +17,14 @@ package flashnode
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/google/uuid"
 )
 
 func (f *FlashNode) registerAPIHandler() {
@@ -36,6 +39,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/scannerControl", f.handleScannerCommand)
 	http.HandleFunc("/setWaitForCacheBlock", f.handleSetWaitForCacheBlock)
 	http.HandleFunc("/slotStat", f.handleSlotStat)
+	http.HandleFunc("/submitTask", f.handleSubmitTask)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -44,6 +48,69 @@ func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
 		CacheStatus:       f.cacheEngine.Status(),
 		WaitForCacheBlock: f.waitForCacheBlock,
 	})
+}
+
+func (f *FlashNode) handleSubmitTask(w http.ResponseWriter, r *http.Request) {
+	var (
+		bytes []byte
+		err   error
+	)
+	if bytes, err = io.ReadAll(r.Body); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	defer r.Body.Close()
+	req := proto.FlashManualTask{}
+	if err = json.Unmarshal(bytes, &req); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	log.LogInfof("submit mannual task with http arg:%+v", &req)
+	start := time.Now()
+	req.StartTime = &start
+	req.UpdateTime = &start
+	if req.Id == "" {
+		req.Id = uuid.New().String()
+	}
+	rootDir := req.GetPathPrefix()
+	var tmpDir string
+	f.manualScanners.Range(func(k, v interface{}) bool {
+		t := v.(*proto.FlashManualTask)
+		if t.VolName != req.VolName {
+			return true
+		}
+		tmpDir = t.GetPathPrefix()
+		if rootDir != tmpDir {
+			return true
+		}
+		if !proto.ManualTaskDone(t.Status) {
+			err = fmt.Errorf("manual task[%v] is running with the same directory", t.Id)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	req.ManualTaskStatistics = &proto.ManualTaskStatistics{
+		FlashNode: f.localAddr,
+	}
+	adminTask := &proto.AdminTask{
+		Request: &proto.FlashNodeManualTaskRequest{
+			Task:       &req,
+			FnNodeAddr: f.localAddr,
+		},
+		Response: &proto.FlashNodeManualTaskResponse{
+			FlashNode: f.localAddr,
+		},
+	}
+	err = f.startTaskScan(adminTask)
+	if err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	replyOK(w, r, fmt.Sprintf("create flash manual scan task(%v) success", req.Id))
 }
 
 func (f *FlashNode) handleStatAll(w http.ResponseWriter, r *http.Request) {
@@ -213,6 +280,10 @@ func (f *FlashNode) handleScannerCommand(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	scanner := mScanner.(*ManualScanner)
+	if opCode == "info" {
+		replyOK(w, r, scanner.copyResponse())
+		return
+	}
 	scanner.processCommand(opCode)
 	w.WriteHeader(http.StatusOK)
 }
