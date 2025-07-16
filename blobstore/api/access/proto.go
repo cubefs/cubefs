@@ -368,7 +368,6 @@ type CreateBlobArgs struct {
 	ClusterID proto.ClusterID
 	CodeMode  codemode.CodeMode
 	BlobName  []byte
-	ShardKeys [][]byte
 	Size      uint64
 	SliceSize uint32
 }
@@ -377,7 +376,7 @@ func (args *CreateBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.Size != 0 && len(args.BlobName) != 0 && shardKeyIsValid(args.ShardKeys)
+	return args.Size != 0 && len(args.BlobName) != 0
 }
 
 type CreateBlobRet struct {
@@ -403,7 +402,6 @@ func (args *ListBlobArgs) IsValid() bool {
 type SealBlobArgs struct {
 	ClusterID proto.ClusterID
 	BlobName  []byte
-	ShardKeys [][]byte
 	Size      uint64
 	Slices    []proto.Slice
 }
@@ -412,14 +410,13 @@ func (args *SealBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.ClusterID != 0 && len(args.BlobName) != 0 && shardKeyIsValid(args.ShardKeys)
+	return args.ClusterID != 0 && len(args.BlobName) != 0
 }
 
 type GetBlobArgs struct {
 	ClusterID proto.ClusterID
 	Mode      GetShardMode
 	BlobName  []byte
-	ShardKeys [][]byte
 
 	Offset   uint64
 	ReadSize uint64
@@ -431,27 +428,25 @@ func (args *GetBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.ClusterID != 0 && len(args.BlobName) != 0 && shardKeyIsValid(args.ShardKeys)
+	return args.ClusterID != 0 && len(args.BlobName) != 0
 }
 
 type DelBlobArgs struct {
 	ClusterID proto.ClusterID
 	BlobName  []byte
-	ShardKeys [][]byte
 }
 
 func (args *DelBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.ClusterID != 0 && len(args.BlobName) != 0 && shardKeyIsValid(args.ShardKeys)
+	return args.ClusterID != 0 && len(args.BlobName) != 0
 }
 
 type AllocSliceArgs struct {
 	ClusterID proto.ClusterID
 	CodeMode  codemode.CodeMode
 	BlobName  []byte
-	ShardKeys [][]byte
 	Size      uint64
 	FailSlice proto.Slice
 }
@@ -460,15 +455,13 @@ func (args *AllocSliceArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.ClusterID != 0 && args.CodeMode.IsValid() && args.Size != 0 && len(args.BlobName) != 0 &&
-		shardKeyIsValid(args.ShardKeys)
+	return args.ClusterID != 0 && args.CodeMode.IsValid() && args.Size != 0 && len(args.BlobName) != 0
 }
 
 type PutBlobArgs struct {
-	CodeMode  codemode.CodeMode
-	BlobName  []byte
-	ShardKeys [][]byte
-	NeedSeal  bool
+	CodeMode codemode.CodeMode
+	BlobName []byte
+	NeedSeal bool
 
 	Size   uint64
 	Hashes HashAlgorithm
@@ -479,7 +472,7 @@ func (args *PutBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.CodeMode != 0 && args.Size != 0 && len(args.BlobName) != 0 && shardKeyIsValid(args.ShardKeys)
+	return args.CodeMode != 0 && args.Size != 0 && len(args.BlobName) != 0
 }
 
 type GetShardCommonArgs struct {
@@ -487,10 +480,4 @@ type GetShardCommonArgs struct {
 	ShardID   proto.ShardID
 	Mode      GetShardMode
 	BlobName  []byte
-	ShardKeys [][]byte
-}
-
-func shardKeyIsValid(shardKeys [][]byte) bool {
-	// max shard keys length is 2
-	return len(shardKeys) <= 2
 }

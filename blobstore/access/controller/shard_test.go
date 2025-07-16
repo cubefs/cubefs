@@ -14,6 +14,7 @@ import (
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
@@ -50,14 +51,16 @@ func TestShardController(t *testing.T) {
 
 	require.NoError(t, err)
 	s, err := NewShardController(shardCtrlConf{}, cmCli, svrCtrl, stopCh)
-	require.Nil(t, err)
+	require.NotNil(t, err)
 	require.NotEqual(t, errMock, err)
+	require.ErrorIs(t, err, errcode.ErrAccessNotFoundShard)
+	require.Nil(t, s)
 
 	blobName := []byte("blob1")
 	shardKeys := [][]byte{blobName}
 	// empty tree
-	_, err = s.GetShard(ctx, shardKeys)
-	require.NotNil(t, err)
+	// _, err = s.GetShard(ctx, shardKeys)
+	// require.NotNil(t, err)
 
 	sh := &shard{
 		shardID: 1,
@@ -71,8 +74,9 @@ func TestShardController(t *testing.T) {
 	}
 	sh.rangeExt = *rangePtr
 	svr := &shardControllerImpl{
-		shards: make(map[proto.ShardID]*shard),
-		ranges: btree.New(defaultBTreeDegree),
+		shards:      make(map[proto.ShardID]*shard),
+		ranges:      btree.New(defaultBTreeDegree),
+		subRangeCnt: 1,
 	}
 
 	// add one, not found blob
@@ -83,6 +87,7 @@ func TestShardController(t *testing.T) {
 	svr.delShardNoLock(sh)
 	require.Equal(t, 0, len(svr.shards))
 
+	svr.subRangeCnt = 2
 	ranges := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 1, 8)
 	{
 		// add 8 shard
@@ -120,6 +125,7 @@ func TestShardController(t *testing.T) {
 		svr.punishCtrl = svrCtrl
 		svr.version = 8
 
+		// ret, err := svr.GetShard(ctx, []byte("blob1__xxx")) // expect 2 keys
 		ret, err := svr.GetShard(ctx, [][]byte{[]byte("blob1__xxx")}) // expect 2 keys
 		sk := [][]byte{[]byte("blob1__xxx")}
 		bd := sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, sk).GetBoundary()
@@ -131,6 +137,7 @@ func TestShardController(t *testing.T) {
 		require.Nil(t, err)
 		require.Equal(t, proto.ShardID(2), ret.(*shard).shardID)
 
+		// ret, err = svr.GetShard(ctx, []byte("{blob2__yy}{11}"))
 		ret, err = svr.GetShard(ctx, [][]byte{[]byte("blob2__yy"), []byte("11")})
 		bd = sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, [][]byte{[]byte("blob2__yy"), []byte("11")}).GetBoundary()
 		t.Logf("shard key 2,  get boundary=%d", bd)
@@ -708,8 +715,9 @@ func TestShardUpdate(t *testing.T) {
 func TestShardGetShard(t *testing.T) {
 	ctx := context.Background()
 	svr := &shardControllerImpl{
-		shards: make(map[proto.ShardID]*shard),
-		ranges: btree.New(defaultBTreeDegree),
+		shards:      make(map[proto.ShardID]*shard),
+		ranges:      btree.New(defaultBTreeDegree),
+		subRangeCnt: 2,
 	}
 
 	ctr := gomock.NewController(t)
@@ -777,10 +785,12 @@ func TestShardGetShard(t *testing.T) {
 	require.Equal(t, 8, len(svr.shards))
 
 	{
+		// sd, err := svr.GetShard(ctx, []byte("{blob1}{1}"))
 		sd, err := svr.GetShard(ctx, [][]byte{[]byte("blob1"), []byte("1")})
 		require.NoError(t, err)
 		require.Equal(t, proto.ShardID(2), sd.GetShardID())
 
+		// sd, err = svr.GetShard(ctx, []byte("{blob1}{}"))
 		sd, err = svr.GetShard(ctx, [][]byte{[]byte("blob1"), {}})
 		require.NoError(t, err)
 		require.Equal(t, proto.ShardID(2), sd.GetShardID())

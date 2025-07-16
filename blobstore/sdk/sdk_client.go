@@ -255,7 +255,7 @@ func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) er
 	// delete meta at shardnode, then delete data at blobnode
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk DeleteBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
+	span.Debugf("accept sdk DeleteBlob request, name=%s, args: %v", args.BlobName, *args)
 	return s.handler.DeleteBlob(ctx, args)
 }
 
@@ -266,8 +266,8 @@ func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.R
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk GetBlob request, name=%s, keys=%s, clusterID:%d, mode:%d, offset:%d, size:%d",
-		args.BlobName, args.ShardKeys, args.ClusterID, args.Mode, args.Offset, args.ReadSize)
+	span.Debugf("accept sdk GetBlob request, name=%s, clusterID:%d, mode:%d, offset:%d, size:%d",
+		args.BlobName, args.ClusterID, args.Mode, args.Offset, args.ReadSize)
 	loc, err := s.handler.GetBlob(ctx, args)
 	if err != nil {
 		return nil, err
@@ -290,8 +290,8 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk PutBlob request, name=%s, keys=%s, codeMode:%d, seal:%t, size:%d, hashes:%v",
-		args.BlobName, args.ShardKeys, args.CodeMode, args.NeedSeal, args.Size, args.Hashes)
+	span.Debugf("accept sdk PutBlob request, name=%s, codeMode:%d, seal:%t, size:%d, hashes:%v",
+		args.BlobName, args.CodeMode, args.NeedSeal, args.Size, args.Hashes)
 
 	needDel := true
 	defer func() {
@@ -300,7 +300,6 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 			delArgs := &acapi.DelBlobArgs{
 				BlobName:  args.BlobName,
 				ClusterID: cid,
-				ShardKeys: args.ShardKeys,
 			}
 			if err1 := s.DeleteBlob(ctx, delArgs); err1 != nil {
 				span.Warnf("put fail, clean args=%v, cluster=%d, err=%+v", delArgs, cid, err1)
@@ -310,17 +309,16 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 
 	loc, hashes, err := s.putBlobs(ctx, args)
 	if err != nil {
-		span.Errorf("put blob fail, name=%s, keys=%s, location=%v, err=%+v", args.BlobName, args.ShardKeys, loc, err)
+		span.Errorf("put blob fail, name=%s, location=%v, err=%+v", args.BlobName, loc, err)
 		return loc.ClusterID, nil, err
 	}
-	span.Debugf("success to put blobs, name=%s, keys=%s, seal:%t, location:%+v, hashes:%v",
-		args.BlobName, args.ShardKeys, args.NeedSeal, loc, hashes)
+	span.Debugf("success to put blobs, name=%s,seal:%t, location:%+v, hashes:%v",
+		args.BlobName, args.NeedSeal, loc, hashes)
 
 	needDel = false // put ok, don't need to delete
 	if args.NeedSeal {
 		sealArgs := &acapi.SealBlobArgs{
 			BlobName:  args.BlobName,
-			ShardKeys: args.ShardKeys,
 			ClusterID: loc.ClusterID,
 			Slices:    loc.Slices,
 			Size:      args.Size, // before SealBlob, the loc.Size_ may be 0,
@@ -341,7 +339,7 @@ func (s *sdkHandler) createBlob(ctx context.Context, args *acapi.CreateBlobArgs)
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk CreateBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
+	span.Debugf("accept sdk CreateBlob request, name=%s, args: %v", args.BlobName, *args)
 
 	loc, err := s.handler.CreateBlob(ctx, args)
 	if err != nil {
@@ -358,7 +356,7 @@ func (s *sdkHandler) sealBlob(ctx context.Context, args *acapi.SealBlobArgs) err
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk SealBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
+	span.Debugf("accept sdk SealBlob request, name=%s, args: %v", args.BlobName, *args)
 
 	return s.handler.SealBlob(ctx, args)
 }
@@ -966,10 +964,9 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (proto.Location, acapi.HashSumMap, error) {
 	// create
 	created, err := s.createBlob(ctx, &acapi.CreateBlobArgs{
-		BlobName:  args.BlobName,
-		ShardKeys: args.ShardKeys,
-		CodeMode:  args.CodeMode,
-		Size:      args.Size,
+		BlobName: args.BlobName,
+		CodeMode: args.CodeMode,
+		Size:     args.Size,
 	})
 	if err != nil {
 		return proto.Location{}, nil, err
@@ -1116,7 +1113,6 @@ func (s *sdkHandler) retryAllocSlice(ctx context.Context, args *acapi.PutBlobArg
 		alloc, err = s.handler.AllocSlice(ctx, &acapi.AllocSliceArgs{
 			ClusterID: loc.ClusterID,
 			BlobName:  args.BlobName,
-			ShardKeys: args.ShardKeys,
 			CodeMode:  loc.CodeMode,
 			Size:      remainSize, // expect fail size
 			FailSlice: succPart,   // success part of current slice

@@ -45,7 +45,7 @@ func delBlob(c *grumble.Context) error {
 	if err != nil {
 		return fmt.Errorf("invalid (%s) %+v", c.Flags.String("args"), err)
 	}
-	fmt.Printf("del blob name=%s, keys=%s, args json=%s\n", args.BlobName, args.ShardKeys, common.RawString(args))
+	fmt.Printf("del blob name=%s, args json=%s\n", args.BlobName, common.RawString(args))
 
 	if !common.Confirm("to delete?") {
 		return nil

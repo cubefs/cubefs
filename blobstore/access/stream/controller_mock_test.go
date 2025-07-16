@@ -473,6 +473,20 @@ func (mr *MockShardControllerMockRecorder) GetShardByRange(arg0, arg1 interface{
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardByRange", reflect.TypeOf((*MockShardController)(nil).GetShardByRange), arg0, arg1)
 }
 
+// GetShardSubRangeCount mocks base method.
+func (m *MockShardController) GetShardSubRangeCount(arg0 context.Context) int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetShardSubRangeCount", arg0)
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// GetShardSubRangeCount indicates an expected call of GetShardSubRangeCount.
+func (mr *MockShardControllerMockRecorder) GetShardSubRangeCount(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardSubRangeCount", reflect.TypeOf((*MockShardController)(nil).GetShardSubRangeCount), arg0)
+}
+
 // GetSpaceID mocks base method.
 func (m *MockShardController) GetSpaceID() proto.SpaceID {
 	m.ctrl.T.Helper()

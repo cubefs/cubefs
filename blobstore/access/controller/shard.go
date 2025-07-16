@@ -56,6 +56,7 @@ type IShardController interface {
 	GetSpaceID() proto.SpaceID
 	UpdateRoute(ctx context.Context) error
 	UpdateShard(ctx context.Context, ss shardnode.ShardStats) error
+	GetShardSubRangeCount(ctx context.Context) int
 }
 
 type shardCtrlConf struct {
@@ -101,6 +102,12 @@ func NewShardController(conf shardCtrlConf, cmCli clustermgr.ClientAPI, punishCt
 		return nil, err
 	}
 
+	sd, err := s.GetFisrtShard(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.subRangeCnt = len(sd.(*shard).rangeExt.Subs)
+
 	go s.incrementalRoute()
 
 	span.Debugf("success to new shard controller, clusterID:%d, space:%s", conf.clusterID, conf.space.Name)
@@ -113,6 +120,7 @@ type shardControllerImpl struct {
 	version      proto.RouteVersion
 	spaceID      proto.SpaceID
 	groupRun     singleflight.Group
+	subRangeCnt  int
 	sync.RWMutex // todo: I will optimize locker in the next version
 
 	conf       shardCtrlConf
@@ -275,6 +283,10 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 		}
 	})
 	return err
+}
+
+func (s *shardControllerImpl) GetShardSubRangeCount(ctx context.Context) int {
+	return s.subRangeCnt
 }
 
 func (s *shardControllerImpl) initSpace(ctx context.Context) error {

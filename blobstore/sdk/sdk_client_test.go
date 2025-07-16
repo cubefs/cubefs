@@ -734,11 +734,10 @@ func TestSdkBlob_Put(t *testing.T) {
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
 	args = &acapi.PutBlobArgs{
-		BlobName:  []byte("blob1"),
-		CodeMode:  codemode.EC3P3,
-		NeedSeal:  false,
-		ShardKeys: nil,
-		Hashes:    0,
+		BlobName: []byte("blob1"),
+		CodeMode: codemode.EC3P3,
+		NeedSeal: false,
+		Hashes:   0,
 	}
 	data := "test_put1"
 	args.Body = bytes.NewBuffer([]byte(data))
@@ -852,7 +851,6 @@ func TestSdkBlob_Put(t *testing.T) {
 	allocArgs := acapi.AllocSliceArgs{
 		ClusterID: loc2.ClusterID,
 		BlobName:  args.BlobName,
-		ShardKeys: args.ShardKeys,
 		CodeMode:  loc2.CodeMode,
 		Size:      uint64(len(data)),
 		FailSlice: proto.Slice{MinSliceID: 1, Vid: 10, Count: 0, ValidSize: 0},
