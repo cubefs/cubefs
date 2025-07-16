@@ -6052,6 +6052,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.TxRbDenCnt = mp.TxRbDenCnt
 	mpView.IsRecover = mp.IsRecover
 	mpView.Freeze = mp.Freeze
+	mpView.LastDelReplicaTime = mp.LastDelReplicaTime
 	return
 }
 

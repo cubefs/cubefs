@@ -84,6 +84,8 @@ type MetaPartition struct {
 	StatByStorageClass        []*proto.StatOfStorageClass
 	StatByMigrateStorageClass []*proto.StatOfStorageClass
 	sync.RWMutex
+
+	LastDelReplicaTime int64
 }
 
 func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
@@ -109,6 +111,14 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.EqualCheckPass = true
 	mp.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	return
+}
+
+func (mp *MetaPartition) CheckLastDelReplicaTime() bool {
+	return mp.GetLastDelTime()+mpReplicaDelInterval < time.Now().Unix()
+}
+
+func (mp *MetaPartition) GetLastDelTime() int64 {
+	return mp.LastDelReplicaTime
 }
 
 func (mp *MetaPartition) setPeers(peers []proto.Peer) {
