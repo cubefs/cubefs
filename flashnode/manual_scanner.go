@@ -2,6 +2,7 @@ package flashnode
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -9,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/sdk/meta"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/routinepool"
 	"github.com/cubefs/cubefs/util/unboundedchan"
@@ -185,10 +186,10 @@ func (s *ManualScanner) checkScanning() {
 				response.Status = proto.TaskSucceeds
 				response.Done = true
 				log.LogInfof("checkScanning completed response(%+v)", response)
-
 				s.Stop()
+				msg := fmt.Sprintf("task(%+v) produce completed", response)
+				auditlog.LogFlashNodeOp("Warmup", msg, nil)
 				s.flashNode.manualScanners.Delete(s.ID)
-
 				s.flashNode.respondToMaster(s.adminTask)
 				return
 			}
