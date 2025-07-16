@@ -256,7 +256,8 @@ const (
 	diskDecommissionInfoStatType                  = 1
 	dataNodeDecommissionInfoStatType              = 2
 
-	maxTrashInterval = 365 * 24 * 60
+	maxTrashInterval     = 365 * 24 * 60
+	mpReplicaDelInterval = 300 // 5 minutes
 )
 
 const (

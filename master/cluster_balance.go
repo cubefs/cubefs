@@ -1142,6 +1142,11 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 				return
 			}
 
+			if !mp.CheckLastDelReplicaTime() {
+				log.LogWarnf("DoMetaPartitionBalanceTask: mp try wait, last %d, mp %d", mp.LastDelReplicaTime, mp.PartitionID)
+				time.Sleep(time.Second * (mpReplicaDelInterval + 10))
+			}
+
 			log.LogDebugf("Start to migrate meta partition(%d) from %s to %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
 			err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp)
 			if err != nil {

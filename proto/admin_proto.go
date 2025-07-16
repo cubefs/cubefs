@@ -1149,21 +1149,22 @@ func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
 
 // MetaPartitionView defines the view of a meta partition
 type MetaPartitionView struct {
-	PartitionID uint64
-	Start       uint64
-	End         uint64
-	MaxInodeID  uint64
-	InodeCount  uint64
-	DentryCount uint64
-	FreeListLen uint64
-	TxCnt       uint64
-	TxRbInoCnt  uint64
-	TxRbDenCnt  uint64
-	IsRecover   bool
-	Members     []string
-	LeaderAddr  string
-	Status      int8
-	Freeze      int8
+	PartitionID        uint64
+	Start              uint64
+	End                uint64
+	MaxInodeID         uint64
+	InodeCount         uint64
+	DentryCount        uint64
+	FreeListLen        uint64
+	TxCnt              uint64
+	TxRbInoCnt         uint64
+	TxRbDenCnt         uint64
+	IsRecover          bool
+	Members            []string
+	LeaderAddr         string
+	Status             int8
+	Freeze             int8
+	LastDelReplicaTime int64
 }
 
 type DataNodeDisksRequest struct{}

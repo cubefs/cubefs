@@ -413,6 +413,11 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 		}
 	}()
 
+	if !partition.CheckLastDelReplicaTime() {
+		err = fmt.Errorf("deleteMetaReplica: the interval between deleting or decommission mp replica should over 5 minute. last %d", partition.LastDelReplicaTime)
+		return
+	}
+
 	if validate {
 		if err = c.validateDecommissionMetaPartition(partition, addr, forceDel); err != nil {
 			return
@@ -424,6 +429,7 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 		return
 	}
 
+	partition.LastDelReplicaTime = time.Now().Unix()
 	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr, HeartbeatPort: metaNode.HeartbeatPort, ReplicaPort: metaNode.ReplicaPort}
 	if err = c.removeMetaPartitionRaftMember(partition, removePeer); err != nil {
 		return
