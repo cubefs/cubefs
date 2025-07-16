@@ -1684,9 +1684,17 @@ func (partition *DataPartition) getRetryTimesRecordByDiskPath(diskPath string) (
 }
 
 func (partition *DataPartition) deleteInvalidRetryTimesRecord() {
-	partition.DecommissionDiskRetryMapMutex.Lock()
-	defer partition.DecommissionDiskRetryMapMutex.Unlock()
-	for key := range partition.DecommissionDiskRetryMap {
+	partition.DecommissionDiskRetryMapMutex.RLock()
+	if len(partition.DecommissionDiskRetryMap) == 0 {
+		partition.DecommissionDiskRetryMapMutex.RUnlock()
+		return
+	}
+	diskRetryMap := make(map[string]int)
+	for disk, retryTimes := range partition.DecommissionDiskRetryMap {
+		diskRetryMap[disk] = retryTimes
+	}
+	partition.DecommissionDiskRetryMapMutex.RUnlock()
+	for key := range diskRetryMap {
 		arr := strings.Split(key, "_")
 		if len(arr) == 2 {
 			addr := arr[0]
@@ -1695,7 +1703,9 @@ func (partition *DataPartition) deleteInvalidRetryTimesRecord() {
 				continue
 			}
 		}
+		partition.DecommissionDiskRetryMapMutex.Lock()
 		delete(partition.DecommissionDiskRetryMap, key)
+		partition.DecommissionDiskRetryMapMutex.Unlock()
 	}
 }
 
