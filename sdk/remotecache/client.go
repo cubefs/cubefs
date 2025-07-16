@@ -974,19 +974,25 @@ type RemoteCacheReader struct {
 	needReadLen    int64
 	alreadyReadLen int64
 	reqID          string
+	ctx            context.Context
 }
 
-func (rc *RemoteCacheClient) NewRemoteCacheReader(conn *net.TCPConn, reqID string) *RemoteCacheReader {
+func (rc *RemoteCacheClient) NewRemoteCacheReader(ctx context.Context, conn *net.TCPConn, reqID string) *RemoteCacheReader {
 	r := &RemoteCacheReader{
 		conn:   conn,
 		reader: bufio.NewReaderSize(conn, proto.CACHE_BLOCK_PACKET_SIZE),
 		rc:     rc,
 		reqID:  reqID,
+		ctx:    ctx,
 	}
 	return r
 }
 
 func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
+	if reader.ctx.Err() != nil {
+		log.LogErrorf("RemoteCacheReader:reqID(%v) err(%v)", reader.reqID, err)
+		return 0, reader.ctx.Err()
+	}
 	reply := new(proto.Packet)
 	var expectLen int64
 
@@ -1146,8 +1152,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 			fg.moveToUnknownRank(addr, err, rc.FlashNodeTimeoutCount)
 			return nil, 0, err
 		}
-		conn.SetReadDeadline(time.Time{})
-		reader = rc.NewRemoteCacheReader(conn, reqId)
+		reader = rc.NewRemoteCacheReader(ctx, conn, reqId)
 		reader.needReadLen = int64(req.Size_)
 		break
 	}
