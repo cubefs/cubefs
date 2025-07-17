@@ -23,6 +23,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -743,7 +744,11 @@ func (e *Extent) autoComputeExtentCrc(extSize int64, crcFunc UpdateCrcFunc) (crc
 		blockCrc = crc32.ChecksumIEEE(bdata[:readN])
 		err = crcFunc(e, blockNo, blockCrc)
 		if err != nil {
-			log.LogErrorf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
+			if strings.Contains(err.Error(), "file already close") {
+				log.LogWarnf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
+			} else {
+				log.LogErrorf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
+			}
 			return 0, nil
 		}
 		log.LogDebugf("autoComputeExtentCrc. path %v extent %v blockCrc %v,blockNo %v", e.filePath, e.extentID, blockCrc, blockNo)
