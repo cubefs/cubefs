@@ -1312,6 +1312,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 ) (err error) {
 	defer func() {
 		if err != nil {
+			if strings.Contains(err.Error(), proto.ErrPerformingDecommission.Error()) &&
+				partition.DecommissionType == ManualDecommission && partition.DecommissionWeight < weight {
+				partition.DecommissionWeight = weight
+				c.syncUpdateDataPartition(partition)
+			}
 			msg := fmt.Sprintf("dp(%v) mark decommission status failed", partition.decommissionInfo())
 			auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
 		}
