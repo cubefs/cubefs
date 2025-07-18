@@ -60,15 +60,19 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clust
 		}
 	}
 
+	st := time.Now()
 	err := c.cmConcurrency.Acquire(keyDiskConcurrency)
+	span.AppendTrackLog("wait", st, err)
 	if err != nil {
 		return nil, err
 	}
 	defer c.cmConcurrency.Release(keyDiskConcurrency)
 
+	st = time.Now()
 	val, err, _ := c.singleRun.Do(diskvKeyDisk(id), func() (interface{}, error) {
 		return c.cmClient.DiskInfo(ctx, id)
 	})
+	span.AppendTrackLog("cm", st, err)
 	if err != nil {
 		c.diskReport("clustermgr", "miss")
 		span.Error("get disk info from clustermgr failed", errors.Detail(err))

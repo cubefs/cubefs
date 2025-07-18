@@ -65,15 +65,19 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*p
 		}
 	}
 
+	st := time.Now()
 	err := c.cmConcurrency.Acquire(keyVolumeConcurrency)
+	span.AppendTrackLog("wait", st, err)
 	if err != nil {
 		return nil, err
 	}
 	defer c.cmConcurrency.Release(keyVolumeConcurrency)
 
+	st = time.Now()
 	val, err, _ := c.singleRun.Do(diskvKeyVolume(vid), func() (interface{}, error) {
 		return c.cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: vid})
 	})
+	span.AppendTrackLog("cm", st, err)
 	if err != nil {
 		c.volumeReport("clustermgr", "miss")
 		span.Error("get volume from clustermgr failed", errors.Detail(err))
