@@ -413,7 +413,7 @@ func Extend(modes ...ExtendCodeMode) {
 		code := mode.CodeMode
 		tactic := mode.Tactic
 		if code < extendStart {
-			panic(fmt.Sprintf("codemode:%d not in extend [%d-255)", code, extendStart))
+			panic(fmt.Sprintf("codemode:%d not in extend [%d-255]", code, extendStart))
 		}
 		if !tactic.IsValid() {
 			panic(fmt.Sprintf("codemode:%d invalid:%+v", code, tactic))
