@@ -38,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	"github.com/google/uuid"
 )
 
 func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
@@ -77,6 +78,8 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 		err = f.opFlashNodeScan(conn, p)
 	case proto.OpFlashNodeTaskCommand:
 		err = f.opFlashNodeTaskCommand(conn, p)
+	case proto.OpApplyWarmupMetaToken:
+		err = f.opApplyWarmupMetaToken(conn, p)
 	default:
 		err = fmt.Errorf(proto.ErrorUnknownOpcodeTpl, p.Opcode)
 	}
@@ -94,6 +97,26 @@ func (f *FlashNode) SetTimeout(handleReadTimeout int, readDataNodeTimeout int) {
 
 func (f *FlashNode) opClientHeartbeat(conn net.Conn, p *proto.Packet) (err error) {
 	p.PacketOkReply()
+	if f.enableWarmUpPaths {
+		var warmUpPaths []*proto.WarmUpPathInfo
+		f.warmUpPaths.Range(func(key, value interface{}) bool {
+			info := value.(*proto.WarmUpPathInfo)
+			if time.Now().UnixNano() > info.Expiration {
+				f.warmUpPaths.Delete(key)
+			} else {
+				warmUpPaths = append(warmUpPaths, info)
+			}
+			return true
+		})
+		if len(warmUpPaths) != 0 {
+			p.Data, err = proto.MarshalBinaryWPSlice(warmUpPaths)
+			if err != nil {
+				log.LogWarnf("opClientHeartbeat MarshalBinaryWPSlice: %s", err.Error())
+			} else {
+				p.Size = uint32(len(p.Data))
+			}
+		}
+	}
 	if err = p.WriteToConn(conn); err != nil {
 		log.LogErrorf("opClientHeartbeat response: %s", err.Error())
 	}
@@ -801,6 +824,17 @@ func (f *FlashNode) startTaskScan(adminTask *proto.AdminTask) (err error) {
 		log.LogErrorf("start scanner[%v] failed err: %v", scanner.ID, err)
 		return
 	}
+	targetDir := scanner.manualTask.GetPathPrefix()
+	if targetDir == "" {
+		targetDir = "/"
+	}
+	wup := &proto.WarmUpPathInfo{
+		VolName: scanner.manualTask.VolName,
+		DirPath: targetDir,
+	}
+	wup.SetExpiration(time.Duration(scanner.manualTask.ManualTaskConfig.WarmUpPathExpire) * time.Second)
+	f.enableWarmUpPaths = true
+	f.warmUpPaths.Store(uuid.New().String(), wup)
 	return
 }
 
@@ -1157,6 +1191,86 @@ func (f *FlashNode) opSetReadIOLimits(conn net.Conn, p *proto.Packet) (err error
 		log.LogErrorf("decode FlashNodeSetIOLimitsRequest error: %s", err.Error())
 	}
 	p.PacketOkReply()
+	return
+}
+
+func (f *FlashNode) opApplyWarmupMetaToken(conn net.Conn, p *proto.Packet) (err error) {
+	reqData := p.Data
+	var clientId string
+	if p.ArgLen != 0 {
+		clientId = string(p.Arg[:int(p.ArgLen)])
+	}
+	if len(reqData) == 0 {
+		p.PacketErrorWithBody(proto.OpErr, []byte("empty request data"))
+		if err = p.WriteToConn(conn); err != nil {
+			log.LogErrorf("opApplyWarmupMetaToken response: %s", err.Error())
+		}
+		return
+	}
+	requestType := reqData[0]
+	now := time.Now().Unix()
+
+	f.currentWarmUpWorkerMutex.Lock()
+	defer f.currentWarmUpWorkerMutex.Unlock()
+
+	switch requestType {
+	case proto.WarmupMetaTokenApply: // apply
+		if len(f.currentWarmUpWorkers) >= f.warmupMetaTotalToken {
+			p.PacketOkReply()
+			p.Data = []byte{0}
+			p.Size = 1
+			log.LogWarnf("opApplyWarmupMetaToken: client %s apply failed, current workers %d >= total token %d",
+				clientId, len(f.currentWarmUpWorkers), f.warmupMetaTotalToken)
+		} else {
+			f.currentWarmUpWorkers[clientId] = now
+			p.PacketOkReply()
+			p.Data = []byte{1}
+			p.Size = 1
+			log.LogInfof("opApplyWarmupMetaToken: client %s apply success, current workers %d",
+				clientId, len(f.currentWarmUpWorkers))
+		}
+
+	case proto.WarmupMetaTokenRenew: // renew
+		if _, exists := f.currentWarmUpWorkers[clientId]; exists {
+			f.currentWarmUpWorkers[clientId] = now
+			p.PacketOkReply()
+			p.Data = []byte{1}
+			p.Size = 1
+			log.LogDebugf("opApplyWarmupMetaToken: client %s renew success", clientId)
+		} else {
+			p.PacketOkReply()
+			p.Data = []byte{0}
+			p.Size = 1
+			log.LogWarnf("opApplyWarmupMetaToken: client %s renew failed, not found", clientId)
+		}
+
+	case proto.WarmupMetaTokenRelease: // release
+		if _, exists := f.currentWarmUpWorkers[clientId]; exists {
+			delete(f.currentWarmUpWorkers, clientId)
+			p.PacketOkReply()
+			p.Data = []byte{1}
+			p.Size = 1
+			log.LogInfof("opApplyWarmupMetaToken: client %s release success, current workers %d",
+				clientId, len(f.currentWarmUpWorkers))
+		} else {
+			p.PacketOkReply()
+			p.Data = []byte{0}
+			p.Size = 1
+			log.LogWarnf("opApplyWarmupMetaToken: client %s release failed, not found", clientId)
+		}
+
+	default:
+		p.PacketErrorWithBody(proto.OpErr, []byte("invalid request type"))
+	}
+
+	if err = p.WriteToConn(conn); err != nil {
+		log.LogErrorf("opApplyWarmupMetaToken response: %s", err.Error())
+	}
+
+	if log.EnableInfo() {
+		log.LogInfof("opApplyWarmupMetaToken remoteaddr(%v) clientId(%v) requestType(%d)",
+			conn.RemoteAddr(), clientId, requestType)
+	}
 	return
 }
 

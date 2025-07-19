@@ -336,6 +336,10 @@ func (mw *MetaWrapper) Owner() string {
 	return mw.owner
 }
 
+func (mw *MetaWrapper) GetSubDir() string {
+	return mw.subDir
+}
+
 func (mw *MetaWrapper) DirCacheLen() int {
 	return len(mw.dirCache)
 }
