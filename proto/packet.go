@@ -307,6 +307,7 @@ const (
 	OpFlashNodeTaskCommand      uint8 = 0xCA
 	OpFlashSDKHeartbeat         uint8 = 0xCB
 	OpFlashNodeBatchReadObject  uint8 = 0xCC
+	OpApplyWarmupMetaToken      uint8 = 0xCD
 )
 
 const (
@@ -765,6 +766,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpFlashNodeCacheReadObject"
 	case OpFlashNodeBatchReadObject:
 		m = "OpFlashNodeBatchReadObject"
+	case OpApplyWarmupMetaToken:
+		m = "OpApplyWarmupMetaToken"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}

@@ -79,6 +79,8 @@ const (
 	_defaultBatchReadPoolConcurrency       = 128
 	_defaultKeyRateLimitThreshold          = 1024 * 1024
 	_defaultReservedSpace                  = 100 * 1024 * 1024 * 1024 // 100GB
+	_defaultWarmUpPathExpire               = 60 * time.Minute
+	_defaultWarmupMetaTotalToken           = 1
 )
 
 // Configuration keys
@@ -113,6 +115,8 @@ const (
 	cfgMissEntryTimeout             = "missEntryTimeout"
 	cfgBatchReadPoolConcurrency     = "batchReadPoolConcurrency"
 	cfgReservedSpace                = "reservedSpace"
+	cfgWarmupMetaTotalToken         = "warmupMetaTotalToken"
+	cfgEnableWarmUpPaths            = "enableWarmUpPaths"
 	paramIocc                       = "iocc"
 	paramFlow                       = "flow"
 	paramFactor                     = "factor"
@@ -174,8 +178,13 @@ type FlashNode struct {
 	prepareLimitPerSecond        int64
 	scannerMutex                 sync.RWMutex
 	manualScanners               sync.Map // [string]*ManualScanner
+	warmUpPaths                  sync.Map // [string]*WarmUpPathInfo
 	waitForCacheBlock            bool
 	prepareLoadRoutineNum        int
+	warmupMetaTotalToken         int
+	currentWarmUpWorkers         map[string]int64 // [clientId]reportTime
+	currentWarmUpWorkerMutex     sync.RWMutex
+	enableWarmUpPaths            bool
 
 	slotMap                  sync.Map // [uint32]*SlotStat
 	readCount                uint64
@@ -253,6 +262,7 @@ func (f *FlashNode) start(cfg *config.Config) (err error) {
 		return
 	}
 	f.startSlotStat()
+	f.startWarmupWorkerCleanup()
 	return nil
 }
 
@@ -414,9 +424,15 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if f.prepareLoadRoutineNum <= 0 {
 		f.prepareLoadRoutineNum = _defaultPrepareRoutineNum
 	}
+	f.warmupMetaTotalToken = cfg.GetInt(cfgWarmupMetaTotalToken)
+	if f.warmupMetaTotalToken <= 0 {
+		f.warmupMetaTotalToken = _defaultWarmupMetaTotalToken
+	}
+	f.currentWarmUpWorkers = make(map[string]int64)
 	f.cacheEvictWorkerNum = cacheEvictWorkerNum
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
 	f.waitForCacheBlock = cfg.GetBoolWithDefault(cfgWaitForBlockCache, false)
+	f.enableWarmUpPaths = cfg.GetBoolWithDefault(cfgEnableWarmUpPaths, false)
 	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
 	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)
 	log.LogInfof("[parseConfig] load totalMem[%d].", f.memTotal)
@@ -428,6 +444,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load  readRps[%d].", f.readRps)
 	log.LogInfof("[parseConfig] load  lowerHitRate[%.2f].", f.lowerHitRate)
 	log.LogInfof("[parseConfig] load  enableTmpfs[%v].", f.enableTmpfs)
+	log.LogInfof("[parseConfig] load  enableWarmUpPaths[%v].", f.enableWarmUpPaths)
 	log.LogInfof("[parseConfig] load  memDataPath[%v].", f.memDataPath)
 	for _, d := range f.disks {
 		log.LogInfof("[parseConfig] load diskDataPath[%v] totalSize[%d] capacity[%d]", d.Path, d.TotalSpace, d.Capacity)
@@ -503,6 +520,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	f.prepareLimitPerSecond = prepareLimitPerSecond
 	log.LogInfof("[parseConfig] load  prepareLimitPerSecond[%v].", f.prepareLimitPerSecond)
+	log.LogInfof("[parseConfig] load  warmupMetaTotalToken[%v].", f.warmupMetaTotalToken)
 	masters := cfg.GetStringSlice(proto.MasterAddr)
 	f.masters = masters
 	f.mc = master.NewMasterClient(masters, false)
@@ -669,4 +687,50 @@ func (f *FlashNode) GetFlashNodeSlotStat() []*proto.SlotStat {
 		return true
 	})
 	return slotStats
+}
+
+func (f *FlashNode) startWarmupWorkerCleanup() {
+	log.LogInfof("startWarmupWorkerCleanup")
+	go func() {
+		tick := time.NewTicker(30 * time.Second)
+		defer tick.Stop()
+		for {
+			f.cleanupStaleWarmupWorkers()
+			select {
+			case <-tick.C:
+			case <-f.stopCh:
+				log.LogInfof("exit warmupWorkerCleanup")
+				return
+			}
+		}
+	}()
+}
+
+func (f *FlashNode) cleanupStaleWarmupWorkers() {
+	now := time.Now().Unix()
+	timeout := int64(2 * 60) // 2 minutes in seconds
+	staleCount := 0
+	staleClients := make([]string, 0)
+
+	f.currentWarmUpWorkerMutex.RLock()
+	for clientId, reportTime := range f.currentWarmUpWorkers {
+		if now-reportTime > timeout {
+			staleClients = append(staleClients, clientId)
+			staleCount++
+			log.LogDebugf("cleanupStaleWarmupWorkers: removed stale client %s, reportTime %d, now %d",
+				clientId, reportTime, now)
+		}
+	}
+	f.currentWarmUpWorkerMutex.RUnlock()
+
+	for _, clientId := range staleClients {
+		f.currentWarmUpWorkerMutex.Lock()
+		delete(f.currentWarmUpWorkers, clientId)
+		f.currentWarmUpWorkerMutex.Unlock()
+	}
+
+	if staleCount > 0 {
+		log.LogInfof("cleanupStaleWarmupWorkers: removed %d stale clients, current workers %d",
+			staleCount, len(f.currentWarmUpWorkers))
+	}
 }

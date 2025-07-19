@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strings"
@@ -22,6 +23,7 @@ const (
 	FlashGroupDefaultWeight = 1
 	FlashGroupMaxWeight     = 30
 	CACHE_BLOCK_CRC_SIZE    = 4
+	WarnMagicNumber         = 0x57 // 'W' for WarmUp
 )
 
 const (
@@ -80,6 +82,19 @@ var (
 	ErrorReadErrorTpl                  = "read error: %v"
 	ErrorIOErrorTpl                    = "io error: %v"
 	ErrorFlowLimitErrorTpl             = "flow limit error: %v"
+)
+
+const (
+	WarmStatusInitializing = 1
+	WarmStatusRunning      = 2
+	WarmStatusCompleted    = 3
+	WarmStatusFailed       = 4
+)
+
+const (
+	WarmupMetaTokenApply   = 1 // apply for warmup meta token
+	WarmupMetaTokenRenew   = 2 // renew warmup meta token
+	WarmupMetaTokenRelease = 3 // release warmup meta token
 )
 
 type FlashGroupStatus int
@@ -521,6 +536,7 @@ type ManualTaskConfig struct {
 	TotalFileSizeLimit      int64
 	MinFileSizeLimit        int64
 	MaxFileSizeLimit        int64
+	WarmUpPathExpire        int64
 }
 
 type ManualTaskStatistics struct {
@@ -632,4 +648,130 @@ func IsCacheMissError(err error) bool {
 		return true
 	}
 	return false
+}
+
+type WarmUpPathInfo struct {
+	DirPath     string
+	VolName     string
+	Expiration  int64
+	StartTime   int64
+	Status      int32
+	FlashAddr   string
+	LoadedCount int64
+}
+
+type WarmUpMetaResource struct {
+	DirPath    string
+	ServerAddr string
+}
+
+func MarshalBinaryWPSlice(warmUpPaths []*WarmUpPathInfo) ([]byte, error) {
+	buff := bytes.NewBuffer([]byte{})
+	if err := buff.WriteByte(WarnMagicNumber); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buff, binary.BigEndian, int32(len(warmUpPaths))); err != nil {
+		return nil, err
+	}
+
+	for _, pathInfo := range warmUpPaths {
+		data, err := pathInfo.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := buff.Write(data); err != nil {
+			return nil, err
+		}
+	}
+	return buff.Bytes(), nil
+}
+
+func (w *WarmUpPathInfo) MarshalBinary() ([]byte, error) {
+	buff := bytes.NewBuffer([]byte{})
+	if err := w.MarshalBinaryWithBuffer(buff); err != nil {
+		return nil, err
+	}
+	return buff.Bytes(), nil
+}
+
+func (w *WarmUpPathInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) error {
+	dirPathBytes := []byte(w.DirPath)
+	if err := binary.Write(buff, binary.BigEndian, uint32(len(dirPathBytes))); err != nil {
+		return err
+	}
+	if _, err := buff.Write(dirPathBytes); err != nil {
+		return err
+	}
+	volNameBytes := []byte(w.VolName)
+	if err := binary.Write(buff, binary.BigEndian, uint32(len(volNameBytes))); err != nil {
+		return err
+	}
+	if _, err := buff.Write(volNameBytes); err != nil {
+		return err
+	}
+	if err := binary.Write(buff, binary.BigEndian, w.Expiration); err != nil {
+		return err
+	}
+	return nil
+}
+
+func UnmarshalBinaryWPSlice(data []byte) ([]*WarmUpPathInfo, error) {
+	if len(data) <= 0 {
+		return nil, fmt.Errorf("empty data")
+	}
+	magic := data[0]
+	if magic != WarnMagicNumber {
+		return nil, fmt.Errorf("invalid magic number: expected %d, got %d", WarnMagicNumber, magic)
+	}
+	buff := bytes.NewBuffer(data[1:])
+	var length int32
+	if err := binary.Read(buff, binary.BigEndian, &length); err != nil {
+		return nil, err
+	}
+
+	warmUpPaths := make([]*WarmUpPathInfo, length)
+	for i := int32(0); i < length; i++ {
+		pathInfo := &WarmUpPathInfo{}
+		if err := pathInfo.UnmarshalBinaryWithBuffer(buff); err != nil {
+			return nil, err
+		}
+		warmUpPaths[i] = pathInfo
+	}
+
+	return warmUpPaths, nil
+}
+
+func (w *WarmUpPathInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) error {
+	var dirPathLen uint32
+	if err := binary.Read(buff, binary.BigEndian, &dirPathLen); err != nil {
+		return err
+	}
+	dirPathBytes := make([]byte, dirPathLen)
+	if _, err := buff.Read(dirPathBytes); err != nil {
+		return err
+	}
+	w.DirPath = string(dirPathBytes)
+
+	var volNameLen uint32
+	if err := binary.Read(buff, binary.BigEndian, &volNameLen); err != nil {
+		return err
+	}
+	volNameBytes := make([]byte, volNameLen)
+	if _, err := buff.Read(volNameBytes); err != nil {
+		return err
+	}
+	w.VolName = string(volNameBytes)
+	if err := binary.Read(buff, binary.BigEndian, &w.Expiration); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (w *WarmUpPathInfo) UnmarshalBinary(data []byte) error {
+	return w.UnmarshalBinaryWithBuffer(bytes.NewBuffer(data))
+}
+
+func (w *WarmUpPathInfo) SetExpiration(t time.Duration) {
+	w.Expiration = time.Now().Add(t).UnixNano()
 }
