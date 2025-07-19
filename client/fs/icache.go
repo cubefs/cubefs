@@ -40,6 +40,7 @@ type InodeCache struct {
 	lruList     *list.List
 	expiration  time.Duration
 	maxElements int
+	initExp     time.Duration
 }
 
 // NewInodeCache returns a new inode cache.
@@ -49,6 +50,7 @@ func NewInodeCache(exp time.Duration, maxElements int) *InodeCache {
 		lruList:     list.New(),
 		expiration:  exp,
 		maxElements: maxElements,
+		initExp:     exp,
 	}
 	go ic.backgroundEviction()
 	return ic
@@ -181,4 +183,15 @@ func (ic *InodeCache) backgroundEviction() {
 		elapsed := time.Since(start)
 		log.LogInfof("InodeCache: total inode cache(%d), cost(%d)ns", ic.lruList.Len(), elapsed.Nanoseconds())
 	}
+}
+
+func (ic *InodeCache) ChangeExpiration(exp time.Duration) {
+	if ic.expiration != exp {
+		log.LogInfof("ChangeExpiration from %v to %v", ic.expiration, exp)
+		ic.expiration = exp
+	}
+}
+
+func (ic *InodeCache) RecoverExpiration() {
+	ic.ChangeExpiration(ic.initExp)
 }

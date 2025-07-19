@@ -115,6 +115,7 @@ type RemoteCacheClient struct {
 	flowLimiter            *rate.Limiter
 	disableFlowLimitUpdate bool
 	WriteChunkSize         int64 // bytes
+	UpdateWarmPath         func([]byte, string)
 }
 
 func (rc *RemoteCacheClient) EnqueueConnTask(task *ConnPutTask) {
@@ -624,7 +625,9 @@ func (rc *RemoteCacheClient) HeartBeat(addr string) (duration time.Duration, err
 		log.LogWarnf("HeartBeat failed to ReadFromConn addr(%v) err(%v) start(%v)", addr, err, start)
 		return
 	}
-
+	if len(packet.Data) != 0 && rc.UpdateWarmPath != nil {
+		go rc.UpdateWarmPath(packet.Data, addr)
+	}
 	duration = time.Since(start)
 	log.LogDebugf("HeartBeat from addr(%v) cost(%v)", addr, duration)
 	return
@@ -1822,4 +1825,70 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 			" remoteCacheMultiRead(%v) fisrtPackage cost(%v)", logPrefix, fg, addr, req, reqPacket, err, rc.RemoteCacheMultiRead, rcvTime-stcTime)
 	}
 	return
+}
+
+func (rc *RemoteCacheClient) ApplyWarmupMetaToken(flashNodeAddr string, clientId string, requestType uint8) (bool, error) {
+	var conn *net.TCPConn
+	var err error
+
+	defer func() {
+		rc.conns.PutConnect(conn, err != nil)
+	}()
+
+	// Create packet with OpApplyWarmupMetaToken opcode
+	packet := proto.NewPacket()
+	packet.Opcode = proto.OpApplyWarmupMetaToken
+
+	// Set request data (requestType)
+	packet.Data = []byte{requestType}
+	packet.Size = uint32(len(packet.Data))
+
+	// Set client ID in Arg field
+	if clientId != "" {
+		packet.Arg = []byte(clientId)
+		packet.ArgLen = uint32(len(packet.Arg))
+	}
+
+	// Get connection to flashnode
+	if conn, err = rc.conns.GetConnect(flashNodeAddr); err != nil {
+		log.LogWarnf("ApplyWarmupMetaToken: get connection to flashnode failed, addr(%v) err(%v)", flashNodeAddr, err)
+		return false, err
+	}
+
+	// Write request to flashnode
+	if err = packet.WriteToConn(conn); err != nil {
+		log.LogWarnf("ApplyWarmupMetaToken: failed to write to flashnode(%v) err(%v)", flashNodeAddr, err)
+		return false, err
+	}
+
+	// Read response from flashnode
+	replyPacket := proto.NewPacket()
+	if err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		log.LogWarnf("ApplyWarmupMetaToken: failed to read response from flashnode(%v) err(%v)", flashNodeAddr, err)
+		return false, err
+	}
+
+	// Check if operation was successful
+	if replyPacket.ResultCode != proto.OpOk {
+		err = fmt.Errorf("flashnode returned error: %s", string(replyPacket.Data))
+		log.LogWarnf("ApplyWarmupMetaToken: flashnode(%v) returned error ResultCode(%v) err(%v)",
+			flashNodeAddr, replyPacket.ResultCode, err)
+		return false, err
+	}
+
+	// Check response data to determine if token operation was successful
+	if replyPacket.Size > 0 && len(replyPacket.Data) > 0 {
+		if replyPacket.Data[0] == 1 {
+			log.LogDebugf("ApplyWarmupMetaToken: flashnode(%v) clientId(%v) requestType(%v) success",
+				flashNodeAddr, clientId, requestType)
+			return true, nil
+		} else {
+			log.LogDebugf("ApplyWarmupMetaToken: flashnode(%v) clientId(%v) requestType(%v) failed (token limit reached or client not found)",
+				flashNodeAddr, clientId, requestType)
+			return false, nil
+		}
+	}
+
+	log.LogWarnf("ApplyWarmupMetaToken: flashnode(%v) returned empty response data", flashNodeAddr)
+	return false, fmt.Errorf("empty response data from flashnode")
 }

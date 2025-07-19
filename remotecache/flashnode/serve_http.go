@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -42,6 +43,8 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/slotStat", f.handleSlotStat)
 	http.HandleFunc("/submitTask", f.handleSubmitTask)
 	http.HandleFunc("/batchReadPoolStatus", f.handleBatchReadPoolStatus)
+	http.HandleFunc("/setWarmupMetaTotalToken", f.handleSetWarmupMetaTotalToken)
+	http.HandleFunc("/addWarmupPath", f.handleAddWarmupPath)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +86,12 @@ func (f *FlashNode) handleSubmitTask(w http.ResponseWriter, r *http.Request) {
 	if req.Id == "" {
 		req.Id = uuid.New().String()
 	}
+
+	// Set default warm up path expiration if not provided
+	if req.ManualTaskConfig.WarmUpPathExpire == 0 {
+		req.ManualTaskConfig.WarmUpPathExpire = int64(_defaultWarmUpPathExpire.Seconds())
+	}
+
 	rootDir := req.GetPathPrefix()
 	var tmpDir string
 	f.manualScanners.Range(func(k, v interface{}) bool {
@@ -314,7 +323,22 @@ func (f *FlashNode) handleScannerCommand(w http.ResponseWriter, r *http.Request)
 	}
 	scanner := mScanner.(*ManualScanner)
 	if opCode == "info" {
-		replyOK(w, r, scanner.copyResponse())
+		resp := scanner.copyResponse()
+		info := map[string]interface{}{
+			"task":             resp,
+			"dirChanLen":       scanner.dirChan.Len(),
+			"fileChanLen":      len(scanner.fileChan),
+			"fileRPoolRunning": scanner.fileRPool.RunningNum(),
+			"dirRPoolRunning":  scanner.dirRPool.RunningNum(),
+			"pause":            scanner.pause,
+			"createTime":       scanner.createTime,
+		}
+		if scanner.RemoteCache != nil {
+			info["prepareChLen"] = len(scanner.RemoteCache.PrepareCh)
+		} else {
+			info["prepareChLen"] = 0
+		}
+		replyOK(w, r, info)
 		return
 	}
 	scanner.processCommand(opCode)
@@ -366,4 +390,112 @@ func (f *FlashNode) handleBatchReadPoolStatus(w http.ResponseWriter, r *http.Req
 	}
 
 	replyOK(w, r, response)
+}
+
+func (f *FlashNode) handleSetWarmupMetaTotalToken(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+
+	tokenStr := r.FormValue("token")
+	if tokenStr == "" {
+		replyErr(w, r, proto.ErrCodeParamError, "token parameter cannot be empty", nil)
+		return
+	}
+
+	token, err := strconv.Atoi(tokenStr)
+	if err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, "invalid token value, must be a positive integer", nil)
+		return
+	}
+
+	if token <= 0 {
+		replyErr(w, r, proto.ErrCodeParamError, "token value must be greater than 0", nil)
+		return
+	}
+
+	f.currentWarmUpWorkerMutex.Lock()
+	oldToken := f.warmupMetaTotalToken
+	f.warmupMetaTotalToken = token
+	f.currentWarmUpWorkerMutex.Unlock()
+
+	log.LogInfof("handleSetWarmupMetaTotalToken: warmupMetaTotalToken changed from %d to %d", oldToken, token)
+
+	replyOK(w, r, map[string]interface{}{
+		"oldToken": oldToken,
+		"newToken": token,
+		"message":  fmt.Sprintf("warmupMetaTotalToken updated from %d to %d", oldToken, token),
+	})
+}
+
+// handleAddWarmupPath adds a warmup path into f.warmUpPaths via HTTP.
+// Request body (JSON): {"volName":"<volume>", "dirPath":"<path>", "expireSeconds":<int64, optional>}
+func (f *FlashNode) handleAddWarmupPath(w http.ResponseWriter, r *http.Request) {
+	var (
+		bytes []byte
+		err   error
+	)
+	if bytes, err = io.ReadAll(r.Body); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	defer r.Body.Close()
+
+	var req struct {
+		VolName       string `json:"volName"`
+		DirPath       string `json:"dirPath"`
+		ExpireSeconds int64  `json:"expireSeconds"`
+	}
+	if err = json.Unmarshal(bytes, &req); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	if req.VolName == "" {
+		replyErr(w, r, proto.ErrCodeParamError, "volName cannot be empty", nil)
+		return
+	}
+
+	// Normalize dirPath similar to ManualTask.GetPathPrefix behavior.
+	dirPath := strings.TrimPrefix(strings.TrimRight(req.DirPath, "/"), "/")
+	if dirPath == "" {
+		dirPath = "/"
+	}
+
+	// Check duplicates (clean up expired entries along the way)
+	dup := false
+	f.warmUpPaths.Range(func(key, value interface{}) bool {
+		info := value.(*proto.WarmUpPathInfo)
+		if time.Now().UnixNano() > info.Expiration {
+			f.warmUpPaths.Delete(key)
+			return true
+		}
+		if info.VolName == req.VolName && info.DirPath == dirPath {
+			dup = true
+			return false
+		}
+		return true
+	})
+	if dup {
+		replyErr(w, r, proto.ErrCodeParamError, "warmup path already exists", map[string]string{"volName": req.VolName, "dirPath": dirPath})
+		return
+	}
+
+	// Build WarmUpPathInfo and set expiration
+	wup := &proto.WarmUpPathInfo{VolName: req.VolName, DirPath: dirPath}
+	if req.ExpireSeconds > 0 {
+		wup.SetExpiration(time.Duration(req.ExpireSeconds) * time.Second)
+	} else {
+		wup.SetExpiration(_defaultWarmUpPathExpire)
+	}
+	key := uuid.New().String()
+	f.enableWarmUpPaths = true
+	f.warmUpPaths.Store(key, wup)
+
+	replyOK(w, r, map[string]interface{}{
+		"id":         key,
+		"volName":    wup.VolName,
+		"dirPath":    wup.DirPath,
+		"expiration": wup.Expiration,
+	})
 }

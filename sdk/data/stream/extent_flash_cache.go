@@ -16,6 +16,7 @@ package stream
 
 import (
 	"encoding/binary"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -60,8 +61,9 @@ type RemoteCache struct {
 
 	remoteCacheMaxFileSizeGB int64
 	remoteCacheOnlyForNotSSD bool
-
-	remoteCacheClient *remotecache.RemoteCacheClient
+	remoteCacheClient        *remotecache.RemoteCacheClient
+	WarmUpMetaPaths          sync.Map
+	WarmPathWorked           int32
 }
 
 type AddressPingStats struct {
@@ -224,6 +226,7 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	if err != nil {
 		log.LogWarnf("RemoteCache: new client err %v", err)
 	}
+	rc.remoteCacheClient.UpdateWarmPath = rc.UpdateWarmPath
 	err = rc.remoteCacheClient.UpdateFlashGroups()
 	if err != nil {
 		log.LogWarnf("RemoteCache: update flashgroups err %v", err)
@@ -295,4 +298,95 @@ func (rc *RemoteCache) getPathInode(path string) (ino uint64, err error) {
 		}
 	}
 	return
+}
+
+func hasPathIntersection(dir1, dir2 string) (bool, string) {
+	sep := "/"
+	if dir1 == "" {
+		dir1 = sep
+	}
+	if dir2 == "" {
+		dir2 = sep
+	}
+	if !strings.HasPrefix(dir1, sep) {
+		dir1 = sep + dir1
+	}
+	if !strings.HasPrefix(dir2, sep) {
+		dir2 = sep + dir2
+	}
+	if !strings.HasSuffix(dir1, sep) {
+		dir1 += sep
+	}
+	if !strings.HasSuffix(dir2, sep) {
+		dir2 += sep
+	}
+	if strings.HasPrefix(dir1, dir2) {
+		return true, dir1[:len(dir1)-1]
+	}
+	if strings.HasPrefix(dir2, dir1) {
+		return true, dir2[:len(dir2)-1]
+	}
+	return false, ""
+}
+
+func (rc *RemoteCache) ApplyWarmupMetaToken(flashNodeAddr string, clientId string, requestType uint8) (bool, error) {
+	if rc.remoteCacheClient == nil || !rc.Started {
+		return false, errors.New("remote cache client is nil or not started")
+	} else {
+		return rc.remoteCacheClient.ApplyWarmupMetaToken(flashNodeAddr, clientId, requestType)
+	}
+}
+
+func (rc *RemoteCache) UpdateWarmPath(data []byte, addr string) {
+	warmUpPaths, err := proto.UnmarshalBinaryWPSlice(data)
+	if err != nil {
+		log.LogWarnf("UpdateWarmPath UnmarshalBinaryWPSlice err(%v)", err)
+		return
+	}
+	for _, warmUpPath := range warmUpPaths {
+		if rc.volname != warmUpPath.VolName {
+			continue
+		}
+		inst, path := hasPathIntersection(warmUpPath.DirPath, rc.metaWrapper.GetSubDir())
+		if !inst {
+			continue
+		}
+		if rc.isPathAlreadyCovered(path) {
+			log.LogDebugf("UpdateWarmPath: path %s is already covered by existing warmup paths", path)
+			continue
+		}
+		warmUpPath.DirPath = path
+		warmUpPath.Status = proto.WarmStatusInitializing
+		warmUpPath.FlashAddr = addr
+		if actual, loaded := rc.WarmUpMetaPaths.LoadOrStore(path, warmUpPath); loaded {
+			info := actual.(*proto.WarmUpPathInfo)
+			if info.Status == proto.WarmStatusCompleted || info.Status == proto.WarmStatusFailed {
+				if time.Now().Add(-5*time.Minute).UnixNano() > info.Expiration {
+					rc.WarmUpMetaPaths.Delete(path)
+				}
+			}
+		}
+	}
+}
+
+func (rc *RemoteCache) isPathAlreadyCovered(newPath string) bool {
+	var isCovered bool
+	rc.WarmUpMetaPaths.Range(func(_, value interface{}) bool {
+		warmUpPath := value.(*proto.WarmUpPathInfo)
+		existingPath := warmUpPath.DirPath
+		if warmUpPath.Status == proto.WarmStatusCompleted || warmUpPath.Status == proto.WarmStatusFailed || warmUpPath.Status == proto.WarmStatusRunning {
+			return true
+		}
+		if strings.HasPrefix(newPath, existingPath) {
+			log.LogDebugf("isPathAlreadyCovered: new path %s is covered by existing path %s", newPath, existingPath)
+			isCovered = true
+			return false
+		}
+		if strings.HasPrefix(existingPath, newPath) {
+			log.LogDebugf("isPathAlreadyCovered: existing path %s is covered by new path %s, will replace", existingPath, newPath)
+			rc.WarmUpMetaPaths.Delete(existingPath)
+		}
+		return true
+	})
+	return isCovered
 }
