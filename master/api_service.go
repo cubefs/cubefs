@@ -6977,6 +6977,15 @@ func (m *Server) setFileStats(w http.ResponseWriter, r *http.Request) {
 		thresholds = m.cluster.fileStatsThresholds
 	}
 
+	for _, t := range thresholds {
+		if t == 0 {
+			err = fmt.Errorf("threshold can't be zero")
+			log.LogErrorf("action[setFileStats] invalid thresholds: %v", thresholds)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
 	oldEable := m.cluster.fileStatsEnable
 	m.cluster.fileStatsEnable = enable
 	oldThresholds := m.cluster.fileStatsThresholds
@@ -6996,9 +7005,31 @@ func (m *Server) setFileStats(w http.ResponseWriter, r *http.Request) {
 		"set setFileStats enable to [%v] thresholds to [%v] successfully", enable, thresholds)))
 }
 
+const (
+	Size1K   uint64 = 1 << 10
+	Size1M   uint64 = 1 << 20
+	Size16M         = 16 * Size1M
+	Size32M         = 32 * Size1M
+	Size64M         = 64 * Size1M
+	Size128M        = 128 * Size1M
+	Size256M        = 256 * Size1M
+)
+
 func (m *Server) getFileStats(w http.ResponseWriter, r *http.Request) {
+	thresholds := m.cluster.fileStatsThresholds
+	if len(thresholds) == 0 {
+		thresholds = []uint64{
+			Size1K,
+			Size1M,
+			Size16M,
+			Size32M,
+			Size64M,
+			Size128M,
+			Size256M,
+		}
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
-		"getFileStats enable value [%v] thresholds value [%v]", m.cluster.fileStatsEnable, m.cluster.fileStatsThresholds)))
+		"getFileStats enable value [%v] thresholds value [%v]", m.cluster.fileStatsEnable, thresholds)))
 }
 
 func (m *Server) GetClusterValue(w http.ResponseWriter, r *http.Request) {
