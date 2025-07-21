@@ -86,7 +86,7 @@ func RegisterGracefulModule(m *Module) {
 	mod.graceful = true
 }
 
-func newLogWriter(cfg *LogConfig) io.Writer {
+func NewLogWriter(cfg *LogConfig) io.Writer {
 	maxsize := cfg.MaxSize
 	if maxsize == 0 {
 		maxsize = 1024
@@ -119,7 +119,7 @@ func Main(args []string) {
 	log.SetOutputLevel(cfg.LogConf.Level)
 	registerLogLevel()
 	if cfg.LogConf.Filename != "" {
-		log.SetOutput(newLogWriter(&cfg.LogConf))
+		log.SetOutput(NewLogWriter(&cfg.LogConf))
 	}
 	if cfg.ShutdownTimeoutS <= 0 {
 		cfg.ShutdownTimeoutS = defaultShutdownTimeoutS
