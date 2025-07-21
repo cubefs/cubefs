@@ -505,11 +505,18 @@ func (mgr *BlobDeleteMgr) consume(item *delBlobRet, consumerPause base.ConsumerP
 
 	// if message retry times is greater than MessagePunishThreshold while sleep MessagePunishTimeM minutes
 	if item.delMsg.Retry >= mgr.cfg.MessagePunishThreshold {
-		span.Warnf("punish message for a while: until[%+v], sleep[%+v], retry[%d]",
-			time.Now().Add(mgr.punishTime), mgr.punishTime, item.delMsg.Retry)
-		if ok := sleep(mgr.punishTime, consumerPause); !ok {
-			item.status = DeleteStatusUndo
-			return
+		delta := time.Since(time.Unix(item.delMsg.FailTime, 0))
+		if item.delMsg.FailTime == 0 {
+			delta = 0
+		}
+		if delta < mgr.punishTime {
+			toSleep := mgr.punishTime - delta
+			span.Warnf("punish message for a while: until[%+v], sleep[%+v], retry[%d]",
+				time.Now().Add(toSleep), toSleep, item.delMsg.Retry)
+			if ok := sleep(toSleep, consumerPause); !ok {
+				item.status = DeleteStatusUndo
+				return
+			}
 		}
 	}
 	now := time.Now().UTC()
@@ -716,6 +723,7 @@ func (mgr *BlobDeleteMgr) send2FailQueue(ctx context.Context, msg *proto.DeleteM
 	span.Debugf("send to fail queue: bid[%d], try[%d], delete stages[%+v]", msg.Bid, msg.Retry, msg.BlobDelStages)
 
 	msg.Retry++
+	msg.FailTime = time.Now().Unix()
 	b, err := json.Marshal(msg)
 	if err != nil {
 		// just panic if marsh fail

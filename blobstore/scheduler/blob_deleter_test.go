@@ -172,6 +172,34 @@ func TestBlobDeleteConsume(t *testing.T) {
 		mgr.blobnodeCli = oldBlobNode
 	}
 	{
+		// retry many times and sleep and success
+		oldClusterTopology := mgr.clusterTopology
+		clusterTopology := NewMockClusterTopology(ctr)
+		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
+			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
+				return &client.VolumeInfoSimple{
+					Vid:            vid,
+					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
+				}, nil
+			},
+		)
+		clusterTopology.EXPECT().IsBrokenDisk(any).Return(false)
+		mgr.clusterTopology = clusterTopology
+		msg := &proto.DeleteMsg{
+			Bid: 1, Vid: 1, ReqId: "123456", Retry: 4,
+			FailTime: time.Now().Unix() - int64(mgr.punishTime.Seconds()) + 1,
+		}
+
+		ret := delBlobRet{delMsg: msg, ctx: ctx}
+		mgr.consume(&ret, commonCloser)
+		require.Equal(t, DeleteStatusDone, ret.status)
+		require.Equal(t, 1, len(msg.BlobDelStages.Stages))
+		for _, v := range msg.BlobDelStages.Stages {
+			require.Equal(t, proto.DeleteStageDelete, v)
+		}
+		mgr.clusterTopology = oldClusterTopology
+	}
+	{
 		// consume cancel
 		oldClusterTopology := mgr.clusterTopology
 		clusterTopology := NewMockClusterTopology(ctr)

@@ -59,6 +59,7 @@ type DeleteMsg struct {
 	Vid           Vid             `json:"vid"`
 	Retry         int             `json:"retry"`
 	Time          int64           `json:"time"`
+	FailTime      int64           `json:"fail_time"`
 	ReqId         string          `json:"req_id"`
 	BlobDelStages BlobDeleteStage `json:"blob_del_stages"`
 }
