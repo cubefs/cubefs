@@ -5425,7 +5425,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 				})
 				continue
 			} else if strings.Contains(err.Error(), proto.ErrPerformingDecommission.Error()) {
-				if dp.DecommissionSrcAddr != node.Addr {
+				if dp.DecommissionSrcAddr != node.Addr || dp.DecommissionType == AutoAddReplica {
 					// disk.DecommissionDpTotal -= 1
 					ignoreIDs = append(ignoreIDs, dp.PartitionID)
 					log.LogWarnf("action[TryDecommissionDisk] disk(%v) dp(%v) is decommissioning",
