@@ -773,9 +773,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.CancelDecommissionDisk).
 		HandlerFunc(m.cancelDecommissionDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.ResetDecommissionDiskStatus).
-		HandlerFunc(m.resetDecommissionDiskStatus)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminResetDataPartitionRestoreStatus).
 		HandlerFunc(m.resetDataPartitionRestoreStatus)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
