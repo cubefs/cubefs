@@ -90,8 +90,9 @@ func TestServerShardSM_Item(t *testing.T) {
 	// List
 	n := 4
 	items := make([]*proto.Item, n)
+	ids := make([][]byte, n)
 	for i := 0; i < n; i++ {
-		s := fmt.Sprint(i)
+		s := fmt.Sprintf("item%d", i)
 		protoItem := &proto.Item{
 			ID: []byte(s),
 			Fields: []proto.Field{
@@ -104,6 +105,7 @@ func TestServerShardSM_Item(t *testing.T) {
 		err = mockShard.shardSM.applyInsertItem(ctx, kv.Marshal())
 		require.Nil(t, err)
 		items[i] = protoItem
+		ids[i] = protoItem.ID
 	}
 	rets, marker, err := mockShard.shard.ListItem(ctx, OpHeader{
 		ShardKeys: [][]byte{items[0].ID},
@@ -120,6 +122,23 @@ func TestServerShardSM_Item(t *testing.T) {
 	}, nil, items[0].ID, uint64(n))
 	require.Nil(t, err)
 	require.Nil(t, marker)
+
+	// batch delete items
+	wb := mockShard.shard.store.KVStore().NewWriteBatch()
+	defer wb.Close()
+	for i := range ids {
+		wb.Delete(dataCF, sk.encodeItemKey(ids[i]))
+	}
+
+	err = mockShard.shardSM.applyWriteBatchRaw(ctx, wb.Data())
+	require.Nil(t, err)
+
+	for i := 0; i < n-1; i++ {
+		_, err := mockShard.shard.GetItem(ctx, OpHeader{
+			ShardKeys: [][]byte{items[0].ID},
+		}, ids[i])
+		require.Equal(t, errors.ErrKeyNotFound, err)
+	}
 }
 
 func TestServerShardSM_Apply(t *testing.T) {
@@ -190,6 +209,42 @@ func TestServerShardSM_Apply(t *testing.T) {
 			Op: 999,
 		}}, 1)
 	})
+}
+
+func TestServerShardSM_Apply_Batch(t *testing.T) {
+	ctx := context.Background()
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	n := 3
+	wb := mockShard.shard.store.KVStore().NewWriteBatch()
+	defer wb.Close()
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("item%d", i)
+		itm := &proto.Item{
+			ID: []byte(id),
+			Fields: []proto.Field{
+				{ID: 1, Value: []byte("string")},
+			},
+		}
+		raw, err := itm.Marshal()
+		if err != nil {
+			require.Nil(t, err)
+		}
+		wb.Put(dataCF, itm.ID, raw)
+	}
+
+	// add del op
+	wb.Delete(dataCF, []byte("k1"))
+
+	// add del range op
+	wb.DeleteRange(dataCF, []byte("k2"), []byte("k3"))
+
+	pds := []raft.ProposalData{
+		{Op: raftOpWriteBatchRaw, Data: wb.Data()},
+	}
+	_, err := mockShard.shardSM.Apply(ctx, pds, 1)
+	require.Nil(t, err)
 }
 
 func TestServer_BlobList(t *testing.T) {

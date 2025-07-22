@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
+	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -566,51 +567,61 @@ func (s *Space) validateFields(fields []shardnode.Field) bool {
 func (s *Space) generateSpaceKey(id []byte) []byte {
 	// todo: reuse with memory pool
 	spaceKeyLen, paddingLen := s.generateSpaceKeyLen(id)
-	dest := make([]byte, spaceKeyLen+8) // Add 8 bytes for paddingLen
-	binary.BigEndian.PutUint64(dest, uint64(s.sid))
+	dest := make([]byte, spaceKeyLen)
+	// put prefix first
+	copy(dest, snproto.SpaceDataPrefix)
+
+	index := 1
+	binary.BigEndian.PutUint64(dest[index:], uint64(s.sid))
+	index += 8
 
 	// align id with 8 bytes padding
 	idLen := len(id)
-	copy(dest[8:], id)
+	copy(dest[index:], id)
+	index += idLen
 	for i := 0; i < paddingLen; i++ {
-		dest[8+idLen+i] = 0 // Padding with 0s
+		dest[index+i] = 0 // Padding with 0s
 	}
+	index += paddingLen
+
 	// big endian encode and reverse
 	// latest space version item will store in front of oldest. eg:
 	// sid-id-3
 	// sid-id-2
 	// sid-id-1
-	versionIdx := 8 + idLen + paddingLen
-	binary.BigEndian.PutUint64(dest[versionIdx:], s.spaceVersion)
+	binary.BigEndian.PutUint64(dest[index:], s.spaceVersion)
 	for i := 0; i < 8; i++ {
-		dest[versionIdx+i] = ^dest[versionIdx+i]
+		dest[index+i] = ^dest[index+i]
 	}
+	index += 8
 	// Record paddingLen in the last 8 bytes
-	binary.BigEndian.PutUint64(dest[spaceKeyLen:], uint64(paddingLen))
+	binary.BigEndian.PutUint64(dest[index:], uint64(paddingLen))
 	return dest
 }
 
 func (s *Space) generateSpacePrefix(prefix []byte) []byte {
 	dest := make([]byte, s.generateSpacePrefixLen(prefix))
-	binary.BigEndian.PutUint64(dest, uint64(s.sid))
-	copy(dest[8:], prefix)
+	copy(dest, snproto.SpaceDataPrefix)
+
+	binary.BigEndian.PutUint64(dest[1:], uint64(s.sid))
+	copy(dest[9:], prefix)
 	return dest
 }
 
 func (s *Space) decodeSpaceKey(key []byte) []byte {
-	if len(key) < 24 {
+	if len(key) < 25 {
 		panic(fmt.Sprintf("decode illegal space key: %+v", key))
 	}
 	// extract paddingLen from the last 8 bytes
 	paddingLen := int(binary.BigEndian.Uint64(key[len(key)-8:]))
 
 	// calculate the total length of id and padding
-	totalIdLen := len(key) - 16 - 8
+	totalIdLen := len(key) - 16 - 8 - 1
 	if totalIdLen < 0 {
 		return nil
 	}
 	// extract id and padding
-	idWithPadding := key[8 : 8+totalIdLen]
+	idWithPadding := key[9 : 9+totalIdLen]
 
 	// remove padding to get the original id
 	return idWithPadding[:totalIdLen-paddingLen]
@@ -619,11 +630,12 @@ func (s *Space) decodeSpaceKey(key []byte) []byte {
 func (s *Space) generateSpaceKeyLen(id []byte) (int, int) {
 	idLen := len(id)
 	paddingLen := (8 - (idLen % 8)) % 8
-	return 8 + len(id) + 8 + paddingLen, paddingLen
+	// prefix[1] + spaceId[8] + len(id) + len(padding) + spaceVersion[8] + paddingLen[8]
+	return 1 + 8 + len(id) + paddingLen + 8 + 8, paddingLen
 }
 
 func (s *Space) generateSpacePrefixLen(prefix []byte) int {
-	return 8 + len(prefix)
+	return 1 + 8 + len(prefix)
 }
 
 func isEmptySlice(s proto.Slice) bool {

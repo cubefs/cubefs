@@ -23,6 +23,7 @@ option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 import "gogoproto/gogo.proto";
+import "cubefs/blobstore/common/proto/blob.proto";
 
 message Item {
     bytes id = 1 [(gogoproto.customname) = "ID"];
@@ -36,4 +37,16 @@ message Field {
 
 message ShardMemberCtx {
     uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+}
+
+message BlobDeleteStage {
+    map<uint32,uint32> stage  = 2;
+}
+
+message DeleteMsg {
+    cubefs.blobstore.common.proto.Slice slice = 1 [(gogoproto.nullable) = false];
+    uint32 retry = 2;
+    int64 time = 3;
+    string req_id = 4;
+    map<uint64, BlobDeleteStage> msg_del_stage = 5 [(gogoproto.nullable) = false];
 }

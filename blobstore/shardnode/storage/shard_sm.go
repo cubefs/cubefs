@@ -39,10 +39,12 @@ const (
 	raftOpInsertBlob
 	raftOpUpdateBlob
 	raftOpDeleteBlob
+	raftOpWriteBatchRaw
 
-	setRaw = "set"
-	getRaw = "get"
-	delRaw = "del"
+	setRaw        = "set"
+	getRaw        = "get"
+	delRaw        = "del"
+	writeBatchRaw = "batch"
 )
 
 type shardSM shard
@@ -86,6 +88,11 @@ func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint6
 			rets[i] = applyRet{traceLog: _span.TrackLog()}
 		case raftOpDeleteBlob, raftOpDeleteItem:
 			if err = s.applyDeleteRaw(c, pd[i].Data); err != nil {
+				return
+			}
+			rets[i] = applyRet{traceLog: _span.TrackLog()}
+		case raftOpWriteBatchRaw:
+			if err = s.applyWriteBatchRaw(c, pd[i].Data); err != nil {
 				return
 			}
 			rets[i] = applyRet{traceLog: _span.TrackLog()}
@@ -477,6 +484,21 @@ func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
 		return errors.Info(err, "kv store delete failed")
 	}
 	return nil
+}
+
+func (s *shardSM) applyWriteBatchRaw(ctx context.Context, data []byte) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	start := time.Now()
+	kvStore := s.store.KVStore()
+
+	batch := kvStore.NewWriteBatch()
+	defer batch.Close()
+
+	batch.From(data)
+	err := kvStore.Write(ctx, batch, nil)
+	span.AppendTrackLog(writeBatchRaw, start, err, trace.OptSpanDurationUs())
+	return err
 }
 
 func (s *shardSM) setAppliedIndex(index uint64) {
