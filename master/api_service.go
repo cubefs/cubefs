@@ -8603,42 +8603,6 @@ func (m *Server) recoverBackupDataReplica(w http.ResponseWriter, r *http.Request
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func (m *Server) resetDecommissionDiskStatus(w http.ResponseWriter, r *http.Request) {
-	var (
-		offLineAddr, diskPath string
-		err                   error
-	)
-
-	metric := exporter.NewTPCnt("req_resetDecommissionDisk")
-	defer func() {
-		metric.Set(err)
-		AuditLog(r, proto.ResetDecommissionDiskStatus, fmt.Sprintf("offline addr(%v) disk(%v)", offLineAddr, diskPath), err)
-	}()
-
-	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
-	value, ok := m.cluster.DecommissionDisks.Load(key)
-	if !ok {
-		ret := fmt.Sprintf("action[resetDecommissionDiskStatus]cannot found decommission task for node[%v] disk[%v], "+
-			"may be already offline", offLineAddr, diskPath)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
-		return
-	}
-	disk := value.(*DecommissionDisk)
-	disk.SetDecommissionStatus(DecommissionInitial)
-	err = m.cluster.syncUpdateDecommissionDisk(disk)
-	if err != nil {
-		ret := fmt.Sprintf("action[resetDecommissionDiskStatus]persist disk[%v] failed %v", key, err.Error())
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
-		return
-	}
-	rstMsg := fmt.Sprintf("reset decommission disk[%s] successfully ", key)
-	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
-}
-
 func (m *Server) recoverBadDisk(w http.ResponseWriter, r *http.Request) {
 	var (
 		offLineAddr, diskPath string

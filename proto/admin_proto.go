@@ -188,7 +188,6 @@ const (
 	DeleteDecommissionDiskRecord       = "/disk/deleteDecommissionDiskRecord"
 	PauseDecommissionDisk              = "/disk/pauseDecommission"
 	CancelDecommissionDisk             = "/disk/cancelDecommission"
-	ResetDecommissionDiskStatus        = "/disk/resetDecommissionStatus"
 	QueryDecommissionDiskDecoFailedDps = "/disk/queryDecommissionFailedDps"
 	QueryBadDisks                      = "/disk/queryBadDisks"
 	QueryDisks                         = "/disk/queryDisks"
