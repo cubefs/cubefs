@@ -17,7 +17,9 @@ package proto
 import (
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -169,6 +171,10 @@ func (r *Rule) GetPrefix() string {
 var regexRuleId = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
 var ExpirationEnabled bool
+
+func init() {
+	ExpirationEnabled, _ = strconv.ParseBool(os.Getenv("ExpirationEnabled"))
+}
 
 func validRule(r *Rule) error {
 	if len(r.ID) == 0 {
