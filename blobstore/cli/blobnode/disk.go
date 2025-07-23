@@ -17,6 +17,7 @@ package blobnode
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -95,17 +96,18 @@ func addCmdDiskDrop(diskCommand *grumble.Command) {
 		Flags: func(f *grumble.Flags) {
 			f.StringL("cm_hosts", "", "required: e.g. [cm_hosts=ip1:9998,xxx] (multi or single)")
 			f.StringL("node_host", "", "required: local blobnode host (to get disk_ids from cm)")
+			f.StringL("net_card", "bond0", "get local ip for blobnode host(alternative to node_host)")
 			f.StringL("disk_ids", "", "is empty: means all disk; else, we will check specify disk [disk_ids=1,2,xxx](multi or single)")
 			f.BoolL("need_db", false, "not required: read local db, specific check chunk. default(false)")
 			f.UintL("log_level", 2, "0:debug; 1:info; 2:warn; 3:error")
 		},
-		Run: dropStatCheck,
+		Run: checkDroppedDiskStat,
 	}
 
 	diskCommand.AddCommand(diskDropCommand)
 }
 
-func dropStatCheck(c *grumble.Context) error {
+func checkDroppedDiskStat(c *grumble.Context) error {
 	log.SetOutputLevel(log.Level(c.Flags.Uint("log_level")))
 
 	diskInfos, err := checkDiskDropConf(c)
@@ -147,12 +149,54 @@ func checkDiskDropConf(c *grumble.Context) ([]*clustermgr.BlobNodeDiskInfo, erro
 	}
 
 	nodeHost := c.Flags.String("node_host")
-	re := regexp.MustCompile(`\b(\d{1,3}\.){3}\d{1,3}:\d{1,6}\b`)
-	if nodeHost == "" || !re.MatchString(nodeHost) {
-		return nil, fmt.Errorf("--node_host is required")
+	if nodeHost == "" {
+		nodeHost = getLocalHost(c)
+		fmt.Printf("get local host[%s]\n", nodeHost)
 	}
 
-	return parseAllLocalDiskIdsByCm(ctx, c)
+	re := regexp.MustCompile(`\b(\d{1,3}\.){3}\d{1,3}:\d{1,6}\b`)
+	if !re.MatchString(nodeHost) {
+		return nil, fmt.Errorf("node_host value is wrong, node_host:%s", nodeHost)
+	}
+
+	return parseAllLocalDiskIdsByCm(ctx, c, nodeHost)
+}
+
+func getLocalHost(c *grumble.Context) string {
+	const defaultPort = 8889
+	localIP := ""
+	netCard := c.Flags.String("net_card")
+
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		log.Errorf("fail to get network interface error: %+v", err)
+		return ""
+	}
+
+	for _, iface := range interfaces {
+		if iface.Name == netCard {
+			addrs, err := iface.Addrs()
+			if err != nil {
+				log.Errorf("fail to get interface address, err:%+v", err)
+				continue
+			}
+
+			for _, addr := range addrs {
+				if ipNet, ok := addr.(*net.IPNet); ok && ipNet.IP.To4() != nil {
+					fmt.Println("bond0 IPv4 Address:", ipNet.IP.String())
+					localIP = ipNet.IP.String()
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if localIP == "" {
+		log.Errorf("fail to get local ip by network card[%s]", netCard)
+		return ""
+	}
+	return fmt.Sprintf("%s:%d", localIP, defaultPort)
 }
 
 func getSpecifyDiskIDs(c *grumble.Context) map[proto.DiskID]struct{} {
@@ -375,10 +419,9 @@ func newCmClient(c *grumble.Context) *clustermgr.Client {
 	return clustermgr.New(cfg)
 }
 
-func parseAllLocalDiskIdsByCm(ctx context.Context, c *grumble.Context) (diskInfos []*clustermgr.BlobNodeDiskInfo, err error) {
+func parseAllLocalDiskIdsByCm(ctx context.Context, c *grumble.Context, host string) (diskInfos []*clustermgr.BlobNodeDiskInfo, err error) {
 	const prefix = "http://"
 	const maxCnt = 100
-	host := c.Flags.String("node_host")
 
 	cmCli := newCmClient(c)
 	marker := proto.DiskID(0)
