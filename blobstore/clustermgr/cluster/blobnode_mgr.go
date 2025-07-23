@@ -657,7 +657,7 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 				continue
 			}
 			b.taskPool.Run(b.getTaskIdx(synchronizedDiskID), func() {
-				errs[idx] = b.SetStatus(taskCtx, setStatusArgs.DiskID, setStatusArgs.Status, true)
+				errs[idx] = b.applySetStatus(taskCtx, setStatusArgs.DiskID, setStatusArgs.Status, true)
 				wg.Done()
 			})
 		case OperTypeDroppingDisk:

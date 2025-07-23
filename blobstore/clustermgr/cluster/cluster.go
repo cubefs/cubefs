@@ -17,6 +17,7 @@ package cluster
 import (
 	"container/heap"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sync"
@@ -66,6 +67,7 @@ var (
 	ErrShardNodeCreateShardFailed = errors.New("shard node create shard failed")
 	ErrNodeExist                  = errors.New("node already exist")
 	ErrNodeNotExist               = errors.New("node not exist")
+	ErrDiskStatusAlreadySet       = errors.New("disk status already set")
 )
 
 var validSetStatus = map[proto.DiskStatus]int{
@@ -87,7 +89,7 @@ type NodeManagerAPI interface {
 	IsDiskWritable(ctx context.Context, id proto.DiskID) (bool, error)
 	// SetStatus change disk status, in some case, change status is not allow
 	// like change repairing/repaired/dropped into normal
-	SetStatus(ctx context.Context, id proto.DiskID, status proto.DiskStatus, isCommit bool) error
+	SetStatus(ctx context.Context, args *clustermgr.DiskSetArgs, module string) error
 	// IsDroppingDisk return true if the specified disk is dropping
 	IsDroppingDisk(ctx context.Context, id proto.DiskID) (bool, error)
 	// Stat return disk statistic info of a cluster
@@ -254,7 +256,35 @@ func (d *manager) IsDiskWritable(ctx context.Context, id proto.DiskID) (bool, er
 	return diskInfo.isWritable(), nil
 }
 
-func (d *manager) SetStatus(ctx context.Context, id proto.DiskID, status proto.DiskStatus, isCommit bool) error {
+func (d *manager) SetStatus(ctx context.Context, args *clustermgr.DiskSetArgs, module string) error {
+	span := trace.SpanFromContextSafe(ctx)
+	err := d.applySetStatus(ctx, args.DiskID, args.Status, false)
+	if err != nil {
+		span.Warnf("SetStatus error: %v", err)
+		return err
+	}
+	data, err := json.Marshal(args)
+	if err != nil {
+		span.Errorf("set args: %v, error: %v", args, err)
+		return errors.Info(apierrors.ErrUnexpected).Detail(err)
+	}
+	pendingKey := fmtApplyContextKey("disk-setstatus", args.DiskID.ToString())
+	d.pendingEntries.Store(pendingKey, nil)
+	defer d.pendingEntries.Delete(pendingKey)
+
+	proposeInfo := base.EncodeProposeInfo(module, OperTypeSetDiskStatus, data, base.ProposeContext{ReqID: span.TraceID()})
+	err = d.raftServer.Propose(ctx, proposeInfo)
+	if err != nil {
+		span.Error(err)
+		return apierrors.ErrRaftPropose
+	}
+	if v, _ := d.pendingEntries.Load(pendingKey); v != nil {
+		return v.(error)
+	}
+	return nil
+}
+
+func (d *manager) applySetStatus(ctx context.Context, id proto.DiskID, status proto.DiskStatus, isCommit bool) error {
 	var (
 		beforeSeq int
 		afterSeq  int
@@ -274,15 +304,12 @@ func (d *manager) SetStatus(ctx context.Context, id proto.DiskID, status proto.D
 
 	err := disk.withRLocked(func() error {
 		if disk.info.Status == status {
-			return nil
+			return ErrDiskStatusAlreadySet
 		}
 		// disallow set disk status when disk is dropping, as disk status will be dropped finally
 		if disk.dropping && status != proto.DiskStatusDropped {
-			if !isCommit {
-				return apierrors.ErrChangeDiskStatusNotAllow
-			}
 			span.Warnf("disk[%d] is dropping, can't set disk status", id)
-			return nil
+			return apierrors.ErrChangeDiskStatusNotAllow
 		}
 
 		beforeSeq, ok = validSetStatus[disk.info.Status]
@@ -291,19 +318,25 @@ func (d *manager) SetStatus(ctx context.Context, id proto.DiskID, status proto.D
 		}
 		// can't change status back or change status more than 2 motion
 		if beforeSeq > afterSeq || (afterSeq-beforeSeq > 1 && status != proto.DiskStatusDropped) {
-			// return error in pre set request
-			if !isCommit {
-				return apierrors.ErrChangeDiskStatusNotAllow
-			}
-			// return nil in wal log replay situation
 			span.Warnf("disallow set disk[%d] status[%d], before seq: %d, after seq: %d", id, status, beforeSeq, afterSeq)
-			return nil
+			return apierrors.ErrChangeDiskStatusNotAllow
 		}
-
 		return nil
 	})
 	if err != nil {
-		return err
+		// concurrent request or raft log replay
+		if errors.Is(err, ErrDiskStatusAlreadySet) {
+			return nil
+		}
+		if !isCommit {
+			return err
+		}
+		// return err by pendingEntries in commit case
+		pendingKey := fmtApplyContextKey("disk-setstatus", id.ToString())
+		if _, ok = d.pendingEntries.Load(pendingKey); ok {
+			d.pendingEntries.Store(pendingKey, err)
+		}
+		return nil
 	}
 
 	if !isCommit {
@@ -609,7 +642,7 @@ func (d *manager) applyDroppedDisk(ctx context.Context, id proto.DiskID) error {
 		return nil
 	}
 
-	err = d.SetStatus(ctx, id, proto.DiskStatusDropped, true)
+	err = d.applySetStatus(ctx, id, proto.DiskStatusDropped, true)
 	if err != nil {
 		err = errors.Info(err, "diskMgr.droppedDisk set disk dropped status failed").Detail(err)
 	}

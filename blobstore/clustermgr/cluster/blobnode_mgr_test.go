@@ -96,8 +96,17 @@ func TestBlobNodeMgr_Normal(t *testing.T) {
 			require.Equal(t, true, writable)
 		}
 
-		err := blobNodeManager.SetStatus(ctx, 1, proto.DiskStatusBroken, true)
+		err := blobNodeManager.applySetStatus(ctx, 1, proto.DiskStatusBroken, true)
 		require.NoError(t, err)
+
+		// apply change status back
+		pendingKey := fmtApplyContextKey("disk-setstatus", "1")
+		blobNodeManager.pendingEntries.Store(pendingKey, nil)
+		defer blobNodeManager.pendingEntries.Delete(pendingKey)
+		err = blobNodeManager.applySetStatus(ctx, 1, proto.DiskStatusNormal, true)
+		require.NoError(t, err)
+		v, _ := blobNodeManager.pendingEntries.Load(pendingKey)
+		require.Equal(t, apierrors.ErrChangeDiskStatusNotAllow, v)
 
 		err = blobNodeManager.applySwitchReadonly(1, true)
 		require.NoError(t, err)
@@ -141,12 +150,28 @@ func TestDiskMgr_Dropping(t *testing.T) {
 		_, err = testDiskMgr.applyDroppingDisk(ctx, 1, true)
 		require.NoError(t, err)
 
+		// set disk broken not commit case
+		err = testDiskMgr.applySetStatus(ctx, 9, proto.DiskStatusBroken, false)
+		require.NoError(t, err)
+		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, 9)
+		require.NoError(t, err)
+		require.NotEqual(t, proto.DiskStatusBroken, diskInfo.Status)
+
+		// apply set dropping disk broken
+		pendingKey = fmtApplyContextKey("disk-setstatus", "1")
+		testDiskMgr.pendingEntries.Store(pendingKey, nil)
+		defer testDiskMgr.pendingEntries.Delete(pendingKey)
+		err = testDiskMgr.applySetStatus(ctx, 1, proto.DiskStatusBroken, true)
+		require.NoError(t, err)
+		v, _ = testDiskMgr.pendingEntries.Load(pendingKey)
+		require.Equal(t, apierrors.ErrChangeDiskStatusNotAllow, v)
+
 		// add dropping disk repeatedly
 		_, err = testDiskMgr.applyDroppingDisk(ctx, 1, true)
 		require.NoError(t, err)
 
 		// set status when disk is dropping, return ErrChangeDiskStatusNotAllow
-		err = testDiskMgr.SetStatus(ctx, 1, proto.DiskStatusBroken, false)
+		err = testDiskMgr.applySetStatus(ctx, 1, proto.DiskStatusBroken, false)
 		require.ErrorIs(t, err, apierrors.ErrChangeDiskStatusNotAllow)
 
 		droppingList, err = testDiskMgr.ListDroppingDisk(ctx)
@@ -300,7 +325,7 @@ func TestDiskMgr_ListDisks(t *testing.T) {
 	}
 
 	{
-		err := testDiskMgr.SetStatus(ctx, proto.DiskID(1), proto.DiskStatusBroken, true)
+		err := testDiskMgr.applySetStatus(ctx, proto.DiskID(1), proto.DiskStatusBroken, true)
 		require.NoError(t, err)
 
 		ret, _, err := testDiskMgr.ListDiskInfo(ctx, &clustermgr.ListOptionArgs{Status: proto.DiskStatusBroken, Count: 1000})

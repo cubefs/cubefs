@@ -524,7 +524,7 @@ func (s *ShardNodeManager) Apply(ctx context.Context, operTypes []int32, datas [
 				continue
 			}
 			s.taskPool.Run(s.getTaskIdx(synchronizedDiskID), func() {
-				errs[idx] = s.SetStatus(taskCtx, setStatusArgs.DiskID, setStatusArgs.Status, true)
+				errs[idx] = s.applySetStatus(taskCtx, setStatusArgs.DiskID, setStatusArgs.Status, true)
 				wg.Done()
 			})
 		case OperTypeDroppingDisk:

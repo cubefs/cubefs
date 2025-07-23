@@ -57,7 +57,7 @@ func (d *manager) Flush(ctx context.Context) error {
 		}
 
 		disk.lock.RLock()
-		if !disk.dropping && disk.info.Status == proto.DiskStatusNormal && time.Since(disk.expireTime) <= 0 {
+		if disk.info.Status == proto.DiskStatusNormal && time.Since(disk.expireTime) <= 0 {
 			err := d.persistentHandler.updateDiskNoLocked(disk)
 			if err != nil {
 				disk.lock.RUnlock()

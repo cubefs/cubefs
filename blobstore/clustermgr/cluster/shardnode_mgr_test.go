@@ -93,7 +93,7 @@ func TestShardNodeMgr_Normal(t *testing.T) {
 			require.Equal(t, true, writable)
 		}
 
-		err := testShardNodeMgr.SetStatus(ctx, 1, proto.DiskStatusBroken, true)
+		err := testShardNodeMgr.applySetStatus(ctx, 1, proto.DiskStatusBroken, true)
 		require.NoError(t, err)
 
 		err = testShardNodeMgr.applySwitchReadonly(1, true)
@@ -203,7 +203,7 @@ func TestShardNode_ListDisks(t *testing.T) {
 	}
 
 	{
-		err := shardNodeMgr.SetStatus(ctx, proto.DiskID(1), proto.DiskStatusBroken, true)
+		err := shardNodeMgr.applySetStatus(ctx, proto.DiskID(1), proto.DiskStatusBroken, true)
 		require.NoError(t, err)
 
 		ret, _, err := shardNodeMgr.ListDiskInfo(ctx, &clustermgr.ListOptionArgs{Status: proto.DiskStatusBroken, Count: 1000})

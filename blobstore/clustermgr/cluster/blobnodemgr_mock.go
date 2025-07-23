@@ -243,17 +243,17 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) RefreshExpireTime() *gomock.Call {
 }
 
 // SetStatus mocks base method.
-func (m *MockBlobNodeManagerAPI) SetStatus(arg0 context.Context, arg1 proto.DiskID, arg2 proto.DiskStatus, arg3 bool) error {
+func (m *MockBlobNodeManagerAPI) SetStatus(arg0 context.Context, arg1 *clustermgr.DiskSetArgs, arg2 string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetStatus", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "SetStatus", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetStatus indicates an expected call of SetStatus.
-func (mr *MockBlobNodeManagerAPIMockRecorder) SetStatus(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+func (mr *MockBlobNodeManagerAPIMockRecorder) SetStatus(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetStatus", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).SetStatus), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetStatus", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).SetStatus), arg0, arg1, arg2)
 }
 
 // Stat mocks base method.

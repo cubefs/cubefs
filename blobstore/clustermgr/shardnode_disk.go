@@ -174,26 +174,13 @@ func (s *Service) ShardNodeDiskSet(c *rpc.Context) {
 		return
 	}
 
-	err = s.ShardNodeMgr.SetStatus(ctx, args.DiskID, args.Status, false)
+	err = s.ShardNodeMgr.SetStatus(ctx, args, s.ShardNodeMgr.GetModuleName())
 	if err != nil {
 		span.Errorf("disk set failed =>", errors.Detail(err))
 		c.RespondError(err)
 		return
 	}
 
-	data, err := json.Marshal(args)
-	if err != nil {
-		span.Errorf("set args: %v, error: %v", args, err)
-		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
-		return
-	}
-	proposeInfo := base.EncodeProposeInfo(s.ShardNodeMgr.GetModuleName(), cluster.OperTypeSetDiskStatus, data, base.ProposeContext{ReqID: span.TraceID()})
-	err = s.raftNode.Propose(ctx, proposeInfo)
-	if err != nil {
-		span.Error(err)
-		c.RespondError(apierrors.ErrRaftPropose)
-		return
-	}
 	if args.Status == proto.DiskStatusBroken {
 		err = s.CatalogMgr.UpdateShardUnitStatus(ctx, args.DiskID)
 		if err != nil {
