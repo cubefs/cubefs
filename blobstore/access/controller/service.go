@@ -252,7 +252,7 @@ func (s *serviceControllerImpl) processBrokenDisks(
 	span := trace.SpanFromContextSafe(ctx)
 
 	brokenDiskIDs := make(map[proto.DiskID]struct{})
-	for _, st := range []proto.DiskStatus{proto.DiskStatusBroken, proto.DiskStatusRepairing} {
+	for _, st := range []proto.DiskStatus{proto.DiskStatusBroken} {
 		span.Debugf("to load disks of cluster %d %s", s.config.ClusterID, st.String())
 
 		args := &clustermgr.ListOptionArgs{Status: st, Count: 1 << 10}
