@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -470,11 +471,13 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 		disk, err = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager, diskEnableReadRepairExtentLimit)
 		if err != nil {
 			log.LogErrorf("NewDisk fail err:[%v]", err)
+			os.Remove(filepath.Join(path, DiskStatusFile))
 			return
 		}
 		err = disk.RestorePartition(visitor)
 		if err != nil {
 			log.LogErrorf("RestorePartition fail err:[%v]", err)
+			os.Remove(filepath.Join(path, DiskStatusFile))
 			return
 		}
 		manager.putDisk(disk)

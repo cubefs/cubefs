@@ -784,11 +784,13 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 		partitionID      uint64
 		partitionSize    int
 		replicaDiskInfos = make(map[uint64]string)
+		diskPartitionCnt = make(map[string]int)
 	)
 
 	for _, info := range dinfo.PersistenceDataPartitionsWithDiskPath {
 		if _, ok := replicaDiskInfos[info.PartitionId]; !ok {
 			replicaDiskInfos[info.PartitionId] = info.Disk
+			diskPartitionCnt[info.Disk]++
 		}
 	}
 	fileInfoList, err := os.ReadDir(d.Path)
@@ -804,9 +806,14 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 	)
 	begin := time.Now()
 	defer func() {
-		msg := fmt.Sprintf("[RestorePartition] disk(%v) load all dp(%v) using time(%v)", d.Path, dpNum, time.Since(begin))
-		syslog.Print(msg)
-		log.LogInfo(msg)
+		if dpNum == 0 && diskPartitionCnt[d.Path] > 0 {
+			err = fmt.Errorf("disk(%v) is lost", d.Path)
+			syslog.Print(err)
+		} else {
+			msg := fmt.Sprintf("[RestorePartition] disk(%v) load all dp(%v) using time(%v)", d.Path, dpNum, time.Since(begin))
+			syslog.Print(msg)
+			log.LogInfo(msg)
+		}
 	}()
 	loadCh := make(chan dpLoadInfo, d.space.currentLoadDpCount)
 
