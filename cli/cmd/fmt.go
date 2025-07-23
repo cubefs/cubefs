@@ -1341,6 +1341,7 @@ func formatDataNodeDecommissionProgress(progress *proto.DataDecommissionProgress
 	sb.WriteString(fmt.Sprintf("Status     :         %v\n", progress.StatusMessage))
 	sb.WriteString(fmt.Sprintf("Progress   :         %v\n", progress.Progress))
 	sb.WriteString(fmt.Sprintf("TotalDpCnt :         %v\n", progress.TotalDpCnt))
+	sb.WriteString(fmt.Sprintf("RemainingDpCnt:      %v\n", progress.RemainingDpCnt))
 	if len(progress.RunningDps) != 0 {
 		sb.WriteString("running Dps:       \n")
 		for i, info := range progress.RunningDps {
@@ -1362,6 +1363,7 @@ func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
 	sb.WriteString(fmt.Sprintf("Status     :         %v\n", progress.StatusMessage))
 	sb.WriteString(fmt.Sprintf("Progress   :         %v\n", progress.Progress))
 	sb.WriteString(fmt.Sprintf("TotalDpCnt :         %v\n", progress.TotalDpCnt))
+	sb.WriteString(fmt.Sprintf("RemainingDpCnt:      %v\n", progress.RemainingDpCnt))
 	if len(progress.RunningDps) != 0 {
 		sb.WriteString("running Dps:       \n")
 		for i, info := range progress.RunningDps {
