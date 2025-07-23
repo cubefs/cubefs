@@ -538,7 +538,7 @@ func (dd *DecommissionDisk) GetDecommissionDiskRetryOverLimitDP(c *Cluster) []ui
 	return retryOverLimitDps
 }
 
-func (dd *DecommissionDisk) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) ([]proto.FailedDpInfo, []uint64) {
+func (dd *DecommissionDisk) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) (int, []proto.FailedDpInfo, []uint64) {
 	partitions := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 	var (
 		failedDps  []proto.FailedDpInfo
@@ -555,7 +555,7 @@ func (dd *DecommissionDisk) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) 
 		}
 	}
 	log.LogWarnf("action[GetDecommissionFailedAndRunningDPByTerm] failed dp list [%v]", failedDps)
-	return failedDps, runningDps
+	return len(partitions), failedDps, runningDps
 }
 
 func (dd *DecommissionDisk) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {

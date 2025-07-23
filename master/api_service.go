@@ -4978,15 +4978,22 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	resp := &proto.DecommissionProgress{
 		Progress:                 fmt.Sprintf("%.2f%%", progress*float64(100)),
 		StatusMessage:            GetDecommissionStatusMessage(status),
-		TotalDpCnt:               disk.DecommissionDpTotal,
+		TotalDpCnt:               disk.GetDecommissionTotalDpCnt(m.cluster),
 		IgnoreDps:                disk.IgnoreDecommissionDps,
 		ResidualDps:              disk.residualDecommissionDpsGetAll(),
 		StartTime:                time.Unix(int64(disk.DecommissionTerm), 0).String(),
 		IsManualDecommissionDisk: disk.IsManualDecommissionDisk(),
 	}
-	failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
-	resp.FailedDps = failedDps
-	resp.RunningDps = runningDps
+	if status == markDecommission {
+		resp.RemainingDpCnt = resp.TotalDpCnt
+		resp.FailedDps = nil
+		resp.RunningDps = nil
+	} else {
+		remainingDpCnt, failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+		resp.RemainingDpCnt = remainingDpCnt + len(resp.IgnoreDps) + len(resp.ResidualDps)
+		resp.FailedDps = failedDps
+		resp.RunningDps = runningDps
+	}
 	retryOverLimitDps := disk.GetDecommissionDiskRetryOverLimitDP(m.cluster)
 	resp.RetryOverLimitDps = retryOverLimitDps
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
@@ -5053,10 +5060,12 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 				IsManualDecommissionDisk: disk.IsManualDecommissionDisk(),
 			}
 			if status == markDecommission {
-				decommissionProgress.FailedDps = make([]proto.FailedDpInfo, 0)
-				decommissionProgress.RunningDps = make([]uint64, 0)
+				decommissionProgress.RemainingDpCnt = decommissionProgress.TotalDpCnt
+				decommissionProgress.FailedDps = nil
+				decommissionProgress.RunningDps = nil
 			} else {
-				failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+				remainingDpCnt, failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+				decommissionProgress.RemainingDpCnt = remainingDpCnt + len(decommissionProgress.IgnoreDps) + len(decommissionProgress.ResidualDps)
 				decommissionProgress.FailedDps = failedDps
 				decommissionProgress.RunningDps = runningDps
 			}
@@ -6800,11 +6809,12 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 		StatusMessage: GetDecommissionStatusMessage(status),
 		TotalDpCnt:    dn.DecommissionDpTotal,
 	}
-	failedDps, runningDps := dn.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+	remainingDpCnt, failedDps, runningDps := dn.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
 	resp.FailedDps = failedDps
 	resp.RunningDps = runningDps
 	resp.IgnoreDps = dn.getIgnoreDecommissionDpList(m.cluster)
 	resp.ResidualDps = dn.getResidualDecommissionDpList(m.cluster)
+	resp.RemainingDpCnt = remainingDpCnt + len(resp.IgnoreDps) + len(resp.ResidualDps)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
