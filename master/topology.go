@@ -1202,6 +1202,25 @@ func (ns *nodeSet) removeAutoDecommissionDisk(dd *DecommissionDisk) {
 	ns.autoDecommissionDiskList.Remove(ns.ID, dd)
 }
 
+func (ns *nodeSet) findRunningDiskAndDecommissionIgnoreDps(c *Cluster) {
+	// try to decommission the dps of running disks that have been ignored in this round of decommissioning
+	allDecommissionRunningDisks := ns.manualDecommissionDiskList.PopDecommissionRunningDisk()
+	if c.AutoDecommissionDiskIsEnabled() {
+		allAutoDecommissionRunningDisks := ns.autoDecommissionDiskList.PopDecommissionRunningDisk()
+		allDecommissionRunningDisks = append(allDecommissionRunningDisks, allAutoDecommissionRunningDisks...)
+	}
+	sort.Slice(allDecommissionRunningDisks, func(i, j int) bool {
+		return allDecommissionRunningDisks[i].DecommissionWeight > allDecommissionRunningDisks[j].DecommissionWeight
+	})
+	log.LogDebugf("ns %v(%p) traverseDecommissionRunningDisk traverse allDecommissionRunningDiskCnt %v",
+		ns.ID, ns, len(allDecommissionRunningDisks))
+	if len(allDecommissionRunningDisks) > 0 {
+		for _, decommissionRunningDisk := range allDecommissionRunningDisks {
+			c.TryDecommissionRunningDiskIgnoreDps(decommissionRunningDisk)
+		}
+	}
+}
+
 func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	// wait for loading all decommissionDisk when reload metadata
@@ -1247,6 +1266,8 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				}
 				return true
 			})
+
+			ns.findRunningDiskAndDecommissionIgnoreDps(c)
 
 			decommissionDiskCnt, allDecommissionDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(0)
 			if c.AutoDecommissionDiskIsEnabled() {
@@ -2588,6 +2609,21 @@ func (l *DecommissionDiskList) PopMarkDecommissionDisk(limit int) (count int, co
 		log.LogDebugf("action[PopMarkDecommissionDisk] pop disk[%v]", disk)
 	}
 	return count, collection
+}
+
+func (l *DecommissionDiskList) PopDecommissionRunningDisk() (collection []*DecommissionDisk) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	collection = make([]*DecommissionDisk, 0)
+	for elm := l.decommissionList.Front(); elm != nil; elm = elm.Next() {
+		disk := elm.Value.(*DecommissionDisk)
+		if disk.GetDecommissionStatus() != DecommissionRunning {
+			continue
+		}
+		collection = append(collection, disk)
+		log.LogDebugf("action[PopDecommissionRunningDisk] pop disk[%v]", disk)
+	}
+	return collection
 }
 
 func (l *DecommissionDataPartitionList) Has(id uint64) bool {
