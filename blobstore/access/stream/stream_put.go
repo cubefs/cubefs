@@ -109,8 +109,6 @@ func (h *Handler) Put(ctx context.Context,
 		ready <- struct{}{}
 	}
 
-	_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", span.TraceID())
-
 	encoder := h.encoder[selectedCodeMode]
 	tactic := selectedCodeMode.Tactic()
 	for _, blob := range location.Spread() {
@@ -199,7 +197,6 @@ type shardPutStatus struct {
 func (h *Handler) writeToBlobnodes(ctx context.Context,
 	blob blobIdent, shards [][]byte, empties map[int]struct{}, callback func(),
 ) (err error) {
-	span := trace.SpanFromContextSafe(ctx)
 	clusterID, vid, bid := blob.cid, blob.vid, blob.bid
 
 	wg := &sync.WaitGroup{}
@@ -226,6 +223,11 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	if num, ok := h.CodeModesPutQuorums[volume.CodeMode]; ok && num <= tactic.N+tactic.M {
 		putQuorum = uint32(num)
 	}
+
+	span := trace.SpanFromContextSafe(ctx)
+	// new context span to write blobnode in background
+	span, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
+	defer span.Finish()
 
 	writeStart := time.Now()
 	writeTime := int32(0)
@@ -266,13 +268,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				crcOrigin = crc32.ChecksumIEEE(shards[index])
 			}
 
-			// new child span to write to blobnode, we should finish it here.
-			spanChild, ctxChild := trace.StartSpanFromContextWithTraceID(
-				context.Background(), "WriteToBlobnode", span.TraceID())
-			defer spanChild.Finish()
-
 		RETRY:
-			hostInfo, err := serviceController.GetDiskHost(ctxChild, diskID)
+			hostInfo, err := serviceController.GetDiskHost(ctx, diskID)
 			if err != nil {
 				span.Error("get disk host failed", errors.Detail(err))
 				return
@@ -295,7 +292,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 					args.Body = bytes.NewReader(shards[index])
 				}
 
-				crc, err = h.blobnodeClient.PutShard(ctxChild, host, args)
+				crc, err = h.blobnodeClient.PutShard(ctx, host, args)
 				if err == nil {
 					if !crcDisable && crc != crcOrigin {
 						return false, fmt.Errorf("crc mismatch 0x%x != 0x%x", crc, crcOrigin)

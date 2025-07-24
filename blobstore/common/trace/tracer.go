@@ -288,7 +288,7 @@ func StartCacheableSpan(ctx context.Context, operationName, traceID string) (Spa
 	span := poolSpan.Get().(*spanImpl)
 	span.context.spanID = RandomID()
 	span.context.resetID(traceID)
-	span.context.spanFromPool = span // notify release to pool
+	// span.context.spanFromPool = span // notify release to pool // TODO: cacheable later
 	optsCarrier := span.context.optsCarrier
 	return StartSpanFromContextWithTraceID(ctx, operationName, traceID, optsCarrier...)
 }

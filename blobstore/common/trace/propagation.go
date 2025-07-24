@@ -162,7 +162,7 @@ func (t *TextMapPropagator) Extract(carrier interface{}) (opentracing.SpanContex
 	})
 	span.context.spanID = spanID
 	span.context.resetID(traceID)
-	span.context.spanFromPool = span // notify release to pool
+	// span.context.spanFromPool = span // notify release to pool // TODO: cacheable later
 	return span.context, nil
 }
 

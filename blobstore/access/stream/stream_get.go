@@ -169,7 +169,9 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 			}
 		}
 
-		_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", span.TraceID())
+		var spanpipe trace.Span
+		spanpipe, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
+		defer spanpipe.Finish()
 
 		// data stream flow:
 		// client <--copy-- pipeline <--swap-- readBlob <--copy-- blobnode
@@ -190,7 +192,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 					if blobVolume == nil || blobVolume.Vid != blob.Vid {
 						blobVolume, err = h.getVolume(ctx, clusterID, blob.Vid, true)
 						if err != nil {
-							span.Error("get volume", err)
+							spanpipe.Error("get volume", err)
 							ch <- pipeBuffer{err: err}
 							return
 						}
@@ -198,11 +200,11 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 						// do not use local shards
 						ordered := h.CodeModesGetOrdered[blobVolume.CodeMode]
 						sortedVuids = genSortedVuidByIDC(ctx, serviceController, h.IDC, blobVolume.Units[:tactic.N+tactic.M], ordered)
-						span.Debugf("to read %s with read-shard-x:%d active-shard-n:%d of data-n:%d party-n:%d",
+						spanpipe.Debugf("to read %s with read-shard-x:%d active-shard-n:%d of data-n:%d party-n:%d",
 							blob.ID(), h.MinReadShardsX, len(sortedVuids), tactic.N, tactic.M)
 						if len(sortedVuids) < tactic.N {
 							err = fmt.Errorf("broken %s", blob.ID())
-							span.Error(err)
+							spanpipe.Error(err)
 							ch <- pipeBuffer{err: err}
 							return
 						}
@@ -218,7 +220,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 
 					err = h.readOneBlob(ctx, getTime, serviceController, blob, sortedVuids, shards)
 					if err != nil {
-						span.Error("read one blob", blob.ID(), err)
+						spanpipe.Error("read one blob", blob.ID(), err)
 						for _, buf := range shards {
 							h.memPool.Put(buf)
 						}
@@ -690,16 +692,7 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 			}
 		}
 
-		ctxChild := ctx
-		if cancelChan != nil { // cancelChan == nil means reading data shard only
-			// new child span to get from blobnode, we should finish it here.
-			var spanChild trace.Span
-			spanChild, ctxChild = trace.StartSpanFromContextWithTraceID(
-				context.Background(), "GetFromBlobnode", span.TraceID())
-			defer spanChild.Finish()
-		}
-
-		body, crc, err := h.blobnodeClient.RangeGetShard(ctxChild, host, &args)
+		body, crc, err := h.blobnodeClient.RangeGetShard(ctx, host, &args)
 		if err == nil {
 			rbody = body
 			rcrc = crc
