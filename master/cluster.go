@@ -5215,7 +5215,7 @@ func (c *Cluster) checkDecommissionDisk() {
 }
 
 func (c *Cluster) scheduleToBadDisk() {
-	task := &cTask{tickTime: 5 * time.Second, name: "scheduleToCheckDelayDeleteVols"}
+	task := &cTask{tickTime: 30 * time.Second, name: "scheduleToBadDisk"}
 	task.function = func() (fin bool) {
 		if c.partition.IsRaftLeader() && c.AutoDecommissionDiskIsEnabled() && c.metaReady {
 			c.checkBadDisk()
@@ -5248,6 +5248,16 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 		if _, exist := dataNode.DecommissionSuccessDisks.Load(disk.DiskPath); exist {
 			continue
 		}
+		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk.DiskPath)
+		if value, ok := c.DecommissionDisks.Load(key); ok {
+			d := value.(*DecommissionDisk)
+			status := d.GetDecommissionStatus()
+			if status == DecommissionSuccess {
+				log.LogWarnf("[handleDataNodeBadDisk] The disk %v has been decommissioned successfully, but has not yet been added to the DecommissionSuccessDisks list", key)
+				continue
+			}
+		}
+
 		// TODO:no dp left on bad disk, notify sre to remove this disk
 		// decommission failed, but lack replica for disk err dp is already removed
 		retry := c.RetryDecommissionDisk(dataNode.Addr, disk.DiskPath)
