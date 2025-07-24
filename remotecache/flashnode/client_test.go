@@ -117,6 +117,10 @@ func (m *MockExtentClient) CloseStream(inode uint64) error {
 	return nil
 }
 
+func (m *MockExtentClient) EvictStream(inode uint64) error {
+	return nil
+}
+
 func (m *MockExtentClient) Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error) {
 	if isMigration {
 		for i := 0; i < size; i++ {

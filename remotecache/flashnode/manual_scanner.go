@@ -321,6 +321,10 @@ func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
 		log.LogWarnf("warmUp: ec OpenStream fail, inode(%v) err: %v", i.Inode, err)
 		return err
 	}
+	defer func() {
+		s.ec.CloseStream(i.Inode)
+		s.ec.EvictStream(i.Inode)
+	}()
 	if err = s.ec.ForceRefreshExtentsCache(i.Inode); err != nil {
 		log.LogWarnf("warmUp: ec ForceRefreshExtentsCache fail, inode(%v) err: %v", i.Inode, err)
 		return err

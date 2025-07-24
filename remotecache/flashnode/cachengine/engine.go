@@ -766,8 +766,12 @@ func (c *CacheEngine) StartCachePrepareWorkers(flw *util.IoLimiter, prepareWorke
 					for _, source := range r.Sources {
 						reqSize += int(source.Size_)
 					}
-					bg := stat.BeginStat()
 					var err error
+					bg := stat.BeginStat()
+					_, err3 := c.PeekCacheBlock(GenCacheBlockKey(r.Volume, r.Inode, r.FixedFileOffset, r.Version))
+					if err3 == nil {
+						continue
+					}
 					err1 := flw.Run(reqSize, true, func() {
 						bk := GenCacheBlockKey(r.Volume, r.Inode, r.FixedFileOffset, r.Version)
 						if log.EnableDebug() {
