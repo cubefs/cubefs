@@ -36,7 +36,8 @@ func IsEIO(err error) bool {
 		return false
 	}
 	errMsg := strings.ToLower(err.Error())
-	return strings.Contains(errMsg, syscall.EIO.Error()) || strings.Contains(errMsg, syscall.EROFS.Error())
+	return strings.Contains(errMsg, syscall.EIO.Error()) || strings.Contains(errMsg, syscall.EROFS.Error()) ||
+		strings.Contains(errMsg, syscall.ENOMEM.Error())
 }
 
 func IsFileExists(filename string) (bool, error) {

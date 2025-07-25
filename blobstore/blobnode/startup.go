@@ -85,7 +85,7 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 	// limit once. May be used by callback func, when concurrently read/write shard in datafile.go.
 	err := s.BrokenLimitPerDisk.Acquire(diskID)
 	if err != nil {
-		span.Warnf("There are too many the same request of broken disk:%d", diskID)
+		span.Warnf("There are too many the same request of broken diskID:%d", diskID)
 		return
 	}
 	defer s.BrokenLimitPerDisk.Release(diskID)
@@ -95,7 +95,7 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 	ds, exist := s.Disks[diskID]
 	s.lock.RUnlock()
 	if !exist {
-		span.Errorf("such diskID(%d) does exist", diskID)
+		span.Errorf("such diskID:%d does exist", diskID)
 		return
 	}
 
@@ -122,19 +122,19 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 
 	// 3: notify cluster mgr
 	for {
-		err := s.ClusterMgrClient.SetDisk(ctx, diskID, proto.DiskStatusBroken)
+		err = s.ClusterMgrClient.SetDisk(ctx, diskID, proto.DiskStatusBroken)
 		// error is nil or already broken status
 		if err == nil || rpc.DetectStatusCode(err) == bloberr.CodeChangeDiskStatusNotAllow {
-			span.Infof("set disk(%d) broken success, err:%+v", diskID, err)
+			span.Infof("set diskID:%d broken success, err:%+v", diskID, err)
 			break
 		}
-		span.Errorf("set disk(%d) broken failed: %+v", diskID, err)
+		span.Errorf("set diskID:%d broken failed: %+v", diskID, err)
 		time.Sleep(3 * time.Second)
 	}
 	// After the repair is triggered, the handle can be safely removed
 	go s.waitRepairAndClose(ctx, ds)
 
-	span.Debugf("end to handle broken diskID:%d diskErr: %+v", diskID, diskErr)
+	span.Warnf("end to handle broken diskID:%d diskErr: %+v", diskID, diskErr)
 }
 
 func (s *Service) getGlobalConfig(ctx context.Context, key string) (val string, err error) {
@@ -192,12 +192,12 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 
 		info, err := s.ClusterMgrClient.DiskInfo(ctx, diskID)
 		if err != nil {
-			span.Errorf("Failed get clustermgr diskinfo %d, err:%+v", diskID, err)
+			span.Errorf("Failed get clustermgr diskID:%d, err:%+v", diskID, err)
 			continue
 		}
 
 		if info.Status >= proto.DiskStatusRepaired {
-			span.Infof("disk:%d path:%s status:%v", diskID, info.Path, info.Status)
+			span.Infof("diskID:%d path:%s status:%v", diskID, info.Path, info.Status)
 			break
 		}
 	}
@@ -207,7 +207,7 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 	s.reportOnlineDisk(&config.HostInfo, config.Path)
 
 	// after the repair is finish, the handle can be safely removed. if delete disk at repairing, access will DiskNotFound
-	span.Warnf("Delete %d from the map table of the service", diskID)
+	span.Warnf("Delete diskID:%d from the map table of the service", diskID)
 
 	s.lock.Lock()
 	delete(s.Disks, disk.ID())
@@ -215,7 +215,7 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 
 	disk.ResetChunks(ctx)
 
-	span.Infof("disk %d will gc close", diskID)
+	span.Infof("diskID:%d will gc close", diskID)
 }
 
 func (s *Service) handleDiskDrop(ctx context.Context, ds core.DiskAPI) {

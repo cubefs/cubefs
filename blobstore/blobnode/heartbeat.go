@@ -82,12 +82,12 @@ func (s *Service) syncDiskStatus(ctx context.Context, diskInfosRet []*cmapi.Disk
 		ds, exist := s.Disks[diskID]
 		s.lock.RUnlock()
 		if !exist {
-			span.Errorf("no such diskID: %d", diskID)
+			span.Errorf("no such diskID:%d", diskID)
 			continue
 		}
 
 		if !ds.IsWritable() { // local disk status, not normal disk, skip
-			span.Warnf("non normal diskID(%d), but still in disks. skip.", diskID)
+			span.Warnf("non normal diskID:%d, but still in disks. skip.", diskID)
 			continue
 		}
 

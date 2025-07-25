@@ -15,8 +15,10 @@
 package base
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -138,4 +140,30 @@ func TestIsEmptyDisk(t *testing.T) {
 	flag, err = IsEmptyDisk(testDir)
 	require.Equal(t, true, flag)
 	require.NoError(t, err)
+}
+
+func TestIsEIO(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{name: "nil error", err: nil, expected: false},
+		{name: "EIO error", err: syscall.EIO, expected: true},
+		{name: "EROFS error", err: syscall.EROFS, expected: true},
+		{name: "ENOMEM error", err: syscall.ENOMEM, expected: true},
+		{name: "wrapped EIO error", err: errors.New("some context: " + syscall.EIO.Error()), expected: true},
+		{name: "mixed case EIO error", err: errors.New("input/Output Error Occurred"), expected: true},
+		{name: "cannot allocate memory", err: errors.New("Cannot Allocate Memory"), expected: true},
+		{name: "other error", err: errors.New("some other error"), expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsEIO(tt.err)
+			if got != tt.expected {
+				t.Errorf("IsEIO() = %t, want %t, actualErr:%v", got, tt.expected, tt.err)
+			}
+		})
+	}
 }
