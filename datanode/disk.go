@@ -104,6 +104,7 @@ type Disk struct {
 	// diskPartition info
 	diskPartition               *disk.PartitionStat
 	DiskErrPartitionSet         sync.Map
+	BadDiskFirstReportTime      time.Time
 	decommission                bool
 	extentRepairReadLimit       chan struct{}
 	enableExtentRepairReadLimit bool

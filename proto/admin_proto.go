@@ -897,6 +897,7 @@ type BadDiskStat struct {
 	DiskPath             string
 	TotalPartitionCnt    int
 	DiskErrPartitionList []uint64
+	FirstReportTime      time.Time
 }
 
 type DiskStat struct {
