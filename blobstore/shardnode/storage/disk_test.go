@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -24,10 +25,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
+	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 )
 
 var atomDiskID = new(uint32)
@@ -413,12 +416,24 @@ func TestServerDisk_RaftData(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, b1.Location.Size_, b2.Location.Size_)
 
+	itemNum := 3
+	items := make([]shardnode.Item, itemNum)
+	for i := 0; i < itemNum; i++ {
+		id := append(snproto.DeleteMsgPrefix, []byte(fmt.Sprintf("i%d", i))...)
+		items[i].ID = id
+	}
+
 	// delete
-	err = shard.DeleteBlob(ctx, h, blobName)
+	err = shard.DeleteBlob(ctx, h, blobName, items)
 	require.Nil(t, err)
 
 	_, err = shard.GetBlob(ctx, h, blobName)
 	require.Equal(t, errors.ErrKeyNotFound, err)
+
+	itms, marker, err := shard.ListItem(ctx, h, snproto.DeleteMsgPrefix, nil, 3)
+	require.Nil(t, err)
+	require.Nil(t, marker)
+	require.Equal(t, itemNum, len(itms))
 }
 
 func TestServerDisk_HandleRaftError(t *testing.T) {

@@ -71,7 +71,8 @@ func (s *RpcService) DeleteBlob(w rpc2.ResponseWriter, req *rpc2.Request) error 
 	}
 	span.Debugf("receive DeleteBlob request, args:%+v", args)
 
-	return s.deleteBlob(ctx, args)
+	_, err := s.deleteBlob(ctx, args)
+	return err
 }
 
 func (s *RpcService) FindAndDeleteBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -83,7 +84,7 @@ func (s *RpcService) FindAndDeleteBlob(w rpc2.ResponseWriter, req *rpc2.Request)
 	}
 	span.Debugf("receive FindAndDeleteBlob request, args:%+v", args)
 
-	ret, err := s.findAndDeleteBlob(ctx, args)
+	ret, err := s.deleteBlob(ctx, args)
 	if err != nil {
 		span.Errorf("find and delete failed, err: %s, name: %s", errors.Detail(err), string(args.Name))
 		return err
@@ -232,6 +233,18 @@ func (s *RpcService) ListItem(w rpc2.ResponseWriter, req *rpc2.Request) error {
 		return err
 	}
 	return w.WriteOK(&ret)
+}
+
+func (s *RpcService) DeleteBlobRaw(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	ctx := req.Context()
+	span := req.Span()
+
+	args := &shardnode.DeleteBlobRawArgs{}
+	if err := req.ParseParameter(args); err != nil {
+		return err
+	}
+	span.Debugf("receive DeleteBlobRaw request, args:%+v", args)
+	return s.deleteBlobRaw(ctx, args)
 }
 
 func (s *RpcService) AddShard(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -445,6 +458,8 @@ func newHandler(s *RpcService) *rpc2.Router {
 	handler.Register("/tcmalloc/rate", s.TCMallocMemoryReleaseRate)
 
 	handler.Register("/db/stats", s.DBStats)
+
+	handler.Register("/blob/delete/raw", s.DeleteBlobRaw)
 
 	return handler
 }

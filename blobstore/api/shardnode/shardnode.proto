@@ -254,3 +254,10 @@ message DBStatsRet {
   uint64 block_pinned_usage = 5;
   uint64 total_memory_usage = 6;
 }
+
+message DeleteBlobRawArgs {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  cubefs.blobstore.common.proto.Slice slice = 2 [(gogoproto.nullable) = false];
+}
+
+message DeleteBlobRawRet {}

@@ -90,7 +90,7 @@ type (
 	ShardBlobHandler interface {
 		CreateBlob(ctx context.Context, h OpHeader, name []byte, b proto.Blob) (proto.Blob, error)
 		UpdateBlob(ctx context.Context, h OpHeader, name []byte, b proto.Blob) error
-		DeleteBlob(ctx context.Context, h OpHeader, name []byte) error
+		DeleteBlob(ctx context.Context, h OpHeader, name []byte, items []shardnode.Item) error
 		GetBlob(ctx context.Context, h OpHeader, name []byte) (proto.Blob, error)
 		ListBlob(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64) (blobs []proto.Blob, nextMarker []byte, err error)
 	}
@@ -505,8 +505,36 @@ func (s *shard) ListBlob(ctx context.Context, h OpHeader, prefix, marker []byte,
 	return blobs, s.shardKeys.decodeBlobKey(nextMarker), err
 }
 
-func (s *shard) DeleteBlob(ctx context.Context, h OpHeader, name []byte) error {
-	return s.delete(ctx, h, s.shardKeys.encodeBlobKey(name), raftOpDeleteBlob)
+func (s *shard) DeleteBlob(ctx context.Context, h OpHeader, name []byte, items []shardnode.Item) error {
+	if !s.isLeader() {
+		return apierr.ErrShardNodeNotLeader
+	}
+	if err := s.checkShardOptHeader(h); err != nil {
+		return err
+	}
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
+		return convertStoppingWriteErr(err)
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	wb := s.store.KVStore().NewWriteBatch()
+	defer wb.Close()
+
+	// new delete messages
+	for i := range items {
+		itm := protoItemToInternalItem(items[i])
+		raw, err := itm.Marshal()
+		if err != nil {
+			return err
+		}
+		wb.Put(dataCF, s.shardKeys.encodeItemKey(itm.ID), raw)
+	}
+
+	// delete meta
+	wb.Delete(dataCF, s.shardKeys.encodeBlobKey(name))
+
+	_, err := s.raftGroup.Propose(ctx, &raft.ProposalData{Op: raftOpWriteBatchRaw, Data: wb.Data()})
+	return err
 }
 
 func (s *shard) GetRouteVersion() proto.RouteVersion {

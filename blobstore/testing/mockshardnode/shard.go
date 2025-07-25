@@ -132,17 +132,17 @@ func (mr *MockShardBlobHandlerMockRecorder) CreateBlob(ctx, h, name, b interface
 }
 
 // DeleteBlob mocks base method.
-func (m *MockShardBlobHandler) DeleteBlob(ctx context.Context, h storage.OpHeader, name []byte) error {
+func (m *MockShardBlobHandler) DeleteBlob(ctx context.Context, h storage.OpHeader, name []byte, items []shardnode.Item) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteBlob", ctx, h, name)
+	ret := m.ctrl.Call(m, "DeleteBlob", ctx, h, name, items)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteBlob indicates an expected call of DeleteBlob.
-func (mr *MockShardBlobHandlerMockRecorder) DeleteBlob(ctx, h, name interface{}) *gomock.Call {
+func (mr *MockShardBlobHandlerMockRecorder) DeleteBlob(ctx, h, name, items interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBlob", reflect.TypeOf((*MockShardBlobHandler)(nil).DeleteBlob), ctx, h, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBlob", reflect.TypeOf((*MockShardBlobHandler)(nil).DeleteBlob), ctx, h, name, items)
 }
 
 // GetBlob mocks base method.
@@ -391,17 +391,17 @@ func (mr *MockSpaceShardHandlerMockRecorder) CreateBlob(ctx, h, name, b interfac
 }
 
 // DeleteBlob mocks base method.
-func (m *MockSpaceShardHandler) DeleteBlob(ctx context.Context, h storage.OpHeader, name []byte) error {
+func (m *MockSpaceShardHandler) DeleteBlob(ctx context.Context, h storage.OpHeader, name []byte, items []shardnode.Item) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteBlob", ctx, h, name)
+	ret := m.ctrl.Call(m, "DeleteBlob", ctx, h, name, items)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteBlob indicates an expected call of DeleteBlob.
-func (mr *MockSpaceShardHandlerMockRecorder) DeleteBlob(ctx, h, name interface{}) *gomock.Call {
+func (mr *MockSpaceShardHandlerMockRecorder) DeleteBlob(ctx, h, name, items interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).DeleteBlob), ctx, h, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).DeleteBlob), ctx, h, name, items)
 }
 
 // DeleteItem mocks base method.

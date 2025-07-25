@@ -23,6 +23,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	snapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -631,6 +632,63 @@ func (m *BlobDeleteMgr) getShard(diskID proto.DiskID, suid proto.Suid) (storage.
 		return nil, err
 	}
 	return sh, err
+}
+
+func (m *BlobDeleteMgr) insertDeleteMsg(ctx context.Context, req *snapi.DeleteBlobRawArgs) error {
+	shard, err := m.getShard(req.Header.DiskID, req.Header.Suid)
+	if err != nil {
+		return err
+	}
+
+	itm, shardKeys, err := m.sliceToDeleteMsgItemRaw(ctx, req.Slice, shard.ShardingSubRangeCount())
+	if err != nil {
+		return err
+	}
+
+	oph := storage.OpHeader{
+		RouteVersion: req.Header.RouteVersion,
+		ShardKeys:    shardKeys,
+	}
+	return shard.InsertItem(ctx, oph, itm.ID, itm)
+}
+
+func (m *BlobDeleteMgr) slicesToDeleteMsgItems(ctx context.Context, slices []proto.Slice, shardKeys [][]byte) ([]snapi.Item, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	items := make([]snapi.Item, len(slices))
+	for i := range slices {
+		ts, key := m.msgKeyGen.EncodeDelMsgKey(slices[i].Vid, slices[i].MinSliceID, shardKeys)
+		msg := snproto.DeleteMsg{
+			Slice:       slices[i],
+			Time:        ts.TimeUnix(),
+			ReqId:       span.TraceID(),
+			MsgDelStage: make(map[uint64]snproto.BlobDeleteStage),
+		}
+
+		itm, err := delMsgToItem(key, msg)
+		if err != nil {
+			return nil, err
+		}
+		items[i] = itm
+	}
+	return items, nil
+}
+
+func (m *BlobDeleteMgr) sliceToDeleteMsgItemRaw(ctx context.Context, slices proto.Slice, tagNum int) (snapi.Item, [][]byte, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	ts, key, shardKeys := m.msgKeyGen.EncodeRawDelMsgKey(slices.Vid, slices.MinSliceID, tagNum)
+
+	msg := snproto.DeleteMsg{
+		Slice:       slices,
+		Time:        ts.TimeUnix(),
+		ReqId:       span.TraceID(),
+		MsgDelStage: make(map[uint64]snproto.BlobDeleteStage),
+	}
+
+	itm, err := delMsgToItem(key, msg)
+	if err != nil {
+		return snapi.Item{}, nil, err
+	}
+	return itm, shardKeys, nil
 }
 
 type deleteStatus int

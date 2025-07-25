@@ -15,6 +15,7 @@
 package blobdeleter
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -24,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -676,4 +678,41 @@ func TestBlobDeleteMgr_ConsumeLoop(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	mgr.Close()
+}
+
+func TestBlobDeleteMgr_InsertDeleteMsg(t *testing.T) {
+	suid := proto.Suid(123)
+	sh := mock.NewMockSpaceShardHandler(ctr(t))
+	sh.EXPECT().ShardingSubRangeCount().Return(2)
+	sh.EXPECT().InsertItem(any, any, any, any).Return(nil)
+
+	sg := mock.NewMockDelMgrShardGetter(ctr(t))
+	sg.EXPECT().GetShard(any, any).Return(sh, nil)
+
+	mgr := newTestBlobDeleteMgr(t, sg, nil, nil)
+
+	args := &shardnode.DeleteBlobRawArgs{
+		Header: shardnode.ShardOpHeader{Suid: suid},
+		Slice:  proto.Slice{Vid: proto.Vid(1), MinSliceID: proto.BlobID(456), Count: 3},
+	}
+
+	err := mgr.Delete(context.Background(), args)
+	require.Nil(t, err)
+}
+
+func TestBlobDeleteMgr_SlicesToDeleteMsgItems(t *testing.T) {
+	shardKeys := [][]byte{[]byte("abc"), []byte("def")}
+
+	mgr := newTestBlobDeleteMgr(t, nil, nil, nil)
+
+	slice1 := proto.Slice{Vid: 1, MinSliceID: 456, Count: 3}
+	slice2 := proto.Slice{Vid: 1, MinSliceID: 789, Count: 5}
+
+	items, err := mgr.SlicesToDeleteMsgItems(context.Background(), []proto.Slice{slice1, slice2}, shardKeys)
+	require.Nil(t, err)
+	for i := range items {
+		_shardKeys := shardnode.ParseShardKeys(items[i].ID, len(shardKeys))
+		require.Equal(t, shardKeys, _shardKeys)
+		require.True(t, bytes.Contains(items[i].ID, snproto.DeleteMsgPrefix))
+	}
 }

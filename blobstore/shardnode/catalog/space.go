@@ -260,7 +260,7 @@ func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (resp s
 	return
 }
 
-func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) error {
+func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs, items []shardnode.Item) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.SetTag(blobTraceTag, string(req.Name))
 
@@ -274,34 +274,9 @@ func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) e
 	err = sd.DeleteBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    shardnode.ParseShardKeys(req.Name, sd.ShardingSubRangeCount()),
-	}, s.generateSpaceKey(req.Name))
+	}, s.generateSpaceKey(req.Name), items)
 	span.AppendTrackLog(opDelete, start, err, trace.OptSpanDurationUs())
 	return err
-}
-
-func (s *Space) FindAndDeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) (resp shardnode.GetBlobRet, err error) {
-	span := trace.SpanFromContextSafe(ctx)
-	span.SetTag(blobTraceTag, string(req.Name))
-
-	h := req.Header
-	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
-	if err != nil {
-		return
-	}
-
-	blob, err := s.getBlob(ctx, sd, req.Header, req.Name)
-	if err != nil {
-		return
-	}
-	resp.Blob = blob
-
-	start := time.Now()
-	err = sd.DeleteBlob(ctx, storage.OpHeader{
-		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(req.Name, sd.ShardingSubRangeCount()),
-	}, s.generateSpaceKey(req.Name))
-	span.AppendTrackLog(opDelete, start, err, trace.OptSpanDurationUs())
-	return
 }
 
 func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) (err error) {
@@ -532,6 +507,14 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	return
 }
 
+func (s *Space) GetShardingSubRangeCount(diskID proto.DiskID, suid proto.Suid) (int, error) {
+	sd, err := s.shardGetter.GetShard(diskID, suid)
+	if err != nil {
+		return -1, err
+	}
+	return sd.ShardingSubRangeCount(), nil
+}
+
 func (s *Space) getBlob(ctx context.Context, sd storage.ShardHandler, h shardnode.ShardOpHeader, name []byte) (b proto.Blob, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	key := s.generateSpaceKey(name)
@@ -614,7 +597,6 @@ func (s *Space) decodeSpaceKey(key []byte) []byte {
 	}
 	// extract paddingLen from the last 8 bytes
 	paddingLen := int(binary.BigEndian.Uint64(key[len(key)-8:]))
-
 	// calculate the total length of id and padding
 	totalIdLen := len(key) - 16 - 8 - 1
 	if totalIdLen < 0 {

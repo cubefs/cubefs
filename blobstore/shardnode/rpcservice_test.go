@@ -34,7 +34,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
+	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/shardnode/blobdeleter"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
@@ -120,6 +122,32 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 	s.catalog = cg
 	s.taskPool = taskpool.New(1, 1)
 
+	// set mock blob delete mgr
+	cmClient := mocks.NewMockClientAPI(C(t))
+	cmClient.EXPECT().GetConfig(A, A).DoAndReturn(func(_ context.Context, name string) (string, error) {
+		return "", nil
+	}).AnyTimes()
+	taskSwitchMgr := taskswitch.NewSwitchMgr(cmClient)
+
+	sh := mock.NewMockSpaceShardHandler(C(t))
+	sh.EXPECT().ShardingSubRangeCount().Return(2).AnyTimes()
+	sh.EXPECT().InsertItem(A, A, A, A).Return(nil).AnyTimes()
+
+	sg2 := mock.NewMockDelMgrShardGetter(C(t))
+	sg2.EXPECT().GetAllShards().Return([]storage.ShardHandler{sh}).AnyTimes()
+	sg2.EXPECT().GetShard(A, A).Return(sh, nil).AnyTimes()
+	dm, _ := blobdeleter.NewBlobDeleteMgr(&blobdeleter.BlobDelMgrConfig{
+		TaskSwitchMgr: taskSwitchMgr,
+		ShardGetter:   sg2,
+		BlobDelCfg: blobdeleter.BlobDelCfg{
+			MsgChannelNum:        1,
+			MsgChannelSize:       4,
+			FailedMsgChannelSize: 4,
+			TaskPoolSize:         1,
+		},
+	})
+	s.blobDelMgr = dm
+
 	// set disk
 	s.disks = make(map[proto.DiskID]*storage.Disk)
 	for id, d := range cfg.disks {
@@ -130,6 +158,7 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 		for _, d := range cfg.disks {
 			d.Close()
 		}
+		s.blobDelMgr.Close()
 	}
 
 	return s, clearFunc, nil
@@ -170,7 +199,7 @@ func TestRpcService_Blob(t *testing.T) {
 
 	sh.EXPECT().GetBlob(A, A, A).Return(blob, nil).AnyTimes()
 
-	sh.EXPECT().DeleteBlob(A, A, A).Return(nil).AnyTimes()
+	sh.EXPECT().DeleteBlob(A, A, A, A).Return(nil).AnyTimes()
 	sh.EXPECT().UpdateBlob(A, A, A, A).Return(nil).AnyTimes()
 
 	sh.EXPECT().ListBlob(A, A, A, A, A).Return(
@@ -260,6 +289,13 @@ func TestRpcService_Blob(t *testing.T) {
 		Name:     name,
 		CodeMode: codemode.EC6P6,
 		Size_:    192,
+	})
+	require.Nil(t, err)
+
+	// delete blob raw
+	err = cli.DeleteBlobRaw(context.Background(), tcpAddrBlob, shardnode.DeleteBlobRawArgs{
+		Header: header,
+		Slice:  proto.Slice{Vid: proto.Vid(1), MinSliceID: proto.BlobID(123)},
 	})
 	require.Nil(t, err)
 }
