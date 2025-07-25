@@ -12,6 +12,7 @@ import (
 	shardnode "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	codemode "github.com/cubefs/cubefs/blobstore/common/codemode"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
+	proto0 "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -81,6 +82,20 @@ func (m *MockTransport) AllocVolume(ctx context.Context, isInit bool, mode codem
 func (mr *MockTransportMockRecorder) AllocVolume(ctx, isInit, mode, count interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolume", reflect.TypeOf((*MockTransport)(nil).AllocVolume), ctx, isInit, mode, count)
+}
+
+// DeleteSlice mocks base method.
+func (m *MockTransport) DeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteSlice", ctx, info, bid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteSlice indicates an expected call of DeleteSlice.
+func (mr *MockTransportMockRecorder) DeleteSlice(ctx, info, bid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSlice", reflect.TypeOf((*MockTransport)(nil).DeleteSlice), ctx, info, bid)
 }
 
 // GetAllSpaces mocks base method.
@@ -188,6 +203,21 @@ func (mr *MockTransportMockRecorder) GetSpace(ctx, sid interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSpace", reflect.TypeOf((*MockTransport)(nil).GetSpace), ctx, sid)
 }
 
+// GetVolumeInfo mocks base method.
+func (m *MockTransport) GetVolumeInfo(ctx context.Context, vid proto.Vid) (*proto0.VolumeInfoSimple, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolumeInfo", ctx, vid)
+	ret0, _ := ret[0].(*proto0.VolumeInfoSimple)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVolumeInfo indicates an expected call of GetVolumeInfo.
+func (mr *MockTransportMockRecorder) GetVolumeInfo(ctx, vid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeInfo", reflect.TypeOf((*MockTransport)(nil).GetVolumeInfo), ctx, vid)
+}
+
 // HeartbeatDisks mocks base method.
 func (m *MockTransport) HeartbeatDisks(ctx context.Context, disks []clustermgr.ShardNodeDiskHeartbeatInfo) error {
 	m.ctrl.T.Helper()
@@ -215,6 +245,36 @@ func (m *MockTransport) ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDi
 func (mr *MockTransportMockRecorder) ListDisks(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDisks", reflect.TypeOf((*MockTransport)(nil).ListDisks), ctx)
+}
+
+// ListVolume mocks base method.
+func (m *MockTransport) ListVolume(ctx context.Context, marker proto.Vid, count int) ([]*proto0.VolumeInfoSimple, proto.Vid, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListVolume", ctx, marker, count)
+	ret0, _ := ret[0].([]*proto0.VolumeInfoSimple)
+	ret1, _ := ret[1].(proto.Vid)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListVolume indicates an expected call of ListVolume.
+func (mr *MockTransportMockRecorder) ListVolume(ctx, marker, count interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVolume", reflect.TypeOf((*MockTransport)(nil).ListVolume), ctx, marker, count)
+}
+
+// MarkDeleteSlice mocks base method.
+func (m *MockTransport) MarkDeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkDeleteSlice", ctx, info, bid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkDeleteSlice indicates an expected call of MarkDeleteSlice.
+func (mr *MockTransportMockRecorder) MarkDeleteSlice(ctx, info, bid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkDeleteSlice", reflect.TypeOf((*MockTransport)(nil).MarkDeleteSlice), ctx, info, bid)
 }
 
 // NodeID mocks base method.
@@ -730,4 +790,109 @@ func (m *MockShardTransport) UpdateShard(ctx context.Context, host string, args 
 func (mr *MockShardTransportMockRecorder) UpdateShard(ctx, host, args interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateShard", reflect.TypeOf((*MockShardTransport)(nil).UpdateShard), ctx, host, args)
+}
+
+// MockBlobTransport is a mock of BlobTransport interface.
+type MockBlobTransport struct {
+	ctrl     *gomock.Controller
+	recorder *MockBlobTransportMockRecorder
+}
+
+// MockBlobTransportMockRecorder is the mock recorder for MockBlobTransport.
+type MockBlobTransportMockRecorder struct {
+	mock *MockBlobTransport
+}
+
+// NewMockBlobTransport creates a new mock instance.
+func NewMockBlobTransport(ctrl *gomock.Controller) *MockBlobTransport {
+	mock := &MockBlobTransport{ctrl: ctrl}
+	mock.recorder = &MockBlobTransportMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockBlobTransport) EXPECT() *MockBlobTransportMockRecorder {
+	return m.recorder
+}
+
+// DeleteSlice mocks base method.
+func (m *MockBlobTransport) DeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteSlice", ctx, info, bid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteSlice indicates an expected call of DeleteSlice.
+func (mr *MockBlobTransportMockRecorder) DeleteSlice(ctx, info, bid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSlice", reflect.TypeOf((*MockBlobTransport)(nil).DeleteSlice), ctx, info, bid)
+}
+
+// MarkDeleteSlice mocks base method.
+func (m *MockBlobTransport) MarkDeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkDeleteSlice", ctx, info, bid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkDeleteSlice indicates an expected call of MarkDeleteSlice.
+func (mr *MockBlobTransportMockRecorder) MarkDeleteSlice(ctx, info, bid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkDeleteSlice", reflect.TypeOf((*MockBlobTransport)(nil).MarkDeleteSlice), ctx, info, bid)
+}
+
+// MockVolumeTransport is a mock of VolumeTransport interface.
+type MockVolumeTransport struct {
+	ctrl     *gomock.Controller
+	recorder *MockVolumeTransportMockRecorder
+}
+
+// MockVolumeTransportMockRecorder is the mock recorder for MockVolumeTransport.
+type MockVolumeTransportMockRecorder struct {
+	mock *MockVolumeTransport
+}
+
+// NewMockVolumeTransport creates a new mock instance.
+func NewMockVolumeTransport(ctrl *gomock.Controller) *MockVolumeTransport {
+	mock := &MockVolumeTransport{ctrl: ctrl}
+	mock.recorder = &MockVolumeTransportMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockVolumeTransport) EXPECT() *MockVolumeTransportMockRecorder {
+	return m.recorder
+}
+
+// GetVolumeInfo mocks base method.
+func (m *MockVolumeTransport) GetVolumeInfo(ctx context.Context, vid proto.Vid) (*proto0.VolumeInfoSimple, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolumeInfo", ctx, vid)
+	ret0, _ := ret[0].(*proto0.VolumeInfoSimple)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVolumeInfo indicates an expected call of GetVolumeInfo.
+func (mr *MockVolumeTransportMockRecorder) GetVolumeInfo(ctx, vid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeInfo", reflect.TypeOf((*MockVolumeTransport)(nil).GetVolumeInfo), ctx, vid)
+}
+
+// ListVolume mocks base method.
+func (m *MockVolumeTransport) ListVolume(ctx context.Context, marker proto.Vid, count int) ([]*proto0.VolumeInfoSimple, proto.Vid, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListVolume", ctx, marker, count)
+	ret0, _ := ret[0].([]*proto0.VolumeInfoSimple)
+	ret1, _ := ret[1].(proto.Vid)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListVolume indicates an expected call of ListVolume.
+func (mr *MockVolumeTransportMockRecorder) ListVolume(ctx, marker, count interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVolume", reflect.TypeOf((*MockVolumeTransport)(nil).ListVolume), ctx, marker, count)
 }

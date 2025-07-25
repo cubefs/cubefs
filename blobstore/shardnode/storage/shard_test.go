@@ -261,6 +261,35 @@ func TestServerShard_Item(t *testing.T) {
 	mockShard.shard.diskID = 1
 }
 
+func TestServerShard_BatchItem(t *testing.T) {
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	c := 3
+	items := make([]shardnode.Item, c)
+	elems := make([]BatchItemElem, c)
+	for i := 0; i < c; i++ {
+		items[i] = shardnode.Item{
+			ID: []byte(fmt.Sprintf("i%d", i)),
+			Fields: []shardnode.Field{
+				{ID: 0, Value: []byte("string")},
+			},
+		}
+		elems[i] = NewBatchItemElemInsert(items[i])
+	}
+
+	err := mockShard.shard.BatchWriteItem(ctx, OpHeader{}, elems)
+	require.Nil(t, err)
+
+	delElems := make([]BatchItemElem, c)
+	for i := 0; i < c; i++ {
+		delElems[i] = NewBatchItemElemDelete(items[i].ID)
+	}
+
+	err = mockShard.shard.BatchWriteItem(ctx, OpHeader{}, elems)
+	require.Nil(t, err)
+}
+
 func TestServerShard_Stats(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()

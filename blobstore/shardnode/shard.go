@@ -175,6 +175,18 @@ func (s *service) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardH
 	return sh, nil
 }
 
+func (s *service) GetAllShards() []storage.ShardHandler {
+	shards := make([]storage.ShardHandler, 0)
+	disks := s.getAllDisks()
+	for _, d := range disks {
+		d.RangeShard(func(s storage.ShardHandler) bool {
+			shards = append(shards, s)
+			return true
+		})
+	}
+	return shards
+}
+
 func (s *service) loop(ctx context.Context) {
 	heartbeatTicker := time.NewTicker(time.Duration(s.cfg.HeartBeatIntervalS) * time.Second)
 	reportTicker := time.NewTicker(time.Duration(s.cfg.ReportIntervalS) * time.Second)

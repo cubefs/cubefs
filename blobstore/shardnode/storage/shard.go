@@ -57,6 +57,36 @@ type ValGetter interface {
 }
 
 type (
+	batchItemOp   uint8
+	BatchItemElem struct {
+		opType batchItemOp
+		shardnode.Item
+	}
+)
+
+const (
+	batchItemOpInsert = iota
+	batchItemOpUpdate
+	batchItemOpDelete
+)
+
+func NewBatchItemElemInsert(itm shardnode.Item) BatchItemElem {
+	return BatchItemElem{
+		opType: batchItemOpInsert,
+		Item:   itm,
+	}
+}
+
+func NewBatchItemElemDelete(id []byte) BatchItemElem {
+	return BatchItemElem{
+		opType: batchItemOpDelete,
+		Item: shardnode.Item{
+			ID: id,
+		},
+	}
+}
+
+type (
 	ShardBlobHandler interface {
 		CreateBlob(ctx context.Context, h OpHeader, name []byte, b proto.Blob) (proto.Blob, error)
 		UpdateBlob(ctx context.Context, h OpHeader, name []byte, b proto.Blob) error
@@ -71,6 +101,7 @@ type (
 		DeleteItem(ctx context.Context, h OpHeader, id []byte) error
 		GetItem(ctx context.Context, h OpHeader, id []byte) (shardnode.Item, error)
 		ListItem(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error)
+		BatchWriteItem(ctx context.Context, h OpHeader, elems []BatchItemElem, opts ...ShardOptionFunc) error
 	}
 	ShardHandler interface {
 		ShardItemHandler
@@ -80,9 +111,11 @@ type (
 		Checkpoint(ctx context.Context) error
 		Stats(ctx context.Context, readIndex bool) (shardnode.ShardStats, error)
 		GetSuid() proto.Suid
+		GetDiskID() proto.DiskID
 		GetUnits() []clustermgr.ShardUnit
 		CheckAndClearShard(ctx context.Context) error
 		ShardingSubRangeCount() int
+		IsLeader() bool
 	}
 	OpHeader struct {
 		RouteVersion proto.RouteVersion
@@ -185,7 +218,6 @@ type shard struct {
 		lastStableIndex    uint64
 		lastTruncatedIndex uint64
 	}
-
 	// add disk ref for finalizer gc
 	disk      *Disk
 	shardKeys *shardKeysGenerator
@@ -196,7 +228,6 @@ type shard struct {
 
 func (s *shard) InsertItem(ctx context.Context, h OpHeader, id []byte, i shardnode.Item) error {
 	span := trace.SpanFromContextSafe(ctx)
-
 	if !s.isLeader() {
 		return apierr.ErrShardNodeNotLeader
 	}
@@ -328,6 +359,53 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 
 func (s *shard) DeleteItem(ctx context.Context, h OpHeader, id []byte) error {
 	return s.delete(ctx, h, s.shardKeys.encodeItemKey(id), raftOpDeleteItem)
+}
+
+func (s *shard) BatchWriteItem(ctx context.Context, h OpHeader, elems []BatchItemElem, opts ...ShardOptionFunc) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	opt := &shardOption{}
+	opt.applyOptions(opts)
+
+	if !opt.proposeAsFollower && !s.isLeader() {
+		return apierr.ErrShardNodeNotLeader
+	}
+	if err := s.checkShardOptHeader(h); err != nil {
+		return err
+	}
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
+		return convertStoppingWriteErr(err)
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	wb := s.store.KVStore().NewWriteBatch()
+	defer wb.Close()
+
+	for i := range elems {
+		switch elems[i].opType {
+		case batchItemOpInsert, batchItemOpUpdate:
+			raw, err := elems[i].Marshal()
+			if err != nil {
+				return err
+			}
+			wb.Put(dataCF, s.shardKeys.encodeItemKey(elems[i].ID), raw)
+		case batchItemOpDelete:
+			wb.Delete(dataCF, s.shardKeys.encodeItemKey(elems[i].ID))
+		default:
+			span.Panicf("unknown batch write item op")
+		}
+	}
+
+	proposalData := raft.ProposalData{
+		Op:   raftOpWriteBatchRaw,
+		Data: wb.Data(),
+	}
+	resp, err := s.raftGroup.Propose(ctx, &proposalData)
+	if err != nil {
+		return err
+	}
+	appendTrackLogAfterPropose(span, resp.Data)
+	return nil
 }
 
 func (s *shard) CreateBlob(ctx context.Context, h OpHeader, name []byte, b proto.Blob) (proto.Blob, error) {
@@ -789,6 +867,14 @@ func (s *shard) GetSuid() proto.Suid {
 
 func (s *shard) ShardingSubRangeCount() int {
 	return len(s.shardInfoMu.shardInfo.Range.Subs)
+}
+
+func (s *shard) IsLeader() bool {
+	return s.isLeader()
+}
+
+func (s *shard) GetDiskID() proto.DiskID {
+	return s.diskID
 }
 
 func (s *shard) GetUnits() []clustermgr.ShardUnit {

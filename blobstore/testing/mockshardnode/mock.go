@@ -18,3 +18,5 @@ package mock
 //go:generate mockgen -source=../../shardnode/storage/shard.go -destination=./shard.go -package=mock -mock_names ShardHandler=MockSpaceShardHandler
 //go:generate mockgen -source=../../shardnode/base/transport.go -destination=../mocks/shardnode_transport.go -package=mocks -mock_names Transport=MockTransport
 //go:generate mockgen -source=../../shardnode/catalog/allocator/allocator.go -destination=./allocator.go -package=mock -mock_names Allocator=MockAllocator
+//go:generate mockgen -source=../../shardnode/base/volume_cache.go -destination=../mocks/shardnode_volume_cache.go -package=mocks -mock_names IVolumeCache=MockIVolumeCache
+//go:generate mockgen -source=../../shardnode/blobdeleter/blob_deleter.go -destination=./blob_deleter.go -package=mock -mock_names ShardGetter=MockDelMgrShardGetter

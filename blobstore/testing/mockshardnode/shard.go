@@ -213,6 +213,25 @@ func (m *MockShardItemHandler) EXPECT() *MockShardItemHandlerMockRecorder {
 	return m.recorder
 }
 
+// BatchWriteItem mocks base method.
+func (m *MockShardItemHandler) BatchWriteItem(ctx context.Context, h storage.OpHeader, elems []storage.BatchItemElem, opts ...storage.ShardOptionFunc) error {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{ctx, h, elems}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "BatchWriteItem", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchWriteItem indicates an expected call of BatchWriteItem.
+func (mr *MockShardItemHandlerMockRecorder) BatchWriteItem(ctx, h, elems interface{}, opts ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{ctx, h, elems}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchWriteItem", reflect.TypeOf((*MockShardItemHandler)(nil).BatchWriteItem), varargs...)
+}
+
 // DeleteItem mocks base method.
 func (m *MockShardItemHandler) DeleteItem(ctx context.Context, h storage.OpHeader, id []byte) error {
 	m.ctrl.T.Helper()
@@ -309,6 +328,25 @@ func (m *MockSpaceShardHandler) EXPECT() *MockSpaceShardHandlerMockRecorder {
 	return m.recorder
 }
 
+// BatchWriteItem mocks base method.
+func (m *MockSpaceShardHandler) BatchWriteItem(ctx context.Context, h storage.OpHeader, elems []storage.BatchItemElem, opts ...storage.ShardOptionFunc) error {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{ctx, h, elems}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "BatchWriteItem", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BatchWriteItem indicates an expected call of BatchWriteItem.
+func (mr *MockSpaceShardHandlerMockRecorder) BatchWriteItem(ctx, h, elems interface{}, opts ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{ctx, h, elems}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchWriteItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).BatchWriteItem), varargs...)
+}
+
 // CheckAndClearShard mocks base method.
 func (m *MockSpaceShardHandler) CheckAndClearShard(ctx context.Context) error {
 	m.ctrl.T.Helper()
@@ -395,6 +433,20 @@ func (mr *MockSpaceShardHandlerMockRecorder) GetBlob(ctx, h, name interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetBlob), ctx, h, name)
 }
 
+// GetDiskID mocks base method.
+func (m *MockSpaceShardHandler) GetDiskID() proto.DiskID {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDiskID")
+	ret0, _ := ret[0].(proto.DiskID)
+	return ret0
+}
+
+// GetDiskID indicates an expected call of GetDiskID.
+func (mr *MockSpaceShardHandlerMockRecorder) GetDiskID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDiskID", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetDiskID))
+}
+
 // GetItem mocks base method.
 func (m *MockSpaceShardHandler) GetItem(ctx context.Context, h storage.OpHeader, id []byte) (shardnode.Item, error) {
 	m.ctrl.T.Helper()
@@ -464,6 +516,20 @@ func (m *MockSpaceShardHandler) InsertItem(ctx context.Context, h storage.OpHead
 func (mr *MockSpaceShardHandlerMockRecorder) InsertItem(ctx, h, id, i interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).InsertItem), ctx, h, id, i)
+}
+
+// IsLeader mocks base method.
+func (m *MockSpaceShardHandler) IsLeader() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsLeader")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsLeader indicates an expected call of IsLeader.
+func (mr *MockSpaceShardHandlerMockRecorder) IsLeader() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsLeader", reflect.TypeOf((*MockSpaceShardHandler)(nil).IsLeader))
 }
 
 // ListBlob mocks base method.

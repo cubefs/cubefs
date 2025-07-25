@@ -21,10 +21,12 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	shardnodeapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 )
 
 type (
@@ -36,6 +38,8 @@ type (
 		SpaceTransport
 		AllocVolTransport
 		ShardTransport
+		BlobTransport
+		VolumeTransport
 	}
 
 	NodeTransport interface {
@@ -69,13 +73,31 @@ type (
 		UpdateShard(ctx context.Context, host string, args shardnodeapi.UpdateShardArgs) error
 		ShardStats(ctx context.Context, host string, args shardnodeapi.GetShardArgs) (shardnodeapi.ShardStats, error)
 	}
+
+	BlobTransport interface {
+		DeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
+		MarkDeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
+	}
+
+	VolumeTransport interface {
+		ListVolume(ctx context.Context, marker proto.Vid, count int) (volInfo []*snproto.VolumeInfoSimple, retVid proto.Vid, err error)
+		GetVolumeInfo(ctx context.Context, vid proto.Vid) (ret *snproto.VolumeInfoSimple, err error)
+	}
 )
 
-func NewTransport(cmClient *clustermgr.Client, snClient *shardnodeapi.Client, myself *clustermgr.ShardNodeInfo) Transport {
+type TransportConfig struct {
+	CMClient *clustermgr.Client
+	SNClient *shardnodeapi.Client
+	BNClient api.StorageAPI
+	Self     *clustermgr.ShardNodeInfo
+}
+
+func NewTransport(cfg TransportConfig) Transport {
 	return &transport{
-		cmClient: cmClient,
-		snClient: snClient,
-		myself:   myself,
+		cmClient: cfg.CMClient,
+		snClient: cfg.SNClient,
+		bnClient: cfg.BNClient,
+		myself:   cfg.Self,
 	}
 }
 
@@ -85,6 +107,7 @@ type transport struct {
 	allDisks sync.Map
 	cmClient *clustermgr.Client
 	snClient *shardnodeapi.Client
+	bnClient api.StorageAPI
 
 	singleRun singleflight.Group
 }
@@ -299,4 +322,44 @@ func (t *transport) UpdateShard(ctx context.Context, host string, args shardnode
 
 func (t *transport) ShardStats(ctx context.Context, host string, args shardnodeapi.GetShardArgs) (shardnodeapi.ShardStats, error) {
 	return t.snClient.GetShardStats(ctx, host, args)
+}
+
+func (t *transport) DeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error) {
+	return t.bnClient.DeleteShard(ctx, info.Host, &api.DeleteShardArgs{
+		DiskID: info.DiskID,
+		Vuid:   info.Vuid,
+		Bid:    bid,
+	})
+}
+
+func (t *transport) MarkDeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error) {
+	return t.bnClient.MarkDeleteShard(ctx, info.Host, &api.DeleteShardArgs{
+		DiskID: info.DiskID,
+		Vuid:   info.Vuid,
+		Bid:    bid,
+	})
+}
+
+func (t *transport) ListVolume(ctx context.Context, marker proto.Vid, count int) (volInfo []*snproto.VolumeInfoSimple, retVid proto.Vid, err error) {
+	vols, err := t.cmClient.ListVolume(ctx, &clustermgr.ListVolumeArgs{Marker: marker, Count: count})
+	if err != nil {
+		return
+	}
+	for index := range vols.Volumes {
+		ret := &snproto.VolumeInfoSimple{}
+		ret.Set(vols.Volumes[index])
+		volInfo = append(volInfo, ret)
+	}
+	retVid = vols.Marker
+	return
+}
+
+func (t *transport) GetVolumeInfo(ctx context.Context, vid proto.Vid) (ret *snproto.VolumeInfoSimple, err error) {
+	info, err := t.cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: vid})
+	if err != nil {
+		return nil, err
+	}
+	ret = &snproto.VolumeInfoSimple{}
+	ret.Set(info)
+	return ret, nil
 }
