@@ -844,10 +844,14 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		log.LogInfof("[buildHeartBeatResponse] disk(%v) status(%v) broken dp len(%v)", d.Path, d.Status, brokenDpsCnt)
 		if d.Status == proto.Unavailable || brokenDpsCnt != 0 {
 			response.BadDisks = append(response.BadDisks, d.Path)
+			if d.BadDiskFirstReportTime.IsZero() {
+				d.BadDiskFirstReportTime = time.Now()
+			}
 			bds := proto.BadDiskStat{
 				DiskPath:             d.Path,
 				TotalPartitionCnt:    d.PartitionCount(),
 				DiskErrPartitionList: brokenDps,
+				FirstReportTime:      d.BadDiskFirstReportTime,
 			}
 			response.BadDiskStats = append(response.BadDiskStats, bds)
 			log.LogErrorf("[buildHeartBeatResponse] disk(%v) total(%v) broken dp len(%v) %v",
