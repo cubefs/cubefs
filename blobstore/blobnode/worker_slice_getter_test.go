@@ -161,9 +161,23 @@ func testGetBenchmarkBids(t *testing.T, mode codemode.CodeMode) {
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
 	sizes := []int64{10, 1024, 1024, 1024, 1024, 1024, 1024}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
-	benchmarkBids, _, err := GetBenchmarkBids(context.Background(), getter, replicas, mode, []uint8{})
+	count := mode.T().N + mode.T().M + mode.T().L
+	benchmarkBids, bidInfos, err := GetBenchmarkBids(context.Background(), getter, replicas, mode, []uint8{})
 	require.NoError(t, err)
 	bidsEqual(t, benchmarkBids, bids, sizes)
+	require.Equal(t, count, len(bidInfos))
+
+	// test badIdx
+	testcase := [][]uint8{
+		{uint8(mode.T().N - 1)},
+		{uint8(mode.T().N + 1)},
+		{uint8(count - 1)},
+	}
+	for _, badIdxs := range testcase {
+		_, bidInfos, err = GetBenchmarkBids(context.Background(), getter, replicas, mode, badIdxs)
+		require.NoError(t, err)
+		require.Equal(t, count-1, len(bidInfos))
+	}
 
 	getter.Delete(context.Background(), replicas[0].Vuid, 1)
 	benchmarkBids, _, err = GetBenchmarkBids(context.Background(), getter, replicas, mode, []uint8{})

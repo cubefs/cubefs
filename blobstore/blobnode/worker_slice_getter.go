@@ -202,7 +202,13 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits
 			replicas[0].Vuid.Vid(), bid.Bid, existStatus.ExistCnt(), notExistCnt, allowFailCnt(mode))
 		return nil, nil, ErrUnexpected
 	}
-
+	if mode.Tactic().L > 0 {
+		localStripe := replicas.GetLocalStripe(mode, badIdxs)
+		stripes := GetReplicasBids(ctx, cli, localStripe)
+		for vuid, bid := range stripes {
+			bidInfos[vuid] = bid
+		}
+	}
 	return benchMark, bidInfos, nil
 }
 

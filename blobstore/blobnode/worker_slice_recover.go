@@ -105,6 +105,25 @@ func (locs Vunits) IntactGlobalSet(mode codemode.CodeMode, bad []uint8) Vunits {
 	return locs.Subset(idxes)
 }
 
+func (locs Vunits) GetLocalStripe(mode codemode.CodeMode, bad []uint8) Vunits {
+	ex := make(map[int]struct{}, len(bad))
+	for _, idx := range bad {
+		ex[int(idx)] = struct{}{}
+	}
+	var idxes []int
+	allStripe, g, l := mode.T().AllLocalStripe()
+	for _, stripes := range allStripe {
+		for i := g; i < g+l; i++ {
+			idx := stripes[i]
+			if _, ok := ex[idx]; ok {
+				continue
+			}
+			idxes = append(idxes, idx)
+		}
+	}
+	return locs.Subset(idxes)
+}
+
 func (stripe *repairStripe) genDownloadPlans() []downloadPlan {
 	badi := stripe.badIdxes
 	n := stripe.n
@@ -607,7 +626,8 @@ func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, 
 		rep := replica
 		tp.Run(func() {
 			defer wg.Done()
-			if r.enableBatchRead && r.bidInfos[replica.Vuid].RetErr == nil {
+			info, ok := r.bidInfos[rep.Vuid]
+			if r.enableBatchRead && ok && info.RetErr == nil {
 				r.batchDownloadReplShards(ctxTmp, rep, repairBids)
 				return
 			}
