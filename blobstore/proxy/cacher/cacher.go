@@ -190,7 +190,11 @@ func (c *cacher) Erase(ctx context.Context, key string) error {
 	default:
 	}
 	span.Warnf("to erase key:%s path:%s", key, c.DiskvFilename(key))
-	return c.diskv.Erase(key)
+	if err = c.diskv.Erase(key); os.IsNotExist(err) {
+		span.Warn(err)
+		err = nil
+	}
+	return nil
 }
 
 func (c *cacher) DiskvFilename(key string) string {

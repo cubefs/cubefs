@@ -116,12 +116,14 @@ func addCmdCacher(cmd *grumble.Command) {
 			}
 
 			for _, host := range hosts {
-				fmt.Printf("to erase host:%s key:%s\n", host, key)
-				if err = proxyCli.Erase(common.CmdContext(), host, key); err != nil {
-					return err
+				st := "OK"
+				if e := proxyCli.Erase(common.CmdContext(), host, key); e != nil {
+					err = e
+					st = e.Error()
 				}
+				fmt.Printf("erase host:%s key:%s status:%s\n", host, key, st)
 			}
-			return nil
+			return err
 		},
 	})
 }

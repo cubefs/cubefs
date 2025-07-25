@@ -114,7 +114,7 @@ func TestProxyCacherErase(t *testing.T) {
 		require.False(t, cc.diskv.Has(diskvKeyVolume(1)))
 	}
 	{
-		require.Error(t, c.Erase(ctx, diskvKeyDisk(1)))
+		require.NoError(t, c.Erase(ctx, diskvKeyDisk(1))) // NotExist
 		require.Nil(t, cc.diskCache.Get(proto.DiskID(1)))
 		require.False(t, cc.diskv.Has(diskvKeyDisk(1)))
 	}
