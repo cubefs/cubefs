@@ -29,19 +29,33 @@ var (
 		15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31,
 	}
 	zero  = make([]byte, zeroSize)
-	pools [maxSizeBit + 1]*sync.Pool
+	pools [maxSizeBit + 2]*sync.Pool
 )
 
-func init() {
-	for idx := range pools {
-		bits := idx
-		pools[idx] = &sync.Pool{
-			New: func() interface{} { // store pointer of bytes
-				nb := make([]byte, 1<<bits)
-				return &nb
-			},
+func newBytesPoolFunc(cap int) func() interface{} {
+	return func() interface{} {
+		nb := make([]byte, cap)
+		return &nb
+	}
+}
+
+func doInit() {
+	// Initialize pools[0] with cap=0
+	pools[0] = &sync.Pool{
+		New: newBytesPoolFunc(0),
+	}
+
+	// Initialize pools[1..maxSizeBit+1] with cap=2^(i-1)
+	for i := 1; i <= (maxSizeBit + 1); i++ {
+		cap := 1 << (i - 1)
+		pools[i] = &sync.Pool{
+			New: newBytesPoolFunc(cap),
 		}
 	}
+}
+
+func init() {
+	doInit()
 }
 
 // GetPool returns a sync.Pool that generates bytes slice with the size.
@@ -50,11 +64,14 @@ func GetPool(size int) *sync.Pool {
 	if size < 0 || size > maxSize {
 		return nil
 	}
-	bits := msb(size)
-	idx := bits
-	if size != 1<<bits {
-		idx++
+	if size == 0 {
+		return pools[0]
 	}
+	bits := msb(size)
+	if size != 1<<bits {
+		bits++
+	}
+	idx := bits + 1
 	return pools[idx]
 }
 
@@ -76,16 +93,16 @@ func AllocPointer(size int) *[]byte {
 	return &nb
 }
 
-// Free puts the bytes slice into suitable pool.
-// Discard the bytes slice if oversize.
+// Free puts the underlying array of the slice into a suitable pool.
+// Discard the bytes slice if oversize or cap == 0.
+// Note: This function does not reuse the original slice header
 func Free(b []byte) {
 	size := cap(b)
-	bits := msb(size)
-	if size > maxSize || size != 1<<bits {
+	if size == 0 {
 		return
 	}
-	b = b[0:size]
-	pools[bits].Put(&b) // nolint: staticcheck
+
+	FreePointer(&b)
 }
 
 // FreePointer puts the pointer bytes slice into suitable pool.
@@ -95,12 +112,20 @@ func FreePointer(bp *[]byte) {
 		return
 	}
 	size := cap(*bp)
+	if size == 0 {
+		pools[0].Put(bp)
+		return
+	}
 	bits := msb(size)
 	if size > maxSize || size != 1<<bits {
 		return
 	}
+
 	*bp = (*bp)[:size]
-	pools[bits].Put(bp) // nolint: staticcheck
+
+	// cap=2^(i-1) => i = bits + 1
+	idx := bits + 1
+	pools[idx].Put(bp) // nolint: staticcheck
 }
 
 // Zero clean up the bytes slice b to zero.
