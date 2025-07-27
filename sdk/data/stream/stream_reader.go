@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/remotecache"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
@@ -65,6 +66,16 @@ type Streamer struct {
 	aheadReadEnable      bool
 	aheadReadWindow      *AheadReadWindow
 	fullPath             string
+
+	// Async flush fields
+	asyncFlushCh        chan *AsyncFlushRequest // channel for async flush requests
+	asyncFlushDone      chan struct{}           // signal to stop async flush goroutine
+	asyncFlushSemaphore chan struct{}           // semaphore to limit concurrent processAsyncFlushRequest executions
+
+	// Handler protection for write operations
+	writeInProgress     bool           // indicates if a write operation is in progress
+	writeHandler        *ExtentHandler // handler being used for current write operation
+	writeProtectionLock sync.Mutex     // protects write operation state
 }
 
 type bcacheKey struct {
@@ -91,6 +102,11 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool,
 	s.isCache = isCache
 	s.fullPath = fullPath
 
+	// Initialize async flush fields
+	s.asyncFlushCh = make(chan *AsyncFlushRequest, asyncFlushQueueSize)
+	s.asyncFlushDone = make(chan struct{})
+	s.asyncFlushSemaphore = make(chan struct{}, asyncFlushSemaphoreSize)
+
 	if log.EnableDebug() {
 		log.LogDebugf("NewStreamer: streamer(%v), reqChSize %d", s, reqChanSize)
 	}
@@ -107,6 +123,7 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool,
 	}
 	go s.server()
 	go s.asyncBlockCache()
+	go s.asyncFlushManager() // Start async flush manager
 	return s
 }
 
@@ -437,4 +454,446 @@ func getGoid() int {
 
 func (s *Streamer) UpdateStringPath(fullPath string) {
 	s.fullPath = fullPath
+}
+
+// asyncFlushManager manages asynchronous flush operations using channel-based producer-consumer pattern
+func (s *Streamer) asyncFlushManager() {
+	log.LogDebugf("asyncFlushManager started for streamer(%v)", s)
+
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.asyncFlushDone:
+			log.LogDebugf("asyncFlushManager stopped for streamer(%v)", s)
+			return
+		case req, ok := <-s.asyncFlushCh:
+			if !ok {
+				// Channel is closed, exit the manager
+				log.LogDebugf("asyncFlushCh closed, stopping asyncFlushManager for streamer(%v)", s)
+				return
+			}
+			if req == nil {
+				continue
+			}
+			// Process the async flush request with semaphore to limit concurrent executions
+			select {
+			case s.asyncFlushSemaphore <- struct{}{}:
+				go func() {
+					defer func() { <-s.asyncFlushSemaphore }()
+					s.processAsyncFlushRequest(req)
+				}()
+			case <-t.C:
+				// Log stats
+				stats := getAsyncFlushSequencerStats()
+				if stats["pending_requests_count"].(int) > 0 {
+					log.LogInfof("Async flush sequencer stats - pending: %d, current_id: %d, oldest: %d, newest: %d, streamer: %v",
+						stats["pending_requests_count"], stats["current_sequencer_id"],
+						stats["oldest_request_id"], stats["newest_request_id"], s.inode)
+				}
+			}
+		}
+	}
+}
+
+// processAsyncFlushRequest processes a single async flush request
+func (s *Streamer) processAsyncFlushRequest(req *AsyncFlushRequest) {
+	handler := req.handler
+	now := time.Now()
+
+	// Log large extent processing for monitoring
+	if handler.size > 64*1024*1024 { // 64MB
+		log.LogInfof("Processing large extent async flush: handler(%v), size(%v), id(%v), inflight(%v)",
+			handler, handler.size, req.id, req.inflightCount)
+	}
+
+	// Check if request has timed out
+	if now.After(req.timeout) {
+		log.LogWarnf("Async flush timeout for handler(%v), id(%v), retryCount(%v), inflight(%v), extentSize(%v), timeout(%v)",
+			handler, req.id, req.retryCount, req.inflightCount, handler.size, req.timeout.Sub(now))
+		if req.retryCount >= maxAsyncFlushRetries {
+			// Max retries reached, fail the request
+			removePendingAsyncFlush(req.id)
+			errMsg := fmt.Sprintf("async flush failed after %d retries, inflight: %d, extentSize: %d",
+				maxAsyncFlushRetries, req.inflightCount, handler.size)
+			req.done <- errors.New(errMsg)
+			return
+		}
+
+		// Retry the flush
+		req.retryCount++
+		timeout := calculateAsyncFlushTimeout(int64(handler.size))
+		req.timeout = now.Add(timeout)
+		req.inflightCount = atomic.LoadInt32(&handler.inflight)
+
+		// Re-queue for retry
+		select {
+		case s.asyncFlushCh <- req:
+			log.LogDebugf("Re-queued async flush for retry, handler(%v), id(%v), retryCount(%v)", handler, req.id, req.retryCount)
+		default:
+			// Channel is full, process immediately
+			go s.retryAsyncFlush(handler, req)
+		}
+		return
+	}
+
+	// Check if inflight count has decreased (packets completed)
+	currentInflight := atomic.LoadInt32(&handler.inflight)
+	if currentInflight < req.inflightCount {
+		req.inflightCount = currentInflight
+		if currentInflight == 0 {
+			log.LogDebugf("processAsyncFlushRequest: handler id %v", handler.id)
+			// All packets completed, process extent keys
+			go s.completeAsyncFlush(handler, req)
+			return
+		}
+	}
+
+	// Re-queue for next check
+	select {
+	case s.asyncFlushCh <- req:
+		// Successfully re-queued
+	default:
+		log.LogDebugf("processAsyncFlushRequest: handler id %v", handler.id)
+		// Channel is full, process immediately
+		go s.completeAsyncFlush(handler, req)
+	}
+}
+
+// retryAsyncFlush retries a failed async flush
+func (s *Streamer) retryAsyncFlush(handler *ExtentHandler, req *AsyncFlushRequest) {
+	log.LogDebugf("Retrying async flush for handler(%v), id(%v), retryCount(%v)", handler, req.id, req.retryCount)
+
+	// Remove from active handler tracking
+	defer removeActiveHandlerFlush(handler.id)
+
+	// Wait for current inflight packets to complete
+	for atomic.LoadInt32(&handler.inflight) > 0 {
+		time.Sleep(time.Duration(asyncFlushCheckIntervalMs) * time.Millisecond)
+	}
+
+	// Check if this request is the next one to be processed
+	nextReq := getNextPendingAsyncFlush()
+	if nextReq == nil {
+		log.LogErrorf("No pending async flush requests found for retry handler(%v), id(%v)", handler, req.id)
+		req.done <- errors.New("no pending async flush requests")
+		return
+	}
+
+	// If this is not the next request to be processed, wait
+	if nextReq.id != req.id {
+		log.LogDebugf("Async flush retry request id(%v) is not next in sequence (next: %v), waiting...", req.id, nextReq.id)
+
+		// Wait for the correct request to be processed
+		for {
+			time.Sleep(time.Duration(asyncFlushCheckIntervalMs) * time.Millisecond)
+			nextReq = getNextPendingAsyncFlush()
+			if nextReq == nil {
+				log.LogErrorf("No pending async flush requests found while waiting for retry id(%v)", req.id)
+				req.done <- errors.New("no pending async flush requests")
+				return
+			}
+			if nextReq.id == req.id {
+				break
+			}
+		}
+	}
+
+	// Process extent keys (this is now guaranteed to be in sequence)
+	err := handler.appendExtentKey()
+	if err != nil {
+		log.LogErrorf("Async flush retry failed for handler(%v), id(%v): %v", handler, req.id, err)
+		removePendingAsyncFlush(req.id)
+		req.done <- err
+		return
+	}
+
+	// Remove from pending map after successful completion
+	removePendingAsyncFlush(req.id)
+
+	// Success
+	log.LogDebugf("Async flush retry completed successfully for handler(%v), id(%v)", handler, req.id)
+	req.done <- nil
+}
+
+// completeAsyncFlush completes an async flush operation
+func (s *Streamer) completeAsyncFlush(handler *ExtentHandler, req *AsyncFlushRequest) {
+	log.LogDebugf("Completing async flush for handler(%v), id(%v)", handler, req.id)
+
+	// Remove from active handler tracking
+	defer removeActiveHandlerFlush(handler.id)
+
+	// Check if this request is the next one to be processed
+	nextReq := getNextPendingAsyncFlush()
+	if nextReq == nil {
+		log.LogErrorf("No pending async flush requests found for handler(%v), id(%v)", handler, req.id)
+		req.done <- errors.New("no pending async flush requests")
+		return
+	}
+
+	// If this is not the next request to be processed, wait
+	if nextReq.id != req.id {
+		log.LogDebugf("Async flush request id(%v) is not next in sequence (next: %v), waiting...", req.id, nextReq.id)
+
+		// Wait for the correct request to be processed
+		// This is a simple polling approach - in a production system, you might want to use channels or condition variables
+		for {
+			time.Sleep(time.Duration(asyncFlushCheckIntervalMs) * time.Millisecond)
+			nextReq = getNextPendingAsyncFlush()
+			if nextReq == nil {
+				log.LogErrorf("No pending async flush requests found while waiting for id(%v)", req.id)
+				req.done <- errors.New("no pending async flush requests")
+				return
+			}
+			if nextReq.id == req.id {
+				break
+			}
+		}
+	}
+
+	// Process extent keys (this is now guaranteed to be in sequence)
+	err := handler.appendExtentKey()
+	if err != nil {
+		log.LogErrorf("Async flush completion failed for handler(%v), id(%v): %v", handler, req.id, err)
+		removePendingAsyncFlush(req.id)
+		req.done <- err
+		return
+	}
+
+	// Remove from pending map after successful completion
+	removePendingAsyncFlush(req.id)
+
+	// Log success metric
+	log.LogDebugf("Async flush completed successfully for handler(%v), id(%v)", handler, req.id)
+	req.done <- nil
+}
+
+// requestAsyncFlush initiates an asynchronous flush for a handler
+func (s *Streamer) requestAsyncFlush(handler *ExtentHandler) chan error {
+	log.LogDebugf("requestAsyncFlush handler id %v", handler.id)
+
+	// Check if this handler already has an active async flush request
+	if isHandlerFlushActive(handler.id) {
+		existingReq := getActiveHandlerFlush(handler.id)
+		if existingReq != nil {
+			log.LogDebugf("Handler %v already has active async flush request id(%v), returning existing", handler.id, existingReq.id)
+			return existingReq.done
+		}
+	}
+
+	// Calculate dynamic timeout based on extent size
+	timeout := calculateAsyncFlushTimeout(int64(handler.size))
+
+	req := &AsyncFlushRequest{
+		id:            getNextAsyncFlushID(), // Assign sequential ID
+		handler:       handler,
+		done:          make(chan error, 1),
+		timeout:       time.Now().Add(timeout),
+		retryCount:    0,
+		inflightCount: atomic.LoadInt32(&handler.inflight),
+	}
+
+	// Add to active handler map to prevent duplicates
+	addActiveHandlerFlush(handler.id, req)
+
+	// Add to pending map for sequencing
+	addPendingAsyncFlush(req)
+
+	// Send to channel (non-blocking)
+	select {
+	case s.asyncFlushCh <- req:
+		log.LogDebugf("Requested async flush for handler(%v), id(%v), inflight(%v), timeout(%v)",
+			handler, req.id, req.inflightCount, timeout)
+	default:
+		// Channel is full, process immediately
+		log.LogWarnf("Async flush channel full, processing immediately for handler(%v), id(%v)", handler, req.id)
+		log.LogDebugf("requestAsyncFlush: handler id %v", handler.id)
+		go s.completeAsyncFlush(handler, req)
+	}
+
+	return req.done
+}
+
+// waitForAsyncFlush waits for an async flush to complete with timeout
+func (s *Streamer) waitForAsyncFlush(handler *ExtentHandler, timeout time.Duration) error {
+	done := s.requestAsyncFlush(handler)
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(timeout):
+		// Timeout occurred, we can't easily remove from channel
+		// The request will be processed and timeout will be detected
+		return errors.New("async flush timeout")
+	}
+}
+
+// cancelAsyncFlush cancels pending async flush for a handler
+// Note: With channel-based approach, we can't easily cancel specific requests
+// This is a limitation of the channel approach
+func (s *Streamer) cancelAsyncFlush(handler *ExtentHandler) {
+	// With channel-based approach, we can't easily cancel specific requests
+	// The request will be processed and can check if handler is still valid
+	log.LogDebugf("Cancel requested for handler(%v) - will be handled during processing", handler)
+}
+
+// handleHandlerClosed handles cleanup when a handler is closed during async flush
+func (s *Streamer) handleHandlerClosed(handler *ExtentHandler) {
+	// With channel-based approach, we can't easily cancel specific requests
+	// Just ensure all in-flight packets are processed
+	for atomic.LoadInt32(&handler.inflight) > 0 {
+		time.Sleep(time.Duration(asyncFlushCheckIntervalMs) * time.Millisecond)
+	}
+
+	log.LogDebugf("Handler closed cleanup completed for handler(%v)", handler)
+}
+
+// getAsyncFlushStats returns statistics about async flush operations
+func (s *Streamer) getAsyncFlushStats() map[string]interface{} {
+	stats := make(map[string]interface{})
+	stats["channel_capacity"] = cap(s.asyncFlushCh)
+	stats["channel_length"] = len(s.asyncFlushCh)
+	stats["enable_async_flush"] = enableAsyncFlush
+
+	// Add sequencer statistics
+	pendingAsyncFlushMutex.RLock()
+	stats["pending_requests_count"] = len(pendingAsyncFlushMap)
+	stats["current_sequencer_id"] = asyncFlushSequencer
+	pendingAsyncFlushMutex.RUnlock()
+
+	return stats
+}
+
+// cleanupAsyncFlushForStreamer removes all pending async flush requests for this streamer
+func (s *Streamer) cleanupAsyncFlushForStreamer() {
+	pendingAsyncFlushMutex.Lock()
+	defer pendingAsyncFlushMutex.Unlock()
+
+	// Find and remove all requests for this streamer's handlers
+	handlersToRemove := make([]uint64, 0)
+	for id, req := range pendingAsyncFlushMap {
+		if req.handler.stream == s {
+			handlersToRemove = append(handlersToRemove, id)
+		}
+	}
+
+	// Remove the requests
+	for _, id := range handlersToRemove {
+		delete(pendingAsyncFlushMap, id)
+		log.LogDebugf("Cleaned up async flush request id(%v) for streamer(%v)", id, s.inode)
+	}
+
+	if len(handlersToRemove) > 0 {
+		log.LogDebugf("Cleaned up %d async flush requests for streamer(%v)", len(handlersToRemove), s.inode)
+	}
+
+	// Also clean up active handler requests for this streamer
+	activeHandlerFlushMutex.Lock()
+	defer activeHandlerFlushMutex.Unlock()
+
+	activeHandlersToRemove := make([]uint64, 0)
+	for handlerID, req := range activeHandlerFlushMap {
+		if req.handler.stream == s {
+			activeHandlersToRemove = append(activeHandlersToRemove, handlerID)
+		}
+	}
+
+	for _, handlerID := range activeHandlersToRemove {
+		delete(activeHandlerFlushMap, handlerID)
+		log.LogDebugf("Cleaned up active handler flush for handler(%v) in streamer(%v)", handlerID, s.inode)
+	}
+
+	if len(activeHandlersToRemove) > 0 {
+		log.LogDebugf("Cleaned up %d active handler flush requests for streamer(%v)", len(activeHandlersToRemove), s.inode)
+	}
+}
+
+// getAsyncFlushSequencerStats returns detailed statistics about the async flush sequencer
+func getAsyncFlushSequencerStats() map[string]interface{} {
+	stats := make(map[string]interface{})
+
+	asyncFlushSequencerLock.Lock()
+	stats["current_sequencer_id"] = asyncFlushSequencer
+	asyncFlushSequencerLock.Unlock()
+
+	pendingAsyncFlushMutex.RLock()
+	stats["pending_requests_count"] = len(pendingAsyncFlushMap)
+
+	// Calculate oldest and newest request IDs
+	var oldestID, newestID uint64
+	if len(pendingAsyncFlushMap) > 0 {
+		oldestID = ^uint64(0) // Max uint64
+		newestID = 0
+		for id := range pendingAsyncFlushMap {
+			if id < oldestID {
+				oldestID = id
+			}
+			if id > newestID {
+				newestID = id
+			}
+		}
+	}
+	stats["oldest_request_id"] = oldestID
+	stats["newest_request_id"] = newestID
+	pendingAsyncFlushMutex.RUnlock()
+
+	return stats
+}
+
+// Track active async flush requests per handler to prevent duplicates
+var (
+	activeHandlerFlushMap   = make(map[uint64]*AsyncFlushRequest) // handler ID -> request
+	activeHandlerFlushMutex sync.RWMutex
+)
+
+// isHandlerFlushActive checks if a handler already has an active async flush request
+func isHandlerFlushActive(handlerID uint64) bool {
+	activeHandlerFlushMutex.RLock()
+	defer activeHandlerFlushMutex.RUnlock()
+	_, exists := activeHandlerFlushMap[handlerID]
+	return exists
+}
+
+// addActiveHandlerFlush adds a handler to the active flush map
+func addActiveHandlerFlush(handlerID uint64, req *AsyncFlushRequest) {
+	activeHandlerFlushMutex.Lock()
+	defer activeHandlerFlushMutex.Unlock()
+	activeHandlerFlushMap[handlerID] = req
+}
+
+// removeActiveHandlerFlush removes a handler from the active flush map
+func removeActiveHandlerFlush(handlerID uint64) {
+	activeHandlerFlushMutex.Lock()
+	defer activeHandlerFlushMutex.Unlock()
+	delete(activeHandlerFlushMap, handlerID)
+}
+
+// getActiveHandlerFlush returns the active request for a handler
+func getActiveHandlerFlush(handlerID uint64) *AsyncFlushRequest {
+	activeHandlerFlushMutex.RLock()
+	defer activeHandlerFlushMutex.RUnlock()
+	return activeHandlerFlushMap[handlerID]
+}
+
+// Write protection functions
+func (s *Streamer) startWriteProtection(handler *ExtentHandler) {
+	s.writeProtectionLock.Lock()
+	defer s.writeProtectionLock.Unlock()
+	s.writeInProgress = true
+	s.writeHandler = handler
+	log.LogDebugf("Write protection started for handler(%v) in streamer(%v)", handler, s.inode)
+}
+
+func (s *Streamer) endWriteProtection() {
+	s.writeProtectionLock.Lock()
+	defer s.writeProtectionLock.Unlock()
+	s.writeInProgress = false
+	s.writeHandler = nil
+	log.LogDebugf("Write protection ended for streamer(%v)", s.inode)
+}
+
+func (s *Streamer) isHandlerProtected(handler *ExtentHandler) bool {
+	s.writeProtectionLock.Lock()
+	defer s.writeProtectionLock.Unlock()
+	return s.writeInProgress && s.writeHandler == handler
 }
