@@ -202,7 +202,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 		size:               size,
 		storeMode:          storeMode,
 		empty:              make(chan struct{}, 1024),
-		request:            make(chan *Packet, 1024),
+		request:            make(chan *Packet, 10240),
 		reply:              make(chan *Packet, 1024),
 		doneSender:         make(chan struct{}),
 		doneReceiver:       make(chan struct{}),
@@ -228,6 +228,10 @@ func (eh *ExtentHandler) String() string {
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
 	var total, write int
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ExtentHandler_Write", err, bgTime, 1)
+	}()
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
 		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
@@ -838,6 +842,10 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 
 // Handler lock is held by the caller.
 func (eh *ExtentHandler) flushPacket() {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ExtentHandler_flushPacket", nil, bgTime, 1)
+	}()
 	if eh.packet == nil {
 		log.LogDebugf("ExtentHandler flushPacket nil, return: eh(%v)", eh)
 		return
