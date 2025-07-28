@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
-	"sync"
+	"runtime/debug"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -30,7 +30,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
@@ -59,57 +58,11 @@ const (
 	asyncFlushSemaphoreSize   = 4    // Capacity of semaphore to limit concurrent processAsyncFlushRequest executions
 )
 
-// Global sequencer for async flush requests to ensure appendExtentKey operations are executed in sequence
-var (
-	asyncFlushSequencer     uint64 = 0
-	asyncFlushSequencerLock sync.Mutex
-	pendingAsyncFlushMap    = make(map[uint64]*AsyncFlushRequest)
-	pendingAsyncFlushMutex  sync.RWMutex
-)
+// Note: asyncFlushSequencer is now per-streamer to avoid global lock contention
 
 // getNextAsyncFlushID returns the next sequential ID for async flush requests
-func getNextAsyncFlushID() uint64 {
-	asyncFlushSequencerLock.Lock()
-	defer asyncFlushSequencerLock.Unlock()
-	asyncFlushSequencer++
-	return asyncFlushSequencer
-}
-
-// addPendingAsyncFlush adds a request to the pending map
-func addPendingAsyncFlush(req *AsyncFlushRequest) {
-	pendingAsyncFlushMutex.Lock()
-	defer pendingAsyncFlushMutex.Unlock()
-	pendingAsyncFlushMap[req.id] = req
-}
-
-// removePendingAsyncFlush removes a request from the pending map
-func removePendingAsyncFlush(id uint64) {
-	pendingAsyncFlushMutex.Lock()
-	defer pendingAsyncFlushMutex.Unlock()
-	delete(pendingAsyncFlushMap, id)
-}
-
-// getNextPendingAsyncFlush returns the next pending request that should be processed
-func getNextPendingAsyncFlush() *AsyncFlushRequest {
-	pendingAsyncFlushMutex.RLock()
-	defer pendingAsyncFlushMutex.RUnlock()
-
-	if len(pendingAsyncFlushMap) == 0 {
-		return nil
-	}
-
-	// Find the request with the smallest ID (oldest)
-	var oldestID uint64 = ^uint64(0) // Max uint64
-	var oldestReq *AsyncFlushRequest
-
-	for id, req := range pendingAsyncFlushMap {
-		if id < oldestID {
-			oldestID = id
-			oldestReq = req
-		}
-	}
-
-	return oldestReq
+func (s *Streamer) getNextAsyncFlushID() uint64 {
+	return atomic.AddUint64(&s.asyncFlushSequencer, 1)
 }
 
 // AsyncFlushRequest represents an asynchronous flush request
@@ -396,7 +349,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 		request.err = s.truncate(request.size, request.fullPath)
 		request.done <- struct{}{}
 	case *FlushRequest:
-		request.err = s.flush()
+		request.err = s.flush(true)
 		request.done <- struct{}{}
 	case *ReleaseRequest:
 		request.err = s.release()
@@ -446,7 +399,7 @@ begin:
 		if req.ExtentKey == nil {
 			continue
 		}
-		err = s.flush()
+		err = s.flush(true)
 		if err != nil {
 			return
 		}
@@ -548,7 +501,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 	)
 
 	log.LogDebugf("action[doDirectWriteByAppend] inode %v enter in req %v", s.inode, req)
-	err = s.flush()
+	err = s.flush(true)
 	if err != nil {
 		return
 	}
@@ -713,7 +666,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uint32) (total int, err error) {
 	var dp *wrapper.DataPartition
 
-	err = s.flush()
+	err = s.flush(true)
 	if err != nil {
 		return
 	}
@@ -837,7 +790,8 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uin
 func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int, isMigration bool) (isLastEkVerNotEqual bool) {
 	storeMode := s.GetStoreMod(offset, size)
 	getEndEkFunc := func() *proto.ExtentKey {
-		if ek := s.extents.GetEndForAppendWrite(uint64(offset), s.verSeq, false); ek != nil && !storage.IsTinyExtent(ek.ExtentId) {
+		if ek := s.extents.GetEndForAppendWrite(uint64(offset), s.verSeq, false); ek != nil &&
+			!storage.IsTinyExtent(ek.ExtentId) && ek.PartitionId != 0 {
 			return ek
 		}
 		return nil
@@ -968,18 +922,20 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 			}
 			s.handler = nil
 		}
-		log.LogDebugf("doWriteAppendEx: start write protection, handler(%v)", s.handler)
 		s.startWriteProtection(s.handler)
 		defer s.endWriteProtection()
 
 		for i := 0; i < MaxNewHandlerRetry; i++ {
 			// Start write protection for this handler
-			log.LogDebugf("doWriteAppendEx: start write protection, handler(%v)", s.handler)
 			if s.handler == nil {
 				s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass, isMigration)
+				log.LogDebugf("doWriteAppendEx: ino(%v) offset(%v) size(%v), new handler(%v)",
+					s.inode, offset, size, s.handler)
 				s.dirty = false
 			} else if s.handler.storeMode != storeMode {
 				// store mode changed, so close open handler and start a new one
+				log.LogDebugf("doWriteAppendEx: ino(%v) offset(%v) size(%v), closeOpenHandler handler(%v)",
+					s.inode, offset, size, s.handler)
 				err = s.closeOpenHandler(true) // Use synchronous close
 				if err != nil {
 					log.LogErrorf("doWriteAppendEx: closeOpenHandler failed during store mode change, ino(%v) err(%v)", s.inode, err)
@@ -1051,10 +1007,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 		return
 	}
 
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("Streamer_extents_Append", err, bgTime, 1)
-	}()
 	// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
 	_ = s.extents.Append(ek, false)
 	total = size
@@ -1062,7 +1014,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 	return
 }
 
-func (s *Streamer) flush() (err error) {
+func (s *Streamer) flush(wait bool) (err error) {
 	for {
 		element := s.dirtylist.Get()
 		if element == nil {
@@ -1083,7 +1035,7 @@ func (s *Streamer) flush() (err error) {
 		}
 
 		if err != nil {
-			log.LogErrorf("Streamer flush failed: eh(%v)", eh)
+			log.LogErrorf("Streamer flush failed: eh(%v) err(%v)", eh, err)
 			return
 		}
 		eh.stream.dirtylist.Remove(element)
@@ -1096,6 +1048,10 @@ func (s *Streamer) flush() (err error) {
 			log.LogDebugf("Streamer flush handler cleaned up: eh(%v)", eh)
 		}
 		log.LogDebugf("Streamer flush end: eh(%v)", eh)
+	}
+	if wait {
+		timeout := 10 * time.Second
+		s.waitForAllAsyncFlushRequests(timeout)
 	}
 	return
 }
@@ -1183,10 +1139,6 @@ func (s *Streamer) traverse() (err error) {
 // note: The invocation of the closeOpenHandler function on an inode is serialized
 // close open handler, then flush data
 func (s *Streamer) closeOpenHandler(wait bool) (err error) {
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("Streamer_closeOpenHandler", err, bgTime, 1)
-	}()
 	log.LogDebugf("closeOpenHandler: streamer(%v)", s)
 	defer func() {
 		log.LogDebugf("closeOpenHandler: close success, stream(%v)", s)
@@ -1211,7 +1163,7 @@ func (s *Streamer) closeOpenHandler(wait bool) (err error) {
 			log.LogDebugf("closeOpenHandler: using async flush for handler(%v) with inflight(%v)", handler, atomic.LoadInt32(&handler.inflight))
 
 			// Check if this handler already has an active async flush
-			if isHandlerFlushActive(handler.id) {
+			if s.isHandlerFlushActive(handler.id) {
 				log.LogDebugf("closeOpenHandler: handler(%v) already has active async flush, skipping", handler)
 				return nil
 			}
@@ -1229,11 +1181,11 @@ func (s *Streamer) closeOpenHandler(wait bool) (err error) {
 			// Don't set handler to nil here - let async flush complete first
 		} else {
 			// Check if this handler is protected by a write operation
-			if s.isHandlerProtected(handler) {
-				log.LogDebugf("closeOpenHandler: handler(%v) is protected by write operation, skipping", handler)
+			if s.isHandlerProtected(handler) && !wait {
+				log.LogDebugf("closeOpenHandler: handler(%v) is protected by write operation, skipping (%v)", handler, string(debug.Stack()))
 				return nil
 			}
-
+			log.LogDebugf("closeOpenHandler: try flush (%v)", handler)
 			err = handler.flush()
 			cleanFunc()
 			// For synchronous operations, it's safe to set handler to nil immediately
@@ -1242,7 +1194,7 @@ func (s *Streamer) closeOpenHandler(wait bool) (err error) {
 
 	}
 
-	err = s.flush()
+	err = s.flush(false)
 	if err != nil {
 		log.LogErrorf("closeOpenHandler: flush extent failed, err %s", err.Error())
 		return err
@@ -1281,16 +1233,27 @@ func (s *Streamer) evict() error {
 	}
 	s.client.streamerLock.Unlock()
 
-	// Clean up any pending async flush requests for this streamer
-	s.cleanupAsyncFlushForStreamer()
+	// Wait for all async flush operations to complete before closing channels
+	log.LogDebugf("evict: waiting for async flush operations to complete for streamer(%v)", s)
+	s.asyncFlushWg.Wait()
+	log.LogDebugf("evict: all async flush operations completed for streamer(%v)", s)
 
-	// Close async flush channels to signal cleanup
+	// Wait for all async flush requests to be processed
+	// Use a reasonable timeout to avoid hanging indefinitely
+	timeout := 30 * time.Second
+	if !s.waitForAllAsyncFlushRequests(timeout) {
+		log.LogWarnf("Async flush timeout during evict for streamer(%v), some requests may be lost", s.inode)
+	}
+
+	// Signal async flush operations to stop accepting new requests
 	select {
 	case <-s.asyncFlushDone:
 		// Channel already closed, do nothing
 	default:
 		close(s.asyncFlushDone)
 	}
+
+	// Now safe to close the async flush channel
 	select {
 	case <-s.asyncFlushCh:
 		// Channel already closed, do nothing
@@ -1302,8 +1265,33 @@ func (s *Streamer) evict() error {
 }
 
 func (s *Streamer) abort() {
-	// Clean up any pending async flush requests for this streamer
-	s.cleanupAsyncFlushForStreamer()
+	// Wait for all async flush operations to complete
+	log.LogDebugf("abort: waiting for async flush operations to complete for streamer(%v)", s)
+	s.asyncFlushWg.Wait()
+	log.LogDebugf("abort: all async flush operations completed for streamer(%v)", s)
+
+	// Wait for all async flush requests to be processed
+	// Use a reasonable timeout to avoid hanging indefinitely
+	timeout := 30 * time.Second
+	if !s.waitForAllAsyncFlushRequests(timeout) {
+		log.LogWarnf("Async flush timeout during abort for streamer(%v), some requests may be lost", s.inode)
+	}
+
+	// Signal async flush operations to stop accepting new requests
+	select {
+	case <-s.asyncFlushDone:
+		// Channel already closed, do nothing
+	default:
+		close(s.asyncFlushDone)
+	}
+
+	// Now safe to close the async flush channel
+	select {
+	case <-s.asyncFlushCh:
+		// Channel already closed, do nothing
+	default:
+		close(s.asyncFlushCh)
+	}
 
 	for {
 		element := s.dirtylist.Get()

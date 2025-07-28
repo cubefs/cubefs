@@ -20,6 +20,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -227,11 +228,6 @@ func (eh *ExtentHandler) String() string {
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
 	var total, write int
-
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("ExtentHandler_Write", err, bgTime, 1)
-	}()
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
 		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
@@ -507,7 +503,7 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 }
 
 func (eh *ExtentHandler) flush() (err error) {
-	log.LogDebugf("ExtentHandler flush begin: eh(%s)", eh.String())
+	log.LogDebugf("ExtentHandler flush begin: eh(%s) trace(%v)", eh.String(), string(debug.Stack()))
 	eh.flushPacket()
 	err = eh.waitForFlush()
 	if err != nil {
@@ -842,10 +838,6 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 
 // Handler lock is held by the caller.
 func (eh *ExtentHandler) flushPacket() {
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("ExtentHandler_flushPacket", nil, bgTime, 1)
-	}()
 	if eh.packet == nil {
 		log.LogDebugf("ExtentHandler flushPacket nil, return: eh(%v)", eh)
 		return

@@ -16,6 +16,7 @@ package meta
 
 import (
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -1252,7 +1253,13 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		err = errors.New(packet.GetResultMsg())
 		if status != StatusConflictExtents {
 			log.LogErrorf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		} else {
+			log.LogErrorf("appendExtentKey: Conflict packet(%v) mp(%v) req(%v) result(%v),trace(%v)",
+				packet, mp, *req, packet.GetResultMsg(), string(debug.Stack()))
 		}
+	} else {
+		log.LogDebugf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v) trace(%v)",
+			packet, mp, *req, packet.GetResultMsg(), string(debug.Stack()))
 	}
 	return status, err
 }
