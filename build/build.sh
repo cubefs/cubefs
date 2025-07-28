@@ -555,6 +555,22 @@ build_bcache(){
     popd >/dev/null
 }
 
+build_blobstoresdk() {
+    case $(uname) in
+        Linux)
+            TargetFile=${1:-${BuildBinPath}/libblobstore.so}
+            ;;
+        *)
+            echo "Unsupported platform"
+            exit 0
+            ;;
+    esac
+    pushd $SrcPath > /dev/null
+    echo -n "build libblobstore: libblobstore.so       "
+    CGO_ENABLED=1 go build $MODFLAGS -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -buildmode c-shared -o ${TargetFile} ${SrcPath}/blobstore/libsdk/*.go && echo "success" || echo "failed"
+    popd > /dev/null
+}
+
 clean() {
     $RM -rf ${BuildBinPath}
 }
@@ -665,6 +681,9 @@ case "$cmd" in
         ;;
     "bcache")
         build_bcache
+        ;;
+    "blobstoresdk")
+        build_blobstoresdk
         ;;
     *)
         ;;
