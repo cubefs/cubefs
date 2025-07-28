@@ -23,13 +23,13 @@ import (
 func TestUtilBytespool(t *testing.T) {
 	run := func(size int) {
 		buff := bytespool.Alloc(size)
-		if len(buff) != size {
+		if len(buff) != size || cap(buff) != size {
 			t.Fatal(size)
 		}
 		bytespool.Zero(buff)
 		bytespool.Free(buff)
 		bp := bytespool.AllocPointer(size)
-		if len(*bp) != size {
+		if len(*bp) != size || cap(*bp) != size {
 			t.Fatal(size)
 		}
 		bytespool.FreePointer(bp)
@@ -54,6 +54,7 @@ func TestUtilBytespool(t *testing.T) {
 	for bits := range [27]struct{}{} {
 		run(1 << bits)
 	}
+	bytespool.Free(nil)
 	bytespool.FreePointer(nil)
 }
 

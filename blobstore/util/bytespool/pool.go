@@ -47,7 +47,7 @@ func init() {
 // GetPool returns a sync.Pool that generates bytes slice with the size.
 // Return nil if no such pool exists.
 func GetPool(size int) *sync.Pool {
-	if size < 0 || size > maxSize {
+	if size <= 0 || size > maxSize {
 		return nil
 	}
 	bits := msb(size)
