@@ -9,20 +9,14 @@ import (
 )
 
 func TestAsyncFlushSequencer(t *testing.T) {
-	// Reset the global sequencer for testing
-	asyncFlushSequencerLock.Lock()
-	asyncFlushSequencer = 0
-	asyncFlushSequencerLock.Unlock()
-
-	// Clear pending map
-	pendingAsyncFlushMutex.Lock()
-	pendingAsyncFlushMap = make(map[uint64]*AsyncFlushRequest)
-	pendingAsyncFlushMutex.Unlock()
+	// Create a test streamer to test local sequencer
+	client := &ExtentClient{}
+	streamer := NewStreamer(client, 1, true, false, "/test")
 
 	// Test ID generation
-	id1 := getNextAsyncFlushID()
-	id2 := getNextAsyncFlushID()
-	id3 := getNextAsyncFlushID()
+	id1 := streamer.getNextAsyncFlushID()
+	id2 := streamer.getNextAsyncFlushID()
+	id3 := streamer.getNextAsyncFlushID()
 
 	assert.Equal(t, uint64(1), id1)
 	assert.Equal(t, uint64(2), id2)
@@ -33,38 +27,32 @@ func TestAsyncFlushSequencer(t *testing.T) {
 	req2 := &AsyncFlushRequest{id: id2}
 	req3 := &AsyncFlushRequest{id: id3}
 
-	addPendingAsyncFlush(req1)
-	addPendingAsyncFlush(req2)
-	addPendingAsyncFlush(req3)
+	streamer.addPendingAsyncFlush(1, req1)
+	streamer.addPendingAsyncFlush(2, req2)
+	streamer.addPendingAsyncFlush(3, req3)
 
 	// Test getNextPendingAsyncFlush returns the oldest request
-	next := getNextPendingAsyncFlush()
-	assert.Equal(t, id1, next.id)
+	next := streamer.getNextPendingAsyncFlush()
+	assert.Equal(t, uint64(1), next.handler.id)
 
 	// Test removal
-	removePendingAsyncFlush(id1)
-	next = getNextPendingAsyncFlush()
-	assert.Equal(t, id2, next.id)
+	streamer.removePendingAsyncFlush(1)
+	next = streamer.getNextPendingAsyncFlush()
+	assert.Equal(t, uint64(2), next.handler.id)
 
-	removePendingAsyncFlush(id2)
-	next = getNextPendingAsyncFlush()
-	assert.Equal(t, id3, next.id)
+	streamer.removePendingAsyncFlush(2)
+	next = streamer.getNextPendingAsyncFlush()
+	assert.Equal(t, uint64(3), next.handler.id)
 
-	removePendingAsyncFlush(id3)
-	next = getNextPendingAsyncFlush()
+	streamer.removePendingAsyncFlush(3)
+	next = streamer.getNextPendingAsyncFlush()
 	assert.Nil(t, next)
 }
 
 func TestAsyncFlushSequencerConcurrency(t *testing.T) {
-	// Reset the global sequencer for testing
-	asyncFlushSequencerLock.Lock()
-	asyncFlushSequencer = 0
-	asyncFlushSequencerLock.Unlock()
-
-	// Clear pending map
-	pendingAsyncFlushMutex.Lock()
-	pendingAsyncFlushMap = make(map[uint64]*AsyncFlushRequest)
-	pendingAsyncFlushMutex.Unlock()
+	// Create a test streamer to test local sequencer
+	client := &ExtentClient{}
+	streamer := NewStreamer(client, 1, true, false, "/test")
 
 	// Test concurrent ID generation
 	var wg sync.WaitGroup
@@ -74,7 +62,7 @@ func TestAsyncFlushSequencerConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			ids[index] = getNextAsyncFlushID()
+			ids[index] = streamer.getNextAsyncFlushID()
 		}(i)
 	}
 
@@ -90,41 +78,38 @@ func TestAsyncFlushSequencerConcurrency(t *testing.T) {
 }
 
 func TestAsyncFlushSequencerStats(t *testing.T) {
-	// Reset the global sequencer for testing
-	asyncFlushSequencerLock.Lock()
-	asyncFlushSequencer = 0
-	asyncFlushSequencerLock.Unlock()
+	// Create a test streamer to test local sequencer
+	client := &ExtentClient{}
+	streamer := NewStreamer(client, 1, true, false, "/test")
 
-	// Clear pending map
-	pendingAsyncFlushMutex.Lock()
-	pendingAsyncFlushMap = make(map[uint64]*AsyncFlushRequest)
-	pendingAsyncFlushMutex.Unlock()
+	// Test stats with no requests
+	stats := streamer.getAsyncFlushStats()
+	assert.Equal(t, uint64(0), stats["current_sequencer_id"])
+	assert.Equal(t, 0, stats["pending_requests_count"])
 
-	// Add some test requests using proper ID generation
-	id1 := getNextAsyncFlushID()
-	id2 := getNextAsyncFlushID()
-	id3 := getNextAsyncFlushID()
+	// Add some requests
+	id1 := streamer.getNextAsyncFlushID()
+	id2 := streamer.getNextAsyncFlushID()
+	id3 := streamer.getNextAsyncFlushID()
 
 	req1 := &AsyncFlushRequest{id: id1}
 	req2 := &AsyncFlushRequest{id: id2}
 	req3 := &AsyncFlushRequest{id: id3}
 
-	addPendingAsyncFlush(req1)
-	addPendingAsyncFlush(req2)
-	addPendingAsyncFlush(req3)
+	streamer.addPendingAsyncFlush(1, req1)
+	streamer.addPendingAsyncFlush(2, req2)
+	streamer.addPendingAsyncFlush(3, req3)
 
 	// Test statistics
-	stats := getAsyncFlushSequencerStats()
+	stats = streamer.getAsyncFlushStats()
 
 	assert.Equal(t, uint64(3), stats["current_sequencer_id"])
 	assert.Equal(t, 3, stats["pending_requests_count"])
-	assert.Equal(t, uint64(1), stats["oldest_request_id"])
-	assert.Equal(t, uint64(3), stats["newest_request_id"])
 
 	// Clean up
-	removePendingAsyncFlush(id1)
-	removePendingAsyncFlush(id2)
-	removePendingAsyncFlush(id3)
+	streamer.removePendingAsyncFlush(1)
+	streamer.removePendingAsyncFlush(2)
+	streamer.removePendingAsyncFlush(3)
 }
 
 func TestChannelCloseSafety(t *testing.T) {
@@ -157,38 +142,40 @@ func TestChannelCloseSafety(t *testing.T) {
 
 func TestDuplicateHandlerFlushPrevention(t *testing.T) {
 	// Test the active handler tracking functions directly
+	client := &ExtentClient{}
+	streamer := NewStreamer(client, 1, true, false, "/test")
 
 	// Initially no active handlers
-	assert.False(t, isHandlerFlushActive(123))
+	assert.False(t, streamer.isHandlerFlushActive(123))
 
 	// Create a mock request
 	req := &AsyncFlushRequest{
 		id: 1,
 	}
 
-	// Add handler to active map
-	addActiveHandlerFlush(123, req)
-	assert.True(t, isHandlerFlushActive(123))
+	// Add handler to pending map
+	streamer.addPendingAsyncFlush(123, req)
+	assert.True(t, streamer.isHandlerFlushActive(123))
 
 	// Get the active request
-	retrievedReq := getActiveHandlerFlush(123)
+	retrievedReq := streamer.getActiveHandlerFlush(123)
 	assert.Equal(t, req, retrievedReq)
 
-	// Remove handler from active map
-	removeActiveHandlerFlush(123)
-	assert.False(t, isHandlerFlushActive(123))
+	// Remove handler from pending map
+	streamer.removePendingAsyncFlush(123)
+	assert.False(t, streamer.isHandlerFlushActive(123))
 
 	// Test with multiple handlers
-	addActiveHandlerFlush(456, req)
-	addActiveHandlerFlush(789, req)
-	assert.True(t, isHandlerFlushActive(456))
-	assert.True(t, isHandlerFlushActive(789))
+	streamer.addPendingAsyncFlush(456, req)
+	streamer.addPendingAsyncFlush(789, req)
+	assert.True(t, streamer.isHandlerFlushActive(456))
+	assert.True(t, streamer.isHandlerFlushActive(789))
 
 	// Clean up
-	removeActiveHandlerFlush(456)
-	removeActiveHandlerFlush(789)
-	assert.False(t, isHandlerFlushActive(456))
-	assert.False(t, isHandlerFlushActive(789))
+	streamer.removePendingAsyncFlush(456)
+	streamer.removePendingAsyncFlush(789)
+	assert.False(t, streamer.isHandlerFlushActive(456))
+	assert.False(t, streamer.isHandlerFlushActive(789))
 }
 
 func TestAsyncFlushRaceConditionFix(t *testing.T) {
