@@ -28,7 +28,6 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/storage"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -36,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 const (
@@ -86,7 +84,7 @@ type chunk struct {
 	lastModifyTime int64
 
 	// io schedulers
-	ioPools map[qos.IOTypeRW]taskpool.IoPool
+	ioPools map[bnapi.IOType]base.IoPool
 }
 
 type FileInfo struct {
@@ -96,7 +94,7 @@ type FileInfo struct {
 	Size  uint64 `json:"size"`  // Chunk File Size ( file logic size)
 }
 
-func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioPools map[qos.IOTypeRW]taskpool.IoPool, opts ...core.OptionFunc) (
+func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioPools map[bnapi.IOType]base.IoPool, opts ...core.OptionFunc) (
 	cs *chunk, err error,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
@@ -158,7 +156,7 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioP
 	return cs, err
 }
 
-func NewChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioPools map[qos.IOTypeRW]taskpool.IoPool, opts ...core.OptionFunc) (
+func NewChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioPools map[bnapi.IOType]base.IoPool, opts ...core.OptionFunc) (
 	cs *Chunk, err error,
 ) {
 	c, err := newChunkStorage(ctx, dataPath, vm, ioPools, opts...)

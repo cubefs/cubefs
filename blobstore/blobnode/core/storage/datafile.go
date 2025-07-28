@@ -37,7 +37,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 // Chunkdata has a header (4k).
@@ -152,7 +151,7 @@ func (hdr *ChunkHeader) String() string {
 	return s
 }
 
-func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos, ioPools map[qos.IOTypeRW]taskpool.IoPool) (
+func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos, ioPools map[bnapi.IOType]bncomm.IoPool) (
 	cd *datafile, err error,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
@@ -262,7 +261,8 @@ func (cd *datafile) writeMeta() (err error) {
 	buf, _ := cd.header.Marshal()
 
 	// write to file
-	if _, err = cd.ef.WriteAt(buf, _chunkMagicOffset); err != nil {
+	ctx := bnapi.SetIoType(context.Background(), bnapi.WriteIO)
+	if _, err = cd.ef.WriteAtCtx(ctx, buf, _chunkMagicOffset); err != nil {
 		return
 	}
 
@@ -274,8 +274,9 @@ func (cd *datafile) writeMeta() (err error) {
 }
 
 func (cd *datafile) parseMeta() (err error) {
+	ctx := bnapi.SetIoType(context.Background(), bnapi.ReadIO)
 	buf := make([]byte, _chunkHeaderSize)
-	if _, err = cd.ef.ReadAt(buf[:_chunkHeaderSize], 0); err != nil {
+	if _, err = cd.ef.ReadAtCtx(ctx, buf[:_chunkHeaderSize], 0); err != nil {
 		return
 	}
 
@@ -484,7 +485,7 @@ func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 		buf := bytespool.Alloc(core.HeaderSize)
 		defer bytespool.Free(buf) // nolint: staticcheck
 
-		_, err = cd.ef.ReadAt(buf, shard.Offset)
+		_, err = cd.ef.ReadAtCtx(ctx, buf, shard.Offset)
 		span.AppendTrackLog("hdr.r", start, err) // cost time: read header
 
 		if err != nil {

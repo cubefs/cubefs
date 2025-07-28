@@ -23,32 +23,27 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
+	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/mergetask"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 func doBlobFileOp(t *testing.T, f *os.File, emptyIoPool bool) {
 	// create
 	syncWorker := mergetask.NewMergeTask(-1, func(interface{}) error { return nil })
 
-	ioPool := taskpool.NewReadPool(0, 0, taskpool.IoPoolMetricConf{})
-
-	if !emptyIoPool {
-		ctr := gomock.NewController(t)
-		ioPool = mocks.NewMockIoPool(ctr)
-		ioPool.(*mocks.MockIoPool).EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
-			args.TaskFn()
-		}).AnyTimes()
-		// ioPool.EXPECT().IsEmpty().Return(emptyIoPool).AnyTimes()
-	}
-
-	ioPools := map[qos.IOTypeRW]taskpool.IoPool{
-		qos.IOTypeRead:  ioPool,
-		qos.IOTypeWrite: ioPool,
-		qos.IOTypeDel:   ioPool,
+	ctr := gomock.NewController(t)
+	ioPool := mocks.NewMockIoPool(ctr)
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args base.IoPoolTaskArgs) {
+		args.TaskFn()
+	}).AnyTimes()
+	ioPools := map[bnapi.IOType]base.IoPool{
+		bnapi.ReadIO:       ioPool,
+		bnapi.WriteIO:      ioPool,
+		bnapi.DeleteIO:     ioPool,
+		bnapi.BackgroundIO: ioPool,
 	}
 
 	ef := blobFile{f, 1, syncWorker, nil, ioPools}
@@ -62,22 +57,10 @@ func doBlobFileOp(t *testing.T, f *os.File, emptyIoPool bool) {
 
 	data := []byte("test data")
 
-	// write
-	n, err := ef.WriteAt(data, 0)
-	require.NoError(t, err)
-	require.Equal(t, len(data), n)
-
-	// read
-	buf := make([]byte, len(data))
-	n, err = ef.ReadAt(buf, 0)
-	require.NoError(t, err)
-	require.Equal(t, len(data), n)
-
-	require.Equal(t, data, buf)
-
 	// WriteAtCtx
 	ctx, cancel := context.WithCancel(context.Background())
-	n, err = ef.WriteAtCtx(ctx, data, 0)
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
+	n, err := ef.WriteAtCtx(ctx, data, 0)
 	require.NoError(t, err)
 	require.Equal(t, len(data), n)
 
@@ -88,7 +71,8 @@ func doBlobFileOp(t *testing.T, f *os.File, emptyIoPool bool) {
 
 	// ReadAtCtx
 	ctx, cancel = context.WithCancel(context.Background())
-	buf = make([]byte, len(data))
+	ctx = bnapi.SetIoType(ctx, bnapi.ReadIO)
+	buf := make([]byte, len(data))
 	n, err = ef.ReadAtCtx(ctx, buf, 0)
 	require.NoError(t, err)
 	require.Equal(t, len(data), n)
@@ -182,11 +166,11 @@ func TestBlobFile_doTaskFnCtxCancel(t *testing.T) {
 
 	ctr := gomock.NewController(t)
 	ioPool := mocks.NewMockIoPool(ctr)
-	// ioPool.EXPECT().IsEmpty().Return(false).AnyTimes()
-	ioPools := map[qos.IOTypeRW]taskpool.IoPool{
-		qos.IOTypeRead:  ioPool,
-		qos.IOTypeWrite: ioPool,
-		qos.IOTypeDel:   ioPool,
+	ioPools := map[bnapi.IOType]base.IoPool{
+		bnapi.ReadIO:       ioPool,
+		bnapi.WriteIO:      ioPool,
+		bnapi.DeleteIO:     ioPool,
+		bnapi.BackgroundIO: ioPool,
 	}
 
 	ef := blobFile{f, 1, syncWorker, nil, ioPools}
@@ -201,25 +185,28 @@ func TestBlobFile_doTaskFnCtxCancel(t *testing.T) {
 
 	// WriteAtCtx
 	ctx, cancel := context.WithCancel(context.Background())
-	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args base.IoPoolTaskArgs) {
 		args.TaskFn()
 	})
 	n, err := ef.WriteAtCtx(ctx, data, 0)
 	require.NoError(t, err)
 	require.Equal(t, len(data), n)
 
-	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args base.IoPoolTaskArgs) {
 		cancel()
 		args.TaskFn()
 	})
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 	n, err = ef.WriteAtCtx(ctx, data, 0)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, n)
 
 	// ReadAtCtx
 	ctx, cancel = context.WithCancel(context.Background())
+	ctx = bnapi.SetIoType(ctx, bnapi.ReadIO)
 	buf := make([]byte, len(data))
-	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args base.IoPoolTaskArgs) {
 		args.TaskFn()
 	})
 	n, err = ef.ReadAtCtx(ctx, buf, 0)
@@ -227,11 +214,18 @@ func TestBlobFile_doTaskFnCtxCancel(t *testing.T) {
 	require.Equal(t, len(data), n)
 	require.Equal(t, data, buf)
 
-	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args base.IoPoolTaskArgs) {
 		cancel()
 		args.TaskFn()
 	})
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 	n, err = ef.ReadAtCtx(ctx, buf, 0)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, n)
+
+	require.Panics(t, func() {
+		ctx = context.Background()
+		ctx = bnapi.SetIoType(ctx, bnapi.IOTypeMax)
+		ef.ReadAtCtx(ctx, buf, 0)
+	})
 }

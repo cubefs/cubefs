@@ -48,7 +48,8 @@ const (
 	DefaultBatchReadHoleThreshold       = int64(256 * 1024)     // hole data in batch
 	defaultWriteThreadCnt               = 4
 	defaultReadThreadCnt                = 4
-	defaultDeleteThreadCnt              = 1
+	defaultDeleteThreadCnt              = 2
+	defaultBackgroundThreadCnt          = 2
 )
 
 // Config for disk
@@ -88,6 +89,7 @@ type RuntimeConfig struct {
 	WriteThreadCnt               int     `json:"write_thread_cnt"`
 	ReadThreadCnt                int     `json:"read_thread_cnt"`
 	DeleteThreadCnt              int     `json:"delete_thread_cnt"`
+	BackgroundThreadCnt          int     `json:"background_thread_cnt"`
 	EnableDeleteShardVerify      bool    `json:"enable_delete_shard_verify"`
 
 	DataQos qos.Config `json:"data_qos"`
@@ -156,6 +158,7 @@ func InitConfig(conf *Config) error {
 	defaulter.Equal(&conf.WriteThreadCnt, defaultWriteThreadCnt)
 	defaulter.Equal(&conf.ReadThreadCnt, defaultReadThreadCnt)
 	defaulter.Equal(&conf.DeleteThreadCnt, defaultDeleteThreadCnt)
+	defaulter.Equal(&conf.BackgroundThreadCnt, defaultBackgroundThreadCnt)
 
 	conf.DataQos.WriteChanQueCnt = int32(conf.WriteThreadCnt)
 	qos.InitAndFixQosConfig(&conf.DataQos)

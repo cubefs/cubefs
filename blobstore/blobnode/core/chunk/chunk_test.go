@@ -26,11 +26,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
@@ -39,21 +40,21 @@ import (
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/log"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 const (
 	defaultDiskTestDir = "NodeDiskTestDir"
 )
 
-func newIoPoolMock(t *testing.T) map[qos.IOTypeRW]taskpool.IoPool {
+func newIoPoolMock(t *testing.T) map[bnapi.IOType]base.IoPool {
 	ctr := gomock.NewController(t)
 	ioPool := mocks.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
-	return map[qos.IOTypeRW]taskpool.IoPool{
-		qos.IOTypeRead:  ioPool,
-		qos.IOTypeWrite: ioPool,
-		qos.IOTypeDel:   ioPool,
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args base.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
+	return map[bnapi.IOType]base.IoPool{
+		bnapi.ReadIO:       ioPool,
+		bnapi.WriteIO:      ioPool,
+		bnapi.DeleteIO:     ioPool,
+		bnapi.BackgroundIO: ioPool,
 	}
 }
 

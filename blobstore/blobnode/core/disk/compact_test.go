@@ -22,12 +22,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/chunk"
 	db2 "github.com/cubefs/cubefs/blobstore/blobnode/db"
@@ -35,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/log"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 func TestDiskStorage_StartCompact(t *testing.T) {
@@ -85,10 +84,11 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 	ctr := gomock.NewController(t)
 	ioPool := mocks.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any()).AnyTimes()
-	ioPools := map[qos.IOTypeRW]taskpool.IoPool{
-		qos.IOTypeRead:  ioPool,
-		qos.IOTypeWrite: ioPool,
-		qos.IOTypeDel:   ioPool,
+	ioPools := map[bnapi.IOType]base.IoPool{
+		bnapi.ReadIO:       ioPool,
+		bnapi.WriteIO:      ioPool,
+		bnapi.DeleteIO:     ioPool,
+		bnapi.BackgroundIO: ioPool,
 	}
 	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf

@@ -39,7 +39,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 const (
@@ -279,7 +278,7 @@ type DiskStorage struct {
 	LastUpdateAt int64
 
 	// io pools
-	ioPools map[qos.IOTypeRW]taskpool.IoPool
+	ioPools map[bnapi.IOType]bncom.IoPool
 }
 
 func (ds *DiskStorage) IsRegister() bool {
@@ -1042,18 +1041,15 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	}
 
 	// setting io pools
-	metricConf := taskpool.IoPoolMetricConf{
+	metricConf := bncom.IoPoolMetricConf{
 		ClusterID: uint32(conf.HostInfo.ClusterID),
-		IDC:       conf.HostInfo.IDC,
-		Rack:      conf.HostInfo.Rack,
 		Host:      conf.HostInfo.Host,
 		DiskID:    uint32(dm.DiskID),
-		Namespace: "blobstore",
-		Subsystem: "blobnode",
 	}
-	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, qos.MaxQueueDepth, metricConf)
-	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, qos.MaxQueueDepth, metricConf)
-	delPool := taskpool.NewDeletePool(conf.DeleteThreadCnt, qos.MaxQueueDepth, metricConf)
+	writePool := bncom.NewIOPool(conf.WriteThreadCnt, qos.MaxQueueDepth, bnapi.WriteIO.String(), metricConf)
+	readPool := bncom.NewIOPool(conf.ReadThreadCnt, qos.MaxQueueDepth, bnapi.ReadIO.String(), metricConf)
+	delPool := bncom.NewIOPool(conf.DeleteThreadCnt, qos.MaxQueueDepth, bnapi.DeleteIO.String(), metricConf)
+	backPool := bncom.NewIOPool(conf.BackgroundThreadCnt, qos.MaxQueueDepth, bnapi.BackgroundIO.String(), metricConf)
 
 	ds = &DiskStorage{
 		DiskID:           dm.DiskID,
@@ -1070,10 +1066,11 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		dataQos:          dataQos,
 		CreateAt:         dm.Ctime,
 		LastUpdateAt:     dm.Mtime,
-		ioPools: map[qos.IOTypeRW]taskpool.IoPool{
-			qos.IOTypeRead:  readPool,
-			qos.IOTypeWrite: writePool,
-			qos.IOTypeDel:   delPool,
+		ioPools: map[bnapi.IOType]bncom.IoPool{
+			bnapi.ReadIO:       readPool,
+			bnapi.WriteIO:      writePool,
+			bnapi.DeleteIO:     delPool,
+			bnapi.BackgroundIO: backPool,
 		},
 	}
 

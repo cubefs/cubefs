@@ -1,4 +1,4 @@
-package taskpool
+package base
 
 import (
 	"context"
@@ -16,16 +16,12 @@ func TestIoPoolSimple(t *testing.T) {
 	// normal
 	metricConf := IoPoolMetricConf{
 		ClusterID: 1,
-		IDC:       "idc",
-		Rack:      "rack",
 		Host:      "host",
 		DiskID:    101,
-		Namespace: "bs",
-		Subsystem: "bn",
 	}
 
-	writePool := NewWritePool(4, 16, metricConf)
-	readPool := NewReadPool(1, 16, metricConf)
+	writePool := NewIOPool(2, 16, "write", metricConf)
+	readPool := NewIOPool(1, 16, "read", metricConf)
 	defer writePool.Close()
 	defer readPool.Close()
 
@@ -43,7 +39,7 @@ func TestIoPoolSimple(t *testing.T) {
 	{
 		n := 0
 		ch := make(chan struct{}, 2)
-		closePool := NewReadPool(1, 2, metricConf)
+		closePool := NewIOPool(1, 2, "read", metricConf)
 		task := IoPoolTaskArgs{
 			BucketId: 1,
 			Tm:       time.Now(),
@@ -244,7 +240,7 @@ func TestIoPoolSimple(t *testing.T) {
 	}
 
 	// empty, not limit write
-	emptyPool := newCommonIoPool(0, 0, 0, IoPoolMetricConf{})
+	emptyPool := newCommonIoPool(0, 0, IoPoolMetricConf{})
 	require.True(t, emptyPool.notLimit())
 	defer emptyPool.Close()
 

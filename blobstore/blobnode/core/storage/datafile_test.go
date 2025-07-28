@@ -43,22 +43,22 @@ import (
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 const (
 	defaultDiskTestDir = "NodeDiskTestDir"
 )
 
-func newIoPoolMock(t *testing.T) map[qos.IOTypeRW]taskpool.IoPool {
+func newIoPoolMock(t *testing.T) map[bnapi.IOType]base.IoPool {
 	ctr := gomock.NewController(t)
 	ioPool := mocks.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args base.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
 
-	return map[qos.IOTypeRW]taskpool.IoPool{
-		qos.IOTypeRead:  ioPool,
-		qos.IOTypeWrite: ioPool,
-		qos.IOTypeDel:   ioPool,
+	return map[bnapi.IOType]base.IoPool{
+		bnapi.ReadIO:       ioPool,
+		bnapi.WriteIO:      ioPool,
+		bnapi.DeleteIO:     ioPool,
+		bnapi.BackgroundIO: ioPool,
 	}
 }
 
@@ -171,7 +171,7 @@ func TestChunkData_Write(t *testing.T) {
 
 	buf := bytespool.Alloc(core.HeaderSize)
 	defer bytespool.Free(buf) // nolint: staticcheck
-	_, err = cd.ef.ReadAt(buf, shard.Offset)
+	_, err = cd.ef.ReadAtCtx(ctx, buf, shard.Offset)
 	require.NoError(t, err)
 
 	shard2 := core.Shard{}
