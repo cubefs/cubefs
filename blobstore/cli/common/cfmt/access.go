@@ -55,7 +55,7 @@ func LocationF(loc *proto.Location) (vals []string) {
 		fmt.Sprintf("Crc        : %-12d (0x%x)", loc.Crc, loc.Crc),
 		fmt.Sprintf("ClusterID  : %d", loc.ClusterID),
 		fmt.Sprintf("CodeMode   : %-12d (%s)", loc.CodeMode, loc.CodeMode.String()),
-		fmt.Sprintf("Size_      : %-12d (%s)", loc.Size_, humanize.IBytes(loc.Size_)),
+		fmt.Sprintf("Size       : %-12d (%s)", loc.Size_, humanize.IBytes(loc.Size_)),
 		fmt.Sprintf("SliceSize  : %-12d (%s)", loc.SliceSize, humanize.IBytes(uint64(loc.SliceSize))),
 		fmt.Sprintf("Slices: (%d) [", len(loc.Slices)),
 	}...)

@@ -55,7 +55,7 @@ func addCmdDisk(cmd *grumble.Command) {
 	})
 
 	command.AddCommand(&grumble.Command{
-		Name: "listDisk",
+		Name: "list",
 		Help: "show disks",
 		Run:  cmdListDisks,
 		Flags: func(f *grumble.Flags) {
@@ -63,14 +63,18 @@ func addCmdDisk(cmd *grumble.Command) {
 			flags.VerboseRegister(f)
 			clusterFlags(f)
 
+			f.StringL("idc", "", "list disk idc")
+			f.StringL("rack", "", "list disk rack")
+			f.StringL("host", "", "list disk host")
 			f.UintL("status", 0, "list disk status")
 			f.Int64L("marker", 0, "list disk marker")
 			f.IntL("count", 0, "list disk count")
+			f.BoolL("next", false, "show next page")
 		},
 	})
 
 	command.AddCommand(&grumble.Command{
-		Name: "updateDisk",
+		Name: "update",
 		Help: "update disk info in db",
 		Run:  cmdUpdateDisk,
 		Args: func(a *grumble.Args) {
@@ -146,6 +150,9 @@ func cmdListDisks(c *grumble.Context) error {
 	cmClient := newCMClient(c.Flags)
 
 	listOptionArgs := &clustermgr.ListOptionArgs{
+		Idc:    c.Flags.String("idc"),
+		Rack:   c.Flags.String("rack"),
+		Host:   c.Flags.String("host"),
 		Status: proto.DiskStatus(c.Flags.Uint("status")),
 		Marker: proto.DiskID(c.Flags.Int64("marker")),
 		Count:  c.Flags.Int("count"),
@@ -153,6 +160,7 @@ func cmdListDisks(c *grumble.Context) error {
 
 	verbose := config.Verbose() || flags.Verbose(c.Flags)
 	vv := flags.Vverbose(c.Flags)
+	autoNext := c.Flags.Bool("next")
 	next := true
 	num := 0
 	ac := common.NewAlternateColor(3)
@@ -171,8 +179,10 @@ func cmdListDisks(c *grumble.Context) error {
 		if disks.Marker <= proto.InvalidDiskID || len(disks.Disks) == 0 {
 			break
 		}
-		fmt.Println()
-		next = common.Confirm("list next page?")
+		if !autoNext {
+			fmt.Println()
+			next = common.Confirm("list next page?")
+		}
 	}
 	return nil
 }

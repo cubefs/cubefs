@@ -72,8 +72,8 @@ func DiskHeartBeatInfoF(info *clustermgr.DiskHeartBeatInfo) []string {
 		return nilStrings[:]
 	}
 	return []string{
-		fmt.Sprintf("DiskID: %-12d | MaxN: %-8d | UsedN: %-8d | FreeN: %-8d",
-			info.DiskID, info.MaxChunkCnt, info.UsedChunkCnt, info.FreeChunkCnt),
+		fmt.Sprintf("DiskID: %-12d | MaxN: %-8d | UsedN: %-8d | FreeN: %-8d | OversoldFreeN: %-8d",
+			info.DiskID, info.MaxChunkCnt, info.UsedChunkCnt, info.FreeChunkCnt, info.OversoldFreeChunkCnt),
 		fmt.Sprintf("Size  : %-24s | Used: %-24s | Free: %-24s",
 			humanIBytes(info.Size), humanIBytes(info.Used), humanIBytes(info.Free)),
 	}
@@ -115,8 +115,8 @@ func DiskInfoFV(info *clustermgr.BlobNodeDiskInfo) []string {
 		fmt.Sprint("DiskID   : ", info.DiskID),
 		fmt.Sprint("Readonly : ", info.Readonly),
 		fmt.Sprintf("Status   : %s(%d) ", info.Status, info.Status),
-		fmt.Sprintf("Chunk    : MaxN: %-18d | UsedN: %-23d | FreeN: %-24d",
-			info.MaxChunkCnt, info.UsedChunkCnt, info.FreeChunkCnt),
+		fmt.Sprintf("Chunk    : MaxN: %-8d | UsedN: %-8d | FreeN: %-8d | OversoldFreeN: %-8d",
+			info.MaxChunkCnt, info.UsedChunkCnt, info.FreeChunkCnt, info.OversoldFreeChunkCnt),
 		fmt.Sprintf("Size     : %-24s | Used: %-24s | Free: %-24s",
 			humanIBytes(info.Size), humanIBytes(info.Used), humanIBytes(info.Free)),
 		fmt.Sprint("ClusterID: ", info.ClusterID),

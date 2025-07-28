@@ -56,6 +56,8 @@ func TestDiskHeartBeatInfo(t *testing.T) {
 		MaxChunkCnt:  9999,
 		FreeChunkCnt: 880,
 		UsedChunkCnt: 82,
+
+		OversoldFreeChunkCnt: 11,
 	}
 	printLine()
 	for _, line := range cfmt.DiskHeartBeatInfoF(&val) {
@@ -89,6 +91,8 @@ func TestDiskInfo(t *testing.T) {
 			MaxChunkCnt:  9999,
 			FreeChunkCnt: 880,
 			UsedChunkCnt: 82,
+
+			OversoldFreeChunkCnt: 11,
 		},
 	}
 	printLine()

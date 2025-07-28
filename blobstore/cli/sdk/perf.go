@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"sync/atomic"
@@ -337,7 +336,7 @@ func getPerfPutArg(c *grumble.Context) (int, int, int, int, int, string, string,
 	if len(raw) > 0 {
 		data = []byte(raw)
 	} else {
-		data, err = ioutil.ReadFile(filePath)
+		data, err = os.ReadFile(filePath)
 		if err != nil {
 			fmt.Println("----Error reading file: ", err)
 			return 0, 0, 0, 0, 0, "", "", nil, err
