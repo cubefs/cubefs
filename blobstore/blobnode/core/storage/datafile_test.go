@@ -120,6 +120,7 @@ func TestChunkData_Write(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	chunkname := clustermgr.NewChunkID(0).String()
 
@@ -405,6 +406,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	chunkname := clustermgr.NewChunkID(0).String()
 
@@ -495,6 +497,7 @@ func TestChunkData_ConcurrencyWriteRead(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	chunkname := clustermgr.NewChunkID(0).String()
 
@@ -609,6 +612,8 @@ func TestChunkData_BatchRead(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
+
 	chunkname := clustermgr.NewChunkID(0).String()
 	chunkname = filepath.Join(testDir, chunkname)
 	log.Info(chunkname)
@@ -798,6 +803,7 @@ func TestChunkData_ReadWrite(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	chunkname := clustermgr.NewChunkID(0).String()
 
@@ -874,6 +880,7 @@ func TestChunkData_Delete(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	chunkname := clustermgr.NewChunkID(0).String()
 
@@ -907,6 +914,7 @@ func TestChunkData_Delete(t *testing.T) {
 	}
 
 	// write data, offset:5267456
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 	err = cd.Write(ctx, shard)
 	require.NoError(t, err)
 
@@ -914,6 +922,7 @@ func TestChunkData_Delete(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
+	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
 	shard.Size = uint32(len(shardData) + 1)
 	err = cd.Delete(ctx, shard)
 	require.Error(t, err)
@@ -951,6 +960,7 @@ func TestChunkData_Delete(t *testing.T) {
 
 	require.Equal(t, len(shards), concurrency)
 
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 	retCh := make(chan error, concurrency)
 	for i := 0; i < concurrency; i++ {
 		go func(i int, shard *core.Shard) {
@@ -988,6 +998,7 @@ func TestChunkData_Delete(t *testing.T) {
 	statBefore, err := cd.ef.SysStat()
 	require.NoError(t, err)
 
+	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
 	for i := 0; i < concurrency; i++ {
 		err = cd.Delete(ctx, shards[i])
 		require.NoError(t, err)
@@ -1008,6 +1019,7 @@ func TestChunkData_Destroy(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	chunkname := clustermgr.NewChunkID(0).String()
 
@@ -1054,6 +1066,7 @@ func TestParseMeta(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	chunkname := clustermgr.NewChunkID(0).String()
 
@@ -1145,6 +1158,8 @@ func TestChunkData_WriteReadCancel(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
+
 	chunkname := clustermgr.NewChunkID(0).String()
 	chunkname = filepath.Join(testDir, chunkname)
 	log.Info(chunkname)
@@ -1193,7 +1208,9 @@ func TestChunkData_WriteReadCancel(t *testing.T) {
 	require.Equal(t, int32(cd.wOff), int32(8192))
 
 	// fail, ctx cancel, before enqueue
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx = context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
+	ctx, cancel := context.WithCancel(ctx)
 	shard2 := &core.Shard{
 		Bid:  6,
 		Vuid: 10,
@@ -1210,7 +1227,9 @@ func TestChunkData_WriteReadCancel(t *testing.T) {
 	require.NotNil(t, err)
 
 	// fail, ctx cancel, after dequeue
-	ctx, cancel = context.WithCancel(context.Background())
+	ctx = context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
+	ctx, cancel = context.WithCancel(ctx)
 	shard2.Body = bytes.NewBuffer(sharddata)
 
 	cd.ef.(*bnmock.MockBlobFile).EXPECT().WriteAtCtx(ctx, a, a).DoAndReturn(func(ctx context.Context, b []byte, off int64) (n int, err error) {
@@ -1229,7 +1248,9 @@ func TestChunkData_WriteReadCancel(t *testing.T) {
 	require.ErrorIs(t, err, bloberr.ErrIOCtxCancel)
 
 	// read fail, cancel
-	ctx, cancel = context.WithCancel(context.Background())
+	ctx = context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.ReadIO)
+	ctx, cancel = context.WithCancel(ctx)
 	readBuf := bytes.NewBuffer(nil)
 	shard.Writer = readBuf
 

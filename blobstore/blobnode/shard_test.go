@@ -905,7 +905,7 @@ func TestShardRangeGet(t *testing.T) {
 	require.Error(t, err)
 
 	args1.DiskID = diskID
-	args1.Type = bnapi.IOTypeOldMax
+	args1.Type = bnapi.IOTypeMax
 	_, _, err = client.GetShard(ctx, host, &args1)
 	require.Error(t, err)
 }

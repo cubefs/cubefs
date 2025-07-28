@@ -33,7 +33,7 @@ func (q mockWriteCtx) WriteAtCtx(ctx context.Context, p []byte, off int64) (n in
 
 func TestNewQosManager(t *testing.T) {
 	ctx := context.Background()
-	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	{
 		conf := Config{ReadQueueDepth: 1}
@@ -108,7 +108,7 @@ func TestNewQosManager(t *testing.T) {
 		ok = q.TryAcquireIO(ctx, 1, IOTypeWrite)
 		require.True(t, ok)
 		defer q.ReleaseIO(1, IOTypeWrite)
-		writer := qos.Writer(ctx, bnapi.NormalIO, mockW)
+		writer := qos.Writer(ctx, bnapi.WriteIO, mockW)
 		data := []byte(ss)
 		n, err := writer.Write(data)
 		require.Equal(t, len(ss), n)
@@ -122,49 +122,12 @@ func TestNewQosManager(t *testing.T) {
 	}
 
 	{
-		// read at
-		ok = q.TryAcquireIO(ctx, 1, IOTypeRead)
-		require.True(t, ok)
-		defer q.ReleaseIO(1, IOTypeRead)
-		rt := qos.ReaderAt(ctx, bnapi.NormalIO, f)
-		buf := make([]byte, len(ss)) // size 8
-		_, err = rt.ReadAt(buf, 0)
-		require.NoError(t, err)
-
-		rt = qos.ReaderAt(ctx, bnapi.BackgroundIO, f)
-		_, err = rt.ReadAt(buf, int64(len(ss)))
-		require.NoError(t, err)
-
-		ctx = bnapi.SetIoType(ctx, bnapi.IOTypeMax)
-		require.Panics(t, func() {
-			rt = qos.ReaderAt(ctx, bnapi.IOTypeMax, f)
-		})
-		ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
-	}
-
-	{
-		// read
-		wf, err := os.CreateTemp(os.TempDir(), "TestQosReader")
-		require.NoError(t, err)
-		defer os.Remove(wf.Name())
-		defer wf.Close()
-
-		r := qos.Reader(ctx, bnapi.NormalIO, f)
-		_, err = io.Copy(wf, r)
-		require.NoError(t, err)
-
-		r = qos.Reader(ctx, bnapi.NormalIO, f)
-		_, err = io.Copy(wf, r)
-		require.NoError(t, err)
-	}
-
-	{
 		// write at
 		fi, err := f.Stat()
 		require.NoError(t, err)
 		oldSize := fi.Size()
 
-		wt := qos.WriterAt(ctx, bnapi.NormalIO, f)
+		wt := qos.WriterAt(ctx, bnapi.WriteIO, f)
 		data := []byte("hello")
 		_, err = wt.WriteAt(data, oldSize)
 		require.NoError(t, err)
@@ -238,6 +201,7 @@ func TestNewQosManager(t *testing.T) {
 
 func TestQosTryAcquire(t *testing.T) {
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 	statGet, _ := flow.NewIOFlowStat("110", true)
 	diskView := flow.NewDiskViewer(statGet)
 	conf := Config{
@@ -275,6 +239,7 @@ func TestQosTryAcquire(t *testing.T) {
 
 	{
 		// TryAcquireIO read
+		ctx = bnapi.SetIoType(ctx, bnapi.ReadIO)
 		for i := int32(0); i < q.conf.ReadQueueDepth; i++ {
 			ok = q.TryAcquireIO(ctx, 1, IOTypeRead)
 			require.True(t, ok)
@@ -284,6 +249,7 @@ func TestQosTryAcquire(t *testing.T) {
 		require.False(t, ok)
 
 		// TryAcquireIO write high-level
+		ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 		for i := int32(0); i < q.conf.WriteQueueDepth; i++ {
 			ok = q.TryAcquireIO(ctx, 1, IOTypeWrite)
 			require.True(t, ok)

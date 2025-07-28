@@ -28,39 +28,64 @@ const (
 type IOType uint64
 
 const (
-	NormalIO     IOType = iota // From: external: user io: read/write
-	BackgroundIO               // From: external: background io: shard repair;disk repair, delete, compact;balance, drop, manual migrate; internal, inspect
-	IOTypeMax                  // 2
-	IOTypeOldMax = 8           // For compatibility with previous versions
+	WriteIO      IOType = iota // From: external: user io: write
+	BackgroundIO               // From: external: background io: shard repair; disk repair, compact;balance, drop, manual migrate
+	ReadIO
+	DeleteIO
+
+	IOTypeMax // 4
 )
 
-var IOtypemap = [...]string{
-	"normal",
-	"background",
+var (
+	ioTypeArray = [...]string{
+		"write",
+		"background",
+		"read",
+		"delete",
+	}
+	revertIOMap = make(map[string]IOType, IOTypeMax)
+)
+
+var _ = ioTypeArray[IOTypeMax-1]
+
+func init() {
+	for id, str := range ioTypeArray {
+		revertIOMap[str] = IOType(id)
+	}
 }
 
-var _ = IOtypemap[IOTypeMax-1]
-
 func (it IOType) IsValid() bool {
-	return it >= NormalIO && it < IOTypeOldMax
+	return it >= WriteIO && it < IOTypeMax
 }
 
 func (it IOType) String() string {
-	return IOtypemap[it]
+	return ioTypeArray[it]
 }
 
 func (it IOType) IsHighLevel() bool {
-	return it == NormalIO
+	return it == WriteIO || it == ReadIO
 }
 
 func GetIoType(ctx context.Context) IOType {
 	v := ctx.Value(_ioFlowStatKey)
 	if v == nil {
-		return NormalIO
+		return IOTypeMax
 	}
 	return v.(IOType)
 }
 
 func SetIoType(ctx context.Context, iot IOType) context.Context {
 	return context.WithValue(ctx, _ioFlowStatKey, iot)
+}
+
+func StringToIOType(str string) IOType {
+	tp, exist := revertIOMap[str]
+	if exist {
+		return tp
+	}
+	return IOTypeMax
+}
+
+func GetAllIOType() [IOTypeMax]string {
+	return ioTypeArray
 }

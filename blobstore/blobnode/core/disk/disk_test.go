@@ -147,6 +147,7 @@ func TestRunCompact(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	diskpath := filepath.Join(testDir, "DiskPath")
 	log.Info(diskpath)
@@ -332,6 +333,7 @@ func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, dataSize, uint32(n))
 
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 	span.Infof("write shard to cs")
 	for i := 1; i <= count; i++ {
 		shard := &core.Shard{

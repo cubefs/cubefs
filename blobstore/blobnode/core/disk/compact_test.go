@@ -111,6 +111,7 @@ func TestCompactChunkInternal(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	diskpath := filepath.Join(testDir, "DiskPath")
 
@@ -134,7 +135,7 @@ func TestCompactChunkInternal(t *testing.T) {
 
 	vuid := proto.Vuid(2001)
 
-	cs, err := ds.CreateChunk(context.TODO(), vuid, core.DefaultChunkSize)
+	cs, err := ds.CreateChunk(ctx, vuid, core.DefaultChunkSize)
 	require.NoError(t, err)
 	require.NotNil(t, cs)
 
@@ -175,6 +176,7 @@ func TestExecCompactChunk(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	diskpath := filepath.Join(testDir, "DiskPath")
 

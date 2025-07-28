@@ -98,7 +98,7 @@ func NewIOFlowStat(key string, dryRun bool) (*IOFlowStat, error) {
 		return path
 	}
 
-	for k, v := range bnapi.IOtypemap {
+	for k, v := range bnapi.GetAllIOType() {
 		iostatPath := buildPath(key, v)
 		dgIOStat, err := iostat.StatInit(iostatPath, 0, dryRun)
 		if err != nil {

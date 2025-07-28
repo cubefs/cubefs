@@ -119,6 +119,7 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	conf := &core.Config{
 		RuntimeConfig: core.RuntimeConfig{
@@ -433,6 +434,7 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
 
 	conf := &core.Config{
 		RuntimeConfig: core.RuntimeConfig{
@@ -499,6 +501,7 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	require.NoError(t, err)
 
 	// delete failed
+	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
 	err = cs.Delete(ctx, 1025)
 	require.Error(t, err)
 

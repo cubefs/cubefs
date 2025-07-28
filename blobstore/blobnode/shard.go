@@ -24,7 +24,6 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/limitio"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
@@ -81,9 +80,8 @@ func (s *Service) ShardGet(c *rpc.Context) {
 	}
 
 	// set io type
-	convertIoType(&args.Type) // For compatibility with previous versions io type
+	convertOldIOType(&args.Type)
 	ctx = bnapi.SetIoType(ctx, args.Type)
-	ctx = limitio.SetLimitTrack(ctx)
 
 	s.lock.RLock()
 	ds, exist := s.Disks[args.DiskID]
@@ -189,9 +187,8 @@ func (s *Service) ShardsGet(c *rpc.Context) {
 	)
 
 	// set io type
-	convertIoType(&args.Type) // For compatibility with previous versions io type
+	convertOldIOType(&args.Type)
 	ctx = bnapi.SetIoType(ctx, args.Type)
-	ctx = limitio.SetLimitTrack(ctx)
 
 	s.lock.RLock()
 	ds, exist := s.Disks[args.DiskID]
@@ -445,8 +442,7 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
-	ctx = limitio.SetLimitTrack(ctx)
+	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
 
 	err = cs.MarkDelete(ctx, args.Bid)
 	if err != nil {
@@ -528,8 +524,7 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
-	ctx = limitio.SetLimitTrack(ctx)
+	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
 
 	err = cs.Delete(ctx, args.Bid)
 	if err != nil {
@@ -579,10 +574,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		return
 	}
 
-	// set io type
-	convertIoType(&args.Type) // For compatibility with previous versions io type
 	ctx = bnapi.SetIoType(ctx, args.Type)
-	ctx = limitio.SetLimitTrack(ctx)
 
 	s.lock.RLock()
 	ds, exist := s.Disks[args.DiskID]
@@ -654,9 +646,10 @@ func isShardErr(err error) bool {
 	return false
 }
 
-// For compatibility with previous versions io type, convert: 0->0; [1,8)->1
-func convertIoType(iot *bnapi.IOType) {
-	if *iot > bnapi.NormalIO {
-		*iot = bnapi.BackgroundIO
+// todo: will remove this function after all the old version nodes are upgraded.
+// for compatibility with previous versions io type
+func convertOldIOType(iot *bnapi.IOType) {
+	if *iot == bnapi.WriteIO {
+		*iot = bnapi.ReadIO
 	}
 }

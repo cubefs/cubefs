@@ -945,7 +945,7 @@ func TestService_ConfigReload(t *testing.T) {
 	require.Equal(t, 1*1024*1024*2, q1.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeBack].Burst())
 	require.Equal(t, 5*1024*1024*2, q1.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeRead].Burst())
 	require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeRead].Limit()))
-	require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[bnapi.NormalIO].Limit()))
+	require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeWrite].Limit()))
 	require.Equal(t, 3*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeBack].Limit()))
 
 	{

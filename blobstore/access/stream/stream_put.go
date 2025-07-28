@@ -257,7 +257,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				Vuid:   unit.Vuid,
 				Bid:    bid,
 				Size:   int64(len(shards[index])),
-				Type:   blobnode.NormalIO,
+				Type:   blobnode.WriteIO,
 
 				NopData: empty,
 			}

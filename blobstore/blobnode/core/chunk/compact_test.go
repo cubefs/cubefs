@@ -197,6 +197,7 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 
 func TestChunk_StartCompact(t *testing.T) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "BlobNodeService")
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	testDir, err := os.MkdirTemp(os.TempDir(), "StartCompact")
 	require.NoError(t, err)
@@ -440,6 +441,7 @@ func TestChunk_StartCompact(t *testing.T) {
 
 func TestChunk_StartCompactBigFile(t *testing.T) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "BlobNodeService")
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	testDir, err := os.MkdirTemp(os.TempDir(), "StartCompactBig")
 	require.NoError(t, err)
@@ -582,6 +584,7 @@ func TestChunk_StartCompactBigFile(t *testing.T) {
 
 func TestChunkStorage_StopCompact(t *testing.T) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "BlobNodeService")
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	testDir, err := os.MkdirTemp(os.TempDir(), "StopCompact")
 	require.NoError(t, err)
@@ -643,6 +646,7 @@ func TestChunkStorage_StopCompact(t *testing.T) {
 
 func TestChunkStorage_CompactCheck(t *testing.T) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "BlobNodeService")
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	testDir, err := os.MkdirTemp(os.TempDir(), "CompactCheck")
 	require.NoError(t, err)
@@ -810,6 +814,7 @@ func TestChunkData_CompactReadWrite(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	vuid := proto.Vuid(1024)
 	cs := createTestChunk(t, ctx, testDir, vuid)
