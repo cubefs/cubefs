@@ -312,20 +312,35 @@ func TestService_VolumeLock(t *testing.T) {
 
 	// lock volume
 	{
-		args := &clustermgr.LockVolumeArgs{
+		getArgs := &clustermgr.GetVolumeArgs{
 			Vid: proto.Vid(1),
 		}
-		err := cmClient.LockVolume(ctx, args)
+		ret, err := cmClient.GetVolumeInfo(ctx, getArgs)
+		require.NoError(t, err)
+		require.Equal(t, uint32(1), ret.Epoch)
+
+		lockArgs := &clustermgr.LockVolumeArgs{
+			Vid:   proto.Vid(1),
+			Epoch: ret.Epoch,
+		}
+		err = cmClient.LockVolume(ctx, lockArgs)
 		require.NoError(t, err)
 	}
 
 	// unlock volume
 	{
-		args := &clustermgr.UnlockVolumeArgs{
-			Vid:   proto.Vid(1),
-			Epoch: 1,
+		getArgs := &clustermgr.GetVolumeArgs{
+			Vid: proto.Vid(1),
 		}
-		err := cmClient.UnlockVolume(ctx, args)
+		ret, err := cmClient.GetVolumeInfo(ctx, getArgs)
+		require.NoError(t, err)
+		require.Equal(t, uint32(2), ret.Epoch)
+
+		unlockArgs := &clustermgr.UnlockVolumeArgs{
+			Vid:   proto.Vid(1),
+			Epoch: ret.Epoch,
+		}
+		err = cmClient.UnlockVolume(ctx, unlockArgs)
 		require.NoError(t, err)
 	}
 }
@@ -519,6 +534,7 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 			Free:        1024 * 1024 * 1024 * 1023,
 			Used:        1024 * 1024 * 1024,
 			Total:       1024 * 1024 * 1024 * 1024,
+			Epoch:       1,
 		}
 
 		volumes = append(volumes, vol)

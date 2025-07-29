@@ -321,6 +321,7 @@ func volumeRecordToVolumeInfoBase(volRecord *volumedb.VolumeRecord) cm.VolumeInf
 		Total:          volRecord.Total,
 		Free:           volRecord.Free,
 		CreateByNodeID: volRecord.CreateByNodeID,
+		Epoch:          volRecord.Epoch,
 	}
 }
 
