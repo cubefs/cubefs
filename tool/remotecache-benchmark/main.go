@@ -577,7 +577,9 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 					result.Latencies = append(result.Latencies, latency)
 				}
 				fh.Close()
-				r.Close()
+				if r != nil {
+					r.Close()
+				}
 			}
 		}(w)
 	}
