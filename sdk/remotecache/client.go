@@ -1,7 +1,6 @@
 package remotecache
 
 import (
-	"bufio"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -969,26 +968,31 @@ func (reader *RemoteCacheReader) getReadObjectReply(p *proto.Packet) (length int
 
 type RemoteCacheReader struct {
 	conn           *net.TCPConn
-	reader         *bufio.Reader
 	rc             *RemoteCacheClient
 	needReadLen    int64
 	alreadyReadLen int64
 	reqID          string
 	ctx            context.Context
+	buffer         []byte
+	offset         int
+	size           int
+	closed         bool
 }
 
 func (rc *RemoteCacheClient) NewRemoteCacheReader(ctx context.Context, conn *net.TCPConn, reqID string) *RemoteCacheReader {
 	r := &RemoteCacheReader{
 		conn:   conn,
-		reader: bufio.NewReaderSize(conn, proto.CACHE_BLOCK_PACKET_SIZE),
 		rc:     rc,
 		reqID:  reqID,
 		ctx:    ctx,
+		buffer: bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE),
+		offset: 0,
+		size:   0,
 	}
 	return r
 }
 
-func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
+func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 	if reader.ctx.Err() != nil {
 		log.LogErrorf("RemoteCacheReader:reqID(%v) err(%v)", reader.reqID, err)
 		return 0, reader.ctx.Err()
@@ -1000,44 +1004,93 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 	if alreadyReadLen >= reader.needReadLen {
 		return 0, io.EOF
 	}
-
+	reader.conn.SetReadDeadline(time.Now().Add(time.Second * proto.ReadDeadlineTime))
 	expectLen, err = reader.getReadObjectReply(reply)
 	if err != nil {
 		log.LogErrorf("RemoteCacheReader:reqID(%v) Read reply err(%v)", reader.reqID, err)
 		return
 	}
 
-	buff := bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
-	defer bytespool.Free(buff)
-
-	_, err = io.ReadFull(reader.conn, buff)
+	_, err = io.ReadFull(reader.conn, p)
 	if err != nil {
 		log.LogErrorf("RemoteCacheReader:reqID(%v) Read err(%v)", reader.reqID, err)
 		return
 	}
 
 	// check crc
-	actualCrc := crc32.ChecksumIEEE(buff)
+	actualCrc := crc32.ChecksumIEEE(p)
 	if actualCrc != reply.CRC {
 		err = fmt.Errorf("inconsistent CRC, offset(%v) extentOffset(%v) expect(%v) actualCrc(%v)", reply.KernelOffset, reply.ExtentOffset, reply.CRC, actualCrc)
 		log.LogErrorf("RemoteCacheReader:Read check crc failed  reqID(%v) offset(%v) extentOffset(%v) expect(%v) actualCrc(%v)",
 			reader.reqID, reply.KernelOffset, reply.ExtentOffset, reply.CRC, actualCrc)
 		return
 	}
-
+	p = p[:expectLen]
 	log.LogDebugf("RemoteCacheReader:Read offset(%v) extentOffset(%v) expectLen(%v) p.len(%v)", reply.KernelOffset, reply.ExtentOffset, expectLen, len(p))
-
-	extentOffset := reply.ExtentOffset
-	copy(p[:expectLen], buff[extentOffset:extentOffset+expectLen])
-
 	atomic.StoreInt64(&reader.alreadyReadLen, reader.alreadyReadLen+expectLen)
-
 	return int(expectLen), nil
+}
+
+func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
+	defer func() {
+		if err != nil && !reader.closed {
+			reader.closed = true
+			bytespool.Free(reader.buffer)
+			reader.rc.conns.PutConnect(reader.conn, true)
+		}
+	}()
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if reader.closed {
+		log.LogErrorf("read from close reader reqID(%v)", reader.reqID)
+		return 0, fmt.Errorf("read from close reader reqID(%v)", reader.reqID)
+	}
+	if reader.ctx.Err() != nil {
+		log.LogErrorf("RemoteCacheReader:reqID(%v) err(%v)", reader.reqID, err)
+		return 0, reader.ctx.Err()
+	}
+
+	totalRead := 0
+
+	for totalRead < len(p) {
+		// if buffer is empty, read from flash reader
+		if reader.offset >= reader.size {
+			reader.size, err = reader.read(reader.buffer)
+			if reader.size == 0 {
+				log.LogDebugf("RemoteCacheReader:reqID(%v), totalRead:%d", reader.reqID, totalRead)
+				if err != nil {
+					return totalRead, err
+				} else {
+					return totalRead, io.EOF
+				}
+			}
+			reader.offset = 0
+		}
+
+		// copy buffer data to target slice
+		available := reader.size - reader.offset
+		toRead := len(p) - totalRead
+		if toRead > available {
+			toRead = available
+		}
+
+		copy(p[totalRead:], reader.buffer[reader.offset:reader.offset+toRead])
+		totalRead += toRead
+		reader.offset += toRead
+	}
+
+	log.LogDebugf("RemoteCacheReader:reqID(%v), totalRead:%d", reader.reqID, totalRead)
+	return totalRead, nil
 }
 
 func (reader *RemoteCacheReader) Close() error {
 	log.LogDebugf("RemoteCacheReader Close, addr(%v)", reader.conn.RemoteAddr())
-	reader.rc.conns.PutConnect(reader.conn, false)
+	if !reader.closed {
+		reader.closed = true
+		bytespool.Free(reader.buffer)
+		reader.rc.conns.PutConnect(reader.conn, false)
+	}
 	return nil
 }
 
