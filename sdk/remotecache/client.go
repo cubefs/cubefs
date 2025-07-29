@@ -974,6 +974,7 @@ type RemoteCacheReader struct {
 	reqID          string
 	ctx            context.Context
 	buffer         []byte
+	localData      []byte
 	offset         int
 	size           int
 	closed         bool
@@ -1025,7 +1026,8 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 			reader.reqID, reply.KernelOffset, reply.ExtentOffset, reply.CRC, actualCrc)
 		return
 	}
-	p = p[:expectLen]
+	extentOffset := reply.ExtentOffset
+	reader.localData = p[extentOffset : extentOffset+expectLen]
 	log.LogDebugf("RemoteCacheReader:Read offset(%v) extentOffset(%v) expectLen(%v) p.len(%v)", reply.KernelOffset, reply.ExtentOffset, expectLen, len(p))
 	atomic.StoreInt64(&reader.alreadyReadLen, reader.alreadyReadLen+expectLen)
 	return int(expectLen), nil
@@ -1033,7 +1035,7 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 
 func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 	defer func() {
-		if err != nil && !reader.closed {
+		if err != nil && err != io.EOF && !reader.closed {
 			reader.closed = true
 			bytespool.Free(reader.buffer)
 			reader.rc.conns.PutConnect(reader.conn, true)
@@ -1075,7 +1077,7 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 			toRead = available
 		}
 
-		copy(p[totalRead:], reader.buffer[reader.offset:reader.offset+toRead])
+		copy(p[totalRead:], reader.localData[reader.offset:reader.offset+toRead])
 		totalRead += toRead
 		reader.offset += toRead
 	}
