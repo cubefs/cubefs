@@ -38,7 +38,6 @@ const (
 
 const (
 	ConnIdelTimeout            = 30 //
-	PingCount                  = 3
 	SameZoneWeight             = 70
 	RefreshFlashNodesInterval  = time.Minute
 	RefreshHostLatencyInterval = 20 * time.Second
@@ -553,17 +552,50 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	)
 	writeLen := proto.CACHE_BLOCK_PACKET_SIZE + proto.CACHE_BLOCK_CRC_SIZE
 	buf := bytespool.Alloc(writeLen)
-	defer bytespool.Free(buf)
+	ch := &proto.CoonHandler{
+		Completed:   make(chan struct{}),
+		WaitAckChan: make(chan struct{}, 5),
+	}
+	defer func() {
+		bytespool.Free(buf)
+		if !ch.WaitAckChanClosed {
+			ch.WaitAckChanClosed = true
+			close(ch.WaitAckChan)
+		}
+	}()
+	go rc.processPutReply(conn, ch, reqId)
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if ch.RemoteError != nil {
+			return ch.RemoteError
 		}
 		readSize := proto.CACHE_BLOCK_PACKET_SIZE
 		if totalWritten+int64(readSize) > length {
 			readSize = int(length - totalWritten)
 		}
-		n, err = r.Read(buf[:readSize])
-		if n != readSize {
+		bufferOffset := 0
+		for {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if ch.RemoteError != nil {
+				return ch.RemoteError
+			}
+			currentReadSize := readSize - bufferOffset
+			n, err = r.Read(buf[bufferOffset : bufferOffset+currentReadSize])
+			bufferOffset += n
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return err
+			} else if bufferOffset == readSize {
+				log.LogDebugf(" total written %v write size %v to fg", totalWritten, readSize)
+				break
+			}
+		}
+		if bufferOffset != readSize {
 			log.LogWarnf("FlashGroup put: expected to read %d bytes, but only read %d", readSize, n)
 			return fmt.Errorf("expected to read %d bytes, but only read %d", readSize, n)
 		}
@@ -577,17 +609,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 				log.LogErrorf("wirte data and crc to flashnode get err %v", err)
 				return err
 			}
-			if err = replyPacket.ReadFromConnExt(conn, proto.NoReadDeadlineTime); err != nil {
-				log.LogWarnf("FlashGroup put data: reqId(%v) failed to ReadFromConn, replyPacket(%v), fg host(%v) , err(%v)", reqId, replyPacket, addr, err)
-				return
-			}
-			if replyPacket.ResultCode != proto.OpOk {
-				err = fmt.Errorf("%v", string(replyPacket.Data))
-				if !proto.IsFlashNodeLimitError(err) {
-					log.LogWarnf("getPutBlockReply: put data ResultCode NOK, req(%v) reply(%v) ResultCode(%v)", reqPacket, replyPacket, replyPacket.ResultCode)
-				}
-				return
-			}
+			ch.WaitAckChan <- struct{}{}
 			totalWritten += int64(n)
 		}
 		if err == io.EOF {
@@ -600,10 +622,39 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 			break
 		}
 	}
+	if !ch.WaitAckChanClosed {
+		ch.WaitAckChanClosed = true
+		close(ch.WaitAckChan)
+	}
+	<-ch.Completed
+	if ch.RemoteError != nil {
+		return ch.RemoteError
+	}
 	if totalWritten != length {
 		return fmt.Errorf("unexpected data length: expected %d bytes, got %d", length, totalWritten)
 	}
 	return nil
+}
+
+func (rc *RemoteCacheClient) processPutReply(conn *net.TCPConn, ch *proto.CoonHandler, reqId string) {
+	defer close(ch.Completed)
+	var err error
+	replyPacket := NewFlashCacheReply()
+	for range ch.WaitAckChan {
+		if err = replyPacket.ReadFromConnExt(conn, int(rc.WriteTimeout)); err != nil {
+			log.LogWarnf("FlashGroup put data: reqId(%v) failed to ReadFromConn, replyPacket(%v) , err(%v)", reqId, replyPacket, err)
+			ch.RemoteError = err
+			return
+		}
+		if replyPacket.ResultCode != proto.OpOk {
+			err = fmt.Errorf("%v", string(replyPacket.Data))
+			if !proto.IsFlashNodeLimitError(err) {
+				log.LogWarnf("getPutBlockReply: put data ResultCode NOK, reqId(%v) reply(%v) ResultCode(%v)", reqId, replyPacket, replyPacket.ResultCode)
+			}
+			ch.RemoteError = err
+			return
+		}
+	}
 }
 
 func (rc *RemoteCacheClient) deleteRemoteBlock(key string, addr string) {

@@ -36,7 +36,7 @@ func (fs *LocalFS) Name() string { return fs.fsType }
 func (fs *LocalFS) Put(ctx context.Context, reqId, key string, r io.Reader, length int64) (err error) {
 	pDir := cachengine.MapKeyToDirectory(key)
 	filePath := filepath.Join(fs.cachePath, path.Join(pDir, key))
-	allocSize := cachengine.CalcAllocSizeV2(int(length))
+	allocSize, _ := cachengine.CalcAllocSizeV2(int(length))
 
 	if _, err = os.Stat(path.Dir(filePath)); err != nil {
 		if !os.IsNotExist(err.(*os.PathError)) {
