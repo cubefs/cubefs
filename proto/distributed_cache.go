@@ -96,6 +96,13 @@ type FlashGroupView struct {
 	FlashGroups []*FlashGroupInfo
 }
 
+type CoonHandler struct {
+	RemoteError       error
+	Completed         chan struct{}
+	WaitAckChanClosed bool
+	WaitAckChan       chan struct{}
+}
+
 func (f *FlashGroupInfo) String() string {
 	return fmt.Sprintf("{ID: %d, Hosts: %v}", f.ID, f.Hosts)
 }

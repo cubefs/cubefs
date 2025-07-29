@@ -887,11 +887,14 @@ func (cb *CacheBlock) MaybeWriteCompleted(reqLen int64) (err error) {
 	return nil
 }
 
-func CalcAllocSizeV2(reqLen int) int {
+func CalcAllocSizeV2(reqLen int) (int, error) {
+	if reqLen > proto.CACHE_OBJECT_BLOCK_SIZE {
+		return 0, fmt.Errorf("invalid block size: %d", reqLen)
+	}
 	if reqLen%proto.CACHE_BLOCK_PACKET_SIZE != 0 {
 		reqLen = (reqLen/proto.CACHE_BLOCK_PACKET_SIZE + 1) * proto.CACHE_BLOCK_PACKET_SIZE
 	}
-	return reqLen
+	return reqLen, nil
 }
 
 func (cb *CacheBlock) VerifyObjectReq(offset, size uint64) error {
@@ -906,5 +909,15 @@ func (cb *CacheBlock) VerifyObjectReq(offset, size uint64) error {
 		return fmt.Errorf("block is not ready")
 	}
 
+	return nil
+}
+
+// CheckSizeBoundary checks if the given size exceeds the usedSize boundary
+func (cb *CacheBlock) CheckSizeBoundary(size int64) error {
+	usedSize := cb.getUsedSize()
+	if size > usedSize {
+		log.LogWarnf("size(%d) exceeds usedSize(%d) for block(%s)", size, usedSize, cb.blockKey)
+		return fmt.Errorf("size(%d) exceeds usedSize(%d)", size, usedSize)
+	}
 	return nil
 }

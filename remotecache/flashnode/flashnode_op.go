@@ -328,12 +328,15 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		err = fmt.Errorf("block %v already exsit", uniKey)
 		return err
 	}
+	var allocSize int
+	if allocSize, err = cachengine.CalcAllocSizeV2(int(req.BlockLen)); err != nil {
+		return err
+	}
 	err1 = nil
 	if log.EnableDebug() {
 		log.LogDebug(logPrefix+" create block key:"+uniKey+" logMsg:%s",
 			p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 	}
-	allocSize := cachengine.CalcAllocSizeV2(int(req.BlockLen))
 	if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(allocSize), conn.RemoteAddr().String()); err2 != nil || created {
 		if err2 != nil {
 			err = fmt.Errorf("create block(%v) error %v", cachengine.GenCacheBlockKeyV2(pDir, uniKey), err2.Error())
@@ -358,8 +361,22 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		)
 		writeLen := proto.CACHE_BLOCK_PACKET_SIZE + 4
 		buf := bytespool.Alloc(writeLen)
-		defer bytespool.Free(buf)
+		ch := &proto.CoonHandler{
+			Completed:   make(chan struct{}),
+			WaitAckChan: make(chan struct{}, 5),
+		}
+		defer func() {
+			bytespool.Free(buf)
+			if !ch.WaitAckChanClosed {
+				ch.WaitAckChanClosed = true
+				close(ch.WaitAckChan)
+			}
+		}()
+		go f.replyPutDataOk(ch, conn, p, logPrefix)
 		for {
+			if ch.RemoteError != nil {
+				break
+			}
 			readSize = proto.CACHE_BLOCK_PACKET_SIZE
 			missTaskDone := make(chan struct{})
 			err = f.limitWrite.TryRunAsync(context.Background(), writeLen, false, func() {
@@ -400,10 +417,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 			if err1 != nil || err != nil {
 				break
 			} else {
-				if err1 = p.WriteToConn(conn); err1 != nil {
-					log.LogErrorf(logPrefix+" reply to conn %v for write data", err1)
-					break
-				}
+				ch.WaitAckChan <- struct{}{}
 			}
 			totalWritten += int64(readSize)
 			if totalWritten == req.BlockLen {
@@ -413,6 +427,14 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 				break
 			}
 		}
+		if !ch.WaitAckChanClosed {
+			ch.WaitAckChanClosed = true
+			close(ch.WaitAckChan)
+		}
+		<-ch.Completed
+		if ch.RemoteError != nil {
+			err1 = ch.RemoteError
+		}
 	}
 	if err1 != nil {
 		f.cacheEngine.DeleteCacheBlock(blockKey)
@@ -420,6 +442,16 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		return
 	}
 	return err
+}
+
+func (f *FlashNode) replyPutDataOk(ch *proto.CoonHandler, conn net.Conn, p *proto.Packet, logPrefix string) {
+	close(ch.Completed)
+	for range ch.WaitAckChan {
+		if ch.RemoteError = p.WriteToConn(conn); ch.RemoteError != nil {
+			log.LogErrorf(logPrefix+" reply to conn %v for write data", ch.RemoteError)
+			return
+		}
+	}
 }
 
 func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error) {
@@ -740,6 +772,10 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	firstReply.ResultCode = proto.OpOk
 	firstReply.Opcode = p.Opcode
 	firstReply.StartT = p.StartT
+	end := offset + int64(req.Size_)
+	if err = block.CheckSizeBoundary(end); err != nil {
+		return
+	}
 	if err = firstReply.WriteToConn(conn); err != nil {
 		log.LogErrorf("testRead key:[%s] %s", req.Key,
 			firstReply.LogMessage(firstReply.GetOpMsg(), conn.RemoteAddr().String(), firstReply.StartT, err))
@@ -747,26 +783,15 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	}
 
 	// reply data to client
-	end := offset + int64(req.Size_)
+
 	var errInner error
+	buf := bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
+	defer bytespool.Free(buf)
 	for {
 		err = f.limitRead.RunNoWait(proto.CACHE_BLOCK_PACKET_SIZE, false, func() {
 			reply := proto.NewPacket()
 			reply.ReqID = p.ReqID
 			reply.StartT = p.StartT
-
-			var bufOnce sync.Once
-			buf, bufErr := proto.Buffers.Get(proto.CACHE_BLOCK_PACKET_SIZE)
-			bufRelease := func() {
-				bufOnce.Do(func() {
-					if bufErr == nil {
-						proto.Buffers.Put(reply.Data[:proto.CACHE_BLOCK_PACKET_SIZE])
-					}
-				})
-			}
-			if bufErr != nil {
-				buf = make([]byte, proto.CACHE_BLOCK_PACKET_SIZE)
-			}
 			reply.Data = buf
 
 			alignedOffset := offset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
@@ -777,7 +802,6 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 
 			reply.CRC, errInner = block.Read(ctx, reply.Data[:], alignedOffset, proto.CACHE_BLOCK_PACKET_SIZE, f.waitForCacheBlock, true)
 			if errInner != nil {
-				bufRelease()
 				return
 			}
 			p.CRC = reply.CRC
@@ -790,14 +814,12 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 
 			bgTime := stat.BeginStat()
 			if errInner = reply.WriteToConnForOCS(conn); errInner != nil {
-				bufRelease()
 				log.LogErrorf("%s key:[%s] %s", action, req.Key,
 					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner))
 				return
 			}
 			stat.EndStat("HitCacheRead:ReplyToClient", errInner, bgTime, 1)
 			offset = alignedOffset + proto.CACHE_BLOCK_PACKET_SIZE
-			bufRelease()
 			if log.EnableInfo() {
 				log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, req.Key,
 					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner), block.String())
