@@ -33,7 +33,8 @@ var (
 	ErrWrongConfig     = errors.New("db: wrong config item")
 
 	// it means db sst file corruption, disk broken
-	dbCorruption = "corruption: bad table magic number"
+	errDBBadTable = "corruption: bad table magic number"
+	errDBChecksum = "corruption: block checksum mismatch"
 )
 
 type MetaHandler interface {
@@ -173,5 +174,5 @@ func isMetaEIO(err error) bool {
 		return false
 	}
 	errMsg := strings.ToLower(err.Error())
-	return strings.Contains(errMsg, dbCorruption)
+	return strings.Contains(errMsg, errDBBadTable) || strings.Contains(errMsg, errDBChecksum)
 }
