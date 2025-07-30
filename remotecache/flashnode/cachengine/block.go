@@ -271,6 +271,17 @@ func (cb *CacheBlock) writeCacheBlockFileHeader(file *os.File) (err error) {
 	return
 }
 
+func (cb *CacheBlock) GetCreateTime() time.Time {
+	createTime := time.Now()
+	if value, ok := cb.cacheEngine.lruCacheMap.Load(cb.rootPath); ok {
+		cacheItem := value.(*lruCacheItem)
+		if blockCreateTime, exist := cacheItem.lruCache.GetCreateTime(cb.blockKey); exist {
+			createTime = blockCreateTime
+		}
+	}
+	return createTime
+}
+
 func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string) (allocSize, usedSize int64, expiredTime time.Time, err error) {
 	var stat os.FileInfo
 	var seconds int64

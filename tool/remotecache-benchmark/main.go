@@ -540,40 +540,44 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 				from := int64(0)
 				to := fh.Size
 				reqId := uuid.New().String()
-				r, len, _, err := storage.Get(ctx, reqId, fh.FileName, from, to)
+				r, len1, _, err := storage.Get(ctx, reqId, fh.FileName, from, to)
 				var latency time.Duration
-				if err == nil {
-					dataBuf := bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
-					tmpBuf := bytespool.Alloc(int(to - from))
+				var dataBuf, tmpBuf []byte
+
+				if err == nil && r != nil {
+					dataBuf = bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
+					tmpBuf = bytespool.Alloc(int(to - from))
 					reads := 0
 					for {
-						readBytes, err := r.Read(dataBuf)
-						if err != nil {
+						readBytes, readErr := r.Read(dataBuf)
+						if readErr != nil {
+							err = readErr
 							break
 						}
 						copy(tmpBuf[reads:], dataBuf[:readBytes])
 						reads += readBytes
 					}
-					if reads != int(len) {
-						err = fmt.Errorf("wrong len %v:expected[%v]", reads, len)
+					if reads != int(len1) {
+						err = fmt.Errorf("wrong len %v:expected[%v]", reads, len1)
 					} else {
 						latency = time.Since(startTime)
 						if t.verify {
 							readCrc := crc32.ChecksumIEEE(tmpBuf[:reads])
-							actualCrc := crc32.ChecksumIEEE(fh.bytes[from:int(to-from)])
+							actualCrc := crc32.ChecksumIEEE(fh.bytes[from:to])
 							if actualCrc != readCrc {
 								err = fmt.Errorf("wrong crc %v:expected[%v]", actualCrc, readCrc)
 							}
 						}
 					}
+					bytespool.Free(dataBuf)
+					bytespool.Free(tmpBuf)
 				}
-
 				if err != nil && err != io.EOF {
 					atomic.AddInt64(&errorCount, 1)
 					fmt.Printf("storage %v get %v failed reqID %v: %v\n", storage.Name(), fh.FileName, reqId, err)
 				} else {
 					atomic.AddInt64(&successCount, 1)
-					atomic.AddInt64(&totalBytes, int64(len))
+					atomic.AddInt64(&totalBytes, len1)
 					result.Latencies = append(result.Latencies, latency)
 				}
 				fh.Close()

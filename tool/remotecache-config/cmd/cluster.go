@@ -38,7 +38,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var cv *proto.ClusterView
-			if cv, err = client.AdminAPI().GetCluster(false); err != nil {
+			if cv, err = client.AdminAPI().GetClusterView(); err != nil {
 				errout(err)
 			}
 			stdout("[Cluster]\n")
