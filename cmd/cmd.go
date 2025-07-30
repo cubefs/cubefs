@@ -88,7 +88,7 @@ const (
 	ModuleConsole           = "console"
 	ModuleLifeCycle         = "lcnode"
 	ModuleFlash             = "flashNode"
-	ModuleFlashGroupManager = "flashNodeGroupMaster"
+	ModuleFlashGroupManager = "flashGroupManager"
 )
 
 const (

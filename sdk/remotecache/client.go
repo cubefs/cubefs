@@ -554,7 +554,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	buf := bytespool.Alloc(writeLen)
 	ch := &proto.CoonHandler{
 		Completed:   make(chan struct{}),
-		WaitAckChan: make(chan struct{}, 5),
+		WaitAckChan: make(chan struct{}, 128),
 	}
 	defer func() {
 		bytespool.Free(buf)
@@ -599,7 +599,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 			log.LogWarnf("FlashGroup put: expected to read %d bytes, but only read %d", readSize, n)
 			return fmt.Errorf("expected to read %d bytes, but only read %d", readSize, n)
 		}
-		if n > 0 {
+		if readSize > 0 {
 			if log.EnableDebug() {
 				log.LogDebugf("FlashGroup put: write %d bytes total(%d) to fg", n, totalWritten)
 			}
@@ -610,7 +610,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 				return err
 			}
 			ch.WaitAckChan <- struct{}{}
-			totalWritten += int64(n)
+			totalWritten += int64(readSize)
 		}
 		if err == io.EOF {
 			err = nil
@@ -1138,8 +1138,8 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 }
 
 func (reader *RemoteCacheReader) Close() error {
-	log.LogDebugf("RemoteCacheReader Close, addr(%v)", reader.conn.RemoteAddr())
 	if !reader.closed {
+		log.LogDebugf("RemoteCacheReader Close, reqId(%v)", reader.reqID)
 		reader.closed = true
 		bytespool.Free(reader.buffer)
 		reader.rc.conns.PutConnect(reader.conn, false)
