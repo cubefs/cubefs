@@ -768,7 +768,7 @@ func (c *CacheEngine) StartCachePrepareWorkers(flw *util.IoLimiter, prepareWorke
 					}
 					var err error
 					bg := stat.BeginStat()
-					_, err3 := c.PeekCacheBlock(GenCacheBlockKey(r.Volume, r.Inode, r.FixedFileOffset, r.Version))
+					_, err3 := c.GetCacheBlockForRead(r.Volume, r.Inode, r.FixedFileOffset, r.Version, 0)
 					if err3 == nil {
 						continue
 					}
