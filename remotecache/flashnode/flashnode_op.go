@@ -363,7 +363,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		buf := bytespool.Alloc(writeLen)
 		ch := &proto.CoonHandler{
 			Completed:   make(chan struct{}),
-			WaitAckChan: make(chan struct{}, 5),
+			WaitAckChan: make(chan struct{}, 32),
 		}
 		defer func() {
 			bytespool.Free(buf)
@@ -506,6 +506,11 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 
 	err = block.VerifyObjectReq(req.Offset, req.Size_)
 	if err != nil {
+		createTime := block.GetCreateTime()
+		if time.Since(createTime) > 2*time.Minute {
+			f.cacheEngine.DeleteCacheBlock(blockKey)
+			err = f.shouldCache(uniKey)
+		}
 		return
 	}
 

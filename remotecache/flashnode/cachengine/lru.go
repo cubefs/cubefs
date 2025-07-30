@@ -42,6 +42,7 @@ type LruCache interface {
 	AddMisses()
 	CheckDiskSpace(dataPath string, key interface{}, size int64) (n int, err error)
 	FreePreAllocatedSize(key interface{})
+	GetCreateTime(key interface{}) (time.Time, bool)
 }
 
 type Status struct {
@@ -457,6 +458,16 @@ func (c *fCache) GetExpiredTime(key interface{}) (time.Time, bool) {
 	if ent, ok := c.items[key]; ok {
 		v := ent.Value.(*entry)
 		return v.expiredAt, true
+	}
+	return time.Time{}, false
+}
+
+func (c *fCache) GetCreateTime(key interface{}) (time.Time, bool) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	if ent, ok := c.items[key]; ok {
+		v := ent.Value.(*entry)
+		return v.createAt, true
 	}
 	return time.Time{}, false
 }

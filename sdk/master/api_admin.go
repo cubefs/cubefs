@@ -62,6 +62,12 @@ func (api *AdminAPI) GetCluster(volStorageClass bool) (cv *proto.ClusterView, er
 	return
 }
 
+func (api *AdminAPI) GetClusterView() (cv *proto.ClusterView, err error) {
+	cv = &proto.ClusterView{}
+	err = api.mc.requestWith(cv, newRequest(get, proto.AdminGetCluster).Header(api.h))
+	return
+}
+
 func (api *AdminAPI) GetClusterDataNodes() (nodes []proto.NodeView, err error) {
 	nodes = []proto.NodeView{}
 	err = api.mc.requestWith(&nodes, newRequest(get, proto.AdminGetClusterDataNodes).Header(api.h))
