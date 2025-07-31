@@ -46,9 +46,7 @@ func TestInitAndFixQosConfig(t *testing.T) {
 		require.Len(t, conf.FlowConf.Level, 4)
 
 		// Check default values
-		require.Equal(t, int64(512), conf.FlowConf.Level[bnapi.ReadIO.String()].Concurrency)
-		require.Equal(t, int64(300), conf.FlowConf.Level[bnapi.ReadIO.String()].MBPS)
-		require.Equal(t, float64(1.0), conf.FlowConf.Level[bnapi.ReadIO.String()].Factor)
+		require.Equal(t, defaultConfs[bnapi.ReadIO.String()], conf.FlowConf.Level[bnapi.ReadIO.String()])
 	})
 
 	t.Run("config with custom values", func(t *testing.T) {
@@ -57,7 +55,7 @@ func TestInitAndFixQosConfig(t *testing.T) {
 				CommonDiskConfig: CommonDiskConfig{
 					DiskBandwidthMB:  100,
 					UpdateIntervalMs: 200,
-					IdleFactor:       0.5,
+					DiskIdleFactor:   0.5,
 				},
 				Level: map[string]LevelFlowConfig{
 					bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50, Factor: 0.8},
@@ -107,6 +105,7 @@ func TestFixParaConfig(t *testing.T) {
 				Concurrency:    500,
 				MBPS:           50,
 				Factor:         0.8,
+				IdleFactor:     defaultConfs[bnapi.ReadIO.String()].IdleFactor,
 			},
 			hasError: false,
 		},
@@ -172,7 +171,7 @@ func TestNewQosMgr(t *testing.T) {
 				CommonDiskConfig: CommonDiskConfig{
 					DiskBandwidthMB:  100,
 					UpdateIntervalMs: 200,
-					IdleFactor:       0.5,
+					DiskIdleFactor:   0.5,
 				},
 				Level: map[string]LevelFlowConfig{
 					bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},
@@ -223,7 +222,7 @@ func TestQosMgr_GetQueueQos(t *testing.T) {
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
-				IdleFactor:       0.5,
+				DiskIdleFactor:   0.5,
 			},
 			Level: map[string]LevelFlowConfig{
 				bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},
@@ -289,7 +288,7 @@ func TestQosMgr_GetQosBpsLimiter(t *testing.T) {
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
-				IdleFactor:       0.5,
+				DiskIdleFactor:   0.5,
 			},
 			Level: map[string]LevelFlowConfig{
 				bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},
@@ -335,7 +334,7 @@ func TestQueueQos_TryAcquire(t *testing.T) {
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
-				IdleFactor:       0.5,
+				DiskIdleFactor:   0.5,
 			},
 			Level: map[string]LevelFlowConfig{
 				bnapi.ReadIO.String():       {Concurrency: 5, MBPS: 50},
@@ -414,7 +413,7 @@ func TestQueueQos_IO_Wrappers(t *testing.T) {
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
-				IdleFactor:       0.5,
+				DiskIdleFactor:   0.5,
 			},
 			Level: map[string]LevelFlowConfig{
 				bnapi.ReadIO.String():       {Concurrency: 100, MBPS: 50},
@@ -532,7 +531,7 @@ func TestQueueQos_ResetQosLimit(t *testing.T) {
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
-				IdleFactor:       0.5,
+				DiskIdleFactor:   0.5,
 			},
 			Level: map[string]LevelFlowConfig{
 				bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},
@@ -593,12 +592,12 @@ func TestQueueQos_ResetQosLimit(t *testing.T) {
 		require.Equal(t, 5*humanize.MiByte, int(getQosBpsLimiter(mgr, bnapi.ReadIO).Limit()))
 		require.Equal(t, int64(50), qos.(*queueQos).conf.Concurrency)
 
-		diskConf := CommonDiskConfig{DiskBandwidthMB: 1, IdleFactor: 0.4}
+		diskConf := CommonDiskConfig{DiskBandwidthMB: 1, DiskIdleFactor: 0.4}
 		qos.ResetDiskLimit(diskConf)
 
 		cur := qos.(*queueQos).GetQosConf()
 		require.Equal(t, diskConf.DiskBandwidthMB, cur.DiskBandwidthMB)
-		require.Equal(t, diskConf.IdleFactor, cur.IdleFactor)
+		require.Equal(t, diskConf.DiskIdleFactor, cur.DiskIdleFactor)
 	})
 }
 
@@ -614,7 +613,7 @@ func TestQueueQos_Concurrency(t *testing.T) {
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
-				IdleFactor:       0.5,
+				DiskIdleFactor:   0.5,
 			},
 			Level: map[string]LevelFlowConfig{
 				bnapi.ReadIO.String():       {Concurrency: 50, MBPS: 50},
@@ -667,7 +666,7 @@ func TestThreshold_Reset(t *testing.T) {
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
-				IdleFactor:       0.5,
+				DiskIdleFactor:   0.5,
 			},
 			LevelFlowConfig: LevelFlowConfig{
 				Concurrency: 500,
@@ -687,11 +686,11 @@ func TestThreshold_Reset(t *testing.T) {
 			DiskIops:         10,
 			DiskBandwidthMB:  20,
 			UpdateIntervalMs: 30,
-			IdleFactor:       0.4,
+			DiskIdleFactor:   0.4,
 		}
 		th.resetDisk(newDiskConf)
 		require.Equal(t, newDiskConf.DiskBandwidthMB, th.DiskBandwidthMB)
-		require.Equal(t, newDiskConf.IdleFactor, th.IdleFactor)
+		require.Equal(t, newDiskConf.DiskIdleFactor, th.DiskIdleFactor)
 	})
 }
 
@@ -770,7 +769,7 @@ func BenchmarkQosMgr_TryAcquire(b *testing.B) {
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
-				IdleFactor:       0.5,
+				DiskIdleFactor:   0.5,
 			},
 			Level: map[string]LevelFlowConfig{
 				bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},

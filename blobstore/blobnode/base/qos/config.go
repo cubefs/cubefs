@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	defaultMaxIops        = 768
+	defaultMaxIops        = 2000
 	defaultMaxMBps        = 1024
 	defaultIntervalMs     = 500
 	defaultIdleFactor     = 0.5
@@ -36,10 +36,10 @@ var (
 	ErrQosWrongConfig = errors.New("wrong qos config")
 
 	defaultConfs = map[string]LevelFlowConfig{
-		bnapi.ReadIO.String():       {Concurrency: 512, MBPS: 300, Factor: 1.0, BidConcurrency: 32},
-		bnapi.WriteIO.String():      {Concurrency: 128, MBPS: 120, Factor: 1.0, BidConcurrency: 1},
-		bnapi.DeleteIO.String():     {Concurrency: 128, MBPS: 60, Factor: 0.8, BidConcurrency: 1},
-		bnapi.BackgroundIO.String(): {Concurrency: 64, MBPS: 20, Factor: 0.6, BidConcurrency: 1},
+		bnapi.ReadIO.String():       {Concurrency: 64, MBPS: 300, Factor: 1.0, BidConcurrency: 32, IdleFactor: 1.0},
+		bnapi.WriteIO.String():      {Concurrency: 64, MBPS: 120, Factor: 1.0, BidConcurrency: 1, IdleFactor: 1.2},
+		bnapi.DeleteIO.String():     {Concurrency: 32, MBPS: 60, Factor: 0.8, BidConcurrency: 1, IdleFactor: 1.25},
+		bnapi.BackgroundIO.String(): {Concurrency: 32, MBPS: 20, Factor: 0.5, BidConcurrency: 1, IdleFactor: 3.0},
 	}
 )
 
@@ -53,7 +53,7 @@ type CommonDiskConfig struct {
 	DiskIops         int64   `json:"disk_iops"`
 	DiskBandwidthMB  int64   `json:"disk_bandwidth_mb"`  // disk total bandwidth MB/s
 	UpdateIntervalMs int64   `json:"update_interval_ms"` // dynamic update limiter interval
-	IdleFactor       float64 `json:"idle_factor"`        // disk is idle, raise rate factor
+	DiskIdleFactor   float64 `json:"disk_idle_factor"`   // disk is idle, raise rate factor
 }
 
 type FlowConfig struct {
@@ -65,7 +65,8 @@ type LevelFlowConfig struct {
 	BidConcurrency int     `json:"bid_concurrency"` // limit bid concurrence
 	Concurrency    int64   `json:"concurrency"`     // limit io type concurrence
 	MBPS           int64   `json:"mbps"`            // limit MBPS concurrence
-	Factor         float64 `json:"factor"`          // factor (0.0, 1.0]
+	Factor         float64 `json:"factor"`          // reduce rate factor (0.0, 1.0]
+	IdleFactor     float64 `json:"idle_factor"`     // idle factor [1.0, xx)
 }
 
 func FixQosConfigOnInit(conf *Config) error {
@@ -76,8 +77,16 @@ func FixQosConfigHotReset(conf *Config) error {
 	return initAndFixQosConfig(conf, false)
 }
 
+// FixQosBidConcurrency special case: only ioType is read, can configure bid concurrency; other is 1
+func FixQosBidConcurrency(ioType string, concurrency int) int {
+	if ioType != bnapi.ReadIO.String() {
+		return defaultBidConcurrency
+	}
+	return concurrency
+}
+
 func initAndFixQosConfig(conf *Config, fillEmpty bool) error {
-	if conf.FlowConf.IdleFactor > 1 {
+	if conf.FlowConf.DiskIdleFactor > 1 {
 		return ErrQosWrongConfig
 	}
 
@@ -85,7 +94,7 @@ func initAndFixQosConfig(conf *Config, fillEmpty bool) error {
 		defaulter.IntegerLessOrEqual(&conf.FlowConf.DiskIops, defaultMaxIops)
 		defaulter.IntegerLessOrEqual(&conf.FlowConf.DiskBandwidthMB, defaultMaxMBps)
 		defaulter.IntegerLessOrEqual(&conf.FlowConf.UpdateIntervalMs, defaultIntervalMs)
-		defaulter.FloatLessOrEqual(&conf.FlowConf.IdleFactor, defaultIdleFactor)
+		defaulter.FloatLessOrEqual(&conf.FlowConf.DiskIdleFactor, defaultIdleFactor)
 	}
 
 	for ioTypeStr := range conf.FlowConf.Level {
@@ -116,9 +125,7 @@ func initAndFixQosConfig(conf *Config, fillEmpty bool) error {
 		}
 
 		// special case: only ioType is read, can configure bid concurrency; other is 1
-		if ioTypeStr != bnapi.ReadIO.String() {
-			userConfig.BidConcurrency = defaultBidConcurrency
-		}
+		userConfig.BidConcurrency = FixQosBidConcurrency(ioTypeStr, userConfig.BidConcurrency)
 		// if exist user config, use it
 		fixedConfig, err := fixLevelFlowConfig(userConfig, defaultVal, fillEmpty)
 		if err != nil {
@@ -132,16 +139,18 @@ func initAndFixQosConfig(conf *Config, fillEmpty bool) error {
 }
 
 func fixLevelFlowConfig(conf, defaultVal LevelFlowConfig, fillEmpty bool) (LevelFlowConfig, error) {
-	if conf.Factor > 1 {
-		return LevelFlowConfig{}, ErrQosWrongConfig
-	}
-
 	if fillEmpty {
 		defaulter.IntegerLessOrEqual(&conf.Concurrency, defaultVal.Concurrency)
 		defaulter.IntegerLessOrEqual(&conf.MBPS, defaultVal.MBPS)
 		defaulter.IntegerLessOrEqual(&conf.BidConcurrency, defaultVal.BidConcurrency)
 		defaulter.FloatLessOrEqual(&conf.Factor, defaultVal.Factor)
+		defaulter.FloatLessOrEqual(&conf.IdleFactor, defaultVal.IdleFactor)
 	}
+
+	if conf.Factor > 1 || conf.IdleFactor < 1 {
+		return LevelFlowConfig{}, ErrQosWrongConfig
+	}
+
 	return conf, nil
 }
 
@@ -159,8 +168,11 @@ func (t *perIOQosConfig) resetDisk(conf CommonDiskConfig) {
 	if conf.DiskBandwidthMB > 0 {
 		t.CommonDiskConfig.DiskBandwidthMB = conf.DiskBandwidthMB
 	}
-	if conf.IdleFactor > 0 && conf.IdleFactor <= 1 {
-		t.CommonDiskConfig.IdleFactor = conf.IdleFactor
+	if conf.DiskIdleFactor > 0 && conf.DiskIdleFactor <= 1 {
+		t.CommonDiskConfig.DiskIdleFactor = conf.DiskIdleFactor
+	}
+	if conf.DiskIops > 0 {
+		t.CommonDiskConfig.DiskIops = conf.DiskIops
 	}
 }
 
@@ -180,5 +192,8 @@ func (t *perIOQosConfig) resetLevel(conf LevelFlowConfig) {
 	}
 	if conf.Factor > 0 && conf.Factor <= 1 {
 		t.LevelFlowConfig.Factor = conf.Factor
+	}
+	if conf.IdleFactor > 0 {
+		t.LevelFlowConfig.IdleFactor = conf.IdleFactor
 	}
 }

@@ -205,12 +205,16 @@ func (s *Service) reloadDiskConf(ctx context.Context, diskKey, diskVal string) (
 	}
 
 	switch diskKey {
+	case "disk_iops":
+		if qosConf.FlowConf.DiskIops, err = parseQosArgsInt(diskVal); err != nil {
+			return err
+		}
 	case "disk_bandwidth_mb":
 		if qosConf.FlowConf.DiskBandwidthMB, err = parseQosArgsInt(diskVal); err != nil {
 			return err
 		}
-	case "idle_factor":
-		if qosConf.FlowConf.IdleFactor, err = parseQosArgsFloat(diskVal); err != nil {
+	case "disk_idle_factor":
+		if qosConf.FlowConf.DiskIdleFactor, err = parseQosArgsFloat(diskVal); err != nil {
 			return err
 		}
 	default:
@@ -264,6 +268,8 @@ func (s *Service) reloadQosLevelConf(ctx context.Context, args *bnapi.ConfigRelo
 		paraConf.MBPS = value
 	case "concurrency":
 		paraConf.Concurrency = value
+	case "bid_concurrency":
+		paraConf.BidConcurrency = qos.FixQosBidConcurrency(levelName, int(value))
 	case "factor":
 		if paraConf.Factor, err = parseQosArgsFloat(args.Value); err != nil {
 			return err

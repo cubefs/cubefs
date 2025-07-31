@@ -15,28 +15,20 @@ func TestInitAndFixQosConfig_EmptyConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(defaultMaxMBps), conf.FlowConf.DiskBandwidthMB)
 	require.Equal(t, int64(defaultIntervalMs), conf.FlowConf.UpdateIntervalMs)
-	require.Equal(t, float64(defaultIdleFactor), conf.FlowConf.IdleFactor)
+	require.Equal(t, float64(defaultIdleFactor), conf.FlowConf.DiskIdleFactor)
 	require.Len(t, conf.FlowConf.Level, 4)
 
 	readConfig := conf.FlowConf.Level[bnapi.ReadIO.String()]
-	require.Equal(t, int64(512), readConfig.Concurrency)
-	require.Equal(t, int64(300), readConfig.MBPS)
-	require.Equal(t, 1.0, readConfig.Factor)
+	require.Equal(t, defaultConfs[bnapi.ReadIO.String()], readConfig)
 
 	writeConfig := conf.FlowConf.Level[bnapi.WriteIO.String()]
-	require.Equal(t, int64(128), writeConfig.Concurrency)
-	require.Equal(t, int64(120), writeConfig.MBPS)
-	require.Equal(t, 1.0, writeConfig.Factor)
+	require.Equal(t, defaultConfs[bnapi.WriteIO.String()], writeConfig)
 
 	deleteConfig := conf.FlowConf.Level[bnapi.DeleteIO.String()]
-	require.Equal(t, int64(128), deleteConfig.Concurrency)
-	require.Equal(t, int64(60), deleteConfig.MBPS)
-	require.Equal(t, 0.8, deleteConfig.Factor)
+	require.Equal(t, defaultConfs[bnapi.DeleteIO.String()], deleteConfig)
 
 	backgroundConfig := conf.FlowConf.Level[bnapi.BackgroundIO.String()]
-	require.Equal(t, int64(64), backgroundConfig.Concurrency)
-	require.Equal(t, int64(20), backgroundConfig.MBPS)
-	require.Equal(t, 0.6, backgroundConfig.Factor)
+	require.Equal(t, defaultConfs[bnapi.BackgroundIO.String()], backgroundConfig)
 }
 
 func TestInitAndFixQosConfig_PartialConfig(t *testing.T) {
@@ -73,14 +65,10 @@ func TestInitAndFixQosConfig_PartialConfig(t *testing.T) {
 	require.Equal(t, 0.8, writeConfig.Factor)
 
 	deleteConfig := conf.FlowConf.Level[bnapi.DeleteIO.String()]
-	require.Equal(t, int64(128), deleteConfig.Concurrency)
-	require.Equal(t, int64(60), deleteConfig.MBPS)
-	require.Equal(t, 0.8, deleteConfig.Factor)
+	require.Equal(t, defaultConfs[bnapi.DeleteIO.String()], deleteConfig)
 
 	backgroundConfig := conf.FlowConf.Level[bnapi.BackgroundIO.String()]
-	require.Equal(t, int64(64), backgroundConfig.Concurrency)
-	require.Equal(t, int64(20), backgroundConfig.MBPS)
-	require.Equal(t, 0.6, backgroundConfig.Factor)
+	require.Equal(t, defaultConfs[bnapi.BackgroundIO.String()], backgroundConfig)
 }
 
 func TestInitAndFixQosConfig_FullUserConfig(t *testing.T) {
@@ -90,7 +78,7 @@ func TestInitAndFixQosConfig_FullUserConfig(t *testing.T) {
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  2048,
 				UpdateIntervalMs: 1000,
-				IdleFactor:       0.3,
+				DiskIdleFactor:   0.3,
 			},
 			Level: map[string]LevelFlowConfig{
 				bnapi.ReadIO.String(): {
@@ -122,7 +110,7 @@ func TestInitAndFixQosConfig_FullUserConfig(t *testing.T) {
 
 	require.Equal(t, int64(2048), conf.FlowConf.DiskBandwidthMB)
 	require.Equal(t, int64(1000), conf.FlowConf.UpdateIntervalMs)
-	require.Equal(t, 0.3, conf.FlowConf.IdleFactor)
+	require.Equal(t, 0.3, conf.FlowConf.DiskIdleFactor)
 
 	readConfig := conf.FlowConf.Level[bnapi.ReadIO.String()]
 	require.Equal(t, int64(2048), readConfig.Concurrency)
