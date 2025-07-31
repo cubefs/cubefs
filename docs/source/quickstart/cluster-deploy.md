@@ -205,6 +205,40 @@ Example `lifecycle.json`, as follows:
 
 For detailed configuration parameters, please refer to [Lcnode Detailed Configuration](../ops/configs/lcnode.md).
 
+### Install FlashNode
+
+::: tip Note
+This component is optional and can be omitted if file reads do not require caching or cluster-based acceleration
+:::
+
+``` bash
+./cfs-server -c flashnode.json
+```
+
+Example `flashnode.json`, as follows:
+
+``` json
+{
+    "role": "flashnode",
+    "listen": "18510",
+    "prof": "18511",
+    "logDir": "./logs",
+    "masterAddr": [
+        "127.0.0.1:17010",
+        "127.0.0.2:17010",
+        "127.0.0.3:17010"
+    ],
+    "readRps": 100000,
+    "disableTmpfs": true,
+    "diskDataPath": [
+      "/path/data1:0"
+      ],
+    "zoneName":"default"
+}
+```
+
+For detailed configuration parameters, please refer to [FlashNode Detailed Configuration](../ops/configs/flashnode.md).
+
 ### Install Erasure Coding Subsystem
 
 ::: tip Note

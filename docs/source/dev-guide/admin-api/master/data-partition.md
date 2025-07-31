@@ -52,7 +52,7 @@ Response Example
 ## Decommission Replica
 
 ``` bash
-curl -v "http://10.196.59.198:17010/dataPartition/decommission?id=13&addr=10.196.59.201:17310"
+curl -v "http://10.196.59.198:17010/dataPartition/decommission?id=13&addr=10.196.59.201:17310&weight=2"
 ```
 
 Removes a replica of the data shard and creates a new replica.
@@ -63,6 +63,7 @@ Parameter List
 |-----------|--------|--------------------------------------|
 | id        | uint64 | Data shard ID                        |
 | addr      | string | Address of the replica to be removed |
+| weight    | int    | Decommission weight, default is 2    |
 
 ## Compare Replica Files
 

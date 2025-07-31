@@ -116,7 +116,51 @@ You can use cfs-cli cluster info to view the current configuration information o
 
 The above parameters can be configured through the cfs-cli cluster set command. Detailed information can be viewed through the cfs-cli cluster set --help command.
 
-### 4.2 Query the copy repair progress
+### 4.2 Decommissioning concurrency limits
+
+After upgrading to cfs 3.5.2, you can configure concurrency limits during the decommissioning process, including disk-level and node-level host0 token concurrency limits.
+
+#### Disk-level concurrency limit
+
+The default disk-level host0 token concurrency limit is 10, which means a disk can allow up to 10 DPs to use the replica on that disk as the repair source replica at the same time.
+
+**Set command**
+
+You can reset this value through the following command. After setting, it takes effect globally, that is, all disks will use this new value as the threshold:
+
+```bash
+curl "http://masterLeaderAddr:17010/admin/updateDecommissionFirstHostDiskParallelLimit?decommissionFirstHostDiskParallelLimit=2"
+```
+
+**Query command**
+
+You can query this value through the following command:
+
+```bash
+curl "http://masterLeaderAddr:17010/admin/queryDecommissionFirstHostDiskParallelLimit"
+```
+
+#### Node-level concurrency limit
+
+The default node-level host0 token concurrency limit is 0 (meaning no limit), which means a node does not limit the number of DPs that use the replica on that node as the repair source replica.
+
+**Set command**
+
+You can reset this value through the following command. After setting, it takes effect locally, that is, only the data node in the request parameter will use this new value as the threshold:
+
+```bash
+curl "http://masterLeaderAddr:17010/admin/updateDecommissionFirstHostParallelLimit?addr=10.52.132.57:17310&&decommissionFirstHostParallelLimit=3"
+```
+
+**Query command**
+
+You can query this value through the following command:
+
+```bash
+curl "http://masterLeaderAddr:17010/admin/queryDecommissionFirstHostParallelLimit?addr=10.52.132.57:17310"
+```
+
+### 4.3 Query the copy repair progress
 
 Through the cfs-cli datapartition check command, you can observe the dp status in the cluster:
 
@@ -160,7 +204,7 @@ DP_ID VOLUME REPLICAS DP_STATUS MEMBERS
 
 Except for the problem of inconsistent file numbers and DP sizes between replica organizations, other problems can be automatically fixed by enabling automatic offline and DP self-healing.
 
-### 4.3 Query the disk/node offline progress
+### 4.4 Query the disk/node offline progress
 
 You can use the curl command "/disk/queryDecommissionProgress" or "/dataNode/queryDecommissionProgress" to query the decommissioning progress of the disk or node. Take querying the decommissioning progress of the disk as an example.
 
@@ -190,13 +234,28 @@ You can use the curl command "/disk/queryDecommissionProgress" or "/dataNode/que
 - ResidualDps: residual dp information. Since the replicas of dp share a set of metadata on the master side, if replica a fails to be offline first and then replica b succeeds, the failure information of a will be overwritten. Therefore, this array stores the error information of the overwritten replica offline. After manual processing based on the error information, the disk/node operation can be re-executed.
 - StartTime: The start time of the offline operation.
 
-### 4.4 Cancel the offline
+### 4.5 Cancel the offline
 
-You can cancel the decommissioning of a disk or node through /disk/cancelDecommission or /dataNode/cancelDecommission.
+Note: After upgrading to cfs 3.5.2, cancel decommission is supported. This operation cancels the current disk or node decommission (disks or nodes with decommission status as mark or running), that is, running DPs will delete the new replicas (subsequently supplemented by metadata self-healing), queued DPs will be directly removed from the decommissioning queue, and the decommissioning status of these DPs will be reset.
 
-The DP that is performing a replica repair operation cannot be terminated. Only the DP that is in the offline list but has not obtained the offline token can be terminated.
+#### Cancel disk decommission command
 
-### 4.5 Cluster offline status
+```bash
+curl -v "http://masterLeaderAddr:17010/disk/cancelDecommission?addr=dataNodeAddr:17310&disk=/home/service/var/data1"
+```
+
+- addr: The data node address where the disk to be cancelled is located
+- disk: The disk path to be cancelled
+
+#### Cancel node decommission command
+
+```bash
+curl -v "http://masterLeaderAddr:17010/dataNode/cancelDecommission?addr=dataNodeAddr:17310"
+```
+
+- addr: The data node address to be cancelled
+
+### 4.6 Cluster offline status
 
 You can view the offline status of the current cluster through admin/queryDecommissionToken:
 
@@ -236,7 +295,7 @@ Each nodeset maintains a dp and disk offline queue, so what is returned here is 
 
 It is worth noting that the speed of DP offline is currently further controlled by disk. If the offline of the current disk is not completed and the disk token has been exhausted, even if there are idle DP tokens, it will not trigger the offline operation of DPs on other offline disks.
 
-### 4.6 Check the disk status of the node
+### 4.7 Check the disk status of the node
 
 You can view the status of the node through cfs-cli datanode info:
 
@@ -262,7 +321,7 @@ Backup partitions  : []
 - Backup partitions: The backup directory of dp deleted by raftForce on the current node. This directory will be deleted regularly, and can also be manually deleted in advance to free up space.
 
 
-### 4.7 Check dp offline status
+### 4.8 Check dp offline status
 
 You can view the offline status of dp by using the following command:
 
@@ -299,7 +358,7 @@ For the offline operation of single/double replicas, the order of adding/deletin
 
 The above variables can be reset to their initial values ​​through the /dataPartition/resetDecommissionStatus interface, which can solve the problem of multiple dp offline failures in some cases.
 
-### 4.8 Faulty disk recovery
+### 4.9 Faulty disk recovery
 
 - If a bad disk has been manually repaired (not through a migration or decommission operation) and needs to be reused, the recoverBadDisk interface can be used to reset it. This action clears the disk error count, reloads the data partitions (dp) on the disk, and removes the record from the Bad disks list:
 ```
@@ -308,7 +367,7 @@ curl -v "http://192.168.66.77:17010/disk/recoverBadDisk?addr=datanodeAddr:17310&
 
 - If a bad disk has been taken offline through a migration process, and after the maintenance personnel replace it with a new disk (assuming the new disk is mounted to the same original path), the new disk may be reported as Lost. In this case, you can restart the data node or execute the reloadDisk command to reload the disk: `curl "http://172.16.1.101:17010/disk/reloadDisk?addr=172.16.1.101:17310&disk=/home/data/data1/disk"`.The reloadDisk interface avoids the impact on other disks that might occur from restarting the node. It also removes the disk path from the DecommissionSuccess and Decommissioned lists.If you choose to reload the disk by restarting the node, you will need to manually execute the recommission command to remove the disk from the DecommissionSuccess and Decommissioned lists, effectively bringing the disk back online: `curl "http://172.16.1.101:17010/disk/recommission?addr=172.16.1.101:17310&disk=/home/data/data1/disk"`.
 
-### 4.9 The replica repair process is stuck
+### 4.10 The replica repair process is stuck
 
 When a dp replica has been repaired multiple times for a long time, you can first view the log of the replica group host[0] by running the following command:
 

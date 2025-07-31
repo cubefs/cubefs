@@ -116,7 +116,51 @@ dp 副本在读写磁盘时，如果遇到 IO 错误，则会登记到所属磁�
 
 以上参数均可通过 cfs-cli cluster set 命令进行配置，详细信息可以通过 cfs-cli cluster set --help 命令进行查看。
 
-### 4.2 查询副本修复进度
+### 4.2 下线并发限制
+
+cfs 3.5.2升级之后支持配置下线过程中的并发限制，包括磁盘维度和节点维度的host0 token并发限制。
+
+#### 磁盘维度并发限制
+
+默认的磁盘维度host0 token并发限制为10，即一个磁盘最多同时允许10个dp以该磁盘上的副本作为修复的源副本。
+
+**设置命令**
+
+通过如下命令可重新设置该值，设置之后**全局生效**，即全部的磁盘都会以该新值作为阈值：
+
+```bash
+curl "http://masterLeaderAddr:17010/admin/updateDecommissionFirstHostDiskParallelLimit?decommissionFirstHostDiskParallelLimit=2"
+```
+
+**查询命令**
+
+通过如下命令可查询该值：
+
+```bash
+curl "http://masterLeaderAddr:17010/admin/queryDecommissionFirstHostDiskParallelLimit"
+```
+
+#### 节点维度并发限制
+
+默认的节点维度host0 token并发限制为0（意为不限制），即一个节点不限制以该节点上的副本作为修复源副本的dp并发数量。
+
+**设置命令**
+
+通过如下命令可重新设置该值，设置之后**局部生效**，即只有请求参数中的数据节点会以该新值作为阈值：
+
+```bash
+curl "http://masterLeaderAddr:17010/admin/updateDecommissionFirstHostParallelLimit?addr=10.52.132.57:17310&&decommissionFirstHostParallelLimit=3"
+```
+
+**查询命令**
+
+通过如下命令可查询该值：
+
+```bash
+curl "http://masterLeaderAddr:17010/admin/queryDecommissionFirstHostParallelLimit?addr=10.52.132.57:17310"
+```
+
+### 4.3 查询副本修复进度
 
 通过 cfs-cli datapartition check 命令，可以观察到集群中的dp状态：
 
@@ -160,7 +204,7 @@ DP_ID       VOLUME      REPLICAS    DP_STATUS    MEMBERS
 
 除了副本组织间文件数和 dp 大小不一直的问题，其他问题都可以通过开启自动下线以及 dp 自愈进行自动修复。
 
-### 4.3 查询磁盘/节点下线进度
+### 4.4 查询磁盘/节点下线进度
 
 可以通过 curl 命令 "/disk/queryDecommissionProgress" 或者 "/dataNode/queryDecommissionProgress" 查询磁盘/节点的下线进度。以查询磁盘的下线进度为例。
 
@@ -190,13 +234,28 @@ DP_ID       VOLUME      REPLICAS    DP_STATUS    MEMBERS
 - ResidualDps：残留的 dp 信息。由于 dp 的副本在 master 侧共享一套元数据。如果先下线 a 副本失败，之后下线 b 副本成功，那么 a 的失败信息就会被覆盖。因此这个数组保存的是被覆盖的副本下线错误信息。根据错误信息进行人工处理后，可以重新执行磁盘/节点的操作。
 - StartTime：下线操作的开始时间。
 
-### 4.4 取消下线
+### 4.5 取消下线
 
-可以通过 /disk/cancelDecommission 或者 /dataNode/cancelDecommission 取消正在执行下线操作的磁盘/节点。
+说明：cfs 3.5.2升级之后支持取消下线，该操作取消本次磁盘或节点（下线状态为mark或者running的磁盘或者节点）下线，即running的dp会删除掉新副本（后续依靠元数据自愈补齐），排队中的dp直接移除出下线队列，重置这些dp的下线状态。
 
-对于正在进行副本修复操作的 dp 是无法终止的，只能终止在下线列表中但是还没有获取到下线 token 的 dp。
+#### 取消磁盘下线命令
 
-### 4.5 集群下线状态
+```bash
+curl -v "http://masterLeaderAddr:17010/disk/cancelDecommission?addr=dataNodeAddr:17310&disk=/home/service/var/data1"
+```
+
+- addr：取消下线的磁盘所在的数据节点地址
+- disk：取消下线的磁盘路径
+
+#### 取消节点下线命令
+
+```bash
+curl -v "http://masterLeaderAddr:17010/dataNode/cancelDecommission?addr=dataNodeAddr:17310"
+```
+
+- addr：取消下线的数据节点地址
+
+### 4.6 集群下线状态
 
 通过 admin/queryDecommissionToken 可以查看当前集群的下线状态：
 
@@ -236,7 +295,7 @@ DP_ID       VOLUME      REPLICAS    DP_STATUS    MEMBERS
 
 值得注意的是，当前是以磁盘为单位去进一步控制 dp 下线的速度的。如果当前磁盘的下线没结束并且磁盘的 token 已经耗尽，即使有空闲的 dp token，也不会触发其他为下线磁盘上的 dp 执行下线操作。
 
-### 4.6 查看节点的磁盘状态
+### 4.7 查看节点的磁盘状态
 
 通过 cfs-cli datanode info 可以查看节点的状态：
 
@@ -262,7 +321,7 @@ Backup partitions   : []
 - Backup partitions：当前节点上，通过raftForce删除的dp的备份目录。这部分目录会定期删除，也可以提前人工删除释放空间。
 
 
-### 4.7 查看dp下线状态
+### 4.8 查看dp下线状态
 
 通过如下命令可以查看dp的下线状态：
 
@@ -299,7 +358,7 @@ Backup partitions   : []
 
 可以通过 /dataPartition/resetDecommissionStatus 接口将上述变量都重置为初始值，在某些情况下可以解决 dp 多次下线失败的问题。
 
-### 4.8 故障盘恢复和换盘后操作
+### 4.9 故障盘恢复和换盘后操作
 
 - 坏盘经过人工修复 (非迁移或下线操作) 后，如果需要继续使用该磁盘，可以通过recoverBadDisk接口进行重置，作用是消除磁盘错误计数，重新加载磁盘上的 dp, 并消除 Bad disks 中的记录：
 ```
@@ -310,7 +369,7 @@ curl -v "http://192.168.66.77:17010/disk/recoverBadDisk?addr=datanodeAddr:17310&
 
 
 
-### 4.9 副本修复过程卡住
+### 4.10 副本修复过程卡住
 
 当一个 dp 的副本长时间多次修复超时，可以先通过以下命令查看副本组 host[0] 的日志：
 

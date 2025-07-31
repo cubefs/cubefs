@@ -95,3 +95,77 @@ Parameter List
 | srcAddr    | string | Address of the source metadata node                                          |
 | targetAddr | string | Address of the target metadata node                                          |
 | count      | int    | Number of metadata shards to be migrated. Optional. The default value is 15. |
+
+## Balance
+
+When some metanode machines in the cluster have high memory load while others have low load, you can achieve memory load balancing by migrating MPs. This way, the network connections that each metanode needs to handle will also be more balanced.
+
+### Auto-generate Migration Plan
+
+A migration plan can be generated when there are MN nodes with memory usage reaching 75% and idle nodes with usage below 30%.
+
+#### Create Migration Plan
+
+``` bash
+curl -v "http://10.52.140.165:17010/metaNode/createBalanceTask"  | python -m json.tool
+```
+
+#### Show Migration Plan
+
+``` bash
+curl -v "http://10.52.140.165:17010/metaNode/getBalanceTask"  | python -m json.tool
+```
+
+#### Run Migration Plan
+
+``` bash
+curl -v "http://10.52.140.165:17010/metaNode/runBalanceTask"  | python -m json.tool
+```
+
+#### Stop Migration Plan
+
+``` bash
+curl -v "http://10.52.140.165:17010/metaNode/stopBalanceTask"  | python -m json.tool
+```
+
+#### Delete Migration Plan
+
+``` bash
+curl -v "http://10.52.140.165:17010/metaNode/deleteBalanceTask"  | python -m json.tool
+```
+
+### cfs-cli Tool Commands
+
+The corresponding cfs-cli tool commands for these operations are:
+
+``` bash
+./cfs-cli mp-balance create
+./cfs-cli mp-balance show
+./cfs-cli mp-balance run
+./cfs-cli mp-balance stop
+./cfs-cli mp-balance delete
+```
+
+### Important Notes
+
+::: tip Note
+We only save one migration plan in a cluster. New migration plans cannot be created until the existing one is deleted. For operational convenience, multiple migration plans are not created simultaneously.
+
+Completed migration plans are only retained for three days, after which they are automatically deleted by the background. If a task status is in error, it will remain stopped, waiting for developers to investigate. This means that even with autoMetaPartitionMigrate enabled, balance tasks only run once every 3 days.
+
+You can change the high water mark, low water mark, and auto-migration settings in the cluster through /admin/setConfig. Only one value can be modified at a time. Since this is rarely used, it's not designed to modify multiple values simultaneously to reduce code changes.
+
+When problems occur, you can correct errors by specifying the MP to migrate using the command /metaNode/migratePartition.
+:::
+
+### Specify Detailed Migration Information
+
+``` bash
+curl -v "http://10.52.140.165:17010/metaNode/migratePartition?srcAddr=10.52.140.165:17210&targetAddr=10.52.140.102:17210&id=13"
+```
+
+### Query Migration Results
+
+``` bash
+curl -v "http://10.52.140.165:17010/metaNode/migrateResult?targetAddr=10.52.140.165:17210&id=13"  | python -m json.tool
+```

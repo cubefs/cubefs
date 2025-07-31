@@ -91,7 +91,8 @@ CubeFS 使用`lifecycle`组件基于访问时间`atime`来实现智能的将数�
             "ID": "a1",
             "Status": "Enabled",
             "Filter": {
-                "Prefix": "dir1"
+                "Prefix": "dir1",
+                "MinSize": 1048576
             },
             "Transition": [
                 {
@@ -104,7 +105,8 @@ CubeFS 使用`lifecycle`组件基于访问时间`atime`来实现智能的将数�
             "ID": "a2",
             "Status": "Disabled",
             "Filter": {
-                "Prefix": "dir2"
+                "Prefix": "dir2",
+                "MinSize": 2097152
             },
             "Transition": [
                 {
@@ -125,6 +127,7 @@ CubeFS 使用`lifecycle`组件基于访问时间`atime`来实现智能的将数�
 | Rules.ID                | string | 每个规则的唯一id                            |
 | Rules.Status            | string | `Enabled\|Disabled`, 是否开启规则           |
 | Rules.Filter.Prefix     | string | 规则对应路径前缀                            |
+| Rules.Filter.MinSize    | int    | 文件大小阈值，单位byte                      |
 | Rules.Transition        | object | 迁移具体规则                                |
 | Transition.Date         | time   | 如果atime是小于指定date, 则迁移             |
 | Transition.Days         | int    | 当前时间与atime之间差距超过days，则触发迁移 |

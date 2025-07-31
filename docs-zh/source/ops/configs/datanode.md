@@ -22,9 +22,16 @@
 | diskWriteIocc | int          | 限制单盘并发写操作,小于等于0表示不限制            | 否   |
 | diskWriteFlow | int          | 限制单盘写流量,小于等于0表示不限制                | 否   |
 | disks         | string slice | 格式：`磁盘挂载路径:预留空间` ，预留空间配置范围`[20G,50G]` | 是   |
-| diskCurrentLoadDpLimit | int | 一个磁盘上并发加载的data partition的最大数量 | No |
-| diskCurrentStopDpLimit | int | 一个磁盘上并发停止的data partition的最大数量 | No |
-| enableLogPanicHook | bool | (实验性) Hook `panic` 函数以便在执行`panic`之前使日志落盘 | No | false |
+| diskCurrentLoadDpLimit | int | 一个磁盘上并发加载的data partition的最大数量 | 否 |
+| diskCurrentStopDpLimit | int | 一个磁盘上并发停止的data partition的最大数量 | 否 |
+| enableLogPanicHook | bool | (实验性) Hook `panic` 函数以便在执行`panic`之前使日志落盘 | 否 |
+| diskAsyncQosEnable | bool | 异步IO限制开关 | 否 |
+| diskAsyncReadFlow | int | 限制单盘异步读流量,小于等于0表示不限制 | 否 |
+| diskAsyncReadIocc | int | 限制单盘异步读并发,小于等于0表示不限制 | 否 |
+| diskAsyncWriteFlow | int | 限制单盘异步写流量,小于等于0表示不限制 | 否 |
+| diskAsyncWriteIocc | int | 限制单盘异步写并发,小于等于0表示不限制 | 否 |
+| diskDeleteIocc | int | 限制单盘删除操作并发,小于等于0表示不限制 | 否 |
+| diskDeleteIops | int | 限制单盘删除操作IOPS,小于等于0表示不限制 | 否 |
 ## 配置示例
 
 ``` json
@@ -48,6 +55,13 @@
      "diskReadFlow": 0,
      "diskWriteIocc": 0,
      "diskWriteFlow": 0,
+     "diskAsyncQosEnable": true,
+     "diskAsyncReadFlow": 0,
+     "diskAsyncReadIocc": 0,
+     "diskAsyncWriteFlow": 0,
+     "diskAsyncWriteIocc": 0,
+     "diskDeleteIocc": 0,
+     "diskDeleteIops": 0,
      "disks": [
          "/data0:10737418240",
          "/data1:10737418240"
