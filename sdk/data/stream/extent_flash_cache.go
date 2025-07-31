@@ -227,6 +227,7 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 		LogDir:             "",
 		ConnectTimeout:     500,
 		FirstPacketTimeout: 1000,
+		FromFuse:           true,
 	}
 	rc.remoteCacheClient, err = remotecache.NewRemoteCacheClient(cfg)
 
