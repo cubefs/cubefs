@@ -90,7 +90,8 @@ For performance reasons, the atime of inodes is typically not persisted via Raft
             "ID": "a1",
             "Status": "Enabled",
             "Filter": {
-                "Prefix": "dir1"
+                "Prefix": "dir1",
+                "MinSize": 1048576
             },
             "Transition": [
                 {
@@ -103,7 +104,8 @@ For performance reasons, the atime of inodes is typically not persisted via Raft
             "ID": "a2",
             "Status": "Disabled",
             "Filter": {
-                "Prefix": "dir2"
+                "Prefix": "dir2",
+                "MinSize": 2097152
             },
             "Transition": [
                 {
@@ -124,6 +126,7 @@ For performance reasons, the atime of inodes is typically not persisted via Raft
 | Rules.ID                | string | uniq id for one rule                                                   |
 | Rules.Status            | string | `Enabled\|Disabled`, whether start rules                               |
 | Rules.Filter.Prefix     | string | valid path for rule, "" means the whole volume                         |
+| Rules.Filter.MinSize    | int    | file size threshold in bytes                                           |
 | Rules.Transition        | object | config transition rules                                                |
 | Transition.Date         | time   | if file atime is before Date, transition will exec                     |
 | Transition.Days         | int    | when interval between atime and now is over days, transition will exec |

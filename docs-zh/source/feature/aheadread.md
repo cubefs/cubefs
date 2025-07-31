@@ -26,7 +26,7 @@ chmod +x /usr/local/bin/bdi_add_script
 | aheadReadBlockTimeOut      | int64 | 缓存块未命中的回收时间(默认3s)                   | 否  |
 |    aheadReadWindowCnt                        | int64 | 缓存滑动窗口的大小(默认：8)                     | 否  |
 
-![img.png](img.png)
+![aheadread](./pic/aheadread.png)
 ::: tip 提示：
 1、开启预读会占用一定的客户端内存，对于客户端内存限制高的场景，可以调节aheadReadTotalMemGB的大小，但是性能会有一定的衰减 
 2、预读只对大于4M的文件有效，如果和bcache同时开启，会优先执行预读

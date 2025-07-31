@@ -52,7 +52,7 @@ curl -v "http://10.196.59.198:17010/dataPartition/get?id=100"  | python -m json.
 ## 下线副本
 
 ``` bash
-curl -v "http://10.196.59.198:17010/dataPartition/decommission?id=13&addr=10.196.59.201:17310"
+curl -v "http://10.196.59.198:17010/dataPartition/decommission?id=13&addr=10.196.59.201:17310&weight=2"
 ```
 
 移除数据分片的某个副本，并且创建一个新的副本。
@@ -63,6 +63,7 @@ curl -v "http://10.196.59.198:17010/dataPartition/decommission?id=13&addr=10.196
 |------|--------|-----------|
 | id   | uint64 | 数据分片的 ID   |
 | addr | string | 要下线的副本的地址 |
+| weight | int | 下线权重，默认是2 |
 
 ## 比对副本文件
 
