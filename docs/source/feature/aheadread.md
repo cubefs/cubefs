@@ -23,7 +23,7 @@ The following table describes the meanings of various parameters in the configur
 | Parameter           | Type    | Meaning                                  | Required |
 |--------------|-------|-------------------------------------|----|
 | aheadReadEnable        | bool  | Whether to enable ahead read                              | Yes  |
-| aheadReadTotalMemGB      | int64 | Memory occupied by ahead read (default: 10GB), if less than 10GB then occupies 50% of current available memory | No  |
+| aheadReadTotalMemGB      | int64 | Memory occupied by ahead read (default: 10GB), if less than 10GB then occupies 1/3 of current available memory | No  |
 | aheadReadBlockTimeOut      | int64 | Cache block miss recycling time (default: 3s)                   | No  |
 |    aheadReadWindowCnt                        | int64 | Size of cache sliding window (default: 8)                     | No  |
 
