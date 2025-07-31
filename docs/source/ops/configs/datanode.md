@@ -25,6 +25,13 @@
 | diskCurrentLoadDpLimit | int | The max count of data partition on a disk that current load | No |
 | diskCurrentStopDpLimit | int | The max count of data partition on a disk that current stop | No |
 | enableLogPanicHook | bool | (Experimental) Hook `panic` function to flush log before executing `panic` | No | false |
+| diskAsyncQosEnable | bool | Asynchronous IO limits switch | No |
+| diskAsyncReadFlow | int | Limit asynchronous read io flow per disk. No limit if less than or equal to 0 | No |
+| diskAsyncReadIocc | int | Limit asynchronous read concurrency io frequency per disk. No limit if less than or equal to 0 | No |
+| diskAsyncWriteFlow | int | Limit asynchronous write io flow per disk. No limit if less than or equal to 0 | No |
+| diskAsyncWriteIocc | int | Limit asynchronous write concurrency io frequency per disk. No limit if less than or equal to 0 | No |
+| diskDeleteIocc | int | Limit delete operation concurrency io frequency per disk. No limit if less than or equal to 0 | No |
+| diskDeleteIops | int | Limit delete operation IOPS per disk. No limit if less than or equal to 0 | No |
 
 ## Configuration Example
 
@@ -49,6 +56,13 @@
      "diskReadFlow": 0,
      "diskWriteIocc": 0,
      "diskWriteFlow": 0,
+     "diskAsyncQosEnable": true,
+     "diskAsyncReadFlow": 0,
+     "diskAsyncReadIocc": 0,
+     "diskAsyncWriteFlow": 0,
+     "diskAsyncWriteIocc": 0,
+     "diskDeleteIocc": 0,
+     "diskDeleteIops": 0,
      "disks": [
          "/data0:10737418240",
          "/data1:10737418240"

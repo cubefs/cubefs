@@ -55,7 +55,7 @@ Response Example
 ## Decommission Node
 
 ``` bash
-curl -v "http://192.168.0.11:17010/dataNode/decommission?addr=192.168.0.33:17310"
+curl -v "http://192.168.0.11:17010/dataNode/decommission?addr=192.168.0.33:17310&weight=2"
 ```
 
 Removes a data node from the cluster. All data shards on the data node will be asynchronously migrated to other available data nodes in the cluster.
@@ -65,6 +65,7 @@ Parameter List
 | Parameter | Type   | Description                                          |
 |-----------|--------|------------------------------------------------------|
 | addr      | string | Address for interaction between data node and master |
+| weight    | int    | Decommission weight, default is 2                    |
 
 ## Get Disk
 
@@ -83,7 +84,7 @@ curl -v "http://192.168.0.11:17320/partitions"
 ## Disk Decommission
 
 ```bash
-curl -v "http://192.168.0.11:17010/disk/decommission
+curl -v "http://192.168.0.11:17010/disk/decommission?addr=192.168.0.12:17310&disk=/home/service/var/data1&weight=2"
 ```
 
 Parameter List
@@ -95,6 +96,7 @@ Parameter List
 | count | int    | Number of dp to take offline each time, default is 0, which represents all dp offline. |
 | diskDisable | bool    | Whether to disable the disk, i.e., prohibit creating new data partitions on the offline disks. Default is true |
 | decommissionType | int    | Offline type, default is 0, which represents manual offline; 1 indicates automatic offline |
+| weight    | int    | Decommission weight, default is 2                |
 
 ## Migration
 
