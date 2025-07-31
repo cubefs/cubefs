@@ -68,6 +68,7 @@ type RemoteCacheClient struct {
 	SameRegionTimeout     int64 // ms
 	AddressPingMap        sync.Map
 	firstPacketTimeout    int64
+	FromFuse              bool
 }
 
 func (as *AddressPingStats) Add(duration time.Duration) {
@@ -102,6 +103,7 @@ type ClientConfig struct {
 	LogDir             string
 	ConnectTimeout     int64 // ms
 	FirstPacketTimeout int64 // ms
+	FromFuse           bool
 }
 
 func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err error) {
@@ -133,13 +135,14 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 	rc.SameZoneTimeout = proto.DefaultRemoteCacheSameZoneTimeout
 	rc.SameRegionTimeout = proto.DefaultRemoteCacheSameRegionTimeout
 	rc.blockSize = config.BlockSize
-
-	err = rc.updateRemoteCacheConfig()
-	if err != nil {
-		log.LogErrorf("NewRemoteCacheClient: updateRemoteCacheConfig err %v", err)
-		return
+	rc.FromFuse = config.FromFuse
+	if !config.FromFuse {
+		err = rc.updateRemoteCacheConfig()
+		if err != nil {
+			log.LogErrorf("NewRemoteCacheClient: updateRemoteCacheConfig err %v", err)
+			return
+		}
 	}
-
 	err = rc.UpdateFlashGroups()
 	if err != nil {
 		log.LogErrorf("NewRemoteCacheClient: updateFlashGroups err %v", err)
@@ -198,8 +201,10 @@ func (rc *RemoteCacheClient) refreshWithRecover() (panicErr error) {
 			if err = rc.UpdateFlashGroups(); err != nil {
 				log.LogErrorf("updateFlashGroups err: %v", err)
 			}
-			if err = rc.updateRemoteCacheConfig(); err != nil {
-				log.LogErrorf("updateRemoteCacheConfig err: %v", err)
+			if !rc.FromFuse {
+				if err = rc.updateRemoteCacheConfig(); err != nil {
+					log.LogErrorf("updateRemoteCacheConfig err: %v", err)
+				}
 			}
 		case <-refreshLatency.C:
 			rc.refreshHostLatency()
@@ -633,6 +638,9 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	if totalWritten != length {
 		return fmt.Errorf("unexpected data length: expected %d bytes, got %d", length, totalWritten)
 	}
+	if log.EnableDebug() {
+		log.LogDebugf("put data success key(%v) addr(%v) totalWriten(%v)", key, addr, totalWritten)
+	}
 	return nil
 }
 
@@ -895,7 +903,9 @@ func (rc *RemoteCacheClient) Get(ctx context.Context, reqId, key string, from, t
 	}
 	remoteCacheMetric := exporter.NewCounter("readRemoteCache")
 	remoteCacheMetric.AddWithLabels(1, map[string]string{"key": key})
-	if r, length, err = rc.readObjectFromRemoteCache(ctx, key, reqId, uint64(from), uint64(to-from)); err == nil {
+	var cr *RemoteCacheReader
+	if cr, length, err = rc.readObjectFromRemoteCache(ctx, key, reqId, uint64(from), uint64(to-from)); err == nil {
+		r = cr
 		remoteCacheHitMetric := exporter.NewCounter("readRemoteCacheHit")
 		remoteCacheHitMetric.AddWithLabels(1, map[string]string{"key": key})
 	} else if strings.Contains(err.Error(), proto.ErrorNotExistShouldCache.Error()) {

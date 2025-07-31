@@ -80,7 +80,7 @@ func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master s
 		var err error
 		cfg := &remotecache.ClientConfig{
 			Masters:            strings.Split(master, ","),
-			BlockSize:          proto.PageSize,
+			BlockSize:          proto.CACHE_OBJECT_BLOCK_SIZE,
 			NeedInitLog:        true,
 			LogLevelStr:        "debug",
 			LogDir:             "/tmp/cfs",
@@ -550,12 +550,16 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 					reads := 0
 					for {
 						readBytes, readErr := r.Read(dataBuf)
-						if readErr != nil {
+						if readErr != nil && readErr != io.EOF {
+							fmt.Printf("storage %v read data %v failed reqID %v: readErr %v\n", storage.Name(), fh.FileName, reqId, readErr)
 							err = readErr
 							break
 						}
 						copy(tmpBuf[reads:], dataBuf[:readBytes])
 						reads += readBytes
+						if readErr == io.EOF {
+							break
+						}
 					}
 					if reads != int(len1) {
 						err = fmt.Errorf("wrong len %v:expected[%v]", reads, len1)

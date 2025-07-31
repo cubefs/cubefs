@@ -895,6 +895,9 @@ func (cb *CacheBlock) MaybeWriteCompleted(reqLen int64) (err error) {
 		return
 	}
 	cb.notifyReady()
+	if log.EnableDebug() {
+		log.LogDebugf("action[MaybeWriteCompleted], block:%s, size %v write file sucess", cb.blockKey, cb.usedSize)
+	}
 	return nil
 }
 

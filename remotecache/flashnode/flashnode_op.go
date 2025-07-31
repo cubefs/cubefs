@@ -319,7 +319,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 	uniKey := req.UniKey
 	pDir := cachengine.MapKeyToDirectory(uniKey)
 	blockKey := cachengine.GenCacheBlockKeyV2(pDir, uniKey)
-	_, err1 := f.cacheEngine.PeekCacheBlock(blockKey)
+	_, err1 := f.cacheEngine.GetCacheBlockForReadByKey(blockKey)
 	if err1 == nil {
 		if log.EnableDebug() {
 			log.LogDebug(logPrefix+" check block key:"+uniKey+" logMsg:%s",
@@ -379,7 +379,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 			}
 			readSize = proto.CACHE_BLOCK_PACKET_SIZE
 			missTaskDone := make(chan struct{})
-			err = f.limitWrite.TryRunAsync(context.Background(), writeLen, false, func() {
+			err = f.limitWrite.Run(writeLen, true, func() {
 				defer func() {
 					close(missTaskDone)
 				}()
