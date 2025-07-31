@@ -317,21 +317,24 @@ func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
 		log.LogInfof("skip warmUp, len of extents=0, inode(%v)", i.Inode)
 		return nil
 	}
+	defer func() {
+		if err != nil {
+			s.ec.CloseStream(i.Inode)
+			s.ec.EvictStream(i.Inode)
+		}
+	}()
 	if err = s.ec.OpenStream(i.Inode, false, false, ""); err != nil {
 		log.LogWarnf("warmUp: ec OpenStream fail, inode(%v) err: %v", i.Inode, err)
 		return err
 	}
-	defer func() {
-		s.ec.CloseStream(i.Inode)
-		s.ec.EvictStream(i.Inode)
-	}()
 	if err = s.ec.ForceRefreshExtentsCache(i.Inode); err != nil {
 		log.LogWarnf("warmUp: ec ForceRefreshExtentsCache fail, inode(%v) err: %v", i.Inode, err)
 		return err
 	}
-	for _, extent := range extents {
+	eLen := len(extents)
+	for index, extent := range extents {
 		s.prepareLimiter.Wait(context.Background())
-		prepareReq := stream.NewPrepareRemoteCacheRequest(i.Inode, extent, true, i.WriteGen)
+		prepareReq := stream.NewPrepareRemoteCacheRequest(i.Inode, extent, true, i.WriteGen, eLen-1 == index)
 		s.RemoteCache.PrepareCh <- prepareReq
 		atomic.AddInt64(&s.currentStat.TotalExtentKeyNum, 1)
 		atomic.AddInt64(&s.currentStat.TotalCacheSize, int64(extent.Size))

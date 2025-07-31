@@ -969,6 +969,10 @@ func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRemoteCacheRequest
 	}
 	if prepareReq.warmUp {
 		s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek, prepareReq.gen)
+		if prepareReq.triggerClean {
+			s.client.CloseStream(prepareReq.inode)
+			s.client.EvictStream(prepareReq.inode)
+		}
 	} else {
 		inodeInfo, err := s.client.getInodeInfo(prepareReq.inode)
 		if err != nil {
