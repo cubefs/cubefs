@@ -55,7 +55,7 @@ curl -v "http://10.196.59.198:17010/dataNode/get?addr=10.196.59.201:17310"  | py
 ## 下线节点
 
 ``` bash
-curl -v "http://192.168.0.11:17010/dataNode/decommission?addr=192.168.0.33:17310"
+curl -v "http://192.168.0.11:17010/dataNode/decommission?addr=192.168.0.33:17310&weight=2"
 ```
 
 从集群中下线某个数据节点,
@@ -66,6 +66,7 @@ curl -v "http://192.168.0.11:17010/dataNode/decommission?addr=192.168.0.33:17310
 | 参数 | 类型   | 描述                       |
 |------|--------|--------------------------|
 | addr | string | 数据节点和master的交互地址 |
+| weight | int | 下线权重，默认是2 |
 
 ## 获取磁盘信息
 
@@ -86,7 +87,7 @@ curl -v "http://192.168.0.11:17320/partitions"
 ## 磁盘下线
 
 ``` bash
-curl -v "http://192.168.0.11:17010/disk/decommission"
+curl -v "http://192.168.0.11:17010/disk/decommission?addr=192.168.0.12:17310&disk=/home/service/var/data1&weight=2"
 ```
 
 参数列表
@@ -98,6 +99,7 @@ curl -v "http://192.168.0.11:17010/disk/decommission"
 | count | int    | 每次下线个数，默认0，代表全部下线 |
 | diskDisable | bool    | 是否禁用磁盘，即禁止在下线的磁盘上新建dp，默认为true |
 | decommissionType | int    | 下线类型，默认0,代表手动下线；1表示自动下线 |
+| weight | int    | 下线权重，默认是2 |
 
 ## 迁移
 
