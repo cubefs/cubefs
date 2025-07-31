@@ -29,20 +29,22 @@ import (
 const SIZE_GB = 1024 * 1024 * 1024
 
 type PrepareRemoteCacheRequest struct {
-	ctx    context.Context
-	inode  uint64
-	ek     *proto.ExtentKey
-	warmUp bool
-	gen    uint64
+	ctx          context.Context
+	inode        uint64
+	ek           *proto.ExtentKey
+	warmUp       bool
+	gen          uint64
+	triggerClean bool
 }
 
-func NewPrepareRemoteCacheRequest(inode uint64, ek proto.ExtentKey, warmUp bool, gen uint64) *PrepareRemoteCacheRequest {
+func NewPrepareRemoteCacheRequest(inode uint64, ek proto.ExtentKey, warmUp bool, gen uint64, triggerClean bool) *PrepareRemoteCacheRequest {
 	return &PrepareRemoteCacheRequest{
-		ctx:    context.Background(),
-		inode:  inode,
-		ek:     &ek,
-		warmUp: warmUp,
-		gen:    gen,
+		ctx:          context.Background(),
+		inode:        inode,
+		ek:           &ek,
+		warmUp:       warmUp,
+		gen:          gen,
+		triggerClean: triggerClean,
 	}
 }
 

@@ -70,7 +70,7 @@ const (
 	_defaultHandlerFileRoutineNumPerTask   = 20
 	_maxHandlerFileRoutineNumPerTask       = 500
 	_defaultManualScanLimitPerSecond       = 10000
-	_defaultPrepareLimitPerSecond          = 1000
+	_defaultPrepareLimitPerSecond          = 10000
 	_defaultManualScanLimitBurst           = 1000
 	_slotStatValidPeriod                   = 10 * time.Minute // min
 	_defaultPrepareRoutineNum              = 20

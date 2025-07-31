@@ -48,7 +48,7 @@ const (
 	DefaultExpireTime        = 60 * 60
 	InitFileName             = "flash.init"
 	DefaultCacheDirName      = "cache"
-	DefaultCacheMaxUsedRatio = 0.95
+	DefaultCacheMaxUsedRatio = 0.99
 	DefaultEnableTmpfs       = true
 
 	LRUCacheBlockCacheType = 0
