@@ -676,7 +676,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 				}
 			}
 		}
-		return nil, fmt.Errorf("unable to get created cacheblock")
+		return nil, proto.ErrorUnableGetCreatedBlock
 	} else {
 		defer func() {
 			close(ch)

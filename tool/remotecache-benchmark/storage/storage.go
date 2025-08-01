@@ -10,4 +10,5 @@ type Storage interface {
 	Get(ctx context.Context, reqId, key string, from, to int64) (r io.ReadCloser, length int64, shouldCache bool, err error)
 	Name() string
 	Stop()
+	Delete(ctx context.Context, key string) error
 }

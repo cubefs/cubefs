@@ -207,6 +207,8 @@ func main() {
 	runGetTest := flag.Bool("get-test", false, "Run the Get test")
 	verify := flag.Bool("verify", true, "Verify with the source file")
 	clear := flag.Bool("clear-cache", true, "Clear page cache")
+	removeKey := flag.Bool("remove-key", false, "Remove specific key")
+	blockKey := flag.String("block-key", "", "Block unique key")
 	flag.Parse()
 
 	fmt.Printf("Parsed command-line arguments:\n")
@@ -222,6 +224,8 @@ func main() {
 	fmt.Printf("  -verify: %v\n", *verify)
 	fmt.Printf("  -master: %v\n", *master)
 	fmt.Printf("  -clear-cache: %v\n", *clear)
+	fmt.Printf("  -remove-key: %v\n", *removeKey)
+	fmt.Printf("  -block-key: %v\n", *blockKey)
 	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master, *clear)
 	if *needGenerate {
 		if err := tester.GenerateTestData(*totalSizeGB, *genConcurrency); err != nil {
@@ -247,6 +251,10 @@ func main() {
 	if *runGetTest {
 		// Ensure all data has been preheated into the storage system.
 		tester.RunGetBenchmark(ctx, *concurrency)
+	}
+
+	if *removeKey && *blockKey != "" {
+		tester.RunDeleteOperation(*blockKey)
 	}
 	tester.Stop()
 }
@@ -426,6 +434,16 @@ func (t *BenchmarkTester) LoadExistingTestFiles(concurrency int) error {
 	return nil
 }
 
+func (t *BenchmarkTester) RunDeleteOperation(blockKey string) {
+	fmt.Printf("\n=== Starting Delete operation for key: %s ===\n", blockKey)
+	if t.cacheStorage != nil {
+		err := t.cacheStorage.Delete(context.Background(), blockKey)
+		if err != nil {
+			fmt.Printf("Delete operation for key: %s failed err %v \n", blockKey, err)
+		}
+	}
+}
+
 func (t *BenchmarkTester) printBenchmarkResult(result *BenchmarkResult) {
 	if result == nil {
 		fmt.Printf("\n--- no invalid BenchmarkResult ---\n")
@@ -561,9 +579,9 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 							break
 						}
 					}
-					if reads != int(len1) {
+					if err == nil && reads != int(len1) {
 						err = fmt.Errorf("wrong len %v:expected[%v]", reads, len1)
-					} else {
+					} else if err == nil {
 						latency = time.Since(startTime)
 						if t.verify {
 							readCrc := crc32.ChecksumIEEE(tmpBuf[:reads])

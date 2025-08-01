@@ -75,7 +75,7 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 	case proto.OpFlashNodeTaskCommand:
 		err = f.opFlashNodeTaskCommand(conn, p)
 	default:
-		err = fmt.Errorf("unknown Opcode:%d", p.Opcode)
+		err = fmt.Errorf(proto.ErrorUnknownOpcodeTpl, p.Opcode)
 	}
 
 	return
@@ -200,7 +200,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		return
 	}
 	if req.CacheRequest == nil {
-		err = fmt.Errorf("no cache read request")
+		err = proto.ErrorNoCacheReadRequest
 		return
 	}
 
@@ -240,7 +240,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		}
 		if !f.waitForCacheBlock {
 			stat.EndStat("MissCacheRead:Data is caching", nil, bgTime2, 1)
-			return fmt.Errorf("require data is caching")
+			return proto.ErrorRequireDataIsCaching
 		}
 		select {
 		case <-ctx.Done():
@@ -284,7 +284,7 @@ func (f *FlashNode) opCacheDelete(conn net.Conn, p *proto.Packet) (err error) {
 		}
 	}()
 	if p.Size == 0 {
-		return fmt.Errorf("no cache delete request")
+		return proto.ErrorNoCacheDeleteRequest
 	}
 	uniKey := string(data)
 	pDir := cachengine.MapKeyToDirectory(uniKey)
@@ -310,11 +310,11 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		}
 	}()
 	if len(p.Data) == 0 {
-		return fmt.Errorf("unable to build a key from the packet due to lack of available parameters")
+		return proto.ErrorUnableToBuildKeyFromPacket
 	}
 	req := new(proto.PutBlockHead)
 	if err = p.UnmarshalDataPb(req); err != nil {
-		return fmt.Errorf("error parsing cache write head structure")
+		return proto.ErrorParsingCacheWriteHead
 	}
 	uniKey := req.UniKey
 	pDir := cachengine.MapKeyToDirectory(uniKey)
@@ -322,10 +322,10 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 	_, err1 := f.cacheEngine.GetCacheBlockForReadByKey(blockKey)
 	if err1 == nil {
 		if log.EnableDebug() {
-			log.LogDebug(logPrefix+" check block key:"+uniKey+" logMsg:%s",
+			log.LogDebug(logPrefix+" check block key:"+uniKey+" logMsg:",
 				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 		}
-		err = fmt.Errorf("block %v already exsit", uniKey)
+		err = fmt.Errorf(proto.ErrorBlockAlreadyExistsTpl, uniKey)
 		return err
 	}
 	var allocSize int
@@ -334,14 +334,14 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 	}
 	err1 = nil
 	if log.EnableDebug() {
-		log.LogDebug(logPrefix+" create block key:"+uniKey+" logMsg:%s",
+		log.LogDebug(logPrefix+" create block key:"+uniKey+" logMsg:",
 			p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 	}
 	if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(allocSize), conn.RemoteAddr().String()); err2 != nil || created {
 		if err2 != nil {
-			err = fmt.Errorf("create block(%v) error %v", cachengine.GenCacheBlockKeyV2(pDir, uniKey), err2.Error())
+			err = fmt.Errorf(proto.ErrorCreateBlockFailedTpl, cachengine.GenCacheBlockKeyV2(pDir, uniKey), err2.Error())
 		} else {
-			err = fmt.Errorf("block(%v) already created", cachengine.GenCacheBlockKeyV2(pDir, uniKey))
+			err = fmt.Errorf(proto.ErrorBlockAlreadyCreatedTpl, cachengine.GenCacheBlockKeyV2(pDir, uniKey))
 		}
 		return
 	} else {
@@ -516,7 +516,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 
 	bgTime2 := stat.BeginStat()
 	// reply to client as quick as possible if hit cache
-	err = f.doObjectReadRequest(ctx, conn, req, p, block)
+	err = f.doObjectReadRequest(ctx, conn, req, p, block, reqID)
 	if err != nil {
 		stat.EndStat("HitCacheRead", err, bgTime2, 1)
 		return
@@ -578,7 +578,7 @@ func (f *FlashNode) opFlashNodeTaskCommand(conn net.Conn, p *proto.Packet) error
 	}
 	mScanner, ok := f.manualScanners.Load(req.ID)
 	if !ok {
-		err = fmt.Errorf("task id(%v) not exist", req.ID)
+		err = fmt.Errorf(proto.ErrorTaskIDNotExistTpl, req.ID)
 		return err
 	}
 	scanner := mScanner.(*ManualScanner)
@@ -754,15 +754,15 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 }
 
 func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequestBase, p *proto.Packet,
-	block *cachengine.CacheBlock,
+	block *cachengine.CacheBlock, reqId string,
 ) (err error) {
-	const action = "action[doObjectReadRequest]"
+	action := fmt.Sprintf("action[doObjectReadRequest] reqId(%v)", reqId)
 	offset := int64(req.Offset)
 	defer func() {
 		if err != nil {
 			// too many caching logs
 			if strings.Compare(err.Error(), "require data is caching") != 0 {
-				log.LogWarnf("%s cache block(%v) err:%v", action, block.String(), err)
+				log.LogWarnf("%s cache block(%v) err:%v", action, block.GetBlockKey(), err)
 			}
 		} else {
 			f.metrics.updateReadCountMetric(block.GetRootPath())
@@ -827,7 +827,7 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 			offset = alignedOffset + proto.CACHE_BLOCK_PACKET_SIZE
 			if log.EnableInfo() {
 				log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, req.Key,
-					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner), block.String())
+					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner), block.GetBlockKey())
 			}
 		})
 		if err != nil {
@@ -866,7 +866,7 @@ func (f *FlashNode) opCachePrepare(conn net.Conn, p *proto.Packet) (err error) {
 		return
 	}
 	if req.CacheRequest == nil {
-		err = fmt.Errorf("no cache prepare request")
+		err = proto.ErrorNoCachePrepareRequest
 		return
 	}
 
@@ -939,7 +939,7 @@ func (f *FlashNode) sendPrepareRequest(addr string, req *proto.CachePrepareReque
 	}
 	if reply.ResultCode != proto.OpOk {
 		log.LogWarnf("%s reply(%v) from addr(%s) ResultCode(%d)", action, reply, addr, reply.ResultCode)
-		return fmt.Errorf("ResultCode(%v)", reply.ResultCode)
+		return fmt.Errorf(proto.ErrorResultCodeNOKTpl, reply.ResultCode)
 	}
 	return nil
 }

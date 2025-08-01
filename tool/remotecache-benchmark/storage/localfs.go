@@ -309,3 +309,8 @@ func (fs *LocalFS) LoadTestFiles() error {
 
 func (fs *LocalFS) Stop() {
 }
+
+// Delete removes a file from local filesystem
+func (fs *LocalFS) Delete(ctx context.Context, key string) error {
+	return nil
+}

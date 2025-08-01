@@ -40,8 +40,40 @@ const (
 )
 
 var (
-	ErrorNotExistShouldCache    = fmt.Errorf("cache miss: should store and cache the key")
-	ErrorNotExistShouldNotCache = fmt.Errorf("only cache the miss after reaching the miss times")
+	ErrorNotExistShouldCache             = fmt.Errorf("cache miss: should store and cache the key")
+	ErrorNotExistShouldNotCache          = fmt.Errorf("only cache the miss after reaching the miss times")
+	ErrorUnableToBuildKeyFromPacket      = fmt.Errorf("unable to build a key from the packet due to lack of available parameters")
+	ErrorParsingCacheWriteHead           = fmt.Errorf("error parsing cache write head structure")
+	ErrorNoCacheDeleteRequest            = fmt.Errorf("no cache delete request")
+	ErrorNoCacheReadRequest              = fmt.Errorf("no cache read request")
+	ErrorNoCachePrepareRequest           = fmt.Errorf("no cache prepare request")
+	ErrorDeleteBlockKeyNil               = fmt.Errorf("delete block key is nil")
+	ErrorRequireDataIsCaching            = fmt.Errorf("require data is caching")
+	ErrorReadTimeout                     = fmt.Errorf("read timeout")
+	ErrorNoAvailableHost                 = fmt.Errorf("no available host")
+	ErrorContextDeadLine                 = fmt.Errorf("context deadline exceeded")
+	ErrorRequestOutOfRange               = fmt.Errorf("the requested read size is out of range")
+	ErrorUnableGetCreatedBlock           = fmt.Errorf("unable to get created cacheblock")
+	ErrorFlashGroupDeleteFailed          = fmt.Errorf("FlashGroup delete failed: cannot find any flashGroups")
+	ErrorFlashGroupPutFailed             = fmt.Errorf("FlashGroup put failed: cannot find any flashGroups")
+	ErrorReadObjectFromRemoteCacheFailed = fmt.Errorf("readObjectFromRemoteCache failed: cannot find any flashGroups")
+)
+
+var (
+	ErrorResultCodeNOKTpl              = "ResultCode NOK (%v)"
+	ErrorUnknownOpcodeTpl              = "unknown Opcode:%d"
+	ErrorTaskIDNotExistTpl             = "task id(%v) not exist"
+	ErrorBlockAlreadyExistsTpl         = "block %v already exist"
+	ErrorCreateBlockFailedTpl          = "create block(%v) error %v"
+	ErrorBlockAlreadyCreatedTpl        = "block(%v) already created"
+	ErrorPutDataLengthInvalidTpl       = "put data length %v is leq 0 or gt 4M"
+	ErrorInconsistentCRCTpl            = "inconsistent CRC, expect(%v) reply(%v)"
+	ErrorExpectedReadBytesMismatchTpl  = "expected to read %d bytes, but only read %d"
+	ErrorUnexpectedDataLengthTpl       = "unexpected data length: expected %d bytes, got %d"
+	ErrorWriteDataAndCRCToFlashNodeTpl = "write data and crc to flashNode get err %v"
+	ErrorReadFromCloseReaderTpl        = "read from close reader reqID(%v)"
+	ErrorInconsistentCRCObjectTpl      = "inconsistent CRC, offset(%v) extentOffset(%v) expect(%v) actualCrc(%v)"
+	ErrorInvalidRangeTpl               = "invalid range: from(%v) to(%v)"
 )
 
 type FlashGroupStatus int
