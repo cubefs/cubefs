@@ -355,6 +355,14 @@ func (shards *ShardsBuf) shardIsOk(bid proto.BlobID) bool {
 	return false
 }
 
+func (shards *ShardsBuf) setShardNotOk(bid proto.BlobID) {
+	shards.mu.Lock()
+	defer shards.mu.Unlock()
+	if _, exist := shards.shards[bid]; exist {
+		shards.shards[bid].ok = false
+	}
+}
+
 // ShardCrc32 returns shard crc32
 func (shards *ShardsBuf) ShardCrc32(bid proto.BlobID) (crc uint32, err error) {
 	buf, err := shards.FetchShard(bid)
@@ -786,6 +794,7 @@ func (r *ShardRecover) putShardToBuffer(ctx context.Context, replica proto.Vunit
 
 	crc2, _ := r.chunksShardsBuf[replica.Vuid.Index()].ShardCrc32(bid)
 	if crc1 != crc2 {
+		r.chunksShardsBuf[replica.Vuid.Index()].setShardNotOk(bid)
 		span.Errorf("shard crc32 not match: replica[%+v], bid[%d], crc1[%d], crc2[%d]", replica, bid, crc1, crc2)
 		return errCrcNotMatch
 	}

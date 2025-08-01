@@ -84,6 +84,10 @@ func TestShardsBuf(t *testing.T) {
 
 	ok := shardsBuf.shardIsOk(3)
 	require.Equal(t, true, ok)
+
+	shardsBuf.setShardNotOk(3)
+	ok = shardsBuf.shardIsOk(3)
+	require.Equal(t, false, ok)
 }
 
 func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, *MockGetter, Vunits) {
