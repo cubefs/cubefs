@@ -96,6 +96,10 @@ func (cb *CacheBlock) String() string {
 	return fmt.Sprintf("volume(%s) inode(%d) offset(%d) version(%d)", cb.volume, cb.inode, cb.fixedOffset, cb.version)
 }
 
+func (cb *CacheBlock) GetBlockKey() string {
+	return cb.blockKey
+}
+
 // Close this extent and release FD.
 func (cb *CacheBlock) Close() (err error) {
 	cb.notifyClose()
@@ -530,7 +534,7 @@ func (cb *CacheBlock) ready(ctx context.Context, waitForBlock bool) error {
 			return ctx.Err()
 		default:
 			if !waitForBlock {
-				return fmt.Errorf("require data is caching")
+				return proto.ErrorRequireDataIsCaching
 			}
 		}
 	}
@@ -583,7 +587,9 @@ func (cb *CacheBlock) maybeUpdateUsedSize(size int64) {
 	cb.sizeLock.Lock()
 	defer cb.sizeLock.Unlock()
 	if cb.usedSize < size {
-		log.LogDebugf("maybeUpdateUsedSize, cache block:%v, old:%v, new:%v", cb.blockKey, cb.usedSize, size)
+		if log.EnableDebug() {
+			log.LogDebugf("maybeUpdateUsedSize, cache block:%v, old:%v, new:%v", cb.blockKey, cb.usedSize, size)
+		}
 		cb.usedSize = size
 	}
 }
@@ -747,7 +753,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 				}
 			}
 		}
-		return nil, fmt.Errorf("unable to get created cacheblock"), created
+		return nil, proto.ErrorUnableGetCreatedBlock, created
 	} else {
 		defer func() {
 			close(ch)
@@ -761,6 +767,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
+				created = true
 				return
 			}
 		}
@@ -917,12 +924,10 @@ func (cb *CacheBlock) VerifyObjectReq(offset, size uint64) error {
 		log.LogErrorf("invalid range offset(%v) size(%v)", offset, size)
 		return fmt.Errorf("invalid range offset(%v) size(%v)", offset, size)
 	}
-
 	if uint64(cb.usedSize) <= end {
-		log.LogWarnf("block is not read, usedSize(%v) offset(%v) size(%v)", cb.usedSize, offset, size)
-		return fmt.Errorf("block is not ready")
+		log.LogWarnf("the requested read size is out of range, usedSize(%v) offset(%v) size(%v)", cb.usedSize, offset, size)
+		return proto.ErrorRequestOutOfRange
 	}
-
 	return nil
 }
 
