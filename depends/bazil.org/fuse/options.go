@@ -2,6 +2,7 @@ package fuse
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -30,6 +31,7 @@ func escapeComma(s string) string {
 // Any platform specific adjustments should happen before the call.
 func (m *mountConfig) getOptions() string {
 	var opts []string
+	opts = append(opts, fmt.Sprintf("max_read=%d", maxWrite))
 	for k, v := range m.options {
 		k = escapeComma(k)
 		if v != "" {
@@ -90,8 +92,8 @@ func VolumeName(name string) MountOption {
 //
 // Such file names are:
 //
-//     ._*
-//     .DS_Store
+//	._*
+//	.DS_Store
 //
 // OS X only.  Others ignore this option.
 func NoAppleDouble() MountOption {

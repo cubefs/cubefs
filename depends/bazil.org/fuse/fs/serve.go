@@ -377,12 +377,14 @@ func New(conn *fuse.Conn, config *Config) *Server {
 		req:          map[fuse.RequestID]*serveRequest{},
 		nodeRef:      map[Node]fuse.NodeID{},
 		dynamicInode: GenerateDynamicInode,
+		reqs:         make([]*serveRequest, 0, 1024),
 	}
 	if config != nil {
 		s.debug = config.Debug
 		s.context = config.WithContext
 	}
 	if s.debug == nil {
+		s.enableDebug = false
 		s.debug = fuse.Debug
 	}
 	return s
@@ -390,17 +392,20 @@ func New(conn *fuse.Conn, config *Config) *Server {
 
 type Server struct {
 	// set in New
-	conn    *fuse.Conn
-	debug   func(msg interface{})
-	context func(ctx context.Context, req fuse.Request) context.Context
+	conn        *fuse.Conn
+	debug       func(msg interface{})
+	enableDebug bool
+	context     func(ctx context.Context, req fuse.Request) context.Context
 
 	// set once at Serve time
 	fs           FS
 	dynamicInode func(parent uint64, name string) uint64
 
 	// state, protected by meta
-	meta       sync.Mutex
+	meta       sync.RWMutex
 	req        map[fuse.RequestID]*serveRequest
+	reqs       []*serveRequest
+	reqMux     sync.Mutex
 	node       []*serveNode
 	nodeRef    map[Node]fuse.NodeID
 	handle     []*serveHandle
@@ -921,36 +926,54 @@ func (s *Server) Serve(fs FS, opt *proto.MountOptions) error {
 		return fmt.Errorf("restore fail: %v", err)
 	}
 
-	for {
-		if s.TrySuspend(fs) {
-			break
-		}
+	fn := func() error {
+		defer s.wg.Done()
 
-		req, err := s.conn.ReadRequest()
-		if err != nil {
-			if err == io.EOF {
+		for {
+			if s.TrySuspend(fs) {
 				break
 			}
-			return err
-		}
 
-		switch req.(type) {
-		case *fuse.ForgetRequest:
-			ctx := context.Background()
-			ForgetServeLimit.Wait(ctx)
-		default:
-		}
+			req, err := s.conn.ReadRequest()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return err
+			}
 
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
+			switch req.(type) {
+			case *fuse.ForgetRequest:
+				ctx := context.Background()
+				ForgetServeLimit.Wait(ctx)
+			default:
+			}
+
+			// s.wg.Add(1)
+			// go func() {
+			// 	defer s.wg.Done()
+			// 	if opt != nil && opt.RequestTimeout > 0 {
+			// 		s.serveWithTimeOut(req, opt.RequestTimeout)
+			// 	} else {
+			// 		s.serve(req)
+			// 	}
+			// }()
+
 			if opt != nil && opt.RequestTimeout > 0 {
 				s.serveWithTimeOut(req, opt.RequestTimeout)
 			} else {
 				s.serve(req)
 			}
-		}()
+		}
+		return nil
 	}
+
+	for i := 0; i < 16; i++ {
+		s.wg.Add(1)
+		go fn()
+	}
+
+	s.wg.Wait()
 	return nil
 }
 
@@ -966,6 +989,7 @@ type nothing struct{}
 type serveRequest struct {
 	Request fuse.Request
 	cancel  func()
+	index   int
 }
 
 type serveNode struct {
@@ -1105,8 +1129,8 @@ func (m missingHandle) String() string {
 
 // Returns nil for invalid handles.
 func (c *Server) getHandle(id fuse.HandleID) (shandle *serveHandle) {
-	c.meta.Lock()
-	defer c.meta.Unlock()
+	c.meta.RLock()
+	defer c.meta.RUnlock()
 	if id < fuse.HandleID(len(c.handle)) {
 		shandle = c.handle[uint(id)]
 	}
@@ -1302,10 +1326,10 @@ func (c *Server) serve(r fuse.Request) {
 
 	req := &serveRequest{Request: r, cancel: cancel}
 
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("fuse:"+opName(r), nil, bgTime, 1)
-	}()
+	// bgTime := stat.BeginStat()
+	// defer func() {
+	// 	stat.EndStat("fuse:"+opName(r), nil, bgTime, 1)
+	// }()
 
 	c.debug(request{
 		Op:      opName(r),
@@ -1316,7 +1340,7 @@ func (c *Server) serve(r fuse.Request) {
 	if ok {
 		return
 	}
-	done := c.done(r, hdr)
+	done := c.done(req, hdr)
 
 	var responded bool
 	defer func() {
@@ -1372,36 +1396,48 @@ func (c *Server) serve(r fuse.Request) {
 	responded = true
 }
 
-func (c *Server) done(r fuse.Request, hdr *fuse.Header) func(resp interface{}) {
+func (c *Server) done(r *serveRequest, hdr *fuse.Header) func(resp interface{}) {
 	// Call this before responding.
 	// After responding is too late: we might get another request
 	// with the same ID and be very confused.
 	done := func(resp interface{}) {
-		msg := response{
-			Op:      opName(r),
-			Request: logResponseHeader{ID: hdr.ID},
-		}
-		if err, ok := resp.(error); ok {
-			msg.Error = err.Error()
-			if ferr, ok := err.(fuse.ErrorNumber); ok {
-				errno := ferr.Errno()
-				msg.Errno = errno.ErrnoName()
-				if errno == err {
-					// it's just a fuse.Errno with no extra detail;
-					// skip the textual message for log readability
-					msg.Error = ""
+		if c.enableDebug {
+			msg := response{
+				Op:      opName(r.Request),
+				Request: logResponseHeader{ID: hdr.ID},
+			}
+			if err, ok := resp.(error); ok {
+				msg.Error = err.Error()
+				if ferr, ok := err.(fuse.ErrorNumber); ok {
+					errno := ferr.Errno()
+					msg.Errno = errno.ErrnoName()
+					if errno == err {
+						// it's just a fuse.Errno with no extra detail;
+						// skip the textual message for log readability
+						msg.Error = ""
+					}
+				} else {
+					msg.Errno = fuse.DefaultErrno.ErrnoName()
 				}
 			} else {
-				msg.Errno = fuse.DefaultErrno.ErrnoName()
+				msg.Out = resp
 			}
-		} else {
-			msg.Out = resp
+			c.debug(msg)
 		}
-		c.debug(msg)
 
-		c.meta.Lock()
-		delete(c.req, hdr.ID)
-		c.meta.Unlock()
+		// c.meta.Lock()
+		// delete(c.req, hdr.ID)
+		// c.meta.Unlock()
+
+		c.reqMux.Lock()
+		this := r.index
+		last := len(c.reqs) - 1
+		if last != this {
+			c.reqs[this] = c.reqs[last]
+			c.reqs[this].index = this
+		}
+		c.reqs = c.reqs[:last]
+		c.reqMux.Unlock()
 	}
 	return done
 }
@@ -1409,14 +1445,15 @@ func (c *Server) done(r fuse.Request, hdr *fuse.Header) func(resp interface{}) {
 func (c *Server) checkNode(r fuse.Request, req *serveRequest) (Node, *serveNode, *fuse.Header, bool) {
 	var node Node
 	var snode *serveNode
-	c.meta.Lock()
+
 	hdr := r.Hdr()
 	if id := hdr.Node; id != 0 {
+		c.meta.RLock()
 		if id < fuse.NodeID(len(c.node)) {
 			snode = c.node[uint(id)]
 		}
+		c.meta.RUnlock()
 		if snode == nil {
-			c.meta.Unlock()
 			c.debug(response{
 				Op:      opName(r),
 				Request: logResponseHeader{ID: hdr.ID},
@@ -1433,16 +1470,24 @@ func (c *Server) checkNode(r fuse.Request, req *serveRequest) (Node, *serveNode,
 		}
 		node = snode.node
 	}
-	if c.req[hdr.ID] != nil {
-		// This happens with OSXFUSE.  Assume it's okay and
-		// that we'll never see an interrupt for this one.
-		// Otherwise everything wedges.  TODO: Report to OSXFUSE?
-		//
-		// TODO this might have been because of missing done() calls
-	} else {
-		c.req[hdr.ID] = req
-	}
-	c.meta.Unlock()
+
+	// c.meta.Lock()
+	// if c.req[hdr.ID] != nil {
+	// 	// This happens with OSXFUSE.  Assume it's okay and
+	// 	// that we'll never see an interrupt for this one.
+	// 	// Otherwise everything wedges.  TODO: Report to OSXFUSE?
+	// 	//
+	// 	// TODO this might have been because of missing done() calls
+	// } else {
+	// 	c.req[hdr.ID] = req
+	// }
+	// c.meta.Unlock()
+
+	c.reqMux.Lock()
+	req.index = len(c.reqs)
+	c.reqs = append(c.reqs, req)
+	c.reqMux.Unlock()
+
 	return node, snode, hdr, false
 }
 
@@ -1472,7 +1517,7 @@ func (c *Server) serveWithTimeOut(r fuse.Request, requestTimeout int64) {
 	if ok {
 		return
 	}
-	done := c.done(r, hdr)
+	done := c.done(req, hdr)
 
 	go func() {
 		defer func() {
@@ -1814,7 +1859,14 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 
 	// Handle operations.
 	case *fuse.ReadRequest:
-		shandle := c.getHandle(r.Handle)
+
+		var shandle *serveHandle
+		c.meta.RLock()
+		if r.Handle < fuse.HandleID(len(c.handle)) {
+			shandle = c.handle[uint(r.Handle)]
+		}
+		c.meta.RUnlock()
+
 		if shandle == nil {
 			return fuse.ESTALE
 		}
@@ -2014,13 +2066,23 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	case *fuse.InterruptRequest:
-		c.meta.Lock()
-		ireq := c.req[r.IntrID]
-		if ireq != nil && ireq.cancel != nil {
-			ireq.cancel()
-			ireq.cancel = nil
+		// c.meta.Lock()
+		// ireq := c.req[r.IntrID]
+		// if ireq != nil && ireq.cancel != nil {
+		// 	ireq.cancel()
+		// 	ireq.cancel = nil
+		// }
+		// c.meta.Unlock()
+
+		c.reqMux.Lock()
+		for _, ireq := range c.reqs {
+			if r.IntrID == ireq.Request.Hdr().ID && ireq.cancel != nil {
+				ireq.cancel()
+				ireq.cancel = nil
+			}
 		}
-		c.meta.Unlock()
+		c.reqMux.Unlock()
+
 		done(nil)
 		r.Respond()
 		return nil
