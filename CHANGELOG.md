@@ -1,3 +1,40 @@
+## Release v3.5.2 - 2025/07/31
+
+### **UPGRAGDE NOTICE**
+
+If you are using a CubeFS version earlier than v3.5.0, please refer to the UPGRADE NOTICE in version v3.5.0 for detailed upgrade steps and upgrade to v3.5.0 first.
+
+Upgrade nodes in this order: master → metanode → datanode → objectnode → cli → client.
+
+Upgrade lcnode and deploy flashnode when needed.
+
+Clients should use versions later than 3.2.0. Older versions need to be upgraded promptly; otherwise, there will be a risk of compromising stability.
+
+### **Main Feature**
++ `master/lcnode`: Lifecycle adds filtering rule based on file size. (#3893, @Victor1319)
++ `master`: dp decommission support priority&concurrency control. (#3891, @shuqiang-zheng)
++ `master`: Add master replica abnormality alarm. (#3882, @zhumingze1108)
++ `master`: Add disk decommission success alarm. (#3886, @zhumingze1108)
++ `meta`: Support mp reload capability. (#3894, @leonrayang)
++ `meta`: Volume file size distribution statistics. (#3884, @M1eyu2018,  @zhumingze1108)
++ `client`: Implement client pre-reading function. (#3889, @yanbin027, @Victor1319)
++ `client`: Client delay monitoring statistics. (#3885, @M1eyu2018,  @aaronwu2010)
++ `data`: Bad disk detection and lost disk discovery. (#3878, @zhumingze1108)
++ `data`: Support asynchronous limitio restrictions. (#3881, @zhumingze1108)
++ `master/data/meta/cli`: dp and mp read-only reasons display. (#3880, @zhumingze1108)
+
+### **Enhance**
++ `all`: Remove the part of the code that uses datanode as cache. (#3888, @Victor1319)
++ `master`: DataNode&Disk&dp Decommission logic optimization. (#3891, @shuqiang-zheng, @zhumingze1108)
++ `meta`: Optimize metanode memory usage. (#3892, @Victor1319)
++ `data`: Optimize datanode memory usage. (#3887, @aaronwu2010)
++ `data`: Optimize and repair the process of tinyDeleteRecord synchronization logic. (#3890, @Victor1319)
++ `cli`: cli datapartition check display optimization. (#3879, @zhumingze1108)
+
+### **Bugfix**
+* `master/data`: Repair process blocked by host0 replica. (@shuqiang-zheng)
+* `master/raft`: Fixed the issue of dp no leader caused by failure to add raft members during decommission process. (@shuqiang-zheng)
+
 ## Release v3.5.1 - 2025/05/28
 
 ### **UPGRAGDE NOTICE**
@@ -246,7 +283,7 @@ If your Blobstore version is v1.1.0 or before which built with cubefs-blobstore 
 
 ### **Bugfix**
 * `master`: master snapshot recover not reset local rocksdb info (#1522, @wuchunhuan )
-* `master`:Memory cost too fast during restart in case of data partition‘s count is magnity (#1774 , @leonrayang)
+* `master`:Memory cost too fast during restart in case of data partition's count is magnity (#1774 , @leonrayang)
 * `client`: Readonly dp can still accept write request from client (#1779, @bboyCH4)
 * `metanode`: Metanode should not establish connection to blobstore for cold volume (#1781, @bboyCH4)
 * `client`: blockcache service may be oom when the client caches many large files concurrently (#1783, @zhangtianjiong)
@@ -531,7 +568,7 @@ https://zhuanlan.zhihu.com/p/28417779
   faultDomainGrpBatchCnt，default count:3，can also set 2 or 1
     
   If zone is unavaliable caused by network partition interruption，create nodeset group according to usable zone
-Set “faultDomainBuildAsPossible”  true, default is false
+Set "faultDomainBuildAsPossible"  true, default is false
 
   The distribution of nodesets under the number of different faultDomainGrpBatchCnt
   3 zone（1 nodeset per zone）
@@ -568,7 +605,7 @@ Set “faultDomainBuildAsPossible”  true, default is false
 **3.  Note**
 **1) After the fault domain is enabled, all devices in the new zone will join the fault domain**
 **2) The created volume will preferentially select the resources of the original zone**
-**3) Need add configuration items to use domain resources when creating a new volume according to the table below. By default, the original  zone resources are used first if it’s avaliable**
+**3) Need add configuration items to use domain resources when creating a new volume according to the table below. By default, the original  zone resources are used first if it's avaliable**
 
 | Cluster:faultDomain | Vol:crossZone | Vol:defaultPriority | Rules for volume to use domain |
 h| ------ | ------ | ------ |------ |
@@ -584,14 +621,14 @@ example :` curl "http://10.177.200.119:17010/admin/createVol?name=vol_cross5&cap
 ### **Content Summary**
 
 **1. Purpose**
-In order to query the content summary information of a directory efficiently, e.g. total file size, total files and total directories, v2.5 stores such information as the parent directory’s xattr. 
+In order to query the content summary information of a directory efficiently, e.g. total file size, total files and total directories, v2.5 stores such information as the parent directory's xattr. 
 
 The parent directory stores the files, directories and total file size of the current directory. Then only need to make recursive of the sub directories, and accumulate the information stored by the directories to query the content summary information of a directory.
 
 **2. Configuration**
   Client config file: fuse.json
   **1) Enable XAttr**
-    ”enableXattr”:”true”
+    "enableXattr":"true"
   Both of xattr and summay have to be set if you want to mount a volume to the local disk. 
   Set summary is enough if you want to access the volume via libsdk.so.
 
@@ -604,7 +641,7 @@ The parent directory stores the files, directories and total file size of the cu
     cfs_getsummary (libsdk/libsdk.go)
 
   **4. Note**
-  1)The incremental files’ summary information will be held by their parent directories. But the old files will not. Use cfs_refreshsummary 
+  1)The incremental files' summary information will be held by their parent directories. But the old files will not. Use cfs_refreshsummary 
     (libsdk/libsdk.go) interface to rebuild the content summary information.
   2)The files, directories and total file size are updated asynchronously in the background. Users are not aware of these operations, but it does 
     increase the requests to meta servers (usually doubled). You are recommended to evaluate the impact to your cluster before using this 
@@ -848,7 +885,7 @@ Release2.1.0 did a lot of work to optimize memory usage.
 * `object`: Change from hard link to soft link in **CopyObject** action. [#563](https://github.com/cubefs/cubefs/pull/563)
 * `object`: Solved **parallel-safety** issue; Clean up useless data on failure in **upload** part. [#553](https://github.com/cubefs/cubefs/pull/553)
 * `object`: Fixed a problem in listing multipart uploads. [#595](https://github.com/cubefs/cubefs/pull/595) 
-* `object`: Solve the problem that back-end report “NotExistErr” error when uploading files with the same key in parallel. [#685](https://github.com/cubefs/cubefs/pull/685)
+* `object`: Solve the problem that back-end report "NotExistErr" error when uploading files with the same key in parallel. [#685](https://github.com/cubefs/cubefs/pull/685)
 * `fuse`: Evict inode cache when dealing with forget. [#523](https://github.com/cubefs/cubefs/pull/523)
 
 ### Document
