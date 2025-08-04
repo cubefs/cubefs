@@ -110,10 +110,22 @@ A migration plan can be generated when there are MN nodes with memory usage reac
 curl -v "http://10.52.140.165:17010/metaNode/createBalanceTask"  | python -m json.tool
 ```
 
+The corresponding cfs-cli tool command for this operation is:
+
+``` bash
+./cfs-cli mp-balance create
+```
+
 #### Show Migration Plan
 
 ``` bash
 curl -v "http://10.52.140.165:17010/metaNode/getBalanceTask"  | python -m json.tool
+```
+
+The corresponding cfs-cli tool command for this operation is:
+
+``` bash
+./cfs-cli mp-balance show
 ```
 
 #### Run Migration Plan
@@ -122,10 +134,22 @@ curl -v "http://10.52.140.165:17010/metaNode/getBalanceTask"  | python -m json.t
 curl -v "http://10.52.140.165:17010/metaNode/runBalanceTask"  | python -m json.tool
 ```
 
+The corresponding cfs-cli tool command for this operation is:
+
+``` bash
+./cfs-cli mp-balance run
+```
+
 #### Stop Migration Plan
 
 ``` bash
 curl -v "http://10.52.140.165:17010/metaNode/stopBalanceTask"  | python -m json.tool
+```
+
+The corresponding cfs-cli tool command for this operation is:
+
+``` bash
+./cfs-cli mp-balance stop
 ```
 
 #### Delete Migration Plan
@@ -134,21 +158,14 @@ curl -v "http://10.52.140.165:17010/metaNode/stopBalanceTask"  | python -m json.
 curl -v "http://10.52.140.165:17010/metaNode/deleteBalanceTask"  | python -m json.tool
 ```
 
-### cfs-cli Tool Commands
-
-The corresponding cfs-cli tool commands for these operations are:
+The corresponding cfs-cli tool command for this operation is:
 
 ``` bash
-./cfs-cli mp-balance create
-./cfs-cli mp-balance show
-./cfs-cli mp-balance run
-./cfs-cli mp-balance stop
 ./cfs-cli mp-balance delete
 ```
 
 ### Important Notes
 
-::: tip Note
 We only save one migration plan in a cluster. New migration plans cannot be created until the existing one is deleted. For operational convenience, multiple migration plans are not created simultaneously.
 
 Completed migration plans are only retained for three days, after which they are automatically deleted by the background. If a task status is in error, it will remain stopped, waiting for developers to investigate. This means that even with autoMetaPartitionMigrate enabled, balance tasks only run once every 3 days.
@@ -156,7 +173,6 @@ Completed migration plans are only retained for three days, after which they are
 You can change the high water mark, low water mark, and auto-migration settings in the cluster through /admin/setConfig. Only one value can be modified at a time. Since this is rarely used, it's not designed to modify multiple values simultaneously to reduce code changes.
 
 When problems occur, you can correct errors by specifying the MP to migrate using the command /metaNode/migratePartition.
-:::
 
 ### Specify Detailed Migration Information
 
