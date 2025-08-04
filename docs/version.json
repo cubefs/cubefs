@@ -26,5 +26,9 @@
   {
     "label": "v3.5.1",
     "value": "release-3.5.1"
+  },
+  {
+    "label": "v3.5.2",
+    "value": "release-3.5.2"
   }
 ]
