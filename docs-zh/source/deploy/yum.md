@@ -13,9 +13,9 @@ ansible 安装命令：pip3 install ansible
 
 ``` bash
 # x86 version
-$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.5.1/cfs-install-3.5.1-el7.x86_64.rpm
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.5.2/cfs-install-3.5.1-el7.x86_64.rpm
 # arm version
-$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/arm/cfs-install-3.3.2-el7.aarch64.rpm
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.5.2/arm/cfs-install-3.3.2-el7.aarch64.rpm
 $ cd /cfs/install
 $ tree -L 3
  .

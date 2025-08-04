@@ -110,10 +110,22 @@ curl -v "http://10.196.59.198:17010/metaNode/migrate?srcAddr=src&targetAddr=dst&
 curl -v "http://10.52.140.165:17010/metaNode/createBalanceTask"  | python -m json.tool
 ```
 
+对应的cfs-cli工具命令：
+
+``` bash
+./cfs-cli mp-balance create
+```
+
 #### 显示迁移计划
 
 ``` bash
 curl -v "http://10.52.140.165:17010/metaNode/getBalanceTask"  | python -m json.tool
+```
+
+对应的cfs-cli工具命令：
+
+``` bash
+./cfs-cli mp-balance show
 ```
 
 #### 运行迁移计划
@@ -122,10 +134,22 @@ curl -v "http://10.52.140.165:17010/metaNode/getBalanceTask"  | python -m json.t
 curl -v "http://10.52.140.165:17010/metaNode/runBalanceTask"  | python -m json.tool
 ```
 
+对应的cfs-cli工具命令：
+
+``` bash
+./cfs-cli mp-balance run
+```
+
 #### 中止迁移计划
 
 ``` bash
 curl -v "http://10.52.140.165:17010/metaNode/stopBalanceTask"  | python -m json.tool
+```
+
+对应的cfs-cli工具命令：
+
+``` bash
+./cfs-cli mp-balance stop
 ```
 
 #### 删除迁移计划
@@ -134,21 +158,14 @@ curl -v "http://10.52.140.165:17010/metaNode/stopBalanceTask"  | python -m json.
 curl -v "http://10.52.140.165:17010/metaNode/deleteBalanceTask"  | python -m json.tool
 ```
 
-### cfs-cli 工具命令
-
-这部分命令对应的cfs-cli工具如下：
+对应的cfs-cli工具命令：
 
 ``` bash
-./cfs-cli mp-balance create
-./cfs-cli mp-balance show
-./cfs-cli mp-balance run
-./cfs-cli mp-balance stop
 ./cfs-cli mp-balance delete
 ```
 
 ### 注意事项
 
-::: tip 注意
 我们在一个集群里面只保存一份迁移计划。现有的迁移计划没有删除之前，不能创建新的。为了方便运维使用，没有同时创建多份迁移计划。
 
 完成状态的迁移计划只会保留三天时间，后台就会主动去删除。如果任务状态出错，就一直停止，等待研发人员检查。也就是说哪怕是开启自动迁移autoMetaPartitionMigrate，也是3天才跑一下均衡任务。
@@ -156,7 +173,6 @@ curl -v "http://10.52.140.165:17010/metaNode/deleteBalanceTask"  | python -m jso
 可以通过/admin/setConfig更改集群里面的内存使用率的高水位，低水位，自动迁移。每次只能单独修改一个值。这个很少用到，就没有做成可以同时修改的方式，减少代码改动量。
 
 出现问题时，可以通过指定迁移的mp来更正错误，命令是/metaNode/migratePartition。
-:::
 
 ### 指定详细迁移信息
 
