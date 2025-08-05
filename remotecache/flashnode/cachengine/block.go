@@ -540,6 +540,17 @@ func (cb *CacheBlock) ready(ctx context.Context, waitForBlock bool) error {
 	}
 }
 
+func (cb *CacheBlock) waitReady(ctx context.Context) error {
+	select {
+	case <-cb.readyCh:
+		return nil
+	case <-cb.closeCh:
+		return CacheClosedError
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (cb *CacheBlock) notifyClose() {
 	cb.closeOnce.Do(func() {
 		close(cb.closeCh)
@@ -919,7 +930,7 @@ func CalcAllocSizeV2(reqLen int) (int, error) {
 }
 
 func (cb *CacheBlock) VerifyObjectReq(ctx context.Context, offset, size uint64) error {
-	if err := cb.ready(ctx, false); err != nil {
+	if err := cb.waitReady(ctx); err != nil {
 		return err
 	}
 	end := offset + size - 1

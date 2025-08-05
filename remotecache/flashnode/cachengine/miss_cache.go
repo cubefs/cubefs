@@ -143,14 +143,14 @@ func (mc *MissCache) evict(foreground bool) {
 		// But for foreground eviction, we need to evict at least MinInodeCacheEvictNum inodes.
 		// The foreground eviction, does not need to care if the inode has expired or not.
 		info := element.Value.(*proto.CacheMissEntry)
-		log.LogDebugf("MissCache check miss key(%v)", info.UniKey)
+		log.LogDebugf("MissCache check miss hot key(%v)", info.UniKey)
 		if !foreground && !proto.CacheMissExpired(info) {
-			log.LogDebugf("MissCache check key(%v) expired(%v)",
+			log.LogDebugf("MissCache check hot key(%v) expired(%v)",
 				info.UniKey, proto.CacheMissExpired(info))
 			return
 		}
 
-		log.LogDebugf("MissCache remove key(%v)", info.UniKey)
+		log.LogDebugf("MissCache remove hot key(%v)", info.UniKey)
 		mc.lruList.Remove(element)
 		delete(mc.cache, info.UniKey)
 		count++
@@ -167,11 +167,11 @@ func (mc *MissCache) evict(foreground bool) {
 		}
 		info := element.Value.(*proto.CacheMissEntry)
 		if !proto.CacheMissExpired(info) {
-			log.LogDebugf("MissCache check key(%v) expired(%v)",
+			log.LogDebugf("MissCache check hot key(%v) expired(%v)",
 				info.UniKey, proto.CacheMissExpired(info))
 			break
 		}
-		log.LogDebugf("MissCache remove key(%v)", info.UniKey)
+		log.LogDebugf("MissCache remove hot key(%v)", info.UniKey)
 		mc.lruList.Remove(element)
 		delete(mc.cache, info.UniKey)
 		count++
