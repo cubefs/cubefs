@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/fastcrc32"
 )
 
@@ -311,6 +310,8 @@ func (cr *CacheReadRequestBase) DecodeBinaryFrom(b []byte) {
 	cr.Offset = binary.BigEndian.Uint64(b[off : off+8]) // Offset  (uint64, 8 bytes)
 	off += 8
 	cr.Size_ = binary.BigEndian.Uint64(b[off : off+8]) // Size (uint64, 8 bytes)
+	off += 8
+	cr.Deadline = binary.BigEndian.Uint64(b[off : off+8]) // Deadline (uint64, 8 bytes)
 }
 
 func (cr *CacheReadRequestBase) EncodeBinaryTo(b []byte) {
@@ -324,18 +325,20 @@ func (cr *CacheReadRequestBase) EncodeBinaryTo(b []byte) {
 	binary.BigEndian.PutUint64(b[off:off+8], cr.Offset) // Offset  (uint64, 8 bytes)
 	off += 8
 	binary.BigEndian.PutUint64(b[off:off+8], cr.Size_) // Size (uint64, 8 bytes)
+	off += 8
+	binary.BigEndian.PutUint64(b[off:off+8], cr.Deadline) // Deadline (uint64, 8 bytes)
 }
 
 func (cr *CacheReadRequestBase) EncodeBinaryLen() int {
-	return 2 + len(cr.Key) + 8 + 8 + 8 + 8
+	return 2 + len(cr.Key) + 8 + 8 + 8 + 8 + 8
 }
 
 func (cr *CacheReadRequestBase) String() string {
 	if cr == nil {
 		return ""
 	}
-	return fmt.Sprintf("cacheReadRequestBase[Key(%v) TTL(%v) Slot(%v) Offset(%v) Size(%v)]",
-		cr.Key, cr.TTL, cr.Slot, cr.Offset, cr.Size_)
+	return fmt.Sprintf("cacheReadRequestBase[Key(%v) TTL(%v) Slot(%v) Offset(%v) Size(%v) Deadline(%v)]",
+		cr.Key, cr.TTL, cr.Slot, cr.Offset, cr.Size_, cr.Deadline)
 }
 
 type FlashGroupsAdminView struct {
@@ -556,29 +559,13 @@ func GetMissEntryExpiration(info *CacheMissEntry) int64 {
 	return info.expiration
 }
 
-func IsCacheGetNonRetryable(err error) bool {
+func IsCacheUnRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
 	errStr := err.Error()
 	if strings.Contains(errStr, ErrorNoFlashGroup.Error()) || strings.Contains(errStr, ErrorNoAvailableHost.Error()) ||
-		strings.Contains(errStr, ErrorRequireDataIsCaching.Error()) || strings.Contains(errStr, ErrorContextDeadLine.Error()) ||
-		strings.Contains(errStr, ErrorReadTimeout.Error()) || strings.Contains(errStr, util.LimitedIoError.Error()) ||
-		strings.Contains(errStr, util.LimitedFlowError.Error()) || strings.Contains(errStr, util.LimitedRunError.Error()) {
-		return true
-	}
-	return false
-}
-
-func IsCachePutNonRetryable(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	if strings.Contains(errStr, ErrorNoFlashGroup.Error()) || strings.Contains(errStr, ErrorNoAvailableHost.Error()) ||
-		strings.Contains(errStr, ErrorContextDeadLine.Error()) || strings.Contains(errStr, ErrorReadTimeout.Error()) ||
-		strings.Contains(errStr, util.LimitedIoError.Error()) || strings.Contains(errStr, util.LimitedFlowError.Error()) ||
-		strings.Contains(errStr, util.LimitedRunError.Error()) {
+		strings.Contains(errStr, ErrorContextDeadLine.Error()) || strings.Contains(errStr, ErrorReadTimeout.Error()) {
 		return true
 	}
 	return false

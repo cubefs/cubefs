@@ -423,7 +423,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 			totalWritten += int64(readSize)
 			if totalWritten == req.BlockLen {
 				if log.EnableDebug() {
-					log.LogDebugf(logPrefix+" blokeKey %v total write %v for ", blockKey, totalWritten)
+					log.LogDebugf(logPrefix+" blokeKey %v total write %v", blockKey, totalWritten)
 				}
 				break
 			}
@@ -480,21 +480,17 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 			}
 		}
 	}()
-
-	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Duration(f.handleReadTimeout)*time.Millisecond)
-	defer ctxCancel()
-
 	req := new(proto.CacheReadRequestBase)
 	if err = p.UnmarshalDataPb(req); err != nil {
 		return
 	}
+
 	uniKey = req.Key
 	if log.EnableDebug() {
 		log.LogDebugf("opCacheObjectGet req(%v) key(%v) id(%v) begin", req, uniKey, reqID)
 	}
 	pDir := cachengine.MapKeyToDirectory(uniKey)
 	blockKey := cachengine.GenCacheBlockKeyV2(pDir, uniKey)
-
 	f.updateSlotStat(req.Slot)
 	block, err := f.cacheEngine.GetCacheBlockForReadByKey(blockKey)
 	if err != nil {
@@ -502,7 +498,8 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 		err = f.shouldCache(uniKey)
 		return
 	}
-
+	ctx, ctxCancel := context.WithDeadline(context.Background(), time.Unix(0, int64(req.Deadline)))
+	defer ctxCancel()
 	err = block.VerifyObjectReq(ctx, req.Offset, req.Size_)
 	if err != nil {
 		createTime := block.GetCreateTime()
@@ -791,44 +788,51 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	var errInner error
 	buf := bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
 	defer bytespool.Free(buf)
+	readAndReply := func() {
+		reply := proto.NewPacket()
+		reply.ReqID = p.ReqID
+		reply.StartT = p.StartT
+		reply.Data = buf
+
+		alignedOffset := offset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
+		reply.KernelOffset = uint64(offset)
+		reply.ExtentOffset = offset - alignedOffset
+		p.Size = proto.CACHE_BLOCK_PACKET_SIZE
+		p.ExtentOffset = offset
+
+		reply.CRC, errInner = block.Read(ctx, reply.Data[:], alignedOffset, proto.CACHE_BLOCK_PACKET_SIZE, f.waitForCacheBlock, true)
+		if errInner != nil {
+			return
+		}
+		p.CRC = reply.CRC
+		realNeedSize := uint32(util.Min(int(proto.CACHE_BLOCK_PACKET_SIZE-reply.ExtentOffset), int(end-offset)))
+
+		reply.Size = realNeedSize
+		reply.ResultCode = proto.OpOk
+		reply.Opcode = p.Opcode
+		p.ResultCode = proto.OpOk
+
+		bgTime := stat.BeginStat()
+		if errInner = reply.WriteToConnForOCS(conn); errInner != nil {
+			log.LogErrorf("%s key:[%s] %s", action, block.GetBlockKey(),
+				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner))
+			return
+		}
+		stat.EndStat("HitCacheRead:ReplyToClient", errInner, bgTime, 1)
+		offset = alignedOffset + proto.CACHE_BLOCK_PACKET_SIZE
+		if log.EnableInfo() {
+			log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, block.GetBlockKey(),
+				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner), block.GetBlockKey())
+		}
+	}
+	var keepAlive bool
 	for {
-		err = f.limitRead.RunNoWait(proto.CACHE_BLOCK_PACKET_SIZE, false, func() {
-			reply := proto.NewPacket()
-			reply.ReqID = p.ReqID
-			reply.StartT = p.StartT
-			reply.Data = buf
-
-			alignedOffset := offset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
-			reply.KernelOffset = uint64(offset)
-			reply.ExtentOffset = offset - alignedOffset
-			p.Size = proto.CACHE_BLOCK_PACKET_SIZE
-			p.ExtentOffset = offset
-
-			reply.CRC, errInner = block.Read(ctx, reply.Data[:], alignedOffset, proto.CACHE_BLOCK_PACKET_SIZE, f.waitForCacheBlock, true)
-			if errInner != nil {
-				return
-			}
-			p.CRC = reply.CRC
-			realNeedSize := uint32(util.Min(int(proto.CACHE_BLOCK_PACKET_SIZE-reply.ExtentOffset), int(end-offset)))
-
-			reply.Size = realNeedSize
-			reply.ResultCode = proto.OpOk
-			reply.Opcode = p.Opcode
-			p.ResultCode = proto.OpOk
-
-			bgTime := stat.BeginStat()
-			if errInner = reply.WriteToConnForOCS(conn); errInner != nil {
-				log.LogErrorf("%s key:[%s] %s", action, block.GetBlockKey(),
-					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner))
-				return
-			}
-			stat.EndStat("HitCacheRead:ReplyToClient", errInner, bgTime, 1)
-			offset = alignedOffset + proto.CACHE_BLOCK_PACKET_SIZE
-			if log.EnableInfo() {
-				log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, block.GetBlockKey(),
-					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner), block.GetBlockKey())
-			}
-		})
+		if !keepAlive {
+			err = f.limitRead.RunNoWait(proto.CACHE_BLOCK_PACKET_SIZE, false, readAndReply)
+			keepAlive = true
+		} else {
+			err = f.limitRead.Run(proto.CACHE_BLOCK_PACKET_SIZE, true, readAndReply)
+		}
 		if err != nil {
 			return
 		}
