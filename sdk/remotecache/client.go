@@ -139,21 +139,16 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 	if !config.FromFuse {
 		err = rc.updateRemoteCacheConfig()
 		if err != nil {
-			log.LogErrorf("NewRemoteCacheClient: updateRemoteCacheConfig err %v", err)
-			return
+			log.LogWarnf("NewRemoteCacheClient: updateRemoteCacheConfig err %v", err)
 		}
 	}
 	err = rc.UpdateFlashGroups()
 	if err != nil {
-		log.LogErrorf("NewRemoteCacheClient: updateFlashGroups err %v", err)
-		return
+		log.LogWarnf("NewRemoteCacheClient: updateFlashGroups err %v", err)
 	}
-
 	rc.wg.Add(1)
 	go rc.refresh()
-
 	log.LogDebugf("NewRemoteCacheClient sucess")
-
 	return rc, err
 }
 
@@ -219,14 +214,17 @@ func (rc *RemoteCacheClient) UpdateClusterEnable() error {
 			log.LogWarnf("updateFlashGroups: err(%v)", err)
 			return err
 		} else {
-			rc.clusterEnabled = fgv.Enable && len(fgv.FlashGroups) != 0
+			rc.SetClusterEnable(fgv.Enable && len(fgv.FlashGroups) != 0)
 		}
 	}
 	return nil
 }
 
 func (rc *RemoteCacheClient) SetClusterEnable(enable bool) {
-	rc.clusterEnabled = enable
+	if rc.clusterEnabled != enable {
+		log.LogInfof("enableRemoteCacheCluster: %v -> %v", rc.clusterEnabled, enable)
+		rc.clusterEnabled = enable
+	}
 }
 
 func (rc *RemoteCacheClient) IsClusterEnable() bool {
@@ -243,7 +241,7 @@ func (rc *RemoteCacheClient) UpdateFlashGroups() (err error) {
 		return
 	}
 	log.LogDebugf("updateFlashGroups. get flashGroupView [%v]", fgv)
-	rc.clusterEnabled = fgv.Enable && len(fgv.FlashGroups) != 0
+	rc.SetClusterEnable(fgv.Enable && len(fgv.FlashGroups) != 0)
 	if !fgv.Enable {
 		rc.flashGroups = newFlashGroups
 		return
@@ -491,7 +489,8 @@ func (rc *RemoteCacheClient) Delete(ctx context.Context, key string) (err error)
 	slot := proto.ComputeCacheBlockSlot(key, 0, 0)
 	fg, _ := rc.GetFlashGroupBySlot(slot)
 	if fg == nil {
-		err = proto.ErrorFlashGroupDeleteFailed
+		err = proto.ErrorNoFlashGroup
+		log.LogWarnf("FlashGroup delete failed: err(%v)", err)
 		return
 	}
 	addr := fg.getFlashHost()
@@ -515,7 +514,8 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	slot := proto.ComputeCacheBlockSlot(key, 0, 0)
 	fg, _ := rc.GetFlashGroupBySlot(slot)
 	if fg == nil {
-		err = proto.ErrorFlashGroupPutFailed
+		err = proto.ErrorNoFlashGroup
+		log.LogWarnf("FlashGroup reqId(%v) put failed: err(%v)", reqId, err)
 		return
 	}
 	addr := fg.getFlashHost()
@@ -989,7 +989,9 @@ func (rc *RemoteCacheClient) readObjectFromRemoteCache(ctx context.Context, key 
 
 	slot, fg, ownerSlot := rc.getFlashGroupByKey(key)
 	if fg == nil {
-		err = proto.ErrorReadObjectFromRemoteCacheFailed
+		err = proto.ErrorNoFlashGroup
+		log.LogWarnf("readObjectFromRemoteCache: flashGroup read failed. key(%v) offset(%v) size(%v) reqId(%v)"+
+			" err(%v)", key, offset, size, reqId, err)
 		return
 	}
 
@@ -1084,7 +1086,7 @@ func (rc *RemoteCacheClient) NewRemoteCacheReader(ctx context.Context, conn *net
 
 func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 	if reader.ctx.Err() != nil {
-		log.LogErrorf("RemoteCacheReader:reqID(%v) err(%v)", reader.reqID, err)
+		log.LogErrorf("RemoteCacheReader:reqID(%v) err(%v)", reader.reqID, reader.ctx.Err())
 		return 0, reader.ctx.Err()
 	}
 	reply := new(proto.Packet)
