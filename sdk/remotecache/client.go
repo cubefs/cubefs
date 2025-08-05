@@ -186,22 +186,29 @@ func (rc *RemoteCacheClient) refreshWithRecover() (panicErr error) {
 	refreshLatency := time.NewTimer(0)
 	defer refreshLatency.Stop()
 
-	var err error
+	var (
+		err    error
+		notNew bool
+	)
 	for {
 		select {
 		case <-rc.stopC:
 			log.LogInfof("refreshWithRecover: remote stop")
 			return
 		case <-refreshView.C:
-			if err = rc.UpdateFlashGroups(); err != nil {
-				log.LogErrorf("updateFlashGroups err: %v", err)
-			}
 			if !rc.FromFuse {
 				if err = rc.updateRemoteCacheConfig(); err != nil {
 					log.LogErrorf("updateRemoteCacheConfig err: %v", err)
 				}
 			}
 		case <-refreshLatency.C:
+			if notNew {
+				if err = rc.UpdateFlashGroups(); err != nil {
+					log.LogErrorf("updateFlashGroups err: %v", err)
+				}
+			} else {
+				notNew = true
+			}
 			rc.refreshHostLatency()
 			refreshLatency.Reset(RefreshHostLatencyInterval)
 		}
@@ -1001,6 +1008,11 @@ func (rc *RemoteCacheClient) readObjectFromRemoteCache(ctx context.Context, key 
 	req.Slot = uint64(slot)<<32 | uint64(ownerSlot)
 	req.Offset = offset
 	req.Size_ = size
+	if deadline, ok := ctx.Deadline(); ok {
+		req.Deadline = uint64(deadline.UnixNano())
+	} else {
+		req.Deadline = uint64(time.Now().Add(time.Millisecond * time.Duration(rc.ReadTimeout)).UnixNano())
+	}
 	if reader, length, err = rc.ReadObject(ctx, fg, reqId, &req); err != nil {
 		log.LogWarnf("readObjectFromRemoteCache: flashGroup read failed. key(%v) offset(%v) size(%v) fg(%v) req(%v) reqId(%v)"+
 			" err(%v)", key, offset, size, fg, req, reqId, err)
