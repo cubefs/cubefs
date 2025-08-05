@@ -83,7 +83,7 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, 
 	for _, req := range cReadRequests {
 		slot, fg, ownerSlot := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
 		if fg == nil {
-			err = fmt.Errorf("cannot find any flashGroups")
+			err = proto.ErrorNoFlashGroup
 			log.LogWarnf("Streamer prepareRemoteCache failed: %v", err)
 			break
 		}
@@ -117,7 +117,8 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 		}
 		slot, fg, ownerSlot := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
 		if fg == nil {
-			err = fmt.Errorf("readFromRemoteCache failed: cannot find any flashGroups")
+			err = proto.ErrorNoFlashGroup
+			log.LogWarnf("readFromRemoteCache: flashGroup read failed. offset(%v) size(%v) fg(%v) req(%v) err(%v)", offset, size, fg, req, err)
 			return
 		}
 		req.CacheRequest.Slot = uint64(slot)<<32 | uint64(ownerSlot)

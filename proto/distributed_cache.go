@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/fastcrc32"
 )
 
@@ -40,23 +41,21 @@ const (
 )
 
 var (
-	ErrorNotExistShouldCache             = fmt.Errorf("cache miss: should store and cache the key")
-	ErrorNotExistShouldNotCache          = fmt.Errorf("only cache the miss after reaching the miss times")
-	ErrorUnableToBuildKeyFromPacket      = fmt.Errorf("unable to build a key from the packet due to lack of available parameters")
-	ErrorParsingCacheWriteHead           = fmt.Errorf("error parsing cache write head structure")
-	ErrorNoCacheDeleteRequest            = fmt.Errorf("no cache delete request")
-	ErrorNoCacheReadRequest              = fmt.Errorf("no cache read request")
-	ErrorNoCachePrepareRequest           = fmt.Errorf("no cache prepare request")
-	ErrorDeleteBlockKeyNil               = fmt.Errorf("delete block key is nil")
-	ErrorRequireDataIsCaching            = fmt.Errorf("require data is caching")
-	ErrorReadTimeout                     = fmt.Errorf("read timeout")
-	ErrorNoAvailableHost                 = fmt.Errorf("no available host")
-	ErrorContextDeadLine                 = fmt.Errorf("context deadline exceeded")
-	ErrorRequestOutOfRange               = fmt.Errorf("the requested read size is out of range")
-	ErrorUnableGetCreatedBlock           = fmt.Errorf("unable to get created cacheblock")
-	ErrorFlashGroupDeleteFailed          = fmt.Errorf("FlashGroup delete failed: cannot find any flashGroups")
-	ErrorFlashGroupPutFailed             = fmt.Errorf("FlashGroup put failed: cannot find any flashGroups")
-	ErrorReadObjectFromRemoteCacheFailed = fmt.Errorf("readObjectFromRemoteCache failed: cannot find any flashGroups")
+	ErrorNotExistShouldCache        = fmt.Errorf("cache miss: should store and cache the key")
+	ErrorNotExistShouldNotCache     = fmt.Errorf("only cache the miss after reaching the miss times")
+	ErrorUnableToBuildKeyFromPacket = fmt.Errorf("unable to build a key from the packet due to lack of available parameters")
+	ErrorParsingCacheWriteHead      = fmt.Errorf("error parsing cache write head structure")
+	ErrorNoCacheDeleteRequest       = fmt.Errorf("no cache delete request")
+	ErrorNoCacheReadRequest         = fmt.Errorf("no cache read request")
+	ErrorNoCachePrepareRequest      = fmt.Errorf("no cache prepare request")
+	ErrorDeleteBlockKeyNil          = fmt.Errorf("delete block key is nil")
+	ErrorRequireDataIsCaching       = fmt.Errorf("require data is caching")
+	ErrorReadTimeout                = fmt.Errorf("read timeout")
+	ErrorNoAvailableHost            = fmt.Errorf("no available host")
+	ErrorContextDeadLine            = fmt.Errorf("context deadline exceeded")
+	ErrorRequestOutOfRange          = fmt.Errorf("the requested read size is out of range")
+	ErrorUnableGetCreatedBlock      = fmt.Errorf("unable to get created cacheblock")
+	ErrorNoFlashGroup               = fmt.Errorf("cannot find any flashGroups")
 )
 
 var (
@@ -555,4 +554,32 @@ func SetMissEntryExpiration(info *CacheMissEntry, t time.Duration) {
 
 func GetMissEntryExpiration(info *CacheMissEntry) int64 {
 	return info.expiration
+}
+
+func IsCacheGetNonRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, ErrorNoFlashGroup.Error()) || strings.Contains(errStr, ErrorNoAvailableHost.Error()) ||
+		strings.Contains(errStr, ErrorRequireDataIsCaching.Error()) || strings.Contains(errStr, ErrorContextDeadLine.Error()) ||
+		strings.Contains(errStr, ErrorReadTimeout.Error()) || strings.Contains(errStr, util.LimitedIoError.Error()) ||
+		strings.Contains(errStr, util.LimitedFlowError.Error()) || strings.Contains(errStr, util.LimitedRunError.Error()) {
+		return true
+	}
+	return false
+}
+
+func IsCachePutNonRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, ErrorNoFlashGroup.Error()) || strings.Contains(errStr, ErrorNoAvailableHost.Error()) ||
+		strings.Contains(errStr, ErrorContextDeadLine.Error()) || strings.Contains(errStr, ErrorReadTimeout.Error()) ||
+		strings.Contains(errStr, util.LimitedIoError.Error()) || strings.Contains(errStr, util.LimitedFlowError.Error()) ||
+		strings.Contains(errStr, util.LimitedRunError.Error()) {
+		return true
+	}
+	return false
 }

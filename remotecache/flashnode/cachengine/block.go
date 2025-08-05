@@ -918,7 +918,10 @@ func CalcAllocSizeV2(reqLen int) (int, error) {
 	return reqLen, nil
 }
 
-func (cb *CacheBlock) VerifyObjectReq(offset, size uint64) error {
+func (cb *CacheBlock) VerifyObjectReq(ctx context.Context, offset, size uint64) error {
+	if err := cb.ready(ctx, false); err != nil {
+		return err
+	}
 	end := offset + size - 1
 	if offset/proto.CACHE_OBJECT_BLOCK_SIZE != end/proto.CACHE_OBJECT_BLOCK_SIZE {
 		log.LogErrorf("invalid range offset(%v) size(%v)", offset, size)
