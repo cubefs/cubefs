@@ -50,15 +50,13 @@ type RemoteCache struct {
 	stopOnce    sync.Once
 	metaWrapper *meta.MetaWrapper
 	cacheBloom  *bloom.BloomFilter
+	lock        sync.Mutex
 
 	Started       bool
 	VolumeEnabled bool
 	Path          string
 	AutoPrepare   bool
 	PrepareCh     chan *PrepareRemoteCacheRequest
-
-	clusterEnable func(bool)
-	lock          sync.Mutex
 
 	remoteCacheMaxFileSizeGB int64
 	remoteCacheOnlyForNotSSD bool
@@ -97,10 +95,6 @@ func (as *AddressPingStats) Average() time.Duration {
 }
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
-	if !rc.Started {
-		// update remotecache must after rc.Started(remoteCacheClient already init)
-		return
-	}
 	// cannot set vol's RemoteCacheReadTimeoutSec <= 0
 	if view.RemoteCacheReadTimeout <= 0 {
 		view.RemoteCacheReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
@@ -115,7 +109,26 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		log.LogInfof("RcVolumeEnabled: %v -> %v", rc.VolumeEnabled, view.RemoteCacheEnable)
 		rc.VolumeEnabled = view.RemoteCacheEnable
 	}
-
+	if rc.Path != view.RemoteCachePath {
+		oldPath := client.RemoteCache.Path
+		rc.Path = view.RemoteCachePath
+		log.LogInfof("RcPath: %v -> %v, but(%v)", oldPath, view.RemoteCachePath, rc.Path)
+	}
+	if rc.AutoPrepare != view.RemoteCacheAutoPrepare {
+		log.LogInfof("RcAutoPrepare: %v -> %v", rc.AutoPrepare, view.RemoteCacheAutoPrepare)
+		rc.AutoPrepare = view.RemoteCacheAutoPrepare
+	}
+	if rc.remoteCacheMaxFileSizeGB != view.RemoteCacheMaxFileSizeGB {
+		log.LogInfof("RcMaxFileSizeGB: %d(GB) -> %d(GB)", rc.remoteCacheMaxFileSizeGB, view.RemoteCacheMaxFileSizeGB)
+		rc.remoteCacheMaxFileSizeGB = view.RemoteCacheMaxFileSizeGB
+	}
+	if rc.remoteCacheOnlyForNotSSD != view.RemoteCacheOnlyForNotSSD {
+		log.LogInfof("RcOnlyForNotSSD: %v -> %v", rc.remoteCacheOnlyForNotSSD, view.RemoteCacheOnlyForNotSSD)
+		rc.remoteCacheOnlyForNotSSD = view.RemoteCacheOnlyForNotSSD
+	}
+	if rc.remoteCacheClient == nil {
+		return
+	}
 	// check if RemoteCache.ClusterEnabled is set to true after it has been set to false last time
 	if !client.RemoteCache.remoteCacheClient.IsClusterEnable() {
 		if err := client.RemoteCache.remoteCacheClient.UpdateClusterEnable(); err != nil {
@@ -138,16 +151,6 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		log.LogInfo("stop RemoteCache")
 	}
 
-	if rc.Path != view.RemoteCachePath {
-		oldPath := client.RemoteCache.Path
-		rc.Path = view.RemoteCachePath
-		log.LogInfof("RcPath: %v -> %v, but(%v)", oldPath, view.RemoteCachePath, rc.Path)
-	}
-
-	if rc.AutoPrepare != view.RemoteCacheAutoPrepare {
-		log.LogInfof("RcAutoPrepare: %v -> %v", rc.AutoPrepare, view.RemoteCacheAutoPrepare)
-		rc.AutoPrepare = view.RemoteCacheAutoPrepare
-	}
 	if rc.remoteCacheClient.TTL != view.RemoteCacheTTL {
 		log.LogInfof("RcTTL: %d -> %d", rc.remoteCacheClient.TTL, view.RemoteCacheTTL)
 		rc.remoteCacheClient.TTL = view.RemoteCacheTTL
@@ -156,17 +159,6 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		log.LogInfof("RcReadTimeoutSec: %d(ms) -> %d(ms)", rc.remoteCacheClient.ReadTimeout, view.RemoteCacheReadTimeout)
 		rc.remoteCacheClient.ReadTimeout = view.RemoteCacheReadTimeout
 	}
-
-	if rc.remoteCacheMaxFileSizeGB != view.RemoteCacheMaxFileSizeGB {
-		log.LogInfof("RcMaxFileSizeGB: %d(GB) -> %d(GB)", rc.remoteCacheMaxFileSizeGB, view.RemoteCacheMaxFileSizeGB)
-		rc.remoteCacheMaxFileSizeGB = view.RemoteCacheMaxFileSizeGB
-	}
-
-	if rc.remoteCacheOnlyForNotSSD != view.RemoteCacheOnlyForNotSSD {
-		log.LogInfof("RcOnlyForNotSSD: %v -> %v", rc.remoteCacheOnlyForNotSSD, view.RemoteCacheOnlyForNotSSD)
-		rc.remoteCacheOnlyForNotSSD = view.RemoteCacheOnlyForNotSSD
-	}
-
 	if rc.remoteCacheClient.RemoteCacheMultiRead != view.RemoteCacheMultiRead {
 		log.LogInfof("RcFollowerRead: %v -> %v", rc.remoteCacheClient.RemoteCacheMultiRead, view.RemoteCacheMultiRead)
 		rc.remoteCacheClient.RemoteCacheMultiRead = view.RemoteCacheMultiRead
@@ -218,7 +210,6 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	rc.cluster = client.dataWrapper.ClusterName
 	rc.volname = client.extentConfig.Volume
 	rc.metaWrapper = client.metaWrapper
-	rc.clusterEnable = client.enableRemoteCacheCluster
 	cfg := &remotecache.ClientConfig{
 		Masters:            client.extentConfig.Masters,
 		BlockSize:          proto.CACHE_BLOCK_SIZE,
@@ -230,19 +221,18 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 		FromFuse:           true,
 	}
 	rc.remoteCacheClient, err = remotecache.NewRemoteCacheClient(cfg)
-
+	if err != nil {
+		log.LogWarnf("RemoteCache: new client err %v", err)
+	}
 	err = rc.remoteCacheClient.UpdateFlashGroups()
 	if err != nil {
-		log.LogDebugf("RemoteCache: Init err %v", err)
-		return
+		log.LogWarnf("RemoteCache: update flashgroups err %v", err)
 	}
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
-
 	rc.PrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
 	client.wg.Add(1)
 	go rc.DoRemoteCachePrepare(client)
 	rc.Started = true
-
 	log.LogDebugf("Init: NewRemoteCache sucess")
 	return
 }

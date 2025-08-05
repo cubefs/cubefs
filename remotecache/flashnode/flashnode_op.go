@@ -295,17 +295,18 @@ func (f *FlashNode) opCacheDelete(conn net.Conn, p *proto.Packet) (err error) {
 func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) {
 	bgTime := stat.BeginStat()
 	reqId := string(p.Arg)
+	var uniKey string
 	logPrefix := fmt.Sprintf("action[opCachePutBlock] reqId(%v)", reqId)
 	defer func() {
 		stat.EndStat("FlashNode:opCachePutBlock", err, bgTime, 1)
 	}()
 	defer func() {
 		if err != nil {
-			log.LogWarnf(logPrefix+" end, logMsg:%s",
+			log.LogWarnf(logPrefix+" uniKey %v end, logMsg:%s", uniKey,
 				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 			if e := p.WriteToConn(conn); e != nil {
-				log.LogErrorf(logPrefix+" write to conn %v", e)
+				log.LogErrorf(logPrefix+"  uniKey %v  write to conn %v", uniKey, e)
 			}
 		}
 	}()
@@ -316,7 +317,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 	if err = p.UnmarshalDataPb(req); err != nil {
 		return proto.ErrorParsingCacheWriteHead
 	}
-	uniKey := req.UniKey
+	uniKey = req.UniKey
 	pDir := cachengine.MapKeyToDirectory(uniKey)
 	blockKey := cachengine.GenCacheBlockKeyV2(pDir, uniKey)
 	_, err1 := f.cacheEngine.GetCacheBlockForReadByKey(blockKey)
@@ -347,7 +348,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 	} else {
 		p.PacketOkReply()
 		if err1 = p.WriteToConn(conn); err1 != nil {
-			log.LogErrorf(logPrefix+" write to conn %v", err1)
+			log.LogErrorf(logPrefix+" blockKey %v write to conn %v", blockKey, err1)
 			return
 		}
 		bgTime1 := stat.BeginStat()
@@ -387,7 +388,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 					readSize = int(req.BlockLen - totalWritten)
 				}
 				if n, err1 = io.ReadFull(conn, buf[:writeLen]); err1 != nil {
-					log.LogWarnf(logPrefix+" read data and crc from conn %v", err1)
+					log.LogWarnf(logPrefix+" blockkey %v read data and crc conn %v", blockKey, err1)
 					return
 				}
 				if n != writeLen {
@@ -422,7 +423,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 			totalWritten += int64(readSize)
 			if totalWritten == req.BlockLen {
 				if log.EnableDebug() {
-					log.LogDebugf(logPrefix+" total write %v", totalWritten)
+					log.LogDebugf(logPrefix+" blokeKey %v total write %v for ", blockKey, totalWritten)
 				}
 				break
 			}
@@ -475,7 +476,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 			}
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 			if e := p.WriteToConn(conn); e != nil {
-				log.LogErrorf("action[opCacheObjectGet] write to conn %v", e)
+				log.LogErrorf("action[opCacheObjectGet] reqID[%v] key:[%s] write to conn %v", reqID, uniKey, e)
 			}
 		}
 	}()
@@ -487,12 +488,10 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 	if err = p.UnmarshalDataPb(req); err != nil {
 		return
 	}
-
-	if log.EnableDebug() {
-		log.LogDebugf("opCacheObjectGet req(%v) id(%v) begin", req, reqID)
-	}
-
 	uniKey = req.Key
+	if log.EnableDebug() {
+		log.LogDebugf("opCacheObjectGet req(%v) key(%v) id(%v) begin", req, uniKey, reqID)
+	}
 	pDir := cachengine.MapKeyToDirectory(uniKey)
 	blockKey := cachengine.GenCacheBlockKeyV2(pDir, uniKey)
 
@@ -504,7 +503,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 		return
 	}
 
-	err = block.VerifyObjectReq(req.Offset, req.Size_)
+	err = block.VerifyObjectReq(ctx, req.Offset, req.Size_)
 	if err != nil {
 		createTime := block.GetCreateTime()
 		if time.Since(createTime) > 2*time.Minute {
@@ -779,16 +778,16 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	firstReply.StartT = p.StartT
 	end := offset + int64(req.Size_)
 	if err = block.CheckSizeBoundary(end); err != nil {
+		log.LogWarnf("action[doObjectReadRequest] key:[%s] err %v", block.GetBlockKey(), err)
 		return
 	}
 	if err = firstReply.WriteToConn(conn); err != nil {
-		log.LogErrorf("testRead key:[%s] %s", req.Key,
+		log.LogErrorf("action[doObjectReadRequest] key:[%s] %s", block.GetBlockKey(),
 			firstReply.LogMessage(firstReply.GetOpMsg(), conn.RemoteAddr().String(), firstReply.StartT, err))
 		return
 	}
 
 	// reply data to client
-
 	var errInner error
 	buf := bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
 	defer bytespool.Free(buf)
@@ -819,14 +818,14 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 
 			bgTime := stat.BeginStat()
 			if errInner = reply.WriteToConnForOCS(conn); errInner != nil {
-				log.LogErrorf("%s key:[%s] %s", action, req.Key,
+				log.LogErrorf("%s key:[%s] %s", action, block.GetBlockKey(),
 					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner))
 				return
 			}
 			stat.EndStat("HitCacheRead:ReplyToClient", errInner, bgTime, 1)
 			offset = alignedOffset + proto.CACHE_BLOCK_PACKET_SIZE
 			if log.EnableInfo() {
-				log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, req.Key,
+				log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, block.GetBlockKey(),
 					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner), block.GetBlockKey())
 			}
 		})
