@@ -253,14 +253,11 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnGetInodeInfo:      s.InodeGet,
 		BcacheOnlyForNotSSD: opt.BcacheOnlyForNotSSD,
 
-		AheadReadEnable:          opt.AheadReadEnable,
-		AheadReadTotalMem:        opt.AheadReadTotalMem,
-		AheadReadBlockTimeOut:    opt.AheadReadBlockTimeOut,
-		AheadReadWindowCnt:       opt.AheadReadWindowCnt,
-		RemoteCacheFollowerRead:  opt.RemoteCacheFollowerRead,
-		RemoteCacheMaxFileSize:   opt.RemoteCacheMaxFileSize,
-		RemoteCacheOnlyForNotSSD: opt.RemoteCacheOnlyForNotSSD,
-		NeedRemoteCache:          true,
+		AheadReadEnable:       opt.AheadReadEnable,
+		AheadReadTotalMem:     opt.AheadReadTotalMem,
+		AheadReadBlockTimeOut: opt.AheadReadBlockTimeOut,
+		AheadReadWindowCnt:    opt.AheadReadWindowCnt,
+		NeedRemoteCache:       true,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
