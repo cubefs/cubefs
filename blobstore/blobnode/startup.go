@@ -50,7 +50,7 @@ const (
 )
 
 func NewService(conf Config) (svr *Service, err error) {
-	_, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
+	span, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
 
 	configInit(&conf)
 
@@ -63,6 +63,16 @@ func NewService(conf Config) (svr *Service, err error) {
 		closeCh:          make(chan struct{}),
 	}
 	svr.ctx, svr.cancel = context.WithCancel(context.Background())
+
+	// load code mode, both worker and blobNode need it
+	if err = cmapi.LoadExtendCodemode(ctx, svr.ClusterMgrClient); err != nil {
+		span.Fatalf("load extend codemode from clusterMgr error:%+v", err)
+	}
+	for _, ecmode := range codemode.GetECCodeModes() {
+		if alignedSize := ecmode.Tactic().MinShardSize; alignedSize > 0 {
+			client.NopdataSize(alignedSize)
+		}
+	}
 
 	// start worker service
 	if conf.StartMode == proto.ServiceNameWorker || conf.StartMode == defaultServiceBothBlobNodeWorker {
@@ -414,15 +424,6 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 		Host:      conf.Host,
 		Idc:       conf.IDC,
 	}
-	if err = cmapi.LoadExtendCodemode(ctx, svr.ClusterMgrClient); err != nil {
-		span.Fatalf("load extend codemode from clusterMgr error:%+v", err)
-	}
-	for _, ecmode := range codemode.GetECCodeModes() {
-		if alignedSize := ecmode.Tactic().MinShardSize; alignedSize > 0 {
-			client.NopdataSize(alignedSize)
-		}
-	}
-
 	err = svr.ClusterMgrClient.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
 	if err != nil {
 		span.Fatalf("blobnode register to clusterMgr error:%+v", err)
