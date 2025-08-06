@@ -578,7 +578,8 @@ func (c *CacheEngine) selectAvailableLruCache() (cacheItem *lruCacheItem, err er
 		if atomic.LoadInt32(&item.disk.Status) == proto.ReadWrite {
 			expectedLeftSpace := item.config.MaxAlloc - item.lruCache.GetAllocated()
 			fs := syscall.Statfs_t{}
-			if err = syscall.Statfs(item.config.Path, &fs); err != nil {
+			if err = syscall.Statfs(item.disk.Path, &fs); err != nil {
+				log.LogErrorf("get disk(%s) stat err:%v", item.disk.Path, err)
 				return true
 			}
 			realLeftSpace := int64(fs.Bavail * uint64(fs.Bsize))
