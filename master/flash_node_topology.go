@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"math"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -169,7 +170,13 @@ func (t *flashNodeTopology) allocateNewSlotsForCreateFlashGroup(fgID uint64, set
 		return
 	}
 
-	for len(slots) < int(weight)*defaultFlashGroupSlotsCount {
+	target64 := uint64(weight) * uint64(defaultFlashGroupSlotsCount)
+	if target64 > math.MaxInt {
+		return nil
+	}
+	target := int(target64)
+
+	for len(slots) < target {
 		slot := allocateNewSlot()
 		if _, ok := t.slotsMap[slot]; ok {
 			continue
