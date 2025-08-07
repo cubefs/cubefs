@@ -711,7 +711,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 				block.Delete(fmt.Sprintf("create block failed %v", err))
 			}
 		}()
-		if _, err = cacheItem.lruCache.CheckDiskSpace(block.rootPath, block.blockKey, block.getAllocSize()); err != nil {
+		if _, err = cacheItem.lruCache.CheckDiskSpace(cacheItem.disk.Path, block.blockKey, block.getAllocSize()); err != nil {
 			return
 		}
 
@@ -732,14 +732,13 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 
 func (c *lruCacheItem) usedSize() (size int64) {
 	if atomic.LoadInt32(&c.disk.Status) == proto.ReadWrite {
-		path := c.config.Path
 		stat := syscall.Statfs_t{}
-		err := syscall.Statfs(path, &stat)
+		err := syscall.Statfs(c.disk.Path, &stat)
 		if err != nil {
 			log.LogErrorf("compute used size of cache engine, err:%v", err)
 			return 0
 		}
-		return int64(stat.Blocks) * int64(stat.Bsize)
+		return int64(stat.Blocks-stat.Bfree) * int64(stat.Bsize)
 	}
 	return 0
 }
