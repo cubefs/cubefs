@@ -798,7 +798,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 				block.Delete(fmt.Sprintf("create block failed %v", err))
 			}
 		}()
-		if _, err = cacheItem.lruCache.CheckDiskSpace(block.rootPath, block.blockKey, block.getAllocSize()); err != nil {
+		if _, err = cacheItem.lruCache.CheckDiskSpace(cacheItem.disk.Path, block.blockKey, block.getAllocSize()); err != nil {
 			return
 		}
 
