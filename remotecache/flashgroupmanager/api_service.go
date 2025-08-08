@@ -105,12 +105,15 @@ func (m *FlashGroupManager) getRemoteCacheConfig(w http.ResponseWriter, r *http.
 	}()
 
 	config := &proto.RemoteCacheConfig{
+		FlashNodeHandleReadTimeout:   m.config.FlashNodeHandleReadTimeout,
+		FlashNodeReadDataNodeTimeout: m.config.FlashNodeReadDataNodeTimeout,
 		RemoteCacheTTL:               m.config.RemoteCacheTTL,
 		RemoteCacheReadTimeout:       m.config.RemoteCacheReadTimeout,
 		RemoteCacheMultiRead:         m.config.RemoteCacheMultiRead,
 		FlashNodeTimeoutCount:        m.config.FlashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   m.config.RemoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: m.config.RemoteCacheSameRegionTimeout,
+		FlashHotKeyMissCount:         m.config.FlashHotKeyMissCount,
 	}
 	log.LogInfof("getRemoteCacheConfig config(%v)", config)
 	sendOkReply(w, r, newSuccessHTTPReply(config))
