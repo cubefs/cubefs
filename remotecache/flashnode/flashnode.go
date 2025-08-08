@@ -75,7 +75,7 @@ const (
 	_slotStatValidPeriod                   = 10 * time.Minute // min
 	_defaultPrepareRoutineNum              = 20
 	_defaultMissEntryExpiration            = 2 * time.Minute
-	_defaultMaxMissEntryCache              = 100000
+	_defaultMaxMissEntryCache              = 4000000
 	_defaultMissCountThresholdInterval     = 5
 )
 
