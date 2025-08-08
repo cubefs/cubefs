@@ -465,7 +465,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 	reqID := string(p.Arg)
 	defer func() {
 		if err != nil {
-			if !proto.IsFlashNodeLimitError(err) {
+			if !proto.IsFlashNodeLimitError(err) || !proto.IsCacheMissError(err) {
 				log.LogWarnf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, uniKey,
 					p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 			} else {
@@ -498,9 +498,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 		err = f.shouldCache(uniKey)
 		return
 	}
-	ctx, ctxCancel := context.WithDeadline(context.Background(), time.Unix(0, int64(req.Deadline)))
-	defer ctxCancel()
-	err = block.VerifyObjectReq(ctx, req.Offset, req.Size_)
+	err = block.VerifyObjectReq(req.Offset, req.Size_)
 	if err != nil {
 		createTime := block.GetCreateTime()
 		if time.Since(createTime) > 2*time.Minute {
@@ -509,7 +507,8 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 		}
 		return
 	}
-
+	ctx, ctxCancel := context.WithDeadline(context.Background(), time.Unix(0, int64(req.Deadline)))
+	defer ctxCancel()
 	bgTime2 := stat.BeginStat()
 	// reply to client as quick as possible if hit cache
 	err = f.doObjectReadRequest(ctx, conn, req, p, block, reqID)
@@ -774,10 +773,6 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	firstReply.Opcode = p.Opcode
 	firstReply.StartT = p.StartT
 	end := offset + int64(req.Size_)
-	if err = block.CheckSizeBoundary(end); err != nil {
-		log.LogWarnf("action[doObjectReadRequest] key:[%s] err %v", block.GetBlockKey(), err)
-		return
-	}
 	if err = firstReply.WriteToConn(conn); err != nil {
 		log.LogErrorf("action[doObjectReadRequest] key:[%s] %s", block.GetBlockKey(),
 			firstReply.LogMessage(firstReply.GetOpMsg(), conn.RemoteAddr().String(), firstReply.StartT, err))
