@@ -26,7 +26,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/flashnode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
