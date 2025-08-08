@@ -456,6 +456,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	switchMgr := taskswitch.NewSwitchMgr(svr.ClusterMgrClient)
 	svr.inspectMgr, err = NewDataInspectMgr(svr, conf.InspectConf, switchMgr)
 	if err != nil {
+		span.Errorf("Fail to new data inspect mgr, err:%+v", err)
 		return err
 	}
 

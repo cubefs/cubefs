@@ -16,7 +16,9 @@ package blobnode
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +49,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -1399,4 +1402,58 @@ func TestService_OnlyBlobnode_OpenOldDisk(t *testing.T) {
 	err = startBlobnodeService(ctx, svr, conf)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(svr.Disks))
+}
+
+func TestService_DataInspect(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ds1 := NewMockDiskAPI(ctr)
+	svr := &Service{
+		Disks: map[proto.DiskID]core.DiskAPI{2: ds1},
+	}
+	testServer := httptest.NewServer(NewHandler(svr))
+
+	{
+		ds1.EXPECT().ID().Return(proto.DiskID(2))
+		ds1.EXPECT().DiskInfo().Return(cmapi.BlobNodeDiskInfo{
+			DiskInfo: cmapi.DiskInfo{
+				ClusterID: 1,
+			},
+			DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{
+				DiskID: 2,
+			},
+		})
+
+		// totalUrl := testServer.URL + "/inspect/cleanmetric?clusterid=1&diskid=2&vuid=3&bids=4,5,6&err=xxx"
+		totalUrl := testServer.URL + "/inspect/cleanmetric?clusterid=1&diskid=2"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+	}
+
+	{
+		// get inspect stats
+		getter := mocks.NewMockAccessor(ctr)
+		getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
+		ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
+		require.NoError(t, err)
+		svr.inspectMgr = &DataInspectMgr{
+			progress:   map[proto.DiskID]int{101: 85, 202: 95},
+			taskSwitch: ts,
+			conf:       DataInspectConf{RateLimit: 4096},
+		}
+
+		totalUrl := testServer.URL + "/inspect/stat"
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+
+		body, err := ioutil.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var data DataInspectStat
+		err = json.Unmarshal(body, &data)
+		require.NoError(t, err)
+		fmt.Printf("inspect stat: %+v\n", data)
+	}
 }

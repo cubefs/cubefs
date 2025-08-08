@@ -81,7 +81,9 @@ func (r *DroppedBidRecorder) Write(ctx context.Context, vid proto.Vid, bid proto
 
 // Close close safe
 func (r *DroppedBidRecorder) Close() {
-	r.encoder.Close()
+	if r.encoder != nil {
+		r.encoder.Close()
+	}
 }
 
 var (

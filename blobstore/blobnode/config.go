@@ -43,9 +43,11 @@ const (
 	DefaultChunkProtectionPeriodSec    = 48 * 60 * 60 // 48 hour
 	DefaultDiskStatusCheckIntervalSec  = 2 * 60       // 2 min
 
-	defaultInspectIntervalSec  = 24 * 60 * 60    // 24 hour
-	defaultInspectRate         = 4 * 1024 * 1024 // rate limit 4MB per second
-	defaultInspectLogChunkSize = uint(29)
+	defaultInspectIntervalSec  = 90              // 90 second
+	defaultInspectNextRoundSec = 2 * 60 * 60     // 2 hour
+	defaultInspectRate         = 4 * 1024 * 1024 // rate limit max 4MB per second
+	defaultInspectLogChunkSize = uint(27)        // 2<<27, 128MB
+	defaultInspectLogBackup    = 2
 
 	defaultServiceBothBlobNodeWorker = "BOTH_BLOBNODE_WORKER"
 )
@@ -115,7 +117,9 @@ func configInit(config *Config) {
 
 	defaulter.LessOrEqual(&config.InspectConf.IntervalSec, defaultInspectIntervalSec)
 	defaulter.LessOrEqual(&config.InspectConf.RateLimit, defaultInspectRate)
+	defaulter.LessOrEqual(&config.InspectConf.NexRoundSec, defaultInspectNextRoundSec)
 	defaulter.LessOrEqual(&config.InspectConf.Record.ChunkBits, defaultInspectLogChunkSize)
+	defaulter.LessOrEqual(&config.InspectConf.Record.Backup, defaultInspectLogBackup)
 
 	defaulter.LessOrEqual(&config.HostInfo.DiskType, proto.DiskTypeHDD)
 

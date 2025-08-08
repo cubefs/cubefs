@@ -35,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 )
 
 func TestChunkReport(t *testing.T) {
@@ -133,6 +132,7 @@ func TestChunkReport2(t *testing.T) {
 
 	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"ChunkReport2")
 	require.NoError(t, err)
+	defer os.RemoveAll(workDir)
 
 	err = os.MkdirAll(workDir, 0o755)
 	require.NoError(t, err)
@@ -159,7 +159,6 @@ func TestChunkReport2(t *testing.T) {
 		Clustermgr:             cc,
 		HeartbeatIntervalSec:   600,
 		ChunkReportIntervalSec: 1,
-		InspectConf:            DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
 	}
 	service, err := NewService(conf)
 	require.NoError(t, err)

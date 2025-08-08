@@ -59,6 +59,10 @@ func (id ClusterID) ToString() string {
 	return strconv.FormatUint(uint64(id), 10)
 }
 
+func (id BlobID) ToString() string {
+	return strconv.FormatUint(uint64(id), 10)
+}
+
 const seqToken = ";"
 
 // EncodeToken encode host and vid to a string token.
