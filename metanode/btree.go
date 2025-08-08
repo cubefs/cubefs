@@ -103,7 +103,6 @@ type Snapshot interface {
 	CrcSum(tp TreeType) (uint32, error)
 	ApplyID() uint64
 	TxID() uint64
-	DeletedExtentId() uint64
 }
 
 type Tree interface {
@@ -123,11 +122,11 @@ type Tree interface {
 	GetCursor() uint64
 	SetTxId(txid uint64)
 	GetTxId() uint64
-	GetDeletedExtentId() uint64
-	SetDeletedExtentId(id uint64)
 	Clear(handle interface{}) (err error)
 	DeleteMetadata(handle interface{}) (err error)
 	GetStoreMode() proto.StoreMode
+	GetUniqID() uint64
+	SetUniqID(id uint64)
 }
 
 type InodeTree interface {

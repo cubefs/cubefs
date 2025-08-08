@@ -1212,17 +1212,30 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 			return nil
 		}
 		err = mp.LoadSnapshot(snapshotPath)
+		if err != nil {
+			log.LogErrorf("[load] failed to load data, mp(%v) err(%v)", mp.config.PartitionId, err)
+			return err
+		}
 	}
 
 	if mp.HasRocksDBStore() {
 		log.LogDebugf("[load] mp(%v) rocksdb dir(%v)", mp.config.PartitionId, mp.config.RocksDBDir)
 		log.LogDebugf("[load] load rocksdb data")
 		err = mp.LoadDataFromRocksDb()
-	}
-
-	if err != nil {
-		log.LogErrorf("[load] failed to load data, mp(%v) err(%v)", mp.config.PartitionId, err)
-		return err
+		if err != nil {
+			log.LogErrorf("[load] failed to load rocksdb data, mp(%v) err(%v)", mp.config.PartitionId, err)
+			return err
+		}
+		err = mp.loadRocksdbExtent()
+		if err != nil {
+			log.LogErrorf("[load] failed to load rocksdb extent, mp(%v) err: %s", mp.config.PartitionId, err.Error())
+			return err
+		}
+		err = mp.loadRocksdbFile()
+		if err != nil {
+			log.LogErrorf("[load] failed to load data, mp(%v) err(%v)", mp.config.PartitionId, err)
+			return err
+		}
 	}
 
 	// NOTE: snapshotPath can be empty if using rocksdb
@@ -1289,12 +1302,12 @@ func (mp *metaPartition) doFileStats(thresholds []uint64) {
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	if mp.inodeTree.GetStoreMode() == proto.StoreModeRocksDb {
-		mp.storedApplyId = sm.snap.ApplyID()
-		log.LogInfof("[store] mp(%v) flush rocksdb memory table to sst", mp.config.PartitionId)
-		// NOTE: execute flush
-		if err = mp.inodeTree.Flush(); err != nil {
-			log.LogErrorf("[store] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
+		err = mp.storeRocksdb(sm)
+		if err != nil {
+			log.LogErrorf("storeRocksdb err: %s", err.Error())
+			return err
 		}
+		return nil
 	}
 
 	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
@@ -1526,6 +1539,16 @@ func (mp *metaPartition) Reset() (err error) {
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile, verdataFile, txInfoFile, txRbInodeFile, txRbDentryFile, TxIDFile}
 	for _, filename := range filenames {
 		filepath := path.Join(mp.config.RootDir, filename)
+		if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) {
+			return
+		}
+		err = nil
+	}
+
+	// remove files
+	filenames = []string{uniqCheckerFile, verdataFile}
+	for _, filename := range filenames {
+		filepath := path.Join(mp.config.RootDir, rocksdbSnapDir, filename)
 		if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) {
 			return
 		}
@@ -2055,7 +2078,11 @@ func (mp *metaPartition) LoadDataFromRocksDb() (err error) {
 	if txId > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
 		mp.txProcessor.txManager.txIdAlloc.setTransactionID(txId)
 	}
-	log.LogDebugf("[LoadDataFromRocksDb] mp(%v) load tx id(%v)", mp.config.PartitionId, mp.txProcessor.txManager.txIdAlloc.getTransactionID())
+	uniqId := mp.inodeTree.GetUniqID()
+	if uniqId > mp.GetUniqId() {
+		atomic.StoreUint64(&mp.config.UniqId, uniqId)
+	}
+	log.LogDebugf("[LoadDataFromRocksDb] mp(%v) load tx id(%v) uniqid(%d)", mp.config.PartitionId, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), uniqId)
 	return
 }
 
@@ -2522,5 +2549,35 @@ func (mp *metaPartition) TransferSnapshot() error {
 	}
 
 	// store mode rocksdb --> memory. It doesn't need to translate. Because the snapshot file is stored before.
+	return nil
+}
+
+func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
+	err = mp.storeRocksdbExtent(sm)
+	if err != nil {
+		log.LogErrorf("storeRocksdb rocksdb extent failed, err: %s", err.Error())
+		return err
+	}
+	err = mp.storeRocksdbFile(sm)
+	if err != nil {
+		log.LogErrorf("storeRocksdb rocksdb file failed, err: %s", err.Error())
+		return err
+	}
+	uniqid := mp.GetUniqId()
+	if uniqid > mp.inodeTree.GetUniqID() {
+		mp.inodeTree.SetUniqID(uniqid)
+		err = mp.inodeTree.PersistBaseInfo()
+		if err != nil {
+			log.LogErrorf("storeRocksdb persist base info failed, err: %s", err.Error())
+			return err
+		}
+	}
+	mp.storedApplyId = sm.snap.ApplyID()
+	log.LogInfof("[storeRocksdb] mp(%v) flush rocksdb memory table to sst", mp.config.PartitionId)
+	// NOTE: execute flush
+	if err = mp.inodeTree.Flush(); err != nil {
+		log.LogErrorf("[storeRocksdb] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
+		return err
+	}
 	return nil
 }

@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -24,12 +25,14 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 	mmap "github.com/edsrzf/mmap-go"
 )
@@ -58,6 +61,9 @@ const (
 	StaleMetadataSuffix     = ".old"
 	StaleMetadataTimeFormat = "20060102150405.000000000"
 	writeBuffSize           = 1024 * 1024
+	rocksdbSnapDir          = "rocksdb_snapshot"
+	rocksdbSnapTmp          = ".rocksdb_snapshot"
+	rocksdbSnapBackup       = ".rocksdb_snapshot_backup"
 )
 
 type bufFile struct {
@@ -1639,4 +1645,165 @@ func (mp *metaPartition) ScanInodeTable() (uint64, error) {
 	}
 
 	return maxInode, nil
+}
+
+func (mp *metaPartition) storeRocksdbFile(sm *storeMsg) (err error) {
+	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
+	defer func() {
+		log.LogWarnf("metaPartition %d store apply %v finish", mp.config.PartitionId, sm.snap.ApplyID())
+	}()
+
+	tmpDir := path.Join(mp.config.RootDir, rocksdbSnapTmp)
+	if _, err = os.Stat(tmpDir); err == nil {
+		// TODO Unhandled errors
+		os.RemoveAll(tmpDir)
+	}
+	if err = os.MkdirAll(tmpDir, 0o775); err != nil {
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			// TODO Unhandled errors
+			os.RemoveAll(tmpDir)
+		}
+	}()
+	crcBuffer := bytes.NewBuffer(make([]byte, 0, 16))
+	storeFuncs := []func(dir string, sm *storeMsg) (uint32, error){
+		mp.storeUniqChecker,
+		mp.storeMultiVersion,
+	}
+	for _, storeFunc := range storeFuncs {
+		var crc uint32
+		if crc, err = storeFunc(tmpDir, sm); err != nil {
+			return
+		}
+		if crcBuffer.Len() != 0 {
+			crcBuffer.WriteString(" ")
+		}
+		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
+	}
+	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
+
+	// write crc to file
+	if err = fileutil.WriteFileWithSync(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0o775); err != nil {
+		return
+	}
+	snapshotDir := path.Join(mp.config.RootDir, rocksdbSnapDir)
+	// check snapshot backup
+	backupDir := path.Join(mp.config.RootDir, rocksdbSnapBackup)
+	if _, err = os.Stat(backupDir); err == nil {
+		if err = os.RemoveAll(backupDir); err != nil {
+			return
+		}
+	}
+	err = nil
+
+	// rename snapshot
+	if _, err = os.Stat(snapshotDir); err == nil {
+		if err = os.Rename(snapshotDir, backupDir); err != nil {
+			return
+		}
+	}
+	err = nil
+
+	if err = os.Rename(tmpDir, snapshotDir); err != nil {
+		_ = os.Rename(backupDir, snapshotDir)
+		return
+	}
+	err = os.RemoveAll(backupDir)
+	if err != nil {
+		return
+	}
+
+	return nil
+}
+
+func (mp *metaPartition) loadRocksdbFile() (err error) {
+	snapshotPath := path.Join(mp.config.RootDir, rocksdbSnapDir)
+	_, err = os.Stat(snapshotPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	data, err := os.ReadFile(path.Join(snapshotPath, SnapshotSign))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	raw := string(data)
+	crcStrs := strings.Split(raw, " ")
+
+	crcs := make([]uint32, 0, len(crcStrs))
+	for _, crcStr := range crcStrs {
+		crc, err := strconv.ParseUint(crcStr, 10, 32)
+		if err != nil {
+			log.LogErrorf("loadRocksdbFile parse crc failed, err: %v", err)
+			return err
+		}
+		crcs = append(crcs, uint32(crc))
+	}
+
+	if len(crcs) < 2 {
+		err = fmt.Errorf("The crc file is invalid, please check the crc file")
+		log.LogErrorf("%s", err.Error())
+		return err
+	}
+
+	if err = mp.loadUniqChecker(snapshotPath, crcs[0]); err != nil {
+		log.LogErrorf("loadRocksdbFile loadMultiVer failed, err: %v", err)
+		return
+	}
+
+	if err = mp.loadMultiVer(snapshotPath, crcs[1]); err != nil {
+		log.LogErrorf("loadRocksdbFile loadMultiVer failed, err: %v", err)
+		return
+	}
+
+	return nil
+}
+
+func (mp *metaPartition) storeRocksdbExtent(sm *storeMsg) (err error) {
+	if !sm.quotaRebuild {
+		return nil
+	}
+
+	sIno := NewSimpleInode(0)
+	err = sm.snap.Range(ExtendType, func(i interface{}) bool {
+		e := i.(*Extend)
+		sIno.Inode = e.GetInode()
+		mp.statisticExtendByStore(e, sIno)
+		return true
+	})
+	if err != nil {
+		log.LogErrorf("storeRocksdbExtent range extend failed, err: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func (mp *metaPartition) loadRocksdbExtent() error {
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
+		return err
+	}
+
+	defer func() {
+		if snap != nil {
+			mp.ReleaseSnapShot(snap)
+		}
+	}()
+
+	ino := NewSimpleInode(0)
+	err = snap.Range(ExtendType, func(item interface{}) bool {
+		extend := item.(*Extend)
+		mp.statisticExtendByLoad(extend, ino)
+		return true
+	})
+	if err != nil {
+		log.LogErrorf("loadRocksdbExtent mp[%d] err: %s", mp.config.PartitionId, err.Error())
+		return err
+	}
+
+	return nil
 }

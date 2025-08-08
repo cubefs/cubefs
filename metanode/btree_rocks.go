@@ -25,22 +25,20 @@ var ErrInvalidRocksdbValueLen = fmt.Errorf("invalid value len")
 // NOTE: for compatibility, new field should append
 // to the end of structure
 type RocksBaseInfo struct {
-	version              uint32
-	length               uint32
-	applyId              uint64
-	inodeCnt             uint64
-	dentryCnt            uint64
-	extendCnt            uint64
-	multiCnt             uint64
-	persistentApplyId    uint64
-	cursor               uint64
-	txCnt                uint64
-	txRbInodeCnt         uint64
-	txRbDentryCnt        uint64
-	txId                 uint64
-	deletedExtentId      uint64
-	deletedExtentsCnt    uint64
-	deletedObjExtentsCnt uint64
+	version           uint32
+	length            uint32
+	applyId           uint64
+	inodeCnt          uint64
+	dentryCnt         uint64
+	extendCnt         uint64
+	multiCnt          uint64
+	persistentApplyId uint64
+	cursor            uint64
+	txCnt             uint64
+	txRbInodeCnt      uint64
+	txRbDentryCnt     uint64
+	txId              uint64
+	uniqID            uint64
 }
 
 func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
@@ -82,13 +80,7 @@ func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.txId)); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedExtentId)); err != nil {
-		panic(err)
-	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedExtentsCnt)); err != nil {
-		panic(err)
-	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedObjExtentsCnt)); err != nil {
+	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.uniqID)); err != nil {
 		panic(err)
 	}
 	return buff.Bytes(), nil
@@ -132,13 +124,7 @@ func (info *RocksBaseInfo) MarshalWithoutApplyID() (result []byte, err error) {
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.txId)); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedExtentId)); err != nil {
-		panic(err)
-	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedExtentsCnt)); err != nil {
-		panic(err)
-	}
-	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.deletedObjExtentsCnt)); err != nil {
+	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.uniqID)); err != nil {
 		panic(err)
 	}
 	return buff.Bytes(), nil
@@ -184,13 +170,7 @@ func (info *RocksBaseInfo) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &info.txId); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &info.deletedExtentId); err != nil {
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &info.deletedExtentsCnt); err != nil {
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &info.deletedObjExtentsCnt); err != nil {
+	if err = binary.Read(buff, binary.BigEndian, &info.uniqID); err != nil {
 		return
 	}
 	return
@@ -270,19 +250,12 @@ func (r *RocksTree) SetTxId(txId uint64) {
 	}
 }
 
-func (r *RocksTree) GetDeletedExtentId() uint64 {
-	return atomic.LoadUint64(&r.baseInfo.deletedExtentId)
+func (r *RocksTree) GetUniqID() uint64 {
+	return atomic.LoadUint64(&r.baseInfo.uniqID)
 }
 
-func (r *RocksTree) SetDeletedExtentId(id uint64) {
-	// NOTE: dek id is increase only
-	now := r.GetDeletedExtentId()
-	for now < id {
-		if atomic.CompareAndSwapUint64(&r.baseInfo.deletedExtentId, now, id) {
-			return
-		}
-		now = r.GetDeletedExtentId()
-	}
+func (r *RocksTree) SetUniqID(id uint64) {
+	atomic.StoreUint64(&r.baseInfo.uniqID, id)
 }
 
 func (r *RocksTree) CreateBatchWriteHandle() (interface{}, error) {
@@ -661,9 +634,7 @@ func (r *RocksTree) DeleteMetadata(handle interface{}) (err error) {
 	r.baseInfo.txRbInodeCnt = 0
 	r.baseInfo.txRbDentryCnt = 0
 	r.baseInfo.txId = 0
-	r.baseInfo.deletedExtentId = 0
-	r.baseInfo.deletedExtentsCnt = 0
-	r.baseInfo.deletedObjExtentsCnt = 0
+	r.baseInfo.uniqID = 0
 	err = r.db.DelItemToBatch(handle, r.warpKey(baseInfoKey))
 	return
 }
@@ -909,11 +880,11 @@ func (b *TransactionRollbackDentryRocks) Count() uint64 {
 }
 
 func (b *DeletedExtentsRocks) Count() uint64 {
-	return atomic.LoadUint64(&b.baseInfo.deletedExtentsCnt)
+	return 0
 }
 
 func (b *DeletedObjExtentsRocks) Count() uint64 {
-	return atomic.LoadUint64(&b.baseInfo.deletedObjExtentsCnt)
+	return 0
 }
 
 func (b *InodeRocks) Len() int {
@@ -1962,10 +1933,6 @@ func (r *RocksSnapShot) Count(tp TreeType) uint64 {
 		count = r.baseInfo.txRbInodeCnt
 	case TransactionRollbackDentryType:
 		count = r.baseInfo.txRbDentryCnt
-	case DeletedExtentsType:
-		count = r.baseInfo.deletedExtentsCnt
-	case DeletedObjExtentsType:
-		count = r.baseInfo.deletedObjExtentsCnt
 	}
 	return count
 }
@@ -2101,8 +2068,4 @@ func (r *RocksSnapShot) ApplyID() uint64 {
 
 func (r *RocksSnapShot) TxID() uint64 {
 	return r.baseInfo.txId
-}
-
-func (r *RocksSnapShot) DeletedExtentId() uint64 {
-	return r.baseInfo.deletedExtentId
 }

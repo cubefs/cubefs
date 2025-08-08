@@ -44,7 +44,6 @@ type MemSnapShot struct {
 	deletedExtents      *DeletedExtentsBTree
 	deletedObjExtents   *DeletedObjExtentsBTree
 	txID                uint64
-	deletedExtentId     uint64
 }
 
 func (b *MemSnapShot) Range(tp TreeType, cb func(item interface{}) bool) error {
@@ -272,10 +271,6 @@ func (b *MemSnapShot) ApplyID() uint64 {
 
 func (b *MemSnapShot) TxID() uint64 {
 	return b.txID
-}
-
-func (b *MemSnapShot) DeletedExtentId() uint64 {
-	return b.deletedExtentId
 }
 
 var (
@@ -925,13 +920,6 @@ func (i *BTree) GetTxId() uint64 {
 	return 0
 }
 
-func (i *BTree) GetDeletedExtentId() uint64 {
-	return 0
-}
-
-func (i *BTree) SetDeletedExtentId(id uint64) {
-}
-
 func (i *BTree) PersistBaseInfo() error {
 	return nil
 }
@@ -999,4 +987,12 @@ func (b *BTree) DeleteMetadata(handle interface{}) (err error) {
 
 func (b *BTree) GetStoreMode() proto.StoreMode {
 	return proto.StoreModeMem
+}
+
+func (b *BTree) GetUniqID() uint64 {
+	return 0
+}
+
+func (b *BTree) SetUniqID(id uint64) {
+	return
 }
