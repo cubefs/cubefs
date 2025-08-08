@@ -1111,10 +1111,13 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 	reader.conn.SetReadDeadline(time.Now().Add(time.Second * proto.ReadDeadlineTime))
 	expectLen, err = reader.getReadObjectReply(reply)
 	if err != nil {
-		log.LogErrorf("RemoteCacheReader:reqID(%v) Read reply err(%v)", reader.reqID, err)
+		if proto.IsFlashNodeLimitError(err) {
+			log.LogInfo("RemoteCacheReader:reqID(%v) Read reply err(%v)", reader.reqID, err)
+		} else {
+			log.LogErrorf("RemoteCacheReader:reqID(%v) Read reply err(%v)", reader.reqID, err)
+		}
 		return
 	}
-
 	_, err = io.ReadFull(reader.conn, p)
 	if err != nil {
 		log.LogErrorf("RemoteCacheReader:reqID(%v) Read err(%v)", reader.reqID, err)
@@ -1163,7 +1166,9 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 		if reader.offset >= reader.size {
 			reader.size, err = reader.read(reader.buffer)
 			if reader.size == 0 {
-				log.LogDebugf("RemoteCacheReader:reqID(%v), totalRead:%d", reader.reqID, totalRead)
+				if log.EnableDebug() {
+					log.LogDebugf("RemoteCacheReader:reqID(%v), from connection size 0", reader.reqID)
+				}
 				if err != nil {
 					return totalRead, err
 				} else {
@@ -1184,8 +1189,9 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 		totalRead += toRead
 		reader.offset += toRead
 	}
-
-	log.LogDebugf("RemoteCacheReader:reqID(%v), totalRead:%d", reader.reqID, totalRead)
+	if log.EnableDebug() {
+		log.LogDebugf("RemoteCacheReader:reqID(%v), totalRead:%d", reader.reqID, totalRead)
+	}
 	return totalRead, nil
 }
 

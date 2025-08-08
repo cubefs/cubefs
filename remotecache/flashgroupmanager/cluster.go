@@ -433,7 +433,7 @@ func (c *Cluster) checkFlashNodeHeartbeat() {
 	c.flashNodeTopo.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
 		node := flashNode.(*FlashNode)
 		node.checkLiveliness()
-		task := node.createHeartbeatTask(c.masterAddr(), c.cfg.FlashNodeHandleReadTimeout, c.cfg.FlashNodeReadDataNodeTimeout, c.cfg.FlashHotKeyMissCount)
+		task := node.createHeartbeatTask(c.masterAddr(), int(c.cfg.RemoteCacheReadTimeout), c.cfg.FlashNodeReadDataNodeTimeout, c.cfg.FlashHotKeyMissCount)
 		tasks = append(tasks, task)
 		return true
 	})
