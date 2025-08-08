@@ -230,9 +230,22 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		}
 	}()
 
-	dentry, status := mp.getDentry(den)
+	dentry, status, err := mp.getDentry(den)
+	if err != nil {
+		p.ResultCode = proto.OpErr
+		err = fmt.Errorf("getDentry err:%s", err.Error())
+		p.PacketErrorWithBody(status, []byte(err.Error()))
+		return
+	}
+
 	if status != proto.OpOk {
-		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
+		inTx := false
+		inTx, err = mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID)
+		if err != nil {
+			log.LogErrorf("[TxDeleteDentry] failed to get dentry from rb dentry tree, parent(%v) name(%v), err(%v)", req.ParentID, req.Name, err)
+			return
+		}
+		if inTx {
 			p.ResultCode = proto.OpOk
 			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
 			return
@@ -444,9 +457,21 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		Name:     req.Name,
 		Inode:    req.Inode,
 	}
-	oldDentry, status := mp.getDentry(newDentry)
+	oldDentry, status, err := mp.getDentry(newDentry)
+	if err != nil {
+		p.ResultCode = proto.OpErr
+		err = fmt.Errorf("getDentry err:%s", err.Error())
+		p.PacketErrorWithBody(status, []byte(err.Error()))
+		return
+	}
 	if status != proto.OpOk {
-		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
+		inTx := false
+		inTx, err = mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID)
+		if err != nil {
+			log.LogErrorf("[TxDeleteDentry] failed to get dentry from rb dentry tree, parent(%v) name(%v), err(%v)", req.ParentID, req.Name, err)
+			return
+		}
+		if inTx {
 			p.ResultCode = proto.OpOk
 			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
 			return
@@ -584,8 +609,11 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	if req.VerAll {
 		denList = mp.getDentryList(dentry)
 	}
-	dentry, status := mp.getDentry(dentry)
-
+	dentry, status, rocksEerr := mp.getDentry(dentry)
+	if rocksEerr != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	var reply []byte
 	if status == proto.OpOk || req.VerAll {
 		var resp *LookupResp

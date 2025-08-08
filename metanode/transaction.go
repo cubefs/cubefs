@@ -755,23 +755,23 @@ func (tm *TransactionManager) registerTransaction(handle interface{}, txInfo *pr
 	return
 }
 
-func (tm *TransactionManager) deleteTxInfo(handle interface{}, txId string) (status uint8) {
+func (tm *TransactionManager) deleteTxInfo(dbHandle interface{}, txId string) (status uint8, err error) {
 	tm.Lock()
 	defer tm.Unlock()
 	status = proto.OpOk
-	item, err := tm.txTree.Delete(handle, txId)
+	_, err = tm.txTree.Delete(dbHandle, txId)
 	if err != nil {
 		log.LogErrorf("[deleteTxInfo] failed to delete tx(%v) from tx tree, err(%v)", txId, err)
 		status = proto.OpErr
 		return
 	}
 	if log.EnableDebug() {
-		log.LogDebugf("deleteTxInfo: tx[%v] is deleted, item %v", txId, item)
+		log.LogDebugf("deleteTxInfo: tx[%v] is deleted", txId)
 	}
 	return
 }
 
-func (tm *TransactionManager) rollbackTxInfo(handle interface{}, txId string) (status uint8) {
+func (tm *TransactionManager) rollbackTxInfo(dbHandle interface{}, txId string) (status uint8, err error) {
 	tm.Lock()
 	defer tm.Unlock()
 	status = proto.OpOk
@@ -789,10 +789,9 @@ func (tm *TransactionManager) rollbackTxInfo(handle interface{}, txId string) (s
 
 	tx.State = proto.TxStateRollbackDone
 	tx.DoneTime = time.Now().Unix()
-	err = tm.txTree.Update(handle, tx)
+	err = tm.txTree.Update(dbHandle, tx)
 	if err != nil {
 		log.LogErrorf("[rollbackTxInfo] failed to update tx(%v)", tx.TxID)
-		status = proto.OpErr
 		return
 	}
 	log.LogDebugf("rollbackTxInfo: tx[%v] is rolled back", tx)
@@ -1373,7 +1372,7 @@ func (tr *TransactionResource) copyGetTxRbInode(ino uint64) (rbInode *TxRollback
 	return
 }
 
-func (tr *TransactionResource) deleteTxRollbackInode(handle interface{}, ino uint64, txId string) (status uint8) {
+func (tr *TransactionResource) deleteTxRollbackInode(dbHandle interface{}, ino uint64, txId string) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
 
@@ -1381,61 +1380,69 @@ func (tr *TransactionResource) deleteTxRollbackInode(handle interface{}, ino uin
 		txInodeInfo: proto.NewTxInodeInfo("", ino, 0),
 	}
 
-	item, err := tr.txRbInodeTree.Get(keyNode)
+	var item *TxRollbackInode
+	item, err = tr.txRbInodeTree.Get(keyNode)
 	if err != nil {
 		log.LogErrorf("deleteTxRollbackInode ino(%v) txId(%v) err: %s", ino, txId, err.Error())
-		return proto.OpErr
+		status = proto.OpErr
+		return
 	}
 	if item == nil {
 		log.LogWarnf("deleteTxRollbackInode: rollback inode may be already been deleted, inode %d, txId %s",
 			ino, txId)
-		return proto.OpTxRbInodeNotExistErr
+		status = proto.OpTxRbInodeNotExistErr
+		return
 	}
 
 	if item.txInodeInfo.TxID != txId {
 		log.LogWarnf("deleteTxRollbackInode: rollback dentry is already been update by other, txId %s, item %v",
 			txId, item)
-		return proto.OpTxRbDentryNotExistErr
+		status = proto.OpTxRbDentryNotExistErr
+		return
 	}
 
-	_, err = tr.txRbInodeTree.Delete(handle, item)
+	_, err = tr.txRbInodeTree.Delete(dbHandle, item)
 	if err != nil {
 		log.LogErrorf("[deleteTxRollbackInode] failed to delete ino(%v), err(%v)", ino, err)
-		return proto.OpErr
+		return
 	}
-	return proto.OpOk
+	status = proto.OpOk
+	return
 }
 
 // RM add an `TxRollbackInode` into `txRollbackInodes`
-func (tr *TransactionResource) addTxRollbackInode(handle interface{}, rbInode *TxRollbackInode) (status uint8) {
+func (tr *TransactionResource) addTxRollbackInode(dbHandle interface{}, rbInode *TxRollbackInode) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
 
 	oldRbInode, err := tr.getTxRbInode(rbInode.inode.Inode)
 	if err != nil {
 		log.LogErrorf("[addTxRollbackInode] failed to get rollback inode, err(%v)", err)
-		return proto.OpErr
+		return
 	}
 	if oldRbInode != nil {
 		if oldRbInode.txInodeInfo.TxID == rbInode.txInodeInfo.TxID {
 			log.LogWarnf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] is already exists",
 				rbInode.inode.Inode, rbInode.txInodeInfo.TxID)
-			return proto.OpExistErr
+			status = proto.OpExistErr
+			return
 		} else {
 			log.LogErrorf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] "+
 				"is conflicted with inode [ino(%v) txID(%v)]",
 				rbInode.inode.Inode, rbInode.txInodeInfo.TxID, oldRbInode.inode.Inode, oldRbInode.txInodeInfo.TxID)
-			return proto.OpTxConflictErr
+			status = proto.OpTxConflictErr
+			return
 		}
 	}
 
-	_, _, err = tr.txRbInodeTree.ReplaceOrInsert(handle, rbInode, true)
+	_, _, err = tr.txRbInodeTree.ReplaceOrInsert(dbHandle, rbInode, true)
 	if err != nil {
 		log.LogErrorf("[addTxRollbackInode] failed to put inode to tx rb inode tree, ino(%v), err(%v)", rbInode.inode.Inode, err)
-		return proto.OpErr
+		return
 	}
 	log.LogDebugf("addTxRollbackInode: rollback inode [ino(%v) txID(%v)] is added", rbInode.inode.Inode, rbInode.txInodeInfo.TxID)
-	return proto.OpOk
+	status = proto.OpOk
+	return
 }
 
 func (tr *TransactionResource) getTxRbDentry(pId uint64, name string) (*TxRollbackDentry, error) {
@@ -1453,7 +1460,7 @@ func (tr *TransactionResource) getTxRbDentry(pId uint64, name string) (*TxRollba
 	return item, nil
 }
 
-func (tr *TransactionResource) deleteTxRollbackDentry(handle interface{}, pid uint64, name, txId string) (status uint8) {
+func (tr *TransactionResource) deleteTxRollbackDentry(dbHandle interface{}, pid uint64, name, txId string) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
 
@@ -1463,60 +1470,66 @@ func (tr *TransactionResource) deleteTxRollbackDentry(handle interface{}, pid ui
 
 	item, err := tr.txRbDentryTree.Get(keyNode)
 	if err != nil {
-		log.LogErrorf("deleteTxRollbackDentry get pid(%v) name(%v) error", pid, name)
-		return proto.OpErr
+		log.LogErrorf("[deleteTxRollbackDentry] failed to get dentry from tx rb dentry tree, parent(%v) name(%v), err(%v)", pid, name, err)
+		return
 	}
 	if item == nil {
 		log.LogWarnf("deleteTxRollbackDentry: rollback dentry may be already been deleted, pid %d, name %s, txId %s",
 			pid, name, txId)
-		return proto.OpTxRbDentryNotExistErr
+		status = proto.OpTxRbDentryNotExistErr
+		return
 	}
 
 	if item.txDentryInfo.TxID != txId {
 		log.LogWarnf("deleteTxRollbackDentry: rollback dentry is already been update by other, txId %s, item %v",
 			txId, name)
-		return proto.OpTxRbDentryNotExistErr
+		status = proto.OpTxRbDentryNotExistErr
+		return
 	}
 
-	_, err = tr.txRbDentryTree.Delete(handle, item)
+	_, err = tr.txRbDentryTree.Delete(dbHandle, item)
 	if err != nil {
 		log.LogErrorf("[deleteTxRollbackDentry] failed to delete dentry from rb dentry tree, parent(%v) name(%v), err(%v)", pid, name, err)
-		return proto.OpErr
+		return
 	}
-	return proto.OpOk
+	status = proto.OpOk
+	return
 }
 
 // RM add a `TxRollbackDentry` into `txRollbackDentries`
-func (tr *TransactionResource) addTxRollbackDentry(handle interface{}, rbDentry *TxRollbackDentry) (status uint8) {
+func (tr *TransactionResource) addTxRollbackDentry(dbHandle interface{}, rbDentry *TxRollbackDentry) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
 
 	oldRbDentry, err := tr.getTxRbDentry(rbDentry.txDentryInfo.ParentId, rbDentry.dentry.Name)
 	if err != nil {
-		log.LogErrorf("addTxRollbackDentry parentId(%v) name(%v)", rbDentry.txDentryInfo.ParentId, rbDentry.dentry.Name)
-		return proto.OpErr
+		log.LogErrorf("[addTxRollbackDentry] failed to get dentry from rb dentry tree, parent(%v) name(%v), err(%v)", rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name, err)
+		return
 	}
 	if oldRbDentry != nil {
 		if oldRbDentry.txDentryInfo.TxID == rbDentry.txDentryInfo.TxID {
 			log.LogWarnf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v)] is already exists",
 				rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.TxID)
-			return proto.OpExistErr
+			status = proto.OpExistErr
+			return
 		}
 		log.LogWarnf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v) rbType(%v)] "+
 			"is conflicted with dentry [pino(%v) name(%v)  txID(%v) rbType(%v)]",
 			rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.TxID, rbDentry.rbType,
 			oldRbDentry.dentry.ParentId, oldRbDentry.dentry.Name, oldRbDentry.txDentryInfo.TxID, oldRbDentry.rbType)
-		return proto.OpTxConflictErr
+		status = proto.OpTxConflictErr
+		return
 	}
 
-	_, _, err = tr.txRbDentryTree.ReplaceOrInsert(handle, rbDentry, true)
+	_, _, err = tr.txRbDentryTree.ReplaceOrInsert(dbHandle, rbDentry, true)
 	if err != nil {
 		log.LogErrorf("[addTxRollbackDentry] failed to put dentry to rb dentry tree, parent(%v) name(%v), err(%v)", rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name, err)
-		return proto.OpErr
+		return
 	}
 	log.LogDebugf("addTxRollbackDentry: rollback dentry [pino(%v) name(%v) txID(%v) rbType(%v)] is added",
 		rbDentry.dentry.ParentId, rbDentry.dentry.Name, rbDentry.txDentryInfo.TxID, rbDentry.rbType)
-	return proto.OpOk
+	status = proto.OpOk
+	return
 }
 
 // TODO support hybrid
@@ -1599,7 +1612,7 @@ func (tr *TransactionResource) rollbackInode(handle interface{}, req *proto.TxIn
 	return
 }
 
-func (tr *TransactionResource) rollbackDentryInternal(handle interface{}, rbDentry *TxRollbackDentry) (status uint8, err error) {
+func (tr *TransactionResource) rollbackDentryInternal(dbHandle interface{}, rbDentry *TxRollbackDentry) (status uint8, err error) {
 	defer func() {
 		if status != proto.OpOk {
 			log.LogErrorf("rollbackDentryInternal: rollback dentry failed, ifo %v", rbDentry.txDentryInfo)
@@ -1609,12 +1622,12 @@ func (tr *TransactionResource) rollbackDentryInternal(handle interface{}, rbDent
 	switch rbDentry.rbType {
 	case TxAdd:
 		// need to be true to assert link not change.
-		status = tr.txProcessor.mp.fsmCreateDentry(handle, rbDentry.dentry, true)
+		status, err = tr.txProcessor.mp.fsmCreateDentry(dbHandle, rbDentry.dentry, true)
 	case TxDelete:
-		resp := tr.txProcessor.mp.fsmDeleteDentry(handle, rbDentry.dentry, true)
+		resp, _ := tr.txProcessor.mp.fsmDeleteDentry(dbHandle, rbDentry.dentry, true)
 		status = resp.Status
 	case TxUpdate:
-		resp := tr.txProcessor.mp.fsmUpdateDentry(handle, rbDentry.dentry)
+		resp, _ := tr.txProcessor.mp.fsmUpdateDentry(dbHandle, rbDentry.dentry)
 		status = resp.Status
 	default:
 		status = proto.OpTxRollbackUnknownRbType
@@ -1622,7 +1635,7 @@ func (tr *TransactionResource) rollbackDentryInternal(handle interface{}, rbDent
 		return
 	}
 
-	_, err = tr.txRbDentryTree.Delete(handle, rbDentry)
+	_, err = tr.txRbDentryTree.Delete(dbHandle, rbDentry)
 	return
 }
 
@@ -1741,7 +1754,7 @@ func (tr *TransactionResource) commitDentry(handle interface{}, txID string, pId
 	// unlink parent inode
 	if rbDentry.rbType == TxAdd {
 		parInode := NewInode(pId, 0)
-		st := tr.txProcessor.mp.fsmUnlinkInode(handle, parInode, 0)
+		st, _ := tr.txProcessor.mp.fsmUnlinkInode(handle, parInode, 0)
 		if st.Status != proto.OpOk {
 			log.LogWarnf("commitDentry: try unlink parent inode failed, txId %s, inode[%v]", txID, parInode)
 			return

@@ -56,8 +56,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	mp.nonIdempotent.Lock()
 	defer mp.nonIdempotent.Unlock()
 
-	var handle interface{}
-	if handle, err = mp.inodeTree.CreateBatchWriteHandle(); err != nil {
+	var dbWriteHandle interface{}
+	if dbWriteHandle, err = mp.inodeTree.CreateBatchWriteHandle(); err != nil {
 		log.LogErrorf("action[Apply] create write batch handle failed:%v", err)
 		return
 	}
@@ -68,12 +68,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	// NOTE: commit changes
 	defer func() {
 		if err != nil {
-			_ = mp.inodeTree.ReleaseBatchWriteHandle(handle)
+			_ = mp.inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
 			return
 		}
 
 		log.LogDebugf("[Apply] mp(%v) commit write handle", mp.config.PartitionId)
-		err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, true)
+		err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(dbWriteHandle, true)
 		if err != nil {
 			log.LogErrorf("[Apply] failed to commit write batch, is disk broken? err(%v)", err)
 		}
@@ -89,7 +89,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			mp.config.Cursor = ino.Inode
 			mp.inodeTree.SetCursor(ino.Inode)
 		}
-		resp = mp.fsmCreateInode(handle, ino)
+		resp, err = mp.fsmCreateInode(dbWriteHandle, ino)
 	case opFSMCreateInodeQuota:
 		qinode := &MetaQuotaInode{}
 		if err = qinode.Unmarshal(msg.V); err != nil {
@@ -101,115 +101,142 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			mp.inodeTree.SetCursor(ino.Inode)
 		}
 		if len(qinode.quotaIds) > 0 {
-			mp.setInodeQuota(handle, qinode.quotaIds, ino.Inode)
+			mp.setInodeQuota(dbWriteHandle, qinode.quotaIds, ino.Inode)
 		}
-		resp = mp.fsmCreateInode(handle, ino)
+		resp, err = mp.fsmCreateInode(dbWriteHandle, ino)
 	case opFSMUnlinkInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-
-		status := mp.inodeInTx(ino.Inode)
+		var status uint8
+		status, err = mp.inodeInTx(ino.Inode)
+		if err != nil {
+			status = proto.OpErr
+			return
+		}
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
 		}
-		resp = mp.fsmUnlinkInode(handle, ino, 0)
+		resp, err = mp.fsmUnlinkInode(dbWriteHandle, ino, 0)
 	case opFSMUnlinkInodeOnce:
 		var inoOnceWithVersion *InodeOnceWithVersion
 		if inoOnceWithVersion, err = InodeOnceUnmarshal(msg.V); err != nil {
 			return
 		}
 
-		status := mp.inodeInTx(inoOnceWithVersion.Inode)
+		var status uint8
+		status, err = mp.inodeInTx(inoOnceWithVersion.Inode)
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
 		}
 		ino := NewInode(inoOnceWithVersion.Inode, 0)
 		ino.setVer(inoOnceWithVersion.VerSeq)
-		resp = mp.fsmUnlinkInode(handle, ino, inoOnceWithVersion.UniqID)
+		resp, err = mp.fsmUnlinkInode(dbWriteHandle, ino, inoOnceWithVersion.UniqID)
 	case opFSMUnlinkInodeBatch:
-		inodes, err := InodeBatchUnmarshal(msg.V)
+		var inodes InodeBatch
+		inodes, err = InodeBatchUnmarshal(msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp = mp.fsmUnlinkInodeBatch(handle, inodes)
+		resp, err = mp.fsmUnlinkInodeBatch(dbWriteHandle, inodes)
 	case opFSMExtentTruncate:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmExtentsTruncate(handle, ino)
+		resp, err = mp.fsmExtentsTruncate(dbWriteHandle, ino)
 	case opFSMCreateLinkInode:
+		var status uint8
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		status := mp.inodeInTx(ino.Inode)
+		status, err = mp.inodeInTx(ino.Inode)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
 		}
-		resp = mp.fsmCreateLinkInode(handle, ino, 0)
+		resp, err = mp.fsmCreateLinkInode(dbWriteHandle, ino, 0)
 	case opFSMCreateLinkInodeOnce:
 		var inoOnceWithVersion *InodeOnceWithVersion
+		var status uint8
 		if inoOnceWithVersion, err = InodeOnceUnmarshal(msg.V); err != nil {
 			return
 		}
-		status := mp.inodeInTx(inoOnceWithVersion.Inode)
+		status, err = mp.inodeInTx(inoOnceWithVersion.Inode)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
 		}
 		ino := NewInode(inoOnceWithVersion.Inode, 0)
 		ino.setVer(inoOnceWithVersion.VerSeq)
-		resp = mp.fsmCreateLinkInode(handle, ino, inoOnceWithVersion.UniqID)
+		resp, err = mp.fsmCreateLinkInode(dbWriteHandle, ino, inoOnceWithVersion.UniqID)
 	case opFSMEvictInode:
+		var status uint8
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		status := mp.inodeInTx(ino.Inode)
+		status, err = mp.inodeInTx(ino.Inode)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
 		}
-		resp = mp.fsmEvictInode(handle, ino)
+		resp, err = mp.fsmEvictInode(dbWriteHandle, ino)
 	case opFSMEvictInodeBatch:
-		inodes, err := InodeBatchUnmarshal(msg.V)
+		var inodes InodeBatch
+		inodes, err = InodeBatchUnmarshal(msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp = mp.fsmBatchEvictInode(handle, inodes)
+		resp, err = mp.fsmBatchEvictInode(dbWriteHandle, inodes)
 	case opFSMSetAttr:
 		req := &SetattrRequest{}
 		err = json.Unmarshal(msg.V, req)
 		if err != nil {
 			return
 		}
-		err = mp.fsmSetAttr(handle, req)
+		err = mp.fsmSetAttr(dbWriteHandle, req)
 	case opFSMCreateDentry:
+		var status uint8
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
 
-		status := mp.dentryInTx(den.ParentId, den.Name)
+		status, err = mp.dentryInTx(den.ParentId, den.Name)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = status
 			return
 		}
 
-		resp = mp.fsmCreateDentry(handle, den, false)
+		resp, err = mp.fsmCreateDentry(dbWriteHandle, den, false)
 	case opFSMDeleteDentry:
+		var status uint8
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
 
-		status := mp.dentryInTx(den.ParentId, den.Name)
+		status, err = mp.dentryInTx(den.ParentId, den.Name)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = &DentryResponse{
 				Status: status,
@@ -217,26 +244,31 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 
-		resp = mp.fsmDeleteDentry(handle, den, false)
+		resp, err = mp.fsmDeleteDentry(dbWriteHandle, den, false)
 	case opFSMDeleteDentryBatch:
-		db, err := DentryBatchUnmarshal(msg.V)
+		var db DentryBatch
+		db, err = DentryBatchUnmarshal(msg.V)
 		if err != nil {
 			return nil, err
 		}
-		resp = mp.fsmBatchDeleteDentry(handle, db)
+		resp, err = mp.fsmBatchDeleteDentry(dbWriteHandle, db)
 	case opFSMUpdateDentry:
+		var status uint8
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
 
-		status := mp.dentryInTx(den.ParentId, den.Name)
+		status, err = mp.dentryInTx(den.ParentId, den.Name)
+		if err != nil {
+			status = proto.OpErr
+		}
 		if status != proto.OpOk {
 			resp = &DentryResponse{Status: status}
 			return
 		}
 
-		resp = mp.fsmUpdateDentry(handle, den)
+		resp, err = mp.fsmUpdateDentry(dbWriteHandle, den)
 	case opFSMUpdatePartition:
 		req := &UpdatePartitionReq{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
@@ -248,25 +280,25 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmAppendExtents(handle, ino)
+		resp, err = mp.fsmAppendExtents(dbWriteHandle, ino)
 	case opFSMExtentsAddWithCheck:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmAppendExtentsWithCheck(handle, ino, false)
+		resp, err = mp.fsmAppendExtentsWithCheck(dbWriteHandle, ino, false)
 	case opFSMExtentSplit:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmAppendExtentsWithCheck(handle, ino, true)
+		resp, err = mp.fsmAppendExtentsWithCheck(dbWriteHandle, ino, true)
 	case opFSMObjExtentsAdd:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmAppendObjExtents(ino)
+		resp, err = mp.fsmAppendObjExtents(dbWriteHandle, ino)
 	case opFSMSentToChan:
 		resp = mp.fsmSendToChan(msg.V, false)
 	case opFSMSentToChanWithVer:
@@ -303,7 +335,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)
 	case opFSMInternalDeleteInodeBatch:
-		err = mp.internalDeleteBatch(handle, msg.V)
+		err = mp.internalDeleteBatch(dbWriteHandle, msg.V)
 	case opFSMInternalDelExtentFile:
 		err = mp.delOldExtentFile(msg.V)
 	case opFSMInternalDelExtentCursor:
@@ -313,37 +345,37 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		err = mp.fsmSetXAttr(handle, extend)
+		err = mp.fsmSetXAttr(dbWriteHandle, extend)
 	case opFSMRemoveXAttr:
 		var extend *Extend
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		err = mp.fsmRemoveXAttr(handle, extend)
+		err = mp.fsmRemoveXAttr(dbWriteHandle, extend)
 	case opFSMUpdateXAttr:
 		var extend *Extend
 		if extend, err = NewExtendFromBytes(msg.V); err != nil {
 			return
 		}
-		err = mp.fsmSetXAttr(handle, extend)
+		err = mp.fsmSetXAttr(dbWriteHandle, extend)
 	case opFSMLockDir:
 		req := &proto.LockDirRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmLockDir(handle, req)
+		resp = mp.fsmLockDir(dbWriteHandle, req)
 	case opFSMCreateMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)
-		resp = mp.fsmCreateMultipart(handle, multipart)
+		resp, err = mp.fsmCreateMultipart(dbWriteHandle, multipart)
 	case opFSMRemoveMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)
-		resp = mp.fsmRemoveMultipart(handle, multipart)
+		resp, err = mp.fsmRemoveMultipart(dbWriteHandle, multipart)
 	case opFSMAppendMultipart:
 		var multipart *Multipart
 		multipart = MultipartFromBytes(msg.V)
-		resp = mp.fsmAppendMultipart(handle, multipart)
+		resp, err = mp.fsmAppendMultipart(dbWriteHandle, multipart)
 	case opFSMSyncCursor:
 		var cursor uint64
 		cursor = binary.BigEndian.Uint64(msg.V)
@@ -363,7 +395,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txInfo.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxInit(handle, txInfo)
+		resp, err = mp.fsmTxInit(dbWriteHandle, txInfo)
 	case opFSMTxCreateInode:
 		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
@@ -373,7 +405,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			mp.config.Cursor = txIno.Inode.Inode
 			mp.inodeTree.SetCursor(txIno.Inode.Inode)
 		}
-		resp = mp.fsmTxCreateInode(handle, txIno, []uint32{})
+		resp, err = mp.fsmTxCreateInode(dbWriteHandle, txIno, []uint32{})
 	case opFSMTxCreateInodeQuota:
 		qinode := &TxMetaQuotaInode{}
 		if err = qinode.Unmarshal(msg.V); err != nil {
@@ -385,88 +417,88 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			mp.inodeTree.SetCursor(txIno.Inode.Inode)
 		}
 		if len(qinode.quotaIds) > 0 {
-			mp.setInodeQuota(handle, qinode.quotaIds, txIno.Inode.Inode)
+			mp.setInodeQuota(dbWriteHandle, qinode.quotaIds, txIno.Inode.Inode)
 		}
-		resp = mp.fsmTxCreateInode(handle, txIno, qinode.quotaIds)
+		resp, err = mp.fsmTxCreateInode(dbWriteHandle, txIno, qinode.quotaIds)
 	case opFSMTxCreateDentry:
 		txDen := NewTxDentry(0, "", 0, 0, nil, nil)
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxCreateDentry(handle, txDen)
+		resp, err = mp.fsmTxCreateDentry(dbWriteHandle, txDen)
 	case opFSMTxSetState:
 		req := &proto.TxSetStateRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxSetState(handle, req)
+		resp, err = mp.fsmTxSetState(dbWriteHandle, req)
 	case opFSMTxCommitRM:
 		req := &proto.TransactionInfo{}
 		if err = req.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxCommitRM(handle, req)
+		resp, err = mp.fsmTxCommitRM(dbWriteHandle, req)
 	case opFSMTxRollbackRM:
 		req := &proto.TransactionInfo{}
 		if err = req.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxRollbackRM(handle, req)
+		resp, err = mp.fsmTxRollbackRM(dbWriteHandle, req)
 	case opFSMTxCommit:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxCommit(handle, req.TxID)
+		resp, err = mp.fsmTxCommit(dbWriteHandle, req.TxID)
 	case opFSMTxRollback:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxRollback(handle, req.TxID)
+		resp, err = mp.fsmTxRollback(dbWriteHandle, req.TxID)
 	case opFSMTxDelete:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxDelete(handle, req.TxID)
+		resp, err = mp.fsmTxDelete(dbWriteHandle, req.TxID)
 	case opFSMTxDeleteDentry:
 		txDen := NewTxDentry(0, "", 0, 0, nil, nil)
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxDeleteDentry(handle, txDen)
+		resp, err = mp.fsmTxDeleteDentry(dbWriteHandle, txDen)
 	case opFSMTxUnlinkInode:
 		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxUnlinkInode(handle, txIno)
+		resp, err = mp.fsmTxUnlinkInode(dbWriteHandle, txIno)
 	case opFSMTxUpdateDentry:
 		// txDen := NewTxDentry(0, "", 0, 0, nil)
 		txUpdateDen := NewTxUpdateDentry(nil, nil, nil)
 		if err = txUpdateDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxUpdateDentry(handle, txUpdateDen)
+		resp, err = mp.fsmTxUpdateDentry(dbWriteHandle, txUpdateDen)
 	case opFSMTxCreateLinkInode:
 		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxCreateLinkInode(handle, txIno)
+		resp, err = mp.fsmTxCreateLinkInode(dbWriteHandle, txIno)
 	case opFSMSetInodeQuotaBatch:
 		req := &proto.BatchSetMetaserverQuotaReuqest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmSetInodeQuotaBatch(handle, req)
+		resp = mp.fsmSetInodeQuotaBatch(dbWriteHandle, req)
 	case opFSMDeleteInodeQuotaBatch:
 		req := &proto.BatchDeleteMetaserverQuotaReuqest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmDeleteInodeQuotaBatch(handle, req)
+		resp = mp.fsmDeleteInodeQuotaBatch(dbWriteHandle, req)
 	case opFSMUniqID:
 		resp = mp.fsmUniqID(msg.V)
 	case opFSMUniqCheckerEvict:
@@ -497,7 +529,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err != nil {
 			return
 		}
-		err = mp.fsmSetCreateTime(handle, req)
+		err = mp.fsmSetCreateTime(dbWriteHandle, req)
 	case opFSMInternalBatchFreeInodeMigrationExtentKey:
 		err = mp.fsmInternalBatchFreeMigrationExtentKey(msg.V)
 	case opFSMSetMigrationExtentKeyDeleteImmediately:
@@ -534,14 +566,14 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmSyncInodeAccessTime(handle, ino)
+		resp = mp.fsmSyncInodeAccessTime(dbWriteHandle, ino)
 	case opFSMBatchSyncInodeATime:
 		if len(msg.V) < 8 || len(msg.V)%8 != 0 {
 			err = fmt.Errorf("opFSMBatchSyncInodeATime: msg is not valid, mp %d, len(%d)", mp.config.PartitionId, len(msg.V))
 			return
 		}
 
-		resp = mp.fsmBatchSyncInodeAccessTime(handle, msg.V)
+		resp = mp.fsmBatchSyncInodeAccessTime(dbWriteHandle, msg.V)
 	}
 	return
 }

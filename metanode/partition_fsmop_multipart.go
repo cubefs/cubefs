@@ -19,30 +19,38 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-func (mp *metaPartition) fsmCreateMultipart(handle interface{}, multipart *Multipart) (status uint8) {
-	_, ok, err := mp.multipartTree.ReplaceOrInsert(handle, multipart, false)
+func (mp *metaPartition) fsmCreateMultipart(dbHandle interface{}, multipart *Multipart) (status uint8, err error) {
+	var ok bool
+	_, ok, err = mp.multipartTree.ReplaceOrInsert(dbHandle, multipart, false)
 	if err != nil {
-		return proto.OpErr
+		status = proto.OpErr
+		return
 	}
 	if !ok {
-		return proto.OpExistErr
+		return proto.OpExistErr, nil
 	}
-	return proto.OpOk
+	return proto.OpOk, nil
 }
 
-func (mp *metaPartition) fsmRemoveMultipart(handle interface{}, multipart *Multipart) (status uint8) {
-	ok, err := mp.multipartTree.Delete(handle, multipart)
+func (mp *metaPartition) fsmRemoveMultipart(dbHandle interface{}, multipart *Multipart) (status uint8, err error) {
+	var ok bool
+	ok, err = mp.multipartTree.Delete(dbHandle, multipart)
 	if err != nil {
-		return proto.OpErr
+		status = proto.OpErr
+		return
 	}
 	if !ok {
-		return proto.OpNotExistErr
+		status = proto.OpNotExistErr
+		return
 	}
-	return proto.OpOk
+	status = proto.OpOk
+	return
 }
 
-func (mp *metaPartition) fsmAppendMultipart(handle interface{}, multipart *Multipart) (resp proto.AppendMultipartResponse) {
-	storedMultipart, err := mp.multipartTree.CopyGet(multipart)
+func (mp *metaPartition) fsmAppendMultipart(dbHandle interface{}, multipart *Multipart) (resp proto.AppendMultipartResponse, err error) {
+	var storedMultipart *Multipart
+	resp.Status = proto.OpOk
+	storedMultipart, err = mp.multipartTree.CopyGet(multipart)
 	if err != nil {
 		resp.Status = proto.OpErr
 		return
@@ -63,7 +71,7 @@ func (mp *metaPartition) fsmAppendMultipart(handle interface{}, multipart *Multi
 		}
 	}
 	resp.Status = proto.OpOk
-	if err := mp.multipartTree.Put(handle, storedMultipart); err != nil {
+	if err = mp.multipartTree.Put(dbHandle, storedMultipart); err != nil {
 		resp.Status = proto.OpErr
 		log.LogErrorf("[fsmAppendMultipart] update multipart info failed, multipart id:%s, multipart key:%s, error:%v",
 			multipart.id, multipart.key, err)

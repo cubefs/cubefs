@@ -79,7 +79,8 @@ func testFsmCreateMutlipart(t *testing.T, mp *metaPartition) {
 		key: "test",
 		id:  "id1",
 	}
-	status := mp.fsmCreateMultipart(handle, multipart)
+	status, err := mp.fsmCreateMultipart(handle, multipart)
+	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
 	err = mp.multipartTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
@@ -106,7 +107,7 @@ func testFsmRemoveMultipart(t *testing.T, mp *metaPartition) {
 		key: "test",
 		id:  "id1",
 	}
-	status := mp.fsmCreateMultipart(handle, multipart)
+	status, err := mp.fsmCreateMultipart(handle, multipart)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
 	err = mp.multipartTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -119,7 +120,7 @@ func testFsmRemoveMultipart(t *testing.T, mp *metaPartition) {
 	handle, err = mp.multipartTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 
-	status = mp.fsmRemoveMultipart(handle, multipart)
+	status, err = mp.fsmRemoveMultipart(handle, multipart)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
 	err = mp.multipartTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -131,7 +132,7 @@ func testFsmRemoveMultipart(t *testing.T, mp *metaPartition) {
 	handle, err = mp.multipartTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 
-	status = mp.fsmRemoveMultipart(handle, multipart)
+	status, err = mp.fsmRemoveMultipart(handle, multipart)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpNotExistErr, status)
 

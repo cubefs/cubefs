@@ -70,7 +70,8 @@ func prepareInodeForFsmDentryTest(t *testing.T, mp *metaPartition, ino uint64, m
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	inode := NewInode(ino, mode)
-	status := mp.fsmCreateInode(handle, inode)
+	status, err := mp.fsmCreateInode(handle, inode)
+	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
@@ -101,7 +102,7 @@ func testFsmCreateDentry(t *testing.T, mp *metaPartition) {
 		Name:     "test",
 		Inode:    ino,
 	}
-	status := mp.fsmCreateDentry(handle, den, false)
+	status, err := mp.fsmCreateDentry(handle, den, false)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
 	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -136,7 +137,8 @@ func testFsmDeleteDentry(t *testing.T, mp *metaPartition) {
 		Name:     "test",
 		Inode:    ino,
 	}
-	status := mp.fsmCreateDentry(handle, den, false)
+	status, err := mp.fsmCreateDentry(handle, den, false)
+	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
 	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
@@ -149,7 +151,8 @@ func testFsmDeleteDentry(t *testing.T, mp *metaPartition) {
 		ParentId: dirIno,
 		Name:     "test",
 	}
-	resp := mp.fsmDeleteDentry(handle, den, false)
+	resp, err := mp.fsmDeleteDentry(handle, den, false)
+	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
@@ -183,7 +186,8 @@ func testFsmUpdateDentry(t *testing.T, mp *metaPartition) {
 		Name:     "test",
 		Inode:    ino,
 	}
-	status := mp.fsmCreateDentry(handle, den, false)
+	status, err := mp.fsmCreateDentry(handle, den, false)
+	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
 	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
@@ -195,7 +199,8 @@ func testFsmUpdateDentry(t *testing.T, mp *metaPartition) {
 		Name:     "test",
 		Inode:    otherIno,
 	}
-	resp := mp.fsmUpdateDentry(handle, den)
+	resp, err := mp.fsmUpdateDentry(handle, den)
+	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
 	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)

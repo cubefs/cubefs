@@ -260,14 +260,15 @@ func testTxMgrOp(t *testing.T) {
 	require.NoError(t, err)
 
 	// get
-	gotTxInfo, _ := txMgr.getTransaction(txId)
+	gotTxInfo, err := txMgr.getTransaction(txId)
+	require.NoError(t, err)
 	assert.Equal(t, txInfo, gotTxInfo)
 
 	// rollback
 	handle, err = txMgr.txTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	ret := txMgr.rollbackTxInfo(handle, txId)
-	require.Equal(t, proto.OpOk, ret)
+	_, err = txMgr.rollbackTxInfo(handle, txId)
+	require.NoError(t, err)
 	err = txMgr.txTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 	gotTxInfo, err = txMgr.getTransaction(txId)
@@ -314,23 +315,27 @@ func testTxRscOp(t *testing.T) {
 	txRsc := mp1.txProcessor.txResource
 	handle, err := txRsc.txRbInodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status := txRsc.addTxRollbackInode(handle, rbInode1)
+	status, err := txRsc.addTxRollbackInode(handle, rbInode1)
+	require.NoError(t, err)
 	err = txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 	assert.Equal(t, proto.OpOk, status)
 	handle, err = txRsc.txRbInodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status = txRsc.addTxRollbackInode(handle, rbInode1)
+	status, err = txRsc.addTxRollbackInode(handle, rbInode1)
+	require.NoError(t, err)
 	assert.Equal(t, proto.OpExistErr, status)
 	err = txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
-	inTx, _, _ := txRsc.isInodeInTransction(inode1)
+	inTx, _, err := txRsc.isInodeInTransction(inode1)
+	require.NoError(t, err)
 	assert.True(t, inTx)
 
 	handle, err = txRsc.txRbInodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status = txRsc.addTxRollbackInode(handle, rbInode2)
+	status, err = txRsc.addTxRollbackInode(handle, rbInode2)
+	require.NoError(t, err)
 	err = txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 	assert.Equal(t, proto.OpTxConflictErr, status)
@@ -356,23 +361,27 @@ func testTxRscOp(t *testing.T) {
 
 	handle, err = txRsc.txRbDentryTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status = txRsc.addTxRollbackDentry(handle, rbDentry1)
+	status, err = txRsc.addTxRollbackDentry(handle, rbDentry1)
+	require.NoError(t, err)
 	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 	assert.Equal(t, proto.OpOk, status)
 	handle, err = txRsc.txRbDentryTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status = txRsc.addTxRollbackDentry(handle, rbDentry1)
+	status, err = txRsc.addTxRollbackDentry(handle, rbDentry1)
+	require.NoError(t, err)
 	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 	assert.Equal(t, proto.OpExistErr, status)
 
-	inTx, _, _ = txRsc.isDentryInTransction(dentry)
+	inTx, _, err = txRsc.isDentryInTransction(dentry)
+	require.NoError(t, err)
 	assert.True(t, inTx)
 
 	handle, err = txRsc.txRbDentryTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status = txRsc.addTxRollbackDentry(handle, rbDentry2)
+	status, err = txRsc.addTxRollbackDentry(handle, rbDentry2)
+	require.NoError(t, err)
 	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 	assert.Equal(t, proto.OpTxConflictErr, status)
@@ -400,8 +409,8 @@ func mockAddTxInode(mp *metaPartition, t *testing.T) *TxRollbackInode {
 
 	handle, err := txRsc.txRbInodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status := txRsc.addTxRollbackInode(handle, rbInode)
-	require.Equal(t, proto.OpOk, status)
+	_, err = txRsc.addTxRollbackInode(handle, rbInode)
+	require.NoError(t, err)
 	err = txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
@@ -432,8 +441,8 @@ func mockDeleteTxInode(mp *metaPartition, t *testing.T) *TxRollbackInode {
 	txRsc := mp.txProcessor.txResource
 	handle, err = txRsc.txRbInodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status := txRsc.addTxRollbackInode(handle, rbInode)
-	require.Equal(t, proto.OpOk, status)
+	_, err = txRsc.addTxRollbackInode(handle, rbInode)
+	require.NoError(t, err)
 	err = txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
@@ -472,8 +481,8 @@ func mockAddTxDentry(mp *metaPartition, t *testing.T) *TxRollbackDentry {
 	txRsc := mp.txProcessor.txResource
 	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status := txRsc.addTxRollbackDentry(handle, rbDentry)
-	require.Equal(t, proto.OpOk, status)
+	_, err = txRsc.addTxRollbackDentry(handle, rbDentry)
+	require.NoError(t, err)
 	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
@@ -511,8 +520,8 @@ func mockDeleteTxDentry(mp *metaPartition, t *testing.T) *TxRollbackDentry {
 	txRsc := mp.txProcessor.txResource
 	handle, err = txRsc.txRbDentryTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	status := txRsc.addTxRollbackDentry(handle, rbDentry)
-	require.Equal(t, proto.OpOk, status)
+	_, err = txRsc.addTxRollbackDentry(handle, rbDentry)
+	require.NoError(t, err)
 	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
