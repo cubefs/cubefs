@@ -69,6 +69,7 @@ func newFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *Fla
 	node.ZoneName = zoneName
 	node.Version = version
 	node.IsEnable = isEnable
+	node.ReportTime = time.Now()
 	node.TaskManager = newAdminTaskManager(addr, clusterID)
 	return node
 }

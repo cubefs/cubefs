@@ -186,10 +186,7 @@ func (rc *RemoteCacheClient) refreshWithRecover() (panicErr error) {
 	refreshLatency := time.NewTimer(0)
 	defer refreshLatency.Stop()
 
-	var (
-		err    error
-		notNew bool
-	)
+	var err error
 	for {
 		select {
 		case <-rc.stopC:
@@ -202,12 +199,8 @@ func (rc *RemoteCacheClient) refreshWithRecover() (panicErr error) {
 				}
 			}
 		case <-refreshLatency.C:
-			if notNew {
-				if err = rc.UpdateFlashGroups(); err != nil {
-					log.LogErrorf("updateFlashGroups err: %v", err)
-				}
-			} else {
-				notNew = true
+			if err = rc.UpdateFlashGroups(); err != nil {
+				log.LogErrorf("updateFlashGroups err: %v", err)
 			}
 			rc.refreshHostLatency()
 			refreshLatency.Reset(RefreshHostLatencyInterval)
@@ -1112,7 +1105,7 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 	expectLen, err = reader.getReadObjectReply(reply)
 	if err != nil {
 		if proto.IsFlashNodeLimitError(err) {
-			log.LogInfo("RemoteCacheReader:reqID(%v) Read reply err(%v)", reader.reqID, err)
+			log.LogInfof("RemoteCacheReader:reqID(%v) Read reply err(%v)", reader.reqID, err)
 		} else {
 			log.LogErrorf("RemoteCacheReader:reqID(%v) Read reply err(%v)", reader.reqID, err)
 		}

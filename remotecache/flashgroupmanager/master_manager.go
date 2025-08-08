@@ -34,6 +34,7 @@ func (m *FlashGroupManager) handleLeaderChange(leader uint64) {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] current is leader, leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
 		m.loadMetadata()
+		m.cluster.checkFlashNodeHeartbeat()
 		m.metaReady = true
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",

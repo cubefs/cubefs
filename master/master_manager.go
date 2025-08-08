@@ -78,6 +78,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
 		m.cluster.checkLcNodeHeartbeat()
+		m.cluster.checkFlashNodeHeartbeat()
 		m.cluster.lcMgr.startLcScanHandleLeaderChange()
 		m.cluster.flashManMgr.startFlashScanHandleLeaderChange()
 		m.cluster.followerReadManager.reSet()

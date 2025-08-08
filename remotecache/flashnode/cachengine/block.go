@@ -540,17 +540,6 @@ func (cb *CacheBlock) ready(ctx context.Context, waitForBlock bool) error {
 	}
 }
 
-func (cb *CacheBlock) waitReady(ctx context.Context) error {
-	select {
-	case <-cb.readyCh:
-		return nil
-	case <-cb.closeCh:
-		return CacheClosedError
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
 func (cb *CacheBlock) notifyClose() {
 	cb.closeOnce.Do(func() {
 		close(cb.closeCh)
@@ -929,28 +918,17 @@ func CalcAllocSizeV2(reqLen int) (int, error) {
 	return reqLen, nil
 }
 
-func (cb *CacheBlock) VerifyObjectReq(ctx context.Context, offset, size uint64) error {
-	if err := cb.waitReady(ctx); err != nil {
-		return err
+func (cb *CacheBlock) VerifyObjectReq(offset, size uint64) error {
+	select {
+	case <-cb.readyCh:
+	default:
+		return proto.ErrorNotExistShouldNotCache
 	}
-	end := offset + size - 1
-	if offset/proto.CACHE_OBJECT_BLOCK_SIZE != end/proto.CACHE_OBJECT_BLOCK_SIZE {
-		log.LogErrorf("invalid range offset(%v) size(%v)", offset, size)
-		return fmt.Errorf("invalid range offset(%v) size(%v)", offset, size)
-	}
-	if uint64(cb.usedSize) <= end {
-		log.LogWarnf("the requested read size is out of range, usedSize(%v) offset(%v) size(%v)", cb.usedSize, offset, size)
+	end := offset + size
+	usedSize := uint64(cb.getUsedSize())
+	if end > proto.CACHE_OBJECT_BLOCK_SIZE || end > usedSize {
+		log.LogWarnf("the requested read size is out of range, usedSize(%v) offset(%v) size(%v)", usedSize, offset, size)
 		return proto.ErrorRequestOutOfRange
-	}
-	return nil
-}
-
-// CheckSizeBoundary checks if the given size exceeds the usedSize boundary
-func (cb *CacheBlock) CheckSizeBoundary(size int64) error {
-	usedSize := cb.getUsedSize()
-	if size > usedSize {
-		log.LogWarnf("size(%d) exceeds usedSize(%d) for block(%s)", size, usedSize, cb.blockKey)
-		return fmt.Errorf("size(%d) exceeds usedSize(%d)", size, usedSize)
 	}
 	return nil
 }

@@ -570,3 +570,14 @@ func IsCacheUnRetryable(err error) bool {
 	}
 	return false
 }
+
+func IsCacheMissError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if strings.Contains(err.Error(), ErrorNotExistShouldCache.Error()) ||
+		strings.Contains(err.Error(), ErrorNotExistShouldNotCache.Error()) {
+		return true
+	}
+	return false
+}
