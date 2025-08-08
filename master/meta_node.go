@@ -388,7 +388,16 @@ func (metaNode *MetaNode) IsRocksdbWriteAble() (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 
-	if metaNode.IsActive && !metaNode.RdOnly && !metaNode.reachesRocksdbDisksThreshold() {
+	systemMemoryFreeSize := metaNode.NodeMemTotal - metaNode.NodeMemUsed
+	reservedSize := gConfig.metaNodeReservedMem
+	if reservedSize < ReservedSystemMemory {
+		reservedSize = ReservedSystemMemory
+	}
+
+	if metaNode.IsActive && !metaNode.RdOnly &&
+		systemMemoryFreeSize > reservedSize &&
+		metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
+		!metaNode.reachesRocksdbDisksThreshold() {
 		ok = true
 	}
 
