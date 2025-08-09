@@ -1240,11 +1240,6 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 			log.LogErrorf("[load] failed to load rocksdb data, mp(%v) err(%v)", mp.config.PartitionId, err)
 			return err
 		}
-		err = mp.loadRocksdbExtent()
-		if err != nil {
-			log.LogErrorf("[load] failed to load rocksdb extent, mp(%v) err: %s", mp.config.PartitionId, err.Error())
-			return err
-		}
 		err = mp.loadRocksdbFile()
 		if err != nil {
 			log.LogErrorf("[load] failed to load data, mp(%v) err(%v)", mp.config.PartitionId, err)
@@ -1266,6 +1261,7 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 			log.LogErrorf("[load] mp(%v) failed to persist rocksdb dir to metadata file, err(%v)", mp.config.PartitionId, err)
 			return
 		}
+		go mp.ScanRocksdb()
 	}
 
 	// NOTE: for debug
@@ -2580,12 +2576,31 @@ func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
 			return err
 		}
 	}
-	log.LogInfof("[storeRocksdb] mp(%v) flush rocksdb memory table to sst", mp.config.PartitionId)
+	log.LogWarnf("[storeRocksdb] mp(%v) flush rocksdb start", mp.config.PartitionId)
 	// NOTE: execute flush
 	if err = mp.inodeTree.Flush(true); err != nil {
 		log.LogErrorf("[storeRocksdb] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
 		return err
 	}
+	log.LogWarnf("[storeRocksdb] mp(%v) flush rocksdb end", mp.config.PartitionId)
 	mp.storedApplyId = sm.snap.ApplyID()
 	return nil
+}
+
+func (mp *metaPartition) ScanRocksdb() {
+	maxInode, err := mp.ScanInodeTable()
+	if err != nil {
+		log.LogErrorf("mp[%d] scan inode failed: %s", mp.config.PartitionId, err.Error())
+		return
+	}
+
+	if maxInode > atomic.LoadUint64(&mp.config.Cursor) {
+		atomic.StoreUint64(&mp.config.Cursor, maxInode)
+	}
+
+	err = mp.loadRocksdbExtent()
+	if err != nil {
+		log.LogErrorf("[load] failed to load rocksdb extent, mp(%v) err: %s", mp.config.PartitionId, err.Error())
+		return
+	}
 }

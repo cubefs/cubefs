@@ -193,17 +193,17 @@ func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) stri
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v     %-12v"
+var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v     %-24v    %-8v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ForbidWriteOpOfProtoVer0")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ForbidWriteOpOfProtoVer0", "RocksdbWritable")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0))
+			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), formatYesNo(view.IsRocksdbWritable))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
@@ -212,6 +212,7 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	sb.WriteString(fmt.Sprintf("  Active  : %v", formatNodeStatus(view.Status)))
 	sb.WriteString(fmt.Sprintf("  MEDIA   : %v", formatNodeMediaType(view.MediaType)))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
+	sb.WriteString(fmt.Sprintf("  RocksdbWritable: %v", formatYesNo(view.IsRocksdbWritable)))
 	return sb.String()
 }
 
@@ -1566,15 +1567,15 @@ func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0))
+			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), formatYesNo(view.IsRocksdbWritable))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID              : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address         : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable        : %v\n", formatYesNo(view.IsWritable)))
-	sb.WriteString(fmt.Sprintf("  RocksdbWritable : %v\n", formatYesNo(view.IsRocksdbWritable)))
 	sb.WriteString(fmt.Sprintf("  Active          : %v", formatNodeStatus(view.Status)))
 	sb.WriteString(fmt.Sprintf("  MEDIA           : %v", formatNodeMediaType(view.MediaType)))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
+	sb.WriteString(fmt.Sprintf("  RocksdbWritable : %v", formatYesNo(view.IsRocksdbWritable)))
 	return sb.String()
 }

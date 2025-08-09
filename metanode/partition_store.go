@@ -529,7 +529,6 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		applyIDInRocksDB  uint64
 		cursorInSnapshot  uint64
 		cursorInRocksDB   uint64
-		maxInode          uint64
 	)
 	if mp.HasMemStore() {
 		if rootDir == "" {
@@ -551,15 +550,6 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		atomic.StoreUint64(&mp.applyID, applyIDInRocksDB)
 
 		cursorInRocksDB = mp.inodeTree.GetCursor()
-		maxInode, err = mp.ScanInodeTable()
-		if err != nil {
-			log.LogErrorf("mp[%d] scan inode failed: %s", mp.config.PartitionId, err.Error())
-			return
-		}
-
-		if maxInode > atomic.LoadUint64(&mp.config.Cursor) {
-			atomic.StoreUint64(&mp.config.Cursor, maxInode)
-		}
 		if cursorInRocksDB > atomic.LoadUint64(&mp.config.Cursor) {
 			atomic.StoreUint64(&mp.config.Cursor, cursorInRocksDB)
 		}

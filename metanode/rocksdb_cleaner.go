@@ -67,10 +67,6 @@ func NewRocksDBCleaner(rootDir string, rocksdbMgr RocksdbManager) *RocksDBCleane
 		log.LogErrorf("RocksDBCleaner: failed to create clean record directory: %s", err)
 	}
 
-	// 加载已有的清理记录
-	go cleaner.loadExistingRecords()
-
-	cleaner.start()
 	return cleaner
 }
 
@@ -176,6 +172,9 @@ func (c *RocksDBCleaner) deleteRecord(partitionId uint64) error {
 
 // start 启动清理工作协程
 func (c *RocksDBCleaner) start() {
+	// 加载已有的清理记录
+	go c.loadExistingRecords()
+
 	c.wg.Add(1)
 	go c.cleanWorker()
 }
@@ -320,37 +319,38 @@ func (c *RocksDBCleaner) cleanRocksdbTree(rocksdbTree *RocksdbTree) error {
 		log.LogErrorf("[Clean] mp(%v) failed to open write handle, err(%v)", rocksdbTree.PartitionId, err)
 		return err
 	}
+
 	if err = rocksdbTree.inodeTree.Clear(handle); err != nil {
 		log.LogErrorf("[Clean] mp(%v) failed to clear inode tree, err(%v)", rocksdbTree.PartitionId, err)
-		return err
+		goto errHandler
 	}
 	if err = rocksdbTree.dentryTree.Clear(handle); err != nil {
 		log.LogErrorf("[Clean] mp(%v) failed to clear dentry tree, err(%v)", rocksdbTree.PartitionId, err)
-		return err
+		goto errHandler
 	}
 	if err = rocksdbTree.extendTree.Clear(handle); err != nil {
 		log.LogErrorf("[Clean] mp(%v) failed to clear extend tree, err(%v)", rocksdbTree.PartitionId, err)
-		return err
+		goto errHandler
 	}
 	if err = rocksdbTree.multipartTree.Clear(handle); err != nil {
 		log.LogErrorf("[Clean] mp(%v) failed to clear multipart tree, err(%v)", rocksdbTree.PartitionId, err)
-		return err
+		goto errHandler
 	}
 	if err = rocksdbTree.txTree.Clear(handle); err != nil {
 		log.LogErrorf("[Clean] mp(%v) failed to clear transaction tree, err(%v)", rocksdbTree.PartitionId, err)
-		return err
+		goto errHandler
 	}
 	if err = rocksdbTree.txRbInodeTree.Clear(handle); err != nil {
 		log.LogErrorf("[Clean] mp(%v) failed to clear transaction rollback inode tree, err(%v)", rocksdbTree.PartitionId, err)
-		return err
+		goto errHandler
 	}
 	if err = rocksdbTree.txRbDentryTree.Clear(handle); err != nil {
 		log.LogErrorf("[Clean] mp(%v) failed to clear transaction rollback dentry tree, err(%v)", rocksdbTree.PartitionId, err)
-		return err
+		goto errHandler
 	}
 	if err = rocksdbTree.inodeTree.DeleteMetadata(handle); err != nil {
 		log.LogErrorf("[Clean] mp(%v) failed to delete metadata, err(%v)", rocksdbTree.PartitionId, err)
-		return err
+		goto errHandler
 	}
 	err = rocksdbTree.inodeTree.CommitAndReleaseBatchWriteForClear(handle)
 	if err != nil {
@@ -364,6 +364,11 @@ func (c *RocksDBCleaner) cleanRocksdbTree(rocksdbTree *RocksdbTree) error {
 	}
 
 	return nil
+
+errHandler:
+	rocksdbTree.inodeTree.ReleaseBatchWriteHandle(handle)
+
+	return err
 }
 
 func (c *RocksDBCleaner) DoCleanRocksdbData(record *CleanRecord) error {
