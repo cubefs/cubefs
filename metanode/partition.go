@@ -858,7 +858,21 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 }
 
 func (mp *metaPartition) startScheduleTask() {
-	mp.startSchedule(mp.applyID)
+	startApplyID := mp.applyID
+	if mp.HasRocksDBStore() {
+		// read from file
+		var err error
+		snapshotDir := path.Join(mp.config.RootDir, rocksdbSnapDir)
+		startApplyID, _, err = mp.loadApplyIDFromSnapshot(snapshotDir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				log.LogErrorf("[startScheduleTask] loadApplyIDFromSnapshot failed: %v", err)
+				return
+			}
+			startApplyID = 0
+		}
+	}
+	mp.startSchedule(startApplyID)
 }
 
 func (mp *metaPartition) onStop() {
@@ -2133,7 +2147,7 @@ func (mp *metaPartition) Clear() (err error) {
 	if err != nil {
 		return
 	}
-	err = mp.inodeTree.Flush()
+	err = mp.inodeTree.Flush(false)
 	if err != nil {
 		return
 	}
@@ -2518,7 +2532,7 @@ func (mp *metaPartition) storeRocksdbSnapshot() (err error) {
 	}
 
 	// 执行刷盘
-	if err = tmpMp.inodeTree.Flush(); err != nil {
+	if err = tmpMp.inodeTree.Flush(false); err != nil {
 		log.LogErrorf("action[storeRocksdbSnapshot] mp(%v) failed to flush: %v", mp.config.PartitionId, err)
 		return
 	}
@@ -2572,12 +2586,12 @@ func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
 			return err
 		}
 	}
-	mp.storedApplyId = sm.snap.ApplyID()
 	log.LogInfof("[storeRocksdb] mp(%v) flush rocksdb memory table to sst", mp.config.PartitionId)
 	// NOTE: execute flush
-	if err = mp.inodeTree.Flush(); err != nil {
+	if err = mp.inodeTree.Flush(true); err != nil {
 		log.LogErrorf("[storeRocksdb] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
 		return err
 	}
+	mp.storedApplyId = sm.snap.ApplyID()
 	return nil
 }

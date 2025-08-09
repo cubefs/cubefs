@@ -397,8 +397,8 @@ func (r *RocksTree) GetCursor() uint64 {
 }
 
 // NOTE: we disable WAL, flush operation write all data to sst files
-func (r *RocksTree) Flush() error {
-	return r.db.Flush()
+func (r *RocksTree) Flush(block bool) error {
+	return r.db.Flush(block)
 }
 
 func (r *RocksTree) Count(tp TreeType) (uint64, error) {

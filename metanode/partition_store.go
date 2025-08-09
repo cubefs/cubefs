@@ -1588,7 +1588,7 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 func (mp *metaPartition) loadApplyIDFromSnapshot(rootDir string) (applyID, cursor uint64, err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
+		log.LogErrorf("[loadApplyID]: Stat %s", err.Error())
 		return
 	}
 	data, err := os.ReadFile(filename)
@@ -1684,6 +1684,9 @@ func (mp *metaPartition) storeRocksdbFile(sm *storeMsg) (err error) {
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
 	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
+	if err = mp.storeApplyID(tmpDir, sm); err != nil {
+		return
+	}
 
 	// write crc to file
 	if err = fileutil.WriteFileWithSync(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0o775); err != nil {

@@ -955,7 +955,7 @@ func (i *BTree) GetCursor() uint64 {
 	return 0
 }
 
-func (i *BTree) Flush() error {
+func (i *BTree) Flush(block bool) error {
 	return nil
 }
 

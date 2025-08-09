@@ -842,7 +842,7 @@ func (dbInfo *RocksdbOperator) CompactRange(start, end []byte) (err error) {
 	return
 }
 
-func (dbInfo *RocksdbOperator) Flush() (err error) {
+func (dbInfo *RocksdbOperator) Flush(block bool) (err error) {
 	if err = dbInfo.accessDb(); err != nil {
 		return
 	}
@@ -850,7 +850,7 @@ func (dbInfo *RocksdbOperator) Flush() (err error) {
 
 	opts := gorocksdb.NewDefaultFlushOptions()
 	defer opts.Destroy()
-	opts.SetWait(false)
+	opts.SetWait(block)
 
 	err = dbInfo.db.Flush(opts)
 	return
