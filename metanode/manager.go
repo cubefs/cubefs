@@ -118,6 +118,7 @@ type metadataManager struct {
 
 	rocksDBDirs    []string
 	rocksdbManager RocksdbManager
+	rocksdbCleaner *RocksDBCleaner
 	reloading      bool
 	memFreeing     bool
 }
@@ -562,6 +563,9 @@ func (m *metadataManager) onStart() (err error) {
 	m.startSnapshotVersionPromote()
 	m.startUpdateVolumes()
 	m.startGcTimer()
+	if m.rocksdbCleaner != nil {
+		m.rocksdbCleaner.start()
+	}
 	return
 }
 
@@ -575,6 +579,10 @@ func (m *metadataManager) onStop() {
 
 	if m.gcTimer != nil {
 		m.gcTimer.Stop()
+	}
+
+	if m.rocksdbCleaner != nil {
+		m.rocksdbCleaner.Stop()
 	}
 }
 
@@ -965,6 +973,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		limitFactor:          make(map[uint32]*rate.Limiter),
 		rocksDBDirs:          metaNode.rocksDirs,
 		rocksdbManager:       metaNode.rocksdbManager,
+		rocksdbCleaner:       NewRocksDBCleaner(conf.RootDir, metaNode.rocksdbManager),
 	}
 	m.limitFactor[readDirIops] = rate.NewLimiter(rate.Limit(metaNode.readDirIops), metaNode.readDirIops/2)
 

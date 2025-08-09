@@ -1538,12 +1538,16 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
 	log.LogWarnf("[Reset] reset mp(%v) storeMode(%d)", mp.config.PartitionId, mp.config.StoreMode)
-	// NOTE: close rocksdb
-	err = mp.Clear()
-	if err != nil {
-		log.LogErrorf("[Reset] mp(%v) failed to clear mp data", mp.config.PartitionId)
-		return
+
+	if mp.inodeTree.GetStoreMode() == proto.StoreModeRocksDb {
+		// Add to async cleaner instead of direct Clear
+		err = mp.manager.rocksdbCleaner.AddTask(mp)
+		if err != nil {
+			log.LogErrorf("[Reset] add task to cleaner failed, err: %v", err)
+			return err
+		}
 	}
+
 	mp.txProcessor.Reset()
 	mp.rocksdbManager.CloseRocksdb(mp.db)
 	mp.db = nil
@@ -1553,16 +1557,6 @@ func (mp *metaPartition) Reset() (err error) {
 	filenames := []string{applyIDFile, dentryFile, inodeFile, extendFile, multipartFile, verdataFile, txInfoFile, txRbInodeFile, txRbDentryFile, TxIDFile}
 	for _, filename := range filenames {
 		filepath := path.Join(mp.config.RootDir, filename)
-		if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) {
-			return
-		}
-		err = nil
-	}
-
-	// remove files
-	filenames = []string{uniqCheckerFile, verdataFile}
-	for _, filename := range filenames {
-		filepath := path.Join(mp.config.RootDir, rocksdbSnapDir, filename)
 		if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) {
 			return
 		}

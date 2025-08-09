@@ -306,6 +306,10 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 			" struct: %s", err.Error())
 		return
 	}
+	if m.rocksdbCleaner.IsCleanPending(req.PartitionID) {
+		err = fmt.Errorf("partition %d is cleaning", req.PartitionID)
+		return
+	}
 	log.LogWarnf("[%s] [remoteAddr=%s]accept a from"+
 		" master message: %v, reqId %v", p.String(), remoteAddr, adminTask, p.ReqID)
 	// create a new meta partition.
