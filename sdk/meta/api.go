@@ -2267,7 +2267,8 @@ type DentryForAccessInfo struct {
 }
 
 func (mw *MetaWrapper) getDentrysWithDepthLimit(parentIno uint64, parentPath string, dentryCh chan<- DentryForAccessInfo, errCh chan<- error, wg *sync.WaitGroup,
-	currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32, currentDepth *int32, maxDepth int32) {
+	currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32, currentDepth *int32, maxDepth int32,
+) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt32(currentGoroutineNum, -1)
