@@ -2197,7 +2197,7 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	}
 	// prepare status reset to mark status to retry again
 	if value.GetDecommissionStatus() == DecommissionPrepare {
-		value.SetDecommissionStatus(markDecommission)
+		value.SetDecommissionStatus(markDecommission, "leaderChange_updatePrepareToMark", "")
 	}
 	l.mu.Lock()
 	if _, ok := l.cacheMap[value.PartitionID]; ok {
@@ -2223,7 +2223,7 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 
 	// restore special replica decommission progress
 	if value.isSpecialReplicaCnt() && value.GetDecommissionStatus() == DecommissionRunning && !value.DecommissionRaftForce {
-		value.SetDecommissionStatus(markDecommission)
+		value.SetDecommissionStatus(markDecommission, "leaderChange_updateRunningToMark", "")
 		value.isRecover = false // can pass decommission validate check
 		log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v]  dp[%v] set status from DecommissionRunning to markDecommission",
 			id, value.PartitionID)
@@ -2323,16 +2323,16 @@ func (l *DecommissionDataPartitionList) startTraverse() {
 func updateDecommissionWeight(dps []*DataPartition, c *Cluster) {
 	for _, dp := range dps {
 		if dp.IsDiscard {
-			dp.SetDecommissionStatus(DecommissionSuccess)
+			dp.SetDecommissionStatus(DecommissionSuccess, "traverDecommissionList_updateDecommissionWeight_discardCheck", "")
 			log.LogWarnf("action[DecommissionListTraverse] skip dp(%v) discard(%v)", dp.PartitionID, dp.IsDiscard)
 			continue
 		}
 		diskErrReplicaNum := dp.getReplicaDiskErrorNum()
 		if diskErrReplicaNum == dp.ReplicaNum || diskErrReplicaNum == uint8(len(dp.Peers)) {
-			log.LogWarnf("action[DecommissionListTraverse] dp[%v] all live replica is unavaliable", dp.decommissionInfo())
+			log.LogWarnf("action[DecommissionListTraverse] dp[%v] all live replica is unavailable", dp.decommissionInfo())
 			err := proto.ErrAllReplicaUnavailable
 			dp.DecommissionErrorMessage = err.Error()
-			dp.markRollbackFailed(false)
+			dp.markRollbackFailed(false, "traverDecommissionList_updateDecommissionWeight_diskErrReplicaNumCheck", err.Error())
 			continue
 		}
 		if dp.DecommissionType == AutoDecommission && dp.IsMarkDecommission() {

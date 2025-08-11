@@ -253,6 +253,14 @@ func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, cli
 	return
 }
 
+func (api *AdminAPI) QueryDataPartitionDecommissionStatusUpdateRecords(partitionId uint64) (records []*proto.DecommissionStatusRecord, err error) {
+	request := newRequest(get, proto.AdminQueryDataPartitionDecommissionStatusUpdateRecords).Header(api.h)
+	request.addParam("id", strconv.FormatUint(partitionId, 10))
+	records = make([]*proto.DecommissionStatusRecord, 0)
+	err = api.mc.requestWith(&records, request)
+	return
+}
+
 func (api *AdminAPI) QueryDataPartitionDecommissionStatus(partitionId uint64) (info *proto.DecommissionDataPartitionInfo, err error) {
 	request := newRequest(get, proto.AdminQueryDataPartitionDecommissionStatus).Header(api.h)
 	request.addParam("id", strconv.FormatUint(partitionId, 10))

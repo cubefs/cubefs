@@ -678,7 +678,7 @@ func (dataNode *DataNode) GetLatestDecommissionDataPartition(c *Cluster) (remain
 			if dd.GetDecommissionStatus() == markDecommission {
 				remainingDpCnt += dd.GetDecommissionTotalDpCnt(c)
 			} else {
-				remainingDpCnt += len(partitions)
+				remainingDpCnt += len(dps)
 			}
 		}
 	}

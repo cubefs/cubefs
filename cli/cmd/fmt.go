@@ -1406,6 +1406,21 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	return sb.String()
 }
 
+func formatDataPartitionDecommissionStatusUpdateRecords(records []*proto.DecommissionStatusRecord) string {
+	sb := strings.Builder{}
+	if len(records) != 0 {
+		sb.WriteString("decommission status update records:       \n")
+		for _, record := range records {
+			sb.WriteString(fmt.Sprintf("      Condition         : %v\n", record.Condition))
+			sb.WriteString(fmt.Sprintf("      Status            : %v\n", record.Status))
+			sb.WriteString(fmt.Sprintf("      Time              : %v\n", record.Time))
+			sb.WriteString(fmt.Sprintf("      ErrMessage        : %v\n", record.ErrMessage))
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
 func formatDataPartitionDecommissionInfoStat(infos []*proto.DecommissionInfoStat) string {
 	sb := strings.Builder{}
 	if len(infos) != 0 {
