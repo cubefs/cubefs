@@ -524,38 +524,39 @@ func (mp *metaPartition) loadMultipart(rootDir string, crc uint32) (err error) {
 }
 
 func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
-	var (
-		applyIDInSnapshot uint64
-		applyIDInRocksDB  uint64
-		cursorInSnapshot  uint64
-		cursorInRocksDB   uint64
-	)
-	if mp.HasMemStore() {
-		if rootDir == "" {
-			return ErrInvalidSnapshotRoot
-		}
-		if applyIDInSnapshot, cursorInSnapshot, err = mp.loadApplyIDFromSnapshot(rootDir); err != nil {
-			return
-		}
-
-		atomic.StoreUint64(&mp.applyID, applyIDInSnapshot)
-
-		if cursorInSnapshot > atomic.LoadUint64(&mp.config.Cursor) {
-			atomic.StoreUint64(&mp.config.Cursor, cursorInSnapshot)
-		}
+	filename := path.Join(rootDir, applyIDFile)
+	if _, err = os.Stat(filename); err != nil {
+		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
+		return
+	}
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		err = errors.NewErrorf("[loadApplyID] ReadFile: %s", err.Error())
+		return
+	}
+	if len(data) == 0 {
+		err = errors.NewErrorf("[loadApplyID]: ApplyID is empty")
+		return
+	}
+	var cursor uint64
+	if strings.Contains(string(data), "|") {
+		_, err = fmt.Sscanf(string(data), "%d|%d", &mp.applyID, &cursor)
+	} else {
+		_, err = fmt.Sscanf(string(data), "%d", &mp.applyID)
+	}
+	if err != nil {
+		err = errors.NewErrorf("[loadApplyID] ReadApplyID: %s", err.Error())
+		return
 	}
 
-	if mp.HasRocksDBStore() {
-		applyIDInRocksDB = mp.inodeTree.GetApplyID()
-		atomic.StoreUint64(&mp.applyID, applyIDInRocksDB)
+	mp.storedApplyId = mp.applyID
 
-		cursorInRocksDB = mp.inodeTree.GetCursor()
-		if cursorInRocksDB > atomic.LoadUint64(&mp.config.Cursor) {
-			atomic.StoreUint64(&mp.config.Cursor, cursorInRocksDB)
-		}
+	if cursor > mp.GetCursor() {
+		atomic.StoreUint64(&mp.config.Cursor, cursor)
 	}
-	log.LogInfof("mp[%v] applyID:%v, cursor:%v", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 
+	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.applyID, mp.config.Cursor, filename)
 	return
 }
 
@@ -1799,4 +1800,22 @@ func (mp *metaPartition) loadRocksdbExtent() error {
 	}
 
 	return nil
+}
+
+func (mp *metaPartition) loadRocksdbApplyID() (err error) {
+	var (
+		applyIDInRocksDB uint64
+		cursorInRocksDB  uint64
+	)
+	applyIDInRocksDB = mp.inodeTree.GetApplyID()
+	atomic.StoreUint64(&mp.applyID, applyIDInRocksDB)
+
+	cursorInRocksDB = mp.inodeTree.GetCursor()
+	if cursorInRocksDB > atomic.LoadUint64(&mp.config.Cursor) {
+		atomic.StoreUint64(&mp.config.Cursor, cursorInRocksDB)
+	}
+
+	log.LogInfof("mp[%v] applyID:%v, cursor:%v", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
+
+	return
 }

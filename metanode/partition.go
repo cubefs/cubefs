@@ -1194,6 +1194,9 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		}
 	}
 
+	if err = mp.loadApplyID(snapshotPath); err != nil {
+		return
+	}
 	return
 }
 
@@ -1211,30 +1214,22 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 	// 2. store the snapshot files for new mp, because
 	// mp.load() will check all the snapshot files when mn startup
 	// NOTE: only memory store need to create snapshot files
-	if isCreate && mp.HasMemStore() {
+	if isCreate {
+		if mp.HasRocksDBStore() {
+			if err = mp.persistMetadata(); err != nil {
+				log.LogErrorf("[load] mp(%v) failed to persist rocksdb dir to metadata file, err(%v)", mp.config.PartitionId, err)
+				return
+			}
+			return
+		}
 		if err = mp.storeSnapshotFiles(); err != nil {
 			err = errors.NewErrorf("[onStart] storeSnapshotFiles for partition id=%d: %s",
 				mp.config.PartitionId, err.Error())
 		}
 		return
 	}
-	snapshotPath := ""
-	if mp.HasMemStore() {
-		snapshotPath = path.Join(mp.config.RootDir, snapshotDir)
-		if _, err = os.Stat(snapshotPath); err != nil {
-			log.LogErrorf("[load] load snapshot failed, err: %s", err.Error())
-			return nil
-		}
-		err = mp.LoadSnapshot(snapshotPath)
-		if err != nil {
-			log.LogErrorf("[load] failed to load data, mp(%v) err(%v)", mp.config.PartitionId, err)
-			return err
-		}
-	}
 
 	if mp.HasRocksDBStore() {
-		log.LogDebugf("[load] mp(%v) rocksdb dir(%v)", mp.config.PartitionId, mp.config.RocksDBDir)
-		log.LogDebugf("[load] load rocksdb data")
 		err = mp.LoadDataFromRocksDb()
 		if err != nil {
 			log.LogErrorf("[load] failed to load rocksdb data, mp(%v) err(%v)", mp.config.PartitionId, err)
@@ -1245,41 +1240,44 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 			log.LogErrorf("[load] failed to load data, mp(%v) err(%v)", mp.config.PartitionId, err)
 			return err
 		}
-	}
+		if err = mp.loadRocksdbApplyID(); err != nil {
+			log.LogErrorf("[load] failed to load apply id, mp(%v) err(%v)", mp.config.PartitionId, err)
+			return
+		}
+		err = mp.ScanRocksdb()
+		if err != nil {
+			log.LogErrorf("[load] failed to scan rocksdb, mp(%v) err(%v)", mp.config.PartitionId, err)
+			return err
+		}
+		if log.EnableDebug() {
+			log.LogDebugf("[load] mp(%v) is create(%v)", mp.config.PartitionId, isCreate)
+			log.LogDebugf("[load] mp(%v) apply id(%v)", mp.config.PartitionId, mp.applyID)
+			log.LogDebugf("[load] mp(%v) inode real len(%v)", mp.config.PartitionId, mp.inodeTree.RealCount())
+			log.LogDebugf("[load] mp(%v) dentry real len(%v)", mp.config.PartitionId, mp.dentryTree.RealCount())
+			log.LogDebugf("[load] mp(%v) extentd real len(%v)", mp.config.PartitionId, mp.extendTree.RealCount())
+			log.LogDebugf("[load] mp(%v) multipart real len(%v)", mp.config.PartitionId, mp.multipartTree.RealCount())
+			txTree := mp.txProcessor.txManager.txTree
+			txRbInoTree := mp.txProcessor.txResource.txRbInodeTree
+			txRbDenTree := mp.txProcessor.txResource.txRbDentryTree
+			log.LogDebugf("[load] mp(%v) tx real len(%v)", mp.config.PartitionId, txTree.RealCount())
+			log.LogDebugf("[load] mp(%v) tx rb inode real len(%v)", mp.config.PartitionId, txRbInoTree.RealCount())
+			log.LogDebugf("[load] mp(%v) tx rb dentry real len(%v)", mp.config.PartitionId, txRbDenTree.RealCount())
+		}
 
-	// NOTE: snapshotPath can be empty if using rocksdb
-	if err = mp.loadApplyID(snapshotPath); err != nil {
-		log.LogErrorf("[load] failed to load apply id, mp(%v) err(%v)", mp.config.PartitionId, err)
 		return
 	}
 
-	// NOTE: when we create rocksdb mp
-	// we will select a db path and set RocksdbDir config
-	// so we need to persist metadata
-	if mp.HasRocksDBStore() {
-		if err = mp.persistMetadata(); err != nil {
-			log.LogErrorf("[load] mp(%v) failed to persist rocksdb dir to metadata file, err(%v)", mp.config.PartitionId, err)
-			return
-		}
-		go mp.ScanRocksdb()
+	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
+	if _, err = os.Stat(snapshotPath); err != nil {
+		log.LogErrorf("load snapshot failed, err: %s", err.Error())
+		return nil
+
 	}
 
-	// NOTE: for debug
-	if log.EnableDebug() {
-		log.LogDebugf("[load] mp(%v) is create(%v)", mp.config.PartitionId, isCreate)
-		log.LogDebugf("[load] mp(%v) apply id(%v)", mp.config.PartitionId, mp.applyID)
-		log.LogDebugf("[load] mp(%v) inode real len(%v)", mp.config.PartitionId, mp.inodeTree.RealCount())
-		log.LogDebugf("[load] mp(%v) dentry real len(%v)", mp.config.PartitionId, mp.dentryTree.RealCount())
-		log.LogDebugf("[load] mp(%v) extentd real len(%v)", mp.config.PartitionId, mp.extendTree.RealCount())
-		log.LogDebugf("[load] mp(%v) multipart real len(%v)", mp.config.PartitionId, mp.multipartTree.RealCount())
-		txTree := mp.txProcessor.txManager.txTree
-		txRbInoTree := mp.txProcessor.txResource.txRbInodeTree
-		txRbDenTree := mp.txProcessor.txResource.txRbDentryTree
-		log.LogDebugf("[load] mp(%v) tx real len(%v)", mp.config.PartitionId, txTree.RealCount())
-		log.LogDebugf("[load] mp(%v) tx rb inode real len(%v)", mp.config.PartitionId, txRbInoTree.RealCount())
-		log.LogDebugf("[load] mp(%v) tx rb dentry real len(%v)", mp.config.PartitionId, txRbDenTree.RealCount())
+	err = mp.LoadSnapshot(snapshotPath)
+	if err != nil {
+		return err
 	}
-
 	return nil
 }
 
@@ -2587,11 +2585,11 @@ func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
 	return nil
 }
 
-func (mp *metaPartition) ScanRocksdb() {
+func (mp *metaPartition) ScanRocksdb() error {
 	maxInode, err := mp.ScanInodeTable()
 	if err != nil {
 		log.LogErrorf("mp[%d] scan inode failed: %s", mp.config.PartitionId, err.Error())
-		return
+		return err
 	}
 
 	if maxInode > atomic.LoadUint64(&mp.config.Cursor) {
@@ -2601,6 +2599,8 @@ func (mp *metaPartition) ScanRocksdb() {
 	err = mp.loadRocksdbExtent()
 	if err != nil {
 		log.LogErrorf("[load] failed to load rocksdb extent, mp(%v) err: %s", mp.config.PartitionId, err.Error())
-		return
+		return err
 	}
+
+	return nil
 }
