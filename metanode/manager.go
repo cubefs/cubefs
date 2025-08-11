@@ -1042,6 +1042,10 @@ func (m *metadataManager) CheckRocksdbMetaPartition(metaPath string) error {
 		return err
 	}
 
+	if mConf.StoreMode != proto.StoreModeRocksDb {
+		return nil
+	}
+
 	if m.rocksdbCleaner.IsCleanPending(mConf.PartitionId) {
 		return nil
 	}
