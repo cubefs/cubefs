@@ -1843,7 +1843,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 	dp.DecommissionType = ManualAddReplica
 	dp.RecoverStartTime = time.Now()
 	dp.RecoverUpdateTime = time.Now()
-	dp.SetDecommissionStatus(DecommissionRunning)
+	dp.SetDecommissionStatus(DecommissionRunning, "manualAddReplica", "")
 
 	var newReplica *DataReplica
 	if newReplica, err = dp.getReplica(addr); err != nil {
@@ -2157,7 +2157,8 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	err = m.cluster.markDecommissionDataPartition(dp, node, dstNodeSet, raftForce, uint32(decommissionType), weight)
+	triggerCondition := fmt.Sprintf("manualDecommission_dp(%v)", dp.PartitionID)
+	err = m.cluster.markDecommissionDataPartition(dp, node, dstNodeSet, raftForce, uint32(decommissionType), weight, triggerCondition)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2294,6 +2295,27 @@ func (m *Server) resetDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	msg = fmt.Sprintf("partitionID :%v  reset decommission status successfully", partitionID)
 	AuditLog(r, proto.AdminResetDataPartitionDecommissionStatus, msg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) queryDataPartitionDecommissionStatusUpdateRecords(w http.ResponseWriter, r *http.Request) {
+	var (
+		dp          *DataPartition
+		partitionID uint64
+		err         error
+		records     []*proto.DecommissionStatusRecord
+	)
+
+	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+	records = dp.cloneDecommissionStatusRecords()
+	sendOkReply(w, r, newSuccessHTTPReply(records))
 }
 
 func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *http.Request) {

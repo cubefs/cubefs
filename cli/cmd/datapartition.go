@@ -46,22 +46,24 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionResetRestoreStatusCmd(client),
 		newDataPartitionQueryDiskDecommissionInfoStat(client),
 		newDataPartitionQueryDataNodeDecommissionInfoStat(client),
+		newDataPartitionQueryDecommissionStatusUpdateRecords(client),
 	)
 	return cmd
 }
 
 const (
-	cmdDataPartitionGetShort                               = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort                      = "Check and list unhealthy data partitions"
-	cmdDataPartitionDecommissionShort                      = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionReplicateShort                         = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort                     = "Delete a replication of the data partition on a fixed address"
-	cmdDataPartitionGetDiscardShort                        = "Display all discard data partitions"
-	cmdDataPartitionSetDiscardShort                        = "Set discard flag for data partition"
-	cmdDataPartitionQueryDecommissionProgressShort         = "Query data partition decommission progress"
-	cmdDataPartitionResetRestoreStatusShort                = "Reset data partition restore status"
-	cmdDataPartitionQueryDiskDecommissionInfoStatShort     = "Query data partition disk decommission info stat"
-	cmdDataPartitionQueryDataNodeDecommissionInfoStatShort = "Query data partition datanode decommission info stat"
+	cmdDataPartitionGetShort                                  = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort                         = "Check and list unhealthy data partitions"
+	cmdDataPartitionDecommissionShort                         = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionReplicateShort                            = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort                        = "Delete a replication of the data partition on a fixed address"
+	cmdDataPartitionGetDiscardShort                           = "Display all discard data partitions"
+	cmdDataPartitionSetDiscardShort                           = "Set discard flag for data partition"
+	cmdDataPartitionQueryDecommissionProgressShort            = "Query data partition decommission progress"
+	cmdDataPartitionResetRestoreStatusShort                   = "Reset data partition restore status"
+	cmdDataPartitionQueryDecommissionStatusUpdateRecordsShort = "Query data partition decommission status update records"
+	cmdDataPartitionQueryDiskDecommissionInfoStatShort        = "Query data partition disk decommission info stat"
+	cmdDataPartitionQueryDataNodeDecommissionInfoStatShort    = "Query data partition datanode decommission info stat"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -675,6 +677,40 @@ func newDataPartitionResetRestoreStatusCmd(client *master.MasterClient) *cobra.C
 				return
 			}
 			stdout("No need to reset data partition %v restore status\n", dpId)
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionQueryDecommissionStatusUpdateRecords(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryStatusUpdateRecords + " [DATA PARTITION ID]",
+		Short: cmdDataPartitionQueryDecommissionStatusUpdateRecordsShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err  error
+				dpId uint64
+			)
+
+			defer func() {
+				errout(err)
+			}()
+
+			dpId, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+
+			records, err := client.AdminAPI().QueryDataPartitionDecommissionStatusUpdateRecords(dpId)
+			if err != nil {
+				return
+			}
+			if len(records) == 0 {
+				stdout("decommission status update records is empty, dp %v may not be in decommissioning\n", dpId)
+				return
+			}
+			stdout("%v", formatDataPartitionDecommissionStatusUpdateRecords(records))
 		},
 	}
 	return cmd

@@ -496,6 +496,13 @@ type DiscardDataPartitionInfos struct {
 	DiscardDps []DataPartitionInfo
 }
 
+type DecommissionStatusRecord struct {
+	Condition  string
+	Status     string
+	Time       string
+	ErrMessage string
+}
+
 type DecommissionInfoStat struct {
 	Key            string
 	RepairSourceDp []uint64

@@ -179,42 +179,43 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 }
 
 type dataPartitionValue struct {
-	PartitionID                    uint64
-	ReplicaNum                     uint8
-	Hosts                          string
-	Peers                          []proto.Peer
-	Status                         int8
-	VolID                          uint64
-	VolName                        string
-	OfflinePeerID                  uint64
-	Replicas                       []*replicaValue
-	IsRecover                      bool
-	PartitionType                  int
-	RdOnly                         bool
-	IsDiscard                      bool
-	DecommissionDiskRetryMap       map[string]int
-	DecommissionRetry              int
-	DecommissionStatus             uint32
-	DecommissionSrcAddr            string
-	DecommissionDstAddr            string
-	DecommissionRaftForce          bool
-	DecommissionSrcDiskPath        string
-	DecommissionTerm               uint64
-	DecommissionWeight             int
-	SpecialReplicaDecommissionStep uint32
-	DecommissionDstAddrSpecify     bool
-	DecommissionDstNodeSet         uint64
-	DecommissionNeedRollback       bool
-	RecoverStartTime               int64
-	RecoverUpdateTime              int64
-	RecoverLastConsumeTime         float64
-	DecommissionRetryTime          int64
-	Forbidden                      bool
-	DecommissionErrorMessage       string
-	DecommissionNeedRollbackTimes  uint32
-	DecommissionType               uint32
-	RestoreReplica                 uint32
-	MediaType                      uint32
+	PartitionID                     uint64
+	ReplicaNum                      uint8
+	Hosts                           string
+	Peers                           []proto.Peer
+	Status                          int8
+	VolID                           uint64
+	VolName                         string
+	OfflinePeerID                   uint64
+	Replicas                        []*replicaValue
+	IsRecover                       bool
+	PartitionType                   int
+	RdOnly                          bool
+	IsDiscard                       bool
+	DecommissionDiskRetryMap        map[string]int
+	DecommissionStatusUpdateRecords []*proto.DecommissionStatusRecord
+	DecommissionRetry               int
+	DecommissionStatus              uint32
+	DecommissionSrcAddr             string
+	DecommissionDstAddr             string
+	DecommissionRaftForce           bool
+	DecommissionSrcDiskPath         string
+	DecommissionTerm                uint64
+	DecommissionWeight              int
+	SpecialReplicaDecommissionStep  uint32
+	DecommissionDstAddrSpecify      bool
+	DecommissionDstNodeSet          uint64
+	DecommissionNeedRollback        bool
+	RecoverStartTime                int64
+	RecoverUpdateTime               int64
+	RecoverLastConsumeTime          float64
+	DecommissionRetryTime           int64
+	Forbidden                       bool
+	DecommissionErrorMessage        string
+	DecommissionNeedRollbackTimes   uint32
+	DecommissionType                uint32
+	RestoreReplica                  uint32
+	MediaType                       uint32
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -268,6 +269,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	for disk, retryTimes := range dpv.DecommissionDiskRetryMap {
 		dp.DecommissionDiskRetryMap[disk] = retryTimes
 	}
+	dp.DecommissionStatusUpdateRecords = append(dp.DecommissionStatusUpdateRecords, dpv.DecommissionStatusUpdateRecords...)
 	return dp
 }
 
@@ -278,49 +280,46 @@ type replicaValue struct {
 
 func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 	dpv = &dataPartitionValue{
-		PartitionID:                    dp.PartitionID,
-		ReplicaNum:                     dp.ReplicaNum,
-		Hosts:                          dp.hostsToString(),
-		Peers:                          dp.Peers,
-		Status:                         dp.Status,
-		VolID:                          dp.VolID,
-		VolName:                        dp.VolName,
-		OfflinePeerID:                  dp.OfflinePeerID,
-		Replicas:                       make([]*replicaValue, 0),
-		IsRecover:                      dp.isRecover,
-		PartitionType:                  dp.PartitionType,
-		RdOnly:                         dp.RdOnly,
-		IsDiscard:                      dp.IsDiscard,
-		DecommissionDiskRetryMap:       make(map[string]int),
-		DecommissionRetry:              dp.DecommissionRetry,
-		DecommissionStatus:             atomic.LoadUint32(&dp.DecommissionStatus),
-		DecommissionSrcAddr:            dp.DecommissionSrcAddr,
-		DecommissionDstAddr:            dp.DecommissionDstAddr,
-		DecommissionRaftForce:          dp.DecommissionRaftForce,
-		DecommissionSrcDiskPath:        dp.DecommissionSrcDiskPath,
-		DecommissionTerm:               dp.DecommissionTerm,
-		DecommissionWeight:             dp.DecommissionWeight,
-		SpecialReplicaDecommissionStep: dp.SpecialReplicaDecommissionStep,
-		DecommissionDstAddrSpecify:     dp.DecommissionDstAddrSpecify,
-		DecommissionDstNodeSet:         dp.DecommissionDstNodeSet,
-		DecommissionNeedRollback:       dp.DecommissionNeedRollback,
-		RecoverStartTime:               dp.RecoverStartTime.Unix(),
-		RecoverUpdateTime:              dp.RecoverUpdateTime.Unix(),
-		RecoverLastConsumeTime:         dp.RecoverLastConsumeTime.Seconds(),
-		DecommissionRetryTime:          dp.DecommissionRetryTime.Unix(),
-		DecommissionErrorMessage:       dp.DecommissionErrorMessage,
-		DecommissionNeedRollbackTimes:  dp.DecommissionNeedRollbackTimes,
-		DecommissionType:               dp.DecommissionType,
-		RestoreReplica:                 atomic.LoadUint32(&dp.RestoreReplica),
-		MediaType:                      dp.MediaType,
+		PartitionID:                     dp.PartitionID,
+		ReplicaNum:                      dp.ReplicaNum,
+		Hosts:                           dp.hostsToString(),
+		Peers:                           dp.Peers,
+		Status:                          dp.Status,
+		VolID:                           dp.VolID,
+		VolName:                         dp.VolName,
+		OfflinePeerID:                   dp.OfflinePeerID,
+		Replicas:                        make([]*replicaValue, 0),
+		IsRecover:                       dp.isRecover,
+		PartitionType:                   dp.PartitionType,
+		RdOnly:                          dp.RdOnly,
+		IsDiscard:                       dp.IsDiscard,
+		DecommissionDiskRetryMap:        dp.cloneDecommissionDiskRetryMap(),
+		DecommissionStatusUpdateRecords: dp.cloneDecommissionStatusRecords(),
+		DecommissionRetry:               dp.DecommissionRetry,
+		DecommissionStatus:              atomic.LoadUint32(&dp.DecommissionStatus),
+		DecommissionSrcAddr:             dp.DecommissionSrcAddr,
+		DecommissionDstAddr:             dp.DecommissionDstAddr,
+		DecommissionRaftForce:           dp.DecommissionRaftForce,
+		DecommissionSrcDiskPath:         dp.DecommissionSrcDiskPath,
+		DecommissionTerm:                dp.DecommissionTerm,
+		DecommissionWeight:              dp.DecommissionWeight,
+		SpecialReplicaDecommissionStep:  dp.SpecialReplicaDecommissionStep,
+		DecommissionDstAddrSpecify:      dp.DecommissionDstAddrSpecify,
+		DecommissionDstNodeSet:          dp.DecommissionDstNodeSet,
+		DecommissionNeedRollback:        dp.DecommissionNeedRollback,
+		RecoverStartTime:                dp.RecoverStartTime.Unix(),
+		RecoverUpdateTime:               dp.RecoverUpdateTime.Unix(),
+		RecoverLastConsumeTime:          dp.RecoverLastConsumeTime.Seconds(),
+		DecommissionRetryTime:           dp.DecommissionRetryTime.Unix(),
+		DecommissionErrorMessage:        dp.DecommissionErrorMessage,
+		DecommissionNeedRollbackTimes:   dp.DecommissionNeedRollbackTimes,
+		DecommissionType:                dp.DecommissionType,
+		RestoreReplica:                  atomic.LoadUint32(&dp.RestoreReplica),
+		MediaType:                       dp.MediaType,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
 		dpv.Replicas = append(dpv.Replicas, rv)
-	}
-	retryTimesMap := dp.cloneDecommissionDiskRetryMap()
-	for disk, retryTimes := range retryTimesMap {
-		dpv.DecommissionDiskRetryMap[disk] = retryTimes
 	}
 	return
 }
