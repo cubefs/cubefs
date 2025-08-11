@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	syslog "log"
 	"net"
 	"os"
@@ -745,6 +746,11 @@ func (m *metadataManager) loadPartitions() (err error) {
 				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete it manually",
 					fileInfo.Name())
 				oldName := path.Join(m.rootDir, fileInfo.Name())
+				err = m.CheckRocksdbMetaPartition(oldName)
+				if err != nil {
+					log.LogErrorf("CheckRocksdbMetaPartition (%s) failed, err: %v", oldName, err)
+					continue
+				}
 				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name()+curTime)
 				os.Rename(oldName, newName)
 				continue
@@ -1013,4 +1019,41 @@ func (m *metadataManager) startFreeOSMemory() {
 			m.memFreeing = false
 		}()
 	}
+}
+
+func (m *metadataManager) CheckRocksdbMetaPartition(metaPath string) error {
+	metaFile := path.Join(metaPath, metadataFile)
+	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0o644)
+	if err != nil {
+		err = errors.NewErrorf("[CheckRocksdbMetaPartition]: OpenFile %s", err.Error())
+		return err
+	}
+	defer fp.Close()
+	data, err := io.ReadAll(fp)
+	if err != nil || len(data) == 0 {
+		err = errors.NewErrorf("[CheckRocksdbMetaPartition]: ReadFile %s, data: %s", err.Error(),
+			string(data))
+		return err
+	}
+	mConf := &MetaPartitionConfig{}
+	if err = json.Unmarshal(data, mConf); err != nil {
+		err = errors.NewErrorf("[CheckRocksdbMetaPartition]: Unmarshal MetaPartitionConfig %s",
+			err.Error())
+		return err
+	}
+
+	if m.rocksdbCleaner.IsCleanPending(mConf.PartitionId) {
+		return nil
+	}
+
+	mp := &metaPartition{
+		config: mConf,
+	}
+
+	if err := m.rocksdbCleaner.AddTask(mp); err != nil {
+		err = errors.NewErrorf("[CheckRocksdbMetaPartition]: AddTask mp(%d) err:%s", mConf.PartitionId, err.Error())
+		return err
+	}
+
+	return nil
 }

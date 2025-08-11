@@ -119,6 +119,9 @@ func (c *RocksDBCleaner) loadExistingRecords() {
 	recordDir := path.Join(c.rootDir, cleanRecordDir)
 	files, err := os.ReadDir(recordDir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
 		log.LogErrorf("RocksDBCleaner: failed to read clean record directory: %s", err)
 		return
 	}
@@ -173,7 +176,7 @@ func (c *RocksDBCleaner) deleteRecord(partitionId uint64) error {
 // start 启动清理工作协程
 func (c *RocksDBCleaner) start() {
 	// 加载已有的清理记录
-	go c.loadExistingRecords()
+	c.loadExistingRecords()
 
 	c.wg.Add(1)
 	go c.cleanWorker()
