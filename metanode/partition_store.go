@@ -1579,16 +1579,15 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 func (mp *metaPartition) loadApplyIDFromSnapshot(rootDir string) (applyID, cursor uint64, err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	if _, err = os.Stat(filename); err != nil {
-		log.LogErrorf("[loadApplyID]: Stat %s", err.Error())
 		return
 	}
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		err = errors.NewErrorf("[loadApplyID] ReadFile: %s", err.Error())
+		err = errors.NewErrorf("[loadApplyIDFromSnapshot] ReadFile: %s", err.Error())
 		return
 	}
 	if len(data) == 0 {
-		err = errors.NewErrorf("[loadApplyID]: ApplyID is empty")
+		err = errors.NewErrorf("[loadApplyIDFromSnapshot]: ApplyID is empty")
 		return
 	}
 	if strings.Contains(string(data), "|") {
@@ -1597,17 +1596,50 @@ func (mp *metaPartition) loadApplyIDFromSnapshot(rootDir string) (applyID, curso
 		_, err = fmt.Sscanf(string(data), "%d", &applyID)
 	}
 	if err != nil {
-		err = errors.NewErrorf("[loadApplyID] ReadApplyID: %s", err.Error())
+		err = errors.NewErrorf("[loadApplyIDFromSnapshot] ReadApplyID: %s", err.Error())
 		return
 	}
 
-	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
+	log.LogInfof("loadApplyIDFromSnapshot: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, mp.config.Cursor, filename)
 	return
 }
 
-func (mp *metaPartition) ScanInodeTable() (uint64, error) {
-	log.LogWarnf("ScanInodeTable vol(%s) mp(%d) storeMode(%d) start", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
+func (mp *metaPartition) storeRocksdbInode(sm *storeMsg) error {
+	log.LogWarnf("storeRocksdbInode vol(%s) mp(%d) storeMode(%d)", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
+	thresholds, _, enable := mp.manager.GetFileStatsConfig()
+	fileRange := make([]int64, len(thresholds)+1)
+	size := uint64(0)
+
+	err := sm.snap.Range(InodeType, func(i interface{}) bool {
+		ino := i.(*Inode)
+		if sm.uidRebuild {
+			mp.acucumUidSizeByStore(ino)
+		}
+
+		size += ino.Size
+		if enable && proto.IsRegular(ino.Type) && ino.NLink > 0 {
+			index := calculateFileRangeIndex(ino.Size, thresholds)
+			if index >= 0 && index < len(fileRange) {
+				fileRange[index]++
+			}
+		}
+		return true
+	})
+	if err != nil {
+		log.LogErrorf("storeRocksdbInode mp(%d) scan inode table: %s", mp.config.PartitionId, err.Error())
+		return err
+	}
+
+	mp.fileRange = fileRange
+	mp.acucumRebuildFin(sm.uidRebuild)
+	mp.size = size
+
+	return nil
+}
+
+func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
+	log.LogWarnf("loadRocksdbInode vol(%s) mp(%d) storeMode(%d) start", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
 	snap, err := mp.GetSnapShot()
 	if err != nil {
 		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
@@ -1618,12 +1650,34 @@ func (mp *metaPartition) ScanInodeTable() (uint64, error) {
 		if snap != nil {
 			mp.ReleaseSnapShot(snap)
 		}
-		log.LogWarnf("ScanInodeTable vol(%s) mp(%d) storeMode(%d) end", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
+		log.LogWarnf("loadRocksdbInode vol(%s) mp(%d) storeMode(%d) end", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
 	}()
+
+	thresholds, _, enable := mp.manager.GetFileStatsConfig()
+	fileRange := make([]int64, len(thresholds)+1)
 
 	maxInode := uint64(0)
 	err = snap.Range(InodeType, func(i interface{}) bool {
 		ino := i.(*Inode)
+
+		if ino.LeaseExpireTime == 0 {
+			ino.LeaseExpireTime = uint64(ino.ModifyTime) + proto.ForbiddenMigrationRenewalSeonds
+			err1 := mp.UpdateInodeValue(ino)
+			if err1 != nil {
+				log.LogErrorf("UpdateInodeValue ino(%d) err: %s", ino.Inode, err.Error())
+			}
+		}
+		mp.acucumUidSizeByLoad(ino)
+
+		if enable && proto.IsRegular(ino.Type) && ino.NLink > 0 {
+			index := calculateFileRangeIndex(ino.Size, thresholds)
+			if index >= 0 && index < len(fileRange) {
+				fileRange[index]++
+			}
+		}
+
+		mp.size += ino.Size
+
 		if ino.Inode > maxInode {
 			maxInode = ino.Inode
 		}
@@ -1631,9 +1685,10 @@ func (mp *metaPartition) ScanInodeTable() (uint64, error) {
 		return true
 	})
 	if err != nil {
-		log.LogErrorf("ScanInodeTable mp[%d] err: %s", mp.config.PartitionId, err.Error())
+		log.LogErrorf("loadRocksdbInode mp[%d] err: %s", mp.config.PartitionId, err.Error())
 		return 0, err
 	}
+	mp.fileRange = fileRange
 
 	return maxInode, nil
 }
@@ -1756,20 +1811,23 @@ func (mp *metaPartition) loadRocksdbFile() (err error) {
 }
 
 func (mp *metaPartition) storeRocksdbExtent(sm *storeMsg) (err error) {
-	if !sm.quotaRebuild {
-		return nil
+	if sm.quotaRebuild {
+		sIno := NewSimpleInode(0)
+		err = sm.snap.Range(ExtendType, func(i interface{}) bool {
+			e := i.(*Extend)
+			sIno.Inode = e.GetInode()
+			mp.statisticExtendByStore(e, sIno)
+			return true
+		})
+		if err != nil {
+			log.LogErrorf("storeRocksdbExtent range extend failed, err: %v", err)
+			return err
+		}
 	}
 
-	sIno := NewSimpleInode(0)
-	err = sm.snap.Range(ExtendType, func(i interface{}) bool {
-		e := i.(*Extend)
-		sIno.Inode = e.GetInode()
-		mp.statisticExtendByStore(e, sIno)
-		return true
-	})
+	mp.mqMgr.statisticRebuildFin(sm.quotaRebuild)
 	if err != nil {
-		log.LogErrorf("storeRocksdbExtent range extend failed, err: %v", err)
-		return err
+		return
 	}
 
 	return nil
@@ -1818,4 +1876,26 @@ func (mp *metaPartition) loadRocksdbApplyID() (err error) {
 	log.LogInfof("mp[%v] applyID:%v, cursor:%v", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 
 	return
+}
+
+func (mp *metaPartition) UpdateInodeValue(inode *Inode) error {
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("create write batch handle failed:%v", err)
+		return err
+	}
+
+	err = mp.inodeTree.Update(handle, inode)
+	if err != nil {
+		log.LogErrorf("failed to update inode(%v), err(%v)", inode, err)
+		return err
+	}
+
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	if err != nil {
+		log.LogErrorf("failed to commit write batch, is disk broken? err(%v)", err)
+		return err
+	}
+
+	return nil
 }

@@ -2555,16 +2555,24 @@ func (mp *metaPartition) TransferSnapshot() error {
 }
 
 func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
+	err = mp.storeRocksdbInode(sm)
+	if err != nil {
+		log.LogErrorf("storeRocksdb rocksdb inode failed, err: %s", err.Error())
+		return err
+	}
+
 	err = mp.storeRocksdbExtent(sm)
 	if err != nil {
 		log.LogErrorf("storeRocksdb rocksdb extent failed, err: %s", err.Error())
 		return err
 	}
+
 	err = mp.storeRocksdbFile(sm)
 	if err != nil {
 		log.LogErrorf("storeRocksdb rocksdb file failed, err: %s", err.Error())
 		return err
 	}
+
 	uniqid := mp.GetUniqId()
 	if uniqid > mp.inodeTree.GetUniqID() {
 		mp.inodeTree.SetUniqID(uniqid)
@@ -2574,19 +2582,21 @@ func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
 			return err
 		}
 	}
+
 	log.LogWarnf("[storeRocksdb] mp(%v) flush rocksdb start", mp.config.PartitionId)
 	// NOTE: execute flush
 	if err = mp.inodeTree.Flush(true); err != nil {
 		log.LogErrorf("[storeRocksdb] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
 		return err
 	}
+
 	log.LogWarnf("[storeRocksdb] mp(%v) flush rocksdb end", mp.config.PartitionId)
 	mp.storedApplyId = sm.snap.ApplyID()
 	return nil
 }
 
 func (mp *metaPartition) ScanRocksdb() error {
-	maxInode, err := mp.ScanInodeTable()
+	maxInode, err := mp.loadRocksdbInode()
 	if err != nil {
 		log.LogErrorf("mp[%d] scan inode failed: %s", mp.config.PartitionId, err.Error())
 		return err
