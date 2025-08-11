@@ -994,5 +994,4 @@ func (b *BTree) GetUniqID() uint64 {
 }
 
 func (b *BTree) SetUniqID(id uint64) {
-	return
 }

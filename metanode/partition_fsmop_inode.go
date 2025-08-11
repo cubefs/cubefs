@@ -427,7 +427,7 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, uniqID
 	log.LogDebugf("action[fsmUnlinkInode] mp[%v] get inode[%v]", mp.config.PartitionId, inode)
 	var (
 		doMore bool
-		status = proto.OpOk
+		status uint8
 	)
 
 	if ino.getVer() == 0 {

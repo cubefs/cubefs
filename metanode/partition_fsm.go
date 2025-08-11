@@ -113,7 +113,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		status, err = mp.inodeInTx(ino.Inode)
 		if err != nil {
 			status = proto.OpErr
-			return
 		}
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}

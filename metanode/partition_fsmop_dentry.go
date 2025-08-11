@@ -215,7 +215,6 @@ func (mp *metaPartition) getDentryList(dentry *Dentry) (denList []proto.DetryInf
 
 // Query a dentry from the dentry tree with specified dentry info.
 func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8, error) {
-	status := proto.OpOk
 	item, err := mp.dentryTree.Get(dentry)
 	if err != nil {
 		if err == ErrRocksdbOperation {
@@ -223,12 +222,10 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8, error) {
 				" get dentry failed witch rocksdb error[dentry:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 				mp.config.PartitionId, dentry))
 		}
-		status = proto.OpErr
-		return nil, status, err
+		return nil, proto.OpErr, err
 	}
 	if item == nil {
-		status = proto.OpNotExistErr
-		return nil, status, nil
+		return nil, proto.OpNotExistErr, nil
 	}
 	log.LogDebugf("action[getDentry] get dentry[%v] by req dentry %v", item, dentry)
 
@@ -434,6 +431,9 @@ func (mp *metaPartition) fsmBatchDeleteDentry(handle interface{}, db DentryBatch
 			continue
 		}
 		rsp, err = mp.fsmDeleteDentry(handle, dentry, false)
+		if err != nil {
+			rsp.Status = proto.OpErr
+		}
 		if rsp.Status != proto.OpOk {
 			wrongIndex = index
 			break

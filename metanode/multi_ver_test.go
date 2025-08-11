@@ -265,7 +265,11 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 		require.NoError(t, err)
 	}
 
-	_ = mp.fsmCreateInode(handle, ino)
+	status, err := mp.fsmCreateInode(handle, ino)
+	if t != nil {
+		require.NoError(t, err)
+		require.Equal(t, status, proto.OpOk)
+	}
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	if t != nil {
 		require.NoError(t, err)
@@ -289,7 +293,8 @@ func testCreateDentry(t *testing.T, parentId uint64, inodeId uint64, name string
 	t.Logf("createDentry dentry %v", dentry)
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	ret := mp.fsmCreateDentry(handle, dentry, false)
+	ret, err := mp.fsmCreateDentry(handle, dentry, false)
+	require.NoError(t, err)
 	assert.True(t, proto.OpOk == ret)
 	if ret != proto.OpOk {
 		panic(nil)
@@ -504,7 +509,9 @@ func testAppendList(t *testing.T) {
 		}
 		mp.verSeq = seq
 
-		if status := mp.fsmAppendExtentsWithCheck(handle, iTmp, false); status != proto.OpOk {
+		status, err := mp.fsmAppendExtentsWithCheck(handle, iTmp, false)
+		require.NoError(t, err)
+		if status != proto.OpOk {
 			t.Errorf("status [%v]", status)
 		}
 		err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -767,7 +774,8 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	rspDelIno := mp.fsmUnlinkInode(handle, rDirIno, 0)
+	rspDelIno, err := mp.fsmUnlinkInode(handle, rDirIno, 0)
+	require.NoError(t, err)
 
 	t.Logf("rspDelinfo ret %v content %v", rspDelIno.Status, rspDelIno)
 	assert.True(t, rspDelIno.Status == proto.OpOk)
@@ -776,7 +784,8 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	}
 	rDirDentry := dirDentry.Copy().(*Dentry)
 	rDirDentry.setVerSeq(verSeq)
-	rspDelDen := mp.fsmDeleteDentry(handle, rDirDentry, false)
+	rspDelDen, err := mp.fsmDeleteDentry(handle, rDirDentry, false)
+	require.NoError(t, err)
 	assert.True(t, rspDelDen.Status == proto.OpOk)
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
@@ -804,7 +813,8 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 
 		handle, err = mp.dentryTree.CreateBatchWriteHandle()
 		require.NoError(t, err)
-		rspDelIno = mp.fsmUnlinkInode(handle, rino, 0)
+		rspDelIno, err = mp.fsmUnlinkInode(handle, rino, 0)
+		require.NoError(t, err)
 		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 		require.NoError(t, err)
 
@@ -822,7 +832,8 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 		}
 		log.LogDebugf("test.testDelDirSnapshotVersion: dentry param %v ", dentry)
 		// testPrintAllDentry(t)
-		iden, st := mp.getDentry(dentry)
+		iden, st, err := mp.getDentry(dentry)
+		require.NoError(t, err)
 		if st != proto.OpOk {
 			t.Logf("testDelDirSnapshotVersion: dentry %v return st %v", dentry, proto.ParseErrorCode(int32(st)))
 		}
@@ -833,7 +844,8 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 		rDen.multiSnap = NewDentrySnap(verSeq)
 		handle, err = mp.dentryTree.CreateBatchWriteHandle()
 		require.NoError(t, err)
-		rspDelDen = mp.fsmDeleteDentry(handle, rDen, false)
+		rspDelDen, err = mp.fsmDeleteDentry(handle, rDen, false)
+		require.NoError(t, err)
 		assert.True(t, rspDelDen.Status == proto.OpOk)
 		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 		require.NoError(t, err)
@@ -997,7 +1009,9 @@ func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 	mp.verSeq = seq
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	if status := mp.fsmAppendExtentsWithCheck(handle, iTmp, false); status != proto.OpOk {
+	status, err := mp.fsmAppendExtentsWithCheck(handle, iTmp, false)
+	require.NoError(t, err)
+	if status != proto.OpOk {
 		t.Errorf("status [%v]", status)
 	}
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -1095,7 +1109,9 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 	t.Logf("testDeleteFile seq [%v] %v dentry %v", verSeq, fsmDentry.getSeqFiled(), fsmDentry)
 	handle, err := mp.dentryTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	assert.True(t, nil != mp.fsmDeleteDentry(handle, fsmDentry, false))
+	resp, err := mp.fsmDeleteDentry(handle, fsmDentry, false)
+	require.NoError(t, err)
+	require.NotEqual(t, resp, nil)
 	err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
@@ -1109,7 +1125,8 @@ func testDeleteFile(t *testing.T, verSeq uint64, parentId uint64, child *proto.D
 	rino.setVer(verSeq)
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	rspDelIno := mp.fsmUnlinkInode(handle, rino, 0)
+	rspDelIno, err := mp.fsmUnlinkInode(handle, rino, 0)
+	require.NoError(t, err)
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
@@ -1223,7 +1240,9 @@ func testSnapshotDeletion(t *testing.T, topFirst bool, storeMode proto.StoreMode
 		t.Logf("try to move dir %v", renameDen)
 		handle, err := mp.dentryTree.CreateBatchWriteHandle()
 		require.NoError(t, err)
-		assert.True(t, nil != mp.fsmDeleteDentry(handle, renameDen, false))
+		resp, err := mp.fsmDeleteDentry(handle, renameDen, false)
+		require.NoError(t, err)
+		require.NotEqual(t, resp, nil)
 		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 		require.NoError(t, err)
 		renameDen.Name = fmt.Sprintf("rename_from_%v", renameDen.Name)
@@ -1232,7 +1251,9 @@ func testSnapshotDeletion(t *testing.T, topFirst bool, storeMode proto.StoreMode
 		t.Logf("try to move to dir %v", renameDen)
 		handle, err = mp.dentryTree.CreateBatchWriteHandle()
 		require.NoError(t, err)
-		assert.True(t, mp.fsmCreateDentry(handle, renameDen, false) == proto.OpOk)
+		status, err := mp.fsmCreateDentry(handle, renameDen, false)
+		require.NoError(t, err)
+		require.Equal(t, status, proto.OpOk)
 		err = mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 		require.NoError(t, err)
 		testPrintDirTree(t, 1, "root", 0)
@@ -1686,7 +1707,8 @@ func testUpdateDenty(t *testing.T) {
 	mp.UpdateDentry(&UpdateDentryReq{Name: "testfile", ParentID: 1, Inode: 2000}, &Packet{}, localAddrForAudit)
 	den := &Dentry{Name: "testfile", ParentId: 1}
 	den.setVerSeq(math.MaxUint64)
-	denRsp, status := mp.getDentry(den)
+	denRsp, status, err := mp.getDentry(den)
+	require.NoError(t, err)
 	assert.True(t, status == proto.OpOk)
 	assert.True(t, denRsp.Inode == 1000)
 }

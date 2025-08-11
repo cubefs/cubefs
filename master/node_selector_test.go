@@ -547,6 +547,8 @@ func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 			MaxMemAvailWeight: math.MaxUint64,
 			MpCntLimit:        defaultMaxMpCntLimit,
 			RocksdbDisks:      make([]*proto.MetaNodeRocksdbInfo, 0),
+			NodeMemTotal:      10 * util.GB,
+			NodeMemUsed:       util.GB,
 		}
 		node.RocksdbDisks = append(node.RocksdbDisks, &proto.MetaNodeRocksdbInfo{
 			Path:       "",

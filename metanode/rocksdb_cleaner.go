@@ -63,7 +63,7 @@ func NewRocksDBCleaner(rootDir string, rocksdbMgr RocksdbManager) *RocksDBCleane
 
 	// 创建清理记录目录
 	recordDir := path.Join(rootDir, cleanRecordDir)
-	if err := os.MkdirAll(recordDir, 0755); err != nil {
+	if err := os.MkdirAll(recordDir, 0o755); err != nil {
 		log.LogErrorf("RocksDBCleaner: failed to create clean record directory: %s", err)
 	}
 
@@ -89,26 +89,6 @@ func (c *RocksDBCleaner) GetAllCleanHistory() []*CleanRecord {
 	return records
 }
 
-// recordClean 记录清理结果
-func (c *RocksDBCleaner) recordClean(mp *metaPartition, err error) {
-	c.historyLock.Lock()
-	defer c.historyLock.Unlock()
-
-	record := &CleanRecord{
-		PartitionId: mp.config.PartitionId,
-		RocksDBDir:  mp.config.RocksDBDir,
-		CleanTime:   time.Now(),
-		Status:      "success",
-	}
-
-	if err != nil {
-		record.Status = "failed"
-		record.Error = err.Error()
-	}
-
-	c.history[mp.config.PartitionId] = record
-}
-
 // getRecordPath 获取清理记录文件的路径
 func (c *RocksDBCleaner) getRecordPath(partitionId uint64) string {
 	return path.Join(c.rootDir, cleanRecordDir, fmt.Sprintf("clean_record_%d.json", partitionId))
@@ -126,6 +106,7 @@ func (c *RocksDBCleaner) loadExistingRecords() {
 		return
 	}
 
+	recordList := make([]*CleanRecord, 0, len(files))
 	for _, file := range files {
 		if file.IsDir() {
 			continue
@@ -148,8 +129,14 @@ func (c *RocksDBCleaner) loadExistingRecords() {
 		c.history[record.PartitionId] = &record
 		c.historyLock.Unlock()
 
-		c.cleanTasks <- &record
+		recordList = append(recordList, &record)
 	}
+
+	go func() {
+		for _, record := range recordList {
+			c.cleanTasks <- record
+		}
+	}()
 }
 
 // saveRecord 保存清理记录到磁盘
@@ -160,7 +147,7 @@ func (c *RocksDBCleaner) saveRecord(record *CleanRecord) error {
 	}
 
 	recordPath := c.getRecordPath(record.PartitionId)
-	return os.WriteFile(recordPath, data, 0644)
+	return os.WriteFile(recordPath, data, 0o644)
 }
 
 // deleteRecord 从磁盘删除清理记录

@@ -457,7 +457,7 @@ func TestFlushDb(t *testing.T) {
 	count := getSSTCount(t, path)
 	require.EqualValues(t, 0, count)
 
-	err = db.Flush()
+	err = db.Flush(false)
 	require.NoError(t, err)
 
 	err = db.CloseDb()

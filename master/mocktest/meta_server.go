@@ -267,6 +267,8 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 	}
 	resp.Total = 10 * util.GB
 	resp.Used = 1 * util.GB
+	resp.NodeMemTotal = 10 * util.GB
+	resp.NodeMemUsed = 1 * util.GB
 	resp.RocksDBDiskInfo = []*proto.MetaNodeRocksdbInfo{
 		{
 			Path:           "",

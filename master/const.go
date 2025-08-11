@@ -546,5 +546,5 @@ const (
 	CheckMetaLeaderRetry    = 10
 	CheckMetaLeaderInterval = 30
 	RetryCheckStatusNum     = 600
-	ReservedSystemMemory    = 10 * 1024 * 1024 * 1024
+	ReservedSystemMemory    = 1024 * 1024 * 1024
 )
