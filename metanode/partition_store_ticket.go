@@ -58,7 +58,15 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				log.LogWarnf("[startSchedule] raftPartition is nil so skip" +
 					" truncate raft log")
 			}
-			curIndex = msg.snap.ApplyID()
+			if mp.inodeTree.GetStoreMode() == proto.StoreModeRocksDb {
+				curIndex, err = mp.inodeTree.GetApplyIdFromDisk()
+				if err != nil {
+					log.LogErrorf("[startSchedule] mp(%d) get applyId err: %s", mp.config.PartitionId, err.Error())
+					curIndex = 0
+				}
+			} else {
+				curIndex = msg.snap.ApplyID()
+			}
 		} else {
 			// retry again
 			mp.storeChan <- msg

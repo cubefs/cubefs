@@ -858,21 +858,16 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 }
 
 func (mp *metaPartition) startScheduleTask() {
-	startApplyID := mp.applyID
-	if mp.HasRocksDBStore() {
-		// read from file
+	applyId := mp.applyID
+	if mp.inodeTree.GetStoreMode() == proto.StoreModeRocksDb {
 		var err error
-		snapshotDir := path.Join(mp.config.RootDir, rocksdbSnapDir)
-		startApplyID, _, err = mp.loadApplyIDFromSnapshot(snapshotDir)
+		applyId, err = mp.inodeTree.GetApplyIdFromDisk()
 		if err != nil {
-			if !os.IsNotExist(err) {
-				log.LogErrorf("[startScheduleTask] loadApplyIDFromSnapshot failed: %v", err)
-				return
-			}
-			startApplyID = 0
+			log.LogErrorf("[startScheduleTask] mp(%d) get applyId err: %s", mp.config.PartitionId, err.Error())
+			applyId = 0
 		}
 	}
-	mp.startSchedule(startApplyID)
+	mp.startSchedule(applyId)
 }
 
 func (mp *metaPartition) onStop() {
@@ -2585,7 +2580,7 @@ func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
 
 	log.LogWarnf("[storeRocksdb] mp(%v) flush rocksdb start", mp.config.PartitionId)
 	// NOTE: execute flush
-	if err = mp.inodeTree.Flush(true); err != nil {
+	if err = mp.inodeTree.Flush(false); err != nil {
 		log.LogErrorf("[storeRocksdb] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
 		return err
 	}

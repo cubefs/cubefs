@@ -127,6 +127,7 @@ type Tree interface {
 	GetStoreMode() proto.StoreMode
 	GetUniqID() uint64
 	SetUniqID(id uint64)
+	GetApplyIdFromDisk() (uint64, error)
 }
 
 type InodeTree interface {

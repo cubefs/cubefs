@@ -643,6 +643,20 @@ func (r *RocksTree) GetStoreMode() proto.StoreMode {
 	return proto.StoreModeRocksDb
 }
 
+func (r *RocksTree) GetApplyIdFromDisk() (uint64, error) {
+	buff, err := r.db.GetBytesFromDisk(r.warpKey(baseInfoKey))
+	if err != nil {
+		return 0, err
+	}
+
+	var baseInfo RocksBaseInfo
+	if err = baseInfo.Unmarshal(buff); err != nil {
+		return 0, err
+	}
+
+	return baseInfo.applyId, nil
+}
+
 var (
 	_ InodeTree                     = &InodeRocks{}
 	_ DentryTree                    = &DentryRocks{}

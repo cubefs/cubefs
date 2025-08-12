@@ -1576,35 +1576,6 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 	return
 }
 
-func (mp *metaPartition) loadApplyIDFromSnapshot(rootDir string) (applyID, cursor uint64, err error) {
-	filename := path.Join(rootDir, applyIDFile)
-	if _, err = os.Stat(filename); err != nil {
-		return
-	}
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		err = errors.NewErrorf("[loadApplyIDFromSnapshot] ReadFile: %s", err.Error())
-		return
-	}
-	if len(data) == 0 {
-		err = errors.NewErrorf("[loadApplyIDFromSnapshot]: ApplyID is empty")
-		return
-	}
-	if strings.Contains(string(data), "|") {
-		_, err = fmt.Sscanf(string(data), "%d|%d", &applyID, &cursor)
-	} else {
-		_, err = fmt.Sscanf(string(data), "%d", &applyID)
-	}
-	if err != nil {
-		err = errors.NewErrorf("[loadApplyIDFromSnapshot] ReadApplyID: %s", err.Error())
-		return
-	}
-
-	log.LogInfof("loadApplyIDFromSnapshot: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) filename(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.applyID, mp.config.Cursor, filename)
-	return
-}
-
 func (mp *metaPartition) storeRocksdbInode(sm *storeMsg) error {
 	log.LogWarnf("storeRocksdbInode vol(%s) mp(%d) storeMode(%d)", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
 	thresholds, _, enable := mp.manager.GetFileStatsConfig()
@@ -1730,9 +1701,6 @@ func (mp *metaPartition) storeRocksdbFile(sm *storeMsg) (err error) {
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
 	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
-	if err = mp.storeApplyID(tmpDir, sm); err != nil {
-		return
-	}
 
 	// write crc to file
 	if err = fileutil.WriteFileWithSync(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0o775); err != nil {

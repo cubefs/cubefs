@@ -40,6 +40,7 @@ const (
 	DefaultMaxLogFileSize      = 1 * util.MB
 	DefaultLogFileRollTime     = 3 * 24 * time.Hour // NOTE: 3 day
 	DefaultKeepLogFileNum      = 3
+	ReadFromDiskTier           = 3
 )
 
 var (
@@ -124,6 +125,8 @@ type RocksdbOperator struct {
 	openOption  *gorocksdb.Options
 	cache       *gorocksdb.Cache
 	tableOption *gorocksdb.BlockBasedTableOptions
+
+	readDiskOption *gorocksdb.ReadOptions
 }
 
 func NewRocksdb() (operator *RocksdbOperator) {
@@ -252,6 +255,8 @@ func (dbInfo *RocksdbOperator) doOpen(dir string, writeBufferSize int, writeBuff
 	dbInfo.writeOption = gorocksdb.NewDefaultWriteOptions()
 	// NOTE: we use raft wal, enable rocksdb wal is unnecessary
 	dbInfo.writeOption.DisableWAL(true)
+	dbInfo.readDiskOption = gorocksdb.NewDefaultReadOptions()
+	dbInfo.readDiskOption.SetReadTier(ReadFromDiskTier)
 	return nil
 }
 
@@ -854,5 +859,36 @@ func (dbInfo *RocksdbOperator) Flush(block bool) (err error) {
 	opts.SetWait(block)
 
 	err = dbInfo.db.Flush(opts)
+	return
+}
+
+func (dbInfo *RocksdbOperator) GetBytesFromDisk(key []byte) (bytes []byte, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("[RocksDB Op] GetBytes failed, error:%v", err)
+		}
+	}()
+
+	if err = dbInfo.accessDb(); err != nil {
+		return
+	}
+	defer dbInfo.releaseDb()
+	for index := 0; index < DefaultRetryCount; {
+		bytes, err = dbInfo.db.GetBytes(dbInfo.readDiskOption, key)
+		if err == nil {
+			break
+		}
+		if !isRetryError(err) {
+			log.LogErrorf("[RocksDB Op] GetBytes failed, error(%v)", err)
+			break
+		}
+		log.LogErrorf("[RocksDB Op] GetBytes failed with retry error(%v), continue", err)
+		index++
+	}
+	if err != nil {
+		log.LogErrorf("[RocksDB Op] GetBytes err:%v", err)
+		err = ErrRocksdbOperation
+		return
+	}
 	return
 }
