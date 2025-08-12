@@ -84,10 +84,10 @@ const (
 	AheadReadBlockTimeOut
 	AheadReadWindowCnt
 	ReqChanCnt
-
 	// remotecache
 	ForceRemoteCache
-
+	DebugCluster
+	EnableAsyncFlush
 	MaxMountOption
 )
 
@@ -183,11 +183,12 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheOnlyForNotSSD] = MountOption{"enableBcacheOnlyForNotSSD", "Enable block cache only for not ssd", "", false}
 
 	opts[AheadReadEnable] = MountOption{"aheadReadEnable", "enable ahead read", "", false}
-	opts[AheadReadTotalMemGB] = MountOption{"aheadReadTotalMemGB", "ahead read total mem(GB)", "", int64(10)}
+	opts[AheadReadTotalMemGB] = MountOption{"aheadReadTotalMemGB", "ahead read total mem(GB)", "", int64(30)}
 	opts[AheadReadBlockTimeOut] = MountOption{"aheadReadBlockTimeOut", "ahead read block expiration time", "", int64(3)}
 	opts[AheadReadWindowCnt] = MountOption{"aheadReadWindowCnt", "ahead read window block count", "", int64(8)}
-
 	opts[ForceRemoteCache] = MountOption{"forceRemoteCache", "All read requests are handled by the remote cache.", "", false}
+	opts[DebugCluster] = MountOption{"debugCluster", "display cluster name", "", ""}
+	opts[EnableAsyncFlush] = MountOption{"enableAsyncFlush", "async flush extent handler", "", true}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -368,4 +369,5 @@ type MountOptions struct {
 
 	// remote cache
 	ForceRemoteCache bool
+	EnableAsyncFlush bool
 }

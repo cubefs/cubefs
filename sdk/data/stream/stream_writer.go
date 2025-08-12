@@ -52,7 +52,6 @@ const (
 	asyncFlushTimeoutMs       = 5000 // 5 seconds timeout for async flush
 	asyncFlushCheckIntervalMs = 100  // Check every 100ms
 	maxAsyncFlushRetries      = 3    // Max retries for failed async flush
-	enableAsyncFlush          = true // Enable async flush by default
 	asyncFlushQueueSize       = 128  // Buffer size for async flush channel
 	asyncFlushWorkerCount     = 4    // Number of worker goroutines for async flush
 	asyncFlushSemaphoreSize   = 4    // Capacity of semaphore to limit concurrent processAsyncFlushRequest executions
@@ -1025,7 +1024,7 @@ func (s *Streamer) flush(wait bool) (err error) {
 		log.LogDebugf("Streamer flush begin: eh(%v)", eh)
 
 		// Use async flush for better performance if enabled
-		if enableAsyncFlush && atomic.LoadInt32(&eh.inflight) > 0 {
+		if s.client.enableAsyncFlush && atomic.LoadInt32(&eh.inflight) > 0 {
 			// If there are in-flight packets, use async flush
 			log.LogDebugf("Streamer flush using async flush for eh(%v) with inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 			err = s.asyncFlushHandler(eh)
@@ -1159,7 +1158,7 @@ func (s *Streamer) closeOpenHandler(wait bool) (err error) {
 		}
 
 		// Use async flush if there are in-flight packets and async flush is enabled
-		if enableAsyncFlush && !wait && atomic.LoadInt32(&handler.inflight) > 0 {
+		if s.client.enableAsyncFlush && !wait && atomic.LoadInt32(&handler.inflight) > 0 {
 			log.LogDebugf("closeOpenHandler: using async flush for handler(%v) with inflight(%v)", handler, atomic.LoadInt32(&handler.inflight))
 
 			// Check if this handler already has an active async flush

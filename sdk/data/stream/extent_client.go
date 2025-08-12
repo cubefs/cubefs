@@ -167,6 +167,7 @@ type ExtentConfig struct {
 	NeedRemoteCache  bool
 	ForceRemoteCache bool
 	HeartBeatPing    bool
+	EnableAsyncFlush bool
 }
 
 type MultiVerMgr struct {
@@ -220,6 +221,7 @@ type ExtentClient struct {
 	wg           sync.WaitGroup
 
 	forceRemoteCache bool
+	enableAsyncFlush bool
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -352,6 +354,7 @@ retry:
 	client.forbiddenMigration = config.OnForbiddenMigration
 	client.getInodeInfo = config.OnGetInodeInfo
 	client.forceRemoteCache = config.ForceRemoteCache
+	client.enableAsyncFlush = config.EnableAsyncFlush
 
 	if config.StreamRetryTimeout <= 0 || config.StreamRetryTimeout >= 600 {
 		client.streamRetryTimeout = StreamSendMaxTimeout
@@ -402,7 +405,6 @@ retry:
 	}
 	client.extentConfig = config
 	if config.NeedRemoteCache {
-		client.RemoteCache.HeartBeatPing = config.HeartBeatPing
 		client.RemoteCache.Init(client)
 	} else {
 		log.LogInfof("NewExtentClient for (%v) not init remoteCache, config.NeedRemoteCache %v", client.volumeName,

@@ -205,6 +205,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 		revisedRequests []*ExtentRequest
 	)
 	log.LogDebugf("action[streamer.read] ino(%v) offset %v size %v", s.inode, offset, size)
+	defer log.LogDebugf("streamer read ino(%v) offset %v size %v", s.inode, offset, size)
 	ctx := context.Background()
 	if s.client.readLimit() {
 		s.client.readLimiter.Wait(ctx)
@@ -819,7 +820,7 @@ func (s *Streamer) getAsyncFlushStats() map[string]interface{} {
 	stats := make(map[string]interface{})
 	stats["channel_capacity"] = cap(s.asyncFlushCh)
 	stats["channel_length"] = len(s.asyncFlushCh)
-	stats["enable_async_flush"] = enableAsyncFlush
+	stats["enable_async_flush"] = s.client.enableAsyncFlush
 
 	// Add sequencer statistics
 	stats["pending_requests"] = s.getPendingRequests()

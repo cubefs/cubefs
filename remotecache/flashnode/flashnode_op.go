@@ -93,19 +93,12 @@ func (f *FlashNode) SetTimeout(handleReadTimeout int, readDataNodeTimeout int) {
 
 func (f *FlashNode) opClientHeartbeat(conn net.Conn, p *proto.Packet) (err error) {
 	p.PacketOkReply()
-<<<<<<< HEAD
 	if err = p.WriteToConn(conn); err != nil {
 		log.LogErrorf("opClientHeartbeat response: %s", err.Error())
 	}
 	if log.EnableInfo() {
 		log.LogInfof("opClientHeartbeat remoteaddr(%v)", conn.RemoteAddr())
 	}
-=======
-	if err := p.WriteToConn(conn); err != nil {
-		log.LogErrorf("opClientHeartbeat response: %s", err.Error())
-	}
-	log.LogInfof("opClientHeartbeat remoteaddr(%v)", conn.RemoteAddr())
->>>>>>> b6371e71c8... feat(sdk): client send heartbeat to flashnode.#1000151055
 	return
 }
 
