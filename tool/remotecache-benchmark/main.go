@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/tool/remotecache-benchmark/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/bytespool"
+	"github.com/cubefs/cubefs/util/stat"
 	"github.com/google/uuid"
 )
 
@@ -90,6 +91,10 @@ func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master s
 		tester.cacheStorage, err = remotecache.NewRemoteCacheClient(cfg)
 		if err != nil {
 			fmt.Printf("\nCreate a remote cache Tester failed:%v\n", err)
+		}
+		_, err = stat.NewStatistic("/tmp/cfs", "remoteCacheClient", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
+		if err != nil {
+			fmt.Printf("\nCreate a remote cache stat log failed:%v\n", err)
 		}
 	}
 
@@ -197,8 +202,8 @@ func ensureAbsolutePath(path string) string {
 func main() {
 	dataDir := flag.String("data", "./test_data", "Test data directory")
 	totalSizeGB := flag.Int("size", 100, "Total size of test data (GB)")
-	genConcurrency := flag.Int("gen-concurrency", runtime.NumCPU()*8, "Number of concurrent data generation processes")
-	concurrency := flag.Int("concurrency", runtime.NumCPU()*4, "Number of concurrent requests")
+	genConcurrency := flag.Int("gen-concurrency", util.Max(2, int(float64(runtime.NumCPU())*0.6)), "Number of concurrent data generation processes")
+	concurrency := flag.Int("concurrency", util.Max(2, int(float64(runtime.NumCPU())*0.6)), "Number of concurrent requests")
 	needGenerate := flag.Bool("need-generate", false, "Generate test data")
 	hddBase := flag.String("hdd", "", "HDD storage directory")
 	nvmeBase := flag.String("nvme", "", "NVME storage directory")
@@ -270,6 +275,7 @@ func (t *BenchmarkTester) Stop() {
 	if t.cacheStorage != nil {
 		t.cacheStorage.Stop()
 	}
+	stat.WriteStat()
 }
 
 func (t *BenchmarkTester) RunPutBenchmark(ctx context.Context, concurrency int) {
