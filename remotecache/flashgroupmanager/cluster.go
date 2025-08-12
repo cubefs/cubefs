@@ -725,3 +725,20 @@ func (c *Cluster) syncUpdateFlashNode(flashNode *FlashNode) (err error) {
 func (c *Cluster) tryToChangeLeaderByHost() error {
 	return c.partition.TryToLeader(1)
 }
+
+func (c *Cluster) syncFlashNodeSetIOLimitTasks(tasks []*proto.AdminTask) {
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		node, err := c.peekFlashNode(t.OperatorAddr)
+		if err != nil {
+			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			continue
+		}
+		if _, err = node.TaskManager.syncSendAdminTask(t); err != nil {
+			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			continue
+		}
+	}
+}

@@ -243,9 +243,15 @@ func (rc *RemoteCacheClient) UpdateFlashGroups() (err error) {
 		fgv            proto.FlashGroupView
 		newFlashGroups = btree.New(32)
 	)
-	if fgv, err = rc.mc.AdminAPI().ClientFlashGroups(); err != nil {
-		log.LogWarnf("updateFlashGroups: err(%v)", err)
-		return
+
+	for i := 0; i < 3; i++ {
+		if fgv, err = rc.mc.AdminAPI().ClientFlashGroups(); err == nil {
+			break
+		}
+		log.LogWarnf("updateFlashGroups: attempt %d failed, err(%v)", i+1, err)
+		if i == 2 { // Last attempt
+			return
+		}
 	}
 	log.LogDebugf("updateFlashGroups. get flashGroupView [%v]", fgv)
 	rc.SetClusterEnable(fgv.Enable && len(fgv.FlashGroups) != 0)
@@ -951,9 +957,15 @@ func (rc *RemoteCacheClient) Get(ctx context.Context, reqId, key string, from, t
 
 func (rc *RemoteCacheClient) updateRemoteCacheConfig() (err error) {
 	var config *proto.RemoteCacheConfig
-	if config, err = rc.mc.AdminAPI().GetRemoteCacheConfig(); err != nil {
-		log.LogWarnf("updateRemoteCacheConfig: GetRemoteCacheConfig fail err(%v)", err)
-		return
+
+	for i := 0; i < 3; i++ {
+		if config, err = rc.mc.AdminAPI().GetRemoteCacheConfig(); err == nil {
+			break
+		}
+		log.LogWarnf("updateRemoteCacheConfig: attempt %d failed, GetRemoteCacheConfig fail err(%v)", i+1, err)
+		if i == 2 { // Last attempt
+			return
+		}
 	}
 
 	log.LogInfof("updateRemoteCacheConfig: config(%v)", config)
