@@ -2222,7 +2222,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	decommissionType, err := parseUintParam(r, DecommissionType)
+	decommissionType, err := parseUintParam(r, decommissionTypeKey)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -5780,7 +5780,7 @@ func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, diskDisable
 	if err != nil {
 		return
 	}
-	decommissionType, err = parseUintParam(r, DecommissionType)
+	decommissionType, err = parseUintParam(r, decommissionTypeKey)
 	if err != nil {
 		return
 	}
@@ -5811,7 +5811,7 @@ func parseReqToQueryDecoDisk(r *http.Request) (decommissionType int, showAll boo
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	decommissionType, err = parseUintParam(r, DecommissionType)
+	decommissionType, err = parseUintParam(r, decommissionTypeKey)
 	if err != nil {
 		return
 	}

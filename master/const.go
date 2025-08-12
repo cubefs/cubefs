@@ -130,7 +130,6 @@ const (
 	ClientIDKey                            = "clientIDKey"
 	verSeqKey                              = "verSeq"
 	Periodic                               = "periodic"
-	DecommissionType                       = "decommissionType"
 	decommissionDiskLimit                  = "decommissionDiskLimit"
 	dpRepairBlockSizeKey                   = "dpRepairBlockSize"
 	markDiskBrokenThresholdKey             = "markDiskBrokenThreshold"

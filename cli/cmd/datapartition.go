@@ -437,7 +437,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 	var raftForceDel bool
 	var weight int
 	var dstNodeSet uint64
-	var decommissionType string
+	var decommissionType int
 	var clientIDKey string
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
@@ -472,7 +472,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 	cmd.Flags().BoolVarP(&raftForceDel, CliFlagDecommissionRaftForce, "r", false, "true for raftForceDel")
 	cmd.Flags().IntVar(&weight, CliFLagDecommissionWeight, lowPriorityDecommissionWeight, "decommission weight")
 	cmd.Flags().Uint64Var(&dstNodeSet, CliFlagDecommissionDstNodeSet, 0, "decommission dst nodeSet")
-	cmd.Flags().StringVar(&decommissionType, "decommissionType", "1", "decommission type")
+	cmd.Flags().IntVar(&decommissionType, "decommissionType", 1, "decommission type")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }

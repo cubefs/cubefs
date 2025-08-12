@@ -1137,6 +1137,8 @@ func GetDecommissionTypeMessage(status uint32) string {
 		return "InitialDecommission"
 	case ManualAddReplica:
 		return "ManualAddReplica"
+	case NodesetBalance:
+		return "NodesetBalance"
 	default:
 		return fmt.Sprintf("Unkown:%v", status)
 	}
@@ -1481,7 +1483,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			}
 		}
 
-		if migrateType == ManualDecommission && partition.ReplicaNum == 3 && len(partition.Hosts) >= 2 {
+		if (migrateType == ManualDecommission || migrateType == NodesetBalance) && partition.ReplicaNum == 3 && len(partition.Hosts) >= 2 {
 			diskErrReplicas := partition.getAllDiskErrorReplica()
 			if raftForce {
 				if (isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) && isReplicasContainsHost(diskErrReplicas, partition.Hosts[1])) ||
@@ -1495,7 +1497,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			}
 		}
 
-		if migrateType == ManualDecommission && partition.ReplicaNum == 2 && len(partition.Hosts) == 2 {
+		if (migrateType == ManualDecommission || migrateType == NodesetBalance) && partition.ReplicaNum == 2 && len(partition.Hosts) == 2 {
 			diskErrReplicas := partition.getAllDiskErrorReplica()
 			if raftForce {
 				if (isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) && srcAddr == partition.Hosts[1]) ||
@@ -1818,7 +1820,8 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 	}
 
 	// in the raftForce case, need to check if all replicas except the decommission src addr are diskErr replicas
-	if partition.DecommissionRaftForce && (partition.DecommissionType == AutoDecommission || partition.DecommissionType == ManualDecommission) {
+	if partition.DecommissionRaftForce && (partition.DecommissionType == AutoDecommission ||
+		partition.DecommissionType == ManualDecommission || partition.DecommissionType == NodesetBalance) {
 		if partition.isReplicaAllDiskErrorExceptSrcAddr() {
 			msg = fmt.Sprintf("dp(%v) all replicas except decommission src addr(%v) are diskErr replicas", partition.PartitionID, partition.DecommissionSrcAddr)
 			log.LogWarnf("action[decommissionDataPartition] %s", msg)
