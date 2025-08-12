@@ -186,7 +186,10 @@ func (rc *RemoteCacheClient) refreshWithRecover() (panicErr error) {
 	refreshLatency := time.NewTimer(0)
 	defer refreshLatency.Stop()
 
-	var err error
+	var (
+		err    error
+		notNew bool
+	)
 	for {
 		select {
 		case <-rc.stopC:
@@ -199,8 +202,12 @@ func (rc *RemoteCacheClient) refreshWithRecover() (panicErr error) {
 				}
 			}
 		case <-refreshLatency.C:
-			if err = rc.UpdateFlashGroups(); err != nil {
-				log.LogErrorf("updateFlashGroups err: %v", err)
+			if notNew {
+				if err = rc.UpdateFlashGroups(); err != nil {
+					log.LogErrorf("updateFlashGroups err: %v", err)
+				}
+			} else {
+				notNew = true
 			}
 			rc.refreshHostLatency()
 			refreshLatency.Reset(RefreshHostLatencyInterval)
