@@ -172,7 +172,8 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(
 	blockCacheSize uint64,
 	maxLogFileSize int,
 	logFileTimeToRoll time.Duration,
-	keepLogFileNum int) (opts *gorocksdb.Options, cache *gorocksdb.Cache, tableOpts *gorocksdb.BlockBasedTableOptions) {
+	keepLogFileNum int,
+) (opts *gorocksdb.Options, cache *gorocksdb.Cache, tableOpts *gorocksdb.BlockBasedTableOptions) {
 	opts = gorocksdb.NewDefaultOptions()
 
 	// NOTE: check and set default options

@@ -505,7 +505,8 @@ func (mp *metaPartition) fsmTxUpdateDentry(dbHandle interface{}, txUpDateDentry 
 }
 
 func (mp *metaPartition) fsmUpdateDentry(dbHandle interface{}, dentry *Dentry) (
-	resp *DentryResponse, err error) {
+	resp *DentryResponse, err error,
+) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 	var d *Dentry
