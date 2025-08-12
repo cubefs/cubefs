@@ -248,6 +248,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		AheadReadWindowCnt:    opt.AheadReadWindowCnt,
 		NeedRemoteCache:       true,
 		ForceRemoteCache:      opt.ForceRemoteCache,
+		EnableAsyncFlush:      opt.EnableAsyncFlush,
 	}
 
 	log.LogWarnf("ahead info enable %+v, totalMem %+v, timeout %+v, winCnt %+v", opt.AheadReadEnable, opt.AheadReadTotalMem, opt.AheadReadBlockTimeOut, opt.AheadReadWindowCnt)
