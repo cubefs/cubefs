@@ -386,6 +386,20 @@ func (mr *MockMigraterMockRecorder) GetTask(arg0, arg1 interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTask", reflect.TypeOf((*MockMigrater)(nil).GetTask), arg0, arg1)
 }
 
+// IsClosed mocks base method.
+func (m *MockMigrater) IsClosed() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsClosed")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsClosed indicates an expected call of IsClosed.
+func (mr *MockMigraterMockRecorder) IsClosed() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsClosed", reflect.TypeOf((*MockMigrater)(nil).IsClosed))
+}
+
 // IsDeletedTask mocks base method.
 func (m *MockMigrater) IsDeletedTask(arg0 *proto.MigrateTask) bool {
 	m.ctrl.T.Helper()
@@ -716,6 +730,20 @@ func (mr *MockVolumeInspectorMockRecorder) GetTaskStats() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskStats", reflect.TypeOf((*MockVolumeInspector)(nil).GetTaskStats))
 }
 
+// IsClosed mocks base method.
+func (m *MockVolumeInspector) IsClosed() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsClosed")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsClosed indicates an expected call of IsClosed.
+func (mr *MockVolumeInspectorMockRecorder) IsClosed() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsClosed", reflect.TypeOf((*MockVolumeInspector)(nil).IsClosed))
+}
+
 // Run mocks base method.
 func (m *MockVolumeInspector) Run() {
 	m.ctrl.T.Helper()
@@ -832,6 +860,20 @@ func (m *MockClusterTopology) IsBrokenDisk(arg0 proto.DiskID) bool {
 func (mr *MockClusterTopologyMockRecorder) IsBrokenDisk(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsBrokenDisk", reflect.TypeOf((*MockClusterTopology)(nil).IsBrokenDisk), arg0)
+}
+
+// IsClosed mocks base method.
+func (m *MockClusterTopology) IsClosed() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsClosed")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsClosed indicates an expected call of IsClosed.
+func (mr *MockClusterTopologyMockRecorder) IsClosed() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsClosed", reflect.TypeOf((*MockClusterTopology)(nil).IsClosed))
 }
 
 // LoadVolumes mocks base method.
@@ -1023,6 +1065,20 @@ func (m *MockShardMigrator) GetTask(arg0 context.Context, arg1 string) (*proto.S
 func (mr *MockShardMigratorMockRecorder) GetTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTask", reflect.TypeOf((*MockShardMigrator)(nil).GetTask), arg0, arg1)
+}
+
+// IsClosed mocks base method.
+func (m *MockShardMigrator) IsClosed() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsClosed")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsClosed indicates an expected call of IsClosed.
+func (mr *MockShardMigratorMockRecorder) IsClosed() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsClosed", reflect.TypeOf((*MockShardMigrator)(nil).IsClosed))
 }
 
 // ListImmigratedSuid mocks base method.

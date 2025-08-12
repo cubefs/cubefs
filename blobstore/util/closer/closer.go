@@ -16,6 +16,7 @@ package closer
 
 import (
 	"sync"
+	"sync/atomic"
 )
 
 // Closer is the interface for object that can release its resources.
@@ -24,6 +25,8 @@ type Closer interface {
 	Close()
 	// Done returns a channel that's closed when object was closed.
 	Done() <-chan struct{}
+	// IsClosed returns true if object was closed, it's a quite lightly operation than Done.
+	IsClosed() bool
 }
 
 // Close release all resources holded by the object.
@@ -42,16 +45,22 @@ func New() Closer {
 }
 
 type closer struct {
-	once sync.Once
-	ch   chan struct{}
+	once   sync.Once
+	ch     chan struct{}
+	closed uint32
 }
 
 func (c *closer) Close() {
 	c.once.Do(func() {
 		close(c.ch)
+		atomic.StoreUint32(&c.closed, 1)
 	})
 }
 
 func (c *closer) Done() <-chan struct{} {
 	return c.ch
+}
+
+func (c *closer) IsClosed() bool {
+	return atomic.LoadUint32(&c.closed) == 1
 }

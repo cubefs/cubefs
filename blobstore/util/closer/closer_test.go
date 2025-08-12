@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
 
@@ -33,6 +35,7 @@ func TestCloserClose(t *testing.T) {
 		c := closer.New()
 		for range [1 << 10]struct{}{} {
 			c.Close()
+			require.Equal(t, true, c.IsClosed())
 		}
 	}
 	{
