@@ -65,6 +65,8 @@ type Config struct {
 	FileChunkSizeBits uint   `json:"file_chunk_size_bits"`
 	Backup            int    `json:"backup"`
 	Suffix            string `json:"suffix"`
+
+	AsyncConfig
 }
 
 type largeFile struct {
@@ -171,7 +173,10 @@ func OpenLargeFile(cfg Config) (LargeFile, error) {
 	}
 	l.off = fsize
 
-	return l, nil
+	cfg.AsyncConfig.lf = l
+	alf := newAsyncLargeFile(cfg.AsyncConfig)
+
+	return alf, nil
 }
 
 func (l *largeFile) Write(b []byte) (n int, err error) {
