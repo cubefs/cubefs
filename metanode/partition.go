@@ -2151,6 +2151,10 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 	var statMigStorageClass *proto.StatOfStorageClass
 	var ok bool
 
+	uidRebuild := mp.acucumRebuildStart()
+	thresholds, _, enable := mp.manager.GetFileStatsConfig()
+	fileRange := make([]int64, len(thresholds)+1)
+
 	snap, err := mp.GetSnapShot()
 	if err != nil {
 		log.LogErrorf("mp[%d] create snap shot failed", mp.config.PartitionId)
@@ -2192,9 +2196,21 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 		statMigStorageClass.InodeCount++
 		statMigStorageClass.UsedSizeBytes += inode.Size
 
+		if uidRebuild {
+			mp.acucumUidSizeByStore(inode)
+		}
+		if enable && proto.IsRegular(inode.Type) && inode.NLink > 0 {
+			index := calculateFileRangeIndex(inode.Size, thresholds)
+			if index >= 0 && index < len(fileRange) {
+				fileRange[index]++
+			}
+		}
+
 		return true
 	})
 
+	mp.fileRange = fileRange
+	mp.acucumRebuildFin(uidRebuild)
 	mp.size = migrateSize
 
 	normalToSlice := make([]*proto.StatOfStorageClass, 0)
@@ -2550,12 +2566,6 @@ func (mp *metaPartition) TransferSnapshot() error {
 }
 
 func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
-	err = mp.storeRocksdbInode(sm)
-	if err != nil {
-		log.LogErrorf("storeRocksdb rocksdb inode failed, err: %s", err.Error())
-		return err
-	}
-
 	err = mp.storeRocksdbExtent(sm)
 	if err != nil {
 		log.LogErrorf("storeRocksdb rocksdb extent failed, err: %s", err.Error())

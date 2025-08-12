@@ -1576,39 +1576,6 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 	return
 }
 
-func (mp *metaPartition) storeRocksdbInode(sm *storeMsg) error {
-	log.LogWarnf("storeRocksdbInode vol(%s) mp(%d) storeMode(%d)", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
-	thresholds, _, enable := mp.manager.GetFileStatsConfig()
-	fileRange := make([]int64, len(thresholds)+1)
-	size := uint64(0)
-
-	err := sm.snap.Range(InodeType, func(i interface{}) bool {
-		ino := i.(*Inode)
-		if sm.uidRebuild {
-			mp.acucumUidSizeByStore(ino)
-		}
-
-		size += ino.Size
-		if enable && proto.IsRegular(ino.Type) && ino.NLink > 0 {
-			index := calculateFileRangeIndex(ino.Size, thresholds)
-			if index >= 0 && index < len(fileRange) {
-				fileRange[index]++
-			}
-		}
-		return true
-	})
-	if err != nil {
-		log.LogErrorf("storeRocksdbInode mp(%d) scan inode table: %s", mp.config.PartitionId, err.Error())
-		return err
-	}
-
-	mp.fileRange = fileRange
-	mp.acucumRebuildFin(sm.uidRebuild)
-	mp.size = size
-
-	return nil
-}
-
 func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 	log.LogWarnf("loadRocksdbInode vol(%s) mp(%d) storeMode(%d) start", mp.config.VolName, mp.config.PartitionId, mp.config.StoreMode)
 	snap, err := mp.GetSnapShot()
