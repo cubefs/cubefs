@@ -244,3 +244,34 @@ func (sender *AdminTaskManager) AddTask(t *proto.AdminTask) {
 		sender.TaskMap[t.ID] = t
 	}
 }
+
+func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
+	packet, err = sender.buildPacket(task)
+	if err != nil {
+		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
+	}
+	log.LogInfof("action[syncSendAdminTask],task[%s], op %s, reqId %d", task.ToString(), packet.GetOpMsg(), packet.GetReqID())
+	conn, err := sender.getConn()
+	if err != nil {
+		return nil, errors.Trace(err, "action[syncSendAdminTask get conn failed,task:%v]", task.ID)
+	}
+	defer func() {
+		if err == nil {
+			sender.putConn(conn, false)
+		} else {
+			sender.putConn(conn, true)
+		}
+	}()
+	if err = packet.WriteToConn(conn); err != nil {
+		return nil, errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v,reqID[%v]", task.ID, packet.ReqID)
+	}
+	if err = packet.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime); err != nil {
+		return nil, errors.Trace(err, "action[syncSendAdminTask],ReadFromConn failed task:%v,reqID[%v]", task.ID, packet.ReqID)
+	}
+	if packet.ResultCode != proto.OpOk {
+		err = fmt.Errorf("result code[%v],msg[%v]", packet.ResultCode, string(packet.Data))
+		log.LogErrorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
+		return
+	}
+	return packet, nil
+}

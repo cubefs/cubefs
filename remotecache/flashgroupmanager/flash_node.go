@@ -129,3 +129,13 @@ func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHand
 	task = proto.NewAdminTask(proto.OpFlashNodeHeartbeat, flashNode.Addr, request)
 	return
 }
+
+func (flashNode *FlashNode) createSetIOLimitsTask(flow, iocc, factor int, opCode uint8) (task *proto.AdminTask) {
+	request := &proto.FlashNodeSetIOLimitsRequest{
+		Flow:   flow,
+		Iocc:   iocc,
+		Factor: factor,
+	}
+	task = proto.NewAdminTask(opCode, flashNode.Addr, request)
+	return
+}
