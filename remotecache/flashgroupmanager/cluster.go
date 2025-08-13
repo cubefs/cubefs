@@ -70,6 +70,9 @@ func (c *Cluster) createFlashGroup(setSlots []uint32, setWeight uint32, gradualF
 }
 
 func (c *Cluster) removeFlashGroup(flashGroup *FlashGroup, gradualFlag bool, step uint32) (err error) {
+	if log.EnableInfo() {
+		log.LogInfof("removeFlashGroup with fg(%v) gradualFlag(%v) step(%v)", flashGroup, gradualFlag, step)
+	}
 	remainingSlotsNum := uint32(flashGroup.getSlotsCount()) - step
 	if gradualFlag && remainingSlotsNum > 0 {
 		err = c.flashNodeTopo.gradualRemoveFlashGroup(flashGroup, c, step)
@@ -95,7 +98,9 @@ func (c *Cluster) removeAllFlashNodeFromFlashGroup(flashGroup *FlashGroup) (err 
 		}
 		successHost = append(successHost, flashNodeHost)
 	}
-	log.LogInfof("action[RemoveAllFlashNodeFromFlashGroup] flashGroup:%v successHost:%v", flashGroup.ID, successHost)
+	if log.EnableInfo() {
+		log.LogInfof("action[RemoveAllFlashNodeFromFlashGroup] flashGroup:%v successHost:%v step:%v", flashGroup.ID, successHost, flashGroup.Step)
+	}
 	return
 }
 

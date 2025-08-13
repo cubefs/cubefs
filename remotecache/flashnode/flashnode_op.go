@@ -318,15 +318,19 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		return proto.ErrorParsingCacheWriteHead
 	}
 	uniKey = req.UniKey
+	var ep time.Time
 	pDir := cachengine.MapKeyToDirectory(uniKey)
 	blockKey := cachengine.GenCacheBlockKeyV2(pDir, uniKey)
-	_, err1 := f.cacheEngine.GetCacheBlockForReadByKey(blockKey)
+	eb, err1 := f.cacheEngine.GetCacheBlockForReadByKey(blockKey)
 	if err1 == nil {
 		if log.EnableDebug() {
 			log.LogDebug(logPrefix+" check block key:"+uniKey+" logMsg:",
 				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 		}
-		err = fmt.Errorf(proto.ErrorBlockAlreadyExistsTpl, uniKey)
+		if eb != nil {
+			ep = eb.GetExpiredTime()
+		}
+		err = fmt.Errorf(proto.ErrorBlockAlreadyExistsTpl, uniKey, ep)
 		return err
 	}
 	var allocSize int
@@ -338,11 +342,15 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		log.LogDebug(logPrefix+" create block key:"+uniKey+" logMsg:",
 			p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 	}
+	defer f.missCache.Delete(uniKey)
 	if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(allocSize), conn.RemoteAddr().String()); err2 != nil || created {
 		if err2 != nil {
 			err = fmt.Errorf(proto.ErrorCreateBlockFailedTpl, cachengine.GenCacheBlockKeyV2(pDir, uniKey), err2.Error())
 		} else {
-			err = fmt.Errorf(proto.ErrorBlockAlreadyCreatedTpl, cachengine.GenCacheBlockKeyV2(pDir, uniKey))
+			if cb != nil {
+				ep = cb.GetExpiredTime()
+			}
+			err = fmt.Errorf(proto.ErrorBlockAlreadyCreatedTpl, cachengine.GenCacheBlockKeyV2(pDir, uniKey), ep)
 		}
 		return
 	} else {

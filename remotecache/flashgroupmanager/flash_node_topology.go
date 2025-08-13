@@ -186,11 +186,16 @@ func (t *FlashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 		if fg.GetStatus().IsActive() {
 			hosts := fg.getFlashNodeHostsEnableAndActive()
 			if len(hosts) == 0 {
+				if log.EnableInfo() {
+					log.LogInfof("fg(%v) lost all flashnodes", fg)
+				}
 				atomic.StoreInt32(&fg.LostAllFlashNode, 1)
 				fg.ReduceSlot()
 			} else if len(fg.ReservedSlots) > 0 {
+				fg.lock.Lock()
 				fg.Slots = append(fg.Slots, fg.ReservedSlots...)
-				fg.ReservedSlots = nil
+				fg.ReservedSlots = make([]uint32, 0)
+				fg.lock.Unlock()
 				atomic.StoreInt32(&fg.LostAllFlashNode, 0)
 				atomic.StoreInt32(&fg.SlotChanged, 1)
 			}
@@ -198,7 +203,10 @@ func (t *FlashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 			if len(fg.Slots) == 0 {
 				disableFlashGroupNum++
 				if disableFlashGroupNum >= maxDisableFlashGroupCount && len(fg.ReservedSlots) > 0 {
+					fg.lock.Lock()
 					fg.Slots = append(fg.Slots, fg.ReservedSlots...)
+					fg.ReservedSlots = make([]uint32, 0)
+					fg.lock.Unlock()
 					atomic.StoreInt32(&fg.SlotChanged, 1)
 				} else {
 					return true
