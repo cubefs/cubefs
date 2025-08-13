@@ -203,8 +203,10 @@ func (f *FlashNode) handleSetWriteDiskQos(w http.ResponseWriter, r *http.Request
 	if updated {
 		f.limitWrite.ResetIOEx(f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, f.handleReadTimeout)
 		f.limitWrite.ResetFlow(f.diskWriteFlow)
+		replyOK(w, r, nil)
+	} else {
+		replyErr(w, r, http.StatusBadRequest, "request param is not an update key", nil)
 	}
-	replyOK(w, r, nil)
 }
 
 func (f *FlashNode) handleSetReadDiskQos(w http.ResponseWriter, r *http.Request) {
@@ -244,8 +246,10 @@ func (f *FlashNode) handleSetReadDiskQos(w http.ResponseWriter, r *http.Request)
 	if updated {
 		f.limitRead.ResetIOEx(f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow, f.handleReadTimeout)
 		f.limitRead.ResetFlow(f.diskReadFlow)
+		replyOK(w, r, nil)
+	} else {
+		replyErr(w, r, http.StatusBadRequest, "request param is not an update key", nil)
 	}
-	replyOK(w, r, nil)
 }
 
 func (f *FlashNode) handleGetDiskQos(w http.ResponseWriter, r *http.Request) {

@@ -57,7 +57,7 @@ const (
 	_connPoolIdleTimeout                   = 60 // 60s
 	_extentReadMaxRetry                    = 3
 	_defaultDiskWriteIOCC                  = 64
-	_defaultDiskWriteFlow                  = _defaultDiskReadFlow / 2
+	_defaultDiskWriteFlow                  = _defaultDiskReadFlow
 	_defaultDiskWriteFactor                = 8
 	_defaultDiskReadIOCC                   = 64
 	_defaultDiskReadFlow                   = 1 * util.GB
@@ -294,7 +294,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if f.diskReadIocc <= 0 {
 		f.diskReadIocc = _defaultDiskReadIOCC
 	}
-	f.diskReadFlow = cfg.GetInt(cfgDiskReadFlow)
+	f.diskReadFlow = int(cfg.GetInt64(cfgDiskReadFlow))
 	if f.diskReadFlow == 0 {
 		f.diskReadFlow = _defaultDiskReadFlow
 	}
