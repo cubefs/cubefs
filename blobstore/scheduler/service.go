@@ -332,6 +332,7 @@ func (svr *Service) HTTPStats(c *rpc.Context) {
 	}
 
 	if !svr.leader {
+		taskStats.Blobnode = blobnodeTaskStats
 		c.RespondJSON(taskStats)
 		return
 	}
