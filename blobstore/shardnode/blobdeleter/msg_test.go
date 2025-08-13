@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package base
+package blobdeleter
 
 import (
 	"bytes"
@@ -28,11 +28,12 @@ import (
 
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 )
 
 func TestEncodeDecodeDelMsgKey(t *testing.T) {
 	t.Run("EncodeDelMsgKey", func(t *testing.T) {
-		g := NewTsGenerator(0)
+		g := base.NewTsGenerator(0)
 		ts := g.GenerateTs()
 		vid := proto.Vid(123)
 		bid := proto.BlobID(456)
@@ -54,7 +55,7 @@ func TestEncodeDecodeDelMsgKey(t *testing.T) {
 	})
 
 	t.Run("EncodeRawDelMsgKey", func(t *testing.T) {
-		g := NewTsGenerator(0)
+		g := base.NewTsGenerator(0)
 		ts := g.GenerateTs()
 		vid := proto.Vid(365)
 		bid := proto.BlobID(45542013)
@@ -77,7 +78,7 @@ func TestEncodeDecodeDelMsgKey(t *testing.T) {
 	})
 
 	t.Run("CompositeOrdering", func(t *testing.T) {
-		g := NewTsGenerator(0)
+		g := base.NewTsGenerator(0)
 		ts1 := g.GenerateTs()
 		key1 := EncodeDelMsgKey(ts1, 200, 50, [][]byte{[]byte("part1"), []byte("z")})
 		time.Sleep(time.Millisecond)
@@ -100,7 +101,7 @@ func Benchmark(b *testing.B) {
 	require.Nil(b, err)
 	defer store.Close()
 
-	g := NewTsGenerator(0)
+	g := base.NewTsGenerator(0)
 	b.ResetTimer()
 	b.Run("Generate message key and store", func(b *testing.B) {
 		ts := g.GenerateTs()

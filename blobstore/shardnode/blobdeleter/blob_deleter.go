@@ -543,7 +543,7 @@ func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 		return nil
 	}
 	shard := v.(*shardListReader)
-	_, _, _, shardKeys, err := base.DecodeDelMsgKey(msgExt.msgKey, shard.ShardingSubRangeCount())
+	_, _, _, shardKeys, err := DecodeDelMsgKey(msgExt.msgKey, shard.ShardingSubRangeCount())
 	if err != nil {
 		span.Errorf("shard[%d] decode shardKeys failed, key: %+v, err: %s", msgExt.suid, msgExt.msgKey, err.Error())
 		return err
@@ -551,7 +551,7 @@ func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 
 	punishDr := time.Duration(m.cfg.PunishTimeoutH) * time.Hour
 	ts := m.tsGen.CurrentTs().Add(punishDr)
-	punishMsgKey := base.EncodeDelMsgKey(ts, msg.Slice.Vid, msg.Slice.MinSliceID, shardKeys)
+	punishMsgKey := EncodeDelMsgKey(ts, msg.Slice.Vid, msg.Slice.MinSliceID, shardKeys)
 
 	msg.Retry = 0
 	msg.Time = ts.TimeUnix()
@@ -594,7 +594,7 @@ func (m *BlobDeleteMgr) clearShardMessages(ctx context.Context, suid proto.Suid,
 		return
 	}
 	shard := v.(*shardListReader)
-	_, _, _, shardKeys, err := base.DecodeDelMsgKey(items[0].ID, shard.ShardingSubRangeCount())
+	_, _, _, shardKeys, err := DecodeDelMsgKey(items[0].ID, shard.ShardingSubRangeCount())
 	if err != nil {
 		span.Errorf("shard[%d] decode shardKeys failed, key: %+v, err: %s", suid, items[0].ID, err.Error())
 		return
@@ -654,7 +654,7 @@ func (m *BlobDeleteMgr) slicesToDeleteMsgItems(ctx context.Context, slices []pro
 	items := make([]snapi.Item, len(slices))
 	for i := range slices {
 		ts := m.tsGen.GenerateTs()
-		key := base.EncodeDelMsgKey(ts, slices[i].Vid, slices[i].MinSliceID, shardKeys)
+		key := EncodeDelMsgKey(ts, slices[i].Vid, slices[i].MinSliceID, shardKeys)
 		msg := snproto.DeleteMsg{
 			Slice:       slices[i],
 			Time:        ts.TimeUnix(),
@@ -674,7 +674,7 @@ func (m *BlobDeleteMgr) slicesToDeleteMsgItems(ctx context.Context, slices []pro
 func (m *BlobDeleteMgr) sliceToDeleteMsgItemRaw(ctx context.Context, slices proto.Slice, tagNum int) (snapi.Item, [][]byte, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	ts := m.tsGen.GenerateTs()
-	key, shardKeys := base.EncodeRawDelMsgKey(ts, slices.Vid, slices.MinSliceID, tagNum)
+	key, shardKeys := EncodeRawDelMsgKey(ts, slices.Vid, slices.MinSliceID, tagNum)
 
 	msg := snproto.DeleteMsg{
 		Slice:       slices,

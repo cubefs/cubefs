@@ -21,7 +21,6 @@ import (
 
 	snapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -121,7 +120,7 @@ func (r *shardListReader) listFromStorage(ctx context.Context, protectDuration t
 	}
 
 	// if nextMarker's timeUnix if protected, set protected
-	ts, _, _, _, err := base.DecodeDelMsgKey(r.nextMarker, r.ShardingSubRangeCount())
+	ts, _, _, _, err := DecodeDelMsgKey(r.nextMarker, r.ShardingSubRangeCount())
 	if err != nil {
 		span.Errorf("decode nextMarker[%+v] failed, err: %v", r.nextMarker, err)
 		return nil, err

@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package base
+package blobdeleter
 
 import (
 	"encoding/binary"
@@ -21,6 +21,7 @@ import (
 
 	snapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 )
 
@@ -28,7 +29,7 @@ const minMsgKeyLen = 21 // 1(prefix) + 8(ts) + 4(vid) + 8(bid)
 
 var errInvalidMsgKey = errors.New("invalid msg key")
 
-func EncodeDelMsgKey(ts Ts, vid proto.Vid, bid proto.BlobID, shardKeys [][]byte) []byte {
+func EncodeDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, shardKeys [][]byte) []byte {
 	shardKeyLen := 0
 	for _, sk := range shardKeys {
 		shardKeyLen += len(sk)
@@ -55,7 +56,7 @@ func EncodeDelMsgKey(ts Ts, vid proto.Vid, bid proto.BlobID, shardKeys [][]byte)
 	return buf
 }
 
-func EncodeRawDelMsgKey(ts Ts, vid proto.Vid, bid proto.BlobID, tagNum int) (key []byte, shardKeys [][]byte) {
+func EncodeRawDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, tagNum int) (key []byte, shardKeys [][]byte) {
 	key1 := []byte(fmt.Sprintf("%d", uint32(vid)))
 	key2 := []byte(fmt.Sprintf("%d", uint64(bid)))
 
@@ -71,11 +72,11 @@ func EncodeRawDelMsgKey(ts Ts, vid proto.Vid, bid proto.BlobID, tagNum int) (key
 	return EncodeDelMsgKey(ts, vid, bid, shardKeys), shardKeys
 }
 
-func DecodeDelMsgKey(key []byte, tagNum int) (Ts, proto.Vid, proto.BlobID, [][]byte, error) {
+func DecodeDelMsgKey(key []byte, tagNum int) (base.Ts, proto.Vid, proto.BlobID, [][]byte, error) {
 	if len(key) < minMsgKeyLen+2*tagNum {
-		return Ts(0), proto.InvalidVid, proto.InValidBlobID, nil, errInvalidMsgKey
+		return base.Ts(0), proto.InvalidVid, proto.InValidBlobID, nil, errInvalidMsgKey
 	}
-	ts := Ts(binary.BigEndian.Uint64(key[1:9]))
+	ts := base.Ts(binary.BigEndian.Uint64(key[1:9]))
 	vid := proto.Vid(binary.BigEndian.Uint32(key[9:13]))
 	bid := proto.BlobID(binary.BigEndian.Uint64(key[13:21]))
 	return ts, vid, bid, snapi.ParseShardKeys(key[minMsgKeyLen:], tagNum), nil

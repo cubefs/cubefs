@@ -142,7 +142,7 @@ func TestShardListReader_ListFromStorage_Success(t *testing.T) {
 	g := base.NewTsGenerator(0)
 	tagNum := 2
 	ts := g.GenerateTs()
-	id, _ := base.EncodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(100), tagNum)
+	id, _ := EncodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(100), tagNum)
 	// mock item
 	oldTime := time.Now().Add(-2 * time.Hour).Unix()
 	item := snapi.Item{
@@ -178,9 +178,9 @@ func TestShardListReader_ListFromStorage_WithProtectedMessages(t *testing.T) {
 	g := base.NewTsGenerator(0)
 	tagNum := 2
 	ts1 := g.GenerateTs()
-	id1, _ := base.EncodeRawDelMsgKey(ts1, proto.Vid(1), proto.BlobID(100), tagNum)
+	id1, _ := EncodeRawDelMsgKey(ts1, proto.Vid(1), proto.BlobID(100), tagNum)
 	ts2 := g.GenerateTs()
-	id2, _ := base.EncodeRawDelMsgKey(ts2, proto.Vid(1), proto.BlobID(101), tagNum)
+	id2, _ := EncodeRawDelMsgKey(ts2, proto.Vid(1), proto.BlobID(101), tagNum)
 
 	oldTime := time.Now().Add(-2 * time.Hour).Unix()
 	now := time.Now().Unix()
@@ -210,7 +210,7 @@ func TestShardListReader_ListFromStorage_WithProtectedMessages(t *testing.T) {
 	}
 
 	ts := base.NewTs(time.Now().Unix())
-	protectedNextMarker, _ := base.EncodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(102), tagNum)
+	protectedNextMarker, _ := EncodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(102), tagNum)
 
 	handler := mock.NewMockSpaceShardHandler(ctr(t))
 	handler.EXPECT().GetRouteVersion().Return(proto.RouteVersion(1))
@@ -262,8 +262,8 @@ func TestShardListReader_IsProtected(t *testing.T) {
 
 	// nextMarker > 0, and is unprotected
 	ts := base.NewTs(time.Now().Add(-2 * time.Hour).Unix())
-	key, _ := base.EncodeRawDelMsgKey(ts, vid, bid, tagNum)
-	_ts, _, _, _, err := base.DecodeDelMsgKey(key, tagNum)
+	key, _ := EncodeRawDelMsgKey(ts, vid, bid, tagNum)
+	_ts, _, _, _, err := DecodeDelMsgKey(key, tagNum)
 	require.NoError(t, err)
 
 	reader.setProtected(_ts.TimeUnix())
@@ -271,8 +271,8 @@ func TestShardListReader_IsProtected(t *testing.T) {
 
 	// nextMarker > 0, and is protected
 	ts = base.NewTs(time.Now().Unix())
-	key, _ = base.EncodeRawDelMsgKey(ts, vid, bid, tagNum)
-	_ts, _, _, _, err = base.DecodeDelMsgKey(key, tagNum)
+	key, _ = EncodeRawDelMsgKey(ts, vid, bid, tagNum)
+	_ts, _, _, _, err = DecodeDelMsgKey(key, tagNum)
 	require.NoError(t, err)
 
 	reader.setProtected(_ts.TimeUnix())
