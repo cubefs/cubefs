@@ -17,6 +17,7 @@ package base
 import (
 	"encoding/binary"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -64,4 +65,32 @@ func (ts *Ts) Unmarshal(raw []byte) {
 
 func (ts Ts) Add(dr time.Duration) Ts {
 	return Ts(time.Unix(int64(ts>>32), 0).Add(dr).Unix() << 32)
+}
+
+type TsGenerator struct {
+	ts int64
+}
+
+func NewTsGenerator(lastTs Ts) *TsGenerator {
+	now := NewTs(time.Now().Unix())
+	if now.Compare(lastTs) > 0 {
+		return &TsGenerator{ts: int64(now)}
+	}
+	return &TsGenerator{ts: int64(lastTs)}
+}
+
+func (g *TsGenerator) GenerateTs() Ts {
+	now := time.Now().Unix() << 32
+	lastTs := atomic.LoadInt64(&g.ts)
+	if now <= lastTs {
+		return Ts(atomic.AddInt64(&g.ts, 1))
+	}
+	if atomic.CompareAndSwapInt64(&g.ts, lastTs, now) {
+		return Ts(now)
+	}
+	return Ts(atomic.AddInt64(&g.ts, 1))
+}
+
+func (g *TsGenerator) CurrentTs() Ts {
+	return Ts(atomic.LoadInt64(&g.ts))
 }

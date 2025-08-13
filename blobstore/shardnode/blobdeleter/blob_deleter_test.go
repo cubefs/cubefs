@@ -17,7 +17,6 @@ package blobdeleter
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -50,7 +49,7 @@ func newTestBlobDeleteMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, v
 			MsgChannelNum:        2,
 			MsgChannelSize:       10,
 			FailedMsgChannelSize: 5,
-			TaskPoolSize:         4,
+			ProduceTaskPoolSize:  4,
 			RateLimit:            100.0,
 			RateLimitBurst:       10,
 			MaxListMessageNum:    100,
@@ -86,9 +85,9 @@ func newTestBlobDeleteMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, v
 	return &BlobDeleteMgr{
 		cfg:             cfg,
 		taskSwitch:      sw,
-		msgKeyGen:       base.NewMsgKeyGenerator(base.Ts(0)),
-		produceTaskPool: taskpool.New(cfg.TaskPoolSize, 1),
-		consumeTaskPool: taskpool.New(cfg.TaskPoolSize, 1),
+		tsGen:           base.NewTsGenerator(base.Ts(0)),
+		produceTaskPool: taskpool.New(cfg.ProduceTaskPoolSize, 1),
+		consumeTaskPool: taskpool.New(cfg.ProduceTaskPoolSize, 1),
 
 		msgChannels:   msgChannels,
 		failedMsgChan: make(chan *delMsgExt, cfg.FailedMsgChannelSize),
@@ -156,7 +155,7 @@ func TestNewBlobDeleteMgr(t *testing.T) {
 			MsgChannelNum:        2,
 			MsgChannelSize:       10,
 			FailedMsgChannelSize: 5,
-			TaskPoolSize:         4,
+			ProduceTaskPoolSize:  4,
 			RateLimit:            100.0,
 			RateLimitBurst:       10,
 			MaxListMessageNum:    100,
@@ -172,20 +171,21 @@ func TestNewBlobDeleteMgr(t *testing.T) {
 
 func TestBlobDeleteMgr_ListShardMsg(t *testing.T) {
 	ctx := context.Background()
+
+	diskID := proto.DiskID(1)
+	suid := proto.Suid(123)
+
 	sh := mock.NewMockSpaceShardHandler(ctr(t))
 	sh.EXPECT().IsLeader().Return(true)
+	sh.EXPECT().GetSuid().Return(suid)
 
 	sg := mock.NewMockDelMgrShardGetter(ctr(t))
 	sg.EXPECT().GetShard(any, any).Return(sh, nil)
 
 	mgr := newTestBlobDeleteMgr(t, sg, nil, nil)
 
-	diskID := proto.DiskID(1)
-	suid := proto.Suid(123)
 	reader := newTestShardListReader(sh)
-	mgr.shardListReaderMap.Store(suid, reader)
-
-	_hasMsg, err := mgr.listShardMsg(ctx, diskID, suid)
+	_hasMsg, err := mgr.listShardMsg(ctx, diskID, reader)
 	require.Nil(t, err)
 	require.True(t, _hasMsg)
 }
@@ -193,6 +193,7 @@ func TestBlobDeleteMgr_ListShardMsg(t *testing.T) {
 func TestBlobDeleteMgr_RunConsumeTask(t *testing.T) {
 	suid := proto.Suid(123)
 	sh := mock.NewMockSpaceShardHandler(ctr(t))
+	sh.EXPECT().ShardingSubRangeCount().Return(2).AnyTimes()
 	sh.EXPECT().GetRouteVersion().Return(proto.RouteVersion(1)).AnyTimes()
 	sh.EXPECT().BatchWriteItem(any, any, any, any).Return(nil).AnyTimes()
 
@@ -206,6 +207,7 @@ func TestBlobDeleteMgr_RunConsumeTask(t *testing.T) {
 		}).AnyTimes()
 
 	mgr := newTestBlobDeleteMgr(t, nil, nil, vc)
+	mgr.cfg.MaxExecuteBidNum = 8
 	reader := newTestShardListReader(sh)
 	mgr.shardListReaderMap.Store(suid, reader)
 
@@ -218,16 +220,22 @@ func TestBlobDeleteMgr_RunConsumeTask(t *testing.T) {
 		cnt := uint32(rand.Int31n(10))
 		slice.Count = cnt
 		j += cnt
+		ts := mgr.tsGen.GenerateTs()
+		id, _ := base.EncodeRawDelMsgKey(ts, slice.Vid, slice.MinSliceID, 2)
 		mgr.msgChannels[0] <- &delMsgExt{
 			suid: suid,
 			msg: snproto.DeleteMsg{
 				Slice: slice,
 			},
+			msgKey: id,
 		}
 	}
-	mgr.runConsumeTask(0)
-	require.Equal(t, len(mgr.msgChannels[0]), 0)
-	require.Equal(t, len(mgr.failedMsgChan), 0)
+	go mgr.runConsumeTask(context.Background(), 0)
+	for {
+		if len(mgr.msgChannels[0]) == 0 {
+			break
+		}
+	}
 }
 
 func TestBlobDeleteMgr_DeleteWithCheckVolConsistency(t *testing.T) {
@@ -272,11 +280,9 @@ func TestBlobDeleteMgr_DeleteWithCheckVolConsistency(t *testing.T) {
 	}
 
 	// check delete stage before delete
-	stageMgr := newDeleteStageMgr()
-	stageMgr.setMsgDelStage(delRet.msgExt.msg.MsgDelStage)
 	for i := 0; i < bidCnt; i++ {
-		require.False(t, stageMgr.hasMarkDel(proto.BlobID(minBid)+proto.BlobID(i)))
-		require.False(t, stageMgr.hasDelete(proto.BlobID(minBid+proto.BlobID(i))))
+		require.False(t, msg.hasMarkDel(proto.BlobID(minBid)+proto.BlobID(i)))
+		require.False(t, msg.hasDelete(proto.BlobID(minBid+proto.BlobID(i))))
 	}
 
 	// delete
@@ -284,11 +290,72 @@ func TestBlobDeleteMgr_DeleteWithCheckVolConsistency(t *testing.T) {
 	require.Nil(t, err)
 
 	// check delete stage after delete
-	stageMgr.setMsgDelStage(delRet.msgExt.msg.MsgDelStage)
 	for i := 0; i < bidCnt; i++ {
-		require.True(t, stageMgr.hasMarkDel(proto.BlobID(minBid)+proto.BlobID(i)))
-		require.True(t, stageMgr.hasDelete(proto.BlobID(minBid+proto.BlobID(i))))
+		require.True(t, msg.hasMarkDel(proto.BlobID(minBid)+proto.BlobID(i)))
+		require.True(t, msg.hasDelete(proto.BlobID(minBid+proto.BlobID(i))))
 	}
+}
+
+func TestBlobDeleteMgr_DeleteWithCheckVolConsistency2(t *testing.T) {
+	// mock volume info
+	vid := proto.Vid(1)
+	volInfo := newMockSimpleVolumeInfo(vid)
+
+	// mock volume cache transport
+	volTp := mocks.NewMockVolumeTransport(ctr(t))
+	volTp.EXPECT().GetVolumeInfo(any, any).Return(volInfo, nil).AnyTimes()
+
+	uintCount := volInfo.CodeMode.GetShardNum()
+	//  mock blob transport
+	blobTp := mocks.NewMockBlobTransport(ctr(t))
+	blobTp.EXPECT().MarkDeleteSlice(any, any, any).DoAndReturn(func(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+		return nil
+	}).Times(uintCount)
+
+	firstTime := true
+	blobTp.EXPECT().DeleteSlice(any, any, any).DoAndReturn(func(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+		if firstTime {
+			return errors.New("mock err")
+		}
+		return nil
+	}).AnyTimes()
+
+	vc := base.NewVolumeCache(volTp, 1)
+	mgr := newTestBlobDeleteMgr(t, nil, blobTp, vc)
+
+	bid := proto.BlobID(1)
+	msg := &delMsgExt{
+		suid: proto.Suid(123),
+		msg: snproto.DeleteMsg{
+			Slice: proto.Slice{
+				MinSliceID: bid,
+				Vid:        vid,
+				Count:      1,
+				ValidSize:  10,
+			},
+			MsgDelStage: make(map[uint64]snproto.BlobDeleteStage),
+		},
+	}
+
+	delRet := &delBlobRet{
+		msgExt: msg,
+		ctx:    context.Background(),
+	}
+
+	// delete first time, markDelete success, delete failed
+	err := mgr.deleteWithCheckVolConsistency(context.Background(), vid, delRet)
+	require.NotNil(t, err)
+
+	require.True(t, msg.hasMarkDel(bid))
+	require.False(t, msg.hasDelete(bid))
+
+	firstTime = false
+	// delete second time, skip markDelete
+	err = mgr.deleteWithCheckVolConsistency(context.Background(), vid, delRet)
+	require.Nil(t, err)
+
+	require.True(t, msg.hasMarkDel(bid))
+	require.True(t, msg.hasDelete(bid))
 }
 
 func TestBlobDeleteMgr_DeleteFailed_Retry(t *testing.T) {
@@ -330,12 +397,17 @@ func TestBlobDeleteMgr_DeleteFailed_Punish(t *testing.T) {
 	suid := proto.Suid(123)
 	vc := mocks.NewMockIVolumeCache(ctr(t))
 	vc.EXPECT().DoubleCheckedRun(any, any, any).Return(errors.New("mock err"))
+	mgr := newTestBlobDeleteMgr(t, nil, nil, vc)
 
 	vid := proto.Vid(1)
 	minBid := proto.BlobID(1)
+	tagNum := 2
 	bidCnt := 5
+	ts := mgr.tsGen.GenerateTs()
+	id, _ := base.EncodeRawDelMsgKey(ts, vid, minBid, tagNum)
 	msg := &delMsgExt{
-		suid: suid,
+		msgKey: id,
+		suid:   suid,
 		msg: snproto.DeleteMsg{
 			Retry: 2,
 			Slice: proto.Slice{
@@ -349,10 +421,10 @@ func TestBlobDeleteMgr_DeleteFailed_Punish(t *testing.T) {
 	}
 
 	sh := mock.NewMockSpaceShardHandler(ctr(t))
+	sh.EXPECT().ShardingSubRangeCount().Return(tagNum)
 	sh.EXPECT().GetRouteVersion().Return(proto.RouteVersion(1))
 	sh.EXPECT().BatchWriteItem(any, any, any, any).Return(nil)
 
-	mgr := newTestBlobDeleteMgr(t, nil, nil, vc)
 	reader := newTestShardListReader(sh)
 	mgr.shardListReaderMap.Store(suid, reader)
 
@@ -393,7 +465,11 @@ func TestBlobDeleteMgr_DeleteSlice_UpdateVolume(t *testing.T) {
 		},
 	}
 
-	_, err := mgr.deleteSlice(context.Background(), volInfo, newDeleteStageMgr(), proto.BlobID(1), true)
+	msgExt := &delMsgExt{msg: snproto.DeleteMsg{
+		MsgDelStage: make(map[uint64]snproto.BlobDeleteStage),
+	}}
+
+	_, err := mgr.deleteSlice(context.Background(), volInfo, msgExt, proto.BlobID(1), true)
 	require.Nil(t, err)
 }
 
@@ -415,12 +491,14 @@ func TestBlobDeleteMgr_DeleteShard_BackToInitStage(t *testing.T) {
 	bid := proto.BlobID(1)
 	vunit := volInfo.VunitLocations[idx]
 
-	stageMgr := newDeleteStageMgr()
-	stageMgr.setShardDelStage(bid, vunit.Vuid, DeleteStageMarkDelete)
+	msgExt := &delMsgExt{msg: snproto.DeleteMsg{
+		MsgDelStage: make(map[uint64]snproto.BlobDeleteStage),
+	}}
+	msgExt.setShardDelStage(bid, vunit.Vuid, DeleteStageMarkDelete)
 
-	err := mgr.deleteShard(context.Background(), vunit, bid, stageMgr, false)
+	err := mgr.deleteShard(context.Background(), vunit, bid, msgExt, false)
 	require.Equal(t, err, apierr.ErrShardNotMarkDelete)
-	require.False(t, stageMgr.hasShardMarkDel(bid, vunit.Vuid))
+	require.False(t, msgExt.hasShardMarkDel(bid, vunit.Vuid))
 }
 
 func TestBlobDeleteMgr_DeleteShard_AssumeSuccess(t *testing.T) {
@@ -441,17 +519,21 @@ func TestBlobDeleteMgr_DeleteShard_AssumeSuccess(t *testing.T) {
 	bid := proto.BlobID(1)
 	vunit := volInfo.VunitLocations[idx]
 
-	stageMgr := newDeleteStageMgr()
-	stageMgr.setShardDelStage(bid, vunit.Vuid, DeleteStageMarkDelete)
+	msgExt := &delMsgExt{msg: snproto.DeleteMsg{
+		MsgDelStage: make(map[uint64]snproto.BlobDeleteStage),
+	}}
+	msgExt.setShardDelStage(bid, vunit.Vuid, DeleteStageMarkDelete)
 
-	err := mgr.deleteShard(context.Background(), vunit, bid, stageMgr, false)
+	err := mgr.deleteShard(context.Background(), vunit, bid, msgExt, false)
 	require.Nil(t, err)
-	require.True(t, stageMgr.hasShardDelete(bid, vunit.Vuid))
+	require.True(t, msgExt.hasShardDelete(bid, vunit.Vuid))
 }
 
 func TestBlobDeleteMgr_Punish(t *testing.T) {
 	suid := proto.Suid(123)
+	tagNum := 2
 	sh := mock.NewMockSpaceShardHandler(ctr(t))
+	sh.EXPECT().ShardingSubRangeCount().Return(tagNum).Times(2)
 	sh.EXPECT().GetRouteVersion().Return(proto.RouteVersion(1)).Times(4)
 	sh.EXPECT().BatchWriteItem(any, any, any, any).Return(apierr.ErrShardRouteVersionNeedUpdate)
 	sh.EXPECT().BatchWriteItem(any, any, any, any).Return(apierr.ErrShardRouteVersionNeedUpdate)
@@ -465,18 +547,23 @@ func TestBlobDeleteMgr_Punish(t *testing.T) {
 
 	// mock punish msg
 	oldTime := time.Now().Add(-2 * time.Hour).Unix()
+	vid := proto.Vid(1)
+	bid := proto.BlobID(100)
+	ts := mgr.tsGen.GenerateTs()
+	id, _ := base.EncodeRawDelMsgKey(ts, vid, bid, tagNum)
+
 	msg := &delMsgExt{
 		suid: proto.Suid(123),
 		msg: snproto.DeleteMsg{
 			Slice: proto.Slice{
-				MinSliceID: proto.BlobID(100),
-				Vid:        proto.Vid(1),
+				MinSliceID: bid,
+				Vid:        vid,
 				Count:      1,
 				ValidSize:  10,
 			},
 			Time: oldTime,
 		},
-		msgKey: []byte("test_key"),
+		msgKey: id,
 	}
 
 	err := mgr.punish(context.Background(), msg)
@@ -489,7 +576,9 @@ func TestBlobDeleteMgr_Punish(t *testing.T) {
 
 func TestBlobDeleteMgr_ClearShardMessages(t *testing.T) {
 	suid := proto.Suid(123)
+	tagNum := 2
 	sh := mock.NewMockSpaceShardHandler(ctr(t))
+	sh.EXPECT().ShardingSubRangeCount().Return(tagNum)
 	sh.EXPECT().GetRouteVersion().Return(proto.RouteVersion(1)).Times(3)
 	sh.EXPECT().BatchWriteItem(any, any, any, any).Return(apierr.ErrShardRouteVersionNeedUpdate)
 	sh.EXPECT().BatchWriteItem(any, any, any, any).Return(apierr.ErrShardRouteVersionNeedUpdate)
@@ -501,9 +590,11 @@ func TestBlobDeleteMgr_ClearShardMessages(t *testing.T) {
 
 	delItems := make([]storage.BatchItemElem, 3)
 	for i := 0; i < 3; i++ {
-		delItems[i] = storage.NewBatchItemElemDelete([]byte(fmt.Sprintf("i-%d", i)))
+		ts := mgr.tsGen.GenerateTs()
+		id, _ := base.EncodeRawDelMsgKey(ts, proto.Vid(i), proto.BlobID(i), tagNum)
+		delItems[i] = storage.NewBatchItemElemDelete(id)
 	}
-	mgr.clearShardMessages(context.Background(), proto.Suid(123), nil, delItems)
+	mgr.clearShardMessages(context.Background(), proto.Suid(123), delItems)
 }
 
 func TestBlobDeleteMgr_ProduceLoop(t *testing.T) {
@@ -674,7 +765,7 @@ func TestBlobDeleteMgr_ConsumeLoop(t *testing.T) {
 	}
 	mgr.msgChannels[0] = make(chan *delMsgExt, 1)
 
-	go mgr.consumeLoop()
+	go mgr.startConsume()
 
 	time.Sleep(100 * time.Millisecond)
 	mgr.Close()
@@ -706,12 +797,13 @@ func TestBlobDeleteMgr_SlicesToDeleteMsgItems(t *testing.T) {
 	mgr := newTestBlobDeleteMgr(t, nil, nil, nil)
 
 	slice1 := proto.Slice{Vid: 1, MinSliceID: 456, Count: 3}
-	slice2 := proto.Slice{Vid: 1, MinSliceID: 789, Count: 5}
+	slice2 := proto.Slice{Vid: 365, MinSliceID: 45542011, Count: 5}
 
 	items, err := mgr.SlicesToDeleteMsgItems(context.Background(), []proto.Slice{slice1, slice2}, shardKeys)
 	require.Nil(t, err)
 	for i := range items {
-		_shardKeys := shardnode.ParseShardKeys(items[i].ID, len(shardKeys))
+		_, _, _, _shardKeys, err := base.DecodeDelMsgKey(items[i].ID, len(shardKeys))
+		require.Nil(t, err)
 		require.Equal(t, shardKeys, _shardKeys)
 		require.True(t, bytes.Contains(items[i].ID, snproto.DeleteMsgPrefix))
 	}

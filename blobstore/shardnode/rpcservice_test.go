@@ -143,7 +143,7 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 			MsgChannelNum:        1,
 			MsgChannelSize:       4,
 			FailedMsgChannelSize: 4,
-			TaskPoolSize:         1,
+			ProduceTaskPoolSize:  1,
 		},
 	})
 	s.blobDelMgr = dm

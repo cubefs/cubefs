@@ -17,6 +17,8 @@ package base
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewTs(t *testing.T) {
@@ -200,4 +202,31 @@ func TestTs_Add(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTsGenerator(t *testing.T) {
+	t.Run("NewTsGenerator", func(t *testing.T) {
+		// Test with zero timestamp
+		g := NewTsGenerator(0)
+		require.NotNil(t, g)
+		require.True(t, g.CurrentTs() > 0)
+
+		// Test with future timestamp
+		futureTs := Ts(time.Now().Add(1*time.Hour).Unix() << 32)
+		g = NewTsGenerator(futureTs)
+		require.Equal(t, futureTs, g.CurrentTs())
+	})
+
+	t.Run("GenerateTs", func(t *testing.T) {
+		g := NewTsGenerator(0)
+		initialTs := g.CurrentTs()
+
+		// First call should return current time
+		ts1 := g.GenerateTs()
+		require.True(t, ts1 >= initialTs)
+
+		// Subsequent calls should increment
+		ts2 := g.GenerateTs()
+		require.Equal(t, ts1+1, ts2)
+	})
 }

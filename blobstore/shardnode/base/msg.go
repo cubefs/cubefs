@@ -16,70 +16,26 @@ package base
 
 import (
 	"encoding/binary"
-	"sync/atomic"
-	"time"
+	"errors"
+	"fmt"
 
+	snapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 )
 
-type MsgKeyGenerator struct {
-	ts int64
-}
+const minMsgKeyLen = 21 // 1(prefix) + 8(ts) + 4(vid) + 8(bid)
 
-func NewMsgKeyGenerator(lastTs Ts) *MsgKeyGenerator {
-	now := NewTs(time.Now().Unix())
-	if now.Compare(lastTs) > 0 {
-		return &MsgKeyGenerator{ts: int64(now)}
-	}
-	return &MsgKeyGenerator{ts: int64(lastTs)}
-}
+var errInvalidMsgKey = errors.New("invalid msg key")
 
-func (g *MsgKeyGenerator) generateTs() Ts {
-	now := time.Now().Unix() << 32
-	lastTs := atomic.LoadInt64(&g.ts)
-	if now <= lastTs {
-		return Ts(atomic.AddInt64(&g.ts, 1))
-	}
-	if atomic.CompareAndSwapInt64(&g.ts, lastTs, now) {
-		return Ts(now)
-	}
-	return Ts(atomic.AddInt64(&g.ts, 1))
-}
-
-func (g *MsgKeyGenerator) EncodeDelMsgKey(vid proto.Vid, bid proto.BlobID, shardKeys [][]byte) (Ts, []byte) {
-	ts := g.generateTs()
-	return ts, g.EncodeDelMsgKeyWithTs(ts, vid, bid, shardKeys)
-}
-
-func (g *MsgKeyGenerator) EncodeDelMsgKeyWithTimeUnix(timeUnix int64, vid proto.Vid, bid proto.BlobID, shardKeys [][]byte) []byte {
-	ts := NewTs(timeUnix)
-	return g.EncodeDelMsgKeyWithTs(ts, vid, bid, shardKeys)
-}
-
-func (g *MsgKeyGenerator) EncodeRawDelMsgKey(vid proto.Vid, bid proto.BlobID, tagNum int) (ts Ts, key []byte, shardKeys [][]byte) {
-	key1 := make([]byte, 4)
-	binary.BigEndian.PutUint32(key1, uint32(vid))
-	key2 := make([]byte, 8)
-	binary.BigEndian.PutUint64(key2, uint64(bid))
-	shardKeys = [][]byte{key1, key2}
-	if tagNum > 2 {
-		for i := 0; i < tagNum-2; i++ {
-			shardKeys = append(shardKeys, []byte(""))
-		}
-	}
-	ts = g.generateTs()
-	key = g.EncodeDelMsgKeyWithTs(ts, vid, bid, shardKeys)
-	return ts, key, shardKeys
-}
-
-func (g *MsgKeyGenerator) EncodeDelMsgKeyWithTs(ts Ts, vid proto.Vid, bid proto.BlobID, shardKeys [][]byte) []byte {
+func EncodeDelMsgKey(ts Ts, vid proto.Vid, bid proto.BlobID, shardKeys [][]byte) []byte {
 	shardKeyLen := 0
 	for _, sk := range shardKeys {
 		shardKeyLen += len(sk)
 	}
 
-	buf := make([]byte, 1+8+4+8+2*len(shardKeys)+shardKeyLen)
+	// del_msg_key = d-ts-vid-bid-{shardKeys1}{shardKeys2}{...}
+	buf := make([]byte, minMsgKeyLen+2*len(shardKeys)+shardKeyLen)
 	copy(buf, snproto.DeleteMsgPrefix)
 	index := 1
 	binary.BigEndian.PutUint64(buf[index:], uint64(ts))
@@ -99,13 +55,28 @@ func (g *MsgKeyGenerator) EncodeDelMsgKeyWithTs(ts Ts, vid proto.Vid, bid proto.
 	return buf
 }
 
-func (g *MsgKeyGenerator) decodeMsgKey(key []byte) (Ts, proto.Vid, proto.BlobID) {
+func EncodeRawDelMsgKey(ts Ts, vid proto.Vid, bid proto.BlobID, tagNum int) (key []byte, shardKeys [][]byte) {
+	key1 := []byte(fmt.Sprintf("%d", uint32(vid)))
+	key2 := []byte(fmt.Sprintf("%d", uint64(bid)))
+
+	// raw msg shardKeys = {"vid"}{"bid"}{...}
+	shardKeys = [][]byte{key1, key2}
+	if tagNum > 2 {
+		for i := 0; i < tagNum-2; i++ {
+			shardKeys = append(shardKeys, []byte(""))
+		}
+	}
+
+	// raw_del_msg_key = d-ts-vid-bid-{"vid"}{"bid"}{...}
+	return EncodeDelMsgKey(ts, vid, bid, shardKeys), shardKeys
+}
+
+func DecodeDelMsgKey(key []byte, tagNum int) (Ts, proto.Vid, proto.BlobID, [][]byte, error) {
+	if len(key) < minMsgKeyLen+2*tagNum {
+		return Ts(0), proto.InvalidVid, proto.InValidBlobID, nil, errInvalidMsgKey
+	}
 	ts := Ts(binary.BigEndian.Uint64(key[1:9]))
 	vid := proto.Vid(binary.BigEndian.Uint32(key[9:13]))
 	bid := proto.BlobID(binary.BigEndian.Uint64(key[13:21]))
-	return ts, vid, bid
-}
-
-func (g *MsgKeyGenerator) CurrentTs() Ts {
-	return Ts(atomic.LoadInt64(&g.ts))
+	return ts, vid, bid, snapi.ParseShardKeys(key[minMsgKeyLen:], tagNum), nil
 }

@@ -16,15 +16,11 @@ package blobdeleter
 
 import (
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 )
-
-type deleteStageMgr struct {
-	l         sync.RWMutex
-	delStages map[uint64]snproto.BlobDeleteStage
-}
 
 type deleteStage uint32
 
@@ -34,50 +30,41 @@ const (
 	DeleteStageDelete
 )
 
-func newDeleteStageMgr() *deleteStageMgr {
-	return &deleteStageMgr{
-		delStages: make(map[uint64]snproto.BlobDeleteStage),
-	}
+type delMsgExt struct {
+	msg snproto.DeleteMsg
+
+	// use to delete and update msg in kvstore
+	suid   proto.Suid
+	msgKey []byte
+	l      sync.RWMutex
 }
 
-func (dsm *deleteStageMgr) setMsgDelStage(stage map[uint64]snproto.BlobDeleteStage) {
-	dsm.l.Lock()
-	defer dsm.l.Unlock()
-	stageCopy := make(map[uint64]snproto.BlobDeleteStage)
-	for k, v := range stage {
-		stageCopy[k] = v
-	}
-	dsm.delStages = stageCopy
+func (ext *delMsgExt) isProtected(protectDuration time.Duration) bool {
+	ts := time.Unix(ext.msg.Time, 0)
+	return time.Now().Before(ts.Add(protectDuration))
 }
 
-func (dsm *deleteStageMgr) getMsgDelStage() map[uint64]snproto.BlobDeleteStage {
-	dsm.l.RLock()
-	defer dsm.l.RUnlock()
-	stageCopy := make(map[uint64]snproto.BlobDeleteStage)
-	for k, v := range dsm.delStages {
-		stageCopy[k] = v
+func (ext *delMsgExt) setShardDelStage(bid proto.BlobID, vuid proto.Vuid, stage deleteStage) {
+	ext.l.Lock()
+	defer ext.l.Unlock()
+
+	if ext.msg.MsgDelStage == nil {
+		ext.msg.MsgDelStage = make(map[uint64]snproto.BlobDeleteStage)
 	}
-	return stageCopy
-}
 
-func (dsm *deleteStageMgr) setShardDelStage(bid proto.BlobID, vuid proto.Vuid, stage deleteStage) {
-	dsm.l.Lock()
-	defer dsm.l.Unlock()
-
-	_, ok := dsm.delStages[uint64(bid)]
+	_, ok := ext.msg.MsgDelStage[uint64(bid)]
 	if !ok {
-		dsm.delStages[uint64(bid)] = snproto.BlobDeleteStage{
+		ext.msg.MsgDelStage[uint64(bid)] = snproto.BlobDeleteStage{
 			Stage: make(map[uint32]uint32),
 		}
 	}
-
-	dsm.delStages[uint64(bid)].Stage[uint32(vuid.Index())] = uint32(stage)
+	ext.msg.MsgDelStage[uint64(bid)].Stage[uint32(vuid.Index())] = uint32(stage)
 }
 
-func (dsm *deleteStageMgr) hasShardMarkDel(bid proto.BlobID, vuid proto.Vuid) bool {
-	dsm.l.RLock()
-	defer dsm.l.RUnlock()
-	stg, ok := dsm.delStages[uint64(bid)]
+func (ext *delMsgExt) hasShardMarkDel(bid proto.BlobID, vuid proto.Vuid) bool {
+	ext.l.RLock()
+	defer ext.l.RUnlock()
+	stg, ok := ext.msg.MsgDelStage[uint64(bid)]
 	if !ok {
 		return false
 	}
@@ -88,10 +75,10 @@ func (dsm *deleteStageMgr) hasShardMarkDel(bid proto.BlobID, vuid proto.Vuid) bo
 	return deleteStage(shardStg) == DeleteStageMarkDelete
 }
 
-func (dsm *deleteStageMgr) hasShardDelete(bid proto.BlobID, vuid proto.Vuid) bool {
-	dsm.l.RLock()
-	defer dsm.l.RUnlock()
-	stg, ok := dsm.delStages[uint64(bid)]
+func (ext *delMsgExt) hasShardDelete(bid proto.BlobID, vuid proto.Vuid) bool {
+	ext.l.RLock()
+	defer ext.l.RUnlock()
+	stg, ok := ext.msg.MsgDelStage[uint64(bid)]
 	if !ok {
 		return false
 	}
@@ -102,10 +89,10 @@ func (dsm *deleteStageMgr) hasShardDelete(bid proto.BlobID, vuid proto.Vuid) boo
 	return deleteStage(shardStg) == DeleteStageDelete
 }
 
-func (dsm *deleteStageMgr) hasMarkDel(bid proto.BlobID) bool {
-	dsm.l.RLock()
-	defer dsm.l.RUnlock()
-	stg, ok := dsm.delStages[uint64(bid)]
+func (ext *delMsgExt) hasMarkDel(bid proto.BlobID) bool {
+	ext.l.RLock()
+	defer ext.l.RUnlock()
+	stg, ok := ext.msg.MsgDelStage[uint64(bid)]
 	if !ok {
 		return false
 	}
@@ -117,10 +104,10 @@ func (dsm *deleteStageMgr) hasMarkDel(bid proto.BlobID) bool {
 	return true
 }
 
-func (dsm *deleteStageMgr) hasDelete(bid proto.BlobID) bool {
-	dsm.l.RLock()
-	defer dsm.l.RUnlock()
-	stg, ok := dsm.delStages[uint64(bid)]
+func (ext *delMsgExt) hasDelete(bid proto.BlobID) bool {
+	ext.l.RLock()
+	defer ext.l.RUnlock()
+	stg, ok := ext.msg.MsgDelStage[uint64(bid)]
 	if !ok {
 		return false
 	}

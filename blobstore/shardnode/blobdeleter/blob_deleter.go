@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	utilerr "github.com/cubefs/cubefs/blobstore/util/errors"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -53,7 +54,7 @@ type BlobDelCfg struct {
 	MsgChannelNum        int     `json:"msg_channel_num"`
 	MsgChannelSize       int     `json:"msg_channel_size"`
 	FailedMsgChannelSize int     `json:"failed_msg_channel_size"`
-	TaskPoolSize         int     `json:"task_pool_size"`
+	ProduceTaskPoolSize  int     `json:"produce_task_pool_size"`
 	RateLimit            float64 `json:"rate_limit"`
 	RateLimitBurst       int     `json:"rate_limit_burst"`
 	MaxListMessageNum    int     `json:"max_list_message_num"`
@@ -73,7 +74,7 @@ type BlobDelMgrConfig struct {
 type BlobDeleteMgr struct {
 	cfg                *BlobDelMgrConfig
 	taskSwitch         *taskswitch.TaskSwitch
-	msgKeyGen          *base.MsgKeyGenerator
+	tsGen              *base.TsGenerator
 	produceTaskPool    taskpool.TaskPool
 	consumeTaskPool    taskpool.TaskPool
 	shardListReaderMap sync.Map
@@ -94,12 +95,6 @@ func NewBlobDeleteMgr(cfg *BlobDelMgrConfig) (*BlobDeleteMgr, error) {
 		msgChannels[i] = make(chan *delMsgExt, cfg.MsgChannelSize)
 	}
 
-	taskPoolSize := cfg.TaskPoolSize
-	// taskPool Size should equal or bigger than len(msgChannels)
-	if taskPoolSize*taskPoolSize < cfg.MsgChannelSize {
-		taskPoolSize = cfg.MsgChannelSize
-	}
-
 	taskSwitch, err := cfg.TaskSwitchMgr.AddSwitch(snproto.ShardNodeBlobDeleteTask)
 	if err != nil {
 		return nil, err
@@ -108,9 +103,9 @@ func NewBlobDeleteMgr(cfg *BlobDelMgrConfig) (*BlobDeleteMgr, error) {
 	m := &BlobDeleteMgr{
 		cfg:             cfg,
 		taskSwitch:      taskSwitch,
-		msgKeyGen:       base.NewMsgKeyGenerator(base.Ts(0)),
-		produceTaskPool: taskpool.New(taskPoolSize, 1),
-		consumeTaskPool: taskpool.New(taskPoolSize, 1),
+		tsGen:           base.NewTsGenerator(base.Ts(0)),
+		produceTaskPool: taskpool.New(cfg.ProduceTaskPoolSize, 1),
+		consumeTaskPool: taskpool.New(cfg.MsgChannelNum, 1),
 
 		msgChannels:   msgChannels,
 		failedMsgChan: make(chan *delMsgExt, cfg.FailedMsgChannelSize),
@@ -122,7 +117,7 @@ func NewBlobDeleteMgr(cfg *BlobDelMgrConfig) (*BlobDeleteMgr, error) {
 		Closer: closer.New(),
 	}
 	go m.produceLoop()
-	go m.consumeLoop()
+	go m.startConsume()
 	go m.retryFailedLoop()
 	return m, nil
 }
@@ -157,7 +152,7 @@ func (m *BlobDeleteMgr) produceLoop() {
 			roundTerm++
 		}
 		m.taskSwitch.WaitEnable()
-		span, ctx := trace.StartSpanFromContext(produceCtx, produceSpan.TraceID()+"-"+strconv.Itoa(roundTerm))
+		span, ctx := trace.StartSpanFromContextWithTraceID(produceCtx, "", produceSpan.TraceID()+"-"+strconv.Itoa(roundTerm))
 		if len(shards) == 0 {
 			span.Warnf("no shards available, waiting")
 			resetTicker2LongWait()
@@ -165,10 +160,20 @@ func (m *BlobDeleteMgr) produceLoop() {
 		}
 		for i := 0; i < len(shards); i++ {
 			wg.Add(1)
-			diskID, suid := shards[i].GetDiskID(), shards[i].GetSuid()
+			shard, diskID, suid := shards[i], shards[i].GetDiskID(), shards[i].GetSuid()
+
+			var listReader *shardListReader
+			v, ok := m.shardListReaderMap.Load(suid)
+			if !ok {
+				listReader = newShardListReader(shard)
+				m.shardListReaderMap.Store(suid, listReader)
+			} else {
+				listReader = v.(*shardListReader)
+			}
+
 			m.produceTaskPool.Run(func() {
 				defer wg.Done()
-				_hasExecutableMsg, err := m.listShardMsg(ctx, diskID, suid)
+				_hasExecutableMsg, err := m.listShardMsg(ctx, diskID, listReader)
 				if err != nil {
 					span.Errorf("list shard message failed, suid[%d] diskID[%d], err: %s", suid, diskID, err)
 					return
@@ -205,34 +210,22 @@ func (m *BlobDeleteMgr) cleanupDeletedShards(ctx context.Context, shards []stora
 	}
 }
 
-func (m *BlobDeleteMgr) listShardMsg(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (hasExecutableMsg bool, err error) {
+func (m *BlobDeleteMgr) listShardMsg(ctx context.Context, diskID proto.DiskID, listReader *shardListReader) (hasExecutableMsg bool, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	if !m.taskSwitch.Enabled() {
 		span.Debugf("task switch disabled, waiting")
 		return
 	}
 
-	var (
-		listReader *shardListReader
-		sh         storage.ShardHandler
-	)
-
+	suid := listReader.GetSuid()
 	// check if shard deleted
-	sh, err = m.getShard(diskID, suid)
+	_, err = m.getShard(diskID, suid)
 	if err != nil {
 		return
 	}
 
-	v, ok := m.shardListReaderMap.Load(suid)
-	if !ok {
-		listReader = newShardListReader(sh)
-		m.shardListReaderMap.Store(suid, listReader)
-	} else {
-		listReader = v.(*shardListReader)
-	}
-
 	// check if shard is leader
-	if !sh.IsLeader() {
+	if !listReader.IsLeader() {
 		span.Errorf("shard[%d] is not leader, skip", suid)
 		listReader.init()
 		return
@@ -264,45 +257,44 @@ func (m *BlobDeleteMgr) listShardMsg(ctx context.Context, diskID proto.DiskID, s
 	return
 }
 
-func (m *BlobDeleteMgr) consumeLoop() {
-	i := 0
+func (m *BlobDeleteMgr) startConsume() {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "blob-delete-consume")
+	for i := 0; i < len(m.msgChannels); i++ {
+		idx := i
+		m.consumeTaskPool.Run(func() {
+			m.runConsumeTask(ctx, idx)
+		})
+	}
+}
+
+func (m *BlobDeleteMgr) runConsumeTask(ctx context.Context, index int) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	batch := make([]*delMsgExt, 0, 16)
+	bidNum := uint64(0)
 	for {
 		select {
 		case <-m.Done():
 			return
-		default:
-		}
-		idx := i % len(m.msgChannels)
-		m.consumeTaskPool.Run(func() {
-			m.runConsumeTask(idx)
-		})
-		i++
-	}
-}
-
-func (m *BlobDeleteMgr) runConsumeTask(index int) {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "blob-delete:consume")
-
-	bidNum := uint64(0)
-	batch := make([]*delMsgExt, 0)
-	defer func() {
-		if err := m.executeDel(ctx, batch); err != nil {
-			span.Errorf("delete batch failed, err: %s", err.Error())
-		}
-	}()
-
-	for {
-		select {
 		case me := <-m.msgChannels[index]:
-			if uint64(me.msg.Slice.Count)+bidNum < m.cfg.MaxExecuteBidNum {
-				batch = append(batch, me)
-				bidNum += uint64(me.msg.Slice.Count)
-				continue
-			}
 			batch = append(batch, me)
-			return
-		default:
-			return
+			bidNum += uint64(me.msg.Slice.Count)
+			for bidNum < m.cfg.MaxExecuteBidNum {
+				select {
+				case next := <-m.msgChannels[index]:
+					batch = append(batch, next)
+					bidNum += uint64(next.msg.Slice.Count)
+					continue
+				default:
+					goto EXECUTE
+				}
+			}
+		EXECUTE:
+			if err := m.executeDel(ctx, batch); err != nil {
+				span.Errorf("delete batch failed, err: %s", err.Error())
+			}
+			batch = batch[:0]
+			bidNum = 0
 		}
 	}
 }
@@ -353,11 +345,11 @@ func (m *BlobDeleteMgr) executeDel(ctx context.Context, msgList []*delMsgExt) er
 		if err := m.deleteWithCheckVolConsistency(r.ctx, me.msg.Slice.Vid, r); err != nil {
 			r.err = err
 			r.status = deleteStatusFailed
+			span.Errorf("deleteWithCheckVolConsistency failed, msg: %+v, err: %s", r.msgExt, r.err.Error())
 		}
 	}
 
 	suidDelItems := make(map[proto.Suid][]storage.BatchItemElem)
-	suidShardKeys := make(map[proto.Suid][][]byte)
 	for _, r := range rets {
 		switch r.status {
 		case deleteStatusSuccess:
@@ -372,9 +364,10 @@ func (m *BlobDeleteMgr) executeDel(ctx context.Context, msgList []*delMsgExt) er
 				suidDelItems[r.msgExt.suid] = make([]storage.BatchItemElem, 0)
 			}
 			suidDelItems[r.msgExt.suid] = append(suidDelItems[r.msgExt.suid], storage.NewBatchItemElemDelete(r.msgExt.msgKey))
-			suidShardKeys[r.msgExt.suid] = r.msgExt.shardKeys
 			continue
 		}
+
+		// process failed msg
 		r.msgExt.msg.Retry++
 		if r.msgExt.msg.Retry < 3 {
 			m.sentToFailedChan(ctx, r.msgExt)
@@ -390,7 +383,7 @@ func (m *BlobDeleteMgr) executeDel(ctx context.Context, msgList []*delMsgExt) er
 
 	// clear finish delete messages in storage
 	for suid, items := range suidDelItems {
-		m.clearShardMessages(ctx, suid, suidShardKeys[suid], items)
+		m.clearShardMessages(ctx, suid, items)
 	}
 	return nil
 }
@@ -406,13 +399,9 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 			bids = append(bids, startBid+proto.BlobID(i))
 			i++
 		}
-		stageMgr := newDeleteStageMgr()
-		// set blob del stage from msgExt
-		stageMgr.setMsgDelStage(msg.MsgDelStage)
 
 		// set execute rets
 		defer func() {
-			ret.msgExt.msg.MsgDelStage = stageMgr.getMsgDelStage()
 			ret.err = _err
 			if _err != nil {
 				span1 := trace.SpanFromContextSafe(ret.ctx)
@@ -424,7 +413,7 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 		}()
 
 		for j := range bids {
-			if stageMgr.hasDelete(bids[j]) {
+			if ret.msgExt.hasDelete(bids[j]) {
 				continue
 			}
 
@@ -432,17 +421,18 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 				return
 			}
 
-			if !stageMgr.hasMarkDel(bids[j]) {
-				newVol, _err = m.deleteSlice(ctx, info, stageMgr, bids[j], true)
+			newVol = info
+			if !ret.msgExt.hasMarkDel(bids[j]) {
+				newVol, _err = m.deleteSlice(ctx, info, ret.msgExt, bids[j], true)
 				if _err != nil {
 					return
 				}
 			}
-
-			newVol, _err = m.deleteSlice(ctx, newVol, stageMgr, bids[j], false)
+			newVol, _err = m.deleteSlice(ctx, newVol, ret.msgExt, bids[j], false)
 			if _err != nil {
 				return
 			}
+			log.Debugf("bid[%d] vid[%d] delete success", bids[j], newVol.Vid)
 		}
 		return
 	})
@@ -453,15 +443,15 @@ type delRet struct {
 	err  error
 }
 
-func (m *BlobDeleteMgr) deleteSlice(ctx context.Context, volInfo *snproto.VolumeInfoSimple, stageMgr *deleteStageMgr, bid proto.BlobID, markerDel bool) (*snproto.VolumeInfoSimple, error) {
+func (m *BlobDeleteMgr) deleteSlice(ctx context.Context, volInfo *snproto.VolumeInfoSimple, ext *delMsgExt, bid proto.BlobID, markerDel bool) (*snproto.VolumeInfoSimple, error) {
 	var err error
-	retChan := make(chan delRet, len(volInfo.VunitLocations))
 
+	retChan := make(chan delRet, len(volInfo.VunitLocations))
 	for i := range volInfo.VunitLocations {
 		index := i
 		go func() {
-			err = m.deleteShard(ctx, volInfo.VunitLocations[index], bid, stageMgr, markerDel)
-			retChan <- delRet{vuid: volInfo.VunitLocations[index].Vuid, err: err}
+			_err := m.deleteShard(ctx, volInfo.VunitLocations[index], bid, ext, markerDel)
+			retChan <- delRet{vuid: volInfo.VunitLocations[index].Vuid, err: _err}
 		}()
 	}
 
@@ -476,12 +466,10 @@ func (m *BlobDeleteMgr) deleteSlice(ctx context.Context, volInfo *snproto.Volume
 			needRetryVuids = append(needRetryVuids, r.vuid)
 			continue
 		}
-		// other error, return directly
 		err = r.err
-		return volInfo, err
 	}
 
-	if len(needRetryVuids) < 1 {
+	if len(needRetryVuids) < 1 || err != nil {
 		return volInfo, err
 	}
 
@@ -497,14 +485,14 @@ func (m *BlobDeleteMgr) deleteSlice(ctx context.Context, volInfo *snproto.Volume
 	}
 
 	for _, oldVuid := range needRetryVuids {
-		if err = m.deleteShard(ctx, newVolume.VunitLocations[oldVuid.Index()], bid, stageMgr, markerDel); err != nil {
+		if err = m.deleteShard(ctx, newVolume.VunitLocations[oldVuid.Index()], bid, ext, markerDel); err != nil {
 			return newVolume, err
 		}
 	}
 	return newVolume, nil
 }
 
-func (m *BlobDeleteMgr) deleteShard(ctx context.Context, info proto.VunitLocation, bid proto.BlobID, stageMgr *deleteStageMgr, markerDel bool) error {
+func (m *BlobDeleteMgr) deleteShard(ctx context.Context, info proto.VunitLocation, bid proto.BlobID, ext *delMsgExt, markerDel bool) error {
 	span := trace.SpanFromContextSafe(ctx)
 	var err error
 	var stage deleteStage
@@ -512,16 +500,16 @@ func (m *BlobDeleteMgr) deleteShard(ctx context.Context, info proto.VunitLocatio
 	defer func() {
 		if shouldBackToInitStage(rpc2.DetectStatusCode(err)) {
 			stage = InitStage
-			stageMgr.setShardDelStage(bid, info.Vuid, stage)
+			ext.setShardDelStage(bid, info.Vuid, stage)
 		}
 		if err != nil {
 			return
 		}
-		stageMgr.setShardDelStage(bid, info.Vuid, stage)
+		ext.setShardDelStage(bid, info.Vuid, stage)
 	}()
 
-	if markerDel && stageMgr.hasShardMarkDel(bid, info.Vuid) ||
-		!markerDel && stageMgr.hasShardDelete(bid, info.Vuid) {
+	if markerDel && ext.hasShardMarkDel(bid, info.Vuid) ||
+		!markerDel && ext.hasShardDelete(bid, info.Vuid) {
 		return nil
 	}
 
@@ -554,10 +542,16 @@ func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 		span.Errorf("shard[%d] has been deleted", msgExt.suid)
 		return nil
 	}
+	shard := v.(*shardListReader)
+	_, _, _, shardKeys, err := base.DecodeDelMsgKey(msgExt.msgKey, shard.ShardingSubRangeCount())
+	if err != nil {
+		span.Errorf("shard[%d] decode shardKeys failed, key: %+v, err: %s", msgExt.suid, msgExt.msgKey, err.Error())
+		return err
+	}
 
 	punishDr := time.Duration(m.cfg.PunishTimeoutH) * time.Hour
-	ts := m.msgKeyGen.CurrentTs().Add(punishDr)
-	punishMsgKey := m.msgKeyGen.EncodeDelMsgKeyWithTs(ts, msg.Slice.Vid, msg.Slice.MinSliceID, msgExt.shardKeys)
+	ts := m.tsGen.CurrentTs().Add(punishDr)
+	punishMsgKey := base.EncodeDelMsgKey(ts, msg.Slice.Vid, msg.Slice.MinSliceID, shardKeys)
 
 	msg.Retry = 0
 	msg.Time = ts.TimeUnix()
@@ -569,11 +563,9 @@ func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 	oldDeleteItem := storage.NewBatchItemElemDelete(msgExt.msgKey)
 	newInsertItem := storage.NewBatchItemElemInsert(itm)
 
-	shard := v.(*shardListReader)
 	h := storage.OpHeader{
-		ShardKeys: msgExt.shardKeys,
+		ShardKeys: shardKeys,
 	}
-
 	for i := 0; i < 3; i++ {
 		h.RouteVersion = shard.GetRouteVersion()
 		// no need to check if shard is leader, if not leader propose as follower
@@ -590,7 +582,7 @@ func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 	return err
 }
 
-func (m *BlobDeleteMgr) clearShardMessages(ctx context.Context, suid proto.Suid, shardKeys [][]byte, items []storage.BatchItemElem) {
+func (m *BlobDeleteMgr) clearShardMessages(ctx context.Context, suid proto.Suid, items []storage.BatchItemElem) {
 	span := trace.SpanFromContextSafe(ctx)
 	if len(items) == 0 {
 		return
@@ -602,22 +594,27 @@ func (m *BlobDeleteMgr) clearShardMessages(ctx context.Context, suid proto.Suid,
 		return
 	}
 	shard := v.(*shardListReader)
+	_, _, _, shardKeys, err := base.DecodeDelMsgKey(items[0].ID, shard.ShardingSubRangeCount())
+	if err != nil {
+		span.Errorf("shard[%d] decode shardKeys failed, key: %+v, err: %s", suid, items[0].ID, err.Error())
+		return
+	}
+
 	h := storage.OpHeader{
 		ShardKeys: shardKeys,
 	}
-
-	var err error
 	for i := 0; i < 3; i++ {
 		h.RouteVersion = shard.GetRouteVersion()
 		// no need to check if shard is leader, if not leader propose as follower
 		err = shard.BatchWriteItem(ctx, h, items, storage.WithProposeAsFollower())
 		if err != nil {
 			if rpc2.DetectStatusCode(err) != apierr.CodeShardRouteVersionNeedUpdate {
-				span.Errorf("shard[%d] clear finish failed, err: %s", suid, err.Error())
+				span.Errorf("shard[%d] clear finish failed, header: %+v, err: %s", suid, h, err.Error())
 				return
 			}
 			continue
 		}
+		span.Debugf("shard[%d] clear finish success, count: %d", suid, len(items))
 		return
 	}
 
@@ -656,7 +653,8 @@ func (m *BlobDeleteMgr) slicesToDeleteMsgItems(ctx context.Context, slices []pro
 	span := trace.SpanFromContextSafe(ctx)
 	items := make([]snapi.Item, len(slices))
 	for i := range slices {
-		ts, key := m.msgKeyGen.EncodeDelMsgKey(slices[i].Vid, slices[i].MinSliceID, shardKeys)
+		ts := m.tsGen.GenerateTs()
+		key := base.EncodeDelMsgKey(ts, slices[i].Vid, slices[i].MinSliceID, shardKeys)
 		msg := snproto.DeleteMsg{
 			Slice:       slices[i],
 			Time:        ts.TimeUnix(),
@@ -675,7 +673,8 @@ func (m *BlobDeleteMgr) slicesToDeleteMsgItems(ctx context.Context, slices []pro
 
 func (m *BlobDeleteMgr) sliceToDeleteMsgItemRaw(ctx context.Context, slices proto.Slice, tagNum int) (snapi.Item, [][]byte, error) {
 	span := trace.SpanFromContextSafe(ctx)
-	ts, key, shardKeys := m.msgKeyGen.EncodeRawDelMsgKey(slices.Vid, slices.MinSliceID, tagNum)
+	ts := m.tsGen.GenerateTs()
+	key, shardKeys := base.EncodeRawDelMsgKey(ts, slices.Vid, slices.MinSliceID, tagNum)
 
 	msg := snproto.DeleteMsg{
 		Slice:       slices,

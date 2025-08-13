@@ -399,7 +399,7 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MsgChannelNum, 16)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MsgChannelSize, 10<<10)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.FailedMsgChannelSize, 10<<10)
-	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.TaskPoolSize, 16)
+	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.ProduceTaskPoolSize, 16)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MaxListMessageNum, 32)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MaxExecuteBidNum, uint64(64))
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.SafeDeleteTimeoutH, 72)

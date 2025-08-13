@@ -16,21 +16,23 @@ package blobdeleter
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"time"
 
 	snapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 type shardListReader struct {
 	storage.ShardHandler
 
-	messages     []*delMsgExt
-	nextMarkerTs int64
+	messages          []*delMsgExt
+	nextMarker        []byte
+	protectedTimeUnix int64
 }
 
 func newShardListReader(handler storage.ShardHandler) *shardListReader {
@@ -77,6 +79,7 @@ func (r *shardListReader) findProtectedIndex(protectDuration time.Duration) int 
 }
 
 func (r *shardListReader) listFromStorage(ctx context.Context, protectDuration time.Duration, count int) ([]*delMsgExt, error) {
+	span := trace.SpanFromContextSafe(ctx)
 	if r.isProtected(protectDuration) {
 		return nil, nil
 	}
@@ -85,23 +88,24 @@ func (r *shardListReader) listFromStorage(ctx context.Context, protectDuration t
 		RouteVersion: r.GetRouteVersion(),
 	}
 
-	marker := convertTimeUnixToMarker(r.nextMarkerTs)
-	items, nextMarker, err := r.ListItem(ctx, h, snproto.DeleteMsgPrefix, marker, uint64(count))
+	items, nextMarker, err := r.ListItem(ctx, h, snproto.DeleteMsgPrefix, r.nextMarker, uint64(count))
 	if err != nil {
 		return nil, err
 	}
 
-	ret := make([]*delMsgExt, 0)
+	suid := r.GetSuid()
+	ret := make([]*delMsgExt, 0, len(items))
 	for i := 0; i < len(items); i++ {
 		msg, err := itemToDelMsg(items[i])
 		if err != nil {
 			return nil, err
 		}
 		me := &delMsgExt{
-			msg:       msg,
-			suid:      r.GetSuid(),
-			shardKeys: snapi.ParseShardKeys(items[i].ID, r.ShardingSubRangeCount()),
+			msg:    msg,
+			suid:   suid,
+			msgKey: items[i].ID,
 		}
+		span.Debugf("shard[%d] load key: %+v, msg: %+v", suid, items[i].ID, msg)
 		if !me.isProtected(protectDuration) {
 			ret = append(ret, me)
 			continue
@@ -109,27 +113,38 @@ func (r *shardListReader) listFromStorage(ctx context.Context, protectDuration t
 		r.messages = append(r.messages, me)
 	}
 
-	// set next timestamp to start list
-	r.nextMarkerTs = convertMarkerTimeUnix(nextMarker)
-
-	if len(items) < 1 || len(nextMarker) < 1 {
+	r.nextMarker = nextMarker
+	if len(nextMarker) < 1 {
 		// no more message in shard storage, new message after now should be protected
-		r.setProtected()
+		r.setProtected(time.Now().Unix())
+		return ret, nil
+	}
+
+	// if nextMarker's timeUnix if protected, set protected
+	ts, _, _, _, err := base.DecodeDelMsgKey(r.nextMarker, r.ShardingSubRangeCount())
+	if err != nil {
+		span.Errorf("decode nextMarker[%+v] failed, err: %v", r.nextMarker, err)
+		return nil, err
+	}
+	nextMarkerTimeUnix := ts.TimeUnix()
+	if time.Now().Before(time.Unix(nextMarkerTimeUnix, 0).Add(protectDuration)) {
+		r.setProtected(nextMarkerTimeUnix)
 	}
 	return ret, nil
 }
 
 func (r *shardListReader) init() {
 	r.messages = r.messages[:0]
-	r.nextMarkerTs = 0
+	r.nextMarker = nil
 }
 
-func (r *shardListReader) setProtected() {
-	r.nextMarkerTs = time.Now().Unix()
+func (r *shardListReader) setProtected(timeUnix int64) {
+	r.protectedTimeUnix = timeUnix
+	log.Debugf("shard[%d] set protected, timestamp: %d", r.GetSuid(), r.protectedTimeUnix)
 }
 
 func (r *shardListReader) isProtected(protectDuration time.Duration) bool {
-	return time.Now().Before(time.Unix(r.nextMarkerTs, 0).Add(protectDuration))
+	return time.Now().Before(time.Unix(r.protectedTimeUnix, 0).Add(protectDuration))
 }
 
 func delMsgToItem(key []byte, msg snproto.DeleteMsg) (itm snapi.Item, err error) {
@@ -166,32 +181,4 @@ func itemToDelMsg(itm snapi.Item) (msg snproto.DeleteMsg, err error) {
 		return
 	}
 	return
-}
-
-func convertTimeUnixToMarker(ts int64) []byte {
-	buf := make([]byte, 1+8)
-	copy(buf, snproto.DeleteMsgPrefix)
-	binary.BigEndian.PutUint64(buf[1:], uint64(ts<<32))
-	return buf
-}
-
-func convertMarkerTimeUnix(marker []byte) int64 {
-	if len(marker) < 1 {
-		return 0
-	}
-	return int64(binary.BigEndian.Uint64(marker[1:9]) >> 32)
-}
-
-type delMsgExt struct {
-	msg snproto.DeleteMsg
-
-	// use to delete and update msg in kvstore
-	suid      proto.Suid
-	msgKey    []byte
-	shardKeys [][]byte
-}
-
-func (ext *delMsgExt) isProtected(protectDuration time.Duration) bool {
-	ts := time.Unix(ext.msg.Time, 0)
-	return time.Now().Before(ts.Add(protectDuration))
 }
