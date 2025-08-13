@@ -7,11 +7,14 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
 	UnusedFlashNodeFlashGroupID      = 0
 	DefaultWaitClientUpdateFgTimeSec = 65
+	WaitForRecoverCount              = 10
 )
 
 type flashGroupValue struct {
@@ -89,42 +92,48 @@ func (fg *FlashGroup) IsLostAllFlashNode() bool {
 }
 
 func (fg *FlashGroup) ReduceSlot() {
-	reducingSlots := atomic.LoadInt32(&fg.ReducingSlots) != 0
-	if reducingSlots {
+	if atomic.CompareAndSwapInt32(&fg.ReducingSlots, 0, 1) {
 		return
 	}
-	atomic.StoreInt32(&fg.ReducingSlots, 1)
-
-	ticker := time.NewTicker(10 * time.Minute)
-	defer ticker.Stop()
+	if log.EnableDebug() {
+		log.LogDebugf("flashgroup %v is reducing slots", fg)
+	}
 	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer func() {
+			atomic.StoreInt32(&fg.ReducingSlots, 0)
+			ticker.Stop()
+		}()
+		var i int
+		numToSelect := (len(fg.Slots) + 4 - 1) / 4
 		for {
-			<-ticker.C
-			if fg.IsLostAllFlashNode() {
-				fg.executeReduceSlot()
-				atomic.StoreInt32(&fg.SlotChanged, 1)
-			} else {
-				atomic.StoreInt32(&fg.ReducingSlots, 0)
+			if !fg.IsLostAllFlashNode() || len(fg.Slots) == 0 {
 				return
 			}
+			<-ticker.C
+			i++
+			if i <= WaitForRecoverCount {
+				continue
+			}
+			fg.executeReduceSlot(numToSelect)
+			atomic.StoreInt32(&fg.SlotChanged, 1)
 		}
 	}()
 }
 
-func (fg *FlashGroup) executeReduceSlot() {
-	rand.Seed(time.Now().UnixNano())
-	numToSelect := len(fg.Slots) / 4
-	if numToSelect == 0 {
+func (fg *FlashGroup) executeReduceSlot(numToReduce int) {
+	if len(fg.Slots) == 0 {
 		return
 	}
-	selectedIndexes := rand.Perm(len(fg.Slots))[:numToSelect]
-	for i := len(selectedIndexes) - 1; i >= 0; i-- {
-		index := selectedIndexes[i]
-		// add selected slot to ReservedSlots
-		fg.ReservedSlots = append(fg.ReservedSlots, fg.Slots[index])
-		// remove selected slot from Slots
-		fg.Slots = append(fg.Slots[:index], fg.Slots[index+1:]...)
+	rand.Seed(time.Now().UnixNano())
+	fg.lock.Lock()
+	defer fg.lock.Unlock()
+	numToReduce = util.Min(numToReduce, len(fg.Slots))
+	if numToReduce == 0 {
+		return
 	}
+	fg.ReservedSlots = append(fg.ReservedSlots, fg.Slots[:numToReduce]...)
+	fg.Slots = fg.Slots[numToReduce:]
 }
 
 func (fg *FlashGroup) GetStatus() (st proto.FlashGroupStatus) {

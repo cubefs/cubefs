@@ -117,7 +117,9 @@ func (mc *MissCache) backgroundEviction() {
 }
 
 func (mc *MissCache) Delete(uniKey string) {
-	log.LogDebugf("MissCache Delete: key(%v)", uniKey)
+	if log.EnableDebug() {
+		log.LogDebugf("MissCache Delete: key(%v)", uniKey)
+	}
 	mc.Lock()
 	element, ok := mc.cache[uniKey]
 	if ok {
