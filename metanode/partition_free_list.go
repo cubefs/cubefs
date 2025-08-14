@@ -515,8 +515,10 @@ func (mp *metaPartition) deleteMarkedReplicaInodes(inoSlice []uint64,
 			continue
 		}
 
-		log.LogDebugf("[deleteMarkedReplicaInodes] isMigration[%v] mp[%v] inode[%v] inode.Extents: %v, ino verList: %v",
-			isMigration, mp.config.PartitionId, ino, inode.GetExtents(), inode.GetMultiVerString())
+		if log.EnableDebug() {
+			log.LogDebugf("[deleteMarkedReplicaInodes] isMigration[%v] mp[%v] inode[%v] ino verList: %v",
+				isMigration, mp.config.PartitionId, ino, inode.GetMultiVerString())
+		}
 
 		if inode.getLayerLen() > 0 {
 			log.LogErrorf("[deleteMarkedReplicaInodes] deleteMarkedInodes. mp[%v] inode[%v] verlist len %v should not drop",
@@ -578,8 +580,11 @@ func (mp *metaPartition) deleteMarkedEBSInodes(inoSlice []uint64, isMigration bo
 			continue
 		}
 
-		log.LogDebugf("deleteMarkedEBSInodes. mp %v inode [%v], ino verlist %v",
-			mp.config.PartitionId, ino, inode.GetMultiVerString())
+		if log.EnableDebug() {
+			log.LogDebugf("deleteMarkedEBSInodes. mp %v inode [%v], ino verlist %v",
+				mp.config.PartitionId, ino, inode.GetMultiVerString())
+		}
+
 		if inode.getLayerLen() > 1 {
 			log.LogErrorf("deleteMarkedEBSInodes. mp %v inode [%v] verlist len %v should not drop",
 				mp.config.PartitionId, ino, inode.getLayerLen())
