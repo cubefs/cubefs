@@ -34,10 +34,10 @@ const (
 	MaxTaskNum = 30
 
 	TaskWorkerInterval = time.Second * time.Duration(2)
-	idleConnTimeout    = 90              // seconds
-	connectTimeout     = 10              // seconds
-	MaxRetryNum        = 3               // maximum number of retries for sending tasks
-	RetryInterval      = time.Second * 1 // retry interval for sending tasks
+	idleConnTimeout    = 90                     // seconds
+	connectTimeout     = 10                     // seconds
+	MaxRetryNum        = 3                      // maximum number of retries for sending tasks
+	RetryInterval      = 100 * time.Millisecond // retry interval for sending tasks
 )
 
 // AdminTaskManager sends administration commands to the metaNode or dataNode.
@@ -233,7 +233,7 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet
 	}
 
 	for i := 0; i < MaxRetryNum; i++ {
-		if err = packet.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+		if err = packet.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime); err != nil {
 			log.LogErrorf(fmt.Sprintf("action[sendAdminTask],ReadFromConn failed task:%v,err:%v", task.ID, err))
 			time.Sleep(RetryInterval)
 			continue
