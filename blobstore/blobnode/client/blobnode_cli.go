@@ -43,7 +43,13 @@ type IBlobNode interface {
 
 // BlobNodeClient blobnode client
 type BlobNodeClient struct {
-	cli api.StorageAPI
+	cli  api.StorageAPI
+	bCli api.StorageAPI
+}
+
+type Config struct {
+	api.Config
+	BatchReadTimeoutMs int64 `json:"batch_read_timeout_ms"`
 }
 
 const (
@@ -88,9 +94,12 @@ func NopdataSize(size int) {
 }
 
 // NewBlobNodeClient returns blobnode client
-func NewBlobNodeClient(conf *api.Config) IBlobNode {
+func NewBlobNodeClient(conf *Config) IBlobNode {
+	bc := conf.Config
+	bc.ClientTimeoutMs = conf.BatchReadTimeoutMs
 	return &BlobNodeClient{
-		cli: api.New(conf),
+		cli:  api.New(&conf.Config),
+		bCli: api.New(&bc),
 	}
 }
 
@@ -183,5 +192,5 @@ func (c *BlobNodeClient) PutShard(ctx context.Context,
 // GetShards get batch shards
 func (c *BlobNodeClient) GetShards(ctx context.Context, location proto.VunitLocation, bids []api.BidInfo, ioType api.IOType) (getter api.ShardGetter, err error) {
 	ctx = trace.NewContextFromContext(ctx)
-	return c.cli.GetShards(ctx, location.Host, &api.GetShardsArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bids: bids, Type: ioType})
+	return c.bCli.GetShards(ctx, location.Host, &api.GetShardsArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bids: bids, Type: ioType})
 }
