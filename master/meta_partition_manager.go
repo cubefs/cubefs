@@ -52,6 +52,48 @@ func (c *Cluster) checkLoadMetaPartitions() {
 	}
 }
 
+func (mp *MetaPartition) checkPeerDiffWithRaft(c *Cluster) {
+	if len(mp.LoadResponse) == 0 {
+		return
+	}
+	if !mp.doCompare() {
+		return
+	}
+	var (
+		addrArr  = make(map[uint64]string)
+		leaderID uint64
+	)
+	for _, mr := range mp.Replicas {
+		addrArr[mr.nodeID] = mr.Addr
+		if mr.IsLeader {
+			leaderID = mr.nodeID
+		}
+	}
+
+	for _, info := range mp.LoadResponse {
+		if info.RaftInfo.RaftStatus.NodeID != leaderID {
+			continue
+		}
+		for peer := range info.RaftInfo.RaftStatus.Replicas {
+			if _, ok := addrArr[peer]; !ok {
+				c.AbnormalRaftMP.Store(mp.PartitionID, mp)
+				return
+			}
+		}
+		if len(info.RaftInfo.PendingPeers) != 0 {
+			c.AbnormalRaftMP.Store(mp.PartitionID, mp)
+			return
+		}
+		if len(info.RaftInfo.DownReplicas) != 0 {
+			c.AbnormalRaftMP.Store(mp.PartitionID, mp)
+			return
+		}
+		c.AbnormalRaftMP.Delete(mp.PartitionID)
+		return
+	}
+	c.AbnormalRaftMP.Delete(mp.PartitionID)
+}
+
 func (mp *MetaPartition) checkSnapshot(c *Cluster) {
 	if len(mp.LoadResponse) == 0 {
 		return
@@ -117,7 +159,7 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 	if !isEqual {
 		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			lrMsg := fmt.Sprintf(msg+lr.Addr, "applyId[%d],committedId[%d],maxInode[%d],InodeCnt[%d]", lr.ApplyID, lr.CommittedID, lr.MaxInode, lr.InodeCount)
+			lrMsg := fmt.Sprintf(msg+"addr[%s],applyId[%d],committedId[%d],maxInode[%d],InodeCnt[%d]", lr.Addr, lr.ApplyID, lr.CommittedID, lr.MaxInode, lr.InodeCount)
 			Warn(c.Name, lrMsg)
 		}
 		if !maxInodeEqual {
@@ -154,7 +196,7 @@ func (mp *MetaPartition) checkDentryCount(c *Cluster) (isEqual bool) {
 	if !isEqual {
 		msg := fmt.Sprintf("dentry count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			lrMsg := fmt.Sprintf(msg+lr.Addr, "applyId[%d],committedId[%d],dentryCount[%d]", lr.ApplyID, lr.CommittedID, lr.DentryCount)
+			lrMsg := fmt.Sprintf(msg+"addr[%s],applyId[%d],committedId[%d],dentryCount[%d]", lr.Addr, lr.ApplyID, lr.CommittedID, lr.DentryCount)
 			Warn(c.Name, lrMsg)
 		}
 		c.dentryCountNotEqualMP.Store(mp.PartitionID, mp)

@@ -159,8 +159,17 @@ func NewAheadReadWindow(arc *AheadReadCache, s *Streamer) *AheadReadWindow {
 }
 
 func (arw *AheadReadWindow) backgroundAheadReadTask() {
-	for task := range arw.taskC {
-		go arw.doTask(task)
+	ticker := time.NewTicker(time.Second)
+	for {
+		select {
+		case task := <-arw.taskC:
+			go arw.doTask(task)
+		case <-ticker.C:
+			if !arw.streamer.isOpen {
+				log.LogInfof("stream is closed, exit background task, s %s", arw.streamer.String())
+				return
+			}
+		}
 	}
 }
 
@@ -176,7 +185,9 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	}
 	defer func() {
 		arw.deleteTask(key)
-		log.LogDebugf("aheadRead step: fetch, key(%v) size(%v) err(%v) %v", key, task.cacheSize, err, time.Since(task.time))
+		if log.EnableDebug() {
+			log.LogDebugf("aheadRead step: fetch, key(%v) size(%v) err(%v) %v", key, task.cacheSize, err, time.Since(task.time))
+		}
 	}()
 	if _, ok := arw.cache.blockCache.Load(key); ok {
 		return
@@ -378,7 +389,9 @@ func (s *Streamer) aheadRead(req *ExtentRequest) (readSize int, err error) {
 		step = "hit"
 		cacheBlock = val.(*AheadReadBlock)
 		cacheBlock.time = startTime.Unix()
-		log.LogDebugf("aheadRead cache hit inode(%v) FileOffset(%v) offset(%v) size(%v) cacheBlockOffset(%v) cacheBlockSize(%v) %v", s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, cacheBlock.size, time.Since(startTime))
+		if log.EnableDebug() {
+			log.LogDebugf("aheadRead cache hit inode(%v) FileOffset(%v) offset(%v) size(%v) cacheBlockOffset(%v) cacheBlockSize(%v) %v", s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, cacheBlock.size, time.Since(startTime))
+		}
 		if cacheBlock.offset <= uint64(offset) {
 			if (cacheBlock.offset + cacheBlock.size) > uint64(offset+needSize) {
 				copy(req.Data[readSize:req.Size], cacheBlock.data[offset-int(cacheBlock.offset):offset-int(cacheBlock.offset)+needSize])

@@ -22,7 +22,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	"reflect"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,7 +41,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 // NOTE: if the operation is invoked by local machine
@@ -102,6 +101,7 @@ type MetaPartitionConfig struct {
 	ConnPool                 *util.ConnectPool   `json:"-"`
 	Forbidden                bool                `json:"-"`
 	ForbidWriteOpOfProtoVer0 bool                `json:"ForbidWriteOpOfProtoVer0"`
+	Freeze                   bool                `json:"freeze"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -143,7 +143,6 @@ type OpInode interface {
 	GetInodeTreeLen() int
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet, remoteAddr string) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet, remoteAddr string) (err error)
-	ClearInodeCache(req *proto.ClearInodeCacheRequest, p *Packet) (err error)
 	TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet, remoteAddr string) (err error)
 	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error)
@@ -154,6 +153,7 @@ type OpInode interface {
 	InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 	SetCreateTime(req *SetCreateTimeRequest, reqData []byte, p *Packet) (err error) // for debugging
 	DeleteMigrationExtentKey(req *proto.DeleteMigrationExtentKeyRequest, p *Packet, remoteAddr string) (err error)
+	UpdateInodeMeta(req *proto.UpdateInodeMetaRequest, p *Packet) (err error)
 }
 
 type OpExtend interface {
@@ -200,7 +200,7 @@ type OpTransaction interface {
 // OpExtent defines the interface for the extent operations.
 type OpExtent interface {
 	ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error)
-	ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error)
+	ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet, remoteAddr string) (err error)
 	BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequest, p *Packet) (err error)
 	ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
 	ObjExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
@@ -271,6 +271,7 @@ type OpPartition interface {
 	CanRemoveRaftMember(peer proto.Peer) error
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
 	GetUniqID(p *Packet, num uint32) (err error)
+	CloseAndBackupRaft() error
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -292,29 +293,26 @@ type MetaPartition interface {
 	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
 	GetStatByStorageClass() []*proto.StatOfStorageClass
 	GetMigrateStatByStorageClass() []*proto.StatOfStorageClass
+	SetFreeze(req *proto.FreezeMetaPartitionRequest) (err error)
 }
 
 type UidManager struct {
-	accumDelta        *sync.Map
-	accumBase         *sync.Map
-	accumRebuildDelta *sync.Map // snapshot redoLog
-	accumRebuildBase  *sync.Map // snapshot mirror
-	uidAcl            *sync.Map
-	rbuilding         bool
-	volName           string
-	acLock            sync.RWMutex
-	mpID              uint64
+	accumBase        map[uint32]int64
+	accumRebuildBase map[uint32]int64 // snapshot mirror
+	uidAcl           *sync.Map
+	rbuilding        bool
+	volName          string
+	acLock           sync.RWMutex
+	mpID             uint64
 }
 
 func NewUidMgr(volName string, mpID uint64) (mgr *UidManager) {
 	mgr = &UidManager{
-		volName:           volName,
-		mpID:              mpID,
-		accumDelta:        new(sync.Map),
-		accumBase:         new(sync.Map),
-		accumRebuildDelta: new(sync.Map),
-		accumRebuildBase:  new(sync.Map),
-		uidAcl:            new(sync.Map),
+		volName:          volName,
+		mpID:             mpID,
+		accumBase:        map[uint32]int64{},
+		accumRebuildBase: map[uint32]int64{},
+		uidAcl:           new(sync.Map),
 	}
 	var uid uint32
 	mgr.uidAcl.Store(uid, false)
@@ -331,52 +329,8 @@ func (uMgr *UidManager) addUidSpace(uid uint32, inode uint64, eks []proto.Extent
 		log.LogWarnf("addUidSpace.volname [%v] mp[%v] uid %v be set full", uMgr.mpID, uMgr.volName, uid)
 		return proto.OpNoSpaceErr
 	}
-	if eks == nil {
-		return
-	}
-	var size int64
-	for _, ek := range eks {
-		size += int64(ek.Size)
-	}
-	if val, ok := uMgr.accumDelta.Load(uid); ok {
-		size += val.(int64)
-	}
-	uMgr.accumDelta.Store(uid, size)
 
-	if uMgr.rbuilding {
-		if val, ok := uMgr.accumRebuildDelta.Load(uid); ok {
-			size += val.(int64)
-		}
-		uMgr.accumRebuildDelta.Store(uid, size)
-	}
 	return
-}
-
-func (uMgr *UidManager) doMinusUidSpace(uid uint32, inode uint64, size uint64) {
-	uMgr.acLock.Lock()
-	defer uMgr.acLock.Unlock()
-
-	doWork := func(delta *sync.Map) {
-		var rsvSize int64
-		if val, ok := delta.Load(uid); ok {
-			delta.Store(uid, val.(int64)-int64(size))
-		} else {
-			rsvSize -= int64(size)
-			delta.Store(uid, rsvSize)
-		}
-	}
-	doWork(uMgr.accumDelta)
-	if uMgr.rbuilding {
-		doWork(uMgr.accumRebuildDelta)
-	}
-}
-
-func (uMgr *UidManager) minusUidSpace(uid uint32, inode uint64, eks []proto.ExtentKey) {
-	var size uint64
-	for _, ek := range eks {
-		size += uint64(ek.Size)
-	}
-	uMgr.doMinusUidSpace(uid, inode, size)
 }
 
 func (uMgr *UidManager) getUidAcl(uid uint32) (enable bool) {
@@ -404,37 +358,12 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 	uMgr.acLock.RLock()
 	defer uMgr.acLock.RUnlock()
 
-	var ok bool
-
-	uMgr.accumDelta.Range(func(key, value interface{}) bool {
-		var size int64
-		size += value.(int64)
-		if baseInfo, ok := uMgr.accumBase.Load(key.(uint32)); ok {
-			size += baseInfo.(int64)
-			if size < 0 {
-				log.LogErrorf("getAllUidSpace. mp[%v] uid %v size small than 0 %v, old %v, new %v", uMgr.mpID, key.(uint32), size, value.(int64), baseInfo.(int64))
-				return false
-			}
-		}
-		uMgr.accumBase.Store(key.(uint32), size)
-		return true
-	})
-
-	uMgr.accumDelta = new(sync.Map)
-
-	uMgr.accumBase.Range(func(key, value interface{}) bool {
-		var size int64
-		if size, ok = value.(int64); !ok {
-			log.LogErrorf("getAllUidSpace. mp[%v] accumBase key %v size type %v", uMgr.mpID, reflect.TypeOf(key), reflect.TypeOf(value))
-			return false
-		}
+	for uid, size := range uMgr.accumBase {
 		rsp = append(rsp, &proto.UidReportSpaceInfo{
-			Uid:  key.(uint32),
+			Uid:  uid,
 			Size: uint64(size),
 		})
-		// log.LogDebugf("getAllUidSpace. mp[%v] accumBase uid %v size %v", uMgr.mpID, key.(uint32), size)
-		return true
-	})
+	}
 
 	return
 }
@@ -453,26 +382,26 @@ func (uMgr *UidManager) accumRebuildStart() bool {
 func (uMgr *UidManager) accumRebuildFin(rebuild bool) {
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
-	log.LogDebugf("accumRebuildFin rebuild volname [%v], mp:[%v],%v:%v, rebuild:[%v]", uMgr.volName, uMgr.mpID,
-		uMgr.accumRebuildBase, uMgr.accumRebuildDelta, rebuild)
+	log.LogDebugf("accumRebuildFin rebuild volname [%v], mp:[%v],%v, rebuild:[%v]", uMgr.volName, uMgr.mpID,
+		uMgr.accumRebuildBase, rebuild)
 	uMgr.rbuilding = false
 	if !rebuild {
-		uMgr.accumRebuildBase = new(sync.Map)
-		uMgr.accumRebuildDelta = new(sync.Map)
+		uMgr.accumRebuildBase = map[uint32]int64{}
 		return
 	}
 	uMgr.accumBase = uMgr.accumRebuildBase
-	uMgr.accumDelta = uMgr.accumRebuildDelta
-	uMgr.accumRebuildBase = new(sync.Map)
-	uMgr.accumRebuildDelta = new(sync.Map)
+	uMgr.accumRebuildBase = map[uint32]int64{}
 }
 
-func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum *sync.Map) {
+func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum map[uint32]int64) {
+	uMgr.acLock.Lock()
+	defer uMgr.acLock.Unlock()
+
 	size := ino.GetSpaceSize()
-	if val, ok := accum.Load(ino.Uid); ok {
-		size += uint64(val.(int64))
+	if val, ok := accum[ino.Uid]; ok {
+		size += uint64(val)
 	}
-	accum.Store(ino.Uid, int64(size))
+	accum[ino.Uid] = int64(size)
 }
 
 type OpQuota interface {
@@ -621,7 +550,7 @@ func (mp *metaPartition) IsFollowerRead() (ok bool) {
 }
 
 func (mp *metaPartition) IsForbidden() bool {
-	return mp.config.Forbidden
+	return mp.config.Forbidden || mp.config.Freeze
 }
 
 func (mp *metaPartition) SetForbidden(status bool) {
@@ -870,17 +799,15 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 	mp.startScheduleTask()
-	if err = mp.startFreeList(); err != nil {
-		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
-			mp.config.PartitionId, err.Error())
-		return
-	}
 
 	retryCnt := 0
 	for ; retryCnt < 200; retryCnt++ {
 		if err = mp.manager.forceUpdateVolumeView(mp); err != nil {
 			log.LogWarnf("[onStart] vol(%v) mpId(%d) retryCnt(%v), GetVolumeSimpleInfo err[%v]",
 				mp.config.VolName, mp.config.PartitionId, retryCnt, err)
+			if strings.Compare(err.Error(), proto.ErrVolNotExists.Error()) == 0 {
+				return
+			}
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -891,6 +818,9 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 			mp.config.VolName, mp.config.PartitionId, retryCnt, err)
 		return
 	}
+
+	log.LogWarnf("[onStart] vol(%v) mpId(%d) retryCnt(%v), GetVolumeSimpleInfo succ",
+		mp.config.VolName, mp.config.PartitionId, retryCnt)
 
 	volInfo := mp.vol.GetVolView()
 	mp.vol.volDeleteLockTime = volInfo.DeleteLockTime
@@ -915,7 +845,10 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 				Address: gClusterInfo.EbsAddr, // gClusterInfo is fetched from master in register procedure
 			},
 			MaxSizePutOnce: int64(volInfo.ObjBlockSize),
-			Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
+			Logger: &access.Logger{
+				Filename: path.Join(log.LogDir, "ebs.log"),
+			},
+			LogLevel: log.GetBlobLogLevel(),
 		})
 
 		if err != nil {
@@ -923,21 +856,27 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 				mp.config.PartitionId, gClusterInfo.EbsAddr, err)
 			// not return err here, blobstore client may be created latter
 		} else {
-			log.LogInfof("action[onStart] mp(%v) blobStoreAddr(%v), create blobstore client success",
+			log.LogWarnf("action[onStart] mp(%v) blobStoreAddr(%v), create blobstore client success",
 				mp.config.PartitionId, gClusterInfo.EbsAddr)
 		}
 	}
 
+	if err = mp.startFreeList(); err != nil {
+		err = errors.NewErrorf("[onStart] start free list id=%d: %s",
+			mp.config.PartitionId, err.Error())
+		return
+	}
+
 	go mp.startCheckerEvict()
 
-	log.LogDebugf("[before raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
+	log.LogWarnf("[before raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
-	if err = mp.startRaft(); err != nil {
+	if err = mp.startRaft(isCreate); err != nil {
 		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	log.LogDebugf("[after raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
+	log.LogWarnf("[after raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
 	mp.updateSize()
 
@@ -946,19 +885,11 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		go mp.multiVersionTTLWork(time.Minute)
 		return
 	}
-	// do cache TTL die out process
-	if err = mp.cacheTTLWork(); err != nil {
-		err = errors.NewErrorf("[onStart] start CacheTTLWork id=%d: %s",
-			mp.config.PartitionId, err.Error())
-		return
-	}
-
 	return
 }
 
 func (mp *metaPartition) startScheduleTask() {
 	mp.startSchedule(mp.applyID)
-	mp.startFileStats()
 }
 
 func (mp *metaPartition) onStop() {
@@ -970,7 +901,7 @@ func (mp *metaPartition) onStop() {
 	}
 }
 
-func (mp *metaPartition) startRaft() (err error) {
+func (mp *metaPartition) startRaft(isCreate bool) (err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -1004,10 +935,11 @@ func (mp *metaPartition) startRaft() (err error) {
 	log.LogInfof("start partition id=%d,applyID:%v raft peers: %s",
 		mp.config.PartitionId, mp.applyID, peers)
 	pc := &raftstore.PartitionConfig{
-		ID:      mp.config.PartitionId,
-		Applied: mp.applyID,
-		Peers:   peers,
-		SM:      mp,
+		ID:       mp.config.PartitionId,
+		Applied:  mp.applyID,
+		Peers:    peers,
+		SM:       mp,
+		IsCreate: isCreate,
 	}
 	mp.raftPartition, err = mp.config.RaftStore.CreatePartition(pc)
 	if err == nil {
@@ -1018,9 +950,7 @@ func (mp *metaPartition) startRaft() (err error) {
 
 func (mp *metaPartition) stopRaft() {
 	if mp.raftPartition != nil {
-		// TODO Unhandled errors
-		// mp.raftPartition.Stop()
-		_ = struct{}{}
+		mp.raftPartition.Stop()
 	}
 }
 
@@ -1244,10 +1174,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.LogWarnf("action[LoadSnapshot] recovered when load partition partition: %v, failed: %v",
-						mp.config.PartitionId, r)
+					log.LogWarnf("action[LoadSnapshot] recovered when load partition partition: %v, failed: %v, i %d, stack %s",
+						mp.config.PartitionId, r, i, debug.Stack())
 
-					errs[i] = errors.NewErrorf("%v", r)
+					errs[i] = errors.NewErrorf("%v, i %d, stack %s", r, i, debug.Stack())
 				}
 
 				wg.Done()
@@ -1313,12 +1243,30 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 	if err != nil {
 		return err
 	}
-
 	return nil
+}
+
+func (mp *metaPartition) doFileStats(thresholds []uint64) {
+	fileRange := make([]int64, len(thresholds)+1)
+	mp.GetInodeTree().Ascend(func(i BtreeItem) bool {
+		ino := i.(*Inode)
+		if proto.IsRegular(ino.Type) && ino.NLink > 0 {
+			index := calculateFileRangeIndex(ino.Size, thresholds)
+			if index >= 0 && index < len(fileRange) {
+				fileRange[index]++
+			}
+		}
+		return true
+	})
+	mp.fileRange = fileRange
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
+	defer func() {
+		log.LogWarnf("metaPartition %d store apply %v finish", mp.config.PartitionId, sm.applyIndex)
+	}()
+
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
@@ -1496,6 +1444,14 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	resp.DentryCount = uint64(mp.GetDentryTreeLen())
 	resp.ApplyID = mp.getApplyID()
 	resp.CommittedID = mp.getCommittedID()
+
+	resp.RaftInfo.DownReplicas = mp.config.RaftStore.RaftServer().GetDownReplicas(mp.config.PartitionId)
+	resp.RaftInfo.PendingPeers = mp.config.RaftStore.RaftServer().GetPendingReplica(mp.config.PartitionId)
+	if rStatus := mp.config.RaftStore.RaftStatus(mp.config.PartitionId); rStatus != nil {
+		resp.RaftInfo.RaftStatus = *rStatus
+	}
+	resp.RaftInfo.Hosts = mp.config.Peers
+
 	if err != nil {
 		err = errors.Trace(err,
 			"[ResponseLoadMetaPartition] check snapshot")
@@ -1749,115 +1705,6 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 	})
 }
 
-// cacheTTLWork only happen in datalake situation
-func (mp *metaPartition) cacheTTLWork() (err error) {
-	// check volume type, only Cold volume will do the cache ttl.
-	volView := mp.vol.GetVolView()
-	if volView.VolType != proto.VolumeTypeCold {
-		return
-	}
-
-	if mp.verSeq > 0 {
-		log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v]", mp.GetVolName(), mp.config.PartitionId)
-		return
-	}
-
-	// do cache ttl work
-	go mp.doCacheTTL(volView.CacheTtl)
-	return
-}
-
-func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
-	// first sleep a rand time, range [0, 1200s(20m)],
-	// make sure all mps is not doing scan work at the same time.
-	rand.Seed(time.Now().Unix())
-	time.Sleep(time.Duration(rand.Intn(1200)))
-
-	ttl := time.NewTicker(time.Duration(util.OneDaySec()) * time.Second)
-	for {
-		select {
-		case <-ttl.C:
-			if mp.verSeq > 0 {
-				log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v] cacheTTL[%v]",
-					mp.GetVolName(), mp.config.PartitionId, cacheTTL)
-				return
-			}
-			log.LogDebugf("[doCacheTTL] begin cache ttl, mp[%v] cacheTTL[%v]", mp.config.PartitionId, cacheTTL)
-			// only leader can do TTL work
-			if _, ok := mp.IsLeader(); !ok {
-				log.LogDebugf("[doCacheTTL] partitionId=%d is not leader, skip", mp.config.PartitionId)
-				continue
-			}
-
-			// get the last cacheTTL
-			volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
-			if mcErr != nil {
-				err = fmt.Errorf("[doCacheTTL]: can't get volume info: partitoinID(%v) volume(%v)",
-					mp.config.PartitionId, mp.config.VolName)
-				return
-			}
-			cacheTTL = volView.CacheTTL
-
-			mp.InodeTTLScan(cacheTTL)
-
-		case <-mp.stopC:
-			log.LogWarnf("[doCacheTTL] stoped, mp[%v]", mp.config.PartitionId)
-			return
-		}
-	}
-}
-
-func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
-	curTime := timeutil.GetCurrentTimeUnix()
-	// begin
-	count := 0
-	needSleep := false
-	mp.inodeTree.GetTree().Ascend(func(i BtreeItem) bool {
-		inode := i.(*Inode)
-		// dir type just skip
-		if proto.IsDir(inode.Type) {
-			return true
-		}
-		inode.RLock()
-		// eks is empty just skip
-		if len(inode.Extents.eks) == 0 || inode.ShouldDelete() {
-			inode.RUnlock()
-			return true
-		}
-
-		if (curTime - inode.AccessTime) > int64(cacheTTL)*util.OneDaySec() {
-			log.LogDebugf("[InodeTTLScan] mp[%v] do inode ttl delete[%v]", mp.config.PartitionId, inode.Inode)
-			count++
-			// make request
-			p := &Packet{}
-			req := &proto.EmptyExtentKeyRequest{
-				Inode: inode.Inode,
-			}
-			ino := NewInode(req.Inode, 0)
-			curTime = timeutil.GetCurrentTimeUnix()
-			if inode.ModifyTime < curTime {
-				ino.ModifyTime = curTime
-			}
-
-			mp.ExtentsOp(p, ino, opFSMExtentsEmpty)
-			// check empty result.
-			// if result is OpAgain, means the extDelCh maybe full,
-			// so let it sleep 1s.
-			if p.ResultCode == proto.OpAgain {
-				needSleep = true
-			}
-		}
-		inode.RUnlock()
-		// every 1000 inode sleep 1s
-		if count > 1000 || needSleep {
-			count %= 1000
-			needSleep = false
-			time.Sleep(time.Second)
-		}
-		return true
-	})
-}
-
 func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) error {
 	txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 
@@ -1928,4 +1775,34 @@ func (mp *metaPartition) GetStatByStorageClass() []*proto.StatOfStorageClass {
 
 func (mp *metaPartition) GetMigrateStatByStorageClass() []*proto.StatOfStorageClass {
 	return mp.statByMigrateStorageClass
+}
+
+func (mp *metaPartition) CloseAndBackupRaft() (err error) {
+	err = mp.raftPartition.CloseAndBackup()
+	return
+}
+
+func (mp *metaPartition) SetFreeze(req *proto.FreezeMetaPartitionRequest) (err error) {
+	reqData, err := json.Marshal(*req)
+	if err != nil {
+		return
+	}
+	r, err := mp.submit(opFSMSetFreeze, reqData)
+	if err != nil {
+		return
+	}
+	if status := r.(uint8); status != proto.OpOk {
+		p := &Packet{}
+		p.ResultCode = status
+		err = errors.NewErrorf("[SetFreeze]: %s", p.GetResultMsg())
+		return
+	}
+
+	return nil
+}
+
+func (mp *metaPartition) getFileRange() []int64 {
+	fileRangeCopy := make([]int64, len(mp.fileRange))
+	copy(fileRangeCopy, mp.fileRange)
+	return fileRangeCopy
 }

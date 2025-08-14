@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -147,7 +148,11 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
 	if err = reply.ReadFromConnWithVer(ft.conn, timeOut); err != nil {
-		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+		if request.Opcode == proto.OpStreamFollowerRead && strings.Contains(err.Error(), "timeout") {
+			log.LogWarnf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+		} else {
+			log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+		}
 		return
 	}
 
@@ -287,7 +292,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		return
 	}
 	// log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
-	//	request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
+	// 	request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
 
 	if err = request.resolveFollowersAddr(); err != nil {
 		err = rp.putResponse(request)
@@ -427,8 +432,14 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
 		if reply.IsWriteOpOfPacketProtoVerForbidden() {
 			log.LogDebugf(err.Error())
-		} else if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError {
+		} else if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError || reply.ResultCode == proto.OpTinyRecoverErr || reply.ResultCode == proto.OpLimitedIoErr || reply.ResultCode == proto.OpDpDecommissionRepairErr || reply.ResultCode == proto.OpDpRepairErr {
 			log.LogInfof(err.Error())
+		} else if (reply.ResultCode == proto.OpTryOtherAddr && reply.Opcode == proto.OpWrite) ||
+			reply.Opcode == proto.OpReadTinyDeleteRecord ||
+			(reply.Opcode == proto.OpWrite && proto.IsTinyExtentType(reply.ExtentType) && strings.Contains(err.Error(), "GetAvailableTinyExtent error no available extent")) ||
+			(reply.Opcode == proto.OpWrite && reply.ResultCode == proto.OpLimitedIoErr && strings.Contains(err.Error(), ActionReceiveFromFollower)) ||
+			strings.Contains(err.Error(), proto.ErrDataPartitionNotExists.Error()) {
+			log.LogWarnf(err.Error())
 		} else {
 			log.LogErrorf(err.Error())
 		}

@@ -1408,13 +1408,10 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 		if item == nil || ino.IsTempFile() || ino.ShouldDelete() {
 			mp.freeList.Remove(rbInode.inode.Inode)
 			if mp.uidManager != nil {
-				mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Extents.eks)
+				mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.GetExtentEks())
 			}
 			if mp.mqMgr != nil && len(rbInode.quotaIds) > 0 && item == nil {
 				mp.setInodeQuota(rbInode.quotaIds, rbInode.inode.Inode)
-				for _, quotaId := range rbInode.quotaIds {
-					mp.mqMgr.updateUsedInfo(int64(rbInode.inode.Size), 1, quotaId)
-				}
 			}
 			mp.inodeTree.ReplaceOrInsert(rbInode.inode, true)
 		} else {
@@ -1423,15 +1420,6 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 
 	case TxDelete:
 		if rsp := tr.txProcessor.mp.getInode(rbInode.inode, false); rsp.Status == proto.OpOk {
-			if tr.txProcessor.mp.uidManager != nil {
-				tr.txProcessor.mp.uidManager.doMinusUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Size)
-			}
-
-			if tr.txProcessor.mp.mqMgr != nil && len(rbInode.quotaIds) > 0 {
-				for _, quotaId := range rbInode.quotaIds {
-					tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, quotaId)
-				}
-			}
 			tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode, 0)
 			tr.txProcessor.mp.fsmEvictInode(rbInode.inode)
 		}

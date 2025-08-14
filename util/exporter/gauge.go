@@ -23,8 +23,14 @@ import (
 )
 
 var (
-	GaugeGroup sync.Map
-	GaugeCh    chan *Gauge
+	GaugeGroup    sync.Map
+	GaugeVecGroup sync.Map
+	GaugeCh       chan *Gauge
+	GaugePool     = sync.Pool{
+		New: func() interface{} {
+			return new(Gauge)
+		},
+	}
 )
 
 func collectGauge() {
@@ -33,6 +39,7 @@ func collectGauge() {
 		m := <-GaugeCh
 		metric := m.Metric()
 		metric.Set(m.val)
+		putGaugeToPool(m)
 		// log.LogDebugf("collect metric %v", m)
 	}
 }
@@ -41,6 +48,14 @@ type Gauge struct {
 	name   string
 	labels map[string]string
 	val    float64
+}
+
+func getGaugeFromPool() *Gauge {
+	return GaugePool.Get().(*Gauge)
+}
+
+func putGaugeToPool(g *Gauge) {
+	GaugePool.Put(g)
 }
 
 func NewGauge(name string) (g *Gauge) {
@@ -92,23 +107,29 @@ func (g *Gauge) Set(val float64) {
 	if !enabledPrometheus {
 		return
 	}
-	g.val = val
-	g.publish()
-}
 
-func (c *Gauge) publish() {
-	select {
-	case GaugeCh <- c:
-	default:
-	}
+	publishGauge(g.name, val, g.labels)
 }
 
 func (g *Gauge) SetWithLabels(val float64, labels map[string]string) {
 	if !enabledPrometheus {
 		return
 	}
-	g.labels = labels
-	g.Set(val)
+
+	publishGauge(g.name, val, labels)
+}
+
+func publishGauge(name string, val float64, labels map[string]string) {
+	newGauge := getGaugeFromPool()
+	newGauge.name = name
+	newGauge.labels = labels
+	newGauge.val = val
+
+	select {
+	case GaugeCh <- newGauge:
+	default:
+		putGaugeToPool(newGauge)
+	}
 }
 
 type GaugeVec struct {
@@ -146,5 +167,52 @@ func (v *GaugeVec) SetBoolWithLabelValues(val bool, lvs ...string) {
 		v.SetWithLabelValues(float64(1), lvs...)
 	} else {
 		v.SetWithLabelValues(0, lvs...)
+	}
+}
+
+func (v *GaugeVec) Delete(kvs map[string]string) {
+	v.GaugeVec.DeletePartialMatch(kvs)
+}
+
+func (v *GaugeVec) Reset() {
+	v.GaugeVec.Reset()
+}
+
+func NewGaugeVecFromMap(name, help string, labels []string) *GaugeVec {
+	if !enabledPrometheus {
+		return nil
+	}
+	v := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: metricsName(name),
+			Help: help,
+		},
+		labels,
+	)
+
+	gv := &GaugeVec{GaugeVec: v}
+
+	store, load := GaugeVecGroup.LoadOrStore(name, gv)
+	if load {
+		return store.(*GaugeVec)
+	}
+
+	if err := prometheus.Register(v); err != nil {
+		log.LogErrorf("prometheus register gaugevec name:%v, labels:{%v} error: %v", name, labels, err)
+		return nil
+	}
+
+	return gv
+}
+
+func (v *GaugeVec) AddWithLabelValues(val float64, lvs ...string) {
+	if m, err := v.GetMetricWithLabelValues(lvs...); err == nil {
+		m.Add(val)
+	}
+}
+
+func (v *GaugeVec) SubWithLabelValues(val float64, lvs ...string) {
+	if m, err := v.GetMetricWithLabelValues(lvs...); err == nil {
+		m.Sub(val)
 	}
 }

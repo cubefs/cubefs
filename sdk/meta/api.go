@@ -203,28 +203,6 @@ create_dentry:
 		log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
 	}
 
-	if mw.EnableSummary {
-		var filesHddInc, filesSsdInc, filesBlobStoreInc, dirsInc int64
-		if proto.IsDir(mode) {
-			dirsInc = 1
-		} else {
-			if info.StorageClass == proto.StorageClass_Replica_HDD {
-				filesHddInc = 1
-			}
-			if info.StorageClass == proto.StorageClass_Replica_SSD {
-				filesSsdInc = 1
-			}
-			if info.StorageClass == proto.StorageClass_BlobStore {
-				filesBlobStoreInc = 1
-			}
-		}
-		// go mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
-		job := func() {
-			mw.UpdateSummary_ll(parentID, filesHddInc, filesSsdInc, filesBlobStoreInc, 0, 0, 0, dirsInc)
-		}
-		tx.SetOnCommit(job)
-	}
-
 	return info, nil
 }
 
@@ -238,7 +216,14 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		mp           *MetaPartition
 		rwPartitions []*MetaPartition
 	)
-
+	defer func() {
+		//if info != nil && mw.RemoteCacheBloom != nil {
+		//	cacheBloom := mw.RemoteCacheBloom()
+		//	if cacheBloom.TestUint64(parentID) {
+		//		cacheBloom.AddUint64(info.Inode)
+		//	}
+		//}
+	}()
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		log.LogErrorf("Create_ll: No parent partition, parentID(%v)", parentID)
@@ -339,27 +324,20 @@ create_dentry:
 		}
 		return nil, statusToErrno(status)
 	}
-	if mw.EnableSummary {
-		var filesHddInc, filesSsdInc, filesBlobStoreInc, dirsInc int64
-		if proto.IsDir(mode) {
-			dirsInc = 1
-		} else {
-			if info.StorageClass == proto.StorageClass_Replica_HDD {
-				filesHddInc = 1
-			}
-			if info.StorageClass == proto.StorageClass_Replica_SSD {
-				filesSsdInc = 1
-			}
-			if info.StorageClass == proto.StorageClass_BlobStore {
-				filesBlobStoreInc = 1
-			}
-		}
-		go mw.UpdateSummary_ll(parentID, filesHddInc, filesSsdInc, filesBlobStoreInc, 0, 0, 0, dirsInc)
-	}
 	return info, nil
 }
 
 func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mode uint32, err error) {
+	defer func() {
+		log.LogDebugf("Lookup_ll parent id %v, name %v ,inode %v", parentID, name, inode)
+		//if err == nil && mw.RemoteCacheBloom != nil {
+		//	cacheBloom := mw.RemoteCacheBloom()
+		//	if cacheBloom.TestUint64(parentID) {
+		//		cacheBloom.AddUint64(inode)
+		//	}
+		//}
+	}()
+
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		log.LogErrorf("Lookup_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
@@ -692,25 +670,31 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
-			mw.enableTrash()
+			if err = mw.enableTrash(); err != nil {
+				goto deleteDirectly
+			}
 		}
 		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
 		if err != nil {
-			log.LogErrorf("Delete_ll: shouldNotMoveToTrash failed:%v", err)
+			log.LogWarnf("Delete_ll: shouldNotMoveToTrash failed:%v", err)
 			return nil, err
 		}
 		if !ret {
 			parentPathAbsolute := mw.getCurrentPath(parentID)
 			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
 			if err != nil {
+				if strings.Contains(err.Error(), "quota exceeded") || strings.Contains(err.Error(), "no space") {
+					log.LogDebugf("Delete_ll: quota exceeded, delete %v directly, err %v", name, err.Error())
+					goto deleteDirectly
+				}
 				log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
 			}
 			return nil, err
 		}
 
 	}
-
+deleteDirectly:
 	var tx *Transaction
 	defer func() {
 		if tx != nil {
@@ -794,28 +778,6 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		return info, preErr
 	}
 
-	if mw.EnableSummary {
-		var job func()
-		// go func() {
-		if proto.IsDir(mode) {
-			job = func() {
-				mw.UpdateSummary_ll(parentID, 0, 0, 0, 0, 0, 0, -1)
-			}
-		} else {
-			job = func() {
-				if info.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(parentID, -1, 0, 0, -int64(info.Size), 0, 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(parentID, 0, -1, 0, 0, -int64(info.Size), 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(parentID, 0, 0, -1, 0, 0, -int64(info.Size), 0)
-				}
-			}
-		}
-		tx.SetOnCommit(job)
-	}
 	// clear trash cache
 	if mw.trashPolicy != nil && !mw.disableTrash {
 		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
@@ -849,7 +811,9 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
-			mw.enableTrash()
+			if err = mw.enableTrash(); err != nil {
+				goto deleteDirectly
+			}
 		}
 		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
@@ -861,6 +825,11 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 			parentPathAbsolute := mw.getCurrentPath(parentID)
 			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
 			if err != nil {
+				// delete it directly if quota is exceeded
+				if strings.Contains(err.Error(), "quota exceeded") || strings.Contains(err.Error(), "no space") {
+					log.LogDebugf("Delete_ll: quota exceeded, delete %v directly, err %v", name, err.Error())
+					goto deleteDirectly
+				}
 				log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
 			}
 
@@ -868,7 +837,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		}
 
 	}
-
+deleteDirectly:
 	if isDir {
 		status, inode, mode, err = mw.lookup(parentMP, parentID, name, verSeq)
 		if err != nil || status != statusOK {
@@ -957,24 +926,6 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 	if err != nil || status != statusOK {
 		log.LogDebugf("action[Delete_ll] parentID %v inode %v name %v verSeq %v err %v", parentID, inode, name, verSeq, err)
 		return nil, nil
-	}
-
-	if verSeq == 0 && mw.EnableSummary {
-		go func() {
-			if proto.IsDir(mode) {
-				mw.UpdateSummary_ll(parentID, 0, 0, 0, 0, 0, 0, -1)
-			} else {
-				if info.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(parentID, -1, 0, 0, -int64(info.Size), 0, 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(parentID, 0, -1, 0, 0, -int64(info.Size), 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(parentID, 0, 0, -1, 0, 0, -int64(info.Size), 0)
-				}
-			}
-		}()
 	}
 
 	return info, nil
@@ -1086,23 +1037,7 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 		return nil, nil
 	}
 	log.LogDebugf("delete_ll name %v ino %v", name, info.Inode)
-	if mw.EnableSummary {
-		go func() {
-			if proto.IsDir(mode) {
-				mw.UpdateSummary_ll(parentID, 0, 0, 0, 0, 0, 0, -1)
-			} else {
-				if info.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(parentID, -1, 0, 0, -int64(info.Size), 0, 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(parentID, 0, -1, 0, 0, -int64(info.Size), 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(parentID, 0, 0, -1, 0, 0, -int64(info.Size), 0)
-				}
-			}
-		}()
-	}
+
 	// clear trash cache
 	if mw.trashPolicy != nil && !mw.disableTrash {
 		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
@@ -1236,89 +1171,6 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		return preErr
 	}
 
-	// update summary
-	var job func()
-	if mw.EnableSummary {
-		var srcInodeInfo *proto.InodeInfo
-		var dstInodeInfo *proto.InodeInfo
-
-		srcInodeInfo, _ = mw.InodeGet_ll(srcInode)
-		if dstInode != 0 {
-			dstInodeInfo, _ = mw.InodeGet_ll(dstInode)
-			sizeInc := srcInodeInfo.Size - dstInodeInfo.Size
-			job = func() {
-				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -int64(srcInodeInfo.Size), 0, 0, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, int64(sizeInc), 0, 0, 0)
-				}
-				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, -int64(srcInodeInfo.Size), 0, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, int64(sizeInc), 0, 0)
-				}
-				if dstInodeInfo.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, 0, -int64(srcInodeInfo.Size), 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, int64(sizeInc), 0)
-				}
-			}
-			tx.SetOnCommit(job)
-			return
-		} else {
-			sizeInc := int64(srcInodeInfo.Size)
-			if proto.IsRegular(srcMode) {
-				log.LogDebugf("txRename_ll: update summary when file dentry is replaced")
-				job = func() {
-					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
-						mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -sizeInc, 0, 0, 0)
-						mw.UpdateSummary_ll(dstParentID, 1, 0, 0, sizeInc, 0, 0, 0)
-					}
-					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
-						mw.UpdateSummary_ll(srcParentID, 0, -1, 0, 0, -sizeInc, 0, 0)
-						mw.UpdateSummary_ll(dstParentID, 0, 1, 0, 0, sizeInc, 0, 0)
-					}
-					if srcInodeInfo.StorageClass == proto.StorageClass_BlobStore {
-						mw.UpdateSummary_ll(srcParentID, 0, 0, -1, 0, 0, -sizeInc, 0)
-						mw.UpdateSummary_ll(dstParentID, 0, 0, 1, 0, 0, sizeInc, 0)
-					}
-				}
-			} else {
-				log.LogDebugf("txRename_ll: update summary when dir dentry is replaced")
-				job = func() {
-					mw.UpdateSummary_ll(srcParentID, 0, 0, 0, 0, 0, 0, -1)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, 0, 1)
-				}
-			}
-			tx.SetOnCommit(job)
-		}
-	}
-
-	// TODO
-	// job = func() {
-	// 	var inodes []uint64
-	// 	inodes = append(inodes, srcInode)
-	// 	srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
-	// 	if err != nil {
-	// 		log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
-	// 	}
-
-	// 	destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
-	// 	if err != nil {
-	// 		log.LogErrorf("rename_ll: get dst partent inode [%v] quota fail [%v]", dstParentID, err)
-	// 	}
-
-	// 	if mapHaveSameKeys(srcQuotaInfos, destQuotaInfos) {
-	// 		return
-	// 	}
-
-	// 	for quotaId := range srcQuotaInfos {
-	// 		mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
-	// 	}
-
-	// 	for quotaId, info := range destQuotaInfos {
-	// 		log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
-	// 		mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
-	// 	}
-	// }
-	// tx.SetOnCommit(job)
 	return nil
 }
 
@@ -1384,7 +1236,6 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return syscall.EAGAIN
 	}
 	var srcInodeInfo *proto.InodeInfo
-	var dstInodeInfo *proto.InodeInfo
 	srcInodeInfo, _ = mw.InodeGet_ll(inode)
 
 	// Note that only regular files are allowed to be overwritten.
@@ -1397,7 +1248,6 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		if err != nil {
 			return syscall.EAGAIN
 		}
-		dstInodeInfo, _ = mw.InodeGet_ll(oldInode)
 		// delete old cache
 		mw.DeleteInoInfoCache(oldInode)
 	}
@@ -1441,79 +1291,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			// evict oldInode to avoid oldInode becomes orphan inode
 			mw.ievict(inodeMP, oldInode, dstFullPath)
 		}
-		if mw.EnableSummary {
-			sizeInc := srcInodeInfo.Size - dstInodeInfo.Size
-			go func() {
-				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -int64(srcInodeInfo.Size), 0, 0, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, int64(sizeInc), 0, 0, 0)
-				}
-				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, -int64(srcInodeInfo.Size), 0, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, int64(sizeInc), 0, 0)
-				}
-				if dstInodeInfo.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, 0, -int64(srcInodeInfo.Size), 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, int64(sizeInc), 0)
-				}
-			}()
-		}
-	} else {
-		if mw.EnableSummary {
-			sizeInc := int64(srcInodeInfo.Size)
-			if proto.IsRegular(mode) {
-				// file
-				go func() {
-					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
-						mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -sizeInc, 0, 0, 0)
-						mw.UpdateSummary_ll(dstParentID, 1, 0, 0, sizeInc, 0, 0, 0)
-					}
-					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
-						mw.UpdateSummary_ll(srcParentID, 0, -1, 0, 0, -sizeInc, 0, 0)
-						mw.UpdateSummary_ll(dstParentID, 0, 1, 0, 0, sizeInc, 0, 0)
-					}
-					if srcInodeInfo.StorageClass == proto.StorageClass_BlobStore {
-						mw.UpdateSummary_ll(srcParentID, 0, 0, -1, 0, 0, -sizeInc, 0)
-						mw.UpdateSummary_ll(dstParentID, 0, 0, 1, 0, 0, sizeInc, 0)
-					}
-				}()
-			} else {
-				// dir
-				go func() {
-					mw.UpdateSummary_ll(srcParentID, 0, 0, 0, 0, 0, 0, -1)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, 0, 1)
-				}()
-			}
-		}
 	}
-	// TODO
-	// var inodes []uint64
-	// inodes = append(inodes, inode)
-	// srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
-	// if err != nil {
-	// 	log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
-	// }
-
-	// destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
-	// if err != nil {
-	// 	log.LogErrorf("rename_ll: get dst partent inode [%v] quota fail [%v]", dstParentID, err)
-	// }
-
-	// if mapHaveSameKeys(srcQuotaInfos, destQuotaInfos) {
-	// 	return nil
-	// }
-
-	// for quotaId := range srcQuotaInfos {
-	// 	mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
-	// }
-
-	// for quotaId, info := range destQuotaInfos {
-	// 	log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
-	// 	mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
-	// }
-
-	// log.LogDebugf("Rename_ll: dstInodeInfo %v", dstInodeInfo)
-	// mw.AddInoInfoCache(dstInodeInfo.Inode, dstParentID, dstName)
 	mw.DeleteInoInfoCache(srcInodeInfo.Inode)
 	if proto.IsDir(srcInodeInfo.Mode) {
 		mw.AddInoInfoCache(srcInodeInfo.Inode, dstParentID, dstName)
@@ -1523,14 +1301,27 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 
 // Read all dentries with parentID
 func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
-	parentMP := mw.getPartitionByInode(parentID)
-	if parentMP == nil {
-		return nil, syscall.ENOENT
-	}
-
-	status, children, err := mw.readDir(parentMP, parentID)
-	if err != nil || status != statusOK {
-		return nil, statusToErrno(status)
+	var (
+		noMore   = false
+		from     = ""
+		children = make([]proto.Dentry, 0)
+	)
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentID, from, DefaultReaddirLimit)
+		if err != nil {
+			return nil, err
+		}
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
 	}
 	return children, nil
 }
@@ -1608,10 +1399,6 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 	if mp == nil {
 		return syscall.ENOENT
 	}
-	var oldInfo *proto.InodeInfo
-	if mw.EnableSummary {
-		oldInfo, _ = mw.InodeGet_ll(inode)
-	}
 
 	status, err := mw.appendExtentKey(mp, inode, ek, nil, true, false, storageClass, false)
 	if err != nil || status != statusOK {
@@ -1619,26 +1406,6 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 		return statusToErrno(status)
 	}
 	log.LogDebugf("SplitExtentKey: ino(%v) ek(%v)", inode, ek)
-
-	if mw.EnableSummary {
-		go func() {
-			newInfo, _ := mw.InodeGet_ll(inode)
-			if oldInfo != nil && newInfo != nil {
-				if int64(oldInfo.Size) < int64(newInfo.Size) {
-					incSize := int64(newInfo.Size) - int64(oldInfo.Size)
-					if newInfo.StorageClass == proto.StorageClass_Replica_HDD {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, incSize, 0, 0, 0)
-					}
-					if newInfo.StorageClass == proto.StorageClass_Replica_SSD {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, incSize, 0, 0)
-					}
-					if newInfo.StorageClass == proto.StorageClass_BlobStore {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, 0, incSize, 0)
-					}
-				}
-			}
-		}()
-	}
 
 	return nil
 }
@@ -1651,10 +1418,6 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 	if mp == nil {
 		return statusError, syscall.ENOENT
 	}
-	var oldInfo *proto.InodeInfo
-	if mw.EnableSummary {
-		oldInfo, _ = mw.InodeGet_ll(inode)
-	}
 
 	status, err := mw.appendExtentKey(mp, inode, ek, discard, false, isCache, storageClass, isMigration)
 	if err != nil || status != statusOK {
@@ -1662,26 +1425,6 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 		return status, statusToErrno(status)
 	}
 	log.LogDebugf("MetaWrapper AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
-
-	if mw.EnableSummary {
-		go func() {
-			newInfo, _ := mw.InodeGet_ll(inode)
-			if oldInfo != nil && newInfo != nil {
-				if int64(oldInfo.Size) < int64(newInfo.Size) {
-					incSize := int64(newInfo.Size) - int64(oldInfo.Size)
-					if newInfo.StorageClass == proto.StorageClass_Replica_HDD {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, incSize, 0, 0, 0)
-					}
-					if newInfo.StorageClass == proto.StorageClass_Replica_SSD {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, incSize, 0, 0)
-					}
-					if newInfo.StorageClass == proto.StorageClass_BlobStore {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, 0, incSize, 0)
-					}
-				}
-			}
-		}()
-	}
 
 	return statusOK, nil
 }
@@ -1941,6 +1684,8 @@ func (mw *MetaWrapper) Evict(inode uint64, fullPath string) error {
 		log.LogWarnf("Evict: No such partition, ino(%v)", inode)
 		return syscall.EINVAL
 	}
+
+	log.LogDebugf("Evict: ino(%v) mp(%v)", inode, mp.PartitionID)
 
 	status, err := mw.ievict(mp, inode, fullPath)
 	if err != nil || status != statusOK {
@@ -2388,33 +2133,31 @@ func (mw *MetaWrapper) XAttrsList_ll(inode uint64) ([]string, error) {
 	return keys, nil
 }
 
-func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, filesSsdInc int64, filesBlobStoreInc int64,
-	bytesHddInc int64, bytesSsdInc int64, bytesBlobStoreInc int64, dirsInc int64,
-) {
-	if filesHddInc == 0 && filesSsdInc == 0 && filesBlobStoreInc == 0 && bytesHddInc == 0 && bytesSsdInc == 0 && bytesBlobStoreInc == 0 && dirsInc == 0 {
-		return
-	}
-	mp := mw.getPartitionByInode(parentIno)
-	if mp == nil {
-		log.LogErrorf("UpdateSummary_ll: no such partition, inode(%v)", parentIno)
-		return
-	}
-	for cnt := 0; cnt < UpdateSummaryRetry; cnt++ {
-		err := mw.updateXAttrs(mp, parentIno, filesHddInc, filesSsdInc, filesBlobStoreInc,
-			bytesHddInc, bytesSsdInc, bytesBlobStoreInc, dirsInc)
-		if err == nil {
-			return
-		}
-	}
-}
-
-func (mw *MetaWrapper) UpdateAccessFileInfo_ll(parentIno uint64, valueCountSsd string, valueSizeSsd string,
+func (mw *MetaWrapper) SetSummaryAndAccessFileInfo_ll(parentIno uint64, info *SummaryInfo, valueCountSsd string, valueSizeSsd string,
 	valueCountHdd string, valueSizeHdd string, valueCountBlobStore string, valueSizeBlobStore string,
 ) {
-	log.LogDebugf("UpdateAccessFileInfo_ll: ino(%v) valueCountSsd(%v) valueSizeSsd(%v) valueCountHdd(%v) valueSizeHdd(%v) valueCountBlobStore(%v) valueSizeBlobStore(%v)",
-		parentIno, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStore, valueSizeBlobStore)
+	mp := mw.getPartitionByInode(parentIno)
+	if mp == nil {
+		log.LogErrorf("SetSummaryAndAccessFileInfo_ll: no such partition, inode(%v)", parentIno)
+		return
+	}
+
+	// adapt to old summary info,the first three must be FilesTotal, Subdirs, FbytesTotal
+	valueSummary := strconv.FormatInt(info.FilesTotal, 10) + "," +
+		strconv.FormatInt(info.Subdirs, 10) + "," +
+		strconv.FormatInt(info.FbytesTotal, 10) + "," +
+		strconv.FormatInt(info.FilesSsd, 10) + "," +
+		strconv.FormatInt(info.FbytesSsd, 10) + "," +
+		strconv.FormatInt(info.FilesHdd, 10) + "," +
+		strconv.FormatInt(info.FbytesHdd, 10) + "," +
+		strconv.FormatInt(info.FilesBlobStore, 10) + "," +
+		strconv.FormatInt(info.FbytesBlobStore, 10)
+
+	log.LogDebugf("SetSummaryAndAccessFileInfo_ll: parentIno(%v) valueSummary(%v)  valueCountSsd(%v) valueSizeSsd(%v) valueCountHdd(%v) valueSizeHdd(%v) valueCountBlobStore(%v) valueSizeBlobStore(%v)",
+		parentIno, valueSummary, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStore, valueSizeBlobStore)
 
 	attrs := make(map[string]string)
+	attrs[SummaryKey] = valueSummary
 	attrs[AccessFileCountSsdKey] = valueCountSsd
 	attrs[AccessFileSizeSsdKey] = valueSizeSsd
 	attrs[AccessFileCountHddKey] = valueCountHdd
@@ -2445,25 +2188,43 @@ func (mw *MetaWrapper) InodeAccessTimeGet(ino uint64) (accessTime time.Time, err
 }
 
 func (mw *MetaWrapper) ReadDirOnly_ll(parentID uint64) ([]proto.Dentry, error) {
-	parentMP := mw.getPartitionByInode(parentID)
-	if parentMP == nil {
-		return nil, syscall.ENOENT
+	var (
+		noMore   = false
+		from     = ""
+		children = make([]proto.Dentry, 0)
+	)
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentID, from, DefaultReaddirLimit)
+		if err != nil {
+			return nil, err
+		}
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
 	}
 
-	status, children, err := mw.readdironly(parentMP, parentID)
-	if err != nil || status != statusOK {
-		return nil, statusToErrno(status)
-	}
 	return children, nil
 }
 
 type SummaryInfo struct {
-	Subdirs         int64
-	FilesHdd        int64
+	// old summary info
+	FilesTotal  int64
+	Subdirs     int64
+	FbytesTotal int64
+	// add for storage class
 	FilesSsd        int64
-	FilesBlobStore  int64
-	FbytesHdd       int64
 	FbytesSsd       int64
+	FilesHdd        int64
+	FbytesHdd       int64
+	FilesBlobStore  int64
 	FbytesBlobStore int64
 }
 
@@ -2483,70 +2244,355 @@ func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, goroutineNum int32) (Summ
 	errCh := make(chan error)
 	var wg sync.WaitGroup
 	var currentGoroutineNum int32 = 0
-	if mw.EnableSummary {
-		inodeCh := make(chan uint64, ChannelLen)
-		wg.Add(1)
-		atomic.AddInt32(&currentGoroutineNum, 1)
-		inodeCh <- parentIno
-		go mw.getDentry(parentIno, inodeCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
-		go func() {
-			wg.Wait()
-			close(inodeCh)
-		}()
+	inodeCh := make(chan uint64, ChannelLen)
+	wg.Add(1)
+	atomic.AddInt32(&currentGoroutineNum, 1)
+	inodeCh <- parentIno
+	go mw.getDentryLimit(parentIno, inodeCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
+	go func() {
+		wg.Wait()
+		close(inodeCh)
+	}()
 
-		go mw.getDirSummary(&summaryInfo, inodeCh, errCh)
-		for err := range errCh {
-			return SummaryInfo{0, 0, 0, 0, 0, 0, 0}, err
-		}
-		return summaryInfo, nil
-	} else {
-		summaryCh := make(chan SummaryInfo, ChannelLen)
-		wg.Add(1)
-		atomic.AddInt32(&currentGoroutineNum, 1)
-		go mw.getSummaryOrigin(parentIno, summaryCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
-		go func() {
-			wg.Wait()
-			close(summaryCh)
-		}()
-		go func(summaryInfo *SummaryInfo) {
-			for summary := range summaryCh {
-				summaryInfo.FilesHdd = summaryInfo.FilesHdd + summary.FilesHdd
-				summaryInfo.FilesSsd = summaryInfo.FilesSsd + summary.FilesSsd
-				summaryInfo.FilesBlobStore = summaryInfo.FilesBlobStore + summary.FilesBlobStore
-				summaryInfo.FbytesHdd = summaryInfo.FbytesHdd + summary.FbytesHdd
-				summaryInfo.FilesSsd = summaryInfo.FilesSsd + summary.FilesSsd
-				summaryInfo.FbytesBlobStore = summaryInfo.FbytesBlobStore + summary.FbytesBlobStore
-				summaryInfo.Subdirs = summaryInfo.Subdirs + summary.Subdirs
-			}
-			close(errCh)
-		}(&summaryInfo)
-		for err := range errCh {
-			return SummaryInfo{0, 0, 0, 0, 0, 0, 0}, err
-		}
-		return summaryInfo, nil
+	go mw.getDirSummary(&summaryInfo, inodeCh, errCh)
+	for err := range errCh {
+		return summaryInfo, err
 	}
+	return summaryInfo, nil
 }
 
-func (mw *MetaWrapper) getDentry(parentIno uint64, inodeCh chan<- uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
+type DentryForAccessInfo struct {
+	FullPath string
+	Inode    uint64
+}
+
+func (mw *MetaWrapper) getDentrysWithDepthLimit(parentIno uint64, parentPath string, dentryCh chan<- DentryForAccessInfo, errCh chan<- error, wg *sync.WaitGroup,
+	currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32, currentDepth *int32, maxDepth int32,
+) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt32(currentGoroutineNum, -1)
 			wg.Done()
 		}
 	}()
-	entries, err := mw.ReadDirOnly_ll(parentIno)
+
+	noMore := false
+	from := ""
+	var children []proto.Dentry
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
+			errCh <- err
+			return
+		}
+
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
+	}
+
+	for _, entry := range children {
+		if proto.IsDir(entry.Type) {
+			newDepth := *currentDepth + 1
+			if newDepth > maxDepth {
+				log.LogDebugf("getDentrysWithDepthLimit reached maxDepth, parentPath(%v)  currentDepth(%v) maxdepth(%v)\n", parentPath, *currentDepth, maxDepth)
+				return
+			}
+			var fullPath string
+			if parentPath == "/" {
+				fullPath = fmt.Sprintf("/%s", entry.Name)
+			} else {
+				fullPath = fmt.Sprintf("%s/%s", parentPath, entry.Name)
+			}
+
+			dn := DentryForAccessInfo{
+				FullPath: fullPath,
+				Inode:    entry.Inode,
+			}
+			dentryCh <- dn
+			if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
+				wg.Add(1)
+				atomic.AddInt32(currentGoroutineNum, 1)
+				go mw.getDentrysWithDepthLimit(entry.Inode, fullPath, dentryCh, errCh, wg, currentGoroutineNum, true, goroutineNum, &newDepth, maxDepth)
+			} else {
+				mw.getDentrysWithDepthLimit(entry.Inode, fullPath, dentryCh, errCh, wg, currentGoroutineNum, false, goroutineNum, &newDepth, maxDepth)
+			}
+		}
+	}
+}
+
+func (mw *MetaWrapper) getDentryLimit(parentIno uint64, inodeCh chan<- uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
+	defer func() {
+		if newGoroutine {
+			atomic.AddInt32(currentGoroutineNum, -1)
+			wg.Done()
+		}
+	}()
+
+	noMore := false
+	from := ""
+	var children []proto.Dentry
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
+			errCh <- err
+			return
+		}
+
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
+	}
+
+	for _, entry := range children {
+		if proto.IsDir(entry.Type) {
+			inodeCh <- entry.Inode
+			if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
+				wg.Add(1)
+				atomic.AddInt32(currentGoroutineNum, 1)
+				go mw.getDentryLimit(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, true, goroutineNum)
+			} else {
+				mw.getDentryLimit(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, false, goroutineNum)
+			}
+		}
+	}
+}
+
+func (mw *MetaWrapper) getDirAccessFileSummary(accessFileInfo *AccessFileInfo, inodeCh <-chan uint64, errch chan<- error) {
+	log.LogInfof("getDirAccessFileSummary begin: dir(%v)", accessFileInfo.Dir)
+	var (
+		accessCountSsd       [5]int64
+		accessSizeSsd        [5]uint64
+		accessCountHdd       [5]int64
+		accessSizeHdd        [5]uint64
+		accessCountBlobStore [5]int64
+		accessSizeBlobStore  [5]uint64
+	)
+
+	var inodes []uint64
+	var keys []string
+	keys = append(keys,
+		AccessFileCountSsdKey,
+		AccessFileSizeSsdKey,
+		AccessFileCountHddKey,
+		AccessFileSizeHddKey,
+		AccessFileCountBlobStoreKey,
+		AccessFileSizeBlobStoreKey)
+
+	for inode := range inodeCh {
+		inodes = append(inodes, inode)
+		if len(inodes) < BatchSize {
+			continue
+		}
+		xattrInfos, err := mw.BatchGetXAttr(inodes, keys)
+		if err != nil {
+			log.LogErrorf("BatchGetXAttr failed, inodes(%v), len(%v), err(%v)\n", inodes, len(inodes), err)
+			errch <- err
+			return
+		}
+		inodes = inodes[0:0]
+		for _, xattrInfo := range xattrInfos {
+			if xattrInfo.XAttrs[AccessFileCountSsdKey] != "" {
+				accessList := strings.Split(xattrInfo.XAttrs[AccessFileCountSsdKey], ",")
+				for i := 0; i < len(accessList); i++ {
+					val, _ := strconv.ParseInt(accessList[i], 10, 64)
+					accessCountSsd[i] += val
+				}
+			}
+			if xattrInfo.XAttrs[AccessFileSizeSsdKey] != "" {
+				accessList := strings.Split(xattrInfo.XAttrs[AccessFileSizeSsdKey], ",")
+				for i := 0; i < len(accessList); i++ {
+					val, _ := strconv.ParseUint(accessList[i], 10, 64)
+					accessSizeSsd[i] += val
+				}
+			}
+			if xattrInfo.XAttrs[AccessFileCountHddKey] != "" {
+				accessList := strings.Split(xattrInfo.XAttrs[AccessFileCountHddKey], ",")
+				for i := 0; i < len(accessList); i++ {
+					val, _ := strconv.ParseInt(accessList[i], 10, 64)
+					accessCountHdd[i] += val
+				}
+			}
+			if xattrInfo.XAttrs[AccessFileSizeHddKey] != "" {
+				accessList := strings.Split(xattrInfo.XAttrs[AccessFileSizeHddKey], ",")
+				for i := 0; i < len(accessList); i++ {
+					val, _ := strconv.ParseUint(accessList[i], 10, 64)
+					accessSizeHdd[i] += val
+				}
+			}
+			if xattrInfo.XAttrs[AccessFileCountBlobStoreKey] != "" {
+				accessList := strings.Split(xattrInfo.XAttrs[AccessFileCountBlobStoreKey], ",")
+				for i := 0; i < len(accessList); i++ {
+					val, _ := strconv.ParseInt(accessList[i], 10, 64)
+					accessCountBlobStore[i] += val
+				}
+			}
+			if xattrInfo.XAttrs[AccessFileSizeBlobStoreKey] != "" {
+				accessList := strings.Split(xattrInfo.XAttrs[AccessFileSizeBlobStoreKey], ",")
+				for i := 0; i < len(accessList); i++ {
+					val, _ := strconv.ParseUint(accessList[i], 10, 64)
+					accessSizeBlobStore[i] += val
+				}
+			}
+		}
+	}
+	xattrInfos, err := mw.BatchGetXAttr(inodes, keys)
 	if err != nil {
-		errCh <- err
+		log.LogErrorf("BatchGetXAttr failed, inodes(%v) len(%v), err(%v)\n", inodes, len(inodes), err)
+		errch <- err
 		return
 	}
-	for _, entry := range entries {
-		inodeCh <- entry.Inode
-		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
-			wg.Add(1)
-			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.getDentry(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, true, goroutineNum)
-		} else {
-			mw.getDentry(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, false, goroutineNum)
+
+	for _, xattrInfo := range xattrInfos {
+		if xattrInfo.XAttrs[AccessFileCountSsdKey] != "" {
+			accessList := strings.Split(xattrInfo.XAttrs[AccessFileCountSsdKey], ",")
+			for i := 0; i < len(accessList); i++ {
+				val, _ := strconv.ParseInt(accessList[i], 10, 64)
+				accessCountSsd[i] += val
+			}
+		}
+		if xattrInfo.XAttrs[AccessFileSizeSsdKey] != "" {
+			accessList := strings.Split(xattrInfo.XAttrs[AccessFileSizeSsdKey], ",")
+			for i := 0; i < len(accessList); i++ {
+				val, _ := strconv.ParseUint(accessList[i], 10, 64)
+				accessSizeSsd[i] += val
+			}
+		}
+		if xattrInfo.XAttrs[AccessFileCountHddKey] != "" {
+			accessList := strings.Split(xattrInfo.XAttrs[AccessFileCountHddKey], ",")
+			for i := 0; i < len(accessList); i++ {
+				val, _ := strconv.ParseInt(accessList[i], 10, 64)
+				accessCountHdd[i] += val
+			}
+		}
+		if xattrInfo.XAttrs[AccessFileSizeHddKey] != "" {
+			accessList := strings.Split(xattrInfo.XAttrs[AccessFileSizeHddKey], ",")
+			for i := 0; i < len(accessList); i++ {
+				val, _ := strconv.ParseUint(accessList[i], 10, 64)
+				accessSizeHdd[i] += val
+			}
+		}
+		if xattrInfo.XAttrs[AccessFileCountBlobStoreKey] != "" {
+			accessList := strings.Split(xattrInfo.XAttrs[AccessFileCountBlobStoreKey], ",")
+			for i := 0; i < len(accessList); i++ {
+				val, _ := strconv.ParseInt(accessList[i], 10, 64)
+				accessCountBlobStore[i] += val
+			}
+		}
+		if xattrInfo.XAttrs[AccessFileSizeBlobStoreKey] != "" {
+			accessList := strings.Split(xattrInfo.XAttrs[AccessFileSizeBlobStoreKey], ",")
+			for i := 0; i < len(accessList); i++ {
+				val, _ := strconv.ParseUint(accessList[i], 10, 64)
+				accessSizeBlobStore[i] += val
+			}
+		}
+	}
+
+	var resultCountSsd []string
+	for _, count := range accessCountSsd {
+		resultCountSsd = append(resultCountSsd, strconv.FormatInt(int64(count), 10))
+	}
+	resultCountSsdStr := strings.Join(resultCountSsd, ",")
+
+	var resultSizeSsd []string
+	for _, size := range accessSizeSsd {
+		resultSizeSsd = append(resultSizeSsd, strconv.FormatUint(size, 10))
+	}
+	resultSizeSsdStr := strings.Join(resultSizeSsd, ",")
+
+	var resultCountHdd []string
+	for _, count := range accessCountHdd {
+		resultCountHdd = append(resultCountHdd, strconv.FormatInt(int64(count), 10))
+	}
+	resultCountHddStr := strings.Join(resultCountHdd, ",")
+
+	var resultSizeHdd []string
+	for _, size := range accessSizeHdd {
+		resultSizeHdd = append(resultSizeHdd, strconv.FormatUint(size, 10))
+	}
+	resultSizeHddStr := strings.Join(resultSizeHdd, ",")
+
+	var resultCountBlobStore []string
+	for _, count := range accessCountBlobStore {
+		resultCountBlobStore = append(resultCountBlobStore, strconv.FormatInt(int64(count), 10))
+	}
+	resultCountBlobStoreStr := strings.Join(resultCountBlobStore, ",")
+
+	var resultSizeBlobStore []string
+	for _, size := range accessSizeBlobStore {
+		resultSizeBlobStore = append(resultSizeBlobStore, strconv.FormatUint(size, 10))
+	}
+	resultSizeBlobStoreStr := strings.Join(resultSizeBlobStore, ",")
+
+	log.LogInfof("getDirAccessFileSummary: dir(%v) accessCountSsd(%v) accessSizeSsd(%v) accessCountHdd(%v) accessSizeHdd(%v) accessCountBlobStore(%v) accessSizeBlobStore(%v)",
+		accessFileInfo.Dir, accessCountSsd, accessSizeSsd, accessCountHdd, accessSizeHdd, accessCountBlobStore, accessSizeBlobStore)
+
+	accessFileInfo.AccessFileCountSsd = resultCountSsdStr
+	accessFileInfo.AccessFileSizeSsd = resultSizeSsdStr
+	accessFileInfo.AccessFileCountHdd = resultCountHddStr
+	accessFileInfo.AccessFileSizeHdd = resultSizeHddStr
+	accessFileInfo.AccessFileCountBlobStore = resultCountBlobStoreStr
+	accessFileInfo.AccessFileSizeBlobStore = resultSizeBlobStoreStr
+
+	close(errch)
+}
+
+func getSummaryInfoFromXattrs(cluster string, volName string, xattrInfos []*proto.XAttrInfo, summaryInfo *SummaryInfo) {
+	for _, xattrInfo := range xattrInfos {
+		if xattrInfo.XAttrs[SummaryKey] != "" {
+			var totalFiles, subdirs, totalFbytes, filesSsd, fbytesSsd, filesHdd, fbytesHdd, filesBlobStore, fbytesBlobStore int64
+			summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
+			if len(summaryList) == 3 {
+				// old summary
+				totalFiles, _ = strconv.ParseInt(summaryList[0], 10, 64)
+				subdirs, _ = strconv.ParseInt(summaryList[1], 10, 64)
+				totalFbytes, _ = strconv.ParseInt(summaryList[2], 10, 64)
+				filesSsd = totalFiles
+				fbytesSsd = totalFbytes
+			} else if len(summaryList) == 9 {
+				// new summary
+				totalFiles, _ = strconv.ParseInt(summaryList[0], 10, 64)
+				subdirs, _ = strconv.ParseInt(summaryList[1], 10, 64)
+				totalFbytes, _ = strconv.ParseInt(summaryList[2], 10, 64)
+				filesSsd, _ = strconv.ParseInt(summaryList[3], 10, 64)
+				fbytesSsd, _ = strconv.ParseInt(summaryList[4], 10, 64)
+				filesHdd, _ = strconv.ParseInt(summaryList[5], 10, 64)
+				fbytesHdd, _ = strconv.ParseInt(summaryList[6], 10, 64)
+				filesBlobStore, _ = strconv.ParseInt(summaryList[7], 10, 64)
+				fbytesBlobStore, _ = strconv.ParseInt(summaryList[8], 10, 64)
+			} else {
+				log.LogWarnf("getSummaryInfoFromXattrs: cluster(%v) volName(%v) ino(%v) summaryList(%v) len(%v) is not correct",
+					cluster, volName, xattrInfo.Inode, summaryList, len(summaryList))
+				continue
+			}
+
+			summaryInfo.FilesTotal += totalFiles
+			summaryInfo.Subdirs += subdirs
+			summaryInfo.FbytesTotal += totalFbytes
+			summaryInfo.FilesSsd += filesSsd
+			summaryInfo.FbytesSsd += fbytesSsd
+			summaryInfo.FilesHdd += filesHdd
+			summaryInfo.FbytesHdd += fbytesHdd
+			summaryInfo.FilesBlobStore += filesBlobStore
+			summaryInfo.FbytesBlobStore += fbytesBlobStore
 		}
 	}
 }
@@ -2567,106 +2613,18 @@ func (mw *MetaWrapper) getDirSummary(summaryInfo *SummaryInfo, inodeCh <-chan ui
 		}
 		inodes = inodes[0:0]
 		keys = keys[0:0]
-		for _, xattrInfo := range xattrInfos {
-			if xattrInfo.XAttrs[SummaryKey] != "" {
-				summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
-				filesHdd, _ := strconv.ParseInt(summaryList[0], 10, 64)
-				filesSsd, _ := strconv.ParseInt(summaryList[1], 10, 64)
-				filesBlobStore, _ := strconv.ParseInt(summaryList[2], 10, 64)
-				fbytesHdd, _ := strconv.ParseInt(summaryList[3], 10, 64)
-				fbytesSsd, _ := strconv.ParseInt(summaryList[4], 10, 64)
-				fbytesBlobStore, _ := strconv.ParseInt(summaryList[5], 10, 64)
-				subdirs, _ := strconv.ParseInt(summaryList[6], 10, 64)
-
-				summaryInfo.FilesHdd += filesHdd
-				summaryInfo.FilesSsd += filesSsd
-				summaryInfo.FilesBlobStore += filesBlobStore
-				summaryInfo.FbytesHdd += fbytesHdd
-				summaryInfo.FbytesSsd += fbytesSsd
-				summaryInfo.FbytesBlobStore += fbytesBlobStore
-				summaryInfo.Subdirs += subdirs
-			}
-		}
+		getSummaryInfoFromXattrs(mw.cluster, mw.volname, xattrInfos, summaryInfo)
 	}
 	xattrInfos, err := mw.BatchGetXAttr(inodes, keys)
 	if err != nil {
 		errch <- err
 		return
 	}
-	for _, xattrInfo := range xattrInfos {
-		if xattrInfo.XAttrs[SummaryKey] != "" {
-			summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
-			filesHdd, _ := strconv.ParseInt(summaryList[0], 10, 64)
-			filesSsd, _ := strconv.ParseInt(summaryList[1], 10, 64)
-			filesBlobStore, _ := strconv.ParseInt(summaryList[2], 10, 64)
-			fbytesHdd, _ := strconv.ParseInt(summaryList[3], 10, 64)
-			fbytesSsd, _ := strconv.ParseInt(summaryList[4], 10, 64)
-			fbytesBlobStore, _ := strconv.ParseInt(summaryList[5], 10, 64)
-			subdirs, _ := strconv.ParseInt(summaryList[6], 10, 64)
-
-			summaryInfo.FilesHdd += filesHdd
-			summaryInfo.FilesSsd += filesSsd
-			summaryInfo.FilesBlobStore += filesBlobStore
-			summaryInfo.FbytesHdd += fbytesHdd
-			summaryInfo.FbytesSsd += fbytesSsd
-			summaryInfo.FbytesBlobStore += fbytesBlobStore
-			summaryInfo.Subdirs += subdirs
-		}
-	}
+	getSummaryInfoFromXattrs(mw.cluster, mw.volname, xattrInfos, summaryInfo)
 	close(errch)
 }
 
-func (mw *MetaWrapper) getSummaryOrigin(parentIno uint64, summaryCh chan<- SummaryInfo, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
-	defer func() {
-		if newGoroutine {
-			atomic.AddInt32(currentGoroutineNum, -1)
-			wg.Done()
-		}
-	}()
-	var subdirsList []uint64
-	retSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
-	children, err := mw.ReadDir_ll(parentIno)
-	if err != nil {
-		errCh <- err
-		return
-	}
-	for _, dentry := range children {
-		if proto.IsDir(dentry.Type) {
-			retSummaryInfo.Subdirs += 1
-			subdirsList = append(subdirsList, dentry.Inode)
-		} else {
-			fileInfo, err := mw.InodeGet_ll(dentry.Inode)
-			if err != nil {
-				errCh <- err
-				return
-			}
-			if fileInfo.StorageClass == proto.StorageClass_Replica_HDD {
-				retSummaryInfo.FilesHdd += 1
-				retSummaryInfo.FbytesHdd += int64(fileInfo.Size)
-			}
-			if fileInfo.StorageClass == proto.StorageClass_Replica_SSD {
-				retSummaryInfo.FilesSsd += 1
-				retSummaryInfo.FbytesSsd += int64(fileInfo.Size)
-			}
-			if fileInfo.StorageClass == proto.StorageClass_BlobStore {
-				retSummaryInfo.FilesBlobStore += 1
-				retSummaryInfo.FbytesBlobStore += int64(fileInfo.Size)
-			}
-		}
-	}
-	summaryCh <- retSummaryInfo
-	for _, subdirIno := range subdirsList {
-		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
-			wg.Add(1)
-			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.getSummaryOrigin(subdirIno, summaryCh, errCh, wg, currentGoroutineNum, true, goroutineNum)
-		} else {
-			mw.getSummaryOrigin(subdirIno, summaryCh, errCh, wg, currentGoroutineNum, false, goroutineNum)
-		}
-	}
-}
-
-func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, unit string, split string) error {
+func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, unit string, split string, frequency int, readDirLimit int, batchInodeSize int) error {
 	if goroutineNum > MaxSummaryGoroutineNum {
 		goroutineNum = MaxSummaryGoroutineNum
 	}
@@ -2680,8 +2638,15 @@ func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, u
 	atomic.AddInt32(&currentGoroutineNum, 1)
 
 	accessFileInfo := AccessTimeConfig{Unit: unit, Split: split}
-	log.LogDebugf("RefreshSummary_ll accessFileInfo(%v)", accessFileInfo)
-	go mw.refreshSummary(parentIno, errch, &wg, &currentGoroutineNum, true, goroutineNum, accessFileInfo)
+	log.LogDebugf("RefreshSummary_ll accessFileInfo(%v) frequency(%v) readDirLimit(%v) batchInodeSize(%v)", accessFileInfo, frequency, readDirLimit, batchInodeSize)
+
+	var limiter *time.Ticker
+	if frequency > 0 {
+		limiter = time.NewTicker(time.Second / time.Duration(frequency))
+		defer limiter.Stop()
+	}
+
+	go mw.refreshSummary(parentIno, errch, &wg, &currentGoroutineNum, true, goroutineNum, accessFileInfo, limiter, readDirLimit, batchInodeSize)
 	go func() {
 		wg.Wait()
 		close(errch)
@@ -2698,6 +2663,8 @@ func updateLocalSummary(inodeInfos []*proto.InodeInfo, splits []string, timeUnit
 ) {
 	currentTime := time.Now()
 	for _, inodeInfo := range inodeInfos {
+		newSummaryInfo.FilesTotal += 1
+		newSummaryInfo.FbytesTotal += int64(inodeInfo.Size)
 		if inodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
 			newSummaryInfo.FilesHdd += 1
 			newSummaryInfo.FbytesHdd += int64(inodeInfo.Size)
@@ -2725,6 +2692,8 @@ func updateLocalSummary(inodeInfos []*proto.InodeInfo, splits []string, timeUnit
 				thresholdHours = float64(7 * 24 * num)
 			case "month":
 				thresholdHours = float64(30 * 24 * num)
+			default:
+				log.LogWarnf("invalid timeUnit %s", timeUnit)
 			}
 
 			if duration.Hours() < thresholdHours {
@@ -2746,7 +2715,7 @@ func updateLocalSummary(inodeInfos []*proto.InodeInfo, splits []string, timeUnit
 }
 
 func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool,
-	goroutineNum int32, accessTimeCfg AccessTimeConfig,
+	goroutineNum int32, accessTimeCfg AccessTimeConfig, limiter *time.Ticker, readDirLimit int, batchInodeSize int,
 ) {
 	defer func() {
 		if newGoroutine {
@@ -2754,36 +2723,19 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 			wg.Done()
 		}
 	}()
-	summaryXAttrInfo, err := mw.XAttrGet_ll(parentIno, SummaryKey)
-	if err != nil {
-		errCh <- err
-		return
-	}
-	oldSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
-	if summaryXAttrInfo.XAttrs[SummaryKey] != "" {
-		summaryList := strings.Split(summaryXAttrInfo.XAttrs[SummaryKey], ",")
-		filesHdd, _ := strconv.ParseInt(summaryList[0], 10, 64)
-		filesSsd, _ := strconv.ParseInt(summaryList[1], 10, 64)
-		filesBlobStore, _ := strconv.ParseInt(summaryList[2], 10, 64)
-		fbytesHdd, _ := strconv.ParseInt(summaryList[3], 10, 64)
-		fbytesSsd, _ := strconv.ParseInt(summaryList[4], 10, 64)
-		fbytesBlobStore, _ := strconv.ParseInt(summaryList[5], 10, 64)
-		subdirs, _ := strconv.ParseInt(summaryList[6], 10, 64)
-		oldSummaryInfo = SummaryInfo{
-			FilesHdd:        filesHdd,
-			FilesSsd:        filesSsd,
-			FilesBlobStore:  filesBlobStore,
-			FbytesHdd:       fbytesHdd,
-			FbytesSsd:       fbytesSsd,
-			FbytesBlobStore: fbytesBlobStore,
-			Subdirs:         subdirs,
-		}
-	} else {
-		oldSummaryInfo = SummaryInfo{0, 0, 0, 0, 0, 0, 0}
+
+	if limiter != nil {
+		<-limiter.C
 	}
 
-	newSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
+	if readDirLimit <= 0 {
+		readDirLimit = DefaultReaddirLimit
+	}
+	if batchInodeSize <= 0 {
+		batchInodeSize = BatchSize
+	}
 
+	var newSummaryInfo SummaryInfo
 	splits := strings.Split(accessTimeCfg.Split, ",")
 	accessFileCountSsd := make([]int32, len(splits))
 	accessFileSizeSsd := make([]uint64, len(splits))
@@ -2796,7 +2748,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	from := ""
 	var children []proto.Dentry
 	for !noMore {
-		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, uint64(readDirLimit))
 		if err != nil {
 			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
 			errCh <- err
@@ -2806,7 +2758,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
 			break
-		} else if batchNr < DefaultReaddirLimit {
+		} else if batchNr < uint64(readDirLimit) {
 			noMore = true
 		}
 		if from != "" {
@@ -2824,7 +2776,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 			subdirsList = append(subdirsList, dentry.Inode)
 		} else {
 			inodeList = append(inodeList, dentry.Inode)
-			if len(inodeList) < BatchSize {
+			if len(inodeList) < batchInodeSize {
 				continue
 			}
 			inodeInfos := mw.BatchInodeGet(inodeList)
@@ -2838,17 +2790,6 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		updateLocalSummary(inodeInfos, splits, accessTimeCfg.Unit, &newSummaryInfo, accessFileCountSsd, accessFileSizeSsd,
 			accessFileCountHdd, accessFileSizeHdd, accessFileCountBlobStore, accessFileSizeBlobStore)
 	}
-
-	go mw.UpdateSummary_ll(
-		parentIno,
-		newSummaryInfo.FilesHdd-oldSummaryInfo.FilesHdd,
-		newSummaryInfo.FilesSsd-oldSummaryInfo.FilesSsd,
-		newSummaryInfo.FilesBlobStore-oldSummaryInfo.FilesBlobStore,
-		newSummaryInfo.FbytesHdd-oldSummaryInfo.FbytesHdd,
-		newSummaryInfo.FbytesSsd-oldSummaryInfo.FbytesSsd,
-		newSummaryInfo.FbytesBlobStore-oldSummaryInfo.FbytesBlobStore,
-		newSummaryInfo.Subdirs-oldSummaryInfo.Subdirs,
-	)
 
 	// access file info for ssd
 	var resultCountSsd []string
@@ -2898,15 +2839,16 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	}
 	resultSizeBlobStore = append(resultSizeBlobStore, strconv.FormatInt(newSummaryInfo.FbytesBlobStore, 10))
 	valueSizeBlobStore := strings.Join(resultSizeBlobStore, ",")
-	go mw.UpdateAccessFileInfo_ll(parentIno, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStored, valueSizeBlobStore)
+
+	go mw.SetSummaryAndAccessFileInfo_ll(parentIno, &newSummaryInfo, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStored, valueSizeBlobStore)
 
 	for _, subdirIno := range subdirsList {
 		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
 			wg.Add(1)
 			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, true, goroutineNum, accessTimeCfg)
+			go mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, true, goroutineNum, accessTimeCfg, limiter, readDirLimit, batchInodeSize)
 		} else {
-			mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, false, goroutineNum, accessTimeCfg)
+			mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, false, goroutineNum, accessTimeCfg, limiter, readDirLimit, batchInodeSize)
 		}
 	}
 }
@@ -3168,7 +3110,7 @@ type AccessFileInfo struct {
 	AccessFileSizeBlobStore  string
 }
 
-func (mw *MetaWrapper) GetAccessFileInfo(parentPath string, parentIno uint64, maxDepth int32, goroutineNum int32) (info []AccessFileInfo, err error) {
+func (mw *MetaWrapper) GetAccessFileInfoSummary(parentPath string, parentIno uint64, maxDepth int32, goroutineNum int32) (info []AccessFileInfo, err error) {
 	if goroutineNum > MaxSummaryGoroutineNum {
 		goroutineNum = MaxSummaryGoroutineNum
 	}
@@ -3176,276 +3118,48 @@ func (mw *MetaWrapper) GetAccessFileInfo(parentPath string, parentIno uint64, ma
 		goroutineNum = 1
 	}
 	var wg sync.WaitGroup
-	var currentGoroutineNum int32 = 0
-	var currentDepth int32 = 1
-	errch := make(chan error)
-	wg.Add(1)
-	accessInfo := make([]AccessFileInfo, 0, 100)
 
-	go mw.getDirAccessFileInfo(parentPath, parentIno, maxDepth, &currentDepth, &accessInfo, errch, &wg, &currentGoroutineNum, true, goroutineNum)
+	var currentGoroutineNum int32 = 0
+	errCh := make(chan error)
+	accessInfos := make([]AccessFileInfo, 0, 100)
+
+	atomic.AddInt32(&currentGoroutineNum, 1)
+	denryCh := make(chan DentryForAccessInfo, ChannelLen)
+	wg.Add(1)
+	atomic.AddInt32(&currentGoroutineNum, 1)
+	denryCh <- DentryForAccessInfo{Inode: parentIno, FullPath: parentPath}
+	var currentDepth int32 = 1
+	go mw.getDentrysWithDepthLimit(parentIno, parentPath, denryCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum, &currentDepth, maxDepth)
 	go func() {
 		wg.Wait()
-		close(errch)
-	}()
-	for err := range errch {
-		return nil, err
-	}
-	log.LogDebugf("GetAccessFileInfo finish, AccessFileInfo(%v)", accessInfo)
-	return accessInfo, nil
-}
-
-func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64, maxDepth int32, currentDepth *int32, info *[]AccessFileInfo,
-	errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32,
-) {
-	defer func() {
-		if newGoroutine {
-			atomic.AddInt32(currentGoroutineNum, -1)
-			wg.Done()
-		}
-		log.LogDebugf("getDirAccessFileInfo finish, parentPath(%v) parentIno(%v) info:(%v)", parentPath, parentIno, info)
+		close(denryCh)
 	}()
 
-	log.LogDebugf("getDirAccessFileInfo: parentPath(%v) parentIno(%v) maxDepth(%v) currentDepth(%v)", parentPath, parentIno, maxDepth, *currentDepth)
-	if *currentDepth > maxDepth {
-		log.LogDebugf("getDirAccessFileInfo: reached max depth, parentPath(%v) parentIno(%v) maxDepth(%v) currentDepth(%v)", parentPath, parentIno, maxDepth, *currentDepth)
-		return
-	}
-	// get file count of ssd, just for split count of file numbers
-	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessFileCountSsdKey)
-	if err != nil {
-		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountSsdKey, parentIno, err)
-		errCh <- err
-		return
-	}
-	valueCountSsd := xattrInfo.Get(AccessFileCountSsdKey)
-	log.LogDebugf("getDirAccessFileInfo: key(%v) value:(%v) len(%v)", AccessFileCountSsdKey, string(valueCountSsd), len(string(valueCountSsd)))
-	if len(string(valueCountSsd)) == 0 {
-		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, key(%v) ino(%v) err(%v)", AccessFileCountSsdKey, parentIno, err)
-		errCh <- err
-		return
-	}
-	// get file size of ssd, just for split count of file capacity
-	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeSsdKey)
-	if err != nil {
-		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeSsdKey, parentIno, err)
-		errCh <- err
-		return
-	}
-	valueSizeSsd := xattrInfo.Get(AccessFileSizeSsdKey)
-	log.LogDebugf("getDirAccessFileInfo: key(%v) value:(%v) len(%v)", AccessFileSizeSsdKey, string(valueSizeSsd), len(string(valueSizeSsd)))
-	if len(string(valueSizeSsd)) == 0 {
-		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, key(%v) ino(%v) err(%v)", AccessFileSizeSsdKey, parentIno, err)
-		errCh <- err
-		return
-	}
-
-	accessCountList := strings.Split(string(valueCountSsd), ",")
-	accessSizeList := strings.Split(string(valueSizeSsd), ",")
-	countLen := len(accessCountList)
-	sizeLen := len(accessSizeList)
-
-	accessCountSsd := make([]int64, countLen)
-	accessSizeSsd := make([]uint64, sizeLen)
-	accessCountHdd := make([]int64, countLen)
-	accessSizeHdd := make([]uint64, sizeLen)
-	accessCountBlobStore := make([]int64, countLen)
-	accessSizeBlobStore := make([]uint64, sizeLen)
-
-	mw.getAccessFileInfo(parentPath, parentIno, errCh, &accessCountSsd, &accessSizeSsd, &accessCountHdd, &accessSizeHdd, &accessCountBlobStore, &accessSizeBlobStore)
-
-	var resultCountSsd []string
-	for _, count := range accessCountSsd {
-		resultCountSsd = append(resultCountSsd, strconv.FormatInt(int64(count), 10))
-	}
-	resultCountSsdStr := strings.Join(resultCountSsd, ",")
-
-	var resultSizeSsd []string
-	for _, size := range accessSizeSsd {
-		resultSizeSsd = append(resultSizeSsd, strconv.FormatUint(size, 10))
-	}
-	resultSizeSsdStr := strings.Join(resultSizeSsd, ",")
-
-	var resultCountHdd []string
-	for _, count := range accessCountHdd {
-		resultCountHdd = append(resultCountHdd, strconv.FormatInt(int64(count), 10))
-	}
-	resultCountHddStr := strings.Join(resultCountHdd, ",")
-
-	var resultSizeHdd []string
-	for _, size := range accessSizeHdd {
-		resultSizeHdd = append(resultSizeHdd, strconv.FormatUint(size, 10))
-	}
-	resultSizeHddStr := strings.Join(resultSizeHdd, ",")
-
-	var resultCountBlobStore []string
-	for _, count := range accessCountBlobStore {
-		resultCountBlobStore = append(resultCountBlobStore, strconv.FormatInt(int64(count), 10))
-	}
-	resultCountBlobStoreStr := strings.Join(resultCountBlobStore, ",")
-
-	var resultSizeBlobStore []string
-	for _, size := range accessSizeBlobStore {
-		resultSizeBlobStore = append(resultSizeBlobStore, strconv.FormatUint(size, 10))
-	}
-	resultSizeBlobStoreStr := strings.Join(resultSizeBlobStore, ",")
-
-	log.LogDebugf("getDirAccessFileInfo: parentPath(%v) parentIno(%v) accessCountSsd(%v) accessSizeSsd(%v) accessCountHdd(%v) accessSizeHdd(%v) accessCountBlobStore(%v) accessSizeBlobStore(%v)",
-		parentPath, parentIno, accessCountSsd, accessSizeSsd, accessCountHdd, accessSizeHdd, accessCountBlobStore, accessSizeBlobStore)
-
-	*info = append(*info, AccessFileInfo{
-		parentPath, resultCountSsdStr, resultSizeSsdStr,
-		resultCountHddStr, resultSizeHddStr,
-		resultCountBlobStoreStr, resultSizeBlobStoreStr,
-	})
-
-	children, err := mw.ReadDir_ll(parentIno)
-	if err != nil {
-		errCh <- err
-		return
-	}
-	for _, dentry := range children {
-		if proto.IsDir(dentry.Type) {
-			subPath := path.Join(parentPath, dentry.Name)
-			newDepth := *currentDepth + 1
-			if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
-				wg.Add(1)
-				atomic.AddInt32(currentGoroutineNum, 1)
-				go mw.getDirAccessFileInfo(subPath, dentry.Inode, maxDepth, &newDepth, info, errCh, wg, currentGoroutineNum, true, goroutineNum)
-			} else {
-				mw.getDirAccessFileInfo(subPath, dentry.Inode, maxDepth, &newDepth, info, errCh, wg, currentGoroutineNum, false, goroutineNum)
-			}
+	for dn := range denryCh {
+		var wg1 sync.WaitGroup
+		errCh1 := make(chan error)
+		accessInfo := AccessFileInfo{
+			Dir: dn.FullPath,
 		}
-	}
-}
+		inodeCh := make(chan uint64, ChannelLen)
+		wg1.Add(1)
+		atomic.AddInt32(&currentGoroutineNum, 1)
+		inodeCh <- dn.Inode
+		go mw.getDentryLimit(dn.Inode, inodeCh, errCh1, &wg1, &currentGoroutineNum, true, goroutineNum)
 
-func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, errCh chan<- error, accessCountSsd *[]int64, accessSizeSsd *[]uint64,
-	accessCountHdd *[]int64, accessSizeHdd *[]uint64, accessCountBlobStore *[]int64, accessSizeBlobStore *[]uint64,
-) {
-	log.LogDebugf("getAccessFileInfo: parentPath(%v) parentIno(%v)", parentPath, parentIno)
-	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessFileCountSsdKey)
-	if err != nil {
-		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountSsdKey, parentIno, err)
-		errCh <- err
-		return
-	}
-	value := xattrInfo.Get(AccessFileCountSsdKey)
-	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileCountSsdKey, string(value), len(string(value)))
-	if len(string(value)) > 0 {
-		accessList := strings.Split(string(value), ",")
-		for i := 0; i < len(accessList); i++ {
-			val, _ := strconv.ParseInt(accessList[i], 10, 64)
-			(*accessCountSsd)[i] += val
+		go func() {
+			wg1.Wait()
+			close(inodeCh)
+		}()
+
+		go mw.getDirAccessFileSummary(&accessInfo, inodeCh, errCh1)
+
+		for err := range errCh1 {
+			return accessInfos, err
 		}
+		accessInfos = append(accessInfos, accessInfo)
 	}
 
-	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeSsdKey)
-	if err != nil {
-		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeSsdKey, parentIno, err)
-		errCh <- err
-		return
-	}
-	value = xattrInfo.Get(AccessFileSizeSsdKey)
-	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileSizeSsdKey, string(value), len(string(value)))
-	if len(string(value)) > 0 {
-		accessList := strings.Split(string(value), ",")
-		for i := 0; i < len(accessList); i++ {
-			val, _ := strconv.ParseUint(accessList[i], 10, 64)
-			(*accessSizeSsd)[i] += val
-		}
-	}
-
-	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileCountHddKey)
-	if err != nil {
-		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountHddKey, parentIno, err)
-		errCh <- err
-		return
-	}
-	value = xattrInfo.Get(AccessFileCountHddKey)
-	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileCountHddKey, string(value), len(string(value)))
-	if len(string(value)) > 0 {
-		accessList := strings.Split(string(value), ",")
-		for i := 0; i < len(accessList); i++ {
-			val, _ := strconv.ParseInt(accessList[i], 10, 64)
-			(*accessCountHdd)[i] += val
-		}
-	}
-
-	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeHddKey)
-	if err != nil {
-		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeHddKey, parentIno, err)
-		errCh <- err
-		return
-	}
-	value = xattrInfo.Get(AccessFileSizeHddKey)
-	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileSizeHddKey, string(value), len(string(value)))
-	if len(string(value)) > 0 {
-		accessList := strings.Split(string(value), ",")
-		for i := 0; i < len(accessList); i++ {
-			val, _ := strconv.ParseUint(accessList[i], 10, 64)
-			(*accessSizeHdd)[i] += val
-		}
-	}
-
-	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileCountBlobStoreKey)
-	if err != nil {
-		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountBlobStoreKey, parentIno, err)
-		errCh <- err
-		return
-	}
-	value = xattrInfo.Get(AccessFileCountBlobStoreKey)
-	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileCountBlobStoreKey, string(value), len(string(value)))
-	if len(string(value)) > 0 {
-		accessList := strings.Split(string(value), ",")
-		for i := 0; i < len(accessList); i++ {
-			val, _ := strconv.ParseInt(accessList[i], 10, 64)
-			(*accessCountBlobStore)[i] += val
-		}
-	}
-
-	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeBlobStoreKey)
-	if err != nil {
-		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeBlobStoreKey, parentIno, err)
-		errCh <- err
-		return
-	}
-	value = xattrInfo.Get(AccessFileSizeBlobStoreKey)
-	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileSizeBlobStoreKey, string(value), len(string(value)))
-	if len(string(value)) > 0 {
-		accessList := strings.Split(string(value), ",")
-		for i := 0; i < len(accessList); i++ {
-			val, _ := strconv.ParseUint(accessList[i], 10, 64)
-			(*accessSizeBlobStore)[i] += val
-		}
-	}
-
-	noMore := false
-	from := ""
-	var children []proto.Dentry
-	for !noMore {
-		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
-		if err != nil {
-			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
-			errCh <- err
-			return
-		}
-
-		batchNr := uint64(len(batches))
-		if batchNr == 0 || (from != "" && batchNr == 1) {
-			break
-		} else if batchNr < DefaultReaddirLimit {
-			noMore = true
-		}
-		if from != "" {
-			batches = batches[1:]
-		}
-		children = append(children, batches...)
-		from = batches[len(batches)-1].Name
-	}
-
-	for _, dentry := range children {
-		if proto.IsDir(dentry.Type) {
-			subPath := path.Join(parentPath, dentry.Name)
-			mw.getAccessFileInfo(subPath, dentry.Inode, errCh, accessCountSsd, accessSizeSsd, accessCountHdd, accessSizeHdd, accessCountBlobStore, accessSizeBlobStore)
-		}
-	}
+	log.LogInfof("GetAccessInfoSummary_ll finish, AccessFileInfo(%v)", accessInfos)
+	return accessInfos, nil
 }

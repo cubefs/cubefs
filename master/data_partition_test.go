@@ -2,8 +2,11 @@ package master
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -29,7 +32,7 @@ func TestDataPartition(t *testing.T) {
 
 func createDataPartition(vol *Vol, count int, t *testing.T) {
 	oldCount := len(vol.dataPartitions.partitions)
-	reqURL := fmt.Sprintf("%v%v?count=%v&name=%v&type=extent",
+	reqURL := fmt.Sprintf("%v%v?count=%v&name=%v&type=extent&force=true",
 		hostAddr, proto.AdminCreateDataPartition, count, vol.Name)
 	process(reqURL, t)
 
@@ -87,4 +90,122 @@ func loadDataPartitionTest(dp *DataPartition, t *testing.T) {
 	dp.getFileCount()
 	dp.validateCRC(server.cluster.Name)
 	dp.setToNormal()
+}
+
+func TestAcquireDecommissionFirstHostToken(t *testing.T) {
+	partition := &DataPartition{PartitionID: 1, Hosts: []string{"host0", "host1", "host2"}, ReplicaNum: 3}
+	partition.Replicas = []*DataReplica{
+		{DataReplica: proto.DataReplica{Addr: "host0", DiskPath: "/disk0"}},
+		{DataReplica: proto.DataReplica{Addr: "host1", DiskPath: "/disk1"}},
+		{DataReplica: proto.DataReplica{Addr: "host2", DiskPath: "/disk2"}},
+	}
+	partition.DecommissionSrcAddr = "host2"
+	partition.DecommissionType = ManualDecommission
+
+	cluster := &Cluster{
+		ClusterDecommission: ClusterDecommission{DecommissionFirstHostDiskParallelLimit: 0},
+	}
+	dataNode := &DataNode{
+		DecommissionFirstHostParallelLimit: 1,
+	}
+	cluster.dataNodes.Store("host0", dataNode)
+	dataNodeInfo := &DataNodeToDecommissionRepairDpInfo{
+		mu:          sync.Mutex{},
+		Addr:        "host0",
+		CurParallel: 1,
+	}
+	cluster.DataNodeToDecommissionRepairDpMap.Store("host0", dataNodeInfo)
+	assert.False(t, partition.AcquireDecommissionFirstHostToken(cluster))
+
+	cluster.DecommissionFirstHostDiskParallelLimit = 1
+	dataNode.DecommissionFirstHostParallelLimit = 2
+	dataNodeInfo = &DataNodeToDecommissionRepairDpInfo{
+		mu:          sync.Mutex{},
+		Addr:        "host0",
+		CurParallel: 1,
+		DiskToDecommissionRepairDpMap: map[string]*DiskToDecommissionRepairDpInfo{
+			"/disk0": {CurParallel: 1, DiskPath: "/disk0"},
+		},
+	}
+	cluster.DataNodeToDecommissionRepairDpMap.Store("host0", dataNodeInfo)
+	assert.False(t, partition.AcquireDecommissionFirstHostToken(cluster))
+
+	cluster.DecommissionFirstHostDiskParallelLimit = 2
+	dataNode.DecommissionFirstHostParallelLimit = 2
+	dataNodeInfo = &DataNodeToDecommissionRepairDpInfo{
+		mu:          sync.Mutex{},
+		Addr:        "host0",
+		CurParallel: 1,
+		DiskToDecommissionRepairDpMap: map[string]*DiskToDecommissionRepairDpInfo{
+			"/disk0": {
+				CurParallel: 1,
+				DiskPath:    "/disk0",
+				RepairingDps: map[uint64]struct{}{
+					0: {},
+				},
+			},
+		},
+	}
+	cluster.DataNodeToDecommissionRepairDpMap.Store("host0", dataNodeInfo)
+	assert.True(t, partition.AcquireDecommissionFirstHostToken(cluster))
+}
+
+func TestReleaseDecommissionFirstHostToken(t *testing.T) {
+	partition := &DataPartition{PartitionID: 1, Hosts: []string{"host0", "host1", "host2"}, ReplicaNum: 3}
+	partition.Replicas = []*DataReplica{
+		{DataReplica: proto.DataReplica{Addr: "host0", DiskPath: "/disk0"}},
+		{DataReplica: proto.DataReplica{Addr: "host1", DiskPath: "/disk1"}},
+		{DataReplica: proto.DataReplica{Addr: "host2", DiskPath: "/disk2"}},
+	}
+	partition.DecommissionSrcAddr = "host2"
+	partition.DecommissionType = ManualDecommission
+	partition.DecommissionFirstHostDiskTokenKey = "host0_/disk0"
+
+	cluster := &Cluster{
+		ClusterDecommission: ClusterDecommission{DecommissionFirstHostDiskParallelLimit: 2},
+	}
+	dataNode := &DataNode{
+		DecommissionFirstHostParallelLimit: 2,
+	}
+	cluster.dataNodes.Store("host0", dataNode)
+
+	dataNodeInfo := &DataNodeToDecommissionRepairDpInfo{
+		mu:          sync.Mutex{},
+		Addr:        "host0",
+		CurParallel: 2,
+		DiskToDecommissionRepairDpMap: map[string]*DiskToDecommissionRepairDpInfo{
+			"/disk0": {
+				CurParallel: 2,
+				DiskPath:    "/disk0",
+				RepairingDps: map[uint64]struct{}{
+					0: {},
+					1: {},
+				},
+			},
+		},
+	}
+	cluster.DataNodeToDecommissionRepairDpMap.Store("host0", dataNodeInfo)
+	partition.ReleaseDecommissionFirstHostToken(cluster)
+
+	value, ok := cluster.DataNodeToDecommissionRepairDpMap.Load("host0")
+	if !ok {
+		t.Errorf("dataNode should not be removed")
+	}
+	dataNodeInfoAfter := value.(*DataNodeToDecommissionRepairDpInfo)
+	diskInfo, ok := dataNodeInfoAfter.DiskToDecommissionRepairDpMap["/disk0"]
+	if !ok {
+		t.Errorf("disk should not be removed")
+	}
+	if len(diskInfo.RepairingDps) != 1 {
+		t.Errorf("repairingDps should have one dp left %v", diskInfo.RepairingDps)
+		return
+	}
+	if diskInfo.CurParallel != 1 {
+		t.Errorf("disk curParallel should be updated to 1 %v", diskInfo.CurParallel)
+		return
+	}
+	if dataNodeInfoAfter.CurParallel != 1 {
+		t.Errorf("datanode curParallel should be updated to 1 %v", dataNodeInfoAfter.CurParallel)
+		return
+	}
 }

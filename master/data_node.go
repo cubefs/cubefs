@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,56 +34,60 @@ import (
 
 // DataNode stores all the information about a data node
 type DataNode struct {
-	Total                            uint64 `json:"TotalWeight"`
-	Used                             uint64 `json:"UsedWeight"`
-	AvailableSpace                   uint64
-	ID                               uint64
-	ZoneName                         string `json:"Zone"`
-	Addr                             string
-	HeartbeatPort                    string `json:"HeartbeatPort"`
-	ReplicaPort                      string `json:"ReplicaPort"`
-	DomainAddr                       string
-	ReportTime                       time.Time
-	StartTime                        int64
-	LastUpdateTime                   time.Time
-	isActive                         bool
-	sync.RWMutex                     `graphql:"-"`
-	UsageRatio                       float64           // used / total space
-	SelectedTimes                    uint64            // number times that this datanode has been selected as the location for a data partition.
-	TaskManager                      *AdminTaskManager `graphql:"-"`
-	DataPartitionReports             []*proto.DataPartitionReport
-	DataPartitionCount               uint32
-	TotalPartitionSize               uint64
-	NodeSetID                        uint64
-	PersistenceDataPartitions        []uint64
-	BadDisks                         []string            // Keep this old field for compatibility
-	DiskStats                        []proto.DiskStat    // key:
-	BadDiskStats                     []proto.BadDiskStat // key: disk path
-	DecommissionedDisks              sync.Map            `json:"-"` // NOTE: the disks that already be decommissioned
-	AllDisks                         []string            // TODO: remove me when merge to github master
-	ToBeOffline                      bool
-	RdOnly                           bool
-	MigrateLock                      sync.RWMutex
-	QosIopsRLimit                    uint64
-	QosIopsWLimit                    uint64
-	QosFlowRLimit                    uint64
-	QosFlowWLimit                    uint64
-	DecommissionStatus               uint32
-	DecommissionDstAddr              string
-	DecommissionRaftForce            bool
-	DecommissionLimit                int
-	DecommissionCompleteTime         int64
-	DpCntLimit                       LimitCounter       `json:"-"` // max count of data partition in a data node
-	CpuUtil                          atomicutil.Float64 `json:"-"`
-	ioUtils                          atomic.Value       `json:"-"`
-	DecommissionDiskList             []string           // NOTE: the disks that running decommission
-	DecommissionDpTotal              int
-	DecommissionSyncMutex            sync.Mutex
-	BackupDataPartitions             []proto.BackupDataPartitionInfo
-	MediaType                        uint32
-	ReceivedForbidWriteOpOfProtoVer0 bool
-	DiskOpLogs                       []proto.OpLog
-	DpOpLogs                         []proto.OpLog
+	Total                              uint64 `json:"TotalWeight"`
+	Used                               uint64 `json:"UsedWeight"`
+	AvailableSpace                     uint64
+	ID                                 uint64
+	ZoneName                           string `json:"Zone"`
+	Addr                               string
+	HeartbeatPort                      string `json:"HeartbeatPort"`
+	ReplicaPort                        string `json:"ReplicaPort"`
+	DomainAddr                         string
+	ReportTime                         time.Time
+	StartTime                          int64
+	LastUpdateTime                     time.Time
+	isActive                           bool
+	sync.RWMutex                       `graphql:"-"`
+	UsageRatio                         float64           // used / total space
+	SelectedTimes                      uint64            // number times that this datanode has been selected as the location for a data partition.
+	TaskManager                        *AdminTaskManager `graphql:"-"`
+	DataPartitionReports               []*proto.DataPartitionReport
+	DataPartitionCount                 uint32
+	TotalPartitionSize                 uint64
+	NodeSetID                          uint64
+	PersistenceDataPartitions          []uint64
+	BadDisks                           []string            // Keep this old field for compatibility
+	DiskStats                          []proto.DiskStat    // key:
+	BadDiskStats                       []proto.BadDiskStat // key: disk path
+	LostDisks                          []string
+	DecommissionedDisks                sync.Map `json:"-"` // NOTE: the disks that already be executed decommission and in disable status
+	DecommissionSuccessDisks           sync.Map `json:"-"` // NOTE: the disks that already complete decommission
+	AllDisks                           []string // TODO: remove me when merge to github master
+	ToBeOffline                        bool
+	RdOnly                             bool
+	MigrateLock                        sync.RWMutex
+	QosIopsRLimit                      uint64
+	QosIopsWLimit                      uint64
+	QosFlowRLimit                      uint64
+	QosFlowWLimit                      uint64
+	DecommissionStatus                 uint32
+	DecommissionDstAddr                string
+	DecommissionRaftForce              bool
+	DecommissionLimit                  int
+	DecommissionWeight                 int
+	DecommissionFirstHostParallelLimit uint64
+	DecommissionCompleteTime           int64
+	DpCntLimit                         uint64             `json:"-"` // max count of data partition in a data node
+	CpuUtil                            atomicutil.Float64 `json:"-"`
+	ioUtils                            atomic.Value       `json:"-"`
+	DecommissionDiskList               []string           // NOTE: the disks that running decommission
+	DecommissionDpTotal                int
+	DecommissionSyncMutex              sync.Mutex
+	BackupDataPartitions               []proto.BackupDataPartitionInfo
+	MediaType                          uint32
+	ReceivedForbidWriteOpOfProtoVer0   bool
+	DiskOpLogs                         []proto.OpLog
+	DpOpLogs                           []proto.OpLog
 }
 
 func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
@@ -99,7 +104,7 @@ func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, clusterID s
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	dataNode.DecommissionStatus = DecommissionInitial
-	dataNode.DpCntLimit = newLimitCounter(nil, defaultMaxDpCntLimit)
+	dataNode.DecommissionFirstHostParallelLimit = defaultDecommissionFirstHostParallelLimit
 	dataNode.CpuUtil.Store(0)
 	dataNode.SetIoUtils(make(map[string]float64))
 	dataNode.AllDisks = make([]string, 0)
@@ -132,14 +137,14 @@ func (dataNode *DataNode) checkLiveness() {
 	}
 }
 
-func (dataNode *DataNode) badPartitions(diskPath string, c *Cluster) (partitions []*DataPartition) {
+func (dataNode *DataNode) badPartitions(diskPath string, c *Cluster, ignoreDiscard bool) (partitions []*DataPartition) {
 	partitions = make([]*DataPartition, 0)
 	vols := c.copyVols()
 	if len(vols) == 0 {
 		return partitions
 	}
 	for _, vol := range vols {
-		dps := vol.dataPartitions.checkBadDiskDataPartitions(diskPath, dataNode.Addr)
+		dps := vol.dataPartitions.checkBadDiskDataPartitions(diskPath, dataNode.Addr, ignoreDiscard)
 		partitions = append(partitions, dps...)
 	}
 	return
@@ -164,36 +169,44 @@ func (dataNode *DataNode) getDisks(c *Cluster) (diskPaths []string) {
 	return
 }
 
-func (dataNode *DataNode) updateBadDisks(latest []string) (ok bool, removed []string) {
-	sort.Slice(latest, func(i, j int) bool {
-		return latest[i] < latest[j]
+func (dataNode *DataNode) updateDisks(allDisks []string, badDisks []string) (updated bool, removedDisks []string) {
+	sort.Slice(allDisks, func(i, j int) bool {
+		return allDisks[i] < allDisks[j]
+	})
+	sort.Slice(badDisks, func(i, j int) bool {
+		return badDisks[i] < badDisks[j]
 	})
 
+	updatedAllDisks := !reflect.DeepEqual(dataNode.AllDisks, allDisks)
+	dataNode.AllDisks = allDisks
+
+	updatedBadDisks, removedBadDisks := dataNode.updateBadDisks(badDisks)
+	updated = updatedAllDisks || updatedBadDisks
+
+	return updated, removedBadDisks
+}
+
+func (dataNode *DataNode) updateBadDisks(badDisks []string) (updated bool, removedDisks []string) {
 	curr := dataNode.BadDisks
-	dataNode.BadDisks = latest
-	if len(curr) != len(latest) {
-		ok = true
-	}
+	dataNode.BadDisks = badDisks
 
-	if !ok {
-		for i := 0; i < len(curr); i++ {
-			if curr[i] != latest[i] {
-				ok = true
+	updated = !reflect.DeepEqual(curr, badDisks)
+
+	if updated {
+		i, j := 0, 0
+		for i < len(curr) && j < len(badDisks) {
+			switch {
+			case curr[i] == badDisks[j]:
+				i++
+				j++
+			case curr[i] < badDisks[j]:
+				removedDisks = append(removedDisks, curr[i])
+				i++
+			default:
+				j++
 			}
 		}
-	}
-
-	if ok {
-		removed = make([]string, 0)
-		latestMap := make(map[string]bool)
-		for _, disk := range latest {
-			latestMap[disk] = true
-		}
-		for _, disk := range curr {
-			if !latestMap[disk] {
-				removed = append(removed, disk)
-			}
-		}
+		removedDisks = append(removedDisks, curr[i:]...)
 	}
 	return
 }
@@ -214,10 +227,10 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 	dataNode.DataPartitionReports = resp.PartitionReports
 	dataNode.TotalPartitionSize = resp.TotalPartitionSize
 
-	dataNode.AllDisks = resp.AllDisks
-	updated, removedDisks := dataNode.updateBadDisks(resp.BadDisks)
+	updated, removedDisks := dataNode.updateDisks(resp.AllDisks, resp.BadDisks)
 	dataNode.BadDiskStats = resp.BadDiskStats
 	dataNode.DiskStats = resp.DiskStats
+	dataNode.LostDisks = resp.LostDisks
 	dataNode.BackupDataPartitions = resp.BackupDataPartitions
 
 	dataNode.DiskOpLogs = resp.DiskOpLogs
@@ -360,8 +373,14 @@ func (dataNode *DataNode) canAllocDp() bool {
 	return true
 }
 
-func (dataNode *DataNode) GetPartitionLimitCnt() uint32 {
-	return uint32(dataNode.DpCntLimit.GetCntLimit())
+func (dataNode *DataNode) GetPartitionLimitCnt() uint64 {
+	if dataNode.DpCntLimit != 0 {
+		return dataNode.DpCntLimit
+	}
+	if clusterDpCntLimit != 0 {
+		return clusterDpCntLimit
+	}
+	return defaultMaxDpCntLimit
 }
 
 func (dataNode *DataNode) GetAvailableSpace() uint64 {
@@ -369,7 +388,7 @@ func (dataNode *DataNode) GetAvailableSpace() uint64 {
 }
 
 func (dataNode *DataNode) PartitionCntLimited() bool {
-	limited := dataNode.DataPartitionCount <= dataNode.GetPartitionLimitCnt()
+	limited := uint64(dataNode.DataPartitionCount) <= dataNode.GetPartitionLimitCnt()
 	if !limited {
 		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, limit %d",
 			dataNode.Addr, dataNode.DataPartitionCount, dataNode.GetPartitionLimitCnt())
@@ -453,7 +472,7 @@ func (dataNode *DataNode) clean() {
 }
 
 func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos bool,
-	dpBackupTimeout string, forbiddenWriteOpVerBitmask bool, raftPartitionCanUsingDifferentPortEnabled bool,
+	dpBackupTimeout string, forbiddenWriteOpVerBitmask bool, raftPartitionCanUsingDifferentPortEnabled bool, dataNodeGOGC int,
 ) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:             time.Now().Unix(),
@@ -469,6 +488,7 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos b
 	request.DecommissionDisks = dataNode.getDecommissionedDisks()
 	request.DpBackupTimeout = dpBackupTimeout
 	request.NotifyForbidWriteOpOfProtoVer0 = forbiddenWriteOpVerBitmask
+	request.DataNodeGOGC = dataNodeGOGC
 
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return
@@ -498,6 +518,28 @@ func (dataNode *DataNode) getDecommissionedDisks() (decommissionedDisks []string
 
 func (dataNode *DataNode) checkDecommissionedDisks(d string) (ok bool) {
 	_, ok = dataNode.DecommissionedDisks.Load(d)
+	return
+}
+
+func (dataNode *DataNode) addDecommissionSuccessDisk(diskPath string) (exist bool) {
+	_, exist = dataNode.DecommissionSuccessDisks.LoadOrStore(diskPath, struct{}{})
+	log.LogInfof("action[addDecommissionSuccessDisk] finish, exist[%v], decommissionSuccess disk[%v], dataNode[%v]", exist, diskPath, dataNode.Addr)
+	return
+}
+
+func (dataNode *DataNode) deleteDecommissionSuccessDisk(diskPath string) (exist bool) {
+	_, exist = dataNode.DecommissionSuccessDisks.LoadAndDelete(diskPath)
+	log.LogInfof("action[deleteDecommissionSuccessDisk] finish, exist[%v], decommissionSuccess disk[%v], dataNode[%v]", exist, diskPath, dataNode.Addr)
+	return
+}
+
+func (dataNode *DataNode) getDecommissionSuccessDisks() (decommissionSuccessDisks []string) {
+	dataNode.DecommissionSuccessDisks.Range(func(key, value interface{}) bool {
+		if diskPath, ok := key.(string); ok {
+			decommissionSuccessDisks = append(decommissionSuccessDisks, diskPath)
+		}
+		return true
+	})
 	return
 }
 
@@ -644,8 +686,11 @@ func (dataNode *DataNode) SetDecommissionStatus(status uint32) {
 	atomic.StoreUint32(&dataNode.DecommissionStatus, status)
 }
 
-func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []proto.FailedDpInfo {
-	var failedDps []proto.FailedDpInfo
+func (dataNode *DataNode) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) ([]proto.FailedDpInfo, []uint64) {
+	var (
+		failedDps  []proto.FailedDpInfo
+		runningDps []uint64
+	)
 	partitions := dataNode.GetLatestDecommissionDataPartition(c)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {
@@ -653,9 +698,12 @@ func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) []proto.Fail
 			failedDps = append(failedDps, proto.FailedDpInfo{PartitionID: dp.PartitionID, ErrMsg: dp.DecommissionErrorMessage})
 			log.LogWarnf("action[GetDecommissionDataNodeFailedDP] dp[%v] failed", dp.PartitionID)
 		}
+		if dp.DecommissionStatus == DecommissionRunning {
+			runningDps = append(runningDps, dp.PartitionID)
+		}
 	}
 	log.LogWarnf("action[GetDecommissionDataNodeFailedDP] failed dp list [%v]", failedDps)
-	return failedDps
+	return failedDps, runningDps
 }
 
 func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {
@@ -672,13 +720,14 @@ func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) 
 	return nil, failedDps
 }
 
-func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, limit int) {
+func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, limit int, weight int) {
 	dataNode.DecommissionSyncMutex.Lock()
 	defer dataNode.DecommissionSyncMutex.Unlock()
 	dataNode.SetDecommissionStatus(markDecommission)
 	dataNode.DecommissionRaftForce = raftForce
 	dataNode.DecommissionDstAddr = targetAddr
 	dataNode.DecommissionLimit = limit
+	dataNode.DecommissionWeight = weight
 	dataNode.DecommissionDiskList = make([]string, 0)
 }
 
@@ -703,6 +752,7 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.DecommissionRaftForce = false
 	dataNode.DecommissionDstAddr = ""
 	dataNode.DecommissionLimit = 0
+	dataNode.DecommissionWeight = 0
 	dataNode.DecommissionCompleteTime = 0
 	dataNode.DecommissionDiskList = make([]string, 0)
 	dataNode.ToBeOffline = false
@@ -830,6 +880,18 @@ func (dataNode *DataNode) getResidualDecommissionDpList(c *Cluster) (dps []proto
 
 func (dataNode *DataNode) createTaskToDeleteBackupDirectories(diskPath string) (resp *proto.Packet, err error) {
 	task := proto.NewAdminTask(proto.OpDeleteBackupDirectories, dataNode.Addr, newDeleteBackupDirectoriesRequest(diskPath))
+	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
+	return resp, err
+}
+
+func (dataNode *DataNode) createTaskToDeleteLostDisk(diskPath string) (resp *proto.Packet, err error) {
+	task := proto.NewAdminTask(proto.OpDeleteLostDisk, dataNode.Addr, newDeleteLostDiskRequest(diskPath))
+	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
+	return resp, err
+}
+
+func (dataNode *DataNode) createTaskToReloadDisk(diskPath string) (resp *proto.Packet, err error) {
+	task := proto.NewAdminTask(proto.OpReloadDisk, dataNode.Addr, newReloadDiskRequest(diskPath))
 	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
 	return resp, err
 }

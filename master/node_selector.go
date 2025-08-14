@@ -71,7 +71,7 @@ type Node interface {
 	PartitionCntLimited() bool
 	IsActiveNode() bool
 	IsWriteAble() bool
-	GetPartitionLimitCnt() uint32
+	GetPartitionLimitCnt() uint64
 	GetTotal() uint64
 	GetUsed() uint64
 	GetAvailableSpace() uint64

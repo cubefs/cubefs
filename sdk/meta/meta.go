@@ -29,6 +29,7 @@ import (
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auth"
+	"github.com/cubefs/cubefs/util/bloom"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -91,7 +92,6 @@ type MetaConfig struct {
 	TicketMess       auth.TicketMess
 	ValidateOwner    bool
 	OnAsyncTaskError AsyncTaskErrorFunc
-	EnableSummary    bool
 	MetaSendTimeout  int64
 	// EnableTransaction uint8
 	// EnableTransaction bool
@@ -156,7 +156,6 @@ type MetaWrapper struct {
 	forceUpdate             chan struct{}
 	forceUpdateLimit        *rate.Limiter
 	singleflight            singleflight.Group
-	EnableSummary           bool
 	metaSendTimeout         int64
 	leaderRetryTimeout      int64 // s
 	DirChildrenNumLimit     uint32
@@ -189,9 +188,10 @@ type MetaWrapper struct {
 	Client              wrapper.SimpleClientInfo
 	IsSnapshotEnabled   bool
 	DefaultStorageClass uint32
-	CacheDpStorageClass uint32
 	InnerReq            bool
 	FollowerRead        bool
+
+	RemoteCacheBloom func() *bloom.BloomFilter
 }
 
 type uniqidRange struct {
@@ -246,7 +246,6 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.partCond = sync.NewCond(&mw.partMutex)
 	mw.forceUpdate = make(chan struct{}, 1)
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
-	mw.EnableSummary = config.EnableSummary
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
 	mw.uniqidRangeMap = make(map[uint64]*uniqidRange)
 	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
@@ -291,9 +290,9 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	return mw, nil
 }
 
-func (mw *MetaWrapper) enableTrash() {
+func (mw *MetaWrapper) enableTrash() error {
 	if mw.disableTrash {
-		return
+		return errors.NewErrorf("trash is disabled")
 	}
 	if mw.TrashInterval > 0 {
 		// default value for sdk
@@ -305,10 +304,12 @@ func (mw *MetaWrapper) enableTrash() {
 
 		if err != nil {
 			log.LogErrorf("action[initMetaWrapper] init trash failed, err %s", err.Error())
+			return err
 		} else {
 			mw.trashPolicy.StartScheduleTask()
 		}
 	}
+	return nil
 }
 
 func (mw *MetaWrapper) initMetaWrapper() (err error) {
@@ -335,6 +336,10 @@ func (mw *MetaWrapper) Owner() string {
 	return mw.owner
 }
 
+func (mw *MetaWrapper) DirCacheLen() int {
+	return len(mw.dirCache)
+}
+
 func (mw *MetaWrapper) enableTx(mask proto.TxOpMask) bool {
 	return mw.EnableTransaction != proto.TxPause && mw.EnableTransaction&mask > 0
 }
@@ -351,6 +356,7 @@ func (mw *MetaWrapper) Close() error {
 	mw.closeOnce.Do(func() {
 		close(mw.closeCh)
 		mw.conns.Close()
+		mw.qc.Close()
 	})
 	return nil
 }

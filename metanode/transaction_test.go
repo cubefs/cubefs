@@ -55,6 +55,10 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPar
 		PartitionType: proto.VolumeTypeHot,
 	}
 
+	if manager == nil {
+		manager = &metadataManager{}
+	}
+
 	mp = &metaPartition{
 		config:         metaConf,
 		dentryTree:     NewBtree(),
@@ -75,6 +79,7 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPar
 
 	mp.txProcessor = NewTransactionProcessor(mp)
 	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
+	mp.manager.initFileStatsConfig()
 	return mp
 }
 
@@ -131,7 +136,6 @@ func TestRollbackInodeSerialization(t *testing.T) {
 		NLink:                       7,
 		Flag:                        1,
 		Reserved:                    3,
-		Extents:                     NewSortedExtents(),
 		StorageClass:                proto.StorageClass_Replica_HDD,
 		HybridCloudExtents:          NewSortedHybridCloudExtents(),
 		HybridCloudExtentsMigration: NewSortedHybridCloudExtentsMigration(),

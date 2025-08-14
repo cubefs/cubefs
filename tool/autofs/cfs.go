@@ -25,7 +25,6 @@ type cfsOption struct {
 	BcacheFilterFiles    string `json:"bcacheFilterFiles"`
 	BuffersTotalLimit    string `json:"buffersTotalLimit"`
 	C                    string `json:"c"`
-	CacheAction          string `json:"cacheAction"`
 	CertFile             string `json:"certFile"`
 
 	ClientKey            string `json:"clientKey"`
@@ -37,7 +36,6 @@ type cfsOption struct {
 	EnSyncWrite          string `json:"enSyncWrite"`
 	EnableAudit          string `json:"enableAudit"`
 	EnableHTTPS          string `json:"enableHTTPS"`
-	EnableSummary        string `json:"enableSummary"`
 	EnableUnixPermission string `json:"enableUnixPermission"`
 	EnableXattr          string `json:"enableXattr"`
 	FollowerRead         string `json:"followerRead"`

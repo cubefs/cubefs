@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -29,8 +30,14 @@ import (
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
+)
+
+const (
+	defaultGOGCLowerLimit = 30
+	defaultGOGCUpperLimit = 100
 )
 
 var parseArgs = common.ParseArguments
@@ -52,6 +59,7 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			DiskRdoSize  uint64 `json:"diskRdoSize"`
 			Partitions   int    `json:"partitions"`
 			Decommission bool   `json:"decommission"`
+			IsLost       bool   `json:"isLost"`
 		}{
 			Path:         diskItem.Path,
 			Total:        diskItem.Total,
@@ -64,6 +72,7 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			DiskRdoSize:  diskItem.DiskRdonlySpace,
 			Partitions:   diskItem.PartitionCount(),
 			Decommission: diskItem.GetDecommissionStatus(),
+			IsLost:       diskItem.isLost,
 		}
 		disks = append(disks, disk)
 	}
@@ -299,12 +308,22 @@ func (s *DataNode) getNormalDeleted(w http.ResponseWriter, r *http.Request) {
 func (s *DataNode) setQosEnable() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var enable common.Bool
-		if err := parseArgs(r, enable.Enable()); err != nil {
+		var qosType common.String
+		if err := parseArgs(r, enable.Enable(), qosType.QosType()); err != nil {
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		s.diskQosEnable = enable.V
-		s.buildSuccessResp(w, "success")
+		switch qosType.V {
+		case "normal":
+			s.diskQosEnable = enable.V
+		case "async":
+			s.diskAsyncQosEnable = enable.V
+		default:
+			err := fmt.Errorf("qos type %v not exist", qosType.V)
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		s.buildSuccessResp(w, fmt.Sprintf("Successfully set %v QosEnable to %v", qosType.V, enable.V))
 	}
 }
 
@@ -325,13 +344,22 @@ func (s *DataNode) setDiskQos(w http.ResponseWriter, r *http.Request) {
 
 	updated := false
 	for key, pVal := range map[string]*int{
-		ConfigDiskReadIocc:   &s.diskReadIocc,
-		ConfigDiskReadIops:   &s.diskReadIops,
-		ConfigDiskReadFlow:   &s.diskReadFlow,
-		ConfigDiskWriteIocc:  &s.diskWriteIocc,
-		ConfigDiskWriteIops:  &s.diskWriteIops,
-		ConfigDiskWriteFlow:  &s.diskWriteFlow,
-		ConfigDiskWQueFactor: &s.diskWQueFactor,
+		ConfigDiskReadIocc:       &s.diskReadIocc,
+		ConfigDiskReadIops:       &s.diskReadIops,
+		ConfigDiskReadFlow:       &s.diskReadFlow,
+		ConfigDiskWriteIocc:      &s.diskWriteIocc,
+		ConfigDiskWriteIops:      &s.diskWriteIops,
+		ConfigDiskWriteFlow:      &s.diskWriteFlow,
+		ConfigDiskWQueFactor:     &s.diskWQueFactor,
+		ConfigDiskAsyncReadIocc:  &s.diskAsyncReadIocc,
+		ConfigDiskAsyncReadIops:  &s.diskAsyncReadIops,
+		ConfigDiskAsyncReadFlow:  &s.diskAsyncReadFlow,
+		ConfigDiskAsyncWriteIocc: &s.diskAsyncWriteIocc,
+		ConfigDiskAsyncWriteIops: &s.diskAsyncWriteIops,
+		ConfigDiskAsyncWriteFlow: &s.diskAsyncWriteFlow,
+		ConfigDiskDeleteIocc:     &s.diskDeleteIocc,
+		ConfigDiskDeleteIops:     &s.diskDeleteIops,
+		ConfigDiskDeleteFlow:     &s.diskDeleteFlow,
 	} {
 		val, err, has := parser(key)
 		if err != nil {
@@ -354,13 +382,25 @@ func (s *DataNode) getDiskQos(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)
 	for _, diskItem := range s.space.GetDisks() {
 		disk := &struct {
-			Path  string        `json:"path"`
-			Read  LimiterStatus `json:"read"`
-			Write LimiterStatus `json:"write"`
+			Path           string             `json:"path"`
+			QosEnable      bool               `json:"qosEnable"`
+			AsyncQosEnable bool               `json:"asyncQosEnable"`
+			Read           util.LimiterStatus `json:"read"`
+			Write          util.LimiterStatus `json:"write"`
+			AsyncRead      util.LimiterStatus `json:"asyncRead"`
+			AsyncWrite     util.LimiterStatus `json:"asyncWrite"`
+			Delete         util.LimiterStatus `json:"delete"`
+			IopsStatus     proto.IopsStatus   `json:"IopsStatus"`
 		}{
-			Path:  diskItem.Path,
-			Read:  diskItem.limitRead.Status(),
-			Write: diskItem.limitWrite.Status(),
+			Path:           diskItem.Path,
+			QosEnable:      s.diskQosEnable || s.diskQosEnableFromMaster,
+			AsyncQosEnable: s.diskAsyncQosEnable,
+			Read:           diskItem.limitRead.Status(false),
+			Write:          diskItem.limitWrite.Status(false),
+			AsyncRead:      diskItem.limitAsyncRead.Status(false),
+			AsyncWrite:     diskItem.limitAsyncWrite.Status(false),
+			Delete:         diskItem.limitDelete.Status(false),
+			IopsStatus:     s.IopsStatus(),
 		}
 		disks = append(disks, disk)
 	}
@@ -797,4 +837,90 @@ func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.buildSuccessResp(w, "success")
 	}
+}
+
+func (s *DataNode) getRaftPeers(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramRaftID = "id"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	raftID, err := strconv.ParseUint(r.FormValue(paramRaftID), 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramRaftID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	raftPeers := s.raftStore.GetPeers(raftID)
+	s.buildSuccessResp(w, raftPeers)
+}
+
+func (s *DataNode) setGOGC(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramGOGC = "gogc"
+	)
+	var (
+		gogcValue int
+		err       error
+	)
+	defer func() {
+		if err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		} else {
+			s.buildSuccessResp(w, "set GOGC success")
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		return
+	}
+	gogcValue, err = strconv.Atoi(r.FormValue(paramGOGC))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramGOGC, err)
+		return
+	}
+	if gogcValue < defaultGOGCLowerLimit || gogcValue > defaultGOGCUpperLimit {
+		err = fmt.Errorf("gogc must be greater than or equal to %v and less than or equal to %v", defaultGOGCLowerLimit, defaultGOGCUpperLimit)
+		return
+	}
+	s.useLocalGOGC = true
+	if s.gogcValue != gogcValue {
+		oldGOGC := s.gogcValue
+		debug.SetGCPercent(gogcValue)
+		s.gogcValue = gogcValue
+		log.LogWarnf("[setGOGC] change GOGC, old(%v) new(%v)", oldGOGC, gogcValue)
+	}
+}
+
+func (s *DataNode) getGOGC(w http.ResponseWriter, r *http.Request) {
+	data := fmt.Sprintf("gogc value is %v", s.gogcValue)
+	s.buildSuccessResp(w, data)
+}
+
+func (s *DataNode) triggerRaftLogRotate(w http.ResponseWriter, r *http.Request) {
+	val, err := MarshalRandWriteRaftLog(proto.OpRandomWrite, 0, 0, 0, nil, 0)
+	if err != nil {
+		log.LogErrorf("action[triggerRaftLogRotate] marshal error %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	dataPartitions := s.space.getPartitions()
+	trigger := 0
+	for _, dp := range dataPartitions {
+		if !dp.raftPartition.IsRaftLeader() {
+			continue
+		}
+		_, err = dp.Submit(val)
+		if err != nil {
+			log.LogErrorf("action[triggerRaftLogRotate] submit error %v", err)
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		trigger += 1
+	}
+
+	s.buildSuccessResp(w, fmt.Sprintf("trigger dp(%d) raft log rotate successfully.", trigger))
 }

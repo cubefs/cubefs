@@ -90,6 +90,7 @@ var (
 	ObjectLockConfigurationNotFound     = &ErrorCode{"ObjectLockConfigurationNotFoundError", "Object Lock configuration does not exist for this bucket", http.StatusNotFound}
 	TooManyRequests                     = &ErrorCode{"TooManyRequests", "too many requests, please retry later", http.StatusTooManyRequests}
 	MalformedPOSTRequest                = &ErrorCode{ErrorCode: "MalformedPOSTRequest", ErrorMessage: "The body of your POST request is not well-formed multipart/form-data.", StatusCode: http.StatusBadRequest}
+	DuplicateVol                        = &ErrorCode{ErrorCode: "DuplicateVol", ErrorMessage: "Duplicate Vol", StatusCode: http.StatusBadRequest}
 )
 
 type ErrorCode struct {

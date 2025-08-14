@@ -100,9 +100,11 @@ var (
 	ErrDecompressFailed                        = errors.New("decompress data failed")
 	ErrDecommissionDiskErrDPFirst              = errors.New("decommission disk error data partition first")
 	ErrAllReplicaUnavailable                   = errors.New("all replica unavailable")
+	ErrFirstHostUnavailable                    = errors.New("first host unavailable")
 	ErrDiskNotExists                           = errors.New("disk not exists")
 	ErrPerformingRestoreReplica                = errors.New("is performing restore replica")
 	ErrPerformingDecommission                  = errors.New("one replica is performing decommission")
+	ErrDpNoSamePeer                            = errors.New("dp has no same peer between master and replicas")
 	ErrWaitForAutoAddReplica                   = errors.New("wait for auto add replica")
 	ErrBufferSizeExceedMaximum                 = errors.New("buffer size exceeds maximum")
 	ErrVolNameRegExpNotMatch                   = errors.New("name can only be number and letters")
@@ -112,6 +114,10 @@ var (
 	ErrNoSupportStorageClass                   = errors.New("Lifecycle storage class not allowed")
 	ErrDataNodeAdd                             = errors.New("DataNode mediaType not match")
 	ErrNeedForbidVer0                          = errors.New("Need set volume ForbidWriteOpOfProtoVer0 first")
+	ErrTmpfsNoSpace                            = errors.New("no space left on device")
+	ErrNoMpMigratePlan                         = errors.New("no meta partition migrate plan")
+	ErrFlashNodeFlowLimited                    = errors.New("flow limited")
+	ErrFlashNodeRunLimited                     = errors.New("run limited")
 )
 
 // http response error code and error message definitions
@@ -183,6 +189,7 @@ const (
 	ErrCodeNodeSetNotExists
 	ErrCodeNoSuchLifecycleConfiguration
 	ErrCodeNoSupportStorageClass
+	ErrCodeTmpfsNoSpace
 )
 
 // Err2CodeMap error map to code
@@ -250,6 +257,7 @@ var Err2CodeMap = map[error]int32{
 	ErrNodeSetNotExists:                ErrCodeNodeSetNotExists,
 	ErrNoSuchLifecycleConfiguration:    ErrCodeNoSuchLifecycleConfiguration,
 	ErrNoSupportStorageClass:           ErrCodeNoSupportStorageClass,
+	ErrTmpfsNoSpace:                    ErrCodeTmpfsNoSpace,
 }
 
 func ParseErrorCode(code int32) error {
@@ -326,6 +334,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeVolHasDeleted:                   ErrVolHasDeleted,
 	ErrCodeNoSuchLifecycleConfiguration:    ErrNoSuchLifecycleConfiguration,
 	ErrCodeNoSupportStorageClass:           ErrNoSupportStorageClass,
+	ErrCodeTmpfsNoSpace:                    ErrTmpfsNoSpace,
 }
 
 type GeneralResp struct {

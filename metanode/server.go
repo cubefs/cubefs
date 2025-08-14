@@ -18,8 +18,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 
-	"github.com/xtaci/smux"
+	"github.com/cubefs/cubefs/depends/xtaci/smux"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -89,8 +90,10 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 		}
 		p := &Packet{}
 		if err := p.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
-			if err != io.EOF {
-				log.LogError("serve MetaNode: ", err.Error())
+			if strings.Contains(err.Error(), io.EOF.Error()) {
+				log.LogWarnf("serve MetaNode: %v", err)
+			} else {
+				log.LogErrorf("serve MetaNode: %v", err)
 			}
 			return
 		}
@@ -98,7 +101,13 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 			if p.ResultCode == proto.OpWriteOpOfProtoVerForbidden {
 				return
 			}
-			log.LogErrorf("serve handlePacket fail: %v", err)
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "over quota") || strings.Contains(errMsg, "inode ID out of range") ||
+				strings.Contains(errMsg, "unknown meta partition") || p.ResultCode == proto.OpNotExistErr {
+				log.LogWarnf("serve handlePacket fail: %v", err)
+			} else {
+				log.LogErrorf("serve handlePacket fail: %v", err)
+			}
 		}
 	}
 }
@@ -209,8 +218,10 @@ func (m *MetaNode) serveSmuxStream(stream *smux.Stream, remoteAddr string, stopC
 
 		p := &Packet{}
 		if err := p.ReadFromConnWithVer(stream, proto.NoReadDeadlineTime); err != nil {
-			if err != io.EOF {
-				log.LogError("serve MetaNode: ", err.Error())
+			if strings.Contains(err.Error(), io.EOF.Error()) {
+				log.LogWarnf("serve MetaNode: %v", err)
+			} else {
+				log.LogErrorf("serve MetaNode: %v", err)
 			}
 			return
 		}

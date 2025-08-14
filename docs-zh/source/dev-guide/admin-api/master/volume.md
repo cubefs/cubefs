@@ -32,15 +32,7 @@ CubeFS以 **Owner** 参数作为用户ID。
 | crossZone        | bool   | 是否跨区域，如设为 true，则不能设置 zoneName 参数                                | 否   | false                                          |
 | normalZonesFirst | bool   | 是否优先写普通域                                                            | 否   | false                                          |
 | zoneName         | string | 指定区域                                                                    | 否   | 如果 crossZone 设为 false，则默认值为 default       |
-| cacheRuleKey     | string | 纠删码卷使用                                                                | 否   | 非空时，匹配该字段的才会写入 cache，空            |
 | ebsBlkSize       | int    | 每个块的大小，单位 byte                                                       | 否   | 默认8M                                         |
-| cacheCap         | int    | 纠删码卷 cache 容量的大小，单位 GB                                             | 否   | 纠删码卷开启缓存必填                           |
-| cacheAction      | int    | 纠删码卷写 cache 的场景，0-不写 cache, 1-读数据回写 cache, 2-读写数据都写到 cache | 否   | 0                                              |
-| cacheThreshold   | int    | 纠删码卷小于该值时，才写入到 cache 中，单位 byte                                 | 否   | 默认10M                                        |
-| cacheTTL         | int    | 纠删码卷 cache 淘汰时间，单位 天                                                | 否   | 默认30                                         |
-| cacheHighWater   | int    | 纠删码卷 cache 淘汰的阈值，dp 内容量淘汰上水位，达到该值时，触发淘汰              | 否   | 默认80，即120G*80/100=96G时，dp开始淘汰数据      |
-| cacheLowWater    | int    | dp 上容量淘汰下水位，达到该值时，不再淘汰                                     | 否   | 默认60，即120G*60/100=72G，dp不再淘汰数据        |
-| cacheLRUInterval | int    | 低容量淘汰检测周期，单位 分钟                                                 | 否   | 默认5分钟                                      |
 
 ## 删除
 
@@ -84,14 +76,6 @@ curl -v "http://10.196.59.198:17010/admin/getVol?name=test" | python -m json.too
 ``` json
 {
     "Authenticate": false,
-     "CacheAction": 0,
-     "CacheCapacity": 0,
-     "CacheHighWater": 80,
-     "CacheLowWater": 60,
-     "CacheLruInterval": 5,
-     "CacheRule": "",
-     "CacheThreshold": 10485760,
-     "CacheTtl": 30,
      "Capacity": 10,
      "CreateTime": "2022-03-31 16:08:31",
      "CrossZone": false,
@@ -239,12 +223,9 @@ curl -v "http://10.196.59.198:17010/vol/update?name=test&capacity=100&authKey=md
 | zoneName         | string | 更新后所在区域，若不设置将被更新至 default 区域                     | 是   |
 | followerRead     | bool   | 允许从 follower 读取数据，若设置为 true，客户端也需配置该字段为 true   | 否   |
 | enablePosixAcl   | bool   | 是否配置 posix 权限限制                                            | 否   |
-| emptyCacheRule   | string | 是否置空 cacheRule                                                | 否   |
-| cacheRuleKey     | string | 缓存规则，纠删码卷使用，满足对应规则的才缓存                       | 否   |
 | ebsBlkSize       | int    | 纠删码卷的每个块的大小                                           | 否   |
 | cacheCap         | int    | 纠删码卷使用二级 cache 时，cache 的容量大小                          | 否   |
 | cacheAction      | int    | 纠删码卷使用，0-不写 cache, 1-读数据写 cache, 2-读写数据都写到 cache | 否   |
-| cacheThreshold   | int    | 缓存文件大小限制，纠删码卷小于该值时，才会写到 cache 当中            | 否   |
 | cacheTTL         | int    | 缓存过期时间，单位天                                              | 否   |
 | cacheHighWater   | int    | 淘汰高水位                                                       | 否   |
 | cacheLowWater    | int    | 缓存淘汰低水位                                                   | 否   |

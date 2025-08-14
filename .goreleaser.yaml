@@ -110,24 +110,6 @@ builds:
       - -X {{.Env.PROTO}}.BuildTime={{.Date}}
       - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
       - -w -s
-  - id: "preload"
-    main: ./preload
-    binary: cfs-preload
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - amd64
-    flags:
-      - -trimpath
-    ldflags:
-      - -X {{.Env.PROTO}}.Version={{.Version}}
-      - -X {{.Env.PROTO}}.CommitID={{.FullCommit}}
-      - -X {{.Env.PROTO}}.BranchName={{.Branch}}
-      - -X {{.Env.PROTO}}.BuildTime={{.Date}}
-      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
-      - -w -s
 
   - id: "server"
     main: ./cmd

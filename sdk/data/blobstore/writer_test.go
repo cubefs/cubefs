@@ -62,10 +62,8 @@ func init() {
 		EnableBcache:    false,
 		WConcurrency:    10,
 		ReadConcurrency: 10,
-		CacheAction:     2,
 		FileCache:       false,
 		FileSize:        0,
-		CacheThreshold:  0,
 	}
 	ec := &stream.ExtentClient{}
 	fmt.Println(reflect.ValueOf(MockWriteTrue).Type().Name())
@@ -209,111 +207,6 @@ func TestParallelWrite(t *testing.T) {
 	writer.doParallelWrite(ctx, data, offset)
 }
 
-func TestCacheL2(t *testing.T) {
-	testCase := []struct {
-		cacheAction    int
-		fileOffset     uint64
-		cacheThreshold int
-		fileCache      bool
-	}{
-		{proto.NoCache, 0, 10000, false},
-		{proto.NoCache, 0, 10000, true},
-		{proto.RCache, 0, 10000, false},
-		{proto.RWCache, 0, 10000, false},
-		{proto.RCache, 10001, 10000, false},
-		{proto.RWCache, 10001, 10000, false},
-		{proto.RCache, 10001, 10000, true},
-		{proto.RWCache, 10001, 10000, true},
-	}
-
-	wSlice := &rwSlice{
-		index:        0,
-		fileOffset:   0,
-		size:         1000,
-		rOffset:      0,
-		rSize:        1000,
-		read:         0,
-		Data:         make([]byte, 1000),
-		extentKey:    proto.ExtentKey{},
-		objExtentKey: proto.ObjExtentKey{},
-	}
-
-	ec := &stream.ExtentClient{}
-	err := gohook.HookMethod(ec, "Write", MockWriteTrue, nil)
-	if err != nil {
-		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
-	}
-	writer.ec = ec
-
-	for _, tc := range testCase {
-		writer.cacheAction = tc.cacheAction
-		writer.cacheThreshold = tc.cacheThreshold
-		writer.fileCache = tc.fileCache
-		wSlice.fileOffset = tc.fileOffset
-		writer.cacheLevel2(wSlice)
-	}
-}
-
-func TestWriterAsyncCache(t *testing.T) {
-	testCase := []struct {
-		ino    uint64
-		offset int
-		data   []byte
-	}{
-		{1, 0, []byte("hello world")},
-		{2, 10, []byte("hello world")},
-	}
-
-	ec := &stream.ExtentClient{}
-	err := gohook.HookMethod(ec, "Write", MockWriteTrue, nil)
-	if err != nil {
-		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
-	}
-	writer.ec = ec
-	for _, tc := range testCase {
-		writer.asyncCache(tc.ino, tc.offset, tc.data)
-	}
-}
-
-func TestFlush(t *testing.T) {
-	testCase := []struct {
-		buf             []byte
-		dirty           bool
-		flushFlag       bool
-		appendObjEkFunc func(*meta.MetaWrapper, uint64, []proto.ObjExtentKey) error
-		expectError     error
-	}{
-		{make([]byte, 0), true, true, MockAppendObjExtentKeysTrue, nil},
-		{make([]byte, 0), false, true, MockAppendObjExtentKeysTrue, nil},
-		{nil, true, true, MockAppendObjExtentKeysTrue, nil},
-		{[]byte("hello world"), false, true, MockAppendObjExtentKeysTrue, nil},
-		{[]byte("hello world"), false, true, MockAppendObjExtentKeysFalse, syscall.EIO},
-		{[]byte("hello world"), false, false, MockAppendObjExtentKeysTrue, nil},
-		{[]byte("hello world"), false, false, MockAppendObjExtentKeysFalse, syscall.EIO},
-	}
-
-	ec := &stream.ExtentClient{}
-	err := gohook.HookMethod(ec, "Write", MockWriteTrue, nil)
-	if err != nil {
-		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
-	}
-	writer.ec = ec
-
-	for _, tc := range testCase {
-		mw := &meta.MetaWrapper{}
-		err = gohook.HookMethod(mw, "AppendObjExtentKeys", tc.appendObjEkFunc, nil)
-		if err != nil {
-			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
-		}
-		writer.mw = mw
-		writer.buf = tc.buf
-		writer.dirty = tc.dirty
-		ctx := context.Background()
-		_ = writer.flush(1, ctx, tc.flushFlag)
-		// assert.Equal(t, tc.expectError, gotError)
-	}
-}
-
 func TestNewWriter(t *testing.T) {
 	config := ClientConfig{
 		VolName:         "cfs",
@@ -327,10 +220,8 @@ func TestNewWriter(t *testing.T) {
 		EnableBcache:    false,
 		WConcurrency:    10,
 		ReadConcurrency: 10,
-		CacheAction:     2,
 		FileCache:       false,
 		FileSize:        0,
-		CacheThreshold:  0,
 	}
 	config.Ec = &stream.ExtentClient{}
 	err := gohook.HookMethod(config.Ec, "Write", MockWriteTrue, nil)
@@ -386,7 +277,6 @@ func TestWriteSlice(t *testing.T) {
 			rSize:        100,
 			read:         0,
 			Data:         make([]byte, 100),
-			extentKey:    proto.ExtentKey{},
 			objExtentKey: proto.ObjExtentKey{},
 		}
 

@@ -32,6 +32,8 @@ type QuotaCache struct {
 	lruList     *list.List
 	expiration  time.Duration
 	maxElements int
+	closeCh     chan struct{}
+	closeOnce   sync.Once
 }
 
 type QuotaCacheInfo struct {
@@ -40,12 +42,19 @@ type QuotaCacheInfo struct {
 	inode      uint64
 }
 
+func (qc *QuotaCache) Close() {
+	qc.closeOnce.Do(func() {
+		close(qc.closeCh)
+	})
+}
+
 func NewQuotaCache(exp time.Duration, maxElements int) *QuotaCache {
 	qc := &QuotaCache{
 		cache:       make(map[uint64]*list.Element),
 		lruList:     list.New(),
 		expiration:  exp,
 		maxElements: maxElements,
+		closeCh:     make(chan struct{}, 1),
 	}
 	go qc.backgroundEviction()
 	return qc
@@ -132,12 +141,18 @@ func (qc *QuotaCache) backgroundEviction() {
 	t := time.NewTicker(qc.expiration)
 	defer t.Stop()
 
-	for range t.C {
-		log.LogInfof("QuotaCache: start BG evict")
-		qc.Lock()
-		qc.evict(false)
-		qc.Unlock()
-		log.LogInfof("QuotaCache: end BG evict")
+	for {
+		select {
+		case <-t.C:
+			log.LogInfof("QuotaCache: start BG evict")
+			qc.Lock()
+			qc.evict(false)
+			qc.Unlock()
+			log.LogInfof("QuotaCache: end BG evict")
+		case <-qc.closeCh:
+			log.LogInfof("QuotaCache exit")
+			return
+		}
 	}
 }
 

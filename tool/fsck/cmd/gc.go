@@ -462,24 +462,18 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				AccessTime:         0,
 				ModifyTime:         0,
 				NLink:              1,
-				Extents:            metanode.NewSortedExtents(),
 				StorageClass:       proto.StorageClass_Unspecified,
 				HybridCloudExtents: metanode.NewSortedHybridCloudExtents(),
 			}
-			slog.Printf("[getExtentsByMpId] host(%v) mpId(%v) get inode(%v): %v", addr, mpId, ino.Inode, ino.String())
+			// slog.Printf("[getExtentsByMpId] host(%v) mpId(%v) get inode(%v): %v", addr, mpId, ino.Inode, ino.String())
 			if err = ino.Unmarshal(inoBuf); err != nil {
 				slog.Fatalf("loadInode failed, unmarshal error, mp %s, host %s, err %s", mpId, addr, err.Error())
 			}
 
-			if log.EnableDebug() {
-				eks := ino.Extents.CopyExtents()
-				log.LogDebugf("inode:%v, extent:%v", ino.Inode, eks)
-			}
-
 			var walkBuf *bytes.Buffer
 			walkFunc := func(_ int, ek proto.ExtentKey) bool {
-				slog.Printf("[getExtentsByMpId.walkFunc] ######## mpId(%v) dpId(%v) extentId(%v) size(%v)",
-					mpId, ek.PartitionId, ek.ExtentId, ek.Size)
+				// 	slog.Printf("[getExtentsByMpId.walkFunc] ######## mpId(%v) dpId(%v) extentId(%v) size(%v)",
+				// 		mpId, ek.PartitionId, ek.ExtentId, ek.Size)
 
 				if storage.IsTinyExtent(ek.ExtentId) {
 					return true
@@ -508,7 +502,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 					replicaExtents := se.(*metanode.SortedExtents)
 					walkBuf = normalBuf
 					replicaExtents.Range(walkFunc)
-				} else {
+				} else if proto.IsRegular(ino.Type) {
 					// TODO:tangjignyu check if dir then not error
 					log.LogErrorf("HybridCloudExtents is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
 						mpId, ino.Inode, addr, proto.StorageClassString(ino.StorageClass))

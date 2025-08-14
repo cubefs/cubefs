@@ -188,7 +188,7 @@ func (m *ClusterService) decommissionDisk(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	badPartitions := node.badPartitions(args.DiskPath, m.cluster)
+	badPartitions := node.badPartitions(args.DiskPath, m.cluster, false)
 	if len(badPartitions) == 0 {
 		err = fmt.Errorf("node[%v] disk[%v] does not have any data partition", node.Addr, args.DiskPath)
 		return nil, err
@@ -308,9 +308,11 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
-					Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive,
+					IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
 				})
 				return true
 			})
@@ -609,6 +611,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		MaxMetaPartitionID:   m.cluster.idAlloc.metaPartitionID,
 		MetaNodes:            make([]proto.NodeView, 0),
 		DataNodes:            make([]proto.NodeView, 0),
+		FlashNodes:           make([]proto.NodeView, 0),
 		VolStatInfo:          make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:      make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:  make([]proto.BadPartitionView, 0),
@@ -617,12 +620,13 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	vols := m.cluster.allVolNames()
 	cv.MetaNodes = m.cluster.allMetaNodes()
 	cv.DataNodes = m.cluster.allDataNodes()
+	cv.FlashNodes = m.cluster.allFlashNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, 0, 0, 0))
+			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, 0))
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))

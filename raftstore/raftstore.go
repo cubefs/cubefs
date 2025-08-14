@@ -38,6 +38,8 @@ type RaftStore interface {
 	RaftStatus(raftID uint64) (raftStatus *raft.Status)
 	NodeManager
 	RaftServer() *raft.RaftServer
+	RemoveBackup(id uint64) error
+	GetPeers(id uint64) (nodes []uint64)
 }
 
 type raftStore struct {
@@ -162,6 +164,28 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 		walPath = path.Join(cfg.WalPath, "wal_"+strconv.FormatUint(cfg.ID, 10))
 	}
 
+	if cfg.IsCreate {
+		logger.Warn("action[raftstore:CreatePartition] check old dir exist, raft[%v], wal %v",
+			cfg.ID, walPath)
+		if _, err = os.Stat(walPath); err != nil {
+			if !os.IsNotExist(err) {
+				logger.Warn("action[raftstore:CreatePartition] raft[%v], wal %v, err %s", cfg.ID, walPath, err.Error())
+				return nil, err
+			}
+		} else {
+			curTime := time.Now().Format("20060102150405.000000000")
+			backDirName := walPath + "_" + curTime + "_old"
+			if err = os.Rename(walPath, backDirName); err != nil {
+				logger.Warn("action[raftstore:CreatePartition] rename old failed, raft[%v], wal %v, old %v, err %s",
+					cfg.ID, walPath, backDirName, err.Error())
+				return nil, err
+			}
+
+			logger.Warn("action[raftstore:CreatePartition] rename old succ, raft[%v], wal %v, old %v",
+				cfg.ID, walPath, backDirName)
+		}
+	}
+
 	wc := &wal.Config{}
 	ws, err := wal.NewStorage(walPath, wc)
 	if err != nil {
@@ -177,7 +201,8 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 			peerAddress.ReplicaPort,
 		)
 	}
-	logger.Info("action[raftstore:CreatePartition] raft config applied [%v] id:%d", cfg.Applied, cfg.ID)
+	logger.Info("action[raftstore:CreatePartition] raft config applied [%v] id:%d, isCreate %v",
+		cfg.Applied, cfg.ID, cfg.IsCreate)
 	rc := &raft.RaftConfig{
 		ID:           cfg.ID,
 		Peers:        peers,
@@ -193,4 +218,14 @@ func (s *raftStore) CreatePartition(cfg *PartitionConfig) (p Partition, err erro
 	}
 	p = newPartition(cfg, s.raftServer, walPath)
 	return
+}
+
+func (s *raftStore) RemoveBackup(id uint64) error {
+	dirName := "del_" + strconv.FormatUint(id, 10)
+	dirPath := path.Join(s.raftPath, dirName)
+	return os.RemoveAll(dirPath)
+}
+
+func (s *raftStore) GetPeers(id uint64) (nodes []uint64) {
+	return s.raftServer.GetPeers(id)
 }

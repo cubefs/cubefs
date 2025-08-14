@@ -21,7 +21,10 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"runtime"
+	"path"
+	"runtime/debug"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -114,6 +117,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			Request: req,
 		}
 		volsForbidWriteOpOfProtoVer0 = make(map[string]struct{})
+		fileStatsEnableChange        bool
+		thresholdsChange             bool
 	)
 	start := time.Now()
 	go func() {
@@ -124,7 +129,35 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			resp.Result = err.Error()
 			goto end
 		}
-		m.fileStatsEnable = req.FileStatsEnable
+		if !m.useLocalGOGC {
+			if m.gogcValue != req.MetaNodeGOGC && req.MetaNodeGOGC >= defaultGOGCLowerLimit && req.MetaNodeGOGC <= defaultGOGCUpperLimit {
+				oldGOGC := m.gogcValue
+				debug.SetGCPercent(req.MetaNodeGOGC)
+				m.gogcValue = req.MetaNodeGOGC
+				log.LogWarnf("[opMasterHeartbeat] change GOGC, old(%v) new(%v)", oldGOGC, req.MetaNodeGOGC)
+			}
+		}
+
+		if m.fileStatsConfig != nil {
+			m.fileStatsConfig.Lock()
+			fileStatsEnableChange = !m.fileStatsConfig.fileStatsEnable && req.FileStatsEnable
+			m.fileStatsConfig.fileStatsEnable = req.FileStatsEnable
+			if len(req.FileStatsThresholds) != 0 {
+				thresholdsChange = m.updateFileStatsConfig(req.FileStatsThresholds)
+			}
+			thresholds := m.fileStatsConfig.thresholds
+			m.fileStatsConfig.Unlock()
+			if fileStatsEnableChange || (thresholdsChange && req.FileStatsEnable) {
+				log.LogWarnf("[opMasterHeartbeat] do fileStats")
+				m.mu.RLock()
+				for _, p := range m.partitions {
+					if mp, ok := p.(*metaPartition); ok {
+						mp.doFileStats(thresholds)
+					}
+				}
+				m.mu.RUnlock()
+			}
+		}
 
 		log.LogDebugf("metaNode.raftPartitionCanUsingDifferentPort from %v to %v", m.metaNode.raftPartitionCanUsingDifferentPort, req.RaftPartitionCanUsingDifferentPortEnabled)
 		m.metaNode.raftPartitionCanUsingDifferentPort = req.RaftPartitionCanUsingDifferentPortEnabled
@@ -147,6 +180,11 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		// collect memory info
 		resp.Total = configTotalMem
 		resp.Used, err = util.GetProcessMemory(os.Getpid())
+		if err != nil {
+			adminTask.Status = proto.TaskFailed
+			goto end
+		}
+		resp.NodeMemTotal, resp.NodeMemUsed, err = util.GetMemInfo()
 		if err != nil {
 			adminTask.Status = proto.TaskFailed
 			goto end
@@ -183,14 +221,17 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				StatByMigrateStorageClass: partition.GetMigrateStatByStorageClass(),
 				ForbidWriteOpOfProtoVer0:  mpForbidWriteVer0,
 				LocalPeers:                mConf.Peers,
+				ReadOnlyReasons:           0,
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 
 			if mConf.Cursor >= mConf.End {
 				mpr.Status = proto.ReadOnly
+				mpr.ReadOnlyReasons |= proto.MpCursorOutOfRange
 			}
 			if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
 				mpr.Status = proto.ReadOnly
+				mpr.ReadOnlyReasons |= proto.MetaMemUseLimit
 			}
 
 			addr, isLeader := partition.IsLeader()
@@ -242,15 +283,15 @@ func (m *metadataManager) opCreateMetaPartition(conn net.Conn, p *Packet,
 			" struct: %s", err.Error())
 		return
 	}
-	log.LogInfof("[%s] [remoteAddr=%s]accept a from"+
-		" master message: %v", p.String(), remoteAddr, adminTask)
+	log.LogWarnf("[%s] [remoteAddr=%s]accept a from"+
+		" master message: %v, reqId %v", p.String(), remoteAddr, adminTask, p.ReqID)
 	// create a new meta partition.
 	if err = m.createPartition(req); err != nil {
 		err = errors.NewErrorf("[opCreateMetaPartition]->%s; request message: %v",
 			err.Error(), adminTask.Request)
 		return
 	}
-	log.LogInfof("%s [%s] create success req:%v; resp: %v", remoteAddr, p.String(),
+	log.LogWarnf("%s [%s] create success req:%v; resp: %v", remoteAddr, p.String(),
 		req, adminTask)
 	return
 }
@@ -991,6 +1032,13 @@ func (m *metadataManager) opReadDirOnly(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+	err = m.allocCheckLimit(readDirIops)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		log.LogWarnf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
 	err = mp.ReadDirOnly(req, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [%v]req: %v , resp: %v, body: %s", remoteAddr,
@@ -1017,6 +1065,13 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = m.allocCheckLimit(readDirIops)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		log.LogWarnf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
 	err = mp.ReadDir(req, p)
@@ -1305,8 +1360,13 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 		return
 	}
 
-	if err = mp.ExtentAppendWithCheck(req, p); err != nil {
-		log.LogErrorf("%s [opMetaExtentAddWithCheck] ExtentAppendWithCheck: %s", remoteAddr, err.Error())
+	if err = mp.ExtentAppendWithCheck(req, p, remoteAddr); err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "over quota") {
+			log.LogWarnf("%s [opMetaExtentAddWithCheck] ExtentAppendWithCheck: %s", remoteAddr, errMsg)
+		} else {
+			log.LogErrorf("%s [opMetaExtentAddWithCheck] ExtentAppendWithCheck: %s", remoteAddr, errMsg)
+		}
 	}
 	m.updatePackRspSeq(mp, p)
 	if err = m.respondToClientWithVer(conn, p); err != nil {
@@ -1450,33 +1510,6 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 	return
 }
 
-func (m *metadataManager) opMetaClearInodeCache(conn net.Conn, p *Packet,
-	remoteAddr string,
-) (err error) {
-	req := &proto.ClearInodeCacheRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
-	}
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
-	}
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-	err = mp.ClearInodeCache(req, p)
-	m.respondToClientWithVer(conn, p)
-	log.LogDebugf("%s [opMetaClearInodeCache] req: %d - %v, resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}
-
 // Delete a meta partition.
 func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	p *Packet, remoteAddr string,
@@ -1507,7 +1540,9 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	os.RemoveAll(conf.RootDir)
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
-	runtime.GC()
+	go func() {
+		debug.FreeOSMemory()
+	}()
 	log.LogInfof("%s [opDeleteMetaPartition] req: %d - %v, resp: %v",
 		remoteAddr, p.GetReqID(), req, err)
 	return
@@ -1545,12 +1580,15 @@ func (m *metadataManager) opUpdateMetaPartition(conn net.Conn, p *Packet,
 		PartitionID: req.PartitionID,
 		End:         req.End,
 	}
-	err = mp.UpdatePartition(req, resp)
-	adminTask.Response = resp
-	adminTask.Request = nil
-	m.respondToMaster(adminTask)
-	log.LogInfof("%s [opUpdateMetaPartition] req[%v], response[%v].",
-		remoteAddr, req, adminTask)
+	go func() {
+		err = mp.UpdatePartition(req, resp)
+		adminTask.Response = resp
+		adminTask.Request = nil
+		m.respondToMaster(adminTask)
+		log.LogInfof("%s [opUpdateMetaPartition] req[%v], response[%v].",
+			remoteAddr, req, adminTask)
+	}()
+
 	return
 }
 
@@ -2809,73 +2847,75 @@ func (m *metadataManager) checkAndPromoteVersion(volName string) (err error) {
 func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
 	remoteAddr string,
 ) (err error) {
+	data := p.Data
 	// For ack to master
 	m.responseAckOKToMaster(conn, p)
 
-	var (
-		opAgain   bool
-		start     = time.Now()
-		data      = p.Data
-		req       = &proto.MultiVersionOpRequest{}
-		resp      = &proto.MultiVersionOpResponse{}
-		adminTask = &proto.AdminTask{
-			Request: req,
-		}
-		decode = json.NewDecoder(bytes.NewBuffer(data))
-	)
+	go func() {
+		var (
+			opAgain   bool
+			start     = time.Now()
+			req       = &proto.MultiVersionOpRequest{}
+			resp      = &proto.MultiVersionOpResponse{}
+			adminTask = &proto.AdminTask{
+				Request: req,
+			}
+			decode = json.NewDecoder(bytes.NewBuffer(data))
+		)
 
-	if !m.metaNode.clusterEnableSnapshot {
-		err = fmt.Errorf("cluster not EnableSnapshot")
-		log.LogErrorf("opMultiVersionOp volume %v", err)
-		goto end
-	}
-
-	decode.UseNumber()
-	if err = decode.Decode(adminTask); err != nil {
-		resp.Status = proto.TaskFailed
-		resp.Result = err.Error()
-		log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
-		goto end
-	}
-	log.LogDebugf("action[opMultiVersionOp] volume %v op [%v]", req.VolumeID, req.Op)
-
-	resp.Status = proto.TaskSucceeds
-	resp.VolumeID = req.VolumeID
-	resp.Addr = req.Addr
-	resp.VerSeq = req.VerSeq
-	resp.Op = req.Op
-
-	if req.Op == proto.CreateVersionPrepare {
-		if err, opAgain = m.prepareCreateVersion(req); err != nil || opAgain {
-			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err)
+		if !m.metaNode.clusterEnableSnapshot {
+			err = fmt.Errorf("cluster not EnableSnapshot")
+			log.LogErrorf("opMultiVersionOp volume %v", err)
 			goto end
 		}
-		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, true); err != nil {
-			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
-			goto end
-		}
-	} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
-		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, false); err != nil {
-			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
-			goto end
-		}
-	}
-end:
-	if err != nil {
-		resp.Result = err.Error()
-	}
-	adminTask.Request = nil
-	adminTask.Response = resp
-	if errRsp := m.respondToMaster(adminTask); errRsp != nil {
-		log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, errRsp %v err %v",
-			remoteAddr, p.String(), req, adminTask, resp, errRsp, err)
-	}
 
-	if log.EnableInfo() {
-		rspData, _ := json.Marshal(resp)
-		log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
-			remoteAddr, p.String(), req, adminTask, string(rspData), time.Since(start).String())
-	}
+		decode.UseNumber()
+		if err = decode.Decode(adminTask); err != nil {
+			resp.Status = proto.TaskFailed
+			resp.Result = err.Error()
+			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
+			goto end
+		}
+		log.LogDebugf("action[opMultiVersionOp] volume %v op [%v]", req.VolumeID, req.Op)
+
+		resp.Status = proto.TaskSucceeds
+		resp.VolumeID = req.VolumeID
+		resp.Addr = req.Addr
+		resp.VerSeq = req.VerSeq
+		resp.Op = req.Op
+
+		if req.Op == proto.CreateVersionPrepare {
+			if err, opAgain = m.prepareCreateVersion(req); err != nil || opAgain {
+				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err)
+				goto end
+			}
+			if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, true); err != nil {
+				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
+				goto end
+			}
+		} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
+			if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, false); err != nil {
+				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
+				goto end
+			}
+		}
+	end:
+		if err != nil {
+			resp.Result = err.Error()
+		}
+		adminTask.Request = nil
+		adminTask.Response = resp
+		if errRsp := m.respondToMaster(adminTask); errRsp != nil {
+			log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, errRsp %v err %v",
+				remoteAddr, p.String(), req, adminTask, resp, errRsp, err)
+		}
+
+		if log.EnableInfo() {
+			rspData, _ := json.Marshal(resp)
+			log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
+				remoteAddr, p.String(), req, adminTask, string(rspData), time.Since(start).String())
+		}
+	}()
 
 	return
 }
@@ -3007,5 +3047,232 @@ func (m *metadataManager) opDeleteMigrationExtentKey(conn net.Conn, p *Packet,
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opDeleteMigrationExtentKey] req: %d - %v, resp body: %v, "+
 		"resp body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaUpdateInodeMeta(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	req := &proto.UpdateInodeMetaRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	err = mp.UpdateInodeMeta(req, p)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [UpdateInodeMeta] err [%v] req: %d - %v; resp: %v, body: %s",
+		remoteAddr, err, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opFreezeEmptyMetaPartition(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	req := &proto.FreezeMetaPartitionRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
+
+	if req.Freeze && (mp.GetInodeTreeLen() != 0 || mp.GetDentryTreeLen() != 0) {
+		err = errors.NewErrorf("inodeCount(%d) or dentryCount(%d) is not zero", mp.GetInodeTreeLen(), mp.GetDentryTreeLen())
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	err = mp.SetFreeze(req)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
+
+	p.PacketOkReply()
+	m.respondToClientWithVer(conn, p)
+	log.LogInfof("%s [opFreezeEmptyMetaPartition] req: %d - %v, resp: %v",
+		remoteAddr, p.GetReqID(), req, err)
+	return
+}
+
+func (m *metadataManager) opBackupEmptyMetaPartition(conn net.Conn,
+	p *Packet, remoteAddr string,
+) (err error) {
+	req := &proto.BackupMetaPartitionRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketOkReply()
+		m.respondToClientWithVer(conn, p)
+		return nil
+	}
+	if mp.GetInodeTreeLen() != 0 || mp.GetDentryTreeLen() != 0 {
+		err = errors.New("inode or dentry is not zero for delete operation")
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
+
+	// Ack the master request
+	conf := mp.GetBaseConfig()
+	mp.Stop()
+	err = mp.CloseAndBackupRaft()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
+	m.deletePartition(mp.GetBaseConfig().PartitionId)
+
+	dirPath, dirName := path.Split(conf.RootDir)
+	newName := dirPath + "del_" + dirName
+	os.Rename(conf.RootDir, newName)
+
+	p.PacketOkReply()
+	m.respondToClientWithVer(conn, p)
+	go func() {
+		debug.FreeOSMemory()
+	}()
+	log.LogInfof("%s [opBackupEmptyMetaPartition] req: %d - %v, resp: %v",
+		remoteAddr, p.GetReqID(), req, err)
+	return
+}
+
+func (m *metadataManager) opRemoveBackupMetaPartition(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	entries, err := os.ReadDir(m.rootDir)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), DelMetaPartitionHdr) {
+			idName := strings.TrimPrefix(entry.Name(), DelMetaPartitionHdr)
+			id, err := strconv.ParseUint(idName, 10, 64)
+			if err != nil {
+				log.LogErrorf("Failed to parse meta partition(%s), error: %s", entry.Name(), err.Error())
+				continue
+			}
+			err = m.raftStore.RemoveBackup(id)
+			if err != nil {
+				log.LogErrorf("Failed to remove raft backup meta partition(%s), error: %s", entry.Name(), err.Error())
+				continue
+			}
+			removeDir := path.Join(m.rootDir, entry.Name())
+			os.RemoveAll(removeDir)
+		}
+	}
+
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opIsRaftStatusOk(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	req := &proto.IsRaftStatusOKRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	req.Ready = true
+	raftStatus := m.raftStore.RaftStatus(req.PartitionID)
+	if len(raftStatus.Replicas) != req.ReplicaNum {
+		req.Ready = false
+	} else {
+		commit := raftStatus.Commit
+		for _, r := range raftStatus.Replicas {
+			if r.Snapshoting {
+				req.Ready = false
+				break
+			}
+			if r.Commit > commit {
+				commit = r.Commit
+			}
+			if commit-r.Commit > RaftCommitDiffMax {
+				req.Ready = false
+				break
+			}
+		}
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		log.LogErrorf("json encode err: %s", err.Error())
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	p.PacketOkWithBody(data)
+	m.respondToClientWithVer(conn, p)
 	return
 }

@@ -688,6 +688,21 @@ type AppendExtentKeyWithCheckRequest struct {
 	IsMigration    bool
 }
 
+func (ap *AppendExtentKeyWithCheckRequest) EkString() string {
+	if ap == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString(ap.Extent.String())
+	sb.WriteString("Discard:")
+	for _, ek := range ap.DiscardExtents {
+		sb.WriteString(ek.String())
+	}
+
+	return sb.String()
+}
+
 // AppendObjExtentKeyRequest defines the request to append an obj extent key.
 type AppendObjExtentKeysRequest struct {
 	VolName     string         `json:"vol"`
@@ -1120,4 +1135,9 @@ type DeleteMigrationExtentKeyRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	RequestExtend
+}
+
+type UpdateInodeMetaRequest struct {
+	Inode       uint64 `json:"ino"`
+	PartitionID uint64 `json:"pid"`
 }

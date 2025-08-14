@@ -105,7 +105,6 @@ import (
 	"path"
 	gopath "path"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -117,6 +116,7 @@ import (
 	"github.com/bits-and-blooms/bitset"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	blog "github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/proto"
@@ -129,6 +129,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	sysutil "github.com/cubefs/cubefs/util/sys"
 )
 
 const (
@@ -139,7 +140,10 @@ const (
 	MaxSizePutOnce = int64(1) << 23
 )
 
-var gClientManager *clientManager
+var (
+	gClientManager *clientManager
+	sysOutputFile  *os.File
+)
 
 var (
 	statusOK = C.int(0)
@@ -250,14 +254,10 @@ type client struct {
 	ebsEndpoint            string
 	servicePath            string
 	volType                int
-	cacheAction            int
 	ebsBlockSize           int
 	enableBcache           bool
 	readBlockThread        int
 	writeBlockThread       int
-	cacheRuleKey           string
-	cacheThreshold         int
-	enableSummary          bool
 	secretKey              string
 	accessKey              string
 	subDir                 string
@@ -267,7 +267,6 @@ type client struct {
 	enableAudit            bool
 	volStorageClass        uint32
 	volAllowedStorageClass []uint32
-	cacheDpStorageClass    uint32
 	enableInnerReq         bool
 
 	// runtime context
@@ -314,48 +313,6 @@ func cfs_get_xattr(id C.int64_t, path *C.char, key *C.char) *C.char {
 	value := xattrInfo.Get(xattrKey)
 	log.LogDebugf("cfs_get_xattr path(%v) ino(%v) key(%v) value(%s) success,", dstPath, ino, xattrKey, value)
 	return C.CString(string(value))
-}
-
-//export cfs_get_accessFiles
-func cfs_get_accessFiles(id C.int64_t, path *C.char, depth C.int, goroutine_num C.int, accessFileInfo []C.struct_cfs_access_file_info, count C.int) (n C.int) {
-	dstPath := C.GoString(path)
-	maxDepth := int32(depth)
-	goroutineNum := int32(goroutine_num)
-	log.LogDebugf("cfs_get_accessFiles path(%v) depth(%v)", dstPath, depth)
-
-	c, exist := getClient(int64(id))
-	if !exist {
-		log.LogErrorf("cfs_get_accessFiles path(%v) failed, client not exist", dstPath)
-		return -1
-	}
-
-	inodeInfo, err := c.lookupPath(c.absPath(dstPath))
-	if err != nil {
-		log.LogErrorf("cfs_get_accessFiles path(%v) failed, not found path", dstPath)
-		return -1
-	}
-
-	ino := inodeInfo.Inode
-
-	infos, _ := c.mw.GetAccessFileInfo(dstPath, ino, maxDepth, goroutineNum)
-
-	n = 0
-	for i, info := range infos {
-		if i >= int(count) {
-			log.LogInfof("cfs_get_accessFiles too many infos, len(%v) count(%v)", len(infos), int(count))
-			break
-		}
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].dir[0]), C.CBytes([]byte(info.Dir)), C.size_t(len(info.Dir)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCountSsd[0]), C.CBytes([]byte(info.AccessFileCountSsd)), C.size_t(len(info.AccessFileCountSsd)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSizeSsd[0]), C.CBytes([]byte(info.AccessFileSizeSsd)), C.size_t(len(info.AccessFileSizeSsd)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCountHdd[0]), C.CBytes([]byte(info.AccessFileCountHdd)), C.size_t(len(info.AccessFileCountHdd)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSizeHdd[0]), C.CBytes([]byte(info.AccessFileSizeHdd)), C.size_t(len(info.AccessFileSizeHdd)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCountBlobStore[0]), C.CBytes([]byte(info.AccessFileCountBlobStore)), C.size_t(len(info.AccessFileCountBlobStore)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSizeBlobStore[0]), C.CBytes([]byte(info.AccessFileSizeBlobStore)), C.size_t(len(info.AccessFileSizeBlobStore)))
-		n++
-	}
-
-	return n
 }
 
 //export cfs_list_vols
@@ -615,12 +572,6 @@ func cfs_set_client(id C.int64_t, key, val *C.char) C.int {
 		if err == nil {
 			c.writeBlockThread = wt
 		}
-	case "enableSummary":
-		if v == "true" {
-			c.enableSummary = true
-		} else {
-			c.enableSummary = false
-		}
 	case "accessKey":
 		c.accessKey = v
 	case "secretKey":
@@ -673,6 +624,10 @@ func cfs_close_client(id C.int64_t) {
 	}
 	auditlog.StopAudit()
 	log.LogFlush()
+	if sysOutputFile != nil {
+		sysOutputFile.Sync()
+		sysOutputFile.Close()
+	}
 }
 
 //export cfs_chdir
@@ -838,19 +793,13 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		info = newInfo
 	}
 	var fileCache bool
-	if c.cacheRuleKey == "" {
-		fileCache = false
-	} else {
-		fileCachePattern := fmt.Sprintf(".*%s.*", c.cacheRuleKey)
-		fileCache, _ = regexp.MatchString(fileCachePattern, absPath)
-	}
 	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass)
 	if f == nil {
 		return statusEMFILE
 	}
 
 	if proto.IsRegular(info.Mode) {
-		c.openStream(f)
+		c.openStream(f, absPath)
 		if fuseFlags&uint32(C.O_TRUNC) != 0 {
 			if accFlags != uint32(C.O_WRONLY) && accFlags != uint32(C.O_RDWR) {
 				c.closeStream(f)
@@ -1084,9 +1033,6 @@ func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int, unit *C
 	if !exist {
 		return statusEINVAL
 	}
-	if !c.enableSummary {
-		return statusEINVAL
-	}
 	info, err := c.lookupPath(c.absPath(C.GoString(path)))
 	var ino uint64
 	if err != nil {
@@ -1095,8 +1041,9 @@ func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int, unit *C
 		ino = info.Inode
 	}
 	goroutineNum := int32(goroutine_num)
-	err = c.mw.RefreshSummary_ll(ino, goroutineNum, C.GoString(unit), C.GoString(split))
+	err = c.mw.RefreshSummary_ll(ino, goroutineNum, C.GoString(unit), C.GoString(split), 0, 0, 0)
 	if err != nil {
+		log.LogErrorf("cfs_refreshsummary failed, path(%v) err(%v)", c.absPath(C.GoString(path)), err)
 		return errorToStatus(err)
 	}
 	return statusOK
@@ -1458,6 +1405,7 @@ func cfs_getsummary(id C.int64_t, path *C.char, summary *C.struct_cfs_summary_in
 
 	info, err := c.lookupPath(c.absPath(C.GoString(path)))
 	if err != nil {
+		log.LogErrorf("cfs_getsummary not found path(%v) err(%v)", c.absPath(C.GoString(path)), err)
 		return errorToStatus(err)
 	}
 
@@ -1481,12 +1429,14 @@ func cfs_getsummary(id C.int64_t, path *C.char, summary *C.struct_cfs_summary_in
 	goroutineNum := int32(goroutine_num)
 	summaryInfo, err := c.mw.GetSummary_ll(info.Inode, goroutineNum)
 	if err != nil {
+		log.LogErrorf("cfs_getsummary failed, path(%v) err(%v)", c.absPath(C.GoString(path)), err)
 		return errorToStatus(err)
 	}
 	if strings.ToLower(C.GoString(useCache)) != "false" {
 		c.sc.Put(info.Inode, &summaryInfo)
 	}
 
+	log.LogInfof("cfs_getsummary path(%v) ino(%v) summaryInfo(%v)", c.absPath(C.GoString(path)), info.Inode, summaryInfo)
 	summary.filesHdd = C.int64_t(summaryInfo.FilesHdd)
 	summary.filesSsd = C.int64_t(summaryInfo.FilesSsd)
 	summary.filesBlobStore = C.int64_t(summaryInfo.FilesBlobStore)
@@ -1510,6 +1460,24 @@ func (c *client) absPath(path string) string {
 func (c *client) start() (err error) {
 	masters := strings.Split(c.masterAddr, ",")
 	if c.logDir != "" {
+		_, err = os.Stat(c.logDir)
+		if err != nil {
+			os.MkdirAll(c.logDir, 0o755)
+		}
+		outputFilePath := gopath.Join(c.logDir, "output.log")
+		outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o666)
+		sysOutputFile = outputFile
+		if err != nil {
+			err = errors.NewErrorf("Fatal: failed to open output path - %v", err)
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		syslog.SetOutput(outputFile)
+		if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
+			err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
+			syslog.Println(err)
+			os.Exit(1)
+		}
 		if c.logLevel == "" {
 			c.logLevel = "WARN"
 		}
@@ -1543,23 +1511,28 @@ func (c *client) start() (err error) {
 		}
 	}
 
-	if c.enableSummary {
-		c.sc = fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache)
-	}
 	if c.enableBcache {
 		c.bc = bcache.NewBcacheClient()
 	}
 	var ebsc *blobstore.BlobStoreClient
 	if c.ebsEndpoint != "" {
+		ebsLogLevel := blog.Lfatal
+		var ebsLogger *access.Logger
+
+		if c.logDir != "" {
+			ebsLogLevel = log.GetBlobLogLevel()
+			ebsLogger = &access.Logger{
+				Filename: gopath.Join(c.logDir, "libcfs/ebs.log"),
+			}
+		}
 		if ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
 				Address: c.ebsEndpoint,
 			},
 			MaxSizePutOnce: MaxSizePutOnce,
-			Logger: &access.Logger{
-				Filename: gopath.Join(c.logDir, "libcfs/ebs.log"),
-			},
+			Logger:         ebsLogger,
+			LogLevel:       ebsLogLevel,
 		}); err != nil {
 			return
 		}
@@ -1569,7 +1542,6 @@ func (c *client) start() (err error) {
 		Volume:        c.volName,
 		Masters:       masters,
 		ValidateOwner: false,
-		EnableSummary: c.enableSummary,
 		InnerReq:      c.enableInnerReq,
 	}); err != nil {
 		log.LogErrorf("newClient NewMetaWrapper failed(%v)", err)
@@ -1591,9 +1563,9 @@ func (c *client) start() (err error) {
 		DisableMetaCache:            true,
 		VolStorageClass:             c.volStorageClass,
 		VolAllowedStorageClass:      c.volAllowedStorageClass,
-		VolCacheDpStorageClass:      c.cacheDpStorageClass,
 		OnRenewalForbiddenMigration: mw.RenewalForbiddenMigration,
 		OnForbiddenMigration:        mw.ForbiddenMigration,
+		MetaWrapper:                 mw,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
@@ -1664,10 +1636,8 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 			EnableBcache:    c.enableBcache,
 			WConcurrency:    c.writeBlockThread,
 			ReadConcurrency: c.readBlockThread,
-			CacheAction:     c.cacheAction,
 			FileCache:       fileCache,
 			FileSize:        fileSize,
-			CacheThreshold:  c.cacheThreshold,
 			StorageClass:    storageClass,
 		}
 		f.fileWriter.FreeCache()
@@ -1774,12 +1744,12 @@ func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (
 	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
-func (c *client) openStream(f *file) {
+func (c *client) openStream(f *file, fullPath string) {
 	isCache := false
 	if proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(f.storageClass) {
 		isCache = true
 	}
-	_ = c.ec.OpenStream(f.ino, f.openForWrite, isCache)
+	_ = c.ec.OpenStream(f.ino, f.openForWrite, isCache, fullPath)
 }
 
 func (c *client) closeStream(f *file) {
@@ -1862,12 +1832,8 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	}
 	c.volType = volumeInfo.VolType
 	c.ebsBlockSize = volumeInfo.ObjBlockSize
-	c.cacheAction = volumeInfo.CacheAction
-	c.cacheRuleKey = volumeInfo.CacheRule
-	c.cacheThreshold = volumeInfo.CacheThreshold
 	c.volStorageClass = volumeInfo.VolStorageClass
 	c.volAllowedStorageClass = volumeInfo.AllowedStorageClass
-	c.cacheDpStorageClass = volumeInfo.CacheDpStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()

@@ -275,7 +275,7 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 // [PREFIX] CURRENT_TIME TIME_ZONE
 func (a *Audit) formatCommonHeader() (str string) {
 	curTime := time.Now()
-	curTimeStr := curTime.Format("2006-01-02 15:04:05")
+	curTimeStr := curTime.Format("2006-01-02 15:04:05.000000")
 	timeZone, _ := curTime.Zone()
 	str = fmt.Sprintf("%v %v", curTimeStr, timeZone)
 	return
@@ -349,8 +349,28 @@ func (a *Audit) formatMasterAudit(op, msg string, err error) (str string) {
 	return
 }
 
+func (a *Audit) formatOpAudit(op, msg string, err error) (str string) {
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	} else {
+		errStr = "nil"
+	}
+	str = fmt.Sprintf("%v, %v, %v, ERR: %v", a.formatCommonHeader(), op, msg, errStr)
+	return
+}
+
 func (a *Audit) formatMasterLog(op, msg string, err error) {
 	if entry := a.formatMasterAudit(op, msg, err); entry != "" {
+		if a.prefix != nil {
+			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
+		}
+		a.AddLog(entry)
+	}
+}
+
+func (a *Audit) formatOpLog(op, msg string, err error) {
+	if entry := a.formatOpAudit(op, msg, err); entry != "" {
 		if a.prefix != nil {
 			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
 		}
@@ -767,6 +787,15 @@ func isPathSafe(filePath string) bool {
 	return match
 }
 
+func LogOpMsg(op, msg string, err error) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.formatOpLog(op, msg, err)
+}
+
 func LogMasterOp(op, msg string, err error) {
 	gAdtMutex.RLock()
 	defer gAdtMutex.RUnlock()
@@ -785,6 +814,15 @@ func LogDataNodeOp(op, msg string, err error) {
 	gAdt.formatDataNodeLog(op, msg, err)
 }
 
+func LogFlashNodeOp(op, msg string, err error) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.formatFlashNodeLog(op, msg, err)
+}
+
 func (a *Audit) formatDataNodeLog(op, msg string, err error) {
 	if entry := a.formatDataNodeAudit(op, msg, err); entry != "" {
 		if a.prefix != nil {
@@ -795,6 +833,26 @@ func (a *Audit) formatDataNodeLog(op, msg string, err error) {
 }
 
 func (a *Audit) formatDataNodeAudit(op, msg string, err error) (str string) {
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	} else {
+		errStr = "nil"
+	}
+	str = fmt.Sprintf("%v, %v, %v, ERR: %v", a.formatCommonHeader(), op, msg, errStr)
+	return
+}
+
+func (a *Audit) formatFlashNodeLog(op, msg string, err error) {
+	if entry := a.formatFlashNodeAudit(op, msg, err); entry != "" {
+		if a.prefix != nil {
+			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
+		}
+		a.AddLog(entry)
+	}
+}
+
+func (a *Audit) formatFlashNodeAudit(op, msg string, err error) (str string) {
 	var errStr string
 	if err != nil {
 		errStr = err.Error()

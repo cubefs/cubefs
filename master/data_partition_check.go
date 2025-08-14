@@ -116,6 +116,7 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 	for _, replica := range partition.Replicas {
 		if !replica.isLive(partition.PartitionID, timeOutSec) {
 			log.LogInfof("action[checkReplicaStatus] partition %v replica %v be set status ReadOnly", partition.PartitionID, replica.Addr)
+			replica.ReadOnlyReasons |= proto.DpReplicaMissing
 			if replica.Status == proto.ReadWrite {
 				replica.Status = proto.ReadOnly
 			}
@@ -125,8 +126,18 @@ func (partition *DataPartition) checkReplicaStatus(timeOutSec int64) {
 			continue
 		}
 
-		if (replica.dataNode.RdOnly || partition.RdOnly) && replica.Status == proto.ReadWrite {
-			replica.Status = proto.ReadOnly
+		if replica.dataNode.RdOnly {
+			replica.ReadOnlyReasons |= proto.DataNodeRdOnly
+			if replica.Status == proto.ReadWrite {
+				replica.Status = proto.ReadOnly
+			}
+		}
+
+		if partition.RdOnly {
+			replica.ReadOnlyReasons |= proto.PartitionRdOnly
+			if replica.Status == proto.ReadWrite {
+				replica.Status = proto.ReadOnly
+			}
 		}
 	}
 }
@@ -170,7 +181,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 	WarnMetrics.dpMissingReplicaMutex.Unlock()
 
 	for _, replica := range partition.Replicas {
-		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) && !partition.IsDiscard {
+		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) {
 			if partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
 				dataNode := replica.getReplicaNode()
 				var lastReportTime time.Time
@@ -267,8 +278,8 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 
 		if replica.Status == proto.Unavailable {
 			if partition.isSpecialReplicaCnt() && len(partition.Hosts) > 1 {
-				log.LogWarnf("action[%v],clusterID[%v],partitionID:%v  On :%v status Unavailable",
-					checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr)
+				log.LogWarnf("action[%v],clusterID[%v],partitionID:%v,diskPath:%v  On :%v status Unavailable",
+					checkDataPartitionDiskErr, clusterID, partition.PartitionID, replica.DiskPath, addr)
 				continue
 			}
 			diskErrorAddrs[replica.Addr] = replica.DiskPath
@@ -280,8 +291,8 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	}
 
 	for addr, diskPath := range diskErrorAddrs {
-		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost, decommissionDiskURL is http://%v/disk/decommission?addr=%v&disk=%v",
-			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr, leaderAddr, addr, diskPath)
+		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v,diskPath:%v  On :%v  status Unavailable",
+			checkDataPartitionDiskErr, clusterID, partition.PartitionID, diskPath, addr)
 		Warn(clusterID, msg)
 	}
 }
@@ -302,10 +313,12 @@ func (partition *DataPartition) checkReplicationTask(clusterID string, dataParti
 		return
 	}
 
-	if lackAddr, lackErr := partition.missingReplicaAddress(dataPartitionSize); lackErr != nil {
-		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
-			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
-		Warn(clusterID, msg)
+	if !partition.IsDiscard {
+		if lackAddr, lackErr := partition.missingReplicaAddress(dataPartitionSize); lackErr != nil {
+			msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
+				addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
+			Warn(clusterID, msg)
+		}
 	}
 }
 

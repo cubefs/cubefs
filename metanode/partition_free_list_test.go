@@ -61,15 +61,17 @@ func TestPersistInodesFreeList(t *testing.T) {
 		PartitionType: proto.VolumeTypeHot,
 		RootDir:       rootDir,
 	}
-	mp := newPartitionForFreeList(config, &metadataManager{partitions: make(map[uint64]MetaPartition)})
+	mp := newPartitionForFreeList(config, &metadataManager{partitions: make(map[uint64]MetaPartition), fileStatsConfig: &fileStatsConfig{}})
 	t.Logf("Persist one inode")
 	mp.persistDeletedInodes([]uint64{0})
 	fileName := path.Join(config.RootDir, DeleteInodeFileExtension)
 	oldIno, err := fileutil.Stat(fileName)
 	require.NoError(t, err)
-	const persistBatchCount = 500000
+
+	testDeleteInodeFileSize = util.MB
+	const persistBatchCount = 50000
 	unitSize := len(fmt.Sprintf("%v\n", 1000000))
-	testCount := DeleteInodeFileRollingSize / unitSize
+	testCount := int(getDeleteInodeFileSize()) / unitSize
 	t.Logf("Persist many inodes, unitSize %d, total %d", unitSize, testCount)
 	inodes := make([]uint64, 0, persistBatchCount)
 	for i := 0; i < persistBatchCount; i++ {

@@ -62,6 +62,7 @@ type PacketInterface interface {
 	SetData(data []byte)
 	SetOpCode(uint8)
 	LogMessage(action, remote string, start int64, err error) (m string)
+	GetNoPrefixMsg() string
 	PackErrorBody(action, msg string)
 	PacketOkReply()
 	SetArglen(len uint32)
@@ -122,6 +123,12 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.LimitedIoError.Error()) {
 		p.ResultCode = proto.OpLimitedIoErr
+	} else if strings.Contains(errMsg, storage.TinyRecoverError.Error()) {
+		p.ResultCode = proto.OpTinyRecoverErr
+	} else if strings.Contains(errMsg, storage.DpDecommissionRepairError.Error()) {
+		p.ResultCode = proto.OpDpDecommissionRepairErr
+	} else if strings.Contains(errMsg, storage.DpRepairError.Error()) {
+		p.ResultCode = proto.OpDpRepairErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
@@ -238,7 +245,7 @@ func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) (p *Packe
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GenerateRequestID()
 	p.ExtentType = extentType
-
+	p.Data = []byte{ByteMarker}
 	return
 }
 
@@ -452,6 +459,12 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.LimitedIoError.Error()) {
 		p.ResultCode = proto.OpLimitedIoErr
+	} else if strings.Contains(errMsg, storage.TinyRecoverError.Error()) {
+		p.ResultCode = proto.OpTinyRecoverErr
+	} else if strings.Contains(errMsg, storage.DpDecommissionRepairError.Error()) {
+		p.ResultCode = proto.OpDpDecommissionRepairErr
+	} else if strings.Contains(errMsg, storage.DpRepairError.Error()) {
+		p.ResultCode = proto.OpDpRepairErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
@@ -472,7 +485,12 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	} else if strings.Contains(errMsg, storage.VolForbidWriteOpOfProtoVer.Error()) {
 		p.ResultCode = proto.OpWriteOpOfProtoVerForbidden
 	} else {
-		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+		if p.Opcode == proto.OpReadTinyDeleteRecord ||
+			(p.Opcode == proto.OpStreamFollowerRead && strings.Contains(errMsg, "timeout")) {
+			log.LogWarnf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+		} else {
+			log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+		}
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}
 }
@@ -509,7 +527,9 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpRecoverBackupDataReplica,
 		proto.OpRecoverBadDisk,
 		proto.OpQueryBadDiskRecoverProgress,
-		proto.OpDeleteBackupDirectories:
+		proto.OpDeleteBackupDirectories,
+		proto.OpDeleteLostDisk,
+		proto.OpReloadDisk:
 		return true
 	default:
 		return false

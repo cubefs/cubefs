@@ -21,6 +21,7 @@ import (
 	"math"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -51,8 +52,8 @@ type DentryMultiSnap struct {
 
 type Dentry struct {
 	ParentId uint64 // FileID value of the parent inode.
-	Name     string // Name of the current dentry.
 	Inode    uint64 // FileID value of the current inode.
+	Name     string // Name of the current dentry.
 	Type     uint32
 	// snapshot
 	multiSnap *DentryMultiSnap
@@ -386,17 +387,6 @@ func NewTxDentry(parentID uint64, name string, ino uint64, mode uint32, parInode
 func (td *TxDentry) Marshal() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 
-	//bs, err := td.ParInode.Marshal()
-	//if err != nil {
-	//	return nil, err
-	//}
-	//if err = binary.Write(buff, binary.BigEndian, uint32(len(bs))); err != nil {
-	//	return nil, err
-	//}
-	//if _, err := buff.Write(bs); err != nil {
-	//	return nil, err
-	//}
-
 	bs, err := td.Dentry.Marshal()
 	if err != nil {
 		return nil, err
@@ -570,64 +560,86 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 
 type DentryBatch []*Dentry
 
-// todo(leon chang), buffer need alloc first before and write directly consider the space and performance
-
-// Marshal marshals a dentry into a byte array.
+// Marshal marshals a dentry into a byte array. which will alloc mem in runtime
 func (d *Dentry) Marshal() (result []byte, err error) {
-	keyBytes := d.MarshalKey()
-	valBytes := d.MarshalValue()
-	keyLen := uint32(len(keyBytes))
-	valLen := uint32(len(valBytes))
-	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.Grow(int(keyLen + valLen + 8))
-
-	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
-		return
-	}
-	if _, err = buff.Write(keyBytes); err != nil {
-		return
-	}
-	if err = binary.Write(buff, binary.BigEndian, valLen); err != nil {
+	buff := buf.NewByteBufEx(dentryBufSize)
+	err = d.MarshalV2(buff)
+	if err != nil {
 		return nil, err
-	}
-	if _, err = buff.Write(valBytes); err != nil {
-		return
 	}
 	result = buff.Bytes()
 	return
 }
 
-// Unmarshal unmarshals the dentry from a byte array.
-func (d *Dentry) Unmarshal(raw []byte) (err error) {
-	var (
-		keyLen uint32
-		valLen uint32
-	)
-	buff := bytes.NewBuffer(raw)
-	if err = binary.Read(buff, binary.BigEndian, &keyLen); err != nil {
+// Marshal marshals a dentry into a byte array.
+func (d *Dentry) MarshalV2(buff *buf.ByteBufExt) (err error) {
+	keyBuf := GetDentryBuf()
+	defer PutDentryBuf(keyBuf)
+	d.MarshalKeyV2(keyBuf)
+	keyBytes := keyBuf.Bytes()
+
+	valBuf := GetDentryBuf()
+	defer PutDentryBuf(valBuf)
+	d.MarshalValueV2(valBuf)
+	valBytes := valBuf.Bytes()
+
+	keyLen := uint32(len(keyBytes))
+	valLen := uint32(len(valBytes))
+
+	if err = buff.PutUint32(keyLen); err != nil {
 		return
 	}
+
+	if _, err = buff.Write(keyBytes); err != nil {
+		return
+	}
+
+	if err = buff.PutUint32(valLen); err != nil {
+		return
+	}
+
+	if _, err = buff.Write(valBytes); err != nil {
+		return
+	}
+
+	return
+}
+
+func (d *Dentry) Unmarshal(data []byte) (err error) {
+	var (
+		keyLen  uint32
+		valLen  uint32
+		keyData []byte
+	)
+
+	buff := GetReadBuf(data)
+	defer PutReadBuf(buff)
+
+	if keyLen, err = buff.ReadUint32(); err != nil {
+		return
+	}
+
 	if keyLen > proto.MaxBufferSize {
 		return proto.ErrBufferSizeExceedMaximum
 	}
-	keyBytes := make([]byte, keyLen)
-	if _, err = buff.Read(keyBytes); err != nil {
+
+	if keyData, err = buff.Next(int(keyLen)); err != nil {
 		return
 	}
-	if err = d.UnmarshalKey(keyBytes); err != nil {
+
+	if err = d.UnmarshalKey(keyData); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &valLen); err != nil {
+
+	if valLen, err = buff.ReadUint32(); err != nil {
 		return
 	}
+
 	if valLen > proto.MaxBufferSize {
 		return proto.ErrBufferSizeExceedMaximum
 	}
-	valBytes := make([]byte, valLen)
-	if _, err = buff.Read(valBytes); err != nil {
-		return
-	}
-	err = d.UnmarshalValue(valBytes)
+
+	err = d.UnmarshalValue(buff.Bytes())
 	return
 }
 
@@ -718,68 +730,86 @@ func (d *Dentry) MarshalKey() (k []byte) {
 	return
 }
 
+func (d *Dentry) MarshalKeyV2(buff *buf.ByteBufExt) {
+	if err := buff.PutUint64(d.ParentId); err != nil {
+		panic(err)
+	}
+
+	if _, err := buff.Write([]byte(d.Name)); err != nil {
+		panic(err)
+	}
+}
+
 // UnmarshalKey unmarshals the exporterKey from bytes.
 func (d *Dentry) UnmarshalKey(k []byte) (err error) {
-	buff := bytes.NewBuffer(k)
-	if err = binary.Read(buff, binary.BigEndian, &d.ParentId); err != nil {
-		return
+	if len(k) < 8 {
+		return fmt.Errorf("dentry key length less than 8, len %d", len(k))
 	}
-	d.Name = buff.String()
+	d.ParentId = binary.BigEndian.Uint64(k[:8])
+	d.Name = string(k[8:])
 	return
 }
 
 func (d *Dentry) MarshalValue() []byte {
-	buff := bytes.NewBuffer(nil)
-	buff.Grow(24 + d.getSnapListLen()*20)
+	buff := buf.NewByteBufEx(24)
+	buff.Grow(d.getSnapListLen() * 20)
 
-	writeBinary := func(data interface{}) {
-		if err := binary.Write(buff, binary.BigEndian, data); err != nil {
-			panic(err)
-		}
-	}
-
-	writeBinary(&d.Inode)
-	writeBinary(&d.Type)
-	seq := d.getSeqFiled()
-	if seq == 0 {
-		return buff.Bytes()
-	}
-	writeBinary(&seq)
-
-	verCnt := uint32(d.getSnapListLen())
-	writeBinary(&verCnt)
-
-	if d.getSnapListLen() > 0 {
-		for _, dd := range d.multiSnap.dentryList {
-			writeBinary(&dd.Inode)
-			writeBinary(&dd.Type)
-			seq = dd.getSeqFiled()
-			writeBinary(&seq)
-		}
-	}
-
+	d.MarshalValueV2(buff)
 	return buff.Bytes()
 }
 
-func (d *Dentry) UnmarshalValue(val []byte) (err error) {
-	buff := bytes.NewBuffer(val)
-	if err = binary.Read(buff, binary.BigEndian, &d.Inode); err != nil {
-		return
+func (d *Dentry) MarshalValueV2(buff *buf.ByteBufExt) {
+	if err := buff.PutUint64(d.Inode); err != nil {
+		panic(err)
 	}
-	if err = binary.Read(buff, binary.BigEndian, &d.Type); err != nil {
+
+	if err := buff.PutUint32(d.Type); err != nil {
+		panic(err)
+	}
+
+	seq := d.getSeqFiled()
+	if seq == 0 {
 		return
 	}
 
-	if len(val) >= 24 {
+	if err := buff.PutUint64(seq); err != nil {
+		panic(err)
+	}
+
+	verCnt := uint32(d.getSnapListLen())
+	buff.PutUint32(verCnt)
+	if d.getSnapListLen() > 0 {
+		for _, dd := range d.multiSnap.dentryList {
+			buff.PutUint64(dd.Inode)
+			buff.PutUint32(dd.Type)
+			seq = dd.getSeqFiled()
+			buff.PutUint64(seq)
+		}
+	}
+}
+
+func (d *Dentry) UnmarshalValue(raw []byte) (err error) {
+	buff := GetReadBuf(raw)
+	defer PutReadBuf(buff)
+
+	if d.Inode, err = buff.ReadUint64(); err != nil {
+		return
+	}
+
+	if d.Type, err = buff.ReadUint32(); err != nil {
+		return
+	}
+
+	if buff.Len() >= 8 {
 		var seq uint64
-		if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
+		if seq, err = buff.ReadUint64(); err != nil {
 			return
 		}
 
 		d.multiSnap = NewDentrySnap(seq)
 
 		verCnt := uint32(0)
-		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
+		if verCnt, err = buff.ReadUint32(); err != nil {
 			return
 		}
 
@@ -789,13 +819,16 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 				Name:     d.Name,
 				ParentId: d.ParentId,
 			}
-			if err = binary.Read(buff, binary.BigEndian, &den.Inode); err != nil {
+
+			if den.Inode, err = buff.ReadUint64(); err != nil {
 				return
 			}
-			if err = binary.Read(buff, binary.BigEndian, &den.Type); err != nil {
+
+			if den.Type, err = buff.ReadUint32(); err != nil {
 				return
 			}
-			if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
+
+			if seq, err = buff.ReadUint64(); err != nil {
 				return
 			}
 			if seq > 0 {

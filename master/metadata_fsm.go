@@ -155,14 +155,15 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	switch cmd.Op {
 	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
 		opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser, opSyncDeleteQuota, opSyncDeleteLcNode,
-		opSyncDeleteLcConf, opSyncDeleteLcTask, opSyncDeleteLcResult, opSyncS3QosDelete, opSyncDeleteDecommissionDisk:
+		opSyncDeleteLcConf, opSyncDeleteLcTask, opSyncDeleteLcResult, opSyncS3QosDelete, opSyncDeleteDecommissionDisk,
+		opSyncDeleteFlashNode, opSyncDeleteFlashGroup, opSyncDeleteFlashManualTask:
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
 	case opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo:
 		mf.UserAppCmdHandler(cmd.Op, cmd.K, cmdMap)
 		//if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
-		//	panic(err)
+		//	panic(err)api_args_parse.go
 		//}
 		if err = mf.store.BatchPut(cmdMap, true); err != nil {
 			panic(err)

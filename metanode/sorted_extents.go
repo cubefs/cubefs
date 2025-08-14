@@ -1,12 +1,12 @@
 package metanode
 
 import (
-	"bytes"
 	"encoding/json"
 	"sync"
 
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -35,6 +35,10 @@ func (se *SortedExtents) IsEmpty() bool {
 }
 
 func (se *SortedExtents) String() string {
+	if se == nil {
+		return "empty extents"
+	}
+
 	se.RLock()
 	data, err := json.Marshal(se.eks)
 	se.RUnlock()
@@ -44,29 +48,26 @@ func (se *SortedExtents) String() string {
 	return string(data)
 }
 
-func (se *SortedExtents) MarshalBinary(v3 bool) ([]byte, error) {
-	var data []byte
-
+func (se *SortedExtents) MarshalBinary(buf *buf.ByteBufExt, v3 bool) error {
 	se.RLock()
 	defer se.RUnlock()
 
-	data = make([]byte, 0, proto.ExtentLength*len(se.eks))
 	for _, ek := range se.eks {
-		ekdata, err := ek.MarshalBinary(v3)
+		err := ek.MarshalBinary(buf, v3)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		data = append(data, ekdata...)
 	}
-
-	return data, nil
+	return nil
 }
 
 func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, splitMap *sync.Map) {
 	se.Lock()
 	defer se.Unlock()
 
-	buf := bytes.NewBuffer(data)
+	buf := GetReadBuf(data)
+	defer PutReadBuf(buf)
+
 	for {
 		var ek proto.ExtentKey
 		if buf.Len() == 0 {
@@ -434,12 +435,12 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 		}
 		for i := 0; i < len(clientDiscardExts); i++ {
 			if deleteExtents[i].PartitionId != clientDiscardExts[i].PartitionId || deleteExtents[i].ExtentId != clientDiscardExts[i].ExtentId || deleteExtents[i].ExtentOffset != clientDiscardExts[i].ExtentOffset {
-				log.LogDebugf("action[AppendWithCheck] OpConflictExtentsErr error. inode[%v] idx %v deleteExtents[%v]  clientDiscardExts [%v]", inodeID, i, deleteExtents[i], clientDiscardExts[i])
+				log.LogWarnf("action[AppendWithCheck] OpConflictExtentsErr error. inode[%v] idx %v deleteExtents[%v]  clientDiscardExts [%v]", inodeID, i, deleteExtents[i], clientDiscardExts[i])
 				return deleteExtents, proto.OpConflictExtentsErr
 			}
 		}
 	} else if len(deleteExtents) != 0 {
-		log.LogDebugf("action[AppendWithCheck] OpConflictExtentsErr error. inode[%v] deleteExtents [%v]", inodeID, deleteExtents)
+		log.LogWarnf("action[AppendWithCheck] OpConflictExtentsErr error. inode[%v] deleteExtents [%v]", inodeID, deleteExtents)
 		return deleteExtents, proto.OpConflictExtentsErr
 	}
 
@@ -460,7 +461,7 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	return
 }
 
-func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentKey), insertRefMap func(ek *proto.ExtentKey)) (deleteExtents []proto.ExtentKey) {
+func (se *SortedExtents) Truncate(offset uint64, insertRefMap func(ek *proto.ExtentKey)) (deleteExtents []proto.ExtentKey) {
 	var endIndex int
 
 	se.Lock()
@@ -486,9 +487,6 @@ func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentK
 	if numKeys > 0 {
 		lastKey := &se.eks[numKeys-1]
 		if lastKey.FileOffset+uint64(lastKey.Size) > offset {
-			if doOnLastKey != nil {
-				doOnLastKey(&proto.ExtentKey{Size: uint32(lastKey.FileOffset + uint64(lastKey.Size) - offset)})
-			}
 			originSize := lastKey.Size
 			lastKey.Size = uint32(offset - lastKey.FileOffset)
 			if !clusterEnableSnapshot {
@@ -597,25 +595,9 @@ func (se *SortedExtents) CopyExtents() []proto.ExtentKey {
 	return se.doCopyExtents()
 }
 
-func (se *SortedExtents) CopyTinyExtents() []proto.ExtentKey {
-	se.RLock()
-	defer se.RUnlock()
-	return se.doCopyTinyExtents()
-}
-
 func (se *SortedExtents) doCopyExtents() []proto.ExtentKey {
 	eks := make([]proto.ExtentKey, len(se.eks))
 	copy(eks, se.eks)
-	return eks
-}
-
-func (se *SortedExtents) doCopyTinyExtents() []proto.ExtentKey {
-	eks := make([]proto.ExtentKey, 0)
-	for _, ek := range se.eks {
-		if storage.IsTinyExtent(ek.ExtentId) {
-			eks = append(eks, ek)
-		}
-	}
 	return eks
 }
 

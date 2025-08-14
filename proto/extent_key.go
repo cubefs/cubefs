@@ -25,16 +25,20 @@ import (
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const DefaultDpRepairBlockSize = 128 * util.KB
+const (
+	DefaultDpRepairBlockSize = 128 * util.KB
+	ExtentLength             = 40
+)
 
 var (
-	ExtentKeyHeader       = []byte("EKV2")
-	ExtentKeyHeaderV3     = []byte("EKV3")
-	ExtentKeyHeaderSize   = len(ExtentKeyHeader)
-	ExtentLength          = 40
+	ExtentKeyHeader     = []byte("EKV2")
+	ExtentKeyHeaderV3   = []byte("EKV3")
+	ExtentKeyHeaderSize = len(ExtentKeyHeader)
+	// ExtentLength          = 40
 	ExtentKeyChecksumSize = 4
 	ExtentVerFieldSize    = 9 // ver(8) and isSplit(1)
 	ExtentV2Length        = ExtentKeyHeaderSize + ExtentLength + ExtentKeyChecksumSize
@@ -239,71 +243,76 @@ func (k *ExtentKey) Marshal() (m string) {
 	return fmt.Sprintf("%v_%v_%v_%v_%v_%v", k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC)
 }
 
-func (k *ExtentKey) MarshalBinaryExt(data []byte) {
-	binary.BigEndian.PutUint64(data[0:], k.FileOffset)
-	binary.BigEndian.PutUint64(data[8:], k.PartitionId)
-	binary.BigEndian.PutUint64(data[16:], k.ExtentId)
-	binary.BigEndian.PutUint64(data[24:], k.ExtentOffset)
-	binary.BigEndian.PutUint32(data[32:], k.Size)
-	binary.BigEndian.PutUint32(data[36:], k.CRC)
-}
+func (k *ExtentKey) MarshalBinary(buff *buf.ByteBufExt, v3 bool) (err error) {
+	if err = buff.PutUint64(k.FileOffset); err != nil {
+		return
+	}
 
-// MarshalBinary marshals the binary format of the extent key.
-func (k *ExtentKey) MarshalBinary(v3 bool) ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, ExtentLength))
-	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
-		return nil, err
+	if err = buff.PutUint64(k.PartitionId); err != nil {
+		return
 	}
-	if err := binary.Write(buf, binary.BigEndian, k.PartitionId); err != nil {
-		return nil, err
+
+	if err = buff.PutUint64(k.ExtentId); err != nil {
+		return
 	}
-	if err := binary.Write(buf, binary.BigEndian, k.ExtentId); err != nil {
-		return nil, err
+
+	if err = buff.PutUint64(k.ExtentOffset); err != nil {
+		return
 	}
-	if err := binary.Write(buf, binary.BigEndian, k.ExtentOffset); err != nil {
-		return nil, err
+
+	if err = buff.PutUint32(k.Size); err != nil {
+		return
 	}
-	if err := binary.Write(buf, binary.BigEndian, k.Size); err != nil {
-		return nil, err
+
+	if err = buff.PutUint32(k.CRC); err != nil {
+		return
 	}
-	if err := binary.Write(buf, binary.BigEndian, k.CRC); err != nil {
-		return nil, err
-	}
+
 	if v3 {
-		if err := binary.Write(buf, binary.BigEndian, k.GetSeq()); err != nil {
-			return nil, err
+		if err = buff.PutUint64(k.GetSeq()); err != nil {
+			return
 		}
-		if err := binary.Write(buf, binary.BigEndian, k.IsSplit()); err != nil {
-			return nil, err
+
+		if k.IsSplit() {
+			_, err = buff.Write([]byte{1})
+		} else {
+			_, err = buff.Write([]byte{0})
+		}
+		if err != nil {
+			return
 		}
 	}
-	return buf.Bytes(), nil
+	return
 }
 
-// UnmarshalBinary unmarshals the binary format of the extent key.
-func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer, v3 bool) (err error) {
-	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
+func (k *ExtentKey) UnmarshalBinary(buf *buf.ReadByteBuff, v3 bool) (err error) {
+	if k.FileOffset, err = buf.ReadUint64(); err != nil {
 		return
 	}
-	if err = binary.Read(buf, binary.BigEndian, &k.PartitionId); err != nil {
+
+	if k.PartitionId, err = buf.ReadUint64(); err != nil {
 		return
 	}
-	if err = binary.Read(buf, binary.BigEndian, &k.ExtentId); err != nil {
+
+	if k.ExtentId, err = buf.ReadUint64(); err != nil {
 		return
 	}
-	if err = binary.Read(buf, binary.BigEndian, &k.ExtentOffset); err != nil {
+
+	if k.ExtentOffset, err = buf.ReadUint64(); err != nil {
 		return
 	}
-	if err = binary.Read(buf, binary.BigEndian, &k.Size); err != nil {
+
+	if k.Size, err = buf.ReadUint32(); err != nil {
 		return
 	}
-	if err = binary.Read(buf, binary.BigEndian, &k.CRC); err != nil {
+
+	if k.CRC, err = buf.ReadUint32(); err != nil {
 		return
 	}
 
 	if v3 {
 		var seq uint64
-		if err = binary.Read(buf, binary.BigEndian, &seq); err != nil {
+		if seq, err = buf.ReadUint64(); err != nil {
 			return
 		}
 		k.SetSeq(seq)
@@ -319,12 +328,17 @@ func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer, v3 bool) (err error) {
 
 func (k *ExtentKey) CheckSum(v3 bool) uint32 {
 	sign := crc32.NewIEEE()
-	buf, err := k.MarshalBinary(v3)
+
+	buff := buf.NewByteBufEx(ExtentLength)
+
+	err := k.MarshalBinary(buff, v3)
 	if err != nil {
 		log.LogErrorf("[ExtentKey] extentKey %v CRC32 error: %v", k, err)
 		return 0
 	}
-	sign.Write(buf)
+
+	val := buff.Bytes()
+	sign.Write(val)
 
 	return sign.Sum32()
 }

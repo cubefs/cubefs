@@ -1,0 +1,273 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+package flashnode
+
+import (
+	"fmt"
+	"hash/crc32"
+	"io"
+	"math/rand"
+	"net"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/cubefs/cubefs/flashnode/cachengine"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/bytespool"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
+)
+
+var _ cachengine.ReadExtentData = ReadExtentData
+
+var extentReaderConnPool *util.ConnectPool
+
+func initExtentConnPool() {
+	extentReaderConnPool = util.NewConnectPoolWithTimeoutAndCap(5, 100, _connPoolIdleTimeout, 1)
+}
+
+func ReadExtentData(source *proto.DataSource, afterReadFunc cachengine.ReadExtentAfter, timeout int, volume string, ino uint64, clientIP string) (readBytes int, err error) {
+	isFollowerRead := false
+	if len(source.Hosts) > 1 {
+		isFollowerRead = true
+	}
+	reqPacket := newReadPacket(&proto.ExtentKey{
+		PartitionId: source.PartitionID,
+		ExtentId:    source.ExtentID,
+	}, int(source.ExtentOffset), int(source.Size_), source.FileOffset, isFollowerRead)
+
+	readBytes, err = extentReadWithRetry(reqPacket, source, afterReadFunc, timeout, volume, ino, clientIP)
+	if err != nil {
+		log.LogErrorf("read extent err(%v)", err)
+	}
+	return
+}
+
+func extentReadWithRetry(reqPacket *proto.Packet, source *proto.DataSource, afterReadFunc cachengine.ReadExtentAfter, timeout int, volume string, ino uint64, clientIP string) (readBytes int, err error) {
+	errMap := make(map[string]error)
+	startTime := time.Now()
+	hosts := source.Hosts
+
+	for try := range [_extentReadMaxRetry]struct{}{} {
+		try++
+		for _, addr := range hosts {
+			if addr == "" {
+				continue
+			}
+			log.LogDebugf("extentReadWithRetry: try(%d) addr(%s) hosts(%v) reqPacket(%v) volume(%v) ino(%v) client(%v)",
+				try, addr, hosts, reqPacket, volume, ino, clientIP)
+			if readBytes, err = readFromDataPartition(addr, reqPacket, afterReadFunc, timeout); err == nil {
+				return
+			}
+			errMap[addr] = err
+			log.LogWarnf("extentReadWithRetry: try(%d) addr(%s) hosts(%v) reqPacket(%v) volume(%v) ino(%v) client(%v) err(%v)",
+				try, addr, hosts, reqPacket, volume, ino, clientIP, err)
+			if strings.Contains(err.Error(), proto.ErrTmpfsNoSpace.Error()) {
+				break
+			}
+		}
+		if time.Since(startTime) > time.Duration(timeout)*time.Millisecond {
+			log.LogWarnf("extentReadWithRetry: retry timeout req(%v) time(%v) hosts(%v) volume(%v) ino(%v) client(%v)",
+				reqPacket, time.Since(startTime), hosts, volume, ino, clientIP)
+			break
+		}
+		log.LogWarnf("extentReadWithRetry: errMap(%v) reqPacket(%v) hosts(%v) volume(%v) ino(%v) client(%v) try the next round",
+			errMap, reqPacket, hosts, volume, ino, clientIP)
+		rand.Seed(time.Now().UnixNano())
+		sleepDuration := rand.Intn(401) + 100
+		duration := time.Duration(sleepDuration) * time.Millisecond
+		time.Sleep(duration)
+	}
+	err = errors.NewErrorf("FollowerRead: tried %d times hosts(%v) reqPacket(%v) volume(%v) ino(%v) client(%v) errMap(%v)",
+		_extentReadMaxRetry, hosts, reqPacket, volume, ino, clientIP, errMap)
+	return
+}
+
+func readFromDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
+	var conn *net.TCPConn
+	var why string
+	defer func() {
+		extentReaderConnPool.PutConnect(conn, err != nil)
+		if err != nil {
+			log.LogWarnf("readFromDataPartition: %s addr(%s) reqPacket(%v) err(%v)", why, addr, reqPacket, err)
+		}
+	}()
+	if conn, err = extentReaderConnPool.GetConnect(addr); err != nil {
+		why = "get connection"
+		return
+	}
+
+	log.LogDebugf("readFromDataPartition: addr(%s) reqPacket(%v)", addr, reqPacket)
+	if reqPacket.Opcode == proto.OpStreamFollowerRead {
+		reqPacket.StartT = time.Now().UnixNano()
+	}
+	if err = reqPacket.WriteToConn(conn); err != nil {
+		why = "set to connection"
+		return
+	}
+	if readBytes, err = getReadReply(conn, reqPacket, afterReadFunc, timeout); err != nil {
+		why = fmt.Sprintf("get reply from %v", addr)
+		return
+	}
+	return
+}
+
+func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
+	buf := bytespool.Alloc(int(reqPacket.Size))
+	defer bytespool.Free(buf)
+
+	addr := conn.RemoteAddr().String()
+	parts := strings.Split(addr, ":")
+	dnAddr := "unknown"
+	if len(parts) > 0 && addr != "" {
+		dnAddr = parts[0]
+	}
+	var bgTime *time.Time
+	for readBytes < int(reqPacket.Size) {
+		reply := newReplyPacket(reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
+		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
+		reply.Data = buf[readBytes : readBytes+bufSize]
+		bgTime = stat.BeginStat()
+		if err = ReadReplyFromConn(reply, conn, timeout); err != nil {
+			if err != nil && strings.Contains(err.Error(), "timeout") {
+				err = fmt.Errorf("read timeout")
+			}
+			stat.EndStat("ReadFromDN", err, bgTime, 1)
+			return
+		}
+		stat.EndStat("MissCacheRead:ReadFromDN", err, bgTime, 1)
+		stat.EndStat(fmt.Sprintf("MissCacheRead:ReadFromDN[%v]", dnAddr), err, bgTime, 1)
+		if err = checkReadReplyValid(reqPacket, reply, bgTime, dnAddr); err != nil {
+			return
+		}
+
+		if reply.Size != uint32(bufSize) {
+			exporter.Warning(fmt.Sprintf("action[getReadReply] reply size not valid, "+
+				"ReqID(%v) PartitionID(%v) Extent(%v) buffSize(%v) ReplySize(%v)",
+				reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID, bufSize, reply.Size))
+		}
+		readBytes += int(reply.Size)
+	}
+	if afterReadFunc != nil {
+		if err = afterReadFunc(buf[:readBytes], int64(readBytes)); err != nil {
+			return
+		}
+	}
+
+	return readBytes, nil
+}
+
+func ReadReplyFromConn(reply *proto.Packet, c net.Conn, timeout int) (err error) {
+	if timeout != proto.NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Millisecond * time.Duration(timeout)))
+	} else {
+		c.SetReadDeadline(time.Time{})
+	}
+	header, err := proto.Buffers.Get(util.PacketHeaderSize)
+	if err != nil {
+		header = make([]byte, util.PacketHeaderSize)
+	}
+	defer proto.Buffers.Put(header)
+	var n int
+	if n, err = io.ReadFull(c, header); err != nil {
+		return
+	}
+	if n != util.PacketHeaderSize {
+		return syscall.EBADMSG
+	}
+	if err = reply.UnmarshalHeader(header); err != nil {
+		return
+	}
+
+	if err = reply.TryReadExtraFieldsFromConn(c); err != nil {
+		return
+	}
+
+	if reply.ArgLen > 0 {
+		reply.Arg = make([]byte, int(reply.ArgLen))
+		if _, err = io.ReadFull(c, reply.Arg[:int(reply.ArgLen)]); err != nil {
+			return err
+		}
+	}
+
+	size := reply.Size
+	if int(size) > len(reply.Data) {
+		return fmt.Errorf("ReadReplyFromConn: reply wrong, size over data size, size %d, len %d, cap %d, reply %s", size, len(reply.Data), cap(reply.Data), reply.String())
+	}
+
+	if n, err = io.ReadFull(c, reply.Data[:size]); err != nil {
+		return err
+	}
+	if n != int(size) {
+		return syscall.EBADMSG
+	}
+	return nil
+}
+
+func checkReadReplyValid(request *proto.Packet, reply *proto.Packet, bgTime *time.Time, dnAddr string) (err error) {
+	if reply.ResultCode != proto.OpOk {
+		stat.EndStat("ReadFromDN", fmt.Errorf("%v:%v", dnAddr, reply.GetResultMsg()), bgTime, 1)
+		return errors.NewErrorf("ResultCode(%v) NOTOK", reply.GetResultMsg())
+	}
+	if !isValidReadReply(request, reply) {
+		stat.EndStat("ReadFromDN", fmt.Errorf("%v:inconsistent req and reply", dnAddr), bgTime, 1)
+		return errors.NewErrorf("inconsistent req and reply, req(%v) reply(%v)", request, reply)
+	}
+	expectCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
+	if reply.CRC != expectCrc {
+		stat.EndStat("ReadFromDN", fmt.Errorf("%v:inconsistent CRC", dnAddr), bgTime, 1)
+		return errors.NewErrorf("inconsistent CRC, expectCRC(%v) replyCRC(%v)", expectCrc, reply.CRC)
+	}
+	return nil
+}
+
+func isValidReadReply(p *proto.Packet, q *proto.Packet) bool {
+	return p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.ExtentID == q.ExtentID
+}
+
+func newReadPacket(key *proto.ExtentKey, extentOffset, size int, fileOffset uint64, followerRead bool) *proto.Packet {
+	p := new(proto.Packet)
+	p.ExtentID = key.ExtentId
+	p.PartitionID = key.PartitionId
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	p.ExtentOffset = int64(extentOffset)
+	p.Size = uint32(size)
+	p.ExtentType = proto.NormalExtentType
+	p.RemainingFollowers = 0
+	p.KernelOffset = fileOffset
+	p.Opcode = proto.OpStreamRead
+	if followerRead {
+		p.Opcode = proto.OpStreamFollowerRead
+		p.ArgLen = 1
+		p.Arg = make([]byte, p.ArgLen)
+		p.Arg[0] = proto.FollowerReadFlag
+	}
+	return p
+}
+
+func newReplyPacket(reqID int64, partitionID uint64, extentID uint64) *proto.Packet {
+	p := new(proto.Packet)
+	p.ReqID = reqID
+	p.PartitionID = partitionID
+	p.ExtentID = extentID
+	p.Magic = proto.ProtoMagic
+	p.ExtentType = proto.NormalExtentType
+	return p
+}

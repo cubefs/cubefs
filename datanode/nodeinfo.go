@@ -11,12 +11,15 @@ const (
 	defaultMarkDeleteLimitBurst = 512
 	defaultIOLimitBurst         = 512
 	UpdateNodeInfoTicket        = 1 * time.Minute
-
-	RepairTimeOut   = time.Hour * 24
-	MaxRepairErrCnt = 1000
+	RepairTimeOut               = time.Hour * 24
+	MaxRepairErrCnt             = 1000
 )
 
-var nodeInfoStopC = make(chan struct{})
+var (
+	IOLimitTicket      = time.Minute
+	IOLimitTicketInner = time.Millisecond * 100
+	nodeInfoStopC      = make(chan struct{})
+)
 
 func (m *DataNode) startUpdateNodeInfo() {
 	ticker := time.NewTicker(UpdateNodeInfoTicket)

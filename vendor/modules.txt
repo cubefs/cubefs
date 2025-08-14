@@ -67,9 +67,12 @@ github.com/benbjohnson/clock
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
-# github.com/bits-and-blooms/bitset v1.2.1
-## explicit; go 1.14
+# github.com/bits-and-blooms/bitset v1.10.0
+## explicit; go 1.16
 github.com/bits-and-blooms/bitset
+# github.com/bits-and-blooms/bloom/v3 v3.6.0
+## explicit; go 1.16
+github.com/bits-and-blooms/bloom/v3
 # github.com/brahma-adshonor/gohook v1.1.9
 ## explicit; go 1.11
 github.com/brahma-adshonor/gohook
@@ -127,6 +130,9 @@ github.com/fatih/color
 ## explicit; go 1.12
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
+# github.com/go-ping/ping v1.1.0
+## explicit; go 1.14
+github.com/go-ping/ping
 # github.com/go-playground/locales v0.14.1
 ## explicit; go 1.17
 github.com/go-playground/locales
@@ -392,7 +398,6 @@ github.com/tklauser/go-sysconf
 github.com/tklauser/numcpus
 # github.com/xtaci/smux v1.5.16
 ## explicit; go 1.13
-github.com/xtaci/smux
 # github.com/yusufpapurcu/wmi v1.2.3
 ## explicit; go 1.16
 github.com/yusufpapurcu/wmi
@@ -421,13 +426,19 @@ golang.org/x/crypto/md4
 golang.org/x/crypto/pbkdf2
 # golang.org/x/net v0.25.0
 ## explicit; go 1.18
+golang.org/x/net/bpf
 golang.org/x/net/context
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
+golang.org/x/net/icmp
 golang.org/x/net/idna
+golang.org/x/net/internal/iana
+golang.org/x/net/internal/socket
 golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
+golang.org/x/net/ipv4
+golang.org/x/net/ipv6
 golang.org/x/net/proxy
 golang.org/x/net/trace
 # golang.org/x/sync v0.7.0

@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"fmt"
 	"sort"
 	"strconv"
 
@@ -90,7 +89,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 "reset" command will be released in next version.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				diagnosis *proto.MetaPartitionDiagnosis
+				diagnosis *proto.MetaPartitionDiagnosisV1
 				metaNodes []*proto.MetaNodeInfo
 				err       error
 			)
@@ -120,14 +119,13 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			stdout("\n")
 			stdout("[Corrupt meta partitions](no leader):\n")
 			stdout("%v\n", partitionInfoTableHeader)
-			sort.SliceStable(diagnosis.CorruptMetaPartitionIDs, func(i, j int) bool {
-				return diagnosis.CorruptMetaPartitionIDs[i] < diagnosis.CorruptMetaPartitionIDs[j]
+			sort.SliceStable(diagnosis.NoLeaderMetaPartitionIDs, func(i, j int) bool {
+				return diagnosis.NoLeaderMetaPartitionIDs[i] < diagnosis.NoLeaderMetaPartitionIDs[j]
 			})
-			for _, pid := range diagnosis.CorruptMetaPartitionIDs {
+			for _, pid := range diagnosis.NoLeaderMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				stdout("%v\n", formatMetaPartitionInfoRow(partition))
 			}
@@ -141,11 +139,26 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			for _, pid := range diagnosis.LackReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionInfoRow(partition))
+				}
+			}
+
+			stdout("\n")
+			stdout("%v\n", "[Meta partition Abnormal Raft Info]:")
+			stdout("%v\n", PeerAbnormalRaftPartitionInfoHeader)
+			sort.SliceStable(diagnosis.AbnormalRaftIDs, func(i, j int) bool {
+				return diagnosis.AbnormalRaftIDs[i] < diagnosis.AbnormalRaftIDs[j]
+			})
+			for _, pid := range diagnosis.AbnormalRaftIDs {
+				var partition *proto.MetaPartitionInfo
+				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+					continue
+				}
+				if partition != nil {
+					stdout("%v\n", formatMetaPartitionInfoRowWithRaft(partition))
 				}
 			}
 
@@ -164,15 +177,14 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 
 			stdout("\n")
 			stdout("%v\n", "[Meta Partition has unavailable replica]:")
-			stdout("%v\n", badReplicaPartitionInfoTableHeader)
-			sort.SliceStable(diagnosis.BadReplicaMetaPartitionIDs, func(i, j int) bool {
-				return diagnosis.BadReplicaMetaPartitionIDs[i] < diagnosis.BadReplicaMetaPartitionIDs[j]
+			stdout("%v\n", badMpReplicaPartitionInfoTableHeader)
+			sort.SliceStable(diagnosis.UnavailableMetaPartitionIDs, func(i, j int) bool {
+				return diagnosis.UnavailableMetaPartitionIDs[i] < diagnosis.UnavailableMetaPartitionIDs[j]
 			})
-			for _, pid := range diagnosis.BadReplicaMetaPartitionIDs {
+			for _, pid := range diagnosis.UnavailableMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					badReplicaMpInfoRow := formatBadReplicaMpInfoRow(partition)
@@ -185,14 +197,13 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			stdout("\n")
 			stdout("%v\n", "[Partition with replica inode count not equal]:")
 			stdout("%v\n", inodeCountNotEqualInfoTableHeader)
-			sort.SliceStable(diagnosis.InodeCountNotEqualReplicaMetaPartitionIDs, func(i, j int) bool {
-				return diagnosis.InodeCountNotEqualReplicaMetaPartitionIDs[i] < diagnosis.InodeCountNotEqualReplicaMetaPartitionIDs[j]
+			sort.SliceStable(diagnosis.InodeCountNotEqualIDs, func(i, j int) bool {
+				return diagnosis.InodeCountNotEqualIDs[i] < diagnosis.InodeCountNotEqualIDs[j]
 			})
-			for _, pid := range diagnosis.InodeCountNotEqualReplicaMetaPartitionIDs {
+			for _, pid := range diagnosis.InodeCountNotEqualIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionReplicaInodeNotEqualInfoRow(partition))
@@ -202,14 +213,13 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			stdout("\n")
 			stdout("%v\n", "[Partition with replica max inode not equal]:")
 			stdout("%v\n", maxInodeNotEqualInfoTableHeader)
-			sort.SliceStable(diagnosis.MaxInodeNotEqualReplicaMetaPartitionIDs, func(i, j int) bool {
-				return diagnosis.MaxInodeNotEqualReplicaMetaPartitionIDs[i] < diagnosis.MaxInodeNotEqualReplicaMetaPartitionIDs[j]
+			sort.SliceStable(diagnosis.MaxInodeNotEqualIDs, func(i, j int) bool {
+				return diagnosis.MaxInodeNotEqualIDs[i] < diagnosis.MaxInodeNotEqualIDs[j]
 			})
-			for _, pid := range diagnosis.MaxInodeNotEqualReplicaMetaPartitionIDs {
+			for _, pid := range diagnosis.MaxInodeNotEqualIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionReplicaInodeNotEqualInfoRow(partition))
@@ -219,14 +229,13 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			stdout("\n")
 			stdout("%v\n", "[Partition with replica dentry count not equal]:")
 			stdout("%v\n", dentryCountNotEqualInfoTableHeader)
-			sort.SliceStable(diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs, func(i, j int) bool {
-				return diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs[i] < diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs[j]
+			sort.SliceStable(diagnosis.DentryCountNotEqualIDs, func(i, j int) bool {
+				return diagnosis.DentryCountNotEqualIDs[i] < diagnosis.DentryCountNotEqualIDs[j]
 			})
-			for _, pid := range diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs {
+			for _, pid := range diagnosis.DentryCountNotEqualIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionReplicaDentryNotEqualInfoRow(partition))
@@ -236,14 +245,13 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			stdout("\n")
 			stdout("%v\n", "[Partition with excessive replicas]:")
 			stdout("%v\n", partitionInfoTableHeader)
-			sort.SliceStable(diagnosis.ExcessReplicaMetaPartitionIDs, func(i, j int) bool {
-				return diagnosis.ExcessReplicaMetaPartitionIDs[i] < diagnosis.ExcessReplicaMetaPartitionIDs[j]
+			sort.SliceStable(diagnosis.InConsistRreplicaCntMetaPartitionIDs, func(i, j int) bool {
+				return diagnosis.InConsistRreplicaCntMetaPartitionIDs[i] < diagnosis.InConsistRreplicaCntMetaPartitionIDs[j]
 			})
-			for _, pid := range diagnosis.ExcessReplicaMetaPartitionIDs {
+			for _, pid := range diagnosis.InConsistRreplicaCntMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
-					err = fmt.Errorf("Partition not found, err:[%v] ", err)
-					return
+					continue
 				}
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionInfoRow(partition))

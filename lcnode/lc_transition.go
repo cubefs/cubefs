@@ -28,7 +28,7 @@ import (
 )
 
 type ExtentApi interface {
-	OpenStream(inode uint64, openForWrite, isCache bool) error
+	OpenStream(inode uint64, openForWrite, isCache bool, fullPath string) error
 	CloseStream(inode uint64) error
 	Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error)
 	Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error)
@@ -46,6 +46,7 @@ type TransitionMgr struct {
 	ec        ExtentApi // extent client for read
 	ecForW    ExtentApi // extent client for write
 	ebsClient EbsApi
+	meta      MetaWrapper
 }
 
 func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
@@ -53,7 +54,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
 		return
 	}
-	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
+	if err = t.ec.OpenStream(e.Inode, false, false, ""); err != nil {
 		log.LogWarnf("migrate: ec OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
@@ -62,7 +63,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 			log.LogWarnf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
-	if err = t.ecForW.OpenStream(e.Inode, false, false); err != nil {
+	if err = t.ecForW.OpenStream(e.Inode, false, false, ""); err != nil {
 		log.LogWarnf("migrate: ecForW OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
@@ -156,7 +157,13 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	log.LogInfof("check: read dst file finished, inode(%v), dstMd5: %v", e.Inode, dstMd5)
 
 	if dstMd5 != md5Value {
-		err = fmt.Errorf("check dst md5 inconsistent, inode(%v), dstMd5(%v), md5Value(%v)", e.Inode, dstMd5, md5Value)
+		_, err = t.meta.InodeGet_ll(e.Inode)
+		if err != nil {
+			err = fmt.Errorf("get inode failed after check md5, maybe deleted, inode %d, err %s", e.Inode, err.Error())
+			return
+		}
+
+		err = fmt.Errorf("check dst md5 inconsistent after inodeGet, inode(%v), dstMd5(%v), md5Value(%v)", e.Inode, dstMd5, md5Value)
 		return
 	}
 
@@ -218,7 +225,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
 		return
 	}
-	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
+	if err = t.ec.OpenStream(e.Inode, false, false, ""); err != nil {
 		log.LogWarnf("migrate blobstore: OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}

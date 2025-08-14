@@ -86,7 +86,7 @@ func newListDisksCmd(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   CliOpList + " [DATANODE_IP:PORT]",
 		Short: cmdListDisksShort,
-		Args:  cobra.MaximumNArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				infos *proto.DiskInfos
@@ -150,6 +150,10 @@ const (
 )
 
 func newDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		weight       int
+		raftForceDel bool
+	)
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [DATA NODE ADDR] [DISK]",
 		Short: cmdDecommissionDisksShort,
@@ -159,12 +163,14 @@ func newDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if err = client.AdminAPI().DecommissionDisk(args[0], args[1]); err != nil {
+			if err = client.AdminAPI().DecommissionDisk(args[0], args[1], weight, raftForceDel); err != nil {
 				return
 			}
 			stdout("Mark disk %v:%v to be decommissioned\n", args[0], args[1])
 		},
 	}
+	cmd.Flags().IntVar(&weight, CliFLagDecommissionWeight, lowPriorityDecommissionWeight, "decommission weight")
+	cmd.Flags().BoolVarP(&raftForceDel, CliFlagDecommissionRaftForce, "r", false, "true for raftForceDel")
 	return cmd
 }
 
@@ -232,6 +238,7 @@ func newCancelDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().AbortDiskDecommission(args[0], args[1])
 			if err != nil {
+				err = fmt.Errorf("%v, please exec curl -v http://masterAddr:17010/disk/queryDecommissionProgress?addr=dataAddr:17310&disk=dataPath to check if the disk has been canceled", err)
 				return
 			}
 			stdout("%v\n", "cancel decommission successfully")

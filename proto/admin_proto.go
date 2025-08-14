@@ -20,7 +20,10 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
@@ -31,80 +34,89 @@ type ContextUserKey string
 // api
 const (
 	// Admin APIs
-	AdminGetMasterApiList                     = "/admin/getMasterApiList"
-	AdminSetApiQpsLimit                       = "/admin/setApiQpsLimit"
-	AdminGetApiQpsLimit                       = "/admin/getApiQpsLimit"
-	AdminRemoveApiQpsLimit                    = "/admin/rmApiQpsLimit"
-	AdminGetCluster                           = "/admin/getCluster"
-	AdminSetClusterInfo                       = "/admin/setClusterInfo"
-	AdminGetMonitorPushAddr                   = "/admin/getMonitorPushAddr"
-	AdminGetClusterDataNodes                  = "/admin/cluster/getAllDataNodes"
-	AdminGetClusterMetaNodes                  = "/admin/cluster/getAllMetaNodes"
-	AdminGetDataPartition                     = "/dataPartition/get"
-	AdminLoadDataPartition                    = "/dataPartition/load"
-	AdminCreateDataPartition                  = "/dataPartition/create"
-	AdminCreatePreLoadDataPartition           = "/dataPartition/createPreLoad"
-	AdminDecommissionDataPartition            = "/dataPartition/decommission"
-	AdminDiagnoseDataPartition                = "/dataPartition/diagnose"
-	AdminResetDataPartitionDecommissionStatus = "/dataPartition/resetDecommissionStatus"
-	AdminQueryDataPartitionDecommissionStatus = "/dataPartition/queryDecommissionStatus"
-	AdminCheckReplicaMeta                     = "/dataPartition/checkReplicaMeta"
-	AdminRecoverReplicaMeta                   = "/dataPartition/recoverReplicaMeta"
-	AdminRecoverBackupDataReplica             = "/dataPartition/recoverBackupDataReplica"
-	AdminDeleteDataReplica                    = "/dataReplica/delete"
-	AdminAddDataReplica                       = "/dataReplica/add"
-	AdminDeleteVol                            = "/vol/delete"
-	AdminUpdateVol                            = "/vol/update"
-	AdminVolShrink                            = "/vol/shrink"
-	AdminVolExpand                            = "/vol/expand"
-	AdminVolForbidden                         = "/vol/forbidden"
-	AdminVolEnableAuditLog                    = "/vol/auditlog"
-	AdminVolSetDpRepairBlockSize              = "/vol/setDpRepairBlockSize"
-	AdminCreateVol                            = "/admin/createVol"
-	AdminGetVol                               = "/admin/getVol"
-	AdminClusterFreeze                        = "/cluster/freeze"
-	AdminClusterForbidMpDecommission          = "/cluster/forbidMetaPartitionDecommission"
-	AdminClusterStat                          = "/cluster/stat"
-	AdminSetCheckDataReplicasEnable           = "/cluster/setCheckDataReplicasEnable"
-	AdminGetIP                                = "/admin/getIp"
-	AdminCreateMetaPartition                  = "/metaPartition/create"
-	AdminSetMetaNodeThreshold                 = "/threshold/set"
-	AdminSetMasterVolDeletionDelayTime        = "/volDeletionDelayTime/set"
-	AdminListVols                             = "/vol/list"
-	AdminSetNodeInfo                          = "/admin/setNodeInfo"
-	AdminGetNodeInfo                          = "/admin/getNodeInfo"
-	AdminGetAllNodeSetGrpInfo                 = "/admin/getDomainInfo"
-	AdminGetNodeSetGrpInfo                    = "/admin/getDomainNodeSetGrpInfo"
-	AdminGetIsDomainOn                        = "/admin/getIsDomainOn"
-	AdminUpdateNodeSetCapcity                 = "/admin/updateNodeSetCapcity"
-	AdminUpdateNodeSetId                      = "/admin/updateNodeSetId"
-	AdminUpdateNodeSetNodeSelector            = "/admin/updateNodeSetNodeSelector"
-	AdminUpdateDomainDataUseRatio             = "/admin/updateDomainDataRatio"
-	AdminUpdateZoneExcludeRatio               = "/admin/updateZoneExcludeRatio"
-	AdminSetNodeRdOnly                        = "/admin/setNodeRdOnly"
-	AdminSetDpRdOnly                          = "/admin/setDpRdOnly"
-	AdminSetConfig                            = "/admin/setConfig"
-	AdminGetConfig                            = "/admin/getConfig"
-	AdminDataPartitionChangeLeader            = "/dataPartition/changeleader"
-	AdminChangeMasterLeader                   = "/master/changeleader"
-	AdminOpFollowerPartitionsRead             = "/master/opFollowerPartitionRead"
-	AdminUpdateDecommissionLimit              = "/admin/updateDecommissionLimit"
-	AdminQueryDecommissionLimit               = "/admin/queryDecommissionLimit"
-	AdminQueryDecommissionFailedDisk          = "/admin/queryDecommissionFailedDisk"
-	AdminAbortDecommissionDisk                = "/admin/abortDecommissionDisk"
-	AdminResetDataPartitionRestoreStatus      = "/admin/resetDataPartitionRestoreStatus"
-	AdminGetOpLog                             = "/admin/getOpLog"
+	AdminGetMasterApiList                             = "/admin/getMasterApiList"
+	AdminSetApiQpsLimit                               = "/admin/setApiQpsLimit"
+	AdminGetApiQpsLimit                               = "/admin/getApiQpsLimit"
+	AdminRemoveApiQpsLimit                            = "/admin/rmApiQpsLimit"
+	AdminGetCluster                                   = "/admin/getCluster"
+	AdminSetClusterInfo                               = "/admin/setClusterInfo"
+	AdminGetMonitorPushAddr                           = "/admin/getMonitorPushAddr"
+	AdminGetClusterDataNodes                          = "/admin/cluster/getAllDataNodes"
+	AdminGetClusterMetaNodes                          = "/admin/cluster/getAllMetaNodes"
+	AdminGetDataPartition                             = "/dataPartition/get"
+	AdminLoadDataPartition                            = "/dataPartition/load"
+	AdminCreateDataPartition                          = "/dataPartition/create"
+	AdminCreatePreLoadDataPartition                   = "/dataPartition/createPreLoad"
+	AdminDecommissionDataPartition                    = "/dataPartition/decommission"
+	AdminDiagnoseDataPartition                        = "/dataPartition/diagnose"
+	AdminResetDataPartitionDecommissionStatus         = "/dataPartition/resetDecommissionStatus"
+	AdminQueryDataPartitionDecommissionStatus         = "/dataPartition/queryDecommissionStatus"
+	AdminCheckReplicaMeta                             = "/dataPartition/checkReplicaMeta"
+	AdminRecoverReplicaMeta                           = "/dataPartition/recoverReplicaMeta"
+	AdminRecoverBackupDataReplica                     = "/dataPartition/recoverBackupDataReplica"
+	AdminDeleteDataReplica                            = "/dataReplica/delete"
+	AdminAddDataReplica                               = "/dataReplica/add"
+	AdminDeleteVol                                    = "/vol/delete"
+	AdminUpdateVol                                    = "/vol/update"
+	AdminVolShrink                                    = "/vol/shrink"
+	AdminVolExpand                                    = "/vol/expand"
+	AdminVolForbidden                                 = "/vol/forbidden"
+	AdminVolEnableAuditLog                            = "/vol/auditlog"
+	AdminVolSetDpRepairBlockSize                      = "/vol/setDpRepairBlockSize"
+	AdminCreateVol                                    = "/admin/createVol"
+	AdminGetVol                                       = "/admin/getVol"
+	AdminClusterFreeze                                = "/cluster/freeze"
+	AdminClusterForbidMpDecommission                  = "/cluster/forbidMetaPartitionDecommission"
+	AdminClusterStat                                  = "/cluster/stat"
+	AdminSetCheckDataReplicasEnable                   = "/cluster/setCheckDataReplicasEnable"
+	AdminGetIP                                        = "/admin/getIp"
+	AdminCreateMetaPartition                          = "/metaPartition/create"
+	AdminSetMetaNodeThreshold                         = "/threshold/set"
+	AdminSetMasterVolDeletionDelayTime                = "/volDeletionDelayTime/set"
+	AdminSetMetaNodeGOGC                              = "/metaNodeGOGC/set"
+	AdminSetDataNodeGOGC                              = "/dataNodeGOGC/set"
+	AdminListVols                                     = "/vol/list"
+	AdminSetNodeInfo                                  = "/admin/setNodeInfo"
+	AdminGetNodeInfo                                  = "/admin/getNodeInfo"
+	AdminGetAllNodeSetGrpInfo                         = "/admin/getDomainInfo"
+	AdminGetNodeSetGrpInfo                            = "/admin/getDomainNodeSetGrpInfo"
+	AdminGetIsDomainOn                                = "/admin/getIsDomainOn"
+	AdminUpdateNodeSetCapcity                         = "/admin/updateNodeSetCapcity"
+	AdminUpdateNodeSetId                              = "/admin/updateNodeSetId"
+	AdminUpdateNodeSetNodeSelector                    = "/admin/updateNodeSetNodeSelector"
+	AdminUpdateDomainDataUseRatio                     = "/admin/updateDomainDataRatio"
+	AdminUpdateZoneExcludeRatio                       = "/admin/updateZoneExcludeRatio"
+	AdminSetNodeRdOnly                                = "/admin/setNodeRdOnly"
+	AdminSetDpRdOnly                                  = "/admin/setDpRdOnly"
+	AdminSetConfig                                    = "/admin/setConfig"
+	AdminGetConfig                                    = "/admin/getConfig"
+	AdminDataPartitionChangeLeader                    = "/dataPartition/changeleader"
+	AdminChangeMasterLeader                           = "/master/changeleader"
+	AdminOpFollowerPartitionsRead                     = "/master/opFollowerPartitionRead"
+	AdminUpdateDecommissionFirstHostDiskParallelLimit = "/admin/updateDecommissionFirstHostDiskParallelLimit"
+	AdminQueryDecommissionFirstHostDiskParallelLimit  = "/admin/queryDecommissionFirstHostDiskParallelLimit"
+	AdminUpdateDecommissionFirstHostParallelLimit     = "/admin/updateDecommissionFirstHostParallelLimit"
+	AdminQueryDecommissionFirstHostParallelLimit      = "/admin/queryDecommissionFirstHostParallelLimit"
+	AdminQueryDecommissionFirstHostParallelInfo       = "/admin/queryDecommissionFirstHostParallelInfo"
+	AdminUpdateDecommissionLimit                      = "/admin/updateDecommissionLimit"
+	AdminQueryDecommissionLimit                       = "/admin/queryDecommissionLimit"
+	AdminQueryDecommissionFailedDisk                  = "/admin/queryDecommissionFailedDisk"
+	AdminAbortDecommissionDisk                        = "/admin/abortDecommissionDisk"
+	AdminResetDataPartitionRestoreStatus              = "/admin/resetDataPartitionRestoreStatus"
+	AdminGetOpLog                                     = "/admin/getOpLog"
 
 	// #nosec G101
-	AdminQueryDecommissionToken = "/admin/queryDecommissionToken"
-	AdminSetFileStats           = "/admin/setFileStatsEnable"
-	AdminGetFileStats           = "/admin/getFileStatsEnable"
-	AdminGetClusterValue        = "/admin/getClusterValue"
-	AdminSetClusterUuidEnable   = "/admin/setClusterUuidEnable"
-	AdminGetClusterUuid         = "/admin/getClusterUuid"
-	AdminGenerateClusterUuid    = "/admin/generateClusterUuid"
-	AdminSetDpDiscard           = "/admin/setDpDiscard"
-	AdminGetDiscardDp           = "/admin/getDiscardDp"
+	AdminQueryDecommissionToken            = "/admin/queryDecommissionToken"
+	AdminQueryDiskDecommissionInfoStat     = "/admin/queryDiskDecommissionInfoStat"
+	AdminQueryDataNodeDecommissionInfoStat = "/admin/queryDataNodeDecommissionInfoStat"
+	AdminSetFileStats                      = "/admin/setFileStats"
+	AdminGetFileStats                      = "/admin/getFileStats"
+	AdminGetClusterValue                   = "/admin/getClusterValue"
+	AdminSetClusterUuidEnable              = "/admin/setClusterUuidEnable"
+	AdminGetClusterUuid                    = "/admin/getClusterUuid"
+	AdminGenerateClusterUuid               = "/admin/generateClusterUuid"
+	AdminSetDpDiscard                      = "/admin/setDpDiscard"
+	AdminGetDiscardDp                      = "/admin/getDiscardDp"
 
 	AdminSetConLcNodeNum  = "/admin/setConLcNodeNum"
 	AdminGetAllLcNodeInfo = "/admin/getAllLcNodeInfo"
@@ -177,7 +189,6 @@ const (
 	DeleteDecommissionDiskRecord       = "/disk/deleteDecommissionDiskRecord"
 	PauseDecommissionDisk              = "/disk/pauseDecommission"
 	CancelDecommissionDisk             = "/disk/cancelDecommission"
-	ResetDecommissionDiskStatus        = "/disk/resetDecommissionStatus"
 	QueryDecommissionDiskDecoFailedDps = "/disk/queryDecommissionFailedDps"
 	QueryBadDisks                      = "/disk/queryBadDisks"
 	QueryDisks                         = "/disk/queryDisks"
@@ -186,14 +197,25 @@ const (
 	QueryAllDecommissionDisk           = "/disk/queryAllDecommissionDisk"
 	RecoverBadDisk                     = "/disk/recoverBadDisk"
 	QueryBadDiskRecoverProgress        = "/disk/queryBadDiskRecoverProgress"
+	DeleteLostDisk                     = "/disk/deleteLostDisk"
+	ReloadDisk                         = "/disk/reloadDisk"
 	DeleteBackupDirectories            = "/disk/deleteBackupDirectories"
 	QueryBackupDirectories             = "/disk/queryBackupDirectories"
 	GetDataNode                        = "/dataNode/get"
+	SetDpCntLimit                      = "/dataNode/setDpCntLimit"
 	AddMetaNode                        = "/metaNode/add"
+	SetMpCntLimit                      = "/metaNode/setMpCntLimit"
 	DecommissionMetaNode               = "/metaNode/decommission"
 	MigrateMetaNode                    = "/metaNode/migrate"
+	MigrateMetaPartition               = "/metaNode/migratePartition"
 	GetMetaNode                        = "/metaNode/get"
 	AdminUpdateMetaNode                = "/metaNode/update"
+	CreateMetaNodeBalanceTask          = "/metaNode/createBalanceTask"
+	GetMetaNodeBalanceTask             = "/metaNode/getBalanceTask"
+	RunMetaNodeBalanceTask             = "/metaNode/runBalanceTask"
+	StopMetaNodeBalanceTask            = "/metaNode/stopBalanceTask"
+	DeleteMetaNodeBalanceTask          = "/metaNode/deleteBalanceTask"
+	OfflineMetaNode                    = "/metaNode/offline"
 	AdminUpdateDataNode                = "/dataNode/update"
 	AdminGetInvalidNodes               = "/invalid/nodes"
 	AdminLoadMetaPartition             = "/metaPartition/load"
@@ -201,6 +223,11 @@ const (
 	AdminDecommissionMetaPartition     = "/metaPartition/decommission"
 	AdminChangeMetaPartitionLeader     = "/metaPartition/changeleader"
 	AdminBalanceMetaPartitionLeader    = "/metaPartition/balanceLeader"
+	AdminMetaPartitionEmptyStatus      = "/metaPartition/emptyStatus"
+	AdminMetaPartitionFreezeEmpty      = "/metaPartition/freezeEmpty"
+	AdminMetaPartitionCleanEmpty       = "/metaPartition/cleanEmpty"
+	AdminMetaPartitionRemoveBackup     = "/metaPartition/removeBackup"
+	AdminMetaPartitionGetCleanTask     = "/metaPartition/getCleanTask"
 	AdminAddMetaReplica                = "/metaReplica/add"
 	AdminDeleteMetaReplica             = "/metaReplica/delete"
 	AdminPutDataPartitions             = "/dataPartitions/set"
@@ -220,7 +247,8 @@ const (
 
 	AddLcNode = "/lcNode/add"
 
-	QueryDisableDisk = "/dataNode/queryDisableDisk"
+	QueryDisableDisk             = "/dataNode/queryDisableDisk"
+	QueryDecommissionSuccessDisk = "/dataNode/queryDecommissionSuccessDisk"
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
@@ -273,6 +301,32 @@ const (
 	AdminEnablePersistAccessTime = "/vol/enablePersistAccessTime"
 
 	AdminVolAddAllowedStorageClass = "/vol/addAllowedStorageClass"
+	// FlashNode API
+	FlashNodeAdd               = "/flashNode/add"
+	FlashNodeSet               = "/flashNode/set"
+	FlashNodeRemove            = "/flashNode/remove"
+	FlashNodeRemoveAllInactive = "/flashNode/removeAllInactive"
+	FlashNodeGet               = "/flashNode/get"
+	FlashNodeList              = "/flashNode/list"
+	FlashNodeSetReadIOLimits   = "/flashNode/setReadIOLimits"
+	FlashNodeSetWriteIOLimits  = "/flashNode/SetWriteIOLimits"
+
+	// Flash Mannual Task
+	CreateFlashNodeManualTask = "/flashNode/createFlashManualTask"
+	AdminFlashManualTask      = "/flashNode/manualTask"
+
+	GetFlashNodeTaskResponse = "/flashNode/response"
+
+	// FlashGroup API
+	AdminFlashGroupTurn       = "/flashGroup/turn"
+	AdminFlashGroupCreate     = "/flashGroup/create"
+	AdminFlashGroupSet        = "/flashGroup/set"
+	AdminFlashGroupRemove     = "/flashGroup/remove"
+	AdminFlashGroupNodeAdd    = "/flashGroup/addFlashNode"
+	AdminFlashGroupNodeRemove = "/flashGroup/removeFlashNode"
+	AdminFlashGroupGet        = "/flashGroup/get"
+	AdminFlashGroupList       = "/flashGroup/list"
+	ClientFlashGroups         = "/client/flashGroups"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -283,7 +337,6 @@ var GApiInfo map[string]string = map[string]string{
 	"admingetdatapartition":              AdminGetDataPartition,
 	"adminloaddatapartition":             AdminLoadDataPartition,
 	"admincreatedatapartition":           AdminCreateDataPartition,
-	"admincreatepreloaddatapartition":    AdminCreatePreLoadDataPartition,
 	"admindecommissiondatapartition":     AdminDecommissionDataPartition,
 	"admindiagnosedatapartition":         AdminDiagnoseDataPartition,
 	"admindeletedatareplica":             AdminDeleteDataReplica,
@@ -348,7 +401,7 @@ var GApiInfo map[string]string = map[string]string{
 	"adddatanode":                     AddDataNode,
 	"decommissiondatanode":            DecommissionDataNode,
 	"migratedatanode":                 MigrateDataNode,
-	"canceldecommissiondatanode":      PauseDecommissionDataNode,
+	"canceldecommissiondatanode":      CancelDecommissionDataNode,
 	"decommissiondisk":                DecommissionDisk,
 	"getdatanode":                     GetDataNode,
 	"addmetanode":                     AddMetaNode,
@@ -385,12 +438,15 @@ var GApiInfo map[string]string = map[string]string{
 
 const (
 	MetaFollowerReadKey    = "metaFollowerRead"
+	MaximallyReadKey       = "maximallyRead"
 	LeaderRetryTimeoutKey  = "leaderRetryTimeout"
 	VolEnableDirectRead    = "directRead"
+	VolIgnoreTinyRecover   = "ignoreTinyRecover"
 	HostKey                = "host"
 	ClientVerKey           = "clientVer"
 	RoleKey                = "role"
 	BcacheOnlyForNotSSDKey = "enableBcacheNotSSD"
+	EnableRemoteCache      = "enableRemoteCache"
 )
 
 // const TimeFormat = "2006-01-02 15:04:05"
@@ -633,16 +689,18 @@ type DataPartitionDecommissionRequest struct {
 
 // AddDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
 type AddDataPartitionRaftMemberRequest struct {
-	PartitionId uint64
-	AddPeer     Peer
+	PartitionId     uint64
+	AddPeer         Peer
+	RepairingStatus bool
 }
 
 // RemoveDataPartitionRaftMemberRequest defines the request of add raftMember a data partition.
 type RemoveDataPartitionRaftMemberRequest struct {
-	PartitionId uint64
-	RemovePeer  Peer
-	Force       bool
-	AutoRemove  bool
+	PartitionId     uint64
+	RemovePeer      Peer
+	RepairingStatus bool
+	Force           bool
+	AutoRemove      bool
 }
 
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
@@ -683,6 +741,11 @@ type StopDataPartitionRepairResponse struct {
 	Status      uint8
 	Result      string
 	PartitionId uint64
+}
+
+type SetDataPartitionRepairingStatusRequest struct {
+	PartitionId     uint64
+	RepairingStatus bool
 }
 
 type RecoverDataReplicaMetaRequest struct {
@@ -728,6 +791,14 @@ type QosToDataNode struct {
 	QosFlowWriteLimit uint64
 }
 
+type IopsStatus struct {
+	ReadIops       int
+	WriteIops      int
+	AsyncReadIops  int
+	AsyncWriteIops int
+	DeleteIops     int
+}
+
 // MultiVersionOpRequest defines the request of
 type MultiVersionOpRequest struct {
 	VolumeID   string
@@ -761,6 +832,11 @@ type TxInfos struct {
 	TxInfo []*TxInfo
 }
 
+type FlashNodeHeartBeatInfos struct {
+	FlashNodeHandleReadTimeout   int
+	FlashNodeReadDataNodeTimeout int
+}
+
 // HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
@@ -768,6 +844,7 @@ type HeartBeatRequest struct {
 	FLReadVols []string
 	QosToDataNode
 	FileStatsEnable                           bool
+	FileStatsThresholds                       []uint64
 	RaftPartitionCanUsingDifferentPortEnabled bool
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
@@ -781,6 +858,10 @@ type HeartBeatRequest struct {
 	NotifyForbidWriteOpOfProtoVer0 bool     // whether forbid by node granularity, will notify to nodes
 	VolsForbidWriteOpOfProtoVer0   []string // whether forbid by volume granularity, will notify to partitions of volume in nodes
 	DirectReadVols                 []string
+	IgnoreTinyRecoverVols          []string
+	MetaNodeGOGC                   int
+	DataNodeGOGC                   int
+	FlashNodeHeartBeatInfos
 }
 
 // DataPartitionReport defines the partition report.
@@ -798,6 +879,9 @@ type DataPartitionReport struct {
 	LocalPeers                 []Peer
 	TriggerDiskError           bool
 	ForbidWriteOpOfProtoVer0   bool
+	ReadOnlyReasons            uint32
+	IsMissingTinyExtent        bool
+	IsRepairing                bool
 }
 
 type DataNodeQosResponse struct {
@@ -813,6 +897,7 @@ type BadDiskStat struct {
 	DiskPath             string
 	TotalPartitionCnt    int
 	DiskErrPartitionList []uint64
+	FirstReportTime      time.Time
 }
 
 type DiskStat struct {
@@ -845,8 +930,9 @@ type DataNodeHeartbeatResponse struct {
 	Result                           string
 	AllDisks                         []string
 	DiskStats                        []DiskStat
-	BadDisks                         []string           // Keep this old field for compatibility
-	BadDiskStats                     []BadDiskStat      // key: disk path
+	BadDisks                         []string      // Keep this old field for compatibility
+	BadDiskStats                     []BadDiskStat // key: disk path
+	LostDisks                        []string
 	CpuUtil                          float64            `json:"cpuUtil"`
 	IoUtils                          map[string]float64 `json:"ioUtil"`
 	BackupDataPartitions             []BackupDataPartitionInfo
@@ -883,6 +969,7 @@ type MetaPartitionReport struct {
 	StatByStorageClass        []*StatOfStorageClass
 	StatByMigrateStorageClass []*StatOfStorageClass
 	LocalPeers                []Peer
+	ReadOnlyReasons           uint32
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -890,6 +977,8 @@ type MetaNodeHeartbeatResponse struct {
 	ZoneName                         string
 	Total                            uint64
 	Used                             uint64
+	NodeMemTotal                     uint64
+	NodeMemUsed                      uint64
 	MetaPartitionReports             []*MetaPartitionReport
 	Status                           uint8
 	Result                           string
@@ -904,6 +993,43 @@ type LcNodeHeartbeatResponse struct {
 	LcTaskCountLimit      int
 	LcScanningTasks       map[string]*LcNodeRuleTaskResponse
 	SnapshotScanningTasks map[string]*SnapshotVerDelTaskResponse
+}
+
+type FlashNodeDiskCacheStat struct {
+	DataPath  string
+	Medium    string
+	Total     int64
+	MaxAlloc  int64
+	HasAlloc  int64
+	FreeSpace int64
+	HitRate   float64
+	Evicts    int
+	ReadRps   int
+	KeyNum    int
+	Status    int
+}
+
+// FlashNodeHeartbeatResponse defines the response to the flash node heartbeat.
+type FlashNodeHeartbeatResponse struct {
+	Status                  uint8
+	Result                  string
+	Version                 string
+	ZoneName                string
+	Stat                    []*FlashNodeDiskCacheStat
+	LimiterStatus           *FlashNodeLimiterStatusInfo
+	FlashNodeTaskCountLimit int
+	ManualScanningTasks     map[string]*FlashNodeManualTaskResponse
+}
+
+type FlashNodeLimiterStatus struct {
+	Status      util.LimiterStatus
+	DiskNum     int
+	ReadTimeout int
+}
+
+type FlashNodeLimiterStatusInfo struct {
+	WriteStatus FlashNodeLimiterStatus
+	ReadStatus  FlashNodeLimiterStatus
 }
 
 // DeleteFileRequest defines the request to delete a file.
@@ -970,6 +1096,13 @@ type MetaPartitionLoadRequest struct {
 	PartitionID uint64
 }
 
+type RaftInfo struct {
+	RaftStatus   raft.Status
+	PendingPeers []uint64
+	DownReplicas []raft.DownReplica
+	Hosts        []Peer
+}
+
 // MetaPartitionLoadResponse defines the response to the request of loading meta partition.
 type MetaPartitionLoadResponse struct {
 	PartitionID uint64
@@ -980,6 +1113,7 @@ type MetaPartitionLoadResponse struct {
 	DentryCount uint64
 	InodeCount  uint64
 	Addr        string
+	RaftInfo    RaftInfo
 }
 
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
@@ -992,7 +1126,6 @@ type DataPartitionResponse struct {
 	LeaderAddr    string
 	Epoch         uint64
 	IsRecover     bool
-	PartitionTTL  int64
 	IsDiscard     bool
 	MediaType     uint32
 }
@@ -1017,20 +1150,22 @@ func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
 
 // MetaPartitionView defines the view of a meta partition
 type MetaPartitionView struct {
-	PartitionID uint64
-	Start       uint64
-	End         uint64
-	MaxInodeID  uint64
-	InodeCount  uint64
-	DentryCount uint64
-	FreeListLen uint64
-	TxCnt       uint64
-	TxRbInoCnt  uint64
-	TxRbDenCnt  uint64
-	IsRecover   bool
-	Members     []string
-	LeaderAddr  string
-	Status      int8
+	PartitionID        uint64
+	Start              uint64
+	End                uint64
+	MaxInodeID         uint64
+	InodeCount         uint64
+	DentryCount        uint64
+	FreeListLen        uint64
+	TxCnt              uint64
+	TxRbInoCnt         uint64
+	TxRbDenCnt         uint64
+	IsRecover          bool
+	Members            []string
+	LeaderAddr         string
+	Status             int8
+	Freeze             int8
+	LastDelReplicaTime int64
 }
 
 type DataNodeDisksRequest struct{}
@@ -1054,7 +1189,6 @@ type VolView struct {
 	OSSSecure      *OSSSecure
 	CreateTime     int64
 	DeleteLockTime int64
-	CacheTTL       int
 	VolType        int
 }
 
@@ -1066,7 +1200,7 @@ func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
 }
 
-func NewVolView(name string, status uint8, followerRead bool, createTime int64, cacheTTL int, volType int, deleteLockTime int64) (view *VolView) {
+func NewVolView(name string, status uint8, followerRead bool, createTime int64, volType int, deleteLockTime int64) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
 	view.FollowerRead = followerRead
@@ -1075,7 +1209,6 @@ func NewVolView(name string, status uint8, followerRead bool, createTime int64, 
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
-	view.CacheTTL = cacheTTL
 	view.VolType = volType
 	return
 }
@@ -1099,10 +1232,16 @@ const (
 )
 
 const (
-	IopsReadType  uint32 = 0x01
-	IopsWriteType uint32 = 0x02
-	FlowReadType  uint32 = 0x03
-	FlowWriteType uint32 = 0x04
+	IopsReadType       uint32 = 0x01
+	IopsWriteType      uint32 = 0x02
+	FlowReadType       uint32 = 0x03
+	FlowWriteType      uint32 = 0x04
+	IopsAsyncReadType  uint32 = 0x05
+	IopsAsyncWriteType uint32 = 0x06
+	FlowAsyncReadType  uint32 = 0x07
+	FlowAsyncWriteType uint32 = 0x08
+	IopsDeleteType     uint32 = 0x09
+	FlowDeleteType     uint32 = 0x0A
 )
 
 const (
@@ -1187,14 +1326,21 @@ type SimpleVolView struct {
 	InodeCount              uint64
 	DentryCount             uint64
 	MaxMetaPartitionID      uint64
+	MaxDataPartitionID      uint64
 	Status                  uint8
 	Capacity                uint64 // GB
 	RwDpCnt                 int
+	RwDpOfSSDCnt            int
+	RwDpOfHDDCnt            int
 	MpCnt                   int
 	DpCnt                   int
+	DpOfSSDCnt              int
+	DpOfHDDCnt              int
 	FollowerRead            bool
 	MetaFollowerRead        bool
 	DirectRead              bool
+	IgnoreTinyRecover       bool
+	MaximallyRead           bool
 	NeedToLowerReplica      bool
 	Authenticate            bool
 	CrossZone               bool
@@ -1219,19 +1365,10 @@ type SimpleVolView struct {
 	DpReadOnlyWhenVolFull   bool
 	LeaderRetryTimeout      int64
 
-	VolType          int
-	ObjBlockSize     int
-	CacheCapacity    uint64
-	CacheAction      int
-	CacheThreshold   int
-	CacheHighWater   int
-	CacheLowWater    int
-	CacheLruInterval int
-	CacheTtl         int
-	CacheRule        string
-	PreloadCapacity  uint64
-	Uids             []UidSimpleInfo
-	TrashInterval    int64
+	VolType       int
+	ObjBlockSize  int
+	Uids          []UidSimpleInfo
+	TrashInterval int64
 
 	// multi version snapshot
 	LatestVer               uint64
@@ -1246,9 +1383,24 @@ type SimpleVolView struct {
 	// hybrid cloud
 	VolStorageClass          uint32
 	AllowedStorageClass      []uint32
-	CacheDpStorageClass      uint32
 	ForbidWriteOpOfProtoVer0 bool
 	QuotaOfStorageClass      []*StatOfStorageClass
+
+	RemoteCacheEnable            bool
+	RemoteCachePath              string
+	RemoteCacheAutoPrepare       bool
+	RemoteCacheTTL               int64
+	RemoteCacheReadTimeout       int64 // ms
+	RemoteCacheMaxFileSizeGB     int64
+	RemoteCacheOnlyForNotSSD     bool
+	RemoteCacheMultiRead         bool
+	FlashNodeTimeoutCount        int64
+	RemoteCacheSameZoneTimeout   int64 // microsecond
+	RemoteCacheSameRegionTimeout int64 // ms
+
+	QosInfo QosSimpleInfo // qos status
+
+	RemoteCacheRemoveDupReq bool // TODO: using it in metanode, origin was named EnableRemoveDupReq
 }
 
 type NodeSetInfo struct {
@@ -1263,6 +1415,18 @@ type NodeSetInfo struct {
 	DataUsed     uint64
 	DataTotal    uint64
 	DataNodes    []*DataNodeInfo
+}
+
+type QosItem struct {
+	Name    string
+	Type    uint32
+	Total   uint64
+	CliUsed uint64
+}
+
+type QosSimpleInfo struct {
+	QosItems  []QosItem
+	QosEnable bool
 }
 
 type SimpleNodeSetGrpInfo struct {
@@ -1352,22 +1516,9 @@ type OpLogView struct {
 }
 
 const (
-	PartitionTypeNormal  = 0
-	PartitionTypeCache   = 1
-	PartitionTypePreLoad = 2
+	PartitionTypeNormal = 0
+	PartitionTypeCache  = 1
 )
-
-func GetDpType(volType int, isPreload bool) int {
-	if volType == VolumeTypeHot {
-		return PartitionTypeNormal
-	}
-
-	if isPreload {
-		return PartitionTypePreLoad
-	}
-
-	return PartitionTypeCache
-}
 
 func IsCacheDp(typ int) bool {
 	return typ == PartitionTypeCache
@@ -1375,10 +1526,6 @@ func IsCacheDp(typ int) bool {
 
 func IsNormalDp(typ int) bool {
 	return typ == PartitionTypeNormal
-}
-
-func IsPreLoadDp(typ int) bool {
-	return typ == PartitionTypePreLoad
 }
 
 const (
@@ -1430,6 +1577,14 @@ type RecoverBadDiskRequest struct {
 }
 
 type DeleteBackupDirectoriesRequest struct {
+	DiskPath string
+}
+
+type DeleteLostDiskRequest struct {
+	DiskPath string
+}
+
+type ReloadDiskRequest struct {
 	DiskPath string
 }
 
@@ -1562,3 +1717,49 @@ const (
 )
 
 // const ForbiddenMigrationRenewalPeriod = 10 * time.Second // for debug
+
+type VolEmptyMpStats struct {
+	Name           string               `json:"name"`
+	Total          int                  `json:"total"`
+	EmptyCount     int                  `json:"emptyCount"`
+	MetaPartitions []*MetaPartitionView `json:"metaPartitions"`
+}
+
+// FreezeMetaPartitionRequest defines the request of freezing a meta partition.
+type FreezeMetaPartitionRequest struct {
+	PartitionID uint64
+	Freeze      bool
+}
+
+type BackupMetaPartitionRequest struct {
+	PartitionID uint64
+}
+
+type IsRaftStatusOKRequest struct {
+	PartitionID uint64
+	Ready       bool
+	ReplicaNum  int
+}
+
+type FlashNodeSetIOLimitsRequest struct {
+	Iocc   int
+	Flow   int
+	Factor int
+}
+
+func IsFlashNodeLimitError(err error) bool {
+	if strings.Compare(err.Error(), util.LimitedRunError.Error()) == 0 ||
+		strings.Compare(err.Error(), util.LimitedFlowError.Error()) == 0 ||
+		strings.Compare(err.Error(), util.LimitedIoError.Error()) == 0 ||
+		strings.Compare(err.Error(), "context deadline exceeded") == 0 ||
+		strings.Compare(err.Error(), "require data is caching") == 0 {
+		return true
+	}
+	return false
+}
+
+const (
+	FreezeMetaPartitionInit = 0
+	FreezingMetaPartition   = 1
+	FreezedMetaPartition    = 2
+)

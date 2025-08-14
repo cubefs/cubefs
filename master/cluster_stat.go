@@ -28,22 +28,15 @@ type nodeStatInfo = proto.NodeStatInfo
 
 type volStatInfo = proto.VolStatInfo
 
-func newVolStatInfo(name string, total, used, cacheTotal, cacheUsed, inodeCount uint64) *volStatInfo {
+func newVolStatInfo(name string, total, used, inodeCount uint64) *volStatInfo {
 	usedRatio := strconv.FormatFloat(float64(used)/float64(total), 'f', 3, 32)
-	cacheUsedRatio := "0.00"
-	if cacheTotal > 0 {
-		strconv.FormatFloat(float64(cacheUsed)/float64(cacheTotal), 'f', 3, 32)
-	}
 
 	return &volStatInfo{
-		Name:           name,
-		TotalSize:      total,
-		UsedSize:       used,
-		UsedRatio:      usedRatio,
-		CacheTotalSize: cacheTotal,
-		CacheUsedSize:  cacheUsed,
-		CacheUsedRatio: cacheUsedRatio,
-		InodeCount:     inodeCount,
+		Name:       name,
+		TotalSize:  total,
+		UsedSize:   used,
+		UsedRatio:  usedRatio,
+		InodeCount: inodeCount,
 	}
 }
 
@@ -118,6 +111,8 @@ func (c *Cluster) updateDataNodeStatInfo() {
 		used  uint64
 		avail uint64
 	)
+
+	statsByMedia := make(map[string]*nodeStatInfo)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		total = total + dataNode.Total
@@ -126,6 +121,17 @@ func (c *Cluster) updateDataNodeStatInfo() {
 		if dataNode.isActive {
 			avail = avail + dataNode.AvailableSpace
 		}
+
+		media := proto.MediaTypeString(dataNode.MediaType)
+		stat, OK := statsByMedia[media]
+		if !OK {
+			stat = new(nodeStatInfo)
+			statsByMedia[media] = stat
+		}
+
+		stat.TotalGB += dataNode.Total / util.GB
+		stat.UsedGB += dataNode.Used / util.GB
+
 		return true
 	})
 	if total <= 0 {
@@ -142,6 +148,8 @@ func (c *Cluster) updateDataNodeStatInfo() {
 	c.dataNodeStatInfo.IncreasedGB = int64(usedGB) - int64(c.dataNodeStatInfo.UsedGB)
 	c.dataNodeStatInfo.UsedGB = usedGB
 	c.dataNodeStatInfo.UsedRatio = strconv.FormatFloat(usedRate, 'f', 3, 32)
+
+	c.dataStatsByMedia = statsByMedia
 }
 
 func (c *Cluster) updateMetaNodeStatInfo() {
@@ -183,11 +191,6 @@ func (c *Cluster) updateVolStatInfo() {
 			continue
 		}
 
-		cacheUsed, cacheTotal := vol.cfsUsedSpace(), vol.CacheCapacity*util.GB
-		if proto.IsHot(vol.VolType) {
-			cacheUsed, cacheTotal = 0, 0
-		}
-
 		var inodeCount uint64
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
@@ -195,6 +198,6 @@ func (c *Cluster) updateVolStatInfo() {
 		}
 		vol.mpsLock.RUnlock()
 
-		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, cacheTotal, cacheUsed, inodeCount))
+		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, used, inodeCount))
 	}
 }

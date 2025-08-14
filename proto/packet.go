@@ -27,6 +27,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/util/bytespool"
+
+	pb "github.com/gogo/protobuf/proto"
+
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
@@ -117,6 +121,10 @@ const (
 	OpAddMetaPartitionRaftMember    uint8 = 0x46
 	OpRemoveMetaPartitionRaftMember uint8 = 0x47
 	OpMetaPartitionTryToLeader      uint8 = 0x48
+	OpFreezeEmptyMetaPartition      uint8 = 0x49
+	OpBackupEmptyMetaPartition      uint8 = 0x4A
+	OpRemoveBackupMetaPartition     uint8 = 0x4B
+	OpIsRaftStatusOk                uint8 = 0x4C
 
 	// Quota
 	OpMetaBatchSetInodeQuota    uint8 = 0x50
@@ -154,6 +162,9 @@ const (
 	OpRecoverBadDisk                uint8 = 0x6E
 	OpQueryBadDiskRecoverProgress   uint8 = 0x6F
 	OpDeleteBackupDirectories       uint8 = 0x80
+	OpDeleteLostDisk                uint8 = 0x8A
+	OpReloadDisk                    uint8 = 0x8B
+	OpSetRepairingStatus            uint8 = 0x8C
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70
@@ -187,8 +198,9 @@ const (
 	OpMetaTxGet          uint8 = 0xAB
 
 	// Operations: Client -> MetaNode.
-	OpMetaGetUniqID    uint8 = 0xAC
-	OpMetaGetAppliedID uint8 = 0xAD
+	OpMetaGetUniqID       uint8 = 0xAC
+	OpMetaGetAppliedID    uint8 = 0xAD
+	OpMetaUpdateInodeMeta uint8 = 0xAE
 
 	// Multi version snapshot
 	OpRandomWriteAppend     uint8 = 0xB1
@@ -268,7 +280,10 @@ const (
 	// get access time
 	OpMetaInodeAccessTimeGet uint8 = 0xB2
 
-	OpReachMaxExtentsErr uint8 = 0xB3
+	OpReachMaxExtentsErr      uint8 = 0xB3
+	OpTinyRecoverErr          uint8 = 0xB4
+	OpDpDecommissionRepairErr uint8 = 0xB5
+	OpDpRepairErr             uint8 = 0xB6
 
 	// hybirdCloud
 	OpMismatchStorageClass              uint8 = 0x82
@@ -278,6 +293,16 @@ const (
 	OpLeaseOccupiedByOthers             uint8 = 0x86
 	OpLeaseGenerationNotMatch           uint8 = 0x87
 	OpWriteOpOfProtoVerForbidden        uint8 = 0x88
+	OpMetaForbiddenMigration            uint8 = 0x89
+	// Distributed cache related OP codes.
+	OpFlashNodeHeartbeat        uint8 = 0xDA
+	OpFlashNodeCachePrepare     uint8 = 0xDB
+	OpFlashNodeCacheRead        uint8 = 0xDC
+	OpFlashNodeSetReadIOLimits  uint8 = 0xED
+	OpFlashNodeSetWriteIOLimits uint8 = 0xEE
+	OpFlashNodeScan             uint8 = 0xD4
+	OpFlashNodeTaskCommand      uint8 = 0xD5
+	OpFlashSDKHeartbeat         uint8 = 0xCB
 )
 
 const (
@@ -292,6 +317,15 @@ const (
 	MultiVersionFlag                          = 0x80
 	VersionListFlag                           = 0x40
 	PacketProtocolVersionFlag                 = 0x10
+
+	DefaultRemoteCacheTTL               = 5 * 24 * 3600
+	DefaultRemoteCacheClientReadTimeout = 100 // ms
+	DefaultRemoteCacheMaxFileSizeGB     = 128
+	DefaultFlashNodeTimeoutCount        = 5
+	DefaultRemoteCacheHandleReadTimeout = 100 // ms
+	DefaultRemoteCacheExtentReadTimeout = 3000
+	DefaultRemoteCacheSameZoneTimeout   = 400 // microsecond
+	DefaultRemoteCacheSameRegionTimeout = 2   // ms
 )
 
 // multi version operation
@@ -693,6 +727,32 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaUpdateExtentKeyAfterMigration"
 	case OpDeleteMigrationExtentKey:
 		m = "OpDeleteMigrationExtentKey"
+	case OpFlashNodeHeartbeat:
+		m = "OpFlashNodeHeartbeat"
+	case OpFlashNodeCachePrepare:
+		m = "OpFlashNodeCachePrepare"
+	case OpFlashNodeCacheRead:
+		m = "OpFlashNodeCacheRead"
+	case OpFlashNodeSetReadIOLimits:
+		m = "OpFlashNodeSetReadIOLimits"
+	case OpFlashNodeSetWriteIOLimits:
+		m = "OpFlashNodeSetWriteIOLimits"
+	case OpFlashNodeScan:
+		m = "OpFlashNodeScan"
+	case OpFlashNodeTaskCommand:
+		m = "OpFlashNodeTaskCommand"
+	case OpSetRepairingStatus:
+		m = "OpSetRepairingStatus"
+	case OpFreezeEmptyMetaPartition:
+		m = "OpFreezeEmptyMetaPartition"
+	case OpBackupEmptyMetaPartition:
+		m = "OpBackupEmptyMetaPartition"
+	case OpRemoveBackupMetaPartition:
+		m = "OpRemoveBackupMetaPartition"
+	case OpIsRaftStatusOk:
+		m = "OpIsRaftStatusOk"
+	case OpFlashSDKHeartbeat:
+		m = "OpFlashSDKHeartbeat"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
@@ -778,6 +838,10 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpForbidErr"
 	case OpLimitedIoErr:
 		m = "OpLimitedIoErr"
+	case OpTinyRecoverErr:
+		m = "OpTinyRecoverErr"
+	case OpDpDecommissionRepairErr:
+		m = "OpDpDecommissionRepairErr"
 	case OpStoreClosed:
 		return "OpStoreClosed"
 	case OpReachMaxExtentsErr:
@@ -861,23 +925,24 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 
 func (p *Packet) TryReadExtraFieldsFromConn(c net.Conn) (err error) {
 	if p.ExtentType&PacketProtocolVersionFlag > 0 {
-		verSeq := make([]byte, 8)
-		if _, err = io.ReadFull(c, verSeq); err != nil {
+		buf := bytespool.Alloc(12)
+		defer bytespool.Free(buf)
+		if _, err = io.ReadFull(c, buf[:8]); err != nil {
 			return
 		}
-		p.VerSeq = binary.BigEndian.Uint64(verSeq)
+		p.VerSeq = binary.BigEndian.Uint64(buf[:8])
 
-		protoVer := make([]byte, 4)
-		if _, err = io.ReadFull(c, protoVer); err != nil {
+		if _, err = io.ReadFull(c, buf[8:12]); err != nil {
 			return
 		}
-		p.ProtoVersion = binary.BigEndian.Uint32(protoVer)
+		p.ProtoVersion = binary.BigEndian.Uint32(buf[8:12])
 	} else if p.ExtentType&MultiVersionFlag > 0 {
-		ver := make([]byte, 8)
-		if _, err = io.ReadFull(c, ver); err != nil {
+		buf := bytespool.Alloc(8)
+		defer bytespool.Free(buf)
+		if _, err = io.ReadFull(c, buf[:8]); err != nil {
 			return
 		}
-		p.VerSeq = binary.BigEndian.Uint64(ver)
+		p.VerSeq = binary.BigEndian.Uint64(buf[:8])
 	}
 
 	return
@@ -946,6 +1011,20 @@ func (p *Packet) MarshalData(v interface{}) error {
 // UnmarshalData unmarshals the packet data.
 func (p *Packet) UnmarshalData(v interface{}) error {
 	return json.Unmarshal(p.Data, v)
+}
+
+func (p *Packet) MarshalDataPb(m pb.Message) error {
+	data, err := pb.Marshal(m)
+	if err == nil {
+		p.Data = data
+		p.Size = uint32(len(p.Data))
+		// p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+	}
+	return err
+}
+
+func (p *Packet) UnmarshalDataPb(m pb.Message) error {
+	return pb.Unmarshal(p.Data, m)
 }
 
 // WriteToNoDeadLineConn writes through the connection without deadline.
@@ -1030,7 +1109,7 @@ func (p *Packet) IsReadOperation() bool {
 	return p.Opcode == OpStreamRead || p.Opcode == OpRead ||
 		p.Opcode == OpExtentRepairRead || p.Opcode == OpReadTinyDeleteRecord ||
 		p.Opcode == OpTinyExtentRepairRead || p.Opcode == OpStreamFollowerRead ||
-		p.Opcode == OpSnapshotExtentRepairRead
+		p.Opcode == OpSnapshotExtentRepairRead || p.Opcode == OpBackupRead
 }
 
 func (p *Packet) IsReadMetaPkt() bool {
@@ -1187,6 +1266,54 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	return nil
 }
 
+func (p *Packet) ReadFromConnExt(c net.Conn, timeoutMillSec int) (err error) {
+	if timeoutMillSec != NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Millisecond * time.Duration(timeoutMillSec)))
+	} else {
+		c.SetReadDeadline(time.Time{})
+	}
+	header, err := Buffers.Get(util.PacketHeaderSize)
+	if err != nil {
+		header = make([]byte, util.PacketHeaderSize)
+	}
+	defer Buffers.Put(header)
+	var n int
+	if n, err = io.ReadFull(c, header); err != nil {
+		return
+	}
+	if n != util.PacketHeaderSize {
+		return syscall.EBADMSG
+	}
+	if err = p.UnmarshalHeader(header); err != nil {
+		return
+	}
+
+	if err = p.TryReadExtraFieldsFromConn(c); err != nil {
+		return
+	}
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		if _, err = io.ReadFull(c, p.Arg[:int(p.ArgLen)]); err != nil {
+			return err
+		}
+	}
+
+	size := p.Size
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead ||
+		p.Opcode == OpBackupRead) && p.ResultCode == OpInitResultCode {
+		size = 0
+	}
+	p.Data = make([]byte, size)
+	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
+		return err
+	}
+	if n != int(size) {
+		return syscall.EBADMSG
+	}
+	return nil
+}
+
 // PacketOkReply sets the result code as OpOk, and sets the body as empty.
 func (p *Packet) PacketOkReply() {
 	p.ResultCode = OpOk
@@ -1284,6 +1411,13 @@ func (p *Packet) GetMsg() string {
 	return p.mesg
 }
 
+func (p *Packet) GetNoPrefixMsg() string {
+	return fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
+		"Size(%v)_Opcode(%v)_CRC(%v), m(%s)",
+		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
+		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC, p.mesg)
+}
+
 func (p *Packet) setPacketPrefix() {
 	if !log.EnableDebug() && p.IsReadOperation() {
 		p.noPrefix = true
@@ -1332,7 +1466,6 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v]"+
 			", err[%v]", p.GetUniqueLogId(), p.IsForwardPkt(), remote, err.Error())
 	}
-
 	return
 }
 

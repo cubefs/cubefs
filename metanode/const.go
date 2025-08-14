@@ -103,6 +103,10 @@ type (
 	SetCreateTimeRequest = proto.SetCreateTimeRequest
 
 	DeleteMigrationExtentKeyRequest = proto.DeleteMigrationExtentKeyRequest
+	// Client -> MetaNode
+	UpdateInodeMetaRequest = proto.UpdateInodeMetaRequest
+	// Master -> MetaNode
+	SetFreezeReq = proto.FreezeMetaPartitionRequest
 )
 
 // op code should be fixed, order change will cause raft fsm log apply fail
@@ -145,11 +149,7 @@ const (
 	opFSMUpdateSummaryInfo = 31
 	opFSMUpdateXAttr       = 32
 	opFSMObjExtentsAdd     = 33
-	// opFSMExtentsDel
-	opFSMExtentsEmpty = 34
-
-	opFSMClearInodeCache = 35
-	opFSMSentToChan      = 36
+	opFSMSentToChan        = 36
 
 	// transaction
 	opFSMSyncTxID           = 37
@@ -193,6 +193,7 @@ const (
 	opFSMLockDir = 68
 
 	opFSMSyncInodeAccessTime = 69
+	opFSMUpdateInodeMeta     = 70
 
 	opFSMVerListSnapShot   = 73
 	opFSMVersionOp         = 74
@@ -205,6 +206,9 @@ const (
 	opFSMInternalBatchFreeInodeMigrationExtentKey = 89
 	opFSMSetInodeCreateTime                       = 90 // for debug
 	opFSMSetMigrationExtentKeyDeleteImmediately   = 91
+
+	// freeze meta partition
+	opFSMSetFreeze = 92
 )
 
 // new inode opCode
@@ -244,6 +248,9 @@ const (
 	cfgRaftSyncSnapFormatVersion = "raftSyncSnapFormatVersion" // int, format version of snapshot that raft leader sent to follower
 	cfgServiceIDKey              = "serviceIDKey"
 	cfgEnableGcTimer             = "enableGcTimer" // bool
+	CfgGcRecyclePercent          = "gcRecyclePercent"
+	cfsQosEnable                 = "qosEnable"   // bool
+	cfgReadDirIops               = "readDirIops" // int
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int
@@ -261,6 +268,8 @@ const (
 	DefaultRaftNumOfLogsToRetain       = 20000 * 2
 	DefaultCreateBlobClientIntervalSec = 30
 	defaultSyncInodeAtimeCnt           = 102400
+	RaftCommitDiffMax                  = 100
+	DefaultGOGCValue                   = 100
 )
 
 const (
@@ -279,6 +288,7 @@ var (
 	_ = (*metaPartition).decommissionPartition
 	_ = (*metaPartition).getDentryTree
 	_ = (*metaPartition).internalHasInode
-	_ = (*metaPartition).fsmDelVerExtents
 	_ = (*TransactionResource).copyGetTxRbInode
 )
+
+const DelMetaPartitionHdr = "del_partition_"

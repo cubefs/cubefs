@@ -24,9 +24,7 @@ import (
 )
 
 type MetaQuotaManager struct {
-	statisticTemp    *sync.Map // key quotaId, value proto.QuotaUsedInfo
 	statisticBase    *sync.Map // key quotaId, value proto.QuotaUsedInfo
-	storeRebuildTemp *sync.Map // key quotaId, value proto.QuotaUsedInfo
 	storeRebuildBase *sync.Map // key quotaId, value proto.QuotaUsedInfo
 	limitedMap       *sync.Map
 	rbuildbySnapshot bool
@@ -34,7 +32,6 @@ type MetaQuotaManager struct {
 	rwlock           sync.RWMutex
 	mpID             uint64
 	enable           bool
-	eSimplify        bool
 }
 
 type MetaQuotaInode struct {
@@ -49,14 +46,11 @@ type TxMetaQuotaInode struct {
 
 func NewQuotaManager(volName string, mpId uint64) (mqMgr *MetaQuotaManager) {
 	mqMgr = &MetaQuotaManager{
-		statisticTemp:    new(sync.Map),
 		statisticBase:    new(sync.Map),
-		storeRebuildTemp: new(sync.Map),
 		storeRebuildBase: new(sync.Map),
 		limitedMap:       new(sync.Map),
 		volName:          volName,
 		mpID:             mpId,
-		eSimplify:        true,
 	}
 	return
 }
@@ -208,26 +202,7 @@ func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReport
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
 	var usedInfo proto.QuotaUsedInfo
-	mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
-		usedInfo = value.(proto.QuotaUsedInfo)
-		if value, isFind := mqMgr.statisticBase.Load(key.(uint32)); isFind {
-			baseInfo := value.(proto.QuotaUsedInfo)
-			log.LogDebugf("[getQuotaReportInfos] statisticTemp mp[%v] key [%v] usedInfo [%v] baseInfo [%v]", mqMgr.mpID,
-				key.(uint32), usedInfo, baseInfo)
-			usedInfo.Add(&baseInfo)
-			if usedInfo.UsedFiles < 0 {
-				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp[%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
-				usedInfo.UsedFiles = 0
-			}
-			if usedInfo.UsedBytes < 0 {
-				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp[%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
-				usedInfo.UsedBytes = 0
-			}
-		}
-		mqMgr.statisticBase.Store(key.(uint32), usedInfo)
-		return true
-	})
-	mqMgr.statisticTemp = new(sync.Map)
+
 	mqMgr.statisticBase.Range(func(key, value interface{}) bool {
 		quotaId := key.(uint32)
 		if _, ok := mqMgr.limitedMap.Load(quotaId); !ok {
@@ -265,21 +240,12 @@ func (mqMgr *MetaQuotaManager) statisticRebuildFin(rebuild bool) {
 	mqMgr.rbuildbySnapshot = false
 	if !rebuild {
 		mqMgr.storeRebuildBase = new(sync.Map)
-		mqMgr.storeRebuildTemp = new(sync.Map)
 		return
 	}
 	mqMgr.statisticBase = mqMgr.storeRebuildBase
-	mqMgr.statisticTemp = mqMgr.storeRebuildTemp
 	mqMgr.storeRebuildBase = new(sync.Map)
-	mqMgr.storeRebuildTemp = new(sync.Map)
 
 	if log.EnableInfo() {
-		mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
-			quotaId := key.(uint32)
-			usedInfo := value.(proto.QuotaUsedInfo)
-			log.LogInfof("statisticRebuildFin statisticTemp  mp[%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
-			return true
-		})
 		mqMgr.statisticBase.Range(func(key, value interface{}) bool {
 			quotaId := key.(uint32)
 			usedInfo := value.(proto.QuotaUsedInfo)
@@ -312,48 +278,6 @@ func (mqMgr *MetaQuotaManager) IsOverQuota(size bool, files bool, quotaId uint32
 	return
 }
 
-func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId uint32) {
-	if mqMgr.eSimplify {
-		return
-	}
-	var baseInfo proto.QuotaUsedInfo
-	var baseTemp proto.QuotaUsedInfo
-	mqMgr.rwlock.Lock()
-	defer mqMgr.rwlock.Unlock()
-
-	value, isFind := mqMgr.statisticTemp.Load(quotaId)
-	if isFind {
-		baseInfo = value.(proto.QuotaUsedInfo)
-	}
-	baseInfo.UsedBytes += size
-	baseInfo.UsedFiles += files
-	mqMgr.statisticTemp.Store(quotaId, baseInfo)
-	if mqMgr.rbuildbySnapshot {
-		value, isFind = mqMgr.storeRebuildTemp.Load(quotaId)
-		if isFind {
-			baseTemp = value.(proto.QuotaUsedInfo)
-		} else {
-			baseTemp.UsedBytes = 0
-			baseTemp.UsedFiles = 0
-		}
-		baseTemp.UsedBytes += size
-		baseTemp.UsedFiles += files
-		mqMgr.storeRebuildTemp.Store(quotaId, baseTemp)
-	}
-	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v] baseTemp[%v]", mqMgr.mpID, quotaId, baseInfo, baseTemp)
-}
-
 func (mqMgr *MetaQuotaManager) EnableQuota() bool {
 	return mqMgr.enable
-}
-
-func (mqMgr *MetaQuotaManager) getUsedInfoForTest(quotaId uint32) (size int64, files int64) {
-	mqMgr.rwlock.Lock()
-	defer mqMgr.rwlock.Unlock()
-	var baseInfo proto.QuotaUsedInfo
-	value, isFind := mqMgr.statisticTemp.Load(quotaId)
-	if isFind {
-		baseInfo = value.(proto.QuotaUsedInfo)
-	}
-	return baseInfo.UsedBytes, baseInfo.UsedFiles
 }

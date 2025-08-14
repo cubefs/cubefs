@@ -26,6 +26,7 @@ const (
 	TaskStart        = 0
 	TaskSucceeds     = 1
 	TaskRunning      = 3
+	TaskStop         = 4
 	ResponseInterval = 5
 	ResponseTimeOut  = 100
 	MaxSendCount     = 5
@@ -35,6 +36,7 @@ const (
 type AdminTask struct {
 	ID           string
 	PartitionID  uint64
+	Disk         string
 	OpCode       uint8
 	OperatorAddr string
 	Status       int8
@@ -117,7 +119,7 @@ func (t *AdminTask) isCreateTask() bool {
 
 // IsHeartbeatTask returns if the task is a heartbeat task.
 func (t *AdminTask) IsHeartbeatTask() bool {
-	return t.OpCode == OpDataNodeHeartbeat || t.OpCode == OpMetaNodeHeartbeat || t.OpCode == OpLcNodeHeartbeat
+	return t.OpCode == OpDataNodeHeartbeat || t.OpCode == OpMetaNodeHeartbeat || t.OpCode == OpLcNodeHeartbeat || t.OpCode == OpFlashNodeHeartbeat
 }
 
 // NewAdminTask returns a new adminTask.

@@ -147,9 +147,9 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
 		VolStorageClass:             volumeInfo.VolStorageClass,
 		VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
-		VolCacheDpStorageClass:      volumeInfo.CacheDpStorageClass,
 		OnForbiddenMigration:        metaWrapper.ForbiddenMigration,
 		InnerReq:                    true,
+		MetaWrapper:                 metaWrapper,
 	}
 	log.LogInfof("[NewS3Scanner] extentConfig: vol(%v) volStorageClass(%v) allowedStorageClass(%v), followerRead(%v)",
 		extentConfig.Volume, extentConfig.VolStorageClass, extentConfig.VolAllowedStorageClass, extentConfig.FollowerRead)
@@ -169,6 +169,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		ec:        extentClient,
 		ecForW:    extentClientForW,
 		ebsClient: ebsClient,
+		meta:      metaWrapper,
 	}
 
 	return scanner, nil
@@ -395,9 +396,15 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	info, err := s.mw.InodeGet_ll(dentry.Inode)
 	if err != nil {
-		log.LogErrorf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
+		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
 		return
 	}
+
+	if info != nil && info.Size < s.rule.MinSize() {
+		log.LogInfof("handleFile: %+v, minSize(%d) size(%v) no need to process", dentry, s.rule.MinSize(), info.Size)
+		return
+	}
+
 	op := s.inodeExpired(info, s.rule.Expiration, s.rule.Transitions)
 	dentry.Op = op
 	dentry.Size = info.Size
@@ -519,6 +526,9 @@ func isSkipErr(err error) bool {
 	if strings.Contains(err.Error(), "no such file or directory") {
 		return true
 	}
+	if strings.Contains(err.Error(), "ExtentNotFoundError") {
+		return true
+	}
 	return false
 }
 
@@ -564,10 +574,12 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 
 func expired(inode *proto.InodeInfo, now int64, days *int, date *time.Time) bool {
 	if days != nil && *days > 0 {
-		if inode.AccessTime.Before(inode.CreateTime) {
+		// Avoid the impact of time jitter between nodes
+		if inode.AccessTime.Add(time.Second * 10).Before(inode.CreateTime) {
 			log.LogWarnf("AccessTime before CreateTime, skip, inode: %+v, LeaseExpireTime(%v), AccessTime(%v), CreateTime(%v)", inode, inode.LeaseExpireTime, inode.AccessTime, inode.CreateTime)
 			return false
 		}
+
 		inodeTime := inode.AccessTime.Unix()
 		if useCreateTime {
 			inodeTime = inode.CreateTime.Unix()

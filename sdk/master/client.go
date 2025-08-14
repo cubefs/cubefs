@@ -43,7 +43,10 @@ const (
 	post = http.MethodPost
 )
 
-var ErrNoValidMaster = errors.New("no valid master")
+var (
+	ErrNoValidMaster = errors.New("no valid master")
+	CliPrint         bool
+)
 
 type MasterCLientWithResolver struct {
 	MasterClient
@@ -199,11 +202,16 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			if err := body.Unmarshal(repsData); err != nil {
 				log.LogErrorf("unmarshal response body err:%v", err)
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
-
 			}
 			if body.Code != proto.ErrCodeSuccess {
-				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
-				return []byte(body.Data), errors.New(body.Msg)
+				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, string(body.Data))
+				if body.Code == proto.ErrCodeInternalError && len(body.Msg) != 0 {
+					return nil, errors.New(body.Msg)
+				} else if CliPrint && body.Code == proto.ErrCodeParamError && len(body.Msg) != 0 {
+					return nil, errors.New(body.Msg)
+				} else {
+					return nil, proto.ParseErrorCode(body.Code)
+				}
 			}
 			return body.Bytes(), nil
 		default:

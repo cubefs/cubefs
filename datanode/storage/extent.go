@@ -17,6 +17,7 @@ package storage
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -35,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 const (
@@ -48,6 +50,12 @@ const (
 	ExtentMaxSize = 1024 * 1024 * 1024 * 1024 * 4 // 4TB
 	pageSize      = 4096
 	alignSize     = 4096
+	magicNumber   = byte('M')
+)
+
+var (
+	ErrNonBytecodeEncode = errors.New("non-bytecode serialization method")
+	atime                uint64
 )
 
 func alignment(block []byte, AlignSize int) int {
@@ -89,17 +97,14 @@ func (wparam *WriteParam) String() (m string) {
 }
 
 type ExtentInfo struct {
+	IsDeleted           bool   `json:"deleted"`
+	Crc                 uint32 `json:"Crc"`
 	FileID              uint64 `json:"fileId"`
 	Size                uint64 `json:"size"`
-	Crc                 uint32 `json:"Crc"`
-	IsDeleted           bool   `json:"deleted"`
 	ModifyTime          int64  `json:"modTime"` // random write not update modify time
-	AccessTime          int64  `json:"accessTime"`
-	Source              string `json:"src"`
 	SnapshotDataOff     uint64 `json:"snapSize"`
 	SnapPreAllocDataOff uint64 `json:"snapPreAllocSize"`
 	ApplyID             uint64 `json:"applyID"`
-	ApplySize           int64  `json:"ApplySize"`
 }
 
 func (ei *ExtentInfo) TotalSize() uint64 {
@@ -110,11 +115,28 @@ func (ei *ExtentInfo) TotalSize() uint64 {
 }
 
 func (ei *ExtentInfo) String() (m string) {
-	source := ei.Source
-	if source == "" {
-		source = "none"
+	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_MT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, ei.ModifyTime, ei.Crc)
+}
+
+func MarshalBinarySlice(eiSlice []*ExtentInfo) (v []byte, err error) {
+	buff := bytes.NewBuffer([]byte{})
+	if err := buff.WriteByte(magicNumber); err != nil {
+		return nil, err
 	}
-	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_Source(%v)_MT(%d)_AT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, source, ei.ModifyTime, ei.AccessTime, ei.Crc)
+	if err := binary.Write(buff, binary.BigEndian, int32(len(eiSlice))); err != nil {
+		return nil, err
+	}
+
+	for _, ei := range eiSlice {
+		data, err := ei.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := buff.Write(data); err != nil {
+			return nil, err
+		}
+	}
+	return buff.Bytes(), nil
 }
 
 func (ei *ExtentInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
@@ -130,7 +152,8 @@ func (ei *ExtentInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
 	if err = binary.Write(buff, binary.BigEndian, ei.ModifyTime); err != nil {
 		return
 	}
-	if err = binary.Write(buff, binary.BigEndian, ei.AccessTime); err != nil {
+	// Compatible with older versions
+	if err = binary.Write(buff, binary.BigEndian, &atime); err != nil {
 		return
 	}
 	if err = binary.Write(buff, binary.BigEndian, ei.SnapPreAllocDataOff); err != nil {
@@ -154,6 +177,37 @@ func (ei *ExtentInfo) MarshalBinary() (v []byte, err error) {
 	return
 }
 
+func UnmarshalBinarySlice(data []byte) ([]*ExtentInfo, error) {
+	if len(data) <= 0 {
+		return nil, ErrNonBytecodeEncode
+	}
+	magic := data[0]
+	if magic != magicNumber {
+		return nil, ErrNonBytecodeEncode
+	}
+
+	buff := bytes.NewBuffer(data[1:])
+	// Read the length of the slice
+	var length int32
+	if err := binary.Read(buff, binary.BigEndian, &length); err != nil {
+		return nil, err
+	}
+
+	eiSlice := make([]*ExtentInfo, length)
+
+	// Iterate and read each ExtentInfo
+	for i := int32(0); i < length; i++ {
+		// Read enough bytes for one ExtentInfo
+		var ei *ExtentInfo = new(ExtentInfo)
+		if err := ei.UnmarshalBinaryWithBuffer(buff); err != nil {
+			return nil, err
+		}
+		eiSlice[i] = ei
+	}
+
+	return eiSlice, nil
+}
+
 func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &ei.FileID); err != nil {
 		return
@@ -167,7 +221,8 @@ func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) 
 	if err = binary.Read(buff, binary.BigEndian, &ei.ModifyTime); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &ei.AccessTime); err != nil {
+	// Compatible with older versions
+	if err = binary.Read(buff, binary.BigEndian, &atime); err != nil {
 		return
 	}
 
@@ -188,21 +243,6 @@ func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) 
 func (ei *ExtentInfo) UnmarshalBinary(v []byte) (err error) {
 	err = ei.UnmarshalBinaryWithBuffer(bytes.NewBuffer(v))
 	return
-}
-
-// SortedExtentInfos defines an array sorted by AccessTime
-type SortedExtentInfos []*ExtentInfo
-
-func (extInfos SortedExtentInfos) Len() int {
-	return len(extInfos)
-}
-
-func (extInfos SortedExtentInfos) Less(i, j int) bool {
-	return extInfos[i].AccessTime < extInfos[j].AccessTime
-}
-
-func (extInfos SortedExtentInfos) Swap(i, j int) {
-	extInfos[i], extInfos[j] = extInfos[j], extInfos[i]
 }
 
 // Extent is an implementation of Extent for local regular extent file data management.
@@ -289,8 +329,8 @@ func (e *Extent) InitToFS() (err error) {
 		e.dataSize = 0
 		return
 	}
-	atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
-	atomic.StoreInt64(&e.accessTime, time.Now().Unix())
+	atomic.StoreInt64(&e.modifyTime, timeutil.GetCurrentTimeUnix())
+	atomic.StoreInt64(&e.accessTime, timeutil.GetCurrentTimeUnix())
 	e.dataSize = 0
 	return
 }
@@ -396,8 +436,7 @@ func (e *Extent) RestoreFromFS() (err error) {
 
 	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
 
-	ts := info.Sys().(*syscall.Stat_t)
-	atomic.StoreInt64(&e.accessTime, time.Unix(int64(ts.Atim.Sec), int64(ts.Atim.Nsec)).Unix())
+	atomic.StoreInt64(&e.accessTime, timeutil.GetCurrentTimeUnix())
 	return
 }
 
@@ -683,14 +722,19 @@ func (e *Extent) autoComputeExtentCrc(extSize int64, crcFunc UpdateCrcFunc) (crc
 		blockCnt += 1
 	}
 	log.LogDebugf("autoComputeExtentCrc. path %v extent %v extent size %v,blockCnt %v", e.filePath, e.extentID, extSize, blockCnt)
-	crcData := make([]byte, blockCnt*util.PerBlockCrcSize)
+	crcData := bytespool.Alloc(blockCnt * util.PerBlockCrcSize)
+	bdata := bytespool.Alloc(util.BlockSize)
+	defer func() {
+		bytespool.Free(crcData)
+		bytespool.Free(bdata)
+	}()
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
 		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
 		if blockCrc != 0 {
 			binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
 			continue
 		}
-		bdata := make([]byte, util.BlockSize)
+
 		offset := int64(blockNo * util.BlockSize)
 		readN, err := e.file.ReadAt(bdata[:util.BlockSize], offset)
 		if readN == 0 && err != nil {
@@ -700,7 +744,11 @@ func (e *Extent) autoComputeExtentCrc(extSize int64, crcFunc UpdateCrcFunc) (crc
 		blockCrc = crc32.ChecksumIEEE(bdata[:readN])
 		err = crcFunc(e, blockNo, blockCrc)
 		if err != nil {
-			log.LogErrorf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
+			if strings.Contains(err.Error(), "file already close") {
+				log.LogWarnf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
+			} else {
+				log.LogErrorf("autoComputeExtentCrc. path %v extent %v blockNo %v, err %v", e.filePath, e.extentID, blockNo, err)
+			}
 			return 0, nil
 		}
 		log.LogDebugf("autoComputeExtentCrc. path %v extent %v blockCrc %v,blockNo %v", e.filePath, e.extentID, blockCrc, blockNo)
@@ -713,7 +761,9 @@ func (e *Extent) autoComputeExtentCrc(extSize int64, crcFunc UpdateCrcFunc) (crc
 
 // DeleteTiny deletes a tiny extent.
 func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
-	log.LogDebugf("punchDelete extent %v offset %v, size %v", e, offset, size)
+	if log.EnableDebug() {
+		log.LogDebugf("punchDelete extent %v offset %v, size %v", e, offset, size)
+	}
 	if int(offset)%util.PageSize != 0 {
 		return false, ParameterMismatchError
 	}
@@ -723,7 +773,7 @@ func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 
 	newOffset, err := e.file.Seek(offset, SEEK_DATA)
 	if err != nil {
-		if strings.Contains(err.Error(), syscall.ENXIO.Error()) {
+		if errors.Is(err, syscall.ENXIO) {
 			return true, nil
 		}
 		return false, err
@@ -731,7 +781,9 @@ func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 	if newOffset-offset >= size {
 		return true, nil
 	}
-	log.LogDebugf("punchDelete offset %v size %v", offset, size)
+	if log.EnableDebug() {
+		log.LogDebugf("punchDelete offset %v size %v", offset, size)
+	}
 	err = fallocate(int(e.file.Fd()), util.FallocFLPunchHole|util.FallocFLKeepSize, offset, size)
 	return
 }
@@ -809,9 +861,10 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		watermark = watermark + (util.PageSize - watermark%util.PageSize)
 	}
 	e.dataSize = watermark
-	log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
-		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
-
+	if log.EnableDebug() {
+		log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+			"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+	}
 	return
 }
 
@@ -826,8 +879,8 @@ func (e *Extent) getExtentWithHoleAvailableOffset(offset int64) (newOffset, newE
 	if err != nil {
 		return
 	}
-	if newOffset-offset > util.BlockSize {
-		newOffset = offset + util.BlockSize
+	if newOffset-offset > util.ExtentSize {
+		newOffset = offset + util.ExtentSize
 	}
 	if newEnd-newOffset > util.BlockSize {
 		newEnd = newOffset + util.BlockSize

@@ -15,12 +15,17 @@ import (
 func (d *DataNode) startStat(cfg *config.Config) {
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	var err error
+	var logLeftSpaceLimitRatio float64
 
 	logLeftSpaceLimitRatioStr := cfg.GetString("logLeftSpaceLimitRatio")
-	logLeftSpaceLimitRatio, err := strconv.ParseFloat(logLeftSpaceLimitRatioStr, 64)
-	if err != nil {
-		log.LogWarnf("get log limt ratio failed, err %s", err.Error())
+	if logLeftSpaceLimitRatioStr == "" {
 		logLeftSpaceLimitRatio = log.DefaultLogLeftSpaceLimitRatio
+	} else {
+		logLeftSpaceLimitRatio, err = strconv.ParseFloat(logLeftSpaceLimitRatioStr, 64)
+		if err != nil {
+			log.LogWarnf("get log limt ratio failed, err %s", err.Error())
+			logLeftSpaceLimitRatio = log.DefaultLogLeftSpaceLimitRatio
+		}
 	}
 
 	stat.DpStat, err = stat.NewOpLogger(logDir, "dp_op.log", stat.DefaultMaxOps, stat.DefaultDuration, logLeftSpaceLimitRatio)

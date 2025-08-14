@@ -1,6 +1,8 @@
 package metanode
 
 import (
+	"bytes"
+	"reflect"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
@@ -86,7 +88,7 @@ func TestTruncate01(t *testing.T) {
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	delExtents, _ = se.AppendWithCheck(0, proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2}, nil, nil)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents = se.Truncate(500, nil, nil)
+	delExtents = se.Truncate(500, nil)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	if len(delExtents) != 2 || delExtents[1].ExtentId != 2 ||
 		len(se.eks) != 1 || se.eks[0].ExtentId != 1 ||
@@ -118,10 +120,15 @@ func TestSortedMarshal(t *testing.T) {
 	se.eks = append(se.eks, e1)
 	se.eks = append(se.eks, e2)
 
-	data, err := se.MarshalBinary(false)
+	buf1 := GetInodeBuf()
+	defer PutInodeBuf(buf1)
+
+	// data, err := se.MarshalBinary(false)
+	err := se.MarshalBinary(buf1, false)
 	if err != nil {
 		t.Fail()
 	}
+	data := buf1.Bytes()
 
 	se2 := NewSortedExtents()
 	err, _ = se2.UnmarshalBinary(data, false)
@@ -132,8 +139,89 @@ func TestSortedMarshal(t *testing.T) {
 	for idx := 0; idx < len(se.eks); idx++ {
 		e1 := se.eks[idx]
 		e2 := se2.eks[idx]
-		if e1 != e2 || e1.CRC != e2.CRC {
+		if !reflect.DeepEqual(e1, e2) {
 			t.Fail()
 		}
+	}
+
+	se3 := NewSortedExtents()
+	err, _ = se3.UnmarshalBinary(data, false)
+	if err != nil {
+		t.Fail()
+	}
+
+	for idx := 0; idx < len(se.eks); idx++ {
+		e1 := se.eks[idx]
+		e2 := se3.eks[idx]
+		if !reflect.DeepEqual(e1, e2) {
+			t.Fail()
+		}
+	}
+}
+
+func TestSortedEkCompitable(t *testing.T) {
+	se := NewSortedExtents()
+
+	e1 := proto.ExtentKey{
+		FileOffset:   1,
+		Size:         1010,
+		ExtentId:     10,
+		ExtentOffset: 10110,
+		PartitionId:  100,
+		CRC:          0o000,
+	}
+	e2 := proto.ExtentKey{
+		FileOffset:   4,
+		Size:         1030,
+		ExtentId:     10,
+		ExtentOffset: 1010,
+		PartitionId:  100,
+		CRC:          0o200,
+	}
+	se.eks = append(se.eks, e1)
+	se.eks = append(se.eks, e2)
+
+	// old byte data marshal by version 3.5.0
+	oldData := []byte{0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 39, 126, 0, 0, 3, 242, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 3, 242, 0, 0, 4, 6, 0, 0, 0, 128}
+
+	buf1 := GetInodeBuf()
+	defer PutInodeBuf(buf1)
+
+	err := se.MarshalBinary(buf1, false)
+	if err != nil || !bytes.Equal(oldData, buf1.Bytes()) {
+		t.Fail()
+	}
+}
+
+func BenchmarkSortedMarshal(b *testing.B) {
+	se := NewSortedExtents()
+
+	e1 := proto.ExtentKey{
+		FileOffset:   1,
+		Size:         1010,
+		ExtentId:     10,
+		ExtentOffset: 10110,
+		PartitionId:  100,
+		CRC:          0o000,
+	}
+	e2 := proto.ExtentKey{
+		FileOffset:   4,
+		Size:         1030,
+		ExtentId:     10,
+		ExtentOffset: 1010,
+		PartitionId:  100,
+		CRC:          0o200,
+	}
+
+	se.eks = append(se.eks, e1)
+	se.eks = append(se.eks, e2)
+
+	b.ReportAllocs()
+
+	buf := GetInodeBuf()
+	defer PutInodeBuf(buf)
+
+	for i := 0; i < b.N; i++ {
+		se.MarshalBinary(buf, false)
 	}
 }

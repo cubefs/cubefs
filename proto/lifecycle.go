@@ -41,8 +41,9 @@ func OpTypeToStorageType(op string) uint32 {
 		return StorageClass_Replica_HDD
 	case OpTypeStorageClassEBS:
 		return StorageClass_BlobStore
+	default:
+		return StorageClass_Unspecified
 	}
-	return StorageClass_Unspecified
 }
 
 type LcConfiguration struct {
@@ -64,7 +65,8 @@ type Expiration struct {
 }
 
 type Filter struct {
-	Prefix string `json:"Prefix,omitempty" xml:"Prefix,omitempty" bson:"Prefix,omitempty"`
+	Prefix  string `json:"Prefix,omitempty" xml:"Prefix,omitempty" bson:"Prefix,omitempty"`
+	MinSize uint64 `json:"MinSize" xml:"MinSize" bson:"MinSize"`
 }
 
 type Transition struct {
@@ -164,6 +166,13 @@ func (r *Rule) GetPrefix() string {
 		prefix = r.Filter.Prefix
 	}
 	return prefix
+}
+
+func (r *Rule) MinSize() uint64 {
+	if r.Filter != nil {
+		return r.Filter.MinSize
+	}
+	return 0
 }
 
 var regexRuleId = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)

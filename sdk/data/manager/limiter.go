@@ -479,7 +479,7 @@ func (limitManager *LimitManager) SetClientLimit(limit *proto.LimitRsp2Client) {
 		log.LogWarnf("action[SetClientLimit] enable [%v]", limit.Enable)
 	}
 	limitManager.enable = limit.Enable
-	if limit.HitTriggerCnt > 0 {
+	if limit.HitTriggerCnt > 0 && limitManager.HitTriggerCnt != limit.HitTriggerCnt {
 		log.LogWarnf("action[SetClientLimit] update to HitTriggerCnt [%v] from [%v]", limitManager.HitTriggerCnt, limit.HitTriggerCnt)
 		limitManager.HitTriggerCnt = limit.HitTriggerCnt
 	}

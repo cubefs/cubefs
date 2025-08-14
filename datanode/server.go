@@ -45,7 +45,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
 
-	"github.com/xtaci/smux"
+	"github.com/cubefs/cubefs/depends/xtaci/smux"
 )
 
 var (
@@ -70,6 +70,8 @@ const (
 
 	DefaultDiskUnavailableErrorCount          = 5
 	DefaultDiskUnavailablePartitionErrorCount = 3
+	DefaultGOGCValue                          = 100
+	DefaultExtentCacheTtlByMin                = 30
 )
 
 const (
@@ -112,14 +114,24 @@ const (
 	ConfigKeySmuxTotalStream   = "sumxTotalStream"    // int
 
 	// rate limit control enable
-	ConfigDiskQosEnable  = "diskQosEnable"  // bool
-	ConfigDiskReadIocc   = "diskReadIocc"   // int
-	ConfigDiskReadIops   = "diskReadIops"   // int
-	ConfigDiskReadFlow   = "diskReadFlow"   // int
-	ConfigDiskWriteIocc  = "diskWriteIocc"  // int
-	ConfigDiskWriteIops  = "diskWriteIops"  // int
-	ConfigDiskWriteFlow  = "diskWriteFlow"  // int
-	ConfigDiskWQueFactor = "diskWQueFactor" // int
+	ConfigDiskQosEnable      = "diskQosEnable"      // bool
+	ConfigDiskAsyncQosEnable = "diskAsyncQosEnable" // bool
+	ConfigDiskReadIocc       = "diskReadIocc"       // int
+	ConfigDiskReadIops       = "diskReadIops"       // int
+	ConfigDiskReadFlow       = "diskReadFlow"       // int
+	ConfigDiskWriteIocc      = "diskWriteIocc"      // int
+	ConfigDiskWriteIops      = "diskWriteIops"      // int
+	ConfigDiskWriteFlow      = "diskWriteFlow"      // int
+	ConfigDiskWQueFactor     = "diskWQueFactor"     // int
+	ConfigDiskAsyncReadIocc  = "diskAsyncReadIocc"  // int
+	ConfigDiskAsyncReadIops  = "diskAsyncReadIops"  // int
+	ConfigDiskAsyncReadFlow  = "diskAsyncReadFlow"  // int
+	ConfigDiskAsyncWriteIocc = "diskAsyncWriteIocc" // int
+	ConfigDiskAsyncWriteIops = "diskAsyncWriteIops" // int
+	ConfigDiskAsyncWriteFlow = "diskAsyncWriteFlow" // int
+	ConfigDiskDeleteIocc     = "diskDeleteIocc"     // int
+	ConfigDiskDeleteIops     = "diskDeleteIops"     // int
+	ConfigDiskDeleteFlow     = "diskDeleteFlow"     // int
 
 	// load/stop dp limit
 	ConfigDiskCurrentLoadDpLimit = "diskCurrentLoadDpLimit"
@@ -129,11 +141,14 @@ const (
 
 	ConfigServiceIDKey = "serviceIDKey"
 
-	ConfigEnableGcTimer = "enableGcTimer"
+	ConfigEnableGcTimer    = "enableGcTimer"
+	ConfigGcRecyclePercent = "gcRecyclePercent"
 
 	// disk status becomes unavailable if disk error partition count reaches this value
+	ConfigKeyDiskUnavailableErrorCount          = "diskUnavailableErrorCount"
 	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
 	ConfigKeyCacheCap                           = "cacheCap"
+	ConfigExtentCacheTtlByMin                   = "extentCacheTtlByMin"
 
 	// storage device media type, for hybrid cloud, in string: SDD or HDD
 	ConfigMediaType = "mediaType"
@@ -142,8 +157,8 @@ const (
 const cpuSampleDuration = 1 * time.Second
 
 const (
-	gcTimerDuration  = 10 * time.Second
-	gcRecyclePercent = 0.90
+	gcTimerDuration         = 10 * time.Second
+	defaultGcRecyclePercent = 0.90
 )
 
 // DataNode defines the structure of a data node.
@@ -187,12 +202,22 @@ type DataNode struct {
 
 	diskQosEnable           bool
 	diskQosEnableFromMaster bool
+	diskAsyncQosEnable      bool
 	diskReadIocc            int
 	diskReadIops            int
 	diskReadFlow            int
 	diskWriteIocc           int
 	diskWriteIops           int
 	diskWriteFlow           int
+	diskAsyncReadIocc       int
+	diskAsyncReadIops       int
+	diskAsyncReadFlow       int
+	diskAsyncWriteIocc      int
+	diskAsyncWriteIops      int
+	diskAsyncWriteFlow      int
+	diskDeleteIocc          int
+	diskDeleteIops          int
+	diskDeleteFlow          int
 	diskWQueFactor          int
 	dpMaxRepairErrCnt       uint64
 	clusterUuid             string
@@ -203,9 +228,14 @@ type DataNode struct {
 	cpuUtil        atomicutil.Float64
 	cpuSamplerDone chan struct{}
 
-	enableGcTimer bool
-	gcTimer       *util.RecycleTimer
+	useLocalGOGC bool
+	gogcValue    int
 
+	enableGcTimer    bool
+	gcRecyclePercent float64
+	gcTimer          *util.RecycleTimer
+
+	diskUnavailableErrorCount          uint64 // disk status becomes unavailable when disk error count reaches this value
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 	started                            int32
 	dpBackupTimeout                    time.Duration
@@ -214,6 +244,8 @@ type DataNode struct {
 	nodeForbidWriteOpOfProtoVer0       bool                // whether forbid by node granularity,
 	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
 	DirectReadVols                     map[string]struct{}
+	IgnoreTinyRecoverVols              map[string]struct{}
+	ExtentCacheTtlByMin                int
 }
 
 type verOp2Phase struct {
@@ -251,6 +283,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return errors.New("Invalid node Type!")
 	}
 	s.stopC = make(chan bool)
+	s.gogcValue = DefaultGOGCValue
 	// parse the config file
 	if err = s.parseConfig(cfg); err != nil {
 		return
@@ -331,6 +364,11 @@ func (s *DataNode) setStart() {
 	log.LogWarnf("setStart: datanode start success, set start status")
 }
 
+func (s *DataNode) setStop() {
+	atomic.StoreInt32(&s.started, statusStopped)
+	log.LogWarnf("setStop: datanode start stop, set stop status")
+}
+
 func (s *DataNode) HasStarted() bool {
 	return atomic.LoadInt32(&s.started) == statusStarted
 }
@@ -346,6 +384,7 @@ func doShutdown(server common.Server) {
 	if !ok {
 		return
 	}
+	s.setStop()
 	s.closeMetrics()
 	close(s.stopC)
 	s.space.Stop()
@@ -419,6 +458,30 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	s.serviceIDKey = cfg.GetString(ConfigServiceIDKey)
 
 	s.enableGcTimer = cfg.GetBoolWithDefault(ConfigEnableGcTimer, false)
+	gcRecyclePercentStr := cfg.GetString(ConfigGcRecyclePercent)
+	if gcRecyclePercentStr == "" {
+		s.gcRecyclePercent = defaultGcRecyclePercent
+	} else {
+		s.gcRecyclePercent, err = strconv.ParseFloat(gcRecyclePercentStr, 64)
+		if err != nil {
+			err = fmt.Errorf("parseConfig: parse configKey[%v] err: %v", ConfigGcRecyclePercent, err.Error())
+			log.LogError(err.Error())
+			return err
+		}
+	}
+
+	if s.gcRecyclePercent <= 0 || s.gcRecyclePercent > 1 {
+		s.gcRecyclePercent = defaultGcRecyclePercent
+	}
+
+	diskUnavailableErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailableErrorCount)
+	if diskUnavailableErrorCount <= 0 || diskUnavailableErrorCount > 100 {
+		diskUnavailableErrorCount = DefaultDiskUnavailableErrorCount
+		log.LogDebugf("action[parseConfig] ConfigKeyDiskUnavailableErrorCount(%v) out of range, set as default(%v)",
+			diskUnavailableErrorCount, DefaultDiskUnavailableErrorCount)
+	}
+	s.diskUnavailableErrorCount = uint64(diskUnavailableErrorCount)
+	log.LogDebugf("action[parseConfig] load diskUnavailableErrorCount(%v)", s.diskUnavailableErrorCount)
 
 	diskUnavailablePartitionErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailablePartitionErrorCount)
 	if diskUnavailablePartitionErrorCount <= 0 || diskUnavailablePartitionErrorCount > 100 {
@@ -446,6 +509,8 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	s.mediaType = mediaType
 
+	s.ExtentCacheTtlByMin = cfg.GetIntWithDefault(ConfigExtentCacheTtlByMin, DefaultExtentCacheTtlByMin)
+
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
 	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
@@ -456,14 +521,25 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 func (s *DataNode) initQosLimit(cfg *config.Config) {
 	dn := s.space.dataNode
 	dn.diskQosEnable = cfg.GetBoolWithDefault(ConfigDiskQosEnable, true)
+	dn.diskAsyncQosEnable = cfg.GetBoolWithDefault(ConfigDiskAsyncQosEnable, true)
 	dn.diskReadIocc = cfg.GetInt(ConfigDiskReadIocc)
 	dn.diskReadIops = cfg.GetInt(ConfigDiskReadIops)
 	dn.diskReadFlow = cfg.GetInt(ConfigDiskReadFlow)
 	dn.diskWriteIocc = cfg.GetInt(ConfigDiskWriteIocc)
 	dn.diskWriteIops = cfg.GetInt(ConfigDiskWriteIops)
 	dn.diskWriteFlow = cfg.GetInt(ConfigDiskWriteFlow)
-	log.LogWarnf("action[initQosLimit] set qos [%v], read(iocc:%d iops:%d flow:%d) write(iocc:%d iops:%d flow:%d)",
-		dn.diskQosEnable, dn.diskReadIocc, dn.diskReadIops, dn.diskReadFlow, dn.diskWriteIocc, dn.diskWriteIops, dn.diskWriteFlow)
+	dn.diskAsyncReadIocc = cfg.GetIntWithDefault(ConfigDiskAsyncReadIocc, 100)
+	dn.diskAsyncReadIops = cfg.GetInt(ConfigDiskAsyncReadIops)
+	dn.diskAsyncReadFlow = cfg.GetInt(ConfigDiskAsyncReadFlow)
+	dn.diskAsyncWriteIocc = cfg.GetIntWithDefault(ConfigDiskAsyncWriteIocc, 100)
+	dn.diskAsyncWriteIops = cfg.GetInt(ConfigDiskAsyncWriteIops)
+	dn.diskAsyncWriteFlow = cfg.GetInt(ConfigDiskAsyncWriteFlow)
+	dn.diskDeleteIocc = cfg.GetInt(ConfigDiskDeleteIocc)
+	dn.diskDeleteFlow = cfg.GetInt(ConfigDiskDeleteFlow)
+	dn.diskDeleteIops = cfg.GetInt(ConfigDiskDeleteIops)
+	log.LogWarnf("action[initQosLimit] set qos [normal %v async %v], rWriteiocc:normal %d async %d, iops:%d async %d, flow:normal %d async %d) write(iocc:%d async %d,iops:%d async %d, flow:%d async %d) delete(iocc:%d flow:%d iops: %d)",
+		dn.diskQosEnable, dn.diskAsyncQosEnable, dn.diskReadIocc, dn.diskAsyncReadIocc, dn.diskReadIops, dn.diskAsyncReadIops, dn.diskReadFlow, dn.diskAsyncReadFlow, dn.diskWriteIocc, dn.diskAsyncWriteIocc,
+		dn.diskWriteIops, dn.diskAsyncWriteIops, dn.diskWriteFlow, dn.diskAsyncWriteFlow, dn.diskDeleteIocc, dn.diskDeleteFlow, dn.diskDeleteIops)
 }
 
 func (s *DataNode) updateQosLimit() {
@@ -493,27 +569,31 @@ func (s *DataNode) newSpaceManager(cfg *config.Config) (err error) {
 	return
 }
 
-func (s *DataNode) getBrokenDisks() (disks map[string]interface{}, err error) {
+func (s *DataNode) getDisks() (disks map[string]interface{}, brokenDisks map[string]interface{}, err error) {
 	var dataNode *proto.DataNodeInfo
+	disks = make(map[string]interface{})
+	brokenDisks = make(map[string]interface{})
 	for i := 0; i < 3; i++ {
 		dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr)
-		if err != nil {
-			log.LogErrorf("action[getBrokenDisks]: getDataNode error %v", err)
-			continue
+		if err == nil {
+			break
 		}
-		disks = make(map[string]interface{})
-		break
+		log.LogErrorf("action[getDisks]: getDataNode error %v", err)
 	}
 
-	if disks == nil {
-		log.LogErrorf("action[getBrokenDisks]: failed to get datanode(%v), err(%v)", s.localServerAddr, err)
+	if err != nil {
+		log.LogErrorf("action[getDisks]: failed to get datanode(%v), err(%v)", s.localServerAddr, err)
 		err = fmt.Errorf("failed to get datanode %v", s.localServerAddr)
 		return
 	}
-	log.LogInfof("[getBrokenDisks] data node(%v) broken disks(%v)", dataNode.Addr, dataNode.BadDisks)
+	log.LogInfof("[getDisks] data node(%v) disks(%v) broken disks(%v)", dataNode.Addr, dataNode.AllDisks, dataNode.BadDisks)
 	for _, disk := range dataNode.BadDisks {
+		brokenDisks[disk] = struct{}{}
+	}
+	for _, disk := range dataNode.AllDisks {
 		disks[disk] = struct{}{}
 	}
+
 	return
 }
 
@@ -539,14 +619,15 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		}
 	}
 
-	brokenDisks, err := s.getBrokenDisks()
+	disks, brokenDisks, err := s.getDisks()
 	if err != nil {
-		log.LogErrorf("[startSpaceManager] failed to get broken disks, err(%v)", err)
+		log.LogErrorf("[startSpaceManager] failed to get disks, err(%v)", err)
 		return
 	}
-	log.LogInfof("[startSpaceManager] broken disks(%v)", brokenDisks)
+	log.LogInfof("[startSpaceManager] disks(%v) brokenDisks(%v)", disks, brokenDisks)
 
 	var wg sync.WaitGroup
+	diskReservedSpace := make(map[string]uint64)
 	for _, d := range paths {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 
@@ -555,21 +636,29 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if len(arr) != 2 {
 			return errors.New("invalid disk configuration. Example: PATH:RESERVE_SIZE")
 		}
+
+		isBroken := false
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
 		if err != nil {
 			log.LogErrorf("Stat disk path [%v] error: [%s]", path, err)
-			continue
-		}
-		if !fileInfo.IsDir() {
-			return errors.New("Disk path is not dir")
-		}
-		if s.clusterUuidEnable {
-			if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
-				log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
-				return fmt.Errorf("checkOrStoreClusterUuid failed: %v", err.Error())
+			if IsDiskErr(err.Error()) {
+				isBroken = true
+			} else {
+				continue
+			}
+		} else {
+			if !fileInfo.IsDir() {
+				return errors.New("Disk path is not dir")
+			}
+			if s.clusterUuidEnable {
+				if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
+					log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+					return fmt.Errorf("checkOrStoreClusterUuid failed: %v", err.Error())
+				}
 			}
 		}
+
 		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid disk reserved space. Error: %s", err.Error())
@@ -579,9 +668,17 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			reservedSpace = DefaultDiskRetainMin
 		}
 
+		diskReservedSpace[path] = reservedSpace
+
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
+		go func(wg *sync.WaitGroup, path string, reservedSpace uint64, isBroken bool) {
 			defer wg.Done()
+			if isBroken {
+				log.LogErrorf("[startSpaceManager] disk %v is broken", path)
+				s.space.LoadBrokenDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
+				return
+			}
+
 			err := s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
 			if err != nil {
 				log.LogErrorf("[startSpaceManager] load disk %v failed: %v", path, err)
@@ -590,17 +687,36 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			if _, found := brokenDisks[path]; found {
 				disk, _ := s.space.GetDisk(path)
 				disk.doDiskError()
-				log.LogErrorf("[startSpaceManager] disk %v is already IO error", path)
+				log.LogErrorf("[startSpaceManager] disk %v is broken", path)
 				return
 			}
-		}(&wg, path, reservedSpace)
+		}(&wg, path, reservedSpace, isBroken)
+	}
+	wg.Wait()
+
+	for diskPath := range disks {
+		if _, ok := diskReservedSpace[diskPath]; !ok {
+			log.LogErrorf("[startSpaceManager] diskPath %v in config is missing", diskPath)
+			continue
+		}
+		_, err = s.space.GetDisk(diskPath)
+		if err != nil {
+			log.LogErrorf("[startSpaceManager] disk %v is lost", diskPath)
+			disk := NewLostDisk(diskPath, diskReservedSpace[diskPath], diskRdonlySpace, DefaultDiskMaxErr, s.space, diskEnableReadRepairExtentLimit)
+			s.space.putDisk(disk)
+		}
 	}
 
-	wg.Wait()
+	// start check disk lost
+	s.space.StartCheckDiskLost()
+
 	// start async sample
 	s.space.StartDiskSample()
 	s.updateQosLimit() // load from config
 	s.markAllDiskLoaded()
+
+	go s.space.StartEvictExtentCache()
+
 	return nil
 }
 
@@ -850,6 +966,10 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setOpLog", s.setOpLog)
 	http.HandleFunc("/getOpLog", s.getOpLog)
 	http.HandleFunc(exporter.SetEnablePidPath, exporter.SetEnablePid)
+	http.HandleFunc("/getRaftPeers", s.getRaftPeers)
+	http.HandleFunc("/setGOGC", s.setGOGC)
+	http.HandleFunc("/getGOGC", s.getGOGC)
+	http.HandleFunc("/triggerRaftLogRotate", s.triggerRaftLogRotate)
 }
 
 func (s *DataNode) startTCPService() (err error) {
@@ -1134,11 +1254,12 @@ func (s *DataNode) startGcTimer() {
 		log.LogWarnf("[startGcTimer] swap memory is enable")
 		return
 	}
-	s.gcTimer, err = util.NewRecycleTimer(gcTimerDuration, gcRecyclePercent, 1*util.GB)
+	s.gcTimer, err = util.NewRecycleTimer(gcTimerDuration, s.gcRecyclePercent, 1*util.GB)
 	if err != nil {
 		log.LogErrorf("[startGcTimer] failed to start gc timer, err(%v)", err)
 		return
 	}
+
 	s.gcTimer.SetPanicHook(func(r interface{}) {
 		log.LogErrorf("[startGcTimer] gc timer panic, err(%v)", r)
 	})
@@ -1176,6 +1297,14 @@ func (s *DataNode) scheduleToCheckLackPartitions() {
 
 func IsDiskErr(errMsg string) bool {
 	return strings.Contains(errMsg, syscall.EIO.Error()) ||
-		strings.Contains(errMsg, syscall.EROFS.Error()) ||
-		strings.Contains(errMsg, syscall.EACCES.Error())
+		strings.Contains(errMsg, syscall.EROFS.Error())
+}
+
+func (s *DataNode) IopsStatus() (status proto.IopsStatus) {
+	status.ReadIops = s.diskReadIops
+	status.WriteIops = s.diskWriteIops
+	status.AsyncReadIops = s.diskAsyncReadIops
+	status.AsyncWriteIops = s.diskAsyncWriteIops
+	status.DeleteIops = s.diskDeleteIops
+	return
 }

@@ -53,6 +53,10 @@ var re = regexp.MustCompile(`\([0-9]*\)`)
 
 type ShiftedFile []os.FileInfo
 
+type ModuleGlobalStat func(*bufio.Writer)
+
+var PrintModuleStat ModuleGlobalStat
+
 func (f ShiftedFile) Less(i, j int) bool {
 	return f[i].ModTime().Before(f[j].ModTime())
 }
@@ -250,7 +254,9 @@ func WriteStat() error {
 	} else {
 		fmt.Fprintf(ioStream, "Mem Allocated(kB): VIRT %-10d   RES %-10d\n", virt, res)
 	}
-
+	if PrintModuleStat != nil {
+		PrintModuleStat(ioStream)
+	}
 	fmt.Fprintf(ioStream, "%-42s|%10s|%8s|%8s|%8s|%8s|%8s|%8s|%8s|\n",
 		"", "TOTAL", "FAILED", "AVG(ms)", "MAX(ms)", "MIN(ms)",
 		">"+strconv.Itoa(int(gSt.timeOutUs[0])/1000)+"ms",
@@ -435,4 +441,25 @@ func GetProcessMemory(pid int) (Virt, Res uint64, err error) {
 		}
 	}
 	return
+}
+
+func GetAvgLatencyMs(typeName string) float32 {
+	if gSt == nil {
+		return 0
+	}
+
+	if gSt.useMutex {
+		gSt.Lock()
+		defer gSt.Unlock()
+	}
+
+	typeInfo := gSt.typeInfoMap[typeName]
+	if typeInfo == nil {
+		return 0
+	}
+	avgUs := int32(0)
+	if typeInfo.allCount > 0 {
+		avgUs = int32(typeInfo.allTimeUs / time.Duration(typeInfo.allCount))
+	}
+	return float32(avgUs) / 1000
 }

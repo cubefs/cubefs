@@ -126,6 +126,7 @@ type Server struct {
 	metaReady       bool
 	apiServer       *http.Server
 	cliMgr          *ClientMgr
+	leaderChangeLk  sync.RWMutex
 }
 
 // NewServer creates a new server
@@ -173,8 +174,8 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 	WarnMetrics = newWarningMetrics(m.cluster)
 	m.cluster.scheduleTask()
-	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
 	m.startHTTPService(ModuleName, cfg)
+	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
 	metricsService := newMonitorMetrics(m.cluster)
 	metricsService.start()
 
@@ -351,6 +352,13 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	metaPartitionTimeOutSec := cfg.GetString(metaPartitionTimeOutSec)
+	if metaPartitionTimeOutSec != "" {
+		if m.config.MetaPartitionTimeOutSec, err = strconv.ParseInt(metaPartitionTimeOutSec, 10, 0); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
 	numberOfDataPartitionsToLoad := cfg.GetString(NumberOfDataPartitionsToLoad)
 	if numberOfDataPartitionsToLoad != "" {
 		if m.config.numberOfDataPartitionsToLoad, err = strconv.Atoi(numberOfDataPartitionsToLoad); err != nil {
@@ -404,11 +412,32 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	m.config.AllowMultipleReplicasOnSameMachine = cfg.GetBoolWithDefault(cfgAllowMultipleReplicasOnSameMachine, true)
 
+	memPercent := cfg.GetString(cfgMetaNodeMemoryHighPer)
+	if memPercent != "" {
+		m.config.metaNodeMemHighPer, err = strconv.ParseFloat(memPercent, 64)
+		if err != nil {
+			return fmt.Errorf("config %s:%s, error: %s", cfgMetaNodeMemoryHighPer, memPercent, err.Error())
+		}
+	}
+	memPercent = cfg.GetString(cfgMetaNodeMemoryLowPer)
+	if memPercent != "" {
+		m.config.metaNodeMemLowPer, err = strconv.ParseFloat(memPercent, 64)
+		if err != nil {
+			return fmt.Errorf("config %s:%s, error: %s", cfgMetaNodeMemoryLowPer, memPercent, err.Error())
+		}
+	}
+	m.config.metaNodeMemMidPer = (m.config.metaNodeMemHighPer + m.config.metaNodeMemLowPer) / 2.0
+	m.config.AutoMpMigrate = cfg.GetBoolWithDefault(cfgAutoMpMigrate, false)
+
 	m.config.cfgDataMediaType = uint32(cfg.GetInt64(cfgLegacyDataMediaType))
 	if m.config.cfgDataMediaType != 0 && !proto.IsValidMediaType(m.config.cfgDataMediaType) {
 		return fmt.Errorf("legacy media type is not vaild, type %d", m.config.cfgDataMediaType)
 	}
 	syslog.Printf("config mediaType %v", m.config.cfgDataMediaType)
+
+	m.config.SingleNodeMode = cfg.GetBoolWithDefault(cfgSingleNodeMode, false)
+
+	m.config.MaxWritableDataPartitionCnt = cfg.GetIntWithDefault(cfgMaxWritableDataPartitionCnt, 1000)
 	return
 }
 

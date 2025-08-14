@@ -48,7 +48,7 @@ type MetaNodeInfo struct {
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
 	CanAllowPartition         bool
-	MaxMpCntLimit             uint32
+	MaxMpCntLimit             uint64  `json:"maxMpCntLimit"`
 	CpuUtil                   float64 `json:"cpuUtil"`
 }
 
@@ -74,13 +74,16 @@ type DataNodeInfo struct {
 	NodeSetID                             uint64
 	PersistenceDataPartitions             []uint64
 	PersistenceDataPartitionsWithDiskPath []DataPartitionDiskInfo
+	AllDisks                              []string
 	BadDisks                              []string
+	LostDisks                             []string
 	RdOnly                                bool
 	CanAllocPartition                     bool
-	MaxDpCntLimit                         uint32             `json:"maxDpCntLimit"`
+	MaxDpCntLimit                         uint64             `json:"maxDpCntLimit"`
 	CpuUtil                               float64            `json:"cpuUtil"`
 	IoUtils                               map[string]float64 `json:"ioUtil"`
 	DecommissionedDisk                    []string
+	DecommissionSuccessDisk               []string
 	BackupDataPartitions                  []uint64
 	MediaType                             uint32
 	DiskOpLogs                            []OpLog
@@ -108,6 +111,7 @@ type MetaPartitionInfo struct {
 	MissNodes                 map[string]int64
 	LoadResponse              []*MetaPartitionLoadResponse
 	Forbidden                 bool
+	Freeze                    int8
 	StatByStorageClass        []*StatOfStorageClass
 	StatByMigrateStorageClass []*StatOfStorageClass
 	ForbidWriteOpOfProtoVer0  bool
@@ -115,15 +119,17 @@ type MetaPartitionInfo struct {
 
 // MetaReplica defines the replica of a meta partition
 type MetaReplicaInfo struct {
-	Addr        string
-	DomainAddr  string
-	MaxInodeID  uint64
-	ReportTime  int64
-	Status      int8 // unavailable, readOnly, readWrite
-	IsLeader    bool
-	InodeCount  uint64
-	MaxInode    uint64
-	DentryCount uint64
+	Addr            string
+	NodeID          uint64
+	DomainAddr      string
+	MaxInodeID      uint64
+	ReportTime      int64
+	Status          int8 // unavailable, readOnly, readWrite
+	IsLeader        bool
+	InodeCount      uint64
+	MaxInode        uint64
+	DentryCount     uint64
+	ReadOnlyReasons uint32
 }
 
 // ClusterView provides the view of a cluster.
@@ -139,16 +145,20 @@ type ClusterView struct {
 	MaxMetaNodeID                             uint64
 	MaxMetaPartitionID                        uint64
 	VolDeletionDelayTimeHour                  int64
+	MetaNodeGOGC                              int
+	DataNodeGOGC                              int
 	MarkDiskBrokenThreshold                   float64
 	EnableAutoDpMetaRepair                    bool
 	AutoDpMetaRepairParallelCnt               int
 	EnableAutoDecommission                    bool
 	AutoDecommissionDiskInterval              string
+	DecommissionFirstHostDiskParallelLimit    uint64
 	DecommissionLimit                         uint64
 	DecommissionDiskLimit                     uint32
 	DpRepairTimeout                           string
 	DpBackupTimeout                           string
 	DpTimeout                                 string
+	MpTimeout                                 string
 	DataNodeStatInfo                          *NodeStatInfo
 	MetaNodeStatInfo                          *NodeStatInfo
 	VolStatInfo                               []*VolStatInfo
@@ -162,6 +172,9 @@ type ClusterView struct {
 	ForbidWriteOpOfProtoVer0                  bool
 	LegacyDataMediaType                       uint32
 	RaftPartitionCanUsingDifferentPortEnabled bool
+	FlashNodes                                []NodeView
+	FlashNodeHandleReadTimeout                int
+	FlashNodeReadDataNodeTimeout              int
 }
 
 // ClusterNode defines the structure of a cluster node
@@ -198,6 +211,9 @@ type NodeView struct {
 type DpRepairInfo struct {
 	PartitionID                uint64
 	DecommissionRepairProgress float64
+	RecoverStartTime           time.Time
+	RecoverUpdateTime          time.Time
+	DecommissionType           uint32
 }
 
 type BadPartitionRepairView struct {
@@ -296,8 +312,8 @@ type VolStatInfo struct {
 	DpReadOnlyWhenVolFull   bool
 	TrashInterval           int64 `json:"TrashIntervalV2"`
 	DefaultStorageClass     uint32
-	CacheDpStorageClass     uint32
 	MetaFollowerRead        bool
+	MaximallyRead           bool
 	LeaderRetryTimeOut      int
 	StatByStorageClass      []*StatOfStorageClass
 	StatMigrateStorageClass []*StatOfStorageClass
@@ -307,7 +323,6 @@ type VolStatInfo struct {
 // DataPartition represents the structure of storing the file contents.
 type DataPartitionInfo struct {
 	PartitionID              uint64
-	PartitionTTL             int64
 	PartitionType            int
 	LastLoadedTime           int64
 	ReplicaNum               uint8
@@ -366,6 +381,9 @@ type DataReplica struct {
 	LocalPeers                 []Peer
 	TriggerDiskError           bool
 	ForbidWriteOpOfProtoVer0   bool
+	ReadOnlyReasons            uint32
+	IsMissingTinyExtent        bool
+	IsRepairing                bool
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
@@ -376,6 +394,7 @@ type DataPartitionDiagnosis struct {
 	RepFileCountDifferDpIDs     []uint64
 	RepUsedSizeDifferDpIDs      []uint64
 	ExcessReplicaDpIDs          []uint64
+	MissingTinyExtentDpIDs      []uint64
 	// BadDataPartitionIDs         []BadPartitionView
 	BadDataPartitionInfos       []BadPartitionRepairView
 	BadReplicaDataPartitionIDs  []uint64
@@ -383,6 +402,7 @@ type DataPartitionDiagnosis struct {
 }
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
+
 type MetaPartitionDiagnosis struct {
 	InactiveMetaNodes                          []string
 	CorruptMetaPartitionIDs                    []uint64
@@ -393,6 +413,19 @@ type MetaPartitionDiagnosis struct {
 	InodeCountNotEqualReplicaMetaPartitionIDs  []uint64
 	MaxInodeNotEqualReplicaMetaPartitionIDs    []uint64
 	DentryCountNotEqualReplicaMetaPartitionIDs []uint64
+}
+
+type MetaPartitionDiagnosisV1 struct {
+	InactiveMetaNodes                    []string
+	NoLeaderMetaPartitionIDs             []uint64
+	LackReplicaMetaPartitionIDs          []uint64
+	BadMetaPartitionIDs                  []BadPartitionView
+	UnavailableMetaPartitionIDs          []uint64
+	InConsistRreplicaCntMetaPartitionIDs []uint64
+	InodeCountNotEqualIDs                []uint64
+	MaxInodeNotEqualIDs                  []uint64
+	DentryCountNotEqualIDs               []uint64
+	AbnormalRaftIDs                      []uint64
 }
 
 type FailedDpInfo struct {
@@ -406,18 +439,24 @@ type IgnoreDecommissionDP struct {
 }
 
 type DecommissionProgress struct {
-	StatusMessage string
-	Progress      string
-	FailedDps     []FailedDpInfo
-	IgnoreDps     []IgnoreDecommissionDP
-	ResidualDps   []IgnoreDecommissionDP
-	StartTime     string
+	StatusMessage            string
+	Progress                 string
+	TotalDpCnt               int
+	RunningDps               []uint64
+	FailedDps                []FailedDpInfo
+	IgnoreDps                []IgnoreDecommissionDP
+	ResidualDps              []IgnoreDecommissionDP
+	RetryOverLimitDps        []uint64
+	StartTime                string
+	IsManualDecommissionDisk bool
 }
 
 type DataDecommissionProgress struct {
 	Status        uint32
 	StatusMessage string
 	Progress      string
+	TotalDpCnt    int
+	RunningDps    []uint64
 	FailedDps     []FailedDpInfo
 	IgnoreDps     []IgnoreDecommissionDP
 	ResidualDps   []IgnoreDecommissionDP
@@ -444,6 +483,13 @@ type DiskInfos struct {
 
 type DiscardDataPartitionInfos struct {
 	DiscardDps []DataPartitionInfo
+}
+
+type DecommissionInfoStat struct {
+	Key            string
+	RepairSourceDp []uint64
+	RepairTargetDp []uint64
+	RunningDpNum   int
 }
 
 type DecommissionTokenStatus struct {
@@ -533,9 +579,10 @@ type DecommissionDiskLimitDetail struct {
 }
 
 type DecommissionDiskInfo struct {
-	SrcAddr      string
-	DiskPath     string
-	ProgressInfo DecommissionProgress
+	SrcAddr            string
+	DiskPath           string
+	DecommissionWeight int
+	ProgressInfo       DecommissionProgress
 }
 
 type DecommissionDisksResponse struct {
@@ -543,24 +590,29 @@ type DecommissionDisksResponse struct {
 }
 
 type DecommissionDataPartitionInfo struct {
-	PartitionId        uint64
-	ReplicaNum         uint8
-	Status             string
-	SpecialStep        string
-	Retry              int
-	RaftForce          bool
-	Recover            bool
-	SrcAddress         string
-	SrcDiskPath        string
-	DstAddress         string
-	Term               uint64
-	Replicas           []string
-	ErrorMessage       string
-	NeedRollbackTimes  uint32
-	DecommissionType   string
-	RestoreReplicaType string
-	IsDiscard          bool
-	RecoverStartTime   string
+	PartitionId           uint64
+	ReplicaNum            uint8
+	Status                string
+	SpecialStep           string
+	DiskRetryMap          map[string]int
+	Retry                 int
+	RaftForce             bool
+	Recover               bool
+	SrcAddress            string
+	SrcDiskPath           string
+	DstAddress            string
+	DstNodeSet            uint64
+	Term                  uint64
+	Weight                int
+	Replicas              []string
+	ErrorMessage          string
+	NeedRollbackTimes     uint32
+	DecommissionType      string
+	RestoreReplicaType    string
+	IsDiscard             bool
+	RecoverStartTime      string
+	RecoverUpdateTime     string
+	DecommissionRetryTime string
 }
 
 type DecommissionedDisks struct {
@@ -585,6 +637,7 @@ type DecommissionFailedDiskInfo struct {
 	DecommissionRaftForce bool
 	DecommissionTimes     uint8
 	DecommissionDpTotal   int
+	DecommissionWeight    int
 	IsAutoDecommission    bool
 }
 
@@ -604,4 +657,16 @@ type BadDiskInfo struct {
 
 type BadDiskInfos struct {
 	BadDisks []BadDiskInfo
+}
+
+type MetaNodeView struct {
+	Addr                     string
+	Status                   bool
+	DomainAddr               string
+	ID                       uint64
+	IsWritable               bool
+	MediaType                uint32
+	ForbidWriteOpOfProtoVer0 bool
+	Ratio                    float64
+	SystemRatio              float64
 }

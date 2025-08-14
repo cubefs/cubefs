@@ -24,6 +24,11 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
+)
+
+const (
+	updateMaxDpIdInterval = 10
 )
 
 // DataPartitionMap stores all the data partitionMap
@@ -41,6 +46,8 @@ type DataPartitionMap struct {
 	readMutex               sync.RWMutex
 	partitionMapByMediaType map[uint32]map[uint64]struct{} // level-1 key: mediaType, level-2 key: dpId
 	rwCntByMediaType        map[uint32]int                 // readable and writable dp count by mediaType
+	maxDpId                 uint64
+	lastUpdateMaxDpIdTime   int64
 }
 
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
@@ -415,7 +422,7 @@ func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
 	log.LogDebugf("action[setAllDataPartitionsToReadOnly] ReadWrite->ReadOnly dp cnt: %v", changedCnt)
 }
 
-func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr string) (partitions []*DataPartition) {
+func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr string, ignoreDiscard bool) (partitions []*DataPartition) {
 	dpMapCache := make([]*DataPartition, 0)
 	dpMap.RLock()
 	for _, dp := range dpMap.partitionMap {
@@ -425,11 +432,25 @@ func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr str
 
 	partitions = make([]*DataPartition, 0)
 	for _, dp := range dpMapCache {
+		if ignoreDiscard && dp.IsDiscard {
+			continue
+		}
 		if dp.containsBadDisk(diskPath, nodeAddr) {
 			partitions = append(partitions, dp)
 		}
 	}
 	return
+}
+
+func (dpMap *DataPartitionMap) Range(f func(dp *DataPartition) bool) {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+
+	for _, dp := range dpMap.partitions {
+		if !f(dp) {
+			return
+		}
+	}
 }
 
 func (dpMap *DataPartitionMap) getReplicaDiskPaths(nodeAddr string) (diskPaths []string) {
@@ -445,6 +466,23 @@ func (dpMap *DataPartitionMap) getReplicaDiskPaths(nodeAddr string) (diskPaths [
 	return
 }
 
+func (dpMap *DataPartitionMap) getMaxDataPartitionID() (maxPartitionID uint64) {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+	curtime := timeutil.GetCurrentTimeUnix()
+	if curtime < dpMap.lastUpdateMaxDpIdTime+updateMaxDpIdInterval {
+		return dpMap.maxDpId
+	}
+	for id := range dpMap.partitionMap {
+		if id > maxPartitionID {
+			maxPartitionID = id
+		}
+	}
+	dpMap.maxDpId = maxPartitionID
+	dpMap.lastUpdateMaxDpIdTime = curtime
+	return
+}
+
 func inStingList(target string, strArray []string) bool {
 	for _, element := range strArray {
 		if target == element {
@@ -452,4 +490,20 @@ func inStingList(target string, strArray []string) bool {
 		}
 	}
 	return false
+}
+
+func (dpMap *DataPartitionMap) CheckReadWritableCntUnderLimit(limit int, mediaType uint32) error {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+
+	cntOfMediaType, ok := dpMap.rwCntByMediaType[mediaType]
+	if !ok {
+		err := fmt.Errorf("CheckReadWritableCntUnderLimit: mediatype(%d) is not in dpMap.rwCntByMediaType", mediaType)
+		return err
+	}
+	if cntOfMediaType >= limit {
+		err := fmt.Errorf("CheckReadWritableCntUnderLimit: mediatype(%d) RWDpCnt(%d) reach limit(%d)", mediaType, cntOfMediaType, limit)
+		return err
+	}
+	return nil
 }

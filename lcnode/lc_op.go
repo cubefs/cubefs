@@ -29,12 +29,7 @@ import (
 
 func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr string) (err error) {
 	data := p.Data
-	go func() {
-		p.PacketOkReply()
-		if err := p.WriteToConn(conn); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
-		}
-	}()
+	responseAckOKToMaster(conn, p)
 
 	var (
 		req  = &proto.HeartBeatRequest{}
@@ -120,35 +115,33 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 
 func (l *LcNode) opLcScan(conn net.Conn, p *proto.Packet) (err error) {
 	data := p.Data
+
+	responseAckOKToMaster(conn, p)
+
 	go func() {
-		p.PacketOkReply()
-		if err := p.WriteToConn(conn); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
-		}
-	}()
+		var (
+			req       = &proto.LcNodeRuleTaskRequest{}
+			resp      = &proto.LcNodeRuleTaskResponse{}
+			adminTask = &proto.AdminTask{
+				Request: req,
+			}
+		)
 
-	var (
-		req       = &proto.LcNodeRuleTaskRequest{}
-		resp      = &proto.LcNodeRuleTaskResponse{}
-		adminTask = &proto.AdminTask{
-			Request: req,
+		decoder := json.NewDecoder(bytes.NewBuffer(data))
+		decoder.UseNumber()
+		if err = decoder.Decode(adminTask); err != nil {
+			resp.LcNode = l.localServerAddr
+			resp.Status = proto.TaskFailed
+			resp.Done = true
+			resp.StartErr = err.Error()
+			adminTask.Response = resp
+			l.respondToMaster(adminTask)
+			return
 		}
-	)
 
-	decoder := json.NewDecoder(bytes.NewBuffer(data))
-	decoder.UseNumber()
-	if err = decoder.Decode(adminTask); err != nil {
-		resp.LcNode = l.localServerAddr
-		resp.Status = proto.TaskFailed
-		resp.Done = true
-		resp.StartErr = err.Error()
-		adminTask.Response = resp
+		l.startLcScan(adminTask)
 		l.respondToMaster(adminTask)
-		return
-	}
-
-	l.startLcScan(adminTask)
-	l.respondToMaster(adminTask)
+	}()
 
 	return
 }
@@ -167,33 +160,40 @@ func (l *LcNode) respondToMaster(task *proto.AdminTask) {
 
 func (l *LcNode) opSnapshotVerDel(conn net.Conn, p *proto.Packet) (err error) {
 	data := p.Data
+
+	responseAckOKToMaster(conn, p)
+
+	go func() {
+		var (
+			req       = &proto.SnapshotVerDelTaskRequest{}
+			resp      = &proto.SnapshotVerDelTaskResponse{}
+			adminTask = &proto.AdminTask{
+				Request: req,
+			}
+		)
+
+		decoder := json.NewDecoder(bytes.NewBuffer(data))
+		decoder.UseNumber()
+		if err = decoder.Decode(adminTask); err != nil {
+			resp.Status = proto.TaskFailed
+			resp.Result = err.Error()
+			adminTask.Response = resp
+			l.respondToMaster(adminTask)
+			return
+		}
+
+		l.startSnapshotScan(adminTask)
+		l.respondToMaster(adminTask)
+	}()
+
+	return
+}
+
+func responseAckOKToMaster(conn net.Conn, p *proto.Packet) {
 	go func() {
 		p.PacketOkReply()
 		if err := p.WriteToConn(conn); err != nil {
 			log.LogErrorf("ack master response: %s", err.Error())
 		}
 	}()
-
-	var (
-		req       = &proto.SnapshotVerDelTaskRequest{}
-		resp      = &proto.SnapshotVerDelTaskResponse{}
-		adminTask = &proto.AdminTask{
-			Request: req,
-		}
-	)
-
-	decoder := json.NewDecoder(bytes.NewBuffer(data))
-	decoder.UseNumber()
-	if err = decoder.Decode(adminTask); err != nil {
-		resp.Status = proto.TaskFailed
-		resp.Result = err.Error()
-		adminTask.Response = resp
-		l.respondToMaster(adminTask)
-		return
-	}
-
-	l.startSnapshotScan(adminTask)
-	l.respondToMaster(adminTask)
-
-	return
 }

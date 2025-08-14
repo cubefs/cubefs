@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/xtaci/smux"
+	"github.com/cubefs/cubefs/depends/xtaci/smux"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -47,6 +47,10 @@ var (
 	smuxPoolCfg               = util.DefaultSmuxConnPoolConfig()
 	clusterEnableSnapshot     bool
 	legacyReplicaStorageClass uint32 // for compatibility when older version upgrade to hybrid cloud
+)
+
+const (
+	readDirIops uint32 = 0x01
 )
 
 // only used for mp check
@@ -84,6 +88,8 @@ type MetaNode struct {
 	serviceIDKey                       string
 	nodeForbidWriteOpOfProtoVer0       bool                // whether forbid by node granularity,
 	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
+	qosEnable                          bool
+	readDirIops                        int
 
 	control common.Control
 }
@@ -269,6 +275,14 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("bad cfgRaftReplicaPort config")
 	}
 
+	m.qosEnable = cfg.GetBoolWithDefault(cfsQosEnable, true)
+	m.readDirIops = cfg.GetInt(cfgReadDirIops)
+	if m.readDirIops <= 0 {
+		m.readDirIops = defaultReadDirIops
+	}
+	syslog.Printf("conf qosEnable=%v readDirIops=%v", m.qosEnable, m.readDirIops)
+	log.LogInfof("[parseConfig] qosEnable[%v] readDirIops[%v]", m.qosEnable, m.readDirIops)
+
 	raftRetainLogs := cfg.GetString(cfgRetainLogs)
 	if raftRetainLogs != "" {
 		if m.raftRetainLogs, err = strconv.ParseUint(raftRetainLogs, 10, 64); err != nil {
@@ -435,13 +449,27 @@ func (m *MetaNode) newMetaManager(cfg *config.Config) (err error) {
 		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 	}
 
+	var gcRecyclePercent float64
+	gcRecyclePercentStr := cfg.GetString(CfgGcRecyclePercent)
+	if gcRecyclePercentStr == "" {
+		gcRecyclePercent = defaultGcRecyclePercent
+	} else {
+		gcRecyclePercent, err = strconv.ParseFloat(gcRecyclePercentStr, 64)
+		if err != nil {
+			err = fmt.Errorf("parse configKey[%v] failed: %v", CfgGcRecyclePercent, err.Error())
+			log.LogError(err.Error())
+			return err
+		}
+	}
+
 	// load metadataManager
 	conf := MetadataManagerConfig{
-		NodeID:        m.nodeId,
-		RootDir:       m.metadataDir,
-		RaftStore:     m.raftStore,
-		ZoneName:      m.zoneName,
-		EnableGcTimer: cfg.GetBoolWithDefault(cfgEnableGcTimer, false),
+		NodeID:           m.nodeId,
+		RootDir:          m.metadataDir,
+		RaftStore:        m.raftStore,
+		ZoneName:         m.zoneName,
+		EnableGcTimer:    cfg.GetBoolWithDefault(cfgEnableGcTimer, false),
+		GcRecyclePercent: gcRecyclePercent,
 	}
 	m.metadataManager = NewMetadataManager(conf, m)
 	return

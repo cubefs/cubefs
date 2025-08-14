@@ -39,7 +39,7 @@ import (
 func initServiceWithData() (*Service, func()) {
 	cfg := *testServiceCfg
 
-	cfg.DBPath = os.TempDir() + "/volume" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10)
+	cfg.DBPath = os.TempDir() + "/" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10)
 	cfg.VolumeMgrConfig.FlushIntervalS = 600
 	cfg.VolumeMgrConfig.MinAllocableVolumeCount = 0
 	cfg.BlobNodeDiskMgrConfig.HeartbeatExpireIntervalS = 600

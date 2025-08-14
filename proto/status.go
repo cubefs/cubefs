@@ -34,3 +34,38 @@ const (
 	VolStatusNormal     uint8 = 0
 	VolStatusMarkDelete uint8 = 1
 )
+
+// dp replica readOnly reason
+const (
+	ReasonNone          uint32 = 0
+	DpOverCapacity      uint32 = 1 << 0
+	DpExtentLimit       uint32 = 1 << 1
+	DpBaseFileException uint32 = 1 << 2
+	DiskReadOnly        uint32 = 1 << 3
+	DpReplicaMissing    uint32 = 1 << 4
+	DataNodeRdOnly      uint32 = 1 << 5
+	PartitionRdOnly     uint32 = 1 << 6
+)
+
+var DpReasonMessages = map[uint32]string{
+	DpOverCapacity:      "used space exceeds partition size",
+	DpExtentLimit:       "extent count reached maximum limit",
+	DpBaseFileException: "base file ID exception",
+	DiskReadOnly:        "disk is read-only",
+	DpReplicaMissing:    "replica missing",
+	DataNodeRdOnly:      "dataNode is read-only",
+	PartitionRdOnly:     "partition is read-only",
+}
+
+// mp readOnly reason
+const (
+	MpCursorOutOfRange uint32 = 1 << 0
+	MetaMemUseLimit    uint32 = 1 << 1
+	MetaNodeReadOnly   uint32 = 1 << 2
+)
+
+var MpReasonMessages = map[uint32]string{
+	MpCursorOutOfRange: "mp cursor out of Range",
+	MetaMemUseLimit:    "meta mem use reached maximum limit",
+	MetaNodeReadOnly:   "MetaNode is read-only",
+}

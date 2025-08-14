@@ -52,11 +52,12 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 		RootDir:       rootDir,
 	}
 	metaM := &metadataManager{
-		nodeId:     1,
-		zoneName:   "test",
-		raftStore:  nil,
-		partitions: make(map[uint64]MetaPartition),
-		metaNode:   &MetaNode{},
+		nodeId:          1,
+		zoneName:        "test",
+		raftStore:       nil,
+		partitions:      make(map[uint64]MetaPartition),
+		metaNode:        &MetaNode{},
+		fileStatsConfig: &fileStatsConfig{},
 	}
 
 	partition := NewMetaPartition(mpC, metaM)

@@ -17,9 +17,11 @@ package storage
 import (
 	"container/list"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 const (
@@ -91,6 +93,7 @@ func (cache *ExtentCache) Get(extentID uint64) (e *Extent, ok bool) {
 			cache.extentList.MoveToBack(item.element)
 		}
 		e = item.e
+		atomic.StoreInt64(&e.accessTime, timeutil.GetCurrentTimeUnix())
 	}
 	return
 }
@@ -218,4 +221,35 @@ func (cache *ExtentCache) Flush() {
 	for _, item := range cache.extentMap {
 		item.e.Flush()
 	}
+}
+
+func (cache *ExtentCache) EvictTTL(ttl int) error {
+	cmpTime := timeutil.GetCurrentTimeUnix() - int64(ttl)*int64(time.Minute)
+	if cache.capacity <= 0 || cmpTime <= 0 {
+		return nil
+	}
+
+	cache.lock.Lock()
+	defer cache.lock.Unlock()
+
+	delList := make([]*list.Element, 0, cache.extentList.Len())
+
+	for e := cache.extentList.Front(); e != nil; e = e.Next() {
+		item := e.Value.(*Extent)
+		if IsTinyExtent(item.extentID) {
+			continue
+		}
+		if item.accessTime < cmpTime {
+			element := e
+			delList = append(delList, element)
+			delete(cache.extentMap, item.extentID)
+			item.Close()
+		}
+	}
+
+	for _, element := range delList {
+		cache.extentList.Remove(element)
+	}
+
+	return nil
 }

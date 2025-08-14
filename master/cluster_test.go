@@ -133,7 +133,7 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 		t.Error(err)
 	}
 	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID,
-		proto.PartitionTypeNormal, 0, defaultMediaType)
+		proto.PartitionTypeNormal, defaultMediaType)
 	c.BadDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckDiskRecoveryProgress()
 }
@@ -277,7 +277,7 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	maxPartitionID := vol.maxPartitionID()
+	maxPartitionID := vol.maxMetaPartitionID()
 	vol.volLock.RLock()
 	mp := vol.MetaPartitions[maxPartitionID]
 	mpLen := len(vol.MetaPartitions)
@@ -362,32 +362,36 @@ func TestBalanceMetaPartition(t *testing.T) {
 }
 
 func TestMasterClientLeaderChange(t *testing.T) {
-	cluster := &Cluster{
-		masterClient: masterSDK.NewMasterClient(nil, false),
-	}
-	cluster.t = newTopology()
-	cluster.BadDataPartitionIds = new(sync.Map)
 	server := &Server{
-		cluster: cluster,
 		leaderInfo: &LeaderInfo{
 			addr: "",
 		},
 		user: &User{},
 	}
+
+	cluster := &Cluster{
+		masterClient:  masterSDK.NewMasterClient(nil, false),
+		flashNodeTopo: newFlashNodeTopology(),
+		leaderInfo:    server.leaderInfo,
+	}
+	server.cluster = cluster
+
+	cluster.t = newTopology()
+	cluster.BadDataPartitionIds = new(sync.Map)
+
 	// NOTE: avoid conflict
 	AddrDatabase[5] = "192.168.0.11:17010"
 	AddrDatabase[6] = "192.168.0.12:17010"
 	server.handleLeaderChange(5)
 	server.handleLeaderChange(6)
-	masters := cluster.masterClient.GetMasterAddresses()
-	require.EqualValues(t, 2, len(masters))
+	require.True(t, cluster.leaderInfo.addr == AddrDatabase[6])
 }
 
 func TestCreateVolWithDpCount(t *testing.T) {
 	// create volume and metaNode will create mp,sleep some time to wait cluster get latest meteNode info
 	// cluster normal volume has 3 mps , total 3*3 =9 mp in metaNode
 
-	t.Run("dpCount != default count", func(t *testing.T) {
+	t.Run("dpCount >= defaultInitDpCntForVolCreateCheck", func(t *testing.T) {
 		req := &createVolReq{
 			name:             commonVolName + "001",
 			owner:            "cfs",
@@ -417,7 +421,8 @@ func TestCreateVolWithDpCount(t *testing.T) {
 		require.NoError(t, err)
 
 		dpCount := len(vol.dataPartitions.partitions)
-		require.Equal(t, req.dpCount, dpCount)
+		t.Logf("%v", dpCount)
+		require.GreaterOrEqual(t, dpCount, defaultInitDataPartitionCnt)
 	})
 
 	t.Run("dpCount > max count", func(t *testing.T) {
@@ -442,4 +447,14 @@ func TestCreateVolWithDpCount(t *testing.T) {
 		err := server.checkCreateVolReq(req)
 		require.Error(t, err)
 	})
+}
+
+func TestStartCleanEmptyMetaPartition(t *testing.T) {
+	err := server.cluster.StartCleanEmptyMetaPartition(commonVolName)
+	require.NoError(t, err)
+}
+
+func TestDoCleanEmptyMetaPartition(t *testing.T) {
+	err := server.cluster.DoCleanEmptyMetaPartition(commonVolName)
+	require.NoError(t, err)
 }

@@ -260,3 +260,54 @@ _Description_：Can nodeSet groups of metanode cross zones in multi-AZ scenario?
 _Description_：The metanode's nodeset is also at the zone level, multi-raft restricts it to the nodeset level to prevent heartbeat storm, and the cross-zone volume metanode selection mechanism selects some machines in each zone to put. Is there any problem with this cross zone storage pool functionality?
 
 **Answer**：Currently supported.
+
+## Question 46
+_Description_：When some Docker containers start and mount the CubeFS client, only the following error appears, with no other error messages:
+```bash
+2025/06/04 02:20:23 maxprocs: Leaving GOMAXPROCS=48: CPU quota undefined
+Mount failed: startDaemon failed: daemon start failed, ... err(readFromProcess: sub-process: [fuse.go 528] mount failed: fusermount: exit status 1)
+```
+
+**Answer**：This issue occurs due to the lack of root permissions and the absence of the /dev/fuse device. The solution is to add the --privileged parameter when starting the container.
+
+**Notice**：If other containers encounter similar issues during startup, the corresponding errors can be found in the client's output.log file.
+```bash
+2025/06/04 14:49:12 mount helper error: fusermount: fuse device not found, try 'modprobe fuse' first
+2025/06/04 14:49:12 [fuse.go 529] mount failed: fusermount: exit status 1
+```
+The same error may also occur due to insufficient permissions for using FUSE, which will be indicated in the output.log file. Adding sudo can resolve this type of issue.
+In summary, these problems are caused by the inability to use FUSE functionality properly, resulting in the error: exit status 1.
+
+## Question 47
+_Description_：The client's log reports an error: ResultCode(136).
+
+**Answer**：OpWriteOpOfProtoVerForbidden (code 136). This issue may occur when the protocol versions of the client and server do not match.
+Solution: Upgrade the client to use the newer protocol version.
+
+## Question 48
+_Description_：After the system reboot, CubeFS's ObjectNode failed to start with the error: access client service discovery disconnect.
+This occurred because the disk mounted by the DataNode was formatted during the process, causing the access logs to report: 0 available, total available space 0.
+
+**Answer**：Restart the DataNode, and the formatted disk will be re-registered.
+
+## Question 49
+_Description_：Are replica mode and erasure coding mode two completely different deployment methods? If using erasure coding mode, does it depend on services related to replica mode?
+
+**Answer**：Replica mode and erasure coding mode are two distinct deployment methods in CubeFS. Both use MetaNode for metadata services, but they do not depend on each other.
+
+## Question 50
+_Description_：In a three-replica mode, is the available cluster capacity equal to the total cluster capacity divided by the replica count?
+
+**Answer**：The available capacity with three replicas is indeed one-third of the total capacity. If the total cluster capacity mentioned above refers to the usable capacity of the DataNodes, then this is correct.
+
+## Question 51
+_Description_：I have three machines, each with only one SSD data disk. How can I use the erasure coding mode? Among the erasure coding options supported by CubeFS, the one with the minimum disk requirement is EC3P3. How can I set it up?
+
+**Answer**：To use the EC3P3 erasure coding mode in CubeFS with three machines, each having only one SSD, you can partition each SSD into two logical disks. This way, each machine will effectively have two "disks," meeting the minimum requirement for EC3P3 (3 data nodes with 2 disks each).
+
+## Question 52
+_Description_：When running make, it prompts that Golang version 1.17 is required, but my current Golang version is 1.13. How should I handle this?
+
+**Answer**：
+To resolve the Golang version issue, follow these steps:
+Download Golang 1.17.13 from the official website. Install the new version by replacing your current Golang installation. Retry the make command after ensuring the correct version is active.

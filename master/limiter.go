@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
@@ -209,9 +211,13 @@ func (uMgr *UidSpaceManager) reCalculate() {
 			if _, ok := uidInfo[space.Uid]; !ok {
 				infoCopy := *uMgr.uidInfo[space.Uid]
 				uidInfo[space.Uid] = &infoCopy
+				uidInfo[space.Uid].Limited = false
 			}
 
-			// log.LogDebugf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
+			if logger.IsEnableDebug() {
+				log.LogDebugf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
+			}
+
 			uidInfo[space.Uid].UsedSize += space.Size
 			if !uidInfo[space.Uid].Enabled {
 				uidInfo[space.Uid].Limited = false
@@ -219,10 +225,6 @@ func (uMgr *UidSpaceManager) reCalculate() {
 			}
 			if uidInfo[space.Uid].UsedSize > uMgr.uidInfo[space.Uid].LimitSize {
 				uidInfo[space.Uid].Limited = true
-				log.LogWarnf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
-			} else {
-				uidInfo[space.Uid].Limited = false
-				log.LogWarnf("volUidUpdate.vol %v uid %v from mpId %v useSize %v add %v", uMgr.vol, space.Uid, mpId, uidInfo[space.Uid].UsedSize, space.Size)
 			}
 		}
 	}
@@ -231,6 +233,10 @@ func (uMgr *UidSpaceManager) reCalculate() {
 		if _, ok := uMgr.uidInfo[info.Uid]; !ok {
 			log.LogErrorf("volUidUpdate.uid %v not found", info.Uid)
 			continue
+		}
+		if uidInfo[info.Uid].Limited != uMgr.uidInfo[info.Uid].Limited {
+			log.LogWarnf("volUidUpdate.vol %v uid %v limited status be changed from %v to %v",
+				uMgr.vol.Name, info.Uid, uMgr.uidInfo[info.Uid].Limited, uidInfo[info.Uid].Limited)
 		}
 		uMgr.uidInfo[info.Uid] = info
 	}
@@ -267,6 +273,15 @@ type ServerFactorLimit struct {
 	requestCh      chan interface{}
 	done           chan interface{}
 	qosManager     *QosCtrlManager
+}
+
+type QosStatus struct {
+	ServerFactorLimitMap map[uint32]*ServerFactorLimit // vol qos data for iops w/r and flow w/r
+	QosEnable            bool
+	ClientReqPeriod      uint32
+	ClientHitTriggerCnt  uint32
+	ClusterMaxUploadCnt  uint32
+	ClientALiveCnt       int
 }
 
 type ClientReportOutput struct {
@@ -837,18 +852,10 @@ func (vol *Vol) checkQos() {
 }
 
 func (vol *Vol) getQosStatus(cluster *Cluster) interface{} {
-	type qosStatus struct {
-		ServerFactorLimitMap map[uint32]*ServerFactorLimit // vol qos data for iops w/r and flow w/r
-		QosEnable            bool
-		ClientReqPeriod      uint32
-		ClientHitTriggerCnt  uint32
-		ClusterMaxUploadCnt  uint32
-		ClientALiveCnt       int
-	}
 	vol.qosManager.RLock()
 	defer vol.qosManager.RUnlock()
 
-	return &qosStatus{
+	return &QosStatus{
 		ServerFactorLimitMap: map[uint32]*ServerFactorLimit{
 			proto.FlowReadType:  vol.qosManager.serverFactorLimitMap[proto.FlowReadType],
 			proto.FlowWriteType: vol.qosManager.serverFactorLimitMap[proto.FlowWriteType],

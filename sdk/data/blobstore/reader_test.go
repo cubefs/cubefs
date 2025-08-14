@@ -48,10 +48,8 @@ func TestNewReader(t *testing.T) {
 		EnableBcache:    false,
 		WConcurrency:    0,
 		ReadConcurrency: 0,
-		CacheAction:     0,
 		FileCache:       false,
 		FileSize:        0,
-		CacheThreshold:  0,
 	}
 	ec := &stream.ExtentClient{}
 	err := gohook.HookMethod(ec, "Write", MockWriteTrue, nil)
@@ -62,37 +60,6 @@ func TestNewReader(t *testing.T) {
 
 	reader := NewReader(mockConfig)
 	assert.NotEmpty(t, reader, nil)
-}
-
-func TestBuildExtentKey(t *testing.T) {
-	testCase := []struct {
-		eks      []proto.ExtentKey
-		expectEk proto.ExtentKey
-	}{
-		{nil, proto.ExtentKey{}},
-		{[]proto.ExtentKey{
-			{FileOffset: uint64(0), Size: uint32(100)},
-			{FileOffset: uint64(100), Size: uint32(100)},
-			{FileOffset: uint64(200), Size: uint32(100)},
-			{FileOffset: uint64(300), Size: uint32(100)},
-		}, proto.ExtentKey{FileOffset: uint64(100), Size: uint32(100)}},
-		{[]proto.ExtentKey{
-			{FileOffset: uint64(0), Size: uint32(1)},
-			{FileOffset: uint64(1), Size: uint32(1)},
-			{FileOffset: uint64(2), Size: uint32(1)},
-			{FileOffset: uint64(3), Size: uint32(1)},
-		}, proto.ExtentKey{}},
-	}
-
-	rs := &rwSlice{}
-	rs.objExtentKey = proto.ObjExtentKey{FileOffset: 100, Size: 100}
-	for _, tc := range testCase {
-		reader := Reader{}
-		reader.limitManager = manager.NewLimitManager(nil)
-		reader.extentKeys = tc.eks
-		reader.buildExtentKey(rs)
-		assert.Equal(t, tc.expectEk, rs.extentKey)
-	}
 }
 
 func TestFileSize(t *testing.T) {
@@ -215,7 +182,7 @@ func TestRead(t *testing.T) {
 		close            bool
 		readConcurrency  int
 		getObjFunc       func(*meta.MetaWrapper, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
-		bcacheGetFunc    func(*bcache.BcacheClient, string, []byte, uint64, uint32) (int, error)
+		bcacheGetFunc    func(*bcache.BcacheClient, string, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, uint64) error
 		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int, uint32) (int, error, bool)
 		ebsReadFunc      func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
@@ -260,7 +227,6 @@ func TestRead(t *testing.T) {
 		reader.mw = mw
 		reader.ebs = ebsc
 		reader.bc = bc
-		reader.ec = ec
 
 		ctx := context.Background()
 		buf := make([]byte, 500)
@@ -317,49 +283,13 @@ func TestAsyncCache(t *testing.T) {
 	for _, tc := range testCase {
 		reader := Reader{}
 		reader.limitManager = manager.NewLimitManager(nil)
-		reader.cacheThreshold = 1000
 		ctx := context.Background()
 		err := gohook.HookMethod(ebsc, "Read", tc.ebsReadFunc, nil)
 		if err != nil {
 			t.Fatalf("Hook advance instance method failed:%s", err.Error())
 		}
 		reader.fileLength = tc.fileSize
-		reader.cacheAction = tc.cacheAction
 		reader.asyncCache(ctx, "cacheKey", objEk)
-	}
-}
-
-func TestNeedCacheL2(t *testing.T) {
-	testCase := []struct {
-		cacheAction    int
-		fileLength     uint64
-		cacheThreshold int
-		fileCache      bool
-		expectCache    bool
-	}{
-		{proto.NoCache, 10, 100, false, false},
-		{proto.NoCache, 10, 100, true, true},
-		{proto.NoCache, 101, 100, true, true},
-		{proto.NoCache, 101, 100, false, false},
-		{proto.RCache, 10, 100, false, true},
-		{proto.RCache, 10, 100, true, true},
-		{proto.RCache, 101, 100, false, false},
-		{proto.RCache, 101, 100, true, true},
-		{proto.RWCache, 10, 100, false, true},
-		{proto.RWCache, 10, 100, true, true},
-		{proto.RWCache, 101, 100, false, false},
-		{proto.RWCache, 101, 100, true, true},
-	}
-
-	for _, tc := range testCase {
-		reader := Reader{}
-		reader.limitManager = manager.NewLimitManager(nil)
-		reader.cacheAction = tc.cacheAction
-		reader.fileLength = tc.fileLength
-		reader.cacheThreshold = tc.cacheThreshold
-		reader.fileCache = tc.fileCache
-		got := reader.needCacheL2()
-		assert.Equal(t, tc.expectCache, got)
 	}
 }
 
@@ -385,7 +315,7 @@ func TestReadSliceRange(t *testing.T) {
 	testCase := []struct {
 		enableBcache     bool
 		extentKey        proto.ExtentKey
-		bcacheGetFunc    func(*bcache.BcacheClient, string, []byte, uint64, uint32) (int, error)
+		bcacheGetFunc    func(*bcache.BcacheClient, string, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, uint64) error
 		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int, uint32) (int, error, bool)
 		ebsReadFunc      func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
@@ -432,12 +362,11 @@ func TestReadSliceRange(t *testing.T) {
 		reader.volName = "cfs"
 		reader.ino = 12407
 		reader.fileLength = 10
-		reader.cacheThreshold = 100
+		reader.ec = ec
 		reader.err = make(chan error)
 		rs := &rwSlice{}
 		rs.rSize = uint32(len("Hello world"))
 		rs.Data = make([]byte, len("Hello world"))
-		rs.extentKey = tc.extentKey
 
 		reader.enableBcache = tc.enableBcache
 		err := gohook.HookMethod(ebsc, "Read", tc.ebsReadFunc, nil)
@@ -457,7 +386,6 @@ func TestReadSliceRange(t *testing.T) {
 			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 		}
 		reader.ebs = ebsc
-		reader.ec = ec
 		reader.bc = bc
 
 		ctx := context.Background()
@@ -538,7 +466,7 @@ func MockWriteFalse(client *stream.ExtentClient, inode uint64, offset int, data 
 	return 0, errors.New("Write failed")
 }
 
-func MockPutTrue(bc *bcache.BcacheClient, key string, buf []byte) error {
+func MockPutTrue(bc *bcache.BcacheClient, vol, key string, buf []byte) error {
 	return nil
 }
 
@@ -546,10 +474,10 @@ func MockPutFalse(bc *bcache.BcacheClient, key string, buf []byte) error {
 	return errors.New("Bcache put failed")
 }
 
-func MockGetTrue(bc *bcache.BcacheClient, key string, buf []byte, offset uint64, size uint32) (int, error) {
+func MockGetTrue(bc *bcache.BcacheClient, vol, key string, buf []byte, offset uint64, size uint32) (int, error) {
 	return int(size), nil
 }
 
-func MockGetFalse(bc *bcache.BcacheClient, key string, buf []byte, offset uint64, size uint32) (int, error) {
+func MockGetFalse(bc *bcache.BcacheClient, vol, key string, buf []byte, offset uint64, size uint32) (int, error) {
 	return 0, errors.New("Bcache get failed")
 }

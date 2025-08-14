@@ -256,13 +256,13 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v) unmarshal failed(%v)", raftApplyID, dp.partitionID, err)
 		return
 	}
+	if opItem.size == 0 || opItem.data == nil {
+		return
+	}
 	log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)",
 		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
 
 	for i := 0; i < 20; i++ {
-		dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(opItem.size))
-		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
 		var syncWrite bool
 		writeType := storage.RandomWriteType
 		if opItem.opcode == proto.OpRandomWrite || opItem.opcode == proto.OpSyncRandomWrite {
@@ -281,7 +281,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			syncWrite = true
 		}
 
-		dp.disk.limitWrite.Run(int(opItem.size), func() {
+		dp.disk.diskLimit(OpWrite, uint32(opItem.size), func() {
 			param := &storage.WriteParam{
 				ExtentID:      uint64(opItem.extentID),
 				Offset:        int64(opItem.offset),

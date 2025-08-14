@@ -266,7 +266,8 @@ func newClusterSetVolDeletionDelayTimeCmd(client *master.MasterClient) *cobra.Co
 
 func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs, optLoadFactor, opMaxDpCntLimit string
+	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs, optLoadFactor string
+	var tmp int64
 	// dataNodesetSelector := ""
 	// metaNodesetSelector := ""
 	// dataNodeSelector := ""
@@ -276,14 +277,18 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	autoDecommissionDiskInterval := ""
 	autoDpMetaRepair := ""
 	autoDpMetaRepairParallelCnt := ""
+	opMaxDpCntLimit := ""
 	opMaxMpCntLimit := ""
 	dpRepairTimeout := ""
 	dpTimeout := ""
+	mpTimeout := ""
 	dpBackupTimeout := ""
 	decommissionDpLimit := ""
 	decommissionDiskLimit := ""
 	forbidWriteOpOfProtoVersion0 := ""
 	dataMediaType := ""
+	handleTimeout := ""
+	readDataNodeTimeout := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -357,6 +362,19 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 
 				dpTimeout = strconv.FormatInt(int64(heartbeatTimeout.Seconds()), 10)
 			}
+			if mpTimeout != "" {
+				var mpHeartbeatTimeout time.Duration
+				mpHeartbeatTimeout, err = time.ParseDuration(mpTimeout)
+				if err != nil {
+					return
+				}
+				if mpHeartbeatTimeout < time.Second {
+					err = fmt.Errorf("dp timeout %v smaller than 1s", mpHeartbeatTimeout)
+					return
+				}
+
+				mpTimeout = strconv.FormatInt(int64(mpHeartbeatTimeout.Seconds()), 10)
+			}
 			if dpBackupTimeout != "" {
 				var backupTimeout time.Duration
 				backupTimeout, err = time.ParseDuration(dpBackupTimeout)
@@ -384,13 +402,33 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
+			if handleTimeout != "" {
+				if tmp, err = strconv.ParseInt(handleTimeout, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", handleTimeout)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("handleTimeout (%v) should grater than 0", handleTimeout)
+					return
+				}
+			}
+			if readDataNodeTimeout != "" {
+				if tmp, err = strconv.ParseInt(readDataNodeTimeout, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", readDataNodeTimeout)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("readDataNodeTimeout (%v) should grater than 0", readDataNodeTimeout)
+					return
+				}
+			}
 
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
-				dpRepairTimeout, dpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
-				forbidWriteOpOfProtoVersion0, dataMediaType); err != nil {
+				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
+				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -413,6 +451,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&autoDpMetaRepairParallelCnt, CliFlagAutoDpMetaRepairParallelCnt, "", "Parallel count of auto data partition meta repair")
 	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
 	cmd.Flags().StringVar(&dpTimeout, CliFlagDpTimeout, "", "Data partition heartbeat timeout(example: 10s)")
+	cmd.Flags().StringVar(&mpTimeout, CliFlagMpTimeout, "", "Meta partition heartbeat timeout(example: 10s)")
 	cmd.Flags().StringVar(&autoDecommissionDisk, CliFlagAutoDecommissionDisk, "", "Enable or disable auto decommission disk")
 	cmd.Flags().StringVar(&autoDecommissionDiskInterval, CliFlagAutoDecommissionDiskInterval, "", "Interval of auto decommission disk(example: 10s)")
 	cmd.Flags().StringVar(&dpBackupTimeout, CliFlagDpBackupTimeout, "", "Data partition backup directory timeout(example: 1h)")
@@ -421,6 +460,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&forbidWriteOpOfProtoVersion0, CliForbidWriteOpOfProtoVersion0, "",
 		"set datanode and metanode whether forbid write operate of packet whose protocol version is version-0: [true | false]")
 	cmd.Flags().StringVar(&dataMediaType, "clusterDataMediaType", "", "set cluster media type, 1(ssd), 2(hdd)")
+	cmd.Flags().StringVar(&handleTimeout, "flashNodeHandleReadTimeout", "", "Specify flash node handle read timeout (example:1000ms)")
+	cmd.Flags().StringVar(&readDataNodeTimeout, "flashNodeReadDataNodeTimeout", "", "Specify flash node read data node timeout (example:3000ms)")
 	return cmd
 }
 

@@ -30,6 +30,7 @@ var (
 	CleanS         bool
 	CleanFlag      string
 	isCheckApplyId bool
+	forceClean     bool
 )
 
 const (

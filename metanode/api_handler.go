@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -31,6 +32,11 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+)
+
+const (
+	defaultGOGCLowerLimit = 30
+	defaultGOGCUpperLimit = 100
 )
 
 var parseArgs = common.ParseArguments
@@ -85,6 +91,13 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	// http.HandleFunc("/setInodeCreateTime", m.setInodeCreateTimeHandler)
 	// http.HandleFunc("/deleteMigrateExtentKey", m.deleteMigrateExtentKeyHandler)
 	// http.HandleFunc("/updateExtentKeyAfterMigration", m.updateExtentKeyAfterMigrationHandler)
+	http.HandleFunc("/getRaftPeers", m.getRaftPeersHandler)
+	http.HandleFunc("/setGOGC", m.setGOGCHandler)
+	http.HandleFunc("/getGOGC", m.getGOGCHandler)
+	http.HandleFunc("/reloadMp", m.reloadMpHandler)
+	http.HandleFunc("/setQosEnable", m.setQosEnableHandler)
+	http.HandleFunc("/setMetaQos", m.setMetaQosHandler)
+	http.HandleFunc("/getMetaQos", m.getMetaQosHandler)
 	return
 }
 
@@ -1178,3 +1191,235 @@ func (m *MetaNode) getInodeWithExtentKeyHandler(w http.ResponseWriter, r *http.R
 // 	log.LogInfof("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) success", req.PartitionID, req.Inode)
 // 	return
 // }
+
+func (m *MetaNode) getRaftPeersHandler(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramRaftID = "id"
+	)
+
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getRaftPeersHandler] response %s", err)
+		}
+	}()
+
+	raftID, err := strconv.ParseUint(r.FormValue(paramRaftID), 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramRaftID, err)
+		resp.Msg = err.Error()
+		resp.Code = http.StatusBadRequest
+		return
+	}
+
+	raftPeers := m.raftStore.GetPeers(raftID)
+	resp.Data = raftPeers
+}
+
+func (m *MetaNode) setGOGCHandler(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramGOGC = "gogc"
+	)
+	var (
+		gogcValue int
+		err       error
+	)
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		} else {
+			resp.Data = "set GOGC success"
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[setGOGCHandler] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	gogcValue, err = strconv.Atoi(r.FormValue(paramGOGC))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramGOGC, err)
+		return
+	}
+	if gogcValue < defaultGOGCLowerLimit || gogcValue > defaultGOGCUpperLimit {
+		err = fmt.Errorf("gogc must be greater than or equal to %v and less than or equal to %v", defaultGOGCLowerLimit, defaultGOGCUpperLimit)
+		return
+	}
+	if m.metadataManager == nil {
+		err = fmt.Errorf("metadataManager is nil")
+		return
+	}
+	m.metadataManager.(*metadataManager).useLocalGOGC = true
+	if m.metadataManager.(*metadataManager).gogcValue != gogcValue {
+		oldGOGC := m.metadataManager.(*metadataManager).gogcValue
+		debug.SetGCPercent(gogcValue)
+		m.metadataManager.(*metadataManager).gogcValue = gogcValue
+		log.LogWarnf("[setGOGC] change GOGC, old(%v) new(%v)", oldGOGC, gogcValue)
+	}
+}
+
+func (m *MetaNode) getGOGCHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getGOGCHandler] response %s", err)
+		}
+	}()
+	if m.metadataManager == nil {
+		err = fmt.Errorf("metadataManager is nil")
+		return
+	}
+	resp.Data = fmt.Sprintf("gogc value is %v", m.metadataManager.(*metadataManager).gogcValue)
+}
+
+func (m *MetaNode) reloadMpHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		id  int
+		err error
+	)
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[reloadMpHandler] response %s", err)
+		}
+	}()
+	if m.metadataManager == nil {
+		err = fmt.Errorf("metadataManager is nil")
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	id, err = strconv.Atoi(r.FormValue("id"))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", id, err)
+		return
+	}
+	err = m.metadataManager.ReloadPartition(id)
+}
+
+func (m *MetaNode) setQosEnableHandler(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramEnable = "enable"
+	)
+	var (
+		enable bool
+		err    error
+	)
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[setQosEnalbeHandler] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	enable, err = strconv.ParseBool(r.FormValue(paramEnable))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", enable, err)
+		return
+	}
+	m.qosEnable = enable
+	log.LogWarnf("[setQosEnable] change qosEnable to %v success", m.qosEnable)
+}
+
+func (m *MetaNode) setMetaQosHandler(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramReadDirIops = "readDirIops"
+	)
+	var err error
+
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[setMetaQosHandler] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	parser := func(key string) (val int, err error, has bool) {
+		valStr := r.FormValue(key)
+		if valStr == "" {
+			return 0, nil, false
+		}
+		has = true
+		val, err = strconv.Atoi(valStr)
+		return
+	}
+
+	updated := false
+	for key, pVal := range map[string]*int{
+		paramReadDirIops: &m.readDirIops,
+	} {
+		val, err, has := parser(key)
+		if err != nil {
+			return
+		}
+		if has {
+			updated = true
+			*pVal = val
+		}
+	}
+
+	if updated {
+		if m.metadataManager == nil {
+			err = fmt.Errorf("metadataManager is nil")
+			return
+		}
+		m.metadataManager.UpdateQosLimit()
+	}
+}
+
+func (m *MetaNode) getMetaQosHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getMetaQosHandler] response %s", err)
+		}
+	}()
+
+	metaQos := &struct {
+		QosEnable   bool `json:"qosEnable"`
+		ReadDirIops int  `json:"readDirIops"`
+	}{
+		QosEnable:   m.qosEnable,
+		ReadDirIops: m.readDirIops,
+	}
+
+	resp.Data = metaQos
+}

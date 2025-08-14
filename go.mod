@@ -14,13 +14,15 @@ require (
 	github.com/agiledragon/gomonkey/v2 v2.11.0
 	github.com/aws/aws-sdk-go v1.33.1
 	github.com/benbjohnson/clock v1.3.1
-	github.com/bits-and-blooms/bitset v1.2.1
+	github.com/bits-and-blooms/bitset v1.10.0
+	github.com/bits-and-blooms/bloom/v3 v3.6.0
 	github.com/brahma-adshonor/gohook v1.1.9
 	github.com/deniswernert/go-fstab v0.0.0-20141204152952-eb4090f26517
 	github.com/desertbit/grumble v1.1.3
 	github.com/dustin/go-humanize v1.0.1
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/fatih/color v1.15.0
+	github.com/go-ping/ping v1.1.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.3

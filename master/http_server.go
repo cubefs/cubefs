@@ -333,11 +333,32 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetConfig).
 		HandlerFunc(m.getConfigHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateDecommissionFirstHostDiskParallelLimit).
+		HandlerFunc(m.updateDecommissionFirstHostDiskParallelLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminQueryDecommissionFirstHostDiskParallelLimit).
+		HandlerFunc(m.queryDecommissionFirstHostDiskParallelLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateDecommissionFirstHostParallelLimit).
+		HandlerFunc(m.updateDecommissionFirstHostParallelLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminQueryDecommissionFirstHostParallelLimit).
+		HandlerFunc(m.queryDecommissionFirstHostParallelLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminQueryDecommissionFirstHostParallelInfo).
+		HandlerFunc(m.queryDecommissionFirstHostParallelInfo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateDecommissionLimit).
 		HandlerFunc(m.updateDecommissionLimit)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminQueryDecommissionLimit).
 		HandlerFunc(m.queryDecommissionLimit)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminQueryDiskDecommissionInfoStat).
+		HandlerFunc(m.queryDiskDecommissionInfoStat)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminQueryDataNodeDecommissionInfoStat).
+		HandlerFunc(m.queryDataNodeDecommissionInfoStat)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminQueryDecommissionToken).
 		HandlerFunc(m.queryDecommissionToken)
@@ -551,6 +572,36 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDiagnoseMetaPartition).
 		HandlerFunc(m.diagnoseMetaPartition)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminMetaPartitionEmptyStatus).
+		HandlerFunc(m.getMetaPartitionEmptyStatus)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminMetaPartitionFreezeEmpty).
+		HandlerFunc(m.freezeEmptyMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminMetaPartitionCleanEmpty).
+		HandlerFunc(m.cleanEmptyMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminMetaPartitionRemoveBackup).
+		HandlerFunc(m.removeBackupMetaPartition)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminMetaPartitionGetCleanTask).
+		HandlerFunc(m.getCleanMetaPartitionTask)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.CreateMetaNodeBalanceTask).
+		HandlerFunc(m.createMetaNodeBalancePlan)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetMetaNodeBalanceTask).
+		HandlerFunc(m.getMetaNodeBalancePlan)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RunMetaNodeBalanceTask).
+		HandlerFunc(m.runMetaNodeBalancePlan)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.StopMetaNodeBalanceTask).
+		HandlerFunc(m.stopMetaNodeBalancePlan)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DeleteMetaNodeBalanceTask).
+		HandlerFunc(m.deleteMetaNodeBalancePlan)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).
@@ -559,9 +610,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateDataPartition).
 		HandlerFunc(m.createDataPartition)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminCreatePreLoadDataPartition).
-		HandlerFunc(m.createPreLoadDataPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDataPartitionChangeLeader).
 		HandlerFunc(m.changeDataPartitionLeader)
@@ -606,15 +654,27 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.MigrateMetaNode).
 		HandlerFunc(m.migrateMetaNodeHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.MigrateMetaPartition).
+		HandlerFunc(m.migrateMetaPartitionHandler)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetMetaNode).
 		HandlerFunc(m.getMetaNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.SetMpCntLimit).
+		HandlerFunc(m.setMpCntLimit)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetMetaNodeThreshold).
 		HandlerFunc(m.setMetaNodeThreshold)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetMasterVolDeletionDelayTime).
 		HandlerFunc(m.setMasterVolDeletionDelayTime)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetMetaNodeGOGC).
+		HandlerFunc(m.setMetaNodeGOGC)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetDataNodeGOGC).
+		HandlerFunc(m.setDataNodeGOGC)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminAddDataReplica).
 		HandlerFunc(m.addDataReplica)
@@ -633,6 +693,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminPutDataPartitions).
 		HandlerFunc(m.putDataPartitions)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.OfflineMetaNode).
+		HandlerFunc(m.offlineMetaNode)
 
 	// data node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -664,6 +727,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetDataNode).
 		HandlerFunc(m.getDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.SetDpCntLimit).
+		HandlerFunc(m.setDpCntLimit)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionDisk).
 		HandlerFunc(m.decommissionDisk)
@@ -701,11 +767,11 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.QueryDisableDisk).
 		HandlerFunc(m.queryDisableDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryDecommissionSuccessDisk).
+		HandlerFunc(m.queryDecommissionSuccessDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.CancelDecommissionDisk).
 		HandlerFunc(m.cancelDecommissionDisk)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.ResetDecommissionDiskStatus).
-		HandlerFunc(m.resetDecommissionDiskStatus)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminResetDataPartitionRestoreStatus).
 		HandlerFunc(m.resetDataPartitionRestoreStatus)
@@ -715,6 +781,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QueryBadDiskRecoverProgress).
 		HandlerFunc(m.queryBadDiskRecoverProgress)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DeleteLostDisk).
+		HandlerFunc(m.deleteLostDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ReloadDisk).
+		HandlerFunc(m.reloadDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DeleteBackupDirectories).
 		HandlerFunc(m.deleteBackupDirectories)
@@ -850,6 +922,38 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodDelete, http.MethodPost).
 		Path(proto.S3QoSDelete).
 		HandlerFunc(m.S3QosDelete)
+
+	// APIs for FlashNode
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeAdd).HandlerFunc(m.addFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeSet).HandlerFunc(m.setFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeRemove).HandlerFunc(m.removeFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeRemoveAllInactive).HandlerFunc(m.removeAllInactiveFlashNodes)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.FlashNodeGet).HandlerFunc(m.getFlashNode)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.FlashNodeList).HandlerFunc(m.listFlashNodes)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeSetReadIOLimits).HandlerFunc(m.setFlashNodeReadIOLimits)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeSetWriteIOLimits).HandlerFunc(m.setFlashNodeWriteIOLimits)
+
+	// APIs for FlashNode manual tasks
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.CreateFlashNodeManualTask).
+		HandlerFunc(m.createFlashNodeManualTask)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminFlashManualTask).
+		HandlerFunc(m.flashManualTask)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetFlashNodeTaskResponse).
+		HandlerFunc(m.handleFlashNodeTaskResponse)
+
+	// APIs for FlashGroup
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupTurn).HandlerFunc(m.turnFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupCreate).HandlerFunc(m.createFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupSet).HandlerFunc(m.setFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupRemove).HandlerFunc(m.removeFlashGroup)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupNodeAdd).HandlerFunc(m.flashGroupAddFlashNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupNodeRemove).HandlerFunc(m.flashGroupRemoveFlashNode)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashGroupGet).HandlerFunc(m.getFlashGroup)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashGroupList).HandlerFunc(m.listFlashGroups)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.ClientFlashGroups).HandlerFunc(m.clientFlashGroups)
 }
 
 func (m *Server) registerHandler(router *mux.Router, model string, schema *graphql.Schema) {

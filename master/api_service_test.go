@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/config"
@@ -40,7 +42,8 @@ import (
 )
 
 const (
-	hostAddr          = "http://127.0.0.1:8080"
+	masterAddr        = "127.0.0.1:8080"
+	hostAddr          = "http://" + masterAddr
 	ConfigKeyLogDir   = "logDir"
 	ConfigKeyLogLevel = "logLevel"
 	mds1Addr          = "127.0.0.1:9101"
@@ -50,6 +53,9 @@ const (
 	mds5Addr          = "127.0.0.1:9105"
 	mds6Addr          = "127.0.0.1:9106"
 	mds7Addr          = "127.0.0.1:9107"
+	mds1HddAddr       = "127.0.0.1:9111"
+	mds2HddAddr       = "127.0.0.1:9112"
+	mds3HddAddr       = "127.0.0.1:9113"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -63,6 +69,16 @@ const (
 	testZone1     = "zone1"
 	testZone2     = "zone2"
 	testZone3     = "zone3"
+	testHddZone1  = "hdd_zone1"
+
+	mfs1Addr = "127.0.0.1:10501"
+	mfs2Addr = "127.0.0.1:10502"
+	mfs3Addr = "127.0.0.1:10503"
+	mfs4Addr = "127.0.0.1:10504"
+	mfs5Addr = "127.0.0.1:10505"
+	mfs6Addr = "127.0.0.1:10506"
+	mfs7Addr = "127.0.0.1:10507"
+	mfs8Addr = "127.0.0.1:10508"
 
 	testUserID  = "testUser"
 	ak          = "0123456789123456"
@@ -72,17 +88,23 @@ const (
 
 var (
 	server                 = createDefaultMasterServerForTest()
+	mc                     = master.NewMasterClient([]string{masterAddr}, false)
 	commonVol              *Vol
 	defaultVolStorageClass = proto.StorageClass_Replica_SSD
 	defaultMediaType       = proto.MediaType_SSD
 	cfsUser                *proto.UserInfo
+
+	mockServerLock   sync.Mutex
+	mockDataServers  []*mocktest.MockDataServer
+	mockMetaServers  []*mocktest.MockMetaServer
+	mockFlashServers []*mocktest.MockFlashServer
 )
 
-var mockServerLock sync.Mutex
-
-var mockDataServers []*mocktest.MockDataServer
-
-var mockMetaServers []*mocktest.MockMetaServer
+func TestMain(m *testing.M) {
+	exitCode := m.Run()
+	server.clearMetadata()
+	os.Exit(exitCode)
+}
 
 func rangeMockDataServers(fun func(*mocktest.MockDataServer) bool) (count int, passed int) {
 	mockServerLock.Lock()
@@ -146,6 +168,11 @@ func createDefaultMasterServerForTest() *Server {
 	mockDataServers = append(mockDataServers, addDataServer(mds4Addr, testZone2, defaultMediaType))
 	mockDataServers = append(mockDataServers, addDataServer(mds5Addr, testZone2, defaultMediaType))
 	mockDataServers = append(mockDataServers, addDataServer(mds6Addr, testZone2, defaultMediaType))
+	mockDataServers = append(mockDataServers,
+		addDataServer(mds1HddAddr, testHddZone1, proto.MediaType_HDD),
+		addDataServer(mds2HddAddr, testHddZone1, proto.MediaType_HDD),
+		addDataServer(mds3HddAddr, testHddZone1, proto.MediaType_HDD),
+	)
 
 	// add meta node
 	mockMetaServers = make([]*mocktest.MockMetaServer, 0)
@@ -155,10 +182,23 @@ func createDefaultMasterServerForTest() *Server {
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms4Addr, testZone2))
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms5Addr, testZone2))
 	mockMetaServers = append(mockMetaServers, addMetaServer(mms6Addr, testZone2))
+
+	// add flash node
+	mockFlashServers = append(mockFlashServers,
+		addFlashServer(mfs1Addr, testZone1),
+		addFlashServer(mfs2Addr, testZone1),
+		addFlashServer(mfs3Addr, testZone2),
+		addFlashServer(mfs4Addr, testZone2),
+		addFlashServer(mfs5Addr, testZone3),
+		addFlashServer(mfs6Addr, testZone3),
+		addFlashServer(mfs7Addr, testZone3),
+	)
+
 	// we should wait 5 seoncds for master to prepare state
 	time.Sleep(5 * time.Second)
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
+	testServer.cluster.checkFlashNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	// set load factor
@@ -201,7 +241,7 @@ func createDefaultMasterServerForTest() *Server {
 	}
 
 	commonVol = vol
-	fmt.Printf("vol[%v] has created\n", newSimpleView(commonVol))
+	fmt.Printf("Volume[%+v] has created\n", newSimpleView(commonVol))
 
 	if err = createUserWithPolicy(testServer); err != nil {
 		panic(err)
@@ -296,6 +336,12 @@ func addDataServer(addr, zoneName string, mediaType uint32) *mocktest.MockDataSe
 
 func addMetaServer(addr, zoneName string) *mocktest.MockMetaServer {
 	mms := mocktest.NewMockMetaServer(addr, zoneName)
+	mms.Start()
+	return mms
+}
+
+func addFlashServer(addr, zoneName string) *mocktest.MockFlashServer {
+	mms := mocktest.NewMockFlashServer(addr, zoneName)
 	mms.Start()
 	return mms
 }
@@ -460,6 +506,40 @@ func TestDisk(t *testing.T) {
 	addr := mds5Addr
 	disk := "/cfs"
 	decommissionDisk(addr, disk, t)
+	cancelDecommissionDisk(addr, disk, t)
+}
+
+func cancelDecommissionDisk(addr, path string, t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v",
+		hostAddr, proto.CancelDecommissionDisk, addr, path)
+	mocktest.Log(t, reqURL)
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	mocktest.Println(resp.StatusCode)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	mocktest.Println(string(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status code[%v]", resp.StatusCode)
+		return
+	}
+	reply := &proto.HTTPReply{}
+	if err = json.Unmarshal(body, reply); err != nil {
+		t.Error(err)
+		return
+	}
+	key := fmt.Sprintf("%s_%s", addr, path)
+	_, ok := server.cluster.DecommissionDisks.Load(key)
+	if ok {
+		t.Errorf("disk should be removed from DecommissionDisks")
+	}
 }
 
 func decommissionDisk(addr, path string, t *testing.T) {
@@ -512,21 +592,77 @@ func TestMarkDeleteVol(t *testing.T) {
 	}
 }
 
+func TestVolSetBucketLifecycle(t *testing.T) {
+	req := &createVolReq{
+		name:                "bktLifecycle",
+		owner:               "cfs",
+		dpSize:              11,
+		mpCount:             3,
+		dpReplicaNum:        3,
+		capacity:            300,
+		followerRead:        false,
+		authenticate:        false,
+		crossZone:           true,
+		zoneName:            "",
+		description:         "",
+		qosLimitArgs:        &qosArgs{},
+		volStorageClass:     defaultVolStorageClass,
+		allowedStorageClass: []uint32{defaultVolStorageClass, proto.StorageClass_Replica_HDD},
+	}
+
+	_, err := server.cluster.createVol(req)
+	if err != nil {
+		log.LogFlush()
+		t.FailNow()
+	}
+
+	days := 10
+
+	rule := proto.Rule{
+		ID:     "r1",
+		Status: proto.RuleEnabled,
+		Filter: &proto.Filter{
+			Prefix:  "test/",
+			MinSize: 1024,
+		},
+		Transitions: []*proto.Transition{
+			{
+				Days:         &days,
+				StorageClass: "HDD",
+			},
+		},
+	}
+
+	lc := &proto.LcConfiguration{
+		VolName: req.name,
+		Rules: []*proto.Rule{
+			&rule,
+		},
+	}
+
+	data, err := json.Marshal(lc)
+	require.NoError(t, err)
+
+	url := fmt.Sprintf("%s%s", hostAddr, proto.SetBucketLifecycle)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+
+	data1, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	t.Logf("data: %s, url %s", string(data1), url)
+
+	require.True(t, resp.StatusCode == http.StatusOK)
+
+	lc2 := server.cluster.GetBucketLifecycle(lc.VolName)
+	require.True(t, len(lc2.Rules) == 1)
+	require.True(t, lc2.Rules[0].MinSize() == lc.Rules[0].MinSize())
+}
+
 func TestSetVolCapacity(t *testing.T) {
 	setVolCapacity(600, proto.AdminVolExpand, t)
 	setVolCapacity(300, proto.AdminVolShrink, t)
-}
-
-func TestPreloadDp(t *testing.T) {
-	volName := "preloadVol"
-	req := map[string]interface{}{}
-	req[nameKey] = volName
-	req[volStorageClassKey] = proto.StorageClass_BlobStore
-	createVol(req, t)
-
-	preCap := 60
-	checkParam(cacheCapacity, proto.AdminCreatePreLoadDataPartition, req, -1, preCap, t)
-	delVol(volName, t)
 }
 
 func TestUpdateVol(t *testing.T) {
@@ -534,6 +670,7 @@ func TestUpdateVol(t *testing.T) {
 	req := map[string]interface{}{}
 	req[nameKey] = volName
 	req[volStorageClassKey] = proto.StorageClass_BlobStore
+	req[remoteCacheReadTimeout] = proto.ReadDeadlineTime
 
 	createVol(req, t)
 
@@ -554,26 +691,11 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.Authenticate == view2.Authenticate)
 	assert.True(t, view.FollowerRead == view2.FollowerRead)
 	assert.True(t, view.ObjBlockSize == view2.ObjBlockSize)
-	assert.True(t, view.CacheCapacity == view2.CacheCapacity)
-	assert.True(t, view.CacheAction == view2.CacheAction)
-	assert.True(t, view.CacheThreshold == view2.CacheThreshold)
-	assert.True(t, view.CacheTtl == view2.CacheTtl)
-	assert.True(t, view.CacheHighWater == view2.CacheHighWater)
-	assert.True(t, view.CacheLowWater == view2.CacheLowWater)
-	assert.True(t, view.CacheLruInterval == view2.CacheLruInterval)
-	assert.True(t, view.CacheRule == view2.CacheRule)
 
 	// update
 	cap := 1024
 	desc := "hello_test"
 	blkSize := 6 * 1024
-	cacheCap := 102
-	threshold := 7 * 1024
-	ttl := 7
-	high := 70
-	low := 40
-	lru := 6
-	rule := "test"
 
 	checkParam(volCapacityKey, proto.AdminUpdateVol, req, "tt", cap, t)
 	setParam(descriptionKey, proto.AdminUpdateVol, req, desc, t)
@@ -581,18 +703,11 @@ func TestUpdateVol(t *testing.T) {
 	checkParam(authenticateKey, proto.AdminUpdateVol, req, "tt", true, t)
 	checkParam(followerReadKey, proto.AdminUpdateVol, req, "test", true, t)
 	checkParam(ebsBlkSizeKey, proto.AdminUpdateVol, req, "-1", blkSize, t)
-	checkParam(cacheActionKey, proto.AdminUpdateVol, req, "3", proto.RWCache, t)
-	checkParam(cacheCapacity, proto.AdminUpdateVol, req, "1027", cacheCap, t)
-	checkParam(cacheCapacity, proto.AdminUpdateVol, req, "-1", cacheCap, t)
-	checkParam(volCapacityKey, proto.AdminUpdateVol, req, "101", cap, t)
-	checkParam(cacheThresholdKey, proto.AdminUpdateVol, req, "-1", threshold, t)
-	checkParam(cacheTTLKey, proto.AdminUpdateVol, req, "tt", ttl, t)
-	checkParam(cacheHighWaterKey, proto.AdminUpdateVol, req, "high", high, t)
-	checkParam(cacheHighWaterKey, proto.AdminUpdateVol, req, 91, high, t)
-	checkParam(cacheLowWaterKey, proto.AdminUpdateVol, req, 78, low, t)
-	checkParam(cacheLowWaterKey, proto.AdminUpdateVol, req, 93, low, t)
-	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, -1, lru, t)
-	setParam(cacheRuleKey, proto.AdminUpdateVol, req, rule, t)
+	checkParam("remoteCacheEnable", proto.AdminUpdateVol, req, "not-bool", true, t)
+	checkParam("remoteCacheAutoPrepare", proto.AdminUpdateVol, req, "not-bool", false, t)
+	checkParam("remoteCacheTTL", proto.AdminUpdateVol, req, "not-number", int64(77), t)
+	checkParam("remoteCacheReadTimeout", proto.AdminUpdateVol, req, "not-number", int64(7), t)
+	setParam("remoteCachePath", proto.AdminUpdateVol, req, "cache-path,a-path", t)
 
 	view = getSimpleVol(volName, true, t)
 	// check update result
@@ -603,19 +718,11 @@ func TestUpdateVol(t *testing.T) {
 	// LF vol always be true
 	assert.True(t, view.FollowerRead)
 	assert.True(t, view.ObjBlockSize == blkSize)
-	assert.True(t, view.CacheCapacity == uint64(cacheCap))
-	assert.True(t, view.CacheAction == proto.RWCache)
-	assert.True(t, view.CacheThreshold == threshold)
-	assert.True(t, view.CacheTtl == ttl)
-	assert.True(t, view.CacheHighWater == high)
-	assert.True(t, view.CacheLowWater == low)
-	assert.True(t, view.CacheLruInterval == lru)
-	assert.True(t, view.CacheRule == rule)
-
-	// update cacheRule to empty
-	setUpdateVolParm(emptyCacheRuleKey, req, true, t)
-	view = getSimpleVol(volName, true, t)
-	assert.True(t, view.CacheRule == "")
+	require.True(t, view.RemoteCacheEnable)
+	require.Equal(t, "a-path,cache-path", view.RemoteCachePath)
+	require.False(t, view.RemoteCacheAutoPrepare)
+	require.Equal(t, int64(77), view.RemoteCacheTTL)
+	require.Equal(t, int64(7), view.RemoteCacheReadTimeout)
 
 	for id, name := range []string{"z1", "z2", "z3"} {
 		zone := newZone(name, defaultMediaType)
@@ -687,10 +794,6 @@ func TestUpdateVol(t *testing.T) {
 	// time.Sleep(10 * time.Second)
 	// // can't update vol after delete
 	// checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
-}
-
-func setUpdateVolParm(key string, req map[string]interface{}, val interface{}, t *testing.T) {
-	setParam(key, proto.AdminUpdateVol, req, val, t)
 }
 
 func delVol(name string, t *testing.T) {
@@ -765,7 +868,7 @@ func TestCreateMetaPartition(t *testing.T) {
 }
 
 func TestCreateDataPartition(t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?count=2&name=%v&type=extent",
+	reqURL := fmt.Sprintf("%v%v?count=2&name=%v&type=extent&force=true",
 		hostAddr, proto.AdminCreateDataPartition, commonVol.Name)
 	process(reqURL, t)
 }
@@ -808,10 +911,14 @@ func TestDataPartitionDecommission(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	partition := vol.dataPartitions.partitions[0]
 	offlineAddr := partition.Hosts[0]
-	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
-		hostAddr, proto.AdminDecommissionDataPartition, vol.Name, partition.PartitionID, offlineAddr)
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&weight=%v",
+		hostAddr, proto.AdminDecommissionDataPartition, vol.Name, partition.PartitionID, offlineAddr, highPriorityDecommissionWeight)
+	for _, replica := range partition.Replicas {
+		replica.LocalPeers = partition.Peers
+	}
 	process(reqURL, t)
 	require.EqualValues(t, markDecommission, partition.GetDecommissionStatus())
+	require.EqualValues(t, highPriorityDecommissionWeight, partition.DecommissionWeight)
 }
 
 //	func TestGetAllVols(t *testing.T) {
@@ -855,35 +962,30 @@ func TestGetNodeInfo(t *testing.T) {
 
 func TestSetNodeMaxDpCntLimit(t *testing.T) {
 	// change current max data partition count limit to 4000
-	limit := uint32(4000)
-	reqURL := fmt.Sprintf("%v%v?maxDpCntLimit=%v", hostAddr, proto.AdminSetNodeInfo, limit)
+	limit := uint64(4000)
+	addr := mds1Addr
+	reqURL := fmt.Sprintf("%v%v?addr=%v&maxDpCntLimit=%v", hostAddr, proto.SetDpCntLimit, addr, limit)
 	process(reqURL, t)
-	// query current settings
-	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetNodeInfo)
+	// query data node info
+	reqURL = fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetDataNode, addr)
 	reply := process(reqURL, t)
 	data := reply.Data.(map[string]interface{})
-	limitStr := (data[maxDpCntLimitKey]).(string)
-	assert.True(t, fmt.Sprint(limit) == limitStr)
-	// query data node info
-	reqURL = fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetDataNode, mds1Addr)
-	reply = process(reqURL, t)
-	data = reply.Data.(map[string]interface{})
-	dataNodeLimit := uint32((data[maxDpCntLimitKey]).(float64))
+	dataNodeLimit := uint64((data[maxDpCntLimitKey]).(float64))
 	assert.True(t, dataNodeLimit == limit)
 }
 
 func TestSetNodeMaxMpCntLimit(t *testing.T) {
+	// change current max meta partition count limit to 600
 	limit := uint64(600)
-	oldVal := server.cluster.getMaxMpCntLimit()
-	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
-	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, maxMpCntLimitKey, limit)
-	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, maxMpCntLimitKey, oldVal)
-
-	process(setUrl, t)
-	require.EqualValues(t, limit, server.cluster.getMaxMpCntLimit())
-
-	process(unsetUrl, t)
-	require.EqualValues(t, oldVal, server.cluster.getMaxMpCntLimit())
+	addr := mms1Addr
+	reqURL := fmt.Sprintf("%v%v?addr=%v&maxMpCntLimit=%v", hostAddr, proto.SetMpCntLimit, addr, limit)
+	process(reqURL, t)
+	// query data node info
+	reqURL = fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetMetaNode, addr)
+	reply := process(reqURL, t)
+	data := reply.Data.(map[string]interface{})
+	dataNodeLimit := uint64((data[maxMpCntLimitKey]).(float64))
+	assert.True(t, dataNodeLimit == limit)
 }
 
 func TestAddDataReplica(t *testing.T) {
@@ -933,7 +1035,7 @@ func TestRemoveDataReplica(t *testing.T) {
 }
 
 func TestAddMetaReplica(t *testing.T) {
-	maxPartitionID := commonVol.maxPartitionID()
+	maxPartitionID := commonVol.maxMetaPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
 	if partition == nil {
 		t.Error("no meta partition")
@@ -958,7 +1060,7 @@ func TestAddMetaReplica(t *testing.T) {
 }
 
 func TestRemoveMetaReplica(t *testing.T) {
-	maxPartitionID := commonVol.maxPartitionID()
+	maxPartitionID := commonVol.maxMetaPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
 	if partition == nil {
 		t.Error("no meta partition")
@@ -1717,6 +1819,18 @@ func TestSetDpTimeout(t *testing.T) {
 	require.EqualValues(t, oldVal, server.cluster.getDataPartitionTimeoutSec())
 }
 
+func TestSetMpTimeout(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getMetaPartitionTimeoutSec()
+	setVal := int64(10)
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, mpTimeoutKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, mpTimeoutKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.getMetaPartitionTimeoutSec())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getMetaPartitionTimeoutSec())
+}
+
 func TestSetDpRepairTimeout(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
 	oldVal := server.cluster.cfg.DpRepairTimeOut
@@ -1763,6 +1877,31 @@ func TestSetDiscardDp(t *testing.T) {
 	require.False(t, dp.IsDiscard)
 }
 
+func TestUpdateDecommissionFirstHostParallelLimit(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminUpdateDecommissionFirstHostParallelLimit)
+	dataNode, _ := server.cluster.dataNode(mds1Addr)
+	oldVal := dataNode.DecommissionFirstHostParallelLimit
+	setVal := oldVal + 1
+	setUrl := fmt.Sprintf("%v?%v=%v&%v=%v", reqUrl, addrKey, mds1Addr, decommissionFirstHostParallelLimit, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&%v=%v", reqUrl, addrKey, mds1Addr, decommissionFirstHostParallelLimit, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, dataNode.DecommissionFirstHostParallelLimit)
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, dataNode.DecommissionFirstHostParallelLimit)
+}
+
+func TestUpdateDecommissionFirstHostDiskParallelLimit(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminUpdateDecommissionFirstHostDiskParallelLimit)
+	oldVal := server.cluster.DecommissionFirstHostDiskParallelLimit
+	setVal := oldVal + 1
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, decommissionFirstHostDiskParallelLimit, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, decommissionFirstHostDiskParallelLimit, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.DecommissionFirstHostDiskParallelLimit)
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.DecommissionFirstHostDiskParallelLimit)
+}
+
 func TestSetDecommissionDiskLimit(t *testing.T) {
 	oldVal := server.cluster.GetDecommissionDiskLimit()
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminUpdateDecommissionDiskLimit)
@@ -1778,7 +1917,7 @@ func TestSetDecommissionDiskLimit(t *testing.T) {
 
 func TestUpdateVolAutoDpMetaRepair(t *testing.T) {
 	name := "enableAutoDpMetaRepairVol"
-	createVol(map[string]interface{}{nameKey: name}, t)
+	createVol(map[string]interface{}{nameKey: name, remoteCacheReadTimeout: proto.ReadDeadlineTime}, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
 		t.Errorf("failed to get vol %v, err %v", name, err)
@@ -1799,4 +1938,71 @@ func TestUpdateVolAutoDpMetaRepair(t *testing.T) {
 
 	process(unsetUrl, t)
 	require.EqualValues(t, oldVal, vol.EnableAutoMetaRepair.Load())
+}
+
+func TestGetMetaPartitionEmptyStatus(t *testing.T) {
+	name := "emptyMpVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+
+	if err = vol.addMetaPartitions(server.cluster, 3); err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminMetaPartitionEmptyStatus)
+
+	process(reqUrl, t)
+}
+
+func TestMetaPartitionFreezeEmpty(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v?name=emptyMpVol&count=3", hostAddr, proto.AdminMetaPartitionFreezeEmpty)
+
+	process(reqUrl, t)
+}
+
+func TestCleanEmptyMetaPartition(t *testing.T) {
+	name := "emptyMpVol2"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	reqUrl := fmt.Sprintf("%v%v?name=emptyMpVol2", hostAddr, proto.AdminMetaPartitionCleanEmpty)
+
+	process(reqUrl, t)
+}
+
+func TestDeleteLostDisk(t *testing.T) {
+	addr := mds5Addr
+	disk := "/cfs/disk2"
+	reqUrl := fmt.Sprintf("%v%v?addr=%v&disk=%v", hostAddr, proto.DeleteLostDisk, addr, disk)
+
+	process(reqUrl, t)
+}
+
+func TestReloadDisk(t *testing.T) {
+	addr := mds5Addr
+	disk := "/cfs/disk2"
+	reqUrl := fmt.Sprintf("%v%v?addr=%v&disk=%v", hostAddr, proto.ReloadDisk, addr, disk)
+
+	process(reqUrl, t)
+}
+
+func TestSetFileStats(t *testing.T) {
+	enable := true
+	thresholds := []uint64{1024, 2048}
+	thresholdStr := strings.Join(func() []string {
+		result := make([]string, len(thresholds))
+		for i, v := range thresholds {
+			result[i] = strconv.FormatUint(v, 10)
+		}
+		return result
+	}(), ",")
+	reqURL := fmt.Sprintf("%v%v?enable=%v&threshold=%v", hostAddr, proto.AdminSetFileStats, enable, thresholdStr)
+
+	process(reqURL, t)
+
+	require.EqualValues(t, enable, server.cluster.fileStatsEnable)
+	require.EqualValues(t, thresholds, server.cluster.fileStatsThresholds)
 }

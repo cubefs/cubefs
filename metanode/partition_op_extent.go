@@ -78,7 +78,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		return
 	}
 	ext := req.Extent
-	ino.Extents.Append(ext)
+	ino.GetExtents().Append(ext)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -95,10 +95,10 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 
 // ExtentAppendWithCheck appends an extent with discard extents check.
 // Format: one valid extent key followed by non or several discard keys.
-func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error) {
+func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet, remoteAddr string) (err error) {
 	status := mp.isOverQuota(req.Inode, true, false)
 	if status != 0 {
-		log.LogErrorf("ExtentAppendWithCheck fail status [%v]", status)
+		log.LogWarnf("ExtentAppendWithCheck fail status [%v]", status)
 		err = errors.New("ExtentAppendWithCheck is over quota")
 		reply := []byte(err.Error())
 		p.PacketErrorWithBody(status, reply)
@@ -111,11 +111,8 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
-	var (
-		inoParm *Inode
-		i       *Inode
-	)
-	if inoParm, i, err = mp.CheckQuota(req.Inode, p); err != nil {
+	var inoParm *Inode
+	if inoParm, _, err = mp.CheckQuota(req.Inode, p); err != nil {
 		log.LogErrorf("ExtentAppendWithCheck CheckQuota fail err [%v]", err)
 		return
 	}
@@ -134,28 +131,26 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 
-	// TODO:hechi: if storage type is not ssd , update extent key by CacheExtentAppendWithCheck
-	// check volume's Type: if volume's type is cold, cbfs' extent can be modify/add only when objextent exist
+	// not support cache op
 	if req.IsCache {
-		i.RLock()
-		if i.HybridCloudExtents.sortedEks == nil {
-			i.HybridCloudExtents.sortedEks = NewSortedObjExtents()
-		}
-		ObjExtents := i.HybridCloudExtents.sortedEks.(*SortedObjExtents)
-		exist, idx := ObjExtents.FindOffsetExist(req.Extent.FileOffset)
-		if !exist {
-			i.RUnlock()
-			err = fmt.Errorf("ebs's objextent not exist with offset[%v]", req.Extent.FileOffset)
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			return
-		}
-		if ObjExtents.eks[idx].Size != uint64(req.Extent.Size) {
-			err = fmt.Errorf("ebs's objextent size[%v] isn't equal to the append size[%v]", ObjExtents.eks[idx].Size, req.Extent.Size)
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			i.RUnlock()
-			return
-		}
-		i.RUnlock()
+		err = fmt.Errorf("ExtentAppendWithCheck not support cache op, reqId %d, cache %v", p.ReqID, req.IsCache)
+		log.LogError(err)
+		reply := []byte(err.Error())
+		status = proto.OpArgMismatchErr
+		p.PacketErrorWithBody(status, reply)
+	}
+
+	start := time.Now()
+	if mp.IsEnableAuditLog() && !req.IsMigration {
+		appendMsg := req.EkString()
+		defer func() {
+			opErr := err
+			if opErr == nil && p.ResultCode != proto.OpOk {
+				opErr = fmt.Errorf("result %s", p.GetResultMsg())
+			}
+
+			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), appendMsg, opErr, time.Since(start).Milliseconds(), req.Inode, 0)
+		}()
 	}
 
 	ext := req.Extent
@@ -167,9 +162,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		inoParm.StorageClass = req.StorageClass
 	}
 
-	if req.IsCache {
-		inoParm.Extents.Append(ext)
-	} else if req.IsMigration {
+	if req.IsMigration {
 		inoParm.HybridCloudExtentsMigration.storageClass = req.StorageClass
 		inoParm.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
 		inoParm.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).Append(ext)
@@ -183,9 +176,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 
 	// Store discard extents right after the append extent key.
 	if len(req.DiscardExtents) != 0 {
-		if req.IsCache {
-			inoParm.Extents.eks = append(inoParm.Extents.eks, req.DiscardExtents...)
-		} else if req.IsMigration {
+		if req.IsMigration {
 			extents := inoParm.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
 			extents.eks = append(extents.eks, req.DiscardExtents...)
 		} else {
@@ -389,7 +380,7 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 		reqVer = 0
 	}
 	ino.DoReadFunc(func() {
-		ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
+		ino.GetExtents().Range(func(_ int, ek proto.ExtentKey) bool {
 			if ek.GetSeq() <= reqVer {
 				rsp.Extents = append(rsp.Extents, ek)
 				log.LogInfof("action[GetExtentByVer] fresh layer.read ino[%v] readseq [%v] ino seq [%v] include ek [%v]", ino.Inode, reqVer, ino.getVer(), ek)
@@ -400,7 +391,7 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 		})
 		ino.RangeMultiVer(func(idx int, snapIno *Inode) bool {
 			log.LogInfof("action[GetExtentByVer] read ino[%v] readseq [%v] snapIno ino seq [%v]", ino.Inode, reqVer, snapIno.getVer())
-			for _, ek := range snapIno.Extents.eks {
+			for _, ek := range snapIno.GetExtentEks() {
 				if reqVer >= ek.GetSeq() {
 					log.LogInfof("action[GetExtentByVer] get extent ino[%v] readseq [%v] snapIno ino seq [%v], include ek (%v)", ino.Inode, reqVer, snapIno.getVer(), ek.String())
 					rsp.Extents = append(rsp.Extents, ek)
@@ -457,7 +448,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	resp := &proto.GetExtentsResponse{}
 	log.LogInfof("action[ExtentsList] inode[%v] request verseq [%v] ino ver [%v] extent size %v ino.Size %v ino[%v] hist len %v",
-		req.Inode, req.VerSeq, ino.getVer(), len(ino.Extents.eks), ino.Size, ino, ino.getLayerLen())
+		req.Inode, req.VerSeq, ino.getVer(), len(ino.GetExtentEks()), ino.Size, ino, ino.getLayerLen())
 
 	resp.LeaseExpireTime = ino.LeaseExpireTime
 	if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
@@ -473,12 +464,6 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 			ino.DoReadFunc(func() {
 				resp.Generation = ino.Generation
 				resp.Size = ino.Size
-				ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
-					resp.Extents = append(resp.Extents, ek)
-					log.LogInfof("action[ExtentsList] mp(%v) ino(%v) isCache(%v) append ek: %v",
-						mp.config.PartitionId, ino.Inode, req.IsCache, ek)
-					return true
-				})
 			})
 		} else if req.IsMigration {
 			if !proto.IsStorageClassReplica(ino.HybridCloudExtentsMigration.storageClass) {
@@ -563,12 +548,6 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 	ino.DoReadFunc(func() {
 		resp.Generation = ino.Generation
 		resp.Size = ino.Size
-		// cache ek
-		ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
-			resp.Extents = append(resp.Extents, ek)
-			return true
-		})
-		// from SortedHybridCloudExtents
 		if ino.HybridCloudExtents.sortedEks != nil {
 			objEks := ino.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 			objEks.Range(func(ek proto.ObjExtentKey) bool {
@@ -772,10 +751,16 @@ func (mp *metaPartition) sendExtentsToChan(eks []proto.ExtentKey) (err error) {
 	}
 	isSnap := mp.GetVerSeq() > 0
 	sortExts := NewSortedExtentsFromEks(eks)
-	val, err := sortExts.MarshalBinary(isSnap)
+
+	buf := GetInodeBuf()
+	defer PutInodeBuf(buf)
+
+	err = sortExts.MarshalBinary(buf, isSnap)
 	if err != nil {
 		return fmt.Errorf("[delExtents] marshal binary fail, %s", err.Error())
 	}
+
+	val := buf.Bytes()
 	if !isSnap {
 		_, err = mp.submit(opFSMSentToChan, val)
 	} else {

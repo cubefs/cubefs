@@ -31,7 +31,7 @@ func NewMockExtentClient() *MockExtentClient {
 	return &MockExtentClient{}
 }
 
-func (m *MockExtentClient) OpenStream(inode uint64, openForWrite bool, isCache bool) error {
+func (m *MockExtentClient) OpenStream(inode uint64, openForWrite bool, isCache bool, fullPath string) error {
 	return nil
 }
 

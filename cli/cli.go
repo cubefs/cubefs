@@ -79,6 +79,7 @@ func main() {
 		os.Exit(1)
 	}
 	proto.DumpVersion("cfs-cli")
+	master.CliPrint = true
 	if err = runCLI(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		log.LogError("Error:", err)

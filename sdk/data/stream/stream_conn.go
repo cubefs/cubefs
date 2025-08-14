@@ -15,10 +15,13 @@
 package stream
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -128,10 +131,74 @@ func (sc *StreamConn) getRetryTimeOut() time.Duration {
 // Send send the given packet over the network through the stream connection until success
 // or the maximum number of retries is reached.
 func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
+	req.ExtentType |= proto.PacketProtocolVersionFlag
+	if req.IsReadOperation() && !sc.dp.ClientWrapper.InnerReq() && !sc.dp.ClientWrapper.FollowerRead() {
+		return sc.sendReadToDP(sc.dp, req, retry, getReply)
+	}
+	return sc.sendToDataPartitionLeader(req, retry, getReply)
+}
+
+func (sc *StreamConn) sendReadToDP(dp *wrapper.DataPartition, req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
+	err = sc.sendToDataPartition(req, retry, getReply)
+	if err == nil || err == proto.ErrCodeVersionOp || strings.Contains(err.Error(), "OpForbidErr") || err == ExtentNotFoundError {
+		return
+	}
+	log.LogWarnf("sendReadToDP: send to leader failed, try to read quorum, req (%v), dp(%v), err(%v)", req, dp, err)
+	err = sc.readQuorumHosts(dp, req, getReply)
+	if err == nil || !dp.ClientWrapper.MaximallyRead() {
+		return
+	}
+	log.LogWarnf("sendReadToDP: send to quorum failed, try to read other host, req (%v), dp(%v), err(%v)", req, dp, err)
+	err = sc.readActiveHosts(dp, req, getReply)
+	if err != nil {
+		log.LogWarnf("sendReadToDP: send to active failed, req (%v), dp(%v), err(%v)", req, dp, err)
+	}
+	return
+}
+
+func (sc *StreamConn) readQuorumHosts(dp *wrapper.DataPartition, req *Packet, getReply GetReplyFunc) (err error) {
 	start := time.Now()
 	retryInterval := StreamSendSleepInterval
-	req.ExtentType |= proto.PacketProtocolVersionFlag
+	for i := 0; i < StreamSendMaxRetry; i++ {
+		activeHosts, quorumHosts := getDpHosts(dp)
+		if len(activeHosts) < len(dp.Hosts)/2+1 {
+			log.LogWarnf("readQuorumHosts: activeHosts(%v) QuorumHosts(%v) < Quorum(%v), req(%v), dp(%v)",
+				len(activeHosts), len(quorumHosts), len(dp.Hosts)/2+1, req, dp.PartitionID)
+			err = errors.NewErrorf("readQuorumHosts: len(activeHosts) less than half the number of hosts")
+			goto wait
+		}
 
+		req.Opcode = proto.OpStreamFollowerRead
+
+		for _, addr := range quorumHosts {
+			sc.currAddr = addr
+			err = sc.sendToDataPartitionByAddr(req, getReply)
+			if err == nil {
+				log.LogDebugf("readQuorumSuccess: addr(%v)", addr)
+				return
+			}
+			if err != TryOtherAddrError {
+				return
+			}
+			log.LogWarnf("readQuorumHosts: err(%v), addr(%v), try next host", err, addr)
+		}
+		log.LogWarnf("readQuorumHosts failed, try next round: sc(%v) reqPacket(%v) quorumHosts(%v)", sc, req, quorumHosts)
+
+	wait:
+		if time.Since(start) > sc.getRetryTimeOut() {
+
+			log.LogWarnf("readQuorumHosts failed: retry timeout sc(%v) reqPacket(%v) time(%v)", sc, req, time.Since(start))
+			return
+		}
+		time.Sleep(retryInterval)
+	}
+	log.LogWarnf("readQuorumHosts: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req)
+	return errors.NewErrorf("readQuorumHosts failed: sc(%v) reqPacket(%v)", sc, req)
+}
+
+func (sc *StreamConn) sendToDataPartitionLeader(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
+	start := time.Now()
+	retryInterval := StreamSendSleepInterval
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToDataPartition(req, retry, getReply)
 		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError || strings.Contains(err.Error(), "OpForbidErr") || err == ExtentNotFoundError {
@@ -139,25 +206,78 @@ func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err
 		}
 
 		if time.Since(start) > sc.getRetryTimeOut() {
-			log.LogWarnf("StreamConn Send: retry still failed after %d ms, req %d", sc.getRetryTimeOut().Milliseconds(), req.ReqID)
-			return errors.NewErrorf("retry failed, err %s", err.Error())
+			log.LogWarnf("sendToDataPartitionLeader: retry still failed after %d ms, req %d", sc.getRetryTimeOut().Milliseconds(), req.ReqID)
+			return
 		}
 
 		if req.IsRandomWrite() {
 			retryInterval = retryInterval*RetryFactor + time.Duration(rand.Int63n(int64(retryInterval)))
 		}
 
-		log.LogWarnf("StreamConn Send: err(%v), req %d, interval %d ms, cost %d ms",
+		log.LogWarnf("sendToDataPartitionLeader: err(%v), req %d, interval %d ms, cost %d ms",
 			err, req.ReqID, retryInterval.Milliseconds(), time.Since(start).Milliseconds())
 		time.Sleep(retryInterval)
 	}
-	return errors.NewErrorf("StreamConn Send: retried %v times and still failed, sc(%v) reqPacket(%v), err %s", StreamSendMaxRetry, sc, req, err.Error())
+	log.LogWarnf("sendToDataPartitionLeader: retried %v times and still failed, sc(%v) reqPacket(%v), err (%s)", StreamSendMaxRetry, sc, req, err.Error())
+	return
 }
 
 func (sc *StreamConn) sendToDataPartition(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
+	err = sc.sendToDataPartitionByAddr(req, getReply)
+	if err == nil || err != TryOtherAddrError || !*retry {
+		return
+	}
+
+	hosts := sortByStatus(sc.dp, true)
+	for _, addr := range hosts {
+		log.LogWarnf("sendToDataPartition: try addr(%v) reqPacket(%v)", addr, req)
+		sc.currAddr = addr
+		sc.dp.LeaderAddr = addr
+		err = sc.sendToDataPartitionByAddr(req, getReply)
+		if err != TryOtherAddrError {
+			return
+		}
+		log.LogWarnf("sendToDataPartition: try addr(%v) failed! reqPacket(%v) err(%v)", addr, req, err)
+	}
+	return errors.NewErrorf("sendToDataPartition Failed: sc(%v) reqPacket(%v) err(%v)", sc, req, err)
+}
+
+func (sc *StreamConn) readActiveHosts(dp *wrapper.DataPartition, req *Packet, getReply GetReplyFunc) (err error) {
+	start := time.Now()
+	retryInterval := StreamSendSleepInterval
+	for i := 0; i < StreamSendMaxRetry; i++ {
+		activeHosts, _ := getDpHosts(dp)
+
+		req.Opcode = proto.OpStreamFollowerRead
+
+		for _, addr := range activeHosts {
+			sc.currAddr = addr
+			err = sc.sendToDataPartitionByAddr(req, getReply)
+			if err == nil {
+				log.LogDebugf("readActiveSuccess: addr(%v)", addr)
+				return
+			}
+			if err != TryOtherAddrError {
+				return
+			}
+			log.LogWarnf("readActiveHosts: err(%v), addr(%v), try next host", err, addr)
+		}
+		log.LogWarnf("readActiveHosts failed, try next round: sc(%v) reqPacket(%v)", sc, req)
+
+		if time.Since(start) > sc.getRetryTimeOut() {
+			log.LogWarnf("readActiveHosts failed: retry timeout sc(%v) reqPacket(%v) time(%v)", sc, req, time.Since(start))
+			return
+		}
+		time.Sleep(retryInterval)
+	}
+	log.LogWarnf("readActiveHosts: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req)
+	return errors.NewErrorf("readActiveHosts failed: sc(%v) reqPacket(%v)", sc, req)
+}
+
+func (sc *StreamConn) sendToDataPartitionByAddr(req *Packet, getReply GetReplyFunc) (err error) {
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
 	if err == nil {
-		log.LogDebugf("req opcode %v, conn %v", req.Opcode, conn)
+		log.LogDebugf("req opcode %v conn %v addr %v dp %v", req.Opcode, conn, sc.currAddr, sc.dp)
 		err = sc.sendToConn(conn, req, getReply)
 		if err == nil {
 			StreamConnPool.PutConnectV2(conn, false, sc.currAddr)
@@ -165,36 +285,11 @@ func (sc *StreamConn) sendToDataPartition(req *Packet, retry *bool, getReply Get
 		}
 		log.LogWarnf("sendToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnectEx(conn, err)
-		if err != TryOtherAddrError || !*retry {
-			return
-		}
+		return
 	} else {
 		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		return TryOtherAddrError
 	}
-
-	hosts := sortByStatus(sc.dp, true)
-
-	for _, addr := range hosts {
-		log.LogWarnf("sendToDataPartition: try addr(%v) reqPacket(%v)", addr, req)
-		conn, err = StreamConnPool.GetConnect(addr)
-		if err != nil {
-			log.LogWarnf("sendToDataPartition: failed to get connection to addr(%v) reqPacket(%v) err(%v)", addr, req, err)
-			continue
-		}
-		sc.currAddr = addr
-		sc.dp.LeaderAddr = addr
-		err = sc.sendToConn(conn, req, getReply)
-		if err == nil {
-			StreamConnPool.PutConnectV2(conn, false, addr)
-			return
-		}
-		StreamConnPool.PutConnect(conn, true)
-		if err != TryOtherAddrError {
-			return
-		}
-		log.LogWarnf("sendToDataPartition: try addr(%v) failed! reqPacket(%v) err(%v)", addr, req, err)
-	}
-	return errors.New(fmt.Sprintf("sendToPatition Failed: sc(%v) reqPacket(%v)", sc, req))
 }
 
 func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetReplyFunc) (err error) {
@@ -233,7 +328,20 @@ func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetRep
 // If param selectAll is true, hosts with status(true) is in front and hosts with status(false) is in behind.
 // If param selectAll is false, only return hosts with status(true).
 func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
-	var failedHosts []string
+	var (
+		failedHosts     []string
+		readFailedHosts []string
+		readFailedList  []struct {
+			addr string
+			time time.Time
+		}
+		readFailedMap map[string]time.Time
+	)
+
+	if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() && dp.MediaType == proto.MediaType_HDD {
+		readFailedMap = dp.ClientWrapper.GetReadFailedHosts(dp.PartitionID)
+	}
+
 	hostsStatus := dp.ClientWrapper.HostsStatus
 	var dpHosts []string
 	if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() {
@@ -248,6 +356,15 @@ func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
 	hosts = make([]string, 0, len(dpHosts))
 
 	for _, addr := range dpHosts {
+		if readFailedMap != nil {
+			if failedTime, exists := readFailedMap[addr]; exists {
+				readFailedList = append(readFailedList, struct {
+					addr string
+					time time.Time
+				}{addr: addr, time: failedTime})
+				continue
+			}
+		}
 		status, ok := hostsStatus[addr]
 		if ok {
 			if status {
@@ -261,10 +378,22 @@ func sortByStatus(dp *wrapper.DataPartition, selectAll bool) (hosts []string) {
 		}
 	}
 
+	sort.Slice(readFailedList, func(i, j int) bool {
+		return readFailedList[i].time.Before(readFailedList[j].time)
+	})
+	for _, item := range readFailedList {
+		readFailedHosts = append(readFailedHosts, item.addr)
+	}
+
+	hosts = append(hosts, readFailedHosts...)
+
 	if selectAll {
 		hosts = append(hosts, failedHosts...)
 	}
 
+	if log.EnableDebug() {
+		log.LogDebugf("[sortByStatus] dp[%d] hosts[%v] readFailedHosts[%v] failedHosts[%v]", dp.PartitionID, hosts, readFailedHosts, failedHosts)
+	}
 	return
 }
 
@@ -280,6 +409,93 @@ func getNearestHost(dp *wrapper.DataPartition) string {
 		return addr
 	}
 	return dp.LeaderAddr
+}
+
+func getDpHosts(dp *wrapper.DataPartition) (activeHosts, quorumHosts []string) {
+	type hostInfo struct {
+		addr      string
+		appliedID uint64
+	}
+
+	var (
+		wg        sync.WaitGroup
+		hostInfos = make(chan hostInfo, len(dp.Hosts))
+	)
+
+	for _, addr := range dp.Hosts {
+		wg.Add(1)
+		go func(curAddr string) {
+			defer wg.Done()
+			appliedID, err := getAppliedID(dp.PartitionID, curAddr)
+			if err != nil {
+				return
+			}
+			hostInfos <- hostInfo{addr: curAddr, appliedID: appliedID}
+			log.LogDebugf("getDpHosts: get apply id[%v] from host[%v], pid[%v]", appliedID, curAddr, dp.PartitionID)
+		}(addr)
+	}
+
+	wg.Wait()
+	close(hostInfos)
+
+	hosts := make([]hostInfo, 0, len(dp.Hosts))
+	for info := range hostInfos {
+		hosts = append(hosts, info)
+	}
+
+	maxID := uint64(0)
+
+	if len(hosts) > 0 {
+		sort.Slice(hosts, func(i, j int) bool {
+			return hosts[i].appliedID > hosts[j].appliedID
+		})
+		maxID := hosts[0].appliedID
+		for _, h := range hosts {
+			activeHosts = append(activeHosts, h.addr)
+			if h.appliedID == maxID {
+				quorumHosts = append(quorumHosts, h.addr)
+			}
+		}
+	}
+
+	log.LogDebugf("getTargetHosts: get max apply id[%v] from hosts[%v], pid[%v]", maxID, quorumHosts, dp.PartitionID)
+	return
+}
+
+func getAppliedID(partitionId uint64, addr string) (applyId uint64, err error) {
+	var conn *net.TCPConn
+	if conn, err = StreamConnPool.GetConnect(addr); err != nil {
+		log.LogWarnf("getDpAppliedID: failed to create connection addr[%v] err[%v]", addr, err)
+		return
+	}
+
+	defer func() {
+		StreamConnPool.PutConnectEx(conn, err)
+	}()
+
+	reqPacket := NewPacketToGetDpAppliedID(partitionId)
+	if err = reqPacket.WriteToConn(conn); err != nil {
+		log.LogWarnf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v) err(%v)", reqPacket, addr, err)
+		return
+	}
+	replyPacket := new(Packet)
+	if err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		log.LogWarnf("getDpAppliedID: failed to ReadFromConn, packet(%v) dpHost(%v) err(%v)", reqPacket, addr, err)
+		return
+	}
+	if replyPacket.ReqID != reqPacket.ReqID {
+		err = fmt.Errorf("mismatch packet")
+		log.LogWarnf("getDpAppliedID: err(%v) req(%v) reply(%v) dpHost(%v)", err, reqPacket, replyPacket, addr)
+		return
+	}
+	if replyPacket.ResultCode != proto.OpOk {
+		log.LogWarnf("getDpAppliedID: packet(%v) result code isn't ok(%v) from host(%v)", reqPacket, replyPacket.ResultCode, addr)
+		err = errors.NewErrorf("getDpAppliedID error: addr(%v) resultCode(%v) is not ok", addr, replyPacket.ResultCode)
+		return
+	}
+
+	applyId = binary.BigEndian.Uint64(replyPacket.Data)
+	return
 }
 
 func NewStreamConnByHost(host string) *StreamConn {

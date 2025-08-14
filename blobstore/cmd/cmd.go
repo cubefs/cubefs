@@ -51,6 +51,7 @@ type LogConfig struct {
 	MaxSize    int       `json:"maxsize"`
 	MaxAge     int       `json:"maxage"`
 	MaxBackups int       `json:"maxbackups"`
+	Compress   bool      `json:"compress"`
 }
 
 type Config struct {
@@ -105,6 +106,7 @@ func NewLogWriter(cfg *LogConfig) io.Writer {
 		MaxAge:     maxage,
 		MaxBackups: maxbackups,
 		LocalTime:  true,
+		Compress:   cfg.Compress,
 	}
 }
 

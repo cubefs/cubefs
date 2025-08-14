@@ -16,12 +16,15 @@ package storage
 
 import (
 	"encoding/binary"
+	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"path"
 	"strconv"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
@@ -34,7 +37,9 @@ type BlockCrc struct {
 type BlockCrcArr []*BlockCrc
 
 const (
-	BaseExtentIDOffset = 0
+	BaseExtentIDOffset    = 0
+	BaseExtentEndIDOffset = 8
+	BaseExtentCrcOffset   = 16
 )
 
 func (arr BlockCrcArr) Len() int           { return len(arr) }
@@ -137,16 +142,120 @@ func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
 	return
 }
 
-func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
-	value := make([]byte, 8)
-	binary.BigEndian.PutUint64(value, extentID)
-	_, err = s.metadataFp.WriteAt(value, BaseExtentIDOffset)
+func (s *ExtentStore) calcExtentCrc() (crc uint32, err error) {
+	data := bytespool.Alloc(16)
+	defer bytespool.Free(data)
+	_, err = s.metadataFp.ReadAt(data, 0)
+	if err != nil {
+		return
+	}
+
+	sign := crc32.NewIEEE()
+	if _, err = sign.Write(data); err != nil {
+		return
+	}
+	crc = sign.Sum32()
 	return
 }
 
+func (s *ExtentStore) PersistentBaseExtentCrc() (err error) {
+	var crc uint32
+	if crc, err = s.calcExtentCrc(); err != nil {
+		if err != io.EOF {
+			return
+		}
+		return nil
+	}
+	dataCrc := bytespool.Alloc(8)
+	defer bytespool.Free(dataCrc)
+	binary.BigEndian.PutUint32(dataCrc, crc)
+	_, err = s.metadataFp.WriteAt(dataCrc, BaseExtentCrcOffset)
+	return
+}
+
+func (s *ExtentStore) CheckBaseExtentCrc() (err error) {
+	var (
+		crcCalc uint32
+		crcRead uint32
+	)
+	if crcCalc, err = s.calcExtentCrc(); err != nil {
+		if err != io.EOF {
+			log.LogErrorf("CheckBaseExtentCrc dp %v err %v", s.partitionID, err)
+		}
+		return
+	}
+	data := bytespool.Alloc(4)
+	defer bytespool.Free(data)
+	if _, err = s.metadataFp.ReadAt(data, BaseExtentCrcOffset); err == io.EOF {
+		return nil // not init before
+	}
+	crcRead = binary.BigEndian.Uint32(data)
+	if crcRead != crcCalc {
+		err = fmt.Errorf("CheckBaseExtentCrc dp %v crc not equal %v vs %v", s.partitionID, crcRead, crcCalc)
+	}
+	return
+}
+
+func (s *ExtentStore) PersistenceBaseExtentID(baseExtentID uint64) (err error) {
+	s.extIDLock.Lock()
+	defer s.extIDLock.Unlock()
+
+	return s.WriteExtentIDOnVerifyFile(baseExtentID, s.hasAllocSpaceExtentIDOnVerfiyFile)
+}
+
+func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) {
+	s.extIDLock.Lock()
+	defer s.extIDLock.Unlock()
+
+	data := bytespool.Alloc(8)
+	defer bytespool.Free(data)
+	_, err = s.metadataFp.ReadAt(data, 0)
+	if err != nil {
+		return
+	}
+	extentID = binary.BigEndian.Uint64(data)
+	return
+}
+
+func (s *ExtentStore) WriteExtentIDOnVerifyFile(baseExtentID uint64, preAllocExtentID uint64) (err error) {
+	value := make([]byte, 20)
+	binary.BigEndian.PutUint64(value[:8], baseExtentID)
+
+	if preAllocExtentID == 0 {
+		binary.BigEndian.PutUint64(value[:8], baseExtentID)
+		_, err = s.metadataFp.Write(value)
+		return
+	}
+	binary.BigEndian.PutUint64(value[8:16], preAllocExtentID)
+
+	sign := crc32.NewIEEE()
+	if _, err = sign.Write(value[:16]); err != nil {
+		return
+	}
+	crc := sign.Sum32()
+	binary.BigEndian.PutUint32(value[16:], crc)
+
+	if _, err = s.metadataFp.WriteAt(value, 0); err != nil {
+		return err
+	}
+
+	return
+}
+
+func (s *ExtentStore) WritePreAllocSpaceExtentIDOnVerifyFile(preAllocExtentID uint64) (err error) {
+	s.extIDLock.Lock()
+	defer s.extIDLock.Unlock()
+
+	return s.WriteExtentIDOnVerifyFile(s.baseExtentID, preAllocExtentID)
+}
+
 func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerifyFile() (extentID uint64) {
-	value := make([]byte, 8)
-	_, err := s.metadataFp.ReadAt(value, 8)
+	s.extIDLock.Lock()
+	defer s.extIDLock.Unlock()
+
+	value := bytespool.Alloc(8)
+	defer bytespool.Free(value)
+	_, err := s.metadataFp.ReadAt(value, BaseExtentEndIDOffset)
 	if err != nil {
 		return
 	}
@@ -173,55 +282,45 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFileForAppend(idx int) {
 	}
 }
 
-func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
+func (s *ExtentStore) PreAllocSpaceOnVerfiyFile() (needPersist bool) {
 	if !proto.IsNormalDp(s.partitionType) {
 		return
 	}
-
-	if currExtentID > atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile) {
-		prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile))
-		endAllocSpaceExtentID := int64(prevAllocSpaceExtentID + 1000)
-		size := int64(1000 * util.BlockHeaderSize)
-		err := fallocate(int(s.verifyExtentFp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
-		if err != nil {
-			return
-		}
-
-		for id, fp := range s.verifyExtentFpAppend {
-			stat, _ := fp.Stat()
-			log.LogDebugf("PreAllocSpaceOnVerfiyFile. id %v name %v size %v", id, fp.Name(), stat.Size())
-			err = fallocate(int(fp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
-			if err != nil {
-				log.LogErrorf("PreAllocSpaceOnVerfiyFile. id %v name %v err %v", id, fp.Name(), err)
-				return
-			}
-		}
-
-		data := make([]byte, 8)
-		binary.BigEndian.PutUint64(data, uint64(endAllocSpaceExtentID))
-		if _, err = s.metadataFp.WriteAt(data, 8); err != nil {
-			return
-		}
-		atomic.StoreUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile, uint64(endAllocSpaceExtentID))
-		log.LogInfof("Action(PreAllocSpaceOnVerifyFile) PartitionID(%v) currentExtent(%v)"+
-			"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile(%v)"+
-			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
-			prevAllocSpaceExtentID*util.BlockHeaderSize+size)
+	currExtentID := atomic.LoadUint64(&s.baseExtentID)
+	if currExtentID <= atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile) {
+		return
 	}
-}
 
-func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) {
-	data := make([]byte, 8)
-	_, err = s.metadataFp.ReadAt(data, 0)
+	s.hasAllocSpaceExtentIDOnVerfiyFile = currExtentID
+	prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile))
+	endAllocSpaceExtentID := int64(prevAllocSpaceExtentID + 1000)
+	size := int64(1000 * util.BlockHeaderSize)
+	err := fallocate(int(s.verifyExtentFp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
 	if err != nil {
 		return
 	}
-	extentID = binary.BigEndian.Uint64(data)
-	return
+
+	for id, fp := range s.verifyExtentFpAppend {
+		stat, _ := fp.Stat()
+		log.LogDebugf("PreAllocSpaceOnVerfiyFile. id %v name %v size %v", id, fp.Name(), stat.Size())
+		err = fallocate(int(fp.Fd()), 1, prevAllocSpaceExtentID*util.BlockHeaderSize, size)
+		if err != nil {
+			log.LogErrorf("PreAllocSpaceOnVerfiyFile. id %v name %v err %v", id, fp.Name(), err)
+			return
+		}
+	}
+
+	atomic.StoreUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile, uint64(endAllocSpaceExtentID))
+	log.LogInfof("Action(PreAllocSpaceOnVerifyFile) PartitionID(%v) currentExtent(%v)"+
+		"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile(%v)"+
+		" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
+		prevAllocSpaceExtentID*util.BlockHeaderSize+size)
+	return true
 }
 
 func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
-	data := make([]byte, 8)
+	data := bytespool.Alloc(8)
+	defer bytespool.Free(data)
 	binary.BigEndian.PutUint64(data, extentID)
 	if _, err = s.normalExtentDeleteFp.Write(data); err != nil {
 		return
@@ -230,7 +329,8 @@ func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
 }
 
 func (s *ExtentStore) GetHasDeleteExtent() (extentDes []ExtentDeleted, err error) {
-	data := make([]byte, 8)
+	data := bytespool.Alloc(8)
+	defer bytespool.Free(data)
 	offset := int64(0)
 	for {
 		_, err = s.normalExtentDeleteFp.ReadAt(data, offset)

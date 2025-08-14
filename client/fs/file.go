@@ -66,6 +66,34 @@ var (
 	_ fs.NodeRemovexattrer = (*File)(nil)
 )
 
+func isWriteEio(err error) bool {
+	if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP || strings.Contains(err.Error(), syscall.ENOENT.Error()) {
+		return false
+	}
+
+	if err == syscall.EBADF || err == syscall.EDQUOT {
+		return false
+	}
+
+	if strings.Contains(err.Error(), "stream writer in error status") {
+		return false
+	}
+
+	return true
+}
+
+func isReadEio(err error) bool {
+	if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP || strings.Contains(err.Error(), "ExtentNotFoundError") || strings.Contains(err.Error(), syscall.ENOENT.Error()) {
+		return false
+	}
+
+	if err == syscall.EBADF {
+		return false
+	}
+
+	return true
+}
+
 // NewFile returns a new file.
 func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename string) fs.Node {
 	if proto.IsCold(s.volType) || proto.IsStorageClassBlobStore(i.StorageClass) {
@@ -87,10 +115,8 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			EnableBcache:    s.enableBcache,
 			WConcurrency:    s.writeThreads,
 			ReadConcurrency: s.readThreads,
-			CacheAction:     s.CacheAction,
 			FileCache:       false,
 			FileSize:        i.Size,
-			CacheThreshold:  s.CacheThreshold,
 			StorageClass:    i.StorageClass,
 		}
 		log.LogDebugf("Trace NewFile:flag(%v). clientConf(%v)", flag, clientConf)
@@ -107,10 +133,16 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			// no thing
 		}
 		log.LogDebugf("Trace NewFile:fReader(%v) fWriter(%v) ", fReader, fWriter)
-		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename, flag: flag}
+		return &File{
+			super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename,
+			flag: flag,
+		}
 	}
 	log.LogDebugf("Trace NewFile:ino(%v) flag(%v) ", i, flag)
-	return &File{super: s, info: i, parentIno: pino, name: filename, flag: flag}
+	return &File{
+		super: s, info: i, parentIno: pino, name: filename,
+		flag: flag,
+	}
 }
 
 // get file parentPath
@@ -174,15 +206,15 @@ func (f *File) Forget() {
 
 	ino := f.info.Inode
 	defer func() {
-		stat.EndStat("Forget", err, bgTime, 1)
-		log.LogDebugf("TRACE Forget: ino(%v)", ino)
+		stat.EndStat("Forget:file", err, bgTime, 1)
+		log.LogDebugf("TRACE Forget: ino(%v) %v", ino, f.name)
 	}()
 
-	//TODO:why cannot close fwriter
-	//log.LogErrorf("TRACE Forget: ino(%v)", ino)
-	//if f.fWriter != nil {
+	// TODO:why cannot close fwriter
+	// log.LogErrorf("TRACE Forget: ino(%v)", ino)
+	// if f.fWriter != nil {
 	//	f.fWriter.Close()
-	//}
+	// }
 
 	if DisableMetaCache {
 		f.super.ic.Delete(ino)
@@ -209,16 +241,19 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	bgTime := stat.BeginStat()
 	var needBCache bool
 
+	runningStat := f.super.runningMonitor.AddClientOp("fileopen", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Open", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
-	log.LogDebugf("TRACE open ino(%v) info(%v)", ino, f.info)
+	log.LogDebugf("TRACE open ino(%v) info(%v) fullPath(%v)", ino, f.info, path.Join(f.getParentPath(), f.name))
 	start := time.Now()
 
 	if f.super.bcacheDir != "" && !f.filterFilesSuffix(f.super.bcacheFilterFiles) {
 		parentPath := f.getParentPath()
+		log.LogDebugf("TRACE open ino(%v) fullpath(%v)", ino, path.Join(f.getParentPath(), f.name))
 		if parentPath != "" && !strings.HasSuffix(parentPath, "/") {
 			parentPath = parentPath + "/"
 		}
@@ -236,9 +271,9 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		isCache = true
 	}
 	if needBCache {
-		f.super.ec.OpenStreamWithCache(ino, needBCache, openForWrite, isCache)
+		f.super.ec.OpenStreamWithCache(ino, needBCache, openForWrite, isCache, path.Join(f.getParentPath(), f.name))
 	} else {
-		f.super.ec.OpenStream(ino, openForWrite, isCache)
+		f.super.ec.OpenStream(ino, openForWrite, isCache, path.Join(f.getParentPath(), f.name))
 	}
 	log.LogDebugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
@@ -262,10 +297,8 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			EnableBcache:    f.super.enableBcache,
 			WConcurrency:    f.super.writeThreads,
 			ReadConcurrency: f.super.readThreads,
-			CacheAction:     f.super.CacheAction,
 			FileCache:       false,
 			FileSize:        uint64(fileSize),
-			CacheThreshold:  f.super.CacheThreshold,
 			StorageClass:    f.info.StorageClass,
 		}
 		f.fWriter.FreeCache()
@@ -297,28 +330,44 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
 	ino := f.info.Inode
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filerelease", req.Hdr().Pid)
 
 	defer func() {
-		stat.EndStat("Release", err, bgTime, 1)
+		stat.EndStat("Release:file", err, bgTime, 1)
 		log.LogInfof("action[Release] %v", f.fWriter)
 		f.fWriter.FreeCache()
-		// keep nodeCache hold the latest inode info
-		f.super.fslock.Lock()
-		delete(f.super.nodeCache, ino)
-		f.super.fslock.Unlock()
-		if DisableMetaCache {
-			f.super.ic.Delete(ino)
+		if f.super.ec.RefCnt(ino) == 0 {
+			// keep nodeCache hold the latest inode info
+			f.super.fslock.Lock()
+			delete(f.super.nodeCache, ino)
+			f.super.fslock.Unlock()
+			if DisableMetaCache {
+				f.super.ic.Delete(ino)
+			}
+			f.super.fslock.Lock()
+			delete(f.super.nodeCache, ino)
+			node, ok := f.super.nodeCache[f.parentIno]
+			if ok {
+				parent, ok := node.(*Dir)
+				if ok {
+					parent.dcache.Delete(f.name)
+					log.LogDebugf("TRACE Release exit: ino(%v) name(%v) decache(%v)",
+						parent.info.Inode, parent.name, parent.dcache.Len())
+				}
+			}
+			f.super.fslock.Unlock()
 		}
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
 
 	start := time.Now()
 
-	//log.LogErrorf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
-	//if f.fWriter != nil {
+	// log.LogErrorf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
+	// if f.fWriter != nil {
 	//	f.fWriter.Close()
-	//}
+	// }
 
 	err = f.super.ec.CloseStream(ino)
 	if err != nil {
@@ -326,7 +375,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		return ParseError(err)
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Release: ino(%v) req(%v) name(%v)(%v)ns", ino, req, path.Join(f.getParentPath(), f.name), elapsed.Nanoseconds())
 
 	return nil
 }
@@ -349,9 +398,11 @@ func (f *File) shouldAccessReplicaStorageClass() (accessReplicaStorageClass bool
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("fileread", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Read", err, bgTime, 1)
 		stat.StatBandWidth("Read", uint32(req.Size))
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	log.LogDebugf("TRACE Read enter: ino(%v) storageClass(%v) offset(%v) filesize(%v) reqsize(%v) req(%v)",
@@ -366,6 +417,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 
 	var size int
 	if f.shouldAccessReplicaStorageClass() {
+		f.super.ec.GetStreamer(f.info.Inode).SetParentInode(f.parentIno)
 		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset),
 			req.Size, f.info.StorageClass, false)
 	} else {
@@ -375,7 +427,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
 		errMetric := exporter.NewCounter("fileReadFailed")
-		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		if !isReadEio(err) {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+		} else {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
 		return ParseError(err)
 	}
 
@@ -383,9 +439,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	if f.info.Size > uint64(req.Offset) && uint64(req.Offset+int64(req.Size)) >= f.info.Size {
 		// at least read bytes: f.info.Size - req.Offset
 		if size > 0 && uint64(size) < f.info.Size-uint64(req.Offset) {
-			log.LogErrorf("Read: error data size, ino(%v) offset(%v) filesize(%v) reqsize(%v) size(%v)\n", f.info.Inode, req.Offset, f.info.Size, req.Size, size)
-			errMetric := exporter.NewCounter("fileReadFailed")
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+			log.LogWarnf("Read: error data size, ino(%v) offset(%v) filesize(%v) reqsize(%v) size(%v)\n", f.info.Inode, req.Offset, f.info.Size, req.Size, size)
 		}
 	}
 
@@ -413,9 +467,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filewrite", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Write", err, bgTime, 1)
 		stat.StatBandWidth("Write", uint32(len(req.Data)))
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
@@ -495,7 +551,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleError("Write", msg)
 		errMetric := exporter.NewCounter("fileWriteFailed")
-		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		if !isWriteEio(err) {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+		} else {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
 		if err == syscall.EOPNOTSUPP {
 			return fuse.ENOTSUP
 		}
@@ -514,7 +574,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
 			f.super.handleError("Wrtie", msg)
 			errMetric := exporter.NewCounter("fileWriteFailed")
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+			if !isWriteEio(err) {
+				errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+			} else {
+				errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+			}
 			return ParseError(err)
 		}
 	}
@@ -527,8 +591,10 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 // Flush only when fsyncOnClose is enabled.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filesync", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Flush", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.fsyncOnClose {
@@ -553,6 +619,14 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Flush", msg)
 		log.LogErrorf("TRACE Flush err: ino(%v) err(%v)", f.info.Inode, err)
+
+		errMetric := exporter.NewCounter("fileWriteFailed")
+		if !isReadEio(err) {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+		} else {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
+
 		return ParseError(err)
 	}
 
@@ -569,8 +643,10 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 // Fsync hanldes the fsync request.
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filefsnyc", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Fsync", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
@@ -583,6 +659,14 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Fsync", msg)
+
+		errMetric := exporter.NewCounter("fileWriteFailed")
+		if !isWriteEio(err) {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+		} else {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
+
 		return ParseError(err)
 	}
 	f.super.ic.Delete(f.info.Inode)
@@ -595,8 +679,10 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filesetattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Setattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
@@ -612,7 +698,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	if req.Valid.Size() && (proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass)) {
 		// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
 		// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
-		if err := f.super.ec.OpenStream(ino, openForWrite, isCache); err != nil {
+		if err := f.super.ec.OpenStream(ino, openForWrite, isCache, path.Join(f.getParentPath(), f.name)); err != nil {
 			log.LogErrorf("Setattr: OpenStream ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
@@ -663,8 +749,10 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filereadlink", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Readlink", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
@@ -681,8 +769,10 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filegetxattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Getxattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.enableXattr {
@@ -713,8 +803,10 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filelistxattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Listxattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.enableXattr {
@@ -740,8 +832,10 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filesetxattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Setxattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.enableXattr {
@@ -763,8 +857,10 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("fileremovexattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Removexattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.enableXattr {
@@ -826,7 +922,7 @@ func (f *File) filterFilesSuffix(filterFiles string) bool {
 	}
 	suffixs := strings.Split(filterFiles, ";")
 	for _, suffix := range suffixs {
-		//.py means one type of file
+		// .py means one type of file
 		suffix = "." + suffix
 		if suffix != "." && strings.Contains(f.name, suffix) {
 			log.LogDebugf("fileName:%s,filter:%s,suffix:%s,suffixs:%v", f.name, filterFiles, suffix, suffixs)

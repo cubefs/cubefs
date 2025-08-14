@@ -8,12 +8,13 @@ import (
 	syslog "log"
 	"os"
 	gopath "path"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	blog "github.com/cubefs/cubefs/blobstore/util/log"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/cubefs/cubefs/blobstore/api/access"
@@ -49,7 +50,6 @@ type (
 
 		FollowerRead     bool   `json:"followerRead,omitempty"`
 		EnableBcache     bool   `json:"enableBcache,omitempty"`
-		EnableSummary    bool   `json:"enableSummary,omitempty"`
 		EnableAudit      bool   `json:"enableAudit,omitempty"`
 		ReadBlockThread  int    `json:"readBlockThread,omitempty"`
 		WriteBlockThread int    `json:"writeBlockThread,omitempty"`
@@ -68,10 +68,7 @@ type (
 		ebsEndpoint         string
 		servicePath         string
 		volType             int
-		cacheAction         int
 		ebsBlockSize        int
-		cacheRuleKey        string
-		cacheThreshold      int
 		subDir              string
 		cluster             string
 		dirChildrenNumLimit uint32
@@ -79,7 +76,6 @@ type (
 		// hybrid cloud
 		volStorageClass        uint32
 		volAllowedStorageClass []uint32
-		volCacheDpStorageClass uint32
 
 		// runtime context
 		cwd    string // current working directory
@@ -223,23 +219,28 @@ func (c *Client) Start() (err error) {
 		}
 	}
 
-	if c.cfg.EnableSummary {
-		c.sc = fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache)
-	}
 	if c.cfg.EnableBcache {
 		c.bc = bcache.NewBcacheClient()
 	}
 	var ebsc *blobstore.BlobStoreClient
 	if c.ebsEndpoint != "" {
+		ebsLogLevel := blog.Lfatal
+		var ebsLogger *access.Logger
+
+		if c.cfg.LogDir != "" {
+			ebsLogLevel = log.GetBlobLogLevel()
+			ebsLogger = &access.Logger{
+				Filename: gopath.Join(c.cfg.LogDir, "libcfs/ebs.log"),
+			}
+		}
 		if ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
 				Address: c.ebsEndpoint,
 			},
 			MaxSizePutOnce: MaxSizePutOnce,
-			Logger: &access.Logger{
-				Filename: gopath.Join(c.cfg.LogDir, "libcfs/ebs.log"),
-			},
+			Logger:         ebsLogger,
+			LogLevel:       ebsLogLevel,
 		}); err != nil {
 			return
 		}
@@ -249,7 +250,6 @@ func (c *Client) Start() (err error) {
 		Volume:        c.cfg.VolName,
 		Masters:       masters,
 		ValidateOwner: false,
-		EnableSummary: c.cfg.EnableSummary,
 	}); err != nil {
 		log.LogErrorf("newClient NewMetaWrapper failed(%v)", err)
 		return err
@@ -269,9 +269,9 @@ func (c *Client) Start() (err error) {
 		DisableMetaCache:            true,
 		VolStorageClass:             c.volStorageClass,
 		VolAllowedStorageClass:      c.volAllowedStorageClass,
-		VolCacheDpStorageClass:      c.volCacheDpStorageClass,
 		OnRenewalForbiddenMigration: mw.RenewalForbiddenMigration,
 		OnForbiddenMigration:        mw.ForbiddenMigration,
+		MetaWrapper:                 mw,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
@@ -430,12 +430,6 @@ func (c *Client) OpenFile(path string, flags int, mode uint32) (*File, error) {
 		info = newInfo
 	}
 	var fileCache bool
-	if c.cacheRuleKey == "" {
-		fileCache = false
-	} else {
-		fileCachePattern := fmt.Sprintf(".*%s.*", c.cacheRuleKey)
-		fileCache, _ = regexp.MatchString(fileCachePattern, absPath)
-	}
 	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass)
 	if f == nil {
 		return nil, syscall.EMFILE
@@ -447,7 +441,7 @@ func (c *Client) OpenFile(path string, flags int, mode uint32) (*File, error) {
 	}
 
 	if proto.IsRegular(info.Mode) {
-		c.openStream(f, openForWrite)
+		c.openStream(f, openForWrite, absPath)
 		if fuseFlags&(syscall.O_TRUNC) != 0 {
 			if accFlags != (syscall.O_WRONLY) && accFlags != (syscall.O_RDWR) {
 				_ = c.closeStream(f)
@@ -613,9 +607,6 @@ func (f *File) BatchGetInodes(inodeIDS []uint64, count int) (stats []StatInfo, e
 }
 
 func (c *Client) RefreshSummary(path string, goroutineNum int32, unit string, split string) error {
-	if !c.cfg.EnableSummary {
-		return syscall.EINVAL
-	}
 	info, err := c.lookupPath(c.absPath(path))
 	var ino uint64
 	if err != nil {
@@ -624,7 +615,7 @@ func (c *Client) RefreshSummary(path string, goroutineNum int32, unit string, sp
 		ino = info.Inode
 	}
 
-	err = c.mw.RefreshSummary_ll(ino, goroutineNum, unit, split)
+	err = c.mw.RefreshSummary_ll(ino, goroutineNum, unit, split, 0, 0, 0)
 	if err != nil {
 		return err
 	}
@@ -987,12 +978,12 @@ func (c *Client) mkdir(pino uint64, name string, mode uint32, fullPath string) (
 	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
-func (c *Client) openStream(f *File, openForWrite bool) {
+func (c *Client) openStream(f *File, openForWrite bool, fullPath string) {
 	isCache := false
 	if proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(f.storageClass) {
 		isCache = true
 	}
-	_ = c.ec.OpenStream(f.ino, openForWrite, isCache)
+	_ = c.ec.OpenStream(f.ino, openForWrite, isCache, fullPath)
 }
 
 func (c *Client) closeStream(f *File) error {
@@ -1143,10 +1134,8 @@ func (c *Client) allocFD(ino uint64, flags int, mode uint32, fileCache bool, fil
 			EnableBcache:    c.cfg.EnableBcache,
 			WConcurrency:    c.cfg.WriteBlockThread,
 			ReadConcurrency: c.cfg.ReadBlockThread,
-			CacheAction:     c.cacheAction,
 			FileCache:       fileCache,
 			FileSize:        fileSize,
-			CacheThreshold:  c.cacheThreshold,
 		}
 		f.fileWriter.FreeCache()
 		switch flags & 0xff {
@@ -1185,13 +1174,8 @@ func (c *Client) loadConfFromMaster(masters []string) (err error) {
 	}
 	c.volType = volumeInfo.VolType
 	c.ebsBlockSize = volumeInfo.ObjBlockSize
-	c.cacheAction = volumeInfo.CacheAction
-	c.cacheRuleKey = volumeInfo.CacheRule
-	c.cacheThreshold = volumeInfo.CacheThreshold
 	c.volStorageClass = volumeInfo.VolStorageClass
 	c.volAllowedStorageClass = volumeInfo.AllowedStorageClass
-	c.volCacheDpStorageClass = volumeInfo.CacheDpStorageClass
-
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
 	if err != nil {

@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -100,6 +101,29 @@ func setBlobLogLevel(loglevel Level) {
 	default:
 	}
 	blog.SetOutputLevel(blevel)
+}
+
+func GetBlobLogLevel() blog.Level {
+	blevel := blog.Lwarn
+	if gLog == nil {
+		return blevel
+	}
+
+	level := gLog.level
+	switch level {
+	case DebugLevel:
+		blevel = blog.Ldebug
+	case InfoLevel:
+		blevel = blog.Linfo
+	case WarnLevel:
+		blevel = blog.Lwarn
+	case ErrorLevel:
+		blevel = blog.Lerror
+	default:
+		blevel = blog.Lwarn
+	}
+
+	return blevel
 }
 
 type asyncWriter struct {
@@ -326,7 +350,12 @@ func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLim
 	l := new(Log)
 	l.printStderr = 1
 	if dir != "" {
+		var err error
 		dir = path.Join(dir, module)
+		dir, err = filepath.Abs(dir)
+		if err != nil {
+			return nil, errors.New("get absolute file path failed, " + err.Error())
+		}
 		l.dir = dir
 		LogDir = dir
 		fi, err := os.Stat(dir)
@@ -508,6 +537,10 @@ func SetLogLevel(w http.ResponseWriter, r *http.Request) {
 	gLog.level = Level(level)
 	setBlobLogLevel(level)
 	buildSuccessResp(w, "set log level success")
+}
+
+func SetLogLevelV2(level Level) {
+	gLog.level = level
 }
 
 func buildSuccessResp(w http.ResponseWriter, data interface{}) {

@@ -23,6 +23,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -151,17 +152,21 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		}
 	}
 
-	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+	log.LogWarnf("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
 
 func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
-	var numInodes uint64
+	var (
+		numInodes uint64
+		fileRange []int64
+	)
 	defer func() {
 		if err == nil {
 			log.LogInfof("loadInode: load complete: partitonID(%v) volume(%v) numInodes(%v)",
 				mp.config.PartitionId, mp.config.VolName, numInodes)
+			mp.fileRange = fileRange
 		}
 	}()
 	filename := path.Join(rootDir, inodeFile)
@@ -176,8 +181,17 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 	}
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	limitReader := &io.LimitedReader{R: reader, N: 0}
+
+	buff := GetInodeBuf()
+	defer PutInodeBuf(buff)
+
 	inoBuf := make([]byte, 4)
 	crcCheck := crc32.NewIEEE()
+
+	thresholds, _, enable := mp.manager.GetFileStatsConfig()
+	fileRange = make([]int64, len(thresholds)+1)
+
 	for {
 		inoBuf = inoBuf[:4]
 		// first read length
@@ -200,20 +214,18 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		}
 
 		length := binary.BigEndian.Uint32(inoBuf)
-
-		// next read body
-		if uint32(cap(inoBuf)) >= length {
-			inoBuf = inoBuf[:length]
-		} else {
-			inoBuf = make([]byte, length)
-		}
-		_, err = io.ReadFull(reader, inoBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadInode] ReadBody: %s", err.Error())
+		buff.Reset()
+		limitReader.N = int64(length)
+		n := int64(0)
+		n, err = io.Copy(buff, limitReader)
+		if err != nil || n != int64(length) {
+			err = errors.NewErrorf("[loadInode] ReadBody: %s, n %d, length %d", err, n, length)
 			return
 		}
+
+		data := buff.Bytes()
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(inoBuf); err != nil {
+		if err = ino.Unmarshal(data); err != nil {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
@@ -222,8 +234,15 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		}
 		mp.acucumUidSizeByLoad(ino)
 		// data crc
-		if _, err = crcCheck.Write(inoBuf); err != nil {
+		if _, err = crcCheck.Write(data); err != nil {
 			return err
+		}
+
+		if enable && proto.IsRegular(ino.Type) && ino.NLink > 0 {
+			index := calculateFileRangeIndex(ino.Size, thresholds)
+			if index >= 0 && index < len(fileRange) {
+				fileRange[index]++
+			}
 		}
 
 		mp.size += ino.Size
@@ -235,6 +254,21 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		}
 		numInodes += 1
 	}
+}
+
+func calculateFileRangeIndex(size uint64, thresholds []uint64) int {
+	if len(thresholds) == 0 {
+		return -1
+	}
+
+	maxSize := thresholds[len(thresholds)-1]
+	if size >= maxSize {
+		return len(thresholds)
+	}
+
+	return sort.Search(len(thresholds), func(i int) bool {
+		return size < thresholds[i]
+	})
 }
 
 // Load dentry from the dentry snapshot.
@@ -258,11 +292,17 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 	}
 
 	defer fp.Close()
+
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	limitReader := &io.LimitedReader{R: reader, N: 0}
+
 	dentryBuf := make([]byte, 4)
+	buff := GetDentryBuf()
+	defer PutDentryBuf(buff)
+
 	crcCheck := crc32.NewIEEE()
 	for {
-		dentryBuf = dentryBuf[:4]
+		// dentryBuf = dentryBuf[:4]
 		// First Read 4byte header length
 		_, err = io.ReadFull(reader, dentryBuf)
 		if err != nil {
@@ -282,19 +322,20 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 		}
 		length := binary.BigEndian.Uint32(dentryBuf)
 
-		// next read body
-		if uint32(cap(dentryBuf)) >= length {
-			dentryBuf = dentryBuf[:length]
-		} else {
-			dentryBuf = make([]byte, length)
-		}
-		_, err = io.ReadFull(reader, dentryBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadDentry]: ReadBody: %s", err.Error())
+		buff.Reset()
+
+		limitReader.N = int64(length)
+		n := int64(0)
+
+		n, err = io.Copy(buff, limitReader)
+		if err != nil || n != int64(length) {
+			err = errors.NewErrorf("[loadDentry]: ReadBody: %v, n %d, len %d", err, n, length)
 			return
 		}
+		data := buff.Bytes()
+
 		dentry := &Dentry{}
-		if err = dentry.Unmarshal(dentryBuf); err != nil {
+		if err = dentry.Unmarshal(data); err != nil {
 			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
@@ -302,7 +343,7 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
 			return
 		}
-		if _, err = crcCheck.Write(dentryBuf); err != nil {
+		if _, err = crcCheck.Write(data); err != nil {
 			return err
 		}
 		numDentries += 1
@@ -936,7 +977,7 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	if err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile)); err != nil {
 		return
 	}
-	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+	log.LogWarnf("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
@@ -1148,18 +1189,32 @@ func (mp *metaPartition) storeInode(rootDir string,
 	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
+
+	thresholds, _, enable := mp.manager.GetFileStatsConfig()
+	fileRange := make([]int64, len(thresholds)+1)
+
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
 		if sm.uidRebuild {
 			mp.acucumUidSizeByStore(ino)
 		}
 
-		if data, err = ino.Marshal(); err != nil {
+		buf := GetInodeBuf()
+		defer PutInodeBuf(buf)
+
+		err = ino.MarshalV2(buf)
+		if err != nil {
 			return false
 		}
+		data = buf.Bytes()
 
 		size += ino.Size
-		mp.fileStats(ino)
+		if enable && proto.IsRegular(ino.Type) && ino.NLink > 0 {
+			index := calculateFileRangeIndex(ino.Size, thresholds)
+			if index >= 0 && index < len(fileRange) {
+				fileRange[index]++
+			}
+		}
 
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
@@ -1178,6 +1233,8 @@ func (mp *metaPartition) storeInode(rootDir string,
 		}
 		return true
 	})
+
+	mp.fileRange = fileRange
 
 	mp.acucumRebuildFin(sm.uidRebuild)
 	crc = sign.Sum32()
@@ -1210,10 +1267,16 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	sign := crc32.NewIEEE()
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
 		dentry := i.(*Dentry)
-		data, err = dentry.Marshal()
+
+		tmpBuf := GetDentryBuf()
+		defer PutDentryBuf(tmpBuf)
+
+		err = dentry.MarshalV2(tmpBuf)
 		if err != nil {
 			return false
 		}
+		data = tmpBuf.Bytes()
+
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {

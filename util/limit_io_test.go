@@ -1,0 +1,151 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+package util
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestLimitIOBase(t *testing.T) {
+	f := func() {}
+	for _, flowIO := range [][2]int{
+		{-1, -1},
+		{0, -1},
+		{-1, 0},
+		{100, -1},
+		{1 << 20, 4},
+	} {
+		l := NewIOLimiter(flowIO[0], flowIO[1])
+		l.ResetFlow(flowIO[0])
+		l.ResetIO(flowIO[1], 0)
+		l.Run(0, true, f)
+		l.Run(10, true, f)
+		require.True(t, l.TryRun(1, f))
+		l.Close()
+	}
+
+	{
+		l := NewIOLimiter(1<<10, 0)
+		l.Run(10, true, f)
+		st := l.Status(false)
+		t.Logf("status: %+v", st)
+		require.Equal(t, 1<<10, st.FlowLimit)
+		require.True(t, st.FlowUsed > 0)
+		require.True(t, st.FlowUsed <= 10)
+		require.True(t, l.TryRun(10, f))
+		l.Run(1<<20, true, f)
+		l.TryRun(1<<20, f)
+		l.Close()
+	}
+	{
+		done := make(chan struct{})
+		l := NewIOLimiter(-1, 2)
+		st := l.Status(false)
+		t.Logf("before status: %+v", st)
+		for ii := 0; ii < st.IOConcurrency; ii++ {
+			go func() {
+				l.Run(0, true, func() { <-done })
+			}()
+		}
+		for ii := 0; ii < st.IOQueue*2; ii++ {
+			go func() {
+				l.Run(0, true, func() { <-done })
+			}()
+		}
+		time.Sleep(100 * time.Millisecond)
+		t.Logf("after status: %+v", l.Status(false))
+		require.False(t, l.TryRun(0, f))
+		close(done)
+		q := l.getIO()
+		l.Close()
+		q.Run(f, true)
+		require.True(t, q.TryRun(f, false))
+		t.Logf("closed status: %+v", q.Status())
+	}
+}
+
+func TestLimitIOTimeout(t *testing.T) {
+	tVar := 0
+	f := func() {
+		tVar = 1
+		t.Logf("func running!")
+	}
+	l := NewIOLimiter(-1, 1)
+	st := l.Status(false)
+	t.Logf("before status: %+v", st)
+	q := l.getIO()
+	rs := q.Run(f, false)
+	t.Logf("Run rs: %+v", rs)
+	require.True(t, tVar == 1)
+	q.queue = make(chan *task)
+	IOLimitTicket = 1 // 1 second
+	rs = q.Run(f, false)
+	require.True(t, rs == LimitedIoError)
+}
+
+func TestLimitIOConcurrency(t *testing.T) {
+	l := NewIOLimiter(1<<10, 10)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+
+			time.Sleep(time.Microsecond)
+			l.ResetFlow(1 << 10)
+			l.ResetIO(10, 0)
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+
+			time.Sleep(time.Microsecond)
+			go func() {
+				l.Run(1, true, func() { <-done })
+			}()
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+
+			time.Sleep(time.Microsecond)
+			go func() {
+				l.TryRun(1, func() { <-done })
+			}()
+		}
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+	close(done)
+	l.Close()
+}

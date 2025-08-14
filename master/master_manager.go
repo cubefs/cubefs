@@ -18,6 +18,7 @@ import (
 	"fmt"
 	syslog "log"
 	"strings"
+	"sync"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	cfsProto "github.com/cubefs/cubefs/proto"
@@ -27,6 +28,7 @@ import (
 // LeaderInfo represents the leader's information
 type LeaderInfo struct {
 	addr string //host:port
+	id   uint64
 }
 
 func (m *Server) getCurrAddr() string {
@@ -34,35 +36,51 @@ func (m *Server) getCurrAddr() string {
 }
 
 func (m *Server) handleLeaderChange(leader uint64) {
+	m.leaderChangeLk.Lock()
+	defer m.leaderChangeLk.Unlock()
+
+	if m.partition != nil { // parition maybe nil for testcase
+		leaderId, term := m.partition.LeaderTerm()
+		log.LogWarnf("handleLeaderChange: get raft leader %d, term %d, old %d", leaderId, term, leader)
+
+		if leaderId != leader {
+			log.LogWarnf("handleLeaderChange: leader id already changed, old %d, now %d", leader, leaderId)
+			return
+		}
+	}
+
 	if leader == 0 {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
 		if WarnMetrics != nil {
 			WarnMetrics.reset()
 		}
+		m.leaderInfo.id = 0
+		m.leaderInfo.addr = ""
 		return
 	}
 
 	// oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
-	log.LogWarnf("action[handleLeaderChange]  [%v] ", m.leaderInfo.addr)
+	m.leaderInfo.id = leader
+
+	log.LogWarnf("action[handleLeaderChange] current id [%v] new leader addr [%v] leader id [%v]", m.id, m.leaderInfo.addr, leader)
 	m.reverseProxy = m.newReverseProxy()
 
+	m.metaReady = false
+	m.cluster.metaReady = false
 	if m.id == leader {
-		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
+		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] current is leader, leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
-		// if oldLeaderAddr != m.leaderInfo.addr {
 		m.cluster.checkPersistClusterValue()
-
 		m.loadMetadata()
 		m.cluster.metaReady = true
 		m.metaReady = true
-		// }
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
 		m.cluster.checkLcNodeHeartbeat()
 		m.cluster.lcMgr.startLcScanHandleLeaderChange()
+		m.cluster.flashManMgr.startFlashScanHandleLeaderChange()
 		m.cluster.followerReadManager.reSet()
-
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
@@ -72,10 +90,12 @@ func (m *Server) handleLeaderChange(leader uint64) {
 			m.cluster.lcMgr = newLifecycleManager()
 			m.cluster.lcMgr.cluster = m.cluster
 		}
+		if m.cluster.flashManMgr != nil {
+			close(m.cluster.flashManMgr.exitCh)
+			m.cluster.flashManMgr = newFlashManualTaskManager(m.cluster)
+		}
 		m.metaReady = false
 		m.cluster.metaReady = false
-		m.cluster.masterClient.AddNode(m.leaderInfo.addr)
-		m.cluster.masterClient.SetLeader(m.leaderInfo.addr)
 		if WarnMetrics != nil {
 			WarnMetrics.reset()
 		}
@@ -179,6 +199,18 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
+	if err = m.cluster.loadFlashNodes(); err != nil {
+		panic(err)
+	}
+
+	if err = m.cluster.loadFlashGroups(); err != nil {
+		panic(err)
+	}
+
+	if err = m.cluster.loadFlashTopology(); err != nil {
+		panic(err)
+	}
+
 	if err = m.cluster.loadZoneValue(); err != nil {
 		panic(err)
 	}
@@ -255,6 +287,12 @@ func (m *Server) loadMetadata() {
 	}
 	log.LogInfo("action[loadLcNodes] end")
 
+	log.LogInfo("action[loadFlashManualTasks] begin")
+	if err = m.cluster.loadFlashManualTasks(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadFlashManualTasks] end")
+
 	log.LogInfo("action[loadS3QoSInfo] begin")
 	if err = m.cluster.loadS3ApiQosInfo(); err != nil {
 		panic(err)
@@ -284,6 +322,9 @@ func (m *Server) clearMetadata() {
 	m.cluster.clearLcNodes()
 	m.cluster.clearVols()
 
+	m.cluster.DataNodeToDecommissionRepairDpMap = sync.Map{}
+	m.cluster.NoSamePeerDps = sync.Map{}
+
 	if m.user != nil {
 		// leader change event may be before m.user initialization
 		m.user.clearUserStore()
@@ -293,6 +334,9 @@ func (m *Server) clearMetadata() {
 
 	m.cluster.t = newTopology()
 	// m.cluster.apiLimiter.Clear()
+
+	m.cluster.flashNodeTopo.clear()
+	m.cluster.flashNodeTopo = newFlashNodeTopology()
 }
 
 func (m *Server) refreshUser() (err error) {

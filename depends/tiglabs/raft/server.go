@@ -56,8 +56,8 @@ func (rs *RaftServer) RemoveRaftForce(raftId uint64, cc *proto.ConfChange) {
 		}
 		s.removeSnapping(peerChange.PeerID)
 		s.peerState.change(cc)
-		if logger.IsEnableWarn() {
-			logger.Warn("raft[%v] applying configuration change %v.", s.raftFsm.id, cc)
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] applying configuration change %v.", s.raftFsm.id, cc)
 		}
 	}
 }
@@ -504,4 +504,22 @@ func (rs *RaftServer) reciveSnapshot(req *snapshotRequest) {
 		return
 	}
 	raft.reciveSnapshot(req)
+}
+
+func (rs *RaftServer) GetPeers(id uint64) []uint64 {
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if !ok {
+		logger.Warn("raftServer cannot found, id:%d", id)
+		return []uint64{}
+	}
+
+	ret := make([]uint64, 0, len(raft.raftFsm.replicas))
+	for id := range raft.raftFsm.replicas {
+		ret = append(ret, id)
+	}
+
+	return ret
 }

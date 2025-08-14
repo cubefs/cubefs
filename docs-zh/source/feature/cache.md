@@ -60,4 +60,3 @@ $ sudo mount -o size=15360M -o remount /dev/shm
 }
 ```
 
-

@@ -32,7 +32,10 @@ const (
 	FinishLoadDataPartitionExtentHeader = 1
 )
 
-const statusStarted = 1
+const (
+	statusStopped = 0
+	statusStarted = 1
+)
 
 // cmd response
 const (
@@ -75,6 +78,9 @@ const (
 	ActionRecoverBadDisk              = "ActionRecoverBadDisk"
 	ActionQueryBadDiskRecoverProgress = "ActionQueryBadDiskRecoverProgress"
 	ActionDeleteBackupDirectories     = "ActionDeleteBackupDirectories"
+	ActionDeleteLostDisk              = "ActionDeleteLostDisk"
+	ActionReloadDisk                  = "ActionReloadDisk"
+	ActionSetRepairingStatus          = "ActionSetRepairingStatus"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.
