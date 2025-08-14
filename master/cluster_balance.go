@@ -1298,7 +1298,8 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 
 	var err error
 	var ready bool
-	for i := 0; i < RetryCheckStatusNum; i++ {
+	maxRetry := CalcuMetaPartitionReadyMaxRetry(mp)
+	for i := 0; i < maxRetry; i++ {
 		select {
 		case <-ticker.C:
 			if mp.IsRecover {
@@ -1324,7 +1325,7 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 		return err
 	}
 
-	return fmt.Errorf("Waiting for meta partition(%d) destination(%s) timeout", mp.PartitionID, addr)
+	return fmt.Errorf("Waiting for meta partition(%d) destination(%s) retry(%d) timeout", mp.PartitionID, addr, maxRetry)
 }
 
 func (c *Cluster) VerifyMetaNodeExceedMemMid(addr string, storeMode proto.StoreMode) (bool, error) {
@@ -2406,4 +2407,11 @@ func GetMetaPartitionMemorySize(metaNode *MetaNode) uint64 {
 	}
 
 	return metaNode.Used / uint64(metaNode.MetaPartitionCount)
+}
+
+func CalcuMetaPartitionReadyMaxRetry(mp *MetaPartition) int {
+	if mp.InodeCount <= MaxInodePerMp {
+		return RetryCheckStatusNum
+	}
+	return int(mp.InodeCount / MaxInodePerMp * RetryCheckStatusNum)
 }

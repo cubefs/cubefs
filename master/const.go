@@ -546,4 +546,5 @@ const (
 	CheckMetaLeaderRetry    = 10
 	CheckMetaLeaderInterval = 30
 	RetryCheckStatusNum     = 600
+	MaxInodePerMp           = 4000000
 )
