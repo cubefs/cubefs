@@ -276,8 +276,10 @@ func (i *Inode) getTailVerInList() (verSeq uint64, found bool) {
 
 // freelist clean inode get all exist extents info, deal special case for split key
 func (inode *Inode) GetAllExtsOfflineInode(mpID uint64, isMigration bool) (extInfo map[uint64][]*proto.ExtentKey) {
-	log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] inode.Extents: %v, ino verList: %v",
-		mpID, inode.Inode, inode.GetExtents(), inode.GetMultiVerString())
+	if log.EnableDebug() {
+		log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] ino verList: %v",
+			mpID, inode.Inode, inode.GetMultiVerString())
+	}
 
 	extInfo = make(map[uint64][]*proto.ExtentKey)
 
