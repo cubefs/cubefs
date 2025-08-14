@@ -102,9 +102,9 @@ func (r *shardListReader) listFromStorage(ctx context.Context, protectDuration t
 		me := &delMsgExt{
 			msg:    msg,
 			suid:   suid,
-			msgKey: items[i].ID,
+			msgKey: []byte(items[i].ID),
 		}
-		span.Debugf("shard[%d] load key: %+v, msg: %+v", suid, items[i].ID, msg)
+		span.Debugf("shard[%d] load key: %+v, msg: %+v", suid, []byte(items[i].ID), msg)
 		if !me.isProtected(protectDuration) {
 			ret = append(ret, me)
 			continue
@@ -120,7 +120,7 @@ func (r *shardListReader) listFromStorage(ctx context.Context, protectDuration t
 	}
 
 	// if nextMarker's timeUnix if protected, set protected
-	ts, _, _, _, err := DecodeDelMsgKey(r.nextMarker, r.ShardingSubRangeCount())
+	ts, _, _, _, err := decodeDelMsgKey(r.nextMarker, r.ShardingSubRangeCount())
 	if err != nil {
 		span.Errorf("decode nextMarker[%+v] failed, err: %v", r.nextMarker, err)
 		return nil, err
@@ -152,7 +152,7 @@ func delMsgToItem(key []byte, msg snproto.DeleteMsg) (itm snapi.Item, err error)
 		return
 	}
 	itm = snapi.Item{
-		ID: key,
+		ID: string(key),
 		Fields: []snapi.Field{
 			{
 				ID:    snproto.DeleteBlobMsgFieldID,

@@ -20,7 +20,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
-func ParseShardKeys(key []byte, tagNum int) [][]byte {
+func ParseShardKeys(keyStr string, tagNum int) [][]byte {
+	key := []byte(keyStr)
 	if len(key) == 0 || tagNum < 1 {
 		return [][]byte{}
 	}

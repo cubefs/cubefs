@@ -77,7 +77,7 @@ func NewBatchItemElemInsert(itm shardnode.Item) BatchItemElem {
 	}
 }
 
-func NewBatchItemElemDelete(id []byte) BatchItemElem {
+func NewBatchItemElemDelete(id string) BatchItemElem {
 	return BatchItemElem{
 		opType: batchItemOpDelete,
 		Item: shardnode.Item{
@@ -388,9 +388,9 @@ func (s *shard) BatchWriteItem(ctx context.Context, h OpHeader, elems []BatchIte
 			if err != nil {
 				return err
 			}
-			wb.Put(dataCF, s.shardKeys.encodeItemKey(elems[i].ID), raw)
+			wb.Put(dataCF, s.shardKeys.encodeItemKey([]byte(elems[i].ID)), raw)
 		case batchItemOpDelete:
-			wb.Delete(dataCF, s.shardKeys.encodeItemKey(elems[i].ID))
+			wb.Delete(dataCF, s.shardKeys.encodeItemKey([]byte(elems[i].ID)))
 		default:
 			span.Panicf("unknown batch write item op")
 		}
@@ -527,7 +527,7 @@ func (s *shard) DeleteBlob(ctx context.Context, h OpHeader, name []byte, items [
 		if err != nil {
 			return err
 		}
-		wb.Put(dataCF, s.shardKeys.encodeItemKey(itm.ID), raw)
+		wb.Put(dataCF, s.shardKeys.encodeItemKey([]byte(itm.ID)), raw)
 	}
 
 	// delete meta

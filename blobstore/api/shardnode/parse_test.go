@@ -111,7 +111,7 @@ func TestParseShardKeys(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ParseShardKeys([]byte(tt.input), 2)
+			got := ParseShardKeys(tt.input, 2)
 			if len(got) != len(tt.expected) {
 				t.Errorf("%s: expected %d keys, got %d", tt.name, len(tt.expected), len(got))
 				return

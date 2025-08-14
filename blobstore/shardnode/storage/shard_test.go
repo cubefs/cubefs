@@ -195,69 +195,71 @@ func TestServerShard_Item(t *testing.T) {
 	sk := mockShard.shard.shardKeys
 
 	oldProtoItem := &shardnode.Item{
-		ID: []byte{2},
+		ID: "2",
 		Fields: []shardnode.Field{
 			{ID: 0, Value: []byte("string")},
 		},
 	}
 	newProtoItem := &shardnode.Item{
-		ID: []byte{1},
+		ID: "1",
 		Fields: []shardnode.Field{
 			{ID: 0, Value: []byte("string1")},
 		},
 	}
 
-	oldShardOpHeader := OpHeader{ShardKeys: [][]byte{oldProtoItem.ID}}
-	newShardOpHeader := OpHeader{ShardKeys: [][]byte{newProtoItem.ID}}
+	oldShardOpHeader := OpHeader{ShardKeys: [][]byte{[]byte(oldProtoItem.ID)}}
+	newShardOpHeader := OpHeader{ShardKeys: [][]byte{[]byte(newProtoItem.ID)}}
 
+	oldID := []byte(oldProtoItem.ID)
+	newID := []byte(newProtoItem.ID)
 	// Insert
-	err := mockShard.shard.InsertItem(ctx, oldShardOpHeader, oldProtoItem.ID, *oldProtoItem)
+	err := mockShard.shard.InsertItem(ctx, oldShardOpHeader, oldID, *oldProtoItem)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2
-	err = mockShard.shard.InsertItem(ctx, oldShardOpHeader, oldProtoItem.ID, *oldProtoItem)
+	err = mockShard.shard.InsertItem(ctx, oldShardOpHeader, oldID, *oldProtoItem)
 	require.Equal(t, apierr.ErrShardNodeNotLeader, err)
 	mockShard.shard.diskID = 1
 
 	_interOldItem := protoItemToInternalItem(*oldProtoItem)
-	oldkv, _ := initKV(sk.encodeItemKey(oldProtoItem.ID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interOldItem), N: int64(_interOldItem.Size())})
+	oldkv, _ := initKV(sk.encodeItemKey(oldID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interOldItem), N: int64(_interOldItem.Size())})
 	// Get
 	_ = mockShard.shardSM.applyInsertItem(ctx, oldkv.Marshal())
-	itm, err := mockShard.shard.GetItem(ctx, oldShardOpHeader, oldProtoItem.ID)
+	itm, err := mockShard.shard.GetItem(ctx, oldShardOpHeader, oldID)
 	require.Nil(t, err)
 	require.Equal(t, itm.ID, oldProtoItem.ID)
 
 	_interNewItem := protoItemToInternalItem(*newProtoItem)
-	newkv, _ := initKV(sk.encodeItemKey(newProtoItem.ID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interNewItem), N: int64(_interNewItem.Size())})
+	newkv, _ := initKV(sk.encodeItemKey(newID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interNewItem), N: int64(_interNewItem.Size())})
 	_ = mockShard.shardSM.applyInsertItem(ctx, newkv.Marshal())
-	_, err = mockShard.shard.GetItem(ctx, newShardOpHeader, newProtoItem.ID)
+	_, err = mockShard.shard.GetItem(ctx, newShardOpHeader, newID)
 	require.Nil(t, err)
 
 	// Update
 	oldProtoItem.Fields[0].Value = []byte("new-string")
 	_interOldItem = protoItemToInternalItem(*oldProtoItem)
-	oldkv, _ = initKV(sk.encodeItemKey(oldProtoItem.ID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interOldItem), N: int64(_interOldItem.Size())})
+	oldkv, _ = initKV(sk.encodeItemKey(oldID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interOldItem), N: int64(_interOldItem.Size())})
 	err = mockShard.shardSM.applyUpdateItem(ctx, oldkv.Marshal())
 	require.Nil(t, err)
 
 	// Update Item
-	err = mockShard.shard.UpdateItem(ctx, newShardOpHeader, newProtoItem.ID, *newProtoItem)
+	err = mockShard.shard.UpdateItem(ctx, newShardOpHeader, newID, *newProtoItem)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2
-	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.UpdateItem(ctx, newShardOpHeader, newProtoItem.ID, *newProtoItem))
+	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.UpdateItem(ctx, newShardOpHeader, newID, *newProtoItem))
 	mockShard.shard.diskID = 1
 
 	// Get Items
-	oldItemShardKey := mockShard.shard.shardKeys.encodeItemKey(oldProtoItem.ID)
-	newItemShardKey := mockShard.shard.shardKeys.encodeItemKey(newProtoItem.ID)
+	oldItemShardKey := mockShard.shard.shardKeys.encodeItemKey(oldID)
+	newItemShardKey := mockShard.shard.shardKeys.encodeItemKey(newID)
 	itms, err := mockShard.shard.GetItems(ctx, oldShardOpHeader, [][]byte{oldItemShardKey, newItemShardKey})
 	require.Nil(t, err)
 	require.Equal(t, 2, len(itms))
 
 	// Delete
-	err = mockShard.shard.DeleteItem(ctx, oldShardOpHeader, oldProtoItem.ID)
+	err = mockShard.shard.DeleteItem(ctx, oldShardOpHeader, oldID)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2
-	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.DeleteItem(ctx, newShardOpHeader, oldProtoItem.ID))
+	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.DeleteItem(ctx, newShardOpHeader, oldID))
 	mockShard.shard.diskID = 1
 }
 
@@ -270,7 +272,7 @@ func TestServerShard_BatchItem(t *testing.T) {
 	elems := make([]BatchItemElem, c)
 	for i := 0; i < c; i++ {
 		items[i] = shardnode.Item{
-			ID: []byte(fmt.Sprintf("i%d", i)),
+			ID: fmt.Sprintf("i%d", i),
 			Fields: []shardnode.Field{
 				{ID: 0, Value: []byte("string")},
 			},

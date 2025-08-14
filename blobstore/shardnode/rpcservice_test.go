@@ -187,7 +187,7 @@ func newMockRpcServer(s *service, addr string) (*rpc2.Server, func()) {
 func TestRpcService_Blob(t *testing.T) {
 	// blob
 	blob := proto.Blob{
-		Name: []byte("test_get_blob"),
+		Name: "test_get_blob",
 		Location: proto.Location{
 			SliceSize: 32,
 		},
@@ -231,7 +231,7 @@ func TestRpcService_Blob(t *testing.T) {
 		Suid:    suid,
 	}
 	// create
-	name := []byte("test_blob")
+	name := "test_blob"
 	_, err = cli.CreateBlob(context.Background(), tcpAddrBlob, shardnode.CreateBlobArgs{
 		Header:    header,
 		Name:      name,
@@ -252,7 +252,7 @@ func TestRpcService_Blob(t *testing.T) {
 	})
 	require.Nil(t, err)
 	blob = getRet.Blob
-	require.Equal(t, []byte("test_get_blob"), blob.GetName())
+	require.Equal(t, "test_get_blob", blob.GetName())
 
 	// delete
 	err = cli.DeleteBlob(context.Background(), tcpAddrBlob, shardnode.DeleteBlobArgs{
@@ -266,7 +266,7 @@ func TestRpcService_Blob(t *testing.T) {
 		Name:   name,
 	})
 	require.Nil(t, err)
-	require.Equal(t, []byte("test_get_blob"), blob.GetName())
+	require.Equal(t, "test_get_blob", blob.GetName())
 
 	// seal
 	err = cli.SealBlob(context.Background(), tcpAddrBlob, shardnode.SealBlobArgs{
@@ -306,7 +306,7 @@ func TestRpcService_Item(t *testing.T) {
 	sh.EXPECT().InsertItem(A, A, A, A).Return(nil).AnyTimes()
 	// item
 	item := shardnode.Item{
-		ID: []byte("test_item"),
+		ID: "test_item",
 		Fields: []shardnode.Field{{
 			ID:    fieldsMetas[0].ID,
 			Value: []byte("value"),
@@ -347,7 +347,7 @@ func TestRpcService_Item(t *testing.T) {
 	err = cli.AddItem(context.Background(), tcpAddrItem, shardnode.InsertItemArgs{
 		Header: header,
 		Item: shardnode.Item{
-			ID: []byte("test_item"),
+			ID: "test_item",
 			Fields: []shardnode.Field{{
 				ID:    fieldsMetas[0].ID,
 				Value: []byte("value"),
@@ -363,16 +363,16 @@ func TestRpcService_Item(t *testing.T) {
 	// get
 	itm, err := cli.GetItem(context.Background(), tcpAddrItem, shardnode.GetItemArgs{
 		Header: header,
-		ID:     []byte("test_item"),
+		ID:     "test_item",
 	})
 	require.Nil(t, err)
-	require.Equal(t, []byte("test_item"), itm.GetID())
+	require.Equal(t, "test_item", itm.GetID())
 
 	// update
 	err = cli.UpdateItem(context.Background(), tcpAddrItem, shardnode.UpdateItemArgs{
 		Header: header,
 		Item: shardnode.Item{
-			ID: []byte("test_item"),
+			ID: "test_item",
 			Fields: []shardnode.Field{{
 				ID:    fieldsMetas[0].ID,
 				Value: []byte("value"),
@@ -384,7 +384,7 @@ func TestRpcService_Item(t *testing.T) {
 	// delete
 	err = cli.DeleteItem(context.Background(), tcpAddrItem, shardnode.DeleteItemArgs{
 		Header: header,
-		ID:     []byte("test_item"),
+		ID:     "test_item",
 	})
 	require.Nil(t, err)
 

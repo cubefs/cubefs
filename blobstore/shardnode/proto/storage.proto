@@ -26,7 +26,7 @@ import "gogoproto/gogo.proto";
 import "cubefs/blobstore/common/proto/blob.proto";
 
 message Item {
-    bytes id = 1 [(gogoproto.customname) = "ID"];
+    string id = 1 [(gogoproto.customname) = "ID"];
     repeated Field fields = 2 [(gogoproto.nullable) = false];
 }
 

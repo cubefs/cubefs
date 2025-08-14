@@ -142,11 +142,11 @@ func TestShardListReader_ListFromStorage_Success(t *testing.T) {
 	g := base.NewTsGenerator(0)
 	tagNum := 2
 	ts := g.GenerateTs()
-	id, _ := EncodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(100), tagNum)
+	id, _ := encodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(100), tagNum)
 	// mock item
 	oldTime := time.Now().Add(-2 * time.Hour).Unix()
 	item := snapi.Item{
-		ID: id,
+		ID: string(id),
 		Fields: []snapi.Field{
 			{
 				ID: snproto.DeleteBlobMsgFieldID,
@@ -170,7 +170,7 @@ func TestShardListReader_ListFromStorage_Success(t *testing.T) {
 	require.Len(t, result, 1)
 	require.Equal(t, oldTime, result[0].msg.Time)
 	require.Equal(t, proto.Suid(123), result[0].suid)
-	require.Equal(t, item.ID, result[0].msgKey)
+	require.Equal(t, item.ID, string(result[0].msgKey))
 	require.True(t, reader.isProtected(time.Hour))
 }
 
@@ -178,15 +178,15 @@ func TestShardListReader_ListFromStorage_WithProtectedMessages(t *testing.T) {
 	g := base.NewTsGenerator(0)
 	tagNum := 2
 	ts1 := g.GenerateTs()
-	id1, _ := EncodeRawDelMsgKey(ts1, proto.Vid(1), proto.BlobID(100), tagNum)
+	id1, _ := encodeRawDelMsgKey(ts1, proto.Vid(1), proto.BlobID(100), tagNum)
 	ts2 := g.GenerateTs()
-	id2, _ := EncodeRawDelMsgKey(ts2, proto.Vid(1), proto.BlobID(101), tagNum)
+	id2, _ := encodeRawDelMsgKey(ts2, proto.Vid(1), proto.BlobID(101), tagNum)
 
 	oldTime := time.Now().Add(-2 * time.Hour).Unix()
 	now := time.Now().Unix()
 
 	unprotectedItem := snapi.Item{
-		ID: id1,
+		ID: string(id1),
 		Fields: []snapi.Field{
 			{
 				ID: snproto.DeleteBlobMsgFieldID,
@@ -198,7 +198,7 @@ func TestShardListReader_ListFromStorage_WithProtectedMessages(t *testing.T) {
 	}
 
 	protectedItem := snapi.Item{
-		ID: id2,
+		ID: string(id2),
 		Fields: []snapi.Field{
 			{
 				ID: snproto.DeleteBlobMsgFieldID,
@@ -210,12 +210,12 @@ func TestShardListReader_ListFromStorage_WithProtectedMessages(t *testing.T) {
 	}
 
 	ts := base.NewTs(time.Now().Unix())
-	protectedNextMarker, _ := EncodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(102), tagNum)
+	protectedNextMarker, _ := encodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(102), tagNum)
 
 	handler := mock.NewMockSpaceShardHandler(ctr(t))
 	handler.EXPECT().GetRouteVersion().Return(proto.RouteVersion(1))
 	handler.EXPECT().GetSuid().Return(proto.Suid(123)).Times(2)
-	handler.EXPECT().ListItem(any, any, any, any, any).Return([]snapi.Item{unprotectedItem, protectedItem}, protectedNextMarker, nil)
+	handler.EXPECT().ListItem(any, any, any, any, any).Return([]snapi.Item{unprotectedItem, protectedItem}, []byte(protectedNextMarker), nil)
 	handler.EXPECT().ShardingSubRangeCount().Return(tagNum)
 
 	reader := newShardListReader(handler)
@@ -262,8 +262,8 @@ func TestShardListReader_IsProtected(t *testing.T) {
 
 	// nextMarker > 0, and is unprotected
 	ts := base.NewTs(time.Now().Add(-2 * time.Hour).Unix())
-	key, _ := EncodeRawDelMsgKey(ts, vid, bid, tagNum)
-	_ts, _, _, _, err := DecodeDelMsgKey(key, tagNum)
+	key, _ := encodeRawDelMsgKey(ts, vid, bid, tagNum)
+	_ts, _, _, _, err := decodeDelMsgKey(key, tagNum)
 	require.NoError(t, err)
 
 	reader.setProtected(_ts.TimeUnix())
@@ -271,8 +271,8 @@ func TestShardListReader_IsProtected(t *testing.T) {
 
 	// nextMarker > 0, and is protected
 	ts = base.NewTs(time.Now().Unix())
-	key, _ = EncodeRawDelMsgKey(ts, vid, bid, tagNum)
-	_ts, _, _, _, err = DecodeDelMsgKey(key, tagNum)
+	key, _ = encodeRawDelMsgKey(ts, vid, bid, tagNum)
+	_ts, _, _, _, err = decodeDelMsgKey(key, tagNum)
 	require.NoError(t, err)
 
 	reader.setProtected(_ts.TimeUnix())
@@ -313,7 +313,7 @@ func TestItemToDelMsg(t *testing.T) {
 		Time: time.Now().Unix(),
 	}
 	item := snapi.Item{
-		ID: []byte("test_key"),
+		ID: "test_key",
 		Fields: []snapi.Field{
 			{
 				ID:    snproto.DeleteBlobMsgFieldID,
@@ -328,7 +328,7 @@ func TestItemToDelMsg(t *testing.T) {
 
 	// test invalid item
 	invalidItem := snapi.Item{
-		ID: []byte("invalid_key"),
+		ID: "invalid_key",
 		Fields: []snapi.Field{
 			{
 				ID:    snproto.DeleteBlobMsgFieldID,

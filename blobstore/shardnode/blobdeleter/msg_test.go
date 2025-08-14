@@ -32,19 +32,19 @@ import (
 )
 
 func TestEncodeDecodeDelMsgKey(t *testing.T) {
-	t.Run("EncodeDelMsgKey", func(t *testing.T) {
+	t.Run("encodeDelMsgKey", func(t *testing.T) {
 		g := base.NewTsGenerator(0)
 		ts := g.GenerateTs()
 		vid := proto.Vid(123)
 		bid := proto.BlobID(456)
 		shardKeys := [][]byte{[]byte("part1"), []byte("part2")}
 
-		key := EncodeDelMsgKey(ts, vid, bid, shardKeys)
+		key := encodeDelMsgKey(ts, vid, bid, shardKeys)
 		require.True(t, ts > 0)
 		require.NotEmpty(t, key)
 
 		// Verify decoded values
-		decodedTs, decodedVid, decodedBid, _shardKeys, err := DecodeDelMsgKey(key, len(shardKeys))
+		decodedTs, decodedVid, decodedBid, _shardKeys, err := decodeDelMsgKey(key, len(shardKeys))
 		require.Nil(t, err)
 		require.Equal(t, ts, decodedTs)
 		require.Equal(t, vid, decodedVid)
@@ -54,20 +54,20 @@ func TestEncodeDecodeDelMsgKey(t *testing.T) {
 		}
 	})
 
-	t.Run("EncodeRawDelMsgKey", func(t *testing.T) {
+	t.Run("encodeRawDelMsgKey", func(t *testing.T) {
 		g := base.NewTsGenerator(0)
 		ts := g.GenerateTs()
 		vid := proto.Vid(365)
 		bid := proto.BlobID(45542013)
 		tagNum := 4 // 2 real shard keys + 2 empty
 
-		key, shardKeys := EncodeRawDelMsgKey(ts, vid, bid, tagNum)
+		key, shardKeys := encodeRawDelMsgKey(ts, vid, bid, tagNum)
 		require.True(t, ts > 0)
 		require.NotEmpty(t, key)
 		require.Len(t, shardKeys, tagNum)
 
 		// Verify decoded values
-		decodedTs, decodedVid, decodedBid, _shardKeys, err := DecodeDelMsgKey(key, len(shardKeys))
+		decodedTs, decodedVid, decodedBid, _shardKeys, err := decodeDelMsgKey(key, len(shardKeys))
 		require.Nil(t, err)
 		require.Equal(t, ts, decodedTs)
 		require.Equal(t, vid, decodedVid)
@@ -80,13 +80,13 @@ func TestEncodeDecodeDelMsgKey(t *testing.T) {
 	t.Run("CompositeOrdering", func(t *testing.T) {
 		g := base.NewTsGenerator(0)
 		ts1 := g.GenerateTs()
-		key1 := EncodeDelMsgKey(ts1, 200, 50, [][]byte{[]byte("part1"), []byte("z")})
+		key1 := encodeDelMsgKey(ts1, 200, 50, [][]byte{[]byte("part1"), []byte("z")})
 		time.Sleep(time.Millisecond)
 		ts2 := g.GenerateTs()
-		key2 := EncodeDelMsgKey(ts2, 100, 40, [][]byte{[]byte("part1"), []byte("a")})
+		key2 := encodeDelMsgKey(ts2, 100, 40, [][]byte{[]byte("part1"), []byte("a")})
 
 		require.True(t, ts1 < ts2)
-		require.Equal(t, -1, bytes.Compare(key1, key2))
+		require.Equal(t, -1, bytes.Compare([]byte(key1), []byte(key2)))
 	})
 }
 
@@ -105,7 +105,7 @@ func Benchmark(b *testing.B) {
 	b.ResetTimer()
 	b.Run("Generate message key and store", func(b *testing.B) {
 		ts := g.GenerateTs()
-		key, _ := EncodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(100), 2)
+		key, _ := encodeRawDelMsgKey(ts, proto.Vid(1), proto.BlobID(100), 2)
 		err = store.SetRaw(ctx, "default", key, []byte("value"))
 		require.Nil(b, err)
 	})

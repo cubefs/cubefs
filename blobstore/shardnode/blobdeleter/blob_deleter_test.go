@@ -221,7 +221,7 @@ func TestBlobDeleteMgr_RunConsumeTask(t *testing.T) {
 		slice.Count = cnt
 		j += cnt
 		ts := mgr.tsGen.GenerateTs()
-		id, _ := EncodeRawDelMsgKey(ts, slice.Vid, slice.MinSliceID, 2)
+		id, _ := encodeRawDelMsgKey(ts, slice.Vid, slice.MinSliceID, 2)
 		mgr.msgChannels[0] <- &delMsgExt{
 			suid: suid,
 			msg: snproto.DeleteMsg{
@@ -404,7 +404,7 @@ func TestBlobDeleteMgr_DeleteFailed_Punish(t *testing.T) {
 	tagNum := 2
 	bidCnt := 5
 	ts := mgr.tsGen.GenerateTs()
-	id, _ := EncodeRawDelMsgKey(ts, vid, minBid, tagNum)
+	id, _ := encodeRawDelMsgKey(ts, vid, minBid, tagNum)
 	msg := &delMsgExt{
 		msgKey: id,
 		suid:   suid,
@@ -550,7 +550,7 @@ func TestBlobDeleteMgr_Punish(t *testing.T) {
 	vid := proto.Vid(1)
 	bid := proto.BlobID(100)
 	ts := mgr.tsGen.GenerateTs()
-	id, _ := EncodeRawDelMsgKey(ts, vid, bid, tagNum)
+	id, _ := encodeRawDelMsgKey(ts, vid, bid, tagNum)
 
 	msg := &delMsgExt{
 		suid: proto.Suid(123),
@@ -591,8 +591,8 @@ func TestBlobDeleteMgr_ClearShardMessages(t *testing.T) {
 	delItems := make([]storage.BatchItemElem, 3)
 	for i := 0; i < 3; i++ {
 		ts := mgr.tsGen.GenerateTs()
-		id, _ := EncodeRawDelMsgKey(ts, proto.Vid(i), proto.BlobID(i), tagNum)
-		delItems[i] = storage.NewBatchItemElemDelete(id)
+		id, _ := encodeRawDelMsgKey(ts, proto.Vid(i), proto.BlobID(i), tagNum)
+		delItems[i] = storage.NewBatchItemElemDelete(string(id))
 	}
 	mgr.clearShardMessages(context.Background(), proto.Suid(123), delItems)
 }
@@ -802,9 +802,9 @@ func TestBlobDeleteMgr_SlicesToDeleteMsgItems(t *testing.T) {
 	items, err := mgr.SlicesToDeleteMsgItems(context.Background(), []proto.Slice{slice1, slice2}, shardKeys)
 	require.Nil(t, err)
 	for i := range items {
-		_, _, _, _shardKeys, err := DecodeDelMsgKey(items[i].ID, len(shardKeys))
+		_, _, _, _shardKeys, err := decodeDelMsgKey([]byte(items[i].ID), len(shardKeys))
 		require.Nil(t, err)
 		require.Equal(t, shardKeys, _shardKeys)
-		require.True(t, bytes.Contains(items[i].ID, snproto.DeleteMsgPrefix))
+		require.True(t, bytes.Contains([]byte(items[i].ID), snproto.DeleteMsgPrefix))
 	}
 }
