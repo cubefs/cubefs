@@ -55,6 +55,7 @@ var (
 	ErrorRequestOutOfRange          = fmt.Errorf("the requested read size is out of range")
 	ErrorUnableGetCreatedBlock      = fmt.Errorf("unable to get created cacheblock")
 	ErrorNoFlashGroup               = fmt.Errorf("cannot find any flashGroups")
+	ErrorInitRemoteTimeout          = fmt.Errorf("init remote cache timeout for remote client")
 )
 
 var (

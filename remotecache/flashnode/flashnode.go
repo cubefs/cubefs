@@ -282,7 +282,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		f.diskWriteIocc = _defaultDiskWriteIOCC
 	}
 	f.diskWriteFlow = int(cfg.GetInt64(cfgDiskWriteFlow))
-	if f.diskWriteFlow == 0 {
+	if f.diskWriteFlow == 0 && !cfg.HasKey(cfgDiskWriteFlow) {
 		f.diskWriteFlow = _defaultDiskWriteFlow
 	}
 	f.diskWriteIoFactorFlow = cfg.GetInt(cfgDiskWriteIoFactor)
@@ -295,7 +295,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		f.diskReadIocc = _defaultDiskReadIOCC
 	}
 	f.diskReadFlow = int(cfg.GetInt64(cfgDiskReadFlow))
-	if f.diskReadFlow == 0 {
+	if f.diskReadFlow == 0 && !cfg.HasKey(cfgDiskReadFlow) {
 		f.diskReadFlow = _defaultDiskReadFlow
 	}
 	f.diskReadIoFactorFlow = cfg.GetInt(cfgDiskReadIoFactor)
