@@ -2588,14 +2588,12 @@ func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
 		}
 	}
 
-	log.LogWarnf("[storeRocksdb] mp(%v) flush rocksdb start", mp.config.PartitionId)
 	// NOTE: execute flush
 	if err = mp.inodeTree.Flush(false); err != nil {
 		log.LogErrorf("[storeRocksdb] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
 		return err
 	}
 
-	log.LogWarnf("[storeRocksdb] mp(%v) flush rocksdb end", mp.config.PartitionId)
 	mp.storedApplyId = sm.snap.ApplyID()
 	return nil
 }

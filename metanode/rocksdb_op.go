@@ -40,7 +40,10 @@ const (
 	DefaultMaxLogFileSize      = 1 * util.MB
 	DefaultLogFileRollTime     = 3 * 24 * time.Hour // NOTE: 3 day
 	DefaultKeepLogFileNum      = 3
-	ReadFromDiskTier           = 3
+	ReadTierAll                = 0
+	ReadTierBlockCache         = 1
+	ReadTierPersisted          = 2
+	ReadTierMemtable           = 3
 )
 
 var (
@@ -256,7 +259,7 @@ func (dbInfo *RocksdbOperator) doOpen(dir string, writeBufferSize int, writeBuff
 	// NOTE: we use raft wal, enable rocksdb wal is unnecessary
 	dbInfo.writeOption.DisableWAL(true)
 	dbInfo.readDiskOption = gorocksdb.NewDefaultReadOptions()
-	dbInfo.readDiskOption.SetReadTier(ReadFromDiskTier)
+	dbInfo.readDiskOption.SetReadTier(ReadTierPersisted)
 	return nil
 }
 

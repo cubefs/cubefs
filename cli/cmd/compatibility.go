@@ -24,7 +24,6 @@ import (
 	"github.com/cubefs/cubefs/cli/api"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -107,17 +106,17 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	}
 	snap, err := mp.GetSnapShot()
 	if err != nil {
-		log.LogErrorf("mp[%d] create snap shot failed, err(%v)", mp.GetBaseConfig().PartitionId, err)
+		stdout("mp[%d] create snap shot failed, err(%v)", mp.GetBaseConfig().PartitionId, err)
 		return
 	}
 	if snap == nil {
-		log.LogErrorf("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
+		stdout("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
 		return
 	}
 	defer func() {
 		snap.Close()
 		if err != nil {
-			log.LogErrorf("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
+			stdout("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
 		}
 	}()
 
@@ -156,17 +155,17 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 	var localInode *api.Inode
 	snap, err := mp.GetSnapShot()
 	if err != nil {
-		log.LogErrorf("mp[%d] create snap shot failed, err(%v)", mp.GetBaseConfig().PartitionId, err)
+		stdout("mp[%d] create snap shot failed, err(%v)", mp.GetBaseConfig().PartitionId, err)
 		return
 	}
 	if snap == nil {
-		log.LogErrorf("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
+		stdout("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
 		return
 	}
 	defer func() {
 		snap.Close()
 		if err != nil {
-			log.LogErrorf("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
+			stdout("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
 		}
 	}()
 
