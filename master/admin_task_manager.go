@@ -34,8 +34,10 @@ const (
 	MaxTaskNum = 30
 
 	TaskWorkerInterval = time.Second * time.Duration(2)
-	idleConnTimeout    = 90 // seconds
-	connectTimeout     = 10 // seconds
+	idleConnTimeout    = 90                     // seconds
+	connectTimeout     = 10                     // seconds
+	MaxRetryNum        = 3                      // maximum number of retries for sending tasks
+	RetryInterval      = 100 * time.Millisecond // retry interval for sending tasks
 )
 
 // AdminTaskManager sends administration commands to the metaNode or dataNode.
@@ -217,12 +219,31 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet
 			sender.putConn(conn, true)
 		}
 	}()
-	if err = packet.WriteToConn(conn); err != nil {
+
+	for i := 0; i < MaxRetryNum; i++ {
+		if err = packet.WriteToConn(conn); err != nil {
+			log.LogErrorf(fmt.Sprintf("action[sendAdminTask],WriteToConn failed,task:%v", task.ID))
+			time.Sleep(RetryInterval)
+			continue
+		}
+		break
+	}
+	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
-	if err = packet.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime); err != nil {
+
+	for i := 0; i < MaxRetryNum; i++ {
+		if err = packet.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime); err != nil {
+			log.LogErrorf(fmt.Sprintf("action[sendAdminTask],ReadFromConn failed task:%v,err:%v", task.ID, err))
+			time.Sleep(RetryInterval)
+			continue
+		}
+		break
+	}
+	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask],ReadFromConn failed task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
+
 	if packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf("result code[%v],msg[%v]", packet.ResultCode, string(packet.Data))
 		log.LogErrorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
