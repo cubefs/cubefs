@@ -2277,16 +2277,22 @@ func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID
 }
 
 func (c *Cluster) FillModifyStoreModePlan(plan *proto.ClusterPlan, volName string) error {
-	vol, err := c.getVol(volName)
-	if err != nil {
-		return fmt.Errorf("get volume(%s) failed: %v", volName, err)
+	var mps map[uint64]*MetaPartition
+	if volName != "" {
+		vol, err := c.getVol(volName)
+		if err != nil {
+			return fmt.Errorf("get volume(%s) failed: %v", volName, err)
+		}
+
+		if vol.Status == proto.VolStatusMarkDelete {
+			return fmt.Errorf("volume(%s) is marked delete", volName)
+		}
+
+		mps = vol.cloneMetaPartitionMap()
+	} else {
+		mps = c.getAllMetaPartitions()
 	}
 
-	if vol.Status == proto.VolStatusMarkDelete {
-		return fmt.Errorf("volume(%s) is marked delete", volName)
-	}
-
-	mps := vol.cloneMetaPartitionMap()
 	for _, mp := range mps {
 		// Check partition ID range
 		if plan.StartId != 0 && mp.PartitionID < plan.StartId {
@@ -2414,4 +2420,17 @@ func CalcuMetaPartitionReadyMaxRetry(mp *MetaPartition) int {
 		return RetryCheckStatusNum
 	}
 	return int(mp.InodeCount / MaxInodePerMp * RetryCheckStatusNum)
+}
+
+func (c *Cluster) getAllMetaPartitions() (mps map[uint64]*MetaPartition) {
+	mps = make(map[uint64]*MetaPartition)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		vol.rangeMetaPartition(func(mp *MetaPartition) bool {
+			mps[mp.PartitionID] = mp
+			return true
+		})
+	}
+
+	return mps
 }

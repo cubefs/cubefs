@@ -964,8 +964,12 @@ func parseModifyMetaPartitionStoreModeParams(r *http.Request) (name string, star
 		return
 	}
 
-	if name, err = extractName(r); err != nil {
-		return
+	name = r.FormValue(nameKey)
+	if name != "" {
+		if !volNameRegexp.MatchString(name) {
+			err = proto.ErrVolNameRegExpNotMatch
+			return
+		}
 	}
 
 	// Extract partition ID range
