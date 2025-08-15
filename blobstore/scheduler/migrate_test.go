@@ -515,13 +515,13 @@ func TestAddMigrateTask(t *testing.T) {
 		t1 := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
 		mgr.AddTask(ctx, t1)
-		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
 
 		mgr.taskType = proto.TaskTypeManualMigrate
 		t1 = mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
 		mgr.AddTask(ctx, t1)
-		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
 	}
 	{
 		ctx := context.Background()
@@ -674,4 +674,32 @@ func TestMigrateAction(t *testing.T) {
 	}
 
 	mgr.Close()
+}
+
+func TestMigrateDiskVuidMap(t *testing.T) {
+	ctx := context.Background()
+	mgr := newMigrateMgr(t)
+	mgr.taskType = proto.TaskTypeManualMigrate
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
+
+	// add
+	t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
+	mgr.AddTask(ctx, t1)
+	require.True(t, mgr.IsTaskExist(t1.SourceDiskID, t1.SourceVuid))
+
+	// delete
+	t1.State = proto.MigrateStateWorkCompleted
+	mgr.finishQueue.PushTask(t1.TaskID, t1)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+	mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(nil)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(nil)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
+	mgr.volumeUpdater.(*MockTaskAPI).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
+	err := mgr.finishTask()
+	require.NoError(t, err)
+
+	require.False(t, mgr.IsTaskExist(t1.SourceDiskID, t1.SourceVuid))
 }

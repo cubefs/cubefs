@@ -886,7 +886,7 @@ func (mgr *MigrateMgr) DeletedTasks() []DeletedTask {
 
 func (mgr *MigrateMgr) addMigratingVuid(diskID proto.DiskID, vuid proto.Vuid, taskID string) {
 	switch mgr.taskType {
-	case proto.TaskTypeBalance: // only balance task need to add
+	case proto.TaskTypeBalance, proto.TaskTypeDiskDrop, proto.TaskTypeManualMigrate:
 		mgr.diskMigratingVuids.addMigratingVuid(diskID, vuid, taskID)
 	default:
 	}
@@ -894,7 +894,7 @@ func (mgr *MigrateMgr) addMigratingVuid(diskID proto.DiskID, vuid proto.Vuid, ta
 
 func (mgr *MigrateMgr) deleteMigratingVuid(diskID proto.DiskID, vuid proto.Vuid) {
 	switch mgr.taskType {
-	case proto.TaskTypeBalance: // only balance task need to add
+	case proto.TaskTypeBalance, proto.TaskTypeDiskDrop, proto.TaskTypeManualMigrate:
 		mgr.diskMigratingVuids.deleteMigratingVuid(diskID, vuid)
 	default:
 	}
