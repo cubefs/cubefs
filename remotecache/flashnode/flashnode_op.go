@@ -124,6 +124,14 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		if req.FlashHotKeyMissCount != 0 {
 			f.hotKeyMissCount = int32(req.FlashHotKeyMissCount)
 		}
+		if !f.localChangeWriteFlow && req.FlashWriteFlowLimit != int64(f.diskWriteFlow) {
+			f.diskWriteFlow = int(req.FlashWriteFlowLimit)
+			f.limitWrite.ResetFlow(f.diskWriteFlow)
+		}
+		if !f.localChangeReadFlow && req.FlashReadFlowLimit != int64(f.diskReadFlow) {
+			f.diskReadFlow = int(req.FlashReadFlowLimit)
+			f.limitRead.ResetFlow(f.diskReadFlow)
+		}
 	} else {
 		log.LogWarnf("decode HeartBeatRequest error: %s", err.Error())
 		resp.Status = proto.TaskFailed
@@ -966,6 +974,7 @@ func (f *FlashNode) opSetReadIOLimits(conn net.Conn, p *proto.Packet) (err error
 			update = true
 		}
 		if req.Flow != -1 {
+			f.localChangeReadFlow = true
 			f.diskReadFlow = req.Flow
 			update = true
 		}
@@ -1000,6 +1009,7 @@ func (f *FlashNode) opSetWriteIOLimits(conn net.Conn, p *proto.Packet) (err erro
 			update = true
 		}
 		if req.Flow != -1 {
+			f.localChangeWriteFlow = true
 			f.diskWriteFlow = req.Flow
 			update = true
 		}

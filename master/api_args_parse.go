@@ -1718,6 +1718,28 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[forbidWriteOpOfProtoVersion0] = val
 	}
 
+	if value = r.FormValue(flashReadFlowLimit); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(flashReadFlowLimit)
+			return
+		}
+		params[flashReadFlowLimit] = val
+	}
+
+	if value = r.FormValue(flashWriteFlowLimit); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(flashWriteFlowLimit)
+			return
+		}
+		params[flashWriteFlowLimit] = val
+	}
+
 	if noParams {
 		err = fmt.Errorf("no key assigned")
 		return
@@ -2164,6 +2186,8 @@ func parseSetConfigParam(r *http.Request) (config map[string]string, err error) 
 		flashNodeHandleReadTimeout,
 		flashNodeReadDataNodeTimeout,
 		flashHotKeyMissCount,
+		flashReadFlowLimit,
+		flashWriteFlowLimit,
 	}
 	for _, val := range keyList {
 		key := val

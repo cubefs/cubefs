@@ -154,9 +154,11 @@ type FlashNode struct {
 	handleReadTimeout     int
 	diskWriteIocc         int
 	diskWriteFlow         int
+	localChangeWriteFlow  bool
 	diskWriteIoFactorFlow int
 	diskReadIocc          int
 	diskReadFlow          int
+	localChangeReadFlow   bool
 	diskReadIoFactorFlow  int
 
 	limitWrite *util.IoLimiter

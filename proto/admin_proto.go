@@ -838,6 +838,8 @@ type FlashNodeHeartBeatInfos struct {
 	FlashNodeHandleReadTimeout   int
 	FlashNodeReadDataNodeTimeout int
 	FlashHotKeyMissCount         int
+	FlashReadFlowLimit           int64
+	FlashWriteFlowLimit          int64
 }
 
 // HeartBeatRequest define the heartbeat request.
