@@ -63,10 +63,9 @@ type DataInspectMgr struct {
 	svr        *Service
 	taskSwitch *taskswitch.TaskSwitch
 
-	round     uint64                     // round of data inspect
-	recorder  recordlog.Encoder          // local record log
-	inspected map[proto.DiskID]*sync.Map // inspected bad blobs
-	progress  map[proto.DiskID]int       // progress of data inspect
+	round    uint64            // round of data inspect
+	progress sync.Map          // progress of data inspect: diskID -> progress[0, 100]
+	recorder recordlog.Encoder // local record log
 }
 
 func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch.SwitchMgr) (*DataInspectMgr, error) {
@@ -91,8 +90,6 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch
 		svr:        svr,
 		taskSwitch: taskSwitch,
 		recorder:   recorder,
-		inspected:  make(map[proto.DiskID]*sync.Map),
-		progress:   make(map[proto.DiskID]int),
 	}
 	return mgr, nil
 }
@@ -123,13 +120,13 @@ func (mgr *DataInspectMgr) inspectAllDisks(ctx context.Context) {
 	disks := mgr.svr.copyDiskStorages(ctx)
 	mgr.setLimiters(disks)
 
+	mgr.prepareDiskInspectionState(disks)
 	mgr.recordInspectStartPoint(ctx)
-	defer func() { mgr.round++ }()
+	defer mgr.roundIncrease()
 
 	var wg sync.WaitGroup
 	for _, ds := range disks {
-		mgr.progress[ds.ID()] = 0 // set progress to 0%, will start work inspect
-		if !ds.IsWritable() {     // not normal disk, skip it.
+		if !ds.IsWritable() { // not normal disk, skip it.
 			continue
 		}
 		wg.Add(1)
@@ -142,9 +139,11 @@ func (mgr *DataInspectMgr) inspectAllDisks(ctx context.Context) {
 		return
 	}
 
-	for id := range mgr.progress {
-		mgr.progress[id] = 100 // set progress to 100%, work inspect done
-	}
+	// set progress to 100%, work inspect done
+	mgr.progress.Range(func(key, value interface{}) bool {
+		mgr.progress.Store(key.(proto.DiskID), 100)
+		return true
+	})
 	span.Warn("finish to inspect all disks.")
 	mgr.waitNextRoundInspect()
 }
@@ -169,7 +168,7 @@ func (mgr *DataInspectMgr) inspectDisk(ds core.DiskAPI, wg *sync.WaitGroup) {
 		if (step != 0 && (i+1)%step == 0) || i == len(chunks)-1 {
 			span.Warnf("chunk inspcet progress: %d / %d", i+1, len(chunks))
 		}
-		mgr.progress[ds.ID()] = 100 * (i + 1) / len(chunks)
+		mgr.progress.Store(ds.ID(), 100*(i+1)/len(chunks))
 
 		if chunk.Status == clustermgr.ChunkStatusRelease {
 			continue
@@ -198,36 +197,32 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 	span := trace.SpanFromContextSafe(pCtx)
 	ctx, cancel := context.WithCancel(context.Background())
 	span, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", span.TraceID())
-	span.Debugf("start to inspect chunk vuid:%d, chunkid:%s.", cs.Vuid(), cs.ID())
+	span.Debugf("start to inspect chunk vuid:%d, chunk:%s.", cs.Vuid(), cs.ID())
 
 	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 	ds := cs.Disk()
 	total := 0
 	badShards := make([]bnapi.BadShard, 0)
-	inspected := mgr.getInspectedBlobs(ds.ID())
 
 	scanFn := func(batchShards []*bnapi.ShardInfo) (err error) {
 		total += len(batchShards)
 		for _, si := range batchShards {
-			_, exist := inspected.Load(si.Bid)
-			if si.Size <= 0 || exist {
+			if si.Size <= 0 {
 				continue
 			}
 
 			select {
 			case <-pCtx.Done():
-				span.Warnf("inspect chunk stop, upper level has context canceled. vuid:%d,chunkid:%s.", cs.Vuid(), cs.ID())
+				span.Warnf("inspect chunk stop, upper context canceled. vuid:%d, chunk:%s.", cs.Vuid(), cs.ID())
 				return pCtx.Err()
 			case <-mgr.svr.closeCh:
 				cancel()
-				span.Warnf("inspect chunk stop, service is closed. vuid:%d, chunkid:%s.", cs.Vuid(), cs.ID())
+				span.Warnf("inspect chunk stop, service is closed. vuid:%d, chunk:%s.", cs.Vuid(), cs.ID())
 				return errServiceClosed
 			default:
 			}
 
 			if err = mgr.inspectShard(ctx, cs, si, mgr.getLimiter(ds)); err != nil {
-				// add bad bids of chunk, to this disk. prevent next round will report these bids, it repeated
-				inspected.Store(si.Bid, struct{}{})
 				badShards = append(badShards, bnapi.BadShard{DiskID: ds.ID(), Vuid: si.Vuid, Bid: si.Bid, Err: err})
 				if base.IsEIO(err) {
 					return err
@@ -239,7 +234,7 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 
 	err := mgr.scanShards(ctx, cs, scanFn)
 	mgr.reportBatchBadShards(ctx, cs, badShards)
-	span.Infof("finish to inspect chunk, vuid:%d, chunkid:%s, total:%d, wrong:%d, err:%+v",
+	span.Infof("finish to inspect chunk, vuid:%d, chunk:%s, total:%d, wrong:%d, err:%+v",
 		cs.Vuid(), cs.ID(), total, len(badShards), err)
 	return badShards, err
 }
@@ -297,15 +292,6 @@ func (mgr *DataInspectMgr) waitNextRoundInspect() {
 	}
 }
 
-func (mgr *DataInspectMgr) getInspectedBlobs(diskID proto.DiskID) *sync.Map {
-	if inspected, exists := mgr.inspected[diskID]; exists {
-		return inspected
-	}
-	inspected := &sync.Map{}
-	mgr.inspected[diskID] = inspected
-	return inspected
-}
-
 func (mgr *DataInspectMgr) cleanDiskInspectMetric(ds core.DiskAPI, diskID proto.DiskID) {
 	dataInspectMetric.WithLabelValues(
 		ds.DiskInfo().ClusterID.ToString(),
@@ -315,15 +301,6 @@ func (mgr *DataInspectMgr) cleanDiskInspectMetric(ds core.DiskAPI, diskID proto.
 
 // It was reported only once. When the upper-level user at get/put, an error was found
 func (mgr *DataInspectMgr) reportBadShard(ctx context.Context, cs core.ChunkAPI, blobID proto.BlobID, err error) {
-	diskInfo := cs.Disk().DiskInfo()
-
-	// prevent repeated reporting
-	inspected := mgr.getInspectedBlobs(diskInfo.DiskID)
-	if _, exist := inspected.Load(blobID); exist {
-		return
-	}
-	inspected.Store(blobID, struct{}{})
-
 	// don't report this error
 	if isInspectReportIgnoredError(err) {
 		return
@@ -332,6 +309,7 @@ func (mgr *DataInspectMgr) reportBadShard(ctx context.Context, cs core.ChunkAPI,
 	// report one bad shard, when the upper-level user at get/put, an error was found
 	// It's possible that this disk has inspected this bid error before, or it might not.
 	// Report with "add" and combine it with "record" for analysis and processing
+	diskInfo := cs.Disk().DiskInfo()
 	mgr.recordBadBids(ctx, cs, []string{blobID.ToString()}, err.Error())
 	dataInspectMetric.WithLabelValues(
 		diskInfo.ClusterID.ToString(),
@@ -423,6 +401,13 @@ func (mgr *DataInspectMgr) recordInspectStartPoint(ctx context.Context) {
 	}
 }
 
+func (mgr *DataInspectMgr) prepareDiskInspectionState(disks []core.DiskAPI) {
+	for _, ds := range disks {
+		// init or reset progress to 0%, at the beginning of each new round of inspection
+		mgr.progress.Store(ds.ID(), 0)
+	}
+}
+
 func (mgr *DataInspectMgr) setLimiters(disks []core.DiskAPI) {
 	for _, ds := range disks {
 		if _, ok := mgr.limits[ds.ID()]; !ok {
@@ -437,6 +422,10 @@ func (mgr *DataInspectMgr) getLimiter(ds core.DiskAPI) *rate.Limiter {
 
 func (mgr *DataInspectMgr) getSwitch() bool {
 	return mgr.taskSwitch.Enabled()
+}
+
+func (mgr *DataInspectMgr) roundIncrease() {
+	mgr.round++
 }
 
 func (mgr *DataInspectMgr) setAllDiskRateForce(newLimit int) {
@@ -454,27 +443,31 @@ func (s *Service) SetInspectRate(c *rpc.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
-	span := trace.SpanFromContextSafe(ctx)
-
 	if args.Rate < minRateLimit {
 		c.RespondError(errors.New("rate value is too small"))
 		return
 	}
 
+	span := trace.SpanFromContextSafe(c.Request.Context())
 	span.Infof("set data inspect rate args: %+v", args)
 	s.inspectMgr.setAllDiskRateForce(args.Rate)
 	c.Respond()
 }
 
+// GetInspectStat get data inspection state: switch open, rate, progress, interval, etc.
 func (s *Service) GetInspectStat(c *rpc.Context) {
-	ctx := c.Request.Context()
-	span := trace.SpanFromContextSafe(ctx)
+	span := trace.SpanFromContextSafe(c.Request.Context())
+
+	progress := make(map[proto.DiskID]int)
+	s.inspectMgr.progress.Range(func(k, v interface{}) bool {
+		progress[k.(proto.DiskID)] = v.(int)
+		return true
+	})
 
 	stat := DataInspectStat{
 		DataInspectConf: s.inspectMgr.conf,
 		Open:            s.inspectMgr.getSwitch(),
-		Progress:        s.inspectMgr.progress,
+		Progress:        progress,
 	}
 	span.Infof("data inspect args: %+v", stat)
 	c.RespondJSON(&stat)

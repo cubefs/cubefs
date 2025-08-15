@@ -47,7 +47,6 @@ import (
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -338,7 +337,6 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
 		Clustermgr:           cc,
 		HeartbeatIntervalSec: 600,
-		InspectConf:          DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
 	}
 	if path == "iopslimit" {
 		ioFlowStat, _ := flow.NewIOFlowStat("default", false)
@@ -429,7 +427,6 @@ func TestService_CmdpChunk(t *testing.T) {
 		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
 		Clustermgr:           cc,
 		HeartbeatIntervalSec: 600,
-		InspectConf:          DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
 	}
 
 	conf.DiskConfig.MustMountPoint = true
@@ -1101,7 +1098,6 @@ func TestService_OnlyBlobnode(t *testing.T) {
 		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
 		Clustermgr:           cc,
 		HeartbeatIntervalSec: 600,
-		InspectConf:          DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
 		StartMode:            proto.ServiceNameBlobNode,
 	}
 
@@ -1141,7 +1137,6 @@ func TestService_OnlyBlobnode_OpenFailedEIO(t *testing.T) {
 		},
 		DiskConfig:           core.RuntimeConfig{DiskReservedSpaceB: 1, CompactReservedSpaceB: 1},
 		HeartbeatIntervalSec: 600,
-		InspectConf:          DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
 	}
 
 	// open readFormat eio, report broken disk
@@ -1229,8 +1224,7 @@ func TestService_OnlyBlobnode_OpenDiskNormal(t *testing.T) {
 	require.NoError(t, err)
 
 	conf := Config{
-		Disks:       []core.Config{{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}}},
-		InspectConf: DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
+		Disks: []core.Config{{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}}},
 	}
 
 	// open disk success
@@ -1285,7 +1279,6 @@ func TestService_OnlyBlobnode_Fatal(t *testing.T) {
 			// {BaseConfig: core.BaseConfig{Path: path2, AutoFormat: true}, MetaConfig: db.MetaConfig{}},
 			// {BaseConfig: core.BaseConfig{Path: "wrongPath", AutoFormat: true}, MetaConfig: db.MetaConfig{}},
 		},
-		InspectConf: DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
 	}
 
 	// new disk, read meta fake error
@@ -1357,7 +1350,6 @@ func TestService_OnlyBlobnode_OpenOldDisk(t *testing.T) {
 		Disks: []core.Config{
 			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
 		},
-		InspectConf: DataInspectConf{Record: recordlog.Config{Dir: filepath.Join(workDir, "inspect")}},
 	}
 
 	// old disk, repairing, skip
@@ -1438,10 +1430,12 @@ func TestService_DataInspect(t *testing.T) {
 		ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
 		require.NoError(t, err)
 		svr.inspectMgr = &DataInspectMgr{
-			progress:   map[proto.DiskID]int{101: 85, 202: 95},
+			// progress:   map[proto.DiskID]int{101: 85, 202: 95},
 			taskSwitch: ts,
 			conf:       DataInspectConf{RateLimit: 4096},
 		}
+		svr.inspectMgr.progress.Store(proto.DiskID(101), 88)
+		svr.inspectMgr.progress.Store(proto.DiskID(202), 99)
 
 		totalUrl := testServer.URL + "/inspect/stat"
 		resp, err := HTTPRequest(http.MethodGet, totalUrl)

@@ -19,6 +19,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
@@ -139,9 +140,8 @@ func TestDataInspect(t *testing.T) {
 		mgr.limits[proto.DiskID(11)].SetBurst(6)
 		bads, err = mgr.inspectChunk(ctx, cs)
 		require.NotNil(t, err)
-		require.Equal(t, "context canceled", err.Error())
-		require.Equal(t, 0, len(bads))
 		require.ErrorIs(t, err, errServiceClosed)
+		require.Equal(t, 0, len(bads))
 	}
 
 	{
@@ -173,26 +173,10 @@ func TestDataInspect(t *testing.T) {
 		bads, err = mgr.inspectChunk(ctx, cs)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(bads))
-		require.Equal(t, 1, len(mgr.inspected))
-
-		// prevent repeated bid
-		cs.EXPECT().Disk().Return(ds1).Times(1)
-		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
-		bads, err = mgr.inspectChunk(ctx, cs)
-		require.NoError(t, err)
-		require.Equal(t, 0, len(bads))
-		require.Equal(t, 1, len(mgr.inspected))
-		cnt, inspected := 0, mgr.getInspectedBlobs(11)
-		inspected.Range(func(key, value interface{}) bool {
-			cnt++
-			return true
-		})
-		require.Equal(t, 1, cnt)
 	}
 
 	{
 		// inspect already delete shard, file does not exist
-		mgr.inspected = make(map[proto.DiskID]*sync.Map)
 		cs := NewMockChunkAPI(ctr)
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
 		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
@@ -204,10 +188,8 @@ func TestDataInspect(t *testing.T) {
 		bads, err = mgr.inspectChunk(ctx, cs)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(bads))
-		require.Equal(t, 1, len(mgr.inspected))
 
 		// no such bid
-		mgr.inspected = make(map[proto.DiskID]*sync.Map)
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
 		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
 		cs.EXPECT().Disk().Return(ds1).Times(1)
@@ -218,12 +200,10 @@ func TestDataInspect(t *testing.T) {
 		bads, err = mgr.inspectChunk(ctx, cs)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(bads))
-		require.Equal(t, 1, len(mgr.inspected))
 	}
 
 	{
 		// scanShards EIO
-		mgr.inspected = make(map[proto.DiskID]*sync.Map)
 		cs := NewMockChunkAPI(ctr)
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
 		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
@@ -239,13 +219,59 @@ func TestDataInspect(t *testing.T) {
 		bads, err = mgr.inspectChunk(ctx, cs)
 		require.ErrorIs(t, syscall.EIO, err)
 		require.Equal(t, 1, len(bads))
-		require.Equal(t, 1, len(mgr.inspected))
 	}
 
 	close(svr.closeCh)
 	mgr.conf.IntervalSec = 5
 	mgr.recorder.(*mocks.MockRecordLogEncoder).EXPECT().Close().Times(1)
 	mgr.loopDataInspect()
+}
+
+func TestInspectChunk_NoGoroutineLeak(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	// build service and manager
+	ds := NewMockDiskAPI(ctr)
+	svr := &Service{
+		Disks:   map[proto.DiskID]core.DiskAPI{11: ds},
+		ctx:     context.Background(),
+		closeCh: make(chan struct{}),
+	}
+	getter := mocks.NewMockAccessor(ctr)
+	getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
+	getter.EXPECT().SetConfig(any, any, any).AnyTimes().Return(nil)
+	switchMgr := taskswitch.NewSwitchMgr(getter)
+	mgr, err := NewDataInspectMgr(svr, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, switchMgr)
+	require.NoError(t, err)
+	mgr.svr = svr
+	svr.inspectMgr = mgr
+
+	// limiter entry (avoid nil access if shards present)
+	ds.EXPECT().ID().AnyTimes().Return(proto.DiskID(11))
+	mgr.setLimiters([]core.DiskAPI{ds})
+
+	// chunk mock: empty shard list so inspectChunk returns quickly
+	cs := NewMockChunkAPI(ctr)
+	cs.EXPECT().Vuid().AnyTimes().Return(proto.Vuid(1001))
+	cs.EXPECT().ID().AnyTimes().Return(clustermgr.ChunkID{})
+	cs.EXPECT().Disk().AnyTimes().Return(ds)
+	cs.EXPECT().ListShards(any, any, any, any).AnyTimes().Return([]*bnapi.ShardInfo{}, proto.InValidBlobID, nil)
+
+	before := runtime.NumGoroutine()
+	for i := 0; i < 50; i++ {
+		_, err = mgr.inspectChunk(ctx, cs)
+		require.NoError(t, err)
+	}
+	// allow scheduler to settle
+	// (if a leak existed via a background goroutine, goroutine count would keep growing)
+	// small sleep to stabilize
+	// not too long to avoid slowing CI
+	// 50 iterations are enough to detect growth
+
+	after := runtime.NumGoroutine()
+	// tolerate a small delta for unrelated goroutines
+	require.LessOrEqual(t, after, before+5)
 }
 
 func TestDataInspectMetric(t *testing.T) {
@@ -280,7 +306,6 @@ func TestDataInspectMetric(t *testing.T) {
 	require.Equal(t, 0, badBidCnt)
 
 	// some bad blob
-	mgr.inspected = make(map[proto.DiskID]*sync.Map)
 	cs = NewMockChunkAPI(ctr)
 	bads = make([]bnapi.BadShard, total)
 	err1 := errors.New("fake mock error 111")
@@ -323,7 +348,6 @@ func TestDataInspectMetric(t *testing.T) {
 	require.Equal(t, expectCnt, badBidCnt)
 
 	// one shard bad
-	require.Equal(t, 0, len(mgr.inspected))
 	badBid := proto.BlobID(1234)
 	ds1.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{
 		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 11},
@@ -333,14 +357,6 @@ func TestDataInspectMetric(t *testing.T) {
 	mgr.recorder.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any)
 
 	mgr.reportBadShard(ctx, cs, badBid, errMock)
-
-	require.Equal(t, 1, len(mgr.inspected))
-	cnt, inspected := 0, mgr.getInspectedBlobs(11)
-	inspected.Range(func(key, value interface{}) bool {
-		cnt++
-		return true
-	})
-	require.Equal(t, 1, cnt)
 }
 
 func TestDataInspectRecord(t *testing.T) {
@@ -439,49 +455,50 @@ func TestDataInspectRecord(t *testing.T) {
 	}
 }
 
-func TestInspectChunk_NoGoroutineLeak(t *testing.T) {
-	ctr := gomock.NewController(t)
-	ctx := context.Background()
+func TestDataInspectMgr_ConcurrentAccess(t *testing.T) {
+	const diskCnt = 60
+	const concurrentCnt = 1000
+	mgr := &DataInspectMgr{}
 
-	// build service and manager
-	ds := NewMockDiskAPI(ctr)
-	svr := &Service{
-		Disks:   map[proto.DiskID]core.DiskAPI{11: ds},
-		ctx:     context.Background(),
-		closeCh: make(chan struct{}),
+	diskIDs := make([]proto.DiskID, diskCnt)
+	for i := 0; i < diskCnt; i++ {
+		diskIDs[i] = proto.DiskID(i + 1)
+		// mgr.progress[diskIDs[i]] = 0
+		mgr.progress.Store(diskIDs[i], 0)
 	}
-	getter := mocks.NewMockAccessor(ctr)
-	getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
-	getter.EXPECT().SetConfig(any, any, any).AnyTimes().Return(nil)
-	switchMgr := taskswitch.NewSwitchMgr(getter)
-	mgr, err := NewDataInspectMgr(svr, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, switchMgr)
-	require.NoError(t, err)
-	mgr.svr = svr
-	svr.inspectMgr = mgr
 
-	// limiter entry (avoid nil access if shards present)
-	ds.EXPECT().ID().AnyTimes().Return(proto.DiskID(11))
-	mgr.setLimiters([]core.DiskAPI{ds})
-
-	// chunk mock: empty shard list so inspectChunk returns quickly
-	cs := NewMockChunkAPI(ctr)
-	cs.EXPECT().Vuid().AnyTimes().Return(proto.Vuid(1001))
-	cs.EXPECT().ID().AnyTimes().Return(clustermgr.ChunkID{})
-	cs.EXPECT().Disk().AnyTimes().Return(ds)
-	cs.EXPECT().ListShards(any, any, any, any).AnyTimes().Return([]*bnapi.ShardInfo{}, proto.InValidBlobID, nil)
-
-	before := runtime.NumGoroutine()
-	for i := 0; i < 50; i++ {
-		_, err = mgr.inspectChunk(ctx, cs)
-		require.NoError(t, err)
+	var writeWg sync.WaitGroup
+	for _, diskID := range diskIDs {
+		writeWg.Add(1)
+		go func(did proto.DiskID) {
+			defer writeWg.Done()
+			for i := 0; i < concurrentCnt; i++ {
+				// mgr.progress[did] = i % 100
+				mgr.progress.Store(did, i%100)
+			}
+		}(diskID)
 	}
-	// allow scheduler to settle
-	// (if a leak existed via a background goroutine, goroutine count would keep growing)
-	// small sleep to stabilize
-	// not too long to avoid slowing CI
-	// 50 iterations are enough to detect growth
 
-	after := runtime.NumGoroutine()
-	// tolerate a small delta for unrelated goroutines
-	require.LessOrEqual(t, after, before+5)
+	var readWg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		readWg.Add(1)
+		go func() {
+			defer readWg.Done()
+			for j := 0; j < concurrentCnt; j++ {
+				progressCopy := make(map[proto.DiskID]int)
+				// for k, v := range mgr.progress {
+				//	progressCopy[k] = v
+				// }
+				mgr.progress.Range(func(k, v interface{}) bool {
+					progressCopy[k.(proto.DiskID)] = v.(int)
+					return true
+				})
+				_ = len(progressCopy)
+			}
+		}()
+	}
+
+	// wait all done, and no panic(concurrent write map, concurrent iteration map)
+	writeWg.Wait()
+	readWg.Wait()
 }
