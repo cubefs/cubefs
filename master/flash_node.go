@@ -196,7 +196,7 @@ func (c *Cluster) checkFlashNodeHeartbeat() {
 	c.flashNodeTopo.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
 		node := flashNode.(*FlashNode)
 		node.checkLiveliness()
-		task := node.createHeartbeatTask(c.masterAddr(), c.cfg.flashNodeHandleReadTimeout, c.cfg.flashNodeReadDataNodeTimeout, c.cfg.flashHotKeyMissCount)
+		task := node.createHeartbeatTask(c.masterAddr(), c.cfg.flashNodeHandleReadTimeout, c.cfg.flashNodeReadDataNodeTimeout, c.cfg.flashHotKeyMissCount, c.cfg.flashReadFlowLimit, c.cfg.flashWriteFlowLimit)
 		tasks = append(tasks, task)
 		return true
 	})
@@ -213,7 +213,7 @@ func (flashNode *FlashNode) checkLiveliness() {
 	flashNode.Unlock()
 }
 
-func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int, flashNodeReadDataNodeTimeout int, flashHotKeyMissCount int) (task *proto.AdminTask) {
+func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int, flashNodeReadDataNodeTimeout int, flashHotKeyMissCount int, flashReadFlowLimit int64, flashWriteFlowLimit int64) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,
@@ -221,6 +221,8 @@ func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHand
 	request.FlashNodeHandleReadTimeout = flashNodeHandleReadTimeout
 	request.FlashNodeReadDataNodeTimeout = flashNodeReadDataNodeTimeout
 	request.FlashHotKeyMissCount = flashHotKeyMissCount
+	request.FlashReadFlowLimit = flashReadFlowLimit
+	request.FlashWriteFlowLimit = flashWriteFlowLimit
 
 	task = proto.NewAdminTask(proto.OpFlashNodeHeartbeat, flashNode.Addr, request)
 	return

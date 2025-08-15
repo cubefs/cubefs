@@ -145,6 +145,28 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[cfgFlashHotKeyMissCount] = val
 	}
 
+	if value = r.FormValue(cfgFlashReadFlowLimit); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(cfgFlashReadFlowLimit)
+			return
+		}
+		params[cfgFlashReadFlowLimit] = val
+	}
+
+	if value = r.FormValue(cfgFlashWriteFlowLimit); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(cfgFlashWriteFlowLimit)
+			return
+		}
+		params[cfgFlashWriteFlowLimit] = val
+	}
+
 	if value = r.FormValue(cfgFlashNodeReadDataNodeTimeout); value != "" {
 		noParams = false
 		val := int64(0)

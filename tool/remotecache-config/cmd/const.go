@@ -161,6 +161,8 @@ const (
 	CliFlagRemoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	CliFlagRemoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
 	CliFlagFlashHotKeyMissCount         = "flashHotKeyMissCount"
+	CliFlagFlashReadFlowLimit           = "flashReadFlowLimit"
+	CliFlagFlashWriteFlowLimit          = "flashWriteFlowLimit"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

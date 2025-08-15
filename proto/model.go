@@ -182,6 +182,8 @@ type ClusterView struct {
 	RemoteCacheSameZoneTimeout                int64
 	RemoteCacheSameRegionTimeout              int64
 	FlashHotKeyMissCount                      int
+	FlashReadFlowLimit                        int64
+	FlashWriteFlowLimit                       int64
 }
 
 // ClusterNode defines the structure of a cluster node

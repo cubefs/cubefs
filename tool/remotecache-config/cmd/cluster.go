@@ -61,6 +61,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	optRemoteCacheSameZoneTimeout := ""
 	optRemoteCacheSameRegionTimeout := ""
 	optFlashHotKeyMissCount := ""
+	optFlashReadFlowLimit := ""
+	optFlashWriteFlowLimit := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -158,6 +160,28 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if optFlashReadFlowLimit != "" {
+				if tmp, err = strconv.ParseInt(optFlashReadFlowLimit, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optFlashReadFlowLimit)
+					return
+				}
+				if tmp < 0 {
+					err = fmt.Errorf("param flashReadFlowLimit(%v) must greater than or equal to 0", optFlashReadFlowLimit)
+					return
+				}
+			}
+
+			if optFlashWriteFlowLimit != "" {
+				if tmp, err = strconv.ParseInt(optFlashWriteFlowLimit, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optFlashWriteFlowLimit)
+					return
+				}
+				if tmp < 0 {
+					err = fmt.Errorf("param flashWriteFlowLimit(%v) must greater than or equal to 0", optFlashWriteFlowLimit)
+					return
+				}
+			}
+
 			if err = client.AdminAPI().SetClusterParas("", "", "",
 				"", "", "", "", clientIDKey,
 				"", "",
@@ -165,7 +189,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				"", "", "", "", "", "",
 				"", "", handleTimeout, readDataNodeTimeout,
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount); err != nil {
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount,
+				optFlashReadFlowLimit, optFlashWriteFlowLimit); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -181,5 +206,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, "", "Remote cache same zone timeout microsecond(must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, "", "Remote cache same region timeout millisecond(must > 0)")
 	cmd.Flags().StringVar(&optFlashHotKeyMissCount, CliFlagFlashHotKeyMissCount, "", "Flash hot key miss count(must > 0)")
+	cmd.Flags().StringVar(&optFlashReadFlowLimit, CliFlagFlashReadFlowLimit, "", "Flash read flow limit(must >= 0)")
+	cmd.Flags().StringVar(&optFlashWriteFlowLimit, CliFlagFlashWriteFlowLimit, "", "Flash write flow limit(must >= 0)")
 	return cmd
 }

@@ -427,6 +427,8 @@ type RemoteCacheConfig struct {
 	RemoteCacheSameZoneTimeout   int64
 	RemoteCacheSameRegionTimeout int64
 	FlashHotKeyMissCount         int
+	FlashReadFlowLimit           int64
+	FlashWriteFlowLimit          int64
 }
 
 func ComputeSourcesVersion(sources []*DataSource, gen uint64) (version uint32) {
