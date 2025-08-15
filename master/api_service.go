@@ -1040,6 +1040,8 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashNodeReadDataNodeTimeout: m.cluster.cfg.flashNodeReadDataNodeTimeout,
 		RackAwareLevel:               m.cluster.cfg.RackAwareLevel,
 		FlashHotKeyMissCount:         m.cluster.cfg.flashHotKeyMissCount,
+		FlashReadFlowLimit:           m.cluster.cfg.flashReadFlowLimit,
+		FlashWriteFlowLimit:          m.cluster.cfg.flashWriteFlowLimit,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -3801,6 +3803,24 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[flashHotKeyMissCount]; ok {
 		if v, ok := val.(int64); ok {
 			if err = m.setConfig(flashHotKeyMissCount, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[flashReadFlowLimit]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(flashReadFlowLimit, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[flashWriteFlowLimit]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(flashWriteFlowLimit, strconv.FormatInt(v, 10)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -7415,7 +7435,10 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		fnHandleReadTimeout      int
 		fnReadDataNodeTimeout    int
 		fnHotKeyMissCount        int
+		fnReadFlowLimit          int64
+		fnWriteFlowLimit         int64
 		oldIntValue              int
+		oldInt64Value            int64
 	)
 
 	switch key {
@@ -7481,6 +7504,22 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		oldIntValue = m.config.flashHotKeyMissCount
 		m.config.flashHotKeyMissCount = fnHotKeyMissCount
 
+	case flashReadFlowLimit:
+		fnReadFlowLimit, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		oldInt64Value = m.config.flashReadFlowLimit
+		m.config.flashReadFlowLimit = fnReadFlowLimit
+
+	case flashWriteFlowLimit:
+		fnWriteFlowLimit, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		oldInt64Value = m.config.flashWriteFlowLimit
+		m.config.flashWriteFlowLimit = fnWriteFlowLimit
+
 	default:
 		err = keyNotFound("config")
 		return err
@@ -7504,6 +7543,10 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.config.mpMigrateThreads = oldIntValue
 		case flashHotKeyMissCount:
 			m.config.flashHotKeyMissCount = oldIntValue
+		case flashReadFlowLimit:
+			m.config.flashReadFlowLimit = oldInt64Value
+		case flashWriteFlowLimit:
+			m.config.flashWriteFlowLimit = oldInt64Value
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
@@ -7535,6 +7578,10 @@ func (m *Server) getConfig(key string) (value string, err error) {
 		value = strconv.Itoa(m.config.mpMigrateThreads)
 	case flashHotKeyMissCount:
 		value = strconv.Itoa(m.config.flashHotKeyMissCount)
+	case flashReadFlowLimit:
+		value = strconv.FormatInt(m.config.flashReadFlowLimit, 10)
+	case flashWriteFlowLimit:
+		value = strconv.FormatInt(m.config.flashWriteFlowLimit, 10)
 	default:
 		err = keyNotFound("config")
 	}

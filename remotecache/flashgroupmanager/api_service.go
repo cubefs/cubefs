@@ -60,6 +60,8 @@ func (m *FlashGroupManager) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashNodeHandleReadTimeout:   m.cluster.cfg.FlashNodeHandleReadTimeout,
 		FlashNodeReadDataNodeTimeout: m.cluster.cfg.FlashNodeReadDataNodeTimeout,
 		FlashHotKeyMissCount:         m.cluster.cfg.FlashHotKeyMissCount,
+		FlashReadFlowLimit:           m.cluster.cfg.FlashReadFlowLimit,
+		FlashWriteFlowLimit:          m.cluster.cfg.FlashWriteFlowLimit,
 		RemoteCacheTTL:               m.config.RemoteCacheTTL,
 		RemoteCacheReadTimeout:       m.config.RemoteCacheReadTimeout,
 		RemoteCacheMultiRead:         m.config.RemoteCacheMultiRead,
@@ -114,6 +116,8 @@ func (m *FlashGroupManager) getRemoteCacheConfig(w http.ResponseWriter, r *http.
 		RemoteCacheSameZoneTimeout:   m.config.RemoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: m.config.RemoteCacheSameRegionTimeout,
 		FlashHotKeyMissCount:         m.config.FlashHotKeyMissCount,
+		FlashReadFlowLimit:           m.config.FlashReadFlowLimit,
+		FlashWriteFlowLimit:          m.config.FlashWriteFlowLimit,
 	}
 	log.LogInfof("getRemoteCacheConfig config(%v)", config)
 	sendOkReply(w, r, newSuccessHTTPReply(config))
@@ -776,6 +780,24 @@ func (m *FlashGroupManager) setNodeInfoHandler(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	if val, ok := params[cfgFlashReadFlowLimit]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(cfgFlashReadFlowLimit, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[cfgFlashWriteFlowLimit]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(cfgFlashWriteFlowLimit, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 }
 
@@ -790,6 +812,8 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		flashNodeTimeoutCount        int64
 		remoteCacheSameZoneTimeout   int64
 		remoteCacheSameRegionTimeout int64
+		flashReadFlowLimit           int64
+		flashWriteFlowLimit          int64
 		oldIntValue                  int
 		oldInt64Value                int64
 		oldBoolValue                 bool
@@ -868,6 +892,22 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		oldIntValue = m.config.FlashHotKeyMissCount
 		m.config.FlashHotKeyMissCount = flashHotKeyMissCount
 
+	case cfgFlashReadFlowLimit:
+		flashReadFlowLimit, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		oldInt64Value = m.config.FlashReadFlowLimit
+		m.config.FlashReadFlowLimit = flashReadFlowLimit
+
+	case cfgFlashWriteFlowLimit:
+		flashWriteFlowLimit, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		oldInt64Value = m.config.FlashWriteFlowLimit
+		m.config.FlashWriteFlowLimit = flashWriteFlowLimit
+
 	default:
 		err = keyNotFound("config")
 		return err
@@ -893,6 +933,10 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 			m.config.RemoteCacheSameRegionTimeout = oldInt64Value
 		case cfgFlashHotKeyMissCount:
 			m.config.FlashHotKeyMissCount = oldIntValue
+		case cfgFlashReadFlowLimit:
+			m.config.FlashReadFlowLimit = oldInt64Value
+		case cfgFlashWriteFlowLimit:
+			m.config.FlashWriteFlowLimit = oldInt64Value
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err

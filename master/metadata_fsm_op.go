@@ -91,6 +91,8 @@ type clusterValue struct {
 	FlashNodeReadDataNodeTimeout           int
 	RackAwareLevel                         uint8
 	FlashHotKeyMissCount                   int
+	FlashReadFlowLimit                     int64
+	FlashWriteFlowLimit                    int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -147,6 +149,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FlashNodeReadDataNodeTimeout:           c.cfg.flashNodeReadDataNodeTimeout,
 		RackAwareLevel:                         uint8(c.cfg.RackAwareLevel),
 		FlashHotKeyMissCount:                   c.cfg.flashHotKeyMissCount,
+		FlashReadFlowLimit:                     c.cfg.flashReadFlowLimit,
+		FlashWriteFlowLimit:                    c.cfg.flashWriteFlowLimit,
 	}
 	return cv
 }
@@ -1468,9 +1472,12 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.cfg.flashHotKeyMissCount = cv.FlashHotKeyMissCount
 
+		c.cfg.flashReadFlowLimit = cv.FlashReadFlowLimit
+		c.cfg.flashWriteFlowLimit = cv.FlashWriteFlowLimit
+
 		c.cfg.flashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
-		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout %v(ms), flashHotKeyMissCount %v",
-			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount)
+		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout %v(ms), flashHotKeyMissCount %v, flashReadFlowLimit %v, flashWriteFlowLimit %v",
+			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount, cv.FlashReadFlowLimit, cv.FlashWriteFlowLimit)
 	}
 
 	return

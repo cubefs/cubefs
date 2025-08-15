@@ -78,6 +78,8 @@ const (
 	flashNodeHandleReadTimeout   = "flashNodeHandleReadTimeout"
 	flashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
 	flashHotKeyMissCount         = "flashHotKeyMissCount"
+	flashReadFlowLimit           = "flashReadFlowLimit"
+	flashWriteFlowLimit          = "flashWriteFlowLimit"
 )
 
 // default value
@@ -126,6 +128,8 @@ const (
 	defaultFlashNodeHandleReadTimeout   = 1000
 	defaultFlashNodeReadDataNodeTimeout = 3000
 	defaultFlashHotKeyMissCount         = 5
+	defaultFlashReadFlowLimit           = 2147483648
+	defaultFlashWriteFlowLimit          = 2147483648
 
 	defaultMetaNodeGOGC = 100
 	defaultDataNodeGOGC = 100
@@ -207,6 +211,8 @@ type clusterConfig struct {
 	flashNodeHandleReadTimeout   int
 	flashNodeReadDataNodeTimeout int
 	flashHotKeyMissCount         int
+	flashReadFlowLimit           int64
+	flashWriteFlowLimit          int64
 
 	metaNodeGOGC int
 	dataNodeGOGC int
@@ -255,6 +261,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.flashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
 	cfg.flashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
 	cfg.flashHotKeyMissCount = defaultFlashHotKeyMissCount
+	cfg.flashReadFlowLimit = defaultFlashReadFlowLimit
+	cfg.flashWriteFlowLimit = defaultFlashWriteFlowLimit
 	cfg.metaNodeGOGC = defaultMetaNodeGOGC
 	cfg.dataNodeGOGC = defaultDataNodeGOGC
 	cfg.metaNodeMemHighPer = defaultMetaNodeMemHighPer

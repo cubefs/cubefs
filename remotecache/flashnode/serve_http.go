@@ -193,6 +193,9 @@ func (f *FlashNode) handleSetWriteDiskQos(w http.ResponseWriter, r *http.Request
 			return
 		}
 		if has {
+			if paramFlow == key {
+				f.localChangeWriteFlow = true
+			}
 			updated = true
 			*pVal = val
 		}
@@ -236,6 +239,9 @@ func (f *FlashNode) handleSetReadDiskQos(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if has {
+			if paramFlow == key {
+				f.localChangeReadFlow = true
+			}
 			updated = true
 			*pVal = val
 		}

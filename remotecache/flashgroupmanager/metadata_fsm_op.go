@@ -36,6 +36,8 @@ type clusterValue struct {
 	RemoteCacheSameZoneTimeout   int64
 	RemoteCacheSameRegionTimeout int64
 	FlashHotKeyMissCount         int
+	FlashReadFlowLimit           int64
+	FlashWriteFlowLimit          int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -50,6 +52,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		RemoteCacheSameZoneTimeout:   c.cfg.RemoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: c.cfg.RemoteCacheSameRegionTimeout,
 		FlashHotKeyMissCount:         c.cfg.FlashHotKeyMissCount,
+		FlashReadFlowLimit:           c.cfg.FlashReadFlowLimit,
+		FlashWriteFlowLimit:          c.cfg.FlashWriteFlowLimit,
 	}
 	return cv
 }
@@ -87,9 +91,12 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.cfg.FlashHotKeyMissCount = cv.FlashHotKeyMissCount
 
+		c.cfg.FlashReadFlowLimit = cv.FlashReadFlowLimit
+		c.cfg.FlashWriteFlowLimit = cv.FlashWriteFlowLimit
+
 		c.cfg.FlashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
-		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms), flashHotKeyMissCount(%v)",
-			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount)
+		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms), flashHotKeyMissCount(%v), flashReadFlowLimit(%v), flashWriteFlowLimit(%v)",
+			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount, cv.FlashReadFlowLimit, cv.FlashWriteFlowLimit)
 
 		if cv.RemoteCacheTTL == 0 {
 			cv.RemoteCacheTTL = proto.DefaultRemoteCacheTTL
