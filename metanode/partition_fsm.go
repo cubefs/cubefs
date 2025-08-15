@@ -841,6 +841,11 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				log.LogErrorf("[ApplySnapshot] mp(%v) failed to clear handle", mp.config.PartitionId)
 				err = nil
 			}
+			err = mp.inodeTree.Flush(true)
+			if err != nil {
+				log.LogErrorf("[ApplySnapshot] mp(%v) failed to flush rocksdb, err(%v)", mp.config.PartitionId, err)
+				return
+			}
 			// store message
 			var snap Snapshot
 			snap, err = mp.GetSnapShot()

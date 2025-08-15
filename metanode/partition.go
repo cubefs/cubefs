@@ -2130,10 +2130,7 @@ func (mp *metaPartition) Clear() (err error) {
 	if err != nil {
 		return
 	}
-	err = mp.inodeTree.Flush(false)
-	if err != nil {
-		return
-	}
+
 	mp.applyID = 0
 	mp.txProcessor.txManager.txIdAlloc.setTransactionID(0)
 	mp.config.Cursor = 0
