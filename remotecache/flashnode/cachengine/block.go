@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -64,12 +65,13 @@ type CacheBlock struct {
 	initOnce     sync.Once
 	sourceReader ReadExtentData
 
-	readyOnce sync.Once
-	readyCh   chan struct{}
-	closeOnce sync.Once
-	closeCh   chan struct{}
-	clientIP  string
-	disk      *Disk
+	readyOnce  sync.Once
+	readyCh    chan struct{}
+	closeOnce  sync.Once
+	closeCh    chan struct{}
+	clientIP   string
+	disk       *Disk
+	keyLimiter *rate.Limiter
 }
 
 // NewCacheBlock create and returns a new extent instance.
@@ -755,7 +757,21 @@ func (cb *CacheBlock) info() string {
 	return fmt.Sprintf("path(%v)_from(%v)_size(%v)", cb.filePath, cb.clientIP, cb.allocSize)
 }
 
-func NewCacheBlockV2(rootPath string, volume string, uniKey string, allocSize uint64, clientIP string, d *Disk,
+func (cb *CacheBlock) WaitForRateLimit(ctx context.Context, size int) error {
+	if cb.keyLimiter != nil {
+		return cb.keyLimiter.WaitN(ctx, size)
+	}
+	return nil
+}
+
+func (cb *CacheBlock) initKeyLimiter(keyRateLimitThreshold int32, keyLimiterFlow int32) {
+	if cb.allocSize >= int64(keyRateLimitThreshold) {
+		flow := float64(keyLimiterFlow)
+		cb.keyLimiter = rate.NewLimiter(rate.Limit(flow), int(flow/2))
+	}
+}
+
+func NewCacheBlockV2(rootPath string, volume string, uniKey string, allocSize uint64, clientIP string, d *Disk, keyRateLimitThreshold int32, keyLimiterFlow int32,
 ) (cb *CacheBlock) {
 	cb = new(CacheBlock)
 	cb.volume = volume
@@ -768,6 +784,8 @@ func NewCacheBlockV2(rootPath string, volume string, uniKey string, allocSize ui
 	cb.closeCh = make(chan struct{})
 	cb.clientIP = clientIP
 	cb.disk = d
+	cb.initKeyLimiter(keyRateLimitThreshold, keyLimiterFlow)
+
 	return
 }
 
@@ -835,7 +853,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 
 	var cacheItem *lruCacheItem
 	if cacheItem, err = c.selectAvailableLruCache(); err == nil {
-		block = NewCacheBlockV2(cacheItem.config.Path, pDir, uniKey, allocSize, clientIP, cacheItem.disk)
+		block = NewCacheBlockV2(cacheItem.config.Path, pDir, uniKey, allocSize, clientIP, cacheItem.disk, c.keyRateLimitThreshold, c.keyLimiterFlow)
 		if ttl <= 0 {
 			ttl = proto.DefaultCacheTTLSec
 		}
@@ -854,6 +872,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 		if err = block.initFilePath(false); err != nil {
 			return
 		}
+		block.initKeyLimiter(c.keyRateLimitThreshold, c.keyLimiterFlow)
 		if _, err = cacheItem.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
 			return
 		}
@@ -884,7 +903,7 @@ func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string
 	if atomic.LoadInt32(&cacheItem.disk.Status) == proto.Unavailable {
 		return nil, errors.NewErrorf("lru cache item related to dataPath(%v) is unavailable", dataPath)
 	}
-	block = NewCacheBlockV2(cacheItem.config.Path, volume, uniKey, allocSize, clientIP, cacheItem.disk)
+	block = NewCacheBlockV2(cacheItem.config.Path, volume, uniKey, allocSize, clientIP, cacheItem.disk, c.keyRateLimitThreshold, c.keyLimiterFlow)
 	block.cacheEngine = c
 	defer func() {
 		if err != nil {

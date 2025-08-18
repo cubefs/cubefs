@@ -375,7 +375,7 @@ func testWriteSingleFileV2(t *testing.T) {
 	disk.Status = proto.ReadWrite
 	uniKey := t.Name()
 	pDir := MapKeyToDirectory(uniKey)
-	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_BLOCK_PACKET_SIZE*2, "", disk)
+	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_BLOCK_PACKET_SIZE*2, "", disk, 1024*1024, 100)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -429,7 +429,7 @@ func testWriteSingleFileErrorV2(t *testing.T) {
 	disk.Status = proto.ReadWrite
 	uniKey := t.Name()
 	pDir := MapKeyToDirectory(uniKey)
-	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_BLOCK_PACKET_SIZE, "", disk)
+	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_BLOCK_PACKET_SIZE, "", disk, 1024*1024, 100)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -467,7 +467,7 @@ func testWriteCacheBlockFullV2(t *testing.T) {
 	disk.Status = proto.ReadWrite
 	uniKey := t.Name()
 	pDir := MapKeyToDirectory(uniKey)
-	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_OBJECT_BLOCK_SIZE, "", disk)
+	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_OBJECT_BLOCK_SIZE, "", disk, 1024*1024, 100)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -513,7 +513,7 @@ func testWriteMultiCacheBlockV2(t *testing.T) {
 			var err error
 			uniKey := t.Name() + strconv.Itoa(index)
 			pDir := MapKeyToDirectory(uniKey)
-			cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_BLOCK_PACKET_SIZE*25, "", disk)
+			cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_BLOCK_PACKET_SIZE*25, "", disk, 1024*1024, 100)
 			defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
 			cacheBlock.cacheEngine = &CacheEngine{}
 			cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
