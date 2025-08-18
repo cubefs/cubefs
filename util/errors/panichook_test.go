@@ -19,7 +19,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"unsafe"
 
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/stretchr/testify/require"
@@ -96,9 +95,7 @@ func testSegfaultPanic(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("start panic")
 	debug.SetPanicOnFault(true)
-	p := unsafe.Pointer(uintptr(0xFFFF))
-	var i *int = (*int)(p)
-	*i = 1
+	*(*int)(nil) = 1
 }
 
 func TestSegfaultPanic(t *testing.T) {
@@ -194,9 +191,7 @@ func TestCurrentSegfaultPanic(t *testing.T) {
 			}()
 			debug.SetPanicOnFault(true)
 			t.Logf("start panic")
-			p := unsafe.Pointer(uintptr(0xFFFF))
-			var i *int = (*int)(p)
-			*i = 1
+			*(*int)(nil) = 1
 		}()
 	}
 	wg.Wait()
