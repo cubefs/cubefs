@@ -153,7 +153,7 @@ func TestAdminTaskManager_syncSendAdminTask(t *testing.T) {
 				time.Sleep(100 * time.Millisecond) // Wait for goroutine to exit
 			}()
 			// Execute synchronous task sending test
-			packet, err := manager.syncSendAdminTask(tt.task)
+			packet, err := manager.SyncSendAdminTask(tt.task)
 
 			// Verify test results based on expected results
 			if tt.expectError {
@@ -200,7 +200,7 @@ func TestAdminTaskManager_syncSendAdminTask_WriteError(t *testing.T) {
 		close(manager.exitCh)
 		time.Sleep(100 * time.Millisecond)
 	}()
-	packet, err := manager.syncSendAdminTask(task)
+	packet, err := manager.SyncSendAdminTask(task)
 
 	assert.Error(t, err)
 	assert.Nil(t, packet)
@@ -242,7 +242,7 @@ func TestAdminTaskManager_syncSendAdminTask_ReadError(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}()
 
-	packet, err := manager.syncSendAdminTask(task)
+	packet, err := manager.SyncSendAdminTask(task)
 
 	assert.Error(t, err)
 	assert.Nil(t, packet)
@@ -287,7 +287,7 @@ func TestAdminTaskManager_syncSendAdminTask_Timeout(t *testing.T) {
 	// Note: useConnPool is a constant, so we can't modify it in tests
 	// The test will use the default connection pool behavior
 
-	packet, err := manager.syncSendAdminTask(task)
+	packet, err := manager.SyncSendAdminTask(task)
 
 	assert.Error(t, err)
 	assert.Nil(t, packet)
@@ -309,7 +309,7 @@ func TestAdminTaskManager_syncSendAdminTask_InvalidTask(t *testing.T) {
 		}
 	}()
 
-	_, err := manager.syncSendAdminTask(nil)
+	_, err := manager.SyncSendAdminTask(nil)
 	assert.Error(t, err)
 }
 
@@ -357,7 +357,7 @@ func TestAdminTaskManager_syncSendAdminTask_EmptyTask(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}()
 
-	packet, err := manager.syncSendAdminTask(task)
+	packet, err := manager.SyncSendAdminTask(task)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, packet)
@@ -423,7 +423,7 @@ func TestAdminTaskManager_syncSendAdminTask_ComplexRequest(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}()
 
-	packet, err := manager.syncSendAdminTask(task)
+	packet, err := manager.SyncSendAdminTask(task)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, packet)

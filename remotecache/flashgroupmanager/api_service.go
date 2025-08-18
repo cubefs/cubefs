@@ -135,7 +135,7 @@ func (m *FlashGroupManager) clientFlashGroups(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	cache := m.cluster.flashNodeTopo.getClientResponse()
+	cache := m.cluster.flashNodeTopo.GetClientResponse()
 	if len(cache) == 0 {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("flash group response cache is empty")))
 		return
@@ -157,11 +157,7 @@ func (m *FlashGroupManager) turnFlashGroup(w http.ResponseWriter, r *http.Reques
 	// TODO: should raft sync?
 	topo := m.cluster.flashNodeTopo
 	enabled := enable.V
-	if enabled {
-		topo.clientOff.Store([]byte(nil))
-	} else {
-		topo.clientOff.Store(topo.clientEmpty)
-	}
+	topo.TurnFlashGroup(enabled)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("turn %v", enabled)))
 }
 
@@ -179,7 +175,7 @@ func (m *FlashGroupManager) getFlashGroup(w http.ResponseWriter, r *http.Request
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if flashGroup, err = m.cluster.flashNodeTopo.getFlashGroup(flashGroupID.V); err != nil {
+	if flashGroup, err = m.cluster.flashNodeTopo.GetFlashGroup(flashGroupID.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -210,7 +206,7 @@ func (m *FlashGroupManager) listFlashGroups(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	fgv := m.cluster.flashNodeTopo.getFlashGroupsAdminView(fgStatus, allStatus)
+	fgv := m.cluster.flashNodeTopo.GetFlashGroupsAdminView(fgStatus, allStatus)
 	sendOkReply(w, r, newSuccessHTTPReply(fgv))
 }
 
@@ -235,25 +231,15 @@ func (m *FlashGroupManager) setFlashGroup(w http.ResponseWriter, r *http.Request
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if flashGroup, err = m.cluster.flashNodeTopo.getFlashGroup(flashGroupID.V); err != nil {
+	if flashGroup, err = m.cluster.flashNodeTopo.GetFlashGroup(flashGroupID.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-
-	flashGroup.lock.Lock()
-	oldStatus := flashGroup.Status
-	flashGroup.Status = fgStatus
-	if oldStatus != fgStatus {
-		if err = m.cluster.syncUpdateFlashGroup(flashGroup); err != nil {
-			flashGroup.Status = oldStatus
-			flashGroup.lock.Unlock()
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-		m.cluster.flashNodeTopo.updateClientCache()
+	err = flashGroup.UpdateStatus(fgStatus, m.cluster.syncUpdateFlashGroup, m.cluster.flashNodeTopo)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	flashGroup.lock.Unlock()
-
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
 
@@ -336,23 +322,13 @@ func (m *FlashGroupManager) removeFlashGroup(w http.ResponseWriter, r *http.Requ
 	}
 
 	var flashGroup *FlashGroup
-	if flashGroup, err = m.cluster.flashNodeTopo.getFlashGroup(flashGroupID.V); err != nil {
+	if flashGroup, err = m.cluster.flashNodeTopo.RemoveFlashGroup(flashGroupID.V, gradualFlag, step,
+		m.cluster.syncUpdateFlashGroup, m.cluster.syncUpdateFlashNode, m.cluster.syncDeleteFlashGroup); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if flashGroup.getSlotStatus() == proto.SlotStatus_Deleting {
-		err = fmt.Errorf("the flashGroup(%v) is in slotDeleting status, it cannot be deleted repeatedly", flashGroup.ID)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if err = m.cluster.removeFlashGroup(flashGroup, gradualFlag, step); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	m.cluster.flashNodeTopo.updateClientCache()
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("remove flashGroup:%v successfully,Slots:%v nodeCount:%v",
-		flashGroup.ID, flashGroup.getSlots(), flashGroup.getFlashNodesCount())))
+		flashGroup.ID, flashGroup.GetSlots(), flashGroup.GetFlashNodesCount())))
 }
 
 func (m *FlashGroupManager) addFlashNode(w http.ResponseWriter, r *http.Request) {
@@ -391,7 +367,6 @@ func (m *FlashGroupManager) listFlashNodes(w http.ResponseWriter, r *http.Reques
 	defer func() {
 		doStatAndMetric(proto.FlashNodeList, metric, nil, nil)
 	}()
-	zoneFlashNodes := make(map[string][]*proto.FlashNodeViewInfo)
 	showAll := true
 	active := false
 	if err := r.ParseForm(); err != nil {
@@ -407,13 +382,7 @@ func (m *FlashGroupManager) listFlashNodes(w http.ResponseWriter, r *http.Reques
 			active = true
 		}
 	}
-	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
-		flashNode := value.(*FlashNode)
-		if showAll || flashNode.isActiveAndEnable() == active {
-			zoneFlashNodes[flashNode.ZoneName] = append(zoneFlashNodes[flashNode.ZoneName], flashNode.GetFlashNodeViewInfo())
-		}
-		return true
-	})
+	zoneFlashNodes := m.cluster.flashNodeTopo.ListFlashNodes(showAll, active)
 	sendOkReply(w, r, newSuccessHTTPReply(zoneFlashNodes))
 }
 
@@ -488,18 +457,9 @@ func (m *FlashGroupManager) removeFlashNode(w http.ResponseWriter, r *http.Reque
 }
 
 func (m *FlashGroupManager) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Request) {
-	var (
-		err         error
-		removeNodes []*FlashNode
-	)
+	var err error
 	removeAddresses := []string{}
-	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
-		flashNode := value.(*FlashNode)
-		if !flashNode.isActiveAndEnable() && flashNode.FlashGroupID == UnusedFlashNodeFlashGroupID {
-			removeNodes = append(removeNodes, flashNode)
-		}
-		return true
-	})
+	removeNodes := m.cluster.flashNodeTopo.GetAllInactiveFlashNodes()
 	for _, node := range removeNodes {
 		if err = m.cluster.removeFlashNode(node); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
@@ -541,20 +501,11 @@ func (m *FlashGroupManager) flashGroupAddFlashNode(w http.ResponseWriter, r *htt
 		return
 	}
 	var flashGroup *FlashGroup
-	if flashGroup, err = m.cluster.flashNodeTopo.getFlashGroup(flashGroupID); err != nil {
+	if flashGroup, err = m.cluster.flashNodeTopo.FlashGroupAddFlashNode(flashGroupID,
+		addr, zoneName, count, m.cluster.syncUpdateFlashNode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if addr != "" {
-		err = m.cluster.addFlashNodeToFlashGroup(addr, flashGroup)
-	} else {
-		err = m.cluster.selectFlashNodesFromZoneAddToFlashGroup(zoneName, count, nil, flashGroup)
-	}
-	if err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	m.cluster.flashNodeTopo.updateClientCache()
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
 
@@ -589,20 +540,11 @@ func (m *FlashGroupManager) flashGroupRemoveFlashNode(w http.ResponseWriter, r *
 		return
 	}
 	var flashGroup *FlashGroup
-	if flashGroup, err = m.cluster.flashNodeTopo.getFlashGroup(flashGroupID); err != nil {
+	if flashGroup, err = m.cluster.flashNodeTopo.FlashGroupRemoveFlashNode(flashGroupID,
+		addr, zoneName, count, m.cluster.syncUpdateFlashNode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if addr != "" {
-		err = m.cluster.removeFlashNodeFromFlashGroup(addr, flashGroup)
-	} else {
-		err = m.cluster.removeFlashNodesFromTargetZone(zoneName, count, flashGroup)
-	}
-	if err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	m.cluster.flashNodeTopo.updateClientCache()
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
 
@@ -942,6 +884,100 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		return err
 	}
 	return err
+}
+
+func (m *FlashGroupManager) setFlashNodeReadIOLimits(w http.ResponseWriter, r *http.Request) {
+	var (
+		flow       common.Int
+		iocc       common.Int
+		factor     common.Int
+		readFlow   int64
+		readIocc   int64
+		readFactor int64
+		err        error
+	)
+
+	if err = parseArgs(r, flow.Flow().OmitEmpty().OnEmpty(func() error {
+		readFlow = -1
+		return nil
+	}).OnValue(func() error {
+		readFlow = flow.V
+		return nil
+	}),
+		iocc.Iocc().OmitEmpty().OnEmpty(func() error {
+			readIocc = -1
+			return nil
+		}).OnValue(func() error {
+			readIocc = iocc.V
+			return nil
+		}),
+		factor.Factor().OmitEmpty().OnEmpty(func() error {
+			readFactor = -1
+			return nil
+		}).OnValue(func() error {
+			readFactor = factor.V
+			return nil
+		})); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	log.LogDebugf("action[setFlashNodeReadIOLimits],flow[%v] iocc[%v] factor [%v]",
+		readFlow, readIocc, readFactor)
+	tasks := make([]*proto.AdminTask, 0)
+	flashNodes := m.cluster.flashNodeTopo.GetAllActiveFlashNodes()
+	for _, flashNode := range flashNodes {
+		task := flashNode.CreateSetIOLimitsTask(int(readFlow), int(readIocc), int(readFactor), proto.OpFlashNodeSetReadIOLimits)
+		tasks = append(tasks, task)
+	}
+	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
+	sendOkReply(w, r, newSuccessHTTPReply("set ReadIOLimits for FlashNode is submit,check it later."))
+}
+
+func (m *FlashGroupManager) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Request) {
+	var (
+		flow        common.Int
+		iocc        common.Int
+		factor      common.Int
+		writeFlow   int64
+		writeIocc   int64
+		writeFactor int64
+		err         error
+	)
+
+	if err = parseArgs(r, flow.Flow().OmitEmpty().OnEmpty(func() error {
+		writeFlow = -1
+		return nil
+	}).OnValue(func() error {
+		writeFlow = flow.V
+		return nil
+	}),
+		iocc.Iocc().OmitEmpty().OnEmpty(func() error {
+			writeIocc = -1
+			return nil
+		}).OnValue(func() error {
+			writeIocc = iocc.V
+			return nil
+		}),
+		factor.Factor().OmitEmpty().OnEmpty(func() error {
+			writeFactor = -1
+			return nil
+		}).OnValue(func() error {
+			writeFactor = factor.V
+			return nil
+		})); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	log.LogDebugf("action[setFlashNodeWriteIOLimits],flow[%v] iocc[%v] factor [%v]",
+		writeFlow, writeIocc, writeFactor)
+	tasks := make([]*proto.AdminTask, 0)
+	flashNodes := m.cluster.flashNodeTopo.GetAllActiveFlashNodes()
+	for _, flashNode := range flashNodes {
+		task := flashNode.CreateSetIOLimitsTask(int(writeFlow), int(writeIocc), int(writeFactor), proto.OpFlashNodeSetWriteIOLimits)
+		tasks = append(tasks, task)
+	}
+	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
+	sendOkReply(w, r, newSuccessHTTPReply("set WriteIOLimits for FlashNode is submit,check it later."))
 }
 
 func getSetSlots(r *http.Request) (slots []uint32, err error) {

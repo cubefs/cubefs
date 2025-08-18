@@ -17,7 +17,7 @@ const (
 	WaitForRecoverCount              = 10
 )
 
-type flashGroupValue struct {
+type FlashGroupValue struct {
 	ID               uint64
 	Slots            []uint32 // FlashGroup's position in hasher ring, set by cli. value is range of crc32.
 	ReservedSlots    []uint32
@@ -32,7 +32,7 @@ type flashGroupValue struct {
 }
 
 type FlashGroup struct {
-	flashGroupValue
+	FlashGroupValue
 	lock       sync.RWMutex
 	flashNodes map[string]*FlashNode // key: FlashNodeAddr
 }
@@ -72,7 +72,7 @@ func newFlashGroup(id uint64, slots []uint32, slotStatus proto.SlotStatus, pendi
 	return fg
 }
 
-func (fg *FlashGroup) getSlots() (slots []uint32) {
+func (fg *FlashGroup) GetSlots() (slots []uint32) {
 	fg.lock.RLock()
 	slots = make([]uint32, 0, len(fg.Slots))
 	slots = append(slots, fg.Slots...)
@@ -156,28 +156,28 @@ func (fg *FlashGroup) getFlashNodeHostsEnableAndActive() (hosts []string) {
 	return
 }
 
-func (fg *FlashGroup) getSlotStatus() (status proto.SlotStatus) {
+func (fg *FlashGroup) GetSlotStatus() (status proto.SlotStatus) {
 	fg.lock.RLock()
 	status = fg.SlotStatus
 	fg.lock.RUnlock()
 	return
 }
 
-func (fg *FlashGroup) getFlashNodesCount() (count int) {
+func (fg *FlashGroup) GetFlashNodesCount() (count int) {
 	fg.lock.RLock()
 	count = len(fg.flashNodes)
 	fg.lock.RUnlock()
 	return
 }
 
-func (fg *FlashGroup) getSlotsCount() (count int) {
+func (fg *FlashGroup) GetSlotsCount() (count int) {
 	fg.lock.RLock()
 	count = len(fg.Slots)
 	fg.lock.RUnlock()
 	return
 }
 
-func (fg *FlashGroup) getFlashNodeHosts(checkStatus bool) (hosts []string) {
+func (fg *FlashGroup) GetFlashNodeHosts(checkStatus bool) (hosts []string) {
 	hosts = make([]string, 0, len(fg.flashNodes))
 	fg.lock.RLock()
 	for host, flashNode := range fg.flashNodes {
@@ -190,7 +190,7 @@ func (fg *FlashGroup) getFlashNodeHosts(checkStatus bool) (hosts []string) {
 	return
 }
 
-func (fg *FlashGroup) removeFlashNode(addr string) {
+func (fg *FlashGroup) RemoveFlashNode(addr string) {
 	fg.lock.Lock()
 	delete(fg.flashNodes, addr)
 	fg.lock.Unlock()
@@ -213,7 +213,7 @@ func (fg *FlashGroup) getTargetZoneFlashNodeHosts(targetZone string) (hosts []st
 	return
 }
 
-func NewFlashGroupFromFgv(fgv flashGroupValue) *FlashGroup {
+func NewFlashGroupFromFgv(fgv FlashGroupValue) *FlashGroup {
 	fg := new(FlashGroup)
 	fg.ID = fgv.ID
 	fg.Slots = fgv.Slots
@@ -230,5 +230,77 @@ func (fg *FlashGroup) GetPendingSlotsCount() (count int) {
 	fg.lock.RLock()
 	count = len(fg.PendingSlots)
 	fg.lock.RUnlock()
+	return
+}
+
+func (fg *FlashGroup) UpdateStatus(status proto.FlashGroupStatus,
+	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, flashNodeTopo *FlashNodeTopology) (err error) {
+	fg.lock.Lock()
+	defer fg.lock.Unlock()
+	oldStatus := fg.Status
+	fg.Status = status
+	if oldStatus != status {
+		if err = syncUpdateFlashGroupFunc(fg); err != nil {
+			fg.Status = oldStatus
+			return
+		}
+		flashNodeTopo.updateClientCache()
+	}
+	return nil
+}
+
+func (fg *FlashGroup) UpdateSlots(topology *FlashNodeTopology, needDeleteFgFlag bool, syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
+	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc) (err error) {
+	fg.lock.Lock()
+	var updatedSlotsNum uint32
+	var newSlotStatus proto.SlotStatus
+	var newPendingSlots []uint32
+
+	leftPendingSlotsNum := uint32(len(fg.PendingSlots)) - fg.Step
+	oldSlots := fg.Slots
+	oldPendingSlots := fg.PendingSlots
+	oldSlotStatus := fg.SlotStatus
+	oldStatus := fg.Status
+	if leftPendingSlotsNum > 0 { // previous steps
+		updatedSlotsNum = fg.Step
+		newPendingSlots = oldPendingSlots[updatedSlotsNum:]
+		newSlotStatus = oldSlotStatus
+	} else { // final step
+		updatedSlotsNum = uint32(len(fg.PendingSlots))
+		newPendingSlots = nil
+		newSlotStatus = proto.SlotStatus_Completed
+	}
+	newSlots := getNewSlots(fg.Slots, fg.PendingSlots[:updatedSlotsNum], oldSlotStatus)
+	fg.Slots = newSlots
+	fg.PendingSlots = newPendingSlots
+	fg.SlotStatus = newSlotStatus
+	if needDeleteFgFlag {
+		fg.Status = proto.FlashGroupStatus_Inactive
+		err = syncDeleteFlashGroupFunc(fg)
+	} else {
+		err = syncUpdateFlashGroupFunc(fg)
+	}
+
+	if err != nil {
+		fg.Slots = oldSlots
+		fg.PendingSlots = oldPendingSlots
+		fg.SlotStatus = oldSlotStatus
+		if needDeleteFgFlag {
+			fg.Status = oldStatus
+		}
+		fg.lock.Unlock()
+		return
+	}
+	fg.lock.Unlock()
+	if oldSlotStatus == proto.SlotStatus_Creating {
+		for _, slot := range oldPendingSlots[:updatedSlotsNum] {
+			topology.slotsMap[slot] = fg.ID
+		}
+	} else {
+		topology.removeSlots(oldPendingSlots[:updatedSlotsNum])
+		if needDeleteFgFlag {
+			topology.flashGroupMap.Delete(fg.ID)
+		}
+	}
 	return
 }

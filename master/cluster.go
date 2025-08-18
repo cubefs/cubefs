@@ -34,6 +34,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/remotecache/flashgroupmanager"
 	authSDK "github.com/cubefs/cubefs/sdk/auth"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
@@ -190,7 +191,7 @@ type Cluster struct {
 	ac           *authSDK.AuthClient
 	masterClient *masterSDK.MasterClient
 
-	flashNodeTopo *flashNodeTopology
+	flashNodeTopo *flashgroupmanager.FlashNodeTopology
 
 	cleanTask   map[string]*CleanTask
 	Cleaning    bool
@@ -501,7 +502,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.NodeSetUnbalancedDPs.Store(0)
 	c.RackConflictDPs.Store(0)
 	c.server = server
-	c.flashNodeTopo = newFlashNodeTopology()
+	c.flashNodeTopo = flashgroupmanager.NewFlashNodeTopology()
 	c.cleanTask = make(map[string]*CleanTask)
 	c.flashManMgr = newFlashManualTaskManager(c)
 	atomic.StoreUint32(&c.planStatus, PlanStatusIdle)
@@ -4792,21 +4793,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 }
 
 func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
-	flashNodes = make([]proto.NodeView, 0)
-	c.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
-		flashNode := node.(*FlashNode)
-		isWritable := flashNode.isWriteable()
-		flashNode.RLock()
-		flashNodes = append(flashNodes, proto.NodeView{
-			ID:         flashNode.ID,
-			Addr:       flashNode.Addr,
-			Status:     flashNode.IsActive,
-			IsWritable: isWritable,
-		})
-		flashNode.RUnlock()
-		return true
-	})
-	return
+	return c.flashNodeTopo.GetAllFlashNodes()
 }
 
 // get metaNode with specified condition

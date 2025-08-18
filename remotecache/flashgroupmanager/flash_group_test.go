@@ -39,8 +39,8 @@ func TestFlashGroup_GetAdminView(t *testing.T) {
 	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
 
 	// Add some flash nodes
-	fn1 := &FlashNode{flashNodeValue: flashNodeValue{Addr: "node1", ZoneName: "zone1"}}
-	fn2 := &FlashNode{flashNodeValue: flashNodeValue{Addr: "node2", ZoneName: "zone2"}}
+	fn1 := &FlashNode{FlashNodeValue: FlashNodeValue{Addr: "node1", ZoneName: "zone1"}}
+	fn2 := &FlashNode{FlashNodeValue: FlashNodeValue{Addr: "node2", ZoneName: "zone2"}}
 	fg.putFlashNode(fn1)
 	fg.putFlashNode(fn2)
 
@@ -191,7 +191,7 @@ func TestFlashGroup_getSlots(t *testing.T) {
 	initialSlots := []uint32{1, 2, 3, 4, 5}
 	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 5, proto.FlashGroupStatus_Active, 100)
 
-	slots := fg.getSlots()
+	slots := fg.GetSlots()
 
 	// Should return a copy of the slots
 	assert.Equal(t, initialSlots, slots)
@@ -202,7 +202,7 @@ func TestFlashGroup_getSlots(t *testing.T) {
 func TestFlashGroup_getSlotStatus(t *testing.T) {
 	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Creating, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
 
-	status := fg.getSlotStatus()
+	status := fg.GetSlotStatus()
 	assert.Equal(t, proto.SlotStatus_Creating, status)
 }
 
@@ -211,27 +211,27 @@ func TestFlashGroup_getFlashNodesCount(t *testing.T) {
 	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
 
 	// Initially no flash nodes
-	assert.Equal(t, 0, fg.getFlashNodesCount())
+	assert.Equal(t, 0, fg.GetFlashNodesCount())
 
 	// Add a flash node
-	fn := &FlashNode{flashNodeValue: flashNodeValue{Addr: "node1", ZoneName: "zone1"}}
+	fn := &FlashNode{FlashNodeValue: FlashNodeValue{Addr: "node1", ZoneName: "zone1"}}
 	fg.putFlashNode(fn)
 
-	assert.Equal(t, 1, fg.getFlashNodesCount())
+	assert.Equal(t, 1, fg.GetFlashNodesCount())
 }
 
 // TestFlashGroup_getSlotsCount tests the getSlotsCount method
 func TestFlashGroup_getSlotsCount(t *testing.T) {
 	fg := newFlashGroup(1, []uint32{1, 2, 3, 4, 5}, proto.SlotStatus_Completed, []uint32{}, 5, proto.FlashGroupStatus_Active, 100)
 
-	assert.Equal(t, 5, fg.getSlotsCount())
+	assert.Equal(t, 5, fg.GetSlotsCount())
 }
 
 // TestFlashGroup_putFlashNode tests the putFlashNode method
 func TestFlashGroup_putFlashNode(t *testing.T) {
 	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
 
-	fn := &FlashNode{flashNodeValue: flashNodeValue{Addr: "node1", ZoneName: "zone1"}}
+	fn := &FlashNode{FlashNodeValue: FlashNodeValue{Addr: "node1", ZoneName: "zone1"}}
 	fg.putFlashNode(fn)
 
 	assert.Equal(t, 1, len(fg.flashNodes))
@@ -243,12 +243,12 @@ func TestFlashGroup_removeFlashNode(t *testing.T) {
 	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
 
 	// Add a flash node first
-	fn := &FlashNode{flashNodeValue: flashNodeValue{Addr: "node1", ZoneName: "zone1"}}
+	fn := &FlashNode{FlashNodeValue: FlashNodeValue{Addr: "node1", ZoneName: "zone1"}}
 	fg.putFlashNode(fn)
 	assert.Equal(t, 1, len(fg.flashNodes))
 
 	// Remove it
-	fg.removeFlashNode("node1")
+	fg.RemoveFlashNode("node1")
 	assert.Equal(t, 0, len(fg.flashNodes))
 }
 
@@ -273,7 +273,7 @@ func TestFlashGroup_argConvertFlashGroupStatus(t *testing.T) {
 
 // TestFlashGroup_NewFlashGroupFromFgv tests the NewFlashGroupFromFgv function
 func TestFlashGroup_NewFlashGroupFromFgv(t *testing.T) {
-	fgv := flashGroupValue{
+	fgv := FlashGroupValue{
 		ID:           123,
 		Slots:        []uint32{1, 2, 3},
 		SlotStatus:   proto.SlotStatus_Completed,
@@ -308,10 +308,10 @@ func TestFlashGroup_ConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 100; j++ {
-				fg.getSlots()
-				fg.getSlotStatus()
-				fg.getFlashNodesCount()
-				fg.getSlotsCount()
+				fg.GetSlots()
+				fg.GetSlotStatus()
+				fg.GetFlashNodesCount()
+				fg.GetSlotsCount()
 			}
 		}()
 	}
@@ -321,7 +321,7 @@ func TestFlashGroup_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			fn := &FlashNode{flashNodeValue: flashNodeValue{Addr: fmt.Sprintf("node%d", id), ZoneName: fmt.Sprintf("zone%d", id)}}
+			fn := &FlashNode{FlashNodeValue: FlashNodeValue{Addr: fmt.Sprintf("node%d", id), ZoneName: fmt.Sprintf("zone%d", id)}}
 			fg.putFlashNode(fn)
 		}(i)
 	}

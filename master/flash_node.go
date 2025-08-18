@@ -20,121 +20,17 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/httpclient"
+	"github.com/cubefs/cubefs/remotecache/flashgroupmanager"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/google/uuid"
 )
-
-const (
-	_defaultNodeTimeoutDuration = defaultNodeTimeOutSec * time.Second
-)
-
-type flashNodeValue struct {
-	// immutable
-	ID       uint64
-	Addr     string
-	ZoneName string
-	Version  string
-	// mutable
-	FlashGroupID   uint64 // 0: have not allocated to flash group
-	IsEnable       bool
-	TaskCountLimit int
-}
-
-type FlashNode struct {
-	TaskManager *AdminTaskManager
-
-	sync.RWMutex
-	flashNodeValue
-	DiskStat      []*proto.FlashNodeDiskCacheStat
-	ReportTime    time.Time
-	IsActive      bool
-	LimiterStatus *proto.FlashNodeLimiterStatusInfo
-	WorkRole      string
-}
-
-func newFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *FlashNode {
-	node := new(FlashNode)
-	node.Addr = addr
-	node.ZoneName = zoneName
-	node.Version = version
-	node.IsEnable = isEnable
-	node.ReportTime = time.Now()
-	node.TaskManager = newAdminTaskManager(addr, clusterID)
-	return node
-}
-
-func (flashNode *FlashNode) clean() {
-	flashNode.TaskManager.exitCh <- struct{}{}
-}
-
-func (flashNode *FlashNode) setActive() {
-	flashNode.Lock()
-	flashNode.ReportTime = time.Now()
-	flashNode.IsActive = true
-	flashNode.Unlock()
-}
-
-func (flashNode *FlashNode) isWriteable() (ok bool) {
-	flashNode.RLock()
-	if flashNode.FlashGroupID == unusedFlashNodeFlashGroupID &&
-		time.Since(flashNode.ReportTime) < _defaultNodeTimeoutDuration {
-		ok = true
-	}
-	flashNode.RUnlock()
-	return
-}
-
-func (flashNode *FlashNode) isActiveAndEnable() (ok bool) {
-	flashNode.RLock()
-	ok = flashNode.IsActive && flashNode.IsEnable
-	flashNode.RUnlock()
-	return
-}
-
-func (flashNode *FlashNode) isEnable() (ok bool) {
-	flashNode.RLock()
-	ok = flashNode.IsEnable
-	flashNode.RUnlock()
-	return
-}
-
-func (flashNode *FlashNode) getFlashNodeViewInfo() (info *proto.FlashNodeViewInfo) {
-	flashNode.RLock()
-	info = &proto.FlashNodeViewInfo{
-		ID:            flashNode.ID,
-		Addr:          flashNode.Addr,
-		ReportTime:    flashNode.ReportTime,
-		IsActive:      flashNode.IsActive,
-		Version:       flashNode.Version,
-		ZoneName:      flashNode.ZoneName,
-		FlashGroupID:  flashNode.FlashGroupID,
-		IsEnable:      flashNode.IsEnable,
-		DiskStat:      flashNode.DiskStat,
-		LimiterStatus: flashNode.LimiterStatus,
-	}
-	flashNode.RUnlock()
-	return
-}
-
-func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(resp *proto.FlashNodeHeartbeatResponse) {
-	log.LogInfof("updateFlashNodeStatHeartbeat, flashNode:%v, resp[%v], time:%v", flashNode.Addr, resp, time.Now().Format("2006-01-02 15:04:05"))
-	flashNode.Lock()
-	flashNode.DiskStat = resp.Stat
-	flashNode.LimiterStatus = resp.LimiterStatus
-	flashNode.TaskCountLimit = resp.FlashNodeTaskCountLimit
-	flashNode.Unlock()
-}
 
 func (c *Cluster) addFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
 	for _, t := range tasks {
@@ -160,14 +56,14 @@ func (c *Cluster) syncFlashNodeSetIOLimitTasks(tasks []*proto.AdminTask) {
 			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
 		}
-		if _, err = node.TaskManager.syncSendAdminTask(t); err != nil {
+		if _, err = node.SyncSendAdminTask(t); err != nil {
 			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
 		}
 	}
 }
 
-func (c *Cluster) handleManualTaskProcessing(flashNode *FlashNode, resp *proto.FlashNodeHeartbeatResponse) {
+func (c *Cluster) handleManualTaskProcessing(flashNode *flashgroupmanager.FlashNode, resp *proto.FlashNodeHeartbeatResponse) {
 	for _, taskRsp := range resp.ManualScanningTasks {
 		manualTask, ok := c.flashManMgr.LoadManualTaskById(taskRsp.ID)
 		if !ok {
@@ -192,60 +88,9 @@ func (c *Cluster) handleManualTaskProcessing(flashNode *FlashNode, resp *proto.F
 }
 
 func (c *Cluster) checkFlashNodeHeartbeat() {
-	tasks := make([]*proto.AdminTask, 0)
-	c.flashNodeTopo.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
-		node := flashNode.(*FlashNode)
-		node.checkLiveliness()
-		task := node.createHeartbeatTask(c.masterAddr(), c.cfg.flashNodeHandleReadTimeout, c.cfg.flashNodeReadDataNodeTimeout, c.cfg.flashHotKeyMissCount, c.cfg.flashReadFlowLimit, c.cfg.flashWriteFlowLimit)
-		tasks = append(tasks, task)
-		return true
-	})
+	tasks := c.flashNodeTopo.CreateFlashNodeHeartBeatTasks(c.masterAddr(), c.cfg.flashNodeHandleReadTimeout,
+		c.cfg.flashNodeReadDataNodeTimeout, c.cfg.flashHotKeyMissCount, c.cfg.flashReadFlowLimit, c.cfg.flashWriteFlowLimit)
 	c.addFlashNodeHeartbeatTasks(tasks)
-}
-
-func (flashNode *FlashNode) checkLiveliness() {
-	flashNode.Lock()
-	if time.Since(flashNode.ReportTime) > _defaultNodeTimeoutDuration {
-		msg := fmt.Sprintf("flashnode[%v] heartbeat lost, last heartbeat time %v", flashNode.Addr, flashNode.ReportTime)
-		auditlog.LogMasterOp("checkLiveliness", msg, nil)
-		flashNode.IsActive = false
-	}
-	flashNode.Unlock()
-}
-
-func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int, flashNodeReadDataNodeTimeout int, flashHotKeyMissCount int, flashReadFlowLimit int64, flashWriteFlowLimit int64) (task *proto.AdminTask) {
-	request := &proto.HeartBeatRequest{
-		CurrTime:   time.Now().Unix(),
-		MasterAddr: masterAddr,
-	}
-	request.FlashNodeHandleReadTimeout = flashNodeHandleReadTimeout
-	request.FlashNodeReadDataNodeTimeout = flashNodeReadDataNodeTimeout
-	request.FlashHotKeyMissCount = flashHotKeyMissCount
-	request.FlashReadFlowLimit = flashReadFlowLimit
-	request.FlashWriteFlowLimit = flashWriteFlowLimit
-
-	task = proto.NewAdminTask(proto.OpFlashNodeHeartbeat, flashNode.Addr, request)
-	return
-}
-
-func (flashNode *FlashNode) createSetIOLimitsTask(flow, iocc, factor int, opCode uint8) (task *proto.AdminTask) {
-	request := &proto.FlashNodeSetIOLimitsRequest{
-		Flow:   flow,
-		Iocc:   iocc,
-		Factor: factor,
-	}
-	task = proto.NewAdminTask(opCode, flashNode.Addr, request)
-	return
-}
-
-func (flashNode *FlashNode) createFnScanTask(masterAddr string, manualTask *proto.FlashManualTask) (task *proto.AdminTask) {
-	request := &proto.FlashNodeManualTaskRequest{
-		MasterAddr: masterAddr,
-		FnNodeAddr: flashNode.Addr,
-		Task:       manualTask,
-	}
-	task = proto.NewAdminTaskEx(proto.OpFlashNodeScan, flashNode.Addr, request, manualTask.Id)
-	return
 }
 
 func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
@@ -280,38 +125,8 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Cluster) addFlashNode(nodeAddr, zoneName, version string) (id uint64, err error) {
-	c.flashNodeTopo.mu.Lock()
-	defer func() {
-		c.flashNodeTopo.mu.Unlock()
-		if err != nil {
-			log.LogErrorf("action[addFlashNode],clusterID[%v] Addr:%v err:%v ", c.Name, nodeAddr, err.Error())
-		}
-	}()
-
-	var flashNode *FlashNode
-	flashNode, err = c.peekFlashNode(nodeAddr)
-	if err == nil {
-		return flashNode.ID, nil
-	}
-	flashNode = newFlashNode(nodeAddr, zoneName, c.Name, version, true)
-	_, err = c.flashNodeTopo.getZone(zoneName)
-	if err != nil {
-		c.flashNodeTopo.putZoneIfAbsent(newFlashNodeZone(zoneName))
-	}
-	if id, err = c.idAlloc.allocateCommonID(); err != nil {
-		return
-	}
-	flashNode.ID = id
-	if err = c.syncAddFlashNode(flashNode); err != nil {
-		return
-	}
-	flashNode.ReportTime = time.Now()
-	flashNode.IsActive = true
-	if err = c.flashNodeTopo.putFlashNode(flashNode); err != nil {
-		return
-	}
-	log.LogInfof("action[addFlashNode],clusterID[%v] Addr:%v ZoneName:%v success", c.Name, nodeAddr, zoneName)
-	return
+	return c.flashNodeTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version,
+		c.idAlloc.allocateCommonID, c.syncAddFlashNode)
 }
 
 func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
@@ -319,7 +134,6 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.FlashNodeList, metric, nil, nil)
 	}()
-	zoneFlashNodes := make(map[string][]*proto.FlashNodeViewInfo)
 	showAll := true
 	active := false
 	if err := r.ParseForm(); err != nil {
@@ -335,13 +149,7 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 			active = true
 		}
 	}
-	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
-		flashNode := value.(*FlashNode)
-		if showAll || flashNode.isActiveAndEnable() == active {
-			zoneFlashNodes[flashNode.ZoneName] = append(zoneFlashNodes[flashNode.ZoneName], flashNode.getFlashNodeViewInfo())
-		}
-		return true
-	})
+	zoneFlashNodes := m.cluster.flashNodeTopo.ListFlashNodes(showAll, active)
 	sendOkReply(w, r, newSuccessHTTPReply(zoneFlashNodes))
 }
 
@@ -356,12 +164,12 @@ func (m *Server) getFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	var flashNode *FlashNode
+	var flashNode *flashgroupmanager.FlashNode
 	if flashNode, err = m.cluster.peekFlashNode(nodeAddr.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(flashNode.getFlashNodeViewInfo()))
+	sendOkReply(w, r, newSuccessHTTPReply(flashNode.GetFlashNodeViewInfo()))
 }
 
 func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
@@ -375,13 +183,13 @@ func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	var node *FlashNode
-	if node, err = m.cluster.peekFlashNode(offLineAddr.V); err != nil {
+	var node *flashgroupmanager.FlashNode
+	if node, err = m.cluster.flashNodeTopo.PeekFlashNode(offLineAddr.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
 
-	if node.FlashGroupID != unusedFlashNodeFlashGroupID {
+	if node.FlashGroupID != flashgroupmanager.UnusedFlashNodeFlashGroupID {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("to delete a flashnode, it needs to be removed from the flashgroup first")))
 		return
 	}
@@ -394,18 +202,9 @@ func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Request) {
-	var (
-		err         error
-		removeNodes []*FlashNode
-	)
+	var err error
 	removeAddresses := []string{}
-	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
-		flashNode := value.(*FlashNode)
-		if !flashNode.isActiveAndEnable() && flashNode.FlashGroupID == unusedFlashNodeFlashGroupID {
-			removeNodes = append(removeNodes, flashNode)
-		}
-		return true
-	})
+	removeNodes := m.cluster.flashNodeTopo.GetAllInactiveFlashNodes()
 	for _, node := range removeNodes {
 		if err = m.cluster.removeFlashNode(node); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
@@ -416,55 +215,8 @@ func (m *Server) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Requ
 	sendOkReply(w, r, newSuccessHTTPReply(removeAddresses))
 }
 
-func (c *Cluster) removeFlashNode(flashNode *FlashNode) (err error) {
-	log.LogWarnf("action[removeFlashNode], ZoneName[%s] Node[%s] offline", flashNode.ZoneName, flashNode.Addr)
-	var flashGroupID uint64
-	if flashGroupID, err = c.deleteFlashNode(flashNode); err != nil {
-		return
-	}
-	if flashGroupID != unusedFlashNodeFlashGroupID {
-		var flashGroup *FlashGroup
-		if flashGroup, err = c.flashNodeTopo.getFlashGroup(flashGroupID); err != nil {
-			return
-		}
-		flashGroup.removeFlashNode(flashNode.Addr)
-		c.flashNodeTopo.updateClientCache()
-	}
-
-	go func() {
-		time.Sleep(time.Duration(defaultWaitClientUpdateFgTimeSec) * time.Second)
-		arr := strings.SplitN(flashNode.Addr, ":", 2)
-		p, _ := strconv.ParseUint(arr[1], 10, 64)
-		addr := fmt.Sprintf("%s:%d", arr[0], p+1)
-		if err = httpclient.New().Addr(addr).FlashNode().EvictAll(); err != nil {
-			log.LogErrorf("flashNode[%v] evict all failed, err:%v", flashNode.Addr, err)
-			return
-		}
-	}()
-
-	log.LogInfof("action[removeFlashNode], clusterID[%s] node[%s] flashGroupID[%d] offline success",
-		c.Name, flashNode.Addr, flashGroupID)
-	return
-}
-
-func (c *Cluster) deleteFlashNode(flashNode *FlashNode) (oldFlashGroupID uint64, err error) {
-	flashNode.Lock()
-	defer flashNode.Unlock()
-	oldFlashGroupID = flashNode.FlashGroupID
-	flashNode.FlashGroupID = unusedFlashNodeFlashGroupID
-	if err = c.syncDeleteFlashNode(flashNode); err != nil {
-		log.LogErrorf("action[deleteFlashNode],clusterID[%v] node[%v] offline failed,err[%v]",
-			c.Name, flashNode.Addr, err)
-		flashNode.FlashGroupID = oldFlashGroupID
-		return
-	}
-	c.delFlashNodeFromCache(flashNode)
-	return
-}
-
-func (c *Cluster) delFlashNodeFromCache(flashNode *FlashNode) {
-	c.flashNodeTopo.deleteFlashNode(flashNode)
-	go flashNode.clean()
+func (c *Cluster) removeFlashNode(flashNode *flashgroupmanager.FlashNode) (err error) {
+	return c.flashNodeTopo.RemoveFlashNode(c.Name, flashNode, c.syncDeleteFlashNode)
 }
 
 func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
@@ -472,7 +224,7 @@ func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 		nodeAddr  common.String
 		enable    bool
 		workRole  string
-		flashNode *FlashNode
+		flashNode *flashgroupmanager.FlashNode
 		err       error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.FlashNodeSet))
@@ -483,7 +235,7 @@ func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if flashNode, err = m.cluster.peekFlashNode(nodeAddr.V); err != nil {
+	if flashNode, err = m.cluster.flashNodeTopo.PeekFlashNode(nodeAddr.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -537,7 +289,7 @@ func (m *Server) createFlashNodeManualTask(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidCfg, Msg: err.Error()})
 		return
 	}
-	if m.cluster.flashNodeTopo == nil || !m.cluster.flashNodeTopo.checkForActiveNode() {
+	if m.cluster.flashNodeTopo == nil || !m.cluster.flashNodeTopo.CheckForActiveNode() {
 		err = fmt.Errorf("no available distributed cache nodes")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidCfg, Msg: err.Error()})
 		return
@@ -687,7 +439,7 @@ func (c *Cluster) handleFlashNodeTaskResponse(nodeAddr string, task *proto.Admin
 	log.LogInfof("flash action[handleFlashNodeTaskResponse] receive addr[%v] task: %v", nodeAddr, task.ToString())
 	var (
 		err       error
-		flashNode *FlashNode
+		flashNode *flashgroupmanager.FlashNode
 	)
 
 	if flashNode, err = c.peekFlashNode(nodeAddr); err != nil {
@@ -725,35 +477,22 @@ func (c *Cluster) handleFlashNodeHeartbeatResp(nodeAddr string, resp *proto.Flas
 			c.Name, nodeAddr, resp.Result))
 		return
 	}
-	var node *FlashNode
+	var node *flashgroupmanager.FlashNode
 	if node, err = c.peekFlashNode(nodeAddr); err != nil {
 		log.LogErrorf("action[handleFlashNodeHeartbeatResp], flashNode[%v], heartbeat error: %v", nodeAddr, err.Error())
 		return
 	}
-	node.setActive()
-	node.updateFlashNodeStatHeartbeat(resp)
+	node.SetActive()
+	node.UpdateFlashNodeStatHeartbeat(resp)
 	c.handleManualTaskProcessing(node, resp)
 	return
 }
 
-func (c *Cluster) updateFlashNode(flashNode *FlashNode, enable bool) (err error) {
-	flashNode.Lock()
-	defer flashNode.Unlock()
-	if flashNode.IsEnable != enable {
-		oldState := flashNode.IsEnable
-		flashNode.IsEnable = enable
-		if err = c.syncUpdateFlashNode(flashNode); err != nil {
-			flashNode.IsEnable = oldState
-			return
-		}
-		if flashNode.FlashGroupID != unusedFlashNodeFlashGroupID {
-			c.flashNodeTopo.updateClientCache()
-		}
-	}
-	return
+func (c *Cluster) updateFlashNode(flashNode *flashgroupmanager.FlashNode, enable bool) (err error) {
+	return c.flashNodeTopo.UpdateFlashNode(flashNode, enable, c.syncUpdateFlashNode)
 }
 
-func (c *Cluster) updateFlashNodeWorkRole(flashNode *FlashNode, workRole string) error {
+func (c *Cluster) updateFlashNodeWorkRole(flashNode *flashgroupmanager.FlashNode, workRole string) error {
 	flashNode.Lock()
 	defer flashNode.Unlock()
 	flashNode.WorkRole = workRole
@@ -763,23 +502,23 @@ func (c *Cluster) updateFlashNodeWorkRole(flashNode *FlashNode, workRole string)
 	return nil
 }
 
-func (c *Cluster) syncAddFlashNode(flashNode *FlashNode) (err error) {
+func (c *Cluster) syncAddFlashNode(flashNode *flashgroupmanager.FlashNode) (err error) {
 	return c.syncPutFlashNodeInfo(opSyncAddFlashNode, flashNode)
 }
 
-func (c *Cluster) syncUpdateFlashNode(flashNode *FlashNode) (err error) {
+func (c *Cluster) syncUpdateFlashNode(flashNode *flashgroupmanager.FlashNode) (err error) {
 	return c.syncPutFlashNodeInfo(opSyncUpdateFlashNode, flashNode)
 }
 
-func (c *Cluster) syncDeleteFlashNode(flashNode *FlashNode) (err error) {
+func (c *Cluster) syncDeleteFlashNode(flashNode *flashgroupmanager.FlashNode) (err error) {
 	return c.syncPutFlashNodeInfo(opSyncDeleteFlashNode, flashNode)
 }
 
-func (c *Cluster) syncPutFlashNodeInfo(opType uint32, flashNode *FlashNode) (err error) {
+func (c *Cluster) syncPutFlashNodeInfo(opType uint32, flashNode *flashgroupmanager.FlashNode) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = flashNodePrefix + strconv.FormatUint(flashNode.ID, 10) + keySeparator + flashNode.Addr
-	metadata.V, err = json.Marshal(flashNode.flashNodeValue)
+	metadata.V, err = json.Marshal(flashNode.FlashNodeValue)
 	if err != nil {
 		return errors.New(err.Error())
 	}
@@ -808,14 +547,8 @@ func (c *Cluster) syncPutFlashManualTaskInfo(opType uint32, flt *proto.FlashManu
 	return c.submit(metadata)
 }
 
-func (c *Cluster) peekFlashNode(addr string) (flashNode *FlashNode, err error) {
-	value, ok := c.flashNodeTopo.flashNodeMap.Load(addr)
-	if !ok {
-		err = errors.Trace(notFoundMsg(fmt.Sprintf("flashnode[%v]", addr)), "")
-		return
-	}
-	flashNode = value.(*FlashNode)
-	return
+func (c *Cluster) peekFlashNode(addr string) (flashNode *flashgroupmanager.FlashNode, err error) {
+	return c.flashNodeTopo.PeekFlashNode(addr)
 }
 
 func argParserNodeAddr(nodeAddr *common.String) *common.Argument {
@@ -866,14 +599,11 @@ func (m *Server) setFlashNodeReadIOLimits(w http.ResponseWriter, r *http.Request
 	log.LogDebugf("action[setFlashNodeReadIOLimits],flow[%v] iocc[%v] factor [%v]",
 		readFlow, readIocc, readFactor)
 	tasks := make([]*proto.AdminTask, 0)
-	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
-		flashNode := value.(*FlashNode)
-		if flashNode.isActiveAndEnable() {
-			task := flashNode.createSetIOLimitsTask(int(readFlow), int(readIocc), int(readFactor), proto.OpFlashNodeSetReadIOLimits)
-			tasks = append(tasks, task)
-		}
-		return true
-	})
+	flashNodes := m.cluster.flashNodeTopo.GetAllActiveFlashNodes()
+	for _, flashNode := range flashNodes {
+		task := flashNode.CreateSetIOLimitsTask(int(readFlow), int(readIocc), int(readFactor), proto.OpFlashNodeSetReadIOLimits)
+		tasks = append(tasks, task)
+	}
 	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
 	sendOkReply(w, r, newSuccessHTTPReply("set ReadIOLimits for FlashNode is submit,check it later."))
 }
@@ -916,14 +646,11 @@ func (m *Server) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Reques
 	log.LogDebugf("action[setFlashNodeWriteIOLimits],flow[%v] iocc[%v] factor [%v]",
 		writeFlow, writeIocc, writeFactor)
 	tasks := make([]*proto.AdminTask, 0)
-	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
-		flashNode := value.(*FlashNode)
-		if flashNode.isActiveAndEnable() {
-			task := flashNode.createSetIOLimitsTask(int(writeFlow), int(writeIocc), int(writeFactor), proto.OpFlashNodeSetWriteIOLimits)
-			tasks = append(tasks, task)
-		}
-		return true
-	})
+	flashNodes := m.cluster.flashNodeTopo.GetAllActiveFlashNodes()
+	for _, flashNode := range flashNodes {
+		task := flashNode.CreateSetIOLimitsTask(int(writeFlow), int(writeIocc), int(writeFactor), proto.OpFlashNodeSetWriteIOLimits)
+		tasks = append(tasks, task)
+	}
 	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
 	sendOkReply(w, r, newSuccessHTTPReply("set WriteIOLimits for FlashNode is submit,check it later."))
 }

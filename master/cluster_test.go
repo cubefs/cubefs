@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/remotecache/flashgroupmanager"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/stretchr/testify/require"
 )
@@ -371,7 +372,7 @@ func TestMasterClientLeaderChange(t *testing.T) {
 
 	cluster := &Cluster{
 		masterClient:  masterSDK.NewMasterClient(nil, false),
-		flashNodeTopo: newFlashNodeTopology(),
+		flashNodeTopo: flashgroupmanager.NewFlashNodeTopology(),
 		leaderInfo:    server.leaderInfo,
 	}
 	server.cluster = cluster
