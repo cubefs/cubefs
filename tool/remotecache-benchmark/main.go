@@ -87,6 +87,7 @@ func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master s
 			LogDir:             "/tmp/cfs",
 			ConnectTimeout:     500,
 			FirstPacketTimeout: 1000,
+			InitClientTime:     1,
 		}
 		tester.cacheStorage, err = remotecache.NewRemoteCacheClient(cfg)
 		if err != nil {
