@@ -104,6 +104,7 @@ type ClientConfig struct {
 	ConnectTimeout     int64 // ms
 	FirstPacketTimeout int64 // ms
 	FromFuse           bool
+	InitClientTime     int
 }
 
 func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err error) {
@@ -149,9 +150,12 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 			}
 			close(changeFromRemote)
 		}()
+		if config.InitClientTime == 0 {
+			config.InitClientTime = 5
+		}
 		select {
 		case <-changeFromRemote:
-		case <-time.After(time.Duration(config.FirstPacketTimeout) * time.Millisecond):
+		case <-time.After(time.Duration(config.InitClientTime) * time.Second):
 			log.LogWarnf("NewRemoteCacheClient: init remote cache timeout for remote client")
 			err = proto.ErrorInitRemoteTimeout
 		}
