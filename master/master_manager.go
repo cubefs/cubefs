@@ -22,6 +22,7 @@ import (
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	cfsProto "github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/remotecache/flashgroupmanager"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -336,8 +337,8 @@ func (m *Server) clearMetadata() {
 	m.cluster.t = newTopology()
 	// m.cluster.apiLimiter.Clear()
 
-	m.cluster.flashNodeTopo.clear()
-	m.cluster.flashNodeTopo = newFlashNodeTopology()
+	m.cluster.flashNodeTopo.Clear()
+	m.cluster.flashNodeTopo = flashgroupmanager.NewFlashNodeTopology()
 }
 
 func (m *Server) refreshUser() (err error) {

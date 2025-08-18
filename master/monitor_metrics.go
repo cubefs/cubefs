@@ -918,20 +918,12 @@ func (mm *monitorMetrics) setFlashNodesDiskErrorMetric() {
 		mm.flashNodesDiskError.DeleteLabelValues(v, k)
 	}
 
-	mm.cluster.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
-		flashNode, ok := node.(*FlashNode)
-		if !ok {
-			return true
-		}
-		for _, disk := range flashNode.DiskStat {
-			if disk.Status == proto.Unavailable {
-				key := fmt.Sprintf("%s_%s", flashNode.Addr, disk.DataPath)
-				mm.flashNodesDiskError.SetWithLabelValues(1, flashNode.Addr, key)
-				mm.flashNodesBadDisks[key] = flashNode.Addr
-			}
-		}
-		return true
-	})
+	infos := mm.cluster.flashNodeTopo.BadDiskInfos()
+	for _, info := range infos {
+		key := fmt.Sprintf("%s_%s", info.Addr, info.DiskPath)
+		mm.flashNodesDiskError.SetWithLabelValues(1, info.Addr, key)
+		mm.flashNodesBadDisks[key] = info.Addr
+	}
 }
 
 func (mm *monitorMetrics) setDiskLostMetric() {

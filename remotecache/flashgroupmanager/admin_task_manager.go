@@ -245,7 +245,7 @@ func (sender *AdminTaskManager) AddTask(t *proto.AdminTask) {
 	}
 }
 
-func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
+func (sender *AdminTaskManager) SyncSendAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
 	packet, err = sender.buildPacket(task)
 	if err != nil {
 		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)

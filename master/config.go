@@ -82,9 +82,9 @@ const (
 	cfgDataNodeBalanceByDiskUsageLow  = "dataNodeBalanceByDiskUsageLow"
 	cfgDataNodeBalanceByDPCountHigh   = "dataNodeBalanceByDPCountHigh"
 	cfgDataNodeBalanceByDPCountLow    = "dataNodeBalanceByDPCountLow"
-	flashHotKeyMissCount         = "flashHotKeyMissCount"
-	flashReadFlowLimit           = "flashReadFlowLimit"
-	flashWriteFlowLimit          = "flashWriteFlowLimit"
+	flashHotKeyMissCount              = "flashHotKeyMissCount"
+	flashReadFlowLimit                = "flashReadFlowLimit"
+	flashWriteFlowLimit               = "flashWriteFlowLimit"
 )
 
 // default value

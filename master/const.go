@@ -273,7 +273,6 @@ const (
 	metaNodesUnAvailable = 2
 	dataNodesUnAvailable = 3
 
-	unusedFlashNodeFlashGroupID = 0
 	defaultFlashGroupSlotsCount = 32
 	RsvEmptyMetaPartitionCnt    = 2
 	WaitForClientUpdateTimeMin  = 10
