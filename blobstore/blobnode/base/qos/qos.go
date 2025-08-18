@@ -17,6 +17,7 @@ package qos
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -25,6 +26,7 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
@@ -45,14 +47,13 @@ type QosAPI interface {
 	Release()
 	AcquireBid(uint64) error
 	ReleaseBid(uint64)
-	ResetDiskLimit(conf CommonDiskConfig)
-	ResetLevelLimit(conf LevelFlowConfig)
 }
 
 // QosMgr manages QoS for different IO types
 type QosMgr struct {
 	qos    map[bnapi.IOType]*queueQos
 	conf   Config
+	lck    sync.Mutex
 	closed closer.Closer
 }
 
@@ -64,14 +65,14 @@ func NewQosMgr(conf Config) (*QosMgr, error) {
 	closed := closer.New()
 
 	mgr := &QosMgr{
-		qos: map[bnapi.IOType]*queueQos{
-			bnapi.ReadIO:       newQueueQos(bnapi.ReadIO, conf, closed),
-			bnapi.WriteIO:      newQueueQos(bnapi.WriteIO, conf, closed),
-			bnapi.DeleteIO:     newQueueQos(bnapi.DeleteIO, conf, closed),
-			bnapi.BackgroundIO: newQueueQos(bnapi.BackgroundIO, conf, closed),
-		},
 		conf:   conf,
 		closed: closed,
+	}
+	mgr.qos = map[bnapi.IOType]*queueQos{
+		bnapi.ReadIO:       newQueueQos(bnapi.ReadIO, conf, closed, mgr),
+		bnapi.WriteIO:      newQueueQos(bnapi.WriteIO, conf, closed, mgr),
+		bnapi.DeleteIO:     newQueueQos(bnapi.DeleteIO, conf, closed, mgr),
+		bnapi.BackgroundIO: newQueueQos(bnapi.BackgroundIO, conf, closed, mgr),
 	}
 
 	return mgr, nil
@@ -89,8 +90,49 @@ func (mgr *QosMgr) GetQueueQos(ctx context.Context) (QosAPI, bool) {
 }
 
 // GetConfig returns the config of the qos manager.
-func (mgr *QosMgr) GetConfig() Config {
-	return mgr.conf
+func (mgr *QosMgr) GetConfig() FlowConfig {
+	allConf := FlowConfig{
+		CommonDiskConfig: mgr.getDiskConfig(),
+		Level:            make(LevelConfigMap),
+	}
+
+	for ioType, q := range mgr.qos {
+		allConf.Level[ioType.String()] = q.getLevelConf()
+	}
+
+	return allConf
+}
+
+// ResetDiskConfig updates QosMgr config and level common disk limits based on new configuration
+func (mgr *QosMgr) ResetDiskConfig(diskConf CommonDiskConfig) {
+	mgr.setDiskConfig(diskConf)
+}
+
+// ResetLevelConfig updates QosMgr config and level flow limits configuration
+func (mgr *QosMgr) ResetLevelConfig(level bnapi.IOType, levelConf LevelFlowConfig) bool {
+	levelQos, exist := mgr.qos[level]
+	if !exist {
+		return false
+	}
+
+	levelQos.resetLevelLimit(levelConf)
+	return true
+}
+
+func (mgr *QosMgr) setDiskConfig(diskConf CommonDiskConfig) {
+	mgr.lck.Lock()
+	defer mgr.lck.Unlock()
+	mgr.conf.CommonDiskConfig.resetDisk(diskConf)
+}
+
+func (mgr *QosMgr) getDiskConfig() CommonDiskConfig {
+	mgr.lck.Lock()
+	defer mgr.lck.Unlock()
+	return mgr.conf.CommonDiskConfig
+}
+
+type diskConfigGetter interface {
+	getDiskConfig() CommonDiskConfig
 }
 
 // queueQos limit disk bandwidth rate, iops rate and iops total rate, dynamic adjust rate
@@ -103,31 +145,33 @@ type queueQos struct {
 	diskStat    iostat.IOViewer   // Disk IO statistics viewer
 	diskBps     uint64            // Current disk bandwidth usage
 	diskIOps    uint64            // Current disk IOps usage
-	concurrence int64
+	concurrence int64             // current level qos concurrency
 
+	getter diskConfigGetter
 	conf   *perIOQosConfig // QoS configuration per IO type
 	closed closer.Closer   // Resource cleanup handler
 }
 
 // newQueueQos creates a new QoS controller for specified IO type
-func newQueueQos(ioType bnapi.IOType, conf Config, closed closer.Closer) *queueQos {
-	perIOConf := &perIOQosConfig{
-		LevelFlowConfig: conf.FlowConf.Level[ioType.String()],
+func newQueueQos(ioType bnapi.IOType, conf Config, closed closer.Closer, getter diskConfigGetter) *queueQos {
+	levelConf := &perIOQosConfig{
+		IOType:          ioType,
+		LevelFlowConfig: conf.Level[ioType.String()],
 	}
-	perIOConf.CommonDiskConfig = conf.FlowConf.CommonDiskConfig
 
 	q := &queueQos{
-		limitBps:         initLimiter(perIOConf.MBPS),
-		limitBid:         keycount.New(perIOConf.BidConcurrency),
-		limitConcurrency: keycount.New(int(perIOConf.Concurrency)),
+		limitBps:         initLimiter(levelConf.MBPS),
+		limitBid:         keycount.New(int(levelConf.BidConcurrency)),
+		limitConcurrency: keycount.New(int(levelConf.Concurrency)),
 		ioStat:           conf.StatGetter.GetStatMgr(ioType),
 		diskStat:         conf.DiskViewer,
-		concurrence:      perIOConf.Concurrency,
-		conf:             perIOConf,
+		concurrence:      levelConf.Concurrency,
+		conf:             levelConf,
 		closed:           closed,
+		getter:           getter,
 	}
 
-	go q.loopUpdateCurrentStat(conf.FlowConf.UpdateIntervalMs)
+	go q.loopUpdateCurrentStat(conf.UpdateIntervalMs)
 
 	return q
 }
@@ -182,74 +226,60 @@ func (q *queueQos) ReleaseBid(bid uint64) {
 	q.limitBid.Release(bid)
 }
 
-// ResetDiskLimit updates QoS common disk limits based on new configuration
-func (q *queueQos) ResetDiskLimit(conf CommonDiskConfig) {
-	q.conf.resetDisk(conf)
-}
-
-// ResetLevelLimit : updates Qos level flow  limits configuration
-func (q *queueQos) ResetLevelLimit(conf LevelFlowConfig) {
-	q.conf.resetLevel(conf)
-	if conf.BidConcurrency > 0 {
-		q.limitBid.Reset(conf.BidConcurrency)
-	}
-	if conf.Concurrency > 0 {
-		q.limitConcurrency.Reset(int(conf.Concurrency))
-	}
-	if conf.MBPS > 0 {
-		resetLimiter(q.limitBps, int(conf.MBPS*humanize.MiByte))
-	}
-}
-
-// GetQosConf : get qos per io type config
-func (q *queueQos) GetQosConf() *perIOQosConfig {
-	return q.conf
-}
-
 // ReserveN reserves n tokens from bandwidth limiter
 func (q *queueQos) ReserveN(t time.Time, n int) *rate.Reservation {
 	return q.limitBps.ReserveN(t, n)
 }
 
 // UpdateQosBpsLimiter dynamically adjusts bandwidth limits based on disk usage
-func (q *queueQos) UpdateQosBpsLimiter() {
-	target, diskBps := 0, q.diskBps
+func (q *queueQos) UpdateQosBpsLimiter(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	target, currentBps := 0, q.diskBps
 	lastBps := int64(q.limitBps.Limit())
-	diskConfBps := uint64(q.conf.DiskBandwidthMB * humanize.MiByte)
-	ioConfBps := q.conf.MBPS * humanize.MiByte
-	idleBps := int64(float64(ioConfBps) * q.conf.IdleFactor)
+	diskConf := q.getter.getDiskConfig()
+	levelConf := q.getLevelConf()
+	diskConfBps := uint64(diskConf.DiskBandwidthMB * humanize.MiByte)
+	levelConfBps := levelConf.MBPS * humanize.MiByte
+	diskIdleBps := uint64(float64(diskConfBps) * diskConf.DiskIdleFactor)
+	levelIdleBps := int64(float64(levelConfBps) * levelConf.IdleFactor)
 
 	switch {
-	case diskBps >= diskConfBps && lastBps >= ioConfBps:
-		// reduce limit when disk is busy
-		target = int(float64(ioConfBps) * q.conf.Factor)
-	case diskBps < uint64(idleBps) && lastBps < idleBps:
-		// increase limit when disk is idle
-		target = int(idleBps)
-	case diskBps < diskConfBps && lastBps < ioConfBps:
+	case currentBps >= diskConfBps && lastBps >= levelConfBps:
+		// reduce limit to level*busy when disk is busy
+		target = int(float64(levelConfBps) * levelConf.BusyFactor)
+	case currentBps < diskIdleBps && lastBps < levelIdleBps:
+		// increase limit to level*idle when disk is idle
+		target = int(levelIdleBps)
+	case currentBps < diskConfBps && lastBps < levelConfBps:
 		// reset to original limit when load normalizes
-		target = int(ioConfBps)
+		target = int(levelConfBps)
 	default:
 		return
 	}
 
 	resetLimiter(q.limitBps, target)
+	span.Infof("qos dynamical update Bps: (%s) %d -> %d", q.conf.IOType.String(), lastBps, target)
 }
 
 // UpdateQosConcurrency dynamically adjusts concurrency limits using EMA
-func (q *queueQos) UpdateQosConcurrency() {
+func (q *queueQos) UpdateQosConcurrency(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+
 	// The value of iops is very small, so the result of ema needs to be increased by 1000 multiple to be accurate
 	currIops := q.diskIOps / emaMultiple
-	target, original, lastCon := int64(0), q.conf.Concurrency, q.concurrence
-	diskIopsUsage := float64(currIops) / float64(q.conf.DiskIops)
-	idle := int64(float64(original) * q.conf.IdleFactor)
+	diskConf := q.getter.getDiskConfig()
+	levelConf := q.getLevelConf()
+	target, original, lastCon := int64(0), levelConf.Concurrency, q.concurrence
+	diskIopsUsage := float64(currIops) / float64(diskConf.DiskIops)
+	idle := int64(float64(original) * levelConf.IdleFactor)
 
 	// Adjust concurrency based on disk utilization
 	switch {
 	case diskIopsUsage >= 1.0 && lastCon >= original:
 		// Reduce concurrency when disk is saturated
-		target = int64(float64(original) * q.conf.Factor)
-	case diskIopsUsage < q.conf.DiskIdleFactor && lastCon < idle:
+		target = int64(float64(original) * levelConf.BusyFactor)
+	case diskIopsUsage < diskConf.DiskIdleFactor && lastCon < idle:
 		// Increase concurrency when disk is idle
 		target = idle
 	case diskIopsUsage < 1 && lastCon < original:
@@ -261,6 +291,7 @@ func (q *queueQos) UpdateQosConcurrency() {
 
 	q.concurrence = target
 	q.limitConcurrency.Reset(int(target))
+	span.Infof("qos dynamical update concurrence: (%s) %d -> %d", q.conf.IOType.String(), lastCon, target)
 }
 
 // loopUpdateCurrentStat periodically updates IO statistics and adjusts QoS limits
@@ -280,14 +311,34 @@ func (q *queueQos) loopUpdateCurrentStat(intervalMs int64) {
 	}
 
 	for {
+		_, ctx := trace.StartSpanFromContext(context.Background(), "Qos")
 		select {
 		case <-q.closed.Done():
 			return
 		case <-ticker.C:
 			updateFn()
-			q.UpdateQosBpsLimiter()
-			q.UpdateQosConcurrency()
+			q.UpdateQosBpsLimiter(ctx)
+			q.UpdateQosConcurrency(ctx)
 		}
+	}
+}
+
+func (q *queueQos) getLevelConf() LevelFlowConfig {
+	q.conf.lck.Lock()
+	defer q.conf.lck.Unlock()
+	return q.conf.LevelFlowConfig
+}
+
+func (q *queueQos) resetLevelLimit(conf LevelFlowConfig) {
+	q.conf.resetLevel(conf)
+	if conf.BidConcurrency > 0 {
+		q.limitBid.Reset(int(conf.BidConcurrency))
+	}
+	if conf.Concurrency > 0 {
+		q.limitConcurrency.Reset(int(conf.Concurrency))
+	}
+	if conf.MBPS > 0 {
+		resetLimiter(q.limitBps, int(conf.MBPS*humanize.MiByte))
 	}
 }
 

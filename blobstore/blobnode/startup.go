@@ -567,7 +567,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 		// limit
 		svr.changeLimit(ctx, c)
 		// qos
-		err := svr.changeQos(ctx, c)
+		err := svr.changeQos(ctx, c.DiskConfig.DataQos)
 		return err
 	}
 	config.Register(callBackFn)

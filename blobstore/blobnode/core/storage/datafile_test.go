@@ -77,8 +77,8 @@ func newIoQosMgrMock(t *testing.T, iops int) *qos.QosMgr {
 
 	ioQos, err := qos.NewQosMgr(qos.Config{
 		StatGetter: iom,
-		FlowConf: qos.FlowConfig{
-			Level: map[string]qos.LevelFlowConfig{
+		FlowConfig: qos.FlowConfig{
+			Level: qos.LevelConfigMap{
 				bnapi.ReadIO.String():       {Concurrency: int64(iops), MBPS: 100},
 				bnapi.WriteIO.String():      {Concurrency: int64(iops), MBPS: 100},
 				bnapi.DeleteIO.String():     {Concurrency: int64(iops), MBPS: 100},

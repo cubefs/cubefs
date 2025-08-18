@@ -344,8 +344,8 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		conf.DiskConfig.DataQos = qos.Config{
 			DiskViewer: ioview,
 			StatGetter: ioFlowStat,
-			FlowConf: qos.FlowConfig{
-				Level: map[string]qos.LevelFlowConfig{
+			FlowConfig: qos.FlowConfig{
+				Level: qos.LevelConfigMap{
 					bnapi.ReadIO.String():       {MBPS: 20},
 					bnapi.WriteIO.String():      {MBPS: 20},
 					bnapi.DeleteIO.String():     {MBPS: 10},
@@ -360,8 +360,8 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		conf.DiskConfig.DataQos = qos.Config{
 			DiskViewer: ioview,
 			StatGetter: ioFlowStat,
-			FlowConf: qos.FlowConfig{
-				Level: map[string]qos.LevelFlowConfig{
+			FlowConfig: qos.FlowConfig{
+				Level: qos.LevelConfigMap{
 					bnapi.ReadIO.String():       {MBPS: 10},
 					bnapi.WriteIO.String():      {MBPS: 10},
 					bnapi.DeleteIO.String():     {MBPS: 5},
@@ -914,7 +914,15 @@ func TestService_ConfigReload(t *testing.T) {
 	ds2 := NewMockDiskAPI(ctr)
 	svr := &Service{
 		Disks: map[proto.DiskID]core.DiskAPI{101: ds1, 202: ds2},
-		Conf:  &Config{DiskConfig: core.RuntimeConfig{DataQos: qos.Config{}}},
+		Conf: &Config{
+			DiskConfig: core.RuntimeConfig{DataQos: qos.Config{
+				FlowConfig: qos.FlowConfig{
+					Level: qos.LevelConfigMap{
+						"read": {MBPS: 300},
+					},
+				},
+			}},
+		},
 	}
 	err := qos.FixQosConfigHotReset(&svr.Conf.DiskConfig.DataQos)
 	require.NoError(t, err)
@@ -939,8 +947,8 @@ func TestService_ConfigReload(t *testing.T) {
 	// for disk 1
 	conf1 := qos.Config{
 		StatGetter: iom,
-		FlowConf: qos.FlowConfig{
-			Level: map[string]qos.LevelFlowConfig{
+		FlowConfig: qos.FlowConfig{
+			Level: qos.LevelConfigMap{
 				bnapi.ReadIO.String():       {MBPS: 5},
 				bnapi.WriteIO.String():      {MBPS: 4},
 				bnapi.DeleteIO.String():     {MBPS: 1},
@@ -953,8 +961,8 @@ func TestService_ConfigReload(t *testing.T) {
 
 	conf2 := qos.Config{
 		StatGetter: iom,
-		FlowConf: qos.FlowConfig{
-			Level: map[string]qos.LevelFlowConfig{
+		FlowConfig: qos.FlowConfig{
+			Level: qos.LevelConfigMap{
 				bnapi.ReadIO.String():       {MBPS: 4},
 				bnapi.WriteIO.String():      {MBPS: 4},
 				bnapi.DeleteIO.String():     {MBPS: 1},
@@ -964,14 +972,13 @@ func TestService_ConfigReload(t *testing.T) {
 	}
 	q2, err := qos.NewQosMgr(conf2) // for disk 2
 	require.NoError(t, err)
-	require.Equal(t, int64(1024), q1.GetConfig().FlowConf.DiskBandwidthMB)
 
 	{
 		// only set disk bandwidth
 		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
 		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
 		// totalUrl := testServer.URL + "/config/reload?key=background_mbps&value=10"
-		totalUrl := testServer.URL + "/config/reload?key=disk.disk_bandwidth_mb&value=128"
+		totalUrl := testServer.URL + "/config/reload?key=disk.disk_bandwidth_mb&value=17"
 		resp, err := HTTPRequest(http.MethodPost, totalUrl)
 		require.Nil(t, err)
 		defer resp.Body.Close()
@@ -981,11 +988,29 @@ func TestService_ConfigReload(t *testing.T) {
 		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
 		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
 		// totalUrl := testServer.URL + "/config/reload?key=background_mbps&value=10"
-		totalUrl = testServer.URL + "/config/reload?key=level.read.mbps&value=10"
+		totalUrl = testServer.URL + "/config/reload?key=level.read.mbps&value=13"
 		resp, err = HTTPRequest(http.MethodPost, totalUrl)
 		require.Nil(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
+
+		// get config after reset
+		ds1.EXPECT().GetIoQos().Return(q1).AnyTimes()
+		ds2.EXPECT().GetIoQos().Return(q2).AnyTimes()
+		totalUrl = testServer.URL + "/config/get"
+		resp, err = HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+
+		body, err := ioutil.ReadAll(resp.Body)
+		require.NoError(t, err)
+		dest := qos.FlowConfig{}
+		err = json.Unmarshal(body, &dest)
+		require.NoError(t, err)
+		log.Infof("qos mgr config: %+v\n", dest)
+		require.Equal(t, int64(17), dest.CommonDiskConfig.DiskBandwidthMB)
+		require.Equal(t, int64(13), dest.Level[bnapi.ReadIO.String()].MBPS)
 	}
 }
 
@@ -1448,6 +1473,6 @@ func TestService_DataInspect(t *testing.T) {
 		var data DataInspectStat
 		err = json.Unmarshal(body, &data)
 		require.NoError(t, err)
-		fmt.Printf("inspect stat: %+v\n", data)
+		log.Infof("inspect stat: %+v\n", data)
 	}
 }

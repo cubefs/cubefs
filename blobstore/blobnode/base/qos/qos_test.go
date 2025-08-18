@@ -42,45 +42,45 @@ func TestInitAndFixQosConfig(t *testing.T) {
 		conf := &Config{}
 		err := FixQosConfigOnInit(conf)
 		require.NoError(t, err)
-		require.NotNil(t, conf.FlowConf.Level)
-		require.Len(t, conf.FlowConf.Level, 4)
+		require.NotNil(t, conf.Level)
+		require.Len(t, conf.Level, 4)
 
 		// Check default values
-		require.Equal(t, defaultConfs[bnapi.ReadIO.String()], conf.FlowConf.Level[bnapi.ReadIO.String()])
+		require.Equal(t, defaultConfs[bnapi.ReadIO.String()], conf.Level[bnapi.ReadIO.String()])
 	})
 
 	t.Run("config with custom values", func(t *testing.T) {
 		conf := &Config{
-			FlowConf: FlowConfig{
+			FlowConfig: FlowConfig{
 				CommonDiskConfig: CommonDiskConfig{
 					DiskBandwidthMB:  100,
 					UpdateIntervalMs: 200,
 					DiskIdleFactor:   0.5,
 				},
-				Level: map[string]LevelFlowConfig{
-					bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50, Factor: 0.8},
-					bnapi.WriteIO.String():      {Concurrency: 300, MBPS: 30, Factor: 0.9},
-					bnapi.DeleteIO.String():     {Concurrency: 100, MBPS: 10, Factor: 0.5},
-					bnapi.BackgroundIO.String(): {Concurrency: 50, MBPS: 5, Factor: 0.3},
+				Level: LevelConfigMap{
+					bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50, BusyFactor: 0.8},
+					bnapi.WriteIO.String():      {Concurrency: 300, MBPS: 30, BusyFactor: 0.9},
+					bnapi.DeleteIO.String():     {Concurrency: 100, MBPS: 10, BusyFactor: 0.5},
+					bnapi.BackgroundIO.String(): {Concurrency: 50, MBPS: 5, BusyFactor: 0.3},
 				},
 			},
 		}
 		err := FixQosConfigOnInit(conf)
 		require.NoError(t, err)
-		require.Equal(t, int64(500), conf.FlowConf.Level[bnapi.ReadIO.String()].Concurrency)
+		require.Equal(t, int64(500), conf.Level[bnapi.ReadIO.String()].Concurrency)
 	})
 
 	t.Run("config with invalid values", func(t *testing.T) {
 		conf := &Config{
-			FlowConf: FlowConfig{
-				Level: map[string]LevelFlowConfig{
-					bnapi.ReadIO.String(): {Concurrency: -1, MBPS: -1, Factor: -1},
+			FlowConfig: FlowConfig{
+				Level: LevelConfigMap{
+					bnapi.ReadIO.String(): {Concurrency: -1, MBPS: -1, BusyFactor: -1},
 				},
 			},
 		}
 		err := FixQosConfigOnInit(conf)
 		require.NoError(t, err)
-		require.Equal(t, defaultConfs[bnapi.ReadIO.String()], conf.FlowConf.Level[bnapi.ReadIO.String()])
+		require.Equal(t, defaultConfs[bnapi.ReadIO.String()], conf.Level[bnapi.ReadIO.String()])
 	})
 }
 
@@ -98,13 +98,13 @@ func TestFixParaConfig(t *testing.T) {
 			input: LevelFlowConfig{
 				Concurrency: 500,
 				MBPS:        50,
-				Factor:      0.8,
+				BusyFactor:  0.8,
 			},
 			expected: LevelFlowConfig{
 				BidConcurrency: defaultConfs[bnapi.ReadIO.String()].BidConcurrency,
 				Concurrency:    500,
 				MBPS:           50,
-				Factor:         0.8,
+				BusyFactor:     0.8,
 				IdleFactor:     defaultConfs[bnapi.ReadIO.String()].IdleFactor,
 			},
 			hasError: false,
@@ -122,7 +122,7 @@ func TestFixParaConfig(t *testing.T) {
 			input: LevelFlowConfig{
 				Concurrency: -1,
 				MBPS:        -1,
-				Factor:      -1,
+				BusyFactor:  -1,
 			},
 			expected: defaultConfs[bnapi.DeleteIO.String()],
 			hasError: false,
@@ -133,7 +133,7 @@ func TestFixParaConfig(t *testing.T) {
 			input: LevelFlowConfig{
 				Concurrency: 1,
 				MBPS:        1,
-				Factor:      1.5, // > 1.0
+				BusyFactor:  1.5, // > 1.0
 			},
 			hasError: true,
 		},
@@ -167,13 +167,13 @@ func TestNewQosMgr(t *testing.T) {
 		conf := Config{
 			StatGetter: iom,
 			DiskViewer: &MockDiskViewer{},
-			FlowConf: FlowConfig{
+			FlowConfig: FlowConfig{
 				CommonDiskConfig: CommonDiskConfig{
 					DiskBandwidthMB:  100,
 					UpdateIntervalMs: 200,
 					DiskIdleFactor:   0.5,
 				},
-				Level: map[string]LevelFlowConfig{
+				Level: LevelConfigMap{
 					bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},
 					bnapi.WriteIO.String():      {Concurrency: 300, MBPS: 30},
 					bnapi.DeleteIO.String():     {Concurrency: 100, MBPS: 10},
@@ -197,9 +197,9 @@ func TestNewQosMgr(t *testing.T) {
 
 	t.Run("create QoS manager with invalid config", func(t *testing.T) {
 		conf := Config{
-			FlowConf: FlowConfig{
-				Level: map[string]LevelFlowConfig{
-					bnapi.ReadIO.String(): {Factor: 1.5}, // Invalid config
+			FlowConfig: FlowConfig{
+				Level: LevelConfigMap{
+					bnapi.ReadIO.String(): {BusyFactor: 1.5}, // Invalid config
 				},
 			},
 		}
@@ -218,13 +218,13 @@ func TestQosMgr_GetQueueQos(t *testing.T) {
 	}
 	conf := Config{
 		StatGetter: iom,
-		FlowConf: FlowConfig{
+		FlowConfig: FlowConfig{
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
 				DiskIdleFactor:   0.5,
 			},
-			Level: map[string]LevelFlowConfig{
+			Level: LevelConfigMap{
 				bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},
 				bnapi.WriteIO.String():      {Concurrency: 300, MBPS: 30},
 				bnapi.DeleteIO.String():     {Concurrency: 100, MBPS: 10},
@@ -244,7 +244,7 @@ func TestQosMgr_GetQueueQos(t *testing.T) {
 		require.NotNil(t, qos)
 
 		currConf := mgr.GetConfig()
-		require.Equal(t, conf.FlowConf.DiskBandwidthMB, currConf.FlowConf.DiskBandwidthMB)
+		require.Equal(t, conf.DiskBandwidthMB, currConf.DiskBandwidthMB)
 	})
 
 	t.Run("get write QoS", func(t *testing.T) {
@@ -284,13 +284,13 @@ func TestQosMgr_GetQosBpsLimiter(t *testing.T) {
 	}
 	conf := Config{
 		StatGetter: iom,
-		FlowConf: FlowConfig{
+		FlowConfig: FlowConfig{
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
 				DiskIdleFactor:   0.5,
 			},
-			Level: map[string]LevelFlowConfig{
+			Level: LevelConfigMap{
 				bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},
 				bnapi.WriteIO.String():      {Concurrency: 300, MBPS: 30},
 				bnapi.DeleteIO.String():     {Concurrency: 100, MBPS: 10},
@@ -330,13 +330,13 @@ func TestQueueQos_TryAcquire(t *testing.T) {
 	}
 	conf := Config{
 		StatGetter: iom,
-		FlowConf: FlowConfig{
+		FlowConfig: FlowConfig{
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
 				DiskIdleFactor:   0.5,
 			},
-			Level: map[string]LevelFlowConfig{
+			Level: LevelConfigMap{
 				bnapi.ReadIO.String():       {Concurrency: 5, MBPS: 50},
 				bnapi.WriteIO.String():      {Concurrency: 4, MBPS: 30},
 				bnapi.DeleteIO.String():     {Concurrency: 3, MBPS: 10},
@@ -355,7 +355,7 @@ func TestQueueQos_TryAcquire(t *testing.T) {
 		require.True(t, ok)
 
 		// Should be able to acquire
-		maxCnt := conf.FlowConf.Level[bnapi.ReadIO.String()].Concurrency
+		maxCnt := conf.Level[bnapi.ReadIO.String()].Concurrency
 		for i := 0; i < int(maxCnt); i++ {
 			require.NoError(t, qos.Acquire())
 		}
@@ -384,7 +384,7 @@ func TestQueueQos_TryAcquire(t *testing.T) {
 		require.True(t, ok)
 
 		// Should be able to acquire
-		maxCnt := conf.FlowConf.Level[bnapi.DeleteIO.String()].Concurrency
+		maxCnt := conf.Level[bnapi.DeleteIO.String()].Concurrency
 		for i := 0; i < int(maxCnt); i++ {
 			require.NoError(t, qos.AcquireBid(uint64(i+1)))
 			require.NoError(t, qos.Acquire())
@@ -409,13 +409,13 @@ func TestQueueQos_IO_Wrappers(t *testing.T) {
 	}
 	conf := Config{
 		StatGetter: iom,
-		FlowConf: FlowConfig{
+		FlowConfig: FlowConfig{
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
 				DiskIdleFactor:   0.5,
 			},
-			Level: map[string]LevelFlowConfig{
+			Level: LevelConfigMap{
 				bnapi.ReadIO.String():       {Concurrency: 100, MBPS: 50},
 				bnapi.WriteIO.String():      {Concurrency: 100, MBPS: 30},
 				bnapi.DeleteIO.String():     {Concurrency: 100, MBPS: 10},
@@ -527,13 +527,13 @@ func TestQueueQos_ResetQosLimit(t *testing.T) {
 	}
 	conf := Config{
 		StatGetter: iom,
-		FlowConf: FlowConfig{
+		FlowConfig: FlowConfig{
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
 				DiskIdleFactor:   0.5,
 			},
-			Level: map[string]LevelFlowConfig{
+			Level: LevelConfigMap{
 				bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},
 				bnapi.WriteIO.String():      {Concurrency: 300, MBPS: 30},
 				bnapi.DeleteIO.String():     {Concurrency: 100, MBPS: 10},
@@ -557,7 +557,7 @@ func TestQueueQos_ResetQosLimit(t *testing.T) {
 		// Reset with new config
 		newConf := LevelFlowConfig{Concurrency: 600, MBPS: 100}
 
-		qos.ResetLevelLimit(newConf)
+		qos.(*queueQos).resetLevelLimit(newConf)
 
 		// Check that limit has changed
 		newLimit := getQosBpsLimiter(mgr, bnapi.WriteIO).Limit()
@@ -576,9 +576,10 @@ func TestQueueQos_ResetQosLimit(t *testing.T) {
 		newConf := Config{}
 		err = FixQosConfigHotReset(&newConf)
 		require.NoError(t, err)
-		levelConf := newConf.FlowConf.Level[bnapi.ReadIO.String()]
+		levelConf := newConf.Level[bnapi.ReadIO.String()]
 		levelConf.MBPS = 5
-		qos.ResetLevelLimit(levelConf)
+		mgr.ResetLevelConfig(bnapi.ReadIO, levelConf)
+		require.Equal(t, levelConf.MBPS, qos.(*queueQos).conf.MBPS)
 
 		// Check that limit has changed
 		newLimit := getQosBpsLimiter(mgr, bnapi.ReadIO).Limit()
@@ -588,16 +589,15 @@ func TestQueueQos_ResetQosLimit(t *testing.T) {
 
 		// only concurrency test
 		levelConf = LevelFlowConfig{Concurrency: 50}
-		qos.ResetLevelLimit(levelConf)
+		qos.(*queueQos).resetLevelLimit(levelConf)
 		require.Equal(t, 5*humanize.MiByte, int(getQosBpsLimiter(mgr, bnapi.ReadIO).Limit()))
-		require.Equal(t, int64(50), qos.(*queueQos).conf.Concurrency)
+		cur := qos.(*queueQos).getLevelConf()
+		require.Equal(t, int64(50), cur.Concurrency)
 
-		diskConf := CommonDiskConfig{DiskBandwidthMB: 1, DiskIdleFactor: 0.4}
-		qos.ResetDiskLimit(diskConf)
-
-		cur := qos.(*queueQos).GetQosConf()
-		require.Equal(t, diskConf.DiskBandwidthMB, cur.DiskBandwidthMB)
-		require.Equal(t, diskConf.DiskIdleFactor, cur.DiskIdleFactor)
+		diskConf := CommonDiskConfig{DiskBandwidthMB: 13, DiskIdleFactor: 0.4}
+		mgr.ResetDiskConfig(diskConf)
+		require.Equal(t, diskConf.DiskBandwidthMB, mgr.conf.DiskBandwidthMB)
+		require.Equal(t, diskConf.DiskIdleFactor, mgr.conf.DiskIdleFactor)
 	})
 }
 
@@ -609,13 +609,13 @@ func TestQueueQos_Concurrency(t *testing.T) {
 	}
 	conf := Config{
 		StatGetter: iom,
-		FlowConf: FlowConfig{
+		FlowConfig: FlowConfig{
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
 				DiskIdleFactor:   0.5,
 			},
-			Level: map[string]LevelFlowConfig{
+			Level: LevelConfigMap{
 				bnapi.ReadIO.String():       {Concurrency: 50, MBPS: 50},
 				bnapi.WriteIO.String():      {Concurrency: 50, MBPS: 30},
 				bnapi.DeleteIO.String():     {Concurrency: 50, MBPS: 10},
@@ -662,35 +662,31 @@ func TestQueueQos_Concurrency(t *testing.T) {
 
 func TestThreshold_Reset(t *testing.T) {
 	t.Run("reset perIOQosConfig", func(t *testing.T) {
-		th := &perIOQosConfig{
-			CommonDiskConfig: CommonDiskConfig{
-				DiskBandwidthMB:  100,
-				UpdateIntervalMs: 200,
-				DiskIdleFactor:   0.5,
-			},
+		old := &perIOQosConfig{
 			LevelFlowConfig: LevelFlowConfig{
 				Concurrency: 500,
 				MBPS:        50,
-				Factor:      0.8,
+				BusyFactor:  0.8,
 			},
 		}
 
-		newConf := LevelFlowConfig{Concurrency: 600, MBPS: 75, Factor: 0.9, BidConcurrency: 2}
+		newConf := LevelFlowConfig{Concurrency: 600, MBPS: 75, BusyFactor: 0.9, BidConcurrency: 2}
 
-		th.resetLevel(newConf)
+		old.resetLevel(newConf)
 
 		// Check that values were updated
-		require.Equal(t, newConf, th.LevelFlowConfig)
+		require.Equal(t, newConf, old.LevelFlowConfig)
 
+		oldDiskConf := CommonDiskConfig{}
 		newDiskConf := CommonDiskConfig{
 			DiskIops:         10,
 			DiskBandwidthMB:  20,
 			UpdateIntervalMs: 30,
 			DiskIdleFactor:   0.4,
 		}
-		th.resetDisk(newDiskConf)
-		require.Equal(t, newDiskConf.DiskBandwidthMB, th.DiskBandwidthMB)
-		require.Equal(t, newDiskConf.DiskIdleFactor, th.DiskIdleFactor)
+		oldDiskConf.resetDisk(newDiskConf)
+		require.Equal(t, newDiskConf.DiskBandwidthMB, oldDiskConf.DiskBandwidthMB)
+		require.Equal(t, newDiskConf.DiskIdleFactor, oldDiskConf.DiskIdleFactor)
 	})
 }
 
@@ -765,13 +761,13 @@ func BenchmarkQosMgr_TryAcquire(b *testing.B) {
 	}
 	conf := Config{
 		StatGetter: iom,
-		FlowConf: FlowConfig{
+		FlowConfig: FlowConfig{
 			CommonDiskConfig: CommonDiskConfig{
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
 				DiskIdleFactor:   0.5,
 			},
-			Level: map[string]LevelFlowConfig{
+			Level: LevelConfigMap{
 				bnapi.ReadIO.String():       {Concurrency: 500, MBPS: 50},
 				bnapi.WriteIO.String():      {Concurrency: 500, MBPS: 30},
 				bnapi.DeleteIO.String():     {Concurrency: 500, MBPS: 10},

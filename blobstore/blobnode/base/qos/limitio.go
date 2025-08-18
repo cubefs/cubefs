@@ -29,8 +29,6 @@ const _limited = "limited"
 
 type qosLimiter interface {
 	ReserveN(t time.Time, n int) *rate.Reservation
-	UpdateQosBpsLimiter()
-	UpdateQosConcurrency()
 }
 
 type rateLimiter struct {

@@ -136,19 +136,22 @@ func (s *Service) changeLimit(ctx context.Context, c Config) {
 	span.Info("hot reload limit config success.")
 }
 
-func (s *Service) changeQos(ctx context.Context, c Config) (err error) {
+func (s *Service) changeQos(ctx context.Context, qosConf qos.Config) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
-	qosConf := c.DiskConfig.DataQos
-	span.Infof("qos config:%v", qosConf)
+
+	if err = qos.FixQosConfigOnInit(&qosConf); err != nil {
+		return errcode.ErrInternal
+	}
+	span.Infof("hot change qos config:%v", qosConf)
 
 	for _, ioType := range bnapi.GetAllIOType() {
-		levelConf := qosConf.FlowConf.Level[ioType]
-		if err = s.reloadLevelQos(ctx, ioType, levelConf); err != nil {
-			return err
+		if levelConf, exist := qosConf.Level[ioType]; exist {
+			if err = s.reloadLevelQos(ctx, ioType, levelConf); err != nil {
+				return err
+			}
 		}
 	}
-
-	return s.reloadDiskQos(ctx, qosConf.FlowConf.CommonDiskConfig)
+	return s.reloadDiskQos(ctx, qosConf.CommonDiskConfig)
 }
 
 func (s *Service) ConfigReload(c *rpc.Context) {
@@ -160,7 +163,7 @@ func (s *Service) ConfigReload(c *rpc.Context) {
 	}
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
-	span.Infof("config reload args:%v", args)
+	span.Infof("config reload args:%+v", args)
 
 	// e.g. /config/reload?key=level.read.concurrency&value=10
 	//      /config/reload?key=disk.disk_bandwidth_mb&value=128
@@ -172,9 +175,9 @@ func (s *Service) ConfigReload(c *rpc.Context) {
 
 	switch splitKeys[0] {
 	case "disk":
-		err = s.reloadDiskConf(ctx, splitKeys[1], args.Value)
+		err = s.resetQosDiskConf(ctx, splitKeys[1], args.Value)
 	case "level":
-		err = s.reloadQosLevelConf(ctx, args)
+		err = s.resetQosLevelConf(ctx, args)
 	default:
 		err = ErrNotSupportKey
 	}
@@ -183,75 +186,63 @@ func (s *Service) ConfigReload(c *rpc.Context) {
 		c.RespondWith(http.StatusBadRequest, "", []byte(err.Error()))
 		return
 	}
-
 	c.Respond()
 }
 
 func (s *Service) ConfigGet(c *rpc.Context) {
 	ctx := c.Request.Context()
-	ret := qos.Config{}
-
-	disks := s.copyDiskStorages(ctx)
-	for _, ds := range disks {
-		ret = ds.GetIoQos().GetConfig()
-		break
-	}
-
 	span := trace.SpanFromContextSafe(ctx)
-	span.Infof("config get result:%v", ret)
-	c.RespondJSON(ret)
+
+	qosConf := s.getQosConfig(ctx)
+	span.Infof("config get result:%v", qosConf)
+	c.RespondJSON(qosConf)
 }
 
-func (s *Service) reloadDiskConf(ctx context.Context, diskKey, diskVal string) (err error) {
-	qosConf := &s.Conf.DiskConfig.DataQos
-	if err = qos.FixQosConfigHotReset(qosConf); err != nil {
-		return err
+func (s *Service) getQosConfig(ctx context.Context) qos.FlowConfig {
+	disks := s.copyDiskStorages(ctx)
+	if len(disks) > 0 {
+		return disks[0].GetIoQos().GetConfig()
 	}
+	return qos.FlowConfig{}
+}
+
+func (s *Service) resetQosDiskConf(ctx context.Context, diskKey, diskVal string) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	diskConf := qos.CommonDiskConfig{}
 
 	switch diskKey {
 	case "disk_iops":
-		if qosConf.FlowConf.DiskIops, err = parseQosArgsInt(diskVal); err != nil {
-			return err
-		}
+		diskConf.DiskIops, err = parseQosArgsInt(diskVal)
 	case "disk_bandwidth_mb":
-		if qosConf.FlowConf.DiskBandwidthMB, err = parseQosArgsInt(diskVal); err != nil {
-			return err
-		}
+		diskConf.DiskBandwidthMB, err = parseQosArgsInt(diskVal)
 	case "disk_idle_factor":
-		if qosConf.FlowConf.DiskIdleFactor, err = parseQosArgsFloat(diskVal); err != nil {
-			return err
-		}
+		diskConf.DiskIdleFactor, err = parseQosArgsFloat(diskVal)
 	default:
 		return ErrNotSupportKey
 	}
 
-	return s.reloadDiskQos(ctx, qosConf.FlowConf.CommonDiskConfig)
+	if err != nil {
+		return err
+	}
+	span.Infof("qos reload disk conf:%v", diskConf)
+	return s.reloadDiskQos(ctx, diskConf)
 }
 
 func (s *Service) reloadDiskQos(ctx context.Context, diskConf qos.CommonDiskConfig) (err error) {
 	disks := s.copyDiskStorages(ctx)
 	for _, ds := range disks {
-		qosMgr := ds.GetIoQos()
-		for tp := range bnapi.GetAllIOType() {
-			ioQ, exist := qosMgr.GetQueueQos(bnapi.SetIoType(ctx, bnapi.IOType(tp)))
-			if !exist {
-				return errcode.ErrInternal
-			}
-			ioQ.ResetDiskLimit(diskConf)
-		}
+		ds.GetIoQos().ResetDiskConfig(diskConf)
 	}
 	return nil
 }
 
-func (s *Service) reloadQosLevelConf(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
+func (s *Service) resetQosLevelConf(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	levelConf := qos.LevelFlowConfig{}
+
 	splitKeys := strings.Split(args.Key, ".")
 	if len(splitKeys) < 3 {
 		return ErrNotSupportKey
-	}
-
-	qosConf := &s.Conf.DiskConfig.DataQos
-	if err = qos.FixQosConfigHotReset(qosConf); err != nil {
-		return err
 	}
 
 	levelName, field := splitKeys[1], splitKeys[2]
@@ -259,30 +250,27 @@ func (s *Service) reloadQosLevelConf(ctx context.Context, args *bnapi.ConfigRelo
 		return ErrNotSupportKey
 	}
 
-	var value int64
-	paraConf := qosConf.FlowConf.Level[levelName]
-	if field != "factor" {
-		if value, err = parseQosArgsInt(args.Value); err != nil {
-			return err
-		}
-	}
-
 	switch field {
 	case "mbps":
-		paraConf.MBPS = value
+		levelConf.MBPS, err = parseQosArgsInt(args.Value)
 	case "concurrency":
-		paraConf.Concurrency = value
+		levelConf.Concurrency, err = parseQosArgsInt(args.Value)
 	case "bid_concurrency":
-		paraConf.BidConcurrency = qos.FixQosBidConcurrency(levelName, int(value))
-	case "factor":
-		if paraConf.Factor, err = parseQosArgsFloat(args.Value); err != nil {
-			return err
-		}
+		levelConf.BidConcurrency, err = parseQosArgsInt(args.Value)
+		levelConf.BidConcurrency = qos.FixQosBidConcurrency(levelName, levelConf.BidConcurrency)
+	case "busy_factor":
+		levelConf.BusyFactor, err = parseQosArgsFloat(args.Value)
+	case "idle_factor":
+		levelConf.IdleFactor, err = parseQosArgsFloat(args.Value)
 	default:
 		return ErrNotSupportKey
 	}
 
-	return s.reloadLevelQos(ctx, levelName, paraConf)
+	if err != nil {
+		return err
+	}
+	span.Infof("qos reload level conf:(%s) %v", levelName, levelConf)
+	return s.reloadLevelQos(ctx, levelName, levelConf)
 }
 
 func (s *Service) reloadLevelQos(ctx context.Context, level string, levelConf qos.LevelFlowConfig) (err error) {
@@ -290,11 +278,10 @@ func (s *Service) reloadLevelQos(ctx context.Context, level string, levelConf qo
 	disks := s.copyDiskStorages(ctx)
 
 	for _, ds := range disks {
-		ioQ, exist := ds.GetIoQos().GetQueueQos(bnapi.SetIoType(ctx, ioType))
-		if !exist {
+		qosMgr := ds.GetIoQos()
+		if !qosMgr.ResetLevelConfig(ioType, levelConf) {
 			return errcode.ErrInternal
 		}
-		ioQ.ResetLevelLimit(levelConf)
 	}
 	return nil
 }
@@ -315,7 +302,7 @@ func parseQosArgsFloat(value string) (float64, error) {
 	if err != nil {
 		return 0, ErrValueType
 	}
-	if ret <= 0 || ret > 1 {
+	if ret <= 0 || ret > 10 {
 		return 0, ErrValueOutOfLimit
 	}
 	return ret, nil

@@ -26,28 +26,30 @@ import (
 
 const (
 	defaultMaxIops        = 2000
-	defaultMaxMBps        = 1024
+	defaultMaxMBps        = 250
 	defaultIntervalMs     = 500
-	defaultIdleFactor     = 0.5
+	defaultIdleFactor     = 0.2
 	defaultBidConcurrency = 1
 )
 
 var (
 	ErrQosWrongConfig = errors.New("wrong qos config")
 
-	defaultConfs = map[string]LevelFlowConfig{
-		bnapi.ReadIO.String():       {Concurrency: 64, MBPS: 300, Factor: 1.0, BidConcurrency: 32, IdleFactor: 1.0},
-		bnapi.WriteIO.String():      {Concurrency: 64, MBPS: 120, Factor: 1.0, BidConcurrency: 1, IdleFactor: 1.2},
-		bnapi.DeleteIO.String():     {Concurrency: 32, MBPS: 60, Factor: 0.8, BidConcurrency: 1, IdleFactor: 1.25},
-		bnapi.BackgroundIO.String(): {Concurrency: 32, MBPS: 20, Factor: 0.5, BidConcurrency: 1, IdleFactor: 3.0},
+	defaultConfs = LevelConfigMap{
+		bnapi.ReadIO.String():       {Concurrency: 64, MBPS: 200, BusyFactor: 1.0, BidConcurrency: 32, IdleFactor: 1.0},
+		bnapi.WriteIO.String():      {Concurrency: 64, MBPS: 120, BusyFactor: 1.0, BidConcurrency: 1, IdleFactor: 1.2},
+		bnapi.DeleteIO.String():     {Concurrency: 32, MBPS: 60, BusyFactor: 0.8, BidConcurrency: 1, IdleFactor: 1.25},
+		bnapi.BackgroundIO.String(): {Concurrency: 32, MBPS: 20, BusyFactor: 0.5, BidConcurrency: 1, IdleFactor: 3.0},
 	}
 )
 
 type Config struct {
 	StatGetter flow.StatGetter `json:"-"` // Identify: an io flow
 	DiskViewer iostat.IOViewer `json:"-"` // Identify: io viewer
-	FlowConf   FlowConfig      `json:"flow_conf"`
+	FlowConfig
 }
+
+type LevelConfigMap map[string]LevelFlowConfig
 
 type CommonDiskConfig struct {
 	DiskIops         int64   `json:"disk_iops"`
@@ -58,14 +60,14 @@ type CommonDiskConfig struct {
 
 type FlowConfig struct {
 	CommonDiskConfig
-	Level map[string]LevelFlowConfig `json:"level"` // every single limiter config
+	Level LevelConfigMap `json:"level"` // every single limiter config
 }
 
 type LevelFlowConfig struct {
-	BidConcurrency int     `json:"bid_concurrency"` // limit bid concurrence
+	BidConcurrency int64   `json:"bid_concurrency"` // limit bid concurrence
 	Concurrency    int64   `json:"concurrency"`     // limit io type concurrence
 	MBPS           int64   `json:"mbps"`            // limit MBPS concurrence
-	Factor         float64 `json:"factor"`          // reduce rate factor (0.0, 1.0]
+	BusyFactor     float64 `json:"busy_factor"`     // reduce rate factor (0.0, 1.0]
 	IdleFactor     float64 `json:"idle_factor"`     // idle factor [1.0, xx)
 }
 
@@ -78,7 +80,7 @@ func FixQosConfigHotReset(conf *Config) error {
 }
 
 // FixQosBidConcurrency special case: only ioType is read, can configure bid concurrency; other is 1
-func FixQosBidConcurrency(ioType string, concurrency int) int {
+func FixQosBidConcurrency(ioType string, concurrency int64) int64 {
 	if ioType != bnapi.ReadIO.String() {
 		return defaultBidConcurrency
 	}
@@ -86,37 +88,37 @@ func FixQosBidConcurrency(ioType string, concurrency int) int {
 }
 
 func initAndFixQosConfig(conf *Config, fillEmpty bool) error {
-	if conf.FlowConf.DiskIdleFactor > 1 {
+	if conf.DiskIdleFactor > 1 {
 		return ErrQosWrongConfig
 	}
 
 	if fillEmpty {
-		defaulter.IntegerLessOrEqual(&conf.FlowConf.DiskIops, defaultMaxIops)
-		defaulter.IntegerLessOrEqual(&conf.FlowConf.DiskBandwidthMB, defaultMaxMBps)
-		defaulter.IntegerLessOrEqual(&conf.FlowConf.UpdateIntervalMs, defaultIntervalMs)
-		defaulter.FloatLessOrEqual(&conf.FlowConf.DiskIdleFactor, defaultIdleFactor)
+		defaulter.IntegerLessOrEqual(&conf.DiskIops, defaultMaxIops)
+		defaulter.IntegerLessOrEqual(&conf.DiskBandwidthMB, defaultMaxMBps)
+		defaulter.IntegerLessOrEqual(&conf.UpdateIntervalMs, defaultIntervalMs)
+		defaulter.FloatLessOrEqual(&conf.DiskIdleFactor, defaultIdleFactor)
 	}
 
-	for ioTypeStr := range conf.FlowConf.Level {
+	for ioTypeStr := range conf.Level {
 		if tp := bnapi.StringToIOType(ioTypeStr); !tp.IsValid() {
 			return ErrQosWrongConfig
 		}
 	}
 
 	// if it is nil, use default
-	if conf.FlowConf.Level == nil {
-		conf.FlowConf.Level = make(map[string]LevelFlowConfig)
+	if conf.Level == nil {
+		conf.Level = make(LevelConfigMap)
 	}
 
 	// check each type, if it is not configure, use default
-	levelConf := make(map[string]LevelFlowConfig, len(defaultConfs))
+	levelConf := make(LevelConfigMap, len(defaultConfs))
 	for ioTypeStr, defaultVal := range defaultConfs {
 		if tp := bnapi.StringToIOType(ioTypeStr); !tp.IsValid() {
 			return ErrQosWrongConfig
 		}
 
 		// if not exists, fill use default
-		userConfig, exists := conf.FlowConf.Level[ioTypeStr]
+		userConfig, exists := conf.Level[ioTypeStr]
 		if !exists {
 			if fillEmpty {
 				levelConf[ioTypeStr] = defaultVal
@@ -134,7 +136,7 @@ func initAndFixQosConfig(conf *Config, fillEmpty bool) error {
 		levelConf[ioTypeStr] = fixedConfig
 	}
 
-	conf.FlowConf.Level = levelConf
+	conf.Level = levelConf
 	return nil
 }
 
@@ -143,11 +145,11 @@ func fixLevelFlowConfig(conf, defaultVal LevelFlowConfig, fillEmpty bool) (Level
 		defaulter.IntegerLessOrEqual(&conf.Concurrency, defaultVal.Concurrency)
 		defaulter.IntegerLessOrEqual(&conf.MBPS, defaultVal.MBPS)
 		defaulter.IntegerLessOrEqual(&conf.BidConcurrency, defaultVal.BidConcurrency)
-		defaulter.FloatLessOrEqual(&conf.Factor, defaultVal.Factor)
+		defaulter.FloatLessOrEqual(&conf.BusyFactor, defaultVal.BusyFactor)
 		defaulter.FloatLessOrEqual(&conf.IdleFactor, defaultVal.IdleFactor)
 	}
 
-	if conf.Factor > 1 || conf.IdleFactor < 1 {
+	if conf.BusyFactor > 1 || (conf.IdleFactor != 0 && conf.IdleFactor < 1) {
 		return LevelFlowConfig{}, ErrQosWrongConfig
 	}
 
@@ -156,23 +158,20 @@ func fixLevelFlowConfig(conf, defaultVal LevelFlowConfig, fillEmpty bool) (Level
 
 // config the qos for single/per io type
 type perIOQosConfig struct {
-	CommonDiskConfig
 	LevelFlowConfig
+	bnapi.IOType
 	lck sync.Mutex
 }
 
-func (t *perIOQosConfig) resetDisk(conf CommonDiskConfig) {
-	t.lck.Lock()
-	defer t.lck.Unlock()
-
+func (c *CommonDiskConfig) resetDisk(conf CommonDiskConfig) {
 	if conf.DiskBandwidthMB > 0 {
-		t.CommonDiskConfig.DiskBandwidthMB = conf.DiskBandwidthMB
+		c.DiskBandwidthMB = conf.DiskBandwidthMB
 	}
 	if conf.DiskIdleFactor > 0 && conf.DiskIdleFactor <= 1 {
-		t.CommonDiskConfig.DiskIdleFactor = conf.DiskIdleFactor
+		c.DiskIdleFactor = conf.DiskIdleFactor
 	}
 	if conf.DiskIops > 0 {
-		t.CommonDiskConfig.DiskIops = conf.DiskIops
+		c.DiskIops = conf.DiskIops
 	}
 }
 
@@ -190,8 +189,8 @@ func (t *perIOQosConfig) resetLevel(conf LevelFlowConfig) {
 	if conf.MBPS > 0 {
 		t.LevelFlowConfig.MBPS = conf.MBPS
 	}
-	if conf.Factor > 0 && conf.Factor <= 1 {
-		t.LevelFlowConfig.Factor = conf.Factor
+	if conf.BusyFactor > 0 && conf.BusyFactor <= 1 {
+		t.LevelFlowConfig.BusyFactor = conf.BusyFactor
 	}
 	if conf.IdleFactor > 0 {
 		t.LevelFlowConfig.IdleFactor = conf.IdleFactor
