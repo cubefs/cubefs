@@ -15,8 +15,6 @@
 package metanode
 
 import (
-	"encoding/binary"
-	"hash/crc32"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
@@ -47,7 +45,45 @@ type MemSnapShot struct {
 }
 
 func (b *MemSnapShot) Range(tp TreeType, cb func(item interface{}) bool) error {
-	return b.RangeWithScope(tp, nil, nil, cb)
+	switch tp {
+	case InodeType:
+		callBackFunc := func(inode *Inode) bool {
+			return cb(inode)
+		}
+		return b.inode.Range(&Inode{}, nil, callBackFunc)
+	case DentryType:
+		callBackFunc := func(dentry *Dentry) bool {
+			return cb(dentry)
+		}
+		return b.dentry.Range(&Dentry{}, nil, callBackFunc)
+	case ExtendType:
+		callBackFunc := func(extend *Extend) bool {
+			return cb(extend)
+		}
+		return b.extend.Range(&Extend{}, nil, callBackFunc)
+	case MultipartType:
+		callBackFunc := func(multipart *Multipart) bool {
+			return cb(multipart)
+		}
+		return b.multipart.Range(&Multipart{}, nil, callBackFunc)
+	case TransactionType:
+		callBackFunc := func(tx *proto.TransactionInfo) bool {
+			return cb(tx)
+		}
+		return b.transaction.Range(&proto.TransactionInfo{}, nil, callBackFunc)
+	case TransactionRollbackInodeType:
+		callBackFunc := func(inode *TxRollbackInode) bool {
+			return cb(inode)
+		}
+		return b.transactionRbInode.Range(&TxRollbackInode{}, nil, callBackFunc)
+	case TransactionRollbackDentryType:
+		callBackFunc := func(dentry *TxRollbackDentry) bool {
+			return cb(dentry)
+		}
+		return b.transactionRbDentry.Range(&TxRollbackDentry{}, nil, callBackFunc)
+	default:
+	}
+	panic("out of type")
 }
 
 func (b *MemSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb func(item interface{}) bool) error {
@@ -62,7 +98,7 @@ func (b *MemSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb fun
 			startInode = start.(*Inode)
 		}
 		if end != nil {
-			endInode = start.(*Inode)
+			endInode = end.(*Inode)
 		}
 		return b.inode.Range(startInode, endInode, callBackFunc)
 	case DentryType:
@@ -88,7 +124,7 @@ func (b *MemSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb fun
 			startExtend = start.(*Extend)
 		}
 		if end != nil {
-			endExtend = start.(*Extend)
+			endExtend = end.(*Extend)
 		}
 		return b.extend.Range(startExtend, endExtend, callBackFunc)
 	case MultipartType:
@@ -124,7 +160,7 @@ func (b *MemSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb fun
 			startRbInode = start.(*TxRollbackInode)
 		}
 		if end != nil {
-			endRbInode = start.(*TxRollbackInode)
+			endRbInode = end.(*TxRollbackInode)
 		}
 		return b.transactionRbInode.Range(startRbInode, endRbInode, callBackFunc)
 	case TransactionRollbackDentryType:
@@ -169,100 +205,6 @@ func (b *MemSnapShot) Count(tp TreeType) uint64 {
 	default:
 	}
 	panic("out of type")
-}
-
-func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
-	var (
-		crc  = crc32.NewIEEE()
-		data []byte
-	)
-	switch tp {
-	case InodeType:
-		cb := func(i *Inode) bool {
-			if data, err = i.Marshal(); err != nil {
-				return false
-			}
-			binary.BigEndian.PutUint64(data[AccessTimeOffset:AccessTimeOffset+8], 0)
-			if _, err = crc.Write(data); err != nil {
-				return false
-			}
-			return true
-		}
-		err = b.inode.Range(&Inode{}, nil, cb)
-	case DentryType:
-		cb := func(d *Dentry) bool {
-			if data, err = d.Marshal(); err != nil {
-				return false
-			}
-			if _, err = crc.Write(data); err != nil {
-				return false
-			}
-			return true
-		}
-		err = b.dentry.Range(&Dentry{}, nil, cb)
-	case ExtendType:
-		cb := func(extend *Extend) bool {
-			if data, err = extend.Bytes(); err != nil {
-				return false
-			}
-			if _, err = crc.Write(data); err != nil {
-				return false
-			}
-			return true
-		}
-		err = b.extend.Range(&Extend{}, nil, cb)
-	case MultipartType:
-		cb := func(multipart *Multipart) bool {
-			if data, err = multipart.Bytes(); err != nil {
-				return false
-			}
-			if _, err = crc.Write(data); err != nil {
-				return false
-			}
-			return true
-		}
-		err = b.multipart.Range(&Multipart{}, nil, cb)
-	case TransactionType:
-		cb := func(tx *proto.TransactionInfo) bool {
-			if data, err = tx.Marshal(); err != nil {
-				return false
-			}
-			if _, err = crc.Write(data); err != nil {
-				return false
-			}
-			return true
-		}
-		err = b.transaction.Range(nil, nil, cb)
-	case TransactionRollbackInodeType:
-		cb := func(inode *TxRollbackInode) bool {
-			if data, err = inode.Marshal(); err != nil {
-				return false
-			}
-			if _, err = crc.Write(data); err != nil {
-				return false
-			}
-			return true
-		}
-		err = b.transactionRbInode.Range(nil, nil, cb)
-	case TransactionRollbackDentryType:
-		cb := func(dentry *TxRollbackDentry) bool {
-			if data, err = dentry.Marshal(); err != nil {
-				return false
-			}
-			if _, err = crc.Write(data); err != nil {
-				return false
-			}
-			return true
-		}
-		err = b.transactionRbDentry.Range(nil, nil, cb)
-	default:
-		panic("out of type")
-	}
-	if err != nil {
-		return
-	}
-	crcSum = crc.Sum32()
-	return
 }
 
 func (b *MemSnapShot) ApplyID() uint64 {

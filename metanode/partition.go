@@ -1826,8 +1826,6 @@ func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) error {
 }
 
 func (mp *metaPartition) storeSnapshotFiles() (err error) {
-	mp.nonIdempotent.Lock()
-	defer mp.nonIdempotent.Unlock()
 	snap, err := mp.GetSnapShot()
 	if err != nil {
 		return

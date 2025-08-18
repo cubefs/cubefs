@@ -505,14 +505,28 @@ func (m *MetaNode) newMetaManager(cfg *config.Config) (err error) {
 		}
 	}
 
+	var rocksDBDiskUsageThreshold float64
+	rocksDBDiskUsageThresholdStr := cfg.GetString(CfgRocksDBDiskUsageThreshold)
+	if rocksDBDiskUsageThresholdStr == "" {
+		rocksDBDiskUsageThreshold = 0.8
+	} else {
+		rocksDBDiskUsageThreshold, err = strconv.ParseFloat(rocksDBDiskUsageThresholdStr, 64)
+		if err != nil {
+			err = fmt.Errorf("parse configKey[%v] failed: %v", CfgRocksDBDiskUsageThreshold, err.Error())
+			log.LogError(err.Error())
+			return err
+		}
+	}
+
 	// load metadataManager
 	conf := MetadataManagerConfig{
-		NodeID:           m.nodeId,
-		RootDir:          m.metadataDir,
-		RaftStore:        m.raftStore,
-		ZoneName:         m.zoneName,
-		EnableGcTimer:    cfg.GetBoolWithDefault(cfgEnableGcTimer, false),
-		GcRecyclePercent: gcRecyclePercent,
+		NodeID:                    m.nodeId,
+		RootDir:                   m.metadataDir,
+		RaftStore:                 m.raftStore,
+		ZoneName:                  m.zoneName,
+		EnableGcTimer:             cfg.GetBoolWithDefault(cfgEnableGcTimer, false),
+		GcRecyclePercent:          gcRecyclePercent,
+		RocksDBDiskUsageThreshold: rocksDBDiskUsageThreshold,
 	}
 	m.metadataManager = NewMetadataManager(conf, m)
 	return

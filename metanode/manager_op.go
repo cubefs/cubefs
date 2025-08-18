@@ -247,7 +247,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			case proto.StoreModeRocksDb:
 				for _, stat := range diskStat {
 					if stat.Path == mConf.RocksDBDir &&
-						stat.UsageRatio >= 0.8 {
+						stat.UsageRatio >= m.rocksDBDiskUsageThreshold {
 						mpr.Status = proto.ReadOnly
 					}
 				}

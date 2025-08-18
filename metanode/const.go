@@ -253,6 +253,7 @@ const (
 	cfgServiceIDKey              = "serviceIDKey"
 	cfgEnableGcTimer             = "enableGcTimer" // bool
 	CfgGcRecyclePercent          = "gcRecyclePercent"
+	CfgRocksDBDiskUsageThreshold = "rocksDBDiskUsageThreshold"
 	cfsQosEnable                 = "qosEnable"   // bool
 	cfgReadDirIops               = "readDirIops" // int
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"hash/crc32"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -2051,29 +2050,6 @@ func (r *RocksSnapShot) Close() {
 		return
 	}
 	r.tree.ReleaseSnap(r.snap)
-}
-
-func (r *RocksSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
-	tableType := getTableTypeKey(tp)
-	crc := crc32.NewIEEE()
-	cb := func(k, v []byte) (bool, error) {
-		if tp == InodeType {
-			if len(v) < AccessTimeOffset+8 {
-				return false, fmt.Errorf("")
-			}
-			binary.BigEndian.PutUint64(v[AccessTimeOffset:AccessTimeOffset+8], 0)
-		}
-		if _, err := crc.Write(v); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-
-	if err = r.tree.RangeWithSnap([]byte{byte(tableType)}, []byte{byte(tableType) + 1}, r.snap, cb); err != nil {
-		return
-	}
-	crcSum = crc.Sum32()
-	return
 }
 
 func (r *RocksSnapShot) ApplyID() uint64 {

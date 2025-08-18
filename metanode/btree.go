@@ -100,7 +100,6 @@ type Snapshot interface {
 	RangeWithScope(tp TreeType, start, end interface{}, cb func(item interface{}) bool) error
 	Close()
 	Count(tp TreeType) uint64
-	CrcSum(tp TreeType) (uint32, error)
 	ApplyID() uint64
 	TxID() uint64
 }

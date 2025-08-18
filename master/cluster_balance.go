@@ -183,7 +183,7 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 		}
 
 		// restore back the mp status if it is written.
-		if mp.InodeCount != 0 || mp.DentryCount != 0 {
+		if !mp.IsEmptyToBeClean() {
 			// freeze meta partition.
 			err = c.FreezeEmptyMetaPartition(mp, false)
 			if err != nil {

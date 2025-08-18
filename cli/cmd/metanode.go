@@ -72,7 +72,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 				return metaNodes[i].ID < metaNodes[j].ID
 			})
 			stdout("[Meta nodes]\n")
-			stdout("%v\n", formatNodeViewTableHeader())
+			stdout("%v\n", formatMetaNodeViewTableHeader())
 			for _, node := range metaNodes {
 				if optFilterStatus != "" &&
 					!strings.Contains(formatNodeStatus(node.Status), optFilterStatus) {

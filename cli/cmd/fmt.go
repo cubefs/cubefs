@@ -1185,8 +1185,8 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Can alloc partition : %v\n", mn.CanAllowPartition))
 	sb.WriteString(fmt.Sprintf("  Max partition count : %v\n", mn.MaxMpCntLimit))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
-	sb.WriteString(fmt.Sprintf("  MemoryCount         : %v\n", mn.MemoryCount))
-	sb.WriteString(fmt.Sprintf("  RocksdbCount        : %v\n", mn.RocksdbCount))
+	sb.WriteString(fmt.Sprintf("  MemoryMpCount       : %v\n", mn.MemoryMpCount))
+	sb.WriteString(fmt.Sprintf("  RocksdbMpCount      : %v\n", mn.RocksdbMpCount))
 	return sb.String()
 }
 
@@ -1563,9 +1563,15 @@ func formatMetaPartitionFreeze(freeze int8) string {
 	}
 }
 
+var metaNodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v     %-24v    %-8v"
+
+func formatMetaNodeViewTableHeader() string {
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ForbidWriteOpOfProtoVer0", "RocksdbWritable")
+}
+
 func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
-		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
+		return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
 			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), formatYesNo(view.IsRocksdbWritable))
 	}

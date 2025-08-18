@@ -1079,6 +1079,14 @@ func (mp *MetaPartition) IsEmptyToBeClean() bool {
 		return false
 	}
 
+	mp.RLock()
+	defer mp.RUnlock()
+	for _, replica := range mp.Replicas {
+		if replica.StoreMode == proto.StoreModeRocksDb {
+			return false
+		}
+	}
+
 	return true
 }
 

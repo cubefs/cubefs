@@ -6702,6 +6702,7 @@ func (c *Cluster) checkMultipleReplicasOnSameMachine(hosts []string) (err error)
 
 func (c *Cluster) getMetaPartitionStoreMode(mp *MetaPartition, srcAddr string) (storeMode proto.StoreMode, err error) {
 	notFound := true
+	mp.RLock()
 	for _, replica := range mp.Replicas {
 		if replica.Addr == srcAddr {
 			storeMode = replica.StoreMode
@@ -6709,6 +6710,7 @@ func (c *Cluster) getMetaPartitionStoreMode(mp *MetaPartition, srcAddr string) (
 			break
 		}
 	}
+	mp.RUnlock()
 
 	if notFound {
 		var vol *Vol

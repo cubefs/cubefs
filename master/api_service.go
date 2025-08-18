@@ -4252,7 +4252,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 			log.LogInfof("nodeset index[%v], metanode nodeset id[%v],zonename[%v], addr[%v] inner nodesetid[%v]",
 				i, nsStat.ID, node.ZoneName, node.Addr, node.NodeSetID)
 
-			rocksdbCount, memoryCount := node.GetRocksdbAndMemoryCount()
+			rocksdbMpCount, memoryMpCount := node.GetRocksdbAndMemoryCount()
 			metaNodeInfo := &proto.MetaNodeInfo{
 				ID:                 node.ID,
 				Addr:               node.Addr,
@@ -4272,8 +4272,8 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				MetaPartitionCount: node.MetaPartitionCount,
 				NodeSetID:          node.NodeSetID,
 				MaxMpCntLimit:      node.GetPartitionLimitCnt(),
-				MemoryCount:        memoryCount,
-				RocksdbCount:       rocksdbCount,
+				MemoryMpCount:      memoryMpCount,
+				RocksdbMpCount:     rocksdbMpCount,
 			}
 
 			nsStat.MetaNodes = append(nsStat.MetaNodes, metaNodeInfo)
@@ -5291,7 +5291,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
-	rocksdbCount, memoryCount := metaNode.GetRocksdbAndMemoryCount()
+	rocksdbMpCount, memoryMpCount := metaNode.GetRocksdbAndMemoryCount()
 	metaNode.PersistenceMetaPartitions = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
 	metaNodeInfo = &proto.MetaNodeInfo{
 		ID:                        metaNode.ID,
@@ -5319,8 +5319,8 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		CanAllowPartition:         metaNode.IsWriteAble() && metaNode.PartitionCntLimited(),
 		MaxMpCntLimit:             metaNode.GetPartitionLimitCnt(),
 		CpuUtil:                   metaNode.CpuUtil.Load(),
-		MemoryCount:               memoryCount,
-		RocksdbCount:              rocksdbCount,
+		MemoryMpCount:             memoryMpCount,
+		RocksdbMpCount:            rocksdbMpCount,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
