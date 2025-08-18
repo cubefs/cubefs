@@ -130,7 +130,9 @@ type CacheEngine struct {
 	enableTmpfs bool // for testing in docker
 	localAddr   string
 
-	readDataNodeTimeout int
+	readDataNodeTimeout   int
+	keyRateLimitThreshold int32
+	keyLimiterFlow        int32
 }
 
 type (
@@ -139,7 +141,7 @@ type (
 )
 
 func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, disks []*Disk,
-	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, cacheLoadWorkerNum int, cacheEvictWorkerNum int, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string,
+	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, cacheLoadWorkerNum int, cacheEvictWorkerNum int, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string, keyRateLimitThreshold int32, keyLimiterFlow int32,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.enableTmpfs = enableTmpfs
@@ -154,6 +156,8 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	s.cacheLoadWorkerNum = cacheLoadWorkerNum
 	s.cacheEvictWorkerNum = cacheEvictWorkerNum
 	s.localAddr = localAddr
+	s.keyRateLimitThreshold = keyRateLimitThreshold
+	s.keyLimiterFlow = keyLimiterFlow
 	if s.enableTmpfs {
 		fullPath := path.Join(memDataDir, DefaultCacheDirName)
 		memCacheConfig := CacheConfig{
