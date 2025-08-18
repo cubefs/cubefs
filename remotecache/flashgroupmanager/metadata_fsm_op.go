@@ -138,7 +138,7 @@ func (c *Cluster) loadFlashNodes() (err error) {
 	}
 
 	for _, value := range result {
-		fnv := &flashNodeValue{}
+		fnv := &FlashNodeValue{}
 		if err = json.Unmarshal(value, fnv); err != nil {
 			err = fmt.Errorf("action[loadFlashNodes],value:%v,unmarshal err:%v", string(value), err)
 			return
@@ -148,12 +148,12 @@ func (c *Cluster) loadFlashNodes() (err error) {
 		// load later in loadFlashTopology
 		flashNode.FlashGroupID = fnv.FlashGroupID
 
-		_, err = c.flashNodeTopo.getZone(flashNode.ZoneName)
+		_, err = c.flashNodeTopo.GetZone(flashNode.ZoneName)
 		if err != nil {
-			c.flashNodeTopo.putZoneIfAbsent(NewFlashNodeZone(flashNode.ZoneName))
+			c.flashNodeTopo.PutZoneIfAbsent(NewFlashNodeZone(flashNode.ZoneName))
 			err = nil
 		}
-		c.flashNodeTopo.putFlashNode(flashNode)
+		c.flashNodeTopo.PutFlashNode(flashNode)
 		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v]", flashNode.ID, flashNode.Addr, flashNode.FlashGroupID)
 	}
 	return
@@ -166,38 +166,20 @@ func (c *Cluster) loadFlashGroups() (err error) {
 		return err
 	}
 	for _, value := range result {
-		var fgv flashGroupValue
+		var fgv FlashGroupValue
 		if err = json.Unmarshal(value, &fgv); err != nil {
 			err = fmt.Errorf("action[loadFlashGroups],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
 		flashGroup := NewFlashGroupFromFgv(fgv)
-		c.flashNodeTopo.flashGroupMap.Store(flashGroup.ID, flashGroup)
-		for _, slot := range flashGroup.Slots {
-			c.flashNodeTopo.slotsMap[slot] = flashGroup.ID
-		}
+		c.flashNodeTopo.SaveFlashGroup(flashGroup)
 		log.LogInfof("action[loadFlashGroups],flashGroup[%v]", flashGroup.ID)
 	}
 	return
 }
 
 func (c *Cluster) loadFlashTopology() (err error) {
-	c.flashNodeTopo.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
-		node := flashNode.(*FlashNode)
-		node.Lock()
-		if gid := node.FlashGroupID; gid != UnusedFlashNodeFlashGroupID {
-			if g, e := c.flashNodeTopo.getFlashGroup(gid); e == nil {
-				g.putFlashNode(node)
-				log.LogInfof("action[loadFlashTopology] load FlashNode[%s] -> FlashGroup[%d]", node.Addr, gid)
-			} else {
-				node.FlashGroupID = UnusedFlashNodeFlashGroupID
-				log.LogErrorf("action[loadFlashTopology] FlashNode[flashNodeId:%v addr:%s flashGroupId:%v] err:%v", node.ID, node.Addr, node.FlashGroupID, e.Error())
-			}
-		}
-		node.Unlock()
-		return true
-	})
-	return
+	return c.flashNodeTopo.Load()
 }
 
 func (m *RaftCmd) setOpType() {

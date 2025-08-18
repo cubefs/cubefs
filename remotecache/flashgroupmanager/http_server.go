@@ -6,7 +6,6 @@ import (
 	"net/http/httputil"
 	"time"
 
-	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -179,104 +178,4 @@ func (m *FlashGroupManager) newReverseProxy() *httputil.ReverseProxy {
 
 func (m *FlashGroupManager) proxy(w http.ResponseWriter, r *http.Request) {
 	m.reverseProxy.ServeHTTP(w, r)
-}
-
-func (m *FlashGroupManager) setFlashNodeReadIOLimits(w http.ResponseWriter, r *http.Request) {
-	var (
-		flow       common.Int
-		iocc       common.Int
-		factor     common.Int
-		readFlow   int64
-		readIocc   int64
-		readFactor int64
-		err        error
-	)
-
-	if err = parseArgs(r, flow.Flow().OmitEmpty().OnEmpty(func() error {
-		readFlow = -1
-		return nil
-	}).OnValue(func() error {
-		readFlow = flow.V
-		return nil
-	}),
-		iocc.Iocc().OmitEmpty().OnEmpty(func() error {
-			readIocc = -1
-			return nil
-		}).OnValue(func() error {
-			readIocc = iocc.V
-			return nil
-		}),
-		factor.Factor().OmitEmpty().OnEmpty(func() error {
-			readFactor = -1
-			return nil
-		}).OnValue(func() error {
-			readFactor = factor.V
-			return nil
-		})); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	log.LogDebugf("action[setFlashNodeReadIOLimits],flow[%v] iocc[%v] factor [%v]",
-		readFlow, readIocc, readFactor)
-	tasks := make([]*proto.AdminTask, 0)
-	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
-		flashNode := value.(*FlashNode)
-		if flashNode.isActiveAndEnable() {
-			task := flashNode.createSetIOLimitsTask(int(readFlow), int(readIocc), int(readFactor), proto.OpFlashNodeSetReadIOLimits)
-			tasks = append(tasks, task)
-		}
-		return true
-	})
-	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
-	sendOkReply(w, r, newSuccessHTTPReply("set ReadIOLimits for FlashNode is submit,check it later."))
-}
-
-func (m *FlashGroupManager) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Request) {
-	var (
-		flow        common.Int
-		iocc        common.Int
-		factor      common.Int
-		writeFlow   int64
-		writeIocc   int64
-		writeFactor int64
-		err         error
-	)
-
-	if err = parseArgs(r, flow.Flow().OmitEmpty().OnEmpty(func() error {
-		writeFlow = -1
-		return nil
-	}).OnValue(func() error {
-		writeFlow = flow.V
-		return nil
-	}),
-		iocc.Iocc().OmitEmpty().OnEmpty(func() error {
-			writeIocc = -1
-			return nil
-		}).OnValue(func() error {
-			writeIocc = iocc.V
-			return nil
-		}),
-		factor.Factor().OmitEmpty().OnEmpty(func() error {
-			writeFactor = -1
-			return nil
-		}).OnValue(func() error {
-			writeFactor = factor.V
-			return nil
-		})); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	log.LogDebugf("action[setFlashNodeWriteIOLimits],flow[%v] iocc[%v] factor [%v]",
-		writeFlow, writeIocc, writeFactor)
-	tasks := make([]*proto.AdminTask, 0)
-	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
-		flashNode := value.(*FlashNode)
-		if flashNode.isActiveAndEnable() {
-			task := flashNode.createSetIOLimitsTask(int(writeFlow), int(writeIocc), int(writeFactor), proto.OpFlashNodeSetWriteIOLimits)
-			tasks = append(tasks, task)
-		}
-		return true
-	})
-	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
-	sendOkReply(w, r, newSuccessHTTPReply("set WriteIOLimits for FlashNode is submit,check it later."))
 }

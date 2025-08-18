@@ -2,10 +2,13 @@ package flashgroupmanager
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/httpclient"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -17,7 +20,7 @@ const (
 	DefaultNodeTimeoutDuration      = defaultNodeTimeOutSec * time.Second
 )
 
-type flashNodeValue struct {
+type FlashNodeValue struct {
 	// immutable
 	ID       uint64
 	Addr     string
@@ -33,12 +36,17 @@ type FlashNode struct {
 	TaskManager *AdminTaskManager
 
 	sync.RWMutex
-	flashNodeValue
+	FlashNodeValue
 	DiskStat      []*proto.FlashNodeDiskCacheStat
 	ReportTime    time.Time
 	IsActive      bool
 	LimiterStatus *proto.FlashNodeLimiterStatusInfo
 	WorkRole      string
+}
+
+type FlashNodeBadDiskInfo struct {
+	Addr     string
+	DiskPath string
 }
 
 func NewFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *FlashNode {
@@ -91,15 +99,15 @@ func (flashNode *FlashNode) isWriteable() (ok bool) {
 	return
 }
 
-func (flashNode *FlashNode) setActive() {
+func (flashNode *FlashNode) SetActive() {
 	flashNode.Lock()
 	flashNode.ReportTime = time.Now()
 	flashNode.IsActive = true
 	flashNode.Unlock()
 }
 
-func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(resp *proto.FlashNodeHeartbeatResponse) {
-	log.LogInfof("updateFlashNodeStatHeartbeat, flashNode:%v, resp[%v], time:%v", flashNode.Addr, resp, time.Now().Format("2006-01-02 15:04:05"))
+func (flashNode *FlashNode) UpdateFlashNodeStatHeartbeat(resp *proto.FlashNodeHeartbeatResponse) {
+	log.LogInfof("UpdateFlashNodeStatHeartbeat, flashNode:%v, resp[%v], time:%v", flashNode.Addr, resp, time.Now().Format("2006-01-02 15:04:05"))
 	flashNode.Lock()
 	flashNode.DiskStat = resp.Stat
 	flashNode.LimiterStatus = resp.LimiterStatus
@@ -117,7 +125,9 @@ func (flashNode *FlashNode) checkLiveliness() {
 	flashNode.Unlock()
 }
 
-func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int, flashNodeReadDataNodeTimeout int, flashHotKeyMissCount int, flashReadFlowLimit int64, flashWriteFlowLimit int64) (task *proto.AdminTask) {
+func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int,
+	flashNodeReadDataNodeTimeout int, flashHotKeyMissCount int,
+	flashReadFlowLimit int64, flashWriteFlowLimit int64) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,
@@ -132,7 +142,7 @@ func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHand
 	return
 }
 
-func (flashNode *FlashNode) createSetIOLimitsTask(flow, iocc, factor int, opCode uint8) (task *proto.AdminTask) {
+func (flashNode *FlashNode) CreateSetIOLimitsTask(flow, iocc, factor int, opCode uint8) (task *proto.AdminTask) {
 	request := &proto.FlashNodeSetIOLimitsRequest{
 		Flow:   flow,
 		Iocc:   iocc,
@@ -140,4 +150,46 @@ func (flashNode *FlashNode) createSetIOLimitsTask(flow, iocc, factor int, opCode
 	}
 	task = proto.NewAdminTask(opCode, flashNode.Addr, request)
 	return
+}
+
+func (flashNode *FlashNode) SyncSendAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
+	return flashNode.TaskManager.SyncSendAdminTask(task)
+}
+
+func (flashNode *FlashNode) CreateFnScanTask(masterAddr string, manualTask *proto.FlashManualTask) (task *proto.AdminTask) {
+	request := &proto.FlashNodeManualTaskRequest{
+		MasterAddr: masterAddr,
+		FnNodeAddr: flashNode.Addr,
+		Task:       manualTask,
+	}
+	task = proto.NewAdminTaskEx(proto.OpFlashNodeScan, flashNode.Addr, request, manualTask.Id)
+	return
+}
+
+func (flashNode *FlashNode) SetToUnused(addr string, flashGroupID uint64, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	flashNode.Lock()
+	defer flashNode.Unlock()
+	if flashNode.FlashGroupID != flashGroupID {
+		err = fmt.Errorf("flashNode[%v] FlashGroupID[%v] not equal to target flash group:%v",
+			flashNode.Addr, flashNode.FlashGroupID, flashGroupID)
+		return
+	}
+	oldFgID := flashNode.FlashGroupID
+	flashNode.FlashGroupID = UnusedFlashNodeFlashGroupID
+
+	if err = syncUpdateFlashNodeFunc(flashNode); err != nil {
+		flashNode.FlashGroupID = oldFgID
+		return
+	}
+	go func() {
+		time.Sleep(time.Duration(DefaultWaitClientUpdateFgTimeSec) * time.Second)
+		arr := strings.SplitN(addr, ":", 2)
+		p, _ := strconv.ParseUint(arr[1], 10, 64)
+		addr = fmt.Sprintf("%s:%d", arr[0], p+1)
+		if err = httpclient.New().Addr(addr).FlashNode().EvictAll(); err != nil {
+			log.LogErrorf("flashNode[%v] evict all failed, err:%v", flashNode.Addr, err)
+			return
+		}
+	}()
+	return nil
 }
