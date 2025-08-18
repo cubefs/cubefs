@@ -27,5 +27,5 @@ import "cubefs/blobstore/common/sharding/range.proto";
 
 message ListBlobEncodeMarker {
     cubefs.blobstore.common.sharding.Range range = 1 [(gogoproto.nullable) = false];
-    bytes marker = 2;
+    string marker = 2;
 }

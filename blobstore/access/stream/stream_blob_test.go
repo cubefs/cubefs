@@ -96,7 +96,7 @@ func TestStreamGetBlob(t *testing.T) {
 	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).Times(3)
 	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
 
-	blobName := []byte("blob1")
+	blobName := "blob1"
 	blob := &proto.Blob{
 		Name: blobName,
 		Location: proto.Location{
@@ -120,7 +120,7 @@ func TestStreamGetBlob(t *testing.T) {
 		shardnodeClient:   shardCli,
 	}
 	args := acapi.GetBlobArgs{
-		BlobName: blobName,
+		BlobName: string(blobName),
 		Mode:     acapi.GetShardModeRandom,
 	}
 
@@ -135,7 +135,7 @@ func TestStreamBlobCreate(t *testing.T) {
 	h := newStreamHandlerSuccess(t)
 
 	args := acapi.CreateBlobArgs{
-		BlobName:  []byte("blob-create"),
+		BlobName:  ("blob-create"),
 		CodeMode:  0,
 		ClusterID: 0,
 		Size:      10,
@@ -144,7 +144,7 @@ func TestStreamBlobCreate(t *testing.T) {
 
 	ret := shardnode.CreateBlobRet{
 		Blob: proto.Blob{
-			Name: []byte("blob-create"),
+			Name: "blob-create",
 			Location: proto.Location{
 				ClusterID: 1,
 				CodeMode:  codemode.EC3P3,
@@ -172,13 +172,13 @@ func TestStreamBlobDelete(t *testing.T) {
 	h := newStreamHandlerSuccess(t)
 
 	args := acapi.DelBlobArgs{
-		BlobName:  []byte("blob-del"),
+		BlobName:  ("blob-del"),
 		ClusterID: 1,
 	}
 
 	blob := shardnode.GetBlobRet{
 		Blob: proto.Blob{
-			Name: []byte("blob-del"),
+			Name: "blob-del",
 			Location: proto.Location{
 				ClusterID: 1,
 				CodeMode:  codemode.EC3P3,
@@ -203,7 +203,7 @@ func TestStreamBlobSeal(t *testing.T) {
 	h := newStreamHandlerSuccess(t)
 
 	args := acapi.SealBlobArgs{
-		BlobName:  []byte("blob-seal"),
+		BlobName:  ("blob-seal"),
 		ClusterID: 1,
 		Slices:    make([]proto.Slice, 1),
 	}
@@ -251,8 +251,8 @@ func TestStreamBlobList(t *testing.T) {
 	args := acapi.ListBlobArgs{
 		ClusterID: 1,
 		ShardID:   1,
-		Prefix:    []byte("test-"),
-		Marker:    []byte("test-blob-1"),
+		Prefix:    ("test-"),
+		Marker:    ("test-blob-1"),
 		Count:     4,
 	}
 	// list one shard
@@ -271,17 +271,17 @@ func TestStreamBlobList(t *testing.T) {
 	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil)
 	listRet := shardnode.ListBlobRet{
 		Blobs: []proto.Blob{
-			{Name: []byte("test-blob-1")},
-			{Name: []byte("test-blob-2")},
-			{Name: []byte("test-blob-3")},
+			{Name: "test-blob-1"},
+			{Name: "test-blob-2"},
+			{Name: "test-blob-3"},
 		},
-		NextMarker: nil,
+		NextMarker: "",
 	}
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().ListBlob(gAny, gAny, gAny).Return(listRet, nil)
 
 	ret, err = h.ListBlob(ctx, &args)
 	require.NoError(t, err)
-	require.Equal(t, []byte(nil), ret.NextMarker)
+	require.Equal(t, "", ret.NextMarker) // require.Equal(t, []byte(nil), ret.NextMarker)
 	require.Equal(t, 3, len(ret.Blobs))
 
 	// list all
@@ -304,26 +304,26 @@ func TestStreamBlobList(t *testing.T) {
 	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
 	listRet = shardnode.ListBlobRet{
 		Blobs: []proto.Blob{
-			{Name: []byte("test-blob-1")},
-			{Name: []byte("test-blob-2")},
+			{Name: "test-blob-1"},
+			{Name: "test-blob-2"},
 		},
-		NextMarker: nil,
+		NextMarker: "",
 	}
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().ListBlob(gAny, gAny, gAny).Return(listRet, nil).Times(2)
 
 	args.ShardID = 0
-	args.Marker = nil
+	args.Marker = ""
 	args.Count = 4
 	ret, err = h.ListBlob(ctx, &args)
 	expectMarker := acapi.ListBlobEncodeMarker{
 		Range:  *ranges[2],
-		Marker: args.Marker,
+		Marker: "",
 	}
 	require.NoError(t, err)
 	require.Equal(t, 4, len(ret.Blobs))
 
 	actual := acapi.ListBlobEncodeMarker{}
-	err = actual.Unmarshal(ret.NextMarker)
+	err = actual.Unmarshal([]byte(ret.NextMarker))
 	require.NoError(t, err)
 	require.Equal(t, expectMarker, actual) // string(ret.NextMarker))
 
@@ -340,7 +340,7 @@ func TestStreamBlobList(t *testing.T) {
 	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
 	listRet.NextMarker = ret.NextMarker
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().ListBlob(gAny, gAny, gAny).Return(listRet, nil)
-	listRet.NextMarker = nil
+	listRet.NextMarker = ""
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().ListBlob(gAny, gAny, gAny).Return(listRet, nil)
 
 	ret, err = h.ListBlob(ctx, &args)
@@ -357,7 +357,7 @@ func TestStreamBlobList(t *testing.T) {
 	require.NoError(t, err)
 	args.ShardID = 0
 	args.Count = 100
-	args.Marker = lastEnd
+	args.Marker = string(lastEnd)
 
 	h.clusterController.(*MockClusterController).EXPECT().GetShardController(gAny).Return(shardMgr, nil)
 	shardMgr.EXPECT().GetShardByRange(gAny, lastEndMarker.Range).Return(shards[2], nil)
@@ -367,7 +367,7 @@ func TestStreamBlobList(t *testing.T) {
 
 	svrCtrl.EXPECT().GetShardnodeHost(gAny, gAny).Return(&controller.HostIDC{Host: "host"}, nil).Times(2)
 	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
-	listRet.NextMarker = nil
+	listRet.NextMarker = ""
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().ListBlob(gAny, gAny, gAny).Return(listRet, nil).Times(2)
 
 	ret, err = h.ListBlob(ctx, &args)
@@ -379,15 +379,15 @@ func TestStreamBlobList(t *testing.T) {
 	// }
 	// endOne, err := endOneMarker.Marshal()
 	// require.NoError(t, err)
-	require.Equal(t, []byte(nil), ret.NextMarker)
+	require.Equal(t, "", ret.NextMarker) // require.Equal(t, []byte(nil), ret.NextMarker)
 
 	// list all, error marker
 	args = acapi.ListBlobArgs{
 		ClusterID: 1,
 		Mode:      1,
 		ShardID:   0,
-		Prefix:    nil, //[]byte("test-"),
-		Marker:    []byte("abcd"),
+		Prefix:    "", //[]byte("test-"),
+		Marker:    ("abcd"),
 		Count:     100,
 	}
 	h.clusterController.(*MockClusterController).EXPECT().GetShardController(gAny).Return(shardMgr, nil)
@@ -402,7 +402,7 @@ func TestStreamBlobAlloc(t *testing.T) {
 	h := newStreamHandlerSuccess(t)
 
 	args := acapi.AllocSliceArgs{
-		BlobName:  []byte("blob-seal"),
+		BlobName:  ("blob-seal"),
 		ClusterID: 1,
 		CodeMode:  1,
 		Size:      1,

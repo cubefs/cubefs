@@ -74,7 +74,6 @@ func addCmdPerfTest(cmd *grumble.Command) {
 
 type ClientRet struct {
 	BlobName string
-	NameByte []byte
 	Size     uint64
 	Err      error
 	Data     string        `json:"Data,omitempty"`
@@ -111,13 +110,12 @@ func perfPut(c *grumble.Context) (err error) {
 	// 3. put many blob
 	workFunc := func(i, j int, ctx context.Context, finishCh chan<- ClientRet) {
 		args1 := args
-		args1.BlobName = []byte(prefix + strconv.Itoa(i+j+begin))
+		args1.BlobName = string(prefix + strconv.Itoa(i+j+begin))
 		go func(args1 acapi.PutBlobArgs) {
 			args1.Size, args1.Body = getPutBody(data, args1.BlobName)
 			_, _, err1 := client.PutBlob(ctx, &args1)
 			finishCh <- ClientRet{
 				BlobName: string(args1.BlobName),
-				NameByte: args1.BlobName,
 				Size:     args1.Size,
 				Err:      err1,
 			}
@@ -178,12 +176,11 @@ func perfGet(c *grumble.Context) (err error) {
 	// 3. do perf get, many blob
 	workFunc := func(i, j int, ctx context.Context, finishCh chan<- ClientRet) {
 		args1 := args
-		args1.BlobName = []byte(prefix + strconv.Itoa(i+j+begin))
+		args1.BlobName = string(prefix + strconv.Itoa(i+j+begin))
 		go func(args1 acapi.GetBlobArgs) {
 			rc, err1 := client.GetBlob(ctx, &args1)
 			finishCh <- ClientRet{
 				BlobName: string(args1.BlobName),
-				NameByte: args1.BlobName,
 				Size:     args1.ReadSize,
 				Err:      err1,
 				rc:       rc,
@@ -255,12 +252,11 @@ func perfDel(c *grumble.Context) (err error) {
 	// 3. do perf del, many blob
 	workFunc := func(i, j int, ctx context.Context, finishCh chan<- ClientRet) {
 		args1 := args
-		args1.BlobName = []byte(prefix + strconv.Itoa(i+j+begin))
+		args1.BlobName = string(prefix + strconv.Itoa(i+j+begin))
 		go func(args1 acapi.DelBlobArgs) {
 			err1 := client.DeleteBlob(ctx, &args1)
 			finishCh <- ClientRet{
 				BlobName: string(args1.BlobName),
-				NameByte: args1.BlobName,
 				Err:      err1,
 			}
 		}(args1)
@@ -403,8 +399,8 @@ func doManyBlob(max, lmt, con, begin int, workFunc func(int, int, context.Contex
 //	return uint64(len(buffer)), bytes.NewReader(buffer)
 // }
 
-func getPutBody(originalData []byte, blobName []byte) (uint64, *bytes.Reader) {
-	buffer := append(originalData, blobName...)
+func getPutBody(originalData []byte, blobName string) (uint64, *bytes.Reader) {
+	buffer := append(originalData, []byte(blobName)...)
 	return uint64(len(buffer)), bytes.NewReader(buffer)
 }
 

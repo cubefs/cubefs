@@ -26,7 +26,7 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type ListBlobEncodeMarker struct {
 	Range                sharding.Range `protobuf:"bytes,1,opt,name=range,proto3" json:"range"`
-	Marker               []byte         `protobuf:"bytes,2,opt,name=marker,proto3" json:"marker,omitempty"`
+	Marker               string         `protobuf:"bytes,2,opt,name=marker,proto3" json:"marker,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}       `json:"-"`
 	XXX_unrecognized     []byte         `json:"-"`
 	XXX_sizecache        int32          `json:"-"`
@@ -72,11 +72,11 @@ func (m *ListBlobEncodeMarker) GetRange() sharding.Range {
 	return sharding.Range{}
 }
 
-func (m *ListBlobEncodeMarker) GetMarker() []byte {
+func (m *ListBlobEncodeMarker) GetMarker() string {
 	if m != nil {
 		return m.Marker
 	}
-	return nil
+	return ""
 }
 
 func init() {
@@ -97,10 +97,10 @@ var fileDescriptor_3f58ae6b23694640 = []byte{
 	0xae, 0x79, 0xc9, 0xf9, 0x29, 0xa9, 0xbe, 0x89, 0x45, 0xd9, 0xa9, 0x45, 0x42, 0xce, 0x5c, 0xac,
 	0x60, 0x65, 0x12, 0x8c, 0x0a, 0x8c, 0x1a, 0xdc, 0x46, 0xea, 0x7a, 0x18, 0x0e, 0x81, 0x98, 0xaa,
 	0x07, 0x33, 0x55, 0x2f, 0x08, 0xa4, 0xdc, 0x89, 0xe5, 0xc4, 0x3d, 0x79, 0x86, 0x20, 0x88, 0x5e,
-	0x21, 0x31, 0x2e, 0xb6, 0x5c, 0xb0, 0x71, 0x12, 0x4c, 0x0a, 0x8c, 0x1a, 0x3c, 0x41, 0x50, 0x9e,
+	0x21, 0x31, 0x2e, 0xb6, 0x5c, 0xb0, 0x71, 0x12, 0x4c, 0x0a, 0x8c, 0x1a, 0x9c, 0x41, 0x50, 0x9e,
 	0x93, 0xf8, 0x89, 0x47, 0x72, 0x8c, 0x17, 0x1e, 0xc9, 0x31, 0x3e, 0x78, 0x24, 0xc7, 0x18, 0xc5,
 	0xa9, 0xa7, 0x6f, 0x0d, 0xf1, 0x51, 0x12, 0x1b, 0xd8, 0x51, 0xc6, 0x80, 0x00, 0x00, 0x00, 0xff,
-	0xff, 0x82, 0xc2, 0x87, 0x33, 0x0a, 0x01, 0x00, 0x00,
+	0xff, 0x17, 0x5f, 0xcb, 0x7b, 0x0a, 0x01, 0x00, 0x00,
 }
 
 func (m *ListBlobEncodeMarker) Marshal() (dAtA []byte, err error) {
@@ -248,7 +248,7 @@ func (m *ListBlobEncodeMarker) Unmarshal(dAtA []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Marker", wireType)
 			}
-			var byteLen int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowStreamBlob
@@ -258,25 +258,23 @@ func (m *ListBlobEncodeMarker) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= int(b&0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if byteLen < 0 {
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return ErrInvalidLengthStreamBlob
 			}
-			postIndex := iNdEx + byteLen
+			postIndex := iNdEx + intStringLen
 			if postIndex < 0 {
 				return ErrInvalidLengthStreamBlob
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Marker = append(m.Marker[:0], dAtA[iNdEx:postIndex]...)
-			if m.Marker == nil {
-				m.Marker = []byte{}
-			}
+			m.Marker = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

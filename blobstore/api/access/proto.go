@@ -367,7 +367,7 @@ const (
 type CreateBlobArgs struct {
 	ClusterID proto.ClusterID
 	CodeMode  codemode.CodeMode
-	BlobName  []byte
+	BlobName  string
 	Size      uint64
 	SliceSize uint32
 }
@@ -387,8 +387,8 @@ type ListBlobArgs struct {
 	ClusterID proto.ClusterID
 	ShardID   proto.ShardID
 	Mode      GetShardMode
-	Prefix    []byte
-	Marker    []byte
+	Prefix    string
+	Marker    string
 	Count     uint64
 }
 
@@ -401,7 +401,7 @@ func (args *ListBlobArgs) IsValid() bool {
 
 type SealBlobArgs struct {
 	ClusterID proto.ClusterID
-	BlobName  []byte
+	BlobName  string
 	Size      uint64
 	Slices    []proto.Slice
 }
@@ -416,7 +416,7 @@ func (args *SealBlobArgs) IsValid() bool {
 type GetBlobArgs struct {
 	ClusterID proto.ClusterID
 	Mode      GetShardMode
-	BlobName  []byte
+	BlobName  string
 
 	Offset   uint64
 	ReadSize uint64
@@ -433,7 +433,7 @@ func (args *GetBlobArgs) IsValid() bool {
 
 type DelBlobArgs struct {
 	ClusterID proto.ClusterID
-	BlobName  []byte
+	BlobName  string
 }
 
 func (args *DelBlobArgs) IsValid() bool {
@@ -446,7 +446,7 @@ func (args *DelBlobArgs) IsValid() bool {
 type AllocSliceArgs struct {
 	ClusterID proto.ClusterID
 	CodeMode  codemode.CodeMode
-	BlobName  []byte
+	BlobName  string
 	Size      uint64
 	FailSlice proto.Slice
 }
@@ -460,7 +460,7 @@ func (args *AllocSliceArgs) IsValid() bool {
 
 type PutBlobArgs struct {
 	CodeMode codemode.CodeMode
-	BlobName []byte
+	BlobName string
 	NeedSeal bool
 
 	Size   uint64
@@ -479,5 +479,14 @@ type GetShardCommonArgs struct {
 	ClusterID proto.ClusterID
 	ShardID   proto.ShardID
 	Mode      GetShardMode
-	BlobName  []byte
+	BlobName  string
+}
+
+func (args *ListBlobEncodeMarker) MarshalToString() (string, error) {
+	raw, err := args.Marshal()
+	return string(raw), err
+}
+
+func (args *ListBlobEncodeMarker) UnmarshalFromString(marker string) error {
+	return args.Unmarshal([]byte(marker))
 }

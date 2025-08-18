@@ -298,7 +298,7 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 		}
 	} else {
 		unionMarker := acapi.ListBlobEncodeMarker{}
-		if err = unionMarker.Unmarshal(args.Marker); err != nil {
+		if err = unionMarker.UnmarshalFromString(args.Marker); err != nil {
 			return shardnode.ListBlobRet{}, fmt.Errorf("fail to unmarshal marker, err: %+v", err)
 		}
 		allBlob.NextMarker = unionMarker.Marker
@@ -306,7 +306,7 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 		if err != nil {
 			return shardnode.ListBlobRet{}, err
 		}
-		span.Debugf("list blob at multi shards, prefix=%s, range=%s, marker=%s", string(args.Prefix), unionMarker.Range.String(), unionMarker.Marker)
+		span.Debugf("list blob at multi shards, prefix=%s, range=%s, marker=%s", args.Prefix, unionMarker.Range.String(), unionMarker.Marker)
 	}
 
 	lastRange := shard.GetRange()
@@ -336,7 +336,7 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 		allBlob.Blobs = append(allBlob.Blobs, ret.Blobs...)
 		allBlob.NextMarker = ret.NextMarker
 		count -= int64(len(ret.Blobs))
-		if ret.NextMarker == nil {
+		if ret.NextMarker == "" {
 			shard, err = shardMgr.GetNextShard(ctx, lastRange)
 			if err != nil {
 				return shardnode.ListBlobRet{}, err
@@ -359,7 +359,7 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 		Range:  lastRange,          // empty, means reach the end; else, means next expect shard
 		Marker: allBlob.NextMarker, // empty, means current shard list end; else, means expect begin blob name
 	}
-	unionMarker, err := markers.Marshal()
+	unionMarker, err := markers.MarshalToString()
 	allBlob.NextMarker = unionMarker
 	return allBlob, err
 }

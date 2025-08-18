@@ -59,7 +59,7 @@ func putBlob(c *grumble.Context) error {
 		if err != nil {
 			return fmt.Errorf("invalid (%s) %+v", wrap, err)
 		}
-		wrapArgs.BlobName = []byte(wrapArgs.BlobNameStr)
+		wrapArgs.BlobName = string(wrapArgs.BlobNameStr)
 		args = wrapArgs.PutBlobArgs
 	} else {
 		args, err = common.UnmarshalAny[acapi.PutBlobArgs]([]byte(c.Flags.String("args")))
