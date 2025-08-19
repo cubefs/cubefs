@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/remotecache"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -91,7 +92,7 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, 
 			CacheRequest: req.CacheRequest,
 			FlashNodes:   fg.Hosts,
 		}
-		if err = s.client.RemoteCache.Prepare(ctx, fg, s.inode, prepareReq); err != nil {
+		if err = s.client.RemoteCache.remoteCacheBase.Prepare(ctx, fg, prepareReq); err != nil {
 			log.LogWarnf("Streamer prepareRemoteCache: flashGroup prepare failed. fg(%v) req(%v) err(%v)", fg, prepareReq, err)
 		}
 	}
@@ -100,7 +101,7 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, 
 	}
 }
 
-func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64, cReadRequests []*CacheReadRequest) (total int, err error) {
+func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64, cReadRequests []*remotecache.CacheReadRequest) (total int, err error) {
 	metric := exporter.NewTPCnt("readFromRemoteCache")
 	metricBytes := exporter.NewCounter("readFromRemoteCacheBytes")
 	defer func() {
@@ -120,7 +121,7 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 			return
 		}
 		req.CacheRequest.Slot = uint64(slot)<<32 | uint64(ownerSlot)
-		if read, err = s.client.RemoteCache.Read(ctx, fg, s.inode, req); err != nil {
+		if read, err = s.client.RemoteCache.remoteCacheBase.Read(ctx, fg, 0, req); err != nil {
 			if !proto.IsFlashNodeLimitError(err) {
 				log.LogWarnf("readFromRemoteCache: flashGroup read failed. offset(%v) size(%v) fg(%v) req(%v) err(%v)", offset, size, fg, req, err)
 			}
@@ -135,9 +136,9 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 	return total, nil
 }
 
-func (s *Streamer) getFlashGroup(fixedFileOffset uint64) (uint32, *FlashGroup, uint32) {
+func (s *Streamer) getFlashGroup(fixedFileOffset uint64) (uint32, *remotecache.FlashGroup, uint32) {
 	slot := proto.ComputeCacheBlockSlot(s.client.dataWrapper.VolName, s.inode, fixedFileOffset)
-	fg, ownerSlot := s.client.RemoteCache.GetFlashGroupBySlot(slot)
+	fg, ownerSlot := s.client.RemoteCache.remoteCacheBase.GetFlashGroupBySlot(slot)
 	return slot, fg, ownerSlot
 }
 
@@ -181,14 +182,14 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 	return sources, nil
 }
 
-func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte, gen uint64) ([]*CacheReadRequest, error) {
+func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte, gen uint64) ([]*remotecache.CacheReadRequest, error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("prepareCacheRequests", nil, bgTime, 1)
 	}()
 
 	var (
-		cReadRequests []*CacheReadRequest
+		cReadRequests []*remotecache.CacheReadRequest
 		cRequests     = make([]*proto.CacheRequest, 0)
 		isRead        = data != nil
 	)
@@ -202,52 +203,25 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte, gen ui
 			Volume:          s.client.dataWrapper.VolName,
 			Inode:           s.inode,
 			FixedFileOffset: fixedOff,
-			TTL:             s.client.RemoteCache.TTL,
+			TTL:             s.client.RemoteCache.remoteCacheBase.TTL,
 			Sources:         sources,
 			Version:         proto.ComputeSourcesVersion(sources, gen),
 		}
 		cRequests = append(cRequests, cReq)
 	}
 	if isRead {
-		cReadRequests = getCacheReadRequests(offset, size, data, cRequests)
+		cReadRequests = s.client.RemoteCache.remoteCacheBase.GetCacheReadRequests(offset, size, data, cRequests)
 	} else {
-		cReadRequests = make([]*CacheReadRequest, 0, len(cRequests))
+		cReadRequests = make([]*remotecache.CacheReadRequest, 0, len(cRequests))
 		for _, cReq := range cRequests {
 			if len(cReq.Sources) == 0 {
 				continue
 			}
-			cReadRequest := new(CacheReadRequest)
+			cReadRequest := new(remotecache.CacheReadRequest)
 			cReadRequest.CacheRequest = cReq
 			cReadRequests = append(cReadRequests, cReadRequest)
 		}
 	}
 	log.LogDebugf("prepareCacheRequests: inode %v extent[offset=%v,size=%v] cReadRequests %v ", s.inode, offset, size, cReadRequests)
 	return cReadRequests, nil
-}
-
-func getCacheReadRequests(offset uint64, size uint64, data []byte, cRequests []*proto.CacheRequest) (cReadRequests []*CacheReadRequest) {
-	cReadRequests = make([]*CacheReadRequest, 0, len(cRequests))
-	startFixedOff := offset / proto.CACHE_BLOCK_SIZE * proto.CACHE_BLOCK_SIZE
-	endFixedOff := (offset + size - 1) / proto.CACHE_BLOCK_SIZE * proto.CACHE_BLOCK_SIZE
-
-	for _, cReq := range cRequests {
-		cReadReq := new(CacheReadRequest)
-		cReadReq.CacheRequest = cReq
-		if cReq.FixedFileOffset == startFixedOff {
-			cReadReq.Offset = offset - startFixedOff
-		} else {
-			cReadReq.Offset = 0
-		}
-
-		if cReq.FixedFileOffset == endFixedOff {
-			cReadReq.Size_ = offset + size - cReq.FixedFileOffset - cReadReq.Offset
-		} else {
-			cReadReq.Size_ = proto.CACHE_BLOCK_SIZE - cReadReq.Offset
-		}
-
-		dataStart := cReadReq.Offset + cReq.FixedFileOffset - offset
-		cReadReq.Data = data[dataStart : dataStart+cReadReq.Size_]
-		cReadRequests = append(cReadRequests, cReadReq)
-	}
-	return cReadRequests
 }
