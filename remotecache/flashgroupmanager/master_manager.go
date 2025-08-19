@@ -47,6 +47,7 @@ func (m *FlashGroupManager) handleLeaderChange(leader uint64) {
 func (m *FlashGroupManager) clearMetadata() {
 	m.cluster.flashNodeTopo.Clear()
 	m.cluster.flashNodeTopo = NewFlashNodeTopology()
+	m.cluster.flashNodeTopo.SyncFlashGroupFunc = m.cluster.syncUpdateFlashGroup
 }
 
 func (m *FlashGroupManager) loadMetadata() {
