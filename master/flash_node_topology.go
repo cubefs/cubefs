@@ -84,8 +84,6 @@ func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.flashNodeTopo.UpdateClientResponse()
-				// sync fg if slots changed
-				c.flashNodeTopo.UpdateFlashGroup(c.syncUpdateFlashGroup)
 			}
 			select {
 			case <-c.stopc:
