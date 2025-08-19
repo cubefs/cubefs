@@ -434,15 +434,15 @@ func (client *ExtentClient) SetClientID(id uint64) (err error) {
 }
 
 func (client *ExtentClient) IsRemoteCacheEnabled() bool {
-	rcEnable := client.RemoteCache.ClusterEnabled && client.RemoteCache.VolumeEnabled
+	rcEnable := client.RemoteCache.Started && client.RemoteCache.remoteCacheBase.IsClusterEnable() && client.RemoteCache.VolumeEnabled
 	master.ClientRCacheEnable = rcEnable
 	return rcEnable
 }
 
 func (client *ExtentClient) enableRemoteCacheCluster(enabled bool) {
-	if client.RemoteCache.ClusterEnabled != enabled {
-		log.LogInfof("enableRemoteCacheCluster: %v -> %v", client.RemoteCache.ClusterEnabled, enabled)
-		client.RemoteCache.ClusterEnabled = enabled
+	if client.RemoteCache.remoteCacheBase.IsClusterEnable() != enabled {
+		log.LogInfof("enableRemoteCacheCluster: %v -> %v", client.RemoteCache.remoteCacheBase.IsClusterEnable(), enabled)
+		client.RemoteCache.remoteCacheBase.SetClusterEnable(enabled)
 	}
 }
 

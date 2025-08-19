@@ -27,6 +27,7 @@ import (
 
 	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/remotecache"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -286,9 +287,9 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 				}
 
 				if s.client.forceRemoteCache || !s.client.RemoteCache.remoteCacheOnlyForNotSSD || (s.client.RemoteCache.remoteCacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
-					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v) forceRemoteCache(%v)",
-						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD, s.client.forceRemoteCache)
-					var cacheReadRequests []*CacheReadRequest
+					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
+						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD)
+					var cacheReadRequests []*remotecache.CacheReadRequest
 					cacheReadRequests, err = s.prepareCacheRequests(uint64(offset), uint64(size), data, inodeInfo.Generation)
 					if err == nil {
 						var read int

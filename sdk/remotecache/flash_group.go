@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package stream
+package remotecache
 
 import (
 	"fmt"
@@ -70,7 +70,7 @@ func (fg *FlashGroup) getFlashHost() (host string) {
 	} else if sameRegionLen == 0 {
 		host = sameZoneHosts[epoch%sameZoneLen]
 	} else {
-		if epoch%100 < uint64(sameZoneWeight) {
+		if epoch%100 < uint64(SameZoneWeight) {
 			host = sameZoneHosts[epoch%sameZoneLen]
 		} else {
 			host = sameRegionHosts[epoch%sameRegionLen]
