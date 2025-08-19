@@ -53,7 +53,6 @@ func (mc *MissCache) Increment(key string) int32 {
 			mc.evict(true)
 		}
 		proto.SetMissEntryExpiration(cme, mc.expiration)
-
 		element := mc.lruList.PushFront(cme)
 		mc.cache[cme.UniKey] = element
 		if log.EnableDebug() {

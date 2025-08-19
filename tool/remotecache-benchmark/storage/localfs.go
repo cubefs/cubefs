@@ -306,3 +306,6 @@ func (fs *LocalFS) LoadTestFiles() error {
 	// TODO: maybe to much handle
 	return nil
 }
+
+func (fs *LocalFS) Stop() {
+}

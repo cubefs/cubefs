@@ -29,13 +29,14 @@ import (
 )
 
 type BenchmarkTester struct {
-	dataDir      string
-	fileCache    sync.Map
-	fileCounts   int64
-	cacheStorage storage.Storage
-	nvmeStorage  storage.Storage
-	hddStorage   storage.Storage
-	verify       bool
+	dataDir        string
+	fileCache      sync.Map
+	fileCounts     int64
+	cacheStorage   storage.Storage
+	nvmeStorage    storage.Storage
+	hddStorage     storage.Storage
+	verify         bool
+	clearPageCache bool
 }
 
 type BenchmarkResult struct {
@@ -54,14 +55,15 @@ type BenchmarkResult struct {
 	IOPS          float64
 }
 
-func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master string) *BenchmarkTester {
+func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master string, clearPageCache bool) *BenchmarkTester {
 	os.MkdirAll(dataDir, 0o755)
 	tester := &BenchmarkTester{
-		dataDir:      dataDir,
-		cacheStorage: nil, // TODO
-		nvmeStorage:  nil,
-		hddStorage:   nil,
-		verify:       verify,
+		dataDir:        dataDir,
+		cacheStorage:   nil, // TODO
+		nvmeStorage:    nil,
+		hddStorage:     nil,
+		verify:         verify,
+		clearPageCache: clearPageCache,
 	}
 	if hddBase != "" {
 		fmt.Printf("\nCreate an HDD Tester %v\n", hddBase)
@@ -76,7 +78,16 @@ func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master s
 	if master != "" {
 		fmt.Printf("\nCreate a remote cache Tester %v\n", master)
 		var err error
-		tester.cacheStorage, err = remotecache.NewRemoteCacheClient(strings.Split(master, ","), proto.PageSize, true, "debug")
+		cfg := &remotecache.ClientConfig{
+			Masters:            strings.Split(master, ","),
+			BlockSize:          proto.PageSize,
+			NeedInitLog:        true,
+			LogLevelStr:        "debug",
+			LogDir:             "/tmp/cfs",
+			ConnectTimeout:     500,
+			FirstPacketTimeout: 1000,
+		}
+		tester.cacheStorage, err = remotecache.NewRemoteCacheClient(cfg)
 		if err != nil {
 			fmt.Printf("\nCreate a remote cache Tester failed:%v\n", err)
 		}
@@ -194,7 +205,8 @@ func main() {
 	master := flag.String("master", "", "Master address")
 	runPutTest := flag.Bool("put-test", false, "Run the PUT test")
 	runGetTest := flag.Bool("get-test", false, "Run the Get test")
-	verify := flag.Bool(" ", true, "Verify with the source file")
+	verify := flag.Bool("verify", true, "Verify with the source file")
+	clear := flag.Bool("clear-cache", true, "Clear page cache")
 	flag.Parse()
 
 	fmt.Printf("Parsed command-line arguments:\n")
@@ -209,7 +221,8 @@ func main() {
 	fmt.Printf("  -concurrency: %v\n", *concurrency)
 	fmt.Printf("  -verify: %v\n", *verify)
 	fmt.Printf("  -master: %v\n", *master)
-	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master)
+	fmt.Printf("  -clear-cache: %v\n", *clear)
+	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master, *clear)
 	if *needGenerate {
 		if err := tester.GenerateTestData(*totalSizeGB, *genConcurrency); err != nil {
 			fmt.Printf("generate test files failed: %v\n", err)
@@ -234,6 +247,20 @@ func main() {
 	if *runGetTest {
 		// Ensure all data has been preheated into the storage system.
 		tester.RunGetBenchmark(ctx, *concurrency)
+	}
+	tester.Stop()
+}
+
+func (t *BenchmarkTester) Stop() {
+	if t.hddStorage != nil {
+		t.hddStorage.Stop()
+	}
+	if t.nvmeStorage != nil {
+		t.nvmeStorage.Stop()
+	}
+
+	if t.cacheStorage != nil {
+		t.cacheStorage.Stop()
 	}
 }
 
@@ -476,7 +503,10 @@ func (t *BenchmarkTester) RunGetBenchmark(ctx context.Context, concurrency int) 
 
 func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage storage.Storage, concurrency int) *BenchmarkResult {
 	fmt.Printf("Testing %s Get performance...\n", storage.Name())
-	clearPageCache()
+	// if t.clearPageCache {
+	//	clearPageCache()
+	// }
+
 	result := &BenchmarkResult{
 		StorageType:   storage.Name(),
 		OperationType: "Get",
@@ -509,7 +539,8 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 				startTime := time.Now()
 				from := int64(0)
 				to := fh.Size
-				r, len, _, err := storage.Get(ctx, uuid.New().String(), fh.FileName, from, to)
+				reqId := uuid.New().String()
+				r, len, _, err := storage.Get(ctx, reqId, fh.FileName, from, to)
 				var latency time.Duration
 				if err == nil {
 					dataBuf := bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
@@ -518,9 +549,7 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 					for {
 						readBytes, err := r.Read(dataBuf)
 						if err != nil {
-							if err == io.EOF {
-								break
-							}
+							break
 						}
 						copy(tmpBuf[reads:], dataBuf[:readBytes])
 						reads += readBytes
@@ -539,9 +568,9 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 					}
 				}
 
-				if err != nil {
+				if err != nil && err != io.EOF {
 					atomic.AddInt64(&errorCount, 1)
-					fmt.Printf("storage %v get %v failed: %v\n", storage.Name(), fh.FileName, err)
+					fmt.Printf("storage %v get %v failed reqID %v: %v\n", storage.Name(), fh.FileName, reqId, err)
 				} else {
 					atomic.AddInt64(&successCount, 1)
 					atomic.AddInt64(&totalBytes, int64(len))
@@ -562,7 +591,7 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 			progress := index * 100 / int(t.fileCounts)
 			if progress >= lastProgress+10 {
 				lastProgress = progress
-				fmt.Printf("\r%s Progress: %d%%", storage.Name(), progress)
+				fmt.Printf("\r%s Progress: %d%% \n", storage.Name(), progress)
 			}
 		}
 		return true
@@ -599,16 +628,16 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 	return result
 }
 
-func clearPageCache() {
-	data := []byte("1\n")
-	file, err := os.OpenFile("/proc/sys/vm/drop_caches", os.O_WRONLY, 0o644)
-	if err != nil {
-		fmt.Printf("open /proc/sys/vm/drop_caches failed: %v\n", err)
-		return
-	}
-	defer file.Close()
-
-	if _, err := file.Write(data); err != nil {
-		fmt.Printf("write to /proc/sys/vm/drop_caches failed: %v\n", err)
-	}
-}
+// func clearPageCache() {
+//	data := []byte("1\n")
+//	file, err := os.OpenFile("/proc/sys/vm/drop_caches", os.O_WRONLY, 0o644)
+//	if err != nil {
+//		fmt.Printf("open /proc/sys/vm/drop_caches failed: %v\n", err)
+//		return
+//	}
+//	defer file.Close()
+//
+//	if _, err := file.Write(data); err != nil {
+//		fmt.Printf("write to /proc/sys/vm/drop_caches failed: %v\n", err)
+//	}
+// }

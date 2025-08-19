@@ -228,7 +228,7 @@ func (f *FlashNode) start(cfg *config.Config) (err error) {
 	}
 	f.initLimiter()
 	initExtentConnPool()
-	f.connPool = util.NewConnectPoolWithTimeout(_connPoolIdleTimeout, 1)
+	f.connPool = util.NewConnectPoolWithTimeout(_connPoolIdleTimeout, 1, false)
 	if err = f.startCacheEngine(); err != nil {
 		return
 	}
