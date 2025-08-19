@@ -84,7 +84,7 @@ func (mp *metaPartition) createExtentDeleteFile(prefix string, idx int64, fileLi
 func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf(fmt.Sprintf("[metaPartition] appendDelExtentsToFile pid(%v) panic (%v)", mp.config.PartitionId, r))
+			log.LogErrorf("[metaPartition] appendDelExtentsToFile pid(%v) panic (%v)", mp.config.PartitionId, r)
 		}
 	}()
 	var (
@@ -230,7 +230,7 @@ func (mp *metaPartition) batchDeleteExtentsByDp(dpId uint64, extents []*proto.De
 func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf(fmt.Sprintf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)", mp.config.PartitionId, r))
+			log.LogErrorf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)", mp.config.PartitionId, r)
 		}
 	}()
 

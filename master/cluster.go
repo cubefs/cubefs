@@ -2266,14 +2266,8 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 		}
 	} else {
 		rsMgr = &c.t.metaTopology
-		if nodeType == TypeMetaPartition {
-			if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, replicaNum, excludeZones, proto.StoreModeMem); err != nil {
-				return
-			}
-		} else {
-			if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, replicaNum, excludeZones, proto.StoreModeRocksDb); err != nil {
-				return
-			}
+		if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, replicaNum, excludeZones, nodeType); err != nil {
+			return
 		}
 	}
 

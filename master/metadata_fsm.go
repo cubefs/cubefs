@@ -251,7 +251,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		}()
 	}
 
-	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
+	log.LogWarnf("action[ApplySnapshot] begin,applied[%v]", mf.applied)
 	var data []byte
 	var appliedIndex []byte
 	for err == nil {
@@ -279,7 +279,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	}
 
 	if err = mf.store.Flush(); err != nil {
-		log.LogError(fmt.Sprintf("action[ApplySnapshot] Flush failed,err:%v", err.Error()))
+		log.LogErrorf("action[ApplySnapshot] Flush failed,err:%v", err.Error())
 		goto errHandler
 	}
 
@@ -294,10 +294,10 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	}
 
 	mf.snapshotHandler()
-	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
+	log.LogWarnf("action[ApplySnapshot] success,applied[%v]", mf.applied)
 	return nil
 errHandler:
-	log.LogError(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
+	log.LogErrorf("action[ApplySnapshot] failed,err:%v", err.Error())
 	return err
 }
 

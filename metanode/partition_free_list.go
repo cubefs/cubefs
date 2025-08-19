@@ -349,8 +349,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	defer func() {
 		if r := recover(); r != nil {
 			stack := string(debug.Stack())
-			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)\nstack:%v",
-				mp.config.PartitionId, r, stack))
+			log.LogErrorf("metaPartition(%v) deleteMarkedInodes panic (%v)\nstack:%v",
+				mp.config.PartitionId, r, stack)
 		}
 	}()
 

@@ -690,7 +690,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		return
 	}
 	request := &proto.DeleteDataPartitionRequest{}
-	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] request %v ", request))
+	log.LogInfof("action[handlePacketToDeleteDataPartition] request %v ", request)
 	if task.OpCode == proto.OpDeleteDataPartition {
 		bytes, _ := json.Marshal(task.Request)
 		p.AddMesgLog(string(bytes))
@@ -707,7 +707,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		err = errors.Trace(err, "delete DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogErrorf("action[handlePacketToDeleteDataPartition] err(%v).", err)
 	} else {
-		log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v success", request.PartitionId))
+		log.LogInfof("action[handlePacketToDeleteDataPartition] %v success", request.PartitionId)
 	}
 	auditlog.LogDataNodeOp("DeleteDataPartition", fmt.Sprintf("%v is deleted", request.PartitionId), err)
 }
@@ -849,7 +849,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			return
 		}
 
-		log.LogInfof(fmt.Sprintf("[handleBatchMarkDeletePacket] recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
+		log.LogInfof("[handleBatchMarkDeletePacket] recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String())
 		partition.disk.diskLimit(OpDelete, 0, func() {
 			if storage.IsTinyExtent(ext.ExtentId) || ext.IsSnapshotDeletion {
 				log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v), tinyExtent or snapDeletion",

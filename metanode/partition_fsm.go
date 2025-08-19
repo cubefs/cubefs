@@ -1066,8 +1066,9 @@ func (mp *metaPartition) HandleFatalEvent(err *raft.FatalError) {
 
 // HandleLeaderChange handles the leader changes.
 func (mp *metaPartition) HandleLeaderChange(leader uint64) {
-	exporter.Warning(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
-	log.LogDebugf(fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader))
+	msg := fmt.Sprintf("metaPartition(%v) changeLeader to (%v)", mp.config.PartitionId, leader)
+	exporter.Warning(msg)
+	log.LogDebugf(msg)
 	if mp.config.NodeId == leader {
 		localIp := mp.manager.metaNode.localAddr
 		if localIp == "" {
@@ -1076,23 +1077,24 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(localIp, serverPort), time.Second)
 		if err != nil {
-			log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v", err))
-			exporter.Warning(fmt.Sprintf("mp[%v] HandleLeaderChange serverPort not exsit ,error %v", mp.config.PartitionId, err))
+			msg = fmt.Sprintf("mp[%v] HandleLeaderChange serverPort not exsit ,error %v", mp.config.PartitionId, err)
+			log.LogErrorf(msg)
+			exporter.Warning(msg)
 			go mp.raftPartition.TryToLeader(mp.config.PartitionId)
 			return
 		}
-		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange close conn %v, nodeId: %v, leader: %v",
+		msg = fmt.Sprintf("[metaPartition]mp[%v] HandleLeaderChange close conn %v, nodeId: %v, leader: %v",
 			mp.config.PartitionId, serverPort, mp.config.NodeId, leader)
-		exporter.Warning(fmt.Sprintf("[metaPartition]mp[%v] HandleLeaderChange close conn %v, nodeId: %v, leader: %v",
-			mp.config.PartitionId, serverPort, mp.config.NodeId, leader))
+		log.LogDebugf(msg)
+		exporter.Warning(msg)
 		conn.(*net.TCPConn).SetLinger(0)
 		conn.Close()
 	}
 	if mp.config.NodeId != leader {
-		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v",
+		msg = fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v",
 			mp.config.PartitionId, mp.config.NodeId, leader)
-		exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v",
-			mp.config.PartitionId, mp.config.NodeId, leader))
+		log.LogDebugf(msg)
+		exporter.Warning(msg)
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
 		}
@@ -1102,10 +1104,10 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		command: startStoreTick,
 	}
 
-	log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v",
+	msg = fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v",
 		mp.config.PartitionId, serverPort, mp.config.NodeId, leader)
-	exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v",
-		mp.config.PartitionId, serverPort, mp.config.NodeId, leader))
+	log.LogDebugf(msg)
+	exporter.Warning(msg)
 	if mp.config.Start == 0 && mp.config.Cursor == 0 {
 		id, err := mp.nextInodeID()
 		if err != nil {

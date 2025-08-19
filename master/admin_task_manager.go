@@ -94,8 +94,8 @@ func (sender *AdminTaskManager) getToBeDeletedTasks() (delTasks []*proto.AdminTa
 
 	for _, task := range sender.TaskMap {
 		if task.CheckTaskTimeOut() {
-			log.LogWarnf(fmt.Sprintf("clusterID[%v] %v has no response until time out",
-				sender.clusterID, task.ID))
+			log.LogWarnf("clusterID[%v] %v has no response until time out",
+				sender.clusterID, task.ID)
 			if task.SendTime > 0 {
 				Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] %v has no response until time out",
 					sender.clusterID, task.ID))
@@ -194,7 +194,7 @@ func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Co
 	if err = packet.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
 		return errors.Trace(err, "action[sendAdminTask],ReadFromConn failed task:%v", task.ID)
 	}
-	log.LogDebugf(fmt.Sprintf("action[sendAdminTask] sender task:%v success", task.ToString()))
+	log.LogDebugf("action[sendAdminTask] sender task:%v success", task.ToString())
 	sender.updateTaskInfo(task, true)
 
 	return nil
@@ -225,7 +225,7 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet
 	}
 	if packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf("result code[%v],msg[%v]", packet.ResultCode, string(packet.Data))
-		log.LogInfof("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
+		log.LogErrorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
 		return
 	}
 	return packet, nil

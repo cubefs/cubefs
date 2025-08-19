@@ -62,6 +62,7 @@ func WarningRocksdbError(detail string) {
 }
 
 func WarningAppendKey(key, detail string) {
-	ump.Alarm(fmt.Sprintf("%v_%v_%v", clustername, modulename, key), detail)
-	log.LogCritical(fmt.Sprintf("%v_%v_%v", clustername, modulename, key), detail)
+	newKey := fmt.Sprintf("%v_%v_%v", clustername, modulename, key)
+	ump.Alarm(newKey, detail)
+	log.LogCritical(newKey, detail)
 }

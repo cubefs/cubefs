@@ -1124,6 +1124,7 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 		return err
 	}
 
+	c.PlanRun = true
 	go c.DoMetaPartitionBalanceTask(plan)
 
 	return nil
@@ -1135,7 +1136,6 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		err error
 	)
 
-	c.PlanRun = true
 	defer func() {
 		// clear the run flag.
 		c.PlanRun = false
@@ -1526,6 +1526,7 @@ func (c *Cluster) RestartMetaPartitionBalanceTask() error {
 		return nil
 	}
 
+	c.PlanRun = true
 	go c.DoMetaPartitionBalanceTask(plan)
 
 	return nil

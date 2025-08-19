@@ -2713,7 +2713,7 @@ func (zone *Zone) canWriteForMetaNode(replicaNum uint8, storeMode proto.StoreMod
 	return
 }
 
-func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []string, storeMode proto.StoreMode) (zones []*Zone, err error) {
+func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []string, nodeType uint32) (zones []*Zone, err error) {
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForMetaNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
@@ -2729,6 +2729,10 @@ func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []
 	}
 	candidateZones := make([]*Zone, 0)
 	demandWriteNodes := calculateDemandWriteNodes(zoneNum, replicaNum, false)
+	storeMode := proto.StoreModeMem
+	if nodeType == TypeMetaPartition {
+		storeMode = proto.StoreModeRocksDb
+	}
 	for i := 0; i < len(zones); i++ {
 		if t.metaTopology.zoneIndexForNode >= len(zones) {
 			t.metaTopology.zoneIndexForNode = 0

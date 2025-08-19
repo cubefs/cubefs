@@ -890,9 +890,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 				return
 			}
 			if loopTimes%100 == 0 {
-				log.LogInfof(fmt.Sprintf("action[streamRepairExtent] dp %v extent %v fix(%v) start fix from (%v)"+
+				log.LogInfof("action[streamRepairExtent] dp %v extent %v fix(%v) start fix from (%v)"+
 					" remoteSize(%v)localSize(%v) reply(%v).", dp.partitionID, remoteExtentInfo.FileID, localExtentInfo.FileID, remoteExtentInfo.String(),
-					dstOffset, currFixOffset, reply.GetUniqueLogId()))
+					dstOffset, currFixOffset, reply.GetUniqueLogId())
 			}
 			loopTimes++
 			actualCrc := crc32.ChecksumIEEE(reply.GetData()[:reply.GetSize()])
@@ -967,9 +967,9 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 			hasRecoverySize += uint64(reply.GetSize())
 			currFixOffset += uint64(reply.GetSize())
 			if currFixOffset >= dstOffset {
-				log.LogWarnf(fmt.Sprintf("action[streamRepairExtent] dp %v extent(%v) start fix from (%v)"+
+				log.LogWarnf("action[streamRepairExtent] dp %v extent(%v) start fix from (%v)"+
 					" remoteSize(%v)localSize(%v) reply(%v) size(%v) cost(%v)millseconds.", dp.partitionID, localExtentInfo.FileID, remoteExtentInfo.String(),
-					remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId(), currFixOffset-starFixOffset, time.Since(begin).Milliseconds()))
+					remoteExtentInfo.Size, currFixOffset, reply.GetUniqueLogId(), currFixOffset-starFixOffset, time.Since(begin).Milliseconds())
 				break
 			}
 		}

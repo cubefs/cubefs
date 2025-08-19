@@ -200,7 +200,7 @@ func (mf *KeystoreFsm) Snapshot() (proto.Snapshot, error) {
 
 // ApplySnapshot implements the interface of raft.StateMachine
 func (mf *KeystoreFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
-	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
+	log.LogInfof("action[ApplySnapshot] begin,applied[%v]", mf.applied)
 	var data []byte
 	for err == nil {
 		if data, err = iterator.Next(); err != nil {
@@ -218,10 +218,10 @@ func (mf *KeystoreFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		goto errHandler
 	}
 	mf.snapshotHandler()
-	log.LogInfof(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
+	log.LogInfof("action[ApplySnapshot] success,applied[%v]", mf.applied)
 	return nil
 errHandler:
-	log.LogError(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
+	log.LogErrorf("action[ApplySnapshot] failed,err:%v", err.Error())
 	return err
 }
 

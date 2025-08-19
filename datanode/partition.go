@@ -1088,8 +1088,8 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 	dp.isLeader = isLeader
 	// dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
-	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v), force(%v) isLeader(%v)",
-		dp.partitionID, isForce, isLeader))
+	log.LogInfof("ActionUpdateReplicationHosts partiton(%v), force(%v) isLeader(%v)",
+		dp.partitionID, isForce, isLeader)
 
 	return
 }
