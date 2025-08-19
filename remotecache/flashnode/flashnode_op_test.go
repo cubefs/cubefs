@@ -15,8 +15,13 @@
 package flashnode
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"errors"
+	"hash/crc32"
 	"net"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -48,6 +53,8 @@ func testTCP(t *testing.T) {
 	t.Run("CachePrepare", testTCPCachePrepare)
 	t.Run("CacheRead", testTCPCacheRead)
 	t.Run("ManualScan", testTCPManualScan)
+	t.Run("CachePutBlock", testTCPCachePutBlock)
+	t.Run("CacheDelete", testTCPCacheDelete)
 }
 
 func testTCPHeartbeat(t *testing.T) {
@@ -169,6 +176,53 @@ func testTCPCacheRead(t *testing.T) {
 	require.Equal(t, uint32(blockSize), r.Size)
 }
 
+func testTCPCachePutBlock(t *testing.T) {
+	conn := newTCPConn(t)
+	defer conn.Close()
+	p := proto.NewPacketReqID()
+	r := proto.NewPacket()
+	p.Opcode = proto.OpFlashNodeCachePutBlock
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpErr, r.ResultCode) // lack parameter
+	key := "testTCPCacheWrite_key"
+	req := &proto.PutBlockHead{
+		UniKey:   key,
+		BlockLen: 1,
+		TTL:      0,
+	}
+	_ = p.MarshalDataPb(req)
+	p.Opcode = proto.OpFlashNodeCachePutBlock
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpOk, r.ResultCode)
+	buf := []byte{'{'}
+	n := len(buf)
+	_, err := conn.Write(buf[:n])
+	require.NoError(t, err)
+	crcBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(crcBuf, crc32.ChecksumIEEE(buf[:n]))
+	_, err = conn.Write(crcBuf[:4])
+	require.NoError(t, err)
+}
+
+func testTCPCacheDelete(t *testing.T) {
+	conn := newTCPConn(t)
+	defer conn.Close()
+	p := proto.NewPacketReqID()
+	r := proto.NewPacket()
+	p.Opcode = proto.OpFlashNodeCacheDelete
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpErr, r.ResultCode)
+
+	p.Data = ([]byte)("testTCPCacheWrite_key")
+	p.Size = uint32(len(p.Data))
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpOk, r.ResultCode)
+}
+
 func testTCPManualScan(t *testing.T) {
 	conn := newTCPConn(t)
 	p := proto.NewPacketReqID()
@@ -214,4 +268,32 @@ func testTCPManualScan(t *testing.T) {
 	require.NoError(t, r.ReadFromConn(conn, 3))
 	require.Equal(t, proto.OpOk, r.ResultCode)
 	_ = conn.Close()
+}
+
+func testShouldCache(t *testing.T) {
+	var wg sync.WaitGroup
+	key := "testCacheKey"
+	goroutines := 10
+	var countA, countB int64
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := flashServer.shouldCache(key)
+			switch {
+			case errors.Is(err, proto.ErrorNotExistShouldCache):
+				atomic.AddInt64(&countA, 1)
+			case errors.Is(err, proto.ErrorNotExistShouldNotCache):
+				atomic.AddInt64(&countB, 1)
+			default:
+				t.Errorf("unexpected error: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	flashServer.missCache.Delete(key)
+	t.Logf("error not exist should cache count: %d", countA)
+	t.Logf("error not exist should not cache count: %d", countB)
+	require.Equal(t, countA, int64(2))
+	require.Equal(t, countB, int64(8))
 }

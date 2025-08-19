@@ -16,6 +16,7 @@ package cachengine
 
 import (
 	"fmt"
+	"hash/crc32"
 	syslog "log"
 	"math"
 	"os"
@@ -42,6 +43,7 @@ import (
 
 const (
 	EnvDockerTmpfs = "DOCKER_FLASHNODE_TMPFS_OFF"
+	DirMod         = 512
 
 	DefaultExpireTime        = 60 * 60
 	InitFileName             = "flash.init"
@@ -73,15 +75,17 @@ type cachePrepareTask struct {
 }
 
 type cacheLoadTask struct {
-	volume   string
-	dataPath string
+	volume     string
+	dataPath   string
+	sourceType string
 }
 
 type cacheLoadFile struct {
-	volume   string
-	dataPath string
-	fullPath string
-	fileName string
+	volume     string
+	dataPath   string
+	fullPath   string
+	fileName   string
+	sourceType string
 }
 
 type lruCacheItem struct {
@@ -182,14 +186,16 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 				file := v.(*os.File)
 				return file.Close()
 			})
-
-		if _, err = os.Stat(fullPath); err != nil {
-			if !os.IsNotExist(err.(*os.PathError)) {
-				return
-			}
-			if err = os.Mkdir(fullPath, 0o755); err != nil {
-				if !os.IsExist(err) {
+		pPaths := []string{fullPath, fullPath + SourceTypeDefault, fullPath + SourceTypeBlock}
+		for _, pPath := range pPaths {
+			if _, err = os.Stat(pPath); err != nil {
+				if !os.IsNotExist(err.(*os.PathError)) {
 					return
+				}
+				if err = os.Mkdir(pPath, 0o755); err != nil {
+					if !os.IsExist(err) {
+						return
+					}
 				}
 			}
 		}
@@ -227,16 +233,20 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 		s.lruCacheMap.Store(fullPath, &lruCacheItem{lruCache: cache, config: diskCacheConfig, disk: d})
 		s.totalCacheNum++
 
-		if _, err = os.Stat(fullPath); err != nil {
-			if !os.IsNotExist(err.(*os.PathError)) {
-				return
-			}
-			if err = os.Mkdir(fullPath, 0o755); err != nil {
-				if !os.IsExist(err) {
+		pPaths := []string{fullPath, fullPath + SourceTypeDefault, fullPath + SourceTypeBlock}
+		for _, pPath := range pPaths {
+			if _, err = os.Stat(pPath); err != nil {
+				if !os.IsNotExist(err.(*os.PathError)) {
 					return
+				}
+				if err = os.Mkdir(pPath, 0o755); err != nil {
+					if !os.IsExist(err) {
+						return
+					}
 				}
 			}
 		}
+
 	}
 	s.lruFhCache = NewCache(LRUFileHandleCacheType, fhCapacity, -1, expireTime,
 		func(v interface{}, reason string) error {
@@ -308,6 +318,7 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 		cbNum      atomicutil.Int64
 		errorCbNum atomicutil.Int64
 	)
+	storages := []string{SourceTypeDefault, SourceTypeBlock}
 	begin := time.Now()
 	defer func() {
 		msg := fmt.Sprintf("[LoadDisk] dataPath(%v) load all cacheBlock(%v) using time(%v), unloaded cacheBlock num is (%v)", diskPath, cbNum.Load(), time.Since(begin), errorCbNum.Load())
@@ -344,26 +355,29 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 				}
 				for _, fileInfo := range fileInfoList {
 					filename := fileInfo.Name()
-					if !c.isCacheBlockFileName(filename) {
+					if task.sourceType == SourceTypeDefault && !c.isCacheBlockFileName(filename) {
 						log.LogWarnf("[LoadDisk] find invalid cacheBlock file[%v] on dataPath(%v)", filename, fullPath)
 						continue
 					}
-					filePathChan <- cacheLoadFile{volume: volume, dataPath: diskPath, fullPath: fullPath, fileName: filename}
+					filePathChan <- cacheLoadFile{volume: volume, dataPath: diskPath, fullPath: fullPath, fileName: filename, sourceType: task.sourceType}
 				}
 			}
 		}()
 	}
 
 	log.LogDebugf("action[LoadDisk] load cacheBlock from path(%v).", diskPath)
-	entries, err := os.ReadDir(diskPath)
-	if err != nil {
-		log.LogErrorf("action[LoadDisk] read dir(%v) err(%v).", diskPath, err)
-		close(cacheLoadTaskCh)
-		close(filePathChan)
-		return
-	}
-	for _, volEntry := range entries {
-		cacheLoadTaskCh <- cacheLoadTask{volume: volEntry.Name(), dataPath: diskPath}
+	for _, s := range storages {
+		sPath := diskPath + s
+		entries, err1 := os.ReadDir(sPath)
+		if err1 != nil {
+			log.LogErrorf("action[LoadDisk] read dir(%v) err(%v).", sPath, err1)
+			close(cacheLoadTaskCh)
+			close(filePathChan)
+			return err1
+		}
+		for _, volEntry := range entries {
+			cacheLoadTaskCh <- cacheLoadTask{volume: volEntry.Name(), dataPath: sPath, sourceType: s}
+		}
 	}
 	close(cacheLoadTaskCh)
 	dirScanWg.Wait()
@@ -373,21 +387,33 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 }
 
 func (c *CacheEngine) handlerFile(file *cacheLoadFile, cbNum *atomicutil.Int64, errorCbNum *atomicutil.Int64) {
-	inode, offset, version, err := unmarshalCacheBlockName(file.fileName)
-	if err != nil {
-		log.LogErrorf("action[LoadDisk] unmarshal cacheBlockName(%v) from dataPath(%v) volume(%v) err(%v) ",
-			file.fileName, file.fullPath, file.volume, err.Error())
-		return
-	}
-	log.LogDebugf("acton[LoadDisk] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
-		file.fullPath, file.fileName, file.volume, inode, offset, version)
+	if SourceTypeDefault == file.sourceType {
+		inode, offset, version, err := unmarshalCacheBlockName(file.fileName)
+		if err != nil {
+			log.LogErrorf("action[LoadDisk] unmarshal cacheBlockName(%v) from dataPath(%v) volume(%v) err(%v) ",
+				file.fileName, file.fullPath, file.volume, err.Error())
+			return
+		}
+		log.LogDebugf("acton[LoadDisk] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
+			file.fullPath, file.fileName, file.volume, inode, offset, version)
 
-	if _, err := c.createCacheBlockFromExist(file.dataPath, file.volume, inode, offset, version, 0, ""); err != nil {
-		c.deleteCacheBlock(GenCacheBlockKey(file.volume, inode, offset, version))
-		log.LogInfof("action[LoadDisk] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
-			file.fileName, file.fullPath, file.volume, err.Error())
-		errorCbNum.Add(1)
-		return
+		if _, err := c.createCacheBlockFromExist(file.dataPath, file.volume, inode, offset, version, 0, ""); err != nil {
+			c.DeleteCacheBlock(GenCacheBlockKey(file.volume, inode, offset, version))
+			log.LogInfof("action[LoadDisk] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
+				file.fileName, file.fullPath, file.volume, err.Error())
+			errorCbNum.Add(1)
+			return
+		}
+	} else {
+		log.LogDebugf("acton[LoadDisk] dataPath(%v) cacheBlockName(%v) volume(%v)",
+			file.fullPath, file.fileName, file.volume)
+		if _, err := c.createCacheBlockFromExistV2(file.dataPath, file.volume, file.fileName, 0, ""); err != nil {
+			c.DeleteCacheBlock(GenCacheBlockKeyV2(file.volume, file.fileName))
+			log.LogInfof("action[LoadDisk] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
+				file.fileName, file.fullPath, file.volume, err.Error())
+			errorCbNum.Add(1)
+			return
+		}
 	}
 	cbNum.Add(1)
 }
@@ -497,7 +523,7 @@ func (c *CacheEngine) initTmpfs() (err error) {
 	return fd.Close()
 }
 
-func (c *CacheEngine) deleteCacheBlock(key string) {
+func (c *CacheEngine) DeleteCacheBlock(key string) {
 	value, ok := c.keyToDiskMap.Load(key)
 	if ok {
 		cacheItem := value.(*lruCacheItem)
@@ -780,7 +806,7 @@ func (c *CacheEngine) CreateBlock(req *proto.CacheRequest, clientIP string, isPr
 	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), clientIP, isPrepare); err != nil {
 		log.LogWarnf("action[CreateBlock] createCacheBlock(%v) failed err %v ",
 			GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version), err)
-		c.deleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
+		c.DeleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
 		return nil, err
 	}
 	return block, nil
@@ -883,6 +909,15 @@ func (c *CacheEngine) EvictCacheAll() {
 func GenCacheBlockKey(volume string, inode, offset uint64, version uint32) string {
 	u := strconv.FormatUint
 	return path.Join(volume, u(inode, 10)+"#"+u(offset, 10)+"#"+u(uint64(version), 10))
+}
+
+func GenCacheBlockKeyV2(pDir string, key string) string {
+	return path.Join(pDir, key)
+}
+
+func MapKeyToDirectory(key string) string {
+	dirNum := crc32.ChecksumIEEE([]byte(key)) & 0xFFF % DirMod
+	return strconv.Itoa(int(dirNum))
 }
 
 func enabledTmpfs() bool {

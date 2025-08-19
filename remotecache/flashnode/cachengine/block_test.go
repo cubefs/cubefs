@@ -16,9 +16,12 @@ package cachengine
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"math/rand"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -329,4 +332,215 @@ func testParallelOperation(t *testing.T) {
 	time.Sleep(time.Second)
 	close(stopCh)
 	time.Sleep(time.Millisecond * 5)
+}
+
+func initTestTmpfs1() (umount func() error, err error) {
+	os.MkdirAll(testTmpFS1, 0o777)
+	if !enabledTmpfs() {
+		return func() error { return os.RemoveAll(testTmpFS1) }, nil
+	}
+	_, err = os.Stat(testTmpFS1)
+	if err == nil {
+		if tmpfs.IsTmpfs(testTmpFS1) {
+			if err = tmpfs.Umount(testTmpFS1); err != nil {
+				return
+			}
+		}
+	} else {
+		if !os.IsNotExist(err) {
+			return
+		}
+		_ = os.MkdirAll(testTmpFS1, 0o777)
+	}
+	if err = tmpfs.MountTmpfs(testTmpFS1, 200*util.MB); err != nil {
+		return
+	}
+	return func() error { return tmpfs.Umount(testTmpFS1) }, nil
+}
+
+func TestBlockWriteCacheV2(t *testing.T) {
+	umount, err := initTestTmpfs1()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, umount()) }()
+
+	testWriteSingleFileV2(t)
+	testWriteSingleFileErrorV2(t)
+	testWriteCacheBlockFullV2(t)
+	testWriteMultiCacheBlockV2(t)
+}
+
+func testWriteSingleFileV2(t *testing.T) {
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.Status = proto.ReadWrite
+	uniKey := t.Name()
+	pDir := MapKeyToDirectory(uniKey)
+	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, 5120, "", disk)
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+		func(v interface{}, reason string) error {
+			file := v.(*os.File)
+			return file.Close()
+		},
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		})
+	require.NoError(t, cacheBlock.initFilePath(false))
+	defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
+	bytes := randTestData(4096)
+	crcBuf := make([]byte, 4)
+	crcSum1 := crc32.ChecksumIEEE(bytes)
+	binary.BigEndian.PutUint32(crcBuf[:4], crcSum1)
+	require.NoError(t, cacheBlock.WriteAtV2(&proto.FlashWriteParam{
+		Offset:   0,
+		Size:     5120,
+		Data:     bytes,
+		Crc:      crcBuf[:4],
+		DataSize: 4096,
+	}))
+	bytes = randTestData(1024)
+	crcSum2 := crc32.ChecksumIEEE(bytes)
+	binary.BigEndian.PutUint32(crcBuf[:4], crcSum2)
+	require.NoError(t, cacheBlock.WriteAtV2(&proto.FlashWriteParam{
+		Offset:   4096,
+		Size:     5120,
+		Data:     bytes,
+		Crc:      crcBuf[:4],
+		DataSize: 1024,
+	}))
+	t.Logf("testWriteSingleFileV2, test:%s cacheBlock.datasize:%d", t.Name(), cacheBlock.usedSize)
+	_ = cacheBlock.MaybeWriteCompleted()
+	file, _ := cacheBlock.GetOrOpenFileHandler()
+	_, _ = file.ReadAt(crcBuf[:4], 5120+HeaderSize)
+	require.Equal(t, crcSum1, binary.BigEndian.Uint32(crcBuf[:4]))
+	_, _ = file.ReadAt(crcBuf[:4], 5120+HeaderSize+4)
+	require.Equal(t, crcSum2, binary.BigEndian.Uint32(crcBuf[:4]))
+}
+
+func testWriteSingleFileErrorV2(t *testing.T) {
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.Status = proto.ReadWrite
+	uniKey := t.Name()
+	pDir := MapKeyToDirectory(uniKey)
+	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, 1024, "", disk)
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+		func(v interface{}, reason string) error {
+			file := v.(*os.File)
+			return file.Close()
+		},
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		})
+	require.NoError(t, cacheBlock.initFilePath(false))
+	defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
+	bytes := randTestData(1024)
+	require.NoError(t, cacheBlock.WriteAtV2(&proto.FlashWriteParam{
+		Offset:   0,
+		Size:     1024,
+		Data:     bytes,
+		Crc:      make([]byte, CRCLen),
+		DataSize: 1024,
+	}))
+	require.Error(t, cacheBlock.WriteAtV2(&proto.FlashWriteParam{
+		Offset:   proto.CACHE_BLOCK_SIZE,
+		Size:     2048,
+		Data:     bytes,
+		Crc:      make([]byte, CRCLen),
+		DataSize: 1024,
+	}))
+	t.Logf("testWriteSingleFileErrorV2, test:%s cacheBlock.datasize:%d", t.Name(), cacheBlock.usedSize)
+}
+
+func testWriteCacheBlockFullV2(t *testing.T) {
+	var err error
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.Status = proto.ReadWrite
+	uniKey := t.Name()
+	pDir := MapKeyToDirectory(uniKey)
+	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.PageSize*1024, "", disk)
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+		func(v interface{}, reason string) error {
+			file := v.(*os.File)
+			return file.Close()
+		},
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		})
+	require.NoError(t, cacheBlock.initFilePath(false))
+	defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
+	bytes := randTestData(4096)
+	var offset int64
+	for {
+		if err = cacheBlock.WriteAtV2(&proto.FlashWriteParam{
+			Offset:   offset,
+			Size:     proto.PageSize * 1024,
+			Data:     bytes,
+			Crc:      make([]byte, CRCLen),
+			DataSize: 4096,
+		}); err != nil {
+			break
+		}
+		offset += 4096
+		if offset/4096%1024 == 0 {
+			t.Logf("testWriteCacheBlockFullV2, offset:%d cacheBlock.datasize:%d", offset, cacheBlock.usedSize)
+		}
+	}
+	require.Equal(t, offset, int64(proto.PageSize*1024))
+}
+
+func testWriteMultiCacheBlockV2(t *testing.T) {
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.Status = proto.ReadWrite
+	count := 100
+	wg := sync.WaitGroup{}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			var err error
+			uniKey := t.Name() + strconv.Itoa(index)
+			pDir := MapKeyToDirectory(uniKey)
+			cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, 4096*100, "", disk)
+			defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
+			cacheBlock.cacheEngine = &CacheEngine{}
+			cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+				func(v interface{}, reason string) error {
+					file := v.(*os.File)
+					return file.Close()
+				},
+				func(v interface{}) error {
+					file := v.(*os.File)
+					return file.Close()
+				})
+			err = cacheBlock.initFilePath(false)
+			require.NoError(t, err)
+			bytes := randTestData(4096)
+			offset := int64(0)
+			for j := 0; j < count; j++ {
+				if err = cacheBlock.WriteAtV2(&proto.FlashWriteParam{
+					Offset:   offset,
+					Size:     4096 * 100,
+					Data:     bytes,
+					Crc:      make([]byte, CRCLen),
+					DataSize: 4096,
+				}); err != nil {
+					break
+				}
+				offset += 4096
+				if j%4096 == 0 {
+					t.Logf("testWriteMultiCacheBlock, pdir:%v, write count:%v, cacheBlock.datasize:%d", pDir, j, cacheBlock.usedSize)
+				}
+			}
+			require.Equal(t, offset, int64(4096*100))
+		}(i)
+	}
+	wg.Wait()
 }

@@ -36,6 +36,11 @@ const (
 	FlashManualCheckAction  = "check"
 )
 
+var (
+	ErrorNotExistShouldCache    = fmt.Errorf("cache miss: should store and cache the key")
+	ErrorNotExistShouldNotCache = fmt.Errorf("only cache the miss after reaching the miss times")
+)
+
 type FlashGroupStatus int
 
 type SlotStatus int
@@ -247,6 +252,13 @@ func (pr *CachePrepareRequest) String() string {
 	return fmt.Sprintf("cachePrepareRequest[Volume(%v) Inode(%v) FixedFileOffset(%v) Sources(%v) TTL(%v)]", pr.CacheRequest.Volume, pr.CacheRequest.Inode, pr.CacheRequest.FixedFileOffset, len(pr.CacheRequest.Sources), pr.CacheRequest.TTL)
 }
 
+func (pbh *PutBlockHead) String() string {
+	if pbh == nil {
+		return ""
+	}
+	return fmt.Sprintf("PutBlockHead[UniKey(%v) BlockLen(%v) TTL(%v)]", pbh.UniKey, pbh.BlockLen, pbh.TTL)
+}
+
 type FlashGroupsAdminView struct {
 	FlashGroups []FlashGroupAdminView
 }
@@ -281,6 +293,14 @@ type FlashNodeStat struct {
 	NodeLimit         uint64
 	VolLimit          map[string]uint64
 	CacheStatus       []*CacheStatus
+}
+
+type FlashWriteParam struct {
+	Offset   int64
+	Size     int64
+	Data     []byte
+	Crc      []byte
+	DataSize int64
 }
 
 type CacheStatus struct {
@@ -423,4 +443,22 @@ func (flt *FlashManualTask) SetResponse(taskRsp *FlashNodeManualTaskResponse) {
 	flt.ManualTaskStatistics.TotalCacheSize = taskRsp.TotalCacheSize
 	flt.ManualTaskStatistics.LastCacheSize = taskRsp.LastCacheSize
 	flt.Done = taskRsp.Done
+}
+
+type CacheMissEntry struct {
+	UniKey     string
+	MissCount  int32
+	expiration int64
+}
+
+func CacheMissExpired(info *CacheMissEntry) bool {
+	return time.Now().UnixNano() > info.expiration
+}
+
+func SetMissEntryExpiration(info *CacheMissEntry, t time.Duration) {
+	info.expiration = time.Now().Add(t).UnixNano()
+}
+
+func GetMissEntryExpiration(info *CacheMissEntry) int64 {
+	return info.expiration
 }

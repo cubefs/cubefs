@@ -16,7 +16,6 @@ package stream
 
 import (
 	"encoding/binary"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -216,7 +215,6 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	}
 
 	log.LogDebugf("RemoteCache: Init")
-	fmt.Println("RemoteCache: Init")
 	rc.cluster = client.dataWrapper.ClusterName
 	rc.volname = client.extentConfig.Volume
 	rc.metaWrapper = client.metaWrapper

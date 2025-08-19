@@ -298,6 +298,8 @@ const (
 	OpFlashNodeHeartbeat        uint8 = 0xDA
 	OpFlashNodeCachePrepare     uint8 = 0xDB
 	OpFlashNodeCacheRead        uint8 = 0xDC
+	OpFlashNodeCachePutBlock    uint8 = 0xD8
+	OpFlashNodeCacheDelete      uint8 = 0xD9
 	OpFlashNodeSetReadIOLimits  uint8 = 0xED
 	OpFlashNodeSetWriteIOLimits uint8 = 0xEE
 	OpFlashNodeScan             uint8 = 0xD4

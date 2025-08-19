@@ -41,3 +41,11 @@ message CachePrepareRequest {
   CacheRequest    CacheRequest = 1;
   repeated string FlashNodes   = 2;
 }
+
+message PutBlockHead {
+  option (gogoproto.goproto_stringer) = false;
+
+  string UniKey = 1;
+  int64  BlockLen = 2;
+  uint64 TTL = 3;
+}

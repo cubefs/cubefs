@@ -23,12 +23,14 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -36,11 +38,15 @@ import (
 const (
 	_cacheBlockOpenOpt = os.O_CREATE | os.O_RDWR
 	HeaderSize         = 40
+	SourceTypeDefault  = ""
+	SourceTypeBlock    = "blocks"
+	CRCLen             = 4
 )
 
 type CacheBlock struct {
 	rootPath    string
 	filePath    string
+	sourceType  string
 	blockKey    string
 	cacheEngine *CacheEngine
 	ttl         int64
@@ -74,9 +80,10 @@ func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, ve
 	cb.inode = inode
 	cb.fixedOffset = fixedOffset
 	cb.version = version
+	cb.sourceType = SourceTypeDefault
 	cb.blockKey = GenCacheBlockKey(volume, inode, fixedOffset, version)
 	cb.updateAllocSize(int64(allocSize))
-	cb.filePath = path.Join(rootPath, cb.blockKey)
+	cb.filePath = path.Join(rootPath+SourceTypeDefault, cb.blockKey)
 	cb.rootPath = rootPath
 	cb.sourceReader = reader
 	cb.readyCh = make(chan struct{})
@@ -248,7 +255,7 @@ func (cb *CacheBlock) writeCacheBlockFileHeader(file *os.File) (err error) {
 	return
 }
 
-func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedSize int64, expiredTime time.Time, err error) {
+func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string) (allocSize, usedSize int64, expiredTime time.Time, err error) {
 	var stat os.FileInfo
 	var seconds int64
 	var reserved1, reserved2 uint64
@@ -279,9 +286,15 @@ func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedS
 		return
 	}
 
-	if usedSize+HeaderSize != stat.Size() {
+	if SourceTypeDefault == sourceType && usedSize+HeaderSize != stat.Size() {
 		err = fmt.Errorf("usedSize + headerSize[%v] != file real size[%v]", usedSize+HeaderSize, stat.Size())
 		return
+	} else if SourceTypeBlock == sourceType {
+		crcSize := (usedSize + proto.PageSize - 1) / proto.PageSize * CRCLen
+		if usedSize+HeaderSize+crcSize != stat.Size() {
+			err = fmt.Errorf("usedSize + headerSize + crsSize [%v] != file real size[%v]", usedSize+HeaderSize+crcSize, stat.Size())
+			return
+		}
 	}
 
 	if err = binary.Read(file, binary.BigEndian, &seconds); err != nil {
@@ -310,7 +323,7 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 	}()
 
 	var file *os.File
-	blockParent := path.Join(cb.rootPath, cb.volume)
+	blockParent := path.Join(cb.rootPath+cb.sourceType, cb.volume)
 
 	if _, err = os.Stat(blockParent); err != nil {
 		if !os.IsNotExist(err.(*os.PathError)) {
@@ -346,7 +359,7 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 	} else {
 		var allocSize, usedSize int64
 		var expiredTime time.Time
-		if allocSize, usedSize, expiredTime, err = cb.checkCacheBlockFileHeader(file); err != nil {
+		if allocSize, usedSize, expiredTime, err = cb.checkCacheBlockFileHeader(file, cb.sourceType); err != nil {
 			file.Close()
 			return fmt.Errorf("initFilePath check file header failed: %s", err.Error())
 		}
@@ -497,7 +510,9 @@ func (cb *CacheBlock) ready(ctx context.Context, waitForBlock bool) error {
 }
 
 func (cb *CacheBlock) notifyClose() {
-	cb.closeOnce.Do(func() { close(cb.closeCh) })
+	cb.closeOnce.Do(func() {
+		close(cb.closeCh)
+	})
 }
 
 func (cb *CacheBlock) notifyReady() {
@@ -525,7 +540,7 @@ func (cb *CacheBlock) InitOnce(engine *CacheEngine, sources []*proto.DataSource)
 	cb.initOnce.Do(func() { cb.Init(sources, engine.readDataNodeTimeout) })
 	select {
 	case <-cb.closeCh:
-		engine.deleteCacheBlock(cb.blockKey)
+		engine.DeleteCacheBlock(cb.blockKey)
 		auditlog.LogFlashNodeOp("BlockInit", fmt.Sprintf("%v is closed", cb.info()), nil)
 	default:
 	}
@@ -567,7 +582,7 @@ func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto
 		cb.InitForCacheRead(sources, engine.readDataNodeTimeout)
 		select {
 		case <-cb.closeCh:
-			engine.deleteCacheBlock(cb.blockKey)
+			engine.DeleteCacheBlock(cb.blockKey)
 			auditlog.LogFlashNodeOp("BlockInit", fmt.Sprintf("%v is closed", cb.info()), nil)
 		default:
 		}
@@ -645,4 +660,213 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 
 func (cb *CacheBlock) info() string {
 	return fmt.Sprintf("path(%v)_from(%v)_size(%v)", cb.filePath, cb.clientIP, cb.allocSize)
+}
+
+func NewCacheBlockV2(rootPath string, volume string, uniKey string, allocSize uint64, clientIP string, d *Disk,
+) (cb *CacheBlock) {
+	cb = new(CacheBlock)
+	cb.volume = volume
+	cb.blockKey = GenCacheBlockKeyV2(volume, uniKey)
+	cb.updateAllocSize(int64(allocSize))
+	cb.sourceType = SourceTypeBlock
+	cb.filePath = path.Join(rootPath+SourceTypeBlock, cb.blockKey)
+	cb.rootPath = rootPath
+	cb.readyCh = make(chan struct{})
+	cb.closeCh = make(chan struct{})
+	cb.clientIP = clientIP
+	cb.disk = d
+	return
+}
+
+// CreateBlockV2 todo merge create block v2 to default
+func (c *CacheEngine) CreateBlockV2(pDir string, uniKey string, ttl uint64, size uint32, clientIP string) (block *CacheBlock, err error, created bool) {
+	if block, err, created = c.createCacheBlockV2(pDir, uniKey, int64(ttl), uint64(size), clientIP); err != nil {
+		log.LogWarnf("action[CreateBlock] createCacheBlock(%v) failed err %v ",
+			GenCacheBlockKeyV2(pDir, uniKey), err)
+		c.DeleteCacheBlock(GenCacheBlockKeyV2(pDir, uniKey))
+		return nil, err, created
+	}
+	return block, nil, created
+}
+
+func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, allocSize uint64, clientIP string) (block *CacheBlock, err error, created bool) {
+	if allocSize == 0 {
+		return nil, fmt.Errorf("alloc size is zero"), false
+	}
+	key := GenCacheBlockKeyV2(pDir, uniKey)
+	v, ok := c.keyToDiskMap.Load(key)
+	if ok {
+		cacheItem := v.(*lruCacheItem)
+		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
+			if blockValue, got := cacheItem.lruCache.Peek(key); got {
+				block = blockValue.(*CacheBlock)
+				return
+			}
+		}
+	}
+
+	value, loaded := c.creatingCacheBlockMap.LoadOrStore(key, make(chan struct{}))
+	ch := value.(chan struct{})
+	if loaded {
+		created = true
+		<-ch
+		v, ok = c.keyToDiskMap.Load(key)
+		if ok {
+			cacheItem := v.(*lruCacheItem)
+			if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
+				if blockValue, got := v.(*lruCacheItem).lruCache.Peek(key); got {
+					block = blockValue.(*CacheBlock)
+					return
+				}
+			}
+		}
+		return nil, fmt.Errorf("unable to get created cacheblock"), created
+	} else {
+		defer func() {
+			close(ch)
+			c.creatingCacheBlockMap.Delete(key)
+		}()
+	}
+
+	v, ok = c.keyToDiskMap.Load(key)
+	if ok {
+		cacheItem := v.(*lruCacheItem)
+		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
+			if blockValue, got := cacheItem.lruCache.Peek(key); got {
+				block = blockValue.(*CacheBlock)
+				return
+			}
+		}
+	}
+
+	var cacheItem *lruCacheItem
+	if cacheItem, err = c.selectAvailableLruCache(); err == nil {
+		block = NewCacheBlockV2(cacheItem.config.Path, pDir, uniKey, allocSize, clientIP, cacheItem.disk)
+		if ttl <= 0 {
+			ttl = proto.DefaultCacheTTLSec
+		}
+		block.cacheEngine = c
+		block.ttl = ttl
+
+		defer func() {
+			if err != nil {
+				block.Delete(fmt.Sprintf("create block failed %v", err))
+			}
+		}()
+		if _, err = cacheItem.lruCache.CheckDiskSpace(block.rootPath, block.blockKey, block.getAllocSize()); err != nil {
+			return
+		}
+
+		if err = block.initFilePath(false); err != nil {
+			return
+		}
+		if _, err = cacheItem.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
+			return
+		}
+		c.keyToDiskMap.Store(key, cacheItem)
+	}
+
+	return
+}
+
+func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string, uniKey string, allocSize uint64, clientIP string) (block *CacheBlock, err error) {
+	key := GenCacheBlockKeyV2(volume, uniKey)
+	v, ok := c.keyToDiskMap.Load(key)
+	if ok {
+		cacheItem := v.(*lruCacheItem)
+		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
+			if blockValue, got := cacheItem.lruCache.Peek(key); got {
+				block = blockValue.(*CacheBlock)
+				return
+			}
+		}
+	}
+
+	v, ok = c.lruCacheMap.Load(dataPath)
+	if !ok {
+		return nil, errors.NewErrorf("no lru cache item related to dataPath(%v)", dataPath)
+	}
+	cacheItem := v.(*lruCacheItem)
+	if atomic.LoadInt32(&cacheItem.disk.Status) == proto.Unavailable {
+		return nil, errors.NewErrorf("lru cache item related to dataPath(%v) is unavailable", dataPath)
+	}
+	block = NewCacheBlockV2(cacheItem.config.Path, volume, uniKey, allocSize, clientIP, cacheItem.disk)
+	block.cacheEngine = c
+	defer func() {
+		if err != nil {
+			block.Delete(fmt.Sprintf("create block from exist failed %v", err))
+		}
+	}()
+
+	if err = block.initFilePath(true); err != nil {
+		return
+	}
+
+	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
+		return
+	}
+	c.keyToDiskMap.Store(key, cacheItem)
+
+	return
+}
+
+func (cb *CacheBlock) WriteAtV2(writeParam *proto.FlashWriteParam) (err error) {
+	var file *os.File
+	bgTime := stat.BeginStat()
+	startTime := time.Now()
+	defer func() {
+		if err != nil {
+			if IsDiskErr(err.Error()) {
+				log.LogWarnf("[checkIsDiskError] data path(%v) meet io error", cb.filePath)
+				cb.cacheEngine.triggerCacheError(cb.blockKey, cb.rootPath)
+			}
+		}
+		stat.EndStat("CacheBlock:WriteAtV2", err, bgTime, 1)
+		elapsed := time.Since(startTime)
+		if elapsed > time.Second {
+			log.LogWarnf("[WriteAtV2] WriteAt function (%v) cost %v", cb.filePath, elapsed.String())
+		}
+	}()
+	usedSize := cb.getUsedSize()
+	if allocSize := cb.getAllocSize(); writeParam.Offset != usedSize || writeParam.Offset >= allocSize || writeParam.DataSize == 0 || writeParam.Offset+writeParam.DataSize > allocSize {
+		return fmt.Errorf("parameter offset=%d size=%d allocSize:%d blockUsedSize:%d", writeParam.Offset, writeParam.DataSize, allocSize, usedSize)
+	}
+	if file, err = cb.GetOrOpenFileHandler(); err != nil {
+		log.LogWarnf("[WriteAtV2] GetOrOpenFileHandler (%v) err %v", cb.filePath, err)
+		return
+	}
+	if _, err = file.WriteAt(writeParam.Data, writeParam.Offset+HeaderSize); err != nil {
+		log.LogWarnf("[WriteAtV2] WriteAt (%v) data offset %v err %v", cb.filePath, writeParam.Offset+HeaderSize, err)
+		return
+	}
+	n := writeParam.Offset/proto.PageSize*CRCLen + cb.allocSize + HeaderSize
+	if log.EnableDebug() {
+		log.LogDebugf("[WriteAtV2] file offset %v crc index %v and datasize %v", writeParam.Offset, n, writeParam.DataSize)
+	}
+	if _, err = file.WriteAt(writeParam.Crc[:CRCLen], n); err != nil {
+		log.LogWarnf("[WriteAtV2] WriteAt (%v) crc offset %v err %v", cb.filePath, n, err)
+		return
+	}
+	cb.maybeUpdateUsedSize(writeParam.Offset + writeParam.DataSize)
+	return
+}
+
+func (cb *CacheBlock) MaybeWriteCompleted() (err error) {
+	if cb.usedSize != cb.allocSize {
+		return
+	}
+	var file *os.File
+	if file, err = cb.GetOrOpenFileHandler(); err != nil {
+		log.LogErrorf("action[MaybeWriteCompleted], block:%s, get file handler err:%v", cb.blockKey, err)
+		return
+	}
+	if err = cb.writeCacheBlockFileHeader(file); err != nil {
+		log.LogErrorf("action[MaybeWriteCompleted], block:%s, write file header err:%v", cb.blockKey, err)
+		return
+	}
+	if err = file.Sync(); err != nil {
+		return
+	}
+	cb.notifyReady()
+	return nil
 }

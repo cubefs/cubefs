@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/remotecache/flashnode/cachengine"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
@@ -98,12 +99,13 @@ func handleMaster(w http.ResponseWriter, r *http.Request) {
 }
 
 func newFlashnode() *FlashNode {
-	return &FlashNode{mc: master.NewMasterClient([]string{masterAddr}, false)}
+	return &FlashNode{mc: master.NewMasterClient([]string{masterAddr}, false), missCache: cachengine.NewMissCache(_defaultMissEntryExpiration, _defaultMaxMissEntryCache)}
 }
 
 func TestFlashNode(t *testing.T) {
 	t.Run("New", testNew)
 	t.Run("Config", testConfig)
+	t.Run("MissCache", testShouldCache)
 	t.Run("TCP", testTCP)
 	t.Run("HTTP", testHTTP)
 	t.Run("ManualScan", testManualScanner)
