@@ -64,7 +64,7 @@ type RemoteCache struct {
 	remoteCacheMaxFileSizeGB int64
 	remoteCacheOnlyForNotSSD bool
 
-	remoteCacheBase *remotecache.RemoteCacheBase
+	remoteCacheClient *remotecache.RemoteCacheClient
 }
 
 type AddressPingStats struct {
@@ -99,7 +99,7 @@ func (as *AddressPingStats) Average() time.Duration {
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
 	if !rc.Started {
-		// update remotecache must after rc.Started(remoteCacheBase already init)
+		// update remotecache must after rc.Started(remoteCacheClient already init)
 		return
 	}
 	// cannot set vol's RemoteCacheReadTimeoutSec <= 0
@@ -118,8 +118,8 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 	}
 
 	// check if RemoteCache.ClusterEnabled is set to true after it has been set to false last time
-	if !client.RemoteCache.remoteCacheBase.IsClusterEnable() {
-		if err := client.RemoteCache.remoteCacheBase.UpdateClusterEnable(); err != nil {
+	if !client.RemoteCache.remoteCacheClient.IsClusterEnable() {
+		if err := client.RemoteCache.remoteCacheClient.UpdateClusterEnable(); err != nil {
 			log.LogWarnf("UpdateClusterEnable: err(%v)", err)
 			return
 		}
@@ -149,13 +149,13 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		log.LogInfof("RcAutoPrepare: %v -> %v", rc.AutoPrepare, view.RemoteCacheAutoPrepare)
 		rc.AutoPrepare = view.RemoteCacheAutoPrepare
 	}
-	if rc.remoteCacheBase.TTL != view.RemoteCacheTTL {
-		log.LogInfof("RcTTL: %d -> %d", rc.remoteCacheBase.TTL, view.RemoteCacheTTL)
-		rc.remoteCacheBase.TTL = view.RemoteCacheTTL
+	if rc.remoteCacheClient.TTL != view.RemoteCacheTTL {
+		log.LogInfof("RcTTL: %d -> %d", rc.remoteCacheClient.TTL, view.RemoteCacheTTL)
+		rc.remoteCacheClient.TTL = view.RemoteCacheTTL
 	}
-	if rc.remoteCacheBase.ReadTimeout != view.RemoteCacheReadTimeout {
-		log.LogInfof("RcReadTimeoutSec: %d(ms) -> %d(ms)", rc.remoteCacheBase.ReadTimeout, view.RemoteCacheReadTimeout)
-		rc.remoteCacheBase.ReadTimeout = view.RemoteCacheReadTimeout
+	if rc.remoteCacheClient.ReadTimeout != view.RemoteCacheReadTimeout {
+		log.LogInfof("RcReadTimeoutSec: %d(ms) -> %d(ms)", rc.remoteCacheClient.ReadTimeout, view.RemoteCacheReadTimeout)
+		rc.remoteCacheClient.ReadTimeout = view.RemoteCacheReadTimeout
 	}
 
 	if rc.remoteCacheMaxFileSizeGB != view.RemoteCacheMaxFileSizeGB {
@@ -168,22 +168,22 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		rc.remoteCacheOnlyForNotSSD = view.RemoteCacheOnlyForNotSSD
 	}
 
-	if rc.remoteCacheBase.RemoteCacheMultiRead != view.RemoteCacheMultiRead {
-		log.LogInfof("RcFollowerRead: %v -> %v", rc.remoteCacheBase.RemoteCacheMultiRead, view.RemoteCacheMultiRead)
-		rc.remoteCacheBase.RemoteCacheMultiRead = view.RemoteCacheMultiRead
+	if rc.remoteCacheClient.RemoteCacheMultiRead != view.RemoteCacheMultiRead {
+		log.LogInfof("RcFollowerRead: %v -> %v", rc.remoteCacheClient.RemoteCacheMultiRead, view.RemoteCacheMultiRead)
+		rc.remoteCacheClient.RemoteCacheMultiRead = view.RemoteCacheMultiRead
 	}
 
-	if rc.remoteCacheBase.FlashNodeTimeoutCount != int32(view.FlashNodeTimeoutCount) {
-		log.LogInfof("RcFlashNodeTimeoutCount: %d -> %d", rc.remoteCacheBase.FlashNodeTimeoutCount, int32(view.FlashNodeTimeoutCount))
-		rc.remoteCacheBase.FlashNodeTimeoutCount = int32(view.FlashNodeTimeoutCount)
+	if rc.remoteCacheClient.FlashNodeTimeoutCount != int32(view.FlashNodeTimeoutCount) {
+		log.LogInfof("RcFlashNodeTimeoutCount: %d -> %d", rc.remoteCacheClient.FlashNodeTimeoutCount, int32(view.FlashNodeTimeoutCount))
+		rc.remoteCacheClient.FlashNodeTimeoutCount = int32(view.FlashNodeTimeoutCount)
 	}
-	if rc.remoteCacheBase.SameZoneTimeout != view.RemoteCacheSameZoneTimeout {
-		log.LogInfof("RcSameZoneTimeout: %d -> %d", rc.remoteCacheBase.SameZoneTimeout, view.RemoteCacheSameZoneTimeout)
-		rc.remoteCacheBase.SameZoneTimeout = view.RemoteCacheSameZoneTimeout
+	if rc.remoteCacheClient.SameZoneTimeout != view.RemoteCacheSameZoneTimeout {
+		log.LogInfof("RcSameZoneTimeout: %d -> %d", rc.remoteCacheClient.SameZoneTimeout, view.RemoteCacheSameZoneTimeout)
+		rc.remoteCacheClient.SameZoneTimeout = view.RemoteCacheSameZoneTimeout
 	}
-	if rc.remoteCacheBase.SameRegionTimeout != view.RemoteCacheSameRegionTimeout {
-		log.LogInfof("RcSameRegionTimeout: %d -> %d", rc.remoteCacheBase.SameRegionTimeout, view.RemoteCacheSameRegionTimeout)
-		rc.remoteCacheBase.SameRegionTimeout = view.RemoteCacheSameRegionTimeout
+	if rc.remoteCacheClient.SameRegionTimeout != view.RemoteCacheSameRegionTimeout {
+		log.LogInfof("RcSameRegionTimeout: %d -> %d", rc.remoteCacheClient.SameRegionTimeout, view.RemoteCacheSameRegionTimeout)
+		rc.remoteCacheClient.SameRegionTimeout = view.RemoteCacheSameRegionTimeout
 	}
 }
 
@@ -221,9 +221,9 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	rc.volname = client.extentConfig.Volume
 	rc.metaWrapper = client.metaWrapper
 	rc.clusterEnable = client.enableRemoteCacheCluster
-	rc.remoteCacheBase, err = remotecache.NewRemoteCacheBase(client.extentConfig.Masters, proto.CACHE_BLOCK_SIZE)
+	rc.remoteCacheClient, err = remotecache.NewRemoteCacheClient(client.extentConfig.Masters, proto.CACHE_BLOCK_SIZE)
 
-	err = rc.remoteCacheBase.UpdateFlashGroups()
+	err = rc.remoteCacheClient.UpdateFlashGroups()
 	if err != nil {
 		log.LogDebugf("RemoteCache: Init err %v", err)
 		return
@@ -242,10 +242,7 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 func (rc *RemoteCache) Stop() {
 	rc.stopOnce.Do(func() {
 		rc.Started = false
-		rc.remoteCacheBase.Stop()
-		// close(rc.stopC)
-		// rc.conns.Close()
-		// rc.wg.Wait()
+		rc.remoteCacheClient.Stop()
 	})
 }
 
