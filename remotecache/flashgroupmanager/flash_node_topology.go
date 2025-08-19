@@ -20,6 +20,7 @@ import (
 
 const (
 	defaultFlashGroupSlotsCount = 32
+	twoDaysInSeconds            = 2 * 24 * 60 * 60
 )
 
 type (
@@ -213,19 +214,24 @@ func (t *FlashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 			} else {
 				atomic.StoreInt32(&fg.LostAllFlashNode, 0)
 				if len(fg.ReservedSlots) > 0 {
-					fg.lock.Lock()
-					oldSlots = append(oldSlots, fg.Slots...)
-					oldReservedSlots = append(oldReservedSlots, fg.ReservedSlots...)
-					if log.EnableInfo() {
-						log.LogInfof("recover fg(%v) oldSlots(%v) oldReservedSlots(%v)", fg.ID, oldSlots, oldReservedSlots)
+					if len(fg.Slots) == 0 && fg.ReduceAllTime != 0 && (time.Now().Unix()-fg.ReduceAllTime >= twoDaysInSeconds) {
+						fg.IncreaseSlot(t.SyncFlashGroupFunc)
+					} else if atomic.LoadInt32(&fg.IncreasingSlots) == 0 {
+						fg.lock.Lock()
+						oldSlots = append(oldSlots, fg.Slots...)
+						oldReservedSlots = append(oldReservedSlots, fg.ReservedSlots...)
+						if log.EnableInfo() {
+							log.LogInfof("recover fg(%v) oldSlots(%v) oldReservedSlots(%v)", fg.ID, oldSlots, oldReservedSlots)
+						}
+						fg.Slots = append(fg.Slots, fg.ReservedSlots...)
+						fg.ReservedSlots = make([]uint32, 0)
+						fg.ReduceAllTime = 0
+						if err := t.SyncFlashGroupFunc(fg); err != nil {
+							fg.Slots = oldSlots
+							fg.ReservedSlots = oldReservedSlots
+						}
+						fg.lock.Unlock()
 					}
-					fg.Slots = append(fg.Slots, fg.ReservedSlots...)
-					fg.ReservedSlots = make([]uint32, 0)
-					if err := t.SyncFlashGroupFunc(fg); err != nil {
-						fg.Slots = oldSlots
-						fg.ReservedSlots = oldReservedSlots
-					}
-					fg.lock.Unlock()
 				}
 			}
 
@@ -240,9 +246,11 @@ func (t *FlashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 					}
 					fg.Slots = append(fg.Slots, fg.ReservedSlots...)
 					fg.ReservedSlots = make([]uint32, 0)
+					fg.ReduceAllTime = 0
 					if err := t.SyncFlashGroupFunc(fg); err != nil {
 						fg.Slots = oldSlots
 						fg.ReservedSlots = oldReservedSlots
+						fg.ReduceAllTime = 0
 					}
 					fg.lock.Unlock()
 				} else {

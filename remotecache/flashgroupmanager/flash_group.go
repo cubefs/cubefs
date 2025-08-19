@@ -1,7 +1,6 @@
 package flashgroupmanager
 
 import (
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +27,8 @@ type FlashGroupValue struct {
 	Status           proto.FlashGroupStatus
 	LostAllFlashNode int32
 	ReducingSlots    int32
+	IncreasingSlots  int32
+	ReduceAllTime    int64 // unix second
 	SlotChanged      int32
 }
 
@@ -121,11 +122,38 @@ func (fg *FlashGroup) ReduceSlot(syncFlashGroupFunc SyncUpdateFlashGroupFunc) {
 	}()
 }
 
+func (fg *FlashGroup) IncreaseSlot(syncFlashGroupFunc SyncUpdateFlashGroupFunc) {
+	if atomic.CompareAndSwapInt32(&fg.IncreasingSlots, 0, 1) {
+		return
+	}
+	if log.EnableDebug() {
+		log.LogDebugf("flashgroup %v is increasing slots", fg)
+	}
+	totalSlots := len(fg.Slots) + len(fg.ReservedSlots)
+	numToSelect := (totalSlots + 8 - 1) / 8
+	fg.executeIncreaseSlot(numToSelect, syncFlashGroupFunc)
+	go func() {
+		ticker := time.NewTicker(20 * time.Second)
+		defer func() {
+			atomic.StoreInt32(&fg.IncreasingSlots, 0)
+			ticker.Stop()
+		}()
+		var i int
+		for {
+			if len(fg.ReservedSlots) == 0 {
+				return
+			}
+			<-ticker.C
+			i++
+			fg.executeIncreaseSlot(numToSelect, syncFlashGroupFunc)
+		}
+	}()
+}
+
 func (fg *FlashGroup) executeReduceSlot(numToReduce int, syncFlashGroupFunc SyncUpdateFlashGroupFunc) {
 	if len(fg.Slots) == 0 {
 		return
 	}
-	rand.Seed(time.Now().UnixNano())
 	fg.lock.Lock()
 	defer fg.lock.Unlock()
 	numToReduce = util.Min(numToReduce, len(fg.Slots))
@@ -140,9 +168,43 @@ func (fg *FlashGroup) executeReduceSlot(numToReduce int, syncFlashGroupFunc Sync
 	}
 	fg.ReservedSlots = append(fg.ReservedSlots, fg.Slots[:numToReduce]...)
 	fg.Slots = fg.Slots[numToReduce:]
+	if len(fg.Slots) == 0 {
+		fg.ReduceAllTime = time.Now().Unix()
+	}
 	if err := syncFlashGroupFunc(fg); err != nil {
 		fg.Slots = oldSlots
 		fg.ReservedSlots = oldReservedSlots
+		fg.ReduceAllTime = 0
+	}
+}
+
+func (fg *FlashGroup) executeIncreaseSlot(numToIncrease int, syncFlashGroupFunc SyncUpdateFlashGroupFunc) {
+	if len(fg.ReservedSlots) == 0 {
+		return
+	}
+	fg.lock.Lock()
+	defer fg.lock.Unlock()
+	numToIncrease = util.Min(numToIncrease, len(fg.ReservedSlots))
+	if numToIncrease == 0 {
+		return
+	}
+	var oldSlots, oldReservedSlots []uint32
+	oldSlots = append(oldSlots, fg.Slots...)
+	oldReservedSlots = append(oldReservedSlots, fg.ReservedSlots...)
+	if log.EnableInfo() {
+		log.LogInfof("executeIncreaseSlot fg(%v) oldSlots(%v) oldReservedSlots(%v)", fg.ID, oldSlots, oldReservedSlots)
+	}
+	fg.Slots = append(fg.Slots, fg.ReservedSlots[:numToIncrease]...)
+	fg.ReservedSlots = fg.ReservedSlots[numToIncrease:]
+	if len(fg.ReservedSlots) == 0 {
+		fg.ReduceAllTime = 0
+	}
+	if err := syncFlashGroupFunc(fg); err != nil {
+		fg.Slots = oldSlots
+		fg.ReservedSlots = oldReservedSlots
+		if len(fg.ReservedSlots) == 0 {
+			fg.ReduceAllTime = 0
+		}
 	}
 }
 
