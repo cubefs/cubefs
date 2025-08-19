@@ -25,7 +25,6 @@ import (
 	"github.com/cubefs/cubefs/tool/remotecache-benchmark/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/bytespool"
-	"github.com/cubefs/cubefs/util/stat"
 	"github.com/google/uuid"
 )
 
@@ -92,10 +91,6 @@ func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master s
 		tester.cacheStorage, err = remotecache.NewRemoteCacheClient(cfg)
 		if err != nil {
 			fmt.Printf("\nCreate a remote cache Tester failed:%v\n", err)
-		}
-		_, err = stat.NewStatistic("/tmp/cfs", "remoteCacheClient", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
-		if err != nil {
-			fmt.Printf("\nCreate a remote cache stat log failed:%v\n", err)
 		}
 	}
 
@@ -215,6 +210,7 @@ func main() {
 	clear := flag.Bool("clear-cache", true, "Clear page cache")
 	removeKey := flag.Bool("remove-key", false, "Remove specific key")
 	blockKey := flag.String("block-key", "", "Block unique key")
+	readRepeat := flag.Int("read-repeat", 1, "Read the repeat count of a key press")
 	flag.Parse()
 
 	fmt.Printf("Parsed command-line arguments:\n")
@@ -232,6 +228,7 @@ func main() {
 	fmt.Printf("  -clear-cache: %v\n", *clear)
 	fmt.Printf("  -remove-key: %v\n", *removeKey)
 	fmt.Printf("  -block-key: %v\n", *blockKey)
+	fmt.Printf("  -read-repeat: %v\n", *readRepeat)
 	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master, *clear)
 	if *needGenerate {
 		if err := tester.GenerateTestData(*totalSizeGB, *genConcurrency); err != nil {
@@ -256,7 +253,7 @@ func main() {
 
 	if *runGetTest {
 		// Ensure all data has been preheated into the storage system.
-		tester.RunGetBenchmark(ctx, *concurrency)
+		tester.RunGetBenchmark(ctx, *concurrency, *readRepeat)
 	}
 
 	if *removeKey && *blockKey != "" {
@@ -276,7 +273,6 @@ func (t *BenchmarkTester) Stop() {
 	if t.cacheStorage != nil {
 		t.cacheStorage.Stop()
 	}
-	stat.WriteStat()
 }
 
 func (t *BenchmarkTester) RunPutBenchmark(ctx context.Context, concurrency int) {
@@ -510,23 +506,23 @@ func (fh *FileHandler) Close() error {
 	return err
 }
 
-func (t *BenchmarkTester) RunGetBenchmark(ctx context.Context, concurrency int) {
+func (t *BenchmarkTester) RunGetBenchmark(ctx context.Context, concurrency int, repeats int) {
 	fmt.Printf("\n=== Starting Get performance test (concurrency: %d) ===\n", concurrency)
 	if t.hddStorage != nil {
-		hddResult := t.runStorageGetBenchmark(ctx, t.hddStorage, concurrency)
+		hddResult := t.runStorageGetBenchmark(ctx, t.hddStorage, concurrency, repeats)
 		t.printBenchmarkResult(hddResult)
 	}
 	if t.nvmeStorage != nil {
-		nvmeResult := t.runStorageGetBenchmark(ctx, t.nvmeStorage, concurrency)
+		nvmeResult := t.runStorageGetBenchmark(ctx, t.nvmeStorage, concurrency, repeats)
 		t.printBenchmarkResult(nvmeResult)
 	}
 	if t.cacheStorage != nil {
-		remoteResult := t.runStorageGetBenchmark(ctx, t.cacheStorage, concurrency)
+		remoteResult := t.runStorageGetBenchmark(ctx, t.cacheStorage, concurrency, repeats)
 		t.printBenchmarkResult(remoteResult)
 	}
 }
 
-func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage storage.Storage, concurrency int) *BenchmarkResult {
+func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage storage.Storage, concurrency int, repeats int) *BenchmarkResult {
 	fmt.Printf("Testing %s Get performance...\n", storage.Name())
 	// if t.clearPageCache {
 	//	clearPageCache()
@@ -561,58 +557,60 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 					continue
 				}
 				fh := value.(*FileHandler)
-				startTime := time.Now()
-				from := int64(0)
-				to := fh.Size
-				reqId := uuid.New().String()
-				r, len1, _, err := storage.Get(ctx, reqId, fh.FileName, from, to)
-				var latency time.Duration
-				var dataBuf, tmpBuf []byte
+				for i := 0; i < repeats; i++ {
+					startTime := time.Now()
+					from := int64(0)
+					to := fh.Size
+					reqId := uuid.New().String()
+					r, len1, _, err := storage.Get(ctx, reqId, fh.FileName, from, to)
+					var latency time.Duration
+					var dataBuf, tmpBuf []byte
 
-				if err == nil && r != nil {
-					dataBuf = bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
-					tmpBuf = bytespool.Alloc(int(to - from))
-					reads := 0
-					for {
-						readBytes, readErr := r.Read(dataBuf)
-						if readErr != nil && readErr != io.EOF {
-							fmt.Printf("storage %v read data %v failed reqID %v: readErr %v\n", storage.Name(), fh.FileName, reqId, readErr)
-							err = readErr
-							break
-						}
-						copy(tmpBuf[reads:], dataBuf[:readBytes])
-						reads += readBytes
-						if readErr == io.EOF {
-							break
-						}
-					}
-					if err == nil && reads != int(len1) {
-						err = fmt.Errorf("wrong len %v:expected[%v]", reads, len1)
-					} else if err == nil {
-						latency = time.Since(startTime)
-						if t.verify {
-							readCrc := crc32.ChecksumIEEE(tmpBuf[:reads])
-							actualCrc := crc32.ChecksumIEEE(fh.bytes[from:to])
-							if actualCrc != readCrc {
-								err = fmt.Errorf("wrong crc %v:expected[%v]", actualCrc, readCrc)
+					if err == nil && r != nil {
+						dataBuf = bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
+						tmpBuf = bytespool.Alloc(int(to - from))
+						reads := 0
+						for {
+							readBytes, readErr := r.Read(dataBuf)
+							if readErr != nil && readErr != io.EOF {
+								fmt.Printf("storage %v read data %v failed reqID %v: readErr %v\n", storage.Name(), fh.FileName, reqId, readErr)
+								err = readErr
+								break
+							}
+							copy(tmpBuf[reads:], dataBuf[:readBytes])
+							reads += readBytes
+							if readErr == io.EOF {
+								break
 							}
 						}
+						if err == nil && reads != int(len1) {
+							err = fmt.Errorf("wrong len %v:expected[%v]", reads, len1)
+						} else if err == nil {
+							latency = time.Since(startTime)
+							if t.verify {
+								readCrc := crc32.ChecksumIEEE(tmpBuf[:reads])
+								actualCrc := crc32.ChecksumIEEE(fh.bytes[from:to])
+								if actualCrc != readCrc {
+									err = fmt.Errorf("wrong crc %v:expected[%v]", actualCrc, readCrc)
+								}
+							}
+						}
+						bytespool.Free(dataBuf)
+						bytespool.Free(tmpBuf)
 					}
-					bytespool.Free(dataBuf)
-					bytespool.Free(tmpBuf)
-				}
-				if err != nil && err != io.EOF {
-					atomic.AddInt64(&errorCount, 1)
-					fmt.Printf("storage %v get %v failed reqID %v: %v\n", storage.Name(), fh.FileName, reqId, err)
-				} else {
-					atomic.AddInt64(&successCount, 1)
-					atomic.AddInt64(&totalBytes, len1)
-					result.Latencies = append(result.Latencies, latency)
+					if err != nil && err != io.EOF {
+						atomic.AddInt64(&errorCount, 1)
+						fmt.Printf("storage %v get %v failed reqID %v: %v\n", storage.Name(), fh.FileName, reqId, err)
+					} else {
+						atomic.AddInt64(&successCount, 1)
+						atomic.AddInt64(&totalBytes, len1)
+						result.Latencies = append(result.Latencies, latency)
+					}
+					if r != nil {
+						r.Close()
+					}
 				}
 				fh.Close()
-				if r != nil {
-					r.Close()
-				}
 			}
 		}(w)
 	}
