@@ -594,7 +594,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		return
 	}
 	replyPacket := NewFlashCacheReply()
-	if err = replyPacket.ReadFromConnExt(conn, int(rc.firstPacketTimeout)); err != nil {
+	if err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 		log.LogWarnf("FlashGroup put: reqId(%v) failed to ReadFromConn, replyPacket(%v), fg host(%v) , err(%v)", reqId, replyPacket, addr, err)
 		return
 	}

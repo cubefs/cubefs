@@ -482,6 +482,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
 	c.server = server
 	c.flashNodeTopo = flashgroupmanager.NewFlashNodeTopology()
+	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	c.cleanTask = make(map[string]*CleanTask)
 	c.PlanRun = false
 	c.flashManMgr = newFlashManualTaskManager(c)

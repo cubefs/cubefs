@@ -375,6 +375,7 @@ func TestMasterClientLeaderChange(t *testing.T) {
 		flashNodeTopo: flashgroupmanager.NewFlashNodeTopology(),
 		leaderInfo:    server.leaderInfo,
 	}
+	cluster.flashNodeTopo.SyncFlashGroupFunc = cluster.syncUpdateFlashGroup
 	server.cluster = cluster
 
 	cluster.t = newTopology()

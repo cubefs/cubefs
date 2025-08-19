@@ -33,6 +33,7 @@ func newCluster(name string, cfg *clusterConfig, leaderInfo *LeaderInfo, fsm *Me
 	c = new(Cluster)
 	c.Name = name
 	c.flashNodeTopo = NewFlashNodeTopology()
+	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	c.stopc = make(chan bool)
 	c.fsm = fsm
 	c.partition = partition
@@ -89,8 +90,6 @@ func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.flashNodeTopo.UpdateClientResponse()
-				// sync fg if slots changed
-				c.flashNodeTopo.UpdateFlashGroup(c.syncUpdateFlashGroup)
 			}
 			select {
 			case <-c.stopc:
