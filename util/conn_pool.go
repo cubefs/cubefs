@@ -40,6 +40,7 @@ type ConnectPool struct {
 	connectTimeout int64
 	closeCh        chan struct{}
 	closeOnce      sync.Once
+	useMilliSecond bool
 }
 
 func NewConnectPool() (cp *ConnectPool) {
@@ -56,11 +57,11 @@ func NewConnectPool() (cp *ConnectPool) {
 	return cp
 }
 
-func NewConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeout int64) (cp *ConnectPool) {
-	return NewConnectPoolWithTimeoutAndCap(5, 80, idleConnTimeout, connectTimeout)
+func NewConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeout int64, useMilliSecond bool) (cp *ConnectPool) {
+	return NewConnectPoolWithTimeoutAndCap(5, 80, idleConnTimeout, connectTimeout, useMilliSecond)
 }
 
-func NewConnectPoolWithTimeoutAndCap(minCap, maxCap int, idleConnTimeout time.Duration, connectTimeout int64) (cp *ConnectPool) {
+func NewConnectPoolWithTimeoutAndCap(minCap, maxCap int, idleConnTimeout time.Duration, connectTimeout int64, useMilliSecond bool) (cp *ConnectPool) {
 	cp = &ConnectPool{
 		pools:          make(map[string]*Pool),
 		mincap:         minCap,
@@ -68,6 +69,7 @@ func NewConnectPoolWithTimeoutAndCap(minCap, maxCap int, idleConnTimeout time.Du
 		timeout:        int64(idleConnTimeout * time.Second),
 		connectTimeout: connectTimeout,
 		closeCh:        make(chan struct{}),
+		useMilliSecond: useMilliSecond,
 	}
 	go cp.autoRelease()
 	return cp
@@ -90,7 +92,7 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 	pool, ok := cp.pools[targetAddr]
 	cp.RUnlock()
 	if !ok {
-		newPool := NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
+		newPool := NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr, cp.useMilliSecond)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
@@ -209,9 +211,10 @@ type Pool struct {
 	target         string
 	timeout        int64
 	connectTimeout int64
+	useMilliSecond bool
 }
 
-func NewPool(min, max int, timeout, connectTimeout int64, target string) (p *Pool) {
+func NewPool(min, max int, timeout, connectTimeout int64, target string, useMilliSecond bool) (p *Pool) {
 	p = new(Pool)
 	p.mincap = min
 	p.maxcap = max
@@ -230,7 +233,11 @@ func (p *Pool) initAllConnect() {
 	)
 	for i := 0; i < p.mincap; i++ {
 		if p.connectTimeout != 0 {
-			c, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeout)*time.Second)
+			if p.useMilliSecond {
+				c, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeout)*time.Millisecond)
+			} else {
+				c, err = net.DialTimeout("tcp", p.target, time.Duration(p.connectTimeout)*time.Second)
+			}
 		} else {
 			c, err = net.Dial("tcp", p.target)
 		}

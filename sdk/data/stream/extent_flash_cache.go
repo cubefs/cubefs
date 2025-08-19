@@ -219,7 +219,16 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	rc.volname = client.extentConfig.Volume
 	rc.metaWrapper = client.metaWrapper
 	rc.clusterEnable = client.enableRemoteCacheCluster
-	rc.remoteCacheClient, err = remotecache.NewRemoteCacheClient(client.extentConfig.Masters, proto.CACHE_BLOCK_SIZE, false, "")
+	cfg := &remotecache.ClientConfig{
+		Masters:            client.extentConfig.Masters,
+		BlockSize:          proto.CACHE_BLOCK_SIZE,
+		NeedInitLog:        false,
+		LogLevelStr:        "",
+		LogDir:             "",
+		ConnectTimeout:     500,
+		FirstPacketTimeout: 1000,
+	}
+	rc.remoteCacheClient, err = remotecache.NewRemoteCacheClient(cfg)
 
 	err = rc.remoteCacheClient.UpdateFlashGroups()
 	if err != nil {

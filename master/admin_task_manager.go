@@ -56,7 +56,7 @@ func newAdminTaskManager(targetAddr, clusterID string) (sender *AdminTaskManager
 		clusterID:  clusterID,
 		TaskMap:    make(map[string]*proto.AdminTask),
 		exitCh:     make(chan struct{}, 1),
-		connPool:   util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout),
+		connPool:   util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout, false),
 	}
 	go sender.process()
 
