@@ -19,9 +19,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -29,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/bytespool"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -56,6 +59,10 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 		err = f.opCachePrepare(conn, p)
 	case proto.OpFlashNodeCacheRead:
 		err = f.opCacheRead(conn, p)
+	case proto.OpFlashNodeCachePutBlock:
+		err = f.opCachePutBlock(conn, p)
+	case proto.OpFlashNodeCacheDelete:
+		err = f.opCacheDelete(conn, p)
 	case proto.OpFlashNodeSetReadIOLimits:
 		err = f.opSetReadIOLimits(conn, p)
 	case proto.OpFlashNodeSetWriteIOLimits:
@@ -247,6 +254,135 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	}
 	stat.EndStat("HitCacheRead", err, bgTime2, 1)
 	return
+}
+
+func (f *FlashNode) opCacheDelete(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	defer func() {
+		if err != nil {
+			log.LogWarnf("action[opCacheDelete] end, logMsg:%s",
+				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		} else {
+			p.PacketOkReply()
+		}
+		if e := p.WriteToConn(conn); e != nil {
+			log.LogErrorf("action[opCacheDelete] write to conn %v", e)
+		}
+	}()
+	if p.Size == 0 {
+		return fmt.Errorf("no cache delete request")
+	}
+	uniKey := string(data)
+	pDir := cachengine.MapKeyToDirectory(uniKey)
+	f.cacheEngine.DeleteCacheBlock(cachengine.GenCacheBlockKeyV2(pDir, uniKey))
+	return nil
+}
+
+func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogWarnf("action[opCachePutBlock] end, logMsg:%s",
+				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			if e := p.WriteToConn(conn); e != nil {
+				log.LogErrorf("action[opCachePutBlock] write to conn %v", e)
+			}
+		}
+	}()
+	if len(p.Data) == 0 {
+		return fmt.Errorf("unable to build a key from the packet due to lack of available parameters")
+	}
+	req := new(proto.PutBlockHead)
+	if err = p.UnmarshalDataPb(req); err != nil {
+		return fmt.Errorf("error parsing cache write head structure")
+	}
+	uniKey := req.UniKey
+	pDir := cachengine.MapKeyToDirectory(uniKey)
+	blockKey := cachengine.GenCacheBlockKeyV2(pDir, uniKey)
+	_, err1 := f.cacheEngine.PeekCacheBlock(blockKey)
+	if err1 == nil {
+		if log.EnableDebug() {
+			log.LogDebug("action[opCachePutBlock] check block key:"+uniKey+" logMsg:%s",
+				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
+		}
+		err = fmt.Errorf("block %v already exsit", uniKey)
+		return err
+	}
+	err1 = nil
+	if log.EnableDebug() {
+		log.LogDebug("action[opCachePutBlock] create block key:"+uniKey+" logMsg:%s",
+			p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
+	}
+	missTaskDone := make(chan struct{})
+	err = f.limitWrite.TryRunAsync(context.Background(), int(req.BlockLen), false, func() {
+		defer func() {
+			close(missTaskDone)
+		}()
+		if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(req.BlockLen), conn.RemoteAddr().String()); err2 != nil || created {
+			err = fmt.Errorf("already create block(%v)", cachengine.GenCacheBlockKeyV2(pDir, uniKey))
+			return
+		} else {
+			p.PacketOkReply()
+			if e := p.WriteToConn(conn); e != nil {
+				log.LogErrorf("action[opCachePutBlock] write to conn %v", e)
+			}
+			var (
+				totalWritten int64
+				n            int
+				readSize     int
+			)
+			buf := bytespool.Alloc(proto.PageSize)
+			defer bytespool.Free(buf)
+			crcBuf := bytespool.Alloc(cachengine.CRCLen)
+			defer bytespool.Free(crcBuf)
+			for {
+				readSize = proto.PageSize
+				if totalWritten+int64(readSize) > req.BlockLen {
+					readSize = int(req.BlockLen - totalWritten)
+				}
+				if n, err1 = io.ReadFull(conn, buf[:readSize]); err1 != nil {
+					return
+				}
+				if n != readSize {
+					err1 = syscall.EBADMSG
+				}
+				if n, err1 = io.ReadFull(conn, crcBuf[:cachengine.CRCLen]); err1 != nil {
+					return
+				}
+				if n != cachengine.CRCLen {
+					err1 = syscall.EBADMSG
+				}
+				err1 = cb.WriteAtV2(&proto.FlashWriteParam{
+					Offset:   totalWritten,
+					Size:     req.BlockLen,
+					Data:     buf[:readSize],
+					Crc:      crcBuf[:cachengine.CRCLen],
+					DataSize: int64(readSize),
+				})
+				err1 = cb.MaybeWriteCompleted()
+				if err1 != nil {
+					return
+				}
+				totalWritten += int64(readSize)
+				if totalWritten == req.BlockLen {
+					if log.EnableDebug() {
+						log.LogDebugf("action[opCachePutBlock] total write %v", totalWritten)
+					}
+					break
+				}
+			}
+		}
+	})
+	if err == nil {
+		<-missTaskDone
+	}
+	if err1 != nil {
+		f.cacheEngine.DeleteCacheBlock(blockKey)
+		err = err1
+		return
+	}
+	return err
 }
 
 func (f *FlashNode) opFlashNodeScan(conn net.Conn, p *proto.Packet) (err error) {
@@ -642,6 +778,22 @@ func (f *FlashNode) opSetWriteIOLimits(conn net.Conn, p *proto.Packet) (err erro
 	}
 	p.PacketOkReply()
 	return
+}
+
+//nolint:unused // used for new read operation
+func (f *FlashNode) shouldCache(key string) error {
+	var count int32
+	cm := f.missCache.Get(key)
+	if cm == nil {
+		count = f.missCache.Increment(key)
+	} else {
+		count = cachengine.AtomicLoadAndAddWithCAS(&cm.MissCount)
+	}
+	if (count-1) == 0 || count == _defaultMissCountThresholdInterval {
+		return proto.ErrorNotExistShouldCache
+	} else {
+		return proto.ErrorNotExistShouldNotCache
+	}
 }
 
 func responseAckOKToMaster(conn net.Conn, p *proto.Packet) {

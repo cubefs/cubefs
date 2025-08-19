@@ -74,6 +74,9 @@ const (
 	_defaultManualScanLimitBurst           = 1000
 	_slotStatValidPeriod                   = 10 * time.Minute // min
 	_defaultPrepareRoutineNum              = 20
+	_defaultMissEntryExpiration            = 2 * time.Minute
+	_defaultMaxMissEntryCache              = 100000
+	_defaultMissCountThresholdInterval     = 5
 )
 
 // Configuration keys
@@ -107,6 +110,7 @@ const (
 	cfgPrepareLimitPerSecond        = "prepareLimitPerSecond"
 	cfgWaitForBlockCache            = "waitForBlockCache"
 	cfgPrepareLoadRoutineNum        = "prepareLoadRoutineNum"
+	cfgMissEntryTimeout             = "missEntryTimeout"
 	paramIocc                       = "iocc"
 	paramFlow                       = "flow"
 	paramFactor                     = "factor"
@@ -171,6 +175,7 @@ type FlashNode struct {
 
 	slotMap   sync.Map // [uint32]*SlotStat
 	readCount uint64
+	missCache *cachengine.MissCache
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -425,6 +430,13 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	for _, d := range f.disks {
 		log.LogInfof("[parseConfig] load diskDataPath[%v] totalSize[%d] capacity[%d]", d.Path, d.TotalSpace, d.Capacity)
 	}
+
+	missCacheEntryExpiration := _defaultMissEntryExpiration
+	missCacheTimeOut := cfg.GetInt(cfgMissEntryTimeout)
+	if missCacheTimeOut > 0 {
+		missCacheEntryExpiration = time.Duration(missCacheTimeOut) * time.Second
+	}
+	f.missCache = cachengine.NewMissCache(missCacheEntryExpiration, _defaultMaxMissEntryCache)
 
 	taskCountLimit := cfg.GetInt(cfgNodeTaskCountLimit)
 	if taskCountLimit <= 0 {

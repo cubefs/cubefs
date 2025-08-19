@@ -31,7 +31,8 @@ import (
 )
 
 const (
-	testTmpFS = "/cfs_test/tmpfs"
+	testTmpFS  = "/cfs_test/tmpfs"
+	testTmpFS1 = "/cfs_test/tmpfsblocks"
 )
 
 var bytesCommon = randTestData(1024)
