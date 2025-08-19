@@ -295,17 +295,17 @@ const (
 	OpWriteOpOfProtoVerForbidden        uint8 = 0x88
 	OpMetaForbiddenMigration            uint8 = 0x89
 	// Distributed cache related OP codes.
-	OpFlashNodeHeartbeat        uint8 = 0xDA
-	OpFlashNodeCachePrepare     uint8 = 0xDB
-	OpFlashNodeCacheRead        uint8 = 0xDC
-	OpFlashNodeCachePutBlock    uint8 = 0xD8
-	OpFlashNodeCacheDelete      uint8 = 0xD9
-	OpFlashNodeCacheReadObject  uint8 = 0xDD
-	OpFlashNodeSetReadIOLimits  uint8 = 0xED
-	OpFlashNodeSetWriteIOLimits uint8 = 0xEE
-	OpFlashNodeScan             uint8 = 0xD4
-	OpFlashNodeTaskCommand      uint8 = 0xD5
-	OpClientHeartbeat           uint8 = 0xD6
+	OpFlashNodeHeartbeat        uint8 = 0xC1
+	OpFlashNodeCachePrepare     uint8 = 0xC2
+	OpFlashNodeCacheRead        uint8 = 0xC3
+	OpFlashNodeCachePutBlock    uint8 = 0xC4
+	OpFlashNodeCacheDelete      uint8 = 0xC5
+	OpFlashNodeCacheReadObject  uint8 = 0xC6
+	OpFlashNodeSetReadIOLimits  uint8 = 0xC7
+	OpFlashNodeSetWriteIOLimits uint8 = 0xC8
+	OpFlashNodeScan             uint8 = 0xC9
+	OpFlashNodeTaskCommand      uint8 = 0xCA
+	OpFlashSDKHeartbeat         uint8 = 0xCB
 )
 
 const (
@@ -756,6 +756,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpIsRaftStatusOk"
 	case OpFlashSDKHeartbeat:
 		m = "OpFlashSDKHeartbeat"
+	case OpFlashNodeCachePutBlock:
+		m = "OpFlashNodeCachePutBlock"
+	case OpFlashNodeCacheDelete:
+		m = "OpFlashNodeCacheDelete"
+	case OpFlashNodeCacheReadObject:
+		m = "OpFlashNodeCacheReadObject"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
@@ -1497,11 +1503,11 @@ func (p *Packet) IsForwardPkt() bool {
 // LogMessage logs the given message.
 func (p *Packet) LogMessage(action, remote string, start int64, err error) (m string) {
 	if err == nil {
-		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v] "+
-			" cost[%v] ", p.GetUniqueLogId(), p.IsForwardPkt(), remote, (time.Now().UnixNano()-start)/1e6)
+		m = fmt.Sprintf("id[%v] action[%v] isPrimaryBackReplLeader[%v] remote[%v] "+
+			" cost[%v] ", p.GetUniqueLogId(), action, p.IsForwardPkt(), remote, (time.Now().UnixNano()-start)/1e6)
 	} else {
-		m = fmt.Sprintf("id[%v] isPrimaryBackReplLeader[%v] remote[%v]"+
-			", err[%v]", p.GetUniqueLogId(), p.IsForwardPkt(), remote, err.Error())
+		m = fmt.Sprintf("id[%v] action[%v] isPrimaryBackReplLeader[%v] remote[%v]"+
+			", err[%v]", p.GetUniqueLogId(), action, p.IsForwardPkt(), remote, err.Error())
 	}
 	return
 }

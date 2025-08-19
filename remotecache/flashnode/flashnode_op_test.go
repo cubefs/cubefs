@@ -17,9 +17,9 @@ package flashnode
 import (
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"hash/crc32"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -278,12 +278,11 @@ func testShouldCache(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			err := flashServer.shouldCache(key)
-			switch {
-			case errors.Is(err, proto.ErrorNotExistShouldCache):
+			if strings.Contains(err.Error(), proto.ErrorNotExistShouldCache.Error()) {
 				atomic.AddInt64(&countA, 1)
-			case errors.Is(err, proto.ErrorNotExistShouldNotCache):
+			} else if strings.Contains(err.Error(), proto.ErrorNotExistShouldNotCache.Error()) {
 				atomic.AddInt64(&countB, 1)
-			default:
+			} else {
 				t.Errorf("unexpected error: %v", err)
 			}
 		}()

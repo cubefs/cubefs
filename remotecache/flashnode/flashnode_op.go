@@ -51,7 +51,7 @@ func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
 
 func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 	switch p.Opcode {
-	case proto.OpClientHeartbeat:
+	case proto.OpFlashSDKHeartbeat:
 		err = f.opClientHeartbeat(conn, p)
 	case proto.OpFlashNodeHeartbeat:
 		err = f.opFlashNodeHeartbeat(conn, p)
@@ -424,12 +424,18 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 	defer func() {
 		stat.EndStat("FlashNode:opCacheObjectGet", err, bgTime, 1)
 	}()
-
+	// TODO: protobuf
+	reqID := string(p.Arg)
 	defer func() {
 		if err != nil {
 			if !proto.IsFlashNodeLimitError(err) {
-				log.LogWarnf("action[opCacheObjectGet] key:[%s], logMsg:%s", key,
+				log.LogWarnf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, key,
 					p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
+			} else {
+				if log.EnableDebug() {
+					log.LogDebugf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, key,
+						p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
+				}
 			}
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 			if e := p.WriteToConn(conn); e != nil {
@@ -446,7 +452,9 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 		return
 	}
 
-	log.LogDebugf("opCacheObjectGet req(%v)", req)
+	if log.EnableDebug() {
+		log.LogDebugf("opCacheObjectGet req(%v) id(%v) begin", req, reqID)
+	}
 
 	uniKey := req.Key
 	pDir := cachengine.MapKeyToDirectory(uniKey)
@@ -736,6 +744,7 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 
 	// reply data to client
 	end := offset + int64(req.Size_)
+	var errInner error
 	for {
 		err = f.limitRead.RunNoWait(proto.CACHE_BLOCK_PACKET_SIZE, false, func() {
 			reply := proto.NewPacket()
@@ -762,8 +771,8 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 			p.Size = proto.CACHE_BLOCK_PACKET_SIZE
 			p.ExtentOffset = offset
 
-			reply.CRC, err = block.Read(ctx, reply.Data[:], alignedOffset, proto.CACHE_BLOCK_PACKET_SIZE, f.waitForCacheBlock, true)
-			if err != nil {
+			reply.CRC, errInner = block.Read(ctx, reply.Data[:], alignedOffset, proto.CACHE_BLOCK_PACKET_SIZE, f.waitForCacheBlock, true)
+			if errInner != nil {
 				bufRelease()
 				return
 			}
@@ -776,21 +785,25 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 			p.ResultCode = proto.OpOk
 
 			bgTime := stat.BeginStat()
-			if err = reply.WriteToConnForOCS(conn); err != nil {
+			if errInner = reply.WriteToConnForOCS(conn); errInner != nil {
 				bufRelease()
 				log.LogErrorf("%s key:[%s] %s", action, req.Key,
-					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
+					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner))
 				return
 			}
-			stat.EndStat("HitCacheRead:ReplyToClient", err, bgTime, 1)
+			stat.EndStat("HitCacheRead:ReplyToClient", errInner, bgTime, 1)
 			offset = alignedOffset + proto.CACHE_BLOCK_PACKET_SIZE
 			bufRelease()
 			if log.EnableInfo() {
 				log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, req.Key,
-					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err), block.String())
+					reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner), block.String())
 			}
 		})
 		if err != nil {
+			return
+		}
+		if errInner != nil {
+			err = errInner
 			return
 		}
 		if uint64(offset) >= req.Offset+req.Size_ {
@@ -978,9 +991,9 @@ func (f *FlashNode) shouldCache(key string) error {
 		count = cachengine.AtomicLoadAndAddWithCAS(&cm.MissCount)
 	}
 	if count == _defaultMissCountThresholdInterval {
-		return proto.ErrorNotExistShouldCache
+		return fmt.Errorf("%v, now hit %v", proto.ErrorNotExistShouldCache.Error(), count)
 	} else {
-		return proto.ErrorNotExistShouldNotCache
+		return fmt.Errorf("%v, now hit %v", proto.ErrorNotExistShouldNotCache.Error(), count)
 	}
 }
 

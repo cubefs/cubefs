@@ -39,7 +39,7 @@ var _ cachengine.ReadExtentData = ReadExtentData
 var extentReaderConnPool *util.ConnectPool
 
 func initExtentConnPool() {
-	extentReaderConnPool = util.NewConnectPoolWithTimeoutAndCap(5, 100, _connPoolIdleTimeout, 1)
+	extentReaderConnPool = util.NewConnectPoolWithTimeoutAndCap(5, 100, _connPoolIdleTimeout, 1, false)
 }
 
 func ReadExtentData(source *proto.DataSource, afterReadFunc cachengine.ReadExtentAfter, timeout int, volume string, ino uint64, clientIP string) (readBytes int, err error) {
