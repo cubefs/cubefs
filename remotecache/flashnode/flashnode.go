@@ -280,7 +280,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if f.diskWriteIocc <= 0 {
 		f.diskWriteIocc = _defaultDiskWriteIOCC
 	}
-	f.diskWriteFlow = cfg.GetInt(cfgDiskWriteFlow)
+	f.diskWriteFlow = int(cfg.GetInt64(cfgDiskWriteFlow))
 	if f.diskWriteFlow == 0 {
 		f.diskWriteFlow = _defaultDiskWriteFlow
 	}
