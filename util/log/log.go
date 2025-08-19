@@ -87,6 +87,23 @@ func (f RotatedFile) Swap(i, j int) {
 	f[i], f[j] = f[j], f[i]
 }
 
+func ParseLogLevel(loglvl string) Level {
+	var level Level
+	switch strings.ToLower(loglvl) {
+	case "debug":
+		level = DebugLevel
+	case "info":
+		level = InfoLevel
+	case "warn":
+		level = WarnLevel
+	case "error":
+		level = ErrorLevel
+	default:
+		level = ErrorLevel
+	}
+	return level
+}
+
 func setBlobLogLevel(loglevel Level) {
 	blevel := blog.Lwarn
 	switch loglevel {
