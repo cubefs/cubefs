@@ -95,9 +95,16 @@ func (as *AddressPingStats) Average() time.Duration {
 	return total / time.Duration(len(as.durations))
 }
 
-func NewRemoteCacheClient(masters []string, blockSize uint64) (rc *RemoteCacheClient, err error) {
-	rc = new(RemoteCacheClient)
+func NewRemoteCacheClient(masters []string, blockSize uint64, needInitLog bool, logLevelStr string) (rc *RemoteCacheClient, err error) {
+	if needInitLog {
+		logLevel := log.ParseLogLevel(logLevelStr)
+		_, err = log.InitLog("/tmp/cfs", "remoteCacheClient", logLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
+		if err != nil {
+			return nil, errors.New("failed to init log")
+		}
+	}
 
+	rc = new(RemoteCacheClient)
 	log.LogDebugf("NewRemoteCacheClient")
 	rc.stopC = make(chan struct{})
 	rc.flashGroups = btree.New(32)
@@ -130,6 +137,7 @@ func NewRemoteCacheClient(masters []string, blockSize uint64) (rc *RemoteCacheCl
 func (rc *RemoteCacheClient) Stop() {
 	close(rc.stopC)
 	rc.conns.Close()
+	log.LogFlush()
 	rc.wg.Wait()
 }
 
