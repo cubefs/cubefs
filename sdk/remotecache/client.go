@@ -23,7 +23,6 @@ import (
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/bytespool"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -347,9 +346,38 @@ func (rc *RemoteCacheClient) refreshHostLatency() {
 	log.LogDebugf("updateHostLatencyByLatency: needPings(%v)", len(needPings))
 }
 
+func (rc *RemoteCacheClient) HeartBeat(addr string) (duration time.Duration, err error) {
+	var conn *net.TCPConn
+	packet := proto.NewPacket()
+	packet.Opcode = proto.OpClientHeartbeat
+
+	defer func() {
+		rc.conns.PutConnect(conn, err != nil)
+	}()
+
+	if conn, err = rc.conns.GetConnect(addr); err != nil {
+		log.LogWarnf("HeartBeat get connection to addr failed, addr(%v) err(%v)", addr, err)
+		return
+	}
+	start := time.Now().UnixNano()
+	if err = packet.WriteToConn(conn); err != nil {
+		log.LogWarnf("HeartBeat failed write to addr(%v) err(%v)", addr, err)
+		return
+	}
+	if err = packet.ReadFromConnExt(conn, int(rc.SameRegionTimeout)); err != nil {
+		log.LogWarnf("HeartBeat failed to ReadFromConn addr(%v) err(%v)", addr, err)
+		return
+	}
+
+	duration = time.Duration(time.Now().UnixNano() - start)
+	log.LogDebugf("HeartBeat from addr(%v) cost(%v)", addr, duration)
+	return
+}
+
 func (rc *RemoteCacheClient) updateHostLatency(hosts []string) {
 	for _, host := range hosts {
-		avgRtt, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], PingCount, time.Millisecond*time.Duration(rc.ReadTimeout))
+		// avgRtt, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], PingCount, time.Millisecond*time.Duration(rc.ReadTimeout))
+		avgRtt, err := rc.HeartBeat(host)
 		if err == nil {
 			v, _ := rc.AddressPingMap.LoadOrStore(host, &AddressPingStats{})
 			aps := v.(*AddressPingStats)
