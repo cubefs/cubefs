@@ -503,6 +503,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.RackConflictDPs.Store(0)
 	c.server = server
 	c.flashNodeTopo = flashgroupmanager.NewFlashNodeTopology()
+	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	c.cleanTask = make(map[string]*CleanTask)
 	c.flashManMgr = newFlashManualTaskManager(c)
 	atomic.StoreUint32(&c.planStatus, PlanStatusIdle)

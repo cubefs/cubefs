@@ -14,7 +14,7 @@ import (
 const (
 	UnusedFlashNodeFlashGroupID      = 0
 	DefaultWaitClientUpdateFgTimeSec = 65
-	WaitForRecoverCount              = 10
+	WaitForRecoverCount              = 20
 )
 
 type FlashGroupValue struct {
@@ -65,6 +65,7 @@ func newFlashGroup(id uint64, slots []uint32, slotStatus proto.SlotStatus, pendi
 	fg.Slots = slots
 	fg.SlotStatus = slotStatus
 	fg.PendingSlots = pendingSlots
+	fg.ReservedSlots = make([]uint32, 0)
 	fg.Step = step
 	fg.Weight = weight
 	fg.Status = status
@@ -91,7 +92,7 @@ func (fg *FlashGroup) IsLostAllFlashNode() bool {
 	return atomic.LoadInt32(&fg.LostAllFlashNode) != 0
 }
 
-func (fg *FlashGroup) ReduceSlot() {
+func (fg *FlashGroup) ReduceSlot(syncFlashGroupFunc SyncUpdateFlashGroupFunc) {
 	if atomic.CompareAndSwapInt32(&fg.ReducingSlots, 0, 1) {
 		return
 	}
@@ -115,13 +116,12 @@ func (fg *FlashGroup) ReduceSlot() {
 			if i <= WaitForRecoverCount {
 				continue
 			}
-			fg.executeReduceSlot(numToSelect)
-			atomic.StoreInt32(&fg.SlotChanged, 1)
+			fg.executeReduceSlot(numToSelect, syncFlashGroupFunc)
 		}
 	}()
 }
 
-func (fg *FlashGroup) executeReduceSlot(numToReduce int) {
+func (fg *FlashGroup) executeReduceSlot(numToReduce int, syncFlashGroupFunc SyncUpdateFlashGroupFunc) {
 	if len(fg.Slots) == 0 {
 		return
 	}
@@ -132,8 +132,18 @@ func (fg *FlashGroup) executeReduceSlot(numToReduce int) {
 	if numToReduce == 0 {
 		return
 	}
+	var oldSlots, oldReservedSlots []uint32
+	oldSlots = append(oldSlots, fg.Slots...)
+	oldReservedSlots = append(oldReservedSlots, fg.ReservedSlots...)
+	if log.EnableInfo() {
+		log.LogInfof("executeReduceSlot fg(%v) oldSlots(%v) oldReservedSlots(%v)", fg.ID, oldSlots, oldReservedSlots)
+	}
 	fg.ReservedSlots = append(fg.ReservedSlots, fg.Slots[:numToReduce]...)
 	fg.Slots = fg.Slots[numToReduce:]
+	if err := syncFlashGroupFunc(fg); err != nil {
+		fg.Slots = oldSlots
+		fg.ReservedSlots = oldReservedSlots
+	}
 }
 
 func (fg *FlashGroup) GetStatus() (st proto.FlashGroupStatus) {
@@ -219,6 +229,7 @@ func NewFlashGroupFromFgv(fgv FlashGroupValue) *FlashGroup {
 	fg.Slots = fgv.Slots
 	fg.SlotStatus = fgv.SlotStatus
 	fg.PendingSlots = fgv.PendingSlots
+	fg.ReservedSlots = fgv.ReservedSlots
 	fg.Step = fgv.Step
 	fg.Weight = fgv.Weight
 	fg.Status = fgv.Status

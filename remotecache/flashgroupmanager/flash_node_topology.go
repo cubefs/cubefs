@@ -78,10 +78,11 @@ type FlashNodeTopology struct {
 	flashNodeMap  sync.Map // key: FlashNodeAddr, value: *FlashNode
 	zoneMap       sync.Map // key: zoneName, value: *FlashNodeZone
 
-	clientEmpty    []byte        // empty response cache
-	clientOff      atomic.Value  // []byte, default nil (on)
-	clientCache    atomic.Value  // []byte
-	clientUpdateCh chan struct{} // update client response cache
+	clientEmpty        []byte        // empty response cache
+	clientOff          atomic.Value  // []byte, default nil (on)
+	clientCache        atomic.Value  // []byte
+	clientUpdateCh     chan struct{} // update client response cache
+	SyncFlashGroupFunc SyncUpdateFlashGroupFunc
 }
 
 func NewFlashNodeTopology() (t *FlashNodeTopology) {
@@ -201,30 +202,49 @@ func (t *FlashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 	t.flashGroupMap.Range(func(_, value interface{}) bool {
 		fg := value.(*FlashGroup)
 		if fg.GetStatus().IsActive() {
+			var oldSlots, oldReservedSlots []uint32
 			hosts := fg.getFlashNodeHostsEnableAndActive()
 			if len(hosts) == 0 {
 				if log.EnableInfo() {
 					log.LogInfof("fg(%v) lost all flashnodes", fg)
 				}
 				atomic.StoreInt32(&fg.LostAllFlashNode, 1)
-				fg.ReduceSlot()
-			} else if len(fg.ReservedSlots) > 0 {
-				fg.lock.Lock()
-				fg.Slots = append(fg.Slots, fg.ReservedSlots...)
-				fg.ReservedSlots = make([]uint32, 0)
-				fg.lock.Unlock()
+				fg.ReduceSlot(t.SyncFlashGroupFunc)
+			} else {
 				atomic.StoreInt32(&fg.LostAllFlashNode, 0)
-				atomic.StoreInt32(&fg.SlotChanged, 1)
+				if len(fg.ReservedSlots) > 0 {
+					fg.lock.Lock()
+					oldSlots = append(oldSlots, fg.Slots...)
+					oldReservedSlots = append(oldReservedSlots, fg.ReservedSlots...)
+					if log.EnableInfo() {
+						log.LogInfof("recover fg(%v) oldSlots(%v) oldReservedSlots(%v)", fg.ID, oldSlots, oldReservedSlots)
+					}
+					fg.Slots = append(fg.Slots, fg.ReservedSlots...)
+					fg.ReservedSlots = make([]uint32, 0)
+					if err := t.SyncFlashGroupFunc(fg); err != nil {
+						fg.Slots = oldSlots
+						fg.ReservedSlots = oldReservedSlots
+					}
+					fg.lock.Unlock()
+				}
 			}
 
 			if len(fg.Slots) == 0 {
 				disableFlashGroupNum++
 				if disableFlashGroupNum >= maxDisableFlashGroupCount && len(fg.ReservedSlots) > 0 {
 					fg.lock.Lock()
+					oldSlots = append(oldSlots, fg.Slots...)
+					oldReservedSlots = append(oldReservedSlots, fg.ReservedSlots...)
+					if log.EnableInfo() {
+						log.LogInfof("recover fg(%v) oldSlots(%v) oldReservedSlots(%v)", fg.ID, oldSlots, oldReservedSlots)
+					}
 					fg.Slots = append(fg.Slots, fg.ReservedSlots...)
 					fg.ReservedSlots = make([]uint32, 0)
+					if err := t.SyncFlashGroupFunc(fg); err != nil {
+						fg.Slots = oldSlots
+						fg.ReservedSlots = oldReservedSlots
+					}
 					fg.lock.Unlock()
-					atomic.StoreInt32(&fg.SlotChanged, 1)
 				} else {
 					return true
 				}
@@ -234,6 +254,7 @@ func (t *FlashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 				Slot:  fg.Slots,
 				Hosts: hosts,
 			})
+
 		}
 		return true
 	})
@@ -779,18 +800,6 @@ func (t *FlashNodeTopology) GetAllFlashNodes() (flashNodes []proto.NodeView) {
 		return true
 	})
 	return
-}
-
-func (t *FlashNodeTopology) UpdateFlashGroup(syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc) {
-	t.flashGroupMap.Range(func(_, value interface{}) bool {
-		fg := value.(*FlashGroup)
-		slotChanged := atomic.LoadInt32(&fg.SlotChanged) != 0
-		if slotChanged {
-			syncUpdateFlashGroupFunc(fg)
-			atomic.StoreInt32(&fg.SlotChanged, 0)
-		}
-		return true
-	})
 }
 
 func (t *FlashNodeTopology) ClientUpdateChannel() <-chan struct{} {

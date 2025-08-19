@@ -11,6 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func tSyncUpdateFlashGroup(flashGroup *FlashGroup) (err error) {
+	return nil
+}
+
 // TestNewFlashGroup tests the creation of a new FlashGroup instance
 func TestNewFlashGroup(t *testing.T) {
 	id := uint64(123)
@@ -64,7 +68,7 @@ func TestFlashGroup_ReduceSlot_AlreadyReducing(t *testing.T) {
 	atomic.StoreInt32(&fg.ReducingSlots, 1)
 
 	// This should return immediately without starting a new goroutine
-	fg.ReduceSlot()
+	fg.ReduceSlot(tSyncUpdateFlashGroup)
 
 	// Verify the flag is still set
 	assert.Equal(t, int32(1), atomic.LoadInt32(&fg.ReducingSlots))
@@ -78,7 +82,7 @@ func TestFlashGroup_ReduceSlot_NoSlots(t *testing.T) {
 	atomic.StoreInt32(&fg.LostAllFlashNode, 1)
 
 	// Start reduction
-	fg.ReduceSlot()
+	fg.ReduceSlot(tSyncUpdateFlashGroup)
 
 	// Wait a bit for the goroutine to process
 	time.Sleep(100 * time.Millisecond)
@@ -98,7 +102,7 @@ func TestFlashGroup_ReduceSlot_WithSlots(t *testing.T) {
 	atomic.StoreInt32(&fg.LostAllFlashNode, 1)
 
 	// Start reduction
-	fg.ReduceSlot()
+	fg.ReduceSlot(tSyncUpdateFlashGroup)
 
 	// Wait for the first reduction cycle (20 seconds, but we'll wait less for testing)
 	// In a real scenario, this would take 20 seconds
@@ -122,7 +126,7 @@ func TestFlashGroup_executeReduceSlot(t *testing.T) {
 	initialSlotCount := len(fg.Slots)
 
 	// Execute reduction
-	fg.executeReduceSlot((len(fg.Slots) + 4 - 1) / 4)
+	fg.executeReduceSlot((len(fg.Slots)+4-1)/4, tSyncUpdateFlashGroup)
 
 	// Verify that approximately 25% of slots were moved (8 slots -> 6 slots, 2 to reserved)
 	expectedRemaining := (initialSlotCount * 3) / 4 // 75% remaining
@@ -140,7 +144,7 @@ func TestFlashGroup_executeReduceSlot_EmptySlots(t *testing.T) {
 	fg := newFlashGroup(1, []uint32{}, proto.SlotStatus_Completed, []uint32{}, 0, proto.FlashGroupStatus_Active, 100)
 
 	// This should not panic or cause issues
-	fg.executeReduceSlot((len(fg.Slots) + 4 - 1) / 4)
+	fg.executeReduceSlot((len(fg.Slots)+4-1)/4, tSyncUpdateFlashGroup)
 
 	assert.Equal(t, 0, len(fg.Slots))
 	assert.Equal(t, 0, len(fg.ReservedSlots))
@@ -150,7 +154,7 @@ func TestFlashGroup_executeReduceSlot_EmptySlots(t *testing.T) {
 func TestFlashGroup_executeReduceSlot_SingleSlot(t *testing.T) {
 	fg := newFlashGroup(1, []uint32{1}, proto.SlotStatus_Completed, []uint32{}, 1, proto.FlashGroupStatus_Active, 100)
 
-	fg.executeReduceSlot((len(fg.Slots) + 4 - 1) / 4)
+	fg.executeReduceSlot((len(fg.Slots)+4-1)/4, tSyncUpdateFlashGroup)
 
 	// With 1 slot, 25% rounded up is 1, so all slots should be moved to reserved
 	assert.Equal(t, 0, len(fg.Slots))

@@ -339,6 +339,7 @@ func (m *Server) clearMetadata() {
 
 	m.cluster.flashNodeTopo.Clear()
 	m.cluster.flashNodeTopo = flashgroupmanager.NewFlashNodeTopology()
+	m.cluster.flashNodeTopo.SyncFlashGroupFunc = m.cluster.syncUpdateFlashGroup
 }
 
 func (m *Server) refreshUser() (err error) {
