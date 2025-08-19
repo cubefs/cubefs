@@ -92,7 +92,7 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, 
 			CacheRequest: req.CacheRequest,
 			FlashNodes:   fg.Hosts,
 		}
-		if err = s.client.RemoteCache.remoteCacheBase.Prepare(ctx, fg, prepareReq); err != nil {
+		if err = s.client.RemoteCache.remoteCacheClient.Prepare(ctx, fg, prepareReq); err != nil {
 			log.LogWarnf("Streamer prepareRemoteCache: flashGroup prepare failed. fg(%v) req(%v) err(%v)", fg, prepareReq, err)
 		}
 	}
@@ -121,7 +121,7 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 			return
 		}
 		req.CacheRequest.Slot = uint64(slot)<<32 | uint64(ownerSlot)
-		if read, err = s.client.RemoteCache.remoteCacheBase.Read(ctx, fg, 0, req); err != nil {
+		if read, err = s.client.RemoteCache.remoteCacheClient.Read(ctx, fg, 0, req); err != nil {
 			if !proto.IsFlashNodeLimitError(err) {
 				log.LogWarnf("readFromRemoteCache: flashGroup read failed. offset(%v) size(%v) fg(%v) req(%v) err(%v)", offset, size, fg, req, err)
 			}
@@ -138,7 +138,7 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 
 func (s *Streamer) getFlashGroup(fixedFileOffset uint64) (uint32, *remotecache.FlashGroup, uint32) {
 	slot := proto.ComputeCacheBlockSlot(s.client.dataWrapper.VolName, s.inode, fixedFileOffset)
-	fg, ownerSlot := s.client.RemoteCache.remoteCacheBase.GetFlashGroupBySlot(slot)
+	fg, ownerSlot := s.client.RemoteCache.remoteCacheClient.GetFlashGroupBySlot(slot)
 	return slot, fg, ownerSlot
 }
 
@@ -203,14 +203,14 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte, gen ui
 			Volume:          s.client.dataWrapper.VolName,
 			Inode:           s.inode,
 			FixedFileOffset: fixedOff,
-			TTL:             s.client.RemoteCache.remoteCacheBase.TTL,
+			TTL:             s.client.RemoteCache.remoteCacheClient.TTL,
 			Sources:         sources,
 			Version:         proto.ComputeSourcesVersion(sources, gen),
 		}
 		cRequests = append(cRequests, cReq)
 	}
 	if isRead {
-		cReadRequests = s.client.RemoteCache.remoteCacheBase.GetCacheReadRequests(offset, size, data, cRequests)
+		cReadRequests = s.client.RemoteCache.remoteCacheClient.GetCacheReadRequests(offset, size, data, cRequests)
 	} else {
 		cReadRequests = make([]*remotecache.CacheReadRequest, 0, len(cRequests))
 		for _, cReq := range cRequests {
