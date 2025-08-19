@@ -305,7 +305,7 @@ const (
 	OpFlashNodeSetWriteIOLimits uint8 = 0xEE
 	OpFlashNodeScan             uint8 = 0xD4
 	OpFlashNodeTaskCommand      uint8 = 0xD5
-	OpFlashSDKHeartbeat         uint8 = 0xCB
+	OpClientHeartbeat           uint8 = 0xD6
 )
 
 const (
