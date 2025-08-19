@@ -114,6 +114,10 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 		if err != nil {
 			return nil, errors.New("failed to init log")
 		}
+		_, err = stat.NewStatistic(config.LogDir, "remoteCacheClient", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
+		if err != nil {
+			return nil, errors.New("failed to stat log")
+		}
 	}
 
 	if proto.Buffers == nil {
@@ -175,6 +179,7 @@ func (rc *RemoteCacheClient) Stop() {
 	close(rc.stopC)
 	rc.conns.Close()
 	log.LogFlush()
+	stat.WriteStat()
 	rc.wg.Wait()
 }
 
@@ -564,8 +569,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	}
 	bgTime := stat.BeginStat()
 	defer func() {
-		forceClose := err != nil && !proto.IsFlashNodeLimitError(err)
-		rc.conns.PutConnect(conn, forceClose)
+		rc.conns.PutConnect(conn, err != nil)
 		parts := strings.Split(addr, ":")
 		if len(parts) > 0 && addr != "" {
 			stat.EndStat(fmt.Sprintf("flashPutBlock:%v", parts[0]), err, bgTime, 1)
@@ -1137,7 +1141,13 @@ func (rc *RemoteCacheClient) NewRemoteCacheReader(ctx context.Context, conn *net
 
 func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 	bg := stat.BeginStat()
-	defer stat.EndStat(fmt.Sprintf("readCache:%v", reader.flashIp), err, bg, 1)
+	defer func() {
+		err1 := err
+		if err1 == io.EOF {
+			err1 = nil
+		}
+		stat.EndStat(fmt.Sprintf("readCache:%v", reader.flashIp), err1, bg, 1)
+	}()
 	if reader.ctx.Err() != nil {
 		log.LogErrorf("RemoteCacheReader:reqID(%v) err(%v)", reader.reqID, reader.ctx.Err())
 		return 0, reader.ctx.Err()
@@ -1175,7 +1185,9 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 	}
 	extentOffset := reply.ExtentOffset
 	reader.localData = p[extentOffset : extentOffset+expectLen]
-	log.LogDebugf("RemoteCacheReader:Read offset(%v) extentOffset(%v) expectLen(%v) p.len(%v)", reply.KernelOffset, reply.ExtentOffset, expectLen, len(p))
+	if log.EnableDebug() {
+		log.LogDebugf("RemoteCacheReader:Read reqID(%v) offset(%v) extentOffset(%v) expectLen(%v) p.len(%v) cost(%v)", reader.reqID, reply.KernelOffset, reply.ExtentOffset, expectLen, len(p), time.Since(*bg))
+	}
 	atomic.StoreInt64(&reader.alreadyReadLen, reader.alreadyReadLen+expectLen)
 	return int(expectLen), nil
 }
@@ -1246,7 +1258,7 @@ func (reader *RemoteCacheReader) Close() error {
 		log.LogDebugf("RemoteCacheReader Close, reqId(%v)", reader.reqID)
 		reader.closed = true
 		bytespool.Free(reader.buffer)
-		reader.rc.conns.PutConnect(reader.conn, false)
+		reader.rc.conns.PutConnect(reader.conn, reader.currOffset < reader.endOffset)
 	}
 	return nil
 }
