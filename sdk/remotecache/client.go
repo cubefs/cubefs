@@ -47,7 +47,7 @@ type AddressPingStats struct {
 	index     int
 }
 
-type RemoteCacheBase struct {
+type RemoteCacheClient struct {
 	flashGroups *btree.BTree
 	mc          *master.MasterClient
 	conns       *util.ConnectPool
@@ -90,10 +90,10 @@ func (as *AddressPingStats) Average() time.Duration {
 	return total / time.Duration(len(as.durations))
 }
 
-func NewRemoteCacheBase(masters []string, blockSize uint64) (rc *RemoteCacheBase, err error) {
-	rc = new(RemoteCacheBase)
+func NewRemoteCacheClient(masters []string, blockSize uint64) (rc *RemoteCacheClient, err error) {
+	rc = new(RemoteCacheClient)
 
-	log.LogDebugf("NewRemoteCacheBase")
+	log.LogDebugf("NewRemoteCacheClient")
 	rc.stopC = make(chan struct{})
 	rc.flashGroups = btree.New(32)
 	rc.ReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
@@ -109,7 +109,7 @@ func NewRemoteCacheBase(masters []string, blockSize uint64) (rc *RemoteCacheBase
 
 	err = rc.UpdateFlashGroups()
 	if err != nil {
-		log.LogDebugf("NewRemoteCacheBase: updateFlashGroups err %v", err)
+		log.LogDebugf("NewRemoteCacheClient: updateFlashGroups err %v", err)
 		return
 	}
 
@@ -118,19 +118,19 @@ func NewRemoteCacheBase(masters []string, blockSize uint64) (rc *RemoteCacheBase
 
 	// rc.Started = true
 
-	log.LogDebugf("NewRemoteCacheBase sucess")
+	log.LogDebugf("NewRemoteCacheClient sucess")
 
 	return rc, err
 }
 
-func (rc *RemoteCacheBase) Stop() {
+func (rc *RemoteCacheClient) Stop() {
 	// rc.Started = false
 	close(rc.stopC)
 	rc.conns.Close()
 	rc.wg.Wait()
 }
 
-func (rc *RemoteCacheBase) refresh() {
+func (rc *RemoteCacheClient) refresh() {
 	defer rc.wg.Done()
 	for {
 		err := rc.refreshWithRecover()
@@ -142,7 +142,7 @@ func (rc *RemoteCacheBase) refresh() {
 	}
 }
 
-func (rc *RemoteCacheBase) refreshWithRecover() (panicErr error) {
+func (rc *RemoteCacheClient) refreshWithRecover() (panicErr error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("refreshFlashNode panic: err(%v) stack(%v)", r, string(debug.Stack()))
@@ -174,7 +174,7 @@ func (rc *RemoteCacheBase) refreshWithRecover() (panicErr error) {
 	}
 }
 
-func (rc *RemoteCacheBase) UpdateClusterEnable() error {
+func (rc *RemoteCacheClient) UpdateClusterEnable() error {
 	if rc.mc != nil {
 		if fgv, err := rc.mc.AdminAPI().ClientFlashGroups(); err != nil {
 			log.LogWarnf("updateFlashGroups: err(%v)", err)
@@ -186,15 +186,15 @@ func (rc *RemoteCacheBase) UpdateClusterEnable() error {
 	return nil
 }
 
-func (rc *RemoteCacheBase) SetClusterEnable(enable bool) {
+func (rc *RemoteCacheClient) SetClusterEnable(enable bool) {
 	rc.clusterEnabled = enable
 }
 
-func (rc *RemoteCacheBase) IsClusterEnable() bool {
+func (rc *RemoteCacheClient) IsClusterEnable() bool {
 	return rc.clusterEnabled
 }
 
-func (rc *RemoteCacheBase) UpdateFlashGroups() (err error) {
+func (rc *RemoteCacheClient) UpdateFlashGroups() (err error) {
 	var (
 		fgv            proto.FlashGroupView
 		newFlashGroups = btree.New(32)
@@ -236,7 +236,7 @@ func (rc *RemoteCacheBase) UpdateFlashGroups() (err error) {
 	return
 }
 
-func (rc *RemoteCacheBase) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) (sortedHosts map[ZoneRankType][]string) {
+func (rc *RemoteCacheClient) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) (sortedHosts map[ZoneRankType][]string) {
 	sortedHosts = make(map[ZoneRankType][]string)
 	sameZoneTimeout := time.Duration(rc.SameZoneTimeout) * time.Microsecond
 	sameRegionTimeout := time.Duration(rc.SameRegionTimeout) * time.Millisecond
@@ -262,7 +262,7 @@ func (rc *RemoteCacheBase) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) 
 	return sortedHosts
 }
 
-func (rc *RemoteCacheBase) resetFlashNodeTimeoutCount() {
+func (rc *RemoteCacheClient) resetFlashNodeTimeoutCount() {
 	fgSet := make([]uint64, 0)
 
 	isInSet := func(fg uint64, fgSet []uint64) bool {
@@ -305,7 +305,7 @@ func (rc *RemoteCacheBase) resetFlashNodeTimeoutCount() {
 	rc.rangeFlashGroups(nil, rangeFunc)
 }
 
-func (rc *RemoteCacheBase) refreshHostLatency() {
+func (rc *RemoteCacheClient) refreshHostLatency() {
 	hosts := rc.getFlashHostsMap()
 
 	needPings := make([]string, 0)
@@ -323,7 +323,7 @@ func (rc *RemoteCacheBase) refreshHostLatency() {
 	log.LogDebugf("updateHostLatencyByLatency: needPings(%v)", len(needPings))
 }
 
-func (rc *RemoteCacheBase) updateHostLatency(hosts []string) {
+func (rc *RemoteCacheClient) updateHostLatency(hosts []string) {
 	for _, host := range hosts {
 		avgRtt, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], PingCount, time.Millisecond*time.Duration(rc.ReadTimeout))
 		if err == nil {
@@ -356,7 +356,7 @@ func (rc *RemoteCacheBase) updateHostLatency(hosts []string) {
 	rc.resetFlashNodeTimeoutCount()
 }
 
-func (rc *RemoteCacheBase) GetFlashGroupBySlot(slot uint32) (*FlashGroup, uint32) {
+func (rc *RemoteCacheClient) GetFlashGroupBySlot(slot uint32) (*FlashGroup, uint32) {
 	var item *SlotItem
 
 	pivot := &SlotItem{slot: slot}
@@ -372,7 +372,7 @@ func (rc *RemoteCacheBase) GetFlashGroupBySlot(slot uint32) (*FlashGroup, uint32
 	return item.FlashGroup, item.slot
 }
 
-func (rc *RemoteCacheBase) getFlashHostsMap() map[string]bool {
+func (rc *RemoteCacheClient) getFlashHostsMap() map[string]bool {
 	allHosts := make(map[string]bool)
 
 	rangeFunc := func(i btree.Item) bool {
@@ -387,7 +387,7 @@ func (rc *RemoteCacheBase) getFlashHostsMap() map[string]bool {
 	return allHosts
 }
 
-func (rc *RemoteCacheBase) rangeFlashGroups(pivot *SlotItem, rangeFunc func(item btree.Item) bool) {
+func (rc *RemoteCacheClient) rangeFlashGroups(pivot *SlotItem, rangeFunc func(item btree.Item) bool) {
 	flashGroups := rc.flashGroups
 
 	if pivot == nil {
@@ -397,7 +397,7 @@ func (rc *RemoteCacheBase) rangeFlashGroups(pivot *SlotItem, rangeFunc func(item
 	}
 }
 
-func (rc *RemoteCacheBase) getMinFlashGroup() (*FlashGroup, uint32) {
+func (rc *RemoteCacheClient) getMinFlashGroup() (*FlashGroup, uint32) {
 	flashGroups := rc.flashGroups
 
 	if flashGroups.Len() > 0 {
@@ -409,15 +409,15 @@ func (rc *RemoteCacheBase) getMinFlashGroup() (*FlashGroup, uint32) {
 	return nil, 0
 }
 
-func (rc *RemoteCacheBase) getFlashGroup(key string, fixedFileOffset uint64) (uint32, *FlashGroup, uint32) {
+func (rc *RemoteCacheClient) getFlashGroup(key string, fixedFileOffset uint64) (uint32, *FlashGroup, uint32) {
 	slot := proto.ComputeCacheBlockSlot(key, 0, fixedFileOffset)
 	fg, ownerSlot := rc.GetFlashGroupBySlot(slot)
 	return slot, fg, ownerSlot
 }
 
-func (rc *RemoteCacheBase) readFromRemoteCache(ctx context.Context, key string, offset, size uint64, cReadRequests []*CacheReadRequest) (total int, err error) {
-	metric := exporter.NewTPCnt("RemoteCacheBase:readFromRemoteCache")
-	metricBytes := exporter.NewCounter("RemoteCacheBase:readFromRemoteCacheBytes")
+func (rc *RemoteCacheClient) readFromRemoteCache(ctx context.Context, key string, offset, size uint64, cReadRequests []*CacheReadRequest) (total int, err error) {
+	metric := exporter.NewTPCnt("RemoteCacheClient:readFromRemoteCache")
+	metricBytes := exporter.NewCounter("RemoteCacheClient:readFromRemoteCacheBytes")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{"key": key})
 		metricBytes.AddWithLabels(int64(total), map[string]string{"key": key})
@@ -451,7 +451,7 @@ func (rc *RemoteCacheBase) readFromRemoteCache(ctx context.Context, key string, 
 	return total, nil
 }
 
-func (rc *RemoteCacheBase) Get(ctx context.Context, reqId, key string, from, to int64) (r io.ReadCloser, length int, shouldCache bool, err error) {
+func (rc *RemoteCacheClient) Get(ctx context.Context, reqId, key string, from, to int64) (r io.ReadCloser, length int, shouldCache bool, err error) {
 	size := to - from
 	data := make([]byte, size)
 
@@ -465,7 +465,7 @@ func (rc *RemoteCacheBase) Get(ctx context.Context, reqId, key string, from, to 
 			remoteCacheHitMetric.AddWithLabels(1, map[string]string{"key": key})
 			return io.NopCloser(bytes.NewReader(data[:read])), read, false, err
 		} else {
-			log.LogWarnf("RemoteCacheBase:Get failed, err(%v)", err)
+			log.LogWarnf("RemoteCacheClient:Get failed, err(%v)", err)
 		}
 	}
 
@@ -495,7 +495,7 @@ func NewFlashCacheReply() *proto.Packet {
 	return p
 }
 
-func (rc *RemoteCacheBase) prepareCacheRequests(key string, offset, size uint64, data []byte) ([]*CacheReadRequest, error) {
+func (rc *RemoteCacheClient) prepareCacheRequests(key string, offset, size uint64, data []byte) ([]*CacheReadRequest, error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("prepareCacheRequests", nil, bgTime, 1)
@@ -518,7 +518,7 @@ func (rc *RemoteCacheBase) prepareCacheRequests(key string, offset, size uint64,
 	return cReadRequests, nil
 }
 
-func (rc *RemoteCacheBase) GetCacheReadRequests(offset uint64, size uint64, data []byte, cRequests []*proto.CacheRequest) (cReadRequests []*CacheReadRequest) {
+func (rc *RemoteCacheClient) GetCacheReadRequests(offset uint64, size uint64, data []byte, cRequests []*proto.CacheRequest) (cReadRequests []*CacheReadRequest) {
 	cReadRequests = make([]*CacheReadRequest, 0, len(cRequests))
 	startFixedOff := offset / rc.blockSize * rc.blockSize
 	endFixedOff := (offset + size - 1) / rc.blockSize * rc.blockSize
@@ -545,7 +545,7 @@ func (rc *RemoteCacheBase) GetCacheReadRequests(offset uint64, size uint64, data
 	return cReadRequests
 }
 
-func (rc *RemoteCacheBase) Read(ctx context.Context, fg *FlashGroup, reqId int64, req *CacheReadRequest) (read int, err error) {
+func (rc *RemoteCacheClient) Read(ctx context.Context, fg *FlashGroup, reqId int64, req *CacheReadRequest) (read int, err error) {
 	var (
 		conn      *net.TCPConn
 		moved     bool
@@ -618,7 +618,7 @@ func (rc *RemoteCacheBase) Read(ctx context.Context, fg *FlashGroup, reqId int64
 	return
 }
 
-func (rc *RemoteCacheBase) Prepare(ctx context.Context, fg *FlashGroup, req *proto.CachePrepareRequest) (err error) {
+func (rc *RemoteCacheClient) Prepare(ctx context.Context, fg *FlashGroup, req *proto.CachePrepareRequest) (err error) {
 	var (
 		conn  *net.TCPConn
 		moved bool
@@ -666,7 +666,7 @@ func (rc *RemoteCacheBase) Prepare(ctx context.Context, fg *FlashGroup, req *pro
 	return
 }
 
-func (rc *RemoteCacheBase) getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, req *CacheReadRequest) (readBytes int, err error) {
+func (rc *RemoteCacheClient) getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, req *CacheReadRequest) (readBytes int, err error) {
 	for readBytes < int(req.Size_) {
 		replyPacket := NewFlashCacheReply()
 		start := time.Now()
