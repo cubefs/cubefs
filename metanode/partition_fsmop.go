@@ -295,18 +295,3 @@ func (mp *metaPartition) fsmSetFreeze(freeze bool) (status uint8,
 	}
 	return
 }
-
-func (mp *metaPartition) fsmSetStoreMode(req *SetStoreModeReq) (status uint8, err error) {
-	status = proto.OpOk
-
-	oldVal := mp.config.StoreMode
-	mp.config.StoreMode = req.StoreMode
-	if err = mp.PersistMetadata(); err != nil {
-		status = proto.OpDiskErr
-		mp.config.StoreMode = oldVal
-		log.LogErrorf("[fsmSetStoreMode] save meta data failed: %s", err.Error())
-		return
-	}
-
-	return
-}

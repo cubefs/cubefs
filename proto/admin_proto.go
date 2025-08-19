@@ -104,12 +104,6 @@ const (
 	AdminAbortDecommissionDisk                        = "/admin/abortDecommissionDisk"
 	AdminResetDataPartitionRestoreStatus              = "/admin/resetDataPartitionRestoreStatus"
 	AdminGetOpLog                                     = "/admin/getOpLog"
-	AdminModifyMpStoreMode                            = "/vol/modifyMetaPartitionStoreMode"
-	AdminAddRenewMpStoreModeTask                      = "/vol/addRenewMpStoreModeTask"
-	AdminGetRenewMpStoreModeTask                      = "/vol/getRenewMpStoreModeTask"
-	AdminDelRenewMpStoreModeTask                      = "/vol/delRenewMpStoreModeTask"
-	AdminStopRenewMpStoreModeTask                     = "/vol/stopRenewMpStoreModeTask"
-	AdminRunRenewMpStoreModeTask                      = "/vol/runRenewMpStoreModeTask"
 
 	// #nosec G101
 	AdminQueryDecommissionToken            = "/admin/queryDecommissionToken"
@@ -1785,13 +1779,4 @@ type MetaNodeRocksdbInfo struct {
 	UsageRatio     float64
 	Status         int8
 	PartitionCount int
-}
-
-type SetMetaPartitionStoreModeRequest struct {
-	PartitionID uint64
-	StoreMode   StoreMode
-}
-
-type ReloadMetaPartitionRequest struct {
-	PartitionID uint64
 }

@@ -125,8 +125,6 @@ const (
 	OpBackupEmptyMetaPartition      uint8 = 0x4A
 	OpRemoveBackupMetaPartition     uint8 = 0x4B
 	OpIsRaftStatusOk                uint8 = 0x4C
-	OpSetMetaPartitionStoreMode     uint8 = 0x4D
-	OpReloadMetaPartition           uint8 = 0x4E
 
 	// Quota
 	OpMetaBatchSetInodeQuota    uint8 = 0x50
@@ -755,10 +753,6 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpIsRaftStatusOk"
 	case OpFlashSDKHeartbeat:
 		m = "OpFlashSDKHeartbeat"
-	case OpSetMetaPartitionStoreMode:
-		m = "OpSetMetaPartitionStoreMode"
-	case OpReloadMetaPartition:
-		m = "OpReloadMetaPartition"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}

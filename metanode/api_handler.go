@@ -1382,7 +1382,7 @@ func (m *MetaNode) reloadMpHandler(w http.ResponseWriter, r *http.Request) {
 		err = fmt.Errorf("parse param %v fail: %v", id, err)
 		return
 	}
-	err = m.metadataManager.ReloadPartition(id, true)
+	err = m.metadataManager.ReloadPartition(id)
 }
 
 func (m *MetaNode) setQosEnableHandler(w http.ResponseWriter, r *http.Request) {

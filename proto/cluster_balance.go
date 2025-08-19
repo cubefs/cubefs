@@ -75,14 +75,3 @@ type ClusterPlan struct {
 	StartId    uint64                       `json:"startId"`
 	EndId      uint64                       `json:"endId"`
 }
-
-type RenewMpStoreModePlan struct {
-	Name         string            `json:"name"`
-	StoreMode    StoreMode         `json:"storeMode"`
-	Status       string            `json:"status"`
-	Total        int               `json:"total"`
-	MemoryCount  int               `json:"memoryCount"`
-	RocksdbCount int               `json:"rocksdbCount"`
-	MpCount      int               `json:"mpCount"`
-	Msg          map[uint64]string `json:"msg"`
-}

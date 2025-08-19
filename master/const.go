@@ -500,8 +500,6 @@ const (
 	flashManualTaskPrefix = keySeparator + "flt" + keySeparator
 
 	balanceTaskKey = keySeparator + "balanceTask"
-
-	renewMpStoreModeTaskKey = keySeparator + "renewMpStoreModeTask"
 )
 
 // selector enum

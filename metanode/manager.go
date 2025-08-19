@@ -70,7 +70,7 @@ type MetadataManager interface {
 	GetLeaderPartitions() map[uint64]MetaPartition
 	GetAllVolumes() (volumes *util.Set)
 	checkVolVerList() (err error)
-	ReloadPartition(id uint64, force bool) (err error)
+	ReloadPartition(id uint64) (err error)
 	UpdateQosLimit()
 }
 
@@ -122,7 +122,6 @@ type metadataManager struct {
 	rocksDBDirs    []string
 	rocksdbManager RocksdbManager
 	rocksdbCleaner *RocksDBCleaner
-	reloading      bool
 	memFreeing     bool
 }
 
@@ -346,10 +345,6 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opRemoveBackupMetaPartition(conn, p, remoteAddr)
 	case proto.OpIsRaftStatusOk:
 		err = m.opIsRaftStatusOk(conn, p, remoteAddr)
-	case proto.OpSetMetaPartitionStoreMode:
-		err = m.opSetMetaPartitionStoreMode(conn, p, remoteAddr)
-	case proto.OpReloadMetaPartition:
-		err = m.opReloadMetaPartition(conn, p, remoteAddr)
 	// operations for extend attributes
 	case proto.OpMetaSetXAttr:
 		err = m.opMetaSetXAttr(conn, p, remoteAddr)
@@ -601,23 +596,15 @@ func (m *metadataManager) getPartition(id uint64) (mp MetaPartition, err error) 
 	return
 }
 
-func (m *metadataManager) ReloadPartition(id uint64, force bool) (err error) {
-	log.LogWarnf("action[ReloadPartition] reloadPartition %v force: %v start", id, force)
+func (m *metadataManager) ReloadPartition(id uint64) (err error) {
+	log.LogWarnf("action[ReloadPartition] reloadPartition %v start", id)
 	defer func() {
-		log.LogWarnf("action[ReloadPartition] reloadPartition %v force: %v end. result: %v", id, force, err)
+		log.LogWarnf("action[ReloadPartition] reloadPartition %v end. result: %v", id, err)
 	}()
 	m.mu.RLock()
 	mp, ok := m.partitions[id]
 	m.mu.RUnlock()
 	if ok {
-		if !force && !mp.IsNeedReload() {
-			return nil
-		}
-		err = mp.TransferSnapshot()
-		if err != nil {
-			log.LogErrorf("[ReloadPartition] failed to transferSnapshot mp(%v) err:%v", id, err)
-			return err
-		}
 		mp.Stop()
 		err = m.deletePartition(id)
 		if err != nil {

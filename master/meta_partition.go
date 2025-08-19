@@ -1130,22 +1130,3 @@ func (mp *MetaPartition) CheckMetaNodeReachScheduled(metaNode *MetaNode, storeMo
 
 	return metaNode.reachesThreshold()
 }
-
-func (mr *MetaReplica) createTaskToSetMpStoreMode(partitionID uint64, storeMode proto.StoreMode) (t *proto.AdminTask) {
-	req := &proto.SetMetaPartitionStoreModeRequest{
-		PartitionID: partitionID,
-		StoreMode:   storeMode,
-	}
-	t = proto.NewAdminTask(proto.OpSetMetaPartitionStoreMode, mr.Addr, req)
-	resetMetaPartitionTaskID(t, partitionID)
-	return
-}
-
-func (mr *MetaReplica) createTaskToReloadMetaPartition(partitionID uint64) (t *proto.AdminTask) {
-	req := &proto.ReloadMetaPartitionRequest{
-		PartitionID: partitionID,
-	}
-	t = proto.NewAdminTask(proto.OpReloadMetaPartition, mr.Addr, req)
-	resetMetaPartitionTaskID(t, partitionID)
-	return
-}
