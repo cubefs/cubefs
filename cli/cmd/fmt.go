@@ -193,17 +193,17 @@ func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) stri
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v     %-24v    %-8v"
+var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v     %-24v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ForbidWriteOpOfProtoVer0", "RocksdbWritable")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ForbidWriteOpOfProtoVer0")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), formatYesNo(view.IsRocksdbWritable))
+			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
@@ -212,7 +212,6 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	sb.WriteString(fmt.Sprintf("  Active  : %v", formatNodeStatus(view.Status)))
 	sb.WriteString(fmt.Sprintf("  MEDIA   : %v", formatNodeMediaType(view.MediaType)))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
-	sb.WriteString(fmt.Sprintf("  RocksdbWritable: %v", formatYesNo(view.IsRocksdbWritable)))
 	return sb.String()
 }
 
@@ -1566,7 +1565,7 @@ func formatMetaPartitionFreeze(freeze int8) string {
 var metaNodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v     %-24v    %-8v"
 
 func formatMetaNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ForbidWriteOpOfProtoVer0", "RocksdbWritable")
+	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ForbidWriteOpOfProtoVer0", "RocksdbWritable")
 }
 
 func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
