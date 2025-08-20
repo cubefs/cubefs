@@ -938,8 +938,12 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			ino := NewInode(0, 0)
 
 			// TODO Unhandled errors
-			ino.UnmarshalKey(snap.K)
-			ino.UnmarshalValue(snap.V)
+			if err = ino.UnmarshalKey(snap.K); err != nil {
+				return
+			}
+			if err = ino.UnmarshalValue(snap.V); err != nil {
+				return
+			}
 			if cursor < ino.Inode {
 				cursor = ino.Inode
 			}

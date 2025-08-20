@@ -280,14 +280,6 @@ type OpPartition interface {
 	CloseAndBackupRaft() error
 }
 
-type MetaPartitionDebug interface {
-	GetInodeRealCount() (count uint64, err error)
-	GetDentryRealCount() (count uint64, err error)
-	GetTxRealCount() (count uint64, err error)
-	GetTxRbInodeRealCount() (count uint64, err error)
-	GetTxRbDentryRealCount() (count uint64, err error)
-}
-
 // MetaPartition defines the interface for the meta partition operations.
 type MetaPartition interface {
 	Start(isCreate bool) error
@@ -311,8 +303,6 @@ type MetaPartition interface {
 	GetSnapShot() (Snapshot, error)
 	ReleaseSnapShot(snap Snapshot)
 	GetStoreMode() proto.StoreMode
-	// NOTE: for debug
-	MetaPartitionDebug
 }
 
 type UidManager struct {
@@ -1922,98 +1912,6 @@ func (mp *metaPartition) GetSnapShot() (Snapshot, error) {
 
 func (mp *metaPartition) ReleaseSnapShot(snap Snapshot) {
 	snap.Close()
-}
-
-// NOTE: for debug
-func (mp *metaPartition) GetInodeRealCount() (count uint64, err error) {
-	snap, err := mp.GetSnapShot()
-	if err != nil {
-		return
-	}
-	defer snap.Close()
-	err = snap.Range(InodeType, func(item interface{}) bool {
-		count++
-		return true
-	})
-	return
-}
-
-func (mp *metaPartition) GetDentryRealCount() (count uint64, err error) {
-	snap, err := mp.GetSnapShot()
-	if err != nil {
-		return
-	}
-	defer snap.Close()
-	err = snap.Range(DentryType, func(item interface{}) bool {
-		count++
-		return true
-	})
-	return
-}
-
-func (mp *metaPartition) GetTxRealCount() (count uint64, err error) {
-	snap, err := mp.GetSnapShot()
-	if err != nil {
-		return
-	}
-	defer snap.Close()
-	err = snap.Range(TransactionType, func(item interface{}) bool {
-		count++
-		return true
-	})
-	return
-}
-
-func (mp *metaPartition) GetTxRbInodeRealCount() (count uint64, err error) {
-	snap, err := mp.GetSnapShot()
-	if err != nil {
-		return
-	}
-	defer snap.Close()
-	err = snap.Range(TransactionRollbackInodeType, func(item interface{}) bool {
-		count++
-		return true
-	})
-	return
-}
-
-func (mp *metaPartition) GetTxRbDentryRealCount() (count uint64, err error) {
-	snap, err := mp.GetSnapShot()
-	if err != nil {
-		return
-	}
-	defer snap.Close()
-	err = snap.Range(TransactionRollbackDentryType, func(item interface{}) bool {
-		count++
-		return true
-	})
-	return
-}
-
-func (mp *metaPartition) GetExtendRealCount() (count uint64, err error) {
-	snap, err := mp.GetSnapShot()
-	if err != nil {
-		return
-	}
-	defer snap.Close()
-	err = snap.Range(ExtendType, func(item interface{}) bool {
-		count++
-		return true
-	})
-	return
-}
-
-func (mp *metaPartition) GetMultipartRealCount() (count uint64, err error) {
-	snap, err := mp.GetSnapShot()
-	if err != nil {
-		return
-	}
-	defer snap.Close()
-	err = snap.Range(MultipartType, func(item interface{}) bool {
-		count++
-		return true
-	})
-	return
 }
 
 func (mp *metaPartition) initMemoryTree() {

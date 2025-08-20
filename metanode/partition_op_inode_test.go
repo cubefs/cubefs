@@ -218,7 +218,16 @@ func testOpUnlinkInode(t *testing.T, mp MetaPartition) {
 	unlkinkResp = unlinkInodeForInodeTest(t, mp, resp.Info.Inode)
 	require.EqualValues(t, 0, unlkinkResp.Info.Nlink)
 
-	cnt, err := mp.GetInodeRealCount()
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	cnt := 0
+	err = snap.Range(InodeType, func(item interface{}) bool {
+		cnt++
+		return true
+	})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, cnt)
 

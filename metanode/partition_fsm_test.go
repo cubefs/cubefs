@@ -70,25 +70,59 @@ func prepareDataForMpFsmTest(t *testing.T, mp *metaPartition) {
 }
 
 func checkEmptyMpForMpFsmTest(t *testing.T, mp *metaPartition) {
-	_, err := mp.GetInodeRealCount()
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+
+	count := 0
+	err = snap.Range(InodeType, func(item interface{}) bool {
+		count++
+		return true
+	})
 	require.NoError(t, err)
 
-	_, err = mp.GetDentryRealCount()
+	count = 0
+	err = snap.Range(DentryType, func(item interface{}) bool {
+		count++
+		return true
+	})
 	require.NoError(t, err)
 
-	_, err = mp.GetExtendRealCount()
+	count = 0
+	err = snap.Range(ExtendType, func(item interface{}) bool {
+		count++
+		return true
+	})
 	require.NoError(t, err)
 
-	_, err = mp.GetMultipartRealCount()
+	count = 0
+	err = snap.Range(MultipartType, func(item interface{}) bool {
+		count++
+		return true
+	})
 	require.NoError(t, err)
 
-	_, err = mp.GetTxRealCount()
+	count = 0
+	err = snap.Range(TransactionType, func(item interface{}) bool {
+		count++
+		return true
+	})
 	require.NoError(t, err)
 
-	_, err = mp.GetTxRbInodeRealCount()
+	count = 0
+	err = snap.Range(TransactionRollbackInodeType, func(item interface{}) bool {
+		count++
+		return true
+	})
 	require.NoError(t, err)
 
-	_, err = mp.GetTxRbDentryRealCount()
+	count = 0
+	err = snap.Range(TransactionRollbackDentryType, func(item interface{}) bool {
+		count++
+		return true
+	})
 	require.NoError(t, err)
 }
 
@@ -150,9 +184,9 @@ func testApplySnapshot(t *testing.T, storeMode proto.StoreMode) {
 }
 
 /*
-func TestApplySnapshot(t *testing.T) {
-	testApplySnapshot(t, proto.StoreModeMem)
-}
+	func TestApplySnapshot(t *testing.T) {
+		testApplySnapshot(t, proto.StoreModeMem)
+	}
 */
 func TestApplySnapshot_Rocksdb(t *testing.T) {
 	testApplySnapshot(t, proto.StoreModeRocksDb)

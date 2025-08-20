@@ -253,31 +253,65 @@ func prepareDataForMpTest(t *testing.T, mp *metaPartition) {
 }
 
 func checkTreeCntForMpTest(t *testing.T, mp *metaPartition) {
-	cnt, err := mp.GetInodeRealCount()
+	snap, err := mp.GetSnapShot()
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+
+	cnt := 0
+	err = snap.Range(InodeType, func(item interface{}) bool {
+		cnt++
+		return true
+	})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, cnt)
 
-	cnt, err = mp.GetDentryRealCount()
+	cnt = 0
+	err = snap.Range(DentryType, func(item interface{}) bool {
+		cnt++
+		return true
+	})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, cnt)
 
-	cnt, err = mp.GetExtendRealCount()
+	cnt = 0
+	err = snap.Range(ExtendType, func(item interface{}) bool {
+		cnt++
+		return true
+	})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, cnt)
 
-	cnt, err = mp.GetMultipartRealCount()
+	cnt = 0
+	err = snap.Range(MultipartType, func(item interface{}) bool {
+		cnt++
+		return true
+	})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, cnt)
 
-	cnt, err = mp.GetTxRealCount()
+	cnt = 0
+	err = snap.Range(TransactionType, func(item interface{}) bool {
+		cnt++
+		return true
+	})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, cnt)
 
-	cnt, err = mp.GetTxRbInodeRealCount()
+	cnt = 0
+	err = snap.Range(TransactionRollbackInodeType, func(item interface{}) bool {
+		cnt++
+		return true
+	})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, cnt)
 
-	cnt, err = mp.GetTxRbDentryRealCount()
+	cnt = 0
+	err = snap.Range(TransactionRollbackDentryType, func(item interface{}) bool {
+		cnt++
+		return true
+	})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, cnt)
 }

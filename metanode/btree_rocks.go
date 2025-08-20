@@ -1951,10 +1951,6 @@ func (r *RocksSnapShot) Count(tp TreeType) uint64 {
 }
 
 func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) bool) error {
-	return r.RangeWithScope(tp, nil, nil, cb)
-}
-
-func (r *RocksSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb func(item interface{}) bool) error {
 	tableType := getTableTypeKey(tp)
 	callbackFunc := func(k, v []byte) (bool, error) {
 		switch tp {
@@ -2002,46 +1998,7 @@ func (r *RocksSnapShot) RangeWithScope(tp TreeType, start, end interface{}, cb f
 	}
 	startBytes := []byte{byte(tableType)}
 	endBytes := []byte{byte(tableType + 1)}
-	marshal := func(item interface{}) ([]byte, error) {
-		switch tp {
-		case InodeType:
-			inode := item.(*Inode)
-			return inode.Marshal()
-		case DentryType:
-			dentry := item.(*Dentry)
-			return dentry.Marshal()
-		case ExtendType:
-			extend := item.(*Extend)
-			return extend.Bytes()
-		case MultipartType:
-			multipart := item.(*Multipart)
-			return multipart.Bytes()
-		case TransactionType:
-			tx := item.(*proto.TransactionInfo)
-			return tx.Marshal()
-		case TransactionRollbackInodeType:
-			inode := item.(*TxRollbackInode)
-			return inode.Marshal()
-		case TransactionRollbackDentryType:
-			dentry := item.(*TxRollbackDentry)
-			return dentry.Marshal()
-		default:
-			return nil, fmt.Errorf("error type")
-		}
-	}
-	var err error
-	if start != nil {
-		startBytes, err = marshal(start)
-		if err != nil {
-			return err
-		}
-	}
-	if end != nil {
-		endBytes, err = marshal(end)
-		if err != nil {
-			return err
-		}
-	}
+
 	return r.tree.RangeWithSnap(startBytes, endBytes, r.snap, callbackFunc)
 }
 

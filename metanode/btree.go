@@ -97,7 +97,6 @@ func NewSnapshot(mp *metaPartition) (snap Snapshot, err error) {
 
 type Snapshot interface {
 	Range(tp TreeType, cb func(item interface{}) bool) error
-	RangeWithScope(tp TreeType, start, end interface{}, cb func(item interface{}) bool) error
 	Close()
 	Count(tp TreeType) uint64
 	ApplyID() uint64

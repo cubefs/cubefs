@@ -1256,7 +1256,7 @@ func formatZoneView(zv *proto.ZoneView) string {
 		}
 		sb.WriteString("\n")
 		sb.WriteString(fmt.Sprintf("  MetaNodes[%v]:\n", ns.MetaNodeLen))
-		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
+		sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeViewTableHeader()))
 		for _, nv := range ns.MetaNodes {
 			sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeView(&nv, true)))
 		}
