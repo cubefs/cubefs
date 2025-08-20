@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -105,6 +106,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		finalHosts      []string
 		oldHosts        []string
 		zones           []string
+		auditMsg        string
 	)
 
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
@@ -173,6 +175,10 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 			}
 		}
 	}
+
+	auditMsg = fmt.Sprintf("volName[%v] partitionID[%v] hosts[%v] srcAddr[%v] choose targetAddr[%v]",
+		mp.volName, mp.PartitionID, mp.Hosts, srcAddr, newPeers)
+	auditlog.LogMasterOp("migrateMetaPartition", auditMsg, err)
 
 	finalHosts = make([]string, 0, len(oldHosts))
 	for _, host := range oldHosts {
@@ -539,7 +545,7 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string) (err err
 	partition.Lock()
 	defer partition.Unlock()
 	if contains(partition.Hosts, addr) {
-		err = fmt.Errorf("vol[%v],mp[%v] has contains host[%v]", partition.volName, partition.PartitionID, addr)
+		err = fmt.Errorf("vol[%v],mp[%v] hosts[%v] has contains host[%v]", partition.volName, partition.PartitionID, partition.Hosts, addr)
 		return
 	}
 	metaNode, err := c.metaNode(addr)
