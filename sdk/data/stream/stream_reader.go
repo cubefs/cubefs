@@ -795,40 +795,6 @@ func (s *Streamer) waitForAsyncFlush(handler *ExtentHandler, timeout time.Durati
 	}
 }
 
-// cancelAsyncFlush cancels pending async flush for a handler
-// Note: With channel-based approach, we can't easily cancel specific requests
-// This is a limitation of the channel approach
-func (s *Streamer) cancelAsyncFlush(handler *ExtentHandler) {
-	// With channel-based approach, we can't easily cancel specific requests
-	// The request will be processed and can check if handler is still valid
-	log.LogDebugf("Cancel requested for handler(%v) - will be handled during processing", handler)
-}
-
-// handleHandlerClosed handles cleanup when a handler is closed during async flush
-func (s *Streamer) handleHandlerClosed(handler *ExtentHandler) {
-	// With channel-based approach, we can't easily cancel specific requests
-	// Just ensure all in-flight packets are processed
-	for atomic.LoadInt32(&handler.inflight) > 0 {
-		time.Sleep(time.Duration(asyncFlushCheckIntervalMs) * time.Millisecond)
-	}
-
-	log.LogDebugf("Handler closed cleanup completed for handler(%v)", handler)
-}
-
-// getAsyncFlushStats returns statistics about async flush operations
-func (s *Streamer) getAsyncFlushStats() map[string]interface{} {
-	stats := make(map[string]interface{})
-	stats["channel_capacity"] = cap(s.asyncFlushCh)
-	stats["channel_length"] = len(s.asyncFlushCh)
-	stats["enable_async_flush"] = s.client.enableAsyncFlush
-
-	// Add sequencer statistics
-	stats["pending_requests"] = s.getPendingRequests()
-	stats["current_sequencer_id"] = atomic.LoadUint64(&s.asyncFlushSequencer)
-
-	return stats
-}
-
 // getAsyncFlushSequencerStats returns detailed statistics about the async flush sequencer
 // Note: This function is deprecated as sequencer is now per-streamer
 func (s *Streamer) getAsyncFlushSequencerStats() map[string]interface{} {
