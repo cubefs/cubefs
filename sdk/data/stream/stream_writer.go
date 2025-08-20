@@ -53,7 +53,6 @@ const (
 	asyncFlushCheckIntervalMs = 100  // Check every 100ms
 	maxAsyncFlushRetries      = 3    // Max retries for failed async flush
 	asyncFlushQueueSize       = 128  // Buffer size for async flush channel
-	asyncFlushWorkerCount     = 4    // Number of worker goroutines for async flush
 	asyncFlushSemaphoreSize   = 4    // Capacity of semaphore to limit concurrent processAsyncFlushRequest executions
 )
 
