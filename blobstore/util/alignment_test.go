@@ -38,6 +38,10 @@ func TestUtilAlignmentBuffer(t *testing.T) {
 }
 
 func TestUtilAlignmentHeadTail(t *testing.T) {
+	require.Panics(t, func() { AlignedHead(-1, 128) })
+	require.Panics(t, func() { AlignedHead(1, 0) })
+	require.Panics(t, func() { AlignedTail(-1, 128) })
+	require.Panics(t, func() { AlignedTail(1, 0) })
 	require.Equal(t, 0, AlignedHead(0, 128))
 	require.Equal(t, int64(1), AlignedHead[int64](513, 512))
 	require.Equal(t, uint64(0), AlignedTail[uint64](512, 512))
@@ -54,6 +58,49 @@ func TestUtilAlignmentHeadTail(t *testing.T) {
 			require.Equal(t, int64(0), head+tail)
 		} else {
 			require.Equal(t, alignment, head+tail)
+		}
+	}
+}
+
+func TestUtilAlignmentBlock(t *testing.T) {
+	require.Equal(t, 0, AlignedFull(0, 128))
+	require.Equal(t, 0, AlignedBlocks(0, 128))
+	require.Equal(t, int64(1024), AlignedFull[int64](513, 512))
+	require.Equal(t, int64(2), AlignedBlocks[int64](513, 512))
+	require.Equal(t, uint64(512), AlignedFull[uint64](512, 512))
+	require.Equal(t, uint64(1), AlignedBlocks[uint64](512, 512))
+	for range [100]struct{}{} {
+		size := rand.Int63() + 1
+		alignment := int64(32 << 10)
+		if rand.Int63()%7 == 0 {
+			size -= size % alignment
+		}
+		full := AlignedFull(size, alignment)
+		blocks := AlignedBlocks(size, alignment)
+		require.Equal(t, full, blocks*alignment)
+		if tail := AlignedTail(size, alignment); tail == 0 {
+			require.Equal(t, size, full)
+			require.Equal(t, size/alignment, blocks)
+		} else {
+			require.Equal(t, size+tail, full)
+			require.Equal(t, size/alignment+1, blocks)
+		}
+	}
+	for range [100]struct{}{} {
+		size := rand.Int63() + 1
+		alignment := rand.Int63n(1<<20) + 1
+		if rand.Int63()%7 == 0 {
+			size -= size % alignment
+		}
+		full := AlignedFull(size, alignment)
+		blocks := AlignedBlocks(size, alignment)
+		require.Equal(t, full, blocks*alignment)
+		if tail := AlignedTail(size, alignment); tail == 0 {
+			require.Equal(t, size, full)
+			require.Equal(t, size/alignment, blocks)
+		} else {
+			require.Equal(t, size+tail, full)
+			require.Equal(t, size/alignment+1, blocks)
 		}
 	}
 }

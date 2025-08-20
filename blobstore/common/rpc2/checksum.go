@@ -94,8 +94,7 @@ func (cb *ChecksumBlock) EncodeSize(originalSize int64) int64 {
 	if cb == nil || *cb == (ChecksumBlock{}) || originalSize == 0 {
 		return originalSize
 	}
-	payload := int64(cb.BlockSize)
-	blocks := (originalSize + (payload - 1)) / payload
+	blocks := util.AlignedBlocks(originalSize, int64(cb.BlockSize))
 	size := int64(algorithmSizes[cb.Algorithm])
 	if cb.Aligned {
 		size = _checksumAlignment

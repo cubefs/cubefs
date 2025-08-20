@@ -14,7 +14,10 @@
 
 package util
 
-import "unsafe"
+import (
+	"fmt"
+	"unsafe"
+)
 
 // AlignedBuffer address of first byte of buff wa aligned.
 // - - - - - - - - - - - - - - - - - - - -
@@ -34,10 +37,36 @@ func AlignedBuffer(head, capacity, alignment int) []byte {
 
 // AlignedHead head with alignment.
 func AlignedHead[I Integer](size, alignment I) I {
+	assert(size, alignment)
 	return size % alignment
 }
 
 // AlignedTail tail with alignment.
 func AlignedTail[I Integer](size, alignment I) I {
+	assert(size, alignment)
 	return (alignment - size%alignment) % alignment
+}
+
+// AlignedFull full with alignment.
+func AlignedFull[I Integer](size, alignment I) I {
+	assert(size, alignment)
+	if (alignment & (alignment - 1)) == 0 {
+		return (size + (alignment - 1)) & (^(alignment - 1))
+	}
+	return AlignedBlocks(size, alignment) * alignment
+}
+
+// AlignedBlocks number of blocks with alignment.
+func AlignedBlocks[I Integer](size, alignment I) I {
+	assert(size, alignment)
+	return (size + (alignment - 1)) / alignment
+}
+
+func assert[I Integer](size, alignment I) {
+	if size < 0 {
+		panic(fmt.Sprintf("util-align: size(%d) < 0", size))
+	}
+	if alignment <= 0 {
+		panic(fmt.Sprintf("util-align: alignment(%d) <= 0", alignment))
+	}
 }

@@ -58,7 +58,7 @@ func EncodeSize(size int64, blockLen int64) int64 {
 		panic(ErrInvalidBlock)
 	}
 	payload := BlockPayload(blockLen)
-	blockCnt := (size + (payload - 1)) / payload
+	blockCnt := util.AlignedBlocks(size, payload)
 	return size + crc32Len*blockCnt
 }
 
@@ -66,7 +66,7 @@ func DecodeSize(totalSize int64, blockLen int64) int64 {
 	if !isValidBlockLen(blockLen) {
 		panic(ErrInvalidBlock)
 	}
-	blockCnt := (totalSize + (blockLen - 1)) / blockLen
+	blockCnt := util.AlignedBlocks(totalSize, blockLen)
 	return totalSize - crc32Len*blockCnt
 }
 

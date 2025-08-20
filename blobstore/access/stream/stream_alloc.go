@@ -113,7 +113,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 	args := proxy.AllocVolsArgs{
 		Fsize:    size,
 		CodeMode: codeMode,
-		BidCount: blobCount(size, blobSize),
+		BidCount: util.AlignedBlocks(size, uint64(blobSize)),
 	}
 
 	var allocRets []proxy.AllocRet
@@ -183,7 +183,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		setCacheVidHost(clusterID, ret.Vid, allocHost)
 	}
 
-	blobN := blobCount(size, blobSize)
+	blobN := util.AlignedBlocks(size, uint64(blobSize))
 	blobs := make([]proto.Slice, 0, blobN)
 	for _, bidRet := range allocRets {
 		if blobN <= 0 {
