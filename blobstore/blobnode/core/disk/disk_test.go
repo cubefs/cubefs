@@ -312,6 +312,7 @@ func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
+	diskConfig.WaitPendingReqIntervalSec = 1
 	ds, err := NewDiskStorage(ctx, diskConfig)
 	require.NoError(t, err)
 	require.NotNil(t, ds)
@@ -494,7 +495,7 @@ func TestCleanChunk(t *testing.T) {
 
 	require.Equal(t, len(ds.Chunks), 2)
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	err = ds.ReleaseChunk(ctx, vuid1, false)
 	require.Error(t, err)

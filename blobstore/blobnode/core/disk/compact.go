@@ -221,7 +221,7 @@ func (ds *DiskStorage) destroyRedundant(ctx context.Context, ncs core.ChunkAPI) 
 
 	// wait old stg all request done；
 	for {
-		time.Sleep(10 * time.Second)
+		time.Sleep(time.Duration(ds.Conf.WaitPendingReqIntervalSec) * time.Second)
 		if !ncs.HasPendingRequest() {
 			break
 		}

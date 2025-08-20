@@ -45,7 +45,8 @@ const (
 	DefaultBlockBufferSize              = int64(64 * 1024)      // 64k
 	DefaultCompactEmptyRateThreshold    = float64(0.8)          // 80% rate
 	DefaultBatchReadBufferSize          = int64(1024 * 1024)    // 1 MB
-	DefaultBatchReadHoleThreshold       = int64(256 * 1024)     // hole data in batch
+	DefaultBatchReadHoleThreshold       = int64(256 * 1024)     // hole data in batch)
+	defaultWaitPendingReqIntervalSec    = int64(10)
 	defaultWriteThreadCnt               = 4
 	defaultReadThreadCnt                = 4
 	defaultDeleteThreadCnt              = 2
@@ -87,6 +88,7 @@ type RuntimeConfig struct {
 	SetDefaultSwitch             bool    `json:"set_default_switch"`
 	EnableDeleteShardVerify      bool    `json:"enable_delete_shard_verify"`
 	CompactBatchSize             int     `json:"compact_batch_size"`
+	WaitPendingReqIntervalSec    int64   `json:"wait_pending_req_interval_sec"`
 	MetricReportIntervalS        int64   `json:"metric_report_interval_S"`
 	BlockBufferSize              int64   `json:"block_buffer_size"`
 	BatchBufferSize              int64   `json:"batch_buffer_size"`
@@ -157,6 +159,7 @@ func InitConfig(conf *Config) error {
 	defaulter.LessOrEqual(&conf.DiskCleanTrashIntervalSec, DefaultDiskCleanTrashIntervalSec)
 	defaulter.LessOrEqual(&conf.DiskTrashProtectionM, DefaultDiskTrashProtectionM)
 	defaulter.LessOrEqual(&conf.MetricReportIntervalS, DefaultMetricReportIntervalS)
+	defaulter.LessOrEqual(&conf.WaitPendingReqIntervalSec, defaultWaitPendingReqIntervalSec)
 	if conf.SetDefaultSwitch {
 		conf.NeedCompactCheck = true
 		conf.AllowForceCompact = true
