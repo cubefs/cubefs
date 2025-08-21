@@ -695,7 +695,7 @@ func testTxTreeRollback(t *testing.T) {
 	handle, err = txMgr.txTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	err = txMgr.registerTransaction(handle, txInfo)
-	require.NoError(t, err)
+	require.Error(t, err)
 	err = txMgr.txTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 	txMgr.txProcessor.mask |= proto.TxPause
