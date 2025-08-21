@@ -244,7 +244,6 @@ func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n
 			break
 		}
 		toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
-		atomic.AddInt32(&c.evicts, 1)
 		n++
 		diskSpaceLeft += ent.Value.(*entry).value.(*CacheBlock).getAllocSize()
 
@@ -296,7 +295,6 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 				c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
 			}
 			toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
-			atomic.AddInt32(&c.evicts, 1)
 			n++
 		}
 	}
@@ -390,6 +388,7 @@ func (c *fCache) Evict(key interface{}) bool {
 func (c *fCache) deleteElement(ent *list.Element) interface{} {
 	v := ent.Value.(*entry)
 	c.removeElement(ent)
+	atomic.AddInt32(&c.evicts, 1)
 	return v.value
 }
 
