@@ -21,6 +21,7 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
@@ -56,6 +57,8 @@ type CommonDiskConfig struct {
 	DiskBandwidthMB  int64   `json:"disk_bandwidth_mb"`  // disk total bandwidth MB/s
 	UpdateIntervalMs int64   `json:"update_interval_ms"` // dynamic update limiter interval
 	DiskIdleFactor   float64 `json:"disk_idle_factor"`   // disk is idle, raise rate factor
+
+	DiskID proto.DiskID `json:"-"`
 }
 
 type FlowConfig struct {

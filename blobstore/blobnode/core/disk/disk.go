@@ -1033,6 +1033,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	// init Qos manager
 	conf.DataQos.StatGetter = dataIos
 	conf.DataQos.DiskViewer = diskView
+	conf.DataQos.DiskID = dm.DiskID
 
 	dataQos, err := qos.NewQosMgr(conf.DataQos)
 	if err != nil {

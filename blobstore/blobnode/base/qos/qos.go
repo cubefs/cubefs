@@ -35,6 +35,9 @@ import (
 const (
 	limitConcurrencyKey = 0xffffffff
 	emaMultiple         = 1000
+	reasonBusy          = "busy"
+	reasonIdle          = "idle"
+	reasonOriginal      = "original"
 )
 
 // QosAPI defines the interface for QoS control operations
@@ -53,7 +56,7 @@ type QosAPI interface {
 type QosMgr struct {
 	qos    map[bnapi.IOType]*queueQos
 	conf   Config
-	lck    sync.Mutex
+	lck    sync.Mutex // lock conf, for hot update config
 	closed closer.Closer
 }
 
@@ -234,6 +237,7 @@ func (q *queueQos) ReserveN(t time.Time, n int) *rate.Reservation {
 // UpdateQosBpsLimiter dynamically adjusts bandwidth limits based on disk usage
 func (q *queueQos) UpdateQosBpsLimiter(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
+	reason := ""
 
 	target, currentBps := 0, q.diskBps
 	lastBps := int64(q.limitBps.Limit())
@@ -248,23 +252,32 @@ func (q *queueQos) UpdateQosBpsLimiter(ctx context.Context) {
 	case currentBps >= diskConfBps && lastBps >= levelConfBps:
 		// reduce limit to level*busy when disk is busy
 		target = int(float64(levelConfBps) * levelConf.BusyFactor)
+		reason = reasonBusy
 	case currentBps < diskIdleBps && lastBps < levelIdleBps:
 		// increase limit to level*idle when disk is idle
 		target = int(levelIdleBps)
+		reason = reasonIdle
 	case currentBps < diskConfBps && lastBps < levelConfBps:
 		// reset to original limit when load normalizes
 		target = int(levelConfBps)
+		reason = reasonOriginal
 	default:
 		return
 	}
 
+	// The target is the same as last time, does not need to be modified
+	if lastBps == int64(target) {
+		return
+	}
 	resetLimiter(q.limitBps, target)
-	span.Infof("qos dynamical update Bps: (%s) %d -> %d", q.conf.IOType.String(), lastBps, target)
+	span.Infof("qos dynamical update Bps: reason:%s, diskID:%d, type:%s, %d -> %d",
+		reason, diskConf.DiskID, q.conf.IOType.String(), lastBps, target)
 }
 
 // UpdateQosConcurrency dynamically adjusts concurrency limits using EMA
 func (q *queueQos) UpdateQosConcurrency(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
+	reason := ""
 
 	// The value of iops is very small, so the result of ema needs to be increased by 1000 multiple to be accurate
 	currIops := q.diskIOps / emaMultiple
@@ -279,19 +292,27 @@ func (q *queueQos) UpdateQosConcurrency(ctx context.Context) {
 	case diskIopsUsage >= 1.0 && lastCon >= original:
 		// Reduce concurrency when disk is saturated
 		target = int64(float64(original) * levelConf.BusyFactor)
+		reason = reasonBusy
 	case diskIopsUsage < diskConf.DiskIdleFactor && lastCon < idle:
 		// Increase concurrency when disk is idle
 		target = idle
+		reason = reasonIdle
 	case diskIopsUsage < 1 && lastCon < original:
 		// Reset to original limit when load normalizes
 		target = original
+		reason = reasonOriginal
 	default:
 		return
 	}
 
+	// The target is the same as last time, does not need to be modified
+	if lastCon == target {
+		return
+	}
 	q.concurrence = target
 	q.limitConcurrency.Reset(int(target))
-	span.Infof("qos dynamical update concurrence: (%s) %d -> %d", q.conf.IOType.String(), lastCon, target)
+	span.Infof("qos dynamical update concurrence: reason:%s, diskID:%d, type:%s, %d -> %d",
+		reason, diskConf.DiskID, q.conf.IOType.String(), lastCon, target)
 }
 
 // loopUpdateCurrentStat periodically updates IO statistics and adjusts QoS limits
