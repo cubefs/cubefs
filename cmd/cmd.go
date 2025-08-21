@@ -15,6 +15,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	syslog "log"
@@ -404,6 +405,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	http.HandleFunc("/healthyz", liveCheck)
+	http.HandleFunc("/livez", liveCheck)
+	http.HandleFunc("/readyz", readyCheck)
+
 	daemonize.SignalOutcome(nil)
 
 	// Block main goroutine until server shutdown.
@@ -437,4 +442,33 @@ func startDaemon() error {
 	}
 
 	return nil
+}
+
+func writeJSONResponse(w http.ResponseWriter, status string, message string) {
+	resp := map[string]interface{}{
+		"status":  status,
+		"message": message,
+		"time":    time.Now().Format(time.RFC3339),
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.LogErrorf("failed to encode response, err %s", err.Error())
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func liveCheck(w http.ResponseWriter, r *http.Request) {
+	log.LogInfof("livez check request received")
+	writeJSONResponse(w, "livez", "service is running")
+	log.LogInfo("livez check response sent successfully")
+}
+
+func readyCheck(w http.ResponseWriter, r *http.Request) {
+	log.LogInfof("ready check request received")
+	writeJSONResponse(w, "ready", "service is ready")
+	log.LogInfo("ready check response sent successfully")
 }
