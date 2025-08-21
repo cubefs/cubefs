@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/tecbot/gorocksdb"
 
@@ -17,6 +18,9 @@ import (
 
 const (
 	DefBatchDelCount = 10000
+
+	RocksdbNormalKeySize = 32
+	RocksdbLongKeySize   = 1024
 )
 
 var ErrInvalidRocksdbValueLen = fmt.Errorf("invalid value len")
@@ -40,7 +44,37 @@ type RocksBaseInfo struct {
 	uniqID            uint64
 }
 
-func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
+var RocksdbNormalKeyPool = sync.Pool{
+	New: func() interface{} {
+		return buf.NewByteBufEx(RocksdbNormalKeySize)
+	},
+}
+
+var RocksdbLongKeyPool = sync.Pool{
+	New: func() interface{} {
+		return buf.NewByteBufEx(RocksdbLongKeySize)
+	},
+}
+
+func GetRocksdbNormalKey() *buf.ByteBufExt {
+	return RocksdbNormalKeyPool.Get().(*buf.ByteBufExt)
+}
+
+func PutRocksdbNormalKey(buf *buf.ByteBufExt) {
+	buf.Reset()
+	RocksdbNormalKeyPool.Put(buf)
+}
+
+func GetRocksdbLongKey() *buf.ByteBufExt {
+	return RocksdbLongKeyPool.Get().(*buf.ByteBufExt)
+}
+
+func PutRocksdbLongKey(buf *buf.ByteBufExt) {
+	buf.Reset()
+	RocksdbLongKeyPool.Put(buf)
+}
+
+func (info *RocksBaseInfo) MarshalV0() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint32(&info.version)); err != nil {
 		panic(err)
@@ -85,7 +119,52 @@ func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
 	return buff.Bytes(), nil
 }
 
-func (info *RocksBaseInfo) MarshalWithoutApplyID() (result []byte, err error) {
+func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
+	buff := buf.NewByteBufEx(128)
+	if err = buff.PutUint32(atomic.LoadUint32(&info.version)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint32(atomic.LoadUint32(&info.length)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.applyId)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.inodeCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.dentryCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.extendCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.multiCnt)); err != nil {
+		panic(err)
+	}
+	info.persistentApplyId = info.applyId
+	if err = buff.PutUint64(atomic.LoadUint64(&info.cursor)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.txCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.txRbInodeCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.txRbDentryCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.txId)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.uniqID)); err != nil {
+		panic(err)
+	}
+	return buff.Bytes(), nil
+}
+
+func (info *RocksBaseInfo) MarshalWithoutApplyIDV0() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint32(&info.version)); err != nil {
 		panic(err)
@@ -124,6 +203,50 @@ func (info *RocksBaseInfo) MarshalWithoutApplyID() (result []byte, err error) {
 		panic(err)
 	}
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.uniqID)); err != nil {
+		panic(err)
+	}
+	return buff.Bytes(), nil
+}
+
+func (info *RocksBaseInfo) MarshalWithoutApplyID() (result []byte, err error) {
+	buff := buf.NewByteBufEx(128)
+	if err = buff.PutUint32(atomic.LoadUint32(&info.version)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint32(atomic.LoadUint32(&info.length)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.persistentApplyId)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.inodeCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.dentryCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.extendCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.multiCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.cursor)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.txCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.txRbInodeCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.txRbDentryCnt)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.txId)); err != nil {
+		panic(err)
+	}
+	if err = buff.PutUint64(atomic.LoadUint64(&info.uniqID)); err != nil {
 		panic(err)
 	}
 	return buff.Bytes(), nil
@@ -201,7 +324,7 @@ func NewRocksTree(dbInfo *RocksdbOperator, partitionId uint64) (*RocksTree, erro
 	return tree, nil
 }
 
-func (r *RocksTree) warpPartitionKey(id uint64, k []byte) (key []byte) {
+func (r *RocksTree) warpPartitionKeyV0(id uint64, k []byte) (key []byte) {
 	buff := bytes.NewBuffer([]byte{})
 	binary.Write(buff, binary.BigEndian, id)
 	buff.Write(k)
@@ -209,13 +332,42 @@ func (r *RocksTree) warpPartitionKey(id uint64, k []byte) (key []byte) {
 	return
 }
 
-func (r *RocksTree) warpKey(k []byte) (key []byte) {
-	key = r.warpPartitionKey(r.partitionId, k)
+func (r *RocksTree) warpKeyV0(k []byte) (key []byte) {
+	key = r.warpPartitionKeyV0(r.partitionId, k)
 	return
 }
 
+func (r *RocksTree) GetRocksdbNormalKey(tableType byte) *buf.ByteBufExt {
+	buf := GetRocksdbNormalKey()
+	err := buf.PutUint64(r.partitionId)
+	if err != nil {
+		panic(err)
+	}
+	err = buf.WriteByte(tableType)
+	if err != nil {
+		panic(err)
+	}
+	return buf
+}
+
+func (r *RocksTree) GetRocksdbLongKey(tableType byte) *buf.ByteBufExt {
+	buf := GetRocksdbLongKey()
+	err := buf.PutUint64(r.partitionId)
+	if err != nil {
+		panic(err)
+	}
+	err = buf.WriteByte(tableType)
+	if err != nil {
+		panic(err)
+	}
+	return buf
+}
+
 func (r *RocksTree) LoadBaseInfo() error {
-	buff, err := r.GetBytes(baseInfoKey)
+	keyBuf := r.GetRocksdbNormalKey(byte(BaseInfoType))
+	defer PutRocksdbNormalKey(keyBuf)
+	baseKey := keyBuf.Bytes()
+	buff, err := r.GetBytes(baseKey)
 	if err != nil {
 		return err
 	}
@@ -266,11 +418,11 @@ func (r *RocksTree) ReleaseBatchHandle(handle interface{}) (err error) {
 }
 
 func (r *RocksTree) AddItemToBatch(handle interface{}, key []byte, value []byte) error {
-	return r.db.AddItemToBatch(handle, r.warpKey(key), value)
+	return r.db.AddItemToBatch(handle, key, value)
 }
 
 func (r *RocksTree) SaveToDb(key []byte, value []byte) error {
-	return r.db.Put(r.warpKey(key), value)
+	return r.db.Put(key, value)
 }
 
 func (r *RocksTree) HandleBatchCount(handle interface{}) (count int, err error) {
@@ -306,7 +458,11 @@ func (r *RocksTree) CommitBatchWrite(handle interface{}, needCommitApplyID bool)
 		}
 	}
 
-	if err = r.AddItemToBatch(handle, baseInfoKey, buffBaseInfo); err != nil {
+	keyBuf := r.GetRocksdbNormalKey(byte(BaseInfoType))
+	defer PutRocksdbNormalKey(keyBuf)
+	baseKey := keyBuf.Bytes()
+
+	if err = r.AddItemToBatch(handle, baseKey, buffBaseInfo); err != nil {
 		return err
 	}
 	return r.CommitBatch(handle)
@@ -342,7 +498,11 @@ func (r *RocksTree) CommitAndReleaseBatchWriteHandle(handle interface{}, needCom
 		}
 	}
 
-	if err = r.AddItemToBatch(handle, baseInfoKey, buffBaseInfo); err != nil {
+	keyBuf := r.GetRocksdbNormalKey(byte(BaseInfoType))
+	defer PutRocksdbNormalKey(keyBuf)
+	baseKey := keyBuf.Bytes()
+
+	if err = r.AddItemToBatch(handle, baseKey, buffBaseInfo); err != nil {
 		return err
 	}
 	if err = r.CommitBatch(handle); err != nil {
@@ -374,7 +534,11 @@ func (r *RocksTree) PersistBaseInfo() error {
 		return err
 	}
 
-	if err = r.SaveToDb(baseInfoKey, buffBaseInfo); err != nil {
+	keyBuf := r.GetRocksdbNormalKey(byte(BaseInfoType))
+	defer PutRocksdbNormalKey(keyBuf)
+	baseKey := keyBuf.Bytes()
+
+	if err = r.SaveToDb(baseKey, buffBaseInfo); err != nil {
 		return err
 	}
 
@@ -401,7 +565,11 @@ func (r *RocksTree) Flush(block bool) error {
 }
 
 func (r *RocksTree) Count(tp TreeType) (uint64, error) {
-	baseInfoBytes, err := r.GetBytes(baseInfoKey)
+	keyBuf := r.GetRocksdbNormalKey(byte(BaseInfoType))
+	defer PutRocksdbNormalKey(keyBuf)
+	baseKey := keyBuf.Bytes()
+
+	baseInfoBytes, err := r.GetBytes(baseKey)
 	if err != nil {
 		err = fmt.Errorf("load base info from rocksdb err:[%s]", err.Error())
 		log.LogErrorf(err.Error())
@@ -434,12 +602,12 @@ func (r *RocksTree) Count(tp TreeType) (uint64, error) {
 
 // This requires global traversal to call carefully
 func (r *RocksTree) RangeWithSnap(start []byte, end []byte, snap *gorocksdb.Snapshot, iter func(k, v []byte) (bool, error)) (err error) {
-	err = r.db.RangeWithSnap(r.warpKey(start), r.warpKey(end), snap, iter)
+	err = r.db.RangeWithSnap(start, end, snap, iter)
 	return
 }
 
 func (r *RocksTree) DescRangeWithSnap(start []byte, end []byte, snap *gorocksdb.Snapshot, iter func(k, v []byte) (bool, error)) (err error) {
-	err = r.db.DescRangeWithSnap(r.warpKey(start), r.warpKey(end), snap, iter)
+	err = r.db.DescRangeWithSnap(start, end, snap, iter)
 	return
 }
 
@@ -452,7 +620,13 @@ func (r *RocksTree) ReleaseSnap(snap *gorocksdb.Snapshot) {
 }
 
 func (r *RocksTree) IteratorCount(tableType TableType) uint64 {
-	start, end := []byte{byte(tableType)}, []byte{byte(tableType) + 1}
+	startBuf := r.GetRocksdbNormalKey(byte(tableType))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := r.GetRocksdbNormalKey(byte(tableType) + 1)
+	defer PutRocksdbLongKey(endBuf)
+	start := startBuf.Bytes()
+	end := endBuf.Bytes()
+
 	var count uint64
 	dbSnap := r.OpenSnap()
 	if dbSnap == nil {
@@ -483,7 +657,7 @@ func (r *RocksTree) Range(start, end []byte, cb func(v []byte) (bool, error)) er
 }
 
 func (r *RocksTree) RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
-	err = r.db.RangeWithSnapByPrefix(r.warpKey(prefix), r.warpKey(start), r.warpKey(end), snap, cb)
+	err = r.db.RangeWithSnapByPrefix(prefix, start, end, snap, cb)
 	return
 }
 
@@ -508,11 +682,11 @@ func (r *RocksTree) HasKey(key []byte) (bool, error) {
 }
 
 func (r *RocksTree) GetBytes(key []byte) ([]byte, error) {
-	return r.db.GetBytes(r.warpKey(key))
+	return r.db.GetBytes(key)
 }
 
 func (r *RocksTree) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []byte) ([]byte, error) {
-	return r.db.GetBytesWithSnap(snap, r.warpKey(key))
+	return r.db.GetBytesWithSnap(snap, key)
 }
 
 func (r *RocksTree) Put(handle interface{}, count *uint64, key []byte, value []byte) error {
@@ -578,7 +752,7 @@ func (r *RocksTree) Create(handle interface{}, count *uint64, key []byte, value 
 }
 
 func (r *RocksTree) DelItemToBatch(handle interface{}, key []byte) (err error) {
-	err = r.db.DelItemToBatch(handle, r.warpKey(key))
+	err = r.db.DelItemToBatch(handle, key)
 	return
 }
 
@@ -617,7 +791,7 @@ func (r *RocksTree) Execute(fn func(tree interface{}) interface{}) interface{} {
 }
 
 func (r *RocksTree) DelRangeToBatch(handle interface{}, start []byte, end []byte) (err error) {
-	err = r.db.DelRangeToBatch(handle, r.warpKey(start), r.warpKey(end))
+	err = r.db.DelRangeToBatch(handle, start, end)
 	return
 }
 
@@ -634,7 +808,12 @@ func (r *RocksTree) DeleteMetadata(handle interface{}) (err error) {
 	r.baseInfo.txRbDentryCnt = 0
 	r.baseInfo.txId = 0
 	r.baseInfo.uniqID = 0
-	err = r.db.DelItemToBatch(handle, r.warpKey(baseInfoKey))
+
+	keyBuf := r.GetRocksdbNormalKey(byte(BaseInfoType))
+	defer PutRocksdbNormalKey(keyBuf)
+	baseKey := keyBuf.Bytes()
+
+	err = r.db.DelItemToBatch(handle, baseKey)
 	return
 }
 
@@ -643,7 +822,11 @@ func (r *RocksTree) GetStoreMode() proto.StoreMode {
 }
 
 func (r *RocksTree) GetApplyIdFromDisk() (uint64, error) {
-	buff, err := r.db.GetBytesFromDisk(r.warpKey(baseInfoKey))
+	keyBuf := r.GetRocksdbNormalKey(byte(BaseInfoType))
+	defer PutRocksdbNormalKey(keyBuf)
+	baseKey := keyBuf.Bytes()
+
+	buff, err := r.db.GetBytesFromDisk(baseKey)
 	if err != nil {
 		return 0, err
 	}
@@ -756,14 +939,19 @@ func NewDeletedObjExtentsRocks(tree *RocksTree) (*DeletedObjExtentsRocks, error)
 	}, nil
 }
 
-func inodeEncodingKey(ino uint64) []byte {
+func inodeEncodingKeyV0(ino uint64) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(InodeTable))
 	_ = binary.Write(buff, binary.BigEndian, ino)
 	return buff.Bytes()
 }
 
-func dentryEncodingKey(parentId uint64, name string) []byte {
+func inodeEncodingKey(keyBuf *buf.ByteBufExt, ino uint64) []byte {
+	keyBuf.PutUint64(ino)
+	return keyBuf.Bytes()
+}
+
+func dentryEncodingKeyV0(parentId uint64, name string) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(DentryTable))
 	_ = binary.Write(buff, binary.BigEndian, parentId)
@@ -772,25 +960,35 @@ func dentryEncodingKey(parentId uint64, name string) []byte {
 	return buff.Bytes()
 }
 
-func dentryEncodingPrefix(parentId uint64, name string) []byte {
-	buff := new(bytes.Buffer)
-	buff.WriteByte(byte(DentryTable))
-	_ = binary.Write(buff, binary.BigEndian, parentId)
-	buff.WriteByte(0)
-	if name != "" {
-		buff.WriteString(name)
-	}
-	return buff.Bytes()
+func dentryEncodingKey(keyBuf *buf.ByteBufExt, parentId uint64, name string) []byte {
+	keyBuf.PutUint64(parentId)
+	keyBuf.WriteByte(0)
+	keyBuf.WriteString(name)
+	return keyBuf.Bytes()
 }
 
-func extendEncodingKey(ino uint64) []byte {
+func dentryEncodingPrefix(keyBuf *buf.ByteBufExt, parentId uint64, name string) []byte {
+	keyBuf.PutUint64(parentId)
+	keyBuf.WriteByte(0)
+	if name != "" {
+		keyBuf.WriteString(name)
+	}
+	return keyBuf.Bytes()
+}
+
+func extendEncodingKeyV0(ino uint64) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(ExtendTable))
 	_ = binary.Write(buff, binary.BigEndian, ino)
 	return buff.Bytes()
 }
 
-func multipartEncodingKey(key string, id string) []byte {
+func extendEncodingKey(keyBuf *buf.ByteBufExt, ino uint64) []byte {
+	keyBuf.PutUint64(ino)
+	return keyBuf.Bytes()
+}
+
+func multipartEncodingKeyV0(key string, id string) []byte {
 	buff := new(bytes.Buffer)
 	buff.WriteByte(byte(MultipartTable))
 	buff.WriteString(key)
@@ -799,32 +997,47 @@ func multipartEncodingKey(key string, id string) []byte {
 	return buff.Bytes()
 }
 
-func multipartEncodingPrefix(key string, id string) []byte {
-	buff := new(bytes.Buffer)
-	buff.WriteByte(byte(MultipartTable))
-	buff.WriteString(key)
-	buff.WriteByte(0)
-	if id != "" {
-		buff.WriteString(id)
-	}
-	return buff.Bytes()
+func multipartEncodingKey(keyBuf *buf.ByteBufExt, key string, id string) []byte {
+	keyBuf.WriteString(key)
+	keyBuf.WriteByte(0)
+	keyBuf.WriteString(id)
+	return keyBuf.Bytes()
 }
 
-func transactionEncodingKey(txId string) []byte {
+func multipartEncodingPrefix(keyBuf *buf.ByteBufExt, key string, id string) []byte {
+	keyBuf.WriteString(key)
+	keyBuf.WriteByte(0)
+	if id != "" {
+		keyBuf.WriteString(id)
+	}
+	return keyBuf.Bytes()
+}
+
+func transactionEncodingKeyV0(txId string) []byte {
 	buff := &bytes.Buffer{}
 	buff.WriteByte(byte(TransactionTable))
 	buff.WriteString(txId)
 	return buff.Bytes()
 }
 
-func transactionRollbackInodeEncodingKey(ino uint64) []byte {
+func transactionEncodingKey(keyBuf *buf.ByteBufExt, txId string) []byte {
+	keyBuf.WriteString(txId)
+	return keyBuf.Bytes()
+}
+
+func transactionRollbackInodeEncodingKeyV0(ino uint64) []byte {
 	buff := &bytes.Buffer{}
 	buff.WriteByte(byte(TransactionRollbackInodeTable))
 	_ = binary.Write(buff, binary.BigEndian, ino)
 	return buff.Bytes()
 }
 
-func transactionRollbackDentryEncodingKey(parentId uint64, name string) []byte {
+func transactionRollbackInodeEncodingKey(keyBuf *buf.ByteBufExt, ino uint64) []byte {
+	keyBuf.PutUint64(ino)
+	return keyBuf.Bytes()
+}
+
+func transactionRollbackDentryEncodingKeyV0(parentId uint64, name string) []byte {
 	buff := &bytes.Buffer{}
 	buff.WriteByte(byte(TransactionRollbackDentryTable))
 	_ = binary.Write(buff, binary.BigEndian, parentId)
@@ -832,14 +1045,18 @@ func transactionRollbackDentryEncodingKey(parentId uint64, name string) []byte {
 	return buff.Bytes()
 }
 
-func transactionRollbackDentryEncodingPrefix(parentId uint64, name string) []byte {
-	buff := new(bytes.Buffer)
-	buff.WriteByte(byte(TransactionRollbackDentryTable))
-	_ = binary.Write(buff, binary.BigEndian, parentId)
+func transactionRollbackDentryEncodingKey(keyBuf *buf.ByteBufExt, parentId uint64, name string) []byte {
+	keyBuf.PutUint64(parentId)
+	keyBuf.WriteString(name)
+	return keyBuf.Bytes()
+}
+
+func transactionRollbackDentryEncodingPrefix(keyBuf *buf.ByteBufExt, parentId uint64, name string) []byte {
+	keyBuf.PutUint64(parentId)
 	if name != "" {
-		buff.WriteString(name)
+		keyBuf.WriteString(name)
 	}
-	return buff.Bytes()
+	return keyBuf.Bytes()
 }
 
 func (b *InodeRocks) GetMaxInode() (uint64, error) {
@@ -848,8 +1065,15 @@ func (b *InodeRocks) GetMaxInode() (uint64, error) {
 		return 0, errors.NewErrorf("open snapshot failed")
 	}
 	defer b.RocksTree.ReleaseSnap(snapshot)
+	startBuf := b.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := b.GetRocksdbNormalKey(byte(InodeTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+	start := startBuf.Bytes()
+	end := endBuf.Bytes()
+
 	var maxInode uint64 = 0
-	err := b.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
+	err := b.DescRangeWithSnap(start, end, snapshot, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
 		if e := inode.Unmarshal(v); e != nil {
 			return false, e
@@ -986,8 +1210,11 @@ func (b *InodeRocks) Get(ino *Inode) (*Inode, error) {
 		}
 	}()
 
+	keyBuf := b.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
 	var bs []byte
-	bs, err = b.RocksTree.GetBytes(inodeEncodingKey(ino.Inode))
+	bs, err = b.RocksTree.GetBytes(inodeEncodingKey(keyBuf, ino.Inode))
 	if err != nil {
 		return nil, err
 	}
@@ -1015,8 +1242,11 @@ func (b *DentryRocks) Get(dent *Dentry) (*Dentry, error) {
 		}
 	}()
 
+	keyBuf := b.GetRocksdbLongKey(byte(DentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
 	var bs, key []byte
-	key = dentryEncodingKey(dent.ParentId, dent.Name)
+	key = dentryEncodingKey(keyBuf, dent.ParentId, dent.Name)
 	bs, err = b.RocksTree.GetBytes(key)
 	if err != nil {
 		return nil, err
@@ -1045,8 +1275,11 @@ func (b *ExtendRocks) Get(extent *Extend) (*Extend, error) {
 		}
 	}()
 
+	keyBuf := b.GetRocksdbNormalKey(byte(ExtendTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
 	var bs, key []byte
-	key = extendEncodingKey(extent.inode)
+	key = extendEncodingKey(keyBuf, extent.inode)
 	bs, err = b.RocksTree.GetBytes(key)
 	if err != nil {
 		return nil, err
@@ -1075,8 +1308,11 @@ func (b *MultipartRocks) Get(multi *Multipart) (*Multipart, error) {
 		}
 	}()
 
+	keyBuf := b.GetRocksdbLongKey(byte(MultipartTable))
+	defer PutRocksdbLongKey(keyBuf)
+
 	var bs, encodingKey []byte
-	encodingKey = multipartEncodingKey(multi.key, multi.id)
+	encodingKey = multipartEncodingKey(keyBuf, multi.key, multi.id)
 	bs, err = b.RocksTree.GetBytes(encodingKey)
 	if err != nil {
 		return nil, err
@@ -1097,8 +1333,11 @@ func (b *TransactionRocks) Get(tx *proto.TransactionInfo) (*proto.TransactionInf
 		}
 	}()
 
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionTable))
+	defer PutRocksdbLongKey(keyBuf)
+
 	var bs, encodingKey []byte
-	encodingKey = transactionEncodingKey(tx.TxID)
+	encodingKey = transactionEncodingKey(keyBuf, tx.TxID)
 	if bs, err = b.RocksTree.GetBytes(encodingKey); err != nil {
 		return nil, err
 	}
@@ -1124,8 +1363,11 @@ func (b *TransactionRollbackInodeRocks) Get(inode *TxRollbackInode) (*TxRollback
 		}
 	}()
 
+	keyBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
 	var bs, encodingKey []byte
-	encodingKey = transactionRollbackInodeEncodingKey(inode.inode.Inode)
+	encodingKey = transactionRollbackInodeEncodingKey(keyBuf, inode.inode.Inode)
 	if bs, err = b.RocksTree.GetBytes(encodingKey); err != nil {
 		return nil, err
 	}
@@ -1151,8 +1393,11 @@ func (b *TransactionRollbackDentryRocks) Get(dentry *TxRollbackDentry) (*TxRollb
 		}
 	}()
 
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
 	var bs, encodingKey []byte
-	encodingKey = transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name)
+	encodingKey = transactionRollbackDentryEncodingKey(keyBuf, dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name)
 	if bs, err = b.RocksTree.GetBytes(encodingKey); err != nil {
 		return nil, err
 	}
@@ -1178,7 +1423,11 @@ func (b *InodeRocks) Put(handle interface{}, inode *Inode) (err error) {
 		log.LogErrorf("InodeRocks inode marshal failed, inode:%v, error:%v", inode, err)
 		return
 	}
-	if err = b.RocksTree.Put(handle, &b.baseInfo.inodeCnt, inodeEncodingKey(inode.Inode), bs); err != nil {
+
+	keyBuf := b.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	if err = b.RocksTree.Put(handle, &b.baseInfo.inodeCnt, inodeEncodingKey(keyBuf, inode.Inode), bs); err != nil {
 		log.LogErrorf("InodeRocks put failed, inode:%v, error:%v", inode, err)
 	}
 	return
@@ -1191,7 +1440,11 @@ func (b *DentryRocks) Put(handle interface{}, dentry *Dentry) (err error) {
 		log.LogErrorf("DentryRocks dentry marshal failed, dentry:%v, error:%v", dentry, err)
 		return
 	}
-	if err = b.RocksTree.Put(handle, &b.baseInfo.dentryCnt, dentryEncodingKey(dentry.ParentId, dentry.Name), bs); err != nil {
+
+	keyBuf := b.GetRocksdbLongKey(byte(DentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	if err = b.RocksTree.Put(handle, &b.baseInfo.dentryCnt, dentryEncodingKey(keyBuf, dentry.ParentId, dentry.Name), bs); err != nil {
 		log.LogErrorf("DentryRocks put failed, dentry:%v, error:%v", dentry, err)
 	}
 	return
@@ -1204,7 +1457,11 @@ func (b *ExtendRocks) Put(handle interface{}, extend *Extend) (err error) {
 		log.LogErrorf("ExtendRocks extend marshal failed, extend:%v, error:%v", extend, err)
 		return
 	}
-	if err = b.RocksTree.Put(handle, &b.baseInfo.extendCnt, extendEncodingKey(extend.inode), bs); err != nil {
+
+	keyBuf := b.GetRocksdbNormalKey(byte(ExtendTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	if err = b.RocksTree.Put(handle, &b.baseInfo.extendCnt, extendEncodingKey(keyBuf, extend.inode), bs); err != nil {
 		log.LogErrorf("ExtendRocks extend put failed, extend:%v, error:%v", extend, err)
 	}
 	return
@@ -1217,7 +1474,11 @@ func (b *MultipartRocks) Put(handle interface{}, multipart *Multipart) (err erro
 		log.LogErrorf("MultipartRocks multipart marshal failed, multipart:%v, error:%v", multipart, err)
 		return
 	}
-	if err = b.RocksTree.Put(handle, &b.baseInfo.multiCnt, multipartEncodingKey(multipart.key, multipart.id), bs); err != nil {
+
+	keyBuf := b.GetRocksdbLongKey(byte(MultipartTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	if err = b.RocksTree.Put(handle, &b.baseInfo.multiCnt, multipartEncodingKey(keyBuf, multipart.key, multipart.id), bs); err != nil {
 		log.LogErrorf("MultipartRocks multipart put failed, multipart:%v, error:%v", multipart, err)
 	}
 	return
@@ -1229,7 +1490,11 @@ func (b *TransactionRocks) Put(handle interface{}, tx *proto.TransactionInfo) (e
 		log.LogErrorf("TransactionRocks tx marshal failed, tx: %v, error: %v", tx, err)
 		return
 	}
-	if err = b.RocksTree.Put(handle, &b.baseInfo.txCnt, transactionEncodingKey(tx.TxID), bs); err != nil {
+
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	if err = b.RocksTree.Put(handle, &b.baseInfo.txCnt, transactionEncodingKey(keyBuf, tx.TxID), bs); err != nil {
 		log.LogErrorf("TransactionRocks tx put failed, tx: %v, error: %v", tx, err)
 		return
 	}
@@ -1242,7 +1507,11 @@ func (b *TransactionRollbackInodeRocks) Put(handle interface{}, ino *TxRollbackI
 		log.LogErrorf("TransactionRollbackInodeRocks ino marshal failed, ino: %v, error: %v", ino, err)
 		return
 	}
-	if err = b.RocksTree.Put(handle, &b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(ino.inode.Inode), bs); err != nil {
+
+	keyBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	if err = b.RocksTree.Put(handle, &b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(keyBuf, ino.inode.Inode), bs); err != nil {
 		log.LogErrorf("TransactionRollbackInodeRocks ino put failed, ino: %v, error: %v", ino, err)
 		return
 	}
@@ -1255,7 +1524,11 @@ func (b *TransactionRollbackDentryRocks) Put(handle interface{}, dentry *TxRollb
 		log.LogErrorf("TransactionRollbackDentryRocks dentry marshal failed, dentry: %v, error: %v", dentry, err)
 		return
 	}
-	err = b.RocksTree.Put(handle, &b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
+
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	err = b.RocksTree.Put(handle, &b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(keyBuf, dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
 	if err != nil {
 		log.LogErrorf("TransactionRollbackDentryRocks dentry put failed, dentry: %v, error: %v", dentry, err)
 		return
@@ -1271,7 +1544,11 @@ func (b *InodeRocks) Update(handle interface{}, inode *Inode) (err error) {
 		log.LogErrorf("InodeRocks inode marshal failed, inode:%v, error:%v", inode, err)
 		return
 	}
-	if err = b.RocksTree.Update(handle, inodeEncodingKey(inode.Inode), bs); err != nil {
+
+	keyBuf := b.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	if err = b.RocksTree.Update(handle, inodeEncodingKey(keyBuf, inode.Inode), bs); err != nil {
 		log.LogErrorf("InodeRocks inode update failed, inode:%v, error:%v", inode, err)
 	}
 	return
@@ -1285,7 +1562,10 @@ func (b *DentryRocks) Update(handle interface{}, dentry *Dentry) (err error) {
 		return
 	}
 
-	if err = b.RocksTree.Update(handle, dentryEncodingKey(dentry.ParentId, dentry.Name), bs); err != nil {
+	keyBuf := b.GetRocksdbLongKey(byte(DentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	if err = b.RocksTree.Update(handle, dentryEncodingKey(keyBuf, dentry.ParentId, dentry.Name), bs); err != nil {
 		log.LogErrorf("DentryRocks dentry update failed, dentry:%v, error:%v", dentry, err)
 	}
 	return
@@ -1298,7 +1578,11 @@ func (b *ExtendRocks) Update(handle interface{}, extend *Extend) (err error) {
 		log.LogErrorf("ExtendRocks extend marshal failed, extend:%v, error:%v", extend, err)
 		return
 	}
-	if err = b.RocksTree.Update(handle, extendEncodingKey(extend.inode), bs); err != nil {
+
+	keyBuf := b.GetRocksdbNormalKey(byte(ExtendTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	if err = b.RocksTree.Update(handle, extendEncodingKey(keyBuf, extend.inode), bs); err != nil {
 		log.LogErrorf("ExtendRocks extend update failed, extend:%v, error:%v", extend, err)
 	}
 	return
@@ -1311,7 +1595,11 @@ func (b *MultipartRocks) Update(handle interface{}, multipart *Multipart) (err e
 		log.LogErrorf("MultipartRocks multipart marshal failed, multipart:%v, error:%v", multipart, err)
 		return
 	}
-	if err = b.RocksTree.Update(handle, multipartEncodingKey(multipart.key, multipart.id), bs); err != nil {
+
+	keyBuf := b.GetRocksdbLongKey(byte(MultipartTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	if err = b.RocksTree.Update(handle, multipartEncodingKey(keyBuf, multipart.key, multipart.id), bs); err != nil {
 		log.LogErrorf("MultipartRocks multipart update failed, multipart:%v, error:%v", multipart, err)
 	}
 	return
@@ -1323,7 +1611,11 @@ func (b *TransactionRocks) Update(handle interface{}, tx *proto.TransactionInfo)
 		log.LogErrorf("TransactionRocks tx marshal failed, tx: %v, error: %v", tx, err)
 		return
 	}
-	if err = b.RocksTree.Update(handle, transactionEncodingKey(tx.TxID), bs); err != nil {
+
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	if err = b.RocksTree.Update(handle, transactionEncodingKey(keyBuf, tx.TxID), bs); err != nil {
 		log.LogErrorf("MultipartRocks tx update failed, tx: %v, error: %v", tx, err)
 	}
 	return
@@ -1335,7 +1627,11 @@ func (b *TransactionRollbackInodeRocks) Update(handle interface{}, ino *TxRollba
 		log.LogErrorf("TransactionRollbackInodeRocks ino marshal failed, ino: %v, error: %v", ino, err)
 		return
 	}
-	if err = b.RocksTree.Update(handle, transactionRollbackInodeEncodingKey(ino.inode.Inode), bs); err != nil {
+
+	keyBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	if err = b.RocksTree.Update(handle, transactionRollbackInodeEncodingKey(keyBuf, ino.inode.Inode), bs); err != nil {
 		log.LogErrorf("TransactionRollbackInodeRocks ino update failed, ino: %v, error: %v", ino, err)
 		return
 	}
@@ -1348,7 +1644,11 @@ func (b *TransactionRollbackDentryRocks) Update(handle interface{}, dentry *TxRo
 		log.LogErrorf("TransactionRollbackDentryRocks dentry marshal failed, dentry: %v, error: %v", dentry, err)
 		return
 	}
-	err = b.RocksTree.Update(handle, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
+
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	err = b.RocksTree.Update(handle, transactionRollbackDentryEncodingKey(keyBuf, dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name), bs)
 	if err != nil {
 		log.LogErrorf("TransactionRollbackDentryRocks dentry update failed, dentry: %v, error: %v", dentry, err)
 		return
@@ -1359,7 +1659,11 @@ func (b *TransactionRollbackDentryRocks) Update(handle interface{}, dentry *TxRo
 // Create if exists , return old, false,   if not  return nil , true
 func (b *InodeRocks) ReplaceOrInsert(handle interface{}, inode *Inode, replace bool) (ino *Inode, ok bool, err error) {
 	var key, bs, v []byte
-	key = inodeEncodingKey(inode.Inode)
+
+	keyBuf := b.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	key = inodeEncodingKey(keyBuf, inode.Inode)
 	bs, err = inode.Marshal()
 	if err != nil {
 		log.LogErrorf("[InodeRocksCreate] haskey error %v, %v", key, err)
@@ -1392,7 +1696,11 @@ func (b *InodeRocks) ReplaceOrInsert(handle interface{}, inode *Inode, replace b
 
 func (b *DentryRocks) ReplaceOrInsert(handle interface{}, dentry *Dentry, replace bool) (den *Dentry, ok bool, err error) {
 	var key, bs, v []byte
-	key = dentryEncodingKey(dentry.ParentId, dentry.Name)
+
+	keyBuf := b.GetRocksdbLongKey(byte(DentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	key = dentryEncodingKey(keyBuf, dentry.ParentId, dentry.Name)
 	bs, err = dentry.Marshal()
 	if err != nil {
 		log.LogErrorf("[DentryRocks] marshal: %v, err: %v", dentry, err)
@@ -1424,7 +1732,11 @@ func (b *DentryRocks) ReplaceOrInsert(handle interface{}, dentry *Dentry, replac
 
 func (b *ExtendRocks) ReplaceOrInsert(handle interface{}, extend *Extend, replace bool) (ext *Extend, ok bool, err error) {
 	var key, bs, v []byte
-	key = extendEncodingKey(extend.inode)
+
+	keyBuf := b.GetRocksdbNormalKey(byte(ExtendTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	key = extendEncodingKey(keyBuf, extend.inode)
 	bs, err = extend.Bytes()
 	if err != nil {
 		log.LogErrorf("[ExtendRocks] marshal: %v, err: %v", extend, err)
@@ -1455,7 +1767,11 @@ func (b *ExtendRocks) ReplaceOrInsert(handle interface{}, extend *Extend, replac
 
 func (b *MultipartRocks) ReplaceOrInsert(handle interface{}, mul *Multipart, replace bool) (multipart *Multipart, ok bool, err error) {
 	var key, bs, v []byte
-	key = multipartEncodingKey(mul.key, mul.id)
+
+	keyBuf := b.GetRocksdbLongKey(byte(MultipartTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	key = multipartEncodingKey(keyBuf, mul.key, mul.id)
 	bs, err = mul.Bytes()
 	if err != nil {
 		log.LogErrorf("[MultipartRocks] marshal: %v, err: %v", mul, err)
@@ -1483,7 +1799,11 @@ func (b *MultipartRocks) ReplaceOrInsert(handle interface{}, mul *Multipart, rep
 
 func (b *TransactionRocks) ReplaceOrInsert(handle interface{}, tx *proto.TransactionInfo, replace bool) (transaction *proto.TransactionInfo, ok bool, err error) {
 	var key, bs, v []byte
-	key = transactionEncodingKey(tx.TxID)
+
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	key = transactionEncodingKey(keyBuf, tx.TxID)
 	bs, err = tx.Marshal()
 	if err != nil {
 		log.LogErrorf("[TransactionRocks] marshal: %v, err: %v", tx, err)
@@ -1514,7 +1834,11 @@ func (b *TransactionRocks) ReplaceOrInsert(handle interface{}, tx *proto.Transac
 
 func (b *TransactionRollbackInodeRocks) ReplaceOrInsert(handle interface{}, ino *TxRollbackInode, replace bool) (inode *TxRollbackInode, ok bool, err error) {
 	var key, bs, v []byte
-	key = transactionRollbackInodeEncodingKey(ino.inode.Inode)
+
+	keyBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	key = transactionRollbackInodeEncodingKey(keyBuf, ino.inode.Inode)
 	bs, err = ino.Marshal()
 	if err != nil {
 		log.LogErrorf("[TransactionRollbackInodeRocks] marshal: %v, err: %v", ino, err)
@@ -1544,7 +1868,11 @@ func (b *TransactionRollbackInodeRocks) ReplaceOrInsert(handle interface{}, ino 
 
 func (b *TransactionRollbackDentryRocks) ReplaceOrInsert(handle interface{}, den *TxRollbackDentry, replace bool) (dentry *TxRollbackDentry, ok bool, err error) {
 	var key, bs, v []byte
-	key = transactionRollbackDentryEncodingKey(den.txDentryInfo.ParentId, den.txDentryInfo.Name)
+
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	key = transactionRollbackDentryEncodingKey(keyBuf, den.txDentryInfo.ParentId, den.txDentryInfo.Name)
 	bs, err = den.Marshal()
 	if err != nil {
 		log.LogErrorf("[TransactionRollbackDentryRocks] marshal: %v, err: %v", den, err)
@@ -1573,31 +1901,52 @@ func (b *TransactionRollbackDentryRocks) ReplaceOrInsert(handle interface{}, den
 
 // Delete
 func (b *InodeRocks) Delete(handle interface{}, inode *Inode) (bool, error) {
-	return b.RocksTree.Delete(handle, &b.baseInfo.inodeCnt, inodeEncodingKey(inode.Inode))
+	keyBuf := b.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	return b.RocksTree.Delete(handle, &b.baseInfo.inodeCnt, inodeEncodingKey(keyBuf, inode.Inode))
 }
 
 func (b *DentryRocks) Delete(handle interface{}, dentry *Dentry) (bool, error) {
-	return b.RocksTree.Delete(handle, &b.baseInfo.dentryCnt, dentryEncodingKey(dentry.ParentId, dentry.Name))
+	keyBuf := b.GetRocksdbLongKey(byte(DentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	return b.RocksTree.Delete(handle, &b.baseInfo.dentryCnt, dentryEncodingKey(keyBuf, dentry.ParentId, dentry.Name))
 }
 
 func (b *ExtendRocks) Delete(handle interface{}, extend *Extend) (bool, error) {
-	return b.RocksTree.Delete(handle, &b.baseInfo.extendCnt, extendEncodingKey(extend.inode))
+	keyBuf := b.GetRocksdbNormalKey(byte(ExtendTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	return b.RocksTree.Delete(handle, &b.baseInfo.extendCnt, extendEncodingKey(keyBuf, extend.inode))
 }
 
 func (b *MultipartRocks) Delete(handle interface{}, mutipart *Multipart) (bool, error) {
-	return b.RocksTree.Delete(handle, &b.baseInfo.multiCnt, multipartEncodingKey(mutipart.key, mutipart.id))
+	keyBuf := b.GetRocksdbLongKey(byte(MultipartTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	return b.RocksTree.Delete(handle, &b.baseInfo.multiCnt, multipartEncodingKey(keyBuf, mutipart.key, mutipart.id))
 }
 
 func (b *TransactionRocks) Delete(handle interface{}, txId string) (bool, error) {
-	return b.RocksTree.Delete(handle, &b.baseInfo.txCnt, transactionEncodingKey(txId))
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	return b.RocksTree.Delete(handle, &b.baseInfo.txCnt, transactionEncodingKey(keyBuf, txId))
 }
 
 func (b *TransactionRollbackInodeRocks) Delete(handle interface{}, inode *TxRollbackInode) (bool, error) {
-	return b.RocksTree.Delete(handle, &b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(inode.txInodeInfo.Ino))
+	keyBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable))
+	defer PutRocksdbNormalKey(keyBuf)
+
+	return b.RocksTree.Delete(handle, &b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(keyBuf, inode.txInodeInfo.Ino))
 }
 
 func (b *TransactionRollbackDentryRocks) Delete(handle interface{}, dentry *TxRollbackDentry) (bool, error) {
-	return b.RocksTree.Delete(handle, &b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name))
+	keyBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable))
+	defer PutRocksdbLongKey(keyBuf)
+
+	return b.RocksTree.Delete(handle, &b.baseInfo.txRbDentryCnt, transactionRollbackDentryEncodingKey(keyBuf, dentry.txDentryInfo.ParentId, dentry.txDentryInfo.Name))
 }
 
 // Range begin
@@ -1608,10 +1957,17 @@ func (b *InodeRocks) Range(start, end *Inode, cb func(i *Inode) bool) error {
 		endByte      []byte
 		callBackFunc func(v []byte) (bool, error)
 	)
-	startByte, endByte = []byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}
+
+	startBuf := b.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := b.GetRocksdbNormalKey(byte(InodeTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+
 	if end != nil {
-		endByte = inodeEncodingKey(end.Inode)
+		inodeEncodingKey(endBuf, end.Inode)
 	}
+	startByte = startBuf.Bytes()
+	endByte = endBuf.Bytes()
 
 	callBackFunc = func(v []byte) (bool, error) {
 		inode := NewInode(0, 0)
@@ -1633,10 +1989,20 @@ func (b *DentryRocks) Range(start, end *Dentry, cb func(d *Dentry) bool) error {
 		endByte   []byte
 		cbFunc    func(v []byte) (bool, error)
 	)
-	startByte, endByte = []byte{byte(DentryTable)}, []byte{byte(DentryTable) + 1}
-	if end != nil {
-		endByte = dentryEncodingKey(end.ParentId, end.Name)
+
+	startBuf := b.GetRocksdbLongKey(byte(DentryTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(DentryTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+
+	if start != nil {
+		dentryEncodingKey(startBuf, start.ParentId, start.Name)
 	}
+	if end != nil {
+		dentryEncodingKey(endBuf, end.ParentId, end.Name)
+	}
+	startByte = startBuf.Bytes()
+	endByte = endBuf.Bytes()
 
 	cbFunc = func(v []byte) (bool, error) {
 		d := new(Dentry)
@@ -1656,18 +2022,28 @@ func (b *DentryRocks) RangeWithPrefix(prefix, start, end *Dentry, cb func(d *Den
 		startByte, endByte, prefixByte []byte
 		cbFunc                         func(v []byte) (bool, error)
 	)
-	prefixByte, startByte, endByte = []byte{byte(DentryTable)}, []byte{byte(DentryTable)}, []byte{byte(DentryTable) + 1}
+
+	prefixBuf := b.GetRocksdbLongKey(byte(DentryTable))
+	defer PutRocksdbLongKey(prefixBuf)
+	startBuf := b.GetRocksdbLongKey(byte(DentryTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(DentryTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+
 	if end != nil {
-		endByte = dentryEncodingKey(end.ParentId, end.Name)
+		dentryEncodingKey(endBuf, end.ParentId, end.Name)
 	}
 
 	if start != nil && start.ParentId != 0 {
-		startByte = dentryEncodingKey(start.ParentId, start.Name)
+		dentryEncodingKey(startBuf, start.ParentId, start.Name)
 	}
 
 	if prefix != nil {
-		prefixByte = dentryEncodingPrefix(prefix.ParentId, prefix.Name)
+		dentryEncodingPrefix(prefixBuf, prefix.ParentId, prefix.Name)
 	}
+	prefixByte = prefixBuf.Bytes()
+	startByte = startBuf.Bytes()
+	endByte = endBuf.Bytes()
 
 	cbFunc = func(v []byte) (bool, error) {
 		d := new(Dentry)
@@ -1686,10 +2062,17 @@ func (b *ExtendRocks) Range(start, end *Extend, cb func(e *Extend) bool) error {
 		endByte      []byte
 		callBackFunc func(v []byte) (bool, error)
 	)
-	startByte, endByte = []byte{byte(ExtendTable)}, []byte{byte(ExtendTable) + 1}
+
+	startBuf := b.GetRocksdbNormalKey(byte(ExtendTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := b.GetRocksdbNormalKey(byte(ExtendTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+
 	if end != nil {
-		endByte = extendEncodingKey(end.inode)
+		extendEncodingKey(endBuf, end.inode)
 	}
+	startByte = startBuf.Bytes()
+	endByte = endBuf.Bytes()
 
 	callBackFunc = func(data []byte) (bool, error) {
 		extent, err := NewExtendFromBytes(data)
@@ -1706,10 +2089,16 @@ func (b *ExtendRocks) Range(start, end *Extend, cb func(e *Extend) bool) error {
 
 // Range, just for range multipart table from the beginning of multipart table
 func (b *MultipartRocks) Range(start, end *Multipart, cb func(m *Multipart) bool) error {
-	startByte, endByte := []byte{byte(MultipartTable)}, []byte{byte(MultipartTable) + 1}
+	startBuf := b.GetRocksdbLongKey(byte(MultipartTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(MultipartTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+
 	if end != nil {
-		endByte = multipartEncodingKey(end.key, end.id)
+		multipartEncodingKey(endBuf, end.key, end.id)
 	}
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
 
 	callBackFunc := func(v []byte) (bool, error) {
 		mul := MultipartFromBytes(v)
@@ -1723,18 +2112,27 @@ func (b *MultipartRocks) Range(start, end *Multipart, cb func(m *Multipart) bool
 }
 
 func (b *MultipartRocks) RangeWithPrefix(prefix, start, end *Multipart, cb func(m *Multipart) bool) error {
-	prefixByte, startByte, endByte := []byte{byte(MultipartTable)}, []byte{byte(MultipartTable)}, []byte{byte(MultipartTable) + 1}
+	prefixBuf := b.GetRocksdbLongKey(byte(MultipartTable))
+	defer PutRocksdbLongKey(prefixBuf)
+	startBuf := b.GetRocksdbLongKey(byte(MultipartTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(MultipartTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+
 	if end != nil {
-		endByte = multipartEncodingKey(end.key, end.id)
+		multipartEncodingKey(endBuf, end.key, end.id)
 	}
 
 	if start != nil {
-		startByte = multipartEncodingKey(start.key, start.id)
+		multipartEncodingKey(startBuf, start.key, start.id)
 	}
 
 	if prefix != nil {
-		prefixByte = multipartEncodingPrefix(prefix.key, prefix.id)
+		multipartEncodingPrefix(prefixBuf, prefix.key, prefix.id)
 	}
+	prefixByte := prefixBuf.Bytes()
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
 
 	callBackFunc := func(v []byte) (bool, error) {
 		mul := MultipartFromBytes(v)
@@ -1744,11 +2142,18 @@ func (b *MultipartRocks) RangeWithPrefix(prefix, start, end *Multipart, cb func(
 }
 
 func (b *TransactionRocks) Range(start, end *proto.TransactionInfo, cb func(tx *proto.TransactionInfo) bool) error {
-	startByte := []byte{byte(TransactionTable)}
-	endByte := []byte{byte(TransactionTable) + 1}
+	startBuf := b.GetRocksdbLongKey(byte(TransactionTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(TransactionTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+
 	if end != nil {
-		endByte = transactionEncodingKey(end.TxID)
+		transactionEncodingKey(endBuf, end.TxID)
 	}
+
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
 	callback := func(v []byte) (bool, error) {
 		tx := &proto.TransactionInfo{}
 		err := tx.Unmarshal(v)
@@ -1764,11 +2169,18 @@ func (b *TransactionRocks) Range(start, end *proto.TransactionInfo, cb func(tx *
 }
 
 func (b *TransactionRollbackInodeRocks) Range(start, end *TxRollbackInode, cb func(ino *TxRollbackInode) bool) error {
-	startByte := []byte{byte(TransactionRollbackInodeTable)}
-	endByte := []byte{byte(TransactionRollbackInodeTable) + 1}
+	startBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+
 	if end != nil {
-		endByte = transactionRollbackInodeEncodingKey(end.inode.Inode)
+		transactionRollbackInodeEncodingKey(endBuf, end.inode.Inode)
 	}
+
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
 	callback := func(v []byte) (bool, error) {
 		ino := &TxRollbackInode{}
 		err := ino.Unmarshal(v)
@@ -1784,11 +2196,18 @@ func (b *TransactionRollbackInodeRocks) Range(start, end *TxRollbackInode, cb fu
 }
 
 func (b *TransactionRollbackDentryRocks) Range(start, end *TxRollbackDentry, cb func(den *TxRollbackDentry) bool) error {
-	startByte := []byte{byte(TransactionRollbackDentryTable)}
-	endByte := []byte{byte(TransactionRollbackDentryTable) + 1}
+	startBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+
 	if end != nil {
-		endByte = transactionRollbackDentryEncodingKey(end.txDentryInfo.ParentId, end.txDentryInfo.Name)
+		transactionRollbackDentryEncodingKey(endBuf, end.txDentryInfo.ParentId, end.txDentryInfo.Name)
 	}
+
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
 	callback := func(v []byte) (bool, error) {
 		den := &TxRollbackDentry{}
 		err := den.Unmarshal(v)
@@ -1804,18 +2223,26 @@ func (b *TransactionRollbackDentryRocks) Range(start, end *TxRollbackDentry, cb 
 }
 
 func (b *TransactionRollbackDentryRocks) RangeWithPrefix(prefix, start, end *TxRollbackDentry, cb func(den *TxRollbackDentry) bool) error {
-	prefixByte := []byte{byte(TransactionRollbackDentryTable)}
-	startByte := []byte{byte(TransactionRollbackDentryTable)}
-	endByte := []byte{byte(TransactionRollbackDentryTable) + 1}
+	prefixBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable))
+	defer PutRocksdbLongKey(prefixBuf)
+	startBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+
 	if end != nil {
-		endByte = transactionRollbackDentryEncodingKey(end.txDentryInfo.ParentId, end.txDentryInfo.Name)
+		transactionRollbackDentryEncodingKey(endBuf, end.txDentryInfo.ParentId, end.txDentryInfo.Name)
 	}
 	if start != nil {
-		startByte = transactionRollbackDentryEncodingKey(start.txDentryInfo.ParentId, start.txDentryInfo.Name)
+		transactionRollbackDentryEncodingKey(startBuf, start.txDentryInfo.ParentId, start.txDentryInfo.Name)
 	}
 	if prefix != nil {
-		prefixByte = transactionRollbackDentryEncodingPrefix(prefix.txDentryInfo.ParentId, prefix.txDentryInfo.Name)
+		transactionRollbackDentryEncodingPrefix(prefixBuf, prefix.txDentryInfo.ParentId, prefix.txDentryInfo.Name)
 	}
+
+	prefixByte := prefixBuf.Bytes()
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
 
 	callback := func(v []byte) (bool, error) {
 		den := &TxRollbackDentry{}
@@ -1836,7 +2263,15 @@ func (b *InodeRocks) MaxItem() *Inode {
 		return nil
 	}
 	defer b.RocksTree.ReleaseSnap(snapshot)
-	err := b.DescRangeWithSnap([]byte{byte(InodeTable)}, []byte{byte(InodeTable) + 1}, snapshot, func(k, v []byte) (bool, error) {
+
+	startBuf := b.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := b.GetRocksdbNormalKey(byte(InodeTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
+	err := b.DescRangeWithSnap(startByte, endByte, snapshot, func(k, v []byte) (bool, error) {
 		inode := NewInode(0, 0)
 		if e := inode.Unmarshal(v); e != nil {
 			return false, e
@@ -1852,37 +2287,86 @@ func (b *InodeRocks) MaxItem() *Inode {
 
 // NOTE: clear
 func (b *InodeRocks) Clear(handle interface{}) (err error) {
-	err = b.DelRangeToBatch(handle, []byte{byte(InodeTable)}, []byte{byte(InodeTable + 1)})
+	startBuf := b.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := b.GetRocksdbNormalKey(byte(InodeTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
+	err = b.DelRangeToBatch(handle, startByte, endByte)
 	return
 }
 
 func (b *DentryRocks) Clear(handle interface{}) (err error) {
-	err = b.DelRangeToBatch(handle, []byte{byte(DentryTable)}, []byte{byte(DentryTable + 1)})
+	startBuf := b.GetRocksdbLongKey(byte(DentryTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(DentryTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
+	err = b.DelRangeToBatch(handle, startByte, endByte)
 	return
 }
 
 func (b *ExtendRocks) Clear(handle interface{}) (err error) {
-	err = b.DelRangeToBatch(handle, []byte{byte(ExtendTable)}, []byte{byte(ExtendTable + 1)})
+	startBuf := b.GetRocksdbNormalKey(byte(ExtendTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := b.GetRocksdbNormalKey(byte(ExtendTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
+	err = b.DelRangeToBatch(handle, startByte, endByte)
 	return
 }
 
 func (b *MultipartRocks) Clear(handle interface{}) (err error) {
-	err = b.DelRangeToBatch(handle, []byte{byte(MultipartTable)}, []byte{byte(MultipartTable + 1)})
+	startBuf := b.GetRocksdbLongKey(byte(MultipartTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(MultipartTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
+	err = b.DelRangeToBatch(handle, startByte, endByte)
 	return
 }
 
 func (b *TransactionRocks) Clear(handle interface{}) (err error) {
-	err = b.DelRangeToBatch(handle, []byte{byte(TransactionTable)}, []byte{byte(TransactionTable + 1)})
+	startBuf := b.GetRocksdbLongKey(byte(TransactionTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(TransactionTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
+	err = b.DelRangeToBatch(handle, startByte, endByte)
 	return
 }
 
 func (b *TransactionRollbackInodeRocks) Clear(handle interface{}) (err error) {
-	err = b.DelRangeToBatch(handle, []byte{byte(TransactionRollbackInodeTable)}, []byte{byte(TransactionRollbackInodeTable + 1)})
+	startBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
+	err = b.DelRangeToBatch(handle, startByte, endByte)
 	return
 }
 
 func (b *TransactionRollbackDentryRocks) Clear(handle interface{}) (err error) {
-	err = b.DelRangeToBatch(handle, []byte{byte(TransactionRollbackDentryTable)}, []byte{byte(TransactionRollbackDentryTable + 1)})
+	startBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable))
+	defer PutRocksdbLongKey(startBuf)
+	endBuf := b.GetRocksdbLongKey(byte(TransactionRollbackDentryTable) + 1)
+	defer PutRocksdbLongKey(endBuf)
+	startByte := startBuf.Bytes()
+	endByte := endBuf.Bytes()
+
+	err = b.DelRangeToBatch(handle, startByte, endByte)
 	return
 }
 
@@ -1909,8 +2393,14 @@ func NewRocksSnapShot(mp *metaPartition) Snapshot {
 			mp.db.ReleaseSnap(s)
 		}
 	}()
+
 	rocksTree := mp.inodeTree.(*InodeRocks).RocksTree
-	v, err := rocksTree.GetBytesWithSnap(s, baseInfoKey)
+
+	keyBuf := rocksTree.GetRocksdbNormalKey(byte(BaseInfoType))
+	defer PutRocksdbNormalKey(keyBuf)
+	baseKey := keyBuf.Bytes()
+
+	v, err := rocksTree.GetBytesWithSnap(s, baseKey)
 	if err != nil {
 		log.LogErrorf("[NewRocksSnapShot] failed to get base info")
 		return nil
@@ -1996,8 +2486,12 @@ func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) bool) error
 			return false, fmt.Errorf("error type")
 		}
 	}
-	startBytes := []byte{byte(tableType)}
-	endBytes := []byte{byte(tableType + 1)}
+	startBuf := r.tree.GetRocksdbNormalKey(byte(tableType))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := r.tree.GetRocksdbNormalKey(byte(tableType) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+	startBytes := startBuf.Bytes()
+	endBytes := endBuf.Bytes()
 
 	return r.tree.RangeWithSnap(startBytes, endBytes, r.snap, callbackFunc)
 }

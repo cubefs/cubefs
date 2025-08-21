@@ -66,10 +66,7 @@ func (t TreeType) String() string {
 	}
 }
 
-var (
-	baseInfoKey     = []byte{byte(BaseInfoType)}
-	ErrOpenSnapshot = errors.New("failed to open snapshot")
-)
+var ErrOpenSnapshot = errors.New("failed to open snapshot")
 
 func NewSnapshot(mp *metaPartition) (snap Snapshot, err error) {
 	storeMode := mp.inodeTree.GetStoreMode()
