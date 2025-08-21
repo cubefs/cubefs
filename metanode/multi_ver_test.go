@@ -69,7 +69,7 @@ func newManager() *metadataManager {
 	return &metadataManager{
 		partitions:      make(map[uint64]MetaPartition),
 		volUpdating:     new(sync.Map),
-		rocksdbManager:  NewPerDiskRocksdbManager(0, 0, 0, 0, 0),
+		rocksdbManager:  NewPerDiskRocksdbManager(&RocksdbManagerConfig{}),
 		fileStatsConfig: &fileStatsConfig{},
 	}
 }
@@ -1415,7 +1415,7 @@ func NewMetaPartitionForTest(storeMode proto.StoreMode) *metaPartition {
 		mpC.RocksDBDir = fmt.Sprintf("%v/%v_%v", RocksdbMultiVerTestDir, partitionId, time.Now().UnixMilli())
 	}
 	partition := NewMetaPartition(mpC, nil).(*metaPartition)
-	partition.rocksdbManager = NewPerDiskRocksdbManager(0, 0, 0, 0, 0)
+	partition.rocksdbManager = NewPerDiskRocksdbManager(&RocksdbManagerConfig{})
 	err := partition.rocksdbManager.Register(mpC.RocksDBDir)
 	if err != nil {
 		panic(err)

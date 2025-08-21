@@ -98,6 +98,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/setQosEnable", m.setQosEnableHandler)
 	http.HandleFunc("/setMetaQos", m.setMetaQosHandler)
 	http.HandleFunc("/getMetaQos", m.getMetaQosHandler)
+	http.HandleFunc("/getRocksdbStats", m.getRocksdbStatsHandler)
 	return
 }
 
@@ -1493,4 +1494,28 @@ func (m *MetaNode) getMetaQosHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp.Data = metaQos
+}
+
+func (m *MetaNode) getRocksdbStatsHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getRocksdbStatsHandler] response %s", err)
+		}
+	}()
+
+	result := make(map[string]string)
+	for _, dbPath := range m.rocksDirs {
+		db, err := m.rocksdbManager.OpenRocksdb(dbPath, 0)
+		if err != nil {
+			log.LogErrorf("[getRocksdbStatsHandler] failed to open rocksdb, err(%v)", err)
+			continue
+		}
+		stats := db.GetStatistics()
+		result[dbPath] = stats
+		m.rocksdbManager.CloseRocksdb(db)
+	}
+
+	resp.Data = result
 }

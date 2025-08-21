@@ -100,11 +100,12 @@ type MetaNode struct {
 
 	control common.Control
 
-	rocksDirs         []string
-	rocksdbManager    RocksdbManager
-	diskStopCh        chan struct{}
-	disks             map[string]*diskmon.FsCapMon
-	diskReservedSpace uint64
+	rocksDirs          []string
+	rocksdbManager     RocksdbManager
+	diskStopCh         chan struct{}
+	disks              map[string]*diskmon.FsCapMon
+	diskReservedSpace  uint64
+	rocksdbEnableStats bool
 }
 
 // Start starts up the meta node with the specified configuration.
@@ -708,6 +709,8 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 		mode = defaultRocksdMode
 	}
 	rocksdbMode := ParseRocksdbMode(mode)
+	rocksdbEnableStats := cfg.GetBool(cfgRocksdbEnableStats)
+	m.rocksdbEnableStats = rocksdbEnableStats
 
 	rocksdbModeFile := path.Join(m.metadataDir, RocksdbModeMetaFile)
 	if fileutil.Exist(rocksdbModeFile) {
@@ -739,10 +742,18 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 		return
 	}
 
+	config := &RocksdbManagerConfig{
+		WriteBufferSize:     writeBufferSize,
+		WriteBufferNum:      writeBufferNum,
+		MinWriteBuffToMerge: minWriteBufferToMerge,
+		MaxSubCompactions:   maxSubCompactions,
+		BlockCacheSize:      uint64(blockCacheSize),
+		EnableStats:         rocksdbEnableStats,
+	}
 	if rocksdbMode == PerDiskRocksdbMode {
-		m.rocksdbManager = NewPerDiskRocksdbManager(writeBufferSize, writeBufferNum, minWriteBufferToMerge, maxSubCompactions, uint64(blockCacheSize))
+		m.rocksdbManager = NewPerDiskRocksdbManager(config)
 	} else {
-		m.rocksdbManager = NewPerPartitionRocksdbManager(writeBufferSize, writeBufferNum, minWriteBufferToMerge, maxSubCompactions, uint64(blockCacheSize))
+		m.rocksdbManager = NewPerPartitionRocksdbManager(config)
 	}
 	for _, dbPath := range m.rocksDirs {
 		err = m.rocksdbManager.Register(dbPath)

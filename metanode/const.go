@@ -267,6 +267,7 @@ const (
 	cfgRocksdbMinWriteBufferToMerge = "rocksdbMinWriteBufferToMerge" // int
 	cfgRocksdbMaxSubCompactions     = "rocksdbMaxSubCompactions"     // int
 	cfgRocksdbMode                  = "rocksdbMode"                  // string
+	cfgRocksdbEnableStats           = "rocksdbEnableStats"           // bool
 )
 
 const (

@@ -15,6 +15,9 @@
 package metanode
 
 import (
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -30,6 +33,7 @@ const (
 	MetricMetaPartitionDentryCount = "mpDentryCount"
 	MetricConnectionCount          = "connectionCnt"
 	MetricFileStats                = "fileStats"
+	RocksdbStats                   = "rocksdbStats"
 )
 
 type MetaNodeMetrics struct {
@@ -38,6 +42,7 @@ type MetaNodeMetrics struct {
 	MetricMetaPartitionInodeCount  *exporter.GaugeVec
 	MetricMetaPartitionDentryCount *exporter.GaugeVec
 	MetricFileStats                *exporter.GaugeVec
+	RocksdbStats                   *exporter.GaugeVec
 
 	metricStopCh chan struct{}
 }
@@ -51,6 +56,7 @@ func (m *MetaNode) startStat() {
 		MetricMetaPartitionInodeCount:  exporter.NewGaugeVec(MetricMetaPartitionInodeCount, "", []string{"volName"}),
 		MetricMetaPartitionDentryCount: exporter.NewGaugeVec(MetricMetaPartitionDentryCount, "", []string{"volName"}),
 		MetricFileStats:                exporter.NewGaugeVec(MetricFileStats, "", []string{"volName", "sizeRange"}),
+		RocksdbStats:                   exporter.NewGaugeVec(RocksdbStats, "", []string{"rocksdbDir"}),
 	}
 
 	go m.collectPartitionMetrics()
@@ -102,6 +108,9 @@ func (m *MetaNode) collectPartitionMetrics() {
 			m.metrics.MetricConnectionCount.Set(float64(m.connectionCnt))
 		case <-fileStatTicker.C:
 			m.updateFileStatsMetrics()
+			if m.rocksdbEnableStats {
+				m.updateRocksdbStatsMetrics()
+			}
 		}
 	}
 }
@@ -142,6 +151,63 @@ func (m *MetaNode) updateFileStatsMetrics() {
 			m.metrics.MetricFileStats.SetWithLabelValues(float64(val), volName, sizeRange)
 		}
 	}
+}
+
+func (m *MetaNode) updateRocksdbStatsMetrics() {
+	m.metrics.RocksdbStats.Reset()
+
+	rocksdbStatsList := []string{
+		"rocksdb.db.get.micros",
+		"rocksdb.db.write.micros",
+		"rocksdb.db.seek.micros",
+		"rocksdb.db.write.stall",
+		"rocksdb.db.flush.micros",
+	}
+
+	manager, ok := m.metadataManager.(*metadataManager)
+	if !ok {
+		return
+	}
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
+
+	for _, dbPath := range m.rocksDirs {
+		db, err := m.rocksdbManager.OpenRocksdb(dbPath, 0)
+		if err != nil {
+			continue
+		}
+		stats := db.GetStatistics()
+		statsP99 := getStatsP99(stats, rocksdbStatsList)
+		for key, val := range statsP99 {
+			m.metrics.RocksdbStats.SetWithLabelValues(val, dbPath, key)
+		}
+		m.rocksdbManager.CloseRocksdb(db)
+	}
+}
+
+func getStatsP99(stats string, statsList []string) map[string]float64 {
+	re := regexp.MustCompile(`P99 : (\d+\.\d+)`)
+	statsMap := make(map[string]float64)
+	lines := strings.Split(stats, "\n")
+
+	for _, item := range statsList {
+		for _, line := range lines {
+			if strings.HasPrefix(line, item) {
+				statsP99 := re.FindStringSubmatch(line)
+				if statsP99 == nil || len(statsP99) < 2 {
+					break
+				}
+				val, err := strconv.ParseFloat(statsP99[1], 64)
+				if err != nil {
+					break
+				}
+				statsMap[item] = val
+				break
+			}
+		}
+	}
+
+	return statsMap
 }
 
 func (m *MetaNode) stopStat() {

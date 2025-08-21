@@ -170,90 +170,119 @@ func (db *RocksdbOperator) CloseDb() (err error) {
 	return
 }
 
-func (dbInfo *RocksdbOperator) newRocksdbOptions(
-	writeBufferSize int,
-	writeBufferNum int,
-	minWriteBuffToMerge int,
-	maxSubCompactions int,
-	blockCacheSize uint64,
-	maxLogFileSize int,
-	logFileTimeToRoll time.Duration,
-	keepLogFileNum int,
-) (opts *gorocksdb.Options, cache *gorocksdb.Cache, tableOpts *gorocksdb.BlockBasedTableOptions) {
-	opts = gorocksdb.NewDefaultOptions()
+func (db *RocksdbOperator) GetStatistics() string {
+	if db.openOption != nil {
+		return db.openOption.GetStatisticsString()
+	}
+	return ""
+}
+
+type RocksDBOptions struct {
+	WriteBufferSize     int
+	WriteBufferNum      int
+	MinWriteBuffToMerge int
+	MaxSubCompactions   int
+	BlockCacheSize      uint64
+	MaxLogFileSize      int
+	LogFileTimeToRoll   time.Duration
+	KeepLogFileNum      int
+	EnableStats         bool
+}
+
+func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
+	dbOpts *gorocksdb.Options,
+	cache *gorocksdb.Cache,
+	tableOpts *gorocksdb.BlockBasedTableOptions,
+) {
+	dbOpts = gorocksdb.NewDefaultOptions()
 
 	// NOTE: check and set default options
-	if writeBufferSize == 0 {
-		writeBufferSize = DefaultWriteBuffSize
+	if opts.WriteBufferSize == 0 {
+		opts.WriteBufferSize = DefaultWriteBuffSize
 	}
-	if writeBufferNum == 0 {
-		writeBufferNum = DefaultWriteBuffNum
+	if opts.WriteBufferNum == 0 {
+		opts.WriteBufferNum = DefaultWriteBuffNum
 	}
-	if minWriteBuffToMerge == 0 {
-		minWriteBuffToMerge = DefaultMinWriteBuffToMerge
+	if opts.MinWriteBuffToMerge == 0 {
+		opts.MinWriteBuffToMerge = DefaultMinWriteBuffToMerge
 	}
-	if maxLogFileSize == 0 {
-		maxLogFileSize = DefaultMaxLogFileSize
+	if opts.MaxLogFileSize == 0 {
+		opts.MaxLogFileSize = DefaultMaxLogFileSize
 	}
-	if logFileTimeToRoll == 0 {
-		logFileTimeToRoll = DefaultLogFileRollTime
+	if opts.LogFileTimeToRoll == 0 {
+		opts.LogFileTimeToRoll = DefaultLogFileRollTime
 	}
-	if keepLogFileNum == 0 {
-		keepLogFileNum = DefaultKeepLogFileNum
+	if opts.KeepLogFileNum == 0 {
+		opts.KeepLogFileNum = DefaultKeepLogFileNum
 	}
-	if blockCacheSize == 0 {
-		blockCacheSize = DefaultCacheSize
+	if opts.BlockCacheSize == 0 {
+		opts.BlockCacheSize = DefaultCacheSize
 	}
 
 	// NOTE: main options
-	opts.SetCreateIfMissing(true)
-	opts.SetWriteBufferSize(writeBufferSize)
-	opts.SetMaxWriteBufferNumber(writeBufferNum)
-	opts.SetCompression(gorocksdb.NoCompression)
-	opts.SetMinWriteBufferNumberToMerge(minWriteBuffToMerge)
-	opts.SetLevelCompactionDynamicLevelBytes(true)
+	dbOpts.SetCreateIfMissing(true)
+	dbOpts.SetWriteBufferSize(opts.WriteBufferSize)
+	dbOpts.SetMaxWriteBufferNumber(opts.WriteBufferNum)
+	dbOpts.SetCompression(gorocksdb.NoCompression)
+	dbOpts.SetMinWriteBufferNumberToMerge(opts.MinWriteBuffToMerge)
+	dbOpts.SetLevelCompactionDynamicLevelBytes(true)
 	tableOpts = gorocksdb.NewDefaultBlockBasedTableOptions()
-	cache = gorocksdb.NewLRUCache(blockCacheSize)
+	cache = gorocksdb.NewLRUCache(opts.BlockCacheSize)
 	tableOpts.SetBlockCache(cache)
-	opts.SetBlockBasedTableFactory(tableOpts)
+	dbOpts.SetBlockBasedTableFactory(tableOpts)
 
 	// NOTE: rocksdb log file options
-	opts.SetMaxLogFileSize(maxLogFileSize)
-	opts.SetLogFileTimeToRoll(int(logFileTimeToRoll.Seconds()))
-	opts.SetKeepLogFileNum(keepLogFileNum)
+	dbOpts.SetMaxLogFileSize(opts.MaxLogFileSize)
+	dbOpts.SetLogFileTimeToRoll(int(opts.LogFileTimeToRoll.Seconds()))
+	dbOpts.SetKeepLogFileNum(opts.KeepLogFileNum)
+
+	if opts.EnableStats {
+		dbOpts.EnableStatistics()
+	}
 	return
 }
 
-func (dbInfo *RocksdbOperator) doOpen(dir string, writeBufferSize int, writeBufferNum int, minWriteBuffToMerge int, maxSubCompactions int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
+func (dbInfo *RocksdbOperator) doOpen(opts *OpenDBOptions) (err error) {
 	var stat fs.FileInfo
 
-	stat, err = os.Stat(dir)
+	stat, err = os.Stat(opts.Dir)
 	if err == nil && !stat.IsDir() {
-		log.LogErrorf("interOpenDb path:[%s] is not dir", dir)
-		return fmt.Errorf("path:[%s] is not dir", dir)
+		log.LogErrorf("interOpenDb path:[%s] is not dir", opts.Dir)
+		return fmt.Errorf("path:[%s] is not dir", opts.Dir)
 	}
 
 	if err != nil && !os.IsNotExist(err) {
-		log.LogErrorf("interOpenDb stat error: dir: %v, err: %v", dir, err)
+		log.LogErrorf("interOpenDb stat error: dir: %v, err: %v", opts.Dir, err)
 		return err
 	}
 
 	// NOTE: mkdir all  will return nil when path exist and path is dir
-	if err = os.MkdirAll(dir, os.ModePerm); err != nil {
-		log.LogErrorf("interOpenDb mkdir error: dir: %v, err: %v", dir, err)
+	if err = os.MkdirAll(opts.Dir, os.ModePerm); err != nil {
+		log.LogErrorf("interOpenDb mkdir error: dir: %v, err: %v", opts.Dir, err)
 		return err
 	}
 
-	log.LogInfof("[doOpen] rocksdb dir(%v)", dir)
-	dbInfo.openOption, dbInfo.cache, dbInfo.tableOption = dbInfo.newRocksdbOptions(writeBufferSize, writeBufferNum, minWriteBuffToMerge, maxSubCompactions, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
+	log.LogInfof("[doOpen] rocksdb dir(%v)", opts.Dir)
+	rocksOpts := &RocksDBOptions{
+		WriteBufferSize:     opts.WriteBufferSize,
+		WriteBufferNum:      opts.WriteBufferNum,
+		MinWriteBuffToMerge: opts.MinWriteBuffToMerge,
+		MaxSubCompactions:   opts.MaxSubCompactions,
+		BlockCacheSize:      opts.BlockCacheSize,
+		MaxLogFileSize:      opts.MaxLogFileSize,
+		LogFileTimeToRoll:   opts.LogFileTimeToRoll,
+		KeepLogFileNum:      opts.KeepLogFileNum,
+		EnableStats:         opts.EnableStats,
+	}
+	dbInfo.openOption, dbInfo.cache, dbInfo.tableOption = dbInfo.newRocksdbOptions(rocksOpts)
 
-	dbInfo.db, err = gorocksdb.OpenDb(dbInfo.openOption, dir)
+	dbInfo.db, err = gorocksdb.OpenDb(dbInfo.openOption, opts.Dir)
 
 	if err != nil {
 		log.LogErrorf("interOpenDb open db err:%v", err)
 		return ErrRocksdbOperation
 	}
-	dbInfo.dir = dir
+	dbInfo.dir = opts.Dir
 	dbInfo.readOption = gorocksdb.NewDefaultReadOptions()
 	dbInfo.writeOption = gorocksdb.NewDefaultWriteOptions()
 	// NOTE: we use raft wal, enable rocksdb wal is unnecessary
@@ -263,7 +292,34 @@ func (dbInfo *RocksdbOperator) doOpen(dir string, writeBufferSize int, writeBuff
 	return nil
 }
 
-func (dbInfo *RocksdbOperator) OpenDb(dir string, writeBufferSize int, writeBufferNum int, minWriteBuffToMerge int, maxSubCompactions int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
+type OpenDBOptions struct {
+	Dir                 string
+	WriteBufferSize     int
+	WriteBufferNum      int
+	MinWriteBuffToMerge int
+	MaxSubCompactions   int
+	BlockCacheSize      uint64
+	MaxLogFileSize      int
+	LogFileTimeToRoll   time.Duration
+	KeepLogFileNum      int
+	EnableStats         bool
+}
+
+func NewDefaultOpenDBOptions(dir string) *OpenDBOptions {
+	return &OpenDBOptions{
+		Dir:                 dir,
+		WriteBufferSize:     DefaultWriteBuffSize,
+		WriteBufferNum:      DefaultWriteBuffNum,
+		MinWriteBuffToMerge: DefaultMinWriteBuffToMerge,
+		MaxSubCompactions:   DefaultMaxSubCompaction,
+		BlockCacheSize:      DefaultCacheSize,
+		MaxLogFileSize:      DefaultMaxLogFileSize,
+		LogFileTimeToRoll:   DefaultLogFileRollTime,
+		KeepLogFileNum:      DefaultKeepLogFileNum,
+	}
+}
+
+func (dbInfo *RocksdbOperator) OpenDb(opts *OpenDBOptions) (err error) {
 	ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbInitSt, dbOpenningSt)
 	ok = ok || atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt)
 	if !ok {
@@ -279,16 +335,16 @@ func (dbInfo *RocksdbOperator) OpenDb(dir string, writeBufferSize int, writeBuff
 		if err == nil {
 			atomic.CompareAndSwapUint32(&dbInfo.state, dbOpenningSt, dbOpenedSt)
 		} else {
-			log.LogErrorf("OpenDb failed, dir:%s error:%v", dir, err)
+			log.LogErrorf("OpenDb failed, dir:%s error:%v", opts.Dir, err)
 			atomic.CompareAndSwapUint32(&dbInfo.state, dbOpenningSt, dbInitSt)
 		}
 		dbInfo.mutex.Unlock()
 	}()
 
-	return dbInfo.doOpen(dir, writeBufferSize, writeBufferNum, minWriteBuffToMerge, maxSubCompactions, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
+	return dbInfo.doOpen(opts)
 }
 
-func (dbInfo *RocksdbOperator) ReOpenDb(dir string, writeBufferSize int, writeBufferNum int, minWriteBuffToMerge int, maxSubCompactions int, blockCacheSize uint64, maxLogFileSize int, logFileTimeToRoll time.Duration, keepLogFileNum int) (err error) {
+func (dbInfo *RocksdbOperator) ReOpenDb(opts *OpenDBOptions) (err error) {
 	if ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt); !ok {
 		if atomic.LoadUint32(&dbInfo.state) == dbOpenedSt {
 			// already opened
@@ -307,11 +363,11 @@ func (dbInfo *RocksdbOperator) ReOpenDb(dir string, writeBufferSize int, writeBu
 		dbInfo.mutex.Unlock()
 	}()
 
-	if dbInfo == nil || (dbInfo.dir != "" && dbInfo.dir != dir) {
+	if dbInfo == nil || (dbInfo.dir != "" && dbInfo.dir != opts.Dir) {
 		return fmt.Errorf("rocks db dir changed, need new db instance")
 	}
 
-	return dbInfo.doOpen(dir, writeBufferSize, writeBufferNum, minWriteBuffToMerge, maxSubCompactions, blockCacheSize, maxLogFileSize, logFileTimeToRoll, keepLogFileNum)
+	return dbInfo.doOpen(opts)
 }
 
 func genRocksDBReadOption(snap *gorocksdb.Snapshot) (ro *gorocksdb.ReadOptions) {

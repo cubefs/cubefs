@@ -51,12 +51,12 @@ func testRocksdbManager(t *testing.T, manager metanode.RocksdbManager) {
 }
 
 func TestPerDiskRocksdbManager(t *testing.T) {
-	manager := metanode.NewPerDiskRocksdbManager(0, 0, 0, 0, 0)
+	manager := metanode.NewPerDiskRocksdbManager(&metanode.RocksdbManagerConfig{})
 	testRocksdbManager(t, manager)
 }
 
 func TestPerPartitionRocksdbManager(t *testing.T) {
-	manager := metanode.NewPerPartitionRocksdbManager(0, 0, 0, 0, 0)
+	manager := metanode.NewPerPartitionRocksdbManager(&metanode.RocksdbManagerConfig{})
 	testRocksdbManager(t, manager)
 }
 

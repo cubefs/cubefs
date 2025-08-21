@@ -73,7 +73,7 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager, storeMode pr
 		extReset:       make(chan struct{}),
 		vol:            NewVol(),
 		manager:        manager,
-		rocksdbManager: NewPerDiskRocksdbManager(0, 0, 0, 0, 0),
+		rocksdbManager: NewPerDiskRocksdbManager(&RocksdbManagerConfig{}),
 	}
 	err := mp.rocksdbManager.Register(metaConf.RocksDBDir)
 	if err != nil {
