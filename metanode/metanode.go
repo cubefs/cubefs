@@ -709,7 +709,7 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 		mode = defaultRocksdMode
 	}
 	rocksdbMode := ParseRocksdbMode(mode)
-	rocksdbEnableStats := cfg.GetBool(cfgRocksdbEnableStats)
+	rocksdbEnableStats := cfg.GetBoolWithDefault(cfgRocksdbEnableStats, false)
 	m.rocksdbEnableStats = rocksdbEnableStats
 
 	rocksdbModeFile := path.Join(m.metadataDir, RocksdbModeMetaFile)

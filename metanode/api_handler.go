@@ -99,6 +99,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/setMetaQos", m.setMetaQosHandler)
 	http.HandleFunc("/getMetaQos", m.getMetaQosHandler)
 	http.HandleFunc("/getRocksdbStats", m.getRocksdbStatsHandler)
+	http.HandleFunc("/updateRocksDBConfig", m.updateRocksDBConfigHandler)
+	http.HandleFunc("/getRocksDBConfig", m.getRocksDBConfigHandler)
 	return
 }
 
@@ -1518,4 +1520,80 @@ func (m *MetaNode) getRocksdbStatsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	resp.Data = result
+}
+
+func (m *MetaNode) updateRocksDBConfigHandler(w http.ResponseWriter, r *http.Request) {
+	var config map[string]string
+	var err error
+
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[updateRocksDBConfigHandler] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	dbDir := r.FormValue("dbDir")
+	if dbDir == "" {
+		err = fmt.Errorf("dbDir is required")
+		return
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		log.LogErrorf("[updateRocksDBConfigHandler] failed to decode request, err(%v)", err)
+		return
+	}
+
+	if err := m.rocksdbManager.UpdateConfig(dbDir, config); err != nil {
+		log.LogErrorf("[updateRocksDBConfigHandler] failed to update write buffer size, err(%v)", err)
+		return
+	}
+}
+
+func (m *MetaNode) getRocksDBConfigHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var data []byte
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getRocksDBConfigHandler] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	dbDir := r.FormValue("dbDir")
+	if dbDir == "" {
+		err = fmt.Errorf("dbDir is required")
+		return
+	}
+
+	config, err := m.rocksdbManager.GetConfig(dbDir)
+	if err != nil {
+		log.LogErrorf("[getRocksDBConfigHandler] failed to get rocksdb config, err(%v)", err)
+		return
+	}
+
+	resp.Data = config
+
+	data, err = resp.Marshal()
+	if err != nil {
+		log.LogErrorf("[getRocksDBConfigHandler] failed to marshal response, err(%v)", err)
+		return
+	}
 }

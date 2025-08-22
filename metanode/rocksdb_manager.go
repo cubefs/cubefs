@@ -31,6 +31,15 @@ var (
 	ErrRocksdbOpened           = errors.New("rocksdb stil in use")
 )
 
+type RocksdbManagerConfig struct {
+	WriteBufferSize     int    `json:"writeBufferSize"`
+	WriteBufferNum      int    `json:"writeBufferNum"`
+	MinWriteBuffToMerge int    `json:"minWriteBuffToMerge"`
+	MaxSubCompactions   int    `json:"maxSubCompactions"`
+	BlockCacheSize      uint64 `json:"blockCacheSize"`
+	EnableStats         bool   `json:"enableStats"`
+}
+
 type RocksdbManager interface {
 	Register(dbPath string) (err error)
 	Unregister(dbPath string) (err error)
@@ -40,6 +49,8 @@ type RocksdbManager interface {
 	AttachPartition(dbPath string) (err error)
 	DetachPartition(dbPath string) (err error)
 	GetPartitionCount(dbPath string) (count int, err error)
+	UpdateConfig(dbPath string, config map[string]string) error
+	GetConfig(dbPath string) (map[string]string, error)
 }
 
 type RocksdbHandle struct {
@@ -102,13 +113,15 @@ func (r *PerDiskRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId uint6
 	}
 	handle.rc += 1
 	if handle.rc == 1 {
-		opts := NewDefaultOpenDBOptions(dbPath)
-		opts.WriteBufferSize = r.writeBufferSize
-		opts.WriteBufferNum = r.writeBufferNum
-		opts.MinWriteBuffToMerge = r.minWriteBuffToMerge
-		opts.MaxSubCompactions = r.maxSubCompactions
-		opts.BlockCacheSize = r.blockCacheSize
-		opts.EnableStats = r.enableStats
+		opts := &RocksDBOptions{
+			Dir:                 dbPath,
+			WriteBufferSize:     r.writeBufferSize,
+			WriteBufferNum:      r.writeBufferNum,
+			MinWriteBuffToMerge: r.minWriteBuffToMerge,
+			MaxSubCompactions:   r.maxSubCompactions,
+			BlockCacheSize:      r.blockCacheSize,
+			EnableStats:         r.enableStats,
+		}
 		err = handle.db.OpenDb(opts)
 		if err != nil {
 			handle.rc -= 1
@@ -202,6 +215,40 @@ func (r *PerDiskRocksdbManager) GetPartitionCount(dbPath string) (count int, err
 	return
 }
 
+func (r *PerDiskRocksdbManager) UpdateConfig(dbPath string, config map[string]string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	handle, ok := r.dbs[dbPath]
+	if !ok {
+		return ErrUnregisteredRocksdbPath
+	}
+
+	if handle.db == nil {
+		return ErrRocksdbAccess
+	}
+
+	err := handle.db.SetOptions(config)
+	if err != nil {
+		log.LogErrorf("[UpdateConfig] failed to set rocksdb options, err(%v)", err)
+		return err
+	}
+
+	return nil
+}
+
+func (r *PerDiskRocksdbManager) GetConfig(dbPath string) (map[string]string, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	handle, ok := r.dbs[dbPath]
+	if !ok {
+		return nil, ErrUnregisteredRocksdbPath
+	}
+
+	return handle.db.GetOptions(), nil
+}
+
 var _ RocksdbManager = &PerDiskRocksdbManager{}
 
 type PerPartitionRocksdbManager struct {
@@ -271,13 +318,15 @@ func (r *PerPartitionRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId 
 	mpPath := fmt.Sprintf("metaPartition_%v", metaPartitionId)
 	perPartitionDbDir := path.Join(dbPath, mpPath)
 	db = NewRocksdb()
-	opts := NewDefaultOpenDBOptions(perPartitionDbDir)
-	opts.WriteBufferSize = r.writeBufferSize
-	opts.WriteBufferNum = r.writeBufferNum
-	opts.MinWriteBuffToMerge = r.minWriteBuffToMerge
-	opts.MaxSubCompactions = r.maxSubCompactions
-	opts.BlockCacheSize = r.blockCacheSize
-	opts.EnableStats = r.enableStats
+	opts := &RocksDBOptions{
+		Dir:                 perPartitionDbDir,
+		WriteBufferSize:     r.writeBufferSize,
+		WriteBufferNum:      r.writeBufferNum,
+		MinWriteBuffToMerge: r.minWriteBuffToMerge,
+		MaxSubCompactions:   r.maxSubCompactions,
+		BlockCacheSize:      r.blockCacheSize,
+		EnableStats:         r.enableStats,
+	}
 	err = db.OpenDb(opts)
 	return
 }
@@ -339,16 +388,15 @@ func (r *PerPartitionRocksdbManager) SelectRocksdbDisk(usableFactor float64) (di
 	return
 }
 
-var _ RocksdbManager = &PerPartitionRocksdbManager{}
-
-type RocksdbManagerConfig struct {
-	WriteBufferSize     int
-	WriteBufferNum      int
-	MinWriteBuffToMerge int
-	MaxSubCompactions   int
-	BlockCacheSize      uint64
-	EnableStats         bool
+func (r *PerPartitionRocksdbManager) UpdateConfig(dbPath string, config map[string]string) error {
+	return fmt.Errorf("partition rocksdb manager does not support update config")
 }
+
+func (r *PerPartitionRocksdbManager) GetConfig(dbPath string) (map[string]string, error) {
+	return nil, fmt.Errorf("partition rocksdb manager does not support get config")
+}
+
+var _ RocksdbManager = &PerPartitionRocksdbManager{}
 
 func NewPerDiskRocksdbManager(config *RocksdbManagerConfig) (p RocksdbManager) {
 	p = &PerDiskRocksdbManager{

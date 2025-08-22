@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -130,11 +131,13 @@ type RocksdbOperator struct {
 	tableOption *gorocksdb.BlockBasedTableOptions
 
 	readDiskOption *gorocksdb.ReadOptions
+	config         map[string]string
 }
 
 func NewRocksdb() (operator *RocksdbOperator) {
 	operator = &RocksdbOperator{
-		state: dbInitSt,
+		state:  dbInitSt,
+		config: make(map[string]string),
 	}
 	return
 }
@@ -178,6 +181,7 @@ func (db *RocksdbOperator) GetStatistics() string {
 }
 
 type RocksDBOptions struct {
+	Dir                 string
 	WriteBufferSize     int
 	WriteBufferNum      int
 	MinWriteBuffToMerge int
@@ -205,6 +209,9 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	}
 	if opts.MinWriteBuffToMerge == 0 {
 		opts.MinWriteBuffToMerge = DefaultMinWriteBuffToMerge
+	}
+	if opts.MaxSubCompactions == 0 {
+		opts.MaxSubCompactions = DefaultMaxSubCompaction
 	}
 	if opts.MaxLogFileSize == 0 {
 		opts.MaxLogFileSize = DefaultMaxLogFileSize
@@ -242,7 +249,7 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	return
 }
 
-func (dbInfo *RocksdbOperator) doOpen(opts *OpenDBOptions) (err error) {
+func (dbInfo *RocksdbOperator) doOpen(opts *RocksDBOptions) (err error) {
 	var stat fs.FileInfo
 
 	stat, err = os.Stat(opts.Dir)
@@ -263,18 +270,7 @@ func (dbInfo *RocksdbOperator) doOpen(opts *OpenDBOptions) (err error) {
 	}
 
 	log.LogInfof("[doOpen] rocksdb dir(%v)", opts.Dir)
-	rocksOpts := &RocksDBOptions{
-		WriteBufferSize:     opts.WriteBufferSize,
-		WriteBufferNum:      opts.WriteBufferNum,
-		MinWriteBuffToMerge: opts.MinWriteBuffToMerge,
-		MaxSubCompactions:   opts.MaxSubCompactions,
-		BlockCacheSize:      opts.BlockCacheSize,
-		MaxLogFileSize:      opts.MaxLogFileSize,
-		LogFileTimeToRoll:   opts.LogFileTimeToRoll,
-		KeepLogFileNum:      opts.KeepLogFileNum,
-		EnableStats:         opts.EnableStats,
-	}
-	dbInfo.openOption, dbInfo.cache, dbInfo.tableOption = dbInfo.newRocksdbOptions(rocksOpts)
+	dbInfo.openOption, dbInfo.cache, dbInfo.tableOption = dbInfo.newRocksdbOptions(opts)
 
 	dbInfo.db, err = gorocksdb.OpenDb(dbInfo.openOption, opts.Dir)
 
@@ -289,24 +285,12 @@ func (dbInfo *RocksdbOperator) doOpen(opts *OpenDBOptions) (err error) {
 	dbInfo.writeOption.DisableWAL(true)
 	dbInfo.readDiskOption = gorocksdb.NewDefaultReadOptions()
 	dbInfo.readDiskOption.SetReadTier(ReadTierPersisted)
+	dbInfo.setOptToConfig(opts)
 	return nil
 }
 
-type OpenDBOptions struct {
-	Dir                 string
-	WriteBufferSize     int
-	WriteBufferNum      int
-	MinWriteBuffToMerge int
-	MaxSubCompactions   int
-	BlockCacheSize      uint64
-	MaxLogFileSize      int
-	LogFileTimeToRoll   time.Duration
-	KeepLogFileNum      int
-	EnableStats         bool
-}
-
-func NewDefaultOpenDBOptions(dir string) *OpenDBOptions {
-	return &OpenDBOptions{
+func NewDefaultRocksDBOptions(dir string) *RocksDBOptions {
+	return &RocksDBOptions{
 		Dir:                 dir,
 		WriteBufferSize:     DefaultWriteBuffSize,
 		WriteBufferNum:      DefaultWriteBuffNum,
@@ -319,7 +303,7 @@ func NewDefaultOpenDBOptions(dir string) *OpenDBOptions {
 	}
 }
 
-func (dbInfo *RocksdbOperator) OpenDb(opts *OpenDBOptions) (err error) {
+func (dbInfo *RocksdbOperator) OpenDb(opts *RocksDBOptions) (err error) {
 	ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbInitSt, dbOpenningSt)
 	ok = ok || atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt)
 	if !ok {
@@ -344,7 +328,7 @@ func (dbInfo *RocksdbOperator) OpenDb(opts *OpenDBOptions) (err error) {
 	return dbInfo.doOpen(opts)
 }
 
-func (dbInfo *RocksdbOperator) ReOpenDb(opts *OpenDBOptions) (err error) {
+func (dbInfo *RocksdbOperator) ReOpenDb(opts *RocksDBOptions) (err error) {
 	if ok := atomic.CompareAndSwapUint32(&dbInfo.state, dbClosedSt, dbOpenningSt); !ok {
 		if atomic.LoadUint32(&dbInfo.state) == dbOpenedSt {
 			// already opened
@@ -950,4 +934,43 @@ func (dbInfo *RocksdbOperator) GetBytesFromDisk(key []byte) (bytes []byte, err e
 		return
 	}
 	return
+}
+
+func (dbInfo *RocksdbOperator) SetOptions(config map[string]string) error {
+	if dbInfo.db == nil {
+		return ErrRocksdbAccess
+	}
+
+	dbInfo.mutex.Lock()
+	defer dbInfo.mutex.Unlock()
+
+	for key, val := range config {
+		err := dbInfo.db.SetOptions([]string{key}, []string{val})
+		if err != nil {
+			err = fmt.Errorf("set option [%s=%s] failed: %v", key, val, err)
+			log.LogErrorf(err.Error())
+			return err
+		}
+		dbInfo.config[key] = val
+	}
+
+	return nil
+}
+
+func (dbInfo *RocksdbOperator) GetOptions() map[string]string {
+	dbInfo.mutex.RLock()
+	defer dbInfo.mutex.RUnlock()
+
+	ret := make(map[string]string)
+	for key, val := range dbInfo.config {
+		ret[key] = val
+	}
+	return ret
+}
+
+func (dbInfo *RocksdbOperator) setOptToConfig(opts *RocksDBOptions) {
+	dbInfo.config["write_buffer_size"] = strconv.Itoa(opts.WriteBufferSize)
+	dbInfo.config["max_write_buffer_number"] = strconv.Itoa(opts.WriteBufferNum)
+	dbInfo.config["min_write_buffer_number_to_merge"] = strconv.Itoa(opts.MinWriteBuffToMerge)
+	dbInfo.config["max_background_compactions"] = strconv.Itoa(opts.MaxSubCompactions)
 }

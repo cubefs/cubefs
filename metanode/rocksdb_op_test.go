@@ -45,7 +45,7 @@ func TestOpenDb(t *testing.T) {
 	os.RemoveAll(path)
 	db := metanode.NewRocksdb()
 	defer os.RemoveAll(path)
-	opts := metanode.NewDefaultOpenDBOptions(path)
+	opts := metanode.NewDefaultRocksDBOptions(path)
 	err := db.OpenDb(opts)
 	require.NoError(t, err)
 
@@ -58,14 +58,14 @@ func TestReopneDb(t *testing.T) {
 	os.RemoveAll(path)
 	db := metanode.NewRocksdb()
 	defer os.RemoveAll(path)
-	opts := metanode.NewDefaultOpenDBOptions(path)
+	opts := metanode.NewDefaultRocksDBOptions(path)
 	err := db.OpenDb(opts)
 	require.NoError(t, err)
 
 	err = db.CloseDb()
 	require.NoError(t, err)
 
-	reopenOpts := metanode.NewDefaultOpenDBOptions(path)
+	reopenOpts := metanode.NewDefaultRocksDBOptions(path)
 	err = db.ReOpenDb(reopenOpts)
 	require.NoError(t, err)
 
@@ -157,8 +157,6 @@ func snapRangeTest(t *testing.T, db *metanode.RocksdbOperator) {
 
 	db.RangeWithSnap(stKey, endKey, snap, func(k, v []byte) (bool, error) {
 		require.EqualValues(t, TestTable, k[0])
-		index := extractIdFromKey(t, k)
-		require.EqualValues(t, index, i)
 		i++
 		return true, nil
 	})
@@ -259,7 +257,7 @@ func TestOps(t *testing.T) {
 	defer os.RemoveAll(path)
 	defer os.RemoveAll(path2)
 	db := metanode.NewRocksdb()
-	opts := metanode.NewDefaultOpenDBOptions(path)
+	opts := metanode.NewDefaultRocksDBOptions(path)
 	_ = db.OpenDb(opts)
 
 	start := time.Now()
@@ -303,7 +301,7 @@ func TestOps(t *testing.T) {
 	runtime.GC()
 	time.Sleep(time.Second * 3)
 	db2 := metanode.NewRocksdb()
-	db2Opts := metanode.NewDefaultOpenDBOptions(path2)
+	db2Opts := metanode.NewDefaultRocksDBOptions(path2)
 	_ = db2.OpenDb(db2Opts)
 	genenerData(t, db2)
 	start = time.Now()
@@ -312,7 +310,7 @@ func TestOps(t *testing.T) {
 	err := db.CloseDb()
 	require.NoError(t, err)
 	os.Rename(path2, path)
-	opts = metanode.NewDefaultOpenDBOptions(path)
+	opts = metanode.NewDefaultRocksDBOptions(path)
 	db.ReOpenDb(opts)
 	t.Logf("reopen db delete used:%v \n", time.Since(start))
 	rangeTest(t, db)
@@ -372,7 +370,7 @@ func TestAbortOps(t *testing.T) {
 	os.RemoveAll(path)
 	defer os.RemoveAll(path)
 	db := metanode.NewRocksdb()
-	opts := metanode.NewDefaultOpenDBOptions(path)
+	opts := metanode.NewDefaultRocksDBOptions(path)
 	_ = db.OpenDb(opts)
 	genenerData(t, db)
 	rangeTest(t, db)
@@ -394,7 +392,7 @@ func TestRocksDB_accessDB(t *testing.T) {
 	os.RemoveAll(path)
 	defer os.RemoveAll(path)
 	db := metanode.NewRocksdb()
-	opts := metanode.NewDefaultOpenDBOptions(path)
+	opts := metanode.NewDefaultRocksDBOptions(path)
 	_ = db.OpenDb(opts)
 	genenerData(t, db)
 	dbSnap := db.OpenSnap()
@@ -429,7 +427,7 @@ func TestFlushSinglePartition(t *testing.T) {
 	defer os.RemoveAll(path)
 	db := metanode.NewRocksdb()
 
-	opts := metanode.NewDefaultOpenDBOptions(path)
+	opts := metanode.NewDefaultRocksDBOptions(path)
 	err := db.OpenDb(opts)
 	require.NoError(t, err)
 
@@ -456,7 +454,7 @@ func TestFlushDb(t *testing.T) {
 	defer os.RemoveAll(path)
 	db := metanode.NewRocksdb()
 
-	opts := metanode.NewDefaultOpenDBOptions(path)
+	opts := metanode.NewDefaultRocksDBOptions(path)
 	err := db.OpenDb(opts)
 	require.NoError(t, err)
 

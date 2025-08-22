@@ -56,7 +56,7 @@ func (m *MetaNode) startStat() {
 		MetricMetaPartitionInodeCount:  exporter.NewGaugeVec(MetricMetaPartitionInodeCount, "", []string{"volName"}),
 		MetricMetaPartitionDentryCount: exporter.NewGaugeVec(MetricMetaPartitionDentryCount, "", []string{"volName"}),
 		MetricFileStats:                exporter.NewGaugeVec(MetricFileStats, "", []string{"volName", "sizeRange"}),
-		RocksdbStats:                   exporter.NewGaugeVec(RocksdbStats, "", []string{"rocksdbDir"}),
+		RocksdbStats:                   exporter.NewGaugeVec(RocksdbStats, "", []string{"rocksdbDir", "key"}),
 	}
 
 	go m.collectPartitionMetrics()
