@@ -237,9 +237,7 @@ func confCheck(cfg *StreamConfig) error {
 	defaulter.LessOrEqual(&cfg.ServicePunishIntervalS, defaultServicePunishIntervalS)
 	defaulter.IntegerLessOrEqual(&cfg.ShardnodePunishIntervalS, 60)
 	defaulter.LessOrEqual(&cfg.AllocRetryTimes, defaultAllocRetryTimes)
-	if cfg.AllocRetryIntervalMS <= 100 {
-		cfg.AllocRetryIntervalMS = defaultAllocRetryIntervalMS
-	}
+	defaulter.LessOrEqual(&cfg.AllocRetryIntervalMS, defaultAllocRetryIntervalMS)
 	defaulter.LessOrEqual(&cfg.ShardnodeRetryTimes, defaultShardnodeRetryTimes)
 	if cfg.ShardnodeRetryIntervalMS <= defaultShardnodeRetryIntervalMS {
 		cfg.ShardnodeRetryIntervalMS = defaultShardnodeRetryIntervalMS
