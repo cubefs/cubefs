@@ -389,32 +389,32 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 			}
 			readSize = proto.CACHE_BLOCK_PACKET_SIZE
 			missTaskDone := make(chan struct{})
-			err = f.limitWrite.Run(writeLen, true, func() {
+			if totalWritten+int64(readSize) > req.BlockLen {
+				readSize = int(req.BlockLen - totalWritten)
+			}
+			err = f.limitWrite.Run(readSize, true, func() {
 				defer func() {
 					close(missTaskDone)
 				}()
-				if totalWritten+int64(readSize) > req.BlockLen {
-					readSize = int(req.BlockLen - totalWritten)
-				}
-				if n, err1 = io.ReadFull(conn, buf[:writeLen]); err1 != nil {
+				if n, err1 = io.ReadFull(conn, buf[:readSize+proto.CACHE_BLOCK_CRC_SIZE]); err1 != nil {
 					log.LogWarnf(logPrefix+" blockkey %v read data and crc conn %v", blockKey, err1)
 					return
 				}
-				if n != writeLen {
+				if n != readSize+proto.CACHE_BLOCK_CRC_SIZE {
 					err1 = syscall.EBADMSG
 					return
 				}
 				err1 = cb.WriteAtV2(&proto.FlashWriteParam{
 					Offset:   totalWritten,
 					Size:     req.BlockLen,
-					Data:     buf[:proto.CACHE_BLOCK_PACKET_SIZE],
-					Crc:      buf[proto.CACHE_BLOCK_PACKET_SIZE:writeLen],
+					Data:     buf[:readSize],
+					Crc:      buf[readSize : readSize+proto.CACHE_BLOCK_CRC_SIZE],
 					DataSize: int64(readSize),
 				})
 				if err1 != nil {
 					return
 				}
-				cachengine.UpdateWriteBytesMetric(proto.CACHE_BLOCK_PACKET_SIZE, cb.GetRootPath())
+				cachengine.UpdateWriteBytesMetric(uint64(readSize), cb.GetRootPath())
 				cachengine.UpdateWriteCountMetric(cb.GetRootPath())
 				err1 = cb.MaybeWriteCompleted(req.BlockLen)
 				if err1 != nil {
@@ -792,38 +792,36 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	var errInner error
 	buf := bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
 	defer bytespool.Free(buf)
+	var alignedOffset int64
+	var readDiskSize uint32
 	readAndReply := func() {
 		reply := proto.NewPacket()
 		reply.ReqID = p.ReqID
 		reply.StartT = p.StartT
 		reply.Data = buf
-
-		alignedOffset := offset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
 		reply.KernelOffset = uint64(offset)
 		reply.ExtentOffset = offset - alignedOffset
 		p.Size = proto.CACHE_BLOCK_PACKET_SIZE
 		p.ExtentOffset = offset
-
-		reply.CRC, errInner = block.Read(ctx, reply.Data[:], alignedOffset, proto.CACHE_BLOCK_PACKET_SIZE, f.waitForCacheBlock, true)
+		reply.CRC, errInner = block.Read(ctx, reply.Data[:readDiskSize], alignedOffset, int64(readDiskSize), f.waitForCacheBlock, true)
 		if errInner != nil {
 			return
 		}
 		p.CRC = reply.CRC
 		realNeedSize := uint32(util.Min(int(proto.CACHE_BLOCK_PACKET_SIZE-reply.ExtentOffset), int(end-offset)))
-
 		reply.Size = realNeedSize
 		reply.ResultCode = proto.OpOk
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
 
 		bgTime := stat.BeginStat()
-		if errInner = reply.WriteToConnForOCS(conn); errInner != nil {
+		if errInner = reply.WriteToConnForOCS(conn, readDiskSize); errInner != nil {
 			log.LogErrorf("%s key:[%s] %s", action, block.GetBlockKey(),
 				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner))
 			return
 		}
 		stat.EndStat("HitCacheRead:ReplyToClient", errInner, bgTime, 1)
-		offset = alignedOffset + proto.CACHE_BLOCK_PACKET_SIZE
+		offset = alignedOffset + int64(readDiskSize)
 		if log.EnableInfo() {
 			log.LogInfof("%s ReqID[%d] key:[%s] reply[%s] block[%s]", action, p.ReqID, block.GetBlockKey(),
 				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner), block.GetBlockKey())
@@ -831,11 +829,13 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	}
 	var keepAlive bool
 	for {
+		alignedOffset = offset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
+		readDiskSize = uint32(util.Min(proto.CACHE_BLOCK_PACKET_SIZE, int(end-alignedOffset)))
 		if !keepAlive {
-			err = f.limitRead.RunNoWait(proto.CACHE_BLOCK_PACKET_SIZE, false, readAndReply)
+			err = f.limitRead.RunNoWait(int(readDiskSize), false, readAndReply)
 			keepAlive = true
 		} else {
-			err = f.limitRead.Run(proto.CACHE_BLOCK_PACKET_SIZE, true, readAndReply)
+			err = f.limitRead.Run(int(readDiskSize), true, readAndReply)
 		}
 		if err != nil {
 			return
