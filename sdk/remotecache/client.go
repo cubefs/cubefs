@@ -670,9 +670,9 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 			if log.EnableDebug() {
 				log.LogDebugf("FlashGroup put: write %d bytes total(%d) to fg", bufferOffset, totalWritten)
 			}
-			binary.BigEndian.PutUint32(buf[proto.CACHE_BLOCK_PACKET_SIZE:], crc32.ChecksumIEEE(buf[:proto.CACHE_BLOCK_PACKET_SIZE]))
+			binary.BigEndian.PutUint32(buf[bufferOffset:], crc32.ChecksumIEEE(buf[:bufferOffset]))
 			conn.SetWriteDeadline(time.Now().Add(proto.WriteDeadlineTime * time.Second))
-			if _, err = conn.Write(buf[:writeLen]); err != nil {
+			if _, err = conn.Write(buf[:bufferOffset+proto.CACHE_BLOCK_CRC_SIZE]); err != nil {
 				log.LogErrorf("wirte data and crc to flashnode get err %v", err)
 				return fmt.Errorf(proto.ErrorWriteDataAndCRCToFlashNodeTpl, err)
 			}
@@ -713,7 +713,7 @@ func (rc *RemoteCacheClient) processPutReply(conn *net.TCPConn, ch *proto.CoonHa
 	var err error
 	replyPacket := NewFlashCacheReply()
 	for range ch.WaitAckChan {
-		if err = replyPacket.ReadFromConnExt(conn, int(rc.WriteTimeout)); err != nil {
+		if err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 			log.LogWarnf("FlashGroup put data: reqId(%v) failed to ReadFromConn, replyPacket(%v) , err(%v)", reqId, replyPacket, err)
 			ch.RemoteError = err
 			return
@@ -1169,14 +1169,16 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 		}
 		return
 	}
-	_, err = io.ReadFull(reader.conn, p)
+	alignedOffset := reader.currOffset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
+	readPackageSize := uint32(util.Min(proto.CACHE_BLOCK_PACKET_SIZE, int(reader.endOffset-alignedOffset)))
+	_, err = io.ReadFull(reader.conn, p[:readPackageSize])
 	if err != nil {
 		log.LogErrorf("RemoteCacheReader:reqID(%v) Read err(%v)", reader.reqID, err)
 		return
 	}
 
 	// check crc
-	actualCrc := crc32.ChecksumIEEE(p)
+	actualCrc := crc32.ChecksumIEEE(p[:readPackageSize])
 	if actualCrc != reply.CRC {
 		err = fmt.Errorf(proto.ErrorInconsistentCRCObjectTpl, reply.KernelOffset, reply.ExtentOffset, reply.CRC, actualCrc)
 		log.LogErrorf("RemoteCacheReader:Read check crc failed  reqID(%v) offset(%v) extentOffset(%v) expect(%v) actualCrc(%v)",
@@ -1188,7 +1190,7 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 	if log.EnableDebug() {
 		log.LogDebugf("RemoteCacheReader:Read reqID(%v) offset(%v) extentOffset(%v) expectLen(%v) p.len(%v) cost(%v)", reader.reqID, reply.KernelOffset, reply.ExtentOffset, expectLen, len(p), time.Since(*bg))
 	}
-	atomic.StoreInt64(&reader.alreadyReadLen, reader.alreadyReadLen+expectLen)
+	atomic.AddInt64(&reader.alreadyReadLen, expectLen)
 	return int(expectLen), nil
 }
 
@@ -1205,6 +1207,9 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 	}
 	if len(p) == 0 {
 		return 0, nil
+	}
+	if log.EnableDebug() {
+		log.LogDebugf("RemoteCacheReader:reqID(%v) start(%v) readsize(%v)", reader.reqID, reader.currOffset, len(p))
 	}
 	if reader.closed {
 		log.LogErrorf("read from close reader reqID(%v)", reader.reqID)

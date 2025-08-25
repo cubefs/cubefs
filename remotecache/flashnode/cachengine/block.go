@@ -211,7 +211,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64,
 	}
 
 	if cb.sourceType == SourceTypeBlock {
-		realSize = proto.CACHE_BLOCK_PACKET_SIZE
+		realSize = size
 	}
 
 	log.LogDebugf("action[Read] read cache block:%v, offset:%d, allocSize:%d, usedSize:%d", cb.blockKey, offset, cb.allocSize, cb.usedSize)
@@ -922,9 +922,6 @@ func (cb *CacheBlock) MaybeWriteCompleted(reqLen int64) (err error) {
 func CalcAllocSizeV2(reqLen int) (int, error) {
 	if reqLen > proto.CACHE_OBJECT_BLOCK_SIZE {
 		return 0, fmt.Errorf("invalid block size: %d", reqLen)
-	}
-	if reqLen%proto.CACHE_BLOCK_PACKET_SIZE != 0 {
-		reqLen = (reqLen/proto.CACHE_BLOCK_PACKET_SIZE + 1) * proto.CACHE_BLOCK_PACKET_SIZE
 	}
 	return reqLen, nil
 }
