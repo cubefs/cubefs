@@ -187,9 +187,10 @@ func testTCPCachePutBlock(t *testing.T) {
 	require.NoError(t, r.ReadFromConn(conn, 3))
 	require.Equal(t, proto.OpErr, r.ResultCode) // lack parameter
 	key := "testTCPCacheWrite_key"
+	bLen := 1
 	req := &proto.PutBlockHead{
 		UniKey:   key,
-		BlockLen: 1,
+		BlockLen: int64(bLen),
 		TTL:      0,
 	}
 	_ = p.MarshalDataPb(req)
@@ -199,8 +200,8 @@ func testTCPCachePutBlock(t *testing.T) {
 	require.Equal(t, proto.OpOk, r.ResultCode)
 	buf := make([]byte, proto.CACHE_BLOCK_PACKET_SIZE+4)
 	buf[0] = '{'
-	binary.BigEndian.PutUint32(buf[proto.CACHE_BLOCK_PACKET_SIZE:], crc32.ChecksumIEEE(buf[:proto.CACHE_BLOCK_PACKET_SIZE]))
-	_, err := conn.Write(buf[:proto.CACHE_BLOCK_PACKET_SIZE+4])
+	binary.BigEndian.PutUint32(buf[bLen:], crc32.ChecksumIEEE(buf[:bLen]))
+	_, err := conn.Write(buf[:bLen+4])
 	require.NoError(t, err)
 }
 

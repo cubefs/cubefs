@@ -1266,7 +1266,7 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	return
 }
 
-func (p *Packet) WriteToConnForOCS(c net.Conn) (err error) {
+func (p *Packet) WriteToConnForOCS(c net.Conn, readDiskSize uint32) (err error) {
 	headSize := p.CalcPacketHeaderSize()
 	header, err := Buffers.Get(headSize)
 	if err != nil {
@@ -1292,7 +1292,7 @@ func (p *Packet) WriteToConnForOCS(c net.Conn) (err error) {
 		}
 		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
 			if p.Data != nil && p.Size != 0 {
-				_, err = c.Write(p.Data[:])
+				_, err = c.Write(p.Data[:readDiskSize])
 			}
 		}
 	}
