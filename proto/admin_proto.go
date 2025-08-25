@@ -1409,6 +1409,8 @@ type SimpleVolView struct {
 
 	RemoteCacheRemoveDupReq bool // TODO: using it in metanode, origin was named EnableRemoveDupReq
 	DefaultStoreMode        StoreMode
+	RocksdbMpCount          uint64
+	MemoryMpCount           uint64
 }
 
 type NodeSetInfo struct {

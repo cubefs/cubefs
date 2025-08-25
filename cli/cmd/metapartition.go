@@ -15,10 +15,8 @@
 package cmd
 
 import (
-	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -281,18 +279,10 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
-			storeMode := proto.StoreModeDef
-			if optStoreMode != "" {
-				optStoreMode = strings.ToLower(optStoreMode)
-				switch optStoreMode {
-				case "memory":
-					storeMode = proto.StoreModeMem
-				case "rocksdb":
-					storeMode = proto.StoreModeRocksDb
-				default:
-					err = fmt.Errorf("Unknown store mode")
-					return
-				}
+			var storeMode proto.StoreMode
+			storeMode, err = ParseStoreMode(optStoreMode)
+			if err != nil {
+				return
 			}
 			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, clientIDKey, storeMode); err != nil {
 				return
@@ -329,18 +319,10 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
 
-			storeMode := proto.StoreModeDef
-			if optStoreMode != "" {
-				optStoreMode = strings.ToLower(optStoreMode)
-				switch optStoreMode {
-				case "memory":
-					storeMode = proto.StoreModeMem
-				case "rocksdb":
-					storeMode = proto.StoreModeRocksDb
-				default:
-					err = fmt.Errorf("Unknown store mode")
-					return
-				}
+			var storeMode proto.StoreMode
+			storeMode, err = ParseStoreMode(optStoreMode)
+			if err != nil {
+				return
 			}
 			if err = client.AdminAPI().AddMetaReplica(partitionID, address, clientIDKey, storeMode); err != nil {
 				return

@@ -61,6 +61,11 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  MetaNode used                    : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
 	sb.WriteString(fmt.Sprintf("  MetaNode available               : %v GB\n", cv.MetaNodeStatInfo.AvailGB))
 	sb.WriteString(fmt.Sprintf("  MetaNode total                   : %v GB\n", cv.MetaNodeStatInfo.TotalGB))
+	sb.WriteString(fmt.Sprintf("  RocksdbDiskUsed                  : %v GB\n", cv.RocksdbDiskUsed))
+	sb.WriteString(fmt.Sprintf("  RocksdbDiskAvail                 : %v GB\n", cv.RocksdbDiskAvail))
+	sb.WriteString(fmt.Sprintf("  RocksdbDiskTotal                 : %v GB\n", cv.RocksdbDiskTotal))
+	sb.WriteString(fmt.Sprintf("  RocksdbMpCount                   : %v\n", cv.RocksdbMpCount))
+	sb.WriteString(fmt.Sprintf("  MemoryMpCount                    : %v\n", cv.MemoryMpCount))
 
 	dataNodeActiveCnt := 0
 	for _, node := range cv.DataNodes {
@@ -314,6 +319,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	// qos of volume
 	sb.WriteString(fmt.Sprintf("  QosEnable                       : %v\n", svv.QosInfo.QosEnable))
 	sb.WriteString(fmt.Sprintf("  Default store mode              : %v\n", svv.DefaultStoreMode.Str()))
+	sb.WriteString(fmt.Sprintf("  RocksdbMpCount                  : %v\n", svv.RocksdbMpCount))
+	sb.WriteString(fmt.Sprintf("  MemoryMpCount                   : %v\n", svv.MemoryMpCount))
 	return sb.String()
 }
 

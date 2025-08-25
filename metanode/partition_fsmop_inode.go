@@ -336,6 +336,8 @@ func (mp *metaPartition) fsmTxUnlinkInode(dbHandle interface{}, txIno *TxInode) 
 	rbInode := NewTxRollbackInode(txIno.Inode, quotaIds, inodeInfo, TxAdd)
 	resp.Status, err = mp.txProcessor.txResource.addTxRollbackInode(dbHandle, rbInode)
 	if err != nil {
+		log.LogErrorf("fsmTxUnlinkInode addTxRollbackInode(%v), err(%v)", txIno, err)
+		resp.Status = proto.OpErr
 		return
 	}
 	if resp.Status == proto.OpExistErr {
@@ -358,9 +360,9 @@ func (mp *metaPartition) fsmTxUnlinkInode(dbHandle interface{}, txIno *TxInode) 
 
 	defer func() {
 		if resp.Status != proto.OpOk {
-			_, err = mp.txProcessor.txResource.deleteTxRollbackInode(dbHandle, txIno.Inode.Inode, txIno.TxInfo.TxID)
-			if err != nil {
-				log.LogErrorf("[fsmTxUnlinkInode] failed to delete rb inode(%v), err(%v)", txIno, err)
+			_, err1 := mp.txProcessor.txResource.deleteTxRollbackInode(dbHandle, txIno.Inode.Inode, txIno.TxInfo.TxID)
+			if err1 != nil {
+				log.LogErrorf("[fsmTxUnlinkInode] failed to delete rb inode(%v), err(%v)", txIno, err1)
 			}
 		}
 	}()
@@ -378,6 +380,11 @@ func (mp *metaPartition) fsmTxUnlinkInode(dbHandle interface{}, txIno *TxInode) 
 	}
 
 	resp, err = mp.fsmUnlinkInode(dbHandle, txIno.Inode, 0)
+	if err != nil {
+		log.LogErrorf("fsmTxUnlinkInode: failed to unlink inode(%v), err(%v)", txIno.Inode, err)
+		resp.Status = proto.OpErr
+		return
+	}
 	if resp.Status != proto.OpOk {
 		return
 	}

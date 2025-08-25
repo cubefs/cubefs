@@ -279,7 +279,7 @@ func (s *AvailableSpaceFirstNodeSelector) getNodeAvailableSpace(node interface{}
 		metaNode := node.(*MetaNode)
 		return metaNode.GetRocksdbTotal() - metaNode.GetRocksdbUsed()
 	default:
-		panic("unkown node type")
+		panic("unknown node type")
 	}
 }
 
@@ -489,7 +489,7 @@ func (s *StrawNodeSelector) getWeight(node Node) float64 {
 		metaNode := node.(*MetaNode)
 		return float64(metaNode.GetRocksdbTotal()-metaNode.GetRocksdbUsed()) / util.GB
 	default:
-		panic("unkown node type")
+		panic("unknown node type")
 	}
 }
 

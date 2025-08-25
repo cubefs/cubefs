@@ -471,3 +471,42 @@ func TestFlushDb(t *testing.T) {
 	err = db.CloseDb()
 	require.NoError(t, err)
 }
+
+func TestGetBytesFromDisk(t *testing.T) {
+	path := getRocksdbPathForTest()
+	os.RemoveAll(path)
+	defer os.RemoveAll(path)
+
+	db := metanode.NewRocksdb()
+	opts := metanode.NewDefaultRocksDBOptions(path)
+	err := db.OpenDb(opts)
+	require.NoError(t, err)
+	defer db.CloseDb()
+
+	// 写入一条数据
+	key := []byte("test-key")
+	value1 := []byte("persist-to-disk")
+	err = db.Put(key, value1)
+	require.NoError(t, err)
+
+	err = db.Flush(true)
+	require.NoError(t, err)
+
+	value2 := []byte("store-in-memtable")
+	err = db.Put(key, value2)
+	require.NoError(t, err)
+
+	// 用 GetBytesFromDisk 读取
+	got, err := db.GetBytesFromDisk(key)
+	require.NoError(t, err)
+	require.Equal(t, value1, got)
+
+	got, err = db.GetBytes(key)
+	require.NoError(t, err)
+	require.Equal(t, value2, got)
+
+	// 读取不存在的 key
+	got, err = db.GetBytesFromDisk([]byte("not-exist-key"))
+	require.NoError(t, err)
+	require.Equal(t, 0, len(got))
+}

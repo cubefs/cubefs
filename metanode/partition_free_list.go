@@ -218,9 +218,9 @@ func (mp *metaPartition) deleteWorker() {
 
 			totalCnt++
 
-			inTx := func(i *Inode) bool {
-				in, _, _ := mp.txProcessor.txResource.isInodeInTransction(i)
-				return in
+			inTx := func(i *Inode) (bool, error) {
+				in, _, err1 := mp.txProcessor.txResource.isInodeInTransction(i)
+				return in, err1
 			}
 
 			// check inode nlink == 0 and deleteMarkFlag unset
@@ -231,7 +231,12 @@ func (mp *metaPartition) deleteWorker() {
 				continue
 			}
 			if inode != nil {
-				if inode.ShouldDelayDelete() || inTx(inode) {
+				in, err1 := inTx(inode)
+				if err1 != nil {
+					log.LogErrorf("inTx: failed to check inode(%v), err(%v)", inode, err1)
+					continue
+				}
+				if inode.ShouldDelayDelete() || in {
 					if log.EnableDebug() {
 						log.LogDebugf("[deleteWorker] vol(%v) mp(%v) delay to remove inode: %v as NLink is 0, delay %v",
 							mp.config.VolName, mp.config.PartitionId, inode, inode.ShouldDelayDelete())

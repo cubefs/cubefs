@@ -283,17 +283,12 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			storeMode := proto.StoreModeMem
 			if optStoreMode != "" {
-				optStoreMode = strings.ToLower(optStoreMode)
-				switch optStoreMode {
-				case "memory":
-					storeMode = proto.StoreModeMem
-				case "rocksdb":
-					storeMode = proto.StoreModeRocksDb
-				default:
-					err = fmt.Errorf("Unknown store mode")
+				storeMode, err = ParseStoreMode(optStoreMode)
+				if err != nil {
 					return
 				}
 			}
+
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
 				optMPCount, optDPCount, int(replicaNum), optDPSize, followerRead,

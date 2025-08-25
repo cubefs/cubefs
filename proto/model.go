@@ -185,6 +185,11 @@ type ClusterView struct {
 	FlashNodes                                []NodeView
 	FlashNodeHandleReadTimeout                int
 	FlashNodeReadDataNodeTimeout              int
+	RocksdbDiskUsed                           uint64
+	RocksdbDiskAvail                          uint64
+	RocksdbDiskTotal                          uint64
+	RocksdbMpCount                            uint64
+	MemoryMpCount                             uint64
 }
 
 // ClusterNode defines the structure of a cluster node

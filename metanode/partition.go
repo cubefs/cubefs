@@ -1898,10 +1898,6 @@ func (mp *metaPartition) getFileRange() []int64 {
 	return fileRangeCopy
 }
 
-func (mp *metaPartition) HasMemStore() bool {
-	return mp.config.StoreMode&proto.StoreModeMem != 0
-}
-
 func (mp *metaPartition) HasRocksDBStore() bool {
 	return mp.config.StoreMode&proto.StoreModeRocksDb != 0
 }
@@ -2127,10 +2123,6 @@ func (mp *metaPartition) initObjects(isCreate bool) (err error) {
 	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
 	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
 
-	if mp.HasMemStore() {
-		mp.initMemoryTree()
-	}
-
 	if mp.HasRocksDBStore() {
 		mp.db, err = mp.rocksdbManager.OpenRocksdb(mp.config.RocksDBDir, mp.config.PartitionId)
 		if err != nil {
@@ -2140,6 +2132,8 @@ func (mp *metaPartition) initObjects(isCreate bool) (err error) {
 		if err = mp.initRocksDBTree(); err != nil {
 			return
 		}
+	} else {
+		mp.initMemoryTree()
 	}
 
 	mp.txProcessor = NewTransactionProcessor(mp)

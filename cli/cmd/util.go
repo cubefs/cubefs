@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
 
@@ -109,4 +110,21 @@ func alignColumnIndent(indent string, rows ...[]interface{}) string {
 // alignColumnIndex align struct with index.
 func alignColumnIndex(index int, rows ...[]interface{}) string {
 	return alignColumnIndent(util.Any2String(index), rows...)
+}
+
+func ParseStoreMode(optStoreMode string) (proto.StoreMode, error) {
+	storeMode := proto.StoreModeDef
+	if optStoreMode != "" {
+		optStoreMode = strings.ToLower(optStoreMode)
+		switch optStoreMode {
+		case "memory":
+			storeMode = proto.StoreModeMem
+		case "rocksdb":
+			storeMode = proto.StoreModeRocksDb
+		default:
+			return 0, fmt.Errorf("Unknown store mode: %s", optStoreMode)
+		}
+	}
+
+	return storeMode, nil
 }

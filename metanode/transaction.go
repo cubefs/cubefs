@@ -393,17 +393,18 @@ func NewTransactionProcessor(mp *metaPartition) *TransactionProcessor {
 	var txTree TransactionTree
 	var txRbInodeTree TransactionRollbackInodeTree
 	var txRbDentryTree TransactionRollbackDentryTree
-	if mp.HasMemStore() {
-		txTree = &TransactionBTree{NewBtree()}
-		txRbInodeTree = &TransactionRollbackInodeBTree{NewBtree()}
-		txRbDentryTree = &TransactionRollbackDentryBTree{NewBtree()}
-	}
+
 	if mp.HasRocksDBStore() {
 		inodeRocks := mp.inodeTree.(*InodeRocks)
 		txTree, _ = NewTransactionRocks(inodeRocks.RocksTree)
 		txRbInodeTree, _ = NewTransactionRollbackInodeRocks(inodeRocks.RocksTree)
 		txRbDentryTree, _ = NewTransactionRollbackDentryRocks(inodeRocks.RocksTree)
+	} else {
+		txTree = &TransactionBTree{NewBtree()}
+		txRbInodeTree = &TransactionRollbackInodeBTree{NewBtree()}
+		txRbDentryTree = &TransactionRollbackDentryBTree{NewBtree()}
 	}
+
 	txProcessor.txManager = NewTransactionManager(txProcessor, txTree)
 	txProcessor.txResource = NewTransactionResource(txProcessor, txRbInodeTree, txRbDentryTree)
 
@@ -714,6 +715,7 @@ func (tm *TransactionManager) addTxInfo(handle interface{}, txInfo *proto.Transa
 
 // TM register a transaction, process client transaction
 func (tm *TransactionManager) registerTransaction(handle interface{}, txInfo *proto.TransactionInfo) (err error) {
+	var info *proto.TransactionInfo
 	if uint64(txInfo.TmID) == tm.txProcessor.mp.config.PartitionId {
 		if err := tm.updateTxIdCursor(txInfo.TxID); err != nil {
 			log.LogErrorf("updateTxIdCursor failed, txInfo %s, err %s", txInfo.String(), err.Error())
@@ -731,9 +733,19 @@ func (tm *TransactionManager) registerTransaction(handle interface{}, txInfo *pr
 			dentry.SetTimeout(txInfo.Timeout)
 			dentry.SetTxId(txInfo.TxID)
 		}
+
+		info, err = tm.getTransaction(txInfo.TxID)
+		if err != nil {
+			log.LogErrorf("[registerTransaction] failed to get tx(%v) from tx tree, err(%v)", txInfo.TxID, err)
+			return
+		}
+		if info != nil {
+			log.LogWarnf("tx is already exist, txId %s, info %v", txInfo.TxID, info.String())
+			return fmt.Errorf("tx is already exist, txId %s", txInfo.TxID)
+		}
 	}
 
-	info, err := tm.getTransaction(txInfo.TxID)
+	info, err = tm.getTransaction(txInfo.TxID)
 	if err != nil {
 		log.LogErrorf("[registerTransaction] failed to get tx(%v) from tx tree, err(%v)", txInfo.TxID, err)
 		return
@@ -998,7 +1010,14 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 
 		wg.Add(1)
 
-		pkt, _ := buildTxPacket(req, mpId, op)
+		pkt, err := buildTxPacket(req, mpId, op)
+		if err != nil {
+			log.LogErrorf("buildTxPacket failed: %v", err)
+			wg.Done()
+			statusCh <- proto.OpErr
+			continue
+		}
+
 		if mp.config.PartitionId == mpId {
 			pt := &Packet{*pkt}
 			go func() {
@@ -1538,8 +1557,12 @@ func (tr *TransactionResource) rollbackInodeInternal(handle interface{}, rbInode
 	mp := tr.txProcessor.mp
 	switch rbInode.rbType {
 	case TxAdd:
-		var ino *Inode
-		item, _ := mp.inodeTree.CopyGet(rbInode.inode)
+		var ino, item *Inode
+		item, err = mp.inodeTree.CopyGet(rbInode.inode)
+		if err != nil {
+			log.LogErrorf("rollbackInodeInternal: failed to get inode(%v), err(%v)", rbInode.inode.Inode, err)
+			return
+		}
 		if item != nil {
 			ino = item
 		}
@@ -1613,6 +1636,7 @@ func (tr *TransactionResource) rollbackInode(handle interface{}, req *proto.TxIn
 }
 
 func (tr *TransactionResource) rollbackDentryInternal(dbHandle interface{}, rbDentry *TxRollbackDentry) (status uint8, err error) {
+	var resp *DentryResponse
 	defer func() {
 		if status != proto.OpOk {
 			log.LogErrorf("rollbackDentryInternal: rollback dentry failed, ifo %v", rbDentry.txDentryInfo)
@@ -1624,14 +1648,18 @@ func (tr *TransactionResource) rollbackDentryInternal(dbHandle interface{}, rbDe
 		// need to be true to assert link not change.
 		status, err = tr.txProcessor.mp.fsmCreateDentry(dbHandle, rbDentry.dentry, true)
 	case TxDelete:
-		resp, _ := tr.txProcessor.mp.fsmDeleteDentry(dbHandle, rbDentry.dentry, true)
+		resp, err = tr.txProcessor.mp.fsmDeleteDentry(dbHandle, rbDentry.dentry, true)
 		status = resp.Status
 	case TxUpdate:
-		resp, _ := tr.txProcessor.mp.fsmUpdateDentry(dbHandle, rbDentry.dentry)
+		resp, err = tr.txProcessor.mp.fsmUpdateDentry(dbHandle, rbDentry.dentry)
 		status = resp.Status
 	default:
 		status = proto.OpTxRollbackUnknownRbType
 		err = fmt.Errorf("rollbackDentry: unknown rbType %d", rbDentry.rbType)
+		return
+	}
+	if err != nil {
+		log.LogErrorf("rollbackDentryInternal: type(%v) dentry(%v), err(%v)", rbDentry.rbType, rbDentry.dentry, err)
 		return
 	}
 
@@ -1754,7 +1782,12 @@ func (tr *TransactionResource) commitDentry(handle interface{}, txID string, pId
 	// unlink parent inode
 	if rbDentry.rbType == TxAdd {
 		parInode := NewInode(pId, 0)
-		st, _ := tr.txProcessor.mp.fsmUnlinkInode(handle, parInode, 0)
+		var st *InodeResponse
+		st, err = tr.txProcessor.mp.fsmUnlinkInode(handle, parInode, 0)
+		if err != nil {
+			log.LogErrorf("fsmUnlinkInode failed: %v", err)
+			return
+		}
 		if st.Status != proto.OpOk {
 			log.LogWarnf("commitDentry: try unlink parent inode failed, txId %s, inode[%v]", txID, parInode)
 			return

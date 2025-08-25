@@ -1056,6 +1056,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 
 	cv.BadPartitionIDs = m.cluster.getBadDataPartitionsView()
 	cv.BadMetaPartitionIDs = m.cluster.getBadMetaPartitionsView()
+	m.calcClusterRocksdbInfo(cv)
 
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
@@ -3251,6 +3252,8 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 			CliUsed: item.CliUsed,
 		})
 	}
+
+	calcVolumeRocksdbInfo(vol, view)
 	return
 }
 
@@ -9300,4 +9303,58 @@ func (m *Server) checkMetaNodeConfigValue(config map[string]string) (err error) 
 	}
 
 	return nil
+}
+
+func (m *Server) calcClusterRocksdbInfo(cv *proto.ClusterView) {
+	if cv == nil || m.cluster == nil {
+		return
+	}
+
+	var (
+		rocksdbDiskUsed   uint64
+		rocksdbDiskTotal  uint64
+		rocksdbMpCountSum uint64
+		memoryMpCountSum  uint64
+	)
+
+	m.cluster.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode := node.(*MetaNode)
+		rocksdbDiskUsed += metaNode.GetRocksdbUsed()
+		rocksdbDiskTotal += metaNode.GetRocksdbTotal()
+		rocksdbMpCount, memoryMpCount := metaNode.GetRocksdbAndMemoryCount()
+		rocksdbMpCountSum += rocksdbMpCount
+		memoryMpCountSum += memoryMpCount
+		return true
+	})
+
+	cv.RocksdbDiskUsed = rocksdbDiskUsed / util.GB
+	cv.RocksdbDiskTotal = rocksdbDiskTotal / util.GB
+	cv.RocksdbMpCount = rocksdbMpCountSum
+	cv.MemoryMpCount = memoryMpCountSum
+	cv.RocksdbDiskAvail = cv.RocksdbDiskTotal - cv.RocksdbDiskUsed
+}
+
+func calcVolumeRocksdbInfo(vol *Vol, view *proto.SimpleVolView) {
+	if vol == nil || view == nil {
+		return
+	}
+
+	var (
+		rocksdbMpCount uint64
+		memoryMpCount  uint64
+	)
+
+	vol.rangeMetaPartition(func(mp *MetaPartition) bool {
+		for _, replica := range mp.Replicas {
+			if replica.StoreMode == proto.StoreModeRocksDb {
+				rocksdbMpCount++
+			} else {
+				memoryMpCount++
+			}
+		}
+		return true
+	})
+
+	view.RocksdbMpCount = rocksdbMpCount
+	view.MemoryMpCount = memoryMpCount
 }

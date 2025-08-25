@@ -157,7 +157,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 		err = mp.Reset()
 		if err != nil {
 			log.LogErrorf("[deletePartition] failed to clear mp(%v) data, err(%v)", mp.config.PartitionId, err)
-			err = nil
+			return
 		}
 		mp.manager.deletePartition(mp.GetBaseConfig().PartitionId)
 		os.RemoveAll(mp.config.RootDir)
