@@ -328,7 +328,7 @@ const (
 	DefaultRemoteCacheHandleReadTimeout = 100 // ms
 	DefaultRemoteCacheExtentReadTimeout = 3000
 	DefaultRemoteCacheSameZoneTimeout   = 400 // microsecond
-	DefaultRemoteCacheSameRegionTimeout = 2   // ms
+	DefaultRemoteCacheSameRegionTimeout = 100 // ms
 )
 
 // multi version operation
