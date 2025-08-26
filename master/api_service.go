@@ -4150,11 +4150,21 @@ func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err e
 	}
 
 	metaNode := value.(*MetaNode)
-	oldRdOnly := metaNode.RdOnly
-	metaNode.RdOnly = rdOnly
+	var oldRdOnly bool
+	if nodeType == TypeRocksdbPartition {
+		oldRdOnly = metaNode.RocksdbRdOnly
+		metaNode.RocksdbRdOnly = rdOnly
+	} else {
+		oldRdOnly = metaNode.RdOnly
+		metaNode.RdOnly = rdOnly
+	}
 
 	if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
-		metaNode.RdOnly = oldRdOnly
+		if nodeType == TypeRocksdbPartition {
+			metaNode.RocksdbRdOnly = oldRdOnly
+		} else {
+			metaNode.RdOnly = oldRdOnly
+		}
 		return fmt.Errorf("[setNodeRdOnly] syncUpdateMetaNode err(%s)", err.Error())
 	}
 
@@ -4356,8 +4366,8 @@ func parseNodeType(r *http.Request) (nodeType uint32, err error) {
 		return
 	}
 	nodeType = uint32(nodeTypeUint64)
-	if nodeType != TypeDataPartition && nodeType != TypeMetaPartition {
-		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not legal, must be %d or %d", nodeTypeKey, TypeDataPartition, TypeMetaPartition)
+	if nodeType < TypeMetaPartition || nodeType > TypeRocksdbPartition {
+		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not legal, must be in %d - %d", nodeTypeKey, TypeMetaPartition, TypeRocksdbPartition)
 		return
 	}
 
@@ -5318,6 +5328,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		RdOnly:                    metaNode.RdOnly,
+		RocksdbRdOnly:             metaNode.RocksdbRdOnly,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
 		CanAllowPartition:         metaNode.IsWriteAble() && metaNode.PartitionCntLimited(),
 		MaxMpCntLimit:             metaNode.GetPartitionLimitCnt(),
@@ -7315,14 +7326,14 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		oldIntValue = m.config.flashNodeReadDataNodeTimeout
 		m.config.flashNodeReadDataNodeTimeout = fnReadDataNodeTimeout
 
-	case cfsMigrateThreadNum:
+	case cfsMpMigrateThreads:
 		var migrateThreadNum int
 		migrateThreadNum, err = strconv.Atoi(value)
 		if err != nil {
 			return err
 		}
-		oldIntValue = m.config.migrateThreadNum
-		m.config.migrateThreadNum = migrateThreadNum
+		oldIntValue = m.config.mpMigrateThreads
+		m.config.mpMigrateThreads = migrateThreadNum
 
 	default:
 		err = keyNotFound("config")
@@ -7343,8 +7354,8 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.config.flashNodeHandleReadTimeout = oldIntValue
 		case flashNodeReadDataNodeTimeout:
 			m.config.flashNodeReadDataNodeTimeout = oldIntValue
-		case cfsMigrateThreadNum:
-			m.config.migrateThreadNum = oldIntValue
+		case cfsMpMigrateThreads:
+			m.config.mpMigrateThreads = oldIntValue
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
@@ -7372,8 +7383,8 @@ func (m *Server) getConfig(key string) (value string, err error) {
 		value = strconv.Itoa(m.config.flashNodeHandleReadTimeout)
 	case flashNodeReadDataNodeTimeout:
 		value = strconv.Itoa(m.config.flashNodeReadDataNodeTimeout)
-	case cfsMigrateThreadNum:
-		value = strconv.Itoa(m.config.migrateThreadNum)
+	case cfsMpMigrateThreads:
+		value = strconv.Itoa(m.config.mpMigrateThreads)
 	default:
 		err = keyNotFound("config")
 	}

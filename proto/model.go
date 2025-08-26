@@ -56,6 +56,7 @@ type MetaNodeInfo struct {
 	MemoryMpCount             uint64
 	RocksdbMpCount            uint64
 	ProfPort                  string
+	RocksdbRdOnly             bool
 }
 
 // DataNode stores all the information about a data node

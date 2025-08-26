@@ -547,10 +547,13 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	oldRdOnly := metaNode.RdOnly
-	if !oldRdOnly {
+	oldRocksdbRdOnly := metaNode.RocksdbRdOnly
+	if !oldRdOnly || !oldRocksdbRdOnly {
 		metaNode.RdOnly = true
+		metaNode.RocksdbRdOnly = true
 		if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
 			metaNode.RdOnly = oldRdOnly
+			metaNode.RocksdbRdOnly = oldRocksdbRdOnly
 			log.LogErrorf("syncUpdateMetaNode(%s) err: %s", offLineAddr, err.Error())
 			sendErrReply(w, r, newErrHTTPReply(proto.ErrInternalError))
 			return

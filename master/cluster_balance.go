@@ -1132,21 +1132,21 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 }
 
 func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
-	var (
-		err error
-	)
-
 	defer func() {
 		// clear the run flag.
 		c.PlanRun = false
 	}()
 
 	// 新增并发处理
-	concurrency := gConfig.migrateThreadNum
+	concurrency := gConfig.mpMigrateThreads
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 
+	stopProcess := false
 	for _, mpPlan := range plan.Plan {
+		if stopProcess {
+			break
+		}
 		sem <- struct{}{}
 		wg.Add(1)
 		go func(mpPlan *proto.MetaBalancePlan) {
@@ -1154,6 +1154,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			err := c.handleMetaPartitionPlan(plan, mpPlan)
 			if err != nil {
 				log.LogErrorf("handleMetaPartitionPlan err: %s", err.Error())
+				stopProcess = true
 			}
 			<-sem
 		}(mpPlan)
@@ -1162,7 +1163,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 
 	plan.Status = PlanTaskDone
 	plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
-	err = c.syncUpdateBalanceTask(plan)
+	err := c.syncUpdateBalanceTask(plan)
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
 		plan.Msg = err.Error()

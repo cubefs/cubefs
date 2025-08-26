@@ -258,7 +258,7 @@ const (
 	highestPriorityDecommissionWeight             = 8
 	diskDecommissionInfoStatType                  = 1
 	dataNodeDecommissionInfoStatType              = 2
-	defaultMigrateThreadNum                       = 10
+	defaultMpMigrateThreads                       = 10
 
 	maxTrashInterval     = 365 * 24 * 60
 	mpReplicaDelInterval = 300 // 5 minutes

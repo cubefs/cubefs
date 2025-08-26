@@ -1185,6 +1185,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  Status              : %v\n", formatNodeStatus(mn.IsActive)))
 	sb.WriteString(fmt.Sprintf("  Rdonly              : %v\n", mn.RdOnly))
+	sb.WriteString(fmt.Sprintf("  RocksdbRdonly       : %v\n", mn.RocksdbRdOnly))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))

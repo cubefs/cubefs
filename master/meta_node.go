@@ -57,6 +57,7 @@ type MetaNode struct {
 	ReceivedForbidWriteOpOfProtoVer0 bool
 	RocksdbDisks                     []*proto.MetaNodeRocksdbInfo
 	RocksdbDiskThreshold             float32
+	RocksdbRdOnly                    bool
 }
 
 func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, clusterID string) (node *MetaNode) {
@@ -390,7 +391,7 @@ func (metaNode *MetaNode) IsRocksdbWriteAble() (ok bool) {
 
 	systemMemoryFreeSize := metaNode.NodeMemTotal - metaNode.NodeMemUsed
 
-	if metaNode.IsActive && !metaNode.RdOnly &&
+	if metaNode.IsActive && !metaNode.RocksdbRdOnly &&
 		systemMemoryFreeSize > gConfig.metaNodeReservedMem &&
 		metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
 		!metaNode.reachesRocksdbDisksThreshold() &&
