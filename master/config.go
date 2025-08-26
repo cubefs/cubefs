@@ -72,6 +72,7 @@ const (
 	cfgAutoMpMigrate                      = "autoMetaPartitionMigrate"
 	cfgSingleNodeMode                     = "singleNodeMode"
 	cfgMaxWritableDataPartitionCnt        = "maxWritableDataPartitionCnt"
+	cfsMigrateThreadNum                   = "migrateThreadNum"
 
 	flashNodeHandleReadTimeout   = "flashNodeHandleReadTimeout"
 	flashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
@@ -210,6 +211,7 @@ type clusterConfig struct {
 	metaNodeMemMidPer  float64
 	AutoMpMigrate      bool
 	SingleNodeMode     bool
+	migrateThreadNum   int
 
 	MaxWritableDataPartitionCnt int
 }
@@ -251,6 +253,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.metaNodeMemHighPer = defaultMetaNodeMemHighPer
 	cfg.metaNodeMemLowPer = defaultMetaNodeMemLowPer
 	cfg.metaNodeMemMidPer = defaultMetaNodeMemHighPer
+	cfg.migrateThreadNum = defaultMigrateThreadNum
 	return
 }
 

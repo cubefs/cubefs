@@ -7315,6 +7315,15 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		oldIntValue = m.config.flashNodeReadDataNodeTimeout
 		m.config.flashNodeReadDataNodeTimeout = fnReadDataNodeTimeout
 
+	case cfsMigrateThreadNum:
+		var migrateThreadNum int
+		migrateThreadNum, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		oldIntValue = m.config.migrateThreadNum
+		m.config.migrateThreadNum = migrateThreadNum
+
 	default:
 		err = keyNotFound("config")
 		return err
@@ -7334,6 +7343,8 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.config.flashNodeHandleReadTimeout = oldIntValue
 		case flashNodeReadDataNodeTimeout:
 			m.config.flashNodeReadDataNodeTimeout = oldIntValue
+		case cfsMigrateThreadNum:
+			m.config.migrateThreadNum = oldIntValue
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
@@ -7361,6 +7372,8 @@ func (m *Server) getConfig(key string) (value string, err error) {
 		value = strconv.Itoa(m.config.flashNodeHandleReadTimeout)
 	case flashNodeReadDataNodeTimeout:
 		value = strconv.Itoa(m.config.flashNodeReadDataNodeTimeout)
+	case cfsMigrateThreadNum:
+		value = strconv.Itoa(m.config.migrateThreadNum)
 	default:
 		err = keyNotFound("config")
 	}

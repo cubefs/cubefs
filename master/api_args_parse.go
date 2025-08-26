@@ -2170,6 +2170,7 @@ func parseSetConfigParam(r *http.Request) (config map[string]string, err error) 
 		cfgAutoMpMigrate,
 		flashNodeHandleReadTimeout,
 		flashNodeReadDataNodeTimeout,
+		cfsMigrateThreadNum,
 	}
 	for _, val := range keyList {
 		key := val
