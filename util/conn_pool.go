@@ -92,11 +92,10 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 	pool, ok := cp.pools[targetAddr]
 	cp.RUnlock()
 	if !ok {
-		newPool := NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr, cp.useMilliSecond)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
-			// pool = NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
+			newPool := NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr, cp.useMilliSecond)
 			pool = newPool
 			cp.pools[targetAddr] = pool
 		}
@@ -222,7 +221,7 @@ func NewPool(min, max int, timeout, connectTimeout int64, target string, useMill
 	p.objects = make(chan *Object, max)
 	p.timeout = timeout
 	p.connectTimeout = connectTimeout
-	p.initAllConnect()
+	go p.initAllConnect()
 	return p
 }
 
