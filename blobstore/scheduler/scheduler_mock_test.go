@@ -805,6 +805,21 @@ func (mr *MockClusterTopologyMockRecorder) Done() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Done", reflect.TypeOf((*MockClusterTopology)(nil).Done))
 }
 
+// GetDisk mocks base method.
+func (m *MockClusterTopology) GetDisk(arg0 proto.DiskID) (*client.DiskInfoSimple, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDisk", arg0)
+	ret0, _ := ret[0].(*client.DiskInfoSimple)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// GetDisk indicates an expected call of GetDisk.
+func (mr *MockClusterTopologyMockRecorder) GetDisk(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDisk", reflect.TypeOf((*MockClusterTopology)(nil).GetDisk), arg0)
+}
+
 // GetIDCDisks mocks base method.
 func (m *MockClusterTopology) GetIDCDisks(arg0 string) []*client.DiskInfoSimple {
 	m.ctrl.T.Helper()

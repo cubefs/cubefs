@@ -49,6 +49,7 @@ type IClusterTopology interface {
 	GetIDCs() map[string]*IDC
 	GetIDCDisks(idc string) (disks []*client.DiskInfoSimple)
 	MaxFreeChunksDisk(idc string) *client.DiskInfoSimple
+	GetDisk(diskID proto.DiskID) (disk *client.DiskInfoSimple, ok bool)
 	IsBrokenDisk(diskID proto.DiskID) bool
 	IVolumeCache
 	closer.Closer
@@ -72,6 +73,7 @@ type clusterTopologyConfig struct {
 // ClusterTopology cluster topology
 type ClusterTopology struct {
 	clusterID    proto.ClusterID
+	allDisks     map[proto.DiskID]*client.DiskInfoSimple
 	idcMap       map[string]*IDC
 	diskMap      map[string][]*client.DiskInfoSimple
 	FreeChunkCnt int64
@@ -263,6 +265,11 @@ func (m *ClusterTopologyMgr) IsBrokenDisk(diskID proto.DiskID) bool {
 	return broken
 }
 
+func (m *ClusterTopologyMgr) GetDisk(diskID proto.DiskID) (*client.DiskInfoSimple, bool) {
+	disk, ok := m.clusterTopology.allDisks[diskID]
+	return disk, ok
+}
+
 func (m *ClusterTopologyMgr) UpdateVolume(vid proto.Vid) (*client.VolumeInfoSimple, error) {
 	return m.volumeCache.UpdateVolume(vid)
 }
@@ -305,6 +312,7 @@ func (m *ClusterTopologyMgr) buildClusterTopology(disks []*client.DiskInfoSimple
 		clusterID: clusterID,
 		idcMap:    make(map[string]*IDC),
 		diskMap:   make(map[string][]*client.DiskInfoSimple),
+		allDisks:  make(map[proto.DiskID]*client.DiskInfoSimple, len(disks)),
 	}
 
 	for i := range disks {
@@ -342,6 +350,7 @@ func (cluster *ClusterTopology) addDiskToDiskMap(disk *client.DiskInfoSimple) {
 		cluster.diskMap[disk.Idc] = disks
 	}
 	cluster.diskMap[disk.Idc] = append(cluster.diskMap[disk.Idc], disk)
+	cluster.allDisks[disk.DiskID] = disk
 }
 
 func (cluster *ClusterTopology) addDiskToIdc(disk *client.DiskInfoSimple) {

@@ -621,7 +621,13 @@ func (mgr *BlobDeleteMgr) deleteShards(
 				err = ret.err
 				continue
 			}
-
+			if mgr.shouldUpdateVolume(volInfo) {
+				span.Warnf("delete shard failed should update volume: bid[%d], vuid[%d], markDelete[%+v], code[%d], err[%+v]",
+					bid, ret.vuid, markDelete, errCode, ret.err)
+				updateAndRetryShards = append(updateAndRetryShards, ret.vuid)
+				err = ret.err
+				continue
+			}
 			if errCode == errcode.CodeChunkCompacting || errCode == errcode.CodeVUIDReadonly {
 				span.Warnf("delete shard failed: bid[%d], vuid[%d], markDelete[%+v], code[%d], err[%+v]",
 					bid, ret.vuid, markDelete, errCode, ret.err)
@@ -770,6 +776,18 @@ func (mgr *BlobDeleteMgr) hasBrokenDisk(vid proto.Vid) bool {
 	}
 	for _, unit := range volume.VunitLocations {
 		if mgr.clusterTopology.IsBrokenDisk(unit.DiskID) {
+			return true
+		}
+	}
+	return false
+}
+
+func (mgr *BlobDeleteMgr) shouldUpdateVolume(volume *client.VolumeInfoSimple) bool {
+	for _, unit := range volume.VunitLocations {
+		if mgr.clusterTopology.IsBrokenDisk(unit.DiskID) {
+			continue
+		}
+		if _, ok := mgr.clusterTopology.GetDisk(unit.DiskID); !ok {
 			return true
 		}
 	}
