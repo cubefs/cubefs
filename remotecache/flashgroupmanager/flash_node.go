@@ -9,6 +9,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/httpclient"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -57,6 +58,7 @@ func NewFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *Fla
 	node.IsEnable = isEnable
 	node.ReportTime = time.Now()
 	node.TaskManager = newAdminTaskManager(addr, clusterID)
+	node.TaskManager.connPool = util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout, false)
 	return node
 }
 

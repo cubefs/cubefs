@@ -1099,7 +1099,7 @@ func (reader *RemoteCacheReader) getReadObjectReply(p *proto.Packet) (length int
 		}
 		err = fmt.Errorf(string(p.Data))
 		if !proto.IsFlashNodeLimitError(err) {
-			log.LogWarnf("getReadObjectReply: ResultCode NOK, err(%v) ResultCode(%v)", err, p.ResultCode)
+			log.LogWarnf("getReadObjectReply:reqID(%v) ResultCode NOK, err(%v) ResultCode(%v)", reader.reqID, err, p.ResultCode)
 		}
 		return
 	}
@@ -1157,6 +1157,9 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 
 	alreadyReadLen := atomic.LoadInt64(&reader.alreadyReadLen)
 	if alreadyReadLen >= reader.needReadLen {
+		if log.EnableDebug() {
+			log.LogDebugf("RemoteCacheReader:reqID(%v) alreadyReadLen(%v) needReadLen(%v) get EOF", reader.reqID, alreadyReadLen, reader.needReadLen)
+		}
 		return 0, io.EOF
 	}
 	reader.conn.SetReadDeadline(time.Now().Add(time.Second * proto.ReadDeadlineTime))
@@ -1229,7 +1232,7 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 			reader.size, err = reader.read(reader.buffer)
 			if reader.size == 0 {
 				if log.EnableDebug() {
-					log.LogDebugf("RemoteCacheReader:reqID(%v), from connection size 0", reader.reqID)
+					log.LogDebugf("RemoteCacheReader:reqID(%v), totalRead(%v) from connection size 0 err(%v)", reader.reqID, totalRead, err)
 				}
 				if err != nil {
 					return totalRead, err

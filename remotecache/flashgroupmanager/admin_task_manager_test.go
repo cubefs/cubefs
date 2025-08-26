@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -148,6 +149,7 @@ func TestAdminTaskManager_syncSendAdminTask(t *testing.T) {
 
 			// Create task manager instance
 			manager := newAdminTaskManager(targetAddr, "test_cluster")
+			manager.connPool = util.NewConnectPoolWithTimeoutAndCap(0, 5, idleConnTimeout, connectTimeout, false)
 			defer func() {
 				close(manager.exitCh)
 				time.Sleep(100 * time.Millisecond) // Wait for goroutine to exit
@@ -196,6 +198,7 @@ func TestAdminTaskManager_syncSendAdminTask_WriteError(t *testing.T) {
 	}()
 
 	manager := newAdminTaskManager(targetAddr, "test_cluster")
+	manager.connPool = util.NewConnectPoolWithTimeoutAndCap(0, 5, idleConnTimeout, connectTimeout, false)
 	defer func() {
 		close(manager.exitCh)
 		time.Sleep(100 * time.Millisecond)
@@ -237,6 +240,7 @@ func TestAdminTaskManager_syncSendAdminTask_ReadError(t *testing.T) {
 	}()
 
 	manager := newAdminTaskManager(targetAddr, "test_cluster")
+	manager.connPool = util.NewConnectPoolWithTimeoutAndCap(0, 5, idleConnTimeout, connectTimeout, false)
 	defer func() {
 		close(manager.exitCh)
 		time.Sleep(100 * time.Millisecond)
@@ -279,6 +283,7 @@ func TestAdminTaskManager_syncSendAdminTask_Timeout(t *testing.T) {
 	}()
 
 	manager := newAdminTaskManager(targetAddr, "test_cluster")
+	manager.connPool = util.NewConnectPoolWithTimeoutAndCap(0, 5, idleConnTimeout, connectTimeout, false)
 	defer func() {
 		close(manager.exitCh)
 		time.Sleep(100 * time.Millisecond)
@@ -297,6 +302,7 @@ func TestAdminTaskManager_syncSendAdminTask_InvalidTask(t *testing.T) {
 	// Test invalid task scenario: pass nil task
 	// Verify method's ability to handle abnormal input
 	manager := newAdminTaskManager("127.0.0.1:8080", "test_cluster")
+	manager.connPool = util.NewConnectPoolWithTimeoutAndCap(0, 5, idleConnTimeout, connectTimeout, false)
 	defer func() {
 		close(manager.exitCh)
 		time.Sleep(100 * time.Millisecond)
@@ -352,6 +358,7 @@ func TestAdminTaskManager_syncSendAdminTask_EmptyTask(t *testing.T) {
 	}()
 
 	manager := newAdminTaskManager(targetAddr, "test_cluster")
+	manager.connPool = util.NewConnectPoolWithTimeoutAndCap(0, 5, idleConnTimeout, connectTimeout, false)
 	defer func() {
 		close(manager.exitCh)
 		time.Sleep(100 * time.Millisecond)
@@ -418,6 +425,7 @@ func TestAdminTaskManager_syncSendAdminTask_ComplexRequest(t *testing.T) {
 	}()
 
 	manager := newAdminTaskManager(targetAddr, "test_cluster")
+	manager.connPool = util.NewConnectPoolWithTimeoutAndCap(0, 5, idleConnTimeout, connectTimeout, false)
 	defer func() {
 		close(manager.exitCh)
 		time.Sleep(100 * time.Millisecond)
