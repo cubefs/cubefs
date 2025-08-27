@@ -288,6 +288,9 @@ func (f *FlashNode) opCacheDelete(conn net.Conn, p *proto.Packet) (err error) {
 		return proto.ErrorNoCacheDeleteRequest
 	}
 	uniKey := string(data)
+	if log.EnableDebug() {
+		log.LogDebugf("action[opCacheDelete] delete key(%v) from remote(%v)", uniKey, conn.RemoteAddr().String())
+	}
 	pDir := cachengine.MapKeyToDirectory(uniKey)
 	f.cacheEngine.DeleteCacheBlock(cachengine.GenCacheBlockKeyV2(pDir, uniKey))
 	return nil
