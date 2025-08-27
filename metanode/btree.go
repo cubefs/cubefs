@@ -139,6 +139,7 @@ type InodeTree interface {
 	RealCount() uint64
 	MaxItem() *Inode
 	GetMaxInode() (uint64, error)
+	SetInodeCount(count uint64)
 }
 
 type DentryTree interface {

@@ -2510,3 +2510,7 @@ func (r *RocksSnapShot) ApplyID() uint64 {
 func (r *RocksSnapShot) TxID() uint64 {
 	return r.baseInfo.txId
 }
+
+func (b *InodeRocks) SetInodeCount(count uint64) {
+	atomic.StoreUint64(&b.baseInfo.inodeCnt, count)
+}

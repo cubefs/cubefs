@@ -847,3 +847,6 @@ func (b *BTree) SetUniqID(id uint64) {
 func (b *BTree) GetApplyIdFromDisk() (uint64, error) {
 	return 0, nil
 }
+
+func (i *InodeBTree) SetInodeCount(count uint64) {
+}
