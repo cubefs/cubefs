@@ -649,7 +649,16 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 				return ch.RemoteError
 			}
 			currentReadSize := readSize - bufferOffset
-			n, err = r.Read(buf[bufferOffset : bufferOffset+currentReadSize])
+			readChan := make(chan struct{})
+			go func() {
+				n, err = r.Read(buf[bufferOffset : bufferOffset+currentReadSize])
+				close(readChan)
+			}()
+			select {
+			case <-readChan:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 			bufferOffset += n
 			if err == io.EOF {
 				break
@@ -1333,6 +1342,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 		}
 		stat.EndStat("flashNode", err, bgTime, 1)
 	}()
+	var stcTime, etcTime, rcvTime int64
 	for {
 		if ctx.Err() != nil {
 			return nil, 0, ctx.Err()
@@ -1349,6 +1359,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 			log.LogWarnf("%v FlashGroup Read: failed to MarshalData (%+v). err(%v)", logPrefix, req, err)
 			return
 		}
+		stcTime = time.Now().UnixNano()
 		if conn, err = rc.conns.GetConnect(addr); err != nil {
 			log.LogWarnf("%v FlashGroup Read: get connection failed, addr(%v) reqPacket(%v) err(%v) remoteCacheMultiRead(%v)",
 				logPrefix, addr, req, err, rc.RemoteCacheMultiRead)
@@ -1359,7 +1370,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 			}
 			return
 		}
-
+		etcTime = time.Now().UnixNano()
 		if err = reqPacket.WriteToConn(conn); err != nil {
 			log.LogWarnf("%v FlashGroup Read: failed to write to addr(%v) err(%v) remoteCacheMultiRead(%v)",
 				logPrefix, addr, err, rc.RemoteCacheMultiRead)
@@ -1383,13 +1394,14 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 			fg.moveToUnknownRank(addr, err, rc.FlashNodeTimeoutCount)
 			return nil, 0, err
 		}
+		rcvTime = time.Now().UnixNano()
 		reader = rc.NewRemoteCacheReader(ctx, conn, reqId, flashIp, uint32(req.Offset), uint32(req.Offset+req.Size_))
 		reader.needReadLen = int64(req.Size_)
 		break
 	}
 	if log.EnableDebug() {
 		log.LogDebugf("%v FlashGroup Read: flashGroup(%v) addr(%v) CacheReadRequest(%v) reqPacket(%v) err(%v)"+
-			" remoteCacheMultiRead(%v)", logPrefix, fg, addr, req, reqPacket, err, rc.RemoteCacheMultiRead)
+			" remoteCacheMultiRead(%v) getConn cost(%v) fisrtPackage cost(%v)", logPrefix, fg, addr, req, reqPacket, err, rc.RemoteCacheMultiRead, etcTime-stcTime, rcvTime-etcTime)
 	}
 	return
 }
