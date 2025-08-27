@@ -45,6 +45,7 @@ type LimiterStatus struct {
 	IOQueue       int
 	IORunning     int
 	IOWaiting     int
+	IOHanging     int
 	Factor        int
 }
 
@@ -327,6 +328,7 @@ func (q *ioQueue) Status() (st LimiterStatus) {
 	st.IOQueue = cap(q.queue)
 	st.IORunning = int(atomic.LoadUint32(&q.running))
 	st.IOWaiting = len(q.queue)
+	st.IOHanging = len(q.midQueue)
 	st.Factor = q.factor
 	return
 }

@@ -77,6 +77,7 @@ const (
 	_defaultMissEntryExpiration            = 2 * time.Minute
 	_defaultMaxMissEntryCache              = 100000
 	_defaultMissCountThresholdInterval     = 5
+	_defaultFlashLimitHangTimeout          = 1000 // ms
 )
 
 // Configuration keys
@@ -390,8 +391,8 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		f.disks = disks
 	}
 	f.handleReadTimeout = proto.DefaultRemoteCacheHandleReadTimeout
-	f.limitWrite = util.NewIOLimiterEx(f.diskWriteFlow, f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, f.handleReadTimeout)
-	f.limitRead = util.NewIOLimiterEx(f.diskReadFlow, f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow, f.handleReadTimeout)
+	f.limitWrite = util.NewIOLimiterEx(f.diskWriteFlow, f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, _defaultFlashLimitHangTimeout)
+	f.limitRead = util.NewIOLimiterEx(f.diskReadFlow, f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow, _defaultFlashLimitHangTimeout)
 	lruFhCapacity := cfg.GetInt(cfgLruFhCapacity)
 	if lruFhCapacity <= 0 || lruFhCapacity >= 1000000 {
 		lruFhCapacity = _defaultLRUFhCapacity
