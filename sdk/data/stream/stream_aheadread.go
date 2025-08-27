@@ -402,7 +402,7 @@ func (s *Streamer) aheadRead(req *ExtentRequest) (readSize int, err error) {
 				if offset-int(cacheBlock.offset) > int(cacheBlock.size) {
 					return
 				}
-				copy(req.Data, cacheBlock.data[offset-int(cacheBlock.offset):int(cacheBlock.size)])
+				copy(req.Data[readSize:], cacheBlock.data[offset-int(cacheBlock.offset):int(cacheBlock.size)])
 				readSize += int(cacheBlock.size) + int(cacheBlock.offset) - offset
 				offset += readSize
 				cacheOffset = offset
