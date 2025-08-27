@@ -535,7 +535,7 @@ func (s *Streamer) processAsyncFlushRequest(req *AsyncFlushRequest) {
 
 	handler := req.handler
 	now := time.Now()
-	log.LogDebugf("processAsyncFlushRequest:start  handler id %v", handler.id)
+	log.LogDebugf("processAsyncFlushRequest:start  handler %v", handler)
 	// Note: asyncFlushDone check is now handled in asyncFlushManager
 	// to prevent new requests from being processed when streamer is being released
 
@@ -547,13 +547,14 @@ func (s *Streamer) processAsyncFlushRequest(req *AsyncFlushRequest) {
 
 	// Check if request has timed out
 	if now.After(req.timeout) {
-		log.LogWarnf("processAsyncFlushRequest:Async flush timeout for handler(%v), id(%v), retryCount(%v), inflight(%v), extentSize(%v), timeout(%v)",
-			handler, req.id, req.retryCount, req.inflightCount, handler.size, req.timeout.Sub(now))
+		log.LogDebugf("processAsyncFlushRequest:Async flush timeout for handler(%v), id(%v), retryCount(%v), inflight(%v), extentSize(%v), timeout(%v)",
+			handler, req.id, req.retryCount, req.inflightCount, handler.size, now.Sub(req.timeout))
 		if req.retryCount >= maxAsyncFlushRetries {
 			// Max retries reached, fail the request
 			s.removePendingAsyncFlush(req.handler.id)
-			errMsg := fmt.Sprintf("async flush failed after %d retries, inflight: %d, extentSize: %d",
-				maxAsyncFlushRetries, req.inflightCount, handler.size)
+			errMsg := fmt.Sprintf("async flush failed after %d retries, inflight: %d, extentSize: %d, handler %v",
+				maxAsyncFlushRetries, req.inflightCount, handler.size, handler)
+			log.LogErrorf("%v", errMsg)
 			req.done <- errors.New(errMsg)
 			return
 		}
@@ -591,9 +592,9 @@ func (s *Streamer) processAsyncFlushRequest(req *AsyncFlushRequest) {
 	select {
 	case s.asyncFlushCh <- req:
 		// Successfully re-queued
-		log.LogDebugf("processAsyncFlushRequest:re-queued  handler id %v", handler.id)
+		log.LogDebugf("processAsyncFlushRequest:re-queued  handler %v", handler)
 	default:
-		log.LogDebugf("processAsyncFlushRequest: completeAsyncFlush handler id %v", handler.id)
+		log.LogDebugf("processAsyncFlushRequest: completeAsyncFlush handler %v", handler)
 		// Channel is full or closed, process immediately
 		go s.completeAsyncFlush(handler, req)
 	}

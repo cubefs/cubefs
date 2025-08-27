@@ -1042,7 +1042,10 @@ func (s *Streamer) flush(wait bool) (err error) {
 			log.LogDebugf("Streamer flush handler open: eh(%v)", eh)
 		} else {
 			// TODO unhandled error
-			eh.cleanup()
+			// do not clean extent handler if flush is async
+			if !s.client.enableAsyncFlush {
+				eh.cleanup()
+			}
 			log.LogDebugf("Streamer flush handler cleaned up: eh(%v)", eh)
 		}
 		log.LogDebugf("Streamer flush end: eh(%v)", eh)
