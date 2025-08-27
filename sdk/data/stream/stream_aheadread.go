@@ -514,7 +514,7 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 					"size(%v) cacheBlockOffset(%v) cacheBlockSize(%v) reqID(%v)", s.inode, req.FileOffset,
 					offset, needSize, cacheBlock.offset, curSize, reqID)
 				go s.aheadReadWindow.addNextTask(offset, dp, req, startTime, reqID, storageClass)
-				copy(req.Data, cacheBlock.data[offset-int(cacheBlock.offset):int(curSize)])
+				copy(req.Data[readSize:], cacheBlock.data[offset-int(cacheBlock.offset):int(curSize)])
 				cacheBlock.lock.RUnlock()
 				readSize += int(curSize) + int(cacheBlock.offset) - offset
 				offset += readSize
