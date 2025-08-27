@@ -79,6 +79,20 @@ func (mr *MockShardnodeAccessMockRecorder) DeleteBlob(arg0, arg1, arg2 interface
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBlob", reflect.TypeOf((*MockShardnodeAccess)(nil).DeleteBlob), arg0, arg1, arg2)
 }
 
+// DeleteBlobRaw mocks base method.
+func (m *MockShardnodeAccess) DeleteBlobRaw(arg0 context.Context, arg1 string, arg2 shardnode.DeleteBlobRawArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBlobRaw", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteBlobRaw indicates an expected call of DeleteBlobRaw.
+func (mr *MockShardnodeAccessMockRecorder) DeleteBlobRaw(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBlobRaw", reflect.TypeOf((*MockShardnodeAccess)(nil).DeleteBlobRaw), arg0, arg1, arg2)
+}
+
 // FindAndDeleteBlob mocks base method.
 func (m *MockShardnodeAccess) FindAndDeleteBlob(arg0 context.Context, arg1 string, arg2 shardnode.DeleteBlobArgs) (shardnode.GetBlobRet, error) {
 	m.ctrl.T.Helper()

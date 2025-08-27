@@ -17,7 +17,6 @@ package blobdeleter
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	snapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -54,22 +53,6 @@ func encodeDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, shardKeys []st
 		index++
 	}
 	return buf
-}
-
-func encodeRawDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, tagNum int) (key []byte, shardKeys []string) {
-	key1 := fmt.Sprintf("%d", uint32(vid))
-	key2 := fmt.Sprintf("%d", uint64(bid))
-
-	// raw msg shardKeys = {"vid"}{"bid"}{...}
-	shardKeys = []string{key1, key2}
-	if tagNum > 2 {
-		for i := 0; i < tagNum-2; i++ {
-			shardKeys = append(shardKeys, "")
-		}
-	}
-
-	// raw_del_msg_key = d-ts-vid-bid-{"vid"}{"bid"}{...}
-	return encodeDelMsgKey(ts, vid, bid, shardKeys), shardKeys
 }
 
 func decodeDelMsgKey(key []byte, tagNum int) (base.Ts, proto.Vid, proto.BlobID, []string, error) {

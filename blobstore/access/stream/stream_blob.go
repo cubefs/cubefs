@@ -14,6 +14,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
@@ -114,7 +115,6 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("delete blob args:%+v", *args)
 
-	var blob shardnode.GetBlobRet
 	rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
 		header, err := h.getShardOpHeader(ctx, acapi.GetShardCommonArgs{
 			ClusterID: args.ClusterID,
@@ -130,11 +130,10 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 			return true, err
 		}
 
-		blob, err = h.shardnodeClient.FindAndDeleteBlob(ctx, host, shardnode.DeleteBlobArgs{
+		if err = h.shardnodeClient.DeleteBlob(ctx, host, shardnode.DeleteBlobArgs{
 			Header: header,
 			Name:   args.BlobName,
-		})
-		if err != nil {
+		}); err != nil {
 			return h.punishAndUpdate(ctx, &punishArgs{
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
@@ -149,10 +148,8 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 
 	if rerr != nil {
 		span.Errorf("delete blob failed, args:%+v, err:%+v", *args, rerr)
-		return rerr
 	}
-
-	return h.Delete(ctx, &blob.Blob.Location)
+	return rerr
 }
 
 func (h *Handler) SealBlob(ctx context.Context, args *acapi.SealBlobArgs) error {
@@ -651,5 +648,56 @@ func (h *Handler) fixCreateBlobArgs(ctx context.Context, args *acapi.CreateBlobA
 		span.Debugf("choose cluster[%+v]", cluster)
 	}
 
+	return nil
+}
+
+func (h *Handler) getDeleteMessageShardnode(ctx context.Context,
+	shardController controller.IShardController, clusterID proto.ClusterID, slice proto.Slice,
+) (args shardnode.DeleteBlobRawArgs, host string, err error) {
+	args.Slice = slice
+	tagNum := shardController.GetShardSubRangeCount(ctx)
+	var shard controller.Shard
+	shard, err = shardController.GetShard(ctx, args.GetShardKeys(tagNum))
+	if err != nil {
+		return
+	}
+	args.Header, err = h.getOpHeaderByShard(ctx, shardController, shard, acapi.GetShardModeLeader)
+	if err != nil {
+		return
+	}
+	host, err = h.getShardHost(ctx, clusterID, args.Header.DiskID)
+	return
+}
+
+func (h *Handler) clearGarbageIntoShardnode(ctx context.Context, location *proto.Location) error {
+	span := trace.SpanFromContextSafe(ctx)
+	shardController, err := h.clusterController.GetShardController(location.ClusterID)
+	if err != nil {
+		span.Error(errors.Detail(err))
+		return errors.Base(err, "clear location:", *location)
+	}
+
+	clusterID := location.ClusterID
+	for _, slice := range location.Slices {
+		if err := retry.Timed(3, 100).On(func() error {
+			args, host, err := h.getDeleteMessageShardnode(ctx, shardController, clusterID, slice)
+			if err != nil {
+				reportUnhealth(clusterID, "delete.msg", serviceShard, "-", "failed")
+				span.Warn(err)
+				return err
+			}
+			if err = h.shardnodeClient.DeleteBlobRaw(ctx, host, args); err != nil {
+				span.Warnf("send to shardnode %s delete message(%+v) %s", host, slice, err.Error())
+				reportUnhealth(clusterID, "delete.msg", serviceShard, host, "failed")
+				err = errors.Base(err, host)
+			}
+			return err
+		}); err != nil {
+			span.Errorf("send shardnode delete message(%+v) failed %s", slice, errors.Detail(err))
+			return errors.Base(err, "send shardnode delete message:", slice)
+		}
+	}
+
+	span.Infof("send shardnode delete message(%+v)", location)
 	return nil
 }

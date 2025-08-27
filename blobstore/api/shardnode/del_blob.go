@@ -14,7 +14,21 @@
 
 package shardnode
 
-import "context"
+import (
+	"context"
+
+	"github.com/cubefs/cubefs/blobstore/util"
+)
+
+func (m *DeleteBlobRawArgs) GetShardKeys(tagNum int) []string {
+	if m == nil {
+		return nil
+	}
+	keys := make([]string, util.Max(2, tagNum))
+	keys[0] = util.Any2String(m.Slice.Vid)
+	keys[1] = util.Any2String(m.Slice.MinSliceID)
+	return keys
+}
 
 func (c *Client) DeleteBlobRaw(ctx context.Context, host string, args DeleteBlobRawArgs) error {
 	return c.doRequest(ctx, host, "/blob/delete/raw", &args, nil)

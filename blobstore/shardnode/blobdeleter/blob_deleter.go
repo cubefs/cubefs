@@ -639,7 +639,8 @@ func (m *BlobDeleteMgr) insertDeleteMsg(ctx context.Context, req *snapi.DeleteBl
 		return err
 	}
 
-	itm, shardKeys, err := m.sliceToDeleteMsgItemRaw(ctx, req.Slice, shard.ShardingSubRangeCount())
+	shardKeys := req.GetShardKeys(shard.ShardingSubRangeCount())
+	itm, err := m.sliceToDeleteMsgItemRaw(ctx, req.Slice, shardKeys)
 	if err != nil {
 		return err
 	}
@@ -673,10 +674,10 @@ func (m *BlobDeleteMgr) slicesToDeleteMsgItems(ctx context.Context, slices []pro
 	return items, nil
 }
 
-func (m *BlobDeleteMgr) sliceToDeleteMsgItemRaw(ctx context.Context, slices proto.Slice, tagNum int) (snapi.Item, []string, error) {
+func (m *BlobDeleteMgr) sliceToDeleteMsgItemRaw(ctx context.Context, slices proto.Slice, shardKeys []string) (snapi.Item, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	ts := m.tsGen.GenerateTs()
-	key, shardKeys := encodeRawDelMsgKey(ts, slices.Vid, slices.MinSliceID, tagNum)
+	key := encodeDelMsgKey(ts, slices.Vid, slices.MinSliceID, shardKeys)
 
 	msg := snproto.DeleteMsg{
 		Slice:       slices,
@@ -687,9 +688,9 @@ func (m *BlobDeleteMgr) sliceToDeleteMsgItemRaw(ctx context.Context, slices prot
 
 	itm, err := delMsgToItem(key, msg)
 	if err != nil {
-		return snapi.Item{}, nil, err
+		return snapi.Item{}, err
 	}
-	return itm, shardKeys, nil
+	return itm, nil
 }
 
 type deleteStatus int

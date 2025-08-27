@@ -41,6 +41,12 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
+func encodeRawDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, tagNum int) ([]byte, []string) {
+	delMsg := shardnode.DeleteBlobRawArgs{Slice: proto.Slice{MinSliceID: bid, Vid: vid}}
+	shardKeys := delMsg.GetShardKeys(tagNum)
+	return encodeDelMsgKey(ts, vid, bid, shardKeys), shardKeys
+}
+
 func newTestBlobDeleteMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, vc base.IVolumeCache) *BlobDeleteMgr {
 	cfg := &BlobDelMgrConfig{
 		ShardGetter: sg,
