@@ -104,7 +104,7 @@ func (s *Space) InsertItem(ctx context.Context, h shardnode.ShardOpHeader, i sha
 
 	return shard.InsertItem(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(i.ID, shard.ShardingSubRangeCount()),
+		ShardKeys:    shardnode.DecodeShardKeys(i.ID, shard.ShardingSubRangeCount()),
 	}, s.generateSpaceKey([]byte(i.ID)), i)
 }
 
@@ -119,7 +119,7 @@ func (s *Space) UpdateItem(ctx context.Context, h shardnode.ShardOpHeader, i sha
 
 	return shard.UpdateItem(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(i.ID, shard.ShardingSubRangeCount()),
+		ShardKeys:    shardnode.DecodeShardKeys(i.ID, shard.ShardingSubRangeCount()),
 	}, s.generateSpaceKey([]byte(i.ID)), i)
 }
 
@@ -131,7 +131,7 @@ func (s *Space) DeleteItem(ctx context.Context, h shardnode.ShardOpHeader, id st
 
 	return shard.DeleteItem(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(id, shard.ShardingSubRangeCount()),
+		ShardKeys:    shardnode.DecodeShardKeys(id, shard.ShardingSubRangeCount()),
 	}, s.generateSpaceKey([]byte(id)))
 }
 
@@ -143,7 +143,7 @@ func (s *Space) GetItem(ctx context.Context, h shardnode.ShardOpHeader, id strin
 
 	return shard.GetItem(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(id, shard.ShardingSubRangeCount()),
+		ShardKeys:    shardnode.DecodeShardKeys(id, shard.ShardingSubRangeCount()),
 	}, s.generateSpaceKey([]byte(id)))
 }
 
@@ -227,7 +227,7 @@ INSERT:
 	start = time.Now()
 	cb, _err := sd.CreateBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(req.Name, sd.ShardingSubRangeCount()),
+		ShardKeys:    shardnode.DecodeShardKeys(req.Name, sd.ShardingSubRangeCount()),
 	}, s.generateSpaceKey([]byte(req.Name)), b)
 	span.AppendTrackLog(opInsert, start, _err, trace.OptSpanDurationUs())
 	if _err != nil {
@@ -273,7 +273,7 @@ func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs, i
 	start := time.Now()
 	err = sd.DeleteBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(req.Name, sd.ShardingSubRangeCount()),
+		ShardKeys:    shardnode.DecodeShardKeys(req.Name, sd.ShardingSubRangeCount()),
 	}, s.generateSpaceKey([]byte(req.Name)), items)
 	span.AppendTrackLog(opDelete, start, err, trace.OptSpanDurationUs())
 	return err
@@ -368,7 +368,7 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) (err 
 	start := time.Now()
 	err = sd.UpdateBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(req.Name, sd.ShardingSubRangeCount()),
+		ShardKeys:    shardnode.DecodeShardKeys(req.Name, sd.ShardingSubRangeCount()),
 	}, s.generateSpaceKey([]byte(req.Name)), b)
 	span.AppendTrackLog(opUpdate, start, err, trace.OptSpanDurationUs())
 	if err != nil {
@@ -492,7 +492,7 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	start = time.Now()
 	err = sd.UpdateBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(req.Name, sd.ShardingSubRangeCount()),
+		ShardKeys:    shardnode.DecodeShardKeys(req.Name, sd.ShardingSubRangeCount()),
 	}, s.generateSpaceKey([]byte(req.Name)), b)
 	span.AppendTrackLog(opUpdate, start, err, trace.OptSpanDurationUs())
 	if err != nil {
@@ -518,7 +518,7 @@ func (s *Space) getBlob(ctx context.Context, sd storage.ShardHandler, h shardnod
 	start := time.Now()
 	b, err = sd.GetBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
-		ShardKeys:    shardnode.ParseShardKeys(name, sd.ShardingSubRangeCount()),
+		ShardKeys:    shardnode.DecodeShardKeys(name, sd.ShardingSubRangeCount()),
 	}, key)
 
 	withErr := err

@@ -56,8 +56,8 @@ func TestShardController(t *testing.T) {
 	require.ErrorIs(t, err, errcode.ErrAccessNotFoundShard)
 	require.Nil(t, s)
 
-	blobName := []byte("blob1")
-	shardKeys := [][]byte{blobName}
+	blobName := "blob1"
+	shardKeys := []string{blobName}
 	// empty tree
 	// _, err = s.GetShard(ctx, shardKeys)
 	// require.NotNil(t, err)
@@ -126,8 +126,8 @@ func TestShardController(t *testing.T) {
 		svr.version = 8
 
 		// ret, err := svr.GetShard(ctx, []byte("blob1__xxx")) // expect 2 keys
-		ret, err := svr.GetShard(ctx, [][]byte{[]byte("blob1__xxx")}) // expect 2 keys
-		sk := [][]byte{[]byte("blob1__xxx")}
+		ret, err := svr.GetShard(ctx, []string{"blob1__xxx"}) // expect 2 keys
+		sk := []string{"blob1__xxx"}
 		bd := sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, sk).GetBoundary()
 		t.Logf("shard key 1, key boundary=%d, shardBounary=%d, range=%s, treeLen=%d", bd, ret.(*shard).rangeExt.MaxBoundary(), ret.(*shard).String(), svr.ranges.Len())
 		// for i := range shards {
@@ -138,8 +138,8 @@ func TestShardController(t *testing.T) {
 		require.Equal(t, proto.ShardID(2), ret.(*shard).shardID)
 
 		// ret, err = svr.GetShard(ctx, []byte("{blob2__yy}{11}"))
-		ret, err = svr.GetShard(ctx, [][]byte{[]byte("blob2__yy"), []byte("11")})
-		bd = sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, [][]byte{[]byte("blob2__yy"), []byte("11")}).GetBoundary()
+		ret, err = svr.GetShard(ctx, []string{"blob2__yy", "11"})
+		bd = sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, []string{"blob2__yy", "11"}).GetBoundary()
 		t.Logf("shard key 2,  get boundary=%d", bd)
 		require.Nil(t, err)
 		require.Equal(t, proto.ShardID(7), ret.(*shard).shardID)
@@ -786,12 +786,12 @@ func TestShardGetShard(t *testing.T) {
 
 	{
 		// sd, err := svr.GetShard(ctx, []byte("{blob1}{1}"))
-		sd, err := svr.GetShard(ctx, [][]byte{[]byte("blob1"), []byte("1")})
+		sd, err := svr.GetShard(ctx, []string{"blob1", "1"})
 		require.NoError(t, err)
 		require.Equal(t, proto.ShardID(2), sd.GetShardID())
 
 		// sd, err = svr.GetShard(ctx, []byte("{blob1}{}"))
-		sd, err = svr.GetShard(ctx, [][]byte{[]byte("blob1"), {}})
+		sd, err = svr.GetShard(ctx, []string{"blob1", ""})
 		require.NoError(t, err)
 		require.Equal(t, proto.ShardID(2), sd.GetShardID())
 

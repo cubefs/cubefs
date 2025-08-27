@@ -396,7 +396,7 @@ func (h *Handler) getShardOpHeader(ctx context.Context, args acapi.GetShardCommo
 		return shardnode.ShardOpHeader{}, err
 	}
 
-	shardKeys := shardnode.ParseShardKeys(args.BlobName, shardMgr.GetShardSubRangeCount(ctx))
+	shardKeys := shardnode.DecodeShardKeys(args.BlobName, shardMgr.GetShardSubRangeCount(ctx))
 	shard, err := shardMgr.GetShard(ctx, shardKeys)
 	if err != nil {
 		return shardnode.ShardOpHeader{}, err

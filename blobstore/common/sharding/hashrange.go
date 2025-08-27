@@ -32,7 +32,7 @@ func (h *hashRange) Belong(ci *CompareItem) bool {
 	if ci.context == nil {
 		hashValues := make([]uint64, len(ci.keys))
 		for i := range ci.keys {
-			hashValues[i] = Hash(ci.keys[i])
+			hashValues[i] = Hash([]byte(ci.keys[i]))
 		}
 		ci.context = hashValues
 	}

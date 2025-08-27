@@ -65,13 +65,13 @@ func InitShardingRange(RangeType RangeType, subRangeCount, shardCount int) []*Ra
 
 // NewCompareItem return compare item for range belong compare
 // key can be integer type or bytes for different sharding range type
-func NewCompareItem(rt RangeType, keys [][]byte) *CompareItem {
+func NewCompareItem(rt RangeType, keys []string) *CompareItem {
 	return &CompareItem{rt: rt, keys: keys}
 }
 
 type CompareItem struct {
 	rt      RangeType
-	keys    [][]byte
+	keys    []string
 	context interface{}
 }
 
@@ -81,7 +81,7 @@ func (c *CompareItem) GetBoundary() Boundary {
 		if c.context == nil {
 			values := make([]uint64, len(c.keys))
 			for i := range c.keys {
-				values[i] = Hash(c.keys[i])
+				values[i] = Hash([]byte(c.keys[i]))
 			}
 			c.context = values
 		}

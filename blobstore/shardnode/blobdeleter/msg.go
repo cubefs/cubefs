@@ -29,7 +29,7 @@ const minMsgKeyLen = 21 // 1(prefix) + 8(ts) + 4(vid) + 8(bid)
 
 var errInvalidMsgKey = errors.New("invalid msg key")
 
-func encodeDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, shardKeys [][]byte) []byte {
+func encodeDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, shardKeys []string) []byte {
 	shardKeyLen := 0
 	for _, sk := range shardKeys {
 		shardKeyLen += len(sk)
@@ -56,15 +56,15 @@ func encodeDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, shardKeys [][]
 	return buf
 }
 
-func encodeRawDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, tagNum int) (key []byte, shardKeys [][]byte) {
-	key1 := []byte(fmt.Sprintf("%d", uint32(vid)))
-	key2 := []byte(fmt.Sprintf("%d", uint64(bid)))
+func encodeRawDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, tagNum int) (key []byte, shardKeys []string) {
+	key1 := fmt.Sprintf("%d", uint32(vid))
+	key2 := fmt.Sprintf("%d", uint64(bid))
 
 	// raw msg shardKeys = {"vid"}{"bid"}{...}
-	shardKeys = [][]byte{key1, key2}
+	shardKeys = []string{key1, key2}
 	if tagNum > 2 {
 		for i := 0; i < tagNum-2; i++ {
-			shardKeys = append(shardKeys, []byte(""))
+			shardKeys = append(shardKeys, "")
 		}
 	}
 
@@ -72,12 +72,12 @@ func encodeRawDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, tagNum int)
 	return encodeDelMsgKey(ts, vid, bid, shardKeys), shardKeys
 }
 
-func decodeDelMsgKey(key []byte, tagNum int) (base.Ts, proto.Vid, proto.BlobID, [][]byte, error) {
+func decodeDelMsgKey(key []byte, tagNum int) (base.Ts, proto.Vid, proto.BlobID, []string, error) {
 	if len(key) < minMsgKeyLen+2*tagNum {
 		return base.Ts(0), proto.InvalidVid, proto.InValidBlobID, nil, errInvalidMsgKey
 	}
 	ts := base.Ts(binary.BigEndian.Uint64(key[1:9]))
 	vid := proto.Vid(binary.BigEndian.Uint32(key[9:13]))
 	bid := proto.BlobID(binary.BigEndian.Uint64(key[13:21]))
-	return ts, vid, bid, snapi.ParseShardKeys(string(key[minMsgKeyLen:]), tagNum), nil
+	return ts, vid, bid, snapi.DecodeShardKeys(string(key[minMsgKeyLen:]), tagNum), nil
 }

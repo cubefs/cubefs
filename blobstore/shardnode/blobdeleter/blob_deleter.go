@@ -649,7 +649,7 @@ func (m *BlobDeleteMgr) insertDeleteMsg(ctx context.Context, req *snapi.DeleteBl
 	return shard.InsertItem(ctx, oph, []byte(itm.ID), itm)
 }
 
-func (m *BlobDeleteMgr) slicesToDeleteMsgItems(ctx context.Context, slices []proto.Slice, shardKeys [][]byte) ([]snapi.Item, error) {
+func (m *BlobDeleteMgr) slicesToDeleteMsgItems(ctx context.Context, slices []proto.Slice, shardKeys []string) ([]snapi.Item, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	items := make([]snapi.Item, len(slices))
 	for i := range slices {
@@ -671,7 +671,7 @@ func (m *BlobDeleteMgr) slicesToDeleteMsgItems(ctx context.Context, slices []pro
 	return items, nil
 }
 
-func (m *BlobDeleteMgr) sliceToDeleteMsgItemRaw(ctx context.Context, slices proto.Slice, tagNum int) (snapi.Item, [][]byte, error) {
+func (m *BlobDeleteMgr) sliceToDeleteMsgItemRaw(ctx context.Context, slices proto.Slice, tagNum int) (snapi.Item, []string, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	ts := m.tsGen.GenerateTs()
 	key, shardKeys := encodeRawDelMsgKey(ts, slices.Vid, slices.MinSliceID, tagNum)

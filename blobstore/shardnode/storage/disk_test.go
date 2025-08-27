@@ -388,7 +388,7 @@ func TestServerDisk_RaftData(t *testing.T) {
 	blobName := "test_blob"
 	h := OpHeader{
 		RouteVersion: version,
-		ShardKeys:    [][]byte{[]byte(blobName)},
+		ShardKeys:    []string{blobName},
 	}
 	b := proto.Blob{
 		Name:     blobName,

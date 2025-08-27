@@ -37,7 +37,7 @@ func TestEncodeDecodeDelMsgKey(t *testing.T) {
 		ts := g.GenerateTs()
 		vid := proto.Vid(123)
 		bid := proto.BlobID(456)
-		shardKeys := [][]byte{[]byte("part1"), []byte("part2")}
+		shardKeys := []string{"part1", "part2"}
 
 		key := encodeDelMsgKey(ts, vid, bid, shardKeys)
 		require.True(t, ts > 0)
@@ -80,10 +80,10 @@ func TestEncodeDecodeDelMsgKey(t *testing.T) {
 	t.Run("CompositeOrdering", func(t *testing.T) {
 		g := base.NewTsGenerator(0)
 		ts1 := g.GenerateTs()
-		key1 := encodeDelMsgKey(ts1, 200, 50, [][]byte{[]byte("part1"), []byte("z")})
+		key1 := encodeDelMsgKey(ts1, 200, 50, []string{"part1", "z"})
 		time.Sleep(time.Millisecond)
 		ts2 := g.GenerateTs()
-		key2 := encodeDelMsgKey(ts2, 100, 40, [][]byte{[]byte("part1"), []byte("a")})
+		key2 := encodeDelMsgKey(ts2, 100, 40, []string{"part1", "a"})
 
 		require.True(t, ts1 < ts2)
 		require.Equal(t, -1, bytes.Compare([]byte(key1), []byte(key2)))

@@ -14,9 +14,14 @@
 
 package shardnode
 
-import "testing"
+import (
+	"bytes"
+	"testing"
 
-func TestParseShardKeys(t *testing.T) {
+	"github.com/stretchr/testify/require"
+)
+
+func TestDecodeShardKeys(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -111,7 +116,7 @@ func TestParseShardKeys(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ParseShardKeys(tt.input, 2)
+			got := DecodeShardKeys(tt.input, 2)
 			if len(got) != len(tt.expected) {
 				t.Errorf("%s: expected %d keys, got %d", tt.name, len(tt.expected), len(got))
 				return
@@ -120,6 +125,198 @@ func TestParseShardKeys(t *testing.T) {
 				if string(got[i]) != string(tt.expected[i]) {
 					t.Errorf("%s: at index %d, expected %q, got %q",
 						tt.name, i, tt.expected[i], got[i])
+				}
+			}
+		})
+	}
+}
+
+func TestEncodeName(t *testing.T) {
+	tests := []struct {
+		name        string
+		format      string
+		keys        []string
+		tagNum      int
+		expected    string
+		shouldPanic bool
+	}{
+		{
+			name:        "basic encoding with 3 placeholders",
+			format:      "s%s%sname1%sname2",
+			keys:        []string{"key1", "key2", "key3"},
+			tagNum:      3,
+			expected:    "s{key1}{key2}name1{key3}name2",
+			shouldPanic: false,
+		},
+		{
+			name:        "only placeholders",
+			format:      "%s%s%s",
+			keys:        []string{"key1", "key2", "key3"},
+			tagNum:      3,
+			expected:    "{key1}{key2}{key3}",
+			shouldPanic: false,
+		},
+		{
+			name:        "placeholders at start and end",
+			format:      "%sname1%s",
+			keys:        []string{"key1", "key2"},
+			tagNum:      2,
+			expected:    "{key1}name1{key2}",
+			shouldPanic: false,
+		},
+		{
+			name:        "single placeholder",
+			format:      "%sname",
+			keys:        []string{"key1"},
+			tagNum:      1,
+			expected:    "{key1}name",
+			shouldPanic: false,
+		},
+		{
+			name:        "complex path with placeholders",
+			format:      "%s%s%spath%sfile",
+			keys:        []string{"user", "project", "version", "name"},
+			tagNum:      4,
+			expected:    "{user}{project}{version}path{name}file",
+			shouldPanic: false,
+		},
+		{
+			name:        "empty format string",
+			format:      "",
+			keys:        []string{},
+			tagNum:      0,
+			expected:    "",
+			shouldPanic: false,
+		},
+		{
+			name:        "no placeholders",
+			format:      "static/path",
+			keys:        []string{},
+			tagNum:      0,
+			expected:    "static/path",
+			shouldPanic: false,
+		},
+		{
+			name:        "empty keys array",
+			format:      "%sname",
+			keys:        []string{},
+			tagNum:      1,
+			expected:    "",
+			shouldPanic: true,
+		},
+		{
+			name:        "zero tagNum",
+			format:      "%sname",
+			keys:        []string{"key1"},
+			tagNum:      0,
+			expected:    "",
+			shouldPanic: true,
+		},
+		{
+			name:        "mismatch: more keys than placeholders",
+			format:      "%sname",
+			keys:        []string{"key1", "key2"},
+			tagNum:      2,
+			expected:    "",
+			shouldPanic: true,
+		},
+		{
+			name:        "mismatch: fewer keys than placeholders",
+			format:      "%s%sname",
+			keys:        []string{"key1"},
+			tagNum:      2,
+			expected:    "",
+			shouldPanic: true,
+		},
+		{
+			name:        "mismatch: tagNum not equal to placeholders",
+			format:      "%s%sname",
+			keys:        []string{"key1", "key2"},
+			tagNum:      3,
+			expected:    "",
+			shouldPanic: true,
+		},
+		{
+			name:        "special characters in keys",
+			format:      "%s%sname",
+			keys:        []string{"key/1", "key\\2"},
+			tagNum:      2,
+			expected:    "{key/1}{key\\2}name",
+			shouldPanic: false,
+		},
+		{
+			name:        "special characters in keys 2",
+			format:      "%s%daa%sname",
+			keys:        []string{"key1", "key2"},
+			tagNum:      2,
+			expected:    "",
+			shouldPanic: true,
+		},
+		{
+			name:        "special characters in keys 3",
+			format:      "%s%sname%",
+			keys:        []string{"key1", "key2"},
+			tagNum:      2,
+			expected:    "",
+			shouldPanic: true,
+		},
+		{
+			name:        "empty keys",
+			format:      "%s%sname",
+			keys:        []string{"", ""},
+			tagNum:      2,
+			expected:    "{}{}name",
+			shouldPanic: false,
+		},
+		{
+			name:        "too much '%s' in format",
+			format:      "%ssss%s%sss%sname",
+			keys:        []string{"key1", "key2"},
+			tagNum:      2,
+			expected:    "",
+			shouldPanic: true,
+		},
+		{
+			name:        "illegal format string 1",
+			format:      "/%s/%s/name{",
+			keys:        []string{"key1", "key2"},
+			tagNum:      2,
+			expected:    "",
+			shouldPanic: true,
+		},
+		{
+			name:        "illegal format string 2",
+			format:      "/%s/%s/name}",
+			keys:        []string{"key1", "key2"},
+			tagNum:      2,
+			expected:    "",
+			shouldPanic: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					if !tt.shouldPanic {
+						t.Errorf("Test %s: unexpected panic: %v", tt.name, r)
+					}
+				} else if tt.shouldPanic {
+					t.Errorf("Test %s: expected panic but none occurred", tt.name)
+				}
+			}()
+
+			result := EncodeName(tt.format, tt.keys, tt.tagNum)
+
+			if !tt.shouldPanic && result != tt.expected {
+				t.Errorf("EncodeName(%q, %v, %d) = %q, want %q",
+					tt.format, tt.keys, tt.tagNum, result, tt.expected)
+			}
+
+			if !tt.shouldPanic && len(tt.keys) > 0 {
+				shardkeys := DecodeShardKeys(result, tt.tagNum)
+				for i := range shardkeys {
+					require.True(t, bytes.Equal([]byte(shardkeys[i]), []byte(tt.keys[i])))
 				}
 			}
 		})

@@ -21,9 +21,9 @@ import (
 )
 
 func TestRange(t *testing.T) {
-	subRangeCountMap := map[int][][]byte{
-		1: {[]byte{1}},
-		2: {[]byte{1}, []byte{2}},
+	subRangeCountMap := map[int][]string{
+		1: {"1"},
+		2: {"1", "2"},
 	}
 	rt := RangeType_RangeTypeHash
 

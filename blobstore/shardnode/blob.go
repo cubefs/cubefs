@@ -56,7 +56,7 @@ func (s *service) deleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs)
 	if err != nil {
 		return
 	}
-	shardKeys := shardnode.ParseShardKeys(req.Name, tagNum)
+	shardKeys := shardnode.DecodeShardKeys(req.Name, tagNum)
 
 	items, err := s.blobDelMgr.SlicesToDeleteMsgItems(ctx, blob.Blob.Location.Slices, shardKeys)
 	if err != nil {

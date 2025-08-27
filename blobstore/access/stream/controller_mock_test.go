@@ -429,7 +429,7 @@ func (mr *MockShardControllerMockRecorder) GetNextShard(arg0, arg1 interface{}) 
 }
 
 // GetShard mocks base method.
-func (m *MockShardController) GetShard(arg0 context.Context, arg1 [][]byte) (controller.Shard, error) {
+func (m *MockShardController) GetShard(arg0 context.Context, arg1 []string) (controller.Shard, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetShard", arg0, arg1)
 	ret0, _ := ret[0].(controller.Shard)

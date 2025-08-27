@@ -33,13 +33,13 @@ func TestInitRange(t *testing.T) {
 }
 
 func TestCompareItem(t *testing.T) {
-	inputs2 := [][][][]byte{
-		{{[]byte{1}}, {[]byte{1}}},
-		{{[]byte{1}}, {[]byte{2}}},
-		{{[]byte{2}}, {[]byte{1}}},
-		{{[]byte{1}, []byte{1}}, {[]byte{1}, []byte{1}}},
-		{{[]byte{1}, []byte{1}}, {[]byte{1}, []byte{2}}},
-		{{[]byte{1}, []byte{2}}, {[]byte{1}, []byte{1}}},
+	inputs2 := [][][]string{
+		{{"1"}, {"1"}},
+		{{"1"}, {"2"}},
+		{{"2"}, {"1"}},
+		{{"1", "1"}, {"1", "1"}},
+		{{"1", "1"}, {"1", "2"}},
+		{{"1", "2"}, {"1", "1"}},
 	}
 	outputs2 := []bool{
 		false,

@@ -21,7 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
-func (m *BlobDeleteMgr) SlicesToDeleteMsgItems(ctx context.Context, slices []proto.Slice, shardKeys [][]byte) ([]snapi.Item, error) {
+func (m *BlobDeleteMgr) SlicesToDeleteMsgItems(ctx context.Context, slices []proto.Slice, shardKeys []string) ([]snapi.Item, error) {
 	return m.slicesToDeleteMsgItems(ctx, slices, shardKeys)
 }
 

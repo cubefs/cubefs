@@ -79,13 +79,13 @@ func TestServerShardSM_Item(t *testing.T) {
 	err = mockShard.shardSM.applyDeleteRaw(ctx, sk.encodeItemKey(newID))
 	require.Nil(t, err)
 	_, err = mockShard.shard.GetItem(ctx, OpHeader{
-		ShardKeys: [][]byte{newID},
+		ShardKeys: []string{string(newID)},
 	}, newID)
 	require.ErrorIs(t, err, errors.ErrKeyNotFound)
 	err = mockShard.shardSM.applyDeleteRaw(ctx, sk.encodeItemKey(newID))
 	require.Nil(t, err)
 	_, err = mockShard.shard.GetItem(ctx, OpHeader{
-		ShardKeys: [][]byte{newID},
+		ShardKeys: []string{string(newID)},
 	}, newID)
 	require.ErrorIs(t, err, errors.ErrKeyNotFound)
 
@@ -110,7 +110,7 @@ func TestServerShardSM_Item(t *testing.T) {
 		ids[i] = []byte(protoItem.ID)
 	}
 	rets, marker, err := mockShard.shard.ListItem(ctx, OpHeader{
-		ShardKeys: [][]byte{[]byte(items[0].ID)},
+		ShardKeys: []string{items[0].ID},
 	}, nil, []byte(items[0].ID), uint64(n-1))
 	require.Nil(t, err)
 	require.Equal(t, items[n-1].ID, string(marker))
@@ -120,7 +120,7 @@ func TestServerShardSM_Item(t *testing.T) {
 	}
 
 	_, marker, err = mockShard.shard.ListItem(ctx, OpHeader{
-		ShardKeys: [][]byte{[]byte(items[0].ID)},
+		ShardKeys: []string{items[0].ID},
 	}, nil, []byte(items[0].ID), uint64(n))
 	require.Nil(t, err)
 	require.Nil(t, marker)
@@ -137,7 +137,7 @@ func TestServerShardSM_Item(t *testing.T) {
 
 	for i := 0; i < n-1; i++ {
 		_, err := mockShard.shard.GetItem(ctx, OpHeader{
-			ShardKeys: [][]byte{[]byte(items[0].ID)},
+			ShardKeys: []string{items[0].ID},
 		}, ids[i])
 		require.Equal(t, errors.ErrKeyNotFound, err)
 	}
@@ -380,7 +380,7 @@ func TestShardInfo(t *testing.T) {
 
 func checkItemEqual(t *testing.T, shard *mockShard, id []byte, item *proto.Item) {
 	ret, err := shard.shard.GetItem(ctx, OpHeader{
-		ShardKeys: [][]byte{id},
+		ShardKeys: []string{string(id)},
 	}, id)
 	if err != nil {
 		require.ErrorIs(t, err, kvstore.ErrNotFound)

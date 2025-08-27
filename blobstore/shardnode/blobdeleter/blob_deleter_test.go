@@ -792,7 +792,7 @@ func TestBlobDeleteMgr_InsertDeleteMsg(t *testing.T) {
 }
 
 func TestBlobDeleteMgr_SlicesToDeleteMsgItems(t *testing.T) {
-	shardKeys := [][]byte{[]byte("abc"), []byte("def")}
+	shardKeys := []string{"abc", "def"}
 
 	mgr := newTestBlobDeleteMgr(t, nil, nil, nil)
 

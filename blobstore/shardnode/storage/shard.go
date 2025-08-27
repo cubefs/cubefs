@@ -119,7 +119,7 @@ type (
 	}
 	OpHeader struct {
 		RouteVersion proto.RouteVersion
-		ShardKeys    [][]byte
+		ShardKeys    []string
 	}
 
 	ShardBaseConfig struct {

@@ -207,8 +207,8 @@ func TestServerShard_Item(t *testing.T) {
 		},
 	}
 
-	oldShardOpHeader := OpHeader{ShardKeys: [][]byte{[]byte(oldProtoItem.ID)}}
-	newShardOpHeader := OpHeader{ShardKeys: [][]byte{[]byte(newProtoItem.ID)}}
+	oldShardOpHeader := OpHeader{ShardKeys: []string{oldProtoItem.ID}}
+	newShardOpHeader := OpHeader{ShardKeys: []string{newProtoItem.ID}}
 
 	oldID := []byte(oldProtoItem.ID)
 	newID := []byte(newProtoItem.ID)

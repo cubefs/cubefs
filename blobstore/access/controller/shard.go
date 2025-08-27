@@ -48,7 +48,7 @@ var (
 )
 
 type IShardController interface {
-	GetShard(ctx context.Context, shardKeys [][]byte) (Shard, error)
+	GetShard(ctx context.Context, shardKeys []string) (Shard, error)
 	GetShardByID(ctx context.Context, shardID proto.ShardID) (Shard, error)
 	GetShardByRange(ctx context.Context, shardRange sharding.Range) (Shard, error)
 	GetFisrtShard(ctx context.Context) (Shard, error)
@@ -129,7 +129,7 @@ type shardControllerImpl struct {
 	stopCh     <-chan struct{}
 }
 
-func (s *shardControllerImpl) GetShard(ctx context.Context, shardKeys [][]byte) (Shard, error) {
+func (s *shardControllerImpl) GetShard(ctx context.Context, shardKeys []string) (Shard, error) {
 	// shard_1 ranges [1, 100) , shard 2: [100, 200), shard 3: [200, 300) ...
 	// if compare shard keys=20, it belong to shard 1 ; if keys=100, it belong to shard 2 ; keys=220, belong to shard 3
 	// if keys=120, will walk [shard 2, shard end]

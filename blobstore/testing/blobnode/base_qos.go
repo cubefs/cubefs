@@ -9,8 +9,6 @@ import (
 	io "io"
 	reflect "reflect"
 
-	blobnode "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	qos "github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -115,18 +113,6 @@ func (m *MockQosAPI) ReleaseBid(arg0 uint64) {
 func (mr *MockQosAPIMockRecorder) ReleaseBid(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseBid", reflect.TypeOf((*MockQosAPI)(nil).ReleaseBid), arg0)
-}
-
-// ResetQosLimit mocks base method.
-func (m *MockQosAPI) ResetQosLimit(arg0 blobnode.IOType, arg1 qos.Config) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ResetQosLimit", arg0, arg1)
-}
-
-// ResetQosLimit indicates an expected call of ResetQosLimit.
-func (mr *MockQosAPIMockRecorder) ResetQosLimit(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetQosLimit", reflect.TypeOf((*MockQosAPI)(nil).ResetQosLimit), arg0, arg1)
 }
 
 // Writer mocks base method.
