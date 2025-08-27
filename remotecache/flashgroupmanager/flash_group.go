@@ -29,7 +29,6 @@ type FlashGroupValue struct {
 	ReducingSlots    int32
 	IncreasingSlots  int32
 	ReduceAllTime    int64 // unix second
-	SlotChanged      int32
 }
 
 type FlashGroup struct {
@@ -94,7 +93,7 @@ func (fg *FlashGroup) IsLostAllFlashNode() bool {
 }
 
 func (fg *FlashGroup) ReduceSlot(syncFlashGroupFunc SyncUpdateFlashGroupFunc) {
-	if atomic.CompareAndSwapInt32(&fg.ReducingSlots, 0, 1) {
+	if !atomic.CompareAndSwapInt32(&fg.ReducingSlots, 0, 1) {
 		return
 	}
 	if log.EnableDebug() {
@@ -123,7 +122,7 @@ func (fg *FlashGroup) ReduceSlot(syncFlashGroupFunc SyncUpdateFlashGroupFunc) {
 }
 
 func (fg *FlashGroup) IncreaseSlot(syncFlashGroupFunc SyncUpdateFlashGroupFunc) {
-	if atomic.CompareAndSwapInt32(&fg.IncreasingSlots, 0, 1) {
+	if !atomic.CompareAndSwapInt32(&fg.IncreasingSlots, 0, 1) {
 		return
 	}
 	if log.EnableDebug() {
