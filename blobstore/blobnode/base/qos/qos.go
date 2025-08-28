@@ -36,6 +36,8 @@ type Qos interface {
 	Reader(context.Context, bnapi.IOType, io.Reader) io.Reader
 	TryAllow(rwType IOTypeRW) bool
 	Release(rwType IOTypeRW)
+	TryAcquireIO(ctx context.Context, chunkId uint64, rwType IOTypeRW) bool
+	ReleaseIO(chunkId uint64, rwType IOTypeRW)
 	ResetQosLimit(Config)
 	GetConfig() Config
 	Close()

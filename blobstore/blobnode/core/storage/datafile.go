@@ -415,11 +415,6 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 		return nil, bloberr.ErrInvalidParam
 	}
 
-	if !cd.qosAllow(ctx, qos.IOTypeRead) { // If there is too much io, it will discard some low-priority io
-		return nil, bloberr.ErrOverload
-	}
-	defer cd.qosRelease(qos.IOTypeRead)
-
 	// skip header
 	pos := shard.Offset + core.GetShardHeaderSize()
 

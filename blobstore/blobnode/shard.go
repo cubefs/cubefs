@@ -104,6 +104,13 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		return
 	}
 
+	qosLmt := ds.GetIoQos()
+	if !qosLmt.TryAcquireIO(ctx, uint64(args.Vuid), qos.IOTypeRead) {
+		c.RespondError(bloberr.ErrOverload)
+		return
+	}
+	defer qosLmt.ReleaseIO(uint64(args.Vuid), qos.IOTypeRead)
+
 	// build shard reader
 	shard := core.NewShardReader(args.Bid, args.Vuid, from, to, w)
 
