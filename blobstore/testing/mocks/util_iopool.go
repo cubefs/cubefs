@@ -47,9 +47,11 @@ func (mr *MockIoPoolMockRecorder) Close() *gomock.Call {
 }
 
 // Submit mocks base method.
-func (m *MockIoPool) Submit(arg0 base.IoPoolTaskArgs) {
+func (m *MockIoPool) Submit(arg0 base.IoPoolTaskArgs) error {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Submit", arg0)
+	ret := m.ctrl.Call(m, "Submit", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // Submit indicates an expected call of Submit.

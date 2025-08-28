@@ -34,11 +34,11 @@ type IoPoolTaskArgs struct {
 	BucketId uint64
 	Tm       time.Time
 	Ctx      context.Context
-	TaskFn   func()
+	TaskFn   func() error
 }
 
 type IoPool interface {
-	Submit(IoPoolTaskArgs)
+	Submit(IoPoolTaskArgs) error
 	Close()
 }
 
@@ -50,8 +50,8 @@ type IoPoolMetricConf struct {
 }
 
 type taskInfo struct {
-	fn   func()
-	done chan struct{}
+	fn   func() error
+	done chan error
 	tm   time.Time
 	ctx  context.Context
 }
@@ -65,10 +65,9 @@ type ioPoolSimple struct {
 	metric *prometheus.SummaryVec
 }
 
-func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) {
+func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) error {
 	if p.notLimit() {
-		args.TaskFn()
-		return
+		return args.TaskFn()
 	}
 
 	idx, task := p.generateTask(args)
@@ -76,22 +75,15 @@ func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) {
 	// if ctx has been cancelled, try to avoid enqueuing as much as possible;
 	// even if it has enqueued, doWork/task.fn will judge ctx again
 	select {
+	// don't enqueue
 	case <-task.ctx.Done():
-		return
-	default:
-	}
-
-	select {
-	// dont enqueue
-	case <-task.ctx.Done():
-		return
+		return task.ctx.Err()
 	// closing, try to complete the task
 	case <-p.closed:
-		args.TaskFn()
-		return
+		return args.TaskFn()
 	// 1.normal enqueue -> do work; 2.when closing, tasks that are already in the queue will be executed
 	case p.queue[idx] <- task:
-		<-task.done
+		return <-task.done
 	}
 }
 
@@ -146,12 +138,14 @@ func (p *ioPoolSimple) doWork(task *taskInfo) {
 	start := time.Now()
 	p.reportMetric(opDequeue, task.tm) // from enqueue to dequeue
 	select {
-	case <-task.ctx.Done(): // dont exec func
+	// don't exec func
+	case <-task.ctx.Done():
+		task.done <- task.ctx.Err()
 	default:
-		task.fn()
+		err := task.fn()
+		task.done <- err
 	}
 	p.reportMetric(opOnDisk, start) // from dequeue to op done
-	task.done <- struct{}{}
 }
 
 func (p *ioPoolSimple) reportMetric(opStage string, tm time.Time) {
@@ -164,7 +158,7 @@ func (p *ioPoolSimple) generateTask(args IoPoolTaskArgs) (idx uint64, task *task
 
 	task = &taskInfo{
 		fn:   args.TaskFn,
-		done: make(chan struct{}, 1),
+		done: make(chan error, 1),
 		tm:   args.Tm,
 		ctx:  args.Ctx,
 	}

@@ -43,9 +43,10 @@ func TestIoPoolSimple(t *testing.T) {
 		task := IoPoolTaskArgs{
 			BucketId: 1,
 			Tm:       time.Now(),
-			TaskFn: func() {
+			TaskFn: func() error {
 				ch <- struct{}{}
 				n++
+				return nil
 			},
 		}
 		task2, task3 := task, task
@@ -56,20 +57,22 @@ func TestIoPoolSimple(t *testing.T) {
 
 		<-ch
 		closePool.Close()
-		closePool.Submit(task3)
-		require.Equal(t, 3, n) // two task func
+		_err := closePool.Submit(task3)
+		require.Equal(t, 3, n) // all task should be executed
+		require.NoError(t, _err)
 	}
 
 	// alloc
 	{
 		chunkId := uint64(1)
-		taskFn := func() { err = sys.PreAllocate(file.Fd(), 0, 4096) }
+		taskFn := func() error { err = sys.PreAllocate(file.Fd(), 0, 4096); return err }
 		task := IoPoolTaskArgs{
 			BucketId: chunkId,
 			Tm:       time.Now(),
 			TaskFn:   taskFn,
 		}
-		writePool.Submit(task)
+		_err := writePool.Submit(task)
+		require.NoError(t, _err)
 
 		require.NoError(t, err)
 		fi1, _ := file.Stat()
@@ -81,8 +84,9 @@ func TestIoPoolSimple(t *testing.T) {
 		data := []byte(content)
 		n := 0
 		chunkId := uint64(2)
-		taskFn := func() {
+		taskFn := func() error {
 			n, err = file.WriteAt(data, 0)
+			return err
 		}
 		task := IoPoolTaskArgs{
 			BucketId: chunkId,
@@ -90,7 +94,8 @@ func TestIoPoolSimple(t *testing.T) {
 			TaskFn:   taskFn,
 		}
 
-		writePool.Submit(task)
+		_err := writePool.Submit(task)
+		require.NoError(t, _err)
 		require.NoError(t, err)
 		require.Equal(t, len(content), n)
 	}
@@ -98,16 +103,15 @@ func TestIoPoolSimple(t *testing.T) {
 	// sync
 	{
 		chunkId := uint64(3)
-		taskFn := func() {
-			err = file.Sync()
-		}
+		taskFn := func() error { err = file.Sync(); return err }
 		task := IoPoolTaskArgs{
 			BucketId: chunkId,
 			Tm:       time.Now(),
 			TaskFn:   taskFn,
 		}
 
-		writePool.Submit(task)
+		_err := writePool.Submit(task)
+		require.NoError(t, _err)
 		require.NoError(t, err)
 	}
 
@@ -116,8 +120,9 @@ func TestIoPoolSimple(t *testing.T) {
 		n := 0
 		data := make([]byte, len(content))
 		chunkId := uint64(4)
-		taskFn := func() {
+		taskFn := func() error {
 			n, err = file.ReadAt(data, 0)
+			return err
 		}
 		task := IoPoolTaskArgs{
 			BucketId: chunkId,
@@ -126,7 +131,8 @@ func TestIoPoolSimple(t *testing.T) {
 		}
 
 		require.Equal(t, uint8(0), data[0])
-		readPool.Submit(task)
+		_err := readPool.Submit(task)
+		require.NoError(t, _err)
 		require.NoError(t, err)
 		require.Equal(t, len(content), n)
 		require.Equal(t, content, string(data))
@@ -140,16 +146,15 @@ func TestIoPoolSimple(t *testing.T) {
 		require.Equal(t, content, string(data))
 
 		chunkId := uint64(5)
-		taskFn := func() {
-			err = sys.PunchHole(file.Fd(), 0, 4096)
-		}
+		taskFn := func() error { err = sys.PunchHole(file.Fd(), 0, 4096); return err }
 		task := IoPoolTaskArgs{
 			BucketId: chunkId,
 			Tm:       time.Now(),
 			TaskFn:   taskFn,
 		}
-		writePool.Submit(task)
+		_err := writePool.Submit(task)
 
+		require.NoError(t, _err)
 		require.NoError(t, err)
 		_, err = file.Read(data)
 		require.NoError(t, err)
@@ -165,14 +170,15 @@ func TestIoPoolSimple(t *testing.T) {
 		n := 0
 		chunkId := uint64(2)
 		ctx, cancel := context.WithCancel(context.Background())
-		taskFn := func() {
+		taskFn := func() error {
 			select {
 			case <-ctx.Done():
 				n, err = 0, ctx.Err()
-				return
+				return err
 			default:
 			}
 			n, err = file.WriteAt(data, 0)
+			return err
 		}
 		task := IoPoolTaskArgs{
 			BucketId: chunkId,
@@ -184,7 +190,8 @@ func TestIoPoolSimple(t *testing.T) {
 		// cancel before submit
 		cancel()
 
-		writePool.Submit(task)
+		_err := writePool.Submit(task)
+		require.ErrorIs(t, _err, context.Canceled)
 		require.NoError(t, err)
 		require.Equal(t, 0, n) // not write
 	}
@@ -196,14 +203,15 @@ func TestIoPoolSimple(t *testing.T) {
 		chunkId := uint64(2)
 		ctx, cancel := context.WithCancel(context.Background())
 
-		taskFn := func() {
+		taskFn := func() error {
 			select {
 			case <-ctx.Done():
 				n, err = 0, ctx.Err()
-				return
+				return err
 			default:
 			}
 			n, err = file.WriteAt(data, 0)
+			return err
 		}
 		task := IoPoolTaskArgs{
 			BucketId: chunkId,
@@ -215,9 +223,10 @@ func TestIoPoolSimple(t *testing.T) {
 		taskLongTime := IoPoolTaskArgs{
 			BucketId: chunkId,
 			Tm:       time.Now(),
-			TaskFn: func() {
+			TaskFn: func() error {
 				cancel()
 				n = 1
+				return nil
 			},
 			Ctx: nil,
 		}
@@ -226,11 +235,13 @@ func TestIoPoolSimple(t *testing.T) {
 		allDone := make(chan struct{}, 1)
 		go func() {
 			ch <- struct{}{}
-			writePool.Submit(taskLongTime)
+			_err := writePool.Submit(taskLongTime)
+			require.NoError(t, _err)
 		}()
 		go func() {
 			<-ch
-			writePool.Submit(task)
+			_err := writePool.Submit(task)
+			require.ErrorIs(t, _err, context.Canceled)
 			allDone <- struct{}{}
 		}()
 
@@ -247,10 +258,11 @@ func TestIoPoolSimple(t *testing.T) {
 	n := 0
 	data := []byte(content)
 	task := IoPoolTaskArgs{
-		TaskFn: func() { n, err = file.WriteAt(data, 0) },
+		TaskFn: func() error { n, err = file.WriteAt(data, 0); return err },
 	}
 
-	emptyPool.Submit(task)
+	_err := emptyPool.Submit(task)
+	require.NoError(t, _err)
 	require.NoError(t, err)
 	require.Equal(t, len(content), n)
 
@@ -258,12 +270,13 @@ func TestIoPoolSimple(t *testing.T) {
 	n = 0
 	data = make([]byte, len(content))
 	task = IoPoolTaskArgs{
-		TaskFn: func() { n, err = file.ReadAt(data, 0) },
+		TaskFn: func() error { n, err = file.ReadAt(data, 0); return err },
 	}
 	require.Equal(t, uint8(0), data[0])
 	require.Equal(t, 0, n)
 
-	emptyPool.Submit(task)
+	_err = emptyPool.Submit(task)
+	require.NoError(t, _err)
 	require.NoError(t, err)
 	require.Equal(t, len(content), n)
 	require.Equal(t, content, string(data))

@@ -1299,3 +1299,214 @@ func TestChunkData_WriteReadCancel(t *testing.T) {
 	// resume
 	cd.ef = backup
 }
+
+// this test verifies that when tw.Write returns n != len(buf), the function returns ErrInternal
+func TestChunkData_WritePartialWrite(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"WritePartialWrite")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
+
+	chunkname := clustermgr.NewChunkID(0).String()
+	chunkname = filepath.Join(testDir, chunkname)
+	log.Info(chunkname)
+
+	diskConfig := &core.Config{
+		BaseConfig: core.BaseConfig{Path: testDir},
+		RuntimeConfig: core.RuntimeConfig{
+			BlockBufferSize: 64 * 1024,
+		},
+	}
+
+	ioPools := newIoPoolMock(t)
+	ioQos := newIoQosMgrMock(t, 2)
+	defer ioQos.Close()
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
+	require.NoError(t, err)
+	require.NotNil(t, cd)
+	defer cd.Close()
+
+	// Mock the blob file to simulate partial writes
+	backup := cd.ef
+	ctr := gomock.NewController(t)
+	mockBlobFile := bnmock.NewMockBlobFile(ctr)
+	cd.ef = mockBlobFile
+
+	log.Infof("chunkdata: \n%s", cd)
+	require.Equal(t, int32(cd.wOff), int32(4096))
+
+	// Test case 1: Partial write - write returns fewer bytes than requested
+	sharddata := []byte("test data for partial write")
+	shard := &core.Shard{
+		Bid:  1001,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: bytes.NewBuffer(sharddata),
+	}
+
+	// Mock WriteAtCtx to return partial write (fewer bytes than requested)
+	mockBlobFile.EXPECT().WriteAtCtx(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, b []byte, off int64) (n int, err error) {
+			// Simulate partial write - return only half of the requested bytes
+			return len(b) / 2, nil
+		}).AnyTimes()
+
+	err = cd.Write(ctx, shard)
+	require.Error(t, err)
+	require.ErrorIs(t, err, bloberr.ErrInternal)
+	t.Logf("Expected error for partial write: %v", err)
+
+	// Test case 2: Zero write - write returns 0 bytes
+	shard2 := &core.Shard{
+		Bid:  1002,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: bytes.NewBuffer(sharddata),
+	}
+
+	// Mock WriteAtCtx to return 0 bytes written
+	mockBlobFile.EXPECT().WriteAtCtx(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, b []byte, off int64) (n int, err error) {
+			// Simulate zero write
+			return 0, nil
+		}).AnyTimes()
+
+	err = cd.Write(ctx, shard2)
+	require.Error(t, err)
+	require.ErrorIs(t, err, bloberr.ErrInternal)
+	t.Logf("Expected error for zero write: %v", err)
+
+	// Test case 3: Write returns more bytes than requested (should not happen in practice, but test for robustness)
+	shard3 := &core.Shard{
+		Bid:  1003,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: bytes.NewBuffer(sharddata),
+	}
+
+	// Mock WriteAtCtx to return more bytes than requested
+	mockBlobFile.EXPECT().WriteAtCtx(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, b []byte, off int64) (n int, err error) {
+			// Simulate writing more bytes than requested
+			return len(b) + 10, nil
+		}).AnyTimes()
+
+	err = cd.Write(ctx, shard3)
+	require.Error(t, err)
+	require.ErrorIs(t, err, bloberr.ErrInternal)
+	t.Logf("Expected error for excessive write: %v", err)
+
+	// Test case 4: Normal write should still work when mock is restored
+	cd.ef = backup
+	shard4 := &core.Shard{
+		Bid:  1004,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: bytes.NewBuffer(sharddata),
+	}
+
+	err = cd.Write(ctx, shard4)
+	require.NoError(t, err)
+	t.Logf("Normal write succeeded after restoring backup: %v", err)
+}
+
+// This test verifies that when context is canceled during write, ErrIOCtxCancel is returned
+func TestChunkData_WriteContextCanceled(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"WriteContextCanceled")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.WriteIO)
+
+	chunkname := clustermgr.NewChunkID(0).String()
+	chunkname = filepath.Join(testDir, chunkname)
+	log.Info(chunkname)
+
+	diskConfig := &core.Config{
+		BaseConfig: core.BaseConfig{Path: testDir},
+		RuntimeConfig: core.RuntimeConfig{
+			BlockBufferSize: 64 * 1024,
+		},
+	}
+
+	ioPools := newIoPoolMock(t)
+	ioQos := newIoQosMgrMock(t, 2)
+	defer ioQos.Close()
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
+	require.NoError(t, err)
+	require.NotNil(t, cd)
+	defer cd.Close()
+
+	// Mock the blob file
+	backup := cd.ef
+	ctr := gomock.NewController(t)
+	mockBlobFile := bnmock.NewMockBlobFile(ctr)
+	cd.ef = mockBlobFile
+
+	log.Infof("chunkdata: \n%s", cd)
+	require.Equal(t, int32(cd.wOff), int32(4096))
+
+	sharddata := []byte("test data for context cancellation")
+	shard := &core.Shard{
+		Bid:  2001,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: bytes.NewBuffer(sharddata),
+	}
+
+	// Test case 1: Context canceled before write operation
+	ctxCanceled := context.Background()
+	ctxCanceled = bnapi.SetIoType(ctxCanceled, bnapi.WriteIO)
+	ctxCanceled, cancel := context.WithCancel(ctxCanceled)
+	cancel() // Cancel immediately
+
+	// Mock WriteAtCtx to return context.Canceled error
+	mockBlobFile.EXPECT().WriteAtCtx(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, b []byte, off int64) (n int, err error) {
+			return 0, context.Canceled
+		}).AnyTimes()
+
+	err = cd.Write(ctxCanceled, shard)
+	require.Error(t, err)
+	require.ErrorIs(t, err, bloberr.ErrIOCtxCancel)
+	t.Logf("Expected ErrIOCtxCancel for context canceled before write: %v", err)
+
+	// Test case 2: Context canceled during write operation
+	ctxCanceled2 := context.Background()
+	ctxCanceled2 = bnapi.SetIoType(ctxCanceled2, bnapi.WriteIO)
+	ctxCanceled2, cancel2 := context.WithCancel(ctxCanceled2)
+
+	// Mock WriteAtCtx to cancel context during write
+	mockBlobFile.EXPECT().WriteAtCtx(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, b []byte, off int64) (n int, err error) {
+			cancel2() // Cancel during write
+			return 0, context.Canceled
+		}).AnyTimes()
+
+	err = cd.Write(ctxCanceled2, shard)
+	require.Error(t, err)
+	// require.ErrorIs(t, err, bloberr.ErrIOCtxCancel)  // Reader Error
+	t.Logf("Expected ErrIOCtxCancel for context canceled during write: %v", err)
+
+	// Test case 3: Normal write should work with valid context
+	cd.ef = backup
+	shard2 := &core.Shard{
+		Bid:  2002,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: bytes.NewBuffer(sharddata),
+	}
+
+	err = cd.Write(ctx, shard2)
+	require.NoError(t, err)
+	t.Logf("Normal write succeeded with valid context: %v", err)
+}

@@ -77,15 +77,16 @@ func (ef *blobFile) ReadAtCtx(ctx context.Context, b []byte, off int64) (n int, 
 		BucketId: ef.chunk,
 		Tm:       time.Now(),
 		Ctx:      ctx,
-		TaskFn: func() {
+		TaskFn: func() error {
 			if ctx.Err() != nil {
 				n, err = 0, ctx.Err()
-				return
+				return err
 			}
 			n, err = ef.file.ReadAt(b, off)
+			return err
 		},
 	}
-	ef.ioPools[bnapi.GetIoType(ctx)].Submit(task)
+	err = ef.ioPools[bnapi.GetIoType(ctx)].Submit(task)
 
 	ef.handleError(err)
 	return
@@ -100,15 +101,16 @@ func (ef *blobFile) WriteAtCtx(ctx context.Context, b []byte, off int64) (n int,
 		BucketId: ef.chunk,
 		Tm:       time.Now(),
 		Ctx:      ctx,
-		TaskFn: func() {
+		TaskFn: func() error {
 			if ctx.Err() != nil {
 				n, err = 0, ctx.Err()
-				return
+				return err
 			}
 			n, err = ef.file.WriteAt(b, off)
+			return err
 		},
 	}
-	ef.ioPools[bnapi.GetIoType(ctx)].Submit(task)
+	err = ef.ioPools[bnapi.GetIoType(ctx)].Submit(task)
 
 	ef.handleError(err)
 	return
@@ -124,9 +126,9 @@ func (ef *blobFile) Allocate(off int64, size int64) (err error) {
 	task := base.IoPoolTaskArgs{
 		BucketId: ef.chunk,
 		Tm:       time.Now(),
-		TaskFn:   func() { err = sys.PreAllocate(ef.file.Fd(), off, size) },
+		TaskFn:   func() error { return sys.PreAllocate(ef.file.Fd(), off, size) },
 	}
-	ef.ioPools[bnapi.WriteIO].Submit(task)
+	err = ef.ioPools[bnapi.WriteIO].Submit(task)
 
 	ef.handleError(err)
 	return
@@ -136,9 +138,9 @@ func (ef *blobFile) Discard(off int64, size int64) (err error) {
 	task := base.IoPoolTaskArgs{
 		BucketId: ef.chunk,
 		Tm:       time.Now(),
-		TaskFn:   func() { err = sys.PunchHole(ef.file.Fd(), off, size) },
+		TaskFn:   func() error { return sys.PunchHole(ef.file.Fd(), off, size) },
 	}
-	ef.ioPools[bnapi.DeleteIO].Submit(task)
+	err = ef.ioPools[bnapi.DeleteIO].Submit(task)
 
 	ef.handleError(err)
 	return
@@ -159,9 +161,9 @@ func (ef *blobFile) Sync() (err error) {
 	task := base.IoPoolTaskArgs{
 		BucketId: ef.chunk,
 		Tm:       time.Now(),
-		TaskFn:   func() { err = ef.syncHandler.Do(nil) },
+		TaskFn:   func() error { return ef.syncHandler.Do(nil) },
 	}
-	ef.ioPools[bnapi.WriteIO].Submit(task)
+	err = ef.ioPools[bnapi.WriteIO].Submit(task)
 
 	ef.handleError(err)
 	return err

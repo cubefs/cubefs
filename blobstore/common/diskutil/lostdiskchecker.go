@@ -78,13 +78,13 @@ func lsblkByMountPoint(mountPoint string) (exist bool, err error) {
 func IsLostDisk(path string) bool {
 	mountPath, err := getMountPoint(path)
 	if err != nil {
-		log.Error(err)
+		log.Errorf("path=%s, err=%+v", path, err)
 		return false
 	}
 	exist, err := lsblkByMountPoint(mountPath)
 	if err == nil && !exist {
 		return true
 	}
-	log.Error(err)
+	log.Errorf("path=%s, err=%+v", path, err)
 	return false
 }
