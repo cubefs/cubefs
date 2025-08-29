@@ -818,6 +818,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.txProcessor.txManager.txIdAlloc.setTransactionID(txID)
 			mp.txProcessor.txManager.txTree.SetTxId(txID)
 			mp.config.Cursor = cursor
+			mp.inodeTree.SetCursor(cursor)
 			mp.uniqChecker = uniqChecker
 			mp.multiVersionList.VerList = make([]*proto.VolVersionInfo, len(verList))
 			copy(mp.multiVersionList.VerList, verList)
