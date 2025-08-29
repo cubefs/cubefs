@@ -402,8 +402,8 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.ProduceTaskPoolSize, 16)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MaxListMessageNum, 32)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MaxExecuteBidNum, uint64(64))
-	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.SafeDeleteTimeoutH, 72)
-	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.PunishTimeoutH, 4)
+	defaulter.IntegerLessOrEqual(&cfg.DeleteBlobCfg.SafeDeleteTimeout.Duration, 12*time.Hour)
+	defaulter.IntegerLessOrEqual(&cfg.DeleteBlobCfg.PunishTimeout.Duration, 1*time.Minute)
 }
 
 func isDiskInfoMatch(a, b clustermgr.ShardNodeDiskInfo) bool {

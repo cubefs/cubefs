@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	mock "github.com/cubefs/cubefs/blobstore/testing/mockshardnode"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
@@ -54,8 +55,8 @@ func newTestBlobDeleteMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, v
 			RateLimitBurst:       10,
 			MaxListMessageNum:    100,
 			MaxExecuteBidNum:     1000,
-			SafeDeleteTimeoutH:   1,
-			PunishTimeoutH:       1,
+			SafeDeleteTimeout:    util.Duration{Duration: time.Minute},
+			PunishTimeout:        util.Duration{Duration: time.Minute},
 		},
 	}
 
@@ -160,8 +161,8 @@ func TestNewBlobDeleteMgr(t *testing.T) {
 			RateLimitBurst:       10,
 			MaxListMessageNum:    100,
 			MaxExecuteBidNum:     1000,
-			SafeDeleteTimeoutH:   1,
-			PunishTimeoutH:       1,
+			SafeDeleteTimeout:    util.Duration{Duration: time.Minute},
+			PunishTimeout:        util.Duration{Duration: time.Minute},
 		},
 	}
 	mgr, err := NewBlobDeleteMgr(cfg)

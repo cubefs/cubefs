@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	utilerr "github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -59,8 +60,9 @@ type BlobDelCfg struct {
 	RateLimitBurst       int     `json:"rate_limit_burst"`
 	MaxListMessageNum    int     `json:"max_list_message_num"`
 	MaxExecuteBidNum     uint64  `json:"max_execute_bid_num"`
-	SafeDeleteTimeoutH   int     `json:"safe_delete_timeout_h"`
-	PunishTimeoutH       int     `json:"punish_timeout_h"`
+
+	SafeDeleteTimeout util.Duration `json:"safe_delete_timeout"`
+	PunishTimeout     util.Duration `json:"punish_timeout"`
 }
 
 type BlobDelMgrConfig struct {
@@ -232,7 +234,7 @@ func (m *BlobDeleteMgr) listShardMsg(ctx context.Context, diskID proto.DiskID, l
 	}
 
 	// list message from shard storage
-	protectDuration := time.Duration(m.cfg.SafeDeleteTimeoutH) * time.Hour
+	protectDuration := m.cfg.SafeDeleteTimeout.Duration
 	msgList, err := listReader.listMessage(ctx, protectDuration, m.cfg.MaxListMessageNum)
 	if err != nil {
 		span.Errorf("shard[%d] list message from storage failed, err: %s", suid, err.Error())
@@ -549,7 +551,7 @@ func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 		return err
 	}
 
-	punishDr := time.Duration(m.cfg.PunishTimeoutH) * time.Hour
+	punishDr := m.cfg.PunishTimeout.Duration
 	ts := m.tsGen.CurrentTs().Add(punishDr)
 	punishMsgKey := encodeDelMsgKey(ts, msg.Slice.Vid, msg.Slice.MinSliceID, shardKeys)
 
