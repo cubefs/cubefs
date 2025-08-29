@@ -1043,6 +1043,7 @@ func (s *Streamer) flush(wait bool) (err error) {
 		} else {
 			// TODO unhandled error
 			// do not clean extent handler if flush is async
+			// sender and receiver may be closed before packet is handled
 			if !s.client.enableAsyncFlush {
 				eh.cleanup()
 			}

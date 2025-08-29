@@ -578,7 +578,7 @@ func (s *Streamer) processAsyncFlushRequest(req *AsyncFlushRequest) {
 
 	// Check if inflight count has decreased (packets completed)
 	currentInflight := atomic.LoadInt32(&handler.inflight)
-	if currentInflight < req.inflightCount {
+	if currentInflight < req.inflightCount || req.inflightCount == 0 {
 		req.inflightCount = currentInflight
 		if currentInflight == 0 {
 			log.LogDebugf("processAsyncFlushRequest: handler %v currentInflight == 0 ", handler)
