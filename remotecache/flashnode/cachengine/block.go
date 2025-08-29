@@ -617,6 +617,12 @@ func (cb *CacheBlock) updateAllocSize(size int64) {
 	cb.allocSize = size
 }
 
+func (cb *CacheBlock) LoadDataSize() (size int64) {
+	cb.sizeLock.Lock()
+	defer cb.sizeLock.Unlock()
+	return cb.usedSize
+}
+
 func (cb *CacheBlock) GetRootPath() string {
 	return cb.rootPath
 }

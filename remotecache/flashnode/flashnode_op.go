@@ -778,9 +778,10 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	}()
 
 	// first reply to client
+	dataSize := block.LoadDataSize()
 	firstReply := proto.NewPacket()
 	firstReply.ReqID = p.ReqID
-	firstReply.Size = uint32(req.Size_)
+	firstReply.Size = uint32(dataSize)
 	firstReply.ResultCode = proto.OpOk
 	firstReply.Opcode = p.Opcode
 	firstReply.StartT = p.StartT
@@ -833,7 +834,7 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 	var keepAlive bool
 	for {
 		alignedOffset = offset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
-		readDiskSize = uint32(util.Min(proto.CACHE_BLOCK_PACKET_SIZE, int(end-alignedOffset)))
+		readDiskSize = uint32(util.Min(proto.CACHE_BLOCK_PACKET_SIZE, int(dataSize-alignedOffset)))
 		if !keepAlive {
 			err = f.limitRead.RunNoWait(int(readDiskSize), false, readAndReply)
 			keepAlive = true
