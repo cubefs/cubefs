@@ -1124,6 +1124,7 @@ type RemoteCacheReader struct {
 	flashIp        string
 	currOffset     uint32
 	endOffset      uint32
+	blockDataSize  uint32
 	ctx            context.Context
 	buffer         []byte
 	localData      []byte
@@ -1182,7 +1183,7 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 		return
 	}
 	alignedOffset := reader.currOffset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
-	readPackageSize := uint32(util.Min(proto.CACHE_BLOCK_PACKET_SIZE, int(reader.endOffset-alignedOffset)))
+	readPackageSize := uint32(util.Min(proto.CACHE_BLOCK_PACKET_SIZE, int(reader.blockDataSize-alignedOffset)))
 	_, err = io.ReadFull(reader.conn, p[:readPackageSize])
 	if err != nil {
 		log.LogErrorf("RemoteCacheReader:reqID(%v) Read err(%v)", reader.reqID, err)
@@ -1280,7 +1281,7 @@ func (reader *RemoteCacheReader) Close() error {
 	return nil
 }
 
-func (rc *RemoteCacheClient) ReadObjectFirstReply(conn *net.TCPConn, p *proto.Packet, reqId string) (length int64, err error) {
+func (rc *RemoteCacheClient) ReadObjectFirstReply(conn *net.TCPConn, p *proto.Packet, reqId string) (length uint32, err error) {
 	header, err := proto.Buffers.Get(util.PacketHeaderSize)
 	if err != nil {
 		header = make([]byte, util.PacketHeaderSize)
@@ -1321,7 +1322,7 @@ func (rc *RemoteCacheClient) ReadObjectFirstReply(conn *net.TCPConn, p *proto.Pa
 		}
 		return
 	}
-	return int64(p.Size), nil
+	return p.Size, nil
 }
 
 func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, reqId string, req *proto.CacheReadRequestBase) (reader *RemoteCacheReader, length int64, err error) {
@@ -1386,7 +1387,8 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 		reply := new(proto.Packet)
 		// set time out for first packet
 		conn.SetReadDeadline(time.Now().Add(time.Millisecond * time.Duration(rc.firstPacketTimeout)))
-		length, err = rc.ReadObjectFirstReply(conn, reply, reqId)
+		var blockDataSize uint32
+		blockDataSize, err = rc.ReadObjectFirstReply(conn, reply, reqId)
 		if err != nil {
 			log.LogWarnf("%v ReadObject getReadObjectReply from(%v) failed, reply(%v) error(%v)",
 				logPrefix, conn.RemoteAddr(), reply, err)
@@ -1397,6 +1399,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 		rcvTime = time.Now().UnixNano()
 		reader = rc.NewRemoteCacheReader(ctx, conn, reqId, flashIp, uint32(req.Offset), uint32(req.Offset+req.Size_))
 		reader.needReadLen = int64(req.Size_)
+		reader.blockDataSize = blockDataSize
 		break
 	}
 	if log.EnableDebug() {
