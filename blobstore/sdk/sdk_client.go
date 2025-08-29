@@ -78,7 +78,7 @@ func ResetMemoryPool(sizeClasses map[int]int) {
 }
 
 type Config struct {
-	stream.StreamConfig
+	stream.StreamConfig `json:"stream"`
 
 	Limit           stream.LimitConfig `json:"limit"`
 	MaxSizePutOnce  int64              `json:"max_size_put_once"`
