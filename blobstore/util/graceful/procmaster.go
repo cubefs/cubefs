@@ -116,7 +116,7 @@ func (m *procMaster) fork() {
 	cmd.Env = e
 	err := cmd.Start()
 	if err != nil {
-		log.Fatal("fork new process failed：", errors.Detail(err))
+		log.Fatal("fork new process failed: ", errors.Detail(err))
 	}
 	m.slaveProcs = append(m.slaveProcs, cmd)
 	log.Info("fork new process success")
