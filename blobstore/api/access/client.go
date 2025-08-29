@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"runtime"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -232,18 +233,30 @@ var _ io.ReadCloser = (*noopBody)(nil)
 func (rc noopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
 func (rc noopBody) Close() error                     { return nil }
 
-var memPool *resourcepool.MemPool
+var (
+	memPool  *resourcepool.MemPool
+	poolOnce sync.Once
+)
 
-func init() {
-	memPool = resourcepool.NewMemPool(map[int]int{
-		1 << 12: -1,
-		1 << 14: -1,
-		1 << 18: -1,
-		1 << 20: -1,
-		1 << 22: -1,
-		1 << 23: -1,
-		1 << 24: -1,
+func lazyInitSingletonMemPool() {
+	poolOnce.Do(func() {
+		if memPool == nil {
+			memPool = resourcepool.NewMemPool(map[int]int{
+				1 << 12: -1,
+				1 << 14: -1,
+				1 << 18: -1,
+				1 << 20: -1,
+				1 << 22: -1,
+				1 << 23: -1,
+				1 << 24: -1,
+			})
+		}
 	})
+}
+
+// ResetMemoryPool is thread unsafe, call it on init.
+func ResetMemoryPool(sizeClasses map[int]int) {
+	memPool = resourcepool.NewMemPool(sizeClasses)
 }
 
 // New returns an access API
@@ -262,6 +275,8 @@ func New(cfg Config) (API, error) {
 	if cfg.Logger != nil {
 		log.SetOutput(cfg.Logger)
 	}
+
+	lazyInitSingletonMemPool()
 
 	c := &client{
 		config: cfg,
