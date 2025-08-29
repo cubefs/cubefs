@@ -58,25 +58,6 @@ var _ io.ReadCloser = (*noopBody)(nil)
 func (rc noopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
 func (rc noopBody) Close() error                     { return nil }
 
-var memPool *resourcepool.MemPool
-
-func init() {
-	memPool = resourcepool.NewMemPool(map[int]int{
-		1 << 12: -1,
-		1 << 14: -1,
-		1 << 18: -1,
-		1 << 20: -1,
-		1 << 22: -1,
-		1 << 23: -1,
-		1 << 24: -1,
-	})
-}
-
-// ResetMemoryPool is thread unsafe, call it on init.
-func ResetMemoryPool(sizeClasses map[int]int) {
-	memPool = resourcepool.NewMemPool(sizeClasses)
-}
-
 type Config struct {
 	stream.StreamConfig `json:"stream"`
 
@@ -95,6 +76,7 @@ type sdkHandler struct {
 	handler stream.StreamHandler
 	limiter stream.Limiter
 	closer  closer.Closer
+	memPool *resourcepool.MemPool
 }
 
 func New(conf *Config) (acapi.Client, error) {
@@ -109,9 +91,20 @@ func New(conf *Config) (acapi.Client, error) {
 		return nil, err
 	}
 
+	var admin *stream.StreamAdmin
+	if sa := h.Admin(); sa != nil {
+		if ad, ok := sa.(*stream.StreamAdmin); ok {
+			admin = ad
+		}
+	}
+	if admin == nil {
+		return nil, errcode.ErrAccessUnexpect
+	}
+
 	return &sdkHandler{
 		conf:    *conf,
 		handler: h,
+		memPool: admin.MemPool,
 		limiter: stream.NewLimiter(conf.Limit),
 		closer:  cl,
 	}, nil
@@ -717,19 +710,19 @@ func (s *sdkHandler) readerPipeline(span trace.Span, reqBody io.Reader,
 				toread = size
 			}
 
-			buf, _ := memPool.Alloc(toread)
+			buf, _ := s.memPool.Alloc(toread)
 			buf = buf[:toread]
 			_, err := io.ReadFull(reqBody, buf)
 			if err != nil {
 				span.Error("read buffer from request", err)
-				memPool.Put(buf)
+				s.memPool.Put(buf)
 				close(ch)
 				return
 			}
 
 			select {
 			case <-closeCh:
-				memPool.Put(buf)
+				s.memPool.Put(buf)
 				close(ch)
 				return
 			case ch <- buf:
@@ -802,14 +795,14 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 		// waiting pipeline close if has error
 		for buf := range bufferPipe {
 			if len(buf) > 0 {
-				memPool.Put(buf)
+				s.memPool.Put(buf)
 			}
 		}
 	}()
 
 	releaseBuffer := func(parts []blobPart) {
 		for _, part := range parts {
-			memPool.Put(part.buf)
+			s.memPool.Put(part.buf)
 		}
 	}
 
@@ -992,11 +985,11 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 		args.Body = io.TeeReader(args.Body, hasherMap.ToWriter())
 	}
 
-	buf, err := memPool.Alloc(int(loc.SliceSize))
+	buf, err := s.memPool.Alloc(int(loc.SliceSize))
 	if err != nil {
 		return failLoc, nil, err
 	}
-	defer memPool.Put(buf[:loc.SliceSize]) // prevent buf get smaller
+	defer s.memPool.Put(buf[:loc.SliceSize]) // prevent buf get smaller
 
 	// put every slice
 	needRead := true
