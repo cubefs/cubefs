@@ -19,6 +19,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
@@ -32,7 +33,22 @@ var (
 
 func newSdkHandler(t *testing.T) *sdkHandler {
 	ctr := gomock.NewController(t)
+
+	admin := &stream.StreamAdmin{
+		MemPool: resourcepool.NewMemPool(map[int]int{
+			1 << 12: -1,
+			1 << 14: -1,
+			1 << 18: -1,
+			1 << 20: -1,
+			1 << 22: -1,
+			1 << 23: -1,
+			1 << 24: -1,
+		}),
+	}
+
 	h := mocks.NewMockStreamHandler(ctr)
+	h.EXPECT().Admin().Return(admin).AnyTimes()
+
 	l := stream.NewLimiter(stream.LimitConfig{
 		NameRps: map[string]int{"alloc": 2},
 	})
@@ -43,6 +59,7 @@ func newSdkHandler(t *testing.T) *sdkHandler {
 		handler: h,
 		limiter: l,
 		conf:    conf,
+		memPool: admin.MemPool,
 		closer:  closer.New(),
 	}
 }
