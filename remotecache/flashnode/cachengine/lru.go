@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 type LruCache interface {
@@ -82,6 +83,8 @@ type fCache struct {
 	closeOnce sync.Once
 	closeCh   chan struct{}
 	disk      *Disk
+
+	lruUpdateChan chan *entry
 }
 
 // entry in the cache.
@@ -116,6 +119,7 @@ func NewCache(cacheType int, capacity int, maxSize int64, ttl time.Duration, onD
 		onClose:            onClose,
 		closeCh:            make(chan struct{}),
 		items:              make(map[interface{}]*list.Element),
+		lruUpdateChan:      make(chan *entry, 100000),
 	}
 	go func() {
 		tick := time.NewTicker(time.Second * 60)
@@ -129,11 +133,45 @@ func NewCache(cacheType int, capacity int, maxSize int64, ttl time.Duration, onD
 			}
 		}
 	}()
+
+	go func() {
+		tick := time.NewTicker(100 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			c.PushFrontAll()
+			select {
+			case <-tick.C:
+			case <-c.closeCh:
+				return
+			}
+		}
+	}()
 	return c
 }
 
 func (c *fCache) AttachDisk(d *Disk) {
 	c.disk = d
+}
+
+func (c *fCache) PushFrontAll() {
+	c.lock.Lock()
+	bg := stat.BeginStat()
+	defer func() {
+		c.lock.Unlock()
+		stat.EndStat("PushFrontAll", nil, bg, 1)
+	}()
+	for {
+		select {
+		case e := <-c.lruUpdateChan:
+			if ent, ok := c.items[e.key]; ok {
+				c.lru.MoveToFront(ent)
+			}
+		case <-c.closeCh:
+			return
+		default:
+			return
+		}
+	}
 }
 
 func (c *fCache) replaceRecent() {
@@ -309,26 +347,32 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 }
 
 func (c *fCache) Get(key interface{}) (interface{}, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.lock.RLock()
 	if ent, ok := c.items[key]; ok {
 		v := ent.Value.(*entry)
 		if v.expiredAt.After(time.Now()) {
+			c.lock.RUnlock()
 			atomic.AddInt32(&c.hits, 1)
-			c.lru.MoveToFront(ent)
+			c.lruUpdateChan <- v
 			return v.value, nil
 		}
+		c.lock.RUnlock()
 		atomic.AddInt32(&c.misses, 1)
-		if c.cacheType == LRUCacheBlockCacheType {
-			log.LogInfof("delete(%s) on get, create_time:(%v)  expired_time:(%v)",
-				key, v.createAt.Format("2006-01-02 15:04:05"), v.expiredAt.Format("2006-01-02 15:04:05"))
-			c.DeleteKeyFromPreAllocatedKeyMap(key)
+		c.lock.Lock()
+		if _, found := c.items[key]; found {
+			if c.cacheType == LRUCacheBlockCacheType {
+				log.LogInfof("delete(%s) on get, create_time:(%v)  expired_time:(%v)",
+					key, v.createAt.Format("2006-01-02 15:04:05"), v.expiredAt.Format("2006-01-02 15:04:05"))
+				c.DeleteKeyFromPreAllocatedKeyMap(key)
+			}
+			e := c.deleteElement(ent)
+			_ = c.onDelete(e, fmt.Sprintf("created: %v get expired: %v", v.createAt.Format("2006-01-02 15:04:05"),
+				v.expiredAt.Format("2006-01-02 15:04:05")))
 		}
-		e := c.deleteElement(ent)
-		_ = c.onDelete(e, fmt.Sprintf("created: %v get expired: %v", v.createAt.Format("2006-01-02 15:04:05"),
-			v.expiredAt.Format("2006-01-02 15:04:05")))
+		c.lock.Unlock()
 		return nil, fmt.Errorf("expired key[%v]", key)
 	}
+	c.lock.RUnlock()
 	atomic.AddInt32(&c.misses, 1)
 	return nil, fmt.Errorf("key[%s] not found", key)
 }
