@@ -150,6 +150,7 @@ type Vol struct {
 	createTime    int64
 	description   string
 	TrashInterval int64
+	CreateUUID    string // idempotency check
 
 	dpReplicaNum      uint8
 	mpReplicaNum      uint8
@@ -252,6 +253,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.flashNodeTimeoutCount = vv.FlashNodeTimeoutCount
 	vol.remoteCacheSameZoneTimeout = vv.RemoteCacheSameZoneTimeout
 	vol.remoteCacheSameRegionTimeout = vv.RemoteCacheSameRegionTimeout
+	vol.CreateUUID = vv.CreateUUID
 
 	limitQosVal := &qosArgs{
 		qosEnable:     vv.VolQosEnable,

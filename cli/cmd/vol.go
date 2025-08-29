@@ -31,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/strutil"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
@@ -154,6 +155,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optFlashNodeTimeoutCount int64
 	var optRemoteCacheSameZoneTimeout int64
 	var optRemoteCacheSameRegionTimeout int64
+	var optCreateUUID string
 
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -233,6 +235,11 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
+			// Generate UUID for idempotency handling
+			if optCreateUUID == "" {
+				optCreateUUID = volumeName + "-" + userID + "-" + uuid.New().String()
+			}
+
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -271,6 +278,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  flashNodeTimeoutCount    : %v\n", optFlashNodeTimeoutCount)
 				stdout("  rcSameZoneTimeout        : %v microSecond\n", optRemoteCacheSameZoneTimeout)
 				stdout("  rcSameRegionTimeout      : %v ms\n", optRemoteCacheSameRegionTimeout)
+				stdout("  createUUID               : %v\n", optCreateUUID)
 
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
@@ -289,7 +297,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB,
 				optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout)
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optCreateUUID)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -336,6 +344,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, cmdVolDefaultFlashNodeTimeoutCount, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value")
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, proto.DefaultRemoteCacheSameZoneTimeout, "Remote cache same zone timeout microsecond(must > 0)")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout, "Remote cache same region timeout millisecond(must > 0)")
+	cmd.Flags().StringVar(&optCreateUUID, "createUUID", "", "UUID for idempotent volume creation (auto-generated if not specified)")
 
 	return cmd
 }

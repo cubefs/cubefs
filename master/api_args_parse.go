@@ -771,6 +771,8 @@ type createVolReq struct {
 	flashNodeTimeoutCount        int64
 	remoteCacheSameZoneTimeout   int64
 	remoteCacheSameRegionTimeout int64
+	// idempotency check
+	createUUID string
 }
 
 func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
@@ -1023,6 +1025,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if req.remoteCacheSameRegionTimeout, err = extractInt64WithDefault(r, remoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout); err != nil {
 		return
 	}
+
+	// parse idempotency check
+	req.createUUID = extractStrWithDefault(r, "createUUID", "")
 	return
 }
 
