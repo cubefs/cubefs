@@ -1389,6 +1389,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 		conn.SetReadDeadline(time.Now().Add(time.Millisecond * time.Duration(rc.firstPacketTimeout)))
 		var blockDataSize uint32
 		blockDataSize, err = rc.ReadObjectFirstReply(conn, reply, reqId)
+		length = int64(req.Size_)
 		if err != nil {
 			log.LogWarnf("%v ReadObject getReadObjectReply from(%v) failed, reply(%v) error(%v)",
 				logPrefix, conn.RemoteAddr(), reply, err)
