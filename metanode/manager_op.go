@@ -194,6 +194,10 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		resp.CpuUtil = m.cpuUtil.Load()
 		log.LogDebugf("[opMasterHeartbeat] collect rocksdb info")
 		diskStat = m.metaNode.getRocksDBDiskStat()
+		err = m.updateRocksDBKeyNum(diskStat)
+		if err != nil {
+			log.LogWarnf("[opMasterHeartbeat] failed to update rocksdb key num, err(%v)", err)
+		}
 		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
 			m.checkForbiddenVolume(req.ForbiddenVols, partition)
@@ -247,7 +251,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			case proto.StoreModeRocksDb:
 				for _, stat := range diskStat {
 					if stat.Path == mConf.RocksDBDir &&
-						stat.UsageRatio >= m.rocksDBDiskUsageThreshold {
+						(stat.UsageRatio >= m.rocksDBDiskUsageThreshold || stat.KeyNum >= m.metaNode.rocksdbKeyNumMax) {
 						mpr.Status = proto.ReadOnly
 					}
 				}
@@ -268,6 +272,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		resp.ZoneName = m.zoneName
 		resp.ReceivedForbidWriteOpOfProtoVer0 = m.metaNode.nodeForbidWriteOpOfProtoVer0
 		resp.RocksDBDiskInfo = diskStat
+		resp.RocksDBKeyNumMax = m.metaNode.rocksdbKeyNumMax
 		resp.Status = proto.TaskSucceeds
 	end:
 		adminTask.Request = nil

@@ -268,6 +268,7 @@ const (
 	cfgRocksdbMaxSubCompactions     = "rocksdbMaxSubCompactions"     // int
 	cfgRocksdbMode                  = "rocksdbMode"                  // string
 	cfgRocksdbEnableStats           = "rocksdbEnableStats"           // bool
+	cfgRocksdbKeyNumMax             = "rocksdbKeyNumMax"             // int64
 )
 
 const (
@@ -286,6 +287,7 @@ const (
 	DefaultGOGCValue                   = 100
 	defaultDiskReservedSpace           = 5 * GB
 	AccessTimeOffset                   = 52
+	defaultRocksdbKeyNumMax            = 2000000000
 )
 
 const (

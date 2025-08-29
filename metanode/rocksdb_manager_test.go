@@ -34,6 +34,35 @@ func testRocksdbManager(t *testing.T, manager metanode.RocksdbManager) {
 	require.ErrorIs(t, err, metanode.ErrUnregisteredRocksdbPath)
 	db, err := manager.OpenRocksdb(dbDir, 0)
 	require.NoError(t, err)
+	count, err := manager.GetPartitionCount(dbDir)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, count)
+	manager.CloseRocksdb(db)
+	count, err = manager.GetPartitionCount(dbDir)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, count)
+	disk, err := manager.SelectRocksdbDisk(0)
+	require.NoError(t, err)
+	require.EqualValues(t, dbDir, disk)
+}
+
+func TestPerDiskRocksdbManager(t *testing.T) {
+	manager := metanode.NewPerDiskRocksdbManager(&metanode.RocksdbManagerConfig{})
+	testRocksdbManager(t, manager)
+}
+
+func testPartitionRocksdbManager(t *testing.T, manager metanode.RocksdbManager) {
+	dbDir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	defer os.RemoveAll(dbDir)
+	err = manager.Register(dbDir)
+	require.NoError(t, err)
+	err = manager.Register(dbDir)
+	require.ErrorIs(t, err, metanode.ErrRocksdbPathRegistered)
+	_, err = manager.OpenRocksdb(dbDir+"_123", 0)
+	require.ErrorIs(t, err, metanode.ErrUnregisteredRocksdbPath)
+	db, err := manager.OpenRocksdb(dbDir, 0)
+	require.NoError(t, err)
 	manager.CloseRocksdb(db)
 	err = manager.AttachPartition(dbDir)
 	require.NoError(t, err)
@@ -50,14 +79,9 @@ func testRocksdbManager(t *testing.T, manager metanode.RocksdbManager) {
 	require.EqualValues(t, dbDir, disk)
 }
 
-func TestPerDiskRocksdbManager(t *testing.T) {
-	manager := metanode.NewPerDiskRocksdbManager(&metanode.RocksdbManagerConfig{})
-	testRocksdbManager(t, manager)
-}
-
 func TestPerPartitionRocksdbManager(t *testing.T) {
 	manager := metanode.NewPerPartitionRocksdbManager(&metanode.RocksdbManagerConfig{})
-	testRocksdbManager(t, manager)
+	testPartitionRocksdbManager(t, manager)
 }
 
 func TestParseRocksdbMode(t *testing.T) {

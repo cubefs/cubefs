@@ -988,6 +988,7 @@ type MetaNodeHeartbeatResponse struct {
 	CpuUtil                          float64 `json:"cpuUtil"`
 	ReceivedForbidWriteOpOfProtoVer0 bool
 	RocksDBDiskInfo                  []*MetaNodeRocksdbInfo
+	RocksDBKeyNumMax                 uint64
 }
 
 // LcNodeHeartbeatResponse defines the response to the lc node heartbeat.
@@ -1781,4 +1782,5 @@ type MetaNodeRocksdbInfo struct {
 	UsageRatio     float64
 	Status         int8
 	PartitionCount int
+	KeyNum         uint64
 }

@@ -1051,3 +1051,30 @@ func (m *metadataManager) CheckRocksdbMetaPartition(metaPath string) error {
 
 	return nil
 }
+
+func (m *metadataManager) updateRocksDBKeyNum(rocksdbStats []*proto.MetaNodeRocksdbInfo) error {
+	keyNumSum := make(map[string]uint64)
+	for _, item := range rocksdbStats {
+		keyNumSum[item.Path] = 0
+	}
+
+	m.Range(true, func(id uint64, partition MetaPartition) bool {
+		if partition.GetStoreMode() != proto.StoreModeRocksDb {
+			return true
+		}
+		mConf := partition.GetBaseConfig()
+		if _, ok := keyNumSum[mConf.RocksDBDir]; !ok {
+			log.LogErrorf("[updateRocksDBKeyNum] rocksdb dir(%v) not found", mConf.RocksDBDir)
+			return true
+		}
+		keyNumSum[mConf.RocksDBDir] += uint64(partition.GetInodeTreeLen())
+		keyNumSum[mConf.RocksDBDir] += uint64(partition.GetDentryTreeLen())
+		return true
+	})
+
+	for _, item := range rocksdbStats {
+		item.KeyNum = keyNumSum[item.Path]
+	}
+
+	return nil
+}

@@ -106,6 +106,7 @@ type MetaNode struct {
 	disks              map[string]*diskmon.FsCapMon
 	diskReservedSpace  uint64
 	rocksdbEnableStats bool
+	rocksdbKeyNumMax   uint64
 }
 
 // Start starts up the meta node with the specified configuration.
@@ -711,6 +712,11 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 	rocksdbMode := ParseRocksdbMode(mode)
 	rocksdbEnableStats := cfg.GetBoolWithDefault(cfgRocksdbEnableStats, false)
 	m.rocksdbEnableStats = rocksdbEnableStats
+	rocksdbKeyNumMax := cfg.GetInt64(cfgRocksdbKeyNumMax)
+	if rocksdbKeyNumMax <= 0 {
+		rocksdbKeyNumMax = defaultRocksdbKeyNumMax
+	}
+	m.rocksdbKeyNumMax = uint64(rocksdbKeyNumMax)
 
 	rocksdbModeFile := path.Join(m.metadataDir, RocksdbModeMetaFile)
 	if fileutil.Exist(rocksdbModeFile) {

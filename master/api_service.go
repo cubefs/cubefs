@@ -5335,6 +5335,9 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		CpuUtil:                   metaNode.CpuUtil.Load(),
 		MemoryMpCount:             memoryMpCount,
 		RocksdbMpCount:            rocksdbMpCount,
+		RocksdbDisks:              metaNode.RocksdbDisks,
+		RocksdbDiskThreshold:      metaNode.RocksdbDiskThreshold,
+		RocksdbKeyNumMax:          metaNode.RocksdbKeyNumMax,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }

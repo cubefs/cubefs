@@ -58,6 +58,7 @@ type MetaNode struct {
 	RocksdbDisks                     []*proto.MetaNodeRocksdbInfo
 	RocksdbDiskThreshold             float32
 	RocksdbRdOnly                    bool
+	RocksdbKeyNumMax                 uint64
 }
 
 func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, clusterID string) (node *MetaNode) {
@@ -372,6 +373,7 @@ func (metaNode *MetaNode) updateRocksdbDisks(resp *proto.MetaNodeHeartbeatRespon
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.RocksdbDisks = resp.RocksDBDiskInfo
+	metaNode.RocksdbKeyNumMax = resp.RocksDBKeyNumMax
 }
 
 func (metaNode *MetaNode) GetRocksdbAndMemoryCount() (rocksdbCount, memoryCount uint64) {
@@ -395,7 +397,8 @@ func (metaNode *MetaNode) IsRocksdbWriteAble() (ok bool) {
 		systemMemoryFreeSize > gConfig.metaNodeReservedMem &&
 		metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
 		!metaNode.reachesRocksdbDisksThreshold() &&
-		!metaNode.systemMemoryReachesThreshold() {
+		!metaNode.systemMemoryReachesThreshold() &&
+		metaNode.rocksdbDiskKeyNumUnderMax() {
 		ok = true
 	}
 
@@ -407,4 +410,18 @@ func (metaNode *MetaNode) systemMemoryReachesThreshold() bool {
 		metaNode.Threshold = defaultMetaPartitionMemUsageThreshold
 	}
 	return float32(float64(metaNode.NodeMemUsed)/float64(metaNode.NodeMemTotal)) > metaNode.Threshold
+}
+
+func (metaNode *MetaNode) rocksdbDiskKeyNumUnderMax() bool {
+	if metaNode.RocksdbKeyNumMax <= 0 {
+		return true
+	}
+
+	for _, disk := range metaNode.RocksdbDisks {
+		if disk.KeyNum < metaNode.RocksdbKeyNumMax {
+			return true
+		}
+	}
+
+	return false
 }

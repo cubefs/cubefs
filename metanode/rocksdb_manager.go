@@ -211,7 +211,7 @@ func (r *PerDiskRocksdbManager) GetPartitionCount(dbPath string) (count int, err
 		err = ErrUnregisteredRocksdbPath
 		return
 	}
-	count = handle.partitions
+	count = int(handle.rc)
 	return
 }
 
