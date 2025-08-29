@@ -394,8 +394,12 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 		}
 
 		// write header+data+footer; header+data, data..., data+footer
-		if _, err = tw.Write(buf); err != nil {
+		n, err = tw.Write(buf)
+		if err != nil {
 			return err
+		}
+		if n != len(buf) {
+			return bloberr.ErrInternal
 		}
 	}
 

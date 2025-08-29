@@ -64,6 +64,7 @@ var (
 	ErrInvalidParam   = Error(CodeInvalidParam)
 	ErrAlreadyExist   = Error(CodeAlreadyExist)
 	ErrOutOfLimit     = Error(CodeOutOfLimit)
+	ErrInternal       = Error(CodeInternal)
 	ErrOverload       = Error(CodeOverload)
 	ErrPathNotExist   = Error(CodePathNotExist)
 	ErrPathNotEmpty   = Error(CodePathNotEmpty)
