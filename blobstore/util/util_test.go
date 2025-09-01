@@ -89,6 +89,51 @@ func TestDuration(t *testing.T) {
 	}
 }
 
+func TestUtilSize(t *testing.T) {
+	{
+		s := Size(1000)
+		b, err := json.Marshal(s)
+		require.NoError(t, err)
+		is := ISize(1000)
+		ib, err := json.Marshal(is)
+		require.NoError(t, err)
+		exp := struct {
+			V  Size
+			IV ISize
+		}{}
+		require.NoError(t, json.Unmarshal([]byte(`{"V":`+string(b)+`,"IV":`+string(ib)+`}`), &exp))
+		require.Equal(t, s, exp.V)
+		require.Equal(t, is, exp.IV)
+		require.Equal(t, uint64(exp.V), uint64(exp.IV))
+	}
+	{
+		var s Size
+		require.Error(t, json.Unmarshal([]byte("{"), &s))
+		require.Error(t, json.Unmarshal([]byte("{}"), &s))
+		require.NoError(t, json.Unmarshal([]byte("2e9"), &s))
+		require.Equal(t, uint64(2e9), uint64(s))
+		require.Error(t, json.Unmarshal([]byte(`"1000,000xxx"`), &s))
+		require.NoError(t, json.Unmarshal([]byte(`"32MB"`), &s))
+		require.Equal(t, uint64(32*1000*1000), uint64(s))
+		require.NoError(t, json.Unmarshal([]byte(`"32mib"`), &s))
+		require.Equal(t, uint64(32<<20), uint64(s))
+	}
+	{
+		var s ISize
+		require.Error(t, json.Unmarshal([]byte("{"), &s))
+		require.Error(t, json.Unmarshal([]byte("{}"), &s))
+		require.NoError(t, json.Unmarshal([]byte("2e9"), &s))
+		require.Equal(t, uint64(2e9), uint64(s))
+		require.Error(t, json.Unmarshal([]byte(`"1000,000xxx"`), &s))
+		require.NoError(t, json.Unmarshal([]byte(`"32MB"`), &s))
+		require.Equal(t, uint64(32*1000*1000), uint64(s))
+		require.NoError(t, json.Unmarshal([]byte(`"32mib"`), &s))
+		require.Equal(t, uint64(32<<20), uint64(s))
+		require.NoError(t, json.Unmarshal([]byte(`"23,000GiB"`), &s))
+		require.Equal(t, uint64((23000)<<30), uint64(s))
+	}
+}
+
 func TestDiscardReader(t *testing.T) {
 	buff := make([]byte, 1<<10)
 	r := DiscardReader(-1)

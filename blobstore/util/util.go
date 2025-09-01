@@ -25,6 +25,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/dustin/go-humanize"
 	"github.com/google/uuid"
 
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
@@ -108,8 +109,61 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		}
 		return nil
 	default:
-		return errors.New("invalid duration")
+		return fmt.Errorf("invalid duration: %s", string(b))
 	}
+}
+
+func parseBytes(b []byte) (uint64, error) {
+	var v interface{}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return 0, err
+	}
+	switch value := v.(type) {
+	case float64:
+		return uint64(value), nil
+	case string:
+		var val uint64
+		var err error
+		val, err = humanize.ParseBytes(value)
+		if err != nil {
+			return 0, err
+		}
+		return val, nil
+	default:
+		return 0, fmt.Errorf("invalid bytes: %s", string(b))
+	}
+}
+
+// ISize json IEC Sizes binary (base-2) 1024.
+type ISize uint64
+
+func (s ISize) MarshalJSON() ([]byte, error) {
+	return json.Marshal(humanize.IBytes(uint64(s)))
+}
+
+func (s *ISize) UnmarshalJSON(b []byte) error {
+	val, err := parseBytes(b)
+	if err != nil {
+		return err
+	}
+	*s = ISize(val)
+	return nil
+}
+
+// Size json SI Sizes decimal (base-10) 1000.
+type Size uint64
+
+func (s Size) MarshalJSON() ([]byte, error) {
+	return json.Marshal(humanize.Bytes(uint64(s)))
+}
+
+func (s *Size) UnmarshalJSON(b []byte) error {
+	val, err := parseBytes(b)
+	if err != nil {
+		return err
+	}
+	*s = Size(val)
+	return nil
 }
 
 func DiscardReader(n int) io.Reader { return &discardReader{n: n} }
