@@ -483,7 +483,7 @@ func TestGetBytesFromDisk(t *testing.T) {
 	require.NoError(t, err)
 	defer db.CloseDb()
 
-	// 写入一条数据
+	// Write a piece of data
 	key := []byte("test-key")
 	value1 := []byte("persist-to-disk")
 	err = db.Put(key, value1)
@@ -496,7 +496,7 @@ func TestGetBytesFromDisk(t *testing.T) {
 	err = db.Put(key, value2)
 	require.NoError(t, err)
 
-	// 用 GetBytesFromDisk 读取
+	// Use GetBytesFromDisk to read
 	got, err := db.GetBytesFromDisk(key)
 	require.NoError(t, err)
 	require.Equal(t, value1, got)
@@ -505,7 +505,7 @@ func TestGetBytesFromDisk(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, value2, got)
 
-	// 读取不存在的 key
+	// Read a non-existent key
 	got, err = db.GetBytesFromDisk([]byte("not-exist-key"))
 	require.NoError(t, err)
 	require.Equal(t, 0, len(got))

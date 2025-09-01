@@ -29,29 +29,29 @@ type RocksdbTree struct {
 	PartitionId    uint64
 }
 
-// CleanRecord 记录清理任务的信息
+// CleanRecord records information about a cleanup task
 type CleanRecord struct {
 	PartitionId uint64    `json:"partition_id"`
 	RocksDBDir  string    `json:"rocks_db_dir"`
 	RootDir     string    `json:"root_dir"`
 	CleanTime   time.Time `json:"clean_time"`
 	Status      string    `json:"status"`          // "pending", "success" or "failed"
-	Error       string    `json:"error,omitempty"` // 如果失败，记录错误信息
+	Error       string    `json:"error,omitempty"` // If failed, record error information
 }
 
-// RocksDBCleaner 管理RocksDB的异步清理任务
+// RocksDBCleaner manages asynchronous cleanup tasks for RocksDB
 type RocksDBCleaner struct {
 	cleanTasks chan *CleanRecord
 	wg         sync.WaitGroup
 	stopC      chan struct{}
-	rootDir    string // 用于存储清理记录的根目录
+	rootDir    string // Root directory for storing cleanup records
 	rocksdbMgr RocksdbManager
-	// 记录清理历史
+	// Record cleanup history
 	historyLock sync.RWMutex
 	history     map[uint64]*CleanRecord // key: PartitionId
 }
 
-// NewRocksDBCleaner 创建一个新的RocksDB清理器
+// NewRocksDBCleaner creates a new RocksDB cleaner
 func NewRocksDBCleaner(rootDir string, rocksdbMgr RocksdbManager) *RocksDBCleaner {
 	cleaner := &RocksDBCleaner{
 		cleanTasks: make(chan *CleanRecord, 1000),
@@ -61,7 +61,7 @@ func NewRocksDBCleaner(rootDir string, rocksdbMgr RocksdbManager) *RocksDBCleane
 		rocksdbMgr: rocksdbMgr,
 	}
 
-	// 创建清理记录目录
+	// Create cleanup record directory
 	recordDir := path.Join(rootDir, cleanRecordDir)
 	if err := os.MkdirAll(recordDir, 0o755); err != nil {
 		log.LogErrorf("RocksDBCleaner: failed to create clean record directory: %s", err)
@@ -70,14 +70,14 @@ func NewRocksDBCleaner(rootDir string, rocksdbMgr RocksdbManager) *RocksDBCleane
 	return cleaner
 }
 
-// GetCleanHistory 获取指定分区的清理历史
+// GetCleanHistory gets the cleanup history for the specified partition
 func (c *RocksDBCleaner) GetCleanHistory(partitionId uint64) *CleanRecord {
 	c.historyLock.RLock()
 	defer c.historyLock.RUnlock()
 	return c.history[partitionId]
 }
 
-// GetAllCleanHistory 获取所有分区的清理历史
+// GetAllCleanHistory gets the cleanup history for all partitions
 func (c *RocksDBCleaner) GetAllCleanHistory() []*CleanRecord {
 	c.historyLock.RLock()
 	defer c.historyLock.RUnlock()
@@ -89,12 +89,12 @@ func (c *RocksDBCleaner) GetAllCleanHistory() []*CleanRecord {
 	return records
 }
 
-// getRecordPath 获取清理记录文件的路径
+// getRecordPath gets the file path of the cleanup record
 func (c *RocksDBCleaner) getRecordPath(partitionId uint64) string {
 	return path.Join(c.rootDir, cleanRecordDir, fmt.Sprintf("clean_record_%d.json", partitionId))
 }
 
-// loadExistingRecords 加载已存在的清理记录
+// loadExistingRecords loads existing cleanup records
 func (c *RocksDBCleaner) loadExistingRecords() {
 	recordDir := path.Join(c.rootDir, cleanRecordDir)
 	files, err := os.ReadDir(recordDir)
@@ -139,7 +139,7 @@ func (c *RocksDBCleaner) loadExistingRecords() {
 	}()
 }
 
-// saveRecord 保存清理记录到磁盘
+// saveRecord saves the cleanup record to disk
 func (c *RocksDBCleaner) saveRecord(record *CleanRecord) error {
 	data, err := json.Marshal(record)
 	if err != nil {
@@ -150,7 +150,7 @@ func (c *RocksDBCleaner) saveRecord(record *CleanRecord) error {
 	return os.WriteFile(recordPath, data, 0o644)
 }
 
-// deleteRecord 从磁盘删除清理记录
+// deleteRecord deletes the cleanup record from disk
 func (c *RocksDBCleaner) deleteRecord(partitionId uint64) error {
 	recordPath := c.getRecordPath(partitionId)
 	err := os.Remove(recordPath)
@@ -160,22 +160,22 @@ func (c *RocksDBCleaner) deleteRecord(partitionId uint64) error {
 	return nil
 }
 
-// start 启动清理工作协程
+// start starts the cleanup worker goroutine
 func (c *RocksDBCleaner) start() {
-	// 加载已有的清理记录
+	// Load existing cleanup records
 	c.loadExistingRecords()
 
 	c.wg.Add(1)
 	go c.cleanWorker()
 }
 
-// Stop 停止清理工作
+// Stop stops the cleanup worker
 func (c *RocksDBCleaner) Stop() {
 	close(c.stopC)
 	c.wg.Wait()
 }
 
-// AddTask 添加一个清理任务
+// AddTask adds a cleanup task
 func (c *RocksDBCleaner) AddTask(mp *metaPartition) error {
 	if c.IsCleanPending(mp.config.PartitionId) {
 		return fmt.Errorf("partition [%d] is cleaning", mp.config.PartitionId)
@@ -185,7 +185,7 @@ func (c *RocksDBCleaner) AddTask(mp *metaPartition) error {
 	log.LogInfof("RocksDBCleaner: start cleaning partition [%d], rocksdb dir [%s]",
 		mp.config.PartitionId, mp.config.RocksDBDir)
 
-	// 创建并保存清理记录
+	// Create and save cleanup record
 	record := &CleanRecord{
 		PartitionId: mp.config.PartitionId,
 		RocksDBDir:  mp.config.RocksDBDir,
@@ -209,7 +209,7 @@ func (c *RocksDBCleaner) AddTask(mp *metaPartition) error {
 	return nil
 }
 
-// cleanWorker 执行清理工作的协程
+// cleanWorker is the goroutine that performs cleanup work
 func (c *RocksDBCleaner) cleanWorker() {
 	defer c.wg.Done()
 
@@ -227,7 +227,7 @@ func (c *RocksDBCleaner) cleanWorker() {
 	}
 }
 
-// IsCleanPending 检查指定的分区是否正在清理中
+// IsCleanPending checks if the specified partition is being cleaned
 func (c *RocksDBCleaner) IsCleanPending(partitionId uint64) bool {
 	c.historyLock.RLock()
 	defer c.historyLock.RUnlock()
@@ -236,7 +236,7 @@ func (c *RocksDBCleaner) IsCleanPending(partitionId uint64) bool {
 	return exists
 }
 
-// GetCleanStatus 获取分区的清理状态，如果分区不在清理历史中返回空字符串
+// GetCleanStatus gets the cleanup status of the partition, returns empty string if not in history
 func (c *RocksDBCleaner) GetCleanStatus(partitionId uint64) string {
 	c.historyLock.RLock()
 	defer c.historyLock.RUnlock()
@@ -258,7 +258,7 @@ func (c *RocksDBCleaner) initRocksdbTree(record *CleanRecord) (*RocksdbTree, err
 		PartitionId:    record.PartitionId,
 	}
 
-	// 初始化RocksDB
+	// Initialize RocksDB
 	rocksdbTree.db, err = rocksdbTree.rocksdbManager.OpenRocksdb(rocksdbTree.RocksDBDir, rocksdbTree.PartitionId)
 	if err != nil {
 		log.LogErrorf("action[initTempMetaPartition] mp(%v) failed to open rocksdb: %v", rocksdbTree.PartitionId, err)
@@ -371,7 +371,7 @@ func (c *RocksDBCleaner) DoCleanRocksdbData(record *CleanRecord) error {
 
 	defer c.closeRocksdbTree(rocksdbTree)
 
-	// 执行清理操作
+	// Perform cleanup operation
 	err = c.cleanRocksdbTree(rocksdbTree)
 	if err != nil {
 		record.Status = "failed"
@@ -395,7 +395,7 @@ func (c *RocksDBCleaner) DoCleanRocksdbData(record *CleanRecord) error {
 		err = nil
 	}
 
-	// 清理成功，删除记录
+	// Cleanup succeeded, delete record
 	c.historyLock.Lock()
 	delete(c.history, record.PartitionId)
 	c.historyLock.Unlock()

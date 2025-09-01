@@ -11,7 +11,7 @@ import (
 )
 
 func TestGetMigrateDestAddr(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	param := &GetMigrateAddrParam{
 		ZoneName:   "testZone",
@@ -36,10 +36,10 @@ func TestGetMigrateDestAddr(t *testing.T) {
 		},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	find, address := GetMigrateDestAddr(param)
 
-	// 验证结果
+	// Verify the result
 	if !find {
 		t.Errorf("Expected to find addresses, but got find=false")
 	}
@@ -56,7 +56,7 @@ func TestGetMigrateDestAddr(t *testing.T) {
 }
 
 func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	param := &GetMigrateAddrParam{
 		ZoneName:   "testZone",
@@ -90,10 +90,10 @@ func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
 		},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	find, address := GetMigrateAddrExcludeNodeSet(param)
 
-	// 验证结果
+	// Verify the result
 	if !find {
 		t.Errorf("Expected to find addresses, but got find=false")
 	}
@@ -108,7 +108,7 @@ func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
 		}
 	}
 
-	// 验证地址是否来自不同的 NodeSet
+	// Verify if the address comes from a different NodeSet
 	for _, addr := range address {
 		if addr.DstNodeSetId == param.NodeSetID {
 			t.Errorf("Address from excluded NodeSet found in results: %s", addr.Destination)
@@ -117,7 +117,7 @@ func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
 }
 
 func TestGetMigrateAddrExcludeZone(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	param := &GetMigrateAddrParam{
 		ZoneName:   "testZone1",
@@ -157,10 +157,10 @@ func TestGetMigrateAddrExcludeZone(t *testing.T) {
 		},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	find, address := GetMigrateAddrExcludeZone(param)
 
-	// 验证结果
+	// Verify the result
 	if !find {
 		t.Errorf("Expected to find addresses, but got find=false")
 	}
@@ -180,7 +180,7 @@ func TestGetMigrateAddrExcludeZone(t *testing.T) {
 }
 
 func TestSrcIsPlaned(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	mpPlan := &proto.MetaBalancePlan{
 		Plan: []*proto.MrBalanceInfo{
 			{Source: "192.168.1.1", SrcMemSize: 2048, SrcNodeSetId: 1, SrcZoneName: "testZone1"},
@@ -189,7 +189,7 @@ func TestSrcIsPlaned(t *testing.T) {
 		},
 	}
 
-	// 测试用例1: 存在的源地址
+	// Test case 1: existing source address
 	srcAddr := "192.168.1.2"
 	index, bExist := SrcIsPlaned(mpPlan, srcAddr)
 	if !bExist {
@@ -199,7 +199,7 @@ func TestSrcIsPlaned(t *testing.T) {
 		t.Errorf("Expected index 1 for source %s, but got %d", srcAddr, index)
 	}
 
-	// 测试用例2: 不存在的源地址
+	// Test case 2: non-existent source address
 	srcAddr = "192.168.1.4"
 	index, bExist = SrcIsPlaned(mpPlan, srcAddr)
 	if bExist {
@@ -209,7 +209,7 @@ func TestSrcIsPlaned(t *testing.T) {
 		t.Errorf("Expected index -1 for non-existent source %s, but got %d", srcAddr, index)
 	}
 
-	// 测试用例3: 空的 Plan 列表
+	// Test case 3: empty Plan list
 	mpPlanEmpty := &proto.MetaBalancePlan{
 		Plan: []*proto.MrBalanceInfo{},
 	}
@@ -224,7 +224,7 @@ func TestSrcIsPlaned(t *testing.T) {
 }
 
 func TestUpdateLowPressureNodeTopo(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
@@ -256,14 +256,14 @@ func TestUpdateLowPressureNodeTopo(t *testing.T) {
 		DstZoneName:  "testZone2",
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	err := UpdateLowPressureNodeTopo(migratePlan, newPlan)
-	// 验证结果
+	// Verify the result
 	if err != nil {
 		t.Errorf("Expected no error, but got: %s", err.Error())
 	}
 
-	// 验证 metaNode 的更新
+	// Verify metaNode update
 	zone, ok := migratePlan.Low["testZone2"]
 	if !ok {
 		t.Errorf("Expected zone testZone2 to exist, but it does not")
@@ -291,7 +291,7 @@ func TestUpdateLowPressureNodeTopo(t *testing.T) {
 		t.Errorf("Expected meta node 4 Ratio to be %f, but got %f", float64(metaNode.Used)/float64(metaNode.Total), metaNode.Ratio)
 	}
 
-	// 验证 metaNode 是否被删除
+	// Verify if metaNode is deleted
 	if metaNode.Ratio >= gConfig.metaNodeMemMidPer {
 		if _, exists := nodeSet.MetaNodes[metaNode.ID]; exists {
 			t.Errorf("Expected meta node 4 to be deleted, but it still exists")
@@ -303,7 +303,7 @@ func TestUpdateLowPressureNodeTopo(t *testing.T) {
 }
 
 func TestUpdateLowPressureNodeTopo_ZoneNotFound(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{},
 	}
@@ -319,9 +319,9 @@ func TestUpdateLowPressureNodeTopo_ZoneNotFound(t *testing.T) {
 		DstZoneName:  "testZone2",
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	err := UpdateLowPressureNodeTopo(migratePlan, newPlan)
-	// 验证结果
+	// Verify the result
 	if err == nil {
 		t.Errorf("Expected error, but got nil")
 	}
@@ -333,7 +333,7 @@ func TestUpdateLowPressureNodeTopo_ZoneNotFound(t *testing.T) {
 }
 
 func TestUpdateLowPressureNodeTopo_NodeSetNotFound(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"testZone2": {
@@ -354,9 +354,9 @@ func TestUpdateLowPressureNodeTopo_NodeSetNotFound(t *testing.T) {
 		DstZoneName:  "testZone2",
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	err := UpdateLowPressureNodeTopo(migratePlan, newPlan)
-	// 验证结果
+	// Verify the result
 	if err == nil {
 		t.Errorf("Expected error, but got nil")
 	}
@@ -368,7 +368,7 @@ func TestUpdateLowPressureNodeTopo_NodeSetNotFound(t *testing.T) {
 }
 
 func TestUpdateLowPressureNodeTopo_MetaNodeNotFound(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"testZone2": {
@@ -395,9 +395,9 @@ func TestUpdateLowPressureNodeTopo_MetaNodeNotFound(t *testing.T) {
 		DstZoneName:  "testZone2",
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	err := UpdateLowPressureNodeTopo(migratePlan, newPlan)
-	// 验证结果
+	// Verify the result
 	if err == nil {
 		t.Errorf("Expected error, but got nil")
 	}
@@ -409,7 +409,7 @@ func TestUpdateLowPressureNodeTopo_MetaNodeNotFound(t *testing.T) {
 }
 
 func TestFillExcludeAddrIntoGetParam(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	mpPlan := &proto.MetaBalancePlan{
 		Original: []*proto.MrBalanceInfo{
 			{Source: "192.168.1.1", SrcMemSize: 2048, SrcNodeSetId: 1, SrcZoneName: "testZone1"},
@@ -425,10 +425,10 @@ func TestFillExcludeAddrIntoGetParam(t *testing.T) {
 		Excludes: []string{},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 
-	// 验证结果
+	// Verify the result
 	expectedExcludes := []string{
 		"192.168.1.1",
 		"192.168.1.2",
@@ -448,7 +448,7 @@ func TestFillExcludeAddrIntoGetParam(t *testing.T) {
 }
 
 func TestFillExcludeAddrIntoGetParam_EmptyOriginal(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	mpPlan := &proto.MetaBalancePlan{
 		Original: []*proto.MrBalanceInfo{},
 		Plan: []*proto.MrBalanceInfo{
@@ -461,10 +461,10 @@ func TestFillExcludeAddrIntoGetParam_EmptyOriginal(t *testing.T) {
 		Excludes: []string{},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 
-	// 验证结果
+	// Verify the result
 	expectedExcludes := []string{
 		"192.168.1.4",
 		"192.168.1.5",
@@ -482,7 +482,7 @@ func TestFillExcludeAddrIntoGetParam_EmptyOriginal(t *testing.T) {
 }
 
 func TestFillExcludeAddrIntoGetParam_EmptyPlan(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	mpPlan := &proto.MetaBalancePlan{
 		Original: []*proto.MrBalanceInfo{
 			{Source: "192.168.1.1", SrcMemSize: 2048, SrcNodeSetId: 1, SrcZoneName: "testZone1"},
@@ -495,10 +495,10 @@ func TestFillExcludeAddrIntoGetParam_EmptyPlan(t *testing.T) {
 		Excludes: []string{},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 
-	// 验证结果
+	// Verify the result
 	expectedExcludes := []string{
 		"192.168.1.1",
 		"192.168.1.2",
@@ -516,7 +516,7 @@ func TestFillExcludeAddrIntoGetParam_EmptyPlan(t *testing.T) {
 }
 
 func TestFillExcludeAddrIntoGetParam_EmptyBoth(t *testing.T) {
-	// 构造测试参数
+	// Construct test parameters
 	mpPlan := &proto.MetaBalancePlan{
 		Original: []*proto.MrBalanceInfo{},
 		Plan:     []*proto.MrBalanceInfo{},
@@ -526,10 +526,10 @@ func TestFillExcludeAddrIntoGetParam_EmptyBoth(t *testing.T) {
 		Excludes: []string{},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 
-	// 验证结果
+	// Verify the result
 	expectedExcludes := []string{}
 
 	if len(getParam.Excludes) != len(expectedExcludes) {
@@ -544,7 +544,7 @@ func TestFillExcludeAddrIntoGetParam_EmptyBoth(t *testing.T) {
 }
 
 func TestMigratePlanOverLoadToDest(t *testing.T) {
-	// 创建测试数据
+	// Create test data
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"testZone": {
@@ -573,16 +573,16 @@ func TestMigratePlanOverLoadToDest(t *testing.T) {
 		{Destination: "192.168.2.2", DstNodeSetId: 1, DstId: 2, DstZoneName: "testZone"},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	err := MigratePlanOverLoadToDest(migratePlan, mpPlan, dests, false)
-	// 验证结果
+	// Verify the result
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
 	}
 }
 
 func TestMigratePlanOriginalToDest(t *testing.T) {
-	// 创建测试数据
+	// Create test data
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"testZone": {
@@ -611,16 +611,16 @@ func TestMigratePlanOriginalToDest(t *testing.T) {
 		{Destination: "192.168.2.2", DstNodeSetId: 1, DstId: 2, DstZoneName: "testZone"},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	err := MigratePlanOriginalToDest(migratePlan, mpPlan, dests, false)
-	// 验证结果
+	// Verify the result
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
 	}
 }
 
 func TestFillMigratePlanArray(t *testing.T) {
-	// 创建测试数据
+	// Create test data
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"testZone": {
@@ -652,14 +652,14 @@ func TestFillMigratePlanArray(t *testing.T) {
 		{Destination: "192.168.2.2", DstId: 2, DstNodeSetId: 1, DstZoneName: "testZone"},
 	}
 
-	// 调用被测试函数
+	// Call the function under test
 	err := FillMigratePlanArray(migratePlan, mpPlan, srcNode, dests, false)
-	// 验证结果
+	// Verify the result
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
 	}
 
-	// 验证 mpPlan.Plan 的内容
+	// Verify mpPlan.Plan content
 	expectedPlan := []*proto.MrBalanceInfo{
 		{Source: "192.168.1.1", Destination: "192.168.2.1", DstId: 1, DstNodeSetId: 1, DstZoneName: "testZone", SrcMemSize: 1024, SrcNodeSetId: 1, SrcZoneName: "zone1", Status: PlanTaskInit},
 		{Source: "192.168.1.2", Destination: "192.168.2.2", DstId: 2, DstNodeSetId: 1, DstZoneName: "testZone", SrcMemSize: 2048, SrcNodeSetId: 2, SrcZoneName: "zone2", Status: PlanTaskInit},
@@ -1271,7 +1271,7 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 
 func TestGetLowMemPressureTopology(t *testing.T) {
 	size10GB := uint64(10 * 1024 * 1024 * 1024)
-	// 创建一个Cluster实例
+	// Create a Cluster instance
 	cluster := &Cluster{
 		ClusterTopoSubItem: ClusterTopoSubItem{
 			t: &topology{
@@ -1299,13 +1299,13 @@ func TestGetLowMemPressureTopology(t *testing.T) {
 		RocksdbLow: make(map[string]*proto.ZonePressureView),
 	}
 
-	// 调用被测试的方法
+	// Call the function under test
 	err := cluster.GetLowMemPressureTopology(migratePlan)
 	if err != nil {
 		t.Errorf("Expect no error. but get: %s", err.Error())
 	}
 
-	// 验证结果
+	// Verify the result
 	expectedZoneView := &proto.ZonePressureView{
 		ZoneName: "zone1",
 		NodeSet: map[uint64]*proto.NodeSetPressureView{
@@ -1330,7 +1330,7 @@ func TestGetLowMemPressureTopology(t *testing.T) {
 }
 
 func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
-	// 测试用例1: 所有状态都是PlanTaskInit
+	// Test case 1: all statuses are PlanTaskInit
 	mpPlan1 := &proto.MetaBalancePlan{
 		Plan: []*proto.MrBalanceInfo{
 			{Status: PlanTaskInit},
@@ -1341,18 +1341,18 @@ func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
 		t.Errorf("Expected false, got true")
 	}
 
-	// 测试用例2: 存在一个状态不是PlanTaskInit
+	// Test case 2: one status is not PlanTaskInit
 	mpPlan2 := &proto.MetaBalancePlan{
 		Plan: []*proto.MrBalanceInfo{
 			{Status: PlanTaskInit},
-			{Status: PlanTaskRun}, // 假设PlanTaskRunning是一个存在的状态
+			{Status: PlanTaskRun}, // Assuming PlanTaskRunning is a valid status
 		},
 	}
 	if !VerifyMetaReplicaPlanNotAllInit(mpPlan2) {
 		t.Errorf("Expected true, got false")
 	}
 
-	// 测试用例3: 空的Plan切片
+	// Test case 3: empty Plan slice
 	mpPlan3 := &proto.MetaBalancePlan{
 		Plan: []*proto.MrBalanceInfo{},
 	}
@@ -1363,7 +1363,7 @@ func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
 
 func TestVerifyMetaNodeExceedMemMid(t *testing.T) {
 	size10GB := uint64(10 * 1024 * 1024 * 1024)
-	// 测试用例1: Ratio 大于等于 metaNodeMemMidPer
+	// Test case 1: Ratio greater than or equal to metaNodeMemMidPer
 	cluster := &Cluster{}
 	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8, IsActive: true, MaxMemAvailWeight: size10GB})
 	cluster.metaNodes.Store("node2", &MetaNode{ID: 102, Ratio: 0.5, IsActive: true, MaxMemAvailWeight: size10GB})
@@ -1373,13 +1373,13 @@ func TestVerifyMetaNodeExceedMemMid(t *testing.T) {
 		t.Errorf("Expected true, got %v, err: %v", result1, err1)
 	}
 
-	// 测试用例2: Ratio 小于 metaNodeMemMidPer
+	// Test case 2: Ratio less than metaNodeMemMidPer
 	result2, err2 := cluster.VerifyMetaNodeExceedMemMid("node2", proto.StoreModeMem)
 	if err2 != nil || result2 {
 		t.Errorf("Expected false, got %v, err: %v", result2, err2)
 	}
 
-	// 测试用例3: 获取metaNode失败
+	// Test case 3: failed to get metaNode
 	result3, err3 := cluster.VerifyMetaNodeExceedMemMid("node3", proto.StoreModeMem)
 	if err3 == nil || result3 {
 		t.Errorf("Expected error, got %v, result: %v", err3, result3)
@@ -1388,7 +1388,7 @@ func TestVerifyMetaNodeExceedMemMid(t *testing.T) {
 
 func TestUpdateMigrateDestination(t *testing.T) {
 	size10GB := uint64(10 * 1024 * 1024 * 1024)
-	// 测试用例1: 所有方法成功
+	// Test case 1: all methods succeed
 	totalSize := uint64(metaNodeReserveMemorySize * 2)
 	cluster := &Cluster{
 		ClusterTopoSubItem: ClusterTopoSubItem{
@@ -1443,7 +1443,7 @@ func TestUpdateMigrateDestination(t *testing.T) {
 		t.Errorf("Expected no error, got %v", err1)
 	}
 
-	// 测试用例3: FindMigrateDestRetainZone 失败
+	// Test case 3: FindMigrateDestRetainZone fails
 	mpPlan = &proto.MetaBalancePlan{
 		CrossZone: false,
 		Original: []*proto.MrBalanceInfo{

@@ -674,7 +674,7 @@ func parseModifyMetaPartitionStoreModeParams(r *http.Request) (name string, star
 			return
 		}
 	} else {
-		mode = proto.StoreModeRocksDb // 默认迁移到RocksDB模式
+		mode = proto.StoreModeRocksDb // Default to migrate to RocksDB mode
 	}
 
 	count = 0

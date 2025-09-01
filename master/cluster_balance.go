@@ -948,7 +948,7 @@ func MigratePlanOriginalToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.Met
 func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto.MrBalanceInfo) {
 	find = false
 
-	// 根据存储模式选择对应的拓扑
+	// Select the corresponding topology according to the storage mode
 	var zone *proto.ZonePressureView
 	var ok bool
 
@@ -1137,7 +1137,6 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		c.PlanRun = false
 	}()
 
-	// 新增并发处理
 	concurrency := gConfig.mpMigrateThreads
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
@@ -1182,7 +1181,6 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	}
 }
 
-// 拆分mpPlan循环内容
 func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan) (err error) {
 	if VerifyMetaReplicaPlanNotAllInit(mpPlan) {
 		return nil
@@ -1234,7 +1232,6 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 	return nil
 }
 
-// 拆分mrPlan循环内容
 func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, mp *MetaPartition, mrPlan *proto.MrBalanceInfo) (err error) {
 	// Update raft storage.
 	mrPlan.Status = PlanTaskRun

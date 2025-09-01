@@ -9,15 +9,15 @@ func TestInodeKeyEncodingCompatibility(t *testing.T) {
 	partitionId := uint64(12345)
 	inodeId := uint64(67890)
 
-	// 构造 RocksTree
+	// Construct RocksTree
 	tree := &RocksTree{partitionId: partitionId}
 
-	// 方式1：GetRocksdbNormalKey + inodeEncodingKey
+	// Method 1: GetRocksdbNormalKey + inodeEncodingKey
 	keyBuf := tree.GetRocksdbNormalKey(byte(InodeTable))
 	defer PutRocksdbNormalKey(keyBuf)
 	key1 := inodeEncodingKey(keyBuf, inodeId)
 
-	// 方式2：inodeEncodingKeyV0 + warpKeyV0
+	// Method 2: inodeEncodingKeyV0 + warpKeyV0
 	keyV0 := inodeEncodingKeyV0(inodeId)
 	key2 := tree.warpKeyV0(keyV0)
 
@@ -31,15 +31,15 @@ func TestDentryKeyEncodingCompatibility(t *testing.T) {
 	parentId := uint64(67890)
 	name := "test_dentry"
 
-	// 构造 RocksTree
+	// Construct RocksTree
 	tree := &RocksTree{partitionId: partitionId}
 
-	// 方式1：GetRocksdbLongKey + dentryEncodingKey
+	// Method 1: GetRocksdbLongKey + dentryEncodingKey
 	keyBuf := tree.GetRocksdbLongKey(byte(DentryTable))
 	defer PutRocksdbLongKey(keyBuf)
 	key1 := dentryEncodingKey(keyBuf, parentId, name)
 
-	// 方式2：dentryEncodingKeyV0 + warpKeyV0
+	// Method 2: dentryEncodingKeyV0 + warpKeyV0
 	keyV0 := dentryEncodingKeyV0(parentId, name)
 	key2 := tree.warpKeyV0(keyV0)
 
