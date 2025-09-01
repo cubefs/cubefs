@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/bytespool"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
@@ -40,6 +41,7 @@ const (
 	HeaderSize         = 40
 	SourceTypeDefault  = ""
 	SourceTypeBlock    = "blocks"
+	blockRetries       = 3
 )
 
 type CacheBlock struct {
@@ -144,6 +146,42 @@ func (cb *CacheBlock) GetOrOpenFileHandler() (file *os.File, err error) {
 	return file, nil
 }
 
+func (cb *CacheBlock) readWithRetry(data []byte, offset int64, file *os.File) (n int, err error) {
+	for retry := 0; retry < blockRetries; retry++ {
+		if n, err = file.ReadAt(data, offset); err == nil {
+			return n, nil
+		}
+		if strings.Contains(err.Error(), "file already closed") {
+			log.LogInfof("action[readWithRetry] file already closed, retry %d/%d, blockKey:%v, err:%v",
+				retry+1, blockRetries, cb.blockKey, err)
+			if file, err = cb.GetOrOpenFileHandler(); err != nil {
+				return 0, err
+			}
+			continue
+		}
+		return n, err
+	}
+	return n, fmt.Errorf("readWithRetry: key %v failed after %d retries, last error: %v", cb.blockKey, blockRetries, err)
+}
+
+func (cb *CacheBlock) writeWithRetry(data []byte, offset int64, file *os.File) (n int, err error) {
+	for retry := 0; retry < blockRetries; retry++ {
+		if n, err = file.WriteAt(data, offset); err == nil {
+			return n, nil
+		}
+		if strings.Contains(err.Error(), "file already closed") {
+			log.LogInfof("action[writeWithRetry] file already closed, retry %d/%d, blockKey:%v, err:%v",
+				retry+1, blockRetries, cb.blockKey, err)
+			if file, err = cb.GetOrOpenFileHandler(); err != nil {
+				return 0, err
+			}
+			continue
+		}
+		return n, err
+	}
+	return n, fmt.Errorf("writeWithRetry: key %v failed after %d retries, last error: %v", cb.blockKey, blockRetries, err)
+}
+
 func IsDiskErr(errMsg string) bool {
 	return strings.Contains(errMsg, syscall.EIO.Error()) ||
 		strings.Contains(errMsg, syscall.EROFS.Error()) ||
@@ -177,7 +215,7 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 		return
 	}
 
-	if _, err = file.WriteAt(data[:size], offset+HeaderSize); err != nil {
+	if _, err = cb.writeWithRetry(data[:size], offset+HeaderSize, file); err != nil {
 		log.LogWarnf("[WriteAt] WriteAt (%v) err %v", cb.filePath, err)
 		return
 	}
@@ -187,7 +225,6 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 
 // Read reads data from an extent.
 func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64, waitForBlock bool, readCrc bool) (crc uint32, err error) {
-	var file *os.File
 	if err = cb.ready(ctx, waitForBlock); err != nil {
 		return
 	}
@@ -215,21 +252,21 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64,
 	}
 
 	log.LogDebugf("action[Read] read cache block:%v, offset:%d, allocSize:%d, usedSize:%d", cb.blockKey, offset, cb.allocSize, cb.usedSize)
-
+	var file *os.File
 	if file, err = cb.GetOrOpenFileHandler(); err != nil {
 		return
 	}
-
-	if _, err = file.ReadAt(data[:realSize], offset+HeaderSize); err != nil {
-		log.LogErrorf("action[Read] read cacheBlock:%v failed, filename:%v realSize:%d", cb.blockKey, file.Name(), realSize)
+	if _, err = cb.readWithRetry(data[:realSize], offset+HeaderSize, file); err != nil {
+		log.LogErrorf("action[Read] read cacheBlock:%v failed, realSize:%d err %v", cb.blockKey, realSize, err)
 		return
 	}
 	if readCrc {
 		sliceIndex := offset / proto.CACHE_BLOCK_PACKET_SIZE
-		crcOffset := cb.allocSize + HeaderSize + sliceIndex*4
-		crcBuf := make([]byte, 4)
-		if _, err = file.ReadAt(crcBuf, crcOffset); err != nil {
-			log.LogErrorf("action[Read] read crc:%v failed, filename:%v realSize:%d", cb.blockKey, file.Name(), realSize)
+		crcOffset := cb.allocSize + HeaderSize + sliceIndex*proto.CACHE_BLOCK_CRC_SIZE
+		crcBuf := bytespool.Alloc(proto.CACHE_BLOCK_CRC_SIZE)
+		defer bytespool.Free(crcBuf)
+		if _, err = cb.readWithRetry(crcBuf, crcOffset, file); err != nil {
+			log.LogErrorf("action[Read] read crc:%v failed, realSize:%d crcOffset:%d err %v", cb.blockKey, realSize, crcOffset, err)
 			return
 		}
 		crc = binary.BigEndian.Uint32(crcBuf)
@@ -886,7 +923,7 @@ func (cb *CacheBlock) WriteAtV2(writeParam *proto.FlashWriteParam) (err error) {
 		log.LogWarnf("[WriteAtV2] GetOrOpenFileHandler (%v) err %v", cb.filePath, err)
 		return
 	}
-	if _, err = file.WriteAt(writeParam.Data, writeParam.Offset+HeaderSize); err != nil {
+	if _, err = cb.writeWithRetry(writeParam.Data, writeParam.Offset+HeaderSize, file); err != nil {
 		log.LogWarnf("[WriteAtV2] WriteAt (%v) data offset %v err %v", cb.filePath, writeParam.Offset+HeaderSize, err)
 		return
 	}
@@ -894,7 +931,7 @@ func (cb *CacheBlock) WriteAtV2(writeParam *proto.FlashWriteParam) (err error) {
 	if log.EnableDebug() {
 		log.LogDebugf("[WriteAtV2] file offset %v crc index %v and datasize %v", writeParam.Offset, n, writeParam.DataSize)
 	}
-	if _, err = file.WriteAt(writeParam.Crc[:proto.CACHE_BLOCK_CRC_SIZE], n); err != nil {
+	if _, err = cb.writeWithRetry(writeParam.Crc[:proto.CACHE_BLOCK_CRC_SIZE], n, file); err != nil {
 		log.LogWarnf("[WriteAtV2] WriteAt (%v) crc offset %v err %v", cb.filePath, n, err)
 		return
 	}
