@@ -251,10 +251,16 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	s.lruFhCache = NewCache(LRUFileHandleCacheType, fhCapacity, -1, expireTime,
 		func(v interface{}, reason string) error {
 			file := v.(*os.File)
+			if log.EnableInfo() {
+				log.LogInfof("delete file %v by %s", file.Name(), reason)
+			}
 			return file.Close()
 		},
 		func(v interface{}) error {
 			file := v.(*os.File)
+			if log.EnableInfo() {
+				log.LogInfof("close file %v", file.Name())
+			}
 			return file.Close()
 		})
 	return
