@@ -287,7 +287,7 @@ const (
 	DefaultGOGCValue                   = 100
 	defaultDiskReservedSpace           = 5 * GB
 	AccessTimeOffset                   = 52
-	defaultRocksdbKeyNumMax            = 2000000000
+	defaultRocksdbKeyNumMax            = 1000000000
 )
 
 const (

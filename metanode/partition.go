@@ -1948,10 +1948,8 @@ func (mp *metaPartition) selectRocksDBDir() (err error) {
 
 	dir, err := mp.manager.rocksdbManager.SelectRocksdbDisk(factor)
 	if err != nil {
-		mp.config.RocksDBDir = mp.GetDefaultRocksdbDir()
-		log.LogErrorf("[selectRocksDBDir] mp(%v) select failed(%v), so set dir(%s) as rocksdb dir",
-			mp.config.PartitionId, err, mp.config.RocksDBDir)
-		err = nil
+		log.LogErrorf("[selectRocksDBDir] mp(%v) select failed(%v)",
+			mp.config.PartitionId, err)
 		return
 	}
 	mp.config.RocksDBDir = dir
@@ -2142,14 +2140,6 @@ func (mp *metaPartition) initObjects(isCreate bool) (err error) {
 
 func (mp *metaPartition) GetStoreMode() proto.StoreMode {
 	return mp.inodeTree.GetStoreMode()
-}
-
-func (mp *metaPartition) GetDefaultRocksdbDir() string {
-	if len(mp.manager.rocksDBDirs) > 0 {
-		return mp.manager.rocksDBDirs[0]
-	}
-
-	return mp.manager.rootDir
 }
 
 func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {

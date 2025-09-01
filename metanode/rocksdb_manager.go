@@ -29,6 +29,7 @@ var (
 	ErrUnregisteredRocksdbPath = errors.New("rocksdb path unregister")
 	ErrRocksdbPathRegistered   = errors.New("rocksdb path already registered")
 	ErrRocksdbOpened           = errors.New("rocksdb stil in use")
+	ErrRocksdbNoResource       = errors.New("rocksdb no resource")
 )
 
 type RocksdbManagerConfig struct {
@@ -51,12 +52,14 @@ type RocksdbManager interface {
 	GetPartitionCount(dbPath string) (count int, err error)
 	UpdateConfig(dbPath string, config map[string]string) error
 	GetConfig(dbPath string) (map[string]string, error)
+	SetForbidden(dbPath string, forbidden bool) error
 }
 
 type RocksdbHandle struct {
 	db         *RocksdbOperator
 	rc         uint64
 	partitions int
+	Forbidden  bool
 }
 
 type PerDiskRocksdbManager struct {
@@ -157,6 +160,9 @@ func (r *PerDiskRocksdbManager) SelectRocksdbDisk(usableFactor float64) (disk st
 	defer r.mutex.Unlock()
 	stats := make([]diskmon.DiskStat, 0)
 	for dir, handle := range r.dbs {
+		if handle.Forbidden {
+			continue
+		}
 		var stat diskmon.DiskStat
 		stat, err = diskmon.NewDiskStat(dir)
 		if err != nil {
@@ -165,6 +171,10 @@ func (r *PerDiskRocksdbManager) SelectRocksdbDisk(usableFactor float64) (disk st
 		}
 		stat.PartitionCount = handle.partitions
 		stats = append(stats, stat)
+	}
+	if len(stats) == 0 {
+		err = ErrRocksdbNoResource
+		return
 	}
 	d, err := diskmon.SelectDisk(stats, usableFactor)
 	if err != nil {
@@ -249,7 +259,23 @@ func (r *PerDiskRocksdbManager) GetConfig(dbPath string) (map[string]string, err
 	return handle.db.GetOptions(), nil
 }
 
+func (r *PerDiskRocksdbManager) SetForbidden(dbPath string, forbidden bool) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	handle, ok := r.dbs[dbPath]
+	if !ok {
+		return ErrUnregisteredRocksdbPath
+	}
+	handle.Forbidden = forbidden
+	return nil
+}
+
 var _ RocksdbManager = &PerDiskRocksdbManager{}
+
+type RocksdbDirInfo struct {
+	Forbidden bool
+}
 
 type PerPartitionRocksdbManager struct {
 	writeBufferSize     int
@@ -260,7 +286,7 @@ type PerPartitionRocksdbManager struct {
 	enableStats         bool
 	mutex               sync.Mutex
 	partitionCnt        map[string]int
-	dbs                 map[string]interface{}
+	dbs                 map[string]*RocksdbDirInfo
 }
 
 func (r *PerPartitionRocksdbManager) AttachPartition(dbPath string) (err error) {
@@ -346,7 +372,9 @@ func (r *PerPartitionRocksdbManager) Register(dbPath string) (err error) {
 		err = ErrRocksdbPathRegistered
 		return
 	}
-	r.dbs[dbPath] = 1
+	r.dbs[dbPath] = &RocksdbDirInfo{
+		Forbidden: false,
+	}
 	r.partitionCnt[dbPath] = 0
 	return
 }
@@ -369,6 +397,9 @@ func (r *PerPartitionRocksdbManager) SelectRocksdbDisk(usableFactor float64) (di
 	defer r.mutex.Unlock()
 	stats := make([]diskmon.DiskStat, 0)
 	for dir := range r.dbs {
+		if r.dbs[dir].Forbidden {
+			continue
+		}
 		var stat diskmon.DiskStat
 		stat, err = diskmon.NewDiskStat(dir)
 		if err != nil {
@@ -377,6 +408,10 @@ func (r *PerPartitionRocksdbManager) SelectRocksdbDisk(usableFactor float64) (di
 		}
 		stat.PartitionCount = r.partitionCnt[dir]
 		stats = append(stats, stat)
+	}
+	if len(stats) == 0 {
+		err = ErrRocksdbNoResource
+		return
 	}
 	d, err := diskmon.SelectDisk(stats, usableFactor)
 	if err != nil {
@@ -394,6 +429,18 @@ func (r *PerPartitionRocksdbManager) UpdateConfig(dbPath string, config map[stri
 
 func (r *PerPartitionRocksdbManager) GetConfig(dbPath string) (map[string]string, error) {
 	return nil, fmt.Errorf("partition rocksdb manager does not support get config")
+}
+
+func (r *PerPartitionRocksdbManager) SetForbidden(dbPath string, forbidden bool) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	handle, ok := r.dbs[dbPath]
+	if !ok {
+		return ErrUnregisteredRocksdbPath
+	}
+	handle.Forbidden = forbidden
+	return nil
 }
 
 var _ RocksdbManager = &PerPartitionRocksdbManager{}
@@ -419,7 +466,7 @@ func NewPerPartitionRocksdbManager(config *RocksdbManagerConfig) (p RocksdbManag
 		maxSubCompactions:   config.MaxSubCompactions,
 		blockCacheSize:      config.BlockCacheSize,
 		enableStats:         config.EnableStats,
-		dbs:                 make(map[string]interface{}),
+		dbs:                 make(map[string]*RocksdbDirInfo),
 		partitionCnt:        make(map[string]int),
 	}
 	return

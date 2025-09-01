@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
+	"github.com/cubefs/cubefs/util/diskmon"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
@@ -1068,12 +1069,19 @@ func (m *metadataManager) updateRocksDBKeyNum(rocksdbStats []*proto.MetaNodeRock
 			return true
 		}
 		keyNumSum[mConf.RocksDBDir] += uint64(partition.GetInodeTreeLen())
-		keyNumSum[mConf.RocksDBDir] += uint64(partition.GetDentryTreeLen())
 		return true
 	})
 
 	for _, item := range rocksdbStats {
 		item.KeyNum = keyNumSum[item.Path]
+	}
+
+	for _, item := range rocksdbStats {
+		overLimit := false
+		if item.KeyNum > m.metaNode.rocksdbKeyNumMax {
+			overLimit = true
+		}
+		m.rocksdbManager.SetForbidden(item.Path, overLimit || item.Status != diskmon.ReadWrite)
 	}
 
 	return nil

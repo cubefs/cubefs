@@ -166,6 +166,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		// new version but old config; need select one dir
 		err = mp.selectRocksDBDir()
 		if err != nil {
+			log.LogErrorf("[loadMetadata] selectRocksDBDir failed(%v)", err)
 			return
 		}
 	}
