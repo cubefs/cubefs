@@ -519,6 +519,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 		}
 		return
 	}
+	stat.EndStat("LoadBlock", nil, bgTime, 1)
 	ctx, ctxCancel := context.WithDeadline(context.Background(), time.Unix(0, int64(req.Deadline)))
 	defer ctxCancel()
 	bgTime2 := stat.BeginStat()
@@ -791,7 +792,6 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 			firstReply.LogMessage(firstReply.GetOpMsg(), conn.RemoteAddr().String(), firstReply.StartT, err))
 		return
 	}
-
 	// reply data to client
 	var errInner error
 	buf := bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
