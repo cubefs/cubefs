@@ -49,7 +49,7 @@ const (
 
 	_defaultReadBurst                      = 512
 	_defaultLRUCapacity                    = 400000
-	_defaultLRUFhCapacity                  = 10000
+	_defaultLRUFhCapacity                  = 100000
 	_defaultDiskUnavailableCbErrorCount    = 3
 	_defaultCacheLoadWorkerNum             = 16
 	_defaultCacheEvictWorkerNum            = 16
