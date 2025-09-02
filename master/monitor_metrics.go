@@ -1421,4 +1421,5 @@ func (mm *monitorMetrics) setDistributionOptimizationMetrics() {
 	mm.rackConflictDPs.Set(float64(rackConflictDPs))
 	log.LogDebugf("action[setDistributionOptimizationMetrics] nodeSetUnbalancedDPs: %d, rackConflictDPs: %d",
 		nodeSetUnbalancedDPs, rackConflictDPs)
+	mm.nodeStat.Reset()
 }
