@@ -198,6 +198,7 @@ type dataPartitionValue struct {
 	DecommissionRetry              int
 	DecommissionStatus             uint32
 	DecommissionSrcAddr            string
+	DecommissionSrcAddrs           []string
 	DecommissionDstAddr            string
 	DecommissionRaftForce          bool
 	DecommissionSrcDiskPath        string
@@ -237,6 +238,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionRaftForce = dpv.DecommissionRaftForce
 	dp.DecommissionDstAddr = dpv.DecommissionDstAddr
 	dp.DecommissionSrcAddr = dpv.DecommissionSrcAddr
+	dp.DecommissionSrcAddrs = dpv.DecommissionSrcAddrs
 	dp.DecommissionRetry = dpv.DecommissionRetry
 	dp.DecommissionStatus = dpv.DecommissionStatus
 	dp.DecommissionSrcDiskPath = dpv.DecommissionSrcDiskPath
@@ -297,6 +299,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionRetry:              dp.DecommissionRetry,
 		DecommissionStatus:             atomic.LoadUint32(&dp.DecommissionStatus),
 		DecommissionSrcAddr:            dp.DecommissionSrcAddr,
+		DecommissionSrcAddrs:           dp.DecommissionSrcAddrs,
 		DecommissionDstAddr:            dp.DecommissionDstAddr,
 		DecommissionRaftForce:          dp.DecommissionRaftForce,
 		DecommissionSrcDiskPath:        dp.DecommissionSrcDiskPath,

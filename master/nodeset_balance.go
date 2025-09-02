@@ -169,8 +169,8 @@ func (c *Cluster) executeReplicaMigration(dp *DataPartition, srcHosts []string) 
 		return true
 	}
 
-	if err := c.markDecommissionDataPartition(dp, nil, 0, false, proto.NodesetBalance, 1); err != nil {
-		log.LogWarnf("action[executeReplicaMigration] batch decommission failed for dp(%v) replicas(%v)",
+	if err := c.markDecommissionDataPartition(dp, nil, 0, false, proto.NodesetBalance, 1, srcHosts); err != nil {
+		log.LogWarnf("action[executeReplicaMigration] batch decommission failed for dp(%v) replicas(%v) : %v",
 			dp.PartitionID, srcHosts, err)
 		return false
 	}

@@ -2656,11 +2656,15 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 		l.Remove(dp)
 		dp.ReleaseDecommissionToken(c)
 		dp.ReleaseDecommissionFirstHostToken(c)
+
 		msg := fmt.Sprintf("ns %v(%p) dp %v decommission success, cost %v",
 			l.nsId, l, dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
 		dp.deleteRetryTimesRecordByDiskPath(dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath)
-		dp.ResetDecommissionStatus()
 		dp.setRestoreReplicaStop()
+		if dp.ProcessNextDecommissionSrcHost(c) {
+			return
+		}
+		dp.ResetDecommissionStatus()
 		err := c.syncUpdateDataPartition(dp)
 		if err != nil {
 			log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) Remove success dp[%v] failed for %v",

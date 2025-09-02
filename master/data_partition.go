@@ -64,6 +64,7 @@ type DataPartition struct {
 	DecommissionRetry                 int
 	DecommissionStatus                uint32
 	DecommissionSrcAddr               string
+	DecommissionSrcAddrs              []string // used for migrating tasks to multiple source addrs such as nodeset-balance.
 	DecommissionDstAddr               string
 	DecommissionRaftForce             bool
 	DecommissionSrcDiskPath           string
@@ -1313,7 +1314,7 @@ func isReplicasContainsHost(replicas []*DataReplica, host string) bool {
 }
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, dstNodeSetID uint64, raftForce bool, term uint64,
-	migrateType uint32, weight int, c *Cluster, ns *nodeSet,
+	migrateType uint32, weight int, c *Cluster, srcAddrs []string,
 ) (err error) {
 	defer func() {
 		if err != nil {
@@ -1594,6 +1595,12 @@ directly:
 	// reset special replicas decommission status
 	partition.isRecover = false
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
+	if len(srcAddrs) > 0 {
+		partition.DecommissionSrcAddrs = make([]string, len(srcAddrs))
+		copy(partition.DecommissionSrcAddrs, srcAddrs)
+		log.LogInfof("action[MarkDecommissionStatus] dp(%v) set multi-source queue: %v",
+			partition.PartitionID, partition.DecommissionSrcAddrs)
+	}
 	if partition.DecommissionSrcDiskPath == "" {
 		partition.RLock()
 		replica, _ := partition.getReplica(srcAddr)
@@ -1973,9 +1980,71 @@ func (partition *DataPartition) PauseDecommission(c *Cluster) bool {
 	return true
 }
 
+func (partition *DataPartition) SetMultipleDecommissionSrcHosts(srcHosts []string) {
+	if srcHosts == nil || len(srcHosts) == 0 {
+		return
+	}
+	// 最后一个地址设为当前迁移地址，其余进入待迁移队列
+	partition.DecommissionSrcAddr = srcHosts[len(srcHosts)-1]
+	if len(srcHosts) > 1 {
+		partition.DecommissionSrcAddrs = make([]string, len(srcHosts)-1)
+		copy(partition.DecommissionSrcAddrs, srcHosts[0:len(srcHosts)-1])
+	} else {
+		partition.DecommissionSrcAddrs = nil
+	}
+}
+
+// 处理单个源地址迁移完成，返回true表示还有更多源地址需要迁移
+func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool {
+	if partition.DecommissionSrcAddrs == nil || len(partition.DecommissionSrcAddrs) == 0 {
+		log.LogInfof("action[ProcessNextDecommissionSrcHost] dp(%v) all sources completed, current: %v",
+			partition.PartitionID, partition.DecommissionSrcAddr)
+		return false
+	}
+
+	lastIndex := len(partition.DecommissionSrcAddrs) - 1
+	nextSrcAddr := partition.DecommissionSrcAddrs[lastIndex]
+
+	var updatedSrcHosts []string
+	if len(partition.DecommissionSrcAddrs) > 1 {
+		updatedSrcHosts = make([]string, lastIndex)
+		copy(updatedSrcHosts, partition.DecommissionSrcAddrs[0:lastIndex])
+	} else {
+		updatedSrcHosts = nil
+	}
+
+	replica, err := partition.getReplica(nextSrcAddr)
+	if err != nil {
+		log.LogErrorf("action[ProcessNextDecommissionSrcHost] dataPartitionID :%v not find replica for addr %v", partition.PartitionID, nextSrcAddr)
+		return false
+	}
+
+	if err = partition.MarkDecommissionStatus(nextSrcAddr, "", replica.DiskPath, partition.DecommissionDstNodeSet,
+		partition.DecommissionRaftForce, partition.DecommissionTerm, partition.DecommissionType, partition.DecommissionWeight,
+		c, updatedSrcHosts,
+	); err != nil {
+		log.LogErrorf("action[ProcessNextDecommissionSrcHost] dp(%v) mark decommission failed, err %v",
+			partition.PartitionID, err)
+		return false
+	}
+
+	if err = c.syncUpdateDataPartition(partition); err != nil {
+		return false
+	}
+
+	if partition.GetDecommissionStatus() == markDecommission {
+		partition.addToDecommissionList(c)
+		log.LogInfof("action[ProcessNextDecommissionSrcHost] dp(%v) switch to next source: %v, remaining queue: %v",
+			partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionSrcAddrs)
+		return true // 表示需要继续迁移
+	}
+	return false
+}
+
 func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionDstAddr = ""
 	partition.DecommissionSrcAddr = ""
+	partition.DecommissionSrcAddrs = nil
 	partition.DecommissionRetry = 0
 	partition.DecommissionRaftForce = false
 	partition.DecommissionSrcDiskPath = ""
@@ -2815,7 +2884,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				partition.PartitionID, addr)
 			return nil
 		}
-		err = c.markDecommissionDataPartition(partition, node, 0, false, AutoAddReplica, highPriorityDecommissionWeight)
+		err = c.markDecommissionDataPartition(partition, node, 0, false, AutoAddReplica, highPriorityDecommissionWeight, nil)
 		auditMsg = fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto add replica",
 			partition.PartitionID, partition.ReplicaNum, len(partition.Hosts))
 		log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)
