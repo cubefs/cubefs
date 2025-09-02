@@ -16,6 +16,7 @@ package blobdeleter
 
 import (
 	"context"
+	"fmt"
 
 	snapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -27,4 +28,16 @@ func (m *BlobDeleteMgr) SlicesToDeleteMsgItems(ctx context.Context, slices []pro
 
 func (m *BlobDeleteMgr) Delete(ctx context.Context, req *snapi.DeleteBlobRawArgs) error {
 	return m.insertDeleteMsg(ctx, req)
+}
+
+func (m *BlobDeleteMgr) Stats() *snapi.DeleteBlobStatsRet {
+	deleteSuccessCounter, deleteFailedCounter := m.getTaskStats()
+	delErrStats, delTotalErrCnt := m.getErrorStats()
+	return &snapi.DeleteBlobStatsRet{
+		Enable:        m.enabled(),
+		SuccessPerMin: fmt.Sprint(deleteSuccessCounter),
+		FailedPerMin:  fmt.Sprint(deleteFailedCounter),
+		TotalErrCnt:   delTotalErrCnt,
+		ErrStats:      delErrStats,
+	}
 }

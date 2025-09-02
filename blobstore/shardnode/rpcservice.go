@@ -378,6 +378,11 @@ func (s *RpcService) ListVolume(w rpc2.ResponseWriter, req *rpc2.Request) error 
 	return w.WriteOK(ret)
 }
 
+func (s *RpcService) DeleteBlobStats(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	ret := s.deleteBlobStats()
+	return w.WriteOK(ret)
+}
+
 func (s *RpcService) TCMallocStats(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	ret := &shardnode.TCMallocRet{
 		Stats: tcmalloc.Stats(),
@@ -460,6 +465,7 @@ func newHandler(s *RpcService) *rpc2.Router {
 	handler.Register("/db/stats", s.DBStats)
 
 	handler.Register("/blob/delete/raw", s.DeleteBlobRaw)
+	handler.Register("/blob/delete/stats", s.DeleteBlobStats)
 
 	return handler
 }

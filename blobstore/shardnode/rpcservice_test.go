@@ -298,6 +298,11 @@ func TestRpcService_Blob(t *testing.T) {
 		Slice:  proto.Slice{Vid: proto.Vid(1), MinSliceID: proto.BlobID(123)},
 	})
 	require.Nil(t, err)
+
+	// delete blob stats
+	stats, err := cli.DeleteBlobStats(context.Background(), tcpAddrBlob, shardnode.DeleteBlobStatsArgs{})
+	require.Nil(t, err)
+	require.NotNil(t, stats)
 }
 
 func TestRpcService_Item(t *testing.T) {

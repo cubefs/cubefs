@@ -51,6 +51,9 @@ func (s *service) deleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs)
 		Header: req.Header,
 		Name:   req.Name,
 	})
+	if err != nil {
+		return
+	}
 
 	tagNum, err := space.GetShardingSubRangeCount(req.Header.DiskID, req.Header.Suid)
 	if err != nil {
@@ -109,4 +112,8 @@ func (s *service) allocSlice(ctx context.Context, req *shardnode.AllocSliceArgs)
 
 func (s *service) deleteBlobRaw(ctx context.Context, req *shardnode.DeleteBlobRawArgs) error {
 	return s.blobDelMgr.Delete(ctx, req)
+}
+
+func (s *service) deleteBlobStats() *shardnode.DeleteBlobStatsRet {
+	return s.blobDelMgr.Stats()
 }

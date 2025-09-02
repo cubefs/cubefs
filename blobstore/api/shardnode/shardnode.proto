@@ -261,3 +261,13 @@ message DeleteBlobRawArgs {
 }
 
 message DeleteBlobRawRet {}
+
+message DeleteBlobStatsArgs {}
+
+message DeleteBlobStatsRet {
+  bool enable = 1;
+  string success_per_min = 2;
+  string failed_per_min = 3;
+  uint64 total_err_cnt = 4;
+  repeated string err_stats = 5;
+}

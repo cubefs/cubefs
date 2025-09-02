@@ -102,6 +102,7 @@ func newTestBlobDeleteMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, v
 
 		delSuccessCounterByMin: &counter.Counter{},
 		delFailCounterByMin:    &counter.Counter{},
+		errStatsDistribution:   base.NewErrorStats(),
 		Closer:                 closer.New(),
 	}
 }
@@ -173,6 +174,9 @@ func TestNewBlobDeleteMgr(t *testing.T) {
 	}
 	mgr, err := NewBlobDeleteMgr(cfg)
 	require.Nil(t, err)
+
+	stats := mgr.Stats()
+	require.NotNil(t, stats)
 	mgr.Close()
 }
 

@@ -33,3 +33,8 @@ func (m *DeleteBlobRawArgs) GetShardKeys(tagNum int) []string {
 func (c *Client) DeleteBlobRaw(ctx context.Context, host string, args DeleteBlobRawArgs) error {
 	return c.doRequest(ctx, host, "/blob/delete/raw", &args, nil)
 }
+
+func (c *Client) DeleteBlobStats(ctx context.Context, host string, args DeleteBlobStatsArgs) (ret DeleteBlobStatsRet, err error) {
+	err = c.doRequest(ctx, host, "/blob/delete/stats", &args, &ret)
+	return
+}

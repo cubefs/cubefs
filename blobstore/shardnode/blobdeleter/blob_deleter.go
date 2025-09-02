@@ -87,6 +87,7 @@ type BlobDeleteMgr struct {
 
 	delSuccessCounterByMin *counter.Counter
 	delFailCounterByMin    *counter.Counter
+	errStatsDistribution   *base.ErrorStats
 
 	closer.Closer
 }
@@ -115,6 +116,7 @@ func NewBlobDeleteMgr(cfg *BlobDelMgrConfig) (*BlobDeleteMgr, error) {
 
 		delSuccessCounterByMin: &counter.Counter{},
 		delFailCounterByMin:    &counter.Counter{},
+		errStatsDistribution:   base.NewErrorStats(),
 
 		Closer: closer.New(),
 	}
@@ -370,6 +372,7 @@ func (m *BlobDeleteMgr) executeDel(ctx context.Context, msgList []*delMsgExt) er
 		}
 
 		// process failed msg
+		m.errStatsDistribution.AddFail(r.err)
 		r.msgExt.msg.Retry++
 		if r.msgExt.msg.Retry < 3 {
 			m.sentToFailedChan(ctx, r.msgExt)
@@ -623,6 +626,19 @@ func (m *BlobDeleteMgr) clearShardMessages(ctx context.Context, suid proto.Suid,
 	if err != nil {
 		span.Errorf("shard[%d] clear finish failed, err: %s", suid, err.Error())
 	}
+}
+
+func (m *BlobDeleteMgr) enabled() bool {
+	return m.taskSwitch.Enabled()
+}
+
+func (m *BlobDeleteMgr) getTaskStats() (success, failed [counter.SLOT]int) {
+	return m.delSuccessCounterByMin.Show(), m.delFailCounterByMin.Show()
+}
+
+func (m *BlobDeleteMgr) getErrorStats() (errStats []string, totalErrCnt uint64) {
+	statsResult, totalErrCnt := m.errStatsDistribution.Stats()
+	return base.FormatPrint(statsResult), totalErrCnt
 }
 
 func (m *BlobDeleteMgr) getShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error) {

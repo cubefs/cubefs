@@ -30,6 +30,9 @@ var types = map[string]func() rpc2.Codec{
 	"shardnode.GetBlobArgs": func() rpc2.Codec { return new(shardnode.GetBlobArgs) },
 	"shardnode.GetBlobRet":  func() rpc2.Codec { return new(shardnode.GetBlobRet) },
 
+	"shardnode.DeleteBlobStatsArgs": func() rpc2.Codec { return new(shardnode.DeleteBlobStatsArgs) },
+	"shardnode.DeleteBlobStatsRet":  func() rpc2.Codec { return new(shardnode.DeleteBlobStatsRet) },
+
 	"nil":              func() rpc2.Codec { return nil },
 	"rpc2.NoParameter": func() rpc2.Codec { return rpc2.NoParameter },
 }
