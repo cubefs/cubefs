@@ -1341,4 +1341,5 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.MpMissingReplicaCount.Set(0)
 	mm.ReplicaMissingDPCount.Reset()
 	mm.DpMissingLeaderCount.Reset()
+	mm.nodeStat.Reset()
 }
