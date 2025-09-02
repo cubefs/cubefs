@@ -214,6 +214,7 @@ type clusterConfig struct {
 	mpMigrateThreads   int
 
 	MaxWritableDataPartitionCnt int
+	RackAwareLevel              pt.RackAwareLevel
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -254,6 +255,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.metaNodeMemLowPer = defaultMetaNodeMemLowPer
 	cfg.metaNodeMemMidPer = defaultMetaNodeMemHighPer
 	cfg.mpMigrateThreads = defaultMpMigrateThreads
+	cfg.RackAwareLevel = pt.RackAwareNone
 	return
 }
 

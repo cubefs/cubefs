@@ -1725,6 +1725,21 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[forbidWriteOpOfProtoVersion0] = val
 	}
 
+	if value = r.FormValue(rackAwareLevelKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(rackAwareLevelKey)
+			return
+		}
+		if !proto.RackAwareLevel(val).IsValid() {
+			err = fmt.Errorf("rack aware level must be 0, 1 or 2")
+			return
+		}
+		params[rackAwareLevelKey] = uint8(val)
+	}
+
 	if noParams {
 		err = fmt.Errorf("no key assigned")
 		return

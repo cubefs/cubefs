@@ -974,6 +974,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashNodes:                   make([]proto.NodeView, 0),
 		FlashNodeHandleReadTimeout:   m.cluster.cfg.flashNodeHandleReadTimeout,
 		FlashNodeReadDataNodeTimeout: m.cluster.cfg.flashNodeReadDataNodeTimeout,
+		RackAwareLevel:               m.cluster.cfg.RackAwareLevel,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -3683,6 +3684,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if batchCount, ok := params[nodeDeleteBatchCountKey]; ok {
 		if bc, ok := batchCount.(uint64); ok {
 			if err = m.cluster.setMetaNodeDeleteBatchCount(bc); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[rackAwareLevelKey]; ok {
+		if v, ok := val.(uint8); ok {
+			if err = m.cluster.setRackAwareLevel(proto.RackAwareLevel(v)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}

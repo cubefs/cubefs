@@ -289,6 +289,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	dataMediaType := ""
 	handleTimeout := ""
 	readDataNodeTimeout := ""
+	rackAware := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -423,12 +424,25 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if rackAware != "" {
+				var rackAwareLevel int64
+				rackAwareLevel, err = strconv.ParseInt(rackAware, 10, 64)
+				if err != nil {
+					err = fmt.Errorf("param rackAware(%v) should be int", rackAware)
+					return
+				}
+				if rackAwareLevel < 0 || rackAwareLevel > 2 {
+					err = fmt.Errorf("rackAware (%v) should be 0(none), 1(weak), or 2(strong)", rackAware)
+					return
+				}
+			}
+
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
 				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
-				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout); err != nil {
+				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -462,6 +476,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&dataMediaType, "clusterDataMediaType", "", "set cluster media type, 1(ssd), 2(hdd)")
 	cmd.Flags().StringVar(&handleTimeout, "flashNodeHandleReadTimeout", "", "Specify flash node handle read timeout (example:1000ms)")
 	cmd.Flags().StringVar(&readDataNodeTimeout, "flashNodeReadDataNodeTimeout", "", "Specify flash node read data node timeout (example:3000ms)")
+	cmd.Flags().StringVar(&rackAware, CliFlagRackAware, "", "Set rack aware level: 0(none), 1(weak), 2(strong)")
 	return cmd
 }
 

@@ -100,6 +100,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVersion0             : %v\n", cv.ForbidWriteOpOfProtoVer0))
 	sb.WriteString(fmt.Sprintf("  LegacyDataMediaType                      : %v\n", cv.LegacyDataMediaType))
 	sb.WriteString(fmt.Sprintf("  RaftPartitionCanUsingDifferentPortEnabled: %v\n", cv.RaftPartitionCanUsingDifferentPortEnabled))
+	sb.WriteString(fmt.Sprintf("  RackAwareLevel                            : %v\n", cv.RackAwareLevel.String()))
 
 	sb.WriteString(fmt.Sprintf("  FlashNodeHandleReadTimeout       : %v ms\n", cv.FlashNodeHandleReadTimeout))
 	sb.WriteString(fmt.Sprintf("  FlashNodeReadDataNodeTimeout     : %v ms\n", cv.FlashNodeReadDataNodeTimeout))
@@ -556,7 +557,7 @@ func formatMetaPartitionReplicaDentryNotEqualInfoRow(partition *proto.MetaPartit
 		}
 
 		if replica.IsLeader {
-			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.DentryCount))
+			sb.WriteString(fmt.Sprintf("%v(%v isleader)", replica.Addr, replica.DentryCount))
 		} else {
 			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.DentryCount))
 		}

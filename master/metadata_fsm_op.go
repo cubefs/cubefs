@@ -29,6 +29,7 @@ import (
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
+	pt "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -85,6 +86,7 @@ type clusterValue struct {
 	AutoMpMigrate                          bool
 	FlashNodeHandleReadTimeout             int
 	FlashNodeReadDataNodeTimeout           int
+	RackAwareLevel                         uint8
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -136,6 +138,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		AutoMpMigrate:                          c.cfg.AutoMpMigrate,
 		FlashNodeHandleReadTimeout:             c.cfg.flashNodeHandleReadTimeout,
 		FlashNodeReadDataNodeTimeout:           c.cfg.flashNodeReadDataNodeTimeout,
+		RackAwareLevel:                         uint8(c.cfg.RackAwareLevel),
 	}
 	return cv
 }
@@ -1356,6 +1359,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
 		c.cfg.metaNodeGOGC = cv.MetaNodeGOGC
 		c.cfg.dataNodeGOGC = cv.DataNodeGOGC
+		c.cfg.RackAwareLevel = pt.RackAwareLevel(cv.RackAwareLevel)
 
 		if c.DecommissionFirstHostDiskParallelLimit == 0 {
 			c.DecommissionFirstHostDiskParallelLimit = defaultDecommissionFirstHostDiskParallelLimit

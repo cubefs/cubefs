@@ -4498,6 +4498,20 @@ func (c *Cluster) setClusterLoadFactor(factor float32) (err error) {
 	return
 }
 
+func (c *Cluster) setRackAwareLevel(level proto.RackAwareLevel) (err error) {
+	oldVal := c.cfg.RackAwareLevel
+	c.cfg.RackAwareLevel = level
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setRackAwareLevel] err[%v]", err)
+		c.cfg.RackAwareLevel = oldVal
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+
+	log.LogInfof("action[setRackAwareLevel] old: %v, new: %v", oldVal, level)
+	return
+}
+
 func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.DataNodeDeleteLimitRate)
 	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)

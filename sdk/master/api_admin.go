@@ -605,7 +605,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
 	dpRepairTimeout string, dpTimeout string, mpTimeout string, dpBackupTimeout string,
 	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
-	handleTimeout string, readDataNodeTimeout string,
+	handleTimeout string, readDataNodeTimeout string, rackAware string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -665,6 +665,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if readDataNodeTimeout != "" {
 		request.addParam("flashNodeReadDataNodeTimeout", readDataNodeTimeout)
+	}
+	if rackAware != "" {
+		request.addParam("rackAware", rackAware)
 	}
 
 	_, err = api.mc.serveRequest(request)

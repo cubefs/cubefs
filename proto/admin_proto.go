@@ -1775,6 +1775,10 @@ const (
 	FreezedMetaPartition    = 2
 )
 
+const (
+	DefaultRack = "default"
+)
+
 type MetaNodeRocksdbInfo struct {
 	Path           string
 	Total          uint64
@@ -1783,4 +1787,31 @@ type MetaNodeRocksdbInfo struct {
 	Status         int8
 	PartitionCount int
 	KeyNum         uint64
+}
+
+// RackAwareLevel 表示机架感知等级
+type RackAwareLevel uint8
+
+const (
+	RackAwareNone   RackAwareLevel = iota // 0: 不感知
+	RackAwareWeak                         // 1: 弱感知
+	RackAwareStrong                       // 2: 强感知
+)
+
+func (l RackAwareLevel) String() string {
+	switch l {
+	case RackAwareNone:
+		return "none"
+	case RackAwareWeak:
+		return "weak"
+	case RackAwareStrong:
+		return "strong"
+	default:
+		return "unknown"
+	}
+}
+
+// IsValid 校验RackAwareLevel的值是否在有效范围内
+func (l RackAwareLevel) IsValid() bool {
+	return l >= RackAwareNone && l <= RackAwareStrong
 }

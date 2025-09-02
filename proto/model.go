@@ -194,6 +194,7 @@ type ClusterView struct {
 	RocksdbDiskTotal                          uint64
 	RocksdbMpCount                            uint64
 	MemoryMpCount                             uint64
+	RackAwareLevel                            RackAwareLevel
 }
 
 // ClusterNode defines the structure of a cluster node
