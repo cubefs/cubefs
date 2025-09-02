@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -460,7 +461,7 @@ func CalculateMetaNodeEstimate(overLoadNodes []*proto.MetaNodeBalanceInfo) error
 }
 
 func (c *Cluster) AddMetaPartitionIntoPlan(metaNode *proto.MetaNodeBalanceInfo, migratePlan *proto.ClusterPlan, overLoadNodes []*proto.MetaNodeBalanceInfo) error {
-	if metaNode.PlanCnt >= metaNode.Estimate {
+	if metaNode.PlanCnt >= metaNode.Estimate || migratePlan.Total >= MaxMpMigrateNum {
 		return nil
 	}
 
@@ -526,8 +527,9 @@ func (c *Cluster) AddMetaPartitionIntoPlan(metaNode *proto.MetaNodeBalanceInfo, 
 		mpPlan.CrossZone = GetVolumeCrossZone(safeVols, mpPlan)
 
 		migratePlan.Plan = append(migratePlan.Plan, mpPlan)
+		migratePlan.Total++
 
-		if metaNode.PlanCnt >= metaNode.Estimate {
+		if metaNode.PlanCnt >= metaNode.Estimate || migratePlan.Total >= MaxMpMigrateNum {
 			break
 		}
 	}
@@ -1142,6 +1144,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	var wg sync.WaitGroup
 
 	stopProcess := false
+	var errMsg string
 	for _, mpPlan := range plan.Plan {
 		if stopProcess {
 			break
@@ -1154,30 +1157,38 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			if err != nil {
 				log.LogErrorf("handleMetaPartitionPlan err: %s", err.Error())
 				stopProcess = true
+				errMsg = err.Error()
 			}
 			<-sem
 		}(mpPlan)
 	}
 	wg.Wait()
 
-	plan.Status = PlanTaskDone
-	plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
+	if c.PlanRun {
+		if stopProcess {
+			plan.Status = PlanTaskError
+			plan.Msg = errMsg
+		} else {
+			plan.Status = PlanTaskDone
+			plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
+		}
+	} else {
+		plan.Status = PlanTaskStop
+		plan.Msg = "migrate plan is stopped"
+	}
+
+	if plan.Type == OfflinePlan && plan.Status == PlanTaskDone {
+		err := c.offlineMetaNode(plan)
+		if err != nil {
+			log.LogErrorf("offlineMetaNode err: %s", err.Error())
+			plan.Msg = err.Error()
+		}
+	}
+
 	err := c.syncUpdateBalanceTask(plan)
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
 		plan.Msg = err.Error()
-	}
-
-	if plan.Type == OfflinePlan {
-		err = c.offlineMetaNode(plan)
-		if err != nil {
-			log.LogErrorf("offlineMetaNode err: %s", err.Error())
-			plan.Msg = err.Error()
-			err = c.syncUpdateBalanceTask(plan)
-			if err != nil {
-				log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
-			}
-		}
 	}
 }
 
@@ -1188,20 +1199,13 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 	err = c.VerifyAllDestinationsIsLowLoad(plan, mpPlan)
 	if err != nil {
 		log.LogErrorf("VerifyAllDestinationsIsLowLoad err: %s", err.Error())
-		plan.Status = PlanTaskError
-		plan.Msg = err.Error()
 		mpPlan.Msg = err.Error()
-		err1 := c.syncUpdateBalanceTask(plan)
-		if err1 != nil {
-			log.LogErrorf("syncUpdateBalanceTask error: %s", err1.Error())
-		}
 		return err
 	}
 
 	mp, err := c.getMetaPartitionByID(mpPlan.ID)
 	if err != nil {
 		log.LogErrorf("skip rebalance meta partition(%d) error: %s", mpPlan.ID, err.Error())
-		plan.Msg = err.Error()
 		mpPlan.Msg = err.Error()
 		return err
 	}
@@ -1216,7 +1220,6 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 	err = c.waitForMetaPartitionReady(mp)
 	if err != nil {
 		log.LogErrorf("waitForMetaPartitionReady err: %s", err.Error())
-		plan.Msg = err.Error()
 		mpPlan.Msg = err.Error()
 		return err
 	}
@@ -1225,6 +1228,9 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 		err = c.handleMetaReplicaPlan(plan, mpPlan, mp, mrPlan)
 		if err != nil {
 			log.LogErrorf("handleMetaReplicaPlan err: %s", err.Error())
+			mpPlan.Msg = err.Error()
+			mrPlan.Msg = err.Error()
+			mrPlan.Status = PlanTaskError
 			return err
 		}
 	}
@@ -1238,52 +1244,12 @@ func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.M
 	err = c.syncUpdateBalanceTask(plan)
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
-		plan.Msg = err.Error()
-		mrPlan.Msg = err.Error()
 		return err
 	}
 
-	if !c.PlanRun {
-		plan.Status = PlanTaskStop
-		plan.Msg = "migrate plan is stopped"
-		mrPlan.Msg = "migrate plan is stopped"
-		err = c.syncUpdateBalanceTask(plan)
-		if err != nil {
-			log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
-			plan.Msg = err.Error()
-		}
-		return err
-	}
-	if c.partition == nil || !c.partition.IsRaftLeader() {
-		plan.Msg = "master leader is changed"
-		mrPlan.Msg = "master leader is changed"
-		return nil
-	}
-	// switch raft leader if the source is leader. And waiting for the leader to be elected.
-	err = c.changeAndCheckMetaPartitionLeader(mrPlan, mpPlan, mp)
+	err = c.doMetaPartitionMigrate(plan, mpPlan, mrPlan, mp)
 	if err != nil {
-		log.LogErrorf("changeAndCheckMetaPartitionLeader error: %s", err.Error())
-		c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())
-		return err
-	}
-
-	if verifyDestinationInMetaReplicas(mp, mrPlan.Destination) {
-		err = fmt.Errorf("destination %s is in mpid(%d) meta replicas[%v]", mrPlan.Destination, mp.PartitionID, mp.Hosts)
-		log.LogErrorf(err.Error())
-		c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())
-		return err
-	}
-
-	if !mp.CheckLastDelReplicaTime() {
-		log.LogWarnf("DoMetaPartitionBalanceTask: mp try wait, last %d, mp %d", mp.LastDelReplicaTime, mp.PartitionID)
-		time.Sleep(time.Second * (mpReplicaDelInterval + 10))
-	}
-
-	log.LogWarnf("Start to migrate meta partition(%d) from %s to %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
-	err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp, mrPlan.StoreMode)
-	if err != nil {
-		log.LogErrorf("migrateMetaPartition(%d) from %s to %s error: %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination, err.Error())
-		c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())
+		log.LogErrorf("doMetaPartitionMigrate(%d) from %s to %s error: %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination, err.Error())
 		return err
 	}
 
@@ -1294,7 +1260,6 @@ func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.M
 	err = c.WaitForMetaPartitionMigrateDone(mp, mrPlan.Destination)
 	if err != nil {
 		log.LogErrorf("WaitForMetaPartitionMigrateDone mpid(%d) meta replica(%s) error: %s", mpPlan.ID, mrPlan.Destination, err.Error())
-		c.SetMetaReplicaPlanStatusError(plan, mrPlan, err.Error())
 		return err
 	}
 
@@ -1303,22 +1268,10 @@ func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.M
 	err = c.syncUpdateBalanceTask(plan)
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
-		plan.Msg = err.Error()
 		return err
 	}
 	log.LogDebugf("Migrate meta partition(%d) from %s to %s done", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
 	return nil
-}
-
-func (c *Cluster) SetMetaReplicaPlanStatusError(plan *proto.ClusterPlan, mrPlan *proto.MrBalanceInfo, msg string) {
-	plan.Status = PlanTaskError
-	plan.Msg = msg
-	mrPlan.Status = PlanTaskError
-	mrPlan.Msg = msg
-	err := c.syncUpdateBalanceTask(plan)
-	if err != nil {
-		log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
-	}
 }
 
 func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string) error {
@@ -2079,6 +2032,9 @@ func (c *Cluster) FillModifyStoreModePlan(plan *proto.ClusterPlan, volName strin
 			plan.Plan = append(plan.Plan, mpPlan)
 			plan.Total++
 		}
+		if plan.Total >= MaxMpMigrateNum {
+			break
+		}
 	}
 
 	return nil
@@ -2147,4 +2103,53 @@ func (c *Cluster) getAllMetaPartitions() (mps map[uint64]*MetaPartition) {
 	}
 
 	return mps
+}
+
+func (c *Cluster) doMetaPartitionMigrate(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, mrPlan *proto.MrBalanceInfo, mp *MetaPartition) (err error) {
+	log.LogWarnf("Start to migrate meta partition(%d) from %s to %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
+	for i := 0; i < RetryDoMigrateNum; i++ {
+		if !c.PlanRun {
+			err = fmt.Errorf("migrate plan is stopped")
+			return err
+		}
+		if c.partition == nil || !c.partition.IsRaftLeader() {
+			err = fmt.Errorf("master leader is changed")
+			return err
+		}
+		// switch raft leader if the source is leader. And waiting for the leader to be elected.
+		err = c.changeAndCheckMetaPartitionLeader(mrPlan, mpPlan, mp)
+		if err != nil {
+			log.LogErrorf("changeAndCheckMetaPartitionLeader error: %s", err.Error())
+			return err
+		}
+
+		if verifyDestinationInMetaReplicas(mp, mrPlan.Destination) {
+			err = fmt.Errorf("destination %s is in mpid(%d) meta replicas[%v]", mrPlan.Destination, mp.PartitionID, mp.Hosts)
+			log.LogErrorf(err.Error())
+			return err
+		}
+
+		if !mp.CheckLastDelReplicaTime() {
+			log.LogWarnf("DoMetaPartitionBalanceTask: mp try wait, last %d, mp %d", mp.LastDelReplicaTime, mp.PartitionID)
+			time.Sleep(time.Second * (mpReplicaDelInterval + 10))
+		}
+
+		err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp, mrPlan.StoreMode)
+		if err == nil {
+			return nil
+		}
+		if IsRetryMigrateMpError(err) {
+			time.Sleep(time.Second * RetryMigrateInterVal)
+			continue
+		}
+		log.LogErrorf("migrateMetaPartition(%d) from %s to %s error: %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination, err.Error())
+		return err
+	}
+	log.LogErrorf("migrateMetaPartition(%d) from %s to %s error: %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination, err.Error())
+
+	return err
+}
+
+func IsRetryMigrateMpError(err error) bool {
+	return strings.Contains(err.Error(), "downReplicas") && strings.Contains(err.Error(), "so donnot offline")
 }

@@ -15,8 +15,11 @@
 package master
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -2300,10 +2303,18 @@ func (c *Cluster) buildBalanceTaskRaftCmd(opType uint32, task *proto.ClusterPlan
 	balanceTask := new(RaftCmd)
 	balanceTask.Op = opType
 	balanceTask.K = balanceTaskKey
-	var err error
-	if balanceTask.V, err = json.Marshal(task); err != nil {
+	taskContent, err := json.Marshal(task)
+	if err != nil {
 		return nil, fmt.Errorf("balance task op(%d) encode err: %s", opType, err.Error())
 	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err = gz.Write(taskContent)
+	if err != nil {
+		return nil, fmt.Errorf("balance task op(%d) encode err: %s", opType, err.Error())
+	}
+	gz.Close()
+	balanceTask.V = buf.Bytes()
 	return balanceTask, nil
 }
 
@@ -2317,8 +2328,20 @@ func (c *Cluster) loadBalanceTask() (*proto.ClusterPlan, error) {
 		return nil, proto.ErrNoMpMigratePlan
 	}
 
+	reader := bytes.NewReader(result)
+	gz, err := gzip.NewReader(reader)
+	if err != nil {
+		return nil, fmt.Errorf("loadBalanceTask decode gzip err: %s", err.Error())
+	}
+	defer gz.Close()
+
+	taskContent, err := io.ReadAll(gz)
+	if err != nil {
+		return nil, fmt.Errorf("loadBalanceTask decode gzip err: %s", err.Error())
+	}
+
 	task := new(proto.ClusterPlan)
-	err = json.Unmarshal(result, task)
+	err = json.Unmarshal(taskContent, task)
 	if err != nil {
 		return nil, fmt.Errorf("loadBalanceTask decode json err: %s", err.Error())
 	}
