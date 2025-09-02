@@ -1662,6 +1662,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[autoDpMetaRepairParallelCntKey] = int(val)
 	}
 
+	if value = r.FormValue(autoNodesetBalanceKey); value != "" {
+		noParams = false
+		val := false
+		val, err = strconv.ParseBool(value)
+		if err != nil {
+			err = unmatchedKey(autoNodesetBalanceKey)
+			return
+		}
+		params[autoNodesetBalanceKey] = val
+	}
+
 	if value = r.FormValue(dpTimeoutKey); value != "" {
 		noParams = false
 		val := int64(0)

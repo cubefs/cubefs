@@ -72,7 +72,7 @@ func (c *Cluster) scheduleToNodesetBalance() {
 					return
 				}
 				// Check if nodeset balance is enabled before execution
-				if !c.getEnableNodesetBalance() {
+				if !c.getEnableAutoNodesetBalance() {
 					log.LogDebugf("action[nodesetBalanceController] nodeset balance is disabled, skip execution")
 					return
 				}
@@ -211,7 +211,7 @@ func (c *Cluster) getNodesetBalanceStatus() *NodesetBalanceStatus {
 	status := &NodesetBalanceStatus{
 		DecommissioningDPIDs: make([]uint64, 0),
 		SingleMigrationLimit: singleMigrationTarget,
-		EnableNodesetBalance: c.getEnableNodesetBalance(),
+		EnableNodesetBalance: c.getEnableAutoNodesetBalance(),
 		DomainDistribution: &DomainDistributionInfo{
 			SingleDomainDPs: 0,
 			TwoDomainDPs:    0,

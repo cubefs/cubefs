@@ -126,7 +126,7 @@ type ClusterDecommission struct {
 	ForbidMpDecommission        bool
 	EnableAutoDpMetaRepair      atomicutil.Bool
 	EnableAutoDecommissionDisk  atomicutil.Bool
-	EnableNodesetBalance        atomicutil.Bool
+	EnableAutoNodesetBalance    atomicutil.Bool
 	AutoDecommissionInterval    atomicutil.Int64
 	AutoDpMetaRepairParallelCnt atomicutil.Uint32
 	server                      *Server
@@ -489,7 +489,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.MarkDiskBrokenThreshold.Store(defaultMarkDiskBrokenThreshold)
 	c.EnableAutoDpMetaRepair.Store(defaultEnableDpMetaRepair)
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
-	c.EnableNodesetBalance.Store(defaultEnableNodesetBalance)
+	c.EnableAutoNodesetBalance.Store(defaultEnableAutoNodesetBalance)
 	c.server = server
 	c.flashNodeTopo = newFlashNodeTopology()
 	c.cleanTask = make(map[string]*CleanTask)
@@ -5040,32 +5040,26 @@ func (c *Cluster) getEnableAutoDpMetaRepair() (v bool) {
 	return
 }
 
-func (c *Cluster) setEnableNodesetBalance(enable bool) (err error) {
-	oldVal := c.EnableNodesetBalance.Load()
-
-	if enable == oldVal {
-		log.LogInfof("[setEnableNodesetBalance] value not change: %v", enable)
-		return
-	}
-
-	c.EnableNodesetBalance.Store(enable)
+func (c *Cluster) setEnableAutoNodesetBalance(val bool) (err error) {
+	oldVal := c.EnableAutoNodesetBalance.Load()
+	c.EnableAutoNodesetBalance.Store(val)
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("[setEnableNodesetBalance] persist err: %v", err)
-		c.EnableNodesetBalance.Store(oldVal)
+		log.LogErrorf("[setEnableAutoNodesetBalance] failed to set enable auto nodeset balance, err(%v)", err)
+		c.EnableAutoNodesetBalance.Store(oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 
-	log.LogInfof("[setEnableNodesetBalance] changed to: %v", enable)
+	log.LogInfof("[setEnableNodesetBalance] changed to: %v", val)
 	return
 }
 
-func (c *Cluster) getEnableNodesetBalance() bool {
-	return c.EnableNodesetBalance.Load()
+func (c *Cluster) getEnableAutoNodesetBalance() bool {
+	return c.EnableAutoNodesetBalance.Load()
 }
 
-func (c *Cluster) updateEnableNodesetBalance(val bool) {
-	c.EnableNodesetBalance.Store(val)
+func (c *Cluster) updateEnableAutoNodesetBalance(val bool) {
+	c.EnableAutoNodesetBalance.Store(val)
 }
 
 func (c *Cluster) getDataPartitionTimeoutSec() (val int64) {

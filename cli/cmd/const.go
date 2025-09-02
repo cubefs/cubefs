@@ -142,6 +142,7 @@ const (
 	CliFlagEnableCrossZone              = "cross-zone"
 	CliFlagAutoDpMetaRepair             = "autoDpMetaRepair"
 	CliFlagAutoDpMetaRepairParallelCnt  = "autoDpMetaRepairParallelCnt"
+	CliFlagAutoNodesetBalance           = "autoNodesetBalance"
 	CliFlagDpRepairTimeout              = "dpRepairTimeout"
 	CliFlagDpTimeout                    = "dpHeartbeatTimeout"
 	CliFlagMpTimeout                    = "mpHeartbeatTimeout"

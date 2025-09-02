@@ -51,6 +51,7 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterQueryDpOpCmd(client),
 		newClusterQueryDiskOpCmd(client),
 		newClusterChangeMasterLeaderCmd(client),
+		newClusterQueryNodesetBalanceStatusCmd(client),
 	)
 	return clusterCmd
 }
@@ -74,9 +75,10 @@ const (
 	// cmdEnableAutoDecommissionDiskShort  = "enable auto decommission disk"
 	cmdQueryDecommissionFailedDiskShort = "query auto or manual decommission failed disk"
 	// cmdSetDecommissionDiskLimit            = "set decommission disk limit"
-	cmdQueryDataNodeOpShort = "query DataNode_op information of a cluster"
-	cmdQueryDpOpShort       = "query Dp_op information of a cluster"
-	cmdQueryDiskOpShort     = "query Disk_op information of a cluster"
+	cmdQueryDataNodeOpShort            = "query DataNode_op information of a cluster"
+	cmdQueryDpOpShort                  = "query Dp_op information of a cluster"
+	cmdQueryDiskOpShort                = "query Disk_op information of a cluster"
+	cmdQueryClusterNodesetBalanceShort = "query nodeset balance status"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -277,6 +279,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	autoDecommissionDiskInterval := ""
 	autoDpMetaRepair := ""
 	autoDpMetaRepairParallelCnt := ""
+	autoNodesetBalance := ""
 	opMaxDpCntLimit := ""
 	opMaxMpCntLimit := ""
 	dpRepairTimeout := ""
@@ -333,6 +336,12 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if autoDpMetaRepairParallelCnt != "" {
 				if _, err = strconv.ParseInt(autoDpMetaRepairParallelCnt, 10, 64); err != nil {
+					return
+				}
+			}
+
+			if autoNodesetBalance != "" {
+				if _, err = strconv.ParseBool(autoNodesetBalance); err != nil {
 					return
 				}
 			}
@@ -440,7 +449,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
-				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
+				autoDpMetaRepair, autoDpMetaRepairParallelCnt, autoNodesetBalance,
 				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
 				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware); err != nil {
 				return
@@ -463,6 +472,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	// cmd.Flags().StringVar(&markBrokenDiskThreshold, CliFlagMarkDiskBrokenThreshold, "", "Threshold to mark disk as broken")
 	cmd.Flags().StringVar(&autoDpMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable auto data partition meta repair")
 	cmd.Flags().StringVar(&autoDpMetaRepairParallelCnt, CliFlagAutoDpMetaRepairParallelCnt, "", "Parallel count of auto data partition meta repair")
+	cmd.Flags().StringVar(&autoNodesetBalance, CliFlagAutoNodesetBalance, "", "Enable or disable nodeset balance")
 	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
 	cmd.Flags().StringVar(&dpTimeout, CliFlagDpTimeout, "", "Data partition heartbeat timeout(example: 10s)")
 	cmd.Flags().StringVar(&mpTimeout, CliFlagMpTimeout, "", "Meta partition heartbeat timeout(example: 10s)")
@@ -747,5 +757,29 @@ func newClusterChangeMasterLeaderCmd(client *master.MasterClient) *cobra.Command
 		},
 	}
 	cmd.Flags().StringVar(&leaderAddr, CliFlagAddress, "", "The address of the new master leader")
+	return cmd
+}
+
+func newClusterQueryNodesetBalanceStatusCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "query-nodeset-balance-status",
+		Short: cmdQueryClusterNodesetBalanceShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					errout(err)
+				}
+			}()
+
+			status, err := client.AdminAPI().QueryNodesetBalanceStatus()
+			if err != nil {
+				return
+			}
+
+			stdout("[Nodeset Balance Status]\n")
+			stdout("%v", formatNodesetBalanceStatus(status))
+		},
+	}
 	return cmd
 }

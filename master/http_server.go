@@ -409,8 +409,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminCancelDpNodesetBalance).
 		HandlerFunc(m.cancelDpNodesetBalance)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminGetNodesetBalanceStatus).
-		HandlerFunc(m.getNodesetBalanceStatus)
+		Path(proto.AdminQueryNodesetBalanceStatus).
+		HandlerFunc(m.queryNodesetBalanceStatus)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodesetBalanceEnable).
 		HandlerFunc(m.setNodesetBalanceEnable)

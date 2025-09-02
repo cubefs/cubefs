@@ -92,8 +92,9 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  AutoDecommissionDiskInterval             : %v\n", cv.AutoDecommissionDiskInterval))
 	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair                   : %v\n", cv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  AutoDpMetaRepairParallelCnt              : %v\n", cv.AutoDpMetaRepairParallelCnt))
+	sb.WriteString(fmt.Sprintf("  EnableAutoNodesetBalance                 : %v\n", cv.EnableAutoNodesetBalance))
 	sb.WriteString(fmt.Sprintf("  MarkDiskBrokenThreshold                  : %v\n", strutil.FormatPercent(cv.MarkDiskBrokenThreshold)))
-	sb.WriteString(fmt.Sprintf("  DecommissionFirstHostDiskParallelLimit      : %v\n", cv.DecommissionFirstHostDiskParallelLimit))
+	sb.WriteString(fmt.Sprintf("  DecommissionFirstHostDiskParallelLimit   : %v\n", cv.DecommissionFirstHostDiskParallelLimit))
 	sb.WriteString(fmt.Sprintf("  DecommissionDpLimit                      : %v\n", cv.DecommissionLimit))
 	sb.WriteString(fmt.Sprintf("  DecommissionDiskLimit                    : %v\n", cv.DecommissionDiskLimit))
 	sb.WriteString(fmt.Sprintf("  DpBackupTimeout                          : %v\n", cv.DpBackupTimeout))
@@ -1614,5 +1615,68 @@ func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	sb.WriteString(fmt.Sprintf("  Rack            : %v", view.Rack))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
 	sb.WriteString(fmt.Sprintf("  RocksdbWritable : %v", formatYesNo(view.IsRocksdbWritable)))
+	return sb.String()
+}
+
+func formatNodesetBalanceStatus(status interface{}) string {
+	sb := strings.Builder{}
+
+	data, err := json.Marshal(status)
+	if err != nil {
+		return fmt.Sprintf("Error formatting status: %v", err)
+	}
+
+	var statusMap map[string]interface{}
+	if err := json.Unmarshal(data, &statusMap); err != nil {
+		return fmt.Sprintf("Error parsing status: %v", err)
+	}
+
+	sb.WriteString(fmt.Sprintf("  EnableNodesetBalance    : %v\n", statusMap["enable_nodeset_balance"]))
+	sb.WriteString(fmt.Sprintf("  TotalUnbalancedDPs      : %v\n", statusMap["total_unbalanced_dps"]))
+	sb.WriteString(fmt.Sprintf("  IsBalanceInProgress     : %v\n", statusMap["is_balance_in_progress"]))
+	sb.WriteString(fmt.Sprintf("  SingleMigrationLimit    : %v\n", statusMap["single_migration_limit"]))
+
+	if lastTime, ok := statusMap["last_balance_time"].(float64); ok && lastTime > 0 {
+		t := time.Unix(int64(lastTime), 0)
+		sb.WriteString(fmt.Sprintf("  LastBalanceTime         : %v\n", t.Format("2006-01-02 15:04:05")))
+	} else {
+		sb.WriteString(fmt.Sprintf("  LastBalanceTime         : Never\n"))
+	}
+
+	if domainDist, ok := statusMap["domain_distribution"].(map[string]interface{}); ok {
+		sb.WriteString("\n[Domain Distribution]\n")
+		sb.WriteString(fmt.Sprintf("  SingleDomainDPs         : %v\n", domainDist["single_domain_dps"]))
+		sb.WriteString(fmt.Sprintf("  TwoDomainDPs            : %v\n", domainDist["two_domain_dps"]))
+		sb.WriteString(fmt.Sprintf("  ThreeDomainDPs          : %v\n", domainDist["three_domain_dps"]))
+	}
+
+	if decommissioningIDs, ok := statusMap["decommissioning_dp_ids"].([]interface{}); ok && len(decommissioningIDs) > 0 {
+		sb.WriteString("\n[Decommissioning DPs]\n")
+		sb.WriteString("  DPIDs: ")
+		for i, id := range decommissioningIDs {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%v", id))
+		}
+		sb.WriteString("\n")
+	}
+
+	if migrationStats, ok := statusMap["nodeset_migration_stats"].(map[string]interface{}); ok && len(migrationStats) > 0 {
+		sb.WriteString("\n[Nodeset Migration Stats]\n")
+		sb.WriteString(fmt.Sprintf("%-12s %-12s %-12s %-12s\n", "NodesetID", "OutgoingDPs", "IncomingDPs", "NetChange"))
+		sb.WriteString(strings.Repeat("-", 50) + "\n")
+
+		for nsID, stats := range migrationStats {
+			if statsMap, ok := stats.(map[string]interface{}); ok {
+				sb.WriteString(fmt.Sprintf("%-12s %-12v %-12v %-12v\n",
+					nsID,
+					statsMap["outgoing_dps"],
+					statsMap["incoming_dps"],
+					statsMap["net_change"]))
+			}
+		}
+	}
+
 	return sb.String()
 }

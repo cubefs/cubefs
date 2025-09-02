@@ -138,6 +138,7 @@ const (
 	autoDecommissionDiskIntervalKey        = "autoDecommissionDiskInterval"
 	autoDpMetaRepairKey                    = "autoDpMetaRepair"
 	autoDpMetaRepairParallelCntKey         = "autoDpMetaRepairParallelCnt"
+	autoNodesetBalanceKey                  = "autoNodesetBalance"
 	dpTimeoutKey                           = "dpTimeout"
 	mpTimeoutKey                           = "mpTimeout"
 	rackAwareLevelKey                      = "rackAware"
@@ -242,7 +243,7 @@ const (
 	defaultVolDelayDeleteTimeHour                 = 48
 	defaultMarkDiskBrokenThreshold                = 0 // decommission all dp from disk
 	defaultEnableDpMetaRepair                     = false
-	defaultEnableNodesetBalance                   = false
+	defaultEnableAutoNodesetBalance               = false
 	defaultAutoDpMetaRepairPallarelCnt            = 100
 	defaultAutoDecommissionDiskInterval           = 10 * time.Second
 	maxMpCreationCount                            = 10

@@ -602,7 +602,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
-	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
+	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string, autoNodesetBalance string,
 	dpRepairTimeout string, dpTimeout string, mpTimeout string, dpBackupTimeout string,
 	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
 	handleTimeout string, readDataNodeTimeout string, rackAware string,
@@ -635,6 +635,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if autoDpMetaRepairParallelCnt != "" {
 		request.addParam("autoDpMetaRepairParallelCnt", autoDpMetaRepairParallelCnt)
+	}
+	if autoNodesetBalance != "" {
+		request.addParam("autoNodesetBalance", autoNodesetBalance)
 	}
 	if dpRepairTimeout != "" {
 		request.addParam("dpRepairTimeOut", dpRepairTimeout)
@@ -1064,8 +1067,8 @@ func (api *AdminAPI) CancelDpNodesetBalance() (err error) {
 	return
 }
 
-func (api *AdminAPI) GetNodesetBalanceStatus() (status map[string]interface{}, err error) {
+func (api *AdminAPI) QueryNodesetBalanceStatus() (status map[string]interface{}, err error) {
 	status = make(map[string]interface{})
-	err = api.mc.requestWith(&status, newRequest(get, proto.AdminGetNodesetBalanceStatus).Header(api.h))
+	err = api.mc.requestWith(&status, newRequest(get, proto.AdminQueryNodesetBalanceStatus).Header(api.h))
 	return
 }
