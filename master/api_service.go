@@ -8639,6 +8639,71 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) setNodesetBalanceEnable(w http.ResponseWriter, r *http.Request) {
+	var (
+		err    error
+		enable bool
+	)
+
+	if enable, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.setEnableNodesetBalance(enable); err != nil {
+		log.LogErrorf("action[setNodesetBalanceEnable] setEnableNodesetBalance failed %v", err)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
+		return
+	}
+
+	AuditLog(r, "AdminSetNodesetBalanceEnable", fmt.Sprintf("set enable[%v]", enable), err)
+	log.LogInfof("action[setNodesetBalanceEnable] enable be set [%v]", enable)
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"set nodesetBalanceEnable to [%v] successfully", enable)))
+}
+
+func (m *Server) getNodesetBalanceEnable(w http.ResponseWriter, r *http.Request) {
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
+		"nodesetBalanceEnable [%v]", m.cluster.getEnableNodesetBalance())))
+}
+
+func (m *Server) cancelDpNodesetBalance(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	metric := exporter.NewTPCnt("req_cancelDpNodesetBalance")
+	defer func() {
+		metric.Set(err)
+		AuditLog(r, proto.AdminCancelDpNodesetBalance, fmt.Sprintf("cancel dp nodesetBalance"), err)
+	}()
+
+	if err = m.cluster.cancelDpNodesetBalance(); err != nil {
+		ret := fmt.Sprintf("action[cancelDpNodesetBalance] cancel dp nodesetBalance failed[%v]", err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
+		return
+	}
+	rstMsg := fmt.Sprintf("cancel dp nodesetBalance successfully")
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) getNodesetBalanceStatus(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	metric := exporter.NewTPCnt("req_getNodesetBalanceStatus")
+	defer func() {
+		metric.Set(err)
+		AuditLog(r, "GetNodesetBalanceStatus", fmt.Sprintf("get nodeset balance status"), err)
+	}()
+
+	status := m.cluster.getNodesetBalanceStatus()
+	if status == nil {
+		ret := fmt.Sprintf("action[getNodesetBalanceStatus] get nodeset balance status failed")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: ret})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(status))
+}
+
 func (m *Server) resetDataPartitionRestoreStatus(w http.ResponseWriter, r *http.Request) {
 	var (
 		err  error

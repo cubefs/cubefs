@@ -1057,3 +1057,15 @@ func (api *AdminAPI) DeleteMetaNodeBalanceTask() (result string, err error) {
 	err = api.mc.requestWith(&result, newRequest(get, proto.DeleteMetaNodeBalanceTask).Header(api.h))
 	return
 }
+
+func (api *AdminAPI) CancelDpNodesetBalance() (err error) {
+	request := newRequest(post, proto.AdminCancelDpNodesetBalance)
+	err = api.mc.request(request)
+	return
+}
+
+func (api *AdminAPI) GetNodesetBalanceStatus() (status map[string]interface{}, err error) {
+	status = make(map[string]interface{})
+	err = api.mc.requestWith(&status, newRequest(get, proto.AdminGetNodesetBalanceStatus).Header(api.h))
+	return
+}

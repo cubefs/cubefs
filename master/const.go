@@ -242,6 +242,7 @@ const (
 	defaultVolDelayDeleteTimeHour                 = 48
 	defaultMarkDiskBrokenThreshold                = 0 // decommission all dp from disk
 	defaultEnableDpMetaRepair                     = false
+	defaultEnableNodesetBalance                   = false
 	defaultAutoDpMetaRepairPallarelCnt            = 100
 	defaultAutoDecommissionDiskInterval           = 10 * time.Second
 	maxMpCreationCount                            = 10

@@ -70,6 +70,7 @@ type clusterValue struct {
 	EnableAutoDecommissionDisk             bool
 	AutoDecommissionDiskInterval           int64
 	DecommissionDiskLimit                  uint32
+	EnableNodesetBalance                   bool
 	VolDeletionDelayTimeHour               int64
 	MetaNodeGOGC                           int
 	DataNodeGOGC                           int
@@ -122,6 +123,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		EnableAutoDecommissionDisk:             c.EnableAutoDecommissionDisk.Load(),
 		AutoDecommissionDiskInterval:           c.AutoDecommissionInterval.Load(),
 		DecommissionDiskLimit:                  c.GetDecommissionDiskLimit(),
+		EnableNodesetBalance:                   c.getEnableNodesetBalance(),
 		VolDeletionDelayTimeHour:               c.cfg.volDelayDeleteTimeHour,
 		MetaNodeGOGC:                           c.cfg.metaNodeGOGC,
 		DataNodeGOGC:                           c.cfg.dataNodeGOGC,
@@ -1360,6 +1362,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.EnableAutoDecommissionDisk.Store(cv.EnableAutoDecommissionDisk)
 		c.updateAutoDecommissionDiskInterval(cv.AutoDecommissionDiskInterval)
 		c.DecommissionLimit = cv.DecommissionLimit
+		c.updateEnableNodesetBalance(cv.EnableNodesetBalance)
 		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
 		c.cfg.metaNodeGOGC = cv.MetaNodeGOGC
 		c.cfg.dataNodeGOGC = cv.DataNodeGOGC

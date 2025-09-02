@@ -126,6 +126,10 @@ const (
 	AdminUpdateDecommissionDiskLimit = "/admin/updateDecommissionDiskLimit"
 	AdminEnableAutoDecommissionDisk  = "/admin/enableAutoDecommissionDisk"
 	AdminQueryAutoDecommissionDisk   = "/admin/queryAutoDecommissionDisk"
+
+	AdminCancelDpNodesetBalance  = "/admin/cancelDpNodesetBalance"
+	AdminGetNodesetBalanceStatus = "/admin/getNodesetBalanceStatus"
+	AdminSetNodesetBalanceEnable = "/admin/setNodesetBalanceEnable"
 	// graphql master api
 	AdminClusterAPI               = "/api/cluster"
 	AdminUserAPI                  = "/api/user"
