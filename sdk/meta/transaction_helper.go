@@ -28,10 +28,10 @@ func genTransactionId(clientId uint64) string {
 	return fmt.Sprintf("%d_%d", clientId, atomic.AddUint64(&txId, 1))
 }
 
-func getMembersFromMp(parentMp *MetaPartition) string {
-	members := parentMp.LeaderAddr
-	for _, addr := range parentMp.Members {
-		if addr == parentMp.LeaderAddr {
+func getMembersFromMp(mp *MetaPartition) string {
+	members := mp.LeaderAddr
+	for _, addr := range mp.Members {
+		if addr == mp.LeaderAddr {
 			continue
 		}
 		if members == "" {
