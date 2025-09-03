@@ -53,6 +53,7 @@ const (
 
 	LRUCacheBlockCacheType = 0
 	LRUFileHandleCacheType = 1
+	MaxEvictCountPerRound  = 100
 )
 
 var (
