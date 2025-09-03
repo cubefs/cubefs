@@ -55,7 +55,7 @@ type BenchmarkResult struct {
 	IOPS          float64
 }
 
-func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master string, clearPageCache bool) *BenchmarkTester {
+func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master string, clearPageCache bool, logLevel string, disableBatch bool, activateTime int64, connWorkers int) *BenchmarkTester {
 	os.MkdirAll(dataDir, 0o755)
 	tester := &BenchmarkTester{
 		dataDir:        dataDir,
@@ -82,11 +82,14 @@ func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master s
 			Masters:            strings.Split(master, ","),
 			BlockSize:          proto.CACHE_OBJECT_BLOCK_SIZE,
 			NeedInitLog:        true,
-			LogLevelStr:        "debug",
+			LogLevelStr:        logLevel,
 			LogDir:             "/tmp/cfs",
 			ConnectTimeout:     500,
 			FirstPacketTimeout: 1000,
 			InitClientTime:     1,
+			DisableBatch:       disableBatch,
+			ActivateTime:       activateTime,
+			ConnWorkers:        connWorkers,
 		}
 		tester.cacheStorage, err = remotecache.NewRemoteCacheClient(cfg)
 		if err != nil {
@@ -211,6 +214,10 @@ func main() {
 	removeKey := flag.Bool("remove-key", false, "Remove specific key")
 	blockKey := flag.String("block-key", "", "Block unique key")
 	readRepeat := flag.Int("read-repeat", 1, "Read the repeat count of a key press")
+	logLevel := flag.String("log-level", "debug", "Log level")
+	disableBatch := flag.Bool("disable-batch", false, "Disable batch operations")
+	activateTime := flag.Int64("activate-time", 200, "Activate time in microseconds")
+	flashConnWorkers := flag.Int("flash-conn-workers", 64, "Number of flash connection workers")
 	flag.Parse()
 
 	fmt.Printf("Parsed command-line arguments:\n")
@@ -229,7 +236,11 @@ func main() {
 	fmt.Printf("  -remove-key: %v\n", *removeKey)
 	fmt.Printf("  -block-key: %v\n", *blockKey)
 	fmt.Printf("  -read-repeat: %v\n", *readRepeat)
-	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master, *clear)
+	fmt.Printf("  -log-level: %v\n", *logLevel)
+	fmt.Printf("  -disable-batch: %v\n", *disableBatch)
+	fmt.Printf("  -activate-time: %v\n", *activateTime)
+	fmt.Printf("  -flash-conn-workers: %v\n", *flashConnWorkers)
+	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master, *clear, *logLevel, *disableBatch, *activateTime, *flashConnWorkers)
 	if *needGenerate {
 		if err := tester.GenerateTestData(*totalSizeGB, *genConcurrency); err != nil {
 			fmt.Printf("generate test files failed: %v\n", err)
@@ -309,7 +320,7 @@ func (t *BenchmarkTester) runStoragePutBenchmark(ctx context.Context, storage st
 		index        = 0
 	)
 
-	taskCh := make(chan string, concurrency)
+	taskCh := make(chan string, 4*concurrency)
 
 	for w := 0; w < concurrency; w++ {
 		wg.Add(1)
@@ -469,7 +480,6 @@ type FileHandler struct {
 	Reader   io.Reader
 	FileName string
 	Size     int64
-	File     *os.File
 	bytes    []byte
 }
 
@@ -490,20 +500,18 @@ func OpenFileAsReader(filePath string) (*FileHandler, error) {
 		Reader:   bytes.NewReader(buf[0:fileInfo.Size()]),
 		Size:     fileInfo.Size(),
 		FileName: path.Base(filePath),
-		File:     file,
 		bytes:    buf,
 	}
+	_ = file.Close()
 	return info, nil
 }
 
 func (fh *FileHandler) Close() error {
-	if fh.File == nil {
-		return nil
+	if fh.bytes != nil {
+		bytespool.Free(fh.bytes)
+		fh.bytes = nil
 	}
-	err := fh.File.Close()
-	fh.File = nil
-	bytespool.Free(fh.bytes)
-	return err
+	return nil
 }
 
 func (t *BenchmarkTester) RunGetBenchmark(ctx context.Context, concurrency int, repeats int) {
@@ -542,7 +550,7 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 		index        = 0
 	)
 
-	taskCh := make(chan string, concurrency)
+	taskCh := make(chan string, 4*concurrency)
 
 	for w := 0; w < concurrency; w++ {
 		wg.Add(1)
@@ -557,18 +565,17 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 					continue
 				}
 				fh := value.(*FileHandler)
+				from := int64(0)
+				to := fh.Size
+				var dataBuf, tmpBuf []byte
+				dataBuf = bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
+				tmpBuf = bytespool.Alloc(int(to - from))
 				for i := 0; i < repeats; i++ {
 					startTime := time.Now()
-					from := int64(0)
-					to := fh.Size
 					reqId := uuid.New().String()
 					r, len1, _, err := storage.Get(ctx, reqId, fh.FileName, from, to)
 					var latency time.Duration
-					var dataBuf, tmpBuf []byte
-
 					if err == nil && r != nil {
-						dataBuf = bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
-						tmpBuf = bytespool.Alloc(int(to - from))
 						reads := 0
 						for {
 							readBytes, readErr := r.Read(dataBuf)
@@ -595,8 +602,6 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 								}
 							}
 						}
-						bytespool.Free(dataBuf)
-						bytespool.Free(tmpBuf)
 					}
 					if err != nil && err != io.EOF {
 						atomic.AddInt64(&errorCount, 1)
@@ -610,6 +615,8 @@ func (t *BenchmarkTester) runStorageGetBenchmark(ctx context.Context, storage st
 						r.Close()
 					}
 				}
+				bytespool.Free(dataBuf)
+				bytespool.Free(tmpBuf)
 				fh.Close()
 			}
 		}(w)

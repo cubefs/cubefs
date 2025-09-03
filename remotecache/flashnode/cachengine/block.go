@@ -152,8 +152,10 @@ func (cb *CacheBlock) readWithRetry(data []byte, offset int64, file *os.File) (n
 			return n, nil
 		}
 		if strings.Contains(err.Error(), "file already closed") {
-			log.LogInfof("action[readWithRetry] file already closed, retry %d/%d, blockKey:%v, err:%v",
-				retry+1, blockRetries, cb.blockKey, err)
+			if log.EnableInfo() {
+				log.LogInfof("action[readWithRetry] file already closed, retry %d/%d, blockKey:%v, err:%v",
+					retry+1, blockRetries, cb.blockKey, err)
+			}
 			if file, err = cb.GetOrOpenFileHandler(); err != nil {
 				return 0, err
 			}
@@ -170,8 +172,10 @@ func (cb *CacheBlock) writeWithRetry(data []byte, offset int64, file *os.File) (
 			return n, nil
 		}
 		if strings.Contains(err.Error(), "file already closed") {
-			log.LogInfof("action[writeWithRetry] file already closed, retry %d/%d, blockKey:%v, err:%v",
-				retry+1, blockRetries, cb.blockKey, err)
+			if log.EnableInfo() {
+				log.LogInfof("action[writeWithRetry] file already closed, retry %d/%d, blockKey:%v, err:%v",
+					retry+1, blockRetries, cb.blockKey, err)
+			}
 			if file, err = cb.GetOrOpenFileHandler(); err != nil {
 				return 0, err
 			}
@@ -251,7 +255,9 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64,
 		realSize = size
 	}
 
-	log.LogDebugf("action[Read] read cache block:%v, offset:%d, allocSize:%d, usedSize:%d", cb.blockKey, offset, cb.allocSize, cb.usedSize)
+	if log.EnableDebug() {
+		log.LogDebugf("action[Read] read cache block:%v, offset:%d, allocSize:%d, usedSize:%d", cb.blockKey, offset, cb.allocSize, cb.usedSize)
+	}
 	var file *os.File
 	if file, err = cb.GetOrOpenFileHandler(); err != nil {
 		return

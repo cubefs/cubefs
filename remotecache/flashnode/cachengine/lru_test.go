@@ -75,7 +75,7 @@ func TestLRUManyThings(t *testing.T) {
 
 func TestLRUCapacity(t *testing.T) {
 	called := false
-	c := NewCache(LRUFileHandleCacheType, 2, util.MB*100, time.Hour,
+	c := NewCache(LRUCacheBlockCacheType, 2, util.MB*100, time.Hour,
 		func(v interface{}, reason string) error { called = true; return nil },
 		func(v interface{}) error { return fmt.Errorf("close error") })
 	c.Set(1, &CacheBlock{blockKey: "block1"}, 0)

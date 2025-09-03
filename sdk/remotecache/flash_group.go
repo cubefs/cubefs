@@ -79,6 +79,46 @@ func (fg *FlashGroup) getFlashHost() (host string) {
 	return
 }
 
+func (fg *FlashGroup) getFlashHostWithCrossRegion() (host string) {
+	fg.hostLock.RLock()
+	defer fg.hostLock.RUnlock()
+
+	epoch := atomic.AddUint64(&fg.epoch, 1)
+
+	classifyHost := fg.rankedHost
+	sameZoneHosts := classifyHost[SameZoneRank]
+	sameRegionHosts := classifyHost[SameRegionRank]
+	crossRegionHosts := classifyHost[CrossRegionRank]
+	sameZoneLen := uint64(len(sameZoneHosts))
+	sameRegionLen := uint64(len(sameRegionHosts))
+	crossRegionLen := uint64(len(crossRegionHosts))
+
+	if sameZoneLen == 0 && sameRegionLen == 0 && crossRegionLen == 0 {
+		return
+	}
+	if sameZoneLen == 0 && crossRegionLen == 0 {
+		host = sameRegionHosts[epoch%sameRegionLen]
+	} else if sameRegionLen == 0 && crossRegionLen == 0 {
+		host = sameZoneHosts[epoch%sameZoneLen]
+	} else if sameZoneLen == 0 && sameRegionLen == 0 {
+		host = crossRegionHosts[epoch%crossRegionLen]
+	} else {
+		weightedValue := epoch % 100
+		if sameZoneLen > 0 && weightedValue < uint64(SameZoneWeight) {
+			host = sameZoneHosts[epoch%sameZoneLen]
+		} else if sameRegionLen > 0 && weightedValue < uint64(SameZoneWeight+SameRegionWeight) {
+			host = sameRegionHosts[epoch%sameRegionLen]
+		} else if crossRegionLen > 0 {
+			host = crossRegionHosts[epoch%crossRegionLen]
+		} else if sameRegionLen > 0 {
+			host = sameRegionHosts[epoch%sameRegionLen]
+		} else if sameZoneLen > 0 {
+			host = sameZoneHosts[epoch%sameZoneLen]
+		}
+	}
+	return
+}
+
 func (fg *FlashGroup) moveToUnknownRank(addr string, err error, timeoutCount int32) bool {
 	if !(err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()))) {
 		return false

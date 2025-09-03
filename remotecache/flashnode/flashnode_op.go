@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net"
 	"strings"
@@ -66,6 +67,8 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 		err = f.opCacheDelete(conn, p)
 	case proto.OpFlashNodeCacheReadObject:
 		err = f.opCacheObjectGet(conn, p)
+	case proto.OpFlashNodeBatchReadObject:
+		err = f.opCacheBatchObjectGet(conn, p)
 	case proto.OpFlashNodeSetReadIOLimits:
 		err = f.opSetReadIOLimits(conn, p)
 	case proto.OpFlashNodeSetWriteIOLimits:
@@ -467,13 +470,159 @@ func (f *FlashNode) replyPutDataOk(ch *proto.CoonHandler, conn net.Conn, p *prot
 	}
 }
 
+func (f *FlashNode) opCacheBatchObjectGet(conn net.Conn, p *proto.Packet) (err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		if err != nil {
+			log.LogWarnf("action[opCacheBatchObjectGet] write to conn %v", err)
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			if e := p.WriteToConn(conn); e != nil {
+				log.LogErrorf("action[opCacheBatchObjectGet] write to conn %v", e)
+			}
+		}
+		stat.EndStat("FlashNode:opCacheBatchObjectGet", err, bgTime, 1)
+	}()
+	connAddr := conn.RemoteAddr().String()
+	req := new(proto.BatchReadReq)
+	if err = p.UnmarshalDataPb(req); err != nil {
+		return
+	}
+	resChan := make(chan *proto.ReadResult, len(req.Items))
+	bufChan := make(chan []byte, len(req.Items))
+	bg1 := stat.BeginStat()
+	var wg sync.WaitGroup
+	for _, item := range req.Items {
+		wg.Add(1)
+		_ = f.batchReadPool.AsyncRunNoHang(func(ri *proto.BatchReadItem) func() {
+			return func() {
+				defer wg.Done()
+				r, b := f.smallObjectGet(ri, connAddr, req.Deadline)
+				resChan <- r
+				bufChan <- b
+			}
+		}(item))
+	}
+	wg.Wait()
+	stat.EndStat("FlashNode:opCacheBatchComplete", err, bg1, 1)
+	close(resChan)
+	close(bufChan)
+	defer func() {
+		for b := range bufChan {
+			if b != nil {
+				bytespool.Free(b)
+			}
+		}
+	}()
+	results := make([]*proto.ReadResult, 0)
+	for a := range resChan {
+		results = append(results, a)
+	}
+	resp := new(proto.BatchReadResp)
+	resp.Results = results
+	p.ResultCode = proto.OpOk
+	if err = p.MarshalDataPb(resp); err == nil {
+		if e := p.WriteToConn(conn); e != nil {
+			log.LogErrorf("action[opCacheBatchObjectGet] write to conn %v", e)
+		}
+	}
+	return
+}
+
+func (f *FlashNode) smallObjectGet(req *proto.BatchReadItem, connAddr string, deadLine uint64) (result *proto.ReadResult, buf []byte) {
+	result = &proto.ReadResult{
+		ReqId:      req.ReqId,
+		ResultCode: uint32(proto.OpOk),
+	}
+	var err error
+	bgTime := stat.BeginStat()
+	buf = bytespool.Alloc(proto.SMALL_OBJECT_BLOCK_SIZE)
+	reqID := req.Tid
+	uniKey := req.Key
+	if log.EnableDebug() {
+		log.LogDebugf("smallObjectGet req(%v) key(%v) id(%v) begin", req, uniKey, reqID)
+	}
+	defer func() {
+		if err != nil {
+			if !proto.IsFlashNodeLimitError(err) || !proto.IsCacheMissError(err) {
+				log.LogWarnf("action[smallObjectGet] req(%s) remoteAddr(%s) deadLine(%d) err:%v", req.String(), connAddr, deadLine, err)
+			} else {
+				if log.EnableDebug() {
+					log.LogDebugf("action[smallObjectGet] req(%s) remoteAddr(%s) deadLine(%d) err:%v", req.String(), connAddr, deadLine, err)
+				}
+			}
+			result.ResultCode = uint32(proto.OpErr)
+			result.Data = ([]byte)(err.Error())
+		}
+		stat.EndStat("FlashNode:smallObjectGet", err, bgTime, 1)
+	}()
+
+	pDir := cachengine.MapKeyToDirectory(uniKey)
+	blockKey := cachengine.GenCacheBlockKeyV2(pDir, uniKey)
+	f.updateSlotStat(req.Slot)
+	block, err := f.cacheEngine.GetCacheBlockForReadByKey(blockKey)
+	if err != nil {
+		// if not find block, check whether should cache
+		err = f.shouldCache(uniKey)
+		return
+	}
+	err = block.VerifyObjectReq(req.Offset, req.Size_)
+	stat.EndStat("LoadBlock", nil, bgTime, 1)
+	if err != nil {
+		createTime := block.GetCreateTime()
+		if time.Since(createTime) > 2*time.Minute {
+			f.cacheEngine.DeleteCacheBlock(blockKey)
+			err = f.shouldCache(uniKey)
+		}
+		return
+	}
+	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Duration(f.handleReadTimeout)*time.Millisecond)
+	defer ctxCancel()
+	dataSize := block.LoadDataSize()
+	readDiskSize := util.Min(proto.CACHE_BLOCK_PACKET_SIZE, int(uint64(dataSize)-req.Offset))
+	var readDiskErr error
+	var readCRC uint32
+	var diskDataBuf []byte
+	if uint64(readDiskSize) <= req.Size_ {
+		diskDataBuf = buf
+	} else {
+		diskDataBuf = bytespool.Alloc(proto.CACHE_BLOCK_PACKET_SIZE)
+	}
+	if err = f.limitRead.AcquireDiskFlow(readDiskSize); err == nil {
+		readCRC, readDiskErr = block.Read(ctx, diskDataBuf[:readDiskSize], int64(req.Offset), int64(readDiskSize), f.waitForCacheBlock, true)
+	}
+	if readDiskErr != nil {
+		err = readDiskErr
+	}
+	if err == nil {
+		if uint64(readDiskSize) == req.Size_ {
+			result.CRC = readCRC
+		} else {
+			diskCrc := crc32.ChecksumIEEE(diskDataBuf[:readDiskSize])
+			if readCRC != diskCrc {
+				err = fmt.Errorf(proto.ErrorInconsistentCRCTpl, readCRC, diskCrc)
+			} else {
+				result.CRC = crc32.ChecksumIEEE(diskDataBuf[:req.Size_])
+			}
+		}
+		if err == nil {
+			if uint64(readDiskSize) > req.Size_ {
+				copy(buf[:req.Size_], diskDataBuf)
+			}
+			result.Data = buf[:req.Size_]
+		}
+	}
+	if uint64(readDiskSize) > req.Size_ {
+		bytespool.Free(diskDataBuf)
+	}
+	return
+}
+
 func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error) {
 	var uniKey string
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("FlashNode:opCacheObjectGet", err, bgTime, 1)
 	}()
-	// TODO: protobuf
 	reqID := string(p.Arg)
 	defer func() {
 		if err != nil {
@@ -511,6 +660,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 		return
 	}
 	err = block.VerifyObjectReq(req.Offset, req.Size_)
+	stat.EndStat("LoadBlock", nil, bgTime, 1)
 	if err != nil {
 		createTime := block.GetCreateTime()
 		if time.Since(createTime) > 2*time.Minute {
@@ -519,8 +669,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 		}
 		return
 	}
-	stat.EndStat("LoadBlock", nil, bgTime, 1)
-	ctx, ctxCancel := context.WithDeadline(context.Background(), time.Unix(0, int64(req.Deadline)))
+	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Duration(f.handleReadTimeout)*time.Millisecond)
 	defer ctxCancel()
 	bgTime2 := stat.BeginStat()
 	// reply to client as quick as possible if hit cache

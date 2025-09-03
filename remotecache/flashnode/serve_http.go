@@ -40,6 +40,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/setWaitForCacheBlock", f.handleSetWaitForCacheBlock)
 	http.HandleFunc("/slotStat", f.handleSlotStat)
 	http.HandleFunc("/submitTask", f.handleSubmitTask)
+	http.HandleFunc("/batchReadPoolStatus", f.handleBatchReadPoolStatus)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -324,4 +325,23 @@ func (f *FlashNode) handleSlotStat(w http.ResponseWriter, r *http.Request) {
 		Addr:     f.localAddr,
 		SlotStat: f.GetFlashNodeSlotStat(),
 	})
+}
+
+func (f *FlashNode) handleBatchReadPoolStatus(w http.ResponseWriter, r *http.Request) {
+	status := f.GetBatchReadPoolStatus()
+	if status == nil {
+		replyErr(w, r, proto.ErrCodeParamError, "batchReadPool is not initialized", nil)
+		return
+	}
+
+	response := map[string]interface{}{
+		"nodeId":      f.nodeID,
+		"addr":        f.localAddr,
+		"concurrency": status.Concurrency,
+		"queueSize":   status.QueueSize,
+		"running":     status.Running,
+		"waiting":     status.Waiting,
+	}
+
+	replyOK(w, r, response)
 }

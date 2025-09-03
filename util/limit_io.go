@@ -148,6 +148,16 @@ func (l *IoLimiter) TryRunAsync(ctx context.Context, size int, waitForFlow bool,
 	return nil
 }
 
+func (l *IoLimiter) AcquireDiskFlow(size int) error {
+	if size > 0 && l.limit > 0 {
+		if err := l.flow.WaitN(context.Background(), size); err != nil {
+			log.LogWarnf("action[limitio] get disk flow token wait flow with %d %s", size, err.Error())
+			return err
+		}
+	}
+	return nil
+}
+
 func (l *IoLimiter) Status(ignoreUsed bool) (st LimiterStatus) {
 	st = l.getIO().Status()
 

@@ -59,3 +59,36 @@ message CacheReadRequestBase {
   uint64  Size     = 5;
   uint64  Deadline = 6;
 }
+
+message BatchReadItem {
+  option (gogoproto.goproto_stringer) = false;
+
+  string Key    = 1;
+  uint64 Offset = 2;
+  uint64 Size   = 3;
+  uint64 Slot   = 4;
+  uint64 ReqId  = 5;
+  string Tid    = 6;
+}
+
+message BatchReadReq {
+  option (gogoproto.goproto_stringer) = false;
+
+  uint64                 Deadline = 1;
+  repeated BatchReadItem Items   = 2;
+}
+
+message ReadResult {
+  option (gogoproto.goproto_stringer) = false;
+
+  bytes  Data       = 1;
+  uint32 ResultCode = 2;
+  uint32 CRC        = 3;
+  uint64 ReqId      = 4;
+}
+
+message BatchReadResp {
+  option (gogoproto.goproto_stringer) = false;
+
+  repeated ReadResult Results = 1;
+}
