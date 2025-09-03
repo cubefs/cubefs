@@ -15,6 +15,7 @@ const (
 	CACHE_BLOCK_PACKET_SIZE = 128 * PageSize
 	CACHE_BLOCK_SIZE        = 1 << 20
 	CACHE_OBJECT_BLOCK_SIZE = 4 * 1024 * 1024
+	SMALL_OBJECT_BLOCK_SIZE = 16 * 1024
 	ReadCacheTimeout        = 1 // second
 	DefaultCacheTTLSec      = 5 * 24 * 3600
 	FlashGroupDefaultWeight = 1
@@ -298,6 +299,41 @@ func (pbh *PutBlockHead) String() string {
 		return ""
 	}
 	return fmt.Sprintf("PutBlockHead[UniKey(%v) BlockLen(%v) TTL(%v)]", pbh.UniKey, pbh.BlockLen, pbh.TTL)
+}
+
+func (m *BatchReadItem) String() string {
+	if m == nil {
+		return "BatchReadItem(nil)"
+	}
+	return fmt.Sprintf("BatchReadItem[Key(%s) Offset(%d) Size(%d) Slot(%d) ReqId(%d) Tid(%s)]",
+		m.Key, m.Offset, m.Size_, m.Slot, m.ReqId, m.Tid)
+}
+
+func (m *BatchReadReq) String() string {
+	if m == nil {
+		return "BatchReadReq(nil)"
+	}
+	return fmt.Sprintf("BatchReadReq[Deadline(%d) len(%d)]",
+		m.Deadline, len(m.Items))
+}
+
+func (m *ReadResult) String() string {
+	if m == nil {
+		return "ReadResult(nil)"
+	}
+	dataLen := 0
+	if m.Data != nil {
+		dataLen = len(m.Data)
+	}
+	return fmt.Sprintf("ReadResult[ReqId(%d) ResultCode(%d) CRC(%d) DataLen(%d)]",
+		m.ReqId, m.ResultCode, m.CRC, dataLen)
+}
+
+func (m *BatchReadResp) String() string {
+	if m == nil {
+		return "BatchReadResp(nil)"
+	}
+	return fmt.Sprintf("BatchReadResp[%d]", len(m.Results))
 }
 
 func (cr *CacheReadRequestBase) DecodeBinaryFrom(b []byte) {

@@ -49,7 +49,7 @@ const (
 
 	_defaultReadBurst                      = 512
 	_defaultLRUCapacity                    = 400000
-	_defaultLRUFhCapacity                  = 100000
+	_defaultLRUFhCapacity                  = 500000
 	_defaultDiskUnavailableCbErrorCount    = 3
 	_defaultCacheLoadWorkerNum             = 16
 	_defaultCacheEvictWorkerNum            = 16
@@ -78,6 +78,7 @@ const (
 	_defaultMaxMissEntryCache              = 100000
 	_defaultMissCountThresholdInterval     = 5
 	_defaultFlashLimitHangTimeout          = 1000 // ms
+	_defaultBatchReadPoolConcurrency       = 128
 )
 
 // Configuration keys
@@ -112,6 +113,7 @@ const (
 	cfgWaitForBlockCache            = "waitForBlockCache"
 	cfgPrepareLoadRoutineNum        = "prepareLoadRoutineNum"
 	cfgMissEntryTimeout             = "missEntryTimeout"
+	cfgBatchReadPoolConcurrency     = "batchReadPoolConcurrency"
 	paramIocc                       = "iocc"
 	paramFlow                       = "flow"
 	paramFactor                     = "factor"
@@ -176,10 +178,12 @@ type FlashNode struct {
 	waitForCacheBlock            bool
 	prepareLoadRoutineNum        int
 
-	slotMap         sync.Map // [uint32]*SlotStat
-	readCount       uint64
-	missCache       *cachengine.MissCache
-	hotKeyMissCount int32
+	slotMap                  sync.Map // [uint32]*SlotStat
+	readCount                uint64
+	missCache                *cachengine.MissCache
+	hotKeyMissCount          int32
+	batchReadPool            *util.GTaskPool
+	batchReadPoolConcurrency int
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -257,6 +261,7 @@ func (f *FlashNode) shutdown() {
 	})
 	// shutdown node and release the resource
 	f.stopServer()
+	f.stopBatchReadPool()
 	f.stopCacheEngine()
 }
 
@@ -442,6 +447,16 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	f.missCache = cachengine.NewMissCache(missCacheEntryExpiration, _defaultMaxMissEntryCache)
 
+	batchReadPoolConcurrency := cfg.GetInt(cfgBatchReadPoolConcurrency)
+	if batchReadPoolConcurrency <= 0 {
+		batchReadPoolConcurrency = _defaultBatchReadPoolConcurrency
+	}
+	f.batchReadPoolConcurrency = batchReadPoolConcurrency
+	f.batchReadPool = util.NewGTaskPool(f.batchReadPoolConcurrency)
+	f.batchReadPool.SetMaxDeltaRunning(10000)
+	f.batchReadPool.SetWaitTime(5 * time.Millisecond)
+	log.LogInfof("[parseConfig] load batchReadPoolConcurrency[%d]", f.batchReadPoolConcurrency)
+
 	taskCountLimit := cfg.GetInt(cfgNodeTaskCountLimit)
 	if taskCountLimit <= 0 {
 		taskCountLimit = _defaultFlashNodeTaskCountLimit
@@ -504,6 +519,13 @@ func (f *FlashNode) stopCacheEngine() {
 	}
 }
 
+func (f *FlashNode) stopBatchReadPool() {
+	if f.batchReadPool != nil {
+		f.batchReadPool.Close()
+		log.LogInfof("[stopBatchReadPool] closed batchReadPool")
+	}
+}
+
 func (f *FlashNode) startCacheEngine() (err error) {
 	if f.cacheEngine, err = cachengine.NewCacheEngine(f.memDataPath, int64(f.memTotal),
 		0, f.disks, f.lruCapacity, f.lruFhCapacity, f.diskUnavailableCbErrorCount, f.cacheLoadWorkerNum, f.cacheEvictWorkerNum, f.mc, time.Hour, ReadExtentData, f.enableTmpfs, f.localAddr); err != nil {
@@ -517,6 +539,13 @@ func (f *FlashNode) startCacheEngine() (err error) {
 
 func (f *FlashNode) initLimiter() {
 	f.readLimiter = rate.NewLimiter(rate.Limit(f.readRps), 2*f.readRps)
+}
+
+func (f *FlashNode) GetBatchReadPoolStatus() *util.PoolStatus {
+	if f.batchReadPool == nil {
+		return nil
+	}
+	return f.batchReadPool.Status()
 }
 
 func (f *FlashNode) register() error {

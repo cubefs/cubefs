@@ -27,6 +27,11 @@ import (
 	"github.com/cubefs/cubefs/util/stat"
 )
 
+const (
+	LRUUpdateChanSize       = 1000000
+	MaxPushFrontConsumption = 100000
+)
+
 type LruCache interface {
 	Get(key interface{}) (interface{}, error)
 	Peek(key interface{}) (interface{}, bool)
@@ -119,7 +124,7 @@ func NewCache(cacheType int, capacity int, maxSize int64, ttl time.Duration, onD
 		onClose:            onClose,
 		closeCh:            make(chan struct{}),
 		items:              make(map[interface{}]*list.Element),
-		lruUpdateChan:      make(chan *entry, 100000),
+		lruUpdateChan:      make(chan *entry, LRUUpdateChanSize),
 	}
 	go func() {
 		tick := time.NewTicker(time.Second * 60)
@@ -160,12 +165,14 @@ func (c *fCache) PushFrontAll() {
 		c.lock.Unlock()
 		stat.EndStat("PushFrontAll", nil, bg, 1)
 	}()
-	for {
+	processed := 0
+	for processed < MaxPushFrontConsumption {
 		select {
 		case e := <-c.lruUpdateChan:
 			if ent, ok := c.items[e.key]; ok {
 				c.lru.MoveToFront(ent)
 			}
+			processed++
 		case <-c.closeCh:
 			return
 		default:
@@ -303,13 +310,13 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 
 	expiration = GenerateRandTime(expiration)
 	c.lock.Lock()
-	defer c.lock.Unlock()
 	if ent, ok := c.items[key]; ok {
 		c.lru.MoveToFront(ent)
 		v := ent.Value.(*entry)
 		v.value = value
 		v.createAt = time.Now()
 		v.expiredAt = time.Now().Add(expiration)
+		c.lock.Unlock()
 		return 0, nil
 	}
 
@@ -326,24 +333,45 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		expiredAt: time.Now().Add(expiration),
 	})
 	toEvicts := make(map[interface{}]interface{})
-	for c.lru.Len() > c.capacity || (c.cacheType == LRUCacheBlockCacheType && atomic.LoadInt64(&c.allocated) > c.maxSize) {
-		ent := c.lru.Back()
-		if ent != nil {
-			if c.cacheType == LRUCacheBlockCacheType {
-				c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
+	if c.cacheType == LRUFileHandleCacheType && c.lru.Len() > c.capacity {
+		for i := 0; i < MaxEvictCountPerRound; i++ {
+			ent := c.lru.Back()
+			if ent != nil {
+				toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
+				n++
 			}
-			toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
-			n++
+		}
+	} else {
+		for c.lru.Len() > c.capacity || (c.cacheType == LRUCacheBlockCacheType && atomic.LoadInt64(&c.allocated) > c.maxSize) {
+			ent := c.lru.Back()
+			if ent != nil {
+				if c.cacheType == LRUCacheBlockCacheType {
+					c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
+				}
+				toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
+				n++
+			}
 		}
 	}
+	if c.cacheType == LRUFileHandleCacheType {
+		c.lock.Unlock()
+		if len(toEvicts) > 0 {
+			go c.evictExceed(toEvicts)
+		}
+	} else {
+		c.evictExceed(toEvicts)
+		c.lock.Unlock()
+	}
+	return n, nil
+}
 
+func (c *fCache) evictExceed(toEvicts map[interface{}]interface{}) {
 	for k, e := range toEvicts {
 		_ = c.onDelete(e, fmt.Sprintf("lru is full(%d / %d)", atomic.LoadInt64(&c.allocated), c.maxSize))
 		if c.cacheType == LRUCacheBlockCacheType {
 			log.LogInfof("delete(%s) cos lru full, len(%d) size(%d / %d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize)
 		}
 	}
-	return n, nil
 }
 
 func (c *fCache) Get(key interface{}) (interface{}, error) {

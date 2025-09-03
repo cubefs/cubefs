@@ -306,6 +306,7 @@ const (
 	OpFlashNodeScan             uint8 = 0xC9
 	OpFlashNodeTaskCommand      uint8 = 0xCA
 	OpFlashSDKHeartbeat         uint8 = 0xCB
+	OpFlashNodeBatchReadObject  uint8 = 0xCC
 )
 
 const (
@@ -762,6 +763,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpFlashNodeCacheDelete"
 	case OpFlashNodeCacheReadObject:
 		m = "OpFlashNodeCacheReadObject"
+	case OpFlashNodeBatchReadObject:
+		m = "OpFlashNodeBatchReadObject"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
