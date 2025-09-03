@@ -239,6 +239,7 @@ const (
 	cfgTotalMem                  = "totalMem"
 	cfgMemRatio                  = "memRatio"
 	cfgZoneName                  = "zoneName"
+	cfgRack                      = "rack"
 	cfgTickInterval              = "tickInterval"
 	cfgRaftRecvBufSize           = "raftRecvBufSize"
 	cfgSmuxPortShift             = "smuxPortShift"             // int

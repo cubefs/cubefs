@@ -33,6 +33,7 @@ type MetaNode struct {
 	IsActive                         bool
 	Sender                           *AdminTaskManager `graphql:"-"`
 	ZoneName                         string            `json:"Zone"`
+	Rack                             string            `json:"Rack"` // Add rack field
 	MaxMemAvailWeight                uint64            `json:"MaxMemAvailWeight"`
 	Total                            uint64            `json:"TotalWeight"`
 	Used                             uint64            `json:"UsedWeight"`
@@ -61,12 +62,13 @@ type MetaNode struct {
 	RocksdbKeyNumMax                 uint64
 }
 
-func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, clusterID string) (node *MetaNode) {
+func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, rack, clusterID string) (node *MetaNode) {
 	node = &MetaNode{
 		Addr:          addr,
 		HeartbeatPort: heartbeatPort,
 		ReplicaPort:   replicaPort,
 		ZoneName:      zoneName,
+		Rack:          rack,
 		Sender:        newAdminTaskManager(addr, clusterID),
 	}
 	node.CpuUtil.Store(0)

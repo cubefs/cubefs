@@ -79,9 +79,11 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 	diskReport := &struct {
 		Disks []interface{} `json:"disks"`
 		Zone  string        `json:"zone"`
+		Rack  string        `json:"rack"`
 	}{
 		Disks: disks,
 		Zone:  s.zoneName,
+		Rack:  s.rack,
 	}
 	s.buildSuccessResp(w, diskReport)
 }
@@ -407,9 +409,11 @@ func (s *DataNode) getDiskQos(w http.ResponseWriter, r *http.Request) {
 	diskStatus := &struct {
 		Disks []interface{} `json:"disks"`
 		Zone  string        `json:"zone"`
+		Rack  string        `json:"rack"`
 	}{
 		Disks: disks,
 		Zone:  s.zoneName,
+		Rack:  s.rack,
 	}
 	s.buildSuccessResp(w, diskStatus)
 }

@@ -83,6 +83,7 @@ const (
 	ConfigKeyPort          = "port"            // int
 	ConfigKeyMasterAddr    = "masterAddr"      // array
 	ConfigKeyZone          = "zoneName"        // string
+	ConfigKeyRack          = "rack"            // string
 	ConfigKeyDisks         = "disks"           // array
 	ConfigKeyRaftDir       = "raftDir"         // string
 	ConfigKeyRaftHeartbeat = "raftHeartbeat"   // string
@@ -166,6 +167,7 @@ type DataNode struct {
 	space                              *SpaceManager
 	port                               string
 	zoneName                           string
+	rack                               string
 	clusterID                          string
 	bindIp                             bool
 	localServerAddr                    string
@@ -449,6 +451,11 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return err
 	}
 
+	s.rack = cfg.GetString(ConfigKeyRack)
+	if s.rack == "" {
+		s.rack = proto.DefaultRack
+	}
+
 	s.zoneName = cfg.GetString(ConfigKeyZone)
 	if s.zoneName == "" {
 		s.zoneName = DefaultZoneName
@@ -513,7 +520,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
-	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
+	log.LogDebugf("action[parseConfig] load zoneName(%v), rack(%v).", s.zoneName, s.rack)
 	log.LogDebugf("action[parseConfig] load mediaType(%v).", s.mediaType)
 	return
 }
@@ -833,7 +840,7 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			// register this data node on the master
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.raftHeartbeat, s.raftReplica,
-				s.zoneName, s.serviceIDKey, s.mediaType); err != nil {
+				s.zoneName, s.serviceIDKey, s.rack, s.mediaType); err != nil {
 				if strings.Contains(err.Error(), proto.ErrDataNodeAdd.Error()) {
 					failMsg := fmt.Sprintf("[register] register to master[%v] failed: %v",
 						masterAddr, err)

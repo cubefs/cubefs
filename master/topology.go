@@ -981,20 +981,26 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 }
 
 type nodeSet struct {
-	ID                            uint64
-	Capacity                      int
-	zoneName                      string
-	metaNodes                     *sync.Map
-	dataNodes                     *sync.Map
-	decommissionDataPartitionList *DecommissionDataPartitionList
-	decommissionParallelLimit     int32
-	nodeSelectLock                sync.Mutex
-	dataNodeSelectorLock          sync.RWMutex
-	dataNodeSelector              NodeSelector
-	metaNodeSelectorLock          sync.RWMutex
-	metaNodeMemorySelector        NodeSelector
-	metaNodeRocksdbSelector       NodeSelector
+	ID        uint64
+	Rack      string
+	Capacity  int
+	zoneName  string
+	metaNodes *sync.Map
+	dataNodes *sync.Map
+
+	racks     map[string]*nodeSet
+	racksLock sync.RWMutex
+
+	nodeSelectLock          sync.Mutex
+	dataNodeSelectorLock    sync.RWMutex
+	dataNodeSelector        NodeSelector
+	metaNodeSelectorLock    sync.RWMutex
+	metaNodeMemorySelector  NodeSelector
+	metaNodeRocksdbSelector NodeSelector
 	sync.RWMutex
+
+	decommissionDataPartitionList     *DecommissionDataPartitionList
+	decommissionParallelLimit         int32
 	manualDecommissionDiskList        *DecommissionDiskList
 	autoDecommissionDiskList          *DecommissionDiskList
 	doneDecommissionDiskListTraverse  chan struct{}
@@ -1016,14 +1022,16 @@ type nodeSetDecommissionParallelStatus struct {
 	RunningDisk                 []string
 }
 
-func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
+func newNodeSet(c *Cluster, id uint64, cap int, zoneName string, rack string) *nodeSet {
 	log.LogInfof("action[newNodeSet] id[%v]", id)
 	ns := &nodeSet{
 		ID:                                id,
+		Rack:                              rack,
 		Capacity:                          cap,
 		zoneName:                          zoneName,
 		metaNodes:                         new(sync.Map),
 		dataNodes:                         new(sync.Map),
+		racks:                             make(map[string]*nodeSet),
 		decommissionDataPartitionList:     NewDecommissionDataPartitionList(c, id),
 		manualDecommissionDiskList:        NewDecommissionDiskList(),
 		autoDecommissionDiskList:          NewDecommissionDiskList(),
@@ -1033,7 +1041,11 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 		metaNodeMemorySelector:            NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
 		metaNodeRocksdbSelector:           NewNodeSelector(DefaultZoneName, RocksdbType),
 	}
-	go ns.traverseDecommissionDisk(c)
+
+	if c != nil {
+		go ns.traverseDecommissionDisk(c)
+	}
+
 	return ns
 }
 
@@ -1092,12 +1104,37 @@ func (ns *nodeSet) dataNodeLen() (count int) {
 	return
 }
 
+func (ns *nodeSet) getRacks(rackName string) (rack *nodeSet) {
+	ns.racksLock.RLock()
+	defer ns.racksLock.RUnlock()
+	return ns.racks[rackName]
+}
+
 func (ns *nodeSet) putMetaNode(metaNode *MetaNode) {
 	ns.metaNodes.Store(metaNode.Addr, metaNode)
+
+	ns.racksLock.Lock()
+	defer ns.racksLock.Unlock()
+
+	rack := ns.racks[metaNode.Rack]
+	if rack == nil {
+		rack = newNodeSet(nil, ns.ID, ns.Capacity/3, ns.zoneName, metaNode.Rack)
+		ns.racks[metaNode.Rack] = rack
+	}
+	rack.metaNodes.Store(metaNode.Addr, metaNode)
 }
 
 func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 	ns.metaNodes.Delete(metaNode.Addr)
+
+	ns.racksLock.Lock()
+	defer ns.racksLock.Unlock()
+
+	rack := ns.racks[metaNode.Rack]
+	if rack != nil {
+		rack.metaNodes.Delete(metaNode.Addr)
+	}
+
 }
 
 func (ns *nodeSet) canWriteForNode(nodes *sync.Map, replicaNum int, nodeType NodeType) bool {
@@ -1137,10 +1174,28 @@ func (ns *nodeSet) calcNodesForAlloc(nodes *sync.Map) (cnt int) {
 
 func (ns *nodeSet) putDataNode(dataNode *DataNode) {
 	ns.dataNodes.Store(dataNode.Addr, dataNode)
+
+	ns.racksLock.Lock()
+	defer ns.racksLock.Unlock()
+
+	rack := ns.racks[dataNode.Rack]
+	if rack == nil {
+		rack = newNodeSet(nil, ns.ID, ns.Capacity/3, ns.zoneName, dataNode.Rack)
+		ns.racks[dataNode.Rack] = rack
+	}
+	rack.dataNodes.Store(dataNode.Addr, dataNode)
 }
 
 func (ns *nodeSet) deleteDataNode(dataNode *DataNode) {
 	ns.dataNodes.Delete(dataNode.Addr)
+
+	ns.racksLock.Lock()
+	defer ns.racksLock.Unlock()
+
+	rack := ns.racks[dataNode.Rack]
+	if rack != nil {
+		rack.dataNodes.Delete(dataNode.Addr)
+	}
 }
 
 func (ns *nodeSet) AddToDecommissionDataPartitionList(dp *DataPartition, c *Cluster) {
@@ -1677,7 +1732,7 @@ func (zone *Zone) createNodeSet(c *Cluster) (ns *nodeSet, err error) {
 		if err != nil {
 			return nil, err
 		}
-		ns = newNodeSet(c, id, c.cfg.nodeSetCapacity, zone.name)
+		ns = newNodeSet(c, id, c.cfg.nodeSetCapacity, zone.name, "")
 		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
 		ns.startDecommissionSchedule()
 		log.LogInfof("action[createNodeSet] syncAddNodeSet[%v] zonename[%v]", ns.ID, zone.name)
@@ -1702,12 +1757,17 @@ func (zone *Zone) getAllNodeSet() (nsc nodeSetCollection) {
 	return
 }
 
-func (zone *Zone) getAvailNodeSetForMetaNode() (nset *nodeSet) {
+func (zone *Zone) getAvailNodeSetForMetaNode(rackName string) (nset *nodeSet) {
 	allNodeSet := zone.getAllNodeSet()
 	sort.Sort(sort.Reverse(allNodeSet))
 
 	for _, ns := range allNodeSet {
 		if ns.metaNodeLen() < ns.Capacity {
+			rack := ns.getRacks(rackName)
+			if rack != nil && rack.metaNodeLen() >= rack.Capacity {
+				continue
+			}
+
 			if nset == nil {
 				nset = ns
 			} else {
@@ -1721,10 +1781,15 @@ func (zone *Zone) getAvailNodeSetForMetaNode() (nset *nodeSet) {
 	return
 }
 
-func (zone *Zone) getAvailNodeSetForDataNode() (nset *nodeSet) {
+func (zone *Zone) getAvailNodeSetForDataNode(rackName string) (nset *nodeSet) {
 	allNodeSet := zone.getAllNodeSet()
 	for _, ns := range allNodeSet {
 		if ns.dataNodeLen() < ns.Capacity {
+			rack := ns.getRacks(rackName)
+			if rack != nil && rack.dataNodeLen() >= rack.Capacity {
+				continue
+			}
+
 			if nset == nil {
 				nset = ns
 			} else {
@@ -2162,7 +2227,9 @@ func NewDecommissionDataPartitionList(c *Cluster, nsId uint64) *DecommissionData
 	l.nsId = nsId
 	atomic.StoreInt32(&l.curParallel, 0)
 	atomic.StoreInt32(&l.parallelLimit, defaultDecommissionParallelLimit)
-	go l.traverse(c)
+	if c != nil {
+		go l.traverse(c)
+	}
 	return l
 }
 

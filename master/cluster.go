@@ -1232,17 +1232,74 @@ func (c *Cluster) RaftPartitionCanUsingDifferentPortEnabled() bool {
 	return enabled
 }
 
-func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName string, nodesetId uint64) (id uint64, err error) {
+func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack string, nodesetId uint64) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 
 	var metaNode *MetaNode
+	var zone *Zone
+
+	// Set default values
+	if zoneName == "" {
+		zoneName = DefaultZoneName
+	}
+	if rack == "" {
+		rack = proto.DefaultRack
+	}
+
+	log.LogInfof("[addMetaNode] to add: metanode(%v) zone(%v) rack(%v) nodesetId(%v)",
+		nodeAddr, zoneName, rack, nodesetId)
+
+	// Check if metanode already exists
 	if value, ok := c.metaNodes.Load(nodeAddr); ok {
 		metaNode = value.(*MetaNode)
-		if nodesetId > 0 && nodesetId != metaNode.ID {
+
+		// Validate nodeset consistency
+		if nodesetId > 0 && nodesetId != metaNode.NodeSetID {
 			return metaNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
 		}
 
+		// Validate zone consistency
+		if zoneName != metaNode.ZoneName {
+			return metaNode.ID, fmt.Errorf("zoneName not equal to old, new %s, old %s", zoneName, metaNode.ZoneName)
+		}
+
+		// Check if rack is different and old rack is not default
+		if rack != metaNode.Rack && metaNode.Rack != proto.DefaultRack {
+			return metaNode.ID, fmt.Errorf("rack not equal to old, new %s, old %s", rack, metaNode.Rack)
+		}
+
+		// Update rack if different
+		if rack != metaNode.Rack {
+			oldRack := metaNode.Rack
+			metaNode.Rack = rack
+
+			// Sync rack update to storage
+			if err = c.syncUpdateMetaNode(metaNode); err != nil {
+				log.LogErrorf("[addMetaNode] update metaNode(%v) rack to %s failed, err: %v", nodeAddr, rack, err.Error())
+				metaNode.Rack = oldRack
+				return metaNode.ID, err
+			}
+
+			// Get zone and nodeset for topology update
+			zone, err = c.t.getZone(zoneName)
+			if err != nil {
+				log.LogErrorf("[addMetaNode] get zone(%v) failed, err: %v", zoneName, err.Error())
+				return metaNode.ID, err
+			}
+
+			ns, err := zone.getNodeSet(nodesetId)
+			if err != nil {
+				log.LogErrorf("[addMetaNode] get nodeset(%v) failed, err: %v", nodesetId, err.Error())
+				return metaNode.ID, err
+			}
+
+			// Update topology: remove from old rack, add to new rack
+			ns.putMetaNode(metaNode)
+			ns.deleteMetaNode(metaNode)
+		}
+
+		// Update heartbeat and replica ports if provided
 		if len(heartbeatPort) > 0 && len(replicaPort) > 0 {
 			metaNode.Lock()
 			defer metaNode.Unlock()
@@ -1258,6 +1315,8 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 
 		return metaNode.ID, nil
 	}
+
+	// Check raft partition port requirements
 	if c.cfg.raftPartitionCanUseDifferentPort.Load() {
 		if len(heartbeatPort) == 0 || len(replicaPort) == 0 {
 			err = fmt.Errorf("when master enable raftPartitionCanUseDifferentPort, only allow new metanode with valid heartbeatPort and replicaPort to register. "+
@@ -1266,13 +1325,17 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 		}
 	}
 
-	metaNode = newMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, c.Name)
-	zone, err := c.t.getZone(zoneName)
+	// Create new metanode
+	metaNode = newMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, c.Name)
+
+	// Get or create zone
+	zone, err = c.t.getZone(zoneName)
 	if err != nil {
 		log.LogInfof("[addMetaNode] create zone(%v) by metanode(%v)", zoneName, nodeAddr)
 		zone = c.t.putZoneIfAbsent(newZone(zoneName, proto.MediaType_Unspecified))
 	}
 
+	// Get or create nodeset
 	var ns *nodeSet
 	if nodesetId > 0 {
 		if ns, err = zone.getNodeSet(nodesetId); err != nil {
@@ -1280,7 +1343,7 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 		}
 	} else {
 		c.nsMutex.Lock()
-		ns = zone.getAvailNodeSetForMetaNode()
+		ns = zone.getAvailNodeSetForMetaNode(rack) // Pass rack parameter
 		if ns == nil {
 			if ns, err = zone.createNodeSet(c); err != nil {
 				c.nsMutex.Unlock()
@@ -1290,26 +1353,39 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 		c.nsMutex.Unlock()
 	}
 
+	// Allocate metanode ID
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {
 		goto errHandler
 	}
 	metaNode.ID = id
 	metaNode.NodeSetID = ns.ID
-	log.LogInfof("action[addMetaNode] metanode id[%v] zonename [%v] add meta node to nodesetid[%v]", id, zoneName, ns.ID)
+
+	log.LogInfof("action[addMetaNode] metanode id[%v] zonename[%v] rack[%v] add meta node to nodesetid[%v]",
+		id, zoneName, rack, ns.ID)
+
+	// Sync metanode to storage
 	if err = c.syncAddMetaNode(metaNode); err != nil {
 		goto errHandler
 	}
+
+	// Update nodeset
 	if err = c.syncUpdateNodeSet(ns); err != nil {
 		goto errHandler
 	}
-	c.t.putMetaNode(metaNode)
-	// nodeset be avaliable first time can be put into nodesetGrp
 
+	// Update topology
+	c.t.putMetaNode(metaNode)
+
+	// Add nodeset to group
 	c.addNodeSetGrp(ns, false)
+
+	// Store metanode in cache
 	c.metaNodes.Store(nodeAddr, metaNode)
+
 	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.Capacity)
 	return
+
 errHandler:
 	err = fmt.Errorf("action[addMetaNode],clusterID[%v] metaNodeAddr:%v err:%v ",
 		c.Name, nodeAddr, err.Error())
@@ -1368,7 +1444,7 @@ func (c *Cluster) checkSetZoneMediaTypePersist(zone *Zone, mediaType uint32) (ch
 	return true, nil
 }
 
-func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName string, nodesetId uint64, mediaType uint32) (id uint64, err error) {
+func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack string, nodesetId uint64, mediaType uint32) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
@@ -1377,9 +1453,12 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 	if zoneName == "" {
 		zoneName = DefaultZoneName
 	}
+	if rack == "" {
+		rack = proto.DefaultRack
+	}
 
-	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
-		nodeAddr, zoneName, nodesetId, mediaType)
+	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) rack(%v) nodesetId(%v) mediaType(%v)",
+		nodeAddr, zoneName, rack, nodesetId, mediaType)
 
 	if !proto.IsValidMediaType(mediaType) {
 		if !proto.IsValidMediaType(c.legacyDataMediaType) {
@@ -1401,10 +1480,46 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 			return dataNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
 		}
 		if zoneName != dataNode.ZoneName {
-			return dataNode.ID, fmt.Errorf("zoneName not equalt old, new %s, old %s", zoneName, dataNode.ZoneName)
+			return dataNode.ID, fmt.Errorf("zoneName not equal old, new %s, old %s", zoneName, dataNode.ZoneName)
 		}
 		if mediaType != dataNode.MediaType {
+			return dataNode.ID, fmt.Errorf("mediaType not equal old, new %v, old %v", mediaType, dataNode.MediaType)
 			return dataNode.ID, fmt.Errorf("mediaType not equalt old, new %v, old %v", mediaType, dataNode.MediaType)
+		}
+
+		// Check if rack is different and old rack is not default
+		if rack != dataNode.Rack && dataNode.Rack != proto.DefaultRack {
+			return dataNode.ID, fmt.Errorf("rack not equal to old, new %s, old %s", rack, dataNode.Rack)
+		}
+
+		// Update rack if different
+		if rack != dataNode.Rack {
+			oldRack := dataNode.Rack
+			dataNode.Rack = rack
+
+			// Sync rack update to storage
+			if err = c.syncUpdateDataNode(dataNode); err != nil {
+				log.LogErrorf("[addDataNode] update dataNode(%v) rack to %s failed, err: %v", nodeAddr, rack, err.Error())
+				dataNode.Rack = oldRack
+				return dataNode.ID, err
+			}
+
+			// Get zone and nodeset for topology update
+			zone, err = c.t.getZone(zoneName)
+			if err != nil {
+				log.LogErrorf("[addDataNode] get zone(%v) failed, err: %v", zoneName, err.Error())
+				return dataNode.ID, err
+			}
+
+			ns, err := zone.getNodeSet(nodesetId)
+			if err != nil {
+				log.LogErrorf("[addDataNode] get nodeset(%v) failed, err: %v", nodesetId, err.Error())
+				return dataNode.ID, err
+			}
+
+			// Update topology: remove from old rack, add to new rack
+			ns.putDataNode(dataNode)
+			ns.deleteDataNode(dataNode)
 		}
 
 		if len(raftHeartbeatPort) > 0 && len(raftReplicaPort) > 0 {
@@ -1422,6 +1537,7 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 
 		return dataNode.ID, nil
 	}
+
 	if c.cfg.raftPartitionCanUseDifferentPort.Load() {
 		if len(raftHeartbeatPort) == 0 || len(raftReplicaPort) == 0 {
 			err = fmt.Errorf("when master enable raftPartitionCanUseDifferentPort, only allow new datanode with valid heartbeatPort and replicaPort to register. "+
@@ -1431,7 +1547,7 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 	}
 
 	needPersistZone := false
-	dataNode = newDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, c.Name, mediaType)
+	dataNode = newDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, c.Name, mediaType)
 	if zone, _ = c.t.getZone(zoneName); zone == nil {
 		log.LogInfof("[addDataNode] create zone(%v) by datanode(%v), mediaType(%v)",
 			zoneName, nodeAddr, proto.MediaTypeString(mediaType))
@@ -1467,7 +1583,7 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		}
 	} else {
 		c.nsMutex.Lock()
-		ns = zone.getAvailNodeSetForDataNode()
+		ns = zone.getAvailNodeSetForDataNode(rack)
 		if ns == nil {
 			if ns, err = zone.createNodeSet(c); err != nil {
 				c.nsMutex.Unlock()
@@ -4217,7 +4333,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 		dataNodes = append(dataNodes, proto.NodeView{
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
 			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
-			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0,
+			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0, Rack: dataNode.Rack,
 		})
 		return true
 	})
@@ -4233,6 +4349,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 			Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
 			ForbidWriteOpOfProtoVer0: metaNode.ReceivedForbidWriteOpOfProtoVer0,
 			IsRocksdbWritable:        metaNode.IsRocksdbWriteAble(),
+			Rack:                     metaNode.Rack,
 		})
 		return true
 	})

@@ -922,7 +922,8 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 	var err error
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,zone[%v] err:%v ", c.Name, metaNode.Addr, metaNode.ZoneName, err.Error())
+			err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,zone[%v] rack[%v] err:%v ",
+				c.Name, metaNode.Addr, metaNode.ZoneName, metaNode.Rack, err.Error())
 			log.LogError(errors.Stack(err))
 			Warn(c.Name, err.Error())
 		}
@@ -934,7 +935,7 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 		c.t.putZone(zone)
 	}
 	c.nsMutex.Lock()
-	ns := zone.getAvailNodeSetForMetaNode()
+	ns := zone.getAvailNodeSetForMetaNode(metaNode.Rack) // Use rack field
 	if ns == nil {
 		if ns, err = zone.createNodeSet(c); err != nil {
 			c.nsMutex.Unlock()
@@ -1124,7 +1125,7 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 	}
 
 	c.nsMutex.Lock()
-	ns := zone.getAvailNodeSetForDataNode()
+	ns := zone.getAvailNodeSetForDataNode(dataNode.Rack)
 	if ns == nil {
 		if ns, err = zone.createNodeSet(c); err != nil {
 			c.nsMutex.Unlock()

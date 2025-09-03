@@ -39,6 +39,7 @@ type DataNode struct {
 	AvailableSpace                     uint64
 	ID                                 uint64
 	ZoneName                           string `json:"Zone"`
+	Rack                               string `json:"Rack"` // 添加 rack 字段
 	Addr                               string
 	HeartbeatPort                      string `json:"HeartbeatPort"`
 	ReplicaPort                        string `json:"ReplicaPort"`
@@ -90,9 +91,12 @@ type DataNode struct {
 	DpOpLogs                           []proto.OpLog
 }
 
-func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
+func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, clusterID string, mediaType uint32) (dataNode *DataNode) {
 	if zoneName == "" {
 		zoneName = DefaultZoneName
+	}
+	if rack == "" {
+		rack = proto.DefaultRack
 	}
 
 	dataNode = new(DataNode)
@@ -101,6 +105,7 @@ func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, clusterID s
 	dataNode.HeartbeatPort = raftHeartbeatPort
 	dataNode.ReplicaPort = raftReplicaPort
 	dataNode.ZoneName = zoneName
+	dataNode.Rack = rack // 设置 rack 字段
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	dataNode.DecommissionStatus = DecommissionInitial

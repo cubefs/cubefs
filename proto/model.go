@@ -36,6 +36,7 @@ type MetaNodeInfo struct {
 	IsActive                  bool
 	IsWriteAble               bool
 	ZoneName                  string `json:"Zone"`
+	Rack                      string `json:"Rack"` // 添加 rack 字段
 	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
 	Total                     uint64 `json:"TotalWeight"`
 	Used                      uint64 `json:"UsedWeight"`
@@ -69,6 +70,7 @@ type DataNodeInfo struct {
 	AvailableSpace                        uint64
 	ID                                    uint64
 	ZoneName                              string `json:"Zone"`
+	Rack                                  string `json:"Rack"`
 	Addr                                  string
 	RaftHeartbeatPort                     string
 	RaftReplicaPort                       string
@@ -227,6 +229,7 @@ type NodeView struct {
 	MediaType                uint32
 	ForbidWriteOpOfProtoVer0 bool
 	IsRocksdbWritable        bool
+	Rack                     string
 }
 
 type DpRepairInfo struct {
@@ -309,6 +312,7 @@ type NodeStatView struct {
 	Total      uint64
 	Used       uint64
 	Avail      uint64
+	Rack       string
 }
 
 type MetaNodeStatView struct {
@@ -701,4 +705,5 @@ type MetaNodeView struct {
 	Ratio                    float64
 	SystemRatio              float64
 	IsRocksdbWritable        bool
+	Rack                     string
 }

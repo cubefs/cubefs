@@ -80,6 +80,7 @@ type MetadataManagerConfig struct {
 	NodeID                    uint64
 	RootDir                   string
 	ZoneName                  string
+	Rack                      string
 	EnableGcTimer             bool
 	GcRecyclePercent          float64
 	RocksDBDiskUsageThreshold float64

@@ -83,6 +83,7 @@ type MetaNode struct {
 	raftRetainLogs                     uint64
 	raftSyncSnapFormatVersion          uint32 // format version of snapshot that raft leader sent to follower
 	zoneName                           string
+	rack                               string
 	httpStopC                          chan uint8
 	smuxStopC                          chan uint8
 	metrics                            *MetaNodeMetrics
@@ -248,6 +249,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.zoneName = cfg.GetString(cfgZoneName)
+	m.rack = cfg.GetString(cfgRack)
+	if m.rack == "" {
+		m.rack = proto.DefaultRack
+	}
 
 	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
 	if deleteBatchCount > 1 {
@@ -373,7 +378,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftDir[%v].", m.raftDir)
 	log.LogInfof("[parseConfig] load raftHeartbeatPort[%v].", m.raftHeartbeatPort)
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
-	log.LogInfof("[parseConfig] load zoneName[%v].", m.zoneName)
+	log.LogInfof("[parseConfig] load zoneName[%v], rack[%v].", m.zoneName, m.rack)
 
 	if err = m.parseSmuxConfig(cfg); err != nil {
 		return fmt.Errorf("parseSmuxConfig fail err %v", err)
@@ -526,6 +531,7 @@ func (m *MetaNode) newMetaManager(cfg *config.Config) (err error) {
 		RootDir:                   m.metadataDir,
 		RaftStore:                 m.raftStore,
 		ZoneName:                  m.zoneName,
+		Rack:                      m.rack,
 		EnableGcTimer:             cfg.GetBoolWithDefault(cfgEnableGcTimer, false),
 		GcRecyclePercent:          gcRecyclePercent,
 		RocksDBDiskUsageThreshold: rocksDBDiskUsageThreshold,
@@ -613,7 +619,7 @@ func (m *MetaNode) register() (err error) {
 		m.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
 
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.raftHeartbeatPort, m.raftReplicatePort, m.zoneName, m.serviceIDKey); err != nil {
+		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.raftHeartbeatPort, m.raftReplicatePort, m.rack, m.zoneName, m.serviceIDKey); err != nil {
 			log.LogErrorf("[register] tryCnt(%v), register to master fail: address(%v) err(%s)", tryCnt, nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue

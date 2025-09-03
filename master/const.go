@@ -62,6 +62,7 @@ const (
 	akKey                                  = "ak"
 	keywordsKey                            = "keywords"
 	zoneNameKey                            = "zoneName"
+	rackKey                                = "rack" // 添加 rack 字段的 key
 	nodesetIdKey                           = "nodesetId"
 	crossZoneKey                           = "crossZone"
 	normalZonesFirstKey                    = "normalZonesFirst"

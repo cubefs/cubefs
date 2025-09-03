@@ -518,6 +518,7 @@ type dataNodeValue struct {
 	HeartbeatPort                      string
 	ReplicaPort                        string
 	ZoneName                           string
+	Rack                               string // 添加 rack 字段
 	RdOnly                             bool
 	DecommissionedDisks                []string
 	DecommissionSuccessDisks           []string
@@ -545,7 +546,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		HeartbeatPort:                      dataNode.HeartbeatPort,
 		ReplicaPort:                        dataNode.ReplicaPort,
 		ZoneName:                           dataNode.ZoneName,
-		RdOnly:                             dataNode.RdOnly,
+		Rack:                               dataNode.Rack, // 保存 rack 字段
 		DecommissionedDisks:                dataNode.getDecommissionedDisks(),
 		DecommissionSuccessDisks:           dataNode.getDecommissionSuccessDisks(),
 		DecommissionStatus:                 atomic.LoadUint32(&dataNode.DecommissionStatus),
@@ -572,6 +573,7 @@ type metaNodeValue struct {
 	HeartbeatPort string
 	ReplicaPort   string
 	ZoneName      string
+	Rack          string // Add rack field
 	RdOnly        bool
 	maxMpCntLimit uint64
 	RocksdbRdOnly bool
@@ -585,10 +587,27 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		HeartbeatPort: metaNode.HeartbeatPort,
 		ReplicaPort:   metaNode.ReplicaPort,
 		ZoneName:      metaNode.ZoneName,
+		Rack:          metaNode.Rack, // Save rack field
 		RdOnly:        metaNode.RdOnly,
-		RocksdbRdOnly: metaNode.RocksdbRdOnly,
 		maxMpCntLimit: metaNode.MpCntLimit,
+		RocksdbRdOnly: metaNode.RocksdbRdOnly,
 	}
+}
+
+func (mnv *metaNodeValue) restoreMetaNode() (metaNode *MetaNode) {
+	metaNode = &MetaNode{
+		ID:            mnv.ID,
+		NodeSetID:     mnv.NodeSetID,
+		Addr:          mnv.Addr,
+		HeartbeatPort: mnv.HeartbeatPort,
+		ReplicaPort:   mnv.ReplicaPort,
+		ZoneName:      mnv.ZoneName,
+		Rack:          mnv.Rack, // Restore rack field
+		RdOnly:        mnv.RdOnly,
+		MpCntLimit:    mnv.maxMpCntLimit,
+		RocksdbRdOnly: mnv.RocksdbRdOnly,
+	}
+	return
 }
 
 type nodeSetValue struct {
@@ -1459,7 +1478,7 @@ func (c *Cluster) loadNodeSets() (err error) {
 			cap = c.cfg.nodeSetCapacity
 		}
 
-		ns := newNodeSet(c, nsv.ID, cap, nsv.ZoneName)
+		ns := newNodeSet(c, nsv.ID, cap, nsv.ZoneName, "")
 		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
 		if nsv.DataNodeSelector != "" && ns.GetDataNodeSelector() != nsv.DataNodeSelector {
 			ns.SetDataNodeSelector(nsv.DataNodeSelector)
@@ -1644,6 +1663,9 @@ func (c *Cluster) loadDataNodes() (err error) {
 		if dnv.ZoneName == "" {
 			dnv.ZoneName = DefaultZoneName
 		}
+		if dnv.Rack == "" {
+			dnv.Rack = proto.DefaultRack
+		}
 
 		if dnv.MediaType == proto.MediaType_Unspecified {
 			dnv.MediaType = c.legacyDataMediaType
@@ -1651,7 +1673,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 				dnv.Addr, proto.MediaTypeString(dnv.MediaType))
 		}
 
-		dataNode := newDataNode(dnv.Addr, dnv.HeartbeatPort, dnv.ReplicaPort, dnv.ZoneName, c.Name, dnv.MediaType)
+		dataNode := newDataNode(dnv.Addr, dnv.HeartbeatPort, dnv.ReplicaPort, dnv.ZoneName, dnv.Rack, c.Name, dnv.MediaType)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		dataNode.RdOnly = dnv.RdOnly
@@ -1682,6 +1704,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 			}
 		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
+		c.t.putDataNode(dataNode)
 
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],MediaType[%v],zone[%v],ns[%v] DecommissionStatus [%v] "+
 			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v] DecommissionWeight[%v] DecommissionFirstHostParallelLimit[%v] DpCntLimit[%v]"+
@@ -1713,7 +1736,11 @@ func (c *Cluster) loadMetaNodes() (err error) {
 			mnv.ZoneName = DefaultZoneName
 		}
 
-		metaNode := newMetaNode(mnv.Addr, mnv.HeartbeatPort, mnv.ReplicaPort, mnv.ZoneName, c.Name)
+		if mnv.Rack == "" {
+			mnv.Rack = proto.DefaultRack
+		}
+
+		metaNode := newMetaNode(mnv.Addr, mnv.HeartbeatPort, mnv.ReplicaPort, mnv.ZoneName, mnv.Rack, c.Name)
 		metaNode.MpCntLimit = mnv.maxMpCntLimit
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
@@ -1727,6 +1754,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 			}
 		}
 		c.metaNodes.Store(metaNode.Addr, metaNode)
+		c.t.putMetaNode(metaNode)
 		log.LogInfof("action[loadMetaNodes],metaNode[%v], metaNodeID[%v],zone[%v],ns[%v]", metaNode.Addr, metaNode.ID, mnv.ZoneName, mnv.NodeSetID)
 	}
 	return

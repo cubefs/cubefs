@@ -79,13 +79,14 @@ func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err err
 	return
 }
 
-func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicatePort, zoneName, clientIDKey string) (id uint64, err error) {
+func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicatePort, rack, zoneName, clientIDKey string) (id uint64, err error) {
 	request := newRequest(get, proto.AddMetaNode).Header(api.h)
 	request.addParam("heartbeatPort", raftHeartbeatPort)
 	request.addParam("replicaPort", raftReplicatePort)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("rack", rack)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

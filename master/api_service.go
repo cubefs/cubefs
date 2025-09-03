@@ -87,15 +87,30 @@ type TopologyView struct {
 	Zones []*ZoneView
 }
 
+// RackView 定义 rack 层级的视图
+type RackView struct {
+	Name      string
+	DataNodes []proto.NodeView
+	MetaNodes []proto.MetaNodeView
+}
+
+// NodeSetView 现在包含 rack 层级，同时保持向后兼容
 type NodeSetView struct {
 	DataNodeLen int
 	MetaNodeLen int
-	MetaNodes   []proto.MetaNodeView
-	DataNodes   []proto.NodeView
+	DataNodes   []proto.NodeView     // 保持原有字段
+	MetaNodes   []proto.MetaNodeView // 保持原有字段
+	Racks       map[string]*RackView // 新增 rack 层级
 }
 
 func newNodeSetView(dataNodeLen, metaNodeLen int) *NodeSetView {
-	return &NodeSetView{DataNodes: make([]proto.NodeView, 0), MetaNodes: make([]proto.MetaNodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
+	return &NodeSetView{
+		DataNodes:   make([]proto.NodeView, 0),
+		MetaNodes:   make([]proto.MetaNodeView, 0),
+		DataNodeLen: dataNodeLen,
+		MetaNodeLen: metaNodeLen,
+		Racks:       make(map[string]*RackView),
+	}
 }
 
 // ZoneView define the view of zone
@@ -424,29 +439,71 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		cv.MetaNodesetSelector = zone.GetMetaNodesetSelector()
 		cv.DataMediaType = zone.GetDataMediaTypeString()
 		tv.Zones = append(tv.Zones, cv)
+
 		nsc := zone.getAllNodeSet()
 		for _, ns := range nsc {
 			nsView := newNodeSetView(ns.dataNodeLen(), ns.metaNodeLen())
 			cv.NodeSet[ns.ID] = nsView
+
+			// 按 rack 组织 datanodes
+			rackDataNodes := make(map[string][]proto.NodeView)
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{
+				rackName := dataNode.Rack
+
+				nodeView := proto.NodeView{
 					ID: dataNode.ID, Addr: dataNode.Addr,
-					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive, IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
-				})
+					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive,
+					IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
+					Rack: dataNode.Rack,
+				}
+
+				rackDataNodes[rackName] = append(rackDataNodes[rackName], nodeView)
 				return true
 			})
+
+			// 按 rack 组织 metanodes
+			rackMetaNodes := make(map[string][]proto.MetaNodeView)
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
+				rackName := metaNode.Rack
+				nodeView := proto.MetaNodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
 					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive,
 					IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
 					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
 					IsRocksdbWritable: metaNode.IsRocksdbWriteAble(),
-				})
+					Rack:              metaNode.Rack,
+				}
+
+				rackMetaNodes[rackName] = append(rackMetaNodes[rackName], nodeView)
 				return true
 			})
+
+			// 构建 rack 视图
+			for rackName, dataNodes := range rackDataNodes {
+				if _, exists := nsView.Racks[rackName]; !exists {
+					nsView.Racks[rackName] = &RackView{
+						Name:      rackName,
+						DataNodes: make([]proto.NodeView, 0),
+						MetaNodes: make([]proto.MetaNodeView, 0),
+					}
+				}
+				nsView.Racks[rackName].DataNodes = append(nsView.Racks[rackName].DataNodes, dataNodes...)
+				nsView.DataNodes = append(nsView.DataNodes, dataNodes...)
+			}
+
+			for rackName, metaNodes := range rackMetaNodes {
+				if _, exists := nsView.Racks[rackName]; !exists {
+					nsView.Racks[rackName] = &RackView{
+						Name:      rackName,
+						DataNodes: make([]proto.NodeView, 0),
+						MetaNodes: make([]proto.MetaNodeView, 0),
+					}
+				}
+				nsView.Racks[rackName].MetaNodes = append(nsView.Racks[rackName].MetaNodes, metaNodes...)
+				nsView.MetaNodes = append(nsView.MetaNodes, metaNodes...)
+			}
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(tv))
@@ -606,6 +663,7 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 			Total:      dn.Total,
 			Used:       dn.Used,
 			Avail:      dn.Total - dn.Used,
+			Rack:       dn.Rack,
 		})
 		return true
 	})
@@ -621,6 +679,7 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 				Total:      mn.Total,
 				Used:       mn.Used,
 				Avail:      mn.Total - mn.Used,
+				Rack:       mn.Rack,
 			},
 			IsRocksdbWritable: mn.IsRocksdbWriteAble(),
 			RocksdbTotal:      mn.GetRocksdbTotal(),
@@ -1365,18 +1424,14 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if value = r.FormValue(ClientReqPeriod); value != "" {
-		if parsed, err = strconv.ParseUint(value, 10, 32); err != nil || parsed == 0 {
-			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of peroid")))
-			return
+		if parsed, err = strconv.ParseUint(value, 10, 32); err == nil {
+			period = uint32(parsed)
 		}
-		period = uint32(parsed)
 	}
 	if value = r.FormValue(ClientTriggerCnt); value != "" {
-		if parsed, err = strconv.ParseUint(value, 10, 32); err != nil || parsed == 0 {
-			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of triggerCnt")))
-			return
+		if parsed, err = strconv.ParseUint(value, 10, 32); err == nil {
+			triggerCnt = uint32(parsed)
 		}
-		triggerCnt = uint32(parsed)
 	}
 	if err = vol.updateClientParam(m.cluster, period, triggerCnt); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -3293,6 +3348,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		id                uint64
 		err               error
 		nodesetId         uint64
+		rack              string
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddDataNode))
 	defer func() {
@@ -3300,7 +3356,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AddDataNode, fmt.Sprintf("add datanode %v", nodeAddr), err)
 	}()
 
-	if nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, mediaType, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, mediaType, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3317,7 +3373,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, nodesetId, mediaType); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType); err != nil {
 		log.LogErrorf("addDataNode: add failed, addr %s, zone %s, set %d, type %d, err %s",
 			nodeAddr, zoneName, nodesetId, mediaType, err.Error())
 		err = errors.NewErrorf("add datanode failed, err %s, hint %s", err.Error(), proto.ErrDataNodeAdd.Error())
@@ -3363,6 +3419,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		AvailableSpace:                        dataNode.AvailableSpace,
 		ID:                                    dataNode.ID,
 		ZoneName:                              dataNode.ZoneName,
+		Rack:                                  dataNode.Rack,
 		Addr:                                  dataNode.Addr,
 		RaftHeartbeatPort:                     dataNode.HeartbeatPort,
 		RaftReplicaPort:                       dataNode.ReplicaPort,
@@ -4261,6 +4318,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				DataPartitionCount: node.DataPartitionCount,
 				NodeSetID:          node.NodeSetID,
 				MaxDpCntLimit:      node.GetPartitionLimitCnt(),
+				Rack:               node.Rack,
 			}
 			nsStat.DataNodes = append(nsStat.DataNodes, dataNodeInfo)
 			return true
@@ -4297,6 +4355,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				MaxMpCntLimit:      node.GetPartitionLimitCnt(),
 				MemoryMpCount:      memoryMpCount,
 				RocksdbMpCount:     rocksdbMpCount,
+				Rack:               node.Rack,
 			}
 
 			nsStat.MetaNodes = append(nsStat.MetaNodes, metaNodeInfo)
@@ -5133,7 +5192,7 @@ func (m *Server) deleteDecommissionDiskRecord(w http.ResponseWriter, r *http.Req
 	disk := value.(*DecommissionDisk)
 	err = m.cluster.syncDeleteDecommissionDisk(disk)
 	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	m.cluster.DecommissionDisks.Delete(disk.GenerateKey())
@@ -5203,6 +5262,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		heartbeatPort string
 		replicaPort   string
 		zoneName      string
+		rack          string
 		id            uint64
 		err           error
 		nodesetId     uint64
@@ -5213,7 +5273,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AddMetaNode, fmt.Sprintf("add metanode %v", nodeAddr), err)
 	}()
 
-	if nodeAddr, heartbeatPort, replicaPort, zoneName, _, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, heartbeatPort, replicaPort, zoneName, rack, _, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -5230,7 +5290,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, nodesetId); err != nil {
+	if id, err = m.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -5326,6 +5386,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		IsWriteAble:               metaNode.IsWriteAble(),
 		IsRocksdbWritable:         metaNode.IsRocksdbWriteAble(),
 		ZoneName:                  metaNode.ZoneName,
+		Rack:                      metaNode.Rack,
 		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
 		Total:                     metaNode.Total,
 		Used:                      metaNode.Used,
@@ -7587,46 +7648,6 @@ func (m *Server) GetQuota(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(quotaInfo))
 }
 
-// func (m *Server) BatchModifyQuotaFullPath(w http.ResponseWriter, r *http.Request) {
-// 	var (
-// 		name              string
-// 		body              []byte
-// 		changeFullPathMap map[uint32]string
-// 		err               error
-// 		vol               *Vol
-// 	)
-// 	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaGet))
-// 	defer func() {
-// 		doStatAndMetric(proto.QuotaBatchModifyPath, metric, err, map[string]string{exporter.Vol: name})
-// 	}()
-
-// 	if name, err = parseAndExtractName(r); err != nil {
-// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-// 		return
-// 	}
-
-// 	if body, err = io.ReadAll(r.Body); err != nil {
-// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-// 		return
-// 	}
-// 	changeFullPathMap = make(map[uint32]string)
-// 	if err = json.Unmarshal(body, &changeFullPathMap); err != nil {
-// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-// 		return
-// 	}
-
-// 	if vol, err = m.cluster.getVol(name); err != nil {
-// 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
-// 		return
-// 	}
-
-// 	vol.quotaManager.batchModifyQuotaFullPath(changeFullPathMap)
-
-// 	log.LogInfof("BatchModifyQuotaFullPath vol [%v] changeFullPathMap [%v] success.", name, changeFullPathMap)
-// 	msg := fmt.Sprintf("BatchModifyQuotaFullPath successfully, vol [%v]", name)
-// 	sendOkReply(w, r, newSuccessHTTPReply(msg))
-// }
-
 func parseSetDpDiscardParam(r *http.Request) (dpId uint64, discard bool, force bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -8725,7 +8746,7 @@ func (m *Server) recoverBackupDataReplica(w http.ResponseWriter, r *http.Request
 
 	err = m.cluster.syncRecoverBackupDataPartitionReplica(addr, backupInfo.Disk, dp)
 	if err != nil {
-		log.LogWarnf("action[recoverBackupDataReplica] dp(%v)  recover replica [%v_%v] fail %v", dp.PartitionID, addr, backupInfo.Disk, err)
+		log.LogWarnf("action[recoverBackupDataReplica] dp(%v)  recover replica [%v_%v] fail %v", dp.PartitionID, backupInfo.Addr, backupInfo.Disk, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

@@ -726,7 +726,7 @@ func TestUpdateVol(t *testing.T) {
 
 	for id, name := range []string{"z1", "z2", "z3"} {
 		zone := newZone(name, defaultMediaType)
-		nodeSet1 := newNodeSet(server.cluster, uint64(id), 6, name)
+		nodeSet1 := newNodeSet(server.cluster, uint64(id), 6, name, "")
 
 		zone.putNodeSet(nodeSet1)
 		server.cluster.t.putZone(zone)

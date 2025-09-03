@@ -12,7 +12,7 @@ import (
 )
 
 func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
-	dn = newDataNode(addr, strconv.Itoa(raftstore.DefaultHeartbeatPort), strconv.Itoa(raftstore.DefaultReplicaPort), zoneName, "test", proto.MediaType_HDD)
+	dn = newDataNode(addr, strconv.Itoa(raftstore.DefaultHeartbeatPort), strconv.Itoa(raftstore.DefaultReplicaPort), zoneName, "", "test", proto.MediaType_HDD)
 	dn.ZoneName = zoneName
 	dn.Total = 1024 * util.GB
 	dn.Used = 10 * util.GB
@@ -31,7 +31,7 @@ func TestSingleZone(t *testing.T) {
 	zone := newZone(zoneName, proto.MediaType_Unspecified)
 	topo.putZone(zone)
 	c := new(Cluster)
-	nodeSet := newNodeSet(c, 1, 6, zoneName)
+	nodeSet := newNodeSet(c, 1, 6, zoneName, "")
 	zone.putNodeSet(nodeSet)
 	topo.putDataNode(createDataNodeForTopo(mds1Addr, zoneName, nodeSet))
 	topo.putDataNode(createDataNodeForTopo(mds2Addr, zoneName, nodeSet))
@@ -97,7 +97,7 @@ func TestAllocZones(t *testing.T) {
 	// add three zones
 	zoneName1 := testZone1
 	zone1 := newZone(zoneName1, proto.MediaType_Unspecified)
-	nodeSet1 := newNodeSet(c, 1, 6, zoneName1)
+	nodeSet1 := newNodeSet(c, 1, 6, zoneName1, "")
 
 	zone1.putNodeSet(nodeSet1)
 	topo.putZone(zone1)
@@ -106,7 +106,7 @@ func TestAllocZones(t *testing.T) {
 
 	zoneName2 := testZone2
 	zone2 := newZone(zoneName2, proto.MediaType_Unspecified)
-	nodeSet2 := newNodeSet(c, 2, 6, zoneName2)
+	nodeSet2 := newNodeSet(c, 2, 6, zoneName2, "")
 
 	zone2.putNodeSet(nodeSet2)
 	topo.putZone(zone2)
@@ -115,7 +115,7 @@ func TestAllocZones(t *testing.T) {
 
 	zoneName3 := "zone3"
 	zone3 := newZone(zoneName3, proto.MediaType_Unspecified)
-	nodeSet3 := newNodeSet(c, 3, 6, zoneName3)
+	nodeSet3 := newNodeSet(c, 3, 6, zoneName3, "")
 
 	zone3.putNodeSet(nodeSet3)
 	topo.putZone(zone3)
