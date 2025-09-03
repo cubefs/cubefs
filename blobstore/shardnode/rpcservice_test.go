@@ -96,6 +96,9 @@ func newBaseTp(t *testing.T) *mocks.MockTransport {
 
 func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) {
 	s := &service{}
+	if cfg.tp == nil {
+		cfg.tp = newBaseTp(t)
+	}
 	s.transport = cfg.tp
 
 	s.cfg.StoreConfig.KVOption.CreateIfMissing = true

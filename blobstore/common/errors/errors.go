@@ -23,7 +23,8 @@ import (
 // access             550-599
 // blobnode           600-699
 // scheduler          700-799
-// proxy              800-899
+// proxy              800-819
+// shardnode          820-899
 // clusterMgr         900-999
 
 // Error http status code for all application

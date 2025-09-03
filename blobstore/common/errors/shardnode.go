@@ -15,26 +15,26 @@
 package errors
 
 const (
-	CodeShardNodeNotLeader          = 1001
-	CodeShardRangeMismatch          = 1002
-	CodeShardDoesNotExist           = 1003
-	CodeShardNodeDiskNotFound       = 1004
-	CodeUnknownField                = 1005
-	CodeShardRouteVersionNeedUpdate = 1006
-	CodeShardNoLeader               = 1007
-	CodeIllegalSlices               = 1008
-	CodeBlobAlreadyExists           = 1009
-	CodeUnsupport                   = 1010
-	CodeShardConflicts              = 1011
-	CodeKeySizeTooLarge             = 1012
-	CodeValueSizeTooLarge           = 1013
-	CodeKeyNotFound                 = 1014
-	CodeBlobAlreadySealed           = 1015
-	CodeBlobNameEmpty               = 1016
-	CodeNoEnoughRaftMember          = 1017
-	CodeIllegalUpdateUnit           = 1018
-	CodeItemIDEmpty                 = 1019
-	CodeIllegalLocationSize         = 1020
+	CodeShardNodeNotLeader          = 820
+	CodeShardRangeMismatch          = 821
+	CodeShardDoesNotExist           = 822
+	CodeShardNodeDiskNotFound       = 823
+	CodeUnknownField                = 824
+	CodeShardRouteVersionNeedUpdate = 825
+	CodeShardNoLeader               = 826
+	CodeIllegalSlices               = 827
+	CodeBlobAlreadyExists           = 828
+	CodeUnsupport                   = 829
+	CodeShardConflicts              = 830
+	CodeKeySizeTooLarge             = 831
+	CodeValueSizeTooLarge           = 832
+	CodeKeyNotFound                 = 833
+	CodeBlobAlreadySealed           = 834
+	CodeBlobNameEmpty               = 835
+	CodeNoEnoughRaftMember          = 836
+	CodeIllegalUpdateUnit           = 837
+	CodeItemIDEmpty                 = 838
+	CodeIllegalLocationSize         = 839
 )
 
 // 10xx

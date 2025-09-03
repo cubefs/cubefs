@@ -42,6 +42,14 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
+var (
+	globalService *service
+	conf          Config
+)
+
+// singleton service instance control
+var serviceOnce sync.Once
+
 const defaultTaskPoolSize = 64
 
 type Config struct {
@@ -80,7 +88,16 @@ type Config struct {
 	DeleteBlobCfg blobdeleter.BlobDelCfg `json:"blob_delete_cfg"`
 }
 
+// newService returns the singleton service instance
 func newService(cfg *Config) *service {
+	serviceOnce.Do(func() {
+		globalService = createService(cfg)
+	})
+	return globalService
+}
+
+// createService creates a new service instance
+func createService(cfg *Config) *service {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "NewShardNodeService")
 
 	security.InitWithRegionMagic(cfg.RegionMagic)

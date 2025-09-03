@@ -24,16 +24,12 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-var (
-	_service *service
-	conf     Config
-)
-
 func init() {
 	mod := &cmd.Module{
 		Name:       proto.ServiceNameShardNode,
 		InitConfig: initConfig,
 		SetUp2:     setUp,
+		SetUp:      setUpHttp,
 		TearDown:   tearDown,
 	}
 	cmd.RegisterModule(mod)
@@ -427,9 +423,6 @@ func initConfig(args []string) (*cmd.Config, error) {
 	if err := config.Load(&conf); err != nil {
 		return nil, err
 	}
-	conf.Rpc2Server.Addresses = []rpc2.NetworkAddress{
-		{Network: "tcp", Address: conf.BindAddr},
-	}
 	return &conf.Config, nil
 }
 
@@ -471,10 +464,10 @@ func newHandler(s *RpcService) *rpc2.Router {
 }
 
 func setUp() (*rpc2.Router, []rpc2.Interceptor) {
-	_service = newService(&conf)
-	return newHandler(&RpcService{_service}), nil
+	globalService = newService(&conf)
+	return newHandler(&RpcService{globalService}), nil
 }
 
 func tearDown() {
-	_service.close()
+	globalService.close()
 }
