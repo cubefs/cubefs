@@ -28,14 +28,17 @@ const (
 	minRateLimit   = 64 * 1024 // 64 KB/s
 )
 
-var dataInspectMetric = prometheus.NewGaugeVec(
-	prometheus.GaugeOpts{
-		Namespace: "blobstore",
-		Subsystem: "blobnode",
-		Name:      "data_inspect",
-		Help:      "blobnode data inspect",
-	},
-	[]string{"cluster_id", "idc", "rack", "host", "disk_id", "vuid", "bid", "error"},
+var (
+	dataInspectMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "blobnode",
+			Name:      "data_inspect",
+			Help:      "blobnode data inspect",
+		},
+		[]string{"cluster_id", "idc", "rack", "host", "disk_id", "vuid", "bid", "error"},
+	)
+	errServiceClosed = errors.New("service is closed")
 )
 
 type DataInspectConf struct {
@@ -158,11 +161,6 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 	lmt := mgr.getLimiter(ds)
 	successCnt := int64(0)
 
-	go func() {
-		<-mgr.svr.closeCh
-		cancel()
-	}()
-
 	scanFn := func(batchShards []*bnapi.ShardInfo) (err error) {
 		for _, si := range batchShards {
 			if si.Size <= 0 {
@@ -173,6 +171,17 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 			shardReader := core.NewShardReader(si.Bid, si.Vuid, 0, 0, discard)
 			// retry overload
 			for {
+				select {
+				case <-pCtx.Done():
+					span.Warnf("inspect chunk stop, upper level has context canceled. vuid:%d,chunkid:%s.", cs.Vuid(), cs.ID())
+					return pCtx.Err()
+				case <-mgr.svr.closeCh:
+					cancel()
+					span.Warnf("inspect chunk stop, service is closed. vuid:%d, chunkid:%s.", cs.Vuid(), cs.ID())
+					return errServiceClosed
+				default:
+				}
+
 				// Tokens of the corresponding size are obtained based on the size of the shard.
 				// If the size of shard is 1MB, you need to get 1024*1024 tokens
 				remain := si.Size
@@ -204,13 +213,6 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 				badShards = append(badShards, badShard)
 				span.Errorf("inspect blob error, vuid:%v, bid:%v, err:%v, bad shards:%v", si.Vuid, si.Bid, err, badShards)
 				mgr.reportBadShard(cs, si.Bid, err)
-			}
-
-			select {
-			case <-ctx.Done():
-				span.Warnf("inspect chunk done.chunkid:%v", cs.ID())
-				return ctx.Err()
-			default:
 			}
 		}
 		return nil

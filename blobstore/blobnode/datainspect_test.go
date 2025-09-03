@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -94,20 +95,38 @@ func TestDataInspect(t *testing.T) {
 	}
 
 	{
+		// inspect single chunk, cancel parent ctx
 		cs := NewMockChunkAPI(ctr)
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
-		cs.EXPECT().ID().Times(2).Return(clustermgr.ChunkID{})
+		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
 		cs.EXPECT().Disk().Return(ds1)
-		cs.EXPECT().Read(any, any).Return(int64(0), nil)
+		cs.EXPECT().Read(any, any).Return(int64(0), nil).Times(0)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
-		ds1.EXPECT().ID().Times(1).Return(proto.DiskID(11))
+		ds1.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+
+		pCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err = mgr.inspectChunk(pCtx, cs)
+		require.NotNil(t, err)
+		require.ErrorIs(t, err, context.Canceled)
+	}
+
+	{
+		// inspect single chunk, closed ctx
+		cs := NewMockChunkAPI(ctr)
+		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
+		cs.EXPECT().Disk().Return(ds1)
+		cs.EXPECT().Read(any, any).Return(int64(0), nil).Times(0)
+		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
+		ds1.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
 
 		close(mgr.svr.closeCh)
 		mgr.limits[proto.DiskID(11)].SetLimit(2)
 		mgr.limits[proto.DiskID(11)].SetBurst(4)
 		_, err = mgr.inspectChunk(ctx, cs)
 		require.NotNil(t, err)
-		require.Equal(t, "context canceled", err.Error())
+		require.ErrorIs(t, err, errServiceClosed)
 	}
 
 	{
@@ -115,4 +134,51 @@ func TestDataInspect(t *testing.T) {
 		mgr.svr.GetInspectStat(rc)
 		require.Equal(t, cfg.IntervalSec, mgr.conf.IntervalSec)
 	}
+}
+
+func TestInspectChunk_NoGoroutineLeak(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	// build service and manager
+	ds := NewMockDiskAPI(ctr)
+	svr := &Service{
+		Disks:   map[proto.DiskID]core.DiskAPI{11: ds},
+		ctx:     context.Background(),
+		closeCh: make(chan struct{}),
+	}
+	getter := mocks.NewMockAccessor(ctr)
+	getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
+	getter.EXPECT().SetConfig(any, any, any).AnyTimes().Return(nil)
+	switchMgr := taskswitch.NewSwitchMgr(getter)
+	mgr, err := NewDataInspectMgr(svr, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, switchMgr)
+	require.NoError(t, err)
+	mgr.svr = svr
+	svr.inspectMgr = mgr
+
+	// limiter entry (avoid nil access if shards present)
+	ds.EXPECT().ID().AnyTimes().Return(proto.DiskID(11))
+	mgr.setLimiters([]core.DiskAPI{ds})
+
+	// chunk mock: empty shard list so inspectChunk returns quickly
+	cs := NewMockChunkAPI(ctr)
+	cs.EXPECT().Vuid().AnyTimes().Return(proto.Vuid(1001))
+	cs.EXPECT().ID().AnyTimes().Return(clustermgr.ChunkID{})
+	cs.EXPECT().Disk().AnyTimes().Return(ds)
+	cs.EXPECT().ListShards(any, any, any, any).AnyTimes().Return([]*bnapi.ShardInfo{}, proto.InValidBlobID, nil)
+
+	before := runtime.NumGoroutine()
+	for i := 0; i < 50; i++ {
+		_, err = mgr.inspectChunk(ctx, cs)
+		require.NoError(t, err)
+	}
+	// allow scheduler to settle
+	// (if a leak existed via a background goroutine, goroutine count would keep growing)
+	// small sleep to stabilize
+	// not too long to avoid slowing CI
+	// 50 iterations are enough to detect growth
+
+	after := runtime.NumGoroutine()
+	// tolerate a small delta for unrelated goroutines
+	require.LessOrEqual(t, after, before+5)
 }
