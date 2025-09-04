@@ -643,6 +643,7 @@ type DecommissionDataPartitionInfo struct {
 	RaftForce             bool
 	Recover               bool
 	SrcAddress            string
+	SrcAddresses          []string
 	SrcDiskPath           string
 	DstAddress            string
 	DstNodeSet            uint64

@@ -1431,6 +1431,7 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb.WriteString(fmt.Sprintf("RaftForce:         %v\n", info.RaftForce))
 	sb.WriteString(fmt.Sprintf("Recover:           %v\n", info.Recover))
 	sb.WriteString(fmt.Sprintf("SrcAddress:        %v\n", info.SrcAddress))
+	sb.WriteString(fmt.Sprintf("SrcAddresses:      %v\n", info.SrcAddresses))
 	sb.WriteString(fmt.Sprintf("SrcDiskPath:       %v\n", info.SrcDiskPath))
 	sb.WriteString(fmt.Sprintf("DstAddress:        %v\n", info.DstAddress))
 	sb.WriteString(fmt.Sprintf("DstNodeSet:        %v\n", info.DstNodeSet))
@@ -1631,20 +1632,13 @@ func formatNodesetBalanceStatus(status interface{}) string {
 		return fmt.Sprintf("Error parsing status: %v", err)
 	}
 
+	stdout("[Nodeset Balance Config]\n")
 	sb.WriteString(fmt.Sprintf("  EnableNodesetBalance    : %v\n", statusMap["enable_nodeset_balance"]))
-	sb.WriteString(fmt.Sprintf("  TotalUnbalancedDPs      : %v\n", statusMap["total_unbalanced_dps"]))
-	sb.WriteString(fmt.Sprintf("  IsBalanceInProgress     : %v\n", statusMap["is_balance_in_progress"]))
 	sb.WriteString(fmt.Sprintf("  SingleMigrationLimit    : %v\n", statusMap["single_migration_limit"]))
-
-	if lastTime, ok := statusMap["last_balance_time"].(float64); ok && lastTime > 0 {
-		t := time.Unix(int64(lastTime), 0)
-		sb.WriteString(fmt.Sprintf("  LastBalanceTime         : %v\n", t.Format("2006-01-02 15:04:05")))
-	} else {
-		sb.WriteString(fmt.Sprintf("  LastBalanceTime         : Never\n"))
-	}
 
 	if domainDist, ok := statusMap["domain_distribution"].(map[string]interface{}); ok {
 		sb.WriteString("\n[Domain Distribution]\n")
+		sb.WriteString(fmt.Sprintf("  TotalUnbalancedDPs      : %v\n", statusMap["total_unbalanced_dps"]))
 		sb.WriteString(fmt.Sprintf("  SingleDomainDPs         : %v\n", domainDist["single_domain_dps"]))
 		sb.WriteString(fmt.Sprintf("  TwoDomainDPs            : %v\n", domainDist["two_domain_dps"]))
 		sb.WriteString(fmt.Sprintf("  ThreeDomainDPs          : %v\n", domainDist["three_domain_dps"]))

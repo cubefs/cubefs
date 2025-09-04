@@ -36,36 +36,30 @@ type nodeSetResource struct {
 const (
 	// Single migration target: 5000 DPs per day
 	singleMigrationTarget = 5000
-	// Direct execution batch size limit per cycle
-	directExecutionBatchSize = 1000
-	// Task execution check interval (4 hours)
-	taskExecutionCheckInterval = 4 * time.Hour
 
-	// Resource admission thresholds (configurable)
+	// Task execution interval (4 hours)
+	NodesetBalanceInterval = 4 * time.Hour
+
 	// Conservative admission thresholds
 	conservativeMinAllocNodes         = 3
 	conservativeDpRatioThreshold      = 0.3
-	conservativeStorageRatioThreshold = 0.2
+	conservativeStorageRatioThreshold = 0.3
 
 	// Normal admission thresholds
 	normalMinAllocNodes         = 2
 	normalDpRatioThreshold      = 0.2
-	normalStorageRatioThreshold = 0.15
+	normalStorageRatioThreshold = 0.2
 
 	// Target selection scoring weights
-	dpRatioWeight      = 0.4
-	storageRatioWeight = 0.6
-
-	// Cluster-wide migration thresholds (全集群迁移阈值)
-	clusterWideDpRatioThreshold      = 0.5 // 50% DP 可用率才考虑全集群迁移
-	clusterWideStorageRatioThreshold = 0.4 // 40% 存储可用率才考虑全集群迁移
+	dpRatioWeight      = 0.5
+	storageRatioWeight = 0.5
 )
 
 // scheduleToNodesetBalance registers auto nodeset balance task
 func (c *Cluster) scheduleToNodesetBalance() {
 	c.runTask(
 		&cTask{
-			tickTime: taskExecutionCheckInterval, // 4 hours
+			tickTime: NodesetBalanceInterval,
 			name:     "nodesetBalanceController",
 			function: func() (fin bool) {
 				if c.partition == nil || !c.partition.IsRaftLeader() {
@@ -91,9 +85,7 @@ func (c *Cluster) executeNodesetBalanceController() {
 		log.LogInfof("action[executeNodesetBalanceController] balance controller cycle completed in %v", time.Since(begin))
 	}()
 
-	// Check if cluster is fully balanced first
-	balanceStatus := c.getNodesetBalanceStatus()
-	if balanceStatus.TotalUnbalancedDPs == 0 {
+	if !c.hasUnbalancedDataPartitions() {
 		log.LogDebugf("action[executeNodesetBalanceController] cluster is fully balanced, no action needed")
 		return
 	}
@@ -132,7 +124,7 @@ func (c *Cluster) executeNodesetBalanceMigrations() {
 			c.processPartitionMigration(dp, dp.Hosts, dpHost2Ns)
 			processedCount++
 
-			if processedCount >= directExecutionBatchSize {
+			if processedCount >= singleMigrationTarget {
 				log.LogInfof("action[executeNodesetBalanceMigrations] processed %d DPs, stopping", processedCount)
 				break
 			}
@@ -151,6 +143,31 @@ func getDpNodesetDistribution(dp *DataPartition, dpHost2Ns map[string]uint64) (m
 	}
 	isBalanced := len(domainCnts) <= 1
 	return domainCnts, isBalanced
+}
+
+func (c *Cluster) hasUnbalancedDataPartitions() bool {
+	dpHost2Ns := c.buildDpHostToNodeSet()
+
+	vols := c.copyVols()
+	for _, vol := range vols {
+		partitions := vol.dataPartitions.clonePartitions()
+		for _, dp := range partitions {
+			if dp.IsDiscard {
+				continue
+			}
+
+			if dp.DecommissionType == proto.NodesetBalance {
+				continue
+			}
+
+			_, isBalanced := getDpNodesetDistribution(dp, dpHost2Ns)
+			if !isBalanced {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (c *Cluster) processPartitionMigration(dp *DataPartition, srcHosts []string, dpHost2Ns map[string]uint64) {

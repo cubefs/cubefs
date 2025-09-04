@@ -209,6 +209,7 @@ The "reset" command will be released in next version`,
 					2: "AutoDecommission",
 					4: "AutoAddReplica",
 					5: "ManualAddReplica",
+					6: "NodesetBalance",
 				}
 				stdoutln("[Bad data partitions(decommission not completed)]:")
 				badPartitionTablePattern := "%-50v    %-10v    %-20v    %-20v"

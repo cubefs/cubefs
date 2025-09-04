@@ -777,7 +777,6 @@ func newClusterQueryNodesetBalanceStatusCmd(client *master.MasterClient) *cobra.
 				return
 			}
 
-			stdout("[Nodeset Balance Status]\n")
 			stdout("%v", formatNodesetBalanceStatus(status))
 		},
 	}

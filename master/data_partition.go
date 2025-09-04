@@ -1996,6 +1996,11 @@ func (partition *DataPartition) SetMultipleDecommissionSrcHosts(srcHosts []strin
 
 // 处理单个源地址迁移完成，返回true表示还有更多源地址需要迁移
 func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool {
+	var (
+		updatedSrcHosts []string
+		nextSrcAddr     string
+	)
+
 	if partition.DecommissionSrcAddrs == nil || len(partition.DecommissionSrcAddrs) == 0 {
 		log.LogInfof("action[ProcessNextDecommissionSrcHost] dp(%v) all sources completed, current: %v",
 			partition.PartitionID, partition.DecommissionSrcAddr)
@@ -2003,19 +2008,19 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 	}
 
 	lastIndex := len(partition.DecommissionSrcAddrs) - 1
-	nextSrcAddr := partition.DecommissionSrcAddrs[lastIndex]
 
-	var updatedSrcHosts []string
 	if len(partition.DecommissionSrcAddrs) > 1 {
+		nextSrcAddr = partition.DecommissionSrcAddrs[lastIndex]
 		updatedSrcHosts = make([]string, lastIndex)
 		copy(updatedSrcHosts, partition.DecommissionSrcAddrs[0:lastIndex])
 	} else {
 		updatedSrcHosts = nil
+		nextSrcAddr = partition.DecommissionSrcAddrs[0]
 	}
 
 	replica, err := partition.getReplica(nextSrcAddr)
 	if err != nil {
-		log.LogErrorf("action[ProcessNextDecommissionSrcHost] dataPartitionID :%v not find replica for addr %v", partition.PartitionID, nextSrcAddr)
+		log.LogWarnf("action[ProcessNextDecommissionSrcHost] dataPartitionID :%v not find replica for addr %v", partition.PartitionID, nextSrcAddr)
 		return false
 	}
 
@@ -2023,7 +2028,7 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 		partition.DecommissionRaftForce, partition.DecommissionTerm, partition.DecommissionType, partition.DecommissionWeight,
 		c, updatedSrcHosts,
 	); err != nil {
-		log.LogErrorf("action[ProcessNextDecommissionSrcHost] dp(%v) mark decommission failed, err %v",
+		log.LogWarnf("action[ProcessNextDecommissionSrcHost] dp(%v) mark decommission failed, err %v",
 			partition.PartitionID, err)
 		return false
 	}

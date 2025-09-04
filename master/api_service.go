@@ -2410,6 +2410,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		RaftForce:             dp.DecommissionRaftForce,
 		Recover:               dp.isRecover,
 		SrcAddress:            dp.DecommissionSrcAddr,
+		SrcAddresses:          dp.DecommissionSrcAddrs,
 		SrcDiskPath:           dp.DecommissionSrcDiskPath,
 		DstAddress:            dp.DecommissionDstAddr,
 		DstNodeSet:            dp.DecommissionDstNodeSet,
