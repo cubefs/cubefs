@@ -67,11 +67,16 @@ func (s *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type testTimeoutReader struct{}
+type testTimeoutReader struct{ closeTimes int }
 
 func (t *testTimeoutReader) Read(p []byte) (n int, err error) {
 	time.Sleep(time.Millisecond * 20)
 	return 0, nil
+}
+
+func (t *testTimeoutReader) Close() error {
+	t.closeTimes++
+	return nil
 }
 
 func doAfterCrc(w http.ResponseWriter, req *http.Request) {
@@ -254,13 +259,19 @@ func TestClient_PostWithReadResponseTimeout(t *testing.T) {
 
 func TestTimeoutReadCloser_Read(t *testing.T) {
 	// test for read data for input buffer timeout
-	readCloser := timeoutReadCloser{
-		timeoutMs: 1,
-		body:      io.NopCloser(&testTimeoutReader{}),
-	}
+	body := &testTimeoutReader{}
+	timer := time.NewTimer(time.Millisecond)
+	responseBody := timeoutReadCloser{body: body, timer: timer}
 	res := make([]byte, 30)
-	_, err := readCloser.Read(res)
+	_, err := responseBody.Read(res)
 	require.Equal(t, ErrBodyReadTimeout, err)
+	_, err = responseBody.Read(res)
+	require.Equal(t, ErrBodyReadTimeout, err)
+	require.NoError(t, responseBody.Close())
+	require.NoError(t, responseBody.Close())
+	require.NoError(t, responseBody.Close())
+	require.Equal(t, 1, body.closeTimes)
+	require.False(t, responseBody.timer.Stop())
 }
 
 func TestClient_Put(t *testing.T) {

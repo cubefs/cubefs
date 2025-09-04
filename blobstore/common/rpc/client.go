@@ -22,6 +22,7 @@ import (
 	"net/http"
 	urllib "net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
@@ -282,10 +283,6 @@ func (c *client) Close() {
 
 func (c *client) doWithCtx(ctx context.Context, req *http.Request) (resp *http.Response, err error) {
 	req = req.WithContext(ctx)
-	if c.bandwidthBPMs > 0 && req.Body != nil {
-		t := req.ContentLength/c.bandwidthBPMs + c.bodyBaseTimeoutMs
-		req.Body = &timeoutReadCloser{timeoutMs: t, body: req.Body}
-	}
 	resp, err = c.client.Do(req)
 	if err != nil {
 		span := trace.SpanFromContextSafe(ctx)
@@ -293,8 +290,9 @@ func (c *client) doWithCtx(ctx context.Context, req *http.Request) (resp *http.R
 		return
 	}
 	if c.bandwidthBPMs > 0 {
-		t := resp.ContentLength/c.bandwidthBPMs + c.bodyBaseTimeoutMs
-		resp.Body = &timeoutReadCloser{timeoutMs: t, body: resp.Body}
+		timeout := time.Millisecond * time.Duration(resp.ContentLength/c.bandwidthBPMs+c.bodyBaseTimeoutMs)
+		timer := time.NewTimer(time.Hour)
+		resp.Body = &timeoutReadCloser{body: resp.Body, timer: timer, timeout: timeout}
 	}
 	return
 }
@@ -352,36 +350,49 @@ func ParseResponseErr(resp *http.Response) (err error) {
 	return NewError(resp.StatusCode, resp.Status, fmt.Errorf("%d response", resp.StatusCode))
 }
 
+// http request body will not closed by net/http, it should close by caller.
+// but response body must be closed after Client.Do.
 type timeoutReadCloser struct {
 	body      io.ReadCloser
-	timeoutMs int64
+	timer     *time.Timer
+	timeout   time.Duration
+	closeOnce sync.Once
 }
 
 func (tr *timeoutReadCloser) Close() (err error) {
-	return tr.body.Close()
+	tr.closeOnce.Do(func() {
+		err = tr.body.Close()
+		tr.timer.Stop()
+	})
+	return
 }
 
-func (tr *timeoutReadCloser) Read(p []byte) (n int, err error) {
-	readOk := make(chan struct{})
-	if tr.timeoutMs > 0 {
-		startTime := time.Now().UnixNano() / 1e6
-		after := time.After(time.Millisecond * time.Duration(tr.timeoutMs))
-		go func() {
-			n, err = tr.body.Read(p)
-			close(readOk)
-		}()
-		select {
-		case <-readOk:
-			// really cost time
-			tr.timeoutMs = tr.timeoutMs - (time.Now().UnixNano()/1e6 - startTime)
-			return
-		case <-after:
-			tr.body.Close()
-			return 0, ErrBodyReadTimeout
-		}
+func (tr *timeoutReadCloser) Read(p []byte) (int, error) {
+	if tr.timeout <= 0 {
+		return 0, ErrBodyReadTimeout
 	}
-	tr.body.Close()
-	return 0, ErrBodyReadTimeout
+	tr.timer.Reset(tr.timeout)
+
+	start := time.Now()
+
+	var n int
+	var err error
+	readOk := make(chan struct{})
+	go func() {
+		n, err = tr.body.Read(p)
+		close(readOk)
+	}()
+
+	select {
+	case <-readOk:
+		tr.timeout -= time.Since(start)
+		return n, err
+	case <-tr.timer.C:
+		tr.timeout = 0
+		tr.Close() // trigger to break Read
+		<-readOk
+		return 0, ErrBodyReadTimeout
+	}
 }
 
 func serverCrcEncodeCheck(ctx context.Context, request *http.Request, resp *http.Response) (err error) {

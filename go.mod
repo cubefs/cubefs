@@ -44,7 +44,6 @@ require (
 	github.com/spf13/cobra v1.2.1
 	github.com/stretchr/testify v1.8.4
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
-	github.com/xtaci/smux v1.5.16
 	github.com/zeebo/xxh3 v1.0.2
 	go.etcd.io/etcd/raft/v3 v3.5.8
 	go.uber.org/automaxprocs v1.5.1
