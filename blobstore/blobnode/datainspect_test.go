@@ -114,7 +114,7 @@ func TestDataInspect(t *testing.T) {
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
 		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
 		cs.EXPECT().Disk().Return(ds1)
-		cs.EXPECT().Read(any, any).Return(int64(0), nil).Times(0)
+		cs.EXPECT().Read(any, any).Times(0)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
 		ds1.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
 
@@ -131,7 +131,7 @@ func TestDataInspect(t *testing.T) {
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
 		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
 		cs.EXPECT().Disk().Return(ds1)
-		cs.EXPECT().Read(any, any).Return(int64(0), nil).Times(0)
+		cs.EXPECT().Read(any, any).Times(0)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
 		ds1.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
 
@@ -159,6 +159,7 @@ func TestDataInspect(t *testing.T) {
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
 		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
 		cs.EXPECT().Disk().Return(ds1)
+		cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil)
 		cs.EXPECT().Read(any, any).Return(int64(0), errMock)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
 		ds1.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
@@ -187,7 +188,7 @@ func TestDataInspect(t *testing.T) {
 
 		bads, err = mgr.inspectChunk(ctx, cs)
 		require.NoError(t, err)
-		require.Equal(t, 1, len(bads))
+		require.Equal(t, 0, len(bads))
 
 		// no such bid
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
@@ -199,7 +200,7 @@ func TestDataInspect(t *testing.T) {
 
 		bads, err = mgr.inspectChunk(ctx, cs)
 		require.NoError(t, err)
-		require.Equal(t, 1, len(bads))
+		require.Equal(t, 0, len(bads))
 	}
 
 	{
@@ -208,6 +209,7 @@ func TestDataInspect(t *testing.T) {
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
 		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
 		cs.EXPECT().Disk().Return(ds1).Times(3)
+		cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil)
 		cs.EXPECT().Read(any, any).Return(int64(0), syscall.EIO)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
 		ds1.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
@@ -238,11 +240,12 @@ func TestInspectChunk_NoGoroutineLeak(t *testing.T) {
 		ctx:     context.Background(),
 		closeCh: make(chan struct{}),
 	}
+
 	getter := mocks.NewMockAccessor(ctr)
 	getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
 	getter.EXPECT().SetConfig(any, any, any).AnyTimes().Return(nil)
 	switchMgr := taskswitch.NewSwitchMgr(getter)
-	mgr, err := NewDataInspectMgr(svr, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, switchMgr)
+	mgr, err := NewDataInspectMgr(svr, DataInspectConf{IntervalSec: 10, RateLimit: 1024 * 1024}, switchMgr)
 	require.NoError(t, err)
 	mgr.svr = svr
 	svr.inspectMgr = mgr
@@ -257,21 +260,21 @@ func TestInspectChunk_NoGoroutineLeak(t *testing.T) {
 	cs.EXPECT().ID().AnyTimes().Return(clustermgr.ChunkID{})
 	cs.EXPECT().Disk().AnyTimes().Return(ds)
 	cs.EXPECT().ListShards(any, any, any, any).AnyTimes().Return([]*bnapi.ShardInfo{}, proto.InValidBlobID, nil)
-
 	before := runtime.NumGoroutine()
-	for i := 0; i < 50; i++ {
+
+	const testSomeGoroutines = 50
+	for i := 0; i < testSomeGoroutines; i++ {
 		_, err = mgr.inspectChunk(ctx, cs)
 		require.NoError(t, err)
 	}
+
 	// allow scheduler to settle
 	// (if a leak existed via a background goroutine, goroutine count would keep growing)
-	// small sleep to stabilize
-	// not too long to avoid slowing CI
-	// 50 iterations are enough to detect growth
-
+	// small sleep to stabilize, not too long to avoid slowing CI, 50 iterations are enough to detect growth
 	after := runtime.NumGoroutine()
 	// tolerate a small delta for unrelated goroutines
-	require.LessOrEqual(t, after, before+5)
+	const tolerance = 5
+	require.LessOrEqual(t, after, before+tolerance)
 }
 
 func TestDataInspectMetric(t *testing.T) {
@@ -501,4 +504,83 @@ func TestDataInspectMgr_ConcurrentAccess(t *testing.T) {
 	// wait all done, and no panic(concurrent write map, concurrent iteration map)
 	writeWg.Wait()
 	readWg.Wait()
+}
+
+func TestInspectShard_MetaDoubleCheck(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+	errMismatch := errors.New("crc32block: mismatched checksum")
+
+	// service and manager
+	ds := NewMockDiskAPI(ctr)
+	svr := &Service{Disks: map[proto.DiskID]core.DiskAPI{11: ds}, ctx: context.Background(), closeCh: make(chan struct{})}
+	mgr := newDataInspectMgr(t, DataInspectConf{IntervalSec: 1, RateLimit: 128 * 1024}, svr)
+
+	// prepare limiter
+	ds.EXPECT().ID().AnyTimes().Return(proto.DiskID(11))
+	mgr.setLimiters([]core.DiskAPI{ds})
+	lmt := mgr.getLimiter(ds)
+
+	// base shard info
+	si := &bnapi.ShardInfo{Bid: proto.BlobID(1), Vuid: proto.Vuid(1001), Size: 8}
+
+	// case 1: ReadShardMeta returns os.ErrNotExist -> skip bid error
+	cs := NewMockChunkAPI(ctr)
+	cs.EXPECT().Disk().Return(ds).AnyTimes()
+	cs.EXPECT().ReadShardMeta(any, any).Return(nil, os.ErrNotExist)
+	cs.EXPECT().Read(any, any).Return(int64(1), errMismatch)
+	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+	{
+		err := mgr.inspectShard(ctx, cs, si, lmt)
+		require.NoError(t, err)
+	}
+
+	// case 2: ReadShardMeta returns ErrNoSuchBid -> skip bid error
+	cs.EXPECT().ReadShardMeta(any, any).Return(nil, bloberr.ErrNoSuchBid)
+	cs.EXPECT().Read(any, any).Return(int64(1), errMismatch)
+	{
+		err := mgr.inspectShard(ctx, cs, si, lmt)
+		require.NoError(t, err)
+	}
+
+	// case 3: ReadShardMeta returns meta with Size==0 -> skip bid error
+	cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 0}, nil)
+	cs.EXPECT().Read(any, any).Return(int64(1), errMismatch)
+	{
+		err := mgr.inspectShard(ctx, cs, si, lmt)
+		require.NoError(t, err)
+	}
+
+	// case 4: ReadShardMeta returns errMock
+	cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, errMock)
+	cs.EXPECT().Read(any, any).Return(int64(1), errMismatch)
+	{
+		err := mgr.inspectShard(ctx, cs, si, lmt)
+		require.NotNil(t, err)
+		require.ErrorIs(t, err, errMismatch)
+	}
+
+	// case 5: normal, read shard meta and data, all success
+	cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil).Times(0)
+	cs.EXPECT().Read(any, any).Return(int64(1), nil)
+	{
+		err := mgr.inspectShard(ctx, cs, si, lmt)
+		require.NoError(t, err)
+	}
+
+	// case 6: read shard data error, but meta ok.
+	cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil)
+	cs.EXPECT().Read(any, any).Return(int64(1), errMismatch)
+	{
+		err := mgr.inspectShard(ctx, cs, si, lmt)
+		require.NotNil(t, err)
+		require.ErrorIs(t, err, errMismatch)
+	}
+
+	// case 7: read shard data error, it is deleted
+	cs.EXPECT().Read(any, any).Return(int64(1), bloberr.ErrNoSuchBid)
+	{
+		err := mgr.inspectShard(ctx, cs, si, lmt)
+		require.NoError(t, err)
+	}
 }

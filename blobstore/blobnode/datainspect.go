@@ -204,6 +204,7 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 	total := 0
 	badShards := make([]bnapi.BadShard, 0)
 
+	// scanFn processes shard batches, stops on errors: broken disk, ctx cancel, svr closed; records others
 	scanFn := func(batchShards []*bnapi.ShardInfo) (err error) {
 		total += len(batchShards)
 		for _, si := range batchShards {
@@ -239,23 +240,44 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 	return badShards, err
 }
 
+// inspectShard checks shard integrity with rate limiting and metadata double-check.
+// Returns error if shard is corrupted, nil if healthy or deleted.
 func (mgr *DataInspectMgr) inspectShard(ctx context.Context, cs core.ChunkAPI, si *bnapi.ShardInfo, lmt *rate.Limiter) (err error) {
-	discard := io.Discard
-	shardReader := core.NewShardReader(si.Bid, si.Vuid, 0, 0, discard)
+	span := trace.SpanFromContextSafe(ctx)
 
 	// Tokens of the corresponding size are obtained based on the size of the shard.
 	// If the size of shard is 1MB, you need to get 1024*1024 tokens
 	remain := si.Size
-	tokenSz := lmt.Burst()
 	for remain > 0 {
+		tokenSz := lmt.Burst()
 		if remain <= int64(tokenSz) {
 			tokenSz = int(remain)
 		}
-		lmt.WaitN(ctx, tokenSz)
+		if err = lmt.WaitN(ctx, tokenSz); err != nil {
+			span.Errorf("Unexpected error, fail to limit inspect:%+v", err)
+			return err
+		}
 		remain -= int64(tokenSz)
 	}
 
-	_, err = cs.Read(ctx, shardReader)
+	// Read shard data - normally succeeds; other, record error if data fail and meta not delete
+	shardReader := core.NewShardReader(si.Bid, si.Vuid, 0, 0, io.Discard)
+	if _, err = cs.Read(ctx, shardReader); err == nil {
+		return nil
+	}
+
+	if isShardDeleted(err) {
+		span.Warnf("shard deleted, skip. vuid:%d, bid:%d, err:%+v", cs.Vuid(), si.Bid, err)
+		return nil
+	}
+	if sm, metaErr := cs.ReadShardMeta(ctx, si.Bid); metaErr == nil && sm.Size == 0 {
+		span.Warnf("shard overwritten empty, skip. vuid:%d, bid:%d", cs.Vuid(), si.Bid)
+		return nil
+	} else if isShardDeleted(metaErr) {
+		span.Warnf("shard meta deleted, skip. vuid:%d, bid:%d, err:%+v", cs.Vuid(), si.Bid, metaErr)
+		return nil
+	}
+
 	return err
 }
 
@@ -506,5 +528,10 @@ func init() {
 }
 
 func isInspectReportIgnoredError(err error) bool {
-	return os.IsNotExist(err) || rpc.DetectStatusCode(err) == bloberr.CodeBidNotFound
+	// It may expand other errors, deleted shard, and so on
+	return isShardDeleted(err)
+}
+
+func isShardDeleted(err error) bool {
+	return os.IsNotExist(err) || errors.Is(err, bloberr.ErrNoSuchBid) || rpc.DetectStatusCode(err) == bloberr.CodeBidNotFound
 }
