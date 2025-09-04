@@ -153,9 +153,11 @@ func (t *TextMapPropagator) Extract(carrier interface{}) (opentracing.SpanContex
 			lowerKey := strings.ToLower(key)
 			if strings.HasPrefix(lowerKey, PrefixBaggage) {
 				k := strings.TrimPrefix(lowerKey, PrefixBaggage)
-				if b := span.context.nextBuffer(k, 8); b != nil {
-					b.WriteString(val)
-				}
+				span.context.appendBaggage(func(nextBuffer func(string, int) *bytes.Buffer) {
+					if b := nextBuffer(k, 8); b != nil {
+						b.WriteString(val)
+					}
+				})
 			}
 		}
 		return nil

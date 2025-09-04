@@ -71,6 +71,7 @@ type Span interface {
 	// TrackLog returns track log, calls BaggageItem with default key fieldTrackLogKey.
 	TrackLog() []string
 	TrackLogN() int
+	// TrackLogRange b is not thread-safe out of this function.
 	TrackLogRange(func(b *bytes.Buffer) bool)
 
 	// BaseLogger defines interface of application log apis.
@@ -147,15 +148,16 @@ func (s *spanImpl) FinishWithOptions(opts opentracing.FinishOptions) {
 	if s.context.spanFromPool != s {
 		return
 	}
-	if len(s.context.baggage) > 64 { // too many baggages
-		return
-	}
 	ctx := s.context
 	ctx.spanFromPool = nil
 	ctx.clearID()
 	ctx.spanID = 0
 	ctx.parentID = 0
 	ctx.Lock()
+	if len(ctx.baggage) > 64 { // too many baggages
+		ctx.Unlock()
+		return
+	}
 	for key := range ctx.baggage {
 		ctx.baggage[key].setString(nil)
 	}
@@ -333,11 +335,20 @@ func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Durat
 	for _, opt := range opts {
 		spanOpt = opt(spanOpt)
 	}
-
-	b := s.context.nextTrack(s.tracer.options.maxInternalTrack)
-	if b == nil {
-		return
+	var appendBytes []byte
+	s.context.appendTrack(func(nextBuffer func(maxTracks int) *bytes.Buffer) {
+		appendBytes = s._append(nextBuffer(s.tracer.options.maxInternalTrack), module, duration, err, spanOpt)
+	})
+	if len(appendBytes) > 0 {
+		s.trackReferences(appendBytes)
 	}
+}
+
+func (s *spanImpl) _append(b *bytes.Buffer, module string, duration time.Duration, err error, spanOpt spanOptions) []byte {
+	if b == nil {
+		return nil
+	}
+	b.Grow(16)
 	b.WriteString(module)
 
 	if spanOpt.duration == durationAny {
@@ -362,7 +373,8 @@ func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Durat
 			b.WriteString(msg)
 		}
 	}
-	s.trackReferences(b)
+
+	return b.Bytes()
 }
 
 // AppendTrackLogWithFunc records cost time for the function calling to a module.
@@ -374,13 +386,19 @@ func (s *spanImpl) AppendTrackLogWithFunc(module string, fn func() error, opts .
 
 // AppendRPCTrackLog appends RPC track logs to baggage with default key fieldTrackLogKey.
 func (s *spanImpl) AppendRPCTrackLog(logs []string) {
-	for _, trackLog := range logs {
-		b := s.context.nextTrack(s.tracer.options.maxInternalTrack)
-		if b == nil {
-			return
+	written := 0
+	s.context.appendTrack(func(nextBuffer func(int) *bytes.Buffer) {
+		for _, trackLog := range logs {
+			b := nextBuffer(s.tracer.options.maxInternalTrack)
+			if b == nil {
+				return
+			}
+			b.WriteString(trackLog)
+			written++
 		}
-		b.WriteString(trackLog)
-		s.trackReferences(b)
+	})
+	for idx := 0; idx < written; idx++ {
+		s.trackReferences([]byte(logs[idx]))
 	}
 }
 
@@ -397,16 +415,18 @@ func (s *spanImpl) TrackLogRange(f func(b *bytes.Buffer) bool) {
 	s.context.trackLogsRange(f)
 }
 
-func (s *spanImpl) trackReferences(buf *bytes.Buffer) {
+func (s *spanImpl) trackReferences(p []byte) {
 	maxTracks := s.tracer.options.maxInternalTrack
 	for _, ref := range s.references {
 		spanCtx, ok := ref.ReferencedContext.(*SpanContext)
 		if !ok {
 			continue
 		}
-		if b := spanCtx.nextTrack(maxTracks); b != nil {
-			b.Write(buf.Bytes())
-		}
+		spanCtx.appendTrack(func(nextBuffer func(int) *bytes.Buffer) {
+			if b := nextBuffer(maxTracks); b != nil {
+				b.Write(p)
+			}
+		})
 	}
 }
 

@@ -29,6 +29,7 @@ import (
 	ptlog "github.com/opentracing/opentracing-go/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -186,11 +187,73 @@ func TestSpan_Baggage(t *testing.T) {
 
 	spanChild.SetBaggageItem("k4", "v4")
 	spanCtx := spanChild.(*spanImpl).context
-	b := spanCtx.nextBuffer("k4", 32)
-	b.WriteString("v4")
+	spanCtx.appendBaggage(func(nextBuffer func(string, int) *bytes.Buffer) {
+		b := nextBuffer("k4", 32)
+		b.WriteString("v4")
+	})
 	require.Equal(t, "v4,v4", spanChild.BaggageItem("k4"))
 	require.Equal(t, "v4", span.BaggageItem("k4"))
 	spanChild.Tracer().Inject(spanCtx, HTTPHeaders, HTTPHeadersCarrier(http.Header{}))
+}
+
+func safeLogging(start <-chan struct{}, span Span, name string) {
+	span.SetBaggageItem(name, name)
+	var wg sync.WaitGroup
+	wg.Add(10)
+	for idx := range [10]struct{}{} {
+		go func(idx int) {
+			<-start
+			_ = util.Any2String(span.TrackLog())
+			span.AppendTrackLogWithDuration(name+"-"+util.Any2String(idx), time.Second, nil, ConstOptSpanAny...)
+			wg.Done()
+		}(idx)
+	}
+	wg.Wait()
+}
+
+func TestSpan_BaggageSafe(t *testing.T) {
+	spanRoot, ctx := StartSpanFromContext(context.Background(), "safe baggage")
+	defer spanRoot.Finish()
+
+	start := make(chan struct{})
+	wait := make(chan struct{})
+	go func() {
+		safeLogging(start, spanRoot, "root")
+		wait <- struct{}{}
+	}()
+
+	spanChild1, ctx1 := StartSpanFromContext(ctx, "child of span")
+	go func() {
+		safeLogging(start, spanChild1, "child1")
+		wait <- struct{}{}
+	}()
+	spanChild2, ctx2 := StartSpanFromContext(ctx, "child of span")
+	go func() {
+		safeLogging(start, spanChild2, "child2")
+		wait <- struct{}{}
+	}()
+
+	span1, _ := StartSpanFromContext(ctx1, "child child of span")
+	go func() {
+		safeLogging(start, span1, "span1")
+		wait <- struct{}{}
+	}()
+	span2, _ := StartSpanFromContext(ctx2, "child child of span")
+	go func() {
+		safeLogging(start, span2, "span2")
+		wait <- struct{}{}
+	}()
+
+	close(start)
+	for range [5]struct{}{} {
+		<-wait
+	}
+
+	t.Log(spanRoot.TrackLog())
+	t.Log(spanChild1.TrackLog())
+	t.Log(spanChild2.TrackLog())
+	t.Log(span1.TrackLog())
+	t.Log(span2.TrackLog())
 }
 
 func TestSpan_TrackLog(t *testing.T) {
