@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,33 +35,6 @@ func TestIoPoolSimple(t *testing.T) {
 	require.Equal(t, int64(0), fi.Size())
 	defer os.Remove(name)
 	defer file.Close()
-
-	// close
-	{
-		n := 0
-		ch := make(chan struct{}, 2)
-		closePool := NewIOPool(1, 2, "read", metricConf)
-		task := IoPoolTaskArgs{
-			BucketId: 1,
-			Tm:       time.Now(),
-			TaskFn: func() error {
-				ch <- struct{}{}
-				n++
-				return nil
-			},
-		}
-		task2, task3 := task, task
-		task2.BucketId = 2
-		task3.BucketId = 3
-		go closePool.Submit(task)
-		go closePool.Submit(task2)
-
-		<-ch
-		closePool.Close()
-		_err := closePool.Submit(task3)
-		require.Equal(t, 3, n) // all task should be executed
-		require.NoError(t, _err)
-	}
 
 	// alloc
 	{
@@ -196,21 +170,23 @@ func TestIoPoolSimple(t *testing.T) {
 		require.Equal(t, 0, n) // not write
 	}
 
-	// ctx cancel, before doWork
+	// ctx cancel, before doWork - test context cancellation timing
 	{
 		data := []byte(content)
-		n := -1
+		n := int32(0)
 		chunkId := uint64(2)
 		ctx, cancel := context.WithCancel(context.Background())
 
 		taskFn := func() error {
 			select {
 			case <-ctx.Done():
-				n, err = 0, ctx.Err()
+				atomic.StoreInt32(&n, 0)
+				err = ctx.Err()
 				return err
 			default:
 			}
-			n, err = file.WriteAt(data, 0)
+			atomic.AddInt32(&n, 1) // indicate task executed
+			_, err = file.WriteAt(data, 0)
 			return err
 		}
 		task := IoPoolTaskArgs{
@@ -220,26 +196,27 @@ func TestIoPoolSimple(t *testing.T) {
 			Ctx:      ctx,
 		}
 
+		ch := make(chan struct{})
 		taskLongTime := IoPoolTaskArgs{
 			BucketId: chunkId,
 			Tm:       time.Now(),
 			TaskFn: func() error {
-				cancel()
-				n = 1
+				cancel() // cancel context after this task starts
+				ch <- struct{}{}
+				atomic.AddInt32(&n, 1)
 				return nil
 			},
 			Ctx: nil,
 		}
 
-		ch := make(chan struct{}, 1)
 		allDone := make(chan struct{}, 1)
 		go func() {
-			ch <- struct{}{}
 			_err := writePool.Submit(taskLongTime)
 			require.NoError(t, _err)
 		}()
 		go func() {
 			<-ch
+			// context canceled, so this task will not be executed
 			_err := writePool.Submit(task)
 			require.ErrorIs(t, _err, context.Canceled)
 			allDone <- struct{}{}
@@ -247,7 +224,7 @@ func TestIoPoolSimple(t *testing.T) {
 
 		<-allDone
 		require.NoError(t, err)
-		require.Equal(t, 1, n) // long time task, not raw data
+		require.Equal(t, int32(1), n) // long time task, not raw data
 	}
 
 	// empty, not limit write
@@ -280,4 +257,124 @@ func TestIoPoolSimple(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(content), n)
 	require.Equal(t, content, string(data))
+}
+
+func TestSubmitAfterClose(t *testing.T) {
+	metricConf := IoPoolMetricConf{ClusterID: 1, Host: "host", DiskID: 101}
+
+	// close, and then submit
+	{
+		n := 0
+		ch := make(chan struct{}, 1)
+		closePool := NewIOPool(1, 2, "read", metricConf)
+		task := IoPoolTaskArgs{
+			BucketId: 1,
+			Tm:       time.Now(),
+			TaskFn: func() error {
+				n++
+				ch <- struct{}{}
+				return nil
+			},
+		}
+
+		closePool.Close()
+		err := closePool.Submit(task)
+		require.NoError(t, err)
+		require.Equal(t, 1, n)
+	}
+
+	// close test - ensure all submitted tasks complete
+	{
+		n := int32(0)
+		ch := make(chan struct{}, 2)
+		closePool := NewIOPool(1, 2, "read", metricConf)
+		task := IoPoolTaskArgs{
+			BucketId: 1,
+			Tm:       time.Now(),
+			TaskFn: func() error {
+				atomic.AddInt32(&n, 1)
+				ch <- struct{}{}
+				return nil
+			},
+		}
+		task2, task3 := task, task
+		task2.BucketId = 2
+		task3.BucketId = 3
+		go closePool.Submit(task)
+		go closePool.Submit(task2)
+
+		<-ch
+		<-ch
+		closePool.Close()
+
+		var err error
+		go func() {
+			err = closePool.Submit(task3)
+		}()
+
+		select {
+		case <-ch:
+			require.NoError(t, err)
+			require.Equal(t, int32(3), n) // all task should be executed
+		case <-time.After(time.Second):
+			t.Fatal("unexpect, task time out")
+		}
+	}
+
+	// mock many tasks(long time work) are submitted, and then close, and then submit, all task expect done
+	pool := NewIOPool(2, 4, "test", IoPoolMetricConf{ClusterID: 1, Host: "host", DiskID: 101})
+	taskCompleted := make(chan int, 3)
+
+	submitTask := func(id int, done chan<- struct{}) {
+		defer func() { done <- struct{}{} }()
+		err := pool.Submit(IoPoolTaskArgs{
+			BucketId: uint64(id),
+			Tm:       time.Now(),
+			TaskFn: func() error {
+				// mock do some work
+				for i := 0; i < 100; i++ {
+					_ = i
+				}
+				taskCompleted <- id
+				return nil
+			},
+		})
+		require.NoError(t, err)
+	}
+
+	backgroundDone := make(chan struct{}, 2)
+	go submitTask(1, backgroundDone)
+	go submitTask(2, backgroundDone)
+
+	<-backgroundDone
+	pool.Close()
+	<-backgroundDone
+
+	err := pool.Submit(IoPoolTaskArgs{
+		BucketId: 3,
+		Tm:       time.Now(),
+		TaskFn: func() error {
+			for i := 0; i < 100; i++ {
+				_ = i
+			}
+			taskCompleted <- 3
+			return nil
+		},
+	})
+	require.NoError(t, err)
+
+	// wait all task done
+	completedTasks := make(map[int]bool)
+	for i := 0; i < 3; i++ {
+		select {
+		case id := <-taskCompleted:
+			completedTasks[id] = true
+		case <-time.After(time.Second * 2):
+			t.Fatal("unexpect, task time out")
+		}
+	}
+
+	for _, id := range []int{1, 2, 3} {
+		require.True(t, completedTasks[id])
+	}
 }
