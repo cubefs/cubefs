@@ -396,6 +396,7 @@ type volValue struct {
 	FlashNodeTimeoutCount        int64
 	RemoteCacheSameZoneTimeout   int64
 	RemoteCacheSameRegionTimeout int64
+	CreateUUID                   string // idempotency check
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -484,6 +485,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
+		CreateUUID:                   vol.CreateUUID,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)

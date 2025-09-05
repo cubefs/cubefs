@@ -76,9 +76,9 @@ type SimpleVolView struct {
 }
 
 // function begin .....
-func (c *VolumeClient) CreateVolume(ctx context.Context, authenticate bool, capacity uint64, crossZone bool, dataPartitionSize uint64, description string, dpReplicaNum uint64, enableToken bool, followerRead bool, mpCount uint64, dpCount uint64, name string, owner string, zoneName string) (*Vol, error) {
-	req := client.NewRequest(ctx, `mutation($authenticate: bool, $capacity: uint64, $crossZone: bool, $dataPartitionSize: uint64, $description: string, $dpReplicaNum: uint64, $enableToken: bool, $followerRead: bool, $mpCount: uint64, $dpCount: uint64, $name: string, $owner: string, $zoneName: string){
-			createVolume(authenticate: $authenticate, capacity: $capacity, crossZone: $crossZone, dataPartitionSize: $dataPartitionSize, description: $description, dpReplicaNum: $dpReplicaNum, enableToken: $enableToken, followerRead: $followerRead, mpCount: $mpCount, dpCount: $dpCount, name: $name, owner: $owner, zoneName: $zoneName){
+func (c *VolumeClient) CreateVolume(ctx context.Context, authenticate bool, capacity uint64, crossZone bool, dataPartitionSize uint64, description string, dpReplicaNum uint64, enableToken bool, followerRead bool, mpCount uint64, dpCount uint64, name string, owner string, zoneName string, createUUID string) (*Vol, error) {
+	req := client.NewRequest(ctx, `mutation($authenticate: bool, $capacity: uint64, $crossZone: bool, $dataPartitionSize: uint64, $description: string, $dpReplicaNum: uint64, $enableToken: bool, $followerRead: bool, $mpCount: uint64, $dpCount: uint64, $name: string, $owner: string, $zoneName: string, $createUUID: string){
+			createVolume(authenticate: $authenticate, capacity: $capacity, crossZone: $crossZone, dataPartitionSize: $dataPartitionSize, description: $description, dpReplicaNum: $dpReplicaNum, enableToken: $enableToken, followerRead: $followerRead, mpCount: $mpCount, dpCount: $dpCount, name: $name, owner: $owner, zoneName: $zoneName, createUUID: $createUUID){
 				capacity
 				createTime
 				dpReplicaNum
@@ -135,6 +135,7 @@ func (c *VolumeClient) CreateVolume(ctx context.Context, authenticate bool, capa
 	req.Var("name", name)
 	req.Var("owner", owner)
 	req.Var("zoneName", zoneName)
+	req.Var("createUUID", createUUID)
 
 	rep, err := c.Query(ctx, "/api/volume", req)
 	if err != nil {

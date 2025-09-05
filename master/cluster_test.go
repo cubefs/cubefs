@@ -458,3 +458,201 @@ func TestDoCleanEmptyMetaPartition(t *testing.T) {
 	err := server.cluster.DoCleanEmptyMetaPartition(commonVolName)
 	require.NoError(t, err)
 }
+
+func TestCreateVolWithUUID(t *testing.T) {
+	// Test UUID-based idempotency for volume creation
+	t.Run("create volume with UUID - first time", func(t *testing.T) {
+		req := &createVolReq{
+			name:             commonVolName + "uuid001",
+			owner:            "cfs",
+			dpSize:           11,
+			mpCount:          3,
+			dpCount:          3,
+			dpReplicaNum:     3,
+			capacity:         100,
+			followerRead:     false,
+			authenticate:     false,
+			crossZone:        true,
+			normalZonesFirst: false,
+			zoneName:         testZone1 + "," + testZone2,
+			description:      "",
+			qosLimitArgs:     &qosArgs{},
+			volStorageClass:  defaultVolStorageClass,
+			createUUID:       "test-uuid-123", // Test UUID
+		}
+
+		// auto set allowedStorageClass[] in createVolReq
+		err := server.checkCreateVolReq(req)
+		require.NoError(t, err)
+
+		vol1, err := server.cluster.createVol(req)
+		require.NoError(t, err)
+		require.NotNil(t, vol1)
+		require.Equal(t, req.createUUID, vol1.CreateUUID)
+		t.Logf("First creation: vol[%s] with UUID[%s]", vol1.Name, vol1.CreateUUID)
+	})
+
+	t.Run("create volume with same UUID and same name - should return existing volume", func(t *testing.T) {
+		req := &createVolReq{
+			name:             commonVolName + "uuid001", // Same name and same UUID
+			owner:            "cfs",
+			dpSize:           11,
+			mpCount:          3,
+			dpCount:          3,
+			dpReplicaNum:     3,
+			capacity:         100,
+			followerRead:     false,
+			authenticate:     false,
+			crossZone:        true,
+			normalZonesFirst: false,
+			zoneName:         testZone1 + "," + testZone2,
+			description:      "",
+			qosLimitArgs:     &qosArgs{},
+			volStorageClass:  defaultVolStorageClass,
+			createUUID:       "test-uuid-123", // Same UUID as first test
+		}
+
+		err := server.checkCreateVolReq(req)
+		require.NoError(t, err)
+
+		vol2, err := server.cluster.createVol(req)
+		require.NoError(t, err)
+		require.NotNil(t, vol2)
+		require.Equal(t, "test-uuid-123", vol2.CreateUUID)
+		t.Logf("Second creation: vol[%s] with UUID[%s]", vol2.Name, vol2.CreateUUID)
+
+		// Verify idempotency - should return the same volume as first creation
+		vol1, err := server.cluster.getVol(commonVolName + "uuid001")
+		require.NoError(t, err)
+		require.Equal(t, vol1.ID, vol2.ID)
+		require.Equal(t, vol1.Name, vol2.Name)
+		t.Logf("Idempotency verified: vol1[%s] ID[%d] == vol2[%s] ID[%d]",
+			vol1.Name, vol1.ID, vol2.Name, vol2.ID)
+	})
+
+	t.Run("create volume with same UUID but different name - should create new volume", func(t *testing.T) {
+		req := &createVolReq{
+			name:             commonVolName + "uuid002", // Different name but same UUID
+			owner:            "cfs",
+			dpSize:           11,
+			mpCount:          3,
+			dpCount:          3,
+			dpReplicaNum:     3,
+			capacity:         100,
+			followerRead:     false,
+			authenticate:     false,
+			crossZone:        true,
+			normalZonesFirst: false,
+			zoneName:         testZone1 + "," + testZone2,
+			description:      "",
+			qosLimitArgs:     &qosArgs{},
+			volStorageClass:  defaultVolStorageClass,
+			createUUID:       "test-uuid-123", // Same UUID as first test
+		}
+
+		err := server.checkCreateVolReq(req)
+		require.NoError(t, err)
+
+		var vol4 *Vol
+		vol4, err = server.cluster.createVol(req)
+		require.NoError(t, err)
+		require.Equal(t, "test-uuid-123", vol4.CreateUUID)
+		t.Logf("Third creation: vol[%s] with UUID[%s]", vol4.Name, vol4.CreateUUID)
+	})
+
+	t.Run("create volume with same UUID but different owner - should return error", func(t *testing.T) {
+		req := &createVolReq{
+			name:             commonVolName + "uuid001", // Same name and same UUID
+			owner:            "different-owner",         // Different owner but same UUID
+			dpSize:           11,
+			mpCount:          3,
+			dpCount:          3,
+			dpReplicaNum:     3,
+			capacity:         100,
+			followerRead:     false,
+			authenticate:     false,
+			crossZone:        true,
+			normalZonesFirst: false,
+			zoneName:         testZone1 + "," + testZone2,
+			description:      "",
+			qosLimitArgs:     &qosArgs{},
+			volStorageClass:  defaultVolStorageClass,
+			createUUID:       "test-uuid-123", // Same UUID as first test
+		}
+
+		err := server.checkCreateVolReq(req)
+		require.NoError(t, err)
+
+		_, err = server.cluster.createVol(req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "owner mismatch")
+		t.Logf("Expected error for UUID mismatch with different owner: %v", err)
+	})
+
+	t.Run("create volume with different UUID - should create new volume", func(t *testing.T) {
+		req := &createVolReq{
+			name:             commonVolName + "uuid003",
+			owner:            "cfs",
+			dpSize:           11,
+			mpCount:          3,
+			dpCount:          3,
+			dpReplicaNum:     3,
+			capacity:         100,
+			followerRead:     false,
+			authenticate:     false,
+			crossZone:        true,
+			normalZonesFirst: false,
+			zoneName:         testZone1 + "," + testZone2,
+			description:      "",
+			qosLimitArgs:     &qosArgs{},
+			volStorageClass:  defaultVolStorageClass,
+			createUUID:       "test-uuid-456", // Different UUID
+		}
+
+		err := server.checkCreateVolReq(req)
+		require.NoError(t, err)
+
+		vol3, err := server.cluster.createVol(req)
+		require.NoError(t, err)
+		require.NotNil(t, vol3)
+		require.Equal(t, "test-uuid-456", vol3.CreateUUID)
+		t.Logf("Third creation: vol[%s] with UUID[%s]", vol3.Name, vol3.CreateUUID)
+
+		// Verify this is a different volume
+		vol1, err := server.cluster.getVol(commonVolName + "uuid001")
+		require.NoError(t, err)
+		require.NotEqual(t, vol1.ID, vol3.ID)
+		t.Logf("Different volume verified: vol1[%s] ID[%d] != vol3[%s] ID[%d]",
+			vol1.Name, vol1.ID, vol3.Name, vol3.ID)
+	})
+
+	t.Run("create volume without UUID - should work normally", func(t *testing.T) {
+		req := &createVolReq{
+			name:             commonVolName + "uuid004",
+			owner:            "cfs",
+			dpSize:           11,
+			mpCount:          3,
+			dpCount:          3,
+			dpReplicaNum:     3,
+			capacity:         100,
+			followerRead:     false,
+			authenticate:     false,
+			crossZone:        true,
+			normalZonesFirst: false,
+			zoneName:         testZone1 + "," + testZone2,
+			description:      "",
+			qosLimitArgs:     &qosArgs{},
+			volStorageClass:  defaultVolStorageClass,
+			createUUID:       "", // Empty UUID
+		}
+
+		err := server.checkCreateVolReq(req)
+		require.NoError(t, err)
+
+		vol4, err := server.cluster.createVol(req)
+		require.NoError(t, err)
+		require.NotNil(t, vol4)
+		require.Equal(t, "", vol4.CreateUUID) // Should be empty
+		t.Logf("Fourth creation: vol[%s] with empty UUID", vol4.Name)
+	})
+}

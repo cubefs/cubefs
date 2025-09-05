@@ -173,7 +173,7 @@ func (s *VolumeService) volPermission(ctx context.Context, args struct {
 }
 
 func (s *VolumeService) createVolume(ctx context.Context, args struct {
-	Name, Owner, ZoneName, Description                          string
+	Name, Owner, ZoneName, Description, CreateUUID              string
 	Capacity, DataPartitionSize, MpCount, DpCount, DpReplicaNum uint64
 	FollowerRead, Authenticate, CrossZone, DefaultPriority      bool
 	iopsRLimit, iopsWLimit, flowRlimit, flowWlimit              uint64
@@ -214,6 +214,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		normalZonesFirst: args.DefaultPriority,
 		zoneName:         args.ZoneName,
 		description:      args.Description,
+		createUUID:       args.CreateUUID,
 	}
 	vol, err := s.cluster.createVol(req)
 	if err != nil {

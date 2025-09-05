@@ -3987,6 +3987,26 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 	var readWriteDataPartitions int
 
+	// idempotency check
+	if req.createUUID != "" {
+		if existingVol, err := c.getVol(req.name); err == nil {
+			// Verify volume name and owner match to ensure idempotency check security
+			if existingVol.CreateUUID == req.createUUID {
+				if existingVol.Owner != req.owner {
+					log.LogErrorf("action[createVol] UUID[%s] exists but owner mismatch: existing[%s] vs request[%s]",
+						req.createUUID, existingVol.Owner, req.owner)
+					return nil, fmt.Errorf("UUID[%s] exists but owner mismatch: existing[%s] vs request[%s]",
+						req.createUUID, existingVol.Owner, req.owner)
+				}
+
+				log.LogInfof("action[createVol] found existing volume with same UUID[%s], vol[%s], owner[%s], returning existing volume",
+					req.createUUID, existingVol.Name, existingVol.Owner)
+
+				return existingVol, nil
+			}
+		}
+	}
+
 	if req.zoneName, err = c.checkZoneName(req.name, req.crossZone, req.normalZonesFirst, req.zoneName, req.domainId); err != nil {
 		return
 	}
@@ -4114,6 +4134,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlashNodeTimeoutCount:        req.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   req.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: req.remoteCacheSameRegionTimeout,
+		CreateUUID:                   req.createUUID,
 	}
 
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, 0)
