@@ -94,6 +94,7 @@ const (
 	ConfigKeyDiskPath         = "diskPath"            // string
 	configNameResolveInterval = "nameResolveInterval" // int
 
+	ConfigKeyAdvertisedAddr = "advertisedAddr" // string
 	/*
 	 * Metrics Degrade Level
 	 * minus value: turn off metrics collection.
@@ -178,6 +179,7 @@ type DataNode struct {
 	tickInterval                       int
 	raftRecvBufSize                    int
 	startTime                          int64
+	advertisedAddr                     string // IP
 	// localIP         string
 
 	tcpListener net.Listener
@@ -410,6 +412,16 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
 	port = cfg.GetString(proto.ListenPort)
 	s.bindIp = cfg.GetBool(proto.BindIpKey)
+	s.advertisedAddr = cfg.GetString(ConfigKeyAdvertisedAddr)
+
+	if s.advertisedAddr == "" {
+		// if advertisedAddr is not set, try to read from environment variable
+		// if envAddr := os.Getenv("ADVERTISED_ADDR"); envAddr != "" {
+		// 	s.advertisedAddr = envAddr
+		// }
+		s.advertisedAddr = LocalIP
+	}
+
 	if regexpPort, err = regexp.Compile(`^(\d)+$`); err != nil {
 		return fmt.Errorf("Err:no port")
 	}
@@ -793,7 +805,10 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 				LocalIP = string(ci.Ip)
 			}
 
-			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
+			if s.advertisedAddr == "" {
+				s.advertisedAddr = LocalIP
+			}
+			s.localServerAddr = fmt.Sprintf("%s:%v", s.advertisedAddr, s.port)
 			if !util.IsIPV4(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
 					LocalIP, masterAddr)
@@ -832,7 +847,7 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.raftHeartbeat, s.raftReplica,
+			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", s.advertisedAddr, s.port), s.raftHeartbeat, s.raftReplica,
 				s.zoneName, s.serviceIDKey, s.mediaType); err != nil {
 				if strings.Contains(err.Error(), proto.ErrDataNodeAdd.Error()) {
 					failMsg := fmt.Sprintf("[register] register to master[%v] failed: %v",

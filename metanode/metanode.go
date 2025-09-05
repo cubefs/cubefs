@@ -90,6 +90,7 @@ type MetaNode struct {
 	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
 	qosEnable                          bool
 	readDirIops                        int
+	advertisedAddr                     string
 
 	control common.Control
 }
@@ -110,7 +111,7 @@ func (m *MetaNode) Shutdown() {
 func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
-		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.localAddr, m.listen)); err != nil {
+		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.advertisedAddr, m.listen)); err != nil {
 			log.LogErrorf("checkLocalPartitionMatchWithMaster: get MetaNode info fail: err(%v)", err)
 			continue
 		}
@@ -136,10 +137,10 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	}
 	m.metrics.MetricMetaFailedPartition.SetWithLabels(float64(1), map[string]string{
 		"partids": fmt.Sprintf("%v", lackPartitions),
-		"node":    m.localAddr + ":" + m.listen,
+		"node":    m.advertisedAddr + ":" + m.listen,
 		"nodeid":  fmt.Sprintf("%d", m.nodeId),
 	})
-	log.LogErrorf("LackPartitions %v on metanode %v, please deal quickly", lackPartitions, m.localAddr+":"+m.listen)
+	log.LogErrorf("LackPartitions %v on metanode %v, please deal quickly", lackPartitions, m.advertisedAddr+":"+m.listen)
 	return
 }
 
@@ -226,6 +227,14 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.zoneName = cfg.GetString(cfgZoneName)
+	m.advertisedAddr = cfg.GetString(cfgAdvertisedAddr)
+	if m.advertisedAddr == "" {
+		// if envAddr := os.Getenv("ADVERTISED_ADDR"); envAddr != "" {
+		//	m.advertisedAddr = envAddr
+		//} else {
+		m.advertisedAddr = m.localAddr
+		// }
+	}
 
 	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
 	if deleteBatchCount > 1 {
@@ -506,13 +515,16 @@ func (m *MetaNode) register() (err error) {
 		if m.localAddr == "" {
 			m.localAddr = gClusterInfo.Ip
 		}
+		if m.advertisedAddr == "" {
+			m.advertisedAddr = m.localAddr
+		}
 		m.clusterUuid = gClusterInfo.ClusterUuid
 		m.clusterUuidEnable = gClusterInfo.ClusterUuidEnable
 		m.clusterEnableSnapshot = gClusterInfo.ClusterEnableSnapshot
 		clusterEnableSnapshot = m.clusterEnableSnapshot
 		m.clusterId = gClusterInfo.Cluster
 		m.raftPartitionCanUsingDifferentPort = gClusterInfo.RaftPartitionCanUsingDifferentPort
-		nodeAddress = m.localAddr + ":" + m.listen
+		nodeAddress = m.advertisedAddr + ":" + m.listen
 
 		var settingsFromMaster *proto.UpgradeCompatibleSettings
 		if settingsFromMaster, err = getUpgradeCompatibleSettings(); err != nil {
