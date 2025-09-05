@@ -15,7 +15,8 @@
 | consulAddr    | string       | 监控系统的地址                               | 否   |
 | exporterPort  | string       | 监控系统的端口                               | 否   |
 | masterAddr    | string slice | 集群管理器的地址                              | 是   |
-| localIP       | string       | 本机 ip 地址，如果不填写该选项，则使用和 master 通信的ip地址     | 否   |
+| localIP       | string       | 本机 ip 地址，如果不填写该选项，则使用和 master 通信的ip地址     |  否   |
+| advertisedAddr | string      | 对外广告地址，用于节点注册到 master 时使用的地址。不配置则使用默认值 localIP | 否   |
 | zoneName      | string       | 指定区域，默认分配至 `default` 区域                 | 否   |
 | diskReadIocc  | int          | 限制单盘并发读操作,小于等于0表示不限制            | 否   |
 | diskReadFlow  | int          | 限制单盘读流量,小于等于0表示不限制                | 否   |
