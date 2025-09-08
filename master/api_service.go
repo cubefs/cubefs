@@ -4259,7 +4259,12 @@ func (m *Server) updateNodesetCapcity(zoneName string, nodesetId uint64, capcity
 		return
 	}
 
-	ns.Capacity = int(capcity)
+	ns.racksLock.Lock()
+	for _, rack := range ns.racks {
+		rack.Capacity = int(capcity) / 3
+	}
+	ns.racksLock.Unlock()
+
 	m.cluster.syncUpdateNodeSet(ns)
 	log.LogInfof("action[updateNodesetCapcity] zonename %v nodeset %v capcity %v", zoneName, nodesetId, capcity)
 	return

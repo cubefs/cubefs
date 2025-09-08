@@ -29,6 +29,42 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+type selectParam struct {
+	excludeHosts    []string
+	replicaNum      int
+	rackLevel       proto.RackAwareLevel
+	excludeRacks    []string
+	excludeNodeSets []uint64
+}
+
+func (sp *selectParam) copy() *selectParam {
+	// deep copy slice fields
+	excludeHosts := make([]string, len(sp.excludeHosts))
+	copy(excludeHosts, sp.excludeHosts)
+
+	excludeRacks := make([]string, len(sp.excludeRacks))
+	copy(excludeRacks, sp.excludeRacks)
+
+	excludeNodeSets := make([]uint64, len(sp.excludeNodeSets))
+	copy(excludeNodeSets, sp.excludeNodeSets)
+
+	return &selectParam{
+		excludeHosts:    excludeHosts,
+		replicaNum:      sp.replicaNum,
+		rackLevel:       sp.rackLevel,
+		excludeRacks:    excludeRacks,
+		excludeNodeSets: excludeNodeSets,
+	}
+}
+
+func (sp *selectParam) String() string {
+	if sp == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("excludeHosts: %v, replicaNum: %v, rackLevel: %v, excludeRacks: %v, excludeNodeSets: %v",
+		sp.excludeHosts, sp.replicaNum, sp.rackLevel, sp.excludeRacks, sp.excludeNodeSets)
+}
+
 type rsManager struct {
 	nodeType         NodeType
 	nodes            *sync.Map
@@ -581,7 +617,15 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 				}
 
 				if createType == TypeDataPartition {
-					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum); err != nil {
+					param := &selectParam{
+						excludeNodeSets: nil,
+						replicaNum:      needNum,
+						excludeHosts:    nil,
+						rackLevel:       proto.RackAwareNone,
+						excludeRacks:    nil,
+					}
+
+					if host, peer, err = ns.getAvailDataNodeHosts(param); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						// nsg.status = dataNodesUnAvailable
 						continue
@@ -591,7 +635,14 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 					if createType == TypeRocksdbPartition {
 						storeMode = proto.StoreModeRocksDb
 					}
-					if host, peer, err = ns.getAvailMetaNodeHosts(nil, needNum, storeMode); err != nil {
+					param := &selectParam{
+						excludeNodeSets: nil,
+						replicaNum:      needNum,
+						excludeHosts:    nil,
+						rackLevel:       proto.RackAwareNone,
+						excludeRacks:    nil,
+					}
+					if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific]  ns[%v] zone[%v] type(%d) err[%v]", ns.ID, ns.zoneName, createType, err)
 						// nsg.status = metaNodesUnAvailable
 						continue
@@ -691,7 +742,14 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] dataNodesUnAvailable", ns.ID, ns.zoneName)
 					continue
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1); err != nil {
+				param := &selectParam{
+					excludeNodeSets: nil,
+					replicaNum:      1,
+					excludeHosts:    hosts,
+					rackLevel:       proto.RackAwareNone,
+					excludeRacks:    nil,
+				}
+				if host, peer, err = ns.getAvailDataNodeHosts(param); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = dataNodesUnAvailable
 					continue
@@ -705,7 +763,14 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 				if createType == TypeRocksdbPartition {
 					storeMode = proto.StoreModeRocksDb
 				}
-				if host, peer, err = ns.getAvailMetaNodeHosts(hosts, 1, storeMode); err != nil {
+				param := &selectParam{
+					excludeNodeSets: nil,
+					replicaNum:      1,
+					excludeHosts:    hosts,
+					rackLevel:       proto.RackAwareNone,
+					excludeRacks:    nil,
+				}
+				if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] ModeRocksDb err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = metaNodesUnAvailable
 					continue
@@ -988,8 +1053,10 @@ type nodeSet struct {
 	metaNodes *sync.Map
 	dataNodes *sync.Map
 
-	racks     map[string]*nodeSet
-	racksLock sync.RWMutex
+	racks            map[string]*nodeSet
+	racksLock        sync.RWMutex
+	dataRackSelector NodesetSelector
+	metaRackSelector NodesetSelector
 
 	nodeSelectLock          sync.Mutex
 	dataNodeSelectorLock    sync.RWMutex
@@ -1025,13 +1092,17 @@ type nodeSetDecommissionParallelStatus struct {
 func newNodeSet(c *Cluster, id uint64, cap int, zoneName string, rack string) *nodeSet {
 	log.LogInfof("action[newNodeSet] id[%v]", id)
 	ns := &nodeSet{
-		ID:                                id,
-		Rack:                              rack,
-		Capacity:                          cap,
-		zoneName:                          zoneName,
-		metaNodes:                         new(sync.Map),
-		dataNodes:                         new(sync.Map),
-		racks:                             make(map[string]*nodeSet),
+		ID:        id,
+		Rack:      rack,
+		Capacity:  cap,
+		zoneName:  zoneName,
+		metaNodes: new(sync.Map),
+		dataNodes: new(sync.Map),
+
+		racks:            make(map[string]*nodeSet),
+		dataRackSelector: NewNodesetSelector(StrawNodesetSelectorName, DataNodeType),
+		metaRackSelector: NewNodesetSelector(StrawNodesetSelectorName, MetaNodeType),
+
 		decommissionDataPartitionList:     NewDecommissionDataPartitionList(c, id),
 		manualDecommissionDiskList:        NewDecommissionDiskList(),
 		autoDecommissionDiskList:          NewDecommissionDiskList(),
@@ -1047,6 +1118,31 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string, rack string) *n
 	}
 
 	return ns
+}
+
+func (ns *nodeSet) getRackSelector(nodeType NodeType) NodesetSelector {
+	if nodeType == DataNodeType {
+		return ns.dataRackSelector
+	}
+	return ns.metaRackSelector
+}
+
+func (ns *nodeSet) getNodeSelector(nodeType NodeType, storeMode proto.StoreMode) NodeSelector {
+	if nodeType == DataNodeType {
+		return ns.dataNodeSelector
+	}
+	if storeMode == proto.StoreModeRocksDb {
+		return ns.metaNodeRocksdbSelector
+	}
+	return ns.metaNodeMemorySelector
+}
+
+func (ns *nodeSet) IsRackSet() bool {
+	return ns.Rack != ""
+}
+
+func (ns *nodeSet) IsNodeSet() bool {
+	return ns.Rack == ""
 }
 
 func (ns *nodeSet) GetDataNodeSelector() string {
@@ -1137,28 +1233,82 @@ func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 
 }
 
-func (ns *nodeSet) canWriteForNode(nodes *sync.Map, replicaNum int, nodeType NodeType) bool {
+// Extract node check logic
+func (ns *nodeSet) checkNodeWriteable(node interface{}, nodeType NodeType, param *selectParam) bool {
+	if nodeType == RocksdbType {
+		if metaNode, ok := node.(*MetaNode); ok {
+			return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited() && !contains(param.excludeHosts, metaNode.Addr)
+		}
+		return false
+	}
+
+	if n, ok := node.(Node); ok {
+		return n.IsWriteAble() && n.PartitionCntLimited() && !contains(param.excludeHosts, n.GetAddr())
+	}
+	return false
+}
+
+// Optimized main function
+func (ns *nodeSet) canWriteForNode(nodes *sync.Map, param *selectParam, nodeType NodeType) bool {
+
+	// Rack-aware strong consistency mode, select available rack set count >= replicaNum
+	if param.rackLevel == proto.RackAwareStrong && ns.IsNodeSet() {
+		return ns.checkRackAwareWriteable(param, nodeType)
+	}
+
+	// Rack-aware strong consistency mode, exclude rack
+	if ns.IsRackSet() && param.rackLevel == proto.RackAwareStrong && contains(param.excludeRacks, ns.Rack) {
+		return false
+	}
+
+	// Normal mode
+	return ns.checkNormalWriteable(nodes, param, nodeType)
+}
+
+// Rack-aware consistency check, select available rack set count >= replicaNum
+func (ns *nodeSet) checkRackAwareWriteable(param *selectParam, nodeType NodeType) bool {
+	var count int
+	for _, rack := range ns.racks {
+		if contains(param.excludeRacks, rack.Rack) {
+			continue
+		}
+
+		rnodes := rack.metaNodes
+		if nodeType == DataNodeType {
+			rnodes = rack.dataNodes
+		}
+
+		rnodes.Range(func(key, value interface{}) bool {
+			if ns.checkNodeWriteable(value, nodeType, param) {
+				count++
+				return false
+			}
+			return true
+		})
+
+		if count >= param.replicaNum {
+			return true
+		}
+	}
+	return false
+}
+
+// Normal mode consistency check
+func (ns *nodeSet) checkNormalWriteable(nodes *sync.Map, param *selectParam, nodeType NodeType) bool {
 	var count int
 	nodes.Range(func(key, value interface{}) bool {
-		if nodeType == RocksdbType {
-			node := value.(*MetaNode)
-			if node.IsRocksdbWriteAble() && node.PartitionCntLimited() {
-				count++
+		if ns.checkNodeWriteable(value, nodeType, param) {
+			count++
+			if count >= param.replicaNum {
+				return false // Found enough nodes, exit early
 			}
-		} else {
-			node := value.(Node)
-			if node.IsWriteAble() && node.PartitionCntLimited() {
-				count++
-			}
-		}
-		if count >= replicaNum {
-			return false
 		}
 		return true
 	})
+
 	log.LogInfof("canWriteForMetaNode zone[%v], ns[%v],count[%v] replicaNum[%v]",
-		ns.zoneName, ns.ID, count, replicaNum)
-	return count >= replicaNum
+		ns.zoneName, ns.ID, count, param.replicaNum)
+	return count >= param.replicaNum
 }
 
 func (ns *nodeSet) calcNodesForAlloc(nodes *sync.Map) (cnt int) {
@@ -1846,7 +1996,7 @@ func (zone *Zone) deleteMetaNode(metaNode *MetaNode) (err error) {
 	return
 }
 
-func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (zone *Zone) allocNodeSetForDataNode(param *selectParam) (ns *nodeSet, err error) {
 	nset := zone.getAllNodeSet()
 	if nset == nil {
 		return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
@@ -1858,16 +2008,38 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 	zone.dataNodesetSelectorLock.RLock()
 	defer zone.dataNodesetSelectorLock.RUnlock()
 
-	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
-	if err != nil {
-		log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
-			nset.Len(), excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateDataPartition)
+	paramCopy := param.copy()
+	if param.rackLevel == proto.RackAwareWeak {
+		paramCopy.rackLevel = proto.RackAwareStrong
+	}
+
+	// First attempt with strong rack awareness
+	ns, err = zone.dataNodesetSelector.Select(nset, paramCopy)
+	if err == nil {
+		return ns, nil
+	}
+
+	if param.rackLevel != proto.RackAwareWeak {
+		log.LogErrorf("action[allocNodeSetForDataNode], no available node set found, param[%v] err:%v",
+			param.String(), err.Error())
 		return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
 	}
+
+	log.LogWarnf("action[allocNodeSetForDataNode], no available node set found, try awake, param[%v] err:%v",
+		param.String(), err.Error())
+
+	paramCopy.rackLevel = proto.RackAwareWeak
+	ns, err = zone.dataNodesetSelector.Select(nset, paramCopy)
+	if err != nil {
+		log.LogErrorf("action[allocNodeSetForDataNode], still failed after change rack level,param[%v], err: %v",
+			param.String(), proto.ErrNoNodeSetToCreateDataPartition)
+		return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+	}
+
 	return ns, nil
 }
 
-func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum uint8, storeMode proto.StoreMode) (ns *nodeSet, err error) {
+func (zone *Zone) allocNodeSetForMetaNode(param *selectParam, storeMode proto.StoreMode) (ns *nodeSet, err error) {
 	nset := zone.getAllNodeSet()
 	if nset == nil {
 		return nil, proto.ErrNoNodeSetToCreateMetaPartition
@@ -1878,16 +2050,42 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	// we need a read lock to block the modify of nodeset selector
 	zone.metaNodesetSelectorLock.RLock()
 	defer zone.metaNodesetSelectorLock.RUnlock()
+
+	// Select appropriate selector based on store mode
 	selector := zone.metaMemoryNodesetSelector
 	if storeMode == proto.StoreModeRocksDb {
 		selector = zone.metaRocksdbNodesetSelector
 	}
-	ns, err = selector.Select(nset, excludeNodeSets, replicaNum)
+
+	paramCopy := param.copy()
+	if param.rackLevel == proto.RackAwareWeak {
+		paramCopy.rackLevel = proto.RackAwareStrong
+	}
+
+	// First attempt with strong rack awareness
+	ns, err = selector.Select(nset, paramCopy)
+	if err == nil {
+		return ns, nil
+	}
+
+	if param.rackLevel != proto.RackAwareWeak {
+		log.LogErrorf("action[allocNodeSetForMetaNode], no available node set found, zone %s, param[%v] err:%v",
+			zone.name, param.String(), err.Error())
+		return nil, errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+	}
+
+	// Retry with weak rack awareness
+	log.LogWarnf("action[allocNodeSetForMetaNode], no available node set found, zone %s, param[%v] err:%v",
+		zone.name, param.String(), err.Error())
+
+	paramCopy.rackLevel = proto.RackAwareWeak
+	ns, err = selector.Select(nset, paramCopy)
 	if err != nil {
-		log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
-			zone.name, excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateMetaPartition))
+		log.LogErrorf("action[allocNodeSetForMetaNode], still failed after change rack level, zone[%v], param[%v], err:%v",
+			zone.name, param.String(), proto.ErrNoNodeSetToCreateMetaPartition)
 		return nil, proto.ErrNoNodeSetToCreateMetaPartition
 	}
+
 	return ns, nil
 }
 
@@ -1983,19 +2181,19 @@ func (zone *Zone) getSpaceLeft(dataType uint32) (spaceLeft uint64) {
 	}
 }
 
-func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
-	if replicaNum == 0 {
+func (zone *Zone) getAvailNodeHosts(nodeType uint32, param *selectParam) (newHosts []string, peers []proto.Peer, err error) {
+	if param.replicaNum == 0 {
 		return
 	}
 
 	log.LogDebugf("[getAvailNodeHosts] get node host, zone(%s), nodeType(%d)", zone.name, nodeType)
 
 	if nodeType == TypeDataPartition {
-		ns, err := zone.allocNodeSetForDataNode(excludeNodeSets, uint8(replicaNum))
+		ns, err := zone.allocNodeSetForDataNode(param)
 		if err != nil {
-			return nil, nil, errors.Trace(err, "zone[%v] alloc node set,replicaNum[%v]", zone.name, replicaNum)
+			return nil, nil, errors.Trace(err, "zone[%v] alloc node set, param[%v], err %s", zone.name, param.String(), err.Error())
 		}
-		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
+		return ns.getAvailDataNodeHosts(param)
 	}
 
 	storeMode := proto.StoreModeMem
@@ -2003,12 +2201,12 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 		storeMode = proto.StoreModeRocksDb
 	}
 
-	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum), storeMode)
+	ns, err := zone.allocNodeSetForMetaNode(param, storeMode)
 	if err != nil {
-		return nil, nil, errors.NewErrorf("zone[%v],err[%v]", zone.name, err)
+		return nil, nil, errors.NewErrorf("zone[%v], param[%v], err[%v]", zone.name, param.String(), err.Error())
 	}
 
-	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum, storeMode)
+	return ns.getAvailMetaNodeHosts(param, storeMode)
 }
 
 func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector string, metaNodesetSelector string) error {

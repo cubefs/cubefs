@@ -80,7 +80,14 @@ func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
 			return true
 		})
 	}
-	ns, err := selector.Select(nsc, nil, 1)
+	param := &selectParam{
+		excludeNodeSets: nil,
+		replicaNum:      1,
+		excludeHosts:    nil,
+		rackLevel:       proto.RackAwareNone,
+		excludeRacks:    nil,
+	}
+	ns, err := selector.Select(nsc, param)
 	if err != nil {
 		t.Errorf("%v failed to select nodeset %v", selector.GetName(), err)
 		return
@@ -154,7 +161,14 @@ func prepareMetaNodesetForBench(count int, initTotal uint64, grow uint64) (nsc n
 func nodesetSelectorBench(selector NodesetSelector, nsc nodeSetCollection, onSelect func(id uint64)) (map[uint64]int, error) {
 	times := make(map[uint64]int)
 	for i := 0; i < loopNodeSelectorTestCount; i++ {
-		ns, err := selector.Select(nsc, nil, 1)
+		param := &selectParam{
+			excludeNodeSets: nil,
+			replicaNum:      1,
+			excludeHosts:    nil,
+			rackLevel:       proto.RackAwareNone,
+			excludeRacks:    nil,
+		}
+		ns, err := selector.Select(nsc, param)
 		if err != nil {
 			return nil, err
 		}

@@ -120,6 +120,7 @@ type CarryWeightNodeSelector struct {
 	nodeType NodeType
 
 	carry map[uint64]float64
+	sync.RWMutex
 }
 
 func (s *CarryWeightNodeSelector) GetName() string {
@@ -176,12 +177,17 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 				node.GetStorageInfo(), excludeHosts)
 			return true
 		}
+
+		s.RLock()
 		if s.carry[node.GetID()] >= 1.0 {
 			availCount++
 		}
+		s.RUnlock()
 
 		nt := new(weightedNode)
+		s.RLock()
 		nt.Carry = s.carry[node.GetID()]
+		s.RUnlock()
 		nt.Weight = float64(node.GetTotal()-node.GetUsed()) / float64(maxTotal)
 		nt.Ptr = node
 		nodeTabs = append(nodeTabs, nt)
@@ -201,7 +207,9 @@ func (s *CarryWeightNodeSelector) setNodeCarry(nodes SortedWeightedNodes, availC
 				carry = 10.0
 			}
 			nt.Carry = carry
+			s.Lock()
 			s.carry[nt.Ptr.GetID()] = carry
+			s.Unlock()
 			if carry > 1.0 {
 				availCarryCount++
 			}
@@ -212,7 +220,9 @@ func (s *CarryWeightNodeSelector) setNodeCarry(nodes SortedWeightedNodes, availC
 func (s *CarryWeightNodeSelector) selectNodeForWrite(node Node) {
 	node.SelectNodeForWrite()
 	// decrease node weight
+	s.Lock()
 	s.carry[node.GetID()] -= 1.0
+	s.Unlock()
 }
 
 func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
@@ -612,34 +622,106 @@ func NewNodeSelector(name string, nodeType NodeType) NodeSelector {
 	}
 }
 
-func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getRackSets() nodeSetCollection {
+	ns.racksLock.RLock()
+	defer ns.racksLock.RUnlock()
+
+	rsets := make(nodeSetCollection, 0, len(ns.racks))
+	for _, rack := range ns.racks {
+		rsets = append(rsets, rack)
+	}
+	return rsets
+}
+
+func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modification of node selector
 	ns.metaNodeSelectorLock.RLock()
 	defer ns.metaNodeSelectorLock.RUnlock()
-	if storeMode == proto.StoreModeRocksDb {
-		return ns.metaNodeRocksdbSelector.Select(ns, excludeHosts, replicaNum)
+
+	// If rack isolation is not enabled, use non-rack-aware selector directly
+	if param.rackLevel == proto.RackAwareNone {
+		return ns.getNodeSelector(MetaNodeType, storeMode).Select(ns, param.excludeHosts, param.replicaNum)
 	}
-	return ns.metaNodeMemorySelector.Select(ns, excludeHosts, replicaNum)
+
+	// Rack isolation enabled, prioritize strong constraint mode
+	return ns.selectNodesWithRack(param, MetaNodeType, storeMode)
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+// selectMetaNodesWithRack selects meta nodes with rack awareness
+func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
+
+	rsets := ns.getRackSets()
+
+	paramCopy := param.copy()
+	// First attempt with strong rack awareness
+	paramCopy.rackLevel = proto.RackAwareStrong
+	paramCopy.replicaNum = 1
+
+	for {
+
+		rack, err := ns.getRackSelector(nodeType).Select(rsets, paramCopy)
+		if err != nil {
+			// if rack aware is not enabled or alreay weak aware, return error
+			if param.rackLevel == proto.RackAwareStrong || paramCopy.rackLevel == proto.RackAwareWeak {
+				return nil, nil, fmt.Errorf("strong rack aware selection failed for rack[%v], param[%v], err: %v",
+					rack, paramCopy.String(), err)
+			}
+
+			log.LogWarnf("action[getAvailMetaNodeHosts] weak rack aware selection failed for rack[%v], param %v, err: %v",
+				rack, paramCopy.String(), err.Error())
+			paramCopy.rackLevel = proto.RackAwareWeak
+			continue
+		}
+
+		// Select nodes
+		selector := rack.getNodeSelector(nodeType, storeMode)
+
+		rhosts, rpeers, err := selector.Select(rack, paramCopy.excludeHosts, 1)
+		if err != nil {
+			log.LogErrorf("action[getAvailMetaNodeHosts] node selection failed for rack[%v], param[%v], err: %v",
+				rack, paramCopy.String(), err.Error())
+			return nil, nil, fmt.Errorf("node selection failed for rack[%v], param[%v], err: %v",
+				rack.Rack, paramCopy.String(), err.Error())
+		}
+
+		// Update results
+		newHosts = append(newHosts, rhosts...)
+		peers = append(peers, rpeers...)
+		paramCopy.excludeHosts = append(paramCopy.excludeHosts, rhosts...)
+		paramCopy.excludeRacks = append(paramCopy.excludeRacks, rack.Rack)
+
+		// Check if replica number requirement is met
+		if len(newHosts) >= param.replicaNum {
+			return newHosts, peers, nil
+		}
+	}
+}
+
+func (ns *nodeSet) getAvailDataNodeHosts(param *selectParam) (hosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modification of node selector
 	ns.dataNodeSelectorLock.Lock()
 	defer ns.dataNodeSelectorLock.Unlock()
-	return ns.dataNodeSelector.Select(ns, excludeHosts, replicaNum)
+
+	if param.rackLevel == proto.RackAwareNone {
+		return ns.dataNodeSelector.Select(ns, param.excludeHosts, param.replicaNum)
+	}
+
+	return ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeDef)
 }
 
 func (s *CarryWeightNodeSelector) prepareCarryForDataNodes(nodes *sync.Map, total uint64) {
 	nodes.Range(func(key, value interface{}) bool {
 		node := value.(Node)
+		s.Lock()
 		if _, ok := s.carry[node.GetID()]; !ok {
 			// use available space to calculate initial weight
 			s.carry[node.GetID()] = float64(node.GetAvailableSpace()) / float64(total)
 		}
+		s.Unlock()
 		return true
 	})
 }
@@ -647,10 +729,12 @@ func (s *CarryWeightNodeSelector) prepareCarryForDataNodes(nodes *sync.Map, tota
 func (s *CarryWeightNodeSelector) prepareCarryForMetaNodeMemory(nodes *sync.Map, total uint64) {
 	nodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
+		s.Lock()
 		if _, ok := s.carry[metaNode.ID]; !ok {
 			// use available space to calculate initial weight
 			s.carry[metaNode.ID] = float64(metaNode.Total-metaNode.Used) / float64(total)
 		}
+		s.Unlock()
 		return true
 	})
 }
@@ -658,10 +742,12 @@ func (s *CarryWeightNodeSelector) prepareCarryForMetaNodeMemory(nodes *sync.Map,
 func (s *CarryWeightNodeSelector) prepareCarryForMetaNodeRocksdb(nodes *sync.Map, total uint64) {
 	nodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
+		s.Lock()
 		if _, ok := s.carry[metaNode.ID]; !ok {
 			// use available space to calculate initial weight
 			s.carry[metaNode.ID] = float64(metaNode.GetRocksdbTotal()-metaNode.GetRocksdbUsed()) / float64(total)
 		}
+		s.Unlock()
 		return true
 	})
 }

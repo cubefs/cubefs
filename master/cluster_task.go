@@ -126,6 +126,14 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	}
 	mp.RUnlock()
 
+	param := &selectParam{
+		excludeNodeSets: nil,
+		replicaNum:      1,
+		excludeHosts:    oldHosts,
+		rackLevel:       c.getRackAwareLevel(),
+		excludeRacks:    c.GetExRacksByHosts(TypeMetaPartition, oldHosts),
+	}
+
 	nodeType := TypeMetaPartition
 	if dstStoreMode == proto.StoreModeDef {
 		dstStoreMode, err = c.getMetaPartitionStoreMode(mp, srcAddr)
@@ -157,7 +165,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		newPeers = []proto.Peer{{
 			Addr: targetAddr,
 		}}
-	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(oldHosts, 1, dstStoreMode); err != nil {
+	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(param, dstStoreMode); err != nil {
 		if _, ok := c.vols[mp.volName]; !ok {
 			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
 				c.Name, mp.PartitionID, mp.Hosts)
@@ -170,7 +178,14 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		}
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		if _, newPeers, err = zone.getAvailNodeHosts(nodeType, excludeNodeSets, oldHosts, 1); err != nil {
+		param := &selectParam{
+			excludeNodeSets: excludeNodeSets,
+			replicaNum:      1,
+			excludeHosts:    oldHosts,
+			rackLevel:       c.getRackAwareLevel(),
+			excludeRacks:    c.GetExRacksByHosts(nodeType, oldHosts),
+		}
+		if _, newPeers, err = zone.getAvailNodeHosts(nodeType, param); err != nil {
 			zones = mp.getLiveZones(srcAddr)
 			var excludeZone []string
 			if len(zones) == 0 {
@@ -179,7 +194,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 				excludeZone = append(excludeZone, zones[0])
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, excludeNodeSets, oldHosts, 1, 1, "", proto.MediaType_Unspecified); err != nil {
+			if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, excludeNodeSets, oldHosts, 1, 1, "", proto.MediaType_Unspecified, c.getRackAwareLevel()); err != nil {
 				goto errHandler
 			}
 		}

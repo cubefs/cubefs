@@ -88,12 +88,12 @@ func (ns *nodeSet) getMetaNodeTotalAvailableSpace(nodeType NodeType) (space uint
 	return
 }
 
-func (ns *nodeSet) canWriteFor(nodeType NodeType, replica int) bool {
+func (ns *nodeSet) canWriteFor(nodeType NodeType, param *selectParam) bool {
 	switch nodeType {
 	case DataNodeType:
-		return ns.canWriteForNode(ns.dataNodes, replica, nodeType)
+		return ns.canWriteForNode(ns.dataNodes, param, nodeType)
 	case MetaNodeType, RocksdbType:
-		return ns.canWriteForNode(ns.metaNodes, replica, nodeType)
+		return ns.canWriteForNode(ns.metaNodes, param, nodeType)
 	default:
 		panic("unknow node type")
 	}
@@ -123,7 +123,7 @@ func (ns *nodeSet) getTotalAvailableSpaceOf(nodeType NodeType) uint64 {
 
 type NodesetSelector interface {
 	GetName() string
-	Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error)
+	Select(nsc nodeSetCollection, param *selectParam) (ns *nodeSet, err error)
 }
 
 type RoundRobinNodesetSelector struct {
@@ -132,7 +132,7 @@ type RoundRobinNodesetSelector struct {
 	nodeType NodeType
 }
 
-func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, param *selectParam) (ns *nodeSet, err error) {
 	// sort nodesets by id, so we can get a node list that is as stable as possible
 	sort.Slice(nsc, func(i, j int) bool {
 		return nsc[i].ID < nsc[j].ID
@@ -145,10 +145,10 @@ func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSet
 		ns = nsc[s.index]
 		s.index++
 
-		if containsID(excludeNodeSets, ns.ID) {
+		if containsID(param.excludeNodeSets, ns.ID) {
 			continue
 		}
-		if ns.canWriteFor(s.nodeType, int(replicaNum)) {
+		if ns.canWriteFor(s.nodeType, param) {
 			return
 		}
 	}
@@ -205,11 +205,11 @@ func (s *CarryWeightNodesetSelector) prepareCarry(nsc nodeSetCollection, total u
 	}
 }
 
-func (s *CarryWeightNodesetSelector) getAvailNodesets(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (newNsc nodeSetCollection) {
+func (s *CarryWeightNodesetSelector) getAvailNodesets(nsc nodeSetCollection, param *selectParam) (newNsc nodeSetCollection) {
 	newNsc = make(nodeSetCollection, 0, nsc.Len())
 	for i := 0; i < nsc.Len(); i++ {
 		ns := nsc[i]
-		if ns.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, ns.ID) {
+		if ns.canWriteFor(s.nodeType, param) && !containsID(param.excludeNodeSets, ns.ID) {
 			newNsc = append(newNsc, ns)
 		}
 	}
@@ -246,11 +246,11 @@ func (s *CarryWeightNodesetSelector) setNodesetCarry(nsc nodeSetCollection, tota
 	return count
 }
 
-func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, param *selectParam) (ns *nodeSet, err error) {
 	total := s.getMaxTotal(nsc)
 	// prepare weight of evert nodesets
 	s.prepareCarry(nsc, total)
-	nsc = s.getAvailNodesets(nsc, excludeNodeSets, replicaNum)
+	nsc = s.getAvailNodesets(nsc, param)
 	avaliCount := 0
 	if len(nsc) < 1 {
 		goto err
@@ -263,17 +263,19 @@ func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSe
 	// pick the first nodeset than has N writable node
 	for i := 0; i < avaliCount; i++ {
 		ns = nsc[i]
-		if ns.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, ns.ID) {
+		if ns.canWriteFor(s.nodeType, param) && !containsID(param.excludeNodeSets, ns.ID) {
 			break
 		}
 	}
+
 	if ns != nil {
-		if !ns.canWriteFor(s.nodeType, int(replicaNum)) || containsID(excludeNodeSets, ns.ID) {
+		if !ns.canWriteFor(s.nodeType, param) || containsID(param.excludeNodeSets, ns.ID) {
 			goto err
 		}
 		s.carrys[ns.ID] -= 1.0
 	}
 	return
+
 err:
 	switch s.nodeType {
 	case DataNodeType:
@@ -301,7 +303,7 @@ func (s *AvailableSpaceFirstNodesetSelector) GetName() string {
 	return AvailableSpaceFirstNodesetSelectorName
 }
 
-func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, param *selectParam) (ns *nodeSet, err error) {
 	// sort nodesets by available space
 	sort.Slice(nsc, func(i, j int) bool {
 		return nsc[i].getTotalAvailableSpaceOf(s.nodeType) > nsc[j].getTotalAvailableSpaceOf(s.nodeType)
@@ -309,7 +311,7 @@ func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, exclu
 	// pick the first nodeset that has N writable nodes
 	for i := 0; i < nsc.Len(); i++ {
 		ns = nsc[i]
-		if ns.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, ns.ID) {
+		if ns.canWriteFor(s.nodeType, param) && !containsID(param.excludeNodeSets, ns.ID) {
 			return
 		}
 	}
@@ -348,10 +350,10 @@ func (s *StrawNodesetSelector) getWeight(ns *nodeSet) float64 {
 	return float64(ns.getTotalAvailableSpaceOf(s.nodeType) / util.GB)
 }
 
-func (s *StrawNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *StrawNodesetSelector) Select(nsc nodeSetCollection, param *selectParam) (ns *nodeSet, err error) {
 	tmp := make(nodeSetCollection, 0)
 	for _, nodeset := range nsc {
-		if nodeset.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, nodeset.ID) {
+		if nodeset.canWriteFor(s.nodeType, param) && !containsID(param.excludeNodeSets, nodeset.ID) {
 			tmp = append(tmp, nodeset)
 		}
 	}
