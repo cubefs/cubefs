@@ -375,6 +375,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		log.LogDebugf("processReply end: packet(%v), eh(%v)", packet, eh)
 		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
 			eh.empty <- struct{}{}
+			log.LogDebugf("processReply trigger empty: packet(%v), eh(%v)", packet, eh)
 		}
 	}()
 
@@ -655,7 +656,8 @@ func (eh *ExtentHandler) waitForFlush() (err error) {
 	if atomic.LoadInt32(&eh.inflight) <= 0 {
 		return
 	}
-
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-eh.empty:
@@ -667,6 +669,10 @@ func (eh *ExtentHandler) waitForFlush() (err error) {
 				return
 			}
 			return fmt.Errorf("eh maybe cleaned")
+		case <-ticker.C: // eh.empty may be empty
+			if atomic.LoadInt32(&eh.inflight) <= 0 {
+				return
+			}
 		}
 	}
 }

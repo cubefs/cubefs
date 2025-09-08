@@ -215,6 +215,12 @@ func (p *Packet) isValidReadReply(q *Packet) bool {
 }
 
 func (p *Packet) writeToConn(conn net.Conn) error {
+	if p.Data == nil {
+		return fmt.Errorf("data is nil")
+	}
+	if len(p.Data) < int(p.Size) {
+		return fmt.Errorf("len(%v) less than size(%v)", len(p.Data), p.Size)
+	}
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
 	return p.WriteToConn(conn)
 }

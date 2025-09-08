@@ -436,7 +436,7 @@ func (client *ExtentClient) SetClientID(id uint64) (err error) {
 }
 
 func (client *ExtentClient) IsRemoteCacheEnabled() bool {
-	rcEnable := client.RemoteCache.Started && client.RemoteCache.remoteCacheClient != nil && client.RemoteCache.remoteCacheClient.IsClusterEnable() && client.RemoteCache.VolumeEnabled
+	rcEnable := client.RemoteCache.Started && client.RemoteCache.remoteCacheClient != nil && client.RemoteCache.remoteCacheClient.IsClusterEnable() && (client.forceRemoteCache || client.RemoteCache.VolumeEnabled)
 	master.ClientRCacheEnable = rcEnable
 	return rcEnable
 }
@@ -563,6 +563,7 @@ func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openFo
 		s.pendingCache = make(chan bcacheKey, 1)
 		go s.server()
 		go s.asyncBlockCache()
+		go s.asyncFlushManager()
 	}
 	return s.IssueOpenRequest()
 }
@@ -870,6 +871,10 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 		s.pendingCache = make(chan bcacheKey, 1)
 		go s.server()
 		go s.asyncBlockCache()
+		go s.asyncFlushManager()
+		if client.AheadRead != nil && s.aheadReadWindow != nil {
+			go s.aheadReadWindow.backgroundAheadReadTask()
+		}
 	}
 	return s
 }
