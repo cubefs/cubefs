@@ -66,7 +66,8 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				log.LogInfof("[checkDiskRecoveryProgress] dp(%v) decommission pause", partitionID)
 				continue
 			}
-			_, err = c.getVol(partition.VolName)
+			var vol *Vol
+			vol, err = c.getVol(partition.VolName)
 			if err != nil {
 				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] vol(%s) is not exist",
 					c.Name, partitionID, partition.VolName))
@@ -79,6 +80,12 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			if len(partition.Replicas) == 0 {
 				partition.SetDecommissionStatus(DecommissionSuccess, "checkDiskRecoveryProgress_dpMaybeDeleted", "")
 				log.LogWarnf("action[checkDiskRecoveryProgress] dp %v maybe deleted", partition.PartitionID)
+				continue
+			}
+			if (vol.status() == proto.VolStatusMarkDelete && !vol.Forbidden) ||
+				(vol.status() == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+				partition.SetDecommissionStatus(DecommissionSuccess, "checkDiskRecoveryProgress_volMarkDeleteCheck", "")
+				log.LogWarnf("action[checkDiskRecoveryProgress] vol(%v) corresponding to dp(%v) has been marked for deletion", partition.VolName, partition.PartitionID)
 				continue
 			}
 			if partition.IsDiscard {
