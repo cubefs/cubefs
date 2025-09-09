@@ -374,6 +374,17 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	checkPartitionCreateInterval := cfg.GetString(checkPartitionCreateInterval)
+	if checkPartitionCreateInterval != "" {
+		if m.config.checkPartitionCreateInterval, err = strconv.ParseInt(checkPartitionCreateInterval, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
+	if m.config.checkPartitionCreateInterval <= 0 {
+		m.config.checkPartitionCreateInterval = 30
+	}
+
 	if cfg.GetInt(cfgStartLcScanTime) >= 1 && cfg.GetInt(cfgStartLcScanTime) <= 14 {
 		m.config.StartLcScanTime = cfg.GetInt(cfgStartLcScanTime)
 	}

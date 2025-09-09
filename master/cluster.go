@@ -2081,9 +2081,8 @@ func (c *Cluster) createDataPartition(volName string, mediaType uint32) (dp *Dat
 			goto errHandler
 		}
 	} else {
-		zoneNum := c.decideZoneNum(vol, mediaType) // zoneNum scope [1,3]
-		if targetHosts, targetPeers, err = c.getHostFromNormalZone(TypeDataPartition, nil, nil, nil,
-			int(dpReplicaNum), zoneNum, zoneName, mediaType, c.getRackAwareLevel()); err != nil {
+		if targetHosts, targetPeers, err = c.getHostFromNormalZoneForCreate(TypeDataPartition, nil, nil, nil,
+			int(dpReplicaNum), zoneName, mediaType, c.getRackAwareLevel(), vol); err != nil {
 			goto errHandler
 		}
 	}
@@ -2397,6 +2396,14 @@ func (c *Cluster) getSpecificZoneList(specifiedZone string) (zones []*Zone, err 
 	return
 }
 
+func (c *Cluster) getHostFromNormalZoneForCreate(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
+	excludeHosts []string, replicaNum int,
+	specifiedZoneName string, dataMediaType uint32, rackLevel proto.RackAwareLevel, vol *Vol) (hosts []string, peers []proto.Peer, err error,
+) {
+	zoneNum := c.decideZoneNum(vol, dataMediaType) // zoneNum scope [1,3]
+	return c.getHostFromNormalZone(nodeType, excludeZones, excludeNodeSets, excludeHosts, replicaNum, zoneNum, specifiedZoneName, dataMediaType, rackLevel)
+}
+
 func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
 	excludeHosts []string, replicaNum int, zoneNumNeed int,
 	specifiedZoneName string, dataMediaType uint32, rackLevel proto.RackAwareLevel) (hosts []string, peers []proto.Peer, err error,
@@ -2440,7 +2447,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	if len(zonesQualified) == 1 {
 		log.LogInfof("action[getHostFromNormalZone] zones [%v]", zonesQualified[0].name)
 		if hosts, peers, err = zonesQualified[0].getAvailNodeHosts(nodeType, param); err != nil {
-			log.LogErrorf("action[getHostFromNormalZone] err[%v]", err)
+			log.LogWarnf("action[getHostFromNormalZone] err[%v]", err)
 			return
 		}
 		goto result

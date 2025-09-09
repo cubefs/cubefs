@@ -598,6 +598,46 @@ func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err
 	return vol.dataPartitions.get(partitionID)
 }
 
+func (vol *Vol) createModeString() string {
+	return fmt.Sprintf("crossZone: %v, zoneName: %v, mediaType: %v, mpReplicaNum: %v, dpReplicaNum: %v, allowedStorageClass: %v",
+		vol.crossZone, vol.zoneName, vol.volStorageClass, vol.mpReplicaNum, vol.dpReplicaNum, vol.allowedStorageClass)
+}
+
+func (vol *Vol) sameCreateMode(v1 *Vol) bool {
+	if v1 == nil {
+		return false
+	}
+
+	if vol.crossZone != v1.crossZone ||
+		vol.zoneName != v1.zoneName ||
+		vol.VolType != v1.VolType ||
+		vol.mpReplicaNum != v1.mpReplicaNum ||
+		vol.dpReplicaNum != v1.dpReplicaNum {
+		return false
+	}
+
+	return vol.compareStorageClasses(v1.allowedStorageClass)
+}
+
+func (vol *Vol) compareStorageClasses(other []uint32) bool {
+	if len(vol.allowedStorageClass) != len(other) {
+		return false
+	}
+
+	volMap := make(map[uint32]bool, len(vol.allowedStorageClass))
+	for _, sc := range vol.allowedStorageClass {
+		volMap[sc] = true
+	}
+
+	for _, sc := range other {
+		if !volMap[sc] {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (vol *Vol) addMetaPartitions(c *Cluster, count int) (err error) {
 	// add extra meta partitions at a time
 	var (
@@ -1712,10 +1752,9 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		}
 	} else {
 		var excludeZone []string
-		zoneNum := c.decideZoneNum(vol, proto.StorageClass_Unspecified)
-		if hosts, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, nil, nil,
-			int(vol.mpReplicaNum), zoneNum, vol.zoneName, proto.StorageClass_Unspecified, c.getRackAwareLevel()); err != nil {
-			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZone err[%v]", err)
+		if hosts, peers, err = c.getHostFromNormalZoneForCreate(nodeType, excludeZone, nil, nil,
+			int(vol.mpReplicaNum), vol.zoneName, proto.StorageClass_Unspecified, c.getRackAwareLevel(), vol); err != nil {
+			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZoneForCreate err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	}

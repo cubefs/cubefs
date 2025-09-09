@@ -14,6 +14,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -415,4 +416,186 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 		time.Sleep(time.Second)
 		vol.updateViewCache(server.cluster)
 	}
+}
+
+func TestVolSameCreateMode(t *testing.T) {
+	vol1 := createTestVol("test-vol-1")
+	vol2 := createTestVol("test-vol-2")
+	vol3 := createTestVol("test-vol-3")
+
+	t.Run("SameCreateMode", func(t *testing.T) {
+		vol1.crossZone = true
+		vol1.zoneName = "zone1"
+		vol1.VolType = proto.VolumeTypeHot
+		vol1.mpReplicaNum = 3
+		vol1.dpReplicaNum = 3
+		vol1.allowedStorageClass = []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+
+		vol2.crossZone = true
+		vol2.zoneName = "zone1"
+		vol2.VolType = proto.VolumeTypeHot
+		vol2.mpReplicaNum = 3
+		vol2.dpReplicaNum = 3
+		vol2.allowedStorageClass = []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+
+		assert.True(t, vol1.sameCreateMode(vol2), "sameCreateMode should return true")
+		assert.True(t, vol2.sameCreateMode(vol1), "sameCreateMode should return true (symmetric)")
+	})
+
+	t.Run("DifferentCreateMode", func(t *testing.T) {
+		vol3.crossZone = false
+		vol3.zoneName = "zone2"
+		vol3.VolType = proto.VolumeTypeCold
+		vol3.mpReplicaNum = 2
+		vol3.dpReplicaNum = 2
+		vol3.allowedStorageClass = []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+
+		assert.False(t, vol1.sameCreateMode(vol3), "sameCreateMode should return false")
+		assert.False(t, vol3.sameCreateMode(vol1), "sameCreateMode should return false (symmetric)")
+	})
+
+	t.Run("NilVolume", func(t *testing.T) {
+		assert.False(t, vol1.sameCreateMode(nil), "sameCreateMode should return false")
+	})
+
+	t.Run("PartialDifference", func(t *testing.T) {
+		vol2.crossZone = false
+		assert.False(t, vol1.sameCreateMode(vol2), "crossZone different should return false")
+
+		vol2.crossZone = true
+		vol2.zoneName = "different-zone"
+		assert.False(t, vol1.sameCreateMode(vol2), "zoneName different should return false")
+
+		vol2.zoneName = "zone1"
+		vol2.VolType = proto.VolumeTypeCold
+		assert.False(t, vol1.sameCreateMode(vol2), "VolType different should return false")
+
+		vol2.VolType = proto.VolumeTypeHot
+		vol2.mpReplicaNum = 2
+		assert.False(t, vol1.sameCreateMode(vol2), "mpReplicaNum different should return false")
+
+		vol2.mpReplicaNum = 3
+		vol2.dpReplicaNum = 2
+		assert.False(t, vol1.sameCreateMode(vol2), "dpReplicaNum different should return false")
+	})
+}
+
+func TestVolCompareStorageClasses(t *testing.T) {
+	vol := createTestVol("test-vol")
+
+	t.Run("SameStorageClasses", func(t *testing.T) {
+		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+		other := []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+
+		assert.True(t, vol.compareStorageClasses(other), "same storage classes should return true")
+	})
+
+	t.Run("DifferentStorageClasses", func(t *testing.T) {
+		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+		other := []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_BlobStore}
+
+		assert.False(t, vol.compareStorageClasses(other), "different storage classes should return false")
+	})
+
+	t.Run("DifferentLength", func(t *testing.T) {
+		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+		other := []uint32{proto.StorageClass_Replica_HDD}
+
+		assert.False(t, vol.compareStorageClasses(other), "different length of storage classes should return false")
+	})
+
+	t.Run("EmptySlices", func(t *testing.T) {
+		vol.allowedStorageClass = []uint32{}
+		other := []uint32{}
+
+		assert.True(t, vol.compareStorageClasses(other), "two empty slices should return true")
+	})
+
+	t.Run("OneEmptyOneNotEmpty", func(t *testing.T) {
+		vol.allowedStorageClass = []uint32{}
+		other := []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+
+		assert.False(t, vol.compareStorageClasses(other), "one empty one not empty should return false")
+	})
+
+	t.Run("SameElementsDifferentOrder", func(t *testing.T) {
+		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+		other := []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+
+		assert.True(t, vol.compareStorageClasses(other), "same elements but different order should return true")
+	})
+
+	t.Run("DuplicateElements", func(t *testing.T) {
+		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+		other := []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+
+		assert.True(t, vol.compareStorageClasses(other), "same slice with duplicate elements should return true")
+	})
+
+	t.Run("DifferentDuplicateCount", func(t *testing.T) {
+		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD, proto.StorageClass_BlobStore}
+		other := []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD}
+
+		assert.False(t, vol.compareStorageClasses(other), "different number of duplicate elements should return false")
+	})
+}
+
+func createTestVol(name string) *Vol {
+	vol := &Vol{
+		Name:          name,
+		ID:            1,
+		Owner:         "test-owner",
+		Status:        proto.VolStatusNormal,
+		VolType:       proto.VolumeTypeHot,
+		zoneName:      "test-zone",
+		createTime:    time.Now().Unix(),
+		description:   "test volume",
+		TrashInterval: 0,
+
+		dpReplicaNum:      3,
+		mpReplicaNum:      3,
+		dataPartitionSize: 120 * util.GB,
+		Capacity:          100,
+		dpRepairBlockSize: proto.DefaultDpRepairBlockSize,
+
+		MetaPartitions: make(map[uint64]*MetaPartition),
+		dataPartitions: newDataPartitionMap(name),
+
+		NeedToLowerReplica:       false,
+		FollowerRead:             false,
+		MetaFollowerRead:         false,
+		DirectRead:               false,
+		IgnoreTinyRecover:        false,
+		MaximallyRead:            false,
+		enableQuota:              false,
+		DisableAuditLog:          false,
+		DpReadOnlyWhenVolFull:    false,
+		ReadOnlyForVolFull:       false,
+		AccessTimeInterval:       0,
+		EnablePersistAccessTime:  false,
+		AccessTimeValidInterval:  0,
+		LeaderRetryTimeout:       0,
+		EnableAutoMetaRepair:     atomicutil.Bool{},
+		ForbidWriteOpOfProtoVer0: atomicutil.Bool{},
+
+		allowedStorageClass:     []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD},
+		volStorageClass:         proto.StorageClass_Replica_HDD,
+		StatByStorageClass:      []*proto.StatOfStorageClass{},
+		StatMigrateStorageClass: []*proto.StatOfStorageClass{},
+		StatByDpMediaType:       []*proto.StatOfStorageClass{},
+		QuotaByClass:            []*proto.StatOfStorageClass{},
+		DefaultStoreMode:        proto.StoreModeMem,
+
+		mpsLock: newMpsLockManager(nil),
+		volLock: sync.RWMutex{},
+	}
+
+	vol.VersionMgr = newVersionMgr(vol)
+	vol.quotaManager = &MasterQuotaManager{
+		MpQuotaInfoMap: make(map[uint64][]*proto.QuotaReportInfo),
+		IdQuotaInfoMap: make(map[uint32]*proto.QuotaInfo),
+		vol:            vol,
+	}
+
+	return vol
 }

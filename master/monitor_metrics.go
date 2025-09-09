@@ -42,6 +42,7 @@ const (
 	MetricDataNodesCount                   = "dataNodes_count"
 	MetricMetaNodesCount                   = "metaNodes_count"
 	MetricNodeStat                         = "node_stat"
+	MetricPartitionCreateMetrics           = "partition_create_alarm"
 	MetricVolCount                         = "vol_count"
 	MetricVolTotalGB                       = "vol_total_GB"
 	MetricVolUsedGB                        = "vol_used_GB"
@@ -159,7 +160,8 @@ type monitorMetrics struct {
 	nodesetMpReplicaCount *exporter.GaugeVec
 	nodesetDpReplicaCount *exporter.GaugeVec
 
-	nodeStat *exporter.GaugeVec
+	nodeStat        *exporter.GaugeVec
+	partitionCreate *exporter.GaugeVec
 
 	volNames           map[string]struct{}
 	badDisks           map[string]string
@@ -179,6 +181,8 @@ type monitorMetrics struct {
 	diskDecommissionSuccess *exporter.GaugeVec
 
 	metaNodesNotRocksdbWritable *exporter.Gauge
+
+	lastCheckPartitionCreateTime int64
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -523,6 +527,7 @@ func (mm *monitorMetrics) start() {
 	mm.dpNoSamePeer = exporter.NewGaugeVec(MetricDpNoSamePeer, "", []string{"dpId"})
 	mm.badDiskDecommissionTimeOverLimit = exporter.NewGaugeVec(MetricBadDiskDecommissionTimeOverLimit, "", []string{"addr", "path", "firstReportTime"})
 	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc"})
+	mm.partitionCreate = exporter.NewGaugeVec(MetricPartitionCreateMetrics, "", []string{"type", "rackLevel", "media"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.InactiveDataNodeInfo = exporter.NewGaugeVec(MetricInactiveDataNodeInfo, "", []string{"clusterName", "addr"})
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
@@ -620,6 +625,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.metaNodesIncreased.Set(float64(mm.cluster.metaNodeStatInfo.IncreasedGB))
 	mm.setVolMetrics()
 	mm.setBadPartitionMetrics()
+	mm.checkPartitionCreateMetrics()
 	mm.setDiskErrorMetric()
 	mm.setDiskLostMetric()
 	mm.setFlashNodesDiskErrorMetric()
@@ -637,6 +643,102 @@ func (mm *monitorMetrics) doStat() {
 	mm.updateMetaNodesStat()
 	mm.updateMastersStat()
 	mm.setNotRocksdbWritableMetaNodesCount()
+}
+
+func (mm *monitorMetrics) checkPartitionCreateMetrics() {
+	now := time.Now().Unix()
+	if now-mm.lastCheckPartitionCreateTime < mm.cluster.cfg.checkPartitionCreateInterval {
+		return
+	}
+	mm.lastCheckPartitionCreateTime = now
+
+	vols := mm.cluster.copyVols()
+
+	testVols := make([]*Vol, 0)
+	for _, vol := range vols {
+		same := false
+
+		for _, v1 := range testVols {
+			if v1.sameCreateMode(vol) {
+				same = true
+				break
+			}
+		}
+
+		if !same {
+			testVols = append(testVols, vol)
+		}
+	}
+
+	rackAwareLevel := []proto.RackAwareLevel{proto.RackAwareStrong, proto.RackAwareNone}
+	failStats := make(map[string]int)
+	allStats := make(map[string]bool)
+
+	// try create partitions
+	for _, vol := range testVols {
+
+		log.LogInfof("checkPartitionCreateMetrics: vol %v", vol.createModeString())
+
+		for _, rackLevel := range rackAwareLevel {
+			key := fmt.Sprintf("meta_%v_default", rackLevel)
+			allStats[key] = true
+
+			if !mm.checkHostSelection(TypeMetaPartition, vol, 0, rackLevel) {
+				failStats[key]++
+			}
+		}
+
+		for _, media := range vol.allowedStorageClass {
+			if !proto.IsStorageClassReplica(media) {
+				continue
+			}
+			for _, rackLevel := range rackAwareLevel {
+				key := fmt.Sprintf("data_%v_%v", rackLevel, proto.MediaTypeString(media))
+				allStats[key] = true
+				if !mm.checkHostSelection(TypeDataPartition, vol, media, rackLevel) {
+					failStats[key]++
+				}
+			}
+		}
+	}
+
+	for key := range allStats {
+		parts := strings.Split(key, "_")
+		if len(parts) != 3 {
+			log.LogErrorf("checkPartitionCreateMetrics: failStats key %v is invalid", key)
+			continue
+		}
+
+		count := failStats[key]
+		mm.partitionCreate.SetWithLabelValues(float64(count), parts...)
+	}
+
+	log.LogInfof("checkPartitionCreateMetrics finished: testVols %v, failStats %v", len(testVols), failStats)
+}
+
+func (mm *monitorMetrics) checkHostSelection(nodeType uint32, vol *Vol, mediaType uint32, rackLevel proto.RackAwareLevel) bool {
+	_, _, err := mm.cluster.getHostFromNormalZoneForCreate(
+		nodeType, nil, nil, nil,
+		int(vol.dpReplicaNum), vol.zoneName, mediaType, rackLevel, vol)
+
+	partitionType := "meta"
+	if nodeType == TypeDataPartition {
+		partitionType = "data"
+	}
+
+	mediaStr := ""
+	if mediaType != 0 {
+		mediaStr = fmt.Sprintf(", media: %v", proto.MediaTypeString(mediaType))
+	}
+
+	if err != nil {
+		log.LogWarnf("checkPartitionCreateMetrics: getHostFromNormalZoneForCreate failed: vol %v, mode %v, type %s%s, rackLevel %v, err %v",
+			vol.Name, vol.createModeString(), partitionType, mediaStr, rackLevel, err)
+		return false
+	}
+	log.LogInfof("checkPartitionCreateMetrics: getHostFromNormalZoneForCreate success: vol %v, mode %v, type %s%s, rackLevel %v",
+		vol.Name, vol.createModeString(), partitionType, mediaStr, rackLevel)
+	return true
 }
 
 func (mm *monitorMetrics) setMpAndDpMetrics() {
@@ -1357,6 +1459,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.clearNodesetMetrics()
 	mm.clearLcMetrics()
 
+	mm.partitionCreate.Reset()
 	mm.dataNodesCount.Set(0)
 	mm.metaNodesCount.Set(0)
 	mm.lcNodesCount.Set(0)

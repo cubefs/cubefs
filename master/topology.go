@@ -2020,7 +2020,7 @@ func (zone *Zone) allocNodeSetForDataNode(param *selectParam) (ns *nodeSet, err 
 	}
 
 	if param.rackLevel != proto.RackAwareWeak {
-		log.LogErrorf("action[allocNodeSetForDataNode], no available node set found, param[%v] err:%v",
+		log.LogWarnf("action[allocNodeSetForDataNode], no available node set found, param[%v] err:%v",
 			param.String(), err.Error())
 		return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
 	}
@@ -2069,7 +2069,7 @@ func (zone *Zone) allocNodeSetForMetaNode(param *selectParam, storeMode proto.St
 	}
 
 	if param.rackLevel != proto.RackAwareWeak {
-		log.LogErrorf("action[allocNodeSetForMetaNode], no available node set found, zone %s, param[%v] err:%v",
+		log.LogWarnf("action[allocNodeSetForMetaNode], no available node set found, zone %s, param[%v] err:%v",
 			zone.name, param.String(), err.Error())
 		return nil, errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
 	}
