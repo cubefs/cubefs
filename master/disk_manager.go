@@ -84,6 +84,12 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				log.LogWarnf("action[checkDiskRecoveryProgress] dp %v maybe deleted", partition.PartitionID)
 				continue
 			}
+			if (vol.status() == proto.VolStatusMarkDelete && !vol.Forbidden) ||
+				(vol.status() == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+				partition.SetDecommissionStatus(DecommissionSuccess, "checkDiskRecoveryProgress_volMarkDeleteCheck", "")
+				log.LogWarnf("action[checkDiskRecoveryProgress] vol(%v) corresponding to dp(%v) has been marked for deletion", partition.VolName, partition.PartitionID)
+				continue
+			}
 			if partition.IsDiscard {
 				partition.SetDecommissionStatus(DecommissionSuccess, "checkDiskRecoveryProgress_discardCheck", "")
 				log.LogWarnf("[checkDiskRecoveryProgress] dp(%v) is discard, decommission successfully", partition.PartitionID)
