@@ -36,7 +36,7 @@ type MetaNodeInfo struct {
 	IsActive                  bool
 	IsWriteAble               bool
 	ZoneName                  string `json:"Zone"`
-	Rack                      string `json:"Rack"` // 添加 rack 字段
+	Rack                      string `json:"Rack"`
 	MaxMemAvailWeight         uint64 `json:"MaxMemAvailWeight"`
 	Total                     uint64 `json:"TotalWeight"`
 	Used                      uint64 `json:"UsedWeight"`
@@ -289,6 +289,8 @@ type NodeSetStat struct {
 	CanAllocDataNodeCnt int
 	MetaNodeNum         int
 	DataNodeNum         int
+	CanAllocMetaRackCnt int
+	CanAllocDataRackCnt int
 }
 
 type NodeSetStatInfo struct {
@@ -297,6 +299,8 @@ type NodeSetStatInfo struct {
 	Zone                string
 	CanAllocMetaNodeCnt int
 	CanAllocDataNodeCnt int
+	CanAllocMetaRackCnt int
+	CanAllocDataRackCnt int
 	MetaNodes           []*MetaNodeStatView
 	DataNodes           []*NodeStatView
 	DataNodeSelector    string

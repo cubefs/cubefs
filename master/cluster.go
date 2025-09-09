@@ -1310,21 +1310,23 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, ra
 			}
 
 			// Get zone and nodeset for topology update
-			zone, err = c.t.getZone(zoneName)
+			zone, err = c.t.getZone(metaNode.ZoneName)
 			if err != nil {
-				log.LogErrorf("[addMetaNode] get zone(%v) failed, err: %v", zoneName, err.Error())
+				log.LogErrorf("[addMetaNode] get zone(%v) failed, err: %v", metaNode.ZoneName, err.Error())
 				return metaNode.ID, err
 			}
 
-			ns, err := zone.getNodeSet(nodesetId)
+			ns, err := zone.getNodeSet(metaNode.NodeSetID)
 			if err != nil {
-				log.LogErrorf("[addMetaNode] get nodeset(%v) failed, err: %v", nodesetId, err.Error())
+				log.LogErrorf("[addMetaNode] get nodeset(%v) failed, err: %v", metaNode.NodeSetID, err.Error())
 				return metaNode.ID, err
 			}
 
-			// Update topology: remove from old rack, add to new rack
-			ns.putMetaNode(metaNode)
+			// Update topology: remove from old rack, add to new rac
+			metaNode.Rack = oldRack
 			ns.deleteMetaNode(metaNode)
+			metaNode.Rack = rack
+			ns.putMetaNode(metaNode)
 		}
 
 		// Update heartbeat and replica ports if provided
@@ -1512,7 +1514,6 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		}
 		if mediaType != dataNode.MediaType {
 			return dataNode.ID, fmt.Errorf("mediaType not equal old, new %v, old %v", mediaType, dataNode.MediaType)
-			return dataNode.ID, fmt.Errorf("mediaType not equalt old, new %v, old %v", mediaType, dataNode.MediaType)
 		}
 
 		// Check if rack is different and old rack is not default
@@ -1533,21 +1534,23 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 			}
 
 			// Get zone and nodeset for topology update
-			zone, err = c.t.getZone(zoneName)
+			zone, err = c.t.getZone(dataNode.ZoneName)
 			if err != nil {
-				log.LogErrorf("[addDataNode] get zone(%v) failed, err: %v", zoneName, err.Error())
+				log.LogErrorf("[addDataNode] get zone(%v) failed, err: %v", dataNode.ZoneName, err.Error())
 				return dataNode.ID, err
 			}
 
-			ns, err := zone.getNodeSet(nodesetId)
+			ns, err := zone.getNodeSet(dataNode.NodeSetID)
 			if err != nil {
-				log.LogErrorf("[addDataNode] get nodeset(%v) failed, err: %v", nodesetId, err.Error())
+				log.LogErrorf("[addDataNode] get nodeset(%v) failed, err: %v", dataNode.NodeSetID, err.Error())
 				return dataNode.ID, err
 			}
 
 			// Update topology: remove from old rack, add to new rack
-			ns.putDataNode(dataNode)
+			dataNode.Rack = oldRack
 			ns.deleteDataNode(dataNode)
+			dataNode.Rack = rack
+			ns.putDataNode(dataNode)
 		}
 
 		if len(raftHeartbeatPort) > 0 && len(raftReplicaPort) > 0 {
@@ -2451,10 +2454,6 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 			return
 		}
 		goto result
-	}
-
-	if excludeHosts == nil {
-		excludeHosts = make([]string, 0)
 	}
 
 	// The upper process tries to go and get the dedicated zones, and the latter tries to choose the right zones as possible.

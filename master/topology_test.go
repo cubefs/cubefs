@@ -59,7 +59,7 @@ func TestSingleZone(t *testing.T) {
 		excludeNodeSets: nil,
 		replicaNum:      replicaNum,
 		excludeHosts:    nil,
-		rackLevel:       c.getRackAwareLevel(),
+		rackLevel:       proto.RackAwareNone,
 		excludeRacks:    nil,
 	}
 	newHosts, _, err := zones[0].getAvailNodeHosts(TypeDataPartition, param)

@@ -1789,13 +1789,12 @@ type MetaNodeRocksdbInfo struct {
 	KeyNum         uint64
 }
 
-// RackAwareLevel 表示机架感知等级
 type RackAwareLevel uint8
 
 const (
-	RackAwareNone   RackAwareLevel = iota // 0: 不感知
-	RackAwareWeak                         // 1: 弱感知
-	RackAwareStrong                       // 2: 强感知
+	RackAwareNone RackAwareLevel = iota
+	RackAwareWeak
+	RackAwareStrong
 )
 
 func (l RackAwareLevel) String() string {
@@ -1811,7 +1810,6 @@ func (l RackAwareLevel) String() string {
 	}
 }
 
-// IsValid 校验RackAwareLevel的值是否在有效范围内
 func (l RackAwareLevel) IsValid() bool {
 	return l >= RackAwareNone && l <= RackAwareStrong
 }

@@ -1230,7 +1230,6 @@ func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 	if rack != nil {
 		rack.metaNodes.Delete(metaNode.Addr)
 	}
-
 }
 
 // Extract node check logic
@@ -1250,7 +1249,6 @@ func (ns *nodeSet) checkNodeWriteable(node interface{}, nodeType NodeType, param
 
 // Optimized main function
 func (ns *nodeSet) canWriteForNode(nodes *sync.Map, param *selectParam, nodeType NodeType) bool {
-
 	// Rack-aware strong consistency mode, select available rack set count >= replicaNum
 	if param.rackLevel == proto.RackAwareStrong && ns.IsNodeSet() {
 		return ns.checkRackAwareWriteable(param, nodeType)
@@ -1320,6 +1318,30 @@ func (ns *nodeSet) calcNodesForAlloc(nodes *sync.Map) (cnt int) {
 		return true
 	})
 	return
+}
+
+func (ns *nodeSet) calcRackForAlloc(nodeType NodeType) (cnt int) {
+	param := &selectParam{
+		replicaNum: 1,
+	}
+
+	var rackCnt int
+	for _, rack := range ns.racks {
+		rnodes := rack.metaNodes
+		if nodeType == DataNodeType {
+			rnodes = rack.dataNodes
+		}
+
+		rnodes.Range(func(key, value interface{}) bool {
+			if ns.checkNodeWriteable(value, nodeType, param) {
+				rackCnt++
+				return false
+			}
+			return true
+		})
+	}
+
+	return rackCnt
 }
 
 func (ns *nodeSet) putDataNode(dataNode *DataNode) {

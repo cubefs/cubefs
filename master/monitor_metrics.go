@@ -182,7 +182,7 @@ type monitorMetrics struct {
 
 	metaNodesNotRocksdbWritable *exporter.Gauge
 
-	lastCheckPartitionCreateTime int64
+	lastCheckPartitionCreateTime time.Time
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -527,7 +527,7 @@ func (mm *monitorMetrics) start() {
 	mm.dpNoSamePeer = exporter.NewGaugeVec(MetricDpNoSamePeer, "", []string{"dpId"})
 	mm.badDiskDecommissionTimeOverLimit = exporter.NewGaugeVec(MetricBadDiskDecommissionTimeOverLimit, "", []string{"addr", "path", "firstReportTime"})
 	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc"})
-	mm.partitionCreate = exporter.NewGaugeVec(MetricPartitionCreateMetrics, "", []string{"type", "rackLevel", "media"})
+	mm.partitionCreate = exporter.NewGaugeVec(MetricPartitionCreateMetrics, "", []string{"type", "racklevel", "media"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.InactiveDataNodeInfo = exporter.NewGaugeVec(MetricInactiveDataNodeInfo, "", []string{"clusterName", "addr"})
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
@@ -646,11 +646,10 @@ func (mm *monitorMetrics) doStat() {
 }
 
 func (mm *monitorMetrics) checkPartitionCreateMetrics() {
-	now := time.Now().Unix()
-	if now-mm.lastCheckPartitionCreateTime < mm.cluster.cfg.checkPartitionCreateInterval {
+	if time.Since(mm.lastCheckPartitionCreateTime) < time.Duration(mm.cluster.cfg.checkPartitionCreateInterval)*time.Minute {
 		return
 	}
-	mm.lastCheckPartitionCreateTime = now
+	mm.lastCheckPartitionCreateTime = time.Now()
 
 	vols := mm.cluster.copyVols()
 

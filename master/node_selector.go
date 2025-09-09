@@ -651,7 +651,6 @@ func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.Sto
 
 // selectMetaNodesWithRack selects meta nodes with rack awareness
 func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
-
 	rsets := ns.getRackSets()
 
 	paramCopy := param.copy()

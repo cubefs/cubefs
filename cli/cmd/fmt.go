@@ -223,10 +223,10 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	return sb.String()
 }
 
-var nodeViewTableRowPatternForNodeSet = "%-6v    %-65v    %-8v    %-8v    %-10v    %-10v    %-10v"
+var nodeViewTableRowPatternForNodeSet = "%-6v    %-65v    %-8v    %-8v    %-10v    %-10v    %-10v    %-10v"
 
 func formatNodeViewTableHeaderForNodeSet() string {
-	return fmt.Sprintf(nodeViewTableRowPatternForNodeSet, "ID", "ADDRESS", "WRITABLE", "STATUS", "TOTAL", "USED", "AVAIL")
+	return fmt.Sprintf(nodeViewTableRowPatternForNodeSet, "ID", "ADDRESS", "WRITABLE", "STATUS", "TOTAL", "USED", "AVAIL", "RACK")
 }
 
 func formatNodeViewForNodeSet(view *proto.NodeStatView) string {
@@ -234,7 +234,8 @@ func formatNodeViewForNodeSet(view *proto.NodeStatView) string {
 		formatYesNo(view.IsWritable), formatNodeStatus(view.Status),
 		formatSize(view.Total),
 		formatSize(view.Used),
-		formatSize(view.Avail))
+		formatSize(view.Avail),
+		view.Rack)
 }
 
 func formatSimpleVolView(svv *proto.SimpleVolView) string {
@@ -1211,6 +1212,9 @@ func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	sb.WriteString(fmt.Sprintf("CanAllocMetaNode: %v\n", ns.CanAllocMetaNodeCnt))
 	sb.WriteString(fmt.Sprintf("DataNodeSelector: %v\n", ns.DataNodeSelector))
 	sb.WriteString(fmt.Sprintf("MetaNodeSelector: %v\n", ns.MetaNodeSelector))
+	sb.WriteString(fmt.Sprintf("CanAllocDataRack: %v\n", ns.CanAllocDataRackCnt))
+	sb.WriteString(fmt.Sprintf("CanAllocMetaRack: %v\n", ns.CanAllocMetaRackCnt))
+
 	var dataTotal, dataUsed, dataAvail, metaMemTotal, metaMemUsed, metaMemAvail uint64
 	var metaRocksdbTotal, metaRocksdbUsed, metaRocksdbAvali uint64
 	for _, dn := range ns.DataNodes {
@@ -1236,6 +1240,8 @@ func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	sb.WriteString(fmt.Sprintf("MetaRocksdbTotal:  %v\n", formatSize(metaRocksdbTotal)))
 	sb.WriteString(fmt.Sprintf("MetaRocksdbUsed:   %v\n", formatSize(metaRocksdbUsed)))
 	sb.WriteString(fmt.Sprintf("MetaRocksdbAvali:  %v\n", formatSize(metaRocksdbAvali)))
+	sb.WriteString(fmt.Sprintf("CanAllocDataRack: %v\n", ns.CanAllocDataRackCnt))
+	sb.WriteString(fmt.Sprintf("CanAllocMetaRack: %v\n", ns.CanAllocMetaRackCnt))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("DataNodes[%v]:\n", len(ns.DataNodes)))
 	sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewTableHeaderForNodeSet()))

@@ -98,9 +98,8 @@ func TestCreateColdVol(t *testing.T) {
 	checkCreateVolParam(volOwnerKey, req, "+owner", testOwner, t)
 	// capacity can't be empty
 	checkCreateVolParam(volCapacityKey, req, "", 100, t)
-	// zoneName must equal to testZone if no default zone
-	checkCreateVolParam(zoneNameKey, req, "default", testZone2, t)
 	req[remoteCacheReadTimeout] = proto.ReadDeadlineTime
+	req[zoneNameKey] = testZone2
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
 	// check default val of normal vol

@@ -20,7 +20,6 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -499,16 +498,8 @@ func TestStrawNodeSelector(t *testing.T) {
 }
 
 func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nodeSet) {
-	ns = &nodeSet{
-		ID:                      1,
-		Capacity:                4,
-		zoneName:                testZone1,
-		metaNodes:               new(sync.Map),
-		dataNodes:               new(sync.Map),
-		dataNodeSelector:        NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
-		metaNodeMemorySelector:  NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
-		metaNodeRocksdbSelector: NewNodeSelector(DefaultNodeSelectorName, RocksdbType),
-	}
+	ns = newNodeSet(nil, 1, 4, testZone1, "")
+
 	for i := 0; i < count; i++ {
 		space := initTotal + uint64(i)*grow
 		node := &DataNode{
@@ -526,16 +517,7 @@ func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 }
 
 func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nodeSet) {
-	ns = &nodeSet{
-		ID:                      1,
-		Capacity:                4,
-		zoneName:                testZone1,
-		metaNodes:               new(sync.Map),
-		dataNodes:               new(sync.Map),
-		dataNodeSelector:        NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
-		metaNodeMemorySelector:  NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
-		metaNodeRocksdbSelector: NewNodeSelector(DefaultNodeSelectorName, RocksdbType),
-	}
+	ns = newNodeSet(nil, 1, 4, testZone1, "")
 	for i := 0; i < count; i++ {
 		space := initTotal + uint64(i)*grow
 		node := &MetaNode{

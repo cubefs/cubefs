@@ -518,7 +518,7 @@ type dataNodeValue struct {
 	HeartbeatPort                      string
 	ReplicaPort                        string
 	ZoneName                           string
-	Rack                               string // 添加 rack 字段
+	Rack                               string
 	RdOnly                             bool
 	DecommissionedDisks                []string
 	DecommissionSuccessDisks           []string
@@ -546,7 +546,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		HeartbeatPort:                      dataNode.HeartbeatPort,
 		ReplicaPort:                        dataNode.ReplicaPort,
 		ZoneName:                           dataNode.ZoneName,
-		Rack:                               dataNode.Rack, // 保存 rack 字段
+		Rack:                               dataNode.Rack,
 		DecommissionedDisks:                dataNode.getDecommissionedDisks(),
 		DecommissionSuccessDisks:           dataNode.getDecommissionSuccessDisks(),
 		DecommissionStatus:                 atomic.LoadUint32(&dataNode.DecommissionStatus),
@@ -573,7 +573,7 @@ type metaNodeValue struct {
 	HeartbeatPort string
 	ReplicaPort   string
 	ZoneName      string
-	Rack          string // Add rack field
+	Rack          string
 	RdOnly        bool
 	maxMpCntLimit uint64
 	RocksdbRdOnly bool
@@ -592,22 +592,6 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		maxMpCntLimit: metaNode.MpCntLimit,
 		RocksdbRdOnly: metaNode.RocksdbRdOnly,
 	}
-}
-
-func (mnv *metaNodeValue) restoreMetaNode() (metaNode *MetaNode) {
-	metaNode = &MetaNode{
-		ID:            mnv.ID,
-		NodeSetID:     mnv.NodeSetID,
-		Addr:          mnv.Addr,
-		HeartbeatPort: mnv.HeartbeatPort,
-		ReplicaPort:   mnv.ReplicaPort,
-		ZoneName:      mnv.ZoneName,
-		Rack:          mnv.Rack, // Restore rack field
-		RdOnly:        mnv.RdOnly,
-		MpCntLimit:    mnv.maxMpCntLimit,
-		RocksdbRdOnly: mnv.RocksdbRdOnly,
-	}
-	return
 }
 
 type nodeSetValue struct {

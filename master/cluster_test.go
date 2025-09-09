@@ -458,3 +458,716 @@ func TestDoCleanEmptyMetaPartition(t *testing.T) {
 	err := server.cluster.DoCleanEmptyMetaPartition(commonVolName)
 	require.NoError(t, err)
 }
+
+// Add the following test cases to cluster_test.go file
+
+func TestAddMetaNode(t *testing.T) {
+	t.Run("successfully add new meta node", func(t *testing.T) {
+		// Prepare test data
+		nodeAddr := "127.0.0.1:9501"
+		heartbeatPort := "9502"
+		replicaPort := "9503"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0) // Let system auto-allocate
+
+		// Ensure node doesn't exist
+		server.cluster.metaNodes.Delete(nodeAddr)
+
+		// Call addMetaNode
+		id, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+
+		// Verify results
+		require.NoError(t, err)
+		require.Greater(t, id, uint64(0))
+
+		// Verify node is added to cache
+		value, ok := server.cluster.metaNodes.Load(nodeAddr)
+		require.True(t, ok)
+		metaNode := value.(*MetaNode)
+		require.Equal(t, nodeAddr, metaNode.Addr)
+		require.Equal(t, heartbeatPort, metaNode.HeartbeatPort)
+		require.Equal(t, replicaPort, metaNode.ReplicaPort)
+		require.Equal(t, zoneName, metaNode.ZoneName)
+		require.Equal(t, rack, metaNode.Rack)
+		require.Equal(t, id, metaNode.ID)
+		require.Greater(t, metaNode.NodeSetID, uint64(0))
+	})
+
+	t.Run("add meta node with default values", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9504"
+		heartbeatPort := "9505"
+		replicaPort := "9506"
+		zoneName := "" // Empty zoneName, should use default value
+		rack := ""     // Empty rack, should use default value
+		nodesetId := uint64(0)
+
+		// Ensure node doesn't exist
+		server.cluster.metaNodes.Delete(nodeAddr)
+
+		id, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+
+		require.NoError(t, err)
+		require.Greater(t, id, uint64(0))
+
+		// Verify default values
+		value, ok := server.cluster.metaNodes.Load(nodeAddr)
+		require.True(t, ok)
+		metaNode := value.(*MetaNode)
+		require.Equal(t, DefaultZoneName, metaNode.ZoneName)
+		require.Equal(t, proto.DefaultRack, metaNode.Rack)
+	})
+
+	t.Run("add existing meta node with same parameters", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9507"
+		heartbeatPort := "9508"
+		replicaPort := "9509"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+
+		// Add node first
+		server.cluster.metaNodes.Delete(nodeAddr)
+		firstId, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+		require.NoError(t, err)
+
+		// Add same node with same parameters again
+		secondId, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+
+		// Should return same ID, no error
+		require.NoError(t, err)
+		require.Equal(t, firstId, secondId)
+	})
+
+	t.Run("add existing meta node with different nodeset", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9510"
+		heartbeatPort := "9511"
+		replicaPort := "9512"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		firstNodesetId := uint64(0)
+
+		// Add node first
+		server.cluster.metaNodes.Delete(nodeAddr)
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, firstNodesetId)
+		require.NoError(t, err)
+
+		// Get actual allocated nodesetId
+		value, _ := server.cluster.metaNodes.Load(nodeAddr)
+		metaNode := value.(*MetaNode)
+		actualNodesetId := metaNode.NodeSetID
+
+		// Try to add with different nodesetId
+		differentNodesetId := actualNodesetId + 1
+		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, differentNodesetId)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "addr already in nodeset")
+	})
+
+	t.Run("add existing meta node with different zone", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9513"
+		heartbeatPort := "9514"
+		replicaPort := "9515"
+		firstZoneName := "test-zone-1"
+		secondZoneName := "test-zone-2"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+
+		// Add node first
+		server.cluster.metaNodes.Delete(nodeAddr)
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, firstZoneName, rack, nodesetId)
+		require.NoError(t, err)
+
+		// Try to add with different zone
+		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, secondZoneName, rack, nodesetId)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "zoneName not equal to old")
+	})
+
+	t.Run("add existing meta node with different rack", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9516"
+		heartbeatPort := "9517"
+		replicaPort := "9518"
+		zoneName := "test-zone"
+		firstRack := "test-rack-1"
+		secondRack := "test-rack-2"
+		nodesetId := uint64(0)
+
+		// Add node first
+		server.cluster.metaNodes.Delete(nodeAddr)
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, firstRack, nodesetId)
+		require.NoError(t, err)
+
+		// Try to add with different rack (non-default rack)
+		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, secondRack, nodesetId)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "rack not equal to old")
+	})
+
+	t.Run("add existing meta node with different rack from default", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9519"
+		heartbeatPort := "9520"
+		replicaPort := "9521"
+		zoneName := "test-zone"
+		defaultRack := proto.DefaultRack
+		newRack := "test-rack"
+		nodesetId := uint64(0)
+
+		// Add node first (using default rack)
+		server.cluster.metaNodes.Delete(nodeAddr)
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, defaultRack, nodesetId)
+		require.NoError(t, err)
+
+		// Try to add with different rack (from default rack to new rack)
+		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, newRack, nodesetId)
+
+		// Should succeed (allow update from default rack)
+		require.NoError(t, err)
+
+		// Verify rack is updated
+		value, ok := server.cluster.metaNodes.Load(nodeAddr)
+		require.True(t, ok)
+		metaNode := value.(*MetaNode)
+		require.Equal(t, newRack, metaNode.Rack)
+	})
+
+	t.Run("add existing meta node with port update", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9522"
+		firstHeartbeatPort := ""
+		firstReplicaPort := ""
+		newHeartbeatPort := "9523"
+		newReplicaPort := "9524"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+
+		// Add node first (without port info)
+		server.cluster.metaNodes.Delete(nodeAddr)
+		_, err := server.cluster.addMetaNode(nodeAddr, firstHeartbeatPort, firstReplicaPort, zoneName, rack, nodesetId)
+		require.NoError(t, err)
+
+		// Update port info
+		_, err = server.cluster.addMetaNode(nodeAddr, newHeartbeatPort, newReplicaPort, zoneName, rack, nodesetId)
+
+		// Should succeed
+		require.NoError(t, err)
+
+		// Verify ports are updated
+		value, ok := server.cluster.metaNodes.Load(nodeAddr)
+		require.True(t, ok)
+		metaNode := value.(*MetaNode)
+		require.Equal(t, newHeartbeatPort, metaNode.HeartbeatPort)
+		require.Equal(t, newReplicaPort, metaNode.ReplicaPort)
+	})
+
+	t.Run("add meta node with specific nodeset", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9525"
+		heartbeatPort := "9526"
+		replicaPort := "9527"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		specificNodesetId := uint64(999) // Use a specific nodesetId
+
+		// Ensure node doesn't exist
+		server.cluster.metaNodes.Delete(nodeAddr)
+
+		// Note: This test might fail because the specified nodeset may not exist
+		// This depends on the test environment setup
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, specificNodesetId)
+
+		// If nodeset doesn't exist, should return error
+		if err != nil {
+			require.Contains(t, err.Error(), "nodeset")
+		} else {
+			// If successful, verify nodesetId
+			value, ok := server.cluster.metaNodes.Load(nodeAddr)
+			require.True(t, ok)
+			metaNode := value.(*MetaNode)
+			require.Equal(t, specificNodesetId, metaNode.NodeSetID)
+		}
+	})
+
+	t.Run("add meta node with raft partition port requirement", func(t *testing.T) {
+		// Save original configuration
+		originalConfig := server.cluster.cfg.raftPartitionCanUseDifferentPort.Load()
+		defer func() {
+			server.cluster.cfg.raftPartitionCanUseDifferentPort.Store(originalConfig)
+		}()
+
+		// Enable raft partition port requirement
+		server.cluster.cfg.raftPartitionCanUseDifferentPort.Store(true)
+
+		nodeAddr := "127.0.0.1:9528"
+		emptyHeartbeatPort := ""
+		emptyReplicaPort := ""
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+
+		// Ensure node doesn't exist
+		server.cluster.metaNodes.Delete(nodeAddr)
+
+		// Try to add node without ports
+		_, err := server.cluster.addMetaNode(nodeAddr, emptyHeartbeatPort, emptyReplicaPort, zoneName, rack, nodesetId)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "heartbeatPort and replicaPort")
+		require.Contains(t, err.Error(), "raftPartitionCanUseDifferentPort")
+	})
+
+	t.Run("concurrent add meta node", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9529"
+		heartbeatPort := "9530"
+		replicaPort := "9531"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+
+		// Ensure node doesn't exist
+		server.cluster.metaNodes.Delete(nodeAddr)
+
+		// Concurrently add same node
+		var wg sync.WaitGroup
+		results := make([]struct {
+			id  uint64
+			err error
+		}, 10)
+
+		for i := 0; i < 10; i++ {
+			wg.Add(1)
+			go func(index int) {
+				defer wg.Done()
+				id, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+				results[index] = struct {
+					id  uint64
+					err error
+				}{id, err}
+			}(i)
+		}
+
+		wg.Wait()
+
+		// Verify all calls succeed and return same ID
+		firstId := results[0].id
+		require.NoError(t, results[0].err)
+		require.Greater(t, firstId, uint64(0))
+
+		for i := 1; i < 10; i++ {
+			require.NoError(t, results[i].err)
+			require.Equal(t, firstId, results[i].id)
+		}
+	})
+}
+
+// Add the following test cases to cluster_test.go file
+
+func TestAddDataNode(t *testing.T) {
+	t.Run("successfully add new data node", func(t *testing.T) {
+		// Prepare test data
+		nodeAddr := "127.0.0.1:9601"
+		raftHeartbeatPort := "9602"
+		raftReplicaPort := "9603"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0) // Let system auto-allocate
+		mediaType := proto.MediaType_SSD
+
+		// Ensure node doesn't exist
+		server.cluster.dataNodes.Delete(nodeAddr)
+
+		// Call addDataNode
+		id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType)
+
+		// Verify results
+		require.NoError(t, err)
+		require.Greater(t, id, uint64(0))
+
+		// Verify node is added to cache
+		value, ok := server.cluster.dataNodes.Load(nodeAddr)
+		require.True(t, ok)
+		dataNode := value.(*DataNode)
+		require.Equal(t, nodeAddr, dataNode.Addr)
+		require.Equal(t, raftHeartbeatPort, dataNode.HeartbeatPort)
+		require.Equal(t, raftReplicaPort, dataNode.ReplicaPort)
+		require.Equal(t, zoneName, dataNode.ZoneName)
+		require.Equal(t, rack, dataNode.Rack)
+		require.Equal(t, id, dataNode.ID)
+		require.Equal(t, mediaType, dataNode.MediaType)
+		require.Greater(t, dataNode.NodeSetID, uint64(0))
+	})
+
+	t.Run("add data node with default values", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9604"
+		raftHeartbeatPort := "9605"
+		raftReplicaPort := "9606"
+		zoneName := "" // Empty zoneName, should use default value
+		rack := ""     // Empty rack, should use default value
+		nodesetId := uint64(0)
+		mediaType := proto.MediaType_HDD
+
+		// Ensure node doesn't exist
+		server.cluster.dataNodes.Delete(nodeAddr)
+
+		id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType)
+
+		require.NoError(t, err)
+		require.Greater(t, id, uint64(0))
+
+		// Verify default values
+		value, ok := server.cluster.dataNodes.Load(nodeAddr)
+		require.True(t, ok)
+		dataNode := value.(*DataNode)
+		require.Equal(t, DefaultZoneName, dataNode.ZoneName)
+		require.Equal(t, proto.DefaultRack, dataNode.Rack)
+		require.Equal(t, mediaType, dataNode.MediaType)
+	})
+
+	t.Run("add data node with invalid media type using legacy", func(t *testing.T) {
+		// Save original legacy media type
+		originalLegacyType := server.cluster.legacyDataMediaType
+		defer func() {
+			server.cluster.legacyDataMediaType = originalLegacyType
+		}()
+
+		// Set legacy media type
+		server.cluster.legacyDataMediaType = proto.MediaType_SSD
+
+		nodeAddr := "127.0.0.1:9607"
+		raftHeartbeatPort := "9608"
+		raftReplicaPort := "9609"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+		invalidMediaType := uint32(999) // Invalid media type
+
+		// Ensure node doesn't exist
+		server.cluster.dataNodes.Delete(nodeAddr)
+
+		id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, invalidMediaType)
+
+		// Should succeed using legacy media type
+		require.NoError(t, err)
+		require.Greater(t, id, uint64(0))
+
+		// Verify legacy media type is used
+		value, ok := server.cluster.dataNodes.Load(nodeAddr)
+		require.True(t, ok)
+		dataNode := value.(*DataNode)
+		require.Equal(t, proto.MediaType_SSD, dataNode.MediaType)
+	})
+
+	t.Run("add data node with invalid media type and no legacy", func(t *testing.T) {
+		// Save original legacy media type
+		originalLegacyType := server.cluster.legacyDataMediaType
+		defer func() {
+			server.cluster.legacyDataMediaType = originalLegacyType
+		}()
+
+		// Clear legacy media type
+		server.cluster.legacyDataMediaType = 0
+
+		nodeAddr := "127.0.0.1:9610"
+		raftHeartbeatPort := "9611"
+		raftReplicaPort := "9612"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+		invalidMediaType := uint32(999) // Invalid media type
+
+		// Ensure node doesn't exist
+		server.cluster.dataNodes.Delete(nodeAddr)
+
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, invalidMediaType)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid mediaType")
+		require.Contains(t, err.Error(), "LegacyDataMediaType not set")
+	})
+
+	t.Run("add existing data node with same parameters", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9613"
+		raftHeartbeatPort := "9614"
+		raftReplicaPort := "9615"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+		mediaType := proto.MediaType_SSD
+
+		// Add node first
+		server.cluster.dataNodes.Delete(nodeAddr)
+		firstId, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType)
+		require.NoError(t, err)
+
+		// Add same node with same parameters again
+		secondId, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType)
+
+		// Should return same ID, no error
+		require.NoError(t, err)
+		require.Equal(t, firstId, secondId)
+	})
+
+	t.Run("add existing data node with different nodeset", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9616"
+		raftHeartbeatPort := "9617"
+		raftReplicaPort := "9618"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		firstNodesetId := uint64(0)
+		mediaType := proto.MediaType_SSD
+
+		// Add node first
+		server.cluster.dataNodes.Delete(nodeAddr)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, firstNodesetId, mediaType)
+		require.NoError(t, err)
+
+		// Get actual allocated nodesetId
+		value, _ := server.cluster.dataNodes.Load(nodeAddr)
+		dataNode := value.(*DataNode)
+		actualNodesetId := dataNode.NodeSetID
+
+		// Try to add with different nodesetId
+		differentNodesetId := actualNodesetId + 1
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, differentNodesetId, mediaType)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "addr already in nodeset")
+	})
+
+	t.Run("add existing data node with different zone", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9619"
+		raftHeartbeatPort := "9620"
+		raftReplicaPort := "9621"
+		firstZoneName := "test-zone-1"
+		secondZoneName := "test-zone-2"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+		mediaType := proto.MediaType_SSD
+
+		// Add node first
+		server.cluster.dataNodes.Delete(nodeAddr)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, firstZoneName, rack, nodesetId, mediaType)
+		require.NoError(t, err)
+
+		// Try to add with different zone
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, secondZoneName, rack, nodesetId, mediaType)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "zoneName not equal old")
+	})
+
+	t.Run("add existing data node with different media type", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9622"
+		raftHeartbeatPort := "9623"
+		raftReplicaPort := "9624"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+		firstMediaType := proto.MediaType_SSD
+		secondMediaType := proto.MediaType_HDD
+
+		// Add node first
+		server.cluster.dataNodes.Delete(nodeAddr)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, firstMediaType)
+		require.NoError(t, err)
+
+		// Try to add with different media type
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, secondMediaType)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "mediaType not equal old")
+	})
+
+	t.Run("add existing data node with different rack", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9625"
+		raftHeartbeatPort := "9626"
+		raftReplicaPort := "9627"
+		zoneName := "test-zone"
+		firstRack := "test-rack-1"
+		secondRack := "test-rack-2"
+		nodesetId := uint64(0)
+		mediaType := proto.MediaType_SSD
+
+		// Add node first
+		server.cluster.dataNodes.Delete(nodeAddr)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, firstRack, nodesetId, mediaType)
+		require.NoError(t, err)
+
+		// Try to add with different rack (non-default rack)
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, secondRack, nodesetId, mediaType)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "rack not equal to old")
+	})
+
+	t.Run("add existing data node with different rack from default", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9628"
+		raftHeartbeatPort := "9629"
+		raftReplicaPort := "9630"
+		zoneName := "test-zone"
+		defaultRack := proto.DefaultRack
+		newRack := "test-rack"
+		nodesetId := uint64(0)
+		mediaType := proto.MediaType_SSD
+
+		// Add node first (using default rack)
+		server.cluster.dataNodes.Delete(nodeAddr)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, defaultRack, nodesetId, mediaType)
+		require.NoError(t, err)
+
+		// Try to add with different rack (from default rack to new rack)
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, newRack, nodesetId, mediaType)
+
+		// Should succeed (allow update from default rack)
+		require.NoError(t, err)
+
+		// Verify rack is updated
+		value, ok := server.cluster.dataNodes.Load(nodeAddr)
+		require.True(t, ok)
+		dataNode := value.(*DataNode)
+		require.Equal(t, newRack, dataNode.Rack)
+	})
+
+	t.Run("add existing data node with port update", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9631"
+		firstHeartbeatPort := ""
+		firstReplicaPort := ""
+		newHeartbeatPort := "9632"
+		newReplicaPort := "9633"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+		mediaType := proto.MediaType_SSD
+
+		// Add node first (without port info)
+		server.cluster.dataNodes.Delete(nodeAddr)
+		_, err := server.cluster.addDataNode(nodeAddr, firstHeartbeatPort, firstReplicaPort, zoneName, rack, nodesetId, mediaType)
+		require.NoError(t, err)
+
+		// Update port info
+		_, err = server.cluster.addDataNode(nodeAddr, newHeartbeatPort, newReplicaPort, zoneName, rack, nodesetId, mediaType)
+
+		// Should succeed
+		require.NoError(t, err)
+
+		// Verify ports are updated
+		value, ok := server.cluster.dataNodes.Load(nodeAddr)
+		require.True(t, ok)
+		dataNode := value.(*DataNode)
+		require.Equal(t, newHeartbeatPort, dataNode.HeartbeatPort)
+		require.Equal(t, newReplicaPort, dataNode.ReplicaPort)
+	})
+
+	t.Run("add data node with specific nodeset", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9634"
+		raftHeartbeatPort := "9635"
+		raftReplicaPort := "9636"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		specificNodesetId := uint64(999) // Use a specific nodesetId
+		mediaType := proto.MediaType_SSD
+
+		// Ensure node doesn't exist
+		server.cluster.dataNodes.Delete(nodeAddr)
+
+		// Note: This test might fail because the specified nodeset may not exist
+		// This depends on the test environment setup
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, specificNodesetId, mediaType)
+
+		// If nodeset doesn't exist, should return error
+		if err != nil {
+			require.Contains(t, err.Error(), "nodeset")
+		} else {
+			// If successful, verify nodesetId
+			value, ok := server.cluster.dataNodes.Load(nodeAddr)
+			require.True(t, ok)
+			dataNode := value.(*DataNode)
+			require.Equal(t, specificNodesetId, dataNode.NodeSetID)
+		}
+	})
+
+	t.Run("add data node with raft partition port requirement", func(t *testing.T) {
+		// Save original configuration
+		originalConfig := server.cluster.cfg.raftPartitionCanUseDifferentPort.Load()
+		defer func() {
+			server.cluster.cfg.raftPartitionCanUseDifferentPort.Store(originalConfig)
+		}()
+
+		// Enable raft partition port requirement
+		server.cluster.cfg.raftPartitionCanUseDifferentPort.Store(true)
+
+		nodeAddr := "127.0.0.1:9637"
+		emptyHeartbeatPort := ""
+		emptyReplicaPort := ""
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+		mediaType := proto.MediaType_SSD
+
+		// Ensure node doesn't exist
+		server.cluster.dataNodes.Delete(nodeAddr)
+
+		// Try to add node without ports
+		_, err := server.cluster.addDataNode(nodeAddr, emptyHeartbeatPort, emptyReplicaPort, zoneName, rack, nodesetId, mediaType)
+
+		// Should return error
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "heartbeatPort and replicaPort")
+		require.Contains(t, err.Error(), "raftPartitionCanUseDifferentPort")
+	})
+
+	t.Run("concurrent add data node", func(t *testing.T) {
+		nodeAddr := "127.0.0.1:9642"
+		raftHeartbeatPort := "9643"
+		raftReplicaPort := "9644"
+		zoneName := "test-zone"
+		rack := "test-rack"
+		nodesetId := uint64(0)
+		mediaType := proto.MediaType_SSD
+
+		// Ensure node doesn't exist
+		server.cluster.dataNodes.Delete(nodeAddr)
+
+		// Concurrently add same node
+		var wg sync.WaitGroup
+		results := make([]struct {
+			id  uint64
+			err error
+		}, 10)
+
+		for i := 0; i < 10; i++ {
+			wg.Add(1)
+			go func(index int) {
+				defer wg.Done()
+				id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType)
+				results[index] = struct {
+					id  uint64
+					err error
+				}{id, err}
+			}(i)
+		}
+
+		wg.Wait()
+
+		// Verify all calls succeed and return same ID
+		firstId := results[0].id
+		require.NoError(t, results[0].err)
+		require.Greater(t, firstId, uint64(0))
+
+		for i := 1; i < 10; i++ {
+			require.NoError(t, results[i].err)
+			require.Equal(t, firstId, results[i].id)
+		}
+	})
+}

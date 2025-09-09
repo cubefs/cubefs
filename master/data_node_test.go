@@ -16,7 +16,7 @@ func TestDataNode(t *testing.T) {
 	func() {
 		mockServerLock.Lock()
 		defer mockServerLock.Unlock()
-		mockDataServers = append(mockDataServers, addDataServer(addr, DefaultZoneName, defaultMediaType))
+		mockDataServers = append(mockDataServers, addDataServer(addr, "test-add-zone", defaultMediaType))
 	}()
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)

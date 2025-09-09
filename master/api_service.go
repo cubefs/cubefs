@@ -87,20 +87,18 @@ type TopologyView struct {
 	Zones []*ZoneView
 }
 
-// RackView 定义 rack 层级的视图
 type RackView struct {
 	Name      string
 	DataNodes []proto.NodeView
 	MetaNodes []proto.MetaNodeView
 }
 
-// NodeSetView 现在包含 rack 层级，同时保持向后兼容
 type NodeSetView struct {
 	DataNodeLen int
 	MetaNodeLen int
-	DataNodes   []proto.NodeView     // 保持原有字段
-	MetaNodes   []proto.MetaNodeView // 保持原有字段
-	Racks       map[string]*RackView // 新增 rack 层级
+	DataNodes   []proto.NodeView
+	MetaNodes   []proto.MetaNodeView
+	Racks       map[string]*RackView
 }
 
 func newNodeSetView(dataNodeLen, metaNodeLen int) *NodeSetView {
@@ -445,7 +443,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			nsView := newNodeSetView(ns.dataNodeLen(), ns.metaNodeLen())
 			cv.NodeSet[ns.ID] = nsView
 
-			// 按 rack 组织 datanodes
+			// group data nodes by rack
 			rackDataNodes := make(map[string][]proto.NodeView)
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
@@ -462,7 +460,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				return true
 			})
 
-			// 按 rack 组织 metanodes
+			// group meta nodes by rack
 			rackMetaNodes := make(map[string][]proto.MetaNodeView)
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
@@ -480,7 +478,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				return true
 			})
 
-			// 构建 rack 视图
+			// build rack view
 			for rackName, dataNodes := range rackDataNodes {
 				if _, exists := nsView.Racks[rackName]; !exists {
 					nsView.Racks[rackName] = &RackView{
@@ -610,6 +608,8 @@ func (m *Server) listNodeSets(w http.ResponseWriter, r *http.Request) {
 				CanAllocMetaNodeCnt: ns.calcNodesForAlloc(ns.metaNodes),
 				DataNodeNum:         ns.dataNodeLen(),
 				MetaNodeNum:         ns.metaNodeLen(),
+				CanAllocDataRackCnt: ns.calcRackForAlloc(DataNodeType),
+				CanAllocMetaRackCnt: ns.calcRackForAlloc(MetaNodeType),
 			}
 			nodeSetStats = append(nodeSetStats, nsStat)
 		}
@@ -649,6 +649,8 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 		Zone:                ns.zoneName,
 		CanAllocDataNodeCnt: ns.calcNodesForAlloc(ns.dataNodes),
 		CanAllocMetaNodeCnt: ns.calcNodesForAlloc(ns.metaNodes),
+		CanAllocMetaRackCnt: ns.calcRackForAlloc(MetaNodeType),
+		CanAllocDataRackCnt: ns.calcRackForAlloc(DataNodeType),
 		DataNodeSelector:    ns.GetDataNodeSelector(),
 		MetaNodeSelector:    ns.GetMetaNodeSelector(),
 	}
@@ -1424,12 +1426,12 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if value = r.FormValue(ClientReqPeriod); value != "" {
-		if parsed, err = strconv.ParseUint(value, 10, 32); err == nil {
+		if parsed, err = strconv.ParseUint(value, 10, 32); err == nil || parsed == 0 {
 			period = uint32(parsed)
 		}
 	}
 	if value = r.FormValue(ClientTriggerCnt); value != "" {
-		if parsed, err = strconv.ParseUint(value, 10, 32); err == nil {
+		if parsed, err = strconv.ParseUint(value, 10, 32); err == nil || parsed == 0 {
 			triggerCnt = uint32(parsed)
 		}
 	}
