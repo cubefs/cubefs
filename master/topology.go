@@ -2322,6 +2322,20 @@ func (l *DecommissionDataPartitionList) startTraverse() {
 
 func updateDecommissionWeight(dps []*DataPartition, c *Cluster) {
 	for _, dp := range dps {
+		vol, err := c.getVol(dp.VolName)
+		if err != nil {
+			log.LogWarnf("action[DecommissionListTraverse] dp[%v] get vol[%v] failed", dp.decommissionInfo(), dp.VolName)
+			dp.DecommissionErrorMessage = err.Error()
+			dp.markRollbackFailed(false, "traverDecommissionList_updateDecommissionWeight_volMarkDeleteCheck", err.Error())
+			continue
+		}
+		if (vol.status() == proto.VolStatusMarkDelete && !vol.Forbidden) ||
+			(vol.status() == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+			dp.SetDecommissionStatus(DecommissionSuccess, "traverDecommissionList_updateDecommissionWeight_volMarkDeleteCheck", "")
+			log.LogWarnf("action[DecommissionListTraverse] skip dp(%v) since vol(%v) has been marked for deletion", dp.PartitionID, dp.VolName)
+			continue
+		}
+
 		if dp.IsDiscard {
 			dp.SetDecommissionStatus(DecommissionSuccess, "traverDecommissionList_updateDecommissionWeight_discardCheck", "")
 			log.LogWarnf("action[DecommissionListTraverse] skip dp(%v) discard(%v)", dp.PartitionID, dp.IsDiscard)
