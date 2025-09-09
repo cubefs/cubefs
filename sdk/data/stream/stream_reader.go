@@ -575,43 +575,8 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 
 	handler := req.handler
 	log.LogDebugf("completeAsyncFlush: for streamer(%v) eh(%v)", s.inode, handler)
-
-	// Check if this request is the next one to be processed
-	nextReq := s.getNextPendingAsyncFlush()
-	if nextReq == nil {
-		log.LogWarnf("completeAsyncFlush: No pending async flush requests found for streamer(%v) handler(%v)",
-			s.inode, handler)
-		req.done <- errors.New("no pending async flush requests")
-		return
-	}
-
-	// If this is not the next request to be processed, wait
-	if nextReq.handler.id != handler.id {
-		log.LogDebugf("Async flush request streamer(%v) eh(%v) id(%v) is not next in sequence (next: %v), waiting...",
-			s.inode, handler, handler.id, nextReq.handler.id)
-
-		// Wait for the correct request to be processed
-		// This is a simple polling approach - in a production system, you might want to use channels or condition variables
-		start := time.Now()
-		for {
-			time.Sleep(time.Duration(asyncFlushCheckIntervalMs) * time.Millisecond)
-			nextReq = s.getNextPendingAsyncFlush()
-			if nextReq == nil {
-				log.LogErrorf("completeAsyncFlush: No pending async flush requests found while waiting for "+
-					"streamer(%v) handler(%v)", s.inode, handler)
-				req.done <- errors.New("no pending async flush requests")
-				return
-			}
-			if nextReq.handler.id == handler.id {
-				break
-			}
-			if time.Since(start) > 5*time.Minute {
-				start = time.Now()
-				log.LogErrorf("completeAsyncFlush: streamer(%v) handler(%v) id(%v) wait to long for next(%v) nextid(%v) len(%v)",
-					s.inode, handler, handler.id, nextReq.handler, nextReq.handler.id, len(s.asyncFlushCh))
-			}
-		}
-	}
+	// extentHandler may be sync flushed by streamer.flush when inflight is 0
+	// the flush order cannot be guaranteed
 	err := handler.flush()
 	if err != nil {
 		log.LogWarnf("completeAsyncFlush: completed successfully for handler(%v)", handler)
@@ -695,24 +660,6 @@ func (s *Streamer) addPendingAsyncFlush(handlerID uint64, req *AsyncFlushRequest
 func (s *Streamer) removePendingAsyncFlush(handlerID uint64) {
 	s.pendingAsyncFlushMap.Delete(handlerID)
 	log.LogDebugf("removePendingAsyncFlush  streamer(%v)  handler(%v) trace(%v)", s.inode, handlerID, string(debug.Stack()))
-}
-
-// getNextPendingAsyncFlush returns the next pending request that should be processed
-func (s *Streamer) getNextPendingAsyncFlush() *AsyncFlushRequest {
-	var oldestHandlerID uint64 = ^uint64(0) // Max uint64
-	var oldestReq *AsyncFlushRequest
-
-	s.pendingAsyncFlushMap.Range(func(key, value interface{}) bool {
-		handlerID := key.(uint64)
-		req := value.(*AsyncFlushRequest)
-		if handlerID < oldestHandlerID {
-			oldestHandlerID = handlerID
-			oldestReq = req
-		}
-		return true // continue iteration
-	})
-
-	return oldestReq
 }
 
 // getPendingRequestsCount returns the number of pending requests

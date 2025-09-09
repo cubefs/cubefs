@@ -50,9 +50,8 @@ const (
 	streamWriterFlushPeriod       = 3
 	streamWriterIdleTimeoutPeriod = 10
 	// Async flush constants
-	asyncFlushCheckIntervalMs = 100 // Check every 100ms
-	asyncFlushQueueSize       = 128 // Buffer size for async flush channel
-	asyncFlushSemaphoreSize   = 4   // Capacity of semaphore to limit concurrent processAsyncFlushRequest executions
+	asyncFlushQueueSize     = 128 // Buffer size for async flush channel
+	asyncFlushSemaphoreSize = 4   // Capacity of semaphore to limit concurrent processAsyncFlushRequest executions
 )
 
 // Note: asyncFlushSequencer is now per-streamer to avoid global lock contention
@@ -380,6 +379,7 @@ begin:
 	s.client.LimitManager.WriteAlloc(ctx, size)
 
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
+	// requests contain offset
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 
 	isChecked := false
@@ -1051,7 +1051,7 @@ func (s *Streamer) flush(wait bool, id string) (err error) {
 			clearFunc()
 		}
 	}
-	log.LogDebugf("Streamer(%v) wait(%v) id(%v)", s.inode, wait, id)
+	log.LogDebugf("Streamer(%v) wait(%v) pending(%v) id(%v)", s.inode, wait, pending, id)
 	if wait {
 		for len(pending) > 0 {
 			progressed := false
@@ -1137,9 +1137,8 @@ func (s *Streamer) closeOpenHandler(wait bool) (err error) {
 		cleanFunc := func(h *ExtentHandler) func() {
 			return func() {
 				h.setClosed()
-				if !s.dirty {
-					h.cleanup()
-				}
+				// cleanup eh when flush is completed
+				h.cleanup()
 			}
 		}(handler)
 
@@ -1148,25 +1147,8 @@ func (s *Streamer) closeOpenHandler(wait bool) (err error) {
 			log.LogDebugf("closeOpenHandler: using async flush for handler(%v) with inflight(%v) id(%v)",
 				handler, atomic.LoadInt32(&handler.inflight), id)
 			s.requestAsyncFlush(handler, cleanFunc)
-			// Don't set handler to nil here - let async flush complete first
-			//if wait {
-			//	err = <-ch
-			//	s.removePendingAsyncFlush(handler.id)
-			//	if err != nil {
-			//		log.LogErrorf("closeOpenHandler: eh(%v) async flush failed, err %s,id(%v)", handler, err.Error(), id)
-			//		return
-			//	}
-			//} else {
-			//	// handler may be not put into dirtyList
-			//	s.dirtylist.Put(handler)
-			//}
 			s.dirtylist.Put(handler)
 		} else {
-			// Check if this handler is protected by a write operation
-			//if s.isHandlerProtected(handler) && !wait {
-			//	log.LogDebugf("closeOpenHandler: handler(%v) is protected by write operation, skipping (%v)", handler, string(debug.Stack()))
-			//	return nil
-			//}
 			log.LogDebugf("closeOpenHandler: try flush (%v)id(%v)", handler, id)
 			err = handler.flush()
 			if err != nil {
