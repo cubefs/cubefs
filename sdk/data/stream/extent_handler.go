@@ -288,7 +288,8 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 
 func (eh *ExtentHandler) sender() {
 	var err error
-
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
 	for {
 		select {
 		case packet := <-eh.request:
@@ -353,6 +354,8 @@ func (eh *ExtentHandler) sender() {
 			eh.setClosed()
 			log.LogDebugf("sender: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
+		case <-ticker.C:
+			log.LogErrorf("eh(%v) sender is still working", eh)
 		}
 	}
 }
