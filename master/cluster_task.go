@@ -131,7 +131,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		replicaNum:      1,
 		excludeHosts:    oldHosts,
 		rackLevel:       c.getRackAwareLevel(),
-		excludeRacks:    c.GetExRacksByHosts(TypeMetaPartition, oldHosts),
+		excludeRacks:    c.GetExRacksByHosts(TypeMetaPartition, oldHosts, srcAddr),
 	}
 
 	nodeType := TypeMetaPartition
@@ -178,13 +178,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		}
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		param := &selectParam{
-			excludeNodeSets: excludeNodeSets,
-			replicaNum:      1,
-			excludeHosts:    oldHosts,
-			rackLevel:       c.getRackAwareLevel(),
-			excludeRacks:    c.GetExRacksByHosts(nodeType, oldHosts),
-		}
+		param.excludeNodeSets = excludeNodeSets
 		if _, newPeers, err = zone.getAvailNodeHosts(nodeType, param); err != nil {
 			zones = mp.getLiveZones(srcAddr)
 			var excludeZone []string
@@ -194,7 +188,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 				excludeZone = append(excludeZone, zones[0])
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, excludeNodeSets, oldHosts, 1, 1, "", proto.MediaType_Unspecified, c.getRackAwareLevel()); err != nil {
+			if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param); err != nil {
 				goto errHandler
 			}
 		}

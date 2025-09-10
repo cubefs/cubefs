@@ -7,10 +7,12 @@ type MrBalanceInfo struct {
 	SrcMemSize   uint64    `json:"srcMemSize" bson:"srcmemsize"`
 	SrcNodeSetId uint64    `json:"srcNodeSetId" bson:"srcnodesetid"`
 	SrcZoneName  string    `json:"srcZoneName" bson:"srczonename"`
+	SrcRack      string    `json:"srcRack" bson:"srcrack"`
 	Destination  string    `json:"destination" bson:"destination"`
 	DstId        uint64    `json:"dstID" bson:"dstid"`
 	DstNodeSetId uint64    `json:"dstNodeSetId" bson:"dstnodesetid"`
 	DstZoneName  string    `json:"dstZoneName" bson:"dstzonename"`
+	DstRack      string    `json:"dstRack" bson:"dstrack"`
 	Status       string    `json:"status" bson:"status"`
 	Msg          string    `json:"msg" bson:"msg"`
 	StoreMode    StoreMode `json:"storeMode"`
@@ -32,6 +34,7 @@ type MetaNodeBalanceInfo struct {
 	Addr           string   `json:"address"`
 	DomainAddr     string   `json:"domainAddress"`
 	ZoneName       string   `json:"zone"`
+	Rack           string   `json:"rack"`
 	NodeSetID      uint64   `json:"nodeSetId"`
 	Total          uint64   `json:"totalMem"`
 	Used           uint64   `json:"usedMem"`
@@ -74,4 +77,5 @@ type ClusterPlan struct {
 	ModeCnt    int                          `json:"storeModeCount"`
 	StartId    uint64                       `json:"startId"`
 	EndId      uint64                       `json:"endId"`
+	RackLevel  RackAwareLevel               `json:"rackLevel"`
 }

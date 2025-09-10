@@ -28,14 +28,16 @@ import (
 )
 
 type GetMigrateAddrParam struct {
-	Topo        map[string]*proto.ZonePressureView
-	RocksdbTopo map[string]*proto.ZonePressureView
-	ZoneName    string
-	NodeSetID   uint64
-	Excludes    []string
-	RequestNum  int
-	LeastSize   uint64
-	IsRocksdb   bool
+	Topo         map[string]*proto.ZonePressureView
+	RocksdbTopo  map[string]*proto.ZonePressureView
+	ZoneName     string
+	NodeSetID    uint64
+	Excludes     []string
+	ExcludeRacks []string
+	RequestNum   int
+	LeastSize    uint64
+	IsRocksdb    bool
+	RackLevel    proto.RackAwareLevel
 }
 
 var NotEnoughResource = fmt.Errorf("not enough resource")
@@ -280,6 +282,7 @@ func (c *Cluster) MetaNodeRecord(metaNode *MetaNode) *proto.MetaNodeBalanceInfo 
 		Addr:           metaNode.Addr,
 		DomainAddr:     metaNode.DomainAddr,
 		ZoneName:       metaNode.ZoneName,
+		Rack:           metaNode.Rack,
 		NodeSetID:      metaNode.NodeSetID,
 		Total:          metaNode.Total,
 		Used:           metaNode.Used,
@@ -313,6 +316,7 @@ func (c *Cluster) GetMetaNodePressureView() (*proto.ClusterPlan, error) {
 		Plan:       make([]*proto.MetaBalancePlan, 0),
 		Status:     PlanTaskInit,
 		Mode:       proto.StoreModeMem,
+		RackLevel:  c.getRackAwareLevel(),
 	}
 
 	err := c.GetLowMemPressureTopology(cView)
@@ -343,6 +347,8 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 		log.LogErrorf(err.Error())
 		return err
 	}
+
+	migratePlan.RackLevel = c.getRackAwareLevel()
 
 	zones := c.t.getAllZones()
 	var nodeMemRatio float64
@@ -543,6 +549,7 @@ func GetMetaReplicaRecord(metaNode *MetaNode) *proto.MrBalanceInfo {
 		SrcNodeSetId: metaNode.NodeSetID,
 		SrcZoneName:  metaNode.ZoneName,
 		Status:       PlanTaskInit,
+		SrcRack:      metaNode.Rack,
 	}
 	return ret
 }
@@ -693,6 +700,7 @@ func CreateMigratePlanInNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		RequestNum:  len(srcNode),
 		LeastSize:   maxMemSize,
 		IsRocksdb:   isRocksdb,
+		RackLevel:   migratePlan.RackLevel,
 	}
 	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 
@@ -744,6 +752,7 @@ func CreateMigratePlanExcludeNodeSet(migratePlan *proto.ClusterPlan, mpPlan *pro
 		RequestNum:  len(srcNode),
 		LeastSize:   maxMemSize,
 		IsRocksdb:   isRocksdb,
+		RackLevel:   migratePlan.RackLevel,
 	}
 	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 
@@ -777,11 +786,13 @@ func FillMigratePlanArray(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBala
 			mpPlan.Plan[index].DstId = dests[i].DstId
 			mpPlan.Plan[index].DstNodeSetId = dests[i].DstNodeSetId
 			mpPlan.Plan[index].DstZoneName = dests[i].DstZoneName
+			mpPlan.Plan[index].DstRack = dests[i].DstRack
 			mpPlan.Plan[index].StoreMode = storeMode
 			item = mpPlan.Plan[index]
 		} else {
 			item = &proto.MrBalanceInfo{
 				Source:       srcNode[i].Source,
+				SrcRack:      srcNode[i].SrcRack,
 				SrcMemSize:   srcNode[i].SrcMemSize,
 				SrcNodeSetId: srcNode[i].SrcNodeSetId,
 				SrcZoneName:  srcNode[i].SrcZoneName,
@@ -789,6 +800,7 @@ func FillMigratePlanArray(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBala
 				DstId:        dests[i].DstId,
 				DstNodeSetId: dests[i].DstNodeSetId,
 				DstZoneName:  dests[i].DstZoneName,
+				DstRack:      dests[i].DstRack,
 				Status:       PlanTaskInit,
 				StoreMode:    storeMode,
 			}
@@ -856,9 +868,22 @@ func UpdateLowPressureNodeTopo(migratePlan *proto.ClusterPlan, newPlan *proto.Mr
 func FillExcludeAddrIntoGetParam(mpPlan *proto.MetaBalancePlan, getParam *GetMigrateAddrParam) {
 	for _, mrRec := range mpPlan.Original {
 		getParam.Excludes = append(getParam.Excludes, mrRec.Source)
+
+		inOverLoad := false
+		for _, overLoadAddr := range mpPlan.OverLoad {
+			if overLoadAddr.Source == mrRec.Source {
+				inOverLoad = true
+			}
+		}
+
+		if !inOverLoad {
+			getParam.ExcludeRacks = append(getParam.ExcludeRacks, mrRec.SrcRack)
+		}
 	}
+
 	for _, mrRec := range mpPlan.Plan {
 		getParam.Excludes = append(getParam.Excludes, mrRec.Destination)
+		getParam.ExcludeRacks = append(getParam.ExcludeRacks, mrRec.DstRack)
 	}
 }
 
@@ -885,6 +910,7 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 		RequestNum:  requestNum,
 		LeastSize:   maxMemSize,
 		IsRocksdb:   isRocksdb,
+		RackLevel:   migratePlan.RackLevel,
 	}
 	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 	find, dests := GetMigrateDestAddr(getParam)
@@ -977,39 +1003,61 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 	}
 
 	address = make([]*proto.MrBalanceInfo, 0, param.RequestNum)
-	for _, entry := range nodeSet.MetaNodes {
-		bExcluded := false
-		for _, item := range param.Excludes {
-			if item == entry.Addr {
-				bExcluded = true
-			}
-		}
-		if bExcluded {
-			continue
-		}
+	rackLevel := param.RackLevel
 
-		if !param.IsRocksdb {
-			// check the free memory.
-			if entry.Free <= metaNodeReserveMemorySize || entry.NodeMemFree <= metaNodeReserveMemorySize {
+	selectAddr := func() {
+		for _, entry := range nodeSet.MetaNodes {
+
+			if contains(param.Excludes, entry.Addr) {
 				continue
 			}
-			// the free memory size is larger than 2 * source meta partition's used.
-			if entry.Free <= metaNodeMemoryRatio*param.LeastSize || entry.NodeMemFree <= metaNodeMemoryRatio*param.LeastSize {
+
+			if contains(param.ExcludeRacks, entry.Rack) && rackLevel == proto.RackAwareStrong {
 				continue
 			}
-		}
 
-		dstVal := &proto.MrBalanceInfo{
-			Destination:  entry.Addr,
-			DstId:        entry.ID,
-			DstNodeSetId: entry.NodeSetID,
-			DstZoneName:  entry.ZoneName,
+			if !param.IsRocksdb {
+				// check the free memory.
+				if entry.Free <= metaNodeReserveMemorySize || entry.NodeMemFree <= metaNodeReserveMemorySize {
+					continue
+				}
+				// the free memory size is larger than 2 * source meta partition's used.
+				if entry.Free <= metaNodeMemoryRatio*param.LeastSize || entry.NodeMemFree <= metaNodeMemoryRatio*param.LeastSize {
+					continue
+				}
+			}
+
+			param.Excludes = append(param.Excludes, entry.Addr)
+			param.ExcludeRacks = append(param.ExcludeRacks, entry.Rack)
+
+			dstVal := &proto.MrBalanceInfo{
+				Destination:  entry.Addr,
+				DstId:        entry.ID,
+				DstNodeSetId: entry.NodeSetID,
+				DstZoneName:  entry.ZoneName,
+				DstRack:      entry.Rack,
+			}
+			address = append(address, dstVal)
+			if len(address) >= param.RequestNum {
+				find = true
+				break
+			}
 		}
-		address = append(address, dstVal)
-		if len(address) >= param.RequestNum {
-			find = true
-			break
-		}
+	}
+
+	// rack aware level is weak, so we need try to find the strong rack first.
+	if rackLevel == proto.RackAwareWeak {
+		rackLevel = proto.RackAwareStrong
+	}
+	selectAddr()
+	if find {
+		return
+	}
+
+	// try to find with no rack aware.
+	if param.RackLevel == proto.RackAwareWeak {
+		rackLevel = proto.RackAwareNone
+		selectAddr()
 	}
 
 	return
@@ -1573,6 +1621,7 @@ func (c *Cluster) CreateOfflineMetaNodePlan(offLineAddr string) (*proto.ClusterP
 		RocksdbLow: make(map[string]*proto.ZonePressureView),
 		Plan:       make([]*proto.MetaBalancePlan, 0),
 		Status:     PlanTaskInit,
+		RackLevel:  c.getRackAwareLevel(),
 	}
 
 	err := c.GetLowMemPressureTopology(cView)
@@ -1908,6 +1957,7 @@ func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID
 		ModeCnt:    modeCnt,
 		StartId:    startID,
 		EndId:      endID,
+		RackLevel:  c.getRackAwareLevel(),
 	}
 
 	err := c.GetLowMemPressureTopology(plan)

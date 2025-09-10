@@ -2261,7 +2261,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			replicaNum:      1,
 			excludeHosts:    excludeHosts,
 			rackLevel:       c.getRackAwareLevel(),
-			excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, excludeHosts),
+			excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, excludeHosts, partition.DecommissionSrcAddr),
 		}
 		targetHosts, _, err = ns.getAvailDataNodeHosts(param)
 		if err != nil {
@@ -2284,21 +2284,17 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 					partition.PartitionID)
 				goto errHandler
 			}
+
 			excludeNodeSets = append(excludeNodeSets, ns.ID)
-			param := &selectParam{
-				excludeNodeSets: excludeNodeSets,
-				replicaNum:      1,
-				excludeHosts:    excludeHosts,
-				rackLevel:       c.getRackAwareLevel(),
-				excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, excludeHosts),
-			}
+			param.excludeNodeSets = excludeNodeSets
+
 			// data nodes in a zone has the same mediaType
 			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param); err != nil {
 				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from other nodeset failed:%v",
 					partition.PartitionID, err.Error())
 				// select data nodes from the other zone
 				zones = partition.getLiveZones(partition.DecommissionSrcAddr)
-				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, excludeNodeSets, excludeHosts, 1, 1, "", partition.MediaType, c.getRackAwareLevel()); err != nil {
+				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", partition.MediaType, param); err != nil {
 					log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from other zone failed:%v",
 						partition.PartitionID, err.Error())
 					goto errHandler

@@ -141,18 +141,23 @@ func TestAllocZones(t *testing.T) {
 	cluster.t = topo
 	cluster.cfg = newClusterConfig()
 
+	param := &selectParam{
+		replicaNum: replicaNum,
+		rackLevel:  proto.RackAwareNone,
+	}
 	// don't cross zone
-	hosts, _, err := cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 1, "", proto.MediaType_Unspecified, proto.RackAwareNone)
+	hosts, _, err := cluster.getHostFromNormalZone(TypeDataPartition, nil, 1, "", proto.MediaType_Unspecified, param)
 	require.NoError(t, err)
 
 	t.Logf("ChooseTargetDataHosts in single zone,hosts[%v]", hosts)
 
 	// cross zone
-	_, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, replicaNum, 2, "", proto.MediaType_Unspecified, proto.RackAwareNone)
+	_, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, 2, "", proto.MediaType_Unspecified, param)
 	require.NoError(t, err)
 
+	param.replicaNum = 2
 	// specific zone
-	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, nil, nil, 3, 2, zoneName1+","+zoneName2, proto.MediaType_Unspecified, proto.RackAwareNone)
+	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, 3, zoneName1+","+zoneName2, proto.MediaType_Unspecified, param)
 	require.NoError(t, err)
 	require.EqualValues(t, getZoneCntFunc(hosts), 2)
 

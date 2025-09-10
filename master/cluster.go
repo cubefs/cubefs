@@ -27,7 +27,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	pt "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
@@ -522,18 +521,27 @@ func (c *Cluster) masterAddr() (addr string) {
 	return c.leaderInfo.addr
 }
 
-func (c *Cluster) getRackAwareLevel() pt.RackAwareLevel {
-	return c.cfg.RackAwareLevel
+func (c *Cluster) getRackAwareLevel() proto.RackAwareLevel {
+	if c != nil && c.cfg != nil {
+		return c.cfg.RackAwareLevel
+	}
+	return proto.RackAwareNone
 }
 
-func (c *Cluster) GetExRacksByHosts(nodeType uint32, hosts []string) (exRacks []string) {
+// notice: rack of srcAddr is not included
+func (c *Cluster) GetExRacksByHosts(nodeType uint32, hosts []string, srcAddr string) (exRacks []string) {
 	for _, host := range hosts {
+		if host == srcAddr {
+			continue
+		}
+
 		if nodeType == TypeDataPartition {
 			node, err := c.dataNode(host)
 			if err != nil {
 				log.LogErrorf("getExRacksByHosts, node[%v] err[%v]", host, err.Error())
 				continue
 			}
+
 			exRacks = append(exRacks, node.Rack)
 			continue
 		}
@@ -2084,7 +2092,7 @@ func (c *Cluster) createDataPartition(volName string, mediaType uint32) (dp *Dat
 			goto errHandler
 		}
 	} else {
-		if targetHosts, targetPeers, err = c.getHostFromNormalZoneForCreate(TypeDataPartition, nil, nil, nil,
+		if targetHosts, targetPeers, err = c.getHostFromNormalZoneForCreate(TypeDataPartition,
 			int(dpReplicaNum), zoneName, mediaType, c.getRackAwareLevel(), vol); err != nil {
 			goto errHandler
 		}
@@ -2312,7 +2320,6 @@ func (c *Cluster) chooseZone2Plus1(rsMgr *rsManager, zones []*Zone,
 	log.LogInfof("action[chooseZone2Plus1] type [%v] after check,zone0 [%v] left [%v] zone1 [%v] left [%v]",
 		nodeType, zoneList[0].name, zoneList[0].getSpaceLeft(nodeType), zoneList[1].name, zoneList[1].getSpaceLeft(nodeType))
 	paramCopy := param.copy()
-	paramCopy.excludeRacks = c.GetExRacksByHosts(nodeType, param.excludeHosts)
 
 	num := 1
 	for _, zone := range zoneList {
@@ -2328,7 +2335,7 @@ func (c *Cluster) chooseZone2Plus1(rsMgr *rsManager, zones []*Zone,
 		peers = append(peers, selectedPeers...)
 
 		paramCopy.excludeHosts = append(paramCopy.excludeHosts, selectedHosts...)
-		paramCopy.excludeRacks = c.GetExRacksByHosts(nodeType, param.excludeHosts)
+		paramCopy.excludeRacks = append(paramCopy.excludeRacks, c.GetExRacksByHosts(nodeType, selectedHosts, "")...)
 
 		log.LogInfof("action[chooseZone2Plus1] zone [%v] left [%v] get hosts[%v]",
 			zone.name, zone.getSpaceLeft(nodeType), selectedHosts)
@@ -2347,7 +2354,6 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, nodeType uint32, param *select
 	defer c.zoneIdxMux.Unlock()
 
 	paramCopy := param.copy()
-	paramCopy.excludeRacks = c.GetExRacksByHosts(nodeType, param.excludeHosts)
 
 	for i := 0; i < param.replicaNum; i++ {
 		// try all zone from zones list to get the available hosts
@@ -2369,7 +2375,7 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, nodeType uint32, param *select
 			peers = append(peers, selectedPeers...)
 
 			paramCopy.excludeHosts = append(paramCopy.excludeHosts, selectedHosts...)
-			paramCopy.excludeRacks = c.GetExRacksByHosts(nodeType, param.excludeHosts)
+			paramCopy.excludeRacks = append(paramCopy.excludeRacks, c.GetExRacksByHosts(nodeType, selectedHosts, "")...)
 
 			// if get the available hosts, choose zone for next replica
 			break
@@ -2399,24 +2405,26 @@ func (c *Cluster) getSpecificZoneList(specifiedZone string) (zones []*Zone, err 
 	return
 }
 
-func (c *Cluster) getHostFromNormalZoneForCreate(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
-	excludeHosts []string, replicaNum int,
+func (c *Cluster) getHostFromNormalZoneForCreate(nodeType uint32, replicaNum int,
 	specifiedZoneName string, dataMediaType uint32, rackLevel proto.RackAwareLevel, vol *Vol) (hosts []string, peers []proto.Peer, err error,
 ) {
 	zoneNum := c.decideZoneNum(vol, dataMediaType) // zoneNum scope [1,3]
-	return c.getHostFromNormalZone(nodeType, excludeZones, excludeNodeSets, excludeHosts, replicaNum, zoneNum, specifiedZoneName, dataMediaType, rackLevel)
+	param := &selectParam{
+		replicaNum: replicaNum,
+		rackLevel:  rackLevel,
+	}
+	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, dataMediaType, param)
 }
 
-func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, excludeNodeSets []uint64,
-	excludeHosts []string, replicaNum int, zoneNumNeed int,
-	specifiedZoneName string, dataMediaType uint32, rackLevel proto.RackAwareLevel) (hosts []string, peers []proto.Peer, err error,
+func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, zoneNumNeed int,
+	specifiedZoneName string, dataMediaType uint32, param *selectParam) (hosts []string, peers []proto.Peer, err error,
 ) {
 	log.LogInfof("[getHostFromNormalZone] dataMediaType(%v) nodeType(%v) replicaNum(%v) zoneNumNeed(%v) specifiedZoneName(%v)",
-		proto.MediaTypeString(nodeType), nodeType, replicaNum, zoneNumNeed, specifiedZoneName)
+		proto.MediaTypeString(nodeType), nodeType, param.replicaNum, zoneNumNeed, specifiedZoneName)
 
 	var zonesQualified []*Zone
-	if replicaNum <= zoneNumNeed {
-		zoneNumNeed = replicaNum
+	if param.replicaNum <= zoneNumNeed {
+		zoneNumNeed = param.replicaNum
 	}
 
 	var specifiedZones []*Zone
@@ -2429,22 +2437,14 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	if nodeType == TypeDataPartition {
 		rsMgr = &c.t.dataTopology
 		// get all zones that qualified
-		if zonesQualified, err = c.t.allocZonesForNode(rsMgr, zoneNumNeed, replicaNum, excludeZones, specifiedZones, dataMediaType); err != nil {
+		if zonesQualified, err = c.t.allocZonesForNode(rsMgr, zoneNumNeed, param.replicaNum, excludeZones, specifiedZones, dataMediaType); err != nil {
 			return
 		}
 	} else {
 		rsMgr = &c.t.metaTopology
-		if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, replicaNum, excludeZones, nodeType); err != nil {
+		if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, param.replicaNum, excludeZones, nodeType); err != nil {
 			return
 		}
-	}
-
-	param := &selectParam{
-		excludeNodeSets: excludeNodeSets,
-		replicaNum:      replicaNum,
-		excludeHosts:    excludeHosts,
-		rackLevel:       rackLevel,
-		excludeRacks:    c.GetExRacksByHosts(nodeType, excludeHosts),
 	}
 
 	if len(zonesQualified) == 1 {
@@ -2457,7 +2457,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	}
 
 	// The upper process tries to go and get the dedicated zones, and the latter tries to choose the right zones as possible.
-	if c.cfg.DefaultNormalZoneCnt == defaultNormalCrossZoneCnt && len(zonesQualified) >= defaultNormalCrossZoneCnt || replicaNum == 1 {
+	if c.cfg.DefaultNormalZoneCnt == defaultNormalCrossZoneCnt && len(zonesQualified) >= defaultNormalCrossZoneCnt || param.replicaNum == 1 {
 		if hosts, peers, err = c.chooseZoneNormal(zonesQualified, nodeType, param); err != nil {
 			return
 		}
@@ -2468,11 +2468,11 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	}
 
 result:
-	log.LogInfof("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", replicaNum, zoneNumNeed, len(zonesQualified), hosts)
-	if len(hosts) != replicaNum {
-		log.LogErrorf("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", replicaNum, zoneNumNeed, len(zonesQualified), hosts)
+	log.LogInfof("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", param.replicaNum, zoneNumNeed, len(zonesQualified), hosts)
+	if len(hosts) != param.replicaNum {
+		log.LogErrorf("action[getHostFromNormalZone] replicaNum[%v],zoneNum[%v],selectedZones[%v],hosts[%v]", param.replicaNum, zoneNumNeed, len(zonesQualified), hosts)
 		return nil, nil, errors.Trace(proto.ErrNoDataNodeToCreateDataPartition, "hosts len[%v],replicaNum[%v],zoneNum[%v],selectedZones[%v]",
-			len(hosts), replicaNum, zoneNumNeed, len(zonesQualified))
+			len(hosts), param.replicaNum, zoneNumNeed, len(zonesQualified))
 	}
 
 	return
@@ -3050,7 +3050,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		replicaNum:      1,
 		excludeHosts:    dp.Hosts,
 		rackLevel:       c.getRackAwareLevel(),
-		excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, dp.Hosts),
+		excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, dp.Hosts, srcAddr),
 	}
 
 	// delete if not normal data partition
@@ -3113,17 +3113,12 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		}
 		// select data nodes from the other node set in same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		param := &selectParam{
-			excludeNodeSets: excludeNodeSets,
-			replicaNum:      1,
-			excludeHosts:    dp.Hosts,
-			rackLevel:       c.getRackAwareLevel(),
-			excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, dp.Hosts),
-		}
+		param.excludeNodeSets = excludeNodeSets
+
 		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param); err != nil {
 			// select data nodes from the other zone
 			zones = dp.getLiveZones(srcAddr)
-			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, excludeNodeSets, dp.Hosts, 1, 1, "", dp.MediaType, c.getRackAwareLevel()); err != nil {
+			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", dp.MediaType, param); err != nil {
 				goto errHandler
 			}
 		}

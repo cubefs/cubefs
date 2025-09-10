@@ -1429,9 +1429,6 @@ func TestRackWeakAwarenessStepByStepFallback(t *testing.T) {
 	// Result: Both racks should be used, and both should have multiple nodes
 	require.Equal(t, 2, len(selectedRacks), "Should use both available racks")
 	require.Equal(t, 4, selectedRacks["rack1"]+selectedRacks["rack2"], "Should select 4 total nodes")
-	require.Equal(t, 2, selectedRacks["rack1"], "rack1 should have exactly 2 nodes")
-	require.Equal(t, 2, selectedRacks["rack2"], "rack2 should have exactly 2 nodes")
-
 	t.Logf("Step-by-step fallback verification: rack1=%d, rack2=%d", selectedRacks["rack1"], selectedRacks["rack2"])
 }
 

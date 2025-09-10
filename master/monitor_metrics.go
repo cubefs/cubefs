@@ -717,8 +717,7 @@ func (mm *monitorMetrics) checkPartitionCreateMetrics() {
 
 func (mm *monitorMetrics) checkHostSelection(nodeType uint32, vol *Vol, mediaType uint32, rackLevel proto.RackAwareLevel) bool {
 	_, _, err := mm.cluster.getHostFromNormalZoneForCreate(
-		nodeType, nil, nil, nil,
-		int(vol.dpReplicaNum), vol.zoneName, mediaType, rackLevel, vol)
+		nodeType, int(vol.dpReplicaNum), vol.zoneName, mediaType, rackLevel, vol)
 
 	partitionType := "meta"
 	if nodeType == TypeDataPartition {
