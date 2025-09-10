@@ -69,10 +69,8 @@ type DataNode struct {
 	ToBeOffline                        bool
 	RdOnly                             bool
 	MigrateLock                        sync.RWMutex
-	QosIopsRLimit                      uint64
-	QosIopsWLimit                      uint64
-	QosFlowRLimit                      uint64
-	QosFlowWLimit                      uint64
+	DiskQosConfig                      map[string]string `graphql:"-"`
+	DiskQosConfigLock                  sync.RWMutex
 	DecommissionStatus                 uint32
 	DecommissionDstAddr                string
 	DecommissionRaftForce              bool
@@ -112,6 +110,7 @@ func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, clust
 	dataNode.Rack = rack // 设置 rack 字段
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
+	dataNode.DiskQosConfig = make(map[string]string)
 	dataNode.DecommissionStatus = DecommissionInitial
 	dataNode.DecommissionFirstHostParallelLimit = defaultDecommissionFirstHostParallelLimit
 	dataNode.CpuUtil.Store(0)
@@ -545,6 +544,16 @@ func (dataNode *DataNode) GetZoneName() string {
 	return dataNode.ZoneName
 }
 
+func (dataNode *DataNode) cloneDiskQosConfig() map[string]string {
+	dataNode.DiskQosConfigLock.Lock()
+	defer dataNode.DiskQosConfigLock.Unlock()
+	result := make(map[string]string)
+	for k, v := range dataNode.DiskQosConfig {
+		result[k] = v
+	}
+	return result
+}
+
 // SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
 func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.Lock()
@@ -567,10 +576,7 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos b
 	}
 	request.EnableDiskQos = enableDiskQos
 	request.RaftPartitionCanUsingDifferentPortEnabled = raftPartitionCanUsingDifferentPortEnabled
-	request.QosIopsReadLimit = dataNode.QosIopsRLimit
-	request.QosIopsWriteLimit = dataNode.QosIopsWLimit
-	request.QosFlowReadLimit = dataNode.QosFlowRLimit
-	request.QosFlowWriteLimit = dataNode.QosFlowWLimit
+	request.DiskQosConfig = dataNode.cloneDiskQosConfig()
 	request.DecommissionDisks = dataNode.getDecommissionedDisks()
 	request.DpBackupTimeout = dpBackupTimeout
 	request.NotifyForbidWriteOpOfProtoVer0 = forbiddenWriteOpVerBitmask

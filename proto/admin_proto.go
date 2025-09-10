@@ -838,19 +838,8 @@ type UidLimitToMetaNode struct {
 }
 
 type QosToDataNode struct {
-	EnableDiskQos     bool
-	QosIopsReadLimit  uint64
-	QosIopsWriteLimit uint64
-	QosFlowReadLimit  uint64
-	QosFlowWriteLimit uint64
-}
-
-type IopsStatus struct {
-	ReadIops       int
-	WriteIops      int
-	AsyncReadIops  int
-	AsyncWriteIops int
-	DeleteIops     int
+	EnableDiskQos bool
+	DiskQosConfig map[string]string
 }
 
 // MultiVersionOpRequest defines the request of
