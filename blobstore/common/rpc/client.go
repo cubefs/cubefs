@@ -357,6 +357,7 @@ type timeoutReadCloser struct {
 	timer     *time.Timer
 	timeout   time.Duration
 	closeOnce sync.Once
+	hasRead   bool
 }
 
 func (tr *timeoutReadCloser) Close() (err error) {
@@ -371,6 +372,14 @@ func (tr *timeoutReadCloser) Read(p []byte) (int, error) {
 	if tr.timeout <= 0 {
 		return 0, ErrBodyReadTimeout
 	}
+
+	if tr.hasRead {
+		select {
+		case <-tr.timer.C:
+		default:
+		}
+	}
+	tr.hasRead = true
 	tr.timer.Reset(tr.timeout)
 
 	start := time.Now()
