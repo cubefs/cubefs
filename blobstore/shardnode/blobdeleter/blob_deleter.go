@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -35,8 +36,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 	utilerr "github.com/cubefs/cubefs/blobstore/util/errors"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -52,6 +53,8 @@ type ShardGetter interface {
 }
 
 type BlobDelCfg struct {
+	ClusterID proto.ClusterID
+
 	MsgChannelNum        int     `json:"msg_channel_num"`
 	MsgChannelSize       int     `json:"msg_channel_size"`
 	FailedMsgChannelSize int     `json:"failed_msg_channel_size"`
@@ -63,6 +66,8 @@ type BlobDelCfg struct {
 
 	SafeDeleteTimeout util.Duration `json:"safe_delete_timeout"`
 	PunishTimeout     util.Duration `json:"punish_timeout"`
+
+	DeleteLog recordlog.Config `json:"delete_log"`
 }
 
 type BlobDelMgrConfig struct {
@@ -89,6 +94,7 @@ type BlobDeleteMgr struct {
 	delFailCounterByMin    *counter.Counter
 	errStatsDistribution   *base.ErrorStats
 
+	delLogger recordlog.Encoder
 	closer.Closer
 }
 
@@ -99,6 +105,11 @@ func NewBlobDeleteMgr(cfg *BlobDelMgrConfig) (*BlobDeleteMgr, error) {
 	}
 
 	taskSwitch, err := cfg.TaskSwitchMgr.AddSwitch(snproto.ShardNodeBlobDeleteTask)
+	if err != nil {
+		return nil, err
+	}
+
+	delLogger, err := recordlog.NewEncoder(&cfg.DeleteLog)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +129,8 @@ func NewBlobDeleteMgr(cfg *BlobDelMgrConfig) (*BlobDeleteMgr, error) {
 		delFailCounterByMin:    &counter.Counter{},
 		errStatsDistribution:   base.NewErrorStats(),
 
-		Closer: closer.New(),
+		delLogger: delLogger,
+		Closer:    closer.New(),
 	}
 	go m.produceLoop()
 	go m.startConsume()
@@ -295,7 +307,7 @@ func (m *BlobDeleteMgr) runConsumeTask(ctx context.Context, index int) {
 			}
 		EXECUTE:
 			if err := m.executeDel(ctx, batch); err != nil {
-				span.Errorf("delete batch failed, err: %s", err.Error())
+				span.Errorf("delete batch failed, err: %s", errors.Detail(err))
 			}
 			batch = batch[:0]
 			bidNum = 0
@@ -321,6 +333,8 @@ func (m *BlobDeleteMgr) getChan(shardID proto.ShardID) chan *delMsgExt {
 
 func (m *BlobDeleteMgr) sentToFailedChan(ctx context.Context, msg *delMsgExt) {
 	span := trace.SpanFromContextSafe(ctx)
+	span.Warnf("send msgExt to failed chan: %+v", msg)
+
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	select {
@@ -349,7 +363,6 @@ func (m *BlobDeleteMgr) executeDel(ctx context.Context, msgList []*delMsgExt) er
 		if err := m.deleteWithCheckVolConsistency(r.ctx, me.msg.Slice.Vid, r); err != nil {
 			r.err = err
 			r.status = deleteStatusFailed
-			span.Errorf("deleteWithCheckVolConsistency failed, msg: %+v, err: %s", r.msgExt, r.err.Error())
 		}
 	}
 
@@ -379,8 +392,6 @@ func (m *BlobDeleteMgr) executeDel(ctx context.Context, msgList []*delMsgExt) er
 			continue
 		}
 		// retry times > 3, punish msgExt and update in store
-		span1 := trace.SpanFromContextSafe(r.ctx)
-		span1.Warnf("punish msgExt: %+v", r.msgExt)
 		if err := m.punish(ctx, r.msgExt); err != nil {
 			return err
 		}
@@ -395,6 +406,7 @@ func (m *BlobDeleteMgr) executeDel(ctx context.Context, msgList []*delMsgExt) er
 
 func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid proto.Vid, ret *delBlobRet) error {
 	return m.cfg.VolCache.DoubleCheckedRun(ctx, vid, func(info *snproto.VolumeInfoSimple) (newVol *snproto.VolumeInfoSimple, _err error) {
+		span := trace.SpanFromContextSafe(ret.ctx)
 		msg := ret.msgExt.msg
 		count := msg.Slice.Count
 		bids := make([]proto.BlobID, 0, count)
@@ -410,7 +422,7 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 			ret.err = _err
 			if _err != nil {
 				span1 := trace.SpanFromContextSafe(ret.ctx)
-				span1.Errorf("batch delete failed, err: %s, msgExt: %+v", _err.Error(), ret.msgExt)
+				span1.Errorf("deleteWithCheckVolConsistency failed, err: %s, msgExt: %+v", errors.Detail(_err), ret.msgExt)
 				ret.status = deleteStatusFailed
 				return
 			}
@@ -423,6 +435,7 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 			}
 
 			if _err = m.bidLimiter.Wait(ctx); _err != nil {
+				_err = errors.Info(_err, "wait bid limiter failed")
 				return
 			}
 
@@ -430,14 +443,29 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 			if !ret.msgExt.hasMarkDel(bids[j]) {
 				newVol, _err = m.deleteSlice(ctx, info, ret.msgExt, bids[j], true)
 				if _err != nil {
+					_err = errors.Info(_err, "mark delete failed")
 					return
 				}
 			}
 			newVol, _err = m.deleteSlice(ctx, newVol, ret.msgExt, bids[j], false)
 			if _err != nil {
+				_err = errors.Info(_err, "delete failed")
 				return
 			}
-			log.Debugf("bid[%d] vid[%d] delete success", bids[j], newVol.Vid)
+			span.Debugf("delete success: vid[%d], bid[%d]", newVol.Vid, bids[j])
+			// record delete log
+			doc := proto.DelDoc{
+				ClusterID:     m.cfg.ClusterID,
+				Vid:           vid,
+				Bid:           bids[j],
+				Retry:         int(ret.msgExt.msg.Retry),
+				Time:          ret.msgExt.msg.Time,
+				ActualDelTime: time.Now().Unix(),
+				ReqID:         ret.msgExt.msg.ReqId,
+			}
+			if docErr := m.delLogger.Encode(doc); docErr != nil {
+				span.Warnf("write delete log failed: vid[%d], bid[%d], err[%s]", doc.Vid, doc.Bid, docErr.Error())
+			}
 		}
 		return
 	})
@@ -449,6 +477,7 @@ type delRet struct {
 }
 
 func (m *BlobDeleteMgr) deleteSlice(ctx context.Context, volInfo *snproto.VolumeInfoSimple, ext *delMsgExt, bid proto.BlobID, markerDel bool) (*snproto.VolumeInfoSimple, error) {
+	span := trace.SpanFromContextSafe(ctx)
 	var err error
 
 	retChan := make(chan delRet, len(volInfo.VunitLocations))
@@ -481,6 +510,7 @@ func (m *BlobDeleteMgr) deleteSlice(ctx context.Context, volInfo *snproto.Volume
 	// get new volume info
 	newVolume, err := m.cfg.VolCache.GetVolume(volInfo.Vid)
 	if err != nil {
+		err = errors.Info(err, "get new volume info failed")
 		return volInfo, err
 	}
 
@@ -489,6 +519,7 @@ func (m *BlobDeleteMgr) deleteSlice(ctx context.Context, volInfo *snproto.Volume
 		return newVolume, err
 	}
 
+	span.Debugf("volume updated, retry vuids: %+v", needRetryVuids)
 	for _, oldVuid := range needRetryVuids {
 		if err = m.deleteShard(ctx, newVolume.VunitLocations[oldVuid.Index()], bid, ext, markerDel); err != nil {
 			return newVolume, err
@@ -515,6 +546,7 @@ func (m *BlobDeleteMgr) deleteShard(ctx context.Context, info proto.VunitLocatio
 
 	if markerDel && ext.hasShardMarkDel(bid, info.Vuid) ||
 		!markerDel && ext.hasShardDelete(bid, info.Vuid) {
+		span.Debugf("vuid[%d] bid[%d] already deleted, markerDel: %v", info.Vuid, bid, markerDel)
 		return nil
 	}
 
@@ -540,18 +572,18 @@ func (m *BlobDeleteMgr) deleteShard(ctx context.Context, info proto.VunitLocatio
 
 func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 	span := trace.SpanFromContextSafe(ctx)
+	span.Warnf("punish delete msg: %+v", msgExt)
 	msg := msgExt.msg
 
 	v, ok := m.shardListReaderMap.Load(msgExt.suid)
 	if !ok {
-		span.Errorf("shard[%d] has been deleted", msgExt.suid)
+		span.Warnf("shard[%d] has been deleted", msgExt.suid)
 		return nil
 	}
 	shard := v.(*shardListReader)
 	_, _, _, shardKeys, err := decodeDelMsgKey(msgExt.msgKey, shard.ShardingSubRangeCount())
 	if err != nil {
-		span.Errorf("shard[%d] decode shardKeys failed, key: %+v, err: %s", msgExt.suid, msgExt.msgKey, err.Error())
-		return err
+		return errors.Info(err, "decode shardKeys failed")
 	}
 
 	punishDr := m.cfg.PunishTimeout.Duration
@@ -562,7 +594,7 @@ func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 	msg.Time = ts.TimeUnix()
 	itm, err := delMsgToItem(punishMsgKey, msg)
 	if err != nil {
-		return err
+		return errors.Info(err, "delMsgToItem failed")
 	}
 
 	oldDeleteItem := storage.NewBatchItemElemDelete(string(msgExt.msgKey))
@@ -577,8 +609,7 @@ func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 		err = shard.BatchWriteItem(ctx, h, []storage.BatchItemElem{oldDeleteItem, newInsertItem}, storage.WithProposeAsFollower())
 		if err != nil {
 			if rpc2.DetectStatusCode(err) != apierr.CodeShardRouteVersionNeedUpdate {
-				span.Errorf("shard[%d] clear finish failed, err: %s", msgExt.suid, err.Error())
-				return err
+				return errors.Info(err, "clear finish failed")
 			}
 			continue
 		}

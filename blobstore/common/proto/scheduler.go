@@ -418,3 +418,14 @@ func (t *Task) Marshal() ([]byte, error) {
 func (t *Task) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, t)
 }
+
+// DelDoc is a delete doc information for logging in dellog
+type DelDoc struct {
+	ClusterID     ClusterID `json:"cid"`
+	Bid           BlobID    `json:"bid"`
+	Vid           Vid       `json:"vid"`
+	Retry         int       `json:"retry"`
+	Time          int64     `json:"t"`
+	ReqID         string    `json:"rid"`
+	ActualDelTime int64     `json:"del_at"` // unix time in S
+}

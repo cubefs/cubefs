@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
@@ -139,6 +140,11 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 	sg2 := mock.NewMockDelMgrShardGetter(C(t))
 	sg2.EXPECT().GetAllShards().Return([]storage.ShardHandler{sh}).AnyTimes()
 	sg2.EXPECT().GetShard(A, A).Return(sh, nil).AnyTimes()
+
+	delLogDir, err := os.MkdirTemp(os.TempDir(), "delete_log")
+	require.NoError(t, err)
+	defer os.RemoveAll(delLogDir)
+
 	dm, _ := blobdeleter.NewBlobDeleteMgr(&blobdeleter.BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,
 		ShardGetter:   sg2,
@@ -147,6 +153,7 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 			MsgChannelSize:       4,
 			FailedMsgChannelSize: 4,
 			ProduceTaskPoolSize:  1,
+			DeleteLog:            recordlog.Config{Dir: delLogDir},
 		},
 	})
 	s.blobDelMgr = dm

@@ -128,19 +128,8 @@ type delBlobRet struct {
 	err    error
 }
 
-// DelDoc is a delete doc information for logging in dellog
-type DelDoc struct {
-	ClusterID     proto.ClusterID `json:"cid"`
-	Bid           proto.BlobID    `json:"bid"`
-	Vid           proto.Vid       `json:"vid"`
-	Retry         int             `json:"retry"`
-	Time          int64           `json:"t"`
-	ReqID         string          `json:"rid"`
-	ActualDelTime int64           `json:"del_at"` // unix time in S
-}
-
-func toDelDoc(msg proto.DeleteMsg) DelDoc {
-	return DelDoc{
+func toDelDoc(msg proto.DeleteMsg) proto.DelDoc {
+	return proto.DelDoc{
 		ClusterID:     msg.ClusterID,
 		Bid:           msg.Bid,
 		Vid:           msg.Vid,

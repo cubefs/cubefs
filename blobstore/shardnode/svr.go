@@ -168,6 +168,7 @@ func createService(cfg *Config) *service {
 	})
 	svr.catalog = c
 
+	cfg.DeleteBlobCfg.ClusterID = cfg.NodeConfig.ClusterID
 	taskSwitchMgr := taskswitch.NewSwitchMgr(cmClient)
 	dm, err := blobdeleter.NewBlobDeleteMgr(&blobdeleter.BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,

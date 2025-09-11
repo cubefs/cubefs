@@ -76,6 +76,10 @@ func TestSvr_Loop(t *testing.T) {
 	cfg.HeartBeatIntervalS = 1
 	cfg.ReportIntervalS = 1
 	cfg.RouteUpdateIntervalS = 1
+	delLogDir, err := os.MkdirTemp(os.TempDir(), "delete_log")
+	require.NoError(t, err)
+	defer os.RemoveAll(delLogDir)
+	cfg.DeleteBlobCfg.DeleteLog.Dir = delLogDir
 
 	s := newService(cfg)
 	time.Sleep(3 * time.Second)
@@ -89,6 +93,10 @@ func TestSvr_HandleEIO(t *testing.T) {
 	cfg := genTestServiceCfg()
 	cfg.WaitReOpenDiskIntervalS = 1
 	cfg.WaitRepairCloseDiskIntervalS = 1
+	delLogDir, err := os.MkdirTemp(os.TempDir(), "delete_log")
+	require.NoError(t, err)
+	defer os.RemoveAll(delLogDir)
+	cfg.DeleteBlobCfg.DeleteLog.Dir = delLogDir
 
 	s := newService(cfg)
 	disk := &storage.Disk{}
@@ -114,6 +122,10 @@ func TestSingletonPattern(t *testing.T) {
 	resetGlobalService()
 
 	cfg := genTestServiceCfg()
+	delLogDir, err := os.MkdirTemp(os.TempDir(), "delete_log")
+	require.NoError(t, err)
+	defer os.RemoveAll(delLogDir)
+	cfg.DeleteBlobCfg.DeleteLog.Dir = delLogDir
 
 	// First call to newService
 	service1 := newService(cfg)

@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
@@ -89,6 +91,9 @@ func newTestBlobDeleteMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, v
 		msgChannels[i] = make(chan *delMsgExt, cfg.MsgChannelSize)
 	}
 
+	delLogger, err := recordlog.NewEncoder(nil)
+	require.NoError(t, err)
+
 	return &BlobDeleteMgr{
 		cfg:             cfg,
 		taskSwitch:      sw,
@@ -103,6 +108,7 @@ func newTestBlobDeleteMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, v
 		delSuccessCounterByMin: &counter.Counter{},
 		delFailCounterByMin:    &counter.Counter{},
 		errStatsDistribution:   base.NewErrorStats(),
+		delLogger:              delLogger,
 		Closer:                 closer.New(),
 	}
 }
@@ -154,6 +160,11 @@ func TestNewBlobDeleteMgr(t *testing.T) {
 	sh := mock.NewMockSpaceShardHandler(ctr(t))
 	sg := mock.NewMockDelMgrShardGetter(ctr(t))
 	sg.EXPECT().GetAllShards().Return([]storage.ShardHandler{sh}).AnyTimes()
+
+	testDir, err := os.MkdirTemp(os.TempDir(), "delete_log")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
 	cfg := &BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,
 		ShardGetter:   sg,
@@ -170,6 +181,7 @@ func TestNewBlobDeleteMgr(t *testing.T) {
 			MaxExecuteBidNum:     1000,
 			SafeDeleteTimeout:    util.Duration{Duration: time.Minute},
 			PunishTimeout:        util.Duration{Duration: time.Minute},
+			DeleteLog:            recordlog.Config{Dir: testDir},
 		},
 	}
 	mgr, err := NewBlobDeleteMgr(cfg)
@@ -582,7 +594,7 @@ func TestBlobDeleteMgr_Punish(t *testing.T) {
 
 	// punish failed
 	err = mgr.punish(context.Background(), msg)
-	require.Equal(t, err, mockErr)
+	require.Equal(t, errors.Cause(err), mockErr)
 }
 
 func TestBlobDeleteMgr_ClearShardMessages(t *testing.T) {
