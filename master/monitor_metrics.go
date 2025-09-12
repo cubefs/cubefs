@@ -970,7 +970,7 @@ func (mm *monitorMetrics) setBadDiskDecommissionTimeOverLimit() {
 		for _, badDiskStat := range dataNode.BadDiskStats {
 			_, isSuccess := dataNode.DecommissionSuccessDisks.Load(badDiskStat.DiskPath)
 			if !badDiskStat.FirstReportTime.IsZero() && time.Since(badDiskStat.FirstReportTime) > 24*time.Hour && !isSuccess {
-				mm.badDiskDecommissionTimeOverLimit.SetWithLabelValues(1, dataNode.Addr, badDiskStat.DiskPath,
+				mm.badDiskDecommissionTimeOverLimit.SetWithLabelValues(time.Since(badDiskStat.FirstReportTime).Hours(), dataNode.Addr, badDiskStat.DiskPath,
 					badDiskStat.FirstReportTime.Format("2006-01-02 15:04:05"))
 			}
 		}
