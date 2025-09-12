@@ -3108,6 +3108,13 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 	)
 	metric := exporter.NewTPCnt("req" + strings.Replace(proto.AdminGetVol, "/", "_", -1))
 	defer func() {
+		if err != nil {
+			msg := fmt.Sprintf("getVolSimpleInfo: vol(%v) failed, remoteAddr(%s), srcRealIp(%s), err (%s)",
+				name, r.RemoteAddr, iputil.GetRealClientIP(r), err.Error())
+			auditlog.LogMasterOp(proto.AdminGetVol, msg, err)
+			exporter.NewCounter("getVolFailed").Add(1)
+			return
+		}
 		doStatAndMetric(proto.AdminGetVol, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
