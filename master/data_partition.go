@@ -1214,6 +1214,17 @@ func (partition *DataPartition) ReleaseDecommissionFirstHostToken(c *Cluster) {
 	atomic.StoreUint64(&dataNodeToRepairDpInfo.CurParallel, dataNodeParallel)
 }
 
+func hasDpConsumedFirstHostToken(dataNodeToRepairDpInfo *DataNodeToDecommissionRepairDpInfo, firstReplica *DataReplica, partitionId uint64) bool {
+	dataNodeToRepairDpInfo.mu.Lock()
+	defer dataNodeToRepairDpInfo.mu.Unlock()
+	if diskToRepairDpInfo, found := dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[firstReplica.DiskPath]; found {
+		if _, ok := diskToRepairDpInfo.RepairingDps[partitionId]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bool {
 	var (
 		ok                     bool
@@ -1254,6 +1265,13 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 		DiskToDecommissionRepairDpMap: make(map[string]*DiskToDecommissionRepairDpInfo),
 	})
 	dataNodeToRepairDpInfo = value.(*DataNodeToDecommissionRepairDpInfo)
+
+	if partition.isSpecialReplicaCnt() && hasDpConsumedFirstHostToken(dataNodeToRepairDpInfo, firstReplica, partition.PartitionID) {
+		log.LogDebugf("action[AcquireDecommissionFirstHostToken] dp %v has first host token when reloading meta",
+			partition.PartitionID)
+		return true
+	}
+
 	dataNode, err = c.dataNode(firstReplica.Addr)
 	if err != nil {
 		log.LogErrorf("action[AcquireDecommissionFirstHostToken] failed, dp(%v) err(%v)", partition.PartitionID, err.Error())
