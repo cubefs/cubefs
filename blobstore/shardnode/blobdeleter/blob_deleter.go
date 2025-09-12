@@ -429,8 +429,10 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 			ret.status = deleteStatusSuccess
 		}()
 
+		newVol = info
 		for j := range bids {
 			if ret.msgExt.hasDelete(bids[j]) {
+				span.Debugf("vid[%d] bid[%d] already deleted", newVol.Vid, bids[j])
 				continue
 			}
 
@@ -439,7 +441,6 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 				return
 			}
 
-			newVol = info
 			if !ret.msgExt.hasMarkDel(bids[j]) {
 				newVol, _err = m.deleteSlice(ctx, info, ret.msgExt, bids[j], true)
 				if _err != nil {
@@ -453,6 +454,11 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 				return
 			}
 			span.Debugf("delete success: vid[%d], bid[%d]", newVol.Vid, bids[j])
+			// update volume info
+			if !newVol.EqualWith(info) {
+				span.Debugf("volume updated, newVol: %+v", newVol)
+				info = newVol
+			}
 			// record delete log
 			doc := proto.DelDoc{
 				ClusterID:     m.cfg.ClusterID,
@@ -537,6 +543,10 @@ func (m *BlobDeleteMgr) deleteShard(ctx context.Context, info proto.VunitLocatio
 		if shouldBackToInitStage(rpc2.DetectStatusCode(err)) {
 			stage = InitStage
 			ext.setShardDelStage(bid, info.Vuid, stage)
+		}
+		if err != nil && markerDel {
+			ext.setShardDelStage(bid, info.Vuid, InitStage)
+			return
 		}
 		if err != nil {
 			return

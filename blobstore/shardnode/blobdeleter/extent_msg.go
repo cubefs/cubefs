@@ -96,6 +96,9 @@ func (ext *delMsgExt) hasMarkDel(bid proto.BlobID) bool {
 	if !ok {
 		return false
 	}
+	if stg.Stage == nil {
+		return false
+	}
 	for _, stage := range stg.Stage {
 		if deleteStage(stage) < DeleteStageMarkDelete {
 			return false
@@ -109,6 +112,9 @@ func (ext *delMsgExt) hasDelete(bid proto.BlobID) bool {
 	defer ext.l.RUnlock()
 	stg, ok := ext.msg.MsgDelStage[uint64(bid)]
 	if !ok {
+		return false
+	}
+	if stg.Stage == nil {
 		return false
 	}
 	for _, stage := range stg.Stage {
