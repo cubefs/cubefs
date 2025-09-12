@@ -1267,7 +1267,7 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 	dataNodeToRepairDpInfo = value.(*DataNodeToDecommissionRepairDpInfo)
 
 	if partition.isSpecialReplicaCnt() && hasDpConsumedFirstHostToken(dataNodeToRepairDpInfo, firstReplica, partition.PartitionID) {
-		log.LogDebugf("action[AcquireDecommissionFirstHostToken] dp %v has first host token when reloading meta",
+		log.LogWarnf("action[AcquireDecommissionFirstHostToken] dp %v has first host token when reloading meta",
 			partition.PartitionID)
 		return true
 	}
