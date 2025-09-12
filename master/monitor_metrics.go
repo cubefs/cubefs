@@ -995,10 +995,20 @@ func (mm *monitorMetrics) setDiskDecommissionedMetric() {
 		if !ok {
 			return true
 		}
-		disks := dataNode.getDecommissionSuccessDisks()
-		for _, disk := range disks {
-			key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
-			mm.diskDecommissionSuccess.SetWithLabelValues(1, dataNode.Addr, key)
+		if dataNode.GetDecommissionStatus() != DecommissionInitial &&
+			dataNode.GetDecommissionStatus() != DecommissionFail {
+			return true
+		}
+		successDisks := dataNode.getDecommissionSuccessDisks()
+		successDiskMap := make(map[string]struct{})
+		for _, disk := range successDisks {
+			successDiskMap[disk] = struct{}{}
+		}
+		for _, badDisk := range dataNode.BadDisks {
+			if _, exists := successDiskMap[badDisk]; exists {
+				key := fmt.Sprintf("%s_%s", dataNode.Addr, badDisk)
+				mm.diskDecommissionSuccess.SetWithLabelValues(1, dataNode.Addr, key)
+			}
 		}
 		return true
 	})
