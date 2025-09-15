@@ -153,6 +153,8 @@ func (mgr *DataInspectMgr) inspectDisk(ds core.DiskAPI, wg *sync.WaitGroup) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(
 		context.Background(), "", ds.ID().ToString()+"_Inspect_"+trace.RandomID().String())
 
+	span.Infof("start to inspect disk:%d", ds.ID())
+	defer span.Infof("finish to inspect disk:%d", ds.ID())
 	// clean metric
 	mgr.cleanDiskInspectMetric(ds, ds.ID())
 
@@ -496,7 +498,7 @@ func (s *Service) GetInspectStat(c *rpc.Context) {
 }
 
 // CleanInspectMetric set diskID metric is zero, maybe disk is broken/repaired and replace new disk with another diskID
-// 'localhost:${port}/inspect/cleanmetric?cluster_id=1&disk_id=2'
+// 'localhost:${port}/inspect/cleanmetric?disk_id=2'
 func (s *Service) CleanInspectMetric(c *rpc.Context) {
 	args := new(bnapi.InspectCleanMetricArgs)
 	if err := c.ParseArgs(args); err != nil {

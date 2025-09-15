@@ -66,8 +66,7 @@ type InspectRateArgs struct {
 }
 
 type InspectCleanMetricArgs struct {
-	ClusterID proto.ClusterID `json:"clusterid"`
-	DiskID    proto.DiskID    `json:"diskid"`
+	DiskID proto.DiskID `json:"diskid"`
 }
 
 type DiskStatArgs struct {

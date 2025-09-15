@@ -1440,8 +1440,7 @@ func TestService_DataInspect(t *testing.T) {
 			},
 		})
 
-		// totalUrl := testServer.URL + "/inspect/cleanmetric?clusterid=1&diskid=2&vuid=3&bids=4,5,6&err=xxx"
-		totalUrl := testServer.URL + "/inspect/cleanmetric?clusterid=1&diskid=2"
+		totalUrl := testServer.URL + "/inspect/cleanmetric?diskid=2"
 		resp, err := HTTPRequest(http.MethodPost, totalUrl)
 		require.Nil(t, err)
 		defer resp.Body.Close()
