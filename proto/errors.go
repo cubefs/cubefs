@@ -36,6 +36,8 @@ var (
 	ErrInvalidMpStart         = errors.New("invalid meta partition start value")
 	ErrNoAvailDataPartition   = errors.New("no available data partition")
 	ErrReshuffleArray         = errors.New("the array to be reshuffled is nil")
+	ErrVolInitFailed          = errors.New("vol init failed")
+	ErrVolNotReady            = errors.New("vol not ready")
 
 	ErrIllegalDataReplica = errors.New("data replica is illegal")
 

@@ -43,6 +43,13 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	// Volume creation window in seconds - if same volume created within this window, return existing one
+	VolumeCreateWindowSeconds = 5 * 60
+	// Volume initialization timeout in seconds
+	VolumeInitTimeoutSeconds = 600
+)
+
 var (
 	clusterDpCntLimit uint64
 	clusterMpCntLimit uint64
@@ -295,7 +302,8 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	avgSleepTime := time.Second * 5 / time.Duration(len(vols))
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.sendFollowerVolumeDpView %v", vol.Name)
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) ||
+			vol.isInitializingOrInitFailed() {
 			continue
 		}
 		time.Sleep(avgSleepTime)
@@ -710,6 +718,7 @@ func (c *Cluster) scheduleToCheckVolStatus() {
 				vols := c.copyVols()
 				for _, vol := range vols {
 					vol.checkStatus(c)
+					vol.checkInitFailed(c)
 					vol.CheckStrategy(c)
 				}
 			}
@@ -821,6 +830,9 @@ func (c *Cluster) checkDataPartitions() {
 
 	vols := c.allVols()
 	for _, vol := range vols {
+		if vol.isInitializingOrInitFailed() {
+			continue
+		}
 		vol.checkDataPartitions(c)
 		if c.metaReady {
 			vol.dataPartitions.updateResponseCache(true, 0, vol)
@@ -847,7 +859,8 @@ func (c *Cluster) doLoadDataPartitions() {
 	vols := c.allVols()
 	for _, vol := range vols {
 		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
-			(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+			(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) ||
+			vol.isInitializingOrInitFailed() {
 			continue
 		}
 		vol.loadDataPartition(c)
@@ -1714,7 +1727,8 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 			}
 
 			if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
-				(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+				(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) ||
+				vol.isInitializingOrInitFailed() {
 				continue
 			}
 
@@ -1910,7 +1924,7 @@ func (c *Cluster) volDelete(volName string) bool {
 	if !ok {
 		return true
 	}
-	if vol.Status == proto.VolStatusMarkDelete {
+	if vol.isUnavailable() {
 		return true
 	}
 	return false
@@ -4129,6 +4143,7 @@ func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, targetDpCount int, me
 		targetDpCount = defaultInitDataPartitionCnt
 	}
 
+	dpCountOfMediaType = vol.dataPartitions.getDataPartitionsCountOfMediaType(mediaType)
 	for retryCount := 0; dpCountOfMediaType < targetDpCount && retryCount < 3; retryCount++ {
 		oldDpCountOfMediaType := dpCountOfMediaType
 
@@ -4152,21 +4167,67 @@ func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, targetDpCount int, me
 		err = fmt.Errorf("action[initDataPartitionsForCreateVol] vol[%v] mediaType[%v] initDataPartitions failed, createdCount(%v), less than minLimit(%d)",
 			vol.Name, proto.MediaTypeString(mediaType), dpCountOfMediaType, defaultInitDataPartitionCnt)
 
+		vol.volLock.Lock()
 		oldVolStatus := vol.Status
-		vol.Status = proto.VolStatusMarkDelete
+		vol.Status = proto.VolStatusInitFailed
 		if errSync := c.syncUpdateVol(vol); errSync != nil {
-			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] mediaType[%v] after init dataPartition error, mark vol delete persist failed",
+			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] mediaType[%v] after init dataPartition error, update vol status to init failed persist failed",
 				vol.Name, proto.MediaTypeString(mediaType))
 			vol.Status = oldVolStatus
 		} else {
-			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] mediaType[%v] mark vol delete after init dataPartition error",
+			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] mediaType[%v] update vol status to init failed after init dataPartition error",
 				vol.Name, proto.MediaTypeString(mediaType))
 		}
+		vol.volLock.Unlock()
 
 		return dpCountOfMediaType, err
 	}
 
 	return dpCountOfMediaType, nil
+}
+
+func (c *Cluster) checkVolStatus(req *createVolReq, vol *Vol) (err error) {
+	vol.volLock.Lock()
+	currentWindow := int64(VolumeCreateWindowSeconds)
+	if vol.Owner != req.owner {
+		vol.volLock.Unlock()
+		return proto.ErrDuplicateVol
+	}
+
+	switch vol.Status {
+	case proto.VolStatusNormal:
+		vol.volLock.Unlock()
+		if vol.createTime < time.Now().Unix()-currentWindow {
+			return proto.ErrDuplicateVol
+		} else {
+			return nil
+		}
+	case proto.VolStatusInitializing:
+		vol.volLock.Unlock()
+		for i := 0; i < 10; i++ {
+			time.Sleep(1 * time.Second)
+			if vol, err = c.getVol(req.name); err != nil {
+				return proto.ErrVolHasDeleted
+			}
+			if vol.Status == proto.VolStatusNormal {
+				return nil
+			}
+		}
+		return proto.ErrVolInitFailed
+	case proto.VolStatusInitFailed:
+		vol.Status = proto.VolStatusInitializing
+		if err = c.syncUpdateVol(vol); err != nil {
+			vol.Status = proto.VolStatusInitFailed
+			vol.volLock.Unlock()
+			log.LogErrorf("action[createVol] update vol status to initializing, vol[%v] err[%v]", vol.Name, err)
+			return err
+		}
+		vol.volLock.Unlock()
+		return nil
+	default:
+		vol.volLock.Unlock()
+		return proto.ErrDuplicateVol
+	}
 }
 
 // Create a new volume.
@@ -4183,27 +4244,46 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		return
 	}
 
-	if vol, err = c.doCreateVol(req); err != nil {
-		goto errHandler
+	c.createVolMutex.Lock()
+	if vol, err = c.getVol(req.name); err != nil {
+		if vol, err = c.doCreateVol(req); err != nil {
+			c.createVolMutex.Unlock()
+			vol = nil
+			err = proto.ErrVolInitFailed
+			goto errHandler
+		}
+	} else {
+		err = c.checkVolStatus(req, vol)
+		if err != nil {
+			c.createVolMutex.Unlock()
+			vol = nil
+			goto errHandler
+		}
+		if vol.Status == proto.VolStatusNormal {
+			c.createVolMutex.Unlock()
+			return vol, nil
+		}
+	}
+	c.createVolMutex.Unlock()
+
+	if !vol.hasAclMgr {
+		vol.aclMgr.init(c, vol)
+		vol.initUidSpaceManager(c)
+		vol.initQuotaManager(c)
+		vol.hasAclMgr = true
 	}
 
-	vol.aclMgr.init(c, vol)
-	vol.initUidSpaceManager(c)
-	vol.initQuotaManager(c)
 	if err = vol.VersionMgr.init(c); err != nil {
-		log.LogError("init dataPartition error in verMgr init", err.Error())
+		log.LogErrorf("action[createVol] init dataPartition error in verMgr init: %v", err)
 	}
 
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
-		vol.Status = proto.VolStatusMarkDelete
-
-		if e := vol.deleteVolFromStore(c); e != nil {
-			log.LogErrorf("action[createVol] deleteVolFromStore failed, vol[%v] err[%v]", vol.Name, e)
+		vol.volLock.Lock()
+		vol.Status = proto.VolStatusInitFailed
+		if errSync := c.syncUpdateVol(vol); errSync != nil {
+			log.LogErrorf("action[createVol] update vol status to init failed failed, vol[%v] err[%v]", vol.Name, err)
 		}
-
-		c.deleteVol(req.name)
-
-		err = fmt.Errorf("action[createVol] initMetaPartitions failed, vol[%v] err[%v]", vol.Name, err)
+		vol.volLock.Unlock()
 		goto errHandler
 	}
 
@@ -4228,6 +4308,16 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	vol.dataPartitions.updateResponseCache(true, 0, vol)
 	vol.dataPartitions.updateCompressCache(true, 0, vol)
 
+	vol.volLock.Lock()
+	vol.Status = proto.VolStatusNormal
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.Status = proto.VolStatusInitFailed
+		log.LogErrorf("action[createVol] update vol status to init failed failed, vol[%v] err[%v]", vol.Name, err)
+		vol.volLock.Unlock()
+		goto errHandler
+	}
+	vol.volLock.Unlock()
+
 	log.LogInfof("action[createVol] vol[%v], readableAndWritableCnt[%v]",
 		req.name, vol.dataPartitions.readableAndWritableCnt)
 	return
@@ -4240,9 +4330,6 @@ errHandler:
 }
 
 func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
-	c.createVolMutex.Lock()
-	defer c.createVolMutex.Unlock()
-
 	createTime := time.Now().Unix() // record unix seconds of volume create time
 	var dataPartitionSize uint64
 
@@ -4307,6 +4394,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		RemoteCacheSameZoneTimeout:   req.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: req.remoteCacheSameRegionTimeout,
 		DefaultStoreMode:             req.storeMode,
+		Status:                       proto.VolStatusInitializing,
 	}
 
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, 0)
@@ -4323,11 +4411,6 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 
 	if c.cfg.SingleNodeMode {
 		vv.ReplicaNum = 1
-	}
-
-	if _, err = c.getVol(req.name); err == nil {
-		err = proto.ErrDuplicateVol
-		goto errHandler
 	}
 
 	vv.ID, err = c.idAlloc.allocateCommonID()
@@ -4568,7 +4651,7 @@ func (c *Cluster) allVols() (vols map[string]*Vol) {
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
 	for name, vol := range c.vols {
-		if vol.Status == proto.VolStatusNormal || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden) {
+		if vol.Status == proto.VolStatusNormal || vol.isInitializingOrInitFailed() || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden) {
 			vols[name] = vol
 		}
 	}

@@ -184,7 +184,7 @@ func (v *Volume) loadOSSMeta() {
 		}
 		return
 	}
-	if volumeInfo.Status == 1 {
+	if volumeInfo.Status == proto.VolStatusMarkDelete || volumeInfo.Status == proto.VolStatusInitFailed || volumeInfo.Status == proto.VolStatusInitializing {
 		log.LogWarnf("loadOSSMeta: volume has been deleted: volume(%s) status(%d)", v.name, volumeInfo.Status)
 		err = syscall.ENOENT
 		return
@@ -3039,8 +3039,8 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		log.LogErrorf("NewVolume: get volume info from master failed: volume(%v) err(%v)", config.Volume, err)
 		return nil, err
 	}
-	if volumeInfo.Status == 1 {
-		log.LogWarnf("NewVolume: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+	if volumeInfo.Status == proto.VolStatusMarkDelete || volumeInfo.Status == proto.VolStatusInitFailed || volumeInfo.Status == proto.VolStatusInitializing {
+		log.LogWarnf("NewVolume: volume has been marked for deletion: volume(%v) status(%v)",
 			config.Volume, volumeInfo.Status)
 		return nil, proto.ErrVolNotExists
 	}

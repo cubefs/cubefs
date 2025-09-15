@@ -54,7 +54,7 @@ func (m *Server) getMetaPartitionEmptyStatus(w http.ResponseWriter, r *http.Requ
 			continue
 		}
 		// skip the deleted volume.
-		if vol.Status == proto.VolStatusMarkDelete {
+		if vol.isUnavailable() {
 			continue
 		}
 		volStatus := proto.VolEmptyMpStats{
@@ -100,8 +100,8 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if vol.Status == proto.VolStatusMarkDelete {
-		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("volume (%s) is deleted already.", name)))
+	if vol.isUnavailable() {
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("volume (%s) is deleted or init failed already.", name)))
 		return
 	}
 
@@ -207,8 +207,8 @@ func (m *Server) cleanEmptyMetaPartition(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if vol.Status == proto.VolStatusMarkDelete {
-		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("volume (%s) is deleted already.", name)))
+	if vol.isUnavailable() {
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("volume (%s) is deleted or init failed already.", name)))
 		return
 	}
 

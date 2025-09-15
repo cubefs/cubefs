@@ -191,6 +191,7 @@ type Vol struct {
 	uidSpaceManager *UidSpaceManager
 	quotaManager    *MasterQuotaManager
 	VersionMgr      *VolVersionManager
+	hasAclMgr       bool
 
 	mpsLock *mpsLockManager
 	volLock sync.RWMutex
@@ -462,7 +463,7 @@ func (vol *Vol) CheckStrategy(c *Cluster) {
 		waited := false
 		for {
 			time.Sleep(waitTime)
-			if vol.Status == proto.VolStatusMarkDelete {
+			if vol.isUnavailable() {
 				break
 			}
 			if c != nil && c.IsLeader() {
@@ -706,8 +707,13 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 		count = defaultMaxInitMetaPartitionCount
 	}
 
+	vol.mpsLock.RLock()
+	existingCount := len(vol.MetaPartitions)
+	vol.mpsLock.RUnlock()
+	end = gConfig.MetaPartitionInodeIdStep * uint64(existingCount)
+
 	vol.createMpMutex.Lock()
-	for index := 0; index < count; index++ {
+	for index := existingCount; index < count; index++ {
 		if index != 0 {
 			start = end + 1
 		}
@@ -741,7 +747,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 			vol.DpReadOnlyWhenVolFull, stat.String(), vol.Name)
 	}
 
-	if vol.Status != proto.VolStatusMarkDelete && proto.IsHot(vol.VolType) &&
+	if vol.Status != proto.VolStatusMarkDelete && vol.Status != proto.VolStatusInitFailed && vol.Status != proto.VolStatusInitializing && proto.IsHot(vol.VolType) &&
 		(time.Now().Unix()-vol.createTime >= defaultIntervalToCheckDataPartition) {
 		for _, asc := range vol.allowedStorageClass {
 			// check if need create dp for each allowedStorageClass of vol
@@ -1221,6 +1227,11 @@ func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 		return
 	}
 
+	if vol.status() == proto.VolStatusInitFailed || vol.status() == proto.VolStatusInitializing {
+		err = proto.ErrVolNotReady
+		return
+	}
+
 	if vol.capacity() == 0 {
 		err = proto.ErrVolNoAvailableSpace
 		return
@@ -1506,6 +1517,21 @@ func (vol *Vol) checkStatus(c *Cluster) {
 		}
 		vol.Deleting = false
 	}()
+}
+
+func (vol *Vol) checkInitFailed(c *Cluster) {
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
+	deleteTime := int64(20 * 60)
+	if vol.Status != proto.VolStatusInitFailed || vol.createTime > time.Now().Unix()-deleteTime {
+		return
+	}
+
+	vol.Status = proto.VolStatusMarkDelete
+	if err := c.syncUpdateVol(vol); err != nil {
+		vol.Status = proto.VolStatusInitFailed
+		log.LogErrorf("action[initFailed] vol[%v] update vol status to mark delete failed, err[%v]", vol.Name, err)
+	}
 }
 
 func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTask) {
@@ -2035,4 +2061,12 @@ func (vol *Vol) getSortMetaPartitions() (mps []*MetaPartition) {
 	sort.Slice(mps, func(i, j int) bool { return mps[i].Start < mps[j].Start })
 
 	return
+}
+
+func (vol *Vol) isInitializingOrInitFailed() bool {
+	return vol.Status == proto.VolStatusInitializing || vol.Status == proto.VolStatusInitFailed
+}
+
+func (vol *Vol) isUnavailable() bool {
+	return vol.isInitializingOrInitFailed() || vol.Status == proto.VolStatusMarkDelete
 }

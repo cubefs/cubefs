@@ -174,8 +174,8 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 		return err
 	}
 
-	if vol.Status == proto.VolStatusMarkDelete {
-		log.LogInfof("volume(%s) is deleted before cleaned empty meta partitions.", name)
+	if vol.isUnavailable() {
+		log.LogInfof("volume(%s) is deleted or init failed before cleaned empty meta partitions.", name)
 		return nil
 	}
 
@@ -1904,8 +1904,8 @@ func (c *Cluster) CalculateMetaPartitionFreezeCount(name string) (*CleanTask, er
 		return nil, err
 	}
 
-	if vol.Status == proto.VolStatusMarkDelete {
-		err = fmt.Errorf("volume(%s) is deleted before cleaned empty meta partitions.", name)
+	if vol.isUnavailable() {
+		err = fmt.Errorf("volume(%s) is deleted or init failed before cleaned empty meta partitions.", name)
 		log.LogInfof(err.Error())
 		return nil, err
 	}
@@ -2001,8 +2001,8 @@ func (c *Cluster) FillModifyStoreModePlan(plan *proto.ClusterPlan, volName strin
 			return fmt.Errorf("get volume(%s) failed: %v", volName, err)
 		}
 
-		if vol.Status == proto.VolStatusMarkDelete {
-			return fmt.Errorf("volume(%s) is marked delete", volName)
+		if vol.isUnavailable() {
+			return fmt.Errorf("volume(%s) is marked delete or init failed", volName)
 		}
 
 		mps = vol.cloneMetaPartitionMap()

@@ -819,6 +819,10 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 				daemonize.SignalOutcome(err)
 				os.Exit(1)
 			}
+			if volumeInfo.Status == proto.VolStatusInitializing || volumeInfo.Status == proto.VolStatusInitFailed {
+				log.LogWarnf("UpdateVolConf: volume [%s] is initializing, skip config update", volumeInfo.Name)
+				continue
+			}
 			super.SetTransaction(volumeInfo.EnableTransactionV1, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
 			if proto.IsCold(opt.VolType) || proto.IsStorageClassBlobStore(opt.VolStorageClass) {
 				super.EbsBlockSize = volumeInfo.ObjBlockSize
@@ -1120,6 +1124,12 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
 	if err != nil {
 		return
+	}
+	if volumeInfo.Status == proto.VolStatusMarkDelete {
+		return proto.ErrVolNotExists
+	}
+	if volumeInfo.Status == proto.VolStatusInitFailed || volumeInfo.Status == proto.VolStatusInitializing {
+		return proto.ErrVolNotReady
 	}
 	opt.VolType = volumeInfo.VolType
 	opt.EbsBlockSize = volumeInfo.ObjBlockSize

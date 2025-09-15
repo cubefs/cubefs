@@ -249,6 +249,9 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 					c.Name, partition.volName, partitionID))
 				continue
 			}
+			if vol.isUnavailable() {
+				continue
+			}
 
 			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.mpReplicaNum) {
 				newBadMpIds = append(newBadMpIds, partitionID)

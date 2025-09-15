@@ -232,10 +232,15 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 		return
 	}
 
-	if view.Status == 1 {
-		log.LogWarnf("GetSimpleVolView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+	if view.Status == proto.VolStatusMarkDelete {
+		log.LogWarnf("GetSimpleVolView: volume has been marked for deletion: volume(%v) status(%v)",
 			w.VolName, view.Status)
 		return proto.ErrVolNotExists
+	}
+	if view.Status == proto.VolStatusInitFailed || view.Status == proto.VolStatusInitializing {
+		log.LogWarnf("GetSimpleVolView: volume has been marked for deletion: volume(%v) status(%v)",
+			w.VolName, view.Status)
+		return proto.ErrVolNotReady
 	}
 
 	w.followerRead = view.FollowerRead

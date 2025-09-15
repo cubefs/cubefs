@@ -324,8 +324,8 @@ func (m *Server) forbidVolume(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if vol.Status == proto.VolStatusMarkDelete {
-		err = errors.New("vol has been mark delete, freeze operation is not allowed")
+	if vol.isUnavailable() {
+		err = errors.New("vol has been mark delete or init failed, freeze operation is not allowed")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolHasDeleted, Msg: err.Error()})
 		return
 	}
@@ -1284,6 +1284,12 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	if vol.status() == proto.VolStatusMarkDelete {
 		log.LogErrorf("action[createMetaPartition] vol[%s] is marked delete ", vol.Name)
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if vol.isInitializingOrInitFailed() {
+		log.LogErrorf("action[createMetaPartition] vol[%s] is init failed or initializing", vol.Name)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotReady))
 		return
 	}
 
@@ -2462,8 +2468,8 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if status {
-		if vol.Status == proto.VolStatusMarkDelete {
-			err = errors.New("vol has been mark delete, repeated deletions are not allowed")
+		if vol.isUnavailable() {
+			err = errors.New("vol has been mark delete or init failed, repeated deletions are not allowed")
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolHasDeleted, Msg: err.Error()})
 			return
 		}

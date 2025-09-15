@@ -31,8 +31,10 @@ var DiskStatusMap = map[int]string{
 
 // volume status
 const (
-	VolStatusNormal     uint8 = 0
-	VolStatusMarkDelete uint8 = 1
+	VolStatusNormal       uint8 = 0
+	VolStatusMarkDelete   uint8 = 1
+	VolStatusInitializing uint8 = 2
+	VolStatusInitFailed   uint8 = 3
 )
 
 // dp replica readOnly reason

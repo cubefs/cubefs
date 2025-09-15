@@ -66,10 +66,13 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				log.LogInfof("[checkDiskRecoveryProgress] dp(%v) decommission pause", partitionID)
 				continue
 			}
-			_, err = c.getVol(partition.VolName)
+			vol, err := c.getVol(partition.VolName)
 			if err != nil {
 				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] vol(%s) is not exist",
 					c.Name, partitionID, partition.VolName))
+				continue
+			}
+			if vol.isUnavailable() {
 				continue
 			}
 			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replicas %v conf replicas num %v  status(%v)",

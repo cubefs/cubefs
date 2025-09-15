@@ -86,11 +86,17 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			return
 		}
 	}
-	if vv.Status == 1 {
-		log.LogErrorf("fetchVolumeView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+	if vv.Status == proto.VolStatusMarkDelete {
+		log.LogErrorf("fetchVolumeView: volume has been marked for deletion: volume(%v) status(%v)",
 			vv.Name, vv.Status)
 		return nil, proto.ErrVolNotExists
 	}
+	if vv.Status == proto.VolStatusInitFailed || vv.Status == proto.VolStatusInitializing {
+		log.LogWarnf("fetchVolumeView: volume is not ready: volume(%v) status(%v)",
+			vv.Name, vv.Status)
+		return nil, proto.ErrVolNotReady
+	}
+
 	convert := func(volView *proto.VolView) *VolumeView {
 		result := &VolumeView{
 			Name:           volView.Name,

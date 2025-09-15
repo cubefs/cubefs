@@ -1810,6 +1810,9 @@ func (c *Cluster) loadVols() (err error) {
 			continue
 		}
 		vol.Status = vv.Status
+		if vol.Status == proto.VolStatusInitializing {
+			vol.Status = proto.VolStatusInitFailed
+		}
 		if err = c.loadAclList(vol); err != nil {
 			log.LogInfof("action[loadVols],vol[%v] load acl manager error %v", vol.Name, err)
 			continue

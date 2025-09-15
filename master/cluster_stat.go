@@ -191,6 +191,9 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 func (c *Cluster) updateVolStatInfo() {
 	vols := c.copyVols()
 	for _, vol := range vols {
+		if vol.isUnavailable() {
+			continue
+		}
 		used, total := vol.totalUsedSpace(), vol.Capacity*util.GB
 		if total <= 0 {
 			continue
