@@ -374,7 +374,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
-	checkPartitionCreateInterval := cfg.GetString(checkPartitionCreateInterval)
+	checkPartitionCreateInterval := cfg.GetString(checkPartitionCreateIntervalKey)
 	if checkPartitionCreateInterval != "" {
 		if m.config.checkPartitionCreateInterval, err = strconv.ParseInt(checkPartitionCreateInterval, 10, 64); err != nil {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())

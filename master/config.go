@@ -42,7 +42,7 @@ const (
 	metaPartitionTimeOutSec             = "metaPartitionTimeOutSec"
 	NumberOfDataPartitionsToLoad        = "numberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
-	checkPartitionCreateInterval        = "checkPartitionCreateInterval"
+	checkPartitionCreateIntervalKey     = "checkPartitionCreateInterval"
 	nodeSetCapacity                     = "nodeSetCap"
 	cfgMetaNodeReservedMem              = "metaNodeReservedMem"
 	heartbeatPortKey                    = "heartbeatPort"

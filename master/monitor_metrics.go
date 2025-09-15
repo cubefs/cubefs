@@ -679,10 +679,16 @@ func (mm *monitorMetrics) checkPartitionCreateMetrics() {
 		log.LogInfof("checkPartitionCreateMetrics: vol %v", vol.createModeString())
 
 		for _, rackLevel := range rackAwareLevel {
-			key := fmt.Sprintf("meta_%v_default", rackLevel)
+			key := fmt.Sprintf("metaMem_%v_default", rackLevel)
 			allStats[key] = true
 
 			if !mm.checkHostSelection(TypeMetaPartition, vol, 0, rackLevel) {
+				failStats[key]++
+			}
+
+			key = fmt.Sprintf("metaRocksdb_%v_default", rackLevel)
+			allStats[key] = true
+			if !mm.checkHostSelection(TypeRocksdbPartition, vol, 0, rackLevel) {
 				failStats[key]++
 			}
 		}
@@ -719,8 +725,10 @@ func (mm *monitorMetrics) checkHostSelection(nodeType uint32, vol *Vol, mediaTyp
 	_, _, err := mm.cluster.getHostFromNormalZoneForCreate(
 		nodeType, int(vol.dpReplicaNum), vol.zoneName, mediaType, rackLevel, vol)
 
-	partitionType := "meta"
-	if nodeType == TypeDataPartition {
+	partitionType := "metaMem"
+	if nodeType == TypeRocksdbPartition {
+		partitionType = "metaRocksdb"
+	} else if nodeType == TypeDataPartition {
 		partitionType = "data"
 	}
 

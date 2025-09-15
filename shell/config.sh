@@ -10,8 +10,8 @@ export NETWORK_START_IP=101
 
 # Node Count Configuration
 export MASTER_COUNT=3          # Number of master nodes (usually 3)
-export DATA_COUNT=8            # Number of data nodes
-export META_COUNT=8            # Number of meta nodes
+export DATA_COUNT=6            # Number of data nodes
+export META_COUNT=6            # Number of meta nodes
 
 # Port Configuration
 export MASTER_PORT=17010
