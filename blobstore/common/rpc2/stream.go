@@ -222,9 +222,13 @@ func (cs *clientStream) newRequest() *Request {
 	return req
 }
 
+type closeError struct {
+	err error
+}
+
 func (cs *clientStream) closedError() error {
 	if val := cs.closed.Load(); val != nil {
-		return val.(error)
+		return val.(closeError).err
 	}
 	return nil
 }
@@ -233,11 +237,11 @@ func (cs *clientStream) closeIfError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if succ := cs.closed.CompareAndSwap(nil, err); succ {
+	if succ := cs.closed.CompareAndSwap(nil, closeError{err: err}); succ {
 		// close connection once
 		cs.req.client.Connector.Put(cs.req.Context(), cs.req.conn, true)
 	} else {
-		err = cs.closed.Load().(error)
+		err = cs.closed.Load().(closeError).err
 	}
 	return err
 }
