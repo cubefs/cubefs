@@ -2343,7 +2343,7 @@ func (c *Cluster) chooseZone2Plus1(rsMgr *rsManager, zones []*Zone,
 	for _, zone := range zoneList {
 		paramCopy.replicaNum = num
 
-		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, paramCopy)
+		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, paramCopy, false)
 		if e != nil {
 			log.LogErrorf("action[chooseZone2Plus1] getAvailNodeHosts param[%v] error: [%v]", paramCopy.String(), e)
 			return nil, nil, e
@@ -2379,7 +2379,7 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, nodeType uint32, param *select
 			zone := zones[c.lastZoneIdxForNode]
 			c.lastZoneIdxForNode = (c.lastZoneIdxForNode + 1) % len(zones)
 			paramCopy.replicaNum = 1
-			selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, paramCopy)
+			selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, paramCopy, false)
 			if err != nil {
 				// no zone available
 				if j == len(zones)-1 {
@@ -2431,11 +2431,11 @@ func (c *Cluster) getHostFromNormalZoneForCreate(nodeType uint32, replicaNum int
 		replicaNum: replicaNum,
 		rackLevel:  rackLevel,
 	}
-	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, dataMediaType, param)
+	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, dataMediaType, param, false)
 }
 
 func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, zoneNumNeed int,
-	specifiedZoneName string, dataMediaType uint32, param *selectParam) (hosts []string, peers []proto.Peer, err error,
+	specifiedZoneName string, dataMediaType uint32, param *selectParam, isThresholdLimit bool) (hosts []string, peers []proto.Peer, err error,
 ) {
 	log.LogInfof("[getHostFromNormalZone] dataMediaType(%v) nodeType(%v) replicaNum(%v) zoneNumNeed(%v) specifiedZoneName(%v)",
 		proto.MediaTypeString(nodeType), nodeType, param.replicaNum, zoneNumNeed, specifiedZoneName)
@@ -2468,7 +2468,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 
 	if len(zonesQualified) == 1 {
 		log.LogInfof("action[getHostFromNormalZone] zones [%v]", zonesQualified[0].name)
-		if hosts, peers, err = zonesQualified[0].getAvailNodeHosts(nodeType, param); err != nil {
+		if hosts, peers, err = zonesQualified[0].getAvailNodeHosts(nodeType, param, isThresholdLimit); err != nil {
 			log.LogWarnf("action[getHostFromNormalZone] err[%v]", err)
 			return
 		}
@@ -3119,7 +3119,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 			log.LogErrorf("[migrateDataPartition] check mediaType err: %v", err.Error())
 			goto errHandler
 		}
-	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(param); err != nil {
+	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(param, false); err != nil {
 		if _, ok := c.vols[dp.VolName]; !ok {
 			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
@@ -3134,10 +3134,10 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		param.excludeNodeSets = excludeNodeSets
 
-		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param); err != nil {
+		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, false); err != nil {
 			// select data nodes from the other zone
 			zones = dp.getLiveZones(srcAddr)
-			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", dp.MediaType, param); err != nil {
+			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", dp.MediaType, param, false); err != nil {
 				goto errHandler
 			}
 		}
@@ -3350,6 +3350,81 @@ func (c *Cluster) returnDataSize(addr string, dp *DataPartition) {
 
 	dataNode.LastUpdateTime = time.Now()
 	dataNode.AvailableSpace += leaderSize
+}
+
+// update datanode simulate reserved size
+func (c *Cluster) addDataReservedResource(addrs []string, dp *DataPartition) error {
+	if len(dp.Replicas) == 0 {
+		return errors.NewErrorf("dp %v has empty replica", dp.decommissionInfo())
+	}
+	leaderSize := dp.Replicas[0].Used
+
+	var updatedDataNodes []*DataNode
+	for _, addr := range addrs {
+		dn, err := c.dataNode(addr)
+		if err != nil {
+			return err
+		}
+
+		dn.Lock()
+		defer dn.Unlock()
+
+		if !dn.isWriteAbleWithSizeNoLock(10 * util.GB) {
+			return fmt.Errorf("new datanode %s is not writable AvailableSpace(%v) isActive(%v) RdOnly(%v) Total(%v) Used(%v) SimulateReservedSpace(%v)",
+				addr, dn.AvailableSpace, dn.isActive, dn.RdOnly, dn.Total, dn.Used, dn.SimulateReservedSpace)
+		}
+
+		updatedDataNodes = append(updatedDataNodes, dn)
+	}
+
+	for _, dn := range updatedDataNodes {
+		dn.SimulateReservedSpace += leaderSize
+		dn.SimulateReservedDpCount++
+	}
+
+	return nil
+}
+
+func (c *Cluster) releaseDataReservedResource(addrs []string, dp *DataPartition) {
+	if len(dp.Replicas) == 0 {
+		log.LogErrorf("action[releaseDataReservedResource] dp(%v) has no replicas", dp.PartitionID)
+		return
+	}
+	leaderSize := dp.Replicas[0].Used
+
+	for _, addr := range addrs {
+		dn, err := c.dataNode(addr)
+		if err != nil {
+			continue
+		}
+		log.LogWarnf("action[releaseDataReservedResource] addr %s, ava %d, leader %d", dn.Addr, dn.AvailableSpace, leaderSize)
+		dn.Lock()
+		defer dn.Unlock()
+		if dn.SimulateReservedSpace < leaderSize {
+			dn.SimulateReservedSpace = 0
+		} else {
+			dn.SimulateReservedSpace -= leaderSize
+		}
+		if dn.SimulateReservedDpCount > 0 {
+			dn.SimulateReservedDpCount--
+		}
+	}
+}
+
+func (c *Cluster) resetDataReservedResource(addrs []string, dp *DataPartition) {
+	leaderSize := dp.Replicas[0].Used
+
+	for _, addr := range addrs {
+		dn, err := c.dataNode(addr)
+		if err != nil {
+			continue
+		}
+		log.LogWarnf("action[releaseDataReservedResource] addr %s, ava %d, leader %d", dn.Addr, dn.AvailableSpace, leaderSize)
+		dn.Lock()
+		defer dn.Unlock()
+		dn.SimulateReservedSpace = 0
+		dn.SimulateReservedDpCount = 0
+	}
 }
 
 func (c *Cluster) buildSetDpRepairStatusTaskAndSyncSendTask(dp *DataPartition, repairingStatus bool, leaderAddr string) (resp *proto.Packet, err error) {
@@ -5703,7 +5778,7 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 					log.LogInfof("[handleDataNodeBadDisk] data node(%v) not found in dp(%v) maybe decommissioned?", dataNode.Addr, dpId)
 					continue
 				}
-				err = c.markDecommissionDataPartition(dp, dataNode, 0, false, AutoDecommission, highPriorityDecommissionWeight, nil)
+				err = c.markDecommissionDataPartition(dp, dataNode, 0, false, AutoDecommission, highPriorityDecommissionWeight, nil, nil)
 				if err != nil {
 					log.LogErrorf("[handleDataNodeBadDisk] failed to decommssion dp(%v) on data node(%v) disk(%v), err(%v)", dataNode.Addr, disk.DiskPath, dp.PartitionID, err)
 					continue
@@ -5823,8 +5898,13 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			ignoreIDs = append(ignoreIDs, dp.PartitionID)
 			continue
 		}
+		if err = c.addDataReservedResource([]string{dp.DecommissionDstAddr}, dp); err != nil {
+			log.LogWarnf("action[TryDecommissionDisk] dp %v simulate resource change failed: %v", dp.PartitionID, err)
+			continue
+		}
 		if err = dp.MarkDecommissionStatus(node.Addr, disk.DstAddr, disk.DiskPath, 0, disk.DecommissionRaftForce,
-			disk.DecommissionTerm, disk.Type, disk.DecommissionWeight, c, nil); err != nil {
+			disk.DecommissionTerm, disk.Type, disk.DecommissionWeight, c, nil, nil); err != nil {
+			c.releaseDataReservedResource([]string{dp.DecommissionDstAddr}, dp)
 			if strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 				c.syncUpdateDataPartition(dp)
 				// still decommission dp but not involved in the calculation of the decommission progress.
@@ -6640,7 +6720,7 @@ func (c *Cluster) rangeAllParitions(f func(d *DataPartition) bool) {
 	}
 }
 
-func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode, dstNodeSetID uint64, raftForce bool, migrateType uint32, weight int, srcAddrs []string) (err error) {
+func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode, dstNodeSetID uint64, raftForce bool, migrateType uint32, weight int, srcAddrs []string, dstAddrs []string) (err error) {
 	addr := src.Addr
 	replica, err := dp.getReplica(addr)
 	if err != nil {
@@ -6658,7 +6738,7 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 		return
 	}
 
-	if err = dp.MarkDecommissionStatus(addr, "", replica.DiskPath, dstNodeSetID, raftForce, uint64(time.Now().Unix()), migrateType, weight, c, srcAddrs); err != nil {
+	if err = dp.MarkDecommissionStatus(addr, "", replica.DiskPath, dstNodeSetID, raftForce, uint64(time.Now().Unix()), migrateType, weight, c, srcAddrs, dstAddrs); err != nil {
 		if !strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 			dp.markRollbackFailed(false)
 			dp.DecommissionErrorMessage = err.Error()

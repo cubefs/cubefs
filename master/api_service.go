@@ -2239,7 +2239,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	err = m.cluster.markDecommissionDataPartition(dp, node, dstNodeSet, raftForce, uint32(decommissionType), weight, nil)
+	err = m.cluster.markDecommissionDataPartition(dp, node, dstNodeSet, raftForce, uint32(decommissionType), weight, nil, nil)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2413,6 +2413,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		SrcAddresses:          dp.DecommissionSrcAddrs,
 		SrcDiskPath:           dp.DecommissionSrcDiskPath,
 		DstAddress:            dp.DecommissionDstAddr,
+		DstAddresses:          dp.DecommissionDstAddrs,
 		DstNodeSet:            dp.DecommissionDstNodeSet,
 		Term:                  dp.DecommissionTerm,
 		Weight:                dp.DecommissionWeight,
@@ -3427,6 +3428,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		Total:                                 dataNode.Total,
 		Used:                                  dataNode.Used,
 		AvailableSpace:                        dataNode.AvailableSpace,
+		SimulateReservedSpace:                 dataNode.SimulateReservedSpace,
 		ID:                                    dataNode.ID,
 		ZoneName:                              dataNode.ZoneName,
 		Rack:                                  dataNode.Rack,
@@ -3442,6 +3444,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		SelectedTimes:                         dataNode.SelectedTimes,
 		DataPartitionReports:                  dataNode.DataPartitionReports,
 		DataPartitionCount:                    dataNode.DataPartitionCount,
+		SimulateReservedDpCount:               dataNode.SimulateReservedDpCount,
 		NodeSetID:                             dataNode.NodeSetID,
 		PersistenceDataPartitions:             dataNode.PersistenceDataPartitions,
 		AllDisks:                              dataNode.AllDisks,

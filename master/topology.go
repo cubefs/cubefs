@@ -625,7 +625,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 						excludeRacks:    nil,
 					}
 
-					if host, peer, err = ns.getAvailDataNodeHosts(param); err != nil {
+					if host, peer, err = ns.getAvailDataNodeHosts(param, false); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						// nsg.status = dataNodesUnAvailable
 						continue
@@ -642,7 +642,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 						rackLevel:       proto.RackAwareNone,
 						excludeRacks:    nil,
 					}
-					if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode); err != nil {
+					if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode, false); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific]  ns[%v] zone[%v] type(%d) err[%v]", ns.ID, ns.zoneName, createType, err)
 						// nsg.status = metaNodesUnAvailable
 						continue
@@ -749,7 +749,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					rackLevel:       proto.RackAwareNone,
 					excludeRacks:    nil,
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(param); err != nil {
+				if host, peer, err = ns.getAvailDataNodeHosts(param, false); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = dataNodesUnAvailable
 					continue
@@ -770,7 +770,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					rackLevel:       proto.RackAwareNone,
 					excludeRacks:    nil,
 				}
-				if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode); err != nil {
+				if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode, false); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] ModeRocksDb err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = metaNodesUnAvailable
 					continue
@@ -2210,7 +2210,7 @@ func (zone *Zone) getSpaceLeft(dataType uint32) (spaceLeft uint64) {
 	}
 }
 
-func (zone *Zone) getAvailNodeHosts(nodeType uint32, param *selectParam) (newHosts []string, peers []proto.Peer, err error) {
+func (zone *Zone) getAvailNodeHosts(nodeType uint32, param *selectParam, isThresholdLimit bool) (newHosts []string, peers []proto.Peer, err error) {
 	if param.replicaNum == 0 {
 		return
 	}
@@ -2222,7 +2222,7 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, param *selectParam) (newHos
 		if err != nil {
 			return nil, nil, errors.Trace(err, "zone[%v] alloc node set, param[%v], err %s", zone.name, param.String(), err.Error())
 		}
-		return ns.getAvailDataNodeHosts(param)
+		return ns.getAvailDataNodeHosts(param, isThresholdLimit)
 	}
 
 	storeMode := proto.StoreModeMem
@@ -2235,7 +2235,7 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, param *selectParam) (newHos
 		return nil, nil, errors.NewErrorf("zone[%v], param[%v], err[%v]", zone.name, param.String(), err.Error())
 	}
 
-	return ns.getAvailMetaNodeHosts(param, storeMode)
+	return ns.getAvailMetaNodeHosts(param, storeMode, isThresholdLimit)
 }
 
 func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector string, metaNodesetSelector string) error {
@@ -2661,9 +2661,11 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 			l.nsId, l, dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
 		dp.deleteRetryTimesRecordByDiskPath(dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath)
 		dp.setRestoreReplicaStop()
+		c.releaseDataReservedResource([]string{dp.DecommissionDstAddr}, dp)
 		if dp.ProcessNextDecommissionSrcHost(c) {
 			return
 		}
+		c.releaseDataReservedResource(dp.DecommissionDstAddrs, dp)
 		dp.ResetDecommissionStatus()
 		err := c.syncUpdateDataPartition(dp)
 		if err != nil {
@@ -2688,6 +2690,12 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 			// if dp is not removed from decommission list, do not reset RestoreReplica
 			dp.setRestoreReplicaStop()
 			remove = true
+			var addrsToRelease []string
+			addrsToRelease = append(addrsToRelease, dp.DecommissionDstAddr)
+			if dp.DecommissionDstAddrs != nil {
+				addrsToRelease = append(addrsToRelease, dp.DecommissionDstAddrs...)
+			}
+			c.releaseDataReservedResource(addrsToRelease, dp)
 		}
 		if needSkip {
 			return

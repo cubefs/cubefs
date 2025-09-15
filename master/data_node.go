@@ -37,6 +37,7 @@ type DataNode struct {
 	Total                              uint64 `json:"TotalWeight"`
 	Used                               uint64 `json:"UsedWeight"`
 	AvailableSpace                     uint64
+	SimulateReservedSpace              uint64
 	ID                                 uint64
 	ZoneName                           string `json:"Zone"`
 	Rack                               string `json:"Rack"` // 添加 rack 字段
@@ -54,6 +55,7 @@ type DataNode struct {
 	TaskManager                        *AdminTaskManager `graphql:"-"`
 	DataPartitionReports               []*proto.DataPartitionReport
 	DataPartitionCount                 uint32
+	SimulateReservedDpCount            uint32
 	TotalPartitionSize                 uint64
 	NodeSetID                          uint64
 	PersistenceDataPartitions          []uint64
@@ -344,6 +346,12 @@ func (dataNode *DataNode) IsWriteAble() (ok bool) {
 	return dataNode.isWriteAbleWithSizeNoLock(10 * util.GB)
 }
 
+func (dataNode *DataNode) IsWriteAbleWithThreshold(threshold float64) (ok bool) {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.isWriteAbleWithThresholdNoLock(threshold)
+}
+
 func (dataNode *DataNode) availableDiskCount() (cnt int) {
 	for _, disk := range dataNode.AllDisks {
 		if ok := dataNode.checkDecommissionedDisks(disk); !ok {
@@ -393,10 +401,19 @@ func (dataNode *DataNode) GetAvailableSpace() uint64 {
 }
 
 func (dataNode *DataNode) PartitionCntLimited() bool {
-	limited := uint64(dataNode.DataPartitionCount) <= dataNode.GetPartitionLimitCnt()
+	limited := uint64(dataNode.DataPartitionCount+dataNode.SimulateReservedDpCount) <= dataNode.GetPartitionLimitCnt()
 	if !limited {
-		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, limit %d",
-			dataNode.Addr, dataNode.DataPartitionCount, dataNode.GetPartitionLimitCnt())
+		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, simulate reserved cnt %d, limit %d",
+			dataNode.Addr, dataNode.DataPartitionCount, dataNode.SimulateReservedDpCount, dataNode.GetPartitionLimitCnt())
+	}
+	return limited
+}
+
+func (dataNode *DataNode) PartitionCntLimitedWithThreshold(threshold float64) bool {
+	limited := float64(dataNode.DataPartitionCount+dataNode.SimulateReservedDpCount) <= float64(dataNode.GetPartitionLimitCnt())*threshold
+	if !limited {
+		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, simulate reserved cnt %d, limit %d, threshold %v",
+			dataNode.Addr, dataNode.DataPartitionCount, dataNode.SimulateReservedDpCount, dataNode.GetPartitionLimitCnt(), threshold)
 	}
 	return limited
 }
@@ -408,15 +425,30 @@ func (dataNode *DataNode) GetStorageInfo() string {
 }
 
 func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
-	if dataNode.isActive && dataNode.AvailableSpace > size && !dataNode.RdOnly &&
+	if dataNode.isActive && dataNode.AvailableSpace-dataNode.SimulateReservedSpace > size && !dataNode.RdOnly &&
 		dataNode.Total > dataNode.Used && (dataNode.Total-dataNode.Used) > size {
 		ok = true
 	}
 	if !ok {
-		log.LogInfof("node %v, isActive %v, RdOnly %v, Total %v AvailableSpace %v, "+
-			"used %v, dp cnt %v required size %v",
-			dataNode.Addr, dataNode.isActive, dataNode.RdOnly, dataNode.Total, dataNode.AvailableSpace, dataNode.Used,
-			dataNode.DataPartitionCount, size)
+		log.LogInfof("[isWriteAbleWithSizeNoLock] node %v, isActive %v, TotalDpCnt %v, RdOnly %v, Total %v, AvailableSpace %v, "+
+			"used %v, SimulateReservedSpace %v, reserved size %v threshold %v",
+			dataNode.Addr, dataNode.isActive, dataNode.DataPartitionCount, dataNode.RdOnly, dataNode.Total, dataNode.AvailableSpace, dataNode.Used,
+			dataNode.SimulateReservedSpace, size)
+	}
+
+	return
+}
+
+func (dataNode *DataNode) isWriteAbleWithThresholdNoLock(threshold float64) (ok bool) {
+	if dataNode.isActive && float64(dataNode.AvailableSpace-dataNode.SimulateReservedSpace) > threshold*float64(dataNode.Total) && !dataNode.RdOnly &&
+		dataNode.Total > dataNode.Used && float64(dataNode.Total-dataNode.Used) > threshold*float64(dataNode.Total) {
+		ok = true
+	}
+	if !ok {
+		log.LogInfof("[isWriteAbleWithSizeNoLock] node %v, isActive %v, TotalDpCnt %v, RdOnly %v, Total %v, AvailableSpace %v, "+
+			"used %v, SimulateReservedSpace %v, threshold %v",
+			dataNode.Addr, dataNode.isActive, dataNode.DataPartitionCount, dataNode.RdOnly, dataNode.Total, dataNode.AvailableSpace, dataNode.Used,
+			dataNode.SimulateReservedSpace, threshold)
 	}
 
 	return

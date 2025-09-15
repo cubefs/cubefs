@@ -1067,8 +1067,8 @@ func (api *AdminAPI) CancelDpNodesetBalance() (err error) {
 	return
 }
 
-func (api *AdminAPI) QueryNodesetBalanceStatus() (status map[string]interface{}, err error) {
-	status = make(map[string]interface{})
+func (api *AdminAPI) QueryNodesetBalanceStatus() (status *proto.NodesetBalanceStatus, err error) {
+	status = &proto.NodesetBalanceStatus{}
 	err = api.mc.requestWith(&status, newRequest(get, proto.AdminQueryNodesetBalanceStatus).Header(api.h))
 	return
 }

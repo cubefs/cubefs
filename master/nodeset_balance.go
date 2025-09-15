@@ -34,25 +34,12 @@ type nodeSetResource struct {
 }
 
 const (
-	// Single migration target: 5000 DPs per day
-	singleMigrationTarget = 5000
+	// concurrent Balance DP Count
+	concurrentBalancedDPCount = 400
 
 	// Task execution interval (4 hours)
-	NodesetBalanceInterval = 4 * time.Hour
-
-	// Conservative admission thresholds
-	conservativeMinAllocNodes         = 3
-	conservativeDpRatioThreshold      = 0.3
-	conservativeStorageRatioThreshold = 0.3
-
-	// Normal admission thresholds
-	normalMinAllocNodes         = 2
-	normalDpRatioThreshold      = 0.2
-	normalStorageRatioThreshold = 0.2
-
-	// Target selection scoring weights
-	dpRatioWeight      = 0.5
-	storageRatioWeight = 0.5
+	// NodesetBalanceInterval = 4 * time.Hour
+	NodesetBalanceInterval = 2 * time.Minute
 )
 
 // scheduleToNodesetBalance registers auto nodeset balance task
@@ -70,27 +57,11 @@ func (c *Cluster) scheduleToNodesetBalance() {
 					log.LogDebugf("action[nodesetBalanceController] nodeset balance is disabled, skip execution")
 					return
 				}
-				c.executeNodesetBalanceController()
+				c.executeNodesetBalanceMigrations()
 				return
 			},
 		},
 	)
-}
-
-func (c *Cluster) executeNodesetBalanceController() {
-	begin := time.Now()
-	log.LogInfof("action[executeNodesetBalanceController] starting balance controller cycle")
-
-	defer func() {
-		log.LogInfof("action[executeNodesetBalanceController] balance controller cycle completed in %v", time.Since(begin))
-	}()
-
-	if !c.hasUnbalancedDataPartitions() {
-		log.LogDebugf("action[executeNodesetBalanceController] cluster is fully balanced, no action needed")
-		return
-	}
-
-	c.executeNodesetBalanceMigrations()
 }
 
 func (c *Cluster) executeNodesetBalanceMigrations() {
@@ -101,14 +72,50 @@ func (c *Cluster) executeNodesetBalanceMigrations() {
 		log.LogInfof("action[executeNodesetBalanceMigrations] migration execution completed in %v", time.Since(begin))
 	}()
 
-	dpHost2Ns := c.buildDpHostToNodeSet()
-	if len(dpHost2Ns) == 0 {
-		log.LogWarnf("action[executeNodesetBalanceMigrations] empty host->nodeset mapping, skip execution")
+	activeTasks := c.countActiveNodesetBalanceTasks()
+	if activeTasks >= concurrentBalancedDPCount {
+		log.LogInfof("action[executeNodesetBalanceMigrations] already have %d active tasks, skipping execution", activeTasks)
 		return
 	}
 
+	dpHost2Ns := c.buildDpHostToNodeSet()
 	vols := c.copyVols()
 	processedCount := 0
+	availableSlots := concurrentBalancedDPCount - activeTasks
+
+outerLoop:
+	for _, vol := range vols {
+		partitions := vol.dataPartitions.clonePartitions()
+		for _, dp := range partitions {
+			if processedCount >= availableSlots {
+				log.LogInfof("action[executeNodesetBalanceMigrations] reached available slots limit (%d)", availableSlots)
+				break outerLoop
+			}
+
+			if dp.IsDiscard {
+				continue
+			}
+
+			_, isBalanced := getDpNodesetDistribution(dp, dpHost2Ns)
+			if isBalanced {
+				continue
+			}
+
+			if dp.DecommissionType == proto.NodesetBalance && dp.DecommissionStatus != DecommissionFail {
+				continue
+			}
+
+			c.processPartitionMigration(dp, dp.Hosts)
+			processedCount++
+		}
+	}
+
+	log.LogInfof("action[executeNodesetBalanceMigrations] completed, processed %d DPs", processedCount)
+}
+
+func (c *Cluster) countActiveNodesetBalanceTasks() int {
+	count := 0
+	vols := c.copyVols()
 
 	for _, vol := range vols {
 		partitions := vol.dataPartitions.clonePartitions()
@@ -117,21 +124,14 @@ func (c *Cluster) executeNodesetBalanceMigrations() {
 				continue
 			}
 
-			if dp.DecommissionType == proto.NodesetBalance {
-				continue
-			}
-
-			c.processPartitionMigration(dp, dp.Hosts, dpHost2Ns)
-			processedCount++
-
-			if processedCount >= singleMigrationTarget {
-				log.LogInfof("action[executeNodesetBalanceMigrations] processed %d DPs, stopping", processedCount)
-				break
+			if dp.DecommissionType == proto.NodesetBalance && dp.DecommissionStatus != DecommissionFail {
+				count++
 			}
 		}
 	}
 
-	log.LogInfof("action[executeNodesetBalanceMigrations] completed, processed %d DPs", processedCount)
+	log.LogInfof("action[countActiveNodesetBalanceTasks] total active tasks: %d", count)
+	return count
 }
 
 func getDpNodesetDistribution(dp *DataPartition, dpHost2Ns map[string]uint64) (map[uint64]int, bool) {
@@ -145,56 +145,62 @@ func getDpNodesetDistribution(dp *DataPartition, dpHost2Ns map[string]uint64) (m
 	return domainCnts, isBalanced
 }
 
-func (c *Cluster) hasUnbalancedDataPartitions() bool {
-	dpHost2Ns := c.buildDpHostToNodeSet()
-
-	vols := c.copyVols()
-	for _, vol := range vols {
-		partitions := vol.dataPartitions.clonePartitions()
-		for _, dp := range partitions {
-			if dp.IsDiscard {
-				continue
-			}
-
-			if dp.DecommissionType == proto.NodesetBalance {
-				continue
-			}
-
-			_, isBalanced := getDpNodesetDistribution(dp, dpHost2Ns)
-			if !isBalanced {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func (c *Cluster) processPartitionMigration(dp *DataPartition, srcHosts []string, dpHost2Ns map[string]uint64) {
-	if len(srcHosts) == 0 {
-		log.LogDebugf("action[processPartitionMigration] dp(%v) already balanced", dp.PartitionID)
+func (c *Cluster) processPartitionMigration(dp *DataPartition, hosts []string) {
+	if len(hosts) == 0 {
 		return
 	}
 
-	c.executeReplicaMigration(dp, srcHosts)
-}
-
-func (c *Cluster) executeReplicaMigration(dp *DataPartition, srcHosts []string) bool {
 	if dp.DecommissionStatus == markDecommission ||
 		dp.DecommissionStatus == DecommissionRunning ||
 		dp.DecommissionStatus == DecommissionPrepare {
-		return true
+		return
 	}
 
-	if err := c.markDecommissionDataPartition(dp, nil, 0, false, proto.NodesetBalance, 1, srcHosts); err != nil {
-		log.LogWarnf("action[executeReplicaMigration] batch decommission failed for dp(%v) replicas(%v) : %v",
-			dp.PartitionID, srcHosts, err)
-		return false
+	var (
+		srcAddrs []string
+		dstAddrs []string
+		targetNs *nodeSet
+		err      error
+	)
+
+	if targetNs, srcAddrs, dstAddrs, err = selectTargetHostsInNodesetBalance(hosts, int(dp.ReplicaNum), c, dp.MediaType); err != nil {
+		log.LogWarnf("action[executeReplicaMigration] dp(%v) select Target hosts failed", dp.PartitionID)
+		return
 	}
 
-	log.LogInfof("action[executeReplicaMigration] submitted batch decommission: dp(%v) replicas(%v)",
-		dp.PartitionID, srcHosts)
-	return true
+	dp.DecommissionSrcAddrs = srcAddrs
+	dp.DecommissionDstAddrs = dstAddrs
+	dp.DecommissionDstNodeSet = targetNs.ID
+	dp.DecommissionType = proto.NodesetBalance
+	dp.DecommissionWeight = 1
+
+	log.LogDebugf("action[executeReplicaMigration] dp %v srcAddrs %v dstAddrs %v", dp.PartitionID, dp.DecommissionSrcAddrs, dp.DecommissionDstAddrs)
+
+	if err = c.addDataReservedResource(dstAddrs, dp); err != nil {
+		log.LogWarnf("action[executeReplicaMigration] dp %v simulate resource change failed: %v", dp.PartitionID, err)
+		return
+	}
+
+	if !dp.ProcessNextDecommissionSrcHost(c) {
+		log.LogWarnf("action[executeReplicaMigration] submitted decommission: dp(%v) replicas(%v) failed",
+			dp.PartitionID, dp.Hosts)
+		c.releaseDataReservedResource(dstAddrs, dp)
+		return
+	}
+	// if err := c.markDecommissionDataPartition(dp, lastSrcNode, targetNs.ID, false, proto.NodesetBalance, 1, srcHosts, targetHosts); err != nil {
+	// 	log.LogWarnf("action[executeReplicaMigration] decommission failed for dp(%v) replicas(%v) : %v",
+	// 		dp.PartitionID, srcHosts, err)
+	// 	return false
+	// }
+	// if err := dp.MarkDecommissionStatus(srcHosts[lastIndex], targetHosts[0], "", targetNs.ID, false, uint64(time.Now().Unix()), proto.NodesetBalance, 1, c, srcHosts, targetHosts); err != nil {
+	// 	log.LogWarnf("action[executeReplicaMigration] decommission failed for dp(%v) replicas(%v) : %v",
+	// 		dp.PartitionID, srcHosts, err)
+	// 	return false
+	// }
+
+	log.LogInfof("action[executeReplicaMigration] submitted decommission: dp(%v) replicas(%v)",
+		dp.PartitionID, dp.Hosts)
+	return
 }
 
 func (c *Cluster) buildDpHostToNodeSet() map[string]uint64 {
@@ -207,29 +213,12 @@ func (c *Cluster) buildDpHostToNodeSet() map[string]uint64 {
 	return m
 }
 
-// NodesetBalanceStatus represents the status of nodeset balance operation
-type NodesetBalanceStatus struct {
-	TotalUnbalancedDPs   int                     `json:"total_unbalanced_dps"`   // 总未均衡DP数量
-	DecommissioningDPIDs []uint64                `json:"decommissioning_dp_ids"` // 正在下线的DP ID列表
-	LastBalanceTime      int64                   `json:"last_balance_time"`      // 上次均衡时间戳
-	SingleMigrationLimit int                     `json:"single_migration_limit"` // 单轮迁移限制
-	EnableNodesetBalance bool                    `json:"enable_nodeset_balance"` // 是否启用nodeset均衡
-	DomainDistribution   *DomainDistributionInfo `json:"domain_distribution"`    // 域分布统计
-}
-
-// DomainDistributionInfo represents the distribution of DPs across different numbers of domains
-type DomainDistributionInfo struct {
-	SingleDomainDPs int `json:"single_domain_dps"`
-	TwoDomainDPs    int `json:"two_domain_dps"`
-	ThreeDomainDPs  int `json:"three_domain_dps"`
-}
-
-func (c *Cluster) getNodesetBalanceStatus() *NodesetBalanceStatus {
-	status := &NodesetBalanceStatus{
+func (c *Cluster) getNodesetBalanceStatus() *proto.NodesetBalanceStatus {
+	status := &proto.NodesetBalanceStatus{
 		DecommissioningDPIDs: make([]uint64, 0),
-		SingleMigrationLimit: singleMigrationTarget,
+		SingleMigrationLimit: concurrentBalancedDPCount,
 		EnableNodesetBalance: c.getEnableAutoNodesetBalance(),
-		DomainDistribution: &DomainDistributionInfo{
+		DomainDistribution: &proto.DomainDistributionInfo{
 			SingleDomainDPs: 0,
 			TwoDomainDPs:    0,
 			ThreeDomainDPs:  0,

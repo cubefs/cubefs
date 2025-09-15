@@ -153,6 +153,17 @@ func (metaNode *MetaNode) IsWriteAble() (ok bool) {
 	return
 }
 
+func (metaNode *MetaNode) IsWriteAbleWithThreshold(threshold float64) (ok bool) {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
+		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
+		!metaNode.RdOnly {
+		ok = true
+	}
+	return
+}
+
 func (metaNode *MetaNode) setNodeActive() {
 	metaNode.Lock()
 	defer metaNode.Unlock()
@@ -241,6 +252,10 @@ func (metaNode *MetaNode) GetPartitionLimitCnt() uint64 {
 }
 
 func (metaNode *MetaNode) PartitionCntLimited() bool {
+	return uint64(metaNode.MetaPartitionCount) <= metaNode.GetPartitionLimitCnt()
+}
+
+func (metaNode *MetaNode) PartitionCntLimitedWithThreshold(threshold float64) bool {
 	return uint64(metaNode.MetaPartitionCount) <= metaNode.GetPartitionLimitCnt()
 }
 

@@ -66,6 +66,7 @@ type DataPartition struct {
 	DecommissionSrcAddr               string
 	DecommissionSrcAddrs              []string // used for migrating tasks to multiple source addrs such as nodeset-balance.
 	DecommissionDstAddr               string
+	DecommissionDstAddrs              []string // used for migrating tasks to multiple source addrs such as nodeset-balance.
 	DecommissionRaftForce             bool
 	DecommissionSrcDiskPath           string
 	DecommissionTerm                  uint64
@@ -1314,7 +1315,7 @@ func isReplicasContainsHost(replicas []*DataReplica, host string) bool {
 }
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, dstNodeSetID uint64, raftForce bool, term uint64,
-	migrateType uint32, weight int, c *Cluster, srcAddrs []string,
+	migrateType uint32, weight int, c *Cluster, srcAddrs []string, dstAddrs []string,
 ) (err error) {
 	defer func() {
 		if err != nil {
@@ -1598,8 +1599,15 @@ directly:
 	if len(srcAddrs) > 0 {
 		partition.DecommissionSrcAddrs = make([]string, len(srcAddrs))
 		copy(partition.DecommissionSrcAddrs, srcAddrs)
-		log.LogInfof("action[MarkDecommissionStatus] dp(%v) set multi-source queue: %v",
+		log.LogInfof("action[MarkDecommissionStatus] dp(%v) set multi-srcHost queue: %v",
 			partition.PartitionID, partition.DecommissionSrcAddrs)
+	}
+	if len(dstAddrs) > 0 {
+		partition.DecommissionDstAddrs = make([]string, len(dstAddrs))
+		copy(partition.DecommissionDstAddrs, dstAddrs)
+		log.LogInfof("action[MarkDecommissionStatus] dp(%v) set multi-dstHost queue: %v",
+			partition.PartitionID, partition.DecommissionDstAddrs)
+
 	}
 	if partition.DecommissionSrcDiskPath == "" {
 		partition.RLock()
@@ -1998,7 +2006,9 @@ func (partition *DataPartition) SetMultipleDecommissionSrcHosts(srcHosts []strin
 func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool {
 	var (
 		updatedSrcHosts []string
+		updatedDstHosts []string
 		nextSrcAddr     string
+		nextDstAddr     string
 	)
 
 	if partition.DecommissionSrcAddrs == nil || len(partition.DecommissionSrcAddrs) == 0 {
@@ -2007,15 +2017,27 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 		return false
 	}
 
+	if partition.DecommissionDstAddrs == nil || len(partition.DecommissionDstAddrs) == 0 ||
+		len(partition.DecommissionDstAddrs) < len(partition.DecommissionSrcAddrs) {
+		log.LogInfof("action[ProcessNextDecommissionSrcHost] dp(%v) has not dstAddrs to migrate",
+			partition.PartitionID)
+		return false
+	}
+
 	lastIndex := len(partition.DecommissionSrcAddrs) - 1
 
 	if len(partition.DecommissionSrcAddrs) > 1 {
 		nextSrcAddr = partition.DecommissionSrcAddrs[lastIndex]
+		nextDstAddr = partition.DecommissionDstAddrs[0]
 		updatedSrcHosts = make([]string, lastIndex)
 		copy(updatedSrcHosts, partition.DecommissionSrcAddrs[0:lastIndex])
+		updatedDstHosts = make([]string, lastIndex)
+		copy(updatedDstHosts, partition.DecommissionDstAddrs[1:])
 	} else {
 		updatedSrcHosts = nil
 		nextSrcAddr = partition.DecommissionSrcAddrs[0]
+		updatedDstHosts = nil
+		nextDstAddr = partition.DecommissionDstAddrs[0]
 	}
 
 	replica, err := partition.getReplica(nextSrcAddr)
@@ -2024,30 +2046,29 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 		return false
 	}
 
-	if err = partition.MarkDecommissionStatus(nextSrcAddr, "", replica.DiskPath, partition.DecommissionDstNodeSet,
+	if err = partition.MarkDecommissionStatus(nextSrcAddr, nextDstAddr, replica.DiskPath, partition.DecommissionDstNodeSet,
 		partition.DecommissionRaftForce, partition.DecommissionTerm, partition.DecommissionType, partition.DecommissionWeight,
-		c, updatedSrcHosts,
+		c, updatedSrcHosts, updatedDstHosts,
 	); err != nil {
 		log.LogWarnf("action[ProcessNextDecommissionSrcHost] dp(%v) mark decommission failed, err %v",
 			partition.PartitionID, err)
 		return false
 	}
 
-	if err = c.syncUpdateDataPartition(partition); err != nil {
-		return false
-	}
+	c.syncUpdateDataPartition(partition)
 
 	if partition.GetDecommissionStatus() == markDecommission {
 		partition.addToDecommissionList(c)
 		log.LogInfof("action[ProcessNextDecommissionSrcHost] dp(%v) switch to next source: %v, remaining queue: %v",
 			partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionSrcAddrs)
-		return true // 表示需要继续迁移
+		return true
 	}
 	return false
 }
 
 func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionDstAddr = ""
+	partition.DecommissionDstAddrs = nil
 	partition.DecommissionSrcAddr = ""
 	partition.DecommissionSrcAddrs = nil
 	partition.DecommissionRetry = 0
@@ -2115,6 +2136,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	// specify dst addr do not need rollback
 	// keep DecommissionSrcAddr to prevent allocate DecommissionSrcAddr data node during acquire token
 	if !partition.DecommissionDstAddrSpecify {
+		c.releaseDataReservedResource([]string{partition.DecommissionDstAddr}, partition)
 		partition.DecommissionDstAddr = ""
 	}
 	log.LogWarnf("action[rollback]dp[%v] rollback success", partition.PartitionID)
@@ -2292,6 +2314,8 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		excludeNodeSets []uint64
 		zones           []string
 		result          = false
+		// srcNs           *nodeSet
+		// srcHosts        []string
 	)
 	defer c.syncUpdateDataPartition(partition)
 	begin := time.Now()
@@ -2302,6 +2326,30 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 
 	// the first time for dst addr not specify
 	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
+		// if partition.DecommissionType == proto.NodesetBalance {
+		// 	srcNs, _, err = getTargetNodeset(partition.DecommissionSrcAddr, c)
+		// 	if err != nil {
+		// 		log.LogWarnf("action[TryAcquireDecommissionToken] dp %v find src nodeset failed:%v",
+		// 			partition.PartitionID, err.Error())
+		// 		goto errHandler
+		// 	}
+		// 	ns, srcHosts, targetHosts, err = selectTargetHostsInNodesetBalance(partition.DecommissionSrcAddrs, int(partition.ReplicaNum), c, partition.MediaType)
+		// 	if err != nil {
+		// 		log.LogWarnf("action[TryAcquireDecommissionToken] dp %v NodesetBalance select TargetHosts failed: %v", partition.PartitionID, err)
+		// 		goto errHandler
+		// 	}
+		// 	log.LogDebugf("action[TryAcquireDecommissionToken] dp %v NodesetBalance srcHosts %v select TargetHosts %v", partition.PartitionID, partition.DecommissionSrcAddrs, targetHosts)
+		// 	partition.DecommissionSrcAddrs = srcHosts
+		// 	lastIndex := len(partition.DecommissionSrcAddrs) - 1
+		// 	partition.DecommissionSrcAddr = partition.DecommissionSrcAddrs[lastIndex]
+		// 	// TODO
+		// 	// DecommissionSrcDiskPath
+		// 	partition.DecommissionDstNodeSet = ns.ID
+		// 	partition.DecommissionDstAddrs = targetHosts
+		// 	srcNs.decommissionDataPartitionList.Remove(partition)
+		// 	ns.decommissionDataPartitionList.PutDeferExecution(ns.ID, partition, c)
+		// 	c.syncUpdateDataPartition(partition)
+		// } else {
 		if partition.DecommissionDstNodeSet != 0 {
 			ns, err = c.t.getNodeSetByNodeSetId(partition.DecommissionDstNodeSet)
 			if err != nil {
@@ -2343,7 +2391,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			rackLevel:       c.getRackAwareLevel(),
 			excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, excludeHosts, partition.DecommissionSrcAddr),
 		}
-		targetHosts, _, err = ns.getAvailDataNodeHosts(param)
+		targetHosts, _, err = ns.getAvailDataNodeHosts(param, false)
 		if err != nil {
 			if partition.DecommissionDstNodeSet != 0 {
 				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from given dst nodeset %v failed:%v",
@@ -2369,12 +2417,12 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			param.excludeNodeSets = excludeNodeSets
 
 			// data nodes in a zone has the same mediaType
-			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param); err != nil {
+			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, false); err != nil {
 				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from other nodeset failed:%v",
 					partition.PartitionID, err.Error())
 				// select data nodes from the other zone
 				zones = partition.getLiveZones(partition.DecommissionSrcAddr)
-				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", partition.MediaType, param); err != nil {
+				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", partition.MediaType, param, false); err != nil {
 					log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from other zone failed:%v",
 						partition.PartitionID, err.Error())
 					goto errHandler
@@ -2389,6 +2437,11 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				goto errHandler
 			}
 		}
+
+		if err = c.addDataReservedResource(targetHosts, partition); err != nil {
+			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v simulate resource change failed: %v", partition.PartitionID, err)
+			goto errHandler
+		}
 		// only persist DecommissionDstAddr when get token
 		if ns.AcquireDecommissionToken(partition.PartitionID) {
 			partition.DecommissionDstAddr = targetHosts[0]
@@ -2399,6 +2452,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		} else {
 			log.LogDebugf("action[TryAcquireDecommissionToken] dp %v: nodeset %v token is empty",
 				partition.PartitionID, ns.ID)
+			c.releaseDataReservedResource(targetHosts, partition)
 			return false
 		}
 	} else {
@@ -2479,6 +2533,130 @@ func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err err
 		return nil, nil, err
 	}
 	return ns, zone, nil
+}
+
+func selectTargetHostsInNodesetBalance(addrs []string, replicaNum int, c *Cluster, mediaType uint32) (ns *nodeSet, srcAddrs []string, dstAddrs []string, err error) {
+	var (
+		excludedHosts    []string
+		excludedNodesets []uint64
+		excludedZones    []string
+		needDstAddrCount int
+		addrToNsID       = make(map[string]uint64)
+	)
+
+	if len(addrs) == 0 {
+		return nil, nil, nil, fmt.Errorf("empty address list")
+	}
+
+	nsReplicaCount := make(map[uint64]int)
+	nsMap := make(map[uint64]*nodeSet)
+	zoneMap := make(map[string]*Zone)
+
+	for _, addr := range addrs {
+		dataNode, err := c.dataNode(addr)
+		if err != nil {
+			log.LogWarnf("action[selectTargetHostsInNodesetBalance] find data node for addr %s failed: %v", addr, err)
+			return nil, nil, nil, err
+		}
+
+		zn, err := c.t.getZone(dataNode.ZoneName)
+		if err != nil {
+			log.LogWarnf("action[selectTargetHostsInNodesetBalance] find zone for addr %s failed: %v", addr, err)
+			return nil, nil, nil, err
+		}
+		zoneMap[dataNode.ZoneName] = zn
+
+		ns, err := zn.getNodeSet(dataNode.NodeSetID)
+		if err != nil {
+			log.LogWarnf("action[selectTargetHostsInNodesetBalance] find nodeset for addr %s failed: %v", addr, err)
+			return nil, nil, nil, err
+		}
+		nsReplicaCount[dataNode.NodeSetID]++
+		nsMap[dataNode.NodeSetID] = ns
+		addrToNsID[addr] = dataNode.NodeSetID
+	}
+
+	if len(nsReplicaCount) <= 1 {
+		return nil, nil, nil, fmt.Errorf("dp is already nodeset-balanced")
+	}
+
+	var maxCount int
+	var targetNsID uint64
+
+	for nsID, count := range nsReplicaCount {
+		if count > maxCount {
+			maxCount = count
+			targetNsID = nsID
+		}
+	}
+	targetNs := nsMap[targetNsID]
+
+	excludedHosts = append(excludedHosts, addrs...)
+
+	needDstAddrCount = replicaNum - maxCount
+	availableHosts, _, err := targetNs.getAvailDataNodeHosts(excludedHosts, needDstAddrCount, true)
+	if err == nil {
+		for _, addr := range addrs {
+			if addrToNsID[addr] != targetNsID {
+				srcAddrs = append(srcAddrs, addr)
+			}
+		}
+		return targetNs, srcAddrs, availableHosts, nil
+	}
+
+	for nsID, ns := range nsMap {
+		if nsID == targetNsID {
+			continue
+		}
+		replicaCount := nsReplicaCount[nsID]
+		needDstAddrCount = replicaNum - replicaCount
+		availableHosts, _, err = ns.getAvailDataNodeHosts(excludedHosts, needDstAddrCount, true)
+		if err == nil {
+			for _, addr := range addrs {
+				if addrToNsID[addr] != nsID {
+					srcAddrs = append(srcAddrs, addr)
+				}
+			}
+			return ns, srcAddrs, availableHosts, nil
+		}
+		excludedNodesets = append(excludedNodesets, nsID)
+	}
+
+	needDstAddrCount = replicaNum
+	for _, zone := range zoneMap {
+		availableHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, excludedNodesets, excludedHosts, needDstAddrCount, true)
+		if err == nil {
+			ns, _, err = getTargetNodeset(availableHosts[0], c)
+			if err != nil {
+				log.LogWarnf("action[selectTargetHostsInNodesetBalance] failed to get nodeset for host %s: %v", availableHosts[0], err)
+				continue
+			}
+			for _, addr := range addrs {
+				if addrToNsID[addr] != ns.ID {
+					srcAddrs = append(srcAddrs, addr)
+				}
+			}
+			return ns, srcAddrs, availableHosts, nil
+		}
+		excludedZones = append(excludedZones, zone.name)
+	}
+
+	availableHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludedZones, excludedNodesets, excludedHosts, needDstAddrCount, 1, "", mediaType, true)
+	if err == nil {
+		ns, _, err = getTargetNodeset(availableHosts[0], c)
+		if err != nil {
+			log.LogWarnf("action[selectTargetHostsInNodesetBalance] failed to get nodeset for host %s: %v", availableHosts[0], err)
+			return nil, nil, nil, err
+		}
+		for _, addr := range addrs {
+			if addrToNsID[addr] != ns.ID {
+				srcAddrs = append(srcAddrs, addr)
+			}
+		}
+		return ns, srcAddrs, availableHosts, nil
+	}
+
+	return nil, nil, nil, fmt.Errorf("cluster resources insufficient, can't find target hosts")
 }
 
 func (partition *DataPartition) needRollback(c *Cluster) bool {
@@ -2889,7 +3067,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				partition.PartitionID, addr)
 			return nil
 		}
-		err = c.markDecommissionDataPartition(partition, node, 0, false, AutoAddReplica, highPriorityDecommissionWeight, nil)
+		err = c.markDecommissionDataPartition(partition, node, 0, false, AutoAddReplica, highPriorityDecommissionWeight, nil, nil)
 		auditMsg = fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto add replica",
 			partition.PartitionID, partition.ReplicaNum, len(partition.Hosts))
 		log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)

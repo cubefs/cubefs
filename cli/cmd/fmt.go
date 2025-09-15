@@ -1104,6 +1104,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Allocated ratio           : %v\n", dn.UsageRatio))
 	sb.WriteString(fmt.Sprintf("  Allocated                 : %v\n", formatSize(dn.Used)))
 	sb.WriteString(fmt.Sprintf("  Available                 : %v\n", formatSize(dn.AvailableSpace)))
+	sb.WriteString(fmt.Sprintf("  SimulateReserved          : %v\n", formatSize(dn.SimulateReservedSpace)))
 	sb.WriteString(fmt.Sprintf("  Total                     : %v\n", formatSize(dn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                      : %v\n", dn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  Rack                      : %v\n", dn.Rack))
@@ -1113,6 +1114,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  ToBeOffline               : %v\n", formatNodeOfflineStatus(dn.ToBeOffline)))
 	sb.WriteString(fmt.Sprintf("  Report time               : %v\n", formatTimeToString(dn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count           : %v\n", dn.DataPartitionCount))
+	sb.WriteString(fmt.Sprintf("  SimulateReservedDp count  : %v\n", dn.SimulateReservedDpCount))
 	sb.WriteString(fmt.Sprintf("  AllDisks                  : %v\n", dn.AllDisks))
 	sb.WriteString(fmt.Sprintf("  Bad disks                 : %v\n", dn.BadDisks))
 	sb.WriteString(fmt.Sprintf("  Lost disks                : %v\n", dn.LostDisks))
@@ -1434,6 +1436,7 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb.WriteString(fmt.Sprintf("SrcAddresses:      %v\n", info.SrcAddresses))
 	sb.WriteString(fmt.Sprintf("SrcDiskPath:       %v\n", info.SrcDiskPath))
 	sb.WriteString(fmt.Sprintf("DstAddress:        %v\n", info.DstAddress))
+	sb.WriteString(fmt.Sprintf("DstAddresses:      %v\n", info.DstAddresses))
 	sb.WriteString(fmt.Sprintf("DstNodeSet:        %v\n", info.DstNodeSet))
 	sb.WriteString(fmt.Sprintf("Term:              %v\n", info.Term))
 	sb.WriteString(fmt.Sprintf("Weight:            %v\n", info.Weight))
@@ -1619,57 +1622,29 @@ func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	return sb.String()
 }
 
-func formatNodesetBalanceStatus(status interface{}) string {
+func formatNodesetBalanceStatus(status *proto.NodesetBalanceStatus) string {
 	sb := strings.Builder{}
 
-	data, err := json.Marshal(status)
-	if err != nil {
-		return fmt.Sprintf("Error formatting status: %v", err)
-	}
+	sb.WriteString("[Nodeset Balance Config]\n")
+	sb.WriteString(fmt.Sprintf("  EnableNodesetBalance    : %v\n", status.EnableNodesetBalance))
+	sb.WriteString(fmt.Sprintf("  SingleMigrationLimit    : %v\n", status.SingleMigrationLimit))
 
-	var statusMap map[string]interface{}
-	if err := json.Unmarshal(data, &statusMap); err != nil {
-		return fmt.Sprintf("Error parsing status: %v", err)
-	}
+	sb.WriteString("\n[Domain Distribution]\n")
+	sb.WriteString(fmt.Sprintf("  TotalUnbalancedDPs      : %v\n", status.TotalUnbalancedDPs))
+	sb.WriteString(fmt.Sprintf("  SingleDomainDPs         : %v\n", status.DomainDistribution.SingleDomainDPs))
+	sb.WriteString(fmt.Sprintf("  TwoDomainDPs            : %v\n", status.DomainDistribution.TwoDomainDPs))
+	sb.WriteString(fmt.Sprintf("  ThreeDomainDPs          : %v\n", status.DomainDistribution.ThreeDomainDPs))
 
-	stdout("[Nodeset Balance Config]\n")
-	sb.WriteString(fmt.Sprintf("  EnableNodesetBalance    : %v\n", statusMap["enable_nodeset_balance"]))
-	sb.WriteString(fmt.Sprintf("  SingleMigrationLimit    : %v\n", statusMap["single_migration_limit"]))
-
-	if domainDist, ok := statusMap["domain_distribution"].(map[string]interface{}); ok {
-		sb.WriteString("\n[Domain Distribution]\n")
-		sb.WriteString(fmt.Sprintf("  TotalUnbalancedDPs      : %v\n", statusMap["total_unbalanced_dps"]))
-		sb.WriteString(fmt.Sprintf("  SingleDomainDPs         : %v\n", domainDist["single_domain_dps"]))
-		sb.WriteString(fmt.Sprintf("  TwoDomainDPs            : %v\n", domainDist["two_domain_dps"]))
-		sb.WriteString(fmt.Sprintf("  ThreeDomainDPs          : %v\n", domainDist["three_domain_dps"]))
-	}
-
-	if decommissioningIDs, ok := statusMap["decommissioning_dp_ids"].([]interface{}); ok && len(decommissioningIDs) > 0 {
+	if len(status.DecommissioningDPIDs) > 0 {
 		sb.WriteString("\n[Decommissioning DPs]\n")
 		sb.WriteString("  DPIDs: ")
-		for i, id := range decommissioningIDs {
+		for i, id := range status.DecommissioningDPIDs {
 			if i > 0 {
 				sb.WriteString(", ")
 			}
 			sb.WriteString(fmt.Sprintf("%v", id))
 		}
 		sb.WriteString("\n")
-	}
-
-	if migrationStats, ok := statusMap["nodeset_migration_stats"].(map[string]interface{}); ok && len(migrationStats) > 0 {
-		sb.WriteString("\n[Nodeset Migration Stats]\n")
-		sb.WriteString(fmt.Sprintf("%-12s %-12s %-12s %-12s\n", "NodesetID", "OutgoingDPs", "IncomingDPs", "NetChange"))
-		sb.WriteString(strings.Repeat("-", 50) + "\n")
-
-		for nsID, stats := range migrationStats {
-			if statsMap, ok := stats.(map[string]interface{}); ok {
-				sb.WriteString(fmt.Sprintf("%-12s %-12v %-12v %-12v\n",
-					nsID,
-					statsMap["outgoing_dps"],
-					statsMap["incoming_dps"],
-					statsMap["net_change"]))
-			}
-		}
 	}
 
 	return sb.String()

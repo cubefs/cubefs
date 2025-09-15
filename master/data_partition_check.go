@@ -349,7 +349,7 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 	// go through all the hosts to find the missing replica
 	for _, host := range partition.Hosts {
 		if _, ok := partition.hasReplica(host); !ok {
-			log.LogError(fmt.Sprintf("action[missingReplicaAddress],partitionID:%v lack replication:%v",
+			log.LogWarn(fmt.Sprintf("action[missingReplicaAddress],partitionID:%v lack replication:%v",
 				partition.PartitionID, host))
 			err = proto.ErrMissingReplica
 			addr = host
