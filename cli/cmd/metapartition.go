@@ -297,7 +297,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
-	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "specify volume default store mode")
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "memory", "specify volume default store mode: memory, rocksdb")
 	return cmd
 }
 
@@ -337,7 +337,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
-	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "specify volume default store mode")
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "memory", "specify volume default store mode: memory, rocksdb")
 	return cmd
 }
 

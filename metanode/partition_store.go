@@ -1055,7 +1055,7 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	if err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile)); err != nil {
 		return
 	}
-	log.LogWarnf("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
+	log.LogWarnf("persistMetadata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
 	return
 }
@@ -1596,7 +1596,7 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 	fileRange := make([]int64, len(thresholds)+1)
 
 	inodeCnt := uint64(0)
-	maxInode := uint64(0)
+	maxInode := mp.config.Start
 	err = snap.Range(InodeType, func(i interface{}) bool {
 		ino := i.(*Inode)
 
@@ -1646,11 +1646,6 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 }
 
 func (mp *metaPartition) storeRocksdbFile(sm *storeMsg) (err error) {
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
-	defer func() {
-		log.LogWarnf("metaPartition %d store apply %v finish", mp.config.PartitionId, sm.snap.ApplyID())
-	}()
-
 	tmpDir := path.Join(mp.config.RootDir, rocksdbSnapTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
@@ -1681,7 +1676,6 @@ func (mp *metaPartition) storeRocksdbFile(sm *storeMsg) (err error) {
 		}
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
 
 	// write crc to file
 	if err = fileutil.WriteFileWithSync(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0o775); err != nil {
@@ -1822,7 +1816,7 @@ func (mp *metaPartition) loadRocksdbApplyID() (err error) {
 		atomic.StoreUint64(&mp.config.Cursor, cursorInRocksDB)
 	}
 
-	log.LogInfof("mp[%v] applyID:%v, cursor:%v", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
+	log.LogWarnf("loadRocksdbApplyID mp[%v] applyID:%v, cursor:%v", mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 
 	return
 }

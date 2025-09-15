@@ -546,7 +546,12 @@ func (mp *metaPartition) internalDelete(val []byte) (err error) {
 	}
 	buf := bytes.NewBuffer(val)
 	ino := NewInode(0, 0)
-	handle, _ := mp.inodeTree.CreateBatchWriteHandle()
+	var handle interface{}
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		log.LogErrorf("internalDelete: create batch write handle err(%v)", err)
+		return err
+	}
 	defer func() {
 		_ = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	}()

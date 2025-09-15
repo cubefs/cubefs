@@ -21,6 +21,7 @@ const (
 
 	RocksdbNormalKeySize = 32
 	RocksdbLongKeySize   = 1024
+	RocksdbTypeIndex     = 8
 )
 
 var ErrInvalidRocksdbValueLen = fmt.Errorf("invalid value len")
@@ -691,7 +692,7 @@ func (r *RocksTree) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []byte) ([]by
 
 func (r *RocksTree) Put(handle interface{}, count *uint64, key []byte, value []byte) error {
 	var err error
-	lock := &r.latch[key[0]]
+	lock := &r.latch[key[RocksdbTypeIndex]]
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -712,7 +713,7 @@ func (r *RocksTree) Put(handle interface{}, count *uint64, key []byte, value []b
 }
 
 func (r *RocksTree) Update(handle interface{}, key []byte, value []byte) (err error) {
-	lock := &r.latch[key[0]]
+	lock := &r.latch[key[RocksdbTypeIndex]]
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -723,7 +724,7 @@ func (r *RocksTree) Update(handle interface{}, key []byte, value []byte) (err er
 }
 
 func (r *RocksTree) Create(handle interface{}, count *uint64, key []byte, value []byte, force bool) (ok bool, v []byte, err error) {
-	lock := &r.latch[key[0]]
+	lock := &r.latch[key[RocksdbTypeIndex]]
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -759,7 +760,7 @@ func (r *RocksTree) DelItemToBatch(handle interface{}, key []byte) (err error) {
 // Has checks if the key exists in the btree. return is exist and err
 func (r *RocksTree) Delete(handle interface{}, count *uint64, key []byte) (ok bool, err error) {
 	has := false
-	lock := &r.latch[key[0]]
+	lock := &r.latch[key[RocksdbTypeIndex]]
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -1430,6 +1431,9 @@ func (b *InodeRocks) Put(handle interface{}, inode *Inode) (err error) {
 	if err = b.RocksTree.Put(handle, &b.baseInfo.inodeCnt, inodeEncodingKey(keyBuf, inode.Inode), bs); err != nil {
 		log.LogErrorf("InodeRocks put failed, inode:%v, error:%v", inode, err)
 	}
+	if b.baseInfo.cursor < inode.Inode {
+		b.SetCursor(inode.Inode)
+	}
 	return
 }
 
@@ -1674,6 +1678,10 @@ func (b *InodeRocks) ReplaceOrInsert(handle interface{}, inode *Inode, replace b
 	if err != nil {
 		log.LogErrorf("[InodeRocksCreate] inodeRocks error %v, %v", key, err)
 		return
+	}
+
+	if b.baseInfo.cursor < inode.Inode {
+		b.SetCursor(inode.Inode)
 	}
 
 	if !ok {
@@ -2513,4 +2521,31 @@ func (r *RocksSnapShot) TxID() uint64 {
 
 func (b *InodeRocks) SetInodeCount(count uint64) {
 	atomic.StoreUint64(&b.baseInfo.inodeCnt, count)
+}
+
+func (b *InodeRocks) GetApproximateSizes() (size uint64, err error) {
+	startBuf := b.GetRocksdbNormalKey(byte(InodeType))
+	defer PutRocksdbNormalKey(startBuf)
+	startKey := startBuf.Bytes()
+	endBuf := b.GetRocksdbNormalKey(byte(InodeType) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+	endKey := endBuf.Bytes()
+	size, err = b.db.GetApproximateSizes(startKey, endKey)
+	return
+}
+
+func (b *InodeRocks) GetLevelNum() (int, error) {
+	return b.db.GetLevelNum()
+}
+
+func (b *InodeRocks) GetLevelNumMap() (map[string]int, error) {
+	return b.db.GetLevelNumMap()
+}
+
+func (b *InodeRocks) GetStatistics() string {
+	return b.db.GetStatistics()
+}
+
+func (b *InodeRocks) GetProperty(property string) (string, error) {
+	return b.db.GetProperty(property)
 }

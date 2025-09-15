@@ -106,6 +106,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getOpLimit", m.getOpLimitHandler)
 	http.HandleFunc("/rmOpLimit", m.rmOpLimitHandler)
 	http.HandleFunc("/getOpList", m.getOpListHandler)
+	http.HandleFunc("/getRocksdbProperty", m.getRocksdbPropertyHandler)
 	return
 }
 
@@ -1756,4 +1757,46 @@ func (m *MetaNode) getOpListHandler(w http.ResponseWriter, r *http.Request) {
 	opList["count"] = len(operations)
 
 	resp.Data = opList
+}
+
+func (m *MetaNode) getRocksdbPropertyHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	var (
+		err     error
+		db      *RocksdbOperator
+		result  string
+		request struct {
+			DbDir    string `json:"dbDir"`
+			Property string `json:"property"`
+		}
+	)
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getRocksdbStatsHandler] response %s", err)
+		}
+	}()
+
+	if err = json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.LogErrorf("[getRocksdbPropertyHandler] failed to decode request, err(%v)", err)
+		return
+	}
+
+	db, err = m.rocksdbManager.OpenRocksdb(request.DbDir, 0)
+	if err != nil {
+		log.LogErrorf("[getRocksdbStatsHandler] failed to open rocksdb, err(%v)", err)
+		return
+	}
+	defer m.rocksdbManager.CloseRocksdb(db)
+	result, err = db.GetProperty(request.Property)
+	if err != nil {
+		log.LogErrorf("[getRocksdbStatsHandler] failed to get rocksdb property, err(%v)", err)
+		return
+	}
+
+	resp.Data = result
 }

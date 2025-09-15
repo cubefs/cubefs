@@ -67,6 +67,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 			} else {
 				curIndex = msg.snap.ApplyID()
 			}
+			if msg.snap != nil {
+				msg.snap.Close()
+			}
 		} else {
 			// retry again
 			mp.storeChan <- msg

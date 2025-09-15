@@ -163,6 +163,7 @@ func (db *RocksdbOperator) CloseDb() (err error) {
 	db.openOption.Destroy()
 	db.cache.Destroy()
 	db.tableOption.Destroy()
+	db.readDiskOption.Destroy()
 
 	db.db = nil
 	db.readOption = nil
@@ -170,6 +171,7 @@ func (db *RocksdbOperator) CloseDb() (err error) {
 	db.openOption = nil
 	db.tableOption = nil
 	db.cache = nil
+	db.readDiskOption = nil
 	return
 }
 
@@ -491,6 +493,7 @@ func (dbInfo *RocksdbOperator) GetBytesWithSnap(snap *gorocksdb.Snapshot, key []
 	}
 	defer dbInfo.releaseDb()
 	ro := genRocksDBReadOption(snap)
+	defer ro.Destroy()
 	for index := 0; index < DefaultRetryCount; {
 		value, err = dbInfo.db.GetBytes(ro, key)
 		if err == nil {
@@ -766,12 +769,12 @@ func (dbInfo *RocksdbOperator) CommitBatchAndRelease(handle interface{}) (err er
 		log.LogErrorf("[RocksDB Op] CommitBatchAndRelease write failed with retry error(%v), continue", err)
 		index++
 	}
+	batch.Destroy()
 	if err != nil {
 		log.LogErrorf("[RocksDB Op] CommitBatchAndRelease write failed:%v", err)
 		err = ErrRocksdbOperation
 		return
 	}
-	batch.Destroy()
 	return
 }
 
@@ -973,4 +976,60 @@ func (dbInfo *RocksdbOperator) setOptToConfig(opts *RocksDBOptions) {
 	dbInfo.config["max_write_buffer_number"] = strconv.Itoa(opts.WriteBufferNum)
 	dbInfo.config["min_write_buffer_number_to_merge"] = strconv.Itoa(opts.MinWriteBuffToMerge)
 	dbInfo.config["max_background_compactions"] = strconv.Itoa(opts.MaxSubCompactions)
+}
+
+func (dbInfo *RocksdbOperator) GetApproximateSizes(start, end []byte) (size uint64, err error) {
+	if err = dbInfo.accessDb(); err != nil {
+		return
+	}
+	defer dbInfo.releaseDb()
+
+	sizelist := dbInfo.db.GetApproximateSizes([]gorocksdb.Range{
+		{
+			Start: start,
+			Limit: end,
+		},
+	})
+	return sizelist[0], nil
+}
+
+func (dbInfo *RocksdbOperator) GetLevelNum() (int, error) {
+	if err := dbInfo.accessDb(); err != nil {
+		return 0, err
+	}
+	defer dbInfo.releaseDb()
+
+	liveFiles := dbInfo.db.GetLiveFilesMetaData()
+	levelNum := 0
+	for _, file := range liveFiles {
+		if file.Level > levelNum {
+			levelNum = file.Level
+		}
+	}
+
+	return levelNum, nil
+}
+
+func (dbInfo *RocksdbOperator) GetLevelNumMap() (map[string]int, error) {
+	if err := dbInfo.accessDb(); err != nil {
+		return nil, err
+	}
+	defer dbInfo.releaseDb()
+
+	liveFiles := dbInfo.db.GetLiveFilesMetaData()
+	ret := make(map[string]int)
+	for _, file := range liveFiles {
+		ret[file.Name] = file.Level
+	}
+
+	return ret, nil
+}
+
+func (dbInfo *RocksdbOperator) GetProperty(property string) (string, error) {
+	if err := dbInfo.accessDb(); err != nil {
+		return "", err
+	}
+	defer dbInfo.releaseDb()
+
+	return dbInfo.db.GetProperty(property), nil
 }

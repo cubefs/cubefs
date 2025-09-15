@@ -211,6 +211,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	filenames := make([]string, 0)
 	var fileInfos []os.DirEntry
 	if fileInfos, err = os.ReadDir(mp.config.RootDir); err != nil {
+		si.treeSnap.Close()
 		return
 	}
 

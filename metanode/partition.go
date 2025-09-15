@@ -1291,6 +1291,11 @@ func (mp *metaPartition) doFileStats(thresholds []uint64) {
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
+	log.LogWarnf("metaPartition %d storeMode(%d) store apply %v", mp.config.PartitionId, mp.config.StoreMode, sm.snap.ApplyID())
+	defer func() {
+		log.LogWarnf("metaPartition %d storeMode(%d) store apply %v finish", mp.config.PartitionId, mp.config.StoreMode, sm.snap.ApplyID())
+	}()
+
 	if mp.inodeTree.GetStoreMode() == proto.StoreModeRocksDb {
 		err = mp.storeRocksdb(sm)
 		if err != nil {
@@ -1299,11 +1304,6 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		}
 		return nil
 	}
-
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
-	defer func() {
-		log.LogWarnf("metaPartition %d store apply %v finish", mp.config.PartitionId, sm.snap.ApplyID())
-	}()
 
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
@@ -2183,6 +2183,7 @@ func (mp *metaPartition) ScanRocksdb() error {
 	}
 
 	if maxInode > atomic.LoadUint64(&mp.config.Cursor) {
+		log.LogWarnf("ScanRocksdb mp[%d] set cursor from (%v) to (%v)", mp.config.PartitionId, atomic.LoadUint64(&mp.config.Cursor), maxInode)
 		atomic.StoreUint64(&mp.config.Cursor, maxInode)
 	}
 
