@@ -6250,11 +6250,13 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		replicas := make([]*proto.MetaReplicaInfo, len(mp.Replicas))
 		zones := make([]string, len(mp.Hosts))
 		nodeSets := make([]uint64, len(mp.Hosts))
+		racks := make([]string, len(mp.Hosts))
 		for idx, host := range mp.Hosts {
 			metaNode, err := m.cluster.metaNode(host)
 			if err == nil {
 				zones[idx] = metaNode.ZoneName
 				nodeSets[idx] = metaNode.NodeSetID
+				racks[idx] = metaNode.Rack
 			}
 		}
 		memCnt := uint8(0)
@@ -6308,6 +6310,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			Peers:                     mp.Peers,
 			Zones:                     zones,
 			NodeSets:                  nodeSets,
+			Racks:                     racks,
 			MissNodes:                 mp.MissNodes,
 			OfflinePeerID:             mp.OfflinePeerID,
 			LoadResponse:              mp.LoadResponse,

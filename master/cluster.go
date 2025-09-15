@@ -4402,6 +4402,8 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
 			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
 			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0, Rack: dataNode.Rack,
+			NodeSetID: dataNode.NodeSetID,
+			ZoneName:  dataNode.ZoneName,
 		})
 		return true
 	})
@@ -4418,6 +4420,8 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 			ForbidWriteOpOfProtoVer0: metaNode.ReceivedForbidWriteOpOfProtoVer0,
 			IsRocksdbWritable:        metaNode.IsRocksdbWriteAble(),
 			Rack:                     metaNode.Rack,
+			NodeSetID:                metaNode.NodeSetID,
+			ZoneName:                 metaNode.ZoneName,
 		})
 		return true
 	})

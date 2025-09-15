@@ -119,6 +119,7 @@ type MetaPartitionInfo struct {
 	Peers                     []Peer
 	Zones                     []string
 	NodeSets                  []uint64
+	Racks                     []string
 	OfflinePeerID             uint64
 	MissNodes                 map[string]int64
 	LoadResponse              []*MetaPartitionLoadResponse
@@ -230,6 +231,8 @@ type NodeView struct {
 	ForbidWriteOpOfProtoVer0 bool
 	IsRocksdbWritable        bool
 	Rack                     string
+	NodeSetID                uint64
+	ZoneName                 string
 }
 
 type DpRepairInfo struct {
@@ -372,6 +375,7 @@ type DataPartitionInfo struct {
 	Peers                    []Peer
 	Zones                    []string
 	NodeSets                 []uint64
+	Racks                    []string
 	MissingNodes             map[string]int64 // key: address of the missing node, value: when the node is missing
 	VolName                  string
 	VolID                    uint64

@@ -518,7 +518,7 @@ func formatReplicaSizeDiffDpInfoRow(partition *proto.DataPartitionInfo) string {
 		}
 
 		if replica.IsLeader {
-			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.Used))
+			sb.WriteString(fmt.Sprintf("%v(%v isleader)", replica.Addr, replica.Used))
 		} else {
 			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.Used))
 		}
@@ -539,7 +539,7 @@ func formatMetaPartitionReplicaInodeNotEqualInfoRow(partition *proto.MetaPartiti
 		}
 
 		if replica.IsLeader {
-			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.InodeCount))
+			sb.WriteString(fmt.Sprintf("%v(%v isleader)", replica.Addr, replica.InodeCount))
 		} else {
 			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.InodeCount))
 		}
@@ -718,6 +718,11 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 		sb.WriteString(fmt.Sprintf("  [%v]", nodeSet))
 	}
 	sb.WriteString("\n")
+	sb.WriteString("Racks :\n")
+	for _, rack := range partition.Racks {
+		sb.WriteString(fmt.Sprintf("  [%v]", rack))
+	}
+	sb.WriteString("\n")
 	sb.WriteString("\n")
 	sb.WriteString("MissingNodes :\n")
 	for partitionHost, id := range partition.MissingNodes {
@@ -779,6 +784,11 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString("NodeSets :\n")
 	for _, nodeSet := range partition.NodeSets {
 		sb.WriteString(fmt.Sprintf("  [%v]", nodeSet))
+	}
+	sb.WriteString("\n")
+	sb.WriteString("Racks :\n")
+	for _, rack := range partition.Racks {
+		sb.WriteString(fmt.Sprintf("  [%v]", rack))
 	}
 	sb.WriteString("\n")
 	sb.WriteString("\n")

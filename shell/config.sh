@@ -10,8 +10,8 @@ export NETWORK_START_IP=101
 
 # Node Count Configuration
 export MASTER_COUNT=3          # Number of master nodes (usually 3)
-export DATA_COUNT=6            # Number of data nodes
-export META_COUNT=6            # Number of meta nodes
+export DATA_COUNT=8            # Number of data nodes
+export META_COUNT=8            # Number of meta nodes
 
 # Port Configuration
 export MASTER_PORT=17010
@@ -92,14 +92,14 @@ export META_IPS
 # Format: IP_CONFIG["ip_address"]="rack=value,zone=value,disk_size=value"
 # Example configurations for different IPs
 # master
-IP_CONFIG_172_16_1_101="rack=r1,zone=z1,disk_size=3930691768"
-IP_CONFIG_172_16_1_102="rack=r1,zone=z1,disk_size=3930691768"
-IP_CONFIG_172_16_1_103="rack=r2,zone=z1,disk_size=3930691768"
-IP_CONFIG_172_16_1_104="rack=r2,zone=z1,disk_size=3930691768"
-IP_CONFIG_172_16_1_105="rack=r3,zone=z1,disk_size=3930691768"
-IP_CONFIG_172_16_1_106="rack=r3,zone=z1,disk_size=3930691768"
-IP_CONFIG_172_16_1_107="rack=r1,zone=z1,disk_size=3930691768"
-IP_CONFIG_172_16_1_108="rack=r1,zone=z1,disk_size=3930691768"
+IP_CONFIG_172_16_1_101="rack=r1,zone=default,disk_size=3930691768"
+IP_CONFIG_172_16_1_102="rack=r1,zone=default,disk_size=3930691768"
+IP_CONFIG_172_16_1_103="rack=r2,zone=default,disk_size=3930691768"
+IP_CONFIG_172_16_1_104="rack=r2,zone=default,disk_size=3930691768"
+IP_CONFIG_172_16_1_105="rack=r3,zone=default,disk_size=3930691768"
+IP_CONFIG_172_16_1_106="rack=r3,zone=default,disk_size=3930691768"
+IP_CONFIG_172_16_1_107="rack=r1,zone=z2,disk_size=3930691768"
+IP_CONFIG_172_16_1_108="rack=r1,zone=z2,disk_size=3930691768"
 IP_CONFIG_172_16_1_109="rack=r1,zone=z1,disk_size=3930691768"
 IP_CONFIG_172_16_1_110="rack=r1,zone=z1,disk_size=3930691768"
 IP_CONFIG_172_16_1_111="rack=r1,zone=z1,disk_size=3930691768"

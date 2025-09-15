@@ -4,7 +4,7 @@
   "localIP": "_ip_",
   "prof": "17320",
   "bindIp": "true",
-  "zone": "_zone_",
+  "zoneName": "_zone_",
   "rack": "_rack_",
   "raftHeartbeat": "17330",
   "raftReplica": "17340",

@@ -1045,6 +1045,8 @@ func (nsgm *DomainManager) putNodeSet(ns *nodeSet, load bool) (err error) {
 	return
 }
 
+type rackSet = nodeSet
+
 type nodeSet struct {
 	ID        uint64
 	Rack      string
@@ -1053,7 +1055,7 @@ type nodeSet struct {
 	metaNodes *sync.Map
 	dataNodes *sync.Map
 
-	racks            map[string]*nodeSet
+	racks            map[string]*rackSet
 	racksLock        sync.RWMutex
 	dataRackSelector NodesetSelector
 	metaRackSelector NodesetSelector

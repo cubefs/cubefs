@@ -75,6 +75,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 		newConfigCmd(),
 		newZoneCmd(client),
 		newNodeSetCmd(client),
+		newRackCmd(client),
 		newAclCmd(client),
 		newUidCmd(client),
 		newQuotaCmd(client),
