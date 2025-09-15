@@ -37,21 +37,21 @@ const (
 )
 
 const (
-	ConnIdelTimeout            = 30 //
-	SameZoneWeight             = 70
-	SameRegionWeight           = 20
-	RefreshFlashNodesInterval  = time.Minute
-	RefreshHostLatencyInterval = 20 * time.Second
-	DefaultReadQueueWaitTime   = 10 * time.Millisecond
-	DefaultActivateTime        = 200 * time.Microsecond
-	DefaultConnWorkers         = 64
-	DefaultConnPutConsumers    = 8
-	DefaultConnPutChanSize     = 10000
-	WriteTimeoutMs             = 10 * time.Millisecond
-	ReadTimeoutMs              = 300 * time.Millisecond
-	OpReadTimeout              = 100 * time.Millisecond
-	MaxReadRetryCount          = 8
-	DefaultReadPoolSize        = 256
+	ConnIdelTimeout               = 30 //
+	SameZoneWeight                = 70
+	SameRegionWeight              = 20
+	RefreshFlashNodesInterval     = time.Minute
+	RefreshHostLatencyInterval    = 20 * time.Second
+	DefaultReadQueueWaitTime      = 10 * time.Millisecond
+	DefaultActivateTime           = 200 * time.Microsecond
+	DefaultConnWorkers            = 64
+	DefaultConnPutConsumers       = 8
+	DefaultConnPutChanSize        = 10000
+	DefaultReadPoolSize           = 256
+	DefaultMaxRetryCount          = 3
+	DefaultFirstRetryPercent      = 80
+	DefaultSubsequentRetryPercent = 10
+	DefaultSecondRetryPercent     = 20
 )
 
 type AddressPingStats struct {
@@ -266,6 +266,24 @@ func (rc *RemoteCacheClient) processConnPut(connTask *ConnPutTask) {
 
 func (rc *RemoteCacheClient) getBatchReqId() uint64 {
 	return atomic.AddUint64(&rc.BatchReadReqId, 1)
+}
+
+func (rc *RemoteCacheClient) calculateConnTimeout(retryIndex int) int {
+	if retryIndex == 0 {
+		return int(rc.firstPacketTimeout)
+	} else if retryIndex == 1 {
+		return int(rc.firstPacketTimeout * DefaultSecondRetryPercent / 100)
+	} else {
+		return int(rc.firstPacketTimeout * DefaultSubsequentRetryPercent / 100)
+	}
+}
+
+func (rc *RemoteCacheClient) calculateRetryTimeout(retryIndex int) int {
+	if retryIndex == 0 {
+		return int(rc.firstPacketTimeout * DefaultFirstRetryPercent / 100)
+	} else {
+		return int(rc.firstPacketTimeout * DefaultSubsequentRetryPercent / 100)
+	}
 }
 
 // NewReadTaskItem creates a new ReadTaskItem for batch read operations
@@ -1198,8 +1216,8 @@ func (rc *RemoteCacheClient) readObjectFromRemoteCache(ctx context.Context, key 
 		return
 	}
 	if log.EnableDebug() {
-		log.LogDebugf("readObjectFromRemoteCache success: cacheReadRequestBase(%v) key(%v) reqId(%v) offset(%v) size(%v)",
-			req, key, reqId, offset, size)
+		log.LogDebugf("readObjectFromRemoteCache success: cacheReadRequestBase(%v) key(%v) reqId(%v) offset(%v) size(%v) deadline(%v)",
+			req, key, reqId, offset, size, req.Deadline)
 	}
 	return
 }
@@ -1429,7 +1447,7 @@ func (reader *RemoteCacheReader) Close() error {
 	return nil
 }
 
-func (rc *RemoteCacheClient) executeReadOperation(op *ReadOperation, isLast bool) {
+func (rc *RemoteCacheClient) executeReadOperation(op *ReadOperation, isLast bool, connTimeOut int) {
 	var (
 		conn          *net.TCPConn
 		blockDataSize uint32
@@ -1451,7 +1469,7 @@ func (rc *RemoteCacheClient) executeReadOperation(op *ReadOperation, isLast bool
 		return
 	}
 
-	conn.SetWriteDeadline(time.Now().Add(WriteTimeoutMs))
+	conn.SetWriteDeadline(time.Now().Add(time.Duration(connTimeOut) * time.Millisecond))
 	if err = op.ReqPacket.WriteToNoDeadLineConn(conn); err != nil {
 		log.LogWarnf("%v FlashGroup Read: failed to write to addr(%v) err(%v)",
 			op.LogPrefix, op.Addr, err)
@@ -1466,7 +1484,7 @@ func (rc *RemoteCacheClient) executeReadOperation(op *ReadOperation, isLast bool
 	}
 
 	reply := new(proto.Packet)
-	conn.SetReadDeadline(time.Now().Add(ReadTimeoutMs))
+	conn.SetReadDeadline(time.Now().Add(time.Duration(connTimeOut) * time.Millisecond))
 	var openConn bool
 	blockDataSize, err, openConn = rc.ReadObjectFirstReply(conn, reply, op.ReqId)
 	if err != nil {
@@ -1634,16 +1652,22 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 			FirstPacketStartTime: firstPacketStartTime,
 			LogPrefix:            logPrefix,
 		}
-		for retryCount := 0; retryCount < MaxReadRetryCount && atomic.LoadInt32(&readOp.EndLoop) == 0; retryCount++ {
+		timeOut := rc.calculateRetryTimeout(0)
+		for retryCount := 0; retryCount < DefaultMaxRetryCount && atomic.LoadInt32(&readOp.EndLoop) == 0; retryCount++ {
 			readDone := make(chan struct{})
-			isLast := retryCount == MaxReadRetryCount-1
+			isLast := retryCount == DefaultMaxRetryCount-1
+			connTimeOut := rc.calculateConnTimeout(retryCount)
 			_ = rc.readPool.AsyncRunNoHang(func() {
-				rc.executeReadOperation(readOp, isLast)
+				rc.executeReadOperation(readOp, isLast, connTimeOut)
 				close(readDone)
 			})
 			select {
 			case <-readDone:
-			case <-time.After(OpReadTimeout):
+			case <-time.After(time.Duration(timeOut) * time.Millisecond):
+				timeOut = rc.calculateRetryTimeout(retryCount + 1)
+				if log.EnableDebug() {
+					log.LogDebugf("ReadObject: timeout on retry (%d/%d), addr(%v)", retryCount+1, DefaultMaxRetryCount, addr)
+				}
 			}
 		}
 		conn = readOp.Conn
@@ -1654,7 +1678,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 			err = fmt.Errorf("first packet timeout after all retries")
 		}
 		if err != nil {
-			log.LogWarnf("Read operation failed after %d retries, addr(%v) err(%v)", MaxReadRetryCount, addr, err)
+			log.LogWarnf("Read operation failed after %d retries, addr(%v) err(%v)", DefaultMaxRetryCount, addr, err)
 			return nil, 0, err
 		}
 		length = int64(req.Size_)
