@@ -2,8 +2,13 @@
 
 set -e
 
+# Load configuration from config.sh
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/config.sh"
+
 if [ $# -ne 1 ]; then
-    echo "useage: genConf.sh <baseDir>"
+    echo "Usage: genConf.sh <baseDir>"
+    echo "  baseDir  - Base directory for configuration files"
     exit 1
 fi
 
@@ -16,102 +21,127 @@ if [ ! -d "$confDir" ]; then
     mkdir -p $confDir
 fi
 
-ip1=172.16.1.101
-ip2=172.16.1.102
-ip3=172.16.1.103
-ip4=172.16.1.104
+echo "Starting configuration file generation..."
+echo "Master nodes: $MASTER_COUNT"
+echo "Data nodes: $DATA_COUNT"
+echo "Meta nodes: $META_COUNT"
 
-peers="1:$ip1:17010,2:${ip2}:17010,3:${ip3}:17010"
-echo "peers $peers"
-
-genMaster()
-{
-  echo "start gen master$1.conf"
-  masterDir="${baseDir}/master${1}"
-  confFile="${confDir}/master$1.conf"
-  if [ ! -f "$confFile" ]; then
-    sed "s/_id_/${1}/g" ${tplDir}/master.tpl | sed "s/_ip_/${2}/g" | sed "s/_peers_/${peers}/g" | sed "s|_dir_|${masterDir}|g" > "$confFile"
-    echo "gen master$1.conf success"
-  else
-    echo "master$1.conf already exists, skipping generation"
-  fi
+genMaster() {
+    local id=${1}
+    local ip=${2}
+    echo "start gen master$id.conf for IP $ip"
+    local masterDir="${baseDir}/master${id}"
+    local confFile="${confDir}/master$id.conf"
+    if [ ! -f "$confFile" ]; then
+        sed "s/_id_/${id}/g" ${tplDir}/master.tpl | sed "s/_ip_/${ip}/g" | sed "s/_peers_/${PEERS}/g" | sed "s|_dir_|${masterDir}|g" > "$confFile"
+        echo "gen master$id.conf success"
+    else
+        echo "master$id.conf already exists, skipping generation"
+    fi
 } 
 
-genMaster 1 $ip1
-genMaster 2 $ip2
-genMaster 3 $ip3
+# Generate Master node configurations
+master_id=1
+for ip in $MASTER_IPS; do
+    genMaster $master_id "$ip"
+    master_id=$((master_id + 1))
+done
 
+genData() {
+    local id=${1}
+    local ip=${2}
+    echo "start gen data$id.conf for IP $ip"
+    
+    # Get IP-specific configuration
+    local rack=$(get_ip_config "$ip" "rack")
+    local zone=$(get_ip_config "$ip" "zone")
+    local disk_size=$(get_ip_config "$ip" "disk_size")
+    
+    echo "  IP $ip: rack=$rack, zone=$zone, disk_size=$disk_size"
+    
+    local dataDir=$baseDir/data$id
+    if [ ! -d "$dataDir/disk" ]; then
+        echo "mkdir -p $dataDir/disk"
+        mkdir -p $dataDir/disk
+    fi
 
-masterAddr="\"${ip1}:17010\",\"${ip2}:17010\",\"${ip3}:17010\""
-
-genData()
-{
-  echo "start gen data$1.conf"
-  dataDir=$baseDir/data$1
-  if [ ! -d "$dataDir/disk" ]; then
-    echo "mkdir -p $dataDir/disk"
-    mkdir -p $dataDir/disk
-  fi
-
-  confFile="${confDir}/data$1.conf"
-  if [ ! -f "$confFile" ]; then
-    sed "s/_ip_/${2}/g" ${tplDir}/data.tpl | sed "s|_dir_|${dataDir}|g" | sed "s|_master_addr_|${masterAddr}|g" > "$confFile"
-    echo "gen data$1.conf success"
-  else
-    echo "data$1.conf already exists, skipping generation"
-  fi
+    local confFile="${confDir}/data$id.conf"
+    if [ ! -f "$confFile" ]; then
+        sed "s/_ip_/${ip}/g" ${tplDir}/data.tpl | \
+        sed "s/_rack_/${rack}/g" | \
+        sed "s/_zone_/${zone}/g" | \
+        sed "s/_disk_size_/${disk_size}/g" | \
+        sed "s|_dir_|${dataDir}|g" | \
+        sed "s|_master_addr_|${MASTER_ADDR}|g" > "$confFile"
+        echo "gen data$id.conf success"
+    else
+        echo "data$id.conf already exists, skipping generation"
+    fi
 }
 
-genData 1 $ip1
-genData 2 $ip2
-genData 3 $ip3
-genData 4 $ip4
+# Generate Data node configurations
+data_id=1
+for ip in $DATA_IPS; do
+    genData $data_id "$ip"
+    data_id=$((data_id + 1))
+done
 
-
-genMeta()
-{
-  echo "start gen meta$1.conf"
-  metaDir=$baseDir/meta$1
-  confFile="${confDir}/meta$1.conf"
-  if [ ! -f "$confFile" ]; then
-    sed "s/_ip_/${2}/g" ${tplDir}/meta.tpl | sed "s|_dir_|${metaDir}|g" | sed "s|_master_addr_|${masterAddr}|g" > "$confFile"
-    echo "gen meta$1.conf success"
-  else
-    echo "meta$1.conf already exists, skipping generation"
-  fi
+genMeta() {
+    local id=${1}
+    local ip=${2}
+    echo "start gen meta$id.conf for IP $ip"
+    
+    # Get IP-specific configuration
+    local rack=$(get_ip_config "$ip" "rack")
+    local zone=$(get_ip_config "$ip" "zone")
+    
+    echo "  IP $ip: rack=$rack, zone=$zone"
+    
+    local metaDir=$baseDir/meta$id
+    local confFile="${confDir}/meta$id.conf"
+    if [ ! -f "$confFile" ]; then
+        sed "s/_ip_/${ip}/g" ${tplDir}/meta.tpl | \
+        sed "s/_rack_/${rack}/g" | \
+        sed "s/_zone_/${zone}/g" | \
+        sed "s|_dir_|${metaDir}|g" | \
+        sed "s|_master_addr_|${MASTER_ADDR}|g" > "$confFile"
+        echo "gen meta$id.conf success"
+    else
+        echo "meta$id.conf already exists, skipping generation"
+    fi
 }
 
-genMeta 1 $ip1
-genMeta 2 $ip2
-genMeta 3 $ip3
-genMeta 4 $ip4
+# Generate Meta node configurations
+meta_id=1
+for ip in $META_IPS; do
+    genMeta $meta_id "$ip"
+    meta_id=$((meta_id + 1))
+done
 
-masterHost="${ip1}:17010,${ip2}:17010,${ip3}:17010"
-
-genClient()
-{
-  confFile="${confDir}/client.conf"
-  echo "start gen client.conf"
-  if [ ! -f "$confFile" ]; then
-    sed "s|_master_host_|${masterHost}|g" ${tplDir}/client.tpl | sed "s|_dir_|${baseDir}|g" > "$confFile"
-    echo "gen client.conf success"
-  else
-    echo "client.conf already exists, skipping generation"
-  fi
+genClient() {
+    local confFile="${confDir}/client.conf"
+    echo "start gen client.conf"
+    if [ ! -f "$confFile" ]; then
+        sed "s|_master_host_|${MASTER_HOST}|g" ${tplDir}/client.tpl | sed "s|_dir_|${baseDir}|g" > "$confFile"
+        echo "gen client.conf success"
+    else
+        echo "client.conf already exists, skipping generation"
+    fi
 }
 
 genClient
 
-genObject()
-{
-  confFile="${confDir}/object.conf"
-  echo "start gen object.conf"
-  if [ ! -f "$confFile" ]; then
-    sed "s|_master_addr_|${masterAddr}|g" ${tplDir}/object.tpl | sed "s|_dir_|${baseDir}|g" > "$confFile"
-    echo "gen object.conf success"
-  else
-    echo "object.conf already exists, skipping generation"
-  fi
+genObject() {
+    local confFile="${confDir}/object.conf"
+    echo "start gen object.conf"
+    if [ ! -f "$confFile" ]; then
+        sed "s|_master_addr_|${MASTER_ADDR}|g" ${tplDir}/object.tpl | sed "s|_dir_|${baseDir}|g" > "$confFile"
+        echo "gen object.conf success"
+    else
+        echo "object.conf already exists, skipping generation"
+    fi
 }
 
 genObject
+
+echo "Configuration file generation completed!"

@@ -4,6 +4,8 @@
   "localIP": "_ip_",
   "prof": "17320",
   "bindIp": "true",
+  "zone": "_zone_",
+  "rack": "_rack_",
   "raftHeartbeat": "17330",
   "raftReplica": "17340",
   "raftDir": "_dir_/raftlog/datanode",
@@ -11,10 +13,10 @@
   "warnLogDir": "_dir_/logs",
   "logLevel": "debug",
   "disks": [
-  	"_dir_/disk:3930691768"
+  	"_dir_/disk:1073741824"
   ],
   "enableSmuxConnPool": "true",
-"mediaType": 1,
+  "mediaType": 1,
   "masterAddr": [
       _master_addr_
   ]

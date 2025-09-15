@@ -4,6 +4,8 @@
   "localIP": "_ip_",
   "prof": "17220",
   "bindIp": "true",
+  "zone": "_zone_",
+  "rack": "_rack_",
   "raftHeartbeatPort": "17230",
   "raftReplicaPort": "17240",
   "logLevel": "debug",

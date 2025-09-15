@@ -1,41 +1,87 @@
 #!/bin/bash
 
+# Exit on any error
+set -e
+
+# Load configuration from config.sh
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/config.sh"
+
+# Check command line arguments
 if [ $# -ne 2 ]; then
-    echo "usage: start cluster: $0 <baseDir> <bond0>"
+    echo "Usage: $0 <baseDir> <bond0>"
+    echo "  baseDir  - Base directory for CubeFS deployment"
+    echo "  bond0    - Network interface name (e.g., bond0, eth0)"
     exit 1
 fi
 
-# gen net subip 
-sh ./shell/genIp.sh $2
+baseDir=$1
+bond0=$2
+confDir=${baseDir}/conf
 
-# gen config file
-sh ./shell/genConf.sh ${1}
+echo "=========================================="
+echo "Starting CubeFS cluster deployment..."
+echo "Base directory: $baseDir"
+echo "Network interface: $bond0"
+echo "Master nodes: $MASTER_COUNT"
+echo "Meta nodes: $META_COUNT"
+echo "Data nodes: $DATA_COUNT"
+echo "TOTAL_IP_COUNT: $TOTAL_IP_COUNT"
+echo "NETWORK_BASE: $NETWORK_BASE"
+echo "=========================================="
 
-confDir=${1}/conf
+# Generate network sub-IPs
+echo "Generating network sub-IPs..."
+export bond0=$bond0
+bash ./shell/genIp.sh $bond0
+echo "Network sub-IPs generated successfully"
 
-# start master service
-echo "begin start master service"
-./build/bin/cfs-server -c ${confDir}/master1.conf
-./build/bin/cfs-server -c ${confDir}/master2.conf
-./build/bin/cfs-server -c ${confDir}/master3.conf
-echo "start master service success"
+# Generate configuration files
+echo "Generating configuration files..."
+export baseDir=$baseDir
+bash ./shell/genConf.sh $baseDir
+echo "Configuration files generated successfully"
 
-# start meta service
-echo "begin start metanode service"
-./build/bin/cfs-server -c ${confDir}/meta1.conf
-./build/bin/cfs-server -c ${confDir}/meta2.conf
-./build/bin/cfs-server -c ${confDir}/meta3.conf
-./build/bin/cfs-server -c ${confDir}/meta4.conf
-echo "start metanode service success"
+# Start master services
+echo "Starting master services..."
+i=1
+while [ $i -le $MASTER_COUNT ]; do
+    echo "Starting master${i}..."
+    ./build/bin/cfs-server -c ${confDir}/master${i}.conf &
+    i=$((i + 1))
+done
+echo "Master services started successfully"
 
-# start data service
-echo "begin start datanode service"
-./build/bin/cfs-server -c ${confDir}/data1.conf
-./build/bin/cfs-server -c ${confDir}/data2.conf
-./build/bin/cfs-server -c ${confDir}/data3.conf
-./build/bin/cfs-server -c ${confDir}/data4.conf
-echo "start datanode service success"
+# Wait for master nodes to be ready
+echo "Waiting for master nodes to initialize..."
+sleep 5
 
+# Start meta services
+echo "Starting meta node services..."
+i=1
+while [ $i -le $META_COUNT ]; do
+    echo "Starting meta${i}..."
+    ./build/bin/cfs-server -c ${confDir}/meta${i}.conf &
+    i=$((i + 1))
+done
+echo "Meta node services started successfully"
+
+# Start data services
+echo "Starting data node services..."
+i=1
+while [ $i -le $DATA_COUNT ]; do
+    echo "Starting data${i}..."
+    ./build/bin/cfs-server -c ${confDir}/data${i}.conf &
+    i=$((i + 1))
+done
+echo "Data node services started successfully"
+
+# Configure cluster
+echo "Configuring cluster..."
 ./build/bin/cfs-cli config set --addr 172.16.1.101:17010
 
-echo "wait a minute for cluster to prepare state!!!"
+echo "=========================================="
+echo "CubeFS cluster deployment completed!"
+echo "Master address: 172.16.1.101:17010"
+echo "Please wait a moment for the cluster to fully initialize..."
+echo "=========================================="
