@@ -640,13 +640,18 @@ func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.Sto
 	ns.metaNodeSelectorLock.RLock()
 	defer ns.metaNodeSelectorLock.RUnlock()
 
+	nodeType := MetaNodeType
+	if storeMode == proto.StoreModeRocksDb {
+		nodeType = RocksdbType
+	}
+
 	// If rack isolation is not enabled, use non-rack-aware selector directly
 	if param.rackLevel == proto.RackAwareNone {
-		return ns.getNodeSelector(MetaNodeType, storeMode).Select(ns, param.excludeHosts, param.replicaNum)
+		return ns.getNodeSelector(nodeType, storeMode).Select(ns, param.excludeHosts, param.replicaNum)
 	}
 
 	// Rack isolation enabled, prioritize strong constraint mode
-	return ns.selectNodesWithRack(param, MetaNodeType, storeMode)
+	return ns.selectNodesWithRack(param, nodeType, storeMode)
 }
 
 // selectMetaNodesWithRack selects meta nodes with rack awareness

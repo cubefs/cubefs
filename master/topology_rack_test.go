@@ -1756,3 +1756,197 @@ func TestZoneWeakVsStrongRackAwarenessComparison(t *testing.T) {
 	t.Logf("Zone level weak mode: Selected rack1=%d, rack2=%d (fallback mechanism working)",
 		selectedRacks["rack1"], selectedRacks["rack2"])
 }
+
+// Helper function: Create meta node with RocksDB disk information
+func createMetaNodeWithRocksDB(addr, zoneName, rackName string, ns *nodeSet, rocksdbTotal, rocksdbUsed uint64) *MetaNode {
+	mn := newMetaNode(addr, strconv.Itoa(raftstore.DefaultHeartbeatPort), strconv.Itoa(raftstore.DefaultReplicaPort), zoneName, "", "test")
+	mn.ZoneName = zoneName
+	mn.Rack = rackName
+	mn.Total = 1024 * util.GB
+	mn.Used = 10 * util.GB
+	mn.ReportTime = time.Now()
+	mn.IsActive = true
+	mn.NodeSetID = ns.ID
+	mn.Threshold = 0.8
+	mn.MaxMemAvailWeight = 1024 * util.GB
+	mn.MpCntLimit = defaultMaxMpCntLimit
+	mn.MetaPartitionCount = 0
+
+	// Setup system memory information (required for IsRocksdbWriteAble)
+	mn.NodeMemTotal = 16 * util.GB
+	mn.NodeMemUsed = 4 * util.GB
+
+	// Setup RocksDB disk information
+	mn.RocksdbDisks = []*proto.MetaNodeRocksdbInfo{
+		{
+			Path:       "/cfs/rocksdb",
+			Total:      rocksdbTotal,
+			Used:       rocksdbUsed,
+			UsageRatio: float64(rocksdbUsed) / float64(rocksdbTotal),
+			Status:     1,      // Active
+			KeyNum:     100000, // Set reasonable key number
+		},
+	}
+	mn.RocksdbDiskThreshold = 0.8
+	mn.RocksdbKeyNumMax = 1000000
+	mn.RocksdbRdOnly = false // Ensure not read-only
+
+	return mn
+}
+
+// Test getAvailMetaNodeHosts with RocksDB store mode
+func TestRackGetAvailMetaNodeHostsRocksDB(t *testing.T) {
+	ns := newNodeSet(nil, 1, 4, "test-zone", "")
+
+	// Create meta nodes with RocksDB support
+	metaNodes := []*MetaNode{
+		createMetaNodeWithRocksDB("192.168.1.1:8080", "test-zone", "rack1", ns, 100*util.GB, 20*util.GB),
+		createMetaNodeWithRocksDB("192.168.1.2:8080", "test-zone", "rack1", ns, 100*util.GB, 30*util.GB),
+		createMetaNodeWithRocksDB("192.168.1.3:8080", "test-zone", "rack2", ns, 100*util.GB, 10*util.GB),
+		createMetaNodeWithRocksDB("192.168.1.4:8080", "test-zone", "rack2", ns, 100*util.GB, 25*util.GB),
+	}
+
+	// Add meta nodes to nodeset
+	for _, mn := range metaNodes {
+		ns.putMetaNode(mn)
+	}
+
+	t.Run("TestRocksDBModeWithoutRackAwareness", func(t *testing.T) {
+		param := &selectParam{
+			replicaNum: 3,
+			rackLevel:  proto.RackAwareNone,
+		}
+
+		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb)
+		require.NoError(t, err, "Should successfully select meta nodes for RocksDB mode")
+		require.Equal(t, 3, len(hosts), "Should select 3 meta node hosts")
+		require.Equal(t, 3, len(peers), "Should return 3 peers")
+
+		// Verify all selected nodes are writable for RocksDB
+		for _, host := range hosts {
+			ns.metaNodes.Range(func(key, value interface{}) bool {
+				if key.(string) == host {
+					mn := value.(*MetaNode)
+					require.True(t, mn.IsRocksdbWriteAble(), "Selected node should be RocksDB writable")
+					require.True(t, mn.PartitionCntLimited(), "Selected node should have partition count limit")
+					return false
+				}
+				return true
+			})
+		}
+
+		t.Logf("Selected RocksDB meta nodes: %v", hosts)
+	})
+
+	t.Run("TestRocksDBModeWithStrongRackAwareness", func(t *testing.T) {
+		param := &selectParam{
+			replicaNum: 2,
+			rackLevel:  proto.RackAwareStrong,
+		}
+
+		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb)
+		require.NoError(t, err, "Should successfully select meta nodes with strong rack awareness")
+		require.Equal(t, 2, len(hosts), "Should select 2 meta node hosts")
+		require.Equal(t, 2, len(peers), "Should return 2 peers")
+
+		// Verify selected nodes are from different racks
+		selectedRacks := make(map[string]bool)
+		for _, host := range hosts {
+			ns.metaNodes.Range(func(key, value interface{}) bool {
+				if key.(string) == host {
+					mn := value.(*MetaNode)
+					selectedRacks[mn.Rack] = true
+					require.True(t, mn.IsRocksdbWriteAble(), "Selected node should be RocksDB writable")
+					return false
+				}
+				return true
+			})
+		}
+
+		require.Equal(t, 2, len(selectedRacks), "Should select nodes from 2 different racks")
+		t.Logf("Selected RocksDB meta nodes with strong rack awareness: %v", hosts)
+	})
+}
+
+// Test getAvailMetaNodeHosts with RocksDB disk threshold scenarios
+func TestRackGetAvailMetaNodeHostsRocksDBThreshold(t *testing.T) {
+	ns := newNodeSet(nil, 1, 4, "test-zone", "")
+
+	// Create meta nodes with different RocksDB disk usage scenarios
+	metaNodes := []*MetaNode{
+		// Node with low RocksDB usage (should be selectable)
+		createMetaNodeWithRocksDB("192.168.1.1:8080", "test-zone", "rack1", ns, 100*util.GB, 10*util.GB),
+		// Node with medium RocksDB usage (should be selectable)
+		createMetaNodeWithRocksDB("192.168.1.2:8080", "test-zone", "rack1", ns, 100*util.GB, 50*util.GB),
+		// Node with high RocksDB usage (should not be selectable)
+		createMetaNodeWithRocksDB("192.168.1.3:8080", "test-zone", "rack2", ns, 100*util.GB, 90*util.GB),
+		// Node with full RocksDB usage (should not be selectable)
+		createMetaNodeWithRocksDB("192.168.1.4:8080", "test-zone", "rack2", ns, 100*util.GB, 100*util.GB),
+	}
+
+	// Add meta nodes to nodeset
+	for _, mn := range metaNodes {
+		ns.putMetaNode(mn)
+	}
+
+	t.Run("TestRocksDBThresholdSelection", func(t *testing.T) {
+		param := &selectParam{
+			replicaNum: 2,
+			rackLevel:  proto.RackAwareNone,
+		}
+
+		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb)
+		require.NoError(t, err, "Should successfully select meta nodes within RocksDB threshold")
+		require.Equal(t, 2, len(hosts), "Should select 2 meta node hosts")
+		require.Equal(t, 2, len(peers), "Should return 2 peers")
+
+		// Verify selected nodes are within RocksDB threshold
+		for _, host := range hosts {
+			ns.metaNodes.Range(func(key, value interface{}) bool {
+				if key.(string) == host {
+					mn := value.(*MetaNode)
+					require.True(t, mn.IsRocksdbWriteAble(), "Selected node should be RocksDB writable")
+					require.False(t, mn.reachesRocksdbDisksThreshold(), "Selected node should not reach RocksDB threshold")
+					return false
+				}
+				return true
+			})
+		}
+
+		// Verify that high usage nodes are not selected
+		require.NotContains(t, hosts, "192.168.1.3:8080", "High usage node should not be selected")
+		require.NotContains(t, hosts, "192.168.1.4:8080", "Full usage node should not be selected")
+
+		t.Logf("Selected RocksDB meta nodes within threshold: %v", hosts)
+	})
+}
+
+// Test getAvailMetaNodeHosts with insufficient RocksDB nodes
+func TestRackGetAvailMetaNodeHostsInsufficientRocksDBNodes(t *testing.T) {
+	ns := newNodeSet(nil, 1, 2, "test-zone", "")
+
+	// Create only one RocksDB-capable meta node
+	metaNodes := []*MetaNode{
+		createMetaNodeWithRocksDB("192.168.1.1:8080", "test-zone", "rack1", ns, 100*util.GB, 20*util.GB),
+		// Create a node that's not RocksDB writable (high usage)
+		createMetaNodeWithRocksDB("192.168.1.2:8080", "test-zone", "rack1", ns, 100*util.GB, 95*util.GB),
+	}
+
+	// Add meta nodes to nodeset
+	for _, mn := range metaNodes {
+		ns.putMetaNode(mn)
+	}
+
+	t.Run("TestInsufficientRocksDBNodes", func(t *testing.T) {
+		param := &selectParam{
+			replicaNum: 3, // Request more nodes than available
+			rackLevel:  proto.RackAwareNone,
+		}
+
+		_, _, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb)
+		require.Error(t, err, "Should return error when insufficient RocksDB nodes available")
+		require.Contains(t, err.Error(), "no enough writable hosts", "Error should indicate insufficient writable hosts")
+
+		t.Logf("Expected error for insufficient RocksDB nodes: %v", err)
+	})
+}

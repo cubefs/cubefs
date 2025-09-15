@@ -599,8 +599,8 @@ func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err
 }
 
 func (vol *Vol) createModeString() string {
-	return fmt.Sprintf("crossZone: %v, zoneName: %v, mediaType: %v, mpReplicaNum: %v, dpReplicaNum: %v, allowedStorageClass: %v",
-		vol.crossZone, vol.zoneName, vol.volStorageClass, vol.mpReplicaNum, vol.dpReplicaNum, vol.allowedStorageClass)
+	return fmt.Sprintf("crossZone: %v, zoneName: %v, mediaType: %v, mpReplicaNum: %v, dpReplicaNum: %v, storeMode: %v, allowedStorageClass: %v",
+		vol.crossZone, vol.zoneName, vol.volStorageClass, vol.mpReplicaNum, vol.dpReplicaNum, vol.DefaultStoreMode, vol.allowedStorageClass)
 }
 
 func (vol *Vol) sameCreateMode(v1 *Vol) bool {
@@ -612,7 +612,8 @@ func (vol *Vol) sameCreateMode(v1 *Vol) bool {
 		vol.zoneName != v1.zoneName ||
 		vol.VolType != v1.VolType ||
 		vol.mpReplicaNum != v1.mpReplicaNum ||
-		vol.dpReplicaNum != v1.dpReplicaNum {
+		vol.dpReplicaNum != v1.dpReplicaNum ||
+		vol.DefaultStoreMode != v1.DefaultStoreMode {
 		return false
 	}
 

@@ -1426,12 +1426,12 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if value = r.FormValue(ClientReqPeriod); value != "" {
-		if parsed, err = strconv.ParseUint(value, 10, 32); err == nil || parsed == 0 {
+		if parsed, err = strconv.ParseUint(value, 10, 32); err != nil || parsed == 0 {
 			period = uint32(parsed)
 		}
 	}
 	if value = r.FormValue(ClientTriggerCnt); value != "" {
-		if parsed, err = strconv.ParseUint(value, 10, 32); err == nil || parsed == 0 {
+		if parsed, err = strconv.ParseUint(value, 10, 32); err != nil || parsed == 0 {
 			triggerCnt = uint32(parsed)
 		}
 	}
@@ -5199,7 +5199,7 @@ func (m *Server) deleteDecommissionDiskRecord(w http.ResponseWriter, r *http.Req
 	disk := value.(*DecommissionDisk)
 	err = m.cluster.syncDeleteDecommissionDisk(disk)
 	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 	m.cluster.DecommissionDisks.Delete(disk.GenerateKey())

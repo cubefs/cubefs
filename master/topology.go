@@ -1055,10 +1055,11 @@ type nodeSet struct {
 	metaNodes *sync.Map
 	dataNodes *sync.Map
 
-	racks            map[string]*rackSet
-	racksLock        sync.RWMutex
-	dataRackSelector NodesetSelector
-	metaRackSelector NodesetSelector
+	racks               map[string]*rackSet
+	racksLock           sync.RWMutex
+	dataRackSelector    NodesetSelector
+	metaRackSelector    NodesetSelector
+	rocksdbRackSelector NodesetSelector
 
 	nodeSelectLock          sync.Mutex
 	dataNodeSelectorLock    sync.RWMutex
@@ -1101,9 +1102,10 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string, rack string) *n
 		metaNodes: new(sync.Map),
 		dataNodes: new(sync.Map),
 
-		racks:            make(map[string]*nodeSet),
-		dataRackSelector: NewNodesetSelector(StrawNodesetSelectorName, DataNodeType),
-		metaRackSelector: NewNodesetSelector(StrawNodesetSelectorName, MetaNodeType),
+		racks:               make(map[string]*rackSet),
+		dataRackSelector:    NewNodesetSelector(StrawNodesetSelectorName, DataNodeType),
+		metaRackSelector:    NewNodesetSelector(StrawNodesetSelectorName, MetaNodeType),
+		rocksdbRackSelector: NewNodesetSelector(StrawNodesetSelectorName, RocksdbType),
 
 		decommissionDataPartitionList:     NewDecommissionDataPartitionList(c, id),
 		manualDecommissionDiskList:        NewDecommissionDiskList(),
@@ -1112,7 +1114,7 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string, rack string) *n
 		startDecommissionDiskListTraverse: make(chan struct{}, 1),
 		dataNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
 		metaNodeMemorySelector:            NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
-		metaNodeRocksdbSelector:           NewNodeSelector(DefaultZoneName, RocksdbType),
+		metaNodeRocksdbSelector:           NewNodeSelector(DefaultNodeSelectorName, RocksdbType),
 	}
 
 	if c != nil {
@@ -1125,6 +1127,9 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string, rack string) *n
 func (ns *nodeSet) getRackSelector(nodeType NodeType) NodesetSelector {
 	if nodeType == DataNodeType {
 		return ns.dataRackSelector
+	}
+	if nodeType == RocksdbType {
+		return ns.rocksdbRackSelector
 	}
 	return ns.metaRackSelector
 }

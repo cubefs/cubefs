@@ -265,6 +265,13 @@ func formatRackView(rackName string, dataNodes []proto.NodeView, metaNodes []pro
 	zoneSet := make(map[string]bool)
 	nodeSetSet := make(map[uint64]bool)
 
+	sort.Slice(dataNodes, func(i, j int) bool {
+		return dataNodes[i].ID < dataNodes[j].ID
+	})
+	sort.Slice(metaNodes, func(i, j int) bool {
+		return metaNodes[i].ID < metaNodes[j].ID
+	})
+
 	for _, node := range dataNodes {
 		if node.IsWritable {
 			dataWritableCount++

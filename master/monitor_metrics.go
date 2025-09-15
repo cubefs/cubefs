@@ -679,17 +679,19 @@ func (mm *monitorMetrics) checkPartitionCreateMetrics() {
 		log.LogInfof("checkPartitionCreateMetrics: vol %v", vol.createModeString())
 
 		for _, rackLevel := range rackAwareLevel {
-			key := fmt.Sprintf("metaMem_%v_default", rackLevel)
-			allStats[key] = true
+			if vol.DefaultStoreMode == proto.StoreModeRocksDb {
+				key := fmt.Sprintf("metaRocksdb_%v_default", rackLevel)
+				allStats[key] = true
+				if !mm.checkHostSelection(TypeRocksdbPartition, vol, 0, rackLevel) {
+					failStats[key]++
+				}
+			} else {
+				key := fmt.Sprintf("metaMem_%v_default", rackLevel)
+				allStats[key] = true
 
-			if !mm.checkHostSelection(TypeMetaPartition, vol, 0, rackLevel) {
-				failStats[key]++
-			}
-
-			key = fmt.Sprintf("metaRocksdb_%v_default", rackLevel)
-			allStats[key] = true
-			if !mm.checkHostSelection(TypeRocksdbPartition, vol, 0, rackLevel) {
-				failStats[key]++
+				if !mm.checkHostSelection(TypeMetaPartition, vol, 0, rackLevel) {
+					failStats[key]++
+				}
 			}
 		}
 
