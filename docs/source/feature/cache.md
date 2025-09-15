@@ -18,6 +18,8 @@ Here is a table describing the meanings of various parameters in the configurati
 
 | Parameter           | Type           | Meaning                                   | Required  |
 |--------------|--------------|--------------------------------------|-----|
+| cluster      | string       | Cluster name | Yes   |
+| vol          | string       | Volume name  | Yes   |
 | cacheDir         | string       | Local storage path for cached data: allocated space (in bytes)| Yes   |
 | logDir       | string       | Path for log files| Yes   |
 | logLevel      | string slice | Log levels| Yes   |
