@@ -19,11 +19,6 @@ const (
 	DefaultMaxSize           = 512 * 1024 // 512K
 	DefaultTaskWorkers       = 64
 	DefaultConnTasksBuffer   = 200000
-	DefaultWriteTimeout      = 10 * time.Millisecond
-	DefaultFirstReadTimeout  = 300
-	DefaultReadTimeout       = 100
-	DefaultRetryCount        = 8
-	ReadDataTimeout          = 500
 )
 
 type ReadTaskQueue struct {
@@ -155,21 +150,22 @@ func (rq *ReadTaskQueue) connTaskWorker() {
 	for {
 		select {
 		case taskWithPacket := <-rq.connTasks:
-			timeOut := DefaultFirstReadTimeout
+			timeOut := rq.rc.calculateRetryTimeout(0)
 			bg := stat.BeginStat()
-			for i := 0; i < DefaultRetryCount && atomic.LoadInt32(&taskWithPacket.finish) == 0; i++ {
+			for i := 0; i < DefaultMaxRetryCount && atomic.LoadInt32(&taskWithPacket.finish) == 0; i++ {
 				done := make(chan struct{})
-				isLast := DefaultRetryCount == i+1
+				isLast := DefaultMaxRetryCount == i+1
+				connTimeOut := rq.rc.calculateConnTimeout(i)
 				_ = rq.taskPool.AsyncRunNoHang(func() {
-					rq.batchSmallObjectRead(taskWithPacket, isLast)
+					rq.batchSmallObjectRead(taskWithPacket, isLast, connTimeOut)
 					close(done)
 				})
 				select {
 				case <-done:
 				case <-time.After(time.Duration(timeOut) * time.Millisecond):
-					timeOut = DefaultReadTimeout
+					timeOut = rq.rc.calculateRetryTimeout(i + 1)
 					if log.EnableDebug() {
-						log.LogDebugf("connTaskWorker: timeout on retry (%d/%d), addr(%v)", i+1, DefaultRetryCount, rq.flashAddr)
+						log.LogDebugf("connTaskWorker: timeout on retry (%d/%d), addr(%v)", i+1, DefaultMaxRetryCount, rq.flashAddr)
 					}
 				}
 			}
@@ -195,7 +191,7 @@ func (rq *ReadTaskQueue) taskWorker() {
 	}
 }
 
-func (rq *ReadTaskQueue) batchSmallObjectRead(taskWithPacket *ReadTaskWithPacket, isLast bool) {
+func (rq *ReadTaskQueue) batchSmallObjectRead(taskWithPacket *ReadTaskWithPacket, isLast bool, connTimeOut int) {
 	var (
 		err  error
 		conn *net.TCPConn
@@ -219,20 +215,20 @@ func (rq *ReadTaskQueue) batchSmallObjectRead(taskWithPacket *ReadTaskWithPacket
 	var replyPacket *proto.Packet
 	if conn, err = rq.rc.conns.GetConnect(rq.flashAddr); err != nil {
 		getResult = true
-		log.LogWarnf("batchSmallObjectRead: failed to get connection after %d retries, addr(%v) err(%v)", DefaultRetryCount, rq.flashAddr, err)
+		log.LogWarnf("batchSmallObjectRead: failed to get connection, firstPacktTime(%v) addr(%v) err(%v)", rq.rc.firstPacketTimeout, rq.flashAddr, err)
 		return
 	}
-	conn.SetWriteDeadline(time.Now().Add(DefaultWriteTimeout))
+	conn.SetWriteDeadline(time.Now().Add(time.Duration(connTimeOut) * time.Millisecond))
 	if err = taskWithPacket.packet.WriteToNoDeadLineConn(conn); err != nil {
 		rq.rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: true}
-		log.LogWarnf("batchSmallObjectRead: failed to write after %d retries, addr(%v) err(%v)", DefaultRetryCount, rq.flashAddr, err)
+		log.LogWarnf("batchSmallObjectRead: failed to write, firstPacktTime(%v) addr(%v) err(%v)", rq.rc.firstPacketTimeout, rq.flashAddr, err)
 		return
 	}
 
 	replyPacket = NewFlashCacheReply()
-	if err = replyPacket.ReadFromConnExt(conn, ReadDataTimeout); err != nil {
+	if err = replyPacket.ReadFromConnExt(conn, connTimeOut); err != nil {
 		rq.rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: true}
-		log.LogWarnf("batchSmallObjectRead: failed to read after %d retries, addr(%v) err(%v)", DefaultRetryCount, rq.flashAddr, err)
+		log.LogWarnf("batchSmallObjectRead: failed to read, firstPacktTime(%v) addr(%v) err(%v)", rq.rc.firstPacketTimeout, rq.flashAddr, err)
 		return
 	}
 	getResult = true
