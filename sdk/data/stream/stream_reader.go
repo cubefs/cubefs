@@ -258,7 +258,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 		} else {
 			log.LogDebugf("Stream read: ino(%v) req(%v) s.needBCache(%v) s.client.bcacheEnable(%v) aheadReadEnable(%v)", s.inode, req, s.needBCache, s.client.bcacheEnable, s.aheadReadEnable)
 			if s.aheadReadEnable && req.ExtentKey.Size > util.CacheReadBlockSize {
-				readBytes, err = s.aheadRead(req)
+				readBytes, err = s.aheadRead(req, storageClass)
 				if err == nil && readBytes == req.Size {
 					total += readBytes
 					continue
@@ -579,7 +579,7 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 	// the flush order cannot be guaranteed
 	err := handler.flush()
 	if err != nil {
-		log.LogWarnf("completeAsyncFlush: completed successfully for handler(%v)", handler)
+		log.LogWarnf("completeAsyncFlush: completed failed for handler(%v)", handler)
 	} else {
 		log.LogDebugf("completeAsyncFlush: completed successfully for handler(%v) err(%v)", handler, err)
 		if req.clearFunc != nil {
