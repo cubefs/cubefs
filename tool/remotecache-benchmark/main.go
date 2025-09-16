@@ -55,7 +55,7 @@ type BenchmarkResult struct {
 	IOPS          float64
 }
 
-func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master string, clearPageCache bool, logLevel string, disableBatch bool, activateTime int64, connWorkers int) *BenchmarkTester {
+func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master string, clearPageCache bool, logLevel string, disableBatch bool, activateTime int64, connWorkers int, flowLimit int64) *BenchmarkTester {
 	os.MkdirAll(dataDir, 0o755)
 	tester := &BenchmarkTester{
 		dataDir:        dataDir,
@@ -90,6 +90,7 @@ func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master s
 			DisableBatch:       disableBatch,
 			ActivateTime:       activateTime,
 			ConnWorkers:        connWorkers,
+			FlowLimit:          flowLimit,
 		}
 		tester.cacheStorage, err = remotecache.NewRemoteCacheClient(cfg)
 		if err != nil {
@@ -218,6 +219,7 @@ func main() {
 	disableBatch := flag.Bool("disable-batch", false, "Disable batch operations")
 	activateTime := flag.Int64("activate-time", 200, "Activate time in microseconds")
 	flashConnWorkers := flag.Int("flash-conn-workers", 64, "Number of flash connection workers")
+	flowLimit := flag.Int64("flow-limit", 5*1024*1024*1024, "Flow limit in bytes per second (default: 5GB)")
 	flag.Parse()
 
 	fmt.Printf("Parsed command-line arguments:\n")
@@ -240,7 +242,8 @@ func main() {
 	fmt.Printf("  -disable-batch: %v\n", *disableBatch)
 	fmt.Printf("  -activate-time: %v\n", *activateTime)
 	fmt.Printf("  -flash-conn-workers: %v\n", *flashConnWorkers)
-	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master, *clear, *logLevel, *disableBatch, *activateTime, *flashConnWorkers)
+	fmt.Printf("  -flow-limit: %v\n", *flowLimit)
+	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master, *clear, *logLevel, *disableBatch, *activateTime, *flashConnWorkers, *flowLimit)
 	if *needGenerate {
 		if err := tester.GenerateTestData(*totalSizeGB, *genConcurrency); err != nil {
 			fmt.Printf("generate test files failed: %v\n", err)

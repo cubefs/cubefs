@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/google/uuid"
+	"golang.org/x/time/rate"
 )
 
 type ZoneRankType int
@@ -52,6 +53,7 @@ const (
 	DefaultFirstRetryPercent      = 80
 	DefaultSubsequentRetryPercent = 10
 	DefaultSecondRetryPercent     = 20
+	DefaultFlowLimit              = 5 * 1024 * 1024 * 1024 // 5GB default
 )
 
 type AddressPingStats struct {
@@ -111,6 +113,7 @@ type RemoteCacheClient struct {
 	connWorkers           int
 	connPutChan           chan *ConnPutTask
 	readPool              *util.GTaskPool
+	flowLimiter           *rate.Limiter
 }
 
 func (as *AddressPingStats) Add(duration time.Duration) {
@@ -150,6 +153,7 @@ type ClientConfig struct {
 	DisableBatch       bool
 	ActivateTime       int64
 	ConnWorkers        int
+	FlowLimit          int64 // bytes per second, default 5GB
 }
 
 func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err error) {
@@ -197,6 +201,10 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 	} else {
 		rc.connWorkers = config.ConnWorkers
 	}
+	if config.FlowLimit == 0 {
+		config.FlowLimit = DefaultFlowLimit
+	}
+	rc.flowLimiter = rate.NewLimiter(rate.Limit(config.FlowLimit), int(config.FlowLimit/2))
 	rc.connPutChan = make(chan *ConnPutTask, DefaultConnPutChanSize)
 	rc.readPool = util.NewGTaskPool(DefaultReadPoolSize)
 	rc.readPool.SetMaxDeltaRunning(512)
@@ -793,6 +801,10 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		if totalWritten+int64(readSize) > length {
 			readSize = int(length - totalWritten)
 		}
+		if err = rc.flowLimiter.WaitN(ctx, readSize); err != nil {
+			log.LogWarnf("FlashGroup put: reqId(%v) flow limit wait failed, err(%v)", reqId, err)
+			return err
+		}
 		bufferOffset := 0
 		for {
 			if ctx.Err() != nil {
@@ -1328,6 +1340,12 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 		atomic.AddInt64(&reader.alreadyReadLen, expectLen)
 		return int(expectLen), nil
 	}
+	alignedOffset := reader.currOffset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
+	readPackageSize := uint32(util.Min(proto.CACHE_BLOCK_PACKET_SIZE, int(reader.blockDataSize-alignedOffset)))
+	if err = reader.rc.flowLimiter.WaitN(reader.ctx, int(readPackageSize)); err != nil {
+		log.LogWarnf("RemoteCacheReader:reqID(%v) flow limit wait failed, err(%v)", reader.reqID, err)
+		return 0, err
+	}
 	reply := new(proto.Packet)
 	reader.conn.SetReadDeadline(time.Now().Add(time.Second * proto.ReadDeadlineTime))
 	expectLen, err = reader.getReadObjectReply(reply)
@@ -1339,8 +1357,6 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 		}
 		return
 	}
-	alignedOffset := reader.currOffset / proto.CACHE_BLOCK_PACKET_SIZE * proto.CACHE_BLOCK_PACKET_SIZE
-	readPackageSize := uint32(util.Min(proto.CACHE_BLOCK_PACKET_SIZE, int(reader.blockDataSize-alignedOffset)))
 	_, err = io.ReadFull(reader.conn, p[:readPackageSize])
 	if err != nil {
 		log.LogErrorf("RemoteCacheReader:reqID(%v) Read err(%v)", reader.reqID, err)
