@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/time/rate"
 )
 
@@ -236,7 +238,9 @@ func (bufferP *BufferPool) getHeadProtoVer(id uint64) (data []byte) {
 func (bufferP *BufferPool) getNormal(id uint64) (data []byte) {
 	if NormalBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&normalBuffersCount) >= NormalBuffersTotalLimit {
 		ctx := context.Background()
+		start := time.Now()
 		normalBuffersRateLimit.Wait(ctx)
+		log.LogDebugf("getNormal wait: id(%v) (%v)", id, time.Since(start).String())
 	}
 	select {
 	case data = <-bufferP.normalPools[id%slotCnt]:

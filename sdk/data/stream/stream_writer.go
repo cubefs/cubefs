@@ -939,7 +939,8 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 				break
 			}
 
-			log.LogDebugf("doWriteAppendEx: start write protection, handler(%v)", s.handler)
+			log.LogDebugf("doWriteAppendEx: start write protection, handler(%v) offset(%v) size(%v)",
+				s.handler, offset, size)
 			ek, err = s.handler.write(data, offset, size, direct)
 			if err == nil && ek != nil {
 				ek.SetSeq(s.verSeq)
@@ -1005,7 +1006,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 }
 
 func (s *Streamer) flush(wait bool, id string) (err error) {
-	pending := make(map[uint64]chan error)
+	pending := make(map[*ExtentHandler]chan error)
 	elements := s.dirtylist.Elements()
 	for _, element := range elements {
 		if element == nil {
@@ -1029,8 +1030,8 @@ func (s *Streamer) flush(wait bool, id string) (err error) {
 				s.inode, eh, atomic.LoadInt32(&eh.inflight), id, wait)
 			ch := s.requestAsyncFlush(eh, clearFunc)
 			if wait {
-				if _, ok := pending[eh.id]; !ok {
-					pending[eh.id] = ch
+				if _, ok := pending[eh]; !ok {
+					pending[eh] = ch
 				}
 				eh.stream.dirtylist.Remove(element)
 			}
@@ -1053,15 +1054,19 @@ func (s *Streamer) flush(wait bool, id string) (err error) {
 	}
 	log.LogDebugf("Streamer(%v) wait(%v) pending(%v) id(%v)", s.inode, wait, pending, id)
 	if wait {
+		var firstErr error
 		for len(pending) > 0 {
 			progressed := false
-			for hid, ch := range pending {
+			for eh, ch := range pending {
 				select {
-				case err = <-ch:
-					s.removePendingAsyncFlush(hid)
-					delete(pending, hid)
-					if err != nil {
-						return err
+				case e := <-ch:
+					s.removePendingAsyncFlush(eh.id)
+					delete(pending, eh)
+					if e != nil && firstErr == nil {
+						firstErr = e
+					}
+					if e != nil {
+						eh.cleanup()
 					}
 					progressed = true
 				default:
@@ -1071,6 +1076,9 @@ func (s *Streamer) flush(wait bool, id string) (err error) {
 			if !progressed {
 				time.Sleep(time.Millisecond * 10)
 			}
+		}
+		if firstErr != nil {
+			return firstErr
 		}
 	}
 	return

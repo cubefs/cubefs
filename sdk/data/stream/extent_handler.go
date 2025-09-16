@@ -256,7 +256,8 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	for total < size {
 		if eh.packet == nil {
 			eh.packet = NewWritePacket(eh.inode, offset+total, eh.storeMode)
-			log.LogDebugf("ExtentHandler write packet nil and new packet: eh(%v)", eh)
+			log.LogDebugf("ExtentHandler write packet nil and new packet: eh(%v) offset(%v)",
+				eh, eh.packet.KernelOffset)
 			if direct {
 				eh.packet.Opcode = proto.OpSyncWrite
 			}
