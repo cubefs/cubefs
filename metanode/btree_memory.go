@@ -50,37 +50,37 @@ func (b *MemSnapShot) Range(tp TreeType, cb func(item interface{}) bool) error {
 		callBackFunc := func(inode *Inode) bool {
 			return cb(inode)
 		}
-		return b.inode.Range(&Inode{}, nil, callBackFunc)
+		return b.inode.Range(nil, nil, callBackFunc)
 	case DentryType:
 		callBackFunc := func(dentry *Dentry) bool {
 			return cb(dentry)
 		}
-		return b.dentry.Range(&Dentry{}, nil, callBackFunc)
+		return b.dentry.Range(nil, nil, callBackFunc)
 	case ExtendType:
 		callBackFunc := func(extend *Extend) bool {
 			return cb(extend)
 		}
-		return b.extend.Range(&Extend{}, nil, callBackFunc)
+		return b.extend.Range(nil, nil, callBackFunc)
 	case MultipartType:
 		callBackFunc := func(multipart *Multipart) bool {
 			return cb(multipart)
 		}
-		return b.multipart.Range(&Multipart{}, nil, callBackFunc)
+		return b.multipart.Range(nil, nil, callBackFunc)
 	case TransactionType:
 		callBackFunc := func(tx *proto.TransactionInfo) bool {
 			return cb(tx)
 		}
-		return b.transaction.Range(&proto.TransactionInfo{}, nil, callBackFunc)
+		return b.transaction.Range(nil, nil, callBackFunc)
 	case TransactionRollbackInodeType:
 		callBackFunc := func(inode *TxRollbackInode) bool {
 			return cb(inode)
 		}
-		return b.transactionRbInode.Range(&TxRollbackInode{}, nil, callBackFunc)
+		return b.transactionRbInode.Range(nil, nil, callBackFunc)
 	case TransactionRollbackDentryType:
 		callBackFunc := func(dentry *TxRollbackDentry) bool {
 			return cb(dentry)
 		}
-		return b.transactionRbDentry.Range(&TxRollbackDentry{}, nil, callBackFunc)
+		return b.transactionRbDentry.Range(nil, nil, callBackFunc)
 	default:
 	}
 	panic("out of type")
