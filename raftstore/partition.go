@@ -49,7 +49,7 @@ type Partition interface {
 	Delete() error
 
 	// Status returns the current raft status.
-	Status() (status *PartitionStatus)
+	Status() *PartitionStatus
 
 	// IsRestoring returns true if the partition is currently restoring from snapshot.
 	// This is much faster than checking status().RestoringSnapshot.
@@ -79,6 +79,12 @@ type Partition interface {
 
 	// CloseAndBackup closes the partition and backs up the WAL.
 	CloseAndBackup() error
+
+	// GetID returns the partition ID
+	GetID() uint64
+
+	// GetWalPath returns the WAL path
+	GetWalPath() string
 	Closed() bool
 }
 
@@ -90,29 +96,38 @@ type partition struct {
 	config  *PartitionConfig
 }
 
+// GetID returns the partition ID
+func (p *partition) GetID() uint64 {
+	return p.id
+}
+
+// GetWalPath returns the WAL path
+func (p *partition) GetWalPath() string {
+	return p.walPath
+}
+
 // ChangeMember submits member change event and information to raft log.
 func (p *partition) ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (
 	resp interface{}, err error,
 ) {
 	if !p.IsRaftLeader() {
-		err = raft.ErrNotLeader
-		return
+		return nil, raft.ErrNotLeader
 	}
+
 	future := p.raft.ChangeMember(p.id, changeType, peer, context)
-	resp, err = future.Response()
-	return
+	return future.Response()
 }
 
 // Stop removes the raft partition from raft server and shuts down this partition.
-func (p *partition) Stop() (err error) {
-	err = p.raft.RemoveRaft(p.id)
-	return
+func (p *partition) Stop() error {
+	return p.raft.RemoveRaft(p.id)
 }
 
-func (p *partition) TryToLeader(nodeID uint64) (err error) {
+// TryToLeader attempts to make the specified node the leader of this partition.
+func (p *partition) TryToLeader(nodeID uint64) error {
 	future := p.raft.TryToLeader(nodeID)
-	_, err = future.Response()
-	return
+	_, err := future.Response()
+	return err
 }
 
 func (p *partition) Closed() bool {
@@ -120,34 +135,37 @@ func (p *partition) Closed() bool {
 }
 
 // Delete stops and deletes the partition.
-func (p *partition) Delete() (err error) {
-	if err = p.Stop(); err != nil {
-		return
+func (p *partition) Delete() error {
+	if err := p.Stop(); err != nil {
+		return fmt.Errorf("failed to stop partition: %w", err)
 	}
-	err = os.RemoveAll(p.walPath)
-	return
+
+	if err := os.RemoveAll(p.walPath); err != nil {
+		return fmt.Errorf("failed to remove WAL path %s: %w", p.walPath, err)
+	}
+
+	return nil
 }
 
+// IsRestoring returns true if the partition is currently restoring from snapshot.
 func (p *partition) IsRestoring() bool {
 	return p.raft.IsRestoring(p.id)
 }
 
 // Status returns the current raft status.
-func (p *partition) Status() (status *PartitionStatus) {
-	status = p.raft.Status(p.id)
-	return
+func (p *partition) Status() *PartitionStatus {
+	return p.raft.Status(p.id)
 }
 
 // LeaderTerm returns the current term of leader in the raft group.
 func (p *partition) LeaderTerm() (leaderID, term uint64) {
 	if p.raft == nil {
-		return
+		return 0, 0
 	}
-
-	leaderID, term = p.raft.LeaderTerm(p.id)
-	return
+	return p.raft.LeaderTerm(p.id)
 }
 
+// IsOfflinePeer returns true if the majority of peers are offline.
 func (p *partition) IsOfflinePeer() bool {
 	status := p.Status()
 	active := 0
@@ -163,35 +181,31 @@ func (p *partition) IsOfflinePeer() bool {
 }
 
 // IsRaftLeader returns true if this node is the leader of the raft group it belongs to.
-func (p *partition) IsRaftLeader() (isLeader bool) {
-	isLeader = p.raft != nil && p.raft.IsLeader(p.id)
-	return
+func (p *partition) IsRaftLeader() bool {
+	return p.raft != nil && p.raft.IsLeader(p.id)
 }
 
 // AppliedIndex returns the current index of the applied raft log in the raft store partition.
-func (p *partition) AppliedIndex() (applied uint64) {
-	applied = p.raft.AppliedIndex(p.id)
-	return
+func (p *partition) AppliedIndex() uint64 {
+	return p.raft.AppliedIndex(p.id)
 }
 
-// CommittedIndex returns the current index of the applied raft log in the raft store partition.
-func (p *partition) CommittedIndex() (applied uint64) {
-	applied = p.raft.CommittedIndex(p.id)
-	return
+// CommittedIndex returns the current index of the committed raft log in the raft store partition.
+func (p *partition) CommittedIndex() uint64 {
+	return p.raft.CommittedIndex(p.id)
 }
 
 // Submit submits command data to raft log.
 func (p *partition) Submit(cmd []byte) (resp interface{}, err error) {
 	if !p.IsRaftLeader() {
-		err = raft.ErrNotLeader
-		return
+		return nil, raft.ErrNotLeader
 	}
+
 	future := p.raft.Submit(p.id, cmd)
-	resp, err = future.Response()
-	return
+	return future.Response()
 }
 
-// Truncate truncates the raft log
+// Truncate truncates the raft log at the specified index.
 func (p *partition) Truncate(index uint64) {
 	if p.raft != nil {
 		p.raft.Truncate(p.id, index)

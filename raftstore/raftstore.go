@@ -30,18 +30,19 @@ import (
 	utilConfig "github.com/cubefs/cubefs/util/config"
 )
 
-// RaftStore defines the interface for the raft store.
+// RaftStore defines the interface for the raft store
 type RaftStore interface {
 	CreatePartition(cfg *PartitionConfig) (Partition, error)
 	Stop()
 	RaftConfig() *raft.Config
-	RaftStatus(raftID uint64) (raftStatus *raft.Status)
+	RaftStatus(raftID uint64) *raft.Status
 	NodeManager
 	RaftServer() *raft.RaftServer
 	RemoveBackup(id uint64) error
-	GetPeers(id uint64) (nodes []uint64)
+	GetPeers(id uint64) []uint64
 }
 
+// raftStore implements the RaftStore interface
 type raftStore struct {
 	nodeID     uint64
 	resolver   NodeResolver
@@ -50,26 +51,27 @@ type raftStore struct {
 	raftPath   string
 }
 
-// RaftConfig returns the raft configuration.
+// RaftConfig returns the raft configuration
 func (s *raftStore) RaftConfig() *raft.Config {
 	return s.raftConfig
 }
 
-func (s *raftStore) RaftStatus(raftID uint64) (raftStatus *raft.Status) {
+// RaftStatus returns the raft status for the given raft ID
+func (s *raftStore) RaftStatus(raftID uint64) *raft.Status {
 	return s.raftServer.Status(raftID)
 }
 
-// AddNodeWithPort add a new node with the given port.
+// AddNodeWithPort adds a new node with the given port
 func (s *raftStore) AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
 	s.resolver.AddNodeWithPort(nodeID, addr, heartbeat, replicate)
 }
 
-// DeleteNode deletes the node with the given ID in the raft store.
+// DeleteNode deletes the node with the given ID in the raft store
 func (s *raftStore) DeleteNode(nodeID uint64) {
 	s.resolver.DeleteNode(nodeID)
 }
 
-// Stop stops the raft store server.
+// Stop stops the raft store server
 func (s *raftStore) Stop() {
 	if s.raftServer != nil {
 		s.raftServer.Stop()
@@ -132,7 +134,7 @@ func NewRaftStore(cfg *Config, extendCfg *utilConfig.Config) (mr RaftStore, err 
 	rc.ElectionTick = cfg.ElectionTick
 	rs, err := raft.NewRaftServer(rc)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("failed to create raft server: %w", err)
 	}
 	mr = &raftStore{
 		nodeID:     cfg.NodeID,
@@ -144,6 +146,7 @@ func NewRaftStore(cfg *Config, extendCfg *utilConfig.Config) (mr RaftStore, err 
 	return
 }
 
+// RaftServer returns the underlying raft server
 func (s *raftStore) RaftServer() *raft.RaftServer {
 	return s.raftServer
 }
