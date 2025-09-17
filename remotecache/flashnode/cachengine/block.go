@@ -757,9 +757,11 @@ func (cb *CacheBlock) info() string {
 	return fmt.Sprintf("path(%v)_from(%v)_size(%v)", cb.filePath, cb.clientIP, cb.allocSize)
 }
 
-func (cb *CacheBlock) WaitForRateLimit(ctx context.Context, size int) error {
-	if cb.keyLimiter != nil {
-		return cb.keyLimiter.WaitN(ctx, size)
+func (cb *CacheBlock) WaitForRateLimit(ctx context.Context, size int, threshold uint64) error {
+	if uint64(cb.allocSize) >= threshold {
+		if cb.keyLimiter != nil {
+			return cb.keyLimiter.WaitN(ctx, size)
+		}
 	}
 	return nil
 }
@@ -872,7 +874,6 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 		if err = block.initFilePath(false); err != nil {
 			return
 		}
-		block.initKeyLimiter(c.keyRateLimitThreshold, c.keyLimiterFlow)
 		if _, err = cacheItem.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
 			return
 		}
@@ -914,7 +915,7 @@ func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string
 	if err = block.initFilePath(true); err != nil {
 		return
 	}
-
+	block.initKeyLimiter(c.keyRateLimitThreshold, c.keyLimiterFlow)
 	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
 		return
 	}
