@@ -79,12 +79,6 @@ type Partition interface {
 
 	// CloseAndBackup closes the partition and backs up the WAL.
 	CloseAndBackup() error
-
-	// GetID returns the partition ID
-	GetID() uint64
-
-	// GetWalPath returns the WAL path
-	GetWalPath() string
 	Closed() bool
 }
 
@@ -94,16 +88,6 @@ type partition struct {
 	raft    *raft.RaftServer
 	walPath string
 	config  *PartitionConfig
-}
-
-// GetID returns the partition ID
-func (p *partition) GetID() uint64 {
-	return p.id
-}
-
-// GetWalPath returns the WAL path
-func (p *partition) GetWalPath() string {
-	return p.walPath
 }
 
 // ChangeMember submits member change event and information to raft log.
