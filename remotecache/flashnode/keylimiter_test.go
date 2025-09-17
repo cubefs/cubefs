@@ -24,7 +24,7 @@ func TestWaitForRateLimit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	err := block.WaitForRateLimit(ctx, 10)
+	err := block.WaitForRateLimit(ctx, 10, uint64(keyRateLimitThreshold))
 	if err != nil {
 		t.Fatalf("Expected no error when KeyLimiter is available, got: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestWaitForRateLimit(t *testing.T) {
 	smallAllocSize := uint64(512 * 1024)
 	block2 := cachengine.NewCacheBlockV2("/cfs_test/tmpfs", "test", "testkey2", smallAllocSize, "127.0.0.1", disk, keyRateLimitThreshold, keyLimiterFlow)
 
-	err = block2.WaitForRateLimit(ctx, 10)
+	err = block2.WaitForRateLimit(ctx, 10, uint64(keyRateLimitThreshold))
 	if err != nil {
 		t.Fatalf("Expected no error when KeyLimiter is nil, got: %v", err)
 	}

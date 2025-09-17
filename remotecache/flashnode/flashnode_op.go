@@ -673,12 +673,10 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Duration(f.handleReadTimeout)*time.Millisecond)
 	defer ctxCancel()
 	bgTime2 := stat.BeginStat()
-	if req.Size_ >= uint64(f.keyRateLimitThreshold) {
-		err = block.WaitForRateLimit(ctx, int(req.Size_))
-		if err != nil {
-			stat.EndStat("HitCacheRead", err, bgTime2, 1)
-			return
-		}
+	err = block.WaitForRateLimit(ctx, int(req.Size_), uint64(f.keyRateLimitThreshold))
+	if err != nil {
+		stat.EndStat("HitCacheRead", err, bgTime2, 1)
+		return
 	}
 
 	// reply to client as quick as possible if hit cache
