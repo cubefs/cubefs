@@ -481,7 +481,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		// if leader node broken disk, it cant get shard stats, wait new leader
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Broken")
 		if args.mode == acapi.GetShardModeLeader {
-			err1 := h.waitShardnodeNextLeader(ctx, args.clusterID, args.Suid, args.DiskID)
+			err1 := h.updateLeaderFromNewHost(ctx, args.clusterID, args.Suid, args.DiskID)
 			if err1 != nil {
 				span.Warnf("fail to change other shard node, cluster:%d, err:%+v", args.clusterID, err1)
 			}
@@ -506,7 +506,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 
 		// select master
 	case errcode.CodeShardNodeNotLeader: // leader disk id error when create/delete/seal
-		if err1 := h.updateShard(ctx, args); err1 != nil {
+		if err1 := h.updateLeaderFromNewHost(ctx, args.clusterID, args.Suid, args.DiskID); err1 != nil {
 			span.Warnf("fail to update shard, cluster:%d, err:%+v", args.clusterID, err1)
 		}
 		return false, args.err
@@ -515,12 +515,12 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 	}
 
 	// err:dial tcp 127.0.0.1:9100: connect: connection refused  ； code:500
-	if errorConnectionRefused(args.err) {
-		span.Warnf("shardnode connection refused, args:%+v, err:%+v", *args, args.err)
+	if errorConnectionRefused(args.err) || errorTimeout(args.err) {
+		span.Warnf("shardnode connection refused/timeout, args:%+v, err:%+v", *args, args.err)
 		h.groupRun.Do("shardnode-leader-"+args.DiskID.ToString(), func() (interface{}, error) {
 			// must wait have master leader, block wait
 			h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Refused")
-			err1 := h.waitShardnodeNextLeader(ctx, args.clusterID, args.Suid, args.DiskID)
+			err1 := h.updateLeaderFromNewHost(ctx, args.clusterID, args.Suid, args.DiskID)
 			if err1 != nil {
 				span.Warnf("fail to change other shard node, cluster:%d, err:%+v", args.clusterID, err1)
 			}
@@ -542,7 +542,8 @@ func (h *Handler) updateShardRoute(ctx context.Context, clusterID proto.ClusterI
 	return shardMgr.UpdateRoute(ctx)
 }
 
-func (h *Handler) updateShard(ctx context.Context, args *punishArgs) error {
+// updateLeaderFromCurrentHost from old current shard host/disk, get leader and update shard
+func (h *Handler) updateLeaderFromCurrentHost(ctx context.Context, args *punishArgs) error {
 	shardMgr, err := h.clusterController.GetShardController(args.clusterID)
 	if err != nil {
 		return err
@@ -556,7 +557,8 @@ func (h *Handler) updateShard(ctx context.Context, args *punishArgs) error {
 	return shardMgr.UpdateShard(ctx, shardStat)
 }
 
-func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.ClusterID, suid proto.Suid, badDisk proto.DiskID) error {
+// updateLeaderFromNewHost from other shard host/disk, get leader and update shard
+func (h *Handler) updateLeaderFromNewHost(ctx context.Context, clusterID proto.ClusterID, suid proto.Suid, badDisk proto.DiskID) error {
 	shardMgr, err := h.clusterController.GetShardController(clusterID)
 	if err != nil {
 		return err

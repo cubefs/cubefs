@@ -454,16 +454,6 @@ func TestStreamBlobOther(t *testing.T) {
 	require.Equal(t, false, interrupt)
 	require.ErrorIs(t, err1, io.EOF)
 
-	shardnodeClient := mocks.NewMockShardnodeAccess(ctr)
-	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: 11}, nil).Times(1)
-	h.shardnodeClient = shardnodeClient
-	h.ShardnodeRetryTimes = defaultShardnodeRetryTimes
-	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
-		err: errcode.ErrShardNodeNotLeader,
-	})
-	require.Equal(t, false, interrupt)
-	require.ErrorIs(t, err1, errcode.ErrShardNodeNotLeader)
-
 	// broken disk
 	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
 		ShardOpHeader: shardnode.ShardOpHeader{},
@@ -474,7 +464,17 @@ func TestStreamBlobOther(t *testing.T) {
 	require.Equal(t, false, interrupt)
 	require.ErrorIs(t, err1, errcode.ErrDiskBroken)
 
+	shardnodeClient := mocks.NewMockShardnodeAccess(ctr)
+	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: 11}, nil).Times(1)
+	h.shardnodeClient = shardnodeClient
+	h.ShardnodeRetryTimes = defaultShardnodeRetryTimes
+	err1 = h.updateLeaderFromCurrentHost(ctx, &punishArgs{
+		err: errcode.ErrShardNodeNotLeader,
+	})
+	require.NoError(t, err1)
+
 	// wait connect refused
+	h.ShardnodeRetryTimes = defaultShardnodeRetryTimes
 	info := controller.ShardOpInfo{
 		DiskID:       101,
 		Suid:         proto.EncodeSuid(1, 0, 1),
@@ -507,4 +507,63 @@ func TestStreamBlobOther(t *testing.T) {
 	// interrupt, err1 = convertError(kvstore.ErrNotFound)
 	// require.Equal(t, true, interrupt)
 	// require.ErrorIs(t, err1, errcode.ErrCallShardNodeFail)
+}
+
+func TestStreamBlob_NotLeader_RetrySuccess(t *testing.T) {
+	ctx := context.Background()
+	ctr := gomock.NewController(t)
+	gAny := gomock.Any()
+
+	// old leader, Not Leader
+	oldInfo := controller.ShardOpInfo{
+		DiskID:       101,
+		Suid:         proto.EncodeSuid(1, 0, 1),
+		RouteVersion: 1,
+	}
+	// new leader
+	newInfo := controller.ShardOpInfo{
+		DiskID:       102,
+		Suid:         proto.EncodeSuid(1, 0, 2),
+		RouteVersion: 1,
+	}
+
+	// shard mock
+	shard := NewMockShard(ctr)
+	shard.EXPECT().GetMember(gAny, gAny, gAny).Return(oldInfo, nil).AnyTimes()                                             // getShardOpHeader
+	shard.EXPECT().GetMember(gAny, acapi.GetShardModeRandom, proto.DiskID(oldInfo.DiskID)).Return(newInfo, nil).AnyTimes() // waitShardnodeNextLeader
+	shard.EXPECT().GetShardID().Return(proto.ShardID(1)).AnyTimes()
+
+	// shard controller mock
+	shardMgr := NewMockShardController(ctr)
+	shardMgr.EXPECT().GetShard(gAny, gAny).Return(shard, nil).AnyTimes()
+	shardMgr.EXPECT().GetShardByID(gAny, proto.ShardID(1)).Return(shard, nil).AnyTimes()
+	shardMgr.EXPECT().GetSpaceID().Return(proto.SpaceID(1)).AnyTimes()
+	shardMgr.EXPECT().UpdateRoute(gAny).Return(nil).AnyTimes()
+	shardMgr.EXPECT().GetShardSubRangeCount(gAny).Return(2).AnyTimes()
+	shardMgr.EXPECT().UpdateShard(gAny, gAny).Return(nil).Times(1) // waitShardnodeNextLeader finally
+
+	// service controller mock
+	svrCtrl := NewMockServiceController(ctr)
+	svrCtrl.EXPECT().GetShardnodeHost(gAny, proto.DiskID(oldInfo.DiskID)).Return(&controller.HostIDC{Host: "host-old"}, nil).AnyTimes()
+	svrCtrl.EXPECT().GetShardnodeHost(gAny, proto.DiskID(newInfo.DiskID)).Return(&controller.HostIDC{Host: "host-new"}, nil).AnyTimes()
+
+	// cluster controller mock
+	clu := NewMockClusterController(ctr)
+	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).AnyTimes()
+	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).AnyTimes()
+
+	// shardnode client mock：first NotLeader，and then success
+	shardCli := mocks.NewMockShardnodeAccess(ctr)
+	shardCli.EXPECT().DeleteBlob(gAny, gAny, gAny).Return(errcode.ErrShardNodeNotLeader)
+	shardCli.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: newInfo.DiskID}, nil)
+	shardCli.EXPECT().DeleteBlob(gAny, gAny, gAny).Return(nil)
+
+	h := &Handler{
+		clusterController: clu,
+		shardnodeClient:   shardCli,
+	}
+	h.ShardnodeRetryTimes = defaultShardnodeRetryTimes
+
+	args := acapi.DelBlobArgs{ClusterID: 1, BlobName: "blob-notleader"}
+	require.NoError(t, h.DeleteBlob(ctx, &args))
 }
