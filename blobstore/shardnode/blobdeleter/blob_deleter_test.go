@@ -390,13 +390,17 @@ func TestBlobDeleteMgr_DeleteWithCheckVolConsistency3(t *testing.T) {
 	volTp := mocks.NewMockVolumeTransport(ctr(t))
 	volTp.EXPECT().GetVolumeInfo(any, any).Return(volInfo, nil).AnyTimes()
 
+	lastTime := false
 	uintCount := volInfo.CodeMode.GetShardNum()
 	//  mock blob transport
 	blobTp := mocks.NewMockBlobTransport(ctr(t))
 	blobTp.EXPECT().MarkDeleteSlice(any, any, any).DoAndReturn(func(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
-		if info.Vuid.Index() == 0 {
+		if !lastTime && info.Vuid.Index() == 0 {
 			return errors.New("mock err")
 		}
+		return nil
+	}).Times(uintCount + 2)
+	blobTp.EXPECT().DeleteSlice(any, any, any).DoAndReturn(func(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
 		return nil
 	}).Times(uintCount)
 
@@ -422,12 +426,113 @@ func TestBlobDeleteMgr_DeleteWithCheckVolConsistency3(t *testing.T) {
 		ctx:    context.Background(),
 	}
 
-	// delete first time, markDelete success, delete failed
+	// first time
 	err := mgr.deleteWithCheckVolConsistency(context.Background(), vid, delRet)
 	require.NotNil(t, err)
 
 	require.False(t, msg.hasMarkDel(bid))
 	require.False(t, msg.hasDelete(bid))
+
+	for i := range volInfo.VunitLocations {
+		vuid := volInfo.VunitLocations[i].Vuid
+		if vuid.Index() == 0 {
+			require.False(t, msg.hasShardMarkDel(bid, vuid))
+			continue
+		}
+		require.True(t, msg.hasShardMarkDel(bid, vuid))
+	}
+
+	// second time
+	err = mgr.deleteWithCheckVolConsistency(context.Background(), vid, delRet)
+	require.NotNil(t, err)
+
+	require.False(t, msg.hasMarkDel(bid))
+	require.False(t, msg.hasDelete(bid))
+
+	for i := range volInfo.VunitLocations {
+		vuid := volInfo.VunitLocations[i].Vuid
+		if vuid.Index() == 0 {
+			require.False(t, msg.hasShardMarkDel(bid, vuid))
+			continue
+		}
+		require.True(t, msg.hasShardMarkDel(bid, vuid))
+	}
+
+	lastTime = true
+	err = mgr.deleteWithCheckVolConsistency(context.Background(), vid, delRet)
+	require.Nil(t, err)
+
+	require.True(t, msg.hasMarkDel(bid))
+	require.True(t, msg.hasDelete(bid))
+}
+
+func TestBlobDeleteMgr_DeleteWithCheckVolConsistency4(t *testing.T) {
+	// mock volume info
+	vid := proto.Vid(1)
+	volInfo := newMockSimpleVolumeInfo(vid)
+
+	// mock volume cache transport
+	volTp := mocks.NewMockVolumeTransport(ctr(t))
+	volTp.EXPECT().GetVolumeInfo(any, any).Return(volInfo, nil).AnyTimes()
+
+	lastTime := false
+	uintCount := volInfo.CodeMode.GetShardNum()
+	//  mock blob transport
+	blobTp := mocks.NewMockBlobTransport(ctr(t))
+	blobTp.EXPECT().MarkDeleteSlice(any, any, any).DoAndReturn(func(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+		return nil
+	}).Times(uintCount + 1)
+	blobTp.EXPECT().DeleteSlice(any, any, any).DoAndReturn(func(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+		if !lastTime && info.Vuid.Index() == 0 {
+			return apierr.ErrShardNotMarkDelete
+		}
+		return nil
+	}).Times(uintCount + 1)
+
+	vc := base.NewVolumeCache(volTp, 1)
+	mgr := newTestBlobDeleteMgr(t, nil, blobTp, vc)
+
+	bid := proto.BlobID(1)
+	msg := &delMsgExt{
+		suid: proto.Suid(123),
+		msg: snproto.DeleteMsg{
+			Slice: proto.Slice{
+				MinSliceID: bid,
+				Vid:        vid,
+				Count:      1,
+				ValidSize:  10,
+			},
+			MsgDelStage: make(map[uint64]snproto.BlobDeleteStage),
+		},
+	}
+
+	delRet := &delBlobRet{
+		msgExt: msg,
+		ctx:    context.Background(),
+	}
+
+	// first time
+	err := mgr.deleteWithCheckVolConsistency(context.Background(), vid, delRet)
+	require.NotNil(t, err)
+
+	require.False(t, msg.hasMarkDel(bid))
+	require.False(t, msg.hasDelete(bid))
+
+	for i := range volInfo.VunitLocations {
+		vuid := volInfo.VunitLocations[i].Vuid
+		if vuid.Index() == 0 {
+			require.False(t, msg.hasShardMarkDel(bid, vuid))
+			continue
+		}
+		require.True(t, msg.hasShardDelete(bid, vuid))
+	}
+
+	lastTime = true
+	err = mgr.deleteWithCheckVolConsistency(context.Background(), vid, delRet)
+	require.Nil(t, err)
+
+	require.True(t, msg.hasMarkDel(bid))
+	require.True(t, msg.hasDelete(bid))
 }
 
 func TestBlobDeleteMgr_DeleteFailed_Retry(t *testing.T) {

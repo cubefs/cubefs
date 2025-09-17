@@ -116,6 +116,11 @@ func (r *shardListReader) listFromStorage(ctx context.Context, protectDuration t
 	if len(nextMarker) < 1 {
 		// no more message in shard storage, new message after now should be protected
 		r.setProtected(time.Now().Unix())
+		// set nextMarker to last msgKey to avoid list from start
+		if len(items) > 0 {
+			r.nextMarker = []byte(items[len(items)-1].ID)
+			span.Debugf("shard[%d] list to end, set last msgKey:[%+v] as nextMarker", suid, r.nextMarker)
+		}
 		return ret, nil
 	}
 

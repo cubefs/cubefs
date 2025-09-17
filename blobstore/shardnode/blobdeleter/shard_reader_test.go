@@ -229,6 +229,53 @@ func TestShardListReader_ListFromStorage_WithProtectedMessages(t *testing.T) {
 	require.True(t, reader.isProtected(time.Hour))
 }
 
+func TestShardListReader_ListToEnd(t *testing.T) {
+	g := base.NewTsGenerator(0)
+	tagNum := 2
+	ts1 := g.GenerateTs()
+	id1, _ := encodeRawDelMsgKey(ts1, proto.Vid(1), proto.BlobID(100), tagNum)
+	ts2 := g.GenerateTs()
+	id2, _ := encodeRawDelMsgKey(ts2, proto.Vid(1), proto.BlobID(101), tagNum)
+
+	// not protected
+	item1 := snapi.Item{
+		ID: string(id1),
+		Fields: []snapi.Field{
+			{
+				ID: snproto.DeleteBlobMsgFieldID,
+				Value: marshalDeleteMsg(snproto.DeleteMsg{
+					Time: time.Now().Add(-time.Hour).Unix(),
+				}),
+			},
+		},
+	}
+
+	// protected
+	item2 := snapi.Item{
+		ID: string(id2),
+		Fields: []snapi.Field{
+			{
+				ID: snproto.DeleteBlobMsgFieldID,
+				Value: marshalDeleteMsg(snproto.DeleteMsg{
+					Time: time.Now().Add(-time.Hour).Unix(),
+				}),
+			},
+		},
+	}
+
+	handler := mock.NewMockSpaceShardHandler(ctr(t))
+	handler.EXPECT().GetRouteVersion().Return(proto.RouteVersion(1))
+	handler.EXPECT().GetSuid().Return(proto.Suid(123)).Times(2)
+	handler.EXPECT().ListItem(any, any, any, any, any).Return([]snapi.Item{item1, item2}, nil, nil)
+
+	reader := newShardListReader(handler)
+	result, err := reader.listFromStorage(context.Background(), time.Millisecond, 10)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(result))
+	// list to end, reader.nextMarker should be last item.ID
+	require.Equal(t, reader.nextMarker, []byte(item2.ID))
+}
+
 func TestShardListReader_Init(t *testing.T) {
 	handler := mock.NewMockSpaceShardHandler(ctr(t))
 	reader := newShardListReader(handler)

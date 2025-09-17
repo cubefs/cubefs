@@ -543,6 +543,7 @@ func (m *BlobDeleteMgr) deleteShard(ctx context.Context, info proto.VunitLocatio
 		if shouldBackToInitStage(rpc2.DetectStatusCode(err)) {
 			stage = InitStage
 			ext.setShardDelStage(bid, info.Vuid, stage)
+			return
 		}
 		if err != nil && markerDel {
 			ext.setShardDelStage(bid, info.Vuid, InitStage)
@@ -551,11 +552,14 @@ func (m *BlobDeleteMgr) deleteShard(ctx context.Context, info proto.VunitLocatio
 		if err != nil {
 			return
 		}
+		// already deleted
+		if stage == InitStage {
+			return
+		}
 		ext.setShardDelStage(bid, info.Vuid, stage)
 	}()
 
-	if markerDel && ext.hasShardMarkDel(bid, info.Vuid) ||
-		!markerDel && ext.hasShardDelete(bid, info.Vuid) {
+	if markerDel && ext.hasShardMarkDel(bid, info.Vuid) || ext.hasShardDelete(bid, info.Vuid) {
 		span.Debugf("vuid[%d] bid[%d] already deleted, markerDel: %v", info.Vuid, bid, markerDel)
 		return nil
 	}
