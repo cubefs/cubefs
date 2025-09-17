@@ -23,7 +23,7 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 )
 
-// PartitionStatus is a type alias of raft.Status
+// PartitionStatus is a type alias of raft.Status for better readability
 type PartitionStatus = raft.Status
 
 // PartitionFsm wraps necessary methods include both FSM implementation
@@ -32,7 +32,7 @@ type PartitionStatus = raft.Status
 type PartitionFsm = raft.StateMachine
 
 // Partition wraps necessary methods for raft store partition operation.
-// Partition is a shard for multi-raft in RaftSore. RaftStore is based on multi-raft which
+// Partition is a shard for multi-raft in RaftStore. RaftStore is based on multi-raft which
 // manages multiple raft replication groups at same time through a single
 // raft server instance and system resource.
 type Partition interface {
@@ -51,10 +51,12 @@ type Partition interface {
 	// Status returns the current raft status.
 	Status() (status *PartitionStatus)
 
-	// IsRestoring Much faster then status().RestoringSnapshot.
+	// IsRestoring returns true if the partition is currently restoring from snapshot.
+	// This is much faster than checking status().RestoringSnapshot.
 	IsRestoring() bool
 
-	// LeaderTerm returns the current term of leader in the raft group. TODO what is term?
+	// LeaderTerm returns the current term of leader in the raft group.
+	// Returns (0, 0) if no leader is available.
 	LeaderTerm() (leaderID, term uint64)
 
 	// IsRaftLeader returns true if this node is the leader of the raft group it belongs to.
@@ -63,20 +65,24 @@ type Partition interface {
 	// AppliedIndex returns the current index of the applied raft log in the raft store partition.
 	AppliedIndex() uint64
 
-	// CommittedIndex returns the current index of the applied raft log in the raft store partition.
+	// CommittedIndex returns the current index of the committed raft log in the raft store partition.
 	CommittedIndex() uint64
 
-	// Truncate raft log
+	// Truncate truncates the raft log at the specified index.
 	Truncate(index uint64)
+
+	// TryToLeader attempts to make the specified node the leader of this partition.
 	TryToLeader(nodeID uint64) error
+
+	// IsOfflinePeer returns true if the majority of peers are offline.
 	IsOfflinePeer() bool
 
-	// CloseAndBackup closes the partition and backup the wal.
+	// CloseAndBackup closes the partition and backs up the WAL.
 	CloseAndBackup() error
 	Closed() bool
 }
 
-// Default implementation of the Partition interface.
+// partition implements the Partition interface
 type partition struct {
 	id      uint64
 	raft    *raft.RaftServer

@@ -78,18 +78,16 @@ func (s *raftStore) Stop() {
 
 func newRaftLogger(dir string) {
 	raftLogPath := path.Join(dir, "logs")
-	_, err := os.Stat(raftLogPath)
-	if err != nil {
-		if pathErr, ok := err.(*os.PathError); ok {
-			if os.IsNotExist(pathErr) {
-				os.MkdirAll(raftLogPath, 0o755)
-			}
-		}
+
+	// Use more efficient directory creation
+	if err := os.MkdirAll(raftLogPath, 0o755); err != nil {
+		syslog.Printf("Failed to create raft log directory %s: %v", raftLogPath, err)
+		return
 	}
 
 	raftLog, err := raftlog.NewLog(raftLogPath, "raft", "debug")
 	if err != nil {
-		syslog.Println("Fatal: failed to start the baud storage daemon - ", err)
+		syslog.Printf("Failed to start raft storage daemon: %v", err)
 		return
 	}
 	logger.SetLogger(raftLog)
