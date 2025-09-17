@@ -71,25 +71,14 @@ const (
 	MetricMastersInactive                  = "masters_inactive"
 	MetricInactiveMasterInfo               = "inactive_masters_info"
 
-	MetricMissingDp                = "missing_dp"
-	MetricDpNoLeader               = "dp_no_leader"
-	MetricMissingMp                = "missing_mp"
-	MetricMpNoLeader               = "mp_no_leader"
-	MetricReplicaMissingDPCount    = "replica_missing_dp_count"
-	MetricDpMissingLeaderCount     = "dp_missing_Leader_count"
-	MetricMpMissingLeaderCount     = "mp_missing_Leader_count"
-	MetricMpMissingReplicaCount    = "mp_missing_Replica_count"
-	MetricDataNodesetInactiveCount = "data_nodeset_inactive_count"
-	MetricMetaNodesetInactiveCount = "meta_nodeset_inactive_count"
-
-	MetricNodesetMetaTotalGB    = "nodeset_meta_total_GB"
-	MetricNodesetMetaUsedGB     = "nodeset_meta_used_GB"
-	MetricNodesetMetaUsageRadio = "nodeset_meta_usage_ratio"
-	MetricNodesetDataTotalGB    = "nodeset_data_total_GB"
-	MetricNodesetDataUsedGB     = "nodeset_data_used_GB"
-	MetricNodesetDataUsageRadio = "nodeset_data_usage_ratio"
-	MetricNodesetMpReplicaCount = "nodeset_mp_replica_count"
-	MetricNodesetDpReplicaCount = "nodeset_dp_replica_count"
+	MetricMissingDp             = "missing_dp"
+	MetricDpNoLeader            = "dp_no_leader"
+	MetricMissingMp             = "missing_mp"
+	MetricMpNoLeader            = "mp_no_leader"
+	MetricReplicaMissingDPCount = "replica_missing_dp_count"
+	MetricDpMissingLeaderCount  = "dp_missing_Leader_count"
+	MetricMpMissingLeaderCount  = "mp_missing_Leader_count"
+	MetricMpMissingReplicaCount = "mp_missing_Replica_count"
 
 	MetricLcNodesCount      = "lc_nodes_count"
 	MetricLcVolStatus       = "lc_vol_status"
@@ -150,15 +139,6 @@ type monitorMetrics struct {
 	masterNoLeader                   *exporter.Gauge
 	masterNoCache                    *exporter.GaugeVec
 	masterSnapshot                   *exporter.Gauge
-	// TODO remove in next version
-	nodesetMetaTotal      *exporter.GaugeVec
-	nodesetMetaUsed       *exporter.GaugeVec
-	nodesetMetaUsageRatio *exporter.GaugeVec
-	nodesetDataTotal      *exporter.GaugeVec
-	nodesetDataUsed       *exporter.GaugeVec
-	nodesetDataUsageRatio *exporter.GaugeVec
-	nodesetMpReplicaCount *exporter.GaugeVec
-	nodesetDpReplicaCount *exporter.GaugeVec
 
 	nodeStat        *exporter.GaugeVec
 	partitionCreate *exporter.GaugeVec
@@ -168,7 +148,6 @@ type monitorMetrics struct {
 	flashNodesBadDisks map[string]string
 	inconsistentMps    map[string]string
 	replicaCntMap      map[uint64]struct{}
-	nodesetIds         map[uint64]string
 
 	lcNodesCount      *exporter.Gauge
 	lcId              map[string]struct{}
@@ -526,7 +505,7 @@ func (mm *monitorMetrics) start() {
 	mm.dpUnableDecommissionCount = exporter.NewGauge(MetricDpUnableDecommissionCount)
 	mm.dpNoSamePeer = exporter.NewGaugeVec(MetricDpNoSamePeer, "", []string{"dpId"})
 	mm.badDiskDecommissionTimeOverLimit = exporter.NewGaugeVec(MetricBadDiskDecommissionTimeOverLimit, "", []string{"addr", "path", "firstReportTime"})
-	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc"})
+	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc", "rack"})
 	mm.partitionCreate = exporter.NewGaugeVec(MetricPartitionCreateMetrics, "", []string{"type", "racklevel", "media"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.InactiveDataNodeInfo = exporter.NewGaugeVec(MetricInactiveDataNodeInfo, "", []string{"clusterName", "addr"})
@@ -546,15 +525,6 @@ func (mm *monitorMetrics) start() {
 	mm.masterNoCache = exporter.NewGaugeVec(MetricMasterNoCache, "", []string{"volName"})
 	mm.mastersInactive = exporter.NewGauge(MetricMastersInactive)
 	mm.InactiveMasterInfo = exporter.NewGaugeVec(MetricInactiveMasterInfo, "", []string{"clusterName", "addr"})
-
-	mm.nodesetMetaTotal = exporter.NewGaugeVec(MetricNodesetMetaTotalGB, "", []string{"nodeset"})
-	mm.nodesetMetaUsed = exporter.NewGaugeVec(MetricNodesetMetaUsedGB, "", []string{"nodeset"})
-	mm.nodesetMetaUsageRatio = exporter.NewGaugeVec(MetricNodesetMetaUsageRadio, "", []string{"nodeset"})
-	mm.nodesetDataTotal = exporter.NewGaugeVec(MetricNodesetDataTotalGB, "", []string{"nodeset"})
-	mm.nodesetDataUsed = exporter.NewGaugeVec(MetricNodesetDataUsedGB, "", []string{"nodeset"})
-	mm.nodesetDataUsageRatio = exporter.NewGaugeVec(MetricNodesetDataUsageRadio, "", []string{"nodeset"})
-	mm.nodesetMpReplicaCount = exporter.NewGaugeVec(MetricNodesetMpReplicaCount, "", []string{"nodeset"})
-	mm.nodesetDpReplicaCount = exporter.NewGaugeVec(MetricNodesetDpReplicaCount, "", []string{"nodeset"})
 
 	mm.lcNodesCount = exporter.NewGauge(MetricLcNodesCount)
 	mm.lcVolStatus = exporter.NewGaugeVec(MetricLcVolStatus, "", []string{"id"})
@@ -636,7 +606,6 @@ func (mm *monitorMetrics) doStat() {
 	mm.setNotWritableMetaNodesCount()
 	mm.setMpInconsistentErrorMetric()
 	mm.setMpAndDpMetrics()
-	mm.setNodesetMetrics()
 	mm.setLcMetrics()
 	mm.setDiskDecommissionedMetric()
 	mm.updateDataNodesStat()
@@ -1146,6 +1115,7 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		setId := strconv.Itoa(int(metaNode.NodeSetID))
 		media := "default"
 		mAddr := metaNode.Addr
+		rack := metaNode.Rack
 
 		writable := "false"
 		if metaNode.IsWriteAble() {
@@ -1158,15 +1128,15 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 
 		mm.nodeStat.Delete(map[string]string{"addr": mAddr})
 
-		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, mAddr, "usageRatio", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, mAddr, "memTotal", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, mAddr, "memUsed", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsRocksdbWriteAble(), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc)
+		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, mAddr, "usageRatio", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, mAddr, "memTotal", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, mAddr, "memUsed", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsRocksdbWriteAble(), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc, rack)
 
 		return true
 	})
@@ -1193,6 +1163,7 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 		setId := strconv.Itoa(int(dataNode.NodeSetID))
 		media := proto.MediaTypeString(dataNode.MediaType)
 		dAddr := dataNode.Addr
+		rack := dataNode.Rack
 
 		writable := "false"
 		if dataNode.IsWriteAble() {
@@ -1206,15 +1177,15 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 		mm.nodeStat.Delete(map[string]string{"addr": dAddr})
 
 		mm.nodeStat.SetWithLabelValues(float64(dataNode.DataPartitionCount), MetricRoleDataNode, dAddr, "dpCount", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(float64(dataNode.Total), MetricRoleDataNode, dAddr, "diskTotal", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(float64(dataNode.Used), MetricRoleDataNode, dAddr, "diskUsed", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(float64(dataNode.AvailableSpace), MetricRoleDataNode, dAddr, "diskAvail", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(dataNode.UsageRatio, MetricRoleDataNode, dAddr, "usageRatio", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.BadDisks)), MetricRoleDataNode, dAddr, "badDiskCount", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.LostDisks)), MetricRoleDataNode, dAddr, "lostDiskCount", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetBoolWithLabelValues(dataNode.isActive, MetricRoleDataNode, dAddr, "active", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetBoolWithLabelValues(dataNode.IsWriteAble(), MetricRoleDataNode, dAddr, "writable", zone, setId, media, writable, alloc)
-		mm.nodeStat.SetBoolWithLabelValues(dataNode.canAllocDp(), MetricRoleDataNode, dAddr, "canAlloc", zone, setId, media, writable, alloc)
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.Total), MetricRoleDataNode, dAddr, "diskTotal", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.Used), MetricRoleDataNode, dAddr, "diskUsed", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.AvailableSpace), MetricRoleDataNode, dAddr, "diskAvail", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(dataNode.UsageRatio, MetricRoleDataNode, dAddr, "usageRatio", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.BadDisks)), MetricRoleDataNode, dAddr, "badDiskCount", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.LostDisks)), MetricRoleDataNode, dAddr, "lostDiskCount", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(dataNode.isActive, MetricRoleDataNode, dAddr, "active", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(dataNode.IsWriteAble(), MetricRoleDataNode, dAddr, "writable", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(dataNode.canAllocDp(), MetricRoleDataNode, dAddr, "canAlloc", zone, setId, media, writable, alloc, rack)
 
 		return true
 	})
@@ -1373,86 +1344,6 @@ func (mm *monitorMetrics) clearFlashNodesDiskErrMetrics() {
 	}
 }
 
-func (mm *monitorMetrics) setNodesetMetrics() {
-	deleteNodesetIds := make(map[uint64]string)
-	for k, v := range mm.nodesetIds {
-		deleteNodesetIds[k] = v
-	}
-	mm.nodesetIds = make(map[uint64]string)
-
-	zones := mm.cluster.t.getAllZones()
-	for _, zone := range zones {
-		nodeSets := zone.getAllNodeSet()
-		for _, nodeset := range nodeSets {
-			var metaTotal, metaUsed, dataTotal, dataUsed uint64
-			var mpReplicasCount, dpReplicasCount int
-			nodeset.metaNodes.Range(func(key, value interface{}) bool {
-				metaNode := value.(*MetaNode)
-				metaTotal += metaNode.Total
-				metaUsed += metaNode.Used
-				mpReplicasCount += metaNode.MetaPartitionCount
-				return true
-			})
-			nodeset.dataNodes.Range(func(ney, value interface{}) bool {
-				dataNode := value.(*DataNode)
-				dataTotal += dataNode.Total
-				dataUsed += dataNode.Used
-				dpReplicasCount += int(dataNode.DataPartitionCount)
-				return true
-			})
-
-			nodesetId := strconv.FormatUint(nodeset.ID, 10)
-
-			mm.nodesetIds[nodeset.ID] = nodesetId
-			delete(deleteNodesetIds, nodeset.ID)
-
-			mm.nodesetMetaTotal.SetWithLabelValues(float64(metaTotal)/util.GB, nodesetId)
-			mm.nodesetMetaUsed.SetWithLabelValues(float64(metaUsed)/util.GB, nodesetId)
-			mm.nodesetDataTotal.SetWithLabelValues(float64(dataTotal)/util.GB, nodesetId)
-			mm.nodesetDataUsed.SetWithLabelValues(float64(dataUsed)/util.GB, nodesetId)
-
-			if metaTotal == 0 {
-				mm.nodesetMetaUsageRatio.SetWithLabelValues(0, nodesetId)
-			} else {
-				mm.nodesetMetaUsageRatio.SetWithLabelValues(float64(metaUsed)/float64(metaTotal), nodesetId)
-			}
-			if dataTotal == 0 {
-				mm.nodesetDataUsageRatio.SetWithLabelValues(0, nodesetId)
-			} else {
-				mm.nodesetDataUsageRatio.SetWithLabelValues(float64(dataUsed)/float64(dataTotal), nodesetId)
-			}
-
-			mm.nodesetMpReplicaCount.SetWithLabelValues(float64(mpReplicasCount), nodesetId)
-			mm.nodesetDpReplicaCount.SetWithLabelValues(float64(dpReplicasCount), nodesetId)
-		}
-	}
-
-	for _, v := range deleteNodesetIds {
-		mm.deleteNodesetMetric(v)
-	}
-}
-
-func (mm *monitorMetrics) deleteNodesetMetric(nodesetId string) {
-	mm.nodesetMetaTotal.DeleteLabelValues(nodesetId)
-	mm.nodesetMetaUsed.DeleteLabelValues(nodesetId)
-	mm.nodesetMetaUsageRatio.DeleteLabelValues(nodesetId)
-	mm.nodesetDataTotal.DeleteLabelValues(nodesetId)
-	mm.nodesetDataUsed.DeleteLabelValues(nodesetId)
-	mm.nodesetDataUsageRatio.DeleteLabelValues(nodesetId)
-	mm.nodesetMpReplicaCount.DeleteLabelValues(nodesetId)
-	mm.nodesetDpReplicaCount.DeleteLabelValues(nodesetId)
-}
-
-func (mm *monitorMetrics) clearNodesetMetrics() {
-	zones := mm.cluster.t.getAllZones()
-	for _, zone := range zones {
-		nodeSets := zone.getAllNodeSet()
-		for _, nodeset := range nodeSets {
-			mm.deleteNodesetMetric(strconv.FormatUint(nodeset.ID, 10))
-		}
-	}
-}
-
 func (mm *monitorMetrics) resetFollowerMetrics() {
 	mm.masterNoCache.GaugeVec.Reset()
 	mm.masterNoLeader.Set(0)
@@ -1464,7 +1355,6 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.clearDiskErrMetrics()
 	mm.clearFlashNodesDiskErrMetrics()
 	mm.metaEqualCheckFail.Reset()
-	mm.clearNodesetMetrics()
 	mm.clearLcMetrics()
 
 	mm.partitionCreate.Reset()
