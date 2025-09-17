@@ -198,3 +198,47 @@ func TestRequestRetryCrc(t *testing.T) {
 	require.NoError(t, cli.DoWith(req, args))
 	require.True(t, args.Value == fmt.Sprintf("%d", binary.BigEndian.Uint32(sum)))
 }
+
+type reuseConnector struct {
+	Connector
+	broken bool
+}
+
+func (c *reuseConnector) Put(ctx context.Context, stream *transport.Stream, broken bool) error {
+	c.broken = broken
+	return c.Connector.Put(ctx, stream, broken)
+}
+
+func TestRequestErrorReuseStream(t *testing.T) {
+	var handler Router
+	var called bool
+	handler.Register("/", func(w ResponseWriter, req *Request) error {
+		if !called {
+			called = true
+			return NewError(999, "Reuse", "should reuse stream")
+		}
+		buff := make([]byte, 16)
+		w.SetContentLength(int64(len(buff)))
+		w.WriteHeader(999, nil)
+		_, err := w.ReadFrom(bytes.NewReader(buff))
+		return err
+	})
+
+	server, cli, shutdown := newServer("tcp", &handler)
+	defer shutdown()
+	cli.Retry = 1
+	rc := &reuseConnector{Connector: defaultConnector(cli.ConnectorConfig)}
+	cli.Connector = rc
+
+	req, _ := NewRequest(testCtx, server.Name, "/", nil, nil)
+	err := cli.DoWith(req, nil)
+	require.Error(t, err)
+	require.Equal(t, int32(999), err.(*Error).GetStatus())
+	require.Equal(t, "should reuse stream", err.(*Error).GetDetail())
+	require.False(t, rc.broken)
+
+	require.Error(t, cli.DoWith(req, nil))
+	require.True(t, rc.broken)
+	require.Error(t, cli.DoWith(req, nil))
+	require.True(t, rc.broken)
+}

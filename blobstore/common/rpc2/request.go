@@ -148,18 +148,19 @@ func (req *Request) write(deadline time.Time) error {
 	return err
 }
 
-func (req *Request) request(deadline time.Time) (*Response, error) {
+func (req *Request) request(deadline time.Time) (*Response, bool, error) {
 	if err := req.write(deadline); err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	resp := &Response{Request: req}
 	frame, err := readHeaderFrame(req.ctx, req.conn, &resp.ResponseHeader)
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	if resp.Status < 200 || resp.Status >= 300 {
 		frame.Close()
-		return nil, NewError(resp.Status, resp.Reason, resp.Error)
+		// set the stream broken if it has body
+		return nil, resp.ContentLength > 0, NewError(resp.Status, resp.Reason, resp.Error)
 	}
 
 	decode := req.checksum != ChecksumBlock{} && req.checksum.Direction.IsDownload()
@@ -171,7 +172,7 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 	}
 	resp.Body = makeBodyWithTrailer(req.conn.NewSizedReader(req.ctx, payloadSize, frame),
 		req, &resp.Trailer, resp.ContentLength, decode)
-	return resp, nil
+	return resp, false, nil
 }
 
 func (req *Request) trailerReader() io.Reader {

@@ -185,10 +185,10 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 	span.Debugf("get connection -> stream(%d, %v, %v)",
 		conn.ID(), conn.LocalAddr(), conn.RemoteAddr())
 
-	resp, err := req.request(c.requestDeadline(req.Context()))
+	resp, broken, err := req.request(c.requestDeadline(req.Context()))
 	if err != nil {
-		span.Warn("send request ->", err)
-		c.Connector.Put(req.Context(), req.conn, true)
+		span.Warn("send request ->", broken, err)
+		c.Connector.Put(req.Context(), req.conn, broken)
 		return nil, err
 	}
 	if err = resp.ParseResult(ret); err != nil {
