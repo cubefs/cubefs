@@ -347,9 +347,9 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 	encoder := crc32block.NewSizedBlockEncoder(io.NopCloser(body), int64(shard.Size), core.CrcBlockUnitSize)
 	defer func() {
 		encoder.Close()
-		span.AppendTrackLogWithDuration("net.r", tr.Duration(), err)
-		span.AppendTrackLogWithDuration("dat.w", twRaw.Duration(), err)
-		span.AppendTrackLogWithDuration("dat.wai", tw.Duration()-twRaw.Duration(), err)
+		span.AppendTrackLogWithDuration("net.r", tr.Duration(), err, trace.OptSpanDurationUs())
+		span.AppendTrackLogWithDuration("dat.w", twRaw.Duration(), err, trace.OptSpanDurationUs())
+		span.AppendTrackLogWithDuration("dat.wai", tw.Duration()-twRaw.Duration(), err, trace.OptSpanDurationUs())
 	}()
 
 	// fill header
@@ -459,7 +459,7 @@ func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 		defer bytespool.Free(buf) // nolint: staticcheck
 
 		_, err = cd.ef.ReadAt(buf, shard.Offset)
-		span.AppendTrackLog("hdr.r", start, err) // cost time: read header
+		span.AppendTrackLog("hdr.r", start, err, trace.OptSpanDurationUs()) // cost time: read header
 
 		if err != nil {
 			return err
@@ -485,7 +485,7 @@ func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 	discardSize = core.Alignphysize(int64(shard.Size))
 	discardSize = core.AlignSize(discardSize, _pageSize)
 	err = cd.ef.Discard(shard.Offset, discardSize)
-	span.AppendTrackLog("dat.d", start, err) // cost time: Discard(PunchHole)
+	span.AppendTrackLog("dat.d", start, err, trace.OptSpanDurationUs()) // cost time: Discard(PunchHole)
 
 	return err
 }
