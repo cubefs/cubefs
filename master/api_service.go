@@ -1178,6 +1178,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DataNodeAutoRepairLimitRate: autoRepairRate,
 		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
+		FlashReadTimeout:            m.cluster.cfg.flashNodeHandleReadTimeout,
 		// Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 		Ip:                                 iputil.RealIP(r),
 		EbsAddr:                            m.bStoreAddr,

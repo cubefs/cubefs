@@ -544,7 +544,7 @@ func (f *FlashNode) startCacheEngine() (err error) {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
-	f.SetTimeout(proto.DefaultRemoteCacheHandleReadTimeout, proto.DefaultRemoteCacheExtentReadTimeout)
+	f.cacheEngine.SetReadDataNodeTimeout(proto.DefaultRemoteCacheExtentReadTimeout)
 	f.cacheEngine.StartCachePrepareWorkers(f.limitWrite, f.prepareLoadRoutineNum)
 	return f.cacheEngine.Start()
 }
@@ -578,6 +578,10 @@ func (f *FlashNode) register() error {
 				break
 			}
 			f.clusterID = ci.Cluster
+			if ci.FlashReadTimeout != 0 {
+				log.LogInfof("FlashNode load handleReadTimeout from %d(ms) to %d(ms)", f.handleReadTimeout, ci.FlashReadTimeout)
+				f.handleReadTimeout = ci.FlashReadTimeout
+			}
 			f.localAddr = fmt.Sprintf("%s:%v", localIP, f.listen)
 
 			nodeID, err := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "")

@@ -219,7 +219,7 @@ func main() {
 	disableBatch := flag.Bool("disable-batch", false, "Disable batch operations")
 	activateTime := flag.Int64("activate-time", 200, "Activate time in microseconds")
 	flashConnWorkers := flag.Int("flash-conn-workers", 64, "Number of flash connection workers")
-	flowLimit := flag.Int64("flow-limit", 5*1024*1024*1024, "Flow limit in bytes per second (default: 5GB)")
+	flowLimit := flag.Int64("flow-limit", 0, "Flow limit in bytes per second (default: 0 limiter is disable)")
 	flag.Parse()
 
 	fmt.Printf("Parsed command-line arguments:\n")
