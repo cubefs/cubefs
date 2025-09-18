@@ -53,7 +53,6 @@ const (
 	DefaultFirstRetryPercent      = 80
 	DefaultSubsequentRetryPercent = 10
 	DefaultSecondRetryPercent     = 20
-	DefaultFlowLimit              = 5 * 1024 * 1024 * 1024 // 5GB default
 )
 
 type AddressPingStats struct {
@@ -201,10 +200,11 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 	} else {
 		rc.connWorkers = config.ConnWorkers
 	}
-	if config.FlowLimit == 0 {
-		config.FlowLimit = DefaultFlowLimit
+	if config.FlowLimit > 0 {
+		rc.flowLimiter = rate.NewLimiter(rate.Limit(config.FlowLimit), int(config.FlowLimit/2))
+	} else {
+		rc.flowLimiter = rate.NewLimiter(rate.Inf, 0)
 	}
-	rc.flowLimiter = rate.NewLimiter(rate.Limit(config.FlowLimit), int(config.FlowLimit/2))
 	rc.connPutChan = make(chan *ConnPutTask, DefaultConnPutChanSize)
 	rc.readPool = util.NewGTaskPool(DefaultReadPoolSize)
 	rc.readPool.SetMaxDeltaRunning(512)
