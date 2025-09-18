@@ -426,8 +426,14 @@ func (mgr *DataInspectMgr) recordInspectStartPoint(ctx context.Context) {
 }
 
 func (mgr *DataInspectMgr) prepareDiskInspectionState(disks []core.DiskAPI) {
+	// clear previous progress, may be replaced a new disk, need remove old	progress
+	mgr.progress.Range(func(k, _ interface{}) bool {
+		mgr.progress.Delete(k)
+		return true
+	})
+
+	// init or reset progress to 0% by current all disks, at the beginning of each new round of inspection
 	for _, ds := range disks {
-		// init or reset progress to 0%, at the beginning of each new round of inspection
 		mgr.progress.Store(ds.ID(), 0)
 	}
 }

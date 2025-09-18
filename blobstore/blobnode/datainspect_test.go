@@ -584,3 +584,56 @@ func TestInspectShard_MetaDoubleCheck(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+func TestInspect_ClearProgress(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	// service and manager
+	ds1 := NewMockDiskAPI(ctr)
+	ds2 := NewMockDiskAPI(ctr)
+	ds1.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds2.EXPECT().ID().Return(proto.DiskID(22)).AnyTimes()
+	svr := &Service{Disks: map[proto.DiskID]core.DiskAPI{11: ds1, 22: ds2}, ctx: ctx, closeCh: make(chan struct{})}
+	mgr := newDataInspectMgr(t, DataInspectConf{IntervalSec: 1, RateLimit: 128 * 1024}, svr)
+	snapshot := make(map[proto.DiskID]int)
+
+	// first round inspection
+	mgr.prepareDiskInspectionState([]core.DiskAPI{ds1, ds2})
+	mgr.progress.Store(proto.DiskID(11), 100)
+	mgr.progress.Store(proto.DiskID(22), 3)
+	mgr.progress.Range(func(k, v interface{}) bool {
+		snapshot[k.(proto.DiskID)] = v.(int)
+		return true
+	})
+	require.Equal(t, 2, len(snapshot))
+	require.Equal(t, 100, snapshot[11])
+	require.Equal(t, 3, snapshot[22])
+
+	// mock replace broken disk, bad disk progress
+	mgr.progress.Store(proto.DiskID(33), 9)
+	mgr.progress.Range(func(k, v interface{}) bool {
+		snapshot[k.(proto.DiskID)] = v.(int)
+		return true
+	})
+	require.Equal(t, 3, len(snapshot))
+	require.Equal(t, 100, snapshot[11])
+	require.Equal(t, 3, snapshot[22])
+	require.Equal(t, 9, snapshot[33])
+
+	// next round inspection
+	ds3 := NewMockDiskAPI(ctr)
+	ds3.EXPECT().ID().Return(proto.DiskID(33)).AnyTimes()
+	mgr.prepareDiskInspectionState([]core.DiskAPI{ds3, ds2})
+	snapshot = make(map[proto.DiskID]int)
+	mgr.progress.Range(func(k, v interface{}) bool {
+		snapshot[k.(proto.DiskID)] = v.(int)
+		return true
+	})
+	require.Equal(t, 2, len(snapshot))
+	for diskID := range snapshot {
+		require.Equal(t, 0, snapshot[diskID])
+	}
+	_, ok := snapshot[proto.DiskID(11)]
+	require.False(t, ok)
+}

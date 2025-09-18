@@ -507,7 +507,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		// select master
 	case errcode.CodeShardNodeNotLeader: // leader disk id error when create/delete/seal
 		if err1 := h.updateLeaderFromNewHost(ctx, args.clusterID, args.Suid, args.DiskID); err1 != nil {
-			span.Warnf("fail to update shard, cluster:%d, err:%+v", args.clusterID, err1)
+			span.Warnf("fail to update leader and shard info, cluster:%d, err:%+v", args.clusterID, err1)
 		}
 		return false, args.err
 

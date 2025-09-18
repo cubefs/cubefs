@@ -271,7 +271,7 @@ func (s *Service) ChunkReadonly(c *rpc.Context) {
 	// change persistence status
 	err = ds.UpdateChunkStatus(ctx, args.Vuid, clustermgr.ChunkStatusReadOnly)
 	if err != nil {
-		span.Errorf("set args:(%s) readOnly failed: %v", args, err)
+		span.Errorf("set args:(%+v) readOnly failed: %+v", args, err)
 		c.RespondError(err)
 		return
 	}
@@ -346,7 +346,7 @@ func (s *Service) ChunkReadwrite(c *rpc.Context) {
 	// change persistence status
 	err = ds.UpdateChunkStatus(ctx, args.Vuid, clustermgr.ChunkStatusNormal)
 	if err != nil {
-		span.Errorf("set args:(%s) readWrite failed: %v", args, err)
+		span.Errorf("set args:(%+v) readWrite failed: %+v", args, err)
 		c.RespondError(err)
 		return
 	}
