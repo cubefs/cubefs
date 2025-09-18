@@ -93,8 +93,9 @@ func (m *FlashGroupManager) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminGetIP, metric, nil, nil)
 	}()
 	cInfo := &proto.ClusterInfo{
-		Cluster: m.clusterName,
-		Ip:      iputil.RealIP(r),
+		Cluster:          m.clusterName,
+		FlashReadTimeout: int(m.cluster.cfg.RemoteCacheReadTimeout),
+		Ip:               iputil.RealIP(r),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
