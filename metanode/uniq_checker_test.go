@@ -15,10 +15,12 @@
 package metanode
 
 import (
+	"sync"
 	"testing"
+	"time"
 )
 
-func TestLegal(t *testing.T) {
+func TestUniqOpLegal(t *testing.T) {
 	checker := newUniqChecker()
 	for i := 1; i <= 10; i++ {
 		if !checker.legalIn(uint64(i), 1) {
@@ -30,7 +32,7 @@ func TestLegal(t *testing.T) {
 	}
 }
 
-func TestOpQueue(t *testing.T) {
+func TestUniqOpQueue(t *testing.T) {
 	q := newUniqOpQueue()
 	for i := uint64(0); i < 10000; i++ {
 		q.append(&uniqOp{
@@ -88,7 +90,7 @@ func TestOpQueue(t *testing.T) {
 	}
 }
 
-func TestClone(t *testing.T) {
+func TestUniqOpClone(t *testing.T) {
 	checker := newUniqChecker()
 	for i := 1; i <= 10000; i++ {
 		checker.legalIn(uint64(i), 1)
@@ -110,7 +112,7 @@ func TestClone(t *testing.T) {
 	})
 }
 
-func TestMarshal(t *testing.T) {
+func TestUniqOpMarshal(t *testing.T) {
 	checker := newUniqChecker()
 	for i := 1; i <= 10000; i++ {
 		checker.legalIn(uint64(i), 1)
@@ -138,6 +140,541 @@ func TestMarshal(t *testing.T) {
 		i++
 		return true
 	})
+}
+
+// TestUniqOpEdgeCases tests edge cases and boundary conditions
+func TestUniqOpEdgeCases(t *testing.T) {
+	checker := newUniqChecker()
+
+	// Test zero uniqid (should always be legal)
+	if !checker.legalIn(0) {
+		t.Error("Zero uniqid should always be legal")
+	}
+
+	// Test duplicate zero uniqid
+	if !checker.legalIn(0) {
+		t.Error("Duplicate zero uniqid should still be legal")
+	}
+
+	// Test very large uniqid
+	largeID := uint64(1<<63 - 1)
+	if !checker.legalIn(largeID) {
+		t.Error("Large uniqid should be legal")
+	}
+
+	// Test duplicate large uniqid
+	if checker.legalIn(largeID) {
+		t.Error("Duplicate large uniqid should not be legal")
+	}
+}
+
+// TestUniqOpConcurrentAccess tests concurrent access to uniqChecker
+func TestUniqOpConcurrentAccess(t *testing.T) {
+	checker := newUniqChecker()
+	var wg sync.WaitGroup
+	numGoroutines := 100
+	idsPerGoroutine := 10
+
+	// Test concurrent legalIn calls
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(startID int) {
+			defer wg.Done()
+			for j := 0; j < idsPerGoroutine; j++ {
+				id := uint64(startID*idsPerGoroutine + j + 1)
+				checker.legalIn(id)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify all IDs were processed
+	expectedCount := numGoroutines * idsPerGoroutine
+	if len(checker.op) != expectedCount {
+		t.Errorf("Expected %d operations, got %d", expectedCount, len(checker.op))
+	}
+}
+
+// TestUniqOpEvictionLogic tests the eviction mechanism
+func TestUniqOpEvictionLogic(t *testing.T) {
+	checker := newUniqChecker()
+
+	// Add operations beyond keepOps limit
+	for i := 1; i <= 2000; i++ {
+		checker.legalIn(uint64(i))
+	}
+
+	// Test evictIndex - should return valid indices since we exceed keepOps (1024)
+	left, idx, op := checker.evictIndex()
+	if left < 0 {
+		t.Errorf("evictIndex should return valid left count, got %d", left)
+	}
+
+	// For recent operations, idx will be -1 and op will be nil because
+	// no operations are old enough to evict (all are recent)
+	if idx == -1 && op == nil {
+		t.Log("No operations old enough to evict (expected for recent operations)")
+	} else {
+		t.Errorf("Expected idx=-1 and op=nil for recent operations, got idx=%d, op=%v", idx, op)
+	}
+
+	// Test that evictIndex returns the correct queue length
+	expectedLeft := checker.inQue.len()
+	if left != expectedLeft {
+		t.Errorf("Expected left count %d, got %d", expectedLeft, left)
+	}
+
+	// Test doEvict with a valid operation ID
+	if op != nil {
+		originalLen := checker.inQue.len()
+		checker.doEvict(op.uniqid)
+		newLen := checker.inQue.len()
+		if newLen >= originalLen {
+			t.Error("doEvict should reduce queue length")
+		}
+	}
+}
+
+// TestUniqOpEvictionWithOldOperations tests eviction with old operations
+func TestUniqOpEvictionWithOldOperations(t *testing.T) {
+	checker := newUniqChecker()
+
+	// Create operations with old timestamps (older than opKeepTime = 300 seconds)
+	oldTime := time.Now().Unix() - 400 // 400 seconds ago
+
+	// Manually add operations with old timestamps
+	for i := 1; i <= 1500; i++ {
+		checker.Lock()
+		checker.op[uint64(i)] = struct{}{}
+		checker.inQue.append(&uniqOp{uniqid: uint64(i), atime: oldTime})
+		checker.Unlock()
+	}
+
+	// Test evictIndex with old operations
+	left, idx, op := checker.evictIndex()
+	if left < 0 {
+		t.Errorf("evictIndex should return valid left count, got %d", left)
+	}
+	if idx < 0 {
+		t.Errorf("evictIndex should return valid index, got %d", idx)
+	}
+
+	if op == nil {
+		t.Error("evictIndex should return an operation to evict for old operations")
+	}
+
+	// Test doEvict
+	if op != nil {
+		originalLen := checker.inQue.len()
+		checker.doEvict(op.uniqid)
+		newLen := checker.inQue.len()
+		if newLen >= originalLen {
+			t.Error("doEvict should reduce queue length")
+		}
+	}
+}
+
+// TestUniqOpMarshalUnmarshalEdgeCases tests edge cases in marshaling
+func TestUniqOpMarshalUnmarshalEdgeCases(t *testing.T) {
+	// Test empty checker
+	checker := newUniqChecker()
+	buf, crc, err := checker.Marshal()
+	if err != nil {
+		t.Errorf("Marshal empty checker failed: %v", err)
+	}
+	if len(buf) == 0 {
+		t.Error("Marshal should return non-empty buffer")
+	}
+	if crc == 0 {
+		t.Error("CRC should not be zero")
+	}
+
+	// Test unmarshal empty data
+	checker2 := newUniqChecker()
+	err = checker2.UnMarshal([]byte{})
+	if err == nil {
+		t.Error("UnMarshal empty data should return error")
+	}
+
+	// Test unmarshal invalid data
+	err = checker2.UnMarshal([]byte{1, 2, 3})
+	if err == nil {
+		t.Error("UnMarshal invalid data should return error")
+	}
+}
+
+// TestUniqOpQueueEdgeCases tests edge cases for uniqOpQueue
+func TestUniqOpQueueEdgeCases(t *testing.T) {
+	q := newUniqOpQueue()
+
+	// Test index with invalid indices
+	if q.index(-1) != nil {
+		t.Error("index(-1) should return nil")
+	}
+	if q.index(1000) != nil {
+		t.Error("index(1000) on empty queue should return nil")
+	}
+
+	// Test truncate with invalid indices
+	q.truncate(-1)
+	if q.len() != 0 {
+		t.Error("truncate(-1) should not affect empty queue")
+	}
+
+	q.truncate(1000)
+	if q.len() != 0 {
+		t.Error("truncate(1000) on empty queue should not affect length")
+	}
+
+	// Add some operations
+	for i := 0; i < 5; i++ {
+		q.append(&uniqOp{uniqid: uint64(i), atime: time.Now().Unix()})
+	}
+
+	// Test truncate beyond queue length
+	_ = q.len()
+	q.truncate(10)
+	if q.len() != 0 {
+		t.Error("truncate beyond queue length should reset queue")
+	}
+
+	// Rebuild queue
+	for i := 0; i < 5; i++ {
+		q.append(&uniqOp{uniqid: uint64(i), atime: time.Now().Unix()})
+	}
+
+	// Test truncate at exact length
+	q.truncate(4)
+	if q.len() != 0 {
+		t.Error("truncate at exact length should reset queue")
+	}
+}
+
+// TestUniqOpQueueScan tests the scan functionality
+func TestUniqOpQueueScan(t *testing.T) {
+	q := newUniqOpQueue()
+
+	// Test scan on empty queue
+	scanCount := 0
+	q.scan(func(op *uniqOp) bool {
+		scanCount++
+		return true
+	})
+	if scanCount != 0 {
+		t.Error("Scan on empty queue should not call function")
+	}
+
+	// Add operations
+	for i := 0; i < 10; i++ {
+		q.append(&uniqOp{uniqid: uint64(i), atime: time.Now().Unix()})
+	}
+
+	// Test scan with early termination
+	scanCount = 0
+	q.scan(func(op *uniqOp) bool {
+		scanCount++
+		return scanCount < 5 // Stop after 5 iterations
+	})
+	if scanCount != 5 {
+		t.Errorf("Scan should stop after 5 iterations, got %d", scanCount)
+	}
+}
+
+// TestUniqOpQueueClone tests the clone functionality
+func TestUniqOpQueueClone(t *testing.T) {
+	q := newUniqOpQueue()
+
+	// Test clone of empty queue
+	clone := q.clone()
+	if clone.len() != 0 {
+		t.Error("Clone of empty queue should have length 0")
+	}
+
+	// Add operations
+	for i := 0; i < 100; i++ {
+		q.append(&uniqOp{uniqid: uint64(i), atime: time.Now().Unix()})
+	}
+
+	// Test clone of non-empty queue
+	clone = q.clone()
+	if clone.len() != q.len() {
+		t.Error("Clone should have same length as original")
+	}
+
+	// Verify clone is independent
+	for i := 0; i < 10; i++ {
+		q.append(&uniqOp{uniqid: uint64(100 + i), atime: time.Now().Unix()})
+	}
+
+	if clone.len() == q.len() {
+		t.Error("Clone should be independent of original")
+	}
+}
+
+// TestUniqOpQueueReset tests the reset functionality
+func TestUniqOpQueueReset(t *testing.T) {
+	q := newUniqOpQueue()
+
+	// Add operations
+	for i := 0; i < 50; i++ {
+		q.append(&uniqOp{uniqid: uint64(i), atime: time.Now().Unix()})
+	}
+
+	// Test reset
+	q.reset()
+	if q.len() != 0 {
+		t.Error("Reset should set length to 0")
+	}
+	if len(q.ss) != 1 {
+		t.Error("Reset should have exactly one slice")
+	}
+	if len(q.cur.s) != 0 {
+		t.Error("Reset should have empty current slice")
+	}
+}
+
+// TestUniqOpStats tests the getStats functionality
+func TestUniqOpStats(t *testing.T) {
+	checker := newUniqChecker()
+
+	// Test stats on empty checker
+	stats := checker.getStats()
+	if stats["queue_length"].(int) != 0 {
+		t.Error("Empty checker should have queue length 0")
+	}
+	if stats["map_size"].(int) != 0 {
+		t.Error("Empty checker should have map size 0")
+	}
+
+	// Add some operations
+	for i := 1; i <= 100; i++ {
+		checker.legalIn(uint64(i))
+	}
+
+	// Test stats on non-empty checker
+	stats = checker.getStats()
+	if stats["queue_length"].(int) != 100 {
+		t.Error("Checker should have queue length 100")
+	}
+	if stats["map_size"].(int) != 100 {
+		t.Error("Checker should have map size 100")
+	}
+}
+
+// TestUniqOpCloneIndependence tests that clone is independent
+func TestUniqOpCloneIndependence(t *testing.T) {
+	checker := newUniqChecker()
+
+	// Add operations to original
+	for i := 1; i <= 50; i++ {
+		checker.legalIn(uint64(i))
+	}
+
+	// Clone checker
+	checkerClone := checker.clone()
+
+	// Add operations to original
+	for i := 51; i <= 100; i++ {
+		checker.legalIn(uint64(i))
+	}
+
+	// Verify clone is independent
+	if len(checkerClone.op) != 0 {
+		t.Error("Clone should have empty op map")
+	}
+	if checkerClone.inQue.len() != 50 {
+		t.Error("Clone should have 50 operations in queue")
+	}
+	if checker.inQue.len() != 100 {
+		t.Error("Original should have 100 operations in queue")
+	}
+}
+
+// TestUniqOpMarshalUnmarshalRoundTrip tests round-trip marshaling
+func TestUniqOpMarshalUnmarshalRoundTrip(t *testing.T) {
+	checker := newUniqChecker()
+
+	// Add operations
+	for i := 1; i <= 100; i++ {
+		checker.legalIn(uint64(i))
+	}
+
+	// Marshal
+	buf, crc, err := checker.Marshal()
+	if err != nil {
+		t.Errorf("Marshal failed: %v", err)
+	}
+
+	// Unmarshal
+	checker2 := newUniqChecker()
+	err = checker2.UnMarshal(buf)
+	if err != nil {
+		t.Errorf("Unmarshal failed: %v", err)
+	}
+
+	// Verify round-trip
+	if len(checker.op) != len(checker2.op) {
+		t.Error("Round-trip should preserve op map size")
+	}
+	if checker.inQue.len() != checker2.inQue.len() {
+		t.Error("Round-trip should preserve queue length")
+	}
+
+	// Verify CRC
+	buf2, crc2, err := checker2.Marshal()
+	if err != nil {
+		t.Errorf("Second marshal failed: %v", err)
+	}
+	if crc != crc2 {
+		t.Error("CRC should be consistent across round-trip")
+	}
+	if len(buf) != len(buf2) {
+		t.Error("Buffer length should be consistent across round-trip")
+	}
+}
+
+// TestUniqOpLargeScale tests large-scale operations
+func TestUniqOpLargeScale(t *testing.T) {
+	checker := newUniqChecker()
+
+	// Add large number of operations
+	numOps := 10000
+	for i := 1; i <= numOps; i++ {
+		if !checker.legalIn(uint64(i)) {
+			t.Errorf("Failed to add operation %d", i)
+		}
+	}
+
+	// Verify all operations were added
+	if len(checker.op) != numOps {
+		t.Errorf("Expected %d operations, got %d", numOps, len(checker.op))
+	}
+	if checker.inQue.len() != numOps {
+		t.Errorf("Expected queue length %d, got %d", numOps, checker.inQue.len())
+	}
+
+	// Test duplicate operations
+	for i := 1; i <= 100; i++ {
+		if checker.legalIn(uint64(i)) {
+			t.Errorf("Duplicate operation %d should not be legal", i)
+		}
+	}
+}
+
+// TestUniqOpQueueLargeScale tests large-scale queue operations
+func TestUniqOpQueueLargeScale(t *testing.T) {
+	q := newUniqOpQueue()
+
+	// Add large number of operations
+	numOps := 50000
+	for i := 0; i < numOps; i++ {
+		q.append(&uniqOp{uniqid: uint64(i), atime: time.Now().Unix()})
+	}
+
+	// Verify length
+	if q.len() != numOps {
+		t.Errorf("Expected length %d, got %d", numOps, q.len())
+	}
+
+	// Test random access
+	for i := 0; i < 100; i++ {
+		idx := i * 500
+		op := q.index(idx)
+		if op == nil {
+			t.Errorf("Failed to get operation at index %d", idx)
+		} else if op.uniqid != uint64(idx) {
+			t.Errorf("Expected uniqid %d at index %d, got %d", idx, idx, op.uniqid)
+		}
+	}
+
+	// Test truncate
+	truncateIdx := 10000
+	q.truncate(truncateIdx)
+	expectedLen := numOps - truncateIdx - 1
+	if q.len() != expectedLen {
+		t.Errorf("After truncate, expected length %d, got %d", expectedLen, q.len())
+	}
+
+	// Verify first operation after truncate
+	firstOp := q.index(0)
+	if firstOp == nil {
+		t.Error("First operation after truncate should not be nil")
+	} else if firstOp.uniqid != uint64(truncateIdx+1) {
+		t.Errorf("Expected first uniqid %d after truncate, got %d", truncateIdx+1, firstOp.uniqid)
+	}
+}
+
+// TestUniqOpConcurrentMarshal tests concurrent marshaling
+func TestUniqOpConcurrentMarshal(t *testing.T) {
+	checker := newUniqChecker()
+
+	// Add operations
+	for i := 1; i <= 1000; i++ {
+		checker.legalIn(uint64(i))
+	}
+
+	// Test concurrent marshaling
+	var wg sync.WaitGroup
+	numGoroutines := 10
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buf, crc, err := checker.Marshal()
+			if err != nil {
+				t.Errorf("Concurrent marshal failed: %v", err)
+			}
+			if len(buf) == 0 {
+				t.Error("Marshal should return non-empty buffer")
+			}
+			if crc == 0 {
+				t.Error("CRC should not be zero")
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
+// TestUniqOpConcurrentLegalIn tests concurrent legalIn operations
+func TestUniqOpConcurrentLegalIn(t *testing.T) {
+	checker := newUniqChecker()
+	var wg sync.WaitGroup
+	numGoroutines := 50
+	idsPerGoroutine := 20
+
+	// Test concurrent legalIn with overlapping IDs
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(startID int) {
+			defer wg.Done()
+			for j := 0; j < idsPerGoroutine; j++ {
+				id := uint64(startID*idsPerGoroutine + j + 1)
+				checker.legalIn(id)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify all unique IDs were processed
+	expectedCount := numGoroutines * idsPerGoroutine
+	if len(checker.op) != expectedCount {
+		t.Errorf("Expected %d operations, got %d", expectedCount, len(checker.op))
+	}
+
+	// Test that duplicates are properly rejected
+	duplicateCount := 0
+	for i := 1; i <= 100; i++ {
+		if checker.legalIn(uint64(i)) {
+			duplicateCount++
+		}
+	}
+	if duplicateCount != 0 {
+		t.Errorf("Expected 0 duplicate operations to be legal, got %d", duplicateCount)
+	}
 }
 
 func TestDoEvictBasic(t *testing.T) {

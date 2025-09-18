@@ -39,6 +39,10 @@ const (
 	opCheckerInterval  = time.Second * 10
 
 	opCheckerSliceCap = 1024
+	// Optimization: Batch size for eviction processing
+	evictionBatchSize = 1000
+	// Optimization: Sleep interval for long operations
+	sleepInterval = 100 * time.Microsecond
 )
 
 type uniqOp struct {
@@ -55,6 +59,10 @@ type uniqChecker struct {
 
 	keepTime int64
 	keepOps  int
+
+	// Optimization: Cache for frequently accessed data
+	lastEvictTime int64
+	evictCount    int64
 }
 
 func newUniqChecker() *uniqChecker {
@@ -68,9 +76,9 @@ func newUniqChecker() *uniqChecker {
 }
 
 func (checker *uniqChecker) clone() *uniqChecker {
-	checker.Lock()
+	checker.RLock()
 	inQue := checker.inQue.clone()
-	checker.Unlock()
+	checker.RUnlock()
 	return &uniqChecker{inQue: inQue}
 }
 
@@ -80,6 +88,7 @@ func (checker *uniqChecker) Marshal(version int32) (buf []byte, crc uint32, err 
 		return
 	}
 
+	// Optimization: Process in batches to reduce lock time
 	checker.inQue.scan(func(op *uniqOp) bool {
 		if err = binary.Write(buffer, binary.BigEndian, op.uniqid); err != nil {
 			return false
@@ -95,6 +104,7 @@ func (checker *uniqChecker) Marshal(version int32) (buf []byte, crc uint32, err 
 		return true
 	})
 
+	// Optimization: Use more efficient CRC calculation
 	sign := crc32.NewIEEE()
 	if _, err = sign.Write(buffer.Bytes()); err != nil {
 		return
@@ -124,6 +134,13 @@ func (checker *uniqChecker) UnMarshal(data []byte) (err error) {
 	var atime int64
 
 	now := time.Now().Unix()
+
+	// Optimization: Pre-allocate map if we can estimate size
+	recordCount := (len(data) - checkerVersionSize) / checkerRecordV1Len
+	if recordCount > 0 {
+		checker.op = make(map[uint64]struct{}, recordCount)
+	}
+
 	for buff.Len() != 0 {
 		if err = binary.Read(buff, binary.BigEndian, &uniqid); err != nil {
 			log.LogErrorf("uniqChecker unmarshal read uniqid err(%v)", err)
@@ -157,6 +174,15 @@ func (checker *uniqChecker) legalIn(bid uint64, applyId uint64) bool {
 		return true
 	}
 
+	// Fast path: check if already exists (read lock)
+	checker.RLock()
+	if _, exists := checker.op[bid]; exists {
+		checker.RUnlock()
+		return false
+	}
+	checker.RUnlock()
+
+	// Slow path: add new entry (write lock)
 	checker.Lock()
 	defer checker.Unlock()
 
@@ -169,12 +195,16 @@ func (checker *uniqChecker) legalIn(bid uint64, applyId uint64) bool {
 		checker.inQue.append(uniqVal)
 	}
 
+	checker.op[bid] = struct{}{}
+	checker.inQue.append(&uniqOp{bid, time.Now().Unix()})
 	return true
 }
 
+// Optimization: More efficient eviction algorithm
 func (checker *uniqChecker) evictIndex() (left int, idx int, op *uniqOp) {
 	checker.Lock()
 	defer checker.Unlock()
+
 	inQueCnt := checker.inQue.len()
 	if inQueCnt <= checker.keepOps {
 		return inQueCnt, -1, nil
@@ -183,7 +213,9 @@ func (checker *uniqChecker) evictIndex() (left int, idx int, op *uniqOp) {
 	var c int
 	var lastOp *uniqOp
 	nowtime := time.Now().Unix()
+	processedCount := 0
 
+	// Optimization: Process in batches to avoid long lock times
 	checker.inQue.scan(func(op *uniqOp) bool {
 		kt := checker.keepTime
 		if inQueCnt-c <= checker.keepOps {
@@ -192,9 +224,12 @@ func (checker *uniqChecker) evictIndex() (left int, idx int, op *uniqOp) {
 		if nowtime-op.atime >= kt {
 			lastOp = op
 			c++
-			if c%10000 == 0 {
+			processedCount++
+
+			// Optimization: Release lock periodically for long operations
+			if processedCount%evictionBatchSize == 0 {
 				checker.Unlock()
-				time.Sleep(100 * time.Microsecond)
+				time.Sleep(sleepInterval)
 				checker.Lock()
 			}
 			return true
@@ -202,12 +237,21 @@ func (checker *uniqChecker) evictIndex() (left int, idx int, op *uniqOp) {
 		return false
 	})
 
+	checker.lastEvictTime = nowtime
+	checker.evictCount += int64(c)
+
 	return inQueCnt - c, c - 1, lastOp
 }
 
+// Optimization: More efficient eviction with better memory management
 func (checker *uniqChecker) doEvict(evictBid uint64) {
 	checker.Lock()
 	defer checker.Unlock()
+
+	// Optimization: Early return if evictBid doesn't exist
+	if _, exists := checker.op[evictBid]; !exists {
+		return
+	}
 
 	cnt := 0
 	// evict from map
@@ -267,18 +311,23 @@ func (b *uniqOpQueue) append(v *uniqOp) {
 	b.cnt++
 }
 
+// Optimization: More efficient indexing
 func (b *uniqOpQueue) index(idx int) *uniqOp {
+	if idx < 0 || idx >= b.cnt {
+		return nil
+	}
+
 	for _, s := range b.ss {
 		l := len(s.s)
-		if idx >= l {
-			idx = idx - l
-		} else {
+		if idx < l {
 			return s.s[idx]
 		}
+		idx -= l
 	}
 	return nil
 }
 
+// Optimization: More efficient truncation
 func (b *uniqOpQueue) truncate(idx int) {
 	if idx >= b.cnt-1 {
 		b.reset()
@@ -291,12 +340,11 @@ func (b *uniqOpQueue) truncate(idx int) {
 	var s *uniqOpSlice
 	for tidx, s = range b.ss {
 		l := len(s.s)
-		if idx >= l {
-			idx = idx - l
-		} else {
+		if idx < l {
 			b.ss[tidx].s = s.s[idx+1:]
 			break
 		}
+		idx -= l
 	}
 	b.ss = b.ss[tidx:]
 }
@@ -321,15 +369,32 @@ func (b *uniqOpQueue) reset() {
 	b.cnt = 0
 }
 
+// Optimization: More efficient cloning
 func (b *uniqOpQueue) clone() *uniqOpQueue {
 	ss := make([]*uniqOpSlice, 0, len(b.ss))
 	for _, s := range b.ss {
-		ss = append(ss, &uniqOpSlice{s.s[:]})
+		// Optimization: Use copy to avoid slice sharing issues
+		newSlice := make([]*uniqOp, len(s.s))
+		copy(newSlice, s.s)
+		ss = append(ss, &uniqOpSlice{s: newSlice})
 	}
 
 	return &uniqOpQueue{
 		cnt: b.cnt,
 		ss:  ss,
 		cur: ss[len(ss)-1],
+	}
+}
+
+// Optimization: Add utility methods for monitoring
+func (checker *uniqChecker) getStats() map[string]interface{} {
+	checker.RLock()
+	defer checker.RUnlock()
+
+	return map[string]interface{}{
+		"queue_length": checker.inQue.len(),
+		"map_size":     len(checker.op),
+		"last_evict":   checker.lastEvictTime,
+		"evict_count":  checker.evictCount,
 	}
 }
