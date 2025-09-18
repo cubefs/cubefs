@@ -2223,7 +2223,7 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 
 	// restore special replica decommission progress
 	if value.isSpecialReplicaCnt() && value.GetDecommissionStatus() == DecommissionRunning && !value.DecommissionRaftForce {
-		value.SetDecommissionStatus(markDecommission, "leaderChange_updateRunningToMark", "")
+		value.SetDecommissionStatus(markDecommission, "leaderChange_reload_updateRunningToMark", "")
 		value.isRecover = false // can pass decommission validate check
 		log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v]  dp[%v] set status from DecommissionRunning to markDecommission",
 			id, value.PartitionID)
