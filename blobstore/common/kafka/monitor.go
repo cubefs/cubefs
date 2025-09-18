@@ -171,7 +171,7 @@ func (monitor *Monitor) loopAcquireKafkaOffset() {
 		case <-ticker.C:
 			offsets, err := monitor.kafkaAdmCli.ListConsumerGroupOffsets(groupID, map[string][]int32{monitor.topic: monitor.pids})
 			if err != nil {
-				log.Errorf("get consume offset failed: topic[%s], pids[%+v]", monitor.topic, monitor.pids)
+				log.Errorf("get consume offset failed: topic[%s], pids[%+v], err[%+v]", monitor.topic, monitor.pids, err)
 				continue
 			}
 
