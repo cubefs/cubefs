@@ -242,7 +242,7 @@ func (m *BlobDeleteMgr) listShardMsg(ctx context.Context, diskID proto.DiskID, l
 
 	// check if shard is leader
 	if !listReader.IsLeader() {
-		span.Errorf("shard[%d] is not leader, skip", suid)
+		span.Debugf("shard[%d] is not leader, skip", suid)
 		listReader.init()
 		return
 	}
@@ -601,7 +601,7 @@ func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 	}
 
 	punishDr := m.cfg.PunishTimeout.Duration
-	ts := m.tsGen.CurrentTs().Add(punishDr)
+	ts := m.tsGen.GenerateTs().Add(punishDr)
 	punishMsgKey := encodeDelMsgKey(ts, msg.Slice.Vid, msg.Slice.MinSliceID, shardKeys)
 
 	msg.Retry = 0
