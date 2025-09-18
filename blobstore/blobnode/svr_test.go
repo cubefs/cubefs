@@ -18,7 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -1003,7 +1003,7 @@ func TestService_ConfigReload(t *testing.T) {
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		dest := qos.FlowConfig{}
 		err = json.Unmarshal(body, &dest)
@@ -1467,7 +1467,7 @@ func TestService_DataInspect(t *testing.T) {
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		var data DataInspectStat
 		err = json.Unmarshal(body, &data)

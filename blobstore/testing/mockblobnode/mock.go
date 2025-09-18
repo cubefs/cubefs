@@ -16,3 +16,4 @@ package mock
 
 // github.com/cubefs/cubefs/blobstore/blobnode/... module blobnode interfaces
 //go:generate mockgen -destination=./blobfile.go -package=mock -mock_names BlobFile=MockBlobFile github.com/cubefs/cubefs/blobstore/blobnode/core BlobFile
+//go:generate mockgen -destination=./qos.go -package=mock -mock_names QosAPI=MockQosAPI github.com/cubefs/cubefs/blobstore/blobnode/base/qos QosAPI

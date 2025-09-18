@@ -26,6 +26,9 @@ package blobstore
 // go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.0
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
 
+// go install github.com/golang/mock/mockgen@v1.6.0
+// go install golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow
+
 // protobuf depend
 // protoc(24.0+)
 // protoc-gen-go(1.31.0+)

@@ -106,21 +106,6 @@ func (mr *MockBlobFileMockRecorder) Name() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Name", reflect.TypeOf((*MockBlobFile)(nil).Name))
 }
 
-// ReadAt mocks base method.
-func (m *MockBlobFile) ReadAt(arg0 []byte, arg1 int64) (int, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadAt", arg0, arg1)
-	ret0, _ := ret[0].(int)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReadAt indicates an expected call of ReadAt.
-func (mr *MockBlobFileMockRecorder) ReadAt(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAt", reflect.TypeOf((*MockBlobFile)(nil).ReadAt), arg0, arg1)
-}
-
 // ReadAtCtx mocks base method.
 func (m *MockBlobFile) ReadAtCtx(arg0 context.Context, arg1 []byte, arg2 int64) (int, error) {
 	m.ctrl.T.Helper()
@@ -178,21 +163,6 @@ func (m *MockBlobFile) SysStat() (syscall.Stat_t, error) {
 func (mr *MockBlobFileMockRecorder) SysStat() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SysStat", reflect.TypeOf((*MockBlobFile)(nil).SysStat))
-}
-
-// WriteAt mocks base method.
-func (m *MockBlobFile) WriteAt(arg0 []byte, arg1 int64) (int, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteAt", arg0, arg1)
-	ret0, _ := ret[0].(int)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// WriteAt indicates an expected call of WriteAt.
-func (mr *MockBlobFileMockRecorder) WriteAt(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteAt", reflect.TypeOf((*MockBlobFile)(nil).WriteAt), arg0, arg1)
 }
 
 // WriteAtCtx mocks base method.

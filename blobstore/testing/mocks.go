@@ -43,7 +43,6 @@ package testing
 // github.com/cubefs/cubefs/blobstore/blobnode/... blobnode interfaces
 //go:generate mockgen -destination=../blobnode/disk_mock_test.go -package=blobnode -mock_names DiskAPI=MockDiskAPI,Storage=MockStorage,ChunkAPI=MockChunkAPI github.com/cubefs/cubefs/blobstore/blobnode/core DiskAPI,Storage,ChunkAPI
 //go:generate mockgen -destination=../blobnode/shard_client_mock_test.go -package=blobnode -mock_names IShardNode=MockIShardNode github.com/cubefs/cubefs/blobstore/blobnode/client IShardNode
-//go:generate mockgen -destination=./blobnode/base_qos.go -package=blobnode -mock_names QosAPI=MockQosAPI github.com/cubefs/cubefs/blobstore/blobnode/base/qos QosAPI
 
 // github.com/cubefs/cubefs/blobstore/scheduler/... scheduler interfaces
 //go:generate mockgen -destination=../scheduler/client_mock_test.go -package=scheduler -mock_names ClusterMgrAPI=MockClusterMgrAPI,BlobnodeAPI=MockBlobnodeAPI,ProxyAPI=MockMqProxyAPI,TaskAPI=MockTaskAPI github.com/cubefs/cubefs/blobstore/scheduler/client ClusterMgrAPI,BlobnodeAPI,ProxyAPI,TaskAPI
