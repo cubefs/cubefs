@@ -214,6 +214,7 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 	}
 	if !config.FromFuse {
 		changeFromRemote := make(chan struct{})
+		startTime := time.Now()
 		go func() {
 			err = rc.updateRemoteCacheConfig()
 			if err != nil {
@@ -223,6 +224,7 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 			if err != nil {
 				log.LogWarnf("NewRemoteCacheClient: updateFlashGroups err %v", err)
 			}
+			log.LogInfof("NewRemoteCacheClient: initialization completed in %v", time.Since(startTime))
 			close(changeFromRemote)
 		}()
 		if config.InitClientTime == 0 {
@@ -231,7 +233,7 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 		select {
 		case <-changeFromRemote:
 		case <-time.After(time.Duration(config.InitClientTime) * time.Second):
-			log.LogWarnf("NewRemoteCacheClient: init remote cache timeout for remote client")
+			log.LogWarnf("NewRemoteCacheClient: init remote cache timeout for remote client %v", startTime)
 			err = proto.ErrorInitRemoteTimeout
 		}
 	} else {
@@ -410,6 +412,7 @@ func (rc *RemoteCacheClient) IsClusterEnable() bool {
 }
 
 func (rc *RemoteCacheClient) UpdateFlashGroups() (err error) {
+	startTime := time.Now()
 	var (
 		fgv            proto.FlashGroupView
 		newFlashGroups = btree.New(32)
@@ -424,7 +427,9 @@ func (rc *RemoteCacheClient) UpdateFlashGroups() (err error) {
 			return
 		}
 	}
-	log.LogDebugf("updateFlashGroups. get flashGroupView [%v]", fgv)
+	if log.EnableDebug() {
+		log.LogDebugf("updateFlashGroups. get flashGroupView [%v]", fgv)
+	}
 	rc.SetClusterEnable(fgv.Enable && len(fgv.FlashGroups) != 0)
 	if !fgv.Enable {
 		rc.flashGroups = newFlashGroups
@@ -448,8 +453,9 @@ func (rc *RemoteCacheClient) UpdateFlashGroups() (err error) {
 				}
 			}
 		}
-		log.LogDebugf("updateFlashGroups: fgID(%v) newAdded hosts: %v", fg.ID, newAdded)
-
+		if log.EnableDebug() {
+			log.LogDebugf("updateFlashGroups: fgID(%v) newAdded hosts: %v cost(%v)", fg.ID, newAdded, time.Since(startTime))
+		}
 		rc.updateHostLatency(newAdded)
 		sortedHosts := rc.ClassifyHostsByAvgDelay(fg.ID, fg.Hosts)
 
@@ -463,7 +469,9 @@ func (rc *RemoteCacheClient) UpdateFlashGroups() (err error) {
 		}
 	}
 	rc.flashGroups = newFlashGroups
-
+	if log.EnableInfo() {
+		log.LogInfof("updateFlashGroups: completed in %v", time.Since(startTime))
+	}
 	return
 }
 

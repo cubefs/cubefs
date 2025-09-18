@@ -313,7 +313,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 			if e := p.WriteToConn(conn); e != nil {
-				log.LogErrorf(logPrefix+"  uniKey %v  write to conn %v", uniKey, e)
+				log.LogWarnf(logPrefix+"  uniKey %v  write to conn %v", uniKey, e)
 			}
 		}
 	}()
@@ -363,7 +363,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 	} else {
 		p.PacketOkReply()
 		if err1 = p.WriteToConn(conn); err1 != nil {
-			log.LogErrorf(logPrefix+" blockKey %v write to conn %v", blockKey, err1)
+			log.LogWarnf(logPrefix+" blockKey %v write to conn %v", blockKey, err1)
 			return
 		}
 		bgTime1 := stat.BeginStat()
@@ -464,7 +464,7 @@ func (f *FlashNode) replyPutDataOk(ch *proto.CoonHandler, conn net.Conn, p *prot
 	close(ch.Completed)
 	for range ch.WaitAckChan {
 		if ch.RemoteError = p.WriteToConn(conn); ch.RemoteError != nil {
-			log.LogErrorf(logPrefix+" reply to conn %v for write data", ch.RemoteError)
+			log.LogWarnf(logPrefix+" reply to conn %v for write data", ch.RemoteError)
 			return
 		}
 	}
@@ -477,7 +477,7 @@ func (f *FlashNode) opCacheBatchObjectGet(conn net.Conn, p *proto.Packet) (err e
 			log.LogWarnf("action[opCacheBatchObjectGet] write to conn %v", err)
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 			if e := p.WriteToConn(conn); e != nil {
-				log.LogErrorf("action[opCacheBatchObjectGet] write to conn %v", e)
+				log.LogWarnf("action[opCacheBatchObjectGet] write to conn %v", e)
 			}
 		}
 		stat.EndStat("FlashNode:opCacheBatchObjectGet", err, bgTime, 1)
@@ -522,7 +522,7 @@ func (f *FlashNode) opCacheBatchObjectGet(conn net.Conn, p *proto.Packet) (err e
 	p.ResultCode = proto.OpOk
 	if err = p.MarshalDataPb(resp); err == nil {
 		if e := p.WriteToConn(conn); e != nil {
-			log.LogErrorf("action[opCacheBatchObjectGet] write to conn %v", e)
+			log.LogWarnf("action[opCacheBatchObjectGet] write to conn %v", e)
 		}
 	}
 	return
@@ -637,7 +637,7 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 			}
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 			if e := p.WriteToConn(conn); e != nil {
-				log.LogErrorf("action[opCacheObjectGet] reqID[%v] key:[%s] write to conn %v", reqID, uniKey, e)
+				log.LogWarnf("action[opCacheObjectGet] reqID[%v] key:[%s] write to conn %v", reqID, uniKey, e)
 			}
 		}
 	}()
@@ -976,7 +976,7 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 
 		bgTime := stat.BeginStat()
 		if errInner = reply.WriteToConnForOCS(conn, readDiskSize); errInner != nil {
-			log.LogErrorf("%s key:[%s] %s", action, block.GetBlockKey(),
+			log.LogWarnf("%s key:[%s] %s", action, block.GetBlockKey(),
 				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, errInner))
 			return
 		}

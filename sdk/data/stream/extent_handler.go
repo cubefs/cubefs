@@ -356,7 +356,7 @@ func (eh *ExtentHandler) sender() {
 			log.LogDebugf("sender: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
 		case <-ticker.C:
-			log.LogErrorf("eh(%v) sender is still working", eh)
+			log.LogWarnf("eh(%v) sender is still working", eh)
 		}
 	}
 }
