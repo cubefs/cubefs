@@ -2577,6 +2577,15 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 		c.putBadDataPartitionIDsByDiskPath(dp.DecommissionSrcDiskPath, dp.DecommissionSrcAddr, dp.PartitionID)
 		log.LogWarnf("action[decommissionSingleDp] dp %v start wait add replica %v", dp.PartitionID, newAddr)
 	}
+
+	// during the decommission process of specialReplicaNum dp, master leader changed. After reloading, its status should be updated from prepare to running.
+	if dp.GetDecommissionStatus() == DecommissionPrepare && dp.GetSpecialReplicaDecommissionStep() > SpecialDecommissionEnter {
+		dp.SetDecommissionStatus(DecommissionRunning, "leaderChange_continueDecommission_updatePrepareToRunning", "")
+		dp.isRecover = true
+		c.syncUpdateDataPartition(dp)
+		log.LogWarnf("action[decommissionSingleDp] dp %v set status from decommissionPrepare to decommissionRunning", dp.PartitionID)
+	}
+
 	// 2. wait for repair
 	if dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes {
 		const dataNodeRebootMaxTimes = 24 // 2 minutes for dataNode to reboot, total 10 miniutes
