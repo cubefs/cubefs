@@ -462,14 +462,19 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
-	var dirCtx DirContext = d.dctx.GetCopy(req.Handle)
+	var dirCtx DirContext
+	if req.Offset != 0 {
+		dirCtx = d.dctx.GetCopy(req.Handle)
+	} else {
+		dirCtx = DirContext{}
+	}
 	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
 	if err != nil {
 		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v) offset %v", d.info.Inode, err, req.Offset)
 		return make([]fuse.Dirent, 0), ParseError(err)
 	}
 
-	if dirCtx.Name == "" {
+	if req.Offset == 0 {
 		if len(children) == 0 {
 			dirents := make([]fuse.Dirent, 0, len(children))
 			dirents = append(dirents, fuse.Dirent{
