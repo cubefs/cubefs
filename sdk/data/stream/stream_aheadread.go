@@ -504,25 +504,32 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 		}
 		if cacheBlock.offset <= uint64(offset) {
 			if (cacheBlock.offset + curSize) > uint64(offset+needSize) {
-				copy(req.Data[readSize:req.Size], cacheBlock.data[offset-int(cacheBlock.offset):offset-int(cacheBlock.offset)+needSize])
+				// all require data is cached, copy completely return directly
+				copy(req.Data[readSize:readSize+needSize], cacheBlock.data[offset-int(cacheBlock.offset):offset-int(cacheBlock.offset)+needSize])
 				cacheBlock.lock.RUnlock()
 				readSize += needSize
 				return
 			} else {
-				reqID := uuid.New().String()
-				log.LogDebugf("aheadRead move ahead win inode(%v) FileOffset(%v) offset(%v) "+
-					"size(%v) cacheBlockOffset(%v) cacheBlockSize(%v) reqID(%v)", s.inode, req.FileOffset,
-					offset, needSize, cacheBlock.offset, curSize, reqID)
-				go s.aheadReadWindow.addNextTask(offset, dp, req, startTime, reqID, storageClass)
-				copy(req.Data[readSize:], cacheBlock.data[offset-int(cacheBlock.offset):int(curSize)])
+				oldOffset := offset
+				end := int(cacheBlock.offset) + int(curSize)
+				bytesToEnd := end - offset
+				if bytesToEnd > 0 {
+					copy(req.Data[readSize:readSize+bytesToEnd],
+						cacheBlock.data[offset-int(cacheBlock.offset):offset-int(cacheBlock.offset)+bytesToEnd])
+					readSize += bytesToEnd
+					offset += bytesToEnd
+					cacheOffset = offset
+					needSize -= bytesToEnd
+				}
 				cacheBlock.lock.RUnlock()
-				readSize += int(curSize) + int(cacheBlock.offset) - offset
-				offset += readSize
-				cacheOffset = offset
-				needSize -= readSize
 				if needSize <= 0 {
 					return
 				}
+				reqID := uuid.New().String()
+				log.LogDebugf("aheadRead move ahead win inode(%v) FileOffset(%v) offset(%v) need(%v) "+
+					"cacheBlockOffset(%v) cacheBlockSize(%v) copied(%v) reqID(%v)",
+					s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, bytesToEnd, reqID)
+				go s.aheadReadWindow.addNextTask(oldOffset, dp, req, startTime, reqID, storageClass)
 				continue
 			}
 		}
