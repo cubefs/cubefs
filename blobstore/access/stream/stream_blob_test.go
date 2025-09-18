@@ -182,8 +182,7 @@ func TestStreamBlobDeleteRaw(t *testing.T) {
 	h := newStreamHandlerSuccess(t)
 	h.StreamConfig.DeleteIntoShardnodePercentage = 100
 
-	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().DeleteBlobRaw(gAny, gAny, gAny).Return(
-		errcode.ErrShardRouteVersionNeedUpdate).Times(3)
+	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().DeleteBlobRaw(gAny, gAny, gAny).Return(errcode.ErrUnexpected).Times(3)
 	require.Error(t, h.Delete(ctx, &proto.Location{Slices: []proto.Slice{{}, {}}}))
 
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().DeleteBlobRaw(gAny, gAny, gAny).Return(nil).Times(2)

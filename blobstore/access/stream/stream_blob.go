@@ -691,6 +691,13 @@ func (h *Handler) clearGarbageIntoShardnode(ctx context.Context, location *proto
 			if err = h.shardnodeClient.DeleteBlobRaw(ctx, host, args); err != nil {
 				span.Warnf("send to shardnode %s delete message(%+v) %s", host, slice, err.Error())
 				reportUnhealth(clusterID, "delete.msg", serviceShard, host, "failed")
+				_, err = h.punishAndUpdate(ctx, &punishArgs{
+					ShardOpHeader: args.Header,
+					clusterID:     clusterID,
+					host:          host,
+					mode:          acapi.GetShardModeLeader,
+					err:           err,
+				})
 				err = errors.Base(err, host)
 			}
 			return err
