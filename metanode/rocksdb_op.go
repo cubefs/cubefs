@@ -32,19 +32,23 @@ import (
 )
 
 const (
-	DefaultCacheSize           = 256 * util.MB
-	DefaultWriteBuffSize       = 256 * util.MB
-	DefaultWriteBuffNum        = 4
-	DefaultMinWriteBuffToMerge = 4
-	DefaultMaxSubCompaction    = 4
-	DefaultRetryCount          = 3
-	DefaultMaxLogFileSize      = 1 * util.MB
-	DefaultLogFileRollTime     = 3 * 24 * time.Hour // NOTE: 3 day
-	DefaultKeepLogFileNum      = 3
-	ReadTierAll                = 0
-	ReadTierBlockCache         = 1
-	ReadTierPersisted          = 2
-	ReadTierMemtable           = 3
+	DefaultCacheSize                = 256 * util.MB
+	DefaultWriteBuffSize            = 256 * util.MB
+	DefaultWriteBuffNum             = 4
+	DefaultMinWriteBuffToMerge      = 4
+	DefaultMaxSubCompaction         = 4
+	DefaultRetryCount               = 3
+	DefaultMaxLogFileSize           = 1 * util.MB
+	DefaultLogFileRollTime          = 3 * 24 * time.Hour // NOTE: 3 day
+	DefaultKeepLogFileNum           = 3
+	ReadTierAll                     = 0
+	ReadTierBlockCache              = 1
+	ReadTierPersisted               = 2
+	ReadTierMemtable                = 3
+	DefaultBytesPerSync             = 128 * util.KB
+	DefaultParallelism              = 4
+	DefaultMaxBackgroundCompactions = 4
+	DefaultMaxBackgroundFlushes     = 4
 )
 
 var (
@@ -183,16 +187,20 @@ func (db *RocksdbOperator) GetStatistics() string {
 }
 
 type RocksDBOptions struct {
-	Dir                 string
-	WriteBufferSize     int
-	WriteBufferNum      int
-	MinWriteBuffToMerge int
-	MaxSubCompactions   int
-	BlockCacheSize      uint64
-	MaxLogFileSize      int
-	LogFileTimeToRoll   time.Duration
-	KeepLogFileNum      int
-	EnableStats         bool
+	Dir                      string
+	WriteBufferSize          int
+	WriteBufferNum           int
+	MinWriteBuffToMerge      int
+	MaxSubCompactions        int
+	BlockCacheSize           uint64
+	MaxLogFileSize           int
+	LogFileTimeToRoll        time.Duration
+	KeepLogFileNum           int
+	EnableStats              bool
+	BytesPerSync             uint64
+	Parallelism              int
+	MaxBackgroundCompactions int
+	MaxBackgroundFlushes     int
 }
 
 func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
@@ -227,6 +235,18 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	if opts.BlockCacheSize == 0 {
 		opts.BlockCacheSize = DefaultCacheSize
 	}
+	if opts.BytesPerSync == 0 {
+		opts.BytesPerSync = DefaultBytesPerSync
+	}
+	if opts.Parallelism == 0 {
+		opts.Parallelism = DefaultParallelism
+	}
+	if opts.MaxBackgroundCompactions == 0 {
+		opts.MaxBackgroundCompactions = DefaultMaxBackgroundCompactions
+	}
+	if opts.MaxBackgroundFlushes == 0 {
+		opts.MaxBackgroundFlushes = DefaultMaxBackgroundFlushes
+	}
 
 	// NOTE: main options
 	dbOpts.SetCreateIfMissing(true)
@@ -238,6 +258,8 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	tableOpts = gorocksdb.NewDefaultBlockBasedTableOptions()
 	cache = gorocksdb.NewLRUCache(opts.BlockCacheSize)
 	tableOpts.SetBlockCache(cache)
+	tableOpts.SetPinL0FilterAndIndexBlocksInCache(true)
+	tableOpts.SetCacheIndexAndFilterBlocks(true)
 	dbOpts.SetBlockBasedTableFactory(tableOpts)
 
 	// NOTE: rocksdb log file options
@@ -248,6 +270,11 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	if opts.EnableStats {
 		dbOpts.EnableStatistics()
 	}
+	dbOpts.SetMaxSubCompactions(opts.MaxSubCompactions)
+	dbOpts.SetBytesPerSync(opts.BytesPerSync)
+	dbOpts.IncreaseParallelism(opts.Parallelism)
+	dbOpts.SetMaxBackgroundCompactions(opts.MaxBackgroundCompactions)
+	dbOpts.SetMaxBackgroundFlushes(opts.MaxBackgroundFlushes)
 	return
 }
 
@@ -975,7 +1002,10 @@ func (dbInfo *RocksdbOperator) setOptToConfig(opts *RocksDBOptions) {
 	dbInfo.config["write_buffer_size"] = strconv.Itoa(opts.WriteBufferSize)
 	dbInfo.config["max_write_buffer_number"] = strconv.Itoa(opts.WriteBufferNum)
 	dbInfo.config["min_write_buffer_number_to_merge"] = strconv.Itoa(opts.MinWriteBuffToMerge)
-	dbInfo.config["max_background_compactions"] = strconv.Itoa(opts.MaxSubCompactions)
+	dbInfo.config["max_subcompactions"] = strconv.Itoa(opts.MaxSubCompactions)
+	dbInfo.config["bytes_per_sync"] = strconv.FormatUint(opts.BytesPerSync, 10)
+	dbInfo.config["max_background_compactions"] = strconv.Itoa(opts.MaxBackgroundCompactions)
+	dbInfo.config["max_background_flushes"] = strconv.Itoa(opts.MaxBackgroundFlushes)
 }
 
 func (dbInfo *RocksdbOperator) GetApproximateSizes(start, end []byte) (size uint64, err error) {

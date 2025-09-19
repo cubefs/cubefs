@@ -770,6 +770,13 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 		rocksdbKeyNumMax = defaultRocksdbKeyNumMax
 	}
 	m.rocksdbKeyNumMax = uint64(rocksdbKeyNumMax)
+	bytesPerSync := cfg.GetInt64(cfgRocksdbBytesPerSync)
+	if bytesPerSync < 0 {
+		bytesPerSync = 0
+	}
+	parallelism := cfg.GetInt(cfgRocksdbParallelism)
+	maxBackgroundCompactions := cfg.GetInt(cfgRocksdbMaxBackgroundCompactions)
+	maxBackgroundFlushes := cfg.GetInt(cfgRocksdbMaxBackgroundFlushes)
 
 	rocksdbModeFile := path.Join(m.metadataDir, RocksdbModeMetaFile)
 	if fileutil.Exist(rocksdbModeFile) {
@@ -802,12 +809,16 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 	}
 
 	config := &RocksdbManagerConfig{
-		WriteBufferSize:     writeBufferSize,
-		WriteBufferNum:      writeBufferNum,
-		MinWriteBuffToMerge: minWriteBufferToMerge,
-		MaxSubCompactions:   maxSubCompactions,
-		BlockCacheSize:      uint64(blockCacheSize),
-		EnableStats:         rocksdbEnableStats,
+		WriteBufferSize:          writeBufferSize,
+		WriteBufferNum:           writeBufferNum,
+		MinWriteBuffToMerge:      minWriteBufferToMerge,
+		MaxSubCompactions:        maxSubCompactions,
+		BlockCacheSize:           uint64(blockCacheSize),
+		EnableStats:              rocksdbEnableStats,
+		BytesPerSync:             uint64(bytesPerSync),
+		Parallelism:              parallelism,
+		MaxBackgroundCompactions: maxBackgroundCompactions,
+		MaxBackgroundFlushes:     maxBackgroundFlushes,
 	}
 	if rocksdbMode == PerDiskRocksdbMode {
 		m.rocksdbManager = NewPerDiskRocksdbManager(config)
