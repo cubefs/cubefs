@@ -465,6 +465,7 @@ type RemoteCacheConfig struct {
 	FlashHotKeyMissCount         int
 	FlashReadFlowLimit           int64
 	FlashWriteFlowLimit          int64
+	RemoteClientFlowLimit        int64
 }
 
 func ComputeSourcesVersion(sources []*DataSource, gen uint64) (version uint32) {

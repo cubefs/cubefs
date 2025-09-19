@@ -96,23 +96,24 @@ type RemoteCacheClient struct {
 	stopC        chan struct{}
 	wg           sync.WaitGroup
 
-	blockSize             uint64
-	clusterEnabled        bool
-	RemoteCacheMultiRead  bool
-	FlashNodeTimeoutCount int32
-	SameZoneTimeout       int64 // microsecond
-	SameRegionTimeout     int64 // ms
-	AddressPingMap        sync.Map
-	firstPacketTimeout    int64
-	FromFuse              bool
-	BatchReadReqId        uint64
-	ReadQueueMap          sync.Map // string[*ReadTaskQueue]
-	disableBatch          bool
-	activateTime          time.Duration
-	connWorkers           int
-	connPutChan           chan *ConnPutTask
-	readPool              *util.GTaskPool
-	flowLimiter           *rate.Limiter
+	blockSize              uint64
+	clusterEnabled         bool
+	RemoteCacheMultiRead   bool
+	FlashNodeTimeoutCount  int32
+	SameZoneTimeout        int64 // microsecond
+	SameRegionTimeout      int64 // ms
+	AddressPingMap         sync.Map
+	firstPacketTimeout     int64
+	FromFuse               bool
+	BatchReadReqId         uint64
+	ReadQueueMap           sync.Map // string[*ReadTaskQueue]
+	disableBatch           bool
+	activateTime           time.Duration
+	connWorkers            int
+	connPutChan            chan *ConnPutTask
+	readPool               *util.GTaskPool
+	flowLimiter            *rate.Limiter
+	disableFlowLimitUpdate bool
 }
 
 func (as *AddressPingStats) Add(duration time.Duration) {
@@ -140,19 +141,20 @@ func (as *AddressPingStats) Average() time.Duration {
 }
 
 type ClientConfig struct {
-	Masters            []string
-	BlockSize          uint64
-	NeedInitLog        bool
-	LogLevelStr        string
-	LogDir             string
-	ConnectTimeout     int64 // ms
-	FirstPacketTimeout int64 // ms
-	FromFuse           bool
-	InitClientTime     int
-	DisableBatch       bool
-	ActivateTime       int64
-	ConnWorkers        int
-	FlowLimit          int64 // bytes per second, default 5GB
+	Masters                []string
+	BlockSize              uint64
+	NeedInitLog            bool
+	LogLevelStr            string
+	LogDir                 string
+	ConnectTimeout         int64 // ms
+	FirstPacketTimeout     int64 // ms
+	FromFuse               bool
+	InitClientTime         int
+	DisableBatch           bool
+	ActivateTime           int64
+	ConnWorkers            int
+	FlowLimit              int64 // bytes per second, default 5GB
+	DisableFlowLimitUpdate bool
 }
 
 func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err error) {
@@ -190,6 +192,7 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 	rc.blockSize = config.BlockSize
 	rc.FromFuse = config.FromFuse
 	rc.disableBatch = config.DisableBatch
+	rc.disableFlowLimitUpdate = config.DisableFlowLimitUpdate
 	if config.ActivateTime == 0 {
 		rc.activateTime = DefaultActivateTime
 	} else {
@@ -1200,7 +1203,30 @@ func (rc *RemoteCacheClient) updateRemoteCacheConfig() (err error) {
 		log.LogInfof("updateRemoteCacheConfig RcSameRegionTimeout: %d -> %d", rc.SameRegionTimeout, config.RemoteCacheSameRegionTimeout)
 		rc.SameRegionTimeout = config.RemoteCacheSameRegionTimeout
 	}
+
+	if !rc.disableFlowLimitUpdate && config.RemoteClientFlowLimit >= 0 {
+		rc.updateFlowLimiter(config.RemoteClientFlowLimit)
+	}
 	return
+}
+
+// updateFlowLimiter updates the flowLimiter with the given flow limit value
+func (rc *RemoteCacheClient) updateFlowLimiter(flowLimit int64) {
+	newFlowLimit := rate.Limit(flowLimit)
+	// Compare with current limit to avoid unnecessary updates
+	if rc.flowLimiter.Limit() == newFlowLimit {
+		return
+	}
+	if log.EnableInfo() {
+		log.LogInfof("updateFlowLimiter: updated from %v to %d bytes per second", rc.flowLimiter.Limit(), flowLimit)
+	}
+	if flowLimit <= 0 {
+		rc.flowLimiter.SetLimit(rate.Inf)
+		rc.flowLimiter.SetBurst(0)
+	} else {
+		rc.flowLimiter.SetLimit(newFlowLimit)
+		rc.flowLimiter.SetBurst(int(flowLimit / 2))
+	}
 }
 
 func (rc *RemoteCacheClient) readObjectFromRemoteCache(ctx context.Context, key string, reqId string, offset, size uint64) (reader *RemoteCacheReader, length int64, err error) {
