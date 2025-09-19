@@ -21,27 +21,20 @@ import (
 
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
 // StartRaftServer initializes the address resolver and the raftStore server instance.
 func (m *MetaNode) startRaftServer(cfg *config.Config) (err error) {
-	_, err = os.Stat(m.raftDir)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return
-		}
-		if err = os.MkdirAll(m.raftDir, 0o755); err != nil {
-			err = errors.NewErrorf("create raft server dir: %s", err.Error())
-			return
-		}
+	// Create raft directory if it doesn't exist
+	if err = m.ensureRaftDirectory(); err != nil {
+		return fmt.Errorf("failed to ensure raft directory: %w", err)
 	}
 
+	// Handle cluster UUID if enabled
 	if m.clusterUuidEnable {
-		if err = config.CheckOrStoreClusterUuid(m.raftDir, m.clusterUuid, false); err != nil {
-			log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
-			return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err)
+		if err = m.handleClusterUuid(); err != nil {
+			return fmt.Errorf("cluster UUID handling failed: %w", err)
 		}
 	}
 
@@ -58,15 +51,46 @@ func (m *MetaNode) startRaftServer(cfg *config.Config) (err error) {
 		RecvBufSize:       m.raftRecvBufSize,
 		NumOfLogsToRetain: m.raftRetainLogs,
 	}
+
+	// Initialize raft store
 	m.raftStore, err = raftstore.NewRaftStore(raftConf, cfg)
 	if err != nil {
-		err = errors.NewErrorf("new raftStore: %s", err.Error())
+		return fmt.Errorf("failed to create raft store: %w", err)
 	}
-	return
+
+	log.LogInfof("Raft server started successfully on node %d", m.nodeId)
+	return nil
 }
 
+// ensureRaftDirectory creates the raft directory if it doesn't exist
+func (m *MetaNode) ensureRaftDirectory() error {
+	_, err := os.Stat(m.raftDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to check raft directory %s: %w", m.raftDir, err)
+		}
+		if err = os.MkdirAll(m.raftDir, 0o755); err != nil {
+			return fmt.Errorf("failed to create raft directory %s: %w", m.raftDir, err)
+		}
+		log.LogInfof("Created raft directory: %s", m.raftDir)
+	}
+	return nil
+}
+
+// handleClusterUuid handles cluster UUID validation and storage
+func (m *MetaNode) handleClusterUuid() error {
+	if err := config.CheckOrStoreClusterUuid(m.raftDir, m.clusterUuid, false); err != nil {
+		log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+		return fmt.Errorf("cluster UUID validation failed: %w", err)
+	}
+	return nil
+}
+
+// stopRaftServer stops the raft server gracefully
 func (m *MetaNode) stopRaftServer() {
 	if m.raftStore != nil {
+		log.LogInfof("Stopping raft server on node %d", m.nodeId)
 		m.raftStore.Stop()
+		log.LogInfof("Raft server stopped successfully")
 	}
 }

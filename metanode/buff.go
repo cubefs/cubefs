@@ -23,37 +23,49 @@ var dentryBufPool = sync.Pool{
 	},
 }
 
-func GetInodeBuf() *buf.ByteBufExt {
-	return inodeBufPool.Get().(*buf.ByteBufExt)
-}
-
-func PutInodeBuf(buf *buf.ByteBufExt) {
-	buf.Reset()
-	inodeBufPool.Put(buf)
-}
-
-func GetDentryBuf() *buf.ByteBufExt {
-	return dentryBufPool.Get().(*buf.ByteBufExt)
-}
-
-func PutDentryBuf(buf *buf.ByteBufExt) {
-	buf.Reset()
-	dentryBufPool.Put(buf)
-}
-
 var readBufPool = sync.Pool{
 	New: func() interface{} {
 		return buf.NewReadByteBuf()
 	},
 }
 
+// GetInodeBuf retrieves an inode buffer from the pool
+func GetInodeBuf() *buf.ByteBufExt {
+	return inodeBufPool.Get().(*buf.ByteBufExt)
+}
+
+// PutInodeBuf returns an inode buffer to the pool
+func PutInodeBuf(buf *buf.ByteBufExt) {
+	if buf != nil {
+		buf.Reset()
+		inodeBufPool.Put(buf)
+	}
+}
+
+// GetDentryBuf retrieves a dentry buffer from the pool
+func GetDentryBuf() *buf.ByteBufExt {
+	return dentryBufPool.Get().(*buf.ByteBufExt)
+}
+
+// PutDentryBuf returns a dentry buffer to the pool
+func PutDentryBuf(buf *buf.ByteBufExt) {
+	if buf != nil {
+		buf.Reset()
+		dentryBufPool.Put(buf)
+	}
+}
+
+// GetReadBuf retrieves a read buffer from the pool
 func GetReadBuf(raw []byte) *buf.ReadByteBuff {
 	rBuf := readBufPool.Get().(*buf.ReadByteBuff)
 	rBuf.SetData(raw)
 	return rBuf
 }
 
+// PutReadBuf returns a read buffer to the pool
 func PutReadBuf(buf *buf.ReadByteBuff) {
-	buf.Reset()
-	readBufPool.Put(buf)
+	if buf != nil {
+		buf.Reset()
+		readBufPool.Put(buf)
+	}
 }

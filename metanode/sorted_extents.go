@@ -11,30 +11,35 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+// SortedExtents manages a sorted collection of extent keys with thread-safe operations
 type SortedExtents struct {
 	sync.RWMutex
 	eks []proto.ExtentKey
 }
 
+// NewSortedExtents creates a new empty SortedExtents instance
 func NewSortedExtents() *SortedExtents {
 	return &SortedExtents{
 		eks: make([]proto.ExtentKey, 0),
 	}
 }
 
-// attention: only used for deleted eks
+// NewSortedExtentsFromEks creates a new SortedExtents from existing extent keys
+// Note: only used for deleted eks
 func NewSortedExtentsFromEks(eks []proto.ExtentKey) *SortedExtents {
 	return &SortedExtents{
 		eks: eks,
 	}
 }
 
+// IsEmpty checks if the extent keys collection is empty
 func (se *SortedExtents) IsEmpty() bool {
 	se.RLock()
 	defer se.RUnlock()
 	return len(se.eks) == 0
 }
 
+// String returns JSON representation of the extent keys
 func (se *SortedExtents) String() string {
 	if se == nil {
 		return "empty extents"
@@ -49,19 +54,20 @@ func (se *SortedExtents) String() string {
 	return string(data)
 }
 
+// MarshalBinary serializes the extent keys to binary format
 func (se *SortedExtents) MarshalBinary(buf *buf.ByteBufExt, v3 bool) error {
 	se.RLock()
 	defer se.RUnlock()
 
 	for _, ek := range se.eks {
-		err := ek.MarshalBinary(buf, v3)
-		if err != nil {
+		if err := ek.MarshalBinary(buf, v3); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// UnmarshalBinary deserializes extent keys from binary format
 func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, splitMap *sync.Map) {
 	se.Lock()
 	defer se.Unlock()
@@ -114,21 +120,27 @@ func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, split
 	return
 }
 
+// Append adds a new extent key to the sorted collection
 func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.ExtentKey) {
 	endOffset := ek.FileOffset + uint64(ek.Size)
 
 	se.Lock()
 	defer se.Unlock()
 
-	if len(se.eks) <= 0 {
+	// Handle empty collection
+	if len(se.eks) == 0 {
 		se.eks = append(se.eks, ek)
 		return
 	}
+
+	// Handle append at the end
 	lastKey := se.eks[len(se.eks)-1]
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
 		se.eks = append(se.eks, ek)
 		return
 	}
+
+	// Handle prepend at the beginning
 	firstKey := se.eks[0]
 	if firstKey.FileOffset >= endOffset {
 		eks := se.doCopyExtents()
@@ -159,7 +171,8 @@ func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.Exten
 	se.eks = se.eks[:startIndex]
 	se.eks = append(se.eks, ek)
 	se.eks = append(se.eks, upperExtents...)
-	// check if ek and key are the same extent file with size extented
+
+	// Check if ek and key are the same extent file with size extended
 	deleteExtents = make([]proto.ExtentKey, 0, len(invalidExtents))
 	for _, key := range invalidExtents {
 		if key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId {
@@ -169,6 +182,7 @@ func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.Exten
 	return
 }
 
+// storeEkSplit stores extent key split information
 func storeEkSplit(mpId uint64, inodeID uint64, ekRef *sync.Map, ek *proto.ExtentKey) (id uint64) {
 	if !clusterEnableSnapshot {
 		return
@@ -195,18 +209,22 @@ func storeEkSplit(mpId uint64, inodeID uint64, ekRef *sync.Map, ek *proto.Extent
 	return
 }
 
+// SplitWithCheck performs extent splitting with validation
 func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit proto.ExtentKey, ekRef *sync.Map) (delExtents []proto.ExtentKey, status uint8) {
 	status = proto.OpOk
 	endOffset := ekSplit.FileOffset + uint64(ekSplit.Size)
 	log.LogDebugf("[SplitWithCheck] mpId [%v]. inode[%v]  ekSplit ek [%v]", mpId, inodeID, ekSplit)
+
 	se.Lock()
 	defer se.Unlock()
 
-	if len(se.eks) <= 0 {
+	// Validate input
+	if len(se.eks) == 0 {
 		log.LogErrorf("[SplitWithCheck] mpId [%v]. inode[%v] eks empty cann't find ek [%v]", mpId, inodeID, ekSplit)
 		status = proto.OpArgMismatchErr
 		return
 	}
+
 	lastKey := se.eks[len(se.eks)-1]
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ekSplit.FileOffset {
 		log.LogErrorf("[SplitWithCheck] mpId [%v]. inode[%v] eks do split not found", mpId, inodeID)
@@ -221,6 +239,7 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 		return
 	}
 
+	// Find the extent to split
 	var startIndex int
 	for idx, key := range se.eks {
 		if ekSplit.FileOffset >= key.FileOffset {
@@ -257,7 +276,8 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 		log.LogErrorf("SplitWithCheck. mpId [%v] inode[%v] request [%v] out scope of exist key [%v]", mpId, inodeID, ekSplit, key)
 		return
 	}
-	// Makes the request idempotent, just in case client retries.
+
+	// Makes the request idempotent, just in case client retries
 	if ekSplit.IsEqual(key) {
 		log.LogWarnf("SplitWithCheck. mpId [%v] request key %v is a repeat request", mpId, key)
 		return
@@ -361,6 +381,7 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 	return
 }
 
+// CheckAndAddRef checks and adds reference for extent keys
 func (se *SortedExtents) CheckAndAddRef(lastKey *proto.ExtentKey, currEk *proto.ExtentKey, addRefFunc func(*proto.ExtentKey)) (ok bool) {
 	if !lastKey.IsSameExtent(currEk) {
 		return
@@ -395,20 +416,21 @@ func (se *SortedExtents) CheckAndAddRef(lastKey *proto.ExtentKey, currEk *proto.
 	return
 }
 
+// AppendWithCheck adds extent key with validation and conflict checking
 func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, addRefFunc func(*proto.ExtentKey), clientDiscardExts []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
 	status = proto.OpOk
 	endOffset := ek.FileOffset + uint64(ek.Size)
 	se.Lock()
 	defer se.Unlock()
-	// log.LogDebugf("action[AppendWithCheck] ek [%v], clientDiscardExts [%v] se.eks [%v]", ek, clientDiscardExts, se.eks)
-	if len(se.eks) <= 0 {
+
+	if len(se.eks) == 0 {
 		se.eks = append(se.eks, ek)
 		return
 	}
+
 	idx := len(se.eks) - 1
 	tailKey := &se.eks[idx]
 
-	// log.LogDebugf("action[AppendWithCheck] ek [%v],tailKey %v, clientDiscardExts [%v] se.eks [%v]", ek, tailKey, clientDiscardExts, se.eks)
 	if ok := se.CheckAndAddRef(tailKey, &ek, addRefFunc); ok {
 		se.eks = append(se.eks, ek)
 		return
@@ -434,13 +456,13 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 		break
 	}
 
-	// Makes the request idempotent, just in case client retries.
+	// Makes the request idempotent, just in case client retries
 	if len(invalidExtents) == 1 && invalidExtents[0].Equals(&ek) {
 		log.LogDebugf("action[AppendWithCheck] ek [%v]", ek)
 		return
 	}
 
-	// check if ek and key are the same extent file with size extented
+	// Check if ek and key are the same extent file with size extended
 	deleteExtents = make([]proto.ExtentKey, 0, len(invalidExtents))
 	for _, key := range invalidExtents {
 		if key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId || key.ExtentOffset != ek.ExtentOffset {
@@ -478,17 +500,16 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	}
 
 	endIndex = startIndex + len(invalidExtents)
-	se.instertWithDiscard(ek, startIndex, endIndex)
+	se.insertWithDiscard(ek, startIndex, endIndex)
 	return
 }
 
+// Truncate truncates extents at the specified offset
 func (se *SortedExtents) Truncate(offset uint64, insertRefMap func(ek *proto.ExtentKey)) (deleteExtents []proto.ExtentKey) {
-	var endIndex int
-
 	se.Lock()
 	defer se.Unlock()
 
-	endIndex = -1
+	var endIndex int = -1
 	for idx, key := range se.eks {
 		if key.FileOffset >= offset {
 			endIndex = idx
@@ -534,6 +555,7 @@ func (se *SortedExtents) Truncate(offset uint64, insertRefMap func(ek *proto.Ext
 	return
 }
 
+// insert inserts an extent key at the specified index
 func (se *SortedExtents) insert(ek proto.ExtentKey, startIdx int) {
 	se.eks = append(se.eks, ek)
 	size := len(se.eks)
@@ -545,7 +567,8 @@ func (se *SortedExtents) insert(ek proto.ExtentKey, startIdx int) {
 	se.eks[startIdx] = ek
 }
 
-func (se *SortedExtents) instertWithDiscard(ek proto.ExtentKey, startIdx, endIdx int) {
+// insertWithDiscard inserts an extent key and discards overlapping ones
+func (se *SortedExtents) insertWithDiscard(ek proto.ExtentKey, startIdx, endIdx int) {
 	upperSize := len(se.eks) - endIdx
 	se.eks[startIdx] = ek
 
@@ -556,20 +579,20 @@ func (se *SortedExtents) instertWithDiscard(ek proto.ExtentKey, startIdx, endIdx
 	se.eks = se.eks[:startIdx+1+upperSize]
 }
 
+// Len returns the number of extent keys
 func (se *SortedExtents) Len() int {
 	se.RLock()
 	defer se.RUnlock()
 	return len(se.eks)
 }
 
-// Returns the file size
+// LayerSize returns the total size of all extent keys
 func (se *SortedExtents) LayerSize() (layerSize uint64) {
 	se.RLock()
 	defer se.RUnlock()
 
-	last := len(se.eks)
-	if last <= 0 {
-		return uint64(0)
+	if len(se.eks) == 0 {
+		return 0
 	}
 	for _, ek := range se.eks {
 		layerSize += uint64(ek.Size)
@@ -577,7 +600,7 @@ func (se *SortedExtents) LayerSize() (layerSize uint64) {
 	return
 }
 
-// Returns the file size
+// Size returns the file size (offset of the last extent + its size)
 func (se *SortedExtents) Size() uint64 {
 	se.RLock()
 	defer se.RUnlock()
@@ -589,6 +612,7 @@ func (se *SortedExtents) Size() uint64 {
 	return se.eks[last-1].FileOffset + uint64(se.eks[last-1].Size)
 }
 
+// Range iterates over extent keys with a callback function
 func (se *SortedExtents) Range(f func(index int, ek proto.ExtentKey) bool) {
 	se.RLock()
 	defer se.RUnlock()
@@ -600,6 +624,7 @@ func (se *SortedExtents) Range(f func(index int, ek proto.ExtentKey) bool) {
 	}
 }
 
+// Clone creates a deep copy of the SortedExtents
 func (se *SortedExtents) Clone() *SortedExtents {
 	newSe := NewSortedExtents()
 
@@ -610,42 +635,21 @@ func (se *SortedExtents) Clone() *SortedExtents {
 	return newSe
 }
 
+// CopyExtents returns a copy of all extent keys
 func (se *SortedExtents) CopyExtents() []proto.ExtentKey {
 	se.RLock()
 	defer se.RUnlock()
 	return se.doCopyExtents()
 }
 
+// doCopyExtents creates a copy of the extent keys slice
 func (se *SortedExtents) doCopyExtents() []proto.ExtentKey {
 	eks := make([]proto.ExtentKey, len(se.eks))
 	copy(eks, se.eks)
 	return eks
 }
 
-// discard code
-func (se *SortedExtents) Delete(delEks []proto.ExtentKey) (curEks []proto.ExtentKey) {
-	se.RLock()
-	defer se.RUnlock()
-
-	curEks = make([]proto.ExtentKey, len(se.eks)-len(delEks))
-	for _, key := range se.eks {
-		delFlag := false
-		for _, delKey := range delEks {
-			if key.FileOffset == delKey.ExtentOffset && key.ExtentId == delKey.ExtentId &&
-				key.ExtentOffset == delKey.ExtentOffset && key.PartitionId == delKey.PartitionId &&
-				key.Size == delKey.Size {
-				delFlag = true
-				break
-			}
-		}
-		if !delFlag {
-			curEks = append(curEks, key)
-		}
-	}
-	se.eks = curEks
-	return
-}
-
+// Equals checks if two SortedExtents are equal
 func (se *SortedExtents) Equals(other *SortedExtents) bool {
 	se.RLock()
 	defer se.RUnlock()

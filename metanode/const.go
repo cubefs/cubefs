@@ -21,96 +21,90 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 )
 
-// Type alias.
+// ============================================================================
+// Type Aliases - Request/Response Structures
+// ============================================================================
+
+// Master to MetaNode communication
 type (
-	// Master -> MetaNode  create metaPartition request
-	CreateMetaRangeReq = proto.CreateMetaPartitionRequest
-	// MetaNode -> Master create metaPartition response
+	CreateMetaRangeReq  = proto.CreateMetaPartitionRequest
 	CreateMetaRangeResp = proto.CreateMetaPartitionResponse
-	// Client -> MetaNode create Inode request
-	CreateInoReq = proto.CreateInodeRequest
-	// MetaNode -> Client create Inode response
-	CreateInoResp = proto.CreateInodeResponse
-	// Client -> MetaNode create Link Request
-	LinkInodeReq = proto.LinkInodeRequest
-	// MetaNode -> Client create Link Response
-	LinkInodeResp = proto.LinkInodeResponse
-	// Client -> MetaNode delete Inode request struct
-	UnlinkInoReq = proto.UnlinkInodeRequest
-	// Client -> MetaNode delete Inode request struct
-	BatchUnlinkInoReq = proto.BatchUnlinkInodeRequest
-	// MetaNode -> Client delete Inode response
-	UnlinkInoResp = proto.UnlinkInodeResponse
-	// MetaNode -> Client delete batch Inode response
-	BatchUnlinkInoResp = proto.BatchUnlinkInodeResponse
-	// Client -> MetaNode create Dentry request struct
-	CreateDentryReq = proto.CreateDentryRequest
-	// Client -> MetaNode delete Dentry request
-	DeleteDentryReq = proto.DeleteDentryRequest
-	// Client -> MetaNode delete Dentry request
-	BatchDeleteDentryReq = proto.BatchDeleteDentryRequest
-	// MetaNode -> Client delete Dentry response
-	DeleteDentryResp = proto.DeleteDentryResponse
-	// MetaNode -> Client batch delete Dentry response
+	UpdatePartitionReq  = proto.UpdateMetaPartitionRequest
+	UpdatePartitionResp = proto.UpdateMetaPartitionResponse
+	SetFreezeReq        = proto.FreezeMetaPartitionRequest
+)
+
+// Client to MetaNode communication - Inode operations
+type (
+	CreateInoReq           = proto.CreateInodeRequest
+	CreateInoResp          = proto.CreateInodeResponse
+	LinkInodeReq           = proto.LinkInodeRequest
+	LinkInodeResp          = proto.LinkInodeResponse
+	UnlinkInoReq           = proto.UnlinkInodeRequest
+	UnlinkInoResp          = proto.UnlinkInodeResponse
+	BatchUnlinkInoReq      = proto.BatchUnlinkInodeRequest
+	BatchUnlinkInoResp     = proto.BatchUnlinkInodeResponse
+	EvictInodeReq          = proto.EvictInodeRequest
+	BatchEvictInodeReq     = proto.BatchEvictInodeRequest
+	SetattrRequest         = proto.SetAttrRequest
+	InodeGetReq            = proto.InodeGetRequest
+	InodeGetSplitReq       = proto.InodeGetSplitRequest
+	InodeGetReqBatch       = proto.BatchInodeGetRequest
+	GetUniqIDResp          = proto.GetUniqIDResponse
+	UpdateInodeMetaRequest = proto.UpdateInodeMetaRequest
+)
+
+// Client to MetaNode communication - Dentry operations
+type (
+	CreateDentryReq       = proto.CreateDentryRequest
+	DeleteDentryReq       = proto.DeleteDentryRequest
+	DeleteDentryResp      = proto.DeleteDentryResponse
+	BatchDeleteDentryReq  = proto.BatchDeleteDentryRequest
 	BatchDeleteDentryResp = proto.BatchDeleteDentryResponse
-	// Client -> MetaNode updateDentry request
-	UpdateDentryReq = proto.UpdateDentryRequest
-	// MetaNode -> Client updateDentry response
-	UpdateDentryResp = proto.UpdateDentryResponse
-	// Client -> MetaNode read dir request
-	ReadDirReq      = proto.ReadDirRequest
-	ReadDirOnlyReq  = proto.ReadDirOnlyRequest
-	ReadDirLimitReq = proto.ReadDirLimitRequest
-	// MetaNode -> Client read dir response
+	UpdateDentryReq       = proto.UpdateDentryRequest
+	UpdateDentryResp      = proto.UpdateDentryResponse
+)
+
+// Client to MetaNode communication - Directory operations
+type (
+	ReadDirReq       = proto.ReadDirRequest
+	ReadDirOnlyReq   = proto.ReadDirOnlyRequest
+	ReadDirLimitReq  = proto.ReadDirLimitRequest
 	ReadDirResp      = proto.ReadDirResponse
 	ReadDirOnlyResp  = proto.ReadDirOnlyResponse
 	ReadDirLimitResp = proto.ReadDirLimitResponse
-
-	// MetaNode -> Client lookup
-	LookupReq = proto.LookupRequest
-	// Client -> MetaNode lookup
-	LookupResp = proto.LookupResponse
-	// Client -> MetaNode
-	InodeGetReq = proto.InodeGetRequest
-	// Tool -> MetaNode
-	InodeGetSplitReq = proto.InodeGetSplitRequest
-	// Client -> MetaNode
-	InodeGetReqBatch = proto.BatchInodeGetRequest
-	// Master -> MetaNode
-	UpdatePartitionReq = proto.UpdateMetaPartitionRequest
-	// MetaNode -> Master
-	UpdatePartitionResp = proto.UpdateMetaPartitionResponse
-	// Client -> MetaNode
-	ExtentsTruncateReq = proto.TruncateRequest
-
-	// Client -> MetaNode
-	EvictInodeReq = proto.EvictInodeRequest
-	// Client -> MetaNode
-	BatchEvictInodeReq = proto.BatchEvictInodeRequest
-	// Client -> MetaNode
-	SetattrRequest = proto.SetAttrRequest
-
-	// Client -> MetaNode
-	GetUniqIDResp = proto.GetUniqIDResponse
-
-	// Client -> MetaNode
-	RenewalForbiddenMigrationRequest = proto.RenewalForbiddenMigrationRequest
-
-	// Client -> MetaNode
-	UpdateExtentKeyAfterMigrationRequest = proto.UpdateExtentKeyAfterMigrationRequest
-
-	// Client -> MetaNode, used for debugging
-	SetCreateTimeRequest = proto.SetCreateTimeRequest
-
-	DeleteMigrationExtentKeyRequest = proto.DeleteMigrationExtentKeyRequest
-	// Client -> MetaNode
-	UpdateInodeMetaRequest = proto.UpdateInodeMetaRequest
-	// Master -> MetaNode
-	SetFreezeReq = proto.FreezeMetaPartitionRequest
 )
+
+// Client to MetaNode communication - Lookup operations
+type (
+	LookupReq  = proto.LookupRequest
+	LookupResp = proto.LookupResponse
+)
+
+// Client to MetaNode communication - Extent operations
+type (
+	ExtentsTruncateReq = proto.TruncateRequest
+)
+
+// Hybrid cloud and migration operations
+type (
+	RenewalForbiddenMigrationRequest     = proto.RenewalForbiddenMigrationRequest
+	UpdateExtentKeyAfterMigrationRequest = proto.UpdateExtentKeyAfterMigrationRequest
+	DeleteMigrationExtentKeyRequest      = proto.DeleteMigrationExtentKeyRequest
+)
+
+// Debug and utility operations
+type (
+	SetCreateTimeRequest = proto.SetCreateTimeRequest
+)
+
+// ============================================================================
+// FSM Operation Codes
+// ============================================================================
 
 // op code should be fixed, order change will cause raft fsm log apply fail
 const (
+	// Basic operations
 	opFSMCreateInode             = 0
 	opFSMUnlinkInode             = 1
 	opFSMCreateDentry            = 2
@@ -138,20 +132,20 @@ const (
 	opFSMAppendMultipart         = 24
 	opFSMSyncCursor              = 25
 
-	// supplement action
+	// Batch operations
 	opFSMInternalDeleteInodeBatch = 26
 	opFSMDeleteDentryBatch        = 27
 	opFSMUnlinkInodeBatch         = 28
 	opFSMEvictInodeBatch          = 29
 
+	// Extended operations
 	opFSMExtentsAddWithCheck = 30
+	opFSMUpdateSummaryInfo   = 31
+	opFSMUpdateXAttr         = 32
+	opFSMObjExtentsAdd       = 33
+	opFSMSentToChan          = 36
 
-	opFSMUpdateSummaryInfo = 31
-	opFSMUpdateXAttr       = 32
-	opFSMObjExtentsAdd     = 33
-	opFSMSentToChan        = 36
-
-	// transaction
+	// Transaction operations
 	opFSMSyncTxID           = 37
 	opFSMTxCreateInode      = 38
 	opFSMTxCreateInodeQuota = 39
@@ -167,94 +161,136 @@ const (
 	opFSMTxUnlinkInode      = 49
 	opFSMTxUpdateDentry     = 50
 	opFSMTxCreateLinkInode  = 51
-	// transaction snapshot
+
+	// Transaction snapshot operations
 	opFSMTxSnapshot         = 52
 	opFSMTxRbInodeSnapshot  = 53
 	opFSMTxRbDentrySnapshot = 54
 
-	// quota
+	// Quota operations
 	opFSMCreateInodeQuota      = 55
 	opFSMSetInodeQuotaBatch    = 56
 	opFSMDeleteInodeQuotaBatch = 57
 
+	// Snapshot and version operations
 	opFSMSnapFormatVersion = 58
 	opFSMApplyId           = 59
 	opFSMTxId              = 60
 	opFSMCursor            = 61
 
-	// uniq checker
+	// Uniq checker operations
 	opFSMUniqID              = 62
 	opFSMUniqIDSnap          = 63
 	opFSMUniqCheckerSnap     = 64
 	opFSMUniqCheckerEvict    = 65
 	opFSMUnlinkInodeOnce     = 66
 	opFSMCreateLinkInodeOnce = 67
-	// dir lock
+
+	// Directory lock operations
 	opFSMLockDir = 68
 
+	// Inode access time and metadata operations
 	opFSMSyncInodeAccessTime = 69
 	opFSMUpdateInodeMeta     = 70
 
+	// Version list and extent operations
 	opFSMVerListSnapShot   = 73
 	opFSMVersionOp         = 74
 	opFSMExtentSplit       = 75
 	opFSMSentToChanWithVer = 76
 
-	// hybrid cloud
+	// Hybrid cloud operations
 	opFSMRenewalForbiddenMigration                = 87
 	opFSMUpdateExtentKeyAfterMigration            = 88
 	opFSMInternalBatchFreeInodeMigrationExtentKey = 89
 	opFSMSetInodeCreateTime                       = 90 // for debug
 	opFSMSetMigrationExtentKeyDeleteImmediately   = 91
 
-	// freeze meta partition
+	// Freeze meta partition operations
 	opFSMSetFreeze = 92
 )
 
-// new inode opCode
+// New inode operation codes
 const (
 	opFSMBatchSyncInodeATime = 11000
 )
+
+// ============================================================================
+// Error Definitions
+// ============================================================================
 
 var (
 	ErrNoLeader   = errors.New("no leader")
 	ErrNotALeader = errors.New("not a leader")
 )
 
-// Default configuration
+// ============================================================================
+// Default Configuration
+// ============================================================================
+
 const (
 	defaultMetadataDir = "metadataDir"
 	defaultRaftDir     = "raftDir"
 	defaultRocksdMode  = "disk"
 )
 
-// Configuration keys
-const (
-	cfgLocalIP                   = "localIP"
-	cfgMetadataDir               = "metadataDir"
-	cfgRaftDir                   = "raftDir"
-	cfgRaftHeartbeatPort         = "raftHeartbeatPort"
-	cfgRaftReplicaPort           = "raftReplicaPort"
-	cfgDeleteBatchCount          = "deleteBatchCount"
-	cfgTotalMem                  = "totalMem"
-	cfgMemRatio                  = "memRatio"
-	cfgZoneName                  = "zoneName"
-	cfgRack                      = "rack"
-	cfgTickInterval              = "tickInterval"
-	cfgRaftRecvBufSize           = "raftRecvBufSize"
-	cfgSmuxPortShift             = "smuxPortShift"             // int
-	cfgSmuxMaxConn               = "smuxMaxConn"               // int
-	cfgSmuxStreamPerConn         = "smuxStreamPerConn"         // int
-	cfgSmuxMaxBuffer             = "smuxMaxBuffer"             // int
-	cfgRetainLogs                = "retainLogs"                // string, raft RetainLogs
-	cfgRaftSyncSnapFormatVersion = "raftSyncSnapFormatVersion" // int, format version of snapshot that raft leader sent to follower
-	cfgServiceIDKey              = "serviceIDKey"
-	cfgEnableGcTimer             = "enableGcTimer" // bool
-	CfgGcRecyclePercent          = "gcRecyclePercent"
-	CfgRocksDBDiskUsageThreshold = "rocksDBDiskUsageThreshold"
-	cfsQosEnable                 = "qosEnable"   // bool
-	cfgReadDirIops               = "readDirIops" // int
+// ============================================================================
+// Configuration Keys
+// ============================================================================
 
+const (
+	// Basic configuration
+	cfgLocalIP           = "localIP"
+	cfgMetadataDir       = "metadataDir"
+	cfgRaftDir           = "raftDir"
+	cfgRaftHeartbeatPort = "raftHeartbeatPort"
+	cfgRaftReplicaPort   = "raftReplicaPort"
+	cfgZoneName          = "zoneName"
+	cfgRack              = "rack"
+
+	// Performance configuration
+	cfgDeleteBatchCount = "deleteBatchCount"
+	cfgTotalMem         = "totalMem"
+	cfgMemRatio         = "memRatio"
+	cfgTickInterval     = "tickInterval"
+	cfgRaftRecvBufSize  = "raftRecvBufSize"
+	cfgReadDirIops      = "readDirIops"
+
+	// SMux configuration
+	cfgSmuxPortShift     = "smuxPortShift"
+	cfgSmuxMaxConn       = "smuxMaxConn"
+	cfgSmuxStreamPerConn = "smuxStreamPerConn"
+	cfgSmuxMaxBuffer     = "smuxMaxBuffer"
+
+	// Raft configuration
+	cfgRetainLogs                = "retainLogs"
+	cfgRaftSyncSnapFormatVersion = "raftSyncSnapFormatVersion"
+
+	// Service configuration
+	cfgServiceIDKey = "serviceIDKey"
+
+	// GC configuration
+	cfgEnableGcTimer          = "enableGcTimer"
+	CfgGcRecyclePercent       = "gcRecyclePercent"
+	configNameResolveInterval = "nameResolveInterval"
+
+	// QoS configuration
+	cfsQosEnable = "qosEnable"
+
+	// RocksDB configuration
+	cfgRocksDirs                    = "rocksDirs"
+	cfgDiskReservedSpace            = "diskReservedSpace"
+	cfgRocksdbWriteBufferSize       = "rocksdbWriteBufferSize"
+	cfgRocksdbWriteBufferNum        = "rocksdbWriteBufferNum"
+	cfgRocksdbBlockCacheSize        = "rocksdbBlockCacheSize"
+	cfgRocksdbMinWriteBufferToMerge = "rocksdbMinWriteBufferToMerge"
+	cfgRocksdbMaxSubCompactions     = "rocksdbMaxSubCompactions"
+	cfgRocksdbMode                  = "rocksdbMode"
+	cfgRocksdbEnableStats           = "rocksdbEnableStats"
+	cfgRocksdbKeyNumMax             = "rocksdbKeyNumMax"
+	CfgRocksDBDiskUsageThreshold    = "rocksDBDiskUsageThreshold"
+
+	// MetaNode specific configuration
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int
 
@@ -280,10 +316,11 @@ const (
 )
 
 const (
-	// interval of persisting in-memory data
+	// Time intervals
 	intervalToPersistData = time.Minute * 5
 	intervalToSyncCursor  = time.Minute * 1
 
+	// Default values
 	defaultDelExtentsCnt               = 100000
 	defaultMaxQuotaGoroutine           = 5
 	defaultQuotaSwitch                 = true
@@ -299,6 +336,10 @@ const (
 	defaultPeriodicCompactSec          = 86400
 )
 
+// ============================================================================
+// Size Constants
+// ============================================================================
+
 const (
 	_  = iota
 	KB = 1 << (10 * iota)
@@ -306,7 +347,11 @@ const (
 	GB
 )
 
-// TODO: to remove unused by golangci
+// ============================================================================
+// Unused Variables (for linter compliance)
+// ============================================================================
+
+// TODO: Remove unused variables by golangci
 var (
 	_ = opFSMDeletePartition
 	_ = opFSMUpdateSummaryInfo
@@ -317,5 +362,9 @@ var (
 	_ = (*metaPartition).internalHasInode
 	_ = (*TransactionResource).copyGetTxRbInode
 )
+
+// ============================================================================
+// Partition Constants
+// ============================================================================
 
 const DelMetaPartitionHdr = "del_partition_"
