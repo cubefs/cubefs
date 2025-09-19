@@ -9,40 +9,49 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
+// SortedObjExtents manages a sorted collection of object extent keys
+// with thread-safe operations for concurrent access
 type SortedObjExtents struct {
 	sync.RWMutex
 	eks []proto.ObjExtentKey
 }
 
+// NewSortedObjExtents creates a new empty SortedObjExtents instance
 func NewSortedObjExtents() *SortedObjExtents {
 	return &SortedObjExtents{
 		eks: make([]proto.ObjExtentKey, 0),
 	}
 }
 
+// NewSortedObjExtentsFromObjEks creates a new SortedObjExtents from existing extent keys
 func NewSortedObjExtentsFromObjEks(eks []proto.ObjExtentKey) *SortedObjExtents {
+	keys := make([]proto.ObjExtentKey, len(eks))
+	copy(keys, eks)
 	return &SortedObjExtents{
-		eks: eks,
+		eks: keys,
 	}
 }
 
+// String returns JSON representation of the extent keys
 func (se *SortedObjExtents) String() string {
 	se.RLock()
 	data, err := json.Marshal(se.eks)
 	se.RUnlock()
+
 	if err != nil {
 		return ""
 	}
 	return string(data)
 }
 
+// IsEmpty checks if the extent keys collection is empty
 func (se *SortedObjExtents) IsEmpty() bool {
 	se.RLock()
 	defer se.RUnlock()
-
 	return len(se.eks) == 0
 }
 
+// MarshalBinary serializes the extent keys to binary format
 func (se *SortedObjExtents) MarshalBinary() ([]byte, error) {
 	var data []byte
 
@@ -50,115 +59,122 @@ func (se *SortedObjExtents) MarshalBinary() ([]byte, error) {
 	defer se.RUnlock()
 
 	for _, ek := range se.eks {
-		ekdata, err := ek.MarshalBinary()
+		ekData, err := ek.MarshalBinary()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to marshal extent key: %w", err)
 		}
-		data = append(data, ekdata...)
+		data = append(data, ekData...)
 	}
 	return data, nil
 }
 
+// UnmarshalBinary deserializes extent keys from binary format
 func (se *SortedObjExtents) UnmarshalBinary(data []byte) error {
-	var ek proto.ObjExtentKey
-
 	se.Lock()
 	defer se.Unlock()
 
+	// Clear existing data
+	se.eks = se.eks[:0]
+
 	buf := bytes.NewBuffer(data)
-	for {
-		if buf.Len() == 0 {
-			break
-		}
+	var ek proto.ObjExtentKey
+
+	for buf.Len() > 0 {
 		if err := ek.UnmarshalBinary(buf); err != nil {
-			return err
+			return fmt.Errorf("failed to unmarshal extent key: %w", err)
 		}
-		// Don't use se.Append here, since we need to retain the raw ek order.
+		// Don't use se.Append here, since we need to retain the raw ek order
 		se.eks = append(se.eks, ek)
 	}
 	return nil
 }
 
-// Append will return error if the objextentkey exist overlap.
-func (se *SortedObjExtents) Append(ek proto.ObjExtentKey) (err error) {
+// Append adds a new extent key to the collection
+// Returns error if the extent key overlaps with existing ones
+func (se *SortedObjExtents) Append(ek proto.ObjExtentKey) error {
 	se.Lock()
 	defer se.Unlock()
-	// 1. list is empty
-	if len(se.eks) <= 0 {
+
+	// Handle empty collection
+	if len(se.eks) == 0 {
 		se.eks = append(se.eks, ek)
-		return
-	}
-	// 2. last key's (fileoffset+size) is equal to new one
-	lastKey := se.eks[len(se.eks)-1]
-	if (lastKey.FileOffset + lastKey.Size) == ek.FileOffset {
-		se.eks = append(se.eks, ek)
-		return
+		return nil
 	}
 
-	// fix: find one key is equals to the new one, if not, return error.
+	// Check if new key can be appended to the end (consecutive)
+	lastKey := se.eks[len(se.eks)-1]
+	if lastKey.FileOffset+lastKey.Size == ek.FileOffset {
+		se.eks = append(se.eks, ek)
+		return nil
+	}
+
+	// Check for duplicates and validate ordering
 	for i := len(se.eks) - 1; i >= 0; i-- {
 		if ek.IsEquals(&se.eks[i]) {
-			return
+			return nil // Duplicate found, no error
 		}
 		if se.eks[i].FileOffset < ek.FileOffset {
 			break
 		}
 	}
 
-	err = fmt.Errorf("obj extentkeys exist overlay! the new obj extent key must be appended to the last position with offset [%d], new(%s)",
+	// Return error for overlapping extent keys
+	return fmt.Errorf("extent keys overlap detected: new extent key must be appended to last position with offset [%d], new key: %s",
 		lastKey.FileOffset, ek.String())
-	return
 }
 
+// Clone creates a deep copy of the SortedObjExtents
 func (se *SortedObjExtents) Clone() *SortedObjExtents {
-	newSe := NewSortedObjExtents()
-
 	se.RLock()
 	defer se.RUnlock()
 
-	newSe.eks = se.doCopyExtents()
+	newSe := &SortedObjExtents{
+		eks: se.doCopyExtents(),
+	}
 	return newSe
 }
 
+// doCopyExtents creates a copy of the extent keys slice
 func (se *SortedObjExtents) doCopyExtents() []proto.ObjExtentKey {
 	eks := make([]proto.ObjExtentKey, len(se.eks))
 	copy(eks, se.eks)
 	return eks
 }
 
+// CopyExtents returns a copy of the extent keys
 func (se *SortedObjExtents) CopyExtents() []proto.ObjExtentKey {
 	se.RLock()
 	defer se.RUnlock()
 	return se.doCopyExtents()
 }
 
-// Returns the file size
+// Size returns the total file size based on the last extent key
 func (se *SortedObjExtents) Size() uint64 {
 	se.RLock()
 	defer se.RUnlock()
 
-	last := len(se.eks)
-	if last <= 0 {
-		return uint64(0)
+	if len(se.eks) == 0 {
+		return 0
 	}
-	// TODO: maybe we should use ebs location's Size?
-	return se.eks[last-1].FileOffset + se.eks[last-1].Size
+
+	lastKey := se.eks[len(se.eks)-1]
+	return lastKey.FileOffset + lastKey.Size
 }
 
-func (se *SortedObjExtents) LayerSize() (layerSize uint64) {
+// LayerSize returns the sum of all extent key sizes
+func (se *SortedObjExtents) LayerSize() uint64 {
 	se.RLock()
 	defer se.RUnlock()
 
-	last := len(se.eks)
-	if last <= 0 {
-		return 0
-	}
+	var layerSize uint64
 	for _, ek := range se.eks {
 		layerSize += ek.Size
 	}
-	return
+	return layerSize
 }
 
+// Range iterates over extent keys and calls the provided function
+// Stops iteration if the function returns false
 func (se *SortedObjExtents) Range(f func(ek proto.ObjExtentKey) bool) {
 	se.RLock()
 	defer se.RUnlock()
@@ -170,30 +186,35 @@ func (se *SortedObjExtents) Range(f func(ek proto.ObjExtentKey) bool) {
 	}
 }
 
+// FindOffsetExist performs binary search to find if a file offset exists
+// Returns true and index if found, false and 0 if not found
 func (se *SortedObjExtents) FindOffsetExist(fileOffset uint64) (bool, int) {
 	se.RLock()
 	defer se.RUnlock()
 
-	if len(se.eks) <= 0 {
+	if len(se.eks) == 0 {
 		return false, 0
 	}
-	left, right, mid := 0, len(se.eks)-1, 0
-	for {
-		mid = (left + right) / 2
-		if se.eks[mid].FileOffset > fileOffset {
+
+	left, right := 0, len(se.eks)-1
+
+	for left <= right {
+		mid := left + (right-left)/2 // Avoid potential overflow
+		midOffset := se.eks[mid].FileOffset
+
+		if midOffset > fileOffset {
 			right = mid - 1
-		} else if se.eks[mid].FileOffset < fileOffset {
+		} else if midOffset < fileOffset {
 			left = mid + 1
 		} else {
 			return true, mid
 		}
-		if left > right {
-			break
-		}
 	}
+
 	return false, 0
 }
 
+// Equals compares two SortedObjExtents for equality
 func (se *SortedObjExtents) Equals(other *SortedObjExtents) bool {
 	se.RLock()
 	defer se.RUnlock()
@@ -206,9 +227,8 @@ func (se *SortedObjExtents) Equals(other *SortedObjExtents) bool {
 		return false
 	}
 
-	for idx, seKey := range se.eks {
-		otherKey := other.eks[idx]
-		if !seKey.IsEquals(&otherKey) {
+	for i, seKey := range se.eks {
+		if !seKey.IsEquals(&other.eks[i]) {
 			return false
 		}
 	}

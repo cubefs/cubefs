@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"sync"
-	"sync/atomic"
 )
 
 // TxIDAllocator generates and allocates ids
@@ -35,14 +34,14 @@ func (alloc *TxIDAllocator) Reset() {
 	alloc.txIDLock.Lock()
 	defer alloc.txIDLock.Unlock()
 
-	atomic.StoreUint64(&alloc.mpTxID, 0)
+	alloc.mpTxID = 0
 }
 
 func (alloc *TxIDAllocator) setTransactionID(id uint64) {
 	alloc.txIDLock.Lock()
 	defer alloc.txIDLock.Unlock()
 
-	atomic.StoreUint64(&alloc.mpTxID, id)
+	alloc.mpTxID = id
 }
 
 func (alloc *TxIDAllocator) getTransactionID() uint64 {

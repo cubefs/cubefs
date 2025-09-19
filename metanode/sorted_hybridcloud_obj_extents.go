@@ -65,7 +65,11 @@ func (sem *SortedHybridCloudExtentsMigration) HasReplicaMigrationExts() bool {
 		return false
 	}
 
-	eks := sem.sortedEks.(*SortedExtents)
+	// Safe type assertion to prevent panic
+	eks, ok := sem.sortedEks.(*SortedExtents)
+	if !ok {
+		return false
+	}
 
 	return eks.Len() > 0
 }
@@ -80,42 +84,59 @@ func NewSortedHybridCloudExtentsMigration() *SortedHybridCloudExtentsMigration {
 
 func (sem *SortedHybridCloudExtentsMigration) String() string {
 	buff := bytes.NewBuffer(nil)
-	buff.Grow(128)
+	buff.Grow(256) // Increased buffer size for better performance
+
 	buff.WriteString("{")
 	buff.WriteString(fmt.Sprintf("\"StorageClass\":%d,", sem.storageClass))
-	buff.WriteString(fmt.Sprintf("\"expiredTime\"%d,", sem.expiredTime))
+	buff.WriteString(fmt.Sprintf("\"expiredTime\":%d,", sem.expiredTime)) // Fixed missing colon
 
 	if sem.sortedEks == nil {
-		buff.WriteString("ExtentsMigration[nil]")
+		buff.WriteString("\"ExtentsMigration\":null")
 		buff.WriteString("}")
 		return buff.String()
 	}
 
-	if proto.IsStorageClassReplica(sem.storageClass) {
-		buff.WriteString(fmt.Sprintf("\"ExtentsMigration\"[%s]", sem.sortedEks.(*SortedExtents)))
-	} else if proto.IsStorageClassBlobStore(sem.storageClass) {
-		buff.WriteString(fmt.Sprintf("\"ExtentsMigration\"[%s]", sem.sortedEks.(*SortedObjExtents)))
-	} else {
-		buff.WriteString("ExtentsMigration[unknown type]")
+	// Handle different storage class types with safe type assertions
+	switch {
+	case proto.IsStorageClassReplica(sem.storageClass):
+		if eks, ok := sem.sortedEks.(*SortedExtents); ok {
+			buff.WriteString(fmt.Sprintf("\"ExtentsMigration\":[%s]", eks.String()))
+		} else {
+			buff.WriteString("\"ExtentsMigration\":\"invalid_replica_type\"")
+		}
+	case proto.IsStorageClassBlobStore(sem.storageClass):
+		if eks, ok := sem.sortedEks.(*SortedObjExtents); ok {
+			buff.WriteString(fmt.Sprintf("\"ExtentsMigration\":[%s]", eks.String()))
+		} else {
+			buff.WriteString("\"ExtentsMigration\":\"invalid_blobstore_type\"")
+		}
+	default:
+		buff.WriteString("\"ExtentsMigration\":\"unknown_type\"")
 	}
+
 	buff.WriteString("}")
 	return buff.String()
 }
 
+// sortEksEmpty checks if the sorted extents collection is empty based on storage class
 func sortEksEmpty(sortEks interface{}, storageClass uint32) bool {
 	if sortEks == nil {
 		return true
 	}
 
-	if proto.IsStorageClassReplica(storageClass) {
-		eks := sortEks.(*SortedExtents)
-		return eks.IsEmpty()
+	// Use switch statement for better performance and readability
+	switch {
+	case proto.IsStorageClassReplica(storageClass):
+		if eks, ok := sortEks.(*SortedExtents); ok {
+			return eks.IsEmpty()
+		}
+		return true
+	case proto.IsStorageClassBlobStore(storageClass):
+		if eks, ok := sortEks.(*SortedObjExtents); ok {
+			return eks.IsEmpty()
+		}
+		return true
+	default:
+		return true
 	}
-
-	if proto.IsStorageClassBlobStore(storageClass) {
-		eks := sortEks.(*SortedObjExtents)
-		return eks.IsEmpty()
-	}
-
-	return true
 }
