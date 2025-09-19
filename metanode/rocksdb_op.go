@@ -45,7 +45,7 @@ const (
 	ReadTierBlockCache              = 1
 	ReadTierPersisted               = 2
 	ReadTierMemtable                = 3
-	DefaultBytesPerSync             = 128 * util.KB
+	DefaultBytesPerSync             = 1 * util.MB
 	DefaultParallelism              = 4
 	DefaultMaxBackgroundCompactions = 4
 	DefaultMaxBackgroundFlushes     = 4
@@ -258,8 +258,11 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	tableOpts = gorocksdb.NewDefaultBlockBasedTableOptions()
 	cache = gorocksdb.NewLRUCache(opts.BlockCacheSize)
 	tableOpts.SetBlockCache(cache)
-	tableOpts.SetPinL0FilterAndIndexBlocksInCache(true)
 	tableOpts.SetCacheIndexAndFilterBlocks(true)
+	tableOpts.SetPinL0FilterAndIndexBlocksInCache(true)
+	tableOpts.SetFilterPolicy(gorocksdb.NewBloomFilter(10))
+	tableOpts.SetBlockSize(16 * util.KB)
+	tableOpts.SetFormatVersion(3)
 	dbOpts.SetBlockBasedTableFactory(tableOpts)
 
 	// NOTE: rocksdb log file options

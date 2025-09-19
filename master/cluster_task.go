@@ -656,9 +656,15 @@ func (c *Cluster) addMetaPartitionRaftMember(partition *MetaPartition, addPeer p
 		if leaderAddr == "" && len(candidateAddrs) < int(partition.ReplicaNum) {
 			time.Sleep(retrySendSyncTaskInternal)
 		}
-		_, err = c.buildAddMetaPartitionRaftMemberTaskAndSyncSend(partition, addPeer, host)
-		if err == nil {
-			break
+		for i := 0; i < RetryDoMigrateNum; i++ {
+			_, err = c.buildAddMetaPartitionRaftMemberTaskAndSyncSend(partition, addPeer, host)
+			if err == nil {
+				return
+			}
+			if !IsRetryMigrateMpError(err) {
+				break
+			}
+			time.Sleep(retrySendSyncTaskInternal)
 		}
 		if index < len(candidateAddrs)-1 {
 			time.Sleep(retrySendSyncTaskInternal)

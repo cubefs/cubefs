@@ -1767,6 +1767,7 @@ func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo,
 		}
 		if leader.Addr != mrPlan.Source {
 			// the leader is not the source node, the meta partition can be migrated.
+			log.LogInfof("metapartition[%d] leader(%s) is not mrPlan(%s)", mp.PartitionID, leader.Addr, mrPlan.Source)
 			return nil
 		}
 
@@ -1788,6 +1789,10 @@ func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo,
 	if err != nil {
 		log.LogErrorf("metapartition[%d] has no leader", mp.PartitionID)
 		return err
+	}
+	if leader.Addr != mrPlan.Source {
+		log.LogInfof("metapartition[%d] leader(%s) is not mrPlan(%s)", mp.PartitionID, leader.Addr, mrPlan.Source)
+		return nil
 	}
 	return fmt.Errorf("Try to change leader to %s failed. leader: %s, migrate source: %s", newLeader, leader.Addr, mrPlan.Source)
 }
@@ -2201,5 +2206,32 @@ func (c *Cluster) doMetaPartitionMigrate(plan *proto.ClusterPlan, mpPlan *proto.
 }
 
 func IsRetryMigrateMpError(err error) bool {
-	return strings.Contains(err.Error(), "downReplicas") && strings.Contains(err.Error(), "so donnot offline")
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+
+	retryMsgList := []string{
+		"no leader",
+		"not leader",
+		"raft is not the leader",
+		"try again",
+		"no enough replicas",
+		"i/o timeout",
+		"deadline exceeded",
+		"connection refused",
+		"connection reset by peer",
+		"use of closed network connection",
+		"no route to host",
+		"network is unreachable",
+		"host is down",
+		"eof",
+	}
+	for _, retryMsg := range retryMsgList {
+		if strings.Contains(msg, retryMsg) {
+			return true
+		}
+	}
+
+	return strings.Contains(msg, "downreplicas") && strings.Contains(msg, "so donnot offline")
 }
