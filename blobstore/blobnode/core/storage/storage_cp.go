@@ -203,7 +203,7 @@ func (stg *replicateStorage) SyncData(ctx context.Context) (err error) {
 	go func() {
 		span := trace.SpanFromContextSafe(ctx)
 		innerErr := stg.slaveStg.SyncData(ctx)
-		span.AppendTrackLog("sync.2", start, innerErr)
+		span.AppendTrackLog("sync.2", start, innerErr, trace.OptSpanDurationUs())
 		fwdCh <- innerErr
 	}()
 
@@ -222,7 +222,7 @@ func (stg *replicateStorage) SyncData(ctx context.Context) (err error) {
 	}()
 
 	err = stg.masterStg.SyncData(ctx)
-	span.AppendTrackLog("sync.1", start, err)
+	span.AppendTrackLog("sync.1", start, err, trace.OptSpanDurationUs())
 
 	return err
 }

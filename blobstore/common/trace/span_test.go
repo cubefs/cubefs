@@ -176,29 +176,29 @@ func TestSpan_TrackLog(t *testing.T) {
 	span, ctx := StartSpanFromContext(context.Background(), "test trackLog")
 	defer span.Finish()
 
-	span.AppendTrackLog("sleep", time.Now(), nil)
-	require.Equal(t, []string{"sleep"}, span.TrackLog())
+	span.AppendTrackLog("sleep", time.Now(), nil, OptSpanDurationSecond())
+	require.Equal(t, []string{"sleep:0"}, span.TrackLog())
 
 	spanChild, _ := StartSpanFromContext(ctx, "child of span")
-	require.Equal(t, []string{"sleep"}, spanChild.TrackLog())
+	require.Equal(t, []string{"sleep:0"}, spanChild.TrackLog())
 
-	spanChild.AppendTrackLog("sleep2", time.Now(), errors.New("sleep2 err"))
-	require.Equal(t, []string{"sleep", "sleep2/sleep2 err"}, spanChild.TrackLog())
-	require.Equal(t, []string{"sleep", "sleep2/sleep2 err"}, span.TrackLog())
+	spanChild.AppendTrackLog("sleep2", time.Now(), errors.New("sleep2 err"), OptSpanDurationSecond())
+	require.Equal(t, []string{"sleep:0", "sleep2:0/sleep2 err"}, spanChild.TrackLog())
+	require.Equal(t, []string{"sleep:0", "sleep2:0/sleep2 err"}, span.TrackLog())
 
 	spanChild.AppendRPCTrackLog([]string{"blobnode:4", "scheduler:5"})
-	require.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5"}, spanChild.TrackLog())
-	require.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5"}, span.TrackLog())
+	require.Equal(t, []string{"sleep:0", "sleep2:0/sleep2 err", "blobnode:4", "scheduler:5"}, spanChild.TrackLog())
+	require.Equal(t, []string{"sleep:0", "sleep2:0/sleep2 err", "blobnode:4", "scheduler:5"}, span.TrackLog())
 
-	spanChild.AppendTrackLog("sleep3", time.Now(), nil)
-	require.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5", "sleep3"}, span.TrackLog())
+	spanChild.AppendTrackLog("sleep3", time.Now(), nil, OptSpanDurationSecond())
+	require.Equal(t, []string{"sleep:0", "sleep2:0/sleep2 err", "blobnode:4", "scheduler:5", "sleep3:0"}, span.TrackLog())
 
 	msg := make([]byte, maxErrorLen+10)
 	for idx := range msg {
 		msg[idx] = 97
 	}
-	spanChild.AppendTrackLog("longError", time.Now(), errors.New(string(msg)))
-	except := "longError/" + string(msg[:maxErrorLen])
+	spanChild.AppendTrackLog("longError", time.Now(), errors.New(string(msg)), OptSpanDurationSecond())
+	except := "longError:0/" + string(msg[:maxErrorLen])
 	require.Equal(t, except, span.TrackLog()[len(span.TrackLog())-1])
 }
 
