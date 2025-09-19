@@ -184,6 +184,7 @@ type ClusterView struct {
 	FlashHotKeyMissCount                      int
 	FlashReadFlowLimit                        int64
 	FlashWriteFlowLimit                       int64
+	RemoteClientFlowLimit                     int64
 }
 
 // ClusterNode defines the structure of a cluster node

@@ -616,7 +616,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	remoteCacheTTL string, remoteCacheReadTimeout string,
 	remoteCacheMultiRead string, flashNodeTimeoutCount string,
 	remoteCacheSameZoneTimeout string, remoteCacheSameRegionTimeout string, flashHotKeyMissCount string,
-	flashReadFlowLimit string, flashWriteFlowLimit string,
+	flashReadFlowLimit string, flashWriteFlowLimit string, remoteClientFlowLimit string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -704,6 +704,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if flashWriteFlowLimit != "" {
 		request.addParamAny("flashWriteFlowLimit", flashWriteFlowLimit)
+	}
+	if remoteClientFlowLimit != "" {
+		request.addParamAny("remoteClientFlowLimit", remoteClientFlowLimit)
 	}
 	_, err = api.mc.serveRequest(request)
 	return
