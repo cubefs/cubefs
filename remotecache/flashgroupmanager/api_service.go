@@ -62,6 +62,7 @@ func (m *FlashGroupManager) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashHotKeyMissCount:         m.cluster.cfg.FlashHotKeyMissCount,
 		FlashReadFlowLimit:           m.cluster.cfg.FlashReadFlowLimit,
 		FlashWriteFlowLimit:          m.cluster.cfg.FlashWriteFlowLimit,
+		RemoteClientFlowLimit:        m.cluster.cfg.RemoteClientFlowLimit,
 		RemoteCacheTTL:               m.config.RemoteCacheTTL,
 		RemoteCacheReadTimeout:       m.config.RemoteCacheReadTimeout,
 		RemoteCacheMultiRead:         m.config.RemoteCacheMultiRead,
@@ -119,6 +120,7 @@ func (m *FlashGroupManager) getRemoteCacheConfig(w http.ResponseWriter, r *http.
 		FlashHotKeyMissCount:         m.config.FlashHotKeyMissCount,
 		FlashReadFlowLimit:           m.config.FlashReadFlowLimit,
 		FlashWriteFlowLimit:          m.config.FlashWriteFlowLimit,
+		RemoteClientFlowLimit:        m.config.RemoteClientFlowLimit,
 	}
 	log.LogInfof("getRemoteCacheConfig config(%v)", config)
 	sendOkReply(w, r, newSuccessHTTPReply(config))
@@ -741,6 +743,15 @@ func (m *FlashGroupManager) setNodeInfoHandler(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	if val, ok := params[cfgRemoteClientFlowLimit]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(cfgRemoteClientFlowLimit, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 }
 
@@ -757,6 +768,7 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		remoteCacheSameRegionTimeout int64
 		flashReadFlowLimit           int64
 		flashWriteFlowLimit          int64
+		remoteClientFlowLimit        int64
 		oldIntValue                  int
 		oldInt64Value                int64
 		oldBoolValue                 bool
@@ -851,6 +863,14 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		oldInt64Value = m.config.FlashWriteFlowLimit
 		m.config.FlashWriteFlowLimit = flashWriteFlowLimit
 
+	case cfgRemoteClientFlowLimit:
+		remoteClientFlowLimit, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		oldInt64Value = m.config.RemoteClientFlowLimit
+		m.config.RemoteClientFlowLimit = remoteClientFlowLimit
+
 	default:
 		err = keyNotFound("config")
 		return err
@@ -880,6 +900,8 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 			m.config.FlashReadFlowLimit = oldInt64Value
 		case cfgFlashWriteFlowLimit:
 			m.config.FlashWriteFlowLimit = oldInt64Value
+		case cfgRemoteClientFlowLimit:
+			m.config.RemoteClientFlowLimit = oldInt64Value
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err

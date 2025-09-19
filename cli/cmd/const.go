@@ -178,6 +178,7 @@ const (
 	CliFlagFlashHotKeyMissCount         = "flashHotKeyMissCount"
 	CliFlagFlashReadFlowLimit           = "flashReadFlowLimit"
 	CliFlagFlashWriteFlowLimit          = "flashWriteFlowLimit"
+	CliFlagRemoteClientFlowLimit        = "remoteClientFlowLimit"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

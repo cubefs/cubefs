@@ -24,6 +24,7 @@ const (
 	defaultFlashHotKeyMissCount         = 5
 	defaultFlashReadFlowLimit           = 2147483648
 	defaultFlashWriteFlowLimit          = 2147483648
+	defaultRemoteClientFlowLimit        = 0
 )
 
 const (
@@ -38,6 +39,7 @@ const (
 	cfgFlashHotKeyMissCount         = "flashHotKeyMissCount"
 	cfgFlashReadFlowLimit           = "flashReadFlowLimit"
 	cfgFlashWriteFlowLimit          = "flashWriteFlowLimit"
+	cfgRemoteClientFlowLimit        = "remoteClientFlowLimit"
 )
 
 var AddrDatabase = make(map[uint64]string)
@@ -64,6 +66,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.FlashHotKeyMissCount = defaultFlashHotKeyMissCount
 	cfg.FlashReadFlowLimit = defaultFlashReadFlowLimit
 	cfg.FlashWriteFlowLimit = defaultFlashWriteFlowLimit
+	cfg.RemoteClientFlowLimit = defaultRemoteClientFlowLimit
 
 	return
 }

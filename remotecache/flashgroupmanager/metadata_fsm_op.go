@@ -38,6 +38,7 @@ type clusterValue struct {
 	FlashHotKeyMissCount         int
 	FlashReadFlowLimit           int64
 	FlashWriteFlowLimit          int64
+	RemoteClientFlowLimit        int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -54,6 +55,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FlashHotKeyMissCount:         c.cfg.FlashHotKeyMissCount,
 		FlashReadFlowLimit:           c.cfg.FlashReadFlowLimit,
 		FlashWriteFlowLimit:          c.cfg.FlashWriteFlowLimit,
+		RemoteClientFlowLimit:        c.cfg.RemoteClientFlowLimit,
 	}
 	return cv
 }
@@ -93,10 +95,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 
 		c.cfg.FlashReadFlowLimit = cv.FlashReadFlowLimit
 		c.cfg.FlashWriteFlowLimit = cv.FlashWriteFlowLimit
+		c.cfg.RemoteClientFlowLimit = cv.RemoteClientFlowLimit
 
 		c.cfg.FlashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
-		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms), flashHotKeyMissCount(%v), flashReadFlowLimit(%v), flashWriteFlowLimit(%v)",
-			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount, cv.FlashReadFlowLimit, cv.FlashWriteFlowLimit)
+		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms), flashHotKeyMissCount(%v), flashReadFlowLimit(%v), flashWriteFlowLimit(%v), remoteClientFlowLimit(%v)",
+			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount, cv.FlashReadFlowLimit, cv.FlashWriteFlowLimit, cv.RemoteClientFlowLimit)
 
 		if cv.RemoteCacheTTL == 0 {
 			cv.RemoteCacheTTL = proto.DefaultRemoteCacheTTL

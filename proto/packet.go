@@ -323,7 +323,7 @@ const (
 	PacketProtocolVersionFlag                 = 0x10
 
 	DefaultRemoteCacheTTL               = 5 * 24 * 3600
-	DefaultRemoteCacheClientReadTimeout = 100 // ms
+	DefaultRemoteCacheClientReadTimeout = 2000 // ms
 	DefaultRemoteCacheMaxFileSizeGB     = 128
 	DefaultFlashNodeTimeoutCount        = 5
 	DefaultRemoteCacheHandleReadTimeout = 100 // ms

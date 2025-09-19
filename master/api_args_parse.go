@@ -1740,6 +1740,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[flashWriteFlowLimit] = val
 	}
 
+	if value = r.FormValue(remoteClientFlowLimit); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(remoteClientFlowLimit)
+			return
+		}
+		params[remoteClientFlowLimit] = val
+	}
+
 	if noParams {
 		err = fmt.Errorf("no key assigned")
 		return
