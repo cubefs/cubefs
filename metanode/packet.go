@@ -23,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+// Packet wraps proto.Packet with additional functionality
 type Packet struct {
 	proto.Packet
 }
@@ -34,36 +35,50 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet
 	p.Opcode = proto.OpMarkDelete
 	p.ExtentType = proto.NormalExtentType
 	p.PartitionID = dp.PartitionID
+
+	// Set extent type based on extent ID
 	if storage.IsTinyExtent(ext.ExtentId) {
 		p.ExtentType = proto.TinyExtentType
 	}
+
 	log.LogDebugf("NewPacketToDeleteExtent. ext %v", ext)
+
 	if ext.IsSplit() {
 		var (
 			newOff  = ext.ExtentOffset
 			newSize = ext.Size
 		)
+
+		// Align offset to page boundary if needed
 		if int(ext.ExtentOffset)%util.PageSize != 0 {
 			log.LogDebugf("NewPacketToDeleteExtent. ext %v", ext)
-			newOff = ext.ExtentOffset + util.PageSize - ext.ExtentOffset%util.PageSize
-			if ext.Size <= uint32(newOff-ext.ExtentOffset) {
+			alignedOff := ext.ExtentOffset + util.PageSize - ext.ExtentOffset%util.PageSize
+
+			// Check if extent is too small after alignment
+			if ext.Size <= uint32(alignedOff-ext.ExtentOffset) {
 				invalid = true
 				log.LogDebugf("NewPacketToDeleteExtent. ext %v invalid to punch hole newOff %v",
-					ext, newOff)
+					ext, alignedOff)
 				return
 			}
-			newSize = ext.Size - uint32(newOff-ext.ExtentOffset)
+
+			newOff = alignedOff
+			newSize = ext.Size - uint32(alignedOff-ext.ExtentOffset)
 		}
 
+		// Align size to page boundary
 		if newSize%util.PageSize != 0 {
 			newSize = newSize - newSize%util.PageSize
 		}
 
+		// Validate final size
 		if newSize == 0 {
 			invalid = true
 			log.LogDebugf("NewPacketToDeleteExtent. ext %v invalid to punch hole", ext)
 			return
 		}
+
+		// Update extent with aligned values
 		ext.Size = newSize
 		ext.ExtentOffset = newOff
 		log.LogDebugf("ext [%v] delete be set split flag", ext)
@@ -71,16 +86,21 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet
 	} else {
 		log.LogDebugf("ext [%v] delete normal ext", ext)
 	}
+
 	p.Data, _ = json.Marshal(ext)
 	p.Size = uint32(len(p.Data))
 	p.ExtentID = ext.ExtentId
 	p.ReqID = proto.GenerateRequestID()
-	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
-	if len(dp.Hosts) == 1 {
+
+	// Calculate remaining followers
+	hostCount := len(dp.Hosts)
+	if hostCount == 1 {
 		p.RemainingFollowers = 127
+	} else {
+		p.RemainingFollowers = uint8(hostCount - 1)
 	}
 
-	p.Arg = ([]byte)(dp.GetAllAddrs())
+	p.Arg = []byte(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
 
 	return
@@ -106,7 +126,7 @@ func NewPacketToBatchDeleteExtent(dp *DataPartition, exts []*proto.DelExtentPara
 	return p
 }
 
-// NewPacketToDeleteExtent returns a new packet to delete the extent.
+// NewPacketToFreeInodeOnRaftFollower returns a new packet to free inodes on raft follower.
 func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
@@ -114,6 +134,8 @@ func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *
 	p.PartitionID = partitionID
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GenerateRequestID()
+
+	// Use copy to avoid sharing the underlying slice
 	p.Data = make([]byte, len(freeInodes))
 	copy(p.Data, freeInodes)
 	p.Size = uint32(len(p.Data))
@@ -121,10 +143,15 @@ func NewPacketToFreeInodeOnRaftFollower(partitionID uint64, freeInodes []byte) *
 	return p
 }
 
+// AdminOp checks if the packet represents an administrative operation
 func (p *Packet) AdminOp() bool {
-	return p.Opcode == proto.OpAddMetaPartitionRaftMember ||
-		p.Opcode == proto.OpRemoveMetaPartitionRaftMember ||
-		p.Opcode == proto.OpCreateMetaPartition ||
-		p.Opcode == proto.OpMetaPartitionTryToLeader ||
-		p.Opcode == proto.OpDeleteMetaPartition
+	return adminOps[p.Opcode]
+}
+
+var adminOps = map[uint8]bool{
+	proto.OpAddMetaPartitionRaftMember:    true,
+	proto.OpRemoveMetaPartitionRaftMember: true,
+	proto.OpCreateMetaPartition:           true,
+	proto.OpMetaPartitionTryToLeader:      true,
+	proto.OpDeleteMetaPartition:           true,
 }

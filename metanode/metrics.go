@@ -15,27 +15,54 @@
 package metanode
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
 )
 
-// metrics
+// metrics constants
 const (
 	StatPeriod = time.Minute * time.Duration(1)
 
+	// Metric names
 	MetricMetaFailedPartition      = "meta_failed_partition"
 	MetricMetaPartitionInodeCount  = "mpInodeCount"
 	MetricMetaPartitionDentryCount = "mpDentryCount"
 	MetricConnectionCount          = "connectionCnt"
 	MetricFileStats                = "fileStats"
 	RocksdbStats                   = "rocksdbStats"
+
+	// RocksDB statistics keys
+	RocksdbGetMicros   = "rocksdb.db.get.micros"
+	RocksdbWriteMicros = "rocksdb.db.write.micros"
+	RocksdbSeekMicros  = "rocksdb.db.seek.micros"
+	RocksdbWriteStall  = "rocksdb.db.write.stall"
+	RocksdbFlushMicros = "rocksdb.db.flush.micros"
+
+	// Timeout for metrics collection
+	MetricsCollectionTimeout = 30 * time.Second
 )
 
+// Pre-compiled regex for better performance
+var (
+	statsP99Regex    = regexp.MustCompile(`P99 : (\d+\.\d+)`)
+	rocksdbStatsList = []string{
+		RocksdbGetMicros,
+		RocksdbWriteMicros,
+		RocksdbSeekMicros,
+		RocksdbWriteStall,
+		RocksdbFlushMicros,
+	}
+)
+
+// MetaNodeMetrics holds all metrics for the meta node
 type MetaNodeMetrics struct {
 	MetricConnectionCount          *exporter.Gauge
 	MetricMetaFailedPartition      *exporter.Gauge
@@ -45,11 +72,19 @@ type MetaNodeMetrics struct {
 	RocksdbStats                   *exporter.GaugeVec
 
 	metricStopCh chan struct{}
+	mu           sync.RWMutex
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
+// startStat initializes and starts the metrics collection
 func (m *MetaNode) startStat() {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	m.metrics = &MetaNodeMetrics{
 		metricStopCh: make(chan struct{}),
+		ctx:          ctx,
+		cancel:       cancel,
 
 		MetricConnectionCount:          exporter.NewGauge(MetricConnectionCount),
 		MetricMetaFailedPartition:      exporter.NewGauge(MetricMetaFailedPartition),
@@ -62,89 +97,142 @@ func (m *MetaNode) startStat() {
 	go m.collectPartitionMetrics()
 }
 
-func (m *MetaNode) updatePartitionMetrics() {
+// updatePartitionMetrics updates partition-related metrics
+func (m *MetaNode) updatePartitionMetrics() error {
+	// Reset metrics to avoid stale data
 	m.metrics.MetricMetaPartitionInodeCount.Reset()
 	m.metrics.MetricMetaPartitionDentryCount.Reset()
+
+	// Use maps to aggregate data by volume
 	volInodeCount := make(map[string]int)
 	volDentryCount := make(map[string]int)
 
 	manager, ok := m.metadataManager.(*metadataManager)
 	if !ok {
-		return
+		return fmt.Errorf("invalid metadata manager type")
 	}
-	manager.mu.RLock()
-	defer manager.mu.RUnlock()
 
-	for _, p := range manager.partitions {
-		mp, ok := p.(*metaPartition)
-		if !ok {
-			continue
-		}
-		volName := mp.config.VolName
+	// Collect data with minimal lock time
+	partitions := m.collectPartitionData(manager)
+
+	// Process collected data
+	for _, p := range partitions {
+		volName := p.volName
 		if _, exists := volInodeCount[volName]; !exists {
 			volInodeCount[volName] = 0
 			volDentryCount[volName] = 0
 		}
-		volInodeCount[volName] += mp.GetInodeTreeLen()
-		volDentryCount[volName] += mp.GetDentryTreeLen()
+		volInodeCount[volName] += p.inodeCount
+		volDentryCount[volName] += p.dentryCount
 	}
 
+	// Update metrics
 	for volName, inodeCount := range volInodeCount {
 		dentryCount := volDentryCount[volName]
 		m.metrics.MetricMetaPartitionInodeCount.SetWithLabelValues(float64(inodeCount), volName)
 		m.metrics.MetricMetaPartitionDentryCount.SetWithLabelValues(float64(dentryCount), volName)
 	}
+
+	return nil
 }
 
-func (m *MetaNode) collectPartitionMetrics() {
-	ticker := time.NewTicker(StatPeriod)
-	fileStatTicker := time.NewTicker(fileStatsCheckPeriod)
-	for {
-		select {
-		case <-m.metrics.metricStopCh:
-			return
-		case <-ticker.C:
-			m.updatePartitionMetrics()
-			m.metrics.MetricConnectionCount.Set(float64(m.connectionCnt))
-		case <-fileStatTicker.C:
-			m.updateFileStatsMetrics()
-			if m.rocksdbEnableStats {
-				m.updateRocksdbStatsMetrics()
-			}
-		}
-	}
+// partitionData holds partition metrics data
+type partitionData struct {
+	volName     string
+	inodeCount  int
+	dentryCount int
 }
 
-func (m *MetaNode) updateFileStatsMetrics() {
-	m.metrics.MetricFileStats.Reset()
-	volFileRange := make(map[string][]int64)
-
-	manager, ok := m.metadataManager.(*metadataManager)
-	if !ok {
-		return
-	}
+// collectPartitionData collects partition data with minimal lock time
+func (m *MetaNode) collectPartitionData(manager *metadataManager) []partitionData {
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()
 
-	_, labels, _ := manager.GetFileStatsConfig()
+	partitions := make([]partitionData, 0, len(manager.partitions))
 
-	numRanges := len(labels)
 	for _, p := range manager.partitions {
 		mp, ok := p.(*metaPartition)
 		if !ok {
 			continue
 		}
-		fileRange := mp.getFileRange()
-		volName := mp.config.VolName
+
+		partitions = append(partitions, partitionData{
+			volName:     mp.config.VolName,
+			inodeCount:  mp.GetInodeTreeLen(),
+			dentryCount: mp.GetDentryTreeLen(),
+		})
+	}
+
+	return partitions
+}
+
+// collectPartitionMetrics runs the main metrics collection loop
+func (m *MetaNode) collectPartitionMetrics() {
+	ticker := time.NewTicker(StatPeriod)
+	defer ticker.Stop()
+
+	fileStatTicker := time.NewTicker(fileStatsCheckPeriod)
+	defer fileStatTicker.Stop()
+
+	for {
+		select {
+		case <-m.metrics.metricStopCh:
+			return
+		case <-m.metrics.ctx.Done():
+			return
+		case <-ticker.C:
+			if err := m.updatePartitionMetrics(); err != nil {
+				// Log error but continue
+				continue
+			}
+			m.metrics.MetricConnectionCount.Set(float64(m.connectionCnt))
+		case <-fileStatTicker.C:
+			if err := m.updateFileStatsMetrics(); err != nil {
+				// Log error but continue
+				continue
+			}
+			if m.rocksdbEnableStats {
+				if err := m.updateRocksdbStatsMetrics(); err != nil {
+					// Log error but continue
+					continue
+				}
+			}
+		}
+	}
+}
+
+// updateFileStatsMetrics updates file statistics metrics
+func (m *MetaNode) updateFileStatsMetrics() error {
+	m.metrics.MetricFileStats.Reset()
+
+	manager, ok := m.metadataManager.(*metadataManager)
+	if !ok {
+		return fmt.Errorf("invalid metadata manager type")
+	}
+
+	// Get file stats configuration
+	_, labels, _ := manager.GetFileStatsConfig()
+
+	numRanges := len(labels)
+	volFileRange := make(map[string][]int64)
+
+	// Collect file range data
+	partitions := m.collectFileRangeData(manager, numRanges)
+
+	// Process collected data
+	for _, p := range partitions {
+		volName := p.volName
 		if _, exists := volFileRange[volName]; !exists {
 			volFileRange[volName] = make([]int64, numRanges)
 		}
-		validLength := util.Min(len(fileRange), numRanges)
+
+		validLength := util.Min(len(p.fileRange), numRanges)
 		for i := 0; i < validLength; i++ {
-			volFileRange[volName][i] += fileRange[i]
+			volFileRange[volName][i] += p.fileRange[i]
 		}
 	}
 
+	// Update metrics
 	for volName, ranges := range volFileRange {
 		for i, val := range ranges {
 			sizeRange := labels[i]
@@ -174,29 +262,80 @@ func (m *MetaNode) updateRocksdbStatsMetrics() {
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()
 
-	for _, dbPath := range m.rocksDirs {
-		db, err := m.rocksdbManager.OpenRocksdb(dbPath, 0)
-		if err != nil {
+	partitions := make([]fileRangeData, 0, len(manager.partitions))
+
+	for _, p := range manager.partitions {
+		mp, ok := p.(*metaPartition)
+		if !ok {
 			continue
 		}
+
+		partitions = append(partitions, fileRangeData{
+			volName:   mp.config.VolName,
+			fileRange: mp.getFileRange(),
+		})
+	}
+
+	return partitions
+}
+
+// updateRocksdbStatsMetrics updates RocksDB statistics metrics
+func (m *MetaNode) updateRocksdbStatsMetrics() error {
+	m.metrics.RocksdbStats.Reset()
+
+	// Process each RocksDB directory
+	for _, dbPath := range m.rocksDirs {
+		if err := m.processRocksdbDirectory(dbPath); err != nil {
+			// Log error but continue with other directories
+			continue
+		}
+	}
+
+	return nil
+}
+
+// processRocksdbDirectory processes a single RocksDB directory
+func (m *MetaNode) processRocksdbDirectory(dbPath string) error {
+	// Open RocksDB with timeout
+	ctx, cancel := context.WithTimeout(m.metrics.ctx, MetricsCollectionTimeout)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		db, err := m.rocksdbManager.OpenRocksdb(dbPath, 0)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer m.rocksdbManager.CloseRocksdb(db)
+
 		stats := db.GetStatistics()
 		statsP99 := getStatsP99(stats, rocksdbStatsList)
+
 		for key, val := range statsP99 {
 			m.metrics.RocksdbStats.SetWithLabelValues(val, dbPath, key)
 		}
-		m.rocksdbManager.CloseRocksdb(db)
+
+		done <- nil
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
+// getStatsP99 extracts P99 statistics from RocksDB stats string
 func getStatsP99(stats string, statsList []string) map[string]float64 {
-	re := regexp.MustCompile(`P99 : (\d+\.\d+)`)
-	statsMap := make(map[string]float64)
+	statsMap := make(map[string]float64, len(statsList))
 	lines := strings.Split(stats, "\n")
 
 	for _, item := range statsList {
 		for _, line := range lines {
 			if strings.HasPrefix(line, item) {
-				statsP99 := re.FindStringSubmatch(line)
+				statsP99 := statsP99Regex.FindStringSubmatch(line)
 				if statsP99 == nil || len(statsP99) < 2 {
 					break
 				}
@@ -213,6 +352,10 @@ func getStatsP99(stats string, statsList []string) map[string]float64 {
 	return statsMap
 }
 
+// stopStat stops the metrics collection
 func (m *MetaNode) stopStat() {
-	m.metrics.metricStopCh <- struct{}{}
+	if m.metrics != nil {
+		m.metrics.cancel()
+		close(m.metrics.metricStopCh)
+	}
 }

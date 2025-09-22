@@ -9,45 +9,68 @@ import (
 )
 
 const (
-	UpdateNodeInfoTicket     = 1 * time.Minute
+	// UpdateNodeInfoTicket defines the interval for updating node information
+	UpdateNodeInfoTicket = 1 * time.Minute
+
+	// DefaultDeleteBatchCounts defines the default batch count for delete operations
 	DefaultDeleteBatchCounts = 128
 
-	DefaultRocksDBModeMaxFsUsedPercent   = 60
+	// DefaultRocksDBModeMaxFsUsedPercent defines the default max filesystem usage for RocksDB mode
+	DefaultRocksDBModeMaxFsUsedPercent = 60
+
+	// DefaultMemModeMaxFsUsedFactorPercent defines the default max filesystem usage for memory mode
 	DefaultMemModeMaxFsUsedFactorPercent = 80
-	DefaultDumpWaterLevel                = 100
+
+	// DefaultDumpWaterLevel defines the default dump water level threshold
+	DefaultDumpWaterLevel = 100
 )
 
+// NodeInfo holds configuration information for the meta node
 type NodeInfo struct {
 	deleteBatchCount uint64
 	dumpWaterLevel   uint64
 }
 
 var (
-	nodeInfo                   = &NodeInfo{}
-	nodeInfoStopC              = make(chan struct{})
+	// Global node information instance
+	nodeInfo = &NodeInfo{}
+
+	// Channel to signal stopping the node info update goroutine
+	nodeInfoStopC = make(chan struct{})
+
+	// Delete worker sleep time in milliseconds
 	deleteWorkerSleepMs uint64 = 0
+
+	// Directory children number limit
 	dirChildrenNumLimit uint32 = proto.DefaultDirChildrenNumLimit
 
+	// RocksDB mode maximum filesystem usage percentage
 	RocksDBModeMaxFsUsedPercent uint64 = DefaultRocksDBModeMaxFsUsedPercent
-	MemModeMaxFsUsedPercent     uint64 = DefaultMemModeMaxFsUsedFactorPercent
+
+	// Memory mode maximum filesystem usage percentage
+	MemModeMaxFsUsedPercent uint64 = DefaultMemModeMaxFsUsedFactorPercent
 )
 
+// DeleteBatchCount returns the current delete batch count
 func DeleteBatchCount() uint64 {
 	val := atomic.LoadUint64(&nodeInfo.deleteBatchCount)
 	if val == 0 {
-		val = DefaultDeleteBatchCounts
+		return DefaultDeleteBatchCounts
 	}
 	return val
 }
 
+// updateDeleteBatchCount updates the delete batch count atomically
 func updateDeleteBatchCount(val uint64) {
 	atomic.StoreUint64(&nodeInfo.deleteBatchCount, val)
 }
 
+// updateDeleteWorkerSleepMs updates the delete worker sleep time atomically
 func updateDeleteWorkerSleepMs(val uint64) {
 	atomic.StoreUint64(&deleteWorkerSleepMs, val)
 }
 
+// DeleteWorkerSleepMs sleeps for the configured duration if sleep time is set
 func DeleteWorkerSleepMs() {
 	val := atomic.LoadUint64(&deleteWorkerSleepMs)
 	if val > 0 {
@@ -55,16 +78,24 @@ func DeleteWorkerSleepMs() {
 	}
 }
 
+// startUpdateNodeInfo starts the node information update goroutine
 func (m *MetaNode) startUpdateNodeInfo() {
 	ticker := time.NewTicker(UpdateNodeInfoTicket)
 	defer ticker.Stop()
+
+	log.LogInfo("metanode nodeinfo goroutine started")
+
 	for {
 		select {
 		case <-nodeInfoStopC:
-			log.LogInfo("metanode nodeinfo gorutine stopped")
+			log.LogInfo("metanode nodeinfo goroutine stopped")
 			return
 		case <-ticker.C:
-			m.updateNodeInfo()
+			if err := m.updateNodeInfo(); err != nil {
+				log.LogErrorf("failed to update node info: %v", err)
+			}
+
+			// Check volume version list if cluster snapshot is enabled
 			if m.clusterEnableSnapshot {
 				m.metadataManager.checkVolVerList()
 			}
@@ -72,41 +103,71 @@ func (m *MetaNode) startUpdateNodeInfo() {
 	}
 }
 
+// stopUpdateNodeInfo stops the node information update goroutine
 func (m *MetaNode) stopUpdateNodeInfo() {
 	nodeInfoStopC <- struct{}{}
 }
 
-func (m *MetaNode) updateNodeInfo() {
+// updateNodeInfo updates the node information from cluster configuration
+func (m *MetaNode) updateNodeInfo() error {
 	clusterInfo, err := masterClient.AdminAPI().GetClusterInfo()
 	if err != nil {
-		log.LogErrorf("[updateNodeInfo] %s", err.Error())
-		return
+		return err
 	}
+
+	// Update delete batch count
 	updateDeleteBatchCount(clusterInfo.MetaNodeDeleteBatchCount)
+
+	// Update delete worker sleep time
 	updateDeleteWorkerSleepMs(clusterInfo.MetaNodeDeleteWorkerSleepMs)
 
-	if clusterInfo.DirChildrenNumLimit < proto.MinDirChildrenNumLimit {
-		log.LogWarnf("updateNodeInfo: DirChildrenNumLimit probably not enabled on master, set to default value(%v)",
-			proto.DefaultDirChildrenNumLimit)
-		atomic.StoreUint32(&dirChildrenNumLimit, proto.DefaultDirChildrenNumLimit)
-	} else {
-		atomic.StoreUint32(&dirChildrenNumLimit, clusterInfo.DirChildrenNumLimit)
-		log.LogInfof("updateNodeInfo: DirChildrenNumLimit(%v)", clusterInfo.DirChildrenNumLimit)
+	// Update directory children number limit with validation
+	if err := m.updateDirChildrenNumLimit(clusterInfo.DirChildrenNumLimit); err != nil {
+		log.LogWarnf("failed to update DirChildrenNumLimit: %v", err)
 	}
+
+	return nil
 }
 
+// updateDirChildrenNumLimit updates the directory children number limit with validation
+func (m *MetaNode) updateDirChildrenNumLimit(limit uint32) error {
+	if limit < proto.MinDirChildrenNumLimit {
+		log.LogWarnf("DirChildrenNumLimit(%v) is below minimum(%v), using default value(%v)",
+			limit, proto.MinDirChildrenNumLimit, proto.DefaultDirChildrenNumLimit)
+		atomic.StoreUint32(&dirChildrenNumLimit, proto.DefaultDirChildrenNumLimit)
+		return nil
+	}
+
+	atomic.StoreUint32(&dirChildrenNumLimit, limit)
+	log.LogInfof("DirChildrenNumLimit updated to %v", limit)
+	return nil
+}
+
+// getRocksDBModeMaxFsUsedPercent returns the RocksDB mode maximum filesystem usage percentage
 func getRocksDBModeMaxFsUsedPercent() uint64 {
 	return atomic.LoadUint64(&RocksDBModeMaxFsUsedPercent)
 }
 
+// getMemModeMaxFsUsedPercent returns the memory mode maximum filesystem usage percentage
 func getMemModeMaxFsUsedPercent() uint64 {
 	return atomic.LoadUint64(&MemModeMaxFsUsedPercent)
 }
 
+// GetDumpWaterLevel returns the current dump water level with minimum threshold
 func GetDumpWaterLevel() uint64 {
 	val := atomic.LoadUint64(&nodeInfo.dumpWaterLevel)
 	if val < DefaultDumpWaterLevel {
-		val = DefaultDumpWaterLevel
+		return DefaultDumpWaterLevel
 	}
 	return val
+}
+
+// GetDirChildrenNumLimit returns the current directory children number limit
+func GetDirChildrenNumLimit() uint32 {
+	return atomic.LoadUint32(&dirChildrenNumLimit)
+}
+
+// SetDumpWaterLevel sets the dump water level atomically
+func SetDumpWaterLevel(level uint64) {
+	atomic.StoreUint64(&nodeInfo.dumpWaterLevel, level)
 }

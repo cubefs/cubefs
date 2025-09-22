@@ -27,20 +27,28 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-// StartTcpService binds and listens to the specified port.
-func (m *MetaNode) startServer() (err error) {
-	// initialize and start the server.
-	m.httpStopC = make(chan uint8)
+// serverConfig holds common server configuration
+type serverConfig struct {
+	addr    string
+	stopC   chan uint8
+	handler func(net.Conn, chan uint8)
+}
 
-	addr := fmt.Sprintf(":%s", m.listen)
+// buildServerAddr constructs server address based on configuration
+func (m *MetaNode) buildServerAddr() string {
 	if m.bindIp {
-		addr = fmt.Sprintf("%s:%s", m.localAddr, m.listen)
+		return fmt.Sprintf("%s:%s", m.localAddr, m.listen)
+	}
+	return fmt.Sprintf(":%s", m.listen)
+}
+
+// startGenericServer starts a generic TCP server with given configuration
+func (m *MetaNode) startGenericServer(config serverConfig) error {
+	ln, err := net.Listen("tcp", config.addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w", config.addr, err)
 	}
 
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return
-	}
 	go func(stopC chan uint8) {
 		defer ln.Close()
 		for {
@@ -51,13 +59,33 @@ func (m *MetaNode) startServer() (err error) {
 			default:
 			}
 			if err != nil {
+				log.LogWarnf("failed to accept connection: %v", err)
 				continue
 			}
-			go m.serveConn(conn, stopC)
+			go config.handler(conn, stopC)
 		}
-	}(m.httpStopC)
+	}(config.stopC)
+
+	return nil
+}
+
+// StartTcpService binds and listens to the specified port.
+func (m *MetaNode) startServer() (err error) {
+	// Initialize and start the server
+	m.httpStopC = make(chan uint8)
+
+	config := serverConfig{
+		addr:    m.buildServerAddr(),
+		stopC:   m.httpStopC,
+		handler: m.serveConn,
+	}
+
+	if err = m.startGenericServer(config); err != nil {
+		return err
+	}
+
 	log.LogInfof("start server over...")
-	return
+	return nil
 }
 
 func (m *MetaNode) stopServer() {
@@ -71,85 +99,103 @@ func (m *MetaNode) stopServer() {
 	}
 }
 
+// configureTCPConn configures TCP connection with optimal settings
+func (m *MetaNode) configureTCPConn(conn net.Conn) {
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetKeepAlive(true)
+		tcpConn.SetNoDelay(true)
+	}
+}
+
+// handleConnectionError handles connection errors with appropriate logging
+func (m *MetaNode) handleConnectionError(err error, context string) {
+	if err == nil {
+		return
+	}
+
+	errMsg := err.Error()
+	if strings.Contains(errMsg, io.EOF.Error()) {
+		log.LogWarnf("%s: connection closed by client: %v", context, err)
+	} else {
+		log.LogErrorf("%s: connection error: %v", context, err)
+	}
+}
+
+// handlePacketError handles packet processing errors with appropriate logging
+func (m *MetaNode) handlePacketError(err error, p *Packet) {
+	if err == nil {
+		return
+	}
+
+	errMsg := err.Error()
+	// Check for specific error conditions that should be logged as warnings
+	if strings.Contains(errMsg, "over quota") ||
+		strings.Contains(errMsg, "inode ID out of range") ||
+		strings.Contains(errMsg, "unknown meta partition") ||
+		p.ResultCode == proto.OpNotExistErr {
+		log.LogWarnf("serve handlePacket fail: %v", err)
+	} else {
+		log.LogErrorf("serve handlePacket fail: %v", err)
+	}
+}
+
 // Read data from the specified tcp connection until the connection is closed by the remote or the tcp service is down.
 func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 	defer func() {
 		conn.Close()
 		m.RemoveConnection()
 	}()
+
 	m.AddConnection()
-	c := conn.(*net.TCPConn)
-	c.SetKeepAlive(true)
-	c.SetNoDelay(true)
+	m.configureTCPConn(conn)
 	remoteAddr := conn.RemoteAddr().String()
+
 	for {
 		select {
 		case <-stopC:
 			return
 		default:
 		}
+
 		p := &Packet{}
 		if err := p.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
-			if strings.Contains(err.Error(), io.EOF.Error()) {
-				log.LogWarnf("serve MetaNode: %v", err)
-			} else {
-				log.LogErrorf("serve MetaNode: %v", err)
-			}
+			m.handleConnectionError(err, "serve MetaNode")
 			return
 		}
+
 		if err := m.handlePacket(conn, p, remoteAddr); err != nil {
 			if p.ResultCode == proto.OpWriteOpOfProtoVerForbidden {
 				return
 			}
-			errMsg := err.Error()
-			if strings.Contains(errMsg, "over quota") || strings.Contains(errMsg, "inode ID out of range") ||
-				strings.Contains(errMsg, "unknown meta partition") || p.ResultCode == proto.OpNotExistErr {
-				log.LogWarnf("serve handlePacket fail: %v", err)
-			} else {
-				log.LogErrorf("serve handlePacket fail: %v", err)
-			}
+			m.handlePacketError(err, p)
 		}
 	}
 }
 
-func (m *MetaNode) handlePacket(conn net.Conn, p *Packet,
-	remoteAddr string,
-) (err error) {
+func (m *MetaNode) handlePacket(conn net.Conn, p *Packet, remoteAddr string) error {
 	// Handle request
-	err = m.metadataManager.HandleMetadataOperation(conn, p, remoteAddr)
-	return
+	return m.metadataManager.HandleMetadataOperation(conn, p, remoteAddr)
 }
 
 func (m *MetaNode) startSmuxServer() (err error) {
-	// initialize and start the server.
+	// Initialize and start the server
 	m.smuxStopC = make(chan uint8)
 
-	ipPort := fmt.Sprintf(":%s", m.listen)
-	if m.bindIp {
-		ipPort = fmt.Sprintf("%s:%s", m.localAddr, m.listen)
-	}
+	ipPort := m.buildServerAddr()
 	addr := util.ShiftAddrPort(ipPort, smuxPortShift)
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return
+
+	config := serverConfig{
+		addr:    addr,
+		stopC:   m.smuxStopC,
+		handler: m.serveSmuxConn,
 	}
-	go func(stopC chan uint8) {
-		defer ln.Close()
-		for {
-			conn, err := ln.Accept()
-			select {
-			case <-stopC:
-				return
-			default:
-			}
-			if err != nil {
-				continue
-			}
-			go m.serveSmuxConn(conn, stopC)
-		}
-	}(m.smuxStopC)
+
+	if err = m.startGenericServer(config); err != nil {
+		return err
+	}
+
 	log.LogInfof("start Smux Server over...")
-	return
+	return nil
 }
 
 func (m *MetaNode) stopSmuxServer() {
@@ -173,15 +219,12 @@ func (m *MetaNode) serveSmuxConn(conn net.Conn, stopC chan uint8) {
 		conn.Close()
 		m.RemoveConnection()
 	}()
+
 	m.AddConnection()
-	c := conn.(*net.TCPConn)
-	c.SetKeepAlive(true)
-	c.SetNoDelay(true)
+	m.configureTCPConn(conn)
 	remoteAddr := conn.RemoteAddr().String()
 
-	var sess *smux.Session
-	var err error
-	sess, err = smux.Server(conn, smuxPoolCfg.Config)
+	sess, err := smux.Server(conn, smuxPoolCfg.Config)
 	if err != nil {
 		log.LogErrorf("action[serveSmuxConn] failed to serve smux connection, err(%v)", err)
 		return
@@ -218,13 +261,10 @@ func (m *MetaNode) serveSmuxStream(stream *smux.Stream, remoteAddr string, stopC
 
 		p := &Packet{}
 		if err := p.ReadFromConnWithVer(stream, proto.NoReadDeadlineTime); err != nil {
-			if strings.Contains(err.Error(), io.EOF.Error()) {
-				log.LogWarnf("serve MetaNode: %v", err)
-			} else {
-				log.LogErrorf("serve MetaNode: %v", err)
-			}
+			m.handleConnectionError(err, "serve MetaNode")
 			return
 		}
+
 		if err := m.handlePacket(stream, p, remoteAddr); err != nil {
 			log.LogErrorf("serve handlePacket fail: %v", err)
 		}

@@ -142,22 +142,25 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	if len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
 		return
 	}
-	lackPartitions := make([]uint64, 0)
+
+	lackPartitions := make([]uint64, 0, len(metaNodeInfo.PersistenceMetaPartitions))
 	for _, partitionID := range metaNodeInfo.PersistenceMetaPartitions {
-		_, err := m.metadataManager.GetPartition(partitionID)
-		if err != nil {
+		if _, err := m.metadataManager.GetPartition(partitionID); err != nil {
 			lackPartitions = append(lackPartitions, partitionID)
 		}
 	}
+
 	if len(lackPartitions) == 0 {
 		return
 	}
+
+	nodeAddr := m.localAddr + ":" + m.listen
 	m.metrics.MetricMetaFailedPartition.SetWithLabels(float64(1), map[string]string{
 		"partids": fmt.Sprintf("%v", lackPartitions),
-		"node":    m.localAddr + ":" + m.listen,
+		"node":    nodeAddr,
 		"nodeid":  fmt.Sprintf("%d", m.nodeId),
 	})
-	log.LogErrorf("LackPartitions %v on metanode %v, please deal quickly", lackPartitions, m.localAddr+":"+m.listen)
+	log.LogErrorf("LackPartitions %v on metanode %v, please deal quickly", lackPartitions, nodeAddr)
 	return
 }
 
@@ -166,9 +169,13 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if !ok {
 		return errors.New("Invalid node Type!")
 	}
+
+	// Parse configuration
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
+
+	// Initialize components
 	if err = m.newRocksdbManager(cfg); err != nil {
 		return
 	}
@@ -179,6 +186,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
+	// Start services
 	if err = m.startRaftServer(cfg); err != nil {
 		return
 	}
@@ -200,12 +208,11 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 
 	go m.startUpdateNodeInfo()
-
 	m.startStat()
 
 	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
 
-	// check local partition compare with master ,if lack,then not start
+	// Check local partition compare with master, if lack, then not start
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
 		syslog.Println(err)
 		exporter.Warning(err.Error())
@@ -239,10 +246,10 @@ func (m *MetaNode) Sync() {
 
 func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	if cfg == nil {
-		err = errors.New("invalid configuration")
-		return
+		return errors.New("invalid configuration")
 	}
 
+	// Parse basic configuration
 	m.localAddr = cfg.GetString(cfgLocalIP)
 	m.listen = cfg.GetString(proto.ListenPort)
 	m.bindIp = cfg.GetBool(proto.BindIpKey)
@@ -259,13 +266,58 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		m.rack = proto.DefaultRack
 	}
 
-	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
-	if deleteBatchCount > 1 {
+	// Parse delete batch count
+	if deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount); deleteBatchCount > 1 {
 		updateDeleteBatchCount(uint64(deleteBatchCount))
 	}
 
 	m.serviceIDKey = cfg.GetString(cfgServiceIDKey)
 
+	// Parse memory configuration
+	if err = m.parseMemoryConfig(cfg); err != nil {
+		return
+	}
+
+	// Validate required configurations
+	if err = m.validateRequiredConfigs(); err != nil {
+		return
+	}
+
+	// Parse QoS configuration
+	m.qosEnable = cfg.GetBoolWithDefault(cfsQosEnable, true)
+	m.readDirIops = cfg.GetInt(cfgReadDirIops)
+	if m.readDirIops <= 0 {
+		m.readDirIops = defaultReadDirIops
+	}
+	syslog.Printf("conf qosEnable=%v readDirIops=%v", m.qosEnable, m.readDirIops)
+	log.LogInfof("[parseConfig] qosEnable[%v] readDirIops[%v]", m.qosEnable, m.readDirIops)
+
+	// Parse raft configuration
+	if err = m.parseRaftConfig(cfg); err != nil {
+		return
+	}
+
+	// Parse rocksdb configuration
+	if err = m.parseRocksdbConfig(cfg); err != nil {
+		return
+	}
+
+	// Parse smux configuration
+	if err = m.parseSmuxConfig(cfg); err != nil {
+		return fmt.Errorf("parseSmuxConfig fail err %v", err)
+	}
+	log.LogInfof("Start: init smux conn pool (%v).", smuxPoolCfg)
+	smuxPool = util.NewSmuxConnectPool(smuxPoolCfg)
+
+	// Parse master configuration
+	if err = m.parseMasterConfig(cfg); err != nil {
+		return
+	}
+
+	return m.validConfig()
+}
+
+func (m *MetaNode) parseMemoryConfig(cfg *config.Config) error {
 	total, _, err := util.GetMemInfo()
 	if err != nil {
 		log.LogErrorf("get total mem failed, err %s", err.Error())
@@ -275,7 +327,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	if err == nil && ratioStr != "" {
 		ratio, _ := strconv.Atoi(ratioStr)
 		if ratio <= 0 || ratio >= 100 {
-			return fmt.Errorf("cfgMemRatio is not legal, shoule beteen 1-100, now %s", ratioStr)
+			return fmt.Errorf("cfgMemRatio is not legal, should be between 1-100, now %s", ratioStr)
 		}
 
 		configTotalMem = total * uint64(ratio) / 100
@@ -283,14 +335,18 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	} else {
 		configTotalMem, _ = strconv.ParseUint(cfg.GetString(cfgTotalMem), 10, 64)
 		if configTotalMem == 0 {
-			return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
+			return fmt.Errorf("bad totalMem config, recommended to be configured as 80 percent of physical machine memory")
 		}
 	}
 
 	if err == nil && configTotalMem > total-util.GB {
-		return fmt.Errorf("bad totalMem config,Recommended to be configured as 80 percent of physical machine memory")
+		return fmt.Errorf("bad totalMem config, recommended to be configured as 80 percent of physical machine memory")
 	}
 
+	return nil
+}
+
+func (m *MetaNode) validateRequiredConfigs() error {
 	if m.metadataDir == "" {
 		return fmt.Errorf("bad metadataDir config")
 	}
@@ -306,16 +362,14 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	if m.raftReplicatePort == "" {
 		return fmt.Errorf("bad cfgRaftReplicaPort config")
 	}
+	return nil
+}
 
-	m.qosEnable = cfg.GetBoolWithDefault(cfsQosEnable, true)
-	m.readDirIops = cfg.GetInt(cfgReadDirIops)
-	if m.readDirIops <= 0 {
-		m.readDirIops = defaultReadDirIops
-	}
+func (m *MetaNode) parseRaftConfig(cfg *config.Config) error {
 
 	m.opLimiter = newOpLimiter()
 	// Load operation rate limiter configuration
-	if err = m.loadOpLimiterConfig(cfg); err != nil {
+	if err := m.loadOpLimiterConfig(cfg); err != nil {
 		return err
 	}
 
@@ -324,6 +378,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	raftRetainLogs := cfg.GetString(cfgRetainLogs)
 	if raftRetainLogs != "" {
+		var err error
 		if m.raftRetainLogs, err = strconv.ParseUint(raftRetainLogs, 10, 64); err != nil {
 			return fmt.Errorf("%v, err:%v", proto.ErrInvalidCfg, err.Error())
 		}
@@ -334,6 +389,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	syslog.Println("conf raftRetainLogs=", m.raftRetainLogs)
 	log.LogInfof("[parseConfig] raftRetainLogs[%v]", m.raftRetainLogs)
 
+	// Parse raft sync snap format version
 	if cfg.HasKey(cfgRaftSyncSnapFormatVersion) {
 		raftSyncSnapFormatVersion := uint32(cfg.GetInt64(cfgRaftSyncSnapFormatVersion))
 		if raftSyncSnapFormatVersion > SnapFormatVersion_1 {
@@ -350,6 +406,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	syslog.Println("conf raftSyncSnapFormatVersion=", m.raftSyncSnapFormatVersion)
 	log.LogInfof("[parseConfig] raftSyncSnapFormatVersion[%v]", m.raftSyncSnapFormatVersion)
 
+	return nil
+}
+
+func (m *MetaNode) parseRocksdbConfig(cfg *config.Config) error {
 	m.rocksDirs = cfg.GetStringSlice(cfgRocksDirs)
 	if len(m.rocksDirs) == 0 {
 		dbDir := path.Join(m.metadataDir, "db")
@@ -357,13 +417,12 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		m.rocksDirs = append(m.rocksDirs, dbDir)
 	}
 
-	// NOTE: create db dir
+	// Create db directories
 	for _, dbDir := range m.rocksDirs {
 		if !fileutil.ExistDir(dbDir) {
-			err = os.MkdirAll(dbDir, 0o755)
-			if err != nil {
+			if err := os.MkdirAll(dbDir, 0o755); err != nil {
 				log.LogErrorf("[parseConfig] failed to create rocksdb db dir(%v), err(%v)", dbDir, err)
-				return
+				return err
 			}
 		}
 	}
@@ -373,13 +432,14 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		m.diskReservedSpace = defaultDiskReservedSpace
 	}
 
+	// Check and store constant configuration
 	constCfg := config.ConstConfig{
 		Listen:           m.listen,
 		RaftHeartbetPort: m.raftHeartbeatPort,
 		RaftReplicaPort:  m.raftReplicatePort,
 	}
-	ok := false
-	if ok, err = config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg); !ok {
+	ok, err := config.CheckOrStoreConstCfg(m.metadataDir, config.DefaultConstConfigFile, &constCfg)
+	if !ok {
 		log.LogErrorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 	}
@@ -392,13 +452,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load raftReplicatePort[%v].", m.raftReplicatePort)
 	log.LogInfof("[parseConfig] load zoneName[%v], rack[%v].", m.zoneName, m.rack)
 
-	if err = m.parseSmuxConfig(cfg); err != nil {
-		return fmt.Errorf("parseSmuxConfig fail err %v", err)
-	} else {
-		log.LogInfof("Start: init smux conn pool (%v).", smuxPoolCfg)
-		smuxPool = util.NewSmuxConnectPool(smuxPoolCfg)
-	}
+	return nil
+}
 
+func (m *MetaNode) parseMasterConfig(cfg *config.Config) error {
 	addrs := cfg.GetSlice(proto.MasterAddr)
 	masters := make([]string, 0, len(addrs))
 	for _, addr := range addrs {
@@ -411,23 +468,18 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		updateInterval = DefaultNameResolveInterval
 	}
 
-	// masterClient = masterSDK.NewMasterClient(masters, false)
 	masterClient = masterSDK.NewMasterCLientWithResolver(masters, false, updateInterval)
 	if masterClient == nil {
-		err = fmt.Errorf("parseConfig: masters addrs format err[%v]", masters)
+		err := fmt.Errorf("parseConfig: masters addrs format err[%v]", masters)
 		log.LogErrorf("parseConfig: masters addrs format err[%v]", masters)
 		return err
 	}
+
 	poolSize := cfg.GetInt64(proto.CfgHttpPoolSize)
 	syslog.Printf("parseConfig: http pool size %d", poolSize)
 	masterClient.SetTransport(proto.GetHttpTransporter(&proto.HttpCfg{PoolSize: int(poolSize)}))
 
-	if err = masterClient.Start(); err != nil {
-		return err
-	}
-
-	err = m.validConfig()
-	return
+	return masterClient.Start()
 }
 
 func (m *MetaNode) parseSmuxConfig(cfg *config.Config) error {
@@ -511,33 +563,19 @@ func (m *MetaNode) newMetaManager(cfg *config.Config) (err error) {
 		return fmt.Errorf("constCfg check failed %v %v %v %v", m.metadataDir, config.DefaultConstConfigFile, constCfg, err)
 	}
 
-	var gcRecyclePercent float64
-	gcRecyclePercentStr := cfg.GetString(CfgGcRecyclePercent)
-	if gcRecyclePercentStr == "" {
-		gcRecyclePercent = defaultGcRecyclePercent
-	} else {
-		gcRecyclePercent, err = strconv.ParseFloat(gcRecyclePercentStr, 64)
-		if err != nil {
-			err = fmt.Errorf("parse configKey[%v] failed: %v", CfgGcRecyclePercent, err.Error())
-			log.LogError(err.Error())
-			return err
-		}
+	// Parse GC recycle percent
+	gcRecyclePercent, err := m.parseGcRecyclePercent(cfg)
+	if err != nil {
+		return err
 	}
 
-	var rocksDBDiskUsageThreshold float64
-	rocksDBDiskUsageThresholdStr := cfg.GetString(CfgRocksDBDiskUsageThreshold)
-	if rocksDBDiskUsageThresholdStr == "" {
-		rocksDBDiskUsageThreshold = 0.8
-	} else {
-		rocksDBDiskUsageThreshold, err = strconv.ParseFloat(rocksDBDiskUsageThresholdStr, 64)
-		if err != nil {
-			err = fmt.Errorf("parse configKey[%v] failed: %v", CfgRocksDBDiskUsageThreshold, err.Error())
-			log.LogError(err.Error())
-			return err
-		}
+	// Parse rocksdb disk usage threshold
+	rocksDBDiskUsageThreshold, err := m.parseRocksDBDiskUsageThreshold(cfg)
+	if err != nil {
+		return err
 	}
 
-	// load metadataManager
+	// Load metadataManager
 	conf := MetadataManagerConfig{
 		NodeID:                    m.nodeId,
 		RootDir:                   m.metadataDir,
@@ -550,6 +588,36 @@ func (m *MetaNode) newMetaManager(cfg *config.Config) (err error) {
 	}
 	m.metadataManager = NewMetadataManager(conf, m)
 	return
+}
+
+func (m *MetaNode) parseGcRecyclePercent(cfg *config.Config) (float64, error) {
+	gcRecyclePercentStr := cfg.GetString(CfgGcRecyclePercent)
+	if gcRecyclePercentStr == "" {
+		return defaultGcRecyclePercent, nil
+	}
+
+	gcRecyclePercent, err := strconv.ParseFloat(gcRecyclePercentStr, 64)
+	if err != nil {
+		err = fmt.Errorf("parse configKey[%v] failed: %v", CfgGcRecyclePercent, err.Error())
+		log.LogError(err.Error())
+		return 0, err
+	}
+	return gcRecyclePercent, nil
+}
+
+func (m *MetaNode) parseRocksDBDiskUsageThreshold(cfg *config.Config) (float64, error) {
+	rocksDBDiskUsageThresholdStr := cfg.GetString(CfgRocksDBDiskUsageThreshold)
+	if rocksDBDiskUsageThresholdStr == "" {
+		return 0.8, nil
+	}
+
+	rocksDBDiskUsageThreshold, err := strconv.ParseFloat(rocksDBDiskUsageThresholdStr, 64)
+	if err != nil {
+		err = fmt.Errorf("parse configKey[%v] failed: %v", CfgRocksDBDiskUsageThreshold, err.Error())
+		log.LogError(err.Error())
+		return 0, err
+	}
+	return rocksDBDiskUsageThreshold, nil
 }
 
 func (m *MetaNode) startMetaManager() (err error) {
