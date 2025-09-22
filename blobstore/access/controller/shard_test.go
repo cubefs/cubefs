@@ -181,7 +181,7 @@ func TestShardController(t *testing.T) {
 		require.Equal(t, clustermgr.ShardUnit{Suid: proto.EncodeSuid(1, 1, 0), DiskID: 2}, si.units[1])
 		// require.Equal(t, clustermgr.ShardUnit{Suid: proto.EncodeSuid(1, 2, 1), DiskID: 4}, si.units[2])
 
-		opInfo, err := si.GetMember(ctx, acapi.GetShardModeLeader, 0)
+		opInfo, err := si.GetMember(ctx, acapi.GetShardModeLeader, nil)
 		require.NoError(t, err)
 		require.Equal(t, ShardOpInfo{
 			DiskID:       2,
@@ -636,7 +636,7 @@ func TestShardUpdate(t *testing.T) {
 		sd, exist := svr.getShardNoLock(shardID)
 		require.True(t, exist)
 
-		opHeader, err := sd.GetMember(ctx, acapi.GetShardModeLeader, 0)
+		opHeader, err := sd.GetMember(ctx, acapi.GetShardModeLeader, nil)
 		require.NoError(t, err)
 		expect := ShardOpInfo{
 			DiskID:       1,
@@ -799,11 +799,11 @@ func TestShardGetShard(t *testing.T) {
 		sd, err = svr.GetShardByID(ctx, proto.ShardID(1))
 		require.NoError(t, err)
 
-		shardInfo, err := sd.GetMember(ctx, acapi.GetShardModeLeader, 0)
+		shardInfo, err := sd.GetMember(ctx, acapi.GetShardModeLeader, nil)
 		require.NoError(t, err)
 		require.Equal(t, shards[0].shardID, shardInfo.Suid.ShardID())
 
-		shardInfo, err = sd.GetMember(ctx, acapi.GetShardModeRandom, 0)
+		shardInfo, err = sd.GetMember(ctx, acapi.GetShardModeRandom, nil)
 		require.NoError(t, err)
 		require.Equal(t, shards[0].shardID, shardInfo.Suid.ShardID())
 
@@ -817,10 +817,11 @@ func TestShardGetShard(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, proto.ShardID(1), sd.GetShardID())
 
-		newDisk, err := sd.GetMember(ctx, acapi.GetShardModeRandom, 2)
+		newDisk, err := sd.GetMember(ctx, acapi.GetShardModeRandom, map[proto.DiskID]struct{}{2: {}, 1: {}})
 		require.NoError(t, err)
 		require.NotEqual(t, proto.DiskID(2), newDisk.DiskID)
-		require.Contains(t, []proto.DiskID{1, 3}, newDisk.DiskID)
+		require.NotEqual(t, proto.DiskID(1), newDisk.DiskID)
+		require.Contains(t, []proto.DiskID{3}, newDisk.DiskID)
 	}
 
 	// get shard by range

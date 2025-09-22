@@ -550,7 +550,7 @@ type ShardOpInfo struct {
 type Shard interface {
 	GetShardID() proto.ShardID
 	GetRange() sharding.Range
-	GetMember(context.Context, acapi.GetShardMode, proto.DiskID) (ShardOpInfo, error)
+	GetMember(context.Context, acapi.GetShardMode, map[proto.DiskID]struct{}) (ShardOpInfo, error)
 }
 
 // shard implement btree.Item interface, shard route information
@@ -587,12 +587,12 @@ func (i *shard) GetRange() sharding.Range {
 	return i.rangeExt
 }
 
-func (i *shard) GetMember(ctx context.Context, mode acapi.GetShardMode, exclude proto.DiskID) (ShardOpInfo, error) {
+func (i *shard) GetMember(ctx context.Context, mode acapi.GetShardMode, exclude map[proto.DiskID]struct{}) (ShardOpInfo, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("get shard member, mode:%d, exclude:%d, shard:%+v", mode, exclude, *i)
 
 	// 1. get member exclude disk id
-	if exclude != 0 {
+	if len(exclude) != 0 {
 		return i.getMemberExcluded(ctx, exclude)
 	}
 
@@ -600,11 +600,11 @@ func (i *shard) GetMember(ctx context.Context, mode acapi.GetShardMode, exclude 
 	if mode == acapi.GetShardModeLeader {
 		return i.getMemberLeader(ctx)
 	}
-	return i.getMemberRandom(ctx, 0)
+	return i.getMemberRandom(ctx, nil)
 }
 
-func (i *shard) getMemberExcluded(ctx context.Context, diskID proto.DiskID) (ShardOpInfo, error) {
-	return i.getMemberRandom(ctx, diskID)
+func (i *shard) getMemberExcluded(ctx context.Context, exclude map[proto.DiskID]struct{}) (ShardOpInfo, error) {
+	return i.getMemberRandom(ctx, exclude)
 }
 
 func (i *shard) getMemberLeader(ctx context.Context) (ShardOpInfo, error) {
@@ -615,7 +615,7 @@ func (i *shard) getMemberLeader(ctx context.Context) (ShardOpInfo, error) {
 	}, nil
 }
 
-func (i *shard) getMemberRandom(ctx context.Context, exclude proto.DiskID) (ShardOpInfo, error) {
+func (i *shard) getMemberRandom(ctx context.Context, exclude map[proto.DiskID]struct{}) (ShardOpInfo, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	n := len(i.units)
@@ -627,7 +627,7 @@ func (i *shard) getMemberRandom(ctx context.Context, exclude proto.DiskID) (Shar
 		if err != nil {
 			return ShardOpInfo{}, err
 		}
-		if i.units[idx].DiskID != exclude && !disk.Punished && !i.units[idx].Learner {
+		if _, exist := exclude[i.units[idx].DiskID]; !exist && !disk.Punished && !i.units[idx].Learner {
 			return i.getShardOpInfo(idx), nil
 		}
 

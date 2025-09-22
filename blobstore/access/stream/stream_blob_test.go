@@ -482,7 +482,7 @@ func TestStreamBlobOther(t *testing.T) {
 	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil)
 	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
 	shardInfo := NewMockShard(ctr)
-	shardInfo.EXPECT().GetMember(gAny, gAny, proto.DiskID(1)).Return(info, nil)
+	shardInfo.EXPECT().GetMember(gAny, gAny, map[proto.DiskID]struct{}{1: {}}).Return(info, nil)
 	shardMgr.EXPECT().GetShardByID(gAny, gAny).Return(shardInfo, nil)
 	shardMgr.EXPECT().UpdateShard(gAny, gAny).Return(nil)
 	svrCtrl.EXPECT().GetShardnodeHost(gAny, proto.DiskID(101)).Return(&controller.HostIDC{Host: "host101"}, nil)
@@ -528,8 +528,8 @@ func TestStreamBlob_NotLeader_RetrySuccess(t *testing.T) {
 
 	// shard mock
 	shard := NewMockShard(ctr)
-	shard.EXPECT().GetMember(gAny, gAny, gAny).Return(oldInfo, nil).AnyTimes()                                             // getShardOpHeader
-	shard.EXPECT().GetMember(gAny, acapi.GetShardModeRandom, proto.DiskID(oldInfo.DiskID)).Return(newInfo, nil).AnyTimes() // waitShardnodeNextLeader
+	shard.EXPECT().GetMember(gAny, gAny, gAny).Return(oldInfo, nil).AnyTimes()                                                              // getShardOpHeader
+	shard.EXPECT().GetMember(gAny, acapi.GetShardModeRandom, map[proto.DiskID]struct{}{oldInfo.DiskID: {}}).Return(newInfo, nil).AnyTimes() // waitShardnodeNextLeader
 	shard.EXPECT().GetShardID().Return(proto.ShardID(1)).AnyTimes()
 
 	// shard controller mock

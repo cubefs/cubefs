@@ -553,7 +553,7 @@ func (m *MockShard) EXPECT() *MockShardMockRecorder {
 }
 
 // GetMember mocks base method.
-func (m *MockShard) GetMember(arg0 context.Context, arg1 access.GetShardMode, arg2 proto.DiskID) (controller.ShardOpInfo, error) {
+func (m *MockShard) GetMember(arg0 context.Context, arg1 access.GetShardMode, arg2 map[proto.DiskID]struct{}) (controller.ShardOpInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetMember", arg0, arg1, arg2)
 	ret0, _ := ret[0].(controller.ShardOpInfo)

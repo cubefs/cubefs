@@ -423,7 +423,7 @@ func (h *Handler) getOpHeaderByShard(ctx context.Context, shardMgr controller.IS
 	span := trace.SpanFromContextSafe(ctx)
 
 	spaceID := shardMgr.GetSpaceID()
-	info, err := shard.GetMember(ctx, mode, 0)
+	info, err := shard.GetMember(ctx, mode, nil)
 	if err != nil {
 		return shardnode.ShardOpHeader{}, err
 	}
@@ -460,6 +460,7 @@ type punishArgs struct {
 	clusterID proto.ClusterID
 	host      string
 	mode      acapi.GetShardMode
+	exclude   map[proto.DiskID]struct{}
 	err       error
 }
 
@@ -481,7 +482,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		// if leader node broken disk, it cant get shard stats, wait new leader
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Broken")
 		if args.mode == acapi.GetShardModeLeader {
-			err1 := h.updateLeaderFromNewHost(ctx, args.clusterID, args.Suid, args.DiskID)
+			err1 := h.updateLeaderFromNewHost(ctx, args)
 			if err1 != nil {
 				span.Warnf("fail to change other shard node, cluster:%d, err:%+v", args.clusterID, err1)
 			}
@@ -506,7 +507,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 
 		// select master
 	case errcode.CodeShardNodeNotLeader: // leader disk id error when create/delete/seal
-		if err1 := h.updateLeaderFromNewHost(ctx, args.clusterID, args.Suid, args.DiskID); err1 != nil {
+		if err1 := h.updateLeaderFromNewHost(ctx, args); err1 != nil {
 			span.Warnf("fail to update leader and shard info, cluster:%d, err:%+v", args.clusterID, err1)
 		}
 		return false, args.err
@@ -520,7 +521,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		h.groupRun.Do("shardnode-leader-"+args.DiskID.ToString(), func() (interface{}, error) {
 			// must wait have master leader, block wait
 			h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Refused")
-			err1 := h.updateLeaderFromNewHost(ctx, args.clusterID, args.Suid, args.DiskID)
+			err1 := h.updateLeaderFromNewHost(ctx, args)
 			if err1 != nil {
 				span.Warnf("fail to change other shard node, cluster:%d, err:%+v", args.clusterID, err1)
 			}
@@ -558,30 +559,36 @@ func (h *Handler) updateLeaderFromCurrentHost(ctx context.Context, args *punishA
 }
 
 // updateLeaderFromNewHost from other shard host/disk, get leader and update shard
-func (h *Handler) updateLeaderFromNewHost(ctx context.Context, clusterID proto.ClusterID, suid proto.Suid, badDisk proto.DiskID) error {
-	shardMgr, err := h.clusterController.GetShardController(clusterID)
+func (h *Handler) updateLeaderFromNewHost(ctx context.Context, args *punishArgs) error {
+	shardMgr, err := h.clusterController.GetShardController(args.clusterID)
 	if err != nil {
 		return err
 	}
-	shard, err := shardMgr.GetShardByID(ctx, suid.ShardID())
+	shard, err := shardMgr.GetShardByID(ctx, args.Suid.ShardID())
 	if err != nil {
 		return err
 	}
 
+	if len(args.exclude) == 0 {
+		args.exclude = make(map[proto.DiskID]struct{})
+		args.exclude[args.DiskID] = struct{}{}
+	}
+
 	// we get new disk, exclude bad diskID
-	newDisk, err := shard.GetMember(ctx, acapi.GetShardModeRandom, badDisk)
+	newDisk, err := shard.GetMember(ctx, acapi.GetShardModeRandom, args.exclude)
 	if err != nil {
 		return err
 	}
-	newHost, err := h.getShardHost(ctx, clusterID, newDisk.DiskID)
+	newHost, err := h.getShardHost(ctx, args.clusterID, newDisk.DiskID)
 	if err != nil {
 		return err
 	}
 	// span := trace.SpanFromContextSafe(ctx)
 	// span.Debugf("get newDisk:%+v, old host:%s, old disk:%d", newDisk, args.host, args.DiskID)
 
-	shardStat, err := h.getLeaderShardInfo(ctx, clusterID, newHost, newDisk.DiskID, newDisk.Suid, badDisk)
+	shardStat, err := h.getLeaderShardInfo(ctx, args.clusterID, newHost, newDisk.DiskID, newDisk.Suid, args.DiskID)
 	if err != nil {
+		args.exclude[newDisk.DiskID] = struct{}{}
 		return err
 	}
 
