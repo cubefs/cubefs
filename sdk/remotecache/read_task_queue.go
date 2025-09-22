@@ -45,8 +45,9 @@ type ReadTaskItem struct {
 	closed   int32
 }
 
-func (rti *ReadTaskItem) Done() {
+func (rti *ReadTaskItem) Done(res *proto.ReadResult) {
 	if atomic.CompareAndSwapInt32(&rti.closed, 0, 1) {
+		rti.res = res
 		close(rti.done)
 	}
 }
@@ -201,12 +202,11 @@ func (rq *ReadTaskQueue) batchSmallObjectRead(taskWithPacket *ReadTaskWithPacket
 	defer func() {
 		if err != nil && (isLast || getResult) {
 			for _, task := range taskWithPacket.tasks {
-				task.res = &proto.ReadResult{
+				task.Done(&proto.ReadResult{
 					ReqId:      task.req.ReqId,
 					ResultCode: uint32(proto.OpErr),
 					Data:       []byte(err.Error()),
-				}
-				task.Done()
+				})
 			}
 		}
 		stat.EndStat("batchSmallObjectRead", err, bg, 1)
@@ -250,15 +250,14 @@ func (rq *ReadTaskQueue) batchSmallObjectRead(taskWithPacket *ReadTaskWithPacket
 	}
 	for _, task := range taskWithPacket.tasks {
 		if result, found := resultMap[task.req.ReqId]; found {
-			task.res = result
+			task.Done(result)
 		} else {
-			task.res = &proto.ReadResult{
+			task.Done(&proto.ReadResult{
 				ReqId:      task.req.ReqId,
 				ResultCode: uint32(proto.OpErr),
 				Data:       []byte("result not found in response"),
-			}
+			})
 		}
-		task.Done()
 	}
 	if log.EnableDebug() {
 		log.LogDebugf("batchSmallObjectRead: success, addr(%v) taskCount(%v)", rq.flashAddr, len(taskWithPacket.tasks))
@@ -286,12 +285,11 @@ done:
 	case rq.tasksChan <- tasks:
 	case <-rq.stopC:
 		for _, task := range tasks {
-			task.res = &proto.ReadResult{
+			task.Done(&proto.ReadResult{
 				ReqId:      task.req.ReqId,
 				ResultCode: uint32(proto.OpErr),
 				Data:       []byte("read task queue stopped"),
-			}
-			task.Done()
+			})
 		}
 	}
 }
@@ -304,12 +302,11 @@ func (rq *ReadTaskQueue) processConnTask(tasks []*ReadTaskItem) (err error) {
 	defer func() {
 		if err != nil {
 			for _, task := range tasks {
-				task.res = &proto.ReadResult{
+				task.Done(&proto.ReadResult{
 					ReqId:      task.req.ReqId,
 					ResultCode: uint32(proto.OpErr),
 					Data:       []byte(err.Error()),
-				}
-				task.Done()
+				})
 			}
 		}
 		stat.EndStat("processConnTask", err, bg, 1)
