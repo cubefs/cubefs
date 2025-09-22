@@ -516,7 +516,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 	}
 
 	// err:dial tcp 127.0.0.1:9100: connect: connection refused  ； code:500
-	if errorConnectionRefused(args.err) || errorTimeout(args.err) {
+	if errorConnectionRefused(args.err) {
 		span.Warnf("shardnode connection refused/timeout, args:%+v, err:%+v", *args, args.err)
 		h.groupRun.Do("shardnode-leader-"+args.DiskID.ToString(), func() (interface{}, error) {
 			// must wait have master leader, block wait
@@ -528,6 +528,11 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 			return nil, err1
 		})
 		return false, errcode.ErrConnectionRefused
+	}
+
+	if errorTimeout(args.err) {
+		h.punishShardnodeDiskWith(ctx, args.clusterID, args.DiskID, args.host, "Timeout")
+		return false, args.err
 	}
 
 	// eio or other error; if shardNode restarts quickly so wait for it to start, and try again
@@ -569,7 +574,7 @@ func (h *Handler) updateLeaderFromNewHost(ctx context.Context, args *punishArgs)
 		return err
 	}
 
-	if len(args.exclude) == 0 {
+	if args.exclude == nil {
 		args.exclude = make(map[proto.DiskID]struct{})
 		args.exclude[args.DiskID] = struct{}{}
 	}

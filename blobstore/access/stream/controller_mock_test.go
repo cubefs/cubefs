@@ -314,6 +314,18 @@ func (mr *MockServiceControllerMockRecorder) PunishShardnode(arg0, arg1, arg2 in
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PunishShardnode", reflect.TypeOf((*MockServiceController)(nil).PunishShardnode), arg0, arg1, arg2)
 }
 
+// PunishShardnodeDiskWithThreshold mocks base method.
+func (m *MockServiceController) PunishShardnodeDiskWithThreshold(arg0 context.Context, arg1 proto.DiskID, arg2 int) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PunishShardnodeDiskWithThreshold", arg0, arg1, arg2)
+}
+
+// PunishShardnodeDiskWithThreshold indicates an expected call of PunishShardnodeDiskWithThreshold.
+func (mr *MockServiceControllerMockRecorder) PunishShardnodeDiskWithThreshold(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PunishShardnodeDiskWithThreshold", reflect.TypeOf((*MockServiceController)(nil).PunishShardnodeDiskWithThreshold), arg0, arg1, arg2)
+}
+
 // MockVolumeGetter is a mock of VolumeGetter interface.
 type MockVolumeGetter struct {
 	ctrl     *gomock.Controller

@@ -552,6 +552,13 @@ func (h *Handler) punishShardnodeDisk(ctx context.Context, clusterID proto.Clust
 	}
 }
 
+func (h *Handler) punishShardnodeDiskWith(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID, host, reason string) {
+	reportUnhealth(clusterID, "punish", "shardnode", host, reason)
+	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
+		serviceController.PunishShardnodeDiskWithThreshold(ctx, diskID, h.ShardnodePunishIntervalS)
+	}
+}
+
 func errorTimeout(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "Timeout") || strings.Contains(msg, "timeout")
