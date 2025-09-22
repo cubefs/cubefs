@@ -257,6 +257,12 @@ func WriteStat() error {
 	if PrintModuleStat != nil {
 		PrintModuleStat(ioStream)
 	}
+	mem, ok1 := gSt.typeInfoMap["ReadFromMem"]
+	read, ok2 := gSt.typeInfoMap["Read"]
+	if ok1 && ok2 {
+		rate := float64(mem.allCount) / float64(read.allCount)
+		fmt.Fprintf(ioStream, "AheadReadHitRate %.2f%%\n", rate*100)
+	}
 	fmt.Fprintf(ioStream, "%-42s|%10s|%8s|%8s|%8s|%8s|%8s|%8s|%8s|\n",
 		"", "TOTAL", "FAILED", "AVG(ms)", "MAX(ms)", "MIN(ms)",
 		">"+strconv.Itoa(int(gSt.timeOutUs[0])/1000)+"ms",
