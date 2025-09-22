@@ -3385,7 +3385,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		DecommissionedDisk:                    dataNode.getDecommissionedDisks(),
 		DecommissionSuccessDisk:               dataNode.getDecommissionSuccessDisks(),
 		BackupDataPartitions:                  dataNode.getBackupDataPartitionIDs(),
-		PersistenceDataPartitionsWithDiskPath: m.cluster.getAllDataPartitionWithDiskPathByDataNode(nodeAddr),
+		PersistenceDataPartitionsWithDiskPath: m.cluster.getAllDataPartitionWithDiskPathByDataNode(nodeAddr, ignoreDiscardDp),
 		MediaType:                             dataNode.MediaType,
 		DiskOpLogs:                            dataNode.DiskOpLogs,
 		DpOpLogs:                              dataNode.DpOpLogs,

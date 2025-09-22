@@ -6568,11 +6568,15 @@ func (c *Cluster) checkDataReplicaMeta() {
 	}
 }
 
-func (c *Cluster) getAllDataPartitionWithDiskPathByDataNode(addr string) (infos []proto.DataPartitionDiskInfo) {
+func (c *Cluster) getAllDataPartitionWithDiskPathByDataNode(addr string, ignoreDiscard bool) (infos []proto.DataPartitionDiskInfo) {
 	infos = make([]proto.DataPartitionDiskInfo, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		vol.dataPartitions.Range(func(dp *DataPartition) bool {
+			if ignoreDiscard && dp.IsDiscard {
+				return true
+			}
+
 			for _, replica := range dp.Replicas {
 				if replica.Addr == addr {
 					infos = append(infos, proto.DataPartitionDiskInfo{PartitionId: dp.PartitionID, Disk: replica.DiskPath})
