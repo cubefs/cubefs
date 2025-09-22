@@ -2,10 +2,9 @@ package stream
 
 import (
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
@@ -39,10 +38,9 @@ func newTestStreamerWithAheadRead(t *testing.T, partitionID uint64) (*Streamer, 
 	s.extents = NewExtentCache(s.inode)
 	// Construct AheadReadWindow (no background goroutine needed)
 	s.aheadReadWindow = &AheadReadWindow{
-		cache:      arc,
-		streamer:   s,
-		taskC:      make(chan *AheadReadTask, arc.winCnt),
-		curTaskMap: make(map[string]interface{}),
+		cache:    arc,
+		streamer: s,
+		taskC:    make(chan *AheadReadTask, arc.winCnt),
 	}
 	return s, arc
 }
