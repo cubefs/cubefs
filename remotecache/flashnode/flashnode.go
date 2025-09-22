@@ -80,7 +80,6 @@ const (
 	_defaultFlashLimitHangTimeout          = 1000 // ms
 	_defaultBatchReadPoolConcurrency       = 128
 	_defaultKeyRateLimitThreshold          = 1024 * 1024
-	_defaultKeyLimiterFlow                 = 512 * 1024 * 1024
 )
 
 // Configuration keys
@@ -188,7 +187,7 @@ type FlashNode struct {
 	batchReadPool            *util.GTaskPool
 	batchReadPoolConcurrency int
 	keyRateLimitThreshold    int32
-	keyLimiterFlow           int32
+	keyLimiterFlow           int64
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -462,11 +461,8 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load batchReadPoolConcurrency[%d]", f.batchReadPoolConcurrency)
 	f.keyRateLimitThreshold = _defaultKeyRateLimitThreshold
 
-	keyLimiterFlow := cfg.GetInt(cfgKeyLimiterFlow)
-	if keyLimiterFlow <= 0 {
-		keyLimiterFlow = _defaultKeyLimiterFlow
-	}
-	f.keyLimiterFlow = int32(keyLimiterFlow)
+	keyLimiterFlow := cfg.GetInt64(cfgKeyLimiterFlow)
+	f.keyLimiterFlow = keyLimiterFlow
 	log.LogInfof("[parseConfig] load keyLimiterFlow[%d]", f.keyLimiterFlow)
 
 	taskCountLimit := cfg.GetInt(cfgNodeTaskCountLimit)

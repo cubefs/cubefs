@@ -132,7 +132,7 @@ type CacheEngine struct {
 
 	readDataNodeTimeout   int
 	keyRateLimitThreshold int32
-	keyLimiterFlow        int32
+	keyLimiterFlow        int64
 }
 
 type (
@@ -141,7 +141,7 @@ type (
 )
 
 func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, disks []*Disk,
-	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, cacheLoadWorkerNum int, cacheEvictWorkerNum int, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string, keyRateLimitThreshold int32, keyLimiterFlow int32,
+	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, cacheLoadWorkerNum int, cacheEvictWorkerNum int, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string, keyRateLimitThreshold int32, keyLimiterFlow int64,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.enableTmpfs = enableTmpfs
