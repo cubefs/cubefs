@@ -757,23 +757,23 @@ func (cb *CacheBlock) info() string {
 	return fmt.Sprintf("path(%v)_from(%v)_size(%v)", cb.filePath, cb.clientIP, cb.allocSize)
 }
 
-func (cb *CacheBlock) WaitForRateLimit(ctx context.Context, size int, threshold uint64) error {
-	if uint64(cb.allocSize) >= threshold {
-		if cb.keyLimiter != nil {
-			return cb.keyLimiter.WaitN(ctx, size)
+func (cb *CacheBlock) CheckRateLimit(size int, threshold uint64) error {
+	if cb.keyLimiter != nil && uint64(cb.allocSize) >= threshold {
+		if !cb.keyLimiter.AllowN(time.Now(), size) {
+			return util.LimitedFlowError
 		}
 	}
 	return nil
 }
 
-func (cb *CacheBlock) initKeyLimiter(keyRateLimitThreshold int32, keyLimiterFlow int32) {
-	if cb.allocSize >= int64(keyRateLimitThreshold) {
+func (cb *CacheBlock) initKeyLimiter(keyRateLimitThreshold int32, keyLimiterFlow int64) {
+	if cb.allocSize >= int64(keyRateLimitThreshold) && keyLimiterFlow > 0 {
 		flow := float64(keyLimiterFlow)
 		cb.keyLimiter = rate.NewLimiter(rate.Limit(flow), int(flow/2))
 	}
 }
 
-func NewCacheBlockV2(rootPath string, volume string, uniKey string, allocSize uint64, clientIP string, d *Disk, keyRateLimitThreshold int32, keyLimiterFlow int32,
+func NewCacheBlockV2(rootPath string, volume string, uniKey string, allocSize uint64, clientIP string, d *Disk, keyRateLimitThreshold int32, keyLimiterFlow int64,
 ) (cb *CacheBlock) {
 	cb = new(CacheBlock)
 	cb.volume = volume
