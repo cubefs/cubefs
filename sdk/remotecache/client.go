@@ -445,14 +445,16 @@ func (rc *RemoteCacheClient) UpdateFlashGroups() (err error) {
 			if _, ok := rc.hostLatency.Load(host); !ok {
 				newAdded = append(newAdded, host)
 			}
-			if _, ok := rc.ReadQueueMap.Load(host); !ok {
-				readQueue := NewReadTaskQueue(host, DefaultReadQueueWaitTime, rc)
-				_, loaded := rc.ReadQueueMap.LoadOrStore(host, readQueue)
-				if loaded {
-					readQueue.Stop()
-				}
-				if log.EnableDebug() {
-					log.LogDebugf("updateFlashGroups: created ReadQueueMap for host(%v)", host)
+			if !rc.FromFuse {
+				if _, ok := rc.ReadQueueMap.Load(host); !ok {
+					readQueue := NewReadTaskQueue(host, DefaultReadQueueWaitTime, rc)
+					_, loaded := rc.ReadQueueMap.LoadOrStore(host, readQueue)
+					if loaded {
+						readQueue.Stop()
+					}
+					if log.EnableDebug() {
+						log.LogDebugf("updateFlashGroups: created ReadQueueMap for host(%v)", host)
+					}
 				}
 			}
 		}
