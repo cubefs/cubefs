@@ -87,12 +87,9 @@ type AheadReadTask struct {
 }
 
 type AheadReadWindow struct {
-	taskC        chan *AheadReadTask
-	curTaskMap   map[string]interface{}
-	curTaskMutex sync.RWMutex
-	cache        *AheadReadCache
-	streamer     *Streamer
-	canAheadRead bool
+	taskC    chan *AheadReadTask
+	cache    *AheadReadCache
+	streamer *Streamer
 }
 
 type AheadReadCache struct {
@@ -203,10 +200,9 @@ func (arc *AheadReadCache) Stop() {
 
 func NewAheadReadWindow(arc *AheadReadCache, s *Streamer) *AheadReadWindow {
 	arw := &AheadReadWindow{
-		taskC:      make(chan *AheadReadTask, arc.winCnt),
-		curTaskMap: make(map[string]interface{}),
-		cache:      arc,
-		streamer:   s,
+		taskC:    make(chan *AheadReadTask, arc.winCnt),
+		cache:    arc,
+		streamer: s,
 	}
 	go arw.backgroundAheadReadTask()
 	return arw
@@ -234,19 +230,6 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 		realHost  = "invaild"
 	)
 	key := fmt.Sprintf("%v-%v-%v-%v", task.p.inode, task.p.PartitionID, task.p.ExtentID, task.p.ExtentOffset)
-	if arw.putTaskIfNotExist(key) {
-		return
-	}
-	defer func() {
-		arw.deleteTask(key)
-		if log.EnableDebug() {
-			log.LogDebugf("aheadRead done:key(%v) size(%v) err(%v) %v reqID(%v)",
-				task.req, task.cacheSize, err, time.Since(task.time), task.reqID)
-		}
-		stat.EndStat("PrepareAheadData", err, task.logTime, 1)
-		stat.EndStat(fmt.Sprintf("PrepareAheadData[%v]", task.cacheType), err, task.logTime, 1)
-		stat.EndStat(fmt.Sprintf("PrepareAheadData[%v][%v]", task.cacheType, realHost), err, task.logTime, 1)
-	}()
 	if _, ok := arw.cache.blockCache.Load(key); ok {
 		return
 	}
@@ -263,6 +246,15 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 		log.LogWarnf("aheadRead done:key(%v) no more block", key)
 		return
 	}
+	defer func() {
+		if log.EnableDebug() {
+			log.LogDebugf("doTask done:key(%v) size(%v) err(%v) %v reqID(%v)",
+				key, task.cacheSize, err, time.Since(task.time), task.reqID)
+		}
+		stat.EndStat("PrepareAheadData", err, task.logTime, 1)
+		stat.EndStat(fmt.Sprintf("PrepareAheadData[%v]", realHost), err, task.logTime, 1)
+	}()
+	log.LogDebugf("doTask key(%v) start", key)
 	cacheBlock.inode = task.p.inode
 	cacheBlock.partitionId = task.p.PartitionID
 	cacheBlock.extentId = task.p.ExtentID
@@ -300,10 +292,10 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 			readBytes += int(rp.Size)
 			atomic.AddUint64(&cacheBlock.readBytes, uint64(rp.Size))
 			curSize := atomic.LoadUint64(&cacheBlock.readBytes)
-			log.LogDebugf("aheadRead doTask  key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
+			log.LogDebugf("doTask  key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
 				key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock)
 			if curSize > util.CacheReadBlockSize {
-				log.LogErrorf("aheadRead doTask out of range key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
+				log.LogErrorf("doTask out of range key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
 					key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock)
 			}
 		}
@@ -313,33 +305,16 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 
 	if err == nil {
 		atomic.StoreUint32(&cacheBlock.state, AheadReadBlockStateInit)
-		arw.canAheadRead = true
-		log.LogDebugf("aheadRead ready: key(%v) offset(%v) size(%v) err(%v) %v reqID(%v)",
-			task.req, task.p.ExtentOffset, task.cacheSize, err, time.Since(task.time), task.reqID)
+		log.LogDebugf("doTask ready: key(%v) offset(%v) size(%v) err(%v) %v reqID(%v)",
+			key, task.p.ExtentOffset, task.cacheSize, err, time.Since(task.time), task.reqID)
 		return
 	}
 	atomic.StoreUint32(&cacheBlock.state, AheadReadBlockStateInit)
-	log.LogErrorf("aheadRead doTask inode(%v) offset(%v) size(%v) err(%v) - read failed,"+
+	log.LogErrorf("doTask inode(%v) offset(%v) size(%v) err(%v) - read failed,"+
 		" marking as recycled and deleting cache block",
 		cacheBlock.inode, task.p.ExtentOffset, task.cacheSize, err)
 	arw.cache.blockCache.Delete(key)
 	arw.cache.putAheadReadBlock(key, cacheBlock)
-}
-
-func (arw *AheadReadWindow) putTaskIfNotExist(key string) (exist bool) {
-	arw.curTaskMutex.Lock()
-	defer arw.curTaskMutex.Unlock()
-	if _, exist = arw.curTaskMap[key]; exist {
-		return
-	}
-	arw.curTaskMap[key] = struct{}{}
-	return
-}
-
-func (arw *AheadReadWindow) deleteTask(key string) {
-	arw.curTaskMutex.Lock()
-	defer arw.curTaskMutex.Unlock()
-	delete(arw.curTaskMap, key)
 }
 
 func (arw *AheadReadWindow) addNextTask(offset int, dp *wrapper.DataPartition, req *ExtentRequest, stTime time.Time,
@@ -364,25 +339,29 @@ func (arw *AheadReadWindow) addNextTask(offset int, dp *wrapper.DataPartition, r
 
 func (arw *AheadReadWindow) doMultiAheadRead(offset, remainSize int, req *ExtentRequest, dp *wrapper.DataPartition,
 	startTime time.Time, reqID string, storageClass uint32) {
-	if len(arw.curTaskMap) > 0 && !arw.canAheadRead {
-		return
-	}
+	cacheOffset := offset / util.CacheReadBlockSize * util.CacheReadBlockSize
+	key := fmt.Sprintf("%v-%v-%v-%v", arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, cacheOffset)
+	log.LogDebugf("doMultiAheadRead send: key(%v) reqID(%v) remainSize(%v) index(%v) req（%v）",
+		key, reqID, remainSize, offset/util.CacheReadBlockSize, req)
 	winCnt := arw.cache.winCnt
 	curReq := &ExtentRequest{
 		FileOffset: req.FileOffset,
 		Size:       req.Size,
 		ExtentKey:  req.ExtentKey,
 	}
-	id := 0
-	for i := offset / util.CacheReadBlockSize; i < winCnt; i++ {
+	id := offset / util.CacheReadBlockSize
+	for w := 0; w < winCnt; w++ {
 		if remainSize <= 0 {
 			id = 0
 			var err error
 			curReq.ExtentKey = arw.streamer.getNextExtent(int(curReq.ExtentKey.FileOffset))
 			if curReq.ExtentKey == nil {
+				log.LogWarnf("doMultiAheadRead send: key(%v) next ExtentKey is nil", key)
 				return
 			}
+			key = fmt.Sprintf("%v-%v-%v-%v", arw.streamer.inode, curReq.ExtentKey.PartitionId, curReq.ExtentKey.ExtentId, cacheOffset)
 			if dp, err = arw.streamer.client.dataWrapper.GetDataPartition(curReq.ExtentKey.PartitionId); err != nil {
+				log.LogWarnf("doMultiAheadRead send: key(%v) dp nil,err(%v)", key, err)
 				continue
 			}
 			remainSize = int(curReq.ExtentKey.Size)
@@ -395,8 +374,8 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset, remainSize int, req *Extent
 			task.cacheType = "pass"
 			task.logTime = stat.BeginStat()
 			task.reqID = reqID
-			log.LogDebugf("aheadRead send: key(%v) offset(%v) size(%v) reqID(%v)",
-				task.req, task.p.ExtentOffset, task.cacheSize, reqID)
+			log.LogDebugf("doMultiAheadRead send: key(%v) offset(%v) size(%v) reqID(%v)",
+				key, task.p.ExtentOffset, task.cacheSize, reqID)
 			arw.taskC <- task
 		}
 		remainSize -= size
