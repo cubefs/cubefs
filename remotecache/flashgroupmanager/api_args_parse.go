@@ -167,6 +167,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[cfgFlashWriteFlowLimit] = val
 	}
 
+	if value = r.FormValue(cfgFlashKeyFlowLimit); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(cfgFlashKeyFlowLimit)
+			return
+		}
+		params[cfgFlashKeyFlowLimit] = val
+	}
+
 	if value = r.FormValue(cfgRemoteClientFlowLimit); value != "" {
 		noParams = false
 		val := int64(0)

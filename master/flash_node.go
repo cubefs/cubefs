@@ -89,7 +89,7 @@ func (c *Cluster) handleManualTaskProcessing(flashNode *flashgroupmanager.FlashN
 
 func (c *Cluster) checkFlashNodeHeartbeat() {
 	tasks := c.flashNodeTopo.CreateFlashNodeHeartBeatTasks(c.masterAddr(), c.cfg.flashNodeHandleReadTimeout,
-		c.cfg.flashNodeReadDataNodeTimeout, c.cfg.flashHotKeyMissCount, c.cfg.flashReadFlowLimit, c.cfg.flashWriteFlowLimit)
+		c.cfg.flashNodeReadDataNodeTimeout, c.cfg.flashHotKeyMissCount, c.cfg.flashReadFlowLimit, c.cfg.flashWriteFlowLimit, c.cfg.flashKeyFlowLimit)
 	c.addFlashNodeHeartbeatTasks(tasks)
 }
 

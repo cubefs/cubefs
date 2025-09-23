@@ -33,6 +33,7 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  FlashHotKeyMissCount             : %v\n", cv.FlashHotKeyMissCount))
 	sb.WriteString(fmt.Sprintf("  FlashReadFlowLimit               : %v\n", cv.FlashReadFlowLimit))
 	sb.WriteString(fmt.Sprintf("  FlashWriteFlowLimit              : %v\n", cv.FlashWriteFlowLimit))
+	sb.WriteString(fmt.Sprintf("  FlashKeyFlowLimit                : %v\n", cv.FlashKeyFlowLimit))
 	sb.WriteString(fmt.Sprintf("  RemoteClientFlowLimit            : %v\n", cv.RemoteClientFlowLimit))
 	return sb.String()
 }

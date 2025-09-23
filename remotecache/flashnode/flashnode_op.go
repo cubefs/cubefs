@@ -118,6 +118,10 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		if req.FlashHotKeyMissCount != 0 {
 			f.hotKeyMissCount = int32(req.FlashHotKeyMissCount)
 		}
+		if req.FlashKeyFlowLimit != f.keyLimiterFlow {
+			f.keyLimiterFlow = req.FlashKeyFlowLimit
+			f.cacheEngine.SetKeyLimiterFlow(req.FlashKeyFlowLimit)
+		}
 		if !f.localChangeWriteFlow && req.FlashWriteFlowLimit != int64(f.diskWriteFlow) {
 			f.diskWriteFlow = int(req.FlashWriteFlowLimit)
 			f.limitWrite.ResetFlow(f.diskWriteFlow)
@@ -361,6 +365,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 	} else {
 		p.PacketOkReply()
 		if err1 = p.WriteToConn(conn); err1 != nil {
+			f.cacheEngine.DeleteCacheBlock(blockKey)
 			log.LogWarnf(logPrefix+" blockKey %v write to conn %v", blockKey, err1)
 			return
 		}

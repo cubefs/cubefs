@@ -80,6 +80,7 @@ const (
 	flashHotKeyMissCount         = "flashHotKeyMissCount"
 	flashReadFlowLimit           = "flashReadFlowLimit"
 	flashWriteFlowLimit          = "flashWriteFlowLimit"
+	flashKeyFlowLimit            = "flashKeyFlowLimit"
 	remoteClientFlowLimit        = "remoteClientFlowLimit"
 )
 
@@ -131,6 +132,7 @@ const (
 	defaultFlashHotKeyMissCount         = 5
 	defaultFlashReadFlowLimit           = 2147483648
 	defaultFlashWriteFlowLimit          = 2147483648
+	defaultFlashKeyFlowLimit            = 0
 	defaultRemoteClientFlowLimit        = 0
 
 	defaultMetaNodeGOGC = 100
@@ -215,6 +217,7 @@ type clusterConfig struct {
 	flashHotKeyMissCount         int
 	flashReadFlowLimit           int64
 	flashWriteFlowLimit          int64
+	flashKeyFlowLimit            int64
 	remoteClientFlowLimit        int64
 
 	metaNodeGOGC int
@@ -266,6 +269,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.flashHotKeyMissCount = defaultFlashHotKeyMissCount
 	cfg.flashReadFlowLimit = defaultFlashReadFlowLimit
 	cfg.flashWriteFlowLimit = defaultFlashWriteFlowLimit
+	cfg.flashKeyFlowLimit = defaultFlashKeyFlowLimit
 	cfg.remoteClientFlowLimit = defaultRemoteClientFlowLimit
 	cfg.metaNodeGOGC = defaultMetaNodeGOGC
 	cfg.dataNodeGOGC = defaultDataNodeGOGC

@@ -400,7 +400,11 @@ func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string
 }
 
 func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
+	bg := stat.BeginStat()
 	defer func() {
+		if !isLoad {
+			stat.EndStat("initFilePath", err, bg, 1)
+		}
 		if err != nil {
 			if IsDiskErr(err.Error()) {
 				log.LogWarnf("[checkIsDiskError] data path(%v) meet io error", cb.filePath)
@@ -803,6 +807,10 @@ func (c *CacheEngine) CreateBlockV2(pDir string, uniKey string, ttl uint64, size
 }
 
 func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, allocSize uint64, clientIP string) (block *CacheBlock, err error, created bool) {
+	bg := stat.BeginStat()
+	defer func() {
+		stat.EndStat("createCacheBlockV2", err, bg, 1)
+	}()
 	if allocSize == 0 {
 		return nil, fmt.Errorf("alloc size is zero"), false
 	}

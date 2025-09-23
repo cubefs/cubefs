@@ -276,6 +276,11 @@ func (c *CacheEngine) isCacheBlockFileName(filename string) (isCacheBlockDir boo
 	return
 }
 
+func (c *CacheEngine) SetKeyLimiterFlow(keyLimiterFlow int64) {
+	atomic.StoreInt64(&c.keyLimiterFlow, keyLimiterFlow)
+	log.LogInfof("CacheEngine: set keyLimiterFlow to %d", keyLimiterFlow)
+}
+
 func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version uint32, err error) {
 	var value uint64
 	arr := strings.Split(name, "#")

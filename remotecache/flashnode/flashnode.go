@@ -56,9 +56,9 @@ const (
 	_tcpServerTimeoutSec                   = 60 * 5
 	_connPoolIdleTimeout                   = 60 // 60s
 	_extentReadMaxRetry                    = 3
-	_defaultDiskWriteIOCC                  = 64
+	_defaultDiskWriteIOCC                  = 128
 	_defaultDiskWriteFactor                = 8
-	_defaultDiskReadIOCC                   = 64
+	_defaultDiskReadIOCC                   = 128
 	_defaultDiskReadFactor                 = 8
 	_maxFlashNodeTaskCountLimit            = 20
 	_defaultFlashNodeTaskCountLimit        = 1
@@ -111,7 +111,6 @@ const (
 	cfgPrepareLoadRoutineNum        = "prepareLoadRoutineNum"
 	cfgMissEntryTimeout             = "missEntryTimeout"
 	cfgBatchReadPoolConcurrency     = "batchReadPoolConcurrency"
-	cfgKeyLimiterFlow               = "keyLimiterFlow"
 	paramIocc                       = "iocc"
 	paramFlow                       = "flow"
 	paramFactor                     = "factor"
@@ -448,11 +447,6 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	f.batchReadPool.SetWaitTime(5 * time.Millisecond)
 	log.LogInfof("[parseConfig] load batchReadPoolConcurrency[%d]", f.batchReadPoolConcurrency)
 	f.keyRateLimitThreshold = _defaultKeyRateLimitThreshold
-
-	keyLimiterFlow := cfg.GetInt64(cfgKeyLimiterFlow)
-	f.keyLimiterFlow = keyLimiterFlow
-	log.LogInfof("[parseConfig] load keyLimiterFlow[%d]", f.keyLimiterFlow)
-
 	taskCountLimit := cfg.GetInt(cfgNodeTaskCountLimit)
 	if taskCountLimit <= 0 {
 		taskCountLimit = _defaultFlashNodeTaskCountLimit
@@ -565,6 +559,10 @@ func (f *FlashNode) register() error {
 			if ci.FlashReadTimeout != 0 {
 				log.LogInfof("FlashNode load handleReadTimeout from %d(ms) to %d(ms)", f.handleReadTimeout, ci.FlashReadTimeout)
 				f.handleReadTimeout = ci.FlashReadTimeout
+			}
+			if ci.FlashKeyFlowLimit != f.keyLimiterFlow {
+				log.LogInfof("FlashNode load keyLimiterFlow from %d to %d", f.keyLimiterFlow, ci.FlashKeyFlowLimit)
+				f.keyLimiterFlow = ci.FlashKeyFlowLimit
 			}
 			f.localAddr = fmt.Sprintf("%s:%v", localIP, f.listen)
 

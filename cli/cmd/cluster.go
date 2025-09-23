@@ -307,6 +307,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	optRemoteCacheSameRegionTimeout := ""
 	optFlashReadFlowLimit := ""
 	optFlashWriteFlowLimit := ""
+	optFlashKeyFlowLimit := ""
 	optRemoteClientFlowLimit := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
@@ -541,6 +542,17 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if optFlashKeyFlowLimit != "" {
+				if tmp, err = strconv.ParseInt(optFlashKeyFlowLimit, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optFlashKeyFlowLimit)
+					return
+				}
+				if tmp < 0 {
+					err = fmt.Errorf("param flashKeyFlowLimit(%v) must greater than or equal to 0", optFlashKeyFlowLimit)
+					return
+				}
+			}
+
 			if optRemoteClientFlowLimit != "" {
 				if tmp, err = strconv.ParseInt(optRemoteClientFlowLimit, 10, 64); err != nil {
 					err = fmt.Errorf("param (%v) failed, should be int", optRemoteClientFlowLimit)
@@ -597,7 +609,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware,
 				distributionOptimizationConDpCnt, distributionOptimizationThreshold,
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount, optFlashReadFlowLimit, optFlashWriteFlowLimit, optRemoteClientFlowLimit); err != nil {
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount, optFlashReadFlowLimit, optFlashWriteFlowLimit, optFlashKeyFlowLimit, optRemoteClientFlowLimit); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -645,6 +657,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optFlashHotKeyMissCount, CliFlagFlashHotKeyMissCount, "", "Flash hot key miss count(must > 0)")
 	cmd.Flags().StringVar(&optFlashReadFlowLimit, CliFlagFlashReadFlowLimit, "", "Flash read flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optFlashWriteFlowLimit, CliFlagFlashWriteFlowLimit, "", "Flash write flow limit(must >= 0)")
+	cmd.Flags().StringVar(&optFlashKeyFlowLimit, CliFlagFlashKeyFlowLimit, "", "Flash key flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optRemoteClientFlowLimit, CliFlagRemoteClientFlowLimit, "", "Remote client flow limit(must >= 0)")
 
 	return cmd

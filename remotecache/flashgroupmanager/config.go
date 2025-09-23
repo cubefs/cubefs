@@ -24,6 +24,7 @@ const (
 	defaultFlashHotKeyMissCount         = 5
 	defaultFlashReadFlowLimit           = 2147483648
 	defaultFlashWriteFlowLimit          = 2147483648
+	defaultFlashKeyFlowLimit            = 0
 	defaultRemoteClientFlowLimit        = 0
 )
 
@@ -39,6 +40,7 @@ const (
 	cfgFlashHotKeyMissCount         = "flashHotKeyMissCount"
 	cfgFlashReadFlowLimit           = "flashReadFlowLimit"
 	cfgFlashWriteFlowLimit          = "flashWriteFlowLimit"
+	cfgFlashKeyFlowLimit            = "flashKeyFlowLimit"
 	cfgRemoteClientFlowLimit        = "remoteClientFlowLimit"
 )
 
@@ -66,6 +68,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.FlashHotKeyMissCount = defaultFlashHotKeyMissCount
 	cfg.FlashReadFlowLimit = defaultFlashReadFlowLimit
 	cfg.FlashWriteFlowLimit = defaultFlashWriteFlowLimit
+	cfg.FlashKeyFlowLimit = defaultFlashKeyFlowLimit
 	cfg.RemoteClientFlowLimit = defaultRemoteClientFlowLimit
 
 	return
