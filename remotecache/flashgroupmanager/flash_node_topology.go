@@ -822,13 +822,13 @@ func (t *FlashNodeTopology) SaveFlashGroup(group *FlashGroup) {
 }
 
 func (t *FlashNodeTopology) CreateFlashNodeHeartBeatTasks(leader string, handleReadTimeout, readDataNodeTimeout,
-	hotKeyMissCount int, flashReadFlowLimit int64, flashWriteFlowLimit int64) []*proto.AdminTask {
+	hotKeyMissCount int, flashReadFlowLimit int64, flashWriteFlowLimit int64, flashKeyFlowLimit int64) []*proto.AdminTask {
 	tasks := make([]*proto.AdminTask, 0)
 	t.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
 		node := flashNode.(*FlashNode)
 		node.checkLiveliness()
 		task := node.createHeartbeatTask(leader, handleReadTimeout, readDataNodeTimeout, hotKeyMissCount,
-			flashReadFlowLimit, flashWriteFlowLimit)
+			flashReadFlowLimit, flashWriteFlowLimit, flashKeyFlowLimit)
 		tasks = append(tasks, task)
 		return true
 	})

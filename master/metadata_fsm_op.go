@@ -85,6 +85,7 @@ type clusterValue struct {
 	FlashHotKeyMissCount                   int
 	FlashReadFlowLimit                     int64
 	FlashWriteFlowLimit                    int64
+	FlashKeyFlowLimit                      int64
 	RemoteClientFlowLimit                  int64
 }
 
@@ -140,6 +141,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FlashHotKeyMissCount:                   c.cfg.flashHotKeyMissCount,
 		FlashReadFlowLimit:                     c.cfg.flashReadFlowLimit,
 		FlashWriteFlowLimit:                    c.cfg.flashWriteFlowLimit,
+		FlashKeyFlowLimit:                      c.cfg.flashKeyFlowLimit,
 		RemoteClientFlowLimit:                  c.cfg.remoteClientFlowLimit,
 	}
 	return cv
@@ -1433,11 +1435,12 @@ func (c *Cluster) loadClusterValue() (err error) {
 
 		c.cfg.flashReadFlowLimit = cv.FlashReadFlowLimit
 		c.cfg.flashWriteFlowLimit = cv.FlashWriteFlowLimit
+		c.cfg.flashKeyFlowLimit = cv.FlashKeyFlowLimit
 		c.cfg.remoteClientFlowLimit = cv.RemoteClientFlowLimit
 
 		c.cfg.flashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
-		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout %v(ms), flashHotKeyMissCount %v, flashReadFlowLimit %v, flashWriteFlowLimit %v, remoteClientFlowLimit %v",
-			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount, cv.FlashReadFlowLimit, cv.FlashWriteFlowLimit, cv.RemoteClientFlowLimit)
+		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout %v(ms), flashHotKeyMissCount %v, flashReadFlowLimit %v, flashWriteFlowLimit %v, flashKeyFlowLimit %v, remoteClientFlowLimit %v",
+			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount, cv.FlashReadFlowLimit, cv.FlashWriteFlowLimit, cv.FlashKeyFlowLimit, cv.RemoteClientFlowLimit)
 	}
 
 	return

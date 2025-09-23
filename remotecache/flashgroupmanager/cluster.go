@@ -173,7 +173,7 @@ func (c *Cluster) handleFlashNodeHeartbeatResp(nodeAddr string, resp *proto.Flas
 
 func (c *Cluster) checkFlashNodeHeartbeat() {
 	tasks := c.flashNodeTopo.CreateFlashNodeHeartBeatTasks(c.masterAddr(), int(c.cfg.RemoteCacheReadTimeout),
-		c.cfg.FlashNodeReadDataNodeTimeout, c.cfg.FlashHotKeyMissCount, c.cfg.FlashReadFlowLimit, c.cfg.FlashWriteFlowLimit)
+		c.cfg.FlashNodeReadDataNodeTimeout, c.cfg.FlashHotKeyMissCount, c.cfg.FlashReadFlowLimit, c.cfg.FlashWriteFlowLimit, c.cfg.FlashKeyFlowLimit)
 	c.addFlashNodeHeartbeatTasks(tasks)
 }
 
