@@ -40,9 +40,12 @@ type RaftServer struct {
 func (rs *RaftServer) RemoveRaftForce(raftId uint64, cc *proto.ConfChange) {
 	var s *raft
 	var ok bool
+	rs.mu.RLock()
 	if s, ok = rs.rafts[raftId]; !ok {
+		rs.mu.RUnlock()
 		return
 	}
+	rs.mu.RUnlock()
 	// repl apply
 	peerChange := cc.Peer
 	for _, replica := range s.raftFsm.replicas {
