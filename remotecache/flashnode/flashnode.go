@@ -57,10 +57,8 @@ const (
 	_connPoolIdleTimeout                   = 60 // 60s
 	_extentReadMaxRetry                    = 3
 	_defaultDiskWriteIOCC                  = 64
-	_defaultDiskWriteFlow                  = _defaultDiskReadFlow
 	_defaultDiskWriteFactor                = 8
 	_defaultDiskReadIOCC                   = 64
-	_defaultDiskReadFlow                   = 1 * util.GB
 	_defaultDiskReadFactor                 = 8
 	_maxFlashNodeTaskCountLimit            = 20
 	_defaultFlashNodeTaskCountLimit        = 1
@@ -100,10 +98,8 @@ const (
 	cfgMemDataPath                  = "memDataPath"
 	cfgDiskDataPath                 = "diskDataPath"
 	cfgDiskWriteIocc                = "diskWriteIocc"     // int
-	cfgDiskWriteFlow                = "diskWriteFlow"     // int
 	cfgDiskWriteIoFactor            = "diskWriteIoFactor" // int
 	cfgDiskReadIocc                 = "diskReadIocc"      // int
-	cfgDiskReadFlow                 = "diskReadFlow"      // int
 	cfgDiskReadIoFactor             = "diskReadIoFactor"  // int
 	cfgNodeTaskCountLimit           = "nodeTaskCountLimit"
 	cfgScanCheckInterval            = "scanCheckInterval"
@@ -292,10 +288,6 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if f.diskWriteIocc <= 0 {
 		f.diskWriteIocc = _defaultDiskWriteIOCC
 	}
-	f.diskWriteFlow = int(cfg.GetInt64(cfgDiskWriteFlow))
-	if f.diskWriteFlow == 0 && !cfg.HasKey(cfgDiskWriteFlow) {
-		f.diskWriteFlow = _defaultDiskWriteFlow
-	}
 	f.diskWriteIoFactorFlow = cfg.GetInt(cfgDiskWriteIoFactor)
 	if f.diskWriteIoFactorFlow <= 0 {
 		f.diskWriteIoFactorFlow = _defaultDiskWriteFactor
@@ -304,10 +296,6 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	f.diskReadIocc = cfg.GetInt(cfgDiskReadIocc)
 	if f.diskReadIocc <= 0 {
 		f.diskReadIocc = _defaultDiskReadIOCC
-	}
-	f.diskReadFlow = int(cfg.GetInt64(cfgDiskReadFlow))
-	if f.diskReadFlow == 0 && !cfg.HasKey(cfgDiskReadFlow) {
-		f.diskReadFlow = _defaultDiskReadFlow
 	}
 	f.diskReadIoFactorFlow = cfg.GetInt(cfgDiskReadIoFactor)
 	if f.diskReadIoFactorFlow <= 0 {

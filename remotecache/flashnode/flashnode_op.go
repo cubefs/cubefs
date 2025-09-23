@@ -88,8 +88,6 @@ func (f *FlashNode) SetTimeout(handleReadTimeout int, readDataNodeTimeout int) {
 	if f.handleReadTimeout != handleReadTimeout && handleReadTimeout > 0 {
 		log.LogInfof("FlashNode set handleReadTimeout from %d(ms) to %d(ms)", f.handleReadTimeout, handleReadTimeout)
 		f.handleReadTimeout = handleReadTimeout
-		f.limitWrite.ResetIOEx(f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, f.handleReadTimeout)
-		f.limitWrite.ResetFlow(f.diskWriteFlow)
 	}
 	f.cacheEngine.SetReadDataNodeTimeout(readDataNodeTimeout)
 }
