@@ -260,8 +260,8 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 			if s.aheadReadEnable && req.ExtentKey.Size > util.CacheReadBlockSize {
 				bgTime := stat.BeginStat()
 				readBytes, err = s.aheadRead(req, storageClass)
-				stat.EndStat("ReadFromMem", err, bgTime, 1)
 				if err == nil && readBytes == req.Size {
+					stat.EndStat("ReadFromMem", err, bgTime, 1)
 					total += readBytes
 					continue
 				}
