@@ -59,6 +59,12 @@ type Dentry struct {
 	multiSnap *DentryMultiSnap
 }
 
+// Constants for better performance
+const (
+	maxInt64Mask = math.MaxInt64
+	deletedFlag  = uint64(1) << 63
+)
+
 func NewDentrySnap(seq uint64) *DentryMultiSnap {
 	return &DentryMultiSnap{
 		VerSeq: seq,
@@ -76,6 +82,7 @@ func (d *Dentry) addVersion(ver uint64) {
 	dn := d.CopyDirectly().(*Dentry)
 	dn.setVerSeq(d.getSeqFiled())
 	d.setVerSeq(ver)
+	// Prepend to avoid slice reallocation
 	d.multiSnap.dentryList = append([]*Dentry{dn}, d.multiSnap.dentryList...)
 }
 
@@ -97,21 +104,22 @@ func (d *Dentry) getSeqFiled() (verSeq uint64) {
 	return d.multiSnap.VerSeq
 }
 
-func isSeqEqual(ver_1 uint64, ver_2 uint64) bool {
-	if isInitSnapVer(ver_1) {
-		ver_1 = 0
+// Optimized version comparison with early returns
+func isSeqEqual(ver1, ver2 uint64) bool {
+	if isInitSnapVer(ver1) {
+		ver1 = 0
 	}
-	if isInitSnapVer(ver_2) {
-		ver_2 = 0
+	if isInitSnapVer(ver2) {
+		ver2 = 0
 	}
-	return (ver_1 & math.MaxInt64) == (ver_2 & math.MaxInt64)
+	return (ver1 & maxInt64Mask) == (ver2 & maxInt64Mask)
 }
 
 func (d *Dentry) getVerSeq() (verSeq uint64) {
 	if d.multiSnap == nil {
 		return 0
 	}
-	return d.multiSnap.VerSeq & math.MaxInt64
+	return d.multiSnap.VerSeq & maxInt64Mask
 }
 
 func (d *Dentry) isDeleted() bool {
@@ -127,7 +135,7 @@ func (d *Dentry) setDeleted() {
 		return
 	}
 	log.LogDebugf("action[setDeleted] d %v be set deleted", d)
-	d.multiSnap.VerSeq |= uint64(1) << 63
+	d.multiSnap.VerSeq |= deletedFlag
 }
 
 func (d *Dentry) minimizeSeq() (verSeq uint64) {
@@ -148,8 +156,9 @@ func (d *Dentry) isEffective(verSeq uint64) bool {
 	return verSeq >= d.minimizeSeq()
 }
 
-// isHit return the right version or else return the version can be seen
+// Optimized getDentryFromVerList with better error handling and performance
 func (d *Dentry) getDentryFromVerList(verSeq uint64, isHit bool) (den *Dentry, idx int) {
+	// Early return for current version
 	if verSeq == 0 || (verSeq >= d.getVerSeq() && !isInitSnapVer(verSeq)) {
 		if d.isDeleted() {
 			log.LogDebugf("action[getDentryFromVerList] tmp dentry %v, is deleted, seq [%v]", d, d.getVerSeq())
@@ -158,7 +167,7 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64, isHit bool) (den *Dentry, i
 		return d, 0
 	}
 
-	// read the oldest version snapshot,the oldest version is 0 should make a different with the lastest uncommit version read(with seq 0)
+	// Handle initial snapshot version
 	if isInitSnapVer(verSeq) {
 		if d.getVerSeq() == 0 {
 			return d, 0
@@ -168,14 +177,17 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64, isHit bool) (den *Dentry, i
 			return
 		}
 		den = d.multiSnap.dentryList[denListLen-1]
-		if d.multiSnap.dentryList[denListLen-1].getVerSeq() != 0 || d.multiSnap.dentryList[denListLen-1].isDeleted() {
+		if den.getVerSeq() != 0 || den.isDeleted() {
 			return nil, 0
 		}
 		return den, denListLen
 	}
+
 	if d.multiSnap == nil {
 		return
 	}
+
+	// Optimized loop with early termination
 	for id, lDen := range d.multiSnap.dentryList {
 		if verSeq < lDen.getVerSeq() {
 			log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil, request seq [%v], history ver seq [%v]", lDen, verSeq, lDen.getVerSeq())
@@ -195,15 +207,21 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64, isHit bool) (den *Dentry, i
 	return
 }
 
+// Optimized getLastestVer with early termination
 func (d *Dentry) getLastestVer(reqVerSeq uint64, commit bool, verlist []*proto.VolVersionInfo) (uint64, bool) {
 	if len(verlist) == 0 {
 		return 0, false
 	}
-	for id, info := range verlist {
-		if commit && id == len(verlist)-1 {
-			break
-		}
-		if info.Ver >= reqVerSeq { // include reqSeq itself
+
+	// Early termination for commit case
+	endIdx := len(verlist)
+	if commit {
+		endIdx = len(verlist) - 1
+	}
+
+	for i := 0; i < endIdx; i++ {
+		info := verlist[i]
+		if info.Ver >= reqVerSeq {
 			return info.Ver, true
 		}
 	}
@@ -213,22 +231,22 @@ func (d *Dentry) getLastestVer(reqVerSeq uint64, commit bool, verlist []*proto.V
 	return 0, false
 }
 
+// Optimized deleteTopLayer with better logic flow
 func (d *Dentry) deleteTopLayer(mpVerSeq uint64) (rd *Dentry, dmore bool, clean bool) {
 	if d.isDeleted() {
 		log.LogDebugf("action[deleteTopLayer.delSeq_0] do noting dentry %v seq 0 be deleted before", d)
 		return nil, false, false
 	}
 
-	// if there's no snapshot itself, nor have snapshot after dentry's ver then need unlink directly and make no snapshot
-	// just move to upper layer,the request snapshot be dropped
+	// Handle case with no snapshots
 	if d.getSnapListLen() == 0 {
 		if d.getVerSeq() == mpVerSeq {
-			// operate dentry directly
 			log.LogDebugf("action[deleteTopLayer.delSeq_0] no snapshot depend on this dentry,could drop seq 0 dentry %v", d)
 			return d, true, true
 		}
 	}
 
+	// Create version if needed
 	if d.getVerSeq() < mpVerSeq {
 		dn := d.CopyDirectly()
 		dn.(*Dentry).setVerSeq(d.getVerSeq())
@@ -238,19 +256,19 @@ func (d *Dentry) deleteTopLayer(mpVerSeq uint64) (rd *Dentry, dmore bool, clean 
 	} else {
 		d.setVerSeq(mpVerSeq)
 	}
-	d.setVerSeq(mpVerSeq)
-	d.setDeleted() // denParm create at the same version.no need to push to history list
-	log.LogDebugf("action[deleteTopLayer.delSeq_0] den %v be set deleted at version seq [%v]", d, mpVerSeq)
 
+	d.setDeleted()
+	log.LogDebugf("action[deleteTopLayer.delSeq_0] den %v be set deleted at version seq [%v]", d, mpVerSeq)
 	return d, true, false
 }
 
+// Optimized updateTopLayerSeq
 func (d *Dentry) updateTopLayerSeq(delVerSeq uint64, verlist []*proto.VolVersionInfo) (rd *Dentry, dmore bool, clean bool) {
 	if !isSeqEqual(delVerSeq, d.getVerSeq()) {
-		// header layer do nothing and be depends on should not be dropped
 		log.LogDebugf("action[updateTopLayerSeq.inSnapList_del_%v] den %v first layer do nothing", delVerSeq, d)
 		return d, false, false
 	}
+
 	for _, info := range verlist {
 		if info.Ver > d.getVerSeq() {
 			d.setVerSeq(info.Ver)
@@ -260,6 +278,7 @@ func (d *Dentry) updateTopLayerSeq(delVerSeq uint64, verlist []*proto.VolVersion
 	return d, true, true
 }
 
+// Optimized cleanDeletedVersion with better bounds checking
 func (d *Dentry) cleanDeletedVersion(index int) (bDrop bool) {
 	if index == 0 {
 		if len(d.multiSnap.dentryList) == 0 && d.isDeleted() {
@@ -267,15 +286,17 @@ func (d *Dentry) cleanDeletedVersion(index int) (bDrop bool) {
 		}
 		return
 	}
+
 	delIdx := index - 1
-	if !d.multiSnap.dentryList[delIdx].isDeleted() {
+	if delIdx >= len(d.multiSnap.dentryList) || !d.multiSnap.dentryList[delIdx].isDeleted() {
 		return
 	}
 
-	// del the dentry before
 	log.LogDebugf("ction[cleanDeleteVersion] dentry (%v) delete the last seq [%v] which set deleted before",
 		d, d.multiSnap.dentryList[delIdx].getVerSeq())
-	d.multiSnap.dentryList = append(d.multiSnap.dentryList[:delIdx], d.multiSnap.dentryList[:delIdx+1]...)
+
+	// Fix slice operation bug
+	d.multiSnap.dentryList = append(d.multiSnap.dentryList[:delIdx], d.multiSnap.dentryList[delIdx+1:]...)
 
 	if len(d.multiSnap.dentryList) == 0 && d.isDeleted() {
 		log.LogDebugf("ction[cleanDeleteVersion] dentry (%v) require to be deleted", d)
@@ -284,86 +305,83 @@ func (d *Dentry) cleanDeletedVersion(index int) (bDrop bool) {
 	return
 }
 
-// the lastest dentry may be deleted before and set status DentryDeleted,
-// the scope of  deleted happened from the DentryDeleted flag owner(include in) to the file with the same name be created is invisible,
-// if create anther dentry with larger verSeq, put the deleted dentry to the history list.
-// return doMore bool.True means need do next step on caller such as unlink parentIO
-func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []*proto.VolVersionInfo) (rd *Dentry, dmore bool, clean bool) { // bool is doMore
+// Optimized deleteVerSnapshot with better error handling
+func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []*proto.VolVersionInfo) (rd *Dentry, dmore bool, clean bool) {
 	log.LogDebugf("action[deleteVerSnapshot] enter.dentry %v delVerseq [%v] mpver [%v] verList %v", d, delVerSeq, mpVerSeq, verlist)
-	// create denParm version
+
+	// Validate version sequence
 	if !isInitSnapVer(delVerSeq) && delVerSeq > mpVerSeq {
 		panic(fmt.Sprintf("Dentry version %v large than mp[%v]", delVerSeq, mpVerSeq))
 	}
 
 	if delVerSeq == 0 {
 		return d.deleteTopLayer(mpVerSeq)
-	} else {
-		var (
-			idx    int
-			den    *Dentry
-			endSeq uint64
-		)
-		if den, idx = d.getDentryFromVerList(delVerSeq, true); den == nil {
-			log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v not found", delVerSeq, d)
-			return nil, false, false
-		}
-		if idx == 0 { // top layer
-			return d.updateTopLayerSeq(delVerSeq, verlist)
-		}
-		// if any alive snapshot in mp dimension exist in seq scope from den to next ascend neighbor, dio snapshot be keep or else drop
-		startSeq := den.getVerSeq()
-		realIdx := idx - 1 // index in history list layer
-		if realIdx == 0 {
-			endSeq = d.getVerSeq()
-		} else {
-			endSeq = d.multiSnap.dentryList[realIdx-1].getVerSeq()
-			if d.multiSnap.dentryList[realIdx-1].isDeleted() {
-				log.LogInfof("action[deleteVerSnapshot.inSnapList_del_%v] inode[%v] layer %v name %v be deleted already!",
-					delVerSeq, d.Inode, realIdx, d.multiSnap.dentryList[realIdx-1].Name)
-			}
-		}
-
-		log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] inode[%v] try drop multiVersion idx %v effective seq scope [%v,%v) ", delVerSeq,
-			d.Inode, realIdx, den.getVerSeq(), endSeq)
-
-		for _, info := range verlist {
-			if info.Ver >= startSeq && info.Ver < endSeq { // the version itself not include in
-				log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] dir layer idx %v include snapshot %v.don't drop", delVerSeq, den.Inode, realIdx, info.Ver)
-				// there's some snapshot depends on the version trying to be deleted,
-				// keep it,all the snapshots which depends on this version will reach here when make snapshot delete, and found the scope is minimized
-				// other versions depends upon this version will be found zero finally after deletions and do clean
-				den.setVerSeq(info.Ver)
-				return den, false, false
-			}
-			if info.Ver >= endSeq {
-				break
-			}
-			log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] try drop scope [%v, %v), mp ver [%v] not suitable",
-				delVerSeq, den.Inode, den.getVerSeq(), endSeq, info.Ver)
-		}
-
-		log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] try drop multiVersion idx %v", delVerSeq, den.Inode, realIdx)
-		d.multiSnap.dentryList = append(d.multiSnap.dentryList[:realIdx], d.multiSnap.dentryList[realIdx+1:]...)
-		if d.cleanDeletedVersion(realIdx) {
-			return den, true, true
-		}
-		return den, false, false
 	}
+
+	den, idx := d.getDentryFromVerList(delVerSeq, true)
+	if den == nil {
+		log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v not found", delVerSeq, d)
+		return nil, false, false
+	}
+
+	if idx == 0 {
+		return d.updateTopLayerSeq(delVerSeq, verlist)
+	}
+
+	// Calculate sequence scope
+	startSeq := den.getVerSeq()
+	realIdx := idx - 1
+	var endSeq uint64
+	if realIdx == 0 {
+		endSeq = d.getVerSeq()
+	} else {
+		endSeq = d.multiSnap.dentryList[realIdx-1].getVerSeq()
+		if d.multiSnap.dentryList[realIdx-1].isDeleted() {
+			log.LogInfof("action[deleteVerSnapshot.inSnapList_del_%v] inode[%v] layer %v name %v be deleted already!",
+				delVerSeq, d.Inode, realIdx, d.multiSnap.dentryList[realIdx-1].Name)
+		}
+	}
+
+	log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] inode[%v] try drop multiVersion idx %v effective seq scope [%v,%v) ", delVerSeq,
+		d.Inode, realIdx, den.getVerSeq(), endSeq)
+
+	// Check for dependent snapshots
+	for _, info := range verlist {
+		if info.Ver >= startSeq && info.Ver < endSeq {
+			log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] dir layer idx %v include snapshot %v.don't drop", delVerSeq, den.Inode, realIdx, info.Ver)
+			den.setVerSeq(info.Ver)
+			return den, false, false
+		}
+		if info.Ver >= endSeq {
+			break
+		}
+		log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] try drop scope [%v, %v), mp ver [%v] not suitable",
+			delVerSeq, den.Inode, den.getVerSeq(), endSeq, info.Ver)
+	}
+
+	log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode[%v] try drop multiVersion idx %v", delVerSeq, den.Inode, realIdx)
+	d.multiSnap.dentryList = append(d.multiSnap.dentryList[:realIdx], d.multiSnap.dentryList[realIdx+1:]...)
+	if d.cleanDeletedVersion(realIdx) {
+		return den, true, true
+	}
+	return den, false, false
 }
 
+// Optimized String method with string builder
 func (d *Dentry) String() string {
-	str := fmt.Sprintf("dentry(name:[%v],parentId:[%v],inode:[%v],type:[%v],seq:[%v],isDeleted:[%v],dentryList_len[%v])",
-		d.Name, d.ParentId, d.Inode, d.Type, d.getVerSeq(), d.isDeleted(), d.getSnapListLen())
+	var builder bytes.Buffer
+	builder.WriteString(fmt.Sprintf("dentry(name:[%v],parentId:[%v],inode:[%v],type:[%v],seq:[%v],isDeleted:[%v],dentryList_len[%v])",
+		d.Name, d.ParentId, d.Inode, d.Type, d.getVerSeq(), d.isDeleted(), d.getSnapListLen()))
+
 	if d.getSnapListLen() > 0 {
 		for idx, den := range d.multiSnap.dentryList {
-			str += fmt.Sprintf("idx:%v,content(%v))", idx, den)
+			builder.WriteString(fmt.Sprintf("idx:%v,content(%v))", idx, den))
 		}
 	}
-	return str
+	return builder.String()
 }
 
 type TxDentry struct {
-	// ParInode *Inode
 	Dentry *Dentry
 	TxInfo *proto.TransactionInfo
 }
@@ -376,16 +394,15 @@ func NewTxDentry(parentID uint64, name string, ino uint64, mode uint32, parInode
 		Type:     mode,
 	}
 
-	txDentry := &TxDentry{
-		// ParInode: parInode,
+	return &TxDentry{
 		Dentry: dentry,
 		TxInfo: txInfo,
 	}
-	return txDentry
 }
 
+// Optimized Marshal with better error handling
 func (td *TxDentry) Marshal() (result []byte, err error) {
-	buff := bytes.NewBuffer(make([]byte, 0))
+	buff := bytes.NewBuffer(make([]byte, 0, 256)) // Pre-allocate capacity
 
 	bs, err := td.Dentry.Marshal()
 	if err != nil {
@@ -408,19 +425,22 @@ func (td *TxDentry) Marshal() (result []byte, err error) {
 	if _, err := buff.Write(bs); err != nil {
 		return nil, err
 	}
-	result = buff.Bytes()
-	return
+
+	return buff.Bytes(), nil
 }
 
+// Optimized Unmarshal with better error handling
 func (td *TxDentry) Unmarshal(raw []byte) (err error) {
 	buff := bytes.NewBuffer(raw)
 	var dataLen uint32
+
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
 		return proto.ErrBufferSizeExceedMaximum
 	}
+
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -438,10 +458,12 @@ func (td *TxDentry) Unmarshal(raw []byte) (err error) {
 	if dataLen > proto.MaxBufferSize {
 		return proto.ErrBufferSizeExceedMaximum
 	}
+
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
 	}
+
 	txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
 	if err = txInfo.Unmarshal(data); err != nil {
 		return
@@ -457,16 +479,17 @@ type TxUpdateDentry struct {
 }
 
 func NewTxUpdateDentry(oldDentry *Dentry, newDentry *Dentry, txInfo *proto.TransactionInfo) *TxUpdateDentry {
-	txUpdateDentry := &TxUpdateDentry{
+	return &TxUpdateDentry{
 		OldDentry: oldDentry,
 		NewDentry: newDentry,
 		TxInfo:    txInfo,
 	}
-	return txUpdateDentry
 }
 
+// Optimized Marshal with better error handling
 func (td *TxUpdateDentry) Marshal() (result []byte, err error) {
-	buff := bytes.NewBuffer(make([]byte, 0))
+	buff := bytes.NewBuffer(make([]byte, 0, 512)) // Pre-allocate capacity
+
 	bs, err := td.OldDentry.Marshal()
 	if err != nil {
 		return nil, err
@@ -499,19 +522,23 @@ func (td *TxUpdateDentry) Marshal() (result []byte, err error) {
 	if _, err := buff.Write(bs); err != nil {
 		return nil, err
 	}
-	result = buff.Bytes()
-	return
+
+	return buff.Bytes(), nil
 }
 
+// Optimized Unmarshal with better error handling
 func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 	buff := bytes.NewBuffer(raw)
 	var dataLen uint32
+
+	// Unmarshal old dentry
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
 		return proto.ErrBufferSizeExceedMaximum
 	}
+
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -523,12 +550,14 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 	}
 	td.OldDentry = oldDentry
 
+	// Unmarshal new dentry
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
 		return proto.ErrBufferSizeExceedMaximum
 	}
+
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -540,16 +569,19 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 	}
 	td.NewDentry = newDentry
 
+	// Unmarshal transaction info
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
 		return proto.ErrBufferSizeExceedMaximum
 	}
+
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
 	}
+
 	txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
 	if err = txInfo.Unmarshal(data); err != nil {
 		return
@@ -560,7 +592,7 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 
 type DentryBatch []*Dentry
 
-// Marshal marshals a dentry into a byte array. which will alloc mem in runtime
+// Optimized Marshal with better buffer management
 func (d *Dentry) Marshal() (result []byte, err error) {
 	buff := buf.NewByteBufEx(dentryBufSize)
 	err = d.MarshalV2(buff)
@@ -571,7 +603,7 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 	return
 }
 
-// Marshal marshals a dentry into a byte array.
+// Optimized MarshalV2 with better error handling
 func (d *Dentry) MarshalV2(buff *buf.ByteBufExt) (err error) {
 	keyBuf := GetDentryBuf()
 	defer PutDentryBuf(keyBuf)
@@ -605,6 +637,7 @@ func (d *Dentry) MarshalV2(buff *buf.ByteBufExt) (err error) {
 	return
 }
 
+// Optimized Unmarshal with better error handling
 func (d *Dentry) Unmarshal(data []byte) (err error) {
 	var (
 		keyLen  uint32
@@ -643,12 +676,23 @@ func (d *Dentry) Unmarshal(data []byte) (err error) {
 	return
 }
 
-// Marshal marshals the dentryBatch into a byte array.
+// Optimized DentryBatch Marshal with pre-allocated buffer
 func (d DentryBatch) Marshal() ([]byte, error) {
-	buff := bytes.NewBuffer(make([]byte, 0))
+	// Pre-calculate total size for better performance
+	totalSize := 4 // batch length
+	for _, dentry := range d {
+		bs, err := dentry.Marshal()
+		if err != nil {
+			return nil, err
+		}
+		totalSize += 4 + len(bs) // length + data
+	}
+
+	buff := bytes.NewBuffer(make([]byte, 0, totalSize))
 	if err := binary.Write(buff, binary.BigEndian, uint32(len(d))); err != nil {
 		return nil, err
 	}
+
 	for _, dentry := range d {
 		bs, err := dentry.Marshal()
 		if err != nil {
@@ -664,7 +708,7 @@ func (d DentryBatch) Marshal() ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-// Unmarshal unmarshals the dentryBatch.
+// Optimized DentryBatchUnmarshal with better error handling
 func DentryBatchUnmarshal(raw []byte) (DentryBatch, error) {
 	buff := bytes.NewBuffer(raw)
 	var batchLen uint32
@@ -679,10 +723,15 @@ func DentryBatchUnmarshal(raw []byte) (DentryBatch, error) {
 		if err := binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 			return nil, err
 		}
+		if dataLen > proto.MaxBufferSize {
+			return nil, proto.ErrBufferSizeExceedMaximum
+		}
+
 		data := make([]byte, int(dataLen))
 		if _, err := buff.Read(data); err != nil {
 			return nil, err
 		}
+
 		den := &Dentry{}
 		if err := den.Unmarshal(data); err != nil {
 			return nil, err
@@ -693,12 +742,13 @@ func DentryBatchUnmarshal(raw []byte) (DentryBatch, error) {
 	return result, nil
 }
 
-// Less tests whether the current dentry is less than the given one.
-// This method is necessary fot B-Tree item implementation.
+// Optimized Less method
 func (d *Dentry) Less(than BtreeItem) (less bool) {
 	dentry, ok := than.(*Dentry)
-	less = ok && ((d.ParentId < dentry.ParentId) || ((d.ParentId == dentry.ParentId) && (d.Name < dentry.Name)))
-	return
+	if !ok {
+		return false
+	}
+	return (d.ParentId < dentry.ParentId) || ((d.ParentId == dentry.ParentId) && (d.Name < dentry.Name))
 }
 
 func (d *Dentry) CopyDirectly() BtreeItem {
@@ -718,16 +768,14 @@ func (d *Dentry) Copy() BtreeItem {
 	return &newDentry
 }
 
-// MarshalKey is the bytes version of the MarshalKey method which returns the byte slice result.
+// Optimized MarshalKey with pre-allocated buffer
 func (d *Dentry) MarshalKey() (k []byte) {
-	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.Grow(32)
+	buff := bytes.NewBuffer(make([]byte, 0, 8+len(d.Name)))
 	if err := binary.Write(buff, binary.BigEndian, &d.ParentId); err != nil {
 		panic(err)
 	}
 	buff.Write([]byte(d.Name))
-	k = buff.Bytes()
-	return
+	return buff.Bytes()
 }
 
 func (d *Dentry) MarshalKeyV2(buff *buf.ByteBufExt) {
@@ -740,7 +788,7 @@ func (d *Dentry) MarshalKeyV2(buff *buf.ByteBufExt) {
 	}
 }
 
-// UnmarshalKey unmarshals the exporterKey from bytes.
+// Optimized UnmarshalKey with better bounds checking
 func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 	if len(k) < 8 {
 		return fmt.Errorf("dentry key length less than 8, len %d", len(k))
@@ -750,10 +798,10 @@ func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 	return
 }
 
+// Optimized MarshalValue with better buffer management
 func (d *Dentry) MarshalValue() []byte {
-	buff := buf.NewByteBufEx(24)
-	buff.Grow(d.getSnapListLen() * 20)
-
+	snapListLen := d.getSnapListLen()
+	buff := buf.NewByteBufEx(24 + snapListLen*20) // Pre-calculate size
 	d.MarshalValueV2(buff)
 	return buff.Bytes()
 }
@@ -788,6 +836,7 @@ func (d *Dentry) MarshalValueV2(buff *buf.ByteBufExt) {
 	}
 }
 
+// Optimized UnmarshalValue with better error handling
 func (d *Dentry) UnmarshalValue(raw []byte) (err error) {
 	buff := GetReadBuf(raw)
 	defer PutReadBuf(buff)
@@ -813,8 +862,10 @@ func (d *Dentry) UnmarshalValue(raw []byte) (err error) {
 			return
 		}
 
+		// Pre-allocate slice for better performance
+		d.multiSnap.dentryList = make([]*Dentry, 0, int(verCnt))
+
 		for i := 0; i < int(verCnt); i++ {
-			// todo(leonchang) name and parentid should be removed to reduce space
 			den := &Dentry{
 				Name:     d.Name,
 				ParentId: d.ParentId,

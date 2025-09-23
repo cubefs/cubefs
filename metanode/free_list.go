@@ -19,12 +19,15 @@ import (
 	"sync"
 )
 
+// freeList represents a thread-safe queue for managing free inode numbers.
+// It maintains both a linked list for FIFO operations and a map for O(1) lookups.
 type freeList struct {
-	sync.Mutex
+	mu    sync.RWMutex // Use RWMutex for better read performance
 	list  *list.List
 	index map[uint64]*list.Element
 }
 
+// newFreeList creates a new instance of freeList.
 func newFreeList() *freeList {
 	return &freeList{
 		list:  list.New(),
@@ -32,41 +35,54 @@ func newFreeList() *freeList {
 	}
 }
 
-// Pop removes the first item on the list and returns it.
-func (fl *freeList) Pop() (ino uint64) {
-	fl.Lock()
-	defer fl.Unlock()
+// Pop removes and returns the first item from the list.
+// Returns 0 if the list is empty.
+func (fl *freeList) Pop() uint64 {
+	fl.mu.Lock()
+	defer fl.mu.Unlock()
+
 	item := fl.list.Front()
 	if item == nil {
-		return
+		return 0
 	}
+
 	val := fl.list.Remove(item)
-	ino = val.(uint64)
+	ino := val.(uint64)
 	delete(fl.index, ino)
-	return
+	return ino
 }
 
-// Push inserts a new item at the back of the list.
+// Push adds a new inode number to the back of the list.
+// If the inode already exists, it will be ignored.
 func (fl *freeList) Push(ino uint64) {
-	fl.Lock()
-	defer fl.Unlock()
-	if _, ok := fl.index[ino]; !ok {
+	if ino == 0 {
+		return // Avoid storing invalid inode numbers
+	}
+
+	fl.mu.Lock()
+	defer fl.mu.Unlock()
+
+	// Check if inode already exists to avoid duplicates
+	if _, exists := fl.index[ino]; !exists {
 		item := fl.list.PushBack(ino)
 		fl.index[ino] = item
 	}
 }
 
+// Remove removes a specific inode number from the list.
 func (fl *freeList) Remove(ino uint64) {
-	fl.Lock()
-	defer fl.Unlock()
-	if item, ok := fl.index[ino]; ok {
+	fl.mu.Lock()
+	defer fl.mu.Unlock()
+
+	if item, exists := fl.index[ino]; exists {
 		fl.list.Remove(item)
 		delete(fl.index, ino)
 	}
 }
 
+// Len returns the current number of items in the list.
 func (fl *freeList) Len() int {
-	fl.Lock()
-	defer fl.Unlock()
+	fl.mu.RLock()
+	defer fl.mu.RUnlock()
 	return len(fl.index)
 }
