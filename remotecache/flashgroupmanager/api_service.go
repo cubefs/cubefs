@@ -62,6 +62,7 @@ func (m *FlashGroupManager) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashHotKeyMissCount:         m.cluster.cfg.FlashHotKeyMissCount,
 		FlashReadFlowLimit:           m.cluster.cfg.FlashReadFlowLimit,
 		FlashWriteFlowLimit:          m.cluster.cfg.FlashWriteFlowLimit,
+		FlashKeyFlowLimit:            m.cluster.cfg.FlashKeyFlowLimit,
 		RemoteClientFlowLimit:        m.cluster.cfg.RemoteClientFlowLimit,
 		RemoteCacheTTL:               m.config.RemoteCacheTTL,
 		RemoteCacheReadTimeout:       m.config.RemoteCacheReadTimeout,
@@ -94,9 +95,10 @@ func (m *FlashGroupManager) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminGetIP, metric, nil, nil)
 	}()
 	cInfo := &proto.ClusterInfo{
-		Cluster:          m.clusterName,
-		FlashReadTimeout: int(m.cluster.cfg.RemoteCacheReadTimeout),
-		Ip:               iputil.RealIP(r),
+		Cluster:           m.clusterName,
+		FlashReadTimeout:  int(m.cluster.cfg.RemoteCacheReadTimeout),
+		FlashKeyFlowLimit: m.cluster.cfg.FlashKeyFlowLimit,
+		Ip:                iputil.RealIP(r),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -768,6 +770,7 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		remoteCacheSameRegionTimeout int64
 		flashReadFlowLimit           int64
 		flashWriteFlowLimit          int64
+		flashKeyFlowLimit            int64
 		remoteClientFlowLimit        int64
 		oldIntValue                  int
 		oldInt64Value                int64
@@ -862,6 +865,14 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		}
 		oldInt64Value = m.config.FlashWriteFlowLimit
 		m.config.FlashWriteFlowLimit = flashWriteFlowLimit
+
+	case cfgFlashKeyFlowLimit:
+		flashKeyFlowLimit, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		oldInt64Value = m.config.FlashKeyFlowLimit
+		m.config.FlashKeyFlowLimit = flashKeyFlowLimit
 
 	case cfgRemoteClientFlowLimit:
 		remoteClientFlowLimit, err = strconv.ParseInt(value, 10, 64)

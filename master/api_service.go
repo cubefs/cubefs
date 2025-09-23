@@ -970,6 +970,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashHotKeyMissCount:         m.cluster.cfg.flashHotKeyMissCount,
 		FlashReadFlowLimit:           m.cluster.cfg.flashReadFlowLimit,
 		FlashWriteFlowLimit:          m.cluster.cfg.flashWriteFlowLimit,
+		FlashKeyFlowLimit:            m.cluster.cfg.flashKeyFlowLimit,
 		RemoteClientFlowLimit:        m.cluster.cfg.remoteClientFlowLimit,
 	}
 
@@ -1180,6 +1181,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
 		FlashReadTimeout:            m.cluster.cfg.flashNodeHandleReadTimeout,
+		FlashKeyFlowLimit:           m.cluster.cfg.flashKeyFlowLimit,
 		// Ip:                          strings.Split(r.RemoteAddr, ":")[0],
 		Ip:                                 iputil.RealIP(r),
 		EbsAddr:                            m.bStoreAddr,
@@ -3735,6 +3737,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[flashWriteFlowLimit]; ok {
 		if v, ok := val.(int64); ok {
 			if err = m.setConfig(flashWriteFlowLimit, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[flashKeyFlowLimit]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(flashKeyFlowLimit, strconv.FormatInt(v, 10)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -7258,6 +7269,7 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		fnHotKeyMissCount        int
 		fnReadFlowLimit          int64
 		fnWriteFlowLimit         int64
+		fnKeyFlowLimit           int64
 		fnRemoteClientFlowLimit  int64
 		oldIntValue              int
 		oldInt64Value            int64
@@ -7333,6 +7345,14 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		oldInt64Value = m.config.flashWriteFlowLimit
 		m.config.flashWriteFlowLimit = fnWriteFlowLimit
 
+	case flashKeyFlowLimit:
+		fnKeyFlowLimit, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		oldInt64Value = m.config.flashKeyFlowLimit
+		m.config.flashKeyFlowLimit = fnKeyFlowLimit
+
 	case remoteClientFlowLimit:
 		fnRemoteClientFlowLimit, err = strconv.ParseInt(value, 10, 64)
 		if err != nil {
@@ -7366,6 +7386,8 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.config.flashReadFlowLimit = oldInt64Value
 		case flashWriteFlowLimit:
 			m.config.flashWriteFlowLimit = oldInt64Value
+		case flashKeyFlowLimit:
+			m.config.flashKeyFlowLimit = oldInt64Value
 		case remoteClientFlowLimit:
 			m.config.remoteClientFlowLimit = oldInt64Value
 		}

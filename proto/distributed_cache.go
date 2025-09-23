@@ -465,6 +465,7 @@ type RemoteCacheConfig struct {
 	FlashHotKeyMissCount         int
 	FlashReadFlowLimit           int64
 	FlashWriteFlowLimit          int64
+	FlashKeyFlowLimit            int64
 	RemoteClientFlowLimit        int64
 }
 

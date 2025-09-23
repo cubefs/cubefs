@@ -635,6 +635,7 @@ type ClusterInfo struct {
 	DpMaxRepairErrCnt                  uint64
 	DirChildrenNumLimit                uint32
 	FlashReadTimeout                   int
+	FlashKeyFlowLimit                  int64
 	EbsAddr                            string
 	ServicePath                        string
 	ClusterUuid                        string
@@ -841,6 +842,7 @@ type FlashNodeHeartBeatInfos struct {
 	FlashHotKeyMissCount         int
 	FlashReadFlowLimit           int64
 	FlashWriteFlowLimit          int64
+	FlashKeyFlowLimit            int64
 }
 
 // HeartBeatRequest define the heartbeat request.
