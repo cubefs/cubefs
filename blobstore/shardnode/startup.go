@@ -387,7 +387,7 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.ShardBaseConfig.TruncateWalLogInterval, uint64(1<<16))
 	defaulter.LessOrEqual(&cfg.ShardBaseConfig.RaftSnapTransmitConfig.BatchInflightNum, 64)
 	defaulter.LessOrEqual(&cfg.ShardBaseConfig.RaftSnapTransmitConfig.BatchInflightSize, 1<<20)
-	defaulter.LessOrEqual(&cfg.HeartBeatIntervalS, int64(1))
+	defaulter.LessOrEqual(&cfg.HeartBeatIntervalS, int64(3))
 	defaulter.LessOrEqual(&cfg.ReportIntervalS, int64(60))
 	defaulter.LessOrEqual(&cfg.RouteUpdateIntervalS, int64(5))
 	defaulter.LessOrEqual(&cfg.CheckPointIntervalM, int64(1))

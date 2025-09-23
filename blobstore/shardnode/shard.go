@@ -202,6 +202,7 @@ func (s *service) loop(ctx context.Context) {
 	}()
 
 	var span trace.Span
+	span, ctx = trace.StartSpanFromContext(ctx, "")
 	diskReports := make([]clustermgr.ShardNodeDiskHeartbeatInfo, 0)
 	shardReports := make([]clustermgr.ShardUnitInfo, 0, 1<<10)
 	shards := make([]storage.ShardHandler, 0, 1<<10)
@@ -210,7 +211,6 @@ func (s *service) loop(ctx context.Context) {
 	for {
 		select {
 		case <-heartbeatTicker.C:
-			span, ctx = trace.StartSpanFromContext(ctx, "")
 			diskReports = diskReports[:0]
 
 			disks := s.getAllDisks()

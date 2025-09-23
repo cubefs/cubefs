@@ -17,6 +17,7 @@ package blobdeleter
 import (
 	"context"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -482,6 +483,9 @@ type delRet struct {
 	err  error
 }
 
+// errVunitLengthNotEqual vunit length not equal
+var errVunitLengthNotEqual = errors.New("vunit length not equal")
+
 func (m *BlobDeleteMgr) deleteSlice(ctx context.Context, volInfo *snproto.VolumeInfoSimple, ext *delMsgExt, bid proto.BlobID, markerDel bool) (*snproto.VolumeInfoSimple, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	var err error
@@ -498,35 +502,42 @@ func (m *BlobDeleteMgr) deleteSlice(ctx context.Context, volInfo *snproto.Volume
 	// collect results
 	needRetryVuids := make([]proto.Vuid, 0)
 	for i := 0; i < len(volInfo.VunitLocations); i++ {
-		r := <-retChan
-		if r.err == nil {
+		ret := <-retChan
+		if ret.err == nil {
 			continue
 		}
-		if shouldUpdateVolumeErr(rpc2.DetectStatusCode(r.err)) {
-			needRetryVuids = append(needRetryVuids, r.vuid)
+		err = ret.err
+		errCode := rpc2.DetectStatusCode(err)
+		if shouldUpdateVolumeErr(errCode) || errorDialTimeout(err) || errorConnectionRefused(err) {
+			span.Errorf("delete shard failed will retry: bid[%d], vuid[%d], markDelete[%+v], code[%d], err[%+v]",
+				bid, ret.vuid, markerDel, errCode, err)
+			needRetryVuids = append(needRetryVuids, ret.vuid)
 			continue
 		}
-		err = r.err
-	}
-
-	if len(needRetryVuids) < 1 || err != nil {
+		span.Warnf("delete shard failed: bid[%d], vuid[%d], markDelete[%+v], code[%d], err[%+v]",
+			bid, ret.vuid, markerDel, errCode, err)
 		return volInfo, err
 	}
 
+	if len(needRetryVuids) == 0 {
+		return volInfo, nil
+	}
+
+	span.Infof("bid delete will update and retry: len updateAndRetryShards[%d]", len(needRetryVuids))
 	// get new volume info
-	newVolume, err := m.cfg.VolCache.GetVolume(volInfo.Vid)
-	if err != nil {
-		err = errors.Info(err, "get new volume info failed")
+	newVolume, updateVolErr := m.cfg.VolCache.UpdateVolume(volInfo.Vid)
+	if updateVolErr != nil || newVolume.EqualWith(volInfo) {
+		span.Warnf("new volInfo is same or clusterTopology.UpdateVolume failed: vid[%d], err[%+v]", volInfo.Vid, updateVolErr)
 		return volInfo, err
 	}
 
-	// equal, no need to retry
-	if newVolume.EqualWith(volInfo) {
-		return newVolume, err
+	if len(newVolume.VunitLocations) != len(volInfo.VunitLocations) {
+		span.Warnf("vid locations len not equal: vid[%d], old len[%d], new len[%d]", len(volInfo.VunitLocations), len(newVolume.VunitLocations))
+		return volInfo, errVunitLengthNotEqual
 	}
 
-	span.Debugf("volume updated, retry vuids: %+v", needRetryVuids)
 	for _, oldVuid := range needRetryVuids {
+		span.Debugf("start retry delete shard: bid[%d], vuid[%d]", bid, oldVuid)
 		if err = m.deleteShard(ctx, newVolume.VunitLocations[oldVuid.Index()], bid, ext, markerDel); err != nil {
 			return newVolume, err
 		}
@@ -783,4 +794,13 @@ func shouldBackToInitStage(errCode int) bool {
 func assumeDeleteSuccess(errCode int) bool {
 	return errCode == apierr.CodeBidNotFound ||
 		errCode == apierr.CodeShardMarkDeleted
+}
+
+func errorDialTimeout(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "dial")
+}
+
+func errorConnectionRefused(err error) bool {
+	return strings.Contains(err.Error(), "connection refused")
 }
