@@ -44,6 +44,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
+	myos "github.com/cubefs/cubefs/blobstore/blobnode/sys"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -1235,6 +1236,86 @@ func TestService_OnlyBlobnode_OpenFailedEIO(t *testing.T) {
 	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskInfo3}, nil)
 	err = startBlobnodeService(ctx, svr, conf)
 	require.NoError(t, err)
+	require.Equal(t, 0, len(svr.Disks))
+}
+
+func TestStartBlobnodeService_LostMountPoint(t *testing.T) {
+	ctx := context.Background()
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"LostMountPoint")
+	require.NoError(t, err)
+	defer os.RemoveAll(workDir)
+
+	// 3 disk, brokken: disk1,disk2 ; lost: disk3
+	pathData1 := filepath.Join(workDir, "pathData1")
+	pathData2 := filepath.Join(workDir, "pathData2")
+	pathData3 := filepath.Join(workDir, "pathData3")
+	require.NoError(t, os.MkdirAll(pathData1, 0o755))
+	require.NoError(t, os.MkdirAll(pathData2, 0o755))
+	require.NoError(t, os.MkdirAll(pathData3, 0o755))
+
+	// MustMountPoint=true, IsMountPoint return false
+	patchesMP := gomonkey.ApplyFunc(myos.IsMountPoint, func(p string) bool {
+		return false
+	})
+	defer patchesMP.Reset()
+
+	// cm return disk list: pathBroken， Broken; pathUnknown, not found
+	diskBrokenInfo1 := &cmapi.BlobNodeDiskInfo{
+		DiskInfo:          cmapi.DiskInfo{Path: pathData1, Status: proto.DiskStatusBroken},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(1000)},
+	}
+	diskBrokenInfo2 := &cmapi.BlobNodeDiskInfo{
+		DiskInfo:          cmapi.DiskInfo{Path: pathData2, Status: proto.DiskStatusBroken},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(1001)},
+	}
+
+	A := gomock.Any()
+	ctr := gomock.NewController(t)
+	cmCli := mocks.NewMockClientAPI(ctr)
+	cmCli.EXPECT().GetConfig(A, A).Return("[]", nil).AnyTimes()
+	cmCli.EXPECT().RegisterService(A, A, A, A, A).Return(nil).Times(1)
+	cmCli.EXPECT().AddNode(A, A).Return(proto.NodeID(1), nil).Times(1)
+	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskBrokenInfo1, diskBrokenInfo2}, nil)
+
+	conf := Config{
+		HostInfo: core.HostInfo{IDC: "idc", Rack: "rack", Host: "host"},
+		Disks: []core.Config{
+			{BaseConfig: core.BaseConfig{Path: pathData1, AutoFormat: true, MaxChunks: 1}, MetaConfig: db.MetaConfig{}},
+			{BaseConfig: core.BaseConfig{Path: pathData2, AutoFormat: true, MaxChunks: 1}, MetaConfig: db.MetaConfig{}},
+			{BaseConfig: core.BaseConfig{Path: pathData3, AutoFormat: true, MaxChunks: 1}, MetaConfig: db.MetaConfig{}},
+		},
+		DiskConfig: core.RuntimeConfig{MustMountPoint: true},
+	}
+	configInit(&conf)
+	svr := &Service{
+		ClusterMgrClient: cmCli,
+		Disks:            make(map[proto.DiskID]core.DiskAPI),
+		Conf:             &conf,
+		closeCh:          make(chan struct{}),
+	}
+	svr.ctx, svr.cancel = context.WithCancel(ctx)
+
+	lostCount, cleanDisk := int32(0), int32(0)
+	patchesLost := gomonkey.ApplyFunc(
+		(*Service).reportLostDisk,
+		func(_ *Service, hostInfo *core.HostInfo, diskPath string) {
+			atomic.AddInt32(&lostCount, 1)
+		},
+	)
+	defer patchesLost.Reset()
+	patchesClean := gomonkey.ApplyFunc(
+		(*Service).reportOnlineDisk,
+		func(_ *Service, hostInfo *core.HostInfo, diskPath string) {
+			atomic.AddInt32(&cleanDisk, 1)
+		},
+	)
+	defer patchesClean.Reset()
+
+	// do start：3 unmount disk，pathBroken is broken in cm -> online++；pathUnknown not in cm -> lost++
+	err = startBlobnodeService(ctx, svr, conf)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), atomic.LoadInt32(&lostCount))
+	require.Equal(t, int32(2), atomic.LoadInt32(&cleanDisk))
 	require.Equal(t, 0, len(svr.Disks))
 }
 

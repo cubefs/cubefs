@@ -485,11 +485,20 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 
 			if diskConf.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
 				span.Errorf("Path is not mount point:%s. skip init", diskConf.Path)
-				lost := atomic.AddInt32(&lostCnt, 1)
-				svr.reportLostDisk(&diskConf.HostInfo, diskConf.Path)
-				if lost >= LostDiskCount {
-					log.Fatalf("lost disk count:%d over threshold:%d", lost, LostDiskCount)
+				lostDisk, exist := foundDiskPathInCluster[diskConf.Path]
+
+				if !exist || lostDisk.Status == proto.DiskStatusNormal {
+					// report when not exist in cm or not set broken; and  will clean metric when it's repaired/register
+					lost := atomic.AddInt32(&lostCnt, 1)
+					svr.reportLostDisk(&diskConf.HostInfo, diskConf.Path)
+					if lost >= LostDiskCount {
+						log.Fatalf("lost disk count:%d over threshold:%d", lost, LostDiskCount)
+					}
+				} else {
+					// if already set broken to cm, clean metric
+					svr.reportOnlineDisk(&diskConf.HostInfo, diskConf.Path)
 				}
+
 				return // skip
 			}
 
