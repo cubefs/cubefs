@@ -110,7 +110,8 @@ type CacheEngine struct {
 	memDataPath string
 
 	fhCapacity    int
-	keyToDiskMap  sync.Map
+	keyToDiskMap  map[string]*lruCacheItem
+	keyToDiskRWMu sync.RWMutex
 	errorCacheNum int
 	errorCacheMap sync.Map
 	totalCacheNum int
@@ -158,6 +159,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	s.localAddr = localAddr
 	s.keyRateLimitThreshold = keyRateLimitThreshold
 	s.keyLimiterFlow = keyLimiterFlow
+	s.keyToDiskMap = make(map[string]*lruCacheItem)
 	if s.enableTmpfs {
 		fullPath := path.Join(memDataDir, DefaultCacheDirName)
 		memCacheConfig := CacheConfig{
@@ -279,6 +281,52 @@ func (c *CacheEngine) isCacheBlockFileName(filename string) (isCacheBlockDir boo
 func (c *CacheEngine) SetKeyLimiterFlow(keyLimiterFlow int64) {
 	atomic.StoreInt64(&c.keyLimiterFlow, keyLimiterFlow)
 	log.LogInfof("CacheEngine: set keyLimiterFlow to %d", keyLimiterFlow)
+}
+
+func (c *CacheEngine) getCacheItem(key string) (*lruCacheItem, bool) {
+	c.keyToDiskRWMu.RLock()
+	defer c.keyToDiskRWMu.RUnlock()
+	cacheItem, ok := c.keyToDiskMap[key]
+	return cacheItem, ok
+}
+
+func (c *CacheEngine) setCacheItem(key string, cacheItem *lruCacheItem) {
+	c.keyToDiskRWMu.Lock()
+	defer c.keyToDiskRWMu.Unlock()
+	c.keyToDiskMap[key] = cacheItem
+}
+
+func (c *CacheEngine) deleteCacheItem(key string) {
+	c.keyToDiskRWMu.Lock()
+	defer c.keyToDiskRWMu.Unlock()
+	delete(c.keyToDiskMap, key)
+}
+
+func (c *CacheEngine) clearCacheItems() {
+	c.keyToDiskRWMu.Lock()
+	defer c.keyToDiskRWMu.Unlock()
+	c.keyToDiskMap = make(map[string]*lruCacheItem)
+}
+
+func (c *CacheEngine) getUnavailableCacheItems() []string {
+	c.keyToDiskRWMu.RLock()
+	defer c.keyToDiskRWMu.RUnlock()
+
+	var keysToDelete []string
+	for key, item := range c.keyToDiskMap {
+		if atomic.LoadInt32(&item.disk.Status) == proto.Unavailable {
+			keysToDelete = append(keysToDelete, key)
+		}
+	}
+	return keysToDelete
+}
+
+func (c *CacheEngine) deleteCacheItems(keys []string) {
+	c.keyToDiskRWMu.Lock()
+	defer c.keyToDiskRWMu.Unlock()
+	for _, k := range keys {
+		delete(c.keyToDiskMap, k)
+	}
 }
 
 func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version uint32, err error) {
@@ -540,11 +588,9 @@ func (c *CacheEngine) initTmpfs() (err error) {
 }
 
 func (c *CacheEngine) DeleteCacheBlock(key string) {
-	value, ok := c.keyToDiskMap.Load(key)
-	if ok {
-		cacheItem := value.(*lruCacheItem)
+	if cacheItem, ok := c.getCacheItem(key); ok {
 		cacheItem.lruCache.Evict(key)
-		c.keyToDiskMap.Delete(key)
+		c.deleteCacheItem(key)
 	}
 }
 
@@ -554,9 +600,7 @@ func (c *CacheEngine) GetCacheBlockForRead(volume string, inode, offset uint64, 
 }
 
 func (c *CacheEngine) GetCacheBlockForReadByKey(key string) (block *CacheBlock, err error) {
-	v, ok := c.keyToDiskMap.Load(key)
-	if ok {
-		cacheItem := v.(*lruCacheItem)
+	if cacheItem, ok := c.getCacheItem(key); ok {
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			blockValue, getErr := cacheItem.lruCache.Get(key)
 			if getErr == nil {
@@ -571,11 +615,9 @@ func (c *CacheEngine) GetCacheBlockForReadByKey(key string) (block *CacheBlock, 
 }
 
 func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) {
-	v, ok := c.keyToDiskMap.Load(key)
-	if ok {
-		cacheItem := v.(*lruCacheItem)
+	if cacheItem, ok := c.getCacheItem(key); ok {
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
-			if blockValue, got := v.(*lruCacheItem).lruCache.Peek(key); got {
+			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
 				return
 			}
@@ -623,9 +665,7 @@ func (c *CacheEngine) selectAvailableLruCache() (cacheItem *lruCacheItem, err er
 
 func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64, clientIP string) (block *CacheBlock, err error) {
 	key := GenCacheBlockKey(volume, inode, fixedOffset, version)
-	v, ok := c.keyToDiskMap.Load(key)
-	if ok {
-		cacheItem := v.(*lruCacheItem)
+	if cacheItem, ok := c.getCacheItem(key); ok {
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
@@ -634,7 +674,7 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 		}
 	}
 
-	v, ok = c.lruCacheMap.Load(dataPath)
+	v, ok := c.lruCacheMap.Load(dataPath)
 	if !ok {
 		return nil, errors.NewErrorf("no lru cache item related to dataPath(%v)", dataPath)
 	}
@@ -658,7 +698,7 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
 		return
 	}
-	c.keyToDiskMap.Store(key, cacheItem)
+	c.setCacheItem(key, cacheItem)
 
 	return
 }
@@ -668,9 +708,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		return nil, fmt.Errorf("alloc size is zero")
 	}
 	key := GenCacheBlockKey(volume, inode, fixedOffset, version)
-	v, ok := c.keyToDiskMap.Load(key)
-	if ok {
-		cacheItem := v.(*lruCacheItem)
+	if cacheItem, ok := c.getCacheItem(key); ok {
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
@@ -683,11 +721,9 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	ch := value.(chan struct{})
 	if loaded {
 		<-ch
-		v, ok = c.keyToDiskMap.Load(key)
-		if ok {
-			cacheItem := v.(*lruCacheItem)
+		if cacheItem, ok := c.getCacheItem(key); ok {
 			if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
-				if blockValue, got := v.(*lruCacheItem).lruCache.Peek(key); got {
+				if blockValue, got := cacheItem.lruCache.Peek(key); got {
 					block = blockValue.(*CacheBlock)
 					return
 				}
@@ -701,9 +737,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		}()
 	}
 
-	v, ok = c.keyToDiskMap.Load(key)
-	if ok {
-		cacheItem := v.(*lruCacheItem)
+	if cacheItem, ok := c.getCacheItem(key); ok {
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
@@ -711,7 +745,6 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 			}
 		}
 	}
-
 	var cacheItem *lruCacheItem
 	if cacheItem, err = c.selectAvailableLruCache(); err == nil {
 		block = NewCacheBlock(cacheItem.config.Path, volume, inode, fixedOffset, version, allocSize,
@@ -740,7 +773,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		if !isPrepare {
 			cacheItem.lruCache.AddMisses()
 		}
-		c.keyToDiskMap.Store(key, cacheItem)
+		c.setCacheItem(key, cacheItem)
 	}
 
 	return
@@ -903,7 +936,7 @@ func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interfac
 				if !cacheItem.lruCache.Evict(k) {
 					failedKeys = append(failedKeys, k)
 				} else {
-					c.keyToDiskMap.Delete(k)
+					c.deleteCacheItem(k.(string))
 				}
 			}
 		}
@@ -926,7 +959,7 @@ func (c *CacheEngine) EvictCacheAll() {
 		return true
 	})
 	wg.Wait()
-	c.keyToDiskMap = sync.Map{}
+	c.clearCacheItems()
 	log.LogWarn("action[EvictCacheAll] evict all finish")
 }
 
@@ -1010,17 +1043,8 @@ func (c *CacheEngine) DoInactiveDisk(dataPath string) {
 				cacheItem.lruCache.EvictAll(c.cacheEvictWorkerNum)
 			}()
 
-			var keysToDelete []interface{}
-			c.keyToDiskMap.Range(func(key, value interface{}) bool {
-				item := value.(*lruCacheItem)
-				if atomic.LoadInt32(&item.disk.Status) == proto.Unavailable {
-					keysToDelete = append(keysToDelete, key)
-				}
-				return true
-			})
-			for _, k := range keysToDelete {
-				c.keyToDiskMap.Delete(k)
-			}
+			keysToDelete := c.getUnavailableCacheItems()
+			c.deleteCacheItems(keysToDelete)
 		}
 	} else {
 		log.LogErrorf("doInactiveDisk failed: no lru cache item related to dataPath(%v)", dataPath)
@@ -1056,17 +1080,8 @@ func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
 					cacheItem.lruCache.EvictAll(c.cacheEvictWorkerNum)
 				}()
 
-				var keysToDelete []interface{}
-				c.keyToDiskMap.Range(func(key, value interface{}) bool {
-					item := value.(*lruCacheItem)
-					if atomic.LoadInt32(&item.disk.Status) == proto.Unavailable {
-						keysToDelete = append(keysToDelete, key)
-					}
-					return true
-				})
-				for _, k := range keysToDelete {
-					c.keyToDiskMap.Delete(k)
-				}
+				keysToDelete := c.getUnavailableCacheItems()
+				c.deleteCacheItems(keysToDelete)
 
 				if _, ok := c.errorCacheMap.Load(dataPath); !ok {
 					c.errorCacheMap.Store(dataPath, struct{}{})
