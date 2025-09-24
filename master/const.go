@@ -155,6 +155,12 @@ const (
 	quotaClass                             = "quotaClass"
 	quotaOfClass                           = "quotaOfStorageClass"
 	dataMediaTypeKey                       = "dataMediaType"
+	dataNodeBalanceOnKey                   = "dataNodeBalanceOn"
+	dataNodeBalanceIntervalKey             = "dataNodeBalanceInterval"
+	dataNodeBalanceByDiskUsageHighKey      = "dataNodeBalanceByDiskUsageHigh"
+	dataNodeBalanceByDiskUsageLowKey       = "dataNodeBalanceByDiskUsageLow"
+	dataNodeBalanceByDPCountHighKey        = "dataNodeBalanceByDPCountHigh"
+	dataNodeBalanceByDPCountLowKey         = "dataNodeBalanceByDPCountLow"
 
 	remoteCacheEnable            = "remoteCacheEnable"
 	remoteCacheAutoPrepare       = "remoteCacheAutoPrepare"

@@ -512,6 +512,8 @@ type dataNodeValue struct {
 	RdOnly                             bool
 	DecommissionedDisks                []string
 	DecommissionSuccessDisks           []string
+	BalancedDiskUsage                  uint64
+	BalancedDPCount                    uint64
 	DecommissionStatus                 uint32
 	DecommissionDstAddr                string
 	DecommissionRaftForce              bool
@@ -539,6 +541,8 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		RdOnly:                             dataNode.RdOnly,
 		DecommissionedDisks:                dataNode.getDecommissionedDisks(),
 		DecommissionSuccessDisks:           dataNode.getDecommissionSuccessDisks(),
+		BalancedDiskUsage:                  dataNode.BalancedDiskUsage,
+		BalancedDPCount:                    dataNode.BalancedDPCount,
 		DecommissionStatus:                 atomic.LoadUint32(&dataNode.DecommissionStatus),
 		DecommissionDstAddr:                dataNode.DecommissionDstAddr,
 		DecommissionRaftForce:              dataNode.DecommissionRaftForce,
