@@ -745,6 +745,15 @@ func (m *FlashGroupManager) setNodeInfoHandler(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	if val, ok := params[cfgFlashKeyFlowLimit]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(cfgFlashKeyFlowLimit, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	if val, ok := params[cfgRemoteClientFlowLimit]; ok {
 		if v, ok := val.(int64); ok {
 			if err = m.setConfig(cfgRemoteClientFlowLimit, strconv.FormatInt(v, 10)); err != nil {

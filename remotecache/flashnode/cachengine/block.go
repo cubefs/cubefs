@@ -815,9 +815,8 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 		return nil, fmt.Errorf("alloc size is zero"), false
 	}
 	key := GenCacheBlockKeyV2(pDir, uniKey)
-	v, ok := c.keyToDiskMap.Load(key)
+	cacheItem, ok := c.getCacheItem(key)
 	if ok {
-		cacheItem := v.(*lruCacheItem)
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
@@ -831,11 +830,10 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 	if loaded {
 		created = true
 		<-ch
-		v, ok = c.keyToDiskMap.Load(key)
+		cacheItem, ok = c.getCacheItem(key)
 		if ok {
-			cacheItem := v.(*lruCacheItem)
 			if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
-				if blockValue, got := v.(*lruCacheItem).lruCache.Peek(key); got {
+				if blockValue, got := cacheItem.lruCache.Peek(key); got {
 					block = blockValue.(*CacheBlock)
 					return
 				}
@@ -848,10 +846,8 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 			c.creatingCacheBlockMap.Delete(key)
 		}()
 	}
-
-	v, ok = c.keyToDiskMap.Load(key)
+	cacheItem, ok = c.getCacheItem(key)
 	if ok {
-		cacheItem := v.(*lruCacheItem)
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
@@ -860,8 +856,6 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 			}
 		}
 	}
-
-	var cacheItem *lruCacheItem
 	if cacheItem, err = c.selectAvailableLruCache(); err == nil {
 		block = NewCacheBlockV2(cacheItem.config.Path, pDir, uniKey, allocSize, clientIP, cacheItem.disk, c.keyRateLimitThreshold, c.keyLimiterFlow)
 		if ttl <= 0 {
@@ -885,7 +879,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 		if _, err = cacheItem.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
 			return
 		}
-		c.keyToDiskMap.Store(key, cacheItem)
+		c.setCacheItem(key, cacheItem)
 	}
 
 	return
@@ -893,9 +887,8 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 
 func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string, uniKey string, allocSize uint64, clientIP string) (block *CacheBlock, err error) {
 	key := GenCacheBlockKeyV2(volume, uniKey)
-	v, ok := c.keyToDiskMap.Load(key)
+	cacheItem, ok := c.getCacheItem(key)
 	if ok {
-		cacheItem := v.(*lruCacheItem)
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
@@ -904,11 +897,11 @@ func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string
 		}
 	}
 
-	v, ok = c.lruCacheMap.Load(dataPath)
+	v, ok := c.lruCacheMap.Load(dataPath)
 	if !ok {
 		return nil, errors.NewErrorf("no lru cache item related to dataPath(%v)", dataPath)
 	}
-	cacheItem := v.(*lruCacheItem)
+	cacheItem = v.(*lruCacheItem)
 	if atomic.LoadInt32(&cacheItem.disk.Status) == proto.Unavailable {
 		return nil, errors.NewErrorf("lru cache item related to dataPath(%v) is unavailable", dataPath)
 	}
@@ -927,7 +920,7 @@ func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string
 	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
 		return
 	}
-	c.keyToDiskMap.Store(key, cacheItem)
+	c.setCacheItem(key, cacheItem)
 
 	return
 }
