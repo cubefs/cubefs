@@ -266,48 +266,48 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	arw.cache.blockCache.Store(key, cacheBlock)
 	cacheBlock.time = time.Now().Unix()
 	atomic.StoreUint64(&cacheBlock.readBytes, 0)
-
-	enableFollowerRead := arw.streamer.client.dataWrapper.FollowerRead() && !arw.streamer.client.dataWrapper.InnerReq()
-	retryRead := true
-	if proto.IsCold(arw.streamer.client.volumeType) || proto.IsStorageClassBlobStore(task.storageClass) {
-		retryRead = false
-	}
-	sc := NewStreamConn(task.dp, enableFollowerRead, arw.streamer.client.streamRetryTimeout)
-	err = sc.Send(&retryRead, task.p, func(conn *net.TCPConn) (error, bool) {
-		// reset readBytes when reading from other datanodes
-		readBytes = 0
-		atomic.StoreUint64(&cacheBlock.readBytes, 0)
-		for readBytes < task.cacheSize {
-			rp := NewReply(task.p.ReqID, task.p.PartitionID, task.p.ExtentID)
-			bufSize := util.Min(util.CacheReadBlockSize, task.cacheSize-readBytes)
-			rp.Data = cacheBlock.data[readBytes : readBytes+bufSize]
-			if e := rp.readFromConn(conn, proto.ReadDeadlineTime); e != nil {
-				return e, false
-			}
-			if rp.ResultCode != proto.OpOk {
-				return fmt.Errorf("resultCode(%x) not ok", rp.ResultCode), false
-			}
-			// update timeStamp to prevent from deleted by timeout
-			cacheBlock.time = time.Now().Unix()
-			readBytes += int(rp.Size)
-			atomic.AddUint64(&cacheBlock.readBytes, uint64(rp.Size))
-			curSize := atomic.LoadUint64(&cacheBlock.readBytes)
-			log.LogDebugf("doTask  key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
-				key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock)
-			if curSize > util.CacheReadBlockSize {
-				log.LogErrorf("doTask out of range key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
+	// randomly shuffle the order of hosts to evenly distribute access pressure.
+	hosts := getRotatedHosts(task.dp.Hosts)
+	for _, host := range hosts {
+		err = sendToNode(host, task.p, func(conn *net.TCPConn) (error, bool) {
+			// reset readBytes when reading from other datanodes
+			readBytes = 0
+			atomic.StoreUint64(&cacheBlock.readBytes, 0)
+			for readBytes < task.cacheSize {
+				rp := NewReply(task.p.ReqID, task.p.PartitionID, task.p.ExtentID)
+				bufSize := util.Min(util.CacheReadBlockSize, task.cacheSize-readBytes)
+				rp.Data = cacheBlock.data[readBytes : readBytes+bufSize]
+				if e := rp.readFromConn(conn, proto.ReadDeadlineTime); e != nil {
+					return e, false
+				}
+				if rp.ResultCode != proto.OpOk {
+					err = fmt.Errorf("result code[%v],msg[%v]", rp.ResultCode, string(rp.Data))
+					return err, false
+				}
+				// update timeStamp to prevent from deleted by timeout
+				cacheBlock.time = time.Now().Unix()
+				readBytes += int(rp.Size)
+				atomic.AddUint64(&cacheBlock.readBytes, uint64(rp.Size))
+				curSize := atomic.LoadUint64(&cacheBlock.readBytes)
+				log.LogDebugf("doTask  key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
 					key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock)
+				if curSize > util.CacheReadBlockSize {
+					log.LogErrorf("doTask out of range key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
+						key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock)
+				}
 			}
+			realHost = conn.RemoteAddr().String()
+			return nil, false
+		})
+		if err == nil {
+			atomic.StoreUint32(&cacheBlock.state, AheadReadBlockStateInit)
+			log.LogDebugf("doTask ready: key(%v) offset(%v) size(%v) err(%v) %v reqID(%v)",
+				key, task.p.ExtentOffset, task.cacheSize, err, time.Since(task.time), task.reqID)
+			return
+		} else {
+			// try next host
+			log.LogWarnf("doTask read from %v failed:%v", host, err)
 		}
-		realHost = conn.RemoteAddr().String()
-		return nil, false
-	})
-
-	if err == nil {
-		atomic.StoreUint32(&cacheBlock.state, AheadReadBlockStateInit)
-		log.LogDebugf("doTask ready: key(%v) offset(%v) size(%v) err(%v) %v reqID(%v)",
-			key, task.p.ExtentOffset, task.cacheSize, err, time.Since(task.time), task.reqID)
-		return
 	}
 	atomic.StoreUint32(&cacheBlock.state, AheadReadBlockStateInit)
 	log.LogErrorf("doTask inode(%v) offset(%v) size(%v) err(%v) - read failed,"+
@@ -491,11 +491,13 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 			} else {
 				end := int(cacheBlock.offset) + int(curSize)
 				bytesToEnd := end - offset
-				reqID := uuid.New().String()
-				log.LogDebugf("aheadRead move ahead win inode(%v) FileOffset(%v) offset(%v) need(%v) "+
-					"cacheBlockOffset(%v) cacheBlockSize(%v) copied(%v) reqID(%v)",
-					s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, bytesToEnd, reqID)
-				go s.aheadReadWindow.addNextTask(offset, dp, req, startTime, reqID, storageClass)
+				if (cacheBlock.offset + curSize) == uint64(offset+needSize) {
+					reqID := uuid.New().String()
+					log.LogDebugf("aheadRead move ahead win inode(%v) FileOffset(%v) offset(%v) need(%v) "+
+						"cacheBlockOffset(%v) cacheBlockSize(%v) copied(%v) reqID(%v)",
+						s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, bytesToEnd, reqID)
+					go s.aheadReadWindow.addNextTask(offset, dp, req, startTime, reqID, storageClass)
+				}
 				if bytesToEnd > 0 {
 					copy(req.Data[readSize:readSize+bytesToEnd],
 						cacheBlock.data[offset-int(cacheBlock.offset):offset-int(cacheBlock.offset)+bytesToEnd])
@@ -517,4 +519,33 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 	step = "pass"
 	go s.aheadReadWindow.doMultiAheadRead(offset, remainSize, req, dp, startTime, uuid.New().String(), storageClass)
 	return
+}
+
+func sendToNode(host string, p *Packet, getReply GetReplyFunc) (err error) {
+	var conn *net.TCPConn
+	if conn, err = StreamConnPool.GetConnect(host); err != nil {
+		return
+	}
+	defer StreamConnPool.PutConnect(conn, err != nil)
+	if err = p.WriteToConn(conn); err != nil {
+		return
+	}
+	err, _ = getReply(conn)
+	return
+}
+
+var rrIdx uint64
+
+func getRotatedHosts(hosts []string) []string {
+	if len(hosts) == 0 {
+		return nil
+	}
+	idx := int(atomic.AddUint64(&rrIdx, 1)-1) % len(hosts)
+
+	rhosts := make([]string, 0, len(hosts))
+	rhosts = append(rhosts, hosts[idx:]...)
+	if idx > 0 {
+		rhosts = append(rhosts, hosts[:idx]...)
+	}
+	return rhosts
 }
