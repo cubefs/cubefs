@@ -1559,6 +1559,8 @@ const (
 	QueryDecommission // used for querying decommission progress for ManualDecommission and AutoDecommission
 	AutoAddReplica
 	ManualAddReplica
+	BalanceByDiskUsage
+	BalanceByDPCount
 )
 
 type BackupDataPartitionInfo struct {

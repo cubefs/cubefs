@@ -1797,3 +1797,174 @@ func (c *Cluster) CalculateMetaPartitionFreezeCount(name string) (*CleanTask, er
 
 	return ret, nil
 }
+
+func (c *Cluster) getOverLoadDataNodesByDiskUsage() []*DataNode {
+	overloadNodes := make([]*DataNode, 0)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if dataNode.isActive && dataNode.UsageRatio > c.cfg.DataNodeBalanceByDiskUsageHigh {
+			overloadNodes = append(overloadNodes, dataNode)
+		}
+		return true
+	})
+	return overloadNodes
+}
+
+func (c *Cluster) getOverLoadDataNodesByDPCount() []*DataNode {
+	overloadNodes := make([]*DataNode, 0)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if dataNode.isActive && dataNode.DataPartitionCount > c.cfg.DataNodeBalanceByDPCountHigh {
+			overloadNodes = append(overloadNodes, dataNode)
+		}
+		return true
+	})
+	return overloadNodes
+}
+
+// TODO: finish
+func (c *Cluster) getUnderLoadDataNodesByDiskUsage(zone string, nodeSet uint64, excludeHost uint64) []*DataNode {
+	underloadNodes := make([]*DataNode, 0)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		return true
+	})
+	return underloadNodes
+}
+
+// TODO: finish
+func (c *Cluster) getUnderLoadDataNodesByDPCount(zone string, nodeSet uint64, excludeHost uint64) ([]*DataNode, error) {
+	underloadNodes := make([]*DataNode, 0)
+	if zone == "" {
+		return nil, fmt.Errorf("action[getUnderLoadDataNodesByDPCount], clusterID[%v], getUnderLoadDataNodesByDPCount failed, the zone must be specified", c.Name)
+	}
+
+	if nodeSet != 0 {
+		c.dataNodes.Range(func(addr, node interface{}) bool {
+			dataNode := node.(*DataNode)
+			if dataNode.isActive && dataNode.DataPartitionCount > c.cfg.DataNodeBalanceByDPCountHigh {
+				underloadNodes = append(underloadNodes, dataNode)
+			}
+			return true
+		})
+	} else {
+
+	}
+
+	return underloadNodes, nil
+}
+
+func (c *Cluster) GetNumReplicasInNodeSet(dp *DataPartition, nodeset uint64) int {
+	var (
+		numReplica int = 0
+	)
+
+	for _, replica := range dp.Replicas {
+		if replica.dataNode.NodeSetID == nodeset {
+			numReplica++
+		}
+	}
+
+	return numReplica
+}
+
+func (c *Cluster) handleDataNodeBalanceByDiskUsage(d *DataNode) (err error) {
+	var (
+		sizeToBalance     uint64 = 0
+		sizeMarkedDecomm  uint64 = 0
+		numDPMarkedDecomm uint64 = 0
+		dp                *DataPartition
+	)
+
+	if !d.isActive || d.UsageRatio <= c.cfg.DataNodeBalanceByDiskUsageHigh {
+		return fmt.Errorf("action[handleDataNodeBalanceByDiskUsage], clusterID[%v], node[%v] failed, the node is no longer active or overload by disk usage", c.Name, d.ID)
+	}
+
+	sizeToBalance = uint64(float64(d.Total) * (d.UsageRatio - c.cfg.DataNodeBalanceByDiskUsageHigh))
+
+	copiedDataPartitionReports := make([]*proto.DataPartitionReport, len(d.DataPartitionReports))
+	copy(d.DataPartitionReports, copiedDataPartitionReports)
+	sort.Slice(copiedDataPartitionReports, func(i, j int) bool { return copiedDataPartitionReports[i].Used > copiedDataPartitionReports[j].Used })
+
+	for i := 0; i < len(copiedDataPartitionReports) && sizeMarkedDecomm < sizeToBalance && numDPMarkedDecomm < uint64(d.DataPartitionCount); i++ {
+		dpReport := copiedDataPartitionReports[i]
+		if dp, err = c.getDataPartitionByID(dpReport.PartitionID); err != nil {
+			continue
+		}
+		if err = c.markDecommissionDataPartition(dp, d, 0, true, BalanceByDiskUsage, lowPriorityDecommissionWeight); err != nil {
+			log.LogErrorf("action[handleDataNodeBalanceByDiskUsage], clusterID[%v], node[%v] failed to mark decommission data partition[%v], error[%v]", c.Name, d.ID, dp.PartitionID, err)
+			continue
+		}
+		sizeMarkedDecomm += dp.used
+		numDPMarkedDecomm += 1
+	}
+
+	log.LogInfof("action[handleDataNodeBalanceByDiskUsage], clusterID[%v], node[%v] sizeMarkedDecomm[%v], numDPMarkedDecomm[%v]", c.Name, d.ID, sizeMarkedDecomm, numDPMarkedDecomm)
+	return nil
+}
+
+func (c *Cluster) handleDataNodeBalanceByDPCount(d *DataNode) (err error) {
+	var (
+		numDPsToBalance   uint32 = 0
+		sizeMarkedDecomm  uint64 = 0
+		numDPMarkedDecomm uint32 = 0
+		dp                *DataPartition
+	)
+
+	if !d.isActive || d.DataPartitionCount <= c.cfg.DataNodeBalanceByDPCountHigh {
+		return fmt.Errorf("action[handleDataNodeBalanceByDPCount], clusterID[%v], node[%v] failed, the node is no longer active or overload by dp count", c.Name, d.ID)
+	}
+
+	numDPsToBalance = d.DataPartitionCount - c.cfg.DataNodeBalanceByDPCountHigh
+
+	copiedDataPartitionReports := make([]*proto.DataPartitionReport, len(d.DataPartitionReports))
+	copy(d.DataPartitionReports, copiedDataPartitionReports)
+	sort.Slice(copiedDataPartitionReports, func(i, j int) bool { return copiedDataPartitionReports[i].Used < copiedDataPartitionReports[j].Used })
+
+	for i := 0; i < len(copiedDataPartitionReports) && numDPMarkedDecomm < numDPsToBalance && numDPMarkedDecomm < d.DataPartitionCount; i++ {
+		dpReport := copiedDataPartitionReports[i]
+		if dp, err = c.getDataPartitionByID(dpReport.PartitionID); err != nil {
+			continue
+		}
+		if err = c.markDecommissionDataPartition(dp, d, 0, true, BalanceByDPCount, lowPriorityDecommissionWeight); err != nil {
+			log.LogErrorf("action[handleDataNodeBalanceByDPCount], clusterID[%v], node[%v] failed to mark decommission data partition[%v], error[%v]", c.Name, d.ID, dp.PartitionID, err)
+			continue
+		}
+		sizeMarkedDecomm += dp.used
+		numDPMarkedDecomm += 1
+	}
+
+	log.LogInfof("action[handleDataNodeBalanceByDPCount], clusterID[%v], node[%v] sizeMarkedDecomm[%v], numDPMarkedDecomm[%v]", c.Name, d.ID, sizeMarkedDecomm, numDPMarkedDecomm)
+	return nil
+}
+
+func (c *Cluster) doDataNodeBalanceByDiskUsage() {
+	overLoadDataNodes := c.getOverLoadDataNodesByDiskUsage()
+	for _, node := range overLoadDataNodes {
+		if err := c.handleDataNodeBalanceByDiskUsage(node); err != nil {
+			log.LogErrorf(err.Error())
+		}
+	}
+}
+
+func (c *Cluster) doDataNodeBalanceByDPCount() {
+	overLoadDataNodes := c.getOverLoadDataNodesByDPCount()
+	for _, node := range overLoadDataNodes {
+		if err := c.handleDataNodeBalanceByDPCount(node); err != nil {
+			log.LogErrorf(err.Error())
+		}
+	}
+}
+
+func (c *Cluster) scheduleToBalanceDataNode() {
+	c.runTask(&cTask{
+		tickTime: time.Second * time.Duration(c.cfg.DataNodeBalanceInterval),
+		name:     "scheduleToBalanceDataNode",
+		function: func() (fin bool) {
+			if c.partition.IsRaftLeader() {
+				c.doDataNodeBalanceByDiskUsage()
+				c.doDataNodeBalanceByDPCount()
+			}
+			return
+		},
+	})
+}
