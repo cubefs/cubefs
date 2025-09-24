@@ -203,6 +203,7 @@ const (
 	QueryBackupDirectories             = "/disk/queryBackupDirectories"
 	GetDataNode                        = "/dataNode/get"
 	SetDpCntLimit                      = "/dataNode/setDpCntLimit"
+	SetDataNodeBalanceInfo             = "/dataNode/setBalanceInfo"
 	AddMetaNode                        = "/metaNode/add"
 	SetMpCntLimit                      = "/metaNode/setMpCntLimit"
 	DecommissionMetaNode               = "/metaNode/decommission"
@@ -1559,6 +1560,8 @@ const (
 	QueryDecommission // used for querying decommission progress for ManualDecommission and AutoDecommission
 	AutoAddReplica
 	ManualAddReplica
+	BalanceByDiskUsage
+	BalanceByDPCount
 )
 
 type BackupDataPartitionInfo struct {

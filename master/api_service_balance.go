@@ -603,3 +603,127 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 	rstMsg = fmt.Sprintf("Offline metanode %s at background successfully", offLineAddr)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
+
+func parseNodeBalanceInfoParams(r *http.Request) (params map[string]interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	noParams := true
+
+	if value = r.FormValue(dataNodeBalanceByDiskUsageHighKey); value != "" {
+		noParams = false
+		var val float64
+		val, err = strconv.ParseFloat(value, 64)
+		if err != nil {
+			err = unmatchedKey(dataNodeBalanceByDiskUsageHighKey)
+			return
+		}
+		params[dataNodeBalanceByDiskUsageHighKey] = val
+	}
+
+	if value = r.FormValue(dataNodeBalanceByDiskUsageLowKey); value != "" {
+		noParams = false
+		var val float64
+		val, err = strconv.ParseFloat(value, 64)
+		if err != nil {
+			err = unmatchedKey(dataNodeBalanceByDiskUsageLowKey)
+			return
+		}
+		params[dataNodeBalanceByDiskUsageLowKey] = val
+	}
+
+	if value = r.FormValue(dataNodeBalanceByDPCountHighKey); value != "" {
+		noParams = false
+		var val int64
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(dataNodeBalanceByDPCountHighKey)
+			return
+		}
+		params[dataNodeBalanceByDPCountHighKey] = val
+	}
+
+	if value = r.FormValue(dataNodeBalanceByDPCountLowKey); value != "" {
+		noParams = false
+		var val int64
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(dataNodeBalanceByDPCountLowKey)
+			return
+		}
+		params[dataNodeBalanceByDPCountLowKey] = val
+	}
+
+	if noParams {
+		err = fmt.Errorf("no key assigned")
+		return
+	}
+
+	return
+}
+
+func (m *Server) setDataNodeBalanceInfoHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		params                            map[string]interface{}
+		err                               error
+		val                               interface{}
+		keyExists                         bool
+		newDataNodeBalanceByDiskUsageLow  float64
+		newDataNodeBalanceByDiskUsageHigh float64
+		newDataNodeBalanceByDPCountLow    uint32
+		newDataNodeBalanceByDPCountHigh   uint32
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.SetDataNodeBalanceInfo))
+	defer func() {
+		doStatAndMetric(proto.SetDataNodeBalanceInfo, metric, err, nil)
+		AuditLog(r, proto.SetDataNodeBalanceInfo, fmt.Sprintf("params: %v", params), err)
+	}()
+
+	if params, err = parseNodeBalanceInfoParams(r); err != nil {
+		return
+	}
+
+	if val, keyExists = params[dataNodeBalanceByDiskUsageLowKey]; keyExists {
+		if v, keyExists := val.(float64); keyExists {
+			newDataNodeBalanceByDiskUsageLow = v
+		}
+	}
+
+	if val, keyExists = params[dataNodeBalanceByDiskUsageHighKey]; keyExists {
+		if v, keyExists := val.(float64); keyExists {
+			newDataNodeBalanceByDiskUsageHigh = v
+		}
+	}
+
+	if val, keyExists = params[dataNodeBalanceByDPCountLowKey]; keyExists {
+		if v, keyExists := val.(uint32); keyExists {
+			newDataNodeBalanceByDPCountLow = v
+		}
+	}
+
+	if val, keyExists = params[dataNodeBalanceByDPCountHighKey]; keyExists {
+		if v, keyExists := val.(uint32); keyExists {
+			newDataNodeBalanceByDPCountHigh = v
+		}
+	}
+
+	//check parameters
+	if newDataNodeBalanceByDiskUsageHigh <= newDataNodeBalanceByDiskUsageLow {
+		err = fmt.Errorf("DataNodeBalanceByDiskUsageHigh is lower than DataNodeBalanceByDiskUsageHigh")
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if newDataNodeBalanceByDPCountHigh <= newDataNodeBalanceByDPCountLow {
+		err = fmt.Errorf("DataNodeBalanceByDPCountHigh is lower than DataNodeBalanceByDiskUsageLow")
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	//set the parameters
+	m.cluster.cfg.DataNodeBalanceByDiskUsageLow = newDataNodeBalanceByDiskUsageLow
+	m.cluster.cfg.DataNodeBalanceByDiskUsageHigh = newDataNodeBalanceByDiskUsageHigh
+	m.cluster.cfg.DataNodeBalanceByDPCountLow = newDataNodeBalanceByDPCountLow
+	m.cluster.cfg.DataNodeBalanceByDPCountHigh = newDataNodeBalanceByDPCountHigh
+}

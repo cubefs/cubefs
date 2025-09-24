@@ -515,6 +515,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToUpdateFlashGroupSlots()
 	c.scheduleToCheckDataPartitionRepairingStatus()
 	c.scheduleToCheckDataPartitionDecommissionDiskRetryMap()
+	c.scheduleToBalanceDataNode()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
