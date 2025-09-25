@@ -58,7 +58,7 @@ func (dctx *DirContexts) GetCopy(handle fuse.HandleID) (DirContext, bool) {
 	dctx.RLock()
 	if dctx.dirCtx == nil {
 		dctx.RUnlock()
-		return DirContext{}
+		return DirContext{}, false
 	}
 	dirCtx, found := dctx.dirCtx[handle]
 	dctx.RUnlock()
