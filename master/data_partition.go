@@ -2456,7 +2456,8 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		return false
 	}
 
-	if atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes) >= defaultDecommissionRollbackLimit {
+	if atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes)+1 >= defaultDecommissionRollbackLimit {
+		atomic.AddUint32(&partition.DecommissionNeedRollbackTimes, 1)
 		log.LogDebugf("action[needRollback]try delete dp[%v] replica %v DecommissionNeedRollbackTimes[%v]",
 			partition.PartitionID, partition.DecommissionDstAddr, atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes))
 		// delete it from BadDataPartitionIds
