@@ -49,6 +49,7 @@ type MetaNodeBalanceInfo struct {
 	InodeCount     uint64   `json:"inodeCount"`
 	Estimate       int      `json:"estimate"`
 	PlanCnt        int      `json:"planCount"`
+	Selected       int      `json:"selected"`
 }
 
 type NodeSetPressureView struct {

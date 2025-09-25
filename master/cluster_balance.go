@@ -1003,10 +1003,17 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 	}
 
 	address = make([]*proto.MrBalanceInfo, 0, param.RequestNum)
+	SortMetaNodes := make([]*proto.MetaNodeBalanceInfo, 0, len(nodeSet.MetaNodes))
+	for _, metaNode := range nodeSet.MetaNodes {
+		SortMetaNodes = append(SortMetaNodes, metaNode)
+	}
+	sort.Slice(SortMetaNodes, func(i, j int) bool {
+		return SortMetaNodes[i].Selected < SortMetaNodes[j].Selected
+	})
 	rackLevel := param.RackLevel
 
 	selectAddr := func() {
-		for _, entry := range nodeSet.MetaNodes {
+		for _, entry := range SortMetaNodes {
 
 			if contains(param.Excludes, entry.Addr) {
 				continue
@@ -1051,6 +1058,9 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 	}
 	selectAddr()
 	if find {
+		for _, item := range address {
+			nodeSet.MetaNodes[item.DstId].Selected += 1
+		}
 		return
 	}
 
@@ -1058,6 +1068,11 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 	if param.RackLevel == proto.RackAwareWeak {
 		rackLevel = proto.RackAwareNone
 		selectAddr()
+	}
+	if find {
+		for _, item := range address {
+			nodeSet.MetaNodes[item.DstId].Selected += 1
+		}
 	}
 
 	return
