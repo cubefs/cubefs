@@ -96,6 +96,12 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 			return shardnode.ShardStats{}, nil
 		},
 	).AnyTimes()
+	mockShardTp.EXPECT().IsRepairedDisk(A, A).DoAndReturn(func(ctx context.Context, diskID proto.DiskID) (bool, error) {
+		if diskID != brokenDiskID {
+			return false, nil
+		}
+		return true, nil
+	}).AnyTimes()
 
 	shardID := proto.Suid(1)
 	shard := &shard{

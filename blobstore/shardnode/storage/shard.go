@@ -29,7 +29,6 @@ import (
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -851,9 +850,17 @@ func (s *shard) CheckAndClearShard(ctx context.Context) error {
 		if err == nil {
 			continue
 		}
-		if rpc.DetectStatusCode(err) != apierr.CodeShardNodeDiskNotFound {
-			return errors.Info(err, "get shard stats failed", u.DiskID, u.Suid)
+
+		// get target shardunit stats failed, check if the disk is repaired
+		repaired, err := s.cfg.Transport.IsRepairedDisk(ctx, u.DiskID)
+		if err != nil {
+			return errors.Info(err, "get disk info failed", u.DiskID)
 		}
+		if !repaired {
+			continue
+		}
+
+		// disk id is repaired, corresponding shard unit from shardinfo should be removed
 		err = s.UpdateShard(ctx, proto.ShardUpdateTypeRemoveMember, clustermgr.ShardUnit{
 			Suid:   u.Suid,
 			DiskID: u.DiskID,
@@ -861,7 +868,7 @@ func (s *shard) CheckAndClearShard(ctx context.Context) error {
 		if err != nil {
 			return errors.Info(err, "update shard failed", s.suid, u.DiskID)
 		}
-		span.Infof("remove shard[%d] suid[%d] from unit[%+v] done", s.suid.ShardID(), s.suid, u)
+		span.Infof("shard[%d] suid[%d] remove unit[%+v] done", s.suid.ShardID(), s.suid, u)
 		return err
 	}
 	return nil

@@ -304,3 +304,33 @@ func TestTransport_GetVolume(t *testing.T) {
 	require.Equal(t, vid, simpleInfo.Vid)
 	require.Equal(t, mode.GetShardNum(), len(simpleInfo.VunitLocations))
 }
+
+func TestTransport_GetRepairedDisk(t *testing.T) {
+	diskID := proto.DiskID(1)
+	diskInfo := &clustermgr.ShardNodeDiskInfo{
+		ShardNodeDiskHeartbeatInfo: clustermgr.ShardNodeDiskHeartbeatInfo{DiskID: diskID},
+		DiskInfo: clustermgr.DiskInfo{
+			Status: proto.DiskStatusRepaired,
+		},
+	}
+
+	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.ShardNodeDiskInfo) error {
+		*info = *diskInfo
+		return nil
+	}).Times(1)
+
+	tp := NewTransport(TransportConfig{
+		CMClient: &clustermgr.Client{
+			Client: mockCli,
+		},
+	})
+
+	repaired, err := tp.IsRepairedDisk(context.Background(), diskID)
+	require.Nil(t, err)
+	require.True(t, repaired)
+
+	repaired, err = tp.IsRepairedDisk(context.Background(), diskID)
+	require.Nil(t, err)
+	require.True(t, repaired)
+}

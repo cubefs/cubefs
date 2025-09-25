@@ -72,6 +72,7 @@ type (
 		ResolveNodeAddr(ctx context.Context, diskID proto.DiskID) (string, error)
 		UpdateShard(ctx context.Context, host string, args shardnodeapi.UpdateShardArgs) error
 		ShardStats(ctx context.Context, host string, args shardnodeapi.GetShardArgs) (shardnodeapi.ShardStats, error)
+		IsRepairedDisk(ctx context.Context, diskID proto.DiskID) (bool, error)
 	}
 
 	BlobTransport interface {
@@ -108,6 +109,8 @@ type transport struct {
 	cmClient *clustermgr.Client
 	snClient *shardnodeapi.Client
 	bnClient api.StorageAPI
+
+	repairedDisks sync.Map
 
 	singleRun singleflight.Group
 }
@@ -154,6 +157,23 @@ func (t *transport) GetDisk(ctx context.Context, diskID proto.DiskID, cache bool
 	}
 
 	return v.(*clustermgr.ShardNodeDiskInfo), err
+}
+
+func (t *transport) IsRepairedDisk(ctx context.Context, diskID proto.DiskID) (bool, error) {
+	_, ok := t.repairedDisks.Load(diskID)
+	if ok {
+		return true, nil
+	}
+
+	diskInfo, err := t.cmClient.ShardNodeDiskInfo(ctx, diskID)
+	if err != nil {
+		return false, err
+	}
+	if diskInfo.Status != proto.DiskStatusRepaired {
+		return false, nil
+	}
+	t.repairedDisks.Store(diskID, struct{}{})
+	return true, nil
 }
 
 func (t *transport) AllocDiskID(ctx context.Context) (proto.DiskID, error) {

@@ -232,6 +232,21 @@ func (mr *MockTransportMockRecorder) HeartbeatDisks(ctx, disks interface{}) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeartbeatDisks", reflect.TypeOf((*MockTransport)(nil).HeartbeatDisks), ctx, disks)
 }
 
+// IsRepairedDisk mocks base method.
+func (m *MockTransport) IsRepairedDisk(ctx context.Context, diskID proto.DiskID) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsRepairedDisk", ctx, diskID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsRepairedDisk indicates an expected call of IsRepairedDisk.
+func (mr *MockTransportMockRecorder) IsRepairedDisk(ctx, diskID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsRepairedDisk", reflect.TypeOf((*MockTransport)(nil).IsRepairedDisk), ctx, diskID)
+}
+
 // ListDisks mocks base method.
 func (m *MockTransport) ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
@@ -731,6 +746,21 @@ func NewMockShardTransport(ctrl *gomock.Controller) *MockShardTransport {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockShardTransport) EXPECT() *MockShardTransportMockRecorder {
 	return m.recorder
+}
+
+// IsRepairedDisk mocks base method.
+func (m *MockShardTransport) IsRepairedDisk(ctx context.Context, diskID proto.DiskID) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsRepairedDisk", ctx, diskID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsRepairedDisk indicates an expected call of IsRepairedDisk.
+func (mr *MockShardTransportMockRecorder) IsRepairedDisk(ctx, diskID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsRepairedDisk", reflect.TypeOf((*MockShardTransport)(nil).IsRepairedDisk), ctx, diskID)
 }
 
 // ResolveNodeAddr mocks base method.
