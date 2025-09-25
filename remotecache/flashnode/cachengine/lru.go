@@ -295,7 +295,9 @@ func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n
 	}
 	for k, e := range toEvicts {
 		_ = c.onDelete(e, fmt.Sprintf("lru disk space is full(%d / %d) diskSpaceLeft(%d)", atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft))
-		log.LogInfof("delete(%s) cos disk space full, len(%d) size(%d / %d) diskSpaceLeft(%d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft)
+		if log.EnableInfo() {
+			log.LogInfof("delete(%s) cos disk space full, len(%d) size(%d / %d) diskSpaceLeft(%d) preAllocated(%d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft, preAllocated)
+		}
 	}
 	if diskSpaceLeft <= 0 {
 		return n, fmt.Errorf("diskSpaceLeft(%v) is not larger than 0, lru has no more entry can be deleted", diskSpaceLeft)
