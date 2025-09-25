@@ -469,7 +469,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		return make([]fuse.Dirent, 0), ParseError(err)
 	}
 
-	if dirCtx.Name == "" {
+	if req.Offset == 0 && dirCtx.Name == "" {
 		if len(children) == 0 {
 			dirents := make([]fuse.Dirent, 0, len(children))
 			dirents = append(dirents, fuse.Dirent{
