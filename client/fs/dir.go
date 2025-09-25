@@ -54,7 +54,7 @@ func NewDirContexts() (dctx *DirContexts) {
 	return
 }
 
-func (dctx *DirContexts) GetCopy(handle fuse.HandleID) DirContext {
+func (dctx *DirContexts) GetCopy(handle fuse.HandleID) (DirContext, bool) {
 	dctx.RLock()
 	if dctx.dirCtx == nil {
 		dctx.RUnlock()
@@ -64,9 +64,9 @@ func (dctx *DirContexts) GetCopy(handle fuse.HandleID) DirContext {
 	dctx.RUnlock()
 
 	if found {
-		return DirContext{dirCtx.Name}
+		return DirContext{dirCtx.Name}, true
 	} else {
-		return DirContext{}
+		return DirContext{}, false
 	}
 }
 
@@ -462,15 +462,16 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
-	var dirCtx DirContext = d.dctx.GetCopy(req.Handle)
+	dirCtx, found := d.dctx.GetCopy(req.Handle)
 	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
 	if err != nil {
 		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v) offset %v", d.info.Inode, err, req.Offset)
 		return make([]fuse.Dirent, 0), ParseError(err)
 	}
 
-	if req.Offset == 0 && dirCtx.Name == "" {
+	if dirCtx.Name == "" && !found {
 		if len(children) == 0 {
+			d.dctx.Put(req.Handle, &dirCtx)
 			dirents := make([]fuse.Dirent, 0, len(children))
 			dirents = append(dirents, fuse.Dirent{
 				Inode: d.info.Inode,
