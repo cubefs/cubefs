@@ -865,6 +865,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 		block.ttl = ttl
 
 		defer func() {
+			cacheItem.lruCache.FreePreAllocatedSize(block.blockKey)
 			if err != nil {
 				block.Delete(fmt.Sprintf("create block failed %v", err))
 			}
