@@ -1259,8 +1259,10 @@ func (rc *RemoteCacheClient) readObjectFromRemoteCache(ctx context.Context, key 
 		req.Deadline = uint64(time.Now().Add(time.Millisecond * time.Duration(rc.ReadTimeout)).UnixNano())
 	}
 	if reader, length, err = rc.ReadObject(ctx, fg, reqId, &req); err != nil {
-		log.LogWarnf("readObjectFromRemoteCache: flashGroup read failed. key(%v) offset(%v) size(%v) fg(%v) req(%v) reqId(%v)"+
-			" err(%v)", key, offset, size, fg, req, reqId, err)
+		if !proto.IsCacheMissError(err) {
+			log.LogWarnf("readObjectFromRemoteCache: flashGroup read failed. key(%v) offset(%v) size(%v) fg(%v) req(%v) reqId(%v)"+
+				" err(%v)", key, offset, size, fg, req, reqId, err)
+		}
 		return
 	}
 	if log.EnableDebug() {
@@ -1603,7 +1605,7 @@ func (rc *RemoteCacheClient) ReadObjectFirstReply(conn *net.TCPConn, p *proto.Pa
 		}
 		openConn = true
 		err = fmt.Errorf(string(p.Data))
-		if !proto.IsFlashNodeLimitError(err) {
+		if !proto.IsFlashNodeLimitError(err) && !proto.IsCacheMissError(err) {
 			log.LogWarnf("ReadObjectFirstReply: ResultCode NOK, err(%v) ResultCode(%v)", err, p.ResultCode)
 		}
 		return
@@ -1660,8 +1662,10 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 				}
 				if task.res.ResultCode != uint32(proto.OpOk) {
 					err = fmt.Errorf("batch read failed: %s", string(task.res.Data))
-					log.LogWarnf("%v ReadQueueMap: failed to read small object, reqId(%v) batchReqId(%v) err(%v)",
-						logPrefix, reqId, task.req.ReqId, err)
+					if !proto.IsCacheMissError(err) {
+						log.LogWarnf("%v ReadQueueMap: failed to read small object, reqId(%v) batchReqId(%v) err(%v)",
+							logPrefix, reqId, task.req.ReqId, err)
+					}
 					return
 				}
 				resultData = task.res.Data
@@ -1730,7 +1734,9 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 			err = fmt.Errorf("first packet timeout after all retries")
 		}
 		if err != nil {
-			log.LogWarnf("Read operation failed after %d retries, addr(%v) err(%v)", DefaultMaxRetryCount, addr, err)
+			if !proto.IsCacheMissError(err) {
+				log.LogWarnf("Read operation failed after %d retries, addr(%v) err(%v)", DefaultMaxRetryCount, addr, err)
+			}
 			return nil, 0, err
 		}
 		length = int64(req.Size_)
