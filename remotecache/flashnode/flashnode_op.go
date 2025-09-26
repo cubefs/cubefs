@@ -629,14 +629,14 @@ func (f *FlashNode) opCacheObjectGet(conn net.Conn, p *proto.Packet) (err error)
 	reqID := string(p.Arg)
 	defer func() {
 		if err != nil {
-			if !proto.IsFlashNodeLimitError(err) || !proto.IsCacheMissError(err) {
-				log.LogWarnf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, uniKey,
-					p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
-			} else {
+			if proto.IsFlashNodeLimitError(err) || proto.IsCacheMissError(err) {
 				if log.EnableDebug() {
 					log.LogDebugf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, uniKey,
 						p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 				}
+			} else {
+				log.LogWarnf("action[opCacheObjectGet]reqID[%v] key:[%s], logMsg:%s", reqID, uniKey,
+					p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 			}
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 			if e := p.WriteToConn(conn); e != nil {
