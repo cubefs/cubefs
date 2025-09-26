@@ -164,6 +164,7 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 		log.LogDebugf("TRACE Release exit: ino(%v) name(%v)", d.info.Inode, d.name)
 	}()
 	// d.dctx.Clear()
+	d.dctx.Remove(req.Handle)
 	d.dcache.Clear()
 	ino := d.info.Inode
 	d.super.ic.Delete(ino)
