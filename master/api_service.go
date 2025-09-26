@@ -5018,6 +5018,19 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
 	value, ok := m.cluster.DecommissionDisks.Load(key)
 	if !ok {
+		if dn, existsErr := m.cluster.dataNode(offLineAddr); existsErr == nil {
+			if !dn.checkDecommissionedDisks(diskPath) {
+				for _, disk := range dn.AllDisks {
+					if disk == diskPath {
+						resp := proto.DecommissionProgress{
+							StatusMessage: GetDecommissionStatusMessage(DecommissionInitial),
+						}
+						sendOkReply(w, r, newSuccessHTTPReply(resp))
+						return
+					}
+				}
+			}
+		}
 		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found decommission task for node[%v] disk[%v], "+
 			"may be already offline", offLineAddr, diskPath)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
