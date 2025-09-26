@@ -451,6 +451,8 @@ type IgnoreDecommissionDP struct {
 
 type DecommissionProgress struct {
 	StatusMessage            string
+	DecommissionType         string
+	Weight                   int
 	Progress                 string
 	TotalDpCnt               int
 	RemainingDpCnt           int
@@ -466,6 +468,7 @@ type DecommissionProgress struct {
 type DataDecommissionProgress struct {
 	Status         uint32
 	StatusMessage  string
+	Weight         int
 	Progress       string
 	TotalDpCnt     int
 	RemainingDpCnt int
@@ -599,10 +602,9 @@ type DecommissionDiskLimitDetail struct {
 }
 
 type DecommissionDiskInfo struct {
-	SrcAddr            string
-	DiskPath           string
-	DecommissionWeight int
-	ProgressInfo       DecommissionProgress
+	SrcAddr      string
+	DiskPath     string
+	ProgressInfo DecommissionProgress
 }
 
 type DecommissionDisksResponse struct {
@@ -614,6 +616,7 @@ type DecommissionDataPartitionInfo struct {
 	ReplicaNum            uint8
 	Status                string
 	SpecialStep           string
+	Progress              string
 	DiskRetryMap          map[string]int
 	Retry                 int
 	RaftForce             bool
