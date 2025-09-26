@@ -1340,6 +1340,7 @@ func formatDiskDataPartitionTableRow(view *proto.DataPartitionReport) string {
 func formatDataNodeDecommissionProgress(progress *proto.DataDecommissionProgress) string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("Status     :         %v\n", progress.StatusMessage))
+	sb.WriteString(fmt.Sprintf("Weight     :         %v\n", progress.Weight))
 	sb.WriteString(fmt.Sprintf("Progress   :         %v\n", progress.Progress))
 	sb.WriteString(fmt.Sprintf("TotalDpCnt :         %v\n", progress.TotalDpCnt))
 	sb.WriteString(fmt.Sprintf("RemainingDpCnt:      %v\n", progress.RemainingDpCnt))
@@ -1362,6 +1363,8 @@ func formatDataNodeDecommissionProgress(progress *proto.DataDecommissionProgress
 func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("Status     :         %v\n", progress.StatusMessage))
+	sb.WriteString(fmt.Sprintf("Type       :         %v\n", progress.DecommissionType))
+	sb.WriteString(fmt.Sprintf("Weight     :         %v\n", progress.Weight))
 	sb.WriteString(fmt.Sprintf("Progress   :         %v\n", progress.Progress))
 	sb.WriteString(fmt.Sprintf("TotalDpCnt :         %v\n", progress.TotalDpCnt))
 	sb.WriteString(fmt.Sprintf("RemainingDpCnt:      %v\n", progress.RemainingDpCnt))
@@ -1391,6 +1394,7 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("Status:            %v\n", info.Status))
 	sb.WriteString(fmt.Sprintf("SpecialStep:       %v\n", info.SpecialStep))
+	sb.WriteString(fmt.Sprintf("Progress:          %v\n", info.Progress))
 	sb.WriteString(fmt.Sprintf("DiskRetryMap:      %v\n", info.DiskRetryMap))
 	sb.WriteString(fmt.Sprintf("Retry:             %v\n", info.Retry))
 	sb.WriteString(fmt.Sprintf("RaftForce:         %v\n", info.RaftForce))
