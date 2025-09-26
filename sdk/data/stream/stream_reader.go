@@ -689,6 +689,10 @@ func (s *Streamer) waitForAllAsyncFlushRequests() bool {
 		channelLen := len(s.asyncFlushCh)
 		dirtyListLen := s.dirtylist.Len()
 
+		if atomic.LoadInt32(&s.status) >= StreamerError {
+			log.LogErrorf("streamer(%v) is error status, skip waitForAllAsyncFlushRequests", s.inode)
+			return true
+		}
 		if len(pendingReqs) == 0 && channelLen == 0 {
 			return true
 		}
