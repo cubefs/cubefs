@@ -546,12 +546,12 @@ func (f *FlashNode) smallObjectGet(req *proto.BatchReadItem, connAddr string, de
 	}
 	defer func() {
 		if err != nil {
-			if !proto.IsFlashNodeLimitError(err) || !proto.IsCacheMissError(err) {
-				log.LogWarnf("action[smallObjectGet] req(%s) remoteAddr(%s) deadLine(%d) err:%v", req.String(), connAddr, deadLine, err)
-			} else {
+			if proto.IsFlashNodeLimitError(err) || proto.IsCacheMissError(err) {
 				if log.EnableDebug() {
 					log.LogDebugf("action[smallObjectGet] req(%s) remoteAddr(%s) deadLine(%d) err:%v", req.String(), connAddr, deadLine, err)
 				}
+			} else {
+				log.LogWarnf("action[smallObjectGet] req(%s) remoteAddr(%s) deadLine(%d) err:%v", req.String(), connAddr, deadLine, err)
 			}
 			result.ResultCode = uint32(proto.OpErr)
 			result.Data = ([]byte)(err.Error())
