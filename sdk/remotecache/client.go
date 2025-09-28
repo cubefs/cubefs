@@ -778,17 +778,19 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		}
 		return
 	}
-	defer func() {
-		if err != nil {
-			forceClose = true
-			log.LogWarnf("FlashGroup put: reqId(%v) remove key %v by err %v", reqId, key, err)
-			rc.deleteRemoteBlock(key, addr)
-		}
-	}()
 	var (
 		totalWritten int64
 		n            int
+		readCost     int64
+		writeCost    int64
 	)
+	defer func() {
+		if err != nil {
+			forceClose = true
+			log.LogWarnf("FlashGroup put: reqId(%v) remove key %v by err %v readCost(%v)ns writeCost(%v)ns", reqId, key, err, readCost, writeCost)
+			rc.deleteRemoteBlock(key, addr)
+		}
+	}()
 	writeLen := proto.CACHE_BLOCK_PACKET_SIZE + proto.CACHE_BLOCK_CRC_SIZE
 	buf := bytespool.Alloc(writeLen)
 	ch := &proto.CoonHandler{
@@ -802,6 +804,11 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 			close(ch.WaitAckChan)
 		}
 	}()
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetWriteDeadline(deadline)
+	} else {
+		conn.SetWriteDeadline(time.Now().Add(proto.WriteDeadlineTime * time.Second))
+	}
 	go rc.processPutReply(conn, ch, reqId)
 	for {
 		if ctx.Err() != nil {
@@ -827,7 +834,9 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 				return ch.RemoteError
 			}
 			currentReadSize := readSize - bufferOffset
+			readStart := time.Now()
 			n, err = r.Read(buf[bufferOffset : bufferOffset+currentReadSize])
+			readCost += time.Since(readStart).Nanoseconds()
 			bufferOffset += n
 			if err == io.EOF {
 				break
@@ -849,11 +858,13 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 				log.LogDebugf("FlashGroup put: write %d bytes total(%d) to fg", bufferOffset, totalWritten)
 			}
 			binary.BigEndian.PutUint32(buf[bufferOffset:], crc32.ChecksumIEEE(buf[:bufferOffset]))
-			conn.SetWriteDeadline(time.Now().Add(proto.WriteDeadlineTime * time.Second))
+			writeStart := time.Now()
 			if _, err = conn.Write(buf[:bufferOffset+proto.CACHE_BLOCK_CRC_SIZE]); err != nil {
+				writeCost += time.Since(writeStart).Nanoseconds()
 				log.LogErrorf("wirte data and crc to flashnode get err %v", err)
 				return fmt.Errorf(proto.ErrorWriteDataAndCRCToFlashNodeTpl, err)
 			}
+			writeCost += time.Since(writeStart).Nanoseconds()
 			ch.WaitAckChan <- struct{}{}
 			totalWritten += int64(bufferOffset)
 		}
