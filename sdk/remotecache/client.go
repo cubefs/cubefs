@@ -114,6 +114,7 @@ type RemoteCacheClient struct {
 	readPool               *util.GTaskPool
 	flowLimiter            *rate.Limiter
 	disableFlowLimitUpdate bool
+	WriteChunkSize         int64 // bytes
 }
 
 func (as *AddressPingStats) Add(duration time.Duration) {
@@ -155,6 +156,7 @@ type ClientConfig struct {
 	ConnWorkers            int
 	FlowLimit              int64 // bytes per second, default 5GB
 	DisableFlowLimitUpdate bool
+	WriteChunkSize         int64 // bytes
 }
 
 func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err error) {
@@ -207,6 +209,13 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 		rc.flowLimiter = rate.NewLimiter(rate.Limit(config.FlowLimit), int(config.FlowLimit/2))
 	} else {
 		rc.flowLimiter = rate.NewLimiter(rate.Inf, 0)
+	}
+	if config.WriteChunkSize <= 0 {
+		rc.WriteChunkSize = proto.CACHE_WRITE_CHUCK_SIZE
+	} else if config.WriteChunkSize%(16*1024) != 0 {
+		rc.WriteChunkSize = proto.CACHE_WRITE_CHUCK_SIZE
+	} else {
+		rc.WriteChunkSize = config.WriteChunkSize
 	}
 	rc.connPutChan = make(chan *ConnPutTask, DefaultConnPutChanSize)
 	rc.readPool = util.NewGTaskPool(DefaultReadPoolSize)
@@ -810,6 +819,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		conn.SetWriteDeadline(time.Now().Add(proto.WriteDeadlineTime * time.Second))
 	}
 	go rc.processPutReply(conn, ch, reqId)
+	var readOffset int
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -817,7 +827,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		if ch.RemoteError != nil {
 			return ch.RemoteError
 		}
-		readSize := proto.CACHE_BLOCK_PACKET_SIZE
+		readSize := int(rc.WriteChunkSize)
 		if totalWritten+int64(readSize) > length {
 			readSize = int(length - totalWritten)
 		}
@@ -835,7 +845,8 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 			}
 			currentReadSize := readSize - bufferOffset
 			readStart := time.Now()
-			n, err = r.Read(buf[bufferOffset : bufferOffset+currentReadSize])
+			bs := readOffset + bufferOffset
+			n, err = r.Read(buf[bs : bs+currentReadSize])
 			readCost += time.Since(readStart).Nanoseconds()
 			bufferOffset += n
 			if err == io.EOF {
@@ -857,15 +868,27 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 			if log.EnableDebug() {
 				log.LogDebugf("FlashGroup put: write %d bytes total(%d) to fg", bufferOffset, totalWritten)
 			}
-			binary.BigEndian.PutUint32(buf[bufferOffset:], crc32.ChecksumIEEE(buf[:bufferOffset]))
+			sIndex := readOffset
+			endIndex := bufferOffset + sIndex
+			wcc := false
+			if endIndex == proto.CACHE_BLOCK_PACKET_SIZE || totalWritten+int64(bufferOffset) == length {
+				binary.BigEndian.PutUint32(buf[endIndex:], crc32.ChecksumIEEE(buf[:endIndex]))
+				readOffset = 0
+				endIndex += proto.CACHE_BLOCK_CRC_SIZE
+				wcc = true
+			} else {
+				readOffset = endIndex
+			}
 			writeStart := time.Now()
-			if _, err = conn.Write(buf[:bufferOffset+proto.CACHE_BLOCK_CRC_SIZE]); err != nil {
+			if _, err = conn.Write(buf[sIndex:endIndex]); err != nil {
 				writeCost += time.Since(writeStart).Nanoseconds()
 				log.LogErrorf("wirte data and crc to flashnode get err %v", err)
 				return fmt.Errorf(proto.ErrorWriteDataAndCRCToFlashNodeTpl, err)
 			}
 			writeCost += time.Since(writeStart).Nanoseconds()
-			ch.WaitAckChan <- struct{}{}
+			if wcc {
+				ch.WaitAckChan <- struct{}{}
+			}
 			totalWritten += int64(bufferOffset)
 		}
 		if err == io.EOF {
