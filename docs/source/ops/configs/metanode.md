@@ -19,6 +19,7 @@
 | totalMem            | string       | Maximum available memory. This value must be higher than the value of metaNodeReservedMem in the master configuration, in bytes                            | Yes      |
 | memRatio            | string       | The ratio of maximum available memory to the total memory of the host. If this option is filled in, the calculated value will override the `totalMem` item | No       |
 | localIP             | string       | IP address of the local machine. If this option is not specified, the IP address used for communication with the master is used                            | No       |
+| advertisedAddr      | string       | Advertised address used when registering the node to the master. If not configured, localIP is used                                                        | No       |
 | bindIp              | bool         | Whether to listen for connections only on the localIP, default is `false`                                                                                  | No       |
 | zoneName            | string       | Specify the zone. By default, it is assigned to the `default` zone                                                                                         | No       |
 | deleteBatchCount    | int64        | Number of inode nodes to be deleted in batches at one time, default is `500`                                                                               | No       |
