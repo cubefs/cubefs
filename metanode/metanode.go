@@ -777,6 +777,14 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 	parallelism := cfg.GetInt(cfgRocksdbParallelism)
 	maxBackgroundCompactions := cfg.GetInt(cfgRocksdbMaxBackgroundCompactions)
 	maxBackgroundFlushes := cfg.GetInt(cfgRocksdbMaxBackgroundFlushes)
+	softCompactionLimit := cfg.GetInt64(cfgRocksdbSoftCompactionLimit)
+	if softCompactionLimit < 0 {
+		softCompactionLimit = 0
+	}
+	hardCompactionLimit := cfg.GetInt64(cfgRocksdbHardCompactionLimit)
+	if hardCompactionLimit < 0 {
+		hardCompactionLimit = 0
+	}
 
 	rocksdbModeFile := path.Join(m.metadataDir, RocksdbModeMetaFile)
 	if fileutil.Exist(rocksdbModeFile) {
@@ -819,6 +827,8 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 		Parallelism:              parallelism,
 		MaxBackgroundCompactions: maxBackgroundCompactions,
 		MaxBackgroundFlushes:     maxBackgroundFlushes,
+		SoftCompactionLimit:      uint64(softCompactionLimit),
+		HardCompactionLimit:      uint64(hardCompactionLimit),
 	}
 	if rocksdbMode == PerDiskRocksdbMode {
 		m.rocksdbManager = NewPerDiskRocksdbManager(config)

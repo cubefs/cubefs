@@ -49,6 +49,9 @@ const (
 	DefaultParallelism              = 4
 	DefaultMaxBackgroundCompactions = 4
 	DefaultMaxBackgroundFlushes     = 4
+	DefaultSoftCompactionLimit      = 512 * util.GB
+	DefaultHardCompactionLimit      = 2 * util.TB
+	DefaultBlockSize                = 16 * util.KB
 )
 
 var (
@@ -201,6 +204,8 @@ type RocksDBOptions struct {
 	Parallelism              int
 	MaxBackgroundCompactions int
 	MaxBackgroundFlushes     int
+	SoftCompactionLimit      uint64
+	HardCompactionLimit      uint64
 }
 
 func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
@@ -247,6 +252,12 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	if opts.MaxBackgroundFlushes == 0 {
 		opts.MaxBackgroundFlushes = DefaultMaxBackgroundFlushes
 	}
+	if opts.SoftCompactionLimit == 0 {
+		opts.SoftCompactionLimit = DefaultSoftCompactionLimit
+	}
+	if opts.HardCompactionLimit == 0 {
+		opts.HardCompactionLimit = DefaultHardCompactionLimit
+	}
 
 	// NOTE: main options
 	dbOpts.SetCreateIfMissing(true)
@@ -255,13 +266,15 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	dbOpts.SetCompression(gorocksdb.NoCompression)
 	dbOpts.SetMinWriteBufferNumberToMerge(opts.MinWriteBuffToMerge)
 	dbOpts.SetLevelCompactionDynamicLevelBytes(true)
+	dbOpts.SetTargetFileSizeMultiplier(2)
 	tableOpts = gorocksdb.NewDefaultBlockBasedTableOptions()
 	cache = gorocksdb.NewLRUCache(opts.BlockCacheSize)
 	tableOpts.SetBlockCache(cache)
 	tableOpts.SetCacheIndexAndFilterBlocks(true)
 	tableOpts.SetPinL0FilterAndIndexBlocksInCache(true)
 	tableOpts.SetFilterPolicy(gorocksdb.NewBloomFilter(10))
-	tableOpts.SetBlockSize(16 * util.KB)
+	tableOpts.SetBlockSize(DefaultBlockSize)
+	// from SetFormatVersion comments, it's better to use 3.
 	tableOpts.SetFormatVersion(3)
 	dbOpts.SetBlockBasedTableFactory(tableOpts)
 
@@ -278,6 +291,8 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	dbOpts.IncreaseParallelism(opts.Parallelism)
 	dbOpts.SetMaxBackgroundCompactions(opts.MaxBackgroundCompactions)
 	dbOpts.SetMaxBackgroundFlushes(opts.MaxBackgroundFlushes)
+	dbOpts.SetSoftPendingCompactionBytesLimit(opts.SoftCompactionLimit)
+	dbOpts.SetHardPendingCompactionBytesLimit(opts.HardCompactionLimit)
 	return
 }
 
@@ -332,6 +347,8 @@ func NewDefaultRocksDBOptions(dir string) *RocksDBOptions {
 		MaxLogFileSize:      DefaultMaxLogFileSize,
 		LogFileTimeToRoll:   DefaultLogFileRollTime,
 		KeepLogFileNum:      DefaultKeepLogFileNum,
+		SoftCompactionLimit: DefaultSoftCompactionLimit,
+		HardCompactionLimit: DefaultHardCompactionLimit,
 	}
 }
 

@@ -274,6 +274,8 @@ const (
 	cfgRocksdbParallelism              = "rocksdbParallelism"              // int
 	cfgRocksdbMaxBackgroundCompactions = "rocksdbMaxBackgroundCompactions" // int
 	cfgRocksdbMaxBackgroundFlushes     = "rocksdbMaxBackgroundFlushes"     // int
+	cfgRocksdbSoftCompactionLimit      = "rocksdbSoftCompactionLimit"      // int64
+	cfgRocksdbHardCompactionLimit      = "rocksdbHardCompactionLimit"      // int64
 )
 
 const (

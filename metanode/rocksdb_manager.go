@@ -43,6 +43,8 @@ type RocksdbManagerConfig struct {
 	Parallelism              int    `json:"parallelism"`
 	MaxBackgroundCompactions int    `json:"maxBackgroundCompactions"`
 	MaxBackgroundFlushes     int    `json:"maxBackgroundFlushes"`
+	SoftCompactionLimit      uint64 `json:"softCompactionLimit"`
+	HardCompactionLimit      uint64 `json:"hardCompactionLimit"`
 }
 
 type RocksdbManager interface {
@@ -77,6 +79,8 @@ type PerDiskRocksdbManager struct {
 	parallelism              int
 	maxBackgroundCompactions int
 	maxBackgroundFlushes     int
+	softCompactionLimit      uint64
+	hardCompactionLimit      uint64
 	mutex                    sync.Mutex
 	dbs                      map[string]*RocksdbHandle
 }
@@ -136,6 +140,8 @@ func (r *PerDiskRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId uint6
 			Parallelism:              r.parallelism,
 			MaxBackgroundCompactions: r.maxBackgroundCompactions,
 			MaxBackgroundFlushes:     r.maxBackgroundFlushes,
+			SoftCompactionLimit:      r.softCompactionLimit,
+			HardCompactionLimit:      r.hardCompactionLimit,
 		}
 		err = handle.db.OpenDb(opts)
 		if err != nil {
@@ -300,6 +306,8 @@ type PerPartitionRocksdbManager struct {
 	parallelism              int
 	maxBackgroundCompactions int
 	maxBackgroundFlushes     int
+	softCompactionLimit      uint64
+	hardCompactionLimit      uint64
 	mutex                    sync.Mutex
 	partitionCnt             map[string]int
 	dbs                      map[string]*RocksdbDirInfo
@@ -372,6 +380,8 @@ func (r *PerPartitionRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId 
 		Parallelism:              r.parallelism,
 		MaxBackgroundCompactions: r.maxBackgroundCompactions,
 		MaxBackgroundFlushes:     r.maxBackgroundFlushes,
+		SoftCompactionLimit:      r.softCompactionLimit,
+		HardCompactionLimit:      r.hardCompactionLimit,
 	}
 	err = db.OpenDb(opts)
 	return
@@ -477,6 +487,8 @@ func NewPerDiskRocksdbManager(config *RocksdbManagerConfig) (p RocksdbManager) {
 		parallelism:              config.Parallelism,
 		maxBackgroundCompactions: config.MaxBackgroundCompactions,
 		maxBackgroundFlushes:     config.MaxBackgroundFlushes,
+		softCompactionLimit:      config.SoftCompactionLimit,
+		hardCompactionLimit:      config.HardCompactionLimit,
 		dbs:                      make(map[string]*RocksdbHandle),
 	}
 	return
@@ -494,6 +506,8 @@ func NewPerPartitionRocksdbManager(config *RocksdbManagerConfig) (p RocksdbManag
 		parallelism:              config.Parallelism,
 		maxBackgroundCompactions: config.MaxBackgroundCompactions,
 		maxBackgroundFlushes:     config.MaxBackgroundFlushes,
+		softCompactionLimit:      config.SoftCompactionLimit,
+		hardCompactionLimit:      config.HardCompactionLimit,
 		dbs:                      make(map[string]*RocksdbDirInfo),
 		partitionCnt:             make(map[string]int),
 	}
