@@ -381,7 +381,6 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp 
 				key, curReq, size, reqID)
 			arw.taskC <- task
 		}
-		remainSize -= size
 		id++
 	}
 }

@@ -1024,7 +1024,7 @@ func (s *Streamer) flush(wait bool, id string) (err error) {
 		log.LogDebugf("Streamer(%v) flush begin: eh(%v) id(%v)", s.inode, eh, id)
 
 		// Use async flush for better performance if enabled
-		if s.client.enableAsyncFlush && atomic.LoadInt32(&eh.inflight) > 0 {
+		if s.client.enableAsyncFlush {
 			// If there are in-flight packets, use async flush
 			log.LogDebugf("Streamer(%v) flush using async flush for eh(%v) with inflight(%v) id(%v) wait(%v)",
 				s.inode, eh, atomic.LoadInt32(&eh.inflight), id, wait)
@@ -1150,8 +1150,8 @@ func (s *Streamer) closeOpenHandler(wait bool) (err error) {
 			}
 		}(handler)
 
-		// Use async flush if there are in-flight packets and async flush is enabled
-		if s.client.enableAsyncFlush && atomic.LoadInt32(&handler.inflight) > 0 {
+		// Use async flush if async flush is enabled
+		if s.client.enableAsyncFlush {
 			log.LogDebugf("closeOpenHandler: using async flush for handler(%v) with inflight(%v) id(%v)",
 				handler, atomic.LoadInt32(&handler.inflight), id)
 			s.requestAsyncFlush(handler, cleanFunc)

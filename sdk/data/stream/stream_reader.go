@@ -577,8 +577,46 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 
 	handler := req.handler
 	log.LogDebugf("completeAsyncFlush: for streamer(%v) eh(%v)", s.inode, handler)
-	// extentHandler may be sync flushed by streamer.flush when inflight is 0
-	// the flush order cannot be guaranteed
+	nextReq := s.getNextPendingAsyncFlush()
+	if nextReq == nil {
+		log.LogWarnf("completeAsyncFlush: No pending async flush requests found for streamer(%v) handler(%v)",
+			s.inode, handler)
+		req.done <- errors.New("no pending async flush requests")
+		return
+	}
+	if nextReq.handler.id > handler.id {
+		log.LogWarnf("completeAsyncFlush: streamer(%v) handler(%v) is skipped, nextReq(%v)",
+			s.inode, handler, nextReq.handler.id)
+		req.done <- nil
+		return
+	}
+	if nextReq.handler.id < handler.id {
+		log.LogDebugf("completeAsyncFlush: streamer(%v) eh(%v) id(%v) is not next in sequence (next: %v), waiting...",
+			s.inode, handler, handler.id, nextReq.handler.id)
+		// Wait for the correct request to be processed
+		// This is a simple polling approach - in a production system, you might want to use channels or condition variables
+		for {
+			select {
+			case s.asyncFlushCh <- req:
+				// Successfully re-queued
+				log.LogDebugf("completeAsyncFlush:re-queued  handler %v", handler)
+				return
+			default:
+				nextReq = s.getNextPendingAsyncFlush()
+				if nextReq == nil {
+					log.LogErrorf("completeAsyncFlush: No pending async flush requests found while waiting for "+
+						"streamer(%v) handler(%v)", s.inode, handler)
+					req.done <- errors.New("no pending async flush requests")
+					return
+				}
+				if nextReq.handler.id >= handler.id {
+					goto end
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}
+end:
 	err := handler.flush()
 	if err != nil {
 		log.LogWarnf("completeAsyncFlush: completed failed for handler(%v)", handler)
@@ -727,4 +765,22 @@ func (s *Streamer) isHandlerProtected(handler *ExtentHandler) bool {
 	s.writeProtectionLock.Lock()
 	defer s.writeProtectionLock.Unlock()
 	return s.writeInProgress && s.writeHandler == handler
+}
+
+// getNextPendingAsyncFlush returns the next pending request that should be processed
+func (s *Streamer) getNextPendingAsyncFlush() *AsyncFlushRequest {
+	var oldestHandlerID uint64 = ^uint64(0) // Max uint64
+	var oldestReq *AsyncFlushRequest
+
+	s.pendingAsyncFlushMap.Range(func(key, value interface{}) bool {
+		handlerID := key.(uint64)
+		req := value.(*AsyncFlushRequest)
+		if handlerID < oldestHandlerID {
+			oldestHandlerID = handlerID
+			oldestReq = req
+		}
+		return true // continue iteration
+	})
+
+	return oldestReq
 }
