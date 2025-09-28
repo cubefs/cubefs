@@ -13,6 +13,7 @@ import (
 const (
 	PageSize                = 4 * 1024
 	CACHE_BLOCK_PACKET_SIZE = 128 * PageSize
+	CACHE_WRITE_CHUCK_SIZE  = 64 * 1024
 	CACHE_BLOCK_SIZE        = 1 << 20
 	CACHE_OBJECT_BLOCK_SIZE = 4 * 1024 * 1024
 	SMALL_OBJECT_BLOCK_SIZE = 16 * 1024
@@ -467,6 +468,7 @@ type RemoteCacheConfig struct {
 	FlashWriteFlowLimit          int64
 	FlashKeyFlowLimit            int64
 	RemoteClientFlowLimit        int64
+	WriteChunkSize               int64
 }
 
 func ComputeSourcesVersion(sources []*DataSource, gen uint64) (version uint32) {

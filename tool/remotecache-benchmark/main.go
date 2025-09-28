@@ -55,7 +55,7 @@ type BenchmarkResult struct {
 	IOPS          float64
 }
 
-func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master string, clearPageCache bool, logLevel string, disableBatch bool, activateTime int64, connWorkers int, flowLimit int64) *BenchmarkTester {
+func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master string, clearPageCache bool, logLevel string, disableBatch bool, activateTime int64, connWorkers int, flowLimit int64, writeChunkSize int) *BenchmarkTester {
 	os.MkdirAll(dataDir, 0o755)
 	tester := &BenchmarkTester{
 		dataDir:        dataDir,
@@ -91,6 +91,7 @@ func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master s
 			ActivateTime:       activateTime,
 			ConnWorkers:        connWorkers,
 			FlowLimit:          flowLimit,
+			WriteChunkSize:     int64(writeChunkSize),
 		}
 		tester.cacheStorage, err = remotecache.NewRemoteCacheClient(cfg)
 		if err != nil {
@@ -220,6 +221,7 @@ func main() {
 	activateTime := flag.Int64("activate-time", 200, "Activate time in microseconds")
 	flashConnWorkers := flag.Int("flash-conn-workers", 64, "Number of flash connection workers")
 	flowLimit := flag.Int64("flow-limit", 0, "Flow limit in bytes per second (default: 0 limiter is disable)")
+	writeChunkSize := flag.Int("write-chunk-size", 64*1024, "Write chunk size in bytes (default: 64K)")
 	flag.Parse()
 
 	fmt.Printf("Parsed command-line arguments:\n")
@@ -243,7 +245,8 @@ func main() {
 	fmt.Printf("  -activate-time: %v\n", *activateTime)
 	fmt.Printf("  -flash-conn-workers: %v\n", *flashConnWorkers)
 	fmt.Printf("  -flow-limit: %v\n", *flowLimit)
-	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master, *clear, *logLevel, *disableBatch, *activateTime, *flashConnWorkers, *flowLimit)
+	fmt.Printf("  -write-chunk-size: %v\n", *writeChunkSize)
+	tester := NewBenchmarkTester(ensureAbsolutePath(*dataDir), *hddBase, *nvmeBase, *verify, *master, *clear, *logLevel, *disableBatch, *activateTime, *flashConnWorkers, *flowLimit, *writeChunkSize)
 	if *needGenerate {
 		if err := tester.GenerateTestData(*totalSizeGB, *genConcurrency); err != nil {
 			fmt.Printf("generate test files failed: %v\n", err)
