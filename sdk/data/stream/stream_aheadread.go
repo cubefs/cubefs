@@ -281,7 +281,7 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 					return e, false
 				}
 				if rp.ResultCode != proto.OpOk {
-					err = fmt.Errorf("result code[%v],msg[%v]", rp.ResultCode, string(rp.Data))
+					err = fmt.Errorf("result code[%v],msg[%v]", rp.ResultCode, string(rp.Data[:rp.Size]))
 					return err, false
 				}
 				// update timeStamp to prevent from deleted by timeout

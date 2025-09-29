@@ -251,7 +251,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		EnableAsyncFlush:      opt.EnableAsyncFlush,
 	}
 
-	log.LogWarnf("ahead info enable %+v, totalMem %+v, timeout %+v, winCnt %+v", opt.AheadReadEnable, opt.AheadReadTotalMem, opt.AheadReadBlockTimeOut, opt.AheadReadWindowCnt)
+	log.LogInfof("ahead info enable %+v, totalMem %+v, timeout %+v, winCnt %+v", opt.AheadReadEnable, opt.AheadReadTotalMem, opt.AheadReadBlockTimeOut, opt.AheadReadWindowCnt)
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
 	if err != nil {
