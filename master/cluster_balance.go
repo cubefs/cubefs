@@ -1798,23 +1798,111 @@ func (c *Cluster) CalculateMetaPartitionFreezeCount(name string) (*CleanTask, er
 	return ret, nil
 }
 
+func (c *Cluster) getOverLoadDataNodes(BalanceType uint32) []*DataNode {
+	switch BalanceType {
+	case BalanceByDPCount:
+		return c.getOverLoadDataNodesByDPCount()
+	case BalanceByDiskUsage:
+		return c.getOverLoadDataNodesByDiskUsage()
+	default:
+		panic("getOverLoadDataNodes parameter wrong: only accepts BalanceByDPCount or BalanceByDiskUsage")
+	}
+}
+
+func (c *Cluster) getUnderLoadNodeSet(BalanceType uint32, dp *DataPartition, zone string, excludedNodeSet uint64, numCopies int) (nodeset *nodeSet, err error) {
+	switch BalanceType {
+	case BalanceByDPCount:
+		return c.getUnderLoadNodeSetByDPCount(dp, zone, excludedNodeSet, numCopies)
+	case BalanceByDiskUsage:
+		return c.getUnderLoadNodeSetByDiskUsage(dp, zone, excludedNodeSet, numCopies)
+	default:
+		panic("getUnderLoadNodeSet parameter failure: only accepts BalanceByDPCount or BalanceByDiskUsage")
+	}
+}
+
+func (c *Cluster) getUnderLoadNodesInNodeSet(BalanceType uint32, dp *DataPartition, nodeset uint64) (underloadDataNodes []*DataNode, err error) {
+	switch BalanceType {
+	case BalanceByDPCount:
+		return c.getUnderLoadNodesInNodeSetByDPCount(dp, nodeset)
+	case BalanceByDiskUsage:
+		return c.getUnderLoadNodesInNodeSetByDiskUsage(dp, nodeset)
+	default:
+		panic("getUnderLoadNodesInNodeSet parameter failure: only accepts BalanceByDPCount or BalanceByDiskUsage")
+	}
+}
+
 func (c *Cluster) getOverLoadDataNodesByDiskUsage() []*DataNode {
 	overloadNodes := make([]*DataNode, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		if dataNode.isActive && c.getProjectedUsageRatio(dataNode) > c.cfg.DataNodeBalanceByDiskUsageHigh {
+		if dataNode.isActive && dataNode.UsageRatio >= c.cfg.DataNodeBalanceByDiskUsageHigh {
 			overloadNodes = append(overloadNodes, dataNode)
 		}
 		return true
 	})
 	return overloadNodes
+}
+
+// for inter-nodeset balancing:
+// given a datapartition, get a node set different than the excludedNodeSet
+// the selection critieria is
+// the target nodeset has at least numCopies underload dataNodes, and these underload datanodes do not hold the replica of dp
+func (c *Cluster) getUnderLoadNodeSetByDiskUsage(dp *DataPartition, zone string, excludedNodeSet uint64, numCopies int) (nodeset *nodeSet, err error) {
+	var (
+		z *Zone
+	)
+
+	z, err = c.t.getZone(zone)
+	if err != nil {
+		return nil, fmt.Errorf("getUnderLoadNodesDiffNodeSetByDiskUsage: %v", err.Error())
+	}
+
+	for _, ns := range z.nodeSetMap {
+		if ns.ID == excludedNodeSet {
+			continue
+		}
+		n := 0
+		ns.dataNodes.Range(func(key, value any) bool {
+			dataNode := value.(*DataNode)
+			if !dp.hasHost(dataNode.Addr) && dataNode.UsageRatio <= c.cfg.DataNodeBalanceByDiskUsageLow {
+				n++
+			}
+			return true
+		})
+		if n >= numCopies {
+			return ns, nil
+		}
+	}
+
+	return nil, fmt.Errorf("getUnderLoadNodesDiffNodeSetByDiskUsage: failed to find a qualified nodeset!")
+}
+
+// get underloadDataNodes within given nodeset that do not hold replica of dp
+func (c *Cluster) getUnderLoadNodesInNodeSetByDiskUsage(dp *DataPartition, nodeset uint64) (underloadDataNodes []*DataNode, err error) {
+	var (
+		ns *nodeSet
+	)
+
+	if ns, err = c.t.getNodeSetByNodeSetId(nodeset); err != nil {
+		return nil, fmt.Errorf("getUnderLoadNodesInNodeSetByDiskUsage: failed to find nodeset %v", nodeset)
+	}
+
+	ns.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if dataNode.isActive && dp.hasHost(dataNode.Addr) && dataNode.UsageRatio <= c.cfg.DataNodeBalanceByDiskUsageLow {
+			underloadDataNodes = append(underloadDataNodes, dataNode)
+		}
+		return true
+	})
+
+	return underloadDataNodes, nil
 }
 
 func (c *Cluster) getOverLoadDataNodesByDPCount() []*DataNode {
 	overloadNodes := make([]*DataNode, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		if dataNode.isActive && c.getProjectedDPCount(dataNode) > c.cfg.DataNodeBalanceByDPCountHigh {
+		if dataNode.isActive && dataNode.DataPartitionCount >= c.cfg.DataNodeBalanceByDPCountHigh {
 			overloadNodes = append(overloadNodes, dataNode)
 		}
 		return true
@@ -1822,48 +1910,68 @@ func (c *Cluster) getOverLoadDataNodesByDPCount() []*DataNode {
 	return overloadNodes
 }
 
-// TODO: finish
-func (c *Cluster) getUnderLoadDataNodesByDiskUsage(zone string, nodeSet uint64, excludeHost uint64) []*DataNode {
-	underloadNodes := make([]*DataNode, 0)
-	c.dataNodes.Range(func(addr, node interface{}) bool {
-		return true
-	})
-	return underloadNodes
-}
+func (c *Cluster) getUnderLoadNodeSetByDPCount(dp *DataPartition, zone string, excludedNodeSet uint64, numCopies int) (nodeset *nodeSet, err error) {
+	var (
+		z *Zone
+	)
 
-func (c *Cluster) getUnderLoadDataNodesByDPCount(zone string, nodeSet uint64, excludeHost uint64) ([]*DataNode, error) {
-	underloadNodes := make([]*DataNode, 0)
-	if zone == "" {
-		return nil, fmt.Errorf("action[getUnderLoadDataNodesByDPCount], clusterID[%v], getUnderLoadDataNodesByDPCount failed, the zone must be specified", c.Name)
+	z, err = c.t.getZone(zone)
+	if err != nil {
+		return nil, fmt.Errorf("getUnderLoadNodesDiffNodeSetByDiskUsage: %v", err.Error())
 	}
 
-	if nodeSet != 0 {
-		c.dataNodes.Range(func(addr, node interface{}) bool {
-			dataNode := node.(*DataNode)
-			if dataNode.isActive && dataNode.DataPartitionCount > c.cfg.DataNodeBalanceByDPCountHigh {
-				underloadNodes = append(underloadNodes, dataNode)
+	for _, ns := range z.nodeSetMap {
+		if ns.ID == excludedNodeSet {
+			continue
+		}
+		n := 0
+		ns.dataNodes.Range(func(key, value any) bool {
+			dataNode := value.(*DataNode)
+			if !dp.hasHost(dataNode.Addr) && dataNode.DataPartitionCount <= c.cfg.DataNodeBalanceByDPCountLow {
+				n++
 			}
 			return true
 		})
-	} else {
-
+		if n >= numCopies {
+			return ns, nil
+		}
 	}
 
-	return underloadNodes, nil
+	return nil, fmt.Errorf("getUnderLoadNodesDiffNodeSetByDiskUsage: failed to find a qualified nodeset!")
 }
 
-func (c *Cluster) GetNumReplicasInNodeSet(dp *DataPartition, nodeset uint64) int {
+func (c *Cluster) getUnderLoadNodesInNodeSetByDPCount(dp *DataPartition, nodeset uint64) (underloadDataNodes []*DataNode, err error) {
 	var (
-		numReplica int = 0
+		ns *nodeSet
+	)
+
+	if ns, err = c.t.getNodeSetByNodeSetId(nodeset); err != nil {
+		return nil, fmt.Errorf("getUnderLoadNodesInNodeSetByDiskUsage: failed to find nodeset %v", nodeset)
+	}
+
+	ns.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		if dataNode.isActive && dp.hasHost(dataNode.Addr) && dataNode.DataPartitionCount <= c.cfg.DataNodeBalanceByDPCountLow {
+			underloadDataNodes = append(underloadDataNodes, dataNode)
+		}
+		return true
+	})
+
+	return underloadDataNodes, nil
+}
+
+func (c *Cluster) getReplicaHostsInNodeSet(dp *DataPartition, nodeset uint64) []*DataNode {
+	var (
+		hosts []*DataNode
 	)
 
 	for _, replica := range dp.Replicas {
 		if replica.dataNode.NodeSetID == nodeset {
-			numReplica++
+			hosts = append(hosts, replica.dataNode)
 		}
 	}
 
-	return numReplica
+	return hosts
 }
 
 func (c *Cluster) handleDataNodeBalanceByDiskUsage(d *DataNode) (err error) {
@@ -1968,38 +2076,4 @@ func (c *Cluster) scheduleToBalanceDataNode() {
 			return
 		},
 	})
-}
-
-func (c *Cluster) getProjectedUsageRatio(datanode *DataNode) float64 {
-	var (
-		sizeMarkedDecomm uint64 = 0
-		dp               *DataPartition
-		err              error
-	)
-	for _, dpReport := range datanode.DataPartitionReports {
-		if dp, err = c.getDataPartitionByID(dpReport.PartitionID); err != nil {
-			continue
-		}
-		if dp.IsDecommissionRunning() && dp.DecommissionSrcAddr == datanode.Addr {
-			sizeMarkedDecomm += dp.used
-		}
-	}
-	return (float64)(datanode.Used-sizeMarkedDecomm) / (float64)(datanode.Total)
-}
-
-func (c *Cluster) getProjectedDPCount(datanode *DataNode) uint32 {
-	var (
-		numMarkedDecomm uint32 = 0
-		dp              *DataPartition
-		err             error
-	)
-	for _, dpReport := range datanode.DataPartitionReports {
-		if dp, err = c.getDataPartitionByID(dpReport.PartitionID); err != nil {
-			continue
-		}
-		if dp.IsDecommissionRunning() && dp.DecommissionSrcAddr == datanode.Addr {
-			numMarkedDecomm++
-		}
-	}
-	return datanode.DataPartitionCount - numMarkedDecomm
 }

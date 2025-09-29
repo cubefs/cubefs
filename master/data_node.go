@@ -70,8 +70,8 @@ type DataNode struct {
 	QosIopsWLimit                      uint64
 	QosFlowRLimit                      uint64
 	QosFlowWLimit                      uint64
-	BalanceCurrentDiskUsage            uint64
-	BalanceCurrentDPCount              uint64
+	BalancedDiskUsage                  uint64
+	BalancedDPCount                    uint64
 	DecommissionStatus                 uint32
 	DecommissionDstAddr                string
 	DecommissionRaftForce              bool

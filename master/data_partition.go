@@ -2220,6 +2220,11 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			partition.decommissionInfo(), partition.DecommissionDstAddr, time.Since(begin).String(), err, result)
 	}()
 
+	//decommission by balance
+	if partition.DecommissionType == BalanceByDiskUsage || partition.DecommissionType == BalanceByDPCount {
+
+	}
+
 	// the first time for dst addr not specify
 	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
 		if partition.DecommissionDstNodeSet != 0 {
