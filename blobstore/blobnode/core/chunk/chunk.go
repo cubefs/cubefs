@@ -540,8 +540,8 @@ func (cs *chunk) rangeRead(ctx context.Context, stg core.Storage, s *core.Shard,
 	default:
 	}
 	n, err = io.CopyN(tw, tr, int64(to-from))
-	span.AppendTrackLogWithDuration("net.w", tw.Duration(), err)
-	span.AppendTrackLogWithDuration("dat.r", tr.Duration(), err)
+	span.AppendTrackLogWithDuration("net.w", tw.Duration(), err, trace.OptSpanDurationUs())
+	span.AppendTrackLogWithDuration("dat.r", tr.Duration(), err, trace.OptSpanDurationUs())
 	if err != nil {
 		return n, err
 	}

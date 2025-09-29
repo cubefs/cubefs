@@ -273,7 +273,7 @@ func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Durat
 
 	if spanOpt.duration == durationAny {
 		module += ":" + duration.String()
-	} else if dur := spanOpt.duration.Value(duration); dur > 0 {
+	} else if dur := spanOpt.duration.Value(duration); dur >= 0 {
 		module += ":" + strconv.FormatInt(dur, 10)
 		if spanOpt.durationUnit {
 			module += spanOpt.duration.Unit(duration)

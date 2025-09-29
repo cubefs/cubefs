@@ -522,7 +522,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 
 	start := time.Now()
 	err = cs.Write(ctx, shard)
-	span.AppendTrackLog("disk.put", start, err)
+	span.AppendTrackLog("disk.put", start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		span.Errorf("Failed to put shard, args: %+v, err: %v", args, err)
 		c.RespondError(err)
@@ -533,7 +533,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 	if !shard.Inline {
 		start = time.Now()
 		err = cs.SyncData(ctx)
-		span.AppendTrackLog("sync", start, err)
+		span.AppendTrackLog("sync", start, err, trace.OptSpanDurationUs())
 		if err != nil {
 			span.Errorf("Failed to sync shard, args: %+v, err: %v", args, err)
 			c.RespondError(err)
