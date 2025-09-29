@@ -1023,7 +1023,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		available = int64((total - used) / 3)
 		if available < opt.AheadReadTotalMem {
 			opt.AheadReadTotalMem = available
-			syslog.Printf("available ahead read mem: %v\n", available)
+			fmt.Printf("available ahead read mem: %v\n", available)
 		}
 	}
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
