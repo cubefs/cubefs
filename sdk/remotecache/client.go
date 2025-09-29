@@ -212,7 +212,7 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 	}
 	if config.WriteChunkSize <= 0 {
 		rc.WriteChunkSize = proto.CACHE_WRITE_CHUCK_SIZE
-	} else if config.WriteChunkSize%(16*1024) != 0 {
+	} else if config.WriteChunkSize%(16*1024) != 0 || proto.CACHE_BLOCK_PACKET_SIZE%config.WriteChunkSize != 0 {
 		rc.WriteChunkSize = proto.CACHE_WRITE_CHUCK_SIZE
 	} else {
 		rc.WriteChunkSize = config.WriteChunkSize
@@ -1427,11 +1427,13 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 		} else {
 			log.LogErrorf("RemoteCacheReader:reqID(%v) Read reply err(%v)", reader.reqID, err)
 		}
+		err = fmt.Errorf("failed to read packet reply from flash node: %v", err)
 		return
 	}
 	_, err = io.ReadFull(reader.conn, p[:readPackageSize])
 	if err != nil {
 		log.LogErrorf("RemoteCacheReader:reqID(%v) Read err(%v)", reader.reqID, err)
+		err = fmt.Errorf("failed to read data payload from flash node connection: %v", err)
 		return
 	}
 
