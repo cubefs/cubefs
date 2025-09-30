@@ -319,6 +319,8 @@ const (
 	QueryDecommission   = proto.QueryDecommission
 	AutoAddReplica      = proto.AutoAddReplica
 	ManualAddReplica    = proto.ManualAddReplica
+	BalanceByDiskUsage  = proto.BalanceByDiskUsage
+	BalanceByDPCount    = proto.BalanceByDPCount
 )
 
 type DecommissionDisk struct {
