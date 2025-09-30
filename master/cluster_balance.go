@@ -1971,7 +1971,7 @@ func (c *Cluster) postBalanceDecommissionSucccess(BalanceType uint32, dp *DataPa
 
 		hosts := c.getReplicaHostsInNodeSet(dp, datanode.NodeSetID)
 		if len(hosts) != 0 {
-			if err := c.markDecommissionDataPartition(dp, datanode, dstNodeSet, true, BalanceByDiskUsage, lowPriorityDecommissionWeight); err != nil {
+			if err := c.markDecommissionDataPartition(dp, hosts[0], dstNodeSet, true, BalanceByDiskUsage, lowPriorityDecommissionWeight); err != nil {
 				log.LogWarnf("action[handleDataNodeBalanceByDiskUsage], clusterID[%v], node[%v] failed to mark decommission data partition[%v], error[%v]",
 					c.Name, datanode.ID, dp.PartitionID, err)
 			}
