@@ -1667,7 +1667,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 		}
 		stat.EndStat("flashNode", err, bgTime, 1)
 	}()
-	var stcTime, etcTime, rcvTime int64
+	var stcTime, rcvTime int64
 	firstPacketStartTime := time.Now()
 	addr = fg.getFlashHostWithCrossRegion()
 	if addr == "" {
@@ -1789,7 +1789,7 @@ func (rc *RemoteCacheClient) ReadObject(ctx context.Context, fg *FlashGroup, req
 	}
 	if log.EnableDebug() {
 		log.LogDebugf("%v FlashGroup Read: flashGroup(%v) addr(%v) CacheReadRequest(%v) reqPacket(%v) err(%v)"+
-			" remoteCacheMultiRead(%v) getConn cost(%v) fisrtPackage cost(%v)", logPrefix, fg, addr, req, reqPacket, err, rc.RemoteCacheMultiRead, etcTime-stcTime, rcvTime-etcTime)
+			" remoteCacheMultiRead(%v) fisrtPackage cost(%v)", logPrefix, fg, addr, req, reqPacket, err, rc.RemoteCacheMultiRead, rcvTime-stcTime)
 	}
 	return
 }
