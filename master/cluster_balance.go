@@ -1798,17 +1798,6 @@ func (c *Cluster) CalculateMetaPartitionFreezeCount(name string) (*CleanTask, er
 	return ret, nil
 }
 
-func (c *Cluster) getOverLoadDataNodes(BalanceType uint32) []*DataNode {
-	switch BalanceType {
-	case BalanceByDPCount:
-		return c.getOverLoadDataNodesByDPCount()
-	case BalanceByDiskUsage:
-		return c.getOverLoadDataNodesByDiskUsage()
-	default:
-		panic("getOverLoadDataNodes parameter wrong: only accepts BalanceByDPCount or BalanceByDiskUsage")
-	}
-}
-
 func (c *Cluster) getUnderLoadNodeSet(BalanceType uint32, dp *DataPartition, zone string, excludedNodeSet uint64, numCopies int) (nodeset *nodeSet, err error) {
 	switch BalanceType {
 	case BalanceByDPCount:
@@ -1828,6 +1817,17 @@ func (c *Cluster) getUnderLoadNodesInNodeSet(BalanceType uint32, dp *DataPartiti
 		return c.getUnderLoadNodesInNodeSetByDiskUsage(dp, nodeset)
 	default:
 		panic("getUnderLoadNodesInNodeSet parameter failure: only accepts BalanceByDPCount or BalanceByDiskUsage")
+	}
+}
+
+func (c *Cluster) isOverloadDataNode(BalanceType uint32, dataNode *DataNode) bool {
+	switch BalanceType {
+	case BalanceByDPCount:
+		return dataNode.DataPartitionCount < c.cfg.DataNodeBalanceByDPCountHigh
+	case BalanceByDiskUsage:
+		return dataNode.UsageRatio < c.cfg.DataNodeBalanceByDiskUsageHigh
+	default:
+		panic("isOverloadDataNode parameter failure: only accepts BalanceByDPCount or BalanceByDiskUsage")
 	}
 }
 
@@ -1854,7 +1854,7 @@ func (c *Cluster) getUnderLoadNodeSetByDiskUsage(dp *DataPartition, zone string,
 
 	z, err = c.t.getZone(zone)
 	if err != nil {
-		return nil, fmt.Errorf("getUnderLoadNodesDiffNodeSetByDiskUsage: %v", err.Error())
+		return nil, fmt.Errorf("getUnderLoadNodeSetByDiskUsage: %v", err.Error())
 	}
 
 	for _, ns := range z.nodeSetMap {
@@ -1874,7 +1874,7 @@ func (c *Cluster) getUnderLoadNodeSetByDiskUsage(dp *DataPartition, zone string,
 		}
 	}
 
-	return nil, fmt.Errorf("getUnderLoadNodesDiffNodeSetByDiskUsage: failed to find a qualified nodeset!")
+	return nil, fmt.Errorf("getUnderLoadNodeSetByDiskUsage: failed to find a qualified nodeset!")
 }
 
 // get underloadDataNodes within given nodeset that do not hold replica of dp
@@ -1889,7 +1889,7 @@ func (c *Cluster) getUnderLoadNodesInNodeSetByDiskUsage(dp *DataPartition, nodes
 
 	ns.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		if dataNode.isActive && dp.hasHost(dataNode.Addr) && dataNode.UsageRatio <= c.cfg.DataNodeBalanceByDiskUsageLow {
+		if dataNode.isActive && !dp.hasHost(dataNode.Addr) && dataNode.UsageRatio <= c.cfg.DataNodeBalanceByDiskUsageLow {
 			underloadDataNodes = append(underloadDataNodes, dataNode)
 		}
 		return true
@@ -1917,7 +1917,7 @@ func (c *Cluster) getUnderLoadNodeSetByDPCount(dp *DataPartition, zone string, e
 
 	z, err = c.t.getZone(zone)
 	if err != nil {
-		return nil, fmt.Errorf("getUnderLoadNodesDiffNodeSetByDiskUsage: %v", err.Error())
+		return nil, fmt.Errorf("getUnderLoadNodeSetByDPCount: %v", err.Error())
 	}
 
 	for _, ns := range z.nodeSetMap {
@@ -1937,7 +1937,7 @@ func (c *Cluster) getUnderLoadNodeSetByDPCount(dp *DataPartition, zone string, e
 		}
 	}
 
-	return nil, fmt.Errorf("getUnderLoadNodesDiffNodeSetByDiskUsage: failed to find a qualified nodeset!")
+	return nil, fmt.Errorf("getUnderLoadNodeSetByDPCount: failed to find a qualified nodeset!")
 }
 
 func (c *Cluster) getUnderLoadNodesInNodeSetByDPCount(dp *DataPartition, nodeset uint64) (underloadDataNodes []*DataNode, err error) {
@@ -1946,18 +1946,37 @@ func (c *Cluster) getUnderLoadNodesInNodeSetByDPCount(dp *DataPartition, nodeset
 	)
 
 	if ns, err = c.t.getNodeSetByNodeSetId(nodeset); err != nil {
-		return nil, fmt.Errorf("getUnderLoadNodesInNodeSetByDiskUsage: failed to find nodeset %v", nodeset)
+		return nil, fmt.Errorf("getUnderLoadNodesInNodeSetByDPCount failed: %v", err)
 	}
 
 	ns.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		if dataNode.isActive && dp.hasHost(dataNode.Addr) && dataNode.DataPartitionCount <= c.cfg.DataNodeBalanceByDPCountLow {
+		if dataNode.isActive && !dp.hasHost(dataNode.Addr) && dataNode.DataPartitionCount <= c.cfg.DataNodeBalanceByDPCountLow {
 			underloadDataNodes = append(underloadDataNodes, dataNode)
 		}
 		return true
 	})
 
 	return underloadDataNodes, nil
+}
+
+// after releasing the token when decommission balancing is successful
+// this function does:
+// 1. add
+func (c *Cluster) postBalanceDecommissionSucccess(BalanceType uint32, dp *DataPartition, datanode *DataNode, dstNodeSet uint64) {
+	if dstNodeSet != 0 {
+		datanode.BalancedDiskUsage += dp.used
+		datanode.BalancedDPCount += 1
+		c.syncUpdateDataNode(datanode)
+
+		hosts := c.getReplicaHostsInNodeSet(dp, datanode.NodeSetID)
+		if len(hosts) != 0 {
+			if err := c.markDecommissionDataPartition(dp, datanode, dstNodeSet, true, BalanceByDiskUsage, lowPriorityDecommissionWeight); err != nil {
+				log.LogWarnf("action[handleDataNodeBalanceByDiskUsage], clusterID[%v], node[%v] failed to mark decommission data partition[%v], error[%v]",
+					c.Name, datanode.ID, dp.PartitionID, err)
+			}
+		}
+	}
 }
 
 func (c *Cluster) getReplicaHostsInNodeSet(dp *DataPartition, nodeset uint64) []*DataNode {
@@ -1989,7 +2008,7 @@ func (c *Cluster) handleDataNodeBalanceByDiskUsage(d *DataNode) (err error) {
 	sizeToBalance = uint64(float64(d.Total) * (d.UsageRatio - c.cfg.DataNodeBalanceByDiskUsageHigh))
 
 	copiedDataPartitionReports := make([]*proto.DataPartitionReport, len(d.DataPartitionReports))
-	copy(d.DataPartitionReports, copiedDataPartitionReports)
+	copy(copiedDataPartitionReports, d.DataPartitionReports)
 	sort.Slice(copiedDataPartitionReports, func(i, j int) bool { return copiedDataPartitionReports[i].Used > copiedDataPartitionReports[j].Used })
 
 	for i := 0; i < len(copiedDataPartitionReports) && sizeMarkedDecomm < sizeToBalance && numDPMarkedDecomm < uint64(d.DataPartitionCount); i++ {
@@ -2025,7 +2044,7 @@ func (c *Cluster) handleDataNodeBalanceByDPCount(d *DataNode) (err error) {
 	numDPsToBalance = d.DataPartitionCount - c.cfg.DataNodeBalanceByDPCountHigh
 
 	copiedDataPartitionReports := make([]*proto.DataPartitionReport, len(d.DataPartitionReports))
-	copy(d.DataPartitionReports, copiedDataPartitionReports)
+	copy(copiedDataPartitionReports, d.DataPartitionReports)
 	sort.Slice(copiedDataPartitionReports, func(i, j int) bool { return copiedDataPartitionReports[i].Used < copiedDataPartitionReports[j].Used })
 
 	for i := 0; i < len(copiedDataPartitionReports) && numDPMarkedDecomm < numDPsToBalance && numDPMarkedDecomm < d.DataPartitionCount; i++ {
