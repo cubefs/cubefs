@@ -561,19 +561,16 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
 		oldstatus = old.Status
-
 		old.Status = dp.Status
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
 		old.IsDiscard = dp.IsDiscard
 		old.NearHosts = dp.NearHosts
-
 		dp.Metrics = old.Metrics
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
-		w.partitions[dp.PartitionID] = dp
 	}
-
+	w.partitions[dp.PartitionID] = dp
 	w.Lock.Unlock()
 
 	if ok && oldstatus != dp.Status {
