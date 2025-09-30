@@ -2147,7 +2147,7 @@ func (partition *DataPartition) canMarkDecommission(status uint32, c *Cluster) e
 	// }
 	// make sure dp release the token
 	rollbackTimes := atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes)
-	if c.processDataPartitionDecommission(partition.PartitionID) {
+	if c.processDataPartitionDecommission(partition.PartitionID) || partition.GetDecommissionStatus() == DecommissionSuccess {
 		return errors.NewErrorf("dp[%v] %v", partition.PartitionID, proto.ErrPerformingDecommission.Error())
 	}
 	if status == DecommissionInitial ||
