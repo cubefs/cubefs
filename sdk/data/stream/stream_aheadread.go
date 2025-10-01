@@ -281,7 +281,7 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 					return e, false
 				}
 				if rp.ResultCode != proto.OpOk {
-					err = fmt.Errorf("result code[%v],msg[%v]", rp.ResultCode, string(rp.Data[:rp.Size]))
+					err = fmt.Errorf("result code[%v] dp[%v] host[%v],msg[%v]", rp.ResultCode, task.dp, host, string(rp.Data[:rp.Size]))
 					return err, false
 				}
 				// update timeStamp to prevent from deleted by timeout
@@ -306,13 +306,13 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 			return
 		} else {
 			// try next host
-			log.LogWarnf("doTask read from %v failed:%v", host, err)
+			log.LogWarnf("doTask read from host(%v) failed:%v", host, err)
 		}
 	}
 	atomic.StoreUint32(&cacheBlock.state, AheadReadBlockStateInit)
-	log.LogErrorf("doTask inode(%v) offset(%v) size(%v) err(%v) - read failed,"+
+	log.LogErrorf("doTask inode(%v) key(%v) offset(%v) size(%v) err(%v) - read failed,"+
 		" marking as recycled and deleting cache block",
-		cacheBlock.inode, task.p.ExtentOffset, task.cacheSize, err)
+		cacheBlock.inode, key, task.p.ExtentOffset, task.cacheSize, err)
 	arw.cache.blockCache.Delete(key)
 	arw.cache.putAheadReadBlock(key, cacheBlock)
 }
@@ -322,7 +322,7 @@ func (arw *AheadReadWindow) addNextTask(offset int, dp *wrapper.DataPartition, r
 	id := offset/util.CacheReadBlockSize + arw.cache.winCnt
 	remainSize := int(req.ExtentKey.Size) - id*util.CacheReadBlockSize
 	if remainSize <= 0 {
-		arw.doMultiAheadRead(0, 0, req, dp, stTime, reqID, storageClass)
+		arw.doMultiAheadRead(0, req, dp, stTime, reqID, storageClass)
 		return
 	}
 	// log.LogDebugf("addNextTask ek(%v) remainSize(%v) %v-%v-%v-%v", req.ExtentKey, arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, id*util.CacheReadBlockSize)
@@ -330,6 +330,8 @@ func (arw *AheadReadWindow) addNextTask(offset int, dp *wrapper.DataPartition, r
 	if task == nil {
 		return
 	}
+	key := fmt.Sprintf("%v-%v-%v-%v", task.p.inode, task.p.PartitionID, task.p.ExtentID, task.p.ExtentOffset)
+	log.LogDebugf("addNextTask send ino(%v) key(%v) offset(%v) req(%v) remainSize(%v) reqID(%v)", arw.streamer.inode, key, offset, req, remainSize, reqID)
 	task.time = stTime
 	task.cacheType = "add"
 	task.logTime = stat.BeginStat()
@@ -337,12 +339,12 @@ func (arw *AheadReadWindow) addNextTask(offset int, dp *wrapper.DataPartition, r
 	arw.taskC <- task
 }
 
-func (arw *AheadReadWindow) doMultiAheadRead(offset, remainSize int, req *ExtentRequest, dp *wrapper.DataPartition,
+func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp *wrapper.DataPartition,
 	startTime time.Time, reqID string, storageClass uint32) {
 	cacheOffset := offset / util.CacheReadBlockSize * util.CacheReadBlockSize
 	key := fmt.Sprintf("%v-%v-%v-%v", arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, cacheOffset)
-	log.LogDebugf("doMultiAheadRead send: key(%v) reqID(%v) remainSize(%v) index(%v) req（%v）",
-		key, reqID, remainSize, offset/util.CacheReadBlockSize, req)
+	log.LogDebugf("doMultiAheadRead send: key(%v) reqID(%v) index(%v) req（%v）",
+		key, reqID, offset/util.CacheReadBlockSize, req)
 	winCnt := arw.cache.winCnt
 	curReq := &ExtentRequest{
 		FileOffset: req.FileOffset,
@@ -351,12 +353,12 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset, remainSize int, req *Extent
 	}
 	id := offset / util.CacheReadBlockSize
 	for w := 0; w < winCnt; w++ {
+		remainSize := int(curReq.ExtentKey.Size) - id*util.CacheReadBlockSize
 		if remainSize <= 0 {
 			id = 0
 			var err error
 			curReq.ExtentKey = arw.streamer.getNextExtent(int(curReq.ExtentKey.FileOffset))
 			if curReq.ExtentKey == nil {
-				log.LogWarnf("doMultiAheadRead send: key(%v) next ExtentKey is nil", key)
 				return
 			}
 			key = fmt.Sprintf("%v-%v-%v-%v", arw.streamer.inode, curReq.ExtentKey.PartitionId, curReq.ExtentKey.ExtentId, cacheOffset)
@@ -374,8 +376,9 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset, remainSize int, req *Extent
 			task.cacheType = "pass"
 			task.logTime = stat.BeginStat()
 			task.reqID = reqID
-			log.LogDebugf("doMultiAheadRead send: key(%v) offset(%v) size(%v) reqID(%v)",
-				key, task.p.ExtentOffset, task.cacheSize, reqID)
+			key := fmt.Sprintf("%v-%v-%v-%v", task.p.inode, task.p.PartitionID, task.p.ExtentID, task.p.ExtentOffset)
+			log.LogDebugf("doMultiAheadRead send: key(%v) curReq(%v) size(%v) reqID(%v)",
+				key, curReq, size, reqID)
 			arw.taskC <- task
 		}
 		remainSize -= size
@@ -451,10 +454,6 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 
 	offset = req.FileOffset - int(req.ExtentKey.FileOffset) + int(req.ExtentKey.ExtentOffset)
 	cacheOffset = offset / util.CacheReadBlockSize * util.CacheReadBlockSize
-	remainSize = int(req.ExtentKey.Size) - cacheOffset
-	if remainSize < 0 {
-		remainSize = 0
-	}
 	needSize := req.Size - readSize
 	for needSize > 0 {
 		key = fmt.Sprintf("%v-%v-%v-%v", s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, cacheOffset)
@@ -517,7 +516,10 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 		break
 	}
 	step = "pass"
-	go s.aheadReadWindow.doMultiAheadRead(offset, remainSize, req, dp, startTime, uuid.New().String(), storageClass)
+	reqID := uuid.New().String()
+	log.LogDebugf("aheadRead pass ahead win inode(%v) offset(%v) need(%v) "+
+		"remainSize(%v) req(%v) reqID(%v)", s.inode, offset, needSize, remainSize, req, reqID)
+	go s.aheadReadWindow.doMultiAheadRead(offset, req, dp, startTime, reqID, storageClass)
 	return
 }
 

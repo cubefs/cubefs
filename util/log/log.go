@@ -913,7 +913,7 @@ func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (
 	// delete old file
 	for _, info := range needDelFiles {
 		if err = os.Remove(path.Join(logDir, info.Name())); err != nil {
-			LogErrorf("failed delete log file %s", info.Name())
+			LogErrorf("failed delete log file %v:%v", info.Name(), err.Error())
 			continue
 		}
 		diskSpaceLeft += info.Size()
