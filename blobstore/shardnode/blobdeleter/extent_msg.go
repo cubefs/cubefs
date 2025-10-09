@@ -15,6 +15,7 @@
 package blobdeleter
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -123,4 +124,10 @@ func (ext *delMsgExt) hasDelete(bid proto.BlobID) bool {
 		}
 	}
 	return true
+}
+
+func (ext *delMsgExt) String() string {
+	ext.l.RLock()
+	defer ext.l.RUnlock()
+	return fmt.Sprintf("msg: %+v, key: %+v, suid: %d", ext.msg, ext.msgKey, ext.suid)
 }

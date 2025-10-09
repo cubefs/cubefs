@@ -334,7 +334,7 @@ func (m *BlobDeleteMgr) getChan(shardID proto.ShardID) chan *delMsgExt {
 
 func (m *BlobDeleteMgr) sentToFailedChan(ctx context.Context, msg *delMsgExt) {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Warnf("send msgExt to failed chan: %+v", msg)
+	span.Warnf("send msgExt: %s to failed chan", msg)
 
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -342,7 +342,7 @@ func (m *BlobDeleteMgr) sentToFailedChan(ctx context.Context, msg *delMsgExt) {
 	case m.failedMsgChan <- msg:
 		return
 	case <-ticker.C:
-		span.Warnf("send msg: %+v to failed channel timeout", msg.msg)
+		span.Warnf("send msgExt: %s to failed channel timeout", msg)
 		return
 	}
 }
@@ -423,7 +423,7 @@ func (m *BlobDeleteMgr) deleteWithCheckVolConsistency(ctx context.Context, vid p
 			ret.err = _err
 			if _err != nil {
 				span1 := trace.SpanFromContextSafe(ret.ctx)
-				span1.Errorf("deleteWithCheckVolConsistency failed, err: %s, msgExt: %+v", errors.Detail(_err), ret.msgExt)
+				span1.Errorf("deleteWithCheckVolConsistency failed, err: %s, msgExt: %s", errors.Detail(_err), ret.msgExt)
 				ret.status = deleteStatusFailed
 				return
 			}
@@ -597,7 +597,7 @@ func (m *BlobDeleteMgr) deleteShard(ctx context.Context, info proto.VunitLocatio
 
 func (m *BlobDeleteMgr) punish(ctx context.Context, msgExt *delMsgExt) error {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Warnf("punish delete msg: %+v", msgExt)
+	span.Warnf("punish delete msg: %s", msgExt)
 	msg := msgExt.msg
 
 	v, ok := m.shardListReaderMap.Load(msgExt.suid)
