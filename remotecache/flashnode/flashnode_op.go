@@ -352,7 +352,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 			p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 	}
 	defer f.missCache.Delete(uniKey)
-	if cb, err2, created := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(allocSize), conn.RemoteAddr().String()); err2 != nil || created {
+	if cb, err2, created, ci := f.cacheEngine.CreateBlockV2(pDir, uniKey, req.TTL, uint32(allocSize), conn.RemoteAddr().String()); err2 != nil || created {
 		if err2 != nil {
 			err = fmt.Errorf(proto.ErrorCreateBlockFailedTpl, cachengine.GenCacheBlockKeyV2(pDir, uniKey), err2.Error())
 		} else {
@@ -364,6 +364,11 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		return
 	} else {
 		p.PacketOkReply()
+		defer func() {
+			if ci != nil {
+				ci.FreePreAllocatedSize(blockKey)
+			}
+		}()
 		if err1 = p.WriteToConn(conn); err1 != nil {
 			f.cacheEngine.DeleteCacheBlock(blockKey)
 			log.LogWarnf(logPrefix+" blockKey %v write to conn %v", blockKey, err1)
