@@ -796,23 +796,23 @@ func NewCacheBlockV2(rootPath string, volume string, uniKey string, allocSize ui
 }
 
 // CreateBlockV2 todo merge create block v2 to default
-func (c *CacheEngine) CreateBlockV2(pDir string, uniKey string, ttl uint64, size uint32, clientIP string) (block *CacheBlock, err error, created bool) {
-	if block, err, created = c.createCacheBlockV2(pDir, uniKey, int64(ttl), uint64(size), clientIP); err != nil {
+func (c *CacheEngine) CreateBlockV2(pDir string, uniKey string, ttl uint64, size uint32, clientIP string) (block *CacheBlock, err error, created bool, ci *lruCacheItem) {
+	if block, err, created, ci = c.createCacheBlockV2(pDir, uniKey, int64(ttl), uint64(size), clientIP); err != nil {
 		log.LogWarnf("action[CreateBlock] createCacheBlock(%v) failed err %v ",
 			GenCacheBlockKeyV2(pDir, uniKey), err)
 		c.DeleteCacheBlock(GenCacheBlockKeyV2(pDir, uniKey))
-		return nil, err, created
+		return nil, err, created, ci
 	}
-	return block, nil, created
+	return block, nil, created, ci
 }
 
-func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, allocSize uint64, clientIP string) (block *CacheBlock, err error, created bool) {
+func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, allocSize uint64, clientIP string) (block *CacheBlock, err error, created bool, ci *lruCacheItem) {
 	bg := stat.BeginStat()
 	defer func() {
 		stat.EndStat("createCacheBlockV2", err, bg, 1)
 	}()
 	if allocSize == 0 {
-		return nil, fmt.Errorf("alloc size is zero"), false
+		return nil, fmt.Errorf("alloc size is zero"), false, nil
 	}
 	key := GenCacheBlockKeyV2(pDir, uniKey)
 	cacheItem, ok := c.getCacheItem(key)
@@ -839,7 +839,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 				}
 			}
 		}
-		return nil, proto.ErrorUnableGetCreatedBlock, created
+		return nil, proto.ErrorUnableGetCreatedBlock, created, nil
 	} else {
 		defer func() {
 			close(ch)
@@ -863,17 +863,15 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 		}
 		block.cacheEngine = c
 		block.ttl = ttl
-
 		defer func() {
-			cacheItem.lruCache.FreePreAllocatedSize(block.blockKey)
 			if err != nil {
 				block.Delete(fmt.Sprintf("create block failed %v", err))
+				cacheItem.lruCache.FreePreAllocatedSize(block.blockKey)
 			}
 		}()
 		if _, err = cacheItem.lruCache.CheckDiskSpace(cacheItem.disk.Path, block.blockKey, block.getAllocSize()); err != nil {
 			return
 		}
-
 		if err = block.initFilePath(false); err != nil {
 			return
 		}
@@ -881,6 +879,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 			return
 		}
 		c.setCacheItem(key, cacheItem)
+		ci = cacheItem
 	}
 
 	return

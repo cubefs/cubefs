@@ -28,8 +28,10 @@ import (
 )
 
 const (
-	LRUUpdateChanSize       = 1000000
-	MaxPushFrontConsumption = 100000
+	LRUUpdateChanSize          = 1000000
+	MaxPushFrontConsumption    = 100000
+	DiskSpaceCleanupThreshold  = 10 * 1024 * 1024 * 1024 // 10GB in bytes
+	BackgroundCleanupItemCount = 50
 )
 
 type LruCache interface {
@@ -72,10 +74,11 @@ type fCache struct {
 	preAllocated       int64
 	preAllocatedKeyMap map[interface{}]int64
 
-	hits   int32
-	misses int32
-	evicts int32 // evict by set
-	recent *RateStat
+	hits           int32
+	misses         int32
+	evicts         int32 // evict by set
+	cleanupRunning int32
+	recent         *RateStat
 
 	ttl   time.Duration
 	lock  sync.RWMutex
@@ -101,7 +104,7 @@ type entry struct {
 }
 
 type (
-	OnDeleteF func(v interface{}, reason string) error
+	OnDeleteF func(v interface{}, reason string, removeOuter bool) error
 	OnCloseF  func(v interface{}) error
 )
 
@@ -278,6 +281,14 @@ func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n
 	preAllocated := atomic.LoadInt64(&c.preAllocated)
 	diskSpaceLeft -= preAllocated
 
+	if diskSpaceLeft < DiskSpaceCleanupThreshold {
+		if log.EnableInfo() {
+			log.LogInfof("[CheckDiskSpace] disk space left (%d bytes) is less than 10GB, starting background cleanup", diskSpaceLeft)
+		}
+		if atomic.CompareAndSwapInt32(&c.cleanupRunning, 0, 1) {
+			go c.backgroundCleanup(BackgroundCleanupItemCount, diskSpaceLeft) // Start background cleanup
+		}
+	}
 	if diskSpaceLeft > 0 {
 		return 0, nil
 	}
@@ -294,7 +305,7 @@ func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n
 
 	}
 	for k, e := range toEvicts {
-		_ = c.onDelete(e, fmt.Sprintf("lru disk space is full(%d / %d) diskSpaceLeft(%d)", atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft))
+		_ = c.onDelete(e, fmt.Sprintf("lru disk space is full(%d / %d) diskSpaceLeft(%d)", atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft), true)
 		if log.EnableInfo() {
 			log.LogInfof("delete(%s) cos disk space full, len(%d) size(%d / %d) diskSpaceLeft(%d) preAllocated(%d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft, preAllocated)
 		}
@@ -358,18 +369,18 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	if c.cacheType == LRUFileHandleCacheType {
 		c.lock.Unlock()
 		if len(toEvicts) > 0 {
-			go c.evictExceed(toEvicts)
+			go c.evictExceed(toEvicts, false)
 		}
 	} else {
-		c.evictExceed(toEvicts)
+		c.evictExceed(toEvicts, true)
 		c.lock.Unlock()
 	}
 	return n, nil
 }
 
-func (c *fCache) evictExceed(toEvicts map[interface{}]interface{}) {
+func (c *fCache) evictExceed(toEvicts map[interface{}]interface{}, removeOuter bool) {
 	for k, e := range toEvicts {
-		_ = c.onDelete(e, fmt.Sprintf("lru is full(%d / %d)", atomic.LoadInt64(&c.allocated), c.maxSize))
+		_ = c.onDelete(e, fmt.Sprintf("lru is full(%d / %d)", atomic.LoadInt64(&c.allocated), c.maxSize), removeOuter)
 		if c.cacheType == LRUCacheBlockCacheType {
 			log.LogInfof("delete(%s) cos lru full, len(%d) size(%d / %d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize)
 		}
@@ -397,7 +408,7 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 			}
 			e := c.deleteElement(ent)
 			_ = c.onDelete(e, fmt.Sprintf("created: %v get expired: %v", v.createAt.Format("2006-01-02 15:04:05"),
-				v.expiredAt.Format("2006-01-02 15:04:05")))
+				v.expiredAt.Format("2006-01-02 15:04:05")), true)
 		}
 		c.lock.Unlock()
 		return nil, fmt.Errorf("expired key[%v]", key)
@@ -430,7 +441,7 @@ func (c *fCache) EvictAll(cacheEvictWorkerNum int) {
 		go func() {
 			defer wg.Done()
 			for e := range toEvicts {
-				_ = c.onDelete(e, "execute evictAll operation")
+				_ = c.onDelete(e, "execute evictAll operation", false)
 			}
 		}()
 	}
@@ -453,7 +464,7 @@ func (c *fCache) Evict(key interface{}) bool {
 			c.DeleteKeyFromPreAllocatedKeyMap(key)
 		}
 		e := c.deleteElement(ent)
-		_ = c.onDelete(e, "execute evict operation")
+		_ = c.onDelete(e, "execute evict operation", false)
 		return true
 	}
 	return true
@@ -547,4 +558,29 @@ func (c *fCache) GetCreateTime(key interface{}) (time.Time, bool) {
 
 func (c *fCache) AddMisses() {
 	atomic.AddInt32(&c.misses, 1)
+}
+
+func (c *fCache) backgroundCleanup(itemCount int, diskSpaceLeft int64) {
+	if log.EnableInfo() {
+		log.LogInfof("[backgroundCleanup] Starting background cleanup of %d items", itemCount)
+	}
+	defer atomic.StoreInt32(&c.cleanupRunning, 0)
+
+	cleanedCount := 0
+	startTime := time.Now()
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	for i := 0; i < itemCount && c.lru.Len() > 0; i++ {
+		ent := c.lru.Back()
+		if ent == nil {
+			break
+		}
+		k := ent.Value.(*entry).key
+		e := c.deleteElement(ent)
+		_ = c.onDelete(e, fmt.Sprintf("(%v)background cleanup - disk space(%v) low", k, diskSpaceLeft), true)
+	}
+	if log.EnableInfo() {
+		log.LogInfof("[backgroundCleanup] Completed cleanup of %d items in %v", cleanedCount, time.Since(startTime))
+	}
 }

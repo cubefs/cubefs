@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	nilDeleteFunc = func(v interface{}, reason string) error { return nil }
+	nilDeleteFunc = func(v interface{}, reason string, removeOuter bool) error { return nil }
 	nilCloseFunc  = func(v interface{}) error { return nil }
 )
 
@@ -76,7 +76,7 @@ func TestLRUManyThings(t *testing.T) {
 func TestLRUCapacity(t *testing.T) {
 	called := false
 	c := NewCache(LRUCacheBlockCacheType, 2, util.MB*100, time.Hour,
-		func(v interface{}, reason string) error { called = true; return nil },
+		func(v interface{}, reason string, removeOuter bool) error { called = true; return nil },
 		func(v interface{}) error { return fmt.Errorf("close error") })
 	c.Set(1, &CacheBlock{blockKey: "block1"}, 0)
 	c.Set(2, &CacheBlock{blockKey: "block2"}, 0)
