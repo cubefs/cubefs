@@ -174,9 +174,13 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 		s.memDataPath = fullPath
 		s.cachePrepareTaskCh = make(chan cachePrepareTask, 1024)
 		cache := NewCache(LRUCacheBlockCacheType, memCacheConfig.Capacity, memCacheConfig.MaxAlloc, expireTime,
-			func(v interface{}, reason string) error {
+			func(v interface{}, reason string, removeOuter bool) error {
 				cb := v.(*CacheBlock)
-				return cb.Delete(reason)
+				de := cb.Delete(reason)
+				if removeOuter {
+					s.deleteCacheItem(cb.blockKey)
+				}
+				return de
 			},
 			func(v interface{}) error {
 				cb := v.(*CacheBlock)
@@ -185,7 +189,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 		s.lruCacheMap.Store(fullPath, &lruCacheItem{lruCache: cache, config: memCacheConfig, disk: disks[0]})
 		s.totalCacheNum = 1
 		s.lruFhCache = NewCache(LRUFileHandleCacheType, fhCapacity, -1, expireTime,
-			func(v interface{}, reason string) error {
+			func(v interface{}, reason string, removeOuter bool) error {
 				file := v.(*os.File)
 				return file.Close()
 			},
@@ -229,9 +233,13 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 		log.LogInfof("CacheEngine disableTmpfs.")
 		s.cachePrepareTaskCh = make(chan cachePrepareTask, 1024)
 		cache := NewCache(LRUCacheBlockCacheType, diskCacheConfig.Capacity, diskCacheConfig.MaxAlloc, expireTime,
-			func(v interface{}, reason string) error {
+			func(v interface{}, reason string, removeOuter bool) error {
 				cb := v.(*CacheBlock)
-				return cb.Delete(reason)
+				de := cb.Delete(reason)
+				if removeOuter {
+					s.deleteCacheItem(cb.blockKey)
+				}
+				return de
 			},
 			func(v interface{}) error {
 				cb := v.(*CacheBlock)
@@ -256,7 +264,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 
 	}
 	s.lruFhCache = NewCache(LRUFileHandleCacheType, fhCapacity, -1, expireTime,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			if log.EnableInfo() {
 				log.LogInfof("delete file %v by %s", file.Name(), reason)
@@ -790,6 +798,10 @@ func (c *lruCacheItem) usedSize() (size int64) {
 		return int64(stat.Blocks-stat.Bfree) * int64(stat.Bsize)
 	}
 	return 0
+}
+
+func (c *lruCacheItem) FreePreAllocatedSize(key string) {
+	c.lruCache.FreePreAllocatedSize(key)
 }
 
 func (c *CacheEngine) usedSize() (size int64) {

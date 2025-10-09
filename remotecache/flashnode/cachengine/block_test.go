@@ -81,7 +81,7 @@ func testWriteSingleFile(t *testing.T) {
 		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -104,7 +104,7 @@ func testWriteSingleFileError(t *testing.T) {
 		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -129,7 +129,7 @@ func testWriteCacheBlockFull(t *testing.T) {
 		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -161,7 +161,7 @@ func newCacheBlockWithDiffInode(volume string, index int, allocSize uint64) (cac
 		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -182,7 +182,7 @@ func newCacheBlockWithDiffVolume(volume string, index int, allocSize uint64) (ca
 		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -235,7 +235,7 @@ func TestBlockReadCache(t *testing.T) {
 		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -275,7 +275,7 @@ func testParallelOperation(t *testing.T) {
 		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -378,7 +378,7 @@ func testWriteSingleFileV2(t *testing.T) {
 	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_BLOCK_PACKET_SIZE*2, "", disk, 1024*1024, 100)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -432,7 +432,7 @@ func testWriteSingleFileErrorV2(t *testing.T) {
 	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_BLOCK_PACKET_SIZE, "", disk, 1024*1024, 100)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -470,7 +470,7 @@ func testWriteCacheBlockFullV2(t *testing.T) {
 	cacheBlock := NewCacheBlockV2(testTmpFS, pDir, uniKey, proto.CACHE_OBJECT_BLOCK_SIZE, "", disk, 1024*1024, 100)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}, reason string) error {
+		func(v interface{}, reason string, removeOuter bool) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -517,7 +517,7 @@ func testWriteMultiCacheBlockV2(t *testing.T) {
 			defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
 			cacheBlock.cacheEngine = &CacheEngine{}
 			cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-				func(v interface{}, reason string) error {
+				func(v interface{}, reason string, removeOuter bool) error {
 					file := v.(*os.File)
 					return file.Close()
 				},
