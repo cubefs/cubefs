@@ -3941,6 +3941,34 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// nodeset balance configs
+	if val, ok := params[nodesetBalanceConcurrentDpCountKey]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.cluster.setNodesetBalanceConcurrentDpCount(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[nodesetBalanceIntervalSecKey]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.cluster.setNodesetBalanceIntervalSec(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[nodesetBalanceThresholdKey]; ok {
+		if v, ok := val.(float64); ok {
+			if err = m.cluster.setNodesetBalanceThreshold(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	if val, ok := params[dpTimeoutKey]; ok {
 		if dpTimeout, ok := val.(int64); ok {
 			if err = m.cluster.setDataPartitionTimeout(dpTimeout); err != nil {

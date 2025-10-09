@@ -724,7 +724,9 @@ type MetaNodeView struct {
 type NodesetBalanceStatus struct {
 	TotalUnbalancedDPs   int
 	DecommissioningDPIDs []uint64
-	SingleMigrationLimit int
+	ConcurrentDpCount    int64
+	BalanceIntervalSec   int64
+	BalanceThreshold     float64
 	EnableNodesetBalance bool
 	DomainDistribution   *DomainDistributionInfo
 }

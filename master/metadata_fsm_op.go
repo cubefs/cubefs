@@ -71,23 +71,27 @@ type clusterValue struct {
 	AutoDecommissionDiskInterval           int64
 	DecommissionDiskLimit                  uint32
 	EnableAutoNodesetBalance               bool
-	VolDeletionDelayTimeHour               int64
-	MetaNodeGOGC                           int
-	DataNodeGOGC                           int
-	MarkDiskBrokenThreshold                float64
-	EnableAutoDpMetaRepair                 bool
-	AutoDpMetaRepairParallelCnt            uint32
-	DataPartitionTimeoutSec                int64
-	MetaPartitionTimeoutSec                int64
-	ForbidWriteOpOfProtoVer0               bool
-	LegacyDataMediaType                    uint32
-	RaftPartitionAlreadyUseDifferentPort   bool
-	MetaNodeMemoryHighPer                  float64
-	MetaNodeMemoryLowPer                   float64
-	AutoMpMigrate                          bool
-	FlashNodeHandleReadTimeout             int
-	FlashNodeReadDataNodeTimeout           int
-	RackAwareLevel                         uint8
+	// nodeset balance configs
+	NodesetBalanceConcurrentDpCount      int64
+	NodesetBalanceIntervalSec            int64
+	NodesetBalanceThreshold              float64
+	VolDeletionDelayTimeHour             int64
+	MetaNodeGOGC                         int
+	DataNodeGOGC                         int
+	MarkDiskBrokenThreshold              float64
+	EnableAutoDpMetaRepair               bool
+	AutoDpMetaRepairParallelCnt          uint32
+	DataPartitionTimeoutSec              int64
+	MetaPartitionTimeoutSec              int64
+	ForbidWriteOpOfProtoVer0             bool
+	LegacyDataMediaType                  uint32
+	RaftPartitionAlreadyUseDifferentPort bool
+	MetaNodeMemoryHighPer                float64
+	MetaNodeMemoryLowPer                 float64
+	AutoMpMigrate                        bool
+	FlashNodeHandleReadTimeout           int
+	FlashNodeReadDataNodeTimeout         int
+	RackAwareLevel                       uint8
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -124,6 +128,9 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		AutoDecommissionDiskInterval:           c.AutoDecommissionInterval.Load(),
 		DecommissionDiskLimit:                  c.GetDecommissionDiskLimit(),
 		EnableAutoNodesetBalance:               c.getEnableAutoNodesetBalance(),
+		NodesetBalanceConcurrentDpCount:        c.NodesetBalanceConcurrentDpCount.Load(),
+		NodesetBalanceIntervalSec:              c.NodesetBalanceIntervalSec.Load(),
+		NodesetBalanceThreshold:                c.NodesetBalanceThreshold.Load(),
 		VolDeletionDelayTimeHour:               c.cfg.volDelayDeleteTimeHour,
 		MetaNodeGOGC:                           c.cfg.metaNodeGOGC,
 		DataNodeGOGC:                           c.cfg.dataNodeGOGC,
@@ -1372,6 +1379,18 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateAutoDecommissionDiskInterval(cv.AutoDecommissionDiskInterval)
 		c.DecommissionLimit = cv.DecommissionLimit
 		c.updateEnableAutoNodesetBalance(cv.EnableAutoNodesetBalance)
+		if cv.NodesetBalanceConcurrentDpCount <= 0 {
+			cv.NodesetBalanceConcurrentDpCount = int64(defaultNodesetBalanceConcurrentDpCount)
+		}
+		if cv.NodesetBalanceIntervalSec <= 0 {
+			cv.NodesetBalanceIntervalSec = int64(defaultNodesetBalanceIntervalSec)
+		}
+		if cv.NodesetBalanceThreshold < 0 {
+			cv.NodesetBalanceThreshold = 0
+		}
+		c.NodesetBalanceConcurrentDpCount.Store(cv.NodesetBalanceConcurrentDpCount)
+		c.NodesetBalanceIntervalSec.Store(cv.NodesetBalanceIntervalSec)
+		c.NodesetBalanceThreshold.Store(cv.NodesetBalanceThreshold)
 		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
 		c.cfg.metaNodeGOGC = cv.MetaNodeGOGC
 		c.cfg.dataNodeGOGC = cv.DataNodeGOGC

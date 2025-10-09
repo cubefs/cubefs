@@ -1627,7 +1627,9 @@ func formatNodesetBalanceStatus(status *proto.NodesetBalanceStatus) string {
 
 	sb.WriteString("[Nodeset Balance Config]\n")
 	sb.WriteString(fmt.Sprintf("  EnableNodesetBalance    : %v\n", status.EnableNodesetBalance))
-	sb.WriteString(fmt.Sprintf("  SingleMigrationLimit    : %v\n", status.SingleMigrationLimit))
+	sb.WriteString(fmt.Sprintf("  ConcurrentDpCountLimit  : %v\n", status.ConcurrentDpCount))
+	sb.WriteString(fmt.Sprintf("  BalanceIntervalSec      : %v\n", status.BalanceIntervalSec))
+	sb.WriteString(fmt.Sprintf("  BalanceThreshold        : %.2f\n", status.BalanceThreshold))
 
 	sb.WriteString("\n[Domain Distribution]\n")
 	sb.WriteString(fmt.Sprintf("  TotalUnbalancedDPs      : %v\n", status.TotalUnbalancedDPs))

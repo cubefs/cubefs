@@ -123,13 +123,16 @@ type ClusterDecommission struct {
 	MarkDiskBrokenThreshold                atomicutil.Float64
 	badPartitionMutex                      sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 
-	ForbidMpDecommission        bool
-	EnableAutoDpMetaRepair      atomicutil.Bool
-	EnableAutoDecommissionDisk  atomicutil.Bool
-	EnableAutoNodesetBalance    atomicutil.Bool
-	AutoDecommissionInterval    atomicutil.Int64
-	AutoDpMetaRepairParallelCnt atomicutil.Uint32
-	server                      *Server
+	ForbidMpDecommission            bool
+	EnableAutoDpMetaRepair          atomicutil.Bool
+	EnableAutoDecommissionDisk      atomicutil.Bool
+	EnableAutoNodesetBalance        atomicutil.Bool
+	NodesetBalanceConcurrentDpCount atomicutil.Int64   // 并发均衡的dp数量
+	NodesetBalanceIntervalSec       atomicutil.Int64   // nodeset balance执行间隔(秒)
+	NodesetBalanceThreshold         atomicutil.Float64 // nodeset balance节点选择阈值
+	AutoDecommissionInterval        atomicutil.Int64
+	AutoDpMetaRepairParallelCnt     atomicutil.Uint32
+	server                          *Server
 }
 
 type CleanTask struct {
@@ -490,6 +493,9 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.EnableAutoDpMetaRepair.Store(defaultEnableDpMetaRepair)
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
 	c.EnableAutoNodesetBalance.Store(defaultEnableAutoNodesetBalance)
+	c.NodesetBalanceConcurrentDpCount.Store(int64(defaultNodesetBalanceConcurrentDpCount))
+	c.NodesetBalanceIntervalSec.Store(int64(defaultNodesetBalanceIntervalSec))
+	c.NodesetBalanceThreshold.Store(defaultNodesetBalanceThreshold)
 	c.server = server
 	c.flashNodeTopo = newFlashNodeTopology()
 	c.cleanTask = make(map[string]*CleanTask)
@@ -2343,7 +2349,7 @@ func (c *Cluster) chooseZone2Plus1(rsMgr *rsManager, zones []*Zone,
 	for _, zone := range zoneList {
 		paramCopy.replicaNum = num
 
-		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, paramCopy, false)
+		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, paramCopy, 0)
 		if e != nil {
 			log.LogErrorf("action[chooseZone2Plus1] getAvailNodeHosts param[%v] error: [%v]", paramCopy.String(), e)
 			return nil, nil, e
@@ -2379,7 +2385,7 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, nodeType uint32, param *select
 			zone := zones[c.lastZoneIdxForNode]
 			c.lastZoneIdxForNode = (c.lastZoneIdxForNode + 1) % len(zones)
 			paramCopy.replicaNum = 1
-			selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, paramCopy, false)
+			selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, paramCopy, 0)
 			if err != nil {
 				// no zone available
 				if j == len(zones)-1 {
@@ -2431,11 +2437,11 @@ func (c *Cluster) getHostFromNormalZoneForCreate(nodeType uint32, replicaNum int
 		replicaNum: replicaNum,
 		rackLevel:  rackLevel,
 	}
-	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, dataMediaType, param, false)
+	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, dataMediaType, param, 0)
 }
 
 func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, zoneNumNeed int,
-	specifiedZoneName string, dataMediaType uint32, param *selectParam, isThresholdLimit bool) (hosts []string, peers []proto.Peer, err error,
+	specifiedZoneName string, dataMediaType uint32, param *selectParam, threshold float64) (hosts []string, peers []proto.Peer, err error,
 ) {
 	log.LogInfof("[getHostFromNormalZone] dataMediaType(%v) nodeType(%v) replicaNum(%v) zoneNumNeed(%v) specifiedZoneName(%v)",
 		proto.MediaTypeString(nodeType), nodeType, param.replicaNum, zoneNumNeed, specifiedZoneName)
@@ -2468,7 +2474,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 
 	if len(zonesQualified) == 1 {
 		log.LogInfof("action[getHostFromNormalZone] zones [%v]", zonesQualified[0].name)
-		if hosts, peers, err = zonesQualified[0].getAvailNodeHosts(nodeType, param, isThresholdLimit); err != nil {
+		if hosts, peers, err = zonesQualified[0].getAvailNodeHosts(nodeType, param, threshold); err != nil {
 			log.LogWarnf("action[getHostFromNormalZone] err[%v]", err)
 			return
 		}
@@ -2525,7 +2531,6 @@ func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	metaNode = value.(*MetaNode)
 	return
 }
-
 func (c *Cluster) lcNode(addr string) (lcNode *LcNode, err error) {
 	value, ok := c.lcNodes.Load(addr)
 	if !ok {
@@ -2535,7 +2540,6 @@ func (c *Cluster) lcNode(addr string) (lcNode *LcNode, err error) {
 	lcNode = value.(*LcNode)
 	return
 }
-
 func (c *Cluster) getAllDataPartitionByDataNode(addr string) (partitions []*DataPartition) {
 	partitions = make([]*DataPartition, 0)
 	safeVols := c.allVols()
@@ -3119,7 +3123,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 			log.LogErrorf("[migrateDataPartition] check mediaType err: %v", err.Error())
 			goto errHandler
 		}
-	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(param, false); err != nil {
+	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(param, 0); err != nil {
 		if _, ok := c.vols[dp.VolName]; !ok {
 			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
@@ -3134,10 +3138,10 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		param.excludeNodeSets = excludeNodeSets
 
-		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, false); err != nil {
+		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0); err != nil {
 			// select data nodes from the other zone
 			zones = dp.getLiveZones(srcAddr)
-			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", dp.MediaType, param, false); err != nil {
+			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", dp.MediaType, param, 0); err != nil {
 				goto errHandler
 			}
 		}
@@ -7184,4 +7188,31 @@ func (c *Cluster) getMetaPartitionStoreMode(mp *MetaPartition, srcAddr string) (
 	}
 
 	return
+}
+
+func (c *Cluster) setNodesetBalanceConcurrentDpCount(count int64) error {
+	c.NodesetBalanceConcurrentDpCount.Store(count)
+	if err := c.syncPutCluster(); err != nil {
+		log.LogWarnf("setNodesetBalanceConcurrentDpCount: sync put cluster failed, err(%v)", err)
+		return err
+	}
+	return nil
+}
+
+func (c *Cluster) setNodesetBalanceIntervalSec(intervalSec int64) error {
+	c.NodesetBalanceIntervalSec.Store(intervalSec)
+	if err := c.syncPutCluster(); err != nil {
+		log.LogWarnf("setNodesetBalanceIntervalSec: sync put cluster failed, err(%v)", err)
+		return err
+	}
+	return nil
+}
+
+func (c *Cluster) setNodesetBalanceThreshold(threshold float64) error {
+	c.NodesetBalanceThreshold.Store(threshold)
+	if err := c.syncPutCluster(); err != nil {
+		log.LogWarnf("setNodesetBalanceThreshold: sync put cluster failed, err(%v)", err)
+		return err
+	}
+	return nil
 }

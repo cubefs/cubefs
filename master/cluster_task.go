@@ -165,7 +165,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		newPeers = []proto.Peer{{
 			Addr: targetAddr,
 		}}
-	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(param, dstStoreMode, false); err != nil {
+	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(param, dstStoreMode, 0); err != nil {
 		if _, ok := c.vols[mp.volName]; !ok {
 			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
 				c.Name, mp.PartitionID, mp.Hosts)
@@ -179,7 +179,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		// choose a meta node in other node set in the same zone
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		param.excludeNodeSets = excludeNodeSets
-		if _, newPeers, err = zone.getAvailNodeHosts(nodeType, param, false); err != nil {
+		if _, newPeers, err = zone.getAvailNodeHosts(nodeType, param, 0); err != nil {
 			zones = mp.getLiveZones(srcAddr)
 			var excludeZone []string
 			if len(zones) == 0 {
@@ -188,7 +188,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 				excludeZone = append(excludeZone, zones[0])
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param, false); err != nil {
+			if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param, 0); err != nil {
 				goto errHandler
 			}
 		}

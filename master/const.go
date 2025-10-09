@@ -244,6 +244,9 @@ const (
 	defaultMarkDiskBrokenThreshold                = 0 // decommission all dp from disk
 	defaultEnableDpMetaRepair                     = false
 	defaultEnableAutoNodesetBalance               = false
+	defaultNodesetBalanceConcurrentDpCount        = 400
+	defaultNodesetBalanceIntervalSec              = 120
+	defaultNodesetBalanceThreshold                = 0.8
 	defaultAutoDpMetaRepairPallarelCnt            = 100
 	defaultAutoDecommissionDiskInterval           = 10 * time.Second
 	maxMpCreationCount                            = 10
@@ -282,6 +285,13 @@ const (
 	RsvEmptyMetaPartitionCnt    = 2
 	WaitForClientUpdateTimeMin  = 10
 	WaitForTaskDeleteByHour     = 24
+)
+
+// keys for admin set nodeinfo parameters
+const (
+	nodesetBalanceConcurrentDpCountKey = "nodesetBalanceConcurrentDpCount" // int
+	nodesetBalanceIntervalSecKey       = "nodesetBalanceIntervalSec"       // int64 seconds
+	nodesetBalanceThresholdKey         = "nodesetBalanceThreshold"         // float64, 0 means unlimited
 )
 
 const (

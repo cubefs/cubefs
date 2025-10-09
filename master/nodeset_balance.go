@@ -24,29 +24,16 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-type nodeSetResource struct {
-	ID                  uint64
-	CanAllocDataNodeCnt int
-	TotalDpCapacity     uint64
-	TotalDpAvail        uint64
-	TotalCapacity       uint64
-	TotalAvail          uint64
-}
-
 const (
-	// concurrent Balance DP Count
-	concurrentBalancedDPCount = 400
-
-	// Task execution interval (4 hours)
-	// NodesetBalanceInterval = 4 * time.Hour
-	NodesetBalanceInterval = 2 * time.Minute
+	// concurrent Balance DP Count (default fallback; actual value comes from cluster config)
+	concurrentBalancedDPCountDefault = 400
 )
 
 // scheduleToNodesetBalance registers auto nodeset balance task
 func (c *Cluster) scheduleToNodesetBalance() {
 	c.runTask(
 		&cTask{
-			tickTime: NodesetBalanceInterval,
+			tickTime: time.Second * time.Duration(c.NodesetBalanceIntervalSec.Load()),
 			name:     "nodesetBalanceController",
 			function: func() (fin bool) {
 				if c.partition == nil || !c.partition.IsRaftLeader() {
@@ -73,7 +60,11 @@ func (c *Cluster) executeNodesetBalanceMigrations() {
 	}()
 
 	activeTasks := c.countActiveNodesetBalanceTasks()
-	if activeTasks >= concurrentBalancedDPCount {
+	limit := c.NodesetBalanceConcurrentDpCount.Load()
+	if limit <= 0 {
+		limit = concurrentBalancedDPCountDefault
+	}
+	if int64(activeTasks) >= limit {
 		log.LogInfof("action[executeNodesetBalanceMigrations] already have %d active tasks, skipping execution", activeTasks)
 		return
 	}
@@ -81,7 +72,7 @@ func (c *Cluster) executeNodesetBalanceMigrations() {
 	dpHost2Ns := c.buildDpHostToNodeSet()
 	vols := c.copyVols()
 	processedCount := 0
-	availableSlots := concurrentBalancedDPCount - activeTasks
+	availableSlots := int(limit) - activeTasks
 
 outerLoop:
 	for _, vol := range vols {
@@ -216,7 +207,9 @@ func (c *Cluster) buildDpHostToNodeSet() map[string]uint64 {
 func (c *Cluster) getNodesetBalanceStatus() *proto.NodesetBalanceStatus {
 	status := &proto.NodesetBalanceStatus{
 		DecommissioningDPIDs: make([]uint64, 0),
-		SingleMigrationLimit: concurrentBalancedDPCount,
+		ConcurrentDpCount:    c.NodesetBalanceConcurrentDpCount.Load(),
+		BalanceIntervalSec:   c.NodesetBalanceIntervalSec.Load(),
+		BalanceThreshold:     c.NodesetBalanceThreshold.Load(),
 		EnableNodesetBalance: c.getEnableAutoNodesetBalance(),
 		DomainDistribution: &proto.DomainDistributionInfo{
 			SingleDomainDPs: 0,

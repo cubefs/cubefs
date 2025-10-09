@@ -167,7 +167,7 @@ func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Dat
 	nset := nsc[0]
 	mocktest.Log(t, "List datanodes of nodeset", nset.ID)
 	printNodesetAndDataNodes(t, nset)
-	_, peer, err := selector.Select(nset, nil, 1, false)
+	_, peer, err := selector.Select(nset, nil, 1, 0)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
 		return nil
@@ -209,7 +209,7 @@ func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Met
 	nset := nsc[0]
 	mocktest.Log(t, "List metanodes of nodeset", nset.ID)
 	printNodesetAndMetaNodes(t, nset)
-	_, peer, err := selector.Select(nset, nil, 1, false)
+	_, peer, err := selector.Select(nset, nil, 1, 0)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
 		return nil
@@ -546,7 +546,7 @@ func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 func nodeSelectorBench(selector NodeSelector, nset *nodeSet, onSelect func(addr string)) (map[uint64]int, error) {
 	times := make(map[uint64]int)
 	for i := 0; i < loopNodeSelectorTestCount; i++ {
-		_, peers, err := selector.Select(nset, nil, 1, false)
+		_, peers, err := selector.Select(nset, nil, 1, 0)
 		if err != nil {
 			return nil, err
 		}

@@ -62,7 +62,7 @@ func TestSingleZone(t *testing.T) {
 		rackLevel:       proto.RackAwareNone,
 		excludeRacks:    nil,
 	}
-	newHosts, _, err := zones[0].getAvailNodeHosts(TypeDataPartition, param, false)
+	newHosts, _, err := zones[0].getAvailNodeHosts(TypeDataPartition, param, 0)
 	require.NoError(t, err)
 	t.Log(newHosts)
 	topo.deleteDataNode(createDataNodeForTopo(mds1Addr, zoneName, nodeSet))
@@ -146,18 +146,18 @@ func TestAllocZones(t *testing.T) {
 		rackLevel:  proto.RackAwareNone,
 	}
 	// don't cross zone
-	hosts, _, err := cluster.getHostFromNormalZone(TypeDataPartition, nil, 1, "", proto.MediaType_Unspecified, param, false)
+	hosts, _, err := cluster.getHostFromNormalZone(TypeDataPartition, nil, 1, "", proto.MediaType_Unspecified, param, 0)
 	require.NoError(t, err)
 
 	t.Logf("ChooseTargetDataHosts in single zone,hosts[%v]", hosts)
 
 	// cross zone
-	_, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, 2, "", proto.MediaType_Unspecified, param, false)
+	_, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, 2, "", proto.MediaType_Unspecified, param, 0)
 	require.NoError(t, err)
 
 	param.replicaNum = 2
 	// specific zone
-	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, 3, zoneName1+","+zoneName2, proto.MediaType_Unspecified, param, false)
+	hosts, _, err = cluster.getHostFromNormalZone(TypeDataPartition, nil, 3, zoneName1+","+zoneName2, proto.MediaType_Unspecified, param, 0)
 	require.NoError(t, err)
 	require.EqualValues(t, getZoneCntFunc(hosts), 2)
 

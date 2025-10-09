@@ -1673,6 +1673,40 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[autoNodesetBalanceKey] = val
 	}
 
+	// nodeset balance configs
+	if value = r.FormValue(nodesetBalanceConcurrentDpCountKey); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(nodesetBalanceConcurrentDpCountKey)
+			return
+		}
+		params[nodesetBalanceConcurrentDpCountKey] = val
+	}
+
+	if value = r.FormValue(nodesetBalanceIntervalSecKey); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(nodesetBalanceIntervalSecKey)
+			return
+		}
+		params[nodesetBalanceIntervalSecKey] = val
+	}
+
+	if value = r.FormValue(nodesetBalanceThresholdKey); value != "" {
+		noParams = false
+		val := float64(0)
+		val, err = strconv.ParseFloat(value, 64)
+		if err != nil {
+			err = unmatchedKey(nodesetBalanceThresholdKey)
+			return
+		}
+		params[nodesetBalanceThresholdKey] = val
+	}
+
 	if value = r.FormValue(dpTimeoutKey); value != "" {
 		noParams = false
 		val := int64(0)

@@ -51,7 +51,7 @@ func (ns *nodeSet) getNodes(nodeType NodeType) *sync.Map {
 
 type NodeSelector interface {
 	GetName() string
-	Select(ns *nodeSet, excludeHosts []string, replicaNum int, isThresholdLimited bool) (newHosts []string, peers []proto.Peer, err error)
+	Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error)
 }
 
 type weightedNode struct {
@@ -154,7 +154,7 @@ func (s *CarryWeightNodeSelector) getTotalMax(nodes *sync.Map) (total uint64) {
 	return
 }
 
-func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, excludeHosts []string, isThresholdLimited bool) (SortedWeightedNodes, int) {
+func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, excludeHosts []string, threshold float64) (SortedWeightedNodes, int) {
 	var nodes *sync.Map
 	switch s.nodeType {
 	case DataNodeType:
@@ -174,12 +174,11 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 			return true
 		}
 		if node.IsOffline() {
-			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v) is offline",
-				s.nodeType, node.GetStorageInfo(), excludeHosts)
+			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType, node.GetStorageInfo(), excludeHosts)
 			return true
 		}
 
-		if (isThresholdLimited && !canAllocPartitionWithThreshold(node, 0.8)) || (!isThresholdLimited && !canAllocPartition(node, s.nodeType)) {
+		if (threshold > 0 && !canAllocPartitionWithThreshold(node, threshold)) || (threshold <= 0 && !canAllocPartition(node, s.nodeType)) {
 			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType,
 				node.GetStorageInfo(), excludeHosts)
 			return true
@@ -232,7 +231,7 @@ func (s *CarryWeightNodeSelector) selectNodeForWrite(node Node) {
 	s.Unlock()
 }
 
-func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, isThresholdLimited bool) (newHosts []string, peers []proto.Peer, err error) {
+func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
 	nodes := ns.getNodes(s.nodeType)
 	total := s.getTotalMax(nodes)
 	// prepare carry for every nodes
@@ -245,7 +244,7 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 		return
 	}
 	// if we cannot get enough writable nodes, return error
-	weightedNodes, count := s.getCarryNodes(ns, total, excludeHosts, isThresholdLimited)
+	weightedNodes, count := s.getCarryNodes(ns, total, excludeHosts, threshold)
 	if len(weightedNodes) < replicaNum {
 		err = fmt.Errorf("action[%s NodeSelector-Select] no enough writable hosts,replicaNum: %d MatchNodeCount:%d",
 			s.GetName(), replicaNum, len(weightedNodes))
@@ -304,7 +303,7 @@ func (s *AvailableSpaceFirstNodeSelector) GetName() string {
 	return AvailableSpaceFirstNodeSelectorName
 }
 
-func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, isThresholdLimited bool) (newHosts []string, peers []proto.Peer, err error) {
+func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
@@ -319,7 +318,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 		if contains(excludeHosts, node.GetAddr()) {
 			return true
 		}
-		if (isThresholdLimited && !canAllocPartitionWithThreshold(node, 0.8)) || (!isThresholdLimited && !canAllocPartition(node, s.nodeType)) {
+		if (threshold > 0 && !canAllocPartitionWithThreshold(node, threshold)) || (threshold <= 0 && !canAllocPartition(node, s.nodeType)) {
 			return true
 		}
 		sortedNodes = append(sortedNodes, node)
@@ -409,7 +408,7 @@ func (s *RoundRobinNodeSelector) GetName() string {
 	return RoundRobinNodeSelectorName
 }
 
-func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, isThresholdLimited bool) (newHosts []string, peers []proto.Peer, err error) {
+func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
@@ -441,7 +440,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 		for nodeIndex < len(sortedNodes) {
 			node := sortedNodes[(nodeIndex+s.index)%len(sortedNodes)]
 			nodeIndex += 1
-			if (isThresholdLimited && canAllocPartitionWithThreshold(node, 0.8)) || (!isThresholdLimited && canAllocPartition(node, s.nodeType)) {
+			if (threshold > 0 && canAllocPartitionWithThreshold(node, threshold)) || (threshold <= 0 && canAllocPartition(node, s.nodeType)) {
 				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
@@ -540,14 +539,14 @@ func (s *StrawNodeSelector) selectOneNode(nodes []Node, excludedIpSet map[string
 	return
 }
 
-func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, isThresholdLimited bool) (newHosts []string, peers []proto.Peer, err error) {
+func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
 	nodes := make([]Node, 0)
 	ns.getNodes(s.nodeType).Range(func(key, value interface{}) bool {
 		node := asNodeWrap(value, s.nodeType)
 		if contains(excludeHosts, node.GetAddr()) {
 			return true
 		}
-		if (isThresholdLimited && !canAllocPartitionWithThreshold(node, 0.8)) || (!isThresholdLimited && !canAllocPartition(node, s.nodeType)) {
+		if (threshold > 0 && !canAllocPartitionWithThreshold(node, threshold)) || (threshold <= 0 && !canAllocPartition(node, s.nodeType)) {
 			return true
 		}
 		nodes = append(nodes, node)
@@ -640,7 +639,7 @@ func (ns *nodeSet) getRackSets() nodeSetCollection {
 	return rsets
 }
 
-func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.StoreMode, isThresholdLimited bool) (newHosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.StoreMode, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modification of node selector
@@ -654,7 +653,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.Sto
 
 	// If rack isolation is not enabled, use non-rack-aware selector directly
 	if param.rackLevel == proto.RackAwareNone {
-		return ns.getNodeSelector(nodeType, storeMode).Select(ns, param.excludeHosts, param.replicaNum, isThresholdLimited)
+		return ns.getNodeSelector(nodeType, storeMode).Select(ns, param.excludeHosts, param.replicaNum, threshold)
 	}
 
 	// Rack isolation enabled, prioritize strong constraint mode
@@ -689,7 +688,7 @@ func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, st
 		// Select nodes
 		selector := rack.getNodeSelector(nodeType, storeMode)
 
-		rhosts, rpeers, err := selector.Select(rack, paramCopy.excludeHosts, 1, false)
+		rhosts, rpeers, err := selector.Select(rack, paramCopy.excludeHosts, 1, 0)
 		if err != nil {
 			log.LogErrorf("action[getAvailMetaNodeHosts] node selection failed for rack[%v], param[%v], err: %v",
 				rack, paramCopy.String(), err.Error())
@@ -710,7 +709,7 @@ func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, st
 	}
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(param *selectParam, isThresholdLimited bool) (hosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailDataNodeHosts(param *selectParam, threshold float64) (hosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modification of node selector
@@ -718,7 +717,7 @@ func (ns *nodeSet) getAvailDataNodeHosts(param *selectParam, isThresholdLimited 
 	defer ns.dataNodeSelectorLock.Unlock()
 
 	if param.rackLevel == proto.RackAwareNone {
-		return ns.dataNodeSelector.Select(ns, param.excludeHosts, param.replicaNum, isThresholdLimited)
+		return ns.dataNodeSelector.Select(ns, param.excludeHosts, param.replicaNum, threshold)
 	}
 
 	return ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeDef)
