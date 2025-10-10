@@ -622,9 +622,9 @@ func (r *RocksTree) ReleaseSnap(snap *gorocksdb.Snapshot) {
 
 func (r *RocksTree) IteratorCount(tableType TableType) uint64 {
 	startBuf := r.GetRocksdbNormalKey(byte(tableType))
-	defer PutRocksdbLongKey(startBuf)
+	defer PutRocksdbNormalKey(startBuf)
 	endBuf := r.GetRocksdbNormalKey(byte(tableType) + 1)
-	defer PutRocksdbLongKey(endBuf)
+	defer PutRocksdbNormalKey(endBuf)
 	start := startBuf.Bytes()
 	end := endBuf.Bytes()
 

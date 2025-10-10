@@ -323,6 +323,18 @@ func (dbInfo *RocksdbOperator) doOpen(opts *RocksDBOptions) (err error) {
 
 	if err != nil {
 		log.LogErrorf("interOpenDb open db err:%v", err)
+		if dbInfo.openOption != nil {
+			dbInfo.openOption.Destroy()
+			dbInfo.openOption = nil
+		}
+		if dbInfo.cache != nil {
+			dbInfo.cache.Destroy()
+			dbInfo.cache = nil
+		}
+		if dbInfo.tableOption != nil {
+			dbInfo.tableOption.Destroy()
+			dbInfo.tableOption = nil
+		}
 		return ErrRocksdbOperation
 	}
 	dbInfo.dir = opts.Dir
@@ -332,6 +344,7 @@ func (dbInfo *RocksdbOperator) doOpen(opts *RocksDBOptions) (err error) {
 	dbInfo.writeOption.DisableWAL(true)
 	dbInfo.readDiskOption = gorocksdb.NewDefaultReadOptions()
 	dbInfo.readDiskOption.SetReadTier(ReadTierPersisted)
+	dbInfo.readDiskOption.SetFillCache(false)
 	dbInfo.setOptToConfig(opts)
 	return nil
 }
@@ -634,13 +647,8 @@ func (dbInfo *RocksdbOperator) DescRange(start, end []byte, cb func(k, v []byte)
 }
 
 func (dbInfo *RocksdbOperator) GetBytes(key []byte) (bytes []byte, err error) {
-	defer func() {
-		if err != nil {
-			log.LogErrorf("[RocksDB Op] GetBytes failed, error:%v", err)
-		}
-	}()
-
 	if err = dbInfo.accessDb(); err != nil {
+		log.LogErrorf("[RocksDB Op] GetBytes failed, error:%v", err)
 		return
 	}
 	defer dbInfo.releaseDb()
@@ -765,10 +773,7 @@ func (dbInfo *RocksdbOperator) DelItemToBatch(handle interface{}, key []byte) (e
 	if !ok {
 		return ErrInvalidRocksdbWriteHandle
 	}
-	if err = dbInfo.accessDb(); err != nil {
-		return
-	}
-	defer dbInfo.releaseDb()
+
 	batch.Delete(key)
 	return nil
 }
@@ -778,10 +783,7 @@ func (dbInfo *RocksdbOperator) DelRangeToBatch(handle interface{}, start []byte,
 	if !ok {
 		return ErrInvalidRocksdbWriteHandle
 	}
-	if err = dbInfo.accessDb(); err != nil {
-		return
-	}
-	defer dbInfo.releaseDb()
+
 	batch.DeleteRange(start, end)
 	return nil
 }

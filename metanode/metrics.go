@@ -162,6 +162,9 @@ func (m *MetaNode) updateRocksdbStatsMetrics() {
 		"rocksdb.db.seek.micros",
 		"rocksdb.db.write.stall",
 		"rocksdb.db.flush.micros",
+		"rocksdb.sst.read.micros",
+		"rocksdb.bytes.per.read",
+		"rocksdb.bytes.per.write",
 	}
 
 	manager, ok := m.metadataManager.(*metadataManager)
