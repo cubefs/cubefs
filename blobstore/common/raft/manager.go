@@ -354,7 +354,7 @@ func (m *manager) CreateRaftGroup(ctx context.Context, cfg *GroupConfig) (Group,
 func (m *manager) GetRaftGroup(id uint64) (Group, error) {
 	v, ok := m.groups.Load(id)
 	if !ok {
-		return nil, errors.New("group not found")
+		return nil, ErrGroupNotFound
 	}
 	return v.(Group), nil
 }

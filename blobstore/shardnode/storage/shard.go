@@ -771,12 +771,14 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string, clearData bool
 	if err != nil {
 		return err
 	}
-	// wait current shard apply member change done
+	// 1. shard raft group not removed, should wait current shard apply member change done
+	// 2. shard raft group has been removed(handle eio), can't apply any change, no need to wait
+	_, getGroupErr := s.disk.raftManager.GetRaftGroup(uint64(s.suid.ShardID()))
 	for {
-		if !s.isShardUnitExist(s.suid) {
-			time.Sleep(1 * time.Second)
+		if !s.isShardUnitExist(s.suid) || errors.Is(getGroupErr, raft.ErrGroupNotFound) {
 			break
 		}
+		time.Sleep(1 * time.Second)
 	}
 
 	span.Warnf("disk[%d] shard[%d] suid[%d] remove from members done", s.diskID, s.suid.ShardID(), s.suid)
