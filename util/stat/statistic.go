@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -211,7 +212,17 @@ func EndStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 	}
 
 	if err != nil {
-		newErrStr := string(re.ReplaceAll([]byte(err.Error()), []byte("(xxx)")))
+		var newErrStr string
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.LogErrorf("EndStat panic: err(%v) stack(%v)", r, string(debug.Stack()))
+					newErrStr = "unknown_error"
+				}
+			}()
+			newErrStr = string(re.ReplaceAll([]byte(err.Error()), []byte("(xxx)")))
+		}()
+
 		baseLen := len(typeName) + 2
 		if len(newErrStr)+baseLen > 41 {
 			typeName = typeName + "[" + newErrStr[:41-baseLen] + "]"
