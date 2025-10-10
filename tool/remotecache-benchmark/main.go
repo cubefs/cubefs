@@ -82,6 +82,7 @@ func NewBenchmarkTester(dataDir, hddBase, nvmeBase string, verify bool, master s
 			Masters:            strings.Split(master, ","),
 			BlockSize:          proto.CACHE_OBJECT_BLOCK_SIZE,
 			NeedInitLog:        true,
+			NeedInitStat:       true,
 			LogLevelStr:        logLevel,
 			LogDir:             "/tmp/cfs",
 			ConnectTimeout:     500,
