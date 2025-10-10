@@ -145,6 +145,7 @@ type ClientConfig struct {
 	Masters                []string
 	BlockSize              uint64
 	NeedInitLog            bool
+	NeedInitStat           bool
 	LogLevelStr            string
 	LogDir                 string
 	ConnectTimeout         int64 // ms
@@ -166,12 +167,13 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 		if err != nil {
 			return nil, errors.New("failed to init log")
 		}
-		_, err = stat.NewStatistic(config.LogDir, "remoteCacheClient", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
-		if err != nil {
-			return nil, errors.New("failed to stat log")
+		if config.NeedInitStat {
+			_, err = stat.NewStatistic(config.LogDir, "remoteCacheClient", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
+			if err != nil {
+				return nil, errors.New("failed to stat log")
+			}
 		}
 	}
-
 	if proto.Buffers == nil {
 		proto.InitBufferPool(32768)
 	}
@@ -792,10 +794,11 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		n            int
 		readCost     int64
 		writeCost    int64
+		readErr      error
 	)
+	forceClose = true
 	defer func() {
 		if err != nil {
-			forceClose = true
 			log.LogWarnf("FlashGroup put: reqId(%v) remove key %v by err %v readCost(%v)ns writeCost(%v)ns", reqId, key, err, readCost, writeCost)
 			rc.deleteRemoteBlock(key, addr)
 		}
@@ -822,10 +825,10 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	var readOffset int
 	for {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return fmt.Errorf(proto.ErrorContextErrorTpl, ctx.Err())
 		}
 		if ch.RemoteError != nil {
-			return ch.RemoteError
+			return fmt.Errorf(proto.ErrorRemoteErrorTpl, ch.RemoteError)
 		}
 		readSize := int(rc.WriteChunkSize)
 		if totalWritten+int64(readSize) > length {
@@ -833,25 +836,27 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 		}
 		if err = rc.flowLimiter.WaitN(ctx, readSize); err != nil {
 			log.LogWarnf("FlashGroup put: reqId(%v) flow limit wait failed, err(%v)", reqId, err)
-			return err
+			return fmt.Errorf(proto.ErrorFlowLimitErrorTpl, err)
 		}
 		bufferOffset := 0
 		for {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return fmt.Errorf(proto.ErrorContextErrorTpl, ctx.Err())
 			}
 			if ch.RemoteError != nil {
-				return ch.RemoteError
+				return fmt.Errorf(proto.ErrorRemoteErrorTpl, ch.RemoteError)
 			}
 			currentReadSize := readSize - bufferOffset
 			readStart := time.Now()
 			bs := readOffset + bufferOffset
-			n, err = r.Read(buf[bs : bs+currentReadSize])
+			n, readErr = r.Read(buf[bs : bs+currentReadSize])
 			readCost += time.Since(readStart).Nanoseconds()
 			bufferOffset += n
-			if err == io.EOF {
+			if readErr == io.EOF {
+				err = io.EOF
 				break
-			} else if err != nil {
+			} else if readErr != nil {
+				err = fmt.Errorf(proto.ErrorReadErrorTpl, readErr)
 				return err
 			} else if bufferOffset == readSize {
 				if log.EnableDebug() {
@@ -895,7 +900,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 			err = nil
 			break
 		} else if err != nil {
-			return err
+			return fmt.Errorf(proto.ErrorIOErrorTpl, err)
 		} else if totalWritten == length {
 			if log.EnableDebug() {
 				log.LogDebugf("key(%v) total written(%v) equal to lengh(%v)", key, totalWritten, length)
@@ -909,11 +914,12 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	}
 	<-ch.Completed
 	if ch.RemoteError != nil {
-		return ch.RemoteError
+		return fmt.Errorf(proto.ErrorRemoteErrorTpl, ch.RemoteError)
 	}
 	if totalWritten != length {
 		return fmt.Errorf(proto.ErrorUnexpectedDataLengthTpl, length, totalWritten)
 	}
+	forceClose = false
 	if log.EnableDebug() {
 		log.LogDebugf("put data success key(%v) addr(%v) totalWriten(%v)", key, addr, totalWritten)
 	}

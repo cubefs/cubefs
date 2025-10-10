@@ -75,6 +75,11 @@ var (
 	ErrorReadFromCloseReaderTpl        = "read from close reader reqID(%v)"
 	ErrorInconsistentCRCObjectTpl      = "inconsistent CRC, offset(%v) extentOffset(%v) expect(%v) actualCrc(%v)"
 	ErrorInvalidRangeTpl               = "invalid range: from(%v) to(%v)"
+	ErrorContextErrorTpl               = "context error: %v"
+	ErrorRemoteErrorTpl                = "remote error: %v"
+	ErrorReadErrorTpl                  = "read error: %v"
+	ErrorIOErrorTpl                    = "io error: %v"
+	ErrorFlowLimitErrorTpl             = "flow limit error: %v"
 )
 
 type FlashGroupStatus int
