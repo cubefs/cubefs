@@ -1139,8 +1139,8 @@ func GetDecommissionTypeMessage(status uint32) string {
 		return "InitialDecommission"
 	case ManualAddReplica:
 		return "ManualAddReplica"
-	case NodesetBalance:
-		return "NodesetBalance"
+	case DistributionOptimization:
+		return "DistributionOptimization"
 	default:
 		return fmt.Sprintf("Unkown:%v", status)
 	}
@@ -1485,7 +1485,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			}
 		}
 
-		if (migrateType == ManualDecommission || migrateType == NodesetBalance) && partition.ReplicaNum == 3 && len(partition.Hosts) >= 2 {
+		if (migrateType == ManualDecommission || migrateType == DistributionOptimization) && partition.ReplicaNum == 3 && len(partition.Hosts) >= 2 {
 			diskErrReplicas := partition.getAllDiskErrorReplica()
 			if raftForce {
 				if (isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) && isReplicasContainsHost(diskErrReplicas, partition.Hosts[1])) ||
@@ -1499,7 +1499,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			}
 		}
 
-		if (migrateType == ManualDecommission || migrateType == NodesetBalance) && partition.ReplicaNum == 2 && len(partition.Hosts) == 2 {
+		if (migrateType == ManualDecommission || migrateType == DistributionOptimization) && partition.ReplicaNum == 2 && len(partition.Hosts) == 2 {
 			diskErrReplicas := partition.getAllDiskErrorReplica()
 			if raftForce {
 				if (isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) && srcAddr == partition.Hosts[1]) ||
@@ -1836,7 +1836,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 
 	// in the raftForce case, need to check if all replicas except the decommission src addr are diskErr replicas
 	if partition.DecommissionRaftForce && (partition.DecommissionType == AutoDecommission ||
-		partition.DecommissionType == ManualDecommission || partition.DecommissionType == NodesetBalance) {
+		partition.DecommissionType == ManualDecommission || partition.DecommissionType == DistributionOptimization) {
 		if partition.isReplicaAllDiskErrorExceptSrcAddr() {
 			msg = fmt.Sprintf("dp(%v) all replicas except decommission src addr(%v) are diskErr replicas", partition.PartitionID, partition.DecommissionSrcAddr)
 			log.LogWarnf("action[decommissionDataPartition] %s", msg)
@@ -2535,9 +2535,8 @@ func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err err
 	return ns, zone, nil
 }
 
-func selectTargetHostsInNodesetBalance(addrs []string, replicaNum int, c *Cluster, mediaType uint32) (ns *nodeSet, srcAddrs []string, dstAddrs []string, err error) {
+func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int, c *Cluster, mediaType uint32) (ns *nodeSet, srcAddrs []string, dstAddrs []string, err error) {
 	var (
-		excludedHosts    []string
 		excludedNodesets []uint64
 		excludedZones    []string
 		needDstAddrCount int
@@ -2552,23 +2551,24 @@ func selectTargetHostsInNodesetBalance(addrs []string, replicaNum int, c *Cluste
 	nsMap := make(map[uint64]*nodeSet)
 	zoneMap := make(map[string]*Zone)
 
+	// Analyze current distribution
 	for _, addr := range addrs {
 		dataNode, err := c.dataNode(addr)
 		if err != nil {
-			log.LogWarnf("action[selectTargetHostsInNodesetBalance] find data node for addr %s failed: %v", addr, err)
+			log.LogWarnf("action[selectTargetHostsInDistributionOptimization] find data node for addr %s failed: %v", addr, err)
 			return nil, nil, nil, err
 		}
 
 		zn, err := c.t.getZone(dataNode.ZoneName)
 		if err != nil {
-			log.LogWarnf("action[selectTargetHostsInNodesetBalance] find zone for addr %s failed: %v", addr, err)
+			log.LogWarnf("action[selectTargetHostsInDistributionOptimization] find zone for addr %s failed: %v", addr, err)
 			return nil, nil, nil, err
 		}
 		zoneMap[dataNode.ZoneName] = zn
 
 		ns, err := zn.getNodeSet(dataNode.NodeSetID)
 		if err != nil {
-			log.LogWarnf("action[selectTargetHostsInNodesetBalance] find nodeset for addr %s failed: %v", addr, err)
+			log.LogWarnf("action[selectTargetHostsInDistributionOptimization] find nodeset for addr %s failed: %v", addr, err)
 			return nil, nil, nil, err
 		}
 		nsReplicaCount[dataNode.NodeSetID]++
@@ -2576,10 +2576,7 @@ func selectTargetHostsInNodesetBalance(addrs []string, replicaNum int, c *Cluste
 		addrToNsID[addr] = dataNode.NodeSetID
 	}
 
-	if len(nsReplicaCount) <= 1 {
-		return nil, nil, nil, fmt.Errorf("dp is already nodeset-balanced")
-	}
-
+	// Step 1: Try existing NodeSets (prioritize the one with most replicas)
 	var maxCount int
 	var targetNsID uint64
 
@@ -2589,102 +2586,220 @@ func selectTargetHostsInNodesetBalance(addrs []string, replicaNum int, c *Cluste
 			targetNsID = nsID
 		}
 	}
-	targetNs := nsMap[targetNsID]
 
-	excludedHosts = append(excludedHosts, addrs...)
+	if targetNsID != 0 {
+		targetNs := nsMap[targetNsID]
 
-	needDstAddrCount = replicaNum - maxCount
-	param := &selectParam{
-		excludeNodeSets: nil,
-		replicaNum:      needDstAddrCount,
-		excludeHosts:    excludedHosts,
-		rackLevel:       c.getRackAwareLevel(),
-		excludeRacks:    nil,
-	}
-	availableHosts, _, err := targetNs.getAvailDataNodeHosts(param, c.NodesetBalanceThreshold.Load())
-	if err == nil {
-		for _, addr := range addrs {
-			if addrToNsID[addr] != targetNsID {
-				srcAddrs = append(srcAddrs, addr)
-			}
+		// Use simplified intelligent incremental selection
+		srcAddrs, dstAddrs, err := selectOptimalNodes(addrs, targetNsID, c)
+		if err == nil {
+			log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step1: simplified selection in NodeSet %d, srcAddrs: %v, dstAddrs: %v",
+				targetNsID, srcAddrs, dstAddrs)
+			return targetNs, srcAddrs, dstAddrs, nil
 		}
-		return targetNs, srcAddrs, availableHosts, nil
+		log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step1 failed for NodeSet %d: %v", targetNsID, err)
 	}
 
+	// Step 2: Try other existing NodeSets
+	log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step1 failed, trying Step2: other existing NodeSets")
 	for nsID, ns := range nsMap {
 		if nsID == targetNsID {
 			continue
 		}
-		replicaCount := nsReplicaCount[nsID]
-		needDstAddrCount = replicaNum - replicaCount
-		param := &selectParam{
-			excludeNodeSets: nil,
-			replicaNum:      needDstAddrCount,
-			excludeHosts:    excludedHosts,
-			rackLevel:       c.getRackAwareLevel(),
-			excludeRacks:    nil,
-		}
-		availableHosts, _, err = ns.getAvailDataNodeHosts(param, c.NodesetBalanceThreshold.Load())
+
+		// Use simplified intelligent incremental selection
+		srcAddrs, dstAddrs, err := selectOptimalNodes(addrs, nsID, c)
 		if err == nil {
-			for _, addr := range addrs {
-				if addrToNsID[addr] != nsID {
-					srcAddrs = append(srcAddrs, addr)
-				}
-			}
-			return ns, srcAddrs, availableHosts, nil
+			log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step2: simplified selection in NodeSet %d, srcAddrs: %v, dstAddrs: %v",
+				nsID, srcAddrs, dstAddrs)
+			return ns, srcAddrs, dstAddrs, nil
 		}
 		excludedNodesets = append(excludedNodesets, nsID)
 	}
 
+	// Step 3: Try same zone other NodeSets using zone.getAvailNodeHosts
+	log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step2 failed, trying Step3: same zone other NodeSets")
 	needDstAddrCount = replicaNum
 	for _, zone := range zoneMap {
 		param := &selectParam{
-			excludeNodeSets: excludedNodesets,
 			replicaNum:      needDstAddrCount,
-			excludeHosts:    excludedHosts,
+			excludeHosts:    addrs,
 			rackLevel:       c.getRackAwareLevel(),
-			excludeRacks:    nil,
+			excludeNodeSets: excludedNodesets,
 		}
-		availableHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, c.NodesetBalanceThreshold.Load())
-		if err == nil {
+		availableHosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, c.DistributionOptimizationThreshold.Load())
+		if err == nil && len(availableHosts) == needDstAddrCount {
 			ns, _, err = getTargetNodeset(availableHosts[0], c)
 			if err != nil {
-				log.LogWarnf("action[selectTargetHostsInNodesetBalance] failed to get nodeset for host %s: %v", availableHosts[0], err)
+				log.LogWarnf("action[selectTargetHostsInDistributionOptimization] failed to get nodeset for host %s: %v", availableHosts[0], err)
 				continue
 			}
-			for _, addr := range addrs {
-				if addrToNsID[addr] != ns.ID {
-					srcAddrs = append(srcAddrs, addr)
-				}
-			}
+			srcAddrs = make([]string, len(addrs))
+			copy(srcAddrs, addrs)
+			log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step3: found %d hosts in zone %s NodeSet %d", len(availableHosts), zone.name, ns.ID)
 			return ns, srcAddrs, availableHosts, nil
 		}
 		excludedZones = append(excludedZones, zone.name)
 	}
 
-	finalParam := &selectParam{
-		excludeNodeSets: excludedNodesets,
-		replicaNum:      needDstAddrCount,
-		excludeHosts:    excludedHosts,
-		rackLevel:       c.getRackAwareLevel(),
-		excludeRacks:    nil,
+	// Step 4: Global selection (may cross zones)
+	log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step3 failed, trying Step4: global selection")
+	param := &selectParam{
+		replicaNum:   needDstAddrCount,
+		excludeHosts: addrs,
+		rackLevel:    c.getRackAwareLevel(),
 	}
-	availableHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludedZones, 1, "", mediaType, finalParam, c.NodesetBalanceThreshold.Load())
-	if err == nil {
+
+	availableHosts, _, err := c.getHostFromNormalZone(TypeDataPartition, excludedZones, 1, "", mediaType, param, c.DistributionOptimizationThreshold.Load())
+	if err == nil && len(availableHosts) == needDstAddrCount {
 		ns, _, err = getTargetNodeset(availableHosts[0], c)
 		if err != nil {
-			log.LogWarnf("action[selectTargetHostsInNodesetBalance] failed to get nodeset for host %s: %v", availableHosts[0], err)
+			log.LogWarnf("action[selectTargetHostsInDistributionOptimization] failed to get nodeset for host %s: %v", availableHosts[0], err)
 			return nil, nil, nil, err
 		}
-		for _, addr := range addrs {
-			if addrToNsID[addr] != ns.ID {
-				srcAddrs = append(srcAddrs, addr)
-			}
-		}
+		srcAddrs = make([]string, len(addrs))
+		copy(srcAddrs, addrs)
+		log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step4: global selection found %d hosts in NodeSet %d", len(availableHosts), ns.ID)
 		return ns, srcAddrs, availableHosts, nil
 	}
 
 	return nil, nil, nil, fmt.Errorf("cluster resources insufficient, can't find target hosts")
+}
+
+// analyzeRackDistribution analyzes the rack distribution of a data partition
+func analyzeRackDistribution(dp *DataPartition, c *Cluster) (noConflict bool, conflictLevel int) {
+	if len(dp.Hosts) == 0 {
+		return true, 0 // No hosts, no conflict
+	}
+
+	rackCount := make(map[string]int)
+	for _, addr := range dp.Hosts {
+		dataNode, err := c.dataNode(addr)
+		if err != nil {
+			continue
+		}
+		rackCount[dataNode.Rack]++
+	}
+
+	// Check for rack conflicts
+	maxReplicasInSameRack := 0
+	for _, count := range rackCount {
+		if count > maxReplicasInSameRack {
+			maxReplicasInSameRack = count
+		}
+	}
+
+	// For 3-replica scenario:
+	// - No conflict: each rack has at most 1 replica
+	// - Minor conflict: one rack has 2 replicas, others have 1 or 0
+	// - Major conflict: one rack has 3 replicas
+	if maxReplicasInSameRack <= 1 {
+		return true, 0 // No conflict
+	} else if maxReplicasInSameRack == 2 {
+		return false, 1 // Minor conflict
+	} else {
+		return false, 2 // Major conflict
+	}
+}
+
+// selectOptimalNodes uses simplified intelligent incremental selection strategy
+func selectOptimalNodes(currentAddrs []string, targetNsID uint64, c *Cluster) ([]string, []string, error) {
+	var keepAddrs []string
+	var migrateAddrs []string
+
+	// Analyze target NodeSet replicas, group by rack
+	targetNsNodes := make(map[string][]string) // rack -> []addr
+	crossNsNodes := []string{}
+
+	for _, addr := range currentAddrs {
+		dataNode, err := c.dataNode(addr)
+		if err != nil {
+			log.LogWarnf("action[selectOptimalNodes] find data node for addr %s failed: %v", addr, err)
+			continue
+		}
+
+		if dataNode.NodeSetID == targetNsID {
+			rack := dataNode.Rack
+			targetNsNodes[rack] = append(targetNsNodes[rack], addr)
+		} else {
+			crossNsNodes = append(crossNsNodes, addr)
+		}
+	}
+
+	// Keep only the first node in each rack
+	usedRacks := make(map[string]bool)
+	for rack, addrs := range targetNsNodes {
+		if len(addrs) > 0 {
+			keepAddrs = append(keepAddrs, addrs[0]) // Keep the first one
+			usedRacks[rack] = true
+
+			// Add the rest to migration list
+			for i := 1; i < len(addrs); i++ {
+				migrateAddrs = append(migrateAddrs, addrs[i])
+			}
+		}
+	}
+
+	// All cross-NodeSet replicas need migration
+	migrateAddrs = append(migrateAddrs, crossNsNodes...)
+
+	// Select new nodes, excluding used racks
+	if len(migrateAddrs) > 0 {
+		excludeRacks := make([]string, 0, len(usedRacks))
+		for rack := range usedRacks {
+			excludeRacks = append(excludeRacks, rack)
+		}
+
+		param := &selectParam{
+			replicaNum:   len(migrateAddrs),
+			excludeHosts: currentAddrs,
+			excludeRacks: excludeRacks,
+			rackLevel:    c.getRackAwareLevel(),
+		}
+
+		// Get target NodeSet
+		var targetNs *nodeSet
+		for _, addr := range currentAddrs {
+			dataNode, err := c.dataNode(addr)
+			if err != nil {
+				continue
+			}
+			if dataNode.NodeSetID == targetNsID {
+				zn, err := c.t.getZone(dataNode.ZoneName)
+				if err != nil {
+					continue
+				}
+				targetNs, err = zn.getNodeSet(targetNsID)
+				if err != nil {
+					continue
+				}
+				break
+			}
+		}
+
+		if targetNs == nil {
+			return nil, nil, fmt.Errorf("target NodeSet %d not found", targetNsID)
+		}
+
+		newHosts, _, err := targetNs.getAvailDataNodeHosts(param, c.DistributionOptimizationThreshold.Load())
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get available hosts in NodeSet %d: %v", targetNsID, err)
+		}
+
+		if len(newHosts) != len(migrateAddrs) {
+			return nil, nil, fmt.Errorf("insufficient hosts in NodeSet %d: need %d, got %d",
+				targetNsID, len(migrateAddrs), len(newHosts))
+		}
+
+		log.LogInfof("action[selectOptimalNodes] NodeSet %d: keep %d, migrate %d, usedRacks: %v",
+			targetNsID, len(keepAddrs), len(migrateAddrs), excludeRacks)
+
+		return migrateAddrs, newHosts, nil
+	}
+
+	// No migration needed
+	log.LogInfof("action[selectOptimalNodes] NodeSet %d: optimal distribution, no migration needed", targetNsID)
+	return []string{}, []string{}, nil
 }
 
 func (partition *DataPartition) needRollback(c *Cluster) bool {

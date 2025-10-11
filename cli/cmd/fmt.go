@@ -92,7 +92,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  AutoDecommissionDiskInterval             : %v\n", cv.AutoDecommissionDiskInterval))
 	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair                   : %v\n", cv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  AutoDpMetaRepairParallelCnt              : %v\n", cv.AutoDpMetaRepairParallelCnt))
-	sb.WriteString(fmt.Sprintf("  EnableAutoNodesetBalance                 : %v\n", cv.EnableAutoNodesetBalance))
+	sb.WriteString(fmt.Sprintf("  EnableAutoDistributionOptimization       : %v\n", cv.EnableAutoDistributionOptimization))
 	sb.WriteString(fmt.Sprintf("  MarkDiskBrokenThreshold                  : %v\n", strutil.FormatPercent(cv.MarkDiskBrokenThreshold)))
 	sb.WriteString(fmt.Sprintf("  DecommissionFirstHostDiskParallelLimit   : %v\n", cv.DecommissionFirstHostDiskParallelLimit))
 	sb.WriteString(fmt.Sprintf("  DecommissionDpLimit                      : %v\n", cv.DecommissionLimit))
@@ -1622,20 +1622,29 @@ func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	return sb.String()
 }
 
-func formatNodesetBalanceStatus(status *proto.NodesetBalanceStatus) string {
+func formatDistributionOptimizationStatus(status *proto.DistributionOptimizationStatus) string {
 	sb := strings.Builder{}
 
-	sb.WriteString("[Nodeset Balance Config]\n")
-	sb.WriteString(fmt.Sprintf("  EnableNodesetBalance    : %v\n", status.EnableNodesetBalance))
+	sb.WriteString("[Distribution Optimization Config]\n")
+	sb.WriteString(fmt.Sprintf("  EnableDistributionOptimization : %v\n", status.EnableDistributionOptimization))
 	sb.WriteString(fmt.Sprintf("  ConcurrentDpCountLimit  : %v\n", status.ConcurrentDpCount))
 	sb.WriteString(fmt.Sprintf("  BalanceIntervalSec      : %v\n", status.BalanceIntervalSec))
 	sb.WriteString(fmt.Sprintf("  BalanceThreshold        : %.2f\n", status.BalanceThreshold))
 
-	sb.WriteString("\n[Domain Distribution]\n")
+	sb.WriteString("\n[Distribution Status Summary]\n")
 	sb.WriteString(fmt.Sprintf("  TotalUnbalancedDPs      : %v\n", status.TotalUnbalancedDPs))
-	sb.WriteString(fmt.Sprintf("  SingleDomainDPs         : %v\n", status.DomainDistribution.SingleDomainDPs))
-	sb.WriteString(fmt.Sprintf("  TwoDomainDPs            : %v\n", status.DomainDistribution.TwoDomainDPs))
-	sb.WriteString(fmt.Sprintf("  ThreeDomainDPs          : %v\n", status.DomainDistribution.ThreeDomainDPs))
+	sb.WriteString(fmt.Sprintf("  NodeSetUnbalancedDPs    : %v\n", status.NodeSetUnbalancedDPs))
+	sb.WriteString(fmt.Sprintf("  RackConflictDPs         : %v\n", status.RackConflictDPs))
+
+	sb.WriteString("\n[NodeSet Distribution]\n")
+	sb.WriteString(fmt.Sprintf("  SingleNodeSetDPs        : %v\n", status.DomainDistribution.SingleDomainDPs))
+	sb.WriteString(fmt.Sprintf("  TwoNodeSetDPs           : %v\n", status.DomainDistribution.TwoDomainDPs))
+	sb.WriteString(fmt.Sprintf("  ThreeNodeSetDPs         : %v\n", status.DomainDistribution.ThreeDomainDPs))
+
+	sb.WriteString("\n[Rack Distribution]\n")
+	sb.WriteString(fmt.Sprintf("  NoRackConflictDPs       : %v\n", status.RackDistribution.NoRackConflictDPs))
+	sb.WriteString(fmt.Sprintf("  MinorRackConflictDPs    : %v (2 replicas in same rack)\n", status.RackDistribution.MinorRackConflictDPs))
+	sb.WriteString(fmt.Sprintf("  MajorRackConflictDPs    : %v (3+ replicas in same rack)\n", status.RackDistribution.MajorRackConflictDPs))
 
 	if len(status.DecommissioningDPIDs) > 0 {
 		sb.WriteString("\n[Decommissioning DPs]\n")

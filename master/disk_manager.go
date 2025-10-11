@@ -316,13 +316,13 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPa
 }
 
 const (
-	InitialDecommission = proto.InitialDecommission
-	ManualDecommission  = proto.ManualDecommission
-	AutoDecommission    = proto.AutoDecommission
-	QueryDecommission   = proto.QueryDecommission
-	AutoAddReplica      = proto.AutoAddReplica
-	ManualAddReplica    = proto.ManualAddReplica
-	NodesetBalance      = proto.NodesetBalance
+	InitialDecommission      = proto.InitialDecommission
+	ManualDecommission       = proto.ManualDecommission
+	AutoDecommission         = proto.AutoDecommission
+	QueryDecommission        = proto.QueryDecommission
+	AutoAddReplica           = proto.AutoAddReplica
+	ManualAddReplica         = proto.ManualAddReplica
+	DistributionOptimization = proto.DistributionOptimization
 )
 
 type DecommissionDisk struct {

@@ -127,9 +127,9 @@ const (
 	AdminEnableAutoDecommissionDisk  = "/admin/enableAutoDecommissionDisk"
 	AdminQueryAutoDecommissionDisk   = "/admin/queryAutoDecommissionDisk"
 
-	AdminCancelDpNodesetBalance    = "/admin/cancelDpNodesetBalance"
-	AdminQueryNodesetBalanceStatus = "/admin/queryNodesetBalanceStatus"
-	AdminSetNodesetBalanceEnable   = "/admin/setNodesetBalanceEnable"
+	AdminCancelDpDistributionOptimization    = "/admin/cancelDpDistributionOptimization"
+	AdminQueryDistributionOptimizationStatus = "/admin/queryDistributionOptimizationStatus"
+	AdminSetDistributionOptimizationEnable   = "/admin/setDistributionOptimizationEnable"
 	// graphql master api
 	AdminClusterAPI               = "/api/cluster"
 	AdminUserAPI                  = "/api/user"
@@ -1574,7 +1574,7 @@ const (
 	QueryDecommission // used for querying decommission progress for ManualDecommission and AutoDecommission
 	AutoAddReplica
 	ManualAddReplica
-	NodesetBalance
+	DistributionOptimization
 )
 
 type BackupDataPartitionInfo struct {

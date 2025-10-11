@@ -54,11 +54,11 @@ const (
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
 	disableAutoCreate                   = "disableAutoCreate"
 
-	enableFollowerCache  = "enableFollowerCache"
-	enableSnapshot       = "enableSnapshot"
-	cfgMonitorPushAddr   = "monitorPushAddr"
-	cfgStartLcScanTime   = "startLcScanTime"
-	enableNodesetBalance = "enableNodesetBalance"
+	enableFollowerCache            = "enableFollowerCache"
+	enableSnapshot                 = "enableSnapshot"
+	cfgMonitorPushAddr             = "monitorPushAddr"
+	cfgStartLcScanTime             = "startLcScanTime"
+	enableDistributionOptimization = "enableDistributionOptimization"
 
 	cfgVolForceDeletion           = "volForceDeletion"
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"

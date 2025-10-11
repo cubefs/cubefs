@@ -406,14 +406,14 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetUpgradeCompatibleSettings).
 		HandlerFunc(m.getUpgradeCompatibleSettings)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminCancelDpNodesetBalance).
-		HandlerFunc(m.cancelDpNodesetBalance)
+		Path(proto.AdminCancelDpDistributionOptimization).
+		HandlerFunc(m.cancelDpDistributionOptimization)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminQueryNodesetBalanceStatus).
-		HandlerFunc(m.queryNodesetBalanceStatus)
+		Path(proto.AdminQueryDistributionOptimizationStatus).
+		HandlerFunc(m.queryDistributionOptimizationStatus)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminSetNodesetBalanceEnable).
-		HandlerFunc(m.setNodesetBalanceEnable)
+		Path(proto.AdminSetDistributionOptimizationEnable).
+		HandlerFunc(m.setDistributionOptimizationEnable)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

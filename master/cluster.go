@@ -123,16 +123,16 @@ type ClusterDecommission struct {
 	MarkDiskBrokenThreshold                atomicutil.Float64
 	badPartitionMutex                      sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 
-	ForbidMpDecommission            bool
-	EnableAutoDpMetaRepair          atomicutil.Bool
-	EnableAutoDecommissionDisk      atomicutil.Bool
-	EnableAutoNodesetBalance        atomicutil.Bool
-	NodesetBalanceConcurrentDpCount atomicutil.Int64   // 并发均衡的dp数量
-	NodesetBalanceIntervalSec       atomicutil.Int64   // nodeset balance执行间隔(秒)
-	NodesetBalanceThreshold         atomicutil.Float64 // nodeset balance节点选择阈值
-	AutoDecommissionInterval        atomicutil.Int64
-	AutoDpMetaRepairParallelCnt     atomicutil.Uint32
-	server                          *Server
+	ForbidMpDecommission                      bool
+	EnableAutoDpMetaRepair                    atomicutil.Bool
+	EnableAutoDecommissionDisk                atomicutil.Bool
+	EnableAutoDistributionOptimization        atomicutil.Bool
+	DistributionOptimizationConcurrentDpCount atomicutil.Int64
+	DistributionOptimizationIntervalSec       atomicutil.Int64
+	DistributionOptimizationThreshold         atomicutil.Float64
+	AutoDecommissionInterval                  atomicutil.Int64
+	AutoDpMetaRepairParallelCnt               atomicutil.Uint32
+	server                                    *Server
 }
 
 type CleanTask struct {
@@ -492,10 +492,10 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.MarkDiskBrokenThreshold.Store(defaultMarkDiskBrokenThreshold)
 	c.EnableAutoDpMetaRepair.Store(defaultEnableDpMetaRepair)
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
-	c.EnableAutoNodesetBalance.Store(defaultEnableAutoNodesetBalance)
-	c.NodesetBalanceConcurrentDpCount.Store(int64(defaultNodesetBalanceConcurrentDpCount))
-	c.NodesetBalanceIntervalSec.Store(int64(defaultNodesetBalanceIntervalSec))
-	c.NodesetBalanceThreshold.Store(defaultNodesetBalanceThreshold)
+	c.EnableAutoDistributionOptimization.Store(defaultEnableAutoDistributionOptimization)
+	c.DistributionOptimizationConcurrentDpCount.Store(int64(defaultDistributionOptimizationConcurrentDpCount))
+	c.DistributionOptimizationIntervalSec.Store(int64(defaultDistributionOptimizationIntervalSec))
+	c.DistributionOptimizationThreshold.Store(defaultDistributionOptimizationThreshold)
 	c.server = server
 	c.flashNodeTopo = newFlashNodeTopology()
 	c.cleanTask = make(map[string]*CleanTask)
@@ -532,7 +532,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToUpdateFlashGroupSlots()
 	c.scheduleToCheckDataPartitionRepairingStatus()
 	c.scheduleToCheckDataPartitionDecommissionDiskRetryMap()
-	c.scheduleToNodesetBalance()
+	c.scheduleToDistributionOptimization()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -5119,26 +5119,26 @@ func (c *Cluster) getEnableAutoDpMetaRepair() (v bool) {
 	return
 }
 
-func (c *Cluster) setEnableAutoNodesetBalance(val bool) (err error) {
-	oldVal := c.EnableAutoNodesetBalance.Load()
-	c.EnableAutoNodesetBalance.Store(val)
+func (c *Cluster) setEnableAutoDistributionOptimization(val bool) (err error) {
+	oldVal := c.EnableAutoDistributionOptimization.Load()
+	c.EnableAutoDistributionOptimization.Store(val)
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("[setEnableAutoNodesetBalance] failed to set enable auto nodeset balance, err(%v)", err)
-		c.EnableAutoNodesetBalance.Store(oldVal)
+		log.LogErrorf("[setEnableAutoDistributionOptimization] failed to set enable auto distribution optimization, err(%v)", err)
+		c.EnableAutoDistributionOptimization.Store(oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 
-	log.LogInfof("[setEnableNodesetBalance] changed to: %v", val)
+	log.LogInfof("[setEnableDistributionOptimization] changed to: %v", val)
 	return
 }
 
-func (c *Cluster) getEnableAutoNodesetBalance() bool {
-	return c.EnableAutoNodesetBalance.Load()
+func (c *Cluster) getEnableAutoDistributionOptimization() bool {
+	return c.EnableAutoDistributionOptimization.Load()
 }
 
-func (c *Cluster) updateEnableAutoNodesetBalance(val bool) {
-	c.EnableAutoNodesetBalance.Store(val)
+func (c *Cluster) updateEnableAutoDistributionOptimization(val bool) {
+	c.EnableAutoDistributionOptimization.Store(val)
 }
 
 func (c *Cluster) getDataPartitionTimeoutSec() (val int64) {
@@ -5902,13 +5902,17 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			ignoreIDs = append(ignoreIDs, dp.PartitionID)
 			continue
 		}
-		if err = c.addDataReservedResource([]string{dp.DecommissionDstAddr}, dp); err != nil {
-			log.LogWarnf("action[TryDecommissionDisk] dp %v simulate resource change failed: %v", dp.PartitionID, err)
-			continue
+		if dp.DecommissionDstAddr != "" {
+			if err = c.addDataReservedResource([]string{dp.DecommissionDstAddr}, dp); err != nil {
+				log.LogWarnf("action[TryDecommissionDisk] dp %v simulate resource change failed: %v", dp.PartitionID, err)
+				continue
+			}
 		}
 		if err = dp.MarkDecommissionStatus(node.Addr, disk.DstAddr, disk.DiskPath, 0, disk.DecommissionRaftForce,
 			disk.DecommissionTerm, disk.Type, disk.DecommissionWeight, c, nil, nil); err != nil {
-			c.releaseDataReservedResource([]string{dp.DecommissionDstAddr}, dp)
+			if dp.DecommissionDstAddr != "" {
+				c.releaseDataReservedResource([]string{dp.DecommissionDstAddr}, dp)
+			}
 			if strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 				c.syncUpdateDataPartition(dp)
 				// still decommission dp but not involved in the calculation of the decommission progress.
@@ -7190,28 +7194,28 @@ func (c *Cluster) getMetaPartitionStoreMode(mp *MetaPartition, srcAddr string) (
 	return
 }
 
-func (c *Cluster) setNodesetBalanceConcurrentDpCount(count int64) error {
-	c.NodesetBalanceConcurrentDpCount.Store(count)
+func (c *Cluster) setDistributionOptimizationConcurrentDpCount(count int64) error {
+	c.DistributionOptimizationConcurrentDpCount.Store(count)
 	if err := c.syncPutCluster(); err != nil {
-		log.LogWarnf("setNodesetBalanceConcurrentDpCount: sync put cluster failed, err(%v)", err)
+		log.LogWarnf("setDistributionOptimizationConcurrentDpCount: sync put cluster failed, err(%v)", err)
 		return err
 	}
 	return nil
 }
 
-func (c *Cluster) setNodesetBalanceIntervalSec(intervalSec int64) error {
-	c.NodesetBalanceIntervalSec.Store(intervalSec)
+func (c *Cluster) setDistributionOptimizationIntervalSec(intervalSec int64) error {
+	c.DistributionOptimizationIntervalSec.Store(intervalSec)
 	if err := c.syncPutCluster(); err != nil {
-		log.LogWarnf("setNodesetBalanceIntervalSec: sync put cluster failed, err(%v)", err)
+		log.LogWarnf("setDistributionOptimizationIntervalSec: sync put cluster failed, err(%v)", err)
 		return err
 	}
 	return nil
 }
 
-func (c *Cluster) setNodesetBalanceThreshold(threshold float64) error {
-	c.NodesetBalanceThreshold.Store(threshold)
+func (c *Cluster) setDistributionOptimizationThreshold(threshold float64) error {
+	c.DistributionOptimizationThreshold.Store(threshold)
 	if err := c.syncPutCluster(); err != nil {
-		log.LogWarnf("setNodesetBalanceThreshold: sync put cluster failed, err(%v)", err)
+		log.LogWarnf("setDistributionOptimizationThreshold: sync put cluster failed, err(%v)", err)
 		return err
 	}
 	return nil

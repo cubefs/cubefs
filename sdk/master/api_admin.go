@@ -602,7 +602,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
-	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string, autoNodesetBalance string,
+	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string, autoDistributionOptimization string,
 	dpRepairTimeout string, dpTimeout string, mpTimeout string, dpBackupTimeout string,
 	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
 	handleTimeout string, readDataNodeTimeout string, rackAware string,
@@ -636,8 +636,8 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	if autoDpMetaRepairParallelCnt != "" {
 		request.addParam("autoDpMetaRepairParallelCnt", autoDpMetaRepairParallelCnt)
 	}
-	if autoNodesetBalance != "" {
-		request.addParam("autoNodesetBalance", autoNodesetBalance)
+	if autoDistributionOptimization != "" {
+		request.addParam("autoDistributionOptimization", autoDistributionOptimization)
 	}
 	if dpRepairTimeout != "" {
 		request.addParam("dpRepairTimeOut", dpRepairTimeout)
@@ -1061,14 +1061,14 @@ func (api *AdminAPI) DeleteMetaNodeBalanceTask() (result string, err error) {
 	return
 }
 
-func (api *AdminAPI) CancelDpNodesetBalance() (err error) {
-	request := newRequest(post, proto.AdminCancelDpNodesetBalance)
+func (api *AdminAPI) CancelDpDistributionOptimization() (err error) {
+	request := newRequest(post, proto.AdminCancelDpDistributionOptimization)
 	err = api.mc.request(request)
 	return
 }
 
-func (api *AdminAPI) QueryNodesetBalanceStatus() (status *proto.NodesetBalanceStatus, err error) {
-	status = &proto.NodesetBalanceStatus{}
-	err = api.mc.requestWith(&status, newRequest(get, proto.AdminQueryNodesetBalanceStatus).Header(api.h))
+func (api *AdminAPI) QueryDistributionOptimizationStatus() (status *proto.DistributionOptimizationStatus, err error) {
+	status = &proto.DistributionOptimizationStatus{}
+	err = api.mc.requestWith(&status, newRequest(get, proto.AdminQueryDistributionOptimizationStatus).Header(api.h))
 	return
 }

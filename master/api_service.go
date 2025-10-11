@@ -1016,7 +1016,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		AutoDpMetaRepairParallelCnt:            m.cluster.GetAutoDpMetaRepairParallelCnt(),
 		EnableAutoDecommission:                 m.cluster.AutoDecommissionDiskIsEnabled(),
 		AutoDecommissionDiskInterval:           m.cluster.GetAutoDecommissionDiskInterval().String(),
-		EnableAutoNodesetBalance:               m.cluster.getEnableAutoNodesetBalance(),
+		EnableAutoDistributionOptimization:     m.cluster.getEnableAutoDistributionOptimization(),
 		DecommissionLimit:                      atomic.LoadUint64(&m.cluster.DecommissionLimit),
 		DecommissionFirstHostDiskParallelLimit: atomic.LoadUint64(&m.cluster.DecommissionFirstHostDiskParallelLimit),
 		DecommissionDiskLimit:                  m.cluster.GetDecommissionDiskLimit(),
@@ -3932,9 +3932,9 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if val, ok := params[autoNodesetBalanceKey]; ok {
-		if autoNodesetBalance, ok := val.(bool); ok {
-			if err = m.cluster.setEnableAutoNodesetBalance(autoNodesetBalance); err != nil {
+	if val, ok := params[autoDistributionOptimizationKey]; ok {
+		if autoDistributionOptimization, ok := val.(bool); ok {
+			if err = m.cluster.setEnableAutoDistributionOptimization(autoDistributionOptimization); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -3944,7 +3944,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	// nodeset balance configs
 	if val, ok := params[nodesetBalanceConcurrentDpCountKey]; ok {
 		if v, ok := val.(int64); ok {
-			if err = m.cluster.setNodesetBalanceConcurrentDpCount(v); err != nil {
+			if err = m.cluster.setDistributionOptimizationConcurrentDpCount(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -3953,7 +3953,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	if val, ok := params[nodesetBalanceIntervalSecKey]; ok {
 		if v, ok := val.(int64); ok {
-			if err = m.cluster.setNodesetBalanceIntervalSec(v); err != nil {
+			if err = m.cluster.setDistributionOptimizationIntervalSec(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -3962,7 +3962,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	if val, ok := params[nodesetBalanceThresholdKey]; ok {
 		if v, ok := val.(float64); ok {
-			if err = m.cluster.setNodesetBalanceThreshold(v); err != nil {
+			if err = m.cluster.setDistributionOptimizationThreshold(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -4310,6 +4310,7 @@ func (m *Server) updateNodesetCapcity(zoneName string, nodesetId uint64, capcity
 		return
 	}
 
+	ns.Capacity = int(capcity)
 	ns.racksLock.Lock()
 	for _, rack := range ns.racks {
 		rack.Capacity = int(capcity) / 3
@@ -8681,7 +8682,7 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-func (m *Server) setNodesetBalanceEnable(w http.ResponseWriter, r *http.Request) {
+func (m *Server) setDistributionOptimizationEnable(w http.ResponseWriter, r *http.Request) {
 	var (
 		err    error
 		enable bool
@@ -8692,29 +8693,29 @@ func (m *Server) setNodesetBalanceEnable(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err = m.cluster.setEnableAutoNodesetBalance(enable); err != nil {
-		log.LogErrorf("action[setNodesetBalanceEnable] setEnableNodesetBalance failed %v", err)
+	if err = m.cluster.setEnableAutoDistributionOptimization(enable); err != nil {
+		log.LogErrorf("action[setDistributionOptimizationEnable] setEnableDistributionOptimization failed %v", err)
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
 		return
 	}
 
-	AuditLog(r, "AdminSetNodesetBalanceEnable", fmt.Sprintf("set enable[%v]", enable), err)
-	log.LogInfof("action[setNodesetBalanceEnable] enable be set [%v]", enable)
+	AuditLog(r, "AdminSetDistributionOptimizationEnable", fmt.Sprintf("set enable[%v]", enable), err)
+	log.LogInfof("action[setDistributionOptimizationEnable] enable be set [%v]", enable)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
 		"set nodesetBalanceEnable to [%v] successfully", enable)))
 }
 
-func (m *Server) cancelDpNodesetBalance(w http.ResponseWriter, r *http.Request) {
+func (m *Server) cancelDpDistributionOptimization(w http.ResponseWriter, r *http.Request) {
 	var err error
 
-	metric := exporter.NewTPCnt("req_cancelDpNodesetBalance")
+	metric := exporter.NewTPCnt("req_cancelDpDistributionOptimization")
 	defer func() {
 		metric.Set(err)
-		AuditLog(r, proto.AdminCancelDpNodesetBalance, fmt.Sprintf("cancel dp nodesetBalance"), err)
+		AuditLog(r, proto.AdminCancelDpDistributionOptimization, fmt.Sprintf("cancel dp distributionOptimization"), err)
 	}()
 
-	if err = m.cluster.cancelDpNodesetBalance(); err != nil {
-		ret := fmt.Sprintf("action[cancelDpNodesetBalance] cancel dp nodesetBalance failed[%v]", err.Error())
+	if err = m.cluster.cancelDpDistributionOptimization(); err != nil {
+		ret := fmt.Sprintf("action[cancelDpDistributionOptimization] cancel dp distributionOptimization failed[%v]", err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
 	}
@@ -8722,18 +8723,18 @@ func (m *Server) cancelDpNodesetBalance(w http.ResponseWriter, r *http.Request) 
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-func (m *Server) queryNodesetBalanceStatus(w http.ResponseWriter, r *http.Request) {
+func (m *Server) queryDistributionOptimizationStatus(w http.ResponseWriter, r *http.Request) {
 	var err error
 
-	metric := exporter.NewTPCnt("req_queryNodesetBalanceStatus")
+	metric := exporter.NewTPCnt("req_queryDistributionOptimizationStatus")
 	defer func() {
 		metric.Set(err)
-		AuditLog(r, proto.AdminQueryNodesetBalanceStatus, fmt.Sprintf("query nodeset balance status"), err)
+		AuditLog(r, proto.AdminQueryDistributionOptimizationStatus, fmt.Sprintf("query distribution optimization status"), err)
 	}()
 
-	status := m.cluster.getNodesetBalanceStatus()
+	status := m.cluster.getDistributionOptimizationStatus()
 	if status == nil {
-		ret := fmt.Sprintf("action[queryNodesetBalanceStatus] query nodeset balance status failed")
+		ret := fmt.Sprintf("action[queryDistributionOptimizationStatus] query distribution optimization status failed")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: ret})
 		return
 	}

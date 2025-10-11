@@ -51,7 +51,7 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterQueryDpOpCmd(client),
 		newClusterQueryDiskOpCmd(client),
 		newClusterChangeMasterLeaderCmd(client),
-		newClusterQueryNodesetBalanceStatusCmd(client),
+		newClusterQueryDistributionOptimizationStatusCmd(client),
 	)
 	return clusterCmd
 }
@@ -75,10 +75,10 @@ const (
 	// cmdEnableAutoDecommissionDiskShort  = "enable auto decommission disk"
 	cmdQueryDecommissionFailedDiskShort = "query auto or manual decommission failed disk"
 	// cmdSetDecommissionDiskLimit            = "set decommission disk limit"
-	cmdQueryDataNodeOpShort            = "query DataNode_op information of a cluster"
-	cmdQueryDpOpShort                  = "query Dp_op information of a cluster"
-	cmdQueryDiskOpShort                = "query Disk_op information of a cluster"
-	cmdQueryClusterNodesetBalanceShort = "query nodeset balance status"
+	cmdQueryDataNodeOpShort                      = "query DataNode_op information of a cluster"
+	cmdQueryDpOpShort                            = "query Dp_op information of a cluster"
+	cmdQueryDiskOpShort                          = "query Disk_op information of a cluster"
+	cmdQueryClusterDistributionOptimizationShort = "query distribution optimization status"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -279,7 +279,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	autoDecommissionDiskInterval := ""
 	autoDpMetaRepair := ""
 	autoDpMetaRepairParallelCnt := ""
-	autoNodesetBalance := ""
+	autoDistributionOptimization := ""
 	opMaxDpCntLimit := ""
 	opMaxMpCntLimit := ""
 	dpRepairTimeout := ""
@@ -340,8 +340,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			if autoNodesetBalance != "" {
-				if _, err = strconv.ParseBool(autoNodesetBalance); err != nil {
+			if autoDistributionOptimization != "" {
+				if _, err = strconv.ParseBool(autoDistributionOptimization); err != nil {
 					return
 				}
 			}
@@ -449,7 +449,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
-				autoDpMetaRepair, autoDpMetaRepairParallelCnt, autoNodesetBalance,
+				autoDpMetaRepair, autoDpMetaRepairParallelCnt, autoDistributionOptimization,
 				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
 				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware); err != nil {
 				return
@@ -472,7 +472,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	// cmd.Flags().StringVar(&markBrokenDiskThreshold, CliFlagMarkDiskBrokenThreshold, "", "Threshold to mark disk as broken")
 	cmd.Flags().StringVar(&autoDpMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable auto data partition meta repair")
 	cmd.Flags().StringVar(&autoDpMetaRepairParallelCnt, CliFlagAutoDpMetaRepairParallelCnt, "", "Parallel count of auto data partition meta repair")
-	cmd.Flags().StringVar(&autoNodesetBalance, CliFlagAutoNodesetBalance, "", "Enable or disable nodeset balance")
+	cmd.Flags().StringVar(&autoDistributionOptimization, CliFlagAutoDistributionOptimization, "", "Enable or disable distribution optimization")
 	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
 	cmd.Flags().StringVar(&dpTimeout, CliFlagDpTimeout, "", "Data partition heartbeat timeout(example: 10s)")
 	cmd.Flags().StringVar(&mpTimeout, CliFlagMpTimeout, "", "Meta partition heartbeat timeout(example: 10s)")
@@ -760,10 +760,10 @@ func newClusterChangeMasterLeaderCmd(client *master.MasterClient) *cobra.Command
 	return cmd
 }
 
-func newClusterQueryNodesetBalanceStatusCmd(client *master.MasterClient) *cobra.Command {
+func newClusterQueryDistributionOptimizationStatusCmd(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "query-nodeset-balance-status",
-		Short: cmdQueryClusterNodesetBalanceShort,
+		Use:   "query-distribution-optimization-status",
+		Short: cmdQueryClusterDistributionOptimizationShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() {
@@ -772,12 +772,12 @@ func newClusterQueryNodesetBalanceStatusCmd(client *master.MasterClient) *cobra.
 				}
 			}()
 
-			status, err := client.AdminAPI().QueryNodesetBalanceStatus()
+			status, err := client.AdminAPI().QueryDistributionOptimizationStatus()
 			if err != nil {
 				return
 			}
 
-			stdout("%v", formatNodesetBalanceStatus(status))
+			stdout("%v", formatDistributionOptimizationStatus(status))
 		},
 	}
 	return cmd

@@ -171,7 +171,7 @@ type ClusterView struct {
 	AutoDpMetaRepairParallelCnt               int
 	EnableAutoDecommission                    bool
 	AutoDecommissionDiskInterval              string
-	EnableAutoNodesetBalance                  bool
+	EnableAutoDistributionOptimization        bool
 	DecommissionFirstHostDiskParallelLimit    uint64
 	DecommissionLimit                         uint64
 	DecommissionDiskLimit                     uint32
@@ -721,18 +721,27 @@ type MetaNodeView struct {
 	Rack                     string
 }
 
-type NodesetBalanceStatus struct {
-	TotalUnbalancedDPs   int
-	DecommissioningDPIDs []uint64
-	ConcurrentDpCount    int64
-	BalanceIntervalSec   int64
-	BalanceThreshold     float64
-	EnableNodesetBalance bool
-	DomainDistribution   *DomainDistributionInfo
+type DistributionOptimizationStatus struct {
+	TotalUnbalancedDPs             int
+	NodeSetUnbalancedDPs           int
+	RackConflictDPs                int
+	DecommissioningDPIDs           []uint64
+	ConcurrentDpCount              int64
+	BalanceIntervalSec             int64
+	BalanceThreshold               float64
+	EnableDistributionOptimization bool
+	DomainDistribution             *DomainDistributionInfo
+	RackDistribution               *RackDistributionInfo
 }
 
 type DomainDistributionInfo struct {
 	SingleDomainDPs int
 	TwoDomainDPs    int
 	ThreeDomainDPs  int
+}
+
+type RackDistributionInfo struct {
+	NoRackConflictDPs    int
+	MinorRackConflictDPs int
+	MajorRackConflictDPs int
 }
