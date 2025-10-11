@@ -20,7 +20,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -39,27 +38,13 @@ const (
 	MetricFileStats                = "fileStats"
 	RocksdbStats                   = "rocksdbStats"
 
-	// RocksDB statistics keys
-	RocksdbGetMicros   = "rocksdb.db.get.micros"
-	RocksdbWriteMicros = "rocksdb.db.write.micros"
-	RocksdbSeekMicros  = "rocksdb.db.seek.micros"
-	RocksdbWriteStall  = "rocksdb.db.write.stall"
-	RocksdbFlushMicros = "rocksdb.db.flush.micros"
-
 	// Timeout for metrics collection
 	MetricsCollectionTimeout = 30 * time.Second
 )
 
 // Pre-compiled regex for better performance
 var (
-	statsP99Regex    = regexp.MustCompile(`P99 : (\d+\.\d+)`)
-	rocksdbStatsList = []string{
-		RocksdbGetMicros,
-		RocksdbWriteMicros,
-		RocksdbSeekMicros,
-		RocksdbWriteStall,
-		RocksdbFlushMicros,
-	}
+	statsP99Regex = regexp.MustCompile(`P99 : (\d+\.\d+)`)
 )
 
 // MetaNodeMetrics holds all metrics for the meta node
@@ -72,7 +57,6 @@ type MetaNodeMetrics struct {
 	RocksdbStats                   *exporter.GaugeVec
 
 	metricStopCh chan struct{}
-	mu           sync.RWMutex
 	ctx          context.Context
 	cancel       context.CancelFunc
 }
@@ -187,52 +171,45 @@ func (m *MetaNode) collectPartitionMetrics() {
 			}
 			m.metrics.MetricConnectionCount.Set(float64(m.connectionCnt))
 		case <-fileStatTicker.C:
-			if err := m.updateFileStatsMetrics(); err != nil {
-				// Log error but continue
-				continue
-			}
+			m.updateFileStatsMetrics()
 			if m.rocksdbEnableStats {
-				if err := m.updateRocksdbStatsMetrics(); err != nil {
-					// Log error but continue
-					continue
-				}
+				m.updateRocksdbStatsMetrics()
 			}
 		}
 	}
 }
 
 // updateFileStatsMetrics updates file statistics metrics
-func (m *MetaNode) updateFileStatsMetrics() error {
+func (m *MetaNode) updateFileStatsMetrics() {
 	m.metrics.MetricFileStats.Reset()
+	volFileRange := make(map[string][]int64)
 
 	manager, ok := m.metadataManager.(*metadataManager)
 	if !ok {
-		return fmt.Errorf("invalid metadata manager type")
+		return
 	}
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
 
-	// Get file stats configuration
 	_, labels, _ := manager.GetFileStatsConfig()
 
 	numRanges := len(labels)
-	volFileRange := make(map[string][]int64)
-
-	// Collect file range data
-	partitions := m.collectFileRangeData(manager, numRanges)
-
-	// Process collected data
-	for _, p := range partitions {
-		volName := p.volName
+	for _, p := range manager.partitions {
+		mp, ok := p.(*metaPartition)
+		if !ok {
+			continue
+		}
+		fileRange := mp.getFileRange()
+		volName := mp.config.VolName
 		if _, exists := volFileRange[volName]; !exists {
 			volFileRange[volName] = make([]int64, numRanges)
 		}
-
-		validLength := util.Min(len(p.fileRange), numRanges)
+		validLength := util.Min(len(fileRange), numRanges)
 		for i := 0; i < validLength; i++ {
-			volFileRange[volName][i] += p.fileRange[i]
+			volFileRange[volName][i] += fileRange[i]
 		}
 	}
 
-	// Update metrics
 	for volName, ranges := range volFileRange {
 		for i, val := range ranges {
 			sizeRange := labels[i]
@@ -262,68 +239,17 @@ func (m *MetaNode) updateRocksdbStatsMetrics() {
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()
 
-	partitions := make([]fileRangeData, 0, len(manager.partitions))
-
-	for _, p := range manager.partitions {
-		mp, ok := p.(*metaPartition)
-		if !ok {
-			continue
-		}
-
-		partitions = append(partitions, fileRangeData{
-			volName:   mp.config.VolName,
-			fileRange: mp.getFileRange(),
-		})
-	}
-
-	return partitions
-}
-
-// updateRocksdbStatsMetrics updates RocksDB statistics metrics
-func (m *MetaNode) updateRocksdbStatsMetrics() error {
-	m.metrics.RocksdbStats.Reset()
-
-	// Process each RocksDB directory
 	for _, dbPath := range m.rocksDirs {
-		if err := m.processRocksdbDirectory(dbPath); err != nil {
-			// Log error but continue with other directories
-			continue
-		}
-	}
-
-	return nil
-}
-
-// processRocksdbDirectory processes a single RocksDB directory
-func (m *MetaNode) processRocksdbDirectory(dbPath string) error {
-	// Open RocksDB with timeout
-	ctx, cancel := context.WithTimeout(m.metrics.ctx, MetricsCollectionTimeout)
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
 		db, err := m.rocksdbManager.OpenRocksdb(dbPath, 0)
 		if err != nil {
-			done <- err
-			return
+			continue
 		}
-		defer m.rocksdbManager.CloseRocksdb(db)
-
 		stats := db.GetStatistics()
 		statsP99 := getStatsP99(stats, rocksdbStatsList)
-
 		for key, val := range statsP99 {
 			m.metrics.RocksdbStats.SetWithLabelValues(val, dbPath, key)
 		}
-
-		done <- nil
-	}()
-
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
+		m.rocksdbManager.CloseRocksdb(db)
 	}
 }
 

@@ -25,6 +25,37 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+// Constants for better maintainability
+const (
+	MaxVarintLen64    = binary.MaxVarintLen64
+	DefaultBufferSize = 1024
+)
+
+// Buffer pool for memory optimization
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 0, DefaultBufferSize))
+	},
+}
+
+// Helper functions for binary encoding/decoding
+func encodeUint64(buffer *bytes.Buffer, val uint64, tmp []byte) error {
+	n := binary.PutUvarint(tmp, val)
+	_, err := buffer.Write(tmp[:n])
+	return err
+}
+
+func encodeString(buffer *bytes.Buffer, s string, tmp []byte) error {
+	n := binary.PutUvarint(tmp, uint64(len(s)))
+	if _, err := buffer.Write(tmp[:n]); err != nil {
+		return err
+	}
+	if _, err := buffer.WriteString(s); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Part defined necessary fields for multipart part management.
 type Part struct {
 	ID         uint16
@@ -42,38 +73,40 @@ func (m *Part) Equal(o *Part) bool {
 }
 
 func (m Part) Bytes() ([]byte, error) {
-	var err error
-	buffer := bytes.NewBuffer(nil)
-	tmp := make([]byte, binary.MaxVarintLen64)
-	var n int
-	// ID
-	n = binary.PutUvarint(tmp, uint64(m.ID))
-	if _, err = buffer.Write(tmp[:n]); err != nil {
+	buffer := bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buffer.Reset()
+		bufferPool.Put(buffer)
+	}()
+
+	tmp := make([]byte, MaxVarintLen64)
+
+	// Encode ID
+	if err := encodeUint64(buffer, uint64(m.ID), tmp); err != nil {
 		return nil, err
 	}
-	// upload time
-	n = binary.PutVarint(tmp, m.UploadTime.UnixNano())
-	if _, err = buffer.Write(tmp[:n]); err != nil {
+
+	// Encode upload time
+	n := binary.PutVarint(tmp, m.UploadTime.UnixNano())
+	if _, err := buffer.Write(tmp[:n]); err != nil {
 		return nil, err
 	}
-	// MD5
-	n = binary.PutUvarint(tmp, uint64(len(m.MD5)))
-	if _, err = buffer.Write(tmp[:n]); err != nil {
+
+	// Encode MD5
+	if err := encodeString(buffer, m.MD5, tmp); err != nil {
 		return nil, err
 	}
-	if _, err = buffer.WriteString(m.MD5); err != nil {
+
+	// Encode size
+	if err := encodeUint64(buffer, m.Size, tmp); err != nil {
 		return nil, err
 	}
-	// size
-	n = binary.PutUvarint(tmp, m.Size)
-	if _, err = buffer.Write(tmp[:n]); err != nil {
+
+	// Encode inode
+	if err := encodeUint64(buffer, m.Inode, tmp); err != nil {
 		return nil, err
 	}
-	// inode
-	n = binary.PutUvarint(tmp, m.Inode)
-	if _, err = buffer.Write(tmp[:n]); err != nil {
-		return nil, err
-	}
+
 	return buffer.Bytes(), nil
 }
 
@@ -199,30 +232,37 @@ func (m Parts) Search(id uint16) (part *Part, found bool) {
 }
 
 func (m Parts) Bytes() ([]byte, error) {
-	var err error
-	var n int
-	buffer := bytes.NewBuffer(nil)
-	tmp := make([]byte, binary.MaxVarintLen64)
-	n = binary.PutUvarint(tmp, uint64(len(m)))
-	if _, err = buffer.Write(tmp[:n]); err != nil {
+	buffer := bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buffer.Reset()
+		bufferPool.Put(buffer)
+	}()
+
+	tmp := make([]byte, MaxVarintLen64)
+
+	// Write number of parts
+	if err := encodeUint64(buffer, uint64(len(m)), tmp); err != nil {
 		return nil, err
 	}
-	var marshaled []byte
+
+	// Write each part
 	for _, p := range m {
-		marshaled, err = p.Bytes()
+		marshaled, err := p.Bytes()
 		if err != nil {
 			return nil, err
 		}
-		// write part length
-		n = binary.PutUvarint(tmp, uint64(len(marshaled)))
-		if _, err = buffer.Write(tmp[:n]); err != nil {
+
+		// Write part length
+		if err := encodeUint64(buffer, uint64(len(marshaled)), tmp); err != nil {
 			return nil, err
 		}
-		// write part bytes
-		if _, err = buffer.Write(marshaled); err != nil {
+
+		// Write part bytes
+		if _, err := buffer.Write(marshaled); err != nil {
 			return nil, err
 		}
 	}
+
 	return buffer.Bytes(), nil
 }
 
@@ -250,32 +290,29 @@ func NewMultipartExtend() MultipartExtend {
 }
 
 func (me MultipartExtend) Bytes() ([]byte, error) {
-	var n int
-	var err error
-	buffer := bytes.NewBuffer(nil)
-	tmp := make([]byte, binary.MaxVarintLen64)
-	n = binary.PutUvarint(tmp, uint64(len(me)))
-	if _, err = buffer.Write(tmp[:n]); err != nil {
+	buffer := bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buffer.Reset()
+		bufferPool.Put(buffer)
+	}()
+
+	tmp := make([]byte, MaxVarintLen64)
+
+	// Write number of entries
+	if err := encodeUint64(buffer, uint64(len(me)), tmp); err != nil {
 		return nil, err
 	}
-	marshalStr := func(src string) error {
-		n = binary.PutUvarint(tmp, uint64(len(src)))
-		if _, err = buffer.Write(tmp[:n]); err != nil {
-			return err
-		}
-		if _, err = buffer.WriteString(src); err != nil {
-			return err
-		}
-		return nil
-	}
+
+	// Write key-value pairs
 	for key, val := range me {
-		if err = marshalStr(key); err != nil {
+		if err := encodeString(buffer, key, tmp); err != nil {
 			return nil, err
 		}
-		if err = marshalStr(val); err != nil {
+		if err := encodeString(buffer, val, tmp); err != nil {
 			return nil, err
 		}
 	}
+
 	return buffer.Bytes(), nil
 }
 
@@ -364,58 +401,54 @@ func (m *Multipart) Parts() []*Part {
 }
 
 func (m *Multipart) Bytes() ([]byte, error) {
-	var n int
-	buffer := bytes.NewBuffer(nil)
-	var err error
-	tmp := make([]byte, binary.MaxVarintLen64)
-	// marshal id
-	marshalStr := func(src string) error {
-		n = binary.PutUvarint(tmp, uint64(len(src)))
-		if _, err = buffer.Write(tmp[:n]); err != nil {
-			return err
-		}
-		if _, err = buffer.WriteString(src); err != nil {
-			return err
-		}
-		return nil
-	}
-	// marshal id
-	if err = marshalStr(m.id); err != nil {
+	buffer := bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buffer.Reset()
+		bufferPool.Put(buffer)
+	}()
+
+	tmp := make([]byte, MaxVarintLen64)
+
+	// Marshal id
+	if err := encodeString(buffer, m.id, tmp); err != nil {
 		return nil, err
 	}
-	// marshal key
-	if err = marshalStr(m.key); err != nil {
+
+	// Marshal key
+	if err := encodeString(buffer, m.key, tmp); err != nil {
 		return nil, err
 	}
-	// marshal init time
-	n = binary.PutVarint(tmp, m.initTime.UnixNano())
-	if _, err = buffer.Write(tmp[:n]); err != nil {
+
+	// Marshal init time
+	n := binary.PutVarint(tmp, m.initTime.UnixNano())
+	if _, err := buffer.Write(tmp[:n]); err != nil {
 		return nil, err
 	}
-	// marshal parts
-	var marshaledParts []byte
-	if marshaledParts, err = m.parts.Bytes(); err != nil {
+
+	// Marshal parts
+	marshaledParts, err := m.parts.Bytes()
+	if err != nil {
 		return nil, err
 	}
-	n = binary.PutUvarint(tmp, uint64(len(marshaledParts)))
-	if _, err = buffer.Write(tmp[:n]); err != nil {
+	if err := encodeUint64(buffer, uint64(len(marshaledParts)), tmp); err != nil {
 		return nil, err
 	}
-	if _, err = buffer.Write(marshaledParts); err != nil {
+	if _, err := buffer.Write(marshaledParts); err != nil {
 		return nil, err
 	}
-	// marshall extend
-	var extendBytes []byte
-	if extendBytes, err = m.extend.Bytes(); err != nil {
+
+	// Marshal extend
+	extendBytes, err := m.extend.Bytes()
+	if err != nil {
 		return nil, err
 	}
-	n = binary.PutUvarint(tmp, uint64(len(extendBytes)))
-	if _, err = buffer.Write(tmp[:n]); err != nil {
+	if err := encodeUint64(buffer, uint64(len(extendBytes)), tmp); err != nil {
 		return nil, err
 	}
-	if _, err = buffer.Write(extendBytes); err != nil {
+	if _, err := buffer.Write(extendBytes); err != nil {
 		return nil, err
 	}
+
 	return buffer.Bytes(), nil
 }
 

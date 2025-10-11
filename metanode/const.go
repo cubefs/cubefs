@@ -292,20 +292,8 @@ const (
 
 	// MetaNode specific configuration
 	metaNodeDeleteBatchCountKey = "batchCount"
-	configNameResolveInterval   = "nameResolveInterval" // int
-
-	cfgRocksDirs         = "rocksDirs"
-	cfgDiskReservedSpace = "diskReservedSpace"
 
 	// NOTE: metanode rocksdb config
-	cfgRocksdbWriteBufferSize          = "rocksdbWriteBufferSize"          // int
-	cfgRocksdbWriteBufferNum           = "rocksdbWriteBufferNum"           // int
-	cfgRocksdbBlockCacheSize           = "rocksdbBlockCacheSize"           // uint64
-	cfgRocksdbMinWriteBufferToMerge    = "rocksdbMinWriteBufferToMerge"    // int
-	cfgRocksdbMaxSubCompactions        = "rocksdbMaxSubCompactions"        // int
-	cfgRocksdbMode                     = "rocksdbMode"                     // string
-	cfgRocksdbEnableStats              = "rocksdbEnableStats"              // bool
-	cfgRocksdbKeyNumMax                = "rocksdbKeyNumMax"                // int64
 	cfgRocksdbBytesPerSync             = "rocksdbBytesPerSync"             // uint64
 	cfgRocksdbParallelism              = "rocksdbParallelism"              // int
 	cfgRocksdbMaxBackgroundCompactions = "rocksdbMaxBackgroundCompactions" // int

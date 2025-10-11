@@ -305,7 +305,7 @@ func TestSortedObjExtentsConcurrentAccess(t *testing.T) {
 			se.IsEmpty()
 			se.Size()
 			se.LayerSize()
-			se.String()
+			_ = se.String()
 			done <- true
 		}()
 	}

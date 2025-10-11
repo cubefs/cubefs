@@ -483,7 +483,7 @@ func TestSortedExtentEdgeCases(t *testing.T) {
 		assert.NotPanics(t, func() {
 			se.IsEmpty()
 			se.Len()
-			se.String()
+			_ = se.String()
 			se.LayerSize()
 			se.Size()
 		})

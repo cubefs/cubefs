@@ -366,7 +366,6 @@ func (m *MetaNode) validateRequiredConfigs() error {
 }
 
 func (m *MetaNode) parseRaftConfig(cfg *config.Config) error {
-
 	m.opLimiter = newOpLimiter()
 	// Load operation rate limiter configuration
 	if err := m.loadOpLimiterConfig(cfg); err != nil {

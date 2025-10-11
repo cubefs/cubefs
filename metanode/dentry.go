@@ -863,7 +863,10 @@ func (d *Dentry) UnmarshalValue(raw []byte) (err error) {
 		}
 
 		// Pre-allocate slice for better performance
-		d.multiSnap.dentryList = make([]*Dentry, 0, int(verCnt))
+		// Only create non-nil slice when verCnt > 0, otherwise keep it nil
+		if verCnt > 0 {
+			d.multiSnap.dentryList = make([]*Dentry, 0, int(verCnt))
+		}
 
 		for i := 0; i < int(verCnt); i++ {
 			den := &Dentry{
