@@ -107,15 +107,47 @@ type ExtentInfo struct {
 	ApplyID             uint64 `json:"applyID"`
 }
 
+func (ei *ExtentInfo) GetSize() uint64 {
+	return atomic.LoadUint64(&ei.Size)
+}
+
+func (ei *ExtentInfo) SetSize(size uint64) {
+	atomic.StoreUint64(&ei.Size, size)
+}
+
+func (ei *ExtentInfo) GetSnapshotDataOff() uint64 {
+	return atomic.LoadUint64(&ei.SnapshotDataOff)
+}
+
+func (ei *ExtentInfo) SetSnapshotDataOff(size uint64) {
+	atomic.StoreUint64(&ei.SnapshotDataOff, size)
+}
+
+func (ei *ExtentInfo) GetModifyTime() int64 {
+	return atomic.LoadInt64(&ei.ModifyTime)
+}
+
+func (ei *ExtentInfo) SetModifyTime(time int64) {
+	atomic.StoreInt64(&ei.ModifyTime, time)
+}
+
+func (ei *ExtentInfo) GetCrc() uint32 {
+	return atomic.LoadUint32(&ei.Crc)
+}
+
+func (ei *ExtentInfo) SetCrc(crc uint32) {
+	atomic.StoreUint32(&ei.Crc, crc)
+}
+
 func (ei *ExtentInfo) TotalSize() uint64 {
-	if ei.SnapshotDataOff > util.ExtentSize {
-		return ei.Size + (ei.SnapshotDataOff - util.ExtentSize)
+	if ei.GetSnapshotDataOff() > util.ExtentSize {
+		return ei.GetSize() + (ei.GetSnapshotDataOff() - util.ExtentSize)
 	}
-	return ei.Size
+	return ei.GetSize()
 }
 
 func (ei *ExtentInfo) String() (m string) {
-	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_MT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, ei.ModifyTime, ei.Crc)
+	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_MT(%d)_CRC(%d)", ei.FileID, ei.GetSize(), ei.IsDeleted, ei.GetModifyTime(), ei.GetCrc())
 }
 
 func MarshalBinarySlice(eiSlice []*ExtentInfo) (v []byte, err error) {
@@ -143,13 +175,13 @@ func (ei *ExtentInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
 	if err = binary.Write(buff, binary.BigEndian, ei.FileID); err != nil {
 		return
 	}
-	if err = binary.Write(buff, binary.BigEndian, ei.Size); err != nil {
+	if err = binary.Write(buff, binary.BigEndian, ei.GetSize()); err != nil {
 		return
 	}
 	if err = binary.Write(buff, binary.BigEndian, ei.IsDeleted); err != nil {
 		return
 	}
-	if err = binary.Write(buff, binary.BigEndian, ei.ModifyTime); err != nil {
+	if err = binary.Write(buff, binary.BigEndian, ei.GetModifyTime()); err != nil {
 		return
 	}
 	// Compatible with older versions
@@ -159,7 +191,7 @@ func (ei *ExtentInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
 	if err = binary.Write(buff, binary.BigEndian, ei.SnapPreAllocDataOff); err != nil {
 		return
 	}
-	if err = binary.Write(buff, binary.BigEndian, ei.SnapshotDataOff); err != nil {
+	if err = binary.Write(buff, binary.BigEndian, ei.GetSnapshotDataOff()); err != nil {
 		return
 	}
 	if err = binary.Write(buff, binary.BigEndian, ei.ApplyID); err != nil {
@@ -212,15 +244,19 @@ func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) 
 	if err = binary.Read(buff, binary.BigEndian, &ei.FileID); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &ei.Size); err != nil {
+	var size uint64
+	if err = binary.Read(buff, binary.BigEndian, &size); err != nil {
 		return
 	}
+	ei.SetSize(size)
 	if err = binary.Read(buff, binary.BigEndian, &ei.IsDeleted); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &ei.ModifyTime); err != nil {
+	var modifyTime int64
+	if err = binary.Read(buff, binary.BigEndian, &modifyTime); err != nil {
 		return
 	}
+	ei.SetModifyTime(modifyTime)
 	// Compatible with older versions
 	if err = binary.Read(buff, binary.BigEndian, &atime); err != nil {
 		return
@@ -230,9 +266,11 @@ func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) 
 		if err = binary.Read(buff, binary.BigEndian, &ei.SnapPreAllocDataOff); err != nil {
 			return
 		}
-		if err = binary.Read(buff, binary.BigEndian, &ei.SnapshotDataOff); err != nil {
+		var snapshotDataOff uint64
+		if err = binary.Read(buff, binary.BigEndian, &snapshotDataOff); err != nil {
 			return
 		}
+		ei.SetSnapshotDataOff(snapshotDataOff)
 		if err = binary.Read(buff, binary.BigEndian, &ei.ApplyID); err != nil {
 			return
 		}
@@ -268,17 +306,13 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	e := new(Extent)
 	e.extentID = extentID
 	e.filePath = name
-	e.snapshotDataOff = util.ExtentSize
+	e.SetSnapshotDataOff(util.ExtentSize)
 	e.dirty.Store(false)
 	return e
 }
 
 func (e *Extent) String() string {
-	return fmt.Sprintf("%v_%v_%v", e.filePath, e.dataSize, e.snapshotDataOff)
-}
-
-func (e *Extent) GetSize() (int64, uint64) {
-	return e.dataSize, e.snapshotDataOff
+	return fmt.Sprintf("%v_%v_%v", e.filePath, e.Size(), e.SnapshotDataOff())
 }
 
 func (e *Extent) HasClosed() bool {
@@ -287,6 +321,23 @@ func (e *Extent) HasClosed() bool {
 
 func (e *Extent) setClosed() {
 	atomic.StoreInt32(&e.hasClose, ExtentHasClose)
+}
+
+func (e *Extent) SetAccessTime(time int64) {
+	atomic.StoreInt64(&e.accessTime, time)
+}
+
+func (e *Extent) AccessTime() int64 {
+	return atomic.LoadInt64(&e.accessTime)
+}
+
+func (e *Extent) SetModifyTime(time int64) {
+	atomic.StoreInt64(&e.modifyTime, time)
+}
+
+// ModifyTime returns the time when this extent was modified recently.
+func (e *Extent) ModifyTime() int64 {
+	return atomic.LoadInt64(&e.modifyTime)
 }
 
 // Close this extent and release FD.
@@ -326,12 +377,12 @@ func (e *Extent) InitToFS() (err error) {
 		return err
 	}
 	if IsTinyExtent(e.extentID) {
-		e.dataSize = 0
+		e.SetSize(0)
 		return
 	}
-	atomic.StoreInt64(&e.modifyTime, timeutil.GetCurrentTimeUnix())
-	atomic.StoreInt64(&e.accessTime, timeutil.GetCurrentTimeUnix())
-	e.dataSize = 0
+	e.SetModifyTime(timeutil.GetCurrentTimeUnix())
+	e.SetAccessTime(timeutil.GetCurrentTimeUnix())
+	e.SetSize(0)
 	return
 }
 
@@ -422,32 +473,38 @@ func (e *Extent) RestoreFromFS() (err error) {
 		if watermark%util.PageSize != 0 {
 			watermark = watermark + (util.PageSize - watermark%util.PageSize)
 		}
-		e.dataSize = watermark
+		e.SetSize(watermark)
 		return
 	}
 
-	e.dataSize = e.GetDataSize(info.Size())
-	e.snapshotDataOff = util.ExtentSize
+	e.SetSize(e.GetDataSize(info.Size()))
+	e.SetSnapshotDataOff(util.ExtentSize)
 	if !IsTinyExtent(e.extentID) {
 		if info.Size() > util.ExtentSize {
-			e.snapshotDataOff = uint64(info.Size())
+			e.SetSnapshotDataOff(uint64(info.Size()))
 		}
 	}
 
-	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
-
-	atomic.StoreInt64(&e.accessTime, timeutil.GetCurrentTimeUnix())
+	e.SetModifyTime(info.ModTime().Unix())
+	e.SetAccessTime(timeutil.GetCurrentTimeUnix())
 	return
 }
 
 // Size returns length of the extent (not including the header).
 func (e *Extent) Size() (size int64) {
-	return e.dataSize
+	return atomic.LoadInt64(&e.dataSize)
 }
 
-// ModifyTime returns the time when this extent was modified recently.
-func (e *Extent) ModifyTime() int64 {
-	return atomic.LoadInt64(&e.modifyTime)
+func (e *Extent) SetSize(size int64) {
+	atomic.StoreInt64(&e.dataSize, size)
+}
+
+func (e *Extent) SnapshotDataOff() (size uint64) {
+	return atomic.LoadUint64(&e.snapshotDataOff)
+}
+
+func (e *Extent) SetSnapshotDataOff(size uint64) {
+	atomic.StoreUint64(&e.snapshotDataOff, size)
 }
 
 func IsRandomWrite(writeType int) bool {
@@ -471,7 +528,7 @@ func (e *Extent) WriteTiny(param *WriteParam) (err error) {
 		return ExtentIsFullError
 	}
 
-	if IsAppendWrite(param.WriteType) && param.Offset != e.dataSize {
+	if IsAppendWrite(param.WriteType) && param.Offset != e.Size() {
 		return ParameterMismatchError
 	}
 
@@ -490,23 +547,16 @@ func (e *Extent) WriteTiny(param *WriteParam) (err error) {
 	if index%util.PageSize != 0 {
 		index = index + (util.PageSize - index%util.PageSize)
 	}
-	e.dataSize = index
+	e.SetSize(index)
 
 	return
 }
 
 // Write writes data to an extent.
 func (e *Extent) Write(param *WriteParam, crcFunc UpdateCrcFunc) (status uint8, err error) {
-	defer func() {
-		e.dirty.Store(!param.IsSync)
-	}()
-
 	if logger.IsEnableDebug() {
 		log.LogDebugf("action[Extent.Write] path %v write param(%v)", e.filePath, param)
 	}
-	defer func() {
-		e.dirty.Store(!param.IsSync)
-	}()
 
 	status = proto.OpOk
 	if IsTinyExtent(e.extentID) {
@@ -516,7 +566,7 @@ func (e *Extent) Write(param *WriteParam, crcFunc UpdateCrcFunc) (status uint8, 
 
 	if err = e.checkWriteOffsetAndSize(param); err != nil {
 		log.LogErrorf("action[Extent.Write] checkWriteOffsetAndSize write param(%v) err %v", param, err)
-		err = newParameterError("extent current size=%d write param(%v)", e.dataSize, param)
+		err = newParameterError("extent current size=%d write param(%v)", e.Size(), param)
 		log.LogErrorf("action[Extent.Write] newParameterError path %v write param(%v) err %v", e.filePath, param, err)
 		status = proto.OpTryOtherExtent
 		return
@@ -527,14 +577,14 @@ func (e *Extent) Write(param *WriteParam, crcFunc UpdateCrcFunc) (status uint8, 
 	e.Lock()
 	defer e.Unlock()
 
-	if IsAppendWrite(param.WriteType) && e.dataSize != param.Offset && !param.IsRepair {
-		err = newParameterError("extent current size=%d write param(%v)", e.dataSize, param)
+	if IsAppendWrite(param.WriteType) && e.Size() != param.Offset && !param.IsRepair {
+		err = newParameterError("extent current size=%d write param(%v)", e.Size(), param)
 		log.LogInfof("action[Extent.Write] newParameterError path %v write param(%v) err %v", e.filePath, param, err)
 		status = proto.OpTryOtherExtent
 		return
 	}
 	if IsAppendRandomWrite(param.WriteType) {
-		if e.snapshotDataOff <= util.ExtentSize {
+		if e.SnapshotDataOff() <= util.ExtentSize {
 			log.LogInfof("action[Extent.Write] truncate extent %v write param(%v) truncate err %v", e, param, err)
 			if err = e.file.Truncate(util.ExtentSize); err != nil {
 				log.LogErrorf("action[Extent.Write] path %v write param(%v) truncate err %v", e.filePath, param, err)
@@ -557,23 +607,27 @@ func (e *Extent) Write(param *WriteParam, crcFunc UpdateCrcFunc) (status uint8, 
 			log.LogDebugf("action[Extent.Write]  write param(%v),eInfo %v,err %v, status %v", param, e, err, status)
 		}
 		if IsAppendWrite(param.WriteType) {
-			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
-			e.dataSize = int64(math.Max(float64(e.dataSize), float64(param.Offset+param.Size)))
+			e.SetModifyTime(time.Now().Unix())
+			e.SetSize(int64(math.Max(float64(e.Size()), float64(param.Offset+param.Size))))
 			log.LogDebugf("action[Extent.Write] eInfo %v write param(%v)", e, param)
 		} else if IsAppendRandomWrite(param.WriteType) {
-			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
-			e.snapshotDataOff = uint64(math.Max(float64(e.snapshotDataOff), float64(param.Offset+param.Size)))
+			e.SetModifyTime(time.Now().Unix())
+			e.SetSnapshotDataOff(uint64(math.Max(float64(e.SnapshotDataOff()), float64(param.Offset+param.Size))))
 		}
 		if logger.IsEnableDebug() {
-			log.LogDebugf("action[Extent.Write] write param(%v) dataSize %v snapshotDataOff %v", param, e.dataSize, e.snapshotDataOff)
+			log.LogDebugf("action[Extent.Write] write param(%v) dataSize %v snapshotDataOff %v", param, e.Size(), e.SnapshotDataOff())
 		}
 	}()
 
 	if param.IsSync {
 		if err = e.file.Sync(); err != nil {
 			log.LogDebugf("action[Extent.Write] write param(%v) err %v", param, err)
+			e.dirty.Store(true)
 			return
 		}
+		e.dirty.Store(false)
+	} else {
+		e.dirty.Store(true)
 	}
 
 	// NOTE: compute crc
@@ -671,10 +725,10 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 }
 
 func (e *Extent) checkReadOffsetAndSize(offset, size int64) error {
-	if (e.snapshotDataOff == util.ExtentSize && offset > e.Size()) ||
-		(e.snapshotDataOff > util.ExtentSize && uint64(offset) > e.snapshotDataOff) {
+	if (e.SnapshotDataOff() == util.ExtentSize && offset > e.Size()) ||
+		(e.SnapshotDataOff() > util.ExtentSize && uint64(offset) > e.SnapshotDataOff()) {
 		return newParameterError("offset=%d size=%d snapshotDataOff=%d e.Size=%v", offset, size,
-			e.snapshotDataOff, e.Size())
+			e.SnapshotDataOff(), e.Size())
 	}
 	return nil
 }
@@ -798,7 +852,7 @@ func (e *Extent) repairPunchHole(offset, size int64) (err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
-				" e.dataSize(%v) err (%v)", e.file.Name(), offset, size, e.dataSize, err)
+				" e.dataSize(%v) err (%v)", e.file.Name(), offset, size, e.Size(), err)
 		}
 	}()
 	if offset%util.PageSize != 0 {
@@ -806,25 +860,25 @@ func (e *Extent) repairPunchHole(offset, size int64) (err error) {
 		return
 	}
 	if IsTinyExtent(e.extentID) {
-		if offset != e.dataSize {
+		if offset != e.Size() {
 			err = fmt.Errorf("tiny offset not euqal")
 			return
 		}
 	} else {
 		if offset < util.ExtentSize {
-			if offset != e.dataSize {
+			if offset != e.Size() {
 				err = fmt.Errorf("normal offset not euqal")
 				return
 			}
 		} else {
-			if offset != int64(e.snapshotDataOff) {
+			if offset != int64(e.SnapshotDataOff()) {
 				err = fmt.Errorf("normal offset not euqal")
 				return
 			}
 		}
 	}
 	log.LogDebugf("before file (%v) getRealBlockNo (%v) "+
-		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), offset, size, e.dataSize)
+		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), offset, size, e.Size())
 
 	var finfo os.FileInfo
 	finfo, err = e.file.Stat()
@@ -833,7 +887,7 @@ func (e *Extent) repairPunchHole(offset, size int64) (err error) {
 	}
 	if offset < finfo.Size() {
 		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
-			" filesize(%v) e.dataSize(%v)", e.file.Name(), offset, size, finfo.Size(), e.dataSize)
+			" filesize(%v) e.dataSize(%v)", e.file.Name(), offset, size, finfo.Size(), e.Size())
 	}
 	if err = syscall.Ftruncate(int(e.file.Fd()), offset+size); err != nil {
 		return err
@@ -860,10 +914,10 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 	if watermark%util.PageSize != 0 {
 		watermark = watermark + (util.PageSize - watermark%util.PageSize)
 	}
-	e.dataSize = watermark
+	e.SetSize(watermark)
 	if log.EnableDebug() {
 		log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
-			"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+			"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.Size())
 	}
 	return
 }

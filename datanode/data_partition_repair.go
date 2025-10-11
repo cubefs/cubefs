@@ -429,8 +429,8 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 				}
 				ei := &RepairExtentInfo{Source: extentInfo.Source}
 				ei.FileID = extentID
-				ei.Size = extentInfo.Size
-				ei.SnapshotDataOff = extentInfo.SnapshotDataOff
+				ei.SetSize(extentInfo.GetSize())
+				ei.SetSnapshotDataOff(extentInfo.GetSnapshotDataOff())
 				repairTask.ExtentsToBeCreated = append(repairTask.ExtentsToBeCreated, ei)
 				repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, ei)
 				log.LogInfof("action[generatorAddExtentsTasks] addFile(%v_%v) on Index(%v).", dp.partitionID, ei, index)
@@ -463,8 +463,8 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 			if extentInfo.TotalSize() < maxFileInfo.TotalSize() {
 				fixExtent := &RepairExtentInfo{Source: maxFileInfo.Source}
 				fixExtent.FileID = extentID
-				fixExtent.Size = maxFileInfo.Size
-				fixExtent.SnapshotDataOff = maxFileInfo.SnapshotDataOff
+				fixExtent.SetSize(maxFileInfo.GetSize())
+				fixExtent.SetSnapshotDataOff(maxFileInfo.GetSnapshotDataOff())
 				repairTasks[index].ExtentsToBeRepaired = append(repairTasks[index].ExtentsToBeRepaired, fixExtent)
 				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v) on Index(%v) on(%v).",
 					dp.partitionID, fixExtent, index, repairTasks[index].addr)
@@ -811,7 +811,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 		return nil
 	}
 
-	if localExtentInfo.Size >= remoteExtentInfo.Size && localExtentInfo.SnapshotDataOff >= remoteExtentInfo.SnapshotDataOff {
+	if localExtentInfo.GetSize() >= remoteExtentInfo.GetSize() && localExtentInfo.GetSnapshotDataOff() >= remoteExtentInfo.GetSnapshotDataOff() {
 		log.LogDebugf("streamRepairExtent  dp %v local %v remote info %v", dp.partitionID, localExtentInfo, remoteExtentInfo)
 		return nil
 	}
@@ -978,19 +978,19 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 
 	// size difference between the local extent and the remote extent
 	var request repl.PacketInterface
-	sizeDiff := remoteExtentInfo.Size - localExtentInfo.Size
+	sizeDiff := remoteExtentInfo.GetSize() - localExtentInfo.GetSize()
 
 	if storage.IsTinyExtent(remoteExtentInfo.FileID) {
 		if sizeDiff >= math.MaxUint32 {
 			sizeDiff = math.MaxUint32 - util.MB
 		}
-		request = tinyPackFunc(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
-		currFixOffset := localExtentInfo.Size
-		return doWork(0, currFixOffset, remoteExtentInfo.Size, request)
-	} else if remoteExtentInfo.SnapshotDataOff == util.ExtentSize {
-		request = normalPackFunc(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
-		currFixOffset := localExtentInfo.Size
-		if err = doWork(storage.AppendWriteType, currFixOffset, remoteExtentInfo.Size, request); err != nil {
+		request = tinyPackFunc(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.GetSize()), int(sizeDiff))
+		currFixOffset := localExtentInfo.GetSize()
+		return doWork(0, currFixOffset, remoteExtentInfo.GetSize(), request)
+	} else if remoteExtentInfo.GetSnapshotDataOff() == util.ExtentSize {
+		request = normalPackFunc(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.GetSize()), int(sizeDiff))
+		currFixOffset := localExtentInfo.GetSize()
+		if err = doWork(storage.AppendWriteType, currFixOffset, remoteExtentInfo.GetSize(), request); err != nil {
 			log.LogErrorf("streamRepairExtent. local info %v, remote %v.err(%v)", localExtentInfo, remoteExtentInfo, err)
 			return
 		}
@@ -998,17 +998,17 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 		log.LogDebugf("streamRepairExtent. local info %v, remote %v", localExtentInfo, remoteExtentInfo)
 		if sizeDiff > 0 {
 			log.LogDebugf("streamRepairExtent. local info %v, remote %v", localExtentInfo, remoteExtentInfo)
-			request = normalWithHoleFunc(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.Size), int(sizeDiff))
-			currFixOffset := localExtentInfo.Size
-			if err = doWork(storage.AppendWriteType, currFixOffset, remoteExtentInfo.Size, request); err != nil {
+			request = normalWithHoleFunc(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.GetSize()), int(sizeDiff))
+			currFixOffset := localExtentInfo.GetSize()
+			if err = doWork(storage.AppendWriteType, currFixOffset, remoteExtentInfo.GetSize(), request); err != nil {
 				log.LogErrorf("streamRepairExtent. local info %v, remote %v.err(%v)", localExtentInfo, remoteExtentInfo, err)
 				return
 			}
 		}
-		sizeDiffVerAppend := remoteExtentInfo.SnapshotDataOff - localExtentInfo.SnapshotDataOff
-		request = normalWithHoleFunc(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.SnapshotDataOff), int(sizeDiffVerAppend))
-		currFixOffset := localExtentInfo.SnapshotDataOff
-		return doWork(storage.AppendRandomWriteType, currFixOffset, remoteExtentInfo.SnapshotDataOff, request)
+		sizeDiffVerAppend := remoteExtentInfo.GetSnapshotDataOff() - localExtentInfo.GetSnapshotDataOff()
+		request = normalWithHoleFunc(dp.partitionID, remoteExtentInfo.FileID, int(localExtentInfo.GetSnapshotDataOff()), int(sizeDiffVerAppend))
+		currFixOffset := localExtentInfo.GetSnapshotDataOff()
+		return doWork(storage.AppendRandomWriteType, currFixOffset, remoteExtentInfo.GetSnapshotDataOff(), request)
 	}
 
 	return

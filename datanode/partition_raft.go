@@ -281,7 +281,7 @@ func compareExtentsBySize(toCompareExtents, baseExtents []*storage.ExtentInfo) b
 	for _, extent := range toCompareExtents {
 		found := false
 		for _, base := range baseExtents {
-			if base.Size == extent.Size {
+			if base.GetSize() == extent.GetSize() {
 				found = true
 				break
 			}

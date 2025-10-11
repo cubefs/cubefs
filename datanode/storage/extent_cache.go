@@ -17,7 +17,6 @@ package storage
 import (
 	"container/list"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -93,7 +92,7 @@ func (cache *ExtentCache) Get(extentID uint64) (e *Extent, ok bool) {
 			cache.extentList.MoveToBack(item.element)
 		}
 		e = item.e
-		atomic.StoreInt64(&e.accessTime, timeutil.GetCurrentTimeUnix())
+		e.SetAccessTime(timeutil.GetCurrentTimeUnix())
 	}
 	return
 }
@@ -239,7 +238,7 @@ func (cache *ExtentCache) EvictTTL(ttl int) error {
 		if IsTinyExtent(item.extentID) {
 			continue
 		}
-		if item.accessTime < cmpTime {
+		if item.AccessTime() < cmpTime {
 			element := e
 			delList = append(delList, element)
 			delete(cache.extentMap, item.extentID)

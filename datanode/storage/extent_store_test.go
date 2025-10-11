@@ -86,7 +86,7 @@ func extentStoreMarkDeleteTiny(t *testing.T, s *storage.ExtentStore, id uint64, 
 func extentMarkDeleteNormalTest(t *testing.T, s *storage.ExtentStore, id uint64) {
 	ei, err := s.Watermark(id)
 	require.NoError(t, err)
-	err = s.MarkDelete(id, 0, int64(ei.Size))
+	err = s.MarkDelete(id, 0, int64(ei.GetSize()))
 	require.NoError(t, err)
 	require.Equal(t, s.IsDeletedNormalExtent(id), true)
 	eds, err := s.GetHasDeleteExtent()

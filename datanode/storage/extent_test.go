@@ -311,7 +311,7 @@ func TestSeekHole(t *testing.T) {
 	err = e.RestoreFromFS()
 	require.NoError(t, err)
 
-	dataSize, snapSize := e.GetSize()
+	dataSize, snapSize := e.Size(), e.SnapshotDataOff()
 	t.Logf("dataSize %v, snapSize %v", dataSize, snapSize)
 	require.True(t, dataSize == alignlastHole)
 }
@@ -349,7 +349,7 @@ func TestExtentRecovery(t *testing.T) {
 	e.GetFile().Close()
 	err = e.RestoreFromFS()
 	require.NoError(t, err)
-	dataSize, snapSize := e.GetSize()
+	dataSize, snapSize := e.Size(), e.SnapshotDataOff()
 	t.Logf("dataSize %v, snapSize %v", dataSize, snapSize)
 	require.True(t, util.BlockSize*10 == dataSize)
 }
@@ -367,9 +367,9 @@ func TestExtentSliceSerialize(t *testing.T) {
 	require.Equal(t, 2, len(deserializedSlice))
 	require.Equal(t, uint64(1), deserializedSlice[0].FileID)
 	require.Equal(t, uint64(2), deserializedSlice[1].FileID)
-	require.Equal(t, uint64(2000), deserializedSlice[1].SnapshotDataOff)
+	require.Equal(t, uint64(2000), deserializedSlice[1].GetSnapshotDataOff())
 	require.Equal(t, false, deserializedSlice[0].IsDeleted)
-	require.Equal(t, uint64(200), deserializedSlice[1].Size)
+	require.Equal(t, uint64(200), deserializedSlice[1].GetSize())
 
 	buf, err1 := json.Marshal(eiSlice)
 	require.NoError(t, err1)
