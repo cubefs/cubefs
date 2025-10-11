@@ -6885,6 +6885,7 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
 		StatusMessage: GetDecommissionStatusMessage(status),
 		TotalDpCnt:    dn.DecommissionDpTotal,
+		StartTime:     time.Unix(int64(dn.DecommissionTime), 0).String(),
 	}
 	remainingDpCnt, failedDps, runningDps := dn.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
 	resp.FailedDps = failedDps

@@ -76,6 +76,7 @@ type DataNode struct {
 	DecommissionLimit                  int
 	DecommissionWeight                 int
 	DecommissionFirstHostParallelLimit uint64
+	DecommissionTime                   uint64
 	DecommissionCompleteTime           int64
 	DpCntLimit                         uint64             `json:"-"` // max count of data partition in a data node
 	CpuUtil                            atomicutil.Float64 `json:"-"`
@@ -734,6 +735,7 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 	dataNode.DecommissionLimit = limit
 	dataNode.DecommissionWeight = weight
 	dataNode.DecommissionDiskList = make([]string, 0)
+	dataNode.DecommissionTime = uint64(time.Now().Unix())
 }
 
 func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
