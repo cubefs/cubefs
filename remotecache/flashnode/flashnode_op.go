@@ -469,9 +469,14 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 }
 
 func (f *FlashNode) replyPutDataOk(ch *proto.CoonHandler, conn net.Conn, p *proto.Packet, logPrefix string) {
-	close(ch.Completed)
+	defer close(ch.Completed)
+	replyPacket := proto.NewPacket()
+	replyPacket.ReqID = p.ReqID
+	replyPacket.Opcode = p.Opcode
+	replyPacket.StartT = p.StartT
+	replyPacket.PacketOkReply()
 	for range ch.WaitAckChan {
-		if ch.RemoteError = p.WriteToConn(conn); ch.RemoteError != nil {
+		if ch.RemoteError = replyPacket.WriteToConn(conn); ch.RemoteError != nil {
 			log.LogWarnf(logPrefix+" reply to conn %v for write data", ch.RemoteError)
 			return
 		}
