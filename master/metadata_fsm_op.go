@@ -529,6 +529,7 @@ type dataNodeValue struct {
 	DecommissionLimit                  int
 	DecommissionWeight                 int
 	DecommissionFirstHostParallelLimit uint64
+	DecommissionTime                   uint64
 	DecommissionCompleteTime           int64
 	ToBeOffline                        bool
 	DecommissionDiskList               []string
@@ -558,6 +559,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		DecommissionLimit:                  dataNode.DecommissionLimit,
 		DecommissionWeight:                 dataNode.DecommissionWeight,
 		DecommissionFirstHostParallelLimit: dataNode.DecommissionFirstHostParallelLimit,
+		DecommissionTime:                   dataNode.DecommissionTime,
 		DecommissionCompleteTime:           dataNode.DecommissionCompleteTime,
 		ToBeOffline:                        dataNode.ToBeOffline,
 		DecommissionDiskList:               dataNode.DecommissionDiskList,
@@ -1678,6 +1680,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DecommissionLimit = dnv.DecommissionLimit
 		dataNode.DecommissionWeight = dnv.DecommissionWeight
 		dataNode.DecommissionFirstHostParallelLimit = dnv.DecommissionFirstHostParallelLimit
+		dataNode.DecommissionTime = dnv.DecommissionTime
 		dataNode.DecommissionCompleteTime = dnv.DecommissionCompleteTime
 		dataNode.ToBeOffline = dnv.ToBeOffline
 		dataNode.DecommissionDiskList = dnv.DecommissionDiskList

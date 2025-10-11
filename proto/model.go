@@ -476,6 +476,7 @@ type DataDecommissionProgress struct {
 	FailedDps      []FailedDpInfo
 	IgnoreDps      []IgnoreDecommissionDP
 	ResidualDps    []IgnoreDecommissionDP
+	StartTime      string
 }
 
 type DiskInfo struct {
