@@ -231,7 +231,7 @@ func (f *File) Forget() {
 		return
 	}
 	fullPath := f.getParentPath() + f.name
-	if err := f.super.mw.Evict(ino, fullPath); err != nil {
+	if err := f.super.mw.Evict(ino, fullPath, false); err != nil {
 		log.LogWarnf("Forget Evict: ino(%v) err(%v)", ino, err)
 	}
 }
@@ -782,7 +782,7 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 	name := req.Name
 	size := req.Size
 	pos := req.Position
-	info, err := f.super.mw.XAttrGet_ll(ino, name)
+	info, err := f.super.mw.XAttrGet_ll(ino, name, false)
 	if err != nil {
 		log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
@@ -845,7 +845,7 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	name := req.Name
 	value := req.Xattr
 	// TODO： implement flag to improve compatible (Mofei Zhang)
-	if err = f.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
+	if err = f.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value), false); err != nil {
 		log.LogErrorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}

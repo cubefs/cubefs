@@ -3,9 +3,11 @@ package metanode
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"testing"
@@ -167,4 +169,105 @@ func TestWithWrongMetaPartitionID(t *testing.T) {
 
 	data := httpReqHandle(url, t)
 	require.Contains(t, string(data), "unknown meta partition")
+}
+
+func ensureOpLimiterForTest(t *testing.T) {
+	require.NotNil(t, server)
+	// opLimiter should already be initialized during server creation
+	if server.opLimiter == nil {
+		server.opLimiter = newOpLimiter()
+	}
+}
+
+func apiURL(p string) string { return fmt.Sprintf("http://127.0.0.1:%d%s", PROF_PORT, p) }
+
+type apiResp struct {
+	Code int             `json:"code"`
+	Msg  string          `json:"msg"`
+	Data json.RawMessage `json:"data"`
+}
+
+func TestSetOpLimitHandler(t *testing.T) {
+	ensureOpLimiterForTest(t)
+	vals := url.Values{}
+	vals.Set("name", "metalookup")
+	vals.Set("limit", "2")
+	vals.Set("timeout", "0")
+	resp, err := http.PostForm(apiURL("/setOpLimit"), vals)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	var r apiResp
+	require.NoError(t, json.Unmarshal(body, &r))
+	require.Equal(t, http.StatusOK, r.Code)
+}
+
+func TestGetOpLimitHandler(t *testing.T) {
+	ensureOpLimiterForTest(t)
+	// ensure setup
+	vals := url.Values{}
+	vals.Set("name", "metalookup")
+	vals.Set("limit", "2")
+	vals.Set("timeout", "0")
+	resp, err := http.PostForm(apiURL("/setOpLimit"), vals)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	resp, err = http.Get(apiURL("/getOpLimit"))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	var r apiResp
+	require.NoError(t, json.Unmarshal(body, &r))
+	require.Equal(t, http.StatusOK, r.Code)
+	var data struct {
+		Enabled bool                   `json:"enabled"`
+		Items   map[string]OpLimitInfo `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(r.Data, &data))
+	found := false
+	for _, v := range data.Items {
+		if v.OpName == "metalookup" && v.Limit == 2 {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected metalookup with limit=2 in getOpLimit")
+}
+
+func TestRmOpLimitHandler(t *testing.T) {
+	ensureOpLimiterForTest(t)
+	// set first
+	vals := url.Values{}
+	vals.Set("name", "metalookup")
+	vals.Set("limit", "2")
+	vals.Set("timeout", "0")
+	resp, err := http.PostForm(apiURL("/setOpLimit"), vals)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	// remove
+	vals = url.Values{}
+	vals.Set("name", "metalookup")
+	resp, err = http.PostForm(apiURL("/rmOpLimit"), vals)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	// verify missing
+	resp, err = http.Get(apiURL("/getOpLimit"))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var r apiResp
+	require.NoError(t, json.Unmarshal(body, &r))
+	var data struct {
+		Enabled bool                   `json:"enabled"`
+		Items   map[string]OpLimitInfo `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(r.Data, &data))
+	for _, v := range data.Items {
+		require.NotEqual(t, "metalookup", v.OpName)
+	}
 }

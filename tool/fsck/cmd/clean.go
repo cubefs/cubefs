@@ -228,7 +228,7 @@ func doEvictInode(inode *Inode) error {
 		return nil
 	}
 
-	err := gMetaWrapper.Evict(inode.Inode, inode.Path)
+	err := gMetaWrapper.Evict(inode.Inode, inode.Path, false)
 	if err != nil {
 		log.LogWarnf("doEvictInode: evict inode err(%v)", err)
 		if err != syscall.ENOENT {

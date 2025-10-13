@@ -3,9 +3,9 @@ package flashnode
 import "github.com/cubefs/cubefs/proto"
 
 type MetaWrapper interface {
-	Lookup_ll(parentID uint64, name string) (inode uint64, mode uint32, err error)
-	InodeGet_ll(inode uint64) (*proto.InodeInfo, error)
-	ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error)
+	Lookup_ll(parentID uint64, name string, isAsync bool) (inode uint64, mode uint32, err error)
+	InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInfo, error)
+	ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error)
 	GetExtents(inode uint64, isCache, openForWrite, isMigration bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error)
 	Close() error
 }

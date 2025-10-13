@@ -262,38 +262,47 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		}
 	}()
 
+	// Apply operation rate limiting
+	if err = m.metaNode.opLimiter.Wait(p.Opcode); err != nil {
+		log.LogWarnf("action[HandleMetadataOperation] op rate limited, opCode[%v] remote[%v] err[%v]",
+			p.Opcode, remoteAddr, err)
+		p.PacketErrorWithBody(proto.OpTryOtherAddr, []byte("too many requests, please retry later"))
+		m.respondToClientWithVer(conn, p)
+		return err
+	}
+
 	switch p.Opcode {
-	case proto.OpMetaCreateInode:
+	case proto.OpMetaCreateInode, proto.OpMetaAsyncCreateInode:
 		err = m.opCreateInode(conn, p, remoteAddr)
-	case proto.OpMetaLinkInode:
+	case proto.OpMetaLinkInode, proto.OpMetaAsyncLinkInode:
 		err = m.opMetaLinkInode(conn, p, remoteAddr)
 	case proto.OpMetaFreeInodesOnRaftFollower:
 		err = m.opFreeInodeOnRaftFollower(conn, p, remoteAddr)
-	case proto.OpMetaUnlinkInode:
+	case proto.OpMetaUnlinkInode, proto.OpMetaAsyncUnlinkInode:
 		err = m.opMetaUnlinkInode(conn, p, remoteAddr)
 	case proto.OpMetaBatchUnlinkInode:
 		err = m.opMetaBatchUnlinkInode(conn, p, remoteAddr)
-	case proto.OpMetaInodeGet:
+	case proto.OpMetaInodeGet, proto.OpMetaAsyncInodeGet:
 		err = m.opMetaInodeGet(conn, p, remoteAddr)
-	case proto.OpMetaEvictInode:
+	case proto.OpMetaEvictInode, proto.OpMetaAsyncEvictInode:
 		err = m.opMetaEvictInode(conn, p, remoteAddr)
 	case proto.OpMetaBatchEvictInode:
 		err = m.opBatchMetaEvictInode(conn, p, remoteAddr)
 	case proto.OpMetaSetattr:
 		err = m.opSetAttr(conn, p, remoteAddr)
-	case proto.OpMetaCreateDentry:
+	case proto.OpMetaCreateDentry, proto.OpMetaAsyncCreateDentry:
 		err = m.opCreateDentry(conn, p, remoteAddr)
-	case proto.OpMetaDeleteDentry:
+	case proto.OpMetaDeleteDentry, proto.OpMetaAsyncDeleteDentry:
 		err = m.opDeleteDentry(conn, p, remoteAddr)
-	case proto.OpMetaBatchDeleteDentry:
+	case proto.OpMetaBatchDeleteDentry, proto.OpMetaAsyncBatchDeleteDentry:
 		err = m.opBatchDeleteDentry(conn, p, remoteAddr)
-	case proto.OpMetaUpdateDentry:
+	case proto.OpMetaUpdateDentry, proto.OpMetaAsyncUpdateDentry:
 		err = m.opUpdateDentry(conn, p, remoteAddr)
 	case proto.OpMetaReadDir:
 		err = m.opReadDir(conn, p, remoteAddr)
 	case proto.OpMetaReadDirOnly:
 		err = m.opReadDirOnly(conn, p, remoteAddr)
-	case proto.OpMetaReadDirLimit:
+	case proto.OpMetaReadDirLimit, proto.OpMetaAsyncReadDir:
 		err = m.opReadDirLimit(conn, p, remoteAddr)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p, remoteAddr)
@@ -311,7 +320,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaExtentsDel(conn, p, remoteAddr)
 	case proto.OpMetaTruncate:
 		err = m.opMetaExtentsTruncate(conn, p, remoteAddr)
-	case proto.OpMetaLookup:
+	case proto.OpMetaLookup, proto.OpMetaAsyncLookup:
 		err = m.opMetaLookup(conn, p, remoteAddr)
 	case proto.OpDeleteMetaPartition:
 		err = m.opDeleteMetaPartition(conn, p, remoteAddr)
@@ -347,12 +356,12 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opRemoveBackupMetaPartition(conn, p, remoteAddr)
 	case proto.OpIsRaftStatusOk:
 		err = m.opIsRaftStatusOk(conn, p, remoteAddr)
-	// operations for extend attributes
-	case proto.OpMetaSetXAttr:
+		// operations for extend attributes
+	case proto.OpMetaSetXAttr, proto.OpMetaAsyncXAttrSet:
 		err = m.opMetaSetXAttr(conn, p, remoteAddr)
 	case proto.OpMetaBatchSetXAttr:
 		err = m.opMetaBatchSetXAttr(conn, p, remoteAddr)
-	case proto.OpMetaGetXAttr:
+	case proto.OpMetaGetXAttr, proto.OpMetaAsyncXAttrGet:
 		err = m.opMetaGetXAttr(conn, p, remoteAddr)
 	case proto.OpMetaGetAllXAttr:
 		err = m.opMetaGetAllXAttr(conn, p, remoteAddr)
@@ -364,8 +373,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaListXAttr(conn, p, remoteAddr)
 	case proto.OpMetaUpdateXAttr:
 		err = m.opMetaUpdateXAttr(conn, p, remoteAddr)
-	// operation for dir lock
-	case proto.OpMetaLockDir:
+		// operation for dir lock
+	case proto.OpMetaLockDir, proto.OpMetaAsyncLockDir:
 		err = m.opMetaLockDir(conn, p, remoteAddr)
 	// operations for multipart session
 	case proto.OpCreateMultipart:
@@ -379,14 +388,14 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	case proto.OpGetMultipart:
 		err = m.opGetMultipart(conn, p, remoteAddr)
 
-	// operations for transactions
-	case proto.OpMetaTxCreateInode:
+		// operations for transactions
+	case proto.OpMetaTxCreateInode, proto.OpMetaAsyncTxCreateInode:
 		err = m.opTxCreateInode(conn, p, remoteAddr)
-	case proto.OpMetaTxCreateDentry:
+	case proto.OpMetaTxCreateDentry, proto.OpMetaAsyncTxCreateDentry:
 		err = m.opTxCreateDentry(conn, p, remoteAddr)
 	case proto.OpTxCommit:
 		err = m.opTxCommit(conn, p, remoteAddr)
-	case proto.OpMetaTxCreate:
+	case proto.OpMetaTxCreate, proto.OpMetaAsyncTxCreate:
 		err = m.opTxCreate(conn, p, remoteAddr)
 	case proto.OpMetaTxGet:
 		err = m.opTxGet(conn, p, remoteAddr)

@@ -31,7 +31,7 @@ import (
 //
 // txIcreate create inode and tx together
 func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, gid uint32,
-	target []byte, quotaIds []uint32, fullPath string,
+	target []byte, quotaIds []uint32, fullPath string, isAsync bool,
 ) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -59,7 +59,12 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 	}()
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaTxCreateInode
+	// opcode selection: async transaction if requested
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncTxCreateInode
+	} else {
+		packet.Opcode = proto.OpMetaTxCreateInode
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -108,7 +113,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 	return status, resp.Info, nil
 }
 
-func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string) (status int,
+func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string, isAsync bool) (status int,
 	info *proto.InodeInfo, err error,
 ) {
 	bgTime := stat.BeginStat()
@@ -129,7 +134,11 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpQuotaCreateInode
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncCreateInode
+	} else {
+		packet.Opcode = proto.OpQuotaCreateInode
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -170,7 +179,7 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, fullPath string) (status int,
+func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, fullPath string, isAsync bool) (status int,
 	info *proto.InodeInfo, err error,
 ) {
 	bgTime := stat.BeginStat()
@@ -191,7 +200,11 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaCreateInode
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncCreateInode
+	} else {
+		packet.Opcode = proto.OpMetaCreateInode
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -341,7 +354,7 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, verSeq uint64, denVerSeq uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, verSeq uint64, denVerSeq uint64, fullPath string, isAsync bool) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("iunlink", err, bgTime, 1)
@@ -365,7 +378,11 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, verSeq uint64, d
 	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaUnlinkInode
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncUnlinkInode
+	} else {
+		packet.Opcode = proto.OpMetaUnlinkInode
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -445,7 +462,7 @@ func (mw *MetaWrapper) iclearCache(mp *MetaPartition, inode uint64) (status int,
 	return status, nil
 }
 
-func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64, fullPath string) (status int, err error) {
+func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64, fullPath string, isAsync bool) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ievict", err, bgTime, 1)
@@ -459,7 +476,11 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64, fullPath string) 
 	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaEvictInode
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncEvictInode
+	} else {
+		packet.Opcode = proto.OpMetaEvictInode
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -490,7 +511,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64, fullPath string) 
 }
 
 func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, inode uint64,
-	mode uint32, quotaIds []uint32, fullPath string, ignoreExist bool,
+	mode uint32, quotaIds []uint32, fullPath string, ignoreExist bool, isAsync bool,
 ) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -529,8 +550,15 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 	//	return
 	// }
 
+	var opcode uint8
+	if isAsync {
+		opcode = proto.OpMetaAsyncTxCreateDentry
+	} else {
+		opcode = proto.OpMetaTxCreateDentry
+	}
+
 	var packet *proto.Packet
-	if status, err, packet = mw.SendTxPack(req, nil, proto.OpMetaTxCreateDentry, mp, nil, ignoreExist); err != nil {
+	if status, err, packet = mw.SendTxPack(req, nil, opcode, mp, nil, ignoreExist); err != nil {
 		log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -540,7 +568,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 }
 
 func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	quotaIds []uint32, fullPath string, ignoreExistError bool,
+	quotaIds []uint32, fullPath string, ignoreExistError bool, isAsync bool,
 ) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -563,7 +591,11 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpQuotaCreateDentry
+	if isAsync {
+		packet.Opcode = proto.OpQuotaAsyncCreateDentry
+	} else {
+		packet.Opcode = proto.OpQuotaCreateDentry
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -594,7 +626,7 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 }
 
 func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	fullPath string, ignoreExistError bool,
+	fullPath string, ignoreExistError bool, isAsync bool,
 ) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -616,7 +648,12 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaCreateDentry
+	// Smart opcode selection: async if requested
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncCreateDentry
+	} else {
+		packet.Opcode = proto.OpMetaCreateDentry
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -686,7 +723,7 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 	return statusOK, resp.Inode, nil
 }
 
-func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, newInode uint64, fullPath string) (status int, oldInode uint64, err error) {
+func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, newInode uint64, fullPath string, isAsync bool) (status int, oldInode uint64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dupdate", err, bgTime, 1)
@@ -706,7 +743,11 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaUpdateDentry
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncUpdateDentry
+	} else {
+		packet.Opcode = proto.OpMetaUpdateDentry
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -742,7 +783,7 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 	return statusOK, resp.Inode, nil
 }
 
-func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status int, err error) {
+func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition, isAsync bool) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txCreateTX", err, bgTime, 1)
@@ -762,8 +803,17 @@ func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status in
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	var packet *proto.Packet
-	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxCreate, mp, nil, false); err != nil {
+	var (
+		packet *proto.Packet
+		opcode uint8
+	)
+
+	if isAsync {
+		opcode = proto.OpMetaAsyncTxCreate
+	} else {
+		opcode = proto.OpMetaTxCreate
+	}
+	if status, err, packet = mw.SendTxPack(req, resp, opcode, mp, nil, false); err != nil {
 		log.LogErrorf("txCreateTX: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -847,7 +897,7 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, i
 	return statusOK, resp.Inode, nil
 }
 
-func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, inodeCreateTime int64, verSeq uint64, fullPath string) (status int, inode uint64, denVer uint64, err error) {
+func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, inodeCreateTime int64, verSeq uint64, fullPath string, isAsync bool) (status int, inode uint64, denVer uint64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ddelete", err, bgTime, 1)
@@ -864,7 +914,11 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, 
 	req.FullPaths = []string{fullPath}
 	log.LogDebugf("action[ddelete] %v", req)
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaDeleteDentry
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncDeleteDentry
+	} else {
+		packet.Opcode = proto.OpMetaDeleteDentry
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -913,7 +967,7 @@ func (mw *MetaWrapper) canDeleteInode(mp *MetaPartition, info *proto.InodeInfo, 
 	return true, nil
 }
 
-func (mw *MetaWrapper) ddeletes(mp *MetaPartition, parentID uint64, dentries []proto.Dentry, fullPaths []string) (status int,
+func (mw *MetaWrapper) ddeletes(mp *MetaPartition, parentID uint64, dentries []proto.Dentry, fullPaths []string, isAsync bool) (status int,
 	resp *proto.BatchDeleteDentryResponse, err error,
 ) {
 	bgTime := stat.BeginStat()
@@ -930,7 +984,11 @@ func (mw *MetaWrapper) ddeletes(mp *MetaPartition, parentID uint64, dentries []p
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaBatchDeleteDentry
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncBatchDeleteDentry
+	} else {
+		packet.Opcode = proto.OpMetaBatchDeleteDentry
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -971,7 +1029,7 @@ func (mw *MetaWrapper) ddeletes(mp *MetaPartition, parentID uint64, dentries []p
 	return statusOK, resp, nil
 }
 
-func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string, verSeq uint64) (status int, inode uint64, mode uint32, err error) {
+func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string, verSeq uint64, isAsync bool) (status int, inode uint64, mode uint32, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("lookup", err, bgTime, 1)
@@ -985,7 +1043,11 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string, v
 		VerSeq:      verSeq,
 	}
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaLookup
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncLookup
+	} else {
+		packet.Opcode = proto.OpMetaLookup
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -1033,7 +1095,7 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string, v
 	return statusOK, resp.Inode, resp.Mode, nil
 }
 
-func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64, isAsync bool) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("iget", err, bgTime, 1)
@@ -1048,7 +1110,11 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64) (sta
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaInodeGet
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncInodeGet
+	} else {
+		packet.Opcode = proto.OpMetaInodeGet
+	}
 	packet.PartitionID = mp.PartitionID
 
 	log.LogDebugf("action[iget] pack mp id %v, req %v", mp.PartitionID, req)
@@ -1146,7 +1212,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 }
 
 // read limit dentries start from
-func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from string, limit uint64, verSeq uint64, verOpt uint8) (status int, children []proto.Dentry, err error) {
+func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from string, limit uint64, verSeq uint64, verOpt uint8, isAsync bool) (status int, children []proto.Dentry, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("readDirLimit", err, bgTime, 1)
@@ -1171,7 +1237,11 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaReadDirLimit
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncReadDir
+	} else {
+		packet.Opcode = proto.OpMetaReadDirLimit
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -1481,8 +1551,14 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64,
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
-	return mw.ilinkWork(mp, inode, proto.OpMetaLinkInode, fullPath)
+func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64, fullPath string, isAsync bool) (status int, info *proto.InodeInfo, err error) {
+	var opcode uint8
+	if isAsync {
+		opcode = proto.OpMetaAsyncLinkInode
+	} else {
+		opcode = proto.OpMetaLinkInode
+	}
+	return mw.ilinkWork(mp, inode, opcode, fullPath)
 }
 
 func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, inode uint64, op uint8, fullPath string) (status int, info *proto.InodeInfo, err error) {
@@ -2040,7 +2116,7 @@ func (mw *MetaWrapper) batchSetXAttr(mp *MetaPartition, inode uint64, attrs map[
 	return
 }
 
-func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, value []byte) (status int, err error) {
+func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, value []byte, isAsync bool) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("setXAttr", err, bgTime, 1)
@@ -2055,7 +2131,11 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaSetXAttr
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncXAttrSet
+	} else {
+		packet.Opcode = proto.OpMetaSetXAttr
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -2138,7 +2218,7 @@ func (mw *MetaWrapper) getAllXAttr(mp *MetaPartition, inode uint64) (attrs map[s
 	return
 }
 
-func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (value string, status int, err error) {
+func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string, isAsync bool) (value string, status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getXAttr", err, bgTime, 1)
@@ -2153,7 +2233,11 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (v
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaGetXAttr
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncXAttrGet
+	} else {
+		packet.Opcode = proto.OpMetaGetXAttr
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -2489,7 +2573,7 @@ func (mw *MetaWrapper) batchDeleteInodeQuota(mp *MetaPartition, inodes []uint64,
 	return
 }
 
-func (mw *MetaWrapper) getInodeQuota(mp *MetaPartition, inode uint64) (quotaInfos map[uint32]*proto.MetaQuotaInfo, err error) {
+func (mw *MetaWrapper) getInodeQuota(mp *MetaPartition, inode uint64, isAsync bool) (quotaInfos map[uint32]*proto.MetaQuotaInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getInodeQuota", err, bgTime, 1)
@@ -2504,7 +2588,11 @@ func (mw *MetaWrapper) getInodeQuota(mp *MetaPartition, inode uint64) (quotaInfo
 		return qcInfo.quotaInfos, nil
 	}
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaGetInodeQuota
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncGetInodeQuota
+	} else {
+		packet.Opcode = proto.OpMetaGetInodeQuota
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -2574,7 +2662,7 @@ func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCo
 	noMore := false
 	from := ""
 	for !noMore {
-		entries, err := mw.ReadDirLimit_ll(parentIno, from, defaultReaddirLimit)
+		entries, err := mw.ReadDirLimit_ll(parentIno, from, defaultReaddirLimit, false)
 		if err != nil {
 			return err
 		}
@@ -2635,7 +2723,7 @@ func (mw *MetaWrapper) revokeQuota(parentIno uint64, quotaId uint32, totalInodeC
 	noMore := false
 	from := ""
 	for !noMore {
-		entries, err := mw.ReadDirLimit_ll(parentIno, from, defaultReaddirLimit)
+		entries, err := mw.ReadDirLimit_ll(parentIno, from, defaultReaddirLimit, false)
 		if err != nil {
 			return err
 		}
@@ -2752,7 +2840,7 @@ func (mw *MetaWrapper) checkVerFromMeta(packet *proto.Packet) {
 	mw.Client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: packet.VerList})
 }
 
-func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lockId int64) (retLockId int64, err error) {
+func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lockId int64, isAsync bool) (retLockId int64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("lockDir", err, bgTime, 1)
@@ -2778,7 +2866,11 @@ func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lo
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaLockDir
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncLockDir
+	} else {
+		packet.Opcode = proto.OpMetaLockDir
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {

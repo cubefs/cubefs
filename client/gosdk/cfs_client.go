@@ -479,7 +479,7 @@ func (f *File) CloseFile() (err error) {
 
 	info := f.client.ic.Get(f.ino)
 	if info == nil {
-		info, err = f.client.mw.InodeGet_ll(f.ino)
+		info, err = f.client.mw.InodeGet_ll(f.ino, false)
 		if err != nil {
 			return err
 		}
@@ -629,7 +629,7 @@ func (f *File) Readdir(count int) (dirents []Dirent, err error) {
 
 	if f.dirp == nil {
 		f.dirp = &dirStream{}
-		dentries, err := f.client.mw.ReadDir_ll(f.ino)
+		dentries, err := f.client.mw.ReadDir_ll(f.ino, false)
 		if err != nil {
 			return nil, err
 		}
@@ -671,7 +671,7 @@ func (f *File) Lsdir(count int) (direntsInfo []DirentInfo, err error) {
 
 	if f.dirp == nil {
 		f.dirp = &dirStream{}
-		dentries, err := f.client.mw.ReadDir_ll(f.ino)
+		dentries, err := f.client.mw.ReadDir_ll(f.ino, false)
 		if err != nil {
 			return nil, err
 		}
@@ -766,7 +766,7 @@ func (c *Client) Mkdirs(path string, mode uint32) error {
 		if dir == "/" || dir == "" {
 			continue
 		}
-		child, _, err := c.mw.Lookup_ll(pino, dir)
+		child, _, err := c.mw.Lookup_ll(pino, dir, false)
 		if err != nil {
 			if err == syscall.ENOENT {
 				info, err := c.mkdir(pino, dir, mode, dirpath)
@@ -777,7 +777,7 @@ func (c *Client) Mkdirs(path string, mode uint32) error {
 						return err
 					}
 					// if dir already exist, lookup and assign to child
-					child_ino, _, err := c.mw.Lookup_ll(pino, dir)
+					child_ino, _, err := c.mw.Lookup_ll(pino, dir, false)
 					if err != nil {
 						gerr = err
 						return err
@@ -817,7 +817,7 @@ func (c *Client) Rmdir(path string) error {
 		return err
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, true, absPath)
+	info, err = c.mw.Delete_ll(dirInfo.Inode, name, true, absPath, false)
 	c.ic.Delete(dirInfo.Inode)
 	c.dc.Delete(absPath)
 	return err
@@ -843,7 +843,7 @@ func (c *Client) Unlink(path string) error {
 		return err
 	}
 
-	_, mode, err := c.mw.Lookup_ll(dirInfo.Inode, name)
+	_, mode, err := c.mw.Lookup_ll(dirInfo.Inode, name, false)
 	if err != nil {
 		return err
 	}
@@ -851,13 +851,13 @@ func (c *Client) Unlink(path string) error {
 		return syscall.EISDIR
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false, absPath)
+	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false, absPath, false)
 	if err != nil {
 		return err
 	}
 
 	if info != nil {
-		_ = c.mw.Evict(info.Inode, absPath)
+		_ = c.mw.Evict(info.Inode, absPath, false)
 		c.ic.Delete(info.Inode)
 		c.dc.Delete(absPath)
 	}
@@ -887,7 +887,7 @@ func (c *Client) Rename(from, to string, overwritten bool) error {
 		return err
 	}
 
-	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, overwritten)
+	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, overwritten, false)
 	c.ic.Delete(srcDirInfo.Inode)
 	c.ic.Delete(dstDirInfo.Inode)
 	c.dc.Delete(absFrom)
@@ -900,7 +900,7 @@ func (f *File) Fchmod(mode uint32) error {
 		return syscall.EBADFD
 	}
 
-	info, err := f.client.mw.InodeGet_ll(f.ino)
+	info, err := f.client.mw.InodeGet_ll(f.ino, false)
 	if err != nil {
 		return err
 	}
@@ -969,13 +969,13 @@ func (f *File) Truncate(size int) error {
 
 func (c *Client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false, false)
 }
 
 func (c *Client) mkdir(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false, false)
 }
 
 func (c *Client) openStream(f *File, openForWrite bool, fullPath string) {
@@ -1092,7 +1092,7 @@ func (c *Client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 func (c *Client) lookupPath(path string) (*proto.InodeInfo, error) {
 	ino, ok := c.dc.Get(gopath.Clean(path))
 	if !ok {
-		inoInterval, err := c.mw.LookupPath(gopath.Clean(path))
+		inoInterval, err := c.mw.LookupPath(gopath.Clean(path), false)
 		if err != nil {
 			return nil, err
 		}
@@ -1103,7 +1103,7 @@ func (c *Client) lookupPath(path string) (*proto.InodeInfo, error) {
 	if info != nil {
 		return info, nil
 	}
-	info, err := c.mw.InodeGet_ll(ino)
+	info, err := c.mw.InodeGet_ll(ino, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1259,7 +1259,7 @@ func (c *Client) SymLink(srcPath, dstPath string) error {
 	}
 
 	parentIno := info.Inode
-	info, err = c.mw.Create_ll(parentIno, filename, proto.Mode(os.ModeSymlink|os.ModePerm), 0, 0, []byte(fullSrcPath), fullDstPath, false)
+	info, err = c.mw.Create_ll(parentIno, filename, proto.Mode(os.ModeSymlink|os.ModePerm), 0, 0, []byte(fullSrcPath), fullDstPath, false, false)
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)\n", parentIno, filename, err)
 		return err

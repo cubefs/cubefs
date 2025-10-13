@@ -35,11 +35,11 @@ func (*MockMetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, 
 	return nil, nil
 }
 
-func (*MockMetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mode uint32, err error) {
+func (*MockMetaWrapper) Lookup_ll(parentID uint64, name string, isAsync bool) (inode uint64, mode uint32, err error) {
 	return
 }
 
-func (*MockMetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
+func (*MockMetaWrapper) InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInfo, error) {
 	switch inode {
 	case 1:
 		return &proto.InodeInfo{
@@ -68,11 +68,11 @@ func (*MockMetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 	return nil, nil
 }
 
-func (*MockMetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
+func (*MockMetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string, isAsync bool) (*proto.InodeInfo, error) {
 	return nil, nil
 }
 
-func (*MockMetaWrapper) Evict(inode uint64, fullPath string) error {
+func (*MockMetaWrapper) Evict(inode uint64, fullPath string, isAsync bool) error {
 	return nil
 }
 
@@ -84,7 +84,7 @@ func (*MockMetaWrapper) DeleteMigrationExtentKey(inode uint64, fullPath string) 
 	return nil
 }
 
-func (*MockMetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error) {
+func (*MockMetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error) {
 	// for handleDirLimitDepthFirst
 	if parentID == 4 {
 		return []proto.Dentry{

@@ -101,6 +101,11 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getRocksdbStats", m.getRocksdbStatsHandler)
 	http.HandleFunc("/updateRocksDBConfig", m.updateRocksDBConfigHandler)
 	http.HandleFunc("/getRocksDBConfig", m.getRocksDBConfigHandler)
+	// Operation rate limiting management interfaces
+	http.HandleFunc("/setOpLimit", m.setOpLimitHandler)
+	http.HandleFunc("/getOpLimit", m.getOpLimitHandler)
+	http.HandleFunc("/rmOpLimit", m.rmOpLimitHandler)
+	http.HandleFunc("/getOpList", m.getOpListHandler)
 	return
 }
 
@@ -1596,4 +1601,159 @@ func (m *MetaNode) getRocksDBConfigHandler(w http.ResponseWriter, r *http.Reques
 		log.LogErrorf("[getRocksDBConfigHandler] failed to marshal response, err(%v)", err)
 		return
 	}
+}
+
+// setOpLimitHandler sets operation rate limiting
+func (m *MetaNode) setOpLimitHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		name    string
+		limit   uint32
+		timeout uint32
+		err     error
+	)
+
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[setOpLimitHandler] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if name = r.FormValue("name"); name == "" {
+		err = fmt.Errorf("missing name parameter")
+		return
+	}
+
+	if limitStr := r.FormValue("limit"); limitStr == "" {
+		err = fmt.Errorf("missing limit parameter")
+		return
+	} else {
+		if limitVal, parseErr := strconv.ParseUint(limitStr, 10, 32); parseErr != nil {
+			err = fmt.Errorf("invalid limit parameter")
+			return
+		} else {
+			limit = uint32(limitVal)
+		}
+	}
+
+	if timeoutStr := r.FormValue("timeout"); timeoutStr == "" {
+		timeout = 0
+	} else {
+		if timeoutVal, parseErr := strconv.ParseUint(timeoutStr, 10, 32); parseErr != nil {
+			err = fmt.Errorf("invalid timeout parameter")
+			return
+		} else {
+			timeout = uint32(timeoutVal)
+		}
+	}
+
+	if err = m.opLimiter.SetLimiter(name, limit, timeout); err != nil {
+		return
+	}
+
+	log.LogInfof("set op limit success: name=%v, limit=%v, timeout=%v", name, limit, timeout)
+	resp.Msg = fmt.Sprintf("set op limit success: name=%v, limit=%v, timeout=%v", name, limit, timeout)
+}
+
+// getOpLimitHandler gets operation rate limiting configuration
+func (m *MetaNode) getOpLimitHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getOpLimitHandler] response %s", err)
+		}
+	}()
+
+	m.opLimiter.m.RLock()
+	limiterInfos := make(map[string]*OpLimitInfo)
+	for opCode, lInfo := range m.opLimiter.limiterInfos {
+		key := fmt.Sprintf("%d_%s", opCode, lInfo.OpName)
+		copyInfo := &OpLimitInfo{
+			OpName:         lInfo.OpName,
+			OpCode:         lInfo.OpCode,
+			Limit:          lInfo.Limit,
+			LimiterTimeout: lInfo.LimiterTimeout,
+		}
+		limiterInfos[key] = copyInfo
+	}
+	m.opLimiter.m.RUnlock()
+
+	meta := map[string]interface{}{
+		"count": len(limiterInfos),
+		"items": limiterInfos,
+	}
+	resp.Data = meta
+}
+
+// rmOpLimitHandler removes operation rate limiting
+func (m *MetaNode) rmOpLimitHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		name string
+		err  error
+	)
+
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[rmOpLimitHandler] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if name = r.FormValue("name"); name == "" {
+		err = fmt.Errorf("missing name parameter")
+		return
+	}
+
+	if err = m.opLimiter.RmLimiter(name); err != nil {
+		return
+	}
+
+	log.LogInfof("remove op limit success: name=%v", name)
+	resp.Msg = fmt.Sprintf("remove op limit success: name=%v", name)
+}
+
+// getOpListHandler gets supported operation list
+func (m *MetaNode) getOpListHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getOpListHandler] response %s", err)
+		}
+	}()
+
+	opList := make(map[string]interface{})
+	operations := make([]map[string]interface{}, 0)
+
+	for opName, opCode := range proto.GOpInfo {
+		opInfo := map[string]interface{}{
+			"name":    opName,
+			"op_code": opCode,
+		}
+		operations = append(operations, opInfo)
+	}
+
+	opList["operations"] = operations
+	opList["count"] = len(operations)
+
+	resp.Data = opList
 }

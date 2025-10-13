@@ -288,7 +288,7 @@ func (s *LcScanner) FindPrefixInode() (inode uint64, prefixDirs []string, err er
 			break
 		}
 
-		curIno, curMode, err := s.mw.Lookup_ll(parentId, dir)
+		curIno, curMode, err := s.mw.Lookup_ll(parentId, dir, true)
 
 		// If the part except the last part does not match exactly the same dentry, there is
 		// no path matching the path prefix. An ENOENT error is returned to the caller.
@@ -394,7 +394,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	s.limiter.Wait(context.Background())
 	start := time.Now()
 
-	info, err := s.mw.InodeGet_ll(dentry.Inode)
+	info, err := s.mw.InodeGet_ll(dentry.Inode, true)
 	if err != nil {
 		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
 		return
@@ -426,13 +426,13 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	switch op {
 	case proto.OpTypeDelete:
-		_, err = s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), dentry.Path)
+		_, err = s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), dentry.Path, true)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorDeleteNum, 1)
 			log.LogWarnf("delete DeleteWithCond_ll err: %v, dentry: %+v", err, dentry)
 			return
 		}
-		if err = s.mw.Evict(dentry.Inode, dentry.Path); err != nil {
+		if err = s.mw.Evict(dentry.Inode, dentry.Path, false); err != nil {
 			log.LogWarnf("delete Evict err: %v, dentry: %+v", err, dentry)
 		}
 		atomic.AddInt64(&s.currentStat.ExpiredDeleteNum, 1)
@@ -616,7 +616,7 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 		default:
 		}
 
-		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit), true)
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
 			log.LogErrorf("handleDirLimitDepthFirst ReadDirLimit_ll err(%v), dentry(%v), marker(%v)", err, dentry, marker)
@@ -694,7 +694,7 @@ func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
 		default:
 		}
 
-		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit), true)
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
 			log.LogErrorf("handleDirLimitBreadthFirst ReadDirLimit_ll err(%v), dentry(%v), marker(%v)", err, dentry, marker)

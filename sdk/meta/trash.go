@@ -142,8 +142,8 @@ func (trash *Trash) createCurrent(ingoreExist bool) (err error) {
 	if trash.pathIsExist(trashCurrent) {
 		// cache trashCurrent if not cached
 		if value := trash.subDirCache.Get(trashCurrent); value == nil {
-			ino, _ := trash.mw.LookupPath(trashCurrent)
-			info, err := trash.mw.InodeGet_ll(ino)
+			ino, _ := trash.mw.LookupPath(trashCurrent, true)
+			info, err := trash.mw.InodeGet_ll(ino, true)
 			if err != nil {
 				log.LogWarnf("action[createCurrent] get %v inode info failed:%v", trashCurrent, err.Error())
 				return err
@@ -255,7 +255,7 @@ retry:
 				return
 			}
 
-			err = trash.mw.XAttrSet_ll(info.Inode, []byte(OriginalName), []byte(name))
+			err = trash.mw.XAttrSet_ll(info.Inode, []byte(OriginalName), []byte(name), true)
 			if err != nil {
 				log.LogWarnf("action[MoveToTrash] set xattr for %v[%v] failed:%v", dstPath, info.Inode, err.Error())
 				return
@@ -311,7 +311,7 @@ func (trash *Trash) tryGetLock() {
 	log.LogDebugf("tryGetLock: try get root dir lock for trash, path %s, vol %s, ino %d",
 		trash.mountPath, trash.mw.volname, trash.trashRootIno)
 
-	retId, err := trash.mw.LockDir(trash.trashRootIno, LockExpireSeconds, trash.lockId)
+	retId, err := trash.mw.LockDir(trash.trashRootIno, LockExpireSeconds, trash.lockId, true)
 	if err != nil {
 		log.LogWarnf("tryGetLock: get dir lock failed for trash, ino %d, id %d, err %v", trash.trashRootIno, trash.lockId, err)
 		trash.getLock = false
@@ -340,7 +340,7 @@ func (trash *Trash) refreshTrashLock() {
 			}
 			trash.getLock = false
 
-			_, err := trash.mw.LockDir(trash.trashRootIno, 0, trash.lockId)
+			_, err := trash.mw.LockDir(trash.trashRootIno, 0, trash.lockId, true)
 			if err != nil {
 				log.LogErrorf("releaseTrashLock: relase failed, ino %d, id %d, err %s", trash.trashRootIno, trash.lockId, err)
 				return
@@ -397,8 +397,8 @@ func (trash *Trash) renameCurrent() {
 		}
 	}
 	// keep current for 1/4 delete interval
-	ino, _ := trash.mw.LookupPath(trashCurrent)
-	inoInfo, err := trash.mw.InodeGet_ll(ino)
+	ino, _ := trash.mw.LookupPath(trashCurrent, true)
+	inoInfo, err := trash.mw.InodeGet_ll(ino, true)
 	if err != nil {
 		log.LogWarnf("action[renameCurrent]get inode for trashCurrent failed %v", err.Error())
 		return
@@ -432,7 +432,7 @@ func (trash *Trash) deleteExpiredData() {
 	defer log.LogDebugf("action[deleteExpiredData]exit")
 	log.LogDebugf("action[deleteExpiredData]enter")
 	// read trash root
-	entries, err := trash.mw.ReadDir_ll(trash.trashRootIno)
+	entries, err := trash.mw.ReadDir_ll(trash.trashRootIno, true)
 	if err != nil {
 		log.LogWarnf("action[deleteExpiredData]ReadDir trashRoot  failed: %v", err.Error())
 		return
@@ -470,7 +470,7 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 		from   = ""
 	)
 	for !noMore {
-		batches, err := trash.mw.ReadDirLimit_ll(dirIno, from, DefaultReaddirLimit)
+		batches, err := trash.mw.ReadDirLimit_ll(dirIno, from, DefaultReaddirLimit, true)
 		if err != nil {
 			log.LogErrorf("action[removeAll] ReadDirLimit_ll: ino(%v) err(%v) from(%v)", dirIno, err, from)
 			return
@@ -510,7 +510,7 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 	noMore = false
 	from = ""
 	for !noMore {
-		batches, err := trash.mw.ReadDirLimit_ll(dirIno, from, DefaultReaddirLimit)
+		batches, err := trash.mw.ReadDirLimit_ll(dirIno, from, DefaultReaddirLimit, true)
 		if err != nil {
 			log.LogErrorf("action[removeAll] ReadDirLimit_ll: ino(%v) err(%v) from(%v)", dirIno, err, from)
 			return
@@ -603,7 +603,7 @@ func (trash *Trash) pathIsExist(path string) bool {
 		return true
 	}
 	// check path exist but not in cache
-	_, err := trash.mw.LookupPath(path)
+	_, err := trash.mw.LookupPath(path, true)
 	if err != nil {
 		log.LogDebugf("action[pathIsExist] %v not exist: %v", path, err.Error())
 		return false
@@ -628,7 +628,7 @@ func (trash *Trash) pathIsExistInTrash(filePath string) bool {
 		return false
 	} else {
 		currentIno := info.Inode
-		_, _, err := trash.mw.Lookup_ll(currentIno, path.Base(filePath))
+		_, _, err := trash.mw.Lookup_ll(currentIno, path.Base(filePath), true)
 		return err == nil
 	}
 }
@@ -645,16 +645,16 @@ func (trash *Trash) IsDir(path string) bool {
 func (trash *Trash) CreateDirectory(pino uint64, name string, mode, uid, gid uint32, fullName string, ignoreExist bool) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
-	return trash.mw.Create_ll(pino, name, fuseMode, uid, gid, nil, fullName, ignoreExist)
+	return trash.mw.Create_ll(pino, name, fuseMode, uid, gid, nil, fullName, ignoreExist, true)
 }
 
 func (trash *Trash) LookupEntry(parentID uint64, name string) (*proto.InodeInfo, error) {
-	child, _, err := trash.mw.Lookup_ll(parentID, name)
+	child, _, err := trash.mw.Lookup_ll(parentID, name, true)
 	if err != nil {
 		log.LogWarnf("action[LookupEntry] Lookup_ll %v failed:%v", name, err)
 		return nil, err
 	}
-	info, err := trash.mw.InodeGet_ll(child)
+	info, err := trash.mw.InodeGet_ll(child, true)
 	if err != nil {
 		log.LogWarnf("action[LookupEntry] InodeGet_ll %v failed:%v", name, err)
 		return nil, err
@@ -670,12 +670,13 @@ func (trash *Trash) LookupPath(path string, byCache bool) (*proto.InodeInfo, err
 		}
 	}
 	log.LogDebugf("LookupPath miss   path %v ", path)
-	ino, err := trash.mw.LookupPath(path)
+	// Use async version for trash operations to improve performance
+	ino, err := trash.mw.LookupPath(path, true)
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("lookupPath path %v  failed:%v", path, err.Error()))
 	}
 
-	info, err := trash.mw.InodeGet_ll(ino)
+	info, err := trash.mw.InodeGet_ll(ino, true)
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("InodeGet_ll path %v  failed:%v", path, err.Error()))
 	}
@@ -701,8 +702,8 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 	cur := trashCurrent
 	trashCurrentIno := trash.subDirCache.Get(trashCurrent)
 	if trashCurrentIno == nil {
-		ino, _ := trash.mw.LookupPath(cur)
-		trashCurrentIno, err = trash.mw.InodeGet_ll(ino)
+		ino, _ := trash.mw.LookupPath(cur, true)
+		trashCurrentIno, err = trash.mw.InodeGet_ll(ino, true)
 		if err != nil {
 			log.LogWarnf("action[createParentPathInTrash] get %v inode info failed:%v", cur, err.Error())
 			return err
@@ -718,8 +719,8 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 		if trash.pathIsExist(cur) {
 			info := trash.subDirCache.Get(cur)
 			if info == nil {
-				ino, _ := trash.mw.LookupPath(cur)
-				inoInfo, err := trash.mw.InodeGet_ll(ino)
+				ino, _ := trash.mw.LookupPath(cur, true)
+				inoInfo, err := trash.mw.InodeGet_ll(ino, true)
 				if err != nil {
 					log.LogWarnf("action[createParentPathInTrash] get %v inode info failed:%v", cur, err.Error())
 					return err
@@ -750,8 +751,8 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 				// may be created by other routine
 				info := trash.subDirCache.Get(path.Join(parentPath, sub))
 				if info == nil {
-					ino, _ := trash.mw.LookupPath(path.Join(parentPath, sub))
-					inoInfo, err := trash.mw.InodeGet_ll(ino)
+					ino, _ := trash.mw.LookupPath(path.Join(parentPath, sub), true)
+					inoInfo, err := trash.mw.InodeGet_ll(ino, true)
 					if err != nil {
 						log.LogWarnf("action[createParentPathInTrash] get %v inode info failed:%v", path.Join(parentPath, sub), err.Error())
 						return err
@@ -781,14 +782,14 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 }
 
 func (trash *Trash) renameToTrashTempFile(parentIno, currentIno uint64, oldPath, newPath string) error {
-	err := trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, true)
+	err := trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, true, true)
 	if err == syscall.ENOENT {
 		log.LogErrorf("action[renameToTrashTempFile] rename src %v err ENOENT", oldPath)
 		srcParentMP := trash.mw.getPartitionByInode(parentIno)
 		if srcParentMP == nil {
 			return syscall.ENOENT
 		}
-		status, _, _, _ := trash.mw.lookup(srcParentMP, parentIno, path.Base(oldPath), trash.mw.LastVerSeq)
+		status, _, _, _ := trash.mw.lookup(srcParentMP, parentIno, path.Base(oldPath), trash.mw.LastVerSeq, true)
 		if status == statusNoent {
 			return nil
 		}
@@ -815,7 +816,7 @@ func (trash *Trash) rename(oldPath, newPath string) error {
 		return err
 	}
 
-	return trash.mw.Rename_ll(oldInfo.Inode, path.Base(oldPath), newInfo.Inode, path.Base(newPath), oldPath, newPath, true)
+	return trash.mw.Rename_ll(oldInfo.Inode, path.Base(oldPath), newInfo.Inode, path.Base(newPath), oldPath, newPath, true, true)
 }
 
 func (trash *Trash) IsTrashRoot(parentIno uint64, name string) bool {
@@ -832,11 +833,11 @@ func (trash *Trash) ReadDir(path string) ([]proto.Dentry, error) {
 		log.LogWarnf("lookupPath %v failed:%v", path, err.Error())
 		return nil, err
 	}
-	return trash.mw.ReadDir_ll(info.Inode)
+	return trash.mw.ReadDir_ll(info.Inode, true)
 }
 
 func (trash *Trash) deleteTask(parentIno uint64, entry string, isDir bool, fullPath string) {
-	info, err := trash.mw.Delete_ll(parentIno, entry, isDir, fullPath)
+	info, err := trash.mw.Delete_ll(parentIno, entry, isDir, fullPath, true)
 	if err != nil {
 		log.LogWarnf("Delete_ll %v failed:%v", entry, err.Error())
 		return
@@ -846,7 +847,7 @@ func (trash *Trash) deleteTask(parentIno uint64, entry string, isDir bool, fullP
 			log.LogErrorf("deleteTask unexpected nil info %v %v", parentIno, entry)
 			return
 		}
-		trash.mw.Evict(info.Inode, fullPath)
+		trash.mw.Evict(info.Inode, fullPath, true)
 	}
 	log.LogDebugf("Delete_ll %v success", entry)
 }
@@ -902,8 +903,8 @@ func (trash *Trash) buildDeletedFileParentDirs() {
 		wg        = sync.WaitGroup{}
 	)
 	if value := trash.subDirCache.Get(trashCurrent); value == nil {
-		ino, _ := trash.mw.LookupPath(trashCurrent)
-		trashInfo, err = trash.mw.InodeGet_ll(ino)
+		ino, _ := trash.mw.LookupPath(trashCurrent, true)
+		trashInfo, err = trash.mw.InodeGet_ll(ino, true)
 		if err != nil {
 			log.LogWarnf("action[buildDeletedFileParentDirs] get %v inode info failed:%v", trashCurrent, err.Error())
 			return
@@ -944,7 +945,7 @@ func (trash *Trash) buildDeletedFileParentDirs() {
 		go rebuildTaskFunc()
 	}
 	for !noMore {
-		batches, err := trash.mw.ReadDirLimit_ll(trashInfo.Inode, from, DefaultReaddirLimit)
+		batches, err := trash.mw.ReadDirLimit_ll(trashInfo.Inode, from, DefaultReaddirLimit, true)
 		if err != nil {
 			log.LogErrorf("action[buildDeletedFileParentDirs] ReadDirLimit_ll: ino(%v) err(%v) from(%v)", trashInfo.Inode, err, from)
 			return
@@ -976,7 +977,7 @@ func (trash *Trash) buildDeletedFileParentDirsForExpired() {
 	defer log.LogDebugf("action[buildDeletedFileParentDirsForExpired]exit")
 	log.LogDebugf("action[buildDeletedFileParentDirsForExpired]enter")
 	// read trash root
-	entries, err := trash.mw.ReadDir_ll(trash.trashRootIno)
+	entries, err := trash.mw.ReadDir_ll(trash.trashRootIno, true)
 	if err != nil {
 		log.LogWarnf("action[buildDeletedFileParentDirsForExpired]ReadDir trashRoot  failed: %v", err.Error())
 		return
@@ -990,7 +991,7 @@ func (trash *Trash) buildDeletedFileParentDirsForExpired() {
 		if !strings.HasPrefix(entry.Name, ExpiredPrefix) {
 			continue
 		}
-		children, err := trash.mw.ReadDir_ll(entry.Inode)
+		children, err := trash.mw.ReadDir_ll(entry.Inode, true)
 		if err != nil {
 			log.LogWarnf("action[buildDeletedFileParentDirsForExpired] ReadDir  %v  failed:%v", entry.Name, err.Error())
 			continue
@@ -1080,7 +1081,7 @@ func (trash *Trash) rebuildDir(dirName, trashCurrent string, ino uint64, fileIno
 		return
 	}
 	log.LogDebugf("action[rebuildDir]: delete dir %v in %v[%v]", dirName, trashCurrent, ino)
-	_, err = trash.mw.Delete_ll(ino, path.Base(originName), true, path.Join(trashCurrent, dirName))
+	_, err = trash.mw.Delete_ll(ino, path.Base(originName), true, path.Join(trashCurrent, dirName), true)
 	if err != nil {
 		log.LogDebugf("action[rebuildDir]: delete dir %v in %v[%v] failed:err %v", dirName, trashCurrent, ino, err)
 	}
@@ -1089,7 +1090,7 @@ func (trash *Trash) rebuildDir(dirName, trashCurrent string, ino uint64, fileIno
 func (trash *Trash) recoverPosixPathName(fileName string, fileIno uint64) string {
 	if strings.HasPrefix(fileName, LongNamePrefix) {
 		log.LogDebugf("action[recoverPosixPathName] %v is long ino %v", fileName, fileIno)
-		info, err := trash.mw.InodeGet_ll(fileIno)
+		info, err := trash.mw.InodeGet_ll(fileIno, true)
 		if err != nil {
 			log.LogWarnf("action[recoverPosixPathName]:InodeGet_ll for %v[%v] failed:%v",
 				fileName, fileIno, err.Error())
@@ -1098,7 +1099,7 @@ func (trash *Trash) recoverPosixPathName(fileName string, fileIno uint64) string
 			return strings.Split(fileName, ParentDirPrefix)[0]
 		} else {
 			log.LogDebugf("action[recoverPosixPathName]:XAttrGet_ll for %v", fileName)
-			attrInfo, err := trash.mw.XAttrGet_ll(info.Inode, OriginalName)
+			attrInfo, err := trash.mw.XAttrGet_ll(info.Inode, OriginalName, true)
 			if err != nil {
 				log.LogWarnf("action[recoverPosixPathName]:XAttrGet_ll for %v[%v] failed:%v",
 					fileName, fileIno, err.Error())
@@ -1129,7 +1130,7 @@ func (trash *Trash) deleteSrcDirDirectly(parentIno uint64, fileName, fullPath st
 	if srcParentMP == nil {
 		return syscall.ENOENT
 	}
-	status, _, _, err := trash.mw.ddelete(srcParentMP, parentIno, fileName, 0, trash.mw.LastVerSeq, fullPath)
+	status, _, _, err := trash.mw.ddelete(srcParentMP, parentIno, fileName, 0, trash.mw.LastVerSeq, fullPath, true)
 	if err != nil {
 		log.LogErrorf("deleteSrcDirDirectly delete %v failed.err %v", fullPath, err)
 		return statusToErrno(status)

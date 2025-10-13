@@ -37,7 +37,7 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 		return info, nil
 	}
 
-	info, err = s.mw.InodeGet_ll(ino)
+	info, err = s.mw.InodeGet_ll(ino, false)
 	if err != nil || info == nil {
 		log.LogErrorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
 		if err != nil {

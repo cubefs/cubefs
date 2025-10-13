@@ -157,7 +157,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	log.LogInfof("check: read dst file finished, inode(%v), dstMd5: %v", e.Inode, dstMd5)
 
 	if dstMd5 != md5Value {
-		_, err = t.meta.InodeGet_ll(e.Inode)
+		_, err = t.meta.InodeGet_ll(e.Inode, true)
 		if err != nil {
 			err = fmt.Errorf("get inode failed after check md5, maybe deleted, inode %d, err %s", e.Inode, err.Error())
 			return

@@ -273,7 +273,7 @@ func (s *ManualScanner) handleFile(dentry *proto.ScanItem) {
 	s.applyPauseIfEnabled("handleFile", dentry.Name)
 	atomic.AddInt64(&s.currentStat.TotalFileScannedNum, 1)
 	s.limiter.Wait(context.Background())
-	info, err := s.mw.InodeGet_ll(dentry.Inode)
+	info, err := s.mw.InodeGet_ll(dentry.Inode, true)
 	if err != nil {
 		log.LogErrorf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
 		return
@@ -401,7 +401,7 @@ func (s *ManualScanner) handleDirLimitBreadthFirst(dentry *proto.ScanItem) {
 		default:
 		}
 		s.applyPauseIfEnabled("handleDirLimitBreadthFirst", dentry.Name)
-		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit), true)
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
 			log.LogErrorf("handleDirLimitBreadthFirst ReadDirLimit_ll err(%v), dentry(%v), marker(%v)", err, dentry, marker)
@@ -471,7 +471,7 @@ func (s *ManualScanner) handleDirLimitDepthFirst(dentry *proto.ScanItem) {
 		}
 		s.applyPauseIfEnabled("handleDirLimitDepthFirst", dentry.Name)
 
-		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit), true)
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
 			log.LogErrorf("handleDirLimitDepthFirst ReadDirLimit_ll err(%v), dentry(%v), marker(%v)", err, dentry, marker)
@@ -562,7 +562,7 @@ func (s *ManualScanner) FindPrefixInode() (inode uint64, prefixDirs []string, er
 	}
 	parentId := proto.RootIno
 	for _, dir := range dirs {
-		curIno, curMode, err := s.mw.Lookup_ll(parentId, dir)
+		curIno, curMode, err := s.mw.Lookup_ll(parentId, dir, true)
 
 		// If the part except the last part does not match exactly the same dentry, there is
 		// no path matching the path prefix. An ENOENT error is returned to the caller.

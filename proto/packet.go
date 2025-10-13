@@ -303,7 +303,132 @@ const (
 	OpFlashNodeScan             uint8 = 0xD4
 	OpFlashNodeTaskCommand      uint8 = 0xD5
 	OpFlashSDKHeartbeat         uint8 = 0xCB
+
+	// async operations: Master、SDK -> MetaNode
+	OpMetaAsyncReadDir           uint8 = 0xC0
+	OpMetaAsyncLookup            uint8 = 0xC1 // Async version of OpMetaLookup
+	OpMetaAsyncInodeGet          uint8 = 0xC2 // Async version of OpMetaInodeGet
+	OpMetaAsyncCreateInode       uint8 = 0xC3 // Async version of OpMetaCreateInode
+	OpMetaAsyncCreateDentry      uint8 = 0xC4 // Async version of OpMetaCreateDentry
+	OpMetaAsyncDeleteDentry      uint8 = 0xC5 // Async version of OpMetaDeleteDentry
+	OpQuotaAsyncCreateDentry     uint8 = 0xC6 // Async version of OpQuotaCreateDentry
+	OpMetaAsyncXAttrSet          uint8 = 0xC7 // Async version of OpMetaSetXAttr
+	OpMetaAsyncXAttrGet          uint8 = 0xC8 // Async version of OpMetaGetXAttr
+	OpMetaAsyncLockDir           uint8 = 0xC9 // Async version of OpMetaLockDir
+	OpMetaAsyncTxCreateInode     uint8 = 0xCA // Async version of OpMetaTxCreateInode
+	OpMetaAsyncTxCreateDentry    uint8 = 0xCC // Async version of OpMetaTxCreateDentry
+	OpMetaAsyncTxCreate          uint8 = 0xCD // Async version of OpMetaTxCreate
+	OpMetaAsyncGetInodeQuota     uint8 = 0xCE // Async version of OpMetaGetInodeQuota
+	OpMetaAsyncUnlinkInode       uint8 = 0xCF // Async version of OpMetaUnlinkInode
+	OpMetaAsyncEvictInode        uint8 = 0x94 // Async version of OpMetaEvictInode
+	OpMetaAsyncLinkInode         uint8 = 0x95 // Async version of OpMetaLinkInode
+	OpMetaAsyncUpdateDentry      uint8 = 0x96 // Async version of OpMetaUpdateDentry
+	OpMetaAsyncBatchDeleteDentry uint8 = 0x97 // Async version of OpMetaBatchDeleteDentry
 )
+
+// GOpInfo maps operation names to operation codes for metanode operations
+var GOpInfo map[string]uint8 = map[string]uint8{
+	"metainodeget":                      OpMetaInodeGet,
+	"metalookup":                        OpMetaLookup,
+	"metaextentslist":                   OpMetaExtentsList,
+	"metaobjextentslist":                OpMetaObjExtentsList,
+	"metabatchinodeget":                 OpMetaBatchInodeGet,
+	"metagetxattr":                      OpMetaGetXAttr,
+	"metagetallxattr":                   OpMetaGetAllXAttr,
+	"metabatchgetxattr":                 OpMetaBatchGetXAttr,
+	"metainodeaccesstimeget":            OpMetaInodeAccessTimeGet,
+	"metareaddir":                       OpMetaReadDir,
+	"metareaddironly":                   OpMetaReadDirOnly,
+	"metareaddirlimit":                  OpMetaReadDirLimit,
+	"metacreateinode":                   OpMetaCreateInode,
+	"metatxcreateinode":                 OpMetaTxCreateInode,
+	"metaquotacreateinode":              OpQuotaCreateInode,
+	"metacreatedentry":                  OpMetaCreateDentry,
+	"metatxcreatedentry":                OpMetaTxCreateDentry,
+	"metaquotacreatedentry":             OpQuotaCreateDentry,
+	"metaupdatedentry":                  OpMetaUpdateDentry,
+	"metatxupdatedentry":                OpMetaTxUpdateDentry,
+	"metasetattr":                       OpMetaSetattr,
+	"metaextentsadd":                    OpMetaExtentsAdd,
+	"metaextentaddwithcheck":            OpMetaExtentAddWithCheck,
+	"metabatchextentsadd":               OpMetaBatchExtentsAdd,
+	"metabatchobjextentsadd":            OpMetaBatchObjExtentsAdd,
+	"metasetxattr":                      OpMetaSetXAttr,
+	"metaupdatexattr":                   OpMetaUpdateXAttr,
+	"metabatchsetxattr":                 OpMetaBatchSetXAttr,
+	"metalinkinode":                     OpMetaLinkInode,
+	"metatxlinkinode":                   OpMetaTxLinkInode,
+	"metaupdateinodemeta":               OpMetaUpdateInodeMeta,
+	"metadeletedentry":                  OpMetaDeleteDentry,
+	"metatxdeletedentry":                OpMetaTxDeleteDentry,
+	"metabatchdeletedentry":             OpMetaBatchDeleteDentry,
+	"metaunlinkinode":                   OpMetaUnlinkInode,
+	"metatxunlinkinode":                 OpMetaTxUnlinkInode,
+	"metabatchunlinkinode":              OpMetaBatchUnlinkInode,
+	"metadeleteinode":                   OpMetaDeleteInode,
+	"metabatchdeleteinode":              OpMetaBatchDeleteInode,
+	"metaremovexattr":                   OpMetaRemoveXAttr,
+	"metatruncate":                      OpMetaTruncate,
+	"metaevictinode":                    OpMetaEvictInode,
+	"metabatchevictinode":               OpMetaBatchEvictInode,
+	"metaextentsdel":                    OpMetaExtentsDel,
+	"metalistxattr":                     OpMetaListXAttr,
+	"metabatchsetinodequota":            OpMetaBatchSetInodeQuota,
+	"metabatchdeleteinodequota":         OpMetaBatchDeleteInodeQuota,
+	"metagetinodequota":                 OpMetaGetInodeQuota,
+	"metalockdir":                       OpMetaLockDir,
+	"createmultipart":                   OpCreateMultipart,
+	"listmultiparts":                    OpListMultiparts,
+	"removemultipart":                   OpRemoveMultipart,
+	"addmultipartpart":                  OpAddMultipartPart,
+	"getmultipart":                      OpGetMultipart,
+	"getexpiredmultipart":               OpGetExpiredMultipart,
+	"metatxcreate":                      OpMetaTxCreate,
+	"txcommit":                          OpTxCommit,
+	"metatxget":                         OpMetaTxGet,
+	"txcommitrm":                        OpTxCommitRM,
+	"txrollbackrm":                      OpTxRollbackRM,
+	"txrollback":                        OpTxRollback,
+	"metagetuniqid":                     OpMetaGetUniqID,
+	"metagetappliedid":                  OpMetaGetAppliedID,
+	"createmetapartition":               OpCreateMetaPartition,
+	"deletemetapartition":               OpDeleteMetaPartition,
+	"updatemetapartition":               OpUpdateMetaPartition,
+	"loadmetapartition":                 OpLoadMetaPartition,
+	"decommissionmetapartition":         OpDecommissionMetaPartition,
+	"addmetapartitionraftmember":        OpAddMetaPartitionRaftMember,
+	"removemetapartitionraftmember":     OpRemoveMetaPartitionRaftMember,
+	"metapartitiontrytoleader":          OpMetaPartitionTryToLeader,
+	"metanodeheartbeat":                 OpMetaNodeHeartbeat,
+	"israftstatusok":                    OpIsRaftStatusOk,
+	"freezeemptymetapartition":          OpFreezeEmptyMetaPartition,
+	"backupemptymetapartition":          OpBackupEmptyMetaPartition,
+	"removebackupmetapartition":         OpRemoveBackupMetaPartition,
+	"metarenewalforbiddenmigration":     OpMetaRenewalForbiddenMigration,
+	"metaupdateextentkeyaftermigration": OpMetaUpdateExtentKeyAfterMigration,
+	"metadeletemigrationextentkey":      OpDeleteMigrationExtentKey,
+	"metafreeinodesonraftfollower":      OpMetaFreeInodesOnRaftFollower,
+	"versionoperation":                  OpVersionOperation,
+
+	"metaasynclookup":           OpMetaAsyncLookup,
+	"metaasyncinodeget":         OpMetaAsyncInodeGet,
+	"metaasyncreaddirlimit":     OpMetaAsyncReadDir,
+	"metaasynccreateinode":      OpMetaAsyncCreateInode,
+	"metaasynccreatedentry":     OpMetaAsyncCreateDentry,
+	"metaasyncdeleteentry":      OpMetaAsyncDeleteDentry,
+	"metaasyncupdatedentry":     OpMetaAsyncUpdateDentry,
+	"metaasyncbatchdeleteentry": OpMetaAsyncBatchDeleteDentry,
+	"metaasyncunlinkinode":      OpMetaAsyncUnlinkInode,
+	"metaasyncevictinode":       OpMetaAsyncEvictInode,
+	"metaasynclinkinode":        OpMetaAsyncLinkInode,
+	"metaasyncxattrset":         OpMetaAsyncXAttrSet,
+	"metaasyncxattrget":         OpMetaAsyncXAttrGet,
+	"metaasynclockdir":          OpMetaAsyncLockDir,
+	"metaasynctxcreateinode":    OpMetaAsyncTxCreateInode,
+	"metaasynctxcreatedentry":   OpMetaAsyncTxCreateDentry,
+	"metaasynctxcreate":         OpMetaAsyncTxCreate,
+	"metaasyncgetinodequota":    OpMetaAsyncGetInodeQuota,
+}
 
 const (
 	WriteDeadlineTime = 5
@@ -753,6 +878,44 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpIsRaftStatusOk"
 	case OpFlashSDKHeartbeat:
 		m = "OpFlashSDKHeartbeat"
+	case OpMetaAsyncLookup:
+		m = "OpMetaAsyncLookup"
+	case OpMetaAsyncInodeGet:
+		m = "OpMetaAsyncInodeGet"
+	case OpMetaAsyncCreateInode:
+		m = "OpMetaAsyncCreateInode"
+	case OpMetaAsyncCreateDentry:
+		m = "OpMetaAsyncCreateDentry"
+	case OpMetaAsyncDeleteDentry:
+		m = "OpMetaAsyncDeleteDentry"
+	case OpMetaAsyncXAttrSet:
+		m = "OpMetaAsyncXAttrSet"
+	case OpMetaAsyncXAttrGet:
+		m = "OpMetaAsyncXAttrGet"
+	case OpMetaAsyncLockDir:
+		m = "OpMetaAsyncLockDir"
+	case OpMetaAsyncTxCreateInode:
+		m = "OpMetaAsyncTxCreateInode"
+	case OpMetaAsyncTxCreateDentry:
+		m = "OpMetaAsyncTxCreateDentry"
+	case OpMetaAsyncReadDir:
+		m = "OpMetaAsyncReadDir"
+	case OpMetaAsyncTxCreate:
+		m = "OpMetaAsyncTxCreate"
+	case OpMetaAsyncUnlinkInode:
+		m = "OpMetaAsyncUnlinkInode"
+	case OpMetaAsyncGetInodeQuota:
+		m = "OpMetaAsyncGetInodeQuota"
+	case OpMetaAsyncEvictInode:
+		m = "OpMetaAsyncEvictInode"
+	case OpMetaAsyncLinkInode:
+		m = "OpMetaAsyncLinkInode"
+	case OpMetaAsyncUpdateDentry:
+		m = "OpMetaAsyncUpdateDentry"
+	case OpMetaAsyncBatchDeleteDentry:
+		m = "OpMetaAsyncBatchDeleteDentry"
+	case OpQuotaAsyncCreateDentry:
+		m = "OpQuotaAsyncCreateDentry"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}

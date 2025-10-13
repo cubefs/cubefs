@@ -62,11 +62,11 @@ const (
 )
 
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
-	rootIno, err := mw.LookupPath(subdir)
+	rootIno, err := mw.LookupPath(subdir, false)
 	if err != nil {
 		return 0, fmt.Errorf("GetRootIno: Lookup failed, subdir(%v) err(%v)", subdir, err)
 	}
-	info, err := mw.InodeGet_ll(rootIno)
+	info, err := mw.InodeGet_ll(rootIno, false)
 	if err != nil {
 		return 0, fmt.Errorf("GetRootIno: InodeGet failed, subdir(%v) err(%v)", subdir, err)
 	}
@@ -79,7 +79,7 @@ func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
 }
 
 // Looks up absolute path and returns the ino
-func (mw *MetaWrapper) LookupPath(subdir string) (uint64, error) {
+func (mw *MetaWrapper) LookupPath(subdir string, isAsync bool) (uint64, error) {
 	ino := proto.RootIno
 	if subdir == "" || subdir == "/" {
 		return ino, nil
@@ -90,7 +90,7 @@ func (mw *MetaWrapper) LookupPath(subdir string) (uint64, error) {
 		if dir == "/" || dir == "" {
 			continue
 		}
-		child, _, err := mw.Lookup_ll(ino, dir)
+		child, _, err := mw.Lookup_ll(ino, dir, isAsync)
 		if err != nil {
 			return 0, err
 		}
@@ -106,7 +106,7 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 	return
 }
 
-func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, fullPath string, ignoreExist bool) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, fullPath string, ignoreExist bool, isAsync bool) (*proto.InodeInfo, error) {
 	// if mw.EnableTransaction {
 	var txMask proto.TxOpMask
 	if proto.IsRegular(mode) {
@@ -120,14 +120,14 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 	}
 	txType := proto.TxMaskToType(txMask)
 	if mw.enableTx(txMask) && txType != proto.TxTypeUndefined {
-		return mw.txCreate_ll(parentID, name, mode, uid, gid, target, txType, fullPath, ignoreExist)
+		return mw.txCreate_ll(parentID, name, mode, uid, gid, target, txType, fullPath, ignoreExist, isAsync)
 	} else {
-		return mw.create_ll(parentID, name, mode, uid, gid, target, fullPath, ignoreExist)
+		return mw.create_ll(parentID, name, mode, uid, gid, target, fullPath, ignoreExist, isAsync)
 	}
 }
 
 func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, txType uint32,
-	fullPath string, ignoreExist bool,
+	fullPath string, ignoreExist bool, isAsync bool,
 ) (info *proto.InodeInfo, err error) {
 	var (
 		status int
@@ -146,7 +146,7 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 	var quotaIds []uint32
 	if mw.EnableQuota {
 		var quotaInfos map[uint32]*proto.MetaQuotaInfo
-		quotaInfos, err = mw.getInodeQuota(parentMP, parentID)
+		quotaInfos, err = mw.getInodeQuota(parentMP, parentID, isAsync)
 		if err != nil {
 			log.LogErrorf("Create_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
 			return nil, syscall.ENOENT
@@ -176,7 +176,7 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 			return nil, syscall.EAGAIN
 		}
 
-		status, info, err = mw.txIcreate(tx, mp, mode, uid, gid, target, quotaIds, fullPath)
+		status, info, err = mw.txIcreate(tx, mp, mode, uid, gid, target, quotaIds, fullPath, isAsync)
 		if err == nil && status == statusOK {
 			goto create_dentry
 		} else if status == statusNoSpace || status == statusForbid {
@@ -194,7 +194,7 @@ create_dentry:
 		log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
 	}
 
-	status, err = mw.txDcreate(tx, parentMP, parentID, name, info.Inode, mode, quotaIds, fullPath, ignoreExist)
+	status, err = mw.txDcreate(tx, parentMP, parentID, name, info.Inode, mode, quotaIds, fullPath, ignoreExist, false)
 	if err != nil || status != statusOK {
 		return nil, statusErrToErrno(status, err)
 	}
@@ -207,7 +207,7 @@ create_dentry:
 }
 
 func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte,
-	fullPath string, ignoreExist bool,
+	fullPath string, ignoreExist bool, isAsync bool,
 ) (*proto.InodeInfo, error) {
 	var (
 		status       int
@@ -230,7 +230,7 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err = mw.iget(parentMP, parentID, mw.LastVerSeq)
+	status, info, err = mw.iget(parentMP, parentID, mw.LastVerSeq, isAsync)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -248,7 +248,7 @@ get_rwmp:
 	retryTime := 0
 	var quotaIds []uint32
 	if mw.EnableQuota {
-		quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+		quotaInfos, err := mw.getInodeQuota(parentMP, parentID, isAsync)
 		if err != nil {
 			log.LogErrorf("Create_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
 			return nil, syscall.ENOENT
@@ -260,7 +260,7 @@ get_rwmp:
 		for i := 0; i < length; i++ {
 			index := (int(epoch) + i) % length
 			mp = rwPartitions[index]
-			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds, fullPath)
+			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds, fullPath, isAsync)
 			if err == nil && status == statusOK {
 				goto create_dentry
 			} else if status == statusFull {
@@ -283,7 +283,7 @@ get_rwmp:
 		for i := 0; i < length; i++ {
 			index := (int(epoch) + i) % length
 			mp = rwPartitions[index]
-			status, info, err = mw.icreate(mp, mode, uid, gid, target, fullPath)
+			status, info, err = mw.icreate(mp, mode, uid, gid, target, fullPath, isAsync)
 			if err == nil && status == statusOK {
 				goto create_dentry
 			} else if status == statusFull {
@@ -307,29 +307,29 @@ get_rwmp:
 create_dentry:
 	log.LogDebugf("Create_ll name %v ino %v", name, info.Inode)
 	if mw.EnableQuota {
-		status, err = mw.quotaDcreate(parentMP, parentID, name, info.Inode, mode, quotaIds, fullPath, ignoreExist)
+		status, err = mw.quotaDcreate(parentMP, parentID, name, info.Inode, mode, quotaIds, fullPath, ignoreExist, isAsync)
 	} else {
-		status, err = mw.dcreate(parentMP, parentID, name, info.Inode, mode, fullPath, ignoreExist)
+		status, err = mw.dcreate(parentMP, parentID, name, info.Inode, mode, fullPath, ignoreExist, isAsync)
 	}
 	if err != nil {
 		if status == statusOpDirQuota || status == statusNoSpace {
-			mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer(), 0, fullPath)
-			mw.ievict(mp, info.Inode, fullPath)
+			mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer(), 0, fullPath, isAsync)
+			mw.ievict(mp, info.Inode, fullPath, isAsync)
 		}
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer(), 0, fullPath)
-			mw.ievict(mp, info.Inode, fullPath)
+			mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer(), 0, fullPath, isAsync)
+			mw.ievict(mp, info.Inode, fullPath, isAsync)
 		}
 		return nil, statusToErrno(status)
 	}
 	return info, nil
 }
 
-func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mode uint32, err error) {
+func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string, isAsync bool) (inode uint64, mode uint32, err error) {
 	defer func() {
-		log.LogDebugf("Lookup_ll parent id %v, name %v ,inode %v", parentID, name, inode)
+		log.LogDebugf("Lookup_ll parent id %v, name %v ,inode %v, isAsync %v", parentID, name, inode, isAsync)
 		//if err == nil && mw.RemoteCacheBloom != nil {
 		//	cacheBloom := mw.RemoteCacheBloom()
 		//	if cacheBloom.TestUint64(parentID) {
@@ -344,7 +344,7 @@ func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mo
 		return 0, 0, syscall.ENOENT
 	}
 
-	status, inode, mode, err := mw.lookup(parentMP, parentID, name, mw.VerReadSeq)
+	status, inode, mode, err := mw.lookup(parentMP, parentID, name, mw.VerReadSeq, isAsync)
 	if err != nil || status != statusOK {
 		return 0, 0, statusToErrno(status)
 	}
@@ -388,20 +388,20 @@ func (mw *MetaWrapper) BatchGetExpiredMultipart(prefix string, days int) (expire
 	return
 }
 
-func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInfo, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("InodeGet_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(mp, inode, mw.VerReadSeq)
+	status, info, err := mw.iget(mp, inode, mw.VerReadSeq, isAsync)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			// For NOENT error, pull the latest mp and give it another try,
 			// in case the mp view is outdated.
 			mw.triggerAndWaitForceUpdate()
-			return mw.doInodeGet(inode)
+			return mw.doInodeGet(inode, isAsync)
 		}
 		return nil, statusToErrno(status)
 	}
@@ -414,23 +414,23 @@ func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 			mw.qc.Put(inode, &qinfo)
 		}
 	}
-	log.LogDebugf("InodeGet_ll: info(%v)", info)
+	log.LogDebugf("InodeGet_ll: info(%v) isAsync(%v)", info, isAsync)
 	return info, nil
 }
 
 // Just like InodeGet but without retry
-func (mw *MetaWrapper) doInodeGet(inode uint64) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) doInodeGet(inode uint64, isAsync bool) (*proto.InodeInfo, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("InodeGet_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(mp, inode, mw.VerReadSeq)
+	status, info, err := mw.iget(mp, inode, mw.VerReadSeq, isAsync)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
-	log.LogDebugf("doInodeGet: info(%v)", info)
+	log.LogDebugf("doInodeGet: info(%v) isAsync(%v)", info, isAsync)
 	return info, nil
 }
 
@@ -550,7 +550,7 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno uint64, entry string, isDir bool) (error, bool) {
 	log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v)", parentIno, entry)
 
-	status, inode, mode, err := mw.lookup(parentMP, parentIno, entry, mw.LastVerSeq)
+	status, inode, mode, err := mw.lookup(parentMP, parentIno, entry, mw.LastVerSeq, false)
 	if err != nil || status != statusOK {
 		return statusToErrno(status), false
 	}
@@ -559,7 +559,7 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno u
 		log.LogErrorf("shouldNotMoveToTrash: No inode partition, parentID(%v) name(%v) ino(%v)", parentIno, entry, inode)
 		return syscall.EAGAIN, false
 	}
-	status, info, err := mw.iget(mp, inode, mw.LastVerSeq)
+	status, info, err := mw.iget(mp, inode, mw.LastVerSeq, true)
 	if err != nil || status != statusOK {
 		return statusToErrno(status), false
 	}
@@ -572,7 +572,7 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno u
 			return syscall.ENOTEMPTY, false
 		}
 		if mw.EnableQuota {
-			quotaInfos, err := mw.GetInodeQuota_ll(inode)
+			quotaInfos, err := mw.GetInodeQuota_ll(inode, true)
 			if err != nil {
 				log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
 				return syscall.ENOENT, false
@@ -629,16 +629,16 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno u
  * Note that the return value of InodeInfo might be nil without error,
  * and the caller should make sure InodeInfo is valid before using it.
  */
-func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool, fullPath string, isAsync bool) (*proto.InodeInfo, error) {
 	if mw.enableTx(proto.TxOpMaskRemove) {
-		return mw.txDelete_ll(parentID, name, isDir, fullPath)
+		return mw.txDelete_ll(parentID, name, isDir, fullPath, isAsync)
 	} else {
-		return mw.Delete_ll_EX(parentID, name, isDir, 0, fullPath)
+		return mw.Delete_ll_EX(parentID, name, isDir, 0, fullPath, isAsync)
 	}
 }
 
-func (mw *MetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
-	return mw.deletewithcond_ll(parentID, cond, name, isDir, fullPath)
+func (mw *MetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string, isAsync bool) (*proto.InodeInfo, error) {
+	return mw.deletewithcond_ll(parentID, cond, name, isDir, fullPath, isAsync)
 }
 
 func (mw *MetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, verSeq uint64, fullPath string) (*proto.InodeInfo, error) {
@@ -646,10 +646,10 @@ func (mw *MetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, v
 		verSeq = math.MaxUint64
 	}
 	log.LogDebugf("Delete_Ver_ll.parentId %v name %v isDir %v verSeq %v", parentID, name, isDir, verSeq)
-	return mw.Delete_ll_EX(parentID, name, isDir, verSeq, fullPath)
+	return mw.Delete_ll_EX(parentID, name, isDir, verSeq, fullPath, false)
 }
 
-func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, fullPath string) (info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, fullPath string, isAsync bool) (info *proto.InodeInfo, err error) {
 	var (
 		status int
 		inode  uint64
@@ -702,7 +702,7 @@ deleteDirectly:
 		}
 	}()
 
-	status, inode, mode, err = mw.lookup(parentMP, parentID, name, mw.LastVerSeq)
+	status, inode, mode, err = mw.lookup(parentMP, parentID, name, mw.LastVerSeq, isAsync)
 	if err != nil || status != statusOK {
 		return nil, statusErrToErrno(status, err)
 	}
@@ -718,7 +718,7 @@ deleteDirectly:
 	}
 
 	if isDir && mw.EnableQuota {
-		quotaInfos, err := mw.GetInodeQuota_ll(inode)
+		quotaInfos, err := mw.GetInodeQuota_ll(inode, isAsync)
 		if err != nil {
 			log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
 			return nil, syscall.ENOENT
@@ -736,7 +736,7 @@ deleteDirectly:
 		return nil, syscall.EAGAIN
 	}
 
-	status, err = mw.txCreateTX(tx, parentMP)
+	status, err = mw.txCreateTX(tx, parentMP, isAsync)
 	if status != statusOK || err != nil {
 		return nil, statusErrToErrno(status, err)
 	}
@@ -790,7 +790,7 @@ deleteDirectly:
  * and the caller should make sure InodeInfo is valid before using it.
  */
 
-func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, verSeq uint64, fullPath string) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, verSeq uint64, fullPath string, isAsync bool) (*proto.InodeInfo, error) {
 	var (
 		status          int
 		inode           uint64
@@ -839,7 +839,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 	}
 deleteDirectly:
 	if isDir {
-		status, inode, mode, err = mw.lookup(parentMP, parentID, name, verSeq)
+		status, inode, mode, err = mw.lookup(parentMP, parentID, name, verSeq, isAsync)
 		if err != nil || status != statusOK {
 			return nil, statusToErrno(status)
 		}
@@ -853,7 +853,7 @@ deleteDirectly:
 				log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
 				return nil, syscall.EAGAIN
 			}
-			status, info, err = mw.iget(mp, inode, verSeq)
+			status, info, err = mw.iget(mp, inode, verSeq, isAsync)
 			if err != nil || status != statusOK {
 				return nil, statusToErrno(status)
 			}
@@ -862,7 +862,7 @@ deleteDirectly:
 			}
 		}
 		if mw.EnableQuota {
-			quotaInfos, err := mw.GetInodeQuota_ll(inode)
+			quotaInfos, err := mw.GetInodeQuota_ll(inode, isAsync)
 			if err != nil {
 				log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
 				return nil, syscall.ENOENT
@@ -883,7 +883,7 @@ deleteDirectly:
 		}
 	} else {
 		if mw.volDeleteLockTime > 0 {
-			status, inode, _, err = mw.lookup(parentMP, parentID, name, verSeq)
+			status, inode, _, err = mw.lookup(parentMP, parentID, name, verSeq, isAsync)
 			if err != nil || status != statusOK {
 				return nil, statusToErrno(status)
 			}
@@ -892,7 +892,7 @@ deleteDirectly:
 				log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
 				return nil, syscall.EAGAIN
 			}
-			status, info, err = mw.iget(mp, inode, verSeq)
+			status, info, err = mw.iget(mp, inode, verSeq, isAsync)
 			if err != nil || status != statusOK {
 				return nil, statusToErrno(status)
 			}
@@ -905,7 +905,7 @@ deleteDirectly:
 
 	log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
 
-	status, inode, _, err = mw.ddelete(parentMP, parentID, name, inodeCreateTime, verSeq, fullPath)
+	status, inode, _, err = mw.ddelete(parentMP, parentID, name, inodeCreateTime, verSeq, fullPath, isAsync)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
@@ -922,7 +922,7 @@ deleteDirectly:
 		return nil, nil
 	}
 	log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
-	status, info, err = mw.iunlink(mp, inode, verSeq, denVer, fullPath)
+	status, info, err = mw.iunlink(mp, inode, verSeq, denVer, fullPath, isAsync)
 	if err != nil || status != statusOK {
 		log.LogDebugf("action[Delete_ll] parentID %v inode %v name %v verSeq %v err %v", parentID, inode, name, verSeq, err)
 		return nil, nil
@@ -932,7 +932,7 @@ deleteDirectly:
 }
 
 func isObjectLocked(mw *MetaWrapper, inode uint64, name string) error {
-	xattrInfo, err := mw.XAttrGet_ll(inode, "oss:lock")
+	xattrInfo, err := mw.XAttrGet_ll(inode, "oss:lock", false)
 	if err != nil {
 		log.LogErrorf("isObjectLocked: check ObjectLock err(%v) name(%v)", err, name)
 		return err
@@ -951,7 +951,7 @@ func isObjectLocked(mw *MetaWrapper, inode uint64, name string) error {
 	return nil
 }
 
-func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isDir bool, fullPath string, isAsync bool) (*proto.InodeInfo, error) {
 	err := isObjectLocked(mw, cond, name)
 	if err != nil {
 		return nil, err
@@ -972,7 +972,7 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 	}
 
 	if isDir {
-		status, inode, mode, err = mw.lookup(parentMP, parentID, name, mw.LastVerSeq)
+		status, inode, mode, err = mw.lookup(parentMP, parentID, name, mw.LastVerSeq, isAsync)
 		if err != nil || status != statusOK {
 			return nil, statusToErrno(status)
 		}
@@ -984,14 +984,14 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 			log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
 			return nil, syscall.EAGAIN
 		}
-		status, info, err = mw.iget(mp, inode, mw.VerReadSeq)
+		status, info, err = mw.iget(mp, inode, mw.VerReadSeq, isAsync)
 		if err != nil || status != statusOK {
 			return nil, statusToErrno(status)
 		}
 		if info == nil || info.Nlink > 2 {
 			return nil, syscall.ENOTEMPTY
 		}
-		quotaInfos, err := mw.GetInodeQuota_ll(inode)
+		quotaInfos, err := mw.GetInodeQuota_ll(inode, isAsync)
 		if err != nil {
 			log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
 			return nil, syscall.ENOENT
@@ -1011,7 +1011,7 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 			Type:  mode,
 		},
 	}
-	status, resp, err := mw.ddeletes(parentMP, parentID, dentry, []string{fullPath})
+	status, resp, err := mw.ddeletes(parentMP, parentID, dentry, []string{fullPath}, isAsync)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			return nil, nil
@@ -1032,7 +1032,7 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 		return nil, nil
 	}
 
-	status, info, err = mw.iunlink(mp, resp.Items[0].Inode, 0, 0, fullPath)
+	status, info, err = mw.iunlink(mp, resp.Items[0].Inode, 0, 0, fullPath, isAsync)
 	if err != nil || status != statusOK {
 		return nil, nil
 	}
@@ -1046,15 +1046,15 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 	return info, nil
 }
 
-func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, srcFullPath string, dstFullPath string, overwritten bool) (err error) {
+func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, srcFullPath string, dstFullPath string, overwritten bool, isAsync bool) (err error) {
 	if mw.enableTx(proto.TxOpMaskRename) {
-		return mw.txRename_ll(srcParentID, srcName, dstParentID, dstName, srcFullPath, dstFullPath, overwritten)
+		return mw.txRename_ll(srcParentID, srcName, dstParentID, dstName, srcFullPath, dstFullPath, overwritten, isAsync)
 	} else {
-		return mw.rename_ll(srcParentID, srcName, dstParentID, dstName, srcFullPath, dstFullPath, overwritten)
+		return mw.rename_ll(srcParentID, srcName, dstParentID, dstName, srcFullPath, dstFullPath, overwritten, isAsync)
 	}
 }
 
-func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, srcFullPath string, dstFullPath string, overwritten bool) (err error) {
+func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, srcFullPath string, dstFullPath string, overwritten bool, isAsync bool) (err error) {
 	var tx *Transaction
 	defer func() {
 		if tx != nil {
@@ -1071,7 +1071,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		return syscall.ENOENT
 	}
 	// look up for the src ino
-	status, srcInode, srcMode, err := mw.lookup(srcParentMP, srcParentID, srcName, mw.LastVerSeq)
+	status, srcInode, srcMode, err := mw.lookup(srcParentMP, srcParentID, srcName, mw.LastVerSeq, isAsync)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
@@ -1083,7 +1083,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 
 	funcs := make([]func() (int, error), 0)
 
-	status, dstInode, dstMode, err := mw.lookup(dstParentMP, dstParentID, dstName, mw.LastVerSeq)
+	status, dstInode, dstMode, err := mw.lookup(dstParentMP, dstParentID, dstName, mw.LastVerSeq, isAsync)
 	if err == nil && status == statusOK {
 
 		// Note that only regular files are allowed to be overwritten.
@@ -1126,7 +1126,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		funcs = append(funcs, func() (int, error) {
 			var newSt int
 			var newErr error
-			newSt, newErr = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{}, dstFullPath, false)
+			newSt, newErr = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{}, dstFullPath, false, false)
 			return newSt, newErr
 		})
 	} else {
@@ -1147,7 +1147,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 	}
 
 	// 1. create transaction
-	status, err = mw.txCreateTX(tx, dstParentMP)
+	status, err = mw.txCreateTX(tx, dstParentMP, isAsync)
 	if status != statusOK || err != nil {
 		return statusErrToErrno(status, err)
 	}
@@ -1174,7 +1174,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 	return nil
 }
 
-func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, srcFullPath string, dstFullPath string, overwritten bool) (err error) {
+func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, srcFullPath string, dstFullPath string, overwritten bool, isAsync bool) (err error) {
 	var (
 		oldInode   uint64
 		lastVerSeq uint64
@@ -1197,7 +1197,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(dstParentMP, dstParentID, mw.VerReadSeq)
+	status, info, err := mw.iget(dstParentMP, dstParentID, mw.VerReadSeq, isAsync)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
@@ -1209,7 +1209,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	// look up for the src ino
-	status, inode, mode, err := mw.lookup(srcParentMP, srcParentID, srcName, mw.VerReadSeq)
+	status, inode, mode, err := mw.lookup(srcParentMP, srcParentID, srcName, mw.VerReadSeq, isAsync)
 	if err != nil || status != statusOK {
 		log.LogErrorf("Rename_ll: no such srcParentID %v srcFullPath(%v) failed %v", srcParentID, srcFullPath, err)
 		return statusToErrno(status)
@@ -1220,14 +1220,14 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return syscall.ENOENT
 	}
 
-	status, _, err = mw.ilink(srcMP, inode, srcFullPath)
+	status, _, err = mw.ilink(srcMP, inode, srcFullPath, isAsync)
 	if err != nil || status != statusOK {
 		log.LogErrorf("Rename_ll:ilink srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
 		return statusToErrno(status)
 	}
 
 	// create dentry in dst parent
-	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode, dstFullPath, false)
+	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode, dstFullPath, false, isAsync)
 	if err != nil {
 		if status == statusOpDirQuota {
 			log.LogErrorf("Rename_ll:dcreate srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
@@ -1236,7 +1236,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return syscall.EAGAIN
 	}
 	var srcInodeInfo *proto.InodeInfo
-	srcInodeInfo, _ = mw.InodeGet_ll(inode)
+	srcInodeInfo, _ = mw.InodeGet_ll(inode, isAsync)
 
 	// Note that only regular files are allowed to be overwritten.
 	if status == statusExist && (proto.IsSymlink(mode) || proto.IsRegular(mode)) {
@@ -1244,7 +1244,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			return syscall.EEXIST
 		}
 
-		status, oldInode, err = mw.dupdate(dstParentMP, dstParentID, dstName, inode, dstFullPath)
+		status, oldInode, err = mw.dupdate(dstParentMP, dstParentID, dstName, inode, dstFullPath, isAsync)
 		if err != nil {
 			return syscall.EAGAIN
 		}
@@ -1253,13 +1253,13 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	if status != statusOK {
-		mw.iunlink(srcMP, inode, lastVerSeq, 0, srcFullPath)
+		mw.iunlink(srcMP, inode, lastVerSeq, 0, srcFullPath, isAsync)
 		return statusToErrno(status)
 	}
 	var denVer uint64
 	// delete dentry from src parent
 
-	status, _, denVer, err = mw.ddelete(srcParentMP, srcParentID, srcName, 0, lastVerSeq, srcFullPath)
+	status, _, denVer, err = mw.ddelete(srcParentMP, srcParentID, srcName, 0, lastVerSeq, srcFullPath, isAsync)
 
 	if err != nil {
 		log.LogErrorf("Rename_ll:ddelete srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
@@ -1270,26 +1270,26 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			e   error
 		)
 		if oldInode == 0 {
-			sts, inode, denVer, e = mw.ddelete(dstParentMP, dstParentID, dstName, 0, lastVerSeq, dstFullPath)
+			sts, inode, denVer, e = mw.ddelete(dstParentMP, dstParentID, dstName, 0, lastVerSeq, dstFullPath, isAsync)
 		} else {
-			sts, denVer, e = mw.dupdate(dstParentMP, dstParentID, dstName, oldInode, dstFullPath)
+			sts, denVer, e = mw.dupdate(dstParentMP, dstParentID, dstName, oldInode, dstFullPath, isAsync)
 		}
 		if e == nil && sts == statusOK {
-			mw.iunlink(srcMP, inode, lastVerSeq, denVer, srcFullPath)
+			mw.iunlink(srcMP, inode, lastVerSeq, denVer, srcFullPath, isAsync)
 		}
 		log.LogErrorf("Rename_ll:#### srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
 		return statusToErrno(status)
 	}
 
-	mw.iunlink(srcMP, inode, lastVerSeq, denVer, srcFullPath)
+	mw.iunlink(srcMP, inode, lastVerSeq, denVer, srcFullPath, isAsync)
 
 	if oldInode != 0 {
 		// overwritten
 		inodeMP := mw.getPartitionByInode(oldInode)
 		if inodeMP != nil {
-			mw.iunlink(inodeMP, oldInode, lastVerSeq, 0, dstFullPath)
+			mw.iunlink(inodeMP, oldInode, lastVerSeq, 0, dstFullPath, isAsync)
 			// evict oldInode to avoid oldInode becomes orphan inode
-			mw.ievict(inodeMP, oldInode, dstFullPath)
+			mw.ievict(inodeMP, oldInode, dstFullPath, isAsync)
 		}
 	}
 	mw.DeleteInoInfoCache(srcInodeInfo.Inode)
@@ -1300,14 +1300,14 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 }
 
 // Read all dentries with parentID
-func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
+func (mw *MetaWrapper) ReadDir_ll(parentID uint64, isAsync bool) ([]proto.Dentry, error) {
 	var (
 		noMore   = false
 		from     = ""
 		children = make([]proto.Dentry, 0)
 	)
 	for !noMore {
-		batches, err := mw.ReadDirLimit_ll(parentID, from, DefaultReaddirLimit)
+		batches, err := mw.ReadDirLimit_ll(parentID, from, DefaultReaddirLimit, isAsync)
 		if err != nil {
 			return nil, err
 		}
@@ -1341,7 +1341,7 @@ func (mw *MetaWrapper) ReadDirLimitForSnapShotClean(parentID uint64, from string
 	if idDir {
 		opt |= uint8(proto.FlagsSnapshotDelDir)
 	}
-	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, verSeq, opt)
+	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, verSeq, opt, false)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1352,14 +1352,14 @@ func (mw *MetaWrapper) ReadDirLimitForSnapShotClean(parentID uint64, from string
 }
 
 // Read limit count dentries with parentID, start from string
-func (mw *MetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error) {
-	log.LogDebugf("action[ReadDirLimit_ll] parentID %v from %v limit %v", parentID, from, limit)
+func (mw *MetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error) {
+	log.LogDebugf("action[ReadDirLimit_ll] parentID %v from %v limit %v isAsync %v", parentID, from, limit, isAsync)
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		return nil, syscall.ENOENT
 	}
 
-	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, mw.VerReadSeq, 0)
+	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, mw.VerReadSeq, 0, isAsync)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1373,7 +1373,7 @@ func (mw *MetaWrapper) DentryCreate_ll(parentID uint64, name string, inode uint6
 	}
 	var err error
 	var status int
-	if status, err = mw.dcreate(parentMP, parentID, name, inode, mode, fullPath, false); err != nil || status != statusOK {
+	if status, err = mw.dcreate(parentMP, parentID, name, inode, mode, fullPath, false, false); err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
 	return nil
@@ -1386,7 +1386,7 @@ func (mw *MetaWrapper) DentryUpdate_ll(parentID uint64, name string, inode uint6
 		return
 	}
 	var status int
-	status, oldInode, err = mw.dupdate(parentMP, parentID, name, inode, fullPath)
+	status, oldInode, err = mw.dupdate(parentMP, parentID, name, inode, fullPath, false)
 	if err != nil || status != statusOK {
 		err = statusToErrno(status)
 		return
@@ -1559,7 +1559,7 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64, fullPath
 		return nil, syscall.EAGAIN
 	}
 
-	status, err = mw.txCreateTX(tx, parentMP)
+	status, err = mw.txCreateTX(tx, parentMP, false)
 	if status != statusOK || err != nil {
 		return nil, statusErrToErrno(status, err)
 	}
@@ -1580,7 +1580,7 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64, fullPath
 		var ifo *proto.InodeInfo
 
 		if mw.EnableQuota {
-			quotaInfos, newErr := mw.getInodeQuota(parentMP, parentID)
+			quotaInfos, newErr := mw.getInodeQuota(parentMP, parentID, false)
 			if newErr != nil {
 				log.LogErrorf("link: get parent quota fail, parentID(%v) err(%v)", parentID, newErr)
 				return statusError, syscall.ENOENT
@@ -1591,12 +1591,12 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64, fullPath
 			}
 		}
 
-		newSt, ifo, newErr = mw.iget(mp, ino, 0)
+		newSt, ifo, newErr = mw.iget(mp, ino, 0, false)
 		if newErr != nil || newSt != statusOK {
 			return newSt, newErr
 		}
 
-		newSt, newErr = mw.txDcreate(tx, parentMP, parentID, name, ino, ifo.Mode, quotaIds, fullPath, false)
+		newSt, newErr = mw.txDcreate(tx, parentMP, parentID, name, ino, ifo.Mode, quotaIds, fullPath, false, false)
 		return newSt, newErr
 	})
 
@@ -1629,7 +1629,7 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(parentMP, parentID, mw.VerReadSeq)
+	status, info, err := mw.iget(parentMP, parentID, mw.VerReadSeq, false)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1647,13 +1647,13 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 	}
 
 	// increase inode nlink
-	status, info, err = mw.ilink(mp, ino, fullPath)
+	status, info, err = mw.ilink(mp, ino, fullPath, false)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
 	if mw.EnableQuota {
 		var quotaInfos map[uint32]*proto.MetaQuotaInfo
-		quotaInfos, err = mw.getInodeQuota(parentMP, parentID)
+		quotaInfos, err = mw.getInodeQuota(parentMP, parentID, false)
 		if err != nil {
 			log.LogErrorf("link: get parent quota fail, parentID(%v) err(%v)", parentID, err)
 			return nil, syscall.ENOENT
@@ -1663,22 +1663,22 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 			quotaIds = append(quotaIds, quotaId)
 		}
 		// create new dentry and refer to the inode
-		status, err = mw.quotaDcreate(parentMP, parentID, name, ino, info.Mode, quotaIds, fullPath, false)
+		status, err = mw.quotaDcreate(parentMP, parentID, name, ino, info.Mode, quotaIds, fullPath, false, false)
 	} else {
-		status, err = mw.dcreate(parentMP, parentID, name, ino, info.Mode, fullPath, false)
+		status, err = mw.dcreate(parentMP, parentID, name, ino, info.Mode, fullPath, false, false)
 	}
 	if err != nil {
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, ino, mw.Client.GetLatestVer(), 0, fullPath)
+			mw.iunlink(mp, ino, mw.Client.GetLatestVer(), 0, fullPath, false)
 		}
 		return nil, statusToErrno(status)
 	}
 	return info, nil
 }
 
-func (mw *MetaWrapper) Evict(inode uint64, fullPath string) error {
+func (mw *MetaWrapper) Evict(inode uint64, fullPath string, isAsync bool) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogWarnf("Evict: No such partition, ino(%v)", inode)
@@ -1687,7 +1687,7 @@ func (mw *MetaWrapper) Evict(inode uint64, fullPath string) error {
 
 	log.LogDebugf("Evict: ino(%v) mp(%v)", inode, mp.PartitionID)
 
-	status, err := mw.ievict(mp, inode, fullPath)
+	status, err := mw.ievict(mp, inode, fullPath, isAsync)
 	if err != nil || status != statusOK {
 		log.LogWarnf("Evict: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
@@ -1733,7 +1733,7 @@ get_rwmp:
 			log.LogErrorf("InodeCreate_ll: No parent partition, parentID(%v)", parentID)
 			return nil, syscall.ENOENT
 		}
-		quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+		quotaInfos, err := mw.getInodeQuota(parentMP, parentID, false)
 		if err != nil {
 			log.LogErrorf("InodeCreate_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
 			return nil, syscall.ENOENT
@@ -1744,7 +1744,7 @@ get_rwmp:
 		for i := 0; i < length; i++ {
 			index := (int(epoch) + i) % length
 			mp = rwPartitions[index]
-			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds, fullPath)
+			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds, fullPath, false)
 			if err == nil && status == statusOK {
 				return info, nil
 			} else if status == statusFull {
@@ -1767,7 +1767,7 @@ get_rwmp:
 		for i := 0; i < length; i++ {
 			index := (int(epoch) + i) % length
 			mp = rwPartitions[index]
-			status, info, err = mw.icreate(mp, mode, uid, gid, target, fullPath)
+			status, info, err = mw.icreate(mp, mode, uid, gid, target, fullPath, false)
 			if err == nil && status == statusOK {
 				return info, nil
 			} else if status == statusFull {
@@ -1797,7 +1797,7 @@ func (mw *MetaWrapper) InodeLink_ll(inode uint64, fullPath string) (*proto.Inode
 		log.LogErrorf("InodeLink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.ilink(mp, inode, fullPath)
+	status, info, err := mw.ilink(mp, inode, fullPath, false)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeLink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)
@@ -1816,7 +1816,7 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64, fullPath string) (*proto.Ino
 	if mw.Client != nil {
 		ver = mw.Client.GetLatestVer()
 	}
-	status, info, err := mw.iunlink(mp, inode, ver, 0, fullPath)
+	status, info, err := mw.iunlink(mp, inode, ver, 0, fullPath, false)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)
@@ -2020,7 +2020,7 @@ func (mw *MetaWrapper) ListMultipart_ll(prefix, delimiter, keyMarker string, mul
 	return sessions, nil
 }
 
-func (mw *MetaWrapper) XAttrSet_ll(inode uint64, name, value []byte) error {
+func (mw *MetaWrapper) XAttrSet_ll(inode uint64, name, value []byte, isAsync bool) error {
 	var err error
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
@@ -2028,12 +2028,12 @@ func (mw *MetaWrapper) XAttrSet_ll(inode uint64, name, value []byte) error {
 		return syscall.ENOENT
 	}
 	var status int
-	status, err = mw.setXAttr(mp, inode, name, value)
+	status, err = mw.setXAttr(mp, inode, name, value, isAsync)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
-	log.LogDebugf("XAttrSet_ll: set xattr: volume(%v) inode(%v) name(%v) value(%v) status(%v)",
-		mw.volname, inode, name, value, status)
+	log.LogDebugf("XAttrSet_ll: set xattr: volume(%v) inode(%v) name(%v) value(%v) status(%v) isAsync(%v)",
+		mw.volname, inode, name, value, status, isAsync)
 	return nil
 }
 
@@ -2076,14 +2076,14 @@ func (mw *MetaWrapper) XAttrGetAll_ll(inode uint64) (*proto.XAttrInfo, error) {
 	return xAttr, nil
 }
 
-func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string) (*proto.XAttrInfo, error) {
+func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string, isAsync bool) (*proto.XAttrInfo, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("InodeGet_ll: no such partition, ino(%v)", inode)
 		return nil, syscall.ENOENT
 	}
 
-	value, status, err := mw.getXAttr(mp, inode, name)
+	value, status, err := mw.getXAttr(mp, inode, name, isAsync)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -2096,8 +2096,8 @@ func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string) (*proto.XAttrInfo,
 		XAttrs: xAttrValues,
 	}
 
-	log.LogDebugf("XAttrGet_ll: get xattr: volume(%v) inode(%v) name(%v) value(%v)",
-		mw.volname, inode, name, value)
+	log.LogDebugf("XAttrGet_ll: get xattr: volume(%v) inode(%v) name(%v) value(%v) isAsync(%v)",
+		mw.volname, inode, name, value, isAsync)
 	return xAttr, nil
 }
 
@@ -2194,7 +2194,7 @@ func (mw *MetaWrapper) ReadDirOnly_ll(parentID uint64) ([]proto.Dentry, error) {
 		children = make([]proto.Dentry, 0)
 	)
 	for !noMore {
-		batches, err := mw.ReadDirLimit_ll(parentID, from, DefaultReaddirLimit)
+		batches, err := mw.ReadDirLimit_ll(parentID, from, DefaultReaddirLimit, false)
 		if err != nil {
 			return nil, err
 		}
@@ -2280,7 +2280,7 @@ func (mw *MetaWrapper) getDentrysWithDepthLimit(parentIno uint64, parentPath str
 	from := ""
 	var children []proto.Dentry
 	for !noMore {
-		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit, false)
 		if err != nil {
 			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
 			errCh <- err
@@ -2342,7 +2342,7 @@ func (mw *MetaWrapper) getDentryLimit(parentIno uint64, inodeCh chan<- uint64, e
 	from := ""
 	var children []proto.Dentry
 	for !noMore {
-		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit, false)
 		if err != nil {
 			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
 			errCh <- err
@@ -2748,7 +2748,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	from := ""
 	var children []proto.Dentry
 	for !noMore {
-		batches, err := mw.ReadDirLimit_ll(parentIno, from, uint64(readDirLimit))
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, uint64(readDirLimit), false)
 		if err != nil {
 			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
 			errCh <- err
@@ -2916,14 +2916,14 @@ func (mw *MetaWrapper) BatchDeleteInodeQuota_ll(inodes []uint64, quotaId uint32)
 	return
 }
 
-func (mw *MetaWrapper) GetInodeQuota_ll(inode uint64) (quotaInfos map[uint32]*proto.MetaQuotaInfo, err error) {
+func (mw *MetaWrapper) GetInodeQuota_ll(inode uint64, isAsync bool) (quotaInfos map[uint32]*proto.MetaQuotaInfo, err error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		err = fmt.Errorf("get partition by inode [%v] failed", inode)
 		return nil, err
 	}
 
-	quotaInfos, err = mw.getInodeQuota(mp, inode)
+	quotaInfos, err = mw.getInodeQuota(mp, inode, isAsync)
 	if err != nil {
 		log.LogErrorf("GetInodeQuota_ll get inode [%v] quota failed [%v]", inode, err)
 		return
@@ -3009,7 +3009,7 @@ func (mw *MetaWrapper) QueryTrashDisableByClient() bool {
 	return mw.disableTrashByClient
 }
 
-func (mw *MetaWrapper) LockDir(ino uint64, lease uint64, lockId int64) (retLockId int64, err error) {
+func (mw *MetaWrapper) LockDir(ino uint64, lease uint64, lockId int64, isAsync bool) (retLockId int64, err error) {
 	mp := mw.getPartitionByInode(ino)
 	if mp == nil {
 		log.LogErrorf("LockDir: no such partition, ino(%v)", ino)
@@ -3017,7 +3017,7 @@ func (mw *MetaWrapper) LockDir(ino uint64, lease uint64, lockId int64) (retLockI
 		return
 	}
 
-	retLockId, err = mw.lockDir(mp, ino, lease, lockId)
+	retLockId, err = mw.lockDir(mp, ino, lease, lockId, isAsync)
 	return
 }
 

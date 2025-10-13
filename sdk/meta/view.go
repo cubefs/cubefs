@@ -476,7 +476,7 @@ func (mw *MetaWrapper) IsQuotaLimitedById(inodeId uint64, size bool, files bool)
 		log.LogErrorf("IsQuotaLimitedById: inodeId(%v)", inodeId)
 		return true
 	}
-	quotaInfos, err := mw.getInodeQuota(mp, inodeId)
+	quotaInfos, err := mw.getInodeQuota(mp, inodeId, false)
 	if err != nil {
 		log.LogErrorf("IsQuotaLimitedById: get parent quota fail, inodeId(%v) err(%v)", inodeId, err)
 		return true

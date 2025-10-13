@@ -189,7 +189,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	}()
 
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil,
-		fullPath, false)
+		fullPath, false, false)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, nil, ParseError(err)
@@ -257,7 +257,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	}()
 	log.LogDebugf("TRACE Mkdir:enter")
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid,
-		req.Gid, nil, fullPath, false)
+		req.Gid, nil, fullPath, false, false)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -300,7 +300,7 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	}()
 	log.LogDebugf("TRACE Remove: parent(%v) entry(%v)", d.info.Inode, req.Name)
 
-	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir, fullPath)
+	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir, fullPath, false)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 		return ParseError(err)
@@ -353,7 +353,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		if dentryInfo == nil {
 			lookupMetric := exporter.NewCounter("lookupDcacheMiss")
 			lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
-			ino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
+			ino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name, false)
 			if err != nil {
 				if err != syscall.ENOENT {
 					log.LogErrorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
@@ -373,7 +373,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	} else {
 		cino, ok := d.dcache.Get(req.Name)
 		if !ok {
-			cino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
+			cino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name, false)
 			if err != nil {
 				if err != syscall.ENOENT {
 					log.LogErrorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
@@ -468,7 +468,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	} else {
 		dirCtx = DirContext{}
 	}
-	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
+	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit, false)
 	if err != nil {
 		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v) offset %v", d.info.Inode, err, req.Offset)
 		return make([]fuse.Dirent, 0), ParseError(err)
@@ -591,7 +591,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	from := ""
 	var children []proto.Dentry
 	for !noMore {
-		batches, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, from, DefaultReaddirLimit)
+		batches, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, from, DefaultReaddirLimit, false)
 		if err != nil {
 			log.LogErrorf("Readdir: ino(%v) err(%v) from(%v)", d.info.Inode, err, from)
 			return make([]fuse.Dirent, 0), ParseError(err)
@@ -672,7 +672,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		srcInode = ino
 	} else {
 		// will not get there
-		if ino, _, err := d.super.mw.Lookup_ll(d.info.Inode, req.OldName); err == nil {
+		if ino, _, err := d.super.mw.Lookup_ll(d.info.Inode, req.OldName, false); err == nil {
 			srcInode = ino
 		}
 	}
@@ -713,7 +713,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 			return fuse.EPERM
 		}
 	}
-	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, srcPath, dstPath, true)
+	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, srcPath, dstPath, true, false)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return ParseError(err)
@@ -782,7 +782,7 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	}()
 	fullPath := path.Join(d.getCwd(), req.Name)
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid,
-		nil, fullPath, false)
+		nil, fullPath, false, false)
 	if err != nil {
 		log.LogErrorf("Mknod: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -815,7 +815,7 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	}()
 	fullPath := path.Join(d.getCwd(), req.NewName)
 	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid,
-		req.Gid, []byte(req.Target), fullPath, false)
+		req.Gid, []byte(req.Target), fullPath, false, false)
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)
@@ -932,7 +932,7 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 		value = []byte(summaryStr)
 
 	} else {
-		info, err = d.super.mw.XAttrGet_ll(ino, name)
+		info, err = d.super.mw.XAttrGet_ll(ino, name, false)
 		if err != nil {
 			log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
 			return ParseError(err)
@@ -1003,7 +1003,7 @@ func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 		return fuse.ENOSYS
 	}
 	// TODO： implement flag to improve compatible (Mofei Zhang)
-	if err = d.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value)); err != nil {
+	if err = d.super.mw.XAttrSet_ll(ino, []byte(name), []byte(value), false); err != nil {
 		log.LogErrorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
 	}

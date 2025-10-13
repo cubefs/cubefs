@@ -305,7 +305,7 @@ func cfs_get_xattr(id C.int64_t, path *C.char, key *C.char) *C.char {
 	}
 
 	ino := info.Inode
-	xattrInfo, err := c.mw.XAttrGet_ll(ino, xattrKey)
+	xattrInfo, err := c.mw.XAttrGet_ll(ino, xattrKey, false)
 	if err != nil {
 		log.LogErrorf("cfs_get_xattr path(%v) ino(%v) key(%v) failed, err(%v)", dstPath, ino, xattrKey, err)
 		return C.CString("")
@@ -380,7 +380,7 @@ func cfs_symlink(id C.int64_t, src_path *C.char, dst_path *C.char) C.int {
 	}
 
 	parentIno := info.Inode
-	info, err = c.mw.Create_ll(parentIno, filename, proto.Mode(os.ModeSymlink|os.ModePerm), 0, 0, []byte(fullSrcPath), fullDstPath, false)
+	info, err = c.mw.Create_ll(parentIno, filename, proto.Mode(os.ModeSymlink|os.ModePerm), 0, 0, []byte(fullSrcPath), fullDstPath, false, false)
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)\n", parentIno, filename, err)
 		return errorToStatus(err)
@@ -851,7 +851,7 @@ func cfs_close(id C.int64_t, fd C.int) {
 
 	info := c.ic.Get(f.ino)
 	if info == nil {
-		info, _ = c.mw.InodeGet_ll(f.ino)
+		info, _ = c.mw.InodeGet_ll(f.ino, false)
 	}
 
 	f = c.releaseFD(uint(fd))
@@ -1067,7 +1067,7 @@ func cfs_readdir(id C.int64_t, fd C.int, dirents []C.struct_cfs_dirent, count C.
 
 	if f.dirp == nil {
 		f.dirp = &dirStream{}
-		dentries, err := c.mw.ReadDir_ll(f.ino)
+		dentries, err := c.mw.ReadDir_ll(f.ino, false)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -1121,7 +1121,7 @@ func cfs_lsdir(id C.int64_t, fd C.int, direntsInfo []C.struct_cfs_dirent_info, c
 
 	if f.dirp == nil {
 		f.dirp = &dirStream{}
-		dentries, err := c.mw.ReadDir_ll(f.ino)
+		dentries, err := c.mw.ReadDir_ll(f.ino, false)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -1223,7 +1223,7 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 		if dir == "/" || dir == "" {
 			continue
 		}
-		child, _, err := c.mw.Lookup_ll(pino, dir)
+		child, _, err := c.mw.Lookup_ll(pino, dir, false)
 		if err != nil {
 			if err == syscall.ENOENT {
 				info, err := c.mkdir(pino, dir, uint32(mode), dirpath)
@@ -1234,7 +1234,7 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 						return errorToStatus(err)
 					}
 					// if dir already exist, lookup and assign to child
-					child_ino, _, err := c.mw.Lookup_ll(pino, dir)
+					child_ino, _, err := c.mw.Lookup_ll(pino, dir, false)
 					if err != nil {
 						gerr = err
 						return errorToStatus(err)
@@ -1279,7 +1279,7 @@ func cfs_rmdir(id C.int64_t, path *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, true, absPath)
+	info, err = c.mw.Delete_ll(dirInfo.Inode, name, true, absPath, false)
 	c.ic.Delete(dirInfo.Inode)
 	c.dc.Delete(absPath)
 	return errorToStatus(err)
@@ -1311,7 +1311,7 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	_, mode, err := c.mw.Lookup_ll(dirInfo.Inode, name)
+	_, mode, err := c.mw.Lookup_ll(dirInfo.Inode, name, false)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1319,13 +1319,13 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return statusEISDIR
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false, absPath)
+	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false, absPath, false)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
 	if info != nil {
-		_ = c.mw.Evict(info.Inode, absPath)
+		_ = c.mw.Evict(info.Inode, absPath, false)
 		c.ic.Delete(info.Inode)
 		c.dc.Delete(absPath)
 	}
@@ -1363,7 +1363,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char, overwritten bool) C.int 
 		return errorToStatus(err)
 	}
 
-	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, overwritten)
+	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, overwritten, false)
 	c.ic.Delete(srcDirInfo.Inode)
 	c.ic.Delete(dstDirInfo.Inode)
 	c.dc.Delete(absFrom)
@@ -1383,7 +1383,7 @@ func cfs_fchmod(id C.int64_t, fd C.int, mode C.mode_t) C.int {
 		return statusEBADFD
 	}
 
-	info, err := c.mw.InodeGet_ll(f.ino)
+	info, err := c.mw.InodeGet_ll(f.ino, false)
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1683,7 +1683,7 @@ func (c *client) releaseFD(fd uint) *file {
 func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	ino, ok := c.dc.Get(gopath.Clean(path))
 	if !ok {
-		inoInterval, err := c.mw.LookupPath(gopath.Clean(path))
+		inoInterval, err := c.mw.LookupPath(gopath.Clean(path), false)
 		if err != nil {
 			return nil, err
 		}
@@ -1694,7 +1694,7 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	if info != nil {
 		return info, nil
 	}
-	info, err := c.mw.InodeGet_ll(ino)
+	info, err := c.mw.InodeGet_ll(ino, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1704,16 +1704,16 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 }
 
 func (c *client) lockDir(ino uint64, lease uint64, lockId int64) (retLockId int64, err error) {
-	return c.mw.LockDir(ino, lease, lockId)
+	return c.mw.LockDir(ino, lease, lockId, false)
 }
 
 func (c *client) unlockDir(ino uint64, lockId int64) error {
-	_, err := c.mw.LockDir(ino, 0, lockId)
+	_, err := c.mw.LockDir(ino, 0, lockId, false)
 	return err
 }
 
 func (c *client) getDirLock(ino uint64) ([]byte, error) {
-	info, err := c.mw.XAttrGet_ll(ino, "dir_lock")
+	info, err := c.mw.XAttrGet_ll(ino, "dir_lock", false)
 	if err != nil {
 		log.LogErrorf("getDirLock failed, ino(%v) err(%v)", ino, err)
 		return []byte(""), err
@@ -1735,13 +1735,13 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 
 func (c *client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false, false)
 }
 
 func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false, false)
 }
 
 func (c *client) openStream(f *file, fullPath string) {
@@ -1874,7 +1874,7 @@ func (c *client) fileSize(ino uint64) (size int, gen uint64) {
 		if info != nil {
 			return int(info.Size), info.Generation
 		}
-		if info, err := c.mw.InodeGet_ll(ino); err == nil {
+		if info, err := c.mw.InodeGet_ll(ino, false); err == nil {
 			size = int(info.Size)
 			gen = info.Generation
 		}

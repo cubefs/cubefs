@@ -489,7 +489,7 @@ func (rc *RemoteCache) getPathInode(path string) (ino uint64, err error) {
 			if dir == "/" || dir == "" {
 				continue
 			}
-			childIno, _, err = rc.metaWrapper.Lookup_ll(ino, dir)
+			childIno, _, err = rc.metaWrapper.Lookup_ll(ino, dir, false)
 			if err != nil {
 				ino = 0
 				return

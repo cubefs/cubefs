@@ -98,6 +98,7 @@ type MetaNode struct {
 	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
 	qosEnable                          bool
 	readDirIops                        int
+	opLimiter                          *OpLimiter
 
 	control common.Control
 
@@ -183,6 +184,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.newMetaManager(cfg); err != nil {
 		return
 	}
+
 	if err = m.startServer(); err != nil {
 		return
 	}
@@ -238,6 +240,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		err = errors.New("invalid configuration")
 		return
 	}
+
 	m.localAddr = cfg.GetString(cfgLocalIP)
 	m.listen = cfg.GetString(proto.ListenPort)
 	m.bindIp = cfg.GetBool(proto.BindIpKey)
@@ -307,6 +310,13 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	if m.readDirIops <= 0 {
 		m.readDirIops = defaultReadDirIops
 	}
+
+	m.opLimiter = newOpLimiter()
+	// Load operation rate limiter configuration
+	if err = m.loadOpLimiterConfig(cfg); err != nil {
+		return err
+	}
+
 	syslog.Printf("conf qosEnable=%v readDirIops=%v", m.qosEnable, m.readDirIops)
 	log.LogInfof("[parseConfig] qosEnable[%v] readDirIops[%v]", m.qosEnable, m.readDirIops)
 
@@ -663,6 +673,43 @@ func (m *MetaNode) AddConnection() {
 // RemoveConnection removes a connection.
 func (m *MetaNode) RemoveConnection() {
 	atomic.AddInt64(&m.connectionCnt, -1)
+}
+
+// loadOpLimiterConfig loads operation rate limiter configuration from config file
+func (m *MetaNode) loadOpLimiterConfig(cfg *config.Config) error {
+	supportedOps := make(map[string]bool)
+	for opName := range proto.GOpInfo {
+		supportedOps[opName] = true
+	}
+
+	configuredCount := 0
+
+	for opName := range supportedOps {
+		customLimit := cfg.GetInt(fmt.Sprintf("opLimit_%s", opName))
+		customTimeout := cfg.GetInt(fmt.Sprintf("opTimeout_%s", opName))
+
+		if customLimit > 0 {
+			timeout := uint32(0)
+			if customTimeout > 0 {
+				timeout = uint32(customTimeout)
+			}
+
+			if err := m.opLimiter.SetLimiter(opName, uint32(customLimit), timeout); err != nil {
+				log.LogWarnf("failed to set op limiter for %s: %v", opName, err)
+			} else {
+				log.LogInfof("set op limiter: %s limit=%d timeout=%d", opName, customLimit, timeout)
+				configuredCount++
+			}
+		}
+	}
+
+	if configuredCount > 0 {
+		log.LogInfof("op limiter loaded with %d configured operations", configuredCount)
+	} else {
+		log.LogInfof("op limiter loaded with no configured operations - all operations unlimited")
+	}
+
+	return nil
 }
 
 func getUpgradeCompatibleSettings() (volListForbidWriteOpOfProtoVer0 *proto.UpgradeCompatibleSettings, err error) {

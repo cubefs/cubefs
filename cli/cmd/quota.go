@@ -117,13 +117,13 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 
-				inodeId, err := metaWrapper.LookupPath(path)
+				inodeId, err := metaWrapper.LookupPath(path, false)
 				if err != nil {
 					stdout("get inode by fullPath %v fail %v\n", path, err)
 					return
 				}
 				quotaPathInfo.RootInode = inodeId
-				inodeInfo, err := metaWrapper.InodeGet_ll(inodeId)
+				inodeInfo, err := metaWrapper.InodeGet_ll(inodeId, false)
 				if err != nil {
 					stdout("get inode %v info fail %v\n", inodeId, err)
 					return
@@ -297,7 +297,7 @@ func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			quotaInfos, err := metaWrapper.GetInodeQuota_ll(inodeId)
+			quotaInfos, err := metaWrapper.GetInodeQuota_ll(inodeId, false)
 			if err != nil {
 				stdout("get indoe quota failed %v\n", err)
 				return
