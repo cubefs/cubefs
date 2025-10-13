@@ -366,7 +366,7 @@ func (c *Cluster) cancelDpDistributionOptimization() (err error) {
 				if dp.DecommissionDstAddr != "" {
 					dstNs, _, err = getTargetNodeset(dp.DecommissionDstAddr, c)
 					if err != nil {
-						log.LogWarnf("action[cancelDpNodesetBalance] dp %v find dst(%v) nodeset failed:%v",
+						log.LogWarnf("action[cancelDpDistributionOptimization] dp %v find dst(%v) nodeset failed:%v",
 							dp.PartitionID, dp.DecommissionDstAddr, err.Error())
 						mu.Lock()
 						failedDpIds = append(failedDpIds, dp.PartitionID)
@@ -381,7 +381,7 @@ func (c *Cluster) cancelDpDistributionOptimization() (err error) {
 						}
 						if dp.isSpecialReplicaCnt() && !dp.DecommissionRaftForce {
 							if (dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes) || dp.IsDecommissionFailed() {
-								log.LogDebugf("action[cancelDpNodesetBalance] try delete dp[%v] replica %v",
+								log.LogDebugf("action[cancelDpDistributionOptimization] try delete dp[%v] replica %v",
 									dp.PartitionID, dp.DecommissionDstAddr)
 
 								if dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes {
@@ -391,7 +391,7 @@ func (c *Cluster) cancelDpDistributionOptimization() (err error) {
 								// delete it from BadDataPartitionIds
 								err = c.removeDPFromBadDataPartitionIDs(dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.PartitionID)
 								if err != nil {
-									log.LogWarnf("action[cancelDpNodesetBalance] dp[%v] delete from bad dataPartitionIDs failed:%v", dp.PartitionID, err)
+									log.LogWarnf("action[cancelDpDistributionOptimization] dp[%v] delete from bad dataPartitionIDs failed:%v", dp.PartitionID, err)
 								}
 								removeAddr := dp.DecommissionDstAddr
 								// when special replica partition enter SpecialDecommissionWaitAddResFin, new replica is recoverd, so only
@@ -401,7 +401,7 @@ func (c *Cluster) cancelDpDistributionOptimization() (err error) {
 								}
 								err = dp.removeReplicaByForce(c, removeAddr, true, false)
 								if err != nil {
-									log.LogWarnf("action[cancelDpNodesetBalance] dp[%v] remove decommission dst replica %v failed: %v",
+									log.LogWarnf("action[cancelDpDistributionOptimization] dp[%v] remove decommission dst replica %v failed: %v",
 										dp.PartitionID, removeAddr, err)
 								}
 							} else if dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
@@ -411,17 +411,17 @@ func (c *Cluster) cancelDpDistributionOptimization() (err error) {
 							}
 						} else {
 							if dp.IsDecommissionRunning() || dp.IsDecommissionFailed() {
-								log.LogDebugf("action[cancelDpNodesetBalance] try delete dp[%v] replica %v",
+								log.LogDebugf("action[cancelDpDistributionOptimization] try delete dp[%v] replica %v",
 									dp.PartitionID, dp.DecommissionDstAddr)
 								// delete it from BadDataPartitionIds
 								err = c.removeDPFromBadDataPartitionIDs(dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.PartitionID)
 								if err != nil {
-									log.LogWarnf("action[cancelDpNodesetBalance] dp[%v] delete from bad dataPartitionIDs failed:%v", dp.PartitionID, err)
+									log.LogWarnf("action[cancelDpDistributionOptimization] dp[%v] delete from bad dataPartitionIDs failed:%v", dp.PartitionID, err)
 								}
 								removeAddr := dp.DecommissionDstAddr
 								err = dp.removeReplicaByForce(c, removeAddr, true, false)
 								if err != nil {
-									log.LogWarnf("action[cancelDpNodesetBalance] dp[%v] remove decommission dst replica %v failed: %v",
+									log.LogWarnf("action[cancelDpDistributionOptimization] dp[%v] remove decommission dst replica %v failed: %v",
 										dp.PartitionID, removeAddr, err)
 								}
 							}
@@ -433,19 +433,27 @@ func (c *Cluster) cancelDpDistributionOptimization() (err error) {
 				msg := fmt.Sprintf("dp(%v) cancel decommission", dp.decommissionInfo())
 				dp.ResetDecommissionStatus()
 				dp.setRestoreReplicaStop()
-				srcNs, _, err = getTargetNodeset(dp.DecommissionSrcAddr, c)
-				if err != nil {
-					log.LogWarnf("action[cancelDpNodesetBalance] dp %v find src(%v) nodeset failed:%v",
-						dp.PartitionID, dp.DecommissionSrcAddr, err.Error())
-					mu.Lock()
-					failedDpIds = append(failedDpIds, dp.PartitionID)
-					mu.Unlock()
-					dpWg.Done()
-					continue
+
+				// Check if DecommissionSrcAddr is not empty before trying to find the nodeset
+				if dp.DecommissionSrcAddr != "" {
+					srcNs, _, err = getTargetNodeset(dp.DecommissionSrcAddr, c)
+					if err != nil {
+						log.LogWarnf("action[cancelDpDistributionOptimization] dp %v find src(%v) nodeset failed:%v",
+							dp.PartitionID, dp.DecommissionSrcAddr, err.Error())
+						mu.Lock()
+						failedDpIds = append(failedDpIds, dp.PartitionID)
+						mu.Unlock()
+						dpWg.Done()
+						continue
+					}
+					srcNs.decommissionDataPartitionList.Remove(dp)
+				} else {
+					log.LogWarnf("action[cancelDpDistributionOptimization] dp %v has empty DecommissionSrcAddr, skip nodeset removal",
+						dp.PartitionID)
 				}
-				srcNs.decommissionDataPartitionList.Remove(dp)
+
 				c.syncUpdateDataPartition(dp)
-				auditlog.LogMasterOp("CancelDpNodesetBalance", msg, nil)
+				auditlog.LogMasterOp("CancelDpDistributionOptimization", msg, nil)
 				mu.Lock()
 				dpIds = append(dpIds, dp.PartitionID)
 				mu.Unlock()
