@@ -16,8 +16,6 @@ package datanode
 
 import (
 	"fmt"
-	"math"
-	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
@@ -29,7 +27,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
@@ -57,7 +54,7 @@ type SpaceManager struct {
 	stopC              chan bool
 	diskList           []string
 	dataNode           *DataNode
-	rand               *rand.Rand
+	diskSelector       DiskSelector
 	currentLoadDpCount int
 	currentStopDpCount int
 	diskUtils          map[string]*atomicutil.Float64
@@ -78,11 +75,12 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.stats = NewStats(dataNode.zoneName)
 	space.stopC = make(chan bool)
 	space.dataNode = dataNode
-	space.rand = rand.New(rand.NewSource(time.Now().Unix()))
 	space.currentLoadDpCount = DefaultCurrentLoadDpLimit
 	space.currentStopDpCount = DefaultStopDpLimit
 	space.diskUtils = make(map[string]*atomicutil.Float64)
 	space.dataNodeIDs = make(map[string]uint64)
+	space.diskSelector = NewDiskSelector(dataNode.diskSelectorName,
+		dataNode.capacityWeight, dataNode.partitionWeight, dataNode.affinityWeight)
 	go space.statUpdateScheduler()
 
 	return space
@@ -570,41 +568,14 @@ func (manager *SpaceManager) updateMetrics() {
 
 const DiskSelectMaxStraw = 65536
 
-func (manager *SpaceManager) selectDisk(decommissionedDisks []string) (d *Disk) {
+func (manager *SpaceManager) selectDisk(volumeID string, partitionID uint64, decommissionedDisks []string) (d *Disk) {
 	manager.diskMutex.Lock()
 	defer manager.diskMutex.Unlock()
 	decommissionedDiskMap := make(map[string]struct{})
 	for _, disk := range decommissionedDisks {
 		decommissionedDiskMap[disk] = struct{}{}
 	}
-	maxStraw := float64(0)
-	for _, disk := range manager.disks {
-		if _, ok := decommissionedDiskMap[disk.Path]; ok {
-			log.LogInfof("action[selectDisk] exclude decommissioned disk[%v]", disk.Path)
-			continue
-		}
-		if disk.Status != proto.ReadWrite {
-			log.LogInfof("[selectDisk] disk(%v) is not writable", disk.Path)
-			continue
-		}
-
-		if disk.isLost {
-			log.LogInfof("[selectDisk] disk(%v) is lost", disk.Path)
-			continue
-		}
-
-		straw := float64(manager.rand.Intn(DiskSelectMaxStraw))
-		straw = math.Log(straw/float64(DiskSelectMaxStraw)) / (float64(atomic.LoadUint64(&disk.Available)) / util.GB)
-		if d == nil || straw > maxStraw {
-			maxStraw = straw
-			d = disk
-		}
-	}
-	if d != nil && d.Status != proto.ReadWrite {
-		d = nil
-		return
-	}
-	return d
+	return manager.diskSelector.Select(volumeID, partitionID, manager.disks, decommissionedDiskMap)
 }
 
 func (manager *SpaceManager) statUpdateScheduler() {
@@ -677,7 +648,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		}
 		return
 	}
-	disk := manager.selectDisk(request.DecommissionedDisks)
+	disk := manager.selectDisk(dpCfg.VolName, dpCfg.PartitionID, request.DecommissionedDisks)
 	if disk == nil {
 		log.LogErrorf("[CreatePartition] dp(%v) failed to select disk", dpCfg.PartitionID)
 		return nil, ErrNoSpaceToCreatePartition
@@ -1017,4 +988,8 @@ func (manager *SpaceManager) StartEvictExtentCache() {
 			return
 		}
 	}
+}
+
+func (manager *SpaceManager) SetDiskSelector(name string, capacityWeight, partitionWeight, affinityWeight float64) {
+	manager.diskSelector = NewDiskSelector(name, capacityWeight, partitionWeight, affinityWeight)
 }

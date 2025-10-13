@@ -924,3 +924,55 @@ func (s *DataNode) triggerRaftLogRotate(w http.ResponseWriter, r *http.Request) 
 
 	s.buildSuccessResp(w, fmt.Sprintf("trigger dp(%d) raft log rotate successfully.", trigger))
 }
+
+func (s *DataNode) getDiskSelector(w http.ResponseWriter, r *http.Request) {
+	diskStatus := &struct {
+		SelectorName    string  `json:"selectorName"`
+		CapacityWeight  float64 `json:"capacityWeight"`
+		PartitionWeight float64 `json:"partitionWeight"`
+		AffinityWeight  float64 `json:"affinityWeight"`
+	}{
+		SelectorName:    s.diskSelectorName,
+		CapacityWeight:  s.capacityWeight,
+		PartitionWeight: s.partitionWeight,
+		AffinityWeight:  s.affinityWeight,
+	}
+	s.buildSuccessResp(w, diskStatus)
+}
+
+func (s *DataNode) setDiskSelector(w http.ResponseWriter, r *http.Request) {
+	if err := parseArgs(r, common.NewArgument("selectorName", &s.diskSelectorName)); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var (
+		capacityWeight  = s.capacityWeight
+		partitionWeight = s.partitionWeight
+		affinityWeight  = s.affinityWeight
+	)
+	if err := parseArgs(r, common.NewArgument("capacityWeight", &capacityWeight).OmitEmpty()); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := parseArgs(r, common.NewArgument("partitionWeight", &partitionWeight).OmitEmpty()); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := parseArgs(r, common.NewArgument("affinityWeight", &affinityWeight).OmitEmpty()); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if capacityWeight <= 0 || partitionWeight <= 0 || affinityWeight <= 0 {
+		s.buildFailureResp(w, http.StatusBadRequest, "invalid weight parameters")
+		return
+	}
+
+	s.capacityWeight = capacityWeight
+	s.partitionWeight = partitionWeight
+	s.affinityWeight = affinityWeight
+	log.LogInfof("set disk selector, name(%v), capacityWeight(%v), partitionWeight(%v), affinityWeight(%v)",
+		s.diskSelectorName, s.capacityWeight, s.partitionWeight, s.affinityWeight)
+	s.space.SetDiskSelector(s.diskSelectorName, s.capacityWeight, s.partitionWeight, s.affinityWeight)
+	s.buildSuccessResp(w, "success")
+}
