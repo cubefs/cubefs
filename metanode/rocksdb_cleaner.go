@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	cleanRecordDir = "clean_records"
+	cleanRecordDir    = "clean_records"
+	cleanTaskChanSize = 10000
 )
 
 type RocksdbTree struct {
@@ -54,7 +55,7 @@ type RocksDBCleaner struct {
 // NewRocksDBCleaner creates a new RocksDB cleaner
 func NewRocksDBCleaner(rootDir string, rocksdbMgr RocksdbManager) *RocksDBCleaner {
 	cleaner := &RocksDBCleaner{
-		cleanTasks: make(chan *CleanRecord, 1000),
+		cleanTasks: make(chan *CleanRecord, cleanTaskChanSize),
 		stopC:      make(chan struct{}),
 		history:    make(map[uint64]*CleanRecord),
 		rootDir:    rootDir,
@@ -204,7 +205,9 @@ func (c *RocksDBCleaner) AddTask(mp *metaPartition) error {
 	c.history[mp.config.PartitionId] = record
 	c.historyLock.Unlock()
 
-	c.cleanTasks <- record
+	go func() {
+		c.cleanTasks <- record
+	}()
 
 	return nil
 }
