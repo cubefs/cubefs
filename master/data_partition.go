@@ -2624,7 +2624,7 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 		param := &selectParam{
 			replicaNum:      needDstAddrCount,
 			excludeHosts:    addrs,
-			rackLevel:       c.getRackAwareLevel(),
+			rackLevel:       proto.RackAwareStrong, // use the highest rack aware level for distribution optimization,
 			excludeNodeSets: excludedNodesets,
 		}
 		availableHosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, c.DistributionOptimizationThreshold.Load())
@@ -2647,7 +2647,7 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 	param := &selectParam{
 		replicaNum:   needDstAddrCount,
 		excludeHosts: addrs,
-		rackLevel:    c.getRackAwareLevel(),
+		rackLevel:    proto.RackAwareStrong, // use the highest rack aware level for distribution optimization,
 	}
 
 	availableHosts, _, err := c.getHostFromNormalZone(TypeDataPartition, excludedZones, 1, "", mediaType, param, c.DistributionOptimizationThreshold.Load())
@@ -2754,7 +2754,7 @@ func selectOptimalNodes(currentAddrs []string, targetNsID uint64, c *Cluster) ([
 			replicaNum:   len(migrateAddrs),
 			excludeHosts: currentAddrs,
 			excludeRacks: excludeRacks,
-			rackLevel:    c.getRackAwareLevel(),
+			rackLevel:    proto.RackAwareStrong, // use the highest rack aware level for distribution optimization
 		}
 
 		// Get target NodeSet
