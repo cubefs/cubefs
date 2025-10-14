@@ -293,6 +293,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	handleTimeout := ""
 	readDataNodeTimeout := ""
 	rackAware := ""
+	// Distribution optimization parameters
+	distributionOptimizationConcurrentDpCount := ""
+	distributionOptimizationIntervalSec := ""
+	distributionOptimizationThreshold := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -446,12 +450,53 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			// Validate distribution optimization parameters
+			if distributionOptimizationConcurrentDpCount != "" {
+				var count int64
+				count, err = strconv.ParseInt(distributionOptimizationConcurrentDpCount, 10, 64)
+				if err != nil {
+					err = fmt.Errorf("param distributionOptimizationConcurrentDpCount(%v) should be int", distributionOptimizationConcurrentDpCount)
+					return
+				}
+				if count <= 0 {
+					err = fmt.Errorf("distributionOptimizationConcurrentDpCount (%v) should be greater than 0", count)
+					return
+				}
+			}
+
+			if distributionOptimizationIntervalSec != "" {
+				var interval int64
+				interval, err = strconv.ParseInt(distributionOptimizationIntervalSec, 10, 64)
+				if err != nil {
+					err = fmt.Errorf("param distributionOptimizationIntervalSec(%v) should be int", distributionOptimizationIntervalSec)
+					return
+				}
+				if interval <= 0 {
+					err = fmt.Errorf("distributionOptimizationIntervalSec (%v) should be greater than 0", interval)
+					return
+				}
+			}
+
+			if distributionOptimizationThreshold != "" {
+				var threshold float64
+				threshold, err = strconv.ParseFloat(distributionOptimizationThreshold, 64)
+				if err != nil {
+					err = fmt.Errorf("param distributionOptimizationThreshold(%v) should be float", distributionOptimizationThreshold)
+					return
+				}
+				if threshold < 0 || threshold > 1 {
+					err = fmt.Errorf("distributionOptimizationThreshold (%v) should be between 0 and 1", threshold)
+					return
+				}
+			}
+
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt, autoDistributionOptimization,
 				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
-				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware); err != nil {
+				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware,
+				distributionOptimizationConcurrentDpCount, distributionOptimizationIntervalSec, distributionOptimizationThreshold); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -487,6 +532,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&handleTimeout, "flashNodeHandleReadTimeout", "", "Specify flash node handle read timeout (example:1000ms)")
 	cmd.Flags().StringVar(&readDataNodeTimeout, "flashNodeReadDataNodeTimeout", "", "Specify flash node read data node timeout (example:3000ms)")
 	cmd.Flags().StringVar(&rackAware, CliFlagRackAware, "", "Set rack aware level: 0(none), 1(weak), 2(strong)")
+	// Distribution optimization parameters
+	cmd.Flags().StringVar(&distributionOptimizationConcurrentDpCount, CliFlagDistributionOptimizationConcurrentDpCount, "", "Concurrent data partition count for distribution optimization")
+	cmd.Flags().StringVar(&distributionOptimizationIntervalSec, CliFlagDistributionOptimizationIntervalSec, "", "Interval in seconds for distribution optimization")
+	cmd.Flags().StringVar(&distributionOptimizationThreshold, CliFlagDistributionOptimizationThreshold, "", "Threshold for distribution optimization (0.0-1.0)")
 	return cmd
 }
 

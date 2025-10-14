@@ -1628,8 +1628,8 @@ func formatDistributionOptimizationStatus(status *proto.DistributionOptimization
 	sb.WriteString("[Distribution Optimization Config]\n")
 	sb.WriteString(fmt.Sprintf("  EnableDistributionOptimization : %v\n", status.EnableDistributionOptimization))
 	sb.WriteString(fmt.Sprintf("  ConcurrentDpCountLimit  : %v\n", status.ConcurrentDpCount))
-	sb.WriteString(fmt.Sprintf("  BalanceIntervalSec      : %v\n", status.BalanceIntervalSec))
-	sb.WriteString(fmt.Sprintf("  BalanceThreshold        : %.2f\n", status.BalanceThreshold))
+	sb.WriteString(fmt.Sprintf("  IntervalSec             : %v\n", status.BalanceIntervalSec))
+	sb.WriteString(fmt.Sprintf("  Threshold               : %.2f\n", status.BalanceThreshold))
 
 	sb.WriteString("\n[Distribution Status Summary]\n")
 	sb.WriteString(fmt.Sprintf("  TotalUnbalancedDPs      : %v\n", status.TotalUnbalancedDPs))

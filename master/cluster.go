@@ -2531,6 +2531,7 @@ func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	metaNode = value.(*MetaNode)
 	return
 }
+
 func (c *Cluster) lcNode(addr string) (lcNode *LcNode, err error) {
 	value, ok := c.lcNodes.Load(addr)
 	if !ok {
@@ -2540,6 +2541,7 @@ func (c *Cluster) lcNode(addr string) (lcNode *LcNode, err error) {
 	lcNode = value.(*LcNode)
 	return
 }
+
 func (c *Cluster) getAllDataPartitionByDataNode(addr string) (partitions []*DataPartition) {
 	partitions = make([]*DataPartition, 0)
 	safeVols := c.allVols()

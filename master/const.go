@@ -245,7 +245,7 @@ const (
 	defaultEnableDpMetaRepair                               = false
 	defaultEnableAutoDistributionOptimization               = false
 	defaultDistributionOptimizationConcurrentDpCount        = 400
-	defaultDistributionOptimizationIntervalSec              = 120
+	defaultDistributionOptimizationIntervalSec              = 4 * 60 * 60
 	defaultDistributionOptimizationThreshold                = 0.8
 	defaultAutoDpMetaRepairPallarelCnt                      = 100
 	defaultAutoDecommissionDiskInterval                     = 10 * time.Second
