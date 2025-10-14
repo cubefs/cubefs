@@ -42,6 +42,7 @@ func newTestStreamerWithAheadRead(t *testing.T, partitionID uint64) (*Streamer, 
 		streamer: s,
 		taskC:    make(chan *AheadReadTask, arc.winCnt),
 	}
+	s.aheadReadBlockSize = util.CacheReadBlockSize
 	return s, arc
 }
 

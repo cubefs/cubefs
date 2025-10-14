@@ -131,6 +131,7 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool,
 	if client.AheadRead != nil {
 		s.aheadReadEnable = client.AheadRead.enable
 		s.aheadReadWindow = NewAheadReadWindow(client.AheadRead, s)
+		s.aheadReadBlockSize = util.CacheReadBlockSize
 	}
 	go s.server()
 	go s.asyncBlockCache()
@@ -786,8 +787,4 @@ func (s *Streamer) getNextPendingAsyncFlush() *AsyncFlushRequest {
 	})
 
 	return oldestReq
-}
-
-func (s *Streamer) SetAheadBlockSize(size uint32) {
-	s.aheadReadBlockSize = size
 }

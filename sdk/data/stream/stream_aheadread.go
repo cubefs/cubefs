@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"hash/crc32"
 	"net"
 	"runtime/debug"
 	"sync"
@@ -35,8 +36,9 @@ const (
 	AheadReadBlockStateInit    uint32 = 0
 	AheadReadBlockStateLoading uint32 = 1
 
-	AheadReadedInit uint32 = 0
-	AheadReaded     uint32 = 1
+	AheadReadedInit    uint32 = 0
+	AheadReaded        uint32 = 1
+	MaxCacheBlockRetry uint32 = 32
 )
 
 type AheadReadBlock struct {
@@ -89,12 +91,15 @@ type AheadReadTask struct {
 	logTime      *time.Time
 	reqID        string
 	storageClass uint32
+	retry        uint32
 }
 
 type AheadReadWindow struct {
-	taskC    chan *AheadReadTask
-	cache    *AheadReadCache
-	streamer *Streamer
+	taskC       chan *AheadReadTask
+	cache       *AheadReadCache
+	streamer    *Streamer
+	rightOffset uint64
+	cnt         int32
 }
 
 type AheadReadCache struct {
@@ -151,7 +156,7 @@ func (arc *AheadReadCache) putAheadReadBlock(key string, block *AheadReadBlock) 
 }
 
 func (arc *AheadReadCache) checkBlockTimeOut() {
-	blockTimer := time.NewTimer(time.Second)
+	blockTimer := time.NewTicker(time.Second)
 	printTicker := time.NewTicker(time.Second * 10)
 	for {
 		select {
@@ -160,9 +165,7 @@ func (arc *AheadReadCache) checkBlockTimeOut() {
 			printTicker.Stop()
 			return
 		case <-blockTimer.C:
-			blockTimer.Stop()
 			arc.doCheckBlockTimeOut()
-			blockTimer.Reset(time.Second)
 		case <-printTicker.C:
 			log.LogInfof("totalAheadReadBlockCnt(%v) curAvailableCnt(%v)", arc.totalBlockCnt, atomic.LoadInt64(&arc.availableBlockCnt))
 		}
@@ -206,11 +209,13 @@ func (arc *AheadReadCache) Stop() {
 	})
 }
 
+// maintain a read-ahead window for each file
 func NewAheadReadWindow(arc *AheadReadCache, s *Streamer) *AheadReadWindow {
 	arw := &AheadReadWindow{
-		taskC:    make(chan *AheadReadTask, arc.winCnt),
-		cache:    arc,
-		streamer: s,
+		taskC:       make(chan *AheadReadTask, arc.winCnt),
+		cache:       arc,
+		streamer:    s,
+		rightOffset: 0,
 	}
 	go arw.backgroundAheadReadTask()
 	return arw
@@ -245,8 +250,13 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	if loaded {
 		return
 	} else {
+		atomic.AddInt32(&arw.cnt, 1)
 		defer func() {
 			arw.cache.creatingBlockCacheMap.Delete(key)
+			cnt := atomic.AddInt32(&arw.cnt, -1)
+			if int(cnt) > arw.cache.winCnt {
+				log.LogWarnf("doTask cnt %v is more than %v", cnt, arw.cache.winCnt)
+			}
 		}()
 	}
 	cacheBlock, err := arw.cache.getAheadReadBlock()
@@ -294,11 +304,20 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 					err = fmt.Errorf("result code[%v] dp[%v] host[%v],msg[%v]", rp.ResultCode, task.dp, host, string(rp.Data[:rp.Size]))
 					return err, false
 				}
+				if !task.p.isValidReadReply(rp) {
+					err = fmt.Errorf("inconsistent req and reply, req(%v) reply(%v)", task.p, rp)
+					return err, false
+				}
+				expectCrc := crc32.ChecksumIEEE(rp.Data[:rp.Size])
+				if expectCrc != rp.CRC {
+					err = fmt.Errorf("inconsistent CRC, expectCRC(%v) replyCRC(%v)", expectCrc, rp.CRC)
+					return err, false
+				}
 				// update timeStamp to prevent from deleted by timeout
 				cacheBlock.time = time.Now().Unix()
 				readBytes += int(rp.Size)
-				atomic.AddUint64(&cacheBlock.readBytes, uint64(rp.Size))
-				curSize := atomic.LoadUint64(&cacheBlock.readBytes)
+				curSize := atomic.AddUint64(&cacheBlock.readBytes, uint64(rp.Size))
+				arw.updateRightIndex(uint64(task.req.FileOffset)+curSize, key, task.reqID)
 				log.LogDebugf("doTask  key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p) cost(%v)",
 					key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock, time.Since(begin).String())
 				if curSize > uint64(arw.streamer.aheadReadBlockSize) {
@@ -312,7 +331,7 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 		if err == nil {
 			atomic.StoreUint32(&cacheBlock.state, AheadReadBlockStateInit)
 			log.LogDebugf("doTask ready: key(%v) offset(%v) size(%v) err(%v) %v reqID(%v)",
-				key, task.p.ExtentOffset, task.cacheSize, err, time.Since(task.time), task.reqID)
+				key, task.p.ExtentOffset, task.cacheSize, err, time.Since(task.time).String(), task.reqID)
 			return
 		} else {
 			// try next host
@@ -325,55 +344,81 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 		cacheBlock.inode, key, task.p.ExtentOffset, task.cacheSize, err, task.reqID)
 	arw.cache.blockCache.Delete(key)
 	arw.cache.putAheadReadBlock(key, cacheBlock)
+	// retry failed task for updateRightIndex cannot be reverted
+	if task.retry <= MaxCacheBlockRetry {
+		task.retry++
+		arw.taskC <- task
+	}
 }
 
-func (arw *AheadReadWindow) addNextTask(offset int, dp *wrapper.DataPartition, req *ExtentRequest, stTime time.Time,
-	reqID string, storageClass uint32) {
-	id := offset/int(arw.streamer.aheadReadBlockSize) + arw.cache.winCnt
-	remainSize := int(req.ExtentKey.Size) - id*int(arw.streamer.aheadReadBlockSize)
-	if remainSize <= 0 {
-		arw.doMultiAheadRead(0, req, dp, stTime, reqID, storageClass)
+func (arw *AheadReadWindow) addNextTask(offset int, stTime time.Time, reqID string, storageClass uint32, key string) {
+	rightOffset := atomic.LoadUint64(&arw.rightOffset)
+	ek := arw.streamer.getCurrentExtent(int(rightOffset))
+	if ek == nil {
+		log.LogWarnf("addNextTask current ExtentKey for offset(%v) is nil reqID(%v)", rightOffset, reqID)
 		return
 	}
-	// log.LogDebugf("addNextTask ek(%v) remainSize(%v) %v-%v-%v-%v", req.ExtentKey, arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, id*util.CacheReadBlockSize)
-	task := arw.getAheadReadTask(dp, req, id, util.Min(remainSize, int(arw.streamer.aheadReadBlockSize)), storageClass)
-	if task == nil {
+	// move forward
+	curReq := &ExtentRequest{
+		FileOffset: int(rightOffset),
+		ExtentKey:  ek,
+	}
+	var (
+		dp  *wrapper.DataPartition
+		err error
+	)
+	if dp, err = arw.streamer.client.dataWrapper.GetDataPartition(curReq.ExtentKey.PartitionId); err != nil {
+		log.LogWarnf("addNextTask get dp for ExtentKey for offset(%v) reqID(%v), failed %v", rightOffset, reqID, err)
 		return
 	}
-	key := fmt.Sprintf("%v-%v-%v-%v", task.p.inode, task.p.PartitionID, task.p.ExtentID, task.p.ExtentOffset)
-	log.LogDebugf("addNextTask send ino(%v) key(%v) offset(%v) req(%v) remainSize(%v) reqID(%v)", arw.streamer.inode, key, offset, req, remainSize, reqID)
-	task.time = stTime
-	task.cacheType = "add"
-	task.logTime = stat.BeginStat()
-	task.reqID = reqID
-	arw.taskC <- task
+	newOffset := rightOffset - ek.FileOffset + ek.ExtentOffset
+	newCacheOffset := rightOffset / uint64(arw.streamer.aheadReadBlockSize) * uint64(arw.streamer.aheadReadBlockSize)
+	oldCacheOffset := uint64(offset) / uint64(arw.streamer.aheadReadBlockSize) * uint64(arw.streamer.aheadReadBlockSize)
+	diffWinCnt := int(newCacheOffset-oldCacheOffset) / int(arw.streamer.aheadReadBlockSize)
+	if diffWinCnt >= arw.cache.winCnt {
+		log.LogDebugf("addNextTask inode(%v) key(%v) offset(%v)  right(%v) reqID(%v) ek(%v) winCnt(%v) is engouh",
+			arw.streamer.inode, key, offset, rightOffset, reqID, ek, diffWinCnt)
+		return
+	} else {
+		diffWinCnt = arw.cache.winCnt - diffWinCnt
+	}
+	log.LogDebugf("addNextTask inode(%v) key(%v) offset(%v) move from(%v) reqID(%v) ek(%v) winCnt(%v)",
+		arw.streamer.inode, key, offset, rightOffset, reqID, ek, diffWinCnt)
+	arw.doMultiAheadRead(int(newOffset), curReq, dp, stTime, reqID, storageClass, diffWinCnt)
 }
 
 func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp *wrapper.DataPartition,
-	startTime time.Time, reqID string, storageClass uint32) {
-	cacheOffset := offset / int(arw.streamer.aheadReadBlockSize) * int(arw.streamer.aheadReadBlockSize)
-	key := fmt.Sprintf("%v-%v-%v-%v", arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, cacheOffset)
-	log.LogDebugf("doMultiAheadRead send: key(%v) reqID(%v) index(%v) req（%v）",
-		key, reqID, offset/int(arw.streamer.aheadReadBlockSize), req)
-	winCnt := arw.cache.winCnt
+	startTime time.Time, reqID string, storageClass uint32, winCnt int) {
 	curReq := &ExtentRequest{
 		FileOffset: req.FileOffset,
 		Size:       req.Size,
 		ExtentKey:  req.ExtentKey,
 	}
+	// read the entire 1MB data form tiny extent
+	if curReq.ExtentKey.ExtentId <= 64 {
+		offset = 0
+	}
+	cacheOffset := offset / int(arw.streamer.aheadReadBlockSize) * int(arw.streamer.aheadReadBlockSize)
+	key := fmt.Sprintf("%v-%v-%v-%v", arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, cacheOffset)
+	log.LogDebugf("doMultiAheadRead send: key(%v) reqID(%v) index(%v) req（%v）",
+		key, reqID, offset/int(arw.streamer.aheadReadBlockSize), req)
 	id := offset / int(arw.streamer.aheadReadBlockSize)
+	remainSize := 0
 	for w := 0; w < winCnt; w++ {
-		remainSize := int(curReq.ExtentKey.Size) - id*int(arw.streamer.aheadReadBlockSize)
+		remainSize = int(curReq.ExtentKey.Size) - id*int(arw.streamer.aheadReadBlockSize)
 		if remainSize <= 0 {
+			// start from 0 if read new extent key
 			id = 0
 			var err error
-			curReq.ExtentKey = arw.streamer.getNextExtent(int(curReq.ExtentKey.FileOffset))
+			lastEk := curReq.ExtentKey
+			curReq.ExtentKey = arw.streamer.getNextExtent(int(lastEk.FileOffset))
 			if curReq.ExtentKey == nil {
+				log.LogDebugf("doMultiAheadRead send: key(%v) next ExtentKey is nil", lastEk)
 				return
 			}
-			key = fmt.Sprintf("%v-%v-%v-%v", arw.streamer.inode, curReq.ExtentKey.PartitionId, curReq.ExtentKey.ExtentId, cacheOffset)
+			curReq.FileOffset = int(curReq.ExtentKey.FileOffset)
 			if dp, err = arw.streamer.client.dataWrapper.GetDataPartition(curReq.ExtentKey.PartitionId); err != nil {
-				log.LogWarnf("doMultiAheadRead send: key(%v) dp nil,err(%v)", key, err)
+				log.LogWarnf("doMultiAheadRead send: dp for ek(%v) is nil,err(%v)", curReq.ExtentKey, err)
 				continue
 			}
 			remainSize = int(curReq.ExtentKey.Size)
@@ -386,7 +431,7 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp 
 			task.cacheType = "pass"
 			task.logTime = stat.BeginStat()
 			task.reqID = reqID
-			key := fmt.Sprintf("%v-%v-%v-%v", task.p.inode, task.p.PartitionID, task.p.ExtentID, task.p.ExtentOffset)
+			key := fmt.Sprintf("%v-%v-%v-%v", arw.streamer.inode, task.p.PartitionID, task.p.ExtentID, task.p.ExtentOffset)
 			log.LogDebugf("doMultiAheadRead send: key(%v) curReq(%v) size(%v) reqID(%v)",
 				key, curReq, size, reqID)
 			arw.taskC <- task
@@ -395,8 +440,13 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp 
 	}
 }
 
-func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *ExtentRequest, id int, size int, storageClass uint32) *AheadReadTask {
-	cacheOffset := int(id) * int(arw.streamer.aheadReadBlockSize)
+func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *ExtentRequest, id int, size int,
+	storageClass uint32) *AheadReadTask {
+	cacheOffset := id * int(arw.streamer.aheadReadBlockSize)
+	// tiny need to add ExtentOffset
+	if req.ExtentKey.ExtentId <= 64 {
+		cacheOffset = int(req.ExtentKey.ExtentOffset)
+	}
 	p := NewReadPacket(req.ExtentKey, cacheOffset, size, arw.streamer.inode, req.FileOffset, true)
 	task := &AheadReadTask{
 		p:            p,
@@ -404,6 +454,7 @@ func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *Ext
 		req:          req,
 		cacheSize:    size,
 		storageClass: storageClass,
+		retry:        0,
 	}
 	return task
 }
@@ -449,7 +500,6 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 		cacheBlock  *AheadReadBlock
 		step        string
 		dp          *wrapper.DataPartition
-		remainSize  int
 		key         string
 	)
 	startTime := time.Now()
@@ -495,6 +545,13 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 		}
 		if cacheBlock.offset <= uint64(offset) {
 			atomic.CompareAndSwapUint32(&cacheBlock.readed, AheadReadedInit, AheadReaded)
+			if cacheBlock.offset == uint64(offset) {
+				reqID := uuid.New().String()
+				log.LogDebugf("aheadRead move ahead win inode(%v) FileOffset(%v) offset(%v) need(%v) "+
+					"cacheBlockOffset(%v) cacheBlockSize(%v) reqID(%v)",
+					s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, reqID)
+				go s.aheadReadWindow.addNextTask(req.FileOffset, startTime, reqID, storageClass, key)
+			}
 			if (cacheBlock.offset + curSize) > uint64(offset+needSize) {
 				// all require data is cached, copy completely return directly
 				copy(req.Data[readSize:readSize+needSize], cacheBlock.data[offset-int(cacheBlock.offset):offset-int(cacheBlock.offset)+needSize])
@@ -504,12 +561,11 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 			} else {
 				end := int(cacheBlock.offset) + int(curSize)
 				bytesToEnd := end - offset
-				if (cacheBlock.offset + curSize) == uint64(offset+needSize) {
-					reqID := uuid.New().String()
-					log.LogDebugf("aheadRead move ahead win inode(%v) FileOffset(%v) offset(%v) need(%v) "+
-						"cacheBlockOffset(%v) cacheBlockSize(%v) copied(%v) reqID(%v)",
-						s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, bytesToEnd, reqID)
-					go s.aheadReadWindow.addNextTask(offset, dp, req, startTime, reqID, storageClass)
+				if bytesToEnd == 0 {
+					cacheBlock.lock.RUnlock()
+					step = "miss"
+					err = fmt.Errorf("no cache data avaliable")
+					return
 				}
 				if bytesToEnd > 0 {
 					copy(req.Data[readSize:readSize+bytesToEnd],
@@ -532,17 +588,23 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 	step = "pass"
 	reqID := uuid.New().String()
 	log.LogDebugf("aheadRead pass ahead win inode(%v) offset(%v) need(%v) "+
-		"remainSize(%v) req(%v) reqID(%v)", s.inode, offset, needSize, remainSize, req, reqID)
-	go s.aheadReadWindow.doMultiAheadRead(offset, req, dp, startTime, reqID, storageClass)
+		"req(%v) reqID(%v)", s.inode, offset, needSize, req, reqID)
+	go s.aheadReadWindow.doMultiAheadRead(offset, req, dp, startTime, reqID, storageClass,
+		s.aheadReadWindow.cache.winCnt)
 	return
 }
 
 func sendToNode(host string, p *Packet, getReply GetReplyFunc) (err error) {
 	var conn *net.TCPConn
+	start := time.Now()
 	if conn, err = StreamConnPool.GetConnect(host); err != nil {
 		return
 	}
-	defer StreamConnPool.PutConnect(conn, err != nil)
+	defer func() {
+		StreamConnPool.PutConnect(conn, err != nil)
+		log.LogDebugf("sendToNode connect local(%v) remote(%v) cost(%v) err(%v)", conn.LocalAddr().String(),
+			conn.RemoteAddr().String(), time.Since(start).String(), err)
+	}()
 	if err = p.WriteToConn(conn); err != nil {
 		return
 	}
@@ -564,4 +626,39 @@ func getRotatedHosts(hosts []string) []string {
 		rhosts = append(rhosts, hosts[:idx]...)
 	}
 	return rhosts
+}
+
+func (arw *AheadReadWindow) updateRightIndex(index uint64, key string, reqID string) {
+	for {
+		current := atomic.LoadUint64(&arw.rightOffset)
+		if index <= current {
+			break
+		}
+		if atomic.CompareAndSwapUint64(&arw.rightOffset, current, index) {
+			log.LogDebugf("updateRightIndex inode(%v) key(%v) reqID(%v) rightIndex to (%v)",
+				arw.streamer.inode, key, reqID, index)
+			break
+		}
+	}
+}
+
+func (s *Streamer) getCurrentExtent(offset int) (ek *proto.ExtentKey) {
+	s.extents.RLock()
+	defer s.extents.RUnlock()
+	s.extents.root.Ascend(func(i btree.Item) bool {
+		e := i.(*proto.ExtentKey)
+		if e.Size < util.CacheReadBlockSize {
+			return true
+		}
+		ekStart := int(e.FileOffset)
+		ekEnd := int(e.FileOffset) + int(e.Size)
+		if ekStart <= offset {
+			if ekEnd >= offset {
+				ek = e
+				return false
+			}
+		}
+		return true
+	})
+	return
 }
