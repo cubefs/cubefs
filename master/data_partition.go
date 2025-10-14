@@ -1988,20 +1988,6 @@ func (partition *DataPartition) PauseDecommission(c *Cluster) bool {
 	return true
 }
 
-func (partition *DataPartition) SetMultipleDecommissionSrcHosts(srcHosts []string) {
-	if srcHosts == nil || len(srcHosts) == 0 {
-		return
-	}
-	// 最后一个地址设为当前迁移地址，其余进入待迁移队列
-	partition.DecommissionSrcAddr = srcHosts[len(srcHosts)-1]
-	if len(srcHosts) > 1 {
-		partition.DecommissionSrcAddrs = make([]string, len(srcHosts)-1)
-		copy(partition.DecommissionSrcAddrs, srcHosts[0:len(srcHosts)-1])
-	} else {
-		partition.DecommissionSrcAddrs = nil
-	}
-}
-
 // 处理单个源地址迁移完成，返回true表示还有更多源地址需要迁移
 func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool {
 	var (

@@ -24,11 +24,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const (
-	// concurrent Balance DP Count (default fallback; actual value comes from cluster config)
-	concurrentBalancedDPCountDefault = 400
-)
-
 // scheduleToDistributionOptimization registers auto distribution optimization task
 func (c *Cluster) scheduleToDistributionOptimization() {
 	c.runTask(
@@ -61,9 +56,6 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 
 	activeTasks := c.countActiveDistributionOptimizationTasks()
 	limit := c.DistributionOptimizationConcurrentDpCount.Load()
-	if limit <= 0 {
-		limit = concurrentBalancedDPCountDefault
-	}
 	if int64(activeTasks) >= limit {
 		log.LogInfof("action[executeDistributionOptimizationMigrations] already have %d active tasks, skipping execution", activeTasks)
 		return

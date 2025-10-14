@@ -431,7 +431,7 @@ func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
 	}
 	if !ok {
 		log.LogInfof("[isWriteAbleWithSizeNoLock] node %v, isActive %v, TotalDpCnt %v, RdOnly %v, Total %v, AvailableSpace %v, "+
-			"used %v, SimulateReservedSpace %v, reserved size %v threshold %v",
+			"used %v, SimulateReservedSpace %v, reserved size %v",
 			dataNode.Addr, dataNode.isActive, dataNode.DataPartitionCount, dataNode.RdOnly, dataNode.Total, dataNode.AvailableSpace, dataNode.Used,
 			dataNode.SimulateReservedSpace, size)
 	}
