@@ -457,8 +457,8 @@ func (cache *ExtentCache) PrepareReadRequests(offset, size int, data []byte) []*
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
 
-		log.LogDebugf("PrepareReadRequests: req[ino(%v) start(%v) end(%v)] ek[extentID(%v),FileOffset(Start(%v) End(%v))]",
-			cache.inode, start, end, ek.ExtentId, ekStart, ekEnd)
+		// log.LogDebugf("PrepareReadRequests: req[ino(%v) start(%v) end(%v)] ek[extentID(%v),FileOffset(Start(%v) End(%v))]",
+		//	cache.inode, start, end, ek.ExtentId, ekStart, ekEnd)
 
 		if start < ekStart {
 			if end <= ekStart {
