@@ -366,9 +366,9 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 		direct = true
 	}
 begin:
+	fileSize, _ := s.extents.Size()
 	if flags&proto.FlagsAppend != 0 {
-		filesize, _ := s.extents.Size()
-		offset = filesize
+		offset = fileSize
 	}
 
 	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v) flags(%v) storageClass(%v) isMigration(%v)",
@@ -380,12 +380,12 @@ begin:
 
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	// requests contain offset
-	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
+	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v) offset(%v) fileSize(%v)", s.inode, requests, offset, fileSize)
 
 	isChecked := false
 	// Must flush before doing overwrite
 	for _, req := range requests {
-		if req.ExtentKey == nil {
+		if req.ExtentKey == nil && offset >= fileSize {
 			continue
 		}
 		err = s.flush(true, uuid.New().String())
@@ -395,7 +395,8 @@ begin:
 		// some extent key in requests with partition id 0 means it's append operation and on flight.
 		// need to flush and get the right key then used to make modification
 		requests = s.extents.PrepareWriteRequests(offset, size, data)
-		log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
+		log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v) offset(%v) fileSize(%v)",
+			s.inode, requests, offset, fileSize)
 		break
 	}
 
@@ -952,11 +953,9 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 					"storeMode(%v) handler(%v)", s.inode, offset, size, storeMode, s.handler)
 				break
 			}
-
 			log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) "+
 				"storeMode(%v) handler(%v) err(%v)",
 				s.inode, offset, size, storeMode, s.handler, err)
-
 			err = s.closeOpenHandler(false)
 			if err != nil {
 				log.LogErrorf("doWriteAppendEx: closeOpenHandler failed after write error, ino(%v) err(%v)", s.inode, err)

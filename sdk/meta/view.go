@@ -224,7 +224,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	rwPartitions := make([]*MetaPartition, 0)
 	for _, mp := range view.MetaPartitions {
 		mw.replaceOrInsertPartition(mp)
-		log.LogInfof("updateMetaPartition: mp(%v)", mp)
+		// log.LogInfof("updateMetaPartition: mp(%v)", mp)
 		if mp.Status == proto.ReadWrite {
 			rwPartitions = append(rwPartitions, mp)
 		}
