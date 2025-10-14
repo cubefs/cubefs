@@ -1,12 +1,20 @@
 package master
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"net"
+	"os"
 	"sync"
 	"testing"
+	"time"
 
+	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
+	raftstore "github.com/cubefs/cubefs/raftstore"
+	raftstore_db "github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,6 +61,114 @@ func TestGetMigrateDestAddr(t *testing.T) {
 			t.Errorf("Excluded address found in results: %s", addr.Destination)
 		}
 	}
+}
+
+func TestFreezeEmptyMetaPartition_NoLeader(t *testing.T) {
+	c := &Cluster{}
+	mp := &MetaPartition{
+		PartitionID: 123,
+		Replicas:    []*MetaReplica{{Addr: "node1", IsLeader: false}},
+	}
+	err := c.FreezeEmptyMetaPartition(mp, true)
+	if err == nil {
+		t.Errorf("expected error when no leader, got nil")
+	}
+}
+
+func TestFreezeEmptyMetaPartition_MetaNodeNotFound(t *testing.T) {
+	// build cluster with leader replica but meta node map empty
+	c := &Cluster{}
+	leaderNode := &MetaNode{ID: 1, Addr: "node1"}
+	mp := &MetaPartition{
+		PartitionID: 123,
+		Replicas:    []*MetaReplica{{Addr: leaderNode.Addr, IsLeader: true, metaNode: leaderNode}},
+	}
+	// c.metaNodes not loaded with node1 => c.metaNode() returns error
+	err := c.FreezeEmptyMetaPartition(mp, true)
+	if err == nil {
+		t.Errorf("expected error when meta node not found, got nil")
+	}
+}
+
+func TestFreezeEmptyMetaPartition_SendFail(t *testing.T) {
+	// start a local TCP listener to accept but not respond correctly, forcing ReadFromConnWithVer to fail
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, _ := ln.Accept()
+		if conn != nil {
+			// immediately close to cause send/read error
+			conn.Close()
+		}
+	}()
+
+	addr := ln.Addr().String()
+	c := &Cluster{}
+	// ensure direct dialing (no pool) to our listener
+	prev := useConnPool
+	useConnPool = false
+	defer func() { useConnPool = prev }()
+
+	mn := &MetaNode{ID: 1, Addr: addr, Sender: newAdminTaskManager(addr, "test-cluster")}
+	c.metaNodes.Store(addr, mn)
+	mp := &MetaPartition{
+		PartitionID: 123,
+		Replicas:    []*MetaReplica{{Addr: addr, IsLeader: true, metaNode: mn}},
+	}
+
+	err = c.FreezeEmptyMetaPartition(mp, true)
+	if err == nil {
+		t.Errorf("expected error when syncSendAdminTask fails, got nil")
+	}
+}
+
+func TestFreezeEmptyMetaPartition_Success(t *testing.T) {
+	// Spin up a mock meta server that acks admin tasks
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		// read packet then echo minimal valid OpOk response
+		// Use proto.Packet helpers to read and write
+		// Because we are in master package test, we can reuse proto directly here
+		p := proto.NewPacket()
+		_ = p.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime)
+		p.ResultCode = proto.OpOk
+		p.Data = []byte("ok")
+		p.Size = uint32(len(p.Data))
+		_ = p.WriteToConn(conn)
+		conn.Close()
+	}()
+
+	addr := ln.Addr().String()
+	c := &Cluster{}
+	prev := useConnPool
+	useConnPool = false
+	defer func() { useConnPool = prev }()
+
+	mn := &MetaNode{ID: 1, Addr: addr, Sender: newAdminTaskManager(addr, "test-cluster")}
+	c.metaNodes.Store(addr, mn)
+	mp := &MetaPartition{
+		PartitionID: 123,
+		Replicas:    []*MetaReplica{{Addr: addr, IsLeader: true, metaNode: mn}},
+	}
+
+	if err := c.FreezeEmptyMetaPartition(mp, true); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	<-done
 }
 
 func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
@@ -1213,6 +1329,417 @@ func TestGetMetaReplicaRecord(t *testing.T) {
 	}
 }
 
+func TestCleanEmptyMetaPartition_NoReplicas(t *testing.T) {
+	c := &Cluster{}
+	mp := &MetaPartition{PartitionID: 1, Replicas: []*MetaReplica{}}
+	err := c.CleanEmptyMetaPartition(mp)
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+func TestCleanEmptyMetaPartition_MetaNodeNotFound(t *testing.T) {
+	c := &Cluster{}
+	// one replica, but cluster has no corresponding MetaNode
+	mp := &MetaPartition{PartitionID: 2, Replicas: []*MetaReplica{{Addr: "127.0.0.1:12345"}}}
+	err := c.CleanEmptyMetaPartition(mp)
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+func TestCleanEmptyMetaPartition_SendFail(t *testing.T) {
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, _ := ln.Accept()
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+
+	addr := ln.Addr().String()
+	c := &Cluster{}
+	prev := useConnPool
+	useConnPool = false
+	defer func() { useConnPool = prev }()
+
+	mn := &MetaNode{ID: 11, Addr: addr, Sender: newAdminTaskManager(addr, "test-cluster")}
+	c.metaNodes.Store(addr, mn)
+	mp := &MetaPartition{
+		PartitionID: 3,
+		Replicas:    []*MetaReplica{{Addr: addr, metaNode: mn}},
+	}
+	// even if send fails, CleanEmptyMetaPartition should return nil
+	err = c.CleanEmptyMetaPartition(mp)
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+func TestCleanEmptyMetaPartition_Success(t *testing.T) {
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	// serve two sequential connections (for two replicas)
+	serves := 2
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < serves; i++ {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			p := proto.NewPacket()
+			_ = p.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime)
+			p.ResultCode = proto.OpOk
+			p.Data = []byte("ok")
+			p.Size = uint32(len(p.Data))
+			_ = p.WriteToConn(conn)
+			conn.Close()
+		}
+	}()
+
+	addr := ln.Addr().String()
+	c := &Cluster{}
+	prev := useConnPool
+	useConnPool = false
+	defer func() { useConnPool = prev }()
+
+	mn := &MetaNode{ID: 12, Addr: addr, Sender: newAdminTaskManager(addr, "test-cluster")}
+	c.metaNodes.Store(addr, mn)
+	mp := &MetaPartition{
+		PartitionID: 4,
+		Replicas:    []*MetaReplica{{Addr: addr, metaNode: mn}, {Addr: addr, metaNode: mn}},
+	}
+
+	if err := c.CleanEmptyMetaPartition(mp); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	<-done
+}
+
+// helper: build and store a balance plan into raft store for RunMetaPartitionBalanceTask
+func putPlanToStore(t *testing.T, db *raftstore_db.RocksDBStore, plan *proto.ClusterPlan) {
+	data, err := json.Marshal(plan)
+	require.NoError(t, err)
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err = gz.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+	_, err = db.Put(string([]byte(balanceTaskKey)), buf.Bytes(), true)
+	require.NoError(t, err)
+}
+
+func newTestClusterWithStore(t *testing.T) *Cluster {
+	// minimal cluster with in-memory rocksdb store and nil raft partition
+	dir, err := os.MkdirTemp("", "cfs-raftstore")
+	require.NoError(t, err)
+	db, err := raftstore_db.NewRocksDBStoreAndRecovery(dir, LRUCacheSize, WriteBufferSize)
+	require.NoError(t, err)
+	return &Cluster{
+		fsm:   &MetadataFsm{store: db},
+		stopc: make(chan bool, 1),
+	}
+}
+
+func TestRunMetaPartitionBalanceTask_NoPlan(t *testing.T) {
+	c := newTestClusterWithStore(t)
+	// loadBalanceTask should return ErrNoMpMigratePlan -> propagate error
+	err := c.RunMetaPartitionBalanceTask()
+	if err == nil {
+		t.Errorf("expected error when no plan, got nil")
+	}
+}
+
+func TestRunMetaPartitionBalanceTask_StartsGoroutine(t *testing.T) {
+	c := newTestClusterWithStore(t)
+	// prepare a simple plan in store
+	plan := &proto.ClusterPlan{Status: PlanTaskInit}
+	putPlanToStore(t, c.fsm.store, plan)
+	// make partition non-nil and set IsRaftLeader true via stub
+	c.partition = &mockPartition{isLeader: true}
+	err := c.RunMetaPartitionBalanceTask()
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	// the goroutine sets PlanRun=true; give a brief wait then stop
+	time.Sleep(10 * time.Millisecond)
+	c.stopc <- true
+}
+
+// mockPartition to satisfy raftstore.Partition with minimal methods used
+type mockPartition struct{ isLeader bool }
+
+func (m *mockPartition) Submit([]byte) (interface{}, error) { return nil, nil }
+func (m *mockPartition) ChangeMember(_ raftproto.ConfChangeType, _ raftproto.Peer, _ []byte) (interface{}, error) {
+	return nil, nil
+}
+func (m *mockPartition) Stop() error                        { return nil }
+func (m *mockPartition) Delete() error                      { return nil }
+func (m *mockPartition) Status() *raftstore.PartitionStatus { return nil }
+func (m *mockPartition) IsRestoring() bool                  { return false }
+func (m *mockPartition) LeaderTerm() (uint64, uint64)       { return 0, 0 }
+func (m *mockPartition) IsRaftLeader() bool                 { return m.isLeader }
+func (m *mockPartition) AppliedIndex() uint64               { return 0 }
+func (m *mockPartition) CommittedIndex() uint64             { return 0 }
+func (m *mockPartition) Truncate(uint64)                    {}
+func (m *mockPartition) TryToLeader(uint64) error           { return nil }
+func (m *mockPartition) IsOfflinePeer() bool                { return true }
+func (m *mockPartition) CloseAndBackup() error              { return nil }
+
+// no extra stub needed for raftstore.PartitionStatus alias
+
+func TestHandleMetaReplicaPlan_StatusTransitions(t *testing.T) {
+	c := &Cluster{stopc: make(chan bool, 1), partition: &mockPartition{isLeader: true}}
+	// prepare mp and networking
+	ln, _ := net.Listen("tcp", ":0")
+	defer ln.Close()
+	go func() {
+		conn, _ := ln.Accept()
+		if conn != nil {
+			p := proto.NewPacket()
+			_ = p.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime)
+			p.ResultCode = proto.OpOk
+			p.Data = []byte("ok")
+			p.Size = uint32(len(p.Data))
+			_ = p.WriteToConn(conn)
+			conn.Close()
+		}
+	}()
+	addr := ln.Addr().String()
+	prev := useConnPool
+	useConnPool = false
+	defer func() { useConnPool = prev }()
+	mn := &MetaNode{ID: 1, Addr: addr, Sender: newAdminTaskManager(addr, "test-cluster")}
+	c.metaNodes.Store(addr, mn)
+	mp := &MetaPartition{PartitionID: 200, Replicas: []*MetaReplica{{Addr: addr, metaNode: mn}}}
+	plan := &proto.ClusterPlan{Type: AutoPlan}
+	mpPlan := &proto.MetaBalancePlan{ID: 200}
+	mrPlan := &proto.MrBalanceInfo{Source: addr, Destination: addr}
+	// since destination equals existing host, expect error from doMetaPartitionMigrate
+	err := c.handleMetaReplicaPlan(plan, mpPlan, mp, mrPlan)
+	if err == nil {
+		t.Errorf("expected error due to invalid destination, got nil")
+	}
+	// status should have transitioned to PlanTaskRun before failing
+	require.Equal(t, PlanTaskRun, mrPlan.Status)
+}
+
+func TestWaitForMetaPartitionMigrateDone_TimeoutThenStop(t *testing.T) {
+	c := &Cluster{stopc: make(chan bool, 1)}
+	mp := &MetaPartition{PartitionID: 300, Replicas: []*MetaReplica{{Addr: "nodeX", IsLeader: true}}}
+	// make CheckRaftStatus always false by not setting metaNode/Sender; and trigger stop via stopc
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		c.stopc <- true
+	}()
+	err := c.WaitForMetaPartitionMigrateDone(mp, "nodeX")
+	if err == nil {
+		t.Errorf("expected error due to cluster stopping or timeout, got nil")
+	}
+}
+
+func TestFillOffLineAddrToPlan_NoSuchNode(t *testing.T) {
+	c := &Cluster{}
+	plan := &proto.ClusterPlan{}
+	err := c.FillOffLineAddrToPlan("node-not-exist", plan)
+	if err == nil {
+		t.Errorf("expected error when metanode not found")
+	}
+}
+
+func TestCreateOfflineMetaNodePlan_FillError(t *testing.T) {
+	// topology empty, metaNodes empty -> FillOffLineAddrToPlan fails
+	c := &Cluster{ClusterTopoSubItem: ClusterTopoSubItem{t: &topology{zones: []*Zone{}, zoneMap: new(sync.Map)}}}
+	plan, err := c.CreateOfflineMetaNodePlan("nodeX")
+	if err == nil {
+		t.Errorf("expected error due to FillOffLineAddrToPlan failure, got nil plan=%+v", plan)
+	}
+}
+
+func TestChangeAndCheckMetaPartitionLeader_AlreadyDifferent(t *testing.T) {
+	c := &Cluster{}
+	mp := &MetaPartition{
+		PartitionID: 1,
+		Replicas: []*MetaReplica{
+			{Addr: "src", IsLeader: false},
+			{Addr: "other", IsLeader: true},
+		},
+	}
+	mrPlan := &proto.MrBalanceInfo{Source: "src"}
+	mpPlan := &proto.MetaBalancePlan{}
+	err := c.changeAndCheckMetaPartitionLeader(mrPlan, mpPlan, mp)
+	if err != nil {
+		t.Errorf("expected nil when leader already not source, got %v", err)
+	}
+}
+
+func TestSelectOneLeaderAddr(t *testing.T) {
+	mp := &MetaPartition{
+		Replicas: []*MetaReplica{{Addr: "a"}, {Addr: "b"}, {Addr: "c"}},
+	}
+	mpPlan := &proto.MetaBalancePlan{Plan: []*proto.MrBalanceInfo{{Source: "a"}}}
+	got := selectOneLeaderAddr(&proto.MrBalanceInfo{Source: "a"}, mpPlan, mp, "b")
+	if got == "" || got == "a" || got == "b" {
+		t.Errorf("unexpected addr: %s", got)
+	}
+}
+
+func TestWaitForMetaPartitionReady_LeaderExist(t *testing.T) {
+	c := &Cluster{stopc: make(chan bool, 1)}
+	mp := &MetaPartition{PartitionID: 2, Replicas: []*MetaReplica{{Addr: "x", IsLeader: true}}}
+	if err := c.waitForMetaPartitionReady(mp); err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
+func TestGetMpCountByMetaNode(t *testing.T) {
+	c := &Cluster{}
+	c.ClusterVolSubItem.vols = map[string]*Vol{
+		"v1": {Name: "v1", MetaPartitions: map[uint64]*MetaPartition{1: {PartitionID: 1, Hosts: []string{"n1"}}}, mpsLock: new(mpsLockManager)},
+		"v2": {Name: "v2", MetaPartitions: map[uint64]*MetaPartition{2: {PartitionID: 2, Hosts: []string{"n2", "n1"}}}, mpsLock: new(mpsLockManager)},
+	}
+	if cnt := c.GetMpCountByMetaNode("n1"); cnt != 2 {
+		t.Errorf("expected 2, got %d", cnt)
+	}
+}
+
+func TestCalculateMetaPartitionFreezeCount(t *testing.T) {
+	c := &Cluster{}
+	v := &Vol{Name: "v", MetaPartitions: map[uint64]*MetaPartition{
+		1: {PartitionID: 1, Freeze: proto.FreezeMetaPartitionInit},
+		2: {PartitionID: 2, Freeze: proto.FreezingMetaPartition},
+		3: {PartitionID: 3, Freeze: proto.FreezedMetaPartition},
+	}, mpsLock: new(mpsLockManager)}
+	c.ClusterVolSubItem.vols = map[string]*Vol{"v": v}
+	got, err := c.CalculateMetaPartitionFreezeCount("v")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.UnFreeze != 1 || got.Freezing != 1 || got.Freezed != 1 {
+		t.Errorf("unexpected counts: %+v", got)
+	}
+}
+
+func TestCheckMetaReplicasIsRocksdb(t *testing.T) {
+	mp := &MetaPartition{Replicas: []*MetaReplica{{StoreMode: proto.StoreModeMem}, {StoreMode: proto.StoreModeRocksDb}}}
+	if !checkMetaReplicasIsRocksdb(mp) {
+		t.Errorf("expected true")
+	}
+}
+
+func TestFillModifyStoreModePlan_InvalidVol(t *testing.T) {
+	c := &Cluster{}
+	plan := &proto.ClusterPlan{Mode: proto.StoreModeRocksDb}
+	err := c.FillModifyStoreModePlan(plan, "no-such-vol")
+	if err == nil {
+		t.Errorf("expected error when volume not found")
+	}
+}
+
+func TestIsRocksdbDiskUsageLow(t *testing.T) {
+	low := &MetaNode{RocksdbDisks: []*proto.MetaNodeRocksdbInfo{{UsageRatio: gConfig.metaNodeMemLowPer - 0.01}}}
+	if !IsRocksdbDiskUsageLow(low) {
+		t.Errorf("expected true for low usage")
+	}
+	high := &MetaNode{RocksdbDisks: []*proto.MetaNodeRocksdbInfo{{UsageRatio: gConfig.metaNodeMemLowPer + 0.01}}}
+	if IsRocksdbDiskUsageLow(high) {
+		t.Errorf("expected false for high usage")
+	}
+}
+
+func TestGetReplicasStoreModeCount(t *testing.T) {
+	mp := &MetaPartition{Replicas: []*MetaReplica{
+		{StoreMode: proto.StoreModeMem},
+		{StoreMode: proto.StoreModeRocksDb},
+		{StoreMode: proto.StoreModeRocksDb},
+	}}
+	if cnt := GetReplicasStoreModeCount(mp, proto.StoreModeRocksDb); cnt != 2 {
+		t.Errorf("expected 2, got %d", cnt)
+	}
+}
+
+func TestGetMetaPartitionMemorySize(t *testing.T) {
+	// zero count
+	mn := &MetaNode{Used: 1024, MetaPartitionCount: 0}
+	if sz := GetMetaPartitionMemorySize(mn); sz != 0 {
+		t.Errorf("expected 0, got %d", sz)
+	}
+	// non-zero
+	mn = &MetaNode{Used: 1024, MetaPartitionCount: 4}
+	if sz := GetMetaPartitionMemorySize(mn); sz != 256 {
+		t.Errorf("expected 256, got %d", sz)
+	}
+}
+
+func TestCalcuMetaPartitionReadyMaxRetry(t *testing.T) {
+	mp := &MetaPartition{InodeCount: MaxInodePerMp}
+	if v := CalcuMetaPartitionReadyMaxRetry(mp); v != RetryCheckStatusNum {
+		t.Errorf("expected %d, got %d", RetryCheckStatusNum, v)
+	}
+	mp = &MetaPartition{InodeCount: MaxInodePerMp * 2}
+	expected := int(mp.InodeCount / MaxInodePerMp * RetryCheckStatusNum)
+	if v := CalcuMetaPartitionReadyMaxRetry(mp); v != expected {
+		t.Errorf("expected %d, got %d", expected, v)
+	}
+}
+
+func TestGetAllMetaPartitions(t *testing.T) {
+	c := &Cluster{}
+	c.ClusterVolSubItem.vols = map[string]*Vol{
+		"v1": {Name: "v1", MetaPartitions: map[uint64]*MetaPartition{1: {PartitionID: 1}}, mpsLock: new(mpsLockManager)},
+		"v2": {Name: "v2", MetaPartitions: map[uint64]*MetaPartition{2: {PartitionID: 2}, 3: {PartitionID: 3}}, mpsLock: new(mpsLockManager)},
+	}
+	got := c.getAllMetaPartitions()
+	if len(got) != 3 || got[1] == nil || got[2] == nil || got[3] == nil {
+		t.Errorf("unexpected result: %+v", got)
+	}
+}
+
+func TestDoMetaPartitionMigrate_ErrPlanStopped(t *testing.T) {
+	c := &Cluster{}
+	c.PlanRun = false
+	mp := &MetaPartition{PartitionID: 10, Replicas: []*MetaReplica{}}
+	mpPlan := &proto.MetaBalancePlan{ID: 10}
+	plan := &proto.ClusterPlan{}
+	mrPlan := &proto.MrBalanceInfo{Source: "s", Destination: "d"}
+	if err := c.doMetaPartitionMigrate(plan, mpPlan, mrPlan, mp); err == nil {
+		t.Errorf("expected error when plan stopped")
+	}
+}
+
+func TestDoMetaPartitionMigrate_ErrNotLeader(t *testing.T) {
+	c := &Cluster{partition: &mockPartition{isLeader: false}}
+	c.PlanRun = true
+	mp := &MetaPartition{PartitionID: 10, Replicas: []*MetaReplica{}}
+	mpPlan := &proto.MetaBalancePlan{ID: 10}
+	plan := &proto.ClusterPlan{}
+	mrPlan := &proto.MrBalanceInfo{Source: "s", Destination: "d"}
+	if err := c.doMetaPartitionMigrate(plan, mpPlan, mrPlan, mp); err == nil {
+		t.Errorf("expected error when not raft leader")
+	}
+}
+
+func TestIsRetryMigrateMpError(t *testing.T) {
+	for _, msg := range []string{"no leader", "try again", "deadline exceeded", "connection refused", "no route to host", "downreplicas so donnot offline"} {
+		if !IsRetryMigrateMpError(fmt.Errorf(msg)) {
+			t.Errorf("expected retryable for %q", msg)
+		}
+	}
+	if IsRetryMigrateMpError(fmt.Errorf("some fatal error")) {
+		t.Errorf("expected non-retryable")
+	}
+}
+
 func TestCalculateMetaNodeEstimate(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -1928,4 +2455,69 @@ func TestVerifyDestinationInMetaReplicas(t *testing.T) {
 
 	ret = verifyDestinationInMetaReplicas(mp, "node4")
 	require.False(t, ret)
+}
+
+func TestCreateModifyMetaPartitionStoreModePlan_InvalidVol(t *testing.T) {
+	c := &Cluster{
+		ClusterTopoSubItem: ClusterTopoSubItem{
+			t: &topology{
+				zones: []*Zone{
+					{
+						name: "zone1",
+						nodeSetMap: map[uint64]*nodeSet{
+							1: {
+								ID:        1,
+								metaNodes: new(sync.Map),
+							},
+						},
+					},
+				},
+				zoneMap: new(sync.Map),
+			},
+		},
+	}
+	_, err := c.CreateModifyMetaPartitionStoreModePlan("no-such-vol", 0, 0, proto.StoreModeRocksDb, 1)
+	if err == nil {
+		t.Errorf("expected error when volume not found")
+	}
+}
+
+func TestHandleMetaPartitionPlan_BasicFlow(t *testing.T) {
+	// Setup cluster and mp
+	c := &Cluster{stopc: make(chan bool, 1)}
+	// meta node and mp
+	ln, _ := net.Listen("tcp", ":0")
+	defer ln.Close()
+	go func() {
+		conn, _ := ln.Accept()
+		if conn != nil {
+			p := proto.NewPacket()
+			_ = p.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime)
+			p.ResultCode = proto.OpOk
+			p.Data = []byte("ok")
+			p.Size = uint32(len(p.Data))
+			_ = p.WriteToConn(conn)
+			conn.Close()
+		}
+	}()
+	addr := ln.Addr().String()
+	prev := useConnPool
+	useConnPool = false
+	defer func() { useConnPool = prev }()
+	mn := &MetaNode{ID: 1, Addr: addr, Sender: newAdminTaskManager(addr, "test-cluster")}
+	c.metaNodes.Store(addr, mn)
+
+	mp := &MetaPartition{
+		PartitionID: 100,
+		Replicas:    []*MetaReplica{{Addr: addr, IsLeader: true, metaNode: mn}},
+	}
+	// add into a vol so getMetaPartitionByID can find it
+	c.ClusterVolSubItem.vols = map[string]*Vol{
+		"v": {Name: "v", MetaPartitions: map[uint64]*MetaPartition{100: mp}, mpsLock: new(mpsLockManager)},
+	}
+	// plan and mrPlan
+	plan := &proto.ClusterPlan{}
+	mpPlan := &proto.MetaBalancePlan{ID: 100, Plan: []*proto.MrBalanceInfo{{Source: addr, Destination: addr}}}
+	err := c.handleMetaPartitionPlan(plan, mpPlan)
+	require.NoError(t, err)
 }

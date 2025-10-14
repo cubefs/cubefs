@@ -591,3 +591,215 @@ func TestLimitReadDir(t *testing.T) {
 
 	require.True(t, costTime1 > costTime2)
 }
+
+func TestUpdateSizeLoopFunc(t *testing.T) {
+	// prepare manager with file stats enabled and simple thresholds
+	metaM := &metadataManager{
+		fileStatsConfig: &fileStatsConfig{},
+		metaNode:        &MetaNode{},
+	}
+	metaM.initFileStatsConfig()
+	metaM.fileStatsConfig.thresholds = []uint64{50, 200}
+	metaM.fileStatsConfig.fileStatsEnable = true
+
+	mpC := &MetaPartitionConfig{
+		PartitionId:   100,
+		VolName:       "test_vol",
+		Start:         0,
+		End:           1000,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       t.TempDir(),
+		StoreMode:     proto.StoreModeMem,
+	}
+
+	partition := NewMetaPartition(mpC, metaM)
+	require.NotNil(t, partition)
+	mp := partition.(*metaPartition)
+	require.NoError(t, mp.initObjects(true))
+	// uidManager required by updateSizeLoopFunc
+	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
+
+	// insert inodes
+	h, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	// inode A: normal, size=100 -> fileRange bucket index 1
+	inoA := NewInode(1, 0)
+	inoA.Type = 0 // regular
+	inoA.NLink = 1
+	inoA.Size = 100
+	inoA.StorageClass = proto.StorageClass_Replica_SSD
+	_, _, err = mp.inodeTree.ReplaceOrInsert(h, inoA, true)
+	require.NoError(t, err)
+	// inode B: normal + migration, size=300 -> fileRange bucket index 2
+	inoB := NewInode(2, 0)
+	inoB.Type = 0 // regular
+	inoB.NLink = 1
+	inoB.Size = 300
+	inoB.StorageClass = proto.StorageClass_Replica_SSD
+	inoB.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{}
+	inoB.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Replica_HDD
+	inoB.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
+	_, _, err = mp.inodeTree.ReplaceOrInsert(h, inoB, true)
+	require.NoError(t, err)
+	require.NoError(t, mp.inodeTree.CommitAndReleaseBatchWriteHandle(h, false))
+
+	// run
+	require.NoError(t, mp.updateSizeLoopFunc())
+
+	// verify mp.size equals total migrate size (only inodeB has migration)
+	require.EqualValues(t, uint64(300), mp.size)
+
+	// verify statByStorageClass (Replica_SSD): 2 inodes, 100+300 bytes
+	var norm *proto.StatOfStorageClass
+	for _, st := range mp.statByStorageClass {
+		if st.StorageClass == proto.StorageClass_Replica_SSD {
+			norm = st
+			break
+		}
+	}
+	if norm == nil {
+		t.Fatalf("missing normal storage class stats")
+	}
+	require.EqualValues(t, 2, norm.InodeCount)
+	require.EqualValues(t, 400, norm.UsedSizeBytes)
+
+	// verify statByMigrateStorageClass (Replica_HDD): 1 inode, 300 bytes
+	var mig *proto.StatOfStorageClass
+	for _, st := range mp.statByMigrateStorageClass {
+		if st.StorageClass == proto.StorageClass_Replica_HDD {
+			mig = st
+			break
+		}
+	}
+	if mig == nil {
+		t.Fatalf("missing migrate storage class stats")
+	}
+	require.EqualValues(t, 1, mig.InodeCount)
+	require.EqualValues(t, 300, mig.UsedSizeBytes)
+
+	// verify fileRange buckets: thresholds [50,200] => 3 buckets
+	require.EqualValues(t, 3, len(mp.fileRange))
+	require.EqualValues(t, 0, mp.fileRange[0]) // <50
+	require.EqualValues(t, 1, mp.fileRange[2]) // >=200
+}
+
+func TestScanRocksdb(t *testing.T) {
+	// Setup temporary rocksdb root
+	rootDir := t.TempDir()
+	// Use per-partition rocksdb manager to create a db per metaPartition
+	mgr := NewPerPartitionRocksdbManager(&RocksdbManagerConfig{})
+	if err := mgr.Register(rootDir); err != nil {
+		t.Fatalf("register rocksdb root error:%v", err)
+	}
+
+	mpC := &MetaPartitionConfig{
+		PartitionId:   123,
+		VolName:       "vol",
+		Start:         0,
+		End:           1000,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       rootDir,
+		StoreMode:     proto.StoreModeRocksDb,
+		RocksDBDir:    rootDir,
+	}
+	metaM := &metadataManager{rocksdbManager: mgr, fileStatsConfig: &fileStatsConfig{}, metaNode: &MetaNode{}}
+	metaM.initFileStatsConfig()
+	// make file stats deterministic
+	metaM.fileStatsConfig.thresholds = []uint64{10}
+	metaM.fileStatsConfig.fileStatsEnable = true
+
+	partition := NewMetaPartition(mpC, metaM)
+	mp := partition.(*metaPartition)
+	if err := mp.initObjects(true); err != nil {
+		t.Fatalf("initObjects error:%v", err)
+	}
+
+	// seed a few inodes into rocksdb trees via mem API (rocks mode trees are set)
+	h, err := mp.inodeTree.CreateBatchWriteHandle()
+	if err != nil {
+		t.Fatalf("CreateBatchWriteHandle error:%v", err)
+	}
+	// ino1: id=5, size=5 (<10), regular
+	ino1 := NewInode(5, 0)
+	ino1.NLink = 1
+	ino1.Size = 5
+	ino1.StorageClass = proto.StorageClass_Replica_SSD
+	_, _, err = mp.inodeTree.ReplaceOrInsert(h, ino1, true)
+	if err != nil {
+		t.Fatalf("insert ino1 error:%v", err)
+	}
+	// ino2: id=20, size=20 (>=10), regular
+	ino2 := NewInode(20, 0)
+	ino2.NLink = 1
+	ino2.Size = 20
+	ino2.StorageClass = proto.StorageClass_Replica_SSD
+	_, _, err = mp.inodeTree.ReplaceOrInsert(h, ino2, true)
+	if err != nil {
+		t.Fatalf("insert ino2 error:%v", err)
+	}
+	if err := mp.inodeTree.CommitAndReleaseBatchWriteHandle(h, false); err != nil {
+		t.Fatalf("commit error:%v", err)
+	}
+
+	// Run scan: it relies on loadRocksdbInode and loadRocksdbExtent
+	if err := mp.ScanRocksdb(); err != nil {
+		t.Fatalf("ScanRocksdb error:%v", err)
+	}
+
+	// cursor should be updated to max inode id (20)
+	if got := mp.GetCursor(); got != 20 {
+		t.Fatalf("cursor mismatch, expect:20 actual:%v", got)
+	}
+	// mp.size should accumulate sizes
+	if mp.size == 0 {
+		t.Fatalf("size should be accumulated, got 0")
+	}
+	// fileRange buckets [<10, >=10] should reflect two inodes
+	if len(mp.fileRange) != 2 {
+		t.Fatalf("fileRange length mismatch, expect:2 actual:%d", len(mp.fileRange))
+	}
+	if mp.fileRange[0] != 1 || mp.fileRange[1] != 1 {
+		t.Fatalf("fileRange content mismatch, expect:[1,1] actual:%v", mp.fileRange)
+	}
+}
+
+func TestLoadDataFromRocksDb(t *testing.T) {
+	// Setup temporary rocksdb root
+	rootDir := t.TempDir()
+	// Use per-partition rocksdb manager to create a db per metaPartition
+	mgr := NewPerPartitionRocksdbManager(&RocksdbManagerConfig{})
+	if err := mgr.Register(rootDir); err != nil {
+		t.Fatalf("register rocksdb root error:%v", err)
+	}
+
+	mpC := &MetaPartitionConfig{
+		PartitionId:   124,
+		VolName:       "vol",
+		Start:         0,
+		End:           1000,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       rootDir,
+		StoreMode:     proto.StoreModeRocksDb,
+		RocksDBDir:    rootDir,
+	}
+	metaM := &metadataManager{rocksdbManager: mgr, metaNode: &MetaNode{}}
+	wrapperPartition := NewMetaPartition(mpC, metaM)
+	wrapperMp := wrapperPartition.(*metaPartition)
+	if err := wrapperMp.initObjects(true); err != nil {
+		t.Fatalf("initObjects error:%v", err)
+	}
+
+	if err := wrapperMp.LoadDataFromRocksDb(); err != nil {
+		t.Fatalf("LoadDataFromRocksDb error:%v", err)
+	}
+
+	if got := wrapperMp.txProcessor.txManager.txIdAlloc.getTransactionID(); got != 0 {
+		t.Fatalf("txIdAlloc mismatch, expect:0 actual:%v", got)
+	}
+	if got := wrapperMp.GetUniqId(); got != 0 {
+		t.Fatalf("UniqId mismatch, expect:0 actual:%v", got)
+	}
+}

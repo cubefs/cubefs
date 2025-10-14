@@ -619,3 +619,29 @@ func TestDentryTreeRange(t *testing.T) {
 		}
 	}
 }
+
+func TestTreeTypeString(t *testing.T) {
+	tests := []struct {
+		tp     TreeType
+		expect string
+	}{
+		{DentryType, "dentry tree"},
+		{InodeType, "inode tree"},
+		{ExtendType, "extend tree"},
+		{MultipartType, "multipart tree"},
+		{TransactionType, "transaction tree"},
+		{TransactionRollbackInodeType, "transaction rollback inode tree"},
+		{TransactionRollbackDentryType, "transaction rollback dentry tree"},
+		{DeletedExtentsType, "deleted extents"},
+		{DeletedObjExtentsType, "deleted obj extents"},
+		{BaseInfoType, "unknown"},
+		{MaxType, "unknown"},
+		{TreeType(255), "unknown"},
+	}
+
+	for _, tt := range tests {
+		if got := tt.tp.String(); got != tt.expect {
+			t.Fatalf("TreeType(%v).String() mismatch, expect:%q, actual:%q", tt.tp, tt.expect, got)
+		}
+	}
+}
