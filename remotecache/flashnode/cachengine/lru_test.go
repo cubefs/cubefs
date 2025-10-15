@@ -81,10 +81,12 @@ func TestLRUCapacity(t *testing.T) {
 	c.Set(1, &CacheBlock{blockKey: "block1"}, 0)
 	c.Set(2, &CacheBlock{blockKey: "block2"}, 0)
 	c.Set(3, &CacheBlock{blockKey: "block3"}, 0)
-	require.Equal(t, 2, c.Len())
+	require.Equal(t, 0, c.Len())
 	_, err := c.Get(1)
 	require.Error(t, err)
 	require.True(t, called)
+	c.Set(4, &CacheBlock{blockKey: "block4"}, 0)
+	c.Set(5, &CacheBlock{blockKey: "block5"}, 0)
 	t.Logf("%+v", c.Status())
 	require.Error(t, c.Close())
 }
