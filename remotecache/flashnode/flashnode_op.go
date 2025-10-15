@@ -399,6 +399,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		go f.replyPutDataOk(ch, conn, p, logPrefix)
 		for {
 			if ch.RemoteError != nil {
+				err1 = fmt.Errorf(proto.ErrorRemoteErrorTpl, ch.RemoteError)
 				break
 			}
 			readSize = proto.CACHE_BLOCK_PACKET_SIZE
@@ -457,7 +458,7 @@ func (f *FlashNode) opCachePutBlock(conn net.Conn, p *proto.Packet) (err error) 
 		}
 		<-ch.Completed
 		if ch.RemoteError != nil {
-			err1 = ch.RemoteError
+			err1 = fmt.Errorf(proto.ErrorRemoteErrorTpl, ch.RemoteError)
 		}
 	}
 	if err1 != nil {

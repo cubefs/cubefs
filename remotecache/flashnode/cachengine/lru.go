@@ -347,20 +347,24 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	})
 	toEvicts := make(map[interface{}]interface{})
 	if c.cacheType == LRUFileHandleCacheType && c.lru.Len() > c.capacity {
-		for i := 0; i < MaxEvictCountPerRound; i++ {
+		for i := 0; i < MaxEvictCountPerRound && c.lru.Len() != 0; i++ {
 			ent := c.lru.Back()
 			if ent != nil {
 				toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
 				n++
 			}
 		}
-	} else {
-		for c.lru.Len() > c.capacity || (c.cacheType == LRUCacheBlockCacheType && atomic.LoadInt64(&c.allocated) > c.maxSize) {
+	} else if c.cacheType == LRUCacheBlockCacheType {
+		minEvictCount := 0
+		evictCount := 0
+		for (c.lru.Len() > c.capacity || atomic.LoadInt64(&c.allocated) > c.maxSize || evictCount < minEvictCount) && c.lru.Len() != 0 {
+			if minEvictCount == 0 {
+				minEvictCount = 50
+			}
+			evictCount++
 			ent := c.lru.Back()
 			if ent != nil {
-				if c.cacheType == LRUCacheBlockCacheType {
-					c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
-				}
+				c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
 				toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
 				n++
 			}
@@ -400,15 +404,22 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 		c.lock.RUnlock()
 		atomic.AddInt32(&c.misses, 1)
 		c.lock.Lock()
-		if _, found := c.items[key]; found {
+		if newEnt, found := c.items[key]; found {
+			newV := newEnt.Value.(*entry)
+			if newV.expiredAt.After(time.Now()) {
+				c.lock.Unlock()
+				atomic.AddInt32(&c.hits, 1)
+				c.lruUpdateChan <- newV
+				return newV.value, nil
+			}
 			if c.cacheType == LRUCacheBlockCacheType {
 				log.LogInfof("delete(%s) on get, create_time:(%v)  expired_time:(%v)",
-					key, v.createAt.Format("2006-01-02 15:04:05"), v.expiredAt.Format("2006-01-02 15:04:05"))
+					key, newV.createAt.Format("2006-01-02 15:04:05"), newV.expiredAt.Format("2006-01-02 15:04:05"))
 				c.DeleteKeyFromPreAllocatedKeyMap(key)
 			}
-			e := c.deleteElement(ent)
-			_ = c.onDelete(e, fmt.Sprintf("created: %v get expired: %v", v.createAt.Format("2006-01-02 15:04:05"),
-				v.expiredAt.Format("2006-01-02 15:04:05")), true)
+			e := c.deleteElement(newEnt)
+			_ = c.onDelete(e, fmt.Sprintf("created: %v get expired: %v", newV.createAt.Format("2006-01-02 15:04:05"),
+				newV.expiredAt.Format("2006-01-02 15:04:05")), true)
 		}
 		c.lock.Unlock()
 		return nil, fmt.Errorf("expired key[%v]", key)
