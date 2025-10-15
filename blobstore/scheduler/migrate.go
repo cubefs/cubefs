@@ -943,9 +943,6 @@ func (mgr *MigrateMgr) AcquireTask(ctx context.Context, idc string) (task *proto
 	span := trace.SpanFromContextSafe(ctx)
 	task = &proto.Task{}
 	task.ModuleType = proto.TypeBlobNode
-	if !mgr.taskSwitch.Enabled() {
-		return task, proto.ErrTaskPaused
-	}
 
 	_, migTask, _ := mgr.workQueue.Acquire(idc)
 	if migTask != nil {
@@ -1069,10 +1066,6 @@ func (mgr *MigrateMgr) CompleteTask(ctx context.Context, args *api.TaskArgs) (er
 
 // RenewalTask renewal migrate task
 func (mgr *MigrateMgr) RenewalTask(ctx context.Context, idc, taskID string) (err error) {
-	if !mgr.taskSwitch.Enabled() {
-		return proto.ErrTaskPaused
-	}
-
 	err = mgr.workQueue.Renewal(idc, taskID)
 	if err != nil {
 		span := trace.SpanFromContextSafe(ctx)

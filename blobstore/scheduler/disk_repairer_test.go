@@ -704,19 +704,11 @@ func TestDiskRepairerAcquireTask(t *testing.T) {
 	idc := "z0"
 	{
 		mgr := newDiskRepairer(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(false)
-		_, err := mgr.AcquireTask(ctx, idc)
-		require.True(t, errors.Is(err, proto.ErrTaskPaused))
-	}
-	{
-		mgr := newDiskRepairer(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
 		_, err := mgr.AcquireTask(ctx, idc)
 		require.True(t, errors.Is(err, proto.ErrTaskEmpty))
 	}
 	{
 		mgr := newDiskRepairer(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
 		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, "z0", 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 		_, err := mgr.AcquireTask(ctx, idc)
@@ -808,19 +800,11 @@ func TestDiskRepairerRenewalTask(t *testing.T) {
 	idc := "z0"
 	{
 		mgr := newDiskRepairer(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(false)
-		err := mgr.RenewalTask(ctx, idc, "")
-		require.True(t, errors.Is(err, proto.ErrTaskPaused))
-	}
-	{
-		mgr := newDiskRepairer(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
 		err := mgr.RenewalTask(ctx, idc, "")
 		require.Error(t, err)
 	}
 	{
 		mgr := newDiskRepairer(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
 		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, "z0", 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 		err := mgr.RenewalTask(ctx, idc, t1.TaskID)

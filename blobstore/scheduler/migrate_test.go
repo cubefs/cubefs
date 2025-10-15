@@ -361,23 +361,14 @@ func TestAcquireMigrateTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	{
-		// task switch is close
-		mgr := newMigrateMgr(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(false)
-		_, err := mgr.AcquireTask(ctx, idc)
-		require.True(t, errors.Is(err, proto.ErrTaskPaused))
-	}
-	{
 		// no task in queue
 		mgr := newMigrateMgr(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
 		_, err := mgr.AcquireTask(ctx, idc)
 		require.True(t, errors.Is(err, proto.ErrTaskEmpty))
 	}
 	{
 		// one task in queue
 		mgr := newMigrateMgr(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
 		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 		task, err := mgr.AcquireTask(ctx, idc)
@@ -484,22 +475,13 @@ func TestRenewalMigrateTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	{
-		// task switch is close
-		mgr := newMigrateMgr(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(false)
-		err := mgr.RenewalTask(ctx, idc, "")
-		require.True(t, errors.Is(err, proto.ErrTaskPaused))
-	}
-	{
 		// no task
 		mgr := newMigrateMgr(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
 		err := mgr.RenewalTask(ctx, idc, "")
 		require.Error(t, err)
 	}
 	{
 		mgr := newMigrateMgr(t)
-		mgr.taskSwitch.(*mocks.MockSwitcher).EXPECT().Enabled().Return(true)
 		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 		err := mgr.RenewalTask(ctx, idc, t1.TaskID)

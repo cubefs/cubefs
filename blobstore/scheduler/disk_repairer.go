@@ -759,9 +759,6 @@ func (mgr *DiskRepairMgr) checkAndClearJunkTasks() {
 
 // AcquireTask acquire repair task
 func (mgr *DiskRepairMgr) AcquireTask(ctx context.Context, idc string) (task *proto.Task, err error) {
-	if !mgr.taskSwitch.Enabled() {
-		return task, proto.ErrTaskPaused
-	}
 	_, repairTask, _ := mgr.workQueue.Acquire(idc)
 	if repairTask != nil {
 		t := *repairTask.(*proto.MigrateTask)
@@ -866,11 +863,6 @@ func (mgr *DiskRepairMgr) CompleteTask(ctx context.Context, args *api.TaskArgs) 
 
 // RenewalTask renewal repair task
 func (mgr *DiskRepairMgr) RenewalTask(ctx context.Context, idc, taskID string) error {
-	if !mgr.taskSwitch.Enabled() {
-		// renewal task stopping will touch off worker to stop task
-		return proto.ErrTaskPaused
-	}
-
 	span := trace.SpanFromContextSafe(ctx)
 	err := mgr.workQueue.Renewal(idc, taskID)
 	if err != nil {
