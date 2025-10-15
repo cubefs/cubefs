@@ -42,5 +42,5 @@ The Lb version mainly implements load balancing, failure node removal and reuse 
   "host_try_times": "Number of retries for each node failure, used in conjunction with node removal. When a target host fails continuously for host_try_times times, if the failure removal mechanism is enabled, the node will be removed from the available list",
   "try_times": "Number of retries for each request failure",
   "fail_retry_interval_s": "Used in conjunction with node removal to implement the time interval for failed nodes to be reused. If this value is less than or equal to 0, no removal will be performed. The default value is -1",
-  "MaxFailsPeriodS": "Time interval for recording consecutive failures. For example, if the current node has failed N times, when the time interval between the N+1th failure and the Nth failure is less than this value, the node will be recorded as the N+1th failure. Otherwise, it will be recorded as the first failure"
+  "max_fails_period_s": "Time interval for recording consecutive failures. For example, if the current node has failed N times, when the time interval between the N+1th failure and the Nth failure is less than this value, the node will be recorded as the N+1th failure. Otherwise, it will be recorded as the first failure"
 }
