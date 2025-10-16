@@ -203,7 +203,7 @@ func TestIsOptimalDistribution(t *testing.T) {
 			expectOpt: false,
 		},
 		{
-			name:  "optimal: single nodeset, rack aware disabled",
+			name:  "not optimal: single nodeset but rack conflict ",
 			hosts: []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.2:17310"},
 			dpHost2Ns: map[string]uint64{
 				"192.168.1.1:17310": 1,
@@ -271,26 +271,32 @@ func TestHasRackConflict(t *testing.T) {
 			expectConflict: false,
 		},
 		{
-			name:           "strong conflict - 2 in same rack",
+			name:           "conflict - 2 in same rack (strong level)",
 			hosts:          []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.2:17310"},
 			rackLevel:      proto.RackAwareStrong,
 			expectConflict: true,
 		},
 		{
-			name:           "weak no conflict - 2 in same rack but under threshold",
+			name:           "conflict - 2 in same rack (weak level, now always returns true)",
 			hosts:          []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.2:17310"},
 			rackLevel:      proto.RackAwareWeak,
-			expectConflict: false, // 3/3 = 1, conflict score = 1, not > 1
+			expectConflict: true, // Changed: now always returns true for any conflict
 		},
 		{
-			name:           "weak conflict - 3 in same rack",
+			name:           "conflict - 3 in same rack (weak level)",
 			hosts:          []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.5:17310"},
 			rackLevel:      proto.RackAwareWeak,
-			expectConflict: true, // conflict score = 2, > 3/3 = 1
+			expectConflict: true,
 		},
 		{
-			name:           "none - no conflict regardless",
+			name:           "conflict - even with none level, now returns true",
 			hosts:          []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.5:17310"},
+			rackLevel:      proto.RackAwareNone,
+			expectConflict: true, // Changed: now always returns true for any conflict
+		},
+		{
+			name:           "no conflict - different racks (none level)",
+			hosts:          []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
 			rackLevel:      proto.RackAwareNone,
 			expectConflict: false,
 		},
@@ -389,7 +395,6 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 
 	// Set up atomic values
 	cluster.DistributionOptimizationConcurrentDpCount.Store(100)
-	cluster.DistributionOptimizationIntervalSec.Store(120)
 	cluster.DistributionOptimizationThreshold.Store(0.8)
 	cluster.EnableAutoDistributionOptimization.Store(true)
 
@@ -441,7 +446,6 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 
 	require.NotNil(t, status, "Status should not be nil")
 	require.Equal(t, int64(100), status.ConcurrentDpCount, "ConcurrentDpCount mismatch")
-	require.Equal(t, int64(120), status.BalanceIntervalSec, "BalanceIntervalSec mismatch")
 	require.Equal(t, 0.8, status.BalanceThreshold, "BalanceThreshold mismatch")
 	require.True(t, status.EnableDistributionOptimization, "EnableDistributionOptimization mismatch")
 	require.Equal(t, []uint64{1}, status.DecommissioningDPIDs, "DecommissioningDPIDs mismatch")

@@ -126,12 +126,11 @@ type ClusterDecommission struct {
 	ForbidMpDecommission                      bool
 	EnableAutoDpMetaRepair                    atomicutil.Bool
 	EnableAutoDecommissionDisk                atomicutil.Bool
-	EnableAutoDistributionOptimization        atomicutil.Bool
-	DistributionOptimizationConcurrentDpCount atomicutil.Int64
-	DistributionOptimizationIntervalSec       atomicutil.Int64
-	DistributionOptimizationThreshold         atomicutil.Float64
 	AutoDecommissionInterval                  atomicutil.Int64
 	AutoDpMetaRepairParallelCnt               atomicutil.Uint32
+	EnableAutoDistributionOptimization        atomicutil.Bool
+	DistributionOptimizationConcurrentDpCount atomicutil.Int64
+	DistributionOptimizationThreshold         atomicutil.Float64
 	server                                    *Server
 }
 
@@ -494,7 +493,6 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
 	c.EnableAutoDistributionOptimization.Store(defaultEnableAutoDistributionOptimization)
 	c.DistributionOptimizationConcurrentDpCount.Store(int64(defaultDistributionOptimizationConcurrentDpCount))
-	c.DistributionOptimizationIntervalSec.Store(int64(defaultDistributionOptimizationIntervalSec))
 	c.DistributionOptimizationThreshold.Store(defaultDistributionOptimizationThreshold)
 	c.server = server
 	c.flashNodeTopo = newFlashNodeTopology()
@@ -533,6 +531,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckDataPartitionRepairingStatus()
 	c.scheduleToCheckDataPartitionDecommissionDiskRetryMap()
 	c.scheduleToDistributionOptimization()
+	c.scheduleToRecalculateSimulateReservedSpace()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -3373,19 +3372,20 @@ func (c *Cluster) addDataReservedResource(addrs []string, dp *DataPartition) err
 		}
 
 		dn.Lock()
-		defer dn.Unlock()
 
 		if !dn.isWriteAbleWithSizeNoLock(10 * util.GB) {
+			dn.Unlock()
 			return fmt.Errorf("new datanode %s is not writable AvailableSpace(%v) isActive(%v) RdOnly(%v) Total(%v) Used(%v) SimulateReservedSpace(%v)",
 				addr, dn.AvailableSpace, dn.isActive, dn.RdOnly, dn.Total, dn.Used, dn.SimulateReservedSpace)
 		}
 
 		updatedDataNodes = append(updatedDataNodes, dn)
+		dn.Unlock()
 	}
 
 	for _, dn := range updatedDataNodes {
-		dn.SimulateReservedSpace += leaderSize
-		dn.SimulateReservedDpCount++
+		atomic.AddUint64(&dn.SimulateReservedSpace, leaderSize)
+		atomic.AddUint32(&dn.SimulateReservedDpCount, 1)
 	}
 
 	return nil
@@ -3401,36 +3401,118 @@ func (c *Cluster) releaseDataReservedResource(addrs []string, dp *DataPartition)
 	for _, addr := range addrs {
 		dn, err := c.dataNode(addr)
 		if err != nil {
+			log.LogWarnf("action[releaseDataReservedResource] dataNode not found: %s", addr)
 			continue
 		}
-		log.LogWarnf("action[releaseDataReservedResource] addr %s, ava %d, leader %d", dn.Addr, dn.AvailableSpace, leaderSize)
-		dn.Lock()
-		defer dn.Unlock()
-		if dn.SimulateReservedSpace < leaderSize {
-			dn.SimulateReservedSpace = 0
-		} else {
-			dn.SimulateReservedSpace -= leaderSize
+
+		if leaderSize > 0 {
+			oldValue := atomic.LoadUint64(&dn.SimulateReservedSpace)
+			if oldValue >= leaderSize {
+				atomic.AddUint64(&dn.SimulateReservedSpace, ^(leaderSize - 1))
+			} else {
+				atomic.StoreUint64(&dn.SimulateReservedSpace, 0)
+			}
 		}
-		if dn.SimulateReservedDpCount > 0 {
-			dn.SimulateReservedDpCount--
+
+		oldCount := atomic.LoadUint32(&dn.SimulateReservedDpCount)
+		if oldCount > 0 {
+			atomic.AddUint32(&dn.SimulateReservedDpCount, ^uint32(0))
 		}
+
+		log.LogDebugf("action[releaseDataReservedResource] addr %s, released size %d, remaining reserved %d, dp count %d",
+			dn.Addr, leaderSize, atomic.LoadUint64(&dn.SimulateReservedSpace), atomic.LoadUint32(&dn.SimulateReservedDpCount))
 	}
 }
 
-func (c *Cluster) resetDataReservedResource(addrs []string, dp *DataPartition) {
-	leaderSize := dp.Replicas[0].Used
+// scheduleToRecalculateSimulateReservedSpace schedules periodic recalculation of SimulateReservedSpace
+func (c *Cluster) scheduleToRecalculateSimulateReservedSpace() {
+	c.runTask(&cTask{
+		tickTime: 10 * time.Minute, // Execute every 5 minutes
+		name:     "scheduleToRecalculateSimulateReservedSpace",
+		function: func() (fin bool) {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.recalculateAllNodesSimulateReservedSpace()
+			}
+			return
+		},
+	})
+}
 
-	for _, addr := range addrs {
-		dn, err := c.dataNode(addr)
-		if err != nil {
-			continue
+// recalculateAllNodesSimulateReservedSpace recalculates SimulateReservedSpace for all data nodes
+func (c *Cluster) recalculateAllNodesSimulateReservedSpace() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("recalculateAllNodesSimulateReservedSpace occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"recalculateAllNodesSimulateReservedSpace occurred panic")
 		}
-		log.LogWarnf("action[releaseDataReservedResource] addr %s, ava %d, leader %d", dn.Addr, dn.AvailableSpace, leaderSize)
-		dn.Lock()
-		defer dn.Unlock()
-		dn.SimulateReservedSpace = 0
-		dn.SimulateReservedDpCount = 0
+	}()
+
+	nodeReservedSize := make(map[string]uint64)
+	nodeReservedCount := make(map[string]uint32)
+	c.dataNodes.Range(func(addr, value interface{}) bool {
+		nodeAddr := addr.(string)
+		nodeReservedSize[nodeAddr] = 0
+		nodeReservedCount[nodeAddr] = 0
+		return true
+	})
+
+	// Traverse all zones and their nodesets to get decommission data partitions
+	zones := c.t.getAllZones()
+	for _, zone := range zones {
+		nodeSets := zone.getAllNodeSet()
+		for _, ns := range nodeSets {
+			// Get all decommission data partitions from this nodeset
+			decommissionDPs := ns.decommissionDataPartitionList.GetAllDecommissionDataPartitions()
+			for _, dp := range decommissionDPs {
+				var dstAddrs []string
+				dstAddrs = append(dstAddrs, dp.DecommissionDstAddr)
+				dstAddrs = append(dstAddrs, dp.DecommissionDstAddrs...)
+				if len(dstAddrs) > 0 && len(dp.Replicas) > 0 {
+					// Use the maximum used space among all replicas to avoid underestimating
+					// the space needed for migration, as the migrating replica might be smaller
+					maxUsedSize := c.getDataPartitionMaxUsedSize(dp)
+					// Accumulate reserved space for each destination address
+					for _, dstAddr := range dstAddrs {
+						if dstAddr != "" {
+							if _, exists := nodeReservedSize[dstAddr]; exists {
+								nodeReservedSize[dstAddr] += maxUsedSize
+								nodeReservedCount[dstAddr]++
+							}
+						}
+					}
+				}
+			}
+		}
 	}
+
+	c.dataNodes.Range(func(addr, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		nodeAddr := addr.(string)
+		newReservedSize := nodeReservedSize[nodeAddr]
+		newReservedCount := nodeReservedCount[nodeAddr]
+
+		// Atomically update SimulateReservedSpace
+		atomic.StoreUint64(&dataNode.SimulateReservedSpace, newReservedSize)
+		atomic.StoreUint32(&dataNode.SimulateReservedDpCount, newReservedCount)
+
+		log.LogInfof("action[recalculateAllNodesSimulateReservedSpace] node[%s] "+
+			"SimulateReservedSpace: %d, SimulateReservedDpCount: %d",
+			dataNode.Addr, newReservedSize, newReservedCount)
+
+		return true
+	})
+}
+
+// getDataPartitionMaxUsedSize returns the maximum used space among all replicas
+func (c *Cluster) getDataPartitionMaxUsedSize(dp *DataPartition) uint64 {
+	var maxUsed uint64
+	for _, replica := range dp.Replicas {
+		if replica.Used > maxUsed {
+			maxUsed = replica.Used
+		}
+	}
+	return maxUsed
 }
 
 func (c *Cluster) buildSetDpRepairStatusTaskAndSyncSendTask(dp *DataPartition, repairingStatus bool, leaderAddr string) (resp *proto.Packet, err error) {
@@ -7200,15 +7282,6 @@ func (c *Cluster) setDistributionOptimizationConcurrentDpCount(count int64) erro
 	c.DistributionOptimizationConcurrentDpCount.Store(count)
 	if err := c.syncPutCluster(); err != nil {
 		log.LogWarnf("setDistributionOptimizationConcurrentDpCount: sync put cluster failed, err(%v)", err)
-		return err
-	}
-	return nil
-}
-
-func (c *Cluster) setDistributionOptimizationIntervalSec(intervalSec int64) error {
-	c.DistributionOptimizationIntervalSec.Store(intervalSec)
-	if err := c.syncPutCluster(); err != nil {
-		log.LogWarnf("setDistributionOptimizationIntervalSec: sync put cluster failed, err(%v)", err)
 		return err
 	}
 	return nil

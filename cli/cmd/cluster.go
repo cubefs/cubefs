@@ -295,7 +295,6 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	rackAware := ""
 	// Distribution optimization parameters
 	distributionOptimizationConcurrentDpCount := ""
-	distributionOptimizationIntervalSec := ""
 	distributionOptimizationThreshold := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
@@ -464,19 +463,6 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			if distributionOptimizationIntervalSec != "" {
-				var interval int64
-				interval, err = strconv.ParseInt(distributionOptimizationIntervalSec, 10, 64)
-				if err != nil {
-					err = fmt.Errorf("param distributionOptimizationIntervalSec(%v) should be int", distributionOptimizationIntervalSec)
-					return
-				}
-				if interval <= 0 {
-					err = fmt.Errorf("distributionOptimizationIntervalSec (%v) should be greater than 0", interval)
-					return
-				}
-			}
-
 			if distributionOptimizationThreshold != "" {
 				var threshold float64
 				threshold, err = strconv.ParseFloat(distributionOptimizationThreshold, 64)
@@ -496,7 +482,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt, autoDistributionOptimization,
 				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
 				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware,
-				distributionOptimizationConcurrentDpCount, distributionOptimizationIntervalSec, distributionOptimizationThreshold); err != nil {
+				distributionOptimizationConcurrentDpCount, distributionOptimizationThreshold); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -534,7 +520,6 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&rackAware, CliFlagRackAware, "", "Set rack aware level: 0(none), 1(weak), 2(strong)")
 	// Distribution optimization parameters
 	cmd.Flags().StringVar(&distributionOptimizationConcurrentDpCount, CliFlagDistributionOptimizationConcurrentDpCount, "", "Concurrent data partition count for distribution optimization")
-	cmd.Flags().StringVar(&distributionOptimizationIntervalSec, CliFlagDistributionOptimizationIntervalSec, "", "Interval in seconds for distribution optimization")
 	cmd.Flags().StringVar(&distributionOptimizationThreshold, CliFlagDistributionOptimizationThreshold, "", "Threshold for distribution optimization (0.0-1.0)")
 	return cmd
 }

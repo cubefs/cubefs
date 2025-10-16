@@ -1171,3 +1171,160 @@ func TestAddDataNode(t *testing.T) {
 		}
 	})
 }
+
+func TestSimulateReservedSpaceFunctions(t *testing.T) {
+	// Use existing data node from test environment
+	var testDataNode *DataNode
+	var testNodeAddr string
+
+	// Find an existing active data node
+	server.cluster.dataNodes.Range(func(addr, value interface{}) bool {
+		dn := value.(*DataNode)
+		if dn.isActive {
+			testDataNode = dn
+			testNodeAddr = addr.(string)
+			return false // stop iteration
+		}
+		return true
+	})
+
+	if testDataNode == nil {
+		t.Skip("No active data node found in test environment")
+		return
+	}
+
+	// Create test data partition
+	vol, err := server.cluster.getVol(commonVolName)
+	require.NoError(t, err)
+
+	partitionID, err := server.cluster.idAlloc.allocateDataPartitionID()
+	require.NoError(t, err)
+
+	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID,
+		proto.PartitionTypeNormal, defaultMediaType)
+
+	// Add test replica to data partition
+	replica := newDataReplica(testDataNode)
+	replica.Used = 1024 * 1024 * 1024 // 1GB
+	dp.addReplica(replica)
+
+	t.Run("addDataReservedResource", func(t *testing.T) {
+		// Reset simulate reserved space
+		testDataNode.SimulateReservedSpace = 0
+		testDataNode.SimulateReservedDpCount = 0
+
+		initialReservedSpace := testDataNode.SimulateReservedSpace
+		initialReservedCount := testDataNode.SimulateReservedDpCount
+
+		// Add reserved resource
+		err := server.cluster.addDataReservedResource([]string{testNodeAddr}, dp)
+		require.NoError(t, err)
+
+		// Verify the reserved space is increased
+		require.Equal(t, initialReservedSpace+replica.Used, testDataNode.SimulateReservedSpace)
+		require.Equal(t, initialReservedCount+1, testDataNode.SimulateReservedDpCount)
+	})
+
+	t.Run("releaseDataReservedResource", func(t *testing.T) {
+		// Set initial reserved space
+		testDataNode.SimulateReservedSpace = 2 * 1024 * 1024 * 1024 // 2GB
+		testDataNode.SimulateReservedDpCount = 2
+
+		initialReservedSpace := testDataNode.SimulateReservedSpace
+		initialReservedCount := testDataNode.SimulateReservedDpCount
+
+		// Release reserved resource
+		server.cluster.releaseDataReservedResource([]string{testNodeAddr}, dp)
+
+		// Verify the reserved space is decreased
+		expectedSpace := initialReservedSpace - replica.Used
+		require.Equal(t, expectedSpace, testDataNode.SimulateReservedSpace)
+		require.Equal(t, initialReservedCount-1, testDataNode.SimulateReservedDpCount)
+	})
+
+	t.Run("releaseDataReservedResource_underflow", func(t *testing.T) {
+		// Set reserved space smaller than release amount
+		testDataNode.SimulateReservedSpace = 512 * 1024 * 1024 // 512MB (smaller than replica.Used)
+		testDataNode.SimulateReservedDpCount = 1
+
+		// Release reserved resource
+		server.cluster.releaseDataReservedResource([]string{testNodeAddr}, dp)
+
+		// Verify the reserved space is set to 0 when underflow
+		require.Equal(t, uint64(0), testDataNode.SimulateReservedSpace)
+		require.Equal(t, uint32(0), testDataNode.SimulateReservedDpCount)
+	})
+
+	t.Run("getDataPartitionMaxUsedSize", func(t *testing.T) {
+		// Create data partition with multiple replicas
+		testDP := newDataPartition(partitionID+1, 3, vol.Name, vol.ID,
+			proto.PartitionTypeNormal, defaultMediaType)
+
+		// Add replicas with different used sizes
+		replica1 := &DataReplica{DataReplica: proto.DataReplica{Used: 500 * 1024 * 1024}} // 500MB
+		replica2 := &DataReplica{DataReplica: proto.DataReplica{Used: 800 * 1024 * 1024}} // 800MB
+		replica3 := &DataReplica{DataReplica: proto.DataReplica{Used: 600 * 1024 * 1024}} // 600MB
+
+		testDP.Replicas = []*DataReplica{replica1, replica2, replica3}
+
+		// Get max used size
+		maxUsed := server.cluster.getDataPartitionMaxUsedSize(testDP)
+
+		// Should return the maximum used size (800MB)
+		require.Equal(t, uint64(800*1024*1024), maxUsed)
+	})
+
+	t.Run("getDataPartitionMaxUsedSize_empty_replicas", func(t *testing.T) {
+		// Create data partition with no replicas
+		testDP := newDataPartition(partitionID+2, 3, vol.Name, vol.ID,
+			proto.PartitionTypeNormal, defaultMediaType)
+
+		// Get max used size
+		maxUsed := server.cluster.getDataPartitionMaxUsedSize(testDP)
+
+		// Should return 0 for empty replicas
+		require.Equal(t, uint64(0), maxUsed)
+	})
+
+	t.Run("concurrent_simulate_reserved_space_operations", func(t *testing.T) {
+		// Reset simulate reserved space
+		testDataNode.SimulateReservedSpace = 0
+		testDataNode.SimulateReservedDpCount = 0
+
+		var wg sync.WaitGroup
+		numOperations := 10 // Reduce number of operations for test stability
+
+		// Concurrently add reserved resources
+		for i := 0; i < numOperations; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				err := server.cluster.addDataReservedResource([]string{testNodeAddr}, dp)
+				require.NoError(t, err)
+			}()
+		}
+
+		wg.Wait()
+
+		// Verify final state
+		expectedSpace := uint64(numOperations) * replica.Used
+		expectedCount := uint32(numOperations)
+		require.Equal(t, expectedSpace, testDataNode.SimulateReservedSpace)
+		require.Equal(t, expectedCount, testDataNode.SimulateReservedDpCount)
+
+		// Concurrently release reserved resources
+		for i := 0; i < numOperations; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				server.cluster.releaseDataReservedResource([]string{testNodeAddr}, dp)
+			}()
+		}
+
+		wg.Wait()
+
+		// Verify final state (should be back to 0)
+		require.Equal(t, uint64(0), testDataNode.SimulateReservedSpace)
+		require.Equal(t, uint32(0), testDataNode.SimulateReservedDpCount)
+	})
+}

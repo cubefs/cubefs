@@ -26,24 +26,23 @@ import (
 
 // scheduleToDistributionOptimization registers auto distribution optimization task
 func (c *Cluster) scheduleToDistributionOptimization() {
-	c.runTask(
-		&cTask{
-			tickTime: time.Second * time.Duration(c.DistributionOptimizationIntervalSec.Load()),
-			name:     "distributionOptimizationController",
-			function: func() (fin bool) {
-				if c.partition == nil || !c.partition.IsRaftLeader() {
-					return
-				}
-				// Check if distribution optimization is enabled before execution
-				if !c.getEnableAutoDistributionOptimization() {
-					log.LogDebugf("action[distributionOptimizationController] distribution optimization is disabled, skip execution")
-					return
-				}
-				c.executeDistributionOptimizationMigrations()
-				return
-			},
-		},
-	)
+	task := &cTask{
+		tickTime: time.Second * time.Duration(defaultDistributionOptimizationIntervalSec),
+		name:     "distributionOptimizationController",
+	}
+	task.function = func() (fin bool) {
+		if c.partition == nil || !c.partition.IsRaftLeader() {
+			return
+		}
+		// Check if distribution optimization is enabled before execution
+		if !c.getEnableAutoDistributionOptimization() {
+			log.LogDebugf("action[distributionOptimizationController] distribution optimization is disabled, skip execution")
+			return
+		}
+		c.executeDistributionOptimizationMigrations()
+		return
+	}
+	c.runTask(task)
 }
 
 func (c *Cluster) executeDistributionOptimizationMigrations() {
@@ -68,6 +67,9 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 
 outerLoop:
 	for _, vol := range vols {
+		if vol.crossZone {
+			continue
+		}
 		partitions := vol.dataPartitions.clonePartitions()
 		for _, dp := range partitions {
 			if processedCount >= availableSlots {
@@ -141,40 +143,33 @@ func isOptimalDistribution(dp *DataPartition, dpHost2Ns map[string]uint64, c *Cl
 		return true
 	}
 
-	// Check rack distribution within the single NodeSet
 	return !hasRackConflict(dp, c)
 }
 
-// hasRackConflict checks if DP has rack conflicts within its NodeSet
+// hasRackConflict checks if there are any rack conflicts in the data partition
+// Returns true if any rack contains multiple replicas, regardless of rack aware level
 func hasRackConflict(dp *DataPartition, c *Cluster) bool {
-	rackDistribution := make(map[string]int)
+	if len(dp.Hosts) == 0 {
+		return false
+	}
+
+	visitedRacks := make(map[string]struct{}, len(dp.Hosts))
 
 	for _, host := range dp.Hosts {
 		dataNode, err := c.dataNode(host)
 		if err != nil {
-			continue
+			continue // Skip unavailable nodes
 		}
-		rackDistribution[dataNode.Rack]++
+
+		// If we've seen this rack before, we have a conflict
+		if _, exists := visitedRacks[dataNode.Rack]; exists {
+			return true // Early return on first conflict found
+		}
+
+		visitedRacks[dataNode.Rack] = struct{}{}
 	}
 
-	// Calculate conflict score
-	conflictScore := 0
-	for _, count := range rackDistribution {
-		if count > 1 {
-			conflictScore += count - 1
-		}
-	}
-
-	// Determine if there's conflict based on rack aware level
-	rackLevel := c.getRackAwareLevel()
-	switch rackLevel {
-	case proto.RackAwareStrong:
-		return conflictScore > 0
-	case proto.RackAwareWeak:
-		return conflictScore > int(dp.ReplicaNum)/3
-	default:
-		return false
-	}
+	return false
 }
 
 func (c *Cluster) processPartitionMigration(dp *DataPartition, hosts []string) {
@@ -248,7 +243,7 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 	status := &proto.DistributionOptimizationStatus{
 		DecommissioningDPIDs:           make([]uint64, 0),
 		ConcurrentDpCount:              c.DistributionOptimizationConcurrentDpCount.Load(),
-		BalanceIntervalSec:             c.DistributionOptimizationIntervalSec.Load(),
+		BalanceIntervalSec:             defaultDistributionOptimizationIntervalSec,
 		BalanceThreshold:               c.DistributionOptimizationThreshold.Load(),
 		EnableDistributionOptimization: c.getEnableAutoDistributionOptimization(),
 		DomainDistribution: &proto.DomainDistributionInfo{
@@ -329,7 +324,7 @@ func (c *Cluster) getAllDistributionOptimizationDataPartition() (partitions []*D
 	return
 }
 
-// cancelDpNodesetBalance cancels all ongoing nodeset balance decommission tasks
+// cancelDpDistributionOptimization cancels all ongoing nodeset balance decommission tasks
 func (c *Cluster) cancelDpDistributionOptimization() (err error) {
 	var (
 		dstNs *nodeSet
@@ -340,7 +335,7 @@ func (c *Cluster) cancelDpDistributionOptimization() (err error) {
 	)
 	begin := time.Now()
 	defer func() {
-		log.LogInfof("action[cancelDpNodesetBalance] cancel dp NodesetBalance using time(%v)", time.Since(begin))
+		log.LogInfof("action[cancelDpDistributionOptimization] cancel dp DistributionOptimization using time(%v)", time.Since(begin))
 	}()
 
 	dpCh := make(chan *DataPartition, 1024)
@@ -462,6 +457,6 @@ func (c *Cluster) cancelDpDistributionOptimization() (err error) {
 	close(dpCh)
 
 	msg := fmt.Sprintf("cluster(%v) cancel dp distributionOptimization len(dps)(%v) with len(faileddps)(%v)", c.Name, len(dpIds), len(failedDpIds))
-	auditlog.LogMasterOp("CancelDpNodesetBalance", msg, err)
+	auditlog.LogMasterOp("CancelDpDistributionOptimization", msg, err)
 	return err
 }

@@ -162,7 +162,6 @@ const (
 	CliFlagVolStorageClass              = "volStorageClass"
 	// Distribution Optimization parameters
 	CliFlagDistributionOptimizationConcurrentDpCount = "distributionOptimizationConcurrentDpCount"
-	CliFlagDistributionOptimizationIntervalSec       = "distributionOptimizationIntervalSec"
 	CliFlagDistributionOptimizationThreshold         = "distributionOptimizationThreshold"
 	CliFlagMediaType                                 = "mediaType"
 	CliForbidWriteOpOfProtoVersion0                  = "forbidWriteOpOfProtoVersion0"

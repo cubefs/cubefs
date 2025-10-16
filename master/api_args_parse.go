@@ -1673,38 +1673,27 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[autoDistributionOptimizationKey] = val
 	}
 
-	// nodeset balance configs
-	if value = r.FormValue(nodesetBalanceConcurrentDpCountKey); value != "" {
+	// distribution optimization configs
+	if value = r.FormValue(distributionOptimizationConcurrentDpCountKey); value != "" {
 		noParams = false
 		val := int64(0)
 		val, err = strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			err = unmatchedKey(nodesetBalanceConcurrentDpCountKey)
+			err = unmatchedKey(distributionOptimizationConcurrentDpCountKey)
 			return
 		}
-		params[nodesetBalanceConcurrentDpCountKey] = val
+		params[distributionOptimizationConcurrentDpCountKey] = val
 	}
 
-	if value = r.FormValue(nodesetBalanceIntervalSecKey); value != "" {
-		noParams = false
-		val := int64(0)
-		val, err = strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			err = unmatchedKey(nodesetBalanceIntervalSecKey)
-			return
-		}
-		params[nodesetBalanceIntervalSecKey] = val
-	}
-
-	if value = r.FormValue(nodesetBalanceThresholdKey); value != "" {
+	if value = r.FormValue(distributionOptimizationThresholdKey); value != "" {
 		noParams = false
 		val := float64(0)
 		val, err = strconv.ParseFloat(value, 64)
 		if err != nil {
-			err = unmatchedKey(nodesetBalanceThresholdKey)
+			err = unmatchedKey(distributionOptimizationThresholdKey)
 			return
 		}
-		params[nodesetBalanceThresholdKey] = val
+		params[distributionOptimizationThresholdKey] = val
 	}
 
 	if value = r.FormValue(dpTimeoutKey); value != "" {

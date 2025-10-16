@@ -39,41 +39,39 @@ import (
    transferred over the network. */
 
 type clusterValue struct {
-	Name                                   string
-	CreateTime                             int64
-	Threshold                              float32
-	LoadFactor                             float32
-	DisableAutoAllocate                    bool
-	ForbidMpDecommission                   bool
-	DataNodeDeleteLimitRate                uint64
-	MetaNodeDeleteBatchCount               uint64
-	MetaNodeDeleteWorkerSleepMs            uint64
-	DataNodeAutoRepairLimitRate            uint64
-	MaxDpCntLimit                          uint64
-	MaxMpCntLimit                          uint64
-	FaultDomain                            bool
-	DiskQosEnable                          bool
-	QosLimitUpload                         uint64
-	DirChildrenNumLimit                    uint32
-	DecommissionLimit                      uint64
-	DecommissionFirstHostDiskParallelLimit uint64
-	CheckDataReplicasEnable                bool
-	FileStatsEnable                        bool
-	FileStatsThresholds                    []uint64
-	ClusterUuid                            string
-	ClusterUuidEnable                      bool
-	MetaPartitionInodeIdStep               uint64
-	MaxConcurrentLcNodes                   uint64
-	DpMaxRepairErrCnt                      uint64
-	DpRepairTimeOut                        uint64
-	DpBackupTimeOut                        uint64
-	EnableAutoDecommissionDisk             bool
-	AutoDecommissionDiskInterval           int64
-	DecommissionDiskLimit                  uint32
-	EnableAutoDistributionOptimization     bool
-	// nodeset balance configs
+	Name                                      string
+	CreateTime                                int64
+	Threshold                                 float32
+	LoadFactor                                float32
+	DisableAutoAllocate                       bool
+	ForbidMpDecommission                      bool
+	DataNodeDeleteLimitRate                   uint64
+	MetaNodeDeleteBatchCount                  uint64
+	MetaNodeDeleteWorkerSleepMs               uint64
+	DataNodeAutoRepairLimitRate               uint64
+	MaxDpCntLimit                             uint64
+	MaxMpCntLimit                             uint64
+	FaultDomain                               bool
+	DiskQosEnable                             bool
+	QosLimitUpload                            uint64
+	DirChildrenNumLimit                       uint32
+	DecommissionLimit                         uint64
+	DecommissionFirstHostDiskParallelLimit    uint64
+	CheckDataReplicasEnable                   bool
+	FileStatsEnable                           bool
+	FileStatsThresholds                       []uint64
+	ClusterUuid                               string
+	ClusterUuidEnable                         bool
+	MetaPartitionInodeIdStep                  uint64
+	MaxConcurrentLcNodes                      uint64
+	DpMaxRepairErrCnt                         uint64
+	DpRepairTimeOut                           uint64
+	DpBackupTimeOut                           uint64
+	EnableAutoDecommissionDisk                bool
+	AutoDecommissionDiskInterval              int64
+	DecommissionDiskLimit                     uint32
+	EnableAutoDistributionOptimization        bool
 	DistributionOptimizationConcurrentDpCount int64
-	DistributionOptimizationIntervalSec       int64
 	DistributionOptimizationThreshold         float64
 	VolDeletionDelayTimeHour                  int64
 	MetaNodeGOGC                              int
@@ -129,7 +127,6 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DecommissionDiskLimit:                     c.GetDecommissionDiskLimit(),
 		EnableAutoDistributionOptimization:        c.getEnableAutoDistributionOptimization(),
 		DistributionOptimizationConcurrentDpCount: c.DistributionOptimizationConcurrentDpCount.Load(),
-		DistributionOptimizationIntervalSec:       c.DistributionOptimizationIntervalSec.Load(),
 		DistributionOptimizationThreshold:         c.DistributionOptimizationThreshold.Load(),
 		VolDeletionDelayTimeHour:                  c.cfg.volDelayDeleteTimeHour,
 		MetaNodeGOGC:                              c.cfg.metaNodeGOGC,
@@ -1382,14 +1379,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.DistributionOptimizationConcurrentDpCount <= 0 {
 			cv.DistributionOptimizationConcurrentDpCount = int64(defaultDistributionOptimizationConcurrentDpCount)
 		}
-		if cv.DistributionOptimizationIntervalSec <= 0 {
-			cv.DistributionOptimizationIntervalSec = int64(defaultDistributionOptimizationIntervalSec)
-		}
-		if cv.DistributionOptimizationThreshold < 0 {
+		if cv.DistributionOptimizationThreshold < 0 || cv.DistributionOptimizationThreshold > 1 {
 			cv.DistributionOptimizationThreshold = 0
 		}
 		c.DistributionOptimizationConcurrentDpCount.Store(cv.DistributionOptimizationConcurrentDpCount)
-		c.DistributionOptimizationIntervalSec.Store(cv.DistributionOptimizationIntervalSec)
 		c.DistributionOptimizationThreshold.Store(cv.DistributionOptimizationThreshold)
 		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
 		c.cfg.metaNodeGOGC = cv.MetaNodeGOGC

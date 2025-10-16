@@ -3941,8 +3941,8 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// nodeset balance configs
-	if val, ok := params[nodesetBalanceConcurrentDpCountKey]; ok {
+	// distribution optimization configs (new keys)
+	if val, ok := params[distributionOptimizationConcurrentDpCountKey]; ok {
 		if v, ok := val.(int64); ok {
 			if err = m.cluster.setDistributionOptimizationConcurrentDpCount(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
@@ -3951,16 +3951,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if val, ok := params[nodesetBalanceIntervalSecKey]; ok {
-		if v, ok := val.(int64); ok {
-			if err = m.cluster.setDistributionOptimizationIntervalSec(v); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
-	}
-
-	if val, ok := params[nodesetBalanceThresholdKey]; ok {
+	if val, ok := params[distributionOptimizationThresholdKey]; ok {
 		if v, ok := val.(float64); ok {
 			if err = m.cluster.setDistributionOptimizationThreshold(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
@@ -8702,7 +8693,7 @@ func (m *Server) setDistributionOptimizationEnable(w http.ResponseWriter, r *htt
 	AuditLog(r, "AdminSetDistributionOptimizationEnable", fmt.Sprintf("set enable[%v]", enable), err)
 	log.LogInfof("action[setDistributionOptimizationEnable] enable be set [%v]", enable)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
-		"set nodesetBalanceEnable to [%v] successfully", enable)))
+		"set DistributionOptimizationEnables to [%v] successfully", enable)))
 }
 
 func (m *Server) cancelDpDistributionOptimization(w http.ResponseWriter, r *http.Request) {
@@ -8711,7 +8702,7 @@ func (m *Server) cancelDpDistributionOptimization(w http.ResponseWriter, r *http
 	metric := exporter.NewTPCnt("req_cancelDpDistributionOptimization")
 	defer func() {
 		metric.Set(err)
-		AuditLog(r, proto.AdminCancelDpDistributionOptimization, fmt.Sprintf("cancel dp distributionOptimization"), err)
+		AuditLog(r, proto.AdminCancelDpDistributionOptimization, "cancel dp distributionOptimization", err)
 	}()
 
 	if err = m.cluster.cancelDpDistributionOptimization(); err != nil {
@@ -8719,7 +8710,7 @@ func (m *Server) cancelDpDistributionOptimization(w http.ResponseWriter, r *http
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
 	}
-	rstMsg := fmt.Sprintf("cancel dp nodesetBalance successfully")
+	rstMsg := "cancel dp DistributionOptimization successfully"
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -8729,12 +8720,12 @@ func (m *Server) queryDistributionOptimizationStatus(w http.ResponseWriter, r *h
 	metric := exporter.NewTPCnt("req_queryDistributionOptimizationStatus")
 	defer func() {
 		metric.Set(err)
-		AuditLog(r, proto.AdminQueryDistributionOptimizationStatus, fmt.Sprintf("query distribution optimization status"), err)
+		AuditLog(r, proto.AdminQueryDistributionOptimizationStatus, "query distribution optimization status", err)
 	}()
 
 	status := m.cluster.getDistributionOptimizationStatus()
 	if status == nil {
-		ret := fmt.Sprintf("action[queryDistributionOptimizationStatus] query distribution optimization status failed")
+		ret := "action[queryDistributionOptimizationStatus] query distribution optimization status failed"
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: ret})
 		return
 	}

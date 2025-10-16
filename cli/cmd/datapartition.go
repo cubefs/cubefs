@@ -203,7 +203,7 @@ The "reset" command will be released in next version`,
 						}{bdpv.Path, pinfo})
 					}
 				}
-				typeOrder := []uint32{1, 2, 4, 5}
+				typeOrder := []uint32{1, 2, 4, 5, 6}
 				typeNames := map[uint32]string{
 					1: "ManualDecommission",
 					2: "AutoDecommission",

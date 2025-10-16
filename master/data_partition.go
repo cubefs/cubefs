@@ -2312,30 +2312,6 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 
 	// the first time for dst addr not specify
 	if !partition.DecommissionDstAddrSpecify && partition.DecommissionDstAddr == "" {
-		// if partition.DecommissionType == proto.NodesetBalance {
-		// 	srcNs, _, err = getTargetNodeset(partition.DecommissionSrcAddr, c)
-		// 	if err != nil {
-		// 		log.LogWarnf("action[TryAcquireDecommissionToken] dp %v find src nodeset failed:%v",
-		// 			partition.PartitionID, err.Error())
-		// 		goto errHandler
-		// 	}
-		// 	ns, srcHosts, targetHosts, err = selectTargetHostsInNodesetBalance(partition.DecommissionSrcAddrs, int(partition.ReplicaNum), c, partition.MediaType)
-		// 	if err != nil {
-		// 		log.LogWarnf("action[TryAcquireDecommissionToken] dp %v NodesetBalance select TargetHosts failed: %v", partition.PartitionID, err)
-		// 		goto errHandler
-		// 	}
-		// 	log.LogDebugf("action[TryAcquireDecommissionToken] dp %v NodesetBalance srcHosts %v select TargetHosts %v", partition.PartitionID, partition.DecommissionSrcAddrs, targetHosts)
-		// 	partition.DecommissionSrcAddrs = srcHosts
-		// 	lastIndex := len(partition.DecommissionSrcAddrs) - 1
-		// 	partition.DecommissionSrcAddr = partition.DecommissionSrcAddrs[lastIndex]
-		// 	// TODO
-		// 	// DecommissionSrcDiskPath
-		// 	partition.DecommissionDstNodeSet = ns.ID
-		// 	partition.DecommissionDstAddrs = targetHosts
-		// 	srcNs.decommissionDataPartitionList.Remove(partition)
-		// 	ns.decommissionDataPartitionList.PutDeferExecution(ns.ID, partition, c)
-		// 	c.syncUpdateDataPartition(partition)
-		// } else {
 		if partition.DecommissionDstNodeSet != 0 {
 			ns, err = c.t.getNodeSetByNodeSetId(partition.DecommissionDstNodeSet)
 			if err != nil {
