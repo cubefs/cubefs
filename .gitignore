@@ -20,3 +20,8 @@ java/src/main/resources/*.so
 /cover.output
 /cubefs_unittest.output
 .version
+.cache
+.clangd
+blobstore/cpp/build
+blobstore/cpp/**/*.pb.cc
+blobstore/cpp/**/*.pb.h
