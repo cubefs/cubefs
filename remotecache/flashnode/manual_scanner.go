@@ -308,6 +308,17 @@ func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
 		log.LogInfof("skip warmUp, size=0, inode(%v)", i.Inode)
 		return nil
 	}
+
+	// Check file size limits
+	config := s.manualTask.ManualTaskConfig
+	if config.MinFileSizeLimit > 0 && int64(i.Size) < config.MinFileSizeLimit {
+		log.LogInfof("skip warmUp, file size(%d) below MinFileSizeLimit(%d), inode(%v)", i.Size, config.MinFileSizeLimit, i.Inode)
+		return nil
+	}
+	if config.MaxFileSizeLimit > 0 && int64(i.Size) > config.MaxFileSizeLimit {
+		log.LogInfof("skip warmUp, file size(%d) above MaxFileSizeLimit(%d), inode(%v)", i.Size, config.MaxFileSizeLimit, i.Inode)
+		return nil
+	}
 	_, _, extents, err = s.mw.GetExtents(i.Inode, false, false, false)
 	if err != nil {
 		log.LogWarnf("warmUp: mw GetExtents fail, inode(%v) err: %v ", i.Inode, err)

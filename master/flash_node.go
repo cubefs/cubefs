@@ -278,17 +278,21 @@ func (m *Server) createFlashNodeManualTask(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	// Validate file size limits
+	if req.ManualTaskConfig.MinFileSizeLimit > req.ManualTaskConfig.MaxFileSizeLimit {
+		err = fmt.Errorf("MinFileSizeLimit(%d) cannot be greater than MaxFileSizeLimit(%d)",
+			req.ManualTaskConfig.MinFileSizeLimit, req.ManualTaskConfig.MaxFileSizeLimit)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	var vol *Vol
 	if vol, err = m.cluster.getVol(req.VolName); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
 
-	if !vol.remoteCacheEnable {
-		err = fmt.Errorf("distribute cache of vol[%v] unavailable", vol.Name)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidCfg, Msg: err.Error()})
-		return
-	}
 	if m.cluster.flashNodeTopo == nil || !m.cluster.flashNodeTopo.CheckForActiveNode() {
 		err = fmt.Errorf("no available distributed cache nodes")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidCfg, Msg: err.Error()})

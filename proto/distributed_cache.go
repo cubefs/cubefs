@@ -520,6 +520,8 @@ type ManualTaskConfig struct {
 	TraverseFileConcurrency int
 	HandlerFileConcurrency  int
 	TotalFileSizeLimit      int64
+	MinFileSizeLimit        int64
+	MaxFileSizeLimit        int64
 }
 
 type ManualTaskStatistics struct {
