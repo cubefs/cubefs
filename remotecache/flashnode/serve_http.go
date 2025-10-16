@@ -67,6 +67,15 @@ func (f *FlashNode) handleSubmitTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.LogInfof("submit mannual task with http arg:%+v", &req)
+
+	// Validate file size limits
+	if req.ManualTaskConfig.MinFileSizeLimit > req.ManualTaskConfig.MaxFileSizeLimit {
+		err = fmt.Errorf("MinFileSizeLimit(%d) cannot be greater than MaxFileSizeLimit(%d)",
+			req.ManualTaskConfig.MinFileSizeLimit, req.ManualTaskConfig.MaxFileSizeLimit)
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+
 	start := time.Now()
 	req.StartTime = &start
 	req.UpdateTime = &start
