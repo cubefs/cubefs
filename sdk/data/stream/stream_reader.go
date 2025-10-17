@@ -82,6 +82,8 @@ type Streamer struct {
 	writeInProgress     bool           // indicates if a write operation is in progress
 	writeHandler        *ExtentHandler // handler being used for current write operation
 	writeProtectionLock sync.Mutex     // protects write operation state
+
+	aheadReadBlockSize uint32
 }
 
 type bcacheKey struct {
@@ -256,8 +258,9 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 			total += req.Size
 			log.LogDebugf("Stream read hole: ino(%v) req(%v) total(%v)", s.inode, req, total)
 		} else {
-			log.LogDebugf("Stream read: ino(%v) req(%v) s.needBCache(%v) s.client.bcacheEnable(%v) aheadReadEnable(%v)", s.inode, req, s.needBCache, s.client.bcacheEnable, s.aheadReadEnable)
-			if s.aheadReadEnable && req.ExtentKey.Size > util.CacheReadBlockSize {
+			log.LogDebugf("Stream read: ino(%v) req(%v) s.needBCache(%v) s.client.bcacheEnable(%v) aheadReadEnable(%v) aheadReadBlockSize(%v) %p",
+				s.inode, req, s.needBCache, s.client.bcacheEnable, s.aheadReadEnable, s.aheadReadBlockSize, s)
+			if s.aheadReadEnable {
 				bgTime := stat.BeginStat()
 				readBytes, err = s.aheadRead(req, storageClass)
 				if err == nil && readBytes == req.Size {
@@ -375,7 +378,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 			bgTime := stat.BeginStat()
 			readBytes, err = reader.Read(req)
 			stat.EndStat("ReadFromDataNode", err, bgTime, 1)
-			log.LogDebugf("TRACE Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
+			log.LogDebugf("TRACE Stream read: ino(%v) req(%v) readBytes(%v) err(%v) cost(%v)", s.inode, req, readBytes, err, time.Since(*bgTime))
 
 			total += readBytes
 
@@ -783,4 +786,8 @@ func (s *Streamer) getNextPendingAsyncFlush() *AsyncFlushRequest {
 	})
 
 	return oldestReq
+}
+
+func (s *Streamer) SetAheadBlockSize(size uint32) {
+	s.aheadReadBlockSize = size
 }
