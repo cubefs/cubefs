@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
@@ -39,6 +40,7 @@ type VolumeTable struct {
 	unitTbl  kvstore.KVTable
 	tokenTbl kvstore.KVTable
 	taskTbl  kvstore.KVTable
+	routeTbl kvstore.KVTable
 	indexes  map[string]indexItem
 }
 
@@ -53,6 +55,7 @@ type VolumeRecord struct {
 	Used           uint64
 	CreateByNodeID uint64
 	Epoch          uint32
+	RouteVersion   proto.RouteVersion
 }
 
 type VolumeTaskRecord struct {
@@ -78,11 +81,20 @@ type TokenRecord struct {
 	ExpireTime int64
 }
 
+type RouteInfoVolumeAdd struct {
+	Vid proto.Vid `json:"vid"`
+}
+
+type RouteInfoVolumeUpdate struct {
+	VuidPrefix proto.VuidPrefix `json:"vuid_prefix"`
+}
+
 func OpenVolumeTable(db kvstore.KVStore) (*VolumeTable, error) {
 	if db == nil {
 		return nil, errors.New("OpenVolumeTable failed: db is nil")
 	}
 	return &VolumeTable{
+		routeTbl: db.Table(routeCF),
 		volTbl:   db.Table(volumeCF),
 		unitTbl:  db.Table(volumeUnitCF),
 		tokenTbl: db.Table(volumeTokenCF),
@@ -238,7 +250,7 @@ func (v *VolumeTable) PutVolumeAndToken(volumeRecs []*VolumeRecord, tokens []*To
 	return v.volTbl.DoBatch(batch)
 }
 
-func (v *VolumeTable) PutVolumeAndVolumeUnit(volumeRecs []*VolumeRecord, volumeUnitsRecs [][]*VolumeUnitRecord) (err error) {
+func (v *VolumeTable) PutVolumesAndUnitsAndRoutes(volumeRecs []*VolumeRecord, volumeUnitsRecs [][]*VolumeUnitRecord, routes []*base.RouteInfoRecord) (err error) {
 	batch := v.volTbl.NewWriteBatch()
 	defer batch.Destroy()
 
@@ -266,6 +278,14 @@ func (v *VolumeTable) PutVolumeAndVolumeUnit(volumeRecs []*VolumeRecord, volumeU
 			return err
 		}
 		batch.PutCF(v.volTbl.GetCf(), vid, valueVol)
+	}
+
+	for i := range routes {
+		routeData, err := encodeRouteInfoRecord(routes[i])
+		if err != nil {
+			return err
+		}
+		batch.PutCF(v.routeTbl.GetCf(), encodeRouteKey(routes[i].RouteVersion), routeData)
 	}
 
 	return v.volTbl.DoBatch(batch)
@@ -324,6 +344,58 @@ func (v *VolumeTable) ListVolume(count int, afterVid proto.Vid) (ret []proto.Vid
 	}
 
 	return
+}
+
+func (v *VolumeTable) GetFirstRoute() (*base.RouteInfoRecord, error) {
+	iter := v.routeTbl.NewIterator(nil)
+	defer iter.Close()
+
+	iter.SeekToFirst()
+	if iter.Valid() {
+		if iter.Err() != nil {
+			return nil, iter.Err()
+		}
+		if iter.Key().Size() > 0 {
+			ret, err := decodeRouteInfoRecord(iter.Value().Data())
+			iter.Key().Free()
+			iter.Value().Free()
+			if err != nil {
+				return nil, errors.Info(err, "decode route info db failed").Detail(err)
+			}
+			return ret, nil
+		}
+	}
+	return nil, nil
+}
+
+func (v *VolumeTable) ListRoute() ([]*base.RouteInfoRecord, error) {
+	iter := v.routeTbl.NewIterator(nil)
+	defer iter.Close()
+
+	ret := make([]*base.RouteInfoRecord, 0)
+	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
+		if iter.Err() != nil {
+			return nil, iter.Err()
+		}
+		if iter.Key().Size() > 0 {
+			info, err := decodeRouteInfoRecord(iter.Value().Data())
+			iter.Key().Free()
+			iter.Value().Free()
+			if err != nil {
+				return nil, errors.Info(err, "decode route info db failed").Detail(err)
+			}
+			ret = append(ret, info)
+		}
+	}
+	return ret, nil
+}
+
+func (v *VolumeTable) DeleteOldRoutes(before proto.RouteVersion) error {
+	batch := v.routeTbl.NewWriteBatch()
+	defer batch.Destroy()
+
+	batch.DeleteRangeCF(v.routeTbl.GetCf(), encodeRouteKey(0), encodeRouteKey(before))
+	return v.routeTbl.DoBatch(batch)
 }
 
 func decodeVolumeRecord(volByte []byte) (ret *VolumeRecord, err error) {
@@ -518,8 +590,8 @@ func (v *VolumeTable) ListVolumeUnit(diskID proto.DiskID) (ret []proto.VuidPrefi
 	return
 }
 
-func (v *VolumeTable) UpdateVolumeUnit(vuidPrefix proto.VuidPrefix, unitRecord *VolumeUnitRecord) (err error) {
-	keyVuidPrefix := encodeVuidPrefix(vuidPrefix)
+func (v *VolumeTable) UpdateVolumeUnitAndPutVolumeAndRoute(unitRecord *VolumeUnitRecord, volumeRecord *VolumeRecord, routeRecord *base.RouteInfoRecord) (err error) {
+	keyVuidPrefix := encodeVuidPrefix(unitRecord.VuidPrefix)
 	value, err := encodeVolumeUnitRecord(unitRecord)
 	if err != nil {
 		return err
@@ -542,12 +614,26 @@ func (v *VolumeTable) UpdateVolumeUnit(vuidPrefix proto.VuidPrefix, unitRecord *
 	}
 	oldDiskID := uRec.DiskID
 	oldIndexKey := ""
-	oldIndexKey += fmtIndexKey(indexName, oldDiskID, vuidPrefix)
+	oldIndexKey += fmtIndexKey(indexName, oldDiskID, unitRecord.VuidPrefix)
 	batch.DeleteCF(v.indexes[volumeUintDiskIDIndex].indexTbl.GetCf(), []byte(oldIndexKey))
 
-	indexKey += fmtIndexKey(indexName, unitRecord.DiskID, vuidPrefix)
+	indexKey += fmtIndexKey(indexName, unitRecord.DiskID, unitRecord.VuidPrefix)
 	batch.PutCF(v.indexes[volumeUintDiskIDIndex].indexTbl.GetCf(), []byte(indexKey), keyVuidPrefix)
 	batch.PutCF(v.unitTbl.GetCf(), keyVuidPrefix, value)
+
+	// update volume record
+	volumeData, err := encodeVolumeRecord(volumeRecord)
+	if err != nil {
+		return err
+	}
+	batch.PutCF(v.volTbl.GetCf(), EncodeVid(volumeRecord.Vid), volumeData)
+
+	// insert route record
+	routeData, err := encodeRouteInfoRecord(routeRecord)
+	if err != nil {
+		return err
+	}
+	batch.PutCF(v.routeTbl.GetCf(), encodeRouteKey(routeRecord.RouteVersion), routeData)
 
 	return v.unitTbl.DoBatch(batch)
 }
@@ -596,6 +682,41 @@ func decodeTaskRecord(buf []byte) (ret *VolumeTaskRecord, err error) {
 	dec := gob.NewDecoder(bytes.NewReader(buf))
 	err = dec.Decode(&ret)
 	return
+}
+
+func encodeRouteInfoRecord(info *base.RouteInfoRecord) ([]byte, error) {
+	data, err := json.Marshal(info)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func decodeRouteInfoRecord(data []byte) (*base.RouteInfoRecord, error) {
+	ret := &base.RouteInfoRecord{}
+	err := json.Unmarshal(data, ret)
+	if err != nil {
+		return nil, err
+	}
+	switch proto.VolumeRouteItemType(ret.Type.(float64)) {
+	case proto.RouteItemTypeAddVolume:
+		ret.ItemDetail = &RouteInfoVolumeAdd{}
+		err = json.Unmarshal(data, ret)
+		ret.Type = proto.RouteItemTypeAddVolume
+	case proto.RouteItemTypeUpdateVolume:
+		ret.ItemDetail = &RouteInfoVolumeUpdate{}
+		err = json.Unmarshal(data, ret)
+		ret.Type = proto.RouteItemTypeUpdateVolume
+	default:
+		panic(fmt.Sprintf("unsupported route item type: %d", ret.Type))
+	}
+	return ret, err
+}
+
+func encodeRouteKey(ver proto.RouteVersion) []byte {
+	ret := make([]byte, 8)
+	binary.BigEndian.PutUint64(ret, uint64(ver))
+	return ret
 }
 
 func fmtIndexKey(name string, diskID proto.DiskID, vuidPrefix proto.VuidPrefix) string {

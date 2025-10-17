@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
@@ -302,12 +303,6 @@ func shardUnitToShardUnitInfo(unit clustermgr.ShardUnit, route proto.RouteVersio
 	}
 }
 
-type routeItem struct {
-	RouteVersion proto.RouteVersion
-	Type         proto.CatalogChangeItemType
-	ItemDetail   interface{}
-}
-
 type routeItemShardAdd struct {
 	ShardID proto.ShardID
 }
@@ -316,8 +311,8 @@ type routeItemShardUpdate struct {
 	SuidPrefix proto.SuidPrefix
 }
 
-func routeRecordToRouteItem(info *catalogdb.RouteInfoRecord) *routeItem {
-	item := &routeItem{
+func routeRecordToRouteItem(info *base.RouteInfoRecord) *base.RouteItem {
+	item := &base.RouteItem{
 		RouteVersion: info.RouteVersion,
 		Type:         info.Type,
 	}
@@ -334,8 +329,8 @@ func routeRecordToRouteItem(info *catalogdb.RouteInfoRecord) *routeItem {
 	return item
 }
 
-func routeItemToRouteRecord(item *routeItem) *catalogdb.RouteInfoRecord {
-	record := &catalogdb.RouteInfoRecord{
+func routeItemToRouteRecord(item *base.RouteItem) *base.RouteInfoRecord {
+	record := &base.RouteInfoRecord{
 		RouteVersion: item.RouteVersion,
 		Type:         item.Type,
 	}

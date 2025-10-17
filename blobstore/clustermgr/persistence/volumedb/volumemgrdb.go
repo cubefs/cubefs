@@ -24,6 +24,7 @@ import (
 
 // column family name definition
 var (
+	routeCF                 = "volume_route"
 	volumeCF                = "volume"
 	volumeUnitCF            = "volume_unit"
 	volumeTokenCF           = "volume_token"
@@ -33,6 +34,7 @@ var (
 	volumeUnitDiskIDIndexCF = "volumeUnit_DiskID"
 
 	volumeCfs = []string{
+		routeCF,
 		volumeCF,
 		volumeUnitCF,
 		volumeTokenCF,

@@ -225,10 +225,20 @@ func (v *VolumeMgr) applyCreateVolume(ctx context.Context, vol *volume) error {
 	if err := v.transitedTbl.DeleteVolumeAndUnits(volumeRecord, unitRecords); err != nil {
 		return errors.Info(err, fmt.Sprintf("delete volume [%+v] and  units[%+v] from transited table failed", volumeRecord, unitRecords)).Detail(err)
 	}
-	if err := v.volumeTbl.PutVolumeAndVolumeUnit([]*volumedb.VolumeRecord{volumeRecord}, [][]*volumedb.VolumeUnitRecord{unitRecords}); err != nil {
+	// insert route item
+	routeVersion := v.routeMgr.GenRouteVersion(ctx, 1)
+	route := &base.RouteItem{
+		RouteVersion: proto.RouteVersion(routeVersion),
+		Type:         proto.RouteItemTypeAddVolume,
+		ItemDetail:   &routeItemVolumeAdd{Vid: vol.vid},
+	}
+	routeRecord := routeItemToRouteRecord(route)
+	if err := v.volumeTbl.PutVolumesAndUnitsAndRoutes([]*volumedb.VolumeRecord{volumeRecord}, [][]*volumedb.VolumeUnitRecord{unitRecords}, []*base.RouteInfoRecord{routeRecord}); err != nil {
 		return errors.Info(err, fmt.Sprintf("put volume[%+v] and volume unit[%+v] into volume table failed", volumeRecord, unitRecords)).Detail(err)
 	}
 	v.all.putVol(vol)
+	v.routeMgr.InsertRouteItems(ctx, []*base.RouteItem{route})
+	vol.volInfoBase.RouteVersion = proto.RouteVersion(routeVersion)
 
 	return nil
 }

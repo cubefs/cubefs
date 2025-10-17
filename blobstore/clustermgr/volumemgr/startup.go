@@ -49,6 +49,7 @@ type VolumeMgrConfig struct {
 
 	VolumeSliceMapNum            uint32 `json:"volume_slice_map_num"`
 	ApplyConcurrency             uint32 `json:"apply_concurrency"`
+	RouteItemTruncateIntervalNum uint32 `json:"route_item_truncate_interval_num"`
 	MinAllocableVolumeCount      int    `json:"min_allocable_volume_count"`
 	AllocatableDiskLoadThreshold int    `json:"allocatable_disk_load_threshold"`
 	AllocFactor                  int    `json:"alloc_factor"`
@@ -103,6 +104,9 @@ func (c *VolumeMgrConfig) checkAndFix() {
 	if c.ShardNum <= 0 {
 		c.ShardNum = defaultShardNum
 	}
+	if c.RouteItemTruncateIntervalNum <= 0 {
+		c.RouteItemTruncateIntervalNum = defaultRouteItemTruncateIntervalNum
+	}
 }
 
 // NewVolumeMgr constructs a new volume manager.
@@ -141,6 +145,7 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr cluster.BlobNodeManagerAPI, scop
 		diskMgr:         diskMgr,
 		scopeMgr:        scopeMgr,
 		configMgr:       configMgr,
+		routeMgr:        base.NewRouteMgr(conf.RouteItemTruncateIntervalNum, true, routeRecordToRouteItem, volumeTable),
 		blobNodeClient:  blobnode.New(&conf.BlobNodeConfig),
 		VolumeMgrConfig: conf,
 	}
@@ -245,6 +250,10 @@ func (v *VolumeMgr) loadVolume(ctx context.Context) error {
 		volume.setStatus(ctx, volRecord.Status)
 		return err
 	})
+}
+
+func (v *VolumeMgr) loadRoute(ctx context.Context) error {
+	return v.routeMgr.LoadRoute(ctx)
 }
 
 func (v *VolumeMgr) Close() {

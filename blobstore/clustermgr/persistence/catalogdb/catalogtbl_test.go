@@ -18,10 +18,11 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/common/sharding"
-	"github.com/stretchr/testify/require"
-
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/sharding"
+
+	"github.com/stretchr/testify/require"
 )
 
 var catalogTable *CatalogTable
@@ -72,19 +73,19 @@ var (
 		RouteVersion: proto.RouteVersion(3),
 	}
 
-	route1 = &RouteInfoRecord{
+	route1 = &base.RouteInfoRecord{
 		RouteVersion: shard1.RouteVersion,
 		Type:         proto.CatalogChangeItemAddShard,
 		ItemDetail:   &RouteInfoShardAdd{ShardID: shard1.ShardID},
 	}
 
-	route2 = &RouteInfoRecord{
+	route2 = &base.RouteInfoRecord{
 		RouteVersion: shard2.RouteVersion,
 		Type:         proto.CatalogChangeItemAddShard,
 		ItemDetail:   &RouteInfoShardAdd{ShardID: shard2.ShardID},
 	}
 
-	route3 = &RouteInfoRecord{
+	route3 = &base.RouteInfoRecord{
 		RouteVersion: shard3.RouteVersion,
 		Type:         proto.CatalogChangeItemUpdateShard,
 		ItemDetail:   &RouteInfoShardUpdate{SuidPrefix: shard3.SuidPrefixes[0]},
@@ -124,7 +125,7 @@ var (
 
 	shards     = []*ShardInfoRecord{shard1, shard2, shard3}
 	shardUnits = []*ShardUnitInfoRecord{shardUnit1, shardUnit2, shardUnit3}
-	routes     = []*RouteInfoRecord{route1, route2, route3}
+	routes     = []*base.RouteInfoRecord{route1, route2, route3}
 	spaces     = []*SpaceInfoRecord{space1, space2, space3}
 )
 
@@ -283,7 +284,7 @@ func TestCatalogTable_Route(t *testing.T) {
 	err := catalogTable.PutShardsAndUnitsAndRouteItems(nil, nil, routes)
 	require.NoError(t, err)
 
-	routeInfoRecord, err := catalogTable.GetFirstRouteItem()
+	routeInfoRecord, err := catalogTable.GetFirstRoute()
 	require.NoError(t, err)
 	require.Equal(t, route1.RouteVersion, routeInfoRecord.RouteVersion)
 	require.Equal(t, route1.Type, routeInfoRecord.Type)

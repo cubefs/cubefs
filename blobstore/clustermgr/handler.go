@@ -126,6 +126,7 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.RegisterArgsParser(&clustermgr.ListVolumeV2Args{}, "json")
 	rpc.RegisterArgsParser(&clustermgr.ListVolumeUnitArgs{}, "json")
 	rpc.RegisterArgsParser(&clustermgr.ListAllocatedVolumeArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.GetVolumeRoutesArgs{}, "json")
 
 	rpc.GET("/volume/get", service.VolumeGet, rpc.OptArgsQuery())
 
@@ -154,6 +155,8 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.POST("/admin/update/volume/unit", service.AdminUpdateVolumeUnit, rpc.OptArgsBody())
 
 	rpc.POST("/admin/update/volume", service.AdminUpdateVolume, rpc.OptArgsBody())
+
+	rpc.GET("/volumeroutes/get", service.VolumeRoutesGet, rpc.OptArgsQuery())
 
 	//==================shard==========================
 	rpc.RegisterArgsParser(&clustermgr.GetShardArgs{}, "json")

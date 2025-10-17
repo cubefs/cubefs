@@ -56,6 +56,8 @@ const (
 	defaultAllocFactor                 = 5
 	defaultAllocatableSize             = 1 << 30
 	defaultShardNum                    = 16
+
+	defaultRouteItemTruncateIntervalNum = 1 << 14
 )
 
 // notify queue key definition
@@ -138,6 +140,7 @@ type VolumeMgr struct {
 	diskMgr        cluster.BlobNodeManagerAPI
 	scopeMgr       scopemgr.ScopeMgrAPI
 	configMgr      configmgr.ConfigMgrAPI
+	routeMgr       *base.RouteMgr
 	blobNodeClient blobnode.StorageAPI
 
 	lastFlushTime  time.Time

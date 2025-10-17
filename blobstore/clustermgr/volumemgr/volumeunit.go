@@ -17,6 +17,7 @@ package volumemgr
 import (
 	"context"
 	"encoding/json"
+	goerrors "errors"
 
 	"github.com/google/uuid"
 
@@ -203,40 +204,59 @@ func (v *VolumeMgr) applyUpdateVolumeUnit(ctx context.Context, newVuid proto.Vui
 		return ErrNewVuidNotMatch
 	}
 
-	vol.lock.Lock()
-
-	if vol.vUnits[index].vuInfo.Vuid == newVuid {
-		vol.lock.Unlock()
+	err = vol.withLocked(func() error {
+		if vol.vUnits[index].vuInfo.Vuid == newVuid {
+			return ErrRepeatUpdateUnit
+		}
+		// when apply wal log happened, the next epoch of volume unit in db may larger than args new vuid's epoch
+		// just return nil in this situation
+		if vol.vUnits[index].nextEpoch > newVuid.Epoch() {
+			span.Debugf("vol nextEpoch: %d bigger than newVuid Epoch : %d", vol.vUnits[index].nextEpoch, newVuid.Epoch())
+			return ErrRepeatUpdateUnit
+		}
 		return nil
+	})
+	if err != nil {
+		if goerrors.Is(err, ErrRepeatUpdateUnit) {
+			return nil
+		}
+		return err
 	}
 
-	// when apply wal log happened, the next epoch of volume unit in db may larger than args new vuid's epoch
-	// just return nil in this situation
-	if vol.vUnits[index].nextEpoch > newVuid.Epoch() {
-		span.Debugf("vol nextEpoch: %d bigger than newVuid Epoch : %d", vol.vUnits[index].nextEpoch, newVuid.Epoch())
-		vol.lock.Unlock()
-		return nil
-	}
 	diskInfo, err := v.diskMgr.GetDiskInfo(ctx, newDiskID)
 	if err != nil {
 		span.Errorf("get diskInfo failed,diskID is %d", newDiskID)
-		vol.lock.Unlock()
 		return err
 	}
 
-	vol.vUnits[index].epoch = newVuid.Epoch()
-	vol.vUnits[index].vuInfo.DiskID = newDiskID
-	vol.vUnits[index].vuInfo.Host = diskInfo.Host
-	vol.vUnits[index].vuInfo.Compacting = false
-	vol.vUnits[index].vuInfo.Vuid = newVuid
+	newRouteVersion := v.routeMgr.GenRouteVersion(ctx, 1)
+	route := &base.RouteItem{
+		RouteVersion: proto.RouteVersion(newRouteVersion),
+		Type:         proto.RouteItemTypeUpdateVolume,
+		ItemDetail:   &routeItemVolumeUpdate{VuidPrefix: newVuid.VuidPrefix()},
+	}
 
-	unitRecord := vol.vUnits[index].ToVolumeUnitRecord()
-	err = v.volumeTbl.UpdateVolumeUnit(unitRecord.VuidPrefix, unitRecord)
+	err = vol.withLocked(func() error {
+		vol.vUnits[index].epoch = newVuid.Epoch()
+		vol.vUnits[index].vuInfo.DiskID = newDiskID
+		vol.vUnits[index].vuInfo.Host = diskInfo.Host
+		vol.vUnits[index].vuInfo.Compacting = false
+		vol.vUnits[index].vuInfo.Vuid = newVuid
+		vol.volInfoBase.RouteVersion = proto.RouteVersion(newRouteVersion)
+		v.routeMgr.InsertRouteItems(ctx, []*base.RouteItem{route})
+
+		unitRecord := vol.vUnits[index].ToVolumeUnitRecord()
+		volRecord := vol.ToRecord()
+		routeRecord := routeItemToRouteRecord(route)
+		err = v.volumeTbl.UpdateVolumeUnitAndPutVolumeAndRoute(unitRecord, volRecord, routeRecord)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		vol.lock.Unlock()
-		return err
+		return errors.Info(err, "volume table update unit failed")
 	}
-	vol.lock.Unlock()
 
 	// refresh health
 	err = v.refreshHealth(ctx, vol.vid)

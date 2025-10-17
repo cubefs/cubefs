@@ -74,7 +74,7 @@ type CatalogMgr struct {
 	raftServer      raftserver.RaftServer
 	scopeMgr        scopemgr.ScopeMgrAPI
 	kvMgr           kvmgr.KvMgrAPI
-	routeMgr        *routeMgr
+	routeMgr        *base.RouteMgr
 	diskMgr         cluster.ShardNodeManagerAPI
 	shardNodeClient cluster.ShardNodeAPI
 
@@ -124,5 +124,5 @@ func (c *CatalogMgr) loop() {
 }
 
 func (c *CatalogMgr) routeLoop() {
-	c.routeMgr.loop()
+	c.routeMgr.Loop()
 }

@@ -38,6 +38,7 @@ type (
 	NodeRole   uint8
 
 	CatalogChangeItemType uint8
+	VolumeRouteItemType   uint8
 )
 
 // disk status
@@ -284,6 +285,12 @@ const MaxShardSize = 512 << 20
 const (
 	CatalogChangeItemAddShard = CatalogChangeItemType(iota + 1)
 	CatalogChangeItemUpdateShard
+)
+
+// volume routeItem type
+const (
+	RouteItemTypeAddVolume = VolumeRouteItemType(iota + 1)
+	RouteItemTypeUpdateVolume
 )
 
 const (

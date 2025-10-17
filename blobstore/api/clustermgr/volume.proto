@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package cubefs.blobstore.api.clustermgr;
+option go_package = "./;clustermgr";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_unkeyed_all) = true;
+option (gogoproto.goproto_unrecognized_all) = true;
+option (gogoproto.goproto_sizecache_all) = true;
+option (gogoproto.goproto_stringer_all) = false;
+option (gogoproto.stringer_all) = true;
+option (gogoproto.gostring_all) = true;
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/any.proto";
+
+
+message VolumeUnitInfoBase {
+  uint64 vuid = 1 [(gogoproto.customname) = "Vuid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Vuid"];
+  uint32 disk_id = 2 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  uint64 total = 3;
+  uint64 free = 4;
+  uint64 used = 5;
+  bool compact = 6 [(gogoproto.customname) = "Compacting"];
+  string host = 7;
+}
+
+message RouteItemAddVolume {
+  uint32 vid = 1 [(gogoproto.customname) = "Vid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Vid"];
+  uint64 route_version = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  repeated VolumeUnitInfoBase units = 3 [(gogoproto.nullable) = false];
+}
+
+message RouteItemUpdateVolume {
+  uint32 vid = 1 [(gogoproto.customname) = "Vid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Vid"];
+  uint64 route_version = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  VolumeUnitInfoBase unit = 3 [(gogoproto.nullable) = false];
+}
+
+message VolumeRouteItem {
+  uint64 route_version = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  uint32 type = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.VolumeRouteItemType"];
+  google.protobuf.Any item =3;
+}
+
+message GetVolumeRoutesArgs {
+  uint64 route_version = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+}
+
+message GetVolumeRoutesRet {
+  uint64 route_version = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  repeated VolumeRouteItem items = 2 [(gogoproto.nullable) = false];
+}

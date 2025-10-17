@@ -85,7 +85,7 @@ func NewCatalogMgr(conf Config, diskMgr cluster.ShardNodeManagerAPI, scopeMgr sc
 		applyTaskPool:   base.NewTaskDistribution(int(conf.ApplyConcurrency), 1),
 		scopeMgr:        scopeMgr,
 		kvMgr:           kvMgr,
-		routeMgr:        newRouteMgr(conf.RouteItemTruncateIntervalNum, catalogTable),
+		routeMgr:        base.NewRouteMgr(conf.RouteItemTruncateIntervalNum, false, routeRecordToRouteItem, catalogTable),
 		diskMgr:         diskMgr,
 		shardNodeClient: shardnode.New(conf.ShardNodeConfig),
 		closeLoopChan:   make(chan struct{}, 1),
@@ -162,5 +162,5 @@ func (c *CatalogMgr) loadSpace(ctx context.Context) error {
 }
 
 func (c *CatalogMgr) loadRoute(ctx context.Context) error {
-	return c.routeMgr.loadRoute(ctx)
+	return c.routeMgr.LoadRoute(ctx)
 }

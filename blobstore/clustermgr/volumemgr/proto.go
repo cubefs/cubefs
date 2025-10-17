@@ -21,6 +21,7 @@ import (
 	"time"
 
 	cm "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -69,6 +70,7 @@ func (vol *volume) ToRecord() *volumedb.VolumeRecord {
 		Used:           vol.volInfoBase.Used,
 		CreateByNodeID: vol.volInfoBase.CreateByNodeID,
 		Epoch:          vol.volInfoBase.Epoch,
+		RouteVersion:   vol.volInfoBase.RouteVersion,
 	}
 }
 
@@ -278,6 +280,27 @@ func (s *shardedVolumes) rangeVol(f func(v *volume) error) {
 	}
 }
 
+func (s *shardedVolumes) getVolumeNum() int {
+	length := 0
+	for i := uint32(0); i < s.num; i++ {
+		l := s.locks[i]
+		l.RLock()
+		length += len(s.m[i])
+		l.RUnlock()
+	}
+	return length
+}
+
+func (s *shardedVolumes) list() []*volume {
+	tolerantCap := 1000 // tolerate volume is created when range
+	ret := make([]*volume, 0, s.getVolumeNum()+tolerantCap)
+	s.rangeVol(func(v *volume) error {
+		ret = append(ret, v)
+		return nil
+	})
+	return ret
+}
+
 type NotifyFunc func(ctx context.Context, vol *volume) error
 
 type volumeNotifyQueue struct {
@@ -322,6 +345,7 @@ func volumeRecordToVolumeInfoBase(volRecord *volumedb.VolumeRecord) cm.VolumeInf
 		Free:           volRecord.Free,
 		CreateByNodeID: volRecord.CreateByNodeID,
 		Epoch:          volRecord.Epoch,
+		RouteVersion:   volRecord.RouteVersion,
 	}
 }
 
@@ -356,4 +380,49 @@ func tokenRecordToToken(record *volumedb.TokenRecord) (ret *token) {
 		tokenID:    record.TokenID,
 		expireTime: record.ExpireTime,
 	}
+}
+
+type routeItemVolumeAdd struct {
+	Vid proto.Vid
+}
+
+type routeItemVolumeUpdate struct {
+	VuidPrefix proto.VuidPrefix
+}
+
+func routeRecordToRouteItem(info *base.RouteInfoRecord) *base.RouteItem {
+	item := &base.RouteItem{
+		RouteVersion: info.RouteVersion,
+		Type:         info.Type,
+	}
+
+	switch info.Type {
+	case proto.RouteItemTypeAddVolume:
+		itemDetail := info.ItemDetail.(*volumedb.RouteInfoVolumeAdd)
+		item.ItemDetail = &routeItemVolumeAdd{Vid: itemDetail.Vid}
+	case proto.RouteItemTypeUpdateVolume:
+		itemDetail := info.ItemDetail.(*volumedb.RouteInfoVolumeUpdate)
+		item.ItemDetail = &routeItemVolumeUpdate{VuidPrefix: itemDetail.VuidPrefix}
+	default:
+	}
+
+	return item
+}
+
+func routeItemToRouteRecord(item *base.RouteItem) *base.RouteInfoRecord {
+	record := &base.RouteInfoRecord{
+		RouteVersion: item.RouteVersion,
+		Type:         item.Type,
+	}
+	switch item.Type {
+	case proto.RouteItemTypeAddVolume:
+		itemDetail := item.ItemDetail.(*routeItemVolumeAdd)
+		record.ItemDetail = &volumedb.RouteInfoVolumeAdd{Vid: itemDetail.Vid}
+	case proto.RouteItemTypeUpdateVolume:
+		itemDetail := item.ItemDetail.(*routeItemVolumeUpdate)
+		record.ItemDetail = &volumedb.RouteInfoVolumeUpdate{VuidPrefix: itemDetail.VuidPrefix}
+	default:
+	}
+
+	return record
 }

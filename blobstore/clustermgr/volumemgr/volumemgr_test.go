@@ -86,8 +86,8 @@ func initMockVolumeMgr(t testing.TB) (*VolumeMgr, func()) {
 	volTable, err := volumedb.OpenVolumeTable(volumeDB.KVStore)
 	require.NoError(t, err)
 	// generate 30 volume in db, vid from 0 to 29
-	volumeRecords, unitRecords := generateVolumeRecord(codemode.EC15P12, 0, volumeCount)
-	volTable.PutVolumeAndVolumeUnit(volumeRecords, unitRecords)
+	volumeRecords, unitRecords, routeRecords := generateVolumeRecord(codemode.EC15P12, 0, volumeCount)
+	volTable.PutVolumesAndUnitsAndRoutes(volumeRecords, unitRecords, routeRecords)
 	volTable.PutTokens(generateToken(volumeRecords))
 
 	ctr := gomock.NewController(t)
@@ -156,7 +156,7 @@ func generateVolume(mode codemode.CodeMode, count int, startVid int) (vols []*vo
 }
 
 func generateVolumeRecord(mode codemode.CodeMode, start, end int) (
-	volumeRecords []*volumedb.VolumeRecord, unitRecords [][]*volumedb.VolumeUnitRecord,
+	volumeRecords []*volumedb.VolumeRecord, unitRecords [][]*volumedb.VolumeUnitRecord, routeRecords []*base.RouteInfoRecord,
 ) {
 	for i := start; i < end; i++ {
 		volInfo := clustermgr.VolumeInfoBase{
@@ -184,6 +184,12 @@ func generateVolumeRecord(mode codemode.CodeMode, start, end int) (
 		volumeRecords = append(volumeRecords, volRecord)
 		unitRecords = append(unitRecords, records)
 	}
+	route := &base.RouteInfoRecord{
+		RouteVersion: proto.RouteVersion(1),
+		Type:         proto.RouteItemTypeUpdateVolume,
+		ItemDetail:   &volumedb.RouteInfoVolumeUpdate{VuidPrefix: proto.EncodeVuidPrefix(1, 1)},
+	}
+	routeRecords = append(routeRecords, route)
 	return
 }
 
@@ -263,8 +269,8 @@ func Test_NewVolumeMgr(t *testing.T) {
 
 	volTable, err := volumedb.OpenVolumeTable(volumeDB.KVStore)
 	require.NoError(t, err)
-	volumeRecords, unitRecords := generateVolumeRecord(codemode.EC15P12, 0, volumeCount)
-	volTable.PutVolumeAndVolumeUnit(volumeRecords, unitRecords)
+	volumeRecords, unitRecords, routeRecords := generateVolumeRecord(codemode.EC15P12, 0, volumeCount)
+	volTable.PutVolumesAndUnitsAndRoutes(volumeRecords, unitRecords, routeRecords)
 	volTable.PutTokens(generateToken(volumeRecords))
 
 	ctr := gomock.NewController(t)

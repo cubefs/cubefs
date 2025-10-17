@@ -71,6 +71,7 @@ type VolumeInfoBase struct {
 	Used           uint64             `json:"used"`
 	CreateByNodeID uint64             `json:"create_by_node_id"`
 	Epoch          uint32             `json:"epoch"`
+	RouteVersion   proto.RouteVersion `json:"route_version"`
 }
 
 type AllocVolumeInfo struct {
@@ -206,15 +207,8 @@ type ListVolumeUnitArgs struct {
 	DiskID proto.DiskID `json:"disk_id"`
 }
 
-type VolumeUnitInfo struct {
-	Vuid       proto.Vuid   `json:"vuid"`
-	DiskID     proto.DiskID `json:"disk_id"`
-	Total      uint64       `json:"total"`
-	Free       uint64       `json:"free"`
-	Used       uint64       `json:"used"`
-	Compacting bool         `json:"compact"`
-	Host       string       `json:"host"`
-}
+// VolumeUnitInfoBase is used to maintain the VolumeUnitInfo marshal method after existing structs are defined in pb.
+type VolumeUnitInfo VolumeUnitInfoBase
 
 type ListVolumeUnitInfos struct {
 	VolumeUnitInfos []*VolumeUnitInfo `json:"volume_unit_infos"`
@@ -363,4 +357,10 @@ type AdminUpdateUnitArgs struct {
 	Epoch     uint32 `json:"epoch"`
 	NextEpoch uint32 `json:"next_epoch"`
 	VolumeUnitInfo
+}
+
+func (c *Client) GetVolumeRoutes(ctx context.Context, args *GetVolumeRoutesArgs) (ret *GetVolumeRoutesRet, err error) {
+	ret = &GetVolumeRoutesRet{}
+	err = c.GetWith(ctx, fmt.Sprintf("/volumeroutes/get?route_version=%d", args.RouteVersion), ret)
+	return
 }

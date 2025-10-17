@@ -156,7 +156,7 @@ func generateShard(catalogDB *catalogdb.CatalogDB) error {
 		unitCount = 3
 		shards    []*catalogdb.ShardInfoRecord
 		units     []*catalogdb.ShardUnitInfoRecord
-		routes    []*catalogdb.RouteInfoRecord
+		routes    []*base.RouteInfoRecord
 		ranges    = sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 2, 10)
 	)
 
@@ -185,7 +185,7 @@ func generateShard(catalogDB *catalogdb.CatalogDB) error {
 			RouteVersion: proto.RouteVersion(i),
 		}
 
-		route := &catalogdb.RouteInfoRecord{
+		route := &base.RouteInfoRecord{
 			RouteVersion: proto.RouteVersion(i),
 			Type:         proto.CatalogChangeItemAddShard,
 			ItemDetail:   &catalogdb.RouteInfoShardAdd{ShardID: proto.ShardID(i)},
@@ -214,7 +214,7 @@ func generateShard(catalogDB *catalogdb.CatalogDB) error {
 		}
 	}
 
-	route := &catalogdb.RouteInfoRecord{
+	route := &base.RouteInfoRecord{
 		RouteVersion: proto.RouteVersion(11),
 		Type:         proto.CatalogChangeItemUpdateShard,
 		ItemDetail:   &catalogdb.RouteInfoShardUpdate{SuidPrefix: proto.EncodeSuidPrefix(1, 1)},

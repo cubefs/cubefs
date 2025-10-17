@@ -208,16 +208,6 @@ func (c *CatalogMgr) applyCreateShard(ctx context.Context, shard *shardItem) err
 		return nil
 	}
 
-	// insert route item
-	routeVersion := c.routeMgr.genRouteVersion(ctx, 1)
-	route := &routeItem{
-		RouteVersion: proto.RouteVersion(routeVersion),
-		Type:         proto.CatalogChangeItemAddShard,
-		ItemDetail:   &routeItemShardAdd{ShardID: shard.shardID},
-	}
-	c.routeMgr.insertRouteItems(ctx, []*routeItem{route})
-	shard.info.RouteVersion = proto.RouteVersion(routeVersion)
-
 	shardRecord := shard.toShardRecord()
 	unitRecords := shardUnitsToShardUnitRecords(shard.info.Units, shard.unitEpochs)
 	// delete transited table firstly, put shard and units secondly.
@@ -226,13 +216,22 @@ func (c *CatalogMgr) applyCreateShard(ctx context.Context, shard *shardItem) err
 		return errors.Info(err, fmt.Sprintf("delete shard [%d] from transitedTbl failed", shard.shardID)).Detail(err)
 	}
 
+	// insert route item
+	routeVersion := c.routeMgr.GenRouteVersion(ctx, 1)
+	route := &base.RouteItem{
+		RouteVersion: proto.RouteVersion(routeVersion),
+		Type:         proto.CatalogChangeItemAddShard,
+		ItemDetail:   &routeItemShardAdd{ShardID: shard.shardID},
+	}
 	shardRecords := []*catalogdb.ShardInfoRecord{shardRecord}
-	routeRecords := []*catalogdb.RouteInfoRecord{routeItemToRouteRecord(route)}
+	routeRecords := []*base.RouteInfoRecord{routeItemToRouteRecord(route)}
 	if err := c.catalogTbl.PutShardsAndUnitsAndRouteItems(shardRecords, unitRecords, routeRecords); err != nil {
 		return errors.Info(err, fmt.Sprintf("put shard[%+v], units[%+v] and route[%+v] into catalogTbl failed",
 			shardRecord, unitRecords, routeRecords)).Detail(err)
 	}
 	c.allShards.putShard(shard)
+	c.routeMgr.InsertRouteItems(ctx, []*base.RouteItem{route})
+	shard.info.RouteVersion = proto.RouteVersion(routeVersion)
 
 	if c.allShards.getShardNum() == c.InitShardNum {
 		err := c.kvMgr.Set(proto.ShardInitDoneKey, []byte("1"))
@@ -273,7 +272,7 @@ func (c *CatalogMgr) allocShardForAllUnits(ctx context.Context, shardCtx *create
 		DiskType:     proto.DiskTypeNVMeSSD,
 		Suids:        suids,
 		Range:        shardCtx.ShardInfo.Range,
-		RouteVersion: proto.RouteVersion(c.routeMgr.getRouteVersion()),
+		RouteVersion: proto.RouteVersion(c.routeMgr.GetRouteVersion()),
 	}
 
 	for i := 0; i < IncreaseEpochInterval; i++ {

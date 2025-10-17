@@ -41,7 +41,7 @@ func (s *Service) CatalogChangesGet(c *rpc.Context) {
 
 	ret, err := s.CatalogMgr.GetCatalogChanges(ctx, args)
 	if err != nil {
-		span.Errorf("get catalog changes err =>", errors.Detail(err))
+		span.Errorf("get catalog changes err => %v", errors.Detail(err))
 		c.RespondError(err)
 		return
 	}

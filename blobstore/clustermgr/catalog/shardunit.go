@@ -325,8 +325,8 @@ func (c *CatalogMgr) applyUpdateShardUnit(ctx context.Context, newSuid proto.Sui
 		return err
 	}
 
-	newRouteVersion := c.routeMgr.genRouteVersion(ctx, 1)
-	route := &routeItem{
+	newRouteVersion := c.routeMgr.GenRouteVersion(ctx, 1)
+	route := &base.RouteItem{
 		RouteVersion: proto.RouteVersion(newRouteVersion),
 		Type:         proto.CatalogChangeItemUpdateShard,
 		ItemDetail:   &routeItemShardUpdate{SuidPrefix: newSuid.SuidPrefix()},
@@ -342,7 +342,7 @@ func (c *CatalogMgr) applyUpdateShardUnit(ctx context.Context, newSuid proto.Sui
 
 		shardRecords := []*catalogdb.ShardInfoRecord{shardRecord}
 		unitRecords := []*catalogdb.ShardUnitInfoRecord{shardUnitRecord}
-		routeRecords := []*catalogdb.RouteInfoRecord{routeItemToRouteRecord(route)}
+		routeRecords := []*base.RouteInfoRecord{routeItemToRouteRecord(route)}
 		err := c.catalogTbl.UpdateUnitsAndPutShardsAndRouteItems(shardRecords, unitRecords, routeRecords)
 		if err != nil {
 			return err
@@ -355,7 +355,7 @@ func (c *CatalogMgr) applyUpdateShardUnit(ctx context.Context, newSuid proto.Sui
 		shard.info.Units[index].Learner = learner
 		shard.info.Units[index].Host = diskInfo.Host
 		shard.info.RouteVersion = proto.RouteVersion(newRouteVersion)
-		c.routeMgr.insertRouteItems(ctx, []*routeItem{route})
+		c.routeMgr.InsertRouteItems(ctx, []*base.RouteItem{route})
 		return nil
 	})
 	if err != nil {

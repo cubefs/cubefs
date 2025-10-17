@@ -536,7 +536,6 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 			Total:       1024 * 1024 * 1024 * 1024,
 			Epoch:       1,
 		}
-
 		volumes = append(volumes, vol)
 		tokens = append(tokens, &volumedb.TokenRecord{
 			Vid:        proto.Vid(i),

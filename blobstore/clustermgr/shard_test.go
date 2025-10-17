@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -242,7 +243,7 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 		unitCount = 3
 		shards    []*catalogdb.ShardInfoRecord
 		units     []*catalogdb.ShardUnitInfoRecord
-		routes    []*catalogdb.RouteInfoRecord
+		routes    []*base.RouteInfoRecord
 		ranges    = sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 2, 10)
 	)
 	catalogDB, err := catalogdb.Open(catalogDBPath)
@@ -281,7 +282,7 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 			RouteVersion: proto.RouteVersion(i),
 		}
 
-		route := &catalogdb.RouteInfoRecord{
+		route := &base.RouteInfoRecord{
 			RouteVersion: proto.RouteVersion(i),
 			Type:         proto.CatalogChangeItemAddShard,
 			ItemDetail:   &catalogdb.RouteInfoShardAdd{ShardID: proto.ShardID(i)},

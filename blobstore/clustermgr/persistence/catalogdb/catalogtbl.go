@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
@@ -48,12 +49,6 @@ type SpaceInfoRecord struct {
 	FieldMetas []clustermgr.FieldMeta `json:"field_metas"`
 	AccessKey  string                 `json:"access_key"`
 	SecretKey  string                 `json:"secret_key"`
-}
-
-type RouteInfoRecord struct {
-	RouteVersion proto.RouteVersion          `json:"route_version"`
-	Type         proto.CatalogChangeItemType `json:"type"`
-	ItemDetail   interface{}                 `json:"item"`
 }
 
 type ShardInfoRecord struct {
@@ -169,7 +164,7 @@ func (c *CatalogTable) ListSpace(count uint32, afterSpace proto.SpaceID) (ret []
 	return
 }
 
-func (c *CatalogTable) PutShardsAndUnitsAndRouteItems(shards []*ShardInfoRecord, units []*ShardUnitInfoRecord, routes []*RouteInfoRecord) error {
+func (c *CatalogTable) PutShardsAndUnitsAndRouteItems(shards []*ShardInfoRecord, units []*ShardUnitInfoRecord, routes []*base.RouteInfoRecord) error {
 	batch := c.shardTbl.NewWriteBatch()
 	defer batch.Destroy()
 
@@ -209,7 +204,7 @@ func (c *CatalogTable) PutShardsAndUnitsAndRouteItems(shards []*ShardInfoRecord,
 	return c.shardTbl.DoBatch(batch)
 }
 
-func (c *CatalogTable) UpdateUnitsAndPutShardsAndRouteItems(shards []*ShardInfoRecord, units []*ShardUnitInfoRecord, routes []*RouteInfoRecord) error {
+func (c *CatalogTable) UpdateUnitsAndPutShardsAndRouteItems(shards []*ShardInfoRecord, units []*ShardUnitInfoRecord, routes []*base.RouteInfoRecord) error {
 	batch := c.shardTbl.NewWriteBatch()
 	defer batch.Destroy()
 
@@ -379,7 +374,7 @@ func (c *CatalogTable) ListShardUnit(diskID proto.DiskID) (ret []proto.SuidPrefi
 	return
 }
 
-func (c *CatalogTable) GetFirstRouteItem() (*RouteInfoRecord, error) {
+func (c *CatalogTable) GetFirstRoute() (*base.RouteInfoRecord, error) {
 	iter := c.routeTbl.NewIterator(nil)
 	defer iter.Close()
 
@@ -390,34 +385,34 @@ func (c *CatalogTable) GetFirstRouteItem() (*RouteInfoRecord, error) {
 		}
 		if iter.Key().Size() > 0 {
 			ret, err := decodeRouteInfoRecord(iter.Value().Data())
+			iter.Key().Free()
+			iter.Value().Free()
 			if err != nil {
 				return nil, errors.Info(err, "decode route info db failed").Detail(err)
 			}
-			iter.Key().Free()
-			iter.Value().Free()
 			return ret, nil
 		}
 	}
 	return nil, nil
 }
 
-func (c *CatalogTable) ListRoute() ([]*RouteInfoRecord, error) {
+func (c *CatalogTable) ListRoute() ([]*base.RouteInfoRecord, error) {
 	iter := c.routeTbl.NewIterator(nil)
 	defer iter.Close()
 
-	ret := make([]*RouteInfoRecord, 0)
+	ret := make([]*base.RouteInfoRecord, 0)
 	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 		if iter.Err() != nil {
 			return nil, iter.Err()
 		}
 		if iter.Key().Size() > 0 {
 			info, err := decodeRouteInfoRecord(iter.Value().Data())
+			iter.Key().Free()
+			iter.Value().Free()
 			if err != nil {
 				return nil, errors.Info(err, "decode route info db failed").Detail(err)
 			}
 			ret = append(ret, info)
-			iter.Key().Free()
-			iter.Value().Free()
 		}
 	}
 	return ret, nil
@@ -445,7 +440,7 @@ func decodeSpaceInfoRecord(data []byte) (*SpaceInfoRecord, error) {
 	return ret, err
 }
 
-func encodeRouteInfoRecord(info *RouteInfoRecord) ([]byte, error) {
+func encodeRouteInfoRecord(info *base.RouteInfoRecord) ([]byte, error) {
 	data, err := json.Marshal(info)
 	if err != nil {
 		return nil, err
@@ -453,19 +448,21 @@ func encodeRouteInfoRecord(info *RouteInfoRecord) ([]byte, error) {
 	return data, nil
 }
 
-func decodeRouteInfoRecord(data []byte) (*RouteInfoRecord, error) {
-	ret := &RouteInfoRecord{}
+func decodeRouteInfoRecord(data []byte) (*base.RouteInfoRecord, error) {
+	ret := &base.RouteInfoRecord{}
 	err := json.Unmarshal(data, ret)
 	if err != nil {
 		return nil, err
 	}
-	switch ret.Type {
+	switch proto.CatalogChangeItemType(ret.Type.(float64)) {
 	case proto.CatalogChangeItemAddShard:
 		ret.ItemDetail = &RouteInfoShardAdd{}
 		err = json.Unmarshal(data, ret)
+		ret.Type = proto.CatalogChangeItemAddShard
 	case proto.CatalogChangeItemUpdateShard:
 		ret.ItemDetail = &RouteInfoShardUpdate{}
 		err = json.Unmarshal(data, ret)
+		ret.Type = proto.CatalogChangeItemUpdateShard
 	default:
 		panic(fmt.Sprintf("unsupported route item type: %d", ret.Type))
 	}

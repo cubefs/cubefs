@@ -116,6 +116,9 @@ func (v *VolumeMgr) LoadData(ctx context.Context) error {
 	if err := v.reloadTasks(); err != nil {
 		return errors.Info(err, "reload task failed").Detail(err)
 	}
+	if err := v.loadRoute(ctx); err != nil {
+		return errors.Info(err, "load route failed").Detail(err)
+	}
 	return nil
 }
 
@@ -443,7 +446,7 @@ func (v *VolumeMgr) Flush(ctx context.Context) error {
 		}
 
 		vol.lock.RLock()
-		err = v.volumeTbl.PutVolumeAndVolumeUnit([]*volumedb.VolumeRecord{vol.ToRecord()}, [][]*volumedb.VolumeUnitRecord{volumeUnitsToVolumeUnitRecords(vol.vUnits)})
+		err = v.volumeTbl.PutVolumesAndUnitsAndRoutes([]*volumedb.VolumeRecord{vol.ToRecord()}, [][]*volumedb.VolumeUnitRecord{volumeUnitsToVolumeUnitRecords(vol.vUnits)}, nil)
 		vol.lock.RUnlock()
 		retErr = err
 		return

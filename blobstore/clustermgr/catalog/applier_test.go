@@ -244,7 +244,7 @@ func TestCatalogMgr_LoadData(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, mockCatalogMgr.allShards.getShardNum())
 	require.Nil(t, mockCatalogMgr.allSpaces.getSpaceByID(1))
-	require.Equal(t, uint64(0), mockCatalogMgr.routeMgr.getRouteVersion())
+	require.Equal(t, uint64(0), mockCatalogMgr.routeMgr.GetRouteVersion())
 
 	// mock apply snapshot put data
 	err = generateShard(catalogDB)
@@ -255,5 +255,5 @@ func TestCatalogMgr_LoadData(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, 0, mockCatalogMgr.allShards.getShardNum())
 	require.NotNil(t, mockCatalogMgr.allSpaces.getSpaceByID(1))
-	require.NotEqual(t, uint64(0), mockCatalogMgr.routeMgr.getRouteVersion())
+	require.NotEqual(t, uint64(0), mockCatalogMgr.routeMgr.GetRouteVersion())
 }

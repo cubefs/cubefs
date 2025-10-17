@@ -94,6 +94,7 @@ var (
 		Used:           21,
 		Total:          10240,
 		CreateByNodeID: 1,
+		RouteVersion:   proto.RouteVersion(1),
 	}
 	volume2 = &VolumeRecord{
 		Vid:            2,
@@ -105,6 +106,7 @@ var (
 		Used:           21,
 		Total:          10240,
 		CreateByNodeID: 1,
+		RouteVersion:   proto.RouteVersion(2),
 	}
 	volume3 = &VolumeRecord{
 		Vid:            3,
@@ -116,9 +118,29 @@ var (
 		Used:           21,
 		Total:          10240,
 		CreateByNodeID: 1,
+		RouteVersion:   proto.RouteVersion(3),
+	}
+
+	route1 = &base.RouteInfoRecord{
+		RouteVersion: volume1.RouteVersion,
+		Type:         proto.RouteItemTypeAddVolume,
+		ItemDetail:   &RouteInfoVolumeAdd{Vid: volume1.Vid},
+	}
+
+	route2 = &base.RouteInfoRecord{
+		RouteVersion: volume2.RouteVersion,
+		Type:         proto.RouteItemTypeAddVolume,
+		ItemDetail:   &RouteInfoVolumeAdd{Vid: volume2.Vid},
+	}
+
+	route3 = &base.RouteInfoRecord{
+		RouteVersion: volume3.RouteVersion,
+		Type:         proto.RouteItemTypeAddVolume,
+		ItemDetail:   &RouteInfoVolumeAdd{Vid: volume3.Vid},
 	}
 
 	volumes = []*VolumeRecord{volume1, volume2, volume3}
+	routes  = []*base.RouteInfoRecord{route1, route2, route3}
 
 	taskRecord1 = &VolumeTaskRecord{
 		Vid:      1,
@@ -186,7 +208,7 @@ func TestVolumeTable_PutVolumeAndVolumeUnit(t *testing.T) {
 	defer closeVolumeDB()
 
 	volumeUnits := [][]*VolumeUnitRecord{{volumeUnit1}, {volumeUnit2}, {volumeUnit3}}
-	err := volumeTable.PutVolumeAndVolumeUnit(volumes, volumeUnits)
+	err := volumeTable.PutVolumesAndUnitsAndRoutes(volumes, volumeUnits, routes)
 	require.NoError(t, err)
 }
 
@@ -368,14 +390,19 @@ func TestVolumeTable_UpdateVolumeUnit(t *testing.T) {
 	require.Equal(t, len(ret), 2)
 
 	// repeat update volume unit
-	err = volumeTable.UpdateVolumeUnit(volumeUnitInfo2.VuidPrefix, volumeUnitInfo2)
+	route := &base.RouteInfoRecord{
+		RouteVersion: volume1.RouteVersion,
+		Type:         proto.RouteItemTypeUpdateVolume,
+		ItemDetail:   &RouteInfoVolumeUpdate{VuidPrefix: volumeUnitInfo2.VuidPrefix},
+	}
+	err = volumeTable.UpdateVolumeUnitAndPutVolumeAndRoute(volumeUnitInfo2, volume2, route)
 	require.NoError(t, err)
 	ret, err = volumeTable.ListVolumeUnit(20)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(ret))
 
 	volumeUnit2.DiskID = 45
-	err = volumeTable.UpdateVolumeUnit(volumeUnit2.VuidPrefix, volumeUnit2)
+	err = volumeTable.UpdateVolumeUnitAndPutVolumeAndRoute(volumeUnit2, volume2, route2)
 	require.NoError(t, err)
 
 	ret, err = volumeTable.ListVolumeUnit(20)
@@ -454,4 +481,29 @@ func TestVolumeTable_PutVolumeAndTask(t *testing.T) {
 	require.NoError(t, err)
 	err = volumeTable.PutVolumeAndTask(nil, taskRecord1)
 	require.NoError(t, err)
+}
+
+func TestVolumeTable_Route(t *testing.T) {
+	initVolumeDB()
+	defer closeVolumeDB()
+
+	err := volumeTable.PutVolumesAndUnitsAndRoutes(nil, nil, routes)
+	require.NoError(t, err)
+
+	routeInfoRecord, err := volumeTable.GetFirstRoute()
+	require.NoError(t, err)
+	require.Equal(t, route1.RouteVersion, routeInfoRecord.RouteVersion)
+	require.Equal(t, route1.Type, routeInfoRecord.Type)
+	require.Equal(t, route1.ItemDetail, routeInfoRecord.ItemDetail)
+
+	routeInfoRecords, err := volumeTable.ListRoute()
+	require.NoError(t, err)
+	require.Equal(t, 3, len(routeInfoRecords))
+
+	err = volumeTable.DeleteOldRoutes(route2.RouteVersion)
+	require.NoError(t, err)
+
+	routeInfoRecords, err = volumeTable.ListRoute()
+	require.NoError(t, err)
+	require.Equal(t, 2, len(routeInfoRecords))
 }
