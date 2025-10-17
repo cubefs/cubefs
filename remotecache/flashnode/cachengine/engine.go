@@ -134,6 +134,7 @@ type CacheEngine struct {
 	readDataNodeTimeout   int
 	keyRateLimitThreshold int32
 	keyLimiterFlow        int64
+	reservedSpace         int64 // reserved disk space
 }
 
 type (
@@ -142,7 +143,7 @@ type (
 )
 
 func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, disks []*Disk,
-	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, cacheLoadWorkerNum int, cacheEvictWorkerNum int, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string, keyRateLimitThreshold int32, keyLimiterFlow int64,
+	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, cacheLoadWorkerNum int, cacheEvictWorkerNum int, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string, keyRateLimitThreshold int32, keyLimiterFlow int64, reservedSpace int64,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.enableTmpfs = enableTmpfs
@@ -159,6 +160,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	s.localAddr = localAddr
 	s.keyRateLimitThreshold = keyRateLimitThreshold
 	s.keyLimiterFlow = keyLimiterFlow
+	s.reservedSpace = reservedSpace
 	s.keyToDiskMap = make(map[string]*lruCacheItem)
 	if s.enableTmpfs {
 		fullPath := path.Join(memDataDir, DefaultCacheDirName)
@@ -768,7 +770,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 				block.Delete(fmt.Sprintf("create block failed %v", err))
 			}
 		}()
-		if _, err = cacheItem.lruCache.CheckDiskSpace(cacheItem.disk.Path, block.blockKey, block.getAllocSize()); err != nil {
+		if _, err = cacheItem.lruCache.CheckDiskSpace(cacheItem.disk.Path, block.blockKey, block.getAllocSize(), c.reservedSpace); err != nil {
 			return
 		}
 

@@ -78,6 +78,7 @@ const (
 	_defaultFlashLimitHangTimeout          = 1000 // ms
 	_defaultBatchReadPoolConcurrency       = 128
 	_defaultKeyRateLimitThreshold          = 1024 * 1024
+	_defaultReservedSpace                  = 100 * 1024 * 1024 * 1024 // 100GB
 )
 
 // Configuration keys
@@ -111,6 +112,7 @@ const (
 	cfgPrepareLoadRoutineNum        = "prepareLoadRoutineNum"
 	cfgMissEntryTimeout             = "missEntryTimeout"
 	cfgBatchReadPoolConcurrency     = "batchReadPoolConcurrency"
+	cfgReservedSpace                = "reservedSpace"
 	paramIocc                       = "iocc"
 	paramFlow                       = "flow"
 	paramFactor                     = "factor"
@@ -183,6 +185,7 @@ type FlashNode struct {
 	batchReadPoolConcurrency int
 	keyRateLimitThreshold    int32
 	keyLimiterFlow           int64
+	reservedSpace            int64 // reserved disk space
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -447,6 +450,14 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	f.batchReadPool.SetWaitTime(5 * time.Millisecond)
 	log.LogInfof("[parseConfig] load batchReadPoolConcurrency[%d]", f.batchReadPoolConcurrency)
 	f.keyRateLimitThreshold = _defaultKeyRateLimitThreshold
+
+	reservedSpace := cfg.GetInt64(cfgReservedSpace)
+	if reservedSpace <= 0 {
+		reservedSpace = _defaultReservedSpace
+	}
+	f.reservedSpace = reservedSpace
+	log.LogInfof("[parseConfig] load reservedSpace[%d]", f.reservedSpace)
+
 	taskCountLimit := cfg.GetInt(cfgNodeTaskCountLimit)
 	if taskCountLimit <= 0 {
 		taskCountLimit = _defaultFlashNodeTaskCountLimit
@@ -518,7 +529,7 @@ func (f *FlashNode) stopBatchReadPool() {
 
 func (f *FlashNode) startCacheEngine() (err error) {
 	if f.cacheEngine, err = cachengine.NewCacheEngine(f.memDataPath, int64(f.memTotal),
-		0, f.disks, f.lruCapacity, f.lruFhCapacity, f.diskUnavailableCbErrorCount, f.cacheLoadWorkerNum, f.cacheEvictWorkerNum, f.mc, time.Hour, ReadExtentData, f.enableTmpfs, f.localAddr, f.keyRateLimitThreshold, f.keyLimiterFlow); err != nil {
+		0, f.disks, f.lruCapacity, f.lruFhCapacity, f.diskUnavailableCbErrorCount, f.cacheLoadWorkerNum, f.cacheEvictWorkerNum, f.mc, time.Hour, ReadExtentData, f.enableTmpfs, f.localAddr, f.keyRateLimitThreshold, f.keyLimiterFlow, f.reservedSpace); err != nil {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
