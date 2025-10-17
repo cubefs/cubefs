@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
@@ -414,10 +415,15 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
+	blockSize := util.CacheReadBlockSize
+	//if f.info.Size >= 1*util.MB && f.info.Size <= 100*util.MB {
+	//	blockSize = blockSize / 4
+	//}
 
 	var size int
 	if f.shouldAccessReplicaStorageClass() {
 		f.super.ec.GetStreamer(f.info.Inode).SetParentInode(f.parentIno)
+		f.super.ec.GetStreamer(f.info.Inode).SetAheadBlockSize(uint32(blockSize))
 		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset),
 			req.Size, f.info.StorageClass, false)
 	} else {
