@@ -56,9 +56,9 @@ func TestEngineNew(t *testing.T) {
 	disks := make([]*Disk, 0)
 	disks = append(disks, disk)
 	if !enabledTmpfs() {
-		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, 1024, 1024, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100)
+		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, 1024, 1024, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100, 0)
 	} else {
-		ce, err = NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, disks, 1024, 1024, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100)
+		ce, err = NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, disks, 1024, 1024, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100, 0)
 	}
 
 	require.NoError(t, err)
@@ -83,9 +83,9 @@ func TestEngineOverFlow(t *testing.T) {
 	disks := make([]*Disk, 0)
 	disks = append(disks, disk)
 	if !enabledTmpfs() {
-		ce, err = NewCacheEngine("", 0, 1.1, disks, 1024, 1024, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100)
+		ce, err = NewCacheEngine("", 0, 1.1, disks, 1024, 1024, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100, 0)
 	} else {
-		ce, err = NewCacheEngine(testTmpFS, util.GB, 1.1, disks, 1024, 1024, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100)
+		ce, err = NewCacheEngine(testTmpFS, util.GB, 1.1, disks, 1024, 1024, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100, 0)
 	}
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
@@ -156,9 +156,9 @@ func TestEngineTTL(t *testing.T) {
 	disks := make([]*Disk, 0)
 	disks = append(disks, disk)
 	if !enabledTmpfs() {
-		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100)
+		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100, 0)
 	} else {
-		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100)
+		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100, 0)
 	}
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
@@ -218,9 +218,9 @@ func TestEngineLru(t *testing.T) {
 	disks := make([]*Disk, 0)
 	disks = append(disks, disk)
 	if !enabledTmpfs() {
-		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100)
+		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100, 0)
 	} else {
-		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100)
+		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, 10, 10, nil, DefaultExpireTime, nil, enabledTmpfs(), "", 1024*1024, 100, 0)
 	}
 	require.NoError(t, err)
 	ce.Start()

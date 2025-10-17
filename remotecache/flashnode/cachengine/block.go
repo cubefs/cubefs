@@ -869,7 +869,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 				cacheItem.lruCache.FreePreAllocatedSize(block.blockKey)
 			}
 		}()
-		if _, err = cacheItem.lruCache.CheckDiskSpace(cacheItem.disk.Path, block.blockKey, block.getAllocSize()); err != nil {
+		if _, err = cacheItem.lruCache.CheckDiskSpace(cacheItem.disk.Path, block.blockKey, block.getAllocSize(), c.reservedSpace); err != nil {
 			return
 		}
 		if err = block.initFilePath(false); err != nil {

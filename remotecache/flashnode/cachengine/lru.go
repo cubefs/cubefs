@@ -30,7 +30,6 @@ import (
 const (
 	LRUUpdateChanSize          = 1000000
 	MaxPushFrontConsumption    = 100000
-	DiskSpaceCleanupThreshold  = 10 * 1024 * 1024 * 1024 // 10GB in bytes
 	BackgroundCleanupItemCount = 50
 )
 
@@ -48,7 +47,7 @@ type LruCache interface {
 	GetAllocated() int64
 	GetExpiredTime(key interface{}) (time.Time, bool)
 	AddMisses()
-	CheckDiskSpace(dataPath string, key interface{}, size int64) (n int, err error)
+	CheckDiskSpace(dataPath string, key interface{}, size int64, reservedSpace int64) (n int, err error)
 	FreePreAllocatedSize(key interface{})
 	GetCreateTime(key interface{}) (time.Time, bool)
 }
@@ -259,7 +258,7 @@ func (c *fCache) FreePreAllocatedSize(key interface{}) {
 	c.DeleteKeyFromPreAllocatedKeyMap(key)
 }
 
-func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n int, err error) {
+func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64, reservedSpace int64) (n int, err error) {
 	var diskSpaceLeft int64
 
 	c.lock.Lock()
@@ -281,9 +280,9 @@ func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n
 	preAllocated := atomic.LoadInt64(&c.preAllocated)
 	diskSpaceLeft -= preAllocated
 
-	if diskSpaceLeft < DiskSpaceCleanupThreshold {
+	if diskSpaceLeft < reservedSpace {
 		if log.EnableInfo() {
-			log.LogInfof("[CheckDiskSpace] disk space left (%d bytes) is less than 10GB, starting background cleanup", diskSpaceLeft)
+			log.LogInfof("[CheckDiskSpace] disk space left (%d bytes) is less than reserved space (%d bytes), starting background cleanup", diskSpaceLeft, reservedSpace)
 		}
 		if atomic.CompareAndSwapInt32(&c.cleanupRunning, 0, 1) {
 			go c.backgroundCleanup(BackgroundCleanupItemCount, diskSpaceLeft) // Start background cleanup
