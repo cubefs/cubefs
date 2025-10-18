@@ -79,7 +79,7 @@ const (
 )
 
 const (
-	SyncWalTable = 255
+	FlushInterval = 5 * time.Minute
 )
 
 func getTableTypeKey(treeType TreeType) TableType {
@@ -139,12 +139,18 @@ type RocksdbOperator struct {
 
 	readDiskOption *gorocksdb.ReadOptions
 	config         map[string]string
+
+	isFlushing    bool
+	lastFlushTime time.Time
+	flushMutex    sync.Mutex
 }
 
 func NewRocksdb() (operator *RocksdbOperator) {
 	operator = &RocksdbOperator{
-		state:  dbInitSt,
-		config: make(map[string]string),
+		state:         dbInitSt,
+		config:        make(map[string]string),
+		isFlushing:    false,
+		lastFlushTime: time.Now(),
 	}
 	return
 }
@@ -944,16 +950,37 @@ func (dbInfo *RocksdbOperator) CompactRange(start, end []byte) (err error) {
 }
 
 func (dbInfo *RocksdbOperator) Flush(block bool) (err error) {
-	if err = dbInfo.accessDb(); err != nil {
-		return
+	if atomic.LoadUint32(&dbInfo.state) != dbOpenedSt {
+		log.LogErrorf("[RocksDB Op] can not access db, db is not opened. Cur state:%v", dbInfo.state)
+		return ErrRocksdbAccess
 	}
-	defer dbInfo.releaseDb()
+
+	dbInfo.flushMutex.Lock()
+	if dbInfo.isFlushing || (!block && time.Since(dbInfo.lastFlushTime) < FlushInterval) {
+		dbInfo.flushMutex.Unlock()
+		return nil
+	}
+
+	dbInfo.isFlushing = true
+	dbInfo.flushMutex.Unlock()
 
 	opts := gorocksdb.NewDefaultFlushOptions()
-	defer opts.Destroy()
 	opts.SetWait(block)
+	defer func() {
+		opts.Destroy()
+		dbInfo.flushMutex.Lock()
+		dbInfo.isFlushing = false
+		if err == nil {
+			dbInfo.lastFlushTime = time.Now()
+		}
+		dbInfo.flushMutex.Unlock()
+	}()
 
 	err = dbInfo.db.Flush(opts)
+	if err != nil {
+		return
+	}
+
 	return
 }
 
