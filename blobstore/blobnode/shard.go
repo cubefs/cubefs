@@ -455,7 +455,11 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	err := cs.MarkDelete(ctx, args.Bid)
 	if err != nil {
 		err = handlerBidNotFoundErr(err)
-		span.Errorf("Failed to mark delete, args:%+v err:%v", args, err)
+		if base.IsShardMarkDeleted(err) || base.IsShardDeleted(err) || base.IsChunkCompacting(err) {
+			span.Warnf("Failed to mark delete, args:%+v err:%v", args, err)
+		} else {
+			span.Errorf("Failed to mark delete, args:%+v err:%v", args, err)
+		}
 		c.RespondError(err)
 		return
 	}
@@ -530,7 +534,11 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	err = cs.Delete(ctx, args.Bid)
 	if err != nil {
 		err = handlerBidNotFoundErr(err)
-		span.Errorf("Failed to delete, args:%+v, err:%v", args, err)
+		if base.IsShardDeleted(err) || base.IsChunkCompacting(err) {
+			span.Warnf("Failed to delete, args:%+v, err:%v", args, err)
+		} else {
+			span.Errorf("Failed to delete, args:%+v, err:%v", args, err)
+		}
 		c.RespondError(err)
 		return
 	}

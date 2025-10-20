@@ -621,7 +621,11 @@ func (cs *chunk) MarkDelete(ctx context.Context, bid proto.BlobID) (err error) {
 
 	err = stg.MarkDelete(ctx, bid)
 	if err != nil {
-		span.Errorf("Failed mark delete: diskID:%d, vuid:%d, bid:%d, err:%v", cs.diskID, cs.vuid, bid, err)
+		if base.IsShardMarkDeleted(err) {
+			span.Warnf("Failed mark delete: diskID:%d, vuid:%d, bid:%d, err:%v", cs.diskID, cs.vuid, bid, err)
+		} else {
+			span.Errorf("Failed mark delete: diskID:%d, vuid:%d, bid:%d, err:%v", cs.diskID, cs.vuid, bid, err)
+		}
 		return err
 	}
 
@@ -649,7 +653,11 @@ func (cs *chunk) Delete(ctx context.Context, bid proto.BlobID) (err error) {
 
 	n, err := stg.Delete(ctx, bid)
 	if err != nil {
-		span.Errorf("Failed delete: diskID:%d, vuid:%d, bid:%d, err:%v", cs.diskID, cs.vuid, bid, err)
+		if base.IsShardDeleted(err) {
+			span.Warnf("Failed delete: diskID:%d, vuid:%d, bid:%d, err:%v", cs.diskID, cs.vuid, bid, err)
+		} else {
+			span.Errorf("Failed delete: diskID:%d, vuid:%d, bid:%d, err:%v", cs.diskID, cs.vuid, bid, err)
+		}
 		return err
 	}
 
