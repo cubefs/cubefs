@@ -50,6 +50,10 @@ func NewMockAllocTransport(t testing.TB) base.Transport {
 			return "1024", nil
 		case proto.VolumeChunkSizeKey:
 			return "17179869184", nil
+		case proto.CodeModeExtendKey:
+			var extend []codemode.ExtendCodeMode
+			data, err := json.Marshal(extend)
+			return string(data), err
 		default:
 			return
 		}

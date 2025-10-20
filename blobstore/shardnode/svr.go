@@ -36,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/blobdeleter"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
+	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
@@ -67,15 +68,8 @@ type Config struct {
 	ShardBaseConfig storage.ShardBaseConfig `json:"shard_base_config"`
 	NodeConfig      cmapi.ShardNodeInfo     `json:"node_config"`
 
-	AllocVolConfig struct {
-		BidAllocNums         uint64  `json:"bid_alloc_nums"`
-		RetainIntervalS      int64   `json:"retain_interval_s"`
-		DefaultAllocVolsNum  int     `json:"default_alloc_vols_num"`
-		InitVolumeNum        int     `json:"init_volume_num"`
-		TotalThresholdRatio  float64 `json:"total_threshold_ratio"`
-		RetainVolumeBatchNum int     `json:"retain_volume_batch_num"`
-		RetainBatchIntervalS int64   `json:"retain_batch_interval_s"`
-	} `json:"alloc_vol_config"`
+	AllocBidConfig               allocator.BlobConfig `json:"alloc_bid_config"`
+	AllocVolConfig               allocator.VolConfig  `json:"alloc_vol_config"`
 	HandleIOError                func(ctx context.Context)
 	HeartBeatIntervalS           int64 `json:"heart_beat_interval_s"`
 	ReportIntervalS              int64 `json:"report_interval_s"`
@@ -156,15 +150,8 @@ func createService(cfg *Config) *service {
 		ClusterID:   cfg.NodeConfig.ClusterID,
 		Transport:   transport,
 		ShardGetter: svr,
-		AllocCfg: catalog.AllocCfg{
-			BidAllocNums:         cfg.AllocVolConfig.BidAllocNums,
-			RetainIntervalS:      cfg.AllocVolConfig.RetainIntervalS,
-			DefaultAllocVolsNum:  cfg.AllocVolConfig.DefaultAllocVolsNum,
-			InitVolumeNum:        cfg.AllocVolConfig.InitVolumeNum,
-			TotalThresholdRatio:  cfg.AllocVolConfig.TotalThresholdRatio,
-			RetainVolumeBatchNum: cfg.AllocVolConfig.RetainVolumeBatchNum,
-			RetainBatchIntervalS: cfg.AllocVolConfig.RetainBatchIntervalS,
-		},
+		BlobConfig:  cfg.AllocBidConfig,
+		VolConfig:   cfg.AllocVolConfig,
 	})
 	svr.catalog = c
 

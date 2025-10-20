@@ -34,17 +34,8 @@ type (
 		ClusterID   proto.ClusterID
 		Transport   base.Transport
 		ShardGetter ShardGetter
-		AllocCfg
-	}
-
-	AllocCfg struct {
-		BidAllocNums         uint64
-		RetainIntervalS      int64
-		DefaultAllocVolsNum  int
-		InitVolumeNum        int
-		TotalThresholdRatio  float64
-		RetainVolumeBatchNum int
-		RetainBatchIntervalS int64
+		allocator.BlobConfig
+		allocator.VolConfig
 	}
 
 	ShardGetter interface {
@@ -65,18 +56,7 @@ type Catalog struct {
 func NewCatalog(ctx context.Context, cfg *Config) *Catalog {
 	span := trace.SpanFromContext(ctx)
 
-	blobCfg := allocator.BlobConfig{BidAllocNums: cfg.BidAllocNums}
-	volCfg := allocator.VolConfig{
-		RetainIntervalS:      cfg.RetainIntervalS,
-		DefaultAllocVolsNum:  cfg.DefaultAllocVolsNum,
-		InitVolumeNum:        cfg.InitVolumeNum,
-		TotalThresholdRatio:  cfg.TotalThresholdRatio,
-		RetainVolumeBatchNum: cfg.RetainVolumeBatchNum,
-		RetainBatchIntervalS: cfg.RetainBatchIntervalS,
-		VolumeReserveSize:    cfg.InitVolumeNum,
-	}
-
-	alc, err := allocator.NewAllocator(ctx, blobCfg, volCfg, cfg.Transport)
+	alc, err := allocator.NewAllocator(ctx, cfg.BlobConfig, cfg.VolConfig, cfg.Transport)
 	if err != nil {
 		span.Fatalf("new catalog allocator error: %v", err)
 	}

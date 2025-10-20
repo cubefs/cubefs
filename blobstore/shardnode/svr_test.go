@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util"
@@ -69,7 +70,7 @@ func TestSvr_Loop(t *testing.T) {
 	require.Nil(t, err)
 	disks := []string{path}
 	cfg.DisksConfig.Disks = disks
-	cfg.AllocVolConfig.BidAllocNums = 1000
+	cfg.AllocBidConfig = allocator.BlobConfig{BidAllocNums: 1000}
 	defer func() {
 		os.RemoveAll(path)
 	}()

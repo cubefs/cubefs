@@ -601,3 +601,237 @@ func TestAllocParallel(b *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestAllocWithVolumeNumThreshold(t *testing.T) {
+	tp := NewMockAllocTransport(t)
+	v := &volmgr{
+		BlobConfig: BlobConfig{},
+		VolConfig: VolConfig{
+			VolumeReserveSize:   1024,
+			DefaultAllocVolsNum: 2,
+		},
+		bidMgr:    nil,
+		tp:        tp,
+		modeInfos: make(map[codemode.CodeMode]*modeInfo),
+		allocChs:  make(map[codemode.CodeMode]chan *allocArgs),
+		closeCh:   nil,
+	}
+	v.allocChs[codemode.EC6P6] = make(chan *allocArgs)
+
+	info := &modeInfo{
+		current:              &volumes{},
+		backup:               &volumes{},
+		totalThreshold:       2 * 1024 * 1024 * 1024,
+		totalVolNumThreshold: 1,
+	}
+	for i := 1; i <= 5; i++ {
+		volInfo := cm.AllocVolumeInfo{
+			VolumeInfo: cm.VolumeInfo{
+				VolumeInfoBase: cm.VolumeInfoBase{
+					Vid:      proto.Vid(i),
+					CodeMode: codemode.EC6P6,
+					Free:     uint64(1 << 30),
+				},
+			},
+			ExpireTime: 100,
+		}
+
+		info.Put(&volume{
+			AllocVolumeInfo: volInfo,
+		}, false)
+	}
+	volInfo := cm.AllocVolumeInfo{
+		VolumeInfo: cm.VolumeInfo{
+			VolumeInfoBase: cm.VolumeInfoBase{
+				Vid:      proto.Vid(6),
+				CodeMode: codemode.EC6P6,
+				Free:     uint64(1 << 30),
+			},
+		},
+		ExpireTime: 100,
+	}
+	info.Put(&volume{
+		AllocVolumeInfo: volInfo,
+	}, true)
+
+	v.modeInfos[codemode.EC6P6] = info
+
+	args := &AllocVolsArgs{
+		Fsize:    1 << 30,
+		CodeMode: codemode.EC6P6,
+		BidCount: 1,
+		Excludes: nil,
+		Discards: nil,
+	}
+	ctx := context.Background()
+	for i := 0; i < 4; i++ {
+		vols, err := v.getAvailableVols(ctx, args)
+		require.NoError(t, err)
+		_, err = v.getNextVid(ctx, vols, info, args)
+		require.NoError(t, err)
+	}
+
+	vols, err := v.getAvailableVols(ctx, args)
+	require.NoError(t, err)
+	require.Equal(t, proto.Vid(6), vols[0].Vid)
+}
+
+func TestAllocFillBackupFirstTime(t *testing.T) {
+	tp := NewMockAllocTransport(t)
+	v := &volmgr{
+		BlobConfig: BlobConfig{},
+		VolConfig: VolConfig{
+			VolumeReserveSize:   1024,
+			DefaultAllocVolsNum: 2,
+		},
+		bidMgr:    nil,
+		tp:        tp,
+		modeInfos: make(map[codemode.CodeMode]*modeInfo),
+		allocChs:  make(map[codemode.CodeMode]chan *allocArgs),
+		closeCh:   nil,
+	}
+	v.allocChs[codemode.EC6P6] = make(chan *allocArgs, 1)
+
+	// fill backup first time alloc
+	info := &modeInfo{
+		current:              &volumes{},
+		backup:               &volumes{},
+		totalThreshold:       2 * 1024 * 1024 * 1024,
+		totalVolNumThreshold: 1,
+	}
+	for i := 1; i <= 5; i++ {
+		volInfo := cm.AllocVolumeInfo{
+			VolumeInfo: cm.VolumeInfo{
+				VolumeInfoBase: cm.VolumeInfoBase{
+					Vid:      proto.Vid(i),
+					CodeMode: codemode.EC6P6,
+					Free:     uint64(1 << 30),
+				},
+			},
+			ExpireTime: 100,
+		}
+
+		info.Put(&volume{
+			AllocVolumeInfo: volInfo,
+		}, false)
+	}
+	v.modeInfos[codemode.EC6P6] = info
+
+	require.Equal(t, 0, len(v.allocChs[codemode.EC6P6]))
+
+	args := &AllocVolsArgs{
+		Fsize:    1 << 30,
+		CodeMode: codemode.EC6P6,
+		BidCount: 1,
+		Excludes: nil,
+		Discards: nil,
+	}
+	ctx := context.Background()
+	_, err := v.getAvailableVols(ctx, args)
+	require.NoError(t, err)
+	a := <-v.allocChs[codemode.EC6P6]
+	require.True(t, true, a.isBackup)
+}
+
+func TestAllocAvoidAllocZeroVolFromCM(t *testing.T) {
+	tp := NewMockAllocTransport(t)
+	v := &volmgr{
+		BlobConfig: BlobConfig{},
+		VolConfig: VolConfig{
+			VolumeReserveSize:   1024,
+			DefaultAllocVolsNum: 2,
+		},
+		bidMgr:    nil,
+		tp:        tp,
+		modeInfos: make(map[codemode.CodeMode]*modeInfo),
+		allocChs:  make(map[codemode.CodeMode]chan *allocArgs),
+		closeCh:   nil,
+	}
+	v.allocChs[codemode.EC6P6] = make(chan *allocArgs, 1)
+
+	info := &modeInfo{
+		current:              &volumes{},
+		backup:               &volumes{},
+		totalThreshold:       2 * 1024 * 1024 * 1024,
+		totalVolNumThreshold: 0,
+	}
+	backupTmp := &volumes{}
+	for i := 1; i <= 7; i++ {
+		volInfo := cm.AllocVolumeInfo{
+			VolumeInfo: cm.VolumeInfo{
+				VolumeInfoBase: cm.VolumeInfoBase{
+					Vid:      proto.Vid(i),
+					CodeMode: codemode.EC6P6,
+					Free:     uint64(1 << 30),
+				},
+			},
+			ExpireTime: 100,
+		}
+
+		info.Put(&volume{
+			AllocVolumeInfo: volInfo,
+		}, false)
+		if i > 5 {
+			backupTmp.Put(&volume{
+				AllocVolumeInfo: volInfo,
+			})
+		}
+	}
+	v.modeInfos[codemode.EC6P6] = info
+
+	done1 := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done1:
+				return
+			default:
+			}
+			args := &AllocVolsArgs{
+				Fsize:    1,
+				CodeMode: codemode.EC6P6,
+				BidCount: 1,
+				Excludes: nil,
+				Discards: nil,
+			}
+			ctx := context.Background()
+			_, err := v.getAvailableVols(ctx, args)
+			require.NoError(t, err)
+		}
+	}()
+
+	done2 := make(chan struct{})
+	go func() {
+		i := 0
+		for {
+			select {
+			case <-done2:
+				return
+			default:
+			}
+			v.modeInfos[codemode.EC6P6].lock.Lock()
+			if i%2 == 0 {
+				v.modeInfos[codemode.EC6P6].backup = &volumes{}
+			} else {
+				v.modeInfos[codemode.EC6P6].backup = backupTmp
+			}
+			v.modeInfos[codemode.EC6P6].lock.Unlock()
+			time.Sleep(100 * time.Millisecond)
+			i++
+		}
+	}()
+
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			close(done1)
+			close(done2)
+			return
+		default:
+		}
+		a := <-v.allocChs[codemode.EC6P6]
+		require.True(t, true, a.count > 0)
+	}
+}
