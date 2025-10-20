@@ -194,10 +194,6 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		resp.CpuUtil = m.cpuUtil.Load()
 		log.LogDebugf("[opMasterHeartbeat] collect rocksdb info")
 		diskStat = m.metaNode.getRocksDBDiskStat()
-		err = m.updateRocksDBKeyNum(diskStat)
-		if err != nil {
-			log.LogWarnf("[opMasterHeartbeat] failed to update rocksdb key num, err(%v)", err)
-		}
 		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
 			m.checkForbiddenVolume(req.ForbiddenVols, partition)

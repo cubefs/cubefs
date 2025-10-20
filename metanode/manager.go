@@ -35,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
-	"github.com/cubefs/cubefs/util/diskmon"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
@@ -1058,40 +1057,6 @@ func (m *metadataManager) CheckRocksdbMetaPartition(metaPath string) error {
 	if err := m.rocksdbCleaner.AddTask(mp); err != nil {
 		err = errors.NewErrorf("[CheckRocksdbMetaPartition]: AddTask mp(%d) err:%s", mConf.PartitionId, err.Error())
 		return err
-	}
-
-	return nil
-}
-
-func (m *metadataManager) updateRocksDBKeyNum(rocksdbStats []*proto.MetaNodeRocksdbInfo) error {
-	keyNumSum := make(map[string]uint64)
-	for _, item := range rocksdbStats {
-		keyNumSum[item.Path] = 0
-	}
-
-	m.Range(true, func(id uint64, partition MetaPartition) bool {
-		if partition.GetStoreMode() != proto.StoreModeRocksDb {
-			return true
-		}
-		mConf := partition.GetBaseConfig()
-		if _, ok := keyNumSum[mConf.RocksDBDir]; !ok {
-			log.LogErrorf("[updateRocksDBKeyNum] rocksdb dir(%v) not found", mConf.RocksDBDir)
-			return true
-		}
-		keyNumSum[mConf.RocksDBDir] += uint64(partition.GetInodeTreeLen())
-		return true
-	})
-
-	for _, item := range rocksdbStats {
-		item.KeyNum = keyNumSum[item.Path]
-	}
-
-	for _, item := range rocksdbStats {
-		overLimit := false
-		if item.KeyNum > m.metaNode.rocksdbKeyNumMax {
-			overLimit = true
-		}
-		m.rocksdbManager.SetForbidden(item.Path, overLimit || item.Status != diskmon.ReadWrite)
 	}
 
 	return nil

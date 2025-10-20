@@ -52,6 +52,7 @@ type FsCapMon struct {
 	Used          float64
 	Available     float64
 	Status        int8
+	RocksdbNum    uint64
 	lastUpdate    time.Time
 }
 

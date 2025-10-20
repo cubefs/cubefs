@@ -350,9 +350,10 @@ func (c *RocksDBCleaner) cleanRocksdbTree(rocksdbTree *RocksdbTree) error {
 		log.LogErrorf("[Clean] mp(%v) failed to commit and release batch write for clear, err(%v)", rocksdbTree.PartitionId, err)
 		return err
 	}
-	err = rocksdbTree.inodeTree.Flush(true)
+
+	err = c.flushAndCheckApplyID(rocksdbTree)
 	if err != nil {
-		log.LogErrorf("[Clean] mp(%v) flush failed: %v", rocksdbTree.PartitionId, err)
+		log.LogErrorf("[Clean] mp(%v) flush and check apply id failed: %v", rocksdbTree.PartitionId, err)
 		return err
 	}
 
@@ -366,13 +367,12 @@ errHandler:
 
 func (c *RocksDBCleaner) DoCleanRocksdbData(record *CleanRecord) error {
 	rocksdbTree, err := c.initRocksdbTree(record)
+	defer c.closeRocksdbTree(rocksdbTree)
 	if err != nil {
 		log.LogErrorf("RocksDBCleaner: failed to init rocksdb tree for partition [%d]: %s",
 			record.PartitionId, err)
 		return err
 	}
-
-	defer c.closeRocksdbTree(rocksdbTree)
 
 	// Perform cleanup operation
 	err = c.cleanRocksdbTree(rocksdbTree)
@@ -412,4 +412,27 @@ func (c *RocksDBCleaner) DoCleanRocksdbData(record *CleanRecord) error {
 		record.PartitionId, record.RocksDBDir)
 
 	return nil
+}
+
+func (c *RocksDBCleaner) flushAndCheckApplyID(rocksdbTree *RocksdbTree) error {
+	for i := 0; i < 10; i++ {
+		if err := rocksdbTree.inodeTree.Flush(true); err != nil {
+			log.LogErrorf("[flushAndCheckApplyID] mp(%v) flush err: %s", rocksdbTree.PartitionId, err.Error())
+			return err
+		}
+
+		diskApplyID, err := rocksdbTree.inodeTree.GetApplyIdFromDisk()
+		if err != nil {
+			log.LogErrorf("[flushAndCheckApplyID] mp(%v) get apply id from disk err: %s", rocksdbTree.PartitionId, err.Error())
+			return err
+		}
+
+		if diskApplyID == 0 {
+			return nil
+		}
+
+		time.Sleep(FlushInterval)
+	}
+
+	return fmt.Errorf("[flushAndCheckApplyID] mp(%v) timeout", rocksdbTree.PartitionId)
 }

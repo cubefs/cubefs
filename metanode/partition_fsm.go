@@ -836,9 +836,9 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				log.LogErrorf("[ApplySnapshot] mp(%v) failed to clear handle", mp.config.PartitionId)
 				err = nil
 			}
-			err = mp.inodeTree.Flush(true)
+			err = mp.flushAndCheckApplyID(appIndexID)
 			if err != nil {
-				log.LogErrorf("[ApplySnapshot] mp(%v) failed to flush rocksdb, err(%v)", mp.config.PartitionId, err)
+				log.LogErrorf("[ApplySnapshot] mp(%v) flush and check apply id failed, err(%v)", mp.config.PartitionId, err)
 				return
 			}
 			// store message
@@ -1155,4 +1155,32 @@ func (mp *metaPartition) getApplyID() (applyId uint64) {
 func (mp *metaPartition) getCommittedID() (committedId uint64) {
 	status := mp.raftPartition.Status()
 	return status.Commit
+}
+
+func (mp *metaPartition) flushAndCheckApplyID(appIndexID uint64) (err error) {
+	if mp.inodeTree.GetStoreMode() == proto.StoreModeMem {
+		return nil
+	}
+
+	var diskApplyID uint64
+	for i := 0; i < 3; i++ {
+		if err = mp.inodeTree.Flush(true); err != nil {
+			log.LogErrorf("[flushAndCheckApplyID] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
+			return err
+		}
+
+		diskApplyID, err = mp.inodeTree.GetApplyIdFromDisk()
+		if err != nil {
+			log.LogErrorf("[flushAndCheckApplyID] mp(%v) get apply id from disk err: %s", mp.config.PartitionId, err.Error())
+			return err
+		}
+
+		if diskApplyID >= appIndexID {
+			return nil
+		}
+
+		time.Sleep(FlushInterval)
+	}
+
+	return fmt.Errorf("[flushAndCheckApplyID] mp(%v) timeout, appIndexID: %d, diskApplyID: %d", mp.config.PartitionId, appIndexID, diskApplyID)
 }

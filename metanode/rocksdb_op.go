@@ -79,7 +79,7 @@ const (
 )
 
 const (
-	FlushInterval = 5 * time.Minute
+	FlushInterval = 30 * time.Second
 )
 
 func getTableTypeKey(treeType TreeType) TableType {
@@ -352,6 +352,12 @@ func (dbInfo *RocksdbOperator) doOpen(opts *RocksDBOptions) (err error) {
 	dbInfo.readDiskOption.SetReadTier(ReadTierPersisted)
 	dbInfo.readDiskOption.SetFillCache(false)
 	dbInfo.setOptToConfig(opts)
+	err = dbInfo.db.SetOptions([]string{"periodic_compaction_seconds"}, []string{"86400"})
+	if err != nil {
+		err = fmt.Errorf("set option [periodic_compaction_seconds=86400] failed: %v", err)
+		log.LogErrorf(err.Error())
+		return err
+	}
 	return nil
 }
 
@@ -956,7 +962,7 @@ func (dbInfo *RocksdbOperator) Flush(block bool) (err error) {
 	}
 
 	dbInfo.flushMutex.Lock()
-	if dbInfo.isFlushing || (!block && time.Since(dbInfo.lastFlushTime) < FlushInterval) {
+	if dbInfo.isFlushing || (time.Since(dbInfo.lastFlushTime) < FlushInterval) {
 		dbInfo.flushMutex.Unlock()
 		return nil
 	}

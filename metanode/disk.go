@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,15 +26,18 @@ import (
 )
 
 const (
-	UpdateDiskSpaceInterval = 10 * time.Second
-	CheckDiskStatusInterval = 1 * time.Minute
+	UpdateDiskSpaceInterval    = 10 * time.Second
+	CheckDiskStatusInterval    = 1 * time.Minute
+	CheckRocksdbStatusInterval = 10 * time.Minute
 )
 
 // Compute the disk usage
 func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
+	m.checkRocksdbStatus()
 	go func() {
 		updateSpaceInfoTicker := time.NewTicker(UpdateDiskSpaceInterval)
 		checkStatusTicker := time.NewTicker(CheckDiskStatusInterval)
+		checkRocksdbStatusTicker := time.NewTicker(CheckRocksdbStatusInterval)
 		defer func() {
 			updateSpaceInfoTicker.Stop()
 			checkStatusTicker.Stop()
@@ -55,6 +59,8 @@ func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
 				for _, d := range m.disks {
 					d.UpdateDiskTick()
 				}
+			case <-checkRocksdbStatusTicker.C:
+				m.checkRocksdbStatus()
 			}
 		}
 	}()
@@ -151,7 +157,39 @@ func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeRocksdbInfo {
 			UsageRatio:     ratio,
 			Status:         d.Status,
 			PartitionCount: count,
+			KeyNum:         d.RocksdbNum,
 		})
 	}
 	return disks
+}
+
+func (m *MetaNode) checkRocksdbStatus() {
+	for _, dbPath := range m.rocksDirs {
+		db, err := m.rocksdbManager.OpenRocksdb(dbPath, 0)
+		if err != nil {
+			continue
+		}
+		numStr, err := db.GetProperty("rocksdb.estimate-num-keys")
+		if err != nil {
+			log.LogErrorf("[checkRocksdbStatus] failed to get estimate num keys on disk(%v), err(%v)", dbPath, err)
+			m.rocksdbManager.CloseRocksdb(db)
+			continue
+		}
+		num, err := strconv.ParseUint(numStr, 10, 64)
+		if err != nil {
+			log.LogErrorf("[checkRocksdbStatus] failed to parse estimate num keys on disk(%v), err(%v)", dbPath, err)
+			m.rocksdbManager.CloseRocksdb(db)
+			continue
+		}
+		m.disks[dbPath].RocksdbNum = num
+
+		// forbid the disk if the rocksdb num is over the limit or the disk is not read write
+		overLimit := false
+		if num > m.rocksdbKeyNumMax {
+			overLimit = true
+		}
+		m.rocksdbManager.SetForbidden(dbPath, overLimit || m.disks[dbPath].Status != diskmon.ReadWrite)
+
+		m.rocksdbManager.CloseRocksdb(db)
+	}
 }
