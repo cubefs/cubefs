@@ -220,20 +220,20 @@ func (rq *ReadTaskQueue) batchSmallObjectRead(taskWithPacket *ReadTaskWithPacket
 	}
 	conn.SetWriteDeadline(time.Now().Add(time.Duration(connTimeOut) * time.Millisecond))
 	if err = taskWithPacket.packet.WriteToNoDeadLineConn(conn); err != nil {
-		rq.rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: true}
+		rq.rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: true})
 		log.LogWarnf("batchSmallObjectRead: failed to write, firstPacktTime(%v) addr(%v) err(%v)", rq.rc.firstPacketTimeout, rq.flashAddr, err)
 		return
 	}
 
 	replyPacket = NewFlashCacheReply()
 	if err = replyPacket.ReadFromConnExt(conn, connTimeOut); err != nil {
-		rq.rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: true}
+		rq.rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: true})
 		log.LogWarnf("batchSmallObjectRead: failed to read, firstPacktTime(%v) addr(%v) err(%v)", rq.rc.firstPacketTimeout, rq.flashAddr, err)
 		return
 	}
 	getResult = true
 	atomic.StoreInt32(&taskWithPacket.finish, 1)
-	rq.rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: false}
+	rq.rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: false})
 	if replyPacket.ResultCode != proto.OpOk {
 		err = fmt.Errorf(string(replyPacket.Data))
 		log.LogWarnf("batchSmallObjectRead: ResultCode NOK, replyPacket(%v), addr(%v), ResultCode(%v) err(%v)", replyPacket, rq.flashAddr, replyPacket.ResultCode, err.Error())

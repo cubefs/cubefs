@@ -278,7 +278,9 @@ func (m *Server) createFlashNodeManualTask(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
+	if req.ManualTaskStatistics == nil {
+		req.ManualTaskStatistics = &proto.ManualTaskStatistics{}
+	}
 	// Validate file size limits
 	if req.ManualTaskConfig.MinFileSizeLimit > req.ManualTaskConfig.MaxFileSizeLimit {
 		err = fmt.Errorf("MinFileSizeLimit(%d) cannot be greater than MaxFileSizeLimit(%d)",
