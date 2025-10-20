@@ -927,6 +927,9 @@ func (client *ExtentClient) Close() error {
 		_ = client.EvictStream(inode)
 	}
 	client.dataWrapper.Stop()
+	if client.RemoteCache.Started {
+		client.RemoteCache.Stop()
+	}
 	return nil
 }
 

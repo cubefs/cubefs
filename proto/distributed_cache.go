@@ -580,6 +580,9 @@ func (flt *FlashManualTask) GetPathPrefix() string {
 func (flt *FlashManualTask) SetResponse(taskRsp *FlashNodeManualTaskResponse) {
 	t := time.Now()
 	flt.UpdateTime = &t
+	if flt.ManualTaskStatistics == nil {
+		flt.ManualTaskStatistics = &ManualTaskStatistics{}
+	}
 	flt.ManualTaskStatistics.FlashNode = taskRsp.FlashNode
 	flt.ManualTaskStatistics.TotalFileScannedNum = taskRsp.TotalFileScannedNum
 	flt.ManualTaskStatistics.TotalFileCachedNum = taskRsp.TotalFileCachedNum

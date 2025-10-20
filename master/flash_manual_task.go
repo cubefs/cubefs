@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	minRequiredTTLSeconds       = 30 * 60 // 30 minute
+	minRequiredTTLSeconds       = 10 * 60 // 10 minute
 	FlashTaskInteractiveTimeout = time.Minute * time.Duration(5)
 	ScanManualInterval          = time.Minute * time.Duration(2)
 	CheckInteractiveInterval    = time.Minute * time.Duration(2)
@@ -50,7 +50,7 @@ func checkManualConfig(flt *proto.FlashManualTask, vol *Vol, fltMgr *flashManual
 	switch flt.Action {
 	case proto.FlashManualWarmupAction:
 		if vol.remoteCacheTTL < minRequiredTTLSeconds && vol.remoteCacheTTL != 0 {
-			return fmt.Errorf("cache ttl %v of vol[%v] is too short and warm up can not work", vol.remoteCacheTTL, vol.Name)
+			return fmt.Errorf("cache ttl [%v]s of vol[%v] less than [%v]s and warm up can not work", vol.remoteCacheTTL, vol.Name, minRequiredTTLSeconds)
 		}
 		if err = isDuplicated(flt, fltMgr); err != nil {
 			return err
