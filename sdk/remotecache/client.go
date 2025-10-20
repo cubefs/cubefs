@@ -117,6 +117,15 @@ type RemoteCacheClient struct {
 	WriteChunkSize         int64 // bytes
 }
 
+func (rc *RemoteCacheClient) EnqueueConnTask(task *ConnPutTask) {
+	select {
+	case <-rc.stopC:
+		rc.processConnPut(task)
+	default:
+		rc.connPutChan <- task
+	}
+}
+
 func (as *AddressPingStats) Add(duration time.Duration) {
 	as.Lock()
 	defer as.Unlock()
@@ -268,7 +277,22 @@ func (rc *RemoteCacheClient) consumeConnPut() {
 	for {
 		select {
 		case <-rc.stopC:
-			log.LogDebugf("consumeConnPut: stopping due to stopC signal")
+			log.LogDebugf("consumeConnPut: stopC received, draining connPutChan for up to 10s")
+			func() {
+				timer := time.NewTimer(10 * time.Second)
+				defer timer.Stop()
+				for {
+					select {
+					case connTask := <-rc.connPutChan:
+						if connTask != nil {
+							rc.processConnPut(connTask)
+						}
+					case <-timer.C:
+						log.LogDebugf("consumeConnPut: drain window elapsed, exiting")
+						return
+					}
+				}
+			}()
 			return
 		case connTask := <-rc.connPutChan:
 			if connTask != nil {
@@ -584,7 +608,7 @@ func (rc *RemoteCacheClient) HeartBeat(addr string) (duration time.Duration, err
 	packet.Opcode = proto.OpFlashSDKHeartbeat
 
 	defer func() {
-		rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: err != nil}
+		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: err != nil})
 	}()
 
 	if conn, err = rc.conns.GetConnect(addr); err != nil {
@@ -750,7 +774,7 @@ func (rc *RemoteCacheClient) Put(ctx context.Context, reqId, key string, r io.Re
 	bgTime := stat.BeginStat()
 	forceClose := false
 	defer func() {
-		rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: forceClose}
+		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: forceClose})
 		parts := strings.Split(addr, ":")
 		if len(parts) > 0 && addr != "" {
 			stat.EndStat(fmt.Sprintf("flashPutBlock:%v", parts[0]), err, bgTime, 1)
@@ -957,7 +981,7 @@ func (rc *RemoteCacheClient) deleteRemoteBlock(key string, addr string) {
 		return
 	}
 	defer func() {
-		rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: err != nil}
+		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: err != nil})
 	}()
 	p := proto.NewPacketReqID()
 	p.Data = ([]byte)(key)
@@ -1034,7 +1058,7 @@ func (rc *RemoteCacheClient) Read(ctx context.Context, fg *FlashGroup, reqId int
 	bgTime := stat.BeginStat()
 	defer func() {
 		forceClose := err != nil && !proto.IsFlashNodeLimitError(err)
-		rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: forceClose}
+		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: forceClose})
 		if err != nil && strings.Contains(err.Error(), "timeout") {
 			err = proto.ErrorReadTimeout
 		}
@@ -1068,7 +1092,7 @@ func (rc *RemoteCacheClient) Read(ctx context.Context, fg *FlashGroup, reqId int
 
 		if err = reqPacket.WriteToConn(conn); err != nil {
 			log.LogWarnf("FlashGroup Read: failed to write to addr(%v) err(%v) remoteCacheMultiRead(%v)", addr, err, rc.RemoteCacheMultiRead)
-			rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: err != nil}
+			rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: err != nil})
 			moved = fg.moveToUnknownRank(addr, err, rc.FlashNodeTimeoutCount)
 			if rc.RemoteCacheMultiRead {
 				log.LogInfof("Retrying due to write to addr(%v) failure err(%v)", addr, err)
@@ -1082,7 +1106,7 @@ func (rc *RemoteCacheClient) Read(ctx context.Context, fg *FlashGroup, reqId int
 				break
 			}
 			log.LogWarnf("FlashGroup Read: getReadReply from addr(%v) err(%v) remoteCacheMultiRead(%v)", addr, err, rc.RemoteCacheMultiRead)
-			rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: err != nil}
+			rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: err != nil})
 			moved = fg.moveToUnknownRank(addr, err, rc.FlashNodeTimeoutCount)
 			if rc.RemoteCacheMultiRead {
 				log.LogInfof("Retrying due to getReadReply from addr(%v) failure  err(%v)", addr, err)
@@ -1123,7 +1147,7 @@ func (rc *RemoteCacheClient) Prepare(ctx context.Context, fg *FlashGroup, req *p
 		return
 	}
 	defer func() {
-		rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: err != nil}
+		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: err != nil})
 	}()
 
 	if err = reqPacket.WriteToConn(conn); err != nil {
@@ -1459,7 +1483,7 @@ func (reader *RemoteCacheReader) read(p []byte) (n int, err error) {
 	atomic.AddInt64(&reader.alreadyReadLen, expectLen)
 	if atomic.LoadInt64(&reader.alreadyReadLen) >= reader.needReadLen {
 		reader.loadAll = true
-		reader.rc.connPutChan <- &ConnPutTask{conn: reader.conn, forceClose: false}
+		reader.rc.EnqueueConnTask(&ConnPutTask{conn: reader.conn, forceClose: false})
 		reader.conn = nil
 	}
 	return int(expectLen), nil
@@ -1469,7 +1493,7 @@ func (reader *RemoteCacheReader) Read(p []byte) (n int, err error) {
 	defer func() {
 		if err != nil && err != io.EOF && !reader.closed {
 			reader.closed = true
-			reader.rc.connPutChan <- &ConnPutTask{conn: reader.conn, forceClose: true}
+			reader.rc.EnqueueConnTask(&ConnPutTask{conn: reader.conn, forceClose: true})
 			if !reader.directRead {
 				bytespool.Free(reader.buffer)
 			}
@@ -1535,7 +1559,7 @@ func (reader *RemoteCacheReader) Close() error {
 	if !reader.closed {
 		log.LogDebugf("RemoteCacheReader Close, reqId(%v)", reader.reqID)
 		reader.closed = true
-		reader.rc.connPutChan <- &ConnPutTask{conn: reader.conn, forceClose: reader.currOffset < reader.endOffset}
+		reader.rc.EnqueueConnTask(&ConnPutTask{conn: reader.conn, forceClose: reader.currOffset < reader.endOffset})
 		if !reader.directRead {
 			bytespool.Free(reader.buffer)
 		}
@@ -1569,7 +1593,7 @@ func (rc *RemoteCacheClient) executeReadOperation(op *ReadOperation, isLast bool
 	if err = op.ReqPacket.WriteToNoDeadLineConn(conn); err != nil {
 		log.LogWarnf("%v FlashGroup Read: failed to write to addr(%v) err(%v)",
 			op.LogPrefix, op.Addr, err)
-		rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: err != nil}
+		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: err != nil})
 		if isLast && atomic.CompareAndSwapInt32(&op.HasResult, 0, 1) {
 			op.Conn = nil
 			op.BlockDataSize = 0
@@ -1591,7 +1615,7 @@ func (rc *RemoteCacheClient) executeReadOperation(op *ReadOperation, isLast bool
 			log.LogDebugf("%v ReadObject getReadObjectReply from(%v) failed, reply(%v) error(%v)",
 				op.LogPrefix, conn.RemoteAddr(), reply, err)
 		}
-		rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: !openConn}
+		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: !openConn})
 		if openConn && atomic.CompareAndSwapInt32(&op.HasResult, 0, 1) {
 			op.Conn = nil
 			op.BlockDataSize = 0
@@ -1606,7 +1630,7 @@ func (rc *RemoteCacheClient) executeReadOperation(op *ReadOperation, isLast bool
 		op.Err = nil
 		atomic.StoreInt32(&op.EndLoop, 1)
 	} else {
-		rc.connPutChan <- &ConnPutTask{conn: conn, forceClose: true}
+		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: true})
 	}
 }
 
