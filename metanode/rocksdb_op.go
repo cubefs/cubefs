@@ -212,6 +212,7 @@ type RocksDBOptions struct {
 	MaxBackgroundFlushes     int
 	SoftCompactionLimit      uint64
 	HardCompactionLimit      uint64
+	PeriodicCompactSec       uint64
 }
 
 func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
@@ -352,12 +353,15 @@ func (dbInfo *RocksdbOperator) doOpen(opts *RocksDBOptions) (err error) {
 	dbInfo.readDiskOption.SetReadTier(ReadTierPersisted)
 	dbInfo.readDiskOption.SetFillCache(false)
 	dbInfo.setOptToConfig(opts)
-	err = dbInfo.db.SetOptions([]string{"periodic_compaction_seconds"}, []string{"86400"})
-	if err != nil {
-		err = fmt.Errorf("set option [periodic_compaction_seconds=86400] failed: %v", err)
-		log.LogErrorf(err.Error())
-		return err
+	if opts.PeriodicCompactSec > 0 {
+		err = dbInfo.db.SetOptions([]string{"periodic_compaction_seconds"}, []string{strconv.FormatUint(opts.PeriodicCompactSec, 10)})
+		if err != nil {
+			err = fmt.Errorf("set option [periodic_compaction_seconds=%d] failed: %v", opts.PeriodicCompactSec, err)
+			log.LogErrorf(err.Error())
+			return err
+		}
 	}
+
 	return nil
 }
 
@@ -1061,6 +1065,7 @@ func (dbInfo *RocksdbOperator) setOptToConfig(opts *RocksDBOptions) {
 	dbInfo.config["bytes_per_sync"] = strconv.FormatUint(opts.BytesPerSync, 10)
 	dbInfo.config["max_background_compactions"] = strconv.Itoa(opts.MaxBackgroundCompactions)
 	dbInfo.config["max_background_flushes"] = strconv.Itoa(opts.MaxBackgroundFlushes)
+	dbInfo.config["periodic_compaction_seconds"] = strconv.FormatUint(opts.PeriodicCompactSec, 10)
 }
 
 func (dbInfo *RocksdbOperator) GetApproximateSizes(start, end []byte) (size uint64, err error) {

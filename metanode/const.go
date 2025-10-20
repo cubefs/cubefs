@@ -276,6 +276,7 @@ const (
 	cfgRocksdbMaxBackgroundFlushes     = "rocksdbMaxBackgroundFlushes"     // int
 	cfgRocksdbSoftCompactionLimit      = "rocksdbSoftCompactionLimit"      // int64
 	cfgRocksdbHardCompactionLimit      = "rocksdbHardCompactionLimit"      // int64
+	cfsRocksdbPeriodicCompactSecond    = "rocksdbPeriodicCompactSecond"
 )
 
 const (
@@ -295,6 +296,7 @@ const (
 	defaultDiskReservedSpace           = 5 * GB
 	AccessTimeOffset                   = 52
 	defaultRocksdbKeyNumMax            = 1000000000
+	defaultPeriodicCompactSec          = 86400
 )
 
 const (

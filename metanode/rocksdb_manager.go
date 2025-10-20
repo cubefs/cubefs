@@ -45,6 +45,7 @@ type RocksdbManagerConfig struct {
 	MaxBackgroundFlushes     int    `json:"maxBackgroundFlushes"`
 	SoftCompactionLimit      uint64 `json:"softCompactionLimit"`
 	HardCompactionLimit      uint64 `json:"hardCompactionLimit"`
+	PeriodicCompactSec       uint64 `json:"periodicCompactionSecond"`
 }
 
 type RocksdbManager interface {
@@ -81,6 +82,7 @@ type PerDiskRocksdbManager struct {
 	maxBackgroundFlushes     int
 	softCompactionLimit      uint64
 	hardCompactionLimit      uint64
+	periodicCompactSec       uint64
 	mutex                    sync.Mutex
 	dbs                      map[string]*RocksdbHandle
 }
@@ -142,6 +144,7 @@ func (r *PerDiskRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId uint6
 			MaxBackgroundFlushes:     r.maxBackgroundFlushes,
 			SoftCompactionLimit:      r.softCompactionLimit,
 			HardCompactionLimit:      r.hardCompactionLimit,
+			PeriodicCompactSec:       r.periodicCompactSec,
 		}
 		err = handle.db.OpenDb(opts)
 		if err != nil {
@@ -308,6 +311,7 @@ type PerPartitionRocksdbManager struct {
 	maxBackgroundFlushes     int
 	softCompactionLimit      uint64
 	hardCompactionLimit      uint64
+	periodicCompactSec       uint64
 	mutex                    sync.Mutex
 	partitionCnt             map[string]int
 	dbs                      map[string]*RocksdbDirInfo
@@ -382,6 +386,7 @@ func (r *PerPartitionRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId 
 		MaxBackgroundFlushes:     r.maxBackgroundFlushes,
 		SoftCompactionLimit:      r.softCompactionLimit,
 		HardCompactionLimit:      r.hardCompactionLimit,
+		PeriodicCompactSec:       r.periodicCompactSec,
 	}
 	err = db.OpenDb(opts)
 	return
@@ -489,6 +494,7 @@ func NewPerDiskRocksdbManager(config *RocksdbManagerConfig) (p RocksdbManager) {
 		maxBackgroundFlushes:     config.MaxBackgroundFlushes,
 		softCompactionLimit:      config.SoftCompactionLimit,
 		hardCompactionLimit:      config.HardCompactionLimit,
+		periodicCompactSec:       config.PeriodicCompactSec,
 		dbs:                      make(map[string]*RocksdbHandle),
 	}
 	return
@@ -508,6 +514,7 @@ func NewPerPartitionRocksdbManager(config *RocksdbManagerConfig) (p RocksdbManag
 		maxBackgroundFlushes:     config.MaxBackgroundFlushes,
 		softCompactionLimit:      config.SoftCompactionLimit,
 		hardCompactionLimit:      config.HardCompactionLimit,
+		periodicCompactSec:       config.PeriodicCompactSec,
 		dbs:                      make(map[string]*RocksdbDirInfo),
 		partitionCnt:             make(map[string]int),
 	}
