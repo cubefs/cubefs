@@ -60,7 +60,7 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 		return
 	}
 
-	dpHost2Ns := c.buildDpHostToNodeSet()
+	dpHost2Ns, dpHost2Zone := c.buildDpHostToNsAndZone()
 	vols := c.copyVols()
 	processedCount := 0
 	availableSlots := int(limit) - activeTasks
@@ -81,7 +81,8 @@ outerLoop:
 				continue
 			}
 
-			if isOptimalDistribution(dp, dpHost2Ns, c) {
+			hosts, isOptimal := isOptimalDistribution(dp, dpHost2Ns, dpHost2Zone, c)
+			if isOptimal {
 				continue
 			}
 
@@ -89,7 +90,7 @@ outerLoop:
 				continue
 			}
 
-			c.processPartitionMigration(dp, dp.Hosts)
+			c.processPartitionMigration(dp, hosts)
 			processedCount++
 		}
 	}
@@ -102,6 +103,9 @@ func (c *Cluster) countActiveDistributionOptimizationTasks() int {
 	vols := c.copyVols()
 
 	for _, vol := range vols {
+		if vol.crossZone {
+			continue
+		}
 		partitions := vol.dataPartitions.clonePartitions()
 		for _, dp := range partitions {
 			if dp.IsDiscard {
@@ -118,58 +122,112 @@ func (c *Cluster) countActiveDistributionOptimizationTasks() int {
 	return count
 }
 
-func getDpNodesetDistribution(dp *DataPartition, dpHost2Ns map[string]uint64) (map[uint64]int, bool) {
-	domainCnts := make(map[uint64]int)
+func getDpNodesetDistribution(dp *DataPartition, dpHost2Ns map[string]uint64, dpHost2Zone map[string]string) (map[string]map[uint64]int, bool) {
+	zoneNsDistribution := make(map[string]map[uint64]int)
+
 	for _, host := range dp.Hosts {
-		if nsID, ok := dpHost2Ns[host]; ok {
-			domainCnts[nsID]++
+		if zone, ok := dpHost2Zone[host]; ok {
+			if _, exists := zoneNsDistribution[zone]; !exists {
+				zoneNsDistribution[zone] = make(map[uint64]int)
+			}
 		}
 	}
-	isBalanced := len(domainCnts) <= 1
-	return domainCnts, isBalanced
+
+	for _, host := range dp.Hosts {
+		if zone, ok := dpHost2Zone[host]; ok {
+			if nsID, nsOk := dpHost2Ns[host]; nsOk {
+				zoneNsDistribution[zone][nsID]++
+			}
+		}
+	}
+
+	isBalanced := true
+	for _, nsCnts := range zoneNsDistribution {
+		if len(nsCnts) > 0 {
+			if len(nsCnts) > 1 {
+				isBalanced = false
+				break
+			}
+		}
+	}
+
+	return zoneNsDistribution, isBalanced
 }
 
 // isOptimalDistribution checks if DP has optimal distribution (single NodeSet + no rack conflicts)
-func isOptimalDistribution(dp *DataPartition, dpHost2Ns map[string]uint64, c *Cluster) bool {
-	_, nodesetBalanced := getDpNodesetDistribution(dp, dpHost2Ns)
+func isOptimalDistribution(dp *DataPartition, dpHost2Ns map[string]uint64, dpHost2Zone map[string]string, c *Cluster) ([]string, bool) {
+	zoneNsDistribution, nodesetBalanced := getDpNodesetDistribution(dp, dpHost2Ns, dpHost2Zone)
 
 	// If not in single NodeSet, it's not optimal
 	if !nodesetBalanced {
-		return false
+		for zone, nsCnts := range zoneNsDistribution {
+			if len(nsCnts) > 1 {
+				var zoneHosts []string
+				for _, host := range dp.Hosts {
+					if zoneFromHost, ok := dpHost2Zone[host]; ok && zoneFromHost == zone {
+						zoneHosts = append(zoneHosts, host)
+					}
+				}
+				return zoneHosts, false
+			}
+		}
 	}
 
 	// If rack awareness is disabled, NodeSet balance is sufficient
 	if c.getRackAwareLevel() == proto.RackAwareNone {
-		return true
+		return nil, true
 	}
 
-	return !hasRackConflict(dp, c)
+	if hasRackConflict, zone := hasRackConflict(dp, c); hasRackConflict {
+		var zoneHosts []string
+		for _, host := range dp.Hosts {
+			if zoneFromHost, ok := dpHost2Zone[host]; ok && zoneFromHost == zone {
+				zoneHosts = append(zoneHosts, host)
+			}
+		}
+		return zoneHosts, false
+	}
+
+	return nil, true
 }
 
 // hasRackConflict checks if there are any rack conflicts in the data partition
 // Returns true if any rack contains multiple replicas, regardless of rack aware level
-func hasRackConflict(dp *DataPartition, c *Cluster) bool {
+func hasRackConflict(dp *DataPartition, c *Cluster) (bool, string) {
 	if len(dp.Hosts) == 0 {
-		return false
+		return false, ""
 	}
 
-	visitedRacks := make(map[string]struct{}, len(dp.Hosts))
+	// Group hosts by zone and then by rack
+	zoneRackHosts := make(map[string]map[string][]string)
 
 	for _, host := range dp.Hosts {
 		dataNode, err := c.dataNode(host)
 		if err != nil {
-			continue // Skip unavailable nodes
+			continue
 		}
 
-		// If we've seen this rack before, we have a conflict
-		if _, exists := visitedRacks[dataNode.Rack]; exists {
-			return true // Early return on first conflict found
+		zone := dataNode.ZoneName
+		rack := dataNode.Rack
+
+		if _, exists := zoneRackHosts[zone]; !exists {
+			zoneRackHosts[zone] = make(map[string][]string)
 		}
 
-		visitedRacks[dataNode.Rack] = struct{}{}
+		zoneRackHosts[zone][rack] = append(zoneRackHosts[zone][rack], host)
 	}
 
-	return false
+	// Check each zone for rack conflicts
+	for zone, rackHosts := range zoneRackHosts {
+		for _, hosts := range rackHosts {
+			if len(hosts) > 1 {
+				// Found a rack with multiple hosts in this zone
+				return true, zone
+			}
+		}
+	}
+
+	return false, ""
 }
 
 func (c *Cluster) processPartitionMigration(dp *DataPartition, hosts []string) {
@@ -190,7 +248,7 @@ func (c *Cluster) processPartitionMigration(dp *DataPartition, hosts []string) {
 		err      error
 	)
 
-	if targetNs, srcAddrs, dstAddrs, err = selectTargetHostsInDistributionOptimization(hosts, int(dp.ReplicaNum), c, dp.MediaType); err != nil {
+	if targetNs, srcAddrs, dstAddrs, err = selectTargetHostsInDistributionOptimization(hosts, len(hosts), c, dp.MediaType); err != nil {
 		log.LogWarnf("action[executeReplicaMigration] dp(%v) select Target hosts failed", dp.PartitionID)
 		return
 	}
@@ -214,29 +272,21 @@ func (c *Cluster) processPartitionMigration(dp *DataPartition, hosts []string) {
 		c.releaseDataReservedResource(dstAddrs, dp)
 		return
 	}
-	// if err := c.markDecommissionDataPartition(dp, lastSrcNode, targetNs.ID, false, proto.DistributionOptimization, 1, srcHosts, targetHosts); err != nil {
-	// 	log.LogWarnf("action[executeReplicaMigration] decommission failed for dp(%v) replicas(%v) : %v",
-	// 		dp.PartitionID, srcHosts, err)
-	// 	return false
-	// }
-	// if err := dp.MarkDecommissionStatus(srcHosts[lastIndex], targetHosts[0], "", targetNs.ID, false, uint64(time.Now().Unix()), proto.DistributionOptimization, 1, c, srcHosts, targetHosts); err != nil {
-	// 	log.LogWarnf("action[executeReplicaMigration] decommission failed for dp(%v) replicas(%v) : %v",
-	// 		dp.PartitionID, srcHosts, err)
-	// 	return false
-	// }
 
 	log.LogInfof("action[executeReplicaMigration] submitted distribution optimization: dp(%v) replicas(%v)",
 		dp.PartitionID, dp.Hosts)
 }
 
-func (c *Cluster) buildDpHostToNodeSet() map[string]uint64 {
-	m := make(map[string]uint64)
+func (c *Cluster) buildDpHostToNsAndZone() (map[string]uint64, map[string]string) {
+	nsMap := make(map[string]uint64)
+	zoneMap := make(map[string]string)
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		dn := value.(*DataNode)
-		m[dn.Addr] = dn.NodeSetID
+		nsMap[dn.Addr] = dn.NodeSetID
+		zoneMap[dn.Addr] = dn.ZoneName
 		return true
 	})
-	return m
+	return nsMap, zoneMap
 }
 
 func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimizationStatus {
@@ -256,12 +306,16 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 			MinorRackConflictDPs: 0,
 			MajorRackConflictDPs: 0,
 		},
+		CrossZoneDPs: 0,
 	}
 
-	dpHost2Ns := c.buildDpHostToNodeSet()
+	dpHost2Ns, dpHost2Zone := c.buildDpHostToNsAndZone()
 
 	vols := c.copyVols()
 	for _, vol := range vols {
+		if vol.crossZone {
+			continue
+		}
 		partitions := vol.dataPartitions.clonePartitions()
 		for _, dp := range partitions {
 			if dp.IsDiscard {
@@ -273,10 +327,22 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 			}
 
 			// Analyze NodeSet distribution
-			domainCnts, isNodeSetBalanced := getDpNodesetDistribution(dp, dpHost2Ns)
-			domainCount := len(domainCnts)
+			zoneNsDistribution, isNodeSetBalanced := getDpNodesetDistribution(dp, dpHost2Ns, dpHost2Zone)
+			zoneCount := len(zoneNsDistribution)
+			if zoneCount > 1 {
+				status.CrossZoneDPs++
+			}
 
-			switch domainCount {
+			// Statistics of nodeset distribution - each DP is counted only once.
+			maxNodesetCount := 0
+			for _, nsCnts := range zoneNsDistribution {
+				nodesetCount := len(nsCnts)
+				if nodesetCount > maxNodesetCount {
+					maxNodesetCount = nodesetCount
+				}
+			}
+
+			switch maxNodesetCount {
 			case 0, 1:
 				status.DomainDistribution.SingleDomainDPs++
 			case 2:
@@ -286,23 +352,41 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 			}
 
 			// Analyze rack distribution
-			noRackConflict, rackConflictLevel := analyzeRackDistribution(dp, c)
-			switch rackConflictLevel {
-			case 0: // No conflict
+			hasRackConflict, conflictZone := hasRackConflict(dp, c)
+			var rackConflictLevel int
+
+			if hasRackConflict {
+				var zoneHosts []string
+				for _, host := range dp.Hosts {
+					if zoneFromHost, ok := dpHost2Zone[host]; ok && zoneFromHost == conflictZone {
+						zoneHosts = append(zoneHosts, host)
+					}
+				}
+				rackConflictLevel = getRackConflictLevel(zoneHosts, c)
+
+				// 使用冲突级别进行分类
+				switch rackConflictLevel {
+				case 1:
+					status.RackDistribution.MinorRackConflictDPs++
+				case 2:
+					status.RackDistribution.MajorRackConflictDPs++
+				}
+			} else {
 				status.RackDistribution.NoRackConflictDPs++
-			case 1: // Minor conflict
-				status.RackDistribution.MinorRackConflictDPs++
-			case 2: // Major conflict
-				status.RackDistribution.MajorRackConflictDPs++
+				rackConflictLevel = 0
 			}
 
 			// Count different types of unbalanced DPs
+			isUnbalanced := false
 			if !isNodeSetBalanced {
 				status.NodeSetUnbalancedDPs++
-				status.TotalUnbalancedDPs++
-			} else if !noRackConflict {
-				// NodeSet is balanced but has rack conflicts
+				isUnbalanced = true
+			}
+			if hasRackConflict {
 				status.RackConflictDPs++
+				isUnbalanced = true
+			}
+			if isUnbalanced {
 				status.TotalUnbalancedDPs++
 			}
 		}

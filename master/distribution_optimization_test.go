@@ -27,7 +27,8 @@ func TestGetDpNodesetDistribution(t *testing.T) {
 		name        string
 		hosts       []string
 		dpHost2Ns   map[string]uint64
-		expectCount map[uint64]int
+		dpHost2Zone map[string]string
+		expectCount map[string]map[uint64]int
 		expectBal   bool
 	}{
 		{
@@ -38,8 +39,15 @@ func TestGetDpNodesetDistribution(t *testing.T) {
 				"192.168.1.2:17310": 1,
 				"192.168.1.3:17310": 1,
 			},
-			expectCount: map[uint64]int{1: 3},
-			expectBal:   true,
+			dpHost2Zone: map[string]string{
+				"192.168.1.1:17310": "zone1",
+				"192.168.1.2:17310": "zone1",
+				"192.168.1.3:17310": "zone1",
+			},
+			expectCount: map[string]map[uint64]int{
+				"zone1": {1: 3},
+			},
+			expectBal: true,
 		},
 		{
 			name:  "multiple nodeset unbalanced",
@@ -49,8 +57,15 @@ func TestGetDpNodesetDistribution(t *testing.T) {
 				"192.168.1.2:17310": 1,
 				"192.168.1.3:17310": 2,
 			},
-			expectCount: map[uint64]int{1: 2, 2: 1},
-			expectBal:   false,
+			dpHost2Zone: map[string]string{
+				"192.168.1.1:17310": "zone1",
+				"192.168.1.2:17310": "zone1",
+				"192.168.1.3:17310": "zone1",
+			},
+			expectCount: map[string]map[uint64]int{
+				"zone1": {1: 2, 2: 1},
+			},
+			expectBal: false,
 		},
 		{
 			name:  "three nodeset unbalanced",
@@ -60,8 +75,15 @@ func TestGetDpNodesetDistribution(t *testing.T) {
 				"192.168.1.2:17310": 2,
 				"192.168.1.3:17310": 3,
 			},
-			expectCount: map[uint64]int{1: 1, 2: 1, 3: 1},
-			expectBal:   false,
+			dpHost2Zone: map[string]string{
+				"192.168.1.1:17310": "zone1",
+				"192.168.1.2:17310": "zone1",
+				"192.168.1.3:17310": "zone1",
+			},
+			expectCount: map[string]map[uint64]int{
+				"zone1": {1: 1, 2: 1, 3: 1},
+			},
+			expectBal: false,
 		},
 	}
 
@@ -71,7 +93,7 @@ func TestGetDpNodesetDistribution(t *testing.T) {
 				Hosts: tt.hosts,
 			}
 
-			count, balanced := getDpNodesetDistribution(dp, tt.dpHost2Ns)
+			count, balanced := getDpNodesetDistribution(dp, tt.dpHost2Ns, tt.dpHost2Zone)
 
 			require.Equal(t, tt.expectCount, count, "NodeSet distribution count mismatch")
 			require.Equal(t, tt.expectBal, balanced, "NodeSet balance status mismatch")
@@ -79,7 +101,7 @@ func TestGetDpNodesetDistribution(t *testing.T) {
 	}
 }
 
-func TestAnalyzeRackDistribution(t *testing.T) {
+func TestGetRackConflictLevel(t *testing.T) {
 	// Create a test cluster with mock data nodes
 	cluster := &Cluster{
 		ClusterTopoSubItem: ClusterTopoSubItem{
@@ -89,10 +111,10 @@ func TestAnalyzeRackDistribution(t *testing.T) {
 
 	// Add mock data nodes with different rack configurations
 	mockNodes := map[string]*DataNode{
-		"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1"},
-		"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2"},
-		"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3"},
-		"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1"},
+		"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1"},
+		"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2", ZoneName: "zone1"},
+		"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3", ZoneName: "zone1"},
+		"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1", ZoneName: "zone1"},
 	}
 
 	for addr, node := range mockNodes {
@@ -131,7 +153,8 @@ func TestAnalyzeRackDistribution(t *testing.T) {
 				Hosts: tt.hosts,
 			}
 
-			noConflict, level := analyzeRackDistribution(dp, cluster)
+			level := getRackConflictLevel(dp.Hosts, cluster)
+			noConflict := (level == 0)
 
 			require.Equal(t, tt.expectConflict, noConflict, "Rack conflict detection mismatch")
 			require.Equal(t, tt.expectLevel, level, "Rack conflict level mismatch")
@@ -152,10 +175,10 @@ func TestIsOptimalDistribution(t *testing.T) {
 
 	// Add mock data nodes
 	mockNodes := map[string]*DataNode{
-		"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1"},
-		"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2"},
-		"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3"},
-		"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1"},
+		"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1"},
+		"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2", ZoneName: "zone1"},
+		"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3", ZoneName: "zone1"},
+		"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1", ZoneName: "zone1"},
 	}
 
 	for addr, node := range mockNodes {
@@ -163,11 +186,12 @@ func TestIsOptimalDistribution(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		hosts     []string
-		dpHost2Ns map[string]uint64
-		rackLevel proto.RackAwareLevel
-		expectOpt bool
+		name        string
+		hosts       []string
+		dpHost2Ns   map[string]uint64
+		dpHost2Zone map[string]string
+		rackLevel   proto.RackAwareLevel
+		expectOpt   bool
 	}{
 		{
 			name:  "optimal: single nodeset, no rack conflict",
@@ -176,6 +200,11 @@ func TestIsOptimalDistribution(t *testing.T) {
 				"192.168.1.1:17310": 1,
 				"192.168.1.2:17310": 1,
 				"192.168.1.3:17310": 1,
+			},
+			dpHost2Zone: map[string]string{
+				"192.168.1.1:17310": "zone1",
+				"192.168.1.2:17310": "zone1",
+				"192.168.1.3:17310": "zone1",
 			},
 			rackLevel: proto.RackAwareStrong,
 			expectOpt: true,
@@ -188,6 +217,11 @@ func TestIsOptimalDistribution(t *testing.T) {
 				"192.168.1.2:17310": 1,
 				"192.168.1.3:17310": 2,
 			},
+			dpHost2Zone: map[string]string{
+				"192.168.1.1:17310": "zone1",
+				"192.168.1.2:17310": "zone1",
+				"192.168.1.3:17310": "zone1",
+			},
 			rackLevel: proto.RackAwareStrong,
 			expectOpt: false,
 		},
@@ -199,19 +233,45 @@ func TestIsOptimalDistribution(t *testing.T) {
 				"192.168.1.4:17310": 1,
 				"192.168.1.2:17310": 1,
 			},
+			dpHost2Zone: map[string]string{
+				"192.168.1.1:17310": "zone1",
+				"192.168.1.4:17310": "zone1",
+				"192.168.1.2:17310": "zone1",
+			},
 			rackLevel: proto.RackAwareStrong,
 			expectOpt: false,
 		},
 		{
-			name:  "not optimal: single nodeset but rack conflict ",
+			name:  "optimal: rack awareness disabled",
 			hosts: []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.2:17310"},
 			dpHost2Ns: map[string]uint64{
 				"192.168.1.1:17310": 1,
 				"192.168.1.4:17310": 1,
 				"192.168.1.2:17310": 1,
 			},
+			dpHost2Zone: map[string]string{
+				"192.168.1.1:17310": "zone1",
+				"192.168.1.4:17310": "zone1",
+				"192.168.1.2:17310": "zone1",
+			},
 			rackLevel: proto.RackAwareNone,
 			expectOpt: true,
+		},
+		{
+			name:  "cross-zone with intra-zone imbalance: 2 in zone1 (different nodesets) + 1 in zone2",
+			hosts: []string{"192.168.1.1:17310", "192.168.1.3:17310", "192.168.2.1:17310"},
+			dpHost2Ns: map[string]uint64{
+				"192.168.1.1:17310": 1,
+				"192.168.1.3:17310": 2,
+				"192.168.2.1:17310": 3,
+			},
+			dpHost2Zone: map[string]string{
+				"192.168.1.1:17310": "zone1",
+				"192.168.1.3:17310": "zone1",
+				"192.168.2.1:17310": "zone2",
+			},
+			rackLevel: proto.RackAwareStrong,
+			expectOpt: false, // zone1 has 2 replicas in different nodesets, needs optimization
 		},
 	}
 
@@ -223,7 +283,7 @@ func TestIsOptimalDistribution(t *testing.T) {
 				Hosts: tt.hosts,
 			}
 
-			optimal := isOptimalDistribution(dp, tt.dpHost2Ns, cluster)
+			_, optimal := isOptimalDistribution(dp, tt.dpHost2Ns, tt.dpHost2Zone, cluster)
 
 			require.Equal(t, tt.expectOpt, optimal, "Optimal distribution check mismatch")
 		})
@@ -244,11 +304,11 @@ func TestHasRackConflict(t *testing.T) {
 
 		// Add mock data nodes
 		mockNodes := map[string]*DataNode{
-			"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1"},
-			"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2"},
-			"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3"},
-			"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1"},
-			"192.168.1.5:17310": {Addr: "192.168.1.5:17310", Rack: "rack1"},
+			"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1"},
+			"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2", ZoneName: "zone1"},
+			"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3", ZoneName: "zone1"},
+			"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1", ZoneName: "zone1"},
+			"192.168.1.5:17310": {Addr: "192.168.1.5:17310", Rack: "rack1", ZoneName: "zone1"},
 		}
 
 		for addr, node := range mockNodes {
@@ -311,7 +371,7 @@ func TestHasRackConflict(t *testing.T) {
 				ReplicaNum: uint8(len(tt.hosts)),
 			}
 
-			conflict := hasRackConflict(dp, cluster)
+			conflict, _ := hasRackConflict(dp, cluster)
 
 			require.Equal(t, tt.expectConflict, conflict, "Rack conflict detection mismatch")
 		})
@@ -398,11 +458,12 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 	cluster.DistributionOptimizationThreshold.Store(0.8)
 	cluster.EnableAutoDistributionOptimization.Store(true)
 
-	// Add mock data nodes
+	// Add mock data nodes (all in zone1, except one in zone2 for cross-zone testing)
 	mockNodes := map[string]*DataNode{
-		"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1", NodeSetID: 1},
-		"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2", NodeSetID: 1},
-		"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack1", NodeSetID: 2},
+		"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1", NodeSetID: 1, ZoneName: "zone1"},
+		"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2", NodeSetID: 1, ZoneName: "zone1"},
+		"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack1", NodeSetID: 2, ZoneName: "zone1"},
+		"192.168.2.1:17310": {Addr: "192.168.2.1:17310", Rack: "rack1", NodeSetID: 3, ZoneName: "zone2"},
 	}
 
 	for addr, node := range mockNodes {
@@ -433,6 +494,16 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 			Hosts:       []string{"192.168.1.1:17310", "192.168.1.1:17310"}, // Same NodeSet, same rack (conflict)
 			IsDiscard:   false,
 		},
+		{
+			PartitionID: 4,
+			Hosts:       []string{"192.168.1.1:17310", "192.168.2.1:17310"}, // Cross-zone: zone1 + zone2
+			IsDiscard:   false,
+		},
+		{
+			PartitionID: 5,
+			Hosts:       []string{"192.168.1.1:17310", "192.168.1.3:17310", "192.168.2.1:17310"}, // 2 in zone1 (different nodesets) + 1 in zone2
+			IsDiscard:   false,
+		},
 	}
 
 	for _, dp := range partitions {
@@ -449,6 +520,7 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 	require.Equal(t, 0.8, status.BalanceThreshold, "BalanceThreshold mismatch")
 	require.True(t, status.EnableDistributionOptimization, "EnableDistributionOptimization mismatch")
 	require.Equal(t, []uint64{1}, status.DecommissioningDPIDs, "DecommissioningDPIDs mismatch")
+	require.Equal(t, 2, status.CrossZoneDPs, "CrossZoneDPs should be 2 (dp4 and dp5 are cross-zone)")
 	require.NotNil(t, status.DomainDistribution, "DomainDistribution should not be nil")
 	require.NotNil(t, status.RackDistribution, "RackDistribution should not be nil")
 }

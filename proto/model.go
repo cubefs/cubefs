@@ -725,6 +725,7 @@ type DistributionOptimizationStatus struct {
 	TotalUnbalancedDPs             int
 	NodeSetUnbalancedDPs           int
 	RackConflictDPs                int
+	CrossZoneDPs                   int
 	DecommissioningDPIDs           []uint64
 	ConcurrentDpCount              int64
 	BalanceIntervalSec             int64
