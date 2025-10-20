@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -268,14 +267,14 @@ func (mgr *DataInspectMgr) inspectShard(ctx context.Context, cs core.ChunkAPI, s
 		return nil
 	}
 
-	if isShardDeleted(err) {
+	if base.IsShardDeleted(err) {
 		span.Warnf("shard deleted, skip. vuid:%d, bid:%d, err:%+v", cs.Vuid(), si.Bid, err)
 		return nil
 	}
 	if sm, metaErr := cs.ReadShardMeta(ctx, si.Bid); metaErr == nil && sm.Size == 0 {
 		span.Warnf("shard overwritten empty, skip. vuid:%d, bid:%d", cs.Vuid(), si.Bid)
 		return nil
-	} else if isShardDeleted(metaErr) {
+	} else if base.IsShardDeleted(metaErr) {
 		span.Warnf("shard meta deleted, skip. vuid:%d, bid:%d, err:%+v", cs.Vuid(), si.Bid, metaErr)
 		return nil
 	}
@@ -537,9 +536,5 @@ func init() {
 
 func isInspectReportIgnoredError(err error) bool {
 	// It may expand other errors, deleted shard, and so on
-	return isShardDeleted(err)
-}
-
-func isShardDeleted(err error) bool {
-	return os.IsNotExist(err) || errors.Is(err, bloberr.ErrNoSuchBid) || rpc.DetectStatusCode(err) == bloberr.CodeBidNotFound
+	return base.IsShardDeleted(err)
 }
