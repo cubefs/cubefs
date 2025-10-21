@@ -81,7 +81,7 @@ func TestDoCleanRocksdbData_Success(t *testing.T) {
 	if err := os.MkdirAll(snapshotDir, 0o755); err != nil {
 		t.Fatalf("mkdir snapshot dir error:%v", err)
 	}
-	for _, fn := range []string{uniqCheckerFile, verdataFile, applyIDFile} {
+	for _, fn := range []string{uniqCheckerFile, verdataFile} {
 		if err := os.WriteFile(path.Join(snapshotDir, fn), []byte("x"), 0o644); err != nil {
 			t.Fatalf("prepare file %s error:%v", fn, err)
 		}
@@ -119,7 +119,7 @@ func TestDoCleanRocksdbData_Success(t *testing.T) {
 		t.Fatalf("record file should be removed, err:%v", err)
 	}
 	// snapshot files should be removed
-	for _, fn := range []string{uniqCheckerFile, verdataFile, applyIDFile} {
+	for _, fn := range []string{uniqCheckerFile, verdataFile} {
 		if _, err := os.Stat(path.Join(snapshotDir, fn)); !os.IsNotExist(err) {
 			t.Fatalf("snapshot file %s should be removed, err:%v", fn, err)
 		}

@@ -389,7 +389,7 @@ func (c *RocksDBCleaner) DoCleanRocksdbData(record *CleanRecord) error {
 	}
 
 	// remove files
-	filenames := []string{uniqCheckerFile, verdataFile, applyIDFile}
+	filenames := []string{uniqCheckerFile, verdataFile}
 	for _, filename := range filenames {
 		filepath := path.Join(record.RootDir, rocksdbSnapDir, filename)
 		if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) {

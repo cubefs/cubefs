@@ -832,6 +832,10 @@ func (r *RocksTree) GetApplyIdFromDisk() (uint64, error) {
 		return 0, err
 	}
 
+	if len(buff) == 0 {
+		return 0, nil
+	}
+
 	var baseInfo RocksBaseInfo
 	if err = baseInfo.Unmarshal(buff); err != nil {
 		return 0, err

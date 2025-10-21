@@ -79,7 +79,7 @@ const (
 )
 
 const (
-	FlushInterval = 30 * time.Second
+	FlushInterval = 3 * time.Second
 )
 
 func getTableTypeKey(treeType TreeType) TableType {
@@ -140,17 +140,15 @@ type RocksdbOperator struct {
 	readDiskOption *gorocksdb.ReadOptions
 	config         map[string]string
 
-	isFlushing    bool
-	lastFlushTime time.Time
-	flushMutex    sync.Mutex
+	isFlushing bool
+	flushMutex sync.Mutex
 }
 
 func NewRocksdb() (operator *RocksdbOperator) {
 	operator = &RocksdbOperator{
-		state:         dbInitSt,
-		config:        make(map[string]string),
-		isFlushing:    false,
-		lastFlushTime: time.Now(),
+		state:      dbInitSt,
+		config:     make(map[string]string),
+		isFlushing: false,
 	}
 	return
 }
@@ -270,7 +268,7 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	dbOpts.SetCreateIfMissing(true)
 	dbOpts.SetWriteBufferSize(opts.WriteBufferSize)
 	dbOpts.SetMaxWriteBufferNumber(opts.WriteBufferNum)
-	dbOpts.SetCompression(gorocksdb.NoCompression)
+	dbOpts.SetCompression(gorocksdb.LZ4Compression)
 	dbOpts.SetMinWriteBufferNumberToMerge(opts.MinWriteBuffToMerge)
 	dbOpts.SetLevelCompactionDynamicLevelBytes(true)
 	dbOpts.SetTargetFileSizeMultiplier(2)
@@ -966,7 +964,7 @@ func (dbInfo *RocksdbOperator) Flush(block bool) (err error) {
 	}
 
 	dbInfo.flushMutex.Lock()
-	if dbInfo.isFlushing || (time.Since(dbInfo.lastFlushTime) < FlushInterval) {
+	if dbInfo.isFlushing {
 		dbInfo.flushMutex.Unlock()
 		return nil
 	}
@@ -980,9 +978,6 @@ func (dbInfo *RocksdbOperator) Flush(block bool) (err error) {
 		opts.Destroy()
 		dbInfo.flushMutex.Lock()
 		dbInfo.isFlushing = false
-		if err == nil {
-			dbInfo.lastFlushTime = time.Now()
-		}
 		dbInfo.flushMutex.Unlock()
 	}()
 

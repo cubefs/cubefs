@@ -1163,7 +1163,7 @@ func (mp *metaPartition) flushAndCheckApplyID(appIndexID uint64) (err error) {
 	}
 
 	var diskApplyID uint64
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 10; i++ {
 		if err = mp.inodeTree.Flush(true); err != nil {
 			log.LogErrorf("[flushAndCheckApplyID] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
 			return err
