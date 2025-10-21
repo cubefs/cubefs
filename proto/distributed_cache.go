@@ -510,7 +510,6 @@ type FlashManualTask struct {
 	StartTime            *time.Time
 	UpdateTime           *time.Time
 	EndTime              *time.Time
-	RcvStop              bool
 	Done                 bool
 	sync.Mutex
 }
