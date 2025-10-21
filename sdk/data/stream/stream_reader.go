@@ -580,7 +580,7 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 	}()
 
 	handler := req.handler
-	log.LogDebugf("completeAsyncFlush: for streamer(%v) eh(%v)", s.inode, handler)
+	log.LogDebugf("completeAsyncFlush: streamer(%v) eh(%v) start", s.inode, handler)
 	nextReq := s.getNextPendingAsyncFlush()
 	if nextReq == nil {
 		log.LogWarnf("completeAsyncFlush: No pending async flush requests found for streamer(%v) handler(%v)",

@@ -800,15 +800,15 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int, isMigration bo
 
 	initExtentHandlerFunc := func(currentEK *proto.ExtentKey) {
 		checkVerFunc(currentEK)
-		log.LogDebugf("tryInitExtentHandlerByLastEk: found ek in ExtentCache, extent_id(%v) req_offset(%v) req_size(%v), currentEK [%v] streamer seq %v",
-			currentEK.ExtentId, offset, size, currentEK, s.verSeq)
+		log.LogDebugf("tryInitExtentHandlerByLastEk: ino(%v) found ek in ExtentCache, extent_id(%v) req_offset(%v) req_size(%v), currentEK [%v] streamer seq %v",
+			s.inode, currentEK.ExtentId, offset, size, currentEK, s.verSeq)
 		dp, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
 		if pidErr == nil {
 			seq := currentEK.GetSeq()
 			if isLastEkVerNotEqual {
 				seq = s.verSeq
 			}
-			log.LogDebugf("tryInitExtentHandlerByLastEk NewExtentHandler")
+			log.LogDebugf("tryInitExtentHandlerByLastEk  ino(%v) NewExtentHandler", s.inode)
 			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size), dp.MediaType, isMigration)
 			handler.key = &proto.ExtentKey{
 				FileOffset:   currentEK.FileOffset,
@@ -823,22 +823,22 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int, isMigration bo
 			handler.lastKey = *currentEK
 
 			if s.handler != nil {
-				log.LogDebugf("tryInitExtentHandlerByLastEk: close old handler, currentEK.PartitionId(%v)",
-					currentEK.PartitionId)
+				log.LogDebugf("tryInitExtentHandlerByLastEk:  ino(%v) close old handler, currentEK.PartitionId(%v)",
+					s.inode, currentEK.PartitionId)
 				s.closeOpenHandler(true)
 			}
 
 			s.handler = handler
 			s.dirty = false
-			log.LogDebugf("tryInitExtentHandlerByLastEk: currentEK.PartitionId(%v) found", currentEK.PartitionId)
+			log.LogDebugf("tryInitExtentHandlerByLastEk:  ino(%v) currentEK.PartitionId(%v) found", s.inode, currentEK.PartitionId)
 		} else {
-			log.LogDebugf("tryInitExtentHandlerByLastEk: currentEK.PartitionId(%v) not found", currentEK.PartitionId)
+			log.LogDebugf("tryInitExtentHandlerByLastEk:  ino(%v) currentEK.PartitionId(%v) not found", s.inode, currentEK.PartitionId)
 		}
 	}
 
 	if storeMode == proto.NormalExtentType {
 		if s.handler == nil {
-			log.LogDebugf("tryInitExtentHandlerByLastEk: handler nil")
+			log.LogDebugf("tryInitExtentHandlerByLastEk: ino(%v) handler nil", s.inode)
 			if ek := getEndEkFunc(); ek != nil {
 				initExtentHandlerFunc(ek)
 			}
@@ -940,7 +940,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 				break
 			}
 
-			log.LogDebugf("doWriteAppendEx: start write protection, handler(%v) offset(%v) size(%v)",
+			log.LogDebugf("doWriteAppendEx: handler(%v) offset(%v) size(%v)",
 				s.handler, offset, size)
 			ek, err = s.handler.write(data, offset, size, direct)
 			if err == nil && ek != nil {
@@ -1006,8 +1006,9 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 
 func (s *Streamer) flush(wait bool, id string) (err error) {
 	pending := make(map[*ExtentHandler]chan error)
-	elements := s.dirtylist.Elements()
-	for _, element := range elements {
+	asyncExtentHandler := make([]*ExtentHandler, 0)
+	for {
+		element := s.dirtylist.Get()
 		if element == nil {
 			break
 		}
@@ -1032,8 +1033,10 @@ func (s *Streamer) flush(wait bool, id string) (err error) {
 				if _, ok := pending[eh]; !ok {
 					pending[eh] = ch
 				}
-				eh.stream.dirtylist.Remove(element)
+			} else {
+				asyncExtentHandler = append(asyncExtentHandler, eh)
 			}
+			eh.stream.dirtylist.Remove(element)
 		} else {
 			// No in-flight packets or async flush disabled, use synchronous flush
 			start := time.Now()
@@ -1050,6 +1053,9 @@ func (s *Streamer) flush(wait bool, id string) (err error) {
 			eh.stream.dirtylist.Remove(element)
 			clearFunc()
 		}
+	}
+	if !s.client.enableAsyncFlush {
+		return
 	}
 	log.LogDebugf("Streamer(%v) wait(%v) pending(%v) id(%v)", s.inode, wait, pending, id)
 	if wait {
@@ -1078,6 +1084,14 @@ func (s *Streamer) flush(wait bool, id string) (err error) {
 		}
 		if firstErr != nil {
 			return firstErr
+		}
+		// may trigger recoveryHandler, so flush again
+		if s.dirtylist.Len() != 0 {
+			return s.flush(wait, id)
+		}
+	} else {
+		for _, eh := range asyncExtentHandler {
+			s.dirtylist.Put(eh)
 		}
 	}
 	return
