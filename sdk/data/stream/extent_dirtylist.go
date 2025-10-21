@@ -73,16 +73,3 @@ func (dl *DirtyExtentList) Len() int {
 	defer dl.RUnlock()
 	return dl.list.Len()
 }
-
-// Elements returns a snapshot slice of all elements currently in the list.
-// Callers can use the returned *list.Element values with Remove().
-func (dl *DirtyExtentList) Elements() []*list.Element {
-	dl.RLock()
-	defer dl.RUnlock()
-
-	result := make([]*list.Element, 0, dl.list.Len())
-	for e := dl.list.Front(); e != nil; e = e.Next() {
-		result = append(result, e)
-	}
-	return result
-}
