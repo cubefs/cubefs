@@ -665,10 +665,20 @@ func (s *ManualScanner) processCommand(command string) {
 		}
 	case "pause":
 		log.LogInfof("receive event to httpServiceScanner: %v, receivePauseC ", s.ID)
-		s.receivePauseC <- struct{}{}
+		select {
+		case s.receivePauseC <- struct{}{}:
+			// sent pause signal
+		case <-s.stopC:
+			log.LogErrorf("receive stop while sending pause signal, id(%v)", s.ID)
+		}
 	case "resume":
 		log.LogInfof("receive event to httpServiceScanner: %v, receiveResumeC ", s.ID)
-		s.receiveResumeC <- struct{}{}
+		select {
+		case s.receiveResumeC <- struct{}{}:
+			// sent resume signal
+		case <-s.stopC:
+			log.LogErrorf("receive stop while sending resume signal, id(%v)", s.ID)
+		}
 	default:
 		log.LogInfof("invalid task opCode: %v tid %v", command, s.ID)
 	}

@@ -293,7 +293,9 @@ func (fltMgr *flashManualTaskManager) dispatchTaskOp(tid string, opCode string) 
 func (fltMgr *flashManualTaskManager) stopInteractiveTask(task *proto.FlashManualTask) error {
 	// send stop signal
 	var err error
+	t := time.Now()
 	task.Status = int(proto.Flash_Task_Failed)
+	task.EndTime = &t
 	if err = fltMgr.cluster.syncAddFlashManualTask(task); err != nil {
 		return err
 	}
