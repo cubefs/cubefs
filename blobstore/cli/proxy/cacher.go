@@ -15,6 +15,8 @@
 package proxy
 
 import (
+	"time"
+
 	"github.com/desertbit/grumble"
 	"github.com/fatih/color"
 
@@ -84,6 +86,7 @@ func addCmdCacher(cmd *grumble.Command) {
 			proxyFlags(f)
 			f.Int64L("clusterid", 0, "cluster id")
 			f.StringL("idc", "", "idc for proxy service, [ALL or xxx]")
+			f.IntL("interval", 60, "interval seconds between hosts")
 		},
 		Args: func(a *grumble.Args) {
 			a.String("key", "key of diskv [volume-{vid} or disk-{disk_id} or ALL]")
@@ -115,13 +118,17 @@ func addCmdCacher(cmd *grumble.Command) {
 				}
 			}
 
-			for _, host := range hosts {
+			internal := c.Flags.Int("interval")
+			for idx, host := range hosts {
 				st := "OK"
 				if e := proxyCli.Erase(common.CmdContext(), host, key); e != nil {
 					err = e
 					st = e.Error()
 				}
 				fmt.Printf("erase host:%s key:%s status:%s\n", host, key, st)
+				if idx < len(hosts)-1 && internal > 0 {
+					time.Sleep(time.Duration(internal) * time.Second)
+				}
 			}
 			return err
 		},
