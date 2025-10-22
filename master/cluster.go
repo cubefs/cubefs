@@ -3876,11 +3876,14 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 
 	var wg sync.WaitGroup
 	metaNode.ToBeOffline = true
+	// Set node to read-only to prevent write during decommission
+	metaNode.RdOnly = true
 	metaNode.MaxMemAvailWeight = 1
 	errChannel := make(chan error, limit)
 
 	defer func() {
 		metaNode.ToBeOffline = false
+		metaNode.RdOnly = false
 		close(errChannel)
 	}()
 

@@ -734,6 +734,8 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 	dataNode.DecommissionLimit = limit
 	dataNode.DecommissionWeight = weight
 	dataNode.DecommissionDiskList = make([]string, 0)
+	// Set node to read-only to prevent write during decommission
+	dataNode.RdOnly = true
 }
 
 func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
@@ -761,6 +763,7 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.DecommissionCompleteTime = 0
 	dataNode.DecommissionDiskList = make([]string, 0)
 	dataNode.ToBeOffline = false
+	dataNode.RdOnly = false
 }
 
 func (dataNode *DataNode) createVersionTask(volume string, version uint64, op uint8, addr string, verList []*proto.VolVersionInfo) (task *proto.AdminTask) {

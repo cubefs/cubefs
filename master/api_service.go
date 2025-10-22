@@ -3700,6 +3700,7 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 
 	// can alloc dp
 	node.ToBeOffline = false
+	node.RdOnly = false
 	if err = m.cluster.syncUpdateDataNode(node); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return

@@ -557,6 +557,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		DecommissionFirstHostParallelLimit: dataNode.DecommissionFirstHostParallelLimit,
 		DecommissionCompleteTime:           dataNode.DecommissionCompleteTime,
 		ToBeOffline:                        dataNode.ToBeOffline,
+		RdOnly:                             dataNode.RdOnly,
 		DecommissionDiskList:               dataNode.DecommissionDiskList,
 		DecommissionDpTotal:                dataNode.DecommissionDpTotal,
 		AllDisks:                           dataNode.AllDisks,
