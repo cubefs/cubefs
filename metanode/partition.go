@@ -2166,7 +2166,7 @@ func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
 	}
 
 	// NOTE: execute flush
-	if err = mp.inodeTree.Flush(false); err != nil {
+	if err = mp.inodeTree.Flush(false); err != nil && err != ErrDoingFlush {
 		log.LogErrorf("[storeRocksdb] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
 		return err
 	}

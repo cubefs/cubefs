@@ -1163,18 +1163,24 @@ func (mp *metaPartition) flushAndCheckApplyID(appIndexID uint64) (err error) {
 	}
 
 	var diskApplyID uint64
-	for i := 0; i < 10; i++ {
-		if err = mp.inodeTree.Flush(true); err != nil {
+	for i := 0; i < TryFlushNum; i++ {
+		err = mp.inodeTree.Flush(true)
+		if err == nil {
+			return nil
+		}
+		if err != ErrDoingFlush {
 			log.LogErrorf("[flushAndCheckApplyID] mp(%v) flush err: %s", mp.config.PartitionId, err.Error())
 			return err
 		}
 
+		// check apply id from disk
 		diskApplyID, err = mp.inodeTree.GetApplyIdFromDisk()
 		if err != nil {
 			log.LogErrorf("[flushAndCheckApplyID] mp(%v) get apply id from disk err: %s", mp.config.PartitionId, err.Error())
 			return err
 		}
 
+		// flush success
 		if diskApplyID >= appIndexID {
 			return nil
 		}

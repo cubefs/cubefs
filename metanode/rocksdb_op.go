@@ -60,6 +60,7 @@ var (
 	ErrInvalidRocksdbWriteHandle = errors.New("invalid rocksdb write batch")
 	ErrInvalidRocksdbTableType   = errors.New("invalid rocksdb table type")
 	ErrInvalidRocksdbSnapshot    = errors.New("invalid rocksdb snapshot")
+	ErrDoingFlush                = errors.New("doing flush")
 )
 
 type TableType byte
@@ -80,6 +81,7 @@ const (
 
 const (
 	FlushInterval = 3 * time.Second
+	TryFlushNum   = 100
 )
 
 func getTableTypeKey(treeType TreeType) TableType {
@@ -966,7 +968,7 @@ func (dbInfo *RocksdbOperator) Flush(block bool) (err error) {
 	dbInfo.flushMutex.Lock()
 	if dbInfo.isFlushing {
 		dbInfo.flushMutex.Unlock()
-		return nil
+		return ErrDoingFlush
 	}
 
 	dbInfo.isFlushing = true
