@@ -89,6 +89,9 @@ const (
 
 	MetricDiskDecommissionSuccess = "disk_decommission_success"
 	MetricMetaNotRocksdbWritable  = "meta_rocksdb_not_writable"
+
+	MetricNodeSetUnbalancedDPs = "nodeset_unbalanced_dp_count"
+	MetricRackConflictDPs      = "rack_conflict_dp_count"
 )
 
 const (
@@ -160,6 +163,9 @@ type monitorMetrics struct {
 	diskDecommissionSuccess *exporter.GaugeVec
 
 	metaNodesNotRocksdbWritable *exporter.Gauge
+
+	nodeSetUnbalancedDPs *exporter.Gauge
+	rackConflictDPs      *exporter.Gauge
 
 	lastCheckPartitionCreateTime time.Time
 }
@@ -535,6 +541,10 @@ func (mm *monitorMetrics) start() {
 
 	mm.diskDecommissionSuccess = exporter.NewGaugeVec(MetricDiskDecommissionSuccess, "", []string{"addr", "path"})
 	mm.metaNodesNotRocksdbWritable = exporter.NewGauge(MetricMetaNotRocksdbWritable)
+
+	mm.nodeSetUnbalancedDPs = exporter.NewGauge(MetricNodeSetUnbalancedDPs)
+	mm.rackConflictDPs = exporter.NewGauge(MetricRackConflictDPs)
+
 	go mm.statMetrics()
 }
 
@@ -612,6 +622,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.updateMetaNodesStat()
 	mm.updateMastersStat()
 	mm.setNotRocksdbWritableMetaNodesCount()
+	mm.setDistributionOptimizationMetrics()
 }
 
 func (mm *monitorMetrics) checkPartitionCreateMetrics() {
@@ -1391,6 +1402,9 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.MpMissingReplicaCount.Set(0)
 	mm.ReplicaMissingDPCount.Reset()
 	mm.DpMissingLeaderCount.Reset()
+
+	mm.nodeSetUnbalancedDPs.Set(0)
+	mm.rackConflictDPs.Set(0)
 }
 
 func (mm *monitorMetrics) setNotRocksdbWritableMetaNodesCount() {
@@ -1406,4 +1420,13 @@ func (mm *monitorMetrics) setNotRocksdbWritableMetaNodesCount() {
 		return true
 	})
 	mm.metaNodesNotRocksdbWritable.Set(float64(count))
+}
+
+func (mm *monitorMetrics) setDistributionOptimizationMetrics() {
+	nodeSetUnbalancedDPs := mm.cluster.getNodeSetUnbalancedDPs()
+	rackConflictDPs := mm.cluster.getRackConflictDPs()
+	mm.nodeSetUnbalancedDPs.Set(float64(nodeSetUnbalancedDPs))
+	mm.rackConflictDPs.Set(float64(rackConflictDPs))
+	log.LogDebugf("action[setDistributionOptimizationMetrics] nodeSetUnbalancedDPs: %d, rackConflictDPs: %d",
+		nodeSetUnbalancedDPs, rackConflictDPs)
 }

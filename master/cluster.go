@@ -131,6 +131,8 @@ type ClusterDecommission struct {
 	EnableAutoDistributionOptimization        atomicutil.Bool
 	DistributionOptimizationConcurrentDpCount atomicutil.Int64
 	DistributionOptimizationThreshold         atomicutil.Float64
+	NodeSetUnbalancedDPs                      atomicutil.Int64
+	RackConflictDPs                           atomicutil.Int64
 	server                                    *Server
 }
 
@@ -494,6 +496,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.EnableAutoDistributionOptimization.Store(defaultEnableAutoDistributionOptimization)
 	c.DistributionOptimizationConcurrentDpCount.Store(int64(defaultDistributionOptimizationConcurrentDpCount))
 	c.DistributionOptimizationThreshold.Store(defaultDistributionOptimizationThreshold)
+	c.NodeSetUnbalancedDPs.Store(0)
+	c.RackConflictDPs.Store(0)
 	c.server = server
 	c.flashNodeTopo = newFlashNodeTopology()
 	c.cleanTask = make(map[string]*CleanTask)
@@ -531,6 +535,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckDataPartitionRepairingStatus()
 	c.scheduleToCheckDataPartitionDecommissionDiskRetryMap()
 	c.scheduleToDistributionOptimization()
+	c.scheduleToUpdateDistributionOptimizationStatus()
 	c.scheduleToRecalculateSimulateReservedSpace()
 }
 
@@ -586,6 +591,20 @@ func (c *Cluster) scheduleToUpdateStatInfo() {
 			function: func() (fin bool) {
 				if c.partition != nil && c.partition.IsRaftLeader() {
 					c.updateStatInfo()
+				}
+				return
+			},
+		})
+}
+
+func (c *Cluster) scheduleToUpdateDistributionOptimizationStatus() {
+	c.runTask(
+		&cTask{
+			tickTime: 5 * time.Minute,
+			name:     "scheduleToUpdateDistributionOptimizationStatus",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.updateDistributionOptimizationStatus()
 				}
 				return
 			},
@@ -3427,7 +3446,7 @@ func (c *Cluster) releaseDataReservedResource(addrs []string, dp *DataPartition)
 // scheduleToRecalculateSimulateReservedSpace schedules periodic recalculation of SimulateReservedSpace
 func (c *Cluster) scheduleToRecalculateSimulateReservedSpace() {
 	c.runTask(&cTask{
-		tickTime: 10 * time.Minute, // Execute every 5 minutes
+		tickTime: 10 * time.Minute,
 		name:     "scheduleToRecalculateSimulateReservedSpace",
 		function: func() (fin bool) {
 			if c.partition != nil && c.partition.IsRaftLeader() {
@@ -7294,4 +7313,22 @@ func (c *Cluster) setDistributionOptimizationThreshold(threshold float64) error 
 		return err
 	}
 	return nil
+}
+
+func (c *Cluster) getNodeSetUnbalancedDPs() int64 {
+	return c.NodeSetUnbalancedDPs.Load()
+}
+
+func (c *Cluster) getRackConflictDPs() int64 {
+	return c.RackConflictDPs.Load()
+}
+
+func (c *Cluster) updateDistributionOptimizationStatus() {
+	status := c.getDistributionOptimizationStatus()
+	if status != nil {
+		c.NodeSetUnbalancedDPs.Store(int64(status.NodeSetUnbalancedDPs))
+		c.RackConflictDPs.Store(int64(status.RackConflictDPs))
+		log.LogDebugf("action[updateDistributionOptimizationStatus] updated NodeSetUnbalancedDPs: %d, RackConflictDPs: %d",
+			status.NodeSetUnbalancedDPs, status.RackConflictDPs)
+	}
 }
