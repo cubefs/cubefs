@@ -66,7 +66,7 @@ func (c *Cluster) updateZoneStatInfo() {
 		zone.dataNodes.Range(func(key, value interface{}) bool {
 			zs.DataNodeStat.TotalNodes++
 			node := value.(*DataNode)
-			if node.isActive && node.IsWriteAble() {
+			if node.isActive && node.IsWriteAble(1) {
 				zs.DataNodeStat.WritableNodes++
 			}
 			zs.DataNodeStat.Total += float64(node.Total) / float64(util.GB)
@@ -84,7 +84,7 @@ func (c *Cluster) updateZoneStatInfo() {
 			zs.MetaNodeStat.TotalNodes++
 			node := value.(*MetaNode)
 			if node.IsActive {
-				if node.IsWriteAble() {
+				if node.IsWriteAble(1) {
 					zs.MetaNodeStat.WritableNodes++
 				}
 				if node.IsRocksdbWriteAble() {

@@ -1131,11 +1131,11 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		rack := metaNode.Rack
 
 		writable := "false"
-		if metaNode.IsWriteAble() {
+		if metaNode.IsWriteAble(1) {
 			writable = "true"
 		}
 		alloc := "false"
-		if metaNode.PartitionCntLimited() && metaNode.IsWriteAble() {
+		if metaNode.PartitionCntLimited(1) && metaNode.IsWriteAble(1) {
 			alloc = "true"
 		}
 
@@ -1146,10 +1146,10 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, mAddr, "memUsed", zone, setId, media, writable, alloc, rack)
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc, rack)
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(1), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc, rack)
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsRocksdbWriteAble(), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc, rack)
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited(1) && metaNode.IsWriteAble(1), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc, rack)
 
 		return true
 	})
@@ -1179,7 +1179,7 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 		rack := dataNode.Rack
 
 		writable := "false"
-		if dataNode.IsWriteAble() {
+		if dataNode.IsWriteAble(1) {
 			writable = "true"
 		}
 		alloc := "false"
@@ -1197,7 +1197,7 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.BadDisks)), MetricRoleDataNode, dAddr, "badDiskCount", zone, setId, media, writable, alloc, rack)
 		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.LostDisks)), MetricRoleDataNode, dAddr, "lostDiskCount", zone, setId, media, writable, alloc, rack)
 		mm.nodeStat.SetBoolWithLabelValues(dataNode.isActive, MetricRoleDataNode, dAddr, "active", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetBoolWithLabelValues(dataNode.IsWriteAble(), MetricRoleDataNode, dAddr, "writable", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetBoolWithLabelValues(dataNode.IsWriteAble(1), MetricRoleDataNode, dAddr, "writable", zone, setId, media, writable, alloc, rack)
 		mm.nodeStat.SetBoolWithLabelValues(dataNode.canAllocDp(), MetricRoleDataNode, dAddr, "canAlloc", zone, setId, media, writable, alloc, rack)
 
 		return true
@@ -1231,7 +1231,7 @@ func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
 		if !ok {
 			return true
 		}
-		if !metaNode.IsWriteAble() {
+		if !metaNode.IsWriteAble(1) {
 			notWritabelMetaNodesCount++
 		}
 		return true
@@ -1263,7 +1263,7 @@ func (mm *monitorMetrics) setNotWritableDataNodesCount() {
 			mmap["allocCnt"]++
 		}
 
-		if !dataNode.IsWriteAble() {
+		if !dataNode.IsWriteAble(1) {
 			notWritabelDataNodesCount++
 			mmap["notWritable"]++
 		}

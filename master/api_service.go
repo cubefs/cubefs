@@ -452,7 +452,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				nodeView := proto.NodeView{
 					ID: dataNode.ID, Addr: dataNode.Addr,
 					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive,
-					IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
+					IsWritable: dataNode.IsWriteAble(1), MediaType: dataNode.MediaType,
 					Rack: dataNode.Rack,
 				}
 
@@ -468,7 +468,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				nodeView := proto.MetaNodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
 					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive,
-					IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+					IsWritable: metaNode.IsWriteAble(1), MediaType: proto.MediaType_Unspecified,
 					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
 					IsRocksdbWritable: metaNode.IsRocksdbWriteAble(),
 					Rack:              metaNode.Rack,
@@ -661,7 +661,7 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 			Status:     dn.isActive,
 			DomainAddr: dn.DomainAddr,
 			ID:         dn.ID,
-			IsWritable: dn.IsWriteAble(),
+			IsWritable: dn.IsWriteAble(1),
 			Total:      dn.Total,
 			Used:       dn.Used,
 			Avail:      dn.Total - dn.Used,
@@ -677,7 +677,7 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 				Status:     mn.IsActive,
 				DomainAddr: mn.DomainAddr,
 				ID:         mn.ID,
-				IsWritable: mn.IsWriteAble(),
+				IsWritable: mn.IsWriteAble(1),
 				Total:      mn.Total,
 				Used:       mn.Used,
 				Avail:      mn.Total - mn.Used,
@@ -3439,7 +3439,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		ReportTime:                            dataNode.ReportTime,
 		IsActive:                              dataNode.isActive,
 		ToBeOffline:                           dataNode.ToBeOffline,
-		IsWriteAble:                           dataNode.IsWriteAble(),
+		IsWriteAble:                           dataNode.IsWriteAble(1),
 		UsageRatio:                            dataNode.UsageRatio,
 		SelectedTimes:                         dataNode.SelectedTimes,
 		DataPartitionReports:                  dataNode.DataPartitionReports,
@@ -3612,7 +3612,7 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !targetNode.IsWriteAble() || !targetNode.PartitionCntLimited() {
+	if !targetNode.IsWriteAble(1) || !targetNode.PartitionCntLimited(1) {
 		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -4343,7 +4343,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 		nsg.nodeSets[i].dataNodes.Range(func(key, value interface{}) bool {
 			node := value.(*DataNode)
 			nsStat.DataTotal += node.Total
-			if node.IsWriteAble() {
+			if node.IsWriteAble(1) {
 				nsStat.DataUsed += node.Used
 			} else {
 				nsStat.DataUsed += node.Total
@@ -4360,7 +4360,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				Addr:               node.Addr,
 				ReportTime:         node.ReportTime,
 				IsActive:           node.isActive,
-				IsWriteAble:        node.IsWriteAble(),
+				IsWriteAble:        node.IsWriteAble(1),
 				UsageRatio:         node.UsageRatio,
 				SelectedTimes:      node.SelectedTimes,
 				DataPartitionCount: node.DataPartitionCount,
@@ -4386,7 +4386,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				ID:                 node.ID,
 				Addr:               node.Addr,
 				IsActive:           node.IsActive,
-				IsWriteAble:        node.IsWriteAble(),
+				IsWriteAble:        node.IsWriteAble(1),
 				IsRocksdbWritable:  node.IsRocksdbWriteAble(),
 				ZoneName:           node.ZoneName,
 				MaxMemAvailWeight:  node.MaxMemAvailWeight,
@@ -5431,7 +5431,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		RaftReplicaPort:           metaNode.ReplicaPort,
 		DomainAddr:                metaNode.DomainAddr,
 		IsActive:                  metaNode.IsActive,
-		IsWriteAble:               metaNode.IsWriteAble(),
+		IsWriteAble:               metaNode.IsWriteAble(1),
 		IsRocksdbWritable:         metaNode.IsRocksdbWriteAble(),
 		ZoneName:                  metaNode.ZoneName,
 		Rack:                      metaNode.Rack,
@@ -5449,7 +5449,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		RdOnly:                    metaNode.RdOnly,
 		RocksdbRdOnly:             metaNode.RocksdbRdOnly,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
-		CanAllowPartition:         metaNode.IsWriteAble() && metaNode.PartitionCntLimited(),
+		CanAllowPartition:         metaNode.IsWriteAble(1) && metaNode.PartitionCntLimited(1),
 		MaxMpCntLimit:             metaNode.GetPartitionLimitCnt(),
 		CpuUtil:                   metaNode.CpuUtil.Load(),
 		MemoryMpCount:             memoryMpCount,
@@ -5665,7 +5665,7 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !targetNode.IsWriteAble() || !targetNode.PartitionCntLimited() {
+	if !targetNode.IsWriteAble(1) || !targetNode.PartitionCntLimited(1) {
 		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

@@ -310,7 +310,7 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 				dataNode := value.(*DataNode)
 				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{
 					ID: dataNode.ID, Addr: dataNode.Addr,
-					Status: dataNode.isActive, IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
+					Status: dataNode.isActive, IsWritable: dataNode.IsWriteAble(1), MediaType: dataNode.MediaType,
 				})
 				return true
 			})
@@ -319,7 +319,7 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
 					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive,
-					IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+					IsWritable: metaNode.IsWriteAble(1), MediaType: proto.MediaType_Unspecified,
 					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
 					IsRocksdbWritable: metaNode.IsRocksdbWriteAble(),
 				})

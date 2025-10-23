@@ -340,15 +340,12 @@ func (dataNode *DataNode) canAlloc() bool {
 	return overSoldCap(dataNode.Total) >= dataNode.TotalPartitionSize
 }
 
-func (dataNode *DataNode) IsWriteAble() (ok bool) {
+func (dataNode *DataNode) IsWriteAble(threshold float64) (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
-	return dataNode.isWriteAbleWithSizeNoLock(10 * util.GB)
-}
-
-func (dataNode *DataNode) IsWriteAbleWithThreshold(threshold float64) (ok bool) {
-	dataNode.RLock()
-	defer dataNode.RUnlock()
+	if threshold == 1 {
+		return dataNode.isWriteAbleWithSizeNoLock(10 * util.GB)
+	}
 	return dataNode.isWriteAbleWithThresholdNoLock(threshold)
 }
 
@@ -362,7 +359,7 @@ func (dataNode *DataNode) availableDiskCount() (cnt int) {
 }
 
 func (dataNode *DataNode) canAllocDp() bool {
-	if !dataNode.IsWriteAble() {
+	if !dataNode.IsWriteAble(1) {
 		return false
 	}
 
@@ -379,7 +376,7 @@ func (dataNode *DataNode) canAllocDp() bool {
 		}
 	}
 
-	if !dataNode.PartitionCntLimited() {
+	if !dataNode.PartitionCntLimited(1) {
 		return false
 	}
 
@@ -400,16 +397,7 @@ func (dataNode *DataNode) GetAvailableSpace() uint64 {
 	return dataNode.AvailableSpace
 }
 
-func (dataNode *DataNode) PartitionCntLimited() bool {
-	limited := uint64(dataNode.DataPartitionCount+dataNode.PreResearvedDpCount) <= dataNode.GetPartitionLimitCnt()
-	if !limited {
-		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, simulate reserved cnt %d, limit %d",
-			dataNode.Addr, dataNode.DataPartitionCount, dataNode.PreResearvedDpCount, dataNode.GetPartitionLimitCnt())
-	}
-	return limited
-}
-
-func (dataNode *DataNode) PartitionCntLimitedWithThreshold(threshold float64) bool {
+func (dataNode *DataNode) PartitionCntLimited(threshold float64) bool {
 	limited := float64(dataNode.DataPartitionCount+dataNode.PreResearvedDpCount) <= float64(dataNode.GetPartitionLimitCnt())*threshold
 	if !limited {
 		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, simulate reserved cnt %d, limit %d, threshold %v",

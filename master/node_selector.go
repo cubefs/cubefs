@@ -68,11 +68,9 @@ type Node interface {
 	GetAddr() string
 	GetHeartbeatPort() string
 	GetReplicaPort() string
-	PartitionCntLimited() bool
-	PartitionCntLimitedWithThreshold(threshold float64) bool
+	PartitionCntLimited(threshold float64) bool
 	IsActiveNode() bool
-	IsWriteAble() bool
-	IsWriteAbleWithThreshold(threshold float64) bool
+	IsWriteAble(threshold float64) bool
 	GetPartitionLimitCnt() uint64
 	GetTotal() uint64
 	GetUsed() uint64
@@ -97,16 +95,12 @@ func (nodes SortedWeightedNodes) Swap(i, j int) {
 	nodes[i], nodes[j] = nodes[j], nodes[i]
 }
 
-func canAllocPartition(node Node, nodeType NodeType) bool {
+func canAllocPartition(node Node, nodeType NodeType, threshold float64) bool {
 	if nodeType == RocksdbType {
 		metaNode := node.(*MetaNode)
-		return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited()
+		return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited(threshold)
 	}
-	return node.IsWriteAble() && node.PartitionCntLimited()
-}
-
-func canAllocPartitionWithThreshold(node Node, threshold float64) bool {
-	return node.IsWriteAbleWithThreshold(threshold) && node.PartitionCntLimitedWithThreshold(threshold)
+	return node.IsWriteAble(threshold) && node.PartitionCntLimited(threshold)
 }
 
 func asNodeWrap(node interface{}, nodeType NodeType) Node {
@@ -178,7 +172,7 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 			return true
 		}
 
-		if (threshold > 0 && !canAllocPartitionWithThreshold(node, threshold)) || (threshold <= 0 && !canAllocPartition(node, s.nodeType)) {
+		if !canAllocPartition(node, s.nodeType, threshold) {
 			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType,
 				node.GetStorageInfo(), excludeHosts)
 			return true
@@ -318,7 +312,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 		if contains(excludeHosts, node.GetAddr()) {
 			return true
 		}
-		if (threshold > 0 && !canAllocPartitionWithThreshold(node, threshold)) || (threshold <= 0 && !canAllocPartition(node, s.nodeType)) {
+		if !canAllocPartition(node, s.nodeType, threshold) {
 			return true
 		}
 		sortedNodes = append(sortedNodes, node)
@@ -440,7 +434,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 		for nodeIndex < len(sortedNodes) {
 			node := sortedNodes[(nodeIndex+s.index)%len(sortedNodes)]
 			nodeIndex += 1
-			if (threshold > 0 && canAllocPartitionWithThreshold(node, threshold)) || (threshold <= 0 && canAllocPartition(node, s.nodeType)) {
+			if canAllocPartition(node, s.nodeType, threshold) {
 				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
@@ -546,7 +540,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 		if contains(excludeHosts, node.GetAddr()) {
 			return true
 		}
-		if (threshold > 0 && !canAllocPartitionWithThreshold(node, threshold)) || (threshold <= 0 && !canAllocPartition(node, s.nodeType)) {
+		if !canAllocPartition(node, s.nodeType, threshold) {
 			return true
 		}
 		nodes = append(nodes, node)
@@ -657,11 +651,11 @@ func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.Sto
 	}
 
 	// Rack isolation enabled, prioritize strong constraint mode
-	return ns.selectNodesWithRack(param, nodeType, storeMode)
+	return ns.selectNodesWithRack(param, nodeType, storeMode, threshold)
 }
 
 // selectMetaNodesWithRack selects meta nodes with rack awareness
-func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, storeMode proto.StoreMode, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
 	rsets := ns.getRackSets()
 
 	paramCopy := param.copy()
@@ -688,7 +682,7 @@ func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, st
 		// Select nodes
 		selector := rack.getNodeSelector(nodeType, storeMode)
 
-		rhosts, rpeers, err := selector.Select(rack, paramCopy.excludeHosts, 1, 0)
+		rhosts, rpeers, err := selector.Select(rack, paramCopy.excludeHosts, 1, threshold)
 		if err != nil {
 			log.LogErrorf("action[getAvailMetaNodeHosts] node selection failed for rack[%v], param[%v], err: %v",
 				rack, paramCopy.String(), err.Error())
@@ -720,7 +714,7 @@ func (ns *nodeSet) getAvailDataNodeHosts(param *selectParam, threshold float64) 
 		return ns.dataNodeSelector.Select(ns, param.excludeHosts, param.replicaNum, threshold)
 	}
 
-	return ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeDef)
+	return ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeDef, threshold)
 }
 
 func (s *CarryWeightNodeSelector) prepareCarryForDataNodes(nodes *sync.Map, total uint64) {

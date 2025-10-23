@@ -2367,7 +2367,7 @@ func (c *Cluster) chooseZone2Plus1(rsMgr *rsManager, zones []*Zone,
 	for _, zone := range zoneList {
 		paramCopy.replicaNum = num
 
-		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, paramCopy, 0)
+		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, paramCopy, 1)
 		if e != nil {
 			log.LogErrorf("action[chooseZone2Plus1] getAvailNodeHosts param[%v] error: [%v]", paramCopy.String(), e)
 			return nil, nil, e
@@ -2403,7 +2403,7 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, nodeType uint32, param *select
 			zone := zones[c.lastZoneIdxForNode]
 			c.lastZoneIdxForNode = (c.lastZoneIdxForNode + 1) % len(zones)
 			paramCopy.replicaNum = 1
-			selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, paramCopy, 0)
+			selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, paramCopy, 1)
 			if err != nil {
 				// no zone available
 				if j == len(zones)-1 {
@@ -2455,7 +2455,7 @@ func (c *Cluster) getHostFromNormalZoneForCreate(nodeType uint32, replicaNum int
 		replicaNum: replicaNum,
 		rackLevel:  rackLevel,
 	}
-	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, dataMediaType, param, 0)
+	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, dataMediaType, param, 1)
 }
 
 func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, zoneNumNeed int,
@@ -3143,7 +3143,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 			log.LogErrorf("[migrateDataPartition] check mediaType err: %v", err.Error())
 			goto errHandler
 		}
-	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(param, 0); err != nil {
+	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(param, 1); err != nil {
 		if _, ok := c.vols[dp.VolName]; !ok {
 			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
@@ -3158,10 +3158,10 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		param.excludeNodeSets = excludeNodeSets
 
-		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0); err != nil {
+		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1); err != nil {
 			// select data nodes from the other zone
 			zones = dp.getLiveZones(srcAddr)
-			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", dp.MediaType, param, 0); err != nil {
+			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", dp.MediaType, param, 1); err != nil {
 				goto errHandler
 			}
 		}
@@ -4740,7 +4740,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 		dataNode := node.(*DataNode)
 		dataNodes = append(dataNodes, proto.NodeView{
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
-			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
+			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(1), MediaType: dataNode.MediaType,
 			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0, Rack: dataNode.Rack,
 			NodeSetID: dataNode.NodeSetID,
 			ZoneName:  dataNode.ZoneName,
@@ -4756,7 +4756,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		metaNode := node.(*MetaNode)
 		metaNodes = append(metaNodes, proto.NodeView{
 			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
-			Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+			Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(1), MediaType: proto.MediaType_Unspecified,
 			ForbidWriteOpOfProtoVer0: metaNode.ReceivedForbidWriteOpOfProtoVer0,
 			IsRocksdbWritable:        metaNode.IsRocksdbWriteAble(),
 			Rack:                     metaNode.Rack,

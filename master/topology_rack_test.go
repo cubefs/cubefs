@@ -126,7 +126,7 @@ func TestRackSelectNodesWithRack(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select nodes with rack awareness")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -148,14 +148,14 @@ func TestRackSelectNodesWithRack(t *testing.T) {
 	// Test case 2: Weak rack awareness mode
 	param.rackLevel = proto.RackAwareWeak
 	param.replicaNum = 6
-	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select nodes with weak rack awareness")
 	require.Equal(t, 6, len(hosts), "Should select 6 hosts")
 
 	// Test case 3: Test with maximum possible replicas
 	param.rackLevel = proto.RackAwareStrong
 	param.replicaNum = 6
-	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select maximum replicas with strong rack awareness")
 	require.Equal(t, 6, len(hosts), "Should select 6 hosts from 6 different racks")
 }
@@ -173,7 +173,7 @@ func TestRackSelectNodesWithRackNoRacks(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.Error(t, err, "Should return error when no racks available")
 	require.Nil(t, hosts, "Should return nil hosts")
 }
@@ -189,14 +189,14 @@ func TestRackAwareDegradation(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	// Should fail in strong awareness mode since we don't have enough racks
 	require.Error(t, err, "Should fail with strong rack awareness when not enough racks")
 	require.Nil(t, hosts, "Should return nil hosts when failing")
 
 	// Test weak rack awareness mode, should succeed since same rack has multiple nodes
 	param.rackLevel = proto.RackAwareWeak
-	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should succeed with weak rack awareness")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -304,7 +304,7 @@ func TestRackBoundaryConditions(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should handle replicaNum=0 gracefully")
 	require.Equal(t, 0, len(hosts), "Should return empty hosts for replicaNum=0")
 
@@ -317,7 +317,7 @@ func TestRackBoundaryConditions(t *testing.T) {
 	})
 
 	param.replicaNum = 1
-	_, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	_, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.Error(t, err, "Should return error when no writable nodes available")
 
 	// Test case 3: Test with maximum replica number for strong rack awareness
@@ -330,14 +330,14 @@ func TestRackBoundaryConditions(t *testing.T) {
 
 	// In RackAwareStrong mode, can only select up to the number of racks (6)
 	param.replicaNum = 6 // Maximum possible with 6 racks in strong mode
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should handle maximum replica number for strong rack awareness")
 	require.Equal(t, 6, len(hosts), "Should return 6 hosts (one per rack)")
 
 	// Test case 4: Test with weak rack awareness to select more nodes
 	param.rackLevel = proto.RackAwareWeak
 	param.replicaNum = 12 // All available nodes
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should handle maximum replica number with weak rack awareness")
 	require.Equal(t, 12, len(hosts), "Should return all available hosts with weak rack awareness")
 }
@@ -365,7 +365,7 @@ func TestRackMetaNodeRackAwareness(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeMem, 0)
+	hosts, _, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select meta nodes with rack awareness")
 	require.Equal(t, 4, len(hosts), "Should select 4 meta node hosts")
 
@@ -395,7 +395,7 @@ func TestRackPerformance(t *testing.T) {
 
 	// Execute selection multiple times to test stability
 	for i := 0; i < 20; i++ {
-		hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+		hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 		require.NoError(t, err, "Should consistently succeed with large number of racks")
 		require.Equal(t, 5, len(hosts), "Should consistently select 5 hosts")
 
@@ -436,14 +436,14 @@ func TestRackErrorRecovery(t *testing.T) {
 	}
 
 	// Should still succeed since we have enough available nodes
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should succeed with mixed node availability")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
 	// Test weak awareness mode with more replicas
 	param.rackLevel = proto.RackAwareWeak
 	param.replicaNum = 6
-	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should succeed with weak awareness and mixed availability")
 	require.Equal(t, 6, len(hosts), "Should select 6 hosts")
 }
@@ -467,7 +467,7 @@ func TestRackConfigChange(t *testing.T) {
 			rackLevel:  config,
 		}
 
-		hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+		hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 		require.NoError(t, err, "Should work with config level %v", config)
 		require.Equal(t, 3, len(hosts), "Should select 3 hosts with config level %v", config)
 	}
@@ -484,7 +484,7 @@ func TestRackExclusion(t *testing.T) {
 		excludeRacks: []string{"rack1", "rack2", "rack3"},
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select nodes excluding specified racks")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -506,7 +506,7 @@ func TestRackExclusion(t *testing.T) {
 	// Test excluding too many racks
 	param.excludeRacks = []string{"rack1", "rack2", "rack3", "rack4", "rack5", "rack6"}
 	param.replicaNum = 3
-	_, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	_, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.Error(t, err, "Should fail when excluding too many racks")
 }
 
@@ -596,12 +596,12 @@ func TestRackMixedNodeTypes(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	dataHosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	dataHosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select data nodes with rack awareness")
 	require.Equal(t, 4, len(dataHosts), "Should select 4 data node hosts")
 
 	// Test meta node selection
-	metaHosts, _, err := ns.selectNodesWithRack(param, MetaNodeType, proto.StoreModeMem)
+	metaHosts, _, err := ns.selectNodesWithRack(param, MetaNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select meta nodes with rack awareness")
 	require.Equal(t, 4, len(metaHosts), "Should select 4 meta node hosts")
 
@@ -653,7 +653,7 @@ func TestRackWithHostExclusion(t *testing.T) {
 		excludeHosts: excludeHosts,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select nodes with host exclusion")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -689,7 +689,7 @@ func TestRackWithNodeSetExclusion(t *testing.T) {
 	}
 
 	// This should fail since we're excluding the only node set
-	_, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	_, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.Error(t, err, "Should fail when excluding the only available node set")
 }
 
@@ -711,7 +711,7 @@ func TestRackStressTest(t *testing.T) {
 			}()
 
 			for j := 0; j < 10; j++ {
-				hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+				hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 				require.NoError(t, err, "Should consistently succeed under stress")
 				require.Equal(t, 6, len(hosts), "Should consistently select 6 hosts under stress")
 
@@ -748,7 +748,7 @@ func TestRackMaxReplicas(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select maximum replicas")
 	require.Equal(t, 8, len(hosts), "Should select 8 hosts from 8 different racks")
 
@@ -782,7 +782,7 @@ func TestRackComplexExclusions(t *testing.T) {
 		},
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select nodes with complex exclusions")
 	require.Equal(t, 5, len(hosts), "Should select 5 hosts")
 
@@ -815,7 +815,7 @@ func TestRackExcludeHostsEdgeCases(t *testing.T) {
 		excludeHosts: []string{"192.168.1.1:17310", "192.168.1.2:17310"}, // All hosts from rack1
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should succeed when excluding all hosts from one rack")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts from remaining racks")
 
@@ -826,7 +826,7 @@ func TestRackExcludeHostsEdgeCases(t *testing.T) {
 		"192.168.1.21:17310", // 1 host from rack3
 	}
 
-	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should succeed with selective host exclusions")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -838,7 +838,7 @@ func TestRackExcludeHostsEdgeCases(t *testing.T) {
 	}
 	param.replicaNum = 3 // Need 3 replicas but only 1 rack available
 
-	_, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	_, _, err = ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.Error(t, err, "Should fail when excluding too many hosts")
 }
 
@@ -1026,7 +1026,7 @@ func TestRackNodeSetSelectorWithExcludeHosts(t *testing.T) {
 	require.NotNil(t, selectedNodeSet, "Selected node set should not be nil")
 
 	// Verify that the selected nodeset can handle the exclusions
-	hosts, _, err := selectedNodeSet.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := selectedNodeSet.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Should successfully select nodes from allocated node set")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -1047,20 +1047,20 @@ func TestRackComprehensiveExcludeHosts(t *testing.T) {
 	}
 
 	// Start with no exclusions
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should succeed with no exclusions")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
 	// Exclude some hosts gradually
 	param.excludeHosts = []string{hosts[0]} // Exclude first selected host
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should succeed after excluding one host")
 	require.Equal(t, 4, len(hosts), "Should still select 4 hosts")
 	require.NotContains(t, hosts, param.excludeHosts[0], "Excluded host should not be selected")
 
 	// Exclude more hosts
 	param.excludeHosts = append(param.excludeHosts, hosts[0], hosts[1]) // Exclude 3 hosts total
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should succeed after excluding more hosts")
 	require.Equal(t, 4, len(hosts), "Should still select 4 hosts")
 
@@ -1070,7 +1070,7 @@ func TestRackComprehensiveExcludeHosts(t *testing.T) {
 		"192.168.1.11:17310", "192.168.1.12:17310", "192.168.1.13:17310", "192.168.1.14:17310", // All hosts from rack2
 	}
 
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should succeed after excluding hosts from 2 racks")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts from remaining racks")
 
@@ -1107,19 +1107,19 @@ func TestRackExcludeHostsWithDifferentLevels(t *testing.T) {
 		excludeHosts: excludeHosts,
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should succeed with RackAwareNone")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
 	// Test with RackAwareWeak
 	param.rackLevel = proto.RackAwareWeak
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should succeed with RackAwareWeak")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
 	// Test with RackAwareStrong
 	param.rackLevel = proto.RackAwareStrong
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Should succeed with RackAwareStrong")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -1142,7 +1142,7 @@ func TestRackWeakAwarenessFallbackMechanism(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Weak rack awareness should succeed with fallback mechanism")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -1183,7 +1183,7 @@ func TestRackWeakAwarenessExactRackCount(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Weak rack awareness should succeed with exact rack count")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -1221,7 +1221,7 @@ func TestRackWeakAwarenessMoreReplicasThanRacks(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Weak rack awareness should succeed with more replicas than racks")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -1266,7 +1266,7 @@ func TestRackWeakAwarenessWithHostExclusions(t *testing.T) {
 		},
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Weak rack awareness should succeed with host exclusions")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -1308,7 +1308,7 @@ func TestRackWeakAwarenessWithRackExclusions(t *testing.T) {
 		excludeRacks: []string{"rack1", "rack2"}, // Exclude 2 racks
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Weak rack awareness should succeed with rack exclusions")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -1357,7 +1357,7 @@ func TestRackWeakVsStrongAwarenessComparison(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(strongParam, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(strongParam, DataNodeType, proto.StoreModeMem, 1)
 	require.Error(t, err, "Strong rack awareness should fail when not enough racks")
 	require.Nil(t, hosts, "Strong rack awareness should return nil hosts when failing")
 
@@ -1367,7 +1367,7 @@ func TestRackWeakVsStrongAwarenessComparison(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err = ns.selectNodesWithRack(weakParam, DataNodeType, proto.StoreModeMem)
+	hosts, _, err = ns.selectNodesWithRack(weakParam, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Weak rack awareness should succeed with fallback mechanism")
 	require.Equal(t, replicaNum, len(hosts), "Should select %d hosts with weak rack awareness", replicaNum)
 
@@ -1406,7 +1406,7 @@ func TestRackWeakAwarenessStepByStepFallback(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Weak rack awareness should succeed with step-by-step fallback")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -1447,7 +1447,7 @@ func TestRackWeakAwarenessInsufficientNodes(t *testing.T) {
 		},
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.Error(t, err, "Should fail when insufficient nodes available after exclusions")
 	require.Nil(t, hosts, "Should return nil hosts when failing")
 }
@@ -1474,7 +1474,7 @@ func TestRackWeakAwarenessMixedAvailability(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem)
+	hosts, _, err := ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeMem, 1)
 	require.NoError(t, err, "Weak rack awareness should succeed with mixed node availability")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -1505,7 +1505,7 @@ func TestZoneWeakRackAwarenessWithRackExclusions(t *testing.T) {
 		excludeRacks: []string{"rack1", "rack2"}, // Exclude 2 racks
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Zone level weak rack awareness should succeed with rack exclusions")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -1571,7 +1571,7 @@ func TestZoneWeakRackAwarenessInsufficientRacks(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Zone level weak rack awareness should succeed with insufficient racks")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -1635,7 +1635,7 @@ func TestZoneWeakRackAwarenessWithHostExclusions(t *testing.T) {
 		},
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 0)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
 	require.NoError(t, err, "Zone level weak rack awareness should succeed with host exclusions")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -1699,7 +1699,7 @@ func TestZoneWeakVsStrongRackAwarenessComparison(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, strongParam, 0)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, strongParam, 1)
 	require.Error(t, err, "Zone level strong rack awareness should fail when not enough racks")
 	require.Nil(t, hosts, "Zone level strong rack awareness should return nil hosts when failing")
 
@@ -1709,7 +1709,7 @@ func TestZoneWeakVsStrongRackAwarenessComparison(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, weakParam, 0)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, weakParam, 1)
 	require.NoError(t, err, "Zone level weak rack awareness should succeed with fallback mechanism")
 	require.Equal(t, replicaNum, len(hosts), "Should select %d hosts with weak rack awareness", replicaNum)
 
@@ -1817,7 +1817,7 @@ func TestRackGetAvailMetaNodeHostsRocksDB(t *testing.T) {
 			rackLevel:  proto.RackAwareNone,
 		}
 
-		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 0)
+		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 1)
 		require.NoError(t, err, "Should successfully select meta nodes for RocksDB mode")
 		require.Equal(t, 3, len(hosts), "Should select 3 meta node hosts")
 		require.Equal(t, 3, len(peers), "Should return 3 peers")
@@ -1828,7 +1828,7 @@ func TestRackGetAvailMetaNodeHostsRocksDB(t *testing.T) {
 				if key.(string) == host {
 					mn := value.(*MetaNode)
 					require.True(t, mn.IsRocksdbWriteAble(), "Selected node should be RocksDB writable")
-					require.True(t, mn.PartitionCntLimited(), "Selected node should have partition count limit")
+					require.True(t, mn.PartitionCntLimited(1), "Selected node should have partition count limit")
 					return false
 				}
 				return true
@@ -1844,7 +1844,7 @@ func TestRackGetAvailMetaNodeHostsRocksDB(t *testing.T) {
 			rackLevel:  proto.RackAwareStrong,
 		}
 
-		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 0)
+		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 1)
 		require.NoError(t, err, "Should successfully select meta nodes with strong rack awareness")
 		require.Equal(t, 2, len(hosts), "Should select 2 meta node hosts")
 		require.Equal(t, 2, len(peers), "Should return 2 peers")
@@ -1895,7 +1895,7 @@ func TestRackGetAvailMetaNodeHostsRocksDBThreshold(t *testing.T) {
 			rackLevel:  proto.RackAwareNone,
 		}
 
-		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 0)
+		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 1)
 		require.NoError(t, err, "Should successfully select meta nodes within RocksDB threshold")
 		require.Equal(t, 2, len(hosts), "Should select 2 meta node hosts")
 		require.Equal(t, 2, len(peers), "Should return 2 peers")
@@ -1943,7 +1943,7 @@ func TestRackGetAvailMetaNodeHostsInsufficientRocksDBNodes(t *testing.T) {
 			rackLevel:  proto.RackAwareNone,
 		}
 
-		_, _, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 0)
+		_, _, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 1)
 		require.Error(t, err, "Should return error when insufficient RocksDB nodes available")
 		require.Contains(t, err.Error(), "no enough writable hosts", "Error should indicate insufficient writable hosts")
 

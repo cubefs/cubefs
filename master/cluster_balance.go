@@ -390,14 +390,14 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 					return true
 				}
 
-				if canAllocPartition(metaNode, MetaNodeType) {
+				if canAllocPartition(metaNode, MetaNodeType, 1) {
 					if metaNode.Ratio <= gConfig.metaNodeMemLowPer && nodeMemRatio <= gConfig.metaNodeMemLowPer {
 						mnView := c.MetaNodeRecord(metaNode)
 						nsView.MetaNodes[metaNode.ID] = mnView
 					}
 				}
 
-				if canAllocPartition(metaNode, RocksdbType) {
+				if canAllocPartition(metaNode, RocksdbType, 1) {
 					if IsRocksdbDiskUsageLow(metaNode) {
 						mnView := c.MetaNodeRecord(metaNode)
 						rocksdbNsView.MetaNodes[metaNode.ID] = mnView
@@ -1399,7 +1399,7 @@ func (c *Cluster) VerifyMetaNodeExceedMemMid(addr string, storeMode proto.StoreM
 	if storeMode == proto.StoreModeRocksDb {
 		nodeType = RocksdbType
 	}
-	if !canAllocPartition(metaNode, nodeType) {
+	if !canAllocPartition(metaNode, nodeType, 1) {
 		return true, nil
 	}
 

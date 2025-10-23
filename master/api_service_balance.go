@@ -372,7 +372,7 @@ func (m *Server) migrateMetaPartitionHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if !targetNode.IsWriteAble() || !targetNode.PartitionCntLimited() {
+	if !targetNode.IsWriteAble(1) || !targetNode.PartitionCntLimited(1) {
 		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

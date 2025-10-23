@@ -437,7 +437,7 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 
 			domainGrpManager.nodeSetGrpMap[i].nodeSets[j].dataNodes.Range(func(key, value interface{}) bool {
 				node := value.(*DataNode)
-				if node.IsWriteAble() {
+				if node.IsWriteAble(1) {
 					used = used + node.Used
 				} else {
 					used = used + node.Total
@@ -454,7 +454,7 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 			}
 			domainGrpManager.nodeSetGrpMap[i].nodeSets[j].metaNodes.Range(func(key, value interface{}) bool {
 				node := value.(*MetaNode)
-				if node.IsWriteAble() {
+				if node.IsWriteAble(1) {
 					metaWorked = true
 					log.LogInfof("action[checkGrpState] nodeset[%v] zonename[%v] used [%v] total [%v] threshold [%v] got available metanode",
 						node.ID, node.ZoneName, node.Used, node.Total, node.Threshold)
@@ -625,7 +625,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 						excludeRacks:    nil,
 					}
 
-					if host, peer, err = ns.getAvailDataNodeHosts(param, 0); err != nil {
+					if host, peer, err = ns.getAvailDataNodeHosts(param, 1); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						// nsg.status = dataNodesUnAvailable
 						continue
@@ -642,7 +642,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 						rackLevel:       proto.RackAwareNone,
 						excludeRacks:    nil,
 					}
-					if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode, 0); err != nil {
+					if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode, 1); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific]  ns[%v] zone[%v] type(%d) err[%v]", ns.ID, ns.zoneName, createType, err)
 						// nsg.status = metaNodesUnAvailable
 						continue
@@ -749,7 +749,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					rackLevel:       proto.RackAwareNone,
 					excludeRacks:    nil,
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(param, 0); err != nil {
+				if host, peer, err = ns.getAvailDataNodeHosts(param, 1); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = dataNodesUnAvailable
 					continue
@@ -770,7 +770,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					rackLevel:       proto.RackAwareNone,
 					excludeRacks:    nil,
 				}
-				if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode, 0); err != nil {
+				if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode, 1); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] ModeRocksDb err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = metaNodesUnAvailable
 					continue
@@ -1243,13 +1243,13 @@ func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 func (ns *nodeSet) checkNodeWriteable(node interface{}, nodeType NodeType, param *selectParam) bool {
 	if nodeType == RocksdbType {
 		if metaNode, ok := node.(*MetaNode); ok {
-			return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited() && !contains(param.excludeHosts, metaNode.Addr)
+			return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited(1) && !contains(param.excludeHosts, metaNode.Addr)
 		}
 		return false
 	}
 
 	if n, ok := node.(Node); ok {
-		return n.IsWriteAble() && n.PartitionCntLimited() && !contains(param.excludeHosts, n.GetAddr())
+		return n.IsWriteAble(1) && n.PartitionCntLimited(1) && !contains(param.excludeHosts, n.GetAddr())
 	}
 	return false
 }
@@ -1319,7 +1319,7 @@ func (ns *nodeSet) checkNormalWriteable(nodes *sync.Map, param *selectParam, nod
 func (ns *nodeSet) calcNodesForAlloc(nodes *sync.Map) (cnt int) {
 	nodes.Range(func(key, value interface{}) bool {
 		node := value.(Node)
-		if node.IsWriteAble() && node.PartitionCntLimited() {
+		if node.IsWriteAble(1) && node.PartitionCntLimited(1) {
 			cnt++
 		}
 		return true
@@ -2132,12 +2132,12 @@ func (zone *Zone) canWriteForNode(nodeType NodeType, demandWriteNodesCntPerZone 
 	var leastAlive uint8
 	nodes.Range(func(addr, value interface{}) bool {
 		node := value.(Node)
-		if !node.PartitionCntLimited() {
+		if !node.PartitionCntLimited(1) {
 			log.LogDebugf("[canWriteForNode] nodeId(%v) addr(%v) zone(%v) nodeType(%v), can not write for partition count limited",
 				node.GetID(), node.GetAddr(), zone.name, NodeTypeString(nodeType))
 			return true
 		}
-		if node.IsActiveNode() && node.IsWriteAble() {
+		if node.IsActiveNode() && node.IsWriteAble(1) {
 			leastAlive++
 		}
 		if leastAlive >= demandWriteNodesCntPerZone {
@@ -2180,7 +2180,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive && metaNode.IsWriteAble() {
+		if metaNode.IsActive && metaNode.IsWriteAble(1) {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -2974,7 +2974,7 @@ func (zone *Zone) getMetaMemoryUsed() (metaNodeUsed uint64, metaNodeTotal uint64
 	defer zone.RUnlock()
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive && metaNode.IsWriteAble() {
+		if metaNode.IsActive && metaNode.IsWriteAble(1) {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total

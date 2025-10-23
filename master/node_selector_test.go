@@ -34,16 +34,16 @@ func writeDataNode(sb *strings.Builder, node *DataNode) {
 	sb.WriteString(fmt.Sprintf("Data Node %v\n", node.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Space:%v MB\n", node.Total/util.MB))
 	sb.WriteString(fmt.Sprintf("\tAvaliable Space:%v MB\n", node.AvailableSpace/util.MB))
-	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc dp?%v PartitionCnt: %v dpCntLimit: %v", node.IsWriteAble(),
-		node.IsWriteAble() && node.PartitionCntLimited(), node.DataPartitionCount, node.GetPartitionLimitCnt()))
+	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc dp?%v PartitionCnt: %v dpCntLimit: %v", node.IsWriteAble(1),
+		node.IsWriteAble(1) && node.PartitionCntLimited(1), node.DataPartitionCount, node.GetPartitionLimitCnt()))
 }
 
 func writeMetaNode(sb *strings.Builder, node *MetaNode) {
 	sb.WriteString(fmt.Sprintf("Meta Node %v\n", node.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Space:%v MB\n", node.Total/util.MB))
 	sb.WriteString(fmt.Sprintf("\tAvaliable Space:%v MB\n", (node.Total-node.Used)/util.MB))
-	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc mp?%v PartitionCnt: %v mpCntLimit: %v", node.IsWriteAble(),
-		node.IsWriteAble() && node.PartitionCntLimited(), node.MetaPartitionCount, node.GetPartitionLimitCnt()))
+	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc mp?%v PartitionCnt: %v mpCntLimit: %v", node.IsWriteAble(1),
+		node.IsWriteAble(1) && node.PartitionCntLimited(1), node.MetaPartitionCount, node.GetPartitionLimitCnt()))
 	sb.WriteString(fmt.Sprintf("\tRocksdb Total Space: %v MB\n", node.GetRocksdbTotal()/util.MB))
 	sb.WriteString(fmt.Sprintf("\tRocksdb Avaliable Space:%v MB\n", (node.GetRocksdbTotal()-node.GetRocksdbUsed())/util.MB))
 }
@@ -167,7 +167,7 @@ func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Dat
 	nset := nsc[0]
 	mocktest.Log(t, "List datanodes of nodeset", nset.ID)
 	printNodesetAndDataNodes(t, nset)
-	_, peer, err := selector.Select(nset, nil, 1, 0)
+	_, peer, err := selector.Select(nset, nil, 1, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
 		return nil
@@ -209,7 +209,7 @@ func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Met
 	nset := nsc[0]
 	mocktest.Log(t, "List metanodes of nodeset", nset.ID)
 	printNodesetAndMetaNodes(t, nset)
-	_, peer, err := selector.Select(nset, nil, 1, 0)
+	_, peer, err := selector.Select(nset, nil, 1, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
 		return nil
@@ -546,7 +546,7 @@ func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 func nodeSelectorBench(selector NodeSelector, nset *nodeSet, onSelect func(addr string)) (map[uint64]int, error) {
 	times := make(map[uint64]int)
 	for i := 0; i < loopNodeSelectorTestCount; i++ {
-		_, peers, err := selector.Select(nset, nil, 1, 0)
+		_, peers, err := selector.Select(nset, nil, 1, 1)
 		if err != nil {
 			return nil, err
 		}
@@ -620,4 +620,178 @@ func TestBenchStrawNodeSelector(t *testing.T) {
 	metaNodeSelectorBench(t, selector)
 	selector = NewStrawNodeSelector(RocksdbType)
 	metaNodeSelectorBench(t, selector)
+}
+
+func TestNodeSelectorWithThreshold(t *testing.T) {
+	testThreshold := 0.8
+
+	t.Run("DataNodeThreshold", func(t *testing.T) {
+		selectZone := testZone2
+		zone, err := server.cluster.t.getZone(selectZone)
+		if err != nil {
+			t.Errorf("failed to get zone %v", err)
+			return
+		}
+		nsc := zone.getAllNodeSet()
+		if nsc.Len() == 0 {
+			t.Errorf("nodeset count could not be 0")
+			return
+		}
+		nset := nsc[0]
+
+		dataNodes := make([]*DataNode, 0)
+		nset.dataNodes.Range(func(key, value interface{}) bool {
+			if dn, ok := value.(*DataNode); ok {
+				dataNodes = append(dataNodes, dn)
+			}
+			return true
+		})
+
+		if len(dataNodes) < 2 {
+			t.Skip("Need at least 2 data nodes for threshold test")
+			return
+		}
+
+		originalCount1 := dataNodes[0].DataPartitionCount
+		originalLimit1 := dataNodes[0].GetPartitionLimitCnt()
+
+		dataNodes[0].DataPartitionCount = uint32(float64(originalLimit1) * testThreshold * 0.9) // 低于阈值
+		dataNodes[1].DataPartitionCount = uint32(float64(originalLimit1) * testThreshold * 1.1) // 超过阈值
+
+		mocktest.Log(t, fmt.Sprintf("DataNode 1: PartitionCount=%d, Limit=%d, Ratio=%.2f",
+			dataNodes[0].DataPartitionCount, originalLimit1,
+			float64(dataNodes[0].DataPartitionCount)/float64(originalLimit1)))
+		mocktest.Log(t, fmt.Sprintf("DataNode 2: PartitionCount=%d, Limit=%d, Ratio=%.2f",
+			dataNodes[1].DataPartitionCount, dataNodes[1].GetPartitionLimitCnt(),
+			float64(dataNodes[1].DataPartitionCount)/float64(dataNodes[1].GetPartitionLimitCnt())))
+
+		selectors := []NodeSelector{
+			NewCarryWeightNodeSelector(DataNodeType),
+			NewAvailableSpaceFirstNodeSelector(DataNodeType),
+			NewRoundRobinNodeSelector(DataNodeType),
+			NewStrawNodeSelector(DataNodeType),
+		}
+
+		for _, selector := range selectors {
+			t.Logf("Testing %v with threshold %.2f", selector.GetName(), testThreshold)
+
+			_, peers, err := selector.Select(nset, nil, 1, testThreshold)
+			if err != nil {
+				t.Errorf("%v failed to select nodes with threshold %v", selector.GetName(), err)
+				continue
+			}
+
+			if len(peers) == 0 {
+				t.Errorf("%v selected no nodes", selector.GetName())
+				continue
+			}
+
+			selectedNode := peers[0]
+			mocktest.Log(t, fmt.Sprintf("%v selected node %v", selector.GetName(), selectedNode.ID))
+
+			nodeVal, ok := nset.dataNodes.Load(selectedNode.Addr)
+			if !ok {
+				t.Errorf("%v selected invalid node", selector.GetName())
+				continue
+			}
+
+			dn := nodeVal.(*DataNode)
+			ratio := float64(dn.DataPartitionCount) / float64(dn.GetPartitionLimitCnt())
+
+			if ratio > testThreshold {
+				t.Errorf("%v selected node %d with ratio %.2f > threshold %.2f",
+					selector.GetName(), dn.ID, ratio, testThreshold)
+			} else {
+				t.Logf("%v correctly selected node %d with ratio %.2f <= threshold %.2f",
+					selector.GetName(), dn.ID, ratio, testThreshold)
+			}
+		}
+
+		dataNodes[0].DataPartitionCount = originalCount1
+	})
+
+	t.Run("MetaNodeThreshold", func(t *testing.T) {
+		selectZone := testZone2
+		zone, err := server.cluster.t.getZone(selectZone)
+		if err != nil {
+			t.Errorf("failed to get zone %v", err)
+			return
+		}
+		nsc := zone.getAllNodeSet()
+		if nsc.Len() == 0 {
+			t.Errorf("nodeset count could not be 0")
+			return
+		}
+		nset := nsc[0]
+
+		metaNodes := make([]*MetaNode, 0)
+		nset.metaNodes.Range(func(key, value interface{}) bool {
+			if mn, ok := value.(*MetaNode); ok {
+				metaNodes = append(metaNodes, mn)
+			}
+			return true
+		})
+
+		if len(metaNodes) < 2 {
+			t.Skip("Need at least 2 meta nodes for threshold test")
+			return
+		}
+
+		originalCount1 := metaNodes[0].MetaPartitionCount
+		originalLimit1 := metaNodes[0].GetPartitionLimitCnt()
+
+		metaNodes[0].MetaPartitionCount = int(float64(originalLimit1) * testThreshold * 0.9)                      // 低于阈值
+		metaNodes[1].MetaPartitionCount = int(float64(metaNodes[1].GetPartitionLimitCnt()) * testThreshold * 1.1) // 超过阈值
+
+		mocktest.Log(t, fmt.Sprintf("MetaNode 1: PartitionCount=%d, Limit=%d, Ratio=%.2f",
+			metaNodes[0].MetaPartitionCount, originalLimit1,
+			float64(metaNodes[0].MetaPartitionCount)/float64(originalLimit1)))
+		mocktest.Log(t, fmt.Sprintf("MetaNode 2: PartitionCount=%d, Limit=%d, Ratio=%.2f",
+			metaNodes[1].MetaPartitionCount, metaNodes[1].GetPartitionLimitCnt(),
+			float64(metaNodes[1].MetaPartitionCount)/float64(metaNodes[1].GetPartitionLimitCnt())))
+
+		selectors := []NodeSelector{
+			NewCarryWeightNodeSelector(MetaNodeType),
+			NewAvailableSpaceFirstNodeSelector(MetaNodeType),
+			NewRoundRobinNodeSelector(MetaNodeType),
+			NewStrawNodeSelector(MetaNodeType),
+		}
+
+		for _, selector := range selectors {
+			t.Logf("Testing %v with threshold %.2f", selector.GetName(), testThreshold)
+
+			_, peers, err := selector.Select(nset, nil, 1, testThreshold)
+			if err != nil {
+				t.Errorf("%v failed to select meta nodes with threshold %v", selector.GetName(), err)
+				continue
+			}
+
+			if len(peers) == 0 {
+				t.Errorf("%v selected no meta nodes", selector.GetName())
+				continue
+			}
+
+			selectedNode := peers[0]
+			mocktest.Log(t, fmt.Sprintf("%v selected meta node %v", selector.GetName(), selectedNode.ID))
+
+			nodeVal, ok := nset.metaNodes.Load(selectedNode.Addr)
+			if !ok {
+				t.Errorf("%v selected invalid meta node", selector.GetName())
+				continue
+			}
+
+			mn := nodeVal.(*MetaNode)
+			ratio := float64(mn.MetaPartitionCount) / float64(mn.GetPartitionLimitCnt())
+
+			if ratio > testThreshold {
+				t.Errorf("%v selected meta node %d with ratio %.2f > threshold %.2f",
+					selector.GetName(), mn.ID, ratio, testThreshold)
+			} else {
+				t.Logf("%v correctly selected meta node %d with ratio %.2f <= threshold %.2f",
+					selector.GetName(), mn.ID, ratio, testThreshold)
+			}
+		}
+
+		metaNodes[0].MetaPartitionCount = originalCount1
+	})
 }
