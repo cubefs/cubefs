@@ -953,9 +953,15 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 			return nil, errors.New("must mount point")
 		}
 
-		if metaRoot != "" && !myos.IsMountPoint(metaRoot) {
-			span.Errorf("%s must mount point.", metaRoot)
-			return nil, errors.New("must mount point")
+		if metaRoot != "" {
+			checkPath := metaRoot
+			if conf.MetaPreDisk {
+				checkPath = filepath.Join(metaRoot, path)
+			}
+			if !myos.IsMountPoint(checkPath) {
+				span.Errorf("%s must mount point.", checkPath)
+				return nil, errors.New("must mount point")
+			}
 		}
 	}
 

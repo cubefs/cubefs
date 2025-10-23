@@ -20,6 +20,7 @@ const (
 
 type MetaConfig struct {
 	MetaRootPrefix     string `json:"meta_root_prefix"`
+	MetaPreDisk        bool   `json:"meta_pre_disk"`
 	SupportInline      bool   `json:"support_inline"`
 	TinyFileThresholdB int    `json:"tinyfile_threshold_B"`
 	Sync               bool   `json:"sync"`
