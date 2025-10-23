@@ -547,8 +547,8 @@ type dataNodeValue struct {
 	AllDisks                           []string
 	MediaType                          uint32
 	MaxDpCntLimit                      uint64
-	SimulateReservedSpace              uint64
-	SimulateReservedDpCount            uint32
+	PreResearvedSpace                  uint64
+	PreResearvedDpCount                uint32
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -577,8 +577,8 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		BadDisks:                           dataNode.BadDisks,
 		MediaType:                          dataNode.MediaType,
 		MaxDpCntLimit:                      dataNode.DpCntLimit,
-		SimulateReservedSpace:              dataNode.SimulateReservedSpace,
-		SimulateReservedDpCount:            dataNode.SimulateReservedDpCount,
+		PreResearvedSpace:                  dataNode.PreResearvedSpace,
+		PreResearvedDpCount:                dataNode.PreResearvedDpCount,
 	}
 }
 
@@ -1705,8 +1705,8 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.BadDisks = dnv.BadDisks
 		dataNode.AllDisks = dnv.AllDisks
 		dataNode.DpCntLimit = dnv.MaxDpCntLimit
-		dataNode.SimulateReservedSpace = dnv.SimulateReservedSpace
-		dataNode.SimulateReservedDpCount = dnv.SimulateReservedDpCount
+		dataNode.PreResearvedSpace = dnv.PreResearvedSpace
+		dataNode.PreResearvedDpCount = dnv.PreResearvedDpCount
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {

@@ -536,7 +536,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckDataPartitionDecommissionDiskRetryMap()
 	c.scheduleToDistributionOptimization()
 	c.scheduleToUpdateDistributionOptimizationStatus()
-	c.scheduleToRecalculateSimulateReservedSpace()
+	c.scheduleToRecalculatePreResearvedSpace()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -3394,8 +3394,8 @@ func (c *Cluster) addDataReservedResource(addrs []string, dp *DataPartition) err
 
 		if !dn.isWriteAbleWithSizeNoLock(10 * util.GB) {
 			dn.Unlock()
-			return fmt.Errorf("new datanode %s is not writable AvailableSpace(%v) isActive(%v) RdOnly(%v) Total(%v) Used(%v) SimulateReservedSpace(%v)",
-				addr, dn.AvailableSpace, dn.isActive, dn.RdOnly, dn.Total, dn.Used, dn.SimulateReservedSpace)
+			return fmt.Errorf("new datanode %s is not writable AvailableSpace(%v) isActive(%v) RdOnly(%v) Total(%v) Used(%v) PreResearvedSpace(%v)",
+				addr, dn.AvailableSpace, dn.isActive, dn.RdOnly, dn.Total, dn.Used, dn.PreResearvedSpace)
 		}
 
 		updatedDataNodes = append(updatedDataNodes, dn)
@@ -3403,8 +3403,8 @@ func (c *Cluster) addDataReservedResource(addrs []string, dp *DataPartition) err
 	}
 
 	for _, dn := range updatedDataNodes {
-		atomic.AddUint64(&dn.SimulateReservedSpace, leaderSize)
-		atomic.AddUint32(&dn.SimulateReservedDpCount, 1)
+		atomic.AddUint64(&dn.PreResearvedSpace, leaderSize)
+		atomic.AddUint32(&dn.PreResearvedDpCount, 1)
 	}
 
 	return nil
@@ -3425,45 +3425,45 @@ func (c *Cluster) releaseDataReservedResource(addrs []string, dp *DataPartition)
 		}
 
 		if leaderSize > 0 {
-			oldValue := atomic.LoadUint64(&dn.SimulateReservedSpace)
+			oldValue := atomic.LoadUint64(&dn.PreResearvedSpace)
 			if oldValue >= leaderSize {
-				atomic.AddUint64(&dn.SimulateReservedSpace, ^(leaderSize - 1))
+				atomic.AddUint64(&dn.PreResearvedSpace, ^(leaderSize - 1))
 			} else {
-				atomic.StoreUint64(&dn.SimulateReservedSpace, 0)
+				atomic.StoreUint64(&dn.PreResearvedSpace, 0)
 			}
 		}
 
-		oldCount := atomic.LoadUint32(&dn.SimulateReservedDpCount)
+		oldCount := atomic.LoadUint32(&dn.PreResearvedDpCount)
 		if oldCount > 0 {
-			atomic.AddUint32(&dn.SimulateReservedDpCount, ^uint32(0))
+			atomic.AddUint32(&dn.PreResearvedDpCount, ^uint32(0))
 		}
 
 		log.LogDebugf("action[releaseDataReservedResource] addr %s, released size %d, remaining reserved %d, dp count %d",
-			dn.Addr, leaderSize, atomic.LoadUint64(&dn.SimulateReservedSpace), atomic.LoadUint32(&dn.SimulateReservedDpCount))
+			dn.Addr, leaderSize, atomic.LoadUint64(&dn.PreResearvedSpace), atomic.LoadUint32(&dn.PreResearvedDpCount))
 	}
 }
 
-// scheduleToRecalculateSimulateReservedSpace schedules periodic recalculation of SimulateReservedSpace
-func (c *Cluster) scheduleToRecalculateSimulateReservedSpace() {
+// scheduleToRecalculatePreResearvedSpace schedules periodic recalculation of PreResearvedSpace
+func (c *Cluster) scheduleToRecalculatePreResearvedSpace() {
 	c.runTask(&cTask{
 		tickTime: 10 * time.Minute,
-		name:     "scheduleToRecalculateSimulateReservedSpace",
+		name:     "scheduleToRecalculatePreResearvedSpace",
 		function: func() (fin bool) {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.recalculateAllNodesSimulateReservedSpace()
+				c.recalculateAllNodesPreResearvedSpace()
 			}
 			return
 		},
 	})
 }
 
-// recalculateAllNodesSimulateReservedSpace recalculates SimulateReservedSpace for all data nodes
-func (c *Cluster) recalculateAllNodesSimulateReservedSpace() {
+// recalculateAllNodesPreResearvedSpace recalculates PreResearvedSpace for all data nodes
+func (c *Cluster) recalculateAllNodesPreResearvedSpace() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogWarnf("recalculateAllNodesSimulateReservedSpace occurred panic,err[%v]", r)
+			log.LogWarnf("recalculateAllNodesPreResearvedSpace occurred panic,err[%v]", r)
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"recalculateAllNodesSimulateReservedSpace occurred panic")
+				"recalculateAllNodesPreResearvedSpace occurred panic")
 		}
 	}()
 
@@ -3511,12 +3511,12 @@ func (c *Cluster) recalculateAllNodesSimulateReservedSpace() {
 		newReservedSize := nodeReservedSize[nodeAddr]
 		newReservedCount := nodeReservedCount[nodeAddr]
 
-		// Atomically update SimulateReservedSpace
-		atomic.StoreUint64(&dataNode.SimulateReservedSpace, newReservedSize)
-		atomic.StoreUint32(&dataNode.SimulateReservedDpCount, newReservedCount)
+		// Atomically update PreResearvedSpace
+		atomic.StoreUint64(&dataNode.PreResearvedSpace, newReservedSize)
+		atomic.StoreUint32(&dataNode.PreResearvedDpCount, newReservedCount)
 
-		log.LogInfof("action[recalculateAllNodesSimulateReservedSpace] node[%s] "+
-			"SimulateReservedSpace: %d, SimulateReservedDpCount: %d",
+		log.LogInfof("action[recalculateAllNodesPreResearvedSpace] node[%s] "+
+			"PreResearvedSpace: %d, PreResearvedDpCount: %d",
 			dataNode.Addr, newReservedSize, newReservedCount)
 
 		return true

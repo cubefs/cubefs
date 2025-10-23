@@ -68,7 +68,7 @@ type DataNodeInfo struct {
 	Total                                 uint64 `json:"TotalWeight"`
 	Used                                  uint64 `json:"UsedWeight"`
 	AvailableSpace                        uint64
-	SimulateReservedSpace                 uint64
+	PreResearvedSpace                     uint64
 	ID                                    uint64
 	ZoneName                              string `json:"Zone"`
 	Rack                                  string `json:"Rack"`
@@ -84,7 +84,7 @@ type DataNodeInfo struct {
 	SelectedTimes                         uint64  // number times that this datanode has been selected as the location for a data partition.
 	DataPartitionReports                  []*DataPartitionReport
 	DataPartitionCount                    uint32
-	SimulateReservedDpCount               uint32
+	PreResearvedDpCount                   uint32
 	NodeSetID                             uint64
 	PersistenceDataPartitions             []uint64
 	PersistenceDataPartitionsWithDiskPath []DataPartitionDiskInfo
