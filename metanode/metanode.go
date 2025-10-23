@@ -109,6 +109,7 @@ type MetaNode struct {
 	diskReservedSpace  uint64
 	rocksdbEnableStats bool
 	rocksdbKeyNumMax   uint64
+	rocksdbs           []*RocksdbOperator
 }
 
 // Start starts up the meta node with the specified configuration.
@@ -219,6 +220,7 @@ func doShutdown(s common.Server) {
 	if !ok {
 		return
 	}
+	m.stopRocksdbManager()
 	m.stopDiskStat()
 	m.stopUpdateNodeInfo()
 	// shutdown node and release the resource
@@ -843,12 +845,24 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 	} else {
 		m.rocksdbManager = NewPerPartitionRocksdbManager(config)
 	}
-	for _, dbPath := range m.rocksDirs {
+	m.rocksdbs = make([]*RocksdbOperator, len(m.rocksDirs))
+	for i, dbPath := range m.rocksDirs {
 		err = m.rocksdbManager.Register(dbPath)
 		if err != nil {
-			log.LogErrorf("[initRocksdbProvider] failed to init rocksdb provider")
+			log.LogErrorf("[newRocksdbManager] failed to register rocksdb(%v), err(%v)", dbPath, err)
+			return
+		}
+		m.rocksdbs[i], err = m.rocksdbManager.OpenRocksdb(dbPath, 0)
+		if err != nil {
+			log.LogErrorf("[newRocksdbManager] failed to open rocksdb(%v), err(%v)", dbPath, err)
 			return
 		}
 	}
 	return
+}
+
+func (m *MetaNode) stopRocksdbManager() {
+	for _, db := range m.rocksdbs {
+		m.rocksdbManager.CloseRocksdb(db)
+	}
 }

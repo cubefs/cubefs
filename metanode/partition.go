@@ -1522,11 +1522,11 @@ func (mp *metaPartition) Reset() (err error) {
 			log.LogErrorf("[Reset] add task to cleaner failed, err: %v", err)
 			return err
 		}
+		mp.rocksdbManager.CloseRocksdb(mp.db)
+		mp.db = nil
 	}
 
 	mp.txProcessor.Reset()
-	mp.rocksdbManager.CloseRocksdb(mp.db)
-	mp.db = nil
 	log.LogWarnf("[Reset] clear and reset mp(%v) storeMode(%d)", mp.config.PartitionId, mp.config.StoreMode)
 
 	// remove files
