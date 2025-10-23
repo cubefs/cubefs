@@ -32,6 +32,8 @@ import (
 const (
 	DefaultDpRepairBlockSize = 128 * util.KB
 	ExtentLength             = 40
+	ExtentDecoceLength       = 40
+	ExtentDecodeLengthV3     = 49
 )
 
 var (

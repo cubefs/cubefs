@@ -67,29 +67,37 @@ func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, split
 
 	buf := GetReadBuf(data)
 	defer PutReadBuf(buf)
+	count := 0
+	if v3 {
+		count = buf.Len() / proto.ExtentDecodeLengthV3
+	} else {
+		count = buf.Len() / proto.ExtentDecoceLength
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	eks := make([]proto.ExtentKey, count)
 
-	for {
-		var ek proto.ExtentKey
-		if buf.Len() == 0 {
-			break
-		}
-		if err = ek.UnmarshalBinary(buf, v3); err != nil {
+	for i := 0; i < count; i++ {
+		if err = eks[i].UnmarshalBinary(buf, v3); err != nil {
 			return
 		}
-		// Don't use se.Append here, since we need to retain the raw ek order.
-		se.eks = append(se.eks, ek)
-		if ek.IsSplit() {
+
+		if eks[i].IsSplit() {
 			if splitMap == nil {
 				splitMap = new(sync.Map)
 			}
-			val, ok := splitMap.Load(ek.GenerateId())
+			id := eks[i].GenerateId()
+			val, ok := splitMap.Load(id)
 			if !ok {
-				splitMap.Store(ek.GenerateId(), uint32(1))
+				splitMap.Store(id, uint32(1))
 				continue
 			}
-			splitMap.Store(ek.GenerateId(), val.(uint32)+1)
+			splitMap.Store(id, val.(uint32)+1)
 		}
 	}
+	// Don't use se.Append here, since we need to retain the raw ek order.
+	se.eks = append(se.eks, eks...)
 	return
 }
 
