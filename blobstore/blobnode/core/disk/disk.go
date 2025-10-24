@@ -949,13 +949,26 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 
 	if conf.MustMountPoint {
 		if !myos.IsMountPoint(conf.Path) {
-			span.Errorf("%s must mount point.", conf.Path)
-			return nil, errors.New("must mount point")
+			span.Errorf("%s must be a mount point.", conf.Path)
+			return nil, errors.New("must be a mount point")
+		}
+	}
+
+	// If metaRoot is not configured, the meta directory will be
+	// created under conf.Path, no need to check.
+	if metaRoot != "" {
+		// First check whether the metadata space is mounted separately for each disk,
+		// and then check whether the metadata space is mounted together for all disks.
+		checkPath := ""
+		if conf.MustMountPointMeta {
+			checkPath = filepath.Join(metaRoot, path)
+		} else if conf.MustMountPoint {
+			checkPath = metaRoot
 		}
 
-		if metaRoot != "" && !myos.IsMountPoint(metaRoot) {
-			span.Errorf("%s must mount point.", metaRoot)
-			return nil, errors.New("must mount point")
+		if checkPath != "" && !myos.IsMountPoint(checkPath) {
+			span.Errorf("%s must be a mount point.", checkPath)
+			return nil, errors.New("must be a mount point")
 		}
 	}
 

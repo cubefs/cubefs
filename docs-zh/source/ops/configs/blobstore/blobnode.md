@@ -67,6 +67,7 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 		"metric_report_interval_S": "metric上报的定时任务周期",
 		"set_default_switch": "是否默认设置开关.建议该项填true,会设置need_compact_check,allow_force_compact,allow_clean_trash",
 		"must_mount_point": "数据存放目录是否强制是挂载点",
+		"must_mount_point_meta": "如果配置了 meta_root_prefix，开启 must_mount_point_meta 后会检查每个磁盘的元数据目录是否为挂载点，默认值 false",
 		"write_thread_cnt": "限制写线程个数, 默认值4",
 		"read_thread_cnt": "限制读线程个数, 默认值4",
 		"delete_thread_cnt": "限制删线程个数, 默认值1",
