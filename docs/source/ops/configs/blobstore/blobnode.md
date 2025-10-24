@@ -68,9 +68,10 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "metric_report_interval_S": "interval for metric reporting",
     "set_default_switch": "whether to set switch.suggest you set it to true,will set: need_compact_check,allow_force_compact,allow_clean_trash",
     "must_mount_point": "whether the data storage directory must be a mount point",
-    "write_thread_cnt": "limit the number of write threads，default 4",
-    "read_thread_cnt": "limit the number of read threads，default 4",
-    "delete_thread_cnt": "limit the number of delete threads，default 1",
+    "must_mount_point_meta": "if meta_root_prefix is ​​configured, turning on must_mount_point_meta will check if the metadata directory of each disk is a mount point, default false",
+    "write_thread_cnt": "limit the number of write threads, default 4",
+    "read_thread_cnt": "limit the number of read threads, default 4",
+    "delete_thread_cnt": "limit the number of delete threads, default 1",
     "data_qos": {
       "read_mbps": "per disk normal read IO bandwidth",
       "write_mbps": "per disk normal write IO bandwidth",
