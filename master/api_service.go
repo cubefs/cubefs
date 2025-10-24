@@ -1016,7 +1016,9 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		AutoDpMetaRepairParallelCnt:            m.cluster.GetAutoDpMetaRepairParallelCnt(),
 		EnableAutoDecommission:                 m.cluster.AutoDecommissionDiskIsEnabled(),
 		AutoDecommissionDiskInterval:           m.cluster.GetAutoDecommissionDiskInterval().String(),
-		EnableAutoDistributionOptimization:     m.cluster.getEnableAutoDistributionOptimization(),
+		EnableDistributionOptimization:         m.cluster.getEnableDistributionOptimization(),
+		DistributionOptimizationThreshold:      getDistributionOptimizationThreshold(),
+		DistributionOptimizationConDpCnt:       m.cluster.DistributionOptimizationConDpCnt.Load(),
 		DecommissionLimit:                      atomic.LoadUint64(&m.cluster.DecommissionLimit),
 		DecommissionFirstHostDiskParallelLimit: atomic.LoadUint64(&m.cluster.DecommissionFirstHostDiskParallelLimit),
 		DecommissionDiskLimit:                  m.cluster.GetDecommissionDiskLimit(),
@@ -3934,7 +3936,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	if val, ok := params[autoDistributionOptimizationKey]; ok {
 		if autoDistributionOptimization, ok := val.(bool); ok {
-			if err = m.cluster.setEnableAutoDistributionOptimization(autoDistributionOptimization); err != nil {
+			if err = m.cluster.setEnableDistributionOptimization(autoDistributionOptimization); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -3942,9 +3944,9 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// distribution optimization configs (new keys)
-	if val, ok := params[distributionOptimizationConcurrentDpCountKey]; ok {
+	if val, ok := params[distributionOptimizationConDpCntKey]; ok {
 		if v, ok := val.(int64); ok {
-			if err = m.cluster.setDistributionOptimizationConcurrentDpCount(v); err != nil {
+			if err = m.cluster.setDistributionOptimizationConDpCnt(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -8684,7 +8686,7 @@ func (m *Server) setDistributionOptimizationEnable(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if err = m.cluster.setEnableAutoDistributionOptimization(enable); err != nil {
+	if err = m.cluster.setEnableDistributionOptimization(enable); err != nil {
 		log.LogErrorf("action[setDistributionOptimizationEnable] setEnableDistributionOptimization failed %v", err)
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
 		return

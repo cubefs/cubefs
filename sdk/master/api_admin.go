@@ -606,7 +606,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	dpRepairTimeout string, dpTimeout string, mpTimeout string, dpBackupTimeout string,
 	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
 	handleTimeout string, readDataNodeTimeout string, rackAware string,
-	distributionOptimizationConcurrentDpCount, distributionOptimizationThreshold string,
+	distributionOptimizationConDpCnt, distributionOptimizationThreshold string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -674,8 +674,8 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 		request.addParam("rackAware", rackAware)
 	}
 	// Distribution optimization parameters
-	if distributionOptimizationConcurrentDpCount != "" {
-		request.addParam("distributionOptimizationConcurrentDpCount", distributionOptimizationConcurrentDpCount)
+	if distributionOptimizationConDpCnt != "" {
+		request.addParam("distributionOptimizationConDpCnt", distributionOptimizationConDpCnt)
 	}
 	if distributionOptimizationThreshold != "" {
 		request.addParam("distributionOptimizationThreshold", distributionOptimizationThreshold)

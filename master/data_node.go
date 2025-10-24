@@ -343,10 +343,7 @@ func (dataNode *DataNode) canAlloc() bool {
 func (dataNode *DataNode) IsWriteAble(threshold float64) (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
-	if threshold == 1 {
-		return dataNode.isWriteAbleWithSizeNoLock(10 * util.GB)
-	}
-	return dataNode.isWriteAbleWithThresholdNoLock(threshold)
+	return dataNode.isWriteAbleWithSizeNoLock(10*util.GB, threshold)
 }
 
 func (dataNode *DataNode) availableDiskCount() (cnt int) {
@@ -412,31 +409,18 @@ func (dataNode *DataNode) GetStorageInfo() string {
 		dataNode.ToBeOffline, dataNode.availableDiskCount(), dataNode.DataPartitionCount, !dataNode.canAlloc())
 }
 
-func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
+func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64, threshold float64) (ok bool) {
 	if dataNode.isActive && dataNode.AvailableSpace-dataNode.PreResearvedSpace > size && !dataNode.RdOnly &&
-		dataNode.Total > dataNode.Used && (dataNode.Total-dataNode.Used) > size {
+		dataNode.Total > dataNode.Used && (dataNode.Total-dataNode.Used-dataNode.PreResearvedSpace) > size &&
+		float64(dataNode.AvailableSpace-dataNode.PreResearvedSpace) > (1-threshold)*float64(dataNode.Total) &&
+		float64(dataNode.Used+dataNode.PreResearvedSpace) <= threshold*float64(dataNode.Total) {
 		ok = true
 	}
 	if !ok {
 		log.LogInfof("[isWriteAbleWithSizeNoLock] node %v, isActive %v, TotalDpCnt %v, RdOnly %v, Total %v, AvailableSpace %v, "+
-			"used %v, PreResearvedSpace %v, reserved size %v",
+			"used %v, PreResearvedSpace %v, reserved size %v, threshold %v",
 			dataNode.Addr, dataNode.isActive, dataNode.DataPartitionCount, dataNode.RdOnly, dataNode.Total, dataNode.AvailableSpace, dataNode.Used,
-			dataNode.PreResearvedSpace, size)
-	}
-
-	return
-}
-
-func (dataNode *DataNode) isWriteAbleWithThresholdNoLock(threshold float64) (ok bool) {
-	if dataNode.isActive && float64(dataNode.AvailableSpace-dataNode.PreResearvedSpace) > threshold*float64(dataNode.Total) && !dataNode.RdOnly &&
-		dataNode.Total > dataNode.Used && float64(dataNode.Total-dataNode.Used) > threshold*float64(dataNode.Total) {
-		ok = true
-	}
-	if !ok {
-		log.LogInfof("[isWriteAbleWithSizeNoLock] node %v, isActive %v, TotalDpCnt %v, RdOnly %v, Total %v, AvailableSpace %v, "+
-			"used %v, PreResearvedSpace %v, threshold %v",
-			dataNode.Addr, dataNode.isActive, dataNode.DataPartitionCount, dataNode.RdOnly, dataNode.Total, dataNode.AvailableSpace, dataNode.Used,
-			dataNode.PreResearvedSpace, threshold)
+			dataNode.PreResearvedSpace, size, threshold)
 	}
 
 	return

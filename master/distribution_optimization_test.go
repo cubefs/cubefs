@@ -454,9 +454,9 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 	}
 
 	// Set up atomic values
-	cluster.DistributionOptimizationConcurrentDpCount.Store(100)
-	cluster.DistributionOptimizationThreshold.Store(0.8)
-	cluster.EnableAutoDistributionOptimization.Store(true)
+	cluster.DistributionOptimizationConDpCnt.Store(100)
+	distributionOptimizationThreshold.Store(0.8)
+	cluster.EnableDistributionOptimization.Store(true)
 
 	// Add mock data nodes (all in zone1, except one in zone2 for cross-zone testing)
 	mockNodes := map[string]*DataNode{

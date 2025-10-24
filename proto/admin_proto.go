@@ -1577,6 +1577,11 @@ const (
 	DistributionOptimization
 )
 
+const (
+	SelectType_Normal uint32 = iota
+	SelectType_DistributionOptimization
+)
+
 type BackupDataPartitionInfo struct {
 	Addr        string
 	Disk        string

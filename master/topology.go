@@ -32,6 +32,7 @@ import (
 type selectParam struct {
 	excludeHosts    []string
 	replicaNum      int
+	selectType      uint32
 	rackLevel       proto.RackAwareLevel
 	excludeRacks    []string
 	excludeNodeSets []uint64
@@ -625,7 +626,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 						excludeRacks:    nil,
 					}
 
-					if host, peer, err = ns.getAvailDataNodeHosts(param, 1); err != nil {
+					if host, peer, err = ns.getAvailDataNodeHosts(param); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						// nsg.status = dataNodesUnAvailable
 						continue
@@ -642,7 +643,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 						rackLevel:       proto.RackAwareNone,
 						excludeRacks:    nil,
 					}
-					if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode, 1); err != nil {
+					if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific]  ns[%v] zone[%v] type(%d) err[%v]", ns.ID, ns.zoneName, createType, err)
 						// nsg.status = metaNodesUnAvailable
 						continue
@@ -749,7 +750,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					rackLevel:       proto.RackAwareNone,
 					excludeRacks:    nil,
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(param, 1); err != nil {
+				if host, peer, err = ns.getAvailDataNodeHosts(param); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = dataNodesUnAvailable
 					continue
@@ -770,7 +771,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					rackLevel:       proto.RackAwareNone,
 					excludeRacks:    nil,
 				}
-				if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode, 1); err != nil {
+				if host, peer, err = ns.getAvailMetaNodeHosts(param, storeMode); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp]  ns[%v] zone[%v] ModeRocksDb err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = metaNodesUnAvailable
 					continue
@@ -2210,7 +2211,7 @@ func (zone *Zone) getSpaceLeft(dataType uint32) (spaceLeft uint64) {
 	}
 }
 
-func (zone *Zone) getAvailNodeHosts(nodeType uint32, param *selectParam, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
+func (zone *Zone) getAvailNodeHosts(nodeType uint32, param *selectParam) (newHosts []string, peers []proto.Peer, err error) {
 	if param.replicaNum == 0 {
 		return
 	}
@@ -2222,7 +2223,7 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, param *selectParam, thresho
 		if err != nil {
 			return nil, nil, errors.Trace(err, "zone[%v] alloc node set, param[%v], err %s", zone.name, param.String(), err.Error())
 		}
-		return ns.getAvailDataNodeHosts(param, threshold)
+		return ns.getAvailDataNodeHosts(param)
 	}
 
 	storeMode := proto.StoreModeMem
@@ -2235,7 +2236,7 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, param *selectParam, thresho
 		return nil, nil, errors.NewErrorf("zone[%v], param[%v], err[%v]", zone.name, param.String(), err.Error())
 	}
 
-	return ns.getAvailMetaNodeHosts(param, storeMode, threshold)
+	return ns.getAvailMetaNodeHosts(param, storeMode)
 }
 
 func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector string, metaNodesetSelector string) error {

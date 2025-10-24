@@ -35,7 +35,7 @@ func (c *Cluster) scheduleToDistributionOptimization() {
 			return
 		}
 		// Check if distribution optimization is enabled before execution
-		if !c.getEnableAutoDistributionOptimization() {
+		if !c.getEnableDistributionOptimization() {
 			log.LogDebugf("action[distributionOptimizationController] distribution optimization is disabled, skip execution")
 			return
 		}
@@ -54,7 +54,7 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 	}()
 
 	activeTasks := c.countActiveDistributionOptimizationTasks()
-	limit := c.DistributionOptimizationConcurrentDpCount.Load()
+	limit := c.DistributionOptimizationConDpCnt.Load()
 	if int64(activeTasks) >= limit {
 		log.LogInfof("action[executeDistributionOptimizationMigrations] already have %d active tasks, skipping execution", activeTasks)
 		return
@@ -292,10 +292,10 @@ func (c *Cluster) buildDpHostToNsAndZone() (map[string]uint64, map[string]string
 func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimizationStatus {
 	status := &proto.DistributionOptimizationStatus{
 		DecommissioningDPIDs:           make([]uint64, 0),
-		ConcurrentDpCount:              c.DistributionOptimizationConcurrentDpCount.Load(),
+		ConcurrentDpCount:              c.DistributionOptimizationConDpCnt.Load(),
 		BalanceIntervalSec:             defaultDistributionOptimizationIntervalSec,
-		BalanceThreshold:               c.DistributionOptimizationThreshold.Load(),
-		EnableDistributionOptimization: c.getEnableAutoDistributionOptimization(),
+		BalanceThreshold:               getDistributionOptimizationThreshold(),
+		EnableDistributionOptimization: c.getEnableDistributionOptimization(),
 		DomainDistribution: &proto.DomainDistributionInfo{
 			SingleDomainDPs: 0,
 			TwoDomainDPs:    0,

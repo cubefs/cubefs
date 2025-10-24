@@ -1988,7 +1988,7 @@ func (partition *DataPartition) PauseDecommission(c *Cluster) bool {
 	return true
 }
 
-// 处理单个源地址迁移完成，返回true表示还有更多源地址需要迁移
+// Generate the next source address. Return true if there are more source addresses to migrate.
 func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool {
 	var (
 		updatedSrcHosts []string
@@ -1997,14 +1997,13 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 		nextDstAddr     string
 	)
 
-	if partition.DecommissionSrcAddrs == nil || len(partition.DecommissionSrcAddrs) == 0 {
+	if len(partition.DecommissionSrcAddrs) == 0 {
 		log.LogInfof("action[ProcessNextDecommissionSrcHost] dp(%v) all sources completed, current: %v",
 			partition.PartitionID, partition.DecommissionSrcAddr)
 		return false
 	}
 
-	if partition.DecommissionDstAddrs == nil || len(partition.DecommissionDstAddrs) == 0 ||
-		len(partition.DecommissionDstAddrs) < len(partition.DecommissionSrcAddrs) {
+	if len(partition.DecommissionDstAddrs) != len(partition.DecommissionSrcAddrs) {
 		log.LogInfof("action[ProcessNextDecommissionSrcHost] dp(%v) has not dstAddrs to migrate",
 			partition.PartitionID)
 		return false
@@ -2014,11 +2013,9 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 
 	if len(partition.DecommissionSrcAddrs) > 1 {
 		nextSrcAddr = partition.DecommissionSrcAddrs[lastIndex]
-		nextDstAddr = partition.DecommissionDstAddrs[0]
-		updatedSrcHosts = make([]string, lastIndex)
-		copy(updatedSrcHosts, partition.DecommissionSrcAddrs[0:lastIndex])
-		updatedDstHosts = make([]string, lastIndex)
-		copy(updatedDstHosts, partition.DecommissionDstAddrs[1:])
+		nextDstAddr = partition.DecommissionDstAddrs[lastIndex]
+		updatedSrcHosts = partition.DecommissionSrcAddrs[:lastIndex]
+		updatedDstHosts = partition.DecommissionDstAddrs[:lastIndex]
 	} else {
 		updatedSrcHosts = nil
 		nextSrcAddr = partition.DecommissionSrcAddrs[0]
@@ -2353,7 +2350,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			rackLevel:       c.getRackAwareLevel(),
 			excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, excludeHosts, partition.DecommissionSrcAddr),
 		}
-		targetHosts, _, err = ns.getAvailDataNodeHosts(param, 1)
+		targetHosts, _, err = ns.getAvailDataNodeHosts(param)
 		if err != nil {
 			if partition.DecommissionDstNodeSet != 0 {
 				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from given dst nodeset %v failed:%v",
@@ -2379,12 +2376,12 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			param.excludeNodeSets = excludeNodeSets
 
 			// data nodes in a zone has the same mediaType
-			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1); err != nil {
+			if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param); err != nil {
 				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from other nodeset failed:%v",
 					partition.PartitionID, err.Error())
 				// select data nodes from the other zone
 				zones = partition.getLiveZones(partition.DecommissionSrcAddr)
-				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", partition.MediaType, param, 1); err != nil {
+				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", partition.MediaType, param); err != nil {
 					log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from other zone failed:%v",
 						partition.PartitionID, err.Error())
 					goto errHandler
@@ -2584,8 +2581,9 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 		excludeHosts:    addrs,
 		rackLevel:       proto.RackAwareStrong, // use the highest rack aware level for distribution optimization,
 		excludeNodeSets: excludedNodesets,
+		selectType:      proto.SelectType_DistributionOptimization,
 	}
-	availableHosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, c.DistributionOptimizationThreshold.Load())
+	availableHosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param)
 	if err == nil && len(availableHosts) == replicaNum {
 		ns, _, err = getTargetNodeset(availableHosts[0], c)
 		if err != nil {
@@ -2606,7 +2604,7 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 	// 	rackLevel:    proto.RackAwareStrong, // use the highest rack aware level for distribution optimization,
 	// }
 
-	// availableHosts, _, err := c.getHostFromNormalZone(TypeDataPartition, excludedZones, 1, "", mediaType, param, c.DistributionOptimizationThreshold.Load())
+	// availableHosts, _, err := c.getHostFromNormalZone(TypeDataPartition, excludedZones, 1, "", mediaType, param, getDistributionOptimizationThreshold())
 	// if err == nil && len(availableHosts) == needDstAddrCount {
 	// 	ns, _, err = getTargetNodeset(availableHosts[0], c)
 	// 	if err != nil {
@@ -2711,6 +2709,7 @@ func selectOptimalNodes(currentAddrs []string, targetNsID uint64, c *Cluster) ([
 			excludeHosts: currentAddrs,
 			excludeRacks: excludeRacks,
 			rackLevel:    proto.RackAwareStrong, // use the highest rack aware level for distribution optimization
+			selectType:   proto.SelectType_DistributionOptimization,
 		}
 
 		// Get target NodeSet
@@ -2737,7 +2736,7 @@ func selectOptimalNodes(currentAddrs []string, targetNsID uint64, c *Cluster) ([
 			return nil, nil, fmt.Errorf("target NodeSet %d not found", targetNsID)
 		}
 
-		newHosts, _, err := targetNs.getAvailDataNodeHosts(param, c.DistributionOptimizationThreshold.Load())
+		newHosts, _, err := targetNs.getAvailDataNodeHosts(param)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get available hosts in NodeSet %d: %v", targetNsID, err)
 		}

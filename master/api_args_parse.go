@@ -1674,15 +1674,15 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 
 	// distribution optimization configs
-	if value = r.FormValue(distributionOptimizationConcurrentDpCountKey); value != "" {
+	if value = r.FormValue(distributionOptimizationConDpCntKey); value != "" {
 		noParams = false
 		val := int64(0)
 		val, err = strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			err = unmatchedKey(distributionOptimizationConcurrentDpCountKey)
+			err = unmatchedKey(distributionOptimizationConDpCntKey)
 			return
 		}
-		params[distributionOptimizationConcurrentDpCountKey] = val
+		params[distributionOptimizationConDpCntKey] = val
 	}
 
 	if value = r.FormValue(distributionOptimizationThresholdKey); value != "" {

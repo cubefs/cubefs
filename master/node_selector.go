@@ -633,7 +633,7 @@ func (ns *nodeSet) getRackSets() nodeSetCollection {
 	return rsets
 }
 
-func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.StoreMode, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modification of node selector
@@ -643,6 +643,14 @@ func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.Sto
 	nodeType := MetaNodeType
 	if storeMode == proto.StoreModeRocksDb {
 		nodeType = RocksdbType
+	}
+
+	var threshold float64
+	switch param.selectType {
+	case proto.SelectType_Normal:
+		threshold = 1
+	case proto.SelectType_DistributionOptimization:
+		threshold = getDistributionOptimizationThreshold()
 	}
 
 	// If rack isolation is not enabled, use non-rack-aware selector directly
@@ -703,12 +711,20 @@ func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, st
 	}
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(param *selectParam, threshold float64) (hosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailDataNodeHosts(param *selectParam) (hosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modification of node selector
 	ns.dataNodeSelectorLock.Lock()
 	defer ns.dataNodeSelectorLock.Unlock()
+
+	var threshold float64
+	switch param.selectType {
+	case proto.SelectType_Normal:
+		threshold = 1
+	case proto.SelectType_DistributionOptimization:
+		threshold = getDistributionOptimizationThreshold()
+	}
 
 	if param.rackLevel == proto.RackAwareNone {
 		return ns.dataNodeSelector.Select(ns, param.excludeHosts, param.replicaNum, threshold)

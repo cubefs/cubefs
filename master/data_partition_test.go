@@ -322,7 +322,7 @@ func createTestClusterForOptimalNodes() *Cluster {
 	}
 
 	// Set up atomic values
-	cluster.DistributionOptimizationThreshold.Store(0.8)
+	distributionOptimizationThreshold.Store(0.8)
 
 	// Create zones
 	zone1 := &Zone{
@@ -894,7 +894,7 @@ func createTestClusterForTargetHosts() *Cluster {
 	}
 
 	// Set up atomic values
-	cluster.DistributionOptimizationThreshold.Store(0.1) // Lower threshold for testing
+	distributionOptimizationThreshold.Store(0.1) // Lower threshold for testing
 
 	// Create zones
 	zones := []string{"zone1", "zone2", "zone3"}

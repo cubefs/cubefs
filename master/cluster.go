@@ -52,8 +52,9 @@ const (
 )
 
 var (
-	clusterDpCntLimit uint64
-	clusterMpCntLimit uint64
+	clusterDpCntLimit                 uint64
+	clusterMpCntLimit                 uint64
+	distributionOptimizationThreshold atomicutil.Float64
 )
 
 // nolint: structcheck
@@ -123,17 +124,16 @@ type ClusterDecommission struct {
 	MarkDiskBrokenThreshold                atomicutil.Float64
 	badPartitionMutex                      sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 
-	ForbidMpDecommission                      bool
-	EnableAutoDpMetaRepair                    atomicutil.Bool
-	EnableAutoDecommissionDisk                atomicutil.Bool
-	AutoDecommissionInterval                  atomicutil.Int64
-	AutoDpMetaRepairParallelCnt               atomicutil.Uint32
-	EnableAutoDistributionOptimization        atomicutil.Bool
-	DistributionOptimizationConcurrentDpCount atomicutil.Int64
-	DistributionOptimizationThreshold         atomicutil.Float64
-	NodeSetUnbalancedDPs                      atomicutil.Int64
-	RackConflictDPs                           atomicutil.Int64
-	server                                    *Server
+	ForbidMpDecommission             bool
+	EnableAutoDpMetaRepair           atomicutil.Bool
+	EnableAutoDecommissionDisk       atomicutil.Bool
+	AutoDecommissionInterval         atomicutil.Int64
+	AutoDpMetaRepairParallelCnt      atomicutil.Uint32
+	EnableDistributionOptimization   atomicutil.Bool
+	DistributionOptimizationConDpCnt atomicutil.Int64
+	NodeSetUnbalancedDPs             atomicutil.Int64
+	RackConflictDPs                  atomicutil.Int64
+	server                           *Server
 }
 
 type CleanTask struct {
@@ -459,6 +459,9 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	if clusterMpCntLimit == 0 {
 		atomic.StoreUint64(&clusterMpCntLimit, defaultMaxMpCntLimit)
 	}
+	if distributionOptimizationThreshold.Load() == 0 {
+		distributionOptimizationThreshold.Store(defaultDistributionOptimizationThreshold)
+	}
 	c.t = newTopology()
 	c.BadDataPartitionIds = new(sync.Map)
 	c.BadMetaPartitionIds = new(sync.Map)
@@ -493,9 +496,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.MarkDiskBrokenThreshold.Store(defaultMarkDiskBrokenThreshold)
 	c.EnableAutoDpMetaRepair.Store(defaultEnableDpMetaRepair)
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
-	c.EnableAutoDistributionOptimization.Store(defaultEnableAutoDistributionOptimization)
-	c.DistributionOptimizationConcurrentDpCount.Store(int64(defaultDistributionOptimizationConcurrentDpCount))
-	c.DistributionOptimizationThreshold.Store(defaultDistributionOptimizationThreshold)
+	c.EnableDistributionOptimization.Store(defaultEnableDistributionOptimization)
+	c.DistributionOptimizationConDpCnt.Store(int64(defaultDistributionOptimizationConDpCnt))
 	c.NodeSetUnbalancedDPs.Store(0)
 	c.RackConflictDPs.Store(0)
 	c.server = server
@@ -2367,7 +2369,7 @@ func (c *Cluster) chooseZone2Plus1(rsMgr *rsManager, zones []*Zone,
 	for _, zone := range zoneList {
 		paramCopy.replicaNum = num
 
-		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, paramCopy, 1)
+		selectedHosts, selectedPeers, e := zone.getAvailNodeHosts(nodeType, paramCopy)
 		if e != nil {
 			log.LogErrorf("action[chooseZone2Plus1] getAvailNodeHosts param[%v] error: [%v]", paramCopy.String(), e)
 			return nil, nil, e
@@ -2403,7 +2405,7 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, nodeType uint32, param *select
 			zone := zones[c.lastZoneIdxForNode]
 			c.lastZoneIdxForNode = (c.lastZoneIdxForNode + 1) % len(zones)
 			paramCopy.replicaNum = 1
-			selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, paramCopy, 1)
+			selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, paramCopy)
 			if err != nil {
 				// no zone available
 				if j == len(zones)-1 {
@@ -2455,11 +2457,11 @@ func (c *Cluster) getHostFromNormalZoneForCreate(nodeType uint32, replicaNum int
 		replicaNum: replicaNum,
 		rackLevel:  rackLevel,
 	}
-	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, dataMediaType, param, 1)
+	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, dataMediaType, param)
 }
 
 func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, zoneNumNeed int,
-	specifiedZoneName string, dataMediaType uint32, param *selectParam, threshold float64) (hosts []string, peers []proto.Peer, err error,
+	specifiedZoneName string, dataMediaType uint32, param *selectParam) (hosts []string, peers []proto.Peer, err error,
 ) {
 	log.LogInfof("[getHostFromNormalZone] dataMediaType(%v) nodeType(%v) replicaNum(%v) zoneNumNeed(%v) specifiedZoneName(%v)",
 		proto.MediaTypeString(nodeType), nodeType, param.replicaNum, zoneNumNeed, specifiedZoneName)
@@ -2492,7 +2494,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 
 	if len(zonesQualified) == 1 {
 		log.LogInfof("action[getHostFromNormalZone] zones [%v]", zonesQualified[0].name)
-		if hosts, peers, err = zonesQualified[0].getAvailNodeHosts(nodeType, param, threshold); err != nil {
+		if hosts, peers, err = zonesQualified[0].getAvailNodeHosts(nodeType, param); err != nil {
 			log.LogWarnf("action[getHostFromNormalZone] err[%v]", err)
 			return
 		}
@@ -3143,7 +3145,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 			log.LogErrorf("[migrateDataPartition] check mediaType err: %v", err.Error())
 			goto errHandler
 		}
-	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(param, 1); err != nil {
+	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(param); err != nil {
 		if _, ok := c.vols[dp.VolName]; !ok {
 			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
@@ -3158,10 +3160,10 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		excludeNodeSets = append(excludeNodeSets, ns.ID)
 		param.excludeNodeSets = excludeNodeSets
 
-		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1); err != nil {
+		if targetHosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param); err != nil {
 			// select data nodes from the other zone
 			zones = dp.getLiveZones(srcAddr)
-			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", dp.MediaType, param, 1); err != nil {
+			if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", dp.MediaType, param); err != nil {
 				goto errHandler
 			}
 		}
@@ -3342,7 +3344,7 @@ func (c *Cluster) updateDataNodeSize(addr string, dp *DataPartition) error {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 
-	if !dataNode.isWriteAbleWithSizeNoLock(10 * util.GB) {
+	if !dataNode.isWriteAbleWithSizeNoLock(10*util.GB, 1) {
 		return fmt.Errorf("new datanode %s is not writable AvailableSpace(%v) isActive(%v) RdOnly(%v) Total(%v) Used(%v)",
 			addr, dataNode.AvailableSpace, dataNode.isActive, dataNode.RdOnly, dataNode.Total, dataNode.Used)
 	}
@@ -3392,7 +3394,7 @@ func (c *Cluster) addDataReservedResource(addrs []string, dp *DataPartition) err
 
 		dn.Lock()
 
-		if !dn.isWriteAbleWithSizeNoLock(10 * util.GB) {
+		if !dn.isWriteAbleWithSizeNoLock(10*util.GB, 1) {
 			dn.Unlock()
 			return fmt.Errorf("new datanode %s is not writable AvailableSpace(%v) isActive(%v) RdOnly(%v) Total(%v) Used(%v) PreResearvedSpace(%v)",
 				addr, dn.AvailableSpace, dn.isActive, dn.RdOnly, dn.Total, dn.Used, dn.PreResearvedSpace)
@@ -5222,12 +5224,12 @@ func (c *Cluster) getEnableAutoDpMetaRepair() (v bool) {
 	return
 }
 
-func (c *Cluster) setEnableAutoDistributionOptimization(val bool) (err error) {
-	oldVal := c.EnableAutoDistributionOptimization.Load()
-	c.EnableAutoDistributionOptimization.Store(val)
+func (c *Cluster) setEnableDistributionOptimization(val bool) (err error) {
+	oldVal := c.EnableDistributionOptimization.Load()
+	c.EnableDistributionOptimization.Store(val)
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("[setEnableAutoDistributionOptimization] failed to set enable auto distribution optimization, err(%v)", err)
-		c.EnableAutoDistributionOptimization.Store(oldVal)
+		log.LogErrorf("[setEnableDistributionOptimization] failed to set enable auto distribution optimization, err(%v)", err)
+		c.EnableDistributionOptimization.Store(oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -5236,12 +5238,12 @@ func (c *Cluster) setEnableAutoDistributionOptimization(val bool) (err error) {
 	return
 }
 
-func (c *Cluster) getEnableAutoDistributionOptimization() bool {
-	return c.EnableAutoDistributionOptimization.Load()
+func (c *Cluster) getEnableDistributionOptimization() bool {
+	return c.EnableDistributionOptimization.Load()
 }
 
-func (c *Cluster) updateEnableAutoDistributionOptimization(val bool) {
-	c.EnableAutoDistributionOptimization.Store(val)
+func (c *Cluster) updateEnableDistributionOptimization(val bool) {
+	c.EnableDistributionOptimization.Store(val)
 }
 
 func (c *Cluster) getDataPartitionTimeoutSec() (val int64) {
@@ -7297,17 +7299,25 @@ func (c *Cluster) getMetaPartitionStoreMode(mp *MetaPartition, srcAddr string) (
 	return
 }
 
-func (c *Cluster) setDistributionOptimizationConcurrentDpCount(count int64) error {
-	c.DistributionOptimizationConcurrentDpCount.Store(count)
+func (c *Cluster) setDistributionOptimizationConDpCnt(count int64) error {
+	c.DistributionOptimizationConDpCnt.Store(count)
 	if err := c.syncPutCluster(); err != nil {
-		log.LogWarnf("setDistributionOptimizationConcurrentDpCount: sync put cluster failed, err(%v)", err)
+		log.LogWarnf("setDistributionOptimizationConDpCnt: sync put cluster failed, err(%v)", err)
 		return err
 	}
 	return nil
 }
 
+func getDistributionOptimizationThreshold() float64 {
+	val := distributionOptimizationThreshold.Load()
+	if val > 0 && val <= 1 {
+		return val
+	}
+	return defaultDistributionOptimizationThreshold
+}
+
 func (c *Cluster) setDistributionOptimizationThreshold(threshold float64) error {
-	c.DistributionOptimizationThreshold.Store(threshold)
+	distributionOptimizationThreshold.Store(threshold)
 	if err := c.syncPutCluster(); err != nil {
 		log.LogWarnf("setDistributionOptimizationThreshold: sync put cluster failed, err(%v)", err)
 		return err

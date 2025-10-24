@@ -39,112 +39,112 @@ import (
    transferred over the network. */
 
 type clusterValue struct {
-	Name                                      string
-	CreateTime                                int64
-	Threshold                                 float32
-	LoadFactor                                float32
-	DisableAutoAllocate                       bool
-	ForbidMpDecommission                      bool
-	DataNodeDeleteLimitRate                   uint64
-	MetaNodeDeleteBatchCount                  uint64
-	MetaNodeDeleteWorkerSleepMs               uint64
-	DataNodeAutoRepairLimitRate               uint64
-	MaxDpCntLimit                             uint64
-	MaxMpCntLimit                             uint64
-	FaultDomain                               bool
-	DiskQosEnable                             bool
-	QosLimitUpload                            uint64
-	DirChildrenNumLimit                       uint32
-	DecommissionLimit                         uint64
-	DecommissionFirstHostDiskParallelLimit    uint64
-	CheckDataReplicasEnable                   bool
-	FileStatsEnable                           bool
-	FileStatsThresholds                       []uint64
-	ClusterUuid                               string
-	ClusterUuidEnable                         bool
-	MetaPartitionInodeIdStep                  uint64
-	MaxConcurrentLcNodes                      uint64
-	DpMaxRepairErrCnt                         uint64
-	DpRepairTimeOut                           uint64
-	DpBackupTimeOut                           uint64
-	EnableAutoDecommissionDisk                bool
-	AutoDecommissionDiskInterval              int64
-	DecommissionDiskLimit                     uint32
-	EnableAutoDistributionOptimization        bool
-	DistributionOptimizationConcurrentDpCount int64
-	DistributionOptimizationThreshold         float64
-	VolDeletionDelayTimeHour                  int64
-	MetaNodeGOGC                              int
-	DataNodeGOGC                              int
-	MarkDiskBrokenThreshold                   float64
-	EnableAutoDpMetaRepair                    bool
-	AutoDpMetaRepairParallelCnt               uint32
-	DataPartitionTimeoutSec                   int64
-	MetaPartitionTimeoutSec                   int64
-	ForbidWriteOpOfProtoVer0                  bool
-	LegacyDataMediaType                       uint32
-	RaftPartitionAlreadyUseDifferentPort      bool
-	MetaNodeMemoryHighPer                     float64
-	MetaNodeMemoryLowPer                      float64
-	AutoMpMigrate                             bool
-	FlashNodeHandleReadTimeout                int
-	FlashNodeReadDataNodeTimeout              int
-	RackAwareLevel                            uint8
+	Name                                   string
+	CreateTime                             int64
+	Threshold                              float32
+	LoadFactor                             float32
+	DisableAutoAllocate                    bool
+	ForbidMpDecommission                   bool
+	DataNodeDeleteLimitRate                uint64
+	MetaNodeDeleteBatchCount               uint64
+	MetaNodeDeleteWorkerSleepMs            uint64
+	DataNodeAutoRepairLimitRate            uint64
+	MaxDpCntLimit                          uint64
+	MaxMpCntLimit                          uint64
+	FaultDomain                            bool
+	DiskQosEnable                          bool
+	QosLimitUpload                         uint64
+	DirChildrenNumLimit                    uint32
+	DecommissionLimit                      uint64
+	DecommissionFirstHostDiskParallelLimit uint64
+	CheckDataReplicasEnable                bool
+	FileStatsEnable                        bool
+	FileStatsThresholds                    []uint64
+	ClusterUuid                            string
+	ClusterUuidEnable                      bool
+	MetaPartitionInodeIdStep               uint64
+	MaxConcurrentLcNodes                   uint64
+	DpMaxRepairErrCnt                      uint64
+	DpRepairTimeOut                        uint64
+	DpBackupTimeOut                        uint64
+	EnableAutoDecommissionDisk             bool
+	AutoDecommissionDiskInterval           int64
+	DecommissionDiskLimit                  uint32
+	EnableDistributionOptimization         bool
+	DistributionOptimizationConDpCnt       int64
+	DistributionOptimizationThreshold      float64
+	VolDeletionDelayTimeHour               int64
+	MetaNodeGOGC                           int
+	DataNodeGOGC                           int
+	MarkDiskBrokenThreshold                float64
+	EnableAutoDpMetaRepair                 bool
+	AutoDpMetaRepairParallelCnt            uint32
+	DataPartitionTimeoutSec                int64
+	MetaPartitionTimeoutSec                int64
+	ForbidWriteOpOfProtoVer0               bool
+	LegacyDataMediaType                    uint32
+	RaftPartitionAlreadyUseDifferentPort   bool
+	MetaNodeMemoryHighPer                  float64
+	MetaNodeMemoryLowPer                   float64
+	AutoMpMigrate                          bool
+	FlashNodeHandleReadTimeout             int
+	FlashNodeReadDataNodeTimeout           int
+	RackAwareLevel                         uint8
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
 	cv = &clusterValue{
-		Name:                                      c.Name,
-		CreateTime:                                c.CreateTime,
-		LoadFactor:                                c.cfg.ClusterLoadFactor,
-		Threshold:                                 c.cfg.MetaNodeThreshold,
-		DataNodeDeleteLimitRate:                   c.cfg.DataNodeDeleteLimitRate,
-		MetaNodeDeleteBatchCount:                  c.cfg.MetaNodeDeleteBatchCount,
-		MetaNodeDeleteWorkerSleepMs:               c.cfg.MetaNodeDeleteWorkerSleepMs,
-		DataNodeAutoRepairLimitRate:               c.cfg.DataNodeAutoRepairLimitRate,
-		DisableAutoAllocate:                       c.DisableAutoAllocate,
-		ForbidMpDecommission:                      c.ForbidMpDecommission,
-		MaxDpCntLimit:                             c.getMaxDpCntLimit(),
-		MaxMpCntLimit:                             c.getMaxMpCntLimit(),
-		FaultDomain:                               c.FaultDomain,
-		DiskQosEnable:                             c.diskQosEnable,
-		QosLimitUpload:                            uint64(c.QosAcceptLimit.Limit()),
-		DirChildrenNumLimit:                       c.cfg.DirChildrenNumLimit,
-		DecommissionFirstHostDiskParallelLimit:    c.DecommissionFirstHostDiskParallelLimit,
-		DecommissionLimit:                         c.DecommissionLimit,
-		CheckDataReplicasEnable:                   c.checkDataReplicasEnable,
-		FileStatsEnable:                           c.fileStatsEnable,
-		FileStatsThresholds:                       c.fileStatsThresholds,
-		ClusterUuid:                               c.clusterUuid,
-		ClusterUuidEnable:                         c.clusterUuidEnable,
-		MetaPartitionInodeIdStep:                  c.cfg.MetaPartitionInodeIdStep,
-		MaxConcurrentLcNodes:                      c.cfg.MaxConcurrentLcNodes,
-		DpMaxRepairErrCnt:                         c.cfg.DpMaxRepairErrCnt,
-		DpRepairTimeOut:                           c.cfg.DpRepairTimeOut,
-		DpBackupTimeOut:                           c.cfg.DpBackupTimeOut,
-		EnableAutoDecommissionDisk:                c.EnableAutoDecommissionDisk.Load(),
-		AutoDecommissionDiskInterval:              c.AutoDecommissionInterval.Load(),
-		DecommissionDiskLimit:                     c.GetDecommissionDiskLimit(),
-		EnableAutoDistributionOptimization:        c.getEnableAutoDistributionOptimization(),
-		DistributionOptimizationConcurrentDpCount: c.DistributionOptimizationConcurrentDpCount.Load(),
-		DistributionOptimizationThreshold:         c.DistributionOptimizationThreshold.Load(),
-		VolDeletionDelayTimeHour:                  c.cfg.volDelayDeleteTimeHour,
-		MetaNodeGOGC:                              c.cfg.metaNodeGOGC,
-		DataNodeGOGC:                              c.cfg.dataNodeGOGC,
-		MarkDiskBrokenThreshold:                   c.getMarkDiskBrokenThreshold(),
-		EnableAutoDpMetaRepair:                    c.getEnableAutoDpMetaRepair(),
-		AutoDpMetaRepairParallelCnt:               c.AutoDpMetaRepairParallelCnt.Load(),
-		DataPartitionTimeoutSec:                   c.getDataPartitionTimeoutSec(),
-		MetaPartitionTimeoutSec:                   c.getMetaPartitionTimeoutSec(),
-		ForbidWriteOpOfProtoVer0:                  c.cfg.forbidWriteOpOfProtoVer0,
-		LegacyDataMediaType:                       c.legacyDataMediaType,
-		RaftPartitionAlreadyUseDifferentPort:      c.cfg.raftPartitionAlreadyUseDifferentPort.Load(),
-		MetaNodeMemoryHighPer:                     c.cfg.metaNodeMemHighPer,
-		MetaNodeMemoryLowPer:                      c.cfg.metaNodeMemLowPer,
-		AutoMpMigrate:                             c.cfg.AutoMpMigrate,
-		FlashNodeHandleReadTimeout:                c.cfg.flashNodeHandleReadTimeout,
-		FlashNodeReadDataNodeTimeout:              c.cfg.flashNodeReadDataNodeTimeout,
-		RackAwareLevel:                            uint8(c.cfg.RackAwareLevel),
+		Name:                                   c.Name,
+		CreateTime:                             c.CreateTime,
+		LoadFactor:                             c.cfg.ClusterLoadFactor,
+		Threshold:                              c.cfg.MetaNodeThreshold,
+		DataNodeDeleteLimitRate:                c.cfg.DataNodeDeleteLimitRate,
+		MetaNodeDeleteBatchCount:               c.cfg.MetaNodeDeleteBatchCount,
+		MetaNodeDeleteWorkerSleepMs:            c.cfg.MetaNodeDeleteWorkerSleepMs,
+		DataNodeAutoRepairLimitRate:            c.cfg.DataNodeAutoRepairLimitRate,
+		DisableAutoAllocate:                    c.DisableAutoAllocate,
+		ForbidMpDecommission:                   c.ForbidMpDecommission,
+		MaxDpCntLimit:                          c.getMaxDpCntLimit(),
+		MaxMpCntLimit:                          c.getMaxMpCntLimit(),
+		FaultDomain:                            c.FaultDomain,
+		DiskQosEnable:                          c.diskQosEnable,
+		QosLimitUpload:                         uint64(c.QosAcceptLimit.Limit()),
+		DirChildrenNumLimit:                    c.cfg.DirChildrenNumLimit,
+		DecommissionFirstHostDiskParallelLimit: c.DecommissionFirstHostDiskParallelLimit,
+		DecommissionLimit:                      c.DecommissionLimit,
+		CheckDataReplicasEnable:                c.checkDataReplicasEnable,
+		FileStatsEnable:                        c.fileStatsEnable,
+		FileStatsThresholds:                    c.fileStatsThresholds,
+		ClusterUuid:                            c.clusterUuid,
+		ClusterUuidEnable:                      c.clusterUuidEnable,
+		MetaPartitionInodeIdStep:               c.cfg.MetaPartitionInodeIdStep,
+		MaxConcurrentLcNodes:                   c.cfg.MaxConcurrentLcNodes,
+		DpMaxRepairErrCnt:                      c.cfg.DpMaxRepairErrCnt,
+		DpRepairTimeOut:                        c.cfg.DpRepairTimeOut,
+		DpBackupTimeOut:                        c.cfg.DpBackupTimeOut,
+		EnableAutoDecommissionDisk:             c.EnableAutoDecommissionDisk.Load(),
+		AutoDecommissionDiskInterval:           c.AutoDecommissionInterval.Load(),
+		DecommissionDiskLimit:                  c.GetDecommissionDiskLimit(),
+		EnableDistributionOptimization:         c.getEnableDistributionOptimization(),
+		DistributionOptimizationConDpCnt:       c.DistributionOptimizationConDpCnt.Load(),
+		DistributionOptimizationThreshold:      getDistributionOptimizationThreshold(),
+		VolDeletionDelayTimeHour:               c.cfg.volDelayDeleteTimeHour,
+		MetaNodeGOGC:                           c.cfg.metaNodeGOGC,
+		DataNodeGOGC:                           c.cfg.dataNodeGOGC,
+		MarkDiskBrokenThreshold:                c.getMarkDiskBrokenThreshold(),
+		EnableAutoDpMetaRepair:                 c.getEnableAutoDpMetaRepair(),
+		AutoDpMetaRepairParallelCnt:            c.AutoDpMetaRepairParallelCnt.Load(),
+		DataPartitionTimeoutSec:                c.getDataPartitionTimeoutSec(),
+		MetaPartitionTimeoutSec:                c.getMetaPartitionTimeoutSec(),
+		ForbidWriteOpOfProtoVer0:               c.cfg.forbidWriteOpOfProtoVer0,
+		LegacyDataMediaType:                    c.legacyDataMediaType,
+		RaftPartitionAlreadyUseDifferentPort:   c.cfg.raftPartitionAlreadyUseDifferentPort.Load(),
+		MetaNodeMemoryHighPer:                  c.cfg.metaNodeMemHighPer,
+		MetaNodeMemoryLowPer:                   c.cfg.metaNodeMemLowPer,
+		AutoMpMigrate:                          c.cfg.AutoMpMigrate,
+		FlashNodeHandleReadTimeout:             c.cfg.flashNodeHandleReadTimeout,
+		FlashNodeReadDataNodeTimeout:           c.cfg.flashNodeReadDataNodeTimeout,
+		RackAwareLevel:                         uint8(c.cfg.RackAwareLevel),
 	}
 	return cv
 }
@@ -1375,15 +1375,15 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.EnableAutoDecommissionDisk.Store(cv.EnableAutoDecommissionDisk)
 		c.updateAutoDecommissionDiskInterval(cv.AutoDecommissionDiskInterval)
 		c.DecommissionLimit = cv.DecommissionLimit
-		c.updateEnableAutoDistributionOptimization(cv.EnableAutoDistributionOptimization)
-		if cv.DistributionOptimizationConcurrentDpCount <= 0 {
-			cv.DistributionOptimizationConcurrentDpCount = int64(defaultDistributionOptimizationConcurrentDpCount)
+		c.updateEnableDistributionOptimization(cv.EnableDistributionOptimization)
+		if cv.DistributionOptimizationConDpCnt <= 0 {
+			cv.DistributionOptimizationConDpCnt = int64(defaultDistributionOptimizationConDpCnt)
 		}
 		if cv.DistributionOptimizationThreshold < 0 || cv.DistributionOptimizationThreshold > 1 {
-			cv.DistributionOptimizationThreshold = 0
+			cv.DistributionOptimizationThreshold = defaultDistributionOptimizationThreshold
 		}
-		c.DistributionOptimizationConcurrentDpCount.Store(cv.DistributionOptimizationConcurrentDpCount)
-		c.DistributionOptimizationThreshold.Store(cv.DistributionOptimizationThreshold)
+		c.DistributionOptimizationConDpCnt.Store(cv.DistributionOptimizationConDpCnt)
+		distributionOptimizationThreshold.Store(cv.DistributionOptimizationThreshold)
 		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
 		c.cfg.metaNodeGOGC = cv.MetaNodeGOGC
 		c.cfg.dataNodeGOGC = cv.DataNodeGOGC

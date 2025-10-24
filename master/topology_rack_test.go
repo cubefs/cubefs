@@ -304,7 +304,7 @@ func TestRackBoundaryConditions(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should handle replicaNum=0 gracefully")
 	require.Equal(t, 0, len(hosts), "Should return empty hosts for replicaNum=0")
 
@@ -317,7 +317,7 @@ func TestRackBoundaryConditions(t *testing.T) {
 	})
 
 	param.replicaNum = 1
-	_, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	_, _, err = zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.Error(t, err, "Should return error when no writable nodes available")
 
 	// Test case 3: Test with maximum replica number for strong rack awareness
@@ -330,14 +330,14 @@ func TestRackBoundaryConditions(t *testing.T) {
 
 	// In RackAwareStrong mode, can only select up to the number of racks (6)
 	param.replicaNum = 6 // Maximum possible with 6 racks in strong mode
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should handle maximum replica number for strong rack awareness")
 	require.Equal(t, 6, len(hosts), "Should return 6 hosts (one per rack)")
 
 	// Test case 4: Test with weak rack awareness to select more nodes
 	param.rackLevel = proto.RackAwareWeak
 	param.replicaNum = 12 // All available nodes
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should handle maximum replica number with weak rack awareness")
 	require.Equal(t, 12, len(hosts), "Should return all available hosts with weak rack awareness")
 }
@@ -365,7 +365,7 @@ func TestRackMetaNodeRackAwareness(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeMem, 1)
+	hosts, _, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeMem)
 	require.NoError(t, err, "Should successfully select meta nodes with rack awareness")
 	require.Equal(t, 4, len(hosts), "Should select 4 meta node hosts")
 
@@ -1047,20 +1047,20 @@ func TestRackComprehensiveExcludeHosts(t *testing.T) {
 	}
 
 	// Start with no exclusions
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should succeed with no exclusions")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
 	// Exclude some hosts gradually
 	param.excludeHosts = []string{hosts[0]} // Exclude first selected host
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should succeed after excluding one host")
 	require.Equal(t, 4, len(hosts), "Should still select 4 hosts")
 	require.NotContains(t, hosts, param.excludeHosts[0], "Excluded host should not be selected")
 
 	// Exclude more hosts
 	param.excludeHosts = append(param.excludeHosts, hosts[0], hosts[1]) // Exclude 3 hosts total
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should succeed after excluding more hosts")
 	require.Equal(t, 4, len(hosts), "Should still select 4 hosts")
 
@@ -1070,7 +1070,7 @@ func TestRackComprehensiveExcludeHosts(t *testing.T) {
 		"192.168.1.11:17310", "192.168.1.12:17310", "192.168.1.13:17310", "192.168.1.14:17310", // All hosts from rack2
 	}
 
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should succeed after excluding hosts from 2 racks")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts from remaining racks")
 
@@ -1107,19 +1107,19 @@ func TestRackExcludeHostsWithDifferentLevels(t *testing.T) {
 		excludeHosts: excludeHosts,
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should succeed with RackAwareNone")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
 	// Test with RackAwareWeak
 	param.rackLevel = proto.RackAwareWeak
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should succeed with RackAwareWeak")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
 	// Test with RackAwareStrong
 	param.rackLevel = proto.RackAwareStrong
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Should succeed with RackAwareStrong")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -1505,7 +1505,7 @@ func TestZoneWeakRackAwarenessWithRackExclusions(t *testing.T) {
 		excludeRacks: []string{"rack1", "rack2"}, // Exclude 2 racks
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Zone level weak rack awareness should succeed with rack exclusions")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -1571,7 +1571,7 @@ func TestZoneWeakRackAwarenessInsufficientRacks(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Zone level weak rack awareness should succeed with insufficient racks")
 	require.Equal(t, 3, len(hosts), "Should select 3 hosts")
 
@@ -1635,7 +1635,7 @@ func TestZoneWeakRackAwarenessWithHostExclusions(t *testing.T) {
 		},
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param, 1)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param)
 	require.NoError(t, err, "Zone level weak rack awareness should succeed with host exclusions")
 	require.Equal(t, 4, len(hosts), "Should select 4 hosts")
 
@@ -1699,7 +1699,7 @@ func TestZoneWeakVsStrongRackAwarenessComparison(t *testing.T) {
 		rackLevel:  proto.RackAwareStrong,
 	}
 
-	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, strongParam, 1)
+	hosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, strongParam)
 	require.Error(t, err, "Zone level strong rack awareness should fail when not enough racks")
 	require.Nil(t, hosts, "Zone level strong rack awareness should return nil hosts when failing")
 
@@ -1709,7 +1709,7 @@ func TestZoneWeakVsStrongRackAwarenessComparison(t *testing.T) {
 		rackLevel:  proto.RackAwareWeak,
 	}
 
-	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, weakParam, 1)
+	hosts, _, err = zone.getAvailNodeHosts(TypeDataPartition, weakParam)
 	require.NoError(t, err, "Zone level weak rack awareness should succeed with fallback mechanism")
 	require.Equal(t, replicaNum, len(hosts), "Should select %d hosts with weak rack awareness", replicaNum)
 
@@ -1817,7 +1817,7 @@ func TestRackGetAvailMetaNodeHostsRocksDB(t *testing.T) {
 			rackLevel:  proto.RackAwareNone,
 		}
 
-		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 1)
+		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb)
 		require.NoError(t, err, "Should successfully select meta nodes for RocksDB mode")
 		require.Equal(t, 3, len(hosts), "Should select 3 meta node hosts")
 		require.Equal(t, 3, len(peers), "Should return 3 peers")
@@ -1844,7 +1844,7 @@ func TestRackGetAvailMetaNodeHostsRocksDB(t *testing.T) {
 			rackLevel:  proto.RackAwareStrong,
 		}
 
-		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 1)
+		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb)
 		require.NoError(t, err, "Should successfully select meta nodes with strong rack awareness")
 		require.Equal(t, 2, len(hosts), "Should select 2 meta node hosts")
 		require.Equal(t, 2, len(peers), "Should return 2 peers")
@@ -1895,7 +1895,7 @@ func TestRackGetAvailMetaNodeHostsRocksDBThreshold(t *testing.T) {
 			rackLevel:  proto.RackAwareNone,
 		}
 
-		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 1)
+		hosts, peers, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb)
 		require.NoError(t, err, "Should successfully select meta nodes within RocksDB threshold")
 		require.Equal(t, 2, len(hosts), "Should select 2 meta node hosts")
 		require.Equal(t, 2, len(peers), "Should return 2 peers")
@@ -1943,7 +1943,7 @@ func TestRackGetAvailMetaNodeHostsInsufficientRocksDBNodes(t *testing.T) {
 			rackLevel:  proto.RackAwareNone,
 		}
 
-		_, _, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb, 1)
+		_, _, err := ns.getAvailMetaNodeHosts(param, proto.StoreModeRocksDb)
 		require.Error(t, err, "Should return error when insufficient RocksDB nodes available")
 		require.Contains(t, err.Error(), "no enough writable hosts", "Error should indicate insufficient writable hosts")
 
