@@ -84,6 +84,7 @@ type RuntimeConfig struct {
 	AllowCleanTrash              bool    `json:"allow_clean_trash"`
 	DisableModifyInCompacting    bool    `json:"disable_modify_in_compacting"`
 	MustMountPoint               bool    `json:"must_mount_point"`
+	MustMountPointMeta           bool    `json:"must_mount_point_meta"`
 	IOStatFileDryRun             bool    `json:"iostat_file_dryrun"`
 	SetDefaultSwitch             bool    `json:"set_default_switch"`
 	EnableDeleteShardVerify      bool    `json:"enable_delete_shard_verify"`
