@@ -241,8 +241,13 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 		err       error
 		readBytes int
 		realHost  = "invaild"
+		key       string
 	)
-	key := fmt.Sprintf("%v-%v-%v-%v", task.p.inode, task.p.PartitionID, task.p.ExtentID, task.p.ExtentOffset)
+	if readDataFromTinyExtent(task.p.ExtentID) {
+		key = fmt.Sprintf("%v-%v-%v-%v", task.p.inode, task.p.PartitionID, task.p.ExtentID, 0)
+	} else {
+		key = fmt.Sprintf("%v-%v-%v-%v", task.p.inode, task.p.PartitionID, task.p.ExtentID, task.p.ExtentOffset)
+	}
 	if _, ok := arw.cache.blockCache.Load(key); ok {
 		return
 	}
@@ -255,7 +260,7 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 			arw.cache.creatingBlockCacheMap.Delete(key)
 			cnt := atomic.AddInt32(&arw.cnt, -1)
 			if int(cnt) > arw.cache.winCnt {
-				log.LogWarnf("doTask cnt %v is more than %v", cnt, arw.cache.winCnt)
+				log.LogInfof("doTask cnt %v is more than %v", cnt, arw.cache.winCnt)
 			}
 		}()
 	}
@@ -276,7 +281,11 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	cacheBlock.inode = task.p.inode
 	cacheBlock.partitionId = task.p.PartitionID
 	cacheBlock.extentId = task.p.ExtentID
-	cacheBlock.offset = uint64(task.p.ExtentOffset)
+	if readDataFromTinyExtent(task.p.ExtentID) {
+		cacheBlock.offset = 0
+	} else {
+		cacheBlock.offset = uint64(task.p.ExtentOffset)
+	}
 	cacheBlock.size = uint64(task.cacheSize)
 	cacheBlock.key = key
 	atomic.StoreUint32(&cacheBlock.readed, AheadReadedInit)
@@ -396,7 +405,7 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp 
 		ExtentKey:  req.ExtentKey,
 	}
 	// read the entire 1MB data form tiny extent
-	if curReq.ExtentKey.ExtentId <= 64 {
+	if readDataFromTinyExtent(req.ExtentKey.ExtentId) {
 		offset = 0
 	}
 	cacheOffset := offset / int(arw.streamer.aheadReadBlockSize) * int(arw.streamer.aheadReadBlockSize)
@@ -446,7 +455,7 @@ func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *Ext
 ) *AheadReadTask {
 	cacheOffset := id * int(arw.streamer.aheadReadBlockSize)
 	// tiny need to add ExtentOffset
-	if req.ExtentKey.ExtentId <= 64 {
+	if readDataFromTinyExtent(req.ExtentKey.ExtentId) {
 		cacheOffset = int(req.ExtentKey.ExtentOffset)
 	}
 	p := NewReadPacket(req.ExtentKey, cacheOffset, size, arw.streamer.inode, req.FileOffset, true)
@@ -516,12 +525,16 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 	}
 
 	offset = req.FileOffset - int(req.ExtentKey.FileOffset) + int(req.ExtentKey.ExtentOffset)
+	if readDataFromTinyExtent(req.ExtentKey.ExtentId) {
+		offset = req.FileOffset - int(req.ExtentKey.FileOffset)
+	}
 	cacheOffset = offset / int(s.aheadReadBlockSize) * int(s.aheadReadBlockSize)
 	needSize := req.Size - readSize
 	for needSize > 0 {
 		key = fmt.Sprintf("%v-%v-%v-%v", s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, cacheOffset)
 		val, ok := s.aheadReadWindow.cache.blockCache.Load(key)
 		if !ok {
+			log.LogDebugf("aheadRead cache block key(%v) not found", key)
 			break
 		}
 		cacheBlock = val.(*AheadReadBlock)
@@ -542,8 +555,8 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 		cacheBlock.time = startTime.Unix()
 
 		if log.EnableDebug() {
-			log.LogDebugf("aheadRead cache hit inode(%v) FileOffset(%v) offset(%v) size(%v) cacheBlockOffset(%v) cacheBlockSize(%v) %v",
-				s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, time.Since(startTime))
+			log.LogDebugf("aheadRead cache hit inode(%v) key(%v) FileOffset(%v) offset(%v) size(%v) cacheBlockOffset(%v) cacheBlockSize(%v) %v",
+				s.inode, key, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, time.Since(startTime))
 		}
 		if cacheBlock.offset <= uint64(offset) {
 			atomic.CompareAndSwapUint32(&cacheBlock.readed, AheadReadedInit, AheadReaded)
@@ -663,4 +676,8 @@ func (s *Streamer) getCurrentExtent(offset int) (ek *proto.ExtentKey) {
 		return true
 	})
 	return
+}
+
+func readDataFromTinyExtent(extentID uint64) bool {
+	return extentID <= 64
 }
