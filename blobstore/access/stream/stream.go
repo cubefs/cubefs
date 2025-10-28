@@ -104,7 +104,7 @@ type StreamHandler interface {
 	Delete(ctx context.Context, location *proto.Location) error
 
 	// Admin returns internal admin interface.
-	Admin() interface{}
+	Admin() any
 	// GetBlob returns location
 	GetBlob(ctx context.Context, args *access.GetBlobArgs) (*proto.Location, error)
 	// DeleteBlob returns error
@@ -389,7 +389,7 @@ func (h *Handler) Delete(ctx context.Context, location *proto.Location) error {
 }
 
 // Admin returns internal admin interface.
-func (h *Handler) Admin() interface{} {
+func (h *Handler) Admin() any {
 	return &StreamAdmin{
 		Config:     h.StreamConfig,
 		MemPool:    h.memPool,
@@ -423,13 +423,17 @@ func (h *Handler) sendRepairMsg(ctx context.Context, blob blobIdent, badIdxes []
 		Reason:    "access-repair",
 	}
 
+	hosts, err := serviceController.GetServiceHosts(ctx, serviceProxy)
+	if err != nil {
+		span.Error(errors.Detail(err))
+		return
+	}
+	for len(hosts) < 3 {
+		hosts = append(hosts, hosts...)
+	}
 	if err := retry.Timed(3, 200).On(func() error {
-		host, err := serviceController.GetServiceHost(ctx, serviceProxy)
-		if err != nil {
-			reportUnhealth(clusterID, "repair.msg", serviceProxy, "-", "failed")
-			span.Warn(err)
-			return err
-		}
+		host := hosts[0]
+		hosts = hosts[1:]
 		err = h.proxyClient.SendShardRepairMsg(ctx, host, repairArgs)
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
@@ -471,17 +475,21 @@ func (h *Handler) clearGarbage(ctx context.Context, location *proto.Location) er
 		})
 	}
 
-	var logMsg interface{} = location
+	var logMsg any = location
 	if len(deleteArgs.Blobs) <= 20 {
 		logMsg = deleteArgs
 	}
+	hosts, err := serviceController.GetServiceHosts(ctx, serviceProxy)
+	if err != nil {
+		span.Error(err)
+		return err
+	}
+	for len(hosts) < 3 {
+		hosts = append(hosts, hosts...)
+	}
 	if err := retry.Timed(3, 200).On(func() error {
-		host, err := serviceController.GetServiceHost(ctx, serviceProxy)
-		if err != nil {
-			reportUnhealth(location.ClusterID, "delete.msg", serviceProxy, "-", "failed")
-			span.Warn(err)
-			return err
-		}
+		host := hosts[0]
+		hosts = hosts[1:]
 		err = h.proxyClient.SendDeleteMsg(ctx, host, deleteArgs)
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {

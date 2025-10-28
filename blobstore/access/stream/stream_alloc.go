@@ -116,29 +116,25 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		BidCount: util.AlignedBlocks(size, uint64(blobSize)),
 	}
 
+	serviceController, err := h.clusterController.GetServiceController(clusterID)
+	if err != nil {
+		span.Error(err)
+		return 0, nil, err
+	}
+	hosts, err := serviceController.GetServiceHosts(ctx, serviceProxy)
+	if err != nil {
+		span.Error(err)
+		return 0, nil, err
+	}
+	for len(hosts) < h.AllocRetryTimes {
+		hosts = append(hosts, hosts...)
+	}
+
 	var allocRets []proxy.AllocRet
 	var allocHost string
-	hostsSet := make(map[string]struct{}, 1)
 	if err := retry.ExponentialBackoff(h.AllocRetryTimes, uint32(h.AllocRetryIntervalMS)).On(func() error {
-		serviceController, err := h.clusterController.GetServiceController(clusterID)
-		if err != nil {
-			span.Warn(err)
-			return errors.Info(err, "get service controller", clusterID)
-		}
-
-		var host string
-		for range [10]struct{}{} {
-			host, err = serviceController.GetServiceHost(ctx, serviceProxy)
-			if err != nil {
-				span.Warn(err)
-				return errors.Info(err, "get proxy host", clusterID)
-			}
-			if _, ok := hostsSet[host]; ok {
-				continue
-			}
-			hostsSet[host] = struct{}{}
-			break
-		}
+		host := hosts[0]
+		hosts = hosts[1:]
 		allocHost = host
 
 		allocRets, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
