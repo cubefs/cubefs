@@ -288,7 +288,12 @@ func (r *PerDiskRocksdbManager) SetForbidden(dbPath string, forbidden bool) erro
 	if !ok {
 		return ErrUnregisteredRocksdbPath
 	}
+	oldValue := handle.Forbidden
+	if oldValue == forbidden {
+		return nil
+	}
 	handle.Forbidden = forbidden
+	log.LogInfof("[SetForbidden] set rocksdb(%v) forbidden from (%v) to (%v)", dbPath, oldValue, forbidden)
 	return nil
 }
 
@@ -474,7 +479,12 @@ func (r *PerPartitionRocksdbManager) SetForbidden(dbPath string, forbidden bool)
 	if !ok {
 		return ErrUnregisteredRocksdbPath
 	}
+	oldValue := handle.Forbidden
+	if oldValue == forbidden {
+		return nil
+	}
 	handle.Forbidden = forbidden
+	log.LogInfof("[SetForbidden] set rocksdb(%v) forbidden from (%v) to (%v)", dbPath, oldValue, forbidden)
 	return nil
 }
 

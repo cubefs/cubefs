@@ -33,7 +33,7 @@ const (
 
 // Compute the disk usage
 func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
-	m.checkRocksdbStatus()
+	m.CheckRocksdbStatus()
 	go func() {
 		updateSpaceInfoTicker := time.NewTicker(UpdateDiskSpaceInterval)
 		checkStatusTicker := time.NewTicker(CheckDiskStatusInterval)
@@ -60,7 +60,7 @@ func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
 					d.UpdateDiskTick()
 				}
 			case <-checkRocksdbStatusTicker.C:
-				m.checkRocksdbStatus()
+				m.CheckRocksdbStatus()
 			}
 		}
 	}()
@@ -163,7 +163,7 @@ func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeRocksdbInfo {
 	return disks
 }
 
-func (m *MetaNode) checkRocksdbStatus() {
+func (m *MetaNode) CheckRocksdbStatus() {
 	for _, dbPath := range m.rocksDirs {
 		db, err := m.rocksdbManager.OpenRocksdb(dbPath, 0)
 		if err != nil {
@@ -171,13 +171,13 @@ func (m *MetaNode) checkRocksdbStatus() {
 		}
 		numStr, err := db.GetProperty("rocksdb.estimate-num-keys")
 		if err != nil {
-			log.LogErrorf("[checkRocksdbStatus] failed to get estimate num keys on disk(%v), err(%v)", dbPath, err)
+			log.LogErrorf("[CheckRocksdbStatus] failed to get estimate num keys on disk(%v), err(%v)", dbPath, err)
 			m.rocksdbManager.CloseRocksdb(db)
 			continue
 		}
 		num, err := strconv.ParseUint(numStr, 10, 64)
 		if err != nil {
-			log.LogErrorf("[checkRocksdbStatus] failed to parse estimate num keys on disk(%v), err(%v)", dbPath, err)
+			log.LogErrorf("[CheckRocksdbStatus] failed to parse estimate num keys on disk(%v), err(%v)", dbPath, err)
 			m.rocksdbManager.CloseRocksdb(db)
 			continue
 		}

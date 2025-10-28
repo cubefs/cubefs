@@ -107,6 +107,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/rmOpLimit", m.rmOpLimitHandler)
 	http.HandleFunc("/getOpList", m.getOpListHandler)
 	http.HandleFunc("/getRocksdbProperty", m.getRocksdbPropertyHandler)
+	http.HandleFunc("/setRocksdbKeyNumMax", m.setRocksdbKeyNumMaxHandler)
+	http.HandleFunc("/compactRocksdb", m.compactRocksdbHandler)
 	return
 }
 
@@ -1799,4 +1801,81 @@ func (m *MetaNode) getRocksdbPropertyHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	resp.Data = result
+}
+
+func (m *MetaNode) setRocksdbKeyNumMaxHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[setRocksdbKeyNumMaxHandler] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if keyNumStr := r.FormValue("num"); keyNumStr == "" {
+		err = fmt.Errorf("missing num parameter")
+		return
+	} else {
+		keyNumVal, parseErr := strconv.ParseUint(keyNumStr, 10, 64)
+		if parseErr != nil {
+			err = fmt.Errorf("invalid num parameter")
+			return
+		}
+		m.rocksdbKeyNumMax = keyNumVal
+		log.LogInfof("[setRocksdbKeyNumMaxHandler] set rocksdb key num max success: num=%v", keyNumVal)
+		resp.Msg = fmt.Sprintf("set rocksdb key num max success: num=%v", keyNumVal)
+		m.CheckRocksdbStatus()
+	}
+	return
+}
+
+func (m *MetaNode) compactRocksdbHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[compactRocksdbHandler] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	dbDir := r.FormValue("dbDir")
+	if dbDir == "" {
+		err = fmt.Errorf("dbDir is required")
+		return
+	}
+
+	now := time.Now()
+	db, err := m.rocksdbManager.OpenRocksdb(dbDir, 0)
+	if err != nil {
+		log.LogErrorf("[compactRocksdbHandler] failed to open rocksdb, err(%v)", err)
+		return
+	}
+	defer m.rocksdbManager.CloseRocksdb(db)
+	err = db.CompactRange(nil, nil)
+	if err != nil {
+		log.LogErrorf("[compactRocksdbHandler] failed to compact rocksdb, err(%v)", err)
+		return
+	}
+
+	log.LogInfof("[compactRocksdbHandler] compact rocksdb success: dbDir=%v, cost time=%v", dbDir, time.Since(now))
+	resp.Msg = fmt.Sprintf("compact rocksdb success: dbDir=%v, costtime=%v", dbDir, time.Since(now))
+	return
 }
