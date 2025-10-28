@@ -401,6 +401,12 @@ func main() {
 		stream.SetReqChansize(int(opt.ReqChanCnt))
 	}
 
+	if opt.TcpAliveTime > 0 {
+		stream.StreamConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
+		stream.AheadReadConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
+		stream.StreamWriteConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
+	}
+
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil, log.DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
@@ -1005,6 +1011,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableAudit = GlobalMountOptions[proto.EnableAudit].GetBool()
 	opt.RequestTimeout = GlobalMountOptions[proto.RequestTimeout].GetInt64()
 	opt.ClientOpTimeOut = GlobalMountOptions[proto.ClientOpTimeOut].GetInt64()
+	opt.TcpAliveTime = GlobalMountOptions[proto.TcpAliveTime].GetInt64()
 	opt.FileSystemName = GlobalMountOptions[proto.FileSystemName].GetString()
 	opt.DisableMountSubtype = GlobalMountOptions[proto.DisableMountSubtype].GetBool()
 	opt.StreamRetryTimeout = int(GlobalMountOptions[proto.StreamRetryTimeOut].GetInt64())

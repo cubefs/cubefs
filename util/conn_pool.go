@@ -87,6 +87,11 @@ func DailTimeOut(target string, timeout time.Duration) (c *net.TCPConn, err erro
 	return
 }
 
+func (cp *ConnectPool) SetPoolArgs(timeout int64, minCap int) {
+	cp.timeout = int64(time.Duration(timeout) * time.Second)
+	cp.mincap = minCap
+}
+
 func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error) {
 	cp.RLock()
 	pool, ok := cp.pools[targetAddr]
