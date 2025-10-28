@@ -93,6 +93,7 @@ const (
 	ReadDirLimit
 	MaxWarmUpConcurrency
 	StopWarmMeta
+	TcpAliveTime
 	MaxMountOption
 )
 
@@ -180,7 +181,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", true}
 	opts[RequestTimeout] = MountOption{"requestTimeout", "The Request Expiration Time", "", int64(0)}
 	opts[ClientOpTimeOut] = MountOption{"clientOpTimeOut", "client op time out in seconds", "", int64(300)}
-
+	opts[TcpAliveTime] = MountOption{"tcpAliveTime", "tcp alive time in seconds", "", int64(0)}
 	opts[FileSystemName] = MountOption{"fileSystemName", "The explicit name of the filesystem", "", ""}
 	opts[SnapshotReadVerSeq] = MountOption{"snapshotReadSeq", "Snapshot read seq", "", int64(0)} // default false
 	opts[DisableMountSubtype] = MountOption{"disableMountSubtype", "Disable Mount Subtype", "", false}
@@ -355,6 +356,7 @@ type MountOptions struct {
 	EnableAudit             bool
 	RequestTimeout          int64
 	ClientOpTimeOut         int64
+	TcpAliveTime            int64
 	FileSystemName          string
 	// TrashInterval                       int64
 	TrashDeleteExpiredDirGoroutineLimit int64
