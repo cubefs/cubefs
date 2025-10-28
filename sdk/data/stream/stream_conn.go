@@ -58,6 +58,7 @@ type StreamConn struct {
 
 var (
 	StreamConnPool      = util.NewConnectPool()
+	AheadReadConnPool   = util.NewConnectPool()
 	StreamWriteConnPool = util.NewConnectPool()
 )
 

@@ -388,7 +388,8 @@ func (arw *AheadReadWindow) addNextTask(offset int, stTime time.Time, reqID stri
 }
 
 func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp *wrapper.DataPartition,
-	startTime time.Time, reqID string, storageClass uint32, winCnt int) {
+	startTime time.Time, reqID string, storageClass uint32, winCnt int,
+) {
 	curReq := &ExtentRequest{
 		FileOffset: req.FileOffset,
 		Size:       req.Size,
@@ -441,7 +442,8 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp 
 }
 
 func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *ExtentRequest, id int, size int,
-	storageClass uint32) *AheadReadTask {
+	storageClass uint32,
+) *AheadReadTask {
 	cacheOffset := id * int(arw.streamer.aheadReadBlockSize)
 	// tiny need to add ExtentOffset
 	if req.ExtentKey.ExtentId <= 64 {
@@ -597,11 +599,11 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 func sendToNode(host string, p *Packet, getReply GetReplyFunc) (err error) {
 	var conn *net.TCPConn
 	start := time.Now()
-	if conn, err = StreamConnPool.GetConnect(host); err != nil {
+	if conn, err = AheadReadConnPool.GetConnect(host); err != nil {
 		return
 	}
 	defer func() {
-		StreamConnPool.PutConnect(conn, err != nil)
+		AheadReadConnPool.PutConnect(conn, err != nil)
 		log.LogDebugf("sendToNode connect local(%v) remote(%v) cost(%v) err(%v)", conn.LocalAddr().String(),
 			conn.RemoteAddr().String(), time.Since(start).String(), err)
 	}()
