@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -612,6 +613,7 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 
 	plan.Type = OfflinePlan
 	plan.Status = PlanTaskRun
+	plan.StartTime = time.Now()
 
 	// Save into raft storage.
 	err = m.cluster.syncAddBalanceTask(plan)

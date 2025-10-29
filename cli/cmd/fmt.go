@@ -64,8 +64,8 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  RocksdbDiskUsed                  : %v GB\n", cv.RocksdbDiskUsed))
 	sb.WriteString(fmt.Sprintf("  RocksdbDiskAvail                 : %v GB\n", cv.RocksdbDiskAvail))
 	sb.WriteString(fmt.Sprintf("  RocksdbDiskTotal                 : %v GB\n", cv.RocksdbDiskTotal))
-	sb.WriteString(fmt.Sprintf("  RocksdbMpCount                   : %v\n", cv.RocksdbMpCount))
-	sb.WriteString(fmt.Sprintf("  MemoryMpCount                    : %v\n", cv.MemoryMpCount))
+	sb.WriteString(fmt.Sprintf("  RocksdbMpReplicaCount            : %v\n", cv.RocksdbMpCount))
+	sb.WriteString(fmt.Sprintf("  MemoryMpReplicaCount             : %v\n", cv.MemoryMpCount))
 
 	dataNodeActiveCnt := 0
 	for _, node := range cv.DataNodes {
@@ -323,8 +323,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	// qos of volume
 	sb.WriteString(fmt.Sprintf("  QosEnable                       : %v\n", svv.QosInfo.QosEnable))
 	sb.WriteString(fmt.Sprintf("  Default store mode              : %v\n", svv.DefaultStoreMode.Str()))
-	sb.WriteString(fmt.Sprintf("  RocksdbMpCount                  : %v\n", svv.RocksdbMpCount))
-	sb.WriteString(fmt.Sprintf("  MemoryMpCount                   : %v\n", svv.MemoryMpCount))
+	sb.WriteString(fmt.Sprintf("  RocksdbMpReplicaCount           : %v\n", svv.RocksdbMpCount))
+	sb.WriteString(fmt.Sprintf("  MemoryMpReplicaCount            : %v\n", svv.MemoryMpCount))
 	return sb.String()
 }
 
@@ -1042,22 +1042,23 @@ func parseDpReadOnlyReasons(mask uint32) []string {
 	return reasons
 }
 
-var metaReplicaTableRowPattern = "%-65v    %-6v    %-6v    %-6v    %-10v"
+var metaReplicaTableRowPattern = "%-65v    %-8v    %-10v    %-6v    %-6v    %-10v"
 
 func formatMetaReplicaTableHeader() string {
-	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "MaxInodeID", "ISLEADER", "STATUS", "REPORT TIME")
+	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "MaxInodeID", "ISLEADER", "STATUS", "StoreMode", "REPORT TIME")
 }
 
 func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(metaReplicaTableRowPattern, formatAddr(replica.Addr, replica.DomainAddr), replica.MaxInodeID,
-			replica.IsLeader, formatMetaPartitionStatus(replica.Status), formatTime(replica.ReportTime))
+			replica.IsLeader, formatMetaPartitionStatus(replica.Status), replica.StoreMode.Str(), formatTime(replica.ReportTime))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, formatAddr(replica.Addr, replica.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("%v- MaxInodeID     : %v\n", indentation, replica.MaxInodeID))
 	sb.WriteString(fmt.Sprintf("%v  Status         : %v\n", indentation, formatMetaPartitionStatus(replica.Status)))
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
+	sb.WriteString(fmt.Sprintf("%v  StoreMode      : %v\n", indentation, replica.StoreMode.Str()))
 	sb.WriteString(fmt.Sprintf("%v  ReportTime     : %v\n", indentation, formatTime(replica.ReportTime)))
 	return sb.String()
 }
@@ -1208,8 +1209,8 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Can alloc partition : %v\n", mn.CanAllowPartition))
 	sb.WriteString(fmt.Sprintf("  Max partition count : %v\n", mn.MaxMpCntLimit))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
-	sb.WriteString(fmt.Sprintf("  MemoryMpCount       : %v\n", mn.MemoryMpCount))
-	sb.WriteString(fmt.Sprintf("  RocksdbMpCount      : %v\n", mn.RocksdbMpCount))
+	sb.WriteString(fmt.Sprintf("  MemoryMpReplicas    : %v\n", mn.MemoryMpCount))
+	sb.WriteString(fmt.Sprintf("  RocksdbMpReplicas   : %v\n", mn.RocksdbMpCount))
 	return sb.String()
 }
 

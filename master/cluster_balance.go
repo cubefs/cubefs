@@ -1184,6 +1184,7 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 	}
 
 	plan.Status = PlanTaskRun
+	plan.StartTime = time.Now()
 	err = c.syncUpdateBalanceTask(plan)
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
@@ -1234,10 +1235,12 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		} else {
 			plan.Status = PlanTaskDone
 			plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
+			plan.EndTime = time.Now()
 		}
 	} else {
 		plan.Status = PlanTaskStop
 		plan.Msg = "migrate plan is stopped"
+		plan.EndTime = time.Now()
 	}
 
 	if plan.Type == OfflinePlan && plan.Status == PlanTaskDone {
@@ -1506,6 +1509,7 @@ func (c *Cluster) AutoCreateRunningMigratePlan() (*proto.ClusterPlan, error) {
 
 	plan.Type = AutoPlan
 	plan.Status = PlanTaskRun
+	plan.StartTime = time.Now()
 
 	// Save into raft storage.
 	err = c.syncAddBalanceTask(plan)

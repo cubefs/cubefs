@@ -79,4 +79,6 @@ type ClusterPlan struct {
 	StartId    uint64                       `json:"startId"`
 	EndId      uint64                       `json:"endId"`
 	RackLevel  RackAwareLevel               `json:"rackLevel"`
+	StartTime  time.Time                    `json:"startTime"`
+	EndTime    time.Time                    `json:"endTime"`
 }
