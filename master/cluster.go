@@ -190,6 +190,7 @@ type Cluster struct {
 	Cleaning    bool
 	mu          sync.Mutex
 	PlanRun     bool
+	PlanIsRun   bool
 	flashManMgr *flashManualTaskManager
 }
 
@@ -491,6 +492,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.flashNodeTopo = newFlashNodeTopology()
 	c.cleanTask = make(map[string]*CleanTask)
 	c.PlanRun = false
+	c.PlanIsRun = false
 	c.flashManMgr = newFlashManualTaskManager(c)
 	return
 }

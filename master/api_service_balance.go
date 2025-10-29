@@ -413,6 +413,11 @@ func (m *Server) createMetaNodeBalancePlan(w http.ResponseWriter, r *http.Reques
 		doStatAndMetric(proto.CreateMetaNodeBalanceTask, metric, err, nil)
 	}()
 
+	if m.cluster.PlanIsRun {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+		return
+	}
+
 	var plan *proto.ClusterPlan
 	// search the raft storage. Only store one plan
 	plan, err = m.cluster.loadBalanceTask()
@@ -475,6 +480,11 @@ func (m *Server) runMetaNodeBalancePlan(w http.ResponseWriter, r *http.Request) 
 		doStatAndMetric(proto.RunMetaNodeBalanceTask, metric, err, nil)
 	}()
 
+	if m.cluster.PlanIsRun {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+		return
+	}
+
 	err = m.cluster.RunMetaPartitionBalanceTask()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
@@ -511,6 +521,11 @@ func (m *Server) deleteMetaNodeBalancePlan(w http.ResponseWriter, r *http.Reques
 		doStatAndMetric(proto.DeleteMetaNodeBalanceTask, metric, err, nil)
 	}()
 
+	if m.cluster.PlanIsRun {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+		return
+	}
+
 	err = m.cluster.DeleteMetaPartitionBalanceTask()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
@@ -535,6 +550,11 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.OfflineMetaNode, metric, err, nil)
 		AuditLog(r, proto.OfflineMetaNode, rstMsg, err)
 	}()
+
+	if m.cluster.PlanIsRun {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+		return
+	}
 
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		log.LogErrorf("parse node addr failed, err: %v", err)
@@ -699,6 +719,11 @@ func (m *Server) createMetaPartitionStoreModeChangePlan(w http.ResponseWriter, r
 	defer func() {
 		doStatAndMetric(proto.AdminCreateStoreModeChangePlan, metric, nil, nil)
 	}()
+
+	if m.cluster.PlanIsRun {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+		return
+	}
 
 	// search the raft storage. Only store one plan
 	plan, err := m.cluster.loadBalanceTask()

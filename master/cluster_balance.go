@@ -1198,9 +1198,11 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 }
 
 func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
+	c.PlanIsRun = true
 	defer func() {
 		// clear the run flag.
 		c.PlanRun = false
+		c.PlanIsRun = false
 	}()
 
 	concurrency := gConfig.mpMigrateThreads
