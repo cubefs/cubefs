@@ -264,7 +264,7 @@ func (c *RocksDBCleaner) initRocksdbTree(record *CleanRecord) (*RocksdbTree, err
 	// Initialize RocksDB
 	rocksdbTree.db, err = rocksdbTree.rocksdbManager.OpenRocksdb(rocksdbTree.RocksDBDir, rocksdbTree.PartitionId)
 	if err != nil {
-		log.LogErrorf("action[initTempMetaPartition] mp(%v) failed to open rocksdb: %v", rocksdbTree.PartitionId, err)
+		log.LogErrorf("[initRocksdbTree] mp(%v) failed to open rocksdb(%s): %v", rocksdbTree.PartitionId, rocksdbTree.RocksDBDir, err)
 		return nil, err
 	}
 
@@ -367,12 +367,12 @@ errHandler:
 
 func (c *RocksDBCleaner) DoCleanRocksdbData(record *CleanRecord) error {
 	rocksdbTree, err := c.initRocksdbTree(record)
-	defer c.closeRocksdbTree(rocksdbTree)
 	if err != nil {
 		log.LogErrorf("RocksDBCleaner: failed to init rocksdb tree for partition [%d]: %s",
 			record.PartitionId, err)
 		return err
 	}
+	defer c.closeRocksdbTree(rocksdbTree)
 
 	// Perform cleanup operation
 	err = c.cleanRocksdbTree(rocksdbTree)
