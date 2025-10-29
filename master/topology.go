@@ -3007,24 +3007,38 @@ func (zone *Zone) canWriteForMetaNode(replicaNum uint8, storeMode proto.StoreMod
 	return
 }
 
-func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []string, nodeType uint32) (zones []*Zone, err error) {
+func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []string, specialZones []*Zone, nodeType uint32) (zones []*Zone, err error) {
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForMetaNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
+	} else if len(specialZones) > 0 {
+		zones = t.pickUpZonesByNodeType(specialZones, MetaNodeType, proto.MediaType_Unspecified)
+		zoneNum = len(zones)
+		log.LogInfof("action[allocZonesForMetaNode] pick up mediaType from specialZones, get zoneNum: %v", zoneNum)
 	} else {
 		// if domain enable, will not enter here
-		zones = t.getAllZones()
+		zones = t.getZonesOfNodeType(MetaNodeType, proto.MediaType_Unspecified)
+		log.LogInfof("[allocZonesForNode] pick up mediaType(%v) from all zone, get zoneNum: %v",
+			proto.MediaTypeString(proto.MediaType_Unspecified), len(zones))
 	}
+
+	if len(zones) == 1 {
+		log.LogInfof("action[allocZonesForNode] pick up mediaType(%v) only one zone: %v",
+			proto.MediaTypeString(proto.MediaType_Unspecified), zones[0].name)
+		return zones, nil
+	}
+
 	if t.isSingleZone() {
 		return zones, nil
 	}
+
 	if excludeZone == nil {
 		excludeZone = make([]string, 0)
 	}
 	candidateZones := make([]*Zone, 0)
-	demandWriteNodes := calculateDemandWriteNodes(zoneNum, replicaNum, false)
+	demandWriteNodes := calculateDemandWriteNodes(zoneNum, replicaNum, len(specialZones) > 1)
 	storeMode := proto.StoreModeMem
-	if nodeType == TypeMetaPartition {
+	if nodeType == TypeRocksdbPartition {
 		storeMode = proto.StoreModeRocksDb
 	}
 	for i := 0; i < len(zones); i++ {

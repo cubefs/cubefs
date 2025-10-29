@@ -2448,6 +2448,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 			return
 		}
 	}
+
 	if nodeType == TypeDataPartition {
 		rsMgr = &c.t.dataTopology
 		// get all zones that qualified
@@ -2456,7 +2457,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 		}
 	} else {
 		rsMgr = &c.t.metaTopology
-		if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, param.replicaNum, excludeZones, nodeType); err != nil {
+		if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, param.replicaNum, excludeZones, specifiedZones, nodeType); err != nil {
 			return
 		}
 	}
