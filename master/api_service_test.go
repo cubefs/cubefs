@@ -2060,3 +2060,60 @@ func TestSetRackAwareLevel(t *testing.T) {
 	process(unsetUrl, t)
 	require.EqualValues(t, oldVal, server.cluster.cfg.RackAwareLevel)
 }
+
+func TestSetEnableDistributionOptimization(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getEnableDistributionOptimization()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, autoDistributionOptimizationKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, autoDistributionOptimizationKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.getEnableDistributionOptimization())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getEnableDistributionOptimization())
+}
+
+func TestSetDistributionOptimizationThreshold(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := getDistributionOptimizationThreshold()
+	setVal := 0.75
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, distributionOptimizationThresholdKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, distributionOptimizationThresholdKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, getDistributionOptimizationThreshold())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, getDistributionOptimizationThreshold())
+}
+
+func TestSetDistributionOptimizationConDpCnt(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.DistributionOptimizationConDpCnt.Load()
+	setVal := int64(500)
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, distributionOptimizationConDpCntKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, distributionOptimizationConDpCntKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.DistributionOptimizationConDpCnt.Load())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.DistributionOptimizationConDpCnt.Load())
+}
+
+func TestCancelDpDistributionOptimization(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminCancelDpDistributionOptimization)
+	process(reqURL, t)
+}
+
+func TestQueryDistributionOptimizationStatus(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminQueryDistributionOptimizationStatus)
+	reply := process(reqURL, t)
+	require.NotNil(t, reply)
+	require.EqualValues(t, proto.ErrCodeSuccess, reply.Code)
+
+	// Verify status data structure
+	statusData, ok := reply.Data.(map[string]interface{})
+	require.True(t, ok, "status data should be a map")
+
+	// Verify key fields exist
+	require.Contains(t, statusData, "ConcurrentDpCount")
+	require.Contains(t, statusData, "BalanceThreshold")
+	require.Contains(t, statusData, "EnableDistributionOptimization")
+}

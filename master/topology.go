@@ -2663,11 +2663,10 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 		dp.deleteRetryTimesRecordByDiskPath(dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath)
 		dp.setRestoreReplicaStop()
 		c.releaseDataReservedResource([]string{dp.DecommissionDstAddr}, dp)
-		if dp.ProcessNextDecommissionSrcHost(c) {
-			return
+		if !dp.ProcessNextDecommissionSrcHost(c) {
+			c.releaseDataReservedResource(dp.DecommissionDstAddrs, dp)
+			dp.ResetDecommissionStatus()
 		}
-		c.releaseDataReservedResource(dp.DecommissionDstAddrs, dp)
-		dp.ResetDecommissionStatus()
 		err := c.syncUpdateDataPartition(dp)
 		if err != nil {
 			log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) Remove success dp[%v] failed for %v",

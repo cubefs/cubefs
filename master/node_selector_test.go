@@ -655,8 +655,8 @@ func TestNodeSelectorWithThreshold(t *testing.T) {
 		originalCount1 := dataNodes[0].DataPartitionCount
 		originalLimit1 := dataNodes[0].GetPartitionLimitCnt()
 
-		dataNodes[0].DataPartitionCount = uint32(float64(originalLimit1) * testThreshold * 0.9) // 低于阈值
-		dataNodes[1].DataPartitionCount = uint32(float64(originalLimit1) * testThreshold * 1.1) // 超过阈值
+		dataNodes[0].DataPartitionCount = uint32(float64(originalLimit1) * testThreshold * 0.9)
+		dataNodes[1].DataPartitionCount = uint32(float64(originalLimit1) * testThreshold * 1.1)
 
 		mocktest.Log(t, fmt.Sprintf("DataNode 1: PartitionCount=%d, Limit=%d, Ratio=%.2f",
 			dataNodes[0].DataPartitionCount, originalLimit1,

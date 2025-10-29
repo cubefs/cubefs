@@ -23,44 +23,48 @@ import (
 )
 
 func TestGetDpNodesetDistribution(t *testing.T) {
+	// Create a test cluster with mock data nodes
+	cluster := &Cluster{
+		ClusterTopoSubItem: ClusterTopoSubItem{
+			dataNodes: sync.Map{},
+		},
+	}
+
+	// Add mock data nodes
+	mockNodes := map[string]*DataNode{
+		"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1", NodeSetID: 1},
+		"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2", ZoneName: "zone1", NodeSetID: 1},
+		"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3", ZoneName: "zone1", NodeSetID: 2},
+		"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1", ZoneName: "zone1", NodeSetID: 3},
+	}
+
+	for addr, node := range mockNodes {
+		cluster.dataNodes.Store(addr, node)
+	}
+
 	tests := []struct {
 		name        string
-		hosts       []string
-		dpHost2Ns   map[string]uint64
-		dpHost2Zone map[string]string
+		replicas    []*DataReplica
 		expectCount map[string]map[uint64]int
 		expectBal   bool
 	}{
 		{
-			name:  "single nodeset balanced",
-			hosts: []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
-			dpHost2Ns: map[string]uint64{
-				"192.168.1.1:17310": 1,
-				"192.168.1.2:17310": 1,
-				"192.168.1.3:17310": 1,
-			},
-			dpHost2Zone: map[string]string{
-				"192.168.1.1:17310": "zone1",
-				"192.168.1.2:17310": "zone1",
-				"192.168.1.3:17310": "zone1",
+			name: "single nodeset balanced",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: mockNodes["192.168.1.2:17310"]},
 			},
 			expectCount: map[string]map[uint64]int{
-				"zone1": {1: 3},
+				"zone1": {1: 2},
 			},
 			expectBal: true,
 		},
 		{
-			name:  "multiple nodeset unbalanced",
-			hosts: []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
-			dpHost2Ns: map[string]uint64{
-				"192.168.1.1:17310": 1,
-				"192.168.1.2:17310": 1,
-				"192.168.1.3:17310": 2,
-			},
-			dpHost2Zone: map[string]string{
-				"192.168.1.1:17310": "zone1",
-				"192.168.1.2:17310": "zone1",
-				"192.168.1.3:17310": "zone1",
+			name: "multiple nodeset unbalanced",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: mockNodes["192.168.1.2:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.3:17310"}, dataNode: mockNodes["192.168.1.3:17310"]},
 			},
 			expectCount: map[string]map[uint64]int{
 				"zone1": {1: 2, 2: 1},
@@ -68,17 +72,11 @@ func TestGetDpNodesetDistribution(t *testing.T) {
 			expectBal: false,
 		},
 		{
-			name:  "three nodeset unbalanced",
-			hosts: []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
-			dpHost2Ns: map[string]uint64{
-				"192.168.1.1:17310": 1,
-				"192.168.1.2:17310": 2,
-				"192.168.1.3:17310": 3,
-			},
-			dpHost2Zone: map[string]string{
-				"192.168.1.1:17310": "zone1",
-				"192.168.1.2:17310": "zone1",
-				"192.168.1.3:17310": "zone1",
+			name: "three nodeset unbalanced",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.3:17310"}, dataNode: mockNodes["192.168.1.3:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.4:17310"}, dataNode: mockNodes["192.168.1.4:17310"]},
 			},
 			expectCount: map[string]map[uint64]int{
 				"zone1": {1: 1, 2: 1, 3: 1},
@@ -90,10 +88,10 @@ func TestGetDpNodesetDistribution(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dp := &DataPartition{
-				Hosts: tt.hosts,
+				Replicas: tt.replicas,
 			}
 
-			count, balanced := getDpNodesetDistribution(dp, tt.dpHost2Ns, tt.dpHost2Zone)
+			count, balanced := getDpNodesetDistribution(dp)
 
 			require.Equal(t, tt.expectCount, count, "NodeSet distribution count mismatch")
 			require.Equal(t, tt.expectBal, balanced, "NodeSet balance status mismatch")
@@ -175,10 +173,11 @@ func TestIsOptimalDistribution(t *testing.T) {
 
 	// Add mock data nodes
 	mockNodes := map[string]*DataNode{
-		"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1"},
-		"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2", ZoneName: "zone1"},
-		"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3", ZoneName: "zone1"},
-		"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1", ZoneName: "zone1"},
+		"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1", NodeSetID: 1},
+		"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2", ZoneName: "zone1", NodeSetID: 1},
+		"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3", ZoneName: "zone1", NodeSetID: 2},
+		"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1", ZoneName: "zone1", NodeSetID: 1},
+		"192.168.2.1:17310": {Addr: "192.168.2.1:17310", Rack: "rack1", ZoneName: "zone2", NodeSetID: 3},
 	}
 
 	for addr, node := range mockNodes {
@@ -186,89 +185,54 @@ func TestIsOptimalDistribution(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		hosts       []string
-		dpHost2Ns   map[string]uint64
-		dpHost2Zone map[string]string
-		rackLevel   proto.RackAwareLevel
-		expectOpt   bool
+		name      string
+		replicas  []*DataReplica
+		rackLevel proto.RackAwareLevel
+		expectOpt bool
 	}{
 		{
-			name:  "optimal: single nodeset, no rack conflict",
-			hosts: []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
-			dpHost2Ns: map[string]uint64{
-				"192.168.1.1:17310": 1,
-				"192.168.1.2:17310": 1,
-				"192.168.1.3:17310": 1,
-			},
-			dpHost2Zone: map[string]string{
-				"192.168.1.1:17310": "zone1",
-				"192.168.1.2:17310": "zone1",
-				"192.168.1.3:17310": "zone1",
+			name: "optimal: single nodeset, no rack conflict",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: mockNodes["192.168.1.2:17310"]},
 			},
 			rackLevel: proto.RackAwareStrong,
 			expectOpt: true,
 		},
 		{
-			name:  "not optimal: multiple nodeset",
-			hosts: []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
-			dpHost2Ns: map[string]uint64{
-				"192.168.1.1:17310": 1,
-				"192.168.1.2:17310": 1,
-				"192.168.1.3:17310": 2,
-			},
-			dpHost2Zone: map[string]string{
-				"192.168.1.1:17310": "zone1",
-				"192.168.1.2:17310": "zone1",
-				"192.168.1.3:17310": "zone1",
+			name: "not optimal: multiple nodeset",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: mockNodes["192.168.1.2:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.3:17310"}, dataNode: mockNodes["192.168.1.3:17310"]},
 			},
 			rackLevel: proto.RackAwareStrong,
 			expectOpt: false,
 		},
 		{
-			name:  "not optimal: single nodeset but rack conflict",
-			hosts: []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.2:17310"},
-			dpHost2Ns: map[string]uint64{
-				"192.168.1.1:17310": 1,
-				"192.168.1.4:17310": 1,
-				"192.168.1.2:17310": 1,
-			},
-			dpHost2Zone: map[string]string{
-				"192.168.1.1:17310": "zone1",
-				"192.168.1.4:17310": "zone1",
-				"192.168.1.2:17310": "zone1",
+			name: "not optimal: single nodeset but rack conflict",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.4:17310"}, dataNode: mockNodes["192.168.1.4:17310"]},
 			},
 			rackLevel: proto.RackAwareStrong,
 			expectOpt: false,
 		},
 		{
-			name:  "optimal: rack awareness disabled",
-			hosts: []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.2:17310"},
-			dpHost2Ns: map[string]uint64{
-				"192.168.1.1:17310": 1,
-				"192.168.1.4:17310": 1,
-				"192.168.1.2:17310": 1,
-			},
-			dpHost2Zone: map[string]string{
-				"192.168.1.1:17310": "zone1",
-				"192.168.1.4:17310": "zone1",
-				"192.168.1.2:17310": "zone1",
+			name: "optimal: rack awareness disabled",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.4:17310"}, dataNode: mockNodes["192.168.1.4:17310"]},
 			},
 			rackLevel: proto.RackAwareNone,
 			expectOpt: true,
 		},
 		{
-			name:  "cross-zone with intra-zone imbalance: 2 in zone1 (different nodesets) + 1 in zone2",
-			hosts: []string{"192.168.1.1:17310", "192.168.1.3:17310", "192.168.2.1:17310"},
-			dpHost2Ns: map[string]uint64{
-				"192.168.1.1:17310": 1,
-				"192.168.1.3:17310": 2,
-				"192.168.2.1:17310": 3,
-			},
-			dpHost2Zone: map[string]string{
-				"192.168.1.1:17310": "zone1",
-				"192.168.1.3:17310": "zone1",
-				"192.168.2.1:17310": "zone2",
+			name: "cross-zone with intra-zone imbalance: 2 in zone1 (different nodesets) + 1 in zone2",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.3:17310"}, dataNode: mockNodes["192.168.1.3:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.2.1:17310"}, dataNode: mockNodes["192.168.2.1:17310"]},
 			},
 			rackLevel: proto.RackAwareStrong,
 			expectOpt: false, // zone1 has 2 replicas in different nodesets, needs optimization
@@ -280,10 +244,10 @@ func TestIsOptimalDistribution(t *testing.T) {
 			cluster.cfg.RackAwareLevel = tt.rackLevel
 
 			dp := &DataPartition{
-				Hosts: tt.hosts,
+				Replicas: tt.replicas,
 			}
 
-			_, optimal := isOptimalDistribution(dp, tt.dpHost2Ns, tt.dpHost2Zone, cluster)
+			_, optimal := isOptimalDistribution(dp, cluster)
 
 			require.Equal(t, tt.expectOpt, optimal, "Optimal distribution check mismatch")
 		})
@@ -291,87 +255,48 @@ func TestIsOptimalDistribution(t *testing.T) {
 }
 
 func TestHasRackConflict(t *testing.T) {
-	// Create test cluster with different rack aware levels
-	createCluster := func(rackLevel proto.RackAwareLevel) *Cluster {
-		cluster := &Cluster{
-			ClusterTopoSubItem: ClusterTopoSubItem{
-				dataNodes: sync.Map{},
-			},
-			cfg: &clusterConfig{
-				RackAwareLevel: rackLevel,
-			},
-		}
-
-		// Add mock data nodes
-		mockNodes := map[string]*DataNode{
-			"192.168.1.1:17310": {Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1"},
-			"192.168.1.2:17310": {Addr: "192.168.1.2:17310", Rack: "rack2", ZoneName: "zone1"},
-			"192.168.1.3:17310": {Addr: "192.168.1.3:17310", Rack: "rack3", ZoneName: "zone1"},
-			"192.168.1.4:17310": {Addr: "192.168.1.4:17310", Rack: "rack1", ZoneName: "zone1"},
-			"192.168.1.5:17310": {Addr: "192.168.1.5:17310", Rack: "rack1", ZoneName: "zone1"},
-		}
-
-		for addr, node := range mockNodes {
-			cluster.dataNodes.Store(addr, node)
-		}
-
-		return cluster
-	}
-
 	tests := []struct {
 		name           string
-		hosts          []string
-		rackLevel      proto.RackAwareLevel
+		replicas       []*DataReplica
 		expectConflict bool
 	}{
 		{
-			name:           "no conflict - different racks",
-			hosts:          []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
-			rackLevel:      proto.RackAwareStrong,
+			name: "no conflict - different racks",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: &DataNode{Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1"}},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: &DataNode{Addr: "192.168.1.2:17310", Rack: "rack2", ZoneName: "zone1"}},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.3:17310"}, dataNode: &DataNode{Addr: "192.168.1.3:17310", Rack: "rack3", ZoneName: "zone1"}},
+			},
 			expectConflict: false,
 		},
 		{
-			name:           "conflict - 2 in same rack (strong level)",
-			hosts:          []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.2:17310"},
-			rackLevel:      proto.RackAwareStrong,
+			name: "conflict - 2 in same rack",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: &DataNode{Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1"}},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.4:17310"}, dataNode: &DataNode{Addr: "192.168.1.4:17310", Rack: "rack1", ZoneName: "zone1"}},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: &DataNode{Addr: "192.168.1.2:17310", Rack: "rack2", ZoneName: "zone1"}},
+			},
 			expectConflict: true,
 		},
 		{
-			name:           "conflict - 2 in same rack (weak level, now always returns true)",
-			hosts:          []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.2:17310"},
-			rackLevel:      proto.RackAwareWeak,
-			expectConflict: true, // Changed: now always returns true for any conflict
-		},
-		{
-			name:           "conflict - 3 in same rack (weak level)",
-			hosts:          []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.5:17310"},
-			rackLevel:      proto.RackAwareWeak,
+			name: "conflict - 3 in same rack",
+			replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: &DataNode{Addr: "192.168.1.1:17310", Rack: "rack1", ZoneName: "zone1"}},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.4:17310"}, dataNode: &DataNode{Addr: "192.168.1.4:17310", Rack: "rack1", ZoneName: "zone1"}},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.5:17310"}, dataNode: &DataNode{Addr: "192.168.1.5:17310", Rack: "rack1", ZoneName: "zone1"}},
+			},
 			expectConflict: true,
-		},
-		{
-			name:           "conflict - even with none level, now returns true",
-			hosts:          []string{"192.168.1.1:17310", "192.168.1.4:17310", "192.168.1.5:17310"},
-			rackLevel:      proto.RackAwareNone,
-			expectConflict: true, // Changed: now always returns true for any conflict
-		},
-		{
-			name:           "no conflict - different racks (none level)",
-			hosts:          []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
-			rackLevel:      proto.RackAwareNone,
-			expectConflict: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cluster := createCluster(tt.rackLevel)
-
 			dp := &DataPartition{
-				Hosts:      tt.hosts,
-				ReplicaNum: uint8(len(tt.hosts)),
+				Replicas:   tt.replicas,
+				ReplicaNum: uint8(len(tt.replicas)),
 			}
 
-			conflict, _ := hasRackConflict(dp, cluster)
+			conflict, _ := hasRackConflict(dp)
 
 			require.Equal(t, tt.expectConflict, conflict, "Rack conflict detection mismatch")
 		})
@@ -478,8 +403,13 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 
 	partitions := []*DataPartition{
 		{
-			PartitionID:        1,
-			Hosts:              []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
+			PartitionID: 1,
+			Hosts:       []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
+			Replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: mockNodes["192.168.1.2:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.3:17310"}, dataNode: mockNodes["192.168.1.3:17310"]},
+			},
 			DecommissionType:   proto.DistributionOptimization,
 			DecommissionStatus: DecommissionRunning,
 			IsDiscard:          false,
@@ -487,22 +417,39 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 		{
 			PartitionID: 2,
 			Hosts:       []string{"192.168.1.1:17310", "192.168.1.2:17310"}, // Same NodeSet, different racks
-			IsDiscard:   false,
+			Replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: mockNodes["192.168.1.2:17310"]},
+			},
+			IsDiscard: false,
 		},
 		{
 			PartitionID: 3,
 			Hosts:       []string{"192.168.1.1:17310", "192.168.1.1:17310"}, // Same NodeSet, same rack (conflict)
-			IsDiscard:   false,
+			Replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.4:17310"}, dataNode: mockNodes["192.168.1.4:17310"]},
+			},
+			IsDiscard: false,
 		},
 		{
 			PartitionID: 4,
 			Hosts:       []string{"192.168.1.1:17310", "192.168.2.1:17310"}, // Cross-zone: zone1 + zone2
-			IsDiscard:   false,
+			Replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.2.1:17310"}, dataNode: mockNodes["192.168.2.1:17310"]},
+			},
+			IsDiscard: false,
 		},
 		{
 			PartitionID: 5,
 			Hosts:       []string{"192.168.1.1:17310", "192.168.1.3:17310", "192.168.2.1:17310"}, // 2 in zone1 (different nodesets) + 1 in zone2
-			IsDiscard:   false,
+			Replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.3:17310"}, dataNode: mockNodes["192.168.1.3:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.2.1:17310"}, dataNode: mockNodes["192.168.2.1:17310"]},
+			},
+			IsDiscard: false,
 		},
 	}
 
