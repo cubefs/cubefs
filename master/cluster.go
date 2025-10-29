@@ -20,6 +20,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -4190,22 +4191,88 @@ func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, targetDpCount int, me
 	return dpCountOfMediaType, nil
 }
 
+func (c *Cluster) checkVolDuplicate(req *createVolReq, vol *Vol) bool {
+	var dataPartitionSize uint64
+
+	if req.dpSize*util.GB == 0 {
+		dataPartitionSize = util.DefaultDataPartitionSize
+	} else {
+		dataPartitionSize = uint64(req.dpSize) * util.GB
+	}
+
+	if vol.Owner != req.owner || vol.zoneName != req.zoneName {
+		return false
+	}
+
+	if vol.dataPartitionSize != dataPartitionSize || vol.Capacity != uint64(req.capacity) {
+		return false
+	}
+
+	if vol.volStorageClass != req.volStorageClass || vol.VolType != req.volType {
+		return false
+	}
+
+	if vol.crossZone != req.crossZone || vol.defaultPriority != req.normalZonesFirst || vol.domainId != req.domainId || vol.DefaultStoreMode != req.storeMode {
+		return false
+	}
+
+	if (vol.allowedStorageClass != nil && req.allowedStorageClass != nil) && !reflect.DeepEqual(vol.allowedStorageClass, req.allowedStorageClass) {
+		return false
+	}
+	return true
+}
+
+func (c *Cluster) updateVolForReCreate(req *createVolReq, vol *Vol) {
+	vol.qosManager.qosEnable = req.qosLimitArgs.qosEnable
+	vol.qosManager.volUpdateLimit(req.qosLimitArgs)
+
+	vol.FollowerRead = req.followerRead
+	vol.MetaFollowerRead = req.metaFollowerRead
+	vol.description = req.description
+	vol.MaximallyRead = req.maximallyRead
+	vol.authenticate = req.authenticate
+	vol.DeleteLockTime = req.deleteLockTime
+	vol.enablePosixAcl = req.enablePosixAcl
+	vol.txTimeout = req.txTimeout
+	vol.txConflictRetryNum = req.txConflictRetryNum
+	vol.txConflictRetryInterval = req.txConflictRetryInterval
+	vol.EbsBlkSize = req.coldArgs.objBlockSize
+	vol.DpReadOnlyWhenVolFull = req.DpReadOnlyWhenVolFull
+	vol.TrashInterval = req.trashInterval
+	vol.AccessTimeInterval = req.accessTimeValidInterval
+	vol.enableQuota = req.enableQuota
+	vol.EnablePersistAccessTime = req.enablePersistAccessTime
+	vol.flashNodeTimeoutCount = req.flashNodeTimeoutCount
+
+	vol.remoteCacheEnable = req.remoteCacheEnable
+	vol.remoteCacheAutoPrepare = req.remoteCacheAutoPrepare
+	vol.remoteCacheTTL = req.remoteCacheTTL
+	vol.remoteCachePath = req.remoteCachePath
+	vol.remoteCacheReadTimeout = req.remoteCacheReadTimeout
+	vol.remoteCacheMaxFileSizeGB = req.remoteCacheMaxFileSizeGB
+	vol.remoteCacheOnlyForNotSSD = req.remoteCacheOnlyForNotSSD
+	vol.remoteCacheMultiRead = req.remoteCacheMultiRead
+	vol.remoteCacheSameZoneTimeout = req.remoteCacheSameZoneTimeout
+	vol.remoteCacheSameRegionTimeout = req.remoteCacheSameRegionTimeout
+
+	if req.enableTransaction != 0 {
+		vol.enableTransaction = req.enableTransaction
+	}
+}
+
 func (c *Cluster) checkVolStatus(req *createVolReq, vol *Vol) (err error) {
 	vol.volLock.Lock()
-	currentWindow := int64(VolumeCreateWindowSeconds)
-	if vol.Owner != req.owner {
+	if !c.checkVolDuplicate(req, vol) {
 		vol.volLock.Unlock()
+		log.LogDebugf("action[checkVolStatus] vol[%v] is duplicate", vol.Name)
 		return proto.ErrDuplicateVol
 	}
 
 	switch vol.Status {
 	case proto.VolStatusNormal:
 		vol.volLock.Unlock()
-		if vol.createTime < time.Now().Unix()-currentWindow {
-			return proto.ErrDuplicateVol
-		} else {
-			return nil
-		}
+		log.LogDebugf("action[checkVolStatus] vol[%v] is normal, return duplicate vol error", vol.Name)
+		return proto.ErrDuplicateVol
 	case proto.VolStatusInitializing:
 		vol.volLock.Unlock()
 		for i := 0; i < 10; i++ {
@@ -4219,6 +4286,7 @@ func (c *Cluster) checkVolStatus(req *createVolReq, vol *Vol) (err error) {
 		}
 		return proto.ErrVolInitFailed
 	case proto.VolStatusInitFailed:
+		c.updateVolForReCreate(req, vol)
 		vol.Status = proto.VolStatusInitializing
 		if err = c.syncUpdateVol(vol); err != nil {
 			vol.Status = proto.VolStatusInitFailed

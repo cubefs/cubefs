@@ -1522,7 +1522,7 @@ func (vol *Vol) checkStatus(c *Cluster) {
 func (vol *Vol) checkInitFailed(c *Cluster) {
 	vol.volLock.Lock()
 	defer vol.volLock.Unlock()
-	deleteTime := int64(20 * 60)
+	deleteTime := int64(5 * 60)
 	if vol.Status != proto.VolStatusInitFailed || vol.createTime > time.Now().Unix()-deleteTime {
 		return
 	}
