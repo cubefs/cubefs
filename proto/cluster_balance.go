@@ -81,4 +81,5 @@ type ClusterPlan struct {
 	RackLevel  RackAwareLevel               `json:"rackLevel"`
 	StartTime  time.Time                    `json:"startTime"`
 	EndTime    time.Time                    `json:"endTime"`
+	FailedList []uint64                     `json:"FailedMetaPartitions"`
 }

@@ -317,6 +317,7 @@ func (c *Cluster) GetMetaNodePressureView() (*proto.ClusterPlan, error) {
 		Status:     PlanTaskInit,
 		Mode:       proto.StoreModeMem,
 		RackLevel:  c.getRackAwareLevel(),
+		FailedList: make([]uint64, 0),
 	}
 
 	err := c.GetLowMemPressureTopology(cView)
@@ -1210,7 +1211,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	var wg sync.WaitGroup
 
 	stopProcess := false
-	var errMsg string
+	failedList := make([]uint64, 0)
 	for _, mpPlan := range plan.Plan {
 		if stopProcess {
 			break
@@ -1223,17 +1224,18 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			if err != nil {
 				log.LogErrorf("handleMetaPartitionPlan err: %s", err.Error())
 				stopProcess = true
-				errMsg = err.Error()
+				failedList = append(failedList, mpPlan.ID)
 			}
 			<-sem
 		}(mpPlan)
 	}
 	wg.Wait()
 
+	plan.FailedList = append(plan.FailedList, failedList...)
 	if c.PlanRun {
 		if stopProcess {
 			plan.Status = PlanTaskError
-			plan.Msg = errMsg
+			plan.Msg = "Stop task because some meta partition failed. Please check the detail in each msg."
 		} else {
 			plan.Status = PlanTaskDone
 			plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
@@ -1643,6 +1645,7 @@ func (c *Cluster) CreateOfflineMetaNodePlan(offLineAddr string) (*proto.ClusterP
 		Plan:       make([]*proto.MetaBalancePlan, 0),
 		Status:     PlanTaskInit,
 		RackLevel:  c.getRackAwareLevel(),
+		FailedList: make([]uint64, 0),
 	}
 
 	err := c.GetLowMemPressureTopology(cView)
@@ -1984,6 +1987,7 @@ func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID
 		StartId:    startID,
 		EndId:      endID,
 		RackLevel:  c.getRackAwareLevel(),
+		FailedList: make([]uint64, 0),
 	}
 
 	err := c.GetLowMemPressureTopology(plan)
