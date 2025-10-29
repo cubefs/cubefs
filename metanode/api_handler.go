@@ -1835,7 +1835,6 @@ func (m *MetaNode) setRocksdbKeyNumMaxHandler(w http.ResponseWriter, r *http.Req
 		resp.Msg = fmt.Sprintf("set rocksdb key num max success: num=%v", keyNumVal)
 		m.CheckRocksdbStatus()
 	}
-	return
 }
 
 func (m *MetaNode) compactRocksdbHandler(w http.ResponseWriter, r *http.Request) {
@@ -1877,5 +1876,4 @@ func (m *MetaNode) compactRocksdbHandler(w http.ResponseWriter, r *http.Request)
 
 	log.LogInfof("[compactRocksdbHandler] compact rocksdb success: dbDir=%v, cost time=%v", dbDir, time.Since(now))
 	resp.Msg = fmt.Sprintf("compact rocksdb success: dbDir=%v, costtime=%v", dbDir, time.Since(now))
-	return
 }

@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -1173,7 +1174,7 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.PlanRun {
+	if c.IsClusterPlanNotIdle() {
 		return nil
 	}
 
@@ -1192,18 +1193,16 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 		return err
 	}
 
-	c.PlanRun = true
+	c.SetClusterPlanRunning()
 	go c.DoMetaPartitionBalanceTask(plan)
 
 	return nil
 }
 
 func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
-	c.PlanIsRun = true
 	defer func() {
 		// clear the run flag.
-		c.PlanRun = false
-		c.PlanIsRun = false
+		c.SetClusterPlanIdle()
 	}()
 
 	concurrency := gConfig.mpMigrateThreads
@@ -1232,7 +1231,11 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	wg.Wait()
 
 	plan.FailedList = append(plan.FailedList, failedList...)
-	if c.PlanRun {
+	if c.IsClusterPlanStopping() {
+		plan.Status = PlanTaskStop
+		plan.Msg = "migrate plan is stopped"
+		plan.EndTime = time.Now()
+	} else {
 		if stopProcess {
 			plan.Status = PlanTaskError
 			plan.Msg = "Stop task because some meta partition failed. Please check the detail in each msg."
@@ -1241,10 +1244,6 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
 			plan.EndTime = time.Now()
 		}
-	} else {
-		plan.Status = PlanTaskStop
-		plan.Msg = "migrate plan is stopped"
-		plan.EndTime = time.Now()
 	}
 
 	if plan.Type == OfflinePlan && plan.Status == PlanTaskDone {
@@ -1368,7 +1367,7 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 				return nil
 			}
 		case <-c.stopc:
-			c.PlanRun = false
+			c.SetClusterPlanStopping()
 			return fmt.Errorf("cluster is stopping")
 		}
 	}
@@ -1419,14 +1418,20 @@ func VerifyMetaReplicaPlanNotAllInit(mpPlan *proto.MetaBalancePlan) bool {
 	return false
 }
 
-func (c *Cluster) StopMetaPartitionBalanceTask() error {
+func (c *Cluster) StopMetaPartitionBalanceTask(force bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.PlanRun {
-		return fmt.Errorf("Balance task is not running")
+
+	if force {
+		c.SetClusterPlanIdle()
+		return nil
 	}
 
-	c.PlanRun = false
+	if c.IsClusterPlanNotRun() {
+		return fmt.Errorf("Balance task status(%d) is not running", atomic.LoadUint32(&c.planStatus))
+	}
+
+	c.SetClusterPlanStopping()
 	return nil
 }
 
@@ -1463,7 +1468,7 @@ func (c *Cluster) scheduleStartBalanceTask() {
 		for {
 			select {
 			case <-ticker.C:
-				if c.partition == nil || !c.partition.IsRaftLeader() || c.PlanRun {
+				if c.partition == nil || !c.partition.IsRaftLeader() || c.IsClusterPlanNotIdle() {
 					continue
 				}
 
@@ -1536,7 +1541,7 @@ func (c *Cluster) RestartMetaPartitionBalanceTask() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.PlanRun {
+	if c.IsClusterPlanNotIdle() {
 		return nil
 	}
 
@@ -1579,7 +1584,7 @@ func (c *Cluster) RestartMetaPartitionBalanceTask() error {
 		return nil
 	}
 
-	c.PlanRun = true
+	c.SetClusterPlanRunning()
 	go c.DoMetaPartitionBalanceTask(plan)
 
 	return nil
@@ -1589,7 +1594,7 @@ func (c *Cluster) DeleteMetaPartitionBalanceTask() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.PlanRun {
+	if c.IsClusterPlanNotIdle() {
 		return fmt.Errorf("Please stop the running task before deleting it.")
 	}
 
@@ -1861,7 +1866,7 @@ func (c *Cluster) waitForMetaPartitionReady(mp *MetaPartition) error {
 				return nil
 			}
 		case <-c.stopc:
-			c.PlanRun = false
+			c.SetClusterPlanStopping()
 			return fmt.Errorf("cluster is stopping")
 		}
 	}
@@ -2188,8 +2193,8 @@ func (c *Cluster) getAllMetaPartitions() (mps map[uint64]*MetaPartition) {
 func (c *Cluster) doMetaPartitionMigrate(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, mrPlan *proto.MrBalanceInfo, mp *MetaPartition) (err error) {
 	log.LogWarnf("Start to migrate meta partition(%d) from %s to %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
 	for i := 0; i < RetryDoMigrateNum; i++ {
-		if !c.PlanRun {
-			err = fmt.Errorf("migrate plan is stopped")
+		if c.IsClusterPlanNotRun() {
+			err = fmt.Errorf("plan status(%d) is not running", atomic.LoadUint32(&c.planStatus))
 			return err
 		}
 		if c.partition == nil || !c.partition.IsRaftLeader() {
@@ -2210,7 +2215,7 @@ func (c *Cluster) doMetaPartitionMigrate(plan *proto.ClusterPlan, mpPlan *proto.
 		}
 
 		if !mp.CheckLastDelReplicaTime() {
-			log.LogWarnf("DoMetaPartitionBalanceTask: mp try wait, last %d, mp %d", mp.LastDelReplicaTime, mp.PartitionID)
+			log.LogWarnf("doMetaPartitionMigrate: mp try wait, last %d, mp %d", mp.LastDelReplicaTime, mp.PartitionID)
 			time.Sleep(time.Second * (mpReplicaDelInterval + 10))
 		}
 
@@ -2259,4 +2264,40 @@ func IsRetryMigrateMpError(err error) bool {
 	}
 
 	return strings.Contains(msg, "downreplicas") && strings.Contains(msg, "so donnot offline")
+}
+
+func (c *Cluster) IsClusterPlanNotIdle() bool {
+	return atomic.LoadUint32(&c.planStatus) != PlanStatusIdle
+}
+
+func (c *Cluster) IsClusterPlanNotRun() bool {
+	return atomic.LoadUint32(&c.planStatus) != PlanStatusRun
+}
+
+func (c *Cluster) IsClusterPlanStopping() bool {
+	return atomic.LoadUint32(&c.planStatus) == PlanStatusStopping
+}
+
+func (c *Cluster) SetClusterPlanRunning() {
+	atomic.StoreUint32(&c.planStatus, PlanStatusRun)
+}
+
+func (c *Cluster) SetClusterPlanIdle() {
+	atomic.StoreUint32(&c.planStatus, PlanStatusIdle)
+}
+
+func (c *Cluster) SetClusterPlanStopping() {
+	atomic.StoreUint32(&c.planStatus, PlanStatusStopping)
+}
+
+func (c *Cluster) GetClusterPlanStatusMsg() string {
+	switch atomic.LoadUint32(&c.planStatus) {
+	case PlanStatusIdle:
+		return "plan task status is idle"
+	case PlanStatusRun:
+		return "plan task status is running"
+	case PlanStatusStopping:
+		return "plan task status is stopping"
+	}
+	return "plan task status is unknown"
 }

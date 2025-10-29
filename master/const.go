@@ -551,4 +551,8 @@ const (
 	RetryDoMigrateNum       = 3
 	RetryMigrateInterVal    = 10
 	MaxMpMigrateNum         = 1000
+
+	PlanStatusIdle     = 0
+	PlanStatusRun      = 1
+	PlanStatusStopping = 2
 )

@@ -1707,7 +1707,7 @@ func TestGetAllMetaPartitions(t *testing.T) {
 
 func TestDoMetaPartitionMigrate_ErrPlanStopped(t *testing.T) {
 	c := &Cluster{}
-	c.PlanRun = false
+	c.SetClusterPlanIdle()
 	mp := &MetaPartition{PartitionID: 10, Replicas: []*MetaReplica{}}
 	mpPlan := &proto.MetaBalancePlan{ID: 10}
 	plan := &proto.ClusterPlan{}
@@ -1719,7 +1719,7 @@ func TestDoMetaPartitionMigrate_ErrPlanStopped(t *testing.T) {
 
 func TestDoMetaPartitionMigrate_ErrNotLeader(t *testing.T) {
 	c := &Cluster{partition: &mockPartition{isLeader: false}}
-	c.PlanRun = true
+	c.SetClusterPlanRunning()
 	mp := &MetaPartition{PartitionID: 10, Replicas: []*MetaReplica{}}
 	mpPlan := &proto.MetaBalancePlan{ID: 10}
 	plan := &proto.ClusterPlan{}

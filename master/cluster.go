@@ -189,8 +189,7 @@ type Cluster struct {
 	cleanTask   map[string]*CleanTask
 	Cleaning    bool
 	mu          sync.Mutex
-	PlanRun     bool
-	PlanIsRun   bool
+	planStatus  uint32
 	flashManMgr *flashManualTaskManager
 }
 
@@ -491,9 +490,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.server = server
 	c.flashNodeTopo = newFlashNodeTopology()
 	c.cleanTask = make(map[string]*CleanTask)
-	c.PlanRun = false
-	c.PlanIsRun = false
 	c.flashManMgr = newFlashManualTaskManager(c)
+	atomic.StoreUint32(&c.planStatus, PlanStatusIdle)
 	return
 }
 

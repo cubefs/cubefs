@@ -413,8 +413,8 @@ func (m *Server) createMetaNodeBalancePlan(w http.ResponseWriter, r *http.Reques
 		doStatAndMetric(proto.CreateMetaNodeBalanceTask, metric, err, nil)
 	}()
 
-	if m.cluster.PlanIsRun {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+	if m.cluster.IsClusterPlanNotIdle() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
 		return
 	}
 
@@ -480,8 +480,8 @@ func (m *Server) runMetaNodeBalancePlan(w http.ResponseWriter, r *http.Request) 
 		doStatAndMetric(proto.RunMetaNodeBalanceTask, metric, err, nil)
 	}()
 
-	if m.cluster.PlanIsRun {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+	if m.cluster.IsClusterPlanNotIdle() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
 		return
 	}
 
@@ -497,13 +497,21 @@ func (m *Server) runMetaNodeBalancePlan(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *Server) stopMetaNodeBalancePlan(w http.ResponseWriter, r *http.Request) {
-	var err error
+	var (
+		err   error
+		force bool
+		value string
+	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.StopMetaNodeBalanceTask))
 	defer func() {
 		doStatAndMetric(proto.StopMetaNodeBalanceTask, metric, err, nil)
 	}()
 
-	err = m.cluster.StopMetaPartitionBalanceTask()
+	if value = r.FormValue(forceKey); value != "" {
+		force, _ = strconv.ParseBool(value)
+	}
+
+	err = m.cluster.StopMetaPartitionBalanceTask(force)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
@@ -521,8 +529,8 @@ func (m *Server) deleteMetaNodeBalancePlan(w http.ResponseWriter, r *http.Reques
 		doStatAndMetric(proto.DeleteMetaNodeBalanceTask, metric, err, nil)
 	}()
 
-	if m.cluster.PlanIsRun {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+	if m.cluster.IsClusterPlanNotIdle() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
 		return
 	}
 
@@ -551,8 +559,8 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.OfflineMetaNode, rstMsg, err)
 	}()
 
-	if m.cluster.PlanIsRun {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+	if m.cluster.IsClusterPlanNotIdle() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
 		return
 	}
 
@@ -720,8 +728,8 @@ func (m *Server) createMetaPartitionStoreModeChangePlan(w http.ResponseWriter, r
 		doStatAndMetric(proto.AdminCreateStoreModeChangePlan, metric, nil, nil)
 	}()
 
-	if m.cluster.PlanIsRun {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a meta partition task plan is running. Please wait for it to finish."})
+	if m.cluster.IsClusterPlanNotIdle() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
 		return
 	}
 

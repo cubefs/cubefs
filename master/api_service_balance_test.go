@@ -72,7 +72,7 @@ func TestRunStopDeleteMetaNodeBalancePlan(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
-	s.cluster.PlanRun = true
+	s.cluster.SetClusterPlanRunning()
 	w = httptest.NewRecorder()
 	s.stopMetaNodeBalancePlan(w, req)
 	resp = w.Result()
