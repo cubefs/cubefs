@@ -251,6 +251,10 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	if _, ok := arw.cache.blockCache.Load(key); ok {
 		return
 	}
+	if task.dp == nil {
+		log.LogWarnf("doTask dp for %v is nil", key)
+		return
+	}
 	_, loaded := arw.cache.creatingBlockCacheMap.LoadOrStore(key, make(chan struct{}))
 	if loaded {
 		return
@@ -454,6 +458,12 @@ func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *Ext
 	storageClass uint32,
 ) *AheadReadTask {
 	cacheOffset := id * int(arw.streamer.aheadReadBlockSize)
+	if dp == nil {
+		key := fmt.Sprintf("%v-%v-%v-%v", arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, cacheOffset)
+		log.LogWarnf("getAheadReadTask dp for key(%v) req(%v) is nil",
+			key, req)
+		return nil
+	}
 	// tiny need to add ExtentOffset
 	if readDataFromTinyExtent(req.ExtentKey.ExtentId) {
 		cacheOffset = int(req.ExtentKey.ExtentOffset)
