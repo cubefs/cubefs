@@ -18,6 +18,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
@@ -26,8 +29,10 @@ func TestMetricReport(t *testing.T) {
 	defer closeTestDiskMgr()
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
-	initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs...)
+	initTestBlobNodeMgrDisksWithOverSold(t, testDiskMgr, 1, 10, false, testIdcs...)
 
 	testDiskMgr.refresh(ctx)
 	testDiskMgr.Report(ctx, "test-region", 1, "true")
+	a := testDiskMgr.allocator.Load().(*allocator)
+	require.Equal(t, a.diskSets[proto.DiskTypeHDD][ecDiskSetID].weight, int64(38400))
 }
