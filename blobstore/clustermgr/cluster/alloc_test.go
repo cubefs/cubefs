@@ -24,13 +24,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -178,6 +178,43 @@ func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *BlobNodeManager
 				diskInfo.Readonly = false
 			}
 			err := testDiskMgr.applyAddDisk(ctx, diskInfo)
+			require.NoError(t, err)
+		}
+	}
+}
+
+func initTestBlobNodeMgrDisksWithOverSold(t *testing.T, testDiskMgr *BlobNodeManager, start, end int, specifyNodeID bool, idcs ...string) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	diskInfo := clustermgr.BlobNodeDiskInfo{
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
+			Used:                 0,
+			Size:                 16 * 1024 * 1024 * 1024 * 1024,
+			Free:                 16 * 1024 * 1024 * 1024 * 1024,
+			MaxChunkCnt:          16 * 1024 / 16,
+			FreeChunkCnt:         16 * 1024 / 16,
+			OversoldFreeChunkCnt: 20 * 1024 / 16,
+		},
+		DiskInfo: clustermgr.DiskInfo{
+			ClusterID: proto.ClusterID(1),
+			Idc:       "z0",
+			Status:    proto.DiskStatusNormal,
+			Readonly:  false,
+		},
+	}
+	for idx, idc := range idcs {
+		for i := start; i <= end; i++ {
+			diskInfo.DiskID = proto.DiskID(idx*10000 + i)
+			hostID := i/60 + 1
+			if specifyNodeID {
+				hostID = i
+			}
+			diskInfo.NodeID = proto.NodeID(idx*10000 + hostID)
+			diskInfo.Rack = strconv.Itoa(hostID)
+			diskInfo.Host = idc + hostPrefix + strconv.Itoa(hostID)
+			diskInfo.Idc = idc
+
+			newDiskInfo := diskInfo
+			err := testDiskMgr.applyAddDisk(ctx, &newDiskInfo)
 			require.NoError(t, err)
 		}
 	}

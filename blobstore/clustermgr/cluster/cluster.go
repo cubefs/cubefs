@@ -883,7 +883,7 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 				free = blobNodeHeartbeatInfo.Free
 				size = blobNodeHeartbeatInfo.Size
 				diskFreeItem = blobNodeHeartbeatInfo.FreeChunkCnt
-				originalDiskFreeItem, diskFreeItem := blobNodeHeartbeatInfo.FreeChunkCnt, blobNodeHeartbeatInfo.FreeChunkCnt
+				originalDiskFreeItem := diskFreeItem
 				if blobNodeHeartbeatInfo.OversoldFreeChunkCnt > diskFreeItem {
 					diskFreeItem = blobNodeHeartbeatInfo.OversoldFreeChunkCnt
 				}
