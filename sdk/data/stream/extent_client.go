@@ -509,6 +509,7 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool,
 	if !ok {
 		s = NewStreamer(client, inode, openForWrite, isCache, fullPath)
 		client.streamers[inode] = s
+		log.LogDebugf("action[OpenStream] create new streamer for ino(%v) %p", inode, s)
 	} else {
 		// If you open a file in write mode first and then open the same file
 		// in read mode without modifying any attributes, maintaining the file's immutability status.
@@ -516,6 +517,11 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool,
 			s.openForWrite = openForWrite
 		}
 		// TODO: update isCache?
+		log.LogDebugf("action[OpenStream] reuse  streamer for ino(%v)%p", inode, s)
+		// update rightOffset to make window for aheadRead move forward
+		if s.aheadReadWindow != nil {
+			s.aheadReadWindow.rightOffset = 0
+		}
 	}
 	return s.IssueOpenRequest()
 }
@@ -553,6 +559,10 @@ func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openFo
 		client.streamers[inode] = s
 		if !client.disableMetaCache && needBCache {
 			client.streamerList.PushFront(inode)
+		}
+	} else {
+		if s.aheadReadWindow != nil {
+			s.aheadReadWindow.rightOffset = 0
 		}
 	}
 	s.needBCache = needBCache
