@@ -191,7 +191,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[AheadReadEnable] = MountOption{"aheadReadEnable", "enable ahead read", "", false}
 	opts[AheadReadTotalMemGB] = MountOption{"aheadReadTotalMemGB", "ahead read total mem(GB)", "", int64(30)}
 	opts[AheadReadBlockTimeOut] = MountOption{"aheadReadBlockTimeOut", "ahead read block expiration time", "", int64(3)}
-	opts[AheadReadWindowCnt] = MountOption{"aheadReadWindowCnt", "ahead read window block count", "", int64(8)}
+	opts[AheadReadWindowCnt] = MountOption{"aheadReadWindowCnt", "ahead read window block count", "", int64(128)}
 	opts[ForceRemoteCache] = MountOption{"forceRemoteCache", "All read requests are handled by the remote cache.", "", false}
 	opts[DebugCluster] = MountOption{"debugCluster", "display cluster name", "", ""}
 	opts[EnableAsyncFlush] = MountOption{"enableAsyncFlush", "async flush extent handler", "", true}
