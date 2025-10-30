@@ -339,6 +339,11 @@ func (c *Cluster) GetMetaNodePressureView() (*proto.ClusterPlan, error) {
 		return cView, err
 	}
 	cView.Total = len(cView.Plan)
+	cView.UndoNum = int32(cView.Total)
+	for _, plan := range cView.Plan {
+		cView.TotalReplicaNum += len(plan.Plan)
+	}
+	cView.UndoReplicaNum = int32(cView.TotalReplicaNum)
 
 	return cView, nil
 }
@@ -1293,7 +1298,9 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 		return err
 	}
 
+	atomic.AddInt32(&plan.UndoNum, -1)
 	for _, mrPlan := range mpPlan.Plan {
+		atomic.AddInt32(&plan.UndoReplicaNum, -1)
 		err = c.handleMetaReplicaPlan(plan, mpPlan, mp, mrPlan)
 		if err != nil {
 			log.LogErrorf("handleMetaReplicaPlan err: %s", err.Error())
@@ -1302,8 +1309,10 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 			mrPlan.Status = PlanTaskError
 			return err
 		}
+		doneReplicaNum := atomic.AddInt32(&plan.DoneReplicaNum, 1)
+		plan.ProcessPercent = float64(doneReplicaNum) / float64(plan.TotalReplicaNum) * 100
 	}
-	plan.DoneNum += 1
+	atomic.AddInt32(&plan.DoneNum, 1)
 	return nil
 }
 
@@ -1671,6 +1680,11 @@ func (c *Cluster) CreateOfflineMetaNodePlan(offLineAddr string) (*proto.ClusterP
 		return cView, err
 	}
 	cView.Total = len(cView.Plan)
+	cView.UndoNum = int32(cView.Total)
+	for _, plan := range cView.Plan {
+		cView.TotalReplicaNum += len(plan.Plan)
+	}
+	cView.UndoReplicaNum = int32(cView.TotalReplicaNum)
 
 	return cView, nil
 }
@@ -1725,7 +1739,7 @@ func (c *Cluster) offlineMetaNode(plan *proto.ClusterPlan) (err error) {
 		return err
 	}
 
-	if plan.DoneNum != len(plan.Plan) {
+	if int(plan.DoneNum) != len(plan.Plan) {
 		err = fmt.Errorf("plan count(%d) not equal to done num(%d)", len(plan.Plan), plan.DoneNum)
 		log.LogErrorf("offlineMetaNode err: %s", err.Error())
 		return err
@@ -2013,6 +2027,11 @@ func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID
 		return plan, err
 	}
 	plan.Total = len(plan.Plan)
+	plan.UndoNum = int32(plan.Total)
+	for _, item := range plan.Plan {
+		plan.TotalReplicaNum += len(item.Plan)
+	}
+	plan.UndoReplicaNum = int32(plan.TotalReplicaNum)
 
 	if plan.Total <= 0 {
 		return nil, fmt.Errorf("no replicas need to be migrated in volume(%s)", volName)

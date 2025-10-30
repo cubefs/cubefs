@@ -65,21 +65,26 @@ type ZonePressureView struct {
 }
 
 type ClusterPlan struct {
-	Low        map[string]*ZonePressureView `json:"-" bson:"-"`
-	RocksdbLow map[string]*ZonePressureView `json:"-" bson:"-"`
-	Plan       []*MetaBalancePlan           `json:"plan" bson:"plan"`
-	DoneNum    int                          `json:"doneCount" bson:"donenum"`
-	Total      int                          `json:"total" bson:"total"`
-	Status     string                       `json:"status" bson:"status"`
-	Expire     time.Time                    `json:"expire" bson:"expire"`
-	Type       string                       `json:"type" bson:"type"`
-	Msg        string                       `json:"msg" bson:"msg"`
-	Mode       StoreMode                    `json:"storeMode"`
-	ModeCnt    int                          `json:"storeModeCount"`
-	StartId    uint64                       `json:"startId"`
-	EndId      uint64                       `json:"endId"`
-	RackLevel  RackAwareLevel               `json:"rackLevel"`
-	StartTime  time.Time                    `json:"startTime"`
-	EndTime    time.Time                    `json:"endTime"`
-	FailedList []uint64                     `json:"FailedMetaPartitions"`
+	Low             map[string]*ZonePressureView `json:"-" bson:"-"`
+	RocksdbLow      map[string]*ZonePressureView `json:"-" bson:"-"`
+	Plan            []*MetaBalancePlan           `json:"plan" bson:"plan"`
+	DoneNum         int32                        `json:"doneMpCount" bson:"donenum"`
+	UndoNum         int32                        `json:"undoMpCount"`
+	Total           int                          `json:"total" bson:"total"`
+	Status          string                       `json:"status" bson:"status"`
+	Expire          time.Time                    `json:"expire" bson:"expire"`
+	Type            string                       `json:"type" bson:"type"`
+	Msg             string                       `json:"msg" bson:"msg"`
+	Mode            StoreMode                    `json:"storeMode"`
+	ModeCnt         int                          `json:"storeModeCount"`
+	StartId         uint64                       `json:"startId"`
+	EndId           uint64                       `json:"endId"`
+	RackLevel       RackAwareLevel               `json:"rackLevel"`
+	StartTime       time.Time                    `json:"startTime"`
+	EndTime         time.Time                    `json:"endTime"`
+	FailedList      []uint64                     `json:"FailedMetaPartitions"`
+	DoneReplicaNum  int32                        `json:"doneReplicaNum"`
+	UndoReplicaNum  int32                        `json:"undoReplicaNum"`
+	TotalReplicaNum int                          `json:"totalReplicaNum"`
+	ProcessPercent  float64                      `json:"processPercent"`
 }
