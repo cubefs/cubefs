@@ -355,33 +355,38 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		for _, p := range cfg.GetSlice(cfgDiskDataPath) {
 			arr := strings.Split(p.(string), ":")
 			if len(arr) != 2 {
-				return errors.New("invalid disk configuration. Example: PATH:MAX_USED_SIZE")
+				return errors.NewErrorf("invalid disk configuration. Example: PATH:MAX_USED_SIZE, got[%v]", p)
 			}
 			path := arr[0]
 			if _, err = os.Stat(path); err != nil {
 				if !os.IsNotExist(err.(*os.PathError)) {
-					return errors.NewErrorf("stat cache directory failed: %s", err.Error())
+					log.LogErrorf("stat cache directory failed: %s", err.Error())
+					continue
 				}
 				if err = os.MkdirAll(path, 0o755); err != nil {
-					return errors.NewErrorf("mkdir cache directory [%v] err[%v]", path, err)
+					log.LogErrorf("mkdir cache directory [%v] err[%v]", path, err)
+					continue
 				}
 			}
 			totalSpace, err := strconv.ParseInt(arr[1], 10, 64)
 			if err != nil {
-				return fmt.Errorf("invalid disk total space. Error: %s", err.Error())
+				log.LogErrorf("invalid disk total space for path[%v]. Error: %s", path, err.Error())
+				continue
 			}
 
 			if totalSpace <= 0 {
 				stat := syscall.Statfs_t{}
 				err := syscall.Statfs(path, &stat)
 				if err != nil {
-					return errors.NewErrorf("get disk size, err:%v", err)
+					log.LogErrorf("get disk size failed for path[%v], err:%v", path, err)
+					continue
 				}
 				total := int64(stat.Blocks) * int64(stat.Bsize)
 				totalSpace = int64(float64(total) * percent)
 			}
 			if totalSpace < 32*(1<<20) {
-				return errors.NewErrorf("low physical cacheSpace %d", totalSpace)
+				log.LogErrorf("low physical cacheSpace %d for path[%v]", totalSpace, path)
+				continue
 			}
 			allDiskSpace += totalSpace
 			disk := new(cachengine.Disk)
