@@ -702,7 +702,7 @@ func (s *Super) loopSyncMeta() {
 			} else {
 				s.ic.RecoverExpiration()
 			}
-			if (s.bcacheDir == "" || !s.stopWarmMeta) && atomic.CompareAndSwapInt32(&s.syncMetaCache, 0, 1) {
+			if (s.bcacheDir != "" || !s.stopWarmMeta) && atomic.CompareAndSwapInt32(&s.syncMetaCache, 0, 1) {
 				go s.syncMeta()
 			}
 		case <-s.closeC:
