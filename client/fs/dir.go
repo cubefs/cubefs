@@ -105,6 +105,7 @@ type Dir struct {
 	dctx      *DirContexts
 	parentIno uint64
 	name      string
+	once      sync.Once
 }
 
 // Functions that Dir needs to implement
@@ -441,6 +442,21 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 	}
 	d.super.fslock.Unlock()
+
+	if d.dcache == nil {
+		d.dcache = NewDentryCache()
+	}
+
+	d.dcache.Put(req.Name, ino)
+
+	if mode.IsDir() {
+		childDir := child.(*Dir)
+		childDir.once.Do(func() {
+			meta.GetExtetnsPool.Run(func() {
+				childDir.ReadDirAll(context.Background())
+			})
+		})
+	}
 
 	resp.EntryValid = LookupValidDuration
 

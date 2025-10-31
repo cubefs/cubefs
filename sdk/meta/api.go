@@ -64,7 +64,7 @@ const (
 )
 
 var (
-	getExtetnsPool = taskpool.New(50, 100)
+	GetExtetnsPool = taskpool.New(50, 100)
 )
 
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
@@ -394,10 +394,58 @@ func (mw *MetaWrapper) BatchGetExpiredMultipart(prefix string, days int) (expire
 	return
 }
 
-// func (mw *MetaWrapper) InodeGet_llExt(inode uint64) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) InodeGetExt_ll(inode uint64) (*proto.InodeInfo, error) {
 
-// 	wg := sync.WaitGroup{}
-// }
+	start := time.Now()
+	defer func() {
+		log.LogDebugf("InodeGetExt_ll: time cost (%v), ino(%d)", time.Since(start), inode)
+	}()
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	var info *proto.InodeInfo
+	var getErr error
+
+	go func() {
+		defer wg.Done()
+		info, getErr = mw.InodeGet_ll(inode)
+		if getErr != nil {
+			log.LogErrorf("InodeGetExt_ll: get inode fail: ino(%v) err(%v)", inode, getErr)
+			return
+		}
+
+	}()
+
+	var resp *proto.GetExtentsResponse
+	var getExtErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		mp := mw.getPartitionByInode(inode)
+		if mp == nil {
+			return
+		}
+
+		resp, getExtErr = mw.getExtents(mp, inode, false, false, false)
+		if getExtErr != nil {
+			log.LogErrorf("InodeGetExt_ll: get extents fail: ino(%v) err(%v)", inode, getExtErr)
+			return
+		}
+	}()
+
+	wg.Wait()
+
+	if getErr != nil {
+		return nil, getErr
+	}
+
+	if info != nil && getExtErr == nil {
+		info.Extents = resp
+	}
+
+	return info, nil
+}
 
 func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 	mp := mw.getPartitionByInode(inode)
@@ -461,7 +509,7 @@ func (mw *MetaWrapper) BatchInodeGetExtents(inodes []uint64) []*proto.InodeInfo 
 		tmpInfo := info
 
 		wg.Add(1)
-		getExtetnsPool.Run(func() {
+		GetExtetnsPool.Run(func() {
 			defer wg.Done()
 
 			mp := mw.getPartitionByInode(tmpInfo.Inode)
