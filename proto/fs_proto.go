@@ -97,12 +97,17 @@ type InodeInfo struct {
 	expiration        int64
 	PersistAccessTime time.Time `json:"pat"`
 
-	StorageClass                  uint32    `json:"storageClass"`
-	LeaseExpireTime               uint64    `json:"leaseExpireTime"`
-	ForbiddenLc                   bool      `json:"forbiddenLc"`
-	MigrationStorageClass         uint32    `json:"migrationStorageClass"`
-	HasMigrationEk                bool      `json:"hasMigrationEk"`
-	MigrationExtentKeyExpiredTime time.Time `json:"mekExpiredTime"`
+	StorageClass                  uint32              `json:"storageClass"`
+	LeaseExpireTime               uint64              `json:"leaseExpireTime"`
+	ForbiddenLc                   bool                `json:"forbiddenLc"`
+	MigrationStorageClass         uint32              `json:"migrationStorageClass"`
+	HasMigrationEk                bool                `json:"hasMigrationEk"`
+	MigrationExtentKeyExpiredTime time.Time           `json:"mekExpiredTime"`
+	Extents                       *GetExtentsResponse `json:"eks"`
+}
+
+func (info *InodeInfo) HasExtents() bool {
+	return info.Extents != nil
 }
 
 type SimpleExtInfo struct {

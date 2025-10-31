@@ -637,6 +637,16 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 	return nil
 }
 
+func (client *ExtentClient) RefreshExtentsWithCache(inode *proto.InodeInfo) error {
+	s := client.GetStreamer(inode.Inode)
+	if s == nil {
+		return nil
+	}
+
+	s.extents.update(inode.Generation, inode.Size, false, inode.Extents.Extents)
+	return nil
+}
+
 // RefreshExtentsCache refreshes the extent cache.
 func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
 	s := client.GetStreamer(inode)
@@ -769,7 +779,12 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 
 	var errGetExtents error
 	s.once.Do(func() {
-		errGetExtents = s.GetExtents(isMigration)
+		if s.extents.gen == 0 {
+			errGetExtents = s.GetExtents(isMigration)
+		} else {
+			errGetExtents = nil
+		}
+		// errGetExtents = s.GetExtents(isMigration)
 		if log.EnableDebug() {
 			log.LogDebugf("Read: ino(%v) offset(%v) size(%v) storageClass(%v) isMigration(%v) errGetExtents(%v)",
 				inode, offset, size, storageClass, isMigration, errGetExtents)

@@ -73,8 +73,8 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 	element := ic.lruList.PushFront(info)
 	ic.cache[info.Inode] = element
 	ic.Unlock()
-	log.LogDebugf("InodeCache put inode: inode(%v) expire(%v)",
-		info.Inode, info.Expiration())
+	log.LogDebugf("InodeCache put inode: inode(%v) expire(%v), hasExtents(%v)",
+		info.Inode, info.Expiration(), info.HasExtents())
 }
 
 // Get returns the inode info based on the given inode number.
@@ -96,9 +96,10 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 	ic.RUnlock()
 
 	if info != nil {
-		log.LogDebugf("Inode Cache found ino(%v) storageClass(%v)",
-			ino, info.StorageClass)
+		log.LogDebugf("Inode Cache found ino(%v) storageClass(%v), expiration(%v)",
+			ino, info.StorageClass, info.Expiration())
 	}
+	info.SetExpiration(time.Now().Add(ic.expiration).UnixNano())
 	return info
 }
 
