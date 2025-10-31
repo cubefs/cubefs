@@ -133,6 +133,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				msgs = msgs[:0]
 			case msg := <-mp.storeChan:
+				if msg.command != opFSMStoreTick {
+					log.LogInfof("[startSchedule] receive mp(%d) message(%v) ", mp.config.PartitionId, msg.command)
+				}
 				switch msg.command {
 				case startStoreTick:
 					timer.Reset(intervalToPersistData)

@@ -303,9 +303,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMSentToChanWithVer:
 		resp = mp.fsmSendToChan(msg.V, true)
 	case opFSMStoreTick:
-		log.LogInfof("MP [%d] store tick wait:%d, water level:%d", mp.config.PartitionId, mp.waitPersistCommitCnt, GetDumpWaterLevel())
-		if mp.waitPersistCommitCnt < GetDumpWaterLevel() {
-			log.LogDebugf("[Apply] mp(%v) opFSMStoreTick store snapshot, but apply id(%v) not reach water mark(%v)", mp.config.PartitionId, mp.waitPersistCommitCnt, GetDumpWaterLevel())
+		log.LogInfof("[Apply] mp(%v) store tick wait:%d, water level:%d", mp.config.PartitionId, mp.waitPersistCommitCnt, DefaultDumpWaterLevel)
+		if mp.waitPersistCommitCnt < DefaultDumpWaterLevel {
 			return
 		}
 		mp.waitPersistCommitCnt = 0
