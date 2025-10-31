@@ -187,6 +187,13 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 	fillAttr(info, a)
 	a.ParentIno = f.parentIno
+
+	// var fileSize int64
+	// var gen uint64
+	// if info.Extents != nil {
+	// 	a.Size = uint64(info.Extents.Size)
+	// }
+
 	fileSize, gen := f.fileSizeVersion2(ino)
 	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
 	if gen >= info.Generation {
@@ -277,7 +284,11 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 	log.LogDebugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
-	f.super.ec.RefreshExtentsCache(ino)
+	if f.info.Extents != nil {
+		f.super.ec.RefreshExtentsWithCache(f.info)
+	} else {
+		f.super.ec.RefreshExtentsCache(ino)
+	}
 
 	if f.super.keepCache && resp != nil {
 		resp.Flags |= fuse.OpenKeepCache
@@ -336,27 +347,27 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		stat.EndStat("Release:file", err, bgTime, 1)
 		log.LogInfof("action[Release] %v", f.fWriter)
 		f.fWriter.FreeCache()
-		if f.super.ec.RefCnt(ino) == 0 {
-			// keep nodeCache hold the latest inode info
-			f.super.fslock.Lock()
-			delete(f.super.nodeCache, ino)
-			f.super.fslock.Unlock()
-			if DisableMetaCache {
-				f.super.ic.Delete(ino)
-			}
-			f.super.fslock.Lock()
-			delete(f.super.nodeCache, ino)
-			node, ok := f.super.nodeCache[f.parentIno]
-			if ok {
-				parent, ok := node.(*Dir)
-				if ok {
-					parent.dcache.Delete(f.name)
-					log.LogDebugf("TRACE Release exit: ino(%v) name(%v) decache(%v)",
-						parent.info.Inode, parent.name, parent.dcache.Len())
-				}
-			}
-			f.super.fslock.Unlock()
-		}
+		// if f.super.ec.RefCnt(ino) == 0 {
+		// 	// keep nodeCache hold the latest inode info
+		// 	f.super.fslock.Lock()
+		// 	delete(f.super.nodeCache, ino)
+		// 	f.super.fslock.Unlock()
+		// 	if DisableMetaCache {
+		// 		f.super.ic.Delete(ino)
+		// 	}
+		// 	f.super.fslock.Lock()
+		// 	delete(f.super.nodeCache, ino)
+		// 	node, ok := f.super.nodeCache[f.parentIno]
+		// 	if ok {
+		// 		parent, ok := node.(*Dir)
+		// 		if ok {
+		// 			parent.dcache.Delete(f.name)
+		// 			log.LogDebugf("TRACE Release exit: ino(%v) name(%v) decache(%v)",
+		// 				parent.info.Inode, parent.name, parent.dcache.Len())
+		// 		}
+		// 	}
+		// 	f.super.fslock.Unlock()
+		// }
 		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
@@ -631,7 +642,15 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	}
 
 	if DisableMetaCache {
-		f.super.ic.Delete(f.info.Inode)
+		openForWrite := false
+		if req.Flags&0x0f != syscall.O_RDONLY {
+			openForWrite = true
+		}
+
+		if openForWrite {
+			f.super.ic.Delete(f.info.Inode)
+		}
+
 	}
 
 	elapsed := time.Since(start)
