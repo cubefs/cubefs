@@ -7851,11 +7851,15 @@ func (m *Server) queryDisks(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for _, ds := range dataNode.DiskStats {
+			status := proto.DiskStatusMap[ds.Status]
+			if contains(dataNode.LostDisks, ds.DiskPath) {
+				status = proto.DiskStatusMap[proto.Unavailable]
+			}
 			info := proto.DiskInfo{
 				NodeId:               dataNode.ID,
 				Address:              dataNode.Addr,
 				Path:                 ds.DiskPath,
-				Status:               proto.DiskStatusMap[ds.Status],
+				Status:               status,
 				TotalPartitionCnt:    ds.TotalPartitionCnt,
 				DiskErrPartitionList: ds.DiskErrPartitionList,
 			}
