@@ -164,10 +164,9 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 		log.LogDebugf("TRACE Release exit: ino(%v) name(%v)", d.info.Inode, d.name)
 	}()
 	// d.dctx.Clear()
-	d.dctx.Remove(req.Handle)
-	d.dcache.Clear()
-	ino := d.info.Inode
-	d.super.ic.Delete(ino)
+	// d.dcache.Clear()
+	// ino := d.info.Inode
+	// d.super.ic.Delete(ino)
 
 	return nil
 }
@@ -418,8 +417,8 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			child = NewDir(d.super, info, d.info.Inode, req.Name)
 		} else {
 			child = NewFile(d.super, info, DefaultFlag, d.info.Inode, req.Name)
-			log.LogDebugf("Lookup: new file nodeCache parent(%v) name(%v) ino(%v) storageClass(%v) fullPath(%v)",
-				d.info.Inode, req.Name, ino, child.(*File).info.StorageClass, fullPath)
+			log.LogDebugf("Lookup: new file nodeCache parent(%v) name(%v) ino(%v) storageClass(%v) fullPath(%v), hasExtents(%v)",
+				d.info.Inode, req.Name, ino, child.(*File).info.StorageClass, fullPath, info.HasExtents())
 		}
 		d.super.nodeCache[ino] = child
 	} else {
@@ -432,8 +431,8 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			if child.(*File).info.StorageClass != info.StorageClass {
 				child = NewFile(d.super, info, DefaultFlag, d.info.Inode, req.Name)
 			}
-			log.LogDebugf("Lookup: update nodeCache parent(%v) name(%v) ino(%v) storageClass(%v)",
-				d.info.Inode, req.Name, ino, child.(*File).info.StorageClass)
+			log.LogDebugf("Lookup: update nodeCache parent(%v) name(%v) ino(%v) storageClass(%v), hasExtents(%v)",
+				d.info.Inode, req.Name, ino, child.(*File).info.StorageClass, info.HasExtents())
 			d.super.nodeCache[ino] = child
 		}
 	}
@@ -504,6 +503,8 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	// skip the first one, which is already accessed
 	childrenNr := uint64(len(children))
 	if childrenNr == 0 || (dirCtx.Name != "" && childrenNr == 1) {
+		log.LogDebugf("Readdir no more children: ino(%v) path(%v) d.super.bcacheDir(%v) childrenNr(%v) dirCtx.Name(%v)",
+			d.info.Inode, d.getCwd(), d.super.bcacheDir, childrenNr, dirCtx.Name)
 		return make([]fuse.Dirent, 0), io.EOF
 	} else if childrenNr < limit {
 		err = io.EOF
@@ -523,6 +524,10 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	var dcache *DentryCache
 	if !d.super.disableDcache {
 		dcache = NewDentryCache()
+	}
+
+	if d.dcache != nil {
+		dcache = d.dcache
 	}
 
 	var dcachev2 bool
@@ -550,7 +555,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		}
 	}
 
-	infos := d.super.mw.BatchInodeGet(inodes)
+	infos := d.super.mw.BatchInodeGetExtents(inodes)
 	for _, info := range infos {
 		cacheInfo := d.super.ic.Get(info.Inode)
 		if cacheInfo != nil {
@@ -640,7 +645,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 	}
 
-	infos := d.super.mw.BatchInodeGet(inodes)
+	infos := d.super.mw.BatchInodeGetExtents(inodes)
 	for _, info := range infos {
 		d.super.ic.Put(info)
 	}

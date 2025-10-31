@@ -27,10 +27,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // Low-level API, i.e. work with inode
@@ -59,6 +61,10 @@ const (
 	MaxGoroutineNum             = 5
 	InodeFullMaxRetryTime       = 2
 	ForceUpdateRWMP             = "ForceUpdateRWMP"
+)
+
+var (
+	getExtetnsPool = taskpool.New(50, 100)
 )
 
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
@@ -388,6 +394,11 @@ func (mw *MetaWrapper) BatchGetExpiredMultipart(prefix string, days int) (expire
 	return
 }
 
+// func (mw *MetaWrapper) InodeGet_llExt(inode uint64) (*proto.InodeInfo, error) {
+
+// 	wg := sync.WaitGroup{}
+// }
+
 func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
@@ -432,6 +443,44 @@ func (mw *MetaWrapper) doInodeGet(inode uint64) (*proto.InodeInfo, error) {
 	}
 	log.LogDebugf("doInodeGet: info(%v)", info)
 	return info, nil
+}
+
+func (mw *MetaWrapper) BatchInodeGetExtents(inodes []uint64) []*proto.InodeInfo {
+	begin := stat.BeginStat()
+	defer stat.EndStat("BatchInodeGetExtents", nil, begin, 1)
+
+	infos := mw.BatchInodeGet(inodes)
+
+	wg := sync.WaitGroup{}
+	for _, info := range infos {
+
+		if !proto.IsRegular(info.Mode) {
+			continue
+		}
+
+		tmpInfo := info
+
+		wg.Add(1)
+		getExtetnsPool.Run(func() {
+			defer wg.Done()
+
+			mp := mw.getPartitionByInode(tmpInfo.Inode)
+			if mp == nil {
+				log.LogErrorf("BatchInodeGetExtents: no partition: ino(%v)", tmpInfo.Inode)
+				return
+			}
+
+			resp, err := mw.getExtents(mp, tmpInfo.Inode, false, false, false)
+			if err != nil {
+				log.LogErrorf("BatchInodeGetExtents: get extents fail: ino(%v) err(%v)", tmpInfo.Inode, err)
+				return
+			}
+			tmpInfo.Extents = resp
+		})
+	}
+
+	wg.Wait()
+	return infos
 }
 
 func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
