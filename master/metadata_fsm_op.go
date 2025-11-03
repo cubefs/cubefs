@@ -307,6 +307,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionSrcAddr:            dp.DecommissionSrcAddr,
 		DecommissionSrcAddrs:           dp.DecommissionSrcAddrs,
 		DecommissionDstAddr:            dp.DecommissionDstAddr,
+		DecommissionDstAddrs:           dp.DecommissionDstAddrs,
 		DecommissionRaftForce:          dp.DecommissionRaftForce,
 		DecommissionSrcDiskPath:        dp.DecommissionSrcDiskPath,
 		DecommissionTerm:               dp.DecommissionTerm,
@@ -547,8 +548,8 @@ type dataNodeValue struct {
 	AllDisks                           []string
 	MediaType                          uint32
 	MaxDpCntLimit                      uint64
-	PreResearvedSpace                  uint64
-	PreResearvedDpCount                uint32
+	PreReservedSpace                   uint64
+	PreReservedDpCount                 uint32
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -577,8 +578,8 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		BadDisks:                           dataNode.BadDisks,
 		MediaType:                          dataNode.MediaType,
 		MaxDpCntLimit:                      dataNode.DpCntLimit,
-		PreResearvedSpace:                  dataNode.PreResearvedSpace,
-		PreResearvedDpCount:                dataNode.PreResearvedDpCount,
+		PreReservedSpace:                   dataNode.PreReservedSpace,
+		PreReservedDpCount:                 dataNode.PreReservedDpCount,
 	}
 }
 
@@ -1705,8 +1706,8 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.BadDisks = dnv.BadDisks
 		dataNode.AllDisks = dnv.AllDisks
 		dataNode.DpCntLimit = dnv.MaxDpCntLimit
-		dataNode.PreResearvedSpace = dnv.PreResearvedSpace
-		dataNode.PreResearvedDpCount = dnv.PreResearvedDpCount
+		dataNode.PreReservedSpace = dnv.PreReservedSpace
+		dataNode.PreReservedDpCount = dnv.PreReservedDpCount
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {

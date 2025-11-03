@@ -538,7 +538,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckDataPartitionDecommissionDiskRetryMap()
 	c.scheduleToDistributionOptimization()
 	c.scheduleToUpdateDistributionOptimizationStatus()
-	c.scheduleToRecalculatePreResearvedSpace()
+	c.scheduleToRecalculatePreReservedSpace()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -1740,7 +1740,7 @@ func (c *Cluster) checkInactiveDataNodes() (inactiveDataNodes []string, err erro
 
 func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
-	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, missingTinyExtentDPs []*DataPartition, err error,
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, missingTinyExtentDPs []*DataPartition,
 ) {
 	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
@@ -1834,6 +1834,29 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 		len(repFileCountDifferDps), len(repUsedSizeDifferDps),
 		len(excessReplicaDPs), len(noLeaderDPs))
 	return
+}
+
+// getAbnormalDps collects all abnormal data partitions from checkReplicaOfDataPartitions
+func (c *Cluster) getAbnormalDps(ignoreDiscardDp bool) map[uint64]struct{} {
+	abnormalDpSet := make(map[uint64]struct{})
+	lackReplicaDPs, unavailableReplicaDPs, repFileCountDifferDps, repUsedSizeDifferDps,
+		excessReplicaDPs, noLeaderDPs, missingTinyExtentDPs := c.checkReplicaOfDataPartitions(ignoreDiscardDp)
+
+	addDPs := func(dps []*DataPartition) {
+		for _, dp := range dps {
+			abnormalDpSet[dp.PartitionID] = struct{}{}
+		}
+	}
+
+	addDPs(lackReplicaDPs)
+	addDPs(unavailableReplicaDPs)
+	addDPs(repFileCountDifferDps)
+	addDPs(repUsedSizeDifferDps)
+	addDPs(excessReplicaDPs)
+	addDPs(noLeaderDPs)
+	addDPs(missingTinyExtentDPs)
+
+	return abnormalDpSet
 }
 
 func (c *Cluster) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
@@ -3396,8 +3419,8 @@ func (c *Cluster) addDataReservedResource(addrs []string, dp *DataPartition) err
 
 		if !dn.isWriteAbleWithSizeNoLock(10*util.GB, 1) {
 			dn.Unlock()
-			return fmt.Errorf("new datanode %s is not writable AvailableSpace(%v) isActive(%v) RdOnly(%v) Total(%v) Used(%v) PreResearvedSpace(%v)",
-				addr, dn.AvailableSpace, dn.isActive, dn.RdOnly, dn.Total, dn.Used, dn.PreResearvedSpace)
+			return fmt.Errorf("new datanode %s is not writable AvailableSpace(%v) isActive(%v) RdOnly(%v) Total(%v) Used(%v) PreReservedSpace(%v)",
+				addr, dn.AvailableSpace, dn.isActive, dn.RdOnly, dn.Total, dn.Used, dn.PreReservedSpace)
 		}
 
 		updatedDataNodes = append(updatedDataNodes, dn)
@@ -3405,8 +3428,8 @@ func (c *Cluster) addDataReservedResource(addrs []string, dp *DataPartition) err
 	}
 
 	for _, dn := range updatedDataNodes {
-		atomic.AddUint64(&dn.PreResearvedSpace, leaderSize)
-		atomic.AddUint32(&dn.PreResearvedDpCount, 1)
+		atomic.AddUint64(&dn.PreReservedSpace, leaderSize)
+		atomic.AddUint32(&dn.PreReservedDpCount, 1)
 	}
 
 	return nil
@@ -3427,45 +3450,45 @@ func (c *Cluster) releaseDataReservedResource(addrs []string, dp *DataPartition)
 		}
 
 		if leaderSize > 0 {
-			oldValue := atomic.LoadUint64(&dn.PreResearvedSpace)
+			oldValue := atomic.LoadUint64(&dn.PreReservedSpace)
 			if oldValue >= leaderSize {
-				atomic.AddUint64(&dn.PreResearvedSpace, ^(leaderSize - 1))
+				atomic.AddUint64(&dn.PreReservedSpace, ^(leaderSize - 1))
 			} else {
-				atomic.StoreUint64(&dn.PreResearvedSpace, 0)
+				atomic.StoreUint64(&dn.PreReservedSpace, 0)
 			}
 		}
 
-		oldCount := atomic.LoadUint32(&dn.PreResearvedDpCount)
+		oldCount := atomic.LoadUint32(&dn.PreReservedDpCount)
 		if oldCount > 0 {
-			atomic.AddUint32(&dn.PreResearvedDpCount, ^uint32(0))
+			atomic.AddUint32(&dn.PreReservedDpCount, ^uint32(0))
 		}
 
 		log.LogDebugf("action[releaseDataReservedResource] addr %s, released size %d, remaining reserved %d, dp count %d",
-			dn.Addr, leaderSize, atomic.LoadUint64(&dn.PreResearvedSpace), atomic.LoadUint32(&dn.PreResearvedDpCount))
+			dn.Addr, leaderSize, atomic.LoadUint64(&dn.PreReservedSpace), atomic.LoadUint32(&dn.PreReservedDpCount))
 	}
 }
 
-// scheduleToRecalculatePreResearvedSpace schedules periodic recalculation of PreResearvedSpace
-func (c *Cluster) scheduleToRecalculatePreResearvedSpace() {
+// scheduleToRecalculatePreReservedSpace schedules periodic recalculation of PreReservedSpace
+func (c *Cluster) scheduleToRecalculatePreReservedSpace() {
 	c.runTask(&cTask{
 		tickTime: 10 * time.Minute,
-		name:     "scheduleToRecalculatePreResearvedSpace",
+		name:     "scheduleToRecalculatePreReservedSpace",
 		function: func() (fin bool) {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.recalculateAllNodesPreResearvedSpace()
+				c.recalculateAllNodesPreReservedSpace()
 			}
 			return
 		},
 	})
 }
 
-// recalculateAllNodesPreResearvedSpace recalculates PreResearvedSpace for all data nodes
-func (c *Cluster) recalculateAllNodesPreResearvedSpace() {
+// recalculateAllNodesPreReservedSpace recalculates PreReservedSpace for all data nodes
+func (c *Cluster) recalculateAllNodesPreReservedSpace() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogWarnf("recalculateAllNodesPreResearvedSpace occurred panic,err[%v]", r)
+			log.LogWarnf("recalculateAllNodesPreReservedSpace occurred panic,err[%v]", r)
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"recalculateAllNodesPreResearvedSpace occurred panic")
+				"recalculateAllNodesPreReservedSpace occurred panic")
 		}
 	}()
 
@@ -3513,12 +3536,12 @@ func (c *Cluster) recalculateAllNodesPreResearvedSpace() {
 		newReservedSize := nodeReservedSize[nodeAddr]
 		newReservedCount := nodeReservedCount[nodeAddr]
 
-		// Atomically update PreResearvedSpace
-		atomic.StoreUint64(&dataNode.PreResearvedSpace, newReservedSize)
-		atomic.StoreUint32(&dataNode.PreResearvedDpCount, newReservedCount)
+		// Atomically update PreReservedSpace
+		atomic.StoreUint64(&dataNode.PreReservedSpace, newReservedSize)
+		atomic.StoreUint32(&dataNode.PreReservedDpCount, newReservedCount)
 
-		log.LogInfof("action[recalculateAllNodesPreResearvedSpace] node[%s] "+
-			"PreResearvedSpace: %d, PreResearvedDpCount: %d",
+		log.LogInfof("action[recalculateAllNodesPreReservedSpace] node[%s] "+
+			"PreReservedSpace: %d, PreReservedDpCount: %d",
 			dataNode.Addr, newReservedSize, newReservedCount)
 
 		return true
@@ -4742,7 +4765,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 		dataNode := node.(*DataNode)
 		dataNodes = append(dataNodes, proto.NodeView{
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
-			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(1), MediaType: dataNode.MediaType,
+			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
 			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0, Rack: dataNode.Rack,
 			NodeSetID: dataNode.NodeSetID,
 			ZoneName:  dataNode.ZoneName,
@@ -4758,7 +4781,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		metaNode := node.(*MetaNode)
 		metaNodes = append(metaNodes, proto.NodeView{
 			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
-			Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(1), MediaType: proto.MediaType_Unspecified,
+			Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
 			ForbidWriteOpOfProtoVer0: metaNode.ReceivedForbidWriteOpOfProtoVer0,
 			IsRocksdbWritable:        metaNode.IsRocksdbWriteAble(),
 			Rack:                     metaNode.Rack,

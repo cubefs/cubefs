@@ -61,8 +61,8 @@ func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
 		t.Logf("try select %v", ns.ID)
 		ns.dataNodes.Range(func(key, value interface{}) bool {
 			if dn, ok := value.(*DataNode); ok {
-				t.Logf("dataNode %v is WriteAble?%v can alloc dp?%v PartitionCnt: %v dpCntLimit: %v", dn.ID, dn.IsWriteAble(1),
-					dn.IsWriteAble(1) && dn.PartitionCntLimited(1), dn.DataPartitionCount, dn.GetPartitionLimitCnt())
+				t.Logf("dataNode %v is WriteAble?%v can alloc dp?%v PartitionCnt: %v dpCntLimit: %v", dn.ID, dn.IsWriteAble(),
+					dn.IsWriteAble() && dn.PartitionCntLimited(), dn.DataPartitionCount, dn.GetPartitionLimitCnt())
 			} else {
 				t.Errorf("failed to assert DataNode type for value: %v", value)
 				return false
@@ -71,8 +71,8 @@ func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
 		})
 		ns.metaNodes.Range(func(key, value interface{}) bool {
 			if mn, ok := value.(*MetaNode); ok {
-				t.Logf("MetaNode %v is WriteAble?%v can alloc mp?%v PartitionCnt: %v mpCntLimit: %v", mn.ID, mn.IsWriteAble(1),
-					mn.IsWriteAble(1) && mn.PartitionCntLimited(1), len(mn.metaPartitionInfos), mn.GetPartitionLimitCnt())
+				t.Logf("MetaNode %v is WriteAble?%v can alloc mp?%v PartitionCnt: %v mpCntLimit: %v", mn.ID, mn.IsWriteAble(),
+					mn.IsWriteAble() && mn.PartitionCntLimited(), len(mn.metaPartitionInfos), mn.GetPartitionLimitCnt())
 			} else {
 				t.Errorf("failed to assert MetaNode type for value: %v", value)
 				return false

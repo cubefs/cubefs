@@ -68,9 +68,9 @@ type Node interface {
 	GetAddr() string
 	GetHeartbeatPort() string
 	GetReplicaPort() string
-	PartitionCntLimited(threshold float64) bool
+	PartitionCntLimitedEx(threshold float64) bool
 	IsActiveNode() bool
-	IsWriteAble(threshold float64) bool
+	IsWriteAbleEx(threshold float64) bool
 	GetPartitionLimitCnt() uint64
 	GetTotal() uint64
 	GetUsed() uint64
@@ -98,9 +98,9 @@ func (nodes SortedWeightedNodes) Swap(i, j int) {
 func canAllocPartition(node Node, nodeType NodeType, threshold float64) bool {
 	if nodeType == RocksdbType {
 		metaNode := node.(*MetaNode)
-		return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited(threshold)
+		return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimitedEx(threshold)
 	}
-	return node.IsWriteAble(threshold) && node.PartitionCntLimited(threshold)
+	return node.IsWriteAbleEx(threshold) && node.PartitionCntLimitedEx(threshold)
 }
 
 func asNodeWrap(node interface{}, nodeType NodeType) Node {

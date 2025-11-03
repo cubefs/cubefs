@@ -37,7 +37,7 @@ type DataNode struct {
 	Total                              uint64 `json:"TotalWeight"`
 	Used                               uint64 `json:"UsedWeight"`
 	AvailableSpace                     uint64
-	PreResearvedSpace                  uint64
+	PreReservedSpace                   uint64
 	ID                                 uint64
 	ZoneName                           string `json:"Zone"`
 	Rack                               string `json:"Rack"` // 添加 rack 字段
@@ -55,7 +55,7 @@ type DataNode struct {
 	TaskManager                        *AdminTaskManager `graphql:"-"`
 	DataPartitionReports               []*proto.DataPartitionReport
 	DataPartitionCount                 uint32
-	PreResearvedDpCount                uint32
+	PreReservedDpCount                 uint32
 	TotalPartitionSize                 uint64
 	NodeSetID                          uint64
 	PersistenceDataPartitions          []uint64
@@ -340,7 +340,13 @@ func (dataNode *DataNode) canAlloc() bool {
 	return overSoldCap(dataNode.Total) >= dataNode.TotalPartitionSize
 }
 
-func (dataNode *DataNode) IsWriteAble(threshold float64) (ok bool) {
+func (dataNode *DataNode) IsWriteAble() (ok bool) {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.isWriteAbleWithSizeNoLock(10*util.GB, 1)
+}
+
+func (dataNode *DataNode) IsWriteAbleEx(threshold float64) (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 	return dataNode.isWriteAbleWithSizeNoLock(10*util.GB, threshold)
@@ -356,7 +362,7 @@ func (dataNode *DataNode) availableDiskCount() (cnt int) {
 }
 
 func (dataNode *DataNode) canAllocDp() bool {
-	if !dataNode.IsWriteAble(1) {
+	if !dataNode.IsWriteAble() {
 		return false
 	}
 
@@ -373,7 +379,7 @@ func (dataNode *DataNode) canAllocDp() bool {
 		}
 	}
 
-	if !dataNode.PartitionCntLimited(1) {
+	if !dataNode.PartitionCntLimited() {
 		return false
 	}
 
@@ -394,11 +400,20 @@ func (dataNode *DataNode) GetAvailableSpace() uint64 {
 	return dataNode.AvailableSpace
 }
 
-func (dataNode *DataNode) PartitionCntLimited(threshold float64) bool {
-	limited := float64(dataNode.DataPartitionCount+dataNode.PreResearvedDpCount) <= float64(dataNode.GetPartitionLimitCnt())*threshold
+func (dataNode *DataNode) PartitionCntLimited() bool {
+	limited := uint64(dataNode.DataPartitionCount+dataNode.PreReservedDpCount) <= dataNode.GetPartitionLimitCnt()
+	if !limited {
+		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, simulate reserved cnt %d, limit %d",
+			dataNode.Addr, dataNode.DataPartitionCount, dataNode.PreReservedDpCount, dataNode.GetPartitionLimitCnt())
+	}
+	return limited
+}
+
+func (dataNode *DataNode) PartitionCntLimitedEx(threshold float64) bool {
+	limited := float64(dataNode.DataPartitionCount+dataNode.PreReservedDpCount) <= float64(dataNode.GetPartitionLimitCnt())*threshold
 	if !limited {
 		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, simulate reserved cnt %d, limit %d, threshold %v",
-			dataNode.Addr, dataNode.DataPartitionCount, dataNode.PreResearvedDpCount, dataNode.GetPartitionLimitCnt(), threshold)
+			dataNode.Addr, dataNode.DataPartitionCount, dataNode.PreReservedDpCount, dataNode.GetPartitionLimitCnt(), threshold)
 	}
 	return limited
 }
@@ -410,20 +425,35 @@ func (dataNode *DataNode) GetStorageInfo() string {
 }
 
 func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64, threshold float64) (ok bool) {
-	if dataNode.isActive && dataNode.AvailableSpace-dataNode.PreResearvedSpace > size && !dataNode.RdOnly &&
-		dataNode.Total > dataNode.Used && (dataNode.Total-dataNode.Used-dataNode.PreResearvedSpace) > size &&
-		float64(dataNode.AvailableSpace-dataNode.PreResearvedSpace) > (1-threshold)*float64(dataNode.Total) &&
-		float64(dataNode.Used+dataNode.PreResearvedSpace) <= threshold*float64(dataNode.Total) {
-		ok = true
-	}
-	if !ok {
-		log.LogInfof("[isWriteAbleWithSizeNoLock] node %v, isActive %v, TotalDpCnt %v, RdOnly %v, Total %v, AvailableSpace %v, "+
-			"used %v, PreResearvedSpace %v, reserved size %v, threshold %v",
-			dataNode.Addr, dataNode.isActive, dataNode.DataPartitionCount, dataNode.RdOnly, dataNode.Total, dataNode.AvailableSpace, dataNode.Used,
-			dataNode.PreResearvedSpace, size, threshold)
+	defer func() {
+		if !ok {
+			log.LogInfof("[isWriteAbleWithSizeNoLock] node %v, isActive %v, TotalDpCnt %v, RdOnly %v, Total %v, AvailableSpace %v, "+
+				"used %v, PreReservedSpace %v, reserved size %v, threshold %v",
+				dataNode.Addr, dataNode.isActive, dataNode.DataPartitionCount, dataNode.RdOnly, dataNode.Total, dataNode.AvailableSpace, dataNode.Used,
+				dataNode.PreReservedSpace, size, threshold)
+		}
+	}()
+
+	if !dataNode.isActive || dataNode.RdOnly {
+		return false
 	}
 
-	return
+	availableSpace := dataNode.AvailableSpace - dataNode.PreReservedSpace
+	if availableSpace <= size {
+		return false
+	}
+
+	if dataNode.Total <= dataNode.Used || (dataNode.Total-dataNode.Used-dataNode.PreReservedSpace) <= size {
+		return false
+	}
+
+	totalFloat := float64(dataNode.Total)
+	if float64(availableSpace) <= (1-threshold)*totalFloat ||
+		float64(dataNode.Used+dataNode.PreReservedSpace) > threshold*totalFloat {
+		return false
+	}
+
+	return true
 }
 
 func (dataNode *DataNode) GetHeartbeatPort() string {

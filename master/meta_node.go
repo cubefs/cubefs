@@ -142,7 +142,18 @@ func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.SelectCount++
 }
 
-func (metaNode *MetaNode) IsWriteAble(threshold float64) (ok bool) {
+func (metaNode *MetaNode) IsWriteAble() (ok bool) {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
+		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
+		!metaNode.RdOnly {
+		ok = true
+	}
+	return
+}
+
+func (metaNode *MetaNode) IsWriteAbleEx(threshold float64) (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
@@ -240,7 +251,11 @@ func (metaNode *MetaNode) GetPartitionLimitCnt() uint64 {
 	return defaultMaxMpCntLimit
 }
 
-func (metaNode *MetaNode) PartitionCntLimited(threshold float64) bool {
+func (metaNode *MetaNode) PartitionCntLimited() bool {
+	return uint64(metaNode.MetaPartitionCount) <= metaNode.GetPartitionLimitCnt()
+}
+
+func (metaNode *MetaNode) PartitionCntLimitedEx(threshold float64) bool {
 	return float64(metaNode.MetaPartitionCount) <= float64(metaNode.GetPartitionLimitCnt())*threshold
 }
 
@@ -363,7 +378,7 @@ func (metaNode *MetaNode) reachesRocksdbDisksThreshold() bool {
 func (metaNode *MetaNode) isWritable(storeMode proto.StoreMode) (ok bool) {
 	switch storeMode {
 	case proto.StoreModeMem:
-		return metaNode.IsWriteAble(1)
+		return metaNode.IsWriteAble()
 	case proto.StoreModeRocksDb:
 		return metaNode.IsRocksdbWriteAble()
 	default:

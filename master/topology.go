@@ -438,7 +438,7 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 
 			domainGrpManager.nodeSetGrpMap[i].nodeSets[j].dataNodes.Range(func(key, value interface{}) bool {
 				node := value.(*DataNode)
-				if node.IsWriteAble(1) {
+				if node.IsWriteAble() {
 					used = used + node.Used
 				} else {
 					used = used + node.Total
@@ -455,7 +455,7 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 			}
 			domainGrpManager.nodeSetGrpMap[i].nodeSets[j].metaNodes.Range(func(key, value interface{}) bool {
 				node := value.(*MetaNode)
-				if node.IsWriteAble(1) {
+				if node.IsWriteAble() {
 					metaWorked = true
 					log.LogInfof("action[checkGrpState] nodeset[%v] zonename[%v] used [%v] total [%v] threshold [%v] got available metanode",
 						node.ID, node.ZoneName, node.Used, node.Total, node.Threshold)
@@ -1244,13 +1244,13 @@ func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
 func (ns *nodeSet) checkNodeWriteable(node interface{}, nodeType NodeType, param *selectParam) bool {
 	if nodeType == RocksdbType {
 		if metaNode, ok := node.(*MetaNode); ok {
-			return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited(1) && !contains(param.excludeHosts, metaNode.Addr)
+			return metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited() && !contains(param.excludeHosts, metaNode.Addr)
 		}
 		return false
 	}
 
 	if n, ok := node.(Node); ok {
-		return n.IsWriteAble(1) && n.PartitionCntLimited(1) && !contains(param.excludeHosts, n.GetAddr())
+		return n.IsWriteAbleEx(1) && n.PartitionCntLimitedEx(1) && !contains(param.excludeHosts, n.GetAddr())
 	}
 	return false
 }
@@ -1320,7 +1320,7 @@ func (ns *nodeSet) checkNormalWriteable(nodes *sync.Map, param *selectParam, nod
 func (ns *nodeSet) calcNodesForAlloc(nodes *sync.Map) (cnt int) {
 	nodes.Range(func(key, value interface{}) bool {
 		node := value.(Node)
-		if node.IsWriteAble(1) && node.PartitionCntLimited(1) {
+		if node.IsWriteAbleEx(1) && node.PartitionCntLimitedEx(1) {
 			cnt++
 		}
 		return true
@@ -2133,12 +2133,12 @@ func (zone *Zone) canWriteForNode(nodeType NodeType, demandWriteNodesCntPerZone 
 	var leastAlive uint8
 	nodes.Range(func(addr, value interface{}) bool {
 		node := value.(Node)
-		if !node.PartitionCntLimited(1) {
+		if !node.PartitionCntLimitedEx(1) {
 			log.LogDebugf("[canWriteForNode] nodeId(%v) addr(%v) zone(%v) nodeType(%v), can not write for partition count limited",
 				node.GetID(), node.GetAddr(), zone.name, NodeTypeString(nodeType))
 			return true
 		}
-		if node.IsActiveNode() && node.IsWriteAble(1) {
+		if node.IsActiveNode() && node.IsWriteAbleEx(1) {
 			leastAlive++
 		}
 		if leastAlive >= demandWriteNodesCntPerZone {
@@ -2181,7 +2181,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive && metaNode.IsWriteAble(1) {
+		if metaNode.IsActive && metaNode.IsWriteAble() {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -2974,7 +2974,7 @@ func (zone *Zone) getMetaMemoryUsed() (metaNodeUsed uint64, metaNodeTotal uint64
 	defer zone.RUnlock()
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive && metaNode.IsWriteAble(1) {
+		if metaNode.IsActive && metaNode.IsWriteAble() {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total

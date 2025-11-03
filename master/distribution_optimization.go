@@ -16,7 +16,6 @@ package master
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -60,6 +59,8 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 		return
 	}
 
+	abnormalDpSet := c.getAbnormalDps(true)
+
 	vols := c.copyVols()
 	processedCount := 0
 	availableSlots := int(limit) - activeTasks
@@ -76,6 +77,11 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 				continue
 			}
 
+			// Skip abnormal DPs detected by checkReplicaOfDataPartitions
+			if _, exists := abnormalDpSet[dp.PartitionID]; exists {
+				continue
+			}
+
 			if !dp.IsDecommissionFailed() && !dp.IsDecommissionInitial() {
 				continue
 			}
@@ -87,7 +93,7 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 				continue
 			}
 
-			err := c.processPartitionMigration(dp, hosts)
+			err := c.processPartitionDistributionOptimization(dp, hosts)
 			if err != nil {
 				log.LogWarnf("action[executeDistributionOptimizationMigrations] process partition migration failed: %v", err)
 				continue
@@ -176,7 +182,7 @@ func isOptimalDistribution(dp *DataPartition, c *Cluster) ([]string, bool) {
 		return nil, true
 	}
 
-	if hasRackConflict, zone := hasRackConflict(dp); hasRackConflict {
+	if isConflict, zone := hasRackConflict(dp); isConflict {
 		var zoneHosts []string
 		for _, replica := range dp.Replicas {
 			dataNode := replica.getReplicaNode()
@@ -231,7 +237,7 @@ func hasRackConflict(dp *DataPartition) (bool, string) {
 	return false, ""
 }
 
-func (c *Cluster) processPartitionMigration(dp *DataPartition, hosts []string) error {
+func (c *Cluster) processPartitionDistributionOptimization(dp *DataPartition, hosts []string) error {
 	if len(hosts) == 0 {
 		return fmt.Errorf("hosts is empty")
 	}
@@ -258,7 +264,7 @@ func (c *Cluster) processPartitionMigration(dp *DataPartition, hosts []string) e
 	dp.DecommissionType = proto.DistributionOptimization
 	dp.DecommissionWeight = 1
 
-	log.LogDebugf("action[executeReplicaMigration] dp %v srcAddrs %v dstAddrs %v", dp.PartitionID, dp.DecommissionSrcAddrs, dp.DecommissionDstAddrs)
+	auditlog.LogMasterOp("DistributionOptimization", fmt.Sprintf("dp %v srcAddrs %v dstAddrs %v", dp.PartitionID, dp.DecommissionSrcAddrs, dp.DecommissionDstAddrs), nil)
 
 	if err = c.addDataReservedResource(dstAddrs, dp); err != nil {
 		log.LogWarnf("action[executeReplicaMigration] dp %v simulate resource change failed: %v", dp.PartitionID, err)
@@ -335,10 +341,10 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 			}
 
 			// Analyze rack distribution
-			hasRackConflict, conflictZone := hasRackConflict(dp)
+			isConflict, conflictZone := hasRackConflict(dp)
 			var rackConflictLevel int
 
-			if hasRackConflict {
+			if isConflict {
 				var zoneHosts []string
 				for _, replica := range dp.Replicas {
 					dataNode := replica.getReplicaNode()
@@ -368,7 +374,7 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 				status.NodeSetUnbalancedDPs++
 				isUnbalanced = true
 			}
-			if hasRackConflict {
+			if isConflict {
 				status.RackConflictDPs++
 				isUnbalanced = true
 			}
@@ -397,137 +403,16 @@ func (c *Cluster) getAllDistributionOptimizationDataPartition() (dps []*DataPart
 
 // cancelDpDistributionOptimization cancels all ongoing nodeset balance decommission tasks
 func (c *Cluster) cancelDpDistributionOptimization() (err error) {
-	var (
-		dstNs *nodeSet
-		srcNs *nodeSet
-		dps   []*DataPartition
-		dpWg  sync.WaitGroup
-		mu    sync.Mutex
-	)
 	begin := time.Now()
 	defer func() {
 		log.LogInfof("action[cancelDpDistributionOptimization] cancel dp DistributionOptimization using time(%v)", time.Since(begin))
 	}()
 
-	dpCh := make(chan *DataPartition, 1024)
-	dpIds := make([]uint64, 0)
-	failedDpIds := make([]uint64, 0)
-	dps = c.getAllDistributionOptimizationDataPartition()
+	dps := c.getAllDistributionOptimizationDataPartition()
+	success, failed := c.cancelDecommissionWorker(dps, nil, "cancelDpDistributionOptimization")
 
-	for ii := 0; ii < 10; ii++ {
-		go func() {
-			for dp := range dpCh {
-				if dp.GetDecommissionStatus() == DecommissionSuccess || dp.IsRollbackFailed() || dp.DecommissionType != proto.DistributionOptimization {
-					dpWg.Done()
-					continue
-				}
-				if dp.DecommissionDstAddr != "" {
-					dstNs, _, err = getTargetNodeset(dp.DecommissionDstAddr, c)
-					if err != nil {
-						log.LogWarnf("action[cancelDpDistributionOptimization] dp %v find dst(%v) nodeset failed:%v",
-							dp.PartitionID, dp.DecommissionDstAddr, err.Error())
-						mu.Lock()
-						failedDpIds = append(failedDpIds, dp.PartitionID)
-						mu.Unlock()
-						dpWg.Done()
-						continue
-					}
-					if dstNs.HasDecommissionToken(dp.PartitionID) {
-						if dp.IsDecommissionPrepare() || dp.IsMarkDecommission() {
-							dpCh <- dp
-							continue
-						}
-						if dp.isSpecialReplicaCnt() && !dp.DecommissionRaftForce {
-							if (dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes) || dp.IsDecommissionFailed() {
-								log.LogDebugf("action[cancelDpDistributionOptimization] try delete dp[%v] replica %v",
-									dp.PartitionID, dp.DecommissionDstAddr)
-
-								if dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes {
-									dp.SpecialReplicaDecommissionStop <- false
-								}
-
-								// delete it from BadDataPartitionIds
-								err = c.removeDPFromBadDataPartitionIDs(dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.PartitionID)
-								if err != nil {
-									log.LogWarnf("action[cancelDpDistributionOptimization] dp[%v] delete from bad dataPartitionIDs failed:%v", dp.PartitionID, err)
-								}
-								removeAddr := dp.DecommissionDstAddr
-								// when special replica partition enter SpecialDecommissionWaitAddResFin, new replica is recoverd, so only
-								// need to delete DecommissionSrcAddr
-								if dp.isSpecialReplicaCnt() && dp.IsDecommissionFailed() && dp.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
-									removeAddr = dp.DecommissionSrcAddr
-								}
-								err = dp.removeReplicaByForce(c, removeAddr, true, false)
-								if err != nil {
-									log.LogWarnf("action[cancelDpDistributionOptimization] dp[%v] remove decommission dst replica %v failed: %v",
-										dp.PartitionID, removeAddr, err)
-								}
-							} else if dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
-								// new replica has been repaired,  let it continue with the subsequent decommission process, skip it this time
-								dpWg.Done()
-								continue
-							}
-						} else {
-							if dp.IsDecommissionRunning() || dp.IsDecommissionFailed() {
-								log.LogDebugf("action[cancelDpDistributionOptimization] try delete dp[%v] replica %v",
-									dp.PartitionID, dp.DecommissionDstAddr)
-								// delete it from BadDataPartitionIds
-								err = c.removeDPFromBadDataPartitionIDs(dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.PartitionID)
-								if err != nil {
-									log.LogWarnf("action[cancelDpDistributionOptimization] dp[%v] delete from bad dataPartitionIDs failed:%v", dp.PartitionID, err)
-								}
-								removeAddr := dp.DecommissionDstAddr
-								err = dp.removeReplicaByForce(c, removeAddr, true, false)
-								if err != nil {
-									log.LogWarnf("action[cancelDpDistributionOptimization] dp[%v] remove decommission dst replica %v failed: %v",
-										dp.PartitionID, removeAddr, err)
-								}
-							}
-						}
-						dp.ReleaseDecommissionToken(c)
-						dp.ReleaseDecommissionFirstHostToken(c)
-					}
-				}
-				msg := fmt.Sprintf("dp(%v) cancel decommission", dp.decommissionInfo())
-				dp.ResetDecommissionStatus()
-				dp.setRestoreReplicaStop()
-
-				// Check if DecommissionSrcAddr is not empty before trying to find the nodeset
-				if dp.DecommissionSrcAddr != "" {
-					srcNs, _, err = getTargetNodeset(dp.DecommissionSrcAddr, c)
-					if err != nil {
-						log.LogWarnf("action[cancelDpDistributionOptimization] dp %v find src(%v) nodeset failed:%v",
-							dp.PartitionID, dp.DecommissionSrcAddr, err.Error())
-						mu.Lock()
-						failedDpIds = append(failedDpIds, dp.PartitionID)
-						mu.Unlock()
-						dpWg.Done()
-						continue
-					}
-					srcNs.decommissionDataPartitionList.Remove(dp)
-				} else {
-					log.LogWarnf("action[cancelDpDistributionOptimization] dp %v has empty DecommissionSrcAddr, skip nodeset removal",
-						dp.PartitionID)
-				}
-
-				c.syncUpdateDataPartition(dp)
-				auditlog.LogMasterOp("CancelDpDistributionOptimization", msg, nil)
-				mu.Lock()
-				dpIds = append(dpIds, dp.PartitionID)
-				mu.Unlock()
-				dpWg.Done()
-			}
-		}()
-	}
-
-	for _, dp := range dps {
-		dpWg.Add(1)
-		dpCh <- dp
-	}
-	dpWg.Wait()
-	close(dpCh)
-
-	msg := fmt.Sprintf("cluster(%v) cancel dp distributionOptimization len(dps)(%v) with len(faileddps)(%v)", c.Name, len(dpIds), len(failedDpIds))
-	auditlog.LogMasterOp("CancelDpDistributionOptimization", msg, err)
-	return err
+	msg := fmt.Sprintf("cluster(%v) cancel dp distributionOptimization len(dps)(%v) with len(faileddps)(%v)",
+		c.Name, len(success), len(failed))
+	auditlog.LogMasterOp("CancelDpDistributionOptimization", msg, nil)
+	return nil
 }

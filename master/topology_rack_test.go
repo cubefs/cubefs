@@ -1828,7 +1828,7 @@ func TestRackGetAvailMetaNodeHostsRocksDB(t *testing.T) {
 				if key.(string) == host {
 					mn := value.(*MetaNode)
 					require.True(t, mn.IsRocksdbWriteAble(), "Selected node should be RocksDB writable")
-					require.True(t, mn.PartitionCntLimited(1), "Selected node should have partition count limit")
+					require.True(t, mn.PartitionCntLimited(), "Selected node should have partition count limit")
 					return false
 				}
 				return true

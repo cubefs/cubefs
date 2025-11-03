@@ -2390,7 +2390,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			}
 		}
 
-		if err = c.addDataReservedResource(targetHosts, partition); err != nil {
+		if err = c.addDataReservedResource(targetHosts[:1], partition); err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v simulate resource change failed: %v", partition.PartitionID, err)
 			goto errHandler
 		}
@@ -2404,7 +2404,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		} else {
 			log.LogDebugf("action[TryAcquireDecommissionToken] dp %v: nodeset %v token is empty",
 				partition.PartitionID, ns.ID)
-			c.releaseDataReservedResource(targetHosts, partition)
+			c.releaseDataReservedResource(targetHosts[:1], partition)
 			return false
 		}
 	} else {

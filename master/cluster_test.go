@@ -1172,7 +1172,7 @@ func TestAddDataNode(t *testing.T) {
 	})
 }
 
-func TestPreResearvedSpaceFunctions(t *testing.T) {
+func TestPreReservedSpaceFunctions(t *testing.T) {
 	// Use existing data node from test environment
 	var testDataNode *DataNode
 	var testNodeAddr string
@@ -1210,49 +1210,49 @@ func TestPreResearvedSpaceFunctions(t *testing.T) {
 
 	t.Run("addDataReservedResource", func(t *testing.T) {
 		// Reset simulate reserved space
-		testDataNode.PreResearvedSpace = 0
-		testDataNode.PreResearvedDpCount = 0
+		testDataNode.PreReservedSpace = 0
+		testDataNode.PreReservedDpCount = 0
 
-		initialReservedSpace := testDataNode.PreResearvedSpace
-		initialReservedCount := testDataNode.PreResearvedDpCount
+		initialReservedSpace := testDataNode.PreReservedSpace
+		initialReservedCount := testDataNode.PreReservedDpCount
 
 		// Add reserved resource
 		err := server.cluster.addDataReservedResource([]string{testNodeAddr}, dp)
 		require.NoError(t, err)
 
 		// Verify the reserved space is increased
-		require.Equal(t, initialReservedSpace+replica.Used, testDataNode.PreResearvedSpace)
-		require.Equal(t, initialReservedCount+1, testDataNode.PreResearvedDpCount)
+		require.Equal(t, initialReservedSpace+replica.Used, testDataNode.PreReservedSpace)
+		require.Equal(t, initialReservedCount+1, testDataNode.PreReservedDpCount)
 	})
 
 	t.Run("releaseDataReservedResource", func(t *testing.T) {
 		// Set initial reserved space
-		testDataNode.PreResearvedSpace = 2 * 1024 * 1024 * 1024 // 2GB
-		testDataNode.PreResearvedDpCount = 2
+		testDataNode.PreReservedSpace = 2 * 1024 * 1024 * 1024 // 2GB
+		testDataNode.PreReservedDpCount = 2
 
-		initialReservedSpace := testDataNode.PreResearvedSpace
-		initialReservedCount := testDataNode.PreResearvedDpCount
+		initialReservedSpace := testDataNode.PreReservedSpace
+		initialReservedCount := testDataNode.PreReservedDpCount
 
 		// Release reserved resource
 		server.cluster.releaseDataReservedResource([]string{testNodeAddr}, dp)
 
 		// Verify the reserved space is decreased
 		expectedSpace := initialReservedSpace - replica.Used
-		require.Equal(t, expectedSpace, testDataNode.PreResearvedSpace)
-		require.Equal(t, initialReservedCount-1, testDataNode.PreResearvedDpCount)
+		require.Equal(t, expectedSpace, testDataNode.PreReservedSpace)
+		require.Equal(t, initialReservedCount-1, testDataNode.PreReservedDpCount)
 	})
 
 	t.Run("releaseDataReservedResource_underflow", func(t *testing.T) {
 		// Set reserved space smaller than release amount
-		testDataNode.PreResearvedSpace = 512 * 1024 * 1024 // 512MB (smaller than replica.Used)
-		testDataNode.PreResearvedDpCount = 1
+		testDataNode.PreReservedSpace = 512 * 1024 * 1024 // 512MB (smaller than replica.Used)
+		testDataNode.PreReservedDpCount = 1
 
 		// Release reserved resource
 		server.cluster.releaseDataReservedResource([]string{testNodeAddr}, dp)
 
 		// Verify the reserved space is set to 0 when underflow
-		require.Equal(t, uint64(0), testDataNode.PreResearvedSpace)
-		require.Equal(t, uint32(0), testDataNode.PreResearvedDpCount)
+		require.Equal(t, uint64(0), testDataNode.PreReservedSpace)
+		require.Equal(t, uint32(0), testDataNode.PreReservedDpCount)
 	})
 
 	t.Run("getDataPartitionMaxUsedSize", func(t *testing.T) {
@@ -1288,8 +1288,8 @@ func TestPreResearvedSpaceFunctions(t *testing.T) {
 
 	t.Run("concurrent_simulate_reserved_space_operations", func(t *testing.T) {
 		// Reset simulate reserved space
-		testDataNode.PreResearvedSpace = 0
-		testDataNode.PreResearvedDpCount = 0
+		testDataNode.PreReservedSpace = 0
+		testDataNode.PreReservedDpCount = 0
 
 		var wg sync.WaitGroup
 		numOperations := 10 // Reduce number of operations for test stability
@@ -1309,8 +1309,8 @@ func TestPreResearvedSpaceFunctions(t *testing.T) {
 		// Verify final state
 		expectedSpace := uint64(numOperations) * replica.Used
 		expectedCount := uint32(numOperations)
-		require.Equal(t, expectedSpace, testDataNode.PreResearvedSpace)
-		require.Equal(t, expectedCount, testDataNode.PreResearvedDpCount)
+		require.Equal(t, expectedSpace, testDataNode.PreReservedSpace)
+		require.Equal(t, expectedCount, testDataNode.PreReservedDpCount)
 
 		// Concurrently release reserved resources
 		for i := 0; i < numOperations; i++ {
@@ -1324,7 +1324,7 @@ func TestPreResearvedSpaceFunctions(t *testing.T) {
 		wg.Wait()
 
 		// Verify final state (should be back to 0)
-		require.Equal(t, uint64(0), testDataNode.PreResearvedSpace)
-		require.Equal(t, uint32(0), testDataNode.PreResearvedDpCount)
+		require.Equal(t, uint64(0), testDataNode.PreReservedSpace)
+		require.Equal(t, uint32(0), testDataNode.PreReservedDpCount)
 	})
 }

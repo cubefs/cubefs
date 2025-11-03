@@ -34,16 +34,16 @@ func writeDataNode(sb *strings.Builder, node *DataNode) {
 	sb.WriteString(fmt.Sprintf("Data Node %v\n", node.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Space:%v MB\n", node.Total/util.MB))
 	sb.WriteString(fmt.Sprintf("\tAvaliable Space:%v MB\n", node.AvailableSpace/util.MB))
-	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc dp?%v PartitionCnt: %v dpCntLimit: %v", node.IsWriteAble(1),
-		node.IsWriteAble(1) && node.PartitionCntLimited(1), node.DataPartitionCount, node.GetPartitionLimitCnt()))
+	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc dp?%v PartitionCnt: %v dpCntLimit: %v", node.IsWriteAble(),
+		node.IsWriteAble() && node.PartitionCntLimited(), node.DataPartitionCount, node.GetPartitionLimitCnt()))
 }
 
 func writeMetaNode(sb *strings.Builder, node *MetaNode) {
 	sb.WriteString(fmt.Sprintf("Meta Node %v\n", node.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Space:%v MB\n", node.Total/util.MB))
 	sb.WriteString(fmt.Sprintf("\tAvaliable Space:%v MB\n", (node.Total-node.Used)/util.MB))
-	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc mp?%v PartitionCnt: %v mpCntLimit: %v", node.IsWriteAble(1),
-		node.IsWriteAble(1) && node.PartitionCntLimited(1), node.MetaPartitionCount, node.GetPartitionLimitCnt()))
+	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc mp?%v PartitionCnt: %v mpCntLimit: %v", node.IsWriteAble(),
+		node.IsWriteAble() && node.PartitionCntLimited(), node.MetaPartitionCount, node.GetPartitionLimitCnt()))
 	sb.WriteString(fmt.Sprintf("\tRocksdb Total Space: %v MB\n", node.GetRocksdbTotal()/util.MB))
 	sb.WriteString(fmt.Sprintf("\tRocksdb Avaliable Space:%v MB\n", (node.GetRocksdbTotal()-node.GetRocksdbUsed())/util.MB))
 }
