@@ -109,7 +109,7 @@ type IMigrator interface {
 	ClearDeletedTaskByID(diskID proto.DiskID, taskID string)
 	IsDeletedTask(task *proto.MigrateTask) bool
 	DeletedTasks() []DeletedTask
-	AddTask(ctx context.Context, task *proto.MigrateTask)
+	AddTask(ctx context.Context, task *proto.MigrateTask) error
 	GetTask(ctx context.Context, taskID string) (*proto.MigrateTask, error)
 	ListAllTask(ctx context.Context) (tasks []*proto.MigrateTask, err error)
 	ListAllTaskByDiskID(ctx context.Context, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error)
@@ -540,7 +540,6 @@ func (mgr *MigrateMgr) Run() {
 
 func (mgr *MigrateMgr) prepareTaskLoop() {
 	for {
-		mgr.taskSwitch.WaitEnable()
 		todo, doing := mgr.workQueue.StatsTasks()
 		if todo+doing >= mgr.cfg.WorkQueueSize {
 			time.Sleep(prepareTaskPause)
@@ -571,17 +570,6 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 	migTask := task.(*proto.MigrateTask).Copy()
 
 	span.Infof("prepare task phase: task_id[%s], state[%+v]", migTask.TaskID, migTask.State)
-
-	err = base.VolTaskLockerInst().TryLock(ctx, uint32(migTask.SourceVuid.Vid()))
-	if err != nil {
-		span.Warnf("lock volume failed: volume_id[%v], err[%+v]", migTask.SourceVuid.Vid(), err)
-		return base.ErrVolNotOnlyOneTask
-	}
-	defer func() {
-		if err != nil {
-			base.VolTaskLockerInst().Unlock(ctx, uint32(task.(*proto.MigrateTask).SourceVuid.Vid()))
-		}
-	}()
 
 	volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, migTask.SourceVuid.Vid())
 	if err != nil {
@@ -774,7 +762,14 @@ func (mgr *MigrateMgr) updateVolumeCache(ctx context.Context, task *proto.Migrat
 }
 
 // AddTask adds migrate task
-func (mgr *MigrateMgr) AddTask(ctx context.Context, task *proto.MigrateTask) {
+func (mgr *MigrateMgr) AddTask(ctx context.Context, task *proto.MigrateTask) error {
+	span := trace.SpanFromContextSafe(ctx)
+	err := base.VolTaskLockerInst().TryLock(ctx, uint32(task.SourceVuid.Vid()))
+	if err != nil {
+		span.Warnf("lock volume failed: volume_id[%v], err[%+v]", task.SourceVuid.Vid(), err)
+		return base.ErrVolNotOnlyOneTask
+	}
+
 	// add task to db
 	base.InsistOn(ctx, "migrate add task insert task to tbl", func() error {
 		t, err := task.ToTask()
@@ -788,6 +783,7 @@ func (mgr *MigrateMgr) AddTask(ctx context.Context, task *proto.MigrateTask) {
 	mgr.prepareQueue.PushTask(task.TaskID, task)
 
 	mgr.addMigratingVuid(task.SourceDiskID, task.SourceVuid, task.TaskID)
+	return nil
 }
 
 func (mgr *MigrateMgr) handleLockVolFail(ctx context.Context, task *proto.MigrateTask) error {

@@ -188,7 +188,7 @@ func (t *MigrateTask) GetSourceDiskID() DiskID {
 }
 
 func (t *MigrateTask) Running() bool {
-	return t.State == MigrateStatePrepared || t.State == MigrateStateWorkCompleted
+	return t.State == MigrateStatePrepared || t.State == MigrateStateWorkCompleted || t.State == MigrateStateInited
 }
 
 func (t *MigrateTask) Copy() *MigrateTask {

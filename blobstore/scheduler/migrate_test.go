@@ -93,6 +93,10 @@ func TestMigrateMigrateLoad(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t1, t2, t3, t4}, nil)
 		err := mgr.Load()
 		require.NoError(t, err)
+		base.VolTaskLockerInst().Unlock(context.Background(), 100)
+		base.VolTaskLockerInst().Unlock(context.Background(), 101)
+		base.VolTaskLockerInst().Unlock(context.Background(), 102)
+		base.VolTaskLockerInst().Unlock(context.Background(), 105)
 	}
 	{
 		t1, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z2", 8, 104, proto.MigrateStateFinished, MockMigrateVolInfoMap).ToTask()
@@ -111,6 +115,7 @@ func TestMigrateMigrateLoad(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t2, t3}, nil)
 		err := mgr.Load()
 		require.Error(t, err)
+		base.VolTaskLockerInst().Unlock(context.Background(), 101)
 
 		t4, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z2", 7, 103, 100, MockMigrateVolInfoMap).ToTask()
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t4}, nil)
@@ -130,6 +135,10 @@ func TestMigrateMigrateLoad(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDropDisks(any).Return([]*client.DiskInfoSimple{testDisk1, testDisk2}, nil)
 		err := mgr.Load()
 		require.NoError(t, err)
+		base.VolTaskLockerInst().Unlock(context.Background(), 110)
+		base.VolTaskLockerInst().Unlock(context.Background(), 111)
+		base.VolTaskLockerInst().Unlock(context.Background(), 112)
+		base.VolTaskLockerInst().Unlock(context.Background(), 113)
 	}
 }
 
@@ -146,14 +155,8 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr := newMigrateMgr(t)
 		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
-		mgr.AddTask(ctx, t1)
-
-		// lock failed and send task to queue
-		err := base.VolTaskLockerInst().TryLock(ctx, 100)
+		err := mgr.AddTask(ctx, t1)
 		require.NoError(t, err)
-		err = mgr.prepareTask()
-		require.True(t, errors.Is(err, base.ErrVolNotOnlyOneTask))
-		base.VolTaskLockerInst().Unlock(ctx, 100)
 
 		// get volume info failed
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(nil, errMock)
@@ -175,13 +178,15 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
 		err = mgr.prepareTask()
 		require.NoError(t, err)
+		base.VolTaskLockerInst().Unlock(context.Background(), 100)
 	}
 	{
 		// one task and finish in advance because  other migrate task is doing on this volume
 		mgr := newMigrateMgr(t)
 		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
-		mgr.AddTask(ctx, t1)
+		err := mgr.AddTask(ctx, t1)
+		require.NoError(t, err)
 
 		// lock cm volume failed
 		volume := MockMigrateVolInfoMap[100]
@@ -189,7 +194,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(errMock)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(errMock)
-		err := mgr.prepareTask()
+		err = mgr.prepareTask()
 		require.True(t, errors.Is(err, errMock))
 
 		// lock failed and call lockVolFailHandleFunc
@@ -197,13 +202,15 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(errcode.ErrLockNotAllow)
 		err = mgr.prepareTask()
 		require.NoError(t, err)
+		base.VolTaskLockerInst().Unlock(context.Background(), 100)
 	}
 	{
 		// one task and normal finish
 		mgr := newMigrateMgr(t)
 		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
-		mgr.AddTask(ctx, t1)
+		err := mgr.AddTask(ctx, t1)
+		require.NoError(t, err)
 
 		// lock cm volume failed
 		volume := MockMigrateVolInfoMap[100]
@@ -212,7 +219,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 
 		// alloc volume failed
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any).Return(nil, errMock)
-		err := mgr.prepareTask()
+		err = mgr.prepareTask()
 		require.True(t, errors.Is(err, errMock))
 
 		// alloc success
@@ -232,6 +239,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 			})
 		err = mgr.prepareTask()
 		require.NoError(t, err)
+		base.VolTaskLockerInst().Unlock(context.Background(), 100)
 	}
 }
 
@@ -494,21 +502,21 @@ func TestAddMigrateTask(t *testing.T) {
 		ctx := context.Background()
 		mgr := newMigrateMgr(t)
 		mgr.taskType = proto.TaskTypeDiskDrop
-		t1 := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
+		t1 := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 4, 103, proto.MigrateStateInited, MockMigrateVolInfoMap)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
 		mgr.AddTask(ctx, t1)
 		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
 
 		mgr.taskType = proto.TaskTypeManualMigrate
-		t1 = mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
-		mgr.AddTask(ctx, t1)
-		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		t1 = mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 103, proto.MigrateStateInited, MockMigrateVolInfoMap)
+		err := mgr.AddTask(ctx, t1)
+		require.Error(t, err)
+		base.VolTaskLockerInst().Unlock(ctx, uint32(t1.SourceVuid.Vid()))
 	}
 	{
 		ctx := context.Background()
 		mgr := newMigrateMgr(t)
-		t1 := mockGenMigrateTask(proto.TaskTypeBalance, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
+		t1 := mockGenMigrateTask(proto.TaskTypeBalance, "z0", 4, 104, proto.MigrateStateInited, MockMigrateVolInfoMap)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
 		mgr.AddTask(ctx, t1)
 		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
@@ -533,6 +541,7 @@ func TestAddMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return([]*proto.Task{}, nil)
 		_, err = mgr.ListAllTaskByDiskID(ctx, proto.DiskID(1))
 		require.NoError(t, err)
+		base.VolTaskLockerInst().Unlock(ctx, uint32(t1.SourceVuid.Vid()))
 	}
 }
 
@@ -665,7 +674,7 @@ func TestMigrateDiskVuidMap(t *testing.T) {
 	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
 
 	// add
-	t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
+	t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 105, proto.MigrateStateInited, MockMigrateVolInfoMap)
 	mgr.AddTask(ctx, t1)
 	require.True(t, mgr.IsTaskExist(t1.SourceDiskID, t1.SourceVuid))
 
@@ -684,4 +693,5 @@ func TestMigrateDiskVuidMap(t *testing.T) {
 	require.NoError(t, err)
 
 	require.False(t, mgr.IsTaskExist(t1.SourceDiskID, t1.SourceVuid))
+	base.VolTaskLockerInst().Unlock(ctx, 105)
 }

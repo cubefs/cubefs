@@ -368,7 +368,13 @@ RETRY:
 		_ = mgr.taskLimitPerDisk.Acquire(disk.DiskID)
 		_ = mgr.totalTaskLimit.Acquire()
 
-		mgr.initOneTask(ctx, vuid, disk.DiskID, disk.Idc)
+		if err = mgr.initOneTask(ctx, vuid, disk.DiskID, disk.Idc); err != nil {
+			span.Errorf("init drop task failed: vuid[%d], disk[%d], err[%s]", vuid, disk.DiskID, err)
+			mgr.taskLimitPerDisk.Release(disk.DiskID)
+			mgr.totalTaskLimit.Release()
+			retryVuids = append(retryVuids, vuid)
+			continue
+		}
 		span.Debugf("init drop task success: vuid[%d], disk[%d]", vuid, disk.DiskID)
 	}
 	if len(retryVuids) != 0 {
@@ -421,7 +427,7 @@ func (mgr *DiskDropMgr) listUnMigratedVuid(ctx context.Context, diskID proto.Dis
 	return drops, nil
 }
 
-func (mgr *DiskDropMgr) initOneTask(ctx context.Context, src proto.Vuid, dropDiskID proto.DiskID, diskIDC string) {
+func (mgr *DiskDropMgr) initOneTask(ctx context.Context, src proto.Vuid, dropDiskID proto.DiskID, diskIDC string) error {
 	t := proto.MigrateTask{
 		TaskID:       client.GenMigrateTaskID(proto.TaskTypeDiskDrop, dropDiskID, uint32(src.Vid())),
 		TaskType:     proto.TaskTypeDiskDrop,
@@ -430,7 +436,7 @@ func (mgr *DiskDropMgr) initOneTask(ctx context.Context, src proto.Vuid, dropDis
 		SourceIDC:    diskIDC,
 		SourceVuid:   src,
 	}
-	mgr.IMigrator.AddTask(ctx, &t)
+	return mgr.IMigrator.AddTask(ctx, &t)
 }
 
 func (mgr *DiskDropMgr) checkDroppedAndClearLoop() {

@@ -184,7 +184,7 @@ func (mgr *BalanceMgr) genOneBalanceTask(ctx context.Context, diskInfo *client.D
 		SourceDiskID: diskInfo.DiskID,
 		SourceVuid:   vuid,
 	}
-	mgr.IMigrator.AddTask(ctx, task)
+	err = mgr.IMigrator.AddTask(ctx, task)
 	return
 }
 

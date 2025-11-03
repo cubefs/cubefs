@@ -225,9 +225,11 @@ func (mr *MockMigraterMockRecorder) AddManualTask(arg0, arg1, arg2 interface{}) 
 }
 
 // AddTask mocks base method.
-func (m *MockMigrater) AddTask(arg0 context.Context, arg1 *proto.MigrateTask) {
+func (m *MockMigrater) AddTask(arg0 context.Context, arg1 *proto.MigrateTask) error {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AddTask", arg0, arg1)
+	ret := m.ctrl.Call(m, "AddTask", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // AddTask indicates an expected call of AddTask.

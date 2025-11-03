@@ -72,7 +72,10 @@ func (mgr *ManualMigrateMgr) AddManualTask(ctx context.Context, vuid proto.Vuid,
 		SourceVuid:              vuid,
 		ForbiddenDirectDownload: forbiddenDirectDownload,
 	}
-	mgr.IMigrator.AddTask(ctx, task)
+	if err = mgr.IMigrator.AddTask(ctx, task); err != nil {
+		span.Errorf("add manual migrate task failed: task_info[%+v], err[%+v]", task, err)
+		return err
+	}
 
 	span.Debugf("add manual migrate task success: task_info[%+v]", task)
 	return nil

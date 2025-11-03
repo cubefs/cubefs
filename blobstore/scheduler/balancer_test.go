@@ -148,7 +148,7 @@ func TestBalanceCollectionTask(t *testing.T) {
 		}
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
-		mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).Return()
+		mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).Return(nil)
 		err = mgr.collectionTask()
 		require.NoError(t, err)
 

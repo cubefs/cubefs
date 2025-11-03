@@ -74,7 +74,7 @@ func TestManualMigrateAddTask(t *testing.T) {
 		volume := MockGenVolInfo(10001, codemode.EC6P6, proto.VolumeStatusIdle)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Return(&client.DiskInfoSimple{}, nil)
-		mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).Return()
+		mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).Return(nil)
 		err := mgr.AddManualTask(ctx, proto.Vuid(1), false)
 		require.NoError(t, err)
 	}
