@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -47,7 +46,7 @@ func newTestStreamerWithAheadRead(t *testing.T, partitionID uint64) (*Streamer, 
 }
 
 func putCacheBlock(arc *AheadReadCache, inode, partitionID, extentID uint64, cacheOffset int, availSize int, fill byte) string {
-	key := fmt.Sprintf("%v-%v-%v-%v", inode, partitionID, extentID, cacheOffset)
+	key := createAheadBlockKey(inode, partitionID, extentID, 0, cacheOffset)
 	bv := &AheadReadBlock{}
 	bv.inode = inode
 	bv.partitionId = partitionID
