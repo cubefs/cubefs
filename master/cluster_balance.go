@@ -1215,7 +1215,6 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	var wg sync.WaitGroup
 
 	stopProcess := false
-	failedList := make([]uint64, 0)
 	for _, mpPlan := range plan.Plan {
 		if stopProcess {
 			break
@@ -1228,14 +1227,13 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			if err != nil {
 				log.LogErrorf("handleMetaPartitionPlan err: %s", err.Error())
 				stopProcess = true
-				failedList = append(failedList, mpPlan.ID)
+				plan.FailedList = append(plan.FailedList, mpPlan.ID)
 			}
 			<-sem
 		}(mpPlan)
 	}
 	wg.Wait()
 
-	plan.FailedList = append(plan.FailedList, failedList...)
 	if c.IsClusterPlanStopping() {
 		plan.Status = PlanTaskStop
 		plan.Msg = "migrate plan is stopped"
