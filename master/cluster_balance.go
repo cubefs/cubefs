@@ -312,13 +312,17 @@ func (c *Cluster) MetaNodeRecord(metaNode *MetaNode) *proto.MetaNodeBalanceInfo 
 
 func (c *Cluster) GetMetaNodePressureView() (*proto.ClusterPlan, error) {
 	cView := &proto.ClusterPlan{
-		Low:        make(map[string]*proto.ZonePressureView),
-		RocksdbLow: make(map[string]*proto.ZonePressureView),
-		Plan:       make([]*proto.MetaBalancePlan, 0),
-		Status:     PlanTaskInit,
-		Mode:       proto.StoreModeMem,
-		RackLevel:  c.getRackAwareLevel(),
-		FailedList: make([]uint64, 0),
+		Low:            make(map[string]*proto.ZonePressureView),
+		RocksdbLow:     make(map[string]*proto.ZonePressureView),
+		Plan:           make([]*proto.MetaBalancePlan, 0),
+		Status:         PlanTaskInit,
+		Mode:           proto.StoreModeMem,
+		RackLevel:      c.getRackAwareLevel(),
+		FailedList:     make([]uint64, 0),
+		DoneNum:        0,
+		RunningNum:     0,
+		DoneReplicaNum: 0,
+		RunReplicaNum:  0,
 	}
 
 	err := c.GetLowMemPressureTopology(cView)
@@ -1297,8 +1301,10 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 	}
 
 	atomic.AddInt32(&plan.UndoNum, -1)
+	atomic.AddInt32(&plan.RunningNum, 1)
 	for _, mrPlan := range mpPlan.Plan {
 		atomic.AddInt32(&plan.UndoReplicaNum, -1)
+		atomic.AddInt32(&plan.RunReplicaNum, 1)
 		err = c.handleMetaReplicaPlan(plan, mpPlan, mp, mrPlan)
 		if err != nil {
 			log.LogErrorf("handleMetaReplicaPlan err: %s", err.Error())
@@ -1307,9 +1313,11 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 			mrPlan.Status = PlanTaskError
 			return err
 		}
+		atomic.AddInt32(&plan.RunReplicaNum, -1)
 		doneReplicaNum := atomic.AddInt32(&plan.DoneReplicaNum, 1)
 		plan.ProcessPercent = float64(doneReplicaNum) / float64(plan.TotalReplicaNum) * 100
 	}
+	atomic.AddInt32(&plan.RunningNum, -1)
 	atomic.AddInt32(&plan.DoneNum, 1)
 	return nil
 }
@@ -1652,12 +1660,16 @@ func CaculateNodeMemoryRatio(metanode *MetaNode) float64 {
 
 func (c *Cluster) CreateOfflineMetaNodePlan(offLineAddr string) (*proto.ClusterPlan, error) {
 	cView := &proto.ClusterPlan{
-		Low:        make(map[string]*proto.ZonePressureView),
-		RocksdbLow: make(map[string]*proto.ZonePressureView),
-		Plan:       make([]*proto.MetaBalancePlan, 0),
-		Status:     PlanTaskInit,
-		RackLevel:  c.getRackAwareLevel(),
-		FailedList: make([]uint64, 0),
+		Low:            make(map[string]*proto.ZonePressureView),
+		RocksdbLow:     make(map[string]*proto.ZonePressureView),
+		Plan:           make([]*proto.MetaBalancePlan, 0),
+		Status:         PlanTaskInit,
+		RackLevel:      c.getRackAwareLevel(),
+		FailedList:     make([]uint64, 0),
+		DoneNum:        0,
+		RunningNum:     0,
+		DoneReplicaNum: 0,
+		RunReplicaNum:  0,
 	}
 
 	err := c.GetLowMemPressureTopology(cView)
@@ -1993,18 +2005,21 @@ func checkMetaReplicasIsRocksdb(mp *MetaPartition) bool {
 func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID, endID uint64, targetMode proto.StoreMode, modeCnt int) (*proto.ClusterPlan, error) {
 	// Create a new meta partition migrate plan
 	plan := &proto.ClusterPlan{
-		Low:        make(map[string]*proto.ZonePressureView),
-		RocksdbLow: make(map[string]*proto.ZonePressureView),
-		Plan:       make([]*proto.MetaBalancePlan, 0),
-		DoneNum:    0,
-		Status:     PlanTaskInit,
-		Type:       ModifyStore,
-		Mode:       targetMode,
-		ModeCnt:    modeCnt,
-		StartId:    startID,
-		EndId:      endID,
-		RackLevel:  c.getRackAwareLevel(),
-		FailedList: make([]uint64, 0),
+		Low:            make(map[string]*proto.ZonePressureView),
+		RocksdbLow:     make(map[string]*proto.ZonePressureView),
+		Plan:           make([]*proto.MetaBalancePlan, 0),
+		Status:         PlanTaskInit,
+		Type:           ModifyStore,
+		Mode:           targetMode,
+		ModeCnt:        modeCnt,
+		StartId:        startID,
+		EndId:          endID,
+		RackLevel:      c.getRackAwareLevel(),
+		FailedList:     make([]uint64, 0),
+		DoneNum:        0,
+		RunningNum:     0,
+		DoneReplicaNum: 0,
+		RunReplicaNum:  0,
 	}
 
 	err := c.GetLowMemPressureTopology(plan)
