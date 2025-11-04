@@ -482,6 +482,9 @@ func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *Ext
 
 func (arw *AheadReadWindow) evictCacheBlock(req *ExtentRequest) {
 	offset := req.FileOffset - int(req.ExtentKey.FileOffset) + int(req.ExtentKey.ExtentOffset)
+	if readDataFromTinyExtent(req.ExtentKey.ExtentId) {
+		offset = req.FileOffset - int(req.ExtentKey.FileOffset)
+	}
 	cacheOffset := offset / int(arw.streamer.aheadReadBlockSize) * int(arw.streamer.aheadReadBlockSize)
 	key := createAheadBlockKey(arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.ExtentOffset, cacheOffset)
 	value, ok := arw.cache.blockCache.Load(key)
