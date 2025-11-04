@@ -297,7 +297,7 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	// randomly shuffle the order of hosts to evenly distribute access pressure.
 	hosts := getRotatedHosts(task.dp.Hosts)
 	for _, host := range hosts {
-		err = sendToNode(host, task.p, func(conn *net.TCPConn) (error, bool) {
+		err = sendToNode(host, task.p, key, task.reqID, func(conn *net.TCPConn) (error, bool) {
 			// reset readBytes when reading from other datanodes
 			readBytes = 0
 			atomic.StoreUint64(&cacheBlock.readBytes, 0)
@@ -619,20 +619,23 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 	return
 }
 
-func sendToNode(host string, p *Packet, getReply GetReplyFunc) (err error) {
+func sendToNode(host string, p *Packet, key, reqID string, getReply GetReplyFunc) (err error) {
 	var conn *net.TCPConn
 	start := time.Now()
 	if conn, err = AheadReadConnPool.GetConnect(host); err != nil {
 		return
 	}
+
 	defer func() {
-		AheadReadConnPool.PutConnect(conn, err != nil)
-		log.LogDebugf("sendToNode connect local(%v) remote(%v) cost(%v) err(%v)", conn.LocalAddr().String(),
-			conn.RemoteAddr().String(), time.Since(start).String(), err)
+		AheadReadConnPool.PutConnectV2(conn, err != nil, host, time.Since(start).Microseconds())
+		log.LogDebugf("sendToNode connect local(%v) remote(%v) cost(%v) err(%v)  key(%v) reqID(%v)", conn.LocalAddr().String(),
+			conn.RemoteAddr().String(), time.Since(start).String(), err, key, reqID)
 	}()
 	if err = p.WriteToConn(conn); err != nil {
 		return
 	}
+	log.LogDebugf("sendToNode connect local(%v) remote(%v) cost(%v) key(%v) reqID(%v)", conn.LocalAddr().String(),
+		conn.RemoteAddr().String(), time.Since(start).String(), key, reqID)
 	err, _ = getReply(conn)
 	return
 }

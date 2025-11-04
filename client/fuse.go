@@ -404,6 +404,7 @@ func main() {
 	if opt.TcpAliveTime > 0 {
 		stream.StreamConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
 		stream.AheadReadConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
+		stream.AheadReadConnPool.SetUseCostPool(true)
 		stream.StreamWriteConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
 		fmt.Println(fmt.Sprintf("set TcpAliveTime %v", opt.TcpAliveTime))
 	}

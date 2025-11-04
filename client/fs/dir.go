@@ -17,7 +17,6 @@ package fs
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/timeutil"
 	"io"
 	"os"
 	"path"
@@ -37,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 // used to locate the position in parent
@@ -427,6 +427,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			atomic.StoreUint32(&d.missCount, 0)
 			meta.GetExtetnsPool.Run(func() {
 				log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", d.info.Inode, d.getCwd())
+				auditlog.LogClientOp("TriggerReadDirAll", d.getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
 				d.ReadDirAll(context.Background())
 			})
 		}
@@ -474,6 +475,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 			meta.GetExtetnsPool.Run(func() {
 				log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", child.(*Dir).info.Inode, child.(*Dir).getCwd())
+				auditlog.LogClientOp("TriggerReadDirAll", child.(*Dir).getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
 				child.(*Dir).ReadDirAll(context.Background())
 			})
 		}

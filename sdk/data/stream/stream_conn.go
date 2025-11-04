@@ -281,7 +281,7 @@ func (sc *StreamConn) sendToDataPartitionByAddr(req *Packet, getReply GetReplyFu
 		log.LogDebugf("req opcode %v conn %v addr %v dp %v", req.Opcode, conn, sc.currAddr, sc.dp)
 		err = sc.sendToConn(conn, req, getReply)
 		if err == nil {
-			StreamConnPool.PutConnectV2(conn, false, sc.currAddr)
+			StreamConnPool.PutConnectV2(conn, false, sc.currAddr, 0)
 			return
 		}
 		log.LogWarnf("sendToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)

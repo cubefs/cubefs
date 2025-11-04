@@ -15,15 +15,19 @@
 package util
 
 import (
+	"container/list"
 	"io"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type Object struct {
 	conn *net.TCPConn
 	idle int64
+	cost int64
 }
 
 const (
@@ -33,7 +37,7 @@ const (
 
 type ConnectPool struct {
 	sync.RWMutex
-	pools          map[string]*Pool
+	pools          map[string]PoolInterface
 	mincap         int
 	maxcap         int
 	timeout        int64
@@ -41,11 +45,12 @@ type ConnectPool struct {
 	closeCh        chan struct{}
 	closeOnce      sync.Once
 	useMilliSecond bool
+	useCostPool    bool
 }
 
 func NewConnectPool() (cp *ConnectPool) {
 	cp = &ConnectPool{
-		pools:          make(map[string]*Pool),
+		pools:          make(map[string]PoolInterface),
 		mincap:         5,
 		maxcap:         500,
 		timeout:        int64(time.Second * ConnectIdleTime),
@@ -63,7 +68,7 @@ func NewConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeout int
 
 func NewConnectPoolWithTimeoutAndCap(minCap, maxCap int, idleConnTimeout time.Duration, connectTimeout int64, useMilliSecond bool) (cp *ConnectPool) {
 	cp = &ConnectPool{
-		pools:          make(map[string]*Pool),
+		pools:          make(map[string]PoolInterface),
 		mincap:         minCap,
 		maxcap:         maxCap,
 		timeout:        int64(idleConnTimeout * time.Second),
@@ -92,6 +97,10 @@ func (cp *ConnectPool) SetPoolArgs(timeout int64, minCap int) {
 	cp.mincap = minCap
 }
 
+func (cp *ConnectPool) SetUseCostPool(useCostPool bool) {
+	cp.useCostPool = useCostPool
+}
+
 func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error) {
 	cp.RLock()
 	pool, ok := cp.pools[targetAddr]
@@ -100,7 +109,12 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
-			newPool := NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr, cp.useMilliSecond)
+			var newPool PoolInterface
+			if cp.useCostPool {
+				newPool = NewPoolWithCost(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr, cp.useMilliSecond)
+			} else {
+				newPool = NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr, cp.useMilliSecond)
+			}
 			pool = newPool
 			cp.pools[targetAddr] = pool
 		}
@@ -111,7 +125,7 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 }
 
 func (cp *ConnectPool) ReleaseAll(addr net.Addr) {
-	pool, ok := func() (pool *Pool, ok bool) {
+	pool, ok := func() (pool PoolInterface, ok bool) {
 		cp.RLock()
 		defer cp.RUnlock()
 		pool, ok = cp.pools[addr.String()]
@@ -124,10 +138,11 @@ func (cp *ConnectPool) ReleaseAll(addr net.Addr) {
 }
 
 func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
-	cp.PutConnectV2(c, forceClose, "")
+	cp.PutConnectV2(c, forceClose, "", 0)
 }
 
-func (cp *ConnectPool) PutConnectV2(c *net.TCPConn, forceClose bool, addr string) {
+func (cp *ConnectPool) PutConnectV2(c *net.TCPConn, forceClose bool, addr string, cost int64) {
+
 	if c == nil {
 		return
 	}
@@ -151,7 +166,7 @@ func (cp *ConnectPool) PutConnectV2(c *net.TCPConn, forceClose bool, addr string
 		c.Close()
 		return
 	}
-	object := &Object{conn: c, idle: time.Now().UnixNano()}
+	object := &Object{conn: c, idle: time.Now().UnixNano(), cost: cost}
 	pool.PutConnectObjectToPool(object)
 }
 
@@ -176,7 +191,7 @@ func (cp *ConnectPool) autoRelease() {
 			return
 		case <-timer.C:
 		}
-		pools := make([]*Pool, 0)
+		pools := make([]PoolInterface, 0)
 		cp.RLock()
 		for _, pool := range cp.pools {
 			pools = append(pools, pool)
@@ -190,7 +205,7 @@ func (cp *ConnectPool) autoRelease() {
 }
 
 func (cp *ConnectPool) releaseAll() {
-	pools := make([]*Pool, 0)
+	pools := make([]PoolInterface, 0)
 	cp.RLock()
 	for _, pool := range cp.pools {
 		pools = append(pools, pool)
@@ -206,6 +221,13 @@ func (cp *ConnectPool) Close() {
 		close(cp.closeCh)
 		cp.releaseAll()
 	})
+}
+
+type PoolInterface interface {
+	GetConnectFromPool() (c *net.TCPConn, err error)
+	PutConnectObjectToPool(o *Object)
+	autoRelease()
+	ReleaseAll()
 }
 
 type Pool struct {
@@ -322,4 +344,136 @@ func (p *Pool) GetConnectFromPool() (c *net.TCPConn, err error) {
 		}
 		return o.conn, nil
 	}
+}
+
+type PoolWithCost struct {
+	*Pool
+	conns *list.List
+	sync.RWMutex
+}
+
+func NewPoolWithCost(min, max int, timeout, connectTimeout int64, target string, useMilliSecond bool) (p *PoolWithCost) {
+	p = &PoolWithCost{
+		Pool:  NewPool(min, max, timeout, connectTimeout, target, useMilliSecond),
+		conns: list.New(),
+	}
+
+	if log.EnableDebug() {
+		log.LogDebugf("PoolWithCost NewPoolWithCost start")
+	}
+
+	go p.autoRelease()
+	return p
+}
+
+func (p *PoolWithCost) PutConnectObjectToPool(o *Object) {
+
+	if log.EnableDebug() {
+		log.LogDebugf("PoolWithCost PutConnectObjectToPool start")
+	}
+
+	if o == nil || o.conn == nil {
+		return
+	}
+
+	if p.conns.Len() >= p.maxcap {
+		o.conn.Close()
+		return
+	}
+
+	p.Lock()
+	defer p.Unlock()
+
+	for e := p.conns.Front(); e != nil; e = e.Next() {
+		o1 := e.Value.(*Object)
+		if o.cost < o1.cost {
+			p.conns.InsertBefore(o, e)
+			return
+		}
+	}
+
+	p.conns.PushBack(o)
+
+}
+
+func (p *PoolWithCost) autoRelease() {
+
+	if log.EnableDebug() {
+		log.LogDebugf("PoolWithCost autoRelease start")
+	}
+
+	closeList := make([]*Object, 0)
+
+	len := p.conns.Len()
+
+	p.Lock()
+
+	for i := 0; i < len; i++ {
+		e := p.conns.Front()
+		if e == nil {
+			// p.conns.Remove(e)
+			continue
+		}
+
+		o := e.Value.(*Object)
+		if time.Now().UnixNano()-int64(o.idle) > p.timeout {
+			p.conns.Remove(e)
+			closeList = append(closeList, o)
+		}
+	}
+	p.Unlock()
+
+	for _, o := range closeList {
+		o.conn.Close()
+	}
+}
+
+func (p *PoolWithCost) ReleaseAll() {
+	p.Lock()
+	defer p.Unlock()
+
+	len := p.conns.Len()
+
+	for i := 0; i < len; i++ {
+		e := p.conns.Front()
+		if e == nil {
+			continue
+		}
+
+		o := e.Value.(*Object)
+		o.conn.Close()
+		p.conns.Remove(e)
+	}
+
+}
+
+func (p *PoolWithCost) GetConnectFromPool() (c *net.TCPConn, err error) {
+
+	if log.EnableDebug() {
+		log.LogDebugf("PoolWithCost GetConnectFromPool start")
+	}
+
+	p.Lock()
+	len := p.conns.Len()
+
+	for i := 0; i < len; i++ {
+		e := p.conns.Front()
+		if e == nil {
+			continue
+		}
+
+		o := e.Value.(*Object)
+		p.conns.Remove(e)
+
+		if time.Now().UnixNano()-int64(o.idle) > p.timeout {
+			o.conn.Close()
+			continue
+		}
+
+		p.Unlock()
+		return o.conn, nil
+	}
+	p.Unlock()
+
+	return p.NewConnect(p.target)
 }
