@@ -46,16 +46,17 @@ func (c *Cluster) scheduleToDistributionOptimization() {
 
 func (c *Cluster) executeDistributionOptimizationMigrations() {
 	begin := time.Now()
-	log.LogInfof("action[executeDistributionOptimizationMigrations] starting unified distribution optimization (NodeSet + Rack)")
+	log.LogWarnf("action[executeDistributionOptimizationMigrations] starting unified distribution optimization (NodeSet + Rack)")
 
 	defer func() {
-		log.LogInfof("action[executeDistributionOptimizationMigrations] migration execution completed in %v", time.Since(begin))
+		duration := time.Since(begin)
+		log.LogWarnf("action[executeDistributionOptimizationMigrations] migration execution completed in %v", duration)
 	}()
 
 	activeTasks := c.countActiveDistributionOptimizationTasks()
 	limit := c.DistributionOptimizationConDpCnt.Load()
 	if int64(activeTasks) >= limit {
-		log.LogInfof("action[executeDistributionOptimizationMigrations] already have %d active tasks, skipping execution", activeTasks)
+		log.LogWarnf("action[executeDistributionOptimizationMigrations] already have %d active tasks, skipping execution", activeTasks)
 		return
 	}
 
@@ -69,7 +70,7 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 		partitions := vol.dataPartitions.clonePartitions()
 		for _, dp := range partitions {
 			if processedCount >= availableSlots {
-				log.LogInfof("action[executeDistributionOptimizationMigrations] reached available slots limit (%d)", availableSlots)
+				log.LogWarnf("action[executeDistributionOptimizationMigrations] reached available slots limit (%d)", availableSlots)
 				return
 			}
 
@@ -102,7 +103,7 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 		}
 	}
 
-	log.LogInfof("action[executeDistributionOptimizationMigrations] completed, processed %d DPs", processedCount)
+	log.LogWarnf("action[executeDistributionOptimizationMigrations] completed, processed %d DPs", processedCount)
 }
 
 func (c *Cluster) countActiveDistributionOptimizationTasks() int {
@@ -252,6 +253,10 @@ func (c *Cluster) processPartitionDistributionOptimization(dp *DataPartition, ho
 	if targetNs, srcAddrs, dstAddrs, err = selectTargetHostsInDistributionOptimization(hosts, len(hosts), c); err != nil {
 		log.LogWarnf("action[executeReplicaMigration] dp(%v) select Target hosts failed", dp.PartitionID)
 		return err
+	}
+
+	if len(srcAddrs) == 0 || len(dstAddrs) == 0 {
+		return fmt.Errorf("srcAddrs or dstAddrs is empty, no migration needed")
 	}
 
 	if !dp.IsDecommissionFailed() && !dp.IsDecommissionInitial() {

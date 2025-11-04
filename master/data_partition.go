@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2489,10 +2490,11 @@ func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err err
 
 func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int, c *Cluster) (ns *nodeSet, srcAddrs []string, dstAddrs []string, err error) {
 	var (
-		excludedNodesets []uint64
-		zone             *Zone
-		nsReplicaCount   = make(map[uint64]int)
-		nsMap            = make(map[uint64]*nodeSet)
+		excludedNodesets   []uint64
+		zone               *Zone
+		nsReplicaCount     = make(map[uint64]int)
+		nsMap              = make(map[uint64]*nodeSet)
+		firstAddrNodeSetID uint64
 	)
 
 	if len(addrs) == 0 {
@@ -2500,7 +2502,7 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 	}
 
 	// Analyze current distribution
-	for _, addr := range addrs {
+	for i, addr := range addrs {
 		dataNode, err := c.dataNode(addr)
 		if err != nil {
 			log.LogWarnf("action[selectTargetHostsInDistributionOptimization] find data node for addr %s failed: %v", addr, err)
@@ -2523,50 +2525,45 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 		}
 		nsReplicaCount[dataNode.NodeSetID]++
 		nsMap[dataNode.NodeSetID] = ns
-	}
 
-	// Step 1: Try the highest priority nodeset (the nodeset with the most replicas or the nodeset containing host0)
-	var maxCount int
-	var targetNsID uint64
-
-	for nsID, count := range nsReplicaCount {
-		if count > maxCount {
-			maxCount = count
-			targetNsID = nsID
+		// Record the nodeset ID of the first address
+		if i == 0 {
+			firstAddrNodeSetID = dataNode.NodeSetID
 		}
 	}
 
-	if targetNsID != 0 {
-		targetNs := nsMap[targetNsID]
-
-		srcAddrs, dstAddrs, err := selectOptimalNodes(addrs, targetNsID, c)
-		if err == nil {
-			log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step1: simplified selection in NodeSet %d, srcAddrs: %v, dstAddrs: %v",
-				targetNsID, srcAddrs, dstAddrs)
-			return targetNs, srcAddrs, dstAddrs, nil
-		}
-		log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step1 failed for NodeSet %d: %v", targetNsID, err)
-		excludedNodesets = append(excludedNodesets, targetNsID)
+	nsIDs := make([]uint64, 0, len(nsMap))
+	for nsID := range nsMap {
+		nsIDs = append(nsIDs, nsID)
 	}
 
-	// Step 2: Try the nodeset where the other replicas located
-	log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step1 failed, trying Step2: other existing NodeSets")
-	for nsID, ns := range nsMap {
-		if nsID == targetNsID {
-			continue
+	sort.Slice(nsIDs, func(i, j int) bool {
+		countI := nsReplicaCount[nsIDs[i]]
+		countJ := nsReplicaCount[nsIDs[j]]
+
+		if countI != countJ {
+			return countI > countJ
 		}
+		return nsIDs[i] == firstAddrNodeSetID && nsIDs[j] != firstAddrNodeSetID
+	})
+
+	// Step 1: Try the NodeSets where the replicas are located according to priority
+	// (First choose the nodeset with the most replicas or the nodeset containing host0)
+	for _, nsID := range nsIDs {
+		targetNs := nsMap[nsID]
 
 		srcAddrs, dstAddrs, err := selectOptimalNodes(addrs, nsID, c)
 		if err == nil {
-			log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step2: simplified selection in NodeSet %d, srcAddrs: %v, dstAddrs: %v",
+			log.LogInfof("action[selectTargetHostsInDistributionOptimization] successfully selected nodes in NodeSet %d, srcAddrs: %v, dstAddrs: %v",
 				nsID, srcAddrs, dstAddrs)
-			return ns, srcAddrs, dstAddrs, nil
+			return targetNs, srcAddrs, dstAddrs, nil
 		}
 		excludedNodesets = append(excludedNodesets, nsID)
 	}
 
-	// Step 3: Try other NodeSets in the zone using zone.getAvailNodeHosts
-	log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step2 failed, trying Step3: same zone other NodeSets")
+	// Step 2: Try other NodeSets in the zone using zone.getAvailNodeHosts
+	log.LogInfof("action[selectTargetHostsInDistributionOptimization] all nodesets where the replicas are located failed, trying other nodesets in zone %s, excluded nodesets: %v",
+		zone.name, excludedNodesets)
 	rackLevel := proto.RackAwareNone
 	if c.getRackAwareLevel() != proto.RackAwareNone {
 		rackLevel = proto.RackAwareStrong // use the highest rack aware level for distribution optimization,
@@ -2586,7 +2583,8 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 			return nil, nil, nil, err
 		}
 		srcAddrs = append([]string{}, addrs...)
-		log.LogInfof("action[selectTargetHostsInDistributionOptimization] Step3: found %d hosts in zone %s NodeSet %d", len(availableHosts), zone.name, ns.ID)
+		log.LogInfof("action[selectTargetHostsInDistributionOptimization] found %d available hosts in zone %s NodeSet %d, srcAddrs: %v, dstAddrs: %v",
+			len(availableHosts), zone.name, ns.ID, srcAddrs, availableHosts)
 		return ns, srcAddrs, availableHosts, nil
 	}
 
@@ -2684,40 +2682,40 @@ func selectOptimalNodes(currentAddrs []string, targetNsID uint64, c *Cluster) ([
 	// All cross-NodeSet replicas need migration
 	migrateAddrs = append(migrateAddrs, crossNsNodes...)
 
-	// Select new nodes, excluding used racks
-	if len(migrateAddrs) > 0 {
-		rackLevel := proto.RackAwareNone
-		if c.getRackAwareLevel() != proto.RackAwareNone {
-			rackLevel = proto.RackAwareStrong // use the highest rack aware level for distribution optimization
-		}
-
-		param := &selectParam{
-			replicaNum:   len(migrateAddrs),
-			excludeHosts: currentAddrs,
-			excludeRacks: excludeRacks,
-			rackLevel:    rackLevel,
-			selectType:   proto.SelectType_DistributionOptimization,
-		}
-
-		newHosts, _, err := targetNs.getAvailDataNodeHosts(param)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get available hosts in NodeSet %d: %v", targetNsID, err)
-		}
-
-		if len(newHosts) != len(migrateAddrs) {
-			return nil, nil, fmt.Errorf("insufficient hosts in NodeSet %d: need %d, got %d",
-				targetNsID, len(migrateAddrs), len(newHosts))
-		}
-
-		log.LogInfof("action[selectOptimalNodes] targetNodeSet %d, migrate %d, excludeRacks: %v",
-			targetNsID, len(migrateAddrs), excludeRacks)
-
-		return migrateAddrs, newHosts, nil
+	// No migration needed
+	if len(migrateAddrs) == 0 {
+		log.LogInfof("action[selectOptimalNodes] NodeSet %d: optimal distribution, no migration needed", targetNsID)
+		return []string{}, []string{}, nil
 	}
 
-	// No migration needed
-	log.LogInfof("action[selectOptimalNodes] NodeSet %d: optimal distribution, no migration needed", targetNsID)
-	return []string{}, []string{}, nil
+	// Select new nodes, excluding used racks
+	rackLevel := proto.RackAwareNone
+	if c.getRackAwareLevel() != proto.RackAwareNone {
+		rackLevel = proto.RackAwareStrong // use the highest rack aware level for distribution optimization
+	}
+
+	param := &selectParam{
+		replicaNum:   len(migrateAddrs),
+		excludeHosts: currentAddrs,
+		excludeRacks: excludeRacks,
+		rackLevel:    rackLevel,
+		selectType:   proto.SelectType_DistributionOptimization,
+	}
+
+	newHosts, _, err := targetNs.getAvailDataNodeHosts(param)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get available hosts in NodeSet %d: %v", targetNsID, err)
+	}
+
+	if len(newHosts) != len(migrateAddrs) {
+		return nil, nil, fmt.Errorf("insufficient hosts in NodeSet %d: need %d, got %d",
+			targetNsID, len(migrateAddrs), len(newHosts))
+	}
+
+	log.LogInfof("action[selectOptimalNodes] targetNodeSet %d, migrate %d, excludeRacks: %v",
+		targetNsID, len(migrateAddrs), excludeRacks)
+
+	return migrateAddrs, newHosts, nil
 }
 
 func (partition *DataPartition) needRollback(c *Cluster) bool {
