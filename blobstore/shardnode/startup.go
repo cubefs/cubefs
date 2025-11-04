@@ -394,16 +394,14 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.WaitRepairCloseDiskIntervalS, int64(30))
 	defaulter.LessOrEqual(&cfg.WaitReOpenDiskIntervalS, int64(30))
 	defaulter.LessOrEqual(&cfg.ShardCheckAndClearIntervalH, int64(24))
+	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.RetryTimes, 3)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.RateLimit, float64(1024))
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.RateLimitBurst, 64)
-	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MsgChannelNum, 16)
-	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MsgChannelSize, 10<<10)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.FailedMsgChannelSize, 10<<10)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.ProduceTaskPoolSize, 16)
-	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MaxListMessageNum, 32)
-	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MaxExecuteBidNum, uint64(64))
-	defaulter.IntegerLessOrEqual(&cfg.DeleteBlobCfg.SafeDeleteTimeout.Duration, 12*time.Hour)
-	defaulter.IntegerLessOrEqual(&cfg.DeleteBlobCfg.PunishTimeout.Duration, 1*time.Minute)
+	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MaxExecuteSliceNum, uint64(64))
+	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.TierConfig.SafeMessageTimeout.Duration, 12*time.Hour)
+	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.TierConfig.PunishTimeout.Duration, 1*time.Minute)
 }
 
 func isDiskInfoMatch(a, b clustermgr.ShardNodeDiskInfo) bool {

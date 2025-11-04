@@ -50,3 +50,13 @@ message DeleteMsg {
     string req_id = 4;
     map<uint64, BlobDeleteStage> msg_del_stage = 5 [(gogoproto.nullable) = false];
 }
+
+message SliceRepairMsg {
+    uint64 bid = 1 [(gogoproto.customname) = "Bid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.BlobID"];
+    uint32 vid = 2 [(gogoproto.customname) = "Vid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Vid"];
+    repeated uint32 bad_idx = 3 [(gogoproto.customname) = "BadIdx"];
+    uint32 retry = 4;
+    string reason = 5;
+    string req_id = 6;
+    int64 time = 7;
+}

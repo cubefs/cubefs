@@ -17,50 +17,182 @@ package blobdeleter
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"sync"
 
 	snapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
-const minMsgKeyLen = 21 // 1(prefix) + 8(ts) + 4(vid) + 8(bid)
+const minMsgKeyLen = 22 // 2(prefix) + 8(ts) + 4(vid) + 8(bid)
 
-var errInvalidMsgKey = errors.New("invalid msg key")
+var (
+	errInvalidMsgKey = errors.New("invalid msg key")
+	msgKeyPool       = sync.Pool{
+		New: func() interface{} {
+			return &msgKey{}
+		},
+	}
+)
 
-func encodeDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, shardKeys []string) []byte {
+func getMessagePrefix(msgType snproto.MessageType, priority snproto.MessageTier) []byte {
+	switch msgType {
+	case snproto.MessageTypeDelete:
+		return genDeleteMsgPrefix(priority)
+	case snproto.MessageTypeRepair:
+		return genRepairMsgPrefix(priority)
+	default:
+		panic(fmt.Sprintf("unknown message type: %d", msgType))
+	}
+}
+
+func genDeleteMsgPrefix(priority snproto.MessageTier) []byte {
+	switch priority {
+	case snproto.TierSingleIdx:
+		return append(append([]byte(nil), snproto.DeleteMsgPrefix...), snproto.TierSingleIdxPrefix...)
+	case snproto.TierPunish:
+		return append(append([]byte(nil), snproto.DeleteMsgPrefix...), snproto.TierPunishPrefix...)
+	default:
+		panic(fmt.Sprintf("unknown priority: %d", priority))
+	}
+}
+
+func genRepairMsgPrefix(priority snproto.MessageTier) []byte {
+	switch priority {
+	case snproto.TierSingleIdx:
+		return append(append([]byte(nil), snproto.RepairMsgPrefix...), snproto.TierSingleIdxPrefix...)
+	case snproto.TierMultiIdx:
+		return append(append([]byte(nil), snproto.RepairMsgPrefix...), snproto.TierMultiIdxPrefix...)
+	case snproto.TierPunish:
+		return append(append([]byte(nil), snproto.RepairMsgPrefix...), snproto.TierPunishPrefix...)
+	default:
+		panic(fmt.Sprintf("unknown priority: %d", priority))
+	}
+}
+
+type msgKey struct {
+	msgType   snproto.MessageType
+	tier      snproto.MessageTier
+	ts        base.Ts
+	vid       proto.Vid
+	bid       proto.BlobID
+	shardKeys []string
+
+	key       []byte // encoded key buffer for reuse
+	ownBuffer bool   // true if key is allocated from bytespool and should be freed
+}
+
+func newMsgKey() *msgKey {
+	return msgKeyPool.Get().(*msgKey)
+}
+
+func (k *msgKey) release() {
+	k.reset()
+	msgKeyPool.Put(k)
+}
+
+// reset resets the msgKey for reuse
+func (k *msgKey) reset() {
+	k.setMsgType(0)
+	k.setTier(0)
+	k.setTs(0)
+	k.setVid(0)
+	k.setBid(0)
+	k.setShardKeys(k.shardKeys[:0])
+	if k.ownBuffer && k.key != nil {
+		bytespool.Free(k.key)
+		k.key = nil
+	}
+	k.ownBuffer = false
+}
+
+// set methods for msgKey fields
+func (k *msgKey) setMsgType(msgType snproto.MessageType) {
+	k.msgType = msgType
+}
+
+func (k *msgKey) setTier(tier snproto.MessageTier) {
+	k.tier = tier
+}
+
+func (k *msgKey) setTs(ts base.Ts) {
+	k.ts = ts
+}
+
+func (k *msgKey) setVid(vid proto.Vid) {
+	k.vid = vid
+}
+
+func (k *msgKey) setBid(bid proto.BlobID) {
+	k.bid = bid
+}
+
+func (k *msgKey) setShardKeys(shardKeys []string) {
+	k.shardKeys = shardKeys
+}
+
+// setKey sets the key buffer from external source
+func (k *msgKey) setKey(key []byte) {
+	// free old buffer if we own it
+	if k.ownBuffer && k.key != nil {
+		bytespool.Free(k.key)
+	}
+	k.key = key
+	k.ownBuffer = false
+}
+
+// encoded format is: prefix(2) + ts(8) + vid(4) + bid(8) + {shardKey1}{shardKey2}...
+// copy the result if reuse the msgKey
+func (k *msgKey) encode() []byte {
+	prefix := getMessagePrefix(k.msgType, k.tier)
+	if len(prefix) != 2 {
+		panic(fmt.Sprintf("invalid prefix: %+v", prefix))
+	}
+
 	shardKeyLen := 0
-	for _, sk := range shardKeys {
+	for _, sk := range k.shardKeys {
 		shardKeyLen += len(sk)
 	}
 
-	// del_msg_key = d-ts-vid-bid-{shardKeys1}{shardKeys2}{...}
-	buf := make([]byte, minMsgKeyLen+2*len(shardKeys)+shardKeyLen)
-	copy(buf, snproto.DeleteMsgPrefix)
-	index := 1
-	binary.BigEndian.PutUint64(buf[index:], uint64(ts))
+	requiredSize := minMsgKeyLen + 2*len(k.shardKeys) + shardKeyLen
+
+	// free old buffer if we own it
+	if k.ownBuffer && k.key != nil {
+		bytespool.Free(k.key)
+	}
+	k.key = bytespool.Alloc(requiredSize)
+	k.ownBuffer = true
+
+	copy(k.key, prefix)
+	index := 2
+	binary.BigEndian.PutUint64(k.key[index:], uint64(k.ts))
 	index += 8
-	binary.BigEndian.PutUint32(buf[index:], uint32(vid))
+	binary.BigEndian.PutUint32(k.key[index:], uint32(k.vid))
 	index += 4
-	binary.BigEndian.PutUint64(buf[index:], uint64(bid))
+	binary.BigEndian.PutUint64(k.key[index:], uint64(k.bid))
 	index += 8
-	for _, sk := range shardKeys {
-		buf[index] = proto.ShardingTagLeft
+	for _, sk := range k.shardKeys {
+		k.key[index] = proto.ShardingTagLeft
 		index++
-		copy(buf[index:], sk)
+		copy(k.key[index:], sk)
 		index += len(sk)
-		buf[index] = proto.ShardingTagRight
+		k.key[index] = proto.ShardingTagRight
 		index++
 	}
-	return buf
+	return k.key
 }
 
-func decodeDelMsgKey(key []byte, tagNum int) (base.Ts, proto.Vid, proto.BlobID, []string, error) {
-	if len(key) < minMsgKeyLen+2*tagNum {
-		return base.Ts(0), proto.InvalidVid, proto.InValidBlobID, nil, errInvalidMsgKey
+// decode decodes the msgKey from the key buffer
+func (k *msgKey) decode(tagNum int) error {
+	if len(k.key) < minMsgKeyLen+2*tagNum {
+		return errInvalidMsgKey
 	}
-	ts := base.Ts(binary.BigEndian.Uint64(key[1:9]))
-	vid := proto.Vid(binary.BigEndian.Uint32(key[9:13]))
-	bid := proto.BlobID(binary.BigEndian.Uint64(key[13:21]))
-	return ts, vid, bid, snapi.DecodeShardKeys(string(key[minMsgKeyLen:]), tagNum), nil
+	k.setTs(base.Ts(binary.BigEndian.Uint64(k.key[2:10])))
+	k.setVid(proto.Vid(binary.BigEndian.Uint32(k.key[10:14])))
+	k.setBid(proto.BlobID(binary.BigEndian.Uint64(k.key[14:22])))
+	k.setShardKeys(snapi.DecodeShardKeys(string(k.key[minMsgKeyLen:]), tagNum))
+	return nil
 }

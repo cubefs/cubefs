@@ -15,21 +15,42 @@
 package proto
 
 import (
+	"time"
+
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-const DeleteBlobMsgFieldID = iota + 1
+const (
+	DeleteBlobMsgFieldID = iota + 1
+	SliceRepairMsgFieldID
+)
 
-// Data type prefix
+/*
+- s: space data(blob, item)
+- da: delete message tier normal
+- dp: delete message tier punish
+- ra: repair message tier single idx
+- rb: repair message tier multi idx
+- rp: repair message tier punish
+*/
 var (
 	SpaceDataPrefix = []byte{'s'}
 	DeleteMsgPrefix = []byte{'d'}
+	RepairMsgPrefix = []byte{'r'}
+
+	// tier prefix
+	TierSingleIdxPrefix = []byte{'a'}
+	TierMultiIdxPrefix  = []byte{'b'}
+	TierPunishPrefix    = []byte{'p'}
 )
 
-const ShardNodeBlobDeleteTask = "shard_node_blob_delete"
+const (
+	ShardNodeBlobDeleteTask  = "shard_node_blob_delete"
+	ShardNodeSliceRepairTask = "shard_node_slice_repair"
+)
 
 type VolumeInfoSimple struct {
 	Vid            proto.Vid
@@ -94,4 +115,37 @@ func (vol *VolumeInfoSimple) Set(info *cmapi.VolumeInfo) {
 			DiskID: info.Units[i].DiskID,
 		}
 	}
+}
+
+type MessageType int
+
+const (
+	MessageTypeDelete MessageType = iota
+	MessageTypeRepair
+)
+
+type MessageTier int
+
+const (
+	TierSingleIdx MessageTier = iota // for normal delete messages and repair messages with len(badIdx) <= 1
+	TierMultiIdx                     // for repair messages with len(badIdx) > 1
+	TierPunish                       // for both delete and repair messages need to be punished
+)
+
+type MessageExt interface {
+	IsProtected(protectDuration time.Duration) bool
+	GetVid() proto.Vid
+	GetBid() proto.BlobID
+	GetSuid() proto.Suid
+	GetMsgKey() []byte
+	GetMsgType() MessageType
+	GetTier(maxRetryTimes int) MessageTier
+	SetTime(ts int64)
+	GetTime() int64
+	GetReqId() string
+	AddRetry()
+	GetRetry() int
+	GetBidNum() uint64
+	String() string
+	Marshal() ([]byte, error)
 }

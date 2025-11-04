@@ -76,8 +76,8 @@ type (
 	}
 
 	BlobTransport interface {
-		DeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
-		MarkDeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
+		DeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
+		MarkDeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
 	}
 
 	VolumeTransport interface {
@@ -344,7 +344,7 @@ func (t *transport) ShardStats(ctx context.Context, host string, args shardnodea
 	return t.snClient.GetShardStats(ctx, host, args)
 }
 
-func (t *transport) DeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error) {
+func (t *transport) DeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error) {
 	return t.bnClient.DeleteShard(ctx, info.Host, &api.DeleteShardArgs{
 		DiskID: info.DiskID,
 		Vuid:   info.Vuid,
@@ -352,7 +352,7 @@ func (t *transport) DeleteSlice(ctx context.Context, info proto.VunitLocation, b
 	})
 }
 
-func (t *transport) MarkDeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error) {
+func (t *transport) MarkDeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error) {
 	return t.bnClient.MarkDeleteShard(ctx, info.Host, &api.DeleteShardArgs{
 		DiskID: info.DiskID,
 		Vuid:   info.Vuid,

@@ -5,38 +5,40 @@
 package mock
 
 import (
+	context "context"
 	reflect "reflect"
 
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
+	proto0 "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	storage "github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	gomock "github.com/golang/mock/gomock"
 )
 
-// MockDelMgrShardGetter is a mock of ShardGetter interface.
-type MockDelMgrShardGetter struct {
+// MockMessageMgrShardGetter is a mock of ShardGetter interface.
+type MockMessageMgrShardGetter struct {
 	ctrl     *gomock.Controller
-	recorder *MockDelMgrShardGetterMockRecorder
+	recorder *MockMessageMgrShardGetterMockRecorder
 }
 
-// MockDelMgrShardGetterMockRecorder is the mock recorder for MockDelMgrShardGetter.
-type MockDelMgrShardGetterMockRecorder struct {
-	mock *MockDelMgrShardGetter
+// MockMessageMgrShardGetterMockRecorder is the mock recorder for MockMessageMgrShardGetter.
+type MockMessageMgrShardGetterMockRecorder struct {
+	mock *MockMessageMgrShardGetter
 }
 
-// NewMockDelMgrShardGetter creates a new mock instance.
-func NewMockDelMgrShardGetter(ctrl *gomock.Controller) *MockDelMgrShardGetter {
-	mock := &MockDelMgrShardGetter{ctrl: ctrl}
-	mock.recorder = &MockDelMgrShardGetterMockRecorder{mock}
+// NewMockMessageMgrShardGetter creates a new mock instance.
+func NewMockMessageMgrShardGetter(ctrl *gomock.Controller) *MockMessageMgrShardGetter {
+	mock := &MockMessageMgrShardGetter{ctrl: ctrl}
+	mock.recorder = &MockMessageMgrShardGetterMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockDelMgrShardGetter) EXPECT() *MockDelMgrShardGetterMockRecorder {
+func (m *MockMessageMgrShardGetter) EXPECT() *MockMessageMgrShardGetterMockRecorder {
 	return m.recorder
 }
 
 // GetAllShards mocks base method.
-func (m *MockDelMgrShardGetter) GetAllShards() []storage.ShardHandler {
+func (m *MockMessageMgrShardGetter) GetAllShards() []storage.ShardHandler {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllShards")
 	ret0, _ := ret[0].([]storage.ShardHandler)
@@ -44,13 +46,13 @@ func (m *MockDelMgrShardGetter) GetAllShards() []storage.ShardHandler {
 }
 
 // GetAllShards indicates an expected call of GetAllShards.
-func (mr *MockDelMgrShardGetterMockRecorder) GetAllShards() *gomock.Call {
+func (mr *MockMessageMgrShardGetterMockRecorder) GetAllShards() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllShards", reflect.TypeOf((*MockDelMgrShardGetter)(nil).GetAllShards))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllShards", reflect.TypeOf((*MockMessageMgrShardGetter)(nil).GetAllShards))
 }
 
 // GetShard mocks base method.
-func (m *MockDelMgrShardGetter) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error) {
+func (m *MockMessageMgrShardGetter) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetShard", diskID, suid)
 	ret0, _ := ret[0].(storage.ShardHandler)
@@ -59,7 +61,59 @@ func (m *MockDelMgrShardGetter) GetShard(diskID proto.DiskID, suid proto.Suid) (
 }
 
 // GetShard indicates an expected call of GetShard.
-func (mr *MockDelMgrShardGetterMockRecorder) GetShard(diskID, suid interface{}) *gomock.Call {
+func (mr *MockMessageMgrShardGetterMockRecorder) GetShard(diskID, suid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShard", reflect.TypeOf((*MockDelMgrShardGetter)(nil).GetShard), diskID, suid)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShard", reflect.TypeOf((*MockMessageMgrShardGetter)(nil).GetShard), diskID, suid)
+}
+
+// MockMessageExecutorMgr is a mock of MessageExecutor interface.
+type MockMessageExecutorMgr struct {
+	ctrl     *gomock.Controller
+	recorder *MockMessageExecutorMgrMockRecorder
+}
+
+// MockMessageExecutorMgrMockRecorder is the mock recorder for MockMessageExecutorMgr.
+type MockMessageExecutorMgrMockRecorder struct {
+	mock *MockMessageExecutorMgr
+}
+
+// NewMockMessageExecutorMgr creates a new mock instance.
+func NewMockMessageExecutorMgr(ctrl *gomock.Controller) *MockMessageExecutorMgr {
+	mock := &MockMessageExecutorMgr{ctrl: ctrl}
+	mock.recorder = &MockMessageExecutorMgrMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockMessageExecutorMgr) EXPECT() *MockMessageExecutorMgrMockRecorder {
+	return m.recorder
+}
+
+// ExecuteWithCheckVolConsistency mocks base method.
+func (m *MockMessageExecutorMgr) ExecuteWithCheckVolConsistency(ctx context.Context, vid proto.Vid, ret interface{}) error {
+	m.ctrl.T.Helper()
+	ret_2 := m.ctrl.Call(m, "ExecuteWithCheckVolConsistency", ctx, vid, ret)
+	ret0, _ := ret_2[0].(error)
+	return ret0
+}
+
+// ExecuteWithCheckVolConsistency indicates an expected call of ExecuteWithCheckVolConsistency.
+func (mr *MockMessageExecutorMgrMockRecorder) ExecuteWithCheckVolConsistency(ctx, vid, ret interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteWithCheckVolConsistency", reflect.TypeOf((*MockMessageExecutorMgr)(nil).ExecuteWithCheckVolConsistency), ctx, vid, ret)
+}
+
+// ItemToMessageExt mocks base method.
+func (m *MockMessageExecutorMgr) ItemToMessageExt(item interface{}) (proto0.MessageExt, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ItemToMessageExt", item)
+	ret0, _ := ret[0].(proto0.MessageExt)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ItemToMessageExt indicates an expected call of ItemToMessageExt.
+func (mr *MockMessageExecutorMgrMockRecorder) ItemToMessageExt(item interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ItemToMessageExt", reflect.TypeOf((*MockMessageExecutorMgr)(nil).ItemToMessageExt), item)
 }

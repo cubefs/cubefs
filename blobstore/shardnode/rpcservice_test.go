@@ -137,7 +137,7 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 	sh.EXPECT().ShardingSubRangeCount().Return(2).AnyTimes()
 	sh.EXPECT().InsertItem(A, A, A, A).Return(nil).AnyTimes()
 
-	sg2 := mock.NewMockDelMgrShardGetter(C(t))
+	sg2 := mock.NewMockMessageMgrShardGetter(C(t))
 	sg2.EXPECT().GetAllShards().Return([]storage.ShardHandler{sh}).AnyTimes()
 	sg2.EXPECT().GetShard(A, A).Return(sh, nil).AnyTimes()
 
@@ -148,12 +148,10 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 	dm, _ := blobdeleter.NewBlobDeleteMgr(&blobdeleter.BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,
 		ShardGetter:   sg2,
-		BlobDelCfg: blobdeleter.BlobDelCfg{
-			MsgChannelNum:        1,
-			MsgChannelSize:       4,
+		MessageCfg: blobdeleter.MessageCfg{
 			FailedMsgChannelSize: 4,
 			ProduceTaskPoolSize:  1,
-			DeleteLog:            recordlog.Config{Dir: delLogDir},
+			MessageLog:           recordlog.Config{Dir: delLogDir},
 		},
 	})
 	s.blobDelMgr = dm

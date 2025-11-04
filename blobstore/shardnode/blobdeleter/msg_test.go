@@ -29,6 +29,7 @@ import (
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 )
 
 func TestEncodeDecodeDelMsgKey(t *testing.T) {
@@ -44,13 +45,16 @@ func TestEncodeDecodeDelMsgKey(t *testing.T) {
 		require.NotEmpty(t, key)
 
 		// Verify decoded values
-		decodedTs, decodedVid, decodedBid, _shardKeys, err := decodeDelMsgKey(key, len(shardKeys))
+		mk := newMsgKey()
+		defer mk.release()
+		mk.setKey(key)
+		err := mk.decode(len(shardKeys))
 		require.Nil(t, err)
-		require.Equal(t, ts, decodedTs)
-		require.Equal(t, vid, decodedVid)
-		require.Equal(t, bid, decodedBid)
+		require.Equal(t, ts, mk.ts)
+		require.Equal(t, vid, mk.vid)
+		require.Equal(t, bid, mk.bid)
 		for i := 0; i < len(shardKeys); i++ {
-			require.Equal(t, _shardKeys[i], shardKeys[i])
+			require.Equal(t, shardKeys[i], mk.shardKeys[i])
 		}
 	})
 
@@ -67,13 +71,16 @@ func TestEncodeDecodeDelMsgKey(t *testing.T) {
 		require.Len(t, shardKeys, tagNum)
 
 		// Verify decoded values
-		decodedTs, decodedVid, decodedBid, _shardKeys, err := decodeDelMsgKey(key, len(shardKeys))
+		mk := newMsgKey()
+		defer mk.release()
+		mk.setKey(key)
+		err := mk.decode(len(shardKeys))
 		require.Nil(t, err)
-		require.Equal(t, ts, decodedTs)
-		require.Equal(t, vid, decodedVid)
-		require.Equal(t, bid, decodedBid)
+		require.Equal(t, ts, mk.ts)
+		require.Equal(t, vid, mk.vid)
+		require.Equal(t, bid, mk.bid)
 		for i := 0; i < len(shardKeys); i++ {
-			require.Equal(t, _shardKeys[i], shardKeys[i])
+			require.Equal(t, shardKeys[i], mk.shardKeys[i])
 		}
 	})
 
@@ -109,4 +116,78 @@ func Benchmark(b *testing.B) {
 		err = store.SetRaw(ctx, "default", key, []byte("value"))
 		require.Nil(b, err)
 	})
+}
+
+func TestMsgKeyReuse(t *testing.T) {
+	key1 := newMsgKey()
+	key1.setMsgType(snproto.MessageTypeDelete)
+	key1.setTier(snproto.TierSingleIdx)
+	key1.setTs(base.Ts(12345))
+	key1.setVid(proto.Vid(100))
+	key1.setBid(proto.BlobID(200))
+	key1.setShardKeys([]string{"test1", "test2"})
+	encoded := key1.encode()
+	require.NotEmpty(t, encoded)
+
+	key1.decode(2)
+	require.Equal(t, key1.vid, proto.Vid(100))
+
+	key1.setVid(proto.Vid(200))
+	encoded = key1.encode()
+	require.NotEmpty(t, encoded)
+	key1.decode(2)
+	require.Equal(t, key1.vid, proto.Vid(200))
+	key1.release()
+}
+
+func TestMsgKeyPoolReuse(t *testing.T) {
+	// Test that sync.Pool correctly reuses msgKey objects
+	key1 := newMsgKey()
+	key1.setMsgType(snproto.MessageTypeDelete)
+	key1.setTier(snproto.TierSingleIdx)
+	key1.setTs(base.Ts(12345))
+	key1.setVid(proto.Vid(100))
+	key1.setBid(proto.BlobID(200))
+	key1.setShardKeys([]string{"test1", "test2"})
+
+	// Get the pointer address
+	ptr1 := key1
+
+	// Return to pool
+	key1.release()
+
+	// Get a new one from pool (should be the same object after reset)
+	key2 := newMsgKey()
+
+	// They should be the same underlying object
+	require.Same(t, ptr1, key2, "sync.Pool should reuse the same object")
+
+	// The fields should be reset
+	require.Equal(t, snproto.MessageType(0), key2.msgType)
+	require.Equal(t, snproto.MessageTier(0), key2.tier)
+	require.Equal(t, base.Ts(0), key2.ts)
+	require.Equal(t, proto.Vid(0), key2.vid)
+	require.Equal(t, proto.BlobID(0), key2.bid)
+	require.Len(t, key2.shardKeys, 0)
+	require.Len(t, key2.key, 0)
+
+	key2.release()
+}
+
+func encodeDelMsgKey(ts base.Ts, vid proto.Vid, bid proto.BlobID, shardKeys []string) []byte {
+	mk := newMsgKey()
+	defer mk.release()
+
+	mk.setMsgType(snproto.MessageTypeDelete)
+	mk.setTier(snproto.TierSingleIdx)
+	mk.setTs(ts)
+	mk.setVid(vid)
+	mk.setBid(bid)
+	mk.setShardKeys(shardKeys)
+	encoded := mk.encode()
+
+	// Copy the result before returning to pool
+	result := make([]byte, len(encoded))
+	copy(result, encoded)
+	return result
 }

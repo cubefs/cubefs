@@ -80,7 +80,7 @@ func TestSvr_Loop(t *testing.T) {
 	delLogDir, err := os.MkdirTemp(os.TempDir(), "delete_log")
 	require.NoError(t, err)
 	defer os.RemoveAll(delLogDir)
-	cfg.DeleteBlobCfg.DeleteLog.Dir = delLogDir
+	cfg.DeleteBlobCfg.MessageLog.Dir = delLogDir
 
 	s := newService(cfg)
 	time.Sleep(3 * time.Second)
@@ -97,7 +97,7 @@ func TestSvr_HandleEIO(t *testing.T) {
 	delLogDir, err := os.MkdirTemp(os.TempDir(), "delete_log")
 	require.NoError(t, err)
 	defer os.RemoveAll(delLogDir)
-	cfg.DeleteBlobCfg.DeleteLog.Dir = delLogDir
+	cfg.DeleteBlobCfg.MessageLog.Dir = delLogDir
 
 	s := newService(cfg)
 	disk := &storage.Disk{}
@@ -126,7 +126,7 @@ func TestSingletonPattern(t *testing.T) {
 	delLogDir, err := os.MkdirTemp(os.TempDir(), "delete_log")
 	require.NoError(t, err)
 	defer os.RemoveAll(delLogDir)
-	cfg.DeleteBlobCfg.DeleteLog.Dir = delLogDir
+	cfg.DeleteBlobCfg.MessageLog.Dir = delLogDir
 
 	// First call to newService
 	service1 := newService(cfg)

@@ -84,18 +84,18 @@ func (mr *MockTransportMockRecorder) AllocVolume(ctx, isInit, mode, count interf
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolume", reflect.TypeOf((*MockTransport)(nil).AllocVolume), ctx, isInit, mode, count)
 }
 
-// DeleteSlice mocks base method.
-func (m *MockTransport) DeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+// DeleteSliceUnit mocks base method.
+func (m *MockTransport) DeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteSlice", ctx, info, bid)
+	ret := m.ctrl.Call(m, "DeleteSliceUnit", ctx, info, bid)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteSlice indicates an expected call of DeleteSlice.
-func (mr *MockTransportMockRecorder) DeleteSlice(ctx, info, bid interface{}) *gomock.Call {
+// DeleteSliceUnit indicates an expected call of DeleteSliceUnit.
+func (mr *MockTransportMockRecorder) DeleteSliceUnit(ctx, info, bid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSlice", reflect.TypeOf((*MockTransport)(nil).DeleteSlice), ctx, info, bid)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSliceUnit", reflect.TypeOf((*MockTransport)(nil).DeleteSliceUnit), ctx, info, bid)
 }
 
 // GetAllSpaces mocks base method.
@@ -278,18 +278,18 @@ func (mr *MockTransportMockRecorder) ListVolume(ctx, marker, count interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVolume", reflect.TypeOf((*MockTransport)(nil).ListVolume), ctx, marker, count)
 }
 
-// MarkDeleteSlice mocks base method.
-func (m *MockTransport) MarkDeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+// MarkDeleteSliceUnit mocks base method.
+func (m *MockTransport) MarkDeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkDeleteSlice", ctx, info, bid)
+	ret := m.ctrl.Call(m, "MarkDeleteSliceUnit", ctx, info, bid)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// MarkDeleteSlice indicates an expected call of MarkDeleteSlice.
-func (mr *MockTransportMockRecorder) MarkDeleteSlice(ctx, info, bid interface{}) *gomock.Call {
+// MarkDeleteSliceUnit indicates an expected call of MarkDeleteSliceUnit.
+func (mr *MockTransportMockRecorder) MarkDeleteSliceUnit(ctx, info, bid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkDeleteSlice", reflect.TypeOf((*MockTransport)(nil).MarkDeleteSlice), ctx, info, bid)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkDeleteSliceUnit", reflect.TypeOf((*MockTransport)(nil).MarkDeleteSliceUnit), ctx, info, bid)
 }
 
 // NodeID mocks base method.
@@ -845,32 +845,32 @@ func (m *MockBlobTransport) EXPECT() *MockBlobTransportMockRecorder {
 	return m.recorder
 }
 
-// DeleteSlice mocks base method.
-func (m *MockBlobTransport) DeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+// DeleteSliceUnit mocks base method.
+func (m *MockBlobTransport) DeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteSlice", ctx, info, bid)
+	ret := m.ctrl.Call(m, "DeleteSliceUnit", ctx, info, bid)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteSlice indicates an expected call of DeleteSlice.
-func (mr *MockBlobTransportMockRecorder) DeleteSlice(ctx, info, bid interface{}) *gomock.Call {
+// DeleteSliceUnit indicates an expected call of DeleteSliceUnit.
+func (mr *MockBlobTransportMockRecorder) DeleteSliceUnit(ctx, info, bid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSlice", reflect.TypeOf((*MockBlobTransport)(nil).DeleteSlice), ctx, info, bid)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSliceUnit", reflect.TypeOf((*MockBlobTransport)(nil).DeleteSliceUnit), ctx, info, bid)
 }
 
-// MarkDeleteSlice mocks base method.
-func (m *MockBlobTransport) MarkDeleteSlice(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
+// MarkDeleteSliceUnit mocks base method.
+func (m *MockBlobTransport) MarkDeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkDeleteSlice", ctx, info, bid)
+	ret := m.ctrl.Call(m, "MarkDeleteSliceUnit", ctx, info, bid)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// MarkDeleteSlice indicates an expected call of MarkDeleteSlice.
-func (mr *MockBlobTransportMockRecorder) MarkDeleteSlice(ctx, info, bid interface{}) *gomock.Call {
+// MarkDeleteSliceUnit indicates an expected call of MarkDeleteSliceUnit.
+func (mr *MockBlobTransportMockRecorder) MarkDeleteSliceUnit(ctx, info, bid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkDeleteSlice", reflect.TypeOf((*MockBlobTransport)(nil).MarkDeleteSlice), ctx, info, bid)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkDeleteSliceUnit", reflect.TypeOf((*MockBlobTransport)(nil).MarkDeleteSliceUnit), ctx, info, bid)
 }
 
 // MockVolumeTransport is a mock of VolumeTransport interface.

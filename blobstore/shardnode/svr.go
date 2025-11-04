@@ -79,7 +79,7 @@ type Config struct {
 	WaitReOpenDiskIntervalS      int64 `json:"wait_re_open_disk_interval_s"`
 	ShardCheckAndClearIntervalH  int64 `json:"shard_check_and_clear_interval_h"`
 
-	DeleteBlobCfg blobdeleter.BlobDelCfg `json:"blob_delete_cfg"`
+	DeleteBlobCfg blobdeleter.MessageCfg `json:"blob_delete_cfg"`
 }
 
 // newService returns the singleton service instance
@@ -162,7 +162,7 @@ func createService(cfg *Config) *service {
 		ShardGetter:   svr,
 		Transport:     transport,
 		VolCache:      base.NewVolumeCache(transport, 10*time.Second),
-		BlobDelCfg:    cfg.DeleteBlobCfg,
+		MessageCfg:    cfg.DeleteBlobCfg,
 	})
 	if err != nil {
 		span.Fatalf("new blob delete mgr failed, err: %s", err.Error())
