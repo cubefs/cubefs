@@ -2,6 +2,7 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	"github.com/cubefs/cubefs/datanode/storage"
@@ -70,8 +71,20 @@ func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, split
 	count := 0
 	if v3 {
 		count = buf.Len() / proto.ExtentDecodeLengthV3
+		remainSize := buf.Len() % proto.ExtentDecodeLengthV3
+		if remainSize > 0 {
+			err = fmt.Errorf("SortedExtents UnmarshalBinary buf len(%d) extent length(%d) v3(%v)", buf.Len(), proto.ExtentDecodeLengthV3, v3)
+			log.LogErrorf(err.Error())
+			return err, nil
+		}
 	} else {
 		count = buf.Len() / proto.ExtentDecoceLength
+		remainSize := buf.Len() % proto.ExtentDecoceLength
+		if remainSize > 0 {
+			err = fmt.Errorf("SortedExtents UnmarshalBinary buf len(%d) extent length(%d) v3(%v)", buf.Len(), proto.ExtentDecoceLength, v3)
+			log.LogErrorf(err.Error())
+			return err, nil
+		}
 	}
 	if count == 0 {
 		return nil, nil
