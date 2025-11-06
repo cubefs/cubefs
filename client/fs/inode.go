@@ -37,7 +37,11 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 		return info, nil
 	}
 
-	info, err = s.mw.InodeGetExt_ll(ino)
+	if s.metaCacheAcceleration {
+		info, err = s.mw.InodeGetExt_ll(ino)
+	} else {
+		info, err = s.mw.InodeGet_ll(ino)
+	}
 	if err != nil || info == nil {
 		log.LogErrorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
 		if err != nil {
@@ -111,11 +115,6 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 			return info, err
 		}
 	}
-	// if err = s.ec.RefreshExtentsCache(ino); err != nil {
-	// 	log.LogErrorf("[InodeGet] get ino(%v) inode(%v) err: %v", ino, info, err)
-	// 	// TODO:tangjingyu return ParseError(err)?
-	// 	return info, err
-	// }
 	log.LogInfof("[InodeGet] get ino(%v) inode(%v)", ino, info)
 	return info, nil
 }

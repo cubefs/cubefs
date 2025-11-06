@@ -405,6 +405,7 @@ func main() {
 		stream.StreamConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
 		stream.AheadReadConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
 		stream.StreamWriteConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
+		fmt.Println(fmt.Sprintf("set TcpAliveTime %v", opt.TcpAliveTime))
 	}
 
 	level := parseLogLevel(opt.Loglvl)
@@ -547,7 +548,8 @@ func main() {
 
 	syslog.Printf("enable bcache %v", opt.EnableBcache)
 	syslog.Printf("bcache only for not ssd %v", opt.BcacheOnlyForNotSSD)
-
+	syslog.Printf("InodeLruLimit %v MinimumNlinkReadDir %v MetaCacheAcceleration %v",
+		opt.InodeLruLimit, opt.MinimumNlinkReadDir, opt.MetaCacheAcceleration)
 	if cfg.GetString(exporter.ConfigKeyPushAddr) == "" {
 		pushAddr, err := getPushAddrFromMaster(opt.Master)
 		if err == nil && pushAddr != "" {
@@ -1041,6 +1043,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.MaxWarmUpConcurrency = GlobalMountOptions[proto.MaxWarmUpConcurrency].GetInt64()
 	opt.StopWarmMeta = GlobalMountOptions[proto.StopWarmMeta].GetBool()
 	opt.MetaCacheAcceleration = GlobalMountOptions[proto.MetaCacheAcceleration].GetBool()
+	opt.MinimumNlinkReadDir = GlobalMountOptions[proto.MinimumNlinkReadDir].GetInt64()
+	opt.InodeLruLimit = GlobalMountOptions[proto.InodeLruLimit].GetInt64()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

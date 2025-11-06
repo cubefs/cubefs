@@ -54,7 +54,9 @@ func NewInodeCache(exp time.Duration, maxElements int, acceleration bool) *Inode
 		initExp:      exp,
 		acceleration: acceleration,
 	}
-	go ic.backgroundEviction()
+	if !acceleration {
+		go ic.backgroundEviction()
+	}
 	return ic
 }
 
@@ -109,7 +111,9 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 
 // Delete deletes the inode info based on the given inode number.
 func (ic *InodeCache) Delete(ino uint64) {
-	log.LogDebugf("InodeCache Delete: ino(%v)", ino)
+	if log.EnableDebug() {
+		log.LogDebugf("InodeCache Delete: ino(%v)", ino)
+	}
 	ic.Lock()
 	element, ok := ic.cache[ino]
 	if ok {
