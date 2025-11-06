@@ -63,9 +63,7 @@ const (
 	ForceUpdateRWMP             = "ForceUpdateRWMP"
 )
 
-var (
-	GetExtetnsPool = taskpool.New(50, 100)
-)
+var GetExtetnsPool = taskpool.New(50, 100)
 
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
 	rootIno, err := mw.LookupPath(subdir)
@@ -395,10 +393,9 @@ func (mw *MetaWrapper) BatchGetExpiredMultipart(prefix string, days int) (expire
 }
 
 func (mw *MetaWrapper) InodeGetExt_ll(inode uint64) (*proto.InodeInfo, error) {
-
 	start := time.Now()
 	defer func() {
-		log.LogDebugf("InodeGetExt_ll: time cost (%v), ino(%d)", time.Since(start), inode)
+		log.LogDebugf("InodeGetExt_ll: time cost (%v), ino(%v)", time.Since(start), inode)
 	}()
 
 	wg := sync.WaitGroup{}
@@ -414,7 +411,6 @@ func (mw *MetaWrapper) InodeGetExt_ll(inode uint64) (*proto.InodeInfo, error) {
 			log.LogErrorf("InodeGetExt_ll: get inode fail: ino(%v) err(%v)", inode, getErr)
 			return
 		}
-
 	}()
 
 	var resp *proto.GetExtentsResponse

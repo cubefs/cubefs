@@ -386,7 +386,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		return ParseError(err)
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Release: ino(%v) req(%v) name(%v)(%v)ns", ino, req, path.Join(f.getParentPath(), f.name), elapsed.Nanoseconds())
+	log.LogDebugf("TRACE FileRelease: ino(%v) req(%v) name(%v)(%v)ns", ino, req, path.Join(f.getParentPath(), f.name), elapsed.Nanoseconds())
 
 	return nil
 }

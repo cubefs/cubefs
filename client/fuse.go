@@ -406,7 +406,7 @@ func main() {
 		stream.AheadReadConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
 		stream.AheadReadConnPool.SetUseCostPool(true)
 		stream.StreamWriteConnPool.SetPoolArgs(int64(opt.TcpAliveTime), 0)
-		fmt.Println(fmt.Sprintf("set TcpAliveTime %v", opt.TcpAliveTime))
+		fmt.Printf("set TcpAliveTime %v\n", opt.TcpAliveTime)
 	}
 
 	level := parseLogLevel(opt.Loglvl)

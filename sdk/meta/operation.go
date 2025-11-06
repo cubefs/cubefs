@@ -1268,6 +1268,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getExtents", err, bgTime, 1)
+		log.LogDebugf("getExtents for inode(%v) cost(%v)", inode, time.Since(*bgTime).String())
 	}()
 
 	req := &proto.GetExtentsRequest{
