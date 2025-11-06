@@ -303,11 +303,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMSentToChanWithVer:
 		resp = mp.fsmSendToChan(msg.V, true)
 	case opFSMStoreTick:
-		log.LogInfof("[Apply] mp(%v) store tick wait:%d, water level:%d", mp.config.PartitionId, mp.waitPersistCommitCnt, DefaultDumpWaterLevel)
-		if mp.waitPersistCommitCnt < DefaultDumpWaterLevel {
-			return
-		}
-		mp.waitPersistCommitCnt = 0
+		/*
+			log.LogInfof("[Apply] mp(%v) store tick wait:%d, water level:%d", mp.config.PartitionId, mp.waitPersistCommitCnt, DefaultDumpWaterLevel)
+			if mp.waitPersistCommitCnt < DefaultDumpWaterLevel {
+				return
+			}
+			mp.waitPersistCommitCnt = 0
+		*/
 		quotaRebuild := mp.mqMgr.statisticRebuildStart()
 		uidRebuild := mp.acucumRebuildStart()
 		uniqId := mp.GetUniqId()
