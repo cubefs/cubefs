@@ -1040,6 +1040,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.ReadDirLimit = GlobalMountOptions[proto.ReadDirLimit].GetInt64()
 	opt.MaxWarmUpConcurrency = GlobalMountOptions[proto.MaxWarmUpConcurrency].GetInt64()
 	opt.StopWarmMeta = GlobalMountOptions[proto.StopWarmMeta].GetBool()
+	opt.MetaCacheAcceleration = GlobalMountOptions[proto.MetaCacheAcceleration].GetBool()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
