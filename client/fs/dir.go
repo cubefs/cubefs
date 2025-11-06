@@ -17,12 +17,14 @@ package fs
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/timeutil"
 	"io"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -105,7 +107,8 @@ type Dir struct {
 	dctx      *DirContexts
 	parentIno uint64
 	name      string
-	once      sync.Once
+	missCount uint32
+	lastTime  int64
 }
 
 // Functions that Dir needs to implement
@@ -389,6 +392,10 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		ino = cino
 	}
 	var info *proto.InodeInfo
+	missCache := false
+	if d.super.ic.Get(ino) == nil && d.super.metaCacheAcceleration {
+		missCache = true
+	}
 	for {
 		info, err = d.super.InodeGet(ino)
 		if err != nil {
@@ -413,6 +420,16 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	mode := proto.OsMode(info.Mode)
 	if mode.IsDir() {
 		d.super.mw.AddInoInfoCache(info.Inode, d.info.Inode, req.Name)
+	} else if mode.IsRegular() && missCache && d.super.metaCacheAcceleration && d.info.Nlink >= uint32(d.super.minimumNlinkReadDir) {
+		now := timeutil.GetCurrentTime()
+		if atomic.AddUint32(&d.missCount, 1) > 5 && (atomic.LoadInt64(&d.lastTime) == 0 || now.Sub(time.Unix(d.lastTime, 0)) >= 5*time.Minute) {
+			atomic.StoreInt64(&d.lastTime, now.Unix())
+			atomic.StoreUint32(&d.missCount, 0)
+			meta.GetExtetnsPool.Run(func() {
+				log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", d.info.Inode, d.getCwd())
+				d.ReadDirAll(context.Background())
+			})
+		}
 	}
 	fullPath := path.Join(d.getCwd(), req.Name)
 	d.super.fslock.Lock()
@@ -448,14 +465,18 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	}
 
 	d.dcache.Put(req.Name, ino)
+	// If subdirectories may be the directories where training data is located,
+	// the ReadDirAll operation will be triggered when metaCacheAcceleration is enabled
+	if mode.IsDir() && child.(*Dir).info.Nlink >= uint32(child.(*Dir).super.minimumNlinkReadDir) && child.(*Dir).super.metaCacheAcceleration {
+		now := timeutil.GetCurrentTime()
+		if atomic.LoadInt64(&child.(*Dir).lastTime) == 0 || now.Sub(time.Unix(child.(*Dir).lastTime, 0)) >= 5*time.Minute {
+			atomic.StoreInt64(&child.(*Dir).lastTime, now.Unix())
 
-	if mode.IsDir() {
-		childDir := child.(*Dir)
-		childDir.once.Do(func() {
 			meta.GetExtetnsPool.Run(func() {
-				childDir.ReadDirAll(context.Background())
+				log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", child.(*Dir).info.Inode, child.(*Dir).getCwd())
+				child.(*Dir).ReadDirAll(context.Background())
 			})
-		})
+		}
 	}
 
 	resp.EntryValid = LookupValidDuration
@@ -600,6 +621,9 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE ReadDir exit: ino(%v) name(%v) dcache(%v) (%v)ns %v",
 		d.info.Inode, d.name, d.dcache.Len(), elapsed.Nanoseconds(), req)
+	if d.super.metaCacheAcceleration {
+		atomic.StoreInt64(&d.lastTime, timeutil.GetCurrentTimeUnix())
+	}
 	return dirents, err
 }
 
@@ -676,6 +700,11 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		infos = d.super.mw.BatchInodeGetExtents(inodes)
 	} else {
 		infos = d.super.mw.BatchInodeGet(inodes)
+	}
+
+	maxElements := int(float64(d.super.inodeLruLimit) * 0.8)
+	if len(infos) > maxElements && d.super.metaCacheAcceleration {
+		infos = infos[:maxElements]
 	}
 	for _, info := range infos {
 		d.super.ic.Put(info)

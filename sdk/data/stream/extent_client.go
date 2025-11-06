@@ -168,6 +168,7 @@ type ExtentConfig struct {
 	ForceRemoteCache bool
 	HeartBeatPing    bool
 	EnableAsyncFlush bool
+	MetaAcceleration bool
 }
 
 type MultiVerMgr struct {
@@ -222,6 +223,7 @@ type ExtentClient struct {
 
 	forceRemoteCache bool
 	enableAsyncFlush bool
+	metaAcceleration bool
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -355,6 +357,7 @@ retry:
 	client.getInodeInfo = config.OnGetInodeInfo
 	client.forceRemoteCache = config.ForceRemoteCache
 	client.enableAsyncFlush = config.EnableAsyncFlush
+	client.metaAcceleration = config.MetaAcceleration
 
 	if config.StreamRetryTimeout <= 0 || config.StreamRetryTimeout >= 600 {
 		client.streamRetryTimeout = StreamSendMaxTimeout

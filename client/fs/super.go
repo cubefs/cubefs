@@ -99,6 +99,8 @@ type Super struct {
 	maxWarmUpConcurrency  int64
 	stopWarmMeta          bool
 	metaCacheAcceleration bool
+	minimumNlinkReadDir   int64
+	inodeLruLimit         int64
 }
 
 // Functions that Super needs to implement
@@ -161,11 +163,13 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 	s.keepCache = opt.KeepCache
 	if opt.MaxStreamerLimit > 0 || !opt.StopWarmMeta {
-		s.ic = NewInodeCache(inodeExpiration, MaxInodeCache, s.metaCacheAcceleration)
+		s.ic = NewInodeCache(inodeExpiration, int(opt.InodeLruLimit), s.metaCacheAcceleration)
 		s.dc = NewDcache(inodeExpiration, MaxInodeCache)
+		s.inodeLruLimit = opt.InodeLruLimit
 	} else {
 		s.ic = NewInodeCache(inodeExpiration, DefaultMaxInodeCache, s.metaCacheAcceleration)
 		s.dc = NewDcache(inodeExpiration, DefaultMaxInodeCache)
+		s.inodeLruLimit = DefaultMaxInodeCache
 	}
 	s.orphan = NewOrphanInodeList()
 	s.nodeCache = make(map[uint64]fs.Node)
@@ -266,6 +270,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		NeedRemoteCache:       true,
 		ForceRemoteCache:      opt.ForceRemoteCache,
 		EnableAsyncFlush:      opt.EnableAsyncFlush,
+		MetaAcceleration:      opt.MetaCacheAcceleration,
 	}
 
 	log.LogInfof("ahead info enable %+v, totalMem %+v, timeout %+v, winCnt %+v", opt.AheadReadEnable, opt.AheadReadTotalMem, opt.AheadReadBlockTimeOut, opt.AheadReadWindowCnt)

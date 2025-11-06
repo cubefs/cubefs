@@ -194,7 +194,7 @@ func newClient() *client {
 		cwd:                 "/",
 		sc:                  fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache),
 		ic:                  fs.NewInodeCache(fs.DefaultInodeExpiration, fs.MaxInodeCache, false),
-		dc:                  fs.NewDentryCache(),
+		dc:                  fs.NewDentryCache(false),
 	}
 
 	gClientManager.mu.Lock()
