@@ -255,7 +255,7 @@ func (s *Streamer) server() {
 					if s.client.disableMetaCache || !s.needBCache {
 						log.LogDebugf("done server: delete streamer(%v)", s)
 						delete(s.client.streamers, s.inode)
-						if s.client.evictIcache != nil {
+						if s.client.evictIcache != nil && !s.client.metaAcceleration {
 							s.client.evictIcache(s.inode)
 						}
 					}

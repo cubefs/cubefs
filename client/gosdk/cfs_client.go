@@ -179,7 +179,7 @@ func New(cfg Config) *Client {
 		cwd:                 "/",
 		sc:                  fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache),
 		ic:                  fs.NewInodeCache(fs.DefaultInodeExpiration, fs.MaxInodeCache, false),
-		dc:                  fs.NewDentryCache(),
+		dc:                  fs.NewDentryCache(false),
 	}
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)

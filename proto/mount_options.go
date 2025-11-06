@@ -95,6 +95,8 @@ const (
 	StopWarmMeta
 	TcpAliveTime
 	MetaCacheAcceleration
+	MinimumNlinkReadDir
+	InodeLruLimit
 	MaxMountOption
 )
 
@@ -200,6 +202,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[MaxWarmUpConcurrency] = MountOption{"maxWarmUpConcurrency", "The maximum number of concurrent goroutines for warm up", "", int64(2)}
 	opts[StopWarmMeta] = MountOption{"stopWarmMeta", "Stop warm up meta", "", true}
 	opts[MetaCacheAcceleration] = MountOption{"metaCacheAcceleration", "keep meta cache and get inode/extents in one go", "", false}
+	opts[MinimumNlinkReadDir] = MountOption{"minimumNlinkReadDir", "the minimum Nlink value of the directory that actively triggers the ReadDir operation", "", int64(10000)}
+	opts[InodeLruLimit] = MountOption{"inodeLruLimit", "capacity for inode lru", "", int64(10000000)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -388,4 +392,6 @@ type MountOptions struct {
 	MaxWarmUpConcurrency  int64
 	StopWarmMeta          bool
 	MetaCacheAcceleration bool
+	MinimumNlinkReadDir   int64
+	InodeLruLimit         int64
 }
