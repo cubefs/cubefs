@@ -162,14 +162,12 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	s.keepCache = opt.KeepCache
+	s.ic = NewInodeCache(inodeExpiration, int(opt.InodeLruLimit), s.metaCacheAcceleration)
+	s.inodeLruLimit = opt.InodeLruLimit
 	if opt.MaxStreamerLimit > 0 || !opt.StopWarmMeta {
-		s.ic = NewInodeCache(inodeExpiration, int(opt.InodeLruLimit), s.metaCacheAcceleration)
 		s.dc = NewDcache(inodeExpiration, MaxInodeCache)
-		s.inodeLruLimit = opt.InodeLruLimit
 	} else {
-		s.ic = NewInodeCache(inodeExpiration, DefaultMaxInodeCache, s.metaCacheAcceleration)
 		s.dc = NewDcache(inodeExpiration, DefaultMaxInodeCache)
-		s.inodeLruLimit = DefaultMaxInodeCache
 	}
 	s.orphan = NewOrphanInodeList()
 	s.nodeCache = make(map[uint64]fs.Node)
@@ -230,6 +228,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.maxWarmUpConcurrency = opt.MaxWarmUpConcurrency
 	s.stopWarmMeta = opt.StopWarmMeta
 	s.metaCacheAcceleration = opt.MetaCacheAcceleration
+	s.minimumNlinkReadDir = opt.MinimumNlinkReadDir
 
 	extentConfig := &stream.ExtentConfig{
 		Volume:            opt.Volname,
@@ -336,7 +335,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	stat.PrintModuleStat = func(writer *bufio.Writer) {
 		fmt.Fprintf(writer, "ic:%d dc:%d nodecache:%d dircache:%d\n", s.ic.lruList.Len(), s.dc.lruList.Len(), len(s.nodeCache), s.mw.DirCacheLen())
 	}
-	go s.loopSyncMeta()
+	if !s.metaCacheAcceleration {
+		go s.loopSyncMeta()
+	}
 
 	// Start warm up meta paths goroutine
 	go s.loopWarmUpMetaPaths()

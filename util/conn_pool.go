@@ -142,7 +142,6 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 }
 
 func (cp *ConnectPool) PutConnectV2(c *net.TCPConn, forceClose bool, addr string, cost int64) {
-
 	if c == nil {
 		return
 	}
@@ -367,7 +366,6 @@ func NewPoolWithCost(min, max int, timeout, connectTimeout int64, target string,
 }
 
 func (p *PoolWithCost) PutConnectObjectToPool(o *Object) {
-
 	if log.EnableDebug() {
 		log.LogDebugf("PoolWithCost PutConnectObjectToPool start")
 	}
@@ -393,11 +391,9 @@ func (p *PoolWithCost) PutConnectObjectToPool(o *Object) {
 	}
 
 	p.conns.PushBack(o)
-
 }
 
 func (p *PoolWithCost) autoRelease() {
-
 	if log.EnableDebug() {
 		log.LogDebugf("PoolWithCost autoRelease start")
 	}
@@ -444,11 +440,9 @@ func (p *PoolWithCost) ReleaseAll() {
 		o.conn.Close()
 		p.conns.Remove(e)
 	}
-
 }
 
 func (p *PoolWithCost) GetConnectFromPool() (c *net.TCPConn, err error) {
-
 	if log.EnableDebug() {
 		log.LogDebugf("PoolWithCost GetConnectFromPool start")
 	}

@@ -22,15 +22,17 @@ import (
 // DentryCache defines the dentry cache.
 type DentryCache struct {
 	sync.Mutex
-	cache      map[string]uint64
-	expiration time.Time
+	cache        map[string]uint64
+	expiration   time.Time
+	acceleration bool
 }
 
 // NewDentryCache returns a new dentry cache.
-func NewDentryCache() *DentryCache {
+func NewDentryCache(acceleration bool) *DentryCache {
 	return &DentryCache{
-		cache:      make(map[string]uint64),
-		expiration: time.Now().Add(DentryValidDuration),
+		cache:        make(map[string]uint64),
+		expiration:   time.Now().Add(DentryValidDuration),
+		acceleration: acceleration,
 	}
 }
 
@@ -41,6 +43,9 @@ func (dc *DentryCache) Put(name string, ino uint64) {
 	}
 	dc.Lock()
 	defer dc.Unlock()
+	if dc.cache == nil {
+		dc.cache = make(map[string]uint64)
+	}
 	dc.cache[name] = ino
 	dc.expiration = time.Now().Add(DentryValidDuration)
 }
@@ -53,7 +58,7 @@ func (dc *DentryCache) Get(name string) (uint64, bool) {
 
 	dc.Lock()
 	defer dc.Unlock()
-	if dc.expiration.Before(time.Now()) {
+	if dc.expiration.Before(time.Now()) && !dc.acceleration {
 		dc.cache = make(map[string]uint64)
 		return 0, false
 	}

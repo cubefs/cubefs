@@ -165,7 +165,7 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("Release:dir", nil, bgTime, 1)
-		log.LogDebugf("TRACE Release exit: ino(%v) name(%v)", d.info.Inode, d.name)
+		log.LogDebugf("TRACE DirRelease exit: ino(%v) name(%v)", d.info.Inode, d.name)
 	}()
 
 	if !d.super.metaCacheAcceleration {
@@ -346,9 +346,14 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		stat.EndStat("Lookup", err, bgTime, 1)
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
-
+	if d.super.metaCacheAcceleration && (req.Name == ".AppleDouble" || strings.HasPrefix(req.Name, "._")) {
+		err = syscall.ENOENT
+		return nil, ParseError(err)
+	}
 	log.LogDebugf("TRACE Lookup: parent(%v) req(%v)", d.info.Inode, req)
-	log.LogDebugf("TRACE Lookup: parent(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
+	if log.EnableDebug() {
+		log.LogDebugf("TRACE Lookup: parent(%v) path(%v) d.super.bcacheDir(%v) miss(%v)", d.info.Inode, path.Join(d.getCwd(), req.Name), d.super.bcacheDir, atomic.LoadUint32(&d.missCount))
+	}
 
 	if d.needDentrycache() {
 		dcachev2 = true
@@ -381,6 +386,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	} else {
 		cino, ok := d.dcache.Get(req.Name)
 		if !ok {
+			log.LogDebugf("Lookup %v from parent %v miss, try to get from meta", path.Join(d.getCwd(), req.Name), d.info.Inode)
 			cino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
 			if err != nil {
 				if err != syscall.ENOENT {
@@ -420,14 +426,18 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	mode := proto.OsMode(info.Mode)
 	if mode.IsDir() {
 		d.super.mw.AddInoInfoCache(info.Inode, d.info.Inode, req.Name)
-	} else if mode.IsRegular() && missCache && d.super.metaCacheAcceleration && d.info.Nlink >= uint32(d.super.minimumNlinkReadDir) {
+	}
+
+	if missCache && d.super.metaCacheAcceleration {
 		now := timeutil.GetCurrentTime()
 		if atomic.AddUint32(&d.missCount, 1) > 5 && (atomic.LoadInt64(&d.lastTime) == 0 || now.Sub(time.Unix(d.lastTime, 0)) >= 5*time.Minute) {
+			log.LogDebugf("trigger ReadDirAll for missCache %v Nlink %v missCount %v metaCacheAcceleration %v ino(%v) name(%v)",
+				missCache, d.info.Nlink, atomic.LoadUint32(&d.missCount), d.super.metaCacheAcceleration, d.info.Inode, d.getCwd())
 			atomic.StoreInt64(&d.lastTime, now.Unix())
 			atomic.StoreUint32(&d.missCount, 0)
 			meta.GetExtetnsPool.Run(func() {
 				log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", d.info.Inode, d.getCwd())
-				auditlog.LogClientOp("TriggerReadDirAll", d.getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
+				auditlog.LogClientOp("TriggerReadDirAllParent", d.getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
 				d.ReadDirAll(context.Background())
 			})
 		}
@@ -460,22 +470,25 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 	}
 	d.super.fslock.Unlock()
-
-	if d.dcache == nil {
-		d.dcache = NewDentryCache()
+	// maybe some dir never called ReadDir
+	if d.super.metaCacheAcceleration {
+		if d.dcache == nil {
+			d.dcache = NewDentryCache(d.super.metaCacheAcceleration)
+		}
+		log.LogDebugf("Lookup store %v  %v to cache ", path.Join(d.getCwd(), req.Name), ino)
+		d.dcache.Put(req.Name, ino)
 	}
-
-	d.dcache.Put(req.Name, ino)
 	// If subdirectories may be the directories where training data is located,
 	// the ReadDirAll operation will be triggered when metaCacheAcceleration is enabled
 	if mode.IsDir() && child.(*Dir).info.Nlink >= uint32(child.(*Dir).super.minimumNlinkReadDir) && child.(*Dir).super.metaCacheAcceleration {
 		now := timeutil.GetCurrentTime()
-		if atomic.LoadInt64(&child.(*Dir).lastTime) == 0 || now.Sub(time.Unix(child.(*Dir).lastTime, 0)) >= 5*time.Minute {
+		if atomic.LoadInt64(&child.(*Dir).lastTime) == 0 || (now.Sub(time.Unix(child.(*Dir).lastTime, 0)) >= 2*time.Minute && atomic.LoadUint32(&d.missCount) > 5) {
+			log.LogDebugf("trigger ReadDirAll for lastTime %v Nlink %v metaCacheAcceleration %v ino(%v) name(%v)",
+				atomic.LoadInt64(&child.(*Dir).lastTime), child.(*Dir).info.Nlink, child.(*Dir).super.metaCacheAcceleration, child.(*Dir).info.Inode, child.(*Dir).getCwd())
 			atomic.StoreInt64(&child.(*Dir).lastTime, now.Unix())
-
 			meta.GetExtetnsPool.Run(func() {
 				log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", child.(*Dir).info.Inode, child.(*Dir).getCwd())
-				auditlog.LogClientOp("TriggerReadDirAll", child.(*Dir).getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
+				auditlog.LogClientOp("TriggerReadDirAllSub", child.(*Dir).getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
 				child.(*Dir).ReadDirAll(context.Background())
 			})
 		}
@@ -483,7 +496,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	resp.EntryValid = LookupValidDuration
 
-	log.LogDebugf("TRACE Lookup exit: parent(%v) req(%v) cost (%d)", d.info.Inode, req, time.Since(*bgTime).Microseconds())
+	log.LogDebugf("TRACE Lookup exit: parent(%v) req(%v) cost (%v)", d.info.Inode, req, time.Since(*bgTime).String())
 	return child, nil
 }
 
@@ -566,7 +579,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	log.LogDebugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
 	var dcache *DentryCache
 	if !d.super.disableDcache {
-		dcache = NewDentryCache()
+		dcache = NewDentryCache(d.super.metaCacheAcceleration)
 	}
 
 	if d.super.metaCacheAcceleration && d.dcache != nil {
@@ -623,9 +636,6 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE ReadDir exit: ino(%v) name(%v) dcache(%v) (%v)ns %v",
 		d.info.Inode, d.name, d.dcache.Len(), elapsed.Nanoseconds(), req)
-	if d.super.metaCacheAcceleration {
-		atomic.StoreInt64(&d.lastTime, timeutil.GetCurrentTimeUnix())
-	}
 	return dirents, err
 }
 
@@ -638,6 +648,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	defer func() {
 		stat.EndStat("ReadDirAll", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		auditlog.LogClientOp("ReadDirAllComplete", d.getCwd(), "", err, time.Since(*bgTime).Microseconds(), d.info.Inode, 0)
 	}()
 
 	// transform ReadDirAll to ReadDirLimit_ll
@@ -669,7 +680,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	log.LogDebugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
 	var dcache *DentryCache
 	if !d.super.disableDcache {
-		dcache = NewDentryCache()
+		dcache = NewDentryCache(d.super.metaCacheAcceleration)
 	}
 
 	var dcachev2 bool
