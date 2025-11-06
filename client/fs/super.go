@@ -95,9 +95,10 @@ type Super struct {
 	closeC   chan struct{}
 
 	// warm up configurable parameters
-	readDirLimit         int64
-	maxWarmUpConcurrency int64
-	stopWarmMeta         bool
+	readDirLimit          int64
+	maxWarmUpConcurrency  int64
+	stopWarmMeta          bool
+	metaCacheAcceleration bool
 }
 
 // Functions that Super needs to implement
@@ -160,10 +161,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 	s.keepCache = opt.KeepCache
 	if opt.MaxStreamerLimit > 0 || !opt.StopWarmMeta {
-		s.ic = NewInodeCache(inodeExpiration, MaxInodeCache)
+		s.ic = NewInodeCache(inodeExpiration, MaxInodeCache, s.metaCacheAcceleration)
 		s.dc = NewDcache(inodeExpiration, MaxInodeCache)
 	} else {
-		s.ic = NewInodeCache(inodeExpiration, DefaultMaxInodeCache)
+		s.ic = NewInodeCache(inodeExpiration, DefaultMaxInodeCache, s.metaCacheAcceleration)
 		s.dc = NewDcache(inodeExpiration, DefaultMaxInodeCache)
 	}
 	s.orphan = NewOrphanInodeList()
@@ -224,6 +225,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.readDirLimit = opt.ReadDirLimit
 	s.maxWarmUpConcurrency = opt.MaxWarmUpConcurrency
 	s.stopWarmMeta = opt.StopWarmMeta
+	s.metaCacheAcceleration = opt.MetaCacheAcceleration
 
 	extentConfig := &stream.ExtentConfig{
 		Volume:            opt.Volname,

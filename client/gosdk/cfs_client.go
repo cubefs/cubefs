@@ -178,7 +178,7 @@ func New(cfg Config) *Client {
 		dirChildrenNumLimit: proto.DefaultDirChildrenNumLimit,
 		cwd:                 "/",
 		sc:                  fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache),
-		ic:                  fs.NewInodeCache(fs.DefaultInodeExpiration, fs.MaxInodeCache),
+		ic:                  fs.NewInodeCache(fs.DefaultInodeExpiration, fs.MaxInodeCache, false),
 		dc:                  fs.NewDentryCache(),
 	}
 	// Just skip fd 0, 1, 2, to avoid confusion.
