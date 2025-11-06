@@ -92,7 +92,7 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 	}
 
 	info := element.Value.(*proto.InodeInfo)
-	if inodeExpired(info) && DisableMetaCache {
+	if inodeExpired(info) && DisableMetaCache && !ic.acceleration {
 		ic.RUnlock()
 		log.LogDebugf("Inode Cache %v expired", ino)
 		return nil
