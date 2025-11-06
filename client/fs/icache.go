@@ -36,21 +36,23 @@ const (
 // InodeCache defines the structure of the inode cache.
 type InodeCache struct {
 	sync.RWMutex
-	cache       map[uint64]*list.Element
-	lruList     *list.List
-	expiration  time.Duration
-	maxElements int
-	initExp     time.Duration
+	cache        map[uint64]*list.Element
+	lruList      *list.List
+	expiration   time.Duration
+	maxElements  int
+	initExp      time.Duration
+	acceleration bool
 }
 
 // NewInodeCache returns a new inode cache.
-func NewInodeCache(exp time.Duration, maxElements int) *InodeCache {
+func NewInodeCache(exp time.Duration, maxElements int, acceleration bool) *InodeCache {
 	ic := &InodeCache{
-		cache:       make(map[uint64]*list.Element),
-		lruList:     list.New(),
-		expiration:  exp,
-		maxElements: maxElements,
-		initExp:     exp,
+		cache:        make(map[uint64]*list.Element),
+		lruList:      list.New(),
+		expiration:   exp,
+		maxElements:  maxElements,
+		initExp:      exp,
+		acceleration: acceleration,
 	}
 	go ic.backgroundEviction()
 	return ic
@@ -99,7 +101,9 @@ func (ic *InodeCache) Get(ino uint64) *proto.InodeInfo {
 		log.LogDebugf("Inode Cache found ino(%v) storageClass(%v), expiration(%v)",
 			ino, info.StorageClass, info.Expiration())
 	}
-	info.SetExpiration(time.Now().Add(ic.expiration).UnixNano())
+	if ic.acceleration && info != nil {
+		info.SetExpiration(time.Now().Add(ic.expiration).UnixNano())
+	}
 	return info
 }
 

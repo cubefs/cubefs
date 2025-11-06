@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
-	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -147,9 +146,6 @@ func (arc *AheadReadCache) getAheadReadBlock() (block *AheadReadBlock, err error
 }
 
 func (arc *AheadReadCache) putAheadReadBlock(key string, block *AheadReadBlock) {
-	if log.EnableDebug() {
-		log.LogDebugf("putAheadReadBlock recycle key(%v) addr(%p) %v", key, block, string(debug.Stack()))
-	}
 	arc.availableBlockC <- struct{}{}
 	putAheadReadBlock(block)
 	atomic.AddInt64(&arc.availableBlockCnt, 1)

@@ -163,10 +163,14 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 		stat.EndStat("Release:dir", nil, bgTime, 1)
 		log.LogDebugf("TRACE Release exit: ino(%v) name(%v)", d.info.Inode, d.name)
 	}()
-	// d.dctx.Clear()
-	// d.dcache.Clear()
-	// ino := d.info.Inode
-	// d.super.ic.Delete(ino)
+
+	if !d.super.metaCacheAcceleration {
+		d.dctx.Clear()
+		d.dcache.Clear()
+		ino := d.info.Inode
+		d.super.ic.Delete(ino)
+
+	}
 
 	return nil
 }
@@ -530,7 +534,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		dcache = NewDentryCache()
 	}
 
-	if d.dcache != nil {
+	if d.super.metaCacheAcceleration && d.dcache != nil {
 		dcache = d.dcache
 	}
 
@@ -559,7 +563,13 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		}
 	}
 
-	infos := d.super.mw.BatchInodeGetExtents(inodes)
+	var infos []*proto.InodeInfo
+	if d.super.metaCacheAcceleration {
+		infos = d.super.mw.BatchInodeGetExtents(inodes)
+	} else {
+		infos = d.super.mw.BatchInodeGet(inodes)
+	}
+
 	for _, info := range infos {
 		cacheInfo := d.super.ic.Get(info.Inode)
 		if cacheInfo != nil {
@@ -649,7 +659,12 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 	}
 
-	infos := d.super.mw.BatchInodeGetExtents(inodes)
+	var infos []*proto.InodeInfo
+	if d.super.metaCacheAcceleration {
+		infos = d.super.mw.BatchInodeGetExtents(inodes)
+	} else {
+		infos = d.super.mw.BatchInodeGet(inodes)
+	}
 	for _, info := range infos {
 		d.super.ic.Put(info)
 	}
