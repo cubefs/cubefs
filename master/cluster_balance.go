@@ -2203,10 +2203,11 @@ func GetMetaPartitionMemorySize(metaNode *MetaNode) uint64 {
 }
 
 func CalcuMetaPartitionReadyMaxRetry(mp *MetaPartition) int {
-	if mp.InodeCount <= MaxInodePerMp {
+	sum := mp.InodeCount + mp.DentryCount
+	if sum <= MaxInodePerMp {
 		return RetryCheckStatusNum
 	}
-	return int(mp.InodeCount / MaxInodePerMp * RetryCheckStatusNum)
+	return int(sum / MaxInodePerMp * RetryCheckStatusNum)
 }
 
 func (c *Cluster) getAllMetaPartitions() (mps map[uint64]*MetaPartition) {
