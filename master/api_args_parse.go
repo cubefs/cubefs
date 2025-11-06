@@ -44,15 +44,11 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	var idStr string
-	if idStr = r.FormValue(idKey); idStr == "" {
-		err = keyNotFound(idKey)
+
+	if id, err = extractNodeID(r); err != nil {
 		return
 	}
 
-	if id, err = strconv.ParseUint(idStr, 10, 64); err != nil {
-		return
-	}
 	if host = r.FormValue(addrKey); host == "" {
 		err = keyNotFound(addrKey)
 		return
@@ -106,35 +102,17 @@ func extractTxConflictRetryInterval(r *http.Request, old int64) (interval int64,
 }
 
 func extractTxOpLimitInterval(r *http.Request, volLimit int) (limit int, err error) {
-	var txLimit int
-	if txLimit, err = extractUintWithDefault(r, txOpLimitKey, volLimit); err != nil {
-		return
-	}
-
-	limit = txLimit
-	return
+	return extractUintWithDefault(r, txOpLimitKey, volLimit)
 }
 
 func hasTxParams(r *http.Request) bool {
-	var (
-		maskStr    string
-		timeoutStr string
-	)
-	if maskStr = r.FormValue(enableTxMaskKey); maskStr != "" {
-		return true
-	}
-
-	if timeoutStr = r.FormValue(txTimeoutKey); timeoutStr != "" {
-		return true
-	}
-	return false
+	return r.FormValue(enableTxMaskKey) != "" || r.FormValue(txTimeoutKey) != ""
 }
 
 func parseTxMask(r *http.Request, oldMask proto.TxOpMask) (mask proto.TxOpMask, err error) {
-	var maskStr string
-	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
-		mask = oldMask
-		return
+	maskStr := r.FormValue(enableTxMaskKey)
+	if maskStr == "" {
+		return oldMask, nil
 	}
 
 	var reset bool
@@ -148,13 +126,11 @@ func parseTxMask(r *http.Request, oldMask proto.TxOpMask) (mask proto.TxOpMask, 
 		return
 	}
 
-	if reset {
+	if reset || mask == proto.TxOpMaskOff {
 		return
 	}
 
-	if mask != proto.TxOpMaskOff {
-		mask = mask | oldMask
-	}
+	mask = mask | oldMask
 	return
 }
 
@@ -178,15 +154,11 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, raftHeartbeatPort, raftR
 	if nodeAddr, err = extractNodeAddr(r); err != nil {
 		return
 	}
-	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
-		zoneName = DefaultZoneName
-	}
-	if rack = r.FormValue(rackKey); rack == "" {
-		rack = proto.DefaultRack
-	}
+	zoneName = extractStrWithDefault(r, zoneNameKey, DefaultZoneName)
+	rack = extractStrWithDefault(r, rackKey, proto.DefaultRack)
 	// for old version node registration, heartbeat port and replica port may be empty
-	raftHeartbeatPort = r.FormValue(heartbeatPortKey)
-	raftReplicaPort = r.FormValue(replicaPortKey)
+	raftHeartbeatPort = extractStr(r, heartbeatPortKey)
+	raftReplicaPort = extractStr(r, replicaPortKey)
 
 	if mediaType, err = extractMediaType(r); err != nil {
 		return
@@ -200,7 +172,7 @@ func parseDecomNodeReq(r *http.Request) (nodeAddr string, limit int, err error) 
 		return
 	}
 
-	limit, err = parseUintParam(r, countKey)
+	limit, err = extractUint(r, countKey)
 	if err != nil {
 		return
 	}
@@ -213,7 +185,7 @@ func parseDecomDataNodeReq(r *http.Request) (nodeAddr string, limit int, err err
 	if err != nil {
 		return
 	}
-	limit, err = parseUintParam(r, countKey)
+	limit, err = extractUint(r, countKey)
 	if err != nil {
 		return
 	}
@@ -236,7 +208,7 @@ func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err er
 		return
 	}
 	tr = &proto.AdminTask{}
-	decoder := json.NewDecoder(bytes.NewBuffer([]byte(body)))
+	decoder := json.NewDecoder(bytes.NewBuffer(body))
 	decoder.UseNumber()
 	err = decoder.Decode(tr)
 	return
@@ -246,15 +218,12 @@ func parseVolName(r *http.Request) (name string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	if name, err = extractName(r); err != nil {
-		return
-	}
-	return
+	return extractName(r)
 }
 
 func parseVolVerStrategy(r *http.Request) (strategy proto.VolumeVerStrategy, isForce bool, err error) {
 	var value string
-	if value = r.FormValue(enableKey); value == "" {
+	if value = extractStr(r, enableKey); value == "" {
 		strategy.Enable = true
 	} else {
 		if strategy.Enable, err = strconv.ParseBool(value); err != nil {
@@ -263,12 +232,12 @@ func parseVolVerStrategy(r *http.Request) (strategy proto.VolumeVerStrategy, isF
 		}
 	}
 
-	strategy.KeepVerCnt, err = parseUintParam(r, countKey)
+	strategy.KeepVerCnt, err = extractUint(r, countKey)
 	if strategy.Enable && err != nil {
 		log.LogErrorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
 		return
 	}
-	strategy.Periodic, err = parseUintParam(r, Periodic)
+	strategy.Periodic, err = extractUint(r, Periodic)
 	if strategy.Enable && err != nil {
 		log.LogErrorf("parseVolVerStrategy. strategy.Enable %v strategy %v", strategy.Enable, strategy)
 		return
@@ -291,12 +260,7 @@ func parseGetVolParameter(r *http.Request) (p *getVolParameter, err error) {
 			return
 		}
 	}
-	if p.name = r.FormValue(nameKey); p.name == "" {
-		err = keyNotFound(nameKey)
-		return
-	}
-	if !volNameRegexp.MatchString(p.name) {
-		err = proto.ErrVolNameRegExpNotMatch
+	if p.name, err = extractName(r); err != nil {
 		return
 	}
 	if p.authKey = r.FormValue(volAuthKey); !p.skipOwnerValidation && len(p.authKey) == 0 {
@@ -324,86 +288,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, status, for
 	}
 
 	force, err = extractBoolWithDefault(r, forceDelVolKey, false)
-	if err != nil {
-		return
-	}
-
 	return
-}
-
-func extractUintWithDefault(r *http.Request, key string, def int) (val int, err error) {
-	var str string
-	if str = r.FormValue(key); str == "" {
-		return def, nil
-	}
-
-	if val, err = strconv.Atoi(str); err != nil || val < 0 {
-		return 0, fmt.Errorf("parse [%s] is not valid int [%d], err %v", key, val, err)
-	}
-
-	return val, nil
-}
-
-func extractUint32WithDefault(r *http.Request, key string, def uint32) (val uint32, err error) {
-	var str string
-	if str = r.FormValue(key); str == "" {
-		return def, nil
-	}
-
-	var valUint64 uint64
-	if valUint64, err = strconv.ParseUint(str, 10, 32); err != nil || valUint64 > math.MaxUint32 {
-		return 0, fmt.Errorf("parse [%s] is not valid uint32 [%d], err %v", key, val, err)
-	}
-
-	val = uint32(valUint64)
-	return val, nil
-}
-
-func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint64, err error) {
-	var str string
-	if str = r.FormValue(key); str == "" {
-		return def, nil
-	}
-
-	if val, err = strconv.ParseUint(str, 10, 64); err != nil {
-		return 0, fmt.Errorf("parse [%s] is not valid uint64 [%d], err %v", key, val, err)
-	}
-
-	return val, nil
-}
-
-func extractInt64WithDefault(r *http.Request, key string, def int64) (val int64, err error) {
-	var str string
-	if str = r.FormValue(key); str == "" {
-		return def, nil
-	}
-
-	if val, err = strconv.ParseInt(str, 10, 64); err != nil || val < 0 {
-		return 0, fmt.Errorf("parse [%s] is not valid int [%d], err %v", key, val, err)
-	}
-
-	return val, nil
-}
-
-func extractStrWithDefault(r *http.Request, key string, def string) (val string) {
-	if val = r.FormValue(key); val == "" {
-		return def
-	}
-
-	return val
-}
-
-func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, err error) {
-	var str string
-	if str = r.FormValue(key); str == "" {
-		return def, nil
-	}
-
-	if val, err = strconv.ParseBool(str); err != nil {
-		return false, fmt.Errorf("parse [%s] is not a bool val [%t]", key, val)
-	}
-
-	return val, nil
 }
 
 type updateVolReq struct {
@@ -558,7 +443,7 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if req.trashInterval > maxTrashInterval {
-		err = fmt.Errorf("trash interval can't great than %d, now %d", maxTrashInterval, req.trashInterval)
+		err = fmt.Errorf("trash interval can't be greater than %d, now %d", maxTrashInterval, req.trashInterval)
 		return
 	}
 
@@ -608,7 +493,7 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if req.quotaClass != 0 && r.FormValue(quotaOfClass) == "" {
-		return fmt.Errorf("%s can't be emtpy when set capacityClass info. ", quotaOfClass)
+		return fmt.Errorf("%s can't be empty when set capacityClass info. ", quotaOfClass)
 	}
 
 	req.quotaOfClass, err = extractUint64(r, quotaOfClass)
@@ -705,10 +590,7 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 		return
 	}
 
-	if capacity, err = extractUint(r, volCapacityKey); err != nil {
-		return
-	}
-
+	capacity, err = extractUint(r, volCapacityKey)
 	return
 }
 
@@ -907,7 +789,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	}
 	if followerExist && !followerRead && proto.IsHot(req.volType) &&
 		(req.dpReplicaNum == 1 || req.dpReplicaNum == 2) {
-		return fmt.Errorf("vol with 1 ro 2 replia should enable followerRead")
+		return fmt.Errorf("vol with 1 or 2 replica should enable followerRead")
 	}
 	req.followerRead = followerRead
 	if !proto.IsStorageClassBlobStore(req.volStorageClass) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) {
@@ -992,7 +874,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	}
 
 	if req.trashInterval > maxTrashInterval {
-		err = fmt.Errorf("trash interval can't great than %d, now %d", maxTrashInterval, req.trashInterval)
+		err = fmt.Errorf("trash interval can't be greater than %d, now %d", maxTrashInterval, req.trashInterval)
 		return
 	}
 
@@ -1012,9 +894,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if req.remoteCacheAutoPrepare, err = extractBoolWithDefault(r, remoteCacheAutoPrepare, false); err != nil {
 		return
 	}
-	if req.remoteCachePath = extractStrWithDefault(r, remoteCachePath, ""); err != nil {
-		return
-	}
+	req.remoteCachePath = extractStrWithDefault(r, remoteCachePath, "")
 	if req.remoteCacheTTL, err = extractInt64WithDefault(r, remoteCacheTTL, proto.DefaultRemoteCacheTTL); err != nil {
 		return
 	}
@@ -1509,7 +1389,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		val := uint64(0)
 		val, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
-			err = unmatchedKey(nodeMarkDeleteRateKey)
+			err = unmatchedKey(nodeDeleteWorkerSleepMs)
 			return
 		}
 		params[nodeDeleteWorkerSleepMs] = val
@@ -1986,66 +1866,6 @@ func extractDecommissionType(r *http.Request) (decommissionType int, err error) 
 	return
 }
 
-func extractUint(r *http.Request, key string) (val int, err error) {
-	var str string
-	var valParsed int64
-	if str = r.FormValue(key); str == "" {
-		return 0, nil
-	}
-
-	if valParsed, err = strconv.ParseInt(str, 10, 32); err != nil || valParsed < 0 {
-		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
-	}
-
-	val = int(valParsed)
-	return val, nil
-}
-
-func extractUint64(r *http.Request, key string) (val uint64, err error) {
-	var str string
-	if str = r.FormValue(key); str == "" {
-		return 0, nil
-	}
-
-	if val, err = strconv.ParseUint(str, 10, 64); err != nil {
-		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
-	}
-
-	return val, nil
-}
-
-func extractUint32(r *http.Request, key string) (val uint32, err error) {
-	var str string
-	if str = r.FormValue(key); str == "" {
-		return 0, nil
-	}
-
-	var valUint64 uint64
-	if valUint64, err = strconv.ParseUint(str, 10, 32); err != nil || valUint64 > math.MaxUint32 {
-		return 0, fmt.Errorf("parse [%s] is not valid uint32 [%d], err %v", key, val, err)
-	}
-
-	val = uint32(valUint64)
-	return val, nil
-}
-
-func extractPositiveUint64(r *http.Request, key string) (val uint64, err error) {
-	var str string
-	if str = r.FormValue(key); str == "" {
-		return 0, fmt.Errorf("args [%s] is not legal", key)
-	}
-
-	if val, err = strconv.ParseUint(str, 10, 64); err != nil || val <= 0 {
-		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
-	}
-
-	return val, nil
-}
-
-func extractStr(r *http.Request, key string) (val string) {
-	return r.FormValue(key)
-}
-
 func extractOwner(r *http.Request) (owner string, err error) {
 	if owner = r.FormValue(volOwnerKey); owner == "" {
 		err = keyNotFound(volOwnerKey)
@@ -2231,7 +2051,6 @@ func parseRequestToUpdateDecommissionFirstHostParallelLimit(r *http.Request) (ad
 		err = keyNotFound(addrKey)
 		return
 	}
-
 	var value string
 	if value = r.FormValue(decommissionFirstHostParallelLimit); value == "" {
 		err = keyNotFound(decommissionFirstHostParallelLimit)
@@ -2239,10 +2058,6 @@ func parseRequestToUpdateDecommissionFirstHostParallelLimit(r *http.Request) (ad
 	}
 
 	limit, err = strconv.ParseUint(value, 10, 64)
-	if err != nil {
-		return
-	}
-
 	return
 }
 
@@ -2258,10 +2073,6 @@ func parseRequestToUpdateDecommissionFirstHostDiskParallelLimit(r *http.Request)
 	}
 
 	limit, err = strconv.ParseUint(value, 10, 64)
-	if err != nil {
-		return
-	}
-
 	return
 }
 
@@ -2277,10 +2088,6 @@ func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err e
 	}
 
 	limit, err = strconv.ParseUint(value, 10, 32)
-	if err != nil {
-		return
-	}
-
 	return
 }
 
@@ -2301,13 +2108,10 @@ func parseSetConfigParam(r *http.Request) (config map[string]string, err error) 
 		flashReadFlowLimit,
 		flashWriteFlowLimit,
 	}
-	for _, val := range keyList {
-		key := val
-		value := r.FormValue(key)
-		if value == "" {
-			continue
+	for _, key := range keyList {
+		if value := r.FormValue(key); value != "" {
+			config[key] = value
 		}
-		config[key] = value
 	}
 
 	if len(config) == 0 {
@@ -2328,7 +2132,7 @@ func parseGetConfigParam(r *http.Request) (key string, err error) {
 	return
 }
 
-func parserSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err error) {
+func parseSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2357,7 +2161,7 @@ func parserSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err
 	return
 }
 
-func parserUpdateQuotaParam(r *http.Request, req *proto.UpdateMasterQuotaReuqest) (err error) {
+func parseUpdateQuotaParam(r *http.Request, req *proto.UpdateMasterQuotaReuqest) (err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2438,7 +2242,7 @@ func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, inte
 	}
 
 	if interval > maxTrashInterval {
-		err = fmt.Errorf("trash interval can't great than %d, now %d", maxTrashInterval, interval)
+		err = fmt.Errorf("trash interval can't be greater than %d, now %d", maxTrashInterval, interval)
 		return
 	}
 	return
@@ -2516,26 +2320,143 @@ func extractMediaType(r *http.Request) (mediaType uint32, err error) {
 }
 
 func parseRocksDbFieldToUpdateVol(r *http.Request, vol *Vol) (storeMode int, err error) {
-	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
-		if storeMode, err = strconv.Atoi(storeModeStr); err != nil {
-			err = unmatchedKey(StoreModeKey)
-			return
-		}
-	} else {
-		storeMode = int(vol.DefaultStoreMode)
-	}
+	storeMode, err = extractUintWithDefault(r, StoreModeKey, int(vol.DefaultStoreMode))
 	return
 }
 
 func extractStoreMode(r *http.Request) (storeMode int, err error) {
-	storeModeStr := r.FormValue(StoreModeKey)
-	if storeModeStr == "" {
-		return
+	storeMode, err = extractUint(r, StoreModeKey)
+	return
+}
+
+func extractUint(r *http.Request, key string) (val int, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return 0, nil
 	}
 
-	storeMode, err = strconv.Atoi(storeModeStr)
-	if err != nil {
-		err = fmt.Errorf("convert storeMode[%v] to num failed; err:%v", storeModeStr, err.Error())
+	if val, err = strconv.Atoi(str); err != nil || val < 0 {
+		return 0, unmatchedKey(key)
 	}
-	return
+
+	return val, nil
+}
+
+func extractUint64(r *http.Request, key string) (val uint64, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return 0, nil
+	}
+
+	if val, err = strconv.ParseUint(str, 10, 64); err != nil {
+		return 0, unmatchedKey(key)
+	}
+
+	return val, nil
+}
+
+func extractUint32(r *http.Request, key string) (val uint32, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return 0, nil
+	}
+
+	var valUint64 uint64
+	if valUint64, err = strconv.ParseUint(str, 10, 32); err != nil {
+		return 0, unmatchedKey(key)
+	}
+
+	val = uint32(valUint64)
+	return val, nil
+}
+
+func extractPositiveUint64(r *http.Request, key string) (val uint64, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return 0, keyNotFound(key)
+	}
+
+	if val, err = strconv.ParseUint(str, 10, 64); err != nil || val <= 0 {
+		return 0, unmatchedKey(key)
+	}
+
+	return val, nil
+}
+
+func extractStr(r *http.Request, key string) (val string) {
+	return r.FormValue(key)
+}
+
+func extractUintWithDefault(r *http.Request, key string, def int) (val int, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return def, nil
+	}
+
+	if val, err = strconv.Atoi(str); err != nil || val < 0 {
+		return 0, unmatchedKey(key)
+	}
+
+	return val, nil
+}
+
+func extractUint32WithDefault(r *http.Request, key string, def uint32) (val uint32, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return def, nil
+	}
+
+	var valUint64 uint64
+	if valUint64, err = strconv.ParseUint(str, 10, 32); err != nil || valUint64 > math.MaxUint32 {
+		return 0, unmatchedKey(key)
+	}
+
+	val = uint32(valUint64)
+	return val, nil
+}
+
+func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint64, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return def, nil
+	}
+
+	if val, err = strconv.ParseUint(str, 10, 64); err != nil {
+		return 0, unmatchedKey(key)
+	}
+
+	return val, nil
+}
+
+func extractInt64WithDefault(r *http.Request, key string, def int64) (val int64, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return def, nil
+	}
+
+	if val, err = strconv.ParseInt(str, 10, 64); err != nil || val < 0 {
+		return 0, unmatchedKey(key)
+	}
+
+	return val, nil
+}
+
+func extractStrWithDefault(r *http.Request, key string, def string) (val string) {
+	if val = r.FormValue(key); val == "" {
+		return def
+	}
+	return val
+}
+
+func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return def, nil
+	}
+
+	if val, err = strconv.ParseBool(str); err != nil {
+		return false, unmatchedKey(key)
+	}
+
+	return val, nil
 }

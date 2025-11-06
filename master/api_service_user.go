@@ -275,8 +275,7 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 	vol.Owner = userInfo.UserID
 	if err = m.cluster.syncUpdateVol(vol); err != nil {
 		vol.Owner = owner
-		err = proto.ErrPersistenceByRaft
-		sendErrReply(w, r, newErrHTTPReply(err))
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
 		return
 	}
 	AuditLog(r, "transferUserVol", fmt.Sprintf("%s -> %s", owner, userInfo.UserID), nil)

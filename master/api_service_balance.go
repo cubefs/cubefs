@@ -373,14 +373,14 @@ func (m *Server) migrateMetaPartitionHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if !targetNode.IsWriteAble() || !targetNode.PartitionCntLimited() {
-		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
+		err = fmt.Errorf("[%s] is not writable, can't be used as target addr for migrate", targetAddr)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	mp, err = m.cluster.getMetaPartitionByID(mpid)
 	if err != nil {
-		err = fmt.Errorf("Failed to get meta partition (%d)", mpid)
+		err = fmt.Errorf("failed to get meta partition (%d)", mpid)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -422,7 +422,7 @@ func (m *Server) createMetaNodeBalancePlan(w http.ResponseWriter, r *http.Reques
 	// search the raft storage. Only store one plan
 	plan, err = m.cluster.loadBalanceTask()
 	if err == nil && plan != nil {
-		err = fmt.Errorf("There is a meta partition task plan already. Please remove it before create a new one.")
+		err = fmt.Errorf("there is a meta partition task plan already. Please remove it before create a new one")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
 		return
 	}
@@ -616,7 +616,7 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			log.LogWarnf("one balance task exist. clear it before kick out(%s)", offLineAddr)
-			err = fmt.Errorf("There is a meta partition task plan. Clear it before kick out new metanode")
+			err = fmt.Errorf("there is a meta partition task plan. Clear it before kick out new metanode")
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
 			return
 		}
@@ -736,7 +736,7 @@ func (m *Server) createMetaPartitionStoreModeChangePlan(w http.ResponseWriter, r
 	// search the raft storage. Only store one plan
 	plan, err := m.cluster.loadBalanceTask()
 	if err == nil && plan != nil {
-		err = fmt.Errorf("There is a meta partition task plan already. Please remove it before create a new one.")
+		err = fmt.Errorf("there is a meta partition task plan already. Please remove it before create a new one")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
 		return
 	}

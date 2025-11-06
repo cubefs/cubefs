@@ -64,7 +64,7 @@ func (l *ApiLimiter) Replace(limiterInfos map[string]*ApiLimitInfo) {
 func (l *ApiLimiter) SetLimiter(apiName string, Limit uint32, LimiterTimeout uint32) (err error) {
 	var normalizedName string
 	var qPath string
-	if err, normalizedName, qPath = l.IsApiNameValid(apiName); err != nil {
+	if normalizedName, qPath, err = l.IsApiNameValid(apiName); err != nil {
 		return err
 	}
 
@@ -84,7 +84,7 @@ func (l *ApiLimiter) SetLimiter(apiName string, Limit uint32, LimiterTimeout uin
 
 func (l *ApiLimiter) RmLimiter(apiName string) (err error) {
 	var qPath string
-	if err, _, qPath = l.IsApiNameValid(apiName); err != nil {
+	if _, qPath, err = l.IsApiNameValid(apiName); err != nil {
 		return err
 	}
 
@@ -115,26 +115,22 @@ func (l *ApiLimiter) Wait(qPath string) (err error) {
 	return nil
 }
 
-func (l *ApiLimiter) IsApiNameValid(name string) (err error, normalizedName, qPath string) {
-	normalizedName = strings.ToLower(name)
-	var ok bool
-	if qPath, ok = proto.GApiInfo[normalizedName]; ok {
-		return nil, normalizedName, qPath
+func (l *ApiLimiter) IsApiNameValid(name string) (string, string, error) {
+	normalizedName := strings.ToLower(name)
+	if qPath, ok := proto.GApiInfo[normalizedName]; ok {
+		return normalizedName, qPath, nil
 	}
-	return fmt.Errorf("api name [%v] is not valid", name), normalizedName, qPath
+	return normalizedName, "", fmt.Errorf("api name [%v] is not valid", name)
 }
 
 func (l *ApiLimiter) IsFollowerLimiter(qPath string) bool {
-	if qPath == proto.AdminGetIP || qPath == proto.ClientDataPartitions {
-		return true
-	}
-	return false
+	return qPath == proto.AdminGetIP || qPath == proto.ClientDataPartitions
 }
 
 func (l *ApiLimiter) updateLimiterInfoFromLeader(value []byte) {
 	limiterInfos := make(map[string]*ApiLimitInfo)
 	if err := json.Unmarshal(value, &limiterInfos); err != nil {
-		log.LogErrorf("action[updateLimiterInfoFromLeader], unmarshal err:%v", err.Error())
+		log.LogErrorf("action[updateLimiterInfoFromLeader] unmarshal err:%v", err.Error())
 		return
 	}
 
@@ -145,5 +141,5 @@ func (l *ApiLimiter) updateLimiterInfoFromLeader(value []byte) {
 	l.m.Lock()
 	l.limiterInfos = limiterInfos
 	l.m.Unlock()
-	log.LogInfof("action[updateLimiterInfoFromLeader], limiter info[%v]", value)
+	log.LogInfof("action[updateLimiterInfoFromLeader] limiter info[%v]", value)
 }

@@ -156,16 +156,12 @@ func (m *Server) setClusterInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) getMonitorPushAddr(w http.ResponseWriter, r *http.Request) {
-	var (
-		addr string
-		err  error
-	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetMonitorPushAddr))
 	defer func() {
-		doStatAndMetric(proto.AdminGetMonitorPushAddr, metric, err, nil)
+		doStatAndMetric(proto.AdminGetMonitorPushAddr, metric, nil, nil)
 	}()
 
-	addr = m.cluster.getMonitorPushAddr()
+	addr := m.cluster.getMonitorPushAddr()
 	sendOkReply(w, r, newSuccessHTTPReply(addr))
 }
 
@@ -233,6 +229,7 @@ func (m *Server) setMetaNodeGOGC(w http.ResponseWriter, r *http.Request) {
 	if metaNodeGOGC < defaultGOGCLowerLimit || metaNodeGOGC > defaultGOGCUpperLimit {
 		err = fmt.Errorf("metaNodeGOGC must be greater than or equal to %v and less than or equal to %v", defaultGOGCLowerLimit, defaultGOGCUpperLimit)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if err = m.cluster.setMetaNodeGOGC(metaNodeGOGC); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -259,6 +256,7 @@ func (m *Server) setDataNodeGOGC(w http.ResponseWriter, r *http.Request) {
 	if dataNodeGOGC < defaultGOGCLowerLimit || dataNodeGOGC > defaultGOGCUpperLimit {
 		err = fmt.Errorf("dataNodeGOGC must be greater than or equal to %v and less than or equal to %v", defaultGOGCLowerLimit, defaultGOGCUpperLimit)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if err = m.cluster.setDataNodeGOGC(dataNodeGOGC); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -331,11 +329,11 @@ func (m *Server) forbidVolume(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolHasDeleted, Msg: err.Error()})
 		return
 	}
-	oldForbiden := vol.Forbidden
+	oldForbidden := vol.Forbidden
 	vol.Forbidden = status
 	defer func() {
 		if err != nil {
-			vol.Forbidden = oldForbiden
+			vol.Forbidden = oldForbidden
 		}
 	}()
 	if err = m.cluster.syncUpdateVol(vol); err != nil {
@@ -361,9 +359,9 @@ func (m *Server) setEnableAuditLogForVolume(w http.ResponseWriter, r *http.Reque
 	defer func() {
 		doStatAndMetric(proto.AdminVolEnableAuditLog, metric, err, nil)
 		if err != nil {
-			log.LogErrorf("set volume aduit log failed, error: %v", err)
+			log.LogErrorf("set volume audit log failed, error: %v", err)
 		} else {
-			log.LogInfof("set volume aduit log to (%v) success", status)
+			log.LogInfof("set volume audit log to (%v) success", status)
 		}
 		AuditLog(r, proto.AdminVolEnableAuditLog, fmt.Sprintf("set volume(%s) audit log to (%v)", name, status), err)
 	}()
@@ -968,7 +966,7 @@ func (m *Server) getOpLog(w http.ResponseWriter, r *http.Request) {
 		})
 
 	default:
-		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("Invalid dimension: %s", dimension)))
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("invalid dimension: %s", dimension)))
 		return
 	}
 
@@ -1167,7 +1165,7 @@ func (m *Server) setApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 
 	// persist to rocksdb
 	var qPath string
-	if err, _, qPath = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
+	if _, qPath, err = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1221,7 +1219,7 @@ func (m *Server) rmApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 
 	// persist to rocksdb
 	var qPath string
-	if err, _, qPath = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
+	if _, qPath, err = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1404,7 +1402,7 @@ func (m *Server) getQosUpdateMasterLimit(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if limit < QosMasterAcceptCnt {
-			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("limit too less than %v", QosMasterAcceptCnt)))
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("limit is less than %v", QosMasterAcceptCnt)))
 			return
 		}
 
@@ -1478,8 +1476,12 @@ func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosPar
 
 	if isEnableIops {
 		if iopsRLimitStr := r.FormValue(IopsRKey); iopsRLimitStr != "" {
-			log.LogInfof("actin[parseRequestQos] iopsRLimitStr %v", iopsRLimitStr)
+			log.LogInfof("action[parseRequestQos] iopsRLimitStr %v", iopsRLimitStr)
 			if value, err = strconv.Atoi(iopsRLimitStr); err == nil {
+				if value < 0 {
+					err = fmt.Errorf("iops read %v must be non-negative", value)
+					return
+				}
 				qosParam.iopsRVal = uint64(value)
 				if !isMagnify && qosParam.iopsRVal < MinIoLimit {
 					err = fmt.Errorf("iops read %v need larger than 100", value)
@@ -1487,23 +1489,27 @@ func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosPar
 				}
 				if isMagnify && (qosParam.iopsRVal < MinMagnify || qosParam.iopsRVal > MaxMagnify) {
 					err = fmt.Errorf("iops read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-					log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
+					log.LogErrorf("action[parseRequestQos] %v", err.Error())
 					return
 				}
 			}
 		}
 
 		if iopsWLimitStr := r.FormValue(IopsWKey); iopsWLimitStr != "" {
-			log.LogInfof("actin[parseRequestQos] iopsWLimitStr %v", iopsWLimitStr)
+			log.LogInfof("action[parseRequestQos] iopsWLimitStr %v", iopsWLimitStr)
 			if value, err = strconv.Atoi(iopsWLimitStr); err == nil {
+				if value < 0 {
+					err = fmt.Errorf("iops write %v must be non-negative", value)
+					return
+				}
 				qosParam.iopsWVal = uint64(value)
 				if !isMagnify && qosParam.iopsWVal < MinIoLimit {
-					err = fmt.Errorf("iops %v write write io larger than 100", value)
+					err = fmt.Errorf("iops %v write io larger than 100", value)
 					return
 				}
 				if isMagnify && (qosParam.iopsWVal < MinMagnify || qosParam.iopsWVal > MaxMagnify) {
 					err = fmt.Errorf("iops write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-					log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
+					log.LogErrorf("action[parseRequestQos] %v", err.Error())
 					return
 				}
 			}
@@ -1512,8 +1518,12 @@ func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosPar
 	}
 
 	if flowRLimitStr := r.FormValue(FlowRKey); flowRLimitStr != "" {
-		log.LogInfof("actin[parseRequestQos] flowRLimitStr %v", flowRLimitStr)
+		log.LogInfof("action[parseRequestQos] flowRLimitStr %v", flowRLimitStr)
 		if value, err = strconv.Atoi(flowRLimitStr); err == nil {
+			if value < 0 {
+				err = fmt.Errorf("flow read %v must be non-negative", value)
+				return
+			}
 			qosParam.flowRVal = uint64(value * flowFmt)
 			if !isMagnify && (qosParam.flowRVal < MinFlowLimit || qosParam.flowRVal > MaxFlowLimit) {
 				err = fmt.Errorf("flow read %v should be between 100M and 10TB ", value)
@@ -1521,23 +1531,27 @@ func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosPar
 			}
 			if isMagnify && (qosParam.flowRVal < MinMagnify || qosParam.flowRVal > MaxMagnify) {
 				err = fmt.Errorf("flow read magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-				log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
+				log.LogErrorf("action[parseRequestQos] %v", err.Error())
 				return
 			}
 		}
 	}
 	if flowWLimitStr := r.FormValue(FlowWKey); flowWLimitStr != "" {
-		log.LogInfof("actin[parseRequestQos] flowWLimitStr %v", flowWLimitStr)
+		log.LogInfof("action[parseRequestQos] flowWLimitStr %v", flowWLimitStr)
 		if value, err = strconv.Atoi(flowWLimitStr); err == nil {
+			if value < 0 {
+				err = fmt.Errorf("flow write %v must be non-negative", value)
+				return
+			}
 			qosParam.flowWVal = uint64(value * flowFmt)
 			if !isMagnify && (qosParam.flowWVal < MinFlowLimit || qosParam.flowWVal > MaxFlowLimit) {
 				err = fmt.Errorf("flow write %v should be between 100M and 10TB", value)
-				log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
+				log.LogErrorf("action[parseRequestQos] %v", err.Error())
 				return
 			}
 			if isMagnify && (qosParam.flowWVal < MinMagnify || qosParam.flowWVal > MaxMagnify) {
 				err = fmt.Errorf("flow write magnify %v must between %v and %v", value, MinMagnify, MaxMagnify)
-				log.LogErrorf("acttion[parseRequestQos] %v", err.Error())
+				log.LogErrorf("action[parseRequestQos] %v", err.Error())
 				return
 			}
 		}
@@ -1699,7 +1713,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	force, err = pareseBoolWithDefault(r, forceKey, false)
+	force, err = extractBoolWithDefault(r, forceKey, false)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1974,7 +1988,7 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	force, err = pareseBoolWithDefault(r, forceKey, false)
+	force, err = extractBoolWithDefault(r, forceKey, false)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2298,7 +2312,7 @@ func (m *Server) balanceMetaPartitionLeader(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	rstMsg := "balanceMetaPartitionLeader command sucess"
+	rstMsg := "balanceMetaPartitionLeader command success"
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -2351,7 +2365,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	decommissionType, err := parseUintParam(r, decommissionTypeKey)
+	decommissionType, err := extractUint(r, decommissionTypeKey)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2406,7 +2420,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminDiagnoseDataPartition, metric, err, nil)
 	}()
 
-	ignoreDiscardDp, err := pareseBoolWithDefault(r, ignoreDiscardKey, false)
+	ignoreDiscardDp, err := extractBoolWithDefault(r, ignoreDiscardKey, false)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2633,7 +2647,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolHasDeleted, Msg: err.Error()})
 			return
 		}
-		oldForbiden := vol.Forbidden
+		oldForbidden := vol.Forbidden
 		vol.Forbidden = true
 		vol.authKey = authKey
 		vol.DeleteExecTime = time.Now().Add(time.Duration(m.config.volDelayDeleteTimeHour) * time.Hour)
@@ -2643,7 +2657,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		m.cluster.deleteVolMutex.Unlock()
 		defer func() {
 			if err != nil {
-				vol.Forbidden = oldForbiden
+				vol.Forbidden = oldForbidden
 				vol.authKey = ""
 				vol.DeleteExecTime = time.Time{}
 				vol.user = nil
@@ -2693,7 +2707,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oldForbiden := vol.Forbidden
+	oldForbidden := vol.Forbidden
 	oldAuthKey := vol.authKey
 	oldDeleteExecTime := vol.DeleteExecTime
 	oldUser := vol.user
@@ -2703,7 +2717,7 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	vol.user = nil
 	defer func() {
 		if err != nil {
-			vol.Forbidden = oldForbiden
+			vol.Forbidden = oldForbidden
 			vol.authKey = oldAuthKey
 			vol.DeleteExecTime = oldDeleteExecTime
 			vol.user = oldUser
@@ -2793,7 +2807,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.authenticate, err = pareseBoolWithDefault(r, authenticateKey, vol.authenticate); err != nil {
+	if req.authenticate, err = extractBoolWithDefault(r, authenticateKey, vol.authenticate); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2835,7 +2849,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	// check whether can close forbidWriteOpOfProtoVer0
 	if req.forbidWriteOpOfProtoVer0 != vol.ForbidWriteOpOfProtoVer0.Load() && !req.forbidWriteOpOfProtoVer0 && len(vol.allowedStorageClass) > 1 {
 		err = fmt.Errorf("can't update forbidWriteOpOfProtoVer0 to false")
-		log.LogErrorf("updateVol: there are two allowd storage class, can't close forbidWriteOpOfProtoVer0. name %s, allowd %v", vol.Name, vol.allowedStorageClass)
+		log.LogErrorf("updateVol: there are two allowed storage class, can't close forbidWriteOpOfProtoVer0. name %s, allowed %v", vol.Name, vol.allowedStorageClass)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3577,7 +3591,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ignoreDiscardDp, err := pareseBoolWithDefault(r, ignoreDiscardKey, true)
+	ignoreDiscardDp, err := extractBoolWithDefault(r, ignoreDiscardKey, true)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -4335,7 +4349,7 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 		dstNs.putMetaNode(metaNode)
 		srcNs.deleteMetaNode(metaNode)
 		if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
-			dataNode.NodeSetID = srcNs.ID
+			metaNode.NodeSetID = srcNs.ID
 			return
 		}
 	}
@@ -4491,13 +4505,13 @@ func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err e
 	return
 }
 
-func (m *Server) updateNodesetCapcity(zoneName string, nodesetId uint64, capcity uint64) (err error) {
+func (m *Server) updateNodesetCapacity(zoneName string, nodesetId uint64, capacity uint64) (err error) {
 	var ns *nodeSet
 	var ok bool
 	var value interface{}
 
-	if capcity < defaultReplicaNum || capcity > 100 {
-		err = fmt.Errorf("capcity [%v] value out of scope", capcity)
+	if capacity < defaultReplicaNum || capacity > 100 {
+		err = fmt.Errorf("capacity [%v] value out of scope", capacity)
 		return
 	}
 
@@ -4512,20 +4526,23 @@ func (m *Server) updateNodesetCapcity(zoneName string, nodesetId uint64, capcity
 		return
 	}
 
-	ns.Capacity = int(capcity)
+	ns.Capacity = int(capacity)
 	ns.racksLock.Lock()
 	for _, rack := range ns.racks {
-		rack.Capacity = int(capcity) / 3
+		rack.Capacity = int(capacity) / 3
 	}
 	ns.racksLock.Unlock()
 
 	m.cluster.syncUpdateNodeSet(ns)
-	log.LogInfof("action[updateNodesetCapcity] zonename %v nodeset %v capcity %v", zoneName, nodesetId, capcity)
+	log.LogInfof("action[updateNodesetCapacity] zonename %v nodeset %v capacity %v", zoneName, nodesetId, capacity)
 	return
 }
 
 func (m *Server) buildNodeSetGrpInfoByID(domainId, grpId uint64) (*proto.SimpleNodeSetGrpInfo, error) {
-	domainIndex := m.cluster.domainManager.domainId2IndexMap[domainId]
+	domainIndex, exists := m.cluster.domainManager.domainId2IndexMap[domainId]
+	if !exists {
+		return nil, fmt.Errorf("domain not found")
+	}
 	nsgm := m.cluster.domainManager.domainNodeSetGrpVec[domainIndex]
 	var index int
 	for index = 0; index < len(nsgm.nodeSetGrpMap); index++ {
@@ -4778,7 +4795,7 @@ func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Req
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err := m.updateNodesetCapcity(params[zoneNameKey].(string), params[idKey].(uint64), params[countKey].(uint64)); err != nil {
+	if err := m.updateNodesetCapacity(params[zoneNameKey].(string), params[idKey].(uint64), params[countKey].(uint64)); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -5339,7 +5356,7 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	status, progress := disk.updateDecommissionStatus(m.cluster, true, false)
 	progress, _ = FormatFloatFloor(progress, 4)
 	resp := &proto.DecommissionProgress{
-		Progress:                 fmt.Sprintf("%.2f%%", progress*float64(100)),
+		Progress:                 fmt.Sprintf("%.2f%%", progress*100),
 		StatusMessage:            GetDecommissionStatusMessage(status),
 		DecommissionType:         GetDecommissionTypeMessage(disk.Type),
 		Weight:                   disk.DecommissionWeight,
@@ -5416,7 +5433,7 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			}
 			progress, _ = FormatFloatFloor(progress, 4)
 			decommissionProgress := proto.DecommissionProgress{
-				Progress:                 fmt.Sprintf("%.2f%%", progress*float64(100)),
+				Progress:                 fmt.Sprintf("%.2f%%", progress*100),
 				StatusMessage:            GetDecommissionStatusMessage(status),
 				DecommissionType:         GetDecommissionTypeMessage(disk.Type),
 				Weight:                   disk.DecommissionWeight,
@@ -5808,28 +5825,11 @@ func parseMigrateNodeParam(r *http.Request) (srcAddr, targetAddr string, limit i
 		return
 	}
 
-	limit, err = parseUintParam(r, countKey)
+	limit, err = extractUint(r, countKey)
 	if err != nil {
 		return
 	}
 
-	return
-}
-
-func parseUintParam(r *http.Request, key string) (num int, err error) {
-	val := r.FormValue(key)
-	if val == "" {
-		num = 0
-		return
-	}
-
-	numVal, err := strconv.ParseInt(val, 10, 32)
-	if err != nil {
-		err = fmt.Errorf("parseUintParam %s-%s is not legal, err %s", key, val, err.Error())
-		return
-	}
-
-	num = int(numVal)
 	return
 }
 
@@ -6052,11 +6052,11 @@ func parseReqToDecoDisk(r *http.Request) (nodeAddr, diskPath string, diskDisable
 	if err != nil {
 		return
 	}
-	decommissionType, err = parseUintParam(r, decommissionTypeKey)
+	decommissionType, err = extractUint(r, decommissionTypeKey)
 	if err != nil {
 		return
 	}
-	limit, err = parseUintParam(r, countKey)
+	limit, err = extractUint(r, countKey)
 	if err != nil {
 		return
 	}
@@ -6083,11 +6083,11 @@ func parseReqToQueryDecoDisk(r *http.Request) (decommissionType int, showAll boo
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	decommissionType, err = parseUintParam(r, decommissionTypeKey)
+	decommissionType, err = extractUint(r, decommissionTypeKey)
 	if err != nil {
 		return
 	}
-	showAll, err = pareseBoolWithDefault(r, ShowAll, false)
+	showAll, err = extractBoolWithDefault(r, ShowAll, false)
 	if err != nil {
 		return
 	}
@@ -6100,22 +6100,8 @@ type getVolParameter struct {
 	skipOwnerValidation bool
 }
 
-func pareseBoolWithDefault(r *http.Request, key string, old bool) (bool, error) {
-	val := r.FormValue(key)
-	if val == "" {
-		return old, nil
-	}
-
-	newVal, err := strconv.ParseBool(val)
-	if err != nil {
-		return false, fmt.Errorf("parse %s bool val err, err %s", key, err.Error())
-	}
-
-	return newVal, nil
-}
-
 func parseRaftForce(r *http.Request) (bool, error) {
-	return pareseBoolWithDefault(r, raftForceDelKey, false)
+	return extractBoolWithDefault(r, raftForceDelKey, false)
 }
 
 func parseWeight(r *http.Request) (int, error) {
@@ -6127,6 +6113,9 @@ func parseWeight(r *http.Request) (int, error) {
 	newVal, err := strconv.Atoi(val)
 	if err != nil {
 		return lowPriorityDecommissionWeight, fmt.Errorf("parse %s int val err, err %s", weightKey, err.Error())
+	}
+	if newVal < 0 {
+		return lowPriorityDecommissionWeight, fmt.Errorf("weight %v must be non-negative", newVal)
 	}
 
 	return newVal, nil
@@ -6140,7 +6129,7 @@ func parseDstNodeSet(r *http.Request) (uint64, error) {
 
 	newVal, err := strconv.ParseUint(val, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("parse %s uint64 vaal err, err %s", dstNodeSetKey, err.Error())
+		return 0, fmt.Errorf("parse %s uint64 val err, err %s", dstNodeSetKey, err.Error())
 	}
 
 	return newVal, nil
@@ -7247,7 +7236,7 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 	resp := &proto.DataDecommissionProgress{
 		Status:        status,
 		Weight:        dn.DecommissionWeight,
-		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
+		Progress:      fmt.Sprintf("%.2f%%", progress*100),
 		StatusMessage: GetDecommissionStatusMessage(status),
 		TotalDpCnt:    dn.DecommissionDpTotal,
 		StartTime:     time.Unix(int64(dn.DecommissionTime), 0).String(),
@@ -7848,7 +7837,7 @@ func (m *Server) CreateQuota(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.QuotaCreate, fmt.Sprintf("create vol(%v) quota(%v)", req.VolName, quotaId), err)
 	}()
 
-	if err = parserSetQuotaParam(r, req); err != nil {
+	if err = parseSetQuotaParam(r, req); err != nil {
 		log.LogErrorf("[CreateQuota] set quota fail err [%v]", err)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -7879,7 +7868,7 @@ func (m *Server) UpdateQuota(w http.ResponseWriter, r *http.Request) {
 		err error
 		vol *Vol
 	)
-	if err = parserUpdateQuotaParam(r, req); err != nil {
+	if err = parseUpdateQuotaParam(r, req); err != nil {
 		log.LogErrorf("[SetQuota] set quota fail err [%v]", err)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -8382,9 +8371,14 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// lifecycle transition storage class must in vol allowedStorageClass
+	if len(vol.allowedStorageClass) < 2 {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportStorageClass))
+		return
+	}
+
 	for _, rule := range req.Rules {
 		for _, t := range rule.Transitions {
-			if !allowedStorageClass(t.StorageClass, vol.allowedStorageClass) || len(vol.allowedStorageClass) < 2 {
+			if !allowedStorageClass(t.StorageClass, vol.allowedStorageClass) {
 				sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportStorageClass))
 				return
 			}
@@ -8392,8 +8386,7 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = m.cluster.SetBucketLifecycle(&req)
-	b, _ := json.Marshal(req)
-	AuditLog(r, "SetBucketLifecycle", fmt.Sprintf("LcConfiguration(%v)", string(b)), err)
+	AuditLog(r, "SetBucketLifecycle", fmt.Sprintf("LcConfiguration vol(%v)", req.VolName), err)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
@@ -8402,8 +8395,9 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 }
 
 func allowedStorageClass(sc string, allowed []uint32) bool {
+	storageType := proto.OpTypeToStorageType(sc)
 	for _, a := range allowed {
-		if proto.OpTypeToStorageType(sc) == a {
+		if storageType == a {
 			return true
 		}
 	}
@@ -8476,53 +8470,48 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if !m.isLeader() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "not leader"})
+		return
+	}
+
+	vol := r.FormValue("vol")
+	rid := r.FormValue("ruleid")
+
 	switch r.FormValue("op") {
 	case "info":
-		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
-			vol := r.FormValue("vol")
-			rid := r.FormValue("ruleid")
-			done := r.FormValue("done")
-			rsp, err := m.cluster.adminLcNodeInfo(vol, rid, done)
-			AuditLog(r, "AdminLcNode", fmt.Sprintf("op(info), vol(%v), ruleid(%v), done(%v)", vol, rid, done), err)
-			if err != nil {
-				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-			} else {
-				sendOkReply(w, r, newSuccessHTTPReply(rsp))
-			}
+		done := r.FormValue("done")
+		rsp, err := m.cluster.adminLcNodeInfo(vol, rid, done)
+		AuditLog(r, "AdminLcNode", fmt.Sprintf("op(info), vol(%v), ruleid(%v), done(%v)", vol, rid, done), err)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		} else {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "not leader"})
+			sendOkReply(w, r, newSuccessHTTPReply(rsp))
 		}
 	case "start":
-		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
-			vol := r.FormValue("vol")
-			rid := r.FormValue("ruleid")
-			success, msg := m.cluster.lcMgr.startLcScan(vol, rid)
-			AuditLog(r, "AdminLcNode", fmt.Sprintf("op(start), vol(%v), ruleid(%v), msg: %v", vol, rid, msg), nil)
-			if !success {
-				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
-			} else {
-				sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
-			}
+		success, msg := m.cluster.lcMgr.startLcScan(vol, rid)
+		AuditLog(r, "AdminLcNode", fmt.Sprintf("op(start), vol(%v), ruleid(%v), msg: %v", vol, rid, msg), nil)
+		if !success {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 		} else {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "not leader"})
+			sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
 		}
 	case "stop":
-		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
-			vol := r.FormValue("vol")
-			rid := r.FormValue("ruleid")
-			success, msg := m.cluster.lcMgr.stopLcScan(vol, rid)
-			AuditLog(r, "AdminLcNode", fmt.Sprintf("op(stop), vol(%v), ruleid(%v), msg: %v", vol, rid, msg), nil)
-			if !success {
-				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
-			} else {
-				sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
-			}
+		success, msg := m.cluster.lcMgr.stopLcScan(vol, rid)
+		AuditLog(r, "AdminLcNode", fmt.Sprintf("op(stop), vol(%v), ruleid(%v), msg: %v", vol, rid, msg), nil)
+		if !success {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 		} else {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "not leader"})
+			sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
 		}
 	default:
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "invalid op"})
 	}
+}
+
+func (m *Server) isLeader() bool {
+	return m.cluster.partition != nil && m.cluster.partition.IsRaftLeader()
 }
 
 func (m *Server) S3QosSet(w http.ResponseWriter, r *http.Request) {
