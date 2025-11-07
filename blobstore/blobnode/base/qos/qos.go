@@ -18,6 +18,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -27,6 +28,7 @@ import (
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
@@ -120,6 +122,15 @@ func (mgr *QosMgr) ResetLevelConfig(level bnapi.IOType, levelConf LevelFlowConfi
 
 	levelQos.resetLevelLimit(levelConf)
 	return true
+}
+
+// GetLimiterStats get the disk's current bandwidth and concurrence
+func (mgr *QosMgr) GetLimiterStats() map[string]bnapi.IoLimiterStats {
+	stats := make(map[string]bnapi.IoLimiterStats)
+	for ioType, q := range mgr.qos {
+		stats[ioType.String()] = q.getLimiterStats()
+	}
+	return stats
 }
 
 func (mgr *QosMgr) setDiskConfig(diskConf CommonDiskConfig) {
@@ -239,7 +250,7 @@ func (q *queueQos) UpdateQosBpsLimiter(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 	reason := ""
 
-	target, currentBps := 0, q.diskBps
+	target, curDiskBps := 0, q.diskBps
 	lastBps := int64(q.limitBps.Limit())
 	diskConf := q.getter.getDiskConfig()
 	levelConf := q.getLevelConf()
@@ -249,15 +260,15 @@ func (q *queueQos) UpdateQosBpsLimiter(ctx context.Context) {
 	levelIdleBps := int64(float64(levelConfBps) * levelConf.IdleFactor)
 
 	switch {
-	case currentBps >= diskConfBps && lastBps >= levelConfBps:
+	case curDiskBps >= diskConfBps && lastBps >= levelConfBps:
 		// reduce limit to level*busy when disk is busy
 		target = int(float64(levelConfBps) * levelConf.BusyFactor)
 		reason = reasonBusy
-	case currentBps < diskIdleBps && lastBps < levelIdleBps:
+	case curDiskBps < diskIdleBps && lastBps < levelIdleBps:
 		// increase limit to level*idle when disk is idle
 		target = int(levelIdleBps)
 		reason = reasonIdle
-	case currentBps < diskConfBps && lastBps < levelConfBps:
+	case curDiskBps < diskConfBps && lastBps < levelConfBps:
 		// reset to original limit when load normalizes
 		target = int(levelConfBps)
 		reason = reasonOriginal
@@ -280,11 +291,11 @@ func (q *queueQos) UpdateQosConcurrency(ctx context.Context) {
 	reason := ""
 
 	// The value of iops is very small, so the result of ema needs to be increased by 1000 multiple to be accurate
-	currIops := q.diskIOps / emaMultiple
+	diskIops := q.diskIOps / emaMultiple
 	diskConf := q.getter.getDiskConfig()
 	levelConf := q.getLevelConf()
 	target, original, lastCon := int64(0), levelConf.Concurrency, q.concurrence
-	diskIopsUsage := float64(currIops) / float64(diskConf.DiskIops)
+	diskIopsUsage := float64(diskIops) / float64(diskConf.DiskIops)
 	idle := int64(float64(original) * levelConf.IdleFactor)
 
 	// Adjust concurrency based on disk utilization
@@ -309,7 +320,7 @@ func (q *queueQos) UpdateQosConcurrency(ctx context.Context) {
 	if lastCon == target {
 		return
 	}
-	q.concurrence = target
+	atomic.StoreInt64(&q.concurrence, target)
 	q.limitConcurrency.Reset(int(target))
 	span.Infof("qos dynamical update concurrence: reason:%s, diskID:%d, type:%s, %d -> %d",
 		reason, diskConf.DiskID, q.conf.IOType.String(), lastCon, target)
@@ -360,6 +371,21 @@ func (q *queueQos) resetLevelLimit(conf LevelFlowConfig) {
 	}
 	if conf.MBPS > 0 {
 		resetLimiter(q.limitBps, int(conf.MBPS*humanize.MiByte))
+	}
+}
+
+// getLimiterStats get level qos stats of the disk's: current bandwidth and concurrence
+func (q *queueQos) getLimiterStats() bnapi.IoLimiterStats {
+	conRunning := q.limitConcurrency.Running()
+	bidRunning := q.limitBid.Running()
+	conCap := int(atomic.LoadInt64(&q.concurrence))
+	bidCap := int(q.conf.BidConcurrency)
+	// maxCapacityBps := q.limitBps.Burst() // max limiter token capacity
+	// remainBps := int(q.limitBps.Tokens()) // current remain limiter tokens
+	return bnapi.IoLimiterStats{
+		Concurrency:    bnapi.LimiterStat{Running: conRunning, Capacity: conCap, Remaining: util.Max(conCap-conRunning, 0)},
+		BidConcurrency: bnapi.LimiterStat{Running: bidRunning, Capacity: bidCap, Remaining: util.Max(bidCap-bidRunning, 0)},
+		Bandwidth:      bnapi.LimiterStat{Running: -1, Capacity: int(q.limitBps.Limit()), Remaining: -1},
 	}
 }
 

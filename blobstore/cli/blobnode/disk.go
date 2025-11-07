@@ -86,6 +86,26 @@ func addCmdDisk(cmd *grumble.Command) {
 		},
 	})
 
+	diskCommand.AddCommand(&grumble.Command{
+		Name: "qos_stat",
+		Help: "show qos stat info",
+		Flags: func(f *grumble.Flags) {
+			blobnodeFlags(f)
+			f.UintL("diskid", 1, "specific disk id; or 0 means all disk")
+		},
+		Run: func(c *grumble.Context) error {
+			cli := blobnode.New(&blobnode.Config{})
+			host := c.Flags.String("host")
+			args := blobnode.QosStatArgs{DiskID: proto.DiskID(c.Flags.Uint("diskid"))}
+			stat, err := cli.QosStat(common.CmdContext(), host, &args)
+			if err != nil {
+				return err
+			}
+			fmt.Println(common.Readable(stat))
+			return nil
+		},
+	})
+
 	addCmdDiskDrop(diskCommand)
 }
 

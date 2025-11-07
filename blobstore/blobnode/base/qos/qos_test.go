@@ -753,6 +753,123 @@ func TestStringToQosType(t *testing.T) {
 	require.Equal(t, bnapi.BackgroundIO.String(), typeMap[bnapi.BackgroundIO])
 }
 
+func TestQosMgr_GetLimiterStats(t *testing.T) {
+	ioStat, _ := iostat.StatInit("", 0, true)
+	iom := &flow.IOFlowStat{}
+	for i := range bnapi.GetAllIOType() {
+		iom[i] = ioStat
+	}
+	conf := Config{
+		StatGetter: iom,
+		FlowConfig: FlowConfig{
+			CommonDiskConfig: CommonDiskConfig{
+				DiskBandwidthMB:  100,
+				UpdateIntervalMs: 200,
+				DiskIdleFactor:   0.5,
+			},
+			Level: LevelConfigMap{
+				bnapi.ReadIO.String():       {Concurrency: 100, BidConcurrency: 50, MBPS: 50},
+				bnapi.WriteIO.String():      {Concurrency: 80, BidConcurrency: 30, MBPS: 30},
+				bnapi.DeleteIO.String():     {Concurrency: 60, BidConcurrency: 20, MBPS: 10},
+				bnapi.BackgroundIO.String(): {Concurrency: 40, BidConcurrency: 10, MBPS: 5},
+			},
+		},
+	}
+
+	mgr, err := NewQosMgr(conf)
+	require.NoError(t, err)
+	defer mgr.Close()
+
+	t.Run("get limiter stats for all IO types", func(t *testing.T) {
+		stats := mgr.GetLimiterStats()
+		require.NotNil(t, stats)
+		require.Len(t, stats, 4)
+
+		// Verify all IO types have statistics
+		require.Contains(t, stats, bnapi.ReadIO.String())
+		require.Contains(t, stats, bnapi.WriteIO.String())
+		require.Contains(t, stats, bnapi.DeleteIO.String())
+		require.Contains(t, stats, bnapi.BackgroundIO.String())
+
+		// Verify ReadIO statistics
+		expect := bnapi.IoLimiterStats{
+			Concurrency:    bnapi.LimiterStat{Running: 0, Capacity: 100, Remaining: 100},
+			BidConcurrency: bnapi.LimiterStat{Running: 0, Capacity: 50, Remaining: 50},
+			// Bandwidth:      bnapi.LimiterStat{Running: 0, Capacity: 2 * 50 * humanize.MiByte, Remaining: 2 * 50 * humanize.MiByte},
+			Bandwidth: bnapi.LimiterStat{Running: -1, Capacity: 50 * humanize.MiByte, Remaining: -1},
+		}
+		readStats := stats[bnapi.ReadIO.String()]
+		require.Equal(t, expect, readStats)
+
+		// Verify WriteIO statistics
+		// Note: Only ReadIO can configure BidConcurrency, other IO types default to 1
+		writeStats := stats[bnapi.WriteIO.String()]
+		expect = bnapi.IoLimiterStats{
+			Concurrency:    bnapi.LimiterStat{Running: 0, Capacity: 80, Remaining: 80},
+			BidConcurrency: bnapi.LimiterStat{Running: 0, Capacity: 1, Remaining: 1},
+			Bandwidth:      bnapi.LimiterStat{Running: -1, Capacity: 30 * humanize.MiByte, Remaining: -1},
+		}
+		require.Equal(t, expect, writeStats)
+	})
+
+	t.Run("get limiter stats after acquire and release", func(t *testing.T) {
+		ctx := bnapi.SetIoType(context.Background(), bnapi.ReadIO)
+		qos, ok := mgr.GetQueueQos(ctx)
+		require.True(t, ok)
+
+		// Get initial statistics
+		stats := mgr.GetLimiterStats()
+		initialRunning := stats[bnapi.ReadIO.String()].Concurrency.Running
+		require.Equal(t, 0, initialRunning)
+
+		// Statistics should be updated after Acquire
+		require.NoError(t, qos.Acquire())
+		stats = mgr.GetLimiterStats()
+		expect := bnapi.LimiterStat{Running: 1, Capacity: 100, Remaining: 99}
+		require.Equal(t, expect, stats[bnapi.ReadIO.String()].Concurrency)
+
+		// Statistics should be restored after Release
+		qos.Release()
+		stats = mgr.GetLimiterStats()
+		expect = bnapi.LimiterStat{Running: 0, Capacity: 100, Remaining: 100}
+		require.Equal(t, expect, stats[bnapi.ReadIO.String()].Concurrency)
+
+		// Statistics should be updated after use Bps
+		require.Equal(t, 50*humanize.MiByte, int(qos.(*queueQos).limitBps.Limit()))
+		require.Equal(t, 2*50*humanize.MiByte, int(qos.(*queueQos).limitBps.Burst()))
+		err = qos.(*queueQos).limitBps.WaitN(ctx, 10*humanize.MiByte)
+		require.NoError(t, err)
+		stats = mgr.GetLimiterStats()
+		expect = bnapi.LimiterStat{Running: -1, Capacity: 50 * humanize.MiByte, Remaining: -1}
+		require.Equal(t, expect.Capacity, stats[bnapi.ReadIO.String()].Bandwidth.Capacity)
+		require.LessOrEqual(t, expect.Remaining, stats[bnapi.ReadIO.String()].Bandwidth.Remaining)
+		require.GreaterOrEqual(t, expect.Running, stats[bnapi.ReadIO.String()].Bandwidth.Running)
+	})
+
+	t.Run("get limiter stats with bid acquire and release", func(t *testing.T) {
+		ctx := bnapi.SetIoType(context.Background(), bnapi.ReadIO)
+		qos, ok := mgr.GetQueueQos(ctx)
+		require.True(t, ok)
+
+		// Get initial statistics
+		stats := mgr.GetLimiterStats()
+		initialBidRunning := stats[bnapi.ReadIO.String()].BidConcurrency.Running
+		require.Equal(t, 0, initialBidRunning)
+
+		// Statistics should be updated after AcquireBid
+		require.NoError(t, qos.AcquireBid(1))
+		stats = mgr.GetLimiterStats()
+		require.Equal(t, initialBidRunning+1, stats[bnapi.ReadIO.String()].BidConcurrency.Running)
+		require.Equal(t, 49, stats[bnapi.ReadIO.String()].BidConcurrency.Remaining)
+
+		// Statistics should be restored after ReleaseBid
+		qos.ReleaseBid(1)
+		stats = mgr.GetLimiterStats()
+		require.Equal(t, initialBidRunning, stats[bnapi.ReadIO.String()].BidConcurrency.Running)
+		require.Equal(t, 50, stats[bnapi.ReadIO.String()].BidConcurrency.Remaining)
+	})
+}
+
 func BenchmarkQosMgr_TryAcquire(b *testing.B) {
 	ioStat, _ := iostat.StatInit("", 0, true)
 	iom := &flow.IOFlowStat{}

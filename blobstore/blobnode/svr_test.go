@@ -929,6 +929,8 @@ func TestService_ConfigReload(t *testing.T) {
 	require.NoError(t, err)
 
 	testServer := httptest.NewServer(NewHandler(svr))
+	ds1.EXPECT().ID().Return(proto.DiskID(101)).AnyTimes()
+	ds2.EXPECT().ID().Return(proto.DiskID(102)).AnyTimes()
 
 	{
 		// error
@@ -1012,6 +1014,18 @@ func TestService_ConfigReload(t *testing.T) {
 		log.Infof("qos mgr config: %+v\n", dest)
 		require.Equal(t, int64(17), dest.CommonDiskConfig.DiskBandwidthMB)
 		require.Equal(t, int64(13), dest.Level[bnapi.ReadIO.String()].MBPS)
+
+		totalUrl = testServer.URL + "/qos/stat/diskid/101"
+		resp, err = HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+		defer resp.Body.Close()
+
+		totalUrl = testServer.URL + "/qos/stat/diskid/0"
+		resp, err = HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+		defer resp.Body.Close()
 	}
 }
 

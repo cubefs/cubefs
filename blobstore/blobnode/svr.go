@@ -222,6 +222,52 @@ func (s *Service) DiskStat(c *rpc.Context) {
 	c.RespondJSON(&info)
 }
 
+/*
+ *  method:         GET
+ *  url:            /qos/stat/diskid/{diskid}
+ *  response body:  json.Marshal(map[string]IoLimiterStats)
+ */
+func (s *Service) QosStat(c *rpc.Context) {
+	args := new(bnapi.QosStatArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("qos stat args: %v", args)
+	allStat := make(map[proto.DiskID]map[string]bnapi.IoLimiterStats)
+
+	// get specific disk
+	if bnapi.IsValidDiskID(args.DiskID) {
+		s.lock.RLock()
+		ds, exist := s.Disks[args.DiskID]
+		s.lock.RUnlock()
+		if !exist {
+			span.Errorf("diskID %d not exist", args.DiskID)
+			c.RespondError(bloberr.ErrNoSuchDisk)
+			return
+		}
+
+		allStat[args.DiskID] = ds.GetIoQos().GetLimiterStats()
+		span.Infof("get disk %d qos stat: %v", args.DiskID, allStat)
+		c.RespondJSON(allStat)
+		return
+	}
+
+	// get all disk
+	disks := s.copyDiskStorages(ctx)
+	for _, ds := range disks {
+		if qosMgr := ds.GetIoQos(); qosMgr != nil {
+			allStat[ds.ID()] = qosMgr.GetLimiterStats()
+		}
+	}
+
+	span.Infof("all disk qos stat: %v", allStat)
+	c.RespondJSON(allStat)
+}
+
 func (s *Service) copyDiskStorages(ctx context.Context) []core.DiskAPI {
 	disks := make([]core.DiskAPI, 0)
 	s.lock.RLock()

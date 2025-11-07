@@ -200,6 +200,21 @@ func (mr *MockStorageAPIMockRecorder) PutShard(arg0, arg1, arg2 interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutShard", reflect.TypeOf((*MockStorageAPI)(nil).PutShard), arg0, arg1, arg2)
 }
 
+// QosStat mocks base method.
+func (m *MockStorageAPI) QosStat(arg0 context.Context, arg1 string, arg2 *blobnode.QosStatArgs) (map[proto.DiskID]map[string]blobnode.IoLimiterStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QosStat", arg0, arg1, arg2)
+	ret0, _ := ret[0].(map[proto.DiskID]map[string]blobnode.IoLimiterStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QosStat indicates an expected call of QosStat.
+func (mr *MockStorageAPIMockRecorder) QosStat(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QosStat", reflect.TypeOf((*MockStorageAPI)(nil).QosStat), arg0, arg1, arg2)
+}
+
 // RangeGetShard mocks base method.
 func (m *MockStorageAPI) RangeGetShard(arg0 context.Context, arg1 string, arg2 *blobnode.RangeGetShardArgs) (io.ReadCloser, uint32, error) {
 	m.ctrl.T.Helper()

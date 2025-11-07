@@ -69,6 +69,31 @@ type InspectCleanMetricArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 }
 
+// LimiterStat single limiter using counter
+type LimiterStat struct {
+	Running   int `json:"running"`
+	Capacity  int `json:"capacity"`
+	Remaining int `json:"remaining"`
+}
+
+// IoLimiterStats single level qos type limiter stats
+type IoLimiterStats struct {
+	Concurrency    LimiterStat `json:"concurrency"`
+	BidConcurrency LimiterStat `json:"bid_concurrency"`
+	Bandwidth      LimiterStat `json:"bandwidth"`
+}
+
+type QosStatArgs struct {
+	DiskID proto.DiskID `json:"diskid"`
+}
+
+func (c *client) QosStat(ctx context.Context, host string, args *QosStatArgs) (stat map[proto.DiskID]map[string]IoLimiterStats, err error) {
+	urlStr := fmt.Sprintf("%s/disk/stat/diskid/%d", host, args.DiskID)
+	stat = make(map[proto.DiskID]map[string]IoLimiterStats)
+	err = c.GetWith(ctx, urlStr, stat)
+	return
+}
+
 type DiskStatArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 }
@@ -90,6 +115,7 @@ type StorageAPI interface {
 	Close(ctx context.Context, host string) error
 	Stat(ctx context.Context, host string) (infos []*clustermgr.BlobNodeDiskInfo, err error)
 	DiskInfo(ctx context.Context, host string, args *DiskStatArgs) (di *clustermgr.BlobNodeDiskInfo, err error)
+	QosStat(ctx context.Context, host string, args *QosStatArgs) (stat map[proto.DiskID]map[string]IoLimiterStats, err error)
 
 	// chunks
 	CreateChunk(ctx context.Context, host string, args *CreateChunkArgs) (err error)
