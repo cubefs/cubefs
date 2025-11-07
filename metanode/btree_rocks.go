@@ -1981,8 +1981,9 @@ func (b *InodeRocks) Range(start, end *Inode, cb func(i *Inode) bool) error {
 	startByte = startBuf.Bytes()
 	endByte = endBuf.Bytes()
 
+	inode := NewInode(0, 0)
 	callBackFunc = func(v []byte) (bool, error) {
-		inode := NewInode(0, 0)
+		inode.ResetValue()
 		if err := inode.Unmarshal(v); err != nil {
 			return false, err
 		}
@@ -2454,10 +2455,11 @@ func (r *RocksSnapShot) Count(tp TreeType) uint64 {
 
 func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) bool) error {
 	tableType := getTableTypeKey(tp)
+	inode := NewInode(0, 0)
 	callbackFunc := func(k, v []byte) (bool, error) {
 		switch tp {
 		case InodeType:
-			inode := NewInode(0, 0)
+			inode.ResetValue()
 			if err := inode.Unmarshal(v); err != nil {
 				return false, err
 			}
