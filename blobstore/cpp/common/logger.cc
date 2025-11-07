@@ -208,15 +208,15 @@ void LoggerFactory::Run() {
 
 bool LoggerFactory::ShouldLog(LogType log_type, spdlog::level::level_enum level) {
     if (log_array_[static_cast<int>(log_type)]) [[likely]] {
-            return log_array_[static_cast<int>(log_type)]->should_log(level);
-        }
+        return log_array_[static_cast<int>(log_type)]->should_log(level);
+    }
     return false;
 }
 
 void LoggerFactory::SetLevel(LogType log_type, spdlog::level::level_enum level) {
     if (log_array_[static_cast<int>(log_type)]) [[likely]] {
-            return log_array_[static_cast<int>(log_type)]->set_level(level);
-        }
+        return log_array_[static_cast<int>(log_type)]->set_level(level);
+    }
 }
 
 Logger* LoggerFactory::GetLocalLogger() {

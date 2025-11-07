@@ -28,4 +28,3 @@ T GetRandomNumber(T start, T end) {
 }
 
 }  // namespace blobstore
-

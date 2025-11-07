@@ -187,20 +187,20 @@ class Logger {
 #define InitAuditLog(filename, max_file_size, max_files) \
     INIT_LOGGER(blobstore::LogType::Audit, filename, spdlog::level::info, max_file_size, max_files)
 
-#define DISABLE_AUDIT_LOG()                                                  \
-    do {                                                                     \
-        blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory();        \
-        if (ft) [[likely]] {                                                 \
-                ft->SetLevel(blobstore::LogType::Audit, spdlog::level::off); \
-            }                                                                \
+#define DISABLE_AUDIT_LOG()                                              \
+    do {                                                                 \
+        blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory();    \
+        if (ft) [[likely]] {                                             \
+            ft->SetLevel(blobstore::LogType::Audit, spdlog::level::off); \
+        }                                                                \
     } while (0)
 
-#define ENABLE_AUDIT_LOG()                                                    \
-    do {                                                                      \
-        blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory();         \
-        if (ft) [[likely]] {                                                  \
-                ft->SetLevel(blobstore::LogType::Audit, spdlog::level::info); \
-            }                                                                 \
+#define ENABLE_AUDIT_LOG()                                                \
+    do {                                                                  \
+        blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory();     \
+        if (ft) [[likely]] {                                              \
+            ft->SetLevel(blobstore::LogType::Audit, spdlog::level::info); \
+        }                                                                 \
     } while (0)
 
 #define LOG_ENABLE_DISCARD_MODE() blobstore::LoggerFactory::EnableDiscardMode()
@@ -208,44 +208,41 @@ class Logger {
 #define LOG_DISABLE_DISCARD_MODE() blobstore::LoggerFactory::DisableDiscardMode()
 
 // str_level value: trace, debug, info, warning, error, critical
-#define LOG_SET_LEVEL(str_level)                                                              \
-    do {                                                                                      \
-        blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory();                         \
-        if (ft) [[likely]] {                                                                  \
-                ft->SetLevel(blobstore::LogType::Normal, spdlog::level::from_str(str_level)); \
-            }                                                                                 \
-        else {                                                                                \
-            spdlog::set_level(spdlog::level::from_str(str_level));                            \
-        }                                                                                     \
+#define LOG_SET_LEVEL(str_level)                                                          \
+    do {                                                                                  \
+        blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory();                     \
+        if (ft) [[likely]] {                                                              \
+            ft->SetLevel(blobstore::LogType::Normal, spdlog::level::from_str(str_level)); \
+        } else {                                                                          \
+            spdlog::set_level(spdlog::level::from_str(str_level));                        \
+        }                                                                                 \
     } while (0)
 
-#define LOG_COMMON(level, ...)                                                                    \
-    do {                                                                                          \
-        blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory();                             \
-        if (ft) [[likely]] {                                                                      \
-                if (ft->ShouldLog(blobstore::LogType::Normal, level)) {                           \
-                    ft->GetLocalLogger()->Log(                                                    \
-                        blobstore::LogType::Normal,                                               \
-                        spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, level,           \
-                        __VA_ARGS__);                                                             \
-                }                                                                                 \
-            }                                                                                     \
-        else {                                                                                    \
-            if (spdlog::should_log(level)) {                                                      \
-                spdlog::default_logger_raw()->log(                                                \
-                    spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, level, __VA_ARGS__); \
-            }                                                                                     \
-        }                                                                                         \
-    } while (0)
-
-#define AUDIT_LOG(...)                                                                             \
+#define LOG_COMMON(level, ...)                                                                     \
     do {                                                                                           \
         blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory();                              \
-        if (ft && ft->ShouldLog(blobstore::LogType::Audit, spdlog::level::info)) [[likely]] {      \
-                ft->GetLocalLogger()->Log(LogType::Audit,                                          \
+        if (ft) [[likely]] {                                                                       \
+            if (ft->ShouldLog(blobstore::LogType::Normal, level)) {                                \
+                ft->GetLocalLogger()->Log(blobstore::LogType::Normal,                              \
                                           spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, \
-                                          spdlog::level::info, __VA_ARGS__);                       \
+                                          level, __VA_ARGS__);                                     \
             }                                                                                      \
+        } else {                                                                                   \
+            if (spdlog::should_log(level)) {                                                       \
+                spdlog::default_logger_raw()->log(                                                 \
+                    spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, level, __VA_ARGS__);  \
+            }                                                                                      \
+        }                                                                                          \
+    } while (0)
+
+#define AUDIT_LOG(...)                                                                         \
+    do {                                                                                       \
+        blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory();                          \
+        if (ft && ft->ShouldLog(blobstore::LogType::Audit, spdlog::level::info)) [[likely]] {  \
+            ft->GetLocalLogger()->Log(LogType::Audit,                                          \
+                                      spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, \
+                                      spdlog::level::info, __VA_ARGS__);                       \
+        }                                                                                      \
     } while (0)
 
 #define LOG_TRACE(...) LOG_COMMON(spdlog::level::trace, __VA_ARGS__)
@@ -271,8 +268,8 @@ class Logger {
     do {                                                              \
         blobstore::LoggerFactory* ft = blobstore::GetLoggerFactory(); \
         if (ft) [[likely]] {                                          \
-                ft->GetLocalLogger()->Flush();                        \
-            }                                                         \
+            ft->GetLocalLogger()->Flush();                            \
+        }                                                             \
     } while (0)
 
 }  // namespace blobstore
