@@ -480,3 +480,20 @@ func GetAvgLatencyMs(typeName string) float32 {
 	}
 	return float32(avgUs) / 1000
 }
+
+func GetCount(typeName string) uint32 {
+	if gSt == nil {
+		return 0
+	}
+
+	if gSt.useMutex {
+		gSt.Lock()
+		defer gSt.Unlock()
+	}
+
+	typeInfo := gSt.typeInfoMap[typeName]
+	if typeInfo == nil {
+		return 0
+	}
+	return typeInfo.allCount
+}

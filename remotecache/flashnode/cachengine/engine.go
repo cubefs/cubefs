@@ -1046,6 +1046,44 @@ func (c *CacheEngine) GetCacheBytes() map[string]int64 {
 	return result
 }
 
+func (c *CacheEngine) GetLruUsageRatio() float64 {
+	var totalLen, totalCapacity int
+	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		cacheItem := value.(*lruCacheItem)
+		totalLen += cacheItem.lruCache.Len()
+		totalCapacity += cacheItem.config.Capacity
+		return true
+	})
+	if totalCapacity > 0 {
+		return float64(totalLen) / float64(totalCapacity)
+	}
+	return 0
+}
+
+func (c *CacheEngine) GetDiskUsageRatio() map[string]float64 {
+	result := make(map[string]float64)
+	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		cacheItem := value.(*lruCacheItem)
+		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
+			fs := syscall.Statfs_t{}
+			if err := syscall.Statfs(cacheItem.disk.Path, &fs); err != nil {
+				log.LogErrorf("get disk(%s) stat err:%v", cacheItem.disk.Path, err)
+				return true
+			}
+			totalSpace := int64(fs.Blocks) * int64(fs.Bsize)
+			usedSpace := int64(fs.Blocks-fs.Bfree) * int64(fs.Bsize)
+			if totalSpace > 0 {
+				usageRatio := float64(usedSpace) / float64(totalSpace)
+				result[cacheItem.config.Path] = usageRatio
+			} else {
+				result[cacheItem.config.Path] = 0
+			}
+		}
+		return true
+	})
+	return result
+}
+
 func (c *CacheEngine) DoInactiveDisk(dataPath string) {
 	if value, ok := c.lruCacheMap.Load(dataPath); ok {
 		cacheItem := value.(*lruCacheItem)
