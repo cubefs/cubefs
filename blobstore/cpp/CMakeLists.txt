@@ -48,5 +48,6 @@ target_link_libraries(PROTO_OBJS Seastar::seastar)
 add_library(NET_OBJS OBJECT ${net_srcs})
 target_link_libraries(NET_OBJS Seastar::seastar)
 
+add_subdirectory(blobnode)
 add_subdirectory(demos)
 # add_subdirectory(tests)
