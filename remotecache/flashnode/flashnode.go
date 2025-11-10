@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -367,6 +368,10 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 					log.LogErrorf("mkdir cache directory [%v] err[%v]", path, err)
 					continue
 				}
+			}
+			if os.Getenv(cachengine.EnvDockerTmpfs) == "" && !hasMountsOnLastTwoLevels(path) {
+				log.LogErrorf("path[%v] is not a mount point, skip it", path)
+				continue
 			}
 			totalSpace, err := strconv.ParseInt(arr[1], 10, 64)
 			if err != nil {
@@ -738,4 +743,56 @@ func (f *FlashNode) cleanupStaleWarmupWorkers() {
 		log.LogInfof("cleanupStaleWarmupWorkers: removed %d stale clients, current workers %d",
 			staleCount, len(f.currentWarmUpWorkers))
 	}
+}
+
+// hasMountsOnLastTwoLevels returns true if either the parent directory or the
+// given path itself is a mount point. For example, for /home/service/var/data,
+// it checks whether /home/service/var OR /home/service/var/data is a mount target.
+func hasMountsOnLastTwoLevels(p string) bool {
+	abs := p
+	if !filepath.IsAbs(abs) {
+		var err error
+		if abs, err = filepath.Abs(p); err != nil {
+			return false
+		}
+	}
+	abs = filepath.Clean(abs)
+	parent := filepath.Dir(abs)
+
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return false
+	}
+
+	mounts := make(map[string]struct{})
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		mp := unescapeMountField(fields[1])
+		mounts[mp] = struct{}{}
+	}
+
+	_, okParent := mounts[parent]
+	_, okSelf := mounts[abs]
+	return okParent || okSelf
+}
+
+func unescapeMountField(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) {
+			if o, err := strconv.ParseInt(s[i+1:i+4], 8, 0); err == nil {
+				b.WriteByte(byte(o))
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }

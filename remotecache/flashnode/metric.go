@@ -12,30 +12,40 @@ import (
 )
 
 const (
-	StatPeriod                       = time.Minute * time.Duration(1)
-	MetricFlashNodeReadBytes         = "flashNodeReadBytes"
-	MetricFlashNodeReadCount         = "flashNodeReadCount"
-	MetricFlashNodeWriteBytes        = "flashNodeWriteBytes"
-	MetricFlashNodeWriteCount        = "flashNodeWriteCount"
-	MetricFlashNodeHitRate           = "flashNodeHitRate"
-	MetricFlashNodeEvictCount        = "flashNodeEvictCount"
-	MetricFlashNodeCacheBytes        = "flashNodeCacheBytes"
-	MetricFlashNodeHandleReadLatency = "flashNodeHandleReadLatency"
-	MetricFlashNodeSourceDataLatency = "flashNodeSourceDataLatency"
+	StatPeriod                         = time.Minute * time.Duration(1)
+	MetricFlashNodeReadBytes           = "flashNodeReadBytes"
+	MetricFlashNodeReadCount           = "flashNodeReadCount"
+	MetricFlashNodeWriteBytes          = "flashNodeWriteBytes"
+	MetricFlashNodeWriteCount          = "flashNodeWriteCount"
+	MetricFlashNodeHitRate             = "flashNodeHitRate"
+	MetricFlashNodeEvictCount          = "flashNodeEvictCount"
+	MetricFlashNodeCacheBytes          = "flashNodeCacheBytes"
+	MetricFlashNodeHandleReadLatency   = "flashNodeHandleReadLatency"
+	MetricFlashNodeSourceDataLatency   = "flashNodeSourceDataLatency"
+	MetricFlashNodeHitCacheReadLatency = "flashNodeHitCacheReadLatency"
+	MetricFlashNodeFlowLimitedCount    = "flashNodeFlowLimitedCount"
+	MetricFlashNodeRunLimitedCount     = "flashNodeRunLimitedCount"
+	MetricFlashNodeLruUsageRatio       = "flashNodeLruUsageRatio"
+	MetricFlashNodeDiskUsageRatio      = "flashNodeDiskUsageRatio"
 )
 
 type FlashNodeMetrics struct {
-	flashNode               *FlashNode
-	stopC                   chan struct{}
-	MetricReadBytes         *exporter.Gauge
-	MetricReadCount         *exporter.Gauge
-	MetricWriteBytes        *exporter.Gauge
-	MetricWriteCount        *exporter.Gauge
-	MetricEvictCount        *exporter.Gauge
-	MetricHitRate           *exporter.Gauge
-	MetricCacheBytes        *exporter.Gauge
-	MetricHandleReadLatency *exporter.Gauge
-	MetricSourceDataLatency *exporter.Gauge
+	flashNode                 *FlashNode
+	stopC                     chan struct{}
+	MetricReadBytes           *exporter.Gauge
+	MetricReadCount           *exporter.Gauge
+	MetricWriteBytes          *exporter.Gauge
+	MetricWriteCount          *exporter.Gauge
+	MetricEvictCount          *exporter.Gauge
+	MetricHitRate             *exporter.Gauge
+	MetricCacheBytes          *exporter.Gauge
+	MetricHandleReadLatency   *exporter.Gauge
+	MetricSourceDataLatency   *exporter.Gauge
+	MetricHitCacheReadLatency *exporter.Gauge
+	MetricFlowLimitedCount    *exporter.Gauge
+	MetricRunLimitedCount     *exporter.Gauge
+	MetricLruUsageRatio       *exporter.Gauge
+	MetricDiskUsageRatio      *exporter.Gauge
 }
 
 func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
@@ -53,6 +63,11 @@ func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
 	f.metrics.MetricCacheBytes = exporter.NewGauge(MetricFlashNodeCacheBytes)
 	f.metrics.MetricHandleReadLatency = exporter.NewGauge(MetricFlashNodeHandleReadLatency)
 	f.metrics.MetricSourceDataLatency = exporter.NewGauge(MetricFlashNodeSourceDataLatency)
+	f.metrics.MetricHitCacheReadLatency = exporter.NewGauge(MetricFlashNodeHitCacheReadLatency)
+	f.metrics.MetricFlowLimitedCount = exporter.NewGauge(MetricFlashNodeFlowLimitedCount)
+	f.metrics.MetricRunLimitedCount = exporter.NewGauge(MetricFlashNodeRunLimitedCount)
+	f.metrics.MetricLruUsageRatio = exporter.NewGauge(MetricFlashNodeLruUsageRatio)
+	f.metrics.MetricDiskUsageRatio = exporter.NewGauge(MetricFlashNodeDiskUsageRatio)
 	for _, d := range disks {
 		cachengine.StatMap[path.Join(d.Path, cachengine.DefaultCacheDirName)] = new(cachengine.MetricStat)
 	}
@@ -90,6 +105,9 @@ func (fm *FlashNodeMetrics) doStat() {
 	fm.setHitRateMetric()
 	fm.setCacheBytesMetric()
 	fm.setLatencyMetric()
+	fm.setLimitedCountMetric()
+	fm.setLruUsageRatioMetric()
+	fm.setDiskUsageRatioMetric()
 }
 
 func (fm *FlashNodeMetrics) setReadBytesMetric() {
@@ -144,9 +162,31 @@ func (fm *FlashNodeMetrics) setCacheBytesMetric() {
 func (fm *FlashNodeMetrics) setLatencyMetric() {
 	handleReadLatency := stat.GetAvgLatencyMs("FlashNode:opCacheRead")
 	sourceDataLatency := stat.GetAvgLatencyMs("MissCacheRead:ReadFromDN")
+	hitCacheReadLatency := stat.GetAvgLatencyMs("HitCacheRead")
 
 	fm.MetricHandleReadLatency.SetWithLabels(float64(handleReadLatency), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
 	fm.MetricSourceDataLatency.SetWithLabels(float64(sourceDataLatency), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+	fm.MetricHitCacheReadLatency.SetWithLabels(float64(hitCacheReadLatency), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+}
+
+func (fm *FlashNodeMetrics) setLimitedCountMetric() {
+	flowLimitedCount := stat.GetCount("FlashNode:opCacheRead[flow limited]")
+	runLimitedCount := stat.GetCount("FlashNode:opCacheRead[run limited]")
+
+	fm.MetricFlowLimitedCount.SetWithLabels(float64(flowLimitedCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+	fm.MetricRunLimitedCount.SetWithLabels(float64(runLimitedCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+}
+
+func (fm *FlashNodeMetrics) setLruUsageRatioMetric() {
+	usageRatio := fm.flashNode.cacheEngine.GetLruUsageRatio()
+	fm.MetricLruUsageRatio.SetWithLabels(usageRatio, map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+}
+
+func (fm *FlashNodeMetrics) setDiskUsageRatioMetric() {
+	diskUsageRatioMap := fm.flashNode.cacheEngine.GetDiskUsageRatio()
+	for dataPath, usageRatio := range diskUsageRatioMap {
+		fm.MetricDiskUsageRatio.SetWithLabels(usageRatio, map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: dataPath})
+	}
 }
 
 func (fm *FlashNodeMetrics) updateReadBytesMetric(size uint64, d string) {
