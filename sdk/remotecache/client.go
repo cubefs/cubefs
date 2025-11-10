@@ -651,7 +651,9 @@ func (rc *RemoteCacheClient) updateHostLatency(hosts []string) {
 				defer fg.hostLock.Unlock()
 				for _, h := range fg.Hosts {
 					if h == host {
-						fg.hostTimeoutCount[host]++
+						if fg.hostTimeoutCount[host] <= rc.FlashNodeTimeoutCount {
+							fg.hostTimeoutCount[host]++
+						}
 						if fg.hostTimeoutCount[host] >= rc.FlashNodeTimeoutCount {
 							rc.hostLatency.Delete(host)
 						}
