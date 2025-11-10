@@ -59,6 +59,7 @@ message RequestHeader {
     string remote_path      = 4;
     string trace_id         = 5 [(gogoproto.customname) = "TraceID"];
     int64 content_length    = 6;
+    int32 remote_path_index = 7;
 
     Header header           = 8 [(gogoproto.nullable) = false];
     FixedHeader trailer     = 9 [(gogoproto.nullable) = false];

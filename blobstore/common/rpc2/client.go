@@ -30,6 +30,9 @@ import (
 )
 
 type Client struct {
+	// MapPathIndex mapping remote path to int for cpp router.
+	MapPathIndex map[string]int32 `json:"-"`
+
 	Connector       Connector       `json:"-"`
 	ConnectorConfig ConnectorConfig `json:"connector"`
 
@@ -57,6 +60,13 @@ type Client struct {
 	initOnce uint32 // 0 uninitialised, 1 doing, 2 done
 }
 
+func (c *Client) FillPathIndex(req *Request) *Request {
+	if idx, has := c.MapPathIndex[req.RemotePath]; has {
+		req.RemotePathIndex = idx
+	}
+	return req
+}
+
 // Request simple request, parameter and result both in body.
 func (c *Client) Request(ctx context.Context, addr, path string,
 	para Marshaler, ret Unmarshaler,
@@ -65,6 +75,7 @@ func (c *Client) Request(ctx context.Context, addr, path string,
 	if err != nil {
 		return err
 	}
+	c.FillPathIndex(req)
 	err = c.DoWith(req, ret)
 	req.reuse()
 	return

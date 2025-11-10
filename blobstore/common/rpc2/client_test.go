@@ -145,3 +145,31 @@ func TestClientCodecLengthZero(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "val", rst.Get("key"))
 }
+
+func TestClientPathIndex(t *testing.T) {
+	var handler Router
+	handler.Register("/pathindex", func(w ResponseWriter, req *Request) error {
+		w.Header().Set("index", fmt.Sprintf("%d", req.RemotePathIndex))
+		return w.WriteOK(nil)
+	})
+	server, cli, shutdown := newServer("tcp", &handler)
+	defer shutdown()
+
+	err := cli.Request(testCtx, server.Name, "/pathindex", NoParameter, nil)
+	require.NoError(t, err)
+
+	req, err := NewRequest(testCtx, server.Name, "/pathindex", nil, nil)
+	require.NoError(t, err)
+	cli.FillPathIndex(req)
+	resp, err := cli.Do(req, nil)
+	require.NoError(t, err)
+	require.Equal(t, "100", resp.Header.Get("index"))
+	resp.Body.Close()
+
+	req, err = NewRequest(testCtx, server.Name, "/pathindex", nil, nil)
+	require.NoError(t, err)
+	resp, err = cli.Do(req, nil)
+	require.NoError(t, err)
+	require.Equal(t, "0", resp.Header.Get("index"))
+	resp.Body.Close()
+}

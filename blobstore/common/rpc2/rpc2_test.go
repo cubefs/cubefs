@@ -132,6 +132,7 @@ func newServerWritev(network string, router *Router, writev bool) (*Server, *Cli
 	}()
 	server.WaitServe()
 	client := Client{
+		MapPathIndex: map[string]int32{"/pathindex": 100},
 		ConnectorConfig: ConnectorConfig{
 			Transport:   trans,
 			Network:     network,

@@ -269,7 +269,7 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 			delete(c.streams, sess.LocalAddr())
 			c.mu.Unlock()
 			sess.Close()
-			span.Warnf("close session(%d) -> %s", sess.LocalAddr(), err.Error())
+			span.Warnf("close session(%v) -> %s", sess.LocalAddr(), err.Error())
 			continue
 		}
 
