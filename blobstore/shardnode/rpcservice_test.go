@@ -37,9 +37,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/shardnode/blobdeleter"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
+	"github.com/cubefs/cubefs/blobstore/shardnode/message"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	mock "github.com/cubefs/cubefs/blobstore/testing/mockshardnode"
@@ -145,10 +145,10 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 	require.NoError(t, err)
 	defer os.RemoveAll(delLogDir)
 
-	dm, _ := blobdeleter.NewBlobDeleteMgr(&blobdeleter.BlobDelMgrConfig{
+	dm, _ := message.NewBlobDeleteMgr(&message.BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,
 		ShardGetter:   sg2,
-		MessageCfg: blobdeleter.MessageCfg{
+		MessageCfg: message.MessageCfg{
 			FailedMsgChannelSize: 4,
 			ProduceTaskPoolSize:  1,
 			MessageLog:           recordlog.Config{Dir: delLogDir},

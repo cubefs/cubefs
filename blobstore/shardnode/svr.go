@@ -34,9 +34,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
-	"github.com/cubefs/cubefs/blobstore/shardnode/blobdeleter"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
+	"github.com/cubefs/cubefs/blobstore/shardnode/message"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
@@ -79,7 +79,7 @@ type Config struct {
 	WaitReOpenDiskIntervalS      int64 `json:"wait_re_open_disk_interval_s"`
 	ShardCheckAndClearIntervalH  int64 `json:"shard_check_and_clear_interval_h"`
 
-	DeleteBlobCfg blobdeleter.MessageCfg `json:"blob_delete_cfg"`
+	DeleteBlobCfg message.MessageCfg `json:"blob_delete_cfg"`
 }
 
 // newService returns the singleton service instance
@@ -157,7 +157,7 @@ func createService(cfg *Config) *service {
 
 	cfg.DeleteBlobCfg.ClusterID = cfg.NodeConfig.ClusterID
 	taskSwitchMgr := taskswitch.NewSwitchMgr(cmClient)
-	dm, err := blobdeleter.NewBlobDeleteMgr(&blobdeleter.BlobDelMgrConfig{
+	dm, err := message.NewBlobDeleteMgr(&message.BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,
 		ShardGetter:   svr,
 		Transport:     transport,
@@ -182,7 +182,7 @@ type service struct {
 	taskPool  taskpool.TaskPool
 	groupRun  singleflight.Group
 
-	blobDelMgr *blobdeleter.BlobDeleteMgr
+	blobDelMgr *message.BlobDeleteMgr
 
 	cfg    Config
 	lock   sync.RWMutex
