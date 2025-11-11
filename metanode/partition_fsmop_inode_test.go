@@ -45,6 +45,7 @@ func newMpForFsmInodeTest(t *testing.T, storeMode proto.StoreMode) (mp *metaPart
 	var _ interface{} = t
 	config := getMpConfigForFsmInodeTest(storeMode)
 	mp = newPartition(config, newManager())
+	mp.uniqChecker = newUniqChecker()
 	return
 }
 
@@ -321,6 +322,90 @@ func TestFsmAppendInodeRandomWrite(t *testing.T) {
 func TestFsmAppendInodeRandomWrite_Rocksdb(t *testing.T) {
 	mp := newMpForFsmInodeTest(t, proto.StoreModeRocksDb)
 	testFsmAppendInodeRandomWrite(t, mp)
+}
+
+func testFsmLinkInodeUniqIDIdempotent(t *testing.T, mp *metaPartition) {
+	const ino = 2000
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	mp.applyID = 100
+
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	inode := NewInode(ino, FileModeType)
+	resp, err := mp.fsmCreateLinkInode(handle, inode, 111)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, resp.Status)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+	checkInodeLinkForFsmInodeTest(t, mp, ino, 2)
+
+	mp.applyID = 101
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	inode = NewInode(ino, FileModeType)
+	resp, err = mp.fsmCreateLinkInode(handle, inode, 111)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, resp.Status)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+	checkInodeLinkForFsmInodeTest(t, mp, ino, 2)
+}
+
+func TestFsmLinkInodeUniqIDIdempotent(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	testFsmLinkInodeUniqIDIdempotent(t, mp)
+}
+
+func TestFsmLinkInodeUniqIDIdempotent_Rocksdb(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeRocksDb)
+	testFsmLinkInodeUniqIDIdempotent(t, mp)
+}
+
+func testFsmUnlinkInodeUniqIDIdempotent(t *testing.T, mp *metaPartition) {
+	const ino = 3000
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	inode := NewInode(ino, FileModeType)
+	resp, err := mp.fsmCreateLinkInode(handle, inode, 0)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, resp.Status)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+	checkInodeLinkForFsmInodeTest(t, mp, ino, 2)
+
+	mp.applyID = 200
+
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	inode = NewInode(ino, FileModeType)
+	resp, err = mp.fsmUnlinkInode(handle, inode, 222)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, resp.Status)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+	checkInodeLinkForFsmInodeTest(t, mp, ino, 1)
+
+	mp.applyID = 201
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	inode = NewInode(ino, FileModeType)
+	resp, err = mp.fsmUnlinkInode(handle, inode, 222)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, resp.Status)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+	checkInodeLinkForFsmInodeTest(t, mp, ino, 1)
+}
+
+func TestFsmUnlinkInodeUniqIDIdempotent(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	testFsmUnlinkInodeUniqIDIdempotent(t, mp)
+}
+
+func TestFsmUnlinkInodeUniqIDIdempotent_Rocksdb(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeRocksDb)
+	testFsmUnlinkInodeUniqIDIdempotent(t, mp)
 }
 
 func testFsmUnlinkFileInode(t *testing.T, mp *metaPartition) {

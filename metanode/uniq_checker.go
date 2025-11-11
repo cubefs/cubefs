@@ -29,8 +29,10 @@ import (
 const (
 	checkerVersionSize = 4
 	CrcUint32Size      = 4
-	checkerVersion     = 1
+	checkerVersionV1   = 1
+	checkerVersionV2   = 2
 	checkerRecordV1Len = 16
+	checkerRecordV2Len = 24
 	opKeepTime         = 300
 	opKeepOps          = 1024
 	opRebuildSec       = 86400
@@ -40,13 +42,14 @@ const (
 )
 
 type uniqOp struct {
-	uniqid uint64
-	atime  int64
+	uniqid  uint64
+	atime   int64
+	applyId uint64
 }
 
 type uniqChecker struct {
 	sync.Mutex
-	op    map[uint64]struct{}
+	op    map[uint64]*uniqOp
 	inQue *uniqOpQueue
 	rtime int64
 
@@ -56,7 +59,7 @@ type uniqChecker struct {
 
 func newUniqChecker() *uniqChecker {
 	return &uniqChecker{
-		op:       make(map[uint64]struct{}),
+		op:       make(map[uint64]*uniqOp),
 		inQue:    newUniqOpQueue(),
 		keepTime: opKeepTime,
 		keepOps:  opKeepOps,
@@ -72,8 +75,8 @@ func (checker *uniqChecker) clone() *uniqChecker {
 }
 
 func (checker *uniqChecker) Marshal() (buf []byte, crc uint32, err error) {
-	buffer := bytes.NewBuffer(make([]byte, 0, checkerVersionSize+checker.inQue.len()*checkerRecordV1Len))
-	if err = binary.Write(buffer, binary.BigEndian, int32(checkerVersion)); err != nil {
+	buffer := bytes.NewBuffer(make([]byte, 0, checkerVersionSize+checker.inQue.len()*checkerRecordV2Len))
+	if err = binary.Write(buffer, binary.BigEndian, int32(checkerVersionV2)); err != nil {
 		return
 	}
 
@@ -82,6 +85,9 @@ func (checker *uniqChecker) Marshal() (buf []byte, crc uint32, err error) {
 			return false
 		}
 		if err = binary.Write(buffer, binary.BigEndian, op.atime); err != nil {
+			return false
+		}
+		if err = binary.Write(buffer, binary.BigEndian, op.applyId); err != nil {
 			return false
 		}
 		return true
@@ -112,7 +118,9 @@ func (checker *uniqChecker) UnMarshal(data []byte) (err error) {
 	}
 
 	var uniqid uint64
+	var applyId uint64
 	var atime int64
+
 	now := time.Now().Unix()
 	for buff.Len() != 0 {
 		if err = binary.Read(buff, binary.BigEndian, &uniqid); err != nil {
@@ -123,18 +131,25 @@ func (checker *uniqChecker) UnMarshal(data []byte) (err error) {
 			log.LogErrorf("uniqChecker unmarshal read atime err(%v)", err)
 			return
 		}
+		if version == checkerVersionV2 {
+			if err = binary.Read(buff, binary.BigEndian, &applyId); err != nil {
+				log.LogErrorf("uniqChecker unmarshal read applyId err(%v)", err)
+				return
+			}
+		}
 		// atime over local time is too large
 		if atime > now+86400 {
 			log.LogWarnf("uniqChecker skip invalid atime %v uniqid %v", atime, uniqid)
 			continue
 		}
-		checker.inQue.append(&uniqOp{uniqid, atime})
-		checker.op[uniqid] = struct{}{}
+		uniqVal := &uniqOp{uniqid, atime, applyId}
+		checker.inQue.append(uniqVal)
+		checker.op[uniqid] = uniqVal
 	}
 	return
 }
 
-func (checker *uniqChecker) legalIn(bid uint64) bool {
+func (checker *uniqChecker) legalIn(bid uint64, applyId uint64) bool {
 	// ignore zero uniqid
 	if bid == 0 {
 		return true
@@ -143,11 +158,13 @@ func (checker *uniqChecker) legalIn(bid uint64) bool {
 	checker.Lock()
 	defer checker.Unlock()
 
-	if _, ok := checker.op[bid]; ok {
-		return false
+	if val, ok := checker.op[bid]; ok {
+		log.LogDebugf("uniqChecker legalIn bid %v applyId %v val.applyId %v", bid, applyId, val.applyId)
+		return val.applyId >= applyId
 	} else {
-		checker.op[bid] = struct{}{}
-		checker.inQue.append(&uniqOp{bid, time.Now().Unix()})
+		uniqVal := &uniqOp{bid, time.Now().Unix(), applyId}
+		checker.op[bid] = uniqVal
+		checker.inQue.append(uniqVal)
 	}
 
 	return true
@@ -210,9 +227,9 @@ func (checker *uniqChecker) doEvict(evictBid uint64) {
 	// regular rebuild map to reduce memory usage
 	n := timeutil.GetCurrentTimeUnix()
 	if n-checker.rtime > opRebuildSec {
-		checker.op = make(map[uint64]struct{}, checker.inQue.len())
+		checker.op = make(map[uint64]*uniqOp, checker.inQue.len())
 		checker.inQue.scan(func(op *uniqOp) bool {
-			checker.op[op.uniqid] = struct{}{}
+			checker.op[op.uniqid] = op
 			return true
 		})
 		checker.rtime = n

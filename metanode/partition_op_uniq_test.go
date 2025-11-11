@@ -59,7 +59,7 @@ func TestDoEvit(t *testing.T) {
 	}
 
 	for i := 1; i <= 1; i++ {
-		if !checker.legalIn(uint64(i)) {
+		if !checker.legalIn(uint64(i), mp.applyID) {
 			t.Errorf("failed")
 		}
 	}
@@ -74,7 +74,7 @@ func TestDoEvit(t *testing.T) {
 	}
 
 	for i := 1; i <= 1000; i++ {
-		if !checker.legalIn(uint64(i)) {
+		if !checker.legalIn(uint64(i), mp.applyID) {
 			t.Errorf("failed")
 		}
 	}
@@ -85,7 +85,7 @@ func TestDoEvit(t *testing.T) {
 	mp.uniqCheckerEvict()
 	mp.uniqChecker.keepOps = 100
 	for i := 1001; i <= 1100; i++ {
-		if !checker.legalIn(uint64(i)) {
+		if !checker.legalIn(uint64(i), mp.applyID) {
 			t.Errorf("failed")
 		}
 	}
@@ -103,7 +103,7 @@ func TestDoEvit1(t *testing.T) {
 	mp.uniqChecker.keepTime = 0
 
 	for i := 1; i <= 10240; i++ {
-		if !checker.legalIn(uint64(i)) {
+		if !checker.legalIn(uint64(i), mp.applyID) {
 			t.Errorf("failed")
 		}
 	}
@@ -122,12 +122,12 @@ func TestDoEvit2(t *testing.T) {
 	mp.uniqChecker.keepTime = 0
 
 	for i := 1; i <= 9000; i++ {
-		if !checker.legalIn(uint64(i)) {
+		if !checker.legalIn(uint64(i), mp.applyID) {
 			t.Errorf("failed")
 		}
 	}
 	for i := 9001; i <= 13000; i++ {
-		if !checker.legalIn(uint64(i)) {
+		if !checker.legalIn(uint64(i), mp.applyID) {
 			t.Errorf("failed")
 		}
 	}

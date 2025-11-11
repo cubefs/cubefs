@@ -170,7 +170,7 @@ func (mp *metaPartition) fsmCreateLinkInode(dbHandle interface{}, ino *Inode, un
 	}
 
 	resp.Msg = i
-	if !mp.uniqChecker.legalIn(uniqID) {
+	if !mp.uniqChecker.legalIn(uniqID, mp.applyID) {
 		log.LogWarnf("fsmCreateLinkInode repeated, ino[%v] uniqID %v nlink %v", ino.Inode, uniqID, ino.GetNLink())
 		return
 	}
@@ -426,7 +426,7 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, uniqID
 	}
 
 	resp.Msg = inode
-	if !mp.uniqChecker.legalIn(uniqID) {
+	if !mp.uniqChecker.legalIn(uniqID, mp.applyID) {
 		log.LogWarnf("fsmUnlinkInode repeat, mp[%v] ino[%v] uniqID %v nlink %v", mp.config.PartitionId, ino.Inode, uniqID, ino.GetNLink())
 		return
 	}

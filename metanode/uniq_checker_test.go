@@ -21,11 +21,11 @@ import (
 func TestLegal(t *testing.T) {
 	checker := newUniqChecker()
 	for i := 1; i <= 10; i++ {
-		if !checker.legalIn(uint64(i)) {
+		if !checker.legalIn(uint64(i), 1) {
 			t.Errorf("failed")
 		}
 	}
-	if checker.legalIn(1) {
+	if checker.legalIn(1, 2) {
 		t.Errorf("failed, %v", checker.op)
 	}
 }
@@ -91,7 +91,7 @@ func TestOpQueue(t *testing.T) {
 func TestClone(t *testing.T) {
 	checker := newUniqChecker()
 	for i := 1; i <= 10000; i++ {
-		checker.legalIn(uint64(i))
+		checker.legalIn(uint64(i), 1)
 	}
 
 	checker1 := checker.clone()
@@ -113,7 +113,7 @@ func TestClone(t *testing.T) {
 func TestMarshal(t *testing.T) {
 	checker := newUniqChecker()
 	for i := 1; i <= 10000; i++ {
-		checker.legalIn(uint64(i))
+		checker.legalIn(uint64(i), 1)
 	}
 
 	bts, _, _ := checker.Marshal()
@@ -138,4 +138,74 @@ func TestMarshal(t *testing.T) {
 		i++
 		return true
 	})
+}
+
+func TestDoEvictBasic(t *testing.T) {
+	checker := newUniqChecker()
+	for i := 1; i <= 10; i++ {
+		checker.legalIn(uint64(i), 1)
+	}
+	if checker.inQue.len() != 10 {
+		t.Fatalf("unexpected queue len: %d", checker.inQue.len())
+	}
+	if len(checker.op) != 10 {
+		t.Fatalf("unexpected map len: %d", len(checker.op))
+	}
+
+	// evict until uniqid == 5 (inclusive)
+	checker.doEvict(5)
+	if checker.inQue.len() != 5 {
+		t.Fatalf("after evict 5, unexpected queue len: %d", checker.inQue.len())
+	}
+	if checker.inQue.index(0) == nil || checker.inQue.index(0).uniqid != 6 {
+		t.Fatalf("after evict 5, head uniqid should be 6, got: %v", checker.inQue.index(0))
+	}
+	for i := 1; i <= 5; i++ {
+		if _, ok := checker.op[uint64(i)]; ok {
+			t.Fatalf("uniqid %d should be evicted from map", i)
+		}
+	}
+	for i := 6; i <= 10; i++ {
+		if _, ok := checker.op[uint64(i)]; !ok {
+			t.Fatalf("uniqid %d should remain in map", i)
+		}
+	}
+
+	// evict a non-existent key should not change anything
+	prevLen := checker.inQue.len()
+	checker.doEvict(3)
+	if checker.inQue.len() != prevLen {
+		t.Fatalf("evict non-existent should not change queue len, got: %d", checker.inQue.len())
+	}
+	checker.doEvict(1000)
+	if checker.inQue.len() != prevLen {
+		t.Fatalf("evict non-existent(1000) should not change queue len, got: %d", checker.inQue.len())
+	}
+}
+
+func TestDoEvictWithRebuild(t *testing.T) {
+	checker := newUniqChecker()
+	for i := 1; i <= 10; i++ {
+		checker.legalIn(uint64(i), 1)
+	}
+	// force rebuild path
+	checker.rtime = 0
+
+	// evict through uniqid == 7 (inclusive), remain 8..10
+	checker.doEvict(7)
+	if checker.inQue.len() != 3 {
+		t.Fatalf("after evict 7, unexpected queue len: %d", checker.inQue.len())
+	}
+	want := []uint64{8, 9, 10}
+	for idx, id := range want {
+		if checker.inQue.index(idx) == nil || checker.inQue.index(idx).uniqid != id {
+			t.Fatalf("after evict 7, idx %d want %d got %v", idx, id, checker.inQue.index(idx))
+		}
+		if _, ok := checker.op[id]; !ok {
+			t.Fatalf("after evict 7, map missing uniqid %d", id)
+		}
+	}
+	if len(checker.op) != 3 {
+		t.Fatalf("after evict 7, unexpected map len: %d", len(checker.op))
+	}
 }
