@@ -2222,29 +2222,29 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			partition.decommissionInfo(), partition.DecommissionDstAddr, time.Since(begin).String(), err, result)
 	}()
 
-	//find target for balancing
+	// find target for balancing
 	if partition.DecommissionType == BalanceByDPCount || partition.DecommissionType == BalanceByDiskUsage {
 		if datanode, err = c.dataNode(partition.DecommissionSrcAddr); err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken]dp %v find given datanode %v failed:%v",
 				partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
 			goto errHandler
 		}
-		//first replica, determine which nodeset to transfer to
+		// first replica, determine which nodeset to transfer to
 		if partition.DecommissionDstNodeSet == 0 {
-			//mark success, remove in advance
+			// mark success, remove in advance
 			if !c.isOverloadDataNode(partition.DecommissionType, datanode) {
 				partition.SetDecommissionStatus(DecommissionSuccess)
-				log.LogInfof("action[TryAcquireDecommissionToken]dp %v canceled because src node is no longer overload",
+				log.LogInfof("action[TryAcquireDecommissionToken]dp %v canceled because src node is no longer overload, src node %v, err %v",
 					partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
 				return true
 			}
-			//first find underload node in same nodeset
+			// first find underload node in same nodeset
 			if underloadDataNodes, err = c.getUnderLoadNodesInNodeSet(partition.DecommissionType, partition, datanode.NodeSetID); err != nil {
-				log.LogWarnf("action[TryAcquireDecommissionToken]dp %v failed: %v", err)
+				log.LogWarnf("action[TryAcquireDecommissionToken]dp %v failed: %v", partition.PartitionID, err)
 				goto errHandler
 			}
 			if len(underloadDataNodes) != 0 {
-				//find nodeset
+				// find nodeset
 				ns, err = c.t.getNodeSetByNodeSetId(datanode.NodeSetID)
 				if err != nil {
 					log.LogWarnf("action[TryAcquireDecommissionToken]dp %v find given dst nodeset %v failed:%v",
@@ -2252,15 +2252,15 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 					goto errHandler
 				}
 			} else {
-				//if no underload nodes in src nodeset, try find another nodeset
+				// if no underload nodes in src nodeset, try find another nodeset
 				hostsInNodeSet := c.getReplicaHostsInNodeSet(partition, datanode.NodeSetID)
 				if ns, err = c.getUnderLoadNodeSet(partition.DecommissionType, partition, datanode.ZoneName, datanode.NodeSetID, len(hostsInNodeSet)); err != nil {
-					log.LogWarnf("action[TryAcquireDecommissionToken]dp %v find underload nodeset failed:%v",
-						partition.PartitionID, partition.DecommissionDstNodeSet, err.Error())
+					log.LogWarnf("action[TryAcquireDecommissionToken]dp %v find underload nodeset failed:%v, src node %v, nodeset %v",
+						partition.PartitionID, partition.DecommissionDstNodeSet, err.Error(), datanode.NodeSetID)
 					goto errHandler
 				}
 				if underloadDataNodes, err = c.getUnderLoadNodesInNodeSet(partition.DecommissionType, partition, ns.ID); err != nil {
-					log.LogWarnf("action[TryAcquireDecommissionToken]dp %v failed: %v", err)
+					log.LogWarnf("action[TryAcquireDecommissionToken]dp %v failed: %v", partition.PartitionID, err)
 					goto errHandler
 				}
 			}
@@ -2272,16 +2272,16 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				goto errHandler
 			}
 			if underloadDataNodes, err = c.getUnderLoadNodesInNodeSet(partition.DecommissionType, partition, partition.DecommissionDstNodeSet); err != nil {
-				log.LogWarnf("action[TryAcquireDecommissionToken]dp %v failed: %v", err)
+				log.LogWarnf("action[TryAcquireDecommissionToken]dp %v failed: %v", partition.PartitionID, err)
 				goto errHandler
 			}
 		}
-		//can't find any underloadnodes
+		// can't find any underloadnodes
 		if len(underloadDataNodes) == 0 {
 			log.LogWarnf("action[TryAcquireDecommissionToken]dp %v failed: can't find underload nodes in nodeset %v", partition.PartitionID, ns.ID)
 			goto errHandler
 		}
-		//to this point, ns and its underload nodes are decided
+		// to this point, ns and its underload nodes are decided
 		if ns.AcquireDecommissionToken(partition.PartitionID) {
 			partition.DecommissionDstAddr = underloadDataNodes[0].Addr
 			partition.DecommissionDstNodeSet = underloadDataNodes[0].NodeSetID

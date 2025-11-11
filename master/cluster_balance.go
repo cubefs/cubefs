@@ -1848,9 +1848,7 @@ func (c *Cluster) getOverLoadDataNodesByDiskUsage() []*DataNode {
 // the selection critieria is
 // the target nodeset has at least numCopies underload dataNodes, and these underload datanodes do not hold the replica of dp
 func (c *Cluster) getUnderLoadNodeSetByDiskUsage(dp *DataPartition, zone string, excludedNodeSet uint64, numCopies int) (nodeset *nodeSet, err error) {
-	var (
-		z *Zone
-	)
+	var z *Zone
 
 	z, err = c.t.getZone(zone)
 	if err != nil {
@@ -1879,9 +1877,7 @@ func (c *Cluster) getUnderLoadNodeSetByDiskUsage(dp *DataPartition, zone string,
 
 // get underloadDataNodes within given nodeset that do not hold replica of dp
 func (c *Cluster) getUnderLoadNodesInNodeSetByDiskUsage(dp *DataPartition, nodeset uint64) (underloadDataNodes []*DataNode, err error) {
-	var (
-		ns *nodeSet
-	)
+	var ns *nodeSet
 
 	if ns, err = c.t.getNodeSetByNodeSetId(nodeset); err != nil {
 		return nil, fmt.Errorf("getUnderLoadNodesInNodeSetByDiskUsage: failed to find nodeset %v", nodeset)
@@ -1911,9 +1907,7 @@ func (c *Cluster) getOverLoadDataNodesByDPCount() []*DataNode {
 }
 
 func (c *Cluster) getUnderLoadNodeSetByDPCount(dp *DataPartition, zone string, excludedNodeSet uint64, numCopies int) (nodeset *nodeSet, err error) {
-	var (
-		z *Zone
-	)
+	var z *Zone
 
 	z, err = c.t.getZone(zone)
 	if err != nil {
@@ -1941,9 +1935,7 @@ func (c *Cluster) getUnderLoadNodeSetByDPCount(dp *DataPartition, zone string, e
 }
 
 func (c *Cluster) getUnderLoadNodesInNodeSetByDPCount(dp *DataPartition, nodeset uint64) (underloadDataNodes []*DataNode, err error) {
-	var (
-		ns *nodeSet
-	)
+	var ns *nodeSet
 
 	if ns, err = c.t.getNodeSetByNodeSetId(nodeset); err != nil {
 		return nil, fmt.Errorf("getUnderLoadNodesInNodeSetByDPCount failed: %v", err)
@@ -1983,9 +1975,7 @@ func (c *Cluster) postBalanceDecommissionSucccess(BalanceType uint32, dp *DataPa
 }
 
 func (c *Cluster) getReplicaHostsInNodeSet(dp *DataPartition, nodeset uint64) []*DataNode {
-	var (
-		hosts []*DataNode
-	)
+	var hosts []*DataNode
 
 	for _, replica := range dp.Replicas {
 		if replica.dataNode.NodeSetID == nodeset {
@@ -1998,9 +1988,9 @@ func (c *Cluster) getReplicaHostsInNodeSet(dp *DataPartition, nodeset uint64) []
 
 func (c *Cluster) handleDataNodeBalanceByDiskUsage(d *DataNode) (err error) {
 	var (
-		sizeToBalance     uint64 = 0
-		sizeMarkedDecomm  uint64 = 0
-		numDPMarkedDecomm uint64 = 0
+		sizeToBalance     uint64
+		sizeMarkedDecomm  uint64
+		numDPMarkedDecomm uint64
 		dp                *DataPartition
 	)
 
@@ -2035,9 +2025,9 @@ func (c *Cluster) handleDataNodeBalanceByDiskUsage(d *DataNode) (err error) {
 
 func (c *Cluster) handleDataNodeBalanceByDPCount(d *DataNode) (err error) {
 	var (
-		numDPsToBalance   uint32 = 0
-		sizeMarkedDecomm  uint64 = 0
-		numDPMarkedDecomm uint32 = 0
+		numDPsToBalance   uint32
+		sizeMarkedDecomm  uint64
+		numDPMarkedDecomm uint32
 		dp                *DataPartition
 	)
 

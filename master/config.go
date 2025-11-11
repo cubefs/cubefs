@@ -110,11 +110,11 @@ const (
 	// DefaultMetaPartitionMissSec                         = 3600
 	//
 	defaultDataNodeBalanceOn              = false
-	defaultDataNodeBalanceInterval        = 10 * 60 //interval to perform datanode balance task
-	defaultDataNodeBalanceByDiskUsageHigh = 0.8     //high usage by disk usage
-	defaultDataNodeBalanceByDiskUsageLow  = 0.1     //low usage by disk usage
-	defaultDataNodeBalanceByDPCountHigh   = 3000    //high usage by DP count
-	defaultDataNodeBalanceByDPCountLow    = 1000    //low usage by DP count
+	defaultDataNodeBalanceInterval        = 10 * 60 // interval to perform datanode balance task
+	defaultDataNodeBalanceByDiskUsageHigh = 0.8     // high usage by disk usage
+	defaultDataNodeBalanceByDiskUsageLow  = 0.1     // low usage by disk usage
+	defaultDataNodeBalanceByDPCountHigh   = 3000    // high usage by DP count
+	defaultDataNodeBalanceByDPCountLow    = 1000    // low usage by DP count
 
 	defaultIntervalToAlarmMissingMetaPartition         = 10 * 60 // interval of checking if a replica is missing
 	defaultMetaPartitionMemUsageThreshold      float32 = 0.75    // memory usage threshold on a meta partition
