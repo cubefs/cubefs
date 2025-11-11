@@ -113,6 +113,21 @@ func (mr *MockTransportMockRecorder) GetAllSpaces(ctx interface{}) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllSpaces", reflect.TypeOf((*MockTransport)(nil).GetAllSpaces), ctx)
 }
 
+// GetBlobnodeDiskInfo mocks base method.
+func (m *MockTransport) GetBlobnodeDiskInfo(ctx context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBlobnodeDiskInfo", ctx, diskID)
+	ret0, _ := ret[0].(*clustermgr.BlobNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBlobnodeDiskInfo indicates an expected call of GetBlobnodeDiskInfo.
+func (mr *MockTransportMockRecorder) GetBlobnodeDiskInfo(ctx, diskID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlobnodeDiskInfo", reflect.TypeOf((*MockTransport)(nil).GetBlobnodeDiskInfo), ctx, diskID)
+}
+
 // GetConfig mocks base method.
 func (m *MockTransport) GetConfig(ctx context.Context, key string) (string, error) {
 	m.ctrl.T.Helper()
@@ -186,6 +201,21 @@ func (m *MockTransport) GetRouteUpdate(ctx context.Context, routeVersion proto.R
 func (mr *MockTransportMockRecorder) GetRouteUpdate(ctx, routeVersion interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRouteUpdate", reflect.TypeOf((*MockTransport)(nil).GetRouteUpdate), ctx, routeVersion)
+}
+
+// GetService mocks base method.
+func (m *MockTransport) GetService(ctx context.Context, name string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetService", ctx, name)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetService indicates an expected call of GetService.
+func (mr *MockTransportMockRecorder) GetService(ctx, name interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetService", reflect.TypeOf((*MockTransport)(nil).GetService), ctx, name)
 }
 
 // GetSpace mocks base method.
@@ -332,6 +362,20 @@ func (m *MockTransport) RegisterDisk(ctx context.Context, disk *clustermgr.Shard
 func (mr *MockTransportMockRecorder) RegisterDisk(ctx, disk interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterDisk", reflect.TypeOf((*MockTransport)(nil).RegisterDisk), ctx, disk)
+}
+
+// RepairSlice mocks base method.
+func (m *MockTransport) RepairSlice(ctx context.Context, host string, volInfo *proto0.VolumeInfoSimple, repairMsg *proto0.SliceRepairMsg) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RepairSlice", ctx, host, volInfo, repairMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RepairSlice indicates an expected call of RepairSlice.
+func (mr *MockTransportMockRecorder) RepairSlice(ctx, host, volInfo, repairMsg interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RepairSlice", reflect.TypeOf((*MockTransport)(nil).RepairSlice), ctx, host, volInfo, repairMsg)
 }
 
 // ResolveNodeAddr mocks base method.
@@ -871,6 +915,20 @@ func (m *MockBlobTransport) MarkDeleteSliceUnit(ctx context.Context, info proto.
 func (mr *MockBlobTransportMockRecorder) MarkDeleteSliceUnit(ctx, info, bid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkDeleteSliceUnit", reflect.TypeOf((*MockBlobTransport)(nil).MarkDeleteSliceUnit), ctx, info, bid)
+}
+
+// RepairSlice mocks base method.
+func (m *MockBlobTransport) RepairSlice(ctx context.Context, host string, volInfo *proto0.VolumeInfoSimple, repairMsg *proto0.SliceRepairMsg) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RepairSlice", ctx, host, volInfo, repairMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RepairSlice indicates an expected call of RepairSlice.
+func (mr *MockBlobTransportMockRecorder) RepairSlice(ctx, host, volInfo, repairMsg interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RepairSlice", reflect.TypeOf((*MockBlobTransport)(nil).RepairSlice), ctx, host, volInfo, repairMsg)
 }
 
 // MockVolumeTransport is a mock of VolumeTransport interface.

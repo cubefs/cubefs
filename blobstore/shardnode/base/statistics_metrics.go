@@ -19,6 +19,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 // ErrorStats error stats
@@ -97,4 +101,76 @@ func errStrFormat(err error) string {
 
 	strSlice := strings.Split(err.Error(), ":")
 	return strings.TrimSpace(strSlice[len(strSlice)-1])
+}
+
+const (
+	Namespace                = "shardnode"
+	ShardRepair              = "shard_repair" // same as scheduler
+	ChunkMissMigrateAbnormal = "chunk_miss_migrate"
+)
+
+type AbnormalReporter struct {
+	lock             sync.RWMutex
+	abnormalReporter *prometheus.GaugeVec
+	reportedVuids    map[proto.Vuid]struct{}
+}
+
+// NewAbnormalReporter returns abnormal reporter
+func NewAbnormalReporter(clusterID proto.ClusterID, taskType string, abnormalKind string) *AbnormalReporter {
+	abnormalReporter := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: Namespace,
+		Subsystem: "task",
+		Name:      "abnormal_task",
+		Help:      "abnormal task",
+		ConstLabels: map[string]string{
+			"cluster_id": fmt.Sprintf("%d", clusterID),
+			"task_type":  taskType,
+			"kind":       abnormalKind,
+		},
+	}, []string{"diskID", "vuid"})
+	if err := prometheus.Register(abnormalReporter); err != nil {
+		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			abnormalReporter = are.ExistingCollector.(*prometheus.GaugeVec)
+			return &AbnormalReporter{
+				abnormalReporter: abnormalReporter,
+				reportedVuids:    make(map[proto.Vuid]struct{}),
+			}
+		}
+		panic(err)
+	}
+	return &AbnormalReporter{
+		abnormalReporter: abnormalReporter,
+		reportedVuids:    make(map[proto.Vuid]struct{}),
+	}
+}
+
+// ReportAbnormal report abnormal task
+func (abr *AbnormalReporter) ReportAbnormal(diskID proto.DiskID, vuid proto.Vuid) {
+	abr.abnormalReporter.WithLabelValues(
+		fmt.Sprintf("%d", diskID),
+		fmt.Sprintf("%d", vuid),
+	).Set(1)
+}
+
+// CancelAbnormal cancel abnormal report
+func (abr *AbnormalReporter) CancelAbnormal(diskID proto.DiskID, vuid proto.Vuid) {
+	abr.abnormalReporter.WithLabelValues(
+		fmt.Sprintf("%d", diskID),
+		fmt.Sprintf("%d", vuid),
+	).Set(0)
+}
+
+// IsVuidReported check if vuid abnormal is reported
+func (abr *AbnormalReporter) IsVuidReported(vuid proto.Vuid) bool {
+	abr.lock.RLock()
+	defer abr.lock.RUnlock()
+	_, ok := abr.reportedVuids[vuid]
+	return ok
+}
+
+// SetVuidReported set vuid reported
+func (abr *AbnormalReporter) SetVuidReported(vuid proto.Vuid) {
+	abr.lock.Lock()
+	abr.reportedVuids[vuid] = struct{}{}
+	abr.lock.Unlock()
 }

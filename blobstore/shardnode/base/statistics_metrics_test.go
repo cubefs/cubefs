@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func TestErrorStats(t *testing.T) {
@@ -60,4 +62,16 @@ func TestErrStrFormat(t *testing.T) {
 	require.Equal(t, "EOF", errStrFormat(err1))
 	require.Equal(t, "fake error", errStrFormat(err2))
 	require.Equal(t, "", errStrFormat(err3))
+}
+
+func TestAbnormalReport(t *testing.T) {
+	rp := NewAbnormalReporter(proto.ClusterID(1), "", "")
+	diskID := proto.DiskID(1)
+	vuid := proto.Vuid(100)
+	rp.ReportAbnormal(diskID, vuid)
+	rp.CancelAbnormal(diskID, vuid)
+
+	rp.SetVuidReported(vuid)
+	require.True(t, rp.IsVuidReported(vuid))
+	require.False(t, rp.IsVuidReported(vuid+1))
 }

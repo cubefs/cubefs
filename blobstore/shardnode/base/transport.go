@@ -34,6 +34,8 @@ type (
 		GetConfig(ctx context.Context, key string) (string, error)
 		ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error)
 		GetRouteUpdate(ctx context.Context, routeVersion proto.RouteVersion) (proto.RouteVersion, []clustermgr.CatalogChangeItem, error)
+		GetService(ctx context.Context, name string) ([]string, error)
+		GetBlobnodeDiskInfo(ctx context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error)
 		NodeTransport
 		SpaceTransport
 		AllocVolTransport
@@ -78,6 +80,7 @@ type (
 	BlobTransport interface {
 		DeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
 		MarkDeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
+		RepairSlice(ctx context.Context, host string, volInfo *snproto.VolumeInfoSimple, repairMsg *snproto.SliceRepairMsg) (err error)
 	}
 
 	VolumeTransport interface {
@@ -291,6 +294,18 @@ func (t *transport) GetConfig(ctx context.Context, key string) (string, error) {
 	return t.cmClient.GetConfig(ctx, key)
 }
 
+func (t *transport) GetService(ctx context.Context, name string) ([]string, error) {
+	nodes, err := t.cmClient.GetService(ctx, clustermgr.GetServiceArgs{Name: name})
+	if err != nil {
+		return nil, err
+	}
+	hosts := make([]string, 0, len(nodes.Nodes))
+	for _, node := range nodes.Nodes {
+		hosts = append(hosts, node.Host)
+	}
+	return hosts, nil
+}
+
 func (t *transport) AllocBid(ctx context.Context, count uint64) (proto.BlobID, error) {
 	ret, err := t.cmClient.AllocBid(ctx, &clustermgr.BidScopeArgs{Count: count})
 	if err != nil {
@@ -360,6 +375,17 @@ func (t *transport) MarkDeleteSliceUnit(ctx context.Context, info proto.VunitLoc
 	})
 }
 
+func (t *transport) RepairSlice(ctx context.Context, host string, volInfo *snproto.VolumeInfoSimple, repairMsg *snproto.SliceRepairMsg) (err error) {
+	task := proto.ShardRepairTask{
+		Bid:      repairMsg.Bid,
+		CodeMode: volInfo.CodeMode,
+		Sources:  volInfo.VunitLocations,
+		BadIdxs:  sliceUint32ToInt(repairMsg.BadIdx),
+		Reason:   repairMsg.Reason,
+	}
+	return t.bnClient.RepairShard(ctx, host, &task)
+}
+
 func (t *transport) ListVolume(ctx context.Context, marker proto.Vid, count int) (volInfo []*snproto.VolumeInfoSimple, retVid proto.Vid, err error) {
 	vols, err := t.cmClient.ListVolume(ctx, &clustermgr.ListVolumeArgs{Marker: marker, Count: count})
 	if err != nil {
@@ -382,4 +408,16 @@ func (t *transport) GetVolumeInfo(ctx context.Context, vid proto.Vid) (ret *snpr
 	ret = &snproto.VolumeInfoSimple{}
 	ret.Set(info)
 	return ret, nil
+}
+
+func (t *transport) GetBlobnodeDiskInfo(ctx context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
+	return t.cmClient.DiskInfo(ctx, diskID)
+}
+
+func sliceUint32ToInt(s []uint32) []uint8 {
+	var ret []uint8
+	for _, e := range s {
+		ret = append(ret, uint8(e))
+	}
+	return ret
 }

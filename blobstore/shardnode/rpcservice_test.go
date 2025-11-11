@@ -145,6 +145,10 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 	require.NoError(t, err)
 	defer os.RemoveAll(delLogDir)
 
+	repairLogDir, err := os.MkdirTemp(os.TempDir(), "repair_log")
+	require.NoError(t, err)
+	defer os.RemoveAll(repairLogDir)
+
 	dm, _ := message.NewBlobDeleteMgr(&message.BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,
 		ShardGetter:   sg2,
@@ -155,6 +159,15 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 		},
 	})
 	s.blobDelMgr = dm
+
+	shardRepairMgr, _ := message.NewSliceRepairMgr(&message.SliceRepairMgrConfig{
+		MessageMgrConfig: &message.MessageMgrConfig{
+			TaskSwitchMgr: taskSwitchMgr,
+			ShardGetter:   sg2,
+			MessageCfg:    message.MessageCfg{MessageLog: recordlog.Config{Dir: repairLogDir}},
+		},
+	})
+	s.sliceRepairMgr = shardRepairMgr
 
 	// set disk
 	s.disks = make(map[proto.DiskID]*storage.Disk)
@@ -308,7 +321,25 @@ func TestRpcService_Blob(t *testing.T) {
 	require.Nil(t, err)
 
 	// delete blob stats
-	stats, err := cli.DeleteBlobStats(context.Background(), tcpAddrBlob, shardnode.DeleteBlobStatsArgs{})
+	stats, err := cli.DeleteBlobStats(context.Background(), tcpAddrBlob, shardnode.ShardnodeTaskStatsArgs{})
+	require.Nil(t, err)
+	require.NotNil(t, stats)
+
+	// repair shard
+	err = cli.RepairSlice(context.Background(), tcpAddrBlob, shardnode.RepairSliceArgs{
+		Header: shardnode.ShardOpHeader{
+			DiskID: 1,
+			Suid:   1,
+		},
+		Bid:    proto.BlobID(1),
+		Vid:    proto.Vid(1),
+		BadIdx: []uint32{0, 1},
+		Reason: "test",
+	})
+	require.Nil(t, err)
+
+	// repair shard stats
+	stats, err = cli.RepairSliceStats(context.Background(), tcpAddrBlob, shardnode.ShardnodeTaskStatsArgs{})
 	require.Nil(t, err)
 	require.NotNil(t, stats)
 }

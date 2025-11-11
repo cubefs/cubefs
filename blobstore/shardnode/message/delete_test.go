@@ -51,7 +51,7 @@ func TestNewTestBlobDeleteMgr(t *testing.T) {
 	cfg := &BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,
 		ShardGetter:   sg,
-		Transport:     mocks.NewMockBlobTransport(ctr(t)),
+		BlobTransport: mocks.NewMockBlobTransport(ctr(t)),
 		VolCache:      mocks.NewMockIVolumeCache(ctr(t)),
 		MessageCfg: MessageCfg{
 			FailedMsgChannelSize: 5,
@@ -337,8 +337,8 @@ func TestBlobDeleteMgr_DeleteSlice_UpdateVolume(t *testing.T) {
 	tp.EXPECT().MarkDeleteSliceUnit(any, any, any).Return(nil).Times(3)
 
 	mgr := newMinimalBlobDeleteMgr(&MessageMgrConfig{
-		Transport: tp,
-		VolCache:  vc,
+		BlobTransport: tp,
+		VolCache:      vc,
 	})
 
 	msgExt := &delMsgExt{msg: snproto.DeleteMsg{
@@ -368,8 +368,8 @@ func TestBlobDeleteMgr_DeleteSlice_UpdateVolume2(t *testing.T) {
 	}).Times(6)
 
 	mgr := newMinimalBlobDeleteMgr(&MessageMgrConfig{
-		Transport: tp,
-		VolCache:  vc,
+		BlobTransport: tp,
+		VolCache:      vc,
 	})
 
 	msgExt := &delMsgExt{msg: snproto.DeleteMsg{
@@ -389,7 +389,7 @@ func TestBlobDeleteMgr_DeleteShard_BackToInitStage(t *testing.T) {
 	volInfo := newMockSimpleVolumeInfo(vid)
 
 	mgr := newMinimalBlobDeleteMgr(&MessageMgrConfig{
-		Transport: tp,
+		BlobTransport: tp,
 	})
 
 	idx := 0
@@ -415,7 +415,7 @@ func TestBlobDeleteMgr_DeleteShard_AssumeSuccess(t *testing.T) {
 	volInfo := newMockSimpleVolumeInfo(vid)
 
 	mgr := newMinimalBlobDeleteMgr(&MessageMgrConfig{
-		Transport: tp,
+		BlobTransport: tp,
 	})
 
 	idx := 0

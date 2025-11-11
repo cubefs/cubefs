@@ -84,7 +84,7 @@ type MessageMgrConfig struct {
 	executor      MessageExecutor
 	TaskSwitchMgr *taskswitch.SwitchMgr
 	ShardGetter   ShardGetter
-	Transport     base.BlobTransport
+	BlobTransport base.BlobTransport
 	VolCache      base.IVolumeCache
 	MessageCfg
 }

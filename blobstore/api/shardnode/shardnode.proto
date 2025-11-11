@@ -262,9 +262,19 @@ message DeleteBlobRawArgs {
 
 message DeleteBlobRawRet {}
 
-message DeleteBlobStatsArgs {}
+message RepairSliceArgs {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  uint64 bid = 2 [(gogoproto.customname) = "Bid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.BlobID"];
+  uint32 vid = 3 [(gogoproto.customname) = "Vid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Vid"];
+  repeated uint32 bad_idx = 4 [(gogoproto.customname) = "BadIdx"];
+  string reason = 5;
+}
 
-message DeleteBlobStatsRet {
+message RepairSliceRet {}
+
+message ShardnodeTaskStatsArgs {}
+
+message ShardnodeTaskStatsRet {
   bool enable = 1;
   string success_per_min = 2;
   string failed_per_min = 3;

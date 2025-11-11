@@ -418,6 +418,22 @@ func (s *RpcService) DBStats(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	return w.WriteOK(&ret)
 }
 
+func (s *RpcService) RepairSlice(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	ctx := req.Context()
+	span := req.Span()
+	args := &shardnode.RepairSliceArgs{}
+	if err := req.ParseParameter(args); err != nil {
+		return err
+	}
+	span.Infof("receive RepairSlice request, args:%+v", args)
+	return s.repairSlice(ctx, args)
+}
+
+func (s *RpcService) RepairSliceStats(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	ret := s.repairSliceStats()
+	return w.WriteOK(ret)
+}
+
 func initConfig(args []string) (*cmd.Config, error) {
 	config.Init("f", "", "shardnode.conf")
 	if err := config.Load(&conf); err != nil {
@@ -459,6 +475,9 @@ func newHandler(s *RpcService) *rpc2.Router {
 
 	handler.Register("/blob/delete/raw", s.DeleteBlobRaw)
 	handler.Register("/blob/delete/stats", s.DeleteBlobStats)
+
+	handler.Register("/slice/repair", s.RepairSlice)
+	handler.Register("/slice/repair/stats", s.RepairSliceStats)
 
 	return handler
 }

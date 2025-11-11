@@ -15,9 +15,6 @@
 package shardnode
 
 import (
-	"encoding/json"
-	"net/http"
-
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -43,25 +40,17 @@ func (s *HttpService) HttpShardStats(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-
-	data, err := json.Marshal(ret)
-	if err != nil {
-		c.RespondError(err)
-		return
-	}
-
-	c.RespondWith(http.StatusOK, rpc.MIMEJSON, data)
+	c.RespondJSON(ret)
 }
 
 func (s *HttpService) HttpDeleteBlobStats(c *rpc.Context) {
 	ret := s.deleteBlobStats()
-	data, err := json.Marshal(ret)
-	if err != nil {
-		c.RespondError(err)
-		return
-	}
+	c.RespondJSON(ret)
+}
 
-	c.RespondWith(http.StatusOK, rpc.MIMEJSON, data)
+func (s *HttpService) HttpRepairSliceStats(c *rpc.Context) {
+	ret := s.repairSliceStats()
+	c.RespondJSON(ret)
 }
 
 func newHttpHandler(service *HttpService) *rpc.Router {
@@ -69,6 +58,7 @@ func newHttpHandler(service *HttpService) *rpc.Router {
 
 	rpc.GET("/shard/stats", service.HttpShardStats, rpc.OptArgsQuery())
 	rpc.GET("/blob/delete/stats", service.HttpDeleteBlobStats)
+	rpc.GET("/slice/repair/stats", service.HttpRepairSliceStats)
 
 	return rpc.DefaultRouter
 }

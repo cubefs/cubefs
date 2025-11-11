@@ -34,7 +34,26 @@ func (c *Client) DeleteBlobRaw(ctx context.Context, host string, args DeleteBlob
 	return c.doRequest(ctx, host, "/blob/delete/raw", &args, nil)
 }
 
-func (c *Client) DeleteBlobStats(ctx context.Context, host string, args DeleteBlobStatsArgs) (ret DeleteBlobStatsRet, err error) {
+func (c *Client) DeleteBlobStats(ctx context.Context, host string, args ShardnodeTaskStatsArgs) (ret ShardnodeTaskStatsRet, err error) {
 	err = c.doRequest(ctx, host, "/blob/delete/stats", &args, &ret)
+	return
+}
+
+func (r *RepairSliceArgs) GetShardKeys(tagNum int) []string {
+	if r == nil {
+		return nil
+	}
+	keys := make([]string, util.Max(2, tagNum))
+	keys[0] = util.Any2String(r.Vid)
+	keys[1] = util.Any2String(r.Bid)
+	return keys
+}
+
+func (c *Client) RepairSlice(ctx context.Context, host string, args RepairSliceArgs) error {
+	return c.doRequest(ctx, host, "/slice/repair", &args, nil)
+}
+
+func (c *Client) RepairSliceStats(ctx context.Context, host string, args ShardnodeTaskStatsArgs) (ret ShardnodeTaskStatsRet, err error) {
+	err = c.doRequest(ctx, host, "/slice/repair/stats", &args, &ret)
 	return
 }

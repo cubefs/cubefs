@@ -84,12 +84,20 @@ func TestHttpService_HTTPGet(t *testing.T) {
 	require.Equal(t, suid, ret1.Suid)
 
 	// Test delete blob stats
-	ret2 := &shardnode.DeleteBlobStatsRet{}
+	ret2 := &shardnode.ShardnodeTaskStatsRet{}
 	resp2, err := client.Get(ctx, "http://127.0.0.1:11000/blob/delete/stats")
 	require.Nil(t, err)
 	json.NewDecoder(resp2.Body).Decode(ret2)
 	resp2.Body.Close()
 	require.NotNil(t, ret2)
+
+	// Test repair shard stats
+	ret3 := &shardnode.ShardnodeTaskStatsRet{}
+	resp3, err := client.Get(ctx, "http://127.0.0.1:11000/slice/repair/stats")
+	require.Nil(t, err)
+	json.NewDecoder(resp3.Body).Decode(ret3)
+	resp3.Body.Close()
+	require.NotNil(t, ret3)
 }
 
 // Test setUpHttp function

@@ -114,6 +114,14 @@ func (s *service) deleteBlobRaw(ctx context.Context, req *shardnode.DeleteBlobRa
 	return s.blobDelMgr.Delete(ctx, req)
 }
 
-func (s *service) deleteBlobStats() *shardnode.DeleteBlobStatsRet {
+func (s *service) deleteBlobStats() *shardnode.ShardnodeTaskStatsRet {
 	return s.blobDelMgr.Stats()
+}
+
+func (s *service) repairSlice(ctx context.Context, req *shardnode.RepairSliceArgs) error {
+	return s.sliceRepairMgr.Repair(ctx, req)
+}
+
+func (s *service) repairSliceStats() *shardnode.ShardnodeTaskStatsRet {
+	return s.sliceRepairMgr.Stats()
 }

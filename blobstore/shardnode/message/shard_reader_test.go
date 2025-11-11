@@ -289,24 +289,23 @@ func TestShardListReader_IsProtected(t *testing.T) {
 	require.True(t, reader.isProtected(time.Hour))
 }
 
-func TestDelMsgExt_IsProtected(t *testing.T) {
+func TestMessageExt_IsProtected(t *testing.T) {
 	// test msg unprotected
 	oldTime := time.Now().Add(-2 * time.Hour).Unix()
-	unprotectedMsg := &delMsgExt{
+	msg := &delMsgExt{
 		msg: snproto.DeleteMsg{
 			Time: oldTime,
 		},
 	}
-	require.False(t, unprotectedMsg.IsProtected(time.Hour))
+	require.False(t, msg.IsProtected(time.Hour))
 
-	// test msg protected
-	now := time.Now().Unix()
-	protectedMsg := &delMsgExt{
-		msg: snproto.DeleteMsg{
-			Time: now,
+	msg2 := &repairMsgExt{
+		msg: snproto.SliceRepairMsg{
+			Time: time.Now().Unix(),
 		},
 	}
-	require.True(t, protectedMsg.IsProtected(time.Hour))
+
+	require.True(t, msg2.IsProtected(time.Hour))
 }
 
 func TestItemToDelMsg(t *testing.T) {
@@ -343,8 +342,56 @@ func TestItemToDelMsg(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestItemToRepairMsg(t *testing.T) {
+	// test valid item
+	msg := snproto.SliceRepairMsg{
+		Bid:    proto.BlobID(100),
+		Vid:    proto.Vid(1),
+		BadIdx: []uint32{0, 1},
+		Reason: "test",
+		ReqId:  "test_req_id",
+	}
+	item := snapi.Item{
+		ID: "test_key",
+		Fields: []snapi.Field{
+			{
+				ID:    snproto.SliceRepairMsgFieldID,
+				Value: marshalRepairMsg(msg),
+			},
+		},
+	}
+
+	result, err := itemToRepairMsg(item)
+	require.NoError(t, err)
+	require.Equal(t, msg.Bid, result.Bid)
+	require.Equal(t, msg.Vid, result.Vid)
+	require.Equal(t, msg.BadIdx, result.BadIdx)
+	require.Equal(t, msg.Reason, result.Reason)
+	require.Equal(t, msg.ReqId, result.ReqId)
+
+	// test invalid item
+	invalidItem := snapi.Item{
+		ID: "invalid_key",
+		Fields: []snapi.Field{
+			{
+				ID:    snproto.SliceRepairMsgFieldID,
+				Value: []byte("invalid_data"),
+			},
+		},
+	}
+
+	_, err = itemToRepairMsg(invalidItem)
+	require.Error(t, err)
+}
+
 // marshal DeleteMsg to bytes
 func marshalDeleteMsg(msg snproto.DeleteMsg) []byte {
+	data, _ := msg.Marshal()
+	return data
+}
+
+// marshal RepairMsg to bytes
+func marshalRepairMsg(msg snproto.SliceRepairMsg) []byte {
 	data, _ := msg.Marshal()
 	return data
 }

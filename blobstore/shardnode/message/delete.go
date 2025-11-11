@@ -16,6 +16,7 @@ package message
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	snapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
@@ -56,6 +57,26 @@ func NewBlobDeleteMgr(cfg *BlobDelMgrConfig) (*BlobDeleteMgr, error) {
 
 func (m *BlobDeleteMgr) Start() {
 	m.messageMgr.run()
+}
+
+func (m *BlobDeleteMgr) SlicesToDeleteMsgItems(ctx context.Context, slices []proto.Slice, shardKeys []string) ([]snapi.Item, error) {
+	return m.slicesToDeleteMsgItems(ctx, slices, shardKeys)
+}
+
+func (m *BlobDeleteMgr) Delete(ctx context.Context, req *snapi.DeleteBlobRawArgs) error {
+	return m.insertDeleteMsg(ctx, req)
+}
+
+func (m *BlobDeleteMgr) Stats() *snapi.ShardnodeTaskStatsRet {
+	deleteSuccessCounter, deleteFailedCounter := m.getTaskStats()
+	delErrStats, delTotalErrCnt := m.getErrorStats()
+	return &snapi.ShardnodeTaskStatsRet{
+		Enable:        m.enabled(),
+		SuccessPerMin: fmt.Sprint(deleteSuccessCounter),
+		FailedPerMin:  fmt.Sprint(deleteFailedCounter),
+		TotalErrCnt:   delTotalErrCnt,
+		ErrStats:      delErrStats,
+	}
 }
 
 func (m *BlobDeleteMgr) ItemToMessageExt(item interface{}) (snproto.MessageExt, error) {
@@ -259,10 +280,10 @@ func (m *BlobDeleteMgr) deleteSliceUnit(ctx context.Context, info proto.VunitLoc
 
 	if markerDel {
 		stage = DeleteStageMarkDelete
-		err = m.cfg.Transport.MarkDeleteSliceUnit(ctx, info, sliceId)
+		err = m.cfg.BlobTransport.MarkDeleteSliceUnit(ctx, info, sliceId)
 	} else {
 		stage = DeleteStageDelete
-		err = m.cfg.Transport.DeleteSliceUnit(ctx, info, sliceId)
+		err = m.cfg.BlobTransport.DeleteSliceUnit(ctx, info, sliceId)
 	}
 
 	if err != nil {

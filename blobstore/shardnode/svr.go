@@ -24,6 +24,7 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	shardnodeapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -40,6 +41,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/selector"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -79,7 +81,9 @@ type Config struct {
 	WaitReOpenDiskIntervalS      int64 `json:"wait_re_open_disk_interval_s"`
 	ShardCheckAndClearIntervalH  int64 `json:"shard_check_and_clear_interval_h"`
 
-	DeleteBlobCfg message.MessageCfg `json:"blob_delete_cfg"`
+	DeleteBlobCfg  message.MessageCfg `json:"blob_delete_cfg"`
+	ScClientConfig scheduler.Config   `json:"sc_client_config"`
+	SliceRepairCfg message.MessageCfg `json:"slice_repair_cfg"`
 }
 
 // newService returns the singleton service instance
@@ -155,19 +159,39 @@ func createService(cfg *Config) *service {
 	})
 	svr.catalog = c
 
-	cfg.DeleteBlobCfg.ClusterID = cfg.NodeConfig.ClusterID
 	taskSwitchMgr := taskswitch.NewSwitchMgr(cmClient)
-	dm, err := message.NewBlobDeleteMgr(&message.BlobDelMgrConfig{
+	cfg.DeleteBlobCfg.ClusterID = cfg.NodeConfig.ClusterID
+	blboDeleteMgr, err := message.NewBlobDeleteMgr(&message.BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,
 		ShardGetter:   svr,
-		Transport:     transport,
+		BlobTransport: transport,
 		VolCache:      base.NewVolumeCache(transport, 10*time.Second),
 		MessageCfg:    cfg.DeleteBlobCfg,
 	})
 	if err != nil {
 		span.Fatalf("new blob delete mgr failed, err: %s", err.Error())
 	}
-	svr.blobDelMgr = dm
+	svr.blobDelMgr = blboDeleteMgr
+
+	cfg.SliceRepairCfg.ClusterID = cfg.NodeConfig.ClusterID
+	sliceRepairMgr, err := message.NewSliceRepairMgr(&message.SliceRepairMgrConfig{
+		MessageMgrConfig: &message.MessageMgrConfig{
+			TaskSwitchMgr: taskSwitchMgr,
+			ShardGetter:   svr,
+			BlobTransport: transport,
+			VolCache:      base.NewVolumeCache(transport, 10*time.Second),
+			MessageCfg:    cfg.SliceRepairCfg,
+		},
+		Transport: transport,
+		BlobNodeSelector: selector.MakeSelector(60*1000, func() (hosts []string, err error) {
+			return transport.GetService(context.Background(), proto.ServiceNameWorker)
+		}),
+		SCClient: scheduler.New(&cfg.ScClientConfig, cmClient, cfg.NodeConfig.ClusterID),
+	})
+	if err != nil {
+		span.Fatalf("new slice repair mgr failed, err: %s", err.Error())
+	}
+	svr.sliceRepairMgr = sliceRepairMgr
 
 	go svr.loop(ctx)
 	span.Infof("service started success")
@@ -182,7 +206,8 @@ type service struct {
 	taskPool  taskpool.TaskPool
 	groupRun  singleflight.Group
 
-	blobDelMgr *message.BlobDeleteMgr
+	blobDelMgr     *message.BlobDeleteMgr
+	sliceRepairMgr *message.SliceRepairMgr
 
 	cfg    Config
 	lock   sync.RWMutex
@@ -219,5 +244,6 @@ func (s *service) getAllDisks() []*storage.Disk {
 func (s *service) close() {
 	s.closer.Close()
 	s.blobDelMgr.Close()
+	s.sliceRepairMgr.Close()
 	s.cfg.RaftConfig.Transport.Close()
 }

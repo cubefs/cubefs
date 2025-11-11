@@ -58,7 +58,7 @@ func TestBlobMessageMgr_New(t *testing.T) {
 	cfg := &BlobDelMgrConfig{
 		TaskSwitchMgr: taskSwitchMgr,
 		ShardGetter:   sg,
-		Transport:     mocks.NewMockBlobTransport(ctr(t)),
+		BlobTransport: mocks.NewMockBlobTransport(ctr(t)),
 		VolCache:      mocks.NewMockIVolumeCache(ctr(t)),
 		MessageCfg: MessageCfg{
 			FailedMsgChannelSize: 5,
@@ -531,10 +531,10 @@ func newTestPriorityConfig() TierConfig {
 
 func newTestBlobMessageMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, vc base.IVolumeCache, executor MessageExecutor, messageType snproto.MessageType) *messageMgr {
 	cfg := &MessageMgrConfig{
-		executor:    executor,
-		ShardGetter: sg,
-		Transport:   tp,
-		VolCache:    vc,
+		executor:      executor,
+		ShardGetter:   sg,
+		BlobTransport: tp,
+		VolCache:      vc,
 		MessageCfg: MessageCfg{
 			RetryTimes:           3,
 			FailedMsgChannelSize: 5,
