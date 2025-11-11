@@ -509,7 +509,7 @@ func (mgr *BlobDeleteMgr) consume(item *delBlobRet, consumerPause base.ConsumerP
 		}
 	}
 	now := time.Now().UTC()
-	if now.Sub(time.Unix(item.delMsg.Time, 0)) < mgr.safeDelayTime {
+	if mgr.safeDelayTime > 0 && now.Sub(time.Unix(item.delMsg.Time, 0)) < mgr.safeDelayTime {
 		sleepDuration := mgr.delayDuration(item.delMsg.Time)
 		span.Debugf("blob is protected: until[%+v], sleep[%+v]", time.Unix(item.delMsg.Time, 0).Add(mgr.safeDelayTime), sleepDuration)
 		ok := sleep(sleepDuration, consumerPause)
