@@ -2345,8 +2345,8 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 			if datanode, err := c.dataNode(dp.DecommissionSrcAddr); err != nil {
 				log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) dp[%v] failed to find datanode %v err %v", l.nsId, l, dp.decommissionInfo(), dp.DecommissionSrcAddr, err)
 			} else {
-				//when dp.DecommissionDstNodeSet == 0
-				//the balance of this dp is canceled and will be cleaned afterwards
+				// when dp.DecommissionDstNodeSet == 0
+				// the balance of this dp is canceled and will be cleaned afterwards
 				balanceType := dp.DecommissionType
 				dstNodeSet := dp.DecommissionDstNodeSet
 				defer c.postBalanceDecommissionSucccess(balanceType, dp, datanode, dstNodeSet)
