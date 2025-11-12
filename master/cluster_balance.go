@@ -28,6 +28,11 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	MetaPartitionMemorySizeBase = 512
+	MetaPartitionMemMin         = 256 * 1024 * 1024
+)
+
 type GetMigrateAddrParam struct {
 	Topo         map[string]*proto.ZonePressureView
 	RocksdbTopo  map[string]*proto.ZonePressureView
@@ -1348,6 +1353,16 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 }
 
 func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, mp *MetaPartition, mrPlan *proto.MrBalanceInfo) (err error) {
+	// check the memory/rocksdb disk usage of destination metanode.
+	overLoad, err := c.VerifyMetaNodeExceedMemMid(mrPlan.Destination, plan.Mode)
+	if err != nil {
+		log.LogErrorf("VerifyMetaNodeExceedMemMid err: %s", err.Error())
+		return err
+	}
+	if overLoad {
+		return fmt.Errorf("destination metanode(%s) is overload before migrate mp(%v)", mrPlan.Destination, mpPlan.ID)
+	}
+
 	// Update raft storage.
 	mrPlan.Status = PlanTaskRun
 	err = c.syncUpdateBalanceTask(plan)
@@ -1468,7 +1483,7 @@ func (c *Cluster) StopMetaPartitionBalanceTask(force bool) error {
 	}
 
 	if c.IsClusterPlanNotRun() {
-		return fmt.Errorf("Balance task status(%d) is not running", atomic.LoadUint32(&c.planStatus))
+		return fmt.Errorf("error: %s", c.GetClusterPlanStatusMsg())
 	}
 
 	c.SetClusterPlanStopping()
@@ -1496,7 +1511,7 @@ func (c *Cluster) VerifyAllDestinationsIsLowLoad(plan *proto.ClusterPlan, mpPlan
 			if err == NotEnoughResource {
 				c.AnalyzeMetaNodes(plan.Mode)
 			}
-			err = fmt.Errorf("mpid(%s) error: %s", mpPlan.ID, err.Error())
+			err = fmt.Errorf("mpid(%v) error: %s", mpPlan.ID, err.Error())
 			return err
 		}
 	}
@@ -2143,7 +2158,7 @@ func (c *Cluster) FillModifyStoreModePlan(plan *proto.ClusterPlan, volName strin
 				log.LogErrorf("Failed to get meta replica store mode, err: %s", err.Error())
 				continue
 			}
-			memorySize := GetMetaPartitionMemorySize(mn)
+			memorySize := GetMetaPartitionMemorySize(mp)
 			// Record original replica info
 			mrRec := &proto.MrBalanceInfo{
 				Source:       mr.Addr,
@@ -2226,12 +2241,12 @@ func GetReplicasStoreModeCount(mp *MetaPartition, storeMode proto.StoreMode) int
 	return count
 }
 
-func GetMetaPartitionMemorySize(metaNode *MetaNode) uint64 {
-	if metaNode.MetaPartitionCount <= 0 {
-		return 0
+func GetMetaPartitionMemorySize(mp *MetaPartition) uint64 {
+	estimateSize := MetaPartitionMemorySizeBase * (mp.InodeCount + mp.DentryCount)
+	if estimateSize < MetaPartitionMemMin {
+		return MetaPartitionMemMin
 	}
-
-	return metaNode.Used / uint64(metaNode.MetaPartitionCount)
+	return estimateSize
 }
 
 func CalcuMetaPartitionReadyMaxRetry(mp *MetaPartition) int {
@@ -2428,13 +2443,13 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 				return true
 			}
 			if metaNode.reachesRocksdbDisksThreshold() {
-				fmt.Fprintf(&unusableBuf, "%s total(%v) used(%v) threshold\n", metaNode.Addr, metaNode.GetRocksdbTotal(), metaNode.GetRocksdbUsed(), metaNode.RocksdbDiskThreshold)
+				fmt.Fprintf(&unusableBuf, "%s total(%v) used(%v) threshold(%v)\n", metaNode.Addr, metaNode.GetRocksdbTotal(), metaNode.GetRocksdbUsed(), metaNode.RocksdbDiskThreshold)
 				return true
 			}
 			if !metaNode.rocksdbDiskKeyNumUnderMax() {
 				fmt.Fprintf(&unusableBuf, "%s max(%v)", metaNode.Addr, metaNode.RocksdbKeyNumMax)
 				for _, disk := range metaNode.RocksdbDisks {
-					fmt.Fprintf(&unusableBuf, "KeyNum(%s)", disk.KeyNum)
+					fmt.Fprintf(&unusableBuf, "KeyNum(%v)", disk.KeyNum)
 				}
 				fmt.Fprintf(&unusableBuf, "\n")
 				return true

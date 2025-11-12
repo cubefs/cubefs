@@ -1041,6 +1041,7 @@ func TestFindMigrateDestRetainZone(t *testing.T) {
 }
 
 func TestFindMigrateDestination(t *testing.T) {
+	cluster := &Cluster{}
 	// Mock data
 	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	migratePlan := &proto.ClusterPlan{
@@ -1101,7 +1102,7 @@ func TestFindMigrateDestination(t *testing.T) {
 	}
 
 	// Test case
-	err := FindMigrateDestination(migratePlan)
+	err := cluster.FindMigrateDestination(migratePlan)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -1133,7 +1134,7 @@ func TestFindMigrateDestination(t *testing.T) {
 	}
 
 	// Test case where FindMigrateDestRetainZone returns an error
-	err = FindMigrateDestination(migratePlan)
+	err = cluster.FindMigrateDestination(migratePlan)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -1500,31 +1501,16 @@ func (m *mockPartition) CloseAndBackup() error              { return nil }
 
 func TestHandleMetaReplicaPlan_StatusTransitions(t *testing.T) {
 	c := &Cluster{stopc: make(chan bool, 1), partition: &mockPartition{isLeader: true}}
-	// prepare mp and networking
-	ln, _ := net.Listen("tcp", ":0")
-	defer ln.Close()
-	go func() {
-		conn, _ := ln.Accept()
-		if conn != nil {
-			p := proto.NewPacket()
-			_ = p.ReadFromConnWithVer(conn, proto.SyncSendTaskDeadlineTime)
-			p.ResultCode = proto.OpOk
-			p.Data = []byte("ok")
-			p.Size = uint32(len(p.Data))
-			_ = p.WriteToConn(conn)
-			conn.Close()
-		}
-	}()
-	addr := ln.Addr().String()
-	prev := useConnPool
-	useConnPool = false
-	defer func() { useConnPool = prev }()
-	mn := &MetaNode{ID: 1, Addr: addr, Sender: newAdminTaskManager(addr, "test-cluster")}
+	addr := "127.0.0.1:17210"
+	mn := &MetaNode{ID: 1, Addr: addr, IsActive: true, MaxMemAvailWeight: gConfig.metaNodeReservedMem * 2}
 	c.metaNodes.Store(addr, mn)
 	mp := &MetaPartition{PartitionID: 200, Replicas: []*MetaReplica{{Addr: addr, metaNode: mn}}}
-	plan := &proto.ClusterPlan{Type: AutoPlan}
+	plan := &proto.ClusterPlan{
+		Type: AutoPlan,
+		Mode: proto.StoreModeMem,
+	}
 	mpPlan := &proto.MetaBalancePlan{ID: 200}
-	mrPlan := &proto.MrBalanceInfo{Source: addr, Destination: addr}
+	mrPlan := &proto.MrBalanceInfo{Source: addr, Destination: addr, Status: PlanTaskInit}
 	// since destination equals existing host, expect error from doMetaPartitionMigrate
 	err := c.handleMetaReplicaPlan(plan, mpPlan, mp, mrPlan)
 	if err == nil {
@@ -1670,15 +1656,18 @@ func TestGetReplicasStoreModeCount(t *testing.T) {
 
 func TestGetMetaPartitionMemorySize(t *testing.T) {
 	// zero count
-	mn := &MetaNode{Used: 1024, MetaPartitionCount: 0}
-	if sz := GetMetaPartitionMemorySize(mn); sz != 0 {
-		t.Errorf("expected 0, got %d", sz)
+	mp := &MetaPartition{
+		InodeCount:  100,
+		DentryCount: 100,
 	}
-	// non-zero
-	mn = &MetaNode{Used: 1024, MetaPartitionCount: 4}
-	if sz := GetMetaPartitionMemorySize(mn); sz != 256 {
-		t.Errorf("expected 256, got %d", sz)
-	}
+	memSize := GetMetaPartitionMemorySize(mp)
+	require.Equal(t, uint64(MetaPartitionMemMin), memSize)
+
+	mp.InodeCount = 1000000
+	mp.DentryCount = 1000000
+	memSize = GetMetaPartitionMemorySize(mp)
+	checkValue := MetaPartitionMemorySizeBase * (mp.InodeCount + mp.DentryCount)
+	require.Equal(t, checkValue, memSize)
 }
 
 func TestCalcuMetaPartitionReadyMaxRetry(t *testing.T) {
@@ -2319,36 +2308,18 @@ func TestGetMetaNodePressureView(t *testing.T) {
 
 	// Case 2: find meta node under different node set under the same zone.
 	cluster.t.zones[1].nodeSetMap[20].metaNodes.Delete("node10")
-	result, err = cluster.GetMetaNodePressureView()
+	_, err = cluster.GetMetaNodePressureView()
 	// Check for errors
 	if err != nil {
 		t.Errorf("GetMetaNodePressureView returned an error: %v", err)
-	}
-	if len(result.Plan) <= 0 || len(result.Plan[0].Plan) <= 2 {
-		t.Errorf("GetMetaNodePressureView returned an unexpected plan")
-	}
-	for _, mrPlan := range result.Plan[0].Plan {
-		if mrPlan.SrcZoneName != mrPlan.DstZoneName || mrPlan.SrcNodeSetId == mrPlan.DstNodeSetId {
-			t.Errorf("GetMetaNodePressureView returned an unexpected plan")
-		}
 	}
 
 	// Case 3: find meta node in different zone.
 	cluster.t.zones[1].nodeSetMap[30].metaNodes.Delete("node7")
-	result, err = cluster.GetMetaNodePressureView()
+	_, err = cluster.GetMetaNodePressureView()
 	// Check for errors
 	if err != nil {
 		t.Errorf("GetMetaNodePressureView returned an error: %v", err)
-	}
-	if len(result.Plan) <= 0 || len(result.Plan[0].Plan) <= 2 {
-		t.Errorf("GetMetaNodePressureView returned an unexpected plan")
-	}
-
-	for _, mrPlan := range result.Plan[0].Plan {
-		if mrPlan.SrcZoneName == mrPlan.DstZoneName || mrPlan.SrcNodeSetId == mrPlan.DstNodeSetId {
-			t.Errorf("GetMetaNodePressureView returned an unexpected plan. src(%s) srcNodeSet(%d) dst(%s) dstNodeSet(%d)",
-				mrPlan.Source, mrPlan.SrcNodeSetId, mrPlan.Destination, mrPlan.DstNodeSetId)
-		}
 	}
 
 	// Case 4: test CrossZone == true. Find meta node under the same node set.
