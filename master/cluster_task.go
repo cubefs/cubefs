@@ -414,6 +414,8 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 	diagnosis.DentryCountNotEqualIDs = setAbnormalIDs(c.dentryCountNotEqualMP)
 	diagnosis.AbnormalRaftIDs = setAbnormalIDs(c.AbnormalRaftMP)
 
+	diagnosis.BadMetaPartitionIDs = c.getBadMetaPartitionsView()
+
 	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
 		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v], AbnormalRaftIDs count:[%v]",
 		c.Name, len(diagnosis.LackReplicaMetaPartitionIDs), len(diagnosis.NoLeaderMetaPartitionIDs),
