@@ -93,9 +93,6 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 				metaNodes []*proto.MetaNodeInfo
 				err       error
 			)
-			defer func() {
-				errout(err)
-			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseMetaPartition(); err != nil {
 				return
 			}
@@ -106,7 +103,9 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			})
 			for _, addr := range diagnosis.InactiveMetaNodes {
 				var node *proto.MetaNodeInfo
-				node, err = client.NodeAPI().GetMetaNode(addr)
+				if node, err = client.NodeAPI().GetMetaNode(addr); err != nil {
+					continue
+				}
 				metaNodes = append(metaNodes, node)
 			}
 			sort.SliceStable(metaNodes, func(i, j int) bool {
