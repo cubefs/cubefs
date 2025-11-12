@@ -337,7 +337,7 @@ func (c *Cluster) GetMetaNodePressureView() (*proto.ClusterPlan, error) {
 		return cView, err
 	}
 
-	err = FindMigrateDestination(cView)
+	err = c.FindMigrateDestination(cView)
 	if err != nil {
 		log.LogErrorf("FindMigrateDestination error: %s", err.Error())
 		return cView, err
@@ -616,7 +616,7 @@ func UpdateMetaReplicaPlanCount(mpPlan *proto.MetaBalancePlan, overLoadNodes []*
 	return nil
 }
 
-func FindMigrateDestination(migratePlan *proto.ClusterPlan) (err error) {
+func (c *Cluster) FindMigrateDestination(migratePlan *proto.ClusterPlan) (err error) {
 	for i, mp := range migratePlan.Plan {
 		if mp.CrossZone {
 			err = FindMigrateDestRetainZone(migratePlan, mp)
@@ -624,6 +624,8 @@ func FindMigrateDestination(migratePlan *proto.ClusterPlan) (err error) {
 			err = FindMigrateDestInOneNodeSet(migratePlan, mp)
 		}
 		if err == NotEnoughResource {
+			c.AnalyzeMetaNodes(migratePlan.Mode)
+
 			if i <= 0 {
 				migratePlan.Msg = fmt.Sprintf("require to migrate (%d) mp, but not create plan", len(migratePlan.Plan))
 				log.LogErrorf(migratePlan.Msg)
@@ -771,6 +773,13 @@ func CreateMigratePlanExcludeNodeSet(migratePlan *proto.ClusterPlan, mpPlan *pro
 	find, dests := GetMigrateAddrExcludeNodeSet(getParam)
 	if !find {
 		log.LogErrorf("Can't find %d free nodes from the zone(%s)", getParam.RequestNum, getParam.ZoneName)
+		if isRocksdb {
+			log.LogWarnf("No resource. getParam: %+v. mpPlan: %+v. Rocksdb: %+v",
+				getParam, mpPlan, convertStructToJson(migratePlan.RocksdbLow))
+		} else {
+			log.LogWarnf("No resource. getParam: %+v. mpPlan: %+v. Memory: %+v",
+				getParam, mpPlan, convertStructToJson(migratePlan.Low))
+		}
 		return NotEnoughResource
 	}
 
@@ -934,8 +943,13 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 
 		return nil
 	}
-	log.LogWarnf("same nodeset no resource. getParam: %+v. mpPlan: %+v. Memory: %+v, Rocksdb: %+v",
-		getParam, mpPlan, convertStructToJson(migratePlan.Low), convertStructToJson(migratePlan.RocksdbLow))
+	if isRocksdb {
+		log.LogWarnf("same nodeset is no resource. getParam: %+v. mpPlan: %+v. Rocksdb: %+v",
+			getParam, mpPlan, convertStructToJson(migratePlan.RocksdbLow))
+	} else {
+		log.LogWarnf("same nodeset is no resource. getParam: %+v. mpPlan: %+v. Memory: %+v",
+			getParam, mpPlan, convertStructToJson(migratePlan.Low))
+	}
 
 	// try the others node set under the same zone.
 	getParam.RequestNum = 3
@@ -944,8 +958,13 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 		find, dests = GetMigrateAddrExcludeZone(getParam)
 	}
 	if !find {
-		log.LogWarnf("other nodeset no resource. getParam: %+v. source: %+v. Memory: %+v, Rocksdb: %+v",
-			getParam, mpPlan, convertStructToJson(migratePlan.Low), convertStructToJson(migratePlan.RocksdbLow))
+		if isRocksdb {
+			log.LogWarnf("other nodeset is no resource. getParam: %+v. source: %+v.Rocksdb: %+v",
+				getParam, mpPlan, convertStructToJson(migratePlan.RocksdbLow))
+		} else {
+			log.LogWarnf("other nodeset is no resource. getParam: %+v. source: %+v. Memory: %+v",
+				getParam, mpPlan, convertStructToJson(migratePlan.Low))
+		}
 		return NotEnoughResource
 	}
 
@@ -1468,7 +1487,11 @@ func (c *Cluster) VerifyAllDestinationsIsLowLoad(plan *proto.ClusterPlan, mpPlan
 		err = c.UpdateMigrateDestination(plan, mpPlan)
 		if err != nil {
 			log.LogErrorf("UpdateMigrateDestination err: %s", err.Error())
-			return
+			if err == NotEnoughResource {
+				c.AnalyzeMetaNodes(plan.Mode)
+			}
+			err = fmt.Errorf("mpid(%s) error: %s", mpPlan.ID, err.Error())
+			return err
 		}
 	}
 
@@ -1684,7 +1707,7 @@ func (c *Cluster) CreateOfflineMetaNodePlan(offLineAddr string) (*proto.ClusterP
 		return cView, err
 	}
 
-	err = FindMigrateDestination(cView)
+	err = c.FindMigrateDestination(cView)
 	if err != nil {
 		log.LogErrorf("FindMigrateDestination error: %s", err.Error())
 		return cView, err
@@ -2034,7 +2057,7 @@ func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID
 		return plan, err
 	}
 
-	err = FindMigrateDestination(plan)
+	err = c.FindMigrateDestination(plan)
 	if err != nil {
 		log.LogErrorf("FindMigrateDestination error: %s", err.Error())
 		return plan, err
@@ -2333,4 +2356,97 @@ func (c *Cluster) GetClusterPlanStatusMsg() string {
 		return "plan task status is stopping"
 	}
 	return "plan task status is unknown"
+}
+
+func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
+	var nodeMemRatio float64
+
+	var unusableBuf strings.Builder
+	unusableBuf.WriteString("Unusable metanodes status:\n")
+	var usableBuf strings.Builder
+	if storeMode == proto.StoreModeRocksDb {
+		usableBuf.WriteString("Rocksdb resource list:\n")
+	} else {
+		usableBuf.WriteString("Memory resource list:\n")
+	}
+
+	c.metaNodes.Range(func(key, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+
+		nodeMemRatio = CaculateNodeMemoryRatio(metaNode)
+		if nodeMemRatio > gConfig.metaNodeMemHighPer {
+			fmt.Fprintf(&unusableBuf, "%s total: %d, used: %d, ratio: %f > %f\n", metaNode.Addr, metaNode.NodeMemTotal, metaNode.NodeMemUsed, nodeMemRatio, gConfig.metaNodeMemHighPer)
+			return true
+		}
+
+		if storeMode == proto.StoreModeRocksDb {
+			if canAllocPartition(metaNode, MetaNodeType, 1) {
+				if metaNode.Ratio <= gConfig.metaNodeMemLowPer && nodeMemRatio <= gConfig.metaNodeMemLowPer {
+					fmt.Fprintf(&usableBuf, " %s", metaNode.Addr)
+					return true
+				}
+			}
+		} else {
+			if canAllocPartition(metaNode, RocksdbType, 1) {
+				if IsRocksdbDiskUsageLow(metaNode) {
+					fmt.Fprintf(&usableBuf, " %s", metaNode.Addr)
+					return true
+				}
+			}
+		}
+
+		if metaNode.PartitionCntLimitedEx(1) {
+			fmt.Fprintf(&unusableBuf, "%s mpCount(%v) > limit(%v)\n", metaNode.Addr, metaNode.MetaPartitionCount, metaNode.GetPartitionLimitCnt())
+			return true
+		}
+		if !metaNode.IsActive {
+			fmt.Fprintf(&unusableBuf, "%s is not active\n", metaNode.Addr)
+			return true
+		}
+		if metaNode.MetaPartitionCount >= defaultMaxMetaPartitionCountOnEachNode {
+			fmt.Fprintf(&unusableBuf, "%s metaPartitionCount(%v) >= defaultMaxMetaPartitionCountOnEachNode(%v)\n", metaNode.Addr, metaNode.MetaPartitionCount, defaultMaxMetaPartitionCountOnEachNode)
+			return true
+		}
+		if metaNode.systemMemoryReachesThreshold() {
+			fmt.Fprintf(&unusableBuf, "%s total(%v) used(%v) threshold(%v)\n", metaNode.Addr, metaNode.NodeMemUsed, metaNode.NodeMemTotal, metaNode.Threshold)
+			return true
+		}
+
+		if storeMode == proto.StoreModeRocksDb {
+			systemMemoryFreeSize := metaNode.NodeMemTotal - metaNode.NodeMemUsed
+			if systemMemoryFreeSize <= gConfig.metaNodeReservedMem {
+				fmt.Fprintf(&unusableBuf, "%s systemMemoryFreeSize(%v) <= reservedMem(%v)\n", metaNode.Addr, systemMemoryFreeSize, gConfig.metaNodeReservedMem)
+				return true
+			}
+			if metaNode.reachesRocksdbDisksThreshold() {
+				fmt.Fprintf(&unusableBuf, "%s total(%v) used(%v) threshold\n", metaNode.Addr, metaNode.GetRocksdbTotal(), metaNode.GetRocksdbUsed(), metaNode.RocksdbDiskThreshold)
+				return true
+			}
+			if !metaNode.rocksdbDiskKeyNumUnderMax() {
+				fmt.Fprintf(&unusableBuf, "%s max(%v)", metaNode.Addr, metaNode.RocksdbKeyNumMax)
+				for _, disk := range metaNode.RocksdbDisks {
+					fmt.Fprintf(&unusableBuf, "KeyNum(%s)", disk.KeyNum)
+				}
+				fmt.Fprintf(&unusableBuf, "\n")
+				return true
+			}
+		} else {
+			if metaNode.MaxMemAvailWeight <= gConfig.metaNodeReservedMem {
+				fmt.Fprintf(&unusableBuf, "%s maxMemAvailWeight(%v) <= reservedMem(%v)\n", metaNode.Addr, metaNode.MaxMemAvailWeight, gConfig.metaNodeReservedMem)
+				return true
+			}
+			if metaNode.reachesThreshold() {
+				fmt.Fprintf(&unusableBuf, "%s total(%v) used(%v) threshold(%v)\n", metaNode.Addr, metaNode.Total, metaNode.Used, metaNode.Threshold)
+				return true
+			}
+			if metaNode.RdOnly {
+				fmt.Fprintf(&unusableBuf, "%s is rdOnly\n", metaNode.Addr)
+				return true
+			}
+		}
+
+		return true
+	})
+	log.LogWarnf(unusableBuf.String())
+	log.LogWarnf(usableBuf.String())
 }
