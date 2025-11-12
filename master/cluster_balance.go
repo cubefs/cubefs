@@ -943,6 +943,12 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 
 		return nil
 	}
+
+	// try to find resource from the mp member which has the same store mode.
+	err := TryNodeSetIdFromOtherNodes(migratePlan, mpPlan, getParam)
+	if err == nil {
+		return nil
+	}
 	if isRocksdb {
 		log.LogWarnf("same nodeset is no resource. getParam: %+v. mpPlan: %+v. Rocksdb: %+v",
 			getParam, mpPlan, convertStructToJson(migratePlan.RocksdbLow))
@@ -968,7 +974,7 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 		return NotEnoughResource
 	}
 
-	err := MigratePlanOriginalToDest(migratePlan, mpPlan, dests, isRocksdb)
+	err = MigratePlanOriginalToDest(migratePlan, mpPlan, dests, isRocksdb)
 	if err != nil {
 		log.LogErrorf("MigratePlanOriginalToDest error: %s", err.Error())
 		return err
@@ -2062,6 +2068,9 @@ func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID
 		log.LogErrorf("FindMigrateDestination error: %s", err.Error())
 		return plan, err
 	}
+	// remove unnecessary plans.
+	TrimMigrateMetaPartitionPlan(plan)
+
 	plan.Total = len(plan.Plan)
 	plan.UndoNum = int32(plan.Total)
 	for _, item := range plan.Plan {
@@ -2449,4 +2458,68 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 	})
 	log.LogWarnf(unusableBuf.String())
 	log.LogWarnf(usableBuf.String())
+}
+
+func TrimMigrateMetaPartitionPlan(migratePlan *proto.ClusterPlan) {
+	if migratePlan == nil || migratePlan.Type != ModifyStore {
+		return
+	}
+
+	for _, mpPlan := range migratePlan.Plan {
+		if len(mpPlan.OverLoad) >= len(mpPlan.Plan) {
+			continue
+		}
+		TrimMetaReplicaPlan(mpPlan)
+	}
+}
+
+func TrimMetaReplicaPlan(mpPlan *proto.MetaBalancePlan) {
+	newPlan := make([]*proto.MrBalanceInfo, 0, len(mpPlan.OverLoad))
+	for _, mr := range mpPlan.Plan {
+		for _, item := range mpPlan.OverLoad {
+			if mr.Source == item.Source {
+				newPlan = append(newPlan, mr)
+				break
+			}
+		}
+	}
+
+	mpPlan.Plan = newPlan
+}
+
+func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, getParm *GetMigrateAddrParam) error {
+	nodeSetId := make([]uint64, 0, len(mpPlan.Original))
+	bFind := false
+	for _, mr := range mpPlan.Original {
+		if mr.StoreMode != migratePlan.Mode {
+			continue
+		}
+		bFind = false
+		for _, item := range mpPlan.OverLoad {
+			if item.Source == mr.Source {
+				bFind = true
+				break
+			}
+		}
+		if !bFind {
+			nodeSetId = append(nodeSetId, mr.SrcNodeSetId)
+		}
+	}
+	if len(nodeSetId) == 0 {
+		return fmt.Errorf("no node set id found")
+	}
+
+	for _, nodeSetId := range nodeSetId {
+		getParm.NodeSetID = nodeSetId
+		find, dests := GetMigrateAddrExcludeNodeSet(getParm)
+		if find {
+			err := MigratePlanOverLoadToDest(migratePlan, mpPlan, dests, getParm.IsRocksdb)
+			if err != nil {
+				log.LogErrorf("MigratePlanOverLoadToDest error: %s", err.Error())
+				return err
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no resource in the members nodeset")
 }
