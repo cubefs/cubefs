@@ -386,7 +386,9 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	} else {
 		cino, ok := d.dcache.Get(req.Name)
 		if !ok {
-			log.LogDebugf("Lookup %v from parent %v miss, try to get from meta", path.Join(d.getCwd(), req.Name), d.info.Inode)
+			if log.EnableDebug() {
+				log.LogDebugf("Lookup %v from parent %v miss, try to get from meta", path.Join(d.getCwd(), req.Name), d.info.Inode)
+			}
 			cino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name)
 			if err != nil {
 				if err != syscall.ENOENT {
@@ -475,7 +477,9 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		if d.dcache == nil {
 			d.dcache = NewDentryCache(d.super.metaCacheAcceleration)
 		}
-		log.LogDebugf("Lookup store %v  %v to cache ", path.Join(d.getCwd(), req.Name), ino)
+		if log.EnableDebug() {
+			log.LogDebugf("Lookup store %v  %v to cache ", path.Join(d.getCwd(), req.Name), ino)
+		}
 		d.dcache.Put(req.Name, ino)
 	}
 	// If subdirectories may be the directories where training data is located,

@@ -1304,6 +1304,10 @@ func (s *Streamer) truncate(size int, fullPath string) error {
 		return err
 	}
 
+	if s.aheadReadEnable && s.aheadReadWindow != nil {
+		s.aheadReadWindow.evictAllBlocks()
+	}
+
 	err = s.client.truncate(s.inode, uint64(size), fullPath)
 	if err != nil {
 		return err
