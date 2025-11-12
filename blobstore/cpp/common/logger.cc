@@ -4,7 +4,7 @@ namespace blobstore {
 
 static std::once_flag log_flag;
 static LoggerFactory* log_factory = nullptr;
-bool LoggerFactory::async_mode_ = false;
+bool LoggerFactory::discard_mode_ = true;
 
 struct LoggerWrap {
     Logger* logger = nullptr;
@@ -20,17 +20,9 @@ struct LoggerWrap {
 
 static thread_local LoggerWrap l_logger_wrap;
 
-struct LogItemCmp {
-    bool operator()(const LogItem* item1, const LogItem* item2) const {
-        return item1->log_msg.time <= item2->log_msg.time;
-    }
-};
-
-void InitLoggerFactory(const std::string& filename, size_t max_file_size, size_t max_files,
-                       unsigned cpu) {
-    std::call_once(log_flag, [filename, max_file_size, max_files, cpu]() {
-        LoggerFactory* factory =
-            new LoggerFactory("log-thread", filename, max_file_size, max_files, cpu);
+void InitLoggerFactory(unsigned cpu) {
+    std::call_once(log_flag, [cpu]() {
+        LoggerFactory* factory = new LoggerFactory("log-thread", cpu);
         log_factory = factory;
     });
 }
@@ -60,12 +52,18 @@ LogItem* Logger::GetLogItem() {
     return item;
 }
 
+void Logger::CompleteLogItem(LogItem* item) {
+    if (!completed_.push(item)) {
+        delete item;
+    }
+}
+
 void Logger::Flush() {
     LogItem* item = new LogItem;
     item->logger = this;
     item->log_msg.time = std::chrono::time_point<std::chrono::system_clock>::max();
-    item->flush_prom = std::move(std::promise<void>());
-    auto fu = item->flush_prom.value().get_future();
+    item->flush_pr = std::move(std::promise<void>());
+    auto fu = item->flush_pr.value().get_future();
     while (!pending_.push(item)) {
         std::unique_lock<std::mutex> lock(mux_);
         cv_.wait(lock);
@@ -78,14 +76,24 @@ void Logger::Flush() {
     completed_.consume_all([](LogItem* item) { delete item; });
 }
 
-LoggerFactory::LoggerFactory(std::string name, std::string logfile, size_t max_file_size,
-                             size_t max_files, unsigned cpu)
+LoggerFactory::LoggerFactory(std::string name, unsigned cpu)
     : name_(name),
       cpu_(cpu),
-      log_(spdlog::rotating_logger_mt(name, logfile, max_file_size, max_files)),
       fd_(eventfd(0, EFD_CLOEXEC)),
-      thread_([name, this] { Run(name); }) {
-    log_->set_pattern("[%Y-%m-%d %H:%M:%S.%f][%l][%s:%#] %v");
+      log_name_array_({"normal_log", "audit_log"}),
+      log_pattern_array_({"[%Y-%m-%d %H:%M:%S.%f %t][%l][%s:%#] %v", "[%Y-%m-%d %H:%M:%S.%f] %v"}),
+      thread_([this] { Run(); }) {}
+
+void LoggerFactory::InitLogfile(LogType type, const std::string& filename,
+                                spdlog::level::level_enum level, size_t max_file_size,
+                                size_t max_files) {
+    std::call_once(log_flag_array_[static_cast<int>(type)], [this, type, filename, level,
+                                                             max_file_size, max_files] {
+        log_array_[static_cast<int>(type)] = spdlog::rotating_logger_st(
+            log_name_array_[static_cast<int>(type)], filename, max_file_size, max_files);
+        log_array_[static_cast<int>(type)]->set_level(level);
+        log_array_[static_cast<int>(type)]->set_pattern(log_pattern_array_[static_cast<int>(type)]);
+    });
 }
 
 LoggerFactory::~LoggerFactory() {
@@ -93,84 +101,122 @@ LoggerFactory::~LoggerFactory() {
     thread_.join();
 }
 
-void LoggerFactory::Run(std::string name) {
-    pthread_setname_np(pthread_self(), name.c_str());
+void LoggerFactory::InitLogThread() {
+    pthread_setname_np(pthread_self(), name_.c_str());
     sigset_t mask;
     sigfillset(&mask);
-    auto r = ::pthread_sigmask(SIG_BLOCK, &mask, NULL);
-    seastar::throw_pthread_error(r);
+    ::pthread_sigmask(SIG_BLOCK, &mask, NULL);
 
-    if (cpu_ != -1) {
+    if (cpu_ != static_cast<unsigned>(-1)) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         CPU_SET(cpu_, &cpuset);
         pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
     }
+}
 
-    while (!stopped_.load(std::memory_order_relaxed)) {
-        std::set<LogItem*, LogItemCmp> log_entries;
-        std::vector<int> deleted_vec;
-        mux_.lock();
-        std::vector<Logger*> loggers = logger_vec_;
-        mux_.unlock();
-        for (int i = 0; i < loggers.size(); i++) {
-            loggers[i]->pending_.consume_all([&](LogItem* item) { log_entries.insert(item); });
-            loggers[i]->mux_.lock();
-            loggers[i]->cv_.notify_all();
-            loggers[i]->mux_.unlock();
-            if (loggers[i]->closed_) {
-                deleted_vec.push_back(i);
-            }
-        }
-
-        if (log_entries.empty() && deleted_vec.empty()) {
-            uint64_t count;
-            auto r = ::read(fd_, &count, sizeof(count));
-            assert(r == sizeof(count));
-            continue;
-        }
-
-        for (auto item : log_entries) {
-            if (item->flush_prom) {
-                log_->flush();
-                item->flush_prom.value().set_value();
-                // if this is a flush item, we cann't push it into completed
-                // queue
-                continue;
-            }
-            auto sinks = log_->sinks();
-            for (int i = 0; i < sinks.size(); i++) {
-                try {
-                    sinks[i]->log(item->log_msg);
-                } catch (...) {
-                }
-            }
-            if (!item->logger->completed_.push(item)) {
-                delete item;
-            }
-        }
-        log_->flush();
-
-        if (deleted_vec.size() > 0) [[unlikely]] {
-            std::unique_lock<std::mutex> lock(mux_);
-            for (int i = deleted_vec.size() - 1; i >= 0; i--) {
-                int index = deleted_vec[i];
-                delete logger_vec_[index];
-                if (index != logger_vec_.size() - 1) {
-                    logger_vec_[index] = logger_vec_.back();
-                }
-                logger_vec_.pop_back();
-            }
+void LoggerFactory::RearrangeLogItems(std::set<LogItem*, LogItemCmp>& log_entries,
+                                      std::vector<int>& deleted_vec) {
+    mux_.lock();
+    std::vector<Logger*> loggers = logger_vec_;
+    mux_.unlock();
+    for (int i = 0; i < static_cast<int>(loggers.size()); i++) {
+        loggers[i]->pending_.consume_all([&](LogItem* item) { log_entries.insert(item); });
+        loggers[i]->mux_.lock();
+        loggers[i]->cv_.notify_all();
+        loggers[i]->mux_.unlock();
+        if (loggers[i]->closed_) {
+            deleted_vec.push_back(i);
         }
     }
 }
 
-bool LoggerFactory::should_log(spdlog::level::level_enum msg_level) {
-    return log_->should_log(msg_level);
+void LoggerFactory::Flush() {
+    for (int i = 0; i < static_cast<int>(LogType::Max); i++) {
+        if (log_array_[i]) {
+            log_array_[i]->flush();
+        }
+    }
 }
 
-void LoggerFactory::set_level(spdlog::level::level_enum log_level) {
-    return log_->set_level(log_level);
+void LoggerFactory::FlushLogItems(const std::set<LogItem*, LogItemCmp>& log_entries) {
+    std::array<bool, static_cast<size_t>(LogType::Max)> flush_array = {};
+
+    for (auto item : log_entries) {
+        if (item->flush_pr) {
+            Flush();
+            item->flush_pr.value().set_value();
+            // this is a flush item, so we cann't push it into completed queue
+            continue;
+        }
+        auto log = log_array_[static_cast<int>(item->log_type)];
+        if (!log) {
+            item->logger->CompleteLogItem(item);
+            continue;
+        }
+        flush_array[static_cast<int>(item->log_type)] = true;
+
+        auto sinks = log->sinks();
+        for (int i = 0; i < static_cast<int>(sinks.size()); i++) {
+            try {
+                // 如果磁盘故障, 这里写日志可能会抛出异常, 需要忽略掉
+                sinks[i]->log(item->log_msg);
+            } catch (...) {
+            }
+        }
+        item->logger->CompleteLogItem(item);
+    }
+    for (int i = 0; i < static_cast<int>(LogType::Max); i++) {
+        if (!flush_array[i]) {
+            continue;
+        }
+        log_array_[i]->flush();
+    }
+}
+
+void LoggerFactory::DeleteLoggers(const std::vector<int>& deleted_vec) {
+    if (deleted_vec.size() == 0) return;
+    std::unique_lock<std::mutex> lock(mux_);
+    for (int i = static_cast<int>(deleted_vec.size()) - 1; i >= 0; i--) {
+        int index = deleted_vec[i];
+        delete logger_vec_[index];
+        if (index != static_cast<int>(logger_vec_.size()) - 1) {
+            logger_vec_[index] = logger_vec_.back();
+        }
+        logger_vec_.pop_back();
+    }
+}
+
+void LoggerFactory::Run() {
+    InitLogThread();
+    while (!stopped_.load(std::memory_order_relaxed)) {
+        std::set<LogItem*, LogItemCmp> log_entries;
+        std::vector<int> deleted_vec;
+        RearrangeLogItems(log_entries, deleted_vec);
+        if (log_entries.empty() && deleted_vec.empty()) {
+            uint64_t count;
+            auto r = ::read(fd_, &count, sizeof(count));
+            assert(r == sizeof(count));
+            (void)r;
+            continue;
+        }
+
+        FlushLogItems(log_entries);
+        DeleteLoggers(deleted_vec);
+    }
+}
+
+bool LoggerFactory::ShouldLog(LogType log_type, spdlog::level::level_enum level) {
+    if (log_array_[static_cast<int>(log_type)]) [[likely]] {
+            return log_array_[static_cast<int>(log_type)]->should_log(level);
+        }
+    return false;
+}
+
+void LoggerFactory::SetLevel(LogType log_type, spdlog::level::level_enum level) {
+    if (log_array_[static_cast<int>(log_type)]) [[likely]] {
+            return log_array_[static_cast<int>(log_type)]->set_level(level);
+        }
 }
 
 Logger* LoggerFactory::GetLocalLogger() {
