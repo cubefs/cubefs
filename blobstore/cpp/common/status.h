@@ -2,6 +2,7 @@
 
 #include <fmt/ostream.h>
 
+#include <seastar/core/seastar.hh>
 #include <seastar/core/sstring.hh>
 #include <string>
 #include <tuple>
@@ -12,6 +13,7 @@ enum class ErrCode {
     OK = 200,
     //////////custome error ////////
     ErrInvalid = 400,
+    ErrNotFound = 404,
     ErrTimeout = 408,
     ErrConflict = 409,
     ErrEOF = 410,
@@ -190,6 +192,9 @@ class Status<> : public StatusBase {
         return *this;
     }
 };
+
+template <typename... T>
+using FutureStatus = seastar::future<::blobstore::Status<T...>>;
 
 }  // namespace blobstore
 

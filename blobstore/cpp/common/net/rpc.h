@@ -3,12 +3,14 @@
 #include <google/protobuf/message.h>
 
 #include <functional>
+#include <memory>
 #include <seastar/core/future.hh>
 #include <tuple>
 
 #include "common/net/session.h"
 #include "common/proto/rpc.pb.h"
 #include "common/status.h"
+#include "common/trace.h"
 #include "common/util.h"
 
 namespace blobstore {
@@ -116,6 +118,9 @@ class RpcRequestHeader {
 
     void SetContentLength(int64_t n) { req_header_.set_content_length(n); }
 
+    int32_t RemotePathIndex() const { return req_header_.remote_path_index(); }
+    void SetRemotePathIndex(int32_t index) { req_header_.set_remote_path_index(index); }
+
     RpcMessageHeader Header() {
         RpcMessageHeader header(req_header_.mutable_header());
         return header;
@@ -165,6 +170,7 @@ class RpcResponseHeader {
     int32_t Code() const { return resp_header_.status(); }
 
     void SetCode(int32_t code) { resp_header_.set_status(code); }
+    void SetCode(ErrCode code) { resp_header_.set_status((int)code); }
 
     void SetReason(std::string_view reason) {
         resp_header_.set_reason(std::string(reason.data(), reason.size()));
@@ -200,6 +206,8 @@ class RpcResponseHeader {
 class RpcServerContext {
     Stream* stream_;
     RpcRequestHeader req_header_;
+    blobstore::Trace trace_;
+
     size_t recv_len_ = 0;
     bool stream_ctx_ = false;
     bool has_fin_ = false;
@@ -222,6 +230,8 @@ class RpcServerContext {
 
     inline bool HasFin() const { return has_fin_; }
 
+    inline blobstore::Trace& Trace() { return trace_; }
+
     // write a body frame
     seastar::future<Status<>> WriteBody(const char* b, size_t n);
     seastar::future<Status<>> WriteBody(std::vector<iovec> iov);
@@ -235,17 +245,6 @@ class RpcServerContext {
     seastar::socket_address RemoteAddress() const { return stream_->RemoteAddress(); }
 
     seastar::future<> Close();
-};
-
-class RpcService {
-   public:
-    RpcService() {}
-
-    virtual ~RpcService() {}
-
-    virtual seastar::future<Status<>> HandleMessage(RpcServerContext* ctx) = 0;
-
-    virtual seastar::future<> Close() = 0;
 };
 
 }  // namespace net

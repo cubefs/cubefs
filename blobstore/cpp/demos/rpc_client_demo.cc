@@ -1,3 +1,5 @@
+#include <fmt/format.h>
+
 #include <seastar/core/app-template.hh>
 #include <seastar/core/coroutine.hh>
 #include <seastar/core/reactor.hh>
@@ -8,8 +10,107 @@
 
 #include "common/logger.h"
 #include "common/net/rpc_client.h"
+#include "demo.h"
 
 namespace bpo = boost::program_options;
+
+const std::string& GetRoutePath(RoutePathIndex index) {
+    auto it = kRoutePathString.find(index);
+    if (it == kRoutePathString.end()) {
+        throw std::runtime_error("not defined path index");
+    }
+    return it->second;
+}
+
+seastar::future<> testNoBody(blobstore::net::RpcClient* client, const std::string& host,
+                             uint16_t port, RoutePathIndex index, int32_t code) {
+    auto res = co_await client->MakeRpcClientContext(host, port);
+    if (!res) {
+        LOG_ERROR("test: make rpc client context error: {}", res);
+        co_return;
+    }
+    auto ctx = std::move(res.Value());
+
+    auto path = GetRoutePath(index);
+
+    blobstore::net::RpcRequestHeader req_header;
+    std::string trace_id = blobstore::GenerateTraceid();
+    req_header.SetTraceid(trace_id);
+    req_header.SetRemotePath(path);
+    req_header.SetRemotePathIndex(+index);
+
+    auto s = co_await ctx->WriteHeader(std::move(req_header));
+    if (!s) {
+        LOG_ERROR("test [{}]{}: write header error: {}", +index, path, s);
+        co_return;
+    }
+
+    auto read_res = co_await ctx->ReadHeader();
+    if (!read_res) {
+        LOG_ERROR("test [{}]{}: read header error: {}", +index, path, read_res);
+        co_return;
+    }
+    auto resp_header = std::move(read_res.Value());
+    if (resp_header.Code() != code) {
+        LOG_ERROR("test [{}]{}: response code={} !={}, reason={}", +index, path, resp_header.Code(),
+                  code, resp_header.Reason());
+        std::exit(1);
+    }
+    LOG_INFO("test [{}]{}: response code={}, reason={}", +index, path, resp_header.Code(),
+             resp_header.Reason());
+
+    co_return;
+}
+
+seastar::future<> testKick(blobstore::net::RpcClient* client, const std::string& host,
+                           uint16_t port) {
+    blobstore::Buffer content(4096);
+    std::memset(content.get_write(), 'K', content.size());
+    int kick = 1;
+    for (;; kick++) {
+        auto res = co_await client->MakeRpcClientContext(host, port);
+        if (!res) {
+            LOG_ERROR("testKick: make rpc client context error: {}", res);
+            break;
+        }
+        auto ctx = std::move(res.Value());
+
+        blobstore::net::RpcRequestHeader req_header;
+        std::string trace_id = blobstore::GenerateTraceid();
+        req_header.SetTraceid(trace_id);
+        req_header.SetRemotePath(GetRoutePath(RoutePathIndex::Kick));
+        req_header.SetRemotePathIndex(+RoutePathIndex::Kick);
+        req_header.SetContentLength(content.size() * 2);
+
+        auto s = co_await ctx->WriteHeader(std::move(req_header));
+        if (!s) {
+            LOG_ERROR("testKick: write header error: {}", s);
+            break;
+        }
+        s = co_await ctx->WriteBody(content.get(), content.size());
+        if (!s) {
+            LOG_ERROR("testKick: write body error: {}", s);
+            break;
+        }
+        s = co_await ctx->WriteBody(content.get(), content.size());
+        if (!s) {
+            LOG_ERROR("testKick: write body error: {}", s);
+            break;
+        }
+
+        auto read_res = co_await ctx->ReadHeader();
+        if (!read_res) {
+            LOG_ERROR("testKick: read header error: {}", read_res);
+            break;
+        }
+        auto resp_header = std::move(read_res.Value());
+        LOG_INFO("testKick({}): response code={}, reason={}", kick, resp_header.Code(),
+                 resp_header.Reason());
+        co_await seastar::sleep(std::chrono::seconds(1));
+    }
+
+    co_return;
+}
 
 seastar::future<> test_client(std::string host, uint16_t port) {
     auto rpc_client = co_await blobstore::net::RpcClient::MakeRpcClient();
@@ -19,41 +120,20 @@ seastar::future<> test_client(std::string host, uint16_t port) {
     }
 
     auto test_fn = [rpc_client_ptr = rpc_client.get(), host, port]() -> seastar::future<> {
-        blobstore::Buffer content(4096);
-        for (;;) {
-            auto res = co_await rpc_client_ptr->MakeRpcClientContext(host, port);
-            if (!res) {
-                LOG_ERROR("make rpc client context error: {}, host: {} port: {}", res, host, port);
-                break;
-            }
-            auto ctx = std::move(res.Value());
-            blobstore::net::RpcRequestHeader req_header;
-            std::string trace_id = blobstore::GenerateTraceid();
-            req_header.SetTraceid(trace_id);
-            req_header.SetContentLength(content.size());
-            auto s = co_await ctx->WriteHeader(std::move(req_header));
-            if (!s) {
-                LOG_ERROR("write header error: {}", s);
-                // 发送失败退出
-                break;
-            }
-            s = co_await ctx->WriteBody(content.get(), content.size());
-            if (!s) {
-                LOG_ERROR("write body error: {}", s);
-                // 发送失败退出
-                break;
-            }
+        co_await testNoBody(rpc_client_ptr, host, port, RoutePathIndex::Middle, 399);
+        co_await seastar::sleep(std::chrono::milliseconds(1000));
 
-            auto read_res = co_await ctx->ReadHeader();
-            if (!read_res) {
-                LOG_ERROR("read header error: {}", read_res);
-                break;
-            }
-            auto resp_header = std::move(read_res.Value());
-            LOG_INFO("recv response header: ver={} magic={} code={}", resp_header.Version(),
-                     resp_header.Magic(), resp_header.Code());
-            co_await seastar::sleep(std::chrono::seconds(1));
-        }
+        co_await testNoBody(rpc_client_ptr, host, port, RoutePathIndex::NotFound, 404);
+        co_await seastar::sleep(std::chrono::milliseconds(1000));
+
+        co_await testNoBody(rpc_client_ptr, host, port, RoutePathIndex::Ping, 200);
+        co_await seastar::sleep(std::chrono::milliseconds(1000));
+
+        co_await testNoBody(rpc_client_ptr, host, port, RoutePathIndex::Error, 567);
+        co_await seastar::sleep(std::chrono::milliseconds(1000));
+
+        co_await testKick(rpc_client_ptr, host, port);
+
         co_return;
     };
     co_await seastar::smp::invoke_on_all(std::ref(test_fn));
@@ -84,6 +164,7 @@ int main(int argc, char** argv) {
     }
 
     seastar::app_template::seastar_options opts;
+    opts.smp_opts.smp.set_value(2);
     opts.auto_handle_sigint_sigterm = false;
     opts.reactor_opts.abort_on_seastar_bad_alloc.set_value();
     seastar::app_template app(std::move(opts));

@@ -1,5 +1,9 @@
+#include <fmt/format.h>
+
+#include <chrono>
 #include <seastar/core/app-template.hh>
 #include <seastar/core/coroutine.hh>
+#include <seastar/core/lowres_clock.hh>
 #include <seastar/core/reactor.hh>
 #include <seastar/core/seastar.hh>
 #include <seastar/core/thread.hh>
@@ -8,18 +12,74 @@
 #include "common/logger.h"
 #include "common/net/rpc.h"
 #include "common/net/rpc_server.h"
-#include "common/net/tcp_connection.h"
-#include "common/net/tcp_session.h"
 #include "common/status.h"
+#include "demo.h"
 
 namespace bpo = boost::program_options;
 
-class SimpleService : public blobstore::net::RpcService {
+namespace {  // valid scope in local file
+using ::blobstore::FutureStatus;
+using ::blobstore::Status;
+using ::blobstore::net::RpcRequestHeader;
+using ::blobstore::net::RpcResponseHeader;
+using ::blobstore::net::RpcServerContext;
+}  // namespace
+
+FutureStatus<> Middleware1(RpcServerContext* ctx) {
+    RpcRequestHeader& req_header = ctx->GetRpcRequestHeader();
+    auto& trace = ctx->Trace();
+    trace.Append("mid1", seastar::lowres_clock::duration(1111));
+    LOG_INFO("{} middleware-1: processing request [{}]{}", trace.TraceID(),
+             req_header.RemotePathIndex(), req_header.RemotePath());
+    Status<> s;
+    co_return s;
+}
+
+FutureStatus<> Middle(RpcServerContext* ctx) { throw std::runtime_error("should not be here"); }
+
+class SimpleService {
    public:
-    seastar::future<blobstore::Status<>> HandleMessage(
-        blobstore::net::RpcServerContext* ctx) override {
-        blobstore::Status<> s;
-        blobstore::net::RpcRequestHeader& req_header = ctx->GetRpcRequestHeader();
+    FutureStatus<> Middleware2(RpcServerContext* ctx) {
+        Status<> s;
+        RpcRequestHeader& req_header = ctx->GetRpcRequestHeader();
+        if (req_header.RemotePathIndex() == +RoutePathIndex::Middle) {
+            s.SetCode(399);
+            s.SetReason("CustomStop");
+            co_return s;
+        }
+        auto& trace = ctx->Trace();
+        trace.Append("middle2");
+        trace.Append("mid2", seastar::lowres_clock::duration(22222));
+        LOG_INFO("{} middleware-2: processing request [{}]{}", trace.TraceID(),
+                 req_header.RemotePathIndex(), req_header.RemotePath());
+        co_return s;
+    }
+
+    FutureStatus<> HandlePing(RpcServerContext* ctx) {
+        Status<> s;
+        auto& trace = ctx->Trace();
+        auto start = seastar::lowres_clock::now();
+        LOG_INFO("{} handlePing: remote: {}", trace.TraceID(), ctx->RemoteAddress());
+
+        RpcResponseHeader resp_header;
+        resp_header.SetCode(blobstore::ErrCode::OK);
+        s = co_await ctx->WriteHeader(std::move(resp_header));
+
+        trace.Append("ping", start);
+        LOG_INFO("TRACE[{}]: {}", trace.TraceID(), trace);
+        co_return s;
+    }
+
+    FutureStatus<> HandleKick(RpcServerContext* ctx) {
+        Status<> s;
+        RpcRequestHeader& req_header = ctx->GetRpcRequestHeader();
+        auto& trace = ctx->Trace();
+
+        auto start = std::chrono::steady_clock::now();
+
+        blobstore::Trace kick_trace = blobstore::Trace(trace.TraceID());
+        kick_trace.Append("kick-simple", "start");
+
         int64_t n = req_header.ContentLength();
         while (n > 0) {
             auto res = co_await ctx->ReadBody();
@@ -27,25 +87,56 @@ class SimpleService : public blobstore::net::RpcService {
                 s.SetCode(res.Code()).SetReason(res.Reason());
                 co_return s;
             }
-
             auto b = std::move(res.Value());
             n -= b.size();
         }
-        LOG_INFO("recv a message from remote: {}, traceid={}, content_len={}", ctx->RemoteAddress(),
-                 req_header.Traceid(), req_header.ContentLength());
-        blobstore::net::RpcResponseHeader resp_header;
+        kick_trace.Append("kick", start);
+        LOG_INFO("{} handleKick: recv message from remote: {}, content_len={}", trace.TraceID(),
+                 ctx->RemoteAddress(), req_header.ContentLength());
+
+        RpcResponseHeader resp_header;
         s = co_await ctx->WriteHeader(std::move(resp_header));
+
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start);
+        trace.Append("kick", fmt::format("{}ns", duration.count()));
+        LOG_INFO("TRACE[{}]: {}", trace.TraceID(), trace);
+        LOG_INFO("KICK-[{}]: {}", kick_trace.TraceID(), kick_trace);
         co_return s;
     }
 
-    seastar::future<> Close() override { return seastar::make_ready_future<>(); }
+    FutureStatus<> HandleError(RpcServerContext* ctx) {
+        RpcResponseHeader resp_header;
+        resp_header.SetCode(567);
+        std::string reason = "CustomError";
+        resp_header.SetReason(reason);
+        co_return co_await ctx->WriteHeader(std::move(resp_header));
+    }
 };
 
 seastar::future<> test_server(uint16_t port) {
     std::unique_ptr<SimpleService> service = std::make_unique<SimpleService>();
     std::unique_ptr<blobstore::net::TcpRpcServer> rpc_server =
-        std::make_unique<blobstore::net::TcpRpcServer>(blobstore::net::Option(), "0.0.0.0", port,
-                                                       service.get());
+        std::make_unique<blobstore::net::TcpRpcServer>(blobstore::net::Option(), "0.0.0.0", port);
+
+    rpc_server->AddMiddleware(Middleware1);
+    rpc_server->AddMiddleware([s = service.get()](RpcServerContext* ctx) -> FutureStatus<> {
+        return s->Middleware2(ctx);
+    });
+    rpc_server->RegisterHandler(+RoutePathIndex::Middle, Middle);
+    rpc_server->RegisterHandler(+RoutePathIndex::Ping,
+                                [s = service.get()](RpcServerContext* ctx) -> FutureStatus<> {
+                                    return s->HandlePing(ctx);
+                                });
+    rpc_server->RegisterHandler(+RoutePathIndex::Kick,
+                                [s = service.get()](RpcServerContext* ctx) -> FutureStatus<> {
+                                    return s->HandleKick(ctx);
+                                });
+    rpc_server->RegisterHandler(+RoutePathIndex::Error,
+                                [s = service.get()](RpcServerContext* ctx) -> FutureStatus<> {
+                                    return s->HandleError(ctx);
+                                });
+
     co_await rpc_server->Start();
     co_await rpc_server->Close();
     co_return;
@@ -75,6 +166,7 @@ int main(int argc, char** argv) {
     seastar::app_template::seastar_options opts;
     // opts.smp_opts.smp.set_value(1);
     // opts.smp_opts.cpuset.set_value({vm["cpu"].as<unsigned>()});
+    opts.smp_opts.smp.set_value(2);
     opts.auto_handle_sigint_sigterm = false;
     opts.reactor_opts.abort_on_seastar_bad_alloc.set_value();
     seastar::app_template app(std::move(opts));

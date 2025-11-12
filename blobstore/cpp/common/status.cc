@@ -8,6 +8,7 @@ static thread_local char err_buf[128];
 
 static std::unordered_map<ErrCode, const char*> codeMaps = {
     {ErrCode::OK, "OK"},
+    {ErrCode::ErrNotFound, "not found"},
     {ErrCode::ErrEOF, "end of file"},
     {ErrCode::ErrTooLarge, "content too large"},
     {ErrCode::ErrUnknown, "unknown server error"},

@@ -14,9 +14,8 @@
 namespace blobstore {
 namespace net {
 
-TcpRpcServer::TcpRpcServer(const Option& opt, const std::string& host, uint16_t port,
-                           RpcService* service)
-    : opt_(opt), host_(host), port_(port), service_(service) {}
+TcpRpcServer::TcpRpcServer(const Option& opt, const std::string& host, uint16_t port)
+    : opt_(opt), host_(host), port_(port) {}
 
 seastar::future<> TcpRpcServer::HandleSession(net::SessionPtr sess) {
     if (gate_.is_closed()) {
@@ -60,7 +59,6 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
             LOG_WARN("parse rpc header error, remote: {}", stream->RemoteAddress());
             break;
         }
-        int n = req_header.ByteSizeLong();
         proto::StreamCmd cmd = req_header.StreamCmd();
 
         if (cmd == proto::StreamCmd::NOT) {
@@ -74,7 +72,7 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
             if (content_len == 0) {
                 ctx.has_fin_ = true;
             }
-            auto s = co_await service_->HandleMessage(&ctx);
+            auto s = co_await HandleContext(&ctx);
             if (!s) {
                 break;
             }
@@ -103,7 +101,7 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
             }
             RpcServerContext ctx(stream.get(), std::move(req_header));
             ctx.stream_ctx_ = true;
-            auto s = co_await service_->HandleMessage(&ctx);
+            auto s = co_await HandleContext(&ctx);
             if (!s) {
                 break;
             }
@@ -182,7 +180,6 @@ seastar::future<> TcpRpcServer::Close() {
             fu_vec.clear();
         }
     }
-    co_await service_->Close();
     co_return;
 }
 

@@ -28,3 +28,19 @@ if (benchmark_FOUND)
             benchmark::benchmark_main
     )
 endif()
+
+add_executable(net_server_router_test net_server_router_test.cc mock_stream.h)
+target_link_libraries(net_server_router_test
+    PRIVATE
+        $<TARGET_OBJECTS:NET_OBJS>
+        $<TARGET_OBJECTS:COMMON_OBJS>
+        $<TARGET_OBJECTS:PROTO_OBJS>
+        protobuf::libprotobuf
+        Seastar::seastar
+        Seastar::seastar_testing
+        Boost::unit_test_framework
+        isal
+        pthread
+)
+target_compile_definitions(net_server_router_test PRIVATE SEASTAR_TESTING_MAIN)
+add_test(NAME NetServerRouterTest COMMAND net_server_router_test -- -c 1)

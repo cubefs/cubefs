@@ -10,7 +10,10 @@ namespace blobstore {
 namespace net {
 
 RpcServerContext::RpcServerContext(Stream* stream, RpcRequestHeader req_header)
-    : stream_(stream), req_header_(std::move(req_header)), recv_len_(0) {}
+    : stream_(stream),
+      req_header_(std::move(req_header)),
+      trace_(req_header_.Traceid()),
+      recv_len_(0) {}
 
 seastar::future<Status<>> RpcServerContext::WriteBody(const char* b, size_t n) {
     return stream_->WriteFrame(b, n);
