@@ -2691,6 +2691,7 @@ func (c *Cluster) decommissionDataNodePause(dataNode *DataNode) (err error, fail
 	dataNode.SetDecommissionStatus(DecommissionPause)
 	// may cause progress confused for new allocated dp
 	dataNode.ToBeOffline = false
+	dataNode.RdOnly = false
 	dataNode.DecommissionCompleteTime = time.Now().Unix()
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
 		log.LogErrorf("action[decommissionDataNodePause] dataNode[%v] sync update failed[ %v]",
@@ -4088,14 +4089,11 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 
 	var wg sync.WaitGroup
 	metaNode.ToBeOffline = true
-	// Set node to read-only to prevent write during decommission
-	metaNode.RdOnly = true
 	metaNode.MaxMemAvailWeight = 1
 	errChannel := make(chan error, limit)
 
 	defer func() {
 		metaNode.ToBeOffline = false
-		metaNode.RdOnly = false
 		close(errChannel)
 	}()
 
@@ -5458,6 +5456,9 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		}
 		dataNode.SetDecommissionStatus(DecommissionRunning)
 		dataNode.ToBeOffline = true
+		if dataNode.DecommissionLimit == 0 {
+			dataNode.RdOnly = true
+		}
 		log.LogDebugf("action[TryDecommissionDataNode] dataNode [%s] recover from DecommissionDiskList", dataNode.Addr)
 		return
 	}
@@ -5621,6 +5622,9 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	dataNode.SetDecommissionStatus(DecommissionRunning)
 	// avoid alloc dp on this node
 	dataNode.ToBeOffline = true
+	if dataNode.DecommissionLimit == 0 {
+		dataNode.RdOnly = true
+	}
 	dataNode.DecommissionDiskList = decommissionDiskList
 	dataNode.DecommissionDpTotal = decommissionDpTotal
 	msg := fmt.Sprintf(" try decommission disk[%v] from dataNode[%s] raftForce [%v] to dst [%v] DecommissionDpTotal[%v]",

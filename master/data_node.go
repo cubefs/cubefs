@@ -768,8 +768,6 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 	dataNode.DecommissionLimit = limit
 	dataNode.DecommissionWeight = weight
 	dataNode.DecommissionDiskList = make([]string, 0)
-	// Set node to read-only to prevent write during decommission
-	dataNode.RdOnly = true
 }
 
 func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
@@ -778,6 +776,7 @@ func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
 	// if only decommission part of data partitions, can alloc dp in future
 	if len(partitions) != 0 {
 		dataNode.ToBeOffline = false
+		dataNode.RdOnly = false
 	}
 	dataNode.DecommissionCompleteTime = time.Now().Unix()
 }
