@@ -34,6 +34,7 @@ import (
 const (
 	AheadReadBlockStateInit    uint32 = 0
 	AheadReadBlockStateLoading uint32 = 1
+	AheadReadBlockStateClear   uint32 = 2
 
 	AheadReadedInit    uint32 = 0
 	AheadReaded        uint32 = 1
@@ -296,12 +297,18 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	atomic.StoreUint64(&cacheBlock.readBytes, 0)
 	// randomly shuffle the order of hosts to evenly distribute access pressure.
 	hosts := getRotatedHosts(task.dp.Hosts)
+	shouldRetry := true
 	for _, host := range hosts {
 		err = sendToNode(host, task.p, key, task.reqID, func(conn *net.TCPConn) (error, bool) {
 			// reset readBytes when reading from other datanodes
 			readBytes = 0
 			atomic.StoreUint64(&cacheBlock.readBytes, 0)
 			for readBytes < task.cacheSize {
+				if atomic.LoadUint32(&cacheBlock.state) == AheadReadBlockStateClear {
+					// never retry when block is cleared, truncate .eg
+					shouldRetry = false
+					return fmt.Errorf("clear the block cache"), false
+				}
 				rp := NewReply(task.p.ReqID, task.p.PartitionID, task.p.ExtentID)
 				bufSize := util.Min(int(arw.streamer.aheadReadBlockSize), task.cacheSize-readBytes)
 				rp.Data = cacheBlock.data[readBytes : readBytes+bufSize]
@@ -354,7 +361,7 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	arw.cache.blockCache.Delete(key)
 	arw.cache.putAheadReadBlock(key, cacheBlock)
 	// retry failed task for updateRightIndex cannot be reverted
-	if task.retry <= MaxCacheBlockRetry {
+	if task.retry <= MaxCacheBlockRetry && shouldRetry {
 		task.retry++
 		arw.taskC <- task
 	}
@@ -698,4 +705,44 @@ func readDataFromTinyExtent(extentID uint64) bool {
 func createAheadBlockKey(inode, partitionId, extentId, extentOffset uint64, cacheOffset int) string {
 	return fmt.Sprintf("%v-%v-%v-%v-%v", inode, partitionId, extentId,
 		extentOffset, cacheOffset)
+}
+
+func (arw *AheadReadWindow) evictAllBlocks() {
+	if arw == nil || arw.cache == nil {
+		return
+	}
+	inode := arw.streamer.inode
+	arw.cache.blockCache.Range(func(key, value interface{}) bool {
+		bv := value.(*AheadReadBlock)
+		if bv.inode != inode {
+			return true
+		}
+		bv.lock.Lock()
+		bv.key = ""
+		if atomic.LoadUint32(&bv.state) == AheadReadBlockStateInit {
+			arw.cache.blockCache.Delete(key)
+			arw.cache.putAheadReadBlock(key.(string), bv)
+		} else {
+			atomic.StoreUint32(&bv.state, AheadReadBlockStateClear)
+		}
+		bv.lock.Unlock()
+		return true
+	})
+	// wait for all blockCache is cleared
+	for {
+		count := 0
+		arw.cache.blockCache.Range(func(key, value interface{}) bool {
+			bv := value.(*AheadReadBlock)
+			if bv.inode != inode {
+				return true
+			}
+			count++
+			return true
+		})
+		if count == 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	log.LogDebugf("evictAllBlocks inode(%v) complete", arw.streamer.inode)
 }
