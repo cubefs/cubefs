@@ -358,7 +358,7 @@ func (e *Extent) Close() (err error) {
 	return
 }
 
-func (e *Extent) Exist() (exsit bool) {
+func (e *Extent) Exist() (exist bool) {
 	_, err := os.Stat(e.filePath)
 	if err != nil {
 		return os.IsExist(err)
@@ -429,21 +429,19 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 		// curOff if the hold start and the data end
 		curOff, err = e.file.Seek(holStart, SEEK_DATA)
 		if err != nil || curOff >= util.ExtentSize || (holStart > 0 && holStart == curOff) {
-			log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 			break
 		}
-		log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 		dataStart = curOff
 
 		curOff, err = e.file.Seek(dataStart, SEEK_HOLE)
 		if err != nil || curOff >= util.ExtentSize || dataStart == curOff {
-			log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 			break
 		}
-		log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 		holStart = curOff
 	}
-	log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+	if log.EnableDebug() {
+		log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
+	}
 	if holStart == 0 {
 		if statSize > util.ExtentSize {
 			return util.ExtentSize
@@ -529,7 +527,7 @@ func (e *Extent) WriteTiny(param *WriteParam) (err error) {
 	}
 
 	if IsAppendWrite(param.WriteType) && param.Offset != e.Size() {
-		return ParameterMismatchError
+		return ErrParameterMismatch
 	}
 
 	if _, err = e.file.WriteAt(param.Data[:param.Size], int64(param.Offset)); err != nil {
@@ -819,7 +817,7 @@ func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 		log.LogDebugf("punchDelete extent %v offset %v, size %v", e, offset, size)
 	}
 	if int(offset)%util.PageSize != 0 {
-		return false, ParameterMismatchError
+		return false, ErrParameterMismatch
 	}
 	if int(size)%util.PageSize != 0 {
 		size += int64(util.PageSize - int(size)%util.PageSize)
@@ -900,7 +898,7 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 	e.Lock()
 	defer e.Unlock()
 	if !IsTinyExtent(e.extentID) {
-		return ParameterMismatchError
+		return ErrParameterMismatch
 	}
 	if isEmptyPacket {
 		err = e.repairPunchHole(offset, size)

@@ -92,18 +92,21 @@ type FollowerPacket struct {
 	respCh chan error
 }
 
-func NewFollowerPacket() (fp *FollowerPacket) {
-	fp = new(FollowerPacket)
-	fp.respCh = make(chan error, 1)
-	fp.StartT = time.Now().UnixNano()
+func NewFollowerPacket() *FollowerPacket {
+	fp := &FollowerPacket{
+		respCh: make(chan error, 1),
+		Packet: proto.Packet{
+			StartT: time.Now().UnixNano(),
+		},
+	}
 	return fp
 }
 
 func (p *FollowerPacket) PackErrorBody(action, msg string) {
 	p.identificationErrorResultCode(action, msg)
-	p.Size = uint32(len([]byte(action + "_" + msg)))
-	p.Data = make([]byte, p.Size)
-	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
+	errorBody := action + "_" + msg
+	p.Size = uint32(len(errorBody))
+	p.Data = []byte(errorBody)
 }
 
 func (p *FollowerPacket) IsErrPacket() bool {
@@ -111,15 +114,15 @@ func (p *FollowerPacket) IsErrPacket() bool {
 }
 
 func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg string) {
-	if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
+	if strings.Contains(errMsg, storage.ErrParameterMismatch.Error()) ||
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
-		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
+		strings.Contains(errMsg, storage.ErrExtentHasBeenDeleted.Error()) {
 		p.ResultCode = proto.OpNotExistErr
-	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrNoSpace.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.LimitedIoError.Error()) {
 		p.ResultCode = proto.OpLimitedIoErr
@@ -208,67 +211,74 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 		err = ErrArgLenMismatch
 		return
 	}
-	str := string(p.Arg[:int(p.ArgLen)])
+	str := string(p.Arg[:p.ArgLen])
 	followerAddrs := strings.SplitN(str, proto.AddrSplit, -1)
-	followerNum := uint8(len(followerAddrs) - 1)
-	p.followersAddrs = make([]string, followerNum)
-	p.followerPackets = make([]*FollowerPacket, followerNum)
+	followerNum := len(followerAddrs) - 1
 	p.OrgBuffer = p.Data
 	if followerNum > 0 {
-		p.followersAddrs = followerAddrs[:int(followerNum)]
+		p.followersAddrs = followerAddrs[:followerNum]
 		log.LogInfof("action[resolveFollowersAddr] %v", p.followersAddrs)
 	}
+	p.followerPackets = make([]*FollowerPacket, followerNum)
 
 	return
 }
 
-func NewPacketEx() (p PacketInterface) {
-	pr := new(Packet)
-	pr.Magic = proto.ProtoMagic
-	pr.StartT = time.Now().UnixNano()
-	pr.NeedReply = true
-	return pr
+func NewPacketEx() PacketInterface {
+	return &Packet{
+		Packet: proto.Packet{
+			Magic:  proto.ProtoMagic,
+			StartT: time.Now().UnixNano(),
+		},
+		NeedReply: true,
+	}
 }
 
-func NewPacket() (p *Packet) {
-	p = new(Packet)
-	p.Magic = proto.ProtoMagic
-	p.StartT = time.Now().UnixNano()
-	p.NeedReply = true
-	return
+func NewPacket() *Packet {
+	return &Packet{
+		Packet: proto.Packet{
+			Magic:  proto.ProtoMagic,
+			StartT: time.Now().UnixNano(),
+		},
+		NeedReply: true,
+	}
 }
 
-func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) (p *Packet) {
-	p = new(Packet)
-	p.Opcode = proto.OpGetAllWatermarks
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GenerateRequestID()
-	p.ExtentType = extentType
-	p.Data = []byte{ByteMarker}
-	return
+func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) *Packet {
+	return &Packet{
+		Packet: proto.Packet{
+			Opcode:      proto.OpGetAllWatermarks,
+			PartitionID: partitionID,
+			Magic:       proto.ProtoMagic,
+			ReqID:       proto.GenerateRequestID(),
+			ExtentType:  extentType,
+			Data:        []byte{ByteMarker},
+		},
+	}
 }
 
-func NewPacketToReadTinyDeleteRecord(partitionID uint64, offset int64) (p *Packet) {
-	p = new(Packet)
-	p.Opcode = proto.OpReadTinyDeleteRecord
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.ReqID = proto.GenerateRequestID()
-	p.ExtentOffset = offset
-
-	return
+func NewPacketToReadTinyDeleteRecord(partitionID uint64, offset int64) *Packet {
+	return &Packet{
+		Packet: proto.Packet{
+			Opcode:       proto.OpReadTinyDeleteRecord,
+			PartitionID:  partitionID,
+			Magic:        proto.ProtoMagic,
+			ReqID:        proto.GenerateRequestID(),
+			ExtentOffset: offset,
+		},
+	}
 }
 
-func NewReadTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) (p *Packet) {
-	p = new(Packet)
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpOk
-	p.ReqID = requestID
-	p.ExtentType = proto.NormalExtentType
-
-	return
+func NewReadTinyDeleteRecordResponsePacket(requestID int64, partitionID uint64) *Packet {
+	return &Packet{
+		Packet: proto.Packet{
+			PartitionID: partitionID,
+			Magic:       proto.ProtoMagic,
+			Opcode:      proto.OpOk,
+			ReqID:       requestID,
+			ExtentType:  proto.NormalExtentType,
+		},
+	}
 }
 
 type (
@@ -276,95 +286,102 @@ type (
 	MakeExtentRepairReadPacket   func(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface)
 )
 
-func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface) {
-	pr := new(Packet)
-	pr.ExtentID = extentID
-	pr.PartitionID = partitionID
-	pr.Magic = proto.ProtoMagic
-	pr.ExtentOffset = int64(offset)
-	pr.Size = uint32(size)
-	pr.Opcode = proto.OpExtentRepairRead
-	pr.ExtentType = proto.NormalExtentType
-	pr.ReqID = proto.GenerateRequestID()
-
-	return pr
+func NewExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) PacketInterface {
+	return &Packet{
+		Packet: proto.Packet{
+			ExtentID:     extentID,
+			PartitionID:  partitionID,
+			Magic:        proto.ProtoMagic,
+			ExtentOffset: int64(offset),
+			Size:         uint32(size),
+			Opcode:       proto.OpExtentRepairRead,
+			ExtentType:   proto.NormalExtentType,
+			ReqID:        proto.GenerateRequestID(),
+		},
+	}
 }
 
-func NewTinyExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface) {
-	pr := new(Packet)
-	pr.ExtentID = extentID
-	pr.PartitionID = partitionID
-	pr.Magic = proto.ProtoMagic
-	pr.ExtentOffset = int64(offset)
-	pr.Size = uint32(size)
-	pr.Opcode = proto.OpTinyExtentRepairRead
-	pr.ExtentType = proto.TinyExtentType
-	pr.ReqID = proto.GenerateRequestID()
-
-	return pr
+func NewTinyExtentRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) PacketInterface {
+	return &Packet{
+		Packet: proto.Packet{
+			ExtentID:     extentID,
+			PartitionID:  partitionID,
+			Magic:        proto.ProtoMagic,
+			ExtentOffset: int64(offset),
+			Size:         uint32(size),
+			Opcode:       proto.OpTinyExtentRepairRead,
+			ExtentType:   proto.TinyExtentType,
+			ReqID:        proto.GenerateRequestID(),
+		},
+	}
 }
 
-func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
-	p = new(Packet)
-	p.ExtentID = extentID
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpTinyExtentRepairRead
-	p.ReqID = requestID
-	p.ExtentType = proto.TinyExtentType
-	p.StartT = time.Now().UnixNano()
-
-	return
+func NewTinyExtentStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) *Packet {
+	return &Packet{
+		Packet: proto.Packet{
+			ExtentID:    extentID,
+			PartitionID: partitionID,
+			Magic:       proto.ProtoMagic,
+			Opcode:      proto.OpTinyExtentRepairRead,
+			ReqID:       requestID,
+			ExtentType:  proto.TinyExtentType,
+			StartT:      time.Now().UnixNano(),
+		},
+	}
 }
 
-func NewNormalExtentWithHoleRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) (p PacketInterface) {
-	pr := new(Packet)
-	pr.ExtentID = extentID
-	pr.PartitionID = partitionID
-	pr.Magic = proto.ProtoMagic
-	pr.ExtentOffset = int64(offset)
-	pr.Size = uint32(size)
-	pr.Opcode = proto.OpSnapshotExtentRepairRead
-	pr.ExtentType = proto.TinyExtentType
-	pr.ReqID = proto.GenerateRequestID()
-	p = pr
-
-	return
+func NewNormalExtentWithHoleRepairReadPacket(partitionID uint64, extentID uint64, offset, size int) PacketInterface {
+	return &Packet{
+		Packet: proto.Packet{
+			ExtentID:     extentID,
+			PartitionID:  partitionID,
+			Magic:        proto.ProtoMagic,
+			ExtentOffset: int64(offset),
+			Size:         uint32(size),
+			Opcode:       proto.OpSnapshotExtentRepairRead,
+			ExtentType:   proto.TinyExtentType,
+			ReqID:        proto.GenerateRequestID(),
+		},
+	}
 }
 
-func NewNormalExtentWithHoleStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p *Packet) {
-	p = new(Packet)
-	p.ExtentID = extentID
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpSnapshotExtentRepairRsp
-	p.ReqID = requestID
-	p.ExtentType = proto.NormalExtentType
-	p.StartT = time.Now().UnixNano()
-
-	return
+func NewNormalExtentWithHoleStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) *Packet {
+	return &Packet{
+		Packet: proto.Packet{
+			ExtentID:    extentID,
+			PartitionID: partitionID,
+			Magic:       proto.ProtoMagic,
+			Opcode:      proto.OpSnapshotExtentRepairRsp,
+			ReqID:       requestID,
+			ExtentType:  proto.NormalExtentType,
+			StartT:      time.Now().UnixNano(),
+		},
+	}
 }
 
-func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) (p PacketInterface) {
-	pr := new(Packet)
-	pr.ExtentID = extentID
-	pr.PartitionID = partitionID
-	pr.Magic = proto.ProtoMagic
-	pr.Opcode = proto.OpOk
-	pr.ReqID = requestID
-	pr.ExtentType = proto.NormalExtentType
-	return pr
+func NewStreamReadResponsePacket(requestID int64, partitionID uint64, extentID uint64) PacketInterface {
+	return &Packet{
+		Packet: proto.Packet{
+			ExtentID:    extentID,
+			PartitionID: partitionID,
+			Magic:       proto.ProtoMagic,
+			Opcode:      proto.OpOk,
+			ReqID:       requestID,
+			ExtentType:  proto.NormalExtentType,
+		},
+	}
 }
 
-func NewPacketToNotifyExtentRepair(partitionID uint64) (p *Packet) {
-	p = new(Packet)
-	p.Opcode = proto.OpNotifyReplicasToRepair
-	p.PartitionID = partitionID
-	p.Magic = proto.ProtoMagic
-	p.ExtentType = proto.NormalExtentType
-	p.ReqID = proto.GenerateRequestID()
-
-	return
+func NewPacketToNotifyExtentRepair(partitionID uint64) *Packet {
+	return &Packet{
+		Packet: proto.Packet{
+			Opcode:      proto.OpNotifyReplicasToRepair,
+			PartitionID: partitionID,
+			Magic:       proto.ProtoMagic,
+			ExtentType:  proto.NormalExtentType,
+			ReqID:       proto.GenerateRequestID(),
+		},
+	}
 }
 
 func (p *Packet) SetResultCode(code uint8) {
@@ -443,15 +460,15 @@ var ErrorUnknownOp = errors.New("unknown opcode")
 
 func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	log.LogDebugf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
-	if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
+	if strings.Contains(errMsg, storage.ErrParameterMismatch.Error()) ||
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
-		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
+		strings.Contains(errMsg, storage.ErrExtentHasBeenDeleted.Error()) {
 		p.ResultCode = proto.OpNotExistErr
-	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrNoSpace.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.BrokenDiskError.Error()) {
 		p.ResultCode = proto.OpDiskErr
@@ -497,19 +514,19 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 
 func (p *Packet) PackErrorBody(action, msg string) {
 	p.identificationErrorResultCode(action, msg)
-	p.Size = uint32(len([]byte(action + "_" + msg)))
-	p.Data = make([]byte, p.Size)
-	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
+	errorBody := action + "_" + msg
+	p.Size = uint32(len(errorBody))
+	p.Data = []byte(errorBody)
 }
 
-func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
+func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) error {
 	if p.IsNormalWriteOperation() && readSize == util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(readSize)
 	} else {
 		p.Data = make([]byte, readSize)
 	}
-	_, err = io.ReadFull(c, p.Data[:readSize])
-	return
+	_, err := io.ReadFull(c, p.Data[:readSize])
+	return err
 }
 
 func (p *Packet) IsMasterCommand() bool {
@@ -553,23 +570,16 @@ func (p *Packet) IsUrgentLeaderReq() bool {
 }
 
 func (p *Packet) IsForwardPacket() bool {
-	r := p.RemainingFollowers > 0 && !p.isSpecialReplicaCntPacket()
-	return r
+	return p.RemainingFollowers > 0 && !p.isSpecialReplicaCntPacket()
 }
 
 func (p *Packet) isSpecialReplicaCntPacket() bool {
-	r := p.RemainingFollowers == 127
-	return r
+	return p.RemainingFollowers == 127
 }
 
-// A leader packet is the packet send to the leader and does not require packet forwarding.
-func (p *Packet) IsLeaderPacket() (ok bool) {
+func (p *Packet) IsLeaderPacket() bool {
 	isLeaderOp := p.IsNormalWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()
-	if (p.IsForwardPkt() || p.isSpecialReplicaCntPacket()) && isLeaderOp {
-		ok = true
-	}
-
-	return
+	return (p.IsForwardPkt() || p.isSpecialReplicaCntPacket()) && isLeaderOp
 }
 
 func (p *Packet) IsTinyExtentType() bool {

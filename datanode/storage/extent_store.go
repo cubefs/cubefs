@@ -700,10 +700,10 @@ func (s *ExtentStore) Write(param *WriteParam) (status uint8, err error) {
 	}
 	s.elMutex.RUnlock()
 
-	s.eiMutex.Lock()
+	s.eiMutex.RLock()
 	status = proto.OpOk
 	ei = s.extentInfoMap[param.ExtentID]
-	s.eiMutex.Unlock()
+	s.eiMutex.RUnlock()
 	e, err = s.extentWithHeader(ei)
 	if err != nil {
 		return status, err
@@ -776,7 +776,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 
 	ei, _ := s.GetExtentInfo(extentID)
 	if ei == nil {
-		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] dp %v extent[%d] is already been deleted", s.partitionID, extentID)
+		return 0, errors.Trace(ErrExtentHasBeenDeleted, "[Read] dp %v extent[%d] is already been deleted", s.partitionID, extentID)
 	}
 
 	s.elMutex.RLock()
@@ -1210,7 +1210,7 @@ func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
 		return
 	default:
 		log.LogDebugf("dp %v GetAvailableTinyExtent not found", s.partitionID)
-		return 0, NoAvailableExtentError
+		return 0, ErrNoAvailableExtent
 	}
 }
 
@@ -1272,7 +1272,7 @@ func (s *ExtentStore) GetBrokenTinyExtent() (extentID uint64, err error) {
 		s.brokenTinyExtentMap.Delete(extentID)
 		return
 	default:
-		return 0, NoBrokenExtentError
+		return 0, ErrNoBrokenExtent
 
 	}
 }
@@ -1338,7 +1338,9 @@ func (s *ExtentStore) RecordTinyDelete(extentID uint64, offset, size int64) (err
 	if stat.Size()%DeleteTinyRecordSize != 0 {
 		needWriteEmpty := DeleteTinyRecordSize - (stat.Size() % DeleteTinyRecordSize)
 		data := make([]byte, needWriteEmpty)
-		s.tinyExtentDeleteFp.Write(data)
+		if _, err = s.tinyExtentDeleteFp.Write(data); err != nil {
+			return
+		}
 	}
 	_, err = s.tinyExtentDeleteFp.Write(record)
 	if err != nil {
@@ -1668,8 +1670,9 @@ func (s *ExtentStore) TinyExtentGetFinfoSize(extentID uint64) (size uint64, err 
 	if !IsTinyExtent(extentID) {
 		return 0, fmt.Errorf("unavali extent id (%v)", extentID)
 	}
-	ei, _ := s.GetExtentInfo(extentID)
-	if err != nil {
+	ei, ok := s.GetExtentInfo(extentID)
+	if !ok {
+		err = fmt.Errorf("extent %v not found", extentID)
 		log.LogErrorf("[TinyExtentGetFinfoSize] failed to get extent(%v) info, err(%v)", extentID, err)
 		return
 	}

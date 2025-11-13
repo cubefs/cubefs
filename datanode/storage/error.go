@@ -20,11 +20,11 @@ import (
 )
 
 var (
-	ExtentHasBeenDeletedError        = errors.New("extent has been deleted")
-	ParameterMismatchError           = errors.New("parameter mismatch error")
-	NoAvailableExtentError           = errors.New("no available extent")
-	NoBrokenExtentError              = errors.New("no unavailable extent")
-	NoSpaceError                     = errors.New("no space left on the device")
+	ErrExtentHasBeenDeleted          = errors.New("extent has been deleted")
+	ErrParameterMismatch             = errors.New("parameter mismatch error")
+	ErrNoAvailableExtent             = errors.New("no available extent")
+	ErrNoBrokenExtent                = errors.New("no unavailable extent")
+	ErrNoSpace                       = errors.New("no space left on the device")
 	ForbiddenDataPartitionError      = errors.New("the data partition is forbidden")
 	ForbiddenMetaPartitionError      = errors.New("meta partition is forbidden")
 	TryAgainError                    = errors.New("try again")

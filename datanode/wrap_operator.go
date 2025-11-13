@@ -257,7 +257,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 
 	if partition.Available() <= 0 || !partition.disk.CanWrite() {
 		log.LogWarnf("[handlePacketToCreateExtent] dp(%v) not enough space, available(%v) canWrite(%v)", partition.partitionID, strutil.FormatSize(uint64(partition.Available())), partition.disk.CanWrite())
-		err = storage.NoSpaceError
+		err = storage.ErrNoSpace
 		return
 	} else if partition.disk.Status == proto.Unavailable {
 		err = storage.BrokenDiskError
@@ -839,7 +839,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	for _, ext := range exts {
 		if p.Opcode == proto.OpGcBatchDeleteExtent && !store.CanGcDelete(ext.ExtentId) {
 			log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete, dp %d", ext.ExtentId, ext.PartitionId)
-			err = storage.ParameterMismatchError
+			err = storage.ErrParameterMismatch
 			return
 		}
 
@@ -944,7 +944,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}
 	if partition.Available() <= 0 || !partition.disk.CanWrite() {
 		log.LogWarnf("[handleWritePacket] dp(%v) not enough space, available(%v) canWrite(%v)", partition.partitionID, strutil.FormatSize(uint64(partition.Available())), partition.disk.CanWrite())
-		err = storage.NoSpaceError
+		err = storage.ErrNoSpace
 		return
 	} else if partition.disk.Status == proto.Unavailable {
 		err = storage.BrokenDiskError

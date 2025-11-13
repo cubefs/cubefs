@@ -151,20 +151,36 @@ func (cache *ExtentCache) evict() {
 		return
 	}
 	needRemove := cache.extentList.Len() - cache.capacity
-	for i := 0; i < needRemove; i++ {
-		if e := cache.extentList.Front(); e != nil {
-			front := e.Value.(*Extent)
-			if IsTinyExtent(front.extentID) {
-				continue
-			}
-			delete(cache.extentMap, front.extentID)
-			cache.extentList.Remove(e)
-			front.Close()
+	removed := 0
+	for e := cache.extentList.Front(); e != nil && removed < needRemove; {
+		curr := e
+		e = e.Next()
+		front := curr.Value.(*Extent)
+		if IsTinyExtent(front.extentID) {
+			continue
+		}
+		delete(cache.extentMap, front.extentID)
+		cache.extentList.Remove(curr)
+		front.Close()
+		removed++
+	}
+}
+
+// flushExtents flushes extents that have been modified after the specified interval.
+func (cache *ExtentCache) flushExtents(extents []*Extent, modifyInterval time.Duration) {
+	for _, extent := range extents {
+		lastModify := time.Unix(extent.ModifyTime(), 0)
+		if time.Since(lastModify) < modifyInterval {
+			continue
+		}
+		err := extent.Flush()
+		if err != nil {
+			log.LogErrorf("action[flushExtents] failed to flush extent(%v), err(%v)", extent.extentID, err)
 		}
 	}
 }
 
-func (cache *ExtentCache) CopyAndFlush(motifyInterval time.Duration) {
+func (cache *ExtentCache) CopyAndFlush(modifyInterval time.Duration) {
 	tinyExtents := make([]*Extent, 0)
 	normalExtents := make([]*Extent, 0)
 
@@ -184,27 +200,8 @@ func (cache *ExtentCache) CopyAndFlush(motifyInterval time.Duration) {
 		}
 	}()
 
-	for _, extent := range tinyExtents {
-		lastMotify := time.Unix(extent.ModifyTime(), 0)
-		if time.Since(lastMotify) < motifyInterval {
-			continue
-		}
-		err := extent.Flush()
-		if err != nil {
-			log.LogErrorf("[CopyAndFlush] failed to flush extent(%v), err(%v)", extent.extentID, err)
-		}
-	}
-
-	for _, extent := range normalExtents {
-		lastMotify := time.Unix(extent.ModifyTime(), 0)
-		if time.Since(lastMotify) < motifyInterval {
-			continue
-		}
-		err := extent.Flush()
-		if err != nil {
-			log.LogErrorf("[CopyAndFlush] failed to flush extent(%v), err(%v)", extent.extentID, err)
-		}
-	}
+	cache.flushExtents(tinyExtents, modifyInterval)
+	cache.flushExtents(normalExtents, modifyInterval)
 }
 
 // Flush synchronizes the extent stored in the cache to the disk.
@@ -234,7 +231,10 @@ func (cache *ExtentCache) EvictTTL(ttl int) error {
 	delList := make([]*list.Element, 0, cache.extentList.Len())
 
 	for e := cache.extentList.Front(); e != nil; e = e.Next() {
-		item := e.Value.(*Extent)
+		item, ok := e.Value.(*Extent)
+		if !ok {
+			continue
+		}
 		if IsTinyExtent(item.extentID) {
 			continue
 		}
