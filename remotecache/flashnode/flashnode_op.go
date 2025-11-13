@@ -42,7 +42,7 @@ import (
 )
 
 func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
-	if (p.Opcode == proto.OpFlashNodeCacheRead || p.Opcode == proto.OpFlashNodeCachePrepare) && !f.readLimiter.Allow() {
+	if (p.Opcode == proto.OpFlashNodeCacheRead || p.Opcode == proto.OpFlashNodeCachePrepare || p.Opcode == 0xDC || p.Opcode == 0xDB) && !f.readLimiter.Allow() {
 		metric := exporter.NewTPCnt("NodeReqLimit")
 		metric.Set(nil)
 		err := errors.NewErrorf("%s", "remotecache read request was been limited")
@@ -81,7 +81,15 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 	case proto.OpApplyWarmupMetaToken:
 		err = f.opApplyWarmupMetaToken(conn, p)
 	default:
-		err = fmt.Errorf(proto.ErrorUnknownOpcodeTpl, p.Opcode)
+		// compatibility for historical opcodes
+		switch p.Opcode {
+		case 0xDB: // legacy OpFlashNodeCachePrepare
+			err = f.opCachePrepare(conn, p)
+		case 0xDC: // legacy OpFlashNodeCacheRead
+			err = f.opCacheRead(conn, p)
+		default:
+			err = fmt.Errorf(proto.ErrorUnknownOpcodeTpl, p.Opcode)
+		}
 	}
 
 	return
