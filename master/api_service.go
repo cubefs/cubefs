@@ -5424,6 +5424,8 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 	}
 	rocksdbMpCount, memoryMpCount := metaNode.GetRocksdbAndMemoryCount()
 	metaNode.PersistenceMetaPartitions = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
+	memWritable := metaNode.IsWriteAble()
+	rocksdbWritable := metaNode.IsRocksdbWriteAble()
 	metaNodeInfo = &proto.MetaNodeInfo{
 		ID:                        metaNode.ID,
 		Addr:                      metaNode.Addr,
@@ -5431,8 +5433,8 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		RaftReplicaPort:           metaNode.ReplicaPort,
 		DomainAddr:                metaNode.DomainAddr,
 		IsActive:                  metaNode.IsActive,
-		IsWriteAble:               metaNode.IsWriteAble(),
-		IsRocksdbWritable:         metaNode.IsRocksdbWriteAble(),
+		IsWriteAble:               memWritable,
+		IsRocksdbWritable:         rocksdbWritable,
 		ZoneName:                  metaNode.ZoneName,
 		Rack:                      metaNode.Rack,
 		MaxMemAvailWeight:         metaNode.MaxMemAvailWeight,
@@ -5449,7 +5451,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		RdOnly:                    metaNode.RdOnly,
 		RocksdbRdOnly:             metaNode.RocksdbRdOnly,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
-		CanAllowPartition:         metaNode.IsWriteAble() && metaNode.PartitionCntLimited(),
+		CanAllowPartition:         (memWritable || rocksdbWritable) && metaNode.PartitionCntLimited(),
 		MaxMpCntLimit:             metaNode.GetPartitionLimitCnt(),
 		CpuUtil:                   metaNode.CpuUtil.Load(),
 		MemoryMpCount:             memoryMpCount,

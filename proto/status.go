@@ -64,10 +64,12 @@ const (
 	MpCursorOutOfRange uint32 = 1 << 0
 	MetaMemUseLimit    uint32 = 1 << 1
 	MetaNodeReadOnly   uint32 = 1 << 2
+	RocksdbReadOnly    uint32 = 1 << 3
 )
 
 var MpReasonMessages = map[uint32]string{
 	MpCursorOutOfRange: "mp cursor out of Range",
 	MetaMemUseLimit:    "meta mem use reached maximum limit",
 	MetaNodeReadOnly:   "MetaNode is read-only",
+	RocksdbReadOnly:    "Rocksdb is read-only",
 }

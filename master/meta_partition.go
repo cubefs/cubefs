@@ -827,8 +827,13 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 
 	mr.setLastReportTime()
 
-	if mr.metaNode.RdOnly {
+	if mgr.StoreMode == proto.StoreModeMem && mr.metaNode.RdOnly {
 		mr.ReadOnlyReasons |= proto.MetaNodeReadOnly
+		if mr.Status == proto.ReadWrite {
+			mr.Status = proto.ReadOnly
+		}
+	} else if mgr.StoreMode == proto.StoreModeRocksDb && mr.metaNode.RocksdbRdOnly {
+		mr.ReadOnlyReasons |= proto.RocksdbReadOnly
 		if mr.Status == proto.ReadWrite {
 			mr.Status = proto.ReadOnly
 		}

@@ -1226,6 +1226,8 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 
 	plan.Status = PlanTaskRun
 	plan.StartTime = time.Now()
+	plan.Msg = ""
+	plan.EndTime = time.Time{}
 	err = c.syncUpdateBalanceTask(plan)
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
