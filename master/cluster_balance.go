@@ -629,6 +629,7 @@ func (c *Cluster) FindMigrateDestination(migratePlan *proto.ClusterPlan) (err er
 			err = FindMigrateDestInOneNodeSet(migratePlan, mp)
 		}
 		if err == NotEnoughResource {
+			log.LogWarnf("Analyze the meta nodes:")
 			c.AnalyzeMetaNodes(migratePlan.Mode)
 
 			if i <= 0 {
@@ -778,13 +779,8 @@ func CreateMigratePlanExcludeNodeSet(migratePlan *proto.ClusterPlan, mpPlan *pro
 	find, dests := GetMigrateAddrExcludeNodeSet(getParam)
 	if !find {
 		log.LogErrorf("Can't find %d free nodes from the zone(%s)", getParam.RequestNum, getParam.ZoneName)
-		if isRocksdb {
-			log.LogWarnf("No resource. getParam: %+v. mpPlan: %+v. Rocksdb: %+v",
-				getParam, mpPlan, convertStructToJson(migratePlan.RocksdbLow))
-		} else {
-			log.LogWarnf("No resource. getParam: %+v. mpPlan: %+v. Memory: %+v",
-				getParam, mpPlan, convertStructToJson(migratePlan.Low))
-		}
+		log.LogWarnf("Display the failed details:")
+		DisplayPlanFailedDetails(getParam, mpPlan, migratePlan, isRocksdb)
 		return NotEnoughResource
 	}
 
@@ -954,13 +950,8 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 	if err == nil {
 		return nil
 	}
-	if isRocksdb {
-		log.LogWarnf("same nodeset is no resource. getParam: %+v. mpPlan: %+v. Rocksdb: %+v",
-			getParam, mpPlan, convertStructToJson(migratePlan.RocksdbLow))
-	} else {
-		log.LogWarnf("same nodeset is no resource. getParam: %+v. mpPlan: %+v. Memory: %+v",
-			getParam, mpPlan, convertStructToJson(migratePlan.Low))
-	}
+	log.LogWarnf("Display the failed details:")
+	DisplayPlanFailedDetails(getParam, mpPlan, migratePlan, isRocksdb)
 
 	// try the others node set under the same zone.
 	getParam.RequestNum = 3
@@ -969,13 +960,8 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 		find, dests = GetMigrateAddrExcludeZone(getParam)
 	}
 	if !find {
-		if isRocksdb {
-			log.LogWarnf("other nodeset is no resource. getParam: %+v. source: %+v.Rocksdb: %+v",
-				getParam, mpPlan, convertStructToJson(migratePlan.RocksdbLow))
-		} else {
-			log.LogWarnf("other nodeset is no resource. getParam: %+v. source: %+v. Memory: %+v",
-				getParam, mpPlan, convertStructToJson(migratePlan.Low))
-		}
+		log.LogWarnf("Display the failed details:")
+		DisplayPlanFailedDetails(getParam, mpPlan, migratePlan, isRocksdb)
 		return NotEnoughResource
 	}
 
@@ -1273,7 +1259,6 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	if c.IsClusterPlanStopping() {
 		plan.Status = PlanTaskStop
 		plan.Msg = "migrate plan is stopped"
-		plan.EndTime = time.Now()
 	} else {
 		if stopProcess {
 			plan.Status = PlanTaskError
@@ -1281,9 +1266,9 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		} else {
 			plan.Status = PlanTaskDone
 			plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
-			plan.EndTime = time.Now()
 		}
 	}
+	plan.EndTime = time.Now()
 
 	if plan.Type == OfflinePlan && plan.Status == PlanTaskDone {
 		err := c.offlineMetaNode(plan)
@@ -1511,6 +1496,7 @@ func (c *Cluster) VerifyAllDestinationsIsLowLoad(plan *proto.ClusterPlan, mpPlan
 		if err != nil {
 			log.LogErrorf("UpdateMigrateDestination err: %s", err.Error())
 			if err == NotEnoughResource {
+				log.LogWarnf("Analyze the meta nodes:")
 				c.AnalyzeMetaNodes(plan.Mode)
 			}
 			err = fmt.Errorf("mpid(%v) error: %s", mpPlan.ID, err.Error())
@@ -1844,15 +1830,6 @@ func (c *Cluster) DoMetaNodeOffline(offLineAddr string) (err error) {
 	Warn(c.Name, msg)
 
 	return nil
-}
-
-func convertStructToJson(low map[string]*proto.ZonePressureView) string {
-	body, err := json.Marshal(low)
-	if err != nil {
-		log.LogErrorf("Error to encode migrate plan: %s", err.Error())
-		return ""
-	}
-	return string(body)
 }
 
 func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition) error {
@@ -2405,7 +2382,7 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 			return true
 		}
 
-		if storeMode == proto.StoreModeRocksDb {
+		if storeMode == proto.StoreModeMem {
 			if canAllocPartition(metaNode, MetaNodeType, 1) {
 				if metaNode.Ratio <= gConfig.metaNodeMemLowPer && nodeMemRatio <= gConfig.metaNodeMemLowPer {
 					fmt.Fprintf(&usableBuf, " %s", metaNode.Addr)
@@ -2421,7 +2398,7 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 			}
 		}
 
-		if metaNode.PartitionCntLimitedEx(1) {
+		if !metaNode.PartitionCntLimitedEx(1) {
 			fmt.Fprintf(&unusableBuf, "%s mpCount(%v) > limit(%v)\n", metaNode.Addr, metaNode.MetaPartitionCount, metaNode.GetPartitionLimitCnt())
 			return true
 		}
@@ -2470,6 +2447,8 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 				return true
 			}
 		}
+
+		log.LogWarnf("failed to analyze metaNode(%s). Please check the conditions", metaNode.Addr)
 
 		return true
 	})
@@ -2528,7 +2507,7 @@ func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 
 	for _, nodeSetId := range nodeSetId {
 		getParm.NodeSetID = nodeSetId
-		find, dests := GetMigrateAddrExcludeNodeSet(getParm)
+		find, dests := GetMigrateDestAddr(getParm)
 		if find {
 			err := MigratePlanOverLoadToDest(migratePlan, mpPlan, dests, getParm.IsRocksdb)
 			if err != nil {
@@ -2539,4 +2518,48 @@ func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		}
 	}
 	return fmt.Errorf("no resource in the members nodeset")
+}
+
+func DisplayPlanFailedDetails(getParam *GetMigrateAddrParam, mpPlan *proto.MetaBalancePlan, migratePlan *proto.ClusterPlan, isRocksdb bool) {
+	var output strings.Builder
+	fmt.Fprintf(&output, "getParam: zone(%v) nodeset(%v) mp(%v) exclude(%v) excludeRack(%v) requestNum(%v) size(%v) isRocksdb(%v) rackLevel(%v)\n",
+		getParam.ZoneName, getParam.NodeSetID, mpPlan.ID, getParam.Excludes, getParam.ExcludeRacks, getParam.RequestNum, getParam.LeastSize, isRocksdb, getParam.RackLevel)
+
+	fmt.Fprintf(&output, "mp(%v) crossZone(%v) planNum(%v) inodeCount(%v)", mpPlan.ID, mpPlan.CrossZone, mpPlan.PlanNum, mpPlan.InodeCount)
+	fmt.Fprintf(&output, " original:")
+	for _, mr := range mpPlan.Original {
+		fmt.Fprintf(&output, " %s", mr.Source)
+	}
+	fmt.Fprintf(&output, " overLoad:")
+	for _, mr := range mpPlan.OverLoad {
+		fmt.Fprintf(&output, " %s", mr.Source)
+	}
+	fmt.Fprintf(&output, " plan:")
+	for _, mr := range mpPlan.Plan {
+		fmt.Fprintf(&output, " src(%s)->dst(%s)", mr.Source, mr.Destination)
+	}
+	fmt.Fprintf(&output, "\n")
+
+	var zoneView map[string]*proto.ZonePressureView
+	if isRocksdb {
+		zoneView = migratePlan.RocksdbLow
+	} else {
+		zoneView = migratePlan.Low
+	}
+
+	fmt.Fprintf(&output, "resource:\n")
+	for _, zone := range zoneView {
+		for _, nodeSet := range zone.NodeSet {
+			for _, mnInfo := range nodeSet.MetaNodes {
+				body, err := json.Marshal(mnInfo)
+				if err != nil {
+					log.LogErrorf("DisplayPlanFailedDetails Marshal error: %s", err.Error())
+					continue
+				}
+				fmt.Fprintf(&output, "%s\n", body)
+			}
+		}
+	}
+
+	log.LogWarnf(output.String())
 }
