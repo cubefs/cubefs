@@ -375,7 +375,7 @@ func (s *ExtentStore) Create(extentID uint64) (err error) {
 	var e *Extent
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	if s.HasExtent(extentID) {
-		err = ExtentExistsError
+		err = ErrExtentExists
 		return err
 	}
 
@@ -829,7 +829,7 @@ func (s *ExtentStore) punchDelete(extentID uint64, offset, size int64) (err erro
 		if s.IgnoreTinyRecover {
 			return
 		}
-		return TinyRecoverError
+		return ErrTinyRecover
 	}
 
 	var hasDelete bool
@@ -928,18 +928,18 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	if err = os.Remove(extentFilePath); err != nil && !os.IsNotExist(err) {
 		// NOTE: if remove failed
 		// we meet a disk error
-		err = BrokenDiskError
+		err = ErrBrokenDisk
 		return
 	}
 	if err = s.PersistenceHasDeleteExtent(extentID); err != nil {
-		err = BrokenDiskError
+		err = ErrBrokenDisk
 		return
 	}
 	ei.IsDeleted = true
 	ei.SetModifyTime(time.Now().Unix())
 	s.cache.Del(extentID)
 	if err = s.DeleteBlockCrc(extentID); err != nil {
-		err = BrokenDiskError
+		err = ErrBrokenDisk
 		return
 	}
 	s.PutNormalExtentToDeleteCache(extentID)
@@ -1189,7 +1189,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 
 	for extentID = TinyExtentStartID; extentID < TinyExtentStartID+TinyExtentCount; extentID++ {
 		err = s.Create(extentID)
-		if err == nil || strings.Contains(err.Error(), syscall.EEXIST.Error()) || err == ExtentExistsError {
+		if err == nil || strings.Contains(err.Error(), syscall.EEXIST.Error()) || err == ErrExtentExists {
 			err = nil
 			s.brokenTinyExtentC <- extentID
 			s.brokenTinyExtentMap.Store(extentID, true)
@@ -1423,7 +1423,7 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 func (s *ExtentStore) extentWithHeader(ei *ExtentInfo) (e *Extent, err error) {
 	var ok bool
 	if ei == nil || ei.IsDeleted {
-		err = ExtentNotFoundError
+		err = ErrExtentNotFound
 		return
 	}
 	if e, ok = s.cache.Get(ei.FileID); !ok {
@@ -1464,7 +1464,7 @@ func (s *ExtentStore) LoadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 	name := path.Join(s.dataPath, fmt.Sprintf("%v", extentID))
 	e = NewExtentInCore(name, extentID)
 	if err = e.RestoreFromFS(); err != nil {
-		if strings.Contains(err.Error(), ExtentNotFoundError.Error()) {
+		if strings.Contains(err.Error(), ErrExtentNotFound.Error()) {
 			s.DeleteExtentInfo(extentID)
 			log.LogWarnf("LoadExtentFromDisk. partition id %v delete missed extentId %v",
 				s.partitionID, extentID)

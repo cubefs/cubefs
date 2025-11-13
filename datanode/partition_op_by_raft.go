@@ -267,7 +267,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		writeType := storage.RandomWriteType
 		if opItem.opcode == proto.OpRandomWrite || opItem.opcode == proto.OpSyncRandomWrite {
 			if dp.verSeq > 0 {
-				err = storage.VerNotConsistentError
+				err = storage.ErrVerNotConsistent
 				log.LogErrorf("action[ApplyRandomWrite] volume [%v] dp [%v] %v,client need update to newest version!", dp.volumeID, dp.partitionID, err)
 				return
 			}
@@ -302,7 +302,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		if IsDiskErr(err.Error()) {
 			panic(newRaftApplyError(err))
 		}
-		if strings.Contains(err.Error(), storage.ExtentNotFoundError.Error()) {
+		if strings.Contains(err.Error(), storage.ErrExtentNotFound.Error()) {
 			err = nil
 			return
 		}
@@ -358,7 +358,7 @@ func (dp *DataPartition) CheckWriteVer(p *repl.Packet) (err error) {
 		p.ExtentType |= proto.VersionListFlag
 
 		if p.Opcode == proto.OpRandomWriteVer || p.Opcode == proto.OpSyncRandomWriteVer {
-			err = storage.VerNotConsistentError
+			err = storage.ErrVerNotConsistent
 			log.LogDebugf("action[CheckWriteVer] dp %v client verSeq[%v] small than dataPartiton ver[%v]",
 				dp.config.PartitionID, p.VerSeq, dp.verSeq)
 		}

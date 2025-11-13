@@ -1326,7 +1326,7 @@ func (m *metadataManager) opMetaLookup(conn net.Conn, p *Packet,
 	}
 
 	if mp.IsForbidden() {
-		err = storage.ForbiddenMetaPartitionError
+		err = storage.ErrForbiddenMetaPartition
 		p.PacketErrorWithBody(proto.OpForbidErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		return

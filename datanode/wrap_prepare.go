@@ -84,7 +84,7 @@ func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
 	}
 	crc := crc32.ChecksumIEEE(p.Data[:p.Size])
 	if crc != p.CRC {
-		return storage.CrcMismatchError
+		return storage.ErrCrcMismatch
 	}
 
 	return
@@ -165,7 +165,7 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 	} else if p.IsLeaderPacket() && p.IsCreateExtentOperation() {
 		if partition.isNormalType() && partition.GetExtentCount() >= storage.MaxExtentCount*3 {
 			log.LogErrorf("[checkPacketAndPrepare] partition %v has reached maxExtentId", p.PartitionID)
-			return storage.ReachMaxExtentsCountError
+			return storage.ErrReachMaxExtentsCount
 		}
 		p.ExtentID, err = store.NextExtentID()
 		if err != nil {

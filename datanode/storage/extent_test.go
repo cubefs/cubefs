@@ -113,7 +113,7 @@ func tinyExtentRwTest(t *testing.T, e *storage.Extent) {
 	param.Size = dataSize
 	param.WriteType = storage.RandomWriteType
 	_, err := e.Write(param, getMockCrcPersist(t))
-	require.ErrorIs(t, err, storage.ExtentIsFullError)
+	require.ErrorIs(t, err, storage.ErrExtentIsFull)
 
 	// append write
 	param.Offset = 0
@@ -170,7 +170,7 @@ func tinyExtentCreateTest(t *testing.T, name string) {
 	e := storage.NewExtentInCore(name, testTinyExtentID)
 	t.Log("tiny-extent:", e)
 	require.False(t, e.Exist())
-	require.ErrorIs(t, e.RestoreFromFS(), storage.ExtentNotFoundError)
+	require.ErrorIs(t, e.RestoreFromFS(), storage.ErrExtentNotFound)
 	require.NoError(t, e.InitToFS())
 	defer e.Close()
 	tinyExtentRwTest(t, e)

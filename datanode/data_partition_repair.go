@@ -315,7 +315,7 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 	RETRY:
 		err := dp.streamRepairExtent(extentInfo, repl.NewTinyExtentRepairReadPacket, repl.NewExtentRepairReadPacket, repl.NewNormalExtentWithHoleRepairReadPacket, repl.NewPacketEx)
 		if err != nil {
-			if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) || strings.Contains(err.Error(), tinyOffsetInvalid) {
+			if strings.Contains(err.Error(), storage.ErrNoDiskReadRepairExtentToken.Error()) || strings.Contains(err.Error(), tinyOffsetInvalid) {
 				log.LogWarnf("action[DoRepair] retry dp(%v) extent(%v), err(%s).", dp.partitionID, extentInfo.FileID, err.Error())
 				goto RETRY
 			}
@@ -683,12 +683,12 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		p.SetCRC(reply.GetCRC())
 		if err != nil {
 			if strings.Contains(err.Error(), storage.ErrExtentHasBeenDeleted.Error()) ||
-				strings.Contains(err.Error(), storage.LimitedIoError.Error()) {
+				strings.Contains(err.Error(), storage.ErrLimitedIo.Error()) {
 				log.LogWarnf("action[operatePacket] err %v", err)
 				return
 			}
 			if err == io.EOF && dp.Status() == proto.Recovering {
-				err = storage.DpRepairError
+				err = storage.ErrDpRepair
 				log.LogWarnf("action[operatePacket] err %v", err)
 				return
 			}
@@ -748,7 +748,7 @@ func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExten
 RETRY:
 	err := dp.streamRepairExtent(remoteExtentInfo, repl.NewTinyExtentRepairReadPacket, repl.NewExtentRepairReadPacket, repl.NewNormalExtentWithHoleRepairReadPacket, repl.NewPacketEx)
 	if err != nil {
-		if strings.Contains(err.Error(), storage.NoDiskReadRepairExtentTokenError.Error()) || strings.Contains(err.Error(), tinyOffsetInvalid) || strings.Contains(err.Error(), "timeout") {
+		if strings.Contains(err.Error(), storage.ErrNoDiskReadRepairExtentToken.Error()) || strings.Contains(err.Error(), tinyOffsetInvalid) || strings.Contains(err.Error(), "timeout") {
 			log.LogWarnf("action[DoRepair] retry dp(%v) extent(%v). err %s ", dp.partitionID, remoteExtentInfo.FileID, err.Error())
 			goto RETRY
 		}
@@ -865,7 +865,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 				if reply.GetResultCode() == proto.OpReadRepairExtentAgain {
 					log.LogDebugf("streamRepairExtent dp %v extent %v wait for token", dp.partitionID, remoteExtentInfo.FileID)
 					time.Sleep(time.Second * 5)
-					return storage.NoDiskReadRepairExtentTokenError
+					return storage.ErrNoDiskReadRepairExtentToken
 				} else {
 					err = errors.Trace(fmt.Errorf("unknow result code"),
 						"streamRepairExtent dp %v extent %v receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)",

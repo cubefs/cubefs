@@ -223,12 +223,12 @@ func (m *metadataManager) checkForbidWriteOpOfProtoVer0(pktProtoVersion uint32, 
 	}
 
 	if m.metaNode.nodeForbidWriteOpOfProtoVer0 {
-		err = fmt.Errorf("%v %v", storage.ClusterForbidWriteOpOfProtoVer, pktProtoVersion)
+		err = fmt.Errorf("%v %v", storage.ErrClusterForbidWriteOpOfProtoVer, pktProtoVersion)
 		return
 	}
 
 	if mpForbidWriteOpOfProtoVer0 {
-		err = fmt.Errorf("%v %v", storage.VolForbidWriteOpOfProtoVer, pktProtoVersion)
+		err = fmt.Errorf("%v %v", storage.ErrVolForbidWriteOpOfProtoVer, pktProtoVersion)
 		return
 	}
 

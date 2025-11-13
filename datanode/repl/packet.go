@@ -119,20 +119,20 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
-	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
+	} else if strings.Contains(errMsg, storage.ErrExtentNotFound.Error()) ||
 		strings.Contains(errMsg, storage.ErrExtentHasBeenDeleted.Error()) {
 		p.ResultCode = proto.OpNotExistErr
 	} else if strings.Contains(errMsg, storage.ErrNoSpace.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
-	} else if strings.Contains(errMsg, storage.LimitedIoError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrLimitedIo.Error()) {
 		p.ResultCode = proto.OpLimitedIoErr
-	} else if strings.Contains(errMsg, storage.TinyRecoverError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrTinyRecover.Error()) {
 		p.ResultCode = proto.OpTinyRecoverErr
-	} else if strings.Contains(errMsg, storage.DpDecommissionRepairError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrDpDecommissionRepair.Error()) {
 		p.ResultCode = proto.OpDpDecommissionRepairErr
-	} else if strings.Contains(errMsg, storage.DpRepairError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrDpRepair.Error()) {
 		p.ResultCode = proto.OpDpRepairErr
-	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrTryAgain.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
@@ -140,13 +140,13 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.ErrStoreAlreadyClosed.Error()) {
 		p.ResultCode = proto.OpStoreClosed
-	} else if strings.Contains(errMsg, storage.ReachMaxExtentsCountError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrReachMaxExtentsCount.Error()) {
 		p.ResultCode = proto.OpReachMaxExtentsErr
 	} else if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
-	} else if strings.Contains(errMsg, storage.ClusterForbidWriteOpOfProtoVer.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrClusterForbidWriteOpOfProtoVer.Error()) {
 		p.ResultCode = proto.OpWriteOpOfProtoVerForbidden
 	} else {
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
@@ -465,41 +465,41 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
-	} else if strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) ||
+	} else if strings.Contains(errMsg, storage.ErrExtentNotFound.Error()) ||
 		strings.Contains(errMsg, storage.ErrExtentHasBeenDeleted.Error()) {
 		p.ResultCode = proto.OpNotExistErr
 	} else if strings.Contains(errMsg, storage.ErrNoSpace.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
-	} else if strings.Contains(errMsg, storage.BrokenDiskError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrBrokenDisk.Error()) {
 		p.ResultCode = proto.OpDiskErr
 	} else if strings.Contains(errMsg, "GetAvailableTinyExtent") {
 		p.ResultCode = proto.OpDiskNoSpaceErr
-	} else if strings.Contains(errMsg, storage.LimitedIoError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrLimitedIo.Error()) {
 		p.ResultCode = proto.OpLimitedIoErr
-	} else if strings.Contains(errMsg, storage.TinyRecoverError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrTinyRecover.Error()) {
 		p.ResultCode = proto.OpTinyRecoverErr
-	} else if strings.Contains(errMsg, storage.DpDecommissionRepairError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrDpDecommissionRepair.Error()) {
 		p.ResultCode = proto.OpDpDecommissionRepairErr
-	} else if strings.Contains(errMsg, storage.DpRepairError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrDpRepair.Error()) {
 		p.ResultCode = proto.OpDpRepairErr
-	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrTryAgain.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, raft.ErrStopped.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
-	} else if strings.Contains(errMsg, storage.VerNotConsistentError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrVerNotConsistent.Error()) {
 		p.ResultCode = proto.ErrCodeVersionOpError
 		// log.LogDebugf("action[identificationErrorResultCode] not change ver erro code, (%v)", string(debug.Stack()))
-	} else if strings.Contains(errMsg, storage.NoDiskReadRepairExtentTokenError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrNoDiskReadRepairExtentToken.Error()) {
 		p.ResultCode = proto.OpReadRepairExtentAgain
 	} else if strings.Contains(errMsg, storage.ErrStoreAlreadyClosed.Error()) {
 		p.ResultCode = proto.OpStoreClosed
-	} else if strings.Contains(errMsg, storage.ReachMaxExtentsCountError.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrReachMaxExtentsCount.Error()) {
 		p.ResultCode = proto.OpReachMaxExtentsErr
-	} else if strings.Contains(errMsg, storage.ClusterForbidWriteOpOfProtoVer.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrClusterForbidWriteOpOfProtoVer.Error()) {
 		p.ResultCode = proto.OpWriteOpOfProtoVerForbidden
-	} else if strings.Contains(errMsg, storage.VolForbidWriteOpOfProtoVer.Error()) {
+	} else if strings.Contains(errMsg, storage.ErrVolForbidWriteOpOfProtoVer.Error()) {
 		p.ResultCode = proto.OpWriteOpOfProtoVerForbidden
 	} else {
 		if p.Opcode == proto.OpReadTinyDeleteRecord ||

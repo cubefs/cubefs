@@ -101,7 +101,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 
 	// check forbidden
 	if m.IsForbiddenOp(mp, reqOp) {
-		err = storage.ForbiddenMetaPartitionError
+		err = storage.ErrForbiddenMetaPartition
 		p.PacketErrorWithBody(proto.OpForbidErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
 		return false

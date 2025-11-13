@@ -260,7 +260,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		err = storage.ErrNoSpace
 		return
 	} else if partition.disk.Status == proto.Unavailable {
-		err = storage.BrokenDiskError
+		err = storage.ErrBrokenDisk
 		return
 	}
 
@@ -807,7 +807,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	defer func() {
 		if err != nil {
 			msg := fmt.Sprintf("(%v) error(%v).", p.GetUniqueLogId(), err)
-			if err == storage.LimitedIoError || err == storage.TinyRecoverError || err == storage.DpDecommissionRepairError {
+			if err == storage.ErrLimitedIo || err == storage.ErrTinyRecover || err == storage.ErrDpDecommissionRepair {
 				log.LogInfo(msg)
 			} else {
 				log.LogError(msg)
@@ -820,7 +820,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	partition := p.Object.(*DataPartition)
 
 	if partition.isRepairing {
-		err = storage.DpDecommissionRepairError
+		err = storage.ErrDpDecommissionRepair
 		return
 	}
 
@@ -845,7 +845,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 
 		if !deleteLimiteRater.Allow() {
 			log.LogInfof("[handleBatchMarkDeletePacket] delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
-			err = storage.LimitedIoError
+			err = storage.ErrLimitedIo
 			return
 		}
 
@@ -870,7 +870,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			}
 			if err != nil {
 				msg := fmt.Sprintf("action[handleBatchMarkDeletePacket]: failed to mark delete normalExtent extent(%v), offset(%v) err %v", ext.ExtentId, ext.FileOffset, err)
-				if err == storage.TinyRecoverError {
+				if err == storage.ErrTinyRecover {
 					log.LogInfo(msg)
 				} else {
 					log.LogError(msg)
@@ -896,12 +896,12 @@ func (s *DataNode) checkForbidWriteOpOfProtoVer0(p *repl.Packet, dp *DataPartiti
 	}
 
 	if s.nodeForbidWriteOpOfProtoVer0 {
-		err = fmt.Errorf("%v %v", storage.ClusterForbidWriteOpOfProtoVer, p.ProtoVersion)
+		err = fmt.Errorf("%v %v", storage.ErrClusterForbidWriteOpOfProtoVer, p.ProtoVersion)
 		return
 	}
 
 	if dp.IsForbidWriteOpOfProtoVer0() {
-		err = fmt.Errorf("%v %v", storage.VolForbidWriteOpOfProtoVer, p.ProtoVersion)
+		err = fmt.Errorf("%v %v", storage.ErrVolForbidWriteOpOfProtoVer, p.ProtoVersion)
 		return
 	}
 
@@ -925,12 +925,12 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
-		err = storage.ForbiddenDataPartitionError
+		err = storage.ErrForbiddenDataPartition
 		return
 	}
 
 	if partition.isRepairing {
-		err = storage.DpDecommissionRepairError
+		err = storage.ErrDpDecommissionRepair
 		return
 	}
 
@@ -947,7 +947,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		err = storage.ErrNoSpace
 		return
 	} else if partition.disk.Status == proto.Unavailable {
-		err = storage.BrokenDiskError
+		err = storage.ErrBrokenDisk
 		return
 	}
 	store := partition.ExtentStore()
@@ -971,7 +971,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			}
 			_, err = store.Write(param)
 		}); !writable {
-			err = storage.LimitedIoError
+			err = storage.ErrLimitedIo
 			return
 		}
 
@@ -1003,7 +1003,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			}
 			_, err = store.Write(param)
 		}); !writable {
-			err = storage.LimitedIoError
+			err = storage.ErrLimitedIo
 			return
 		}
 
@@ -1041,7 +1041,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				}
 				_, err = store.Write(param)
 			}); !writable {
-				err = storage.LimitedIoError
+				err = storage.ErrLimitedIo
 				return
 			}
 
@@ -1078,7 +1078,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 				p.Opcode = proto.OpSyncRandomWriteVerRsp
 			}
 			if p.Opcode == proto.OpTryWriteAppend && p.ResultCode == proto.OpTryOtherExtent {
-				p.PackErrorBody(ActionWrite, storage.SnapshotNeedNewExtentError.Error())
+				p.PackErrorBody(ActionWrite, storage.ErrSnapshotNeedNewExtent.Error())
 				p.ResultCode = proto.OpTryOtherExtent
 				log.LogDebugf("action[handleRandomWritePacket opcod %v seq %v dpid %v resultCode %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, p.ResultCode, p.ExtentID)
 				return
@@ -1089,7 +1089,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() {
-		err = storage.ForbiddenDataPartitionError
+		err = storage.ErrForbiddenDataPartition
 		return
 	}
 
@@ -1130,7 +1130,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	if err == nil && p.ResultCode != proto.OpOk && p.ResultCode != proto.OpTryOtherExtent {
 		log.LogErrorf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v extid %v ResultCode %v",
 			p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID, p.ResultCode)
-		err = storage.TryAgainError
+		err = storage.ErrTryAgain
 		return
 	}
 	log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v after raft submit err %v resultCode %v",
@@ -1176,7 +1176,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	defer fininshDoExtentRepair()
 	partition := p.Object.(*DataPartition)
 	if !partition.disk.RequireReadExtentToken(partition.partitionID) {
-		err = storage.NoDiskReadRepairExtentTokenError
+		err = storage.ErrNoDiskReadRepairExtentToken
 		log.LogDebugf("dp(%v) disk(%v) extent(%v) wait for read extent token",
 			p.PartitionID, partition.disk.Path, p.ExtentID)
 		return
@@ -1210,7 +1210,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 	}()
 	partition := p.Object.(*DataPartition)
 	if partition.IsForbidden() && !isRepairRead {
-		err = storage.ForbiddenDataPartitionError
+		err = storage.ErrForbiddenDataPartition
 		return
 	}
 	log.LogDebugf("extentRepairReadPacket ready to repair dp(%v) disk(%v) extent(%v) offset (%v) needSize (%v)",
@@ -1743,7 +1743,7 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet, force 
 			log.LogInfof("action[forwardToRaftLeader] no leader but replica num %v continue", dp.replicaNum)
 			return
 		}
-		err = storage.NoLeaderError
+		err = storage.ErrNoLeader
 		return
 	}
 
@@ -1935,7 +1935,7 @@ func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn)
 	if gcLockEks.IsCreate {
 		for _, ek := range gcLockEks.Eks {
 			err = store.Create(ek.ExtentId)
-			if err == storage.ExtentExistsError {
+			if err == storage.ErrExtentExists {
 				err = nil
 				continue
 			}

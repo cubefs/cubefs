@@ -455,7 +455,7 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 func (e *Extent) RestoreFromFS() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0o666); err != nil {
 		if os.IsNotExist(err) {
-			err = ExtentNotFoundError
+			err = ErrExtentNotFound
 		}
 		return err
 	}
@@ -523,7 +523,7 @@ func (e *Extent) WriteTiny(param *WriteParam) (err error) {
 	defer e.Unlock()
 	index := param.Offset + param.Size
 	if index >= ExtentMaxSize {
-		return ExtentIsFullError
+		return ErrExtentIsFull
 	}
 
 	if IsAppendWrite(param.WriteType) && param.Offset != e.Size() {
