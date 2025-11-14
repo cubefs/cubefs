@@ -500,6 +500,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		err = mp.fsmUniqCheckerEvict(req)
 	case opFSMVersionOp:
+		if index <= mp.multiVerApplyId {
+			log.LogWarnf("action[opFSMVersionOp] mp[%v] applyId [%v] <= multiVerApplyId [%v], skip",
+				mp.config.PartitionId, index, mp.multiVerApplyId)
+			return
+		}
 		err = mp.fsmVersionOp(msg.V)
 	case opFSMRenewalForbiddenMigration:
 		ino := NewInode(0, 0)

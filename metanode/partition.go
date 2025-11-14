@@ -532,8 +532,9 @@ type metaPartition struct {
 	statByMigrateStorageClass []*proto.StatOfStorageClass
 	syncAtimeCh               chan uint64
 
-	rocksdbManager RocksdbManager
-	db             *RocksdbOperator
+	rocksdbManager  RocksdbManager
+	db              *RocksdbOperator
+	multiVerApplyId uint64
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
