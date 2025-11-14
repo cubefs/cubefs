@@ -2433,6 +2433,10 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 				fmt.Fprintf(&unusableBuf, "\n")
 				return true
 			}
+			if !metaNode.RocksdbRdOnly {
+				fmt.Fprintf(&unusableBuf, "%s RocksdbRdOnly is false\n", metaNode.Addr)
+				return true
+			}
 		} else {
 			if metaNode.MaxMemAvailWeight <= gConfig.metaNodeReservedMem {
 				fmt.Fprintf(&unusableBuf, "%s maxMemAvailWeight(%v) <= reservedMem(%v)\n", metaNode.Addr, metaNode.MaxMemAvailWeight, gConfig.metaNodeReservedMem)
@@ -2485,6 +2489,7 @@ func TrimMetaReplicaPlan(mpPlan *proto.MetaBalancePlan) {
 
 func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, getParm *GetMigrateAddrParam) error {
 	nodeSetId := make([]uint64, 0, len(mpPlan.Original))
+	zoneList := make([]string, 0, len(mpPlan.Original))
 	bFind := false
 	for _, mr := range mpPlan.Original {
 		if mr.StoreMode != migratePlan.Mode {
@@ -2497,16 +2502,24 @@ func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 				break
 			}
 		}
+		for _, id := range nodeSetId {
+			if id == mr.SrcNodeSetId {
+				bFind = true
+				break
+			}
+		}
 		if !bFind {
 			nodeSetId = append(nodeSetId, mr.SrcNodeSetId)
+			zoneList = append(zoneList, mr.SrcZoneName)
 		}
 	}
 	if len(nodeSetId) == 0 {
 		return fmt.Errorf("no node set id found")
 	}
 
-	for _, nodeSetId := range nodeSetId {
+	for i, nodeSetId := range nodeSetId {
 		getParm.NodeSetID = nodeSetId
+		getParm.ZoneName = zoneList[i]
 		find, dests := GetMigrateDestAddr(getParm)
 		if find {
 			err := MigratePlanOverLoadToDest(migratePlan, mpPlan, dests, getParm.IsRocksdb)
