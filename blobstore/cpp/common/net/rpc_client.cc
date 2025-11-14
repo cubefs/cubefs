@@ -142,11 +142,21 @@ seastar::future<Status<RpcResponseHeader>> RpcClientContext::ReadHeader(
         s.SetCode(res.Code()).SetReason(res.Reason());
         co_return s;
     }
-    if (!resp_header.ParseFromZeroCopy(std::move(res.Value()))) {
-        last_status_.SetCode(ErrCode::ErrNetworkProtocol).SetReason("net: parse header error");
+
+    Buffer b = std::move(res.Value());
+    size_t body_offset = 0;
+    if (!DeserializeRpcHeader(b, resp_header, body_offset)) {
+        last_status_.SetCode(ErrCode::ErrNetworkProtocol)
+            .SetReason("net: deserialize header error");
         s.SetCode(last_status_.Code()).SetReason(last_status_.Reason());
         co_return s;
     }
+    size_t body_size_in_frame = (b.size() > body_offset) ? (b.size() - body_offset) : 0;
+    if (body_size_in_frame > 0) {
+        Buffer body_buf = b.share(body_offset, body_size_in_frame);
+        SetPendingBody(std::move(body_buf));
+    }
+
     s.SetValue(std::move(resp_header));
     co_return s;
 }
@@ -156,6 +166,14 @@ seastar::future<Status<Buffer>> RpcClientContext::ReadBody(
     Status<Buffer> s;
     if (!last_status_) {
         s.SetCode(last_status_.Code()).SetReason(last_status_.Reason());
+        co_return s;
+    }
+
+    // has pending body
+    if (!has_pending_body_ && pending_body_.size() > 0) {
+        has_pending_body_ = false;
+        s.SetValue(std::move(pending_body_));
+        pending_body_ = Buffer();
         co_return s;
     }
 
@@ -174,8 +192,14 @@ seastar::future<Status<>> RpcClientContext::WriteHeader(RpcRequestHeader req_hea
         s.SetCode(last_status_.Code()).SetReason(last_status_.Reason());
         co_return s;
     }
-    Buffer b(req_header.ByteSizeLong());
-    req_header.SerializeToArray(b.get_write(), b.size());
+
+    Buffer b = SerializeRpcHeader(req_header);
+    if (b.size() == 0) {
+        last_status_.SetCode(ErrCode::ErrInvalid).SetReason("net: serialize header error");
+        s.SetCode(last_status_.Code()).SetReason(last_status_.Reason());
+        co_return s;
+    }
+
     s = co_await client_stream_->WriteFrame(b.get(), b.size());
     if (!s) {
         last_status_.SetCode(s.Code()).SetReason(s.Reason());

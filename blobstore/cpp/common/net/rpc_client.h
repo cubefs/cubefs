@@ -41,15 +41,23 @@ class RpcClientContext {
     seastar::socket_address sa_;
     seastar::foreign_ptr<ClientStreamPtr> client_stream_;
 
+    Buffer pending_body_;  // has body in first frame
+    bool has_pending_body_ = false;
+
     friend RpcClient;
 
     explicit RpcClientContext(seastar::socket_address sa,
                               seastar::foreign_ptr<ClientStreamPtr> client_stream)
-        : sa_(sa), client_stream_(std::move(client_stream)) {}
+        : sa_(sa), client_stream_(std::move(client_stream)), has_pending_body_(false) {}
     RpcClientContext() = delete;
 
    public:
     ~RpcClientContext();
+
+    void SetPendingBody(Buffer body) {
+        pending_body_ = std::move(body);
+        has_pending_body_ = true;
+    }
 
     seastar::future<Status<RpcResponseHeader>> ReadHeader(
         std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) noexcept;

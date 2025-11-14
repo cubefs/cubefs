@@ -5,6 +5,7 @@
 #include <seastar/core/when_all.hh>
 #include <seastar/net/api.hh>
 
+#include "byteorder.h"
 #include "common/logger.h"
 #include "rpc.h"
 #include "rpc_server.h"
@@ -53,13 +54,22 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
             break;
         }
         Buffer b = std::move(res.Value());
-        RpcRequestHeader req_header;
 
-        if (!req_header.ParseFromZeroCopy(b.share())) {
+        RpcRequestHeader req_header;
+        size_t body_offset = 0;
+        if (!DeserializeRpcHeader(b, req_header, body_offset)) {
             LOG_WARN("parse rpc header error, remote: {}", stream->RemoteAddress());
             break;
         }
+
         proto::StreamCmd cmd = req_header.StreamCmd();
+        RpcServerContext ctx(stream.get(), std::move(req_header));
+
+        size_t body_size_in_frame = (b.size() > body_offset) ? (b.size() - body_offset) : 0;
+        if (body_size_in_frame > 0) {
+            Buffer body_buf = b.share(body_offset, body_size_in_frame);
+            ctx.SetPendingBody(std::move(body_buf));
+        }
 
         if (cmd == proto::StreamCmd::NOT) {
             if (prev_cmd != proto::StreamCmd::NOT) {
@@ -67,9 +77,7 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
                          stream->RemoteAddress());
                 break;
             }
-            int64_t content_len = req_header.ContentLength();
-            RpcServerContext ctx(stream.get(), std::move(req_header));
-            if (content_len == 0) {
+            if (ctx.GetRpcRequestHeader().ContentLength() == 0) {
                 ctx.has_fin_ = true;
             }
             auto s = co_await HandleContext(&ctx);
@@ -99,7 +107,6 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
                          stream->RemoteAddress());
                 break;
             }
-            RpcServerContext ctx(stream.get(), std::move(req_header));
             ctx.stream_ctx_ = true;
             auto s = co_await HandleContext(&ctx);
             if (!s) {

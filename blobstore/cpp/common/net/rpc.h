@@ -2,11 +2,15 @@
 
 #include <google/protobuf/message.h>
 
+#include <concepts>
 #include <functional>
 #include <memory>
 #include <seastar/core/future.hh>
 #include <tuple>
+#include <type_traits>
+#include <utility>
 
+#include "common/net/byteorder.h"
 #include "common/net/session.h"
 #include "common/proto/rpc.pb.h"
 #include "common/status.h"
@@ -15,6 +19,63 @@
 
 namespace blobstore {
 namespace net {
+
+#define BLOBSTORE_NET_RPC_HEADER_SIZE 4  // request, response header size
+
+// C++20 Concepts: Request and Response header type
+template <typename T>
+concept RpcHeaderSerializable = requires(const T& header, char* ptr, size_t size) {
+    { header.ByteSizeLong() } -> std::convertible_to<size_t>;
+    { header.SerializeToArray(ptr, size) } -> std::convertible_to<bool>;
+};
+
+template <typename T>
+concept RpcHeaderDeserializable = requires(T& header, const char* ptr, size_t size) {
+    { header.ParseFrom(ptr, size) } -> std::convertible_to<bool>;
+};
+
+template <typename T>
+concept RpcHeader = RpcHeaderSerializable<T> && RpcHeaderDeserializable<T>;
+
+// Failed if Buffer(size == 0)
+template <RpcHeaderSerializable HeaderType>
+inline Buffer SerializeRpcHeader(const HeaderType& header) {
+    size_t header_size = header.ByteSizeLong();
+    Buffer buf(BLOBSTORE_NET_RPC_HEADER_SIZE + header_size);
+    auto write_ptr = buf.get_write();
+    LittleEndian::PutUint32(write_ptr, static_cast<uint32_t>(header_size));
+    if (!header.SerializeToArray(write_ptr + BLOBSTORE_NET_RPC_HEADER_SIZE, header_size)) {
+        return Buffer();
+    }
+    return buf;
+}
+
+// (header_size, body_offset)，failed is (0, 0)
+inline std::pair<uint32_t, size_t> DeserializeRpcHeaderSize(const Buffer& buf) {
+    if (buf.size() < BLOBSTORE_NET_RPC_HEADER_SIZE) {
+        return {0, 0};
+    }
+    uint32_t header_size = LittleEndian::Uint32(buf.get());
+    if (buf.size() < BLOBSTORE_NET_RPC_HEADER_SIZE + header_size) {
+        return {0, 0};
+    }
+    size_t body_offset = BLOBSTORE_NET_RPC_HEADER_SIZE + header_size;
+    return {header_size, body_offset};
+}
+
+// Parse header and body_offset
+template <RpcHeaderDeserializable HeaderType>
+inline bool DeserializeRpcHeader(const Buffer& buf, HeaderType& header, size_t& body_offset) {
+    auto [header_size, offset] = DeserializeRpcHeaderSize(buf);
+    if (header_size == 0) {
+        return false;
+    }
+    if (!header.ParseFrom(buf.get() + BLOBSTORE_NET_RPC_HEADER_SIZE, header_size)) {
+        return false;
+    }
+    body_offset = offset;
+    return true;
+}
 
 class Stream;
 
@@ -92,7 +153,7 @@ class RpcRequestHeader {
         return req_header_.ParseFromZeroCopyStream(&in);
     }
 
-    bool SerializeToArray(char* b, size_t n) { return req_header_.SerializeToArray(b, n); }
+    bool SerializeToArray(char* b, size_t n) const { return req_header_.SerializeToArray(b, n); }
 
     int32_t Version() const { return req_header_.version(); }
 
@@ -199,7 +260,7 @@ class RpcResponseHeader {
         return resp_header_.ParseFromZeroCopyStream(&in);
     }
 
-    bool SerializeToArray(char* b, size_t n) { return resp_header_.SerializeToArray(b, n); }
+    bool SerializeToArray(char* b, size_t n) const { return resp_header_.SerializeToArray(b, n); }
     void Clear() { resp_header_.Clear(); }
 };
 
@@ -211,6 +272,9 @@ class RpcServerContext {
     size_t recv_len_ = 0;
     bool stream_ctx_ = false;
     bool has_fin_ = false;
+
+    Buffer pending_body_;  // has body in first frame
+    bool has_pending_body_ = false;
 
     friend class TcpRpcServer;
 
@@ -231,6 +295,11 @@ class RpcServerContext {
     inline bool HasFin() const { return has_fin_; }
 
     inline blobstore::Trace& Trace() { return trace_; }
+
+    void SetPendingBody(Buffer body) {
+        pending_body_ = std::move(body);
+        has_pending_body_ = true;
+    }
 
     // write a body frame
     seastar::future<Status<>> WriteBody(const char* b, size_t n);

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "common/net/byteorder.h"
 #include "common/net/rpc.h"
 #include "common/net/rpc_server.h"
 #include "common/status.h"
@@ -17,6 +18,7 @@ using blobstore::Buffer;
 using blobstore::ErrCode;
 using blobstore::GenerateTraceid;
 using blobstore::Status;
+using blobstore::net::DeserializeRpcHeader;
 using blobstore::net::MockStream;
 using blobstore::net::RpcRequestHeader;
 using blobstore::net::RpcResponseHeader;
@@ -78,7 +80,8 @@ SEASTAR_TEST_CASE(test_unregistered_route_returns_404) {
 
     RpcResponseHeader resp_header;
     Buffer& buf = stream.written_bodies_[0];
-    resp_header.ParseFromZeroCopy(std::move(buf));
+    size_t body_offset = 0;
+    BOOST_REQUIRE(DeserializeRpcHeader(buf, resp_header, body_offset));
     BOOST_REQUIRE_EQUAL(resp_header.Status(), static_cast<int>(ErrCode::ErrNotFound));
     BOOST_REQUIRE(!resp_header.Reason().empty());
 }
@@ -179,7 +182,8 @@ SEASTAR_TEST_CASE(test_middleware_error_stops_execution) {
 
     RpcResponseHeader resp_header;
     Buffer& buf = stream.written_bodies_[0];
-    resp_header.ParseFromZeroCopy(std::move(buf));
+    size_t body_offset = 0;
+    BOOST_REQUIRE(DeserializeRpcHeader(buf, resp_header, body_offset));
     BOOST_REQUIRE_EQUAL(resp_header.Status(), static_cast<int>(ErrCode::ErrInvalid));
     BOOST_REQUIRE(!resp_header.Reason().empty());
 }

@@ -13,7 +13,8 @@ RpcServerContext::RpcServerContext(Stream* stream, RpcRequestHeader req_header)
     : stream_(stream),
       req_header_(std::move(req_header)),
       trace_(req_header_.Traceid()),
-      recv_len_(0) {}
+      recv_len_(0),
+      has_pending_body_(false) {}
 
 seastar::future<Status<>> RpcServerContext::WriteBody(const char* b, size_t n) {
     return stream_->WriteFrame(b, n);
@@ -24,8 +25,12 @@ seastar::future<Status<>> RpcServerContext::WriteBody(std::vector<iovec> iov) {
 }
 
 seastar::future<Status<>> RpcServerContext::WriteHeader(RpcResponseHeader header) {
-    Buffer buf(header.ByteSizeLong());
-    header.SerializeToArray(buf.get_write(), buf.size());
+    Buffer buf = SerializeRpcHeader(header);
+    if (buf.size() == 0) {
+        Status<> s;
+        s.SetCode(ErrCode::ErrNetworkProtocol).SetReason("net: serialize header error");
+        return seastar::make_ready_future<Status<>>(std::move(s));
+    }
     return stream_->WriteFrame(std::move(buf));
 }
 
@@ -33,6 +38,28 @@ seastar::future<Status<Buffer>> RpcServerContext::SimpleRead(std::chrono::millis
     Status<Buffer> s;
     if (recv_len_ == req_header_.ContentLength()) {
         has_fin_ = true;
+        co_return s;
+    }
+
+    // has pending body
+    if (has_pending_body_ && pending_body_.size() > 0) {
+        size_t pending_size = pending_body_.size();
+        int64_t remaining = req_header_.ContentLength() - recv_len_;
+
+        has_pending_body_ = false;
+
+        if (pending_size > static_cast<size_t>(remaining)) {
+            pending_body_ = Buffer();
+            s.SetCode(ErrCode::ErrTooLarge).SetReason("net: pending size too large");
+            co_return s;
+        }
+
+        recv_len_ += pending_size;
+        if (recv_len_ == req_header_.ContentLength()) {
+            has_fin_ = true;
+        }
+        s.SetValue(std::move(pending_body_));
+        pending_body_ = Buffer();
         co_return s;
     }
 
