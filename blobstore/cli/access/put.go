@@ -26,6 +26,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func putFile(c *grumble.Context) error {
@@ -69,11 +71,15 @@ func putFile(c *grumble.Context) error {
 
 	putHashes := access.HashAlgorithm(c.Flags.Uint("hashes"))
 	fmt.Printf("to upload size:%d hash:b(%b)\n", size, putHashes)
+	codeMode := c.Flags.Uint("codemode")
+	clusterID := c.Flags.Uint("clusterid")
 
 	location, hashes, err := client.Put(common.CmdContext(), &access.PutArgs{
-		Size:   size,
-		Hashes: putHashes,
-		Body:   reader,
+		Size:            size,
+		Hashes:          putHashes,
+		Body:            reader,
+		AssignClusterID: proto.ClusterID(clusterID),
+		CodeMode:        codemode.CodeMode(codeMode),
 	})
 	if err != nil {
 		return err

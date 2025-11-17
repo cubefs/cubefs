@@ -424,7 +424,13 @@ func initMockData() {
 	c := NewMockClusterController(ctr)
 	c.EXPECT().Region().AnyTimes().Return("test-region")
 	c.EXPECT().ChooseOne().AnyTimes().Return(clusterInfo, nil)
-	c.EXPECT().GetServiceController(gomock.Any()).AnyTimes().Return(serviceController, nil)
+	c.EXPECT().GetServiceController(gomock.Any()).AnyTimes().DoAndReturn(
+		func(needClusterID proto.ClusterID) (controller.ServiceController, error) {
+			if needClusterID != clusterID {
+				return nil, fmt.Errorf("no service controller of %d", needClusterID)
+			}
+			return serviceController, nil
+		})
 	c.EXPECT().GetVolumeGetter(gomock.Any()).AnyTimes().Return(volumeGetter, nil)
 	c.EXPECT().ChangeChooseAlg(gomock.Any()).AnyTimes().DoAndReturn(
 		func(alg controller.AlgChoose) error {

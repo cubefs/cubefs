@@ -234,7 +234,7 @@ func (s *Service) Put(c *rpc.Context) {
 	}
 
 	rc := s.limiter.Reader(ctx, c.Request.Body)
-	loc, err := s.streamHandler.Put(ctx, rc, args.Size, hasherMap)
+	loc, err := s.streamHandler.Put(ctx, rc, args.Size, hasherMap, args.AssignClusterID, args.CodeMode)
 	if err != nil {
 		span.Error("stream put failed", errors.Detail(err))
 		c.RespondError(httpError(err))

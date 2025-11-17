@@ -43,3 +43,22 @@ func (c CodeModePairs) SelectCodeMode(size int64) codemode.CodeMode {
 
 	panic(fmt.Sprintf("no codemode policy to be selected by size %d, %+v", size, c))
 }
+
+// Verify select codemode
+func (c CodeModePairs) VerifySelectCodeMode(selectCodeMode codemode.CodeMode) bool {
+	if !selectCodeMode.IsValid() {
+		return false
+	}
+
+	for codeMode, pair := range c {
+		policy := pair.Policy
+		if !policy.Enable {
+			continue
+		}
+		if selectCodeMode == codeMode {
+			return true
+		}
+	}
+
+	return false
+}

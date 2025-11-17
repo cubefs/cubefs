@@ -28,6 +28,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -43,6 +44,7 @@ import (
 //	optional: hasher map to calculate hash.Hash
 func (h *Handler) Put(ctx context.Context,
 	rc io.Reader, size int64, hasherMap access.HasherMap,
+	assignClusterID proto.ClusterID, codeMode codemode.CodeMode,
 ) (*proto.Location, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("put request size:%d hashes:b(%b)", size, hasherMap.ToHashAlgorithm())
@@ -61,11 +63,20 @@ func (h *Handler) Put(ctx context.Context,
 	}
 
 	// 2.choose cluster and alloc volume from allocator
-	selectedCodeMode := h.allCodeModes.SelectCodeMode(size)
-	span.Debugf("select codemode %d", selectedCodeMode)
+	selectedCodeMode := codeMode
+	if selectedCodeMode == codemode.CodeModeNone {
+		selectedCodeMode = h.allCodeModes.SelectCodeMode(size)
+	} else {
+		valid := h.allCodeModes.VerifySelectCodeMode(selectedCodeMode)
+		if !valid {
+			span.Errorf("specify codemode %d not found in codemode policy", selectedCodeMode)
+			return nil, errcode.ErrIllegalArguments
+		}
+	}
+	span.Debugf("select codemode %d, specify codemode %d", selectedCodeMode, codeMode)
 
 	blobSize := atomic.LoadUint32(&h.MaxBlobSize)
-	clusterID, blobs, err := h.allocFromAllocatorWithHystrix(ctx, selectedCodeMode, uint64(size), blobSize, 0)
+	clusterID, blobs, err := h.allocFromAllocatorWithHystrix(ctx, selectedCodeMode, uint64(size), blobSize, assignClusterID)
 	if err != nil {
 		span.Error("alloc failed", errors.Detail(err))
 		return nil, err
