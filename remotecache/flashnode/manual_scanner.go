@@ -275,7 +275,7 @@ func (s *ManualScanner) handleFile(dentry *proto.ScanItem) {
 	s.limiter.Wait(context.Background())
 	info, err := s.mw.InodeGet_ll(dentry.Inode)
 	if err != nil {
-		log.LogErrorf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
+		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
 		return
 	}
 	op := s.manualTask.Action
