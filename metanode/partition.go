@@ -2053,9 +2053,7 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 		}
 	}()
 
-	err = snap.Range(InodeType, func(item interface{}) bool {
-		inode := item.(*Inode)
-
+	err = snap.RangeReuseInode(func(inode *Inode) bool {
 		// stat normal Extents
 		if statStorageClass, ok = statStorageClassMap[inode.StorageClass]; !ok {
 			statStorageClass = proto.NewStatOfStorageClass(inode.StorageClass)

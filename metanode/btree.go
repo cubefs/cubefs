@@ -98,6 +98,7 @@ type Snapshot interface {
 	Count(tp TreeType) uint64
 	ApplyID() uint64
 	TxID() uint64
+	RangeReuseInode(cb func(item *Inode) bool) error
 }
 
 type Tree interface {

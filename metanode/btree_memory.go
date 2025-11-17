@@ -86,6 +86,10 @@ func (b *MemSnapShot) Range(tp TreeType, cb func(item interface{}) bool) error {
 	panic("out of type")
 }
 
+func (b *MemSnapShot) RangeReuseInode(cb func(item *Inode) bool) error {
+	return b.inode.Range(nil, nil, cb)
+}
+
 func (b *MemSnapShot) Close() {}
 
 func (b *MemSnapShot) Count(tp TreeType) uint64 {

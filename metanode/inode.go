@@ -2492,3 +2492,31 @@ func (i *Inode) UpdateHybridCloudParams(paramIno *Inode) {
 	i.HybridCloudExtentsMigration.expiredTime = paramIno.HybridCloudExtentsMigration.expiredTime
 	i.Type = paramIno.Type
 }
+
+func (i *Inode) ResetValue() {
+	ts := timeutil.GetCurrentTimeUnix()
+	i.Inode = 0
+	i.Type = 0
+	i.Generation = 1
+	i.CreateTime = ts
+	i.AccessTime = ts
+	i.ModifyTime = ts
+	i.NLink = 1
+	i.multiSnap = nil
+	i.StorageClass = proto.StorageClass_Unspecified
+	i.LeaseExpireTime = 0
+	i.ClientID = 0
+	if i.HybridCloudExtents != nil {
+		i.HybridCloudExtents.sortedEks = nil
+	} else {
+		i.HybridCloudExtents = NewSortedHybridCloudExtents()
+	}
+
+	if i.HybridCloudExtentsMigration != nil {
+		i.HybridCloudExtentsMigration.expiredTime = 0
+		i.HybridCloudExtentsMigration.sortedEks = nil
+		i.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Unspecified
+	} else {
+		i.HybridCloudExtentsMigration = NewSortedHybridCloudExtentsMigration()
+	}
+}

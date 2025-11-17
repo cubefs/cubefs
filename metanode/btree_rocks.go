@@ -2508,6 +2508,25 @@ func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) bool) error
 	return r.tree.RangeWithSnap(startBytes, endBytes, r.snap, callbackFunc)
 }
 
+func (r *RocksSnapShot) RangeReuseInode(cb func(item *Inode) bool) error {
+	inode := NewInode(0, 0)
+	callbackFunc := func(k, v []byte) (bool, error) {
+		inode.ResetValue()
+		if err := inode.Unmarshal(v); err != nil {
+			return false, err
+		}
+		return cb(inode), nil
+	}
+	startBuf := r.tree.GetRocksdbNormalKey(byte(InodeTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := r.tree.GetRocksdbNormalKey(byte(InodeTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+	startBytes := startBuf.Bytes()
+	endBytes := endBuf.Bytes()
+
+	return r.tree.RangeWithSnap(startBytes, endBytes, r.snap, callbackFunc)
+}
+
 func (r *RocksSnapShot) Close() {
 	if r.snap == nil {
 		return
