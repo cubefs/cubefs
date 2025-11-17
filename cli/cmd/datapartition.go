@@ -618,6 +618,7 @@ func newDataPartitionSetDiscardCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newDataPartitionQueryDecommissionProgress(client *master.MasterClient) *cobra.Command {
+	showQueuedTask := false
 	cmd := &cobra.Command{
 		Use:   CliOpQueryProgress + " [DATA PARTITION ID]",
 		Short: cmdDataPartitionQueryDecommissionProgressShort,
@@ -637,14 +638,15 @@ func newDataPartitionQueryDecommissionProgress(client *master.MasterClient) *cob
 				return
 			}
 
-			info, err := client.AdminAPI().QueryDataPartitionDecommissionStatus(dpId)
+			info, err := client.AdminAPI().QueryDataPartitionDecommissionStatus(dpId, showQueuedTask)
 			if err != nil {
 				return
 			}
 
-			stdout("%v", formatDataPartitionDecommissionProgress(info))
+			stdout("%v", formatDataPartitionDecommissionProgress(info, showQueuedTask))
 		},
 	}
+	cmd.Flags().BoolVar(&showQueuedTask, CliFlagShowQueuedTask, false, "whether to show queued task")
 	return cmd
 }
 

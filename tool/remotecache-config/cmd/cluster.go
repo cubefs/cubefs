@@ -210,7 +210,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				"", "", "", "", clientIDKey,
 				"", "",
 				"", "", "",
-				"", "", "", "", "", "",
+				"", "", "", "", "", "", "",
 				"", "", handleTimeout, readDataNodeTimeout, "",
 				"", "",
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,

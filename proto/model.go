@@ -517,6 +517,7 @@ type DecommissionProgress struct {
 	Progress                 string
 	TotalDpCnt               int
 	RemainingDpCnt           int
+	QueuedDps                []uint64
 	RunningDps               []uint64
 	FailedDps                []FailedDpInfo
 	IgnoreDps                []IgnoreDecommissionDP
@@ -533,6 +534,7 @@ type DataDecommissionProgress struct {
 	Progress       string
 	TotalDpCnt     int
 	RemainingDpCnt int
+	QueuedDps      []uint64
 	RunningDps     []uint64
 	FailedDps      []FailedDpInfo
 	IgnoreDps      []IgnoreDecommissionDP
@@ -671,6 +673,20 @@ type DecommissionDiskInfo struct {
 
 type DecommissionDisksResponse struct {
 	Infos []DecommissionDiskInfo
+}
+
+type DecommissionTaskInfo struct {
+	SrcAddr        string
+	SrcAddrs       []string
+	DstAddr        string
+	DstAddrs       []string
+	RaftForce      bool
+	SrcDiskPath    string
+	Term           uint64
+	DstAddrSpecify bool
+	DstNodeSet     uint64
+	Weight         int
+	Type           uint32
 }
 
 type DecommissionDataPartitionInfo struct {

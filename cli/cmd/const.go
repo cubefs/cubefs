@@ -162,6 +162,7 @@ const (
 	CliFlagDecommissionRaftForce                  = "raftForceDel"
 	CliFLagDecommissionWeight                     = "decommissionWeight"
 	CliFlagDecommissionDstNodeSet                 = "decommissionDstNodeSet"
+	CliFlagShowQueuedTask                         = "showQueuedTask"
 	CliFLagRecommissionType                       = "recommissionType"
 	CliFlagAllowedStorageClass                    = "allowedStorageClass"
 	CliFlagVolStorageClass                        = "volStorageClass"

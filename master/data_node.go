@@ -744,21 +744,26 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug, persist bo
 	return dataNode.GetDecommissionStatus(), progress / float64(totalDisk)
 }
 
-func (dataNode *DataNode) GetLatestDecommissionDataPartition(c *Cluster) (remainingDpCnt int, partitions []*DataPartition) {
+func (dataNode *DataNode) GetLatestDecommissionDataPartition(c *Cluster) (remainingDpCnt int, partitions, queuedPartitions []*DataPartition) {
 	log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v diskList %v", dataNode.Addr, dataNode.DecommissionDiskList)
 	for _, disk := range dataNode.DecommissionDiskList {
 		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
 		// if not found, may already success, so only care running disk
 		if value, ok := c.DecommissionDisks.Load(key); ok {
 			dd := value.(*DecommissionDisk)
-			dps := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
+			dps, queuedDps := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 			partitions = append(partitions, dps...)
+			queuedPartitions = append(queuedPartitions, queuedDps...)
 			dpIds := make([]uint64, 0)
+			queuedDpIds := make([]uint64, 0)
 			for _, dp := range dps {
 				dpIds = append(dpIds, dp.PartitionID)
 			}
-			log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v disk %v dps[%v]",
-				dataNode.Addr, dd.DiskPath, dpIds)
+			for _, dp := range queuedDps {
+				queuedDpIds = append(queuedDpIds, dp.PartitionID)
+			}
+			log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v disk %v dps[%v] queued[%v]",
+				dataNode.Addr, dd.DiskPath, dpIds, queuedDpIds)
 			if dd.GetDecommissionStatus() == markDecommission {
 				remainingDpCnt += dd.GetDecommissionTotalDpCnt(c)
 			} else {
@@ -777,12 +782,13 @@ func (dataNode *DataNode) SetDecommissionStatus(status uint32) {
 	atomic.StoreUint32(&dataNode.DecommissionStatus, status)
 }
 
-func (dataNode *DataNode) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) (int, []proto.FailedDpInfo, []uint64) {
+func (dataNode *DataNode) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) (int, []proto.FailedDpInfo, []uint64, []uint64) {
 	var (
 		failedDps  []proto.FailedDpInfo
 		runningDps []uint64
+		queuedDps  []uint64
 	)
-	remainingDpCnt, partitions := dataNode.GetLatestDecommissionDataPartition(c)
+	remainingDpCnt, partitions, queuedPartitions := dataNode.GetLatestDecommissionDataPartition(c)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {
 		if dp.IsRollbackFailed() {
@@ -793,8 +799,11 @@ func (dataNode *DataNode) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) (i
 			runningDps = append(runningDps, dp.PartitionID)
 		}
 	}
+	for _, dp := range queuedPartitions {
+		queuedDps = append(queuedDps, dp.PartitionID)
+	}
 	log.LogWarnf("action[GetDecommissionDataNodeFailedDP] failed dp list [%v]", failedDps)
-	return remainingDpCnt, failedDps, runningDps
+	return remainingDpCnt, failedDps, runningDps, queuedDps
 }
 
 func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {

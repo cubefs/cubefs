@@ -2604,7 +2604,9 @@ func (m *Server) resetDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	dp.ReleaseDecommissionToken(m.cluster)
 	dp.ReleaseDecommissionFirstHostToken(m.cluster)
 	dp.ResetDecommissionStatus()
+	dp.clearDecommissionTaskQueue()
 	dp.RestoreReplica = RestoreReplicaMetaStop
+	m.cluster.syncUpdateDataPartition(dp)
 	msg = fmt.Sprintf("partitionID :%v  reset decommission status successfully", partitionID)
 	AuditLog(r, proto.AdminResetDataPartitionDecommissionStatus, msg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
@@ -2633,16 +2635,21 @@ func (m *Server) queryDataPartitionDecommissionStatusUpdateRecords(w http.Respon
 
 func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *http.Request) {
 	var (
-		dp           *DataPartition
-		partitionID  uint64
-		err          error
-		replicas     []string
-		diskRetryMap map[string]int
-		dataReplica  *DataReplica
-		progress     string
+		dp             *DataPartition
+		partitionID    uint64
+		showQueuedTask bool
+		err            error
+		replicas       []string
+		diskRetryMap   map[string]int
+		dataReplica    *DataReplica
+		progress       string
 	)
 
 	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if showQueuedTask, err = extractBoolWithDefault(r, ShowQueuedTask, false); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2689,7 +2696,41 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		RecoverUpdateTime:     dp.RecoverUpdateTime.Format("2006-01-02 15:04:05"),
 		DecommissionRetryTime: dp.DecommissionRetryTime.Format("2006-01-02 15:04:05"),
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(info))
+	if showQueuedTask {
+		ti := make([]proto.DecommissionTaskInfo, 0)
+		for _, t := range dp.cloneDecommissionTaskQueue() {
+			ti = append(ti, proto.DecommissionTaskInfo{
+				SrcAddr:        t.DecommissionSrcAddr,
+				SrcAddrs:       t.DecommissionSrcAddrs,
+				DstAddr:        t.DecommissionDstAddr,
+				DstAddrs:       t.DecommissionDstAddrs,
+				RaftForce:      t.DecommissionRaftForce,
+				SrcDiskPath:    t.DecommissionSrcDiskPath,
+				Term:           t.DecommissionTerm,
+				DstAddrSpecify: t.DecommissionDstAddrSpecify,
+				DstNodeSet:     t.DecommissionDstNodeSet,
+				Weight:         t.DecommissionWeight,
+				Type:           t.DecommissionType,
+			})
+		}
+		result := &struct {
+			DecommissionInfo *proto.DecommissionDataPartitionInfo
+			TaskQueue        []proto.DecommissionTaskInfo
+		}{
+			DecommissionInfo: info,
+			TaskQueue:        ti,
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(result))
+		return
+	}
+	result := &struct {
+		DecommissionInfo *proto.DecommissionDataPartitionInfo
+		QueuedTaskNum    int
+	}{
+		DecommissionInfo: info,
+		QueuedTaskNum:    dp.countQueuedTasks(),
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(result))
 }
 
 func (m *Server) queryDecommissionStatus(w http.ResponseWriter, r *http.Request) {
@@ -4507,7 +4548,6 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-
 	}
 
 	if val, ok := params[dataMediaTypeKey]; ok {
@@ -5661,11 +5701,13 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	}
 	if status == markDecommission {
 		resp.RemainingDpCnt = resp.TotalDpCnt
+		resp.QueuedDps = nil
 		resp.FailedDps = nil
 		resp.RunningDps = nil
 	} else {
-		remainingDpCnt, failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
-		resp.RemainingDpCnt = remainingDpCnt + len(resp.IgnoreDps) + len(resp.ResidualDps)
+		remainingDpCnt, failedDps, runningDps, queuedDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+		resp.RemainingDpCnt = remainingDpCnt + len(resp.IgnoreDps) + len(resp.ResidualDps) + len(queuedDps)
+		resp.QueuedDps = queuedDps
 		resp.FailedDps = failedDps
 		resp.RunningDps = runningDps
 	}
@@ -5738,11 +5780,13 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			}
 			if status == markDecommission {
 				decommissionProgress.RemainingDpCnt = decommissionProgress.TotalDpCnt
+				decommissionProgress.QueuedDps = nil
 				decommissionProgress.FailedDps = nil
 				decommissionProgress.RunningDps = nil
 			} else {
-				remainingDpCnt, failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
-				decommissionProgress.RemainingDpCnt = remainingDpCnt + len(decommissionProgress.IgnoreDps) + len(decommissionProgress.ResidualDps)
+				remainingDpCnt, failedDps, runningDps, queuedDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+				decommissionProgress.RemainingDpCnt = remainingDpCnt + len(decommissionProgress.IgnoreDps) + len(decommissionProgress.ResidualDps) + len(queuedDps)
+				decommissionProgress.QueuedDps = queuedDps
 				decommissionProgress.FailedDps = failedDps
 				decommissionProgress.RunningDps = runningDps
 			}
@@ -7563,7 +7607,8 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 		TotalDpCnt:    dn.DecommissionDpTotal,
 		StartTime:     time.Unix(int64(dn.DecommissionTime), 0).String(),
 	}
-	remainingDpCnt, failedDps, runningDps := dn.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+	remainingDpCnt, failedDps, runningDps, queuedDps := dn.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+	resp.QueuedDps = queuedDps
 	resp.FailedDps = failedDps
 	resp.RunningDps = runningDps
 	resp.IgnoreDps = dn.getIgnoreDecommissionDpList(m.cluster)

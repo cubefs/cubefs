@@ -291,10 +291,21 @@ func (api *AdminAPI) QueryDataPartitionDecommissionStatusUpdateRecords(partition
 	return
 }
 
-func (api *AdminAPI) QueryDataPartitionDecommissionStatus(partitionId uint64) (info *proto.DecommissionDataPartitionInfo, err error) {
+func (api *AdminAPI) QueryDataPartitionDecommissionStatus(partitionId uint64, showQueuedTask bool) (info interface{}, err error) {
 	request := newRequest(get, proto.AdminQueryDataPartitionDecommissionStatus).Header(api.h)
 	request.addParam("id", strconv.FormatUint(partitionId, 10))
-	info = &proto.DecommissionDataPartitionInfo{}
+	request.addParam("showQueuedTask", strconv.FormatBool(showQueuedTask))
+	if showQueuedTask {
+		info = &struct {
+			DecommissionInfo *proto.DecommissionDataPartitionInfo
+			TaskQueue        []proto.DecommissionTaskInfo
+		}{}
+	} else {
+		info = &struct {
+			DecommissionInfo *proto.DecommissionDataPartitionInfo
+			QueuedTaskNum    int
+		}{}
+	}
 	err = api.mc.requestWith(info, request)
 	return
 }

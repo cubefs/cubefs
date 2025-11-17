@@ -31,6 +31,23 @@ import (
 	"github.com/cubefs/cubefs/util/strutil"
 )
 
+// DecommissionTask represents a queued decommission task for a dp
+type DecommissionTask struct {
+	DecommissionSrcAddr        string
+	DecommissionSrcAddrs       []string
+	DecommissionDstAddr        string
+	DecommissionDstAddrs       []string
+	DecommissionRaftForce      bool
+	DecommissionSrcDiskPath    string
+	DecommissionTerm           uint64
+	DecommissionDstAddrSpecify bool // if DecommissionDstAddrSpecify is true, donot rollback when add replica fail
+	DecommissionDstNodeSet     uint64
+	DecommissionWeight         int
+	DecommissionType           uint32
+}
+
+// duplicate DecommissionTask definition removed (see definition above)
+
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
 	PartitionID      uint64
@@ -93,6 +110,9 @@ type DataPartition struct {
 	RestoreReplica           uint32
 	MediaType                uint32
 	ForbidWriteOpOfProtoVer0 bool
+
+	decommissionTaskQueue   []DecommissionTask
+	decommissionTaskQueueMu sync.RWMutex
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
@@ -109,6 +129,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.MissingNodes = make(map[string]int64)
 	partition.DecommissionDiskRetryMap = make(map[string]int)
 	partition.DecommissionStatusUpdateRecords = make([]*proto.DecommissionStatusRecord, 0)
+	partition.decommissionTaskQueue = make([]DecommissionTask, 0)
 
 	partition.Status = proto.ReadOnly
 	partition.VolName = volName
@@ -1456,11 +1477,6 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 ) (err error) {
 	defer func() {
 		if err != nil {
-			if strings.Contains(err.Error(), proto.ErrPerformingDecommission.Error()) &&
-				partition.DecommissionType == ManualDecommission && partition.DecommissionWeight < weight {
-				partition.DecommissionWeight = weight
-				c.syncUpdateDataPartition(partition)
-			}
 			msg := fmt.Sprintf("dp(%v) mark decommission status failed", partition.decommissionInfo())
 			auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
 		}
@@ -1490,11 +1506,53 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	if partition.IsDiscard {
 		goto directly
 	}
+
 	if partition.isPerformingDecommission(c) {
-		log.LogWarnf("action[MarkDecommissionStatus] dp(%v) is performing decommission",
-			partition.PartitionID)
-		return proto.ErrPerformingDecommission
+		if partition.hasGotDecommissionToken(c) || weight <= partition.DecommissionWeight {
+			task := DecommissionTask{
+				DecommissionSrcAddr:        srcAddr,
+				DecommissionSrcAddrs:       srcAddrs,
+				DecommissionDstAddr:        dstAddr,
+				DecommissionDstAddrs:       dstAddrs,
+				DecommissionRaftForce:      raftForce,
+				DecommissionSrcDiskPath:    srcDisk,
+				DecommissionTerm:           term,
+				DecommissionDstAddrSpecify: false,
+				DecommissionDstNodeSet:     dstNodeSetID,
+				DecommissionWeight:         weight,
+				DecommissionType:           migrateType,
+			}
+			if dstAddr != "" {
+				task.DecommissionDstAddrSpecify = true
+			}
+			partition.enqueueDecommissionTask(task)
+			return proto.ErrDecommissionTaskEnqueue
+		} else {
+			task := DecommissionTask{
+				DecommissionSrcAddr:        partition.DecommissionSrcAddr,
+				DecommissionSrcAddrs:       partition.DecommissionSrcAddrs,
+				DecommissionDstAddr:        partition.DecommissionDstAddr,
+				DecommissionDstAddrs:       partition.DecommissionDstAddrs,
+				DecommissionRaftForce:      partition.DecommissionRaftForce,
+				DecommissionSrcDiskPath:    partition.DecommissionSrcDiskPath,
+				DecommissionTerm:           partition.DecommissionTerm,
+				DecommissionDstAddrSpecify: partition.DecommissionDstAddrSpecify,
+				DecommissionDstNodeSet:     partition.DecommissionDstNodeSet,
+				DecommissionWeight:         partition.DecommissionWeight,
+				DecommissionType:           partition.DecommissionType,
+			}
+			// after removing from original decommissionDpList and resetting the decommission status, re-mark high-priority decommission task
+			if partition.DecommissionSrcAddr != "" {
+				if srcNs, _, getErr := getTargetNodeset(partition.DecommissionSrcAddr, c); getErr == nil {
+					srcNs.decommissionDataPartitionList.Remove(partition)
+				}
+			}
+			partition.setRestoreReplicaStop()
+			partition.ResetDecommissionStatus()
+			partition.enqueueDecommissionTask(task)
+		}
 	}
+
 	// set DecommissionType first for recovering replica meta
 	partition.DecommissionType = migrateType
 	if err = partition.tryRecoverReplicaMeta(c, migrateType); err != nil {
@@ -1757,6 +1815,85 @@ directly:
 	}
 	log.LogDebugf("action[MarkDecommissionStatus] dp[%v]", partition.decommissionInfo())
 	return
+}
+
+func (partition *DataPartition) enqueueDecommissionTask(t DecommissionTask) {
+	partition.decommissionTaskQueueMu.Lock()
+	defer partition.decommissionTaskQueueMu.Unlock()
+	partition.decommissionTaskQueue = append(partition.decommissionTaskQueue, t)
+}
+
+func (partition *DataPartition) dequeueDecommissionTaskByDiskAndTerm(addr string, disk string, term uint64) {
+	partition.decommissionTaskQueueMu.Lock()
+	defer partition.decommissionTaskQueueMu.Unlock()
+	if len(partition.decommissionTaskQueue) == 0 {
+		return
+	}
+	idx := -1
+	for i := 0; i < len(partition.decommissionTaskQueue); i++ {
+		task := partition.decommissionTaskQueue[i]
+		if task.DecommissionSrcAddr == addr && task.DecommissionSrcDiskPath == disk && task.DecommissionTerm == term {
+			idx = i
+		}
+	}
+	if idx != -1 {
+		partition.decommissionTaskQueue = append(partition.decommissionTaskQueue[:idx], partition.decommissionTaskQueue[idx+1:]...)
+	}
+}
+
+func (partition *DataPartition) popHighestPriorityTask() (DecommissionTask, bool) {
+	partition.decommissionTaskQueueMu.Lock()
+	defer partition.decommissionTaskQueueMu.Unlock()
+	if len(partition.decommissionTaskQueue) == 0 {
+		return DecommissionTask{}, false
+	}
+	maxIdx := 0
+	for i := 1; i < len(partition.decommissionTaskQueue); i++ {
+		if partition.decommissionTaskQueue[i].DecommissionWeight > partition.decommissionTaskQueue[maxIdx].DecommissionWeight {
+			maxIdx = i
+		}
+	}
+	best := partition.decommissionTaskQueue[maxIdx]
+	partition.decommissionTaskQueue = append(partition.decommissionTaskQueue[:maxIdx], partition.decommissionTaskQueue[maxIdx+1:]...)
+	return best, true
+}
+
+func (partition *DataPartition) hasQueuedTasks() bool {
+	return partition.countQueuedTasks() > 0
+}
+
+func (partition *DataPartition) countQueuedTasks() int {
+	partition.decommissionTaskQueueMu.RLock()
+	defer partition.decommissionTaskQueueMu.RUnlock()
+	return len(partition.decommissionTaskQueue)
+}
+
+func (partition *DataPartition) updateDecommissionStatusByTask(task DecommissionTask) {
+	partition.DecommissionSrcAddr = task.DecommissionSrcAddr
+	partition.DecommissionSrcAddrs = task.DecommissionSrcAddrs
+	partition.DecommissionDstAddr = task.DecommissionDstAddr
+	partition.DecommissionDstAddrs = task.DecommissionDstAddrs
+	partition.DecommissionRaftForce = task.DecommissionRaftForce
+	partition.DecommissionSrcDiskPath = task.DecommissionSrcDiskPath
+	partition.DecommissionTerm = task.DecommissionTerm
+	partition.DecommissionDstAddrSpecify = task.DecommissionDstAddrSpecify
+	partition.DecommissionDstNodeSet = task.DecommissionDstNodeSet
+	partition.DecommissionWeight = task.DecommissionWeight
+	partition.DecommissionType = task.DecommissionType
+}
+
+func (partition *DataPartition) clearDecommissionTaskQueue() {
+	partition.decommissionTaskQueueMu.Lock()
+	partition.decommissionTaskQueue = partition.decommissionTaskQueue[:0]
+	partition.decommissionTaskQueueMu.Unlock()
+}
+
+func (partition *DataPartition) cloneDecommissionTaskQueue() []DecommissionTask {
+	partition.decommissionTaskQueueMu.RLock()
+	result := make([]DecommissionTask, 0, len(partition.decommissionTaskQueue))
+	result = append(result, partition.decommissionTaskQueue...)
+	partition.decommissionTaskQueueMu.RUnlock()
+	return result
 }
 
 func (partition *DataPartition) SetDecommissionStatus(status uint32, triggerCondition string, errMsg string) {
@@ -2191,6 +2328,66 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 		return true
 	}
 	return false
+}
+
+func (partition *DataPartition) processNextDecommissionTask(c *Cluster) bool {
+	var err error
+	t, ok := partition.popHighestPriorityTask()
+	if !ok {
+		log.LogInfof("action[ProcessNextDecommissionTask] dp(%v) all decommission task completed, current: %v",
+			partition.PartitionID, partition.countQueuedTasks())
+		return false
+	}
+
+	if partition.IsDecommissionSuccess() {
+		partition.SetDecommissionStatus(DecommissionInitial, "processNextDecommissionTask", "")
+	}
+
+	if err = partition.MarkDecommissionStatus(t.DecommissionSrcAddr, t.DecommissionDstAddr, t.DecommissionSrcDiskPath, t.DecommissionDstNodeSet, t.DecommissionRaftForce, t.DecommissionTerm,
+		t.DecommissionType, t.DecommissionWeight, c, t.DecommissionSrcAddrs, t.DecommissionDstAddrs, "processNextDecommissionTask"); err != nil {
+		if !strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) && !strings.Contains(err.Error(), proto.ErrDecommissionTaskEnqueue.Error()) &&
+			!strings.Contains(err.Error(), proto.ErrWaitForAutoAddReplica.Error()) {
+			partition.updateDecommissionStatusByTask(t)
+			partition.markRollbackFailed(false, "processNextDecommissionTask", err.Error())
+			partition.DecommissionErrorMessage = err.Error()
+			c.syncUpdateDataPartition(partition)
+			partition.addRetryTimesByDiskPath(partition.DecommissionSrcAddr + "_" + partition.DecommissionSrcDiskPath)
+
+			msg := fmt.Sprintf("dp[%v] mark next queued task[%v] failed", partition.decommissionInfo(), t.decommissionInfo())
+			log.LogWarnf("action[processNextDecommissionTask] %v, err: %v", msg, err)
+			auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
+			return false
+		}
+	}
+
+	c.syncUpdateDataPartition(partition)
+
+	if err == nil || strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
+		if partition.GetDecommissionStatus() == markDecommission {
+			// re-add to list for next execution
+			partition.addToDecommissionList(c)
+			log.LogInfof("action[ProcessNextDecommissionSrcHost] dp(%v) switch to next source: %v, remaining queue: %v",
+				partition.PartitionID, partition.DecommissionSrcAddr, partition.DecommissionSrcAddrs)
+			return true
+		}
+		return false
+	} else {
+		return true
+	}
+}
+
+func (partition *DataPartition) traverseDecommissionTaskQueue(c *Cluster) {
+	// Iterate through the next decommission task until dp is markDecommissioned as successful or the task queue is empty.
+	for {
+		if !partition.hasQueuedTasks() {
+			break
+		}
+		if !partition.processNextDecommissionTask(c) {
+			continue
+		} else {
+			break
+		}
+	}
 }
 
 func (partition *DataPartition) ResetDecommissionStatus() {
@@ -3368,6 +3565,19 @@ func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {
 		return false
 	}
 	return ns.processDataPartitionDecommission(partition.PartitionID)
+}
+
+func (partition *DataPartition) hasGotDecommissionToken(c *Cluster) bool {
+	if partition.DecommissionDstAddr != "" {
+		dstNs, _, err := getTargetNodeset(partition.DecommissionDstAddr, c)
+		if err != nil {
+			log.LogWarnf("action[hasGotDecommissionToken] dp %v find dst(%v) nodeset failed: %v",
+				partition.PartitionID, partition.DecommissionDstAddr, err.Error())
+			return false
+		}
+		return dstNs.HasDecommissionToken(partition.PartitionID)
+	}
+	return false
 }
 
 func (partition *DataPartition) setRestoreReplicaStatus(status uint32) {

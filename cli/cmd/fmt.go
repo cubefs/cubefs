@@ -1468,26 +1468,59 @@ func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
 	return sb.String()
 }
 
-func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartitionInfo) string {
+func formatDataPartitionDecommissionProgress(info interface{}, showQueuedTask bool) string {
+	var progress *proto.DecommissionDataPartitionInfo
+	var taskQueueMsg string
+	if showQueuedTask {
+		result := info.(*struct {
+			DecommissionInfo *proto.DecommissionDataPartitionInfo
+			TaskQueue        []proto.DecommissionTaskInfo
+		})
+		progress = result.DecommissionInfo
+		sb := strings.Builder{}
+		for i, task := range result.TaskQueue {
+			sb.WriteString(fmt.Sprintf("--------task %v--------\n", i))
+			sb.WriteString(fmt.Sprintf("SrcAddress:        %v\n", task.SrcAddr))
+			sb.WriteString(fmt.Sprintf("SrcAddresses:      %v\n", task.SrcAddrs))
+			sb.WriteString(fmt.Sprintf("DstAddress:        %v\n", task.DstAddr))
+			sb.WriteString(fmt.Sprintf("DstAddresses:      %v\n", task.DstAddrs))
+			sb.WriteString(fmt.Sprintf("RaftForce:         %v\n", task.RaftForce))
+			sb.WriteString(fmt.Sprintf("SrcDiskPath:       %v\n", task.SrcDiskPath))
+			sb.WriteString(fmt.Sprintf("Term:              %v\n", task.Term))
+			sb.WriteString(fmt.Sprintf("DstAddrSpecify:    %v\n", task.DstAddrSpecify))
+			sb.WriteString(fmt.Sprintf("DstNodeSet:        %v\n", task.DstNodeSet))
+			sb.WriteString(fmt.Sprintf("Weight:            %v\n", task.Weight))
+			sb.WriteString(fmt.Sprintf("Type:              %v\n", task.Type))
+		}
+		taskQueueMsg = sb.String()
+	} else {
+		result := info.(*struct {
+			DecommissionInfo *proto.DecommissionDataPartitionInfo
+			QueuedTaskNum    int
+		})
+		progress = result.DecommissionInfo
+		taskQueueMsg = fmt.Sprintf("QueuedTaskNum:     %v\n", result.QueuedTaskNum)
+	}
 	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("Status:            %v\n", info.Status))
-	sb.WriteString(fmt.Sprintf("SpecialStep:       %v\n", info.SpecialStep))
-	sb.WriteString(fmt.Sprintf("Progress:          %v\n", info.Progress))
-	sb.WriteString(fmt.Sprintf("DiskRetryMap:      %v\n", info.DiskRetryMap))
-	sb.WriteString(fmt.Sprintf("Retry:             %v\n", info.Retry))
-	sb.WriteString(fmt.Sprintf("RaftForce:         %v\n", info.RaftForce))
-	sb.WriteString(fmt.Sprintf("Recover:           %v\n", info.Recover))
-	sb.WriteString(fmt.Sprintf("SrcAddress:        %v\n", info.SrcAddress))
-	sb.WriteString(fmt.Sprintf("SrcAddresses:      %v\n", info.SrcAddresses))
-	sb.WriteString(fmt.Sprintf("SrcDiskPath:       %v\n", info.SrcDiskPath))
-	sb.WriteString(fmt.Sprintf("DstAddress:        %v\n", info.DstAddress))
-	sb.WriteString(fmt.Sprintf("DstAddresses:      %v\n", info.DstAddresses))
-	sb.WriteString(fmt.Sprintf("DstNodeSet:        %v\n", info.DstNodeSet))
-	sb.WriteString(fmt.Sprintf("Term:              %v\n", info.Term))
-	sb.WriteString(fmt.Sprintf("Weight:            %v\n", info.Weight))
-	sb.WriteString(fmt.Sprintf("Replicas:          %v\n", info.Replicas))
-	sb.WriteString(fmt.Sprintf("NeedRollbackTimes: %v\n", info.NeedRollbackTimes))
-	sb.WriteString(fmt.Sprintf("ErrorMessage:      %v\n", info.ErrorMessage))
+	sb.WriteString(fmt.Sprintf("Status:            %v\n", progress.Status))
+	sb.WriteString(fmt.Sprintf("SpecialStep:       %v\n", progress.SpecialStep))
+	sb.WriteString(fmt.Sprintf("Progress:          %v\n", progress.Progress))
+	sb.WriteString(fmt.Sprintf("DiskRetryMap:      %v\n", progress.DiskRetryMap))
+	sb.WriteString(fmt.Sprintf("Retry:             %v\n", progress.Retry))
+	sb.WriteString(fmt.Sprintf("RaftForce:         %v\n", progress.RaftForce))
+	sb.WriteString(fmt.Sprintf("Recover:           %v\n", progress.Recover))
+	sb.WriteString(fmt.Sprintf("SrcAddress:        %v\n", progress.SrcAddress))
+	sb.WriteString(fmt.Sprintf("SrcAddresses:      %v\n", progress.SrcAddresses))
+	sb.WriteString(fmt.Sprintf("SrcDiskPath:       %v\n", progress.SrcDiskPath))
+	sb.WriteString(fmt.Sprintf("DstAddress:        %v\n", progress.DstAddress))
+	sb.WriteString(fmt.Sprintf("DstAddresses:      %v\n", progress.DstAddresses))
+	sb.WriteString(fmt.Sprintf("DstNodeSet:        %v\n", progress.DstNodeSet))
+	sb.WriteString(fmt.Sprintf("Term:              %v\n", progress.Term))
+	sb.WriteString(fmt.Sprintf("Weight:            %v\n", progress.Weight))
+	sb.WriteString(fmt.Sprintf("Replicas:          %v\n", progress.Replicas))
+	sb.WriteString(fmt.Sprintf("NeedRollbackTimes: %v\n", progress.NeedRollbackTimes))
+	sb.WriteString(fmt.Sprintf("ErrorMessage:      %v\n", progress.ErrorMessage))
+	sb.WriteString(taskQueueMsg)
 	return sb.String()
 }
 

@@ -148,6 +148,7 @@ const (
 	rackAwareLevelKey                      = "rackAware"
 	learnerRecoverTimeoutSecondsKey        = "learnerRecoverTimeoutSeconds"
 	ShowAll                                = "showAll"
+	ShowQueuedTask                         = "showQueuedTask"
 	trashIntervalKey                       = "trashInterval"
 	accessTimeIntervalKey                  = "accessTimeValidInterval"
 	enablePersistAccessTimeKey             = "enablePersistAccessTime"

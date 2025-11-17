@@ -260,6 +260,7 @@ type dataPartitionValue struct {
 	DecommissionType                uint32
 	RestoreReplica                  uint32
 	MediaType                       uint32
+	DecommissionTaskQueue           []DecommissionTask
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -300,6 +301,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionType = dpv.DecommissionType
 	dp.RestoreReplica = dpv.RestoreReplica
 	dp.MediaType = dpv.MediaType
+	dp.decommissionTaskQueue = dpv.DecommissionTaskQueue
 
 	// to ensure progress of checkReplicaMeta can be run again, the status of RestoreReplicaMeta can not be
 	// set to RestoreReplicaMetaStop otherwise for checkReplicaMeta cannot be executed.
@@ -364,6 +366,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionType:                dp.DecommissionType,
 		RestoreReplica:                  atomic.LoadUint32(&dp.RestoreReplica),
 		MediaType:                       dp.MediaType,
+		DecommissionTaskQueue:           dp.cloneDecommissionTaskQueue(),
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}

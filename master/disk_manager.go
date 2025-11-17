@@ -364,6 +364,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug, persist 
 		progress             float64
 		totalNum             = dd.DecommissionDpTotal
 		partitionIds         []uint64
+		queuedPartitionIds   []uint64
 		failedPartitionIds   []uint64
 		runningPartitionIds  []uint64
 		preparePartitionIds  []uint64
@@ -404,7 +405,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug, persist 
 	prepareNum := 0
 	stopNum := 0
 	// get the latest decommission result
-	partitions := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
+	partitions, queuedPartitions := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 
 	for _, info := range dd.IgnoreDecommissionDps {
 		ignorePartitionIds = append(ignorePartitionIds, info.PartitionID)
@@ -416,7 +417,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug, persist 
 		failedNum++
 	}
 
-	if len(partitions)+len(ignorePartitionIds)+len(residualPartitionIds) == 0 {
+	if len(partitions)+len(queuedPartitions)+len(ignorePartitionIds)+len(residualPartitionIds) == 0 {
 		log.LogDebugf("action[updateDecommissionDiskStatus]no partitions left:%v", dd.GenerateKey())
 		if persist {
 			dd.markDecommissionSuccess()
@@ -446,23 +447,29 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug, persist 
 		partitionIds = append(partitionIds, dp.PartitionID)
 	}
 
-	progress = float64(totalNum-len(partitions)-len(ignorePartitionIds)-len(residualPartitionIds)) / float64(totalNum)
+	// also count queued tasks targeting this disk+term as remaining items
+	queuedNum := len(queuedPartitions)
+	for _, dp := range queuedPartitions {
+		queuedPartitionIds = append(queuedPartitionIds, dp.PartitionID)
+	}
+
+	progress = float64(totalNum-len(partitions)-queuedNum-len(ignorePartitionIds)-len(residualPartitionIds)) / float64(totalNum)
 	// ignorePartitionIds may be failed when decommission for other replica is completed
 	if progress < 0 {
 		progress = 0
 	}
 	if debug {
 		log.LogInfof("action[updateDecommissionStatus] disk[%v] progress[%v] totalNum[%v] "+
-			"partitionIds %v left %v FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
+			"partitionIds %v left %v queuedPartitionIds %v queuedNum %v FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
 			"stopNum[%v] stopPartitionIds %v ignorePartitionIds %v term %v",
-			dd.GenerateKey(), progress, totalNum, partitionIds, len(partitionIds), failedNum, failedPartitionIds, runningNum, runningPartitionIds,
+			dd.GenerateKey(), progress, totalNum, partitionIds, len(partitionIds), queuedPartitionIds, queuedNum, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
 			prepareNum, preparePartitionIds, stopNum, stopPartitionIds, ignorePartitionIds, dd.DecommissionTerm)
 	}
 	// if decommission is cancel, len(partitions) is 0
 	if dd.GetDecommissionStatus() == DecommissionCancel {
 		return DecommissionCancel, progress
 	}
-	if failedNum >= (len(partitions)+len(ignorePartitionIds)+len(residualPartitionIds)-stopNum) && failedNum != 0 {
+	if failedNum >= (len(partitions)+len(queuedPartitions)+len(ignorePartitionIds)+len(residualPartitionIds)-stopNum) && failedNum != 0 {
 		if persist {
 			dd.markDecommissionFailed()
 		}
@@ -503,8 +510,8 @@ func (dd *DecommissionDisk) markDecommissionFailed() {
 	dd.DecommissionCompleteTime = time.Now().Unix()
 }
 
-func (dd *DecommissionDisk) GetLatestDecommissionDP(c *Cluster) (partitions []*DataPartition) {
-	partitions = c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
+func (dd *DecommissionDisk) GetLatestDecommissionDP(c *Cluster) (partitions, queuedPartitions []*DataPartition) {
+	partitions, queuedPartitions = c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 	return
 }
 
@@ -553,11 +560,12 @@ func (dd *DecommissionDisk) GetDecommissionDiskRetryOverLimitDP(c *Cluster) []ui
 	return retryOverLimitDps
 }
 
-func (dd *DecommissionDisk) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) (int, []proto.FailedDpInfo, []uint64) {
-	partitions := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
+func (dd *DecommissionDisk) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) (int, []proto.FailedDpInfo, []uint64, []uint64) {
+	partitions, queuedPartitions := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 	var (
 		failedDps  []proto.FailedDpInfo
 		runningDps []uint64
+		queuedDps  []uint64
 	)
 	log.LogDebugf("action[GetDecommissionFailedAndRunningDPByTerm] partitions len %v", len(partitions))
 	for _, dp := range partitions {
@@ -569,8 +577,11 @@ func (dd *DecommissionDisk) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) 
 			runningDps = append(runningDps, dp.PartitionID)
 		}
 	}
+	for _, dp := range queuedPartitions {
+		queuedDps = append(queuedDps, dp.PartitionID)
+	}
 	log.LogWarnf("action[GetDecommissionFailedAndRunningDPByTerm] failed dp list [%v]", failedDps)
-	return len(partitions), failedDps, runningDps
+	return len(partitions), failedDps, runningDps, queuedDps
 }
 
 func (dd *DecommissionDisk) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {
@@ -653,8 +664,13 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 			dd.SrcAddr, dd.DiskPath, time.Since(begin))
 	}()
 
-	dps := cluster.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
+	dps, queuedDps := cluster.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 	success, failed := cluster.cancelDecommissionWorker(dps, srcNs, "cancelDecommission")
+
+	for _, dp := range queuedDps {
+		dp.dequeueDecommissionTaskByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
+		success = append(success, dp.PartitionID)
+	}
 
 	dd.SetDecommissionStatus(DecommissionCancel)
 	msg := fmt.Sprintf("disk(%v) cancel decommission dps(%v) with failed(%v)", dd.decommissionInfo(), success, failed)
@@ -764,6 +780,11 @@ func (c *Cluster) cancelDecommissionWorker(dps []*DataPartition, srcNs *nodeSet,
 					srcNs.decommissionDataPartitionList.Remove(dp)
 				} else {
 					log.LogWarnf("action[%s] dp %v has empty DecommissionSrcAddr, skip nodeset removal", scene, dp.PartitionID)
+				}
+
+				// no need for dp metadata self-healing, so proceed immediately to the next decommission task
+				if dp.ReplicaNum == uint8(len(dp.Hosts)) {
+					dp.traverseDecommissionTaskQueue(c)
 				}
 
 				c.syncUpdateDataPartition(dp)
