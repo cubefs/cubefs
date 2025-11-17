@@ -424,7 +424,9 @@ func (c *client) Put(ctx context.Context, args *PutArgs) (location proto.Locatio
 func (c *client) putObject(ctx context.Context, args *PutArgs) (location proto.Location, hashSumMap HashSumMap, err error) {
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
-	urlStr := fmt.Sprintf("/put?size=%d&hashes=%d", args.Size, args.Hashes)
+	urlStr := fmt.Sprintf("/put?size=%d&hashes=%d&assign_cluster_id=%d&code_mode=%d",
+		args.Size, args.Hashes, args.AssignClusterID, args.CodeMode)
+
 	req, err := http.NewRequest(http.MethodPut, urlStr, args.Body)
 	if err != nil {
 		return
@@ -570,7 +572,12 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (proto.Location, H
 
 	// alloc
 	allocResp := &AllocResp{}
-	if err := rpcClient.PostWith(ctx, "/alloc", allocResp, AllocArgs{Size: uint64(args.Size)}); err != nil {
+	allocArgs := &AllocArgs{
+		Size:            uint64(args.Size),
+		AssignClusterID: args.AssignClusterID,
+		CodeMode:        args.CodeMode,
+	}
+	if err := rpcClient.PostWith(ctx, "/alloc", allocResp, allocArgs); err != nil {
 		return allocResp.Location, nil, err
 	}
 	loc = allocResp.Location

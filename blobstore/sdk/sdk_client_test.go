@@ -256,7 +256,7 @@ func TestSdkHandler_Put(t *testing.T) {
 	args := &acapi.PutArgs{Size: 2}
 
 	// stream put error
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny).Return(nil, errMock)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny, gAny, gAny).Return(nil, errMock)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NotNil(t, err)
 	require.Equal(t, uint64(0), loc.Size_)
@@ -265,7 +265,7 @@ func TestSdkHandler_Put(t *testing.T) {
 	// ok
 	args.Hashes = 1
 	mockLoc := proto.Location{Size_: 2}
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny).Return(&mockLoc, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny, gAny, gAny).Return(&mockLoc, nil)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NoError(t, err)
 	require.Equal(t, mockLoc.Size_, loc.Size_)
@@ -275,7 +275,7 @@ func TestSdkHandler_Put(t *testing.T) {
 	args.GetBody = func() (io.ReadCloser, error) {
 		return nil, nil
 	}
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny).Return(nil, errMock).Times(3)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny, gAny, gAny).Return(nil, errMock).Times(3)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NotNil(t, err)
 	require.Equal(t, uint64(0), loc.Size_)
@@ -287,12 +287,31 @@ func TestSdkHandler_Put(t *testing.T) {
 		buff := bytes.NewBuffer(data)
 		return io.NopCloser(buff), nil
 	}
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny).Return(nil, errMock)
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny).Return(&mockLoc, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny, gAny, gAny).Return(nil, errMock)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny, gAny, gAny).Return(&mockLoc, nil)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NoError(t, err)
 	require.Equal(t, mockLoc.Size_, loc.Size_)
 	require.Equal(t, int(args.Hashes), len(hash))
+
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny, gAny, gAny).Return(nil, errMock)
+	data = make([]byte, 1)
+	argsWithClusterIDAndCodeMode := &acapi.PutArgs{
+		Size:            1,
+		Hashes:          1,
+		Body:            bytes.NewBuffer(data),
+		AssignClusterID: 1,
+		CodeMode:        codemode.EC3P3,
+	}
+	loc, _, err = hd.Put(ctx, argsWithClusterIDAndCodeMode)
+	require.NotNil(t, err)
+	require.Equal(t, proto.Location{}, loc)
+
+	mockLoc2 := proto.Location{ClusterID: 1, CodeMode: codemode.EC3P3, Size_: 1}
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(gAny, gAny, gAny, gAny, gAny, gAny).Return(&mockLoc2, nil)
+	loc, _, err = hd.Put(ctx, argsWithClusterIDAndCodeMode)
+	require.NoError(t, err)
+	require.Equal(t, mockLoc2, loc)
 }
 
 func TestSdkHandler_Alloc(t *testing.T) {

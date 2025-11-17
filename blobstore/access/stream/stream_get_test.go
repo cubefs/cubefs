@@ -34,7 +34,7 @@ func TestAccessStreamGetBase(t *testing.T) {
 	{
 		dataShards.clean()
 		data := []byte("x")
-		loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(len(data)), nil)
+		loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(len(data)), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 
 		buff := bytes.NewBuffer(nil)
@@ -47,7 +47,7 @@ func TestAccessStreamGetBase(t *testing.T) {
 	{
 		dataShards.clean()
 		data := []byte("x")
-		loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(len(data)), nil)
+		loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(len(data)), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 
 		buff := bytes.NewBuffer(nil)
@@ -83,7 +83,7 @@ func TestAccessStreamGetBase(t *testing.T) {
 		size := cs.size
 		data := make([]byte, size)
 		rand.Read(data)
-		loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(size), nil)
+		loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 
 		buff := bytes.NewBuffer(nil)
@@ -117,7 +117,7 @@ func TestAccessStreamGetBroken(t *testing.T) {
 	rand.Read(data)
 	// time wait the punished services
 	time.Sleep(time.Second * time.Duration(punishServiceS))
-	loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(size), nil)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -183,7 +183,7 @@ func TestAccessStreamGetOffset(t *testing.T) {
 		size := cs.size
 		data := make([]byte, size)
 		rand.Read(data)
-		loc, err := streamer.Put(ctx(), bytes.NewReader(data), size, nil)
+		loc, err := streamer.Put(ctx(), bytes.NewReader(data), size, nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 
 		buff := bytes.NewBuffer(nil)
@@ -210,7 +210,7 @@ func TestAccessStreamGetShardTimeout(t *testing.T) {
 	size := 1 << 22
 	buff := make([]byte, size)
 	rand.Read(buff)
-	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 	require.NoError(t, err)
 
 	// no delay when blocking one shard, cos MinReadShardsX = 1
@@ -259,7 +259,7 @@ func TestAccessStreamGetShardSlow(t *testing.T) {
 	size := 1 << 20
 	buff := make([]byte, size)
 	rand.Read(buff)
-	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 	require.NoError(t, err)
 
 	vuidController.SetSlowdown(1001, 500*time.Millisecond)
@@ -287,7 +287,7 @@ func TestAccessStreamGetShardCrcMismatch(t *testing.T) {
 		dataShards.clean()
 		buff := make([]byte, size)
 		rand.Read(buff)
-		loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+		loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 
 		transfer, err := streamer.Get(ctx(), bytes.NewBuffer(nil), *loc, uint64(size), 0)
@@ -311,7 +311,7 @@ func TestAccessStreamGetShardBroken(t *testing.T) {
 	size := 1 << 22
 	buff := make([]byte, size)
 	rand.Read(buff)
-	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 	require.NoError(t, err)
 
 	// no delay when blocking one shard, cos MinReadShardsX = 1
@@ -352,7 +352,7 @@ func TestAccessStreamGetShardOnlyTimeout(t *testing.T) {
 	size := 1
 	buff := make([]byte, size)
 	rand.Read(buff)
-	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 	require.NoError(t, err)
 
 	// blocking the data shard, force to waiting ReadDataOnlyTimeoutMS
@@ -384,7 +384,7 @@ func TestAccessStreamGetLocalIDC(t *testing.T) {
 	size := 1 << 22
 	buff := make([]byte, size)
 	rand.Read(buff)
-	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 	require.NoError(t, err)
 
 	// no delay when blocking other idc all shards
@@ -495,7 +495,7 @@ func TestAccessStreamGetAligned(t *testing.T) {
 
 		data := make([]byte, cs.size)
 		rand.Read(data)
-		loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(cs.size), nil)
+		loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(cs.size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 
 		// cos put shards asynchronously, should wait all shard written
@@ -675,7 +675,7 @@ func BenchmarkAccessStreamGet(b *testing.B) {
 	for _, cs := range cases {
 		b.ResetTimer()
 		b.Run(cs.name, func(b *testing.B) {
-			loc, err := streamer.Put(ctx, newReader(cs.size), int64(cs.size), nil)
+			loc, err := streamer.Put(ctx, newReader(cs.size), int64(cs.size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 			require.NoError(b, err)
 
 			b.ResetTimer()

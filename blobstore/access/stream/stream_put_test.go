@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -42,13 +43,13 @@ func TestAccessStreamPutBase(t *testing.T) {
 	// 0
 	{
 		size := 0
-		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil)
+		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.Error(t, err)
 	}
 	// 1 byte
 	{
 		size := 1
-		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil)
+		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(loc.Slices))
 		require.Equal(t, uint32(1), loc.Slices[0].Count)
@@ -58,7 +59,7 @@ func TestAccessStreamPutBase(t *testing.T) {
 	// <4M
 	{
 		size := 1 << 18
-		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil)
+		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(loc.Slices))
 		require.Equal(t, uint32(1), loc.Slices[0].Count)
@@ -67,7 +68,7 @@ func TestAccessStreamPutBase(t *testing.T) {
 	// 8M + 1k
 	{
 		size := (1 << 23) + 1024
-		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil)
+		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 		require.Equal(t, 2, len(loc.Slices))
 		require.Equal(t, uint32(2), loc.Slices[1].Count)
@@ -76,7 +77,7 @@ func TestAccessStreamPutBase(t *testing.T) {
 	// max size + 1
 	{
 		size := defaultMaxObjectSize + 1
-		_, err := streamer.Put(ctx(), nil, int64(size), nil)
+		_, err := streamer.Put(ctx(), nil, int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.EqualError(t, errcode.ErrAccessExceedSize, err.Error())
 	}
 
@@ -97,7 +98,7 @@ func TestAccessStreamPutSum(t *testing.T) {
 		}
 		hashSumMap := make(access.HashSumMap, len(hasherMap))
 
-		_, err := streamer.Put(ctx(), bytes.NewReader(data), int64(len(data)), hasherMap)
+		_, err := streamer.Put(ctx(), bytes.NewReader(data), int64(len(data)), hasherMap, proto.ClusterID(0), codemode.CodeModeNone)
 		require.NoError(t, err)
 		for alg, hasher := range hasherMap {
 			hashSumMap[alg] = hasher.Sum(nil)
@@ -231,7 +232,7 @@ func TestAccessStreamPutShardTimeout(t *testing.T) {
 	buff := make([]byte, size)
 	rand.Read(buff)
 	startTime := time.Now()
-	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 	require.NoError(t, err)
 
 	// response immediately if had quorum shards
@@ -247,7 +248,7 @@ func TestAccessStreamPutShardTimeout(t *testing.T) {
 	vuidController.Block(1002)
 	{
 		startTime := time.Now()
-		_, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+		_, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		require.Error(t, err)
 
 		duration := time.Since(startTime)
@@ -273,7 +274,7 @@ func TestAccessStreamPutShardSlow(t *testing.T) {
 	size := 3
 	buff := make([]byte, size)
 	rand.Read(buff)
-	_, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	_, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 	require.NoError(t, err)
 	time.Sleep(time.Second)
 }
@@ -318,7 +319,7 @@ func TestAccessStreamPutQuorum(t *testing.T) {
 			vuidController.Break(id)
 		}
 
-		_, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+		_, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 		if cs.hasError {
 			require.NotNil(t, err)
 		} else {
@@ -329,6 +330,49 @@ func TestAccessStreamPutQuorum(t *testing.T) {
 		for _, id := range cs.ids {
 			vuidController.Unbreak(id)
 		}
+	}
+}
+
+func TestAccessStreamPutWithClusterIDAndCodeMode(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamPutWithClusterIDAndCodeMode")
+	{
+		size := 1 << 22
+		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.EC16P20L2)
+		require.Error(t, err)
+	}
+	{
+		size := 1 << 22
+		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(2), codemode.CodeModeNone)
+		require.Error(t, err)
+	}
+	{
+		size := 1 << 22
+		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(2), codemode.EC15P12)
+		require.Error(t, err)
+	}
+	{
+		size := 1 << 20
+		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.EC6P6)
+		require.NoError(t, err)
+		require.Equal(t, codemode.EC6P6, loc.CodeMode)
+		require.Equal(t, 1, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
+	}
+	{
+		size := 1 << 22
+		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(1), codemode.EC6P6)
+		require.NoError(t, err)
+		require.Equal(t, codemode.EC6P6, loc.CodeMode)
+		require.Equal(t, 1, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
+	}
+	{
+		size := 1 << 22
+		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(1), codemode.CodeModeNone)
+		require.NoError(t, err)
+		require.Equal(t, codemode.EC6P6, loc.CodeMode)
+		require.Equal(t, 1, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
 	}
 }
 
@@ -357,7 +401,7 @@ func BenchmarkAccessStreamPut(b *testing.B) {
 		b.ResetTimer()
 		b.Run(cs.name, func(b *testing.B) {
 			for ii := 0; ii <= b.N; ii++ {
-				streamer.Put(ctx, bytes.NewReader(buff[:cs.size]), int64(cs.size), nil)
+				streamer.Put(ctx, bytes.NewReader(buff[:cs.size]), int64(cs.size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 			}
 		})
 	}

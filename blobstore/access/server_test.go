@@ -46,13 +46,49 @@ var (
 	_blobSize uint32 = 1 << 20
 	location         = &proto.Location{
 		ClusterID: 1,
-		CodeMode:  1,
+		CodeMode:  codemode.EC15P12,
 		SliceSize: _blobSize,
 		Crc:       0,
 		Slices: []proto.Slice{{
 			MinSliceID: 111,
 			Vid:        1111,
 			Count:      11,
+		}},
+	}
+
+	locationForClusterID = &proto.Location{
+		ClusterID: 11,
+		CodeMode:  codemode.EC3P3,
+		SliceSize: _blobSize,
+		Crc:       0,
+		Slices: []proto.Slice{{
+			MinSliceID: 111,
+			Vid:        1111,
+			Count:      1,
+		}},
+	}
+
+	locationForCodeMode = &proto.Location{
+		ClusterID: 22,
+		CodeMode:  codemode.EC6P6,
+		SliceSize: _blobSize,
+		Crc:       0,
+		Slices: []proto.Slice{{
+			MinSliceID: 111,
+			Vid:        1111,
+			Count:      1,
+		}},
+	}
+
+	locationForClusterIDAndCodeMode = &proto.Location{
+		ClusterID: 99,
+		CodeMode:  codemode.EC12P4,
+		SliceSize: _blobSize,
+		Crc:       0,
+		Slices: []proto.Slice{{
+			MinSliceID: 111,
+			Vid:        1111,
+			Count:      1,
 		}},
 	}
 
@@ -95,12 +131,23 @@ func newService() *Service {
 			return nil
 		})
 
-	s.EXPECT().Put(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap) (*proto.Location, error) {
+	s.EXPECT().Put(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap,
+			assignClusterID proto.ClusterID, codeMode codemode.CodeMode,
+		) (*proto.Location, error) {
 			if size < 1024 {
 				return nil, errors.New("fake put nil body")
 			}
-			loc := location.Copy()
+			var loc proto.Location
+			if assignClusterID == 0 && codeMode == codemode.CodeModeNone {
+				loc = location.Copy()
+			} else if assignClusterID == 11 && codeMode == codemode.CodeModeNone {
+				loc = locationForClusterID.Copy()
+			} else if assignClusterID == 0 && codeMode == codemode.EC6P6 {
+				loc = locationForCodeMode.Copy()
+			} else if assignClusterID == 99 && codeMode == codemode.EC12P4 {
+				loc = locationForClusterIDAndCodeMode.Copy()
+			}
 			loc.Size_ = uint64(size)
 			security.LocationCrcFill(&loc)
 			return &loc, nil
@@ -249,6 +296,21 @@ func TestAccessServicePut(t *testing.T) {
 		return fmt.Sprintf("%s/put?size=%d&hashes=%d", host, size, hashes)
 	}
 
+	urlForClusterID := func(size int64, hashes access.HashAlgorithm, assignClusterID proto.ClusterID) string {
+		return fmt.Sprintf("%s/put?size=%d&hashes=%d&assign_cluster_id=%d", host, size, hashes, assignClusterID)
+	}
+
+	urlForCodeMode := func(size int64, hashes access.HashAlgorithm, codeMode codemode.CodeMode) string {
+		return fmt.Sprintf("%s/put?size=%d&hashes=%d&code_mode=%d", host, size, hashes, codeMode)
+	}
+
+	urlForClusterIDAndCodeMode := func(size int64, hashes access.HashAlgorithm,
+		assignClusterID proto.ClusterID, codeMode codemode.CodeMode,
+	) string {
+		return fmt.Sprintf("%s/put?size=%d&hashes=%d&assign_cluster_id=%d&code_mode=%d",
+			host, size, hashes, assignClusterID, codeMode)
+	}
+
 	for _, method := range []string{http.MethodPut, http.MethodPost} {
 		args := access.PutArgs{
 			Size:   0,
@@ -281,6 +343,37 @@ func TestAccessServicePut(t *testing.T) {
 			err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
 			require.NoError(t, err)
 			require.Equal(t, uint64(1024), resp.Location.Size_)
+			require.Equal(t, proto.ClusterID(1), resp.Location.ClusterID)
+			require.Equal(t, codemode.EC15P12, resp.Location.CodeMode)
+		}
+		{
+			args.Body = bytes.NewReader(make([]byte, 1024))
+			req, _ := http.NewRequest(method,
+				urlForClusterIDAndCodeMode(1024, args.Hashes, proto.ClusterID(99), codemode.EC12P4), args.Body)
+			resp := &access.PutResp{}
+			err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+			require.NoError(t, err)
+			require.Equal(t, uint64(1024), resp.Location.Size_)
+			require.Equal(t, proto.ClusterID(99), resp.Location.ClusterID)
+			require.Equal(t, codemode.EC12P4, resp.Location.CodeMode)
+		}
+		{
+			args.Body = bytes.NewReader(make([]byte, 1024))
+			req, _ := http.NewRequest(method, urlForClusterID(1024, args.Hashes, proto.ClusterID(11)), args.Body)
+			resp := &access.PutResp{}
+			err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+			require.NoError(t, err)
+			require.Equal(t, uint64(1024), resp.Location.Size_)
+			require.Equal(t, proto.ClusterID(11), resp.Location.ClusterID)
+		}
+		{
+			args.Body = bytes.NewReader(make([]byte, 1024))
+			req, _ := http.NewRequest(method, urlForCodeMode(1024, args.Hashes, codemode.EC6P6), args.Body)
+			resp := &access.PutResp{}
+			err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+			require.NoError(t, err)
+			require.Equal(t, uint64(1024), resp.Location.Size_)
+			require.Equal(t, codemode.EC6P6, resp.Location.CodeMode)
 		}
 	}
 }

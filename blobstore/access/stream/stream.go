@@ -74,7 +74,9 @@ type StreamHandler interface {
 	// Put put one object
 	//     required: size, file size
 	//     optional: hasher map to calculate hash.Hash
-	Put(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap) (*proto.Location, error)
+	//     optional: code to specify codemode and not choose codemode by size
+	Put(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap,
+		assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*proto.Location, error)
 
 	// Get read file
 	//     required: location, readSize

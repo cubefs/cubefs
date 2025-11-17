@@ -24,6 +24,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func newReader(size int) io.Reader {
@@ -79,7 +80,7 @@ func TestAccessStreamNew(t *testing.T) {
 func TestAccessStreamDelete(t *testing.T) {
 	ctx := ctxWithName("TestAccessStreamDelete")
 	size := 1 << 18
-	loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil)
+	loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
 	require.NoError(t, err)
 
 	err = streamer.Delete(ctx(), loc)

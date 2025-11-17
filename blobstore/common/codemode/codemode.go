@@ -26,6 +26,7 @@ type (
 
 // pre-defined mode
 const (
+	CodeModeNone  CodeMode = 0
 	EC15P12       CodeMode = 1
 	EC6P6         CodeMode = 2
 	EC16P20L2     CodeMode = 3

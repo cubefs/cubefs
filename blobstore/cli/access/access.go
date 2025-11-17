@@ -185,6 +185,8 @@ func Register(app *grumble.App) {
 			f.String("f", "filepath", "", "put file path")
 			f.Int64("", "size", 0, "put file size, 0 means file size")
 			f.Uint("", "hashes", 0, "put file hashes")
+			f.Uint("", "codemode", 0, "put file codemode")
+			f.Uint("", "clusterid", 0, "put file cluster id")
 		},
 	})
 	accessCommand.AddCommand(&grumble.Command{
