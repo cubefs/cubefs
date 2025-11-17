@@ -4792,6 +4792,7 @@ func (c *Cluster) checkDecommissionDataNode() {
 				//	dataNode.resetDecommissionStatus()
 				//	c.syncUpdateDataNode(dataNode)
 				// }
+
 				return true
 			}
 			// maybe has decommission failed dp
@@ -5190,10 +5191,29 @@ func (c *Cluster) checkDecommissionDisk() {
 	c.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)
 		status := disk.GetDecommissionStatus()
+		dataNode, err := c.dataNode(disk.SrcAddr)
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				c.DecommissionDisks.Delete(key)
+				c.syncDeleteDecommissionDisk(disk)
+			}
+			return true
+		}
+		if status == DecommissionSuccess || status == DecommissionFail {
+			partitions := dataNode.badPartitions(disk.DiskPath, c, true)
+			// if only decommission part of data partitions, do not add disk to success list
+			if len(partitions) != 0 {
+				if dataNode.DecommissionLimit != 0 && !dataNode.isBadDisk(disk.DiskPath) {
+					// can allocate dp again
+					c.deleteAndSyncDecommissionedDisk(dataNode, disk.DiskPath)
+				}
+				return true
+			}
+		}
 		// keep failed decommission disk in list for preventing the reuse of a
 		// term in future decommissioning operations
 		if status == DecommissionSuccess {
-			c.addAndSyncDecommissionSuccessDisk(disk.SrcAddr, disk.DiskPath)
+			c.addAndSyncDecommissionSuccessDisk(dataNode, disk.DiskPath)
 			if time.Since(time.Unix(disk.DecommissionCompleteTime, 0)) > (120 * time.Hour) {
 				if err := c.syncDeleteDecommissionDisk(disk); err != nil {
 					msg := fmt.Sprintf("action[checkDecommissionDisk],clusterID[%v] node[%v] disk[%v],"+
