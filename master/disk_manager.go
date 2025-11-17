@@ -277,13 +277,7 @@ func (c *Cluster) deleteAndSyncDecommissionedDisk(dataNode *DataNode, diskPath s
 	return
 }
 
-func (c *Cluster) addAndSyncDecommissionSuccessDisk(addr string, diskPath string) (err error) {
-	var dataNode *DataNode
-	if dataNode, err = c.dataNode(addr); err != nil {
-		log.LogWarnf("action[addAndSyncDecommissionSuccessDisk] cannot find dataNode[%s]", addr)
-		return
-	}
-
+func (c *Cluster) addAndSyncDecommissionSuccessDisk(dataNode *DataNode, diskPath string) (err error) {
 	if exist := dataNode.addDecommissionSuccessDisk(diskPath); exist {
 		return
 	}
