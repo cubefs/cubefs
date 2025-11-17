@@ -15,6 +15,7 @@
 package flashnode
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
@@ -560,6 +561,14 @@ func (f *FlashNode) startCacheEngine() (err error) {
 		0, f.disks, f.lruCapacity, f.lruFhCapacity, f.diskUnavailableCbErrorCount, f.cacheLoadWorkerNum, f.cacheEvictWorkerNum, f.mc, time.Hour, ReadExtentData, f.enableTmpfs, f.localAddr, f.keyRateLimitThreshold, f.keyLimiterFlow, f.reservedSpace); err != nil {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
+	}
+	stat.PrintModuleStat = func(writer *bufio.Writer) {
+		if f.cacheEngine != nil {
+			lruSum, fhLen, keyMapLen := f.cacheEngine.GetCacheLengths()
+			fmt.Fprintf(writer, "lruSum:%d fhLru:%d keyToDisk:%d\n", lruSum, fhLen, keyMapLen)
+		} else {
+			fmt.Fprintf(writer, "lruSum:%d fhLru:%d keyToDisk:%d\n", 0, 0, 0)
+		}
 	}
 	f.cacheEngine.SetReadDataNodeTimeout(proto.DefaultRemoteCacheExtentReadTimeout)
 	f.cacheEngine.StartCachePrepareWorkers(f.limitWrite, f.prepareLoadRoutineNum)

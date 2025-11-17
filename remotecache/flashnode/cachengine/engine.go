@@ -19,6 +19,7 @@ import (
 	"hash/crc32"
 	syslog "log"
 	"math"
+	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
@@ -51,9 +52,10 @@ const (
 	DefaultCacheMaxUsedRatio = 0.99
 	DefaultEnableTmpfs       = true
 
-	LRUCacheBlockCacheType = 0
-	LRUFileHandleCacheType = 1
-	MaxEvictCountPerRound  = 100
+	LRUCacheBlockCacheType       = 0
+	LRUFileHandleCacheType       = 1
+	MaxEvictCountPerRound        = 100
+	OneGiB                 int64 = 1 << 30
 )
 
 var (
@@ -640,34 +642,45 @@ func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) 
 
 func (c *CacheEngine) selectAvailableLruCache() (cacheItem *lruCacheItem, err error) {
 	var maxLeftSpace int64 = math.MinInt64
-	var leftSpace int64 = 0
+	lowSpaceCandidates := make([]*lruCacheItem, 0)
+	threshold := c.reservedSpace + OneGiB // reservedSpace + 1GB
 	c.lruCacheMap.Range(func(key, value interface{}) bool {
 		item := value.(*lruCacheItem)
 		if atomic.LoadInt32(&item.disk.Status) == proto.ReadWrite {
-			expectedLeftSpace := item.config.MaxAlloc - item.lruCache.GetAllocated()
 			fs := syscall.Statfs_t{}
 			if err = syscall.Statfs(item.disk.Path, &fs); err != nil {
 				log.LogErrorf("get disk(%s) stat err:%v", item.disk.Path, err)
 				return true
 			}
 			realLeftSpace := int64(fs.Bavail * uint64(fs.Bsize))
-
-			if realLeftSpace < expectedLeftSpace {
-				leftSpace = realLeftSpace
-			} else {
-				leftSpace = expectedLeftSpace
+			// Collect low-space items and continue scanning
+			if realLeftSpace < threshold {
+				lowSpaceCandidates = append(lowSpaceCandidates, item)
+				return true
 			}
-
-			if leftSpace >= maxLeftSpace {
-				maxLeftSpace = leftSpace
+			if realLeftSpace >= maxLeftSpace {
+				maxLeftSpace = realLeftSpace
 				cacheItem = item
 			}
-
 		}
 		return true
 	})
 	if cacheItem != nil {
-		log.LogInfof("select disk(%v) success", cacheItem.config.Path)
+		if log.EnableInfo() {
+			log.LogInfof("select disk(%v) success", cacheItem.config.Path)
+		}
+		return
+	}
+	if len(lowSpaceCandidates) != 0 {
+		if len(lowSpaceCandidates) == 1 {
+			cacheItem = lowSpaceCandidates[0]
+		} else {
+			idx := rand.Intn(len(lowSpaceCandidates))
+			cacheItem = lowSpaceCandidates[idx]
+		}
+		if log.EnableInfo() {
+			log.LogInfof("choose disk(%v) success from low-space candidates", cacheItem.config.Path)
+		}
 		return
 	}
 	return nil, errors.NewErrorf("no available disk can select")
@@ -1058,6 +1071,19 @@ func (c *CacheEngine) GetLruUsageRatio() float64 {
 		return float64(totalLen) / float64(totalCapacity)
 	}
 	return 0
+}
+
+func (c *CacheEngine) GetCacheLengths() (totalLRULen int, fhLRULen int, keyToDiskLen int) {
+	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		cacheItem := value.(*lruCacheItem)
+		totalLRULen += cacheItem.lruCache.Len()
+		return true
+	})
+	if c.lruFhCache != nil {
+		fhLRULen = c.lruFhCache.Len()
+	}
+	keyToDiskLen = len(c.keyToDiskMap)
+	return
 }
 
 func (c *CacheEngine) GetDiskUsageRatio() map[string]float64 {
