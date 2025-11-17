@@ -1025,6 +1025,10 @@ func (m *metadataManager) CheckRocksdbMetaPartition(metaPath string) error {
 	metaFile := path.Join(metaPath, metadataFile)
 	fp, err := os.OpenFile(metaFile, os.O_RDONLY, 0o644)
 	if err != nil {
+		if os.IsNotExist(err) {
+			log.LogWarnf("[CheckRocksdbMetaPartition]: metaFile %s not exist. skip check", metaFile)
+			return nil
+		}
 		err = errors.NewErrorf("[CheckRocksdbMetaPartition]: OpenFile %s", err.Error())
 		return err
 	}
