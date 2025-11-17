@@ -57,7 +57,7 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 		span.Debugf("fill blobsize:%d", blobSize)
 	}
 
-	if codeMode == 0 {
+	if codeMode == codemode.CodeModeNone {
 		codeMode = h.allCodeModes.SelectCodeMode(int64(size))
 		span.Debugf("select codemode:%d", codeMode)
 	}

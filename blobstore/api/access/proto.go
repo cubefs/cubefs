@@ -196,10 +196,17 @@ func (h HashSumMap) All() map[string]interface{} {
 // PutArgs for service /put
 // Hashes means how to calculate check sum,
 // HashAlgCRC32 | HashAlgMD5 equal 2 + 4 = 6
+// AssignClusterID > 0 means that cluster_id is assigned by the API caller
+// AssignClusterID = 0 means that cluster_id is assigned by access cluster controller
+// CodeMode > 0 means that codemode is assigned by the API caller
+// CodeMode = 0 means that codemode is assigned by code_mode_policies
 type PutArgs struct {
 	Size   int64         `json:"size"`
 	Hashes HashAlgorithm `json:"hashes,omitempty"`
 	Body   io.Reader     `json:"-"`
+
+	AssignClusterID proto.ClusterID   `json:"assign_cluster_id,omitempty"`
+	CodeMode        codemode.CodeMode `json:"code_mode,omitempty"`
 
 	// GetBody defines an optional func to return a new copy of Body.
 	// It is used for client requests when a redirect requires reading

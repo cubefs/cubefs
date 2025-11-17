@@ -587,7 +587,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (prot
 	}
 
 	rc := s.limiter.Reader(ctx, args.Body)
-	loc, err := s.handler.Put(ctx, rc, args.Size, hasherMap)
+	loc, err := s.handler.Put(ctx, rc, args.Size, hasherMap, args.AssignClusterID, args.CodeMode)
 	if err != nil {
 		span.Error("stream put failed", errors.Detail(err))
 		err = httpError(err)
@@ -779,7 +779,12 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 	}()
 
 	// alloc
-	allocResp, err := s.alloc(ctx, &acapi.AllocArgs{Size: uint64(args.Size)})
+	allocArgs := &acapi.AllocArgs{
+		Size:            uint64(args.Size),
+		AssignClusterID: args.AssignClusterID,
+		CodeMode:        args.CodeMode,
+	}
+	allocResp, err := s.alloc(ctx, allocArgs)
 	if err != nil {
 		return proto.Location{}, nil, err
 	}
