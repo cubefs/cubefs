@@ -677,7 +677,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug, persist bo
 	if successDiskNum+failedDiskNum+cancelDiskNum == totalDisk {
 		if successDiskNum == totalDisk {
 			if persist {
-				dataNode.SetDecommissionStatus(DecommissionSuccess)
+				dataNode.markDecommissionSuccess(c)
 			}
 			return DecommissionSuccess, float64(1)
 		}
@@ -689,7 +689,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug, persist bo
 			}
 		} else {
 			if persist {
-				dataNode.SetDecommissionStatus(DecommissionFail)
+				dataNode.markDecommissionFail()
 			} else {
 				return DecommissionFail, progress / float64(totalDisk)
 			}
@@ -790,6 +790,10 @@ func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
 
 func (dataNode *DataNode) markDecommissionFail() {
 	dataNode.SetDecommissionStatus(DecommissionFail)
+	// if only decommission part of data partitions, can alloc dp in future
+	if dataNode.DecommissionLimit != 0 {
+		dataNode.ToBeOffline = false
+	}
 	// dataNode.ToBeOffline = false
 	// dataNode.DecommissionCompleteTime = time.Now().Unix()
 }
