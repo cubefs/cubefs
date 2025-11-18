@@ -109,6 +109,7 @@ type DiskToDecommissionRepairDpInfo struct {
 	CurParallel  uint64
 	DiskPath     string
 	RepairingDps map[uint64]struct{}
+	IdToPriority map[uint64]int
 }
 
 // nolint: structcheck

@@ -116,7 +116,7 @@ func TestAcquireDecommissionFirstHostToken(t *testing.T) {
 		CurParallel: 1,
 	}
 	cluster.DataNodeToDecommissionRepairDpMap.Store("host0", dataNodeInfo)
-	assert.False(t, partition.AcquireDecommissionFirstHostToken(cluster))
+	assert.False(t, partition.AcquireDecommissionFirstHostToken(cluster, false))
 
 	cluster.DecommissionFirstHostDiskParallelLimit = 1
 	dataNode.DecommissionFirstHostParallelLimit = 2
@@ -129,7 +129,7 @@ func TestAcquireDecommissionFirstHostToken(t *testing.T) {
 		},
 	}
 	cluster.DataNodeToDecommissionRepairDpMap.Store("host0", dataNodeInfo)
-	assert.False(t, partition.AcquireDecommissionFirstHostToken(cluster))
+	assert.False(t, partition.AcquireDecommissionFirstHostToken(cluster, false))
 
 	cluster.DecommissionFirstHostDiskParallelLimit = 2
 	dataNode.DecommissionFirstHostParallelLimit = 2
@@ -144,11 +144,14 @@ func TestAcquireDecommissionFirstHostToken(t *testing.T) {
 				RepairingDps: map[uint64]struct{}{
 					0: {},
 				},
+				IdToPriority: map[uint64]int{
+					0: 2,
+				},
 			},
 		},
 	}
 	cluster.DataNodeToDecommissionRepairDpMap.Store("host0", dataNodeInfo)
-	assert.True(t, partition.AcquireDecommissionFirstHostToken(cluster))
+	assert.True(t, partition.AcquireDecommissionFirstHostToken(cluster, false))
 }
 
 func TestReleaseDecommissionFirstHostToken(t *testing.T) {
@@ -181,6 +184,10 @@ func TestReleaseDecommissionFirstHostToken(t *testing.T) {
 				RepairingDps: map[uint64]struct{}{
 					0: {},
 					1: {},
+				},
+				IdToPriority: map[uint64]int{
+					0: 2,
+					1: 2,
 				},
 			},
 		},

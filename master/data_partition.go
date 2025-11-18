@@ -1208,6 +1208,9 @@ func (partition *DataPartition) ReleaseDecommissionFirstHostToken(c *Cluster) {
 		return
 	}
 	delete(diskToRepairDpInfo.RepairingDps, partition.PartitionID)
+	if diskToRepairDpInfo.IdToPriority != nil {
+		delete(diskToRepairDpInfo.IdToPriority, partition.PartitionID)
+	}
 	if len(diskToRepairDpInfo.RepairingDps) == 0 {
 		delete(dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap, diskPath)
 	} else {
@@ -1233,7 +1236,7 @@ func hasDpConsumedFirstHostToken(dataNodeToRepairDpInfo *DataNodeToDecommissionR
 	return false
 }
 
-func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bool {
+func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster, allowPreempt bool) bool {
 	var (
 		ok                     bool
 		found                  bool
@@ -1245,7 +1248,15 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 		dataNode               *DataNode
 		dataNodeToRepairDpInfo *DataNodeToDecommissionRepairDpInfo
 		diskToRepairDpInfo     *DiskToDecommissionRepairDpInfo
-		dataNodeParallel       uint64
+		nodeLimit              uint64
+		nodeParallel           uint64
+		diskLimit              uint64
+		diskParallel           uint64
+		nodeNeedPreempt        bool
+		diskNeedPreempt        bool
+		lowestPriority         int
+		victimID               uint64
+		requestPriority        = partition.DecommissionWeight
 	)
 	defer c.syncUpdateDataPartition(partition)
 
@@ -1285,11 +1296,10 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 		log.LogErrorf("action[AcquireDecommissionFirstHostToken] failed, dp(%v) err(%v)", partition.PartitionID, err.Error())
 		goto errHandle
 	}
-	if atomic.LoadUint64(&dataNode.DecommissionFirstHostParallelLimit) != 0 &&
-		atomic.LoadUint64(&dataNodeToRepairDpInfo.CurParallel) >= atomic.LoadUint64(&dataNode.DecommissionFirstHostParallelLimit) {
-		log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire failed, datanode(%v) decommissionFirstHostParallelLimit has been reached", partition.PartitionID, dataNode.Addr)
-		return false
-	}
+
+	nodeLimit = atomic.LoadUint64(&dataNode.DecommissionFirstHostParallelLimit)
+	nodeParallel = atomic.LoadUint64(&dataNodeToRepairDpInfo.CurParallel)
+	nodeNeedPreempt = nodeLimit != 0 && nodeParallel >= nodeLimit
 	dataNodeToRepairDpInfo.mu.Lock()
 	defer dataNodeToRepairDpInfo.mu.Unlock()
 	diskToRepairDpInfo, found = dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[firstReplica.DiskPath]
@@ -1298,21 +1308,96 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 			CurParallel:  0,
 			DiskPath:     firstReplica.DiskPath,
 			RepairingDps: make(map[uint64]struct{}),
+			IdToPriority: make(map[uint64]int),
 		}
 	}
 
-	if atomic.LoadUint64(&diskToRepairDpInfo.CurParallel) >= atomic.LoadUint64(&c.DecommissionFirstHostDiskParallelLimit) {
-		log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire failed, decommissionFirstHostDiskParallelLimit has been reached", partition.PartitionID)
+	diskLimit = atomic.LoadUint64(&c.DecommissionFirstHostDiskParallelLimit)
+	diskParallel = atomic.LoadUint64(&diskToRepairDpInfo.CurParallel)
+	diskNeedPreempt = diskParallel >= diskLimit
+
+	// If neither node nor disk hits its parallel limit, acquire token directly.
+	if !nodeNeedPreempt && !diskNeedPreempt {
+		goto acquire
+	}
+
+	// Reaching any limit but not allowing preemption -> fail directly.
+	if !allowPreempt {
+		if diskNeedPreempt {
+			log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire failed(no-preempt), disk(%v_%v) parallelLimit reached",
+				partition.PartitionID, firstReplica.Addr, firstReplica.DiskPath)
+		} else {
+			log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire failed(no-preempt), datanode(%v) parallelLimit reached",
+				partition.PartitionID, dataNode.Addr)
+		}
 		return false
 	}
 
+	// Preemption rule for firstHost token:
+	//   - If disk parallel has reached limit, preempt on the same disk:
+	//       choose the lowest-priority dp on this disk.
+	//   - Else (only datanode parallel reached limit), preempt on the same datanode:
+	//       choose the lowest-priority dp among all disks of this datanode.
+	lowestPriority = requestPriority
+	if diskNeedPreempt {
+		for id, pr := range diskToRepairDpInfo.IdToPriority {
+			if pr < lowestPriority {
+				lowestPriority = pr
+				victimID = id
+			}
+		}
+		if victimID == 0 {
+			log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire failed, no lower-priority victim on same disk(%v_%v)",
+				partition.PartitionID, firstReplica.Addr, firstReplica.DiskPath)
+			return false
+		}
+	} else if nodeNeedPreempt {
+		for _, di := range dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap {
+			for id, pr := range di.IdToPriority {
+				if pr < lowestPriority {
+					lowestPriority = pr
+					victimID = id
+				}
+			}
+		}
+		if victimID == 0 {
+			log.LogInfof("action[AcquireDecommissionFirstHostToken] dp(%v) acquire failed, no lower-priority victim on datanode(%v)",
+				partition.PartitionID, dataNode.Addr)
+			return false
+		}
+	}
+
+	dataNodeToRepairDpInfo.mu.Unlock()
+	if dpVictim, e := c.getDataPartitionByID(victimID); e == nil && dpVictim != nil {
+		dpVictim.markRollbackFailed(true, "acquireDecommissionFirstHostToken", proto.ErrDecommissionTokenPreempted.Error())
+		dpVictim.DecommissionErrorMessage = proto.ErrDecommissionTokenPreempted.Error()
+		c.syncUpdateDataPartition(dpVictim)
+		dpVictim.ReleaseDecommissionToken(c)
+		dpVictim.ReleaseDecommissionFirstHostToken(c)
+		msg := fmt.Sprintf("dp %v mark decommission failed", dpVictim.decommissionInfo())
+		auditlog.LogMasterOp("PreemptDecommissionFirstHostToken", msg, proto.ErrDecommissionTokenPreempted)
+	}
+	dataNodeToRepairDpInfo.mu.Lock()
+	diskToRepairDpInfo = dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[firstReplica.DiskPath]
+	if diskToRepairDpInfo == nil {
+		diskToRepairDpInfo = &DiskToDecommissionRepairDpInfo{
+			CurParallel:  0,
+			DiskPath:     firstReplica.DiskPath,
+			RepairingDps: make(map[uint64]struct{}),
+			IdToPriority: make(map[uint64]int),
+		}
+	}
+
+acquire:
 	diskToRepairDpInfo.RepairingDps[partition.PartitionID] = struct{}{}
+	diskToRepairDpInfo.IdToPriority[partition.PartitionID] = requestPriority
 	atomic.StoreUint64(&diskToRepairDpInfo.CurParallel, uint64(len(diskToRepairDpInfo.RepairingDps)))
 	dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[firstReplica.DiskPath] = diskToRepairDpInfo
+	nodeParallel = 0
 	for _, diskInfo := range dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap {
-		dataNodeParallel += atomic.LoadUint64(&diskInfo.CurParallel)
+		nodeParallel += atomic.LoadUint64(&diskInfo.CurParallel)
 	}
-	atomic.StoreUint64(&dataNodeToRepairDpInfo.CurParallel, dataNodeParallel)
+	atomic.StoreUint64(&dataNodeToRepairDpInfo.CurParallel, nodeParallel)
 	c.DataNodeToDecommissionRepairDpMap.Store(firstReplica.Addr, dataNodeToRepairDpInfo)
 	key = fmt.Sprintf("%v_%v", firstReplica.Addr, firstReplica.DiskPath)
 	partition.DecommissionFirstHostDiskTokenKey = key
@@ -2339,7 +2424,7 @@ func (partition *DataPartition) createTaskToStopDataPartitionRepair(addr string,
 	return
 }
 
-func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
+func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster, allowPreempt bool) bool {
 	var (
 		zone            *Zone
 		ns              *nodeSet
@@ -2453,7 +2538,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 			goto errHandler
 		}
 		// only persist DecommissionDstAddr when get token
-		if ns.AcquireDecommissionToken(partition.PartitionID) {
+		if ns.AcquireDecommissionToken(partition.PartitionID, partition.DecommissionWeight, c, allowPreempt) {
 			partition.DecommissionDstAddr = targetHosts[0]
 			log.LogDebugf("action[TryAcquireDecommissionToken] dp %v get token from %v nodeset %v success",
 				partition.PartitionID, partition.DecommissionDstAddr, ns.ID)
@@ -2477,7 +2562,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				partition.PartitionID, ns.ID)
 			return true
 		}
-		if ns.AcquireDecommissionToken(partition.PartitionID) {
+		if ns.AcquireDecommissionToken(partition.PartitionID, partition.DecommissionWeight, c, allowPreempt) {
 			log.LogDebugf("action[TryAcquireDecommissionToken]dp %v get token from %v nodeset %v success",
 				partition.PartitionID, partition.DecommissionDstAddr, ns.ID)
 			return true

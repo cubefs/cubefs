@@ -1392,8 +1392,8 @@ func (ns *nodeSet) getDecommissionParallelStatus() (int32, int32, []uint64, int)
 	return ns.decommissionDataPartitionList.getDecommissionParallelStatus()
 }
 
-func (ns *nodeSet) AcquireDecommissionToken(id uint64) bool {
-	return ns.decommissionDataPartitionList.acquireDecommissionToken(id)
+func (ns *nodeSet) AcquireDecommissionToken(id uint64, priority int, c *Cluster, allowPreempt bool) bool {
+	return ns.decommissionDataPartitionList.acquireDecommissionTokenWithPriority(id, priority, c, allowPreempt)
 }
 
 func (ns *nodeSet) ReleaseDecommissionToken(id uint64) {
@@ -2449,6 +2449,7 @@ type DecommissionDataPartitionList struct {
 	curParallel      int32
 	start            chan struct{}
 	runningMap       map[uint64]struct{}
+	idToPriority     map[uint64]int
 	nsId             uint64
 }
 
@@ -2473,6 +2474,7 @@ func NewDecommissionDataPartitionList(c *Cluster, nsId uint64) *DecommissionData
 	l.start = make(chan struct{}, 1)
 	l.decommissionList = list.New()
 	l.runningMap = make(map[uint64]struct{})
+	l.idToPriority = make(map[uint64]int)
 	l.nsId = nsId
 	atomic.StoreInt32(&l.curParallel, 0)
 	atomic.StoreInt32(&l.parallelLimit, defaultDecommissionParallelLimit)
@@ -2523,8 +2525,8 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 		// keep origin error msg, DecommissionErrorMessage would be replaced by "no node set available" e.g. if
 		// execute TryAcquireDecommissionToken failed
 		msg := value.DecommissionErrorMessage
-		if value.AcquireDecommissionFirstHostToken(c) {
-			if !value.TryAcquireDecommissionToken(c) {
+		if value.AcquireDecommissionFirstHostToken(c, false) {
+			if !value.TryAcquireDecommissionToken(c, false) {
 				value.DecommissionErrorMessage = msg
 				value.ReleaseDecommissionFirstHostToken(c)
 			}
@@ -2580,10 +2582,11 @@ func (l *DecommissionDataPartitionList) updateMaxParallel(maxParallel int32) {
 	atomic.StoreInt32(&l.parallelLimit, maxParallel)
 }
 
-func (l *DecommissionDataPartitionList) acquireDecommissionToken(id uint64) bool {
+func (l *DecommissionDataPartitionList) acquireDecommissionToken(id uint64, priority int) bool {
 	if atomic.LoadInt32(&l.parallelLimit) == 0 {
 		l.mu.Lock()
 		l.runningMap[id] = struct{}{}
+		l.idToPriority[id] = priority
 		atomic.StoreInt32(&l.curParallel, int32(len(l.runningMap)))
 		l.mu.Unlock()
 		return true
@@ -2594,8 +2597,66 @@ func (l *DecommissionDataPartitionList) acquireDecommissionToken(id uint64) bool
 
 	l.mu.Lock()
 	l.runningMap[id] = struct{}{}
+	l.idToPriority[id] = priority
 	atomic.StoreInt32(&l.curParallel, int32(len(l.runningMap)))
 	l.mu.Unlock()
+	return true
+}
+
+func (l *DecommissionDataPartitionList) acquireDecommissionTokenWithPriority(id uint64, priority int, c *Cluster, allowPreempt bool) bool {
+	if !allowPreempt {
+		return l.acquireDecommissionToken(id, priority)
+	}
+
+	if atomic.LoadInt32(&l.parallelLimit) == 0 || atomic.LoadInt32(&l.curParallel) < atomic.LoadInt32(&l.parallelLimit) {
+		l.mu.Lock()
+		l.runningMap[id] = struct{}{}
+		l.idToPriority[id] = priority
+		atomic.StoreInt32(&l.curParallel, int32(len(l.runningMap)))
+		l.mu.Unlock()
+		return true
+	}
+
+	// Try preempt from lower priorities
+	if !l.tryPreemptLowerPriority(priority, c) {
+		log.LogInfof("action[acquireDecommissionTokenWithPriority] dp(%v) acquire failed, no lower-priority victim", id)
+		return false
+	}
+
+	// After preemption, acquire
+	l.mu.Lock()
+	l.runningMap[id] = struct{}{}
+	l.idToPriority[id] = priority
+	atomic.StoreInt32(&l.curParallel, int32(len(l.runningMap)))
+	l.mu.Unlock()
+	return true
+}
+
+func (l *DecommissionDataPartitionList) tryPreemptLowerPriority(priority int, c *Cluster) bool {
+	l.mu.Lock()
+	lowestPriority := priority
+	var victimID uint64
+	for id, pr := range l.idToPriority {
+		if pr < lowestPriority {
+			lowestPriority = pr
+			victimID = id
+		}
+	}
+	l.mu.Unlock()
+
+	if victimID == 0 {
+		return false
+	}
+
+	if dp, err := c.getDataPartitionByID(victimID); err == nil && dp != nil {
+		dp.markRollbackFailed(true, "tryPreemptLowerPriority", proto.ErrDecommissionTokenPreempted.Error())
+		dp.DecommissionErrorMessage = proto.ErrDecommissionTokenPreempted.Error()
+		c.syncUpdateDataPartition(dp)
+		dp.ReleaseDecommissionToken(c)
+		dp.ReleaseDecommissionFirstHostToken(c)
+		msg := fmt.Sprintf("dp %v mark decommission failed", dp.decommissionInfo())
+		auditlog.LogMasterOp("PreemptDecommissionToken", msg, proto.ErrDecommissionTokenPreempted)
+	}
 	return true
 }
 
@@ -2606,6 +2667,7 @@ func (l *DecommissionDataPartitionList) releaseDecommissionToken(id uint64) {
 		return
 	}
 	delete(l.runningMap, id)
+	delete(l.idToPriority, id)
 	atomic.StoreInt32(&l.curParallel, int32(len(l.runningMap)))
 }
 
@@ -2768,8 +2830,13 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToDecommission(dp *DataP
 			log.LogWarnf("[traverse] dp %v should wait for decommissionRetry,lastDecommissionRetryTime %v", dp.PartitionID, dp.DecommissionRetryTime)
 			return
 		}
-		if dp.AcquireDecommissionFirstHostToken(c) {
-			if dp.TryAcquireDecommissionToken(c) {
+		allowPreempt := false
+		// allow token preemption when encountering a “no leader” scenario during automatic decommission processing of bad disks.
+		if dp.DecommissionType == AutoDecommission && dp.DecommissionRaftForce {
+			allowPreempt = true
+		}
+		if dp.AcquireDecommissionFirstHostToken(c, allowPreempt) {
+			if dp.TryAcquireDecommissionToken(c, allowPreempt) {
 				go func(dp *DataPartition) {
 					dp.TryToDecommission(c)
 				}(dp) // special replica cnt cost some time from prepare to running
