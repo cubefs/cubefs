@@ -725,7 +725,7 @@ func (m *MetaNode) hasPartitions() (ok bool, err error) {
 		return
 	}
 	for _, dentry := range dentries {
-		if strings.HasPrefix(dentry.Name(), partitionPrefix) {
+		if strings.HasPrefix(dentry.Name(), rocksdbMpPrefix) {
 			ok = true
 			return
 		}
