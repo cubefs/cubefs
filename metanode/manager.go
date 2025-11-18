@@ -829,12 +829,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 	log.LogWarnf("start create meta Partition, partition %s", partitionId)
 
-	var metaPartitionDir string
-	if request.StoreMode == proto.StoreModeRocksDb {
-		metaPartitionDir = path.Join(m.rootDir, rocksdbMpPrefix+partitionId)
-	} else {
-		metaPartitionDir = path.Join(m.rootDir, partitionPrefix+partitionId)
-	}
+	metaPartitionDir := m.GetMetaPartitionDir(partitionId, request.StoreMode)
 
 	mpc := &MetaPartitionConfig{
 		PartitionId: request.PartitionID,
@@ -1111,4 +1106,23 @@ func IsMetaPartitionDirectory(fileInfo os.DirEntry) bool {
 		return true
 	}
 	return false
+}
+
+func (m *metadataManager) GetMetaPartitionDir(partitionId string, storeMode proto.StoreMode) string {
+	var metaPartitionDir string
+	var checkDeleteDir string
+	if storeMode == proto.StoreModeRocksDb {
+		metaPartitionDir = path.Join(m.rootDir, rocksdbMpPrefix+partitionId)
+		checkDeleteDir = path.Join(m.rootDir, partitionPrefix+partitionId)
+	} else {
+		metaPartitionDir = path.Join(m.rootDir, partitionPrefix+partitionId)
+		checkDeleteDir = path.Join(m.rootDir, rocksdbMpPrefix+partitionId)
+	}
+
+	if _, err := os.Stat(checkDeleteDir); err == nil {
+		log.LogWarnf("mp(%s) store(%v) Delete old meta partition directory: %s", partitionId, storeMode, checkDeleteDir)
+		os.RemoveAll(checkDeleteDir)
+	}
+
+	return metaPartitionDir
 }

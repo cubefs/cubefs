@@ -26,6 +26,7 @@ type MetaBalancePlan struct {
 	Plan       []*MrBalanceInfo `json:"plan" bson:"plan"`
 	PlanNum    int              `json:"planNum" bson:"plannum"`
 	InodeCount uint64           `json:"inodeCount" bson:"inodecount"`
+	StartTime  time.Time        `json:"startTime"`
 	Msg        string           `json:"msg" bson:"msg"`
 }
 

@@ -1212,7 +1212,6 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 
 	plan.Status = PlanTaskRun
 	plan.StartTime = time.Now()
-	plan.Msg = ""
 	plan.EndTime = time.Time{}
 	err = c.syncUpdateBalanceTask(plan)
 	if err != nil {
@@ -1317,6 +1316,7 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 		return err
 	}
 
+	mpPlan.StartTime = time.Now()
 	atomic.AddInt32(&plan.UndoNum, -1)
 	atomic.AddInt32(&plan.RunningNum, 1)
 	for _, mrPlan := range mpPlan.Plan {
