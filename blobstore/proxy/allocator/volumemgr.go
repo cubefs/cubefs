@@ -337,11 +337,12 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 		return errors.Base(err, "json.Unmarshal code_mode policy err").Detail(err)
 	}
 	for _, codeModeConfig := range codeModeConfigInfos {
-		allocCh := make(chan *allocArgs)
-		codeMode := codeModeConfig.ModeName.GetCodeMode()
 		if !codeModeConfig.Enable {
 			continue
 		}
+
+		allocCh := make(chan *allocArgs)
+		codeMode := codeModeConfig.ModeName.GetCodeMode()
 
 		v.allocChs[codeMode] = allocCh
 		tactic := codeMode.Tactic()
