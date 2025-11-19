@@ -310,21 +310,21 @@ const (
 	OpApplyWarmupMetaToken      uint8 = 0xCD
 
 	// async operations: Master、SDK -> MetaNode
-	OpMetaAsyncReadDir           uint8 = 0xC0
-	OpMetaAsyncLookup            uint8 = 0xC1 // Async version of OpMetaLookup
-	OpMetaAsyncInodeGet          uint8 = 0xC2 // Async version of OpMetaInodeGet
-	OpMetaAsyncCreateInode       uint8 = 0xC3 // Async version of OpMetaCreateInode
-	OpMetaAsyncCreateDentry      uint8 = 0xC4 // Async version of OpMetaCreateDentry
-	OpMetaAsyncDeleteDentry      uint8 = 0xC5 // Async version of OpMetaDeleteDentry
-	OpQuotaAsyncCreateDentry     uint8 = 0xC6 // Async version of OpQuotaCreateDentry
-	OpMetaAsyncXAttrSet          uint8 = 0xC7 // Async version of OpMetaSetXAttr
-	OpMetaAsyncXAttrGet          uint8 = 0xC8 // Async version of OpMetaGetXAttr
-	OpMetaAsyncLockDir           uint8 = 0xC9 // Async version of OpMetaLockDir
-	OpMetaAsyncTxCreateInode     uint8 = 0xCA // Async version of OpMetaTxCreateInode
-	OpMetaAsyncTxCreateDentry    uint8 = 0xCC // Async version of OpMetaTxCreateDentry
-	OpMetaAsyncTxCreate          uint8 = 0xCD // Async version of OpMetaTxCreate
-	OpMetaAsyncGetInodeQuota     uint8 = 0xCE // Async version of OpMetaGetInodeQuota
-	OpMetaAsyncUnlinkInode       uint8 = 0xCF // Async version of OpMetaUnlinkInode
+	OpMetaAsyncReadDir           uint8 = 0x82
+	OpMetaAsyncLookup            uint8 = 0xE3 // Async version of OpMetaLookup
+	OpMetaAsyncInodeGet          uint8 = 0xE6 // Async version of OpMetaInodeGet
+	OpMetaAsyncCreateInode       uint8 = 0xE7 // Async version of OpMetaCreateInode
+	OpMetaAsyncCreateDentry      uint8 = 0xD4 // Async version of OpMetaCreateDentry
+	OpMetaAsyncDeleteDentry      uint8 = 0xE8 // Async version of OpMetaDeleteDentry
+	OpQuotaAsyncCreateDentry     uint8 = 0xE4 // Async version of OpQuotaCreateDentry
+	OpMetaAsyncXAttrSet          uint8 = 0xD7 // Async version of OpMetaSetXAttr
+	OpMetaAsyncXAttrGet          uint8 = 0xD8 // Async version of OpMetaGetXAttr
+	OpMetaAsyncLockDir           uint8 = 0xD9 // Async version of OpMetaLockDir
+	OpMetaAsyncTxCreateInode     uint8 = 0xDA // Async version of OpMetaTxCreateInode
+	OpMetaAsyncTxCreateDentry    uint8 = 0xDC // Async version of OpMetaTxCreateDentry
+	OpMetaAsyncTxCreate          uint8 = 0xE1 // Async version of OpMetaTxCreate
+	OpMetaAsyncGetInodeQuota     uint8 = 0xE2 // Async version of OpMetaGetInodeQuota
+	OpMetaAsyncUnlinkInode       uint8 = 0xDF // Async version of OpMetaUnlinkInode
 	OpMetaAsyncEvictInode        uint8 = 0x94 // Async version of OpMetaEvictInode
 	OpMetaAsyncLinkInode         uint8 = 0x95 // Async version of OpMetaLinkInode
 	OpMetaAsyncUpdateDentry      uint8 = 0x96 // Async version of OpMetaUpdateDentry

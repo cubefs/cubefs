@@ -2076,12 +2076,12 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 	}
 
 	if partition.IsDecommissionSuccess() {
-		partition.SetDecommissionStatus(DecommissionInitial)
+		partition.SetDecommissionStatus(DecommissionInitial, "processNextDecommissionSrcHost", "")
 	}
 
 	if err = partition.MarkDecommissionStatus(nextSrcAddr, nextDstAddr, replica.DiskPath, partition.DecommissionDstNodeSet,
 		partition.DecommissionRaftForce, partition.DecommissionTerm, partition.DecommissionType, partition.DecommissionWeight,
-		c, updatedSrcHosts, updatedDstHosts,
+		c, updatedSrcHosts, updatedDstHosts, "processNextDecommissionSrcHost",
 	); err != nil {
 		log.LogWarnf("action[ProcessNextDecommissionSrcHost] dp(%v) mark decommission failed, err %v",
 			partition.PartitionID, err)

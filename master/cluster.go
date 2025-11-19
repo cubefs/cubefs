@@ -5986,7 +5986,7 @@ func (c *Cluster) TryDecommissionRunningDiskIgnoreDps(disk *DecommissionDisk) {
 	for _, ignoreDp := range ignorePartitions {
 		triggerCondition := fmt.Sprintf("disk(%v)_%v_dp(%v)", disk.SrcAddr+"_"+disk.DiskPath, disk.Type, ignoreDp.PartitionID)
 		if err = ignoreDp.MarkDecommissionStatus(node.Addr, disk.DstAddr, disk.DiskPath, 0, disk.DecommissionRaftForce,
-			disk.DecommissionTerm, disk.Type, disk.DecommissionWeight, c, ns, triggerCondition); err != nil {
+			disk.DecommissionTerm, disk.Type, disk.DecommissionWeight, c, nil, nil, triggerCondition); err != nil {
 			if strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 				c.syncUpdateDataPartition(ignoreDp)
 				// still decommission dp but not involved in the calculation of the decommission progress.

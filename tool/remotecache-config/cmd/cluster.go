@@ -209,9 +209,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().SetClusterParas("", "", "",
 				"", "", "", "", clientIDKey,
 				"", "",
-				"", "",
+				"", "", "",
 				"", "", "", "", "", "",
-				"", "", handleTimeout, readDataNodeTimeout,
+				"", "", handleTimeout, readDataNodeTimeout, "",
+				"", "",
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
 				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount,
 				optFlashReadFlowLimit, optFlashWriteFlowLimit, optFlashKeyFlowLimit, optRemoteClientFlowLimit); err != nil {

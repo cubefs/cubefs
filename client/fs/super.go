@@ -1023,7 +1023,7 @@ func (s *Super) warmUpPath(metaResource proto.WarmUpMetaResource) {
 	log.LogInfof("warmUpPath: start warming up path %s", metaResource.DirPath)
 
 	// Get the inode for the path
-	ino, err := s.mw.LookupPath(metaResource.DirPath)
+	ino, err := s.mw.LookupPath(metaResource.DirPath, false)
 	if err != nil {
 		log.LogWarnf("warmUpPath: failed to get inode for path %s, err: %v", metaResource.DirPath, err)
 		atomic.StoreInt32(&warmUpPath.Status, proto.WarmStatusFailed)
@@ -1059,7 +1059,7 @@ func (s *Super) warmUpDirectory(dirIno uint64, currentGoroutineNum *int64, wg *s
 		}
 	}()
 	// Get directory info and cache it
-	dirInfo, err := s.mw.InodeGet_ll(dirIno)
+	dirInfo, err := s.mw.InodeGet_ll(dirIno, false)
 	if err != nil {
 		log.LogWarnf("warmUpDirectory: failed to get dir info for ino %d, err: %v", dirIno, err)
 		return
@@ -1083,7 +1083,7 @@ func (s *Super) warmUpDirectory(dirIno uint64, currentGoroutineNum *int64, wg *s
 		}
 		// Read directory contents in batches
 		log.LogDebugf("warmUpDirectory: reading dir ino=%d marker=%s limit=%d", dirIno, marker, s.readDirLimit)
-		children, err := s.mw.ReadDirLimit_ll(dirIno, marker, uint64(s.readDirLimit))
+		children, err := s.mw.ReadDirLimit_ll(dirIno, marker, uint64(s.readDirLimit), false)
 		if err != nil {
 			log.LogWarnf("warmUpDirectory: failed to read dir for ino %d, marker %s, err: %v", dirIno, marker, err)
 			return
