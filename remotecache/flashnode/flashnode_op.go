@@ -87,6 +87,8 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 			err = f.opCachePrepare(conn, p)
 		case 0xDC: // legacy OpFlashNodeCacheRead
 			err = f.opCacheRead(conn, p)
+		case 0xDA: // legacy OpFlashNodeHeartbeat
+			err = f.opFlashNodeHeartbeat(conn, p)
 		default:
 			err = fmt.Errorf(proto.ErrorUnknownOpcodeTpl, p.Opcode)
 		}
