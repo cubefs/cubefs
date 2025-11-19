@@ -20,7 +20,6 @@ import (
 	"io"
 	"os"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -29,11 +28,24 @@ type logger struct {
 	level     int32
 	calldepth int
 	writer    atomic.Value
-	pool      sync.Pool
+}
+
+type syncWriter struct{ io.Writer }
+
+func (syncWriter) AsyncWrite(_ AsyncBuffer) (int, error) {
+	panic("log: not implement AsyncWriter")
 }
 
 type logWriter struct {
-	io.Writer
+	AsyncWriter
+	async bool
+}
+
+func newLogWriter(w io.Writer) *logWriter {
+	if aw, ok := w.(AsyncWriter); ok {
+		return &logWriter{AsyncWriter: aw, async: true}
+	}
+	return &logWriter{AsyncWriter: syncWriter{Writer: w}, async: false}
 }
 
 // New return a logger with default level Linfo.
@@ -42,13 +54,8 @@ func New(out io.Writer, calldepth int) Logger {
 	l := &logger{
 		level:     int32(Linfo),
 		calldepth: calldepth,
-		pool: sync.Pool{
-			New: func() interface{} {
-				return new(bytes.Buffer)
-			},
-		},
 	}
-	l.writer.Store(&logWriter{out})
+	l.writer.Store(newLogWriter(out))
 	return l
 }
 
@@ -78,7 +85,8 @@ func (l *logger) Outputf(id string, lvl Level, calldepth int, format string, a .
 
 func (l *logger) write(id string, lvl Level, file string, line int, s string) error {
 	now := time.Now()
-	buf := l.pool.Get().(*bytes.Buffer)
+	buffer := NewAsyncBuffer()
+	buf := buffer.Buffer()
 
 	buf.Reset()
 	l.formatOutput(buf, now, file, line, lvl)
@@ -92,9 +100,14 @@ func (l *logger) write(id string, lvl Level, file string, line int, s string) er
 	if len(s) > 0 && s[len(s)-1] != '\n' {
 		buf.WriteByte('\n')
 	}
-	out := l.writer.Load().(io.Writer)
-	_, err := out.Write(buf.Bytes())
-	l.pool.Put(buf)
+	out := l.writer.Load().(*logWriter)
+	var err error
+	if out.async {
+		_, err = out.AsyncWriter.AsyncWrite(buffer)
+	} else {
+		_, err = out.AsyncWriter.Write(buf.Bytes())
+		buffer.Release()
+	}
 	return err
 }
 
@@ -150,7 +163,7 @@ func (l *logger) GetOutputLevel() Level {
 }
 
 func (l *logger) SetOutput(w io.Writer) {
-	l.writer.Store(&logWriter{w})
+	l.writer.Store(newLogWriter(w))
 }
 
 func (l *logger) SetOutputLevel(lvl Level) {

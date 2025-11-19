@@ -22,6 +22,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -404,4 +405,26 @@ func String2Any(str string, pvalue interface{}) error {
 		return fmt.Errorf("unknown type %v of %s %v", v, str, pvalue)
 	}
 	return err
+}
+
+var poolTimer = sync.Pool{New: func() any { return time.NewTimer(time.Hour) }}
+
+func TimerAcquire(d time.Duration) *time.Timer {
+	timer := poolTimer.Get().(*time.Timer)
+	timer.Stop()
+	select {
+	case <-timer.C:
+	default:
+	}
+	timer.Reset(d)
+	return timer
+}
+
+func TimerRelease(timer *time.Timer) {
+	timer.Stop()
+	select {
+	case <-timer.C:
+	default:
+	}
+	poolTimer.Put(timer) // nolint:staticcheck
 }

@@ -287,6 +287,19 @@ func TestStringConvert(t *testing.T) {
 	require.Error(t, String2Any("not-bool", &valBool))
 }
 
+func TestTimerPool(t *testing.T) {
+	{
+		timer := TimerAcquire(10 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
+		TimerRelease(timer)
+	}
+	{
+		timer := TimerAcquire(10 * time.Millisecond)
+		<-timer.C
+		TimerRelease(timer)
+	}
+}
+
 func BenchmarkStrFmt2String(b *testing.B) {
 	var val int64 = 77
 	for ii := 0; ii < b.N; ii++ {
