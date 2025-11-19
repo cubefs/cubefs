@@ -26,8 +26,8 @@ import (
 )
 
 var (
-	_          diskRecordDescriptor = (*BlobNodeDiskTable)(nil)
-	uselessVal                      = []byte("1")
+	_          recordDescriptor = (*BlobNodeDiskTable)(nil)
+	uselessVal                  = []byte("1")
 )
 
 const (
@@ -37,6 +37,10 @@ const (
 	DiskInfoVersionNormal = iota + 1
 )
 
+const (
+	NodeInfoVersionNormal = iota + 1
+)
+
 var (
 	diskStatusIndex  = "Status"
 	diskHostIndex    = "Host"
@@ -44,13 +48,17 @@ var (
 	diskIDCRACKIndex = "Idc-Rack"
 )
 
+/*
+The Idc/Rack/Host of DiskInfoRecord is assigned to those of NodeInfoRecord. These fields of DiskInfoRecord are retained
+to facilitate the construction of disk indexes, and these information will not be stored during actual marshal.
+*/
 type DiskInfoRecord struct {
 	Version      uint8            `json:"-"`
 	DiskID       proto.DiskID     `json:"disk_id"`
 	ClusterID    proto.ClusterID  `json:"cluster_id"`
-	Idc          string           `json:"idc"`
-	Rack         string           `json:"rack"`
-	Host         string           `json:"host"`
+	Idc          string           `json:"idc,omitempty"`
+	Rack         string           `json:"rack,omitempty"`
+	Host         string           `json:"host,omitempty"`
 	Path         string           `json:"path"`
 	Status       proto.DiskStatus `json:"status"`
 	Readonly     bool             `json:"readonly"`
@@ -60,19 +68,37 @@ type DiskInfoRecord struct {
 	NodeID       proto.NodeID     `json:"node_id"`
 }
 
-type diskRecordDescriptor interface {
-	unmarshalRecord(v []byte) (interface{}, error)
-	marshalRecord(i interface{}) ([]byte, error)
-	diskID(i interface{}) proto.DiskID
-	diskInfo(i interface{}) *DiskInfoRecord
+type NodeInfoRecord struct {
+	Version   uint8            `json:"-"`
+	NodeID    proto.NodeID     `json:"node_id"`
+	NodeSetID proto.NodeSetID  `json:"node_set_id"`
+	ClusterID proto.ClusterID  `json:"cluster_id"`
+	DiskType  proto.DiskType   `json:"disk_type"`
+	Idc       string           `json:"idc"`
+	Rack      string           `json:"rack"`
+	Host      string           `json:"host"`
+	Role      proto.NodeRole   `json:"role"`
+	Status    proto.NodeStatus `json:"status"`
 }
 
-type diskTable struct {
+type recordDescriptor interface {
+	unmarshalDiskRecord(v []byte) (interface{}, error)
+	marshalDiskRecord(i interface{}) ([]byte, error)
+	diskID(i interface{}) proto.DiskID
+	diskInfo(i interface{}) *DiskInfoRecord
+	unmarshalNodeRecord(v []byte) (interface{}, error)
+	marshalNodeRecord(i interface{}) ([]byte, error)
+	nodeInfo(i interface{}) *NodeInfoRecord
+}
+
+type nodeDiskTable struct {
+	nodeTbl        kvstore.KVTable
+	droppedNodeTbl kvstore.KVTable
 	diskTbl        kvstore.KVTable
 	droppedDiskTbl kvstore.KVTable
 	indexes        map[string]indexItem
 
-	rd diskRecordDescriptor
+	rd recordDescriptor
 }
 
 type indexItem struct {
@@ -80,13 +106,13 @@ type indexItem struct {
 	tbl        kvstore.KVTable
 }
 
-func (d *diskTable) GetDisk(diskID proto.DiskID) (info interface{}, err error) {
+func (d *nodeDiskTable) GetDisk(diskID proto.DiskID) (info interface{}, err error) {
 	key := diskID.Encode()
 	v, err := d.diskTbl.Get(key)
 	if err != nil {
 		return nil, err
 	}
-	info, err = d.rd.unmarshalRecord(v)
+	info, err = d.rd.unmarshalDiskRecord(v)
 	if err != nil {
 		return
 	}
@@ -94,7 +120,7 @@ func (d *diskTable) GetDisk(diskID proto.DiskID) (info interface{}, err error) {
 	return
 }
 
-func (d *diskTable) ListDisk(opt *clustermgr.ListOptionArgs, listCallback func(i interface{})) error {
+func (d *nodeDiskTable) ListDisk(opt *clustermgr.ListOptionArgs, listCallback func(i interface{})) error {
 	if opt == nil {
 		return errors.New("invalid list option")
 	}
@@ -200,9 +226,9 @@ func (d *diskTable) ListDisk(opt *clustermgr.ListOptionArgs, listCallback func(i
 	return nil
 }
 
-func (d *diskTable) AddDisk(diskID proto.DiskID, info interface{}) error {
+func (d *nodeDiskTable) AddDisk(diskID proto.DiskID, info interface{}) error {
 	key := diskID.Encode()
-	value, err := d.rd.marshalRecord(info)
+	value, err := d.rd.marshalDiskRecord(info)
 	if err != nil {
 		return err
 	}
@@ -228,9 +254,9 @@ func (d *diskTable) AddDisk(diskID proto.DiskID, info interface{}) error {
 	return d.diskTbl.DoBatch(batch)
 }
 
-func (d *diskTable) UpdateDisk(diskID proto.DiskID, info interface{}) error {
+func (d *nodeDiskTable) UpdateDisk(diskID proto.DiskID, info interface{}) error {
 	key := diskID.Encode()
-	value, err := d.rd.marshalRecord(info)
+	value, err := d.rd.marshalDiskRecord(info)
 	if err != nil {
 		return err
 	}
@@ -238,14 +264,14 @@ func (d *diskTable) UpdateDisk(diskID proto.DiskID, info interface{}) error {
 }
 
 // UpdateDiskStatus update disk status should remove old index and insert new index
-func (d *diskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatus) error {
+func (d *nodeDiskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatus) error {
 	key := diskID.Encode()
 	value, err := d.diskTbl.Get(key)
 	if err != nil {
 		return errors.Info(err, "get disk failed").Detail(err)
 	}
 
-	info, err := d.rd.unmarshalRecord(value)
+	info, err := d.rd.unmarshalDiskRecord(value)
 	if err != nil {
 		return errors.Info(err, "decode disk failed").Detail(err)
 	}
@@ -269,7 +295,7 @@ func (d *diskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatu
 	batch.PutCF(d.indexes[diskStatusIndex].tbl.GetCf(), []byte(newIndexKey), key)
 
 	diskInfo.Status = status
-	value, err = d.rd.marshalRecord(info)
+	value, err = d.rd.marshalDiskRecord(info)
 	if err != nil {
 		return errors.Info(err, "encode disk failed").Detail(err)
 	}
@@ -278,7 +304,7 @@ func (d *diskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatu
 	return d.diskTbl.DoBatch(batch)
 }
 
-func (d *diskTable) DeleteDisk(diskID proto.DiskID) error {
+func (d *nodeDiskTable) DeleteDisk(diskID proto.DiskID) error {
 	key := diskID.Encode()
 	value, err := d.diskTbl.Get(key)
 	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
@@ -289,7 +315,7 @@ func (d *diskTable) DeleteDisk(diskID proto.DiskID) error {
 		return nil
 	}
 
-	info, err := d.rd.unmarshalRecord(value)
+	info, err := d.rd.unmarshalDiskRecord(value)
 	if err != nil {
 		return err
 	}
@@ -315,12 +341,11 @@ func (d *diskTable) DeleteDisk(diskID proto.DiskID) error {
 	return d.diskTbl.DoBatch(batch)
 }
 
-func (d *diskTable) ListDisksByDiskTbl(marker proto.DiskID, count int, listCallback func(i interface{})) error {
+func (d *nodeDiskTable) ListDisksByDiskTbl(marker proto.DiskID, count int, listCallback func(i interface{})) error {
 	snap := d.diskTbl.NewSnapshot()
 	defer d.diskTbl.ReleaseSnapshot(snap)
 	iter := d.diskTbl.NewIterator(snap)
 	defer iter.Close()
-	// ret := make([]*DiskInfoRecord, 0)
 
 	iter.SeekToFirst()
 	if marker != proto.InvalidDiskID {
@@ -334,7 +359,7 @@ func (d *diskTable) ListDisksByDiskTbl(marker proto.DiskID, count int, listCallb
 		if iter.Err() != nil {
 			return errors.Info(iter.Err(), "list by disk table iterate failed")
 		}
-		info, err := d.rd.unmarshalRecord(iter.Value().Data())
+		info, err := d.rd.unmarshalDiskRecord(iter.Value().Data())
 		if err != nil {
 			return errors.Info(err, "decode disk info db failed").Detail(err)
 		}
@@ -350,7 +375,7 @@ func (d *diskTable) ListDisksByDiskTbl(marker proto.DiskID, count int, listCallb
 }
 
 // GetAllDroppingDisk return all drop disk in memory
-func (d *diskTable) GetAllDroppingDisk() ([]proto.DiskID, error) {
+func (d *nodeDiskTable) GetAllDroppingDisk() ([]proto.DiskID, error) {
 	iter := d.droppedDiskTbl.NewIterator(nil)
 	defer iter.Close()
 	ret := make([]proto.DiskID, 0)
@@ -369,13 +394,13 @@ func (d *diskTable) GetAllDroppingDisk() ([]proto.DiskID, error) {
 }
 
 // AddDroppingDisk add a dropping disk
-func (d *diskTable) AddDroppingDisk(diskID proto.DiskID) error {
+func (d *nodeDiskTable) AddDroppingDisk(diskID proto.DiskID) error {
 	key := diskID.Encode()
 	return d.droppedDiskTbl.Put(kvstore.KV{Key: key, Value: uselessVal})
 }
 
 // DroppedDisk finish dropping in a disk and set disk status dropped
-func (d *diskTable) DroppedDisk(diskID proto.DiskID) error {
+func (d *nodeDiskTable) DroppedDisk(diskID proto.DiskID) error {
 	status := proto.DiskStatusDropped
 	key := diskID.Encode()
 	value, err := d.diskTbl.Get(key)
@@ -383,7 +408,7 @@ func (d *diskTable) DroppedDisk(diskID proto.DiskID) error {
 		return errors.Info(err, "get disk failed").Detail(err)
 	}
 
-	info, err := d.rd.unmarshalRecord(value)
+	info, err := d.rd.unmarshalDiskRecord(value)
 	if err != nil {
 		return errors.Info(err, "decode disk failed").Detail(err)
 	}
@@ -407,7 +432,7 @@ func (d *diskTable) DroppedDisk(diskID proto.DiskID) error {
 	batch.PutCF(d.indexes[diskStatusIndex].tbl.GetCf(), []byte(newIndexKey), key)
 
 	diskInfo.Status = status
-	value, err = d.rd.marshalRecord(info)
+	value, err = d.rd.marshalDiskRecord(info)
 	if err != nil {
 		return errors.Info(err, "encode disk failed").Detail(err)
 	}
@@ -420,7 +445,7 @@ func (d *diskTable) DroppedDisk(diskID proto.DiskID) error {
 }
 
 // IsDroppingDisk find a dropping disk if exist
-func (d *diskTable) IsDroppingDisk(diskID proto.DiskID) (exist bool, err error) {
+func (d *nodeDiskTable) IsDroppingDisk(diskID proto.DiskID) (exist bool, err error) {
 	key := diskID.Encode()
 	_, err = d.droppedDiskTbl.Get(key)
 	if errors.Is(err, kvstore.ErrNotFound) {
@@ -432,6 +457,192 @@ func (d *diskTable) IsDroppingDisk(diskID proto.DiskID) (exist bool, err error) 
 	}
 	exist = true
 	return
+}
+
+func (d *nodeDiskTable) GetAllNodes(listCallback func(i interface{})) error {
+	iter := d.nodeTbl.NewIterator(nil)
+	defer iter.Close()
+
+	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
+		if iter.Err() != nil {
+			return iter.Err()
+		}
+		if iter.Key().Size() > 0 {
+			info, err := d.rd.unmarshalNodeRecord(iter.Value().Data())
+			iter.Key().Free()
+			iter.Value().Free()
+			if err != nil {
+				return errors.Info(err, "decode node info db failed").Detail(err)
+			}
+			listCallback(info)
+		}
+	}
+	return nil
+}
+
+func (d *nodeDiskTable) UpdateNode(nodeID proto.NodeID, info interface{}) error {
+	key := nodeID.Encode()
+	value, err := d.rd.marshalNodeRecord(info)
+	if err != nil {
+		return err
+	}
+
+	err = d.nodeTbl.Put(kvstore.KV{Key: key, Value: value})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *nodeDiskTable) GetNode(nodeID proto.NodeID) (info interface{}, err error) {
+	key := nodeID.Encode()
+	v, err := d.nodeTbl.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	info, err = d.rd.unmarshalNodeRecord(v)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+// GetAllDroppingNode return all drop node in memory
+func (d *nodeDiskTable) GetAllDroppingNode() ([]proto.NodeID, error) {
+	iter := d.droppedNodeTbl.NewIterator(nil)
+	defer iter.Close()
+	ret := make([]proto.NodeID, 0)
+	var nodeID proto.NodeID
+	iter.SeekToFirst()
+	for iter.Valid() {
+		if iter.Err() != nil {
+			return nil, iter.Err()
+		}
+		ret = append(ret, nodeID.Decode(iter.Key().Data()))
+		iter.Key().Free()
+		iter.Value().Free()
+		iter.Next()
+	}
+	return ret, nil
+}
+
+// AddDroppingNode add a dropping node
+func (d *nodeDiskTable) AddDroppingNode(nodeID proto.NodeID) error {
+	key := nodeID.Encode()
+	return d.droppedNodeTbl.Put(kvstore.KV{Key: key, Value: uselessVal})
+}
+
+// DroppedNode finish dropping node and set status dropped
+func (d *nodeDiskTable) DroppedNode(nodeID proto.NodeID) error {
+	batch := d.nodeTbl.NewWriteBatch()
+	defer batch.Destroy()
+
+	key := nodeID.Encode()
+	value, err := d.nodeTbl.Get(key)
+	if err != nil {
+		return errors.Info(err, "get node failed").Detail(err)
+	}
+	info, err := d.rd.unmarshalNodeRecord(value)
+	if err != nil {
+		return errors.Info(err, "decode node failed").Detail(err)
+	}
+	nodeInfo := d.rd.nodeInfo(info)
+	nodeInfo.Status = proto.NodeStatusDropped
+	value, err = d.rd.marshalNodeRecord(info)
+	if err != nil {
+		return err
+	}
+	batch.PutCF(d.nodeTbl.GetCf(), key, value)
+
+	// delete dropping node
+	batch.DeleteCF(d.droppedNodeTbl.GetCf(), key)
+
+	return d.nodeTbl.DoBatch(batch)
+}
+
+// IsDroppingNode find a dropping node if exist
+func (d *nodeDiskTable) IsDroppingNode(nodeID proto.NodeID) (exist bool, err error) {
+	key := nodeID.Encode()
+	_, err = d.droppedNodeTbl.Get(key)
+	if err == kvstore.ErrNotFound {
+		err = nil
+		return
+	}
+	if err != nil {
+		return
+	}
+	exist = true
+	return
+}
+
+// UpdateNodeHostAndRack update node host and rack, and simultaneously updates the host and rack indexes of the disks
+func (d *nodeDiskTable) UpdateNodeHostAndRack(node clustermgr.NodeInfo, diskIDs []proto.DiskID) error {
+	nodeID := node.NodeID
+	host := node.Host
+	rack := node.Rack
+	key := nodeID.Encode()
+	v, err := d.nodeTbl.Get(key)
+	if err != nil {
+		return err
+	}
+	info, err := d.rd.unmarshalNodeRecord(v)
+	if err != nil {
+		return err
+	}
+	nodeInfo := d.rd.nodeInfo(info)
+	nodeInfo.Host = host
+	nodeInfo.Rack = rack
+	value, err := d.rd.marshalNodeRecord(info)
+	if err != nil {
+		return err
+	}
+
+	// update node info and delete old index and insert new index
+	// we put all these in a write batch
+	batch := d.nodeTbl.NewWriteBatch()
+	defer batch.Destroy()
+
+	batch.PutCF(d.nodeTbl.GetCf(), key, value)
+
+	for _, diskID := range diskIDs {
+		key = diskID.Encode()
+		value, err = d.diskTbl.Get(key)
+		if err != nil {
+			return errors.Info(err, "get disk failed").Detail(err)
+		}
+		info, err = d.rd.unmarshalDiskRecord(value)
+		if err != nil {
+			return errors.Info(err, "decode disk failed").Detail(err)
+		}
+		diskInfo := d.rd.diskInfo(info)
+
+		// generate old and new index key
+		oldIndexKey := ""
+		newIndexKey := ""
+		indexName := d.indexes[diskHostIndex].indexNames[0]
+		oldIndexKey += genIndexKey(indexName, diskInfo.Host)
+		oldIndexKey += diskID.ToString()
+		newIndexKey += genIndexKey(indexName, host)
+		newIndexKey += diskID.ToString()
+		batch.DeleteCF(d.indexes[diskHostIndex].tbl.GetCf(), []byte(oldIndexKey))
+		batch.PutCF(d.indexes[diskHostIndex].tbl.GetCf(), []byte(newIndexKey), key)
+
+		oldIndexKey = ""
+		newIndexKey = ""
+		indexName = d.indexes[diskIDCRACKIndex].indexNames[0]
+		oldIndexKey += genIndexKey(indexName, diskInfo.Idc)
+		newIndexKey += genIndexKey(indexName, diskInfo.Idc)
+		indexName = d.indexes[diskIDCRACKIndex].indexNames[1]
+		oldIndexKey += genIndexKey(indexName, diskInfo.Rack)
+		newIndexKey += genIndexKey(indexName, rack)
+		oldIndexKey += diskID.ToString()
+		newIndexKey += diskID.ToString()
+		batch.DeleteCF(d.indexes[diskIDCRACKIndex].tbl.GetCf(), []byte(oldIndexKey))
+		batch.PutCF(d.indexes[diskIDCRACKIndex].tbl.GetCf(), []byte(newIndexKey), key)
+	}
+
+	return d.nodeTbl.DoBatch(batch)
 }
 
 func genIndexKey(indexName string, indexValue interface{}) string {

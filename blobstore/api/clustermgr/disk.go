@@ -67,9 +67,9 @@ type DiskHeartBeatInfo struct {
 
 type DiskInfo struct {
 	ClusterID    proto.ClusterID  `json:"cluster_id"`
-	Idc          string           `json:"idc,omitempty"`
-	Rack         string           `json:"rack,omitempty"`
-	Host         string           `json:"host,omitempty"`
+	Idc          string           `json:"idc"`
+	Rack         string           `json:"rack"`
+	Host         string           `json:"host"`
 	Path         string           `json:"path"`
 	Status       proto.DiskStatus `json:"status"` // normal、broken、repairing、repaired、dropped
 	Readonly     bool             `json:"readonly"`

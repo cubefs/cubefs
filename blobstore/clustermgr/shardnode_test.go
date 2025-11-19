@@ -18,8 +18,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func TestShardNodeAdd(t *testing.T) {
@@ -29,10 +30,11 @@ func TestShardNodeAdd(t *testing.T) {
 	ctx := newCtx()
 	{
 		// add node
-		testShardNodeInfo.Rack = "testrack-" + strconv.Itoa(0)
-		testShardNodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(0)
-		testShardNodeInfo.Idc = testService.IDC[0]
-		nodeID, err := testClusterClient.AddShardNode(ctx, &testShardNodeInfo)
+		nodeInfo := testShardNodeInfo
+		nodeInfo.Rack = "testrack-" + strconv.Itoa(0)
+		nodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(0)
+		nodeInfo.Idc = testService.IDC[0]
+		nodeID, err := testClusterClient.AddShardNode(ctx, &nodeInfo)
 		require.NoError(t, err)
 		require.Equal(t, nodeID, proto.NodeID(1))
 
@@ -41,44 +43,44 @@ func TestShardNodeAdd(t *testing.T) {
 		require.Equal(t, ret.NodeID, proto.NodeID(1))
 
 		// duplicated case
-		nodeID, err = testClusterClient.AddShardNode(ctx, &testShardNodeInfo)
+		nodeID, err = testClusterClient.AddShardNode(ctx, &nodeInfo)
 		require.NoError(t, err)
 		require.Equal(t, nodeID, proto.NodeID(1))
 
-		testShardNodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(1)
-		testShardNodeInfo.Idc = "z4"
-		_, err = testClusterClient.AddShardNode(ctx, &testShardNodeInfo)
+		nodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(1)
+		nodeInfo.Idc = "z4"
+		_, err = testClusterClient.AddShardNode(ctx, &nodeInfo)
 		require.Error(t, err)
 
-		testShardNodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(2)
-		testShardNodeInfo.Idc = testService.IDC[0]
-		testShardNodeInfo.Role = proto.NodeRole(0)
-		_, err = testClusterClient.AddShardNode(ctx, &testShardNodeInfo)
+		nodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(2)
+		nodeInfo.Idc = testService.IDC[0]
+		nodeInfo.Role = proto.NodeRole(0)
+		_, err = testClusterClient.AddShardNode(ctx, &nodeInfo)
 		require.Error(t, err)
 
-		testShardNodeInfo.Role = proto.NodeRoleShardNode
-		testShardNodeInfo.ClusterID = proto.ClusterID(2)
-		_, err = testClusterClient.AddShardNode(ctx, &testShardNodeInfo)
+		nodeInfo.Role = proto.NodeRoleShardNode
+		nodeInfo.ClusterID = proto.ClusterID(2)
+		_, err = testClusterClient.AddShardNode(ctx, &nodeInfo)
 		require.Error(t, err)
 
 		// add node without changing ip and port
-		testShardNodeInfo.ClusterID = proto.ClusterID(1)
-		testShardNodeInfo.Rack = "testrack-" + strconv.Itoa(0)
-		testShardNodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(0)
-		testShardNodeInfo.Idc = testService.IDC[0]
-		nodeID, err = testClusterClient.AddShardNode(ctx, &testShardNodeInfo)
+		nodeInfo.ClusterID = proto.ClusterID(1)
+		nodeInfo.Rack = "testrack-" + strconv.Itoa(0)
+		nodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(0)
+		nodeInfo.Idc = testService.IDC[0]
+		nodeID, err = testClusterClient.AddShardNode(ctx, &nodeInfo)
 		require.NoError(t, err)
 		require.Equal(t, nodeID, proto.NodeID(1))
 
 		// invalid nodeRole
-		testShardNodeInfo.Role = proto.NodeRoleMax
-		_, err = testClusterClient.AddShardNode(ctx, &testShardNodeInfo)
+		nodeInfo.Role = proto.NodeRoleMax
+		_, err = testClusterClient.AddShardNode(ctx, &nodeInfo)
 		require.Error(t, err)
 
 		// invalid diskType
-		testShardNodeInfo.Role = proto.NodeRoleShardNode
-		testShardNodeInfo.DiskType = proto.DiskTypeMax
-		_, err = testClusterClient.AddShardNode(ctx, &testShardNodeInfo)
+		nodeInfo.Role = proto.NodeRoleShardNode
+		nodeInfo.DiskType = proto.DiskTypeMax
+		_, err = testClusterClient.AddShardNode(ctx, &nodeInfo)
 		require.Error(t, err)
 	}
 }

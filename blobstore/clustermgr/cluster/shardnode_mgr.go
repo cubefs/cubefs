@@ -70,19 +70,13 @@ func NewShardNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg D
 		return nil, errors.New("idc can not be nil")
 	}
 
-	diskTbl, err := normaldb.OpenShardNodeDiskTable(db, cfg.EnsureIndex)
+	nodeDiskTbl, err := normaldb.OpenShardNodeDiskTable(db, cfg.EnsureIndex)
 	if err != nil {
 		return nil, errors.Info(err, "open disk table failed").Detail(err)
 	}
 
-	nodeTbl, err := normaldb.OpenShardNodeTable(db)
-	if err != nil {
-		return nil, errors.Info(err, "open node table failed").Detail(err)
-	}
-
 	sm := &ShardNodeManager{
-		diskTbl:         diskTbl,
-		nodeTbl:         nodeTbl,
+		nodeDiskTable:   nodeDiskTbl,
 		shardNodeClient: shardnode.New(cfg.ShardNodeConfig),
 	}
 
@@ -137,8 +131,7 @@ type AllocShardsPolicy struct {
 type ShardNodeManager struct {
 	*manager
 
-	diskTbl         *normaldb.ShardNodeDiskTable
-	nodeTbl         *normaldb.ShardNodeTable
+	nodeDiskTable   *normaldb.ShardNodeDiskTable
 	shardNodeClient ShardNodeAPI
 }
 
@@ -177,7 +170,7 @@ func (s *ShardNodeManager) ListDiskInfo(ctx context.Context, opt *clustermgr.Lis
 		opt.Count = defaultListDiskMaxCount
 	}
 
-	diskInfoDBs, err := s.diskTbl.ListDisk(opt)
+	diskInfoDBs, err := s.nodeDiskTable.ListDisk(opt)
 	if err != nil {
 		span.Error("shardNodeManager ListDiskInfo failed, err: %v", err)
 		return nil, 0, errors.Info(err, "shardNodeManager ListDiskInfo failed").Detail(err)
@@ -309,11 +302,11 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 		}
 		units = policy.RepairUnits
 		for idx, diskID := range ret {
-			disk, _ := s.getDisk(diskID)
-			disk.withRLocked(func() error {
-				host = disk.info.Host
-				return nil
-			})
+			disk, err_ := s.GetDiskInfo(ctx, diskID)
+			if err_ != nil {
+				return nil, nullDiskSetID, err_
+			}
+			host = disk.Host
 			suid := policy.Suids[idx]
 			suidIndexMap[suid] = idx
 			suidDiskMap[suid] = ret[idx]
@@ -344,11 +337,11 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 				return nil, nullDiskSetID, err
 			}
 			for diskIDIdx, suidIdx := range idcIndexes[idcIdx] {
-				disk, _ := s.getDisk(r.Disks[diskIDIdx])
-				disk.withRLocked(func() error {
-					host = disk.info.Host
-					return nil
-				})
+				disk, err_ := s.GetDiskInfo(ctx, r.Disks[diskIDIdx])
+				if err_ != nil {
+					return nil, nullDiskSetID, err_
+				}
+				host = disk.Host
 				suid := policy.Suids[suidIdx]
 				suidIndexMap[suid] = suidIdx
 				suidDiskMap[suid] = r.Disks[diskIDIdx]
@@ -365,11 +358,12 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 	wg := sync.WaitGroup{}
 	wg.Add(len(suidDiskMap))
 	for suid, diskID := range suidDiskMap {
-		disk, _ := s.getDisk(diskID)
-		disk.lock.RLock()
-		host := disk.info.Host
-		diskSetID := disk.info.DiskSetID
-		disk.lock.RUnlock()
+		disk, err_ := s.GetDiskInfo(ctx, diskID)
+		if err_ != nil {
+			return nil, nullDiskSetID, err_
+		}
+		host := disk.Host
+		diskSetID := disk.DiskSetID
 
 		go func(_suid proto.Suid, _diskID proto.DiskID) {
 			defer wg.Done()
@@ -411,15 +405,15 @@ func (s *ShardNodeManager) GetModuleName() string {
 }
 
 func (s *ShardNodeManager) LoadData(ctx context.Context) error {
-	diskDBs, err := s.diskTbl.GetAllDisks()
+	diskDBs, err := s.nodeDiskTable.GetAllDisks()
 	if err != nil {
 		return errors.Info(err, "get all disks failed").Detail(err)
 	}
-	droppingDiskDBs, err := s.diskTbl.GetAllDroppingDisk()
+	droppingDiskDBs, err := s.nodeDiskTable.GetAllDroppingDisk()
 	if err != nil {
 		return errors.Info(err, "get dropping disks failed").Detail(err)
 	}
-	nodeDBs, err := s.nodeTbl.GetAllNodes()
+	nodeDBs, err := s.nodeDiskTable.GetAllNodes()
 	if err != nil {
 		return errors.Info(err, "get all nodes failed").Detail(err)
 	}
@@ -464,13 +458,15 @@ func (s *ShardNodeManager) LoadData(ctx context.Context) error {
 			di.dropping = true
 		}
 		allDisks[info.DiskID] = di
-		if di.needFilter() {
-			s.hostPathFilter.Store(di.genFilterKey(), 1)
-		}
+		host := di.info.Host
 		ni, ok := s.getNode(info.NodeID)
 		if ok { // compatible case and not filter dropped disk to generate diskSet
 			s.topoMgr.AddDiskToDiskSet(ni.info.DiskType, ni.info.NodeSetID, di)
 			ni.disks[info.DiskID] = di
+			host = ni.info.Host
+		}
+		if di.needFilter() {
+			s.hostPathFilter.Store(di.genFilterKey(host), 1)
 		}
 		if info.DiskSetID > 0 && info.DiskSetID >= curDiskSetID {
 			curDiskSetID = info.DiskSetID
@@ -713,7 +709,7 @@ func (s *ShardNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.Sh
 	// calculate free and max chunk count
 	info.MaxShardCnt = int32(info.Size / proto.MaxShardSize)
 	info.FreeShardCnt = info.MaxShardCnt - info.UsedShardCnt
-	err = s.diskTbl.AddDisk(s.diskInfoToDiskInfoRecord(info))
+	err = s.nodeDiskTable.AddDisk(s.diskInfoToDiskInfoRecord(info))
 	if err != nil {
 		span.Error("ShardNodeManager.addDisk add disk failed: ", err)
 		return errors.Info(err, "ShardNodeManager.addDisk add disk failed").Detail(err)
@@ -726,15 +722,17 @@ func (s *ShardNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.Sh
 		expireTime:     time.Now().Add(time.Duration(s.cfg.HeartbeatExpireIntervalS) * time.Second),
 	}
 
+	var host string
 	node.withLocked(func() error {
 		node.disks[info.DiskID] = disk
+		host = node.info.Host
 		return nil
 	})
 	s.topoMgr.AddDiskToDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
 	s.metaLock.Lock()
 	s.allDisks[info.DiskID] = disk
 	s.metaLock.Unlock()
-	s.hostPathFilter.Store(disk.genFilterKey(), 1)
+	s.hostPathFilter.Store(disk.genFilterKey(host), 1)
 
 	return nil
 }
@@ -760,7 +758,7 @@ func (s *ShardNodeManager) applyAdminUpdateDisk(ctx context.Context, diskInfo *c
 			heartbeatInfo.FreeShardCnt = diskInfo.FreeShardCnt
 		}
 		diskRecord := s.diskInfoToDiskInfoRecord(&clustermgr.ShardNodeDiskInfo{DiskInfo: disk.info.DiskInfo, ShardNodeDiskHeartbeatInfo: *heartbeatInfo})
-		return s.diskTbl.UpdateDisk(diskInfo.DiskID, diskRecord)
+		return s.nodeDiskTable.UpdateDisk(diskInfo.DiskID, diskRecord)
 	})
 }
 
@@ -857,32 +855,32 @@ func (s *ShardNodeManager) nodeInfoToNodeInfoRecord(info *clustermgr.ShardNodeIn
 type shardNodePersistentHandler = ShardNodeManager
 
 func (s *shardNodePersistentHandler) updateDiskNoLocked(di *diskItem) error {
-	return s.diskTbl.UpdateDisk(di.diskID, s.diskInfoToDiskInfoRecord(&clustermgr.ShardNodeDiskInfo{
+	return s.nodeDiskTable.UpdateDisk(di.diskID, s.diskInfoToDiskInfoRecord(&clustermgr.ShardNodeDiskInfo{
 		DiskInfo:                   di.info.DiskInfo,
 		ShardNodeDiskHeartbeatInfo: *di.info.extraInfo.(*clustermgr.ShardNodeDiskHeartbeatInfo),
 	}))
 }
 
 func (s *shardNodePersistentHandler) updateDiskStatusNoLocked(id proto.DiskID, status proto.DiskStatus) error {
-	return s.diskTbl.UpdateDiskStatus(id, status)
+	return s.nodeDiskTable.UpdateDiskStatus(id, status)
 }
 
 func (s *shardNodePersistentHandler) addDiskNoLocked(di *diskItem) error {
-	return s.diskTbl.AddDisk(s.diskInfoToDiskInfoRecord(&clustermgr.ShardNodeDiskInfo{
+	return s.nodeDiskTable.AddDisk(s.diskInfoToDiskInfoRecord(&clustermgr.ShardNodeDiskInfo{
 		DiskInfo:                   di.info.DiskInfo,
 		ShardNodeDiskHeartbeatInfo: *di.info.extraInfo.(*clustermgr.ShardNodeDiskHeartbeatInfo),
 	}))
 }
 
 func (s *shardNodePersistentHandler) updateNodeNoLocked(n *nodeItem) error {
-	return s.nodeTbl.UpdateNode(s.nodeInfoToNodeInfoRecord(&clustermgr.ShardNodeInfo{
+	return s.nodeDiskTable.UpdateNode(s.nodeInfoToNodeInfoRecord(&clustermgr.ShardNodeInfo{
 		NodeInfo:           n.info.NodeInfo,
 		ShardNodeExtraInfo: n.info.extraInfo.(clustermgr.ShardNodeExtraInfo),
 	}))
 }
 
 func (s *shardNodePersistentHandler) addDroppingDisk(id proto.DiskID) error {
-	return s.diskTbl.AddDroppingDisk(id)
+	return s.nodeDiskTable.AddDroppingDisk(id)
 }
 
 func (s *shardNodePersistentHandler) addDroppingNode(id proto.NodeID) error {
@@ -890,7 +888,7 @@ func (s *shardNodePersistentHandler) addDroppingNode(id proto.NodeID) error {
 }
 
 func (s *shardNodePersistentHandler) isDroppingDisk(id proto.DiskID) (bool, error) {
-	return s.diskTbl.IsDroppingDisk(id)
+	return s.nodeDiskTable.IsDroppingDisk(id)
 }
 
 func (b *shardNodePersistentHandler) isDroppingNode(id proto.NodeID) (bool, error) {
@@ -898,10 +896,14 @@ func (b *shardNodePersistentHandler) isDroppingNode(id proto.NodeID) (bool, erro
 }
 
 func (s *shardNodePersistentHandler) droppedDisk(id proto.DiskID) error {
-	return s.diskTbl.DroppedDisk(id)
+	return s.nodeDiskTable.DroppedDisk(id)
 }
 
 func (s *shardNodePersistentHandler) droppedNode(id proto.NodeID) error {
+	return nil
+}
+
+func (s *shardNodePersistentHandler) updateNodeHostAndRack(nodeInfo clustermgr.NodeInfo, diskIDs []proto.DiskID) error {
 	return nil
 }
 

@@ -49,6 +49,7 @@ type diskItemInfo struct {
 	extraInfo interface{}
 }
 
+// Do not use the Idc/Host/Rack fields from diskItemInfo; instead, use the fields from the node.
 type diskItem struct {
 	diskID         proto.DiskID
 	info           diskItemInfo
@@ -95,8 +96,8 @@ func (d *diskItem) needFilter() bool {
 	return d.info.Status != proto.DiskStatusRepaired && d.info.Status != proto.DiskStatusDropped
 }
 
-func (d *diskItem) genFilterKey() string {
-	return d.info.Host + d.info.Path
+func (d *diskItem) genFilterKey(host string) string {
+	return host + d.info.Path
 }
 
 func (d *diskItem) withRLocked(f func() error) error {

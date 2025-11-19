@@ -158,7 +158,7 @@ func (b *BlobNodeManager) checkDroppingNode(ctx context.Context) {
 	}
 
 	span := trace.SpanFromContextSafe(ctx)
-	droppingNodeDBs, err := b.nodeTbl.GetAllDroppingNode()
+	droppingNodeDBs, err := b.nodeDiskTable.GetAllDroppingNode()
 	if err != nil {
 		span.Warnf("get dropping nodes failed:%v", err)
 		return

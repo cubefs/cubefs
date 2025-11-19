@@ -637,17 +637,19 @@ func TestAllocWithDiffRack(t *testing.T) {
 		testDiskMgr.metaLock.RLock()
 		for i := 1; i <= 8; i++ {
 			diskItem := testDiskMgr.allDisks[proto.DiskID(i)]
-			diskItem.lock.Lock()
-			diskItem.info.Host = "test-host-" + strconv.Itoa(i)
-			diskItem.info.Rack = "test-rack-" + strconv.Itoa(i)
-			diskItem.lock.Unlock()
+			nodeItem := testDiskMgr.allNodes[diskItem.info.NodeID]
+			nodeItem.lock.Lock()
+			nodeItem.info.Host = "test-host-" + strconv.Itoa(i)
+			nodeItem.info.Rack = "test-rack-" + strconv.Itoa(i)
+			nodeItem.lock.Unlock()
 		}
 		for i := 9; i <= 10; i++ {
 			diskItem := testDiskMgr.allDisks[proto.DiskID(i)]
-			diskItem.lock.Lock()
-			diskItem.info.Host = "test-host-" + strconv.Itoa(i)
-			diskItem.info.Rack = "test-rack-8"
-			diskItem.lock.Unlock()
+			nodeItem := testDiskMgr.allNodes[diskItem.info.NodeID]
+			nodeItem.lock.Lock()
+			nodeItem.info.Host = "test-host-" + strconv.Itoa(i)
+			nodeItem.info.Rack = "test-rack-8"
+			nodeItem.lock.Unlock()
 		}
 		testDiskMgr.metaLock.RUnlock()
 		testDiskMgr.cfg.HostAware = true
@@ -707,10 +709,11 @@ func TestAllocWithDiffHost(t *testing.T) {
 		testDiskMgr.metaLock.RLock()
 		for i := 1; i <= 10; i++ {
 			diskItem := testDiskMgr.allDisks[proto.DiskID(i)]
-			diskItem.lock.Lock()
-			diskItem.info.Host = "test-host-" + strconv.Itoa(i)
-			diskItem.info.Rack = "test-rack-" + strconv.Itoa(i)
-			diskItem.lock.Unlock()
+			nodeItem := testDiskMgr.allNodes[diskItem.info.NodeID]
+			nodeItem.lock.Lock()
+			nodeItem.info.Host = "test-host-" + strconv.Itoa(i)
+			nodeItem.info.Rack = "test-rack-" + strconv.Itoa(i)
+			nodeItem.lock.Unlock()
 		}
 		testDiskMgr.metaLock.RUnlock()
 		testDiskMgr.cfg.HostAware = true
@@ -769,17 +772,19 @@ func TestAllocWithDiffRackAndSameHost(t *testing.T) {
 		testDiskMgr.metaLock.RLock()
 		for i := 1; i <= 8; i++ {
 			diskItem := testDiskMgr.allDisks[proto.DiskID(i)]
-			diskItem.lock.Lock()
-			diskItem.info.Host = "test-host-" + strconv.Itoa(i)
-			diskItem.info.Rack = "test-rack-" + strconv.Itoa(i)
-			diskItem.lock.Unlock()
+			nodeItem := testDiskMgr.allNodes[diskItem.info.NodeID]
+			nodeItem.lock.Lock()
+			nodeItem.info.Host = "test-host-" + strconv.Itoa(i)
+			nodeItem.info.Rack = "test-rack-" + strconv.Itoa(i)
+			nodeItem.lock.Unlock()
 		}
 		for i := 9; i <= 10; i++ {
 			diskItem := testDiskMgr.allDisks[proto.DiskID(i)]
-			diskItem.lock.Lock()
-			diskItem.info.Host = "test-host-" + strconv.Itoa(i)
-			diskItem.info.Rack = "test-rack-8"
-			diskItem.lock.Unlock()
+			nodeItem := testDiskMgr.allNodes[diskItem.info.NodeID]
+			nodeItem.lock.Lock()
+			nodeItem.info.Host = "test-host-" + strconv.Itoa(i)
+			nodeItem.info.Rack = "test-rack-8"
+			nodeItem.lock.Unlock()
 		}
 
 		testDiskMgr.metaLock.RUnlock()

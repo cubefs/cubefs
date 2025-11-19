@@ -96,6 +96,20 @@ func (mr *MockShardNodeManagerAPIMockRecorder) AllocShards(arg0, arg1 interface{
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocShards", reflect.TypeOf((*MockShardNodeManagerAPI)(nil).AllocShards), arg0, arg1)
 }
 
+// AllowNodeIPChange mocks base method.
+func (m *MockShardNodeManagerAPI) AllowNodeIPChange(arg0 context.Context, arg1 *clustermgr.NodeInfo) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AllowNodeIPChange", arg0, arg1)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// AllowNodeIPChange indicates an expected call of AllowNodeIPChange.
+func (mr *MockShardNodeManagerAPIMockRecorder) AllowNodeIPChange(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllowNodeIPChange", reflect.TypeOf((*MockShardNodeManagerAPI)(nil).AllowNodeIPChange), arg0, arg1)
+}
+
 // CheckDiskInfoDuplicated mocks base method.
 func (m *MockShardNodeManagerAPI) CheckDiskInfoDuplicated(arg0 context.Context, arg1 proto.DiskID, arg2 *clustermgr.DiskInfo, arg3 *clustermgr.NodeInfo) error {
 	m.ctrl.T.Helper()
@@ -410,6 +424,20 @@ func (m *MockShardNodeManagerAPI) updateDiskStatusNoLocked(arg0 proto.DiskID, ar
 func (mr *MockShardNodeManagerAPIMockRecorder) updateDiskStatusNoLocked(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "updateDiskStatusNoLocked", reflect.TypeOf((*MockShardNodeManagerAPI)(nil).updateDiskStatusNoLocked), arg0, arg1)
+}
+
+// updateNodeHostAndRack mocks base method.
+func (m *MockShardNodeManagerAPI) updateNodeHostAndRack(arg0 clustermgr.NodeInfo, arg1 []proto.DiskID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "updateNodeHostAndRack", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// updateNodeHostAndRack indicates an expected call of updateNodeHostAndRack.
+func (mr *MockShardNodeManagerAPIMockRecorder) updateNodeHostAndRack(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "updateNodeHostAndRack", reflect.TypeOf((*MockShardNodeManagerAPI)(nil).updateNodeHostAndRack), arg0, arg1)
 }
 
 // updateNodeNoLocked mocks base method.

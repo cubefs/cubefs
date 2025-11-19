@@ -96,6 +96,20 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) AllocNodeID(arg0 interface{}) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocNodeID", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).AllocNodeID), arg0)
 }
 
+// AllowNodeIPChange mocks base method.
+func (m *MockBlobNodeManagerAPI) AllowNodeIPChange(arg0 context.Context, arg1 *clustermgr.NodeInfo) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AllowNodeIPChange", arg0, arg1)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// AllowNodeIPChange indicates an expected call of AllowNodeIPChange.
+func (mr *MockBlobNodeManagerAPIMockRecorder) AllowNodeIPChange(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllowNodeIPChange", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).AllowNodeIPChange), arg0, arg1)
+}
+
 // CheckDiskInfoDuplicated mocks base method.
 func (m *MockBlobNodeManagerAPI) CheckDiskInfoDuplicated(arg0 context.Context, arg1 proto.DiskID, arg2 *clustermgr.DiskInfo, arg3 *clustermgr.NodeInfo) error {
 	m.ctrl.T.Helper()
@@ -410,6 +424,20 @@ func (m *MockBlobNodeManagerAPI) updateDiskStatusNoLocked(arg0 proto.DiskID, arg
 func (mr *MockBlobNodeManagerAPIMockRecorder) updateDiskStatusNoLocked(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "updateDiskStatusNoLocked", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).updateDiskStatusNoLocked), arg0, arg1)
+}
+
+// updateNodeHostAndRack mocks base method.
+func (m *MockBlobNodeManagerAPI) updateNodeHostAndRack(arg0 clustermgr.NodeInfo, arg1 []proto.DiskID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "updateNodeHostAndRack", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// updateNodeHostAndRack indicates an expected call of updateNodeHostAndRack.
+func (mr *MockBlobNodeManagerAPIMockRecorder) updateNodeHostAndRack(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "updateNodeHostAndRack", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).updateNodeHostAndRack), arg0, arg1)
 }
 
 // updateNodeNoLocked mocks base method.

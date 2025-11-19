@@ -549,12 +549,7 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 		return err
 	}
 
-	nodeTable, err := normaldb.OpenBlobNodeTable(normalDB)
-	if err != nil {
-		return err
-	}
-
-	diskTable, err := normaldb.OpenBlobNodeDiskTable(normalDB, true)
+	nodeDiskTable, err := normaldb.OpenBlobNodeDiskTable(normalDB, true)
 	if err != nil {
 		return err
 	}
@@ -598,11 +593,11 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 			dr.Idc = "z2"
 			nr.Idc = "z2"
 		}
-		err := diskTable.AddDisk(dr)
+		err = nodeDiskTable.AddDisk(dr)
 		if err != nil {
 			return err
 		}
-		err = nodeTable.UpdateNode(nr)
+		err = nodeDiskTable.UpdateNode(nr)
 		if err != nil {
 			return err
 		}

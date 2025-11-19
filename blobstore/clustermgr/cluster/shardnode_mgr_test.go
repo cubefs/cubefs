@@ -238,7 +238,7 @@ func TestShardNode_AdminUpdateDisk(t *testing.T) {
 	require.Equal(t, heartbeatInfo.FreeShardCnt, diskInfo.FreeShardCnt)
 	require.Equal(t, diskItem.info.Status, diskInfo.Status)
 
-	diskRecord, err := shardNodeMgr.diskTbl.GetDisk(diskInfo.DiskID)
+	diskRecord, err := shardNodeMgr.nodeDiskTable.GetDisk(diskInfo.DiskID)
 	require.NoError(t, err)
 	require.Equal(t, diskRecord.Status, diskInfo.Status)
 	require.Equal(t, diskRecord.MaxShardCnt, diskInfo.MaxShardCnt)
@@ -277,9 +277,9 @@ func TestShardNode_LoadData(t *testing.T) {
 			DiskType:  proto.DiskTypeNVMeSSD,
 		},
 	}
-	nodeTbl, err := normaldb.OpenShardNodeTable(testDB)
+	nodeDiskTbl, err := normaldb.OpenShardNodeDiskTable(testDB, true)
 	require.NoError(t, err)
-	err = nodeTbl.UpdateNode(&nr)
+	err = nodeDiskTbl.UpdateNode(&nr)
 	require.NoError(t, err)
 	nodeInfoRecord := normaldb.ShardNodeDiskInfoRecord{
 		DiskInfoRecord: normaldb.DiskInfoRecord{
@@ -291,9 +291,7 @@ func TestShardNode_LoadData(t *testing.T) {
 			Status:    proto.DiskStatusRepaired,
 		},
 	}
-	diskTbl, err := normaldb.OpenShardNodeDiskTable(testDB, true)
-	require.NoError(t, err)
-	err = diskTbl.AddDisk(&nodeInfoRecord)
+	err = nodeDiskTbl.AddDisk(&nodeInfoRecord)
 	require.NoError(t, err)
 	shardNodeMgr, err := NewShardNodeMgr(testMockScopeMgr, testDB, testShardNodeMgrConfig)
 	require.NoError(t, err)

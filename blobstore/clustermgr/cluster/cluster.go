@@ -99,6 +99,7 @@ type NodeManagerAPI interface {
 	// ValidateNodeInfo validate node info and return any validation error when validate fail
 	ValidateNodeInfo(ctx context.Context, info *clustermgr.NodeInfo) error
 	CheckNodeInfoDuplicated(ctx context.Context, info *clustermgr.NodeInfo) (proto.NodeID, bool)
+	AllowNodeIPChange(ctx context.Context, info *clustermgr.NodeInfo) bool
 	RefreshExpireTime()
 }
 
@@ -113,12 +114,8 @@ type persistentHandler interface {
 	isDroppingNode(id proto.NodeID) (bool, error)
 	droppedDisk(id proto.DiskID) error
 	droppedNode(id proto.NodeID) error
+	updateNodeHostAndRack(nodeInfo clustermgr.NodeInfo, diskIDs []proto.DiskID) error
 }
-
-//type Module struct {
-//	blobNodeMgr  *BlobNodeManager
-//	shardNodeMgr *ShardNodeManager
-//}
 
 type HeartbeatEvent struct {
 	DiskID  proto.DiskID
@@ -137,6 +134,7 @@ type DiskMgrConfig struct {
 	AllocTolerateBuffer      int64               `json:"alloc_tolerate_buffer"`
 	EnsureIndex              bool                `json:"ensure_index"`
 	ReservedSpace            int64               `json:"reserved_space"`
+	EnableNodeIPChange       bool                `json:"enable_node_ip_change"`
 	IDC                      []string            `json:"-"`
 	CodeModes                []codemode.CodeMode `json:"-"`
 	ChunkSize                int64               `json:"-"`
@@ -235,9 +233,9 @@ func (d *manager) CheckDiskInfoDuplicated(ctx context.Context, diskID proto.Disk
 		return apierrors.ErrExist
 	}
 	disk := &diskItem{
-		info: diskItemInfo{DiskInfo: clustermgr.DiskInfo{Host: nodeInfo.Host, Path: diskInfo.Path}},
+		info: diskItemInfo{DiskInfo: clustermgr.DiskInfo{Path: diskInfo.Path}},
 	}
-	if _, ok = d.hostPathFilter.Load(disk.genFilterKey()); ok {
+	if _, ok = d.hostPathFilter.Load(disk.genFilterKey(nodeInfo.Host)); ok {
 		span.Warn("host and path duplicated")
 		return apierrors.ErrIllegalArguments
 	}
@@ -345,11 +343,19 @@ func (d *manager) applySetStatus(ctx context.Context, id proto.DiskID, status pr
 
 	// Call getNode outside disk lock, avoid nested meta and disk lock
 	nodeID := proto.InvalidNodeID
+	host := ""
 	disk.withRLocked(func() error {
 		nodeID = disk.info.NodeID
+		host = disk.info.Host
 		return nil
 	})
 	node, nodeExist := d.getNode(nodeID)
+	if nodeExist {
+		node.withRLocked(func() error {
+			host = node.info.Host
+			return nil
+		})
+	}
 
 	return disk.withLocked(func() error {
 		// concurrent double check
@@ -369,7 +375,7 @@ func (d *manager) applySetStatus(ctx context.Context, id proto.DiskID, status pr
 		}
 		disk.info.Status = status
 		if !disk.needFilter() {
-			d.hostPathFilter.Delete(disk.genFilterKey())
+			d.hostPathFilter.Delete(disk.genFilterKey(host))
 		}
 		if nodeExist && !disk.needFilter() { // compatible case && diskRepaired
 			d.topoMgr.RemoveDiskFromDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
@@ -505,6 +511,33 @@ func (d *manager) CheckNodeInfoDuplicated(ctx context.Context, info *clustermgr.
 	return proto.InvalidNodeID, false
 }
 
+func (d *manager) AllowNodeIPChange(ctx context.Context, info *clustermgr.NodeInfo) bool {
+	// node ip change cfg is disabled
+	if !d.cfg.EnableNodeIPChange {
+		return false
+	}
+	oldNodeItem, ok := d.getNode(info.NodeID)
+	if !ok {
+		return false
+	}
+	// only host and rack can change
+	var (
+		dropping    bool
+		oldNodeInfo clustermgr.NodeInfo
+	)
+	oldNodeItem.withRLocked(func() error {
+		oldNodeInfo = oldNodeItem.info.NodeInfo
+		dropping = oldNodeItem.dropping
+		return nil
+	})
+	oldNodeInfo.Host = info.Host
+	oldNodeInfo.Rack = info.Rack
+	if oldNodeInfo != *info || oldNodeInfo.Status == proto.NodeStatusDropped || dropping {
+		return false
+	}
+	return true
+}
+
 func (d *manager) ValidateNodeInfo(ctx context.Context, info *clustermgr.NodeInfo) error {
 	if !info.Role.IsValid() {
 		return apierrors.ErrIllegalArguments
@@ -558,8 +591,8 @@ func (d *manager) applyAddNode(ctx context.Context, info interface{}) error {
 	// add node to nodeTbl and nodeSet
 	err := d.persistentHandler.updateNodeNoLocked(ni)
 	if err != nil {
-		span.Error("ShardNodeManager.addNode add node failed: ", err)
-		return errors.Info(err, "ShardNodeManager.addNode add node failed").Detail(err)
+		span.Error("addNode add node failed: ", err)
+		return errors.Info(err, "addNode add node failed").Detail(err)
 	}
 
 	d.topoMgr.AddNodeToNodeSet(ni)
@@ -567,6 +600,61 @@ func (d *manager) applyAddNode(ctx context.Context, info interface{}) error {
 	d.allNodes[nodeInfo.NodeID] = ni
 	d.metaLock.Unlock()
 	d.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
+
+	return nil
+}
+
+// applyUpdateNode update node host and rack info with nodeID
+func (d *manager) applyUpdateNode(ctx context.Context, info interface{}) error {
+	span := trace.SpanFromContextSafe(ctx)
+	var nodeInfo clustermgr.NodeInfo
+	blobNodeInfo, isBlobNode := info.(*clustermgr.BlobNodeInfo)
+	if isBlobNode {
+		nodeInfo = blobNodeInfo.NodeInfo
+	}
+
+	ni, ok := d.getNode(nodeInfo.NodeID)
+	if !ok {
+		return ErrNodeNotExist
+	}
+
+	var (
+		diskIDs   []proto.DiskID
+		diskItems []*diskItem
+		oldHost   string
+	)
+	ni.withRLocked(func() error {
+		diskIDs = make([]proto.DiskID, 0, len(ni.disks))
+		for _, disk := range ni.disks {
+			diskIDs = append(diskIDs, disk.diskID)
+		}
+		return nil
+	})
+	// update node to nodeTbl and disk index
+	err := d.persistentHandler.updateNodeHostAndRack(nodeInfo, diskIDs)
+	if err != nil {
+		span.Error("update node tbl failed: ", err)
+		return errors.Info(err, "update node tbl failed").Detail(err)
+	}
+
+	ni.withLocked(func() error {
+		for _, disk := range ni.disks {
+			diskItems = append(diskItems, disk)
+		}
+		oldHost = ni.info.Host
+		ni.info.Host = nodeInfo.Host
+		ni.info.Rack = nodeInfo.Rack
+		return nil
+	})
+	oldNode := &nodeItem{
+		info: nodeItemInfo{NodeInfo: clustermgr.NodeInfo{Host: oldHost, DiskType: nodeInfo.DiskType}},
+	}
+	d.hostPathFilter.Delete(oldNode.genFilterKey())
+	d.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
+	for _, disk := range diskItems {
+		d.hostPathFilter.Delete(disk.genFilterKey(oldHost))
+		d.hostPathFilter.Store(disk.genFilterKey(nodeInfo.Host), 1)
+	}
 
 	return nil
 }
@@ -813,18 +901,18 @@ func (d *manager) getDiskType(disk *diskItem) proto.DiskType {
 
 func (d *manager) validateAllocRet(disks []proto.DiskID) error {
 	if d.cfg.HostAware {
-		selectedHost := make(map[string]bool)
+		selectedHost := make(map[proto.NodeID]bool)
 		for i := range disks {
 			disk, ok := d.getDisk(disks[i])
 			if !ok {
 				return errors.Info(ErrDiskNotExist, fmt.Sprintf("disk[%d]", disks[i])).Detail(ErrDiskNotExist)
 			}
 			disk.lock.RLock()
-			if selectedHost[disk.info.Host] {
+			if selectedHost[disk.info.NodeID] {
 				disk.lock.RUnlock()
 				return errors.New(fmt.Sprintf("duplicated host, selected disks: %v", disks))
 			}
-			selectedHost[disk.info.Host] = true
+			selectedHost[disk.info.NodeID] = true
 			disk.lock.RUnlock()
 		}
 		return nil

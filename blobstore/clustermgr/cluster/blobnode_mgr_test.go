@@ -361,7 +361,7 @@ func TestDiskMgr_AdminUpdateDisk(t *testing.T) {
 	require.Equal(t, heartbeatInfo.FreeChunkCnt, diskInfo.FreeChunkCnt)
 	require.Equal(t, diskItem.info.Status, diskInfo.Status)
 
-	diskRecord, err := testDiskMgr.diskTbl.GetDisk(diskInfo.DiskID)
+	diskRecord, err := testDiskMgr.nodeDiskTable.GetDisk(diskInfo.DiskID)
 	require.NoError(t, err)
 	require.Equal(t, diskRecord.Status, diskInfo.Status)
 	require.Equal(t, diskRecord.MaxChunkCnt, diskInfo.MaxChunkCnt)
@@ -401,9 +401,9 @@ func TestLoadData(t *testing.T) {
 			DiskType:  proto.DiskTypeHDD,
 		},
 	}
-	nodeTbl, err := normaldb.OpenBlobNodeTable(testDB)
+	nodeDiskTbl, err := normaldb.OpenBlobNodeDiskTable(testDB, true)
 	require.NoError(t, err)
-	err = nodeTbl.UpdateNode(&nr)
+	err = nodeDiskTbl.UpdateNode(&nr)
 	require.NoError(t, err)
 	blobNodeInfoRecord := normaldb.BlobNodeDiskInfoRecord{
 		DiskInfoRecord: normaldb.DiskInfoRecord{
@@ -415,9 +415,7 @@ func TestLoadData(t *testing.T) {
 			Status:    proto.DiskStatusRepaired,
 		},
 	}
-	diskTbl, err := normaldb.OpenBlobNodeDiskTable(testDB, true)
-	require.NoError(t, err)
-	err = diskTbl.AddDisk(&blobNodeInfoRecord)
+	err = nodeDiskTbl.AddDisk(&blobNodeInfoRecord)
 	require.NoError(t, err)
 	blobNodeMgr, err := NewBlobNodeMgr(testMockScopeMgr, testDB, testDiskMgrConfig)
 	require.NoError(t, err)
@@ -431,8 +429,7 @@ func TestLoadData(t *testing.T) {
 			taskPool: base.NewTaskDistribution(int(testDiskMgrConfig.ApplyConcurrency), 1),
 			cfg:      testDiskMgrConfig,
 		},
-		diskTbl:        diskTbl,
-		nodeTbl:        nodeTbl,
+		nodeDiskTable:  nodeDiskTbl,
 		blobNodeClient: blobnode.New(&testDiskMgrConfig.BlobNodeConfig),
 	}
 	err = bm.LoadData(ctx)

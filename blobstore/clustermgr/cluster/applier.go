@@ -32,6 +32,7 @@ const (
 	OperTypeAddNode
 	OperTypeDroppingNode
 	OperTypeDroppedNode
+	OperTypeUpdateNode
 )
 
 const synchronizedDiskID = 1

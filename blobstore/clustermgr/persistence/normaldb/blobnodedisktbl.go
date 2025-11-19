@@ -19,11 +19,14 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
+
+type BlobNodeInfoRecord struct {
+	NodeInfoRecord
+}
 
 type BlobNodeDiskInfoRecord struct {
 	DiskInfoRecord
@@ -41,7 +44,9 @@ func OpenBlobNodeDiskTable(db kvstore.KVStore, ensureIndex bool) (*BlobNodeDiskT
 		return nil, errors.New("OpenBlobNodeDiskTable failed: db is nil")
 	}
 	table := &BlobNodeDiskTable{
-		diskTable: &diskTable{
+		nodeDiskTable: &nodeDiskTable{
+			nodeTbl:        db.Table(nodeCF),
+			droppedNodeTbl: db.Table(nodeDropCF),
 			diskTbl:        db.Table(diskCF),
 			droppedDiskTbl: db.Table(diskDropCF),
 			indexes: map[string]indexItem{
@@ -52,7 +57,7 @@ func OpenBlobNodeDiskTable(db kvstore.KVStore, ensureIndex bool) (*BlobNodeDiskT
 			},
 		},
 	}
-	table.diskTable.rd = table
+	table.nodeDiskTable.rd = table
 
 	// ensure index
 	if ensureIndex {
@@ -71,11 +76,11 @@ func OpenBlobNodeDiskTable(db kvstore.KVStore, ensureIndex bool) (*BlobNodeDiskT
 }
 
 type BlobNodeDiskTable struct {
-	diskTable *diskTable
+	nodeDiskTable *nodeDiskTable
 }
 
 func (b *BlobNodeDiskTable) GetDisk(diskID proto.DiskID) (info *BlobNodeDiskInfoRecord, err error) {
-	ret, err := b.diskTable.GetDisk(diskID)
+	ret, err := b.nodeDiskTable.GetDisk(diskID)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +89,7 @@ func (b *BlobNodeDiskTable) GetDisk(diskID proto.DiskID) (info *BlobNodeDiskInfo
 
 func (b *BlobNodeDiskTable) GetAllDisks() ([]*BlobNodeDiskInfoRecord, error) {
 	ret := make([]*BlobNodeDiskInfoRecord, 0)
-	err := b.diskTable.ListDisksByDiskTbl(0, 0, func(i interface{}) {
+	err := b.nodeDiskTable.ListDisksByDiskTbl(0, 0, func(i interface{}) {
 		ret = append(ret, i.(*BlobNodeDiskInfoRecord))
 	})
 	return ret, err
@@ -92,57 +97,112 @@ func (b *BlobNodeDiskTable) GetAllDisks() ([]*BlobNodeDiskInfoRecord, error) {
 
 func (b *BlobNodeDiskTable) ListDisk(opt *clustermgr.ListOptionArgs) ([]*BlobNodeDiskInfoRecord, error) {
 	ret := make([]*BlobNodeDiskInfoRecord, 0)
-	err := b.diskTable.ListDisk(opt, func(i interface{}) {
+	err := b.nodeDiskTable.ListDisk(opt, func(i interface{}) {
 		ret = append(ret, i.(*BlobNodeDiskInfoRecord))
 	})
 	return ret, err
 }
 
 func (b *BlobNodeDiskTable) AddDisk(disk *BlobNodeDiskInfoRecord) error {
-	return b.diskTable.AddDisk(disk.DiskID, disk)
+	return b.nodeDiskTable.AddDisk(disk.DiskID, disk)
 }
 
 func (b *BlobNodeDiskTable) UpdateDisk(diskID proto.DiskID, disk *BlobNodeDiskInfoRecord) error {
-	return b.diskTable.UpdateDisk(diskID, disk)
+	return b.nodeDiskTable.UpdateDisk(diskID, disk)
 }
 
 func (b *BlobNodeDiskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatus) error {
-	return b.diskTable.UpdateDiskStatus(diskID, status)
+	return b.nodeDiskTable.UpdateDiskStatus(diskID, status)
 }
 
 // GetAllDroppingDisk return all drop disk in memory
 func (b *BlobNodeDiskTable) GetAllDroppingDisk() ([]proto.DiskID, error) {
-	return b.diskTable.GetAllDroppingDisk()
+	return b.nodeDiskTable.GetAllDroppingDisk()
 }
 
 // AddDroppingDisk add a dropping disk
 func (b *BlobNodeDiskTable) AddDroppingDisk(diskID proto.DiskID) error {
-	return b.diskTable.AddDroppingDisk(diskID)
+	return b.nodeDiskTable.AddDroppingDisk(diskID)
 }
 
 // DroppedDisk finish dropping in a disk and set disk status dropped
 func (b *BlobNodeDiskTable) DroppedDisk(diskID proto.DiskID) error {
-	return b.diskTable.DroppedDisk(diskID)
+	return b.nodeDiskTable.DroppedDisk(diskID)
 }
 
 // IsDroppingDisk find a dropping disk if exist
 func (b *BlobNodeDiskTable) IsDroppingDisk(diskID proto.DiskID) (exist bool, err error) {
-	return b.diskTable.IsDroppingDisk(diskID)
+	return b.nodeDiskTable.IsDroppingDisk(diskID)
 }
 
-func (b *BlobNodeDiskTable) unmarshalRecord(data []byte) (interface{}, error) {
+func (b *BlobNodeDiskTable) GetAllNodes() ([]*BlobNodeInfoRecord, error) {
+	ret := make([]*BlobNodeInfoRecord, 0)
+	err := b.nodeDiskTable.GetAllNodes(func(i interface{}) {
+		ret = append(ret, i.(*BlobNodeInfoRecord))
+	})
+	return ret, err
+}
+
+func (b *BlobNodeDiskTable) UpdateNode(info *BlobNodeInfoRecord) error {
+	return b.nodeDiskTable.UpdateNode(info.NodeID, info)
+}
+
+// GetAllDroppingNode return all drop node in memory
+func (b *BlobNodeDiskTable) GetAllDroppingNode() ([]proto.NodeID, error) {
+	return b.nodeDiskTable.GetAllDroppingNode()
+}
+
+// AddDroppingNode add a dropping node
+func (b *BlobNodeDiskTable) AddDroppingNode(nodeID proto.NodeID) error {
+	return b.nodeDiskTable.AddDroppingNode(nodeID)
+}
+
+// DroppedNode finish dropping node and set status dropped
+func (b *BlobNodeDiskTable) DroppedNode(nodeID proto.NodeID) error {
+	return b.nodeDiskTable.DroppedNode(nodeID)
+}
+
+// IsDroppingNode find a dropping node if exist
+func (b *BlobNodeDiskTable) IsDroppingNode(nodeID proto.NodeID) (exist bool, err error) {
+	return b.nodeDiskTable.IsDroppingNode(nodeID)
+}
+
+// UpdateNodeHostAndRack update node host and rack
+func (b *BlobNodeDiskTable) UpdateNodeHostAndRack(nodeInfo clustermgr.NodeInfo, diskIDs []proto.DiskID) error {
+	return b.nodeDiskTable.UpdateNodeHostAndRack(nodeInfo, diskIDs)
+}
+
+func (b *BlobNodeDiskTable) unmarshalDiskRecord(data []byte) (interface{}, error) {
 	version := data[0]
 	if version == DiskInfoVersionNormal {
 		ret := &BlobNodeDiskInfoRecord{}
 		err := json.Unmarshal(data[1:], ret)
+		if err != nil {
+			return nil, err
+		}
 		ret.Version = version
-		return ret, err
+		// compatible case
+		n, err := b.nodeDiskTable.GetNode(ret.NodeID)
+		if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
+			return nil, err
+		}
+		if errors.Is(err, kvstore.ErrNotFound) {
+			return ret, nil
+		}
+		nodeInfo := n.(*BlobNodeInfoRecord)
+		ret.Idc = nodeInfo.Idc
+		ret.Rack = nodeInfo.Rack
+		ret.Host = nodeInfo.Host
+		return ret, nil
 	}
 	return nil, errors.New("invalid disk info version")
 }
 
-func (b *BlobNodeDiskTable) marshalRecord(v interface{}) ([]byte, error) {
-	info := v.(*BlobNodeDiskInfoRecord)
+func (b *BlobNodeDiskTable) marshalDiskRecord(v interface{}) ([]byte, error) {
+	info := *v.(*BlobNodeDiskInfoRecord)
+	if _, err := b.nodeDiskTable.GetNode(info.NodeID); err == nil { // compatible case
+		info.Idc, info.Rack, info.Host = "", "", ""
+	}
 	data, err := json.Marshal(info)
 	if err != nil {
 		return nil, err
@@ -157,4 +217,29 @@ func (b *BlobNodeDiskTable) diskID(i interface{}) proto.DiskID {
 
 func (b *BlobNodeDiskTable) diskInfo(i interface{}) *DiskInfoRecord {
 	return &i.(*BlobNodeDiskInfoRecord).DiskInfoRecord
+}
+
+func (b *BlobNodeDiskTable) unmarshalNodeRecord(data []byte) (interface{}, error) {
+	version := data[0]
+	if version == NodeInfoVersionNormal {
+		ret := &BlobNodeInfoRecord{}
+		err := json.Unmarshal(data[1:], ret)
+		ret.Version = version
+		return ret, err
+	}
+	return nil, errors.New("invalid node info version")
+}
+
+func (b *BlobNodeDiskTable) marshalNodeRecord(v interface{}) ([]byte, error) {
+	info := v.(*BlobNodeInfoRecord)
+	data, err := json.Marshal(info)
+	if err != nil {
+		return nil, err
+	}
+	data = append([]byte{info.Version}, data...)
+	return data, nil
+}
+
+func (b *BlobNodeDiskTable) nodeInfo(i interface{}) *NodeInfoRecord {
+	return &i.(*BlobNodeInfoRecord).NodeInfoRecord
 }

@@ -5,11 +5,15 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
+
+type ShardNodeInfoRecord struct {
+	NodeInfoRecord
+	RaftHost string `json:"raft_host"`
+}
 
 type ShardNodeDiskInfoRecord struct {
 	DiskInfoRecord
@@ -26,7 +30,8 @@ func OpenShardNodeDiskTable(db kvstore.KVStore, ensureIndex bool) (*ShardNodeDis
 		return nil, errors.New("OpenShardNodeDiskTable failed: db is nil")
 	}
 	table := &ShardNodeDiskTable{
-		diskTable: &diskTable{
+		nodeDiskTable: &nodeDiskTable{
+			nodeTbl:        db.Table(shardNodeCF),
 			diskTbl:        db.Table(shardNodeDiskCF),
 			droppedDiskTbl: db.Table(shardNodeDiskDropCF),
 			indexes: map[string]indexItem{
@@ -37,7 +42,7 @@ func OpenShardNodeDiskTable(db kvstore.KVStore, ensureIndex bool) (*ShardNodeDis
 			},
 		},
 	}
-	table.diskTable.rd = table
+	table.nodeDiskTable.rd = table
 
 	// ensure index
 	if ensureIndex {
@@ -56,11 +61,11 @@ func OpenShardNodeDiskTable(db kvstore.KVStore, ensureIndex bool) (*ShardNodeDis
 }
 
 type ShardNodeDiskTable struct {
-	diskTable *diskTable
+	nodeDiskTable *nodeDiskTable
 }
 
 func (b *ShardNodeDiskTable) GetDisk(diskID proto.DiskID) (info *ShardNodeDiskInfoRecord, err error) {
-	ret, err := b.diskTable.GetDisk(diskID)
+	ret, err := b.nodeDiskTable.GetDisk(diskID)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +74,7 @@ func (b *ShardNodeDiskTable) GetDisk(diskID proto.DiskID) (info *ShardNodeDiskIn
 
 func (b *ShardNodeDiskTable) GetAllDisks() ([]*ShardNodeDiskInfoRecord, error) {
 	ret := make([]*ShardNodeDiskInfoRecord, 0)
-	err := b.diskTable.ListDisksByDiskTbl(0, 0, func(i interface{}) {
+	err := b.nodeDiskTable.ListDisksByDiskTbl(0, 0, func(i interface{}) {
 		ret = append(ret, i.(*ShardNodeDiskInfoRecord))
 	})
 	return ret, err
@@ -77,57 +82,81 @@ func (b *ShardNodeDiskTable) GetAllDisks() ([]*ShardNodeDiskInfoRecord, error) {
 
 func (b *ShardNodeDiskTable) ListDisk(opt *clustermgr.ListOptionArgs) ([]*ShardNodeDiskInfoRecord, error) {
 	ret := make([]*ShardNodeDiskInfoRecord, 0)
-	err := b.diskTable.ListDisk(opt, func(i interface{}) {
+	err := b.nodeDiskTable.ListDisk(opt, func(i interface{}) {
 		ret = append(ret, i.(*ShardNodeDiskInfoRecord))
 	})
 	return ret, err
 }
 
 func (b *ShardNodeDiskTable) AddDisk(disk *ShardNodeDiskInfoRecord) error {
-	return b.diskTable.AddDisk(disk.DiskID, disk)
+	return b.nodeDiskTable.AddDisk(disk.DiskID, disk)
 }
 
 func (b *ShardNodeDiskTable) UpdateDisk(diskID proto.DiskID, disk *ShardNodeDiskInfoRecord) error {
-	return b.diskTable.UpdateDisk(diskID, disk)
+	return b.nodeDiskTable.UpdateDisk(diskID, disk)
 }
 
 func (b *ShardNodeDiskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatus) error {
-	return b.diskTable.UpdateDiskStatus(diskID, status)
+	return b.nodeDiskTable.UpdateDiskStatus(diskID, status)
 }
 
 // GetAllDroppingDisk return all drop disk in memory
 func (b *ShardNodeDiskTable) GetAllDroppingDisk() ([]proto.DiskID, error) {
-	return b.diskTable.GetAllDroppingDisk()
+	return b.nodeDiskTable.GetAllDroppingDisk()
 }
 
 // AddDroppingDisk add a dropping disk
 func (b *ShardNodeDiskTable) AddDroppingDisk(diskID proto.DiskID) error {
-	return b.diskTable.AddDroppingDisk(diskID)
+	return b.nodeDiskTable.AddDroppingDisk(diskID)
 }
 
 // DroppedDisk finish dropping in a disk
 func (b *ShardNodeDiskTable) DroppedDisk(diskID proto.DiskID) error {
-	return b.diskTable.DroppedDisk(diskID)
+	return b.nodeDiskTable.DroppedDisk(diskID)
 }
 
 // IsDroppingDisk find a dropping disk if exist
 func (b *ShardNodeDiskTable) IsDroppingDisk(diskID proto.DiskID) (exist bool, err error) {
-	return b.diskTable.IsDroppingDisk(diskID)
+	return b.nodeDiskTable.IsDroppingDisk(diskID)
 }
 
-func (b *ShardNodeDiskTable) unmarshalRecord(data []byte) (interface{}, error) {
+func (b *ShardNodeDiskTable) GetAllNodes() ([]*ShardNodeInfoRecord, error) {
+	ret := make([]*ShardNodeInfoRecord, 0)
+	err := b.nodeDiskTable.GetAllNodes(func(i interface{}) {
+		ret = append(ret, i.(*ShardNodeInfoRecord))
+	})
+	return ret, err
+}
+
+func (b *ShardNodeDiskTable) UpdateNode(info *ShardNodeInfoRecord) error {
+	return b.nodeDiskTable.UpdateNode(info.NodeID, info)
+}
+
+func (b *ShardNodeDiskTable) unmarshalDiskRecord(data []byte) (interface{}, error) {
 	version := data[0]
 	if version == DiskInfoVersionNormal {
 		ret := &ShardNodeDiskInfoRecord{}
 		err := json.Unmarshal(data[1:], ret)
+		if err != nil {
+			return nil, err
+		}
+		n, err := b.nodeDiskTable.GetNode(ret.NodeID)
+		if err != nil {
+			return nil, err
+		}
+		nodeInfo := n.(*ShardNodeInfoRecord)
+		ret.Idc = nodeInfo.Idc
+		ret.Rack = nodeInfo.Rack
+		ret.Host = nodeInfo.Host
 		ret.Version = version
-		return ret, err
+		return ret, nil
 	}
 	return nil, errors.New("invalid disk info version")
 }
 
-func (b *ShardNodeDiskTable) marshalRecord(v interface{}) ([]byte, error) {
-	info := v.(*ShardNodeDiskInfoRecord)
+func (b *ShardNodeDiskTable) marshalDiskRecord(v interface{}) ([]byte, error) {
+	info := *v.(*ShardNodeDiskInfoRecord)
+	info.Idc, info.Rack, info.Host = "", "", ""
 	data, err := json.Marshal(info)
 	if err != nil {
 		return nil, err
@@ -142,4 +171,29 @@ func (b *ShardNodeDiskTable) diskID(i interface{}) proto.DiskID {
 
 func (b *ShardNodeDiskTable) diskInfo(i interface{}) *DiskInfoRecord {
 	return &i.(*ShardNodeDiskInfoRecord).DiskInfoRecord
+}
+
+func (b *ShardNodeDiskTable) unmarshalNodeRecord(data []byte) (interface{}, error) {
+	version := data[0]
+	if version == NodeInfoVersionNormal {
+		ret := &ShardNodeInfoRecord{}
+		err := json.Unmarshal(data[1:], ret)
+		ret.Version = version
+		return ret, err
+	}
+	return nil, errors.New("invalid node info version")
+}
+
+func (b *ShardNodeDiskTable) marshalNodeRecord(v interface{}) ([]byte, error) {
+	info := v.(*ShardNodeInfoRecord)
+	data, err := json.Marshal(info)
+	if err != nil {
+		return nil, err
+	}
+	data = append([]byte{info.Version}, data...)
+	return data, nil
+}
+
+func (b *ShardNodeDiskTable) nodeInfo(i interface{}) *NodeInfoRecord {
+	return &i.(*ShardNodeInfoRecord).NodeInfoRecord
 }

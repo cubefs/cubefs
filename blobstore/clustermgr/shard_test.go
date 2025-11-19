@@ -296,12 +296,7 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 		return err
 	}
 
-	nodeTable, err := normaldb.OpenShardNodeTable(normalDB)
-	if err != nil {
-		return err
-	}
-
-	diskTable, err := normaldb.OpenShardNodeDiskTable(normalDB, true)
+	nodeDiskTable, err := normaldb.OpenShardNodeDiskTable(normalDB, true)
 	if err != nil {
 		return err
 	}
@@ -347,11 +342,11 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 			dr.Idc = "z2"
 			nr.Idc = "z2"
 		}
-		err := diskTable.AddDisk(dr)
+		err = nodeDiskTable.AddDisk(dr)
 		if err != nil {
 			return err
 		}
-		err = nodeTable.UpdateNode(nr)
+		err = nodeDiskTable.UpdateNode(nr)
 		if err != nil {
 			return err
 		}

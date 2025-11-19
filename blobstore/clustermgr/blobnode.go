@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -62,13 +63,23 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 		return
 	}
 
-	nodeID, err := s.BlobNodeMgr.AllocNodeID(ctx)
-	if err != nil {
-		span.Errorf("alloc node id failed =>", errors.Detail(err))
-		c.RespondError(err)
-		return
+	operType := cluster.OperTypeAddNode
+	if args.NodeID == proto.InvalidNodeID {
+		nodeID, err := s.BlobNodeMgr.AllocNodeID(ctx)
+		if err != nil {
+			span.Errorf("alloc node id failed =>", errors.Detail(err))
+			c.RespondError(err)
+			return
+		}
+		args.NodeID = nodeID
+	} else {
+		allow := s.BlobNodeMgr.AllowNodeIPChange(ctx, &args.NodeInfo)
+		if !allow {
+			c.RespondError(apierrors.ErrIllegalArguments)
+			return
+		}
+		operType = cluster.OperTypeUpdateNode
 	}
-	args.NodeID = nodeID
 
 	data, err := json.Marshal(args)
 	if err != nil {
@@ -76,14 +87,14 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeAddNode, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), int32(operType), data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
-	c.RespondJSON(&clustermgr.NodeIDAllocRet{NodeID: nodeID})
+	c.RespondJSON(&clustermgr.NodeIDAllocRet{NodeID: args.NodeID})
 }
 
 func (s *Service) NodeDrop(c *rpc.Context) {

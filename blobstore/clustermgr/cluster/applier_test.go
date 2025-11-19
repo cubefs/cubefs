@@ -152,7 +152,7 @@ func TestBlobNodeMgrApplier_Apply(t *testing.T) {
 		for i := 1; i <= 3; i++ {
 			info := testDiskInfo
 			info.DiskID = proto.DiskID(i)
-			info.Host = hostPrefix + strconv.Itoa(i)
+			info.Host = hostPrefix + strconv.Itoa(1)
 			info.NodeID = testNodeInfo.NodeID
 			operTypes = append(operTypes, OperTypeAddDisk)
 			data, err := json.Marshal(&info)
@@ -168,6 +168,19 @@ func TestBlobNodeMgrApplier_Apply(t *testing.T) {
 	// add node and disk must be applied firstly, because other operTypes depend on this.
 	err = testBlobNodeMgr.Apply(ctx, operTypes, datas, ctxs)
 	require.NoError(t, err)
+
+	// OperTypeUpdateNode
+	{
+		info := testNodeInfo
+		info.Host = "127.0.0.1:9110"
+		info.Rack = "newRack"
+		data, err := json.Marshal(&clustermgr.BlobNodeInfo{
+			NodeInfo: info,
+		})
+		require.NoError(t, err)
+		operTypes = append(operTypes, OperTypeUpdateNode)
+		datas = append(datas, data)
+	}
 
 	// OperTypeSetDiskStatus
 	{
@@ -240,7 +253,7 @@ func TestBlobNodeMgrApplier_Apply(t *testing.T) {
 	for i := 4; i <= 6; i++ {
 		info := testDiskInfo
 		info.DiskID = proto.DiskID(i)
-		info.Host = hostPrefix + strconv.Itoa(i)
+		info.Host = hostPrefix + strconv.Itoa(2)
 		info.NodeID = testNodeInfo.NodeID
 
 		operTypes = append(operTypes, OperTypeAddDisk)
