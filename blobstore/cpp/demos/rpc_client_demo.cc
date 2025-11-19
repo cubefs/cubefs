@@ -10,7 +10,9 @@
 
 #include "common/logger.h"
 #include "common/net/rpc_client.h"
+#include "common/net/rpc_stream.h"
 #include "demo.h"
+#include "proto/messages.pb.h"
 
 namespace bpo = boost::program_options;
 
@@ -67,7 +69,7 @@ seastar::future<> testKick(blobstore::net::RpcClient* client, const std::string&
     blobstore::Buffer content(4096);
     std::memset(content.get_write(), 'K', content.size());
     int kick = 1;
-    for (;; kick++) {
+    for (; kick < 10; kick++) {
         auto res = co_await client->MakeRpcClientContext(host, port);
         if (!res) {
             LOG_ERROR("testKick: make rpc client context error: {}", res);
@@ -112,6 +114,68 @@ seastar::future<> testKick(blobstore::net::RpcClient* client, const std::string&
     co_return;
 }
 
+seastar::future<> testStream(blobstore::net::RpcClient* client, const std::string& host,
+                             uint16_t port) {
+    proto::TestArgs args;
+    args.set_id(1000);
+    args.set_key("key_" + std::to_string(1));
+    args.set_enabled(false);
+
+    std::string trace_id = blobstore::GenerateTraceid();
+
+    std::unique_ptr<blobstore::net::RpcClientStream> stream;
+    auto stream_res = co_await client->CreateStream(trace_id, host, port, +RoutePathIndex::Stream,
+                                                    "/stream", &args);
+    if (!stream_res) {
+        LOG_ERROR("{} CreateStream failed: {}", trace_id, stream_res.Reason());
+        co_return;
+    }
+    stream = std::move(stream_res.Value());
+    LOG_INFO("{} ✅ Stream created", trace_id);
+
+    auto send = [sm = stream.get(), trace_id]() -> seastar::future<blobstore::Status<>> {
+        blobstore::Status<> s;
+        const char* messages[] = {"Hello", "How are you?", "This is a test", "Stream works!",
+                                  "Goodbye"};
+        for (int i = 0; i < 5; i++) {
+            proto::Message msg;
+            msg.set_i(i);
+            msg.set_s(messages[i]);
+            LOG_INFO("{} 📤 Sending #{}: {}", trace_id, i + 1, msg.s());
+            s = co_await sm->Send(&msg);
+            if (!s) {
+                LOG_ERROR("{} receive error: {}", trace_id, s.Reason());
+                break;
+            }
+            co_await seastar::sleep(std::chrono::milliseconds(100));
+        }
+        LOG_INFO("{} 🔒 Closing stream", trace_id);
+        co_await sm->CloseSend();
+        co_return s;
+    };
+    auto recv = [sm = stream.get(), trace_id]() -> seastar::future<blobstore::Status<>> {
+        blobstore::Status<> s;
+        auto i = 0;
+        while (true) {
+            if (auto recv_res = co_await sm->Recv()) {
+                proto::Message reply;
+                blobstore::Buffer data = std::move(recv_res.Value());
+                reply.ParseFromArray(data.get(), data.size());
+                LOG_INFO("{} 📥 Received #{}: {}", trace_id, i + 1, reply.s());
+            } else {
+                if (recv_res.Code() != blobstore::ErrCode::ErrEOF) {
+                    LOG_ERROR("{} receive error: {}", trace_id, recv_res.ToString());
+                }
+                break;
+            }
+            co_await seastar::sleep(std::chrono::milliseconds(100));
+            i++;
+        }
+        co_return s;
+    };
+    co_await seastar::when_all_succeed(send(), recv);
+}
+
 seastar::future<> test_client(std::string host, uint16_t port) {
     auto rpc_client = co_await blobstore::net::RpcClient::MakeRpcClient();
     if (!rpc_client) {
@@ -133,6 +197,7 @@ seastar::future<> test_client(std::string host, uint16_t port) {
         co_await seastar::sleep(std::chrono::milliseconds(1000));
 
         co_await testKick(rpc_client_ptr, host, port);
+        co_await testStream(rpc_client_ptr, host, port);
 
         co_return;
     };

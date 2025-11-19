@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package proto;
+
+message TestArgs {
+    uint64 id = 1;
+    string key = 2;
+    bool enabled = 3;
+}
+
+message Message {
+    int32 i = 1;
+    string s = 2;
+}

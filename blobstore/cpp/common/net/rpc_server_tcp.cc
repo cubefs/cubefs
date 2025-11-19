@@ -45,7 +45,6 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
         co_return;
     }
     seastar::gate::holder holder(gate_);
-    proto::StreamCmd prev_cmd = proto::StreamCmd::NOT;
     while (!gate_.is_closed() && stream->Valid()) {
         auto res = co_await stream->ReadFrame();
         if (!res) {
@@ -78,11 +77,6 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
         }
 
         if (cmd == proto::StreamCmd::NOT) {
-            if (prev_cmd != proto::StreamCmd::NOT) {
-                LOG_WARN("invalid stream cmd={} in rpc header, remote: {}", (int)cmd,
-                         stream->RemoteAddress());
-                break;
-            }
             if (ctx.GetRpcRequestHeader().ContentLength() == 0) {
                 ctx.has_fin_ = true;
             }
@@ -90,40 +84,28 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
             if (!s) {
                 break;
             }
-        } else if (cmd == proto::StreamCmd::SYN) {
-            if (prev_cmd != proto::StreamCmd::NOT) {
-                LOG_WARN("invalid stream cmd={} in rpc header, remote: {}", (int)cmd,
-                         stream->RemoteAddress());
-                break;
-            }
-            RpcResponseHeader resp;
-            Buffer sent_buf(resp.ByteSizeLong());
-            resp.SerializeToArray(sent_buf.get_write(), sent_buf.size());
-            auto s = co_await stream->WriteFrame(std::move(sent_buf));
-            if (!s) {
-                LOG_WARN("response StreamCmd::SYN to remote: {} error: {}", stream->RemoteAddress(),
-                         s);
-                break;
-            }
-            prev_cmd = proto::StreamCmd::SYN;
             continue;
-        } else if (cmd == proto::StreamCmd::PSH) {
-            if (prev_cmd != proto::StreamCmd::SYN) {
-                LOG_WARN("invalid stream cmd={} in rpc header, remote: {}", (int)cmd,
-                         stream->RemoteAddress());
-                break;
-            }
+        }
+        if (cmd == proto::StreamCmd::SYN) {
+            LOG_INFO("receive StreamCmd::SYN from remote: {}", stream->RemoteAddress());
+            RpcResponseHeader header;
             ctx.stream_ctx_ = true;
-            auto s = co_await HandleContext(&ctx);
-            if (!s) {
-                break;
+            if (auto s = co_await HandleContext(&ctx); !s) {
+                header.SetStatus(s.Code());
+                header.SetReason(static_cast<std::string>(s.Reason()));
+            } else {
+                header.SetStatus(ErrCode::OK);
             }
-            prev_cmd = proto::StreamCmd::NOT;
-        } else {
-            LOG_WARN("invalid stream cmd={} in rpc header, remote: {}", (int)cmd,
+            co_await ctx.WriteHeader(std::move(header));
+            break;
+        }
+        if (cmd == proto::StreamCmd::FIN || cmd == proto::StreamCmd::PSH) {
+            LOG_WARN("stream cmd={} in rpc header should not be here, remote: {}", cmd,
                      stream->RemoteAddress());
             break;
         }
+        LOG_WARN("invalid stream cmd={} in rpc header, remote: {}", cmd, stream->RemoteAddress());
+        break;
     }
     co_await stream->Close();
     co_return;

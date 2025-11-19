@@ -83,6 +83,7 @@ inline bool DeserializeRpcHeader(const Buffer& buf, HeaderType& header, size_t& 
 }
 
 class Stream;
+class RpcServerStream;
 
 class RpcMessageHeader {
     proto::Header* header_;
@@ -236,7 +237,7 @@ class RpcResponseHeader {
     int32_t Status() const { return resp_header_.status(); }
 
     void SetStatus(int32_t status) { resp_header_.set_status(status); }
-    void SetStatus(ErrCode status) { resp_header_.set_status((int)status); }
+    void SetStatus(ErrCode status) { resp_header_.set_status(static_cast<int32_t>(status)); }
 
     void SetReason(std::string_view reason) {
         resp_header_.set_reason(std::string(reason.data(), reason.size()));
@@ -320,18 +321,20 @@ class RpcServerContext {
 
     seastar::future<> Close();
 
+    std::unique_ptr<RpcServerStream> CreateServerStream();
+
     // Parse Parameter
     template <::blobstore::ProtobufMessageDeserializable T>
-    seastar::future<Status<>> ParseParameter(T& args);
+    seastar::future<Status<>> ParseParameter(T* args);
 };
 
 template <::blobstore::ProtobufMessageDeserializable T>
-seastar::future<Status<>> RpcServerContext::ParseParameter(T& args) {
+seastar::future<Status<>> RpcServerContext::ParseParameter(T* args) {
     Status<> result;
 
     const std::string& param_data = req_header_.Parameter();
     if (param_data.size() != 0) {
-        if (!args.ParseFromArray(param_data.data(), param_data.size())) {
+        if (!args->ParseFromArray(param_data.data(), param_data.size())) {
             result.SetCode(ErrCode::ErrInvalid).SetReason("net: parameter parse failed");
         }
         co_return result;
@@ -355,7 +358,7 @@ seastar::future<Status<>> RpcServerContext::ParseParameter(T& args) {
         co_return result;
     }
 
-    if (!args.ParseFromArray(b.get(), b.size())) {
+    if (!args->ParseFromArray(b.get(), b.size())) {
         result.SetCode(ErrCode::ErrInvalid).SetReason("net: parameter parse failed");
         co_return result;
     }

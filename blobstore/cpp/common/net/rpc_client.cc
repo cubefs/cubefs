@@ -7,6 +7,7 @@
 #include <seastar/net/inet_address.hh>
 
 #include "common/logger.h"
+#include "common/net/rpc_stream.h"
 
 namespace blobstore {
 namespace net {
@@ -179,7 +180,7 @@ seastar::future<Status<Buffer>> RpcClientContext::ReadBody(
     }
 
     // has pending body
-    if (!has_pending_body_ && pending_body_.size() > 0) {
+    if (has_pending_body_ && pending_body_.size() > 0) {
         has_pending_body_ = false;
         s.SetValue(std::move(pending_body_));
         pending_body_ = Buffer();
@@ -313,6 +314,81 @@ seastar::future<Status<std::unique_ptr<RpcClientContext>>> RpcClient::MakeRpcCli
     }
     seastar::socket_address sa(addr, port);
     s = co_await MakeRpcClientContext(std::move(sa));
+    co_return s;
+}
+
+seastar::future<Status<std::unique_ptr<RpcClientStream>>> RpcClient::CreateStream(
+    std::string_view trace_id, seastar::socket_address sa, int32_t remote_path_index,
+    const std::string &remote_path, const google::protobuf::Message *para) {
+    Status<std::unique_ptr<RpcClientStream>> s;
+    auto ctx_res = co_await MakeRpcClientContext(sa);
+    if (!ctx_res) {
+        s.SetCode(ctx_res.Code()).SetReason(ctx_res.Reason());
+        co_return s;
+    }
+
+    std::unique_ptr<RpcClientContext> ctx = std::move(ctx_res.Value());
+
+    RpcRequestHeader req_header;
+    req_header.SetTraceid(trace_id.data());
+    req_header.SetStreamCmd(proto::StreamCmd::SYN);
+    req_header.SetRemotePath(remote_path);
+    req_header.SetRemotePathIndex(remote_path_index);
+    req_header.SetContentLength(0);
+
+    if (para != nullptr) {
+        size_t para_size = para->ByteSizeLong();
+        std::string para_data;
+        para_data.resize(para_size);
+        if (!para->SerializeToArray(&para_data[0], para_size)) {
+            s.SetCode(ErrCode::ErrInvalid).SetReason("net: serialize stream parameter failed");
+            co_return s;
+        }
+        req_header.SetParameter(para_data);
+    }
+    auto write_res = co_await ctx->WriteHeader(std::move(req_header));
+    if (!write_res) {
+        s.SetCode(write_res.Code()).SetReason(write_res.Reason());
+        co_return s;
+    }
+    auto read_res = co_await ctx->ReadHeader();
+    if (!read_res) {
+        s.SetCode(read_res.Code()).SetReason(read_res.Reason());
+        co_return s;
+    }
+
+    RpcResponseHeader resp_header = std::move(read_res.Value());
+    if (resp_header.Status() != static_cast<int32_t>(ErrCode::OK)) {
+        s.SetCode(ErrCode::ErrNetworkProtocol).SetReason(resp_header.Reason());
+        co_return s;
+    }
+    auto stream_client = std::make_unique<RpcClientStream>(std::move(ctx));
+    s.SetValue(std::move(stream_client));
+    co_return s;
+}
+
+seastar::future<Status<std::unique_ptr<RpcClientStream>>> RpcClient::CreateStream(
+    std::string_view trace_id, std::string_view host, uint16_t port, int32_t remote_path_index,
+    const std::string &remote_path, const google::protobuf::Message *para) {
+    Status<std::unique_ptr<RpcClientStream>> s;
+    seastar::net::inet_address addr;
+    try {
+        addr = co_await seastar::net::dns::resolve_name(seastar::sstring(host));
+    } catch (std::system_error &e) {
+        LOG_ERROR("{} resolve host={} error: {}", trace_id, host, e.what());
+        s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
+        co_return s;
+    } catch (std::exception &e) {
+        LOG_ERROR("{} resolve host={} error: {}", trace_id, host, e.what());
+        s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
+        co_return s;
+    }
+    const seastar::socket_address sa(addr, port);
+    s = co_await CreateStream(trace_id, sa, remote_path_index, remote_path, para);
+    if (!s) {
+        LOG_ERROR("{} create stream failed, {}", trace_id, s.Reason());
+        co_return s;
+    }
     co_return s;
 }
 

@@ -28,6 +28,7 @@ function(generate_proto_files output_var proto_dir)
     set(generated_files "")
 
     file(GLOB PROTO_FILES_IN_DIR ${proto_dir}/*.proto)
+    list(FILTER PROTO_FILES_IN_DIR EXCLUDE REGEX ".*_go\\.proto$")
     message(STATUS "PROTO_DIR: ${proto_dir}, FILES: ${PROTO_FILES_IN_DIR}")
 
     foreach(proto_file ${PROTO_FILES_IN_DIR})

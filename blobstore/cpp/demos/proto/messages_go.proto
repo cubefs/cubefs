@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package cubefs.blobstore.cpp.demos.proto;
+option go_package = "./;proto";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+import "gogoproto/gogo.proto";
+
+message TestArgs {
+  uint64 id = 1;
+  string key = 2;
+  bool enabled = 3;
+}
+
+message Message {
+  int32 i = 1;
+  string s = 2;
+}

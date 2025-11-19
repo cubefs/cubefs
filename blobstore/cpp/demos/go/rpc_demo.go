@@ -11,6 +11,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/cpp/demos/proto"
 	"github.com/cubefs/cubefs/blobstore/util"
 )
 
@@ -75,6 +76,41 @@ func runServer() {
 		req.Span().Infof("kick remote: %s len=%d", req.RemoteAddrString(), req.ContentLength)
 		return w.WriteOK(nil)
 	})
+	handler.Register("/stream", func(resp rpc2.ResponseWriter, req *rpc2.Request) error {
+		span := trace.SpanFromContextSafe(req.Context())
+		testArgs := &proto.TestArgs{}
+		err := req.ParseParameter(testArgs)
+		if err != nil {
+			span.Errorf("parse parameter data failed: %v", err)
+			return err
+		}
+		span.Infof("parse parameter success, %+v", testArgs)
+		stream := &rpc2.GenericServerStream[proto.Message, proto.Message]{ServerStream: req.ServerStream()}
+		err = stream.SendHeader(nil)
+		if err != nil {
+			span.Errorf("send header failed: %v", err)
+			return err
+		}
+		count := 0
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				span.Errorf("recv message failed: %v", err)
+				break
+			}
+			span.Infof("📥 Received %d: %s", count, msg.String())
+			reply := &proto.Message{}
+			reply.S = "Echo:" + msg.GetS()
+			reply.I = msg.GetI()
+			err = stream.Send(reply)
+			if err != nil {
+				span.Errorf("send message failed: %v", err)
+				break
+			}
+			span.Infof("📤 Replied %d: %s", count, msg.String())
+		}
+		return nil
+	})
 	server := rpc2.Server{
 		Name: *addr,
 		Addresses: []rpc2.NetworkAddress{
@@ -110,6 +146,7 @@ func doConnection(first bool) {
 			"/error":    3,
 			"/middle":   100,
 			"/notfound": 404,
+			"/stream":   1000,
 		},
 		ConnectorConfig: rpc2.ConnectorConfig{
 			Transport:            transportConfig,
@@ -139,6 +176,40 @@ func doConnection(first bool) {
 		if err := client.Request(newCtx(), *addr, "/ping", rpc2.NoParameter, nil); err != nil {
 			panic(err)
 		}
+		span, ctx := trace.StartSpanFromContext(context.Background(), "")
+		arg := proto.TestArgs{
+			Id:      1001,
+			Key:     "test_key",
+			Enabled: true,
+		}
+		streamRequest, err := rpc2.NewStreamRequest(ctx, *addr, "/stream", &arg)
+		if err != nil {
+			panic(err)
+		}
+		client.FillPathIndex(streamRequest)
+		streamClient := &rpc2.StreamClient[proto.Message, proto.Message]{Client: client}
+		stream, err := streamClient.Streaming(streamRequest, nil)
+		if err != nil {
+			span.Fatalf("create stream request failed: %s", err)
+		}
+		messages := []string{"Hello", "How are you?", "This is a test", "Stream works!", "Goodbye"}
+		for i := 0; i < 5; i++ {
+			msg := &proto.Message{}
+			msg.I = int32(i)
+			msg.S = messages[i]
+
+			span.Infof("📤 Sending #%d, %s", i, messages[i])
+			err = stream.Send(msg)
+			if err != nil {
+				panic(err)
+			}
+			recv, err := stream.Recv()
+			if err != nil {
+				panic(err)
+			}
+			span.Infof(" 📥 Received #%d, %s", i, recv.S)
+		}
+		stream.CloseSend()
 	}
 
 	conc := *concurrence

@@ -12,6 +12,8 @@ enum class RoutePathIndex : blobstore::net::RpcServer::RouterIndex {
     Error = 3,
     Middle = 100,
     NotFound = 404,
+
+    Stream = 1000,
 };
 
 inline blobstore::net::RpcServer::RouterIndex operator+(RoutePathIndex path_index) {
@@ -21,5 +23,5 @@ inline blobstore::net::RpcServer::RouterIndex operator+(RoutePathIndex path_inde
 static const std::unordered_map<RoutePathIndex, std::string> kRoutePathString = {
     {RoutePathIndex::Ping, "/ping"},         {RoutePathIndex::Kick, "/kick"},
     {RoutePathIndex::Error, "/error"},       {RoutePathIndex::Middle, "/middle"},
-    {RoutePathIndex::NotFound, "/notfound"},
+    {RoutePathIndex::NotFound, "/notfound"}, {RoutePathIndex::Stream, "/stream"},
 };

@@ -44,3 +44,17 @@ target_link_libraries(net_server_router_test
 )
 target_compile_definitions(net_server_router_test PRIVATE SEASTAR_TESTING_MAIN)
 add_test(NAME NetServerRouterTest COMMAND net_server_router_test -- -c 1)
+
+add_executable(net_rpc_stream_test net_rpc_stream_test.cc mock_stream.h)
+target_link_libraries(net_rpc_stream_test
+    PRIVATE
+        $<TARGET_OBJECTS:COMMON_OBJS>
+        protobuf::libprotobuf
+        Seastar::seastar
+        Seastar::seastar_testing
+        Boost::unit_test_framework
+        isal
+        pthread
+)
+target_compile_definitions(net_rpc_stream_test PRIVATE SEASTAR_TESTING_MAIN)
+add_test(NAME NetRpcStreamTest COMMAND net_rpc_stream_test -- -c 1)

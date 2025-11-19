@@ -4,7 +4,9 @@
 
 #include <seastar/core/coroutine.hh>
 
+#include "common/logger.h"
 #include "common/net/byteorder.h"
+#include "rpc_stream.h"
 
 namespace blobstore {
 namespace net {
@@ -88,24 +90,57 @@ seastar::future<Status<Buffer>> RpcServerContext::StreamRead(std::chrono::millis
         recv_len_ = 0;
         req_header_.Clear();
         Buffer b = std::move(s.Value());
-        if (!req_header_.ParseFrom(b.get(), b.size())) {
-            s.SetCode(ErrCode::ErrNetworkProtocol);
-            co_return s;
-        }
-        proto::StreamCmd cmd = req_header_.StreamCmd();
-        if (cmd == proto::StreamCmd::FIN) {
-            has_fin_ = true;
-            co_return s;
-        } else if (cmd != proto::StreamCmd::PSH) {
-            s.SetCode(ErrCode::ErrNetworkProtocol);
+
+        // Parse frame header
+        size_t body_offset = 0;
+        if (!DeserializeRpcHeader(b, req_header_, body_offset)) {
+            s.SetCode(ErrCode::ErrNetworkProtocol)
+                .SetReason("net: deserialize stream header error");
             co_return s;
         }
 
-        int n = req_header_.ByteSizeLong();
+        proto::StreamCmd cmd = req_header_.StreamCmd();
+        if (cmd == proto::StreamCmd::FIN) {
+            has_fin_ = true;
+            LOG_INFO("net: client has closed stream send");
+            co_return s;
+        }
+        if (cmd != proto::StreamCmd::PSH) {
+            s.SetCode(ErrCode::ErrNetworkProtocol).SetReason("net: invalid stream cmd");
+            co_return s;
+        }
+
         if (req_header_.ContentLength() == 0) {
             co_return s;
         }
+
+        // Check if there's pending body in the same frame
+        if (b.size() > body_offset && req_header_.ContentLength() > 0) {
+            // Has body in the same frame, save it as pending
+            size_t body_size = b.size() - body_offset;
+            Buffer body_buf = b.share(body_offset, body_size);
+            pending_body_ = std::move(body_buf);
+            has_pending_body_ = true;
+        }
     }
+
+    if (has_pending_body_ && pending_body_.size() > 0) {
+        size_t pending_size = pending_body_.size();
+        int64_t remaining = req_header_.ContentLength() - recv_len_;
+
+        has_pending_body_ = false;
+        if (pending_size > static_cast<size_t>(remaining)) {
+            pending_body_ = Buffer();
+            s.SetCode(ErrCode::ErrTooLarge);
+            co_return s;
+        }
+
+        recv_len_ += pending_size;
+        s.SetValue(std::move(pending_body_));
+        pending_body_ = Buffer();
+        co_return s;
+    }
+
     s = co_await stream_->ReadFrame(timeout);
     if (!s) {
         co_return s;
@@ -120,10 +155,10 @@ seastar::future<Status<Buffer>> RpcServerContext::StreamRead(std::chrono::millis
 
 seastar::future<Status<Buffer>> RpcServerContext::ReadBody(std::chrono::milliseconds timeout) {
     Status<Buffer> s;
-    proto::StreamCmd cmd = req_header_.StreamCmd();
-    switch (cmd) {
+    switch (req_header_.StreamCmd()) {
         case proto::StreamCmd::NOT:
             return SimpleRead(timeout);
+        case proto::StreamCmd::SYN:
         case proto::StreamCmd::PSH:
             return StreamRead(timeout);
         case proto::StreamCmd::FIN:
@@ -135,5 +170,8 @@ seastar::future<Status<Buffer>> RpcServerContext::ReadBody(std::chrono::millisec
     return seastar::make_ready_future<Status<Buffer>>(std::move(s));
 }
 
+std::unique_ptr<RpcServerStream> RpcServerContext::CreateServerStream() {
+    return std::make_unique<RpcServerStream>(this);
+}
 }  // namespace net
 }  // namespace blobstore

@@ -12,8 +12,10 @@
 #include "common/logger.h"
 #include "common/net/rpc.h"
 #include "common/net/rpc_server.h"
+#include "common/net/rpc_stream.h"
 #include "common/status.h"
 #include "demo.h"
+#include "proto/messages.pb.h"
 
 namespace bpo = boost::program_options;
 
@@ -111,6 +113,68 @@ class SimpleService {
         resp_header.SetReason(std::string("demo: CustomError"));
         co_return co_await ctx->WriteHeader(std::move(resp_header));
     }
+
+    FutureStatus<> HandleStream(RpcServerContext* ctx) {
+        Status<> s;
+        auto& trace = ctx->Trace();
+        LOG_INFO("{} receive client request...", trace.TraceID());
+
+        if (!ctx->StreamContext()) {
+            s.SetCode(static_cast<ErrCode>(EINVAL)).SetReason("Not a stream");
+            LOG_ERROR("{} not a stream request", trace.TraceID());
+            co_return s;
+        }
+        proto::TestArgs args;
+        auto args_result = co_await ctx->ParseParameter(&args);
+        if (!args_result) {
+            s.SetCode(args_result.Code());
+            s.SetReason("Parse parameter failed: " + args_result.Reason());
+            co_return s;
+        }
+
+        LOG_INFO("{} ✓ TestArgs parsed successfully:", trace.TraceID());
+        LOG_INFO("{}  - ID: {}", trace.TraceID(), args.id());
+        LOG_INFO("{}  - Key: {}", trace.TraceID(), args.key());
+        LOG_INFO("{}  - Enabled: {}", trace.TraceID(), args.enabled() ? "true" : "false");
+
+        auto stream = ctx->CreateServerStream();
+
+        co_await stream->SendHeader(200, "Echo Ready");
+
+        LOG_INFO("🎙️  Echo service started");
+
+        int count = 0;
+        while (true) {
+            proto::Message msg;
+            if (auto recv_res = co_await stream->Recv(&msg); !recv_res) {
+                if (static_cast<int>(recv_res.Code()) == static_cast<int>(ErrCode::ErrEOF)) {
+                    LOG_INFO("{} ✅ Client closed, received {} messages", trace.TraceID(), count);
+                    break;
+                }
+                LOG_ERROR("{} server receive error, failed: {}", trace.TraceID(),
+                          recv_res.Reason());
+                co_return s;
+            }
+
+            count++;
+            LOG_INFO("{} 📥 Received #{}: {}", trace.TraceID(), count, msg.s());
+
+            proto::Message reply;
+            reply.set_i(msg.i());
+            reply.set_s("Echo: " + msg.s());
+
+            auto send_res = co_await stream->Send(&reply);
+            if (!send_res) {
+                s.SetCode(send_res.Code());
+                co_return s;
+            }
+
+            LOG_INFO("{} 📤 Replied #{}: {}", trace.TraceID(), count, reply.s());
+        }
+        co_await stream->SendHeader();
+        LOG_INFO("{} ✅ Echo service completed, {} messages processed", trace.TraceID(), count);
+        co_return s;
+    }
 };
 
 seastar::future<> test_server(uint16_t port) {
@@ -134,6 +198,10 @@ seastar::future<> test_server(uint16_t port) {
     rpc_server->RegisterHandler(+RoutePathIndex::Error,
                                 [s = service.get()](RpcServerContext* ctx) -> FutureStatus<> {
                                     return s->HandleError(ctx);
+                                });
+    rpc_server->RegisterHandler(+RoutePathIndex::Stream,
+                                [s = service.get()](RpcServerContext* ctx) -> FutureStatus<> {
+                                    return s->HandleStream(ctx);
                                 });
 
     co_await rpc_server->Start();

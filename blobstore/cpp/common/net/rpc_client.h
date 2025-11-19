@@ -10,6 +10,7 @@ namespace net {
 
 class RpcClient;
 class RpcClientContext;
+class RpcClientStream;
 
 class ClientMgr {
     seastar::gate gate_;
@@ -93,6 +94,14 @@ class RpcClient {
         std::string_view host, uint16_t port);
     seastar::future<Status<std::unique_ptr<RpcClientContext>>> MakeRpcClientContext(
         seastar::socket_address sa);
+
+    seastar::future<Status<std::unique_ptr<RpcClientStream>>> CreateStream(
+        std::string_view trace_id, std::string_view host, uint16_t port, int32_t remote_path_index,
+        const std::string &remote_path, const google::protobuf::Message *para = nullptr);
+
+    seastar::future<Status<std::unique_ptr<RpcClientStream>>> CreateStream(
+        std::string_view trace_id, seastar::socket_address sa, int32_t remote_path_index,
+        const std::string &remote_path, const google::protobuf::Message *para = nullptr);
 
     // release all resources
     seastar::future<> Close();
