@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -488,7 +489,14 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 		}
 	}
 	if _, err = leaderMetaNode.Sender.syncSendAdminTask(t); err != nil {
-		return
+		log.LogErrorf("action[removeMetaPartitionRaftMember] vol[%v],meta partition[%v],err[%v] failed to send task to leader", partition.volName, partition.PartitionID, err)
+		if leaderMetaNode.Addr != removePeer.Addr || !strings.Contains(err.Error(), "unknown meta partition") {
+			return
+		}
+		// NOTE: at this moment, the leader(remove peer) is already been removed from the raft group,
+		// so it will return error "unknown meta partition"
+		log.LogErrorf("action[removeMetaPartitionRaftMember] vol[%v],meta partition[%v],err[%v] the leader is the node to be removed and this request is a retry request, so ignore this error", partition.volName, partition.PartitionID, err)
+		err = nil
 	}
 	newHosts := make([]string, 0, len(partition.Hosts)-1)
 	newPeers := make([]proto.Peer, 0, len(partition.Hosts)-1)
@@ -515,7 +523,9 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 		return
 	}
 	if err = partition.tryToChangeLeader(c, metaNode); err != nil {
-		return
+		// NOTE: ignore the error here
+		log.LogErrorf("action[removeMetaPartitionRaftMember] vol[%v],meta partition[%v] tryToChangeLeader failed, err[%v]", partition.volName, partition.PartitionID, err)
+		err = nil
 	}
 	return
 }
