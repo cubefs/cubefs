@@ -32,7 +32,7 @@ type logger struct {
 
 type syncWriter struct{ io.Writer }
 
-func (syncWriter) AsyncWrite(_ AsyncBuffer) (int, error) {
+func (syncWriter) AsyncWrite(_ AsyncBuffer, _ bool) (int, error) {
 	panic("log: not implement AsyncWriter")
 }
 
@@ -103,7 +103,7 @@ func (l *logger) write(id string, lvl Level, file string, line int, s string) er
 	out := l.writer.Load().(*logWriter)
 	var err error
 	if out.async {
-		_, err = out.AsyncWriter.AsyncWrite(buffer)
+		_, err = out.AsyncWriter.AsyncWrite(buffer, lvl <= Linfo)
 	} else {
 		_, err = out.AsyncWriter.Write(buf.Bytes())
 		buffer.Release()

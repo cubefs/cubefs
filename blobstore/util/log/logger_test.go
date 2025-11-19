@@ -15,10 +15,12 @@
 package log
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -55,7 +57,7 @@ func TestAyncLoggerSync(t *testing.T) {
 	}
 	wg.Wait()
 	buffer := NewAsyncBuffer()
-	logger.AsyncWrite(buffer)
+	logger.AsyncWrite(buffer, false)
 	logger.Rotate()
 	logger.Flush()
 	logger.Close()
@@ -138,5 +140,75 @@ func TestAyncLoggerTimeout(t *testing.T) {
 			}()
 		}
 		require.ErrorIs(t, logger.Flush(), io.ErrClosedPipe)
+	}
+}
+
+func TestAsyncLoggerDrop(t *testing.T) {
+	dir, filename := tempFilename()
+	defer os.RemoveAll(dir)
+
+	newBuffer := func() AsyncBuffer {
+		buf := NewAsyncBuffer()
+		buf.Buffer().Write(tempBuffer)
+		return buf
+	}
+
+	{
+		logger := &AsyncLogger{
+			Filename:  filename,
+			MaxSize:   10,
+			QueueSize: 2,
+			Drop:      true,
+		}
+
+		var droppedCount int32
+		var successCount int32
+		var wg sync.WaitGroup
+		wg.Add(100)
+		for range [100]struct{}{} {
+			go func() {
+				defer wg.Done()
+				_, err := logger.AsyncWrite(newBuffer(), true)
+				if errors.Is(err, ErrWriteDropped) {
+					atomic.AddInt32(&droppedCount, 1)
+				} else if err == nil {
+					atomic.AddInt32(&successCount, 1)
+				}
+			}()
+		}
+		wg.Wait()
+
+		t.Logf("QueueSize: %d succeed: %d", logger.QueueSize, successCount)
+		t.Logf("QueueSize: %d dropped: %d", logger.QueueSize, droppedCount)
+		logger.Close()
+		logger.AsyncWrite(newBuffer(), true)
+	}
+
+	{
+		logger := &AsyncLogger{
+			Filename:  filename,
+			MaxSize:   10,
+			QueueSize: 32,
+			Drop:      true,
+		}
+
+		var droppedCount int32
+		var successCount int32
+		var wg sync.WaitGroup
+		wg.Add(1000)
+		for range [1000]struct{}{} {
+			go func() {
+				defer wg.Done()
+				_, err := logger.AsyncWrite(newBuffer(), true)
+				if errors.Is(err, ErrWriteDropped) {
+					atomic.AddInt32(&droppedCount, 1)
+				} else if err == nil {
+					atomic.AddInt32(&successCount, 1)
+				}
+			}()
+		}
+		wg.Wait()
+		t.Logf("QueueSize: %d succeed: %d", logger.QueueSize, successCount)
+		t.Logf("QueueSize: %d dropped: %d", logger.QueueSize, droppedCount)
 	}
 }

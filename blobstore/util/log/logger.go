@@ -28,6 +28,7 @@ import (
 
 var (
 	ErrWriteTimeout = errors.New("log: async write timeout")
+	ErrWriteDropped = errors.New("log: async write dropped")
 
 	bufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
@@ -38,7 +39,7 @@ var (
 type AsyncWriter interface {
 	Write(p []byte) (n int, err error)
 	// AsyncWrite should release async buffer.
-	AsyncWrite(buf AsyncBuffer) (n int, err error)
+	AsyncWrite(buf AsyncBuffer, drop bool) (n int, err error)
 }
 
 // AsyncBuffer reuseable buffer for asynchronous write.
@@ -83,6 +84,9 @@ type AsyncLogger struct {
 
 	// WriteTimeout is the timeout for async writes. Default is 0, means no timeout.
 	WriteTimeout util.Duration `json:"writetimeout" yaml:"writetimeout"`
+
+	// Drop if queue is full.
+	Drop bool `json:"drop" yaml:"drop"`
 
 	logger *lumberjack.Logger
 
@@ -187,15 +191,30 @@ func (al *AsyncLogger) Write(p []byte) (n int, err error) {
 
 	buffer := NewAsyncBuffer()
 	buffer.Buffer().Write(p) // copy
-	return al.AsyncWrite(buffer)
+	return al.AsyncWrite(buffer, al.Drop)
 }
 
-func (al *AsyncLogger) AsyncWrite(buffer AsyncBuffer) (n int, err error) {
+func (al *AsyncLogger) AsyncWrite(buffer AsyncBuffer, drop bool) (n int, err error) {
 	al.init()
 	if al.queue == nil {
 		n, err = al.logger.Write(buffer.Buffer().Bytes())
 		buffer.Release()
 		return
+	}
+
+	l := buffer.Buffer().Len()
+
+	if al.Drop && drop {
+		select {
+		case al.queue <- buffer:
+			return l, nil
+		case <-al.closeCh:
+			buffer.Release()
+			return 0, io.ErrClosedPipe
+		default:
+			buffer.Release()
+			return 0, ErrWriteDropped
+		}
 	}
 
 	var timerCh <-chan time.Time
@@ -204,7 +223,7 @@ func (al *AsyncLogger) AsyncWrite(buffer AsyncBuffer) (n int, err error) {
 		timerCh = timer.C
 		defer func() { util.TimerRelease(timer) }()
 	}
-	l := buffer.Buffer().Len()
+
 	select {
 	case al.queue <- buffer:
 		return l, nil
