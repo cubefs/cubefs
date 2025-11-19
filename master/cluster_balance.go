@@ -29,8 +29,9 @@ import (
 )
 
 const (
-	MetaPartitionMemorySizeBase = 512
-	MetaPartitionMemMin         = 256 * 1024 * 1024
+	MetaPartitionInodeSize  = 512
+	MetaPartitionDentrySize = 64
+	MetaPartitionMemMin     = 256 * 1024 * 1024
 )
 
 type GetMigrateAddrParam struct {
@@ -2221,7 +2222,7 @@ func GetReplicasStoreModeCount(mp *MetaPartition, storeMode proto.StoreMode) int
 }
 
 func GetMetaPartitionMemorySize(mp *MetaPartition) uint64 {
-	estimateSize := MetaPartitionMemorySizeBase * (mp.InodeCount + mp.DentryCount)
+	estimateSize := mp.InodeCount*MetaPartitionInodeSize + mp.DentryCount*MetaPartitionDentrySize
 	if estimateSize < MetaPartitionMemMin {
 		return MetaPartitionMemMin
 	}

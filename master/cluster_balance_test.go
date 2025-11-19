@@ -1666,7 +1666,7 @@ func TestGetMetaPartitionMemorySize(t *testing.T) {
 	mp.InodeCount = 1000000
 	mp.DentryCount = 1000000
 	memSize = GetMetaPartitionMemorySize(mp)
-	checkValue := MetaPartitionMemorySizeBase * (mp.InodeCount + mp.DentryCount)
+	checkValue := mp.InodeCount*MetaPartitionInodeSize + mp.DentryCount*MetaPartitionDentrySize
 	require.Equal(t, checkValue, memSize)
 }
 
