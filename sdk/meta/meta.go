@@ -15,6 +15,7 @@
 package meta
 
 import (
+	"net"
 	"strings"
 	"sync"
 	"syscall"
@@ -38,6 +39,9 @@ import (
 const (
 	HostsSeparator                = ","
 	RefreshMetaPartitionsInterval = time.Minute * 5
+	RefreshHostLatencyInterval    = time.Second * 30
+	DefaultMetaNodeTimeoutCount   = 3   // Default timeout count threshold for meta nodes
+	DefaultMetaNodeTimeoutMs      = 100 // Default timeout threshold in milliseconds for resetting timeout count
 )
 
 const (
@@ -103,6 +107,7 @@ type MetaConfig struct {
 	VerReadSeq           uint64
 	InnerReq             bool
 	DisableTrashByClient bool
+	MetaNearRead         bool
 }
 
 type MetaWrapper struct {
@@ -190,6 +195,12 @@ type MetaWrapper struct {
 	DefaultStorageClass uint32
 	InnerReq            bool
 	FollowerRead        bool
+	NearRead            bool
+	NearReadClientCfg   bool
+
+	HostPingStats    sync.Map // [string]*util.AddressPingStats - host address to ping stats mapping
+	HostLatency      sync.Map // [string]time.Duration - host address to average latency mapping
+	HostTimeoutCount sync.Map // [string]int32 - host address to timeout count mapping
 
 	RemoteCacheBloom func() *bloom.BloomFilter
 }
@@ -256,6 +267,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.DefaultStorageClass = proto.StorageClass_Unspecified
 	mw.InnerReq = config.InnerReq
 	mw.disableTrashByClient = config.DisableTrashByClient
+	mw.NearReadClientCfg = config.MetaNearRead
 
 	for limit > 0 {
 		err = mw.initMetaWrapper()
@@ -371,6 +383,135 @@ func (mw *MetaWrapper) Cluster() string {
 
 func (mw *MetaWrapper) LocalIP() string {
 	return mw.localIP
+}
+
+// updateHostLatency updates the ping latency information for meta hosts
+func (mw *MetaWrapper) updateHostLatency() {
+	hosts, err := mw.getMetaHostsMap()
+	if err != nil {
+		log.LogWarnf("action[updateHostLatency] failed to get cluster meta nodes, err(%v)", err)
+		return
+	}
+	needPings := make([]string, 0)
+
+	// Remove hosts that are no longer available
+	mw.HostLatency.Range(func(key, value interface{}) bool {
+		host := key.(string)
+		if _, exist := hosts[host]; !exist {
+			mw.HostLatency.Delete(host)
+			mw.HostTimeoutCount.Delete(host)
+			log.LogInfof("action[updateHostLatency] HostLatency remove metaNode(%v)", host)
+		} else {
+			needPings = append(needPings, host)
+		}
+		return true
+	})
+
+	// Add new hosts
+	for host := range hosts {
+		if _, exist := mw.HostLatency.Load(host); !exist {
+			needPings = append(needPings, host)
+		}
+	}
+
+	mw.pingHosts(needPings)
+}
+
+// getMetaHostsMap returns a map of all meta hosts
+func (mw *MetaWrapper) getMetaHostsMap() (map[string]bool, error) {
+	// Get all meta nodes from master API
+	nodes, err := mw.mc.AdminAPI().GetClusterMetaNodes()
+	if err != nil {
+		return make(map[string]bool), err
+	}
+
+	allHosts := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
+		if node.Addr != "" && node.Status {
+			allHosts[node.Addr] = true
+		}
+	}
+
+	return allHosts, nil
+}
+
+// HeartBeat sends a lightweight ping packet to the specified host and measures the latency
+func (mw *MetaWrapper) HeartBeat(addr string) (duration time.Duration, err error) {
+	var conn *net.TCPConn
+	packet := proto.NewPacket()
+	packet.Opcode = proto.OpPing
+
+	defer func() {
+		mw.conns.PutConnect(conn, err != nil)
+	}()
+
+	if conn, err = mw.conns.GetConnect(addr); err != nil {
+		log.LogWarnf("action[HeartBeat] get connection to addr failed, addr(%v) err(%v)", addr, err)
+		return
+	}
+	start := time.Now()
+	if err = packet.WriteToConn(conn); err != nil {
+		log.LogWarnf("action[HeartBeat] failed write to addr(%v) err(%v)", addr, err)
+		return
+	}
+	if err = packet.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+		log.LogWarnf("action[HeartBeat] failed to ReadFromConn addr(%v) err(%v)", addr, err)
+		return
+	}
+
+	duration = time.Since(start)
+	log.LogDebugf("action[HeartBeat] from addr(%v) cost(%v)", addr, duration)
+	return
+}
+
+// pingHosts pings the given hosts and updates their latency information
+func (mw *MetaWrapper) pingHosts(hosts []string) {
+	for _, host := range hosts {
+		rtt, err := mw.HeartBeat(host)
+		if err != nil {
+			mw.addTimeoutCount(host)
+			log.LogWarnf("action[pingHosts] host(%v) err(%v)", host, err)
+			continue
+		}
+
+		// Add measurement to ping statistics
+		v, _ := mw.HostPingStats.LoadOrStore(host, &util.AddressPingStats{})
+		aps := v.(*util.AddressPingStats)
+		aps.Add(rtt)
+
+		// Calculate average and store in latency map
+		avgLatency := aps.Average()
+		mw.HostLatency.Store(host, avgLatency)
+
+		// Reset timeout count if ping was successful and latency is within acceptable range
+		if timeoutCount, exists := mw.HostTimeoutCount.Load(host); exists {
+			count := timeoutCount.(int32)
+			if count > 0 && avgLatency > 0 && avgLatency < time.Millisecond*time.Duration(DefaultMetaNodeTimeoutMs) {
+				mw.HostTimeoutCount.Store(host, int32(0))
+				log.LogDebugf("action[pingHosts] host(%v) timeoutCount reset from %v to 0 after successful ping, avgLatency(%v)",
+					host, count, avgLatency)
+			}
+		}
+
+		log.LogDebugf("action[pingHosts] host(%v) rtt(%v) avgLatency(%v)", host, rtt.String(), avgLatency)
+	}
+}
+
+func (mw *MetaWrapper) addTimeoutCount(host string) {
+	// Increment timeout count on ping failure
+	// Do not update HostLatency to 0, keep the historical average for reset logic
+	v, _ := mw.HostTimeoutCount.LoadOrStore(host, int32(0))
+	count := v.(int32)
+	count++
+
+	// delete HostLatency if timeout count exceeds threshold
+	if count >= DefaultMetaNodeTimeoutCount {
+		mw.HostLatency.Delete(host)
+		log.LogWarnf("action[addTimeoutCount] host(%v) timeoutCount(%v) exceeded threshold, removed from HostLatency", host, count)
+	} else {
+		mw.HostTimeoutCount.Store(host, count)
+		log.LogWarnf("action[addTimeoutCount] host(%v) timeoutCount(%v)", host, count)
+	}
 }
 
 // Proto ResultCode to status

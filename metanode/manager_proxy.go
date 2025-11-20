@@ -119,6 +119,18 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		return p.IsFollowerReadMetaPkt()
 	}
 
+	nearRead := func() bool {
+		if !p.IsReadMetaPkt() {
+			return false
+		}
+		return p.IsNearReadMetaPkt()
+	}
+
+	if nearRead() {
+		log.LogDebugf("read from follower: p(%v), arg(%v)", p, mp.GetBaseConfig().PartitionId)
+		return true
+	}
+
 	if leaderAddr, ok = mp.IsLeader(); ok {
 		return
 	}

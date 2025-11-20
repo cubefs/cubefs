@@ -98,6 +98,7 @@ const (
 	CliFlagVolType                      = "vol-type"
 	CliFlagFollowerRead                 = "follower-read"
 	CliFlagMetaFollowerRead             = "meta-follower-read"
+	CliFlagMetaNearRead                 = "meta-near-read"
 	CliFlagMaximallyRead                = "maximally-read"
 	CliFlagEbsBlkSize                   = "ebs-blk-size"
 	CliFlagThreshold                    = "threshold"

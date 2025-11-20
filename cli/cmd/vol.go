@@ -129,6 +129,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optDPSize int
 	var optFollowerRead string
 	var optMetaFollowerRead string
+	var optMetaNearRead string
 	var optMaximallyRead string
 	var optZoneName string
 	var optEbsBlkSize int
@@ -189,6 +190,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			if optMetaFollowerRead != "true" {
 				optMetaFollowerRead = "false"
+			}
+
+			if optMetaNearRead != "true" {
+				optMetaNearRead = "false"
 			}
 
 			if optMaximallyRead != "true" {
@@ -260,6 +265,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  allowedStorageClass      : %v\n", optAllowedStorageClass)
 				stdout("  enableQuota              : %v\n", optEnableQuota)
 				stdout("  metaFollowerRead         : %v\n", optMetaFollowerRead)
+				stdout("  metaNearRead             : %v\n", optMetaNearRead)
 				stdout("  maximallyRead            : %v\n", optMaximallyRead)
 				stdout("  remoteCacheEnable        : %v\n", optRcEnable)
 				stdout("  remoteCacheAutoPrepare   : %v\n", optRcAutoPrepare)
@@ -294,7 +300,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optMPCount, optDPCount, int(replicaNum), optDPSize, followerRead,
 				optZoneName, optEbsBlkSize, dpReadOnlyWhenVolFull,
 				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
-				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMaximallyRead,
+				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMetaNearRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB,
 				optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
 				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, storeMode)
@@ -315,6 +321,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify data partition size[Unit: GB]")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, "", "Enable read form replica follower")
 	cmd.Flags().StringVar(&optMetaFollowerRead, CliFlagMetaFollowerRead, "", "Enable read form more hosts, (true|false), default false")
+	cmd.Flags().StringVar(&optMetaNearRead, CliFlagMetaNearRead, "", "Enable meta read from nearest node (true|false), default false")
 	cmd.Flags().StringVar(&optMaximallyRead, CliFlagMaximallyRead, "", "Enable read form mp follower, (true|false), default false")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlk Size[Unit: byte]")
@@ -360,6 +367,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCapacity uint64
 	var optFollowerRead string
 	var optMetaFollowerRead string
+	var optMetaNearRead string
 	var optMaximallyRead string
 	var optDirectRead string
 	var optIgnoreTinyRecover string
@@ -473,6 +481,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				confirmString.WriteString(fmt.Sprintf("  Allow meta follower read : %v -> %v\n", formatEnabledDisabled(vv.MetaFollowerRead), formatEnabledDisabled(enable)))
 				vv.MetaFollowerRead = enable
+			}
+
+			if optMetaNearRead != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optMetaNearRead); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Allow meta near read : %v -> %v\n", formatEnabledDisabled(vv.MetaNearRead), formatEnabledDisabled(enable)))
+				vv.MetaNearRead = enable
 			}
 
 			if optMaximallyRead != "" {
@@ -923,6 +941,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume datanode capacity [Unit: GB]")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower (default false)")
 	cmd.Flags().StringVar(&optMetaFollowerRead, CliFlagMetaFollowerRead, "", "Enable read form mp follower (true|false, default false)")
+	cmd.Flags().StringVar(&optMetaNearRead, CliFlagMetaNearRead, "", "Enable meta read from nearest node (true|false, default false)")
 	cmd.Flags().StringVar(&optDirectRead, "directRead", "", "Enable read direct from disk (true|false, default false)")
 	cmd.Flags().StringVar(&optIgnoreTinyRecover, "ignoreTinyRecover", "", "ignore tiny extent recover (true|false, default false)")
 	cmd.Flags().StringVar(&optMaximallyRead, CliFlagMaximallyRead, "", "Enable read more hosts (true|false, default false)")

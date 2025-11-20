@@ -16,7 +16,9 @@ package meta
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
 )
 
@@ -27,6 +29,8 @@ type MetaPartition struct {
 	Members     []string
 	LeaderAddr  string
 	Status      int8
+
+	pingElapsedSortedHosts *util.PingElapsedSortedHosts
 }
 
 func (mp *MetaPartition) Less(than btree.Item) bool {
@@ -44,6 +48,28 @@ func (mp *MetaPartition) Copy() btree.Item {
 
 func (mp *MetaPartition) String() string {
 	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) LeaderAddr(%v) Status(%v)", mp.PartitionID, mp.Start, mp.End, mp.Members, mp.LeaderAddr, mp.Status)
+}
+
+// SortHostsByPingElapsed sorts meta partition hosts by ping elapsed time.
+// This method reuses the PingElapsedSortedHosts implementation from sdk/data/wrapper.
+func (mp *MetaPartition) SortHostsByPingElapsed(mw *MetaWrapper) []string {
+	if !mw.FollowerRead || !mw.NearRead {
+		return mp.Members
+	}
+	if mp.pingElapsedSortedHosts == nil {
+		getHosts := func() []string {
+			return mp.Members
+		}
+		getElapsed := func(host string) (time.Duration, bool) {
+			delay, ok := mw.HostLatency.Load(host)
+			if !ok {
+				return 0, false
+			}
+			return delay.(time.Duration), true
+		}
+		mp.pingElapsedSortedHosts = util.NewPingElapsedSortHosts(getHosts, getElapsed)
+	}
+	return mp.pingElapsedSortedHosts.GetSortedHosts()
 }
 
 // Meta partition managements

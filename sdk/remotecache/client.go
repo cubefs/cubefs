@@ -606,7 +606,7 @@ func (rc *RemoteCacheClient) refreshHostLatency() {
 func (rc *RemoteCacheClient) HeartBeat(addr string) (duration time.Duration, err error) {
 	var conn *net.TCPConn
 	packet := proto.NewPacket()
-	packet.Opcode = proto.OpFlashSDKHeartbeat
+	packet.Opcode = proto.OpPing
 
 	defer func() {
 		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: err != nil})

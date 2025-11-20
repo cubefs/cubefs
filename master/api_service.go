@@ -2731,6 +2731,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.deleteLockTime = req.deleteLockTime
 	newArgs.followerRead = req.followerRead
 	newArgs.metaFollowerRead = req.metaFollowerRead
+	newArgs.metaNearRead = req.metaNearRead
 	newArgs.directRead = req.directRead
 	newArgs.ignoreTinyRecover = req.ignoreTinyRecover
 	newArgs.maximallyRead = req.maximallyRead
@@ -3280,6 +3281,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		Capacity:           vol.Capacity,
 		FollowerRead:       vol.FollowerRead,
 		MetaFollowerRead:   vol.MetaFollowerRead,
+		MetaNearRead:       vol.MetaNearRead,
 		DirectRead:         vol.DirectRead,
 		IgnoreTinyRecover:  vol.IgnoreTinyRecover,
 		MaximallyRead:      vol.MaximallyRead,
@@ -6328,6 +6330,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.StatMigrateStorageClass = vol.StatMigrateStorageClass
 	stat.StatByDpMediaType = vol.StatByDpMediaType
 	stat.MetaFollowerRead = vol.MetaFollowerRead
+	stat.MetaNearRead = vol.MetaNearRead
 	stat.MaximallyRead = vol.MaximallyRead
 	stat.LeaderRetryTimeOut = int(vol.LeaderRetryTimeout)
 

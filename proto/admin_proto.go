@@ -445,6 +445,7 @@ var GApiInfo map[string]string = map[string]string{
 
 const (
 	MetaFollowerReadKey    = "metaFollowerRead"
+	MetaNearReadKey        = "metaNearRead"
 	MaximallyReadKey       = "maximallyRead"
 	LeaderRetryTimeoutKey  = "leaderRetryTimeout"
 	VolEnableDirectRead    = "directRead"
@@ -1358,6 +1359,7 @@ type SimpleVolView struct {
 	DpOfHDDCnt              int
 	FollowerRead            bool
 	MetaFollowerRead        bool
+	MetaNearRead            bool
 	DirectRead              bool
 	IgnoreTinyRecover       bool
 	MaximallyRead           bool

@@ -39,6 +39,7 @@ type VolVarargs struct {
 	deleteLockTime           int64  // h
 	followerRead             bool
 	metaFollowerRead         bool
+	metaNearRead             bool
 	directRead               bool
 	ignoreTinyRecover        bool
 	maximallyRead            bool
@@ -166,6 +167,7 @@ type Vol struct {
 	NeedToLowerReplica       bool
 	FollowerRead             bool
 	MetaFollowerRead         bool
+	MetaNearRead             bool
 	DirectRead               bool
 	IgnoreTinyRecover        bool
 	MaximallyRead            bool
@@ -219,6 +221,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.Capacity = vv.Capacity
 	vol.FollowerRead = vv.FollowerRead
 	vol.MetaFollowerRead = vv.MetaFollowerRead
+	vol.MetaNearRead = vv.MetaNearRead
 	vol.DirectRead = vv.DirectRead
 	vol.IgnoreTinyRecover = vv.IgnoreTinyRecover
 	vol.MaximallyRead = vv.MaximallyRead
@@ -1856,6 +1859,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.DeleteLockTime = args.deleteLockTime
 	vol.FollowerRead = args.followerRead
 	vol.MetaFollowerRead = args.metaFollowerRead
+	vol.MetaNearRead = args.metaNearRead
 	vol.DirectRead = args.directRead
 	vol.IgnoreTinyRecover = args.ignoreTinyRecover
 	vol.MaximallyRead = args.maximallyRead
@@ -1935,6 +1939,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		deleteLockTime:           vol.DeleteLockTime,
 		followerRead:             vol.FollowerRead,
 		metaFollowerRead:         vol.MetaFollowerRead,
+		metaNearRead:             vol.MetaNearRead,
 		directRead:               vol.DirectRead,
 		ignoreTinyRecover:        vol.IgnoreTinyRecover,
 		maximallyRead:            vol.MaximallyRead,

@@ -413,6 +413,7 @@ type updateVolReq struct {
 	deleteLockTime           int64
 	followerRead             bool
 	metaFollowerRead         bool
+	metaNearRead             bool
 	directRead               bool
 	ignoreTinyRecover        bool
 	maximallyRead            bool
@@ -529,6 +530,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if req.metaFollowerRead, err = extractBoolWithDefault(r, proto.MetaFollowerReadKey, vol.MetaFollowerRead); err != nil {
+		return
+	}
+
+	if req.metaNearRead, err = extractBoolWithDefault(r, proto.MetaNearReadKey, vol.MetaNearRead); err != nil {
 		return
 	}
 
@@ -738,6 +743,7 @@ type createVolReq struct {
 	deleteLockTime          int64
 	followerRead            bool
 	metaFollowerRead        bool
+	metaNearRead            bool
 	maximallyRead           bool
 	authenticate            bool
 	crossZone               bool
@@ -909,6 +915,11 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	}
 
 	req.metaFollowerRead, err = extractBoolWithDefault(r, proto.MetaFollowerReadKey, false)
+	if err != nil {
+		return
+	}
+
+	req.metaNearRead, err = extractBoolWithDefault(r, proto.MetaNearReadKey, false)
 	if err != nil {
 		return
 	}

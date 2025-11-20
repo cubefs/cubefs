@@ -182,9 +182,10 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
 	atomic.StoreUint32(&mw.DefaultStorageClass, info.DefaultStorageClass)
 	mw.FollowerRead = info.MetaFollowerRead
+	mw.NearRead = mw.NearReadClientCfg || info.MetaNearRead
 	mw.leaderRetryTimeout = int64(info.LeaderRetryTimeOut)
-	log.LogInfof("[updateVolStatInfo]: info(%+v), defaultStorageClass(%v), followerRead(%v), timout(%v)",
-		info, proto.StorageClassString(info.DefaultStorageClass), mw.FollowerRead, mw.leaderRetryTimeout)
+	log.LogInfof("[updateVolStatInfo]: info(%+v), defaultStorageClass(%v), followerRead(%v), metaNearRead(%v), timout(%v)",
+		info, proto.StorageClassString(info.DefaultStorageClass), mw.FollowerRead, mw.NearRead, mw.leaderRetryTimeout)
 	// 0 means disable trash
 	if mw.disableTrashByClient {
 		log.LogDebugf("updateVolStatInfo: trash for %v is disabled by client", mw.volname)
@@ -276,22 +277,28 @@ func (mw *MetaWrapper) refresh() {
 	t := time.NewTimer(RefreshMetaPartitionsInterval)
 	defer t.Stop()
 
+	updateHostLatencyTimer := time.NewTimer(RefreshHostLatencyInterval)
+	defer updateHostLatencyTimer.Stop()
+
 	for {
 		select {
 		case <-t.C:
-			if err = mw.updateMetaPartitions(); err != nil {
-				mw.onAsyncTaskError.OnError(err)
-				log.LogErrorf("updateMetaPartition fail cause: %v", err)
-			}
 			if err = mw.updateVolStatInfo(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
 				log.LogErrorf("updateVolStatInfo fail cause: %v", err)
+			}
+			if err = mw.updateMetaPartitions(); err != nil {
+				mw.onAsyncTaskError.OnError(err)
+				log.LogErrorf("updateMetaPartition fail cause: %v", err)
 			}
 			if err = mw.updateDirChildrenNumLimit(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
 				log.LogErrorf("updateDirChildrenNumLimit fail cause: %v", err)
 			}
 			t.Reset(RefreshMetaPartitionsInterval)
+		case <-updateHostLatencyTimer.C:
+			mw.updateHostLatency()
+			updateHostLatencyTimer.Reset(30 * time.Second)
 		case <-mw.forceUpdate:
 			log.LogInfof("Start forceUpdateMetaPartitions")
 			mw.partMutex.Lock()

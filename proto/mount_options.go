@@ -46,6 +46,7 @@ const (
 	MaxCPUs
 	EnableXattr
 	NearRead
+	MetaNearRead
 	EnablePosixACL
 	EnableUnixPermission
 	RequestTimeout
@@ -146,6 +147,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[KeepCache] = MountOption{"keepcache", "Enable FUSE keepcache feature", "", false}
 	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
 	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", true}
+	opts[MetaNearRead] = MountOption{"metaNearRead", "Enable meta read from nearest node", "", false}
 	opts[MaximallyRead] = MountOption{"maximallyRead", "Enable read from other node when read quorum failed", "", false}
 
 	opts[Authenticate] = MountOption{"authenticate", "Enable Authenticate", "", false}
@@ -334,6 +336,7 @@ type MountOptions struct {
 	ReqChanCnt              int64
 	EnableXattr             bool
 	NearRead                bool
+	MetaNearRead            bool
 	EnablePosixACL          bool
 	EnableQuota             bool
 	EnableTransaction       string

@@ -335,6 +335,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("capacity", strconv.FormatUint(vv.Capacity, 10))
 	request.addParam("followerRead", strconv.FormatBool(vv.FollowerRead))
 	request.addParam(proto.MetaFollowerReadKey, strconv.FormatBool(vv.MetaFollowerRead))
+	request.addParam(proto.MetaNearReadKey, strconv.FormatBool(vv.MetaNearRead))
 	request.addParam(proto.VolEnableDirectRead, strconv.FormatBool(vv.DirectRead))
 	request.addParam(proto.VolIgnoreTinyRecover, strconv.FormatBool(vv.IgnoreTinyRecover))
 	request.addParam(proto.MaximallyReadKey, strconv.FormatBool(vv.MaximallyRead))
@@ -431,7 +432,7 @@ func (api *AdminAPI) VolAddAllowedStorageClass(volName string, addAllowedStorage
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, deleteLockTime int64, crossZone, normalZonesFirst bool,
 	business string, mpCount, dpCount, replicaNum, dpSize int, followerRead bool, zoneName string, ebsBlkSize int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
-	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string, optMaximallyRead string,
+	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string, optMetaNearRead string, optMaximallyRead string,
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
 	remoteCacheMaxFileSizeGB int64, remoteCacheOnlyForNotSSD string, remoteCacheMultiRead string, flashNodeTimeoutCount int64,
 	remoteCacheSameZoneTimeout int64, remoteCacheSameRegionTimeout int64, storeMode proto.StoreMode,
@@ -450,6 +451,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("dpSize", strconv.Itoa(dpSize))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
 	request.addParam(proto.MetaFollowerReadKey, optMetaFollowerRead)
+	request.addParam(proto.MetaNearReadKey, optMetaNearRead)
 	request.addParam(proto.MaximallyReadKey, optMaximallyRead)
 	request.addParam("zoneName", zoneName)
 	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))

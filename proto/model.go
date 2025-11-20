@@ -371,6 +371,7 @@ type VolStatInfo struct {
 	TrashInterval           int64 `json:"TrashIntervalV2"`
 	DefaultStorageClass     uint32
 	MetaFollowerRead        bool
+	MetaNearRead            bool
 	MaximallyRead           bool
 	LeaderRetryTimeOut      int
 	StatByStorageClass      []*StatOfStorageClass

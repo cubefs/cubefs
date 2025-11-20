@@ -54,7 +54,7 @@ func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
 
 func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 	switch p.Opcode {
-	case proto.OpFlashSDKHeartbeat:
+	case proto.OpPing:
 		err = f.opClientHeartbeat(conn, p)
 	case proto.OpFlashNodeHeartbeat:
 		err = f.opFlashNodeHeartbeat(conn, p)

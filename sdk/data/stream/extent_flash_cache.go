@@ -66,36 +66,6 @@ type RemoteCache struct {
 	WarmPathWorked           int32
 }
 
-type AddressPingStats struct {
-	sync.Mutex
-	durations []time.Duration
-	index     int
-}
-
-func (as *AddressPingStats) Add(duration time.Duration) {
-	as.Lock()
-	defer as.Unlock()
-	if as.index < 5 {
-		as.durations = append(as.durations, duration)
-	} else {
-		as.durations[as.index%5] = duration
-	}
-	as.index++
-}
-
-func (as *AddressPingStats) Average() time.Duration {
-	as.Lock()
-	defer as.Unlock()
-	if len(as.durations) == 0 {
-		return 0
-	}
-	var total time.Duration
-	for _, d := range as.durations {
-		total += d
-	}
-	return total / time.Duration(len(as.durations))
-}
-
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
 	// cannot set vol's RemoteCacheReadTimeoutSec <= 0
 	if view.RemoteCacheReadTimeout <= 0 {

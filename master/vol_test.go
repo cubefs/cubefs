@@ -563,6 +563,7 @@ func createTestVol(name string) *Vol {
 		NeedToLowerReplica:       false,
 		FollowerRead:             false,
 		MetaFollowerRead:         false,
+		MetaNearRead:             false,
 		DirectRead:               false,
 		IgnoreTinyRecover:        false,
 		MaximallyRead:            false,

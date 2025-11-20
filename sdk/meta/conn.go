@@ -66,7 +66,7 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 	var (
 		resp    *proto.Packet
 		err     error
-		addr    string
+		curAddr string
 		mc      *MetaConn
 		start   time.Time
 		lastSeq uint64
@@ -80,17 +80,32 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 
 	req.ExtentType |= proto.PacketProtocolVersionFlag
 
-	errs := make(map[int]error, len(mp.Members))
+	hosts := mp.Members
+	curAddr = mp.LeaderAddr
+	isReadPkt := req.IsReadMetaPkt() && !mw.InnerReq
+	if isReadPkt && mw.FollowerRead && mw.NearRead {
+		nearHosts := mp.SortHostsByPingElapsed(mw)
+		if len(nearHosts) > 0 {
+			hosts = nearHosts
+			curAddr = nearHosts[0]
+			req.ArgLen = 1
+			req.Arg = make([]byte, req.ArgLen)
+			req.Arg[0] = proto.NearReadFlag
+		}
+		log.LogDebugf("sendToMetaPartitionLeader: mp(%v) nearHosts(%v) curAddr(%v)", mp, nearHosts, curAddr)
+	}
+
+	errs := make(map[int]error, len(hosts))
 	var j int
 
-	addr = mp.LeaderAddr
-	if addr == "" {
-		err = errors.New(fmt.Sprintf("sendToMetaPartitionLeader: failed due to empty leader addr and goto retry, req(%v) mp(%v)", req, mp))
+	if curAddr == "" {
+		err = errors.New(fmt.Sprintf("sendToMetaPartitionLeader: failed due to empty curAddr and goto retry, req(%v) mp(%v)", req, mp))
 		goto retry
 	}
-	mc, err = mw.getConn(mp.PartitionID, addr)
+	mc, err = mw.getConn(mp.PartitionID, curAddr)
 	if err != nil {
-		log.LogWarnf("sendToMetaPartitionLeader: getConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+		mw.addTimeoutCount(curAddr)
+		log.LogWarnf("sendToMetaPartitionLeader: getConn failed and goto retry, req(%v) mp(%v) curAddr(%v) err(%v)", req, mp, curAddr, err)
 		goto retry
 	}
 	if mw.Client != nil { // compatible lcNode not init Client
@@ -120,17 +135,19 @@ sendWithList:
 		log.LogWarnf("sendToMetaPartitionLeader: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
 		goto sendWithList
 	}
-	log.LogWarnf("sendToMetaPartitionLeader: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v), addr(%s)",
-		req, mp, mc, err, addr)
+	log.LogWarnf("sendToMetaPartitionLeader: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v), curAddr(%s)",
+		req, mp, mc, err, curAddr)
 	mw.putConn(mc, err)
+	mw.addTimeoutCount(curAddr)
 retry:
 	start = time.Now()
 	for i := 0; i <= SendRetryLimit; i++ {
-		for j, addr = range mp.Members {
-			mc, err = mw.getConn(mp.PartitionID, addr)
+		for j, curAddr = range hosts {
+			mc, err = mw.getConn(mp.PartitionID, curAddr)
 			errs[j] = err
 			if err != nil {
-				log.LogWarnf("sendToMetaPartitionLeader: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+				mw.addTimeoutCount(curAddr)
+				log.LogWarnf("sendToMetaPartitionLeader: getConn failed and continue to retry, req(%v) mp(%v) curAddr(%v) err(%v)", req, mp, curAddr, err)
 				continue
 			}
 			resp, err = mc.send(req)
@@ -141,6 +158,7 @@ retry:
 			if err == nil {
 				errs[j] = errors.New(fmt.Sprintf("request should retry[%v]", resp.GetResultMsg()))
 			} else {
+				mw.addTimeoutCount(curAddr)
 				errs[j] = err
 			}
 			log.LogWarnf("sendToMetaPartitionLeader: retry failed req(%v) mp(%v) mc(%v) errs(%v) resp(%v)", req, mp, mc, errs, resp)
@@ -215,7 +233,6 @@ func (mw *MetaWrapper) readQuorumFromHosts(mp *MetaPartition, req *proto.Packet)
 	start := time.Now()
 
 	for i := 0; i < SendRetryLimit; i++ {
-
 		activeHosts, quorumHosts := mw.getMpHosts(mp)
 		if len(activeHosts) < mp.Quorum() {
 			if !mw.FollowerRead {
@@ -235,6 +252,7 @@ func (mw *MetaWrapper) readQuorumFromHosts(mp *MetaPartition, req *proto.Packet)
 		for _, addr := range quorumHosts {
 			mc, err = mw.getConn(mp.PartitionID, addr)
 			if err != nil {
+				mw.addTimeoutCount(addr)
 				log.LogWarnf("readQuorumFromHosts: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 				continue
 			}
@@ -244,6 +262,7 @@ func (mw *MetaWrapper) readQuorumFromHosts(mp *MetaPartition, req *proto.Packet)
 			if err == nil && !resp.ShouldRetry() {
 				goto out
 			}
+			mw.addTimeoutCount(addr)
 			log.LogWarnf("readQuorumFromHosts: retry failed req(%v) mp(%v) mc(%v) errs(%v) resp(%v)", req, mp, mc, err, resp)
 		}
 

@@ -103,6 +103,21 @@ func (m *metadataManager) checkDisableAuditLogVolume(volNames []string, partitio
 	partition.SetEnableAuditLog(true)
 }
 
+// opPing handles a lightweight ping request for latency measurement
+func (m *metadataManager) opMetaNodePing(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	p.PacketOkReply()
+	if err = p.WriteToConn(conn); err != nil {
+		log.LogWarnf("action[opMetaNodePing] failed to write response to addr(%v) err(%v)", remoteAddr, err)
+		return
+	}
+	if log.EnableInfo() {
+		log.LogInfof("action[opMetaNodePing] response sent to addr(%v)", remoteAddr)
+	}
+	return
+}
+
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	remoteAddr string,
 ) (err error) {

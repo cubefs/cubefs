@@ -49,6 +49,7 @@ func GenerateRequestID() int64 {
 const (
 	AddrSplit        = "/"
 	FollowerReadFlag = 'F'
+	NearReadFlag     = 'N'
 )
 
 // Operations
@@ -235,7 +236,6 @@ const (
 	OpOk                 uint8 = 0xF0
 	OpAgainVerionList    uint8 = 0xEF
 
-	OpPing                  uint8 = 0xFF
 	OpMetaUpdateXAttr       uint8 = 0x3B
 	OpMetaReadDirOnly       uint8 = 0x3C
 	OpUploadPartConflictErr uint8 = 0x3D
@@ -305,9 +305,11 @@ const (
 	OpFlashNodeSetWriteIOLimits uint8 = 0xC8
 	OpFlashNodeScan             uint8 = 0xC9
 	OpFlashNodeTaskCommand      uint8 = 0xCA
-	OpFlashSDKHeartbeat         uint8 = 0xCB
 	OpFlashNodeBatchReadObject  uint8 = 0xCC
 	OpApplyWarmupMetaToken      uint8 = 0xCD
+
+	// meta&data&falshnode ping operation
+	OpPing uint8 = 0xCB
 
 	// async operations: Master、SDK -> MetaNode
 	OpMetaAsyncReadDir           uint8 = 0x82
@@ -586,12 +588,19 @@ func (p *Packet) GetCopy() *Packet {
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)ExID(%v)ExtOffset(%v)KernelOff(%v)Type(%v)VerSeq(%v)ProtoVer(%v)Size(%v)FollowerRead(%v)",
-		p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg(), p.ExtentID, p.ExtentOffset, p.KernelOffset, p.ExtentType, p.VerSeq, p.ProtoVersion, p.Size, p.IsFollowerReadMetaPkt())
+	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)ExID(%v)ExtOffset(%v)KernelOff(%v)Type(%v)VerSeq(%v)ProtoVer(%v)Size(%v)FollowerRead(%v)NearRead(%v)",
+		p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg(), p.ExtentID, p.ExtentOffset, p.KernelOffset, p.ExtentType, p.VerSeq, p.ProtoVersion, p.Size, p.IsFollowerReadMetaPkt(), p.IsNearReadMetaPkt())
 }
 
 func (p *Packet) IsFollowerReadMetaPkt() bool {
 	if p.ArgLen == 1 && p.Arg[0] == FollowerReadFlag {
+		return true
+	}
+	return false
+}
+
+func (p *Packet) IsNearReadMetaPkt() bool {
+	if p.ArgLen == 1 && p.Arg[0] == NearReadFlag {
 		return true
 	}
 	return false
@@ -745,8 +754,6 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpSyncRandomWriteAppend"
 	case OpReadTinyDeleteRecord:
 		m = "OpReadTinyDeleteRecord"
-	case OpPing:
-		m = "OpPing"
 	case OpTinyExtentRepairRead:
 		m = "OpTinyExtentRepairRead"
 	case OpSnapshotExtentRepairRead:
@@ -881,8 +888,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpRemoveBackupMetaPartition"
 	case OpIsRaftStatusOk:
 		m = "OpIsRaftStatusOk"
-	case OpFlashSDKHeartbeat:
-		m = "OpFlashSDKHeartbeat"
+	case OpPing:
+		m = "OpPing"
 	case OpMetaAsyncLookup:
 		m = "OpMetaAsyncLookup"
 	case OpMetaAsyncInodeGet:

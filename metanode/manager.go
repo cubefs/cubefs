@@ -199,7 +199,7 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 	labels[exporter.PartId] = ""
 	labels[exporter.Vol] = ""
 
-	if p.Opcode == proto.OpMetaNodeHeartbeat || p.Opcode == proto.OpCreateMetaPartition {
+	if p.Opcode == proto.OpMetaNodeHeartbeat || p.Opcode == proto.OpCreateMetaPartition || p.Opcode == proto.OpPing {
 		return
 	}
 
@@ -306,6 +306,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opReadDirLimit(conn, p, remoteAddr)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p, remoteAddr)
+	case proto.OpPing:
+		err = m.opMetaNodePing(conn, p, remoteAddr)
 	case proto.OpMetaNodeHeartbeat:
 		err = m.opMasterHeartbeat(conn, p, remoteAddr)
 	case proto.OpMetaExtentsAdd:
