@@ -482,21 +482,6 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 		d.dcache.Put(req.Name, ino)
 	}
-	// If subdirectories may be the directories where training data is located,
-	// the ReadDirAll operation will be triggered when metaCacheAcceleration is enabled
-	if mode.IsDir() && child.(*Dir).info.Nlink >= uint32(child.(*Dir).super.minimumNlinkReadDir) && child.(*Dir).super.metaCacheAcceleration {
-		now := timeutil.GetCurrentTime()
-		if atomic.LoadInt64(&child.(*Dir).lastTime) == 0 || (now.Sub(time.Unix(child.(*Dir).lastTime, 0)) >= 2*time.Minute && atomic.LoadUint32(&d.missCount) > 5) {
-			log.LogDebugf("trigger ReadDirAll for lastTime %v Nlink %v metaCacheAcceleration %v ino(%v) name(%v)",
-				atomic.LoadInt64(&child.(*Dir).lastTime), child.(*Dir).info.Nlink, child.(*Dir).super.metaCacheAcceleration, child.(*Dir).info.Inode, child.(*Dir).getCwd())
-			atomic.StoreInt64(&child.(*Dir).lastTime, now.Unix())
-			meta.GetExtetnsPool.Run(func() {
-				log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", child.(*Dir).info.Inode, child.(*Dir).getCwd())
-				auditlog.LogClientOp("TriggerReadDirAllSub", child.(*Dir).getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
-				child.(*Dir).ReadDirAll(context.Background())
-			})
-		}
-	}
 
 	resp.EntryValid = LookupValidDuration
 
