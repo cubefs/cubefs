@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"context"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -25,8 +24,6 @@ import (
 	"syscall"
 	"time"
 
-	"gopkg.in/natefinch/lumberjack.v2"
-
 	"github.com/cubefs/cubefs/blobstore/common/config"
 	"github.com/cubefs/cubefs/blobstore/common/profile"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -34,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
 	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/graceful"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 
@@ -45,20 +43,12 @@ const (
 	defaultShutdownTimeoutS = 30
 )
 
-type LogConfig struct {
-	Level      log.Level `json:"level"`
-	Filename   string    `json:"filename"`
-	MaxSize    int       `json:"maxsize"`
-	MaxAge     int       `json:"maxage"`
-	MaxBackups int       `json:"maxbackups"`
-	Compress   bool      `json:"compress"`
-}
-
 type Config struct {
-	MaxProcs         int       `json:"max_procs"`
-	LogConf          LogConfig `json:"log"`
-	BindAddr         string    `json:"bind_addr"`
-	ShutdownTimeoutS int       `json:"shutdown_timeout_s"`
+	MaxProcs         int    `json:"max_procs"`
+	BindAddr         string `json:"bind_addr"`
+	ShutdownTimeoutS int    `json:"shutdown_timeout_s"`
+
+	Log *log.AsyncLogger `json:"log"`
 
 	AuditLog auditlog.Config   `json:"auditlog"`
 	Auth     auth_proto.Config `json:"auth"`
@@ -87,29 +77,6 @@ func RegisterGracefulModule(m *Module) {
 	mod.graceful = true
 }
 
-func NewLogWriter(cfg *LogConfig) io.Writer {
-	maxsize := cfg.MaxSize
-	if maxsize == 0 {
-		maxsize = 1024
-	}
-	maxage := cfg.MaxAge
-	if maxage == 0 {
-		maxage = 7
-	}
-	maxbackups := cfg.MaxBackups
-	if maxbackups == 0 {
-		maxbackups = 7
-	}
-	return &lumberjack.Logger{
-		Filename:   cfg.Filename,
-		MaxSize:    maxsize,
-		MaxAge:     maxage,
-		MaxBackups: maxbackups,
-		LocalTime:  true,
-		Compress:   cfg.Compress,
-	}
-}
-
 func Main(args []string) {
 	cfg, err := mod.InitConfig(args)
 	if err != nil {
@@ -118,10 +85,17 @@ func Main(args []string) {
 	if cfg.MaxProcs > 0 {
 		runtime.GOMAXPROCS(cfg.MaxProcs)
 	}
-	log.SetOutputLevel(cfg.LogConf.Level)
+	if cfg.Log == nil {
+		cfg.Log = &log.AsyncLogger{}
+	}
+	log.SetOutputLevel(cfg.Log.Level)
 	registerLogLevel()
-	if cfg.LogConf.Filename != "" {
-		log.SetOutput(NewLogWriter(&cfg.LogConf))
+	if cfg.Log.Filename != "" {
+		defaulter.IntegerLessOrEqual(&cfg.Log.MaxSize, 1024)
+		defaulter.IntegerLessOrEqual(&cfg.Log.MaxAge, 7)
+		defaulter.IntegerLessOrEqual(&cfg.Log.MaxBackups, 7)
+		cfg.Log.LocalTime = true
+		log.SetOutput(cfg.Log)
 	}
 	if cfg.ShutdownTimeoutS <= 0 {
 		cfg.ShutdownTimeoutS = defaultShutdownTimeoutS

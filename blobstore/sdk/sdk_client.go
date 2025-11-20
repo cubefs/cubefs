@@ -24,7 +24,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/stream"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
-	"github.com/cubefs/cubefs/blobstore/cmd"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
@@ -67,8 +66,8 @@ type Config struct {
 	RetryDelayMs    uint32             `json:"retry_delay_ms"`
 	PartConcurrence int                `json:"part_concurrence"`
 
-	LogConf cmd.LogConfig `json:"log"`
-	Logger  io.Writer     `json:"-"`
+	Log    *log.AsyncLogger `json:"log"`
+	Logger io.Writer        `json:"-"`
 }
 
 type sdkHandler struct {
@@ -1197,13 +1196,18 @@ func fixConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.MaxRetry, defaultMaxRetry)
 	defaulter.LessOrEqual(&cfg.RetryDelayMs, defaultRetryDelayMs)
 	defaulter.LessOrEqual(&cfg.PartConcurrence, defaultPartConcurrence)
-	log.SetOutputLevel(cfg.LogConf.Level)
+	if cfg.Log == nil {
+		cfg.Log = &log.AsyncLogger{}
+	}
+	log.SetOutputLevel(cfg.Log.Level)
 	if cfg.Logger != nil {
 		log.SetOutput(cfg.Logger)
-	} else {
-		if cfg.LogConf.Filename != "" {
-			log.SetOutput(cmd.NewLogWriter(&cfg.LogConf))
-		}
+	} else if cfg.Log.Filename != "" {
+		defaulter.IntegerLessOrEqual(&cfg.Log.MaxSize, 1024)
+		defaulter.IntegerLessOrEqual(&cfg.Log.MaxAge, 7)
+		defaulter.IntegerLessOrEqual(&cfg.Log.MaxBackups, 7)
+		cfg.Log.LocalTime = true
+		log.SetOutput(cfg.Log)
 	}
 }
 

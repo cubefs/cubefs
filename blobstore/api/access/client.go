@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -185,9 +184,9 @@ type Config struct {
 // Fixup: client and sdk using the same config type
 type ConsulConfig = api.Config
 
-// Logger alias of lumberjack Logger
+// Logger alias of AsyncLogger
 // See more at: https://github.com/natefinch/lumberjack
-type Logger = lumberjack.Logger
+type Logger = log.AsyncLogger
 
 // client access rpc client
 type client struct {

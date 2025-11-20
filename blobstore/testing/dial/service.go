@@ -94,7 +94,7 @@ func (s *serviceDial) Start() error {
 		cfg := access.Config{
 			ConnMode: access.GeneralConnMode,
 			Consul:   access.ConsulConfig{Address: conn.ConsulAddr},
-			LogLevel: s.config.LogConf.Level,
+			LogLevel: s.config.Log.Level,
 		}
 		if conn.ConsulAddr == "" {
 			cfg.PriorityAddrs = conn.HostAddrs[:]

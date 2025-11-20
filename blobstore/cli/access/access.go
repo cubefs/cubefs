@@ -65,8 +65,9 @@ func newAccessClient() (access.API, error) {
 			Limit:          jc.Limit,
 			MaxSizePutOnce: config.AccessMaxSizePutOnce(),
 			MaxRetry:       config.AccessHostTryTimes(),
+			Log:            &log.AsyncLogger{},
 		}
-		sdkConfig.LogConf.Level = log.Level(config.Get("Flag-Loglevel").(int))
+		sdkConfig.Log.Level = log.Level(config.Get("Flag-Loglevel").(int))
 		if _sdkclient, err = sdk.New(sdkConfig); err != nil {
 			return nil, err
 		}

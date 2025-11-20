@@ -39,7 +39,11 @@
     "maxsize": "每个日志文件的大小",
     "maxage": "保留天数",
     "maxbackups": "保留日志文件个数",
-    "compress": "保留日志是否开启压缩"
+    "localtime": "保留日志使用本地时间",
+    "compress": "保留日志是否开启压缩",
+    "queuesize": "异步日志缓存队列大小",
+    "writetimeout": "异步日志单次写入超时时间",
+    "drop": "队列满时丢弃日志级别小于warn的条目"
   }
 }
 ```

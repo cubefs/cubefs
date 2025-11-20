@@ -39,7 +39,11 @@ The basic configuration is shared by each module and mainly includes server port
     "maxsize": "maximum size of each log file",
     "maxage": "number of days to keep",
     "maxbackups": "number of log files to keep",
-    "compress": "backup with compress"
+    "localtime": "backup files is the computer's local time",
+    "compress": "backup with compress",
+    "queuesize": "size of the async write queue",
+    "writetimeout": "timeout for async write",
+    "drop": "drop under level warn if queue is full"
   }
 }
 ```

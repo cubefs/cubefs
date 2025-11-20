@@ -15,7 +15,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/stream"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
-	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -53,7 +52,7 @@ func newSdkHandler(t *testing.T) *sdkHandler {
 		NameRps: map[string]int{"alloc": 2},
 	})
 
-	conf := Config{LogConf: cmd.LogConfig{Level: log.Lpanic}}
+	conf := Config{Log: &log.AsyncLogger{Level: log.Lpanic}}
 	fixConfig(&conf)
 	return &sdkHandler{
 		handler: h,

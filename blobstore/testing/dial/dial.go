@@ -20,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/config"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 var (
@@ -40,6 +41,9 @@ func initConfig(args []string) (*cmd.Config, error) {
 	config.Init("f", "", "dial.conf")
 	if err := config.Load(&gConfig); err != nil {
 		return nil, err
+	}
+	if gConfig.Config.Log == nil {
+		gConfig.Config.Log = &log.AsyncLogger{}
 	}
 	return &gConfig.Config, nil
 }

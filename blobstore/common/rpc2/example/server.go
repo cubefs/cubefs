@@ -38,7 +38,10 @@ func initConfig(args []string) (*cmd.Config, error) {
 	logDir := path.Join(os.TempDir(), "example_rpc2")
 	os.MkdirAll(logDir, 0o644)
 	conf.AuditLog.LogDir = logDir
-	conf.LogConf.Filename = path.Join(logDir, "rpc2.log")
+	if conf.Log == nil {
+		conf.Log = &log.AsyncLogger{}
+	}
+	conf.Log.Filename = path.Join(logDir, "rpc2.log")
 	conf.BindAddr = listenrpc
 	conf.Rpc2Server.Addresses = []rpc2.NetworkAddress{
 		{Network: "tcp", Address: listenon[0]},

@@ -70,6 +70,9 @@ func (ab *asyncBuffer) Release() {
 // AsyncLogger must not be copied after first use. It contains sync.Once,
 // sync.WaitGroup, and channels that cannot be safely copied.
 type AsyncLogger struct {
+	// Level be compatible for applications
+	Level Level `json:"level"`
+
 	// configures of lumberjack.Logger
 	Filename   string `json:"filename" yaml:"filename"`
 	MaxSize    int    `json:"maxsize" yaml:"maxsize"`
