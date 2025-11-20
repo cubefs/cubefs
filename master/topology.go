@@ -107,17 +107,17 @@ func (t *topology) getZoneNameList() (zoneList []string) {
 }
 
 func (t *topology) getZone(name string) (zone *Zone, err error) {
-	t.zoneMap.Range(func(zoneName, value interface{}) bool {
-		if zoneName != name {
-			return true
-		}
-		zone = value.(*Zone)
-		return true
-	})
-	if zone == nil {
-		return nil, fmt.Errorf("zone[%v] is not found", name)
+	v, ok := t.zoneMap.Load(name)
+	if !ok {
+		return nil, fmt.Errorf("zone[%v] not found", name)
 	}
-	return
+
+	zone = v.(*Zone)
+	if zone == nil {
+		return nil, fmt.Errorf("zone[%v] not found", name)
+	}
+
+	return zone, nil
 }
 
 func (t *topology) putDataNode(dataNode *DataNode) (err error) {
