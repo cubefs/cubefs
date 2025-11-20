@@ -475,7 +475,6 @@ func (s *Streamer) UpdateStringPath(fullPath string) {
 // asyncFlushManager manages asynchronous flush operations using channel-based producer-consumer pattern
 func (s *Streamer) asyncFlushManager() {
 	log.LogDebugf("asyncFlushManager:  started for streamer(%v)", s)
-	idle := 0
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
 	for {
@@ -492,7 +491,6 @@ func (s *Streamer) asyncFlushManager() {
 			if req == nil {
 				continue
 			}
-			idle = 0
 			// Check if we should stop processing new requests
 			select {
 			case <-s.asyncFlushDone:
@@ -528,12 +526,9 @@ func (s *Streamer) asyncFlushManager() {
 				log.LogDebugf("rdonly stream no need to start asyncFlushManager routine. ino %d", s.inode)
 				return
 			}
-			if atomic.LoadInt32(&s.refcnt) <= 0 {
-				if idle >= streamWriterIdleTimeoutPeriod && len(s.asyncFlushCh) == 0 {
-					log.LogDebugf("done asyncFlushManager: no requests for a long time, ino(%v), streamer(%v)", s.inode, s)
-					return
-				}
-				idle++
+			if !s.isOpen && len(s.asyncFlushCh) == 0 {
+				log.LogDebugf("asyncFlushManager  is done for streamer(%v)  closed", s.inode)
+				return
 			}
 		}
 	}

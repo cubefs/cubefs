@@ -44,7 +44,9 @@ func (dl *DirtyExtentList) Put(eh *ExtentHandler) {
 		return
 	}
 	dl.list.PushBack(eh)
-	log.LogDebugf("DirtyExtentList: put handler(%v) to dirtyList trace(%v)", eh, string(debug.Stack()))
+	if log.EnableDebug() {
+		log.LogDebugf("DirtyExtentList: put handler(%v) to dirtyList trace(%v)", eh, string(debug.Stack()))
+	}
 }
 
 // Get gets the next element in the dirty extent list.
@@ -61,7 +63,9 @@ func (dl *DirtyExtentList) Remove(e *list.Element) {
 	if e != nil {
 		if eh, ok := e.Value.(*ExtentHandler); ok {
 			dl.index.Delete(eh.id)
-			log.LogDebugf("DirtyExtentList: remove handler(%v) to dirtyList trace(%v)", eh, string(debug.Stack()))
+			if log.EnableDebug() {
+				log.LogDebugf("DirtyExtentList: remove handler(%v) to dirtyList trace(%v)", eh, string(debug.Stack()))
+			}
 		}
 	}
 	dl.list.Remove(e)
