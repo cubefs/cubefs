@@ -261,6 +261,9 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				mpr.Status = proto.Unavailable
 			}
 			mpr.IsLeader = isLeader
+			if partition.IsSnapshoting() {
+				mpr.Status = proto.Unavailable
+			}
 
 			resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 			return true

@@ -278,6 +278,7 @@ type OpPartition interface {
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
 	GetUniqID(p *Packet, num uint32) (err error)
 	CloseAndBackupRaft() error
+	IsSnapshoting() bool
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -2186,4 +2187,12 @@ func (mp *metaPartition) ScanRocksdb() error {
 	}
 
 	return nil
+}
+
+func (mp *metaPartition) IsSnapshoting() bool {
+	isRestoring := mp.raftPartition.IsRestoring()
+	if isRestoring {
+		log.LogWarnf("IsSnapshoting mp[%d] isRestoring: %v", mp.config.PartitionId, isRestoring)
+	}
+	return isRestoring
 }
