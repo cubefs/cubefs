@@ -157,6 +157,10 @@ func (req *Request) request(deadline time.Time) (*Response, bool, error) {
 	if err != nil {
 		return nil, true, err
 	}
+	if resp.Version != Version || resp.Magic != Magic {
+		frame.Close()
+		return nil, true, ErrVersionMagic
+	}
 	if resp.Status < 200 || resp.Status >= 300 {
 		frame.Close()
 		// set the stream broken if it has body
@@ -286,6 +290,13 @@ var poolRequest = sync.Pool{
 
 func getRequest() *Request {
 	return poolRequest.Get().(*Request)
+}
+
+func getRequestServer() *Request {
+	req := getRequest()
+	req.Version = 0
+	req.Magic = 0
+	return req
 }
 
 func putRequest(req *Request) {

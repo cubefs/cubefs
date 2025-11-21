@@ -277,6 +277,8 @@ func (ss *serverStream) SendHeader(obj Marshaler) error {
 	if ss.hdr.Status == 0 {
 		ss.hdr.Status = 200
 	}
+	ss.hdr.Version = Version
+	ss.hdr.Magic = Magic
 	ss.hdr.ContentLength = int64(obj.Size())
 	return ss.writeFrameMsg(&ss.hdr, obj)
 }

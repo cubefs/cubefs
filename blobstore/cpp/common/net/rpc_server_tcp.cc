@@ -61,6 +61,12 @@ seastar::future<> TcpRpcServer::HandleStream(net::StreamPtr stream) {
             LOG_WARN("parse rpc header error, remote: {}", stream->RemoteAddress());
             break;
         }
+        if (req_header.Version() != BLOBSTORE_NET_RPC_HEADER_VERSION ||
+            req_header.Magic() != BLOBSTORE_NET_RPC_HEADER_MAGIC) {
+            LOG_WARN("bad rpc header version({}) or magic({}), remote: {}", req_header.Version(),
+                     req_header.Magic(), stream->RemoteAddress());
+            break;
+        }
 
         proto::StreamCmd cmd = req_header.StreamCmd();
         RpcServerContext ctx(stream.get(), std::move(req_header));

@@ -242,3 +242,29 @@ func TestRequestErrorReuseStream(t *testing.T) {
 	require.Error(t, cli.DoWith(req, nil))
 	require.True(t, rc.broken)
 }
+
+func TestRequestInvalidVersionMagic(t *testing.T) {
+	var handler Router
+	handler.Register("/", func(w ResponseWriter, req *Request) error { return nil })
+
+	server, cli, shutdown := newServer("tcp", &handler)
+	defer shutdown()
+	cli.Retry = 1
+	rc := &reuseConnector{Connector: defaultConnector(cli.ConnectorConfig)}
+	cli.Connector = rc
+
+	{
+		req, _ := NewRequest(testCtx, server.Name, "/", nil, nil)
+		require.NoError(t, cli.DoWith(req, nil))
+	}
+	{
+		req, _ := NewRequest(testCtx, server.Name, "/", nil, nil)
+		req.Version++
+		require.Error(t, cli.DoWith(req, nil))
+	}
+	{
+		req, _ := NewRequest(testCtx, server.Name, "/", nil, nil)
+		req.Magic++
+		require.Error(t, cli.DoWith(req, nil))
+	}
+}

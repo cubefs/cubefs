@@ -151,6 +151,15 @@ seastar::future<Status<RpcResponseHeader>> RpcClientContext::ReadHeader(
         s.SetCode(last_status_.Code()).SetReason(last_status_.Reason());
         co_return s;
     }
+
+    if (resp_header.Version() != BLOBSTORE_NET_RPC_HEADER_VERSION ||
+        resp_header.Magic() != BLOBSTORE_NET_RPC_HEADER_MAGIC) {
+        last_status_.SetCode(ErrCode::ErrNetworkProtocol)
+            .SetReason("net: invalid version or magic");
+        s.SetCode(last_status_.Code()).SetReason(last_status_.Reason());
+        co_return s;
+    }
+
     size_t body_size_in_frame = (b.size() > body_offset) ? (b.size() - body_offset) : 0;
     if (body_size_in_frame > 0) {
         Buffer body_buf = b.share(body_offset, body_size_in_frame);
@@ -193,6 +202,8 @@ seastar::future<Status<>> RpcClientContext::WriteHeader(RpcRequestHeader req_hea
         co_return s;
     }
 
+    req_header.SetVersion(BLOBSTORE_NET_RPC_HEADER_VERSION);
+    req_header.SetMagic(BLOBSTORE_NET_RPC_HEADER_MAGIC);
     Buffer b = SerializeRpcHeader(req_header);
     if (b.size() == 0) {
         last_status_.SetCode(ErrCode::ErrInvalid).SetReason("net: serialize header error");

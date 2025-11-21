@@ -25,6 +25,8 @@ seastar::future<Status<>> RpcServerContext::WriteBody(std::vector<iovec> iov) {
 }
 
 seastar::future<Status<>> RpcServerContext::WriteHeader(RpcResponseHeader header) {
+    header.SetVersion(BLOBSTORE_NET_RPC_HEADER_VERSION);
+    header.SetMagic(BLOBSTORE_NET_RPC_HEADER_MAGIC);
     Buffer buf = SerializeRpcHeader(header);
     if (buf.size() == 0) {
         Status<> s;

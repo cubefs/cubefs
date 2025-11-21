@@ -20,6 +20,9 @@
 namespace blobstore {
 namespace net {
 
+#define BLOBSTORE_NET_RPC_HEADER_VERSION 0
+#define BLOBSTORE_NET_RPC_HEADER_MAGIC 0xee
+
 #define BLOBSTORE_NET_RPC_HEADER_SIZE 4  // request, response header size
 
 // C++20 Concepts: Request and Response header type

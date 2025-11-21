@@ -334,10 +334,14 @@ func (s *Server) handleStream(stream *transport.Stream) {
 }
 
 func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
-	req := getRequest()
+	req := getRequestServer()
 	frame, err := readHeaderFrame(context.Background(), stream, &req.RequestHeader)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Version != Version || req.Magic != Magic {
+		return nil, ErrVersionMagic
 	}
 
 	switch req.StreamCmd {

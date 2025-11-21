@@ -44,6 +44,7 @@ var (
 	ErrServerClosed  = errors.New("rpc2: server closed")
 	ErrFrameHeader   = errors.New("rpc2: request or response header must be in independent frame")
 	ErrFrameProtocol = errors.New("rpc2: undefined protocol frame")
+	ErrVersionMagic  = NewError(400, "VersionMagic", "rpc2: invalid version or magic")
 	ErrConnLimited   = NewError(400, "ConnLimited", "rpc2: session or stream was limited")
 	ErrConnNoAddress = NewError(400, "ConnNoAddress", "rpc2: lb client has no address")
 )

@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "common/net/byteorder.h"
 #include "common/net/rpc.h"
 #include "common/net/rpc_server.h"
 #include "common/status.h"
