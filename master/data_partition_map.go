@@ -423,13 +423,7 @@ func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
 }
 
 func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr string, ignoreDiscard bool) (partitions []*DataPartition) {
-	dpMapCache := make([]*DataPartition, 0)
-	dpMap.RLock()
-	for _, dp := range dpMap.partitionMap {
-		dpMapCache = append(dpMapCache, dp)
-	}
-	dpMap.RUnlock()
-
+	dpMapCache := dpMap.clonePartitions()
 	partitions = make([]*DataPartition, 0)
 	for _, dp := range dpMapCache {
 		if ignoreDiscard && dp.IsDiscard {
@@ -454,10 +448,9 @@ func (dpMap *DataPartitionMap) Range(f func(dp *DataPartition) bool) {
 }
 
 func (dpMap *DataPartitionMap) getReplicaDiskPaths(nodeAddr string) (diskPaths []string) {
-	dpMap.RLock()
-	defer dpMap.RUnlock()
+	dps := dpMap.clonePartitions()
 	diskPaths = make([]string, 0)
-	for _, dp := range dpMap.partitionMap {
+	for _, dp := range dps {
 		disk := dp.getReplicaDisk(nodeAddr)
 		if len(disk) != 0 && !inStingList(disk, diskPaths) {
 			diskPaths = append(diskPaths, disk)
