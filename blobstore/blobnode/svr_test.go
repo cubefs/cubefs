@@ -637,9 +637,10 @@ type mockDiskInfo struct {
 var _mockDiskIdBase = int64(100)
 
 type mockClusterMgr struct {
-	reqIdx  int64
-	nodeIdx int32
-	disks   []mockDiskInfo
+	reqIdx       int64
+	nodeIdx      int32
+	disks        []mockDiskInfo
+	notIncrement bool
 }
 
 func init() {
@@ -863,7 +864,10 @@ func (mcm *mockClusterMgr) NodeAdd(c *rpc.Context) {
 		return
 	}
 
-	nodeID := atomic.AddInt32(&mcm.nodeIdx, 1)
+	nodeID := atomic.LoadInt32(&mcm.nodeIdx)
+	if !mcm.notIncrement {
+		nodeID = atomic.AddInt32(&mcm.nodeIdx, 1)
+	}
 	ret := &cmapi.NodeIDAllocRet{
 		NodeID: proto.NodeID(nodeID),
 	}
@@ -1146,6 +1150,7 @@ func TestService_OnlyBlobnode(t *testing.T) {
 	svr.Close()
 
 	// restart
+	mcm.notIncrement = true
 	_, err = NewService(conf)
 	require.NoError(t, err)
 }
@@ -1492,6 +1497,7 @@ func TestService_OnlyBlobnode_OpenOldDisk(t *testing.T) {
 	format := &core.FormatInfo{
 		FormatInfoProtectedField: core.FormatInfoProtectedField{
 			DiskID:  proto.DiskID(1),
+			NodeID:  proto.NodeID(1),
 			Version: 1,
 			Format:  core.FormatMetaTypeV1,
 		},

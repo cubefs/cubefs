@@ -1058,6 +1058,16 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		return nil, bloberr.ErrUnexpected
 	}
 
+	// TODO: support NodeID: old verstion -> v1.5.2: we will remove these code in the next version
+	if formatInfo.NodeID == 0 || dm.NodeID == 0 {
+		formatInfo.NodeID = conf.NodeID
+		formatInfo.NodeCtime = time.Now().UnixNano()
+		dm, err = updateDiskMeta(ctx, sb, formatInfo, conf.Path)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// init eio handler
 	sb.SetHandlerIOError(func(err error) {
 		conf.HandleIOError(context.Background(), dm.DiskID, err)
@@ -1150,10 +1160,12 @@ func registerDisk(ctx context.Context, sb *SuperBlock, conf *core.Config) (dm co
 
 	format := &core.FormatInfo{
 		FormatInfoProtectedField: core.FormatInfoProtectedField{
-			DiskID:  diskID,
-			Version: _diskVer[0],
-			Format:  core.FormatMetaTypeV1,
-			Ctime:   now,
+			DiskID:    diskID,
+			NodeID:    conf.NodeID,
+			Version:   _diskVer[0],
+			Format:    core.FormatMetaTypeV1,
+			Ctime:     now,
+			NodeCtime: now,
 		},
 	}
 	checkSum, err := format.CalCheckSum()
@@ -1185,6 +1197,40 @@ func registerDisk(ctx context.Context, sb *SuperBlock, conf *core.Config) (dm co
 	}
 
 	span.Infof("register disk(%v) success", diskID)
+	return
+}
+
+func updateDiskMeta(ctx context.Context, sb *SuperBlock, format *core.FormatInfo, path string) (dm core.DiskMeta, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Infof("update disk[%d:%s] meta", format.DiskID, path)
+
+	checkSum, err := format.CalCheckSum()
+	if err != nil {
+		span.Errorf("cal format info crc failed: %v", err)
+		return
+	}
+	format.CheckSum = checkSum
+
+	// update disk meta
+	dm = core.DiskMeta{
+		FormatInfo: *format,
+		Mtime:      format.NodeCtime,
+		Registered: true,
+		Status:     proto.DiskStatusNormal,
+		Path:       path,
+	}
+
+	if err = sb.UpsertDisk(ctx, dm.DiskID, dm); err != nil {
+		span.Errorf("Failed upsert disk: %d, err:%v", dm.DiskID, err)
+		return
+	}
+
+	if err = core.SaveDiskFormatInfo(ctx, path, format); err != nil {
+		span.Errorf("Failed save disk[%s] format info, err:%v", path, err)
+		return
+	}
+
+	span.Infof("update disk[%d:%s] meta, success", format.DiskID, path)
 	return
 }
 

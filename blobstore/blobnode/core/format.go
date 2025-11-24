@@ -59,10 +59,12 @@ var (
 )
 
 type FormatInfoProtectedField struct {
-	DiskID  proto.DiskID `json:"diskid"`
-	Version uint8        `json:"version"`
-	Ctime   int64        `json:"ctime"`
-	Format  string       `json:"format"`
+	Version   uint8        `json:"version"`
+	DiskID    proto.DiskID `json:"diskid"`
+	NodeID    proto.NodeID `json:"nodeid"`
+	Ctime     int64        `json:"ctime"`
+	NodeCtime int64        `json:"node_ctime"`
+	Format    string       `json:"format"`
 }
 
 type FormatInfo struct {

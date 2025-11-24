@@ -538,6 +538,11 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 				svr.handleStartDiskError(ctx, foundDiskPathInCluster, diskConf.Path, format.DiskID, err)
 				return
 			}
+			// check node id after NewDiskStorage. only when it is not new disk
+			if format.DiskID != 0 && (format.NodeID != conf.NodeID || format.NodeID == proto.NodeID(0)) {
+				span.Fatalf("disk[%d:%s] nodeID not match, registered cm[%d], local[%d]",
+					format.DiskID, diskConf.Path, conf.NodeID, format.NodeID)
+			}
 
 			// new disk, register to cm: not found in cm, or format.diskID==0 and old disk is repaired
 			diskInfo, foundIDInCluster := foundDiskIDInCluster[format.DiskID]

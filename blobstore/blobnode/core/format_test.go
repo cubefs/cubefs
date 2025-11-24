@@ -61,6 +61,21 @@ func TestFormatInfo(t *testing.T) {
 
 	_, err = ReadFormatInfo(ctx, diskPath)
 	require.Error(t, err)
+
+	// update formatInfo, nodeID
+	formatInfo.NodeID = proto.NodeID(2)
+	formatInfo.NodeCtime = time.Now().UnixNano()
+
+	checkSum, err = formatInfo.CalCheckSum()
+	require.NoError(t, err)
+
+	formatInfo.CheckSum = checkSum
+	err = SaveDiskFormatInfo(ctx, diskPath, formatInfo)
+	require.NoError(t, err)
+
+	info, err = ReadFormatInfo(ctx, diskPath)
+	require.NoError(t, err)
+	require.Equal(t, true, reflect.DeepEqual(*info, *formatInfo))
 }
 
 func TestEnsureDiskArea(t *testing.T) {

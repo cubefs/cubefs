@@ -871,3 +871,125 @@ func TestDiskStorage_RedundantChunks(t *testing.T) {
 	require.Equal(t, chunkNew, meta.ChunkID)
 	require.Equal(t, cmapi.ChunkStatusNormal, meta.Status)
 }
+
+func TestDiskUpdateDiskMeta(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestDiskUpdateDiskMeta")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+	diskpath := filepath.Join(testDir, "DiskPath")
+	log.Info(diskpath)
+
+	err = os.MkdirAll(diskpath, 0o755)
+	require.NoError(t, err)
+
+	// Step 1: Create disk with NodeID = 0 (simulating old version format)
+	// We manually create format info with NodeID = 0 to simulate old version
+	diskConfig := core.Config{
+		BaseConfig: core.BaseConfig{
+			Path:       diskpath,
+			AutoFormat: true,
+		},
+		AllocDiskID:      getDiskIDFn,
+		NotifyCompacting: setChunkCompactFn,
+		HandleIOError:    handleIOErrorFn,
+		HostInfo: core.HostInfo{
+			NodeID: proto.NodeID(0), // Old version: NodeID is 0
+		},
+	}
+
+	ds, err := NewDiskStorage(ctx, diskConfig)
+	require.NoError(t, err)
+	require.NotNil(t, ds)
+
+	// Manually set format info NodeID to 0 to simulate old version
+	formatInfo, err := core.ReadFormatInfo(ctx, diskpath)
+	require.NoError(t, err)
+	formatInfo.NodeID = proto.NodeID(0)
+	formatInfo.NodeCtime = 0
+	checkSum, err := formatInfo.CalCheckSum()
+	require.NoError(t, err)
+	formatInfo.CheckSum = checkSum
+	err = core.SaveDiskFormatInfo(ctx, diskpath, formatInfo)
+	require.NoError(t, err)
+
+	// Verify format info has NodeID = 0
+	formatInfo, err = core.ReadFormatInfo(ctx, diskpath)
+	require.NoError(t, err)
+	require.Equal(t, proto.NodeID(0), formatInfo.NodeID)
+
+	// Close disk storage properly
+	done := make(chan struct{})
+	ds.SetOnCloseFn(func() { close(done) })
+	ds.PrepareClose(ctx) // stop background tasks and clean chunks map
+	ds.Close(ctx)
+	ds = nil
+
+	// Wait a bit to ensure locks are released
+	time.Sleep(100 * time.Millisecond)
+
+	// Step 2: Reload disk with new NodeID (simulating upgrade to v1.5.2)
+	expectedNodeID := proto.NodeID(12345)
+	diskConfig.NodeID = expectedNodeID
+
+	ds, err = NewDiskStorage(ctx, diskConfig)
+	require.NoError(t, err)
+	require.NotNil(t, ds)
+	defer ds.ResetChunks(ctx)
+	defer ds.Close(ctx)
+
+	// Step 3: Verify NodeID is updated
+	formatInfo, err = core.ReadFormatInfo(ctx, diskpath)
+	require.NoError(t, err)
+	require.Equal(t, expectedNodeID, formatInfo.NodeID)
+	require.NotEqual(t, int64(0), formatInfo.NodeCtime) // NodeCtime should be updated
+
+	// Verify disk meta also has correct NodeID
+	dm, err := ds.SuperBlock.LoadDiskInfo(ctx)
+	require.NoError(t, err)
+	require.Equal(t, expectedNodeID, dm.NodeID)
+}
+
+func TestRegisterDiskWithNodeID(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestRegisterDiskWithNodeID")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+	diskpath := filepath.Join(testDir, "DiskPath")
+	log.Info(diskpath)
+
+	err = os.MkdirAll(diskpath, 0o755)
+	require.NoError(t, err)
+
+	// Test registerDisk sets NodeID correctly
+	expectedNodeID := proto.NodeID(999)
+	diskConfig := core.Config{
+		BaseConfig: core.BaseConfig{
+			Path:       diskpath,
+			AutoFormat: true,
+		},
+		AllocDiskID:      getDiskIDFn,
+		NotifyCompacting: setChunkCompactFn,
+		HandleIOError:    handleIOErrorFn,
+		HostInfo: core.HostInfo{
+			NodeID: expectedNodeID,
+		},
+	}
+
+	ds, err := NewDiskStorage(ctx, diskConfig)
+	require.NoError(t, err)
+	require.NotNil(t, ds)
+	defer ds.ResetChunks(ctx)
+
+	// Verify format info has correct NodeID
+	formatInfo, err := core.ReadFormatInfo(ctx, diskpath)
+	require.NoError(t, err)
+	require.Equal(t, expectedNodeID, formatInfo.NodeID)
+
+	// Verify disk meta also has correct NodeID
+	dm, err := ds.SuperBlock.LoadDiskInfo(ctx)
+	require.NoError(t, err)
+	require.Equal(t, expectedNodeID, dm.NodeID)
+}
