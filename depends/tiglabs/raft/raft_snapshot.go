@@ -118,13 +118,28 @@ func (s *raft) stopSnapping() {
 	}
 }
 
+func (s *raft) removeSnappingChecked(nodeID uint64, rs *snapshotStatus) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if snap, ok := s.snapping[nodeID]; ok {
+		// if the snap is not added by the caller, just return
+		if snap != rs {
+			return
+		}
+		close(snap.stopCh)
+		delete(s.snapping, nodeID)
+	}
+}
+
 func (s *raft) sendSnapshot(m *proto.Message) {
 	util.RunWorker(func() {
+		rs := newSnapshotStatus()
 		defer func() {
 			logger.Debug(" [raft] [%v term: %d] raftFm[%p] raftReplicas[%v] stop send snapshot "+
 				"without the replica from [%v]. to [%v]",
 				s.raftFsm.id, s.raftFsm.term, s.raftFsm, s.raftFsm.getReplicas(), m.Type, m.From, m.To)
-			s.removeSnapping(m.To)
+			s.removeSnappingChecked(m.To, rs)
 			m.Snapshot.Close()
 			proto.ReturnMessage(m)
 		}()
@@ -132,7 +147,6 @@ func (s *raft) sendSnapshot(m *proto.Message) {
 			"without the replica from [%v ] to [%v].",
 			s.raftFsm.id, s.raftFsm.term, s.raftFsm, s.raftFsm.getReplicas(), m.Type, m.From, m.To)
 		// send snapshot
-		rs := newSnapshotStatus()
 		s.addSnapping(m.To, rs)
 		s.config.transport.SendSnapshot(m, rs)
 		select {
