@@ -22,6 +22,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	rdb "github.com/tecbot/gorocksdb"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -49,6 +51,31 @@ const (
 
 type shardSM shard
 
+type metaOp uint8
+
+const (
+	metaOpInsert metaOp = iota + 1
+	metaOpUpdate
+	metaOpDelete
+)
+
+type metaDataType uint8
+
+const (
+	metaDataTypeItem metaDataType = iota + 1
+	metaDataTypeBlob
+)
+
+type metaOpUnit struct {
+	op           metaOp
+	dataType     metaDataType
+	spaceID      uint64
+	keySize      int
+	oldValueSize int
+	newValueSize int
+	hashValues   []uint64
+}
+
 func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint64) (rets []interface{}, err error) {
 	rets = make([]interface{}, len(pd))
 	span := trace.SpanFromContextSafe(ctx)
@@ -59,48 +86,65 @@ func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint6
 		}
 	}()
 
+	metaOpUnits := make([]*metaOpUnit, 0)
 	for i := range pd {
 		_span, c := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
 		switch pd[i].Op {
 		case raftOpInsertItem:
-			if err = s.applyInsertItem(c, pd[i].Data); err != nil {
-				return
+			mou, err := s.applyInsertItem(c, pd[i].Data)
+			if err != nil {
+				return nil, err
 			}
+			metaOpUnits = append(metaOpUnits, mou)
 			rets[i] = applyRet{traceLog: _span.TrackLog()}
 		case raftOpUpdateItem:
-			if err = s.applyUpdateItem(c, pd[i].Data); err != nil {
-				return
+			mou, err := s.applyUpdateItem(c, pd[i].Data)
+			if err != nil {
+				return nil, err
 			}
+			metaOpUnits = append(metaOpUnits, mou)
 			rets[i] = applyRet{traceLog: _span.TrackLog()}
 		case raftOpInsertBlob:
 			var blob proto.Blob
-			if blob, err = s.applyInsertBlob(c, pd[i].Data); err != nil {
-				return
+			blob, mou, err := s.applyInsertBlob(c, pd[i].Data)
+			if err != nil {
+				return nil, err
 			}
+			metaOpUnits = append(metaOpUnits, mou)
 			rets[i] = applyRet{
 				traceLog: _span.TrackLog(),
 				blob:     blob,
 			}
+			metaOpUnits = append(metaOpUnits, mou)
 		case raftOpUpdateBlob:
-			if err = s.applyUpdateBlob(c, pd[i].Data); err != nil {
-				return
+			mou, err := s.applyUpdateBlob(c, pd[i].Data)
+			if err != nil {
+				return nil, err
 			}
-			rets[i] = applyRet{traceLog: _span.TrackLog()}
+			metaOpUnits = append(metaOpUnits, mou)
 		case raftOpDeleteBlob, raftOpDeleteItem:
-			if err = s.applyDeleteRaw(c, pd[i].Data); err != nil {
-				return
+			mou, err := s.applyDeleteRaw(c, pd[i].Data)
+			if err != nil {
+				return nil, err
 			}
+			metaOpUnits = append(metaOpUnits, mou)
 			rets[i] = applyRet{traceLog: _span.TrackLog()}
 		case raftOpWriteBatchRaw:
-			if err = s.applyWriteBatchRaw(c, pd[i].Data); err != nil {
-				return
+			mous, err := s.applyWriteBatchRaw(c, pd[i].Data)
+			if err != nil {
+				return nil, err
 			}
+			metaOpUnits = append(metaOpUnits, mous...)
 			rets[i] = applyRet{traceLog: _span.TrackLog()}
 		default:
 			panic(fmt.Sprintf("unsupported operation type: %d", pd[i].Op))
 		}
 	}
 
+	// update meta first to make metaStats.appliedIndex >= shardInfo.appliedIndex,
+	// when do checkpoint, get shardInfo first and save shardInfo and metaStats by batch,
+	// so that when shard restart and replay raft log, it can update metaStats without missing any raft log.
+	(*shard)(s).updateMetaStatsByMetaOpUnit(ctx, metaOpUnits, index)
 	s.setAppliedIndex(index)
 	return
 }
@@ -192,8 +236,18 @@ func (s *shardSM) Snapshot() (raft.Snapshot, error) {
 		span.Errorf("preRWCheck failed when make snapshot, err: %s", err.Error())
 		return nil, err
 	}
+
 	kvStore := s.store.KVStore()
-	appliedIndex := s.getAppliedIndex()
+	// save metaStats to snapshot
+	metaStats := s.metaStats.get()
+	appliedIndex := metaStats.AppliedIndex
+	metaStatsValue, err := metaStats.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	metaStatsKey := s.shardKeys.encodeShardMetaStatsKey()
+	kvStore.SetRaw(ctx, dataCF, metaStatsKey, metaStatsValue, nil)
+
 	kvSnap := kvStore.NewSnapshot()
 	readOpt := kvStore.NewReadOption()
 	readOpt.SetSnapShot(kvSnap)
@@ -290,11 +344,23 @@ func (s *shardSM) ApplySnapshot(ctx context.Context, header raft.RaftSnapshotHea
 		return errors.Info(err, "save shard into failed")
 	}
 
+	// load metaStats from snapshot and set to shardInfoMu.metaStats
+	metaStatsKey := s.shardKeys.encodeShardMetaStatsKey()
+	raw, err := kvStore.GetRaw(ctx, dataCF, metaStatsKey, nil)
+	if err != nil {
+		return errors.Info(err, "get meta stats from snapshot failed")
+	}
+	metaStats := shardnodeproto.ShardMetaStats{}
+	if err := metaStats.Unmarshal(raw); err != nil {
+		return errors.Info(err, "unmarshal meta stats from snapshot failed")
+	}
+	s.metaStats.set(metaStats)
+
 	span.Debugf("shard [%d] apply snapshot success, apply index:%d", s.suid, snap.Index())
 	return nil
 }
 
-func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
+func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) (*metaOpUnit, error) {
 	span := trace.SpanFromContext(ctx)
 
 	kvh := newKV(data)
@@ -302,25 +368,30 @@ func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
 
 	pi := &item{}
 	if err := pi.Unmarshal(kvh.Value()); err != nil {
-		return err
+		return nil, errors.Info(err, "unmarshal item failed")
 	}
 
 	kvStore := s.store.KVStore()
+	oldValueSize := 0
 	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	if vg != nil {
+		oldValueSize = vg.Size()
+		defer vg.Close()
+	}
+
 	if err != nil {
 		// replay raft wal log may meet with item deleted and replay update item operation
 		if errors.Is(err, kvstore.ErrNotFound) {
 			span.Warnf("item[%v] has been deleted", pi)
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, errors.Info(err, "get raw kv failed")
 	}
+
 	item := &item{}
 	if err = item.Unmarshal(vg.Value()); err != nil {
-		vg.Close()
-		return err
+		return nil, err
 	}
-	vg.Close()
 
 	fieldMap := make(map[proto.FieldID]int)
 	for i := range item.Fields {
@@ -337,16 +408,24 @@ func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
 
 	data, err = item.Marshal()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := kvStore.SetRaw(ctx, dataCF, key, data, nil); err != nil {
-		return errors.Info(err, "kv store set failed")
+		return nil, errors.Info(err, "kv store set failed")
 	}
 
-	return nil
+	metaDataType, spaceID := (*shard)(s).getMetaDataTypeAndSpaceIDByKey(key)
+	return &metaOpUnit{
+		op:           metaOpUpdate,
+		dataType:     metaDataType,
+		spaceID:      spaceID,
+		keySize:      len(key),
+		oldValueSize: oldValueSize,
+		newValueSize: len(data),
+	}, nil
 }
 
-func (s *shardSM) applyInsertItem(ctx context.Context, data []byte) error {
+func (s *shardSM) applyInsertItem(ctx context.Context, data []byte) (*metaOpUnit, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	kvh := newKV(data)
@@ -361,24 +440,40 @@ func (s *shardSM) applyInsertItem(ctx context.Context, data []byte) error {
 	}
 	span.AppendTrackLog(getRaw, start, withErr, trace.OptSpanDurationUs())
 	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
-		return errors.Info(err, "get raw kv failed")
+		return nil, errors.Info(err, "get raw kv failed")
 	}
 	// already insert, just return
 	if err == nil {
 		vg.Close()
-		return nil
+		return nil, nil
 	}
 
 	start = time.Now()
 	err = kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), nil)
 	span.AppendTrackLog(setRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
-		return errors.Info(err, "kv store set failed")
+		return nil, errors.Info(err, "kv store set failed")
 	}
-	return nil
+
+	// setup metaOpUnit
+	sd := (*shard)(s)
+	metaDataType, spaceID := sd.getMetaDataTypeAndSpaceIDByKey(key)
+	hashValues, err := sd.getHashValues(key)
+	if err != nil {
+		return nil, err
+	}
+	return &metaOpUnit{
+		op:           metaOpInsert,
+		dataType:     metaDataType,
+		spaceID:      spaceID,
+		keySize:      len(key),
+		oldValueSize: 0,
+		newValueSize: len(kvh.Value()),
+		hashValues:   hashValues,
+	}, err
 }
 
-func (s *shardSM) applyInsertBlob(ctx context.Context, data []byte) (proto.Blob, error) {
+func (s *shardSM) applyInsertBlob(ctx context.Context, data []byte) (proto.Blob, *metaOpUnit, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	kvh := newKV(data)
@@ -397,7 +492,7 @@ func (s *shardSM) applyInsertBlob(ctx context.Context, data []byte) (proto.Blob,
 	}
 	span.AppendTrackLog(getRaw, start, withErr, trace.OptSpanDurationUs())
 	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
-		return proto.Blob{}, errors.Info(err, "get raw kv failed")
+		return proto.Blob{}, nil, errors.Info(err, "get raw kv failed")
 	}
 
 	b := proto.Blob{}
@@ -405,25 +500,41 @@ func (s *shardSM) applyInsertBlob(ctx context.Context, data []byte) (proto.Blob,
 	// already insert, return old blob
 	if err == nil {
 		if err = b.Unmarshal(vg.Value()); err != nil {
-			return proto.Blob{}, err
+			return proto.Blob{}, nil, err
 		}
-		return b, nil
+		return b, nil, nil
 	}
 
 	start = time.Now()
 	err = kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), nil)
 	span.AppendTrackLog(setRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
-		return proto.Blob{}, errors.Info(err, "kv store set failed")
+		return proto.Blob{}, nil, errors.Info(err, "kv store set failed")
 	}
 
 	if err = b.Unmarshal(kvh.Value()); err != nil {
-		return proto.Blob{}, err
+		return proto.Blob{}, nil, err
 	}
-	return b, nil
+
+	// setup metaOpUnit
+	sd := (*shard)(s)
+	metaDataType, spaceID := (*shard)(s).getMetaDataTypeAndSpaceIDByKey(key)
+	hashValues, err := sd.getHashValues(key)
+	if err != nil {
+		return proto.Blob{}, nil, err
+	}
+	return b, &metaOpUnit{
+		op:           metaOpInsert,
+		dataType:     metaDataType,
+		spaceID:      spaceID,
+		keySize:      len(key),
+		oldValueSize: 0,
+		newValueSize: len(kvh.Value()),
+		hashValues:   hashValues,
+	}, nil
 }
 
-func (s *shardSM) applyUpdateBlob(ctx context.Context, data []byte) error {
+func (s *shardSM) applyUpdateBlob(ctx context.Context, data []byte) (*metaOpUnit, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	kvh := newKV(data)
@@ -431,62 +542,96 @@ func (s *shardSM) applyUpdateBlob(ctx context.Context, data []byte) error {
 
 	kvStore := s.store.KVStore()
 	start := time.Now()
+	oldValueSize := 0
 	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	if vg != nil {
+		oldValueSize = vg.Size()
+		defer vg.Close()
+	}
+
 	span.AppendTrackLog(getRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		if errors.Is(err, kvstore.ErrNotFound) {
 			span.Warnf("shard [%d] get blob key [%s] has been deleted", s.suid, string(key))
-			return nil
+			return nil, nil
 		}
-		return errors.Info(err, "get kv failed")
+		return nil, errors.Info(err, "get kv failed")
 	}
 
 	// already insert, just check if same value
 	if bytes.Equal(kvh.Value(), vg.Value()) {
-		vg.Close()
-		return nil
+		return nil, nil
 	}
-	vg.Close()
 
 	start = time.Now()
 	err = kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), nil)
 	span.AppendTrackLog(setRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
-		return errors.Info(err, "kv store set failed")
+		return nil, errors.Info(err, "kv store set failed")
 	}
-	return nil
+
+	metaDataType, spaceID := (*shard)(s).getMetaDataTypeAndSpaceIDByKey(key)
+	return &metaOpUnit{
+		op:           metaOpUpdate,
+		dataType:     metaDataType,
+		spaceID:      spaceID,
+		keySize:      len(key),
+		oldValueSize: oldValueSize,
+		newValueSize: len(kvh.Value()),
+	}, nil
 }
 
-func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
+func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) (*metaOpUnit, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	kvStore := s.store.KVStore()
 	// independent check, avoiding decrease ino used repeatedly at raft log replay progress
 	start := time.Now()
+	oldValueSize := 0
 	vg, err := kvStore.Get(ctx, dataCF, data, nil)
+	if vg != nil {
+		oldValueSize = vg.Size()
+		defer vg.Close()
+	}
 	withErr := err
 	if errors.Is(withErr, kvstore.ErrNotFound) {
 		withErr = nil
 	}
+
 	span.AppendTrackLog(getRaw, start, withErr, trace.OptSpanDurationUs())
 	if err != nil {
 		if !errors.Is(err, kvstore.ErrNotFound) {
-			return err
+			return nil, err
 		}
-		return nil
+		return nil, nil
 	}
-	vg.Close()
 
 	start = time.Now()
 	err = kvStore.Delete(ctx, dataCF, data, nil)
 	span.AppendTrackLog(delRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
-		return errors.Info(err, "kv store delete failed")
+		return nil, errors.Info(err, "kv store delete failed")
 	}
-	return nil
+
+	// setup metaOpUnit
+	sd := (*shard)(s)
+	metaDataType, spaceID := sd.getMetaDataTypeAndSpaceIDByKey(data)
+	hashValues, err := sd.getHashValues(data)
+	if err != nil {
+		return nil, err
+	}
+	return &metaOpUnit{
+		op:           metaOpDelete,
+		dataType:     metaDataType,
+		spaceID:      spaceID,
+		keySize:      len(data),
+		oldValueSize: oldValueSize,
+		newValueSize: 0,
+		hashValues:   hashValues,
+	}, nil
 }
 
-func (s *shardSM) applyWriteBatchRaw(ctx context.Context, data []byte) error {
+func (s *shardSM) applyWriteBatchRaw(ctx context.Context, data []byte) ([]*metaOpUnit, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	start := time.Now()
@@ -496,9 +641,47 @@ func (s *shardSM) applyWriteBatchRaw(ctx context.Context, data []byte) error {
 	defer batch.Close()
 
 	batch.From(data)
+	count := batch.Count()
+	metaOpUnits := make([]*metaOpUnit, 0, count)
+	br := batch.Iterator()
+	for br.Next() {
+		key := br.Key()
+		mou := &metaOpUnit{}
+		metaDataType, spaceID := (*shard)(s).getMetaDataTypeAndSpaceIDByKey(key)
+		mou.dataType = metaDataType
+		mou.spaceID = spaceID
+		mou.keySize = len(key)
+		mou.newValueSize = len(br.Value())
+		// read from store to get old value size
+		hashValues, err := (*shard)(s).getHashValues(key)
+		if err != nil {
+			return nil, err
+		}
+		mou.hashValues = hashValues
+		vg, err := kvStore.Get(ctx, dataCF, key, nil)
+		if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
+			return nil, err
+		}
+		if vg != nil {
+			defer vg.Close()
+			mou.oldValueSize = vg.Size()
+		}
+		switch br.Type() {
+		case kvstore.WriteBatchType(rdb.WriteBatchCFValueRecord):
+			mou.op = metaOpInsert
+			if vg != nil {
+				mou.op = metaOpUpdate
+			}
+		case kvstore.WriteBatchType(rdb.WriteBatchCFDeletionRecord):
+			mou.op = metaOpDelete
+		default:
+			span.Errorf("unexpected write batch type: %d", br.Type())
+		}
+		metaOpUnits = append(metaOpUnits, mou)
+	}
 	err := kvStore.Write(ctx, batch, nil)
 	span.AppendTrackLog(writeBatchRaw, start, err, trace.OptSpanDurationUs())
-	return err
+	return metaOpUnits, err
 }
 
 func (s *shardSM) setAppliedIndex(index uint64) {

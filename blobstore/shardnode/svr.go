@@ -84,6 +84,8 @@ type Config struct {
 	DeleteBlobCfg  message.MessageCfg `json:"blob_delete_cfg"`
 	ScClientConfig scheduler.Config   `json:"sc_client_config"`
 	SliceRepairCfg message.MessageCfg `json:"slice_repair_cfg"`
+
+	MetaStatsConfig storage.MetaStatsConfig `json:"meta_stats_config"`
 }
 
 // newService returns the singleton service instance
@@ -125,6 +127,10 @@ func createService(cfg *Config) *service {
 	if err := transport.Register(ctx); err != nil {
 		span.Fatalf("register shard server failed: %s", err)
 	}
+
+	// init components for shard meta stats record
+	cfg.ShardBaseConfig.KeyDecoder = catalog.NewKeyDecoder()
+	cfg.ShardBaseConfig.MetaStatsConfig = cfg.MetaStatsConfig
 
 	svr := &service{
 		cfg:       *cfg,

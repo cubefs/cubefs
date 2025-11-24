@@ -40,7 +40,7 @@ package blobstore
 // protoc -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=plugins=grpc:. *.proto
 // generate shardnode/storage/proto
 // cd blobstore/shardnode/proto
-// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/  --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/common/proto/blob.proto=github.com/cubefs/cubefs/blobstore/common/proto,plugins=grpc:. *.proto
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/  --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/common/proto/blob.proto=github.com/cubefs/cubefs/blobstore/common/proto,Mcubefs/blobstore/util/statistic/statistic.proto=github.com/cubefs/cubefs/blobstore/util/statistic,plugins=grpc:. *.proto
 // generate api/shardnode
 // cd blobstore/api/shardnode
 // protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ -I ${current}/vendor/go.etcd.io/etcd/raft/v3/ --gogo_opt=Mraftpb/raft.proto=go.etcd.io/etcd/raft/v3/raftpb *.proto --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/api/clustermgr/shard.proto=github.com/cubefs/cubefs/blobstore/api/clustermgr,Mcubefs/blobstore/common/proto/blob.proto=github.com/cubefs/cubefs/blobstore/common/proto,Mcubefs/blobstore/common/raft/raft.proto=github.com/cubefs/cubefs/blobstore/common/raft,plugins=grpc:. *.proto
@@ -55,3 +55,6 @@ package blobstore
 // generate api/access
 // cd blobstore/api/access
 // protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/  --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto
+// generate util/statistic
+// cd blobstore/util/statistic
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=plugins=grpc:. *.proto

@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"bytes"
 	"time"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -51,6 +52,21 @@ const (
 	ShardNodeBlobDeleteTask  = "shard_node_blob_delete"
 	ShardNodeSliceRepairTask = "shard_node_slice_repair"
 )
+
+// KeyDataType represents the data type of a key
+type KeyDataType uint8
+
+const (
+	KeyDataTypeUnknown KeyDataType = iota
+	KeyDataTypeSpaceData
+	KeyDataTypeBlobDeleteMsg
+	KeyDataTypeShardRepairMsg
+)
+
+type KeyDecoder interface {
+	DecodeSpaceID(key []byte) (proto.SpaceID, error)
+	DecodeKeyDataType(key []byte) KeyDataType
+}
 
 type VolumeInfoSimple struct {
 	Vid            proto.Vid
@@ -148,4 +164,37 @@ type MessageExt interface {
 	GetBidNum() uint64
 	String() string
 	Marshal() ([]byte, error)
+}
+
+func DecodeKeyDataType(key []byte) KeyDataType {
+	if len(key) < 1 {
+		return KeyDataTypeUnknown
+	}
+	firstByte := key[:1]
+
+	// Check for Space Blob prefix
+	if bytes.Equal(firstByte, SpaceDataPrefix) {
+		return KeyDataTypeSpaceData
+	}
+
+	// Check for BlobDeleteMsg prefixes
+	if bytes.Equal(firstByte, DeleteMsgPrefix) {
+		return KeyDataTypeBlobDeleteMsg
+	}
+
+	// Check for ShardRepairMsg prefixes
+	if bytes.Equal(firstByte, RepairMsgPrefix) {
+		return KeyDataTypeShardRepairMsg
+	}
+
+	return KeyDataTypeUnknown
+}
+
+// KeyDecoderImpl provides key decoding functionality for ParseKeyDataType
+// This type can be embedded or wrapped to implement storage.KeyDecoder interface
+type KeyDecoderImpl struct{}
+
+// DecodeKeyDataType parses the data type from a key
+func (d *KeyDecoderImpl) DecodeKeyDataType(key []byte) KeyDataType {
+	return DecodeKeyDataType(key)
 }

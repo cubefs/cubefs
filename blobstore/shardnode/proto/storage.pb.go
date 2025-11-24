@@ -7,6 +7,8 @@ import (
 	fmt "fmt"
 	github_com_cubefs_cubefs_blobstore_common_proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	proto1 "github.com/cubefs/cubefs/blobstore/common/proto"
+	_ "github.com/cubefs/cubefs/blobstore/common/sharding"
+	statistic "github.com/cubefs/cubefs/blobstore/util/statistic"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	io "io"
@@ -403,6 +405,204 @@ func (m *SliceRepairMsg) GetTime() int64 {
 	return 0
 }
 
+type SpaceMetaStats struct {
+	ItemCount            uint64   `protobuf:"varint,1,opt,name=item_count,json=itemCount,proto3" json:"item_count,omitempty"`
+	ItemSize             uint64   `protobuf:"varint,2,opt,name=item_size,json=itemSize,proto3" json:"item_size,omitempty"`
+	BlobCount            uint64   `protobuf:"varint,3,opt,name=blob_count,json=blobCount,proto3" json:"blob_count,omitempty"`
+	BlobSize             uint64   `protobuf:"varint,4,opt,name=blob_size,json=blobSize,proto3" json:"blob_size,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *SpaceMetaStats) Reset()         { *m = SpaceMetaStats{} }
+func (m *SpaceMetaStats) String() string { return proto.CompactTextString(m) }
+func (*SpaceMetaStats) ProtoMessage()    {}
+func (*SpaceMetaStats) Descriptor() ([]byte, []int) {
+	return fileDescriptor_0d2c4ccf1453ffdb, []int{6}
+}
+func (m *SpaceMetaStats) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SpaceMetaStats) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SpaceMetaStats.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SpaceMetaStats) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SpaceMetaStats.Merge(m, src)
+}
+func (m *SpaceMetaStats) XXX_Size() int {
+	return m.Size()
+}
+func (m *SpaceMetaStats) XXX_DiscardUnknown() {
+	xxx_messageInfo_SpaceMetaStats.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SpaceMetaStats proto.InternalMessageInfo
+
+func (m *SpaceMetaStats) GetItemCount() uint64 {
+	if m != nil {
+		return m.ItemCount
+	}
+	return 0
+}
+
+func (m *SpaceMetaStats) GetItemSize() uint64 {
+	if m != nil {
+		return m.ItemSize
+	}
+	return 0
+}
+
+func (m *SpaceMetaStats) GetBlobCount() uint64 {
+	if m != nil {
+		return m.BlobCount
+	}
+	return 0
+}
+
+func (m *SpaceMetaStats) GetBlobSize() uint64 {
+	if m != nil {
+		return m.BlobSize
+	}
+	return 0
+}
+
+type ShardMetaStats struct {
+	ClusterID            github_com_cubefs_cubefs_blobstore_common_proto.ClusterID    `protobuf:"varint,1,opt,name=cluster_id,json=clusterId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ClusterID" json:"cluster_id,omitempty"`
+	ShardID              github_com_cubefs_cubefs_blobstore_common_proto.ShardID      `protobuf:"varint,2,opt,name=shard_id,json=shardId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"shard_id,omitempty"`
+	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,3,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	ItemCount            uint64                                                       `protobuf:"varint,4,opt,name=item_count,json=itemCount,proto3" json:"item_count,omitempty"`
+	ItemSize             uint64                                                       `protobuf:"varint,5,opt,name=item_size,json=itemSize,proto3" json:"item_size,omitempty"`
+	BlobCount            uint64                                                       `protobuf:"varint,6,opt,name=blob_count,json=blobCount,proto3" json:"blob_count,omitempty"`
+	BlobSize             uint64                                                       `protobuf:"varint,7,opt,name=blob_size,json=blobSize,proto3" json:"blob_size,omitempty"`
+	SpaceMetaStats       map[uint64]SpaceMetaStats                                    `protobuf:"bytes,8,rep,name=space_meta_stats,json=spaceMetaStats,proto3" json:"space_meta_stats" protobuf_key:"varint,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	PositiveTdigests     []statistic.TDigestSnapshot                                  `protobuf:"bytes,9,rep,name=positiveTdigests,proto3" json:"positiveTdigests"`
+	NegativeTdigests     []statistic.TDigestSnapshot                                  `protobuf:"bytes,10,rep,name=negativeTdigests,proto3" json:"negativeTdigests"`
+	AppliedIndex         uint64                                                       `protobuf:"varint,11,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                                     `json:"-"`
+	XXX_unrecognized     []byte                                                       `json:"-"`
+	XXX_sizecache        int32                                                        `json:"-"`
+}
+
+func (m *ShardMetaStats) Reset()         { *m = ShardMetaStats{} }
+func (m *ShardMetaStats) String() string { return proto.CompactTextString(m) }
+func (*ShardMetaStats) ProtoMessage()    {}
+func (*ShardMetaStats) Descriptor() ([]byte, []int) {
+	return fileDescriptor_0d2c4ccf1453ffdb, []int{7}
+}
+func (m *ShardMetaStats) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ShardMetaStats) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ShardMetaStats.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ShardMetaStats) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ShardMetaStats.Merge(m, src)
+}
+func (m *ShardMetaStats) XXX_Size() int {
+	return m.Size()
+}
+func (m *ShardMetaStats) XXX_DiscardUnknown() {
+	xxx_messageInfo_ShardMetaStats.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ShardMetaStats proto.InternalMessageInfo
+
+func (m *ShardMetaStats) GetClusterID() github_com_cubefs_cubefs_blobstore_common_proto.ClusterID {
+	if m != nil {
+		return m.ClusterID
+	}
+	return 0
+}
+
+func (m *ShardMetaStats) GetShardID() github_com_cubefs_cubefs_blobstore_common_proto.ShardID {
+	if m != nil {
+		return m.ShardID
+	}
+	return 0
+}
+
+func (m *ShardMetaStats) GetRouteVersion() github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion {
+	if m != nil {
+		return m.RouteVersion
+	}
+	return 0
+}
+
+func (m *ShardMetaStats) GetItemCount() uint64 {
+	if m != nil {
+		return m.ItemCount
+	}
+	return 0
+}
+
+func (m *ShardMetaStats) GetItemSize() uint64 {
+	if m != nil {
+		return m.ItemSize
+	}
+	return 0
+}
+
+func (m *ShardMetaStats) GetBlobCount() uint64 {
+	if m != nil {
+		return m.BlobCount
+	}
+	return 0
+}
+
+func (m *ShardMetaStats) GetBlobSize() uint64 {
+	if m != nil {
+		return m.BlobSize
+	}
+	return 0
+}
+
+func (m *ShardMetaStats) GetSpaceMetaStats() map[uint64]SpaceMetaStats {
+	if m != nil {
+		return m.SpaceMetaStats
+	}
+	return nil
+}
+
+func (m *ShardMetaStats) GetPositiveTdigests() []statistic.TDigestSnapshot {
+	if m != nil {
+		return m.PositiveTdigests
+	}
+	return nil
+}
+
+func (m *ShardMetaStats) GetNegativeTdigests() []statistic.TDigestSnapshot {
+	if m != nil {
+		return m.NegativeTdigests
+	}
+	return nil
+}
+
+func (m *ShardMetaStats) GetAppliedIndex() uint64 {
+	if m != nil {
+		return m.AppliedIndex
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*Item)(nil), "persistent.Item")
 	proto.RegisterType((*Field)(nil), "persistent.Field")
@@ -412,50 +612,75 @@ func init() {
 	proto.RegisterType((*DeleteMsg)(nil), "persistent.DeleteMsg")
 	proto.RegisterMapType((map[uint64]BlobDeleteStage)(nil), "persistent.DeleteMsg.MsgDelStageEntry")
 	proto.RegisterType((*SliceRepairMsg)(nil), "persistent.SliceRepairMsg")
+	proto.RegisterType((*SpaceMetaStats)(nil), "persistent.SpaceMetaStats")
+	proto.RegisterType((*ShardMetaStats)(nil), "persistent.ShardMetaStats")
+	proto.RegisterMapType((map[uint64]SpaceMetaStats)(nil), "persistent.ShardMetaStats.SpaceMetaStatsEntry")
 }
 
 func init() { proto.RegisterFile("storage.proto", fileDescriptor_0d2c4ccf1453ffdb) }
 
 var fileDescriptor_0d2c4ccf1453ffdb = []byte{
-	// 602 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x52, 0xcd, 0x6e, 0xd3, 0x40,
-	0x10, 0xc6, 0x3f, 0x71, 0xe9, 0x84, 0x94, 0xb2, 0x2a, 0x95, 0x15, 0xa4, 0x26, 0x0a, 0x08, 0xf9,
-	0x64, 0x8b, 0x16, 0x41, 0x05, 0x08, 0x15, 0x13, 0x90, 0x72, 0xa8, 0x28, 0x0e, 0xea, 0x01, 0x0e,
-	0x91, 0x9d, 0xdd, 0xba, 0x2b, 0xec, 0x38, 0xf5, 0x6e, 0xaa, 0xf6, 0x11, 0x78, 0x20, 0x8e, 0xdc,
-	0x7b, 0xe4, 0x09, 0x2c, 0xe4, 0xc7, 0xe8, 0x09, 0xed, 0xae, 0x1b, 0x9b, 0x22, 0x55, 0xea, 0x25,
-	0x9e, 0x9d, 0x7c, 0xf3, 0xcd, 0xcc, 0xf7, 0x0d, 0x74, 0x18, 0xcf, 0xf2, 0x30, 0x26, 0xee, 0x3c,
-	0xcf, 0x78, 0x86, 0x60, 0x4e, 0x72, 0x46, 0x19, 0x27, 0x33, 0xde, 0xdd, 0x88, 0xb3, 0x38, 0x93,
-	0x69, 0x4f, 0x44, 0x0a, 0xd1, 0x75, 0xa6, 0x8b, 0x88, 0x1c, 0x31, 0x2f, 0x4a, 0xb2, 0x48, 0xd4,
-	0x12, 0x6f, 0x9a, 0xa5, 0x69, 0x36, 0xf3, 0x14, 0x52, 0xa4, 0x15, 0x72, 0xf0, 0x09, 0xcc, 0x11,
-	0x27, 0x29, 0xda, 0x04, 0x9d, 0x62, 0x5b, 0xeb, 0x6b, 0xce, 0xaa, 0x6f, 0x95, 0x45, 0x4f, 0x1f,
-	0x0d, 0x03, 0x9d, 0x62, 0xe4, 0x81, 0x75, 0x44, 0x49, 0x82, 0x99, 0xad, 0xf7, 0x0d, 0xa7, 0xbd,
-	0xfd, 0xc0, 0xad, 0x9b, 0xbb, 0x1f, 0xc5, 0x3f, 0xbe, 0x79, 0x51, 0xf4, 0xee, 0x04, 0x15, 0x6c,
-	0x30, 0x87, 0x96, 0x4c, 0xa3, 0xcf, 0x4b, 0xc6, 0x8e, 0xff, 0x4e, 0x31, 0x5e, 0x16, 0xbd, 0x97,
-	0x31, 0xe5, 0xc7, 0x8b, 0xc8, 0x9d, 0x66, 0xa9, 0x57, 0x0d, 0x79, 0xe3, 0xac, 0xaa, 0x47, 0x35,
-	0xcc, 0x06, 0xb4, 0x4e, 0xc3, 0x64, 0x41, 0x6c, 0xbd, 0xaf, 0x39, 0xf7, 0x02, 0xf5, 0x18, 0x1c,
-	0xc1, 0xda, 0xf8, 0x38, 0xcc, 0xf1, 0x3e, 0x49, 0x23, 0x92, 0xbf, 0xe7, 0x67, 0xe8, 0x0b, 0x98,
-	0x6c, 0x51, 0x35, 0x37, 0xfd, 0xbd, 0xb2, 0xe8, 0x99, 0xe3, 0x05, 0xc5, 0x97, 0x45, 0xef, 0xf9,
-	0x6d, 0xdb, 0x8b, 0xba, 0x40, 0xb2, 0x0d, 0x7e, 0x68, 0x70, 0xdf, 0x4f, 0xb2, 0x68, 0x48, 0x12,
-	0xc2, 0xc9, 0x98, 0x87, 0x31, 0x41, 0x6f, 0xa0, 0xc5, 0x44, 0x50, 0xa9, 0xf3, 0xb4, 0xa9, 0xce,
-	0x35, 0xac, 0x2b, 0x7f, 0x3f, 0xcc, 0x78, 0x7e, 0x1e, 0xa8, 0xa2, 0xee, 0x2e, 0x40, 0x9d, 0x44,
-	0xeb, 0x60, 0x7c, 0x27, 0xe7, 0x4a, 0xb1, 0x40, 0x84, 0xff, 0xee, 0xdb, 0xa9, 0xf6, 0x7d, 0xa5,
-	0xef, 0x6a, 0x83, 0x5f, 0x3a, 0xac, 0x2a, 0xee, 0x7d, 0x16, 0xa3, 0x3d, 0x68, 0xb1, 0x84, 0x4e,
-	0x89, 0xac, 0x6d, 0x6f, 0x3f, 0x71, 0xd5, 0x4e, 0xee, 0x72, 0x27, 0x57, 0xed, 0xe4, 0x56, 0x3b,
-	0x09, 0x6c, 0x65, 0x9b, 0x2a, 0x14, 0x9d, 0x72, 0xc2, 0xf3, 0xf3, 0xab, 0x4e, 0xf2, 0x81, 0x10,
-	0x98, 0x9c, 0xa6, 0xc4, 0x36, 0xfa, 0x9a, 0x63, 0x04, 0x32, 0x46, 0x0f, 0xc1, 0xca, 0xc9, 0xc9,
-	0x84, 0x62, 0xdb, 0x14, 0xc7, 0x22, 0xa0, 0x27, 0x23, 0x8c, 0x0e, 0xa0, 0x93, 0xb2, 0x78, 0x82,
-	0x49, 0x32, 0x51, 0x82, 0xb4, 0xfe, 0x17, 0x64, 0x39, 0xb0, 0xbb, 0xcf, 0xe2, 0x21, 0x49, 0xea,
-	0xdd, 0xab, 0x61, 0xda, 0x69, 0x9d, 0xef, 0x7e, 0x83, 0xf5, 0xeb, 0xb0, 0xa6, 0x44, 0xa6, 0x92,
-	0xe8, 0x59, 0x53, 0xa2, 0xf6, 0xf6, 0xa3, 0x1b, 0x0c, 0x68, 0xea, 0xf7, 0x53, 0x87, 0x35, 0x29,
-	0x43, 0x40, 0xe6, 0x21, 0xcd, 0x85, 0x88, 0x63, 0x30, 0xa2, 0xe5, 0xcd, 0x88, 0x83, 0x35, 0x7c,
-	0x79, 0x32, 0x2f, 0x6e, 0x7b, 0x32, 0xa2, 0xed, 0x68, 0x18, 0x08, 0x36, 0x74, 0x00, 0xc6, 0x29,
-	0xc5, 0x4a, 0x55, 0xff, 0xad, 0x20, 0x3d, 0x94, 0xa4, 0x3b, 0xb7, 0x25, 0x3d, 0xa4, 0x38, 0x10,
-	0x54, 0xe8, 0x31, 0xac, 0x44, 0x21, 0x9e, 0x50, 0x7c, 0x66, 0x1b, 0x7d, 0xc3, 0xe9, 0xf8, 0x50,
-	0x16, 0x3d, 0xcb, 0x0f, 0xf1, 0x08, 0x9f, 0x05, 0x56, 0x24, 0xbf, 0xb5, 0x9d, 0x66, 0xd3, 0xce,
-	0x4d, 0x61, 0x5d, 0xc8, 0xb2, 0x99, 0xdd, 0x92, 0xd6, 0x55, 0xaf, 0x86, 0xa5, 0x56, 0xd3, 0xd2,
-	0x2b, 0xf7, 0x57, 0x6a, 0xf7, 0xfd, 0xcd, 0x8b, 0x72, 0x4b, 0xfb, 0x5d, 0x6e, 0x69, 0x7f, 0xca,
-	0x2d, 0xed, 0xeb, 0x5d, 0xd7, 0x7b, 0x2d, 0xc7, 0x8b, 0x2c, 0xf9, 0xd9, 0xf9, 0x1b, 0x00, 0x00,
-	0xff, 0xff, 0xae, 0x83, 0x6a, 0x00, 0xaa, 0x04, 0x00, 0x00,
+	// 949 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x55, 0xdd, 0x6e, 0xe3, 0x44,
+	0x14, 0xc6, 0xb1, 0x93, 0x34, 0x27, 0x4d, 0x29, 0xc3, 0x52, 0x59, 0x59, 0xd1, 0x44, 0x59, 0x84,
+	0x72, 0x81, 0x9c, 0xa5, 0x8b, 0x60, 0x81, 0x15, 0x2a, 0x6e, 0x58, 0x29, 0x48, 0x15, 0x8b, 0x53,
+	0xf5, 0x02, 0x04, 0xd6, 0x38, 0x33, 0x75, 0x47, 0xf8, 0x27, 0xeb, 0x99, 0x54, 0xed, 0x3e, 0x01,
+	0x3c, 0x10, 0x97, 0xdc, 0xef, 0x25, 0x4f, 0x10, 0xa1, 0xdc, 0xf1, 0x0a, 0xbd, 0x42, 0x33, 0xe3,
+	0x24, 0x76, 0xbb, 0x44, 0x0a, 0xdc, 0xb4, 0x33, 0x27, 0xe7, 0xfb, 0xce, 0x9c, 0xef, 0x3b, 0x39,
+	0x81, 0x16, 0x17, 0x69, 0x86, 0x43, 0xea, 0x4c, 0xb3, 0x54, 0xa4, 0x08, 0xa6, 0x34, 0xe3, 0x8c,
+	0x0b, 0x9a, 0x88, 0xf6, 0x83, 0x30, 0x0d, 0x53, 0x15, 0x1e, 0xc8, 0x93, 0xce, 0x68, 0xf7, 0x27,
+	0xb3, 0x80, 0x5e, 0xf0, 0x41, 0x10, 0xa5, 0x81, 0xc4, 0xd2, 0xc1, 0x24, 0x8d, 0xe3, 0x34, 0x19,
+	0xe8, 0x4c, 0x19, 0xce, 0x33, 0x3f, 0xfa, 0xb7, 0x4c, 0x7e, 0x89, 0x33, 0xc2, 0x92, 0x70, 0x90,
+	0xe1, 0x64, 0x59, 0xb9, 0x3d, 0xb8, 0x97, 0x3d, 0x13, 0x2c, 0x1a, 0x70, 0x81, 0x05, 0xe3, 0x82,
+	0x4d, 0xd6, 0x27, 0x0d, 0xe8, 0x7d, 0x07, 0xd6, 0x48, 0xd0, 0x18, 0x1d, 0x40, 0x85, 0x11, 0xdb,
+	0xe8, 0x1a, 0xfd, 0x86, 0x5b, 0x5b, 0xcc, 0x3b, 0x95, 0xd1, 0xd0, 0xab, 0x30, 0x82, 0x06, 0x50,
+	0xbb, 0x60, 0x34, 0x22, 0xdc, 0xae, 0x74, 0xcd, 0x7e, 0xf3, 0xe8, 0x1d, 0x67, 0xdd, 0x9b, 0xf3,
+	0x5c, 0x7e, 0xe2, 0x5a, 0xaf, 0xe7, 0x9d, 0xb7, 0xbc, 0x3c, 0xad, 0x37, 0x85, 0xaa, 0x0a, 0xa3,
+	0xef, 0x57, 0x8c, 0x2d, 0xf7, 0x6b, 0xcd, 0x78, 0x3b, 0xef, 0x7c, 0x16, 0x32, 0x71, 0x39, 0x0b,
+	0x9c, 0x49, 0x1a, 0x2f, 0xdf, 0xba, 0x51, 0x0a, 0x5d, 0x23, 0x7f, 0xcc, 0x03, 0xa8, 0x5e, 0xe1,
+	0x68, 0x46, 0xed, 0x4a, 0xd7, 0xe8, 0xef, 0x7a, 0xfa, 0xd2, 0xbb, 0x80, 0xbd, 0xb1, 0xd4, 0xe2,
+	0x94, 0xc6, 0x01, 0xcd, 0x4e, 0xc4, 0x35, 0x3a, 0x03, 0x8b, 0xcf, 0xf2, 0xe2, 0x96, 0x7b, 0xbc,
+	0x98, 0x77, 0xac, 0xf1, 0x8c, 0x91, 0xdb, 0x79, 0xe7, 0x93, 0x6d, 0xcb, 0x4b, 0x9c, 0xa7, 0xd8,
+	0x7a, 0xbf, 0x19, 0xf0, 0xb6, 0x1b, 0xa5, 0xc1, 0x90, 0x46, 0x54, 0xd0, 0xb1, 0xc0, 0x21, 0x45,
+	0xcf, 0xa0, 0xca, 0xe5, 0x21, 0x57, 0xe7, 0xc3, 0xa2, 0x3a, 0x77, 0x72, 0x1d, 0xf5, 0xf7, 0x9b,
+	0x44, 0x64, 0x37, 0x9e, 0x06, 0xb5, 0x9f, 0x02, 0xac, 0x83, 0x68, 0x1f, 0xcc, 0x5f, 0xe8, 0x8d,
+	0x56, 0xcc, 0x93, 0xc7, 0x72, 0xbf, 0xad, 0xbc, 0xdf, 0x2f, 0x2a, 0x4f, 0x8d, 0xde, 0x1f, 0x15,
+	0x68, 0x68, 0xee, 0x53, 0x1e, 0xa2, 0x63, 0xa8, 0xf2, 0x88, 0x4d, 0xa8, 0xc2, 0x36, 0x8f, 0x3e,
+	0x70, 0x74, 0x4f, 0xce, 0xaa, 0x27, 0x47, 0xf7, 0xe4, 0xe4, 0x3d, 0xc9, 0xdc, 0xdc, 0x36, 0x0d,
+	0x94, 0x95, 0x32, 0x2a, 0xb2, 0x9b, 0x65, 0x25, 0x75, 0x41, 0x08, 0x2c, 0xc1, 0x62, 0x6a, 0x9b,
+	0x5d, 0xa3, 0x6f, 0x7a, 0xea, 0x8c, 0xde, 0x83, 0x5a, 0x46, 0x5f, 0xfa, 0x8c, 0xd8, 0x96, 0x1c,
+	0x16, 0x99, 0xfa, 0x72, 0x44, 0xd0, 0x0b, 0x68, 0xc5, 0x3c, 0xf4, 0x09, 0x8d, 0x7c, 0x2d, 0x48,
+	0xf5, 0xbe, 0x20, 0xab, 0x07, 0x3b, 0xa7, 0x3c, 0x1c, 0xd2, 0x68, 0xdd, 0x7b, 0xfe, 0x98, 0x66,
+	0xbc, 0x8e, 0xb7, 0x7f, 0x84, 0xfd, 0xbb, 0x69, 0x45, 0x89, 0x2c, 0x2d, 0xd1, 0xc7, 0x45, 0x89,
+	0x9a, 0x47, 0x0f, 0x37, 0x18, 0x50, 0xd4, 0xef, 0xf7, 0x0a, 0xec, 0x29, 0x19, 0x3c, 0x3a, 0xc5,
+	0x2c, 0x93, 0x22, 0x8e, 0xc1, 0x0c, 0x56, 0x33, 0x23, 0x07, 0xd6, 0x74, 0xd5, 0xc8, 0x7c, 0xba,
+	0xed, 0xc8, 0xc8, 0xb2, 0xa3, 0xa1, 0x27, 0xd9, 0xd0, 0x0b, 0x30, 0xaf, 0x18, 0xd1, 0xaa, 0xba,
+	0x5f, 0x49, 0xd2, 0x73, 0x45, 0xfa, 0x64, 0x5b, 0xd2, 0x73, 0x46, 0x3c, 0x49, 0x85, 0x1e, 0x41,
+	0x3d, 0xc0, 0xc4, 0x67, 0xe4, 0xda, 0x36, 0xbb, 0x66, 0xbf, 0xe5, 0xc2, 0x62, 0xde, 0xa9, 0xb9,
+	0x98, 0x8c, 0xc8, 0xb5, 0x57, 0x0b, 0xd4, 0xff, 0xb5, 0x9d, 0x56, 0xd1, 0xce, 0x03, 0x69, 0x1d,
+	0xe6, 0x69, 0x62, 0x57, 0x95, 0x75, 0xf9, 0xad, 0x60, 0x69, 0xad, 0x68, 0xe9, 0xd2, 0xfd, 0xfa,
+	0xda, 0xfd, 0xde, 0xaf, 0x06, 0xec, 0x8d, 0xa7, 0x78, 0x42, 0x4f, 0xa9, 0xc0, 0x63, 0x81, 0x05,
+	0x47, 0xef, 0x03, 0x30, 0x41, 0x63, 0x7f, 0x92, 0xce, 0x12, 0x91, 0x5b, 0xd3, 0x90, 0x91, 0x13,
+	0x19, 0x40, 0x0f, 0x41, 0x5d, 0x7c, 0xce, 0x5e, 0x69, 0x93, 0x2c, 0x6f, 0x47, 0x06, 0xc6, 0xec,
+	0x15, 0x95, 0x58, 0xd9, 0x6f, 0x8e, 0x35, 0x35, 0x56, 0x46, 0x56, 0x58, 0xf5, 0xb1, 0xc2, 0x5a,
+	0x1a, 0x2b, 0x03, 0x12, 0xdb, 0xfb, 0xbb, 0xb6, 0xfa, 0xde, 0x2f, 0x9f, 0xc2, 0x00, 0x26, 0xd1,
+	0x8c, 0x0b, 0x9a, 0xf9, 0xab, 0xd5, 0xf3, 0xed, 0x62, 0xde, 0x69, 0x9c, 0xe8, 0xa8, 0xda, 0x40,
+	0x9f, 0x6f, 0x2b, 0xfd, 0x0a, 0xec, 0x35, 0x72, 0xf6, 0x11, 0x41, 0x18, 0x76, 0xd4, 0x02, 0xf6,
+	0x57, 0xee, 0x3e, 0x5f, 0xcc, 0x3b, 0x75, 0xf5, 0xa0, 0xff, 0xb6, 0xe8, 0x72, 0xa8, 0x57, 0x57,
+	0xbc, 0x23, 0x82, 0x28, 0xb4, 0xb2, 0x74, 0x26, 0xa8, 0x7f, 0x25, 0x47, 0x3a, 0x4d, 0xb4, 0x3e,
+	0xee, 0xf1, 0xed, 0xbc, 0xf3, 0x6c, 0x5b, 0x72, 0x4f, 0x12, 0x9d, 0x6b, 0x1e, 0x6f, 0x37, 0x2b,
+	0xdc, 0xee, 0xf8, 0x67, 0x6d, 0xf4, 0xaf, 0xba, 0xd1, 0xbf, 0xda, 0x46, 0xff, 0xea, 0x65, 0xff,
+	0xd0, 0xcf, 0xb0, 0xcf, 0xe5, 0x24, 0xf9, 0x31, 0x15, 0x58, 0x2e, 0x0d, 0xc1, 0xed, 0x1d, 0xb5,
+	0x34, 0x9c, 0xe2, 0x97, 0xb8, 0x6c, 0xb1, 0x53, 0x1e, 0xbe, 0xe2, 0xf2, 0xd8, 0xe3, 0xe5, 0xb9,
+	0x0c, 0x60, 0x7f, 0x9a, 0x72, 0x26, 0xd8, 0x15, 0x3d, 0x23, 0x2c, 0xa4, 0x5c, 0x70, 0xbb, 0xa1,
+	0xf8, 0x1f, 0xdf, 0xdf, 0x8f, 0xf2, 0x57, 0xd2, 0x59, 0xff, 0x36, 0x9e, 0x0d, 0x15, 0x60, 0x9c,
+	0xe0, 0x29, 0xbf, 0x4c, 0x45, 0x5e, 0xe1, 0x1e, 0x9f, 0xac, 0x91, 0xd0, 0x10, 0x97, 0x6a, 0xc0,
+	0xff, 0xab, 0x71, 0x97, 0x0f, 0x3d, 0x82, 0x16, 0x9e, 0x4e, 0x23, 0x46, 0x89, 0xcf, 0x12, 0x42,
+	0xaf, 0xed, 0xa6, 0x12, 0x72, 0x37, 0x0f, 0x8e, 0x64, 0xac, 0xfd, 0x13, 0xbc, 0xfb, 0x06, 0x65,
+	0xde, 0xb0, 0x2f, 0x1f, 0x97, 0xf7, 0x65, 0xbb, 0x24, 0x75, 0x89, 0xa1, 0xb0, 0x2e, 0xdd, 0x83,
+	0xd7, 0x8b, 0x43, 0xe3, 0xcf, 0xc5, 0xa1, 0xf1, 0xd7, 0xe2, 0xd0, 0xf8, 0x61, 0xc7, 0x19, 0x7c,
+	0xa9, 0xc6, 0x2a, 0xa8, 0xa9, 0x7f, 0x4f, 0xfe, 0x09, 0x00, 0x00, 0xff, 0xff, 0xba, 0x3a, 0x6d,
+	0xa5, 0x00, 0x09, 0x00, 0x00,
 }
 
 func (m *Item) Marshal() (dAtA []byte, err error) {
@@ -774,6 +999,170 @@ func (m *SliceRepairMsg) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *SpaceMetaStats) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SpaceMetaStats) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SpaceMetaStats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if m.BlobSize != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.BlobSize))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.BlobCount != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.BlobCount))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.ItemSize != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.ItemSize))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.ItemCount != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.ItemCount))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ShardMetaStats) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ShardMetaStats) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ShardMetaStats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if m.AppliedIndex != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.AppliedIndex))
+		i--
+		dAtA[i] = 0x58
+	}
+	if len(m.NegativeTdigests) > 0 {
+		for iNdEx := len(m.NegativeTdigests) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.NegativeTdigests[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintStorage(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x52
+		}
+	}
+	if len(m.PositiveTdigests) > 0 {
+		for iNdEx := len(m.PositiveTdigests) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.PositiveTdigests[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintStorage(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x4a
+		}
+	}
+	if len(m.SpaceMetaStats) > 0 {
+		for k := range m.SpaceMetaStats {
+			v := m.SpaceMetaStats[k]
+			baseI := i
+			{
+				size, err := (&v).MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintStorage(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+			i = encodeVarintStorage(dAtA, i, uint64(k))
+			i--
+			dAtA[i] = 0x8
+			i = encodeVarintStorage(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x42
+		}
+	}
+	if m.BlobSize != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.BlobSize))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.BlobCount != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.BlobCount))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.ItemSize != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.ItemSize))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.ItemCount != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.ItemCount))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.RouteVersion != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.RouteVersion))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.ShardID != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.ShardID))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.ClusterID != 0 {
+		i = encodeVarintStorage(dAtA, i, uint64(m.ClusterID))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintStorage(dAtA []byte, offset int, v uint64) int {
 	offset -= sovStorage(v)
 	base := offset
@@ -926,6 +1315,87 @@ func (m *SliceRepairMsg) Size() (n int) {
 	}
 	if m.Time != 0 {
 		n += 1 + sovStorage(uint64(m.Time))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *SpaceMetaStats) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ItemCount != 0 {
+		n += 1 + sovStorage(uint64(m.ItemCount))
+	}
+	if m.ItemSize != 0 {
+		n += 1 + sovStorage(uint64(m.ItemSize))
+	}
+	if m.BlobCount != 0 {
+		n += 1 + sovStorage(uint64(m.BlobCount))
+	}
+	if m.BlobSize != 0 {
+		n += 1 + sovStorage(uint64(m.BlobSize))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *ShardMetaStats) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ClusterID != 0 {
+		n += 1 + sovStorage(uint64(m.ClusterID))
+	}
+	if m.ShardID != 0 {
+		n += 1 + sovStorage(uint64(m.ShardID))
+	}
+	if m.RouteVersion != 0 {
+		n += 1 + sovStorage(uint64(m.RouteVersion))
+	}
+	if m.ItemCount != 0 {
+		n += 1 + sovStorage(uint64(m.ItemCount))
+	}
+	if m.ItemSize != 0 {
+		n += 1 + sovStorage(uint64(m.ItemSize))
+	}
+	if m.BlobCount != 0 {
+		n += 1 + sovStorage(uint64(m.BlobCount))
+	}
+	if m.BlobSize != 0 {
+		n += 1 + sovStorage(uint64(m.BlobSize))
+	}
+	if len(m.SpaceMetaStats) > 0 {
+		for k, v := range m.SpaceMetaStats {
+			_ = k
+			_ = v
+			l = v.Size()
+			mapEntrySize := 1 + sovStorage(uint64(k)) + 1 + l + sovStorage(uint64(l))
+			n += mapEntrySize + 1 + sovStorage(uint64(mapEntrySize))
+		}
+	}
+	if len(m.PositiveTdigests) > 0 {
+		for _, e := range m.PositiveTdigests {
+			l = e.Size()
+			n += 1 + l + sovStorage(uint64(l))
+		}
+	}
+	if len(m.NegativeTdigests) > 0 {
+		for _, e := range m.NegativeTdigests {
+			l = e.Size()
+			n += 1 + l + sovStorage(uint64(l))
+		}
+	}
+	if m.AppliedIndex != 0 {
+		n += 1 + sovStorage(uint64(m.AppliedIndex))
 	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -1890,6 +2360,519 @@ func (m *SliceRepairMsg) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Time |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStorage(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthStorage
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SpaceMetaStats) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStorage
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SpaceMetaStats: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SpaceMetaStats: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ItemCount", wireType)
+			}
+			m.ItemCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ItemCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ItemSize", wireType)
+			}
+			m.ItemSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ItemSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlobCount", wireType)
+			}
+			m.BlobCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BlobCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlobSize", wireType)
+			}
+			m.BlobSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BlobSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStorage(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthStorage
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ShardMetaStats) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStorage
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ShardMetaStats: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ShardMetaStats: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterID", wireType)
+			}
+			m.ClusterID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClusterID |= github_com_cubefs_cubefs_blobstore_common_proto.ClusterID(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ShardID", wireType)
+			}
+			m.ShardID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ShardID |= github_com_cubefs_cubefs_blobstore_common_proto.ShardID(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RouteVersion", wireType)
+			}
+			m.RouteVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RouteVersion |= github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ItemCount", wireType)
+			}
+			m.ItemCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ItemCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ItemSize", wireType)
+			}
+			m.ItemSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ItemSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlobCount", wireType)
+			}
+			m.BlobCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BlobCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlobSize", wireType)
+			}
+			m.BlobSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BlobSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SpaceMetaStats", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStorage
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStorage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.SpaceMetaStats == nil {
+				m.SpaceMetaStats = make(map[uint64]SpaceMetaStats)
+			}
+			var mapkey uint64
+			mapvalue := &SpaceMetaStats{}
+			for iNdEx < postIndex {
+				entryPreIndex := iNdEx
+				var wire uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowStorage
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					wire |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				fieldNum := int32(wire >> 3)
+				if fieldNum == 1 {
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowStorage
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						mapkey |= uint64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+				} else if fieldNum == 2 {
+					var mapmsglen int
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowStorage
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						mapmsglen |= int(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					if mapmsglen < 0 {
+						return ErrInvalidLengthStorage
+					}
+					postmsgIndex := iNdEx + mapmsglen
+					if postmsgIndex < 0 {
+						return ErrInvalidLengthStorage
+					}
+					if postmsgIndex > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapvalue = &SpaceMetaStats{}
+					if err := mapvalue.Unmarshal(dAtA[iNdEx:postmsgIndex]); err != nil {
+						return err
+					}
+					iNdEx = postmsgIndex
+				} else {
+					iNdEx = entryPreIndex
+					skippy, err := skipStorage(dAtA[iNdEx:])
+					if err != nil {
+						return err
+					}
+					if (skippy < 0) || (iNdEx+skippy) < 0 {
+						return ErrInvalidLengthStorage
+					}
+					if (iNdEx + skippy) > postIndex {
+						return io.ErrUnexpectedEOF
+					}
+					iNdEx += skippy
+				}
+			}
+			m.SpaceMetaStats[mapkey] = *mapvalue
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PositiveTdigests", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStorage
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStorage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.PositiveTdigests = append(m.PositiveTdigests, statistic.TDigestSnapshot{})
+			if err := m.PositiveTdigests[len(m.PositiveTdigests)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NegativeTdigests", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStorage
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStorage
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NegativeTdigests = append(m.NegativeTdigests, statistic.TDigestSnapshot{})
+			if err := m.NegativeTdigests[len(m.NegativeTdigests)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AppliedIndex", wireType)
+			}
+			m.AppliedIndex = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStorage
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.AppliedIndex |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

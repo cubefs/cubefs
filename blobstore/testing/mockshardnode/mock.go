@@ -20,3 +20,4 @@ package mock
 //go:generate mockgen -source=../../shardnode/catalog/allocator/allocator.go -destination=./allocator.go -package=mock -mock_names Allocator=MockAllocator
 //go:generate mockgen -source=../../shardnode/base/volume_cache.go -destination=../mocks/shardnode_volume_cache.go -package=mocks -mock_names IVolumeCache=MockIVolumeCache
 //go:generate mockgen -source=../../shardnode/message/processor.go -destination=./message.go -package=mock -mock_names ShardGetter=MockMessageMgrShardGetter,MessageExecutor=MockMessageExecutorMgr
+//go:generate mockgen -source=../../shardnode/proto/proto.go -destination=../mocks/shardnodeproto.go -package=mocks -mock_names KeyDecoder=MockKeyDecoder

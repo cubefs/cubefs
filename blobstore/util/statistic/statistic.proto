@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package cubefs.blobstore.util.statistic;
+
+option go_package = "./;statistic";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+import "gogoproto/gogo.proto";
+
+message Centroid {
+    uint64 mean = 1;
+    uint64 weight = 2;
+}
+
+message TDigestSnapshot {
+    repeated Centroid centroids = 1 [(gogoproto.nullable) = false];
+    uint64 total_weight = 2;
+    uint64 min = 3;
+    uint64 max = 4;
+}

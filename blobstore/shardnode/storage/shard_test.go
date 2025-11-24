@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -131,6 +132,11 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 			},
 		},
 		diskID: 1,
+		metaStats: newShardMetaStatsRecorder(MetaStatsConfig{
+			RangeCount:         2,
+			RequestSampleRatio: 0.3,
+			TDigestCompression: 100,
+		}),
 	}
 	shard.shardState.readIndexFunc = func(ctx context.Context) error {
 		return mockRaftGroup.ReadIndex(ctx)
@@ -200,6 +206,11 @@ func TestServerShard_Item(t *testing.T) {
 	defer shardClean()
 	sk := mockShard.shard.shardKeys
 
+	patches := gomonkey.ApplyFunc((*shard).getMetaDataTypeAndSpaceIDByKey, func(s *shard, key []byte) (metaDataType, uint64) {
+		return metaDataTypeItem, 0
+	})
+	defer patches.Reset()
+
 	oldProtoItem := &shardnode.Item{
 		ID: "2",
 		Fields: []shardnode.Field{
@@ -229,14 +240,14 @@ func TestServerShard_Item(t *testing.T) {
 	_interOldItem := protoItemToInternalItem(*oldProtoItem)
 	oldkv, _ := initKV(sk.encodeItemKey(oldID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interOldItem), N: int64(_interOldItem.Size())})
 	// Get
-	_ = mockShard.shardSM.applyInsertItem(ctx, oldkv.Marshal())
+	_, _ = mockShard.shardSM.applyInsertItem(ctx, oldkv.Marshal())
 	itm, err := mockShard.shard.GetItem(ctx, oldShardOpHeader, oldID)
 	require.Nil(t, err)
 	require.Equal(t, itm.ID, oldProtoItem.ID)
 
 	_interNewItem := protoItemToInternalItem(*newProtoItem)
 	newkv, _ := initKV(sk.encodeItemKey(newID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interNewItem), N: int64(_interNewItem.Size())})
-	_ = mockShard.shardSM.applyInsertItem(ctx, newkv.Marshal())
+	_, _ = mockShard.shardSM.applyInsertItem(ctx, newkv.Marshal())
 	_, err = mockShard.shard.GetItem(ctx, newShardOpHeader, newID)
 	require.Nil(t, err)
 
@@ -244,7 +255,7 @@ func TestServerShard_Item(t *testing.T) {
 	oldProtoItem.Fields[0].Value = []byte("new-string")
 	_interOldItem = protoItemToInternalItem(*oldProtoItem)
 	oldkv, _ = initKV(sk.encodeItemKey(oldID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interOldItem), N: int64(_interOldItem.Size())})
-	err = mockShard.shardSM.applyUpdateItem(ctx, oldkv.Marshal())
+	_, err = mockShard.shardSM.applyUpdateItem(ctx, oldkv.Marshal())
 	require.Nil(t, err)
 
 	// Update Item

@@ -20,6 +20,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	cproto "github.com/cubefs/cubefs/blobstore/common/proto"
@@ -57,11 +58,16 @@ func TestServerShardSM_Item(t *testing.T) {
 	require.NoError(t, err)
 	newProtoItemBytes := newkv.Marshal()
 
+	patches := gomonkey.ApplyFunc((*shard).getMetaDataTypeAndSpaceIDByKey, func(s *shard, key []byte) (metaDataType, uint64) {
+		return metaDataTypeItem, 0
+	})
+	defer patches.Reset()
+
 	// Insert
-	err = mockShard.shardSM.applyInsertItem(ctx, oldProtoItemBytes)
+	_, err = mockShard.shardSM.applyInsertItem(ctx, oldProtoItemBytes)
 	require.Nil(t, err)
 	checkItemEqual(t, mockShard, oldID, oldProtoItem)
-	err = mockShard.shardSM.applyInsertItem(ctx, oldProtoItemBytes)
+	_, err = mockShard.shardSM.applyInsertItem(ctx, oldProtoItemBytes)
 	require.Nil(t, err)
 	checkItemEqual(t, mockShard, oldID, oldProtoItem)
 	// Update
@@ -69,20 +75,20 @@ func TestServerShardSM_Item(t *testing.T) {
 	notFoundKV, err := initKV(sk.encodeItemKey(oldID), &io.LimitedReader{R: rpc2.Codec2Reader(notFoundItem), N: int64(notFoundItem.Size())})
 	require.NoError(t, err)
 	notFoundItemBytes := notFoundKV.Marshal()
-	err = mockShard.shardSM.applyUpdateItem(ctx, notFoundItemBytes)
+	_, err = mockShard.shardSM.applyUpdateItem(ctx, notFoundItemBytes)
 	require.Nil(t, err)
 
-	err = mockShard.shardSM.applyUpdateItem(ctx, newProtoItemBytes)
+	_, err = mockShard.shardSM.applyUpdateItem(ctx, newProtoItemBytes)
 	require.Nil(t, err)
 	checkItemEqual(t, mockShard, newID, newProtoItem)
 	// Delete
-	err = mockShard.shardSM.applyDeleteRaw(ctx, sk.encodeItemKey(newID))
+	_, err = mockShard.shardSM.applyDeleteRaw(ctx, sk.encodeItemKey(newID))
 	require.Nil(t, err)
 	_, err = mockShard.shard.GetItem(ctx, OpHeader{
 		ShardKeys: []string{string(newID)},
 	}, newID)
 	require.ErrorIs(t, err, errors.ErrKeyNotFound)
-	err = mockShard.shardSM.applyDeleteRaw(ctx, sk.encodeItemKey(newID))
+	_, err = mockShard.shardSM.applyDeleteRaw(ctx, sk.encodeItemKey(newID))
 	require.Nil(t, err)
 	_, err = mockShard.shard.GetItem(ctx, OpHeader{
 		ShardKeys: []string{string(newID)},
@@ -104,7 +110,7 @@ func TestServerShardSM_Item(t *testing.T) {
 		}
 		kv, err := initKV(sk.encodeItemKey([]byte(protoItem.ID)), &io.LimitedReader{R: rpc2.Codec2Reader(protoItem), N: int64(protoItem.Size())})
 		require.NoError(t, err)
-		err = mockShard.shardSM.applyInsertItem(ctx, kv.Marshal())
+		_, err = mockShard.shardSM.applyInsertItem(ctx, kv.Marshal())
 		require.Nil(t, err)
 		items[i] = protoItem
 		ids[i] = []byte(protoItem.ID)
@@ -132,7 +138,7 @@ func TestServerShardSM_Item(t *testing.T) {
 		wb.Delete(dataCF, sk.encodeItemKey(ids[i]))
 	}
 
-	err = mockShard.shardSM.applyWriteBatchRaw(ctx, wb.Data())
+	_, err = mockShard.shardSM.applyWriteBatchRaw(ctx, wb.Data())
 	require.Nil(t, err)
 
 	for i := 0; i < n-1; i++ {
@@ -189,6 +195,12 @@ func TestServerShardSM_Apply(t *testing.T) {
 		{Op: raftOpUpdateItem, Data: ib3.Marshal()},
 		{Op: raftOpDeleteItem, Data: []byte(db)},
 	}
+
+	patches := gomonkey.ApplyFunc((*shard).getMetaDataTypeAndSpaceIDByKey, func(s *shard, key []byte) (metaDataType, uint64) {
+		return metaDataTypeItem, 0
+	})
+	defer patches.Reset()
+
 	_, err := mockShard.shardSM.Apply(ctx, pds, 1)
 	require.Nil(t, err)
 
@@ -245,6 +257,12 @@ func TestServerShardSM_Apply_Batch(t *testing.T) {
 	pds := []raft.ProposalData{
 		{Op: raftOpWriteBatchRaw, Data: wb.Data()},
 	}
+
+	patches := gomonkey.ApplyFunc((*shard).getMetaDataTypeAndSpaceIDByKey, func(s *shard, key []byte) (metaDataType, uint64) {
+		return metaDataTypeItem, 0
+	})
+	defer patches.Reset()
+
 	_, err := mockShard.shardSM.Apply(ctx, pds, 1)
 	require.Nil(t, err)
 }
@@ -256,6 +274,11 @@ func TestServer_BlobList(t *testing.T) {
 
 	err := mockShard.shard.SaveShardInfo(ctx, false, false)
 	require.Nil(t, err)
+
+	patches := gomonkey.ApplyFunc((*shard).getMetaDataTypeAndSpaceIDByKey, func(s *shard, key []byte) (metaDataType, uint64) {
+		return metaDataTypeItem, 0
+	})
+	defer patches.Reset()
 
 	sk := mockShard.shard.shardKeys
 	blobs := make([]cproto.Blob, 0)
@@ -304,15 +327,20 @@ func TestServer_CreateBlob(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()
 
+	patches := gomonkey.ApplyFunc((*shard).getMetaDataTypeAndSpaceIDByKey, func(s *shard, key []byte) (metaDataType, uint64) {
+		return metaDataTypeItem, 0
+	})
+	defer patches.Reset()
+
 	b1 := cproto.Blob{Name: "blob1"}
 	kv, _ := initKV([]byte(b1.Name), &io.LimitedReader{R: rpc2.Codec2Reader(&b1), N: int64(b1.Size())})
-	b11, err := mockShard.shardSM.applyInsertBlob(ctx, kv.Marshal())
+	b11, _, err := mockShard.shardSM.applyInsertBlob(ctx, kv.Marshal())
 	require.Nil(t, err)
 	require.Equal(t, b1, b11)
 
 	b1.Location.Size_ = 1024
 	kv, _ = initKV([]byte(b1.Name), &io.LimitedReader{R: rpc2.Codec2Reader(&b1), N: int64(b1.Size())})
-	b11, err = mockShard.shardSM.applyInsertBlob(ctx, kv.Marshal())
+	b11, _, err = mockShard.shardSM.applyInsertBlob(ctx, kv.Marshal())
 	require.Nil(t, err)
 	require.NotEqual(t, b1, b11)
 }
@@ -321,10 +349,15 @@ func TestServer_Snapshot(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()
 
+	patches := gomonkey.ApplyFunc((*shard).getMetaDataTypeAndSpaceIDByKey, func(s *shard, key []byte) (metaDataType, uint64) {
+		return metaDataTypeItem, 0
+	})
+	defer patches.Reset()
+
 	sk := mockShard.shard.shardKeys
 	b1 := cproto.Blob{Name: "blob1"}
 	kv, _ := initKV(sk.encodeBlobKey([]byte(b1.Name)), &io.LimitedReader{R: rpc2.Codec2Reader(&b1), N: int64(b1.Size())})
-	_, err := mockShard.shardSM.applyInsertBlob(ctx, kv.Marshal())
+	_, _, err := mockShard.shardSM.applyInsertBlob(ctx, kv.Marshal())
 	require.Nil(t, err)
 
 	ss, err := mockShard.shardSM.Snapshot()

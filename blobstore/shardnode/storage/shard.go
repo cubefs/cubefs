@@ -31,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
+	rg "github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	shardnodeproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
@@ -125,6 +126,9 @@ type (
 		RaftSnapTransmitConfig RaftSnapshotTransmitConfig `json:"raft_snap_transmit_config"`
 		TruncateWalLogInterval uint64                     `json:"truncate_wal_log_interval"`
 		Transport              base.ShardTransport
+		KeyDecoder             shardnodeproto.KeyDecoder // Key decoder, passed from catalog layer
+
+		MetaStatsConfig MetaStatsConfig `json:"meta_stats_config"`
 	}
 
 	shardConfig struct {
@@ -153,10 +157,16 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 		shardKeys: &shardKeysGenerator{
 			suid: cfg.suid,
 		},
-		disk: cfg.disk,
-		cfg:  cfg.ShardBaseConfig,
+		disk:       cfg.disk,
+		cfg:        cfg.ShardBaseConfig,
+		keyDecoder: cfg.ShardBaseConfig.KeyDecoder,
 	}
 	s.shardInfoMu.shardInfo = cfg.shardInfo
+	s.metaStats = newShardMetaStatsRecorder(cfg.ShardBaseConfig.MetaStatsConfig)
+	if err := s.initMetaStats(ctx); err != nil {
+		span.Errorf("init meta stats failed: %s", err)
+		return nil, err
+	}
 
 	// initial members
 	members := make([]raft.Member, 0, len(cfg.shardInfo.Units))
@@ -223,6 +233,9 @@ type shard struct {
 	store     *store.Store
 	raftGroup raft.Group
 	cfg       *ShardBaseConfig
+
+	keyDecoder shardnodeproto.KeyDecoder // Key decoder for decoding space keys and parsing key data types
+	metaStats  *shardMetaStatsRecorder
 }
 
 func (s *shard) InsertItem(ctx context.Context, h OpHeader, id []byte, i shardnode.Item) error {
@@ -709,14 +722,28 @@ func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) er
 	}
 	kvStore := s.store.KVStore()
 	key := s.shardKeys.encodeShardInfoKey()
+	// get shardInfo first to make sure shardInfo.appliedIndex <= metaStats.appliedIndex
 	value, err := s.shardInfoMu.shardInfo.Marshal()
 	if err != nil {
 		return err
 	}
-	if !flush {
-		return kvStore.SetRaw(ctx, dataCF, key, value)
+
+	metaStatsKey := s.shardKeys.encodeShardMetaStatsKey()
+	stats := s.metaStats.get()
+	metaStatsValue, err := stats.Marshal()
+	if err != nil {
+		return err
 	}
-	if err := kvStore.SetRaw(ctx, dataCF, key, value); err != nil {
+
+	batch := kvStore.NewWriteBatch()
+	defer batch.Close()
+	batch.Put(dataCF, key, value)
+	batch.Put(dataCF, metaStatsKey, metaStatsValue)
+
+	if !flush {
+		return kvStore.Write(ctx, batch)
+	}
+	if err := kvStore.Write(ctx, batch); err != nil {
 		return err
 	}
 	// todo: flush data, write and lock column family with atomic flush support.
@@ -1137,6 +1164,60 @@ func (s *shard) getShardInfoFromPersistentTier(ctx context.Context) (info cluste
 	return
 }
 
+func (s *shard) initMetaStats(ctx context.Context) error {
+	kvStore := s.store.KVStore()
+	key := s.shardKeys.encodeShardMetaStatsKey()
+	metaStats := shardnodeproto.ShardMetaStats{}
+
+	raw, err := kvStore.GetRaw(ctx, dataCF, key, nil)
+	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
+		return errors.Info(err, "get meta stats from db failed")
+	}
+
+	if raw == nil {
+		metaStats = shardnodeproto.ShardMetaStats{
+			ClusterID:    s.disk.cfg.ClusterID,
+			ShardID:      s.suid.ShardID(),
+			RouteVersion: s.GetRouteVersion(),
+		}
+		s.metaStats.set(metaStats)
+		return nil
+	}
+
+	// exist
+	if err := metaStats.Unmarshal(raw); err != nil {
+		return errors.Info(err, "unmarshal meta stats from db failed")
+	}
+	s.metaStats.load(metaStats)
+	return nil
+}
+
+func (s *shard) getMetaDataTypeAndSpaceIDByKey(key []byte) (metaDataType, uint64) {
+	basicDataType := s.shardKeys.decodeBasicDataType(key)
+	switch basicDataType {
+	case basicDataTypeBlob:
+		internalKey := s.shardKeys.decodeBlobKey(key)
+		spaceID, _ := s.keyDecoder.DecodeSpaceID(internalKey)
+		return metaDataTypeBlob, uint64(spaceID)
+	case basicDataTypeItem:
+		internalKey := s.shardKeys.decodeItemKey(key)
+		spaceID, _ := s.keyDecoder.DecodeSpaceID(internalKey)
+		return metaDataTypeItem, uint64(spaceID)
+	default:
+		panic(fmt.Sprintf("unknown basic data type: %v", basicDataType))
+	}
+}
+
+func (s *shard) getHashValues(key []byte) ([]uint64, error) {
+	subRangeCount := s.ShardingSubRangeCount()
+	shardKeys := shardnodeapi.DecodeShardKeys(string(key), subRangeCount)
+	hashValues := make([]uint64, len(shardKeys))
+	for i := range shardKeys {
+		hashValues[i] = rg.Hash([]byte(shardKeys[i]))
+	}
+	return hashValues, nil
+}
+
 func convertStoppingWriteErr(err error) error {
 	if errors.Is(err, errShardStopWriting) {
 		return apierr.ErrShardRouteVersionNeedUpdate
@@ -1332,6 +1413,13 @@ func (s *shardKeysGenerator) encodeShardInfoKey() []byte {
 	return key
 }
 
+// encode shard meta stats key with prefix: m[shardID]
+func (s *shardKeysGenerator) encodeShardMetaStatsKey() []byte {
+	key := make([]byte, shardMetaStatsPrefixSize())
+	encodeShardMetaStatsPrefix(s.suid.ShardID(), key)
+	return key
+}
+
 // encode shard data prefix with prefix: d[shardID]
 // it can be used for listing all shard's data or delete shard's data
 func (s *shardKeysGenerator) encodeShardDataPrefix() []byte {
@@ -1346,6 +1434,12 @@ func (s *shardKeysGenerator) encodeShardDataMaxPrefix() []byte {
 	key := make([]byte, shardMaxPrefixSize())
 	encodeShardDataMaxPrefix(s.suid.ShardID(), key)
 	return key
+}
+
+// decode basic data type from key
+// key format: d[shardID]-[data type]-[key]
+func (s *shardKeysGenerator) decodeBasicDataType(key []byte) basicDataType {
+	return parseBasicDataType(key[shardDataPrefixSize() : shardDataPrefixSize()+1])
 }
 
 func protoItemToInternalItem(i shardnode.Item) (ret item) {

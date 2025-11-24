@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/binary"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -33,8 +34,9 @@ const (
 
 var (
 	// top level prefix
-	shardDataPrefix = []byte{'d'}
-	shardInfoPrefix = []byte{'s'}
+	shardDataPrefix      = []byte{'d'}
+	shardInfoPrefix      = []byte{'s'}
+	shardMetaStatsPrefix = []byte{'m'}
 
 	// shard's internal suffix
 	itemSuffix = []byte{'a'}
@@ -49,7 +51,28 @@ type Timestamp struct{}
 type (
 	item      = shardnodeproto.Item
 	shardInfo = clustermgr.Shard
+
+	basicDataType = uint8
 )
+
+var (
+	basicDataTypeUnknown = basicDataType(0)
+	basicDataTypeItem    = basicDataType(1)
+	basicDataTypeBlob    = basicDataType(2)
+)
+
+func parseBasicDataType(b []byte) basicDataType {
+	if len(b) != 1 {
+		return basicDataTypeUnknown
+	}
+	if bytes.Equal(b, itemSuffix) {
+		return basicDataTypeItem
+	}
+	if bytes.Equal(b, blobSuffix) {
+		return basicDataTypeBlob
+	}
+	return basicDataTypeUnknown
+}
 
 // todo: merge these encode and decode function into shard?
 
@@ -59,6 +82,10 @@ func shardDataPrefixSize() int {
 
 func shardInfoPrefixSize() int {
 	return len(shardInfoPrefix) + 8
+}
+
+func shardMetaStatsPrefixSize() int {
+	return len(shardMetaStatsPrefix) + 4
 }
 
 func shardItemPrefixSize() int {
@@ -87,6 +114,14 @@ func encodeShardInfoPrefix(suid proto.Suid, raw []byte) {
 	prefixSize := len(shardInfoPrefix)
 	copy(raw, shardInfoPrefix)
 	binary.BigEndian.PutUint64(raw[prefixSize:], uint64(suid))
+}
+
+func encodeShardMetaStatsPrefix(shardID proto.ShardID, raw []byte) {
+	if raw == nil || cap(raw) == 0 {
+		panic("invalid raw input")
+	}
+	copy(raw, shardMetaStatsPrefix)
+	binary.BigEndian.PutUint32(raw[len(shardMetaStatsPrefix):], uint32(shardID))
 }
 
 func decodeShardInfoPrefix(raw []byte) proto.Suid {

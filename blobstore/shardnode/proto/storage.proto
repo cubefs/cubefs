@@ -24,6 +24,8 @@ option (gogoproto.unmarshaler_all) = true;
 
 import "gogoproto/gogo.proto";
 import "cubefs/blobstore/common/proto/blob.proto";
+import "cubefs/blobstore/common/sharding/range.proto";
+import "cubefs/blobstore/util/statistic/statistic.proto";
 
 message Item {
     string id = 1 [(gogoproto.customname) = "ID"];
@@ -59,4 +61,25 @@ message SliceRepairMsg {
     string reason = 5;
     string req_id = 6;
     int64 time = 7;
+}
+
+message SpaceMetaStats {
+    uint64 item_count = 1;
+    uint64 item_size = 2;
+    uint64 blob_count = 3;
+    uint64 blob_size = 4;
+}
+
+message ShardMetaStats {
+    uint32 cluster_id = 1 [(gogoproto.customname) = "ClusterID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ClusterID"];
+    uint32 shard_id = 2 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+    uint64 route_version = 3 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+    uint64 item_count = 4;
+    uint64 item_size = 5;
+    uint64 blob_count = 6;
+    uint64 blob_size = 7;
+    map<uint64, SpaceMetaStats> space_meta_stats = 8 [(gogoproto.nullable) = false];
+    repeated cubefs.blobstore.util.statistic.TDigestSnapshot positiveTdigests = 9 [(gogoproto.nullable) = false];
+    repeated cubefs.blobstore.util.statistic.TDigestSnapshot negativeTdigests = 10 [(gogoproto.nullable) = false];
+    uint64 applied_index = 11;
 }

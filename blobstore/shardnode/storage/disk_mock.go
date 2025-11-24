@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util"
 )
@@ -90,6 +91,11 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 	shardTp.EXPECT().ResolveNodeAddr(A, A).Return("127.0.0.1:9100", nil).AnyTimes()
 	shardTp.EXPECT().ShardStats(A, A, A).Return(shardnode.ShardStats{}, nil).AnyTimes()
 	cfg.ShardBaseConfig.Transport = shardTp
+
+	keyDecoder := mocks.NewMockKeyDecoder(C(tb))
+	keyDecoder.EXPECT().DecodeSpaceID(A).Return(proto.SpaceID(1), nil).AnyTimes()
+	keyDecoder.EXPECT().DecodeKeyDataType(A).Return(snproto.KeyDataType(1)).AnyTimes()
+	cfg.ShardBaseConfig.KeyDecoder = keyDecoder
 
 	disk, err := OpenDisk(ctx, cfg)
 	require.NoError(tb, err)

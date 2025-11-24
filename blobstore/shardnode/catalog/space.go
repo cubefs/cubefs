@@ -623,3 +623,43 @@ func isEmptySlice(s proto.Slice) bool {
 func compareSlice(src, dst proto.Slice) bool {
 	return src.MinSliceID == dst.MinSliceID && src.Vid == dst.Vid
 }
+
+// DecodeSpaceID decodes SpaceID from a space key
+// The space key format: prefix[1] + spaceId[8] + id + padding + spaceVersion[8] + paddingLen[8]
+// SpaceID is stored at index 1-9 (8 bytes, big endian)
+func DecodeSpaceID(key []byte) (proto.SpaceID, error) {
+	if len(key) < 9 {
+		return 0, errors.Newf("decode space id failed: key length %d is too short, need at least 9 bytes", len(key))
+	}
+
+	if key[0] == snproto.DeleteMsgPrefix[0] || key[0] == snproto.RepairMsgPrefix[0] {
+		return 0, nil
+	}
+
+	// check if key starts with SpaceDataPrefix
+	if key[0] != snproto.SpaceDataPrefix[0] {
+		return 0, errors.Newf("decode space id failed: invalid space key prefix")
+	}
+
+	// extract SpaceID from index 1-9 (8 bytes)
+	spaceID := binary.BigEndian.Uint64(key[1:9])
+	return proto.SpaceID(spaceID), nil
+}
+
+// keyDecoder implements storage.KeyDecoder interface
+// This wrapper is used to pass key decoding functions to storage layer without circular dependency
+type keyDecoder struct {
+	*snproto.KeyDecoderImpl
+}
+
+// DecodeSpaceID decodes SpaceID from a space key
+func (d *keyDecoder) DecodeSpaceID(key []byte) (proto.SpaceID, error) {
+	return DecodeSpaceID(key)
+}
+
+// NewKeyDecoder creates a KeyDecoder instance for storage layer
+func NewKeyDecoder() snproto.KeyDecoder {
+	return &keyDecoder{
+		KeyDecoderImpl: &snproto.KeyDecoderImpl{},
+	}
+}

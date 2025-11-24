@@ -409,6 +409,8 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.SliceRepairCfg.MaxExecuteSliceNum, uint64(64))
 	defaulter.LessOrEqual(&cfg.SliceRepairCfg.TierConfig.SafeMessageTimeout.Duration, 12*time.Hour)
 	defaulter.LessOrEqual(&cfg.SliceRepairCfg.TierConfig.PunishTimeout.Duration, 1*time.Minute)
+	defaulter.LessOrEqual(&cfg.MetaStatsConfig.RequestSampleRatio, 0.3)
+	defaulter.LessOrEqual(&cfg.MetaStatsConfig.TDigestCompression, uint64(100))
 }
 
 func isDiskInfoMatch(a, b clustermgr.ShardNodeDiskInfo) bool {
