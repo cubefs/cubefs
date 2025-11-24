@@ -35,7 +35,6 @@ func TestRequestDoExtentRepair(t *testing.T) {
 			// do nothing
 		default:
 			stop = true
-			break
 		}
 	}
 
@@ -62,12 +61,11 @@ func TestFininshDoExtentRepair(t *testing.T) {
 			// do nothing
 		default:
 			stop = true
-			break
 		}
 	}
 
 	// finishDoExtentRepair() will send a struct{} to extentRepairLimitRater
-	fininshDoExtentRepair()
+	finishDoExtentRepair()
 
 	select {
 	case <-extentRepairLimitRater:

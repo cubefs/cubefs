@@ -15,16 +15,13 @@ import (
 func (d *DataNode) startStat(cfg *config.Config) {
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	var err error
-	var logLeftSpaceLimitRatio float64
+	logLeftSpaceLimitRatio := log.DefaultLogLeftSpaceLimitRatio
 
-	logLeftSpaceLimitRatioStr := cfg.GetString("logLeftSpaceLimitRatio")
-	if logLeftSpaceLimitRatioStr == "" {
-		logLeftSpaceLimitRatio = log.DefaultLogLeftSpaceLimitRatio
-	} else {
-		logLeftSpaceLimitRatio, err = strconv.ParseFloat(logLeftSpaceLimitRatioStr, 64)
-		if err != nil {
+	if logLeftSpaceLimitRatioStr := cfg.GetString("logLeftSpaceLimitRatio"); logLeftSpaceLimitRatioStr != "" {
+		if val, err := strconv.ParseFloat(logLeftSpaceLimitRatioStr, 64); err == nil {
+			logLeftSpaceLimitRatio = val
+		} else {
 			log.LogWarnf("get log limt ratio failed, err %s", err.Error())
-			logLeftSpaceLimitRatio = log.DefaultLogLeftSpaceLimitRatio
 		}
 	}
 
@@ -58,7 +55,7 @@ func (d *DataNode) getDpOpLog() []proto.OpLog {
 }
 
 func (d *DataNode) getOplogs(ops []*stat.Operation) []proto.OpLog {
-	oplog := make([]proto.OpLog, 0)
+	oplog := make([]proto.OpLog, 0, len(ops))
 	for _, op := range ops {
 		if op.Op == "" {
 			arr := strings.Split(op.Name, "_")
@@ -92,8 +89,8 @@ func (s *DataNode) setOpLog(w http.ResponseWriter, r *http.Request) {
 	sendMaster, err := strconv.ParseBool(r.FormValue(paramSendMaster))
 	log.LogDebugf("action[setOpLog] sendMaster:%+v,err:%+v", sendMaster, err)
 	if err == nil {
-		stat.DpStat.SetRecordFile(sendMaster)
-		stat.DiskStat.SetRecordFile(sendMaster)
+		stat.DpStat.SetSendMaster(sendMaster)
+		stat.DiskStat.SetSendMaster(sendMaster)
 	}
 	s.buildSuccessResp(w, "success")
 }
@@ -121,10 +118,10 @@ func (s *DataNode) getOpLog(w http.ResponseWriter, r *http.Request) {
 	case "dp":
 		stat.DpStat.Lock()
 		oplogs = s.getOplogs(stat.DpStat.GetPrevOps())
+		stat.DpStat.Unlock()
 		if dpId != "" {
 			oplogs = filterDpId(dpId, oplogs)
 		}
-		stat.DpStat.Unlock()
 	default:
 	}
 	if op != "" {
@@ -137,7 +134,7 @@ func filterDpId(dpId string, oplogs []proto.OpLog) []proto.OpLog {
 	if dpId == "" {
 		return oplogs
 	}
-	out := make([]proto.OpLog, 0)
+	out := make([]proto.OpLog, 0, len(oplogs))
 	for _, oplog := range oplogs {
 		arr := strings.Split(oplog.Name, "_")
 		if len(arr) < 2 {
@@ -154,9 +151,10 @@ func filterOp(op string, oplogs []proto.OpLog) []proto.OpLog {
 	if op == "" {
 		return oplogs
 	}
-	out := make([]proto.OpLog, 0)
+	out := make([]proto.OpLog, 0, len(oplogs))
+	opLower := strings.ToLower(op)
 	for _, oplog := range oplogs {
-		if !strings.Contains(strings.ToLower(oplog.Op), strings.ToLower(op)) {
+		if !strings.Contains(strings.ToLower(oplog.Op), opLower) {
 			continue
 		}
 		out = append(out, oplog)

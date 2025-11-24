@@ -23,17 +23,15 @@ func initRepairLimit() {
 }
 
 func requestDoExtentRepair() (err error) {
-	err = fmt.Errorf("repair limit, cannot do extentRepair")
-
 	select {
 	case <-extentRepairLimitRater:
 		return nil
 	default:
-		return
+		return fmt.Errorf("repair limit, cannot do extentRepair")
 	}
 }
 
-func fininshDoExtentRepair() {
+func finishDoExtentRepair() {
 	select {
 	case extentRepairLimitRater <- struct{}{}:
 		return
@@ -55,13 +53,15 @@ func setDoExtentRepair(value int) {
 		value = MinExtentRepairLimit
 	}
 
-	if CurExtentRepairLimit != value {
-		CurExtentRepairLimit = value
-		close(extentRepairLimitRater)
-		extentRepairLimitRater = make(chan struct{}, CurExtentRepairLimit)
-		for i := 0; i < CurExtentRepairLimit; i++ {
-			extentRepairLimitRater <- struct{}{}
-		}
+	if CurExtentRepairLimit == value {
+		return
+	}
+
+	CurExtentRepairLimit = value
+	close(extentRepairLimitRater)
+	extentRepairLimitRater = make(chan struct{}, CurExtentRepairLimit)
+	for i := 0; i < CurExtentRepairLimit; i++ {
+		extentRepairLimitRater <- struct{}{}
 	}
 }
 
@@ -71,10 +71,9 @@ func DeleteLimiterWait() {
 }
 
 func setLimiter(limiter *rate.Limiter, limitValue uint64) {
-	r := limitValue
-	l := rate.Limit(r)
-	if r == 0 {
-		l = rate.Inf
+	if limitValue == 0 {
+		limiter.SetLimit(rate.Inf)
+	} else {
+		limiter.SetLimit(rate.Limit(limitValue))
 	}
-	limiter.SetLimit(l)
 }

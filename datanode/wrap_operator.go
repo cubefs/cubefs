@@ -311,7 +311,8 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 }
 
 func (s *DataNode) commitDelVersion(volumeID string, verSeq uint64) (err error) {
-	for _, partition := range s.space.partitions {
+	partitions := s.space.getPartitions()
+	for _, partition := range partitions {
 		if partition.config.VolName != volumeID {
 			continue
 		}
@@ -358,7 +359,7 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 	}
 
 	s.space.partitionMutex.RLock()
-	partitions := make([]*DataPartition, 0)
+	partitions := make([]*DataPartition, 0, len(s.space.partitions))
 	for _, dp := range s.space.partitions {
 		partitions = append(partitions, dp)
 	}
@@ -453,7 +454,7 @@ func (s *DataNode) handleUpdateVerPacket(p *repl.Packet) {
 		}
 	}()
 	if !s.clusterEnableSnapshot {
-		err = fmt.Errorf("cluster not enable snapshot!")
+		err = fmt.Errorf("cluster not enable snapshot")
 		return
 	}
 	task := &proto.AdminTask{}
@@ -739,7 +740,7 @@ func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
 		if dp == nil {
 			response.Status = proto.TaskFailed
 			response.PartitionId = uint64(request.PartitionId)
-			err = fmt.Errorf(fmt.Sprintf("DataPartition(%v) not found", request.PartitionId))
+			err = fmt.Errorf("DataPartition(%v) not found", request.PartitionId)
 			response.Result = err.Error()
 		} else {
 			response = dp.Load()
@@ -1173,7 +1174,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	if err != nil {
 		return
 	}
-	defer fininshDoExtentRepair()
+	defer finishDoExtentRepair()
 	partition := p.Object.(*DataPartition)
 	if !partition.disk.RequireReadExtentToken(partition.partitionID) {
 		err = storage.ErrNoDiskReadRepairExtentToken

@@ -95,7 +95,6 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 	if err = binary.Read(buff, binary.BigEndian, &version); err != nil {
 		return
 	}
-
 	if err = binary.Read(buff, binary.BigEndian, &opItem.opcode); err != nil {
 		return
 	}
@@ -115,15 +114,11 @@ func UnmarshalRandWriteRaftLog(raw []byte) (opItem *rndWrtOpItem, err error) {
 	if _, err = buff.Read(opItem.data); err != nil {
 		return
 	}
-
 	return
 }
 
 func MarshalRaftCmd(raftOpItem *RaftCmdItem) (raw []byte, err error) {
-	if raw, err = json.Marshal(raftOpItem); err != nil {
-		return
-	}
-	return
+	return json.Marshal(raftOpItem)
 }
 
 func UnmarshalRaftCmd(raw []byte) (raftOpItem *RaftCmdItem, err error) {
@@ -131,9 +126,7 @@ func UnmarshalRaftCmd(raw []byte) (raftOpItem *RaftCmdItem, err error) {
 	defer func() {
 		log.LogDebugf("Unmarsh use oldVersion,result %v", err)
 	}()
-	if err = json.Unmarshal(raw, raftOpItem); err != nil {
-		return
-	}
+	err = json.Unmarshal(raw, raftOpItem)
 	return
 }
 
@@ -179,14 +172,11 @@ func UnmarshalOldVersionRandWriteOpItem(raw []byte) (result *rndWrtOpItem, err e
 // CheckLeader checks if itself is the leader during read
 func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (err error) {
 	//  and use another getRaftLeaderAddr() to return the actual address
-	_, ok := dp.IsRaftLeader()
-	if !ok {
+	if _, ok := dp.IsRaftLeader(); !ok {
 		err = raft.ErrNotLeader
 		logContent := fmt.Sprintf("action[ReadCheck] %v.", request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, err))
 		log.LogWarnf(logContent)
-		return
 	}
-
 	return
 }
 
@@ -262,29 +252,38 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 	log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)",
 		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
 
-	for i := 0; i < 20; i++ {
-		var syncWrite bool
-		writeType := storage.RandomWriteType
-		if opItem.opcode == proto.OpRandomWrite || opItem.opcode == proto.OpSyncRandomWrite {
-			if dp.verSeq > 0 {
-				err = storage.ErrVerNotConsistent
-				log.LogErrorf("action[ApplyRandomWrite] volume [%v] dp [%v] %v,client need update to newest version!", dp.volumeID, dp.partitionID, err)
-				return
-			}
-		} else if opItem.opcode == proto.OpRandomWriteAppend || opItem.opcode == proto.OpSyncRandomWriteAppend {
-			writeType = storage.AppendRandomWriteType
-		} else if opItem.opcode == proto.OpTryWriteAppend || opItem.opcode == proto.OpSyncTryWriteAppend {
-			writeType = storage.AppendWriteType
+	var syncWrite bool
+	writeType := storage.RandomWriteType
+	switch opItem.opcode {
+	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
+		if dp.verSeq > 0 {
+			err = storage.ErrVerNotConsistent
+			log.LogErrorf("action[ApplyRandomWrite] volume [%v] dp [%v] %v,client need update to newest version!", dp.volumeID, dp.partitionID, err)
+			return
 		}
-
-		if opItem.opcode == proto.OpSyncRandomWriteAppend || opItem.opcode == proto.OpSyncRandomWrite || opItem.opcode == proto.OpSyncRandomWriteVer {
+		if opItem.opcode == proto.OpSyncRandomWrite {
 			syncWrite = true
 		}
+	case proto.OpRandomWriteAppend, proto.OpSyncRandomWriteAppend:
+		writeType = storage.AppendRandomWriteType
+		if opItem.opcode == proto.OpSyncRandomWriteAppend {
+			syncWrite = true
+		}
+	case proto.OpTryWriteAppend, proto.OpSyncTryWriteAppend:
+		writeType = storage.AppendWriteType
+		if opItem.opcode == proto.OpSyncTryWriteAppend {
+			syncWrite = true
+		}
+	case proto.OpSyncRandomWriteVer:
+		syncWrite = true
+	}
+
+	for i := 0; i < 20; i++ {
 
 		dp.disk.diskLimit(OpWrite, uint32(opItem.size), func() {
 			param := &storage.WriteParam{
-				ExtentID:      uint64(opItem.extentID),
-				Offset:        int64(opItem.offset),
+				ExtentID:      opItem.extentID,
+				Offset:        opItem.offset,
 				Size:          opItem.size,
 				Data:          opItem.data,
 				Crc:           opItem.crc,

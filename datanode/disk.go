@@ -715,8 +715,8 @@ func (d *Disk) ForceExitRaftStore() {
 
 // DataPartitionList returns a list of the data partitions
 func (d *Disk) DataPartitionList() (partitionIDs []uint64) {
-	d.Lock()
-	defer d.Unlock()
+	d.RLock()
+	defer d.RUnlock()
 	partitionIDs = make([]uint64, 0, len(d.partitionMap))
 	for _, dp := range d.partitionMap {
 		partitionIDs = append(partitionIDs, dp.partitionID)

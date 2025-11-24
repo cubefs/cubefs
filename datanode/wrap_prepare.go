@@ -114,7 +114,7 @@ func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 
 func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 	partition := p.Object.(*DataPartition)
-	store := p.Object.(*DataPartition).ExtentStore()
+	store := partition.ExtentStore()
 	var (
 		extentID uint64
 		err      error

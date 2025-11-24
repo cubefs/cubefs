@@ -363,7 +363,7 @@ func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, 
 	extCrc = e.GetCrc(param.Offset / util.BlockSize)
 	assert.True(t, crc == extCrc)
 	extCrc = e.GetCrc(param.Offset/util.BlockSize + 1)
-	assert.True(t, 0 == extCrc)
+	assert.True(t, extCrc == 0)
 }
 
 func extentReloadCheckSnapshotCrc(t *testing.T, path string, id uint64, crc uint32) (s *storage.ExtentStore) {
@@ -386,7 +386,7 @@ func extentReloadCheckSnapshotCrc(t *testing.T, path string, id uint64, crc uint
 	extCrc = e.GetCrc(offset / util.BlockSize)
 	require.EqualValues(t, crc, extCrc)
 	extCrc = e.GetCrc(offset/util.BlockSize + 1)
-	assert.True(t, 0 == extCrc)
+	assert.True(t, extCrc == 0)
 	return s
 }
 

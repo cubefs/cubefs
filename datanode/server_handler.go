@@ -488,14 +488,11 @@ func (s *DataNode) buildFailureResp(w http.ResponseWriter, code int, msg string)
 
 // Create response for the API request.
 func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
-	var (
-		jsonBody []byte
-		err      error
-	)
 	w.WriteHeader(code)
 	w.Header().Set("Content-Type", "application/json")
 	body := proto.HTTPReply{Code: int32(code), Msg: msg, Data: data}
-	if jsonBody, err = json.Marshal(body); err != nil {
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
 		return
 	}
 	w.Write(jsonBody)

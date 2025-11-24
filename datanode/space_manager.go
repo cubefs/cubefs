@@ -571,12 +571,13 @@ func (manager *SpaceManager) updateMetrics() {
 const DiskSelectMaxStraw = 65536
 
 func (manager *SpaceManager) selectDisk(decommissionedDisks []string) (d *Disk) {
-	manager.diskMutex.Lock()
-	defer manager.diskMutex.Unlock()
 	decommissionedDiskMap := make(map[string]struct{})
 	for _, disk := range decommissionedDisks {
 		decommissionedDiskMap[disk] = struct{}{}
 	}
+
+	manager.diskMutex.Lock()
+	defer manager.diskMutex.Unlock()
 	maxStraw := float64(0)
 	for _, disk := range manager.disks {
 		if _, ok := decommissionedDiskMap[disk.Path]; ok {

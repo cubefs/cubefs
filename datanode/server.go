@@ -49,15 +49,17 @@ import (
 )
 
 var (
-	ErrIncorrectStoreType          = errors.New("Incorrect store type")
-	ErrNoSpaceToCreatePartition    = errors.New("No disk space to create a data partition")
-	ErrNewSpaceManagerFailed       = errors.New("Creater new space manager failed")
-	ErrGetMasterDatanodeInfoFailed = errors.New("Failed to get datanode info from master")
+	ErrIncorrectStoreType          = errors.New("incorrect store type")
+	ErrNoSpaceToCreatePartition    = errors.New("no disk space to create a data partition")
+	ErrNewSpaceManagerFailed       = errors.New("creater new space manager failed")
+	ErrGetMasterDatanodeInfoFailed = errors.New("failed to get datanode info from master")
 
 	LocalIP   string
 	gConnPool = util.NewConnectPool()
 	// MasterClient        = masterSDK.NewMasterClient(nil, false)
 	MasterClient *masterSDK.MasterCLientWithResolver
+
+	regexpPort = regexp.MustCompile(`^(\d)+$`)
 )
 
 const (
@@ -282,7 +284,7 @@ func (s *DataNode) Sync() {
 func doStart(server common.Server, cfg *config.Config) (err error) {
 	s, ok := server.(*DataNode)
 	if !ok {
-		return errors.New("Invalid node Type!")
+		return errors.New("invalid node type")
 	}
 	s.stopC = make(chan bool)
 	s.gogcValue = DefaultGOGCValue
@@ -405,18 +407,11 @@ func doShutdown(server common.Server) {
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
-	var (
-		port       string
-		regexpPort *regexp.Regexp
-	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
-	port = cfg.GetString(proto.ListenPort)
+	port := cfg.GetString(proto.ListenPort)
 	s.bindIp = cfg.GetBool(proto.BindIpKey)
-	if regexpPort, err = regexp.Compile(`^(\d)+$`); err != nil {
-		return fmt.Errorf("Err:no port")
-	}
 	if !regexpPort.MatchString(port) {
-		return fmt.Errorf("Err:port must string")
+		return fmt.Errorf("port must be a string")
 	}
 	s.port = port
 
@@ -431,7 +426,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 	addrs := cfg.GetSlice(proto.MasterAddr)
 	if len(addrs) == 0 {
-		return fmt.Errorf("Err:masterAddr unavalid")
+		return fmt.Errorf("masterAddr invalid")
 	}
 	masters := make([]string, 0, len(addrs))
 	for _, addr := range addrs {

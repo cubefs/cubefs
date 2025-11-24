@@ -631,15 +631,16 @@ func (dp *DataPartition) getVerListFromMaster() (err error) {
 }
 
 func (dp *DataPartition) replicasInit() {
-	replicas := make([]string, 0)
 	if dp.config.Hosts == nil {
 		return
 	}
-	replicas = append(replicas, dp.config.Hosts...)
+
 	dp.replicasLock.Lock()
-	dp.replicas = replicas
+	dp.replicas = make([]string, len(dp.config.Hosts))
+	copy(dp.replicas, dp.config.Hosts)
 	dp.replicasLock.Unlock()
-	if dp.config.Hosts != nil && len(dp.config.Hosts) >= 1 {
+
+	if len(dp.config.Hosts) >= 1 {
 		leaderAddr := strings.Split(dp.config.Hosts[0], ":")
 		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
 			dp.isLeader = true
@@ -1096,15 +1097,15 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 
 // Compare the fetched replica with the local one.
 func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
-	if len(v1) == len(v2) {
-		for i := 0; i < len(v1); i++ {
-			if v1[i] != v2[i] {
-				return false
-			}
-		}
-		return true
+	if len(v1) != len(v2) {
+		return false
 	}
-	return false
+	for i := range v1 {
+		if v1[i] != v2[i] {
+			return false
+		}
+	}
+	return true
 }
 
 type ReplicaInfo struct {
@@ -1133,7 +1134,7 @@ func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []st
 	for _, replica := range partition.Replicas {
 		infos = append(infos, ReplicaInfo{Addr: replica.Addr, Disk: replica.DiskPath})
 	}
-	if partition.Hosts != nil && len(partition.Hosts) >= 1 {
+	if len(partition.Hosts) >= 1 {
 		leaderAddr := strings.Split(partition.Hosts[0], ":")
 		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
 			isLeader = true
@@ -1147,17 +1148,11 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 	response.PartitionId = uint64(dp.partitionID)
 	response.PartitionStatus = dp.partitionStatus
 	response.Used = uint64(dp.Used())
-	var err error
 
 	if dp.loadExtentHeaderStatus != FinishLoadDataPartitionExtentHeader {
 		response.PartitionSnapshot = make([]*proto.File, 0)
 	} else {
 		response.PartitionSnapshot = dp.SnapShot()
-	}
-	if err != nil {
-		response.Status = proto.TaskFailed
-		response.Result = err.Error()
-		return
 	}
 	return
 }
@@ -1322,8 +1317,8 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 		}
 		if p.IsErrPacket() {
 			logContent := fmt.Sprintf("action[doStreamFixTinyDeleteRecord] %v.",
-				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), start, fmt.Errorf(string(p.Data[:p.Size]))))
-			err = fmt.Errorf(logContent)
+				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), start, fmt.Errorf("%s", string(p.Data[:p.Size]))))
+			err = fmt.Errorf("%s", logContent)
 			return
 		}
 
@@ -1391,6 +1386,7 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	for _, peer := range partition.Peers {
 		if dp.config.NodeID == peer.ID {
 			existInPeers = true
+			break
 		}
 	}
 	if !existInPeers {

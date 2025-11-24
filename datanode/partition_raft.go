@@ -895,8 +895,8 @@ func (dp *DataPartition) getRemoteAppliedID(target string, p *repl.Packet) (appl
 	start := time.Now().UnixNano()
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf(p.LogMessage(p.GetOpMsg(), target, start, err))
-			log.LogErrorf(err.Error())
+			err = errors.New(p.LogMessage(p.GetOpMsg(), target, start, err))
+			log.LogError(err.Error())
 		}
 	}()
 
