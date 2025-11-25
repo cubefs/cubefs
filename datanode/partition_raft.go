@@ -375,6 +375,8 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				continue
 			}
 
+			dp.decommissionRepairProgress = 0.9999
+
 			currLeaderPartitionNormalExtents, err = dp.getLeaderPartitionNormalExtentInfo()
 			if err != nil {
 				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) get leader normal extents err(%v)", dp.partitionID, err)
