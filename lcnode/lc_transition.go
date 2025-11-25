@@ -31,7 +31,7 @@ type ExtentApi interface {
 	OpenStream(inode uint64, openForWrite, isCache bool, fullPath string) error
 	CloseStream(inode uint64) error
 	Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error)
-	Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error)
+	Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration, waitForFlush bool) (write int, err error)
 	Flush(inode uint64) error
 	Close() error
 }
@@ -103,7 +103,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 			return
 		}
 		if readN > 0 {
-			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, proto.OpTypeToStorageType(e.Op), true)
+			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, proto.OpTypeToStorageType(e.Op), true, false)
 			if err != nil {
 				err = fmt.Errorf("write dst file err(%v)", err)
 				log.LogWarnf("migrate: inode(%v), writeOffset(%v): %v", e.Inode, writeOffset, err)
