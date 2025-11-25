@@ -1564,8 +1564,14 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 		fp.Close()
 	}()
 
+	var version int32
+	if mp.inodeTree.GetStoreMode() == proto.StoreModeRocksDb {
+		version = checkerVersionV2
+	} else {
+		version = checkerVersionV1
+	}
 	var data []byte
-	if data, crc, err = sm.uniqChecker.Marshal(); err != nil {
+	if data, crc, err = sm.uniqChecker.Marshal(version); err != nil {
 		return
 	}
 

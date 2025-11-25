@@ -514,7 +514,7 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)
 	case *uniqChecker:
 		var raw []byte
-		if raw, _, err = typedItem.Marshal(); err != nil {
+		if raw, _, err = typedItem.Marshal(checkerVersionV1); err != nil {
 			si.err = err
 			si.Close()
 			return

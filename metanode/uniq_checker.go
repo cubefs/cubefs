@@ -74,9 +74,9 @@ func (checker *uniqChecker) clone() *uniqChecker {
 	return &uniqChecker{inQue: inQue}
 }
 
-func (checker *uniqChecker) Marshal() (buf []byte, crc uint32, err error) {
+func (checker *uniqChecker) Marshal(version int32) (buf []byte, crc uint32, err error) {
 	buffer := bytes.NewBuffer(make([]byte, 0, checkerVersionSize+checker.inQue.len()*checkerRecordV2Len))
-	if err = binary.Write(buffer, binary.BigEndian, int32(checkerVersionV2)); err != nil {
+	if err = binary.Write(buffer, binary.BigEndian, version); err != nil {
 		return
 	}
 
@@ -87,8 +87,10 @@ func (checker *uniqChecker) Marshal() (buf []byte, crc uint32, err error) {
 		if err = binary.Write(buffer, binary.BigEndian, op.atime); err != nil {
 			return false
 		}
-		if err = binary.Write(buffer, binary.BigEndian, op.applyId); err != nil {
-			return false
+		if version == checkerVersionV2 {
+			if err = binary.Write(buffer, binary.BigEndian, op.applyId); err != nil {
+				return false
+			}
 		}
 		return true
 	})

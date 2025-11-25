@@ -2438,6 +2438,15 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 				fmt.Fprintf(&unusableBuf, "%s RocksdbRdOnly is false\n", metaNode.Addr)
 				return true
 			}
+			if !IsRocksdbDiskUsageLow(metaNode) {
+				for _, rocksdbDisk := range metaNode.RocksdbDisks {
+					if rocksdbDisk.UsageRatio >= gConfig.metaNodeMemLowPer {
+						fmt.Fprintf(&unusableBuf, "%s RocksdbDiskUsageRatio(%v) >= lowPer(%v)\n", metaNode.Addr, rocksdbDisk.UsageRatio, gConfig.metaNodeMemLowPer)
+					}
+				}
+				return true
+			}
+
 		} else {
 			if metaNode.MaxMemAvailWeight <= gConfig.metaNodeReservedMem {
 				fmt.Fprintf(&unusableBuf, "%s maxMemAvailWeight(%v) <= reservedMem(%v)\n", metaNode.Addr, metaNode.MaxMemAvailWeight, gConfig.metaNodeReservedMem)
@@ -2449,6 +2458,14 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 			}
 			if metaNode.RdOnly {
 				fmt.Fprintf(&unusableBuf, "%s is rdOnly\n", metaNode.Addr)
+				return true
+			}
+			if metaNode.Ratio > gConfig.metaNodeMemLowPer {
+				fmt.Fprintf(&unusableBuf, "%s metanode memory ratio(%v) > lowPer(%v)\n", metaNode.Addr, metaNode.Ratio, gConfig.metaNodeMemLowPer)
+				return true
+			}
+			if nodeMemRatio > gConfig.metaNodeMemLowPer {
+				fmt.Fprintf(&unusableBuf, "%s system memory ratio(%v) > lowPer(%v)\n", metaNode.Addr, nodeMemRatio, gConfig.metaNodeMemLowPer)
 				return true
 			}
 		}

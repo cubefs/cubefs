@@ -116,7 +116,7 @@ func TestMarshal(t *testing.T) {
 		checker.legalIn(uint64(i), 1)
 	}
 
-	bts, _, _ := checker.Marshal()
+	bts, _, _ := checker.Marshal(checkerVersionV1)
 	checker1 := newUniqChecker()
 	checker1.UnMarshal(bts)
 
