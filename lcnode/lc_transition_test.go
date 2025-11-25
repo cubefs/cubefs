@@ -52,7 +52,7 @@ func (m *MockExtentClient) Read(inode uint64, data []byte, offset int, size int,
 	return len(data), io.EOF
 }
 
-func (m *MockExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error) {
+func (m *MockExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration, waitForFlush bool) (write int, err error) {
 	m.data = data
 	return
 }

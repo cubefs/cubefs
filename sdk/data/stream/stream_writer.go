@@ -385,7 +385,7 @@ begin:
 	isChecked := false
 	// Must flush before doing overwrite
 	for _, req := range requests {
-		if req.ExtentKey == nil && offset >= fileSize {
+		if req.ExtentKey == nil && !req.CreateNewEk {
 			continue
 		}
 		err = s.flush(true, uuid.New().String())
@@ -1004,7 +1004,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 	return
 }
 
-func (s *Streamer) flush(wait bool, id string) (err error) {
+func (s *Streamer) flushAsync(wait bool, id string) (err error) {
 	pending := make(map[*ExtentHandler]chan error)
 	asyncExtentHandler := make([]*ExtentHandler, 0)
 	for {
@@ -1079,7 +1079,7 @@ func (s *Streamer) flush(wait bool, id string) (err error) {
 				}
 			}
 			if !progressed {
-				time.Sleep(time.Millisecond * 10)
+				time.Sleep(time.Millisecond * 1)
 			}
 		}
 		if firstErr != nil {
@@ -1164,7 +1164,8 @@ func (s *Streamer) closeOpenHandler(wait bool) (err error) {
 		}(handler)
 
 		// Use async flush if async flush is enabled
-		if s.client.enableAsyncFlush {
+		// directIO use sync flush
+		if s.client.enableAsyncFlush && !s.waitForFlush {
 			log.LogDebugf("closeOpenHandler: using async flush for handler(%v) with inflight(%v) id(%v)",
 				handler, atomic.LoadInt32(&handler.inflight), id)
 			s.requestAsyncFlush(handler, cleanFunc)
@@ -1339,4 +1340,43 @@ func (s *Streamer) tinySizeLimit() int {
 
 func (s *Streamer) setError() {
 	atomic.StoreInt32(&s.status, StreamerError)
+}
+
+func (s *Streamer) flushSync() (err error) {
+	for {
+		element := s.dirtylist.Get()
+		if element == nil {
+			break
+		}
+		eh := element.Value.(*ExtentHandler)
+
+		log.LogDebugf("Streamer flush begin: eh(%v)", eh)
+		err = eh.flush()
+		if err != nil {
+			log.LogErrorf("Streamer flush failed: eh(%v)", eh)
+			return
+		}
+		eh.stream.dirtylist.Remove(element)
+		if eh.getStatus() == ExtentStatusOpen {
+			s.dirty = false
+			log.LogDebugf("Streamer flush handler open: eh(%v)", eh)
+		} else {
+			// TODO unhandled error
+			eh.cleanup()
+			log.LogDebugf("Streamer flush handler cleaned up: eh(%v)", eh)
+		}
+		// During LTP testing, consecutive write requests may be interspersed with direct I/O operations,
+		// and thus flushSync may flush asynchronous event handles (eh).
+		s.removePendingAsyncFlush(eh.id)
+		log.LogDebugf("Streamer flush end: eh(%v)", eh)
+	}
+	return
+}
+
+func (s *Streamer) flush(wait bool, id string) (err error) {
+	if s.client.enableAsyncFlush && !s.waitForFlush {
+		return s.flushAsync(wait, id)
+	} else {
+		return s.flushSync()
+	}
 }
