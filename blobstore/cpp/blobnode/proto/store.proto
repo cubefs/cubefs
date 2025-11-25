@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+import "blobnode/proto/blobnode.proto";
+
+package blobstore.blobnode;
+
+message LayoutInfo {
+    uint64 log_arena_start  = 1;
+    uint64 chunk_meta_start = 2;
+    uint64 slice_meta_start = 3;
+    uint64 slice_data_start = 4;
+    uint64 max_chunk_count  = 5;
+    uint64 max_slice_count  = 6;
+}
+
+message SuperBlockInfo {
+    LayoutInfo layout = 1;
+    DiskMetaInfo meta = 2;
+}
+
+message SliceMetaInfo {
+    uint64 slice_id = 1;
+    // slice index in the physical device layout, as ShardMeta record offset, this filed can be removed
+    uint32 index = 2;
+    // Vuid means which chunk manage this slice
+    uint64 vuid = 3;
+    // record chunk's epoch,
+    // when chunk delete and open reuse, the slice epoch is mismatch with chunk's epoch and add into slice free list
+    uint32 chunk_epoch = 4;
+    // LastBlockCrcRaw hold last block increment checksum raw, it'll flush into the tail of slice data as block write full
+    uint32 last_block_crc_raw = 5;
+    uint64 offset = 6;
+    uint32 size = 7;
+    uint32 flag = 8;
+}
+
+message LogHeaderInfo {
+    uint64 ver  = 1;
+    uint32 flag = 2;
+}

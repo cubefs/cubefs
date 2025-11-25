@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package blobstore.blobnode;
+
+message DiskMetaInfo {
+    uint64 disk_id   = 1;  // blobstore::disk_id
+    uint64 node_id   = 2;  // blobstore::node_id
+    string uuid      = 3;
+    string path      = 4;
+    uint32 version   = 5;
+    uint32 status    = 6;  // blobstore::DiskStatus
+    bool  registered = 7;
+    string format    = 8;
+    uint64 ctime     = 9;
+    uint64 mtime     = 10;
+}
+
+message ChunkMetaInfo {
+    uint32 version          = 1;  // C++: uint8_t
+    uint64 vuid             = 2;  // blobstore::vuid
+    uint64 disk_id          = 3;  // blobstore::disk_id
+    bytes  chunk_id         = 4;  // blobstore::chunk_id
+    bytes  parent_chunk     = 5;  // blobstore::chunk_id
+    uint64 chunk_size       = 6;
+    uint64 ctime            = 7;
+    uint64 mtime            = 8;
+    bool   compacting       = 9;
+    uint32 status           = 10;
+    // chunk index in the physical device layout
+    uint32 index            = 11;
+    // chunk epoch, every chunk reuse will increase this field to avoid slice meta reuse or conflicts
+    uint32 epoch            = 12;
+}
