@@ -84,6 +84,7 @@ type Streamer struct {
 	writeProtectionLock sync.Mutex     // protects write operation state
 
 	aheadReadBlockSize uint32
+	waitForFlush       bool
 }
 
 type bcacheKey struct {
@@ -149,8 +150,9 @@ func (s *Streamer) SetFullPath(fullPath string) {
 
 // String returns the string format of the streamer.
 func (s *Streamer) String() string {
-	return fmt.Sprintf("Streamer{ino(%v), fullPath(%v), refcnt(%v), isOpen(%v) openForWrite(%v), request(%v), eh(%v) addr(%p)}",
-		s.inode, s.fullPath, atomic.LoadInt32(&s.refcnt), s.isOpen, s.openForWrite, len(s.request), s.handler, s)
+	return fmt.Sprintf("Streamer{ino(%v), fullPath(%v), refcnt(%v), isOpen(%v) openForWrite(%v), request(%v), "+
+		"eh(%v) waitForFlush(%v) addr(%p)}",
+		s.inode, s.fullPath, atomic.LoadInt32(&s.refcnt), s.isOpen, s.openForWrite, len(s.request), s.handler, s.waitForFlush, s)
 }
 
 // TODO should we call it RefreshExtents instead?
@@ -611,7 +613,7 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 				if nextReq.handler.id >= handler.id {
 					goto end
 				}
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(1 * time.Millisecond)
 			}
 		}
 	}
@@ -692,13 +694,17 @@ func (s *Streamer) getActiveHandlerFlush(handlerID uint64) *AsyncFlushRequest {
 // addPendingAsyncFlush adds a request to the pending map using handler.id as key
 func (s *Streamer) addPendingAsyncFlush(handlerID uint64, req *AsyncFlushRequest) {
 	s.pendingAsyncFlushMap.Store(handlerID, req)
-	log.LogDebugf("addPendingAsyncFlush:  streamer(%v) handler(%v)  trace(%v)", s.inode, handlerID, string(debug.Stack()))
+	if log.EnableDebug() {
+		log.LogDebugf("addPendingAsyncFlush:  streamer(%v) handler(%v)  trace(%v)", s.inode, handlerID, string(debug.Stack()))
+	}
 }
 
 // removePendingAsyncFlush removes a request from the pending map
 func (s *Streamer) removePendingAsyncFlush(handlerID uint64) {
 	s.pendingAsyncFlushMap.Delete(handlerID)
-	log.LogDebugf("removePendingAsyncFlush  streamer(%v)  handler(%v) trace(%v)", s.inode, handlerID, string(debug.Stack()))
+	if log.EnableDebug() {
+		log.LogDebugf("removePendingAsyncFlush  streamer(%v)  handler(%v) trace(%v)", s.inode, handlerID, string(debug.Stack()))
+	}
 }
 
 // getPendingRequestsCount returns the number of pending requests
