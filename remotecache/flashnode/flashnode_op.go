@@ -656,6 +656,8 @@ func (f *FlashNode) smallObjectGet(req *proto.BatchReadItem, connAddr string, de
 				copy(buf[:req.Size_], diskDataBuf)
 			}
 			result.Data = buf[:req.Size_]
+			f.metrics.updateReadCountMetric(block.GetRootPath())
+			f.metrics.updateReadBytesMetric(req.Size_, block.GetRootPath())
 		}
 	}
 	if uint64(readDiskSize) > req.Size_ {
