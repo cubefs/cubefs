@@ -108,11 +108,10 @@ func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) 
 			conn.Close()
 		}
 		if err != nil {
-			logger.Error("[Transport] %v send snapshot to %v failed error is: %v.", m.ID, m.To, err)
+			logger.Error("raft[%v] [Transport] send snapshot to %v failed error is: %v.", m.ID, m.To, err)
 		} else if logger.IsEnableWarn() {
-			logger.Warn("[Transport] %v send snapshot to %v successful.", m.ID, m.To)
+			logger.Warn("raft[%v] [Transport] send snapshot to %v successful.", m.ID, m.To)
 		}
-
 	}()
 
 	if atomic.AddInt32(&t.curSnapshot, 1) > int32(t.config.MaxSnapConcurrency) {
@@ -192,7 +191,7 @@ func (t *replicateTransport) start() {
 			default:
 				conn, err := t.listener.Accept()
 				if err != nil {
-					logger.Error(fmt.Sprintf("[replicateTransport] accept from conn error, %s", err.Error()))
+					logger.Error("[replicateTransport] accept from conn error, %s", err.Error())
 					continue
 				}
 				t.handleConn(util.NewConnTimeout(conn))
@@ -219,10 +218,10 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 				return
 			default:
 				if msg, err := reciveMessage(bufRd); err != nil {
-					logger.Error(fmt.Sprintf("[replicateTransport] recive from conn error, %s", err.Error()))
+					logger.Error("[replicateTransport] recive from conn error, %s", err.Error())
 					return
 				} else {
-					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
+					// logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
 					if msg.Type == proto.ReqMsgSnapShot {
 						if err := t.handleSnapshot(msg, conn, bufRd); err != nil {
 							return
@@ -247,7 +246,7 @@ func (t *replicateTransport) handleSnapshot(m *proto.Message, conn *util.ConnTim
 
 	// wait snapshot result
 	if err := req.response(); err != nil {
-		logger.Error("[Transport] handle snapshot request from %v error: %v.", m.From, err)
+		logger.Error("raft[%v] [Transport] handle snapshot request from %v error: %v.", m.ID, m.From, err)
 		return err
 	}
 

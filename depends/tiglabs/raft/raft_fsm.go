@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
-
 	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
@@ -73,8 +72,8 @@ type raftFsm struct {
 	stopCh      chan struct{}
 
 	mo Monitor
-	//electionFirstBegin is used to mark the begin time of continuous election
-	//It is valid if and only if mo != nil.
+	// electionFirstBegin is used to mark the begin time of continuous election
+	// It is valid if and only if mo != nil.
 	electionFirstBegin time.Time
 }
 
@@ -608,11 +607,11 @@ func (r *raftFsm) monitorElection() {
 	}
 	now := time.Now()
 	if r.electionFirstBegin.IsZero() || r.state != stateCandidate {
-		//Record the time of the most recent lost of leader.
+		// Record the time of the most recent lost of leader.
 		r.electionFirstBegin = now
 		return
 	}
-	//call r.mo.MonitorElection when r.leader==NoLeader continuously
+	// call r.mo.MonitorElection when r.leader==NoLeader continuously
 	r.mo.MonitorElection(r.id, r.getReplicas(), now.Sub(r.electionFirstBegin))
 }
 

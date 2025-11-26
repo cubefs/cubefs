@@ -166,7 +166,7 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 	raft.curApplied.Set(r.raftLog.applied)
 	raft.peerState.replace(raftConfig.Peers)
 	if logger.IsEnableDebug() {
-		logger.Debug("newRaft:%d, peers: %v", raft.config.NodeID, raftConfig.Peers)
+		logger.Debug("raft[%v] newRaft nodeID:%d, peers: %v", raftConfig.ID, raft.config.NodeID, raftConfig.Peers)
 	}
 
 	util.RunWorker(raft.runApply, raft.handlePanic)
@@ -356,7 +356,7 @@ func (s *raft) run() {
 				default:
 					s.raftFsm.Step(m)
 				}
-				var respErr = true
+				respErr := true
 				if m.Type == proto.RespMsgAppend && !m.Reject {
 					respErr = false
 				}
@@ -448,7 +448,7 @@ func (s *raft) tick() {
 	case <-s.stopc:
 	case s.tickc <- struct{}{}:
 	default:
-		logger.Warn(fmt.Sprintf("raft[%v] tickc is full", s.raftConfig.ID))
+		logger.Warn("raft[%v] tickc is full", s.raftConfig.ID)
 		return
 	}
 }
@@ -498,7 +498,7 @@ func (s *raft) reciveMessage(m *proto.Message) {
 	case <-s.stopc:
 	case s.recvc <- m:
 	default:
-		logger.Warn(fmt.Sprintf("raft[%v] discard message(%v)", s.raftConfig.ID, m.ToString()))
+		logger.Warn("raft[%v] discard message(%v)", s.raftConfig.ID, m.ToString())
 		return
 	}
 }

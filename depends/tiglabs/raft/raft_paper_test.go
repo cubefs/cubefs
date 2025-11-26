@@ -29,9 +29,11 @@ import (
 func TestFollowerUpdateTermFromMessage(t *testing.T) {
 	testUpdateTermFromMessage(t, stateFollower)
 }
+
 func TestCandidateUpdateTermFromMessage(t *testing.T) {
 	testUpdateTermFromMessage(t, stateCandidate)
 }
+
 func TestLeaderUpdateTermFromMessage(t *testing.T) {
 	testUpdateTermFromMessage(t, stateLeader)
 }
@@ -62,7 +64,6 @@ func testUpdateTermFromMessage(t *testing.T, state fsmState) {
 	if r.state != stateFollower {
 		t.Errorf("state = %v, want %v", r.state, stateFollower)
 	}
-
 }
 
 // TestRejectStaleTermMessage tests that if a server receives a request with
@@ -94,11 +95,11 @@ func TestStartAsFollower(t *testing.T) {
 	}
 }
 
-//	TestLeaderBcastBeat tests that if the leader receives a heartbeat tick,
-//	it will send a MsgHeartbeat with m.Index = 0, m.LogTerm=0 and empty entries
-//	as heartbeat to all followers.
-//	Reference: section 5.2
-//	tiglab/raft use ReqCheckQuorum while not ReqMsgHeartBeat, and if readIndex queue not nil direct return
+// TestLeaderBcastBeat tests that if the leader receives a heartbeat tick,
+// it will send a MsgHeartbeat with m.Index = 0, m.LogTerm=0 and empty entries
+// as heartbeat to all followers.
+// Reference: section 5.2
+// tiglab/raft use ReqCheckQuorum while not ReqMsgHeartBeat, and if readIndex queue not nil direct return
 func TestLeaderBcastBeat(t *testing.T) {
 	// heartbeat interval
 	hi := 1
@@ -128,6 +129,7 @@ func TestLeaderBcastBeat(t *testing.T) {
 func TestFollowerStartElection(t *testing.T) {
 	testNonleaderStartElection(t, stateFollower)
 }
+
 func TestCandidateStartNewElection(t *testing.T) {
 	testNonleaderStartElection(t, stateCandidate)
 }
@@ -178,7 +180,6 @@ func testNonleaderStartElection(t *testing.T, state fsmState) {
 		require.Equal(t, msgs[i].To, wmsgs[i].To)
 		require.Equal(t, msgs[i].From, wmsgs[i].From)
 	}
-
 }
 
 // TestLeaderElectionInOneRoundRPC tests all cases that may happen in
@@ -255,7 +256,7 @@ func TestFollowerVote(t *testing.T) {
 			{ID: r.id, From: 1, To: tt.nvote, Term: 1, Type: proto.RespMsgVote, Reject: tt.wreject},
 		}
 
-		//todo
+		// todo
 		msgs[0].Entries = nil
 		require.Equal(t, msgs, wmsgs)
 	}
@@ -292,6 +293,7 @@ func TestCandidateFallback(t *testing.T) {
 func TestFollowerElectionTimeoutRandomized(t *testing.T) {
 	testNonleaderElectionTimeoutRandomized(t, stateFollower)
 }
+
 func TestCandidateElectionTimeoutRandomized(t *testing.T) {
 	testNonleaderElectionTimeoutRandomized(t, stateCandidate)
 }
@@ -329,6 +331,7 @@ func testNonleaderElectionTimeoutRandomized(t *testing.T, state fsmState) {
 func TestFollowersElectionTimeoutNonconflict(t *testing.T) {
 	testNonleadersElectionTimeoutNonconflict(t, stateFollower)
 }
+
 func TestCandidatesElectionTimeoutNonconflict(t *testing.T) {
 	testNonleadersElectionTimeoutNonconflict(t, stateCandidate)
 }
@@ -411,7 +414,6 @@ func TestLeaderStartReplication(t *testing.T) {
 	require.Equal(t, msgs, wmsgs)
 	g := r.raftLog.unstableEntries()
 	require.Equal(t, g, wents)
-
 }
 
 // TestLeaderCommitEntry tests that when the entry has been safely replicated,
@@ -574,7 +576,7 @@ func TestFollowerCommitEntry(t *testing.T) {
 			t.Errorf("#%d: committed = %d, want %d", i, g, tt.commit)
 		}
 		wents := tt.ents[:int(tt.commit)]
-		//if g := r.raftLog.nextCommittedEnts(true); !reflect.DeepEqual(g, wents) {
+		// if g := r.raftLog.nextCommittedEnts(true); !reflect.DeepEqual(g, wents) {
 		if g := r.raftLog.nextEnts(noLimit); !reflect.DeepEqual(g, wents) {
 			t.Errorf("#%d: nextCommittedEnts = %v, want %v", i, g, wents)
 		}
@@ -604,7 +606,8 @@ func TestFollowerCheckMsgApp(t *testing.T) {
 		{ents[1].Term, ents[1].Index, 2, false, 0, 0},
 
 		// unmatch with existing entry
-		{ents[0].Term, ents[1].Index, ents[1].Index, true, 2, 1},
+		// When term=1, index=2, findConflictByTerm finds index=1 (term=1 <= 1)
+		{ents[0].Term, ents[1].Index, ents[1].Index, true, 1, 1},
 		// unexisting entry
 		{ents[1].Term + 1, ents[1].Index + 1, ents[1].Index + 1, true, 2, 2},
 	}
@@ -621,7 +624,7 @@ func TestFollowerCheckMsgApp(t *testing.T) {
 		// todo  this is diff from etcd raft, because tiglab raft has commited in (replica) which not in etcd raft (Progress)
 		// so this test case in tiglab raft, not use findConflictByTerm func, which wrejectHint should 1 and logTerm=0
 		wmsgs := []proto.Message{
-			{ID: r.id, From: 1, To: 2, Type: proto.RespMsgAppend, Term: 2, Index: tt.windex, Reject: tt.wreject, RejectHint: tt.wrejectHint, LogTerm: 0, Commit: 1},
+			{ID: r.id, From: 1, To: 2, Type: proto.RespMsgAppend, Term: 2, Index: tt.windex, Reject: tt.wreject, RejectHint: tt.wrejectHint, LogTerm: tt.wlogterm, Commit: 1},
 		}
 		msgs[0].Entries = nil
 		if !reflect.DeepEqual(msgs, wmsgs) {
@@ -985,7 +988,7 @@ func commitNoopEntry(r *raftFsm, s *storage.MemoryStorage) {
 	// simulate the response of MsgApp
 	msgs := r.readMessages()
 	for _, m := range msgs {
-		//if m.Type != proto.RespMsgAppend || len(m.Entries) != 1 || m.Entries[0].Data != nil {
+		// if m.Type != proto.RespMsgAppend || len(m.Entries) != 1 || m.Entries[0].Data != nil {
 		if m.Type != proto.ReqMsgAppend || len(m.Entries) != 1 || m.Entries[0].Data != nil {
 			panic("not a message to append noop entry")
 		}

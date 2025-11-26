@@ -16,9 +16,10 @@
 package raft
 
 import (
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"reflect"
 	"testing"
+
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 )
 
 func TestMaybeLastIndex(t *testing.T) {
@@ -32,16 +33,19 @@ func TestMaybeLastIndex(t *testing.T) {
 	}{
 		// last in entries
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, nil,
 			true, 5,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, nil,
 			true, 5,
 		},
 		// empty unstable
 		{
-			[]*proto.Entry{}, 0, nil,
+			[]*proto.Entry{},
+			0, nil,
 			false, 0,
 		},
 	}
@@ -72,27 +76,32 @@ func TestUnstableMaybeTerm(t *testing.T) {
 	}{
 		// term from entries
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5,
 			5,
 			true, 1,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5,
 			6,
 			false, 0,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5,
 			4,
 			false, 0,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5,
 			5,
 			true, 1,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5,
 			6,
 			false, 0,
 		},
@@ -124,58 +133,69 @@ func TestUnstableStableTo(t *testing.T) {
 		wlen    int
 	}{
 		{
-			[]*proto.Entry{}, 0, nil,
+			[]*proto.Entry{},
+			0, nil,
 			5, 1,
 			0, 0,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, nil,
 			5, 1, // stable to the first entry
 			6, 0,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}},
+			5, nil,
 			5, 1, // stable to the first entry
 			6, 1,
 		},
 		{
-			[]*proto.Entry{{Index: 6, Term: 2}}, 6, nil,
+			[]*proto.Entry{{Index: 6, Term: 2}},
+			6, nil,
 			6, 1, // stable to the first entry and term mismatch
 			6, 1,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, nil,
 			4, 1, // stable to old entry
 			5, 1,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, nil,
 			4, 2, // stable to old entry
 			5, 1,
 		},
 		// with snapshot
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, &proto.SnapshotMeta{Index: 4, Term: 1},
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, &proto.SnapshotMeta{Index: 4, Term: 1},
 			5, 1, // stable to the first entry
 			6, 0,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}}, 5, &proto.SnapshotMeta{Index: 4, Term: 1},
+			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}},
+			5, &proto.SnapshotMeta{Index: 4, Term: 1},
 			5, 1, // stable to the first entry
 			6, 1,
 		},
 		{
-			[]*proto.Entry{{Index: 6, Term: 2}}, 6, &proto.SnapshotMeta{Index: 5, Term: 1},
+			[]*proto.Entry{{Index: 6, Term: 2}},
+			6, &proto.SnapshotMeta{Index: 5, Term: 1},
 			6, 1, // stable to the first entry and term mismatch
 			6, 1,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, &proto.SnapshotMeta{Index: 4, Term: 1},
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, &proto.SnapshotMeta{Index: 4, Term: 1},
 			4, 1, // stable to snapshot
 			5, 1,
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 2}}, 5, &proto.SnapshotMeta{Index: 4, Term: 2},
+			[]*proto.Entry{{Index: 5, Term: 2}},
+			5, &proto.SnapshotMeta{Index: 4, Term: 2},
 			4, 1, // stable to old entry
 			5, 1,
 		},
@@ -208,31 +228,41 @@ func TestUnstableTruncateAndAppend(t *testing.T) {
 	}{
 		// append to the end
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, nil,
 			[]*proto.Entry{{Index: 6, Term: 1}, {Index: 7, Term: 1}},
-			5, []*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}, {Index: 7, Term: 1}},
+			5,
+			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}, {Index: 7, Term: 1}},
 		},
 		// replace the unstable entries
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, nil,
 			[]*proto.Entry{{Index: 5, Term: 2}, {Index: 6, Term: 2}},
-			5, []*proto.Entry{{Index: 5, Term: 2}, {Index: 6, Term: 2}},
+			5,
+			[]*proto.Entry{{Index: 5, Term: 2}, {Index: 6, Term: 2}},
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}},
+			5, nil,
 			[]*proto.Entry{{Index: 4, Term: 2}, {Index: 5, Term: 2}, {Index: 6, Term: 2}},
-			4, []*proto.Entry{{Index: 4, Term: 2}, {Index: 5, Term: 2}, {Index: 6, Term: 2}},
+			4,
+			[]*proto.Entry{{Index: 4, Term: 2}, {Index: 5, Term: 2}, {Index: 6, Term: 2}},
 		},
 		// truncate the existing entries and append
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}, {Index: 7, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}, {Index: 7, Term: 1}},
+			5, nil,
 			[]*proto.Entry{{Index: 6, Term: 2}},
-			5, []*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 2}},
+			5,
+			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 2}},
 		},
 		{
-			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}, {Index: 7, Term: 1}}, 5, nil,
+			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}, {Index: 7, Term: 1}},
+			5, nil,
 			[]*proto.Entry{{Index: 7, Term: 2}, {Index: 8, Term: 2}},
-			5, []*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}, {Index: 7, Term: 2}, {Index: 8, Term: 2}},
+			5,
+			[]*proto.Entry{{Index: 5, Term: 1}, {Index: 6, Term: 1}, {Index: 7, Term: 2}, {Index: 8, Term: 2}},
 		},
 	}
 

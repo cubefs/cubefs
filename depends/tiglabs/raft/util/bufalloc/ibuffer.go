@@ -13,9 +13,7 @@ import (
 
 const minRead = 512
 
-var (
-	ErrTooLarge = errors.New("bufalloc.Buffer: too large.")
-)
+var ErrTooLarge = errors.New("bufalloc.Buffer: too large.")
 
 type ibuffer struct {
 	off int

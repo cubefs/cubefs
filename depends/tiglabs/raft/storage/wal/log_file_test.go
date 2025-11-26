@@ -28,7 +28,7 @@ import (
 // tolerance when loading a damaged log file.
 func TestAutoFixLastIndexLogEntryFile_BrokenLogEntry(t *testing.T) {
 	var err error
-	var testPath = path.Join(os.TempDir(), "test_auto_fix_broken_log_entry_file")
+	testPath := path.Join(os.TempDir(), "test_auto_fix_broken_log_entry_file")
 	if err = os.MkdirAll(testPath, os.ModePerm); err != nil {
 		t.Fatalf("prepare test path fail: %v", err)
 	}
@@ -248,12 +248,12 @@ func TestAutoFixLastIndexLogEntryFile_BrokenLogEntry(t *testing.T) {
 
 			// Validate each log entry
 			var e *proto.Entry
-			var entryIndex = 0
+			entryIndex := 0
 			for i := fi; i > 0 && i <= li; i++ {
 				if e, err = lf.Get(i); err != nil {
 					t.Fatalf("[%v %v] get log entry fail: index %v, %v", sample.Desc, testCount, i, err)
 				}
-				var sampleEntry = sample.Entries[entryIndex]
+				sampleEntry := sample.Entries[entryIndex]
 				if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
 					t.Fatalf("[%v %v] entry data mismatch: expact %v, actual %v",
 						sample.Desc, testCount,
@@ -271,7 +271,7 @@ func TestAutoFixLastIndexLogEntryFile_BrokenLogEntry(t *testing.T) {
 
 func TestAutoFixLastIndexLogEntryFile_BrokenIndex_MissingLastOneByte(t *testing.T) {
 	var err error
-	var testPath = path.Join(os.TempDir(), "test_auto_fix_broken_index_log_entry_file")
+	testPath := path.Join(os.TempDir(), "test_auto_fix_broken_index_log_entry_file")
 	if err = os.MkdirAll(testPath, os.ModePerm); err != nil {
 		t.Fatalf("prepare test path fail: %v", err)
 	}
@@ -334,12 +334,12 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_MissingLastOneByte(t *testing.
 
 		// Validate each log entry
 		var e *proto.Entry
-		var entryIndex = 0
+		entryIndex := 0
 		for i := fi; i > 0 && i <= li; i++ {
 			if e, err = lf.Get(i); err != nil {
 				t.Fatalf("get log entry fail: index %v, %v", i, err)
 			}
-			var sampleEntry = sampleEntries[entryIndex]
+			sampleEntry := sampleEntries[entryIndex]
 			if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
 				t.Fatalf("entry data mismatch: expact %v, actual %v",
 					fmt.Sprintf("%v_%v_%v", sampleEntry.Index, sampleEntry.Term, sampleEntry.Type),
@@ -353,7 +353,7 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_MissingLastOneByte(t *testing.
 
 func TestAutoFixLastIndexLogEntryFile_BrokenIndex_BrokenLastOneByte(t *testing.T) {
 	var err error
-	var testPath = path.Join(os.TempDir(), "test_auto_fix_broken_index_log_entry_file")
+	testPath := path.Join(os.TempDir(), "test_auto_fix_broken_index_log_entry_file")
 	if err = os.MkdirAll(testPath, os.ModePerm); err != nil {
 		t.Fatalf("prepare test path fail: %v", err)
 	}
@@ -419,12 +419,12 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_BrokenLastOneByte(t *testing.T
 
 		// Validate each log entry
 		var e *proto.Entry
-		var entryIndex = 0
+		entryIndex := 0
 		for i := fi; i > 0 && i <= li; i++ {
 			if e, err = lf.Get(i); err != nil {
 				t.Fatalf("get log entry fail: index %v, %v", i, err)
 			}
-			var sampleEntry = sampleEntries[entryIndex]
+			sampleEntry := sampleEntries[entryIndex]
 			if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
 				t.Fatalf("entry data mismatch: expact %v, actual %v",
 					fmt.Sprintf("%v_%v_%v", sampleEntry.Index, sampleEntry.Term, sampleEntry.Type),
@@ -438,7 +438,7 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_BrokenLastOneByte(t *testing.T
 
 func TestAutoFixLastIndexLogEntryFile_BrokenIndex_OneMoreByteAtTheEnd(t *testing.T) {
 	var err error
-	var testPath = path.Join(os.TempDir(), "test_auto_fix_broken_index_log_entry_file")
+	testPath := path.Join(os.TempDir(), "test_auto_fix_broken_index_log_entry_file")
 	if err = os.MkdirAll(testPath, os.ModePerm); err != nil {
 		t.Fatalf("prepare test path fail: %v", err)
 	}
@@ -500,12 +500,12 @@ func TestAutoFixLastIndexLogEntryFile_BrokenIndex_OneMoreByteAtTheEnd(t *testing
 
 		// Validate each log entry
 		var e *proto.Entry
-		var entryIndex = 0
+		entryIndex := 0
 		for i := fi; i > 0 && i <= li; i++ {
 			if e, err = lf.Get(i); err != nil {
 				t.Fatalf("get log entry fail: index %v, %v", i, err)
 			}
-			var sampleEntry = sampleEntries[entryIndex]
+			sampleEntry := sampleEntries[entryIndex]
 			if e.Index != sampleEntry.Index || e.Term != sampleEntry.Term || e.Type != sampleEntry.Type {
 				t.Fatalf("entry data mismatch: expact %v, actual %v",
 					fmt.Sprintf("%v_%v_%v", sampleEntry.Index, sampleEntry.Term, sampleEntry.Type),

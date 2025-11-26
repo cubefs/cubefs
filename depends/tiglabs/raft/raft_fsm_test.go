@@ -325,7 +325,7 @@ func TestTransferNonMember(t *testing.T) {
 	r := newTestRaftFsm(5, 1,
 		newTestRaftConfig(1, withStorage(stor.DefaultMemoryStorage()), withPeers(2, 3, 4)))
 	// todo
-	//r.Step(proto.Message{From: 2, To: 1, Type: proto.MsgTimeoutNow})
+	// r.Step(proto.Message{From: 2, To: 1, Type: proto.MsgTimeoutNow})
 
 	r.Step(&proto.Message{From: 2, To: 1, Type: proto.RespMsgPreVote})
 	r.Step(&proto.Message{From: 3, To: 1, Type: proto.RespMsgPreVote})
@@ -532,9 +532,9 @@ func TestPreVoteWithCheckQuorum(t *testing.T) {
 	n2.config.PreVote = true
 	n3.config.PreVote = true
 
-	//n1.config.LeaseCheck  = true
-	//n2.config.LeaseCheck  = true
-	//n3.config.LeaseCheck  = true
+	// n1.config.LeaseCheck  = true
+	// n2.config.LeaseCheck  = true
+	// n3.config.LeaseCheck  = true
 
 	nt := newNetwork(n1, n2, n3)
 	nt.send(proto.Message{From: 1, To: 1, Type: proto.LocalMsgHup})
@@ -664,7 +664,6 @@ func TestPreVoteMigrationCanCompleteElection(t *testing.T) {
 	if n2.state != stateLeader && n3.state != stateFollower {
 		t.Errorf("no leader")
 	}
-
 }
 
 func TestPreVoteMigrationWithFreeStuckPreCandidate(t *testing.T) {
@@ -1307,11 +1306,11 @@ func TestNonPromotableVoterWithCheckQuorum(t *testing.T) {
 	}
 }
 
-//TestDisruptiveFollower tests isolated follower,
-//with slow network incoming from leader, election times out
-//to become a candidate with an increased term. Then, the
-//candiate's response to late leader heartbeat forces the leader
-//to step down.
+// TestDisruptiveFollower tests isolated follower,
+// with slow network incoming from leader, election times out
+// to become a candidate with an increased term. Then, the
+// candiate's response to late leader heartbeat forces the leader
+// to step down.
 func TestDisruptiveFollower(t *testing.T) {
 	n1 := newTestRaftFsm(10, 1,
 		newTestRaftConfig(1, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))

@@ -120,7 +120,7 @@ type TransportConfig struct {
 	ReplicateAddr string
 	// 发送队列大小
 	SendBufferSize int
-	//复制并发数(node->node)
+	// 复制并发数(node->node)
 	MaxReplConcurrency int
 	// MaxSnapConcurrency limits the max number of snapshot concurrency.
 	// The default value is 10.

@@ -28,7 +28,7 @@ func initDir(dir string) error {
 	if err != nil {
 		if pathErr, ok := err.(*os.PathError); ok {
 			if os.IsNotExist(pathErr) {
-				return os.MkdirAll(dir, 0755)
+				return os.MkdirAll(dir, 0o755)
 			}
 		}
 		return err

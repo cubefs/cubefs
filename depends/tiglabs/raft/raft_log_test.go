@@ -15,10 +15,11 @@
 package raft
 
 import (
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage"
 	"reflect"
 	"testing"
+
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage"
 )
 
 func TestFindConflict(t *testing.T) {
@@ -173,12 +174,14 @@ func TestLogMaybeAppend(t *testing.T) {
 	}{
 		// not match: term is different
 		{
-			lastterm - 1, lastindex, lastindex, []*proto.Entry{{Index: lastindex + 1, Term: 4}},
+			lastterm - 1, lastindex, lastindex,
+			[]*proto.Entry{{Index: lastindex + 1, Term: 4}},
 			0, false, commit, false,
 		},
 		// not match: index out of bound
 		{
-			lastterm, lastindex + 1, lastindex, []*proto.Entry{{Index: lastindex + 2, Term: 4}},
+			lastterm, lastindex + 1, lastindex,
+			[]*proto.Entry{{Index: lastindex + 2, Term: 4}},
 			0, false, commit, false,
 		},
 		// match with the last existing entry
@@ -203,36 +206,44 @@ func TestLogMaybeAppend(t *testing.T) {
 			0, true, commit, false, // commit do not decrease
 		},
 		{
-			lastterm, lastindex, lastindex, []*proto.Entry{{Index: lastindex + 1, Term: 4}},
+			lastterm, lastindex, lastindex,
+			[]*proto.Entry{{Index: lastindex + 1, Term: 4}},
 			lastindex + 1, true, lastindex, false,
 		},
 		{
-			lastterm, lastindex, lastindex + 1, []*proto.Entry{{Index: lastindex + 1, Term: 4}},
+			lastterm, lastindex, lastindex + 1,
+			[]*proto.Entry{{Index: lastindex + 1, Term: 4}},
 			lastindex + 1, true, lastindex + 1, false,
 		},
 		{
-			lastterm, lastindex, lastindex + 2, []*proto.Entry{{Index: lastindex + 1, Term: 4}},
+			lastterm, lastindex, lastindex + 2,
+			[]*proto.Entry{{Index: lastindex + 1, Term: 4}},
 			lastindex + 1, true, lastindex + 1, false, // do not increase commit higher than lastnewi
 		},
 		{
-			lastterm, lastindex, lastindex + 2, []*proto.Entry{{Index: lastindex + 1, Term: 4}, {Index: lastindex + 2, Term: 4}},
+			lastterm, lastindex, lastindex + 2,
+			[]*proto.Entry{{Index: lastindex + 1, Term: 4}, {Index: lastindex + 2, Term: 4}},
 			lastindex + 2, true, lastindex + 2, false,
 		},
 		// match with the the entry in the middle
 		{
-			lastterm - 1, lastindex - 1, lastindex, []*proto.Entry{{Index: lastindex, Term: 4}},
+			lastterm - 1, lastindex - 1, lastindex,
+			[]*proto.Entry{{Index: lastindex, Term: 4}},
 			lastindex, true, lastindex, false,
 		},
 		{
-			lastterm - 2, lastindex - 2, lastindex, []*proto.Entry{{Index: lastindex - 1, Term: 4}},
+			lastterm - 2, lastindex - 2, lastindex,
+			[]*proto.Entry{{Index: lastindex - 1, Term: 4}},
 			lastindex - 1, true, lastindex - 1, false,
 		},
 		{
-			lastterm - 3, lastindex - 3, lastindex, []*proto.Entry{{Index: lastindex - 2, Term: 4}},
+			lastterm - 3, lastindex - 3, lastindex,
+			[]*proto.Entry{{Index: lastindex - 2, Term: 4}},
 			lastindex - 2, true, lastindex - 2, true, // conflict with existing committed entry
 		},
 		{
-			lastterm - 2, lastindex - 2, lastindex, []*proto.Entry{{Index: lastindex - 1, Term: 4}, {Index: lastindex, Term: 4}},
+			lastterm - 2, lastindex - 2, lastindex,
+			[]*proto.Entry{{Index: lastindex - 1, Term: 4}, {Index: lastindex, Term: 4}},
 			lastindex, true, lastindex, false,
 		},
 	}

@@ -23,8 +23,10 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util/bufalloc"
 )
 
-const initialBufferSize = 1024 * 32
-const flushTriggerSize = 1024 * 1024
+const (
+	initialBufferSize = 1024 * 32
+	flushTriggerSize  = 1024 * 1024
+)
 
 type recordWriter struct {
 	f      *os.File

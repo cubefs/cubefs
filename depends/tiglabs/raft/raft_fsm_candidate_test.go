@@ -94,7 +94,6 @@ func TestDuelingCandidates(t *testing.T) {
 }
 
 func TestDuelingPreCandidates(t *testing.T) {
-
 	a := newTestRaftFsm(10, 1,
 		newTestRaftConfig(1, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))
 	b := newTestRaftFsm(10, 1,

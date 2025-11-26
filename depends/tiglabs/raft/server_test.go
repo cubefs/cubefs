@@ -18,16 +18,17 @@ package raft
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage/wal"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/stretchr/testify/require"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage/wal"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/stretchr/testify/require"
 )
 
 type serverStorage struct {
@@ -68,7 +69,6 @@ func newTestStateMachine(id uint64, store *serverStorage) *testStateMachine {
 }
 
 func (sm *testStateMachine) Apply(command []byte, index uint64) (interface{}, error) {
-
 	key, val := decode(command)
 	if err := sm.store.Put(key, val); err != nil {
 		return nil, err
@@ -92,7 +92,6 @@ func (sm *testStateMachine) Snapshot() (proto.Snapshot, error) {
 }
 
 func (sm *testStateMachine) ApplySnapshot(peers []proto.Peer, iter proto.SnapIterator) error {
-
 	return nil
 }
 
@@ -108,7 +107,6 @@ func (sm *testStateMachine) HandleLeaderChange(leader uint64) {
 }
 
 func (sm *testStateMachine) HandleFatalEvent(err *FatalError) {
-
 }
 
 type testResolver struct {
@@ -210,7 +208,6 @@ func cleanTestServer(servers [3]*RaftServer) {
 	for p := range walPaths {
 		os.RemoveAll(p)
 	}
-
 }
 
 func initConfig() {
@@ -286,7 +283,7 @@ func TestRaftServer(t *testing.T) {
 		require.True(t, isLeader)
 	}
 
-	//submit some data
+	// submit some data
 	k1 := "key1"
 	v1 := "some data"
 	servers[0].Submit(raftId1, encode([]byte(k1), []byte(v1)))
@@ -333,13 +330,11 @@ func TestRaftServer(t *testing.T) {
 		//require.NoError(t, err)
 
 	}
-
 }
 
 func TestSnapshot(t *testing.T) {
-	//servers, clean := newTestRaftServer()
-	//defer clean()
-
+	// servers, clean := newTestRaftServer()
+	// defer clean()
 }
 
 func encode(key []byte, value []byte) []byte {

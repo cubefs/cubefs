@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -374,12 +374,15 @@ func (l *Log) SetRotate(logDir string) error {
 func (l *Log) IsEnableDebug() bool {
 	return l.level <= DebugLevel
 }
+
 func (l *Log) IsEnableInfo() bool {
 	return l.level <= InfoLevel
 }
+
 func (l *Log) IsEnableWarn() bool {
 	return l.level <= WarnLevel
 }
+
 func (l *Log) IsEnableError() bool {
 	return l.level <= ErrorLevel
 }
@@ -476,7 +479,7 @@ func (l *Log) checkLogRotation(logDir, module string) {
 			continue
 		}
 
-		//rotate the log files
+		// rotate the log files
 		l.debug.rotateFile(logDir, debugLogFileName, module, true)
 		l.info.rotateFile(logDir, infoLogFileName, module, true)
 		l.warn.rotateFile(logDir, warnLogFileName, module, true)

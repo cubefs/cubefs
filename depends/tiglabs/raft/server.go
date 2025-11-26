@@ -24,9 +24,7 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 )
 
-var (
-	fatalStopc = make(chan uint64)
-)
+var fatalStopc = make(chan uint64)
 
 type RaftServer struct {
 	config *Config

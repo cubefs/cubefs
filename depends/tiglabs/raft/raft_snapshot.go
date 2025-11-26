@@ -188,7 +188,7 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		s.maybeChange(true)
 	}
 	if !s.raftFsm.checkSnapshot(req.header.SnapshotMeta) {
-		logger.Warn("raft %v [commit: %d] ignored snapshot [index: %d, term: %d].", s.raftFsm.id, s.raftFsm.raftLog.committed, req.header.SnapshotMeta.Index, req.header.SnapshotMeta.Term)
+		logger.Warn("raft[%v] [commit: %d] ignored snapshot [index: %d, term: %d].", s.raftFsm.id, s.raftFsm.raftLog.committed, req.header.SnapshotMeta.Index, req.header.SnapshotMeta.Term)
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgAppend
 		nmsg.To = req.header.From
@@ -198,7 +198,7 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		return
 	}
 
-	logger.Warn("raft %d recive snapshot from %d, meta term %d, index %d",
+	logger.Warn("raft[%v] recive snapshot from %d, meta term %d, index %d",
 		s.raftFsm.id, req.header.From, req.header.SnapshotMeta.Term, req.header.SnapshotMeta.Index)
 
 	s.applyLk.Lock()
@@ -214,14 +214,14 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 	}
 	s.raftFsm.restore(req.header.SnapshotMeta)
 	if logger.IsEnableDebug() {
-		logger.Debug("raft peers replace. old: %v, new: %v", s.peerState.get(), req.header.SnapshotMeta.Peers)
+		logger.Debug("raft[%v] peers replace. old: %v, new: %v", s.raftFsm.id, s.peerState.get(), req.header.SnapshotMeta.Peers)
 	}
 	s.peerState.replace(req.header.SnapshotMeta.Peers)
 	s.curApplied.Set(req.header.SnapshotMeta.Index)
 
 	// send snapshot response message
 
-	logger.Warn("raft %v [commit: %d] restored snapshot [index: %d, term: %d]",
+	logger.Warn("raft[%v] [commit: %d] restored snapshot [index: %d, term: %d]",
 		s.raftFsm.id, s.raftFsm.raftLog.committed, req.header.SnapshotMeta.Index, req.header.SnapshotMeta.Term)
 
 	nmsg := proto.GetMessage()

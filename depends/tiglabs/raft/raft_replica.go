@@ -52,11 +52,12 @@ func newReplica(peer proto.Peer, maxInflight int) *replica {
 }
 
 func (r *replica) resetState(state replicaState) {
-	logger.Debug("raft resetState from [%v]", r)
+	// Note: replica doesn't have direct access to raft id, log without it
+	logger.Debug("raft replica resetState from [%v]", r)
 	r.paused = false
 	r.pendingSnap = 0
 	r.state = state
-	logger.Debug("raft resetState to [%v]", r)
+	logger.Debug("raft replica resetState to [%v]", r)
 	r.reset()
 }
 
@@ -113,7 +114,7 @@ func (r *replica) maybeDecrTo(rejected, last, commit uint64) bool {
 		r.next = r.match + 1
 		return true
 	}
-	//Probe State
+	// Probe State
 	if r.next-1 != rejected {
 		return false
 	}

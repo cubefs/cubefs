@@ -15,12 +15,9 @@
 package raft
 
 import (
-	"fmt"
 	"net"
 	"sync"
 
-	//"fmt"
-	//"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
@@ -79,7 +76,7 @@ func (t *heartbeatTransport) start() {
 			default:
 				conn, err := t.listener.Accept()
 				if err != nil {
-					logger.Error(fmt.Sprintf("[heartbeatTransport] accept from conn error, %s", err.Error()))
+					logger.Error("[heartbeatTransport] accept from conn error, %s", err.Error())
 					continue
 				}
 				t.handleConn(util.NewConnTimeout(conn))
@@ -99,10 +96,10 @@ func (t *heartbeatTransport) handleConn(conn *util.ConnTimeout) {
 				return
 			default:
 				if msg, err := reciveMessage(bufRd); err != nil {
-					logger.Error(fmt.Sprintf("[heartbeatTransport] recive message from conn error, %s", err.Error()))
+					logger.Error("[heartbeatTransport] recive message from conn error, %s", err.Error())
 					return
 				} else {
-					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
+					// logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
 					t.raftServer.reciveMessage(msg)
 				}
 			}

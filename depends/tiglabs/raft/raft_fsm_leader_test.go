@@ -59,9 +59,11 @@ func testLeaderElection(t *testing.T, preVote bool) {
 
 		// three logs further along than 0, but in the same term so rejections
 		// are returned instead of the votes being ignored.
-		{newNetworkWithConfig(rf,
-			nil, entsWithConfig(rf, 1), entsWithConfig(rf, 1), entsWithConfig(rf, 1, 1), nil),
-			stateFollower, 1},
+		{
+			newNetworkWithConfig(rf,
+				nil, entsWithConfig(rf, 1), entsWithConfig(rf, 1), entsWithConfig(rf, 1, 1), nil),
+			stateFollower, 1,
+		},
 	}
 
 	for i, tt := range tests {
@@ -318,10 +320,10 @@ func TestCommit(t *testing.T) {
 }
 
 // TestHandleMsgApp ensures:
-// 1. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm.
-// 2. If an existing entry conflicts with a new one (same index but different terms),
-//    delete the existing entry and all that follow it; append any new entries not already in the log.
-// 3. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry).
+//  1. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm.
+//  2. If an existing entry conflicts with a new one (same index but different terms),
+//     delete the existing entry and all that follow it; append any new entries not already in the log.
+//  3. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry).
 func TestHandleMsgApp(t *testing.T) {
 	tests := []struct {
 		m       *proto.Message
@@ -471,7 +473,8 @@ func TestLeaderAppResp(t *testing.T) {
 			Index:      tt.index,
 			Term:       sm.term,
 			Reject:     tt.reject,
-			RejectHint: tt.index},
+			RejectHint: tt.index,
+		},
 		)
 
 		p := sm.replicas[2]
@@ -566,7 +569,8 @@ func TestRestore(t *testing.T) {
 	snap := proto.SnapshotMeta{
 		Index: 11, // magic number
 		Term:  11, // magic number
-		Peers: peers}
+		Peers: peers,
+	}
 
 	s := stor.DefaultMemoryStorage()
 	cfg := newTestRaftConfig(1, withStorage(s), withPeers(1, 2))
@@ -589,7 +593,7 @@ func TestRestore(t *testing.T) {
 	// mark node 1 as snapshot state ?
 	sm.replicas[1].becomeSnapshot(12)
 
-	//todo  It should not campaign before actually applying data.
+	// todo  It should not campaign before actually applying data.
 	for i := 0; i < sm.randElectionTick; i++ {
 		sm.tick()
 	}
@@ -638,12 +642,15 @@ type testFsmStateMachine struct {
 func (sm *testFsmStateMachine) Apply(command []byte, index uint64) (interface{}, error) {
 	return nil, nil
 }
+
 func (sm *testFsmStateMachine) ApplyMemberChange(cc *proto.ConfChange, index uint64) (interface{}, error) {
 	return nil, nil
 }
+
 func (sm *testFsmStateMachine) Snapshot() (proto.Snapshot, error) {
 	return &testSnapshot{applyIndex: sm.applyIndex}, nil
 }
+
 func (sm *testFsmStateMachine) ApplySnapshot(peers []proto.Peer, iter proto.SnapIterator) error {
 	return nil
 }
