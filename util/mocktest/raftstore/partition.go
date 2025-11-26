@@ -78,6 +78,20 @@ func (mr *MockPartitionMockRecorder) CloseAndBackup() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseAndBackup", reflect.TypeOf((*MockPartition)(nil).CloseAndBackup))
 }
 
+// Closed mocks base method.
+func (m *MockPartition) Closed() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Closed")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// Closed indicates an expected call of Closed.
+func (mr *MockPartitionMockRecorder) Closed() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Closed", reflect.TypeOf((*MockPartition)(nil).Closed))
+}
+
 // CommittedIndex mocks base method.
 func (m *MockPartition) CommittedIndex() uint64 {
 	m.ctrl.T.Helper()

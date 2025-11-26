@@ -778,6 +778,12 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 					return
 				}
 
+				if mp.raftClosed() {
+					log.LogWarnf("ApplySnapshot-blockUntilStoreSnapshot partition(%v) is closed, exit now", mp.config.PartitionId)
+					err = fmt.Errorf("partition(%v) is closed", mp.config.PartitionId)
+					return
+				}
+
 				msg := fmt.Sprintf("ApplySnapshot: start check storedApplyId, mp %d appId %d, storeAppId %d, cost %s",
 					mp.config.PartitionId, appIndexID, mp.storedApplyId, time.Since(start).String())
 				if time.Since(start) > time.Minute {
@@ -790,6 +796,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 					log.LogWarnf("ApplySnapshot: store snapshot success, msg %s", msg)
 					return
 				}
+
 			case <-mp.stopC:
 				log.LogWarnf("ApplySnapshot: revice stop signal, exit now, partition(%d), applyId(%d)", mp.config.PartitionId, mp.applyID)
 				err = errors.New("server has been shutdown when block")
@@ -797,6 +804,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			}
 		}
 	}
+
+	log.LogWarnf("ApplySnapshot: start apply snapshot, partition(%v), applyId(%v)", mp.config.PartitionId, appIndexID)
 
 	defer func() {
 		if err != nil && err != io.EOF {
@@ -810,6 +819,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			return
 		}
 		if err == io.EOF {
+			log.LogWarnf("ApplySnapshot: apply snapshot success, partition(%v), applyId(%v)", mp.config.PartitionId, appIndexID)
 			mp.applyID = appIndexID
 			mp.inodeTree.SetApplyID(appIndexID)
 			mp.config.UniqId = uniqID
@@ -829,16 +839,23 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				log.LogErrorf("[ApplySnapshot] mp(%v) failed to write mp metadata", mp.config.PartitionId)
 				return
 			}
+
+			log.LogWarnf("ApplySnapshot: commit batch write success, partition(%v), applyId(%v)", mp.config.PartitionId, appIndexID)
+
 			err = mp.inodeTree.ClearBatchWriteHandle(dbWriteHandle)
 			if err != nil {
 				log.LogErrorf("[ApplySnapshot] mp(%v) failed to clear handle", mp.config.PartitionId)
 				err = nil
 			}
+			log.LogWarnf("ApplySnapshot: clear batch write handle success, partition(%v), applyId(%v)", mp.config.PartitionId, appIndexID)
+
 			err = mp.flushAndCheckApplyID(appIndexID)
 			if err != nil {
 				log.LogErrorf("[ApplySnapshot] mp(%v) flush and check apply id failed, err(%v)", mp.config.PartitionId, err)
 				return
 			}
+			log.LogWarnf("ApplySnapshot: flush and check apply id success, partition(%v), applyId(%v)", mp.config.PartitionId, appIndexID)
+
 			// store message
 			var snap Snapshot
 			snap, err = mp.GetSnapShot()
@@ -859,7 +876,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				err = errors.New("server has been shutdown")
 				return
 			default:
-				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v), txID(%v), uniqID(%v), cursor(%v)",
+				log.LogWarnf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v), txID(%v), uniqID(%v), cursor(%v)",
 					mp.config.PartitionId, mp.applyID, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), mp.config.UniqId, mp.config.Cursor)
 				blockUntilStoreSnapshot()
 				return
@@ -874,6 +891,12 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	for {
 		data, err = iter.Next()
 		if err != nil {
+			return
+		}
+
+		if mp.raftClosed() {
+			log.LogWarnf("ApplySnapshot: partition(%v) is closed, exit now", mp.config.PartitionId)
+			err = fmt.Errorf("partition(%v) is closed", mp.config.PartitionId)
 			return
 		}
 

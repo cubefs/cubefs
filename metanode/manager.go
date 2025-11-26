@@ -583,9 +583,16 @@ func (m *metadataManager) onStart() (err error) {
 // onStop stops each meta partitions.
 func (m *metadataManager) onStop() {
 	if m.partitions != nil {
+		wg := sync.WaitGroup{}
 		for _, partition := range m.partitions {
-			partition.Stop()
+			mp := partition
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				mp.Stop()
+			}()
 		}
+		wg.Wait()
 	}
 
 	if m.gcTimer != nil {

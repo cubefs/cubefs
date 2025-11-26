@@ -250,6 +250,25 @@ func (rs *RaftServer) Status(id uint64) (status *Status) {
 	return
 }
 
+func (rs *RaftServer) Closed(id uint64) bool {
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if !ok {
+		logger.Warn("raftServer cannot found, id:%d", id)
+		return true
+	}
+
+	select {
+	case <-raft.stopc:
+		logger.Warn("raftServer is closed, id:%d", id)
+		return true
+	default:
+		return false
+	}
+}
+
 func (rs *RaftServer) LeaderTerm(id uint64) (leader, term uint64) {
 	rs.mu.RLock()
 	raft, ok := rs.rafts[id]

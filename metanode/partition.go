@@ -591,6 +591,14 @@ func (mp *metaPartition) SetEnableAuditLog(status bool) {
 	mp.enableAuditLog = status
 }
 
+func (mp *metaPartition) raftClosed() bool {
+	if mp.raftPartition == nil {
+		return false
+	}
+
+	return mp.raftPartition.Closed()
+}
+
 func (mp *metaPartition) acucumRebuildStart() bool {
 	return mp.uidManager.accumRebuildStart()
 }

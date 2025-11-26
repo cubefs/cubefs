@@ -73,6 +73,7 @@ type Partition interface {
 
 	// CloseAndBackup closes the partition and backup the wal.
 	CloseAndBackup() error
+	Closed() bool
 }
 
 // Default implementation of the Partition interface.
@@ -106,6 +107,10 @@ func (p *partition) TryToLeader(nodeID uint64) (err error) {
 	future := p.raft.TryToLeader(nodeID)
 	_, err = future.Response()
 	return
+}
+
+func (p *partition) Closed() bool {
+	return p.raft.Closed(p.id)
 }
 
 // Delete stops and deletes the partition.

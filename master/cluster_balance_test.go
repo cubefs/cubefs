@@ -1496,6 +1496,7 @@ func (m *mockPartition) Truncate(uint64)                    {}
 func (m *mockPartition) TryToLeader(uint64) error           { return nil }
 func (m *mockPartition) IsOfflinePeer() bool                { return true }
 func (m *mockPartition) CloseAndBackup() error              { return nil }
+func (m *mockPartition) Closed() bool                       { return false }
 
 // no extra stub needed for raftstore.PartitionStatus alias
 
