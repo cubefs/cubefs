@@ -849,7 +849,9 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 	idcFreeItems := make(map[string]int64)
 	idcRackStgs := make(map[string]map[string]*rackAllocator)
 	idcNodeStgs := make(map[string][]*nodeAllocator)
+	idcDiskStgs := make(map[string][]*diskItem)
 	rackNodeStgs := make(map[string][]*nodeAllocator)
+	rackDiskStgs := make(map[string][]*diskItem)
 	rackFreeItems := make(map[string]int64)
 
 	var (
@@ -945,7 +947,7 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 			return nil
 		})
 		if err != nil {
-			span.Infof("This is %v, not to build allocator", err)
+			span.Infof("This disk %d is %v, not to build allocator", disk.diskID, err)
 			continue
 		}
 
@@ -962,15 +964,23 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 			idcFreeItems[idc] = 0
 		}
 		idcFreeItems[idc] += diskFreeItem
+		if _, ok := idcDiskStgs[idc]; !ok {
+			idcDiskStgs[idc] = make([]*diskItem, 0)
+		}
+		idcDiskStgs[idc] = append(idcDiskStgs[idc], disk)
 		// build for rackAllocator
 		if _, ok := rackNodeStgs[rack]; !ok {
 			rackNodeStgs[rack] = make([]*nodeAllocator, 0)
 			rackFreeItems[rack] = 0
 		}
 		rackFreeItems[rack] += diskFreeItem
+		if _, ok := rackDiskStgs[rack]; !ok {
+			rackDiskStgs[rack] = make([]*diskItem, 0)
+		}
+		rackDiskStgs[rack] = append(rackDiskStgs[rack], disk)
 		// build for nodeAllocator
 		if _, ok := nodeStgs[host]; !ok {
-			nodeStgs[host] = &nodeAllocator{host: host, disks: make([]*diskItem, 0)}
+			nodeStgs[host] = &nodeAllocator{node: node, disks: make([]*diskItem, 0)}
 			// append idc data node
 			idcNodeStgs[idc] = append(idcNodeStgs[idc], nodeStgs[host])
 			// append rack data node
@@ -986,6 +996,7 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 		for rack := range rackStgs {
 			rackStgs[rack].weight = rackFreeItems[rack]
 			rackStgs[rack].nodeStorages = rackNodeStgs[rack]
+			rackStgs[rack].disks = rackDiskStgs[rack]
 		}
 	}
 	for idc := range idcNodeStgs {
@@ -1004,6 +1015,7 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 				diffHost:     d.cfg.HostAware,
 				rackStorages: idcRackStgs[d.cfg.IDC[i]],
 				nodeStorages: idcNodeStgs[d.cfg.IDC[i]],
+				disks:        idcDiskStgs[d.cfg.IDC[i]],
 			}
 			freeChunk += idcFreeItems[d.cfg.IDC[i]]
 		}

@@ -266,7 +266,7 @@ func (s *Service) VolumeUnitAlloc(c *rpc.Context) {
 	}
 	span.Debugf("accept VolumeUnitAlloc request, args: %v", args)
 
-	ret, err := s.VolumeMgr.AllocVolumeUnit(ctx, args.Vuid)
+	ret, err := s.VolumeMgr.AllocVolumeUnit(ctx, args)
 	if err != nil {
 		span.Error("alloc volumeUnit failed, err: ", errors.Detail(err))
 		c.RespondError(err)

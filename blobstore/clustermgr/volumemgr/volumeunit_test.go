@@ -65,7 +65,7 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 	var vuidPrefix proto.VuidPrefix = 4294967296
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	// test success alloc volumeUnit
-	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, data []byte) error {
+	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Times(2).DoAndReturn(func(ctx context.Context, data []byte) error {
 		mockVolumeMgr.pendingEntries.Range(func(key, value interface{}) bool {
 			// apply volume unit will store a newvuid
 			mockVolumeMgr.pendingEntries.Store(key, proto.EncodeVuid(vuidPrefix, 3))
@@ -74,19 +74,24 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 		return nil
 	})
 	mockVolumeMgr.raftServer = mockRaftServer
-	ret, err := mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix, 1))
+	ret, err := mockVolumeMgr.AllocVolumeUnit(ctx, &clustermgr.AllocVolumeUnitArgs{Vuid: proto.EncodeVuid(vuidPrefix, 1)})
+	require.NoError(t, err)
+	require.Equal(t, ret.Vuid, proto.EncodeVuid(vuidPrefix, 3))
+	require.NotEqual(t, ret.DiskID, 0)
+
+	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, &clustermgr.AllocVolumeUnitArgs{Vuid: proto.EncodeVuid(vuidPrefix, 1), IsBalance: true})
 	require.NoError(t, err)
 	require.Equal(t, ret.Vuid, proto.EncodeVuid(vuidPrefix, 3))
 	require.NotEqual(t, ret.DiskID, 0)
 
 	// failed case,raft propose error
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(errors.New("error"))
-	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix, 1))
+	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, &clustermgr.AllocVolumeUnitArgs{Vuid: proto.EncodeVuid(vuidPrefix, 1)})
 	require.Error(t, err)
 	require.Nil(t, ret)
 
 	// failed case:vid not exist
-	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(44, 1), 1))
+	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, &clustermgr.AllocVolumeUnitArgs{Vuid: proto.EncodeVuid(proto.EncodeVuidPrefix(44, 1), 1)})
 	require.Error(t, err)
 	require.Nil(t, ret)
 
@@ -99,12 +104,12 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 		})
 		return nil
 	})
-	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix, 1))
+	ret, err = mockVolumeMgr.AllocVolumeUnit(ctx, &clustermgr.AllocVolumeUnitArgs{Vuid: proto.EncodeVuid(vuidPrefix, 1)})
 	require.Error(t, err)
 	require.Nil(t, ret)
 
 	// failed case , index over
-	_, err = mockVolumeMgr.AllocVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(1, 30), 1))
+	_, err = mockVolumeMgr.AllocVolumeUnit(ctx, &clustermgr.AllocVolumeUnitArgs{Vuid: proto.EncodeVuid(proto.EncodeVuidPrefix(1, 30), 1)})
 	require.Error(t, err)
 }
 

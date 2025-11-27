@@ -49,8 +49,9 @@ func (v *VolumeMgr) ListVolumeUnitInfo(ctx context.Context, args *cmapi.ListVolu
 	return ret, nil
 }
 
-func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmapi.AllocVolumeUnit, error) {
+func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, args *cmapi.AllocVolumeUnitArgs) (*cmapi.AllocVolumeUnit, error) {
 	span := trace.SpanFromContextSafe(ctx)
+	vuid := args.Vuid
 	vid := vuid.Vid()
 	vol := v.all.getVol(vid)
 	if vol == nil {
@@ -114,6 +115,7 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 		Idc:        diskInfo.Idc,
 		Excludes:   excludes,
 		RetryTimes: 0,
+		IsBalance:  args.IsBalance,
 	}
 	if policy.CodeMode.T().IsReplicateMode() {
 		policy.DiskSetID = diskInfo.DiskSetID

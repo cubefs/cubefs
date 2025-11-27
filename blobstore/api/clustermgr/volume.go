@@ -178,7 +178,8 @@ func (c *Client) UnlockVolume(ctx context.Context, args *UnlockVolumeArgs) (err 
 }
 
 type AllocVolumeUnitArgs struct {
-	Vuid proto.Vuid `json:"vuid"`
+	Vuid      proto.Vuid `json:"vuid"`
+	IsBalance bool       `json:"is_balance"`
 }
 
 type AllocVolumeUnit struct {

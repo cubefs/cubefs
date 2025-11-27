@@ -104,7 +104,7 @@ func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode cod
 
 	for i := range idcIndexes {
 		count := len(idcIndexes[i])
-		_disks, _err := idcAllocators[i].alloc(ctx, count, nil)
+		_disks, _err := idcAllocators[i].alloc(ctx, count, nil, false)
 		if _err != nil {
 			span.Errorf("alloc from idc allocator failed, err:%s", _err.Error())
 			return nil, _err
@@ -128,6 +128,7 @@ type reAllocPolicy struct {
 	idc       string
 	count     int
 	excludes  []proto.DiskID
+	isBalance bool
 }
 
 func (a *allocator) ReAlloc(ctx context.Context, policy reAllocPolicy) ([]proto.DiskID, error) {
@@ -143,7 +144,7 @@ func (a *allocator) ReAlloc(ctx context.Context, policy reAllocPolicy) ([]proto.
 		}
 	}
 
-	return stg.alloc(ctx, policy.count, _excludes)
+	return stg.alloc(ctx, policy.count, _excludes, policy.isBalance)
 }
 
 func (a *allocator) allocNodeSet(ctx context.Context, diskType proto.DiskType, mode codemode.CodeMode) (*nodeSetAllocator, error) {
@@ -285,6 +286,7 @@ type idcAllocator struct {
 
 	rackStorages map[string]*rackAllocator
 	nodeStorages []*nodeAllocator
+	disks        []*diskItem
 }
 
 // rackAllocator represent an rack storage info
@@ -293,11 +295,12 @@ type rackAllocator struct {
 	// weight should always read and write by atomic
 	weight       int64
 	nodeStorages []*nodeAllocator
+	disks        []*diskItem
 }
 
 // nodeAllocator represent an data node storage info
 type nodeAllocator struct {
-	host string
+	node *nodeItem
 	// weight should always read and write by atomic
 	weight int64
 	free   int64
@@ -353,7 +356,7 @@ func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID
 	return chosenDisk
 }
 
-func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem) ([]proto.DiskID, error) {
+func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem, isBalance bool) ([]proto.DiskID, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	var chosenRacks map[string]int
 	var chosenDataStorages map[*nodeAllocator]int
@@ -367,9 +370,9 @@ func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.
 	}
 
 	if s.diffRack && s.diffHost {
-		chosenRacks, chosenDataStorages, chosenDisks = s.allocFromRack(ctx, count, excludes)
+		chosenRacks, chosenDataStorages, chosenDisks = s.allocFromRack(ctx, count, excludes, isBalance)
 	} else {
-		chosenDataStorages, chosenDisks = s.allocFromNodeStorages(ctx, count, totalWeight-defaultAllocTolerateBuff, s.nodeStorages, excludes)
+		chosenDataStorages, chosenDisks = s.allocFromNodeOrDisk(ctx, count, totalWeight-defaultAllocTolerateBuff, s.nodeStorages, s.disks, excludes, isBalance)
 	}
 
 	if len(chosenDisks) < count {
@@ -398,7 +401,7 @@ func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.
 // 1. alloc rack with free item weight
 // 2. alloc from rack's data node storage
 // 3. if can't meet the alloc count request, then retry with enable same rack
-func (s *idcAllocator) allocFromRack(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem) (chosenRacksRet map[string]int, chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
+func (s *idcAllocator) allocFromRack(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem, isBalance bool) (chosenRacksRet map[string]int, chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
 	rackNum := len(s.rackStorages)
 	chosenRacksRet = make(map[string]int, count)
@@ -475,14 +478,15 @@ RETRY:
 		}
 	}
 
-	// alloc item from rack's nodeStorages
+	// alloc item from rack's nodeStorages/disks
 	_count = count
 	for _, rack := range chosenRacks {
 		num := chosenRacksNum[rack]
 		if num > _count {
 			num = _count
 		}
-		dataStorages, disks := s.allocFromNodeStorages(ctx, num, atomic.LoadInt64(&s.rackStorages[rack].weight), s.rackStorages[rack].nodeStorages, excludes)
+		rs := s.rackStorages[rack]
+		dataStorages, disks := s.allocFromNodeOrDisk(ctx, num, atomic.LoadInt64(&rs.weight), rs.nodeStorages, rs.disks, excludes, isBalance)
 		for id := range disks {
 			chosenDisks[id] = disks[id]
 			chosenRacksRet[rack]++
@@ -499,19 +503,30 @@ RETRY:
 	return
 }
 
+func (s *idcAllocator) allocFromNodeOrDisk(ctx context.Context, count int, totalWeight int64, srcNodeStorages []*nodeAllocator,
+	srcDiskStorages []*diskItem, excludes map[proto.DiskID]*diskItem, isBalance bool,
+) (chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
+	if isBalance {
+		return s.allocFromDiskStorages(ctx, count, totalWeight, srcNodeStorages, srcDiskStorages, excludes)
+	}
+	return s.allocFromNodeStorages(ctx, count, totalWeight, srcNodeStorages, excludes)
+}
+
 // 1. copy rack's nodeAllocator pointer array
 // 2. alloc from nodeAllocator array
 // 3. the alloc result length may not equal to count if there is no enough space or something else
-func (s *idcAllocator) allocFromNodeStorages(ctx context.Context, count int, totalWeight int64, srcNodeStorages []*nodeAllocator, excludes map[proto.DiskID]*diskItem) (chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
+func (s *idcAllocator) allocFromNodeStorages(ctx context.Context, count int, totalWeight int64, srcNodeStorages []*nodeAllocator,
+	excludes map[proto.DiskID]*diskItem,
+) (chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
-	excludeHosts := make(map[string]bool)
+	excludeHosts := make(map[proto.NodeID]bool)
 	chosenDisks = make(map[proto.DiskID]*diskItem)
 	chosenDataStorages = make(map[*nodeAllocator]int)
 	randNum := int64(0)
 
 	for _, diskInfo := range excludes {
 		diskInfo.lock.RLock()
-		excludeHosts[diskInfo.info.Host] = true
+		excludeHosts[diskInfo.info.NodeID] = true
 		diskInfo.lock.RUnlock()
 	}
 
@@ -520,7 +535,7 @@ func (s *idcAllocator) allocFromNodeStorages(ctx context.Context, count int, tot
 	// build available nodeStorages, filter exclude host or disk
 	for i := range srcNodeStorages {
 		// not allow same host, then filter exclude host
-		if s.diffHost && excludeHosts[srcNodeStorages[i].host] {
+		if s.diffHost && excludeHosts[srcNodeStorages[i].node.nodeID] {
 			weight := atomic.LoadInt64(&srcNodeStorages[i].weight)
 			totalWeight -= weight
 			continue
@@ -540,7 +555,7 @@ func (s *idcAllocator) allocFromNodeStorages(ctx context.Context, count int, tot
 				newDisks = append(newDisks, disk)
 			}
 			nodeStorages[nodeStorageNum] = &nodeAllocator{
-				host:   srcNodeStorages[i].host,
+				node:   srcNodeStorages[i].node,
 				weight: weight,
 				disks:  newDisks,
 			}
@@ -576,7 +591,7 @@ RETRY:
 		}
 		for i := chosenIdx; i < nodeStorageNum; i++ {
 			weight := atomic.LoadInt64(&nodeStorages[i].weight)
-			span.Debugf("total free item: %d, node(%s) free item: %d, randNum: %d", _totalWeight, nodeStorages[i].host, weight, randNum)
+			span.Debugf("total free item: %d, node(%s) free item: %d, randNum: %d", _totalWeight, nodeStorages[i].node.nodeID, weight, randNum)
 			if weight >= randNum {
 				if selectedDisk := nodeStorages[i].allocDisk(ctx, chosenDisks); selectedDisk != nil {
 					chosenDisks[selectedDisk.diskID] = selectedDisk
@@ -597,6 +612,104 @@ RETRY:
 			// reset chosenIdx and _totalWeight when retry same host
 			chosenIdx = 0
 			_totalWeight = totalWeight
+			goto RETRY
+		}
+		return
+	}
+	return
+}
+
+//  1. copy rack's or idc's diskItem pointer array
+//  2. alloc from diskItem array
+//  3. the alloc result length may not equal to count if there is no enough space or something else
+//  4. Normally, count must be 1. If you allocate a disk with count greater than 1 and diffHost is true,
+//     allocation may fail. In this case, you should use allocFromNodeStorages instead.
+func (s *idcAllocator) allocFromDiskStorages(ctx context.Context, count int, totalWeight int64, srcNodeStorages []*nodeAllocator,
+	srcDiskStorages []*diskItem, excludes map[proto.DiskID]*diskItem,
+) (chosenNodeStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
+	span := trace.SpanFromContextSafe(ctx)
+	excludeHosts := make(map[proto.NodeID]bool)
+	chosenDisks = make(map[proto.DiskID]*diskItem)
+	chosenNodeNum := make(map[proto.NodeID]int, 0)
+	chosenNodeStorages = make(map[*nodeAllocator]int)
+	randNum := int64(0)
+
+	for _, diskInfo := range excludes {
+		diskInfo.lock.RLock()
+		excludeHosts[diskInfo.info.NodeID] = true
+		diskInfo.lock.RUnlock()
+	}
+
+	nodeStorages := make(map[proto.NodeID]*nodeAllocator, len(s.nodeStorages))
+	for i := range srcNodeStorages {
+		nodeStorages[srcNodeStorages[i].node.nodeID] = srcNodeStorages[i]
+	}
+
+	diskStorageNum := 0
+	disks := make([]*diskItem, 0, len(s.disks))
+	// build available disks, filter exclude host or disk
+	for i := range srcDiskStorages {
+		// not allow same host, then filter exclude host
+		if s.diffHost && excludeHosts[srcDiskStorages[i].info.NodeID] {
+			weight := srcDiskStorages[i].weight()
+			totalWeight -= weight
+			continue
+		}
+		// allow same host, then exclude target disk.
+		if !s.diffHost && len(excludes) > 0 {
+			if _, ok := excludes[srcDiskStorages[i].diskID]; ok {
+				weight := srcDiskStorages[i].weight()
+				totalWeight -= weight
+				continue
+			}
+		}
+		disks = append(disks, srcDiskStorages[i])
+		diskStorageNum += 1
+	}
+	span.Debugf("total disks num: %d, excludes host: %v, excludes disk: %v", diskStorageNum, excludeHosts, excludes)
+	// no available disk after exclude, then return
+	if diskStorageNum == 0 {
+		return
+	}
+	// no available item after exclude, then return
+	if totalWeight <= 0 {
+		return
+	}
+
+	chosenIdx := 0
+	duplicatedCount := 0
+	_totalWeight := totalWeight
+
+RETRY:
+	for count > 0 {
+		// generate randNum every chosen
+		if _totalWeight > 0 {
+			randNum = rand.Int63n(_totalWeight)
+		} else {
+			randNum = 0
+		}
+		for i := chosenIdx; i < diskStorageNum; i++ {
+			weight := disks[i].weight()
+			span.Debugf("total free item: %d, disk(%s) free item: %d, randNum: %d", _totalWeight, disks[i].diskID, weight, randNum)
+			if weight >= randNum && chosenNodeNum[disks[i].info.NodeID] <= duplicatedCount && chosenDisks[disks[i].diskID] == nil {
+				chosenDisks[disks[i].diskID] = disks[i]
+				chosenNodeStorages[nodeStorages[disks[i].info.NodeID]] += 1
+				chosenNodeNum[disks[i].info.NodeID] += 1
+				disks[chosenIdx], disks[i] = disks[i], disks[chosenIdx]
+				_totalWeight -= weight
+				count -= 1
+				chosenIdx += 1
+				goto RETRY
+			}
+			randNum -= weight
+		}
+		// go to the end of all disks, then check if retry when diffHost is false
+		if !s.diffHost && duplicatedCount <= 0 {
+			span.Infof("%s retry choose with same host", s.idc)
+			// reset chosenIdx and _totalWeight when retry same host
+			chosenIdx = 0
+			_totalWeight = totalWeight
+			duplicatedCount = 1 << 32
 			goto RETRY
 		}
 		return

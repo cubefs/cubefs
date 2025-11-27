@@ -137,6 +137,7 @@ type AllocPolicy struct {
 	DiskSetID  proto.DiskSetID
 	Idc        string
 	RetryTimes int
+	IsBalance  bool
 }
 
 type BlobNodeManager struct {
@@ -405,6 +406,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 			idc:       policy.Idc,
 			count:     len(policy.Vuids),
 			excludes:  policy.Excludes,
+			isBalance: policy.IsBalance,
 		})
 		if err != nil {
 			return nil, nil, err
