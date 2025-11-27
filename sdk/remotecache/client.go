@@ -266,9 +266,22 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 			log.LogWarnf("NewRemoteCacheClient: updateFlashGroups err %v", err)
 		}
 	}
-	rc.wg.Add(1)
-	go rc.refresh()
-	log.LogDebugf("NewRemoteCacheClient sucess")
+	if config.FromFuse || err == nil {
+		rc.wg.Add(1)
+		go rc.refresh()
+	} else {
+		log.LogWarnf("NewRemoteCacheClient: init err %v", err)
+		close(rc.stopC)
+		rc.conns.Close()
+		rc.readPool.Close()
+		rc.ReadQueueMap.Range(func(key, value interface{}) bool {
+			if readQueue, ok := value.(*ReadTaskQueue); ok {
+				readQueue.Stop()
+			}
+			return true
+		})
+	}
+	log.LogDebugf("NewRemoteCacheClient sucess err(%v)", err)
 	return rc, err
 }
 
