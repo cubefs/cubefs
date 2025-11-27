@@ -968,7 +968,11 @@ func (s *Server) Serve(fs FS, opt *proto.MountOptions) error {
 		return nil
 	}
 
-	for i := 0; i < 16; i++ {
+	serveThreads := 64
+	if opt != nil && opt.FuseServeThreads > 0 {
+		serveThreads = int(opt.FuseServeThreads)
+	}
+	for i := 0; i < serveThreads; i++ {
 		s.wg.Add(1)
 		go fn()
 	}
