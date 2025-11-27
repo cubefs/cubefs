@@ -744,6 +744,25 @@ func getMountPoints() ([]string, error) {
 	return mountPoints, nil
 }
 
+// checkMountPointEmpty checks if the mount point directory is empty
+func checkMountPointEmpty(mountPoint string) error {
+	// Read directory entries
+	entries, err := os.ReadDir(mountPoint)
+	if err != nil {
+		return errors.NewErrorf("failed to read mountpoint directory: %v", err)
+	}
+
+	// Check if directory is empty (excluding . and ..)
+	for _, entry := range entries {
+		name := entry.Name()
+		if name != "." && name != ".." {
+			return errors.NewErrorf("mountpoint:%v is not empty, contains: %v", mountPoint, name)
+		}
+	}
+
+	return nil
+}
+
 func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err error) {
 	mountPoints, err := getMountPoints()
 	if err != nil {
@@ -754,6 +773,11 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		if mountPoint == opt.MountPoint {
 			return nil, nil, errors.NewErrorf("mountpoint:%v has been mounted", opt.MountPoint)
 		}
+	}
+
+	// Check if mount point directory is empty
+	if err = checkMountPointEmpty(opt.MountPoint); err != nil {
+		return nil, nil, err
 	}
 
 	master.BcacheOnlyForNotSSD = opt.EnableBcache && opt.BcacheOnlyForNotSSD
