@@ -645,7 +645,6 @@ func (client *ExtentClient) RefreshExtentsWithCache(inode *proto.InodeInfo) erro
 	if s == nil {
 		return nil
 	}
-
 	s.extents.update(inode.Extents.Generation, inode.Extents.Size, false, inode.Extents.Extents)
 	return nil
 }
