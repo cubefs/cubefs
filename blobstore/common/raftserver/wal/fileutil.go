@@ -26,8 +26,8 @@ const (
 	TrashPath = ".trash"
 )
 
-func InitPath(dir string, createTrush bool) error {
-	if createTrush {
+func InitPath(dir string, createTrash bool) error {
+	if createTrash {
 		dir = path.Join(dir, TrashPath)
 	}
 	info, err := os.Stat(dir)

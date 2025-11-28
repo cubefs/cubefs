@@ -57,6 +57,8 @@ type Config struct {
 
 	ProposeTimeout int `json:"propose_timeout"`
 
+	TrashLogReserveNum int `json:"trash_log_reserve_num"`
+
 	// if true, follower raft will not forward the proposal to leader.
 	DisableProposalForwarding bool `json:"disable_proposal_forwarding"`
 

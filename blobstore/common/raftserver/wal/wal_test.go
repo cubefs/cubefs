@@ -54,7 +54,7 @@ func TestRaftWal(t *testing.T) {
 	}
 	clear()
 	defer clear()
-	wal, err := OpenWal(dir, true)
+	wal, err := OpenWal(dir, true, 10)
 	require.Nil(t, err)
 
 	entries := make([]pb.Entry, 0, 100000)
@@ -159,7 +159,7 @@ func TestRaftWal(t *testing.T) {
 	require.Nil(t, err)
 	wal.Close()
 
-	wal, err = OpenWal(dir, true)
+	wal, err = OpenWal(dir, true, 10)
 	require.Nil(t, err)
 	wal.Close()
 }

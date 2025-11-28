@@ -22,10 +22,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/raftserver/wal"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"go.etcd.io/etcd/raft/v3"
 	pb "go.etcd.io/etcd/raft/v3/raftpb"
+
+	"github.com/cubefs/cubefs/blobstore/common/raftserver/wal"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -114,7 +115,7 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 	rs.readNotifier.Store(newReadIndexNotifier())
 
 	begin := time.Now()
-	store, err := NewRaftStorage(cfg.WalDir, cfg.WalSync, cfg.UseRocksdb, cfg.NodeId, rs.sm, rs.shotter)
+	store, err := NewRaftStorage(cfg.WalDir, cfg.WalSync, cfg.UseRocksdb, cfg.NodeId, cfg.TrashLogReserveNum, rs.sm, rs.shotter)
 	if err != nil {
 		return nil, err
 	}

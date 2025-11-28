@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -30,6 +31,7 @@ func openLogStorage(dir string) *fileWal {
 	return &fileWal{
 		dir:         dir,
 		nextFileSeq: 1,
+		closeCh:     make(chan struct{}),
 		cache: newLogFileCache(logfileCacheNum,
 			func(name logName) (*logFile, error) {
 				lf, err := openLogFile(dir, name, false)
@@ -194,4 +196,52 @@ func TestLogStoragetruncateBack(t *testing.T) {
 	})
 	require.NotNil(t, err)
 	ls.Close()
+}
+
+func TestRun(t *testing.T) {
+	dir := "/tmp/raftwal-run-" + string(genRandomBytes(8))
+	clear := func() {
+		os.RemoveAll(dir)
+	}
+	clear()
+	defer clear()
+
+	err := InitPath(dir, true)
+	require.Nil(t, err)
+
+	trashDir := dir + "/" + TrashPath
+	trashLogReserveNum := 3
+
+	for i := 0; i < 5; i++ {
+		name := logName{sequence: uint64(i), index: uint64(i * 100)}
+		f, createErr := os.Create(trashDir + "/" + name.String())
+		require.Nil(t, createErr)
+		f.Close()
+	}
+
+	files, err := listLogFiles(trashDir)
+	require.Nil(t, err)
+	require.Equal(t, 5, len(files))
+
+	trashCleanIntervalSec = 1
+
+	w := &fileWal{
+		dir:                dir,
+		closeCh:            make(chan struct{}),
+		trashLogReserveNum: trashLogReserveNum,
+	}
+
+	go w.run()
+
+	time.Sleep(5 * time.Second)
+
+	close(w.closeCh)
+
+	files, err = listLogFiles(trashDir)
+	require.Nil(t, err)
+	require.Equal(t, trashLogReserveNum, len(files))
+
+	require.Equal(t, uint64(2), files[0].sequence)
+	require.Equal(t, uint64(3), files[1].sequence)
+	require.Equal(t, uint64(4), files[2].sequence)
 }

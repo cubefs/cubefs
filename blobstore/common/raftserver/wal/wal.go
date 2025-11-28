@@ -19,9 +19,10 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"go.etcd.io/etcd/raft/v3"
 	pb "go.etcd.io/etcd/raft/v3/raftpb"
+
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 type Snapshot struct {
@@ -54,10 +55,13 @@ type fileWal struct {
 	st          Snapshot
 	mt          *meta
 	once        sync.Once
+	closeCh     chan struct{}
+
+	trashLogReserveNum int
 }
 
 // OpenWal
-func OpenWal(dir string, sync bool) (Wal, error) {
+func OpenWal(dir string, sync bool, trashLogReserveNum int) (Wal, error) {
 	dir = path.Clean(dir)
 	if err := InitPath(dir, true); err != nil {
 		return nil, err
@@ -84,6 +88,9 @@ func OpenWal(dir string, sync bool) (Wal, error) {
 		hs: hs,
 		st: st,
 		mt: mt,
+
+		closeCh:            make(chan struct{}),
+		trashLogReserveNum: trashLogReserveNum,
 	}
 
 	err = w.reload(st.Index + 1)
@@ -95,6 +102,8 @@ func OpenWal(dir string, sync bool) (Wal, error) {
 		log.Warnf("fix abnormal hardState commit, firstIndex: %d, lastIndex: %d, hardState: %v", w.FirstIndex(), w.LastIndex(), w.hs)
 		w.hs.Commit = w.LastIndex()
 	}
+
+	go w.run()
 
 	return w, nil
 }
@@ -200,5 +209,6 @@ func (w *fileWal) Close() {
 		w.cache.Close()
 		w.last.Close()
 		w.mt.Close()
+		close(w.closeCh)
 	})
 }

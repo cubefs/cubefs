@@ -23,8 +23,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/common/raftserver/wal"
 	pb "go.etcd.io/etcd/raft/v3/raftpb"
+
+	"github.com/cubefs/cubefs/blobstore/common/raftserver/wal"
 )
 
 const (
@@ -86,7 +87,7 @@ func (sm *storeSM) LeaderChange(leader uint64, host string) {
 func TestStorage(t *testing.T) {
 	{
 		os.RemoveAll(walDir)
-		store, err := NewRaftStorage(walDir, true, true, nodeId, &storeSM{}, newSnapshotter(5, time.Second*10))
+		store, err := NewRaftStorage(walDir, true, true, nodeId, 10, &storeSM{}, newSnapshotter(5, time.Second*10))
 		require.Nil(t, err)
 		hs, cs, _ := store.InitialState()
 		require.Equal(t, hs, pb.HardState{})
@@ -97,7 +98,7 @@ func TestStorage(t *testing.T) {
 
 	{
 		os.RemoveAll(walDir)
-		store, err := NewRaftStorage(walDir, true, true, nodeId, &storeSM{}, newSnapshotter(5, time.Second*10))
+		store, err := NewRaftStorage(walDir, true, true, nodeId, 10, &storeSM{}, newSnapshotter(5, time.Second*10))
 		require.Nil(t, err)
 		var entries []pb.Entry
 		for i := 0; i < 1000; i++ {

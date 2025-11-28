@@ -15,20 +15,26 @@
 package wal
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
 	"path"
 	"sort"
 	"syscall"
+	"time"
 
 	pb "go.etcd.io/etcd/raft/v3/raftpb"
+
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 const (
 	logfileSize     = 64 * 1024 * 1024
 	logfileCacheNum = 4
 )
+
+var trashCleanIntervalSec = 300
 
 func (w *fileWal) reload(firstIndex uint64) error {
 	names, err := listLogFiles(w.dir)
@@ -322,6 +328,34 @@ func (w *fileWal) saveEntry(ent *pb.Entry) error {
 	}
 
 	return nil
+}
+
+func (w *fileWal) run() {
+	if w.trashLogReserveNum <= 0 {
+		return
+	}
+
+	ticker := time.NewTicker(time.Duration(trashCleanIntervalSec) * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			span, _ := trace.StartSpanFromContext(context.Background(), "")
+			trashFiles, err := listLogFiles(path.Join(w.dir, TrashPath))
+			if err != nil {
+				span.Warnf("fileWal trashClean listLogFiles err %v", err)
+				continue
+			}
+			if len(trashFiles) > w.trashLogReserveNum {
+				for i := 0; i < len(trashFiles)-w.trashLogReserveNum; i++ {
+					err = os.Remove(path.Join(path.Join(w.dir, TrashPath), trashFiles[i].String()))
+					span.Warnf("fileWal trashClean remove file %s, err %v", trashFiles[i].String(), err)
+				}
+			}
+		case <-w.closeCh:
+			return
+		}
+	}
 }
 
 func isErrInvalid(err error) bool {

@@ -39,7 +39,7 @@ type raftStorage struct {
 	snapIndex uint64
 }
 
-func NewRaftStorage(walDir string, sync bool, use_rocksdb bool, nodeId uint64, sm StateMachine, shotter *snapshotter) (*raftStorage, error) {
+func NewRaftStorage(walDir string, sync bool, use_rocksdb bool, nodeId uint64, trashLogReserveNum int, sm StateMachine, shotter *snapshotter) (*raftStorage, error) {
 	rs := &raftStorage{
 		nodeId:  nodeId,
 		shotter: shotter,
@@ -55,7 +55,7 @@ func NewRaftStorage(walDir string, sync bool, use_rocksdb bool, nodeId uint64, s
 	if use_rocksdb {
 		w, err = wal.OpenRocksdbWal(walDir)
 	} else {
-		w, err = wal.OpenWal(walDir, sync)
+		w, err = wal.OpenWal(walDir, sync, trashLogReserveNum)
 	}
 	if err != nil {
 		return nil, err
