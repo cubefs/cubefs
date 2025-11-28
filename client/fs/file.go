@@ -284,8 +284,13 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 	log.LogDebugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
-	if f.info.Extents != nil && f.super.metaCacheAcceleration {
-		f.super.ec.RefreshExtentsWithCache(f.info)
+	if f.super.metaCacheAcceleration {
+		inodeInfo, err1 := f.super.InodeGet(ino)
+		if err1 == nil && inodeInfo != nil && inodeInfo.Extents != nil {
+			f.super.ec.RefreshExtentsWithCache(inodeInfo)
+		} else {
+			f.super.ec.RefreshExtentsCache(ino)
+		}
 	} else {
 		f.super.ec.RefreshExtentsCache(ino)
 	}
