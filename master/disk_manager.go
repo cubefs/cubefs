@@ -431,8 +431,14 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug, persist 
 
 	for _, dp := range partitions {
 		if dp.IsRollbackFailed() {
-			failedNum++
-			failedPartitionIds = append(failedPartitionIds, dp.PartitionID)
+			ns, _, err := getTargetNodeset(dp.DecommissionSrcAddr, c)
+			if err != nil || (ns != nil && !ns.decommissionDataPartitionList.Has(dp.PartitionID)) {
+				if err != nil {
+					log.LogWarnf("action[updateDecommissionStatus] dp %v find src nodeset failed:%v", dp.PartitionID, err.Error())
+				}
+				failedNum++
+				failedPartitionIds = append(failedPartitionIds, dp.PartitionID)
+			}
 		}
 
 		if dp.GetDecommissionStatus() == DecommissionRunning {
