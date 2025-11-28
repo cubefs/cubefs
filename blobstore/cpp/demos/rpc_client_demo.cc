@@ -120,7 +120,7 @@ seastar::future<> test_client(std::string host, uint16_t port) {
     }
 
     auto test_fn = [rpc_client_ptr = rpc_client.get(), host, port]() -> seastar::future<> {
-        co_await testNoBody(rpc_client_ptr, host, port, RoutePathIndex::Middle, 399);
+        co_await testNoBody(rpc_client_ptr, host, port, RoutePathIndex::Middle, 409);
         co_await seastar::sleep(std::chrono::milliseconds(1000));
 
         co_await testNoBody(rpc_client_ptr, host, port, RoutePathIndex::NotFound, 404);

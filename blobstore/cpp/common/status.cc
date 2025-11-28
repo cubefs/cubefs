@@ -4,28 +4,32 @@
 
 namespace blobstore {
 
-static thread_local char err_buf[128];
-
 static std::unordered_map<ErrCode, const char*> codeMaps = {
     {ErrCode::OK, "OK"},
+    {ErrCode::ErrInvalid, "invalid"},
     {ErrCode::ErrNotFound, "not found"},
+    {ErrCode::ErrTimeout, "timeout"},
+    {ErrCode::ErrConflict, "conflict"},
     {ErrCode::ErrEOF, "end of file"},
-    {ErrCode::ErrTooLarge, "content too large"},
-    {ErrCode::ErrUnknown, "unknown server error"},
+    {ErrCode::ErrTooLarge, "too large"},
+    {ErrCode::ErrEIO, "I/O error"},
+    {ErrCode::ErrClosed, "closed"},
+    {ErrCode::ErrUnsupported, "unsupported"},
+    {ErrCode::ErrDevice, "dev: device error"},
+    {ErrCode::ErrUnknown, "unknown error"},
+
+    {ErrCode::ErrNetwork, "net: rpc network error"},
+    {ErrCode::ErrNetworkPipe, "net: broken pipe"},
+    {ErrCode::ErrNetworkReset, "net: connection reset"},
+    {ErrCode::ErrNetworkProtocol, "net: protocol error"},
 };
 
 const char* GetReason(ErrCode code) {
     auto iter = codeMaps.find(code);
-    if (iter == codeMaps.end()) {
-#if (_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE
-        (void)strerror_r(static_cast<int>(code), err_buf, sizeof(err_buf));
-        return err_buf;
-#else
-        char* s = strerror_r(static_cast<int>(code), err_buf, sizeof(err_buf));
-        return s;
-#endif
+    if (iter != codeMaps.end()) {
+        return iter->second;
     }
-    return iter->second;
+    return codeMaps.at(ErrCode::ErrUnknown);
 }
 
 }  // namespace blobstore

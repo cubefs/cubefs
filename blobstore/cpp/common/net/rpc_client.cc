@@ -34,7 +34,7 @@ seastar::future<Status<ClientStreamPtr>> ClientMgr::GetClientStream(
     BufferAllocator *allocator) {
     Status<ClientStreamPtr> s;
     if (gate_.is_closed()) {
-        s.SetCode(EPIPE).SetReason("client_mgr is closed");
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason("net: client mgr has closed");
         LOG_ERROR("client_mgr on shard={} is closed, sa={}", seastar::this_shard_id(), sa);
         co_return s;
     }
@@ -143,8 +143,8 @@ seastar::future<Status<RpcResponseHeader>> RpcClientContext::ReadHeader(
         co_return s;
     }
     if (!resp_header.ParseFromZeroCopy(std::move(res.Value()))) {
-        s.SetCode(EINVAL);
-        last_status_.SetCode(EINVAL);
+        last_status_.SetCode(ErrCode::ErrNetworkProtocol).SetReason("net: parse header error");
+        s.SetCode(last_status_.Code()).SetReason(last_status_.Reason());
         co_return s;
     }
     s.SetValue(std::move(resp_header));
@@ -269,11 +269,11 @@ seastar::future<Status<std::unique_ptr<RpcClientContext>>> RpcClient::MakeRpcCli
         addr = co_await seastar::net::dns::resolve_name(seastar::sstring(host));
     } catch (std::system_error &e) {
         LOG_ERROR("resolve host={} error: {}", host, e.what());
-        s.SetCode(e.code().value()).SetReason(e.what());
+        s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
         co_return s;
     } catch (std::exception &e) {
         LOG_ERROR("resolve host={} error: {}", host, e.what());
-        s.SetCode(ErrCode::ErrUnknown).SetReason(e.what());
+        s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
         co_return s;
     }
     seastar::socket_address sa(addr, port);

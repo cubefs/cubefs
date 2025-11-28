@@ -5,13 +5,12 @@
 #include <seastar/core/seastar.hh>
 #include <seastar/core/sstring.hh>
 #include <string>
-#include <tuple>
 
 namespace blobstore {
 
 enum class ErrCode {
     OK = 200,
-    //////////custome error ////////
+    // custom error
     ErrInvalid = 400,
     ErrNotFound = 404,
     ErrTimeout = 408,
@@ -19,7 +18,16 @@ enum class ErrCode {
     ErrEOF = 410,
     ErrTooLarge = 413,
     ErrEIO = 424,
+    ErrClosed = 425,
+    ErrUnsupported = 426,
+    ErrDevice = 430,
     ErrUnknown = 500,
+
+    // net rpc error
+    ErrNetwork = 510,
+    ErrNetworkPipe = 511,
+    ErrNetworkReset = 512,
+    ErrNetworkProtocol = 513,
 };
 
 const char* GetReason(ErrCode code);
@@ -33,14 +41,10 @@ class StatusBase {
 
    public:
     StatusBase() noexcept : code_(ErrCode::OK) {}
-
-    explicit StatusBase(ErrCode code) noexcept : code_(code), reason_(GetReason(code)) {}
-
+    explicit StatusBase(ErrCode code) noexcept : code_(code) {}
     StatusBase(ErrCode code, const seastar::sstring& reason) noexcept
         : code_(code), reason_(reason) {}
-
     StatusBase(const StatusBase& other) noexcept : code_(other.code_), reason_(other.reason_) {}
-
     StatusBase(StatusBase&& other) noexcept
         : code_(other.code_), reason_(std::move(other.reason_)) {}
 
@@ -52,7 +56,6 @@ class StatusBase {
         }
         return *this;
     }
-
     StatusBase& operator=(StatusBase&& other) noexcept {
         if (this != &other) {
             code_ = other.code_;
@@ -63,11 +66,9 @@ class StatusBase {
     }
 
     explicit operator bool() const noexcept { return OK(); }
-
     bool OK() const noexcept { return code_ == ErrCode::OK; }
 
     ErrCode Code() const noexcept { return code_; }
-
     const seastar::sstring& Reason() const noexcept {
         if (reason_.empty()) {
             reason_ = GetReason(code_);
@@ -81,13 +82,6 @@ class StatusBase {
         InvalidateCache();
         return *this;
     }
-
-    StatusBase& SetCode(int code) noexcept {
-        code_ = static_cast<ErrCode>(code);
-        InvalidateCache();
-        return *this;
-    }
-
     StatusBase& SetReason(const seastar::sstring& reason) noexcept {
         reason_ = reason;
         InvalidateCache();

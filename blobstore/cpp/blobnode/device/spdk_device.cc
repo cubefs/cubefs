@@ -22,6 +22,8 @@
 namespace blobstore {
 namespace blobnode {
 
+static seastar::sstring kDevClosedSpdk = "dev: spdk device closed";
+
 #ifdef HAS_SPDK
 
 struct SpdkDeleter final : public seastar::deleter::impl {
@@ -85,7 +87,7 @@ seastar::future<Status<DevicePtr>> SpdkDevice::Create(const std::string_view nam
                                                       uint32_t qpair_n) noexcept {
     Status<DevicePtr> s;
 #ifndef HAS_SPDK
-    s.SetCode(ENOTSUP).SetReason("not support to create spdk device");
+    s.SetCode(ErrCode::ErrUnsupported).SetReason("dev: not support to create spdk device");
 #else
     if (qpair_n == 0 || qpair_n > 16) {
         qpair_n == 8;
@@ -93,7 +95,7 @@ seastar::future<Status<DevicePtr>> SpdkDevice::Create(const std::string_view nam
     std::unique_ptr<SpdkDevice> dev_ptr(new SpdkDevice());
     spdk_nvme_trid_populate_transport(&dev_ptr->trid_, SPDK_NVME_TRANSPORT_PCIE);
     if (0 != spdk_nvme_transport_id_parse(&dev_ptr->trid_, name.data())) {
-        s.SetCode(ENODEV).SetReason("invalid transport address");
+        s.SetCode(ErrCode::ErrUnsupported).SetReason("dev: invalid transport address");
         co_return s;
     }
     dev_ptr->name_ = name;
@@ -109,7 +111,7 @@ seastar::future<Status<DevicePtr>> SpdkDevice::Create(const std::string_view nam
     auto res = co_await req->pr.get_future();
     if (res == -1) {
         co_await dev_ptr->Close();
-        s.SetCode(ENODEV).SetReason("nvme probe error");
+        s.SetCode(ErrCode::ErrUnsupported).SetReason("dev: nvme probe error");
         co_return s;
     }
 
@@ -117,7 +119,7 @@ seastar::future<Status<DevicePtr>> SpdkDevice::Create(const std::string_view nam
         auto qpair = spdk_nvme_ctrlr_alloc_io_qpair(dev_ptr->ctrlr_, NULL, 0);
         if (qpair == NULL) {
             co_await dev_ptr->Close();
-            s.SetCode(ENODEV).SetReason("alloc io qpair error");
+            s.SetCode(ErrCode::ErrUnsupported).SetReason("dev: alloc io qpair error");
             co_return s;
         }
         dev_ptr->qpairs_.push_back(qpair);
@@ -140,12 +142,12 @@ seastar::future<Status<DevicePtr>> SpdkDevice::Create(const std::string_view nam
                 },
                 ns_req.get())) {
             co_await dev_ptr->Close();
-            s.SetCode(EIO).SetReason("reset zone error");
+            s.SetCode(ErrCode::ErrEIO).SetReason("dev: reset zone error");
             co_return s;
         }
         auto res = co_await ns_req->pr.get_future();
         if (res == -1) {
-            s.SetCode(EIO);
+            s.SetCode(ErrCode::ErrEIO).SetReason("dev: reset zone failed");
             co_await dev_ptr->Close();
             co_return s;
         }
@@ -155,13 +157,13 @@ seastar::future<Status<DevicePtr>> SpdkDevice::Create(const std::string_view nam
     if (dev_ptr->sector_size_ > kSectorSize) {
         LOG_ERROR("device {} sector size {} is larger than kSectorSize", dev_ptr->name_,
                   dev_ptr->sector_size_);
-        s.SetCode(EINVAL).SetReason("sector size is larger than kSectorSize");
+        s.SetCode(ErrCode::ErrInvalid).SetReason("dev: sector size is larger than kSectorSize");
         co_await dev_ptr->Close();
         co_return s;
     } else if (kSectorSize % dev_ptr->sector_size_ != 0) {
         LOG_ERROR("device {} physical sector size {} is invalid", dev_ptr->name_,
                   dev_ptr->sector_size_);
-        s.SetCode(EINVAL).SetReason("physical sector size is invalid");
+        s.SetCode(ErrCode::ErrInvalid).SetReason("dev: physical sector size is invalid");
         co_await dev_ptr->Close();
         co_return s;
     }
@@ -188,25 +190,25 @@ Buffer SpdkDevice::Alloc(size_t n) {
 seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, const char* b, size_t len) {
     Status<> s;
 #ifndef HAS_SPDK
-    s.SetCode(ENOTSUP).SetReason("not support spdk device");
+    s.SetCode(ErrCode::ErrUnsupported).SetReason("dev: not support spdk device");
 #else
     if (gate_.is_closed()) {
-        s.SetCode(ENODEV);
+        s.SetCode(ErrCode::ErrClosed).SetReason(kDevClosedSpdk);
         co_return s;
     }
     seastar::gate::holder holder(gate_);
     std::unique_ptr<request> req(new request);
     req->dev_ptr = this;
     if ((reinterpret_cast<uintptr_t>(b) & kMemoryAlignmentMask)) {
-        s.SetCode(EINVAL).SetReason("buffer address is not align");
+        s.SetCode(ErrCode::ErrInvalid).SetReason("dev: buffer address is not align");
         co_return s;
     }
     if ((len & (sector_size_ - 1)) || (pos & (sector_size_ - 1))) {
-        s.SetCode(EINVAL).SetReason("pos or len is not align sector");
+        s.SetCode(ErrCode::ErrInvalid).SetReason("dev: pos or len is not align sector");
         co_return s;
     }
     if (pos + len > capacity_) {
-        s.SetCode(ERANGE).SetReason("pos + len is larger than device capacity");
+        s.SetCode(ErrCode::ErrInvalid).SetReason("dev: pos+len is larger than device capacity");
         co_return s;
     }
     auto res = spdk_nvme_ns_cmd_write(
@@ -216,7 +218,7 @@ seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, const char* b, size_t 
             if (spdk_nvme_cpl_is_error(completion)) {
                 LOG_ERROR("I/O error status: {}",
                           spdk_nvme_cpl_get_status_string(&completion->status));
-                r->pr.set_value(EIO);
+                r->pr.set_value(-1);
                 return;
             }
             r->pr.set_value(0);
@@ -224,12 +226,14 @@ seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, const char* b, size_t 
         req.get(), 0);
     qpairs_idx_ = (qpairs_idx_ + 1) % qpairs_.size();
     if (res != 0) {
-        s.SetCode(-res);
+        s.SetCode(ErrCode::ErrEIO).SetReason("dev: spdk write submit error");
         co_return s;
     }
 
     auto code = co_await req->pr.get_future();
-    s.SetCode(code);
+    if (code != 0) {
+        s.SetCode(ErrCode::ErrEIO).SetReason("dev: spdk write I/O error");
+    }
 #endif
     co_return s;
 }
@@ -237,15 +241,15 @@ seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, const char* b, size_t 
 seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, std::vector<iovec> iov) {
     Status<> s;
 #ifndef HAS_SPDK
-    s.SetCode(ENOTSUP).SetReason("not support spdk device");
+    s.SetCode(ErrCode::ErrUnsupported).SetReason("dev: not support spdk device");
 #else
     if (gate_.is_closed()) {
-        s.SetCode(ENODEV).SetReason("device is closing");
+        s.SetCode(ErrCode::ErrClosed).SetReason(kDevClosedSpdk);
         co_return s;
     }
     seastar::gate::holder holder(gate_);
     if (pos & kSectorSizeMask) {
-        s.SetCode(EINVAL).SetReason("pos is not align sector");
+        s.SetCode(ErrCode::ErrInvalid).SetReason("dev: pos is not align sector");
         co_return s;
     }
 
@@ -254,11 +258,11 @@ seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, std::vector<iovec> iov
     for (int i = 0; i < iov.size(); i++) {
         if (((uint64_t)iov[i].iov_base & kMemoryAlignmentMask) ||
             (iov[i].iov_len & kSectorSizeMask)) {
-            s.SetCode(EINVAL).SetReason("data len is not align sector");
+            s.SetCode(ErrCode::ErrInvalid).SetReason("dev: data len is not align sector");
             break;
         }
         if (pos + iov[i].iov_len > capacity_) {
-            s.SetCode(ERANGE).SetReason("data len is larger than device capacity");
+            s.SetCode(ErrCode::ErrInvalid).SetReason("dev: data len is larger than capacity");
             break;
         }
         lba_count += iov[i].iov_len / sector_size_;
@@ -274,7 +278,7 @@ seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, std::vector<iovec> iov
             SpdkDevice::bulk_request* r = reinterpret_cast<SpdkDevice::bulk_request*>(arg);
             if (spdk_nvme_cpl_is_error(cpl)) {
                 LOG_ERROR("I/O error status: {}", spdk_nvme_cpl_get_status_string(&cpl->status));
-                r->pr.set_value(EIO);
+                r->pr.set_value(-1);
                 return;
             }
             r->pr.set_value(0);
@@ -294,13 +298,15 @@ seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, std::vector<iovec> iov
         });
     qpairs_idx_ = (qpairs_idx_ + 1) % qpairs_.size();
     if (res != 0) {
-        s.SetCode(-res);
-        LOG_ERROR("spdk nvme read error: {}", s);
+        s.SetCode(ErrCode::ErrEIO).SetReason("dev: spdk writev submit error");
+        LOG_ERROR("spdk nvme write error: {}", s);
         co_return s;
     }
 
     auto code = co_await req->pr.get_future();
-    s.SetCode(code);
+    if (code != 0) {
+        s.SetCode(ErrCode::ErrEIO).SetReason("dev: spdk writev I/O error");
+    }
 #endif
     co_return s;
 }
@@ -308,7 +314,7 @@ seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, std::vector<iovec> iov
 seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, std::vector<Buffer> buffers) {
     Status<> s;
 #ifndef HAS_SPDK
-    s.SetCode(ENOTSUP).SetReason("not support spdk device");
+    s.SetCode(ErrCode::ErrUnsupported).SetReason("dev: not support spdk device");
 #else
     std::vector<iovec> iov;
     for (int i = 0; i < buffers.size(); i++) {
@@ -325,19 +331,19 @@ seastar::future<Status<>> SpdkDevice::Write(uint64_t pos, std::vector<Buffer> bu
 seastar::future<Status<size_t>> SpdkDevice::Read(uint64_t pos, char* b, size_t len) {
     Status<size_t> s;
 #ifndef HAS_SPDK
-    s.SetCode(ENOTSUP).SetReason("not support spdk device");
+    s.SetCode(ErrCode::ErrUnsupported).SetReason("dev: not support spdk device");
 #else
     if (gate_.is_closed()) {
-        s.SetCode(ENODEV);
+        s.SetCode(ErrCode::ErrClosed).SetReason(kDevClosedSpdk);
         co_return s;
     }
     seastar::gate::holder holder(gate_);
     if ((pos & (sector_size_ - 1)) || (len & (sector_size_ - 1))) {
-        s.SetCode(EINVAL).SetReason("pos or len is not align sector");
+        s.SetCode(ErrCode::ErrInvalid).SetReason("dev: pos or len is not align sector");
         co_return s;
     }
     if ((reinterpret_cast<uintptr_t>(b) & kMemoryAlignmentMask)) {
-        s.SetCode(EINVAL).SetReason("buffer address is not align");
+        s.SetCode(ErrCode::ErrInvalid).SetReason("dev: buffer address is not align");
         co_return s;
     }
     if (pos >= capacity_) {
@@ -354,7 +360,7 @@ seastar::future<Status<size_t>> SpdkDevice::Read(uint64_t pos, char* b, size_t l
             SpdkDevice::request* r = reinterpret_cast<SpdkDevice::request*>(arg);
             if (spdk_nvme_cpl_is_error(cpl)) {
                 LOG_ERROR("I/O error status: {}", spdk_nvme_cpl_get_status_string(&cpl->status));
-                r->pr.set_value(EIO);
+                r->pr.set_value(-1);
                 return;
             }
             r->pr.set_value(0);
@@ -362,14 +368,15 @@ seastar::future<Status<size_t>> SpdkDevice::Read(uint64_t pos, char* b, size_t l
         req.get(), 0);
     qpairs_idx_ = (qpairs_idx_ + 1) % qpairs_.size();
     if (res != 0) {
-        s.SetCode(-res);
+        s.SetCode(ErrCode::ErrEIO).SetReason("dev: spdk read submit error");
         LOG_ERROR("spdk nvme read error: {}", s);
         co_return s;
     }
 
     auto code = co_await req->pr.get_future();
-    s.SetCode(code);
-    if (s) {
+    if (code != 0) {
+        s.SetCode(ErrCode::ErrEIO).SetReason("dev: spdk read I/O error");
+    } else {
         s.SetValue(len);
     }
 #endif
@@ -379,15 +386,15 @@ seastar::future<Status<size_t>> SpdkDevice::Read(uint64_t pos, char* b, size_t l
 seastar::future<Status<size_t>> SpdkDevice::Read(uint64_t pos, std::vector<iovec> iovs) {
     Status<size_t> s;
 #ifndef HAS_SPDK
-    s.SetCode(ENOTSUP).SetReason("not support spdk device");
+    s.SetCode(ErrCode::ErrUnsupported).SetReason("dev: not support spdk device");
 #else
     if (gate_.is_closed()) {
-        s.SetCode(ENODEV);
+        s.SetCode(ErrCode::ErrClosed).SetReason(kDevClosedSpdk);
         co_return s;
     }
     seastar::gate::holder holder(gate_);
     if (pos & kSectorSizeMask) {
-        s.SetCode(EINVAL).SetReason("pos is not align sector");
+        s.SetCode(ErrCode::ErrInvalid).SetReason("dev: pos is not align sector");
         co_return s;
     }
     if (pos >= capacity_) {
@@ -400,7 +407,7 @@ seastar::future<Status<size_t>> SpdkDevice::Read(uint64_t pos, std::vector<iovec
     for (int i = 0; i < iovs.size(); i++) {
         if (iovs[i].iov_len == 0 || (iovs[i].iov_len & kSectorSizeMask) ||
             (reinterpret_cast<uintptr_t>(iovs[i].iov_base) & kMemoryAlignmentMask)) {
-            s.SetCode(EINVAL).SetReason("iov is not align sector");
+            s.SetCode(ErrCode::ErrInvalid).SetReason("dev: iov is not align sector");
             co_return s;
         }
         lba_count += iovs[i].iov_len / sector_size_;
@@ -420,10 +427,10 @@ seastar::future<Status<size_t>> SpdkDevice::Read(uint64_t pos, std::vector<iovec
             SpdkDevice::bulk_request* r = reinterpret_cast<SpdkDevice::bulk_request*>(arg);
             if (spdk_nvme_cpl_is_error(cpl)) {
                 LOG_ERROR("I/O error status: {}", spdk_nvme_cpl_get_status_string(&cpl->status));
-                r->pr.set_value(EIO);
+                r->pr.set_value(-1);
                 return;
             }
-            r->pr.set_value((int)ErrCode::OK);
+            r->pr.set_value(0);
         },
         req.get(), 0, [](void* arg, uint32_t sql_offset) {},
         [](void* arg, void** address, uint32_t* length) -> int {
@@ -440,14 +447,15 @@ seastar::future<Status<size_t>> SpdkDevice::Read(uint64_t pos, std::vector<iovec
         });
 
     if (res != 0) {
-        s.SetCode(-res);
+        s.SetCode(ErrCode::ErrEIO).SetReason("dev: spdk readv submit error");
         LOG_ERROR("spdk nvme readv error: {}", s);
         co_return s;
     }
 
     auto code = co_await req->pr.get_future();
-    s.SetCode(code);
-    if (s) {
+    if (code != 0) {
+        s.SetCode(ErrCode::ErrEIO).SetReason("dev: spdk readv I/O error");
+    } else {
         s.SetValue(lba_count * sector_size_);
     }
 #endif

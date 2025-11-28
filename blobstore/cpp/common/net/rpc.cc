@@ -60,7 +60,7 @@ seastar::future<Status<Buffer>> RpcServerContext::StreamRead(std::chrono::millis
         req_header_.Clear();
         Buffer b = std::move(s.Value());
         if (!req_header_.ParseFrom(b.get(), b.size())) {
-            s.SetCode(ErrCode::ErrInvalid);
+            s.SetCode(ErrCode::ErrNetworkProtocol);
             co_return s;
         }
         proto::StreamCmd cmd = req_header_.StreamCmd();
@@ -68,7 +68,7 @@ seastar::future<Status<Buffer>> RpcServerContext::StreamRead(std::chrono::millis
             has_fin_ = true;
             co_return s;
         } else if (cmd != proto::StreamCmd::PSH) {
-            s.SetCode(ErrCode::ErrInvalid);
+            s.SetCode(ErrCode::ErrNetworkProtocol);
             co_return s;
         }
 
@@ -100,7 +100,7 @@ seastar::future<Status<Buffer>> RpcServerContext::ReadBody(std::chrono::millisec
         case proto::StreamCmd::FIN:
             break;
         default:
-            s.SetCode(EINVAL);
+            s.SetCode(ErrCode::ErrNetworkProtocol).SetReason("net: unknown command type");
             break;
     }
     return seastar::make_ready_future<Status<Buffer>>(std::move(s));

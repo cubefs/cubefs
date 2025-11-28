@@ -33,7 +33,7 @@ bool TcpStream::Valid() const { return !gate_.is_closed() && sess_ && sess_->Val
 seastar::future<Status<Buffer>> TcpStream::ReadFrameInternal(std::chrono::milliseconds timeout) {
     Status<seastar::temporary_buffer<char>> s;
     if (gate_.is_closed()) {
-        s.SetCode(EPIPE);
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
         co_return s;
     }
     seastar::gate::holder holder(gate_);
@@ -48,7 +48,7 @@ seastar::future<Status<Buffer>> TcpStream::ReadFrameInternal(std::chrono::millis
     uint32_t n = static_cast<uint32_t>(b.size());
     buffer_size_ -= n;
     if (!sess_) {
-        s.SetCode(EPIPE).SetReason("session has closed");
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
         co_return s;
     }
     sess_->ReturnTokens(n);
@@ -70,12 +70,12 @@ seastar::future<Status<>> TcpStream::WaitRead(std::chrono::milliseconds timeout)
     Status<> s;
     seastar::timer<seastar::lowres_clock> wait_timer([this, &s] {
         r_cv_.signal();
-        s.SetCode(ETIME);
+        s.SetCode(ErrCode::ErrTimeout);
     });
 
     for (int i = 0; i < 2; i++) {
         if (gate_.is_closed() || !sess_) {
-            s.SetCode(EPIPE);
+            s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
             break;
         }
         if (has_fin_) {
@@ -126,7 +126,7 @@ seastar::future<Status<>> TcpStream::SendWindowUpdate(uint32_t consumed) {
     LittleEndian::PutUint32(data.get_write() + 4, kMaxStreamBufferSize);
     f.packet = std::move(seastar::net::packet(std::move(data)));
     if (!sess_) {
-        s.SetCode(EPIPE).SetReason("session is closed");
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
     } else {
         s = co_await sess_->WriteFrameInternal(std::move(f), TcpSession::ClassID::DATA);
     }
@@ -169,7 +169,7 @@ seastar::future<Status<>> TcpStream::WriteFrame(std::vector<iovec> iov) {
         Status<> s;
 
         if (gate_.is_closed()) {
-            s.SetCode(EPIPE);
+            s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
             co_return s;
         }
         if (has_fin_) {
@@ -179,7 +179,7 @@ seastar::future<Status<>> TcpStream::WriteFrame(std::vector<iovec> iov) {
         seastar::gate::holder holder(gate_);
 
         if (iov.size() >= IOV_MAX) {
-            s.SetCode(EMSGSIZE);
+            s.SetCode(ErrCode::ErrTooLarge).SetReason("net: iov size exceeds IOV_MAX");
             co_return s;
         }
 
@@ -190,7 +190,7 @@ seastar::future<Status<>> TcpStream::WriteFrame(std::vector<iovec> iov) {
             packet.append(std::move(p));
         }
         if (packet.len() > frame_size_) {
-            s.SetCode(EMSGSIZE);
+            s.SetCode(ErrCode::ErrTooLarge).SetReason("net: packet size exceeds frame size");
             co_return s;
         } else if (packet.len() == 0) {
             co_return s;
@@ -201,7 +201,7 @@ seastar::future<Status<>> TcpStream::WriteFrame(std::vector<iovec> iov) {
         while (inflight < 0 || win <= 0) {
             co_await wnd_cv_.wait();
             if (gate_.is_closed()) {
-                s.SetCode(EPIPE);
+                s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
                 co_return s;
             }
             if (has_fin_) {
@@ -218,7 +218,7 @@ seastar::future<Status<>> TcpStream::WriteFrame(std::vector<iovec> iov) {
         frame.sid = id_;
         frame.packet = std::move(packet);
         if (!sess_) {
-            s.SetCode(EPIPE).SetReason("session is closed");
+            s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
         } else {
             s = co_await sess_->WriteFrameInternal(std::move(frame), TcpSession::ClassID::DATA);
         }

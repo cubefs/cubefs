@@ -4,6 +4,7 @@
 
 #include <seastar/core/future.hh>
 #include <seastar/core/shared_ptr.hh>
+#include <seastar/core/sstring.hh>
 #include <seastar/core/temporary_buffer.hh>
 #include <seastar/core/weak_ptr.hh>
 #include <string>
@@ -14,6 +15,9 @@
 
 namespace blobstore {
 namespace net {
+
+static const seastar::sstring kErrorPipeSession = "net: broken pipe session has closed";
+static const seastar::sstring kErrorPipeClient = "net: broken pipe client has closed";
 
 struct Option {
     bool keep_alive_enable = true;

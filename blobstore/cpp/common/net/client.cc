@@ -69,12 +69,12 @@ seastar::future<Status<ClientStreamPtr>> Client::TryGetExistingStream() {
     Status<ClientStreamPtr> s;
 
     if (!sess_impl_ || !sess_impl_->sess_->Valid()) {
-        s.SetCode(ECONNABORTED).SetReason("No valid session");
+        s.SetCode(ErrCode::ErrNetwork).SetReason("net: no valid session");
         co_return s;
     }
 
     if (gate_.is_closed()) {
-        s.SetCode(EPIPE).SetReason("Client is closing");
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeClient);
         co_return s;
     }
 
@@ -125,7 +125,7 @@ seastar::future<Status<ClientStreamPtr>> Client::TryGetExistingStream() {
 
     if (!gate_.try_enter()) {
         co_await stream_result.Value()->Close();
-        s.SetCode(EPIPE).SetReason("Client is closing");
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeClient);
         co_return s;
     }
 
@@ -152,7 +152,7 @@ seastar::future<Status<Client::SessionImplPtr>> Client::CreateNewConnection() {
     Status<Client::SessionImplPtr> s;
 
     if (gate_.is_closed()) {
-        s.SetCode(EPIPE).SetReason("client is closing");
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeClient);
         co_return s;
     }
     // 清理旧会话
@@ -184,10 +184,10 @@ seastar::future<Status<Client::SessionImplPtr>> Client::CreateNewConnection() {
     try {
         fd = seastar::engine().make_pollable_fd(sa_, 0);
     } catch (const std::system_error& e) {
-        s.SetCode(e.code().value()).SetReason(e.what());
+        s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
         co_return s;
     } catch (const std::exception& e) {
-        s.SetCode(ErrCode::ErrUnknown).SetReason(e.what());
+        s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
         co_return s;
     }
 
@@ -202,9 +202,9 @@ seastar::future<Status<Client::SessionImplPtr>> Client::CreateNewConnection() {
         int opt = 1;
         fd.get_file_desc().setsockopt(IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
     } catch (const std::system_error& e) {
-        s.SetCode(e.code().value()).SetReason(e.what());
+        s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
     } catch (const std::exception& e) {
-        s.SetCode(ErrCode::ErrUnknown).SetReason(e.what());
+        s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
     }
 
     timer.cancel();
@@ -227,7 +227,7 @@ seastar::future<Status<Client::SessionImplPtr>> Client::CreateNewConnection() {
 seastar::future<Status<ClientStreamPtr>> Client::GetClientStream() {
     Status<ClientStreamPtr> s;
     if (gate_.is_closed()) {
-        s.SetCode(EPIPE).SetReason("Client is closed or closing");
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeClient);
         co_return s;
     }
 

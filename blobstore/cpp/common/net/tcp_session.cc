@@ -97,7 +97,7 @@ seastar::future<> TcpSession::HandlePsh(
         if (!s) {
             SetStatus(s.Code(), s.Reason());
         } else {
-            SetStatus(static_cast<ErrCode>(ECONNRESET));
+            SetStatus(ErrCode::ErrNetworkReset, "net: connection reset");
         }
         co_return;
     }
@@ -112,7 +112,7 @@ seastar::future<> TcpSession::HandlePsh(
 seastar::future<> TcpSession::HandleUpd(
     Frame f, uint32_t len, seastar::timer<seastar::lowres_clock> *read_timer) noexcept {
     if (len != 8) {
-        SetStatus(static_cast<ErrCode>(EINVAL));
+        SetStatus(ErrCode::ErrNetworkProtocol, "net: invalid update frame length");
         co_return;
     }
     char buf[8];
@@ -127,7 +127,7 @@ seastar::future<> TcpSession::HandleUpd(
         if (!s) {
             SetStatus(s.Code(), s.Reason());
         } else {
-            SetStatus(static_cast<ErrCode>(ECONNRESET));
+            SetStatus(ErrCode::ErrNetworkReset, "net: connection reset");
         }
         co_return;
     }
@@ -148,7 +148,7 @@ seastar::future<> TcpSession::RecvLoop() {
     seastar::gate::holder holder(gate_);
     seastar::timer<seastar::lowres_clock> pong_timer;
     pong_timer.set_callback([this] {
-        SetStatus(static_cast<ErrCode>(ETIMEDOUT));
+        SetStatus(ErrCode::ErrTimeout, "net: pong timeout");
         conn_->Close();
     });
 
@@ -175,18 +175,18 @@ seastar::future<> TcpSession::RecvLoop() {
         }
 
         if (s.Value() == 0) {
-            SetStatus(static_cast<ErrCode>(ECONNRESET));
+            SetStatus(ErrCode::ErrNetworkReset, "net: connection reset");
             break;
         }
         Frame f;
         uint32_t len = f.Unmarshal(hdr);
         if (f.ver != 2) {
-            SetStatus(static_cast<ErrCode>(EBADMSG));
+            SetStatus(ErrCode::ErrNetworkProtocol, "net: invalid protocol version");
             break;
         }
         CmdType type = static_cast<CmdType>(f.cmd);
         if (type != CmdType::PSH && type != CmdType::UPD && len != 0) {
-            SetStatus(static_cast<ErrCode>(EBADMSG));
+            SetStatus(ErrCode::ErrNetworkProtocol, "net: invalid frame format");
             break;
         }
         switch (type) {
@@ -208,7 +208,7 @@ seastar::future<> TcpSession::RecvLoop() {
                 co_await HandleUpd(std::move(f), len, (wait_pong ? &pong_timer : nullptr));
                 break;
             default:
-                SetStatus(static_cast<ErrCode>(EINVAL));
+                SetStatus(ErrCode::ErrNetworkProtocol, "net: unknown command type");
                 break;
         }
     }
@@ -227,7 +227,7 @@ seastar::future<> TcpSession::SendLoop() {
     }
     seastar::gate::holder holder(gate_);
     write_timer.set_callback([this] {
-        SetStatus(static_cast<ErrCode>(ETIMEDOUT));
+        SetStatus(ErrCode::ErrTimeout, "net: write timeout");
         conn_->Close();
     });
 
@@ -314,7 +314,7 @@ seastar::future<> TcpSession::SendLoop() {
     accept_cv_.signal();
     accept_sem_.signal();
     token_cv_.signal();
-    SetStatus(static_cast<ErrCode>(EPIPE));
+    SetStatus(ErrCode::ErrNetworkPipe, kErrorPipeSession);
     ClearWriteq();
     keepalive_timer_.cancel();
     co_await std::move(fu);
@@ -355,7 +355,7 @@ void TcpSession::ReturnTokens(uint32_t n) {
 seastar::future<Status<>> TcpSession::WriteFrameInternal(Frame f, ClassID classid) {
     Status<> s;
     if (gate_.is_closed()) {
-        s.SetCode(EPIPE);
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
         co_return s;
     }
     if (!status_) {
@@ -395,13 +395,13 @@ void TcpSession::WritePingPong(bool ping) {
 seastar::future<Status<StreamPtr>> TcpSession::OpenStream() {
     Status<StreamPtr> s;
     if (gate_.is_closed()) {
-        s.SetCode(EPIPE);
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
         co_return s;
     }
     seastar::gate::holder holder(gate_);
     uint32_t id = next_id_ + 2;
     if (id < next_id_) {
-        s.SetCode(ENOSR);
+        s.SetCode(ErrCode::ErrNetwork).SetReason("net: stream id overflow");
         co_return s;
     }
     next_id_ = id;
@@ -418,7 +418,7 @@ seastar::future<Status<StreamPtr>> TcpSession::OpenStream() {
         co_return s;
     }
     if (gate_.is_closed()) {
-        s.SetCode(EPIPE);
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
         co_return s;
     }
     if (!status_) {
@@ -433,14 +433,14 @@ seastar::future<Status<StreamPtr>> TcpSession::OpenStream() {
 seastar::future<Status<StreamPtr>> TcpSession::AcceptStream() {
     Status<StreamPtr> s;
     if (gate_.is_closed()) {
-        s.SetCode(EPIPE).SetReason("tcp session is closing");
+        s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
         co_return s;
     }
     seastar::gate::holder holder(gate_);
 
     for (;;) {
         if (gate_.is_closed()) {
-            s.SetCode(EPIPE).SetReason("tcp session is closing");
+            s.SetCode(ErrCode::ErrNetworkPipe).SetReason(kErrorPipeSession);
             break;
         }
         if (!status_.OK()) {

@@ -19,9 +19,9 @@ seastar::future<Status<>> TcpConnection::Write(seastar::net::packet&& p) {
             try {
                 rethrow_exception(eptr);
             } catch (std::system_error& e) {
-                s.SetCode(e.code().value());
+                s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
             } catch (std::exception& e) {
-                s.SetCode(ErrCode::ErrUnknown).SetReason(e.what());
+                s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
             }
             return s;
         }
@@ -37,9 +37,9 @@ seastar::future<Status<size_t>> TcpConnection::Read(char* buffer, size_t len) {
             try {
                 rethrow_exception(eptr);
             } catch (std::system_error& e) {
-                s.SetCode(e.code().value());
+                s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
             } catch (std::exception& e) {
-                s.SetCode(ErrCode::ErrUnknown).SetReason(e.what());
+                s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
             }
             return s;
         }
@@ -60,10 +60,10 @@ seastar::future<Status<size_t>> TcpConnection::ReadExactly(char* buffer, size_t 
                 break;
             }
         } catch (std::system_error& e) {
-            s.SetCode(e.code().value());
+            s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
             co_return s;
         } catch (std::exception& e) {
-            s.SetCode(ErrCode::ErrUnknown).SetReason(e.what());
+            s.SetCode(ErrCode::ErrNetwork).SetReason(e.what());
             co_return s;
         }
     }

@@ -18,6 +18,7 @@
 namespace bpo = boost::program_options;
 
 namespace {  // valid scope in local file
+using ::blobstore::ErrCode;
 using ::blobstore::FutureStatus;
 using ::blobstore::Status;
 using ::blobstore::net::RpcRequestHeader;
@@ -43,8 +44,7 @@ class SimpleService {
         Status<> s;
         RpcRequestHeader& req_header = ctx->GetRpcRequestHeader();
         if (req_header.RemotePathIndex() == +RoutePathIndex::Middle) {
-            s.SetCode(399);
-            s.SetReason("CustomStop");
+            s.SetCode(ErrCode::ErrConflict).SetReason("demo: CustomStop");
             co_return s;
         }
         auto& trace = ctx->Trace();
@@ -62,7 +62,7 @@ class SimpleService {
         LOG_INFO("{} handlePing: remote: {}", trace.TraceID(), ctx->RemoteAddress());
 
         RpcResponseHeader resp_header;
-        resp_header.SetCode(blobstore::ErrCode::OK);
+        resp_header.SetCode(ErrCode::OK);
         s = co_await ctx->WriteHeader(std::move(resp_header));
 
         trace.Append("ping", start);
@@ -108,8 +108,7 @@ class SimpleService {
     FutureStatus<> HandleError(RpcServerContext* ctx) {
         RpcResponseHeader resp_header;
         resp_header.SetCode(567);
-        std::string reason = "CustomError";
-        resp_header.SetReason(reason);
+        resp_header.SetReason(std::string("demo: CustomError"));
         co_return co_await ctx->WriteHeader(std::move(resp_header));
     }
 };
