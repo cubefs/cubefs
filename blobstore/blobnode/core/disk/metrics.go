@@ -49,6 +49,7 @@ func (ds *DiskStorage) loopMetricReport() {
 	for {
 		select {
 		case <-ds.closeCh:
+			span.Warn("loop disk metric report done.")
 			return
 		case <-ticker.C:
 			ds.metricReport(ctx)

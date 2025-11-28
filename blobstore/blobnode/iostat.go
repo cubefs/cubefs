@@ -42,7 +42,7 @@ func (s *Service) loopCleanExpiredStatFile() {
 	for {
 		select {
 		case <-s.closeCh:
-			span.Warnf("loop clean expired stat file")
+			span.Warnf("loop clean expired stat file done.")
 			return
 		case <-ticker.C:
 			s.cleanExpiredStatFile()

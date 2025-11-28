@@ -260,11 +260,11 @@ type DiskStorage struct {
 	// status
 	status       proto.DiskStatus
 	isMountPoint bool
-	closed       bool
+	closed       int32
 
 	// chan
 	compactCh chan proto.Vuid
-	closeCh   chan struct{}
+	closeCh   chan struct{} // closing signal
 
 	// ctx is used for initiated requests that
 	// may need to be canceled on server shutdown.
@@ -272,7 +272,7 @@ type DiskStorage struct {
 	ctx context.Context
 
 	// hook fn
-	OnClosed func()
+	onClosed func()
 
 	CreateAt     int64
 	LastUpdateAt int64
@@ -288,45 +288,39 @@ func (ds *DiskStorage) IsRegister() bool {
 func (ds *DiskStorage) Close(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	ds.Lock.Lock()
-	defer ds.Lock.Unlock()
-
-	if ds.closed {
+	const isClosed = int32(1)
+	if atomic.LoadInt32(&ds.closed) == isClosed {
 		span.Panicf("can not happened. diskId:%v", ds.DiskID)
 		return
 	}
 
-	span.Infof("== closing diskID:%v ==", ds.DiskID)
-
-	if ds.OnClosed != nil {
-		ds.OnClosed()
-	}
-
-	if ds.closeCh != nil {
-		close(ds.closeCh)
-	}
+	span.Warnf("== closing diskID:%d == [START]", ds.DiskID)
 	// wait loop in goroutine
 	go func() {
 		// wait all loop done
 		ds.waitAllLoopsStop(ctx)
 
-		// clean chunk map
-		ds.Chunks = make(map[proto.Vuid]core.ChunkAPI)
+		// already clean chunks map at svr.Close
+		// ds.Chunks = make(map[proto.Vuid]core.ChunkAPI)
 
 		// clean superblock
 		sb := ds.SuperBlock
 		if sb != nil {
 			sb.Close(ctx)
 			ds.SuperBlock = nil
+			span.Infof("== closing diskID:%d == superblock closed", ds.DiskID)
 		}
 
-		ds.closed = true
+		span.Warnf("== closing diskID:%d == [DONE]", ds.DiskID)
+		ds.onClosed()
+		atomic.StoreInt32(&ds.closed, isClosed)
 	}()
 
 	for _, pool := range ds.ioPools {
 		pool.Close()
 	}
 	ds.dataQos.Close()
+	span.Infof("== closing diskID:%d == io pools and qos closed", ds.DiskID)
 }
 
 func (ds *DiskStorage) DiskInfo() (info clustermgr.BlobNodeDiskInfo) {
@@ -405,11 +399,31 @@ func (ds *DiskStorage) SetStatus(status proto.DiskStatus) {
 	ds.Lock.Unlock()
 }
 
+func (ds *DiskStorage) PrepareClose(ctx context.Context) {
+	ds.preClose(ctx)
+	ds.ResetChunks(ctx)
+}
+
 func (ds *DiskStorage) ResetChunks(ctx context.Context) {
 	ds.Lock.Lock()
 	defer ds.Lock.Unlock()
 
+	span := trace.SpanFromContextSafe(ctx)
+	span.Warnf("reset chunks map. diskID:%d, chunks len:%d", ds.DiskID, len(ds.Chunks))
 	ds.Chunks = make(map[proto.Vuid]core.ChunkAPI)
+}
+
+func (ds *DiskStorage) IsClosing() bool {
+	select {
+	case <-ds.closeCh:
+		return true
+	default:
+		return false
+	}
+}
+
+func (ds *DiskStorage) SetOnCloseFn(fn func()) {
+	ds.onClosed = fn
 }
 
 func (ds *DiskStorage) ReleaseChunk(ctx context.Context, vuid proto.Vuid, force bool) (err error) {
@@ -652,7 +666,11 @@ func (ds *DiskStorage) WalkChunksWithLock(ctx context.Context, walkFn func(cs co
 func (ds *DiskStorage) IsCleanUp(ctx context.Context) bool {
 	span := trace.SpanFromContextSafe(ctx)
 
-	if len(ds.Chunks) != 0 { // all chunks handler in memory
+	ds.Lock.RLock()
+	chunkLen := len(ds.Chunks)
+	ds.Lock.RUnlock()
+
+	if chunkLen != 0 { // all chunks handler in memory
 		span.Debugf("diskID:%d is not clean, used chunk cnt:%d", ds.DiskID, len(ds.Chunks))
 		return false
 	}
@@ -902,6 +920,16 @@ func (ds *DiskStorage) isChunksExceeded(ctx context.Context, chunksize int64) bo
 	return false
 }
 
+func (ds *DiskStorage) preClose(ctx context.Context) {
+	ds.Lock.Lock()
+	defer ds.Lock.Unlock()
+
+	// stop loop background function
+	if ds.closeCh != nil {
+		close(ds.closeCh)
+	}
+}
+
 func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrapper, err error) {
 	ds, err := newDiskStorage(ctx, conf)
 	if err != nil {
@@ -1074,6 +1102,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		Conf:             &conf,
 		closeCh:          make(chan struct{}),
 		compactCh:        make(chan proto.Vuid),
+		onClosed:         func() {},
 		ctx:              ctx,
 		status:           dm.Status,
 		isMountPoint:     myos.IsMountPoint(conf.Path),

@@ -145,6 +145,17 @@ func (mock *diskMock) Close(ctx context.Context) {
 	// do nothing
 }
 
+func (mock *diskMock) PrepareClose(ctx context.Context) {
+	// do nothing
+}
+
+func (mock *diskMock) IsClosing() bool {
+	return false
+}
+
+func (mock *diskMock) SetOnCloseFn(fn func()) {
+}
+
 func ensureTestDir(t *testing.T, diskRoot string) (root, meta, data string) {
 	err := core.EnsureDiskArea(diskRoot, "")
 	require.NoError(t, err)

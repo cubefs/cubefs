@@ -98,12 +98,11 @@ func TestNewDiskStorage(t *testing.T) {
 	require.Equal(t, len(ds.Chunks), 2)
 
 	done := make(chan struct{})
-	ds.OnClosed = func() {
+	ds.SetOnCloseFn(func() {
 		close(done)
-	}
+	})
 
-	ds.ResetChunks(ctx)
-
+	ds.PrepareClose(ctx)
 	ds = nil
 
 	// tigger gc
@@ -511,7 +510,7 @@ func TestCleanChunk(t *testing.T) {
 	err = ds.cleanReleasedChunks()
 	require.NoError(t, err)
 
-	ds.ResetChunks(ctx)
+	ds.PrepareClose(ctx)
 	ds = nil
 	runtime.GC()
 }
@@ -610,12 +609,12 @@ func TestDiskstorage_Finalizer(t *testing.T) {
 
 	var cnt int
 	done := make(chan struct{})
-	ds.OnClosed = func() {
+	ds.SetOnCloseFn(func() {
 		cnt++
 		close(done)
-	}
+	})
 
-	ds.ResetChunks(ctx)
+	ds.PrepareClose(ctx)
 	ds = nil
 	// Trigger recycling
 	for i := 0; i < 3; i++ {

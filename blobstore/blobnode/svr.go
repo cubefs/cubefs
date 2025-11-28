@@ -100,13 +100,13 @@ func (s *Service) Close() {
 
 	// notify loop
 	close(s.closeCh)
-	span.Warnf("close closeCh done")
+	span.Warn("close closeCh done")
 
 	s.cancel()
 
 	// wait all requests done.
 	s.waitAllRequestsDone(ctx)
-	span.Warnf("all requests done")
+	span.Warn("all requests done")
 
 	// sync chunks
 	chunks := s.copyChunkStorages(ctx)
@@ -115,31 +115,48 @@ func (s *Service) Close() {
 			span.Errorf("Failed sync err:%v", err)
 		}
 	}
+	span.Warn("sync all chunks done")
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	// reset chunks
+	// reset chunks, concurrently
+	span.Warnf("resetting chunks for %d disks", len(s.Disks))
+	var wgClosing, wgClosed sync.WaitGroup
+	wgClosing.Add(len(s.Disks))
+	wgClosed.Add(len(s.Disks))
 	for _, d := range s.Disks {
-		d.ResetChunks(ctx)
+		go func(d core.DiskAPI) {
+			d.SetOnCloseFn(func() { wgClosed.Done() })
+			d.PrepareClose(ctx) // stop background tasks and clean chunks map
+			wgClosing.Done()
+		}(d)
 	}
+	wgClosing.Wait()
 
 	// reset nil
 	s.Disks = nil
+	span.Warn("reset chunks and disks done, Disks set to nil, finalizers should trigger")
 
 	// at least two rounds of garbage collection
+	span.Warn("starting GC rounds to trigger finalizers")
 	for i := 0; i < 4; i++ {
 		runtime.GC()
 		time.Sleep(time.Second)
+		span.Warnf("GC round %d/4 done", i+1)
 	}
+	span.Warn("server GC done, all finalizers should have been triggered")
 
+	// ensure all disks are closed
+	wgClosed.Wait()
+	span.Warn("all disks closed")
 	s.closed = true
 
 	if s.WorkerService != nil {
 		s.WorkerService.Close()
 	}
 
-	span.Info("service close done.")
+	span.Warn("service close done.")
 }
 
 /*

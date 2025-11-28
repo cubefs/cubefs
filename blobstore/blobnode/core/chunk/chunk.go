@@ -757,13 +757,19 @@ func (cs *chunk) close(ctx context.Context) {
 		return
 	}
 
+	diskID := proto.DiskID(0)
+	if cs.disk != nil {
+		diskID = cs.disk.ID()
+	}
+
 	if cs.onClosed != nil {
 		cs.onClosed()
 	}
 
 	stg := cs.getStg()
+	chunkID := stg.ID()
 
-	span.Infof("== closing vuid:[%v], chunkid:[%v] ==", cs.vuid, stg.ID())
+	span.Infof("== closing vuid:[%d], chunkid:[%s], diskID:[%d] == [START]", cs.vuid, chunkID, diskID)
 
 	stg.Close(ctx)
 
@@ -772,6 +778,8 @@ func (cs *chunk) close(ctx context.Context) {
 	cs.disk = nil
 
 	cs.closed = true
+
+	span.Infof("== closing vuid:[%d], chunkid:[%s], diskID:[%d] == [DONE]", cs.vuid, chunkID, diskID)
 }
 
 func (cs *chunk) Close(ctx context.Context) {

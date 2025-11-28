@@ -32,6 +32,9 @@ const (
 )
 
 func (ds *DiskStorage) EnqueueCompact(ctx context.Context, vuid proto.Vuid) {
+	if ds.IsClosing() {
+		return
+	}
 	ds.compactCh <- vuid
 }
 
@@ -106,7 +109,7 @@ STOPCOMPACT:
 }
 
 func (ds *DiskStorage) ExecCompactChunk(vuid proto.Vuid) (err error) {
-	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", base.BackgroudReqID("Compact"+ds.Conf.Path))
+	span, ctx := trace.StartSpanFromContextWithTraceID(ds.ctx, "", base.BackgroudReqID("Compact"+ds.Conf.Path))
 
 	cs, found := ds.GetChunkStorage(vuid)
 	if !found {
@@ -161,9 +164,14 @@ func (ds *DiskStorage) loopCompactFile() {
 	// consumer
 	ds.loopAttach(func() {
 		for {
+			if ds.IsClosing() {
+				span.Warn("loop compact consumer done...")
+				return
+			}
+
 			select {
 			case <-ds.closeCh:
-				span.Warnf("loopCompact done...")
+				span.Warn("loop compact consumer done...")
 				return
 			case vuid := <-ds.compactCh:
 				span.Debugf("recv compact message. vuid:[%d]", vuid)
@@ -180,7 +188,7 @@ func (ds *DiskStorage) loopCompactFile() {
 	for {
 		select {
 		case <-ds.closeCh:
-			span.Warnf("loopCompact done...")
+			span.Warnf("loop compact producer diskID:%d done...", ds.ID())
 			return
 		case <-timer.C:
 			ds.runCompactFiles()

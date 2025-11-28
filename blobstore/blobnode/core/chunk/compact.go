@@ -286,6 +286,7 @@ func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 
 		// monitor task termination
 		select {
+		// We will operate shard data(read/write) at most one additional, while disk is closing from svr.go
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-task.stopCh:

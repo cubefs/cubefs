@@ -183,4 +183,7 @@ type DiskAPI interface {
 	IsCleanUp(ctx context.Context) bool
 	IsWritable() bool
 	Close(ctx context.Context)
+	PrepareClose(ctx context.Context)
+	IsClosing() bool
+	SetOnCloseFn(fn func())
 }

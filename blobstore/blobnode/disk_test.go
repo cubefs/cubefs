@@ -27,7 +27,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
@@ -86,11 +85,11 @@ func TestService_WsprpcDiskProbe(t *testing.T) {
 	done := make(chan struct{})
 	service.lock.Lock()
 	ds := service.Disks[disk1ID]
-	ds.(*disk.DiskStorageWrapper).OnClosed = func() {
-		close(done)
-	}
+	ds.SetOnCloseFn(func() { close(done) })
+	ds.PrepareClose(context.Background())
 	delete(service.Disks, disk1ID)
 	service.lock.Unlock()
+	require.True(t, ds.IsClosing())
 
 	for i := 0; i < 2; i++ {
 		time.Sleep(time.Second * 1)

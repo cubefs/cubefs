@@ -207,6 +207,20 @@ func (mr *MockDiskAPIMockRecorder) IsCleanUp(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsCleanUp", reflect.TypeOf((*MockDiskAPI)(nil).IsCleanUp), arg0)
 }
 
+// IsClosing mocks base method.
+func (m *MockDiskAPI) IsClosing() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsClosing")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsClosing indicates an expected call of IsClosing.
+func (mr *MockDiskAPIMockRecorder) IsClosing() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsClosing", reflect.TypeOf((*MockDiskAPI)(nil).IsClosing))
+}
+
 // IsWritable mocks base method.
 func (m *MockDiskAPI) IsWritable() bool {
 	m.ctrl.T.Helper()
@@ -251,6 +265,18 @@ func (mr *MockDiskAPIMockRecorder) LoadDiskInfo(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadDiskInfo", reflect.TypeOf((*MockDiskAPI)(nil).LoadDiskInfo), arg0)
 }
 
+// PrepareClose mocks base method.
+func (m *MockDiskAPI) PrepareClose(arg0 context.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PrepareClose", arg0)
+}
+
+// PrepareClose indicates an expected call of PrepareClose.
+func (mr *MockDiskAPIMockRecorder) PrepareClose(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareClose", reflect.TypeOf((*MockDiskAPI)(nil).PrepareClose), arg0)
+}
+
 // ReleaseChunk mocks base method.
 func (m *MockDiskAPI) ReleaseChunk(arg0 context.Context, arg1 proto.Vuid, arg2 bool) error {
 	m.ctrl.T.Helper()
@@ -275,6 +301,18 @@ func (m *MockDiskAPI) ResetChunks(arg0 context.Context) {
 func (mr *MockDiskAPIMockRecorder) ResetChunks(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetChunks", reflect.TypeOf((*MockDiskAPI)(nil).ResetChunks), arg0)
+}
+
+// SetOnCloseFn mocks base method.
+func (m *MockDiskAPI) SetOnCloseFn(arg0 func()) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetOnCloseFn", arg0)
+}
+
+// SetOnCloseFn indicates an expected call of SetOnCloseFn.
+func (mr *MockDiskAPIMockRecorder) SetOnCloseFn(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetOnCloseFn", reflect.TypeOf((*MockDiskAPI)(nil).SetOnCloseFn), arg0)
 }
 
 // SetStatus mocks base method.

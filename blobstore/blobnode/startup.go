@@ -223,7 +223,7 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 	delete(s.Disks, disk.ID())
 	s.lock.Unlock()
 
-	disk.ResetChunks(ctx)
+	disk.PrepareClose(ctx)
 
 	span.Infof("diskID:%d will gc close", diskID)
 }
