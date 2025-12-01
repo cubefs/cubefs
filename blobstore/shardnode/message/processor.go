@@ -82,6 +82,7 @@ type MessageCfg struct {
 type MessageMgrConfig struct {
 	messageType   snproto.MessageType
 	executor      MessageExecutor
+	reporter      *base.MessageTaskReporter
 	TaskSwitchMgr *taskswitch.SwitchMgr
 	ShardGetter   ShardGetter
 	BlobTransport base.BlobTransport
@@ -423,8 +424,10 @@ func (m *messageMgr) execute(ctx context.Context, msgList []snproto.MessageExt) 
 		switch r.status {
 		case executeStatusSuccess:
 			m.executeSuccessCounterByMin.Add()
+			m.cfg.reporter.ReportSuccess(r.msgExt.GetSuid().ShardID())
 		case executeStatusFailed:
 			m.executeFailCounterByMin.Add()
+			m.cfg.reporter.ReportFailed(r.msgExt.GetSuid().ShardID())
 		default:
 		}
 		if r.err == nil {

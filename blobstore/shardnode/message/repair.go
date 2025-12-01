@@ -66,7 +66,7 @@ func NewSliceRepairMgr(cfg *SliceRepairMgrConfig) (*SliceRepairMgr, error) {
 
 	repairMgr := &SliceRepairMgr{}
 	cfg.executor = repairMgr
-
+	cfg.reporter = base.NewRepairSliceTaskReporter(cfg.ClusterID)
 	msgMgr, err := newMessageMgr(cfg.MessageMgrConfig)
 	if err != nil {
 		return nil, err
@@ -103,10 +103,12 @@ func (m *SliceRepairMgr) ItemToMessageExt(item interface{}) (snproto.MessageExt,
 	if !ok {
 		return nil, errors.New("invalid item")
 	}
+
 	msg, err := itemToRepairMsg(msgItem.item)
 	if err != nil {
 		return nil, err
 	}
+
 	return &repairMsgExt{
 		msg:    msg,
 		suid:   msgItem.suid,

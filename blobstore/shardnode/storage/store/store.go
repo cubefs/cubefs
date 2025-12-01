@@ -22,6 +22,11 @@ import (
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 )
 
+const (
+	DBNameKv   = "kv"
+	DBNameRaft = "raft"
+)
+
 type Config struct {
 	KVOption   kvstore.Option                       `json:"kv_option"`
 	RaftOption kvstore.Option                       `json:"raft_option"`
@@ -96,9 +101,9 @@ func (s *Store) Stats() (Stats, error) {
 
 func (s *Store) DBStats(ctx context.Context, db string) (kvstore.Stats, error) {
 	switch db {
-	case "kv":
+	case DBNameKv:
 		return s.kvStore.Stats(ctx)
-	case "raft":
+	case DBNameRaft:
 		return s.raftStore.Stats(ctx)
 	default:
 		return kvstore.Stats{}, errors.New("unknown db name")

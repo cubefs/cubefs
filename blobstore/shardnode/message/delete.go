@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -44,6 +45,7 @@ func NewBlobDeleteMgr(cfg *BlobDelMgrConfig) (*BlobDeleteMgr, error) {
 
 	deleteMgr := &BlobDeleteMgr{}
 	msgCfg.executor = deleteMgr
+	msgCfg.reporter = base.NewDeleteBlobTaskReporter(msgCfg.ClusterID)
 	msgMgr, err := newMessageMgr(msgCfg)
 	if err != nil {
 		return nil, err
@@ -84,10 +86,12 @@ func (m *BlobDeleteMgr) ItemToMessageExt(item interface{}) (snproto.MessageExt, 
 	if !ok {
 		return nil, errors.New("invalid item")
 	}
+
 	msg, err := itemToDeleteMsg(msgItem.item)
 	if err != nil {
 		return nil, err
 	}
+
 	return &delMsgExt{
 		msg:    msg,
 		suid:   msgItem.suid,

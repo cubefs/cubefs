@@ -80,6 +80,7 @@ type Config struct {
 	WaitRepairCloseDiskIntervalS int64 `json:"wait_repair_close_disk_interval_s"`
 	WaitReOpenDiskIntervalS      int64 `json:"wait_re_open_disk_interval_s"`
 	ShardCheckAndClearIntervalH  int64 `json:"shard_check_and_clear_interval_h"`
+	DiskMetricReportIntervalS    int64 `json:"disk_metric_report_interval_s"`
 
 	DeleteBlobCfg  message.MessageCfg `json:"blob_delete_cfg"`
 	ScClientConfig scheduler.Config   `json:"sc_client_config"`
@@ -138,6 +139,11 @@ func createService(cfg *Config) *service {
 		taskPool:  taskpool.New(defaultTaskPoolSize, defaultTaskPoolSize),
 		closer:    closer.New(),
 		disks:     make(map[proto.DiskID]*storage.Disk),
+
+		shardMetaStatusReporter: base.NewShardMetaStatsReporter(cfg.NodeConfig.ClusterID),
+		shardRaftStatusReporter: base.NewRaftStatsReporter(cfg.NodeConfig.ClusterID),
+		diskRocksdbReporter:     base.NewDiskRocksdbStatusReporter(cfg.NodeConfig.ClusterID),
+		diskHealthReporter:      base.NewDiskHealthReporter(cfg.NodeConfig.ClusterID),
 	}
 
 	// load disks
@@ -214,6 +220,11 @@ type service struct {
 
 	blobDelMgr     *message.BlobDeleteMgr
 	sliceRepairMgr *message.SliceRepairMgr
+
+	diskRocksdbReporter     *base.DiskRocksdbStatsReporter
+	diskHealthReporter      *base.DiskHealthReporter
+	shardMetaStatusReporter *base.ShardMetaStatsReporter
+	shardRaftStatusReporter *base.ShardRaftStatsReporter
 
 	cfg    Config
 	lock   sync.RWMutex

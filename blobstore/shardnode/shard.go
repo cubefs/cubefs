@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
+	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -193,12 +194,15 @@ func (s *service) loop(ctx context.Context) {
 	routeUpdateTicker := time.NewTicker(time.Duration(s.cfg.RouteUpdateIntervalS) * time.Second)
 	checkpointTicker := time.NewTicker(time.Duration(s.cfg.CheckPointIntervalM) * time.Minute)
 	trashShardCheckTicker := time.NewTicker(time.Duration(s.cfg.ShardCheckAndClearIntervalH) * time.Hour)
+	diskMetricReportTicker := time.NewTicker(time.Duration(s.cfg.DiskMetricReportIntervalS) * time.Second)
 
 	defer func() {
 		heartbeatTicker.Stop()
 		reportTicker.Stop()
 		routeUpdateTicker.Stop()
 		checkpointTicker.Stop()
+		trashShardCheckTicker.Stop()
+		diskMetricReportTicker.Stop()
 	}()
 
 	var span trace.Span
@@ -236,6 +240,8 @@ func (s *service) loop(ctx context.Context) {
 			s.generateTasksAndExecute(ctx, tasks, proto.ShardTaskTypeCheckpoint, "do checkpoint")
 		case <-trashShardCheckTicker.C:
 			s.generateTasksAndExecute(ctx, tasks, proto.ShardTaskTypeCheckAndClear, "check shard and clear")
+		case <-diskMetricReportTicker.C:
+			s.diskMetricReport(ctx)
 		case <-s.closer.Done():
 			return
 		}
@@ -353,6 +359,15 @@ func (s *service) shardReports(ctx context.Context, shards []storage.ShardHandle
 				Range:        stats.Range,
 				RouteVersion: stats.RouteVersion,
 			})
+
+			// metrics report
+			metaStats, err := shard.MetaStats(ctx)
+			if err != nil {
+				span.Errorf("get shard[%d] meta stats err: %s", shard.GetSuid().ShardID(), err.Error())
+				continue
+			}
+			s.shardMetaStatusReporter.Report(metaStats)
+			s.shardRaftStatusReporter.Report(stats)
 		}
 	}
 
@@ -407,5 +422,25 @@ func (s *service) generateTasksAndExecute(
 			span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
 			continue
 		}
+	}
+}
+
+func (s *service) diskMetricReport(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+	disks := s.getAllDisks()
+	for _, disk := range disks {
+		diskInfo := disk.GetDiskInfo()
+		stats, err := disk.DBStats(ctx, store.DBNameKv)
+		if err != nil {
+			span.Errorf("get disk[%d] kv stats failed: %s", diskInfo.DiskID, err.Error())
+			continue
+		}
+		s.diskRocksdbReporter.Report(store.DBNameKv, diskInfo.Path, stats)
+		stats, err = disk.DBStats(ctx, store.DBNameRaft)
+		if err != nil {
+			span.Errorf("get disk[%d] raft stats failed: %s", diskInfo.DiskID, err.Error())
+			continue
+		}
+		s.diskRocksdbReporter.Report(store.DBNameRaft, diskInfo.Path, stats)
 	}
 }

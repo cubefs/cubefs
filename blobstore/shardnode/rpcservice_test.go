@@ -37,6 +37,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/message"
@@ -167,7 +168,12 @@ func newMockService(t *testing.T, cfg mockServiceCfg) (*service, func(), error) 
 			MessageCfg:    message.MessageCfg{MessageLog: recordlog.Config{Dir: repairLogDir}},
 		},
 	})
+
 	s.sliceRepairMgr = shardRepairMgr
+	s.shardMetaStatusReporter = base.NewShardMetaStatsReporter(proto.ClusterID(1))
+	s.shardRaftStatusReporter = base.NewRaftStatsReporter(proto.ClusterID(1))
+	s.diskHealthReporter = base.NewDiskHealthReporter(proto.ClusterID(1))
+	s.diskRocksdbReporter = base.NewDiskRocksdbStatusReporter(proto.ClusterID(1))
 
 	// set disk
 	s.disks = make(map[proto.DiskID]*storage.Disk)

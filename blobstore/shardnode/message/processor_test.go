@@ -532,6 +532,7 @@ func newTestPriorityConfig() TierConfig {
 func newTestBlobMessageMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, vc base.IVolumeCache, executor MessageExecutor, messageType snproto.MessageType) *messageMgr {
 	cfg := &MessageMgrConfig{
 		executor:      executor,
+		reporter:      base.NewDeleteBlobTaskReporter(0),
 		ShardGetter:   sg,
 		BlobTransport: tp,
 		VolCache:      vc,

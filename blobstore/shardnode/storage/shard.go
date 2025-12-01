@@ -116,6 +116,7 @@ type (
 		CheckAndClearShard(ctx context.Context) error
 		ShardingSubRangeCount() int
 		IsLeader() bool
+		MetaStats(ctx context.Context) (shardnodeproto.ShardMetaStats, error)
 	}
 	OpHeader struct {
 		RouteVersion proto.RouteVersion
@@ -946,6 +947,10 @@ func (s *shard) GetUnits() []clustermgr.ShardUnit {
 	units := s.shardInfoMu.Units
 	s.shardInfoMu.RUnlock()
 	return units
+}
+
+func (s *shard) MetaStats(ctx context.Context) (shardnodeproto.ShardMetaStats, error) {
+	return s.metaStats.get(), nil
 }
 
 func (s *shard) get(ctx context.Context, h OpHeader, key []byte) (ValGetter, error) {

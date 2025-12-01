@@ -101,6 +101,7 @@ func (s *service) initDisks(ctx context.Context) error {
 			if store.IsEIO(err) {
 				span.Errorf("open status normal disk[%s] failed: %s, diskinfo: %+v", diskPath, err, registeredDisk)
 				s.transport.SetDiskBroken(ctx, registeredDisk.DiskID)
+				s.diskHealthReporter.ReportUnhealthy(registeredDisk.Path)
 				continue
 			}
 			// other situation, do fatal log
@@ -189,6 +190,7 @@ func (s *service) initDisks(ctx context.Context) error {
 
 	for _, disk := range normalDisks {
 		s.addDisk(disk)
+		s.diskHealthReporter.ReportHealthy(disk.GetDiskInfo().Path)
 	}
 	return nil
 }
@@ -252,6 +254,7 @@ func (s *service) waitRepairCloseDisk(ctx context.Context, disk *storage.Disk) {
 			}
 
 			if info.Status <= proto.DiskStatusRepairing {
+				s.diskHealthReporter.ReportUnhealthy(diskInfo.Path)
 				span.Infof("disk:%d path:%s status:%v", diskID, info.Path, info.Status)
 				continue
 			}
@@ -369,6 +372,7 @@ func (s *service) waitReOpenDisk(ctx context.Context, diskInfo clustermgr.ShardN
 			}()
 
 			if ok {
+				s.diskHealthReporter.ReportHealthy(diskInfo.Path)
 				return
 			}
 		}
@@ -394,6 +398,7 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.WaitRepairCloseDiskIntervalS, int64(30))
 	defaulter.LessOrEqual(&cfg.WaitReOpenDiskIntervalS, int64(30))
 	defaulter.LessOrEqual(&cfg.ShardCheckAndClearIntervalH, int64(24))
+	defaulter.LessOrEqual(&cfg.DiskMetricReportIntervalS, int64(60))
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.RetryTimes, 3)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.RateLimit, float64(1024))
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.RateLimitBurst, 64)

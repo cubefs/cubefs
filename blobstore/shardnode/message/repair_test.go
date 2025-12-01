@@ -497,7 +497,6 @@ func newMinimalSliceRepairMgr(cfg *SliceRepairMgrConfig) *SliceRepairMgr {
 
 func newTestSliceRepairMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, vc base.IVolumeCache, transport base.Transport, scClient scheduler.IScheduler, selector selector.Selector) *SliceRepairMgr {
 	baseMgr := newTestBlobMessageMgr(t, sg, tp, vc, nil, snproto.MessageTypeRepair)
-
 	mgr := &SliceRepairMgr{
 		messageMgr:               baseMgr,
 		transport:                transport,
@@ -507,5 +506,6 @@ func newTestSliceRepairMgr(t *testing.T, sg ShardGetter, tp base.BlobTransport, 
 	}
 	// Set executor to ShardRepairMgr itself
 	baseMgr.cfg.executor = mgr
+	baseMgr.cfg.reporter = base.NewRepairSliceTaskReporter(0)
 	return mgr
 }

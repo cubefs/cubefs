@@ -11,6 +11,7 @@ import (
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	shardnode "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
+	proto0 "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	storage "github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -562,6 +563,21 @@ func (m *MockSpaceShardHandler) ListItem(ctx context.Context, h storage.OpHeader
 func (mr *MockSpaceShardHandlerMockRecorder) ListItem(ctx, h, prefix, marker, count interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).ListItem), ctx, h, prefix, marker, count)
+}
+
+// MetaStats mocks base method.
+func (m *MockSpaceShardHandler) MetaStats(ctx context.Context) (proto0.ShardMetaStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MetaStats", ctx)
+	ret0, _ := ret[0].(proto0.ShardMetaStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MetaStats indicates an expected call of MetaStats.
+func (mr *MockSpaceShardHandlerMockRecorder) MetaStats(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MetaStats", reflect.TypeOf((*MockSpaceShardHandler)(nil).MetaStats), ctx)
 }
 
 // ShardingSubRangeCount mocks base method.
