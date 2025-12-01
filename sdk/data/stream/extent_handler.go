@@ -185,6 +185,8 @@ type ExtentHandler struct {
 	storageClass uint32
 
 	isMigration bool
+
+	flushMu sync.Mutex
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -848,6 +850,9 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 
 // Handler lock is held by the caller.
 func (eh *ExtentHandler) flushPacket() {
+	eh.flushMu.Lock()
+	defer eh.flushMu.Unlock()
+
 	if eh.packet == nil {
 		log.LogDebugf("ExtentHandler flushPacket nil, return: eh(%v)", eh)
 		return
