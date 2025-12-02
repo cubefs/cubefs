@@ -439,6 +439,10 @@ func (r *raftFsm) tickElectionAck() {
 func (r *raftFsm) checkLeaderLease() bool {
 	var act int
 	for id, peer := range r.replicas {
+		// Skip learners for quorum check
+		if peer.peer.Type == proto.PeerLearner {
+			continue
+		}
 		if id == r.config.NodeID || peer.state == replicaStateSnapshot {
 			act++
 			continue
@@ -456,9 +460,17 @@ func (r *raftFsm) checkLeaderLease() bool {
 }
 
 func (r *raftFsm) maybeCommit() bool {
+	// Collect match indices from voters only (exclude learners)
 	mis := make(util.Uint64Slice, 0, len(r.replicas))
 	for _, rp := range r.replicas {
-		mis = append(mis, rp.match)
+		// Only count voters for commit quorum
+		if rp.peer.Type != proto.PeerLearner {
+			mis = append(mis, rp.match)
+		}
+	}
+	if len(mis) == 0 {
+		// No voters, cannot commit
+		return false
 	}
 	sort.Sort(sort.Reverse(mis))
 	mci := mis[r.quorum()-1]
@@ -577,8 +589,12 @@ func (r *raftFsm) bcastReadOnly() {
 	if logger.IsEnableDebug() {
 		logger.Debug("raft[%d] bcast readonly index: %d", r.id, index)
 	}
-	for id := range r.replicas {
+	for id, peer := range r.replicas {
 		if id == r.config.NodeID {
+			continue
+		}
+		// Skip learners for read-only quorum check
+		if peer.peer.Type == proto.PeerLearner {
 			continue
 		}
 		msg := proto.GetMessage()

@@ -119,6 +119,13 @@ func (r *raftFsm) campaign(force bool, t CampaignType) {
 		if id == r.config.NodeID {
 			continue
 		}
+		// Skip learners for vote requests
+		if r.replicas[id].peer.Type == proto.PeerLearner {
+			if logger.IsEnableDebug() {
+				logger.Debug("raft[%v] skip learner %v for vote request", r.id, id)
+			}
+			continue
+		}
 		li, lt := r.raftLog.lastIndexAndTerm()
 		if logger.IsEnableDebug() {
 			logger.Debug("[raft->campaign][%v,raft %v, term: %d] sent "+

@@ -36,6 +36,7 @@ type ReplicaStatus struct {
 	Active      bool
 	LastActive  time.Time
 	Inflight    int
+	IsLearner   bool // Whether this replica is a learner
 }
 
 // Status raft status
@@ -55,6 +56,7 @@ type Status struct {
 	Stopped           bool
 	RestoringSnapshot bool
 	State             string // leader、follower、candidate
+	IsLearner         bool   // Whether the local node is a learner
 	Replicas          map[uint64]*ReplicaStatus
 }
 
@@ -65,8 +67,12 @@ func (s *Status) String() string {
 	} else if s.RestoringSnapshot {
 		st = "snapshot"
 	}
+	isLearnerStr := "false"
+	if s.IsLearner {
+		isLearnerStr = "true"
+	}
 	j := fmt.Sprintf(`{"id":"%v","nodeID":"%v","state":"%v","leader":"%v","term":"%v","index":"%v","commit":"%v","applied":"%v","vote":"%v","pendingQueue":"%v",
-					"recvQueue":"%v","applyQueue":"%v","status":"%v","replication":{`, s.ID, s.NodeID, s.State, s.Leader, s.Term, s.Index, s.Commit, s.Applied, s.Vote, s.PendQueue, s.RecvQueue, s.AppQueue, st)
+					"recvQueue":"%v","applyQueue":"%v","status":"%v","isLearner":"%v","replication":{`, s.ID, s.NodeID, s.State, s.Leader, s.Term, s.Index, s.Commit, s.Applied, s.Vote, s.PendQueue, s.RecvQueue, s.AppQueue, st, isLearnerStr)
 	if len(s.Replicas) == 0 {
 		j += "}}"
 	} else {
@@ -75,7 +81,11 @@ func (s *Status) String() string {
 			if v.Paused {
 				p = "true"
 			}
-			subj := fmt.Sprintf(`"%v":{"match":"%v","commit":"%v","next":"%v","state":"%v","paused":"%v","inflight":"%v","active":"%v"},`, k, v.Match, v.Commit, v.Next, v.State, p, v.Inflight, v.Active)
+			learner := "false"
+			if v.IsLearner {
+				learner = "true"
+			}
+			subj := fmt.Sprintf(`"%v":{"match":"%v","commit":"%v","next":"%v","state":"%v","paused":"%v","inflight":"%v","active":"%v","isLearner":"%v"},`, k, v.Match, v.Commit, v.Next, v.State, p, v.Inflight, v.Active, learner)
 			j += subj
 		}
 		j = j[:len(j)-1] + "}}"

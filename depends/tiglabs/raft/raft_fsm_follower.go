@@ -86,6 +86,20 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 		return
 
 	case proto.ReqMsgVote:
+		// Check if local node is a learner
+		pr, isLocalNode := r.replicas[r.config.NodeID]
+		if isLocalNode && pr.peer.Type == proto.PeerLearner {
+			// Note: Learners are allowed to cast votes in special cases.
+			// This is necessary when a learner has been promoted (i.e. is now a voter)
+			// but has not learned about this yet. By receiving a request to vote,
+			// the learner realizes that the candidate believes it to be a voter,
+			// and that it should act accordingly.
+			// See etcd raft implementation for detailed explanation.
+			if logger.IsEnableDebug() {
+				logger.Debug("raft[%v] is a learner, but allowing vote due to potential promotion scenario", r.id)
+			}
+		}
+
 		fpri, lpri := uint16(math.MaxUint16), uint16(0)
 		if pr, ok := r.replicas[m.From]; ok {
 			fpri = pr.peer.Priority
@@ -207,5 +221,12 @@ func (r *raftFsm) handleAppendEntries(m *proto.Message) {
 func (r *raftFsm) promotable() bool {
 	// todo check snapshot
 	pr, ok := r.replicas[r.config.NodeID]
-	return ok && pr.state != replicaStateSnapshot
+	if !ok {
+		return false
+	}
+	// Learner cannot be promoted to leader
+	if pr.peer.Type == proto.PeerLearner {
+		return false
+	}
+	return pr.state != replicaStateSnapshot
 }

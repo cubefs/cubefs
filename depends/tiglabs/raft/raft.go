@@ -768,6 +768,12 @@ func (s *raft) getStatus() *Status {
 	default:
 	}
 
+	// Check if local node is a learner
+	isLocalLearner := false
+	if pr, ok := s.raftFsm.replicas[s.config.NodeID]; ok {
+		isLocalLearner = pr.peer.Type == proto.PeerLearner
+	}
+
 	st := &Status{
 		ID:                s.raftFsm.id,
 		NodeID:            s.config.NodeID,
@@ -784,6 +790,7 @@ func (s *raft) getStatus() *Status {
 		AppQueue:          len(s.applyc),
 		TicketQueue:       len(s.tickc),
 		Stopped:           stopped,
+		IsLearner:         isLocalLearner,
 	}
 	if s.raftFsm.state == stateLeader {
 		st.Replicas = make(map[uint64]*ReplicaStatus)
@@ -798,6 +805,7 @@ func (s *raft) getStatus() *Status {
 				Active:      p.active,
 				LastActive:  p.lastActive,
 				Inflight:    p.count,
+				IsLearner:   p.peer.Type == proto.PeerLearner,
 			}
 		}
 	}

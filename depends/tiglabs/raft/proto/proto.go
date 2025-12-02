@@ -45,15 +45,18 @@ const (
 )
 
 const (
-	ConfAddNode    ConfChangeType = 0
-	ConfRemoveNode ConfChangeType = 1
-	ConfUpdateNode ConfChangeType = 2
+	ConfAddNode        ConfChangeType = 0
+	ConfRemoveNode     ConfChangeType = 1
+	ConfUpdateNode     ConfChangeType = 2
+	ConfAddLearner     ConfChangeType = 3
+	ConfPromoteLearner ConfChangeType = 4
 
 	EntryNormal     EntryType = 0
 	EntryConfChange EntryType = 1
 
 	PeerNormal  PeerType = 0
 	PeerArbiter PeerType = 1
+	PeerLearner PeerType = 2
 )
 
 // The Snapshot interface is supplied by the application to access the snapshot data of application.
@@ -185,6 +188,10 @@ func (t ConfChangeType) String() string {
 		return "ConfRemoveNode"
 	case 2:
 		return "ConfUpdateNode"
+	case 3:
+		return "ConfAddLearner"
+	case 4:
+		return "ConfPromoteLearner"
 	}
 	return "unknown"
 }
@@ -195,6 +202,8 @@ func (t PeerType) String() string {
 		return "PeerNormal"
 	case 1:
 		return "PeerArbiter"
+	case 2:
+		return "PeerLearner"
 	}
 	return "unknown"
 }
