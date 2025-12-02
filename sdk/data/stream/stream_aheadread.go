@@ -334,8 +334,10 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 				readBytes += int(rp.Size)
 				curSize := atomic.AddUint64(&cacheBlock.readBytes, uint64(rp.Size))
 				arw.updateRightIndex(uint64(task.req.FileOffset)+curSize, key, task.reqID)
-				log.LogDebugf("doTask  key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p) cost(%v)",
-					key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock, time.Since(begin).String())
+				if log.EnableDebug() {
+					log.LogDebugf("doTask  key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p) cost(%v)",
+						key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock, time.Since(begin).String())
+				}
 				if curSize > uint64(arw.streamer.aheadReadBlockSize) {
 					log.LogErrorf("doTask out of range key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
 						key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock)
@@ -346,8 +348,10 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 		})
 		if err == nil {
 			atomic.StoreUint32(&cacheBlock.state, AheadReadBlockStateInit)
-			log.LogDebugf("doTask ready: key(%v) offset(%v) size(%v) err(%v) %v reqID(%v)",
-				key, task.p.ExtentOffset, task.cacheSize, err, time.Since(task.time).String(), task.reqID)
+			if log.EnableDebug() {
+				log.LogDebugf("doTask ready: key(%v) offset(%v) size(%v) err(%v) %v reqID(%v)",
+					key, task.p.ExtentOffset, task.cacheSize, err, time.Since(task.time).String(), task.reqID)
+			}
 			return
 		} else {
 			// try next host
@@ -417,8 +421,10 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp 
 	}
 	cacheOffset := offset / int(arw.streamer.aheadReadBlockSize) * int(arw.streamer.aheadReadBlockSize)
 	key := createAheadBlockKey(arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.ExtentOffset, cacheOffset)
-	log.LogDebugf("doMultiAheadRead send: key(%v) reqID(%v) index(%v) req（%v）",
-		key, reqID, offset/int(arw.streamer.aheadReadBlockSize), req)
+	if log.EnableDebug() {
+		log.LogDebugf("doMultiAheadRead send: key(%v) reqID(%v) index(%v) req（%v）",
+			key, reqID, offset/int(arw.streamer.aheadReadBlockSize), req)
+	}
 	id := offset / int(arw.streamer.aheadReadBlockSize)
 	remainSize := 0
 	for w := 0; w < winCnt; w++ {
@@ -531,8 +537,10 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 	)
 	startTime := time.Now()
 	defer func() {
-		log.LogDebugf("aheadRead step: %v, inode(%v) key(%v) FileOffset(%v) reqSize(%v) readSize(%v) err(%v) %v aheadReadBlockSize(%v) streamer(%p)"+
-			"", step, s.inode, key, req.FileOffset, req.Size, readSize, err, time.Since(startTime), s.aheadReadBlockSize, s)
+		if log.EnableDebug() {
+			log.LogDebugf("aheadRead step: %v, inode(%v) key(%v) FileOffset(%v) reqSize(%v) readSize(%v) err(%v) %v aheadReadBlockSize(%v) streamer(%p)"+
+				"", step, s.inode, key, req.FileOffset, req.Size, readSize, err, time.Since(startTime), s.aheadReadBlockSize, s)
+		}
 	}()
 
 	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
@@ -579,9 +587,11 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 			atomic.CompareAndSwapUint32(&cacheBlock.readed, AheadReadedInit, AheadReaded)
 			if cacheBlock.offset == uint64(offset) {
 				reqID := uuid.New().String()
-				log.LogDebugf("aheadRead move ahead win inode(%v) FileOffset(%v) offset(%v) need(%v) "+
-					"cacheBlockOffset(%v) cacheBlockSize(%v) reqID(%v)",
-					s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, reqID)
+				if log.EnableDebug() {
+					log.LogDebugf("aheadRead move ahead win inode(%v) FileOffset(%v) offset(%v) need(%v) "+
+						"cacheBlockOffset(%v) cacheBlockSize(%v) reqID(%v)",
+						s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, reqID)
+				}
 				go s.aheadReadWindow.addNextTask(req.FileOffset, startTime, reqID, storageClass, key)
 			}
 			if (cacheBlock.offset + curSize) > uint64(offset+needSize) {
@@ -619,8 +629,10 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 	}
 	step = "pass"
 	reqID := uuid.New().String()
-	log.LogDebugf("aheadRead pass ahead win inode(%v) offset(%v) need(%v) "+
-		"req(%v) reqID(%v)", s.inode, offset, needSize, req, reqID)
+	if log.EnableDebug() {
+		log.LogDebugf("aheadRead pass ahead win inode(%v) offset(%v) need(%v) "+
+			"req(%v) reqID(%v)", s.inode, offset, needSize, req, reqID)
+	}
 	go s.aheadReadWindow.doMultiAheadRead(offset, req, dp, startTime, reqID, storageClass,
 		s.aheadReadWindow.cache.winCnt)
 	return
@@ -635,14 +647,18 @@ func sendToNode(host string, p *Packet, key, reqID string, getReply GetReplyFunc
 
 	defer func() {
 		AheadReadConnPool.PutConnectV2(conn, err != nil, host, time.Since(start).Microseconds())
-		log.LogDebugf("sendToNode connect local(%v) remote(%v) cost(%v) err(%v)  key(%v) reqID(%v)", conn.LocalAddr().String(),
-			conn.RemoteAddr().String(), time.Since(start).String(), err, key, reqID)
+		if log.EnableDebug() {
+			log.LogDebugf("sendToNode connect local(%v) remote(%v) cost(%v) err(%v)  key(%v) reqID(%v)", conn.LocalAddr().String(),
+				conn.RemoteAddr().String(), time.Since(start).String(), err, key, reqID)
+		}
 	}()
 	if err = p.WriteToConn(conn); err != nil {
 		return
 	}
-	log.LogDebugf("sendToNode connect local(%v) remote(%v) cost(%v) key(%v) reqID(%v)", conn.LocalAddr().String(),
-		conn.RemoteAddr().String(), time.Since(start).String(), key, reqID)
+	if log.EnableDebug() {
+		log.LogDebugf("sendToNode connect local(%v) remote(%v) cost(%v) key(%v) reqID(%v)", conn.LocalAddr().String(),
+			conn.RemoteAddr().String(), time.Since(start).String(), key, reqID)
+	}
 	err, _ = getReply(conn)
 	return
 }

@@ -510,7 +510,9 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 }
 
 func (eh *ExtentHandler) flush() (err error) {
-	log.LogDebugf("ExtentHandler flush begin: eh(%s) trace(%v)", eh.String(), string(debug.Stack()))
+	if log.EnableDebug() {
+		log.LogDebugf("ExtentHandler flush begin: eh(%s) trace(%v)", eh.String(), string(debug.Stack()))
+	}
 	eh.flushPacket()
 	err = eh.waitForFlush()
 	if err != nil {
