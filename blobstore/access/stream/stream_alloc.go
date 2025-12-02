@@ -132,7 +132,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 
 	var allocRets []proxy.AllocRet
 	var allocHost string
-	if err := retry.ExponentialBackoff(h.AllocRetryTimes, uint32(h.AllocRetryIntervalMS)).On(func() error {
+	if err := retry.ExponentialBackoff(h.AllocRetryTimes, uint32(h.AllocRetryIntervalMS)).RuptOn(func() (bool, error) {
 		host := hosts[0]
 		hosts = hosts[1:]
 		allocHost = host
@@ -145,7 +145,10 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
 			}
 			span.Warn(host, err)
-			return errors.Base(err, "alloc from proxy", host)
+			if err == context.Canceled {
+				return true, err
+			}
+			return false, errors.Base(err, "alloc from proxy", host)
 		}
 
 		// filter punished volume in allocating progress
@@ -153,18 +156,18 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 			vInfo, err := h.getVolume(ctx, clusterID, ret.Vid, true)
 			if err != nil {
 				span.Warn(err)
-				return err
+				return false, err
 			}
 			if vInfo.IsPunish {
 				// return err and retry allocate
 				err = errAllocatePunishedVolume
 				args.Excludes = append(args.Excludes, vInfo.Vid)
 				span.Warn("next retry exclude vid:", vInfo.Vid, err)
-				return err
+				return false, err
 			}
 		}
 
-		return nil
+		return true, nil
 	}); err != nil {
 		if err != errAllocatePunishedVolume {
 			reportUnhealth(clusterID, "allocate", "-", "-", "failed")

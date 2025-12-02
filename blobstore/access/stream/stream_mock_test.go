@@ -447,6 +447,11 @@ func initMockData() {
 	allocCli.EXPECT().SendShardRepairMsg(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 	allocCli.EXPECT().VolumeAlloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, host string, args *proxy.AllocVolsArgs) ([]proxy.AllocRet, error) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
 			if args.Fsize > allocTimeoutSize {
 				return nil, errAllocTimeout
 			}
@@ -558,6 +563,8 @@ func init() {
 	initEC()
 	initMockData()
 	initController()
+
+	hystrix.ConfigureCommand(allocCommand, hystrix.CommandConfig{Timeout: defaultAllocatorTimeout})
 
 	streamer = &Handler{
 		memPool:           memPool,

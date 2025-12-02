@@ -15,6 +15,7 @@
 package stream
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -67,4 +68,12 @@ func TestAccessStreamAllocBase(t *testing.T) {
 		_, err := streamer.Alloc(ctx(), allocTimeoutSize+1, 0, 0, 0)
 		require.Error(t, err)
 	}
+}
+
+func TestAccessStreamAllocCanceled(t *testing.T) {
+	ctxfunc := ctxWithName("TestAccessStreamAllocCanceled")
+	ctx, cancel := context.WithCancel(ctxfunc())
+	cancel()
+	_, err := streamer.Alloc(ctx, 1, 0, 0, 0)
+	require.ErrorIs(t, err, context.Canceled)
 }
