@@ -39,7 +39,6 @@ import (
 const (
 	defaultAllocVolsNum        = 4
 	defaultTotalThresholdRatio = 0.1
-	defaultInitVolumeNum       = 4
 	defaultRetainVolumeNum     = 400
 
 	defaultRetainIntervalS      = int64(40)
@@ -49,20 +48,24 @@ const (
 	defaultTotalVolNumThresholdRatio = 0.1
 )
 
+type CodeModeVolConfig struct {
+	DefaultAllocVolsNum       int     `json:"default_alloc_vols_num"`
+	TotalThresholdRatio       float64 `json:"total_threshold_ratio"`
+	TotalVolNumThresholdRatio float64 `json:"total_vol_num_threshold_ratio"`
+}
+
 type VolConfig struct {
 	ClusterID             proto.ClusterID `json:"cluster_id"`
 	Idc                   string          `json:"idc"`
 	Host                  string          `json:"host"`
 	RetainIntervalS       int64           `json:"retain_interval_s"`
-	DefaultAllocVolsNum   int             `json:"default_alloc_vols_num"`
-	InitVolumeNum         int             `json:"init_volume_num"`
-	TotalThresholdRatio   float64         `json:"total_threshold_ratio"`
 	MetricReportIntervalS int             `json:"metric_report_interval_s"`
 	RetainVolumeBatchNum  int             `json:"retain_volume_batch_num"`
 	RetainBatchIntervalS  int64           `json:"retain_batch_interval_s"`
 	VolumeReserveSize     int             `json:"-"`
 
-	TotalVolNumThresholdRatio float64 `json:"total_vol_num_threshold_ratio"`
+	CodeModeVolConfig                                         // use this config if code_mode_configs is not set
+	CodeModeConfigs   map[codemode.CodeMode]CodeModeVolConfig `json:"code_mode_configs"`
 }
 
 //======================modeInfo======================================
@@ -238,27 +241,44 @@ type volumeMgr struct {
 }
 
 func volConfCheck(cfg *VolConfig) {
-	defaulter.Equal(&cfg.DefaultAllocVolsNum, defaultAllocVolsNum)
-	defaulter.Equal(&cfg.RetainIntervalS, defaultRetainIntervalS)
-	defaulter.Equal(&cfg.TotalThresholdRatio, defaultTotalThresholdRatio)
-	defaulter.Equal(&cfg.InitVolumeNum, defaultInitVolumeNum)
-	defaulter.Equal(&cfg.MetricReportIntervalS, defaultMetricIntervalS)
-	defaulter.Equal(&cfg.RetainVolumeBatchNum, defaultRetainVolumeNum)
-	defaulter.Equal(&cfg.RetainBatchIntervalS, defaultRetainBatchIntervalS)
-	defaulter.Equal(&cfg.TotalVolNumThresholdRatio, defaultTotalVolNumThresholdRatio)
+	defaulter.LessOrEqual(&cfg.DefaultAllocVolsNum, defaultAllocVolsNum)
+	if cfg.CodeModeConfigs == nil {
+		cfg.CodeModeConfigs = make(map[codemode.CodeMode]CodeModeVolConfig)
+	}
+	// check each code mode config
+	for codeMode, modeCfg := range cfg.CodeModeConfigs {
+		defaulter.LessOrEqual(&modeCfg.DefaultAllocVolsNum, defaultAllocVolsNum)
+		defaulter.LessOrEqual(&modeCfg.TotalThresholdRatio, defaultTotalThresholdRatio)
+		defaulter.LessOrEqual(&modeCfg.TotalVolNumThresholdRatio, defaultTotalVolNumThresholdRatio)
+		if modeCfg.TotalThresholdRatio >= 0.2 {
+			log.Fatalf("TotalThresholdRatio for codeMode %v must less than 0.2, current: %v", codeMode, modeCfg.TotalThresholdRatio)
+		}
+		if modeCfg.TotalVolNumThresholdRatio >= 1 {
+			log.Fatalf("TotalVolNumThresholdRatio for codeMode %v must less than 1, current: %v", codeMode, modeCfg.TotalVolNumThresholdRatio)
+		}
+		cfg.CodeModeConfigs[codeMode] = modeCfg
+	}
+	defaulter.LessOrEqual(&cfg.RetainIntervalS, defaultRetainIntervalS)
+	defaulter.LessOrEqual(&cfg.TotalThresholdRatio, defaultTotalThresholdRatio)
+	defaulter.LessOrEqual(&cfg.MetricReportIntervalS, defaultMetricIntervalS)
+	defaulter.LessOrEqual(&cfg.RetainVolumeBatchNum, defaultRetainVolumeNum)
+	defaulter.LessOrEqual(&cfg.RetainBatchIntervalS, defaultRetainBatchIntervalS)
+	defaulter.LessOrEqual(&cfg.TotalVolNumThresholdRatio, defaultTotalVolNumThresholdRatio)
 
 	if cfg.TotalThresholdRatio >= 0.2 {
 		log.Fatalf("TotalThresholdRatio must less than 0.2, current: %v", cfg.TotalThresholdRatio)
 	}
-
 	if cfg.TotalVolNumThresholdRatio >= 1 {
 		log.Fatalf("TotalVolNumThresholdRatio must less than 1, current: %v", cfg.TotalVolNumThresholdRatio)
 	}
+}
 
-	need := int(cfg.TotalThresholdRatio*float64(cfg.InitVolumeNum)) + 1
-	if cfg.DefaultAllocVolsNum <= need {
-		cfg.DefaultAllocVolsNum = need
+// getCodeModeConfig returns the CodeModeVolConfig for the given codeMode, or default values if not set
+func (cfg *VolConfig) getCodeModeConfig(codeMode codemode.CodeMode) CodeModeVolConfig {
+	if modeCfg, ok := cfg.CodeModeConfigs[codeMode]; ok {
+		return modeCfg
 	}
+	return cfg.CodeModeVolConfig
 }
 
 type VolumeMgr interface {
@@ -346,9 +366,10 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 
 		v.allocChs[codeMode] = allocCh
 		tactic := codeMode.Tactic()
-		threshold := float64(v.InitVolumeNum*tactic.N*volumeChunkSizeInt) * v.TotalThresholdRatio
+		modeCfg := v.getCodeModeConfig(codeMode)
+		threshold := float64(modeCfg.DefaultAllocVolsNum*tactic.N*volumeChunkSizeInt) * modeCfg.TotalThresholdRatio
 
-		volNumThreshold := math.Ceil(float64(v.InitVolumeNum) * v.TotalVolNumThresholdRatio)
+		volNumThreshold := math.Ceil(float64(modeCfg.DefaultAllocVolsNum) * modeCfg.TotalVolNumThresholdRatio)
 		info := &modeInfo{
 			current:              &volumes{},
 			backup:               &volumes{},
@@ -356,14 +377,15 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 			totalVolNumThreshold: uint64(volNumThreshold),
 		}
 		v.modeInfos[codeMode] = info
-		span.Infof("codeMode: %v, initVolumeNum: %v, threshold: %v", codeModeConfig.ModeName, v.InitVolumeNum, threshold)
+		span.Infof("codeMode: %v, defaultAllocVolsNum: %v, threshold: %v", codeModeConfig.ModeName, modeCfg.DefaultAllocVolsNum, threshold)
 	}
 
 	for mode := range v.allocChs {
+		modeCfg := v.getCodeModeConfig(mode)
 		applyArg := &allocArgs{
 			isInit:   true,
 			codeMode: mode,
-			count:    v.InitVolumeNum,
+			count:    modeCfg.DefaultAllocVolsNum,
 		}
 
 		go v.allocVolumeLoop(mode)
@@ -492,24 +514,25 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 	span := trace.SpanFromContextSafe(ctx)
 	info := v.modeInfos[args.CodeMode]
 	info.dealDisCards(args.Discards)
+	modeCfg := v.getCodeModeConfig(args.CodeMode)
 
 	needSwitch, err := info.needSwitchToBackup(int64(args.Fsize))
 	if err != nil {
-		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, true)
+		v.allocNotify(ctx, args.CodeMode, modeCfg.DefaultAllocVolsNum, true)
 		span.Errorf("no available volumes to alloc and current allocating from clustermgr")
 		return nil, err
 	}
 	vols = info.getAvailableList(int64(args.Fsize), needSwitch)
 
 	if len(vols) == 0 {
-		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, false)
+		v.allocNotify(ctx, args.CodeMode, modeCfg.DefaultAllocVolsNum, false)
 		span.Errorf("no available volumes to alloc")
 		return nil, errcode.ErrNoCodemodeVolume
 	}
 
 	backupLen := info.backup.Len()
-	if backupLen < v.DefaultAllocVolsNum {
-		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum-backupLen, true)
+	if backupLen < modeCfg.DefaultAllocVolsNum {
+		v.allocNotify(ctx, args.CodeMode, modeCfg.DefaultAllocVolsNum-backupLen, true)
 	}
 
 	span.Debugf("codeMode: %v, info.currentTotalFree: %v, info.totalThreshold: %v", args.CodeMode,
@@ -575,11 +598,13 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 				args.isInit = false
 				continue
 			}
+			modeCfg := v.getCodeModeConfig(allocArg.CodeMode)
 			for index, vol := range volumeRets {
 				allocVolInfo := &volume{
 					AllocVolumeInfo: vol,
 				}
-				if allocArg.IsInit && len(volumeRets) >= 2*v.InitVolumeNum && index >= v.InitVolumeNum {
+				// volumes more than defaultAllocVolsNum, put rest to backup
+				if allocArg.IsInit && index >= modeCfg.DefaultAllocVolsNum {
 					v.modeInfos[allocArg.CodeMode].Put(allocVolInfo, true)
 					continue
 				}

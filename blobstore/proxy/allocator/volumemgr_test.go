@@ -36,13 +36,34 @@ func TestNewVolumeMgr(t *testing.T) {
 	ctx := context.Background()
 	cmcli := mock.ProxyMockClusterMgrCli(t)
 	vm, err := NewVolumeMgr(ctx, BlobConfig{}, VolConfig{
-		InitVolumeNum:         4,
 		MetricReportIntervalS: 1, RetainIntervalS: 1,
 	}, cmcli)
 	time.Sleep(2 * time.Second)
 	require.NoError(t, err)
 	vm.Close()
 	time.Sleep(100 * time.Millisecond)
+}
+
+func TestVolConfig(t *testing.T) {
+	cfg := &VolConfig{
+		MetricReportIntervalS: 1,
+		RetainIntervalS:       1,
+		CodeModeVolConfig: CodeModeVolConfig{
+			DefaultAllocVolsNum: 10,
+		},
+		CodeModeConfigs: map[codemode.CodeMode]CodeModeVolConfig{
+			codemode.EC6P6: {
+				DefaultAllocVolsNum: 2,
+			},
+		},
+	}
+	volConfCheck(cfg)
+	require.Equal(t, 2, cfg.getCodeModeConfig(codemode.EC6P6).DefaultAllocVolsNum)
+	require.Equal(t, defaultTotalThresholdRatio, cfg.getCodeModeConfig(codemode.EC6P6).TotalThresholdRatio)
+	require.Equal(t, defaultTotalVolNumThresholdRatio, cfg.getCodeModeConfig(codemode.EC6P6).TotalVolNumThresholdRatio)
+	require.Equal(t, 10, cfg.getCodeModeConfig(codemode.EC12P9).DefaultAllocVolsNum)
+	require.Equal(t, defaultTotalThresholdRatio, cfg.getCodeModeConfig(codemode.EC12P9).TotalThresholdRatio)
+	require.Equal(t, defaultTotalVolNumThresholdRatio, cfg.getCodeModeConfig(codemode.EC12P9).TotalVolNumThresholdRatio)
 }
 
 func TestGetAllocList(t *testing.T) {
@@ -613,8 +634,10 @@ func TestAllocWithVolumeNumThreshold(t *testing.T) {
 	v := &volumeMgr{
 		BlobConfig: BlobConfig{},
 		VolConfig: VolConfig{
-			VolumeReserveSize:   1024,
-			DefaultAllocVolsNum: 2,
+			VolumeReserveSize: 1024,
+			CodeModeVolConfig: CodeModeVolConfig{
+				DefaultAllocVolsNum: 2,
+			},
 		},
 		BidMgr:     nil,
 		clusterMgr: cmcli,
@@ -687,8 +710,10 @@ func TestAllocFillBackupFirstTime(t *testing.T) {
 	v := &volumeMgr{
 		BlobConfig: BlobConfig{},
 		VolConfig: VolConfig{
-			VolumeReserveSize:   1024,
-			DefaultAllocVolsNum: 2,
+			VolumeReserveSize: 1024,
+			CodeModeVolConfig: CodeModeVolConfig{
+				DefaultAllocVolsNum: 2,
+			},
 		},
 		BidMgr:     nil,
 		clusterMgr: cmcli,
@@ -744,8 +769,10 @@ func TestAllocAvoidAllocZeroVolFromCM(t *testing.T) {
 	v := &volumeMgr{
 		BlobConfig: BlobConfig{},
 		VolConfig: VolConfig{
-			VolumeReserveSize:   1024,
-			DefaultAllocVolsNum: 2,
+			VolumeReserveSize: 1024,
+			CodeModeVolConfig: CodeModeVolConfig{
+				DefaultAllocVolsNum: 2,
+			},
 		},
 		BidMgr:     nil,
 		clusterMgr: cmcli,

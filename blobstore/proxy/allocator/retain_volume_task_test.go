@@ -56,9 +56,11 @@ func TestRetain(t *testing.T) {
 			BidAllocNums: 100000,
 		},
 		VolConfig: VolConfig{
-			RetainIntervalS:      60,
-			VolumeReserveSize:    2 << 20,
-			DefaultAllocVolsNum:  10,
+			RetainIntervalS:   60,
+			VolumeReserveSize: 2 << 20,
+			CodeModeVolConfig: CodeModeVolConfig{
+				DefaultAllocVolsNum: 10,
+			},
 			RetainBatchIntervalS: 1,
 			RetainVolumeBatchNum: 400,
 		},
