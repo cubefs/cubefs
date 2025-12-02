@@ -300,15 +300,20 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 							total += req.Size
 							bcacheMetric := exporter.NewCounter("fileReadL1CacheHit")
 							bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
-							log.LogDebugf("TRACE Stream read. hit blockCache: cacheKey(%v) inode(%v) "+
-								"offset(%v) readBytes(%v) goroutine(%v)", cacheKey, s.inode, offset, readBytes, getGoid())
+							if log.EnableDebug() {
+								log.LogDebugf("TRACE Stream read. hit blockCache: cacheKey(%v) inode(%v) "+
+									"offset(%v) readBytes(%v) goroutine(%v)", cacheKey, s.inode, offset, readBytes, getGoid())
+							}
 							continue
 						}
 						bcacheMissMetric := exporter.NewCounter("fileReadL1CacheMiss")
+
 						bcacheMissMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
 					}
-					log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) inode(%v) offset(%v) size(%v)"+
-						"goroutine(%v)", cacheKey, s.inode, offset, req.Size, getGoid())
+					if log.EnableDebug() {
+						log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) inode(%v) offset(%v) size(%v)"+
+							"goroutine(%v)", cacheKey, s.inode, offset, req.Size, getGoid())
+					}
 				} else {
 					log.LogDebugf("Streamer not read from bcache, ino(%v) storageClass(%v) s.client.bcacheEnable(%v) bcacheOnlyForNotSSD(%v)",
 						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.bcacheEnable, s.client.bcacheOnlyForNotSSD)
@@ -367,14 +372,18 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 				} else if !s.client.bcacheOnlyForNotSSD || (s.client.bcacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
 					select {
 					case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
-						log.LogDebugf("action[streamer.read] blockCache send cacheKey %v for ino(%v) offset %v size %v goroutine(%v)",
-							cacheKey, s.inode, req.FileOffset-int(req.ExtentKey.FileOffset), req.Size, getGoid())
+						if log.EnableDebug() {
+							log.LogDebugf("action[streamer.read] blockCache send cacheKey %v for ino(%v) offset %v size %v goroutine(%v)",
+								cacheKey, s.inode, req.FileOffset-int(req.ExtentKey.FileOffset), req.Size, getGoid())
+						}
 						if s.exceedBlockSize(req.ExtentKey.Size) {
 							atomic.AddInt32(&s.client.inflightL1BigBlock, 1)
 						}
 					default:
-						log.LogDebugf("action[streamer.read] blockCache discard cacheKey %v for ino(%v) offset %v size %v  goroutine(%v)",
-							cacheKey, s.inode, req.FileOffset-int(req.ExtentKey.FileOffset), req.Size, getGoid())
+						if log.EnableDebug() {
+							log.LogDebugf("action[streamer.read] blockCache discard cacheKey %v for ino(%v) offset %v size %v  goroutine(%v)",
+								cacheKey, s.inode, req.FileOffset-int(req.ExtentKey.FileOffset), req.Size, getGoid())
+						}
 					}
 				}
 			}
