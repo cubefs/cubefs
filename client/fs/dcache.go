@@ -93,3 +93,75 @@ func (dc *DentryCache) Clear() {
 	defer dc.Unlock()
 	dc.cache = nil
 }
+
+// NegativeDentryCache defines the cache for non-existent dentries.
+// This cache stores entries that were confirmed to not exist by the backend,
+// with a very short expiration time to avoid stale cache.
+type NegativeDentryCache struct {
+	sync.Mutex
+	cache map[string]int64 // int64 stores Unix timestamp in nanoseconds
+}
+
+// NewNegativeDentryCache returns a new negative dentry cache.
+func NewNegativeDentryCache() *NegativeDentryCache {
+	return &NegativeDentryCache{
+		cache: make(map[string]int64),
+	}
+}
+
+// Put puts a non-existent dentry into the cache with current timestamp.
+func (ndc *NegativeDentryCache) Put(name string) {
+	if ndc == nil {
+		return
+	}
+	ndc.Lock()
+	defer ndc.Unlock()
+	if ndc.cache == nil {
+		ndc.cache = make(map[string]int64)
+	}
+	ndc.cache[name] = time.Now().UnixNano()
+}
+
+// Get checks if the dentry is in the negative cache and still valid.
+// Returns true if the dentry is cached as non-existent and the cache is still valid.
+func (ndc *NegativeDentryCache) Get(name string) bool {
+	if ndc == nil {
+		return false
+	}
+	ndc.Lock()
+	defer ndc.Unlock()
+	if ndc.cache == nil {
+		return false
+	}
+	timestamp, ok := ndc.cache[name]
+	if !ok {
+		return false
+	}
+	// Check if cache is still valid
+	if time.Now().UnixNano()-timestamp > int64(NegativeDentryValidDuration) {
+		// Cache expired, remove it
+		delete(ndc.cache, name)
+		return false
+	}
+	return true
+}
+
+// Delete deletes the negative cache entry for the given name.
+func (ndc *NegativeDentryCache) Delete(name string) {
+	if ndc == nil {
+		return
+	}
+	ndc.Lock()
+	defer ndc.Unlock()
+	delete(ndc.cache, name)
+}
+
+// Clear clears all negative cache entries.
+func (ndc *NegativeDentryCache) Clear() {
+	if ndc == nil {
+		return
+	}
+	ndc.Lock()
+	defer ndc.Unlock()
+	ndc.cache = nil
+}

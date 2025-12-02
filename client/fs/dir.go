@@ -101,14 +101,15 @@ func (dctx *DirContexts) Clear() {
 
 // Dir defines the structure of a directory
 type Dir struct {
-	super     *Super
-	info      *proto.InodeInfo
-	dcache    *DentryCache
-	dctx      *DirContexts
-	parentIno uint64
-	name      string
-	missCount uint32
-	lastTime  int64
+	super       *Super
+	info        *proto.InodeInfo
+	dcache      *DentryCache
+	dcacheNoEnt *NegativeDentryCache
+	dctx        *DirContexts
+	parentIno   uint64
+	name        string
+	missCount   uint32
+	lastTime    int64
 }
 
 // Functions that Dir needs to implement
@@ -134,11 +135,12 @@ var (
 // NewDir returns a new directory.
 func NewDir(s *Super, i *proto.InodeInfo, pino uint64, dirName string) fs.Node {
 	return &Dir{
-		super:     s,
-		info:      i,
-		parentIno: pino,
-		name:      dirName,
-		dctx:      NewDirContexts(),
+		super:       s,
+		info:        i,
+		parentIno:   pino,
+		name:        dirName,
+		dctx:        NewDirContexts(),
+		dcacheNoEnt: NewNegativeDentryCache(),
 	}
 }
 
@@ -171,6 +173,9 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 	if !d.super.metaCacheAcceleration {
 		d.dctx.Clear()
 		d.dcache.Clear()
+		if d.dcacheNoEnt != nil {
+			d.dcacheNoEnt.Clear()
+		}
 		ino := d.info.Inode
 		d.super.ic.Delete(ino)
 
@@ -195,6 +200,11 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		auditlog.LogClientOp("Create", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
+
+	// Delete from negative cache if file is being created
+	if d.dcacheNoEnt != nil {
+		d.dcacheNoEnt.Delete(req.Name)
+	}
 
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil,
 		fullPath, false, false)
@@ -241,6 +251,9 @@ func (d *Dir) Forget() {
 	d.dctx.Clear()
 	d.super.ic.Delete(ino)
 	d.dcache.Clear()
+	if d.dcacheNoEnt != nil {
+		d.dcacheNoEnt.Clear()
+	}
 	d.super.fslock.Lock()
 	delete(d.super.nodeCache, ino)
 	d.super.fslock.Unlock()
@@ -264,6 +277,10 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	log.LogDebugf("TRACE Mkdir:enter")
+	// Delete from negative cache if directory is being created
+	if d.dcacheNoEnt != nil {
+		d.dcacheNoEnt.Delete(req.Name)
+	}
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid,
 		req.Gid, nil, fullPath, false, false)
 	if err != nil {
@@ -359,6 +376,15 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		dcachev2 = true
 	}
 	if dcachev2 {
+		// First check negative cache (file doesn't exist)
+		if d.dcacheNoEnt != nil && d.dcacheNoEnt.Get(req.Name) {
+			if log.EnableDebug() {
+				log.LogDebugf("Lookup %v from parent %v hit negative cache (dcachev2), return ENOENT", path.Join(d.getCwd(), req.Name), d.info.Inode)
+			}
+			err = syscall.ENOENT
+			return nil, ParseError(err)
+		}
+
 		lookupMetric := exporter.NewCounter("lookupDcache")
 		lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
 		dcacheKey := d.buildDcacheKey(d.info.Inode, req.Name)
@@ -368,7 +394,15 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
 			ino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name, false)
 			if err != nil {
-				if err != syscall.ENOENT {
+				if err == syscall.ENOENT {
+					// Cache the negative result (file doesn't exist)
+					if d.dcacheNoEnt != nil {
+						d.dcacheNoEnt.Put(req.Name)
+						if log.EnableDebug() {
+							log.LogDebugf("Lookup %v from parent %v ENOENT (dcachev2), cached in negative cache", path.Join(d.getCwd(), req.Name), d.info.Inode)
+						}
+					}
+				} else {
 					log.LogErrorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 				}
 				return nil, ParseError(err)
@@ -384,6 +418,15 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			ino = dentryInfo.Inode
 		}
 	} else {
+		// First check negative cache (file doesn't exist)
+		if d.dcacheNoEnt != nil && d.dcacheNoEnt.Get(req.Name) {
+			if log.EnableDebug() {
+				log.LogDebugf("Lookup %v from parent %v hit negative cache, return ENOENT", path.Join(d.getCwd(), req.Name), d.info.Inode)
+			}
+			err = syscall.ENOENT
+			return nil, ParseError(err)
+		}
+
 		cino, ok := d.dcache.Get(req.Name)
 		if !ok {
 			if log.EnableDebug() {
@@ -391,7 +434,15 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			}
 			cino, _, err = d.super.mw.Lookup_ll(d.info.Inode, req.Name, false)
 			if err != nil {
-				if err != syscall.ENOENT {
+				if err == syscall.ENOENT {
+					// Cache the negative result (file doesn't exist)
+					if d.dcacheNoEnt != nil {
+						d.dcacheNoEnt.Put(req.Name)
+						if log.EnableDebug() {
+							log.LogDebugf("Lookup %v from parent %v ENOENT, cached in negative cache", path.Join(d.getCwd(), req.Name), d.info.Inode)
+						}
+					}
+				} else {
 					log.LogErrorf("Lookup: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 				}
 				return nil, ParseError(err)
@@ -864,6 +915,10 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	fullPath := path.Join(d.getCwd(), req.Name)
+	// Delete from negative cache if file is being created
+	if d.dcacheNoEnt != nil {
+		d.dcacheNoEnt.Delete(req.Name)
+	}
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid,
 		nil, fullPath, false, false)
 	if err != nil {
@@ -897,6 +952,10 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	fullPath := path.Join(d.getCwd(), req.NewName)
+	// Delete from negative cache if symlink is being created
+	if d.dcacheNoEnt != nil {
+		d.dcacheNoEnt.Delete(req.NewName)
+	}
 	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid,
 		req.Gid, []byte(req.Target), fullPath, false, false)
 	if err != nil {

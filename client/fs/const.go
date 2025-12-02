@@ -40,7 +40,10 @@ const (
 const (
 	// the expiration duration of the dentry in the cache (used internally)
 	DentryValidDuration = 5 * time.Second
-	DefaultReaddirLimit = 1024
+	// the expiration duration of the negative dentry cache (file not exists)
+	// This should be very short to avoid stale cache when file is created quickly
+	NegativeDentryValidDuration = 200 * time.Millisecond
+	DefaultReaddirLimit         = 1024
 )
 
 const (
