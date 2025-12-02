@@ -1258,8 +1258,10 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 				packet, mp, *req, packet.GetResultMsg(), string(debug.Stack()))
 		}
 	} else {
-		log.LogDebugf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v) trace(%v)",
-			packet, mp, *req, packet.GetResultMsg(), string(debug.Stack()))
+		if log.EnableDebug() {
+			log.LogDebugf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v) trace(%v)",
+				packet, mp, *req, packet.GetResultMsg(), string(debug.Stack()))
+		}
 	}
 	return status, err
 }
@@ -1268,7 +1270,9 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getExtents", err, bgTime, 1)
-		log.LogDebugf("getExtents for inode(%v) cost(%v)", inode, time.Since(*bgTime).String())
+		if log.EnableDebug() {
+			log.LogDebugf("getExtents for inode(%v) cost(%v)", inode, time.Since(*bgTime).String())
+		}
 	}()
 
 	req := &proto.GetExtentsRequest{

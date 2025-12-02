@@ -255,12 +255,16 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}()
 
 	ino := f.info.Inode
-	log.LogDebugf("TRACE open ino(%v) info(%v) fullPath(%v)", ino, f.info, path.Join(f.getParentPath(), f.name))
+	if log.EnableDebug() {
+		log.LogDebugf("TRACE open ino(%v) info(%v) fullPath(%v)", ino, f.info, path.Join(f.getParentPath(), f.name))
+	}
 	start := time.Now()
 
 	if f.super.bcacheDir != "" && !f.filterFilesSuffix(f.super.bcacheFilterFiles) {
 		parentPath := f.getParentPath()
-		log.LogDebugf("TRACE open ino(%v) fullpath(%v)", ino, path.Join(f.getParentPath(), f.name))
+		if log.EnableDebug() {
+			log.LogDebugf("TRACE open ino(%v) fullpath(%v)", ino, path.Join(f.getParentPath(), f.name))
+		}
 		if parentPath != "" && !strings.HasSuffix(parentPath, "/") {
 			parentPath = parentPath + "/"
 		}
@@ -367,15 +371,16 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 				parent, ok := node.(*Dir)
 				if ok {
 					parent.dcache.Delete(f.name)
-					log.LogDebugf("TRACE Release exit: ino(%v) name(%v) decache(%v)",
-						parent.info.Inode, parent.name, parent.dcache.Len())
+					if log.EnableDebug() {
+						log.LogDebugf("TRACE Release exit: ino(%v) name(%v) decache(%v)",
+							parent.info.Inode, parent.name, parent.dcache.Len())
+					}
 				}
 			}
 			f.super.fslock.Unlock()
 		}
 		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
-
 	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
 
 	start := time.Now()
@@ -390,8 +395,10 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
 		return ParseError(err)
 	}
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE FileRelease: ino(%v) req(%v) name(%v)(%v)ns", ino, req, path.Join(f.getParentPath(), f.name), elapsed.Nanoseconds())
+	if log.EnableDebug() {
+		elapsed := time.Since(start)
+		log.LogDebugf("TRACE FileRelease: ino(%v) req(%v) name(%v)(%v)ns", ino, req, path.Join(f.getParentPath(), f.name), elapsed.Nanoseconds())
+	}
 
 	return nil
 }
@@ -420,7 +427,6 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		stat.StatBandWidth("Read", uint32(req.Size))
 		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
-
 	log.LogDebugf("TRACE Read enter: ino(%v) storageClass(%v) offset(%v) filesize(%v) reqsize(%v) req(%v)",
 		f.info.Inode, f.info.StorageClass, req.Offset, f.info.Size, req.Size, req)
 
@@ -786,7 +792,9 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 		log.LogErrorf("Readlink: ino(%v) err(%v)", ino, err)
 		return "", ParseError(err)
 	}
-	log.LogDebugf("TRACE Readlink: ino(%v) target(%v)", ino, string(info.Target))
+	if log.EnableDebug() {
+		log.LogDebugf("TRACE Readlink: ino(%v) target(%v)", ino, string(info.Target))
+	}
 	return string(info.Target), nil
 }
 
