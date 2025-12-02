@@ -75,7 +75,7 @@ class RawStore final : public Store, public SliceHandler {
     std::unique_ptr<SliceAllocator> slice_allocator_;
 
     // Write-ahead log manager (A/B arena pattern)
-    std::unique_ptr<LogHandler> log_mgr_;
+    JournalPtr log_mgr_;
 
     StoreConfig cfg_;
     DevicePtr dev_;

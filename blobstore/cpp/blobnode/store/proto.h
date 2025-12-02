@@ -23,20 +23,20 @@ namespace blobnode {
 
 using ChunkIndex = uint32_t;
 using SliceIndex = uint32_t;
-using LogHeaderVer = uint64_t;
+using JournalHeaderVer = uint64_t;
 
-constexpr LogHeaderVer kInitLogHeaderVer = 1;
+constexpr JournalHeaderVer kInitJournalHeaderVer = 1;
 // constexpr uint32_t kDeviceSectorSize = 512;
 constexpr uint32_t kSliceMetaSize = 32 + 32;
 
-enum class LogHeaderFlag : uint8_t {
+enum class JournalHeaderFlag : uint8_t {
     UnCheckpoint = 0,
     CheckpointDone = 1,
 
     Max = 2,
 };
 
-enum class LogRecordType : uint8_t {
+enum class JournalRecordType : uint8_t {
     SliceMeta = 0,
 
     Max = 1,

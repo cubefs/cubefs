@@ -20,6 +20,8 @@ using DevicePtr = std::unique_ptr<Device>;
 
 class Device {
    public:
+    virtual ~Device() = default;
+
     virtual const std::string& Name() const = 0;
 
     virtual size_t Capacity() const = 0;

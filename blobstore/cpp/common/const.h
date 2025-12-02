@@ -6,6 +6,8 @@
 
 namespace blobstore {
 
+constexpr size_t kCrcBytes = 4;
+
 constexpr size_t kMemoryAlignment = 4096;
 constexpr size_t kMemoryAlignmentMask = 4095;
 
