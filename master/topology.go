@@ -2322,49 +2322,51 @@ func (l *DecommissionDataPartitionList) startTraverse() {
 
 func updateDecommissionWeight(dps []*DataPartition, c *Cluster) {
 	for _, dp := range dps {
-		vol, err := c.getVol(dp.VolName)
-		if err != nil {
-			log.LogWarnf("action[DecommissionListTraverse] dp[%v] get vol[%v] failed", dp.decommissionInfo(), dp.VolName)
-			dp.DecommissionErrorMessage = err.Error()
-			dp.markRollbackFailed(false, "traverDecommissionList_updateDecommissionWeight_volMarkDeleteCheck", err.Error())
-			continue
-		}
-		if (vol.status() == proto.VolStatusMarkDelete && !vol.Forbidden) ||
-			(vol.status() == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
-			dp.SetDecommissionStatus(DecommissionSuccess, "traverDecommissionList_updateDecommissionWeight_volMarkDeleteCheck", "")
-			log.LogWarnf("action[DecommissionListTraverse] skip dp(%v) since vol(%v) has been marked for deletion", dp.PartitionID, dp.VolName)
-			continue
-		}
-
-		if dp.IsDiscard {
-			dp.SetDecommissionStatus(DecommissionSuccess, "traverDecommissionList_updateDecommissionWeight_discardCheck", "")
-			log.LogWarnf("action[DecommissionListTraverse] skip dp(%v) discard(%v)", dp.PartitionID, dp.IsDiscard)
-			continue
-		}
-		diskErrReplicaNum := dp.getReplicaDiskErrorNum()
-		if diskErrReplicaNum == dp.ReplicaNum || diskErrReplicaNum == uint8(len(dp.Peers)) {
-			log.LogWarnf("action[DecommissionListTraverse] dp[%v] all live replica is unavailable", dp.decommissionInfo())
-			err := proto.ErrAllReplicaUnavailable
-			dp.DecommissionErrorMessage = err.Error()
-			dp.markRollbackFailed(false, "traverDecommissionList_updateDecommissionWeight_diskErrReplicaNumCheck", err.Error())
-			continue
-		}
-		if dp.DecommissionType == AutoDecommission && dp.IsMarkDecommission() {
-			if dp.lostLeader(c) && !dp.DecommissionRaftForce {
-				dp.DecommissionRaftForce = true
-				log.LogWarnf("action[DecommissionListTraverse] change dp[%v] decommission raftForce from false to true", dp.decommissionInfo())
+		if dp.IsMarkDecommission() {
+			vol, err := c.getVol(dp.VolName)
+			if err != nil {
+				log.LogWarnf("action[DecommissionListTraverse] dp[%v] get vol[%v] failed", dp.decommissionInfo(), dp.VolName)
+				dp.DecommissionErrorMessage = err.Error()
+				dp.markRollbackFailed(false, "traverDecommissionList_updateDecommissionWeight_volMarkDeleteCheck", err.Error())
+				continue
 			}
-			diskErrReplicas := dp.getAllDiskErrorReplica()
-			if isReplicasContainsHost(diskErrReplicas, dp.DecommissionSrcAddr) {
-				if dp.ReplicaNum == 3 {
-					if (diskErrReplicaNum == 2 && len(dp.Hosts) == 3) || (diskErrReplicaNum == 1 && len(dp.Hosts) == 2) {
-						dp.DecommissionWeight = highestPriorityDecommissionWeight
-					} else if diskErrReplicaNum == 1 && len(dp.Hosts) == 3 {
-						dp.DecommissionWeight = highPriorityDecommissionWeight
-					}
-				} else if dp.ReplicaNum == 2 {
-					if diskErrReplicaNum == 1 && len(dp.Hosts) == 2 {
-						dp.DecommissionWeight = highPriorityDecommissionWeight
+			if (vol.status() == proto.VolStatusMarkDelete && !vol.Forbidden) ||
+				(vol.status() == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+				dp.SetDecommissionStatus(DecommissionSuccess, "traverDecommissionList_updateDecommissionWeight_volMarkDeleteCheck", "")
+				log.LogWarnf("action[DecommissionListTraverse] skip dp(%v) since vol(%v) has been marked for deletion", dp.PartitionID, dp.VolName)
+				continue
+			}
+
+			if dp.IsDiscard {
+				dp.SetDecommissionStatus(DecommissionSuccess, "traverDecommissionList_updateDecommissionWeight_discardCheck", "")
+				log.LogWarnf("action[DecommissionListTraverse] skip dp(%v) discard(%v)", dp.PartitionID, dp.IsDiscard)
+				continue
+			}
+			diskErrReplicaNum := dp.getReplicaDiskErrorNum()
+			if diskErrReplicaNum == dp.ReplicaNum || diskErrReplicaNum == uint8(len(dp.Peers)) {
+				log.LogWarnf("action[DecommissionListTraverse] dp[%v] all live replica is unavailable", dp.decommissionInfo())
+				err := proto.ErrAllReplicaUnavailable
+				dp.DecommissionErrorMessage = err.Error()
+				dp.markRollbackFailed(false, "traverDecommissionList_updateDecommissionWeight_diskErrReplicaNumCheck", err.Error())
+				continue
+			}
+			if dp.DecommissionType == AutoDecommission && dp.IsMarkDecommission() {
+				if dp.lostLeader(c) && !dp.DecommissionRaftForce {
+					dp.DecommissionRaftForce = true
+					log.LogWarnf("action[DecommissionListTraverse] change dp[%v] decommission raftForce from false to true", dp.decommissionInfo())
+				}
+				diskErrReplicas := dp.getAllDiskErrorReplica()
+				if isReplicasContainsHost(diskErrReplicas, dp.DecommissionSrcAddr) {
+					if dp.ReplicaNum == 3 {
+						if (diskErrReplicaNum == 2 && len(dp.Hosts) == 3) || (diskErrReplicaNum == 1 && len(dp.Hosts) == 2) {
+							dp.DecommissionWeight = highestPriorityDecommissionWeight
+						} else if diskErrReplicaNum == 1 && len(dp.Hosts) == 3 {
+							dp.DecommissionWeight = highPriorityDecommissionWeight
+						}
+					} else if dp.ReplicaNum == 2 {
+						if diskErrReplicaNum == 1 && len(dp.Hosts) == 2 {
+							dp.DecommissionWeight = highPriorityDecommissionWeight
+						}
 					}
 				}
 			}
