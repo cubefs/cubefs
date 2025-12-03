@@ -222,7 +222,7 @@ func (mp *metaPartition) confPromoteLearner(req *proto.AddMetaPartitionRaftMembe
 		}
 	}
 	if !peerExists {
-		err = fmt.Errorf("learner node %v not found in partition %v", req.AddPeer.ID, req.PartitionId)
+		log.LogErrorf("learner node %v not found in partition %v", req.AddPeer.ID, req.PartitionId)
 		return
 	}
 	// Promotion is handled by raft layer, we just log it here

@@ -16,10 +16,8 @@ package diskmon_test
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/diskmon"
@@ -48,7 +46,7 @@ func TestSelectDisk(t *testing.T) {
 			PartitionCount: 0,
 		})
 	}
-	randGen := rand.New(rand.NewSource(time.Now().Unix()))
+
 	for i := 0; i < selectCount; i++ {
 		disk, err := diskmon.SelectDisk(disks, 1)
 		require.NoError(t, err)
@@ -57,8 +55,6 @@ func TestSelectDisk(t *testing.T) {
 			stat := &disks[i]
 			if stat.Path == disk.Path {
 				stat.PartitionCount += 1
-				used := randGen.Uint64() % (10 * util.GB)
-				stat.Available -= used
 				break
 			}
 		}

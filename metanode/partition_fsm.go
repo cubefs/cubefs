@@ -724,6 +724,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	case raftproto.ConfUpdateNode:
 		// updated, err = mp.confUpdateNode(req, index)
 	default:
+		log.LogWarnf("action[ApplyMemberChange] mp[%v] unknown conf change type %v.", mp.config.PartitionId, confChange.Type)
 		// do nothing
 	}
 	if err != nil {
