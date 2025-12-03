@@ -473,6 +473,10 @@ func (rs *RaftServer) handleHeartbeat(m *proto.Message) {
 	rs.mu.RLock()
 	for _, id := range ctx {
 		if raft, ok := rs.rafts[id]; ok {
+
+			// logger.Debug("raft[%v] handle heartbeat, from[%v] to[%v], term[%d], logTerm[%d], index[%d]",
+			// raft.raftFsm.id, m.From, m.To, m.Term, m.LogTerm, m.Index)
+
 			raft.reciveMessage(m)
 			respCtx = append(respCtx, id)
 		}

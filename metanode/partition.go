@@ -113,6 +113,14 @@ type MetaPartitionConfig struct {
 	RocksWalTTL          uint64          `json:"rocks_wal_ttl"`
 }
 
+func (c *MetaPartitionConfig) peersStr() string {
+	peersStr := ""
+	for _, peer := range c.Peers {
+		peersStr += fmt.Sprintf("[%v:%v:%v:%v:%v],", peer.ID, peer.Type, peer.Addr, peer.HeartbeatPort, peer.ReplicaPort)
+	}
+	return peersStr
+}
+
 func (c *MetaPartitionConfig) checkMeta() (err error) {
 	if c.PartitionId <= 0 {
 		err = errors.NewErrorf("[checkMeta]: partition id at least 1, "+
@@ -898,7 +906,8 @@ func (mp *metaPartition) startRaft(isCreate bool) (err error) {
 		addr := strings.Split(peer.Addr, ":")[0]
 		rp := raftstore.PeerAddress{
 			Peer: raftproto.Peer{
-				ID: peer.ID,
+				ID:   peer.ID,
+				Type: peer.Type,
 			},
 			Address:       addr,
 			HeartbeatPort: heartbeatPort,

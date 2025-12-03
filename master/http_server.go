@@ -184,6 +184,8 @@ var AuthenticationUri2MsgTypeMap = map[string]proto.MsgType{
 	proto.AdminCreateMetaPartition:       proto.MsgMasterCreateMetaPartitionReq,
 	proto.AdminAddMetaReplica:            proto.MsgMasterAddMetaReplicaReq,
 	proto.AdminDeleteMetaReplica:         proto.MsgMasterDeleteMetaReplicaReq,
+	proto.AdminAddMetaPartitionLearner:   proto.MsgMasterAddMetaPartitionLearnerReq,
+	proto.AdminPromoteMetaReplica:        proto.MsgMasterPromoteMetaReplicaReq,
 	proto.QosUpdate:                      proto.MsgMasterQosUpdateReq,
 	proto.QosUpdateZoneLimit:             proto.MsgMasterQosUpdateZoneLimitReq,
 	proto.QosUpdateMasterLimit:           proto.MsgMasterQosUpdateMasterLimitReq,
@@ -578,6 +580,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDeleteMetaReplica).
 		HandlerFunc(m.deleteMetaReplica)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAddMetaPartitionLearner).
+		HandlerFunc(m.addMetaPartitionLearner)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminPromoteMetaReplica).
+		HandlerFunc(m.promoteMetaReplica)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDiagnoseMetaPartition).
 		HandlerFunc(m.diagnoseMetaPartition)

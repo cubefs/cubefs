@@ -144,6 +144,7 @@ type MetaReplicaInfo struct {
 	ReportTime      int64
 	Status          int8 // unavailable, readOnly, readWrite
 	IsLeader        bool
+	IsLearner       bool
 	InodeCount      uint64
 	MaxInode        uint64
 	DentryCount     uint64

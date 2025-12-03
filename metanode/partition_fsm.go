@@ -709,6 +709,18 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			return
 		}
 		updated, err = mp.confRemoveNode(req, index)
+	case raftproto.ConfAddLearner:
+		req := &proto.AddMetaPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
+		updated, err = mp.confAddLearner(req, index)
+	case raftproto.ConfPromoteLearner:
+		req := &proto.AddMetaPartitionRaftMemberRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
+		updated, err = mp.confPromoteLearner(req, index)
 	case raftproto.ConfUpdateNode:
 		// updated, err = mp.confUpdateNode(req, index)
 	default:

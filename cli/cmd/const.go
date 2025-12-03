@@ -43,6 +43,8 @@ const (
 	CliOpCheck                        = "check"
 	CliOpReset                        = "reset"
 	CliOpReplicate                    = "add-replica"
+	CliOpAddLearner                   = "add-learner"
+	CliOpPromoteLearner               = "promote-learner"
 	CliOpDelReplica                   = "del-replica"
 	CliOpExpand                       = "expand"
 	CliOpShrink                       = "shrink"

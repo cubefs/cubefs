@@ -209,12 +209,13 @@ const (
 )
 
 const (
-	defaultFaultDomainZoneCnt                         = 3
-	defaultNormalCrossZoneCnt                         = 3
-	defaultInitMetaPartitionCount                     = 3
-	defaultMaxInitMetaPartitionCount                  = 100
-	defaultMaxMetaPartitionInodeID             uint64 = 1<<63 - 1
-	defaultMetaPartitionInodeIDStep            uint64 = 1 << 22
+	defaultFaultDomainZoneCnt               = 3
+	defaultNormalCrossZoneCnt               = 3
+	defaultInitMetaPartitionCount           = 3
+	defaultMaxInitMetaPartitionCount        = 100
+	defaultMaxMetaPartitionInodeID   uint64 = 1<<63 - 1
+	defaultMetaPartitionInodeIDStep  uint64 = 1 << 22
+
 	defaultMetaNodeReservedMem                 uint64 = 1 << 30
 	runtimeStackBufSize                               = 4096
 	spaceAvailableRate                                = 0.90

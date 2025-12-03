@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"sync"
 
+	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/util"
 )
 
@@ -34,10 +35,16 @@ type CreateNameSpaceResponse struct {
 
 // Peer defines the peer of the node id and address.
 type Peer struct {
-	ID            uint64 `json:"id"`
-	Addr          string `json:"addr"`
-	HeartbeatPort string `json:"raftHeartbeat"`
-	ReplicaPort   string `json:"raftReplica"`
+	Type          raftproto.PeerType `json:"type"`
+	ID            uint64             `json:"id"`
+	Addr          string             `json:"addr"`
+	HeartbeatPort string             `json:"raftHeartbeat"`
+	ReplicaPort   string             `json:"raftReplica"`
+}
+
+func (p *Peer) String() string {
+	return fmt.Sprintf("type[%v],id[%v],addr[%v],heartbeatPort[%v],replicaPort[%v]",
+		p.Type, p.ID, p.Addr, p.HeartbeatPort, p.ReplicaPort)
 }
 
 // CreateMetaPartitionRequest defines the request to create a meta partition.

@@ -39,16 +39,20 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaPartitionDecommissionCmd(client),
 		newMetaPartitionReplicateCmd(client),
 		newMetaPartitionDeleteReplicaCmd(client),
+		newMetaPartitionAddLearnerCmd(client),
+		newMetaPartitionPromoteLearnerCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdMetaPartitionGetShort           = "Display detail information of a meta partition"
-	cmdCheckCorruptMetaPartitionShort  = "Check out corrupt meta partitions"
-	cmdMetaPartitionDecommissionShort  = "Decommission a replication of the meta partition to a new address"
-	cmdMetaPartitionReplicateShort     = "Add a replication of the meta partition on a new address"
-	cmdMetaPartitionDeleteReplicaShort = "Delete a replication of the meta partition on a fixed address"
+	cmdMetaPartitionGetShort            = "Display detail information of a meta partition"
+	cmdCheckCorruptMetaPartitionShort   = "Check out corrupt meta partitions"
+	cmdMetaPartitionDecommissionShort   = "Decommission a replication of the meta partition to a new address"
+	cmdMetaPartitionReplicateShort      = "Add a replication of the meta partition on a new address"
+	cmdMetaPartitionDeleteReplicaShort  = "Delete a replication of the meta partition on a fixed address"
+	cmdMetaPartitionAddLearnerShort     = "Add a learner replica of the meta partition on a new address"
+	cmdMetaPartitionPromoteLearnerShort = "Promote a learner replica to voter in the meta partition"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -363,6 +367,81 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 				return
 			}
 			stdout("Delete replication successfully\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	return cmd
+}
+
+func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
+	var optStoreMode string
+	cmd := &cobra.Command{
+		Use:   CliOpAddLearner + " [ADDRESS] [META PARTITION ID]",
+		Short: cmdMetaPartitionAddLearnerShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				errout(err)
+			}()
+			address := args[0]
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
+
+			var storeMode proto.StoreMode
+			storeMode, err = ParseStoreMode(optStoreMode)
+			if err != nil {
+				return
+			}
+			if err = client.AdminAPI().AddMetaPartitionLearner(partitionID, address, clientIDKey, storeMode); err != nil {
+				return
+			}
+			stdout("Add learner replica successfully\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "memory", "specify volume default store mode: memory, rocksdb")
+	return cmd
+}
+
+func newMetaPartitionPromoteLearnerCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
+	cmd := &cobra.Command{
+		Use:   CliOpPromoteLearner + " [ADDRESS] [META PARTITION ID]",
+		Short: cmdMetaPartitionPromoteLearnerShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partitionID uint64
+			)
+			defer func() {
+				errout(err)
+			}()
+			address := args[0]
+			partitionID, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
+			if err = client.AdminAPI().PromoteMetaReplica(partitionID, address, clientIDKey); err != nil {
+				return
+			}
+			stdout("Promote learner replica to voter successfully\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {

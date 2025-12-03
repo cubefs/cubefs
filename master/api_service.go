@@ -42,6 +42,8 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/cubefs/cubefs/util/strutil"
+
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 )
 
 func apiToMetricsName(api string) (reqMetricName string) {
@@ -2046,7 +2048,124 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 	}
 	mp.IsRecover = true
 	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+
+	mp.RLock()
+	m.cluster.syncUpdateMetaPartition(mp)
+	mp.RUnlock()
+
 	msg = fmt.Sprintf("meta partitionID :%v  add replica [%v] successfully", partitionID, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) addMetaPartitionLearner(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		addr        string
+		mp          *MetaPartition
+		partitionID uint64
+		allHosts    []string
+		err         error
+		storeMode   int
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAddMetaPartitionLearner))
+	defer func() {
+		doStatAndMetric(proto.AdminAddMetaPartitionLearner, metric, err, nil)
+		AuditLog(r, proto.AdminAddMetaPartitionLearner, fmt.Sprintf("meta partitionID :%v  add learner [%v]", partitionID, addr), err)
+		if err != nil {
+			log.LogWarnf("action[addMetaPartitionLearner] HTTP request failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
+		} else {
+			log.LogWarnf("action[addMetaPartitionLearner] HTTP request success,partitionID[%v],addr[%v]", partitionID, addr)
+		}
+	}()
+
+	if partitionID, addr, err = parseRequestToAddMetaPartitionLearner(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	storeMode, err = extractStoreMode(r)
+	if err != nil {
+		log.LogWarnf("action[addMetaPartitionLearner] extractStoreMode failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb) || storeMode == int(proto.StoreModeDef)) {
+		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		log.LogWarnf("action[addMetaPartitionLearner] getMetaPartitionByID failed,partitionID[%v],err[%v]", partitionID, err)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+
+	mp.RLock()
+	allHosts = append(mp.Hosts, addr)
+	mp.RUnlock()
+	if err = m.cluster.checkMultipleReplicasOnSameMachine(allHosts); err != nil {
+		log.LogWarnf("action[addMetaPartitionLearner] checkMultipleReplicasOnSameMachine failed,partitionID[%v],addr[%v],allHosts[%v],err[%v]",
+			partitionID, addr, allHosts, err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode)); err != nil {
+		log.LogWarnf("action[addMetaPartitionLearner] cluster.addMetaPartitionLearner failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	mp.IsRecover = true
+	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+
+	mp.RLock()
+	m.cluster.syncUpdateMetaPartition(mp)
+	mp.RUnlock()
+
+	log.LogWarnf("action[addMetaPartitionLearner] learner added successfully,partitionID[%v],addr[%v],set IsRecover=true", partitionID, addr)
+	msg = fmt.Sprintf("meta partitionID :%v  add learner [%v] successfully", partitionID, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) promoteMetaReplica(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		addr        string
+		mp          *MetaPartition
+		partitionID uint64
+		err         error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminPromoteMetaReplica))
+	defer func() {
+		doStatAndMetric(proto.AdminPromoteMetaReplica, metric, err, nil)
+		AuditLog(r, proto.AdminPromoteMetaReplica, fmt.Sprintf("meta partitionID :%v  promote replica [%v]", partitionID, addr), err)
+		if err != nil {
+			log.LogWarnf("action[promoteMetaReplica] HTTP request failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
+		} else {
+			log.LogWarnf("action[promoteMetaReplica] HTTP request success,partitionID[%v],addr[%v]", partitionID, addr)
+		}
+	}()
+
+	if partitionID, addr, err = parseRequestToPromoteMetaReplica(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	log.LogWarnf("action[promoteMetaReplica] parsed params,partitionID[%v],addr[%v]", partitionID, addr)
+
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+
+	if err = m.cluster.promoteMetaReplicaToVoter(mp, addr); err != nil {
+		log.LogWarnf("action[promoteMetaReplica] cluster.promoteMetaReplicaToVoter failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	log.LogWarnf("action[promoteMetaReplica] replica promoted successfully,partitionID[%v],addr[%v]", partitionID, addr)
+	msg = fmt.Sprintf("meta partitionID :%v  promote replica [%v] to voter successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -6424,6 +6543,16 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		rocksCnt := uint8(0)
 		storeMode := proto.StoreModeDef
 		for i := 0; i < len(replicas); i++ {
+			// Check if this replica is a learner by matching with Peers
+			isLearner := false
+			for _, peer := range mp.Peers {
+				if peer.ID == mp.Replicas[i].nodeID {
+					if peer.Type == raftProto.PeerLearner {
+						isLearner = true
+					}
+					break
+				}
+			}
 			replicas[i] = &proto.MetaReplicaInfo{
 				Addr:            mp.Replicas[i].Addr,
 				NodeID:          mp.Replicas[i].nodeID,
@@ -6432,6 +6561,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				ReportTime:      mp.Replicas[i].ReportTime,
 				Status:          mp.Replicas[i].Status,
 				IsLeader:        mp.Replicas[i].IsLeader,
+				IsLearner:       isLearner,
 				InodeCount:      mp.Replicas[i].InodeCount,
 				DentryCount:     mp.Replicas[i].DentryCount,
 				MaxInode:        mp.Replicas[i].MaxInodeID,

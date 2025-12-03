@@ -427,8 +427,10 @@ func (r *raftFsm) tickHeartbeat() {
 func (r *raftFsm) tickElectionAck() {
 	r.electionElapsed++
 	if r.electionElapsed >= r.config.ElectionTick {
-		r.electionElapsed = 0
+		logger.Debug("raft[%v] election timeout at term[%d] leader[%d], electionElapsed[%d], config.ElectionTick[%d].",
+			r.id, r.term, r.leader, r.electionElapsed, r.config.ElectionTick)
 
+		r.electionElapsed = 0
 		m := proto.GetMessage()
 		m.Type = proto.LocalMsgHup
 		m.From = r.config.NodeID

@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -165,6 +166,69 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 	}
 	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
+	return
+}
+
+func (mp *metaPartition) confAddLearner(req *proto.AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+	var (
+		heartbeatPort int
+		replicaPort   int
+	)
+
+	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
+		return
+	}
+	if mp.manager.metaNode.raftPartitionCanUsingDifferentPort {
+		if peerHeartbeatPort, perr := strconv.Atoi(req.AddPeer.HeartbeatPort); perr == nil {
+			heartbeatPort = peerHeartbeatPort
+		}
+		if peerReplicaPort, perr := strconv.Atoi(req.AddPeer.ReplicaPort); perr == nil {
+			replicaPort = peerReplicaPort
+		}
+	}
+
+	// Check if peer already exists
+	addPeer := false
+	for _, peer := range mp.config.Peers {
+		if peer.ID == req.AddPeer.ID {
+			addPeer = true
+			break
+		}
+	}
+	updated = !addPeer
+	if !updated {
+		log.LogWarnf("[confAddLearner]: peer %v already exists in partition %v", req.AddPeer.ID, req.PartitionId)
+		return
+	}
+	// Add learner to peers list
+	req.AddPeer.Type = raftProto.PeerLearner
+	mp.config.Peers = append(mp.config.Peers, req.AddPeer)
+	addr := strings.Split(req.AddPeer.Addr, ":")[0]
+	// Add learner node to raft store
+	mp.config.RaftStore.AddNodeWithPort(req.AddPeer.ID, addr, heartbeatPort, replicaPort)
+	log.LogInfof("Add learner node PartitionID(%v) nodeID(%v) addr(%v)",
+		req.PartitionId, req.AddPeer.ID, addr)
+	return
+}
+
+func (mp *metaPartition) confPromoteLearner(req *proto.AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+	// Check if peer exists
+	peerExists := false
+	for idx, peer := range mp.config.Peers {
+		if peer.ID == req.AddPeer.ID {
+			peerExists = true
+			mp.config.Peers[idx].Type = raftProto.PeerNormal
+			break
+		}
+	}
+	if !peerExists {
+		err = fmt.Errorf("learner node %v not found in partition %v", req.AddPeer.ID, req.PartitionId)
+		return
+	}
+	// Promotion is handled by raft layer, we just log it here
+	log.LogInfof("Promote learner node PartitionID(%v) nodeID(%v)",
+		req.PartitionId, req.AddPeer.ID)
+	updated = true
 	return
 }
 

@@ -236,6 +236,8 @@ const (
 	AdminMetaPartitionGetCleanTask     = "/metaPartition/getCleanTask"
 	AdminAddMetaReplica                = "/metaReplica/add"
 	AdminDeleteMetaReplica             = "/metaReplica/delete"
+	AdminAddMetaPartitionLearner       = "/metaPartition/addLearner"
+	AdminPromoteMetaReplica            = "/metaReplica/promote"
 	AdminPutDataPartitions             = "/dataPartitions/set"
 	AdminCreateStoreModeChangePlan     = "/metaPartition/createStoreModeChangePlan"
 
@@ -425,6 +427,8 @@ var GApiInfo map[string]string = map[string]string{
 	"adminbalancemetapartitionleader": AdminBalanceMetaPartitionLeader,
 	"adminaddmetareplica":             AdminAddMetaReplica,
 	"admindeletemetareplica":          AdminDeleteMetaReplica,
+	"adminaddmetapartitionlearner":    AdminAddMetaPartitionLearner,
+	"adminpromotemetareplica":         AdminPromoteMetaReplica,
 	"getmetanodetaskresponse":         GetMetaNodeTaskResponse,
 	"getdatanodetaskresponse":         GetDataNodeTaskResponse,
 	"gettopologyview":                 GetTopologyView,
@@ -468,6 +472,10 @@ const (
 const (
 	CfgHttpPoolSize     = "httpPoolSize"
 	defaultHttpPoolSize = 128
+)
+
+const (
+	MaxMetaPartitionLearnerNum = 5
 )
 
 type HttpCfg struct {
@@ -713,10 +721,34 @@ type RemoveDataPartitionRaftMemberRequest struct {
 	AutoRemove      bool
 }
 
-// AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
+// MemberOperationType defines the type of member operation
+type MemberOperationType uint8
+
+const (
+	// OpTypeAddRaftMember adds a normal raft member (voter)
+	OpTypeAddRaftMember MemberOperationType = 0
+	// OpTypeAddLearner adds a learner node
+	OpTypeAddLearner MemberOperationType = 1
+	// OpTypePromoteLearner promotes a learner to voter
+	OpTypePromoteLearner MemberOperationType = 2
+)
+
+// AddMetaPartitionRaftMemberRequest defines the request of add raftMember/learner or promote learner in a meta partition.
 type AddMetaPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	AddPeer     Peer
+	// OpType specifies the operation type: 0=AddRaftMember, 1=AddLearner, 2=PromoteLearner
+	// Default is 0 (AddRaftMember) for backward compatibility
+	OpType MemberOperationType `json:"opType,omitempty"`
+}
+
+func (r *AddMetaPartitionRaftMemberRequest) String() string {
+	data, err := json.Marshal(r)
+	if err != nil {
+		return fmt.Sprintf("AddMetaPartitionRaftMemberRequest: %v", err.Error())
+	}
+
+	return string(data)
 }
 
 // RemoveMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.

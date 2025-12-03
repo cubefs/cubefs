@@ -73,6 +73,14 @@ func (s *peerState) change(c *proto.ConfChange) {
 		delete(s.peers, c.Peer.ID)
 	case proto.ConfUpdateNode:
 		s.peers[c.Peer.ID] = c.Peer
+	case proto.ConfAddLearner:
+		c.Peer.Type = proto.PeerLearner
+		s.peers[c.Peer.ID] = c.Peer
+	case proto.ConfPromoteLearner:
+		c.Peer.Type = proto.PeerNormal
+		s.peers[c.Peer.ID] = c.Peer
+	default:
+		logger.Warn("raft[%v] unknown conf change type %v.", c.Peer.ID, c.Type)
 	}
 	s.mu.Unlock()
 }
@@ -284,6 +292,8 @@ func (s *raft) run() {
 		atomic.StorePointer(&s.curSoftSt, unsafe.Pointer(&softState{leader: NoLeader, term: 0}))
 		logger.Warn("raft[%v] quit run", s.raftFsm.id)
 	}()
+
+	logger.Debug("raft[%v] run start at term[%d] leader[%d].", s.raftFsm.id, s.raftFsm.term, s.raftFsm.leader)
 
 	s.prevHardSt.Term = s.raftFsm.term
 	s.prevHardSt.Vote = s.raftFsm.vote

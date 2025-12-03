@@ -1056,22 +1056,23 @@ func parseDpReadOnlyReasons(mask uint32) []string {
 	return reasons
 }
 
-var metaReplicaTableRowPattern = "%-65v    %-8v    %-10v    %-6v    %-6v    %-10v"
+var metaReplicaTableRowPattern = "%-65v    %-8v    %-10v    %-9v    %-6v    %-6v    %-10v"
 
 func formatMetaReplicaTableHeader() string {
-	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "MaxInodeID", "ISLEADER", "STATUS", "StoreMode", "REPORT TIME")
+	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "MaxInodeID", "ISLEADER", "ISLEARNER", "STATUS", "StoreMode", "REPORT TIME")
 }
 
 func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(metaReplicaTableRowPattern, formatAddr(replica.Addr, replica.DomainAddr), replica.MaxInodeID,
-			replica.IsLeader, formatMetaPartitionStatus(replica.Status), replica.StoreMode.Str(), formatTime(replica.ReportTime))
+			replica.IsLeader, replica.IsLearner, formatMetaPartitionStatus(replica.Status), replica.StoreMode.Str(), formatTime(replica.ReportTime))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, formatAddr(replica.Addr, replica.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("%v- MaxInodeID     : %v\n", indentation, replica.MaxInodeID))
 	sb.WriteString(fmt.Sprintf("%v  Status         : %v\n", indentation, formatMetaPartitionStatus(replica.Status)))
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
+	sb.WriteString(fmt.Sprintf("%v  IsLearner      : %v\n", indentation, replica.IsLearner))
 	sb.WriteString(fmt.Sprintf("%v  StoreMode      : %v\n", indentation, replica.StoreMode.Str()))
 	sb.WriteString(fmt.Sprintf("%v  ReportTime     : %v\n", indentation, formatTime(replica.ReportTime)))
 	return sb.String()

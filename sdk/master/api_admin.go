@@ -259,6 +259,27 @@ func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, cli
 	return
 }
 
+func (api *AdminAPI) AddMetaPartitionLearner(metaPartitionID uint64, nodeAddr string, clientIDKey string, storeMode proto.StoreMode) (err error) {
+	request := newRequest(get, proto.AdminAddMetaPartitionLearner).Header(api.h)
+	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+	request.addParam("clientIDKey", clientIDKey)
+	if storeMode != proto.StoreModeDef {
+		request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
+	}
+	_, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *AdminAPI) PromoteMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string) (err error) {
+	request := newRequest(get, proto.AdminPromoteMetaReplica).Header(api.h)
+	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+	request.addParam("clientIDKey", clientIDKey)
+	_, err = api.mc.serveRequest(request)
+	return
+}
+
 func (api *AdminAPI) QueryDataPartitionDecommissionStatusUpdateRecords(partitionId uint64) (records []*proto.DecommissionStatusRecord, err error) {
 	request := newRequest(get, proto.AdminQueryDataPartitionDecommissionStatusUpdateRecords).Header(api.h)
 	request.addParam("id", strconv.FormatUint(partitionId, 10))

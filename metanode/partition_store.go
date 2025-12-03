@@ -1056,8 +1056,8 @@ func (mp *metaPartition) persistMetadata() (err error) {
 	if err = os.Rename(filename, path.Join(mp.config.RootDir, metadataFile)); err != nil {
 		return
 	}
-	log.LogWarnf("persistMetadata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)
+	log.LogWarnf("persistMetadata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v), peers(%s)",
+		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor, mp.config.peersStr())
 	return
 }
 

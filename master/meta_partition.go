@@ -741,6 +741,32 @@ func (mp *MetaPartition) createTaskToAddRaftMember(addPeer proto.Peer, leaderAdd
 	return
 }
 
+func (mp *MetaPartition) createTaskToAddRaftLearner(addPeer proto.Peer, leaderAddr string) (t *proto.AdminTask, err error) {
+	req := &proto.AddMetaPartitionRaftMemberRequest{
+		PartitionId: mp.PartitionID,
+		AddPeer:     addPeer,
+		OpType:      proto.OpTypeAddLearner,
+	}
+	t = proto.NewAdminTask(proto.OpAddMetaPartitionRaftMember, leaderAddr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	log.LogWarnf("action[createTaskToAddRaftLearner] task created,vol[%v],meta partition[%v],peer[%v:%v],taskID[%v]",
+		mp.volName, mp.PartitionID, addPeer.ID, addPeer.Addr, t.ID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToPromoteLearner(promotePeer proto.Peer, leaderAddr string) (t *proto.AdminTask, err error) {
+	req := &proto.AddMetaPartitionRaftMemberRequest{
+		PartitionId: mp.PartitionID,
+		AddPeer:     promotePeer,
+		OpType:      proto.OpTypePromoteLearner,
+	}
+	t = proto.NewAdminTask(proto.OpAddMetaPartitionRaftMember, leaderAddr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	log.LogWarnf("action[createTaskToPromoteLearner] task created,vol[%v],meta partition[%v],peer[%v:%v],taskID[%v]",
+		mp.volName, mp.PartitionID, promotePeer.ID, promotePeer.Addr, t.ID)
+	return
+}
+
 func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (t *proto.AdminTask, err error) {
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {

@@ -1750,11 +1750,11 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 
 	defer func() {
 		if err != nil {
-			log.LogInfof("pkt %s remote %s reqId add raft member failed, req %v, err %s", p.String(), remoteAddr, adminTask, err.Error())
+			log.LogWarnf("opAddMetaPartitionRaftMember: pkt %s remote %s failed, req %v, err %s", p.String(), remoteAddr, adminTask, err.Error())
 			return
 		}
 
-		log.LogInfof("pkt %s, remote %s add raft member success, req %v", p.String(), remoteAddr, adminTask)
+		log.LogWarnf("pkt %s, remote %s %s success, req %v", p.String(), remoteAddr, req.String(), adminTask)
 	}()
 
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
@@ -1771,13 +1771,35 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 		return err
 	}
 
-	if mp.IsExsitPeer(req.AddPeer) {
+	if mp.IsExsitPeer(req.AddPeer) && req.OpType != proto.OpTypePromoteLearner {
+		log.LogWarnf("[opAddMetaPartitionRaftMember]: peer %v already exists in partition %v", req.AddPeer.ID, req.PartitionId)
 		p.PacketOkReply()
 		m.respondToClientWithVer(conn, p)
 		return
 	}
 
-	log.LogInfof("[%s], remote %s start add raft member, req %v", p.String(), remoteAddr, adminTask)
+	// Check maximum learner number limit when adding learner
+	if req.OpType == proto.OpTypeAddLearner {
+		learnerCount := 0
+		config := mp.GetBaseConfig()
+		for _, peer := range config.Peers {
+			if peer.Type == raftProto.PeerLearner {
+				learnerCount++
+			}
+		}
+		if learnerCount >= proto.MaxMetaPartitionLearnerNum {
+			err = errors.NewErrorf("[opAddMetaPartitionRaftMember]: partitionID[%v] exceeds maximum learner number limit, current learners[%v], max allowed[%v]",
+				req.PartitionId, learnerCount, proto.MaxMetaPartitionLearnerNum)
+			log.LogWarnf("[opAddMetaPartitionRaftMember]: %v", err)
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClientWithVer(conn, p)
+			return err
+		}
+		log.LogWarnf("[opAddMetaPartitionRaftMember]: learner count check passed, partitionID[%v], currentLearners[%v], maxAllowed[%v]",
+			req.PartitionId, learnerCount, proto.MaxMetaPartitionLearnerNum)
+	}
+
+	log.LogWarnf("[%s], remote %s start %s, req %v", p.String(), remoteAddr, req.String(), adminTask)
 
 	if !m.serveProxy(conn, mp, p) {
 		return nil
@@ -1797,8 +1819,27 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 		m.respondToClientWithVer(conn, p)
 		return
 	}
-	_, err = mp.ChangeMember(raftProto.ConfAddNode,
-		raftProto.Peer{ID: req.AddPeer.ID}, reqData)
+	// Determine operation type based on OpType field
+	var changeType raftProto.ConfChangeType
+	var peerType raftProto.PeerType
+	switch req.OpType {
+	case proto.OpTypeAddLearner:
+		changeType = raftProto.ConfAddLearner
+		peerType = raftProto.PeerLearner
+		log.LogWarnf("[opAddMetaPartitionRaftMember]: adding learner node %v to partition %v", req.AddPeer.ID, req.PartitionId)
+	case proto.OpTypePromoteLearner:
+		changeType = raftProto.ConfPromoteLearner
+		peerType = raftProto.PeerNormal
+		log.LogWarnf("[opAddMetaPartitionRaftMember]: promoting learner node %v to voter in partition %v", req.AddPeer.ID, req.PartitionId)
+	default:
+		// Default to AddRaftMember for backward compatibility
+		changeType = raftProto.ConfAddNode
+		peerType = raftProto.PeerNormal
+		log.LogWarnf("[opAddMetaPartitionRaftMember]: adding raft member node %v to partition %v", req.AddPeer.ID, req.PartitionId)
+	}
+
+	_, err = mp.ChangeMember(changeType,
+		raftProto.Peer{ID: req.AddPeer.ID, Type: peerType}, reqData)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
