@@ -90,6 +90,10 @@ func (b *MemSnapShot) RangeReuseInode(cb func(item *Inode) bool) error {
 	return b.inode.Range(nil, nil, cb)
 }
 
+func (b *MemSnapShot) RangeReuseDentry(cb func(item *Dentry) bool) error {
+	return b.dentry.Range(nil, nil, cb)
+}
+
 func (b *MemSnapShot) Close() {}
 
 func (b *MemSnapShot) Count(tp TreeType) uint64 {

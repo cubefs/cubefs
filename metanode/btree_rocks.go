@@ -2527,6 +2527,25 @@ func (r *RocksSnapShot) RangeReuseInode(cb func(item *Inode) bool) error {
 	return r.tree.RangeWithSnap(startBytes, endBytes, r.snap, callbackFunc)
 }
 
+func (r *RocksSnapShot) RangeReuseDentry(cb func(item *Dentry) bool) error {
+	dentry := new(Dentry)
+	callbackFunc := func(k, v []byte) (bool, error) {
+		dentry.ResetValue()
+		if err := dentry.Unmarshal(v); err != nil {
+			return false, err
+		}
+		return cb(dentry), nil
+	}
+	startBuf := r.tree.GetRocksdbNormalKey(byte(DentryTable))
+	defer PutRocksdbNormalKey(startBuf)
+	endBuf := r.tree.GetRocksdbNormalKey(byte(DentryTable) + 1)
+	defer PutRocksdbNormalKey(endBuf)
+	startBytes := startBuf.Bytes()
+	endBytes := endBuf.Bytes()
+
+	return r.tree.RangeWithSnap(startBytes, endBytes, r.snap, callbackFunc)
+}
+
 func (r *RocksSnapShot) Close() {
 	if r.snap == nil {
 		return

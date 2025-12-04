@@ -1505,7 +1505,7 @@ func TestHandleMetaReplicaPlan_StatusTransitions(t *testing.T) {
 	addr := "127.0.0.1:17210"
 	mn := &MetaNode{ID: 1, Addr: addr, IsActive: true, MaxMemAvailWeight: gConfig.metaNodeReservedMem * 2}
 	c.metaNodes.Store(addr, mn)
-	mp := &MetaPartition{PartitionID: 200, Replicas: []*MetaReplica{{Addr: addr, metaNode: mn}}}
+	mp := &MetaPartition{PartitionID: 200, Replicas: []*MetaReplica{{Addr: addr, metaNode: mn, IsLeader: true}}}
 	plan := &proto.ClusterPlan{
 		Type: AutoPlan,
 		Mode: proto.StoreModeMem,
@@ -2448,7 +2448,14 @@ func TestCreateModifyMetaPartitionStoreModePlan_InvalidVol(t *testing.T) {
 			},
 		},
 	}
-	_, err := c.CreateModifyMetaPartitionStoreModePlan("no-such-vol", 0, 0, proto.StoreModeRocksDb, 1)
+	param := MetaPartitionPlanUserParams{
+		Name:    "no-such-vol",
+		StartID: 0,
+		EndID:   0,
+		Mode:    proto.StoreModeRocksDb,
+		Count:   1,
+	}
+	_, err := c.CreateModifyMetaPartitionStoreModePlan(param)
 	if err == nil {
 		t.Errorf("expected error when volume not found")
 	}

@@ -41,6 +41,15 @@ type MigrateResult struct {
 	Target MetaReplicaInfo `json:"target"`
 }
 
+type MetaPartitionPlanUserParams struct {
+	Name               string          `json:"name"`
+	StartID            uint64          `json:"startId"`
+	EndID              uint64          `json:"endId"`
+	Mode               proto.StoreMode `json:"mode"`
+	Count              int             `json:"count"`
+	AutoPromoteLearner bool            `json:"autoPromoteLearner"`
+}
+
 func (m *Server) getMetaPartitionEmptyStatus(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminMetaPartitionEmptyStatus))
 	defer func() {
@@ -656,14 +665,14 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseModifyMetaPartitionStoreModeParams parses and validates parameters for modifying meta partition store mode
-func parseModifyMetaPartitionStoreModeParams(r *http.Request) (name string, startID, endID uint64, mode proto.StoreMode, count int, err error) {
+func parseModifyMetaPartitionStoreModeParams(r *http.Request) (param MetaPartitionPlanUserParams, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 
-	name = r.FormValue(nameKey)
-	if name != "" {
-		if !volNameRegexp.MatchString(name) {
+	param.Name = r.FormValue(nameKey)
+	if param.Name != "" {
+		if !volNameRegexp.MatchString(param.Name) {
 			err = proto.ErrVolNameRegExpNotMatch
 			return
 		}
@@ -672,7 +681,7 @@ func parseModifyMetaPartitionStoreModeParams(r *http.Request) (name string, star
 	// Extract partition ID range
 	startIDStr := r.FormValue(StartIdKey)
 	if startIDStr != "" {
-		if startID, err = strconv.ParseUint(startIDStr, 10, 64); err != nil {
+		if param.StartID, err = strconv.ParseUint(startIDStr, 10, 64); err != nil {
 			err = fmt.Errorf("invalid start id")
 			return
 		}
@@ -680,13 +689,13 @@ func parseModifyMetaPartitionStoreModeParams(r *http.Request) (name string, star
 
 	endIDStr := r.FormValue(EndIdKey)
 	if endIDStr != "" {
-		if endID, err = strconv.ParseUint(endIDStr, 10, 64); err != nil {
+		if param.EndID, err = strconv.ParseUint(endIDStr, 10, 64); err != nil {
 			err = fmt.Errorf("invalid end id")
 			return
 		}
 	}
 
-	if startID > endID && endID != 0 {
+	if param.StartID > param.EndID && param.EndID != 0 {
 		err = fmt.Errorf("start id cannot be greater than end id")
 		return
 	}
@@ -698,25 +707,35 @@ func parseModifyMetaPartitionStoreModeParams(r *http.Request) (name string, star
 		return
 	}
 	if modeInt != 0 {
-		mode = proto.StoreMode(modeInt)
-		if mode != proto.StoreModeMem && mode != proto.StoreModeRocksDb {
+		param.Mode = proto.StoreMode(modeInt)
+		if param.Mode != proto.StoreModeMem && param.Mode != proto.StoreModeRocksDb {
 			err = fmt.Errorf("invalid store mode")
 			return
 		}
 	} else {
-		mode = proto.StoreModeRocksDb // Default to migrate to RocksDB mode
+		param.Mode = proto.StoreModeRocksDb // Default to migrate to RocksDB mode
 	}
 
-	count = 0
+	param.Count = 0
 	countStr := r.FormValue(countKey)
 	if countStr != "" {
-		if count, err = strconv.Atoi(countStr); err != nil {
+		if param.Count, err = strconv.Atoi(countStr); err != nil {
 			err = fmt.Errorf("invalid count")
 			return
 		}
 	}
-	if count <= 0 || count > 3 {
-		count = 3
+	if param.Count <= 0 || param.Count > 3 {
+		param.Count = 3
+	}
+
+	var promote bool
+	if value := r.FormValue(Promote); value != "" {
+		promote, err = strconv.ParseBool(value)
+		if err != nil {
+			err = fmt.Errorf("invalid promote")
+			return
+		}
+		param.AutoPromoteLearner = promote
 	}
 
 	return
@@ -741,72 +760,22 @@ func (m *Server) createMetaPartitionStoreModeChangePlan(w http.ResponseWriter, r
 		return
 	}
 
-	name, startID, endID, mode, count, err := parseModifyMetaPartitionStoreModeParams(r)
+	param, err := parseModifyMetaPartitionStoreModeParams(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	plan, err = m.cluster.CreateModifyMetaPartitionStoreModePlan(name, startID, endID, mode, count)
+	plan, err = m.cluster.CreateModifyMetaPartitionStoreModePlan(param)
 	if err != nil {
-		log.LogErrorf("createMetaPartitionStoreModeChangePlan failed volume(%s) start(%d) end(%d) mode(%d) count(%d) err: %s", name, startID, endID, mode, count, err.Error())
+		log.LogErrorf("createMetaPartitionStoreModeChangePlan failed volume(%s) start(%d) end(%d) mode(%d) count(%d) err: %s", param.Name, param.StartID, param.EndID, param.Mode, param.Count, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
 		return
 	}
 
-	msg := fmt.Sprintf("volume(%s) start(%d) end(%d) mode(%d) count(%d) successfully", name, startID, endID, mode, count)
+	msg := fmt.Sprintf("volume(%s) start(%d) end(%d) mode(%d) count(%d) successfully", param.Name, param.StartID, param.EndID, param.Mode, param.Count)
 	AuditLog(r, "createMetaPartitionStoreModeChangePlan", msg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
-}
-
-// promoteMetaPartitionLearner promotes all rocksdb + learner metapartitions to voters within [startID, endID].
-// Query/Form parameters:
-// - name: volume name (optional; empty means all volumes)
-// - startId: start mp id (optional; default 0)
-// - endId: end mp id (optional; default 0)
-func (m *Server) batchPromoteMpLearner(w http.ResponseWriter, r *http.Request) {
-	metric := exporter.NewTPCnt(proto.AdminBatchPromoteMpLearner)
-	var err error
-	defer func() {
-		doStatAndMetric(proto.AdminBatchPromoteMpLearner, metric, err, nil)
-	}()
-
-	if m.cluster.IsClusterPlanNotIdle() {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
-		return
-	}
-
-	// parse parameters
-	name := r.FormValue(nameKey)
-	var startID, endID uint64
-	if s := r.FormValue(StartIdKey); s != "" {
-		if startID, err = strconv.ParseUint(s, 10, 64); err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "invalid startId"})
-			return
-		}
-	}
-	if s := r.FormValue(EndIdKey); s != "" {
-		if endID, err = strconv.ParseUint(s, 10, 64); err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "invalid endId"})
-			return
-		}
-	}
-
-	// do promote
-	count, err := m.cluster.PromoteLearnerByRange(name, startID, endID)
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
-		return
-	}
-
-	msg := fmt.Sprintf("promote learner done: vol(%s) start(%d) end(%d) promoted(%d)", name, startID, endID, count)
-	AuditLog(r, "promoteMpLearnerByRange", msg, nil)
-	sendOkReply(w, r, newSuccessHTTPReply(map[string]any{
-		"volume":   name,
-		"startId":  startID,
-		"endId":    endID,
-		"promoted": count,
-	}))
 }
 
 func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
@@ -831,20 +800,61 @@ func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	name, startID, endID, _, _, err := parseModifyMetaPartitionStoreModeParams(r)
+	param, err := parseModifyMetaPartitionStoreModeParams(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	plan, err = m.cluster.CreateMetaPartitionAddLearnerPlan(name, startID, endID)
+	plan, err = m.cluster.CreateMetaPartitionAddLearnerPlan(param)
 	if err != nil {
-		log.LogErrorf("addMetaPartitionLearner failed volume(%s) start(%d) end(%d) err: %s", name, startID, endID, err.Error())
+		log.LogErrorf("addMetaPartitionLearner failed param:[%+v] err: %s", param, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
 		return
 	}
 
-	msg := fmt.Sprintf("volume(%s) start(%d) end(%d) successfully", name, startID, endID)
-	AuditLog(r, "addMetaPartitionLearner", msg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
+}
+
+// promoteMetaPartitionLearner promotes all rocksdb + learner metapartitions to voters within [startID, endID].
+// Query/Form parameters:
+// - name: volume name (optional; empty means all volumes)
+// - startId: start mp id (optional; default 0)
+// - endId: end mp id (optional; default 0)
+func (m *Server) batchPromoteMpLearner(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(proto.AdminBatchPromoteMpLearner)
+	var err error
+	defer func() {
+		doStatAndMetric(proto.AdminBatchPromoteMpLearner, metric, err, nil)
+	}()
+
+	if m.cluster.IsClusterPlanNotIdle() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
+		return
+	}
+
+	param, err := parseModifyMetaPartitionStoreModeParams(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	// do promote
+	count, failIDs, err := m.cluster.PromoteLearnerByRange(param)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	msg := fmt.Sprintf("promote learner done: vol(%s) start(%d) end(%d) promoted(%d) failed(%d)", param.Name, param.StartID, param.EndID, count, len(failIDs))
+	AuditLog(r, "promoteMpLearnerByRange", msg, nil)
+	sendOkReply(w, r, newSuccessHTTPReply(map[string]any{
+		"volume":     param.Name,
+		"startId":    param.StartID,
+		"endId":      param.EndID,
+		"mode":       param.Mode,
+		"promoted":   count,
+		"failedNum":  len(failIDs),
+		"failedList": failIDs,
+	}))
 }

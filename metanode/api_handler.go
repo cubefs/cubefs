@@ -16,6 +16,9 @@ package metanode
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -109,6 +112,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getRocksdbProperty", m.getRocksdbPropertyHandler)
 	http.HandleFunc("/setRocksdbKeyNumMax", m.setRocksdbKeyNumMaxHandler)
 	http.HandleFunc("/compactRocksdb", m.compactRocksdbHandler)
+	http.HandleFunc("/calcMpMd5", m.calcMpMd5Handler)
 	return
 }
 
@@ -1876,4 +1880,164 @@ func (m *MetaNode) compactRocksdbHandler(w http.ResponseWriter, r *http.Request)
 
 	log.LogInfof("[compactRocksdbHandler] compact rocksdb success: dbDir=%v, cost time=%v", dbDir, time.Since(now))
 	resp.Msg = fmt.Sprintf("compact rocksdb success: dbDir=%v, costtime=%v", dbDir, time.Since(now))
+}
+
+func (m *MetaNode) calcMpMd5Handler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var id uint64
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[calcMpMd5Handler] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	mpIdStr := r.FormValue("id")
+	if mpIdStr == "" {
+		err = fmt.Errorf("missing id parameter")
+		return
+	}
+	id, err = strconv.ParseUint(mpIdStr, 10, 64)
+	if err != nil {
+		log.LogErrorf("[calcMpMd5Handler] failed to parse id, err(%v)", err)
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(id)
+	if err != nil {
+		log.LogErrorf("[calcMpMd5Handler] failed to get partition, err(%v)", err)
+		return
+	}
+	partition := mp.(*metaPartition)
+	snap, err := partition.GetSnapShot()
+	if err != nil {
+		log.LogErrorf("[calcMpMd5Handler] failed to get snap shot, err(%v)", err)
+		return
+	}
+	defer snap.Close()
+
+	h := md5.New()
+	count := uint64(0)
+	buff := bytes.NewBuffer(make([]byte, 0, 1024))
+	err = snap.RangeReuseInode(func(inode *Inode) bool {
+		buff.Reset()
+		err = binary.Write(buff, binary.BigEndian, inode.Inode)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.Size)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.Generation)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.Type)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.Uid)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.Gid)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.NLink)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.Flag)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.StorageClass)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.ClientID)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, inode.LinkTarget)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		_, err = h.Write(buff.Bytes())
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
+			return false
+		}
+		count++
+		return true
+	})
+	if err != nil {
+		log.LogErrorf("[calcMpMd5Handler] failed to range reuse inode, err(%v)", err)
+		return
+	}
+
+	md5Str := hex.EncodeToString(h.Sum(nil))
+
+	h.Reset()
+	dentryCount := uint64(0)
+	err = snap.RangeReuseDentry(func(dentry *Dentry) bool {
+		buff.Reset()
+		err = binary.Write(buff, binary.BigEndian, dentry.ParentId)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write dentry, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, dentry.Inode)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write dentry, err(%v)", err)
+			return false
+		}
+		err = binary.Write(buff, binary.BigEndian, dentry.Type)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write dentry, err(%v)", err)
+			return false
+		}
+		_, err = buff.WriteString(dentry.Name)
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write dentry, err(%v)", err)
+			return false
+		}
+		_, err = h.Write(buff.Bytes())
+		if err != nil {
+			log.LogErrorf("[calcMpMd5Handler] failed to write dentry, err(%v)", err)
+			return false
+		}
+		dentryCount++
+		return true
+	})
+	if err != nil {
+		log.LogErrorf("[calcMpMd5Handler] failed to range reuse dentry, err(%v)", err)
+		return
+	}
+
+	dentryMd5Str := hex.EncodeToString(h.Sum(nil))
+
+	resp.Msg = fmt.Sprintf("mp id=%v applyid(%v) mode(%v), inode_count=%v, inode_md5=%v, dentry_count=%v, dentry_md5=%v", id, mp.GetAppliedID(), partition.inodeTree.GetStoreMode(), count, md5Str, dentryCount, dentryMd5Str)
 }

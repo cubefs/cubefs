@@ -99,6 +99,7 @@ type Snapshot interface {
 	ApplyID() uint64
 	TxID() uint64
 	RangeReuseInode(cb func(item *Inode) bool) error
+	RangeReuseDentry(cb func(item *Dentry) bool) error
 }
 
 type Tree interface {

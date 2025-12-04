@@ -390,7 +390,7 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 				diagnosis.NoLeaderMetaPartitionIDs = append(diagnosis.NoLeaderMetaPartitionIDs, mp.PartitionID)
 			}
 
-			if uint8(len(mp.Hosts)) > mp.ReplicaNum || uint8(len(mp.Replicas)) > mp.ReplicaNum {
+			if IsExcessiveReplicaMetaPartition(mp) {
 				diagnosis.InConsistRreplicaCntMetaPartitionIDs = append(diagnosis.InConsistRreplicaCntMetaPartitionIDs, mp.PartitionID)
 			}
 
@@ -1595,4 +1595,29 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		log.LogErrorf("mpId[%v], splitMetaPartition err %v", mp.PartitionID, err)
 	}
 	return
+}
+
+func IsExcessiveReplicaMetaPartition(mp *MetaPartition) bool {
+	raftLearner := make([]string, 0, len(mp.Peers))
+	count := uint8(0)
+	for _, peer := range mp.Peers {
+		if peer.Type == raftProto.PeerLearner {
+			raftLearner = append(raftLearner, peer.Addr)
+			continue
+		}
+		count++
+	}
+	if count > mp.ReplicaNum {
+		return true
+	}
+
+	count = 0
+	for _, mr := range mp.Replicas {
+		if contains(raftLearner, mr.Addr) {
+			continue
+		}
+		count++
+	}
+
+	return count > mp.ReplicaNum
 }

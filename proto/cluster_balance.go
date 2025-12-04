@@ -90,4 +90,5 @@ type ClusterPlan struct {
 	UndoReplicaNum  int32                        `json:"undoReplicaNum"`
 	TotalReplicaNum int                          `json:"totalReplicaNum"`
 	ProcessPercent  float64                      `json:"processPercent"`
+	AutoPromote     bool                         `json:"autoPromoteLearner"`
 }

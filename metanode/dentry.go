@@ -894,3 +894,11 @@ func (d *Dentry) UnmarshalValue(raw []byte) (err error) {
 
 	return
 }
+
+func (d *Dentry) ResetValue() {
+	d.ParentId = 0
+	d.Inode = 0
+	d.Type = 0
+	d.Name = ""
+	d.multiSnap = nil
+}

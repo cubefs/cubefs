@@ -33,7 +33,6 @@ const (
 	MetaPartitionInodeSize  = 512
 	MetaPartitionDentrySize = 64
 	MetaPartitionMemMin     = 256 * 1024 * 1024
-	MaxLearnerNum           = 1
 )
 
 type GetMigrateAddrParam struct {
@@ -1354,6 +1353,12 @@ func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.M
 		return fmt.Errorf("destination metanode(%s) is overload before migrate mp(%v)", mrPlan.Destination, mpPlan.ID)
 	}
 
+	err = c.waitForMetaPartitionReady(mp)
+	if err != nil {
+		log.LogErrorf("waitForMetaPartitionReady err: %s", err.Error())
+		return err
+	}
+
 	// Update raft storage.
 	mrPlan.Status = PlanTaskRun
 	err = c.syncUpdateBalanceTask(plan)
@@ -1376,6 +1381,14 @@ func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.M
 	if err != nil {
 		log.LogErrorf("WaitForMetaPartitionMigrateDone mpid(%d) meta replica(%s) error: %s", mpPlan.ID, mrPlan.Destination, err.Error())
 		return err
+	}
+
+	if plan.AutoPromote && plan.Type == AddLearner {
+		err = c.PromoteMetaReplicaLearnerAndDeleteRedundant(mp, mrPlan.Destination, plan.Mode)
+		if err != nil {
+			log.LogErrorf("auto promote learner mp[%v] addr[%v] mode[%v] err: %s", mp.PartitionID, mrPlan.Destination, plan.Mode, err.Error())
+			return err
+		}
 	}
 
 	// Update raft storage.
@@ -2029,7 +2042,7 @@ func checkMetaReplicasIsRocksdb(mp *MetaPartition) bool {
 // CreateModifyMetaPartitionStoreModePlan creates a migration plan for meta partitions
 // startID and endID specify the range of partition IDs to migrate, 0 means no limit
 // targetMode specifies the target store mode to migrate to
-func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID, endID uint64, targetMode proto.StoreMode, modeCnt int) (*proto.ClusterPlan, error) {
+func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(param MetaPartitionPlanUserParams) (*proto.ClusterPlan, error) {
 	// Create a new meta partition migrate plan
 	plan := &proto.ClusterPlan{
 		Low:            make(map[string]*proto.ZonePressureView),
@@ -2037,10 +2050,10 @@ func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID
 		Plan:           make([]*proto.MetaBalancePlan, 0),
 		Status:         PlanTaskInit,
 		Type:           ModifyStore,
-		Mode:           targetMode,
-		ModeCnt:        modeCnt,
-		StartId:        startID,
-		EndId:          endID,
+		Mode:           param.Mode,
+		ModeCnt:        param.Count,
+		StartId:        param.StartID,
+		EndId:          param.EndID,
 		RackLevel:      c.getRackAwareLevel(),
 		FailedList:     make([]uint64, 0),
 		DoneNum:        0,
@@ -2055,7 +2068,7 @@ func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID
 		return plan, err
 	}
 
-	err = c.FillModifyStoreModePlan(plan, volName)
+	err = c.FillModifyStoreModePlan(plan, param.Name)
 	if err != nil {
 		log.LogErrorf("FillModifyStoreModePlan error: %s", err.Error())
 		return plan, err
@@ -2077,7 +2090,7 @@ func (c *Cluster) CreateModifyMetaPartitionStoreModePlan(volName string, startID
 	plan.UndoReplicaNum = int32(plan.TotalReplicaNum)
 
 	if plan.Total <= 0 {
-		return nil, fmt.Errorf("no replicas need to be migrated in volume(%s)", volName)
+		return nil, fmt.Errorf("no replicas need to be migrated in volume(%s)", param.Name)
 	}
 
 	// Save plan into raft storage
@@ -2616,31 +2629,36 @@ func DisplayPlanFailedDetails(getParam *GetMigrateAddrParam, mpPlan *proto.MetaB
 
 // PromoteLearnerByRange promotes all RocksDB-mode replicas that are learners to voters within [startID, endID].
 // If volName is empty, it scans all volumes; otherwise, only the specified volume.
-func (c *Cluster) PromoteLearnerByRange(volName string, startID, endID uint64) (int, error) {
+func (c *Cluster) PromoteLearnerByRange(param MetaPartitionPlanUserParams) (int, []uint64, error) {
 	var (
 		mps      map[uint64]*MetaPartition
 		promoted int
-		err      error
+		failIDs  []uint64
 	)
-	if volName != "" {
-		vol, err := c.getVol(volName)
+	failIDs = make([]uint64, 0)
+
+	if param.Name != "" {
+		vol, err := c.getVol(param.Name)
 		if err != nil {
-			return promoted, fmt.Errorf("get volume(%s) failed: %v", volName, err)
+			return promoted, failIDs, fmt.Errorf("get volume(%s) failed: %v", param.Name, err)
 		}
 		if vol.isUnavailable() {
-			return promoted, fmt.Errorf("volume(%s) is marked delete or init failed", volName)
+			return promoted, failIDs, fmt.Errorf("volume(%s) is marked delete or init failed", param.Name)
 		}
 		mps = vol.cloneMetaPartitionMap()
 	} else {
 		mps = c.getAllMetaPartitions()
 	}
 
+	c.SetClusterPlanRunning()
+	defer c.SetClusterPlanIdle()
+
 	for _, mp := range mps {
 		// filter by id range
-		if startID != 0 && mp.PartitionID < startID {
+		if param.StartID != 0 && mp.PartitionID < param.StartID {
 			continue
 		}
-		if endID != 0 && mp.PartitionID > endID {
+		if param.EndID != 0 && mp.PartitionID > param.EndID {
 			continue
 		}
 		// scan replicas and promote rocksdb replicas
@@ -2648,24 +2666,43 @@ func (c *Cluster) PromoteLearnerByRange(volName string, startID, endID uint64) (
 			if peer.Type != raftProto.PeerLearner {
 				continue
 			}
-			if err = c.promoteMetaReplicaToVoter(mp, peer.Addr); err != nil {
-				log.LogErrorf("[PromoteLearnerByRange] promote learner failed mp(%d) addr(%s): %v", mp.PartitionID, peer.Addr, err)
-				return promoted, err
+
+			if c.IsClusterPlanNotRun() {
+				log.LogWarnf("promote learner is not running. parameter(%v)", param)
+				break
 			}
 
-			err = c.RemoveRedundantMetaReplica(mp, peer.Addr)
+			storeMode, err := c.getMetaPartitionStoreMode(mp, peer.Addr)
 			if err != nil {
-				log.LogErrorf("[PromoteLearnerByRange] remove redundant meta replica failed mp(%d) addr(%s): %v", mp.PartitionID, peer.Addr, err)
-				return promoted, err
+				log.LogErrorf("Failed to get meta replica store mode, err: %s", err.Error())
+				continue
+			}
+			if storeMode != param.Mode {
+				continue
 			}
 
-			promoted++
+			select {
+			case <-c.stopc:
+				c.SetClusterPlanStopping()
+				break
+			default:
+				err = c.PromoteMetaReplicaLearnerAndDeleteRedundant(mp, peer.Addr, param.Mode)
+				if err != nil {
+					log.LogErrorf("PromoteMetaReplicaLearnerAndDeleteRedundant failed mp(%d) addr(%s): %v", mp.PartitionID, peer.Addr, err)
+					failIDs = append(failIDs, mp.PartitionID)
+					break
+				}
+
+				promoted++
+				break
+			}
+			break
 		}
 	}
-	return promoted, nil
+	return promoted, failIDs, nil
 }
 
-func (c *Cluster) CreateMetaPartitionAddLearnerPlan(volName string, startID, endID uint64) (*proto.ClusterPlan, error) {
+func (c *Cluster) CreateMetaPartitionAddLearnerPlan(param MetaPartitionPlanUserParams) (*proto.ClusterPlan, error) {
 	// Create a new meta partition migrate plan
 	plan := &proto.ClusterPlan{
 		Low:            make(map[string]*proto.ZonePressureView),
@@ -2673,16 +2710,17 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(volName string, startID, end
 		Plan:           make([]*proto.MetaBalancePlan, 0),
 		Status:         PlanTaskInit,
 		Type:           AddLearner,
-		Mode:           proto.StoreModeRocksDb,
-		ModeCnt:        0,
-		StartId:        startID,
-		EndId:          endID,
+		Mode:           param.Mode,
+		ModeCnt:        param.Count,
+		StartId:        param.StartID,
+		EndId:          param.EndID,
 		RackLevel:      c.getRackAwareLevel(),
 		FailedList:     make([]uint64, 0),
 		DoneNum:        0,
 		RunningNum:     0,
 		DoneReplicaNum: 0,
 		RunReplicaNum:  0,
+		AutoPromote:    param.AutoPromoteLearner,
 	}
 
 	err := c.GetLowMemPressureTopology(plan)
@@ -2691,7 +2729,7 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(volName string, startID, end
 		return plan, err
 	}
 
-	err = c.FillAddLearnerPlan(plan, volName)
+	err = c.FillAddLearnerPlan(plan, param.Name)
 	if err != nil {
 		log.LogErrorf("FillAddLearnerPlan error: %s", err.Error())
 		return plan, err
@@ -2711,7 +2749,7 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(volName string, startID, end
 	plan.UndoReplicaNum = int32(plan.TotalReplicaNum)
 
 	if plan.Total <= 0 {
-		return nil, fmt.Errorf("no replicas need to be migrated in volume(%s)", volName)
+		return nil, fmt.Errorf("no replicas need to be migrated in volume(%s)", param.Name)
 	}
 
 	// Save plan into raft storage
@@ -2749,12 +2787,8 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 		if plan.EndId != 0 && mp.PartitionID > plan.EndId {
 			continue
 		}
-		count := GetMetaReplicaCountByType(mp, raftProto.PeerLearner)
-		if count >= MaxLearnerNum {
-			continue
-		}
-		count = GetMetaReplicaCountByStoreMode(mp, proto.StoreModeRocksDb)
-		if count >= int(mp.ReplicaNum) || len(mp.Replicas) <= count {
+		count := GetMetaReplicaCountByStoreMode(mp, plan.Mode)
+		if count >= plan.ModeCnt {
 			continue
 		}
 
@@ -2767,6 +2801,7 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 			PlanNum:    0,
 		}
 
+		memorySize := GetMetaPartitionMemorySize(mp)
 		// Find replicas that need to be migrated
 		for _, mr := range mp.Replicas {
 			mn, err := c.metaNode(mr.Addr)
@@ -2780,7 +2815,7 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 				log.LogErrorf("Failed to get meta replica store mode, err: %s", err.Error())
 				continue
 			}
-			memorySize := GetMetaPartitionMemorySize(mp)
+
 			// Record original replica info
 			mrRec := &proto.MrBalanceInfo{
 				Source:       mr.Addr,
@@ -2804,8 +2839,8 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 }
 
 func (c *Cluster) FindAddLearnerDestination(migratePlan *proto.ClusterPlan) (err error) {
-	for i, mp := range migratePlan.Plan {
-		err = AddOneLearnerToDestination(migratePlan, mp)
+	for i, mpPlan := range migratePlan.Plan {
+		err = AddOneLearnerToDestination(migratePlan, mpPlan)
 		if err == NotEnoughResource {
 			log.LogWarnf("Analyze the meta nodes:")
 			c.AnalyzeMetaNodes(migratePlan.Mode)
@@ -2834,32 +2869,38 @@ func AddOneLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		return fmt.Errorf("no original replicas")
 	}
 
-	zone, nodeSetID, err := GetMemoryStoreZoneAndNodeSet(mpPlan)
-	if err != nil {
-		log.LogErrorf("AddOneLearnerToDestination failed: %s", err.Error())
-		return err
+	count := GetStoreModeCount(mpPlan, migratePlan.Mode)
+	if count >= migratePlan.ModeCnt {
+		return nil
 	}
 
 	getParam := &GetMigrateAddrParam{
 		Topo:        migratePlan.Low,
 		RocksdbTopo: migratePlan.RocksdbLow,
-		ZoneName:    zone,
-		NodeSetID:   nodeSetID,
+		ZoneName:    "",
+		NodeSetID:   0,
 		Excludes:    make([]string, 0),
-		RequestNum:  MaxLearnerNum,
-		LeastSize:   MetaPartitionMemMin,
+		RequestNum:  migratePlan.ModeCnt - count,
+		LeastSize:   mpPlan.Original[0].SrcMemSize,
 		IsRocksdb:   true,
 		RackLevel:   migratePlan.RackLevel,
 	}
 	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 
 	// try to find resource from the mp member which has the same store mode.
-	err = TryNodeSetIdFromOtherNodes(migratePlan, mpPlan, getParam)
+	err := TryNodeSetIdFromOtherNodes(migratePlan, mpPlan, getParam)
 	if err == nil {
 		log.LogWarnf("TryNodeSetIdFromOtherNodes success")
 		return nil
 	}
 
+	zone, nodeSetID, err := GetZoneAndNodeSetInOtherMode(mpPlan, migratePlan.Mode)
+	if err != nil {
+		log.LogErrorf("AddOneLearnerToDestination failed: %s", err.Error())
+		return err
+	}
+	getParam.ZoneName = zone
+	getParam.NodeSetID = nodeSetID
 	// try to find resource from the same node set.
 	find, dests := GetMigrateDestAddr(getParam)
 	if find {
@@ -2884,16 +2925,20 @@ func AddOneLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 	return nil
 }
 
-func (c *Cluster) RemoveRedundantMetaReplica(mp *MetaPartition, excludeAddr string) error {
+func (c *Cluster) RemoveRedundantMetaReplica(mp *MetaPartition, excludeAddr string, storeMode proto.StoreMode) error {
 	count := GetMetaReplicaCountByType(mp, raftProto.PeerNormal)
 	if count <= int(mp.ReplicaNum) {
 		return nil
 	}
 
-	srcAddr, err := SelectOneMemoryStoreModeReplica(mp, excludeAddr)
+	srcAddr, err := SelectOneReplicaTobeRemove(mp, excludeAddr, storeMode)
 	if err != nil {
 		log.LogErrorf("[RemoveRedundantMetaReplica] mp[%v] select one memory store mode replica failed, err: %s", mp.PartitionID, err.Error())
 		return err
+	}
+
+	if !mp.CheckLastDelReplicaTime() {
+		mp.LastDelReplicaTime -= mpReplicaDelInterval
 	}
 
 	if err = c.deleteMetaReplica(mp, srcAddr, false, false); err != nil {
@@ -2910,7 +2955,7 @@ func (c *Cluster) RemoveRedundantMetaReplica(mp *MetaPartition, excludeAddr stri
 	return nil
 }
 
-func SelectOneMemoryStoreModeReplica(mp *MetaPartition, excludeAddr string) (string, error) {
+func SelectOneReplicaTobeRemove(mp *MetaPartition, excludeAddr string, storeMode proto.StoreMode) (string, error) {
 	excludeAddrs := make([]string, 0, 2)
 	excludeAddrs = append(excludeAddrs, excludeAddr)
 
@@ -2924,32 +2969,31 @@ func SelectOneMemoryStoreModeReplica(mp *MetaPartition, excludeAddr string) (str
 	excludeAddrs = append(excludeAddrs, oldLeaderAddr)
 
 	// select one replica that is not leader and not in excludeAddr
-	srcAddr := SelectMetaPartitionReplica(mp, excludeAddrs)
+	srcAddr := SelectOneReplicaByStoreMode(mp, excludeAddrs, storeMode)
 	if srcAddr != "" {
 		return srcAddr, nil
 	}
 
 	excludeAddrs[1] = ""
-	srcAddr = SelectMetaPartitionReplica(mp, excludeAddrs)
+	srcAddr = SelectOneReplicaByStoreMode(mp, excludeAddrs, storeMode)
 	if srcAddr == "" {
 		err := fmt.Errorf("no replica found after changing leader")
-		log.LogErrorf("[SelectOneMemoryStoreModeReplica] %s", err.Error())
+		log.LogErrorf("[SelectOneReplicaTobeRemove] %s", err.Error())
 		return "", err
 	}
 	return srcAddr, nil
 }
 
-func SelectMetaPartitionReplica(mp *MetaPartition, excludeAddrs []string) string {
+func SelectOneReplicaByStoreMode(mp *MetaPartition, excludeAddrs []string, storeMode proto.StoreMode) string {
 	srcAddr := ""
 	for _, mr := range mp.Replicas {
 		if contains(excludeAddrs, mr.Addr) {
 			continue
 		}
-		if mr.StoreMode == proto.StoreModeRocksDb {
-			continue
+		if mr.StoreMode != storeMode {
+			srcAddr = mr.Addr
+			break
 		}
-		srcAddr = mr.Addr
-		break
 	}
 	return srcAddr
 }
@@ -2964,19 +3008,45 @@ func GetMetaReplicaCountByStoreMode(mp *MetaPartition, storeMode proto.StoreMode
 	return count
 }
 
-func GetMemoryStoreZoneAndNodeSet(mpPlan *proto.MetaBalancePlan) (string, uint64, error) {
+func GetZoneAndNodeSetInOtherMode(mpPlan *proto.MetaBalancePlan, mode proto.StoreMode) (string, uint64, error) {
 	for _, mr := range mpPlan.Original {
-		if mr.StoreMode == proto.StoreModeMem || mr.StoreMode == proto.StoreModeDef {
+		if mr.StoreMode != mode {
 			return mr.SrcZoneName, mr.SrcNodeSetId, nil
 		}
 	}
-	return "", 0, fmt.Errorf("no memory store mode replica found")
+	return "", 0, fmt.Errorf("no %s store mode replica found", mode.Str())
 }
 
 func GetMetaReplicaCountByType(mp *MetaPartition, raftType raftProto.PeerType) int {
 	count := 0
 	for _, peer := range mp.Peers {
 		if peer.Type == raftType {
+			count += 1
+		}
+	}
+	return count
+}
+
+func (c *Cluster) PromoteMetaReplicaLearnerAndDeleteRedundant(mp *MetaPartition, addr string, mode proto.StoreMode) error {
+	err := c.promoteMetaReplicaToVoter(mp, addr)
+	if err != nil {
+		log.LogErrorf("promote learner failed mp(%d) addr(%s): %v", mp.PartitionID, addr, err)
+		return err
+	}
+
+	err = c.RemoveRedundantMetaReplica(mp, addr, mode)
+	if err != nil {
+		log.LogErrorf("remove redundant meta replica failed mp(%d) addr(%s): %v", mp.PartitionID, addr, err)
+		return err
+	}
+
+	return nil
+}
+
+func GetStoreModeCount(mpPlan *proto.MetaBalancePlan, mode proto.StoreMode) int {
+	count := 0
+	for _, mr := range mpPlan.Original {
+		if mr.StoreMode == mode {
 			count += 1
 		}
 	}

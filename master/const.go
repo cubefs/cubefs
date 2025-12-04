@@ -175,6 +175,7 @@ const (
 	StoreModeKey = "storeMode"
 	StartIdKey   = "start"
 	EndIdKey     = "end"
+	Promote      = "promote"
 )
 
 const (
