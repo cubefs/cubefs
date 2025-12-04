@@ -248,7 +248,7 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 
 // Append appends an extent key.
 func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents []proto.ExtentKey) {
-	log.LogDebugf("action[ExtentCache.Append] ek %v", ek)
+	log.LogDebugf("ExtentCache Append:ino(%v) new ek %v sync %v", cache.inode, ek, sync)
 	ekEnd := ek.FileOffset + uint64(ek.Size)
 	lower := &proto.ExtentKey{FileOffset: ek.FileOffset}
 	upper := &proto.ExtentKey{FileOffset: ekEnd}
@@ -269,17 +269,18 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 	cache.root.AscendRange(lower, upper, func(i btree.Item) bool {
 		found := i.(*proto.ExtentKey)
 		discard = append(discard, found)
+		log.LogDebugf("ExtentCache Append: ino(%v) add discard ek(%v) for new ek(%v)", cache.inode, discard, ek)
 		return true
 	})
 
 	// After deleting the data between lower and upper, we will do the append
 	for _, key := range discard {
 		cache.root.Delete(key)
-		log.LogDebugf("ExtentCache del: ino(%v) ek(%v) ", cache.inode, key)
+		log.LogDebugf("ExtentCache Append: ino(%v) del discard ek(%v) for new ek(%v)", cache.inode, key, ek)
 		if key.PartitionId != 0 && key.ExtentId != 0 && (key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId || ek.ExtentOffset != key.ExtentOffset) {
 			if sync || (ek.PartitionId == 0 && ek.ExtentId == 0) {
 				cache.discard.ReplaceOrInsert(key)
-				// log.LogDebugf("ExtentCache Append add to discard: ino(%v) ek(%v) discard(%v)", cache.inode, ek, key)
+				log.LogDebugf("ExtentCache Append: ino(%v) add to discard  ek(%v) discard(%v)", cache.inode, ek, key)
 			}
 		}
 	}
