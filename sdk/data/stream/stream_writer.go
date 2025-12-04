@@ -385,7 +385,7 @@ begin:
 	isChecked := false
 	// Must flush before doing overwrite
 	for _, req := range requests {
-		if req.ExtentKey == nil && !req.CreateNewEk {
+		if !s.waitForFlush && req.ExtentKey == nil && !req.CreateNewEk {
 			continue
 		}
 		err = s.flush(true, uuid.New().String())

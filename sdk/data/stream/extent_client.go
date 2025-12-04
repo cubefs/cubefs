@@ -789,8 +789,9 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 		}
 		// errGetExtents = s.GetExtents(isMigration)
 		if log.EnableDebug() {
-			log.LogDebugf("Read: ino(%v) offset(%v) size(%v) storageClass(%v) isMigration(%v) errGetExtents(%v)",
-				inode, offset, size, storageClass, isMigration, errGetExtents)
+			log.LogDebugf("Read: ino(%v) offset(%v) size(%v) storageClass(%v) isMigration(%v) errGetExtents(%v) "+
+				"rdonly(%v) dirty(%v)",
+				inode, offset, size, storageClass, isMigration, errGetExtents, s.rdonly, s.dirty)
 		}
 	})
 	if errGetExtents != nil {
@@ -798,7 +799,9 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 		log.LogErrorf("Read: ino(%v) offset(%v) size(%v): %v", inode, offset, size, err)
 		return 0, err
 	}
-
+	log.LogDebugf("Read: ino(%v) offset(%v) size(%v) storageClass(%v) isMigration(%v) errGetExtents(%v) "+
+		"rdonly(%v) dirty(%v) waitForFlush(%v)",
+		inode, offset, size, storageClass, isMigration, errGetExtents, s.rdonly, s.dirty, s.waitForFlush)
 	if !s.rdonly || s.dirty {
 		err = s.IssueFlushRequest()
 		if err != nil {
