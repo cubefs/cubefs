@@ -549,6 +549,7 @@ const (
 	AutoPlan    = "auto"
 	OfflinePlan = "offline"
 	ModifyStore = "modifyStoreMode"
+	AddLearner  = "addLearner"
 
 	CheckMetaLeaderRetry    = 10
 	CheckMetaLeaderInterval = 30

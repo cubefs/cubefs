@@ -46,7 +46,7 @@ type MetaNodeBalanceInfo struct {
 	NodeMemFree    uint64   `json:"nodeMemFree"`
 	NodeMemRatio   float64  `json:"nodeMemRatio"`
 	MpCount        int      `json:"mpCount"`
-	MetaPartitions []uint64 `json:"metaPartition"`
+	MetaPartitions []uint64 `json:"-"`
 	InodeCount     uint64   `json:"inodeCount"`
 	Estimate       int      `json:"estimate"`
 	PlanCnt        int      `json:"planCount"`

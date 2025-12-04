@@ -241,6 +241,8 @@ const (
 	AdminPromoteMetaReplica            = "/metaReplica/promote"
 	AdminPutDataPartitions             = "/dataPartitions/set"
 	AdminCreateStoreModeChangePlan     = "/metaPartition/createStoreModeChangePlan"
+	AdminBatchAddMpLearner             = "/metaPartition/batchAddLearner"
+	AdminBatchPromoteMpLearner         = "/metaPartition/batchPromoteLearner"
 
 	// admin multi version snapshot
 	AdminCreateVersion     = "/multiVer/create"
@@ -1022,7 +1024,6 @@ type MetaPartitionReport struct {
 	LocalPeers                []Peer
 	ReadOnlyReasons           uint32
 	StoreMode                 StoreMode
-	ConfigStoreMode           StoreMode
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.

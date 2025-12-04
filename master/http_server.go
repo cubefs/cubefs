@@ -625,6 +625,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DeleteMetaNodeBalanceTask).
 		HandlerFunc(m.deleteMetaNodeBalancePlan)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminBatchAddMpLearner).
+		HandlerFunc(m.batchAddMpLearner)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminBatchPromoteMpLearner).
+		HandlerFunc(m.batchPromoteMpLearner)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).

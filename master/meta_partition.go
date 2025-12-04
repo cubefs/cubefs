@@ -49,7 +49,6 @@ type MetaReplica struct {
 	metaNode                  *MetaNode
 	ReadOnlyReasons           uint32
 	StoreMode                 proto.StoreMode
-	ConfigStoreMode           proto.StoreMode
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -865,7 +864,6 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 		}
 	}
 	mr.StoreMode = mgr.StoreMode
-	mr.ConfigStoreMode = mgr.ConfigStoreMode
 }
 
 func (mr *MetaReplica) createTaskToFreezeReplica(partitionID uint64, freeze bool) (t *proto.AdminTask) {
