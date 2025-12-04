@@ -310,7 +310,12 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 					return fmt.Errorf("clear the block cache"), false
 				}
 				rp := NewReply(task.p.ReqID, task.p.PartitionID, task.p.ExtentID)
-				bufSize := util.Min(int(arw.streamer.aheadReadBlockSize), task.cacheSize-readBytes)
+				// clamp each read to remaining window within cache size
+				remaining := task.cacheSize - readBytes
+				if remaining <= 0 {
+					break
+				}
+				bufSize := util.Min(int(arw.streamer.aheadReadBlockSize), remaining)
 				rp.Data = cacheBlock.data[readBytes : readBytes+bufSize]
 				begin := time.Now()
 				if e := rp.readFromConn(conn, proto.ReadDeadlineTime); e != nil {
@@ -331,14 +336,20 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 				}
 				// update timeStamp to prevent from deleted by timeout
 				cacheBlock.time = time.Now().Unix()
-				readBytes += int(rp.Size)
-				curSize := atomic.AddUint64(&cacheBlock.readBytes, uint64(rp.Size))
+				// use only the bytes that fit into remaining window to avoid overrun
+				used := int(rp.Size)
+				if used > remaining {
+					used = remaining
+				}
+				readBytes += used
+				curSize := atomic.AddUint64(&cacheBlock.readBytes, uint64(used))
 				arw.updateRightIndex(uint64(task.req.FileOffset)+curSize, key, task.reqID)
 				if log.EnableDebug() {
 					log.LogDebugf("doTask  key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p) cost(%v)",
 						key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock, time.Since(begin).String())
 				}
-				if curSize > uint64(arw.streamer.aheadReadBlockSize) {
+				// check against requested cache size rather than block size
+				if curSize > uint64(task.cacheSize) {
 					log.LogErrorf("doTask out of range key(%v) curSize(%v) readBytes(%v) rp.Size(%v) task.cacheSize(%v) addr(%p)",
 						key, curSize, readBytes, rp.Size, task.cacheSize, cacheBlock)
 				}
