@@ -1067,8 +1067,8 @@ func (ns *nodeSet) startDecommissionSchedule() {
 }
 
 func (ns *nodeSet) stopDecommissionSchedule() {
-	ns.decommissionDataPartitionList.Stop()
 	ns.stopDecommissionDiskSchedule()
+	ns.decommissionDataPartitionList.Stop()
 }
 
 func (ns *nodeSet) dataNodeLen() (count int) {
