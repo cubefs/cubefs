@@ -147,23 +147,23 @@ func TestUniqOpEdgeCases(t *testing.T) {
 	checker := newUniqChecker()
 
 	// Test zero uniqid (should always be legal)
-	if !checker.legalIn(0) {
+	if !checker.legalIn(0, 1) {
 		t.Error("Zero uniqid should always be legal")
 	}
 
 	// Test duplicate zero uniqid
-	if !checker.legalIn(0) {
+	if !checker.legalIn(0, 2) {
 		t.Error("Duplicate zero uniqid should still be legal")
 	}
 
 	// Test very large uniqid
 	largeID := uint64(1<<63 - 1)
-	if !checker.legalIn(largeID) {
+	if !checker.legalIn(largeID, 1) {
 		t.Error("Large uniqid should be legal")
 	}
 
 	// Test duplicate large uniqid
-	if checker.legalIn(largeID) {
+	if checker.legalIn(largeID, 2) {
 		t.Error("Duplicate large uniqid should not be legal")
 	}
 }
@@ -182,7 +182,7 @@ func TestUniqOpConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < idsPerGoroutine; j++ {
 				id := uint64(startID*idsPerGoroutine + j + 1)
-				checker.legalIn(id)
+				checker.legalIn(id, id)
 			}
 		}(i)
 	}
@@ -202,7 +202,7 @@ func TestUniqOpEvictionLogic(t *testing.T) {
 
 	// Add operations beyond keepOps limit
 	for i := 1; i <= 2000; i++ {
-		checker.legalIn(uint64(i))
+		checker.legalIn(uint64(i), uint64(i))
 	}
 
 	// Test evictIndex - should return valid indices since we exceed keepOps (1024)
@@ -246,8 +246,9 @@ func TestUniqOpEvictionWithOldOperations(t *testing.T) {
 	// Manually add operations with old timestamps
 	for i := 1; i <= 1500; i++ {
 		checker.Lock()
-		checker.op[uint64(i)] = struct{}{}
-		checker.inQue.append(&uniqOp{uniqid: uint64(i), atime: oldTime})
+		op := &uniqOp{uniqid: uint64(i), atime: oldTime, applyId: uint64(i)}
+		checker.op[uint64(i)] = op
+		checker.inQue.append(op)
 		checker.Unlock()
 	}
 
@@ -279,7 +280,7 @@ func TestUniqOpEvictionWithOldOperations(t *testing.T) {
 func TestUniqOpMarshalUnmarshalEdgeCases(t *testing.T) {
 	// Test empty checker
 	checker := newUniqChecker()
-	buf, crc, err := checker.Marshal()
+	buf, crc, err := checker.Marshal(checkerVersionV1)
 	if err != nil {
 		t.Errorf("Marshal empty checker failed: %v", err)
 	}
@@ -449,16 +450,16 @@ func TestUniqOpStats(t *testing.T) {
 
 	// Add some operations
 	for i := 1; i <= 100; i++ {
-		checker.legalIn(uint64(i))
+		checker.legalIn(uint64(i), uint64(i))
 	}
 
 	// Test stats on non-empty checker
 	stats = checker.getStats()
 	if stats["queue_length"].(int) != 100 {
-		t.Error("Checker should have queue length 100")
+		t.Errorf("Checker should have queue length 100, got %d", stats["queue_length"].(int))
 	}
 	if stats["map_size"].(int) != 100 {
-		t.Error("Checker should have map size 100")
+		t.Errorf("Checker should have map size 100, got %d", stats["map_size"].(int))
 	}
 }
 
@@ -468,7 +469,7 @@ func TestUniqOpCloneIndependence(t *testing.T) {
 
 	// Add operations to original
 	for i := 1; i <= 50; i++ {
-		checker.legalIn(uint64(i))
+		checker.legalIn(uint64(i), uint64(i))
 	}
 
 	// Clone checker
@@ -476,7 +477,7 @@ func TestUniqOpCloneIndependence(t *testing.T) {
 
 	// Add operations to original
 	for i := 51; i <= 100; i++ {
-		checker.legalIn(uint64(i))
+		checker.legalIn(uint64(i), uint64(i))
 	}
 
 	// Verify clone is independent
@@ -497,11 +498,11 @@ func TestUniqOpMarshalUnmarshalRoundTrip(t *testing.T) {
 
 	// Add operations
 	for i := 1; i <= 100; i++ {
-		checker.legalIn(uint64(i))
+		checker.legalIn(uint64(i), uint64(i))
 	}
 
 	// Marshal
-	buf, crc, err := checker.Marshal()
+	buf, crc, err := checker.Marshal(checkerVersionV1)
 	if err != nil {
 		t.Errorf("Marshal failed: %v", err)
 	}
@@ -522,7 +523,7 @@ func TestUniqOpMarshalUnmarshalRoundTrip(t *testing.T) {
 	}
 
 	// Verify CRC
-	buf2, crc2, err := checker2.Marshal()
+	buf2, crc2, err := checker2.Marshal(checkerVersionV1)
 	if err != nil {
 		t.Errorf("Second marshal failed: %v", err)
 	}
@@ -541,7 +542,7 @@ func TestUniqOpLargeScale(t *testing.T) {
 	// Add large number of operations
 	numOps := 10000
 	for i := 1; i <= numOps; i++ {
-		if !checker.legalIn(uint64(i)) {
+		if !checker.legalIn(uint64(i), uint64(i)) {
 			t.Errorf("Failed to add operation %d", i)
 		}
 	}
@@ -556,7 +557,7 @@ func TestUniqOpLargeScale(t *testing.T) {
 
 	// Test duplicate operations
 	for i := 1; i <= 100; i++ {
-		if checker.legalIn(uint64(i)) {
+		if checker.legalIn(uint64(i), uint64(i+numOps)) {
 			t.Errorf("Duplicate operation %d should not be legal", i)
 		}
 	}
@@ -611,7 +612,7 @@ func TestUniqOpConcurrentMarshal(t *testing.T) {
 
 	// Add operations
 	for i := 1; i <= 1000; i++ {
-		checker.legalIn(uint64(i))
+		checker.legalIn(uint64(i), uint64(i))
 	}
 
 	// Test concurrent marshaling
@@ -622,7 +623,7 @@ func TestUniqOpConcurrentMarshal(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			buf, crc, err := checker.Marshal()
+			buf, crc, err := checker.Marshal(checkerVersionV1)
 			if err != nil {
 				t.Errorf("Concurrent marshal failed: %v", err)
 			}
@@ -652,7 +653,7 @@ func TestUniqOpConcurrentLegalIn(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < idsPerGoroutine; j++ {
 				id := uint64(startID*idsPerGoroutine + j + 1)
-				checker.legalIn(id)
+				checker.legalIn(id, id)
 			}
 		}(i)
 	}
@@ -668,7 +669,7 @@ func TestUniqOpConcurrentLegalIn(t *testing.T) {
 	// Test that duplicates are properly rejected
 	duplicateCount := 0
 	for i := 1; i <= 100; i++ {
-		if checker.legalIn(uint64(i)) {
+		if checker.legalIn(uint64(i), uint64(i+expectedCount)) {
 			duplicateCount++
 		}
 	}

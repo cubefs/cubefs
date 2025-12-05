@@ -52,7 +52,7 @@ type uniqOp struct {
 }
 
 type uniqChecker struct {
-	sync.Mutex
+	sync.RWMutex
 	op    map[uint64]*uniqOp
 	inQue *uniqOpQueue
 	rtime int64
@@ -138,7 +138,7 @@ func (checker *uniqChecker) UnMarshal(data []byte) (err error) {
 	// Optimization: Pre-allocate map if we can estimate size
 	recordCount := (len(data) - checkerVersionSize) / checkerRecordV1Len
 	if recordCount > 0 {
-		checker.op = make(map[uint64]struct{}, recordCount)
+		checker.op = make(map[uint64]*uniqOp, recordCount)
 	}
 
 	for buff.Len() != 0 {
@@ -189,14 +189,11 @@ func (checker *uniqChecker) legalIn(bid uint64, applyId uint64) bool {
 	if val, ok := checker.op[bid]; ok {
 		log.LogDebugf("uniqChecker legalIn bid %v applyId %v val.applyId %v", bid, applyId, val.applyId)
 		return val.applyId >= applyId
-	} else {
-		uniqVal := &uniqOp{bid, time.Now().Unix(), applyId}
-		checker.op[bid] = uniqVal
-		checker.inQue.append(uniqVal)
 	}
 
-	checker.op[bid] = struct{}{}
-	checker.inQue.append(&uniqOp{bid, time.Now().Unix()})
+	uniqVal := &uniqOp{bid, time.Now().Unix(), applyId}
+	checker.op[bid] = uniqVal
+	checker.inQue.append(uniqVal)
 	return true
 }
 

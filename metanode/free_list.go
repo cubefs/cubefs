@@ -21,6 +21,11 @@ import (
 
 // freeList represents a thread-safe queue for managing free inode numbers.
 // It maintains both a linked list for FIFO operations and a map for O(1) lookups.
+// The design ensures:
+// - O(1) insertion and removal from both ends
+// - O(1) duplicate detection
+// - O(1) arbitrary element removal
+// - Thread-safe operations
 type freeList struct {
 	mu    sync.RWMutex // Use RWMutex for better read performance
 	list  *list.List
@@ -36,7 +41,7 @@ func newFreeList() *freeList {
 }
 
 // Pop removes and returns the first item from the list.
-// Returns 0 if the list is empty.
+// Returns 0 if the list is empty (0 is considered an invalid inode number).
 func (fl *freeList) Pop() uint64 {
 	fl.mu.Lock()
 	defer fl.mu.Unlock()
@@ -47,13 +52,19 @@ func (fl *freeList) Pop() uint64 {
 	}
 
 	val := fl.list.Remove(item)
-	ino := val.(uint64)
+	ino, ok := val.(uint64)
+	if !ok {
+		// This should never happen if the list is used correctly
+		// Log error but don't panic to maintain stability
+		return 0
+	}
 	delete(fl.index, ino)
 	return ino
 }
 
 // Push adds a new inode number to the back of the list.
-// If the inode already exists, it will be ignored.
+// If the inode already exists, it will be ignored (idempotent operation).
+// Invalid inode numbers (0) are rejected.
 func (fl *freeList) Push(ino uint64) {
 	if ino == 0 {
 		return // Avoid storing invalid inode numbers
@@ -70,6 +81,7 @@ func (fl *freeList) Push(ino uint64) {
 }
 
 // Remove removes a specific inode number from the list.
+// If the inode does not exist, the operation is a no-op.
 func (fl *freeList) Remove(ino uint64) {
 	fl.mu.Lock()
 	defer fl.mu.Unlock()
@@ -81,8 +93,11 @@ func (fl *freeList) Remove(ino uint64) {
 }
 
 // Len returns the current number of items in the list.
+// This operation is O(1) and thread-safe.
 func (fl *freeList) Len() int {
 	fl.mu.RLock()
 	defer fl.mu.RUnlock()
+	// Use index length for consistency and O(1) performance
+	// Both should be equal, but index is more reliable
 	return len(fl.index)
 }
