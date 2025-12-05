@@ -129,10 +129,10 @@ func (alloc *IDAllocator) restoreMaxQuotaID() {
 		panic(fmt.Sprintf("Failed to restore maxQuotaID,err:%v ", err.Error()))
 	}
 
-	if maxQuotaID > 0 && maxQuotaID <= math.MaxInt32 {
+	if maxQuotaID > 0 && maxQuotaID <= math.MaxUint32 {
 		alloc.quotaID = uint32(maxQuotaID)
 	} else {
-		alloc.quotaID = math.MaxInt32
+		alloc.quotaID = math.MaxUint32
 	}
 
 	log.LogInfof("action[restoreMaxCommonID] maxQuotaID[%v]", alloc.quotaID)
