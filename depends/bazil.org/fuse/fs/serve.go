@@ -926,6 +926,40 @@ func (s *Server) Serve(fs FS, opt *proto.MountOptions) error {
 		return fmt.Errorf("restore fail: %v", err)
 	}
 
+	if opt != nil && opt.FuseServeThreads <= 0 {
+		for {
+			if s.TrySuspend(fs) {
+				break
+			}
+
+			req, err := s.conn.ReadRequest()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return err
+			}
+
+			switch req.(type) {
+			case *fuse.ForgetRequest:
+				ctx := context.Background()
+				ForgetServeLimit.Wait(ctx)
+			default:
+			}
+
+			s.wg.Add(1)
+			go func() {
+				defer s.wg.Done()
+				if opt != nil && opt.RequestTimeout > 0 {
+					s.serveWithTimeOut(req, opt.RequestTimeout)
+				} else {
+					s.serve(req)
+				}
+			}()
+		}
+		return nil
+	}
+
 	fn := func() error {
 		defer s.wg.Done()
 
@@ -948,16 +982,6 @@ func (s *Server) Serve(fs FS, opt *proto.MountOptions) error {
 				ForgetServeLimit.Wait(ctx)
 			default:
 			}
-
-			// s.wg.Add(1)
-			// go func() {
-			// 	defer s.wg.Done()
-			// 	if opt != nil && opt.RequestTimeout > 0 {
-			// 		s.serveWithTimeOut(req, opt.RequestTimeout)
-			// 	} else {
-			// 		s.serve(req)
-			// 	}
-			// }()
 
 			if opt != nil && opt.RequestTimeout > 0 {
 				s.serveWithTimeOut(req, opt.RequestTimeout)
