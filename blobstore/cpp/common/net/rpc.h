@@ -167,10 +167,10 @@ class RpcResponseHeader {
 
     void SetMagic(int32_t magic) { resp_header_.set_magic(magic); }
 
-    int32_t Code() const { return resp_header_.status(); }
+    int32_t Status() const { return resp_header_.status(); }
 
-    void SetCode(int32_t code) { resp_header_.set_status(code); }
-    void SetCode(ErrCode code) { resp_header_.set_status((int)code); }
+    void SetStatus(int32_t status) { resp_header_.set_status(status); }
+    void SetStatus(ErrCode status) { resp_header_.set_status((int)status); }
 
     void SetReason(std::string_view reason) {
         resp_header_.set_reason(std::string(reason.data(), reason.size()));

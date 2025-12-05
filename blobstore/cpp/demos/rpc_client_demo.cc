@@ -23,7 +23,7 @@ const std::string& GetRoutePath(RoutePathIndex index) {
 }
 
 seastar::future<> testNoBody(blobstore::net::RpcClient* client, const std::string& host,
-                             uint16_t port, RoutePathIndex index, int32_t code) {
+                             uint16_t port, RoutePathIndex index, int32_t status) {
     auto res = co_await client->MakeRpcClientContext(host, port);
     if (!res) {
         LOG_ERROR("test: make rpc client context error: {}", res);
@@ -51,12 +51,12 @@ seastar::future<> testNoBody(blobstore::net::RpcClient* client, const std::strin
         co_return;
     }
     auto resp_header = std::move(read_res.Value());
-    if (resp_header.Code() != code) {
-        LOG_ERROR("test [{}]{}: response code={} !={}, reason={}", +index, path, resp_header.Code(),
-                  code, resp_header.Reason());
+    if (resp_header.Status() != status) {
+        LOG_ERROR("test [{}]{}: response status={} !={}, reason={}", +index, path,
+                  resp_header.Status(), status, resp_header.Reason());
         std::exit(1);
     }
-    LOG_INFO("test [{}]{}: response code={}, reason={}", +index, path, resp_header.Code(),
+    LOG_INFO("test [{}]{}: response status={}, reason={}", +index, path, resp_header.Status(),
              resp_header.Reason());
 
     co_return;
@@ -104,7 +104,7 @@ seastar::future<> testKick(blobstore::net::RpcClient* client, const std::string&
             break;
         }
         auto resp_header = std::move(read_res.Value());
-        LOG_INFO("testKick({}): response code={}, reason={}", kick, resp_header.Code(),
+        LOG_INFO("testKick({}): response status={}, reason={}", kick, resp_header.Status(),
                  resp_header.Reason());
         co_await seastar::sleep(std::chrono::seconds(1));
     }

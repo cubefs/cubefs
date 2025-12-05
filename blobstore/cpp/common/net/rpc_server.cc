@@ -23,7 +23,7 @@ seastar::future<Status<>> RpcServer::HandleContext(RpcServerContext* ctx) noexce
     if (it == handlers_.end()) {
         // No handler found, return 404
         RpcResponseHeader resp_header;
-        resp_header.SetCode(ErrCode::ErrNotFound);
+        resp_header.SetStatus(ErrCode::ErrNotFound);
         std::string reason =
             fmt::format("no router for path([{}]{})", path_index, req_header.RemotePath());
         resp_header.SetReason(reason);
@@ -36,7 +36,7 @@ seastar::future<Status<>> RpcServer::HandleContext(RpcServerContext* ctx) noexce
         if (!middleware_result.OK()) {
             // Middleware returned error, stop processing
             RpcResponseHeader resp_header;
-            resp_header.SetCode(middleware_result.Code());
+            resp_header.SetStatus(middleware_result.Code());
             const auto& sreason = middleware_result.Reason();
             std::string reason(sreason.c_str(), sreason.size());
             resp_header.SetReason(reason);

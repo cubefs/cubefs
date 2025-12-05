@@ -52,7 +52,7 @@ SEASTAR_TEST_CASE(test_register_and_call_handler) {
                            [&handler_called](RpcServerContext* ctx) -> seastar::future<Status<>> {
                                handler_called = true;
                                RpcResponseHeader resp_header;
-                               resp_header.SetCode(ErrCode::OK);
+                               resp_header.SetStatus(ErrCode::OK);
                                resp_header.SetReason(std::string("success"));
                                co_return co_await ctx->WriteHeader(std::move(resp_header));
                            });
@@ -79,7 +79,7 @@ SEASTAR_TEST_CASE(test_unregistered_route_returns_404) {
     RpcResponseHeader resp_header;
     Buffer& buf = stream.written_bodies_[0];
     resp_header.ParseFromZeroCopy(std::move(buf));
-    BOOST_REQUIRE_EQUAL(resp_header.Code(), static_cast<int>(ErrCode::ErrNotFound));
+    BOOST_REQUIRE_EQUAL(resp_header.Status(), static_cast<int>(ErrCode::ErrNotFound));
     BOOST_REQUIRE(!resp_header.Reason().empty());
 }
 
@@ -97,7 +97,7 @@ SEASTAR_TEST_CASE(test_middleware_executes_before_handler) {
                            [&execution_order](RpcServerContext* ctx) -> seastar::future<Status<>> {
                                execution_order.push_back(2);  // Handler executes second
                                RpcResponseHeader resp_header;
-                               resp_header.SetCode(ErrCode::OK);
+                               resp_header.SetStatus(ErrCode::OK);
                                co_return co_await ctx->WriteHeader(std::move(resp_header));
                            });
 
@@ -132,7 +132,7 @@ SEASTAR_TEST_CASE(test_multiple_middlewares_execute_in_order) {
                            [&execution_order](RpcServerContext* ctx) -> seastar::future<Status<>> {
                                execution_order.push_back(4);
                                RpcResponseHeader resp_header;
-                               resp_header.SetCode(ErrCode::OK);
+                               resp_header.SetStatus(ErrCode::OK);
                                co_return co_await ctx->WriteHeader(std::move(resp_header));
                            });
 
@@ -165,7 +165,7 @@ SEASTAR_TEST_CASE(test_middleware_error_stops_execution) {
                            [&handler_called](RpcServerContext* ctx) -> seastar::future<Status<>> {
                                handler_called = true;
                                RpcResponseHeader resp_header;
-                               resp_header.SetCode(ErrCode::OK);
+                               resp_header.SetStatus(ErrCode::OK);
                                co_return co_await ctx->WriteHeader(std::move(resp_header));
                            });
 
@@ -180,7 +180,7 @@ SEASTAR_TEST_CASE(test_middleware_error_stops_execution) {
     RpcResponseHeader resp_header;
     Buffer& buf = stream.written_bodies_[0];
     resp_header.ParseFromZeroCopy(std::move(buf));
-    BOOST_REQUIRE_EQUAL(resp_header.Code(), static_cast<int>(ErrCode::ErrInvalid));
+    BOOST_REQUIRE_EQUAL(resp_header.Status(), static_cast<int>(ErrCode::ErrInvalid));
     BOOST_REQUIRE(!resp_header.Reason().empty());
 }
 
@@ -194,14 +194,14 @@ SEASTAR_TEST_CASE(test_handler_can_be_replaced) {
     server.RegisterHandler(5, [&call_count](RpcServerContext* ctx) -> seastar::future<Status<>> {
         call_count = 1;
         RpcResponseHeader resp_header;
-        resp_header.SetCode(ErrCode::OK);
+        resp_header.SetStatus(ErrCode::OK);
         co_return co_await ctx->WriteHeader(std::move(resp_header));
     });
     // Replace with new handler
     server.RegisterHandler(5, [&call_count](RpcServerContext* ctx) -> seastar::future<Status<>> {
         call_count = 2;
         RpcResponseHeader resp_header;
-        resp_header.SetCode(ErrCode::OK);
+        resp_header.SetStatus(ErrCode::OK);
         co_return co_await ctx->WriteHeader(std::move(resp_header));
     });
 
@@ -223,7 +223,7 @@ SEASTAR_TEST_CASE(test_multiple_handlers_different_routes) {
                            [&handler1_called](RpcServerContext* ctx) -> seastar::future<Status<>> {
                                handler1_called++;
                                RpcResponseHeader resp_header;
-                               resp_header.SetCode(ErrCode::OK);
+                               resp_header.SetStatus(ErrCode::OK);
                                co_return co_await ctx->WriteHeader(std::move(resp_header));
                            });
     // Register handler for route 20
@@ -231,7 +231,7 @@ SEASTAR_TEST_CASE(test_multiple_handlers_different_routes) {
                            [&handler2_called](RpcServerContext* ctx) -> seastar::future<Status<>> {
                                handler2_called++;
                                RpcResponseHeader resp_header;
-                               resp_header.SetCode(ErrCode::OK);
+                               resp_header.SetStatus(ErrCode::OK);
                                co_return co_await ctx->WriteHeader(std::move(resp_header));
                            });
 
@@ -268,7 +268,7 @@ SEASTAR_TEST_CASE(test_handler_accesses_request_header) {
             received_path = req_header.RemotePath();
             received_trace_id = req_header.Traceid();
             RpcResponseHeader resp_header;
-            resp_header.SetCode(ErrCode::OK);
+            resp_header.SetStatus(ErrCode::OK);
             co_return co_await ctx->WriteHeader(std::move(resp_header));
         });
 

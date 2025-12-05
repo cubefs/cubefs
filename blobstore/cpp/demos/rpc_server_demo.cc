@@ -62,7 +62,7 @@ class SimpleService {
         LOG_INFO("{} handlePing: remote: {}", trace.TraceID(), ctx->RemoteAddress());
 
         RpcResponseHeader resp_header;
-        resp_header.SetCode(ErrCode::OK);
+        resp_header.SetStatus(ErrCode::OK);
         s = co_await ctx->WriteHeader(std::move(resp_header));
 
         trace.Append("ping", start);
@@ -107,7 +107,7 @@ class SimpleService {
 
     FutureStatus<> HandleError(RpcServerContext* ctx) {
         RpcResponseHeader resp_header;
-        resp_header.SetCode(567);
+        resp_header.SetStatus(567);
         resp_header.SetReason(std::string("demo: CustomError"));
         co_return co_await ctx->WriteHeader(std::move(resp_header));
     }
