@@ -205,7 +205,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[MetaCacheAcceleration] = MountOption{"metaCacheAcceleration", "keep meta cache and get inode/extents in one go", "", false}
 	opts[MinimumNlinkReadDir] = MountOption{"minimumNlinkReadDir", "the minimum Nlink value of the directory that actively triggers the ReadDir operation", "", int64(10000)}
 	opts[InodeLruLimit] = MountOption{"inodeLruLimit", "capacity for inode lru", "", int64(10000000)}
-	opts[FuseServeThreads] = MountOption{"fuseServeThreads", "Fuse Serve Threads", "", int64(64)}
+	opts[FuseServeThreads] = MountOption{"fuseServeThreads", "Fuse Serve Threads", "", int64(0)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
