@@ -550,6 +550,33 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp, err = mp.fsmSetFreeze(req.Freeze)
+	case opFSMCalcMetaPartitionMd5Sum:
+		req := &proto.CalcMetaPartitionMd5SumRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		if req.ApplyID != mp.GetApplyID() {
+			return
+		}
+		uniqId := mp.GetUniqId()
+		uniqChecker := mp.uniqChecker.clone()
+		// NOTE: already got lock
+		var snap Snapshot
+		snap, err = mp.GetSnapShot()
+		if err != nil {
+			log.LogErrorf("[Apply]: failed to open snapshot for mp(%v), store(%v), err(%v)", mp.config.PartitionId, mp.config.StoreMode, err)
+			return
+		}
+		msg := &storeMsg{
+			command:      opFSMCalcMetaPartitionMd5Sum,
+			snap:         snap,
+			quotaRebuild: false,
+			uidRebuild:   false,
+			uniqId:       uniqId,
+			uniqChecker:  uniqChecker,
+			multiVerList: mp.GetAllVerList(),
+		}
+		mp.storeChan <- msg
 	default:
 		// do nothing
 	case opFSMSyncInodeAccessTime:

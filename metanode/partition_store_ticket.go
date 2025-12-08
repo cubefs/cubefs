@@ -42,6 +42,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timerCursor := time.NewTimer(intervalToSyncCursor)
 	scheduleState := common.StateStopped
 	lastCursor := mp.GetCursor()
+	lastApplyID := uint64(0)
 	dumpFunc := func(msg *storeMsg) {
 		log.LogWarnf("[startSchedule] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
@@ -143,6 +144,11 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Stop()
 				case opFSMStoreTick:
 					msgs = append(msgs, msg)
+				case opFSMCalcMetaPartitionMd5Sum:
+					if lastApplyID < msg.snap.ApplyID() {
+						lastApplyID = msg.snap.ApplyID()
+						go mp.fsmCalcMetaPartitionMd5Sum(msg)
+					}
 				default:
 					// do nothing
 				}

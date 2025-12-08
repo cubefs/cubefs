@@ -1170,6 +1170,8 @@ type MetaPartitionLoadResponse struct {
 	InodeCount  uint64
 	Addr        string
 	RaftInfo    RaftInfo
+	Md5ApplyId  uint64
+	Md5Sum      string
 }
 
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
@@ -1870,4 +1872,14 @@ func (l RackAwareLevel) String() string {
 
 func (l RackAwareLevel) IsValid() bool {
 	return l >= RackAwareNone && l <= RackAwareStrong
+}
+
+const (
+	PrefetchApplyIDdiff = 10 // prefetch applyID diff
+)
+
+type CalcMetaPartitionMd5SumRequest struct {
+	PartitionID uint64
+	DiffVal     uint64
+	ApplyID     uint64
 }

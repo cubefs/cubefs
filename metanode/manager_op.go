@@ -2648,3 +2648,58 @@ func (m *metadataManager) opIsRaftStatusOk(conn net.Conn, p *Packet,
 	m.respondToClientWithVer(conn, p)
 	return
 }
+
+func (m *metadataManager) opCalcMetaPartitionMd5Sum(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	req := &proto.CalcMetaPartitionMd5SumRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	if req.DiffVal == 0 {
+		req.DiffVal = proto.PrefetchApplyIDdiff
+	}
+	req.ApplyID = mp.GetApplyID() + req.DiffVal
+
+	for i := mp.GetApplyID(); i <= req.ApplyID; i++ {
+		err = mp.CalcMetaPartitionMd5Sum(req)
+		if err != nil {
+			log.LogErrorf("CalcMetaPartitionMd5Sum failed, err: %s", err.Error())
+			return
+		}
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		log.LogErrorf("json encode err: %s", err.Error())
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	p.PacketOkWithBody(data)
+	m.respondToClientWithVer(conn, p)
+	return
+}

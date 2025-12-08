@@ -312,6 +312,8 @@ type MetaPartition interface {
 	GetSnapShot() (Snapshot, error)
 	ReleaseSnapShot(snap Snapshot)
 	GetStoreMode() proto.StoreMode
+	GetApplyID() uint64
+	CalcMetaPartitionMd5Sum(req *proto.CalcMetaPartitionMd5SumRequest) error
 }
 
 type UidManager struct {
@@ -544,6 +546,8 @@ type metaPartition struct {
 	rocksdbManager  RocksdbManager
 	db              *RocksdbOperator
 	multiVerApplyId uint64
+	Md5ApplyId      uint64
+	Md5Sum          string
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -1506,6 +1510,8 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	resp.DentryCount = uint64(mp.GetDentryTreeLen())
 	resp.ApplyID = mp.getApplyID()
 	resp.CommittedID = mp.getCommittedID()
+	resp.Md5ApplyId = mp.Md5ApplyId
+	resp.Md5Sum = mp.Md5Sum
 
 	resp.RaftInfo.DownReplicas = mp.config.RaftStore.RaftServer().GetDownReplicas(mp.config.PartitionId)
 	resp.RaftInfo.PendingPeers = mp.config.RaftStore.RaftServer().GetPendingReplica(mp.config.PartitionId)
@@ -2217,4 +2223,26 @@ func (mp *metaPartition) IsSnapshoting() bool {
 		log.LogWarnf("IsSnapshoting mp[%d] isRestoring: %v", mp.config.PartitionId, isRestoring)
 	}
 	return isRestoring
+}
+
+func (mp *metaPartition) GetApplyID() uint64 {
+	return atomic.LoadUint64(&mp.applyID)
+}
+
+func (mp *metaPartition) CalcMetaPartitionMd5Sum(req *proto.CalcMetaPartitionMd5SumRequest) error {
+	reqData, err := json.Marshal(*req)
+	if err != nil {
+		return err
+	}
+	r, err := mp.submit(opFSMCalcMetaPartitionMd5Sum, reqData)
+	if err != nil {
+		return err
+	}
+	if status := r.(uint8); status != proto.OpOk {
+		p := &Packet{}
+		p.ResultCode = status
+		err = errors.NewErrorf("[CalcMetaPartitionMd5Sum]: %s", p.GetResultMsg())
+		return err
+	}
+	return nil
 }

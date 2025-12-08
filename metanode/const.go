@@ -208,6 +208,9 @@ const (
 
 	// Freeze meta partition operations
 	opFSMSetFreeze = 92
+
+	// calc meta partition md5 sum
+	opFSMCalcMetaPartitionMd5Sum = 93
 )
 
 // New inode operation codes
