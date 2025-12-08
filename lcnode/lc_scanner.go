@@ -394,10 +394,17 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	s.limiter.Wait(context.Background())
 	start := time.Now()
 
-	info, err := s.mw.InodeGet_ll(dentry.Inode, true)
-	if err != nil {
-		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
-		return
+	var info *proto.InodeInfo
+	var err error
+
+	if dentry.HasInodeInfo {
+		info = dentry.InodeInfo
+	} else {
+		info, err = s.mw.InodeGet_ll(dentry.Inode, true)
+		if err != nil {
+			log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
+			return
+		}
 	}
 
 	if info != nil && info.Size < s.rule.MinSize() {
@@ -641,17 +648,13 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 			}
 		}
 
+		scanDentries := s.batchGetFileInodeInfo(dentry.Inode, children, dentry.Path)
+
 		files := make([]*proto.ScanDentry, 0)
 		dirs := make([]*proto.ScanDentry, 0)
-		for _, child := range children {
-			childDentry := &proto.ScanDentry{
-				ParentId: dentry.Inode,
-				Name:     child.Name,
-				Inode:    child.Inode,
-				Path:     strings.TrimPrefix(dentry.Path+pathSep+child.Name, pathSep),
-				Type:     child.Type,
-			}
+		for _, dentry := range scanDentries {
 
+			childDentry := dentry
 			if os.FileMode(childDentry.Type).IsDir() {
 				dirs = append(dirs, childDentry)
 			} else {
@@ -719,14 +722,9 @@ func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
 			}
 		}
 
-		for _, child := range children {
-			childDentry := &proto.ScanDentry{
-				ParentId: dentry.Inode,
-				Name:     child.Name,
-				Inode:    child.Inode,
-				Path:     strings.TrimPrefix(dentry.Path+pathSep+child.Name, pathSep),
-				Type:     child.Type,
-			}
+		scanDentries := s.batchGetFileInodeInfo(dentry.Inode, children, dentry.Path)
+		for _, dentry := range scanDentries {
+			childDentry := dentry
 			if !os.FileMode(childDentry.Type).IsDir() {
 				s.fileChan <- childDentry
 			} else {
@@ -865,4 +863,62 @@ func (s *LcScanner) clearFileChan() {
 			return
 		}
 	}
+}
+
+// batchGetFileInodeInfo batch gets inode info for file-type dentries from ReadDirLimit_ll result
+// It processes all dentries (files and dirs), batch calls BatchInodeGet for files only,
+// and returns ScanDentry list. Dir-type dentries have HasInodeInfo set to false
+func (s *LcScanner) batchGetFileInodeInfo(parentId uint64, dentries []proto.Dentry, parentPath string) []*proto.ScanDentry {
+	if len(dentries) == 0 {
+		return make([]*proto.ScanDentry, 0)
+	}
+
+	// Separate file-type and dir-type dentries
+	fileInodes := make([]uint64, 0)
+
+	for i := range dentries {
+		child := &dentries[i]
+		// Collect file-type inodes for batch get
+		if !os.FileMode(child.Type).IsDir() {
+			fileInodes = append(fileInodes, child.Inode)
+		}
+	}
+
+	// Batch get inode info for file-type inodes only
+
+	inodeInfos := s.mw.BatchInodeGet(fileInodes)
+	inodeInfoMap := make(map[uint64]*proto.InodeInfo, len(fileInodes))
+	for _, info := range inodeInfos {
+		if info != nil {
+			inodeInfoMap[info.Inode] = info
+		}
+	}
+
+	// Build ScanDentry list for all dentries (files and dirs)
+	result := make([]*proto.ScanDentry, 0, len(dentries))
+	for i := range dentries {
+		child := &dentries[i]
+		childPath := strings.TrimPrefix(parentPath+pathSep+child.Name, pathSep)
+
+		scanDentry := &proto.ScanDentry{
+			ParentId: parentId,
+			Inode:    child.Inode,
+			Name:     child.Name,
+			Path:     childPath,
+			Type:     child.Type,
+		}
+
+		// Check if it's a file and if inode info was successfully retrieved
+		isFile := !os.FileMode(child.Type).IsDir()
+		info, hasInfo := inodeInfoMap[child.Inode]
+		if isFile && hasInfo && info != nil {
+			// Fill inode info fields for files
+			scanDentry.InodeInfo = info
+			scanDentry.HasInodeInfo = true
+		}
+
+		result = append(result, scanDentry)
+	}
+
+	return result
 }

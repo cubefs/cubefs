@@ -84,6 +84,10 @@ func (*MockMetaWrapper) DeleteMigrationExtentKey(inode uint64, fullPath string) 
 	return nil
 }
 
+func (*MockMetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
+	return nil
+}
+
 func (*MockMetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error) {
 	// for handleDirLimitDepthFirst
 	if parentID == 4 {

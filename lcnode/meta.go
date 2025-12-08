@@ -26,5 +26,6 @@ type MetaWrapper interface {
 	UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, leaseExpireTime uint64, delayDelMinute uint64, fullPath string) error
 	DeleteMigrationExtentKey(inode uint64, fullPath string) error
 	ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error)
+	BatchInodeGet(inodes []uint64) []*proto.InodeInfo
 	Close() error
 }
