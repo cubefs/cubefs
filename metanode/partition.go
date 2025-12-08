@@ -651,11 +651,16 @@ func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 }
 
 func (mp *metaPartition) updateSize() {
+	lastApplyId := uint64(0)
 	timer := time.NewTicker(time.Minute * 2)
 	go func() {
 		for {
 			select {
 			case <-timer.C:
+				if lastApplyId == mp.GetAppliedID() && lastApplyId != 0 {
+					continue
+				}
+				lastApplyId = mp.GetAppliedID()
 				mp.updateSizeLoopFunc()
 			case <-mp.stopC:
 				log.LogDebugf("[updateSize] stop update mp[%v] size, inodeCount(%d), dentryCount(%d)",
