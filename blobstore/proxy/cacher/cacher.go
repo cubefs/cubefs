@@ -18,11 +18,13 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/peterbourgon/diskv/v3"
 	"golang.org/x/sync/singleflight"
@@ -83,6 +85,7 @@ type ConfigCache struct {
 
 type valueExpired interface {
 	Expired() bool
+	SetExpiration(time.Duration)
 }
 
 func diskvKeyVolume(vid proto.Vid) string {
@@ -228,10 +231,10 @@ func (c *cacher) DiskvFilename(key string) string {
 	return filepath.Join(dir, pathKey.FileName)
 }
 
-func (c *cacher) getCachedValue(span trace.Span, id interface{}, key string,
+func (c *cacher) getCachedValue(span trace.Span, id any, key string, expiration int,
 	memcacher *memcache.MemCache, decoder func([]byte) (valueExpired, error),
 	reporter func(string, string),
-) interface{} {
+) any {
 	if val := memcacher.Get(id); val != nil {
 		if value, ok := val.(valueExpired); ok {
 			if !value.Expired() {
@@ -262,6 +265,7 @@ func (c *cacher) getCachedValue(span trace.Span, id interface{}, key string,
 		return nil
 	}
 
+	value.SetExpiration(interleaveExpiration(expiration))
 	if !value.Expired() {
 		reporter("diskv", "hit")
 		memcacher.Set(id, value)
@@ -272,4 +276,14 @@ func (c *cacher) getCachedValue(span trace.Span, id interface{}, key string,
 	reporter("diskv", "expired")
 	span.Debugf("expired at diskv path:%s value:<%s>", fullPath, string(data))
 	return nil
+}
+
+// random expiration to reduce intensive requests.
+func interleaveExpiration(secs int) time.Duration {
+	if secs > 0 {
+		secs = rand.Intn(1+secs/4) + secs
+	} else {
+		secs = 0
+	}
+	return time.Second * time.Duration(secs)
 }

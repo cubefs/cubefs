@@ -101,3 +101,20 @@ func TestProxyCacherDiskCacheMiss(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+func TestProxyCacherDiskExpiredByConfig(t *testing.T) {
+	c, c2, cmCli, clean := newCacher2(t, 300, 1)
+	defer clean()
+	cmCli.EXPECT().DiskInfo(A, A).Return(&cmapi.BlobNodeDiskInfo{}, nil).Times(2)
+
+	for range [100]struct{}{} {
+		_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+		require.NoError(t, err)
+	}
+
+	time.Sleep(time.Second * 2) // should expired
+	for range [100]struct{}{} {
+		_, err := c2.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+		require.NoError(t, err)
+	}
+}

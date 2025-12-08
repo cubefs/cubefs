@@ -17,11 +17,9 @@ package cacher
 import (
 	"context"
 	"encoding/json"
-	"math/rand"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -32,11 +30,17 @@ const keyDiskConcurrency = "disk"
 
 type expiryDisk struct {
 	clustermgr.BlobNodeDiskInfo
-	ExpiryAt int64 `json:"expiry,omitempty"` // seconds
+	CreateAt time.Time `json:"__create_at__,omitempty"`
+
+	expiration time.Duration `json:"-"`
+}
+
+func (v *expiryDisk) SetExpiration(exp time.Duration) {
+	v.expiration = exp
 }
 
 func (v *expiryDisk) Expired() bool {
-	return v.ExpiryAt > 0 && time.Now().Unix() >= v.ExpiryAt
+	return v.expiration > 0 && time.Since(v.CreateAt) > v.expiration
 }
 
 func encodeDisk(v *expiryDisk) ([]byte, error) {
@@ -69,7 +73,7 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clust
 	defer c.cmConcurrency.Release(keyDiskConcurrency)
 
 	st = time.Now()
-	val, err, _ := c.singleRun.Do(diskvKeyDisk(id), func() (interface{}, error) {
+	val, err, _ := c.singleRun.Do(diskvKeyDisk(id), func() (any, error) {
 		return c.cmClient.DiskInfo(ctx, id)
 	})
 	span.AppendTrackLog("cm", st, err)
@@ -86,10 +90,8 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clust
 
 	disk := new(expiryDisk)
 	disk.BlobNodeDiskInfo = *diskInfo
-	if expire := c.config.DiskExpirationS; expire > 0 {
-		expiration := rand.Intn(expire) + expire
-		disk.ExpiryAt = time.Now().Add(time.Second * time.Duration(expiration)).Unix()
-	}
+	disk.CreateAt = time.Now()
+	disk.expiration = interleaveExpiration(c.config.DiskExpirationS)
 	c.diskCache.Set(id, disk)
 
 	span, _ = trace.StartSpanFromContextWithTraceID(context.Background(), "diskkv", span.TraceID())
@@ -116,7 +118,7 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clust
 }
 
 func (c *cacher) getDisk(span trace.Span, id proto.DiskID) *expiryDisk {
-	if val := c.getCachedValue(span, id, diskvKeyDisk(id),
+	if val := c.getCachedValue(span, id, diskvKeyDisk(id), c.config.DiskExpirationS,
 		c.diskCache, decodeDisk, c.diskReport); val != nil {
 		if value, ok := val.(*expiryDisk); ok {
 			return value

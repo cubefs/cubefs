@@ -50,11 +50,7 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
-func newCacher(t gomock.TestReporter, expiration int, cmCli *mocks.MockClientAPI) (Cacher, *mocks.MockClientAPI, func()) {
-	if cmCli == nil {
-		cmCli = mocks.NewMockClientAPI(C(t))
-		cmCli.EXPECT().GetVolumeRoutes(A, A).Return(&clustermgr.GetVolumeRoutesRet{}, nil).AnyTimes()
-	}
+func genBasePath() string {
 	var basePath string
 	for {
 		basePath = path.Join(os.TempDir(), "proxy-cacher", fmt.Sprintf("%d", rand.Intn(10000)+10000))
@@ -62,6 +58,15 @@ func newCacher(t gomock.TestReporter, expiration int, cmCli *mocks.MockClientAPI
 			break
 		}
 	}
+	return basePath
+}
+
+func newCacher(t gomock.TestReporter, expiration int, cmCli *mocks.MockClientAPI) (Cacher, *mocks.MockClientAPI, func()) {
+	if cmCli == nil {
+		cmCli = mocks.NewMockClientAPI(C(t))
+		cmCli.EXPECT().GetVolumeRoutes(A, A).Return(&clustermgr.GetVolumeRoutesRet{}, nil).AnyTimes()
+	}
+	basePath := genBasePath()
 	cacher, err := New(1, ConfigCache{
 		DiskvBasePath:     basePath,
 		VolumeExpirationS: expiration,
@@ -71,6 +76,23 @@ func newCacher(t gomock.TestReporter, expiration int, cmCli *mocks.MockClientAPI
 		t.Fatalf("create cacher failed: %v", err)
 	}
 	return cacher, cmCli, func() { closer.Close(cacher); os.RemoveAll(basePath) }
+}
+
+func newCacher2(t gomock.TestReporter, expiration, expiration2 int) (Cacher, Cacher, *mocks.MockClientAPI, func()) {
+	cmCli := mocks.NewMockClientAPI(C(t))
+	cmCli.EXPECT().GetVolumeRoutes(A, A).Return(&clustermgr.GetVolumeRoutesRet{}, nil).AnyTimes()
+	basePath := genBasePath()
+	cacher, _ := New(1, ConfigCache{
+		DiskvBasePath:     basePath,
+		VolumeExpirationS: expiration,
+		DiskExpirationS:   expiration,
+	}, cmCli)
+	cacher2, _ := New(1, ConfigCache{
+		DiskvBasePath:     basePath,
+		VolumeExpirationS: expiration2,
+		DiskExpirationS:   expiration2,
+	}, cmCli)
+	return cacher, cacher2, cmCli, func() { os.RemoveAll(basePath) }
 }
 
 func TestProxyCacherConfigVolume(t *testing.T) {

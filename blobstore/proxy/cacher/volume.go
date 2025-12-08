@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"sync/atomic"
 	"time"
 
@@ -34,11 +33,17 @@ const keyVolumeConcurrency = "volume"
 
 type expiryVolume struct {
 	clustermgr.VolumeInfo
-	ExpiryAt int64 `json:"expiry,omitempty"` // seconds
+	CreateAt time.Time `json:"__create_at__,omitempty"`
+
+	expiration time.Duration `json:"-"`
+}
+
+func (v *expiryVolume) SetExpiration(exp time.Duration) {
+	v.expiration = exp
 }
 
 func (v *expiryVolume) Expired() bool {
-	return v.ExpiryAt > 0 && time.Now().Unix() >= v.ExpiryAt
+	return v.expiration > 0 && time.Since(v.CreateAt) > v.expiration
 }
 
 func encodeVolume(v *expiryVolume) ([]byte, error) {
@@ -77,7 +82,7 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*c
 	defer c.cmConcurrency.Release(keyVolumeConcurrency)
 
 	st = time.Now()
-	val, err, _ := c.singleRun.Do(diskvKeyVolume(vid), func() (interface{}, error) {
+	val, err, _ := c.singleRun.Do(diskvKeyVolume(vid), func() (any, error) {
 		return c.cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: vid})
 	})
 	span.AppendTrackLog("cm", st, err)
@@ -105,7 +110,7 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*c
 }
 
 func (c *cacher) getVolume(span trace.Span, vid proto.Vid) *expiryVolume {
-	if val := c.getCachedValue(span, vid, diskvKeyVolume(vid),
+	if val := c.getCachedValue(span, vid, diskvKeyVolume(vid), c.config.VolumeExpirationS,
 		c.volumeCache, decodeVolume, c.volumeReport); val != nil {
 		if value, ok := val.(*expiryVolume); ok {
 			return value
@@ -256,17 +261,10 @@ func (c *cacher) applyVolumeUpdate(ctx context.Context, payload *clustermgr.Rout
 func (c *cacher) newExpiryVolume(info clustermgr.VolumeInfo) *expiryVolume {
 	vol := &expiryVolume{
 		VolumeInfo: info,
+		CreateAt:   time.Now(),
 	}
-	c.fillVolumeExpiry(vol)
+	vol.expiration = interleaveExpiration(c.config.VolumeExpirationS)
 	return vol
-}
-
-func (c *cacher) fillVolumeExpiry(vol *expiryVolume) {
-	if expire := c.config.VolumeExpirationS; expire > 0 {
-		// random expiration to reduce intensive clustermgr requests.
-		expiration := rand.Intn(expire) + expire
-		vol.ExpiryAt = time.Now().Add(time.Second * time.Duration(expiration)).Unix()
-	}
 }
 
 func (c *cacher) storeVolume(ctx context.Context, vid proto.Vid, vol *expiryVolume) {
