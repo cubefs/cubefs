@@ -1177,10 +1177,15 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 	funcs := make([]func() (int, error), 0)
 
 	status, dstInode, dstMode, err := mw.lookup(dstParentMP, dstParentID, dstName, mw.LastVerSeq)
-	if err == nil && status == statusOK {
+	// Only regular files and symlinks are allowed to be overwritten.
+	if err == nil && status == statusOK && overwritten {
+		if !(proto.IsSymlink(dstMode) || proto.IsRegular(dstMode)) {
+			log.LogWarnf("txRename_ll: dst mode is not regular or symlink, mode(%v)", dstMode)
+			return syscall.EEXIST
+		}
 
-		// Note that only regular files are allowed to be overwritten.
-		if !proto.IsRegular(dstMode) || !overwritten || !proto.IsRegular(srcMode) {
+		if !(proto.IsSymlink(srcMode) || proto.IsRegular(srcMode)) {
+			log.LogWarnf("txRename_ll: src mode is not regular or symlink, mode(%v)", srcMode)
 			return syscall.EEXIST
 		}
 
