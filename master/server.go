@@ -20,6 +20,8 @@ import (
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"sync"
@@ -235,6 +237,13 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.bindIp = cfg.GetBool(proto.BindIpKey)
 	m.port = cfg.GetString(proto.ListenPort)
 	m.logDir = cfg.GetString(LogDir)
+	// make logDir absolute to avoid dependency on process working directory
+	if m.logDir != "" && !filepath.IsAbs(m.logDir) {
+		if exe, e := os.Executable(); e == nil {
+			base := filepath.Dir(exe)
+			m.logDir = filepath.Join(base, m.logDir)
+		}
+	}
 	m.walDir = cfg.GetString(WalDir)
 	m.bStoreAddr = cfg.GetString(BStoreAddrKey)
 	if m.bStoreAddr == "" {

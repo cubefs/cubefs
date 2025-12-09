@@ -147,9 +147,13 @@ func (arc *AheadReadCache) getAheadReadBlock() (block *AheadReadBlock, err error
 }
 
 func (arc *AheadReadCache) putAheadReadBlock(key string, block *AheadReadBlock) {
-	arc.availableBlockC <- struct{}{}
+	select {
+	case arc.availableBlockC <- struct{}{}:
+		atomic.AddInt64(&arc.availableBlockCnt, 1)
+	default:
+		// channel is full: duplicate return detected, drop token to avoid blocking
+	}
 	putAheadReadBlock(block)
-	atomic.AddInt64(&arc.availableBlockCnt, 1)
 }
 
 func (arc *AheadReadCache) checkBlockTimeOut() {
@@ -185,11 +189,13 @@ func (arc *AheadReadCache) doCheckBlockTimeOut() {
 			if atomic.LoadUint32(&bv.readed) == AheadReadedInit {
 				log.LogInfof("doCheckBlockTimeOut delete unreaded block: key(%v) addr(%p)", key, bv)
 			}
-			arc.blockCache.Delete(key.(string))
-			// block is ready to recycle
+			// block is ready to recycle; ensure return-once semantics
+			keyStr := key.(string)
 			bv.key = ""
 			bv.lock.Unlock()
-			arc.putAheadReadBlock(key.(string), bv)
+			if actual, loaded := arc.blockCache.LoadAndDelete(keyStr); loaded {
+				arc.putAheadReadBlock(keyStr, actual.(*AheadReadBlock))
+			}
 		} else {
 			bv.lock.Unlock()
 		}
@@ -747,12 +753,15 @@ func (arw *AheadReadWindow) evictAllBlocks() {
 		bv.lock.Lock()
 		bv.key = ""
 		if atomic.LoadUint32(&bv.state) == AheadReadBlockStateInit {
-			arw.cache.blockCache.Delete(key)
-			arw.cache.putAheadReadBlock(key.(string), bv)
+			// ensure only one goroutine returns the token once
+			bv.lock.Unlock()
+			if actual, loaded := arw.cache.blockCache.LoadAndDelete(key.(string)); loaded {
+				arw.cache.putAheadReadBlock(key.(string), actual.(*AheadReadBlock))
+			}
 		} else {
 			atomic.StoreUint32(&bv.state, AheadReadBlockStateClear)
+			bv.lock.Unlock()
 		}
-		bv.lock.Unlock()
 		return true
 	})
 	// wait for all blockCache is cleared

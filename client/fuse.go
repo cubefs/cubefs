@@ -22,6 +22,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -37,6 +38,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+
+	//"runtime/debug"
 	runtimepprof "runtime/pprof"
 	"strings"
 	"syscall"
@@ -92,7 +95,8 @@ const (
 
 	ControlCommandSetRate            = "/rate/set"
 	ControlCommandGetRate            = "/rate/get"
-	ControlCommandFreeOSMemory       = "/debug/freeosmemory"
+	ControlCommandFreeOSMemory       = "/freeosmemory"
+	ControlCommandMemStats           = "/memstats"
 	ControlCommandSuspend            = "/suspend"
 	ControlCommandResume             = "/resume"
 	ControlCommandStopWarmMeta       = "/stopWarmMeta"
@@ -767,6 +771,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(ControlCommandGetRate, super.GetRate)
 	http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 	http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
+	http.HandleFunc(ControlCommandMemStats, memStats)
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
 	http.HandleFunc(ControlCommandResume, super.SetResume)
@@ -1136,6 +1141,19 @@ func changeRlimit(val uint64) {
 
 func freeOSMemory(w http.ResponseWriter, r *http.Request) {
 	debug.FreeOSMemory()
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("freeOSMemory is called"))
+}
+
+func memStats(w http.ResponseWriter, r *http.Request) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(m)
 }
 
 func loadConfFromMaster(opt *proto.MountOptions) (err error) {
