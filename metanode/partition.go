@@ -740,7 +740,6 @@ func (mp *metaPartition) versionInit(isCreate bool) (err error) {
 	}
 	var verList *proto.VolVersionInfoList
 	verList, err = masterClient.AdminAPI().GetVerList(mp.config.VolName)
-
 	if err != nil {
 		log.LogErrorf("action[onStart] GetVerList err[%v]", err)
 		return
@@ -2234,15 +2233,10 @@ func (mp *metaPartition) CalcMetaPartitionMd5Sum(req *proto.CalcMetaPartitionMd5
 	if err != nil {
 		return err
 	}
-	r, err := mp.submit(opFSMCalcMetaPartitionMd5Sum, reqData)
+	_, err = mp.submit(opFSMCalcMetaPartitionMd5Sum, reqData)
 	if err != nil {
 		return err
 	}
-	if status := r.(uint8); status != proto.OpOk {
-		p := &Packet{}
-		p.ResultCode = status
-		err = errors.NewErrorf("[CalcMetaPartitionMd5Sum]: %s", p.GetResultMsg())
-		return err
-	}
+
 	return nil
 }

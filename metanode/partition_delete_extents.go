@@ -407,7 +407,6 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			log.LogDebugf("[deleteExtentsFromList] mp(%v) reach the end of buffer", mp.config.PartitionId)
 			return
 		}()
-
 		if err != nil {
 			log.LogErrorf("[deleteExtentsFromList] mp(%v) failed to read delete file(%v), err(%v)", mp.config.PartitionId, fileName, err)
 			continue

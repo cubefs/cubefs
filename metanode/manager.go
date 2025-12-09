@@ -442,6 +442,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaUpdateExtentKeyAfterMigration(conn, p, remoteAddr)
 	case proto.OpDeleteMigrationExtentKey:
 		err = m.opDeleteMigrationExtentKey(conn, p, remoteAddr)
+	case proto.OpCalcMetaPartitionMd5Sum:
+		err = m.opCalcMetaPartitionMd5Sum(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
@@ -711,7 +713,6 @@ func (m *metadataManager) loadPartition(fileName string) (err error) {
 		}
 	}
 	err = m.attachPartition(id, partition)
-
 	if err != nil {
 		log.LogErrorf("action[loadPartitions] load partition id=%d failed: %s.",
 			id, err.Error())

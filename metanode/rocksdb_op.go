@@ -327,7 +327,6 @@ func (dbInfo *RocksdbOperator) doOpen(opts *RocksDBOptions) (err error) {
 	dbInfo.openOption, dbInfo.cache, dbInfo.tableOption = dbInfo.newRocksdbOptions(opts)
 
 	dbInfo.db, err = gorocksdb.OpenDb(dbInfo.openOption, opts.Dir)
-
 	if err != nil {
 		log.LogErrorf("interOpenDb open db err:%v", err)
 		if dbInfo.openOption != nil {

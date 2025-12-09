@@ -871,6 +871,11 @@ func (m *Server) calcMetaPartitionMd5Sum(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if m.cluster.IsClusterPlanNotIdle() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
+		return
+	}
+
 	plan, err := m.cluster.loadCheckSumPlan()
 	if err != nil && err != proto.ErrNoCheckSumPlan {
 		log.LogErrorf("loadCheckSumPlan failed: %s", err.Error())
@@ -899,7 +904,6 @@ func (m *Server) calcMetaPartitionMd5Sum(w http.ResponseWriter, r *http.Request)
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
-	return
 }
 
 func (m *Server) getMd5SumResult(w http.ResponseWriter, r *http.Request) {
@@ -921,5 +925,4 @@ func (m *Server) getMd5SumResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
-	return
 }

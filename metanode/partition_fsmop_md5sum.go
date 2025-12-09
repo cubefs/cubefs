@@ -466,7 +466,7 @@ func CalculateTxInfoMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (err 
 		}
 		sort.Strings(dentryKeys)
 		for _, key := range dentryKeys {
-			err = binary.Write(buff, binary.BigEndian, key)
+			_, err = buff.WriteString(key)
 			if err != nil {
 				log.LogErrorf("[CalculateTxInfoMd5Sum] failed to write tx info, err(%v)", err)
 				return false

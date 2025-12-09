@@ -2538,9 +2538,6 @@ func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 	zoneList := make([]string, 0, len(mpPlan.Original))
 	bFind := false
 	for _, mr := range mpPlan.Original {
-		if mr.StoreMode != migratePlan.Mode {
-			continue
-		}
 		bFind = false
 		for _, item := range mpPlan.OverLoad {
 			if item.Source == mr.Source {
@@ -3350,7 +3347,7 @@ func (c *Cluster) startMetaPartitionCheckSum(partition *MetaPartition) (err erro
 			partition.volName, partition.PartitionID, leaderAddr, host, err)
 	}
 
-	log.LogWarnf("action[startMetaPartitionCheckSum] failed after all retries,vol[%v],meta partition[%v],leader[%v],err[%v]",
+	log.LogWarnf("action[startMetaPartitionCheckSum] failed after all retries,vol[%v],meta partition[%v],err[%v]",
 		partition.volName, partition.PartitionID, err)
 	return
 }

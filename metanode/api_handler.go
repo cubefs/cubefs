@@ -17,7 +17,6 @@ package metanode
 import (
 	"bytes"
 	"crypto/md5"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1930,57 +1929,7 @@ func (m *MetaNode) calcMpMd5Handler(w http.ResponseWriter, r *http.Request) {
 	buff := bytes.NewBuffer(make([]byte, 0, 1024))
 	err = snap.RangeReuseInode(func(inode *Inode) bool {
 		buff.Reset()
-		err = binary.Write(buff, binary.BigEndian, inode.Inode)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.Size)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.Generation)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.Type)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.Uid)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.Gid)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.NLink)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.Flag)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.StorageClass)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.ClientID)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, inode.LinkTarget)
+		err = WriteInodeToBuffer(inode, buff)
 		if err != nil {
 			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
 			return false
@@ -2004,22 +1953,7 @@ func (m *MetaNode) calcMpMd5Handler(w http.ResponseWriter, r *http.Request) {
 	dentryCount := uint64(0)
 	err = snap.RangeReuseDentry(func(dentry *Dentry) bool {
 		buff.Reset()
-		err = binary.Write(buff, binary.BigEndian, dentry.ParentId)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write dentry, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, dentry.Inode)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write dentry, err(%v)", err)
-			return false
-		}
-		err = binary.Write(buff, binary.BigEndian, dentry.Type)
-		if err != nil {
-			log.LogErrorf("[calcMpMd5Handler] failed to write dentry, err(%v)", err)
-			return false
-		}
-		_, err = buff.WriteString(dentry.Name)
+		err = WriteDentryToBuffer(dentry, buff)
 		if err != nil {
 			log.LogErrorf("[calcMpMd5Handler] failed to write dentry, err(%v)", err)
 			return false

@@ -337,7 +337,6 @@ func batchAbortTest(t *testing.T, db *metanode.RocksdbOperator) {
 	db.ReleaseBatchHandle(handle)
 
 	handle, err = db.CreateBatchHandler()
-
 	if err != nil {
 		t.Errorf("insert multi failed:%s", err.Error())
 	}
