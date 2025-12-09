@@ -20,6 +20,7 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
@@ -46,15 +47,16 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 
 	span.Debugf("disk probe args: %v", args)
 
+	// check path valid
 	probePath, err := filepath.Abs(args.Path)
 	if err != nil {
 		span.Errorf("Failed abs(path):%s invalid: err:%v", args.Path, err)
 		c.RespondError(err)
 		return
 	}
-
 	span.Infof("probe path: %s", probePath)
 
+	// limit req
 	err = s.DiskLimitRegister.Acquire(probePath)
 	if err != nil {
 		span.Errorf("probePath (%v) are loading at the same time", probePath)
@@ -76,6 +78,36 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	if err != nil || !empty {
 		span.Errorf("probePath(%s) is not empty. err:%v", probePath, err)
 		c.RespondError(bloberr.ErrPathNotEmpty)
+		return
+	}
+
+	// check disk status(repaired/dropped)
+	// get all registered disks
+	registeredDisks, err := s.ClusterMgrClient.ListHostDisk(ctx, conf.Host)
+	if err != nil {
+		span.Errorf("Failed ListDisk from clusterMgr. err:%+v", err)
+		c.RespondError(err)
+		return
+	}
+	span.Infof("registered disks: %v", registeredDisks)
+
+	// find the old disk info in cluster, use path
+	oldDisk := cmapi.BlobNodeDiskInfo{}
+	for _, disk := range registeredDisks {
+		// this id is uniq increasing, so we take the latest(maximum) diskID in the same path
+		if disk.Path == args.Path && disk.DiskID > oldDisk.DiskID {
+			oldDisk = *disk
+		}
+	}
+	if oldDisk.DiskID == 0 {
+		span.Errorf("disk path %s is not found in cluster, refuse replace it", args.Path)
+		c.RespondError(bloberr.ErrPathNotExist)
+		return
+	}
+	// check disk status
+	if oldDisk.Status != proto.DiskStatusRepaired && oldDisk.Status != proto.DiskStatusDropped {
+		span.Errorf("disk[%d:%s] is not repaired/dropped, refuse replace it", oldDisk.DiskID, oldDisk.Status)
+		c.RespondError(bloberr.ErrInternal)
 		return
 	}
 

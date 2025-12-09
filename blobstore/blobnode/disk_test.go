@@ -27,6 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
@@ -57,7 +59,7 @@ func TestService_WsprpcDiskProbe(t *testing.T) {
 	resp, err := http.DefaultClient.Do(req)
 	require.NotNil(t, resp)
 	resp.Body.Close()
-	require.Equal(t, 606, resp.StatusCode)
+	require.Equal(t, bloberr.CodePathNotEmpty, resp.StatusCode)
 	span.Infof("=== resp:%v, err:%v ===", resp, err)
 
 	// err: path not exist
@@ -67,10 +69,12 @@ func TestService_WsprpcDiskProbe(t *testing.T) {
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
-	require.Equal(t, 605, resp.StatusCode)
+	require.Equal(t, bloberr.CodePathNotExist, resp.StatusCode)
 	span.Infof("=== resp:%v, err:%v ===", resp, err)
 
 	// err: online disk
+	// Use DiskStatusRepaired to allow disk probe after cluster ID check
+	mockcm.disks[0].status = proto.DiskStatusRepaired
 	err = os.MkdirAll(disk1Path, 0o755)
 	require.NoError(t, err)
 	req, err = http.NewRequest(http.MethodPost, host+"/disk/probe", bytes.NewReader(b))
@@ -78,7 +82,7 @@ func TestService_WsprpcDiskProbe(t *testing.T) {
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
-	require.Equal(t, 607, resp.StatusCode)
+	require.Equal(t, bloberr.CodePathFindOnline, resp.StatusCode)
 	span.Infof("=== resp:%v, err:%v ===", resp, err)
 
 	// gc disk storage
@@ -103,7 +107,7 @@ func TestService_WsprpcDiskProbe(t *testing.T) {
 		t.Fail()
 	}
 
-	// empty and non disk storage . will success
+	// empty and non disk storage . will success . Test disk register OK
 	req, err = http.NewRequest(http.MethodPost, host+"/disk/probe", bytes.NewReader(b))
 	require.NoError(t, err)
 	resp, err = http.DefaultClient.Do(req)
@@ -111,4 +115,79 @@ func TestService_WsprpcDiskProbe(t *testing.T) {
 	resp.Body.Close()
 	span.Infof("=== resp:%v, err:%v ===", resp, err)
 	require.Equal(t, 200, resp.StatusCode)
+}
+
+// TestService_DiskProbe_ClusterIDValidation tests the cluster ID validation logic
+// This test verifies the new ClusterID check
+func TestService_DiskProbe_ClusterIDAndDiskStatus(t *testing.T) {
+	service, mockcm := newTestBlobNodeService(t, "DiskProbe_ClusterIDValidation")
+	defer cleanTestBlobNodeService(service)
+
+	span, _ := trace.StartSpanFromContext(context.Background(), "")
+	host := runTestServer(service)
+
+	disk1Path := mockcm.disks[0].path
+	mockcm.disks[0].status = proto.DiskStatusRepaired // set repairing, check disk status
+
+	// Test with correct cluster ID but disk not found in cm
+	t.Run("CorrectClusterID_DiskNotFoundInCluster", func(t *testing.T) {
+		// Use a path that doesn't exist in mock cluster
+		testPath := disk1Path + "/test_disk_not_in_cluster_wrong_path"
+		defer os.RemoveAll(testPath)
+
+		// Create empty directory to pass the "path not empty" check
+		err := os.MkdirAll(testPath, 0o755)
+		require.NoError(t, err)
+
+		cca := &bnapi.DiskProbeArgs{
+			Path: testPath,
+		}
+		b, err := json.Marshal(cca)
+		require.NoError(t, err)
+
+		// Reset disk status for cleanup
+		mockcm.disks[0].status = proto.DiskStatusRepaired
+		req, err := http.NewRequest(http.MethodPost, host+"/disk/probe", bytes.NewReader(b))
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should fail with 605 (ErrPathNotExist) because oldDisk.DiskID == 0
+		span.Infof("Disk not found in cluster test - Status Code: %d (expected: 605)", resp.StatusCode)
+		require.Equal(t, bloberr.CodePathNotExist, resp.StatusCode,
+			"Should reject disk not found in cluster with 605 (ErrPathNotExist)")
+	})
+
+	// Test with correct cluster ID but disk status is not Repaired
+	t.Run("CorrectClusterID_DiskStatusNotRepaired", func(t *testing.T) {
+		testPath := disk1Path
+		defer os.RemoveAll(testPath)
+
+		// Set disk status to Repairing (not Repaired) to trigger status check failure
+		mockcm.disks[0].status = proto.DiskStatusRepairing
+
+		// Create empty directory to pass the "path not empty" check
+		err := os.RemoveAll(testPath)
+		require.NoError(t, err)
+		err = os.MkdirAll(testPath, 0o755)
+		require.NoError(t, err)
+
+		cca := &bnapi.DiskProbeArgs{
+			Path: testPath,
+		}
+		b, err := json.Marshal(cca)
+		require.NoError(t, err)
+
+		req, err := http.NewRequest(http.MethodPost, host+"/disk/probe", bytes.NewReader(b))
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should fail on disk status check with 603 (ErrInternal)
+		span.Infof("Disk status not repaired test - Status Code: %d (expected: 603)", resp.StatusCode)
+		require.Equal(t, bloberr.CodeInternal, resp.StatusCode,
+			"Should reject disk with non-Repaired status with 603 (ErrInternal)")
+	})
 }

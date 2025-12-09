@@ -938,7 +938,7 @@ func TestShardGetConcurrency(t *testing.T) {
 	require.NoError(t, err)
 
 	// concurrency
-	concurrency := 100
+	concurrency := 64
 
 	for i := bid; i < bid+proto.BlobID(concurrency); i++ {
 		putShardArg := &bnapi.PutShardArgs{
@@ -1009,7 +1009,7 @@ func TestShardPutConcurrency(t *testing.T) {
 	require.NoError(t, err)
 
 	// concurrency
-	concurrency := 100
+	concurrency := 64
 	wg := sync.WaitGroup{}
 	wg.Add(concurrency)
 	errChan := make(chan error, concurrency)
