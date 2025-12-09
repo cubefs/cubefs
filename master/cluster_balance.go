@@ -1540,6 +1540,10 @@ func (c *Cluster) scheduleStartBalanceTask() {
 				if err != nil && err != proto.ErrNoMpMigratePlan {
 					log.LogErrorf("RestartMetaPartitionBalanceTask err: %s", err.Error())
 				}
+				err = c.RestartMetaPartitionCheckSumTask()
+				if err != nil && err != proto.ErrNoCheckSumPlan {
+					log.LogErrorf("RestartMetaPartitionCheckSumTask err: %s", err.Error())
+				}
 			case <-c.stopc:
 				return
 			}
@@ -3051,4 +3055,427 @@ func GetStoreModeCount(mpPlan *proto.MetaBalancePlan, mode proto.StoreMode) int 
 		}
 	}
 	return count
+}
+
+func (c *Cluster) CreateAndRunCheckSumPlan(param MetaPartitionPlanUserParams) (*proto.MetaPartitionsChecksumPlan, error) {
+	plan, err := c.CreateCheckSumPlan(param)
+	if err != nil {
+		log.LogErrorf("CreateCheckSumPlan failed: %s", err.Error())
+		return nil, err
+	}
+
+	if c.IsClusterPlanNotIdle() {
+		return plan, nil
+	}
+
+	c.SetClusterPlanRunning()
+	go c.DoMetaPartitionCheckSumTask(plan)
+
+	return plan, nil
+}
+
+func (c *Cluster) CreateCheckSumPlan(param MetaPartitionPlanUserParams) (*proto.MetaPartitionsChecksumPlan, error) {
+	var mps map[uint64]*MetaPartition
+	if param.Name != "" {
+		vol, err := c.getVol(param.Name)
+		if err != nil {
+			log.LogErrorf("CreateCheckSumPlan get volume(%s) failed: %v", param.Name, err)
+			return nil, fmt.Errorf("get volume(%s) failed: %v", param.Name, err)
+		}
+		if vol.isUnavailable() {
+			log.LogErrorf("CreateCheckSumPlan volume(%s) is marked delete or init failed", param.Name)
+			return nil, fmt.Errorf("volume(%s) is marked delete or init failed", param.Name)
+		}
+		mps = vol.cloneMetaPartitionMap()
+	} else {
+		mps = c.getAllMetaPartitions()
+	}
+
+	count := 0
+	for _, mp := range mps {
+		if param.StartID != 0 && mp.PartitionID < param.StartID {
+			continue
+		}
+		if param.EndID != 0 && mp.PartitionID > param.EndID {
+			continue
+		}
+		count += 1
+	}
+
+	plan := &proto.MetaPartitionsChecksumPlan{
+		Status:       PlanTaskRun,
+		StartTime:    time.Now(),
+		FailedList:   make([]uint64, 0),
+		CheckSumList: make([]*proto.MetaPartitionChecksumInfo, 0, count),
+		Total:        int32(count),
+		Undo:         int32(count),
+	}
+
+	for _, mp := range mps {
+		if param.StartID != 0 && mp.PartitionID < param.StartID {
+			continue
+		}
+		if param.EndID != 0 && mp.PartitionID > param.EndID {
+			continue
+		}
+		checksumInfo := &proto.MetaPartitionChecksumInfo{
+			PartitionID: mp.PartitionID,
+			Status:      PlanTaskInit,
+			Replicas:    make([]*proto.MetaReplicaChecksumInfo, 0, len(mp.Replicas)),
+		}
+		for _, mr := range mp.Replicas {
+			checksumInfo.Replicas = append(checksumInfo.Replicas, &proto.MetaReplicaChecksumInfo{
+				Addr: mr.Addr,
+			})
+		}
+		plan.CheckSumList = append(plan.CheckSumList, checksumInfo)
+	}
+
+	err := c.syncAddCheckSumPlan(plan)
+	if err != nil {
+		log.LogErrorf("syncAddCheckSumPlan failed: %s", err.Error())
+		return nil, err
+	}
+
+	return plan, nil
+}
+
+func (c *Cluster) RestartMetaPartitionCheckSumTask() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.IsClusterPlanNotIdle() {
+		return nil
+	}
+
+	// Get the planed check sum task.
+	plan, err := c.loadCheckSumPlan()
+	if err != nil && err != proto.ErrNoCheckSumPlan {
+		log.LogErrorf("loadCheckSumPlan failed: %s", err.Error())
+		return err
+	} else if plan != nil && plan.Status == PlanTaskDone {
+		now := time.Now()
+		if plan.Expire.Before(now) {
+			err = c.syncDeleteCheckSumPlan()
+			if err != nil {
+				log.LogErrorf("syncDeleteCheckSumPlan err: %s", err.Error())
+			}
+		}
+		return nil
+	}
+
+	if plan == nil {
+		return nil
+	}
+
+	if plan.Status != PlanTaskRun {
+		// No start the plan task if the status is not running.
+		return nil
+	}
+
+	c.SetClusterPlanRunning()
+	go c.DoMetaPartitionCheckSumTask(plan)
+
+	return nil
+}
+
+func (c *Cluster) DoMetaPartitionCheckSumTask(plan *proto.MetaPartitionsChecksumPlan) {
+	defer func() {
+		// clear the run flag.
+		c.SetClusterPlanIdle()
+	}()
+
+	if plan.Total <= 0 {
+		plan.Status = PlanTaskDone
+		plan.Msg = "No meta partitions to check"
+		plan.EndTime = time.Now()
+		plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
+		err := c.syncUpdateCheckSumPlan(plan)
+		if err != nil {
+			log.LogErrorf("syncUpdateCheckSumPlan err: %s", err.Error())
+			plan.Msg = err.Error()
+		}
+		return
+	}
+
+	concurrency := gConfig.mpMigrateThreads
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	var planMutex sync.Mutex
+
+	plan.StartTime = time.Now()
+
+	for _, checksumInfo := range plan.CheckSumList {
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(info *proto.MetaPartitionChecksumInfo) {
+			defer wg.Done()
+			atomic.AddInt32(&plan.Undo, -1)
+			atomic.AddInt32(&plan.Running, 1)
+			err := c.StartTodoMetaPartitionCheckSum(plan, info)
+			done := atomic.AddInt32(&plan.Done, 1)
+			atomic.AddInt32(&plan.Running, -1)
+			planMutex.Lock()
+			if err != nil {
+				log.LogErrorf("StartTodoMetaPartitionCheckSum err: %s", err.Error())
+				plan.FailedList = append(plan.FailedList, info.PartitionID)
+			}
+			plan.Progress = float64(done) / float64(plan.Total) * 100
+			err = c.syncUpdateCheckSumPlan(plan)
+			if err != nil {
+				log.LogErrorf("syncUpdateCheckSumPlan err: %s", err.Error())
+				plan.Msg = err.Error()
+			}
+			planMutex.Unlock()
+			<-sem
+		}(checksumInfo)
+	}
+	wg.Wait()
+
+	if c.IsClusterPlanStopping() {
+		plan.Status = PlanTaskStop
+		plan.Msg = "check sum plan is stopped"
+	} else {
+		if len(plan.FailedList) > 0 {
+			plan.Status = PlanTaskError
+			plan.Msg = "Please check the detail in each msg."
+		} else {
+			plan.Status = PlanTaskDone
+		}
+	}
+	plan.EndTime = time.Now()
+	plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
+
+	err := c.syncUpdateCheckSumPlan(plan)
+	if err != nil {
+		log.LogErrorf("syncUpdateCheckSumPlan err: %s", err.Error())
+		plan.Msg = err.Error()
+	}
+}
+
+func (c *Cluster) StartTodoMetaPartitionCheckSum(plan *proto.MetaPartitionsChecksumPlan, checksumInfo *proto.MetaPartitionChecksumInfo) error {
+	checksumInfo.StartTime = time.Now()
+	checksumInfo.Status = PlanTaskRun
+
+	err := c.syncUpdateCheckSumPlan(plan)
+	if err != nil {
+		log.LogErrorf("syncUpdateCheckSumPlan err: %s", err.Error())
+		return err
+	}
+
+	err = c.DoMetaPartitionCheckSum(checksumInfo)
+	if err != nil {
+		log.LogErrorf("DoMetaPartitionCheckSum err: %s", err.Error())
+		checksumInfo.Status = PlanTaskError
+		checksumInfo.Msg = err.Error()
+		return err
+	}
+
+	checksumInfo.Status = PlanTaskDone
+
+	return nil
+}
+
+func (c *Cluster) DoMetaPartitionCheckSum(checksumInfo *proto.MetaPartitionChecksumInfo) error {
+	if c.IsClusterPlanNotRun() {
+		return fmt.Errorf("cluster plan is not running")
+	}
+
+	mp, err := c.getMetaPartitionByID(checksumInfo.PartitionID)
+	if err != nil {
+		log.LogErrorf("getMetaPartitionByID err: %s", err.Error())
+		return err
+	}
+	err = c.startMetaPartitionCheckSum(mp)
+	if err != nil {
+		log.LogErrorf("startMetaPartitionCheckSum err: %s", err.Error())
+		return err
+	}
+
+	err = c.WaitForMetaPartitionCheckSumResult(mp, checksumInfo)
+	if err != nil {
+		log.LogErrorf("waitForMetaPartitionCheckSumResult err: %s", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (c *Cluster) startMetaPartitionCheckSum(partition *MetaPartition) (err error) {
+	var (
+		candidateAddrs []string
+		leaderAddr     string
+	)
+	log.LogWarnf("action[startMetaPartitionCheckSum] start,vol[%v],meta partition[%v],hosts[%v]",
+		partition.volName, partition.PartitionID, partition.Hosts)
+
+	candidateAddrs = make([]string, 0, len(partition.Hosts))
+	leaderMr, err := partition.getMetaReplicaLeader()
+	if err == nil {
+		leaderAddr = leaderMr.Addr
+		if contains(partition.Hosts, leaderAddr) {
+			candidateAddrs = append(candidateAddrs, leaderAddr)
+			log.LogWarnf("action[startMetaPartitionCheckSum] found leader,vol[%v],meta partition[%v],leader[%v]",
+				partition.volName, partition.PartitionID, leaderAddr)
+		} else {
+			leaderAddr = ""
+			log.LogWarnf("action[startMetaPartitionCheckSum] leader not in hosts,vol[%v],meta partition[%v],leader[%v],hosts[%v]",
+				partition.volName, partition.PartitionID, leaderMr.Addr, partition.Hosts)
+		}
+	} else {
+		log.LogWarnf("action[startMetaPartitionCheckSum] getLeader failed,vol[%v],meta partition[%v],err[%v]",
+			partition.volName, partition.PartitionID, err)
+	}
+	for _, host := range partition.Hosts {
+		if host == leaderAddr {
+			continue
+		}
+		candidateAddrs = append(candidateAddrs, host)
+	}
+	log.LogWarnf("action[startMetaPartitionCheckSum] candidateAddrs[%v],vol[%v],meta partition[%v]",
+		candidateAddrs, partition.volName, partition.PartitionID)
+	// send task to leader addr first,if need to retry,then send to other addr
+	for _, host := range candidateAddrs {
+		_, err = c.buildStartMetaPartitionCheckSumTaskAndSyncSend(partition, host)
+		if err == nil {
+			log.LogWarnf("action[startMetaPartitionCheckSum] success,vol[%v],meta partition[%v],leader[%v],host[%v]",
+				partition.volName, partition.PartitionID, leaderAddr, host)
+			return
+		}
+
+		log.LogWarnf("action[startMetaPartitionCheckSum] retry error,vol[%v],meta partition[%v],leader[%v],host[%v],err[%v]",
+			partition.volName, partition.PartitionID, leaderAddr, host, err)
+	}
+
+	log.LogWarnf("action[startMetaPartitionCheckSum] failed after all retries,vol[%v],meta partition[%v],leader[%v],err[%v]",
+		partition.volName, partition.PartitionID, err)
+	return
+}
+
+func (c *Cluster) buildStartMetaPartitionCheckSumTaskAndSyncSend(mp *MetaPartition, leaderAddr string) (resp *proto.Packet, err error) {
+	defer func() {
+		var resultCode uint8
+		if resp != nil {
+			resultCode = resp.ResultCode
+		}
+
+		if err != nil {
+			log.LogErrorf("action[buildStartMetaPartitionCheckSumTaskAndSyncSend],vol[%v],meta partition[%v],leader[%v],resultCode[%v],err[%v]",
+				mp.volName, mp.PartitionID, leaderAddr, resultCode, err)
+		} else {
+			log.LogWarnf("action[buildStartMetaPartitionCheckSumTaskAndSyncSend],vol[%v],meta partition[%v],leader[%v],resultCode[%v] success",
+				mp.volName, mp.PartitionID, leaderAddr, resultCode)
+		}
+	}()
+
+	t, err := mp.createTaskToCalculateCheckSum(leaderAddr)
+	if err != nil {
+		log.LogWarnf("action[buildStartMetaPartitionCheckSumTaskAndSyncSend] createTask failed,vol[%v],meta partition[%v],err[%v]",
+			mp.volName, mp.PartitionID, err)
+		return
+	}
+	leaderMetaNode, err := c.metaNode(leaderAddr)
+	if err != nil {
+		log.LogWarnf("action[buildStartMetaPartitionCheckSumTaskAndSyncSend] getMetaNode failed,vol[%v],meta partition[%v],leader[%v],err[%v]",
+			mp.volName, mp.PartitionID, leaderAddr, err)
+		return
+	}
+
+	if resp, err = leaderMetaNode.Sender.syncSendAdminTask(t); err != nil {
+		log.LogWarnf("action[buildStartMetaPartitionCheckSumTaskAndSyncSend] sendTask failed,vol[%v],meta partition[%v],leader[%v],err[%v]",
+			mp.volName, mp.PartitionID, leaderAddr, err)
+		return
+	}
+	return
+}
+
+func (mp *MetaPartition) createTaskToCalculateCheckSum(leaderAddr string) (t *proto.AdminTask, err error) {
+	req := &proto.CalcMetaPartitionMd5SumRequest{
+		PartitionID: mp.PartitionID,
+	}
+	t = proto.NewAdminTask(proto.OpCalcMetaPartitionMd5Sum, leaderAddr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	log.LogWarnf("action[createTaskToCalculateCheckSum] task created,vol[%v],meta partition[%v],leader[%v],taskID[%v]",
+		mp.volName, mp.PartitionID, leaderAddr, t.ID)
+	return
+}
+
+func (c *Cluster) WaitForMetaPartitionCheckSumResult(mp *MetaPartition, checksumInfo *proto.MetaPartitionChecksumInfo) error {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	var err error
+	maxRetry := CalcuMetaPartitionReadyMaxRetry(mp)
+	for i := 0; i < maxRetry; i++ {
+		select {
+		case <-ticker.C:
+			if c.IsClusterPlanNotRun() {
+				return fmt.Errorf("cluster plan is not running")
+			}
+			err = c.CopyMd5SumToChecksumInfo(mp, checksumInfo)
+			if err == nil {
+				return nil
+			}
+		case <-c.stopc:
+			c.SetClusterPlanStopping()
+			return fmt.Errorf("cluster is stopping")
+		}
+	}
+	if err != nil {
+		log.LogWarnf("Check Mp[%v] Md5Sum err: %s", mp.PartitionID, err.Error())
+		return err
+	}
+
+	return fmt.Errorf("Waiting for meta partition(%d) Md5Sum retry(%d) timeout", mp.PartitionID, maxRetry)
+}
+
+func (c *Cluster) CopyMd5SumToChecksumInfo(mp *MetaPartition, checksumInfo *proto.MetaPartitionChecksumInfo) error {
+	if len(checksumInfo.Replicas) == 0 {
+		return fmt.Errorf("No replicas for mp[%v]", mp.PartitionID)
+	}
+
+	replicaByAddr := make(map[string]*proto.MetaReplicaChecksumInfo, len(checksumInfo.Replicas))
+	for _, replica := range checksumInfo.Replicas {
+		replicaByAddr[replica.Addr] = replica
+	}
+
+	count := 0
+	for _, response := range mp.LoadResponse {
+		if response.Md5Sum == "" {
+			continue
+		}
+		if replica := replicaByAddr[response.Addr]; replica != nil {
+			replica.Md5Sum = response.Md5Sum
+			replica.ApplyID = response.ApplyID
+			count++
+		}
+	}
+
+	if count != len(checksumInfo.Replicas) {
+		return fmt.Errorf("Not receive all the Md5Sum for mp[%v]", mp.PartitionID)
+	}
+
+	firstApplyID := checksumInfo.Replicas[0].ApplyID
+	for _, replica := range checksumInfo.Replicas {
+		if replica.ApplyID != firstApplyID {
+			return fmt.Errorf("mp[%v] applyID not same, %v[%v], %v[%v]",
+				mp.PartitionID, checksumInfo.Replicas[0].Addr, firstApplyID, replica.Addr, replica.ApplyID)
+		}
+	}
+
+	firstMd5Sum := checksumInfo.Replicas[0].Md5Sum
+	for _, replica := range checksumInfo.Replicas {
+		if replica.Md5Sum != firstMd5Sum {
+			return fmt.Errorf("mp[%v] Md5Sum not same, %v[%v], %v[%v]",
+				mp.PartitionID, checksumInfo.Replicas[0].Addr, firstMd5Sum, replica.Addr, replica.Md5Sum)
+		}
+	}
+
+	rstMsg := fmt.Sprintf("mp[%v] Md5Sum check success, applyID[%v], md5Sum[%v]", mp.PartitionID, firstApplyID, firstMd5Sum)
+	auditlog.LogMasterOp("checkMetaPartitionMd5Sum", rstMsg, nil)
+
+	return nil
 }

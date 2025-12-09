@@ -858,3 +858,68 @@ func (m *Server) batchPromoteMpLearner(w http.ResponseWriter, r *http.Request) {
 		"failedList": failIDs,
 	}))
 }
+
+func (m *Server) calcMetaPartitionMd5Sum(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCalcMetaPartitionMd5Sum))
+	defer func() {
+		doStatAndMetric(proto.AdminCalcMetaPartitionMd5Sum, metric, nil, nil)
+	}()
+
+	param, err := parseModifyMetaPartitionStoreModeParams(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	plan, err := m.cluster.loadCheckSumPlan()
+	if err != nil && err != proto.ErrNoCheckSumPlan {
+		log.LogErrorf("loadCheckSumPlan failed: %s", err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	if plan != nil {
+		if plan.Status == PlanTaskRun {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "There is a check sum plan running, please wait for it to finish"})
+			return
+		}
+		err = m.cluster.syncDeleteCheckSumPlan()
+		if err != nil {
+			log.LogErrorf("syncDeleteCheckSumPlan failed: %s", err.Error())
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+	}
+
+	plan, err = m.cluster.CreateAndRunCheckSumPlan(param)
+	if err != nil {
+		log.LogErrorf("CreateAndRunCheckSumPlan failed: %s", err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(plan))
+	return
+}
+
+func (m *Server) getMd5SumResult(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetMd5SumResult))
+	defer func() {
+		doStatAndMetric(proto.AdminGetMd5SumResult, metric, nil, nil)
+	}()
+
+	plan, err := m.cluster.loadCheckSumPlan()
+	if err != nil {
+		log.LogErrorf("loadCheckSumPlan failed: %s", err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	if plan == nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "no check sum plan"})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(plan))
+	return
+}

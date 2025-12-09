@@ -243,6 +243,9 @@ const (
 	AdminCreateStoreModeChangePlan     = "/metaPartition/createStoreModeChangePlan"
 	AdminBatchAddMpLearner             = "/metaPartition/batchAddLearner"
 	AdminBatchPromoteMpLearner         = "/metaPartition/batchPromoteLearner"
+	AdminCalcMetaPartitionMd5Sum       = "/metaPartition/calcMd5Sum"
+	AdminGetMd5SumResult               = "/metaPartition/getMd5SumResult"
+	AdminStopCalculateMd5Sum           = "/metaPartition/stopCalculateMd5Sum"
 
 	// admin multi version snapshot
 	AdminCreateVersion     = "/multiVer/create"

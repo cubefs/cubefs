@@ -92,3 +92,32 @@ type ClusterPlan struct {
 	ProcessPercent  float64                      `json:"processPercent"`
 	AutoPromote     bool                         `json:"autoPromoteLearner"`
 }
+
+type MetaReplicaChecksumInfo struct {
+	Addr    string `json:"addr"`
+	ApplyID uint64 `json:"applyID"`
+	Md5Sum  string `json:"md5Sum"`
+}
+
+type MetaPartitionChecksumInfo struct {
+	PartitionID uint64                     `json:"partitionID"`
+	Status      string                     `json:"status"`
+	Replicas    []*MetaReplicaChecksumInfo `json:"replicas"`
+	StartTime   time.Time                  `json:"startTime"`
+	Msg         string                     `json:"msg"`
+}
+
+type MetaPartitionsChecksumPlan struct {
+	Status       string                       `json:"status"`
+	CheckSumList []*MetaPartitionChecksumInfo `json:"checksumList"`
+	Total        int32                        `json:"total"`
+	Undo         int32                        `json:"undo"`
+	Running      int32                        `json:"running"`
+	Done         int32                        `json:"done"`
+	FailedList   []uint64                     `json:"failedList"`
+	Progress     float64                      `json:"progress"`
+	StartTime    time.Time                    `json:"startTime"`
+	EndTime      time.Time                    `json:"endTime"`
+	Expire       time.Time                    `json:"expire"`
+	Msg          string                       `json:"msg"`
+}

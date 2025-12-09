@@ -2454,3 +2454,70 @@ func (c *Cluster) loadFlashManualTasks() (err error) {
 	}
 	return
 }
+
+func (c *Cluster) syncAddCheckSumPlan(plan *proto.MetaPartitionsChecksumPlan) (err error) {
+	return c.putCheckSumPlanInfo(opSyncAddCheckSumPlan, plan)
+}
+
+func (c *Cluster) syncUpdateCheckSumPlan(plan *proto.MetaPartitionsChecksumPlan) (err error) {
+	return c.putCheckSumPlanInfo(opSyncUpdateCheckSumPlan, plan)
+}
+
+func (c *Cluster) putCheckSumPlanInfo(opType uint32, plan *proto.MetaPartitionsChecksumPlan) (err error) {
+	planTask := new(RaftCmd)
+	planTask.Op = opType
+	planTask.K = checkSumPlanKey
+	taskContent, err := json.Marshal(plan)
+	if err != nil {
+		return fmt.Errorf("check sum plan op(%d) encode err: %s", opType, err.Error())
+	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err = gz.Write(taskContent)
+	if err != nil {
+		return fmt.Errorf("balance task op(%d) encode err: %s", opType, err.Error())
+	}
+	gz.Close()
+	planTask.V = buf.Bytes()
+
+	return c.submit(planTask)
+}
+
+func (c *Cluster) loadCheckSumPlan() (*proto.MetaPartitionsChecksumPlan, error) {
+	result, err := c.fsm.store.GetByKey([]byte(checkSumPlanKey))
+	if err != nil {
+		return nil, fmt.Errorf("loadCheckSumPlan GetByKey err: %s", err.Error())
+	}
+
+	if len(result) == 0 {
+		return nil, proto.ErrNoCheckSumPlan
+	}
+
+	reader := bytes.NewReader(result)
+	gz, err := gzip.NewReader(reader)
+	if err != nil {
+		return nil, fmt.Errorf("loadCheckSumPlan decode gzip err: %s", err.Error())
+	}
+	defer gz.Close()
+
+	taskContent, err := io.ReadAll(gz)
+	if err != nil {
+		return nil, fmt.Errorf("loadCheckSumPlan decode gzip err: %s", err.Error())
+	}
+
+	task := new(proto.MetaPartitionsChecksumPlan)
+	err = json.Unmarshal(taskContent, task)
+	if err != nil {
+		return nil, fmt.Errorf("loadCheckSumPlan decode json err: %s", err.Error())
+	}
+
+	return task, nil
+}
+
+func (c *Cluster) syncDeleteCheckSumPlan() error {
+	err := c.fsm.store.DelByKey([]byte(checkSumPlanKey), true)
+	if err != nil {
+		log.LogErrorf("DelByKey err: %s", err.Error())
+	}
+	return err
+}
