@@ -459,7 +459,7 @@ func (mgr *DiskRepairMgr) prepareTask(t *proto.MigrateTask) error {
 	}
 
 	// 2.generate src and destination for task & task persist
-	allocDstVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, badVuid, t.Sources, nil)
+	allocDstVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, badVuid, t.Sources, nil, false)
 	if err != nil {
 		span.Errorf("repair alloc volume unit failed: err[%+v]", err)
 		return err
@@ -599,7 +599,7 @@ func (mgr *DiskRepairMgr) handleUpdateVolMappingFail(ctx context.Context, task *
 	if base.ShouldAllocAndRedo(code) {
 		span.Infof("realloc vunit and redo: task_id[%s]", task.TaskID)
 
-		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources, nil)
+		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources, nil, false)
 		if err != nil {
 			span.Errorf("realloc failed: vuid[%d], err[%+v]", task.SourceVuid, err)
 			return err
@@ -808,7 +808,7 @@ func (mgr *DiskRepairMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) e
 	}
 
 	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli,
-		arg.Src[arg.Dest.Vuid.Index()].Vuid, arg.Src, []proto.DiskID{arg.Dest.DiskID})
+		arg.Src[arg.Dest.Vuid.Index()].Vuid, arg.Src, []proto.DiskID{arg.Dest.DiskID}, false)
 	if err != nil {
 		span.Errorf("alloc volume unit from clustermgr failed, err: %s", err)
 		return err

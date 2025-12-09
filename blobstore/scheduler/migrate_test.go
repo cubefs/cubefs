@@ -218,7 +218,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(nil)
 
 		// alloc volume failed
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any).Return(nil, errMock)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).Return(nil, errMock)
 		err = mgr.prepareTask()
 		require.True(t, errors.Is(err, errMock))
 
@@ -226,8 +226,8 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any).DoAndReturn(
-			func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID) (*client.AllocVunitInfo, error) {
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).DoAndReturn(
+			func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, isBalance bool) (*client.AllocVunitInfo, error) {
 				vid := vuid.Vid()
 				idx := vuid.Index()
 				epoch := vuid.Epoch()
@@ -277,7 +277,7 @@ func TestFinishMigrateTask(t *testing.T) {
 
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
-			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any).Return(nil, errMock)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).Return(nil, errMock)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 			// alloc failed
 			err = mgr.finishTask()
@@ -294,8 +294,8 @@ func TestFinishMigrateTask(t *testing.T) {
 			// redo success
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
-			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any).DoAndReturn(
-				func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID) (*client.AllocVunitInfo, error) {
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).DoAndReturn(
+				func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, isBalance bool) (*client.AllocVunitInfo, error) {
 					vid := vuid.Vid()
 					idx := vuid.Index()
 					epoch := vuid.Epoch()
@@ -425,7 +425,7 @@ func TestReclaimMigrateTask(t *testing.T) {
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 
 		// update failed
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(gomock.Any(), gomock.Any(), gomock.Any()).Return(&client.AllocVunitInfo{VunitLocation: location}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&client.AllocVunitInfo{VunitLocation: location}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(errMock)
 		taskArgs := generateTaskArgs(t1, "")
 		err := mgr.ReclaimTask(ctx, taskArgs)
@@ -438,7 +438,7 @@ func TestReclaimMigrateTask(t *testing.T) {
 		taskArgs = generateTaskArgs(t1, "")
 		location = t1.Sources[0]
 		location.Vuid += 2
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(gomock.Any(), gomock.Any(), gomock.Any()).Return(&client.AllocVunitInfo{VunitLocation: location}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&client.AllocVunitInfo{VunitLocation: location}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		err = mgr.ReclaimTask(ctx, taskArgs)
 		require.NoError(t, err)

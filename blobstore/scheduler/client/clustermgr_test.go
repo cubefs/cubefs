@@ -130,18 +130,18 @@ func TestClustermgrClient(t *testing.T) {
 	{
 		// update volume
 		cli.client.(*MockClusterManager).EXPECT().AllocVolumeUnit(any, any).Return(nil, errMock)
-		_, err := cli.AllocVolumeUnit(ctx, proto.Vuid(2), nil)
+		_, err := cli.AllocVolumeUnit(ctx, proto.Vuid(2), nil, false)
 		require.True(t, errors.Is(err, errMock))
 
 		unit := &cmapi.AllocVolumeUnit{Vuid: proto.Vuid(3), DiskID: proto.DiskID(2)}
 		cli.client.(*MockClusterManager).EXPECT().AllocVolumeUnit(any, any).Return(unit, nil)
 		cli.client.(*MockClusterManager).EXPECT().DiskInfo(any, any).Return(nil, errMock)
-		_, err = cli.AllocVolumeUnit(ctx, proto.Vuid(2), nil)
+		_, err = cli.AllocVolumeUnit(ctx, proto.Vuid(2), nil, false)
 		require.True(t, errors.Is(err, errMock))
 
 		cli.client.(*MockClusterManager).EXPECT().AllocVolumeUnit(any, any).Return(unit, nil)
 		cli.client.(*MockClusterManager).EXPECT().DiskInfo(any, any).Return(&cmapi.BlobNodeDiskInfo{DiskInfo: cmapi.DiskInfo{Host: "127.0.0.1:xxx"}}, nil)
-		allocUnit, err := cli.AllocVolumeUnit(ctx, proto.Vuid(2), nil)
+		allocUnit, err := cli.AllocVolumeUnit(ctx, proto.Vuid(2), nil, false)
 		require.NoError(t, err)
 		require.Equal(t, unit.Vuid, allocUnit.Location().Vuid)
 	}

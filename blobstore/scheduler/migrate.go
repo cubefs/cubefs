@@ -398,6 +398,8 @@ type MigrateMgr struct {
 	finishTaskCallback, loadTaskCallback taskLimitFunc
 	// report task
 	reportTaskCallback taskReportFunc
+
+	isBalanceAlloc bool
 }
 
 // NewMigrateMgr returns migrate manager
@@ -438,6 +440,7 @@ func NewMigrateMgr(
 	if mgr.lockVolFailHandleFunc == nil {
 		mgr.lockVolFailHandleFunc = mgr.handleLockVolFail
 	}
+	mgr.isBalanceAlloc = false
 	mgr.taskStatsMgr = base.NewTaskStatsMgrAndRun(conf.ClusterID, taskType, mgr)
 	return mgr
 }
@@ -611,7 +614,7 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 	}
 
 	// alloc volume unit
-	ret, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, migTask.SourceVuid, migTask.Sources, nil)
+	ret, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, migTask.SourceVuid, migTask.Sources, nil, mgr.isBalanceAlloc)
 	if err != nil {
 		span.Errorf("alloc volume unit failed: err[%+v]", err)
 		return
@@ -825,7 +828,7 @@ func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *pro
 
 	if base.ShouldAllocAndRedo(code) {
 		span.Infof("realloc vunit and redo: task_id[%s]", task.TaskID)
-		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources, nil)
+		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources, nil, mgr.isBalanceAlloc)
 		if err != nil {
 			span.Errorf("realloc failed: vuid[%d], err[%+v]", task.SourceVuid, err)
 			return err
@@ -996,7 +999,8 @@ func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) (err
 		return errcode.ErrIllegalArguments
 	}
 
-	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, arg.Src[arg.Dest.Vuid.Index()].Vuid, arg.Src, []proto.DiskID{arg.Dest.DiskID})
+	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, arg.Src[arg.Dest.Vuid.Index()].Vuid,
+		arg.Src, []proto.DiskID{arg.Dest.DiskID}, mgr.isBalanceAlloc)
 	if err != nil {
 		span.Errorf("alloc volume unit from clustermgr failed, err: %s", err)
 		return err

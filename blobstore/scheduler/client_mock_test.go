@@ -81,18 +81,18 @@ func (mr *MockClusterMgrAPIMockRecorder) AllocShardUnit(arg0, arg1, arg2 interfa
 }
 
 // AllocVolumeUnit mocks base method.
-func (m *MockClusterMgrAPI) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid, arg2 []proto.DiskID) (*client.AllocVunitInfo, error) {
+func (m *MockClusterMgrAPI) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid, arg2 []proto.DiskID, arg3 bool) (*client.AllocVunitInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AllocVolumeUnit", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "AllocVolumeUnit", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*client.AllocVunitInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AllocVolumeUnit indicates an expected call of AllocVolumeUnit.
-func (mr *MockClusterMgrAPIMockRecorder) AllocVolumeUnit(arg0, arg1, arg2 interface{}) *gomock.Call {
+func (mr *MockClusterMgrAPIMockRecorder) AllocVolumeUnit(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeUnit", reflect.TypeOf((*MockClusterMgrAPI)(nil).AllocVolumeUnit), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeUnit", reflect.TypeOf((*MockClusterMgrAPI)(nil).AllocVolumeUnit), arg0, arg1, arg2, arg3)
 }
 
 // DeleteMigrateTask mocks base method.

@@ -32,7 +32,7 @@ import (
 
 // IAllocVunit define the interface of clustermgr used for volume alloc
 type IAllocVunit interface {
-	AllocVolumeUnit(ctx context.Context, vuid comproto.Vuid, excludes []comproto.DiskID) (ret *client.AllocVunitInfo, err error)
+	AllocVolumeUnit(ctx context.Context, vuid comproto.Vuid, excludes []comproto.DiskID, isBalance bool) (ret *client.AllocVunitInfo, err error)
 }
 
 // AllocVunitSafe alloc volume unit safe
@@ -42,10 +42,11 @@ func AllocVunitSafe(
 	vuid comproto.Vuid,
 	volReplicas []comproto.VunitLocation,
 	excludes []comproto.DiskID,
+	isBalance bool,
 ) (ret *client.AllocVunitInfo, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	allocVunit, err := cli.AllocVolumeUnit(ctx, vuid, excludes)
+	allocVunit, err := cli.AllocVolumeUnit(ctx, vuid, excludes, isBalance)
 	if err != nil {
 		return nil, err
 	}

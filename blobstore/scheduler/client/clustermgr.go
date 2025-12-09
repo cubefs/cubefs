@@ -43,7 +43,7 @@ type ClusterMgrVolumeAPI interface {
 	LockVolume(ctx context.Context, Vid proto.Vid, epoch uint32) (err error)
 	UnlockVolume(ctx context.Context, Vid proto.Vid, epoch uint32) (err error)
 	UpdateVolume(ctx context.Context, newVuid, oldVuid proto.Vuid, newDiskID proto.DiskID) (err error)
-	AllocVolumeUnit(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID) (ret *AllocVunitInfo, err error)
+	AllocVolumeUnit(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, isBalance bool) (ret *AllocVunitInfo, err error)
 	ReleaseVolumeUnit(ctx context.Context, vuid proto.Vuid, diskID proto.DiskID) (err error)
 	ListDiskVolumeUnits(ctx context.Context, diskID proto.DiskID) (ret []*VunitInfoSimple, err error)
 	ListVolume(ctx context.Context, marker proto.Vid, count int) (volInfo []*VolumeInfoSimple, retVid proto.Vid, err error)
@@ -566,7 +566,9 @@ func (c *clustermgrClient) UpdateVolume(ctx context.Context, newVuid, oldVuid pr
 }
 
 // AllocVolumeUnit alloc volume unit
-func (c *clustermgrClient) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID) (*AllocVunitInfo, error) {
+func (c *clustermgrClient) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID,
+	isBalance bool,
+) (*AllocVunitInfo, error) {
 	c.rwLock.Lock()
 	defer c.rwLock.Unlock()
 
@@ -574,7 +576,7 @@ func (c *clustermgrClient) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid,
 
 	span.Debugf("alloc volume unit: args vuid[%d]", vuid)
 	ret := &AllocVunitInfo{}
-	info, err := c.client.AllocVolumeUnit(ctx, &cmapi.AllocVolumeUnitArgs{Vuid: vuid})
+	info, err := c.client.AllocVolumeUnit(ctx, &cmapi.AllocVolumeUnitArgs{Vuid: vuid, IsBalance: isBalance})
 	if err != nil {
 		span.Errorf("alloc volume unit failed: err[%+v]", err)
 		return nil, err
