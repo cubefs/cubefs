@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"sort"
@@ -98,6 +99,10 @@ var gSt *Statistic = nil
 
 func NewStatistic(dir, logModule string, logMaxSize int64, timeOutUs [MaxTimeoutLevel]uint32, useMutex bool) (*Statistic, error) {
 	dir = path.Join(dir, logModule)
+	// normalize to absolute path to avoid cwd-related issues
+	if absDir, err := filepath.Abs(dir); err == nil {
+		dir = absDir
+	}
 	fi, err := os.Stat(dir)
 	if err != nil {
 		os.MkdirAll(dir, 0o755)
