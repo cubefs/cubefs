@@ -266,7 +266,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	if err = m.metaNode.opLimiter.Wait(p.Opcode); err != nil {
 		log.LogWarnf("action[HandleMetadataOperation] op rate limited, opCode[%v] remote[%v] err[%v]",
 			p.Opcode, remoteAddr, err)
-		p.PacketErrorWithBody(proto.OpTryOtherAddr, []byte("too many requests, please retry later"))
+		p.PacketErrorWithBody(proto.OpLimitedIoErr, []byte("too many requests, please retry later"))
 		m.respondToClientWithVer(conn, p)
 		return err
 	}

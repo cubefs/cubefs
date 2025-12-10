@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultOpLimitBurst = 1
+	defaultOpLimitBurst = 512
 	// Default rate limit for operations (IOPS)
 	defaultAsyncOpLimit = 10000 // 10K IOPS for async operations
 )

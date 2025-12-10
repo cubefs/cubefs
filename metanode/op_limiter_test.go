@@ -23,9 +23,11 @@ func TestOpLimiter_Basic(t *testing.T) {
 	err = ol.SetLimiter(name, 1, 0)
 	require.NoError(t, err)
 
-	// second call without tokens should be rate limited when timeout=0
+	// consume burst tokens then expect rate limit
 	code := proto.GOpInfo[name]
-	require.NoError(t, ol.Wait(code))
+	for i := 0; i < defaultOpLimitBurst; i++ {
+		require.NoError(t, ol.Wait(code))
+	}
 	require.Error(t, ol.Wait(code))
 
 	// remove and ensure Wait passes (no limiter present)
@@ -40,9 +42,10 @@ func TestOpLimiter_TimeoutBranch(t *testing.T) {
 	// 1 QPS, timeout 1s
 	require.NoError(t, ol.SetLimiter(name, 1, 1))
 	code := proto.GOpInfo[name]
-	// consume one immediately
-	require.NoError(t, ol.Wait(code))
-
+	// consume burst first
+	for i := 0; i < defaultOpLimitBurst; i++ {
+		require.NoError(t, ol.Wait(code))
+	}
 	start := time.Now()
 	// next will wait up to 1s until token available, then succeed
 	require.NoError(t, ol.Wait(code))
