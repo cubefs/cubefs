@@ -2677,29 +2677,15 @@ func (m *metadataManager) opCalcMetaPartitionMd5Sum(conn net.Conn, p *Packet,
 		return
 	}
 
-	if req.DiffVal == 0 {
-		req.DiffVal = proto.PrefetchApplyIDdiff
-	}
-	req.ApplyID = mp.GetApplyID() + req.DiffVal
-
-	for i := mp.GetApplyID(); i <= req.ApplyID; i++ {
-		err = mp.CalcMetaPartitionMd5Sum(req)
-		if err != nil {
-			log.LogErrorf("CalcMetaPartitionMd5Sum failed, err: %s", err.Error())
-			return
-		}
-	}
-
-	data, err := json.Marshal(req)
+	err = mp.CalcMetaPartitionMd5Sum()
 	if err != nil {
-		log.LogErrorf("json encode err: %s", err.Error())
+		log.LogErrorf("CalcMetaPartitionMd5Sum failed, err: %s", err.Error())
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
 
-	p.PacketOkWithBody(data)
+	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
 	return
 }

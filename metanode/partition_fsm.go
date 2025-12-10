@@ -551,13 +551,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp, err = mp.fsmSetFreeze(req.Freeze)
 	case opFSMCalcMetaPartitionMd5Sum:
-		req := &proto.CalcMetaPartitionMd5SumRequest{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		if req.ApplyID != mp.GetApplyID() {
-			return
-		}
 		uniqId := mp.GetUniqId()
 		uniqChecker := mp.uniqChecker.clone()
 		// NOTE: already got lock

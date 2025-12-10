@@ -14,11 +14,13 @@ import (
 )
 
 func (mp *metaPartition) fsmCalcMetaPartitionMd5Sum(msg *storeMsg) error {
+	if msg.snap == nil {
+		log.LogErrorf("fsmCalcMetaPartitionMd5Sum mp[%v] snap is nil", mp.config.PartitionId)
+		return nil
+	}
 	log.LogWarnf("fsmCalcMetaPartitionMd5Sum mp[%v] applyID: %v", mp.config.PartitionId, msg.snap.ApplyID())
 	defer func() {
-		if msg.snap != nil {
-			msg.snap.Close()
-		}
+		msg.snap.Close()
 		log.LogWarnf("fsmCalcMetaPartitionMd5Sum mp[%v] applyID: %v end", mp.config.PartitionId, msg.snap.ApplyID())
 	}()
 

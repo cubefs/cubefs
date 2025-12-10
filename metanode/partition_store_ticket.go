@@ -148,6 +148,10 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					if lastApplyID < msg.snap.ApplyID() {
 						lastApplyID = msg.snap.ApplyID()
 						go mp.fsmCalcMetaPartitionMd5Sum(msg)
+					} else {
+						if msg.snap != nil {
+							msg.snap.Close()
+						}
 					}
 				default:
 					// do nothing

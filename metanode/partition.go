@@ -313,7 +313,7 @@ type MetaPartition interface {
 	ReleaseSnapShot(snap Snapshot)
 	GetStoreMode() proto.StoreMode
 	GetApplyID() uint64
-	CalcMetaPartitionMd5Sum(req *proto.CalcMetaPartitionMd5SumRequest) error
+	CalcMetaPartitionMd5Sum() error
 }
 
 type UidManager struct {
@@ -2228,12 +2228,8 @@ func (mp *metaPartition) GetApplyID() uint64 {
 	return atomic.LoadUint64(&mp.applyID)
 }
 
-func (mp *metaPartition) CalcMetaPartitionMd5Sum(req *proto.CalcMetaPartitionMd5SumRequest) error {
-	reqData, err := json.Marshal(*req)
-	if err != nil {
-		return err
-	}
-	_, err = mp.submit(opFSMCalcMetaPartitionMd5Sum, reqData)
+func (mp *metaPartition) CalcMetaPartitionMd5Sum() error {
+	_, err := mp.submit(opFSMCalcMetaPartitionMd5Sum, nil)
 	if err != nil {
 		return err
 	}

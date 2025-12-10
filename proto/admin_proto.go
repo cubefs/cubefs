@@ -245,7 +245,6 @@ const (
 	AdminBatchPromoteMpLearner         = "/metaPartition/batchPromoteLearner"
 	AdminCalcMetaPartitionMd5Sum       = "/metaPartition/calcMd5Sum"
 	AdminGetMd5SumResult               = "/metaPartition/getMd5SumResult"
-	AdminStopCalculateMd5Sum           = "/metaPartition/stopCalculateMd5Sum"
 
 	// admin multi version snapshot
 	AdminCreateVersion     = "/multiVer/create"
@@ -1877,12 +1876,6 @@ func (l RackAwareLevel) IsValid() bool {
 	return l >= RackAwareNone && l <= RackAwareStrong
 }
 
-const (
-	PrefetchApplyIDdiff = 10 // prefetch applyID diff
-)
-
 type CalcMetaPartitionMd5SumRequest struct {
 	PartitionID uint64
-	DiffVal     uint64
-	ApplyID     uint64
 }
