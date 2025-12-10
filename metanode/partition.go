@@ -657,6 +657,8 @@ func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 func (mp *metaPartition) updateSize() {
 	lastApplyId := uint64(0)
 	timer := time.NewTicker(time.Minute * 2)
+	defer timer.Stop()
+
 	go func() {
 		for {
 			select {

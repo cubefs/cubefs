@@ -780,8 +780,9 @@ func (m *Server) createMetaPartitionStoreModeChangePlan(w http.ResponseWriter, r
 
 func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminBatchAddMpLearner))
+	var err error
 	defer func() {
-		doStatAndMetric(proto.AdminBatchAddMpLearner, metric, nil, nil)
+		doStatAndMetric(proto.AdminBatchAddMpLearner, metric, err, nil)
 	}()
 
 	if m.cluster.IsClusterPlanNotIdle() {
@@ -790,14 +791,18 @@ func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// search the raft storage. Only store one plan
-	plan, err := m.cluster.loadBalanceTask()
-	if err == nil && plan != nil {
+	_, err = m.cluster.loadBalanceTask()
+	if err == nil {
 		err = m.cluster.DeleteMetaPartitionBalanceTask()
 		if err != nil {
 			log.LogErrorf("failed to delete meta partition balance task: %s", err.Error())
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
 		}
+	} else if err != proto.ErrNoMpMigratePlan {
+		log.LogErrorf("failed to load meta partition balance task: %s", err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
 	}
 
 	param, err := parseModifyMetaPartitionStoreModeParams(r)
@@ -806,7 +811,7 @@ func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plan, err = m.cluster.CreateMetaPartitionAddLearnerPlan(param)
+	plan, err := m.cluster.CreateMetaPartitionAddLearnerPlan(param)
 	if err != nil {
 		log.LogErrorf("addMetaPartitionLearner failed param:[%+v] err: %s", param, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
@@ -861,8 +866,9 @@ func (m *Server) batchPromoteMpLearner(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) calcMetaPartitionMd5Sum(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCalcMetaPartitionMd5Sum))
+	var err error
 	defer func() {
-		doStatAndMetric(proto.AdminCalcMetaPartitionMd5Sum, metric, nil, nil)
+		doStatAndMetric(proto.AdminCalcMetaPartitionMd5Sum, metric, err, nil)
 	}()
 
 	param, err := parseModifyMetaPartitionStoreModeParams(r)
@@ -908,8 +914,9 @@ func (m *Server) calcMetaPartitionMd5Sum(w http.ResponseWriter, r *http.Request)
 
 func (m *Server) getMd5SumResult(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetMd5SumResult))
+	var err error
 	defer func() {
-		doStatAndMetric(proto.AdminGetMd5SumResult, metric, nil, nil)
+		doStatAndMetric(proto.AdminGetMd5SumResult, metric, err, nil)
 	}()
 
 	plan, err := m.cluster.loadCheckSumPlan()

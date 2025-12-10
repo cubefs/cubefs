@@ -2534,7 +2534,7 @@ func TrimMetaReplicaPlan(mpPlan *proto.MetaBalancePlan) {
 }
 
 func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, getParm *GetMigrateAddrParam) error {
-	nodeSetId := make([]uint64, 0, len(mpPlan.Original))
+	nodeSetList := make([]uint64, 0, len(mpPlan.Original))
 	zoneList := make([]string, 0, len(mpPlan.Original))
 	bFind := false
 	for _, mr := range mpPlan.Original {
@@ -2548,7 +2548,7 @@ func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		if bFind {
 			continue
 		}
-		for _, id := range nodeSetId {
+		for _, id := range nodeSetList {
 			if id == mr.SrcNodeSetId {
 				bFind = true
 				break
@@ -2557,14 +2557,14 @@ func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		if bFind {
 			continue
 		}
-		nodeSetId = append(nodeSetId, mr.SrcNodeSetId)
+		nodeSetList = append(nodeSetList, mr.SrcNodeSetId)
 		zoneList = append(zoneList, mr.SrcZoneName)
 	}
-	if len(nodeSetId) == 0 {
+	if len(nodeSetList) == 0 {
 		return fmt.Errorf("no node set id found")
 	}
 
-	for i, nodeSetId := range nodeSetId {
+	for i, nodeSetId := range nodeSetList {
 		getParm.NodeSetID = nodeSetId
 		getParm.ZoneName = zoneList[i]
 		find, dests := GetMigrateDestAddr(getParm)
@@ -2655,6 +2655,10 @@ func (c *Cluster) PromoteLearnerByRange(param MetaPartitionPlanUserParams) (int,
 	defer c.SetClusterPlanIdle()
 
 	for _, mp := range mps {
+		if c.IsClusterPlanNotRun() {
+			log.LogWarnf("promote learner is not running. parameter(%v)", param)
+			break
+		}
 		// filter by id range
 		if param.StartID != 0 && mp.PartitionID < param.StartID {
 			continue
@@ -2682,22 +2686,25 @@ func (c *Cluster) PromoteLearnerByRange(param MetaPartitionPlanUserParams) (int,
 				continue
 			}
 
+			promoteError := false
 			select {
 			case <-c.stopc:
 				c.SetClusterPlanStopping()
-				break
+				return promoted, failIDs, nil
 			default:
 				err = c.PromoteMetaReplicaLearnerAndDeleteRedundant(mp, peer.Addr, param.Mode)
 				if err != nil {
 					log.LogErrorf("PromoteMetaReplicaLearnerAndDeleteRedundant failed mp(%d) addr(%s): %v", mp.PartitionID, peer.Addr, err)
 					failIDs = append(failIDs, mp.PartitionID)
+					promoteError = true
 					break
 				}
 
 				promoted++
+			}
+			if promoteError {
 				break
 			}
-			break
 		}
 	}
 	return promoted, failIDs, nil
@@ -2883,7 +2890,7 @@ func AddOneLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		Excludes:    make([]string, 0),
 		RequestNum:  migratePlan.ModeCnt - count,
 		LeastSize:   mpPlan.Original[0].SrcMemSize,
-		IsRocksdb:   true,
+		IsRocksdb:   migratePlan.Mode == proto.StoreModeRocksDb,
 		RackLevel:   migratePlan.RackLevel,
 	}
 	FillExcludeAddrIntoGetParam(mpPlan, getParam)

@@ -2475,7 +2475,7 @@ func (c *Cluster) putCheckSumPlanInfo(opType uint32, plan *proto.MetaPartitionsC
 	gz := gzip.NewWriter(&buf)
 	_, err = gz.Write(taskContent)
 	if err != nil {
-		return fmt.Errorf("balance task op(%d) encode err: %s", opType, err.Error())
+		return fmt.Errorf("zip checksum plan op(%d) err: %s", opType, err.Error())
 	}
 	gz.Close()
 	planTask.V = buf.Bytes()
