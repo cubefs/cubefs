@@ -26,11 +26,10 @@ import (
 
 // ExtentRequest defines the struct for the request of read or write an extent.
 type ExtentRequest struct {
-	FileOffset  int
-	Size        int
-	Data        []byte
-	ExtentKey   *proto.ExtentKey
-	CreateNewEk bool
+	FileOffset int
+	Size       int
+	Data       []byte
+	ExtentKey  *proto.ExtentKey
 }
 
 // String returns the string format of the extent request.
@@ -533,7 +532,6 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] ek [%v], pivot[%v]", ek, pivot)
 		return false
 	})
-	createNewExtentKey := false
 	cache.root.AscendRange(lower, upper, func(i btree.Item) bool {
 		ek := i.(*proto.ExtentKey)
 		ekStart := int(ek.FileOffset)
@@ -557,10 +555,7 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 				start = end
 				return false
 			} else {
-				// exact cover current extent: start == ekStart && end == ekEnd
-				if start == ekStart && end == ekEnd {
-					createNewExtentKey = true
-				}
+				// create new extentKey if end >= ekEnd
 				return true
 			}
 		} else if start < ekEnd {
@@ -586,9 +581,6 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 	if start < end {
 		// add hole (start, end)
 		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
-		if createNewExtentKey {
-			req.CreateNewEk = true
-		}
 		requests = append(requests, req)
 	}
 

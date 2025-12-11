@@ -385,7 +385,9 @@ begin:
 	isChecked := false
 	// Must flush before doing overwrite
 	for _, req := range requests {
-		if !s.waitForFlush && req.ExtentKey == nil && !req.CreateNewEk {
+		// if offset < fileSize, client should wait for all the async flush requests
+		// to complete
+		if !s.waitForFlush && req.ExtentKey == nil && offset >= fileSize {
 			continue
 		}
 		err = s.flush(true, uuid.New().String())
