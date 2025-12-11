@@ -171,24 +171,6 @@ func (m *metadataManager) getPartitionCheckProxyMultiVersion(conn net.Conn, p *P
 	return mp, false, nil
 }
 
-// preparePartitionCheckMultiVersion gets partition, checks proxy and optionally checks multi-version
-// This is a common pattern after parsing request. Returns handledByProxy=true when proxy handles the request, caller should return directly
-func (m *metadataManager) preparePartitionCheckMultiVersion(conn net.Conn, p *Packet, partitionID uint64, useVer bool, checkMultiVersion bool) (mp MetaPartition, handledByProxy bool, err error) {
-	mp, handledByProxy, err = m.getPartitionCheckProxy(conn, p, partitionID, useVer)
-	if err != nil {
-		return nil, false, err
-	}
-	if handledByProxy {
-		return nil, true, nil
-	}
-	if checkMultiVersion {
-		if err = m.checkMultiVersionAndHandleError(conn, mp, p); err != nil {
-			return nil, false, err
-		}
-	}
-	return mp, false, nil
-}
-
 func (m *metadataManager) checkFollowerRead(volNames []string, partition MetaPartition) {
 	volName := partition.GetVolName()
 	for _, name := range volNames {
@@ -587,7 +569,7 @@ func (m *metadataManager) opTxCreateDentry(conn net.Conn, p *Packet,
 	if err = m.parseRequestAndHandleError(conn, p, req, false); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionID, false, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionID, false)
 	if err != nil || handledByProxy {
 		return
 	}
@@ -721,7 +703,7 @@ func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
 	if err = m.parseRequestAndHandleError(conn, p, req, false); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionID, false, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionID, false)
 	if err != nil || handledByProxy {
 		return
 	}
@@ -740,7 +722,7 @@ func (m *metadataManager) opQuotaCreateDentry(conn net.Conn, p *Packet,
 	if err = m.parseRequestAndHandleError(conn, p, req, false); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionID, false, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionID, false)
 	if err != nil || handledByProxy {
 		return
 	}
@@ -837,7 +819,7 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 	if err = m.parseRequestAndHandleError(conn, p, req, true); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionID, true, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionID, true)
 	if err != nil || handledByProxy {
 		return
 	}
@@ -854,7 +836,7 @@ func (m *metadataManager) opTxMetaUnlinkInode(conn net.Conn, p *Packet, remoteAd
 	if err = m.parseRequestAndHandleError(conn, p, req, true); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionID, true, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionID, true)
 	if err != nil || handledByProxy {
 		return
 	}
@@ -873,7 +855,7 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 	if err = m.parseRequestAndHandleError(conn, p, req, true); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionID, true, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionID, true)
 	if err != nil || handledByProxy {
 		return
 	}
@@ -892,7 +874,7 @@ func (m *metadataManager) opMetaBatchUnlinkInode(conn net.Conn, p *Packet,
 	if err = m.parseRequestAndHandleError(conn, p, req, true); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionID, true, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionID, true)
 	if err != nil || handledByProxy {
 		return
 	}
@@ -1100,7 +1082,7 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
 	if err = m.parseRequestAndHandleError(conn, p, req, true); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionID, true, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionID, true)
 	if err != nil || handledByProxy {
 		return
 	}
@@ -1124,7 +1106,7 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 	if err = m.parseRequestAndHandleError(conn, p, req, true); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionID, true, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionID, true)
 	if err != nil || handledByProxy {
 		return
 	}
@@ -1331,10 +1313,14 @@ func (m *metadataManager) opLoadMetaPartition(conn net.Conn, p *Packet,
 	if err = m.decodeAdminTask(conn, p, adminTask, false); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.getPartitionCheckProxyErr(conn, p, req.PartitionID, false)
-	if err != nil || handledByProxy {
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		m.handleOpError(conn, p, err, false)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
 	if err = mp.ResponseLoadMetaPartition(p); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		log.LogErrorf("%s [opLoadMetaPartition] req[%v], "+
@@ -1814,7 +1800,7 @@ func (m *metadataManager) opMetaBatchExtentsAdd(conn net.Conn, p *Packet, remote
 	if err = m.parseRequestAndHandleError(conn, p, req, true); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.preparePartitionCheckMultiVersion(conn, p, req.PartitionId, true, true)
+	mp, handledByProxy, err := m.getPartitionCheckProxyMultiVersion(conn, p, req.PartitionId, true)
 	if err != nil || handledByProxy {
 		return
 	}
