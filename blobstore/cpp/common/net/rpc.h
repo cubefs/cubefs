@@ -5,6 +5,7 @@
 #include <concepts>
 #include <functional>
 #include <memory>
+#include <seastar/core/coroutine.hh>
 #include <seastar/core/future.hh>
 #include <tuple>
 #include <type_traits>
@@ -79,6 +80,11 @@ inline bool DeserializeRpcHeader(const Buffer& buf, HeaderType& header, size_t& 
     body_offset = offset;
     return true;
 }
+
+template <typename T>
+concept Parameterable = requires(T& args, char* ptr, size_t size) {
+    { args.ParseFromArray(ptr, size) } -> std::convertible_to<bool>;
+};
 
 class Stream;
 
@@ -317,7 +323,49 @@ class RpcServerContext {
     seastar::socket_address RemoteAddress() const { return stream_->RemoteAddress(); }
 
     seastar::future<> Close();
+
+    // Parse Parameter
+    template <Parameterable T>
+    seastar::future<Status<>> ParseParameter(T& args);
 };
+
+template <Parameterable T>
+seastar::future<Status<>> RpcServerContext::ParseParameter(T& args) {
+    Status<> result;
+
+    const std::string& param_data = req_header_.Parameter();
+    if (param_data.size() != 0) {
+        if (!args.ParseFromArray(param_data.data(), param_data.size())) {
+            result.SetCode(ErrCode::ErrInvalid).SetReason("net: parameter parse failed");
+        }
+        co_return result;
+    }
+
+    // parameter data is empty
+    if (req_header_.ContentLength() == 0) {
+        co_return result;
+    }
+
+    //  read parameter data from body
+    auto stream_read_status = co_await StreamRead(std::chrono::milliseconds::zero());
+    if (!stream_read_status) {
+        result.SetCode(stream_read_status.Code()).SetReason(stream_read_status.Reason());
+        co_return result;
+    }
+
+    Buffer b = std::move(stream_read_status.Value());
+    if (b.size() < req_header_.ContentLength()) {
+        result.SetCode(ErrCode::ErrInvalid).SetReason("net: read parameter data length not match");
+        co_return result;
+    }
+
+    if (!args.ParseFromArray(b.get(), b.size())) {
+        result.SetCode(ErrCode::ErrInvalid).SetReason("net: parameter parse failed");
+        co_return result;
+    }
+
+    co_return result;
+}
 
 }  // namespace net
 }  // namespace blobstore
