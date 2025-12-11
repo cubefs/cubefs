@@ -138,6 +138,7 @@ const (
 	autoDecommissionDiskIntervalKey        = "autoDecommissionDiskInterval"
 	autoDpMetaRepairKey                    = "autoDpMetaRepair"
 	autoDpMetaRepairParallelCntKey         = "autoDpMetaRepairParallelCnt"
+	enableMpDecommissionByLearnerKey       = "enableMpDecommissionByLearner"
 	autoDistributionOptimizationKey        = "autoDistributionOptimization"
 	distributionOptimizationConDpCntKey    = "distributionOptimizationConDpCnt"
 	distributionOptimizationThresholdKey   = "distributionOptimizationThreshold"
@@ -234,6 +235,7 @@ const (
 	retrySendSyncTaskInternal                         = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed             = 50
 	defaultMinusOfMaxInodeID                          = 1000
+	defaultMinusOfCommitID                            = 1000
 	defaultNodeSetGrpBatchCnt                         = 3
 	defaultMaxReplicaCnt                              = 16
 	defaultIopsRLimit                          uint64 = 1 << 35

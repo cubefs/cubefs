@@ -648,6 +648,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	remoteCacheMultiRead string, flashNodeTimeoutCount string,
 	remoteCacheSameZoneTimeout string, remoteCacheSameRegionTimeout string, flashHotKeyMissCount string,
 	flashReadFlowLimit string, flashWriteFlowLimit string, flashKeyFlowLimit string, remoteClientFlowLimit string,
+	enableMpDecommissionByLearner string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -754,6 +755,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if remoteClientFlowLimit != "" {
 		request.addParamAny("remoteClientFlowLimit", remoteClientFlowLimit)
+	}
+	if enableMpDecommissionByLearner != "" {
+		request.addParam("enableMpDecommissionByLearner", enableMpDecommissionByLearner)
 	}
 	_, err = api.mc.serveRequest(request)
 	return

@@ -1583,6 +1583,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[autoDistributionOptimizationKey] = val
 	}
 
+	if value = r.FormValue(enableMpDecommissionByLearnerKey); value != "" {
+		noParams = false
+		val := false
+		val, err = strconv.ParseBool(value)
+		if err != nil {
+			err = unmatchedKey(enableMpDecommissionByLearnerKey)
+			return
+		}
+		params[enableMpDecommissionByLearnerKey] = val
+	}
+
 	// distribution optimization configs
 	if value = r.FormValue(distributionOptimizationConDpCntKey); value != "" {
 		noParams = false

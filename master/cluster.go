@@ -126,6 +126,7 @@ type ClusterDecommission struct {
 	badPartitionMutex                      sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 
 	ForbidMpDecommission             bool
+	EnableMpDecommissionByLearner    bool
 	EnableAutoDpMetaRepair           atomicutil.Bool
 	EnableAutoDecommissionDisk       atomicutil.Bool
 	AutoDecommissionInterval         atomicutil.Int64
@@ -5311,6 +5312,18 @@ func (c *Cluster) setForbidMpDecommission(isForbid bool) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setForbidMpDecommission] err[%v]", err)
 		c.ForbidMpDecommission = oldFlag
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setEnableMpDecommissionByLearner(enable bool) (err error) {
+	oldFlag := c.EnableMpDecommissionByLearner
+	c.EnableMpDecommissionByLearner = enable
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setEnableMpDecommissionByLearner] err[%v]", err)
+		c.EnableMpDecommissionByLearner = oldFlag
 		err = proto.ErrPersistenceByRaft
 		return
 	}

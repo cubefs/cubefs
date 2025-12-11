@@ -159,6 +159,7 @@ type ClusterView struct {
 	LeaderAddr                                string
 	DisableAutoAlloc                          bool
 	ForbidMpDecommission                      bool
+	EnableMpDecommissionByLearner             bool
 	MetaNodeThreshold                         float32
 	Applied                                   uint64
 	MaxDataPartitionID                        uint64

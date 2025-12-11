@@ -281,6 +281,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	autoDpMetaRepair := ""
 	autoDpMetaRepairParallelCnt := ""
 	autoDistributionOptimization := ""
+	enableMpDecommissionByLearner := ""
 	opMaxDpCntLimit := ""
 	opMaxMpCntLimit := ""
 	dpRepairTimeout := ""
@@ -358,6 +359,12 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 
 			if autoDistributionOptimization != "" {
 				if _, err = strconv.ParseBool(autoDistributionOptimization); err != nil {
+					return
+				}
+			}
+
+			if enableMpDecommissionByLearner != "" {
+				if _, err = strconv.ParseBool(enableMpDecommissionByLearner); err != nil {
 					return
 				}
 			}
@@ -609,7 +616,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware,
 				distributionOptimizationConDpCnt, distributionOptimizationThreshold,
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount, optFlashReadFlowLimit, optFlashWriteFlowLimit, optFlashKeyFlowLimit, optRemoteClientFlowLimit); err != nil {
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount, optFlashReadFlowLimit, optFlashWriteFlowLimit, optFlashKeyFlowLimit, optRemoteClientFlowLimit,
+				enableMpDecommissionByLearner); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -631,6 +639,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&autoDpMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable auto data partition meta repair")
 	cmd.Flags().StringVar(&autoDpMetaRepairParallelCnt, CliFlagAutoDpMetaRepairParallelCnt, "", "Parallel count of auto data partition meta repair")
 	cmd.Flags().StringVar(&autoDistributionOptimization, CliFlagAutoDistributionOptimization, "", "Enable or disable distribution optimization")
+	cmd.Flags().StringVar(&enableMpDecommissionByLearner, "enableMpDecommissionByLearner", "", "Enable or disable mp decommission by learner: [true | false]")
 	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
 	cmd.Flags().StringVar(&dpTimeout, CliFlagDpTimeout, "", "Data partition heartbeat timeout(example: 10s)")
 	cmd.Flags().StringVar(&mpTimeout, CliFlagMpTimeout, "", "Meta partition heartbeat timeout(example: 10s)")

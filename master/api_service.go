@@ -1001,6 +1001,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		LeaderAddr:                             m.leaderInfo.addr,
 		DisableAutoAlloc:                       m.cluster.DisableAutoAllocate,
 		ForbidMpDecommission:                   m.cluster.ForbidMpDecommission,
+		EnableMpDecommissionByLearner:          m.cluster.EnableMpDecommissionByLearner,
 		MetaNodeThreshold:                      m.cluster.cfg.MetaNodeThreshold,
 		Applied:                                m.fsm.applied,
 		MaxDataPartitionID:                     m.cluster.idAlloc.dataPartitionID,
@@ -4142,6 +4143,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[autoDpMetaRepairKey]; ok {
 		if autoRepair, ok := val.(bool); ok {
 			if err = m.cluster.setEnableAutoDpMetaRepair(autoRepair); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[enableMpDecommissionByLearnerKey]; ok {
+		if enable, ok := val.(bool); ok {
+			if err = m.cluster.setEnableMpDecommissionByLearner(enable); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}

@@ -80,6 +80,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 
 	sb.WriteString(fmt.Sprintf("  Volume count                             : %v\n", len(cv.VolStatInfo)))
 	sb.WriteString(fmt.Sprintf("  Allow Mp Decomm                          : %v\n", formatEnabledDisabled(!cv.ForbidMpDecommission)))
+	sb.WriteString(fmt.Sprintf("  EnableMpDecommissionByLearner            : %v\n", cv.EnableMpDecommissionByLearner))
 	sb.WriteString(fmt.Sprintf("  EbsAddr                                  : %v\n", cp.EbsAddr))
 	sb.WriteString(fmt.Sprintf("  LoadFactor                               : %v\n", cn.LoadFactor))
 	sb.WriteString(fmt.Sprintf("  DpRepairTimeout                          : %v\n", cv.DpRepairTimeout))

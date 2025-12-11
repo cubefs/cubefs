@@ -45,6 +45,7 @@ type clusterValue struct {
 	LoadFactor                             float32
 	DisableAutoAllocate                    bool
 	ForbidMpDecommission                   bool
+	EnableMpDecommissionByLearner          bool
 	DataNodeDeleteLimitRate                uint64
 	MetaNodeDeleteBatchCount               uint64
 	MetaNodeDeleteWorkerSleepMs            uint64
@@ -109,6 +110,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeAutoRepairLimitRate:            c.cfg.DataNodeAutoRepairLimitRate,
 		DisableAutoAllocate:                    c.DisableAutoAllocate,
 		ForbidMpDecommission:                   c.ForbidMpDecommission,
+		EnableMpDecommissionByLearner:          c.EnableMpDecommissionByLearner,
 		MaxDpCntLimit:                          c.getMaxDpCntLimit(),
 		MaxMpCntLimit:                          c.getMaxMpCntLimit(),
 		FaultDomain:                            c.FaultDomain,
@@ -1383,6 +1385,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.ClusterLoadFactor = cv.LoadFactor
 		c.DisableAutoAllocate = cv.DisableAutoAllocate
 		c.ForbidMpDecommission = cv.ForbidMpDecommission
+		c.EnableMpDecommissionByLearner = cv.EnableMpDecommissionByLearner
 		c.diskQosEnable = cv.DiskQosEnable
 		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
 		c.DecommissionLimit = cv.DecommissionLimit // dont update nodesets limit for nodesets are not loaded
