@@ -330,19 +330,20 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
 						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD)
 					var cacheReadRequests []*remotecache.CacheReadRequest
-					cacheReadRequests, err = s.prepareCacheRequests(uint64(offset), uint64(size), data, inodeInfo.Generation)
+					cacheReadRequests, err = s.prepareCacheRequests(uint64(req.FileOffset), uint64(req.Size), req.Data, inodeInfo.Generation)
 					if err == nil {
 						var read int
 						remoteCacheMetric := exporter.NewCounter("readRemoteCache")
 						remoteCacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
-						if read, err = s.readFromRemoteCache(ctx, uint64(offset), uint64(size), cacheReadRequests); err == nil {
+						if read, err = s.readFromRemoteCache(ctx, uint64(req.FileOffset), uint64(req.Size), cacheReadRequests); err == nil {
 							remoteCacheHitMetric := exporter.NewCounter("readRemoteCacheHit")
 							remoteCacheHitMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
-							return read, err
+							total += read
+							continue
 						}
 					}
 					if !proto.IsFlashNodeLimitError(err) {
-						log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, offset, size, err)
+						log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, req.FileOffset, req.Size, err)
 					}
 				} else {
 					log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
