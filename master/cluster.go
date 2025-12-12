@@ -1553,14 +1553,13 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 
 	vols := c.copyVols()
 	for _, vol := range vols {
+		if vol.IsDeleted() {
+			continue
+		}
+
 		dps := vol.dataPartitions
 		for _, dp := range dps.partitions {
 			if ignoreDiscardDp && dp.IsDiscard {
-				continue
-			}
-
-			if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
-				(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
 				continue
 			}
 
