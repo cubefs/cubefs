@@ -23,8 +23,12 @@ func (mp *metaPartition) fsmCalcMetaPartitionMd5Sum(msg *storeMsg) error {
 		msg.snap.Close()
 		log.LogWarnf("fsmCalcMetaPartitionMd5Sum mp[%v] applyID: %v end", mp.config.PartitionId, msg.snap.ApplyID())
 	}()
-
 	h := md5.New()
+	if msg.snap.ApplyID() == 0 && mp.Md5ApplyId == 0 {
+		mp.Md5Sum = hex.EncodeToString(h.Sum(nil))
+		return nil
+	}
+
 	buff := bytes.NewBuffer(make([]byte, 0, 4096))
 	calculateFuncs := []func(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (err error){
 		CalculateInodeMd5Sum,
