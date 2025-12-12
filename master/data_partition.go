@@ -1471,6 +1471,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			log.LogErrorf("[MarkDecommissionStatus] check mediaType err: %v", err.Error())
 			return
 		}
+		if partition.hasHost(dstAddr) {
+			err = errors.NewErrorf("dstAddr[%v] is already in dp[%v] hosts", dstAddr, partition.PartitionID)
+			log.LogWarnf("action[MarkDecommissionStatus] check dstAddr err: %v", err)
+			return
+		}
 	}
 
 	if dstNodeSetID != 0 {
