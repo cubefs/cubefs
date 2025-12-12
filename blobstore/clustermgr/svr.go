@@ -482,15 +482,21 @@ func (c *Config) checkAndFix() (err error) {
 	sort.Slice(c.VolumeCodeModePolicies, func(i, j int) bool {
 		return c.VolumeCodeModePolicies[i].MinSize < c.VolumeCodeModePolicies[j].MinSize
 	})
+
+	sizeRatioSum := float64(0)
 	sortedPolicies := make([]codemode.Policy, 0)
 	for i := range c.VolumeCodeModePolicies {
 		if c.VolumeCodeModePolicies[i].Enable {
 			sortedPolicies = append(sortedPolicies, c.VolumeCodeModePolicies[i])
+			sizeRatioSum += c.VolumeCodeModePolicies[i].SizeRatio
 		}
 	}
 	if len(sortedPolicies) > 0 {
 		if sortedPolicies[0].MinSize != 0 {
 			return errors.New("min size range must be started with 0")
+		}
+		if sizeRatioSum != 1 {
+			return errors.New("The sum of size ratio must be 1")
 		}
 	} else {
 		for _, modePolicy := range c.VolumeCodeModePolicies {

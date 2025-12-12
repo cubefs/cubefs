@@ -132,6 +132,8 @@ type DiskMgrConfig struct {
 	BlobNodeConfig           blobnode.Config     `json:"blob_node_config"`
 	ShardNodeConfig          shardnode.Config    `json:"shard_node_config"`
 	AllocTolerateBuffer      int64               `json:"alloc_tolerate_buffer"`
+	DiskReservedFreeChunk    int64               `json:"disk_reserved_free_chunk"`
+	IDCReservedFreeChunk     int64               `json:"idc_reserved_free_chunk"`
 	EnsureIndex              bool                `json:"ensure_index"`
 	ReservedSpace            int64               `json:"reserved_space"`
 	EnableNodeIPChange       bool                `json:"enable_node_ip_change"`

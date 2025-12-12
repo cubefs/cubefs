@@ -51,6 +51,7 @@ type VolumeMgrConfig struct {
 	ApplyConcurrency             uint32 `json:"apply_concurrency"`
 	RouteItemTruncateIntervalNum uint32 `json:"route_item_truncate_interval_num"`
 	MinAllocableVolumeCount      int    `json:"min_allocable_volume_count"`
+	MinWritableVolumeSpace       uint64 `json:"min_writable_volume_space"`
 	AllocatableDiskLoadThreshold int    `json:"allocatable_disk_load_threshold"`
 	AllocFactor                  int    `json:"alloc_factor"`
 	// the volume free size must big than AllocatableSize can alloc
@@ -131,6 +132,9 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr cluster.BlobNodeManagerAPI, scop
 	if err != nil {
 		return nil, errors.Info(err, "parse volume reserve size failed").Detail(err)
 	}
+	if conf.FreezeThreshold >= conf.AllocatableSize {
+		return nil, errors.New("FreezeThreshold must less than allocatableSize")
+	}
 	rand.Seed(time.Now().UnixNano())
 	// initial volumeMgr
 	volumeMgr := &VolumeMgr{
@@ -147,6 +151,7 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr cluster.BlobNodeManagerAPI, scop
 		configMgr:       configMgr,
 		routeMgr:        base.NewRouteMgr(conf.RouteItemTruncateIntervalNum, true, routeRecordToRouteItem, volumeTable),
 		blobNodeClient:  blobnode.New(&conf.BlobNodeConfig),
+		stat:            newVolumeStat(conf.VolumeSliceMapNum, conf.FreezeThreshold, conf.AllocatableSize),
 		VolumeMgrConfig: conf,
 	}
 
@@ -248,6 +253,8 @@ func (v *VolumeMgr) loadVolume(ctx context.Context) error {
 		// set volume status same with volume record' status.
 		// it will call change volume status event function
 		volume.setStatus(ctx, volRecord.Status)
+		// stat volume writable space
+		v.stat.addSize(volRecord.Vid, volRecord.Status, volRecord.Free)
 		return err
 	})
 }

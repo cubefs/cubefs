@@ -183,6 +183,20 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) GetNodeInfo(arg0, arg1 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNodeInfo", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).GetNodeInfo), arg0, arg1)
 }
 
+// HasEnoughSpace mocks base method.
+func (m *MockBlobNodeManagerAPI) HasEnoughSpace(arg0 context.Context) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasEnoughSpace", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasEnoughSpace indicates an expected call of HasEnoughSpace.
+func (mr *MockBlobNodeManagerAPIMockRecorder) HasEnoughSpace(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasEnoughSpace", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).HasEnoughSpace), arg0)
+}
+
 // IsDiskWritable mocks base method.
 func (m *MockBlobNodeManagerAPI) IsDiskWritable(arg0 context.Context, arg1 proto.DiskID) (bool, error) {
 	m.ctrl.T.Helper()

@@ -28,7 +28,10 @@ const (
 	defaultRetryTimes = 3
 )
 
-var defaultAllocTolerateBuff int64 = 50
+var (
+	defaultAllocTolerateBuff     int64 = 50
+	defaultDiskReservedFreeChunk int64 = 0
+)
 
 type clusterInfoGetter interface {
 	getNode(nodeID proto.NodeID) (node *nodeItem, exist bool)
@@ -308,7 +311,7 @@ type nodeAllocator struct {
 }
 
 // allocDisk will choose disk by disk free item count weight
-func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID]*diskItem) (chosenDisk *diskItem) {
+func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID]*diskItem, reserveChunk bool) (chosenDisk *diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
 	totalWeight := atomic.LoadInt64(&d.weight)
 	if totalWeight <= 0 {
@@ -318,6 +321,10 @@ func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID
 	randTotal := total
 	disks := make([]*diskItem, 0, total)
 	disks = append(disks, d.disks...)
+	_defaultDiskReservedFreeChunk := int64(0)
+	if reserveChunk && defaultDiskReservedFreeChunk != 0 {
+		_defaultDiskReservedFreeChunk = defaultDiskReservedFreeChunk
+	}
 
 	for i := 0; i < total; i++ {
 		chosenDisk = func() *diskItem {
@@ -329,7 +336,7 @@ func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID
 			disk := disks[randNum]
 			err := disk.withRLocked(func() error {
 				weight := disk.weight()
-				if weight <= 0 {
+				if weight <= _defaultDiskReservedFreeChunk {
 					return ErrNoEnoughSpace
 				}
 				// ignore not writable disk
@@ -523,6 +530,10 @@ func (s *idcAllocator) allocFromNodeStorages(ctx context.Context, count int, tot
 	chosenDisks = make(map[proto.DiskID]*diskItem)
 	chosenDataStorages = make(map[*nodeAllocator]int)
 	randNum := int64(0)
+	isCreateVolume := true
+	if len(excludes) != 0 {
+		isCreateVolume = false
+	}
 
 	for _, diskInfo := range excludes {
 		diskInfo.lock.RLock()
@@ -593,7 +604,7 @@ RETRY:
 			weight := atomic.LoadInt64(&nodeStorages[i].weight)
 			span.Debugf("total free item: %d, node(%s) free item: %d, randNum: %d", _totalWeight, nodeStorages[i].node.nodeID, weight, randNum)
 			if weight >= randNum {
-				if selectedDisk := nodeStorages[i].allocDisk(ctx, chosenDisks); selectedDisk != nil {
+				if selectedDisk := nodeStorages[i].allocDisk(ctx, chosenDisks, isCreateVolume); selectedDisk != nil {
 					chosenDisks[selectedDisk.diskID] = selectedDisk
 					chosenDataStorages[nodeStorages[i]] += 1
 					nodeStorages[chosenIdx], nodeStorages[i] = nodeStorages[i], nodeStorages[chosenIdx]

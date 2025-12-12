@@ -52,6 +52,8 @@ type BlobNodeManagerAPI interface {
 	ListDiskInfo(ctx context.Context, opt *clustermgr.ListOptionArgs) (disks []*clustermgr.BlobNodeDiskInfo, marker proto.DiskID, err error)
 	// AllocChunks return available chunks in data center
 	AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error)
+	// HasEnoughSpace returns true if cluster has enough space
+	HasEnoughSpace(ctx context.Context) bool
 
 	NodeManagerAPI
 	persistentHandler
@@ -68,6 +70,9 @@ func NewBlobNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg Di
 	defaulter.LessOrEqual(&cfg.ApplyConcurrency, defaultApplyConcurrency)
 	if cfg.AllocTolerateBuffer >= 0 {
 		defaultAllocTolerateBuff = cfg.AllocTolerateBuffer
+	}
+	if cfg.DiskReservedFreeChunk > 0 { // default disk not reserve chunk
+		defaultDiskReservedFreeChunk = cfg.DiskReservedFreeChunk
 	}
 
 	if len(cfg.CodeModes) == 0 {
@@ -520,6 +525,19 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 
 	err = b.validateAllocRet(ret)
 	return ret, retVuids, err
+}
+
+func (b *BlobNodeManager) HasEnoughSpace(ctx context.Context) bool {
+	span, _ := trace.StartSpanFromContext(context.Background(), "")
+	spaceStat := b.Stat(ctx, proto.DiskTypeHDD)
+	for _, diskStatInfo := range spaceStat.DisksStatInfos {
+		if diskStatInfo.TotalOversoldFreeChunk <= b.cfg.IDCReservedFreeChunk {
+			span.Warnf("IDC[%s] free chunk[%d] is smaller than reserved free chunk[%d]", diskStatInfo.IDC,
+				diskStatInfo.TotalOversoldFreeChunk, b.cfg.IDCReservedFreeChunk)
+			return false
+		}
+	}
+	return true
 }
 
 func (b *BlobNodeManager) GetModuleName() string {

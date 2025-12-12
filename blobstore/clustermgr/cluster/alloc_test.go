@@ -147,6 +147,42 @@ func initTestBlobNodeMgrDisks(t *testing.T, testDiskMgr *BlobNodeManager, start,
 	}
 }
 
+func initTestBlobNodeMgrDisksWithChunk(t *testing.T, testDiskMgr *BlobNodeManager, start, end, freeChunkNum int, specifyNodeID bool, idcs ...string) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	diskInfo := clustermgr.BlobNodeDiskInfo{
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
+			Used:         0,
+			Size:         int64(freeChunkNum) * testDiskMgrConfig.ChunkSize,
+			Free:         int64(freeChunkNum) * testDiskMgrConfig.ChunkSize,
+			MaxChunkCnt:  int64(freeChunkNum),
+			FreeChunkCnt: int64(freeChunkNum),
+		},
+		DiskInfo: clustermgr.DiskInfo{
+			ClusterID: proto.ClusterID(1),
+			Idc:       "z0",
+			Status:    proto.DiskStatusNormal,
+			Readonly:  false,
+		},
+	}
+	for idx, idc := range idcs {
+		for i := start; i <= end; i++ {
+			diskInfo.DiskID = proto.DiskID(idx*10000 + i)
+			hostID := i/60 + 1
+			if specifyNodeID {
+				hostID = i
+			}
+			diskInfo.NodeID = proto.NodeID(idx*10000 + hostID)
+			diskInfo.Rack = strconv.Itoa(hostID)
+			diskInfo.Host = idc + hostPrefix + strconv.Itoa(hostID)
+			diskInfo.Idc = idc
+
+			newDiskInfo := diskInfo
+			err := testDiskMgr.applyAddDisk(ctx, &newDiskInfo)
+			require.NoError(t, err)
+		}
+	}
+}
+
 func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *BlobNodeManager, start, end int, idcs ...string) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	diskInfo := &clustermgr.BlobNodeDiskInfo{
@@ -1068,4 +1104,33 @@ func BenchmarkAllocFromDiskStoragesParallel(b *testing.B) {
 			}
 		}
 	})
+}
+
+func TestAllocWithReserveChunk(t *testing.T) {
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
+	defer closeTestDiskMgr()
+	// disk never expire
+	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	{
+		defaultDiskReservedFreeChunk = 1
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 6, testIdcs...)
+		initTestBlobNodeMgrDisksWithChunk(t, testDiskMgr, 1, 6, 2, true, testIdcs...)
+		// refresh cluster's disk space allocator
+		testDiskMgr.cfg.HostAware = true
+		testDiskMgr.refresh(ctx)
+
+		allocators := testDiskMgr.manager.allocator.Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		for _, idc := range testIdcs {
+			idcAllocator := idcAllocators[idc]
+			_, err := idcAllocator.alloc(ctx, 6, nil, false)
+			require.NoError(t, err)
+		}
+
+		allocator := idcAllocators[testIdcs[0]]
+		_, err := allocator.alloc(ctx, 6, nil, false)
+		require.Equal(t, ErrNoEnoughSpace, err)
+	}
 }

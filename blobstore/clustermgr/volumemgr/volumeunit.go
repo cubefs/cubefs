@@ -319,7 +319,8 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 			continue
 		}
 		idx := chunk.Vuid.Index()
-
+		status := proto.VolumeStatus(0)
+		freeSize := uint64(0)
 		err_ := vol.withLocked(func() error {
 			if int(idx) >= len(vol.vUnits) {
 				return errors.Newf("report vuid: %d is invalid", chunk.Vuid)
@@ -344,7 +345,6 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 					volFree = _volTotal - volUsed
 				}
 			}
-
 			// use the minimum free size as volume free
 			// or use calculated free size when overboughtRatio is specified as overboughtRatio may set into larger value
 			if vol.volInfoBase.Free > volFree || v.VolumeOverboughtRatio > 0 {
@@ -358,6 +358,8 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 				vol.volInfoBase.Total = vol.vUnits[vol.smallestVUIdx].vuInfo.Total * dataChunkNum
 				vol.setFree(ctx, vol.vUnits[vol.smallestVUIdx].vuInfo.Free*dataChunkNum)
 			}
+			status = vol.volInfoBase.Status
+			freeSize = vol.volInfoBase.Free
 			return nil
 		})
 
@@ -368,6 +370,8 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 		// put on dirty volumes and flush asynchronously
 		dirty := v.dirty.Load().(*shardedVolumes)
 		dirty.putVol(vol)
+		// stat volume writable space
+		v.stat.addSize(vol.vid, status, freeSize)
 	}
 	return
 }

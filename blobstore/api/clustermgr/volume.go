@@ -334,12 +334,13 @@ func (c *Client) ListAllocatedVolumes(ctx context.Context, args *ListAllocatedVo
 }
 
 type VolumeStatInfo struct {
-	TotalVolume       int `json:"total_volume"`
-	IdleVolume        int `json:"idle_volume"`
-	AllocatableVolume int `json:"can_alloc_volume"`
-	ActiveVolume      int `json:"active_volume"`
-	LockVolume        int `json:"lock_volume"`
-	UnlockingVolume   int `json:"unlocking_volume"`
+	TotalVolume       int    `json:"total_volume"`
+	IdleVolume        int    `json:"idle_volume"`
+	AllocatableVolume int    `json:"can_alloc_volume"`
+	ActiveVolume      int    `json:"active_volume"`
+	LockVolume        int    `json:"lock_volume"`
+	UnlockingVolume   int    `json:"unlocking_volume"`
+	WritableSpace     uint64 `json:"writable_space"`
 }
 
 type AdminUpdateUnitArgs struct {

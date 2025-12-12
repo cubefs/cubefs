@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -146,6 +147,7 @@ type VolumeMgr struct {
 	lastFlushTime  time.Time
 	pendingEntries sync.Map
 	codeMode       map[codemode.CodeMode]codeModeConf
+	stat           *volumeStat
 
 	VolumeMgrConfig
 }
@@ -551,6 +553,7 @@ func (v *VolumeMgr) Stat(ctx context.Context) (stat cm.VolumeStatInfo) {
 	stat.IdleVolume = statusNumM[proto.VolumeStatusIdle]
 	stat.LockVolume = statusNumM[proto.VolumeStatusLock]
 	stat.UnlockingVolume = statusNumM[proto.VolumeStatusUnlocking]
+	stat.WritableSpace = v.stat.getWriteSpace()
 
 	return
 }
@@ -788,7 +791,6 @@ func (v *VolumeMgr) loop() {
 			span_.Infof("leader node start create volume")
 
 			allocatableVolCounts := v.allocator.StatAllocatable()
-			diskNums := v.diskMgr.Stat(ctx_, proto.DiskTypeHDD).TotalDisk
 
 		CREATE:
 			for _, modeConfig := range v.codeMode {
@@ -796,15 +798,13 @@ func (v *VolumeMgr) loop() {
 				if !modeConfig.enable {
 					continue
 				}
-
-				count := v.getModeUnitCount(modeConfig.mode)
-				minVolCount := int(float64(diskNums) * modeConfig.sizeRatio / float64(count))
-				if minVolCount < v.MinAllocableVolumeCount {
-					minVolCount = v.MinAllocableVolumeCount
+				// do not create new volume when diskMgr has not enough space
+				if hasEnoughSpace := v.diskMgr.HasEnoughSpace(ctx); !hasEnoughSpace {
+					continue
 				}
 
 				curVolCount := allocatableVolCounts[modeConfig.mode]
-				span_.Infof("code mode %v,min allocatable volume count is %d, current count is %d", modeConfig.mode, v.MinAllocableVolumeCount, curVolCount)
+				minVolCount := v.getCreateVolumeCount(ctx_, modeConfig, curVolCount)
 				for i := curVolCount; i < minVolCount; i++ {
 					select {
 					case <-ctx.Done():
@@ -892,4 +892,30 @@ func (v *VolumeMgr) refreshHealth(ctx context.Context, vid proto.Vid) error {
 func (v *VolumeMgr) getModeUnitCount(mode codemode.CodeMode) int {
 	unitCount := v.codeMode[mode].tactic.N + v.codeMode[mode].tactic.M + v.codeMode[mode].tactic.L
 	return unitCount
+}
+
+func (v *VolumeMgr) getWeightedDataUnitCount() float64 {
+	var weightedUnitCount float64
+	for _, modeConf := range v.codeMode {
+		weightedUnitCount += float64(modeConf.tactic.N) * modeConf.sizeRatio
+	}
+	return weightedUnitCount
+}
+
+func (v *VolumeMgr) getCreateVolumeCount(ctx context.Context, modeConf codeModeConf, curVolCount int) int {
+	span := trace.SpanFromContextSafe(ctx)
+
+	diskNums := v.diskMgr.Stat(ctx, proto.DiskTypeHDD).TotalDisk
+	count := v.getModeUnitCount(modeConf.mode)
+	volCount := int(util.Max(float64(diskNums)*modeConf.sizeRatio/float64(count), float64(v.MinAllocableVolumeCount)*modeConf.sizeRatio))
+	writableSpace := v.stat.getWriteSpace()
+	if writableSpace >= v.MinWritableVolumeSpace {
+		span.Infof("code mode %v, min allocatable volume count is %d, current count is %d", modeConf.mode, v.MinAllocableVolumeCount, curVolCount)
+		return volCount
+	}
+	weightedUnitCount := v.getWeightedDataUnitCount()
+	writableSpaceVolCount := int(float64(v.MinWritableVolumeSpace-writableSpace) / weightedUnitCount / float64(v.ChunkSize) * modeConf.sizeRatio)
+	span.Infof("code mode %v, writable space vol count %d, min writable vol space %d, current space %d", modeConf.mode, writableSpaceVolCount, v.MinWritableVolumeSpace, writableSpace)
+
+	return util.Max(volCount, curVolCount+writableSpaceVolCount)
 }

@@ -316,6 +316,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 100})
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, nil)
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
+	mockDiskMgr.EXPECT().HasEnoughSpace(gomock.Any()).AnyTimes().Return(true)
 
 	mockVolumeMgr, err := NewVolumeMgr(volConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
 	require.NoError(t, err)
@@ -518,7 +519,7 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 		require.Nil(t, ret)
 	}
 
-	// failed case, only volume free space bigger than allocatableSize can alloc
+	// failed case, only volume free space bigger than allocatableSizeThreshold can alloc
 	{
 		mockVolumeMgr.allocator.allocatableSize = 1 << 42
 		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
@@ -1206,4 +1207,52 @@ func BenchmarkVolumeMgr_ListVolumeInfo(b *testing.B) {
 			mockVolumeMgr.ListVolumeInfo(ctx, args)
 		}
 	})
+}
+
+func TestVolumeStat(t *testing.T) {
+	sliceNum := uint32(4)
+	freezeSize := uint64(100)
+	allocatableSize := uint64(500)
+
+	stat := newVolumeStat(sliceNum, freezeSize, allocatableSize)
+	require.NotNil(t, stat)
+	require.Equal(t, sliceNum, stat.num)
+	require.Equal(t, freezeSize, stat.freezeSizeThreshold)
+	require.Equal(t, allocatableSize, stat.allocatableSizeThreshold)
+	require.Equal(t, uint64(0), stat.getWriteSpace())
+
+	// test addSize: new vid with idle status and freeSize > allocatableSizeThreshold
+	vid1 := proto.Vid(1)
+	freeSize1 := uint64(1000)
+	stat.addSize(vid1, proto.VolumeStatusIdle, freeSize1)
+	require.Equal(t, freeSize1-freezeSize, stat.getWriteSpace())
+
+	// test addSize: same vid with idle status, freeSize increase
+	newFreeSize1 := uint64(1200)
+	stat.addSize(vid1, proto.VolumeStatusIdle, newFreeSize1)
+	require.Equal(t, freeSize1-freezeSize+(newFreeSize1-freeSize1), stat.getWriteSpace())
+
+	// test addSize: same vid with idle status, freeSize decrease
+	decreasedFreeSize := uint64(1100)
+	expectedSpace := stat.getWriteSpace() - (newFreeSize1 - decreasedFreeSize)
+	stat.addSize(vid1, proto.VolumeStatusIdle, decreasedFreeSize)
+	require.Equal(t, expectedSpace, stat.getWriteSpace())
+
+	// test addSize: vid becomes non-idle (remove from stats)
+	currentSpace := stat.getWriteSpace()
+	stat.addSize(vid1, proto.VolumeStatusActive, decreasedFreeSize)
+	require.Equal(t, currentSpace-(decreasedFreeSize-freezeSize), stat.getWriteSpace())
+
+	// test addSize: new vid with freeSize <= allocatableSizeThreshold (should not add)
+	vid2 := proto.Vid(2)
+	smallFreeSize := uint64(400)
+	spaceBeforeAdd := stat.getWriteSpace()
+	stat.addSize(vid2, proto.VolumeStatusIdle, smallFreeSize)
+	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace())
+
+	// test addSize: new vid with non-idle status (should not add)
+	vid3 := proto.Vid(3)
+	spaceBeforeAdd = stat.getWriteSpace()
+	stat.addSize(vid3, proto.VolumeStatusActive, freeSize1)
+	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace())
 }

@@ -73,7 +73,7 @@ func TestService_CreateVolume(t *testing.T) {
 	}
 
 	testServiceCfg.VolumeCodeModePolicies = append(testServiceCfg.VolumeCodeModePolicies,
-		codemode.Policy{ModeName: codemode.EC4P4L2.Name(), Enable: true})
+		codemode.Policy{ModeName: codemode.EC4P4L2.Name(), Enable: true, SizeRatio: 1})
 	testService, _ := initServiceWithData()
 	cleanTestService(testService) // waiting closed
 	cleanWG.Done()

@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	cm "github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -299,6 +300,60 @@ func (s *shardedVolumes) list() []*volume {
 		return nil
 	})
 	return ret
+}
+
+type volumeStat struct {
+	reportedVols             map[uint32]map[proto.Vid]uint64
+	locks                    map[uint32]*sync.Mutex
+	num                      uint32
+	allocatableSizeThreshold uint64
+	freezeSizeThreshold      uint64
+	writableSpace            uint64
+}
+
+func newVolumeStat(sliceNum uint32, freezeSizeThreshold, allocatableSizeThreshold uint64) *volumeStat {
+	s := &volumeStat{
+		reportedVols:             make(map[uint32]map[proto.Vid]uint64),
+		locks:                    make(map[uint32]*sync.Mutex),
+		num:                      sliceNum,
+		allocatableSizeThreshold: allocatableSizeThreshold,
+		freezeSizeThreshold:      freezeSizeThreshold,
+	}
+	for i := uint32(0); i < sliceNum; i++ {
+		s.locks[i] = &sync.Mutex{}
+		s.reportedVols[i] = make(map[proto.Vid]uint64)
+	}
+	return s
+}
+
+func (s *volumeStat) addSize(vid proto.Vid, status proto.VolumeStatus, freeSize uint64) {
+	idx := uint32(vid) % s.num
+	s.locks[idx].Lock()
+	defer s.locks[idx].Unlock()
+
+	oldFreeSize, ok := s.reportedVols[idx][vid]
+	if !ok {
+		if status == proto.VolumeStatusIdle && freeSize > s.allocatableSizeThreshold {
+			atomic.AddUint64(&s.writableSpace, freeSize-s.freezeSizeThreshold)
+			s.reportedVols[idx][vid] = freeSize
+		}
+		return
+	}
+	if status != proto.VolumeStatusIdle {
+		delete(s.reportedVols[idx], vid)
+		atomic.AddUint64(&s.writableSpace, ^(oldFreeSize - s.freezeSizeThreshold - 1))
+		return
+	}
+	s.reportedVols[idx][vid] = freeSize
+	if freeSize >= oldFreeSize {
+		atomic.AddUint64(&s.writableSpace, freeSize-oldFreeSize)
+	} else {
+		atomic.AddUint64(&s.writableSpace, ^(oldFreeSize - freeSize - 1))
+	}
+}
+
+func (s *volumeStat) getWriteSpace() uint64 {
+	return atomic.LoadUint64(&s.writableSpace)
 }
 
 type NotifyFunc func(ctx context.Context, vol *volume) error
