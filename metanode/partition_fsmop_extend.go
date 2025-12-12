@@ -89,6 +89,10 @@ func (mp *metaPartition) fsmLockDir(handle interface{}, req *proto.LockDirReques
 	if req.LockId == oldLkId {
 		newExtend.Put([]byte(innerDirLockKey), []byte(newVal), 0)
 		existExtend.Merge(newExtend, true)
+		if err = mp.extendTree.Update(handle, existExtend); err != nil {
+			log.LogErrorf("fsmLockDir: update lock err: %s", err.Error())
+			resp.Status = proto.OpErr
+		}
 		return
 	}
 
@@ -99,6 +103,10 @@ func (mp *metaPartition) fsmLockDir(handle interface{}, req *proto.LockDirReques
 
 	newExtend.Put([]byte(innerDirLockKey), []byte(newVal), 0)
 	existExtend.Merge(newExtend, true)
+	if err = mp.extendTree.Update(handle, existExtend); err != nil {
+		log.LogErrorf("fsmLockDir: update lock err: %s", err.Error())
+		resp.Status = proto.OpErr
+	}
 	return
 }
 
@@ -155,6 +163,10 @@ func (mp *metaPartition) fsmUnlockDir(req *proto.LockDirRequest) (resp *proto.Lo
 	}
 
 	existExtend.Remove([]byte(innerDirLockKey))
+	if err = mp.extendTree.Update(nil, existExtend); err != nil {
+		log.LogErrorf("fsmUnlockDir: update extend err: %s", err.Error())
+		resp.Status = proto.OpErr
+	}
 	return
 }
 

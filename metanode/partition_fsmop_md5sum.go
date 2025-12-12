@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"hash"
 	"sort"
 
@@ -18,14 +17,18 @@ func (mp *metaPartition) fsmCalcMetaPartitionMd5Sum(msg *storeMsg) error {
 		log.LogErrorf("fsmCalcMetaPartitionMd5Sum mp[%v] snap is nil", mp.config.PartitionId)
 		return nil
 	}
-	log.LogWarnf("fsmCalcMetaPartitionMd5Sum mp[%v] applyID: %v", mp.config.PartitionId, msg.snap.ApplyID())
+	applyID := msg.snap.ApplyID()
+	log.LogWarnf("fsmCalcMetaPartitionMd5Sum mp[%v] applyID: %v", mp.config.PartitionId, applyID)
 	defer func() {
 		msg.snap.Close()
-		log.LogWarnf("fsmCalcMetaPartitionMd5Sum mp[%v] applyID: %v end", mp.config.PartitionId, msg.snap.ApplyID())
+		log.LogWarnf("fsmCalcMetaPartitionMd5Sum mp[%v] applyID: %v end", mp.config.PartitionId, applyID)
 	}()
 	h := md5.New()
-	if msg.snap.ApplyID() == 0 && mp.Md5ApplyId == 0 {
+	if applyID == 0 && mp.Md5ApplyId == 0 {
 		mp.Md5Sum = hex.EncodeToString(h.Sum(nil))
+		return nil
+	}
+	if mp.Md5ApplyId >= applyID {
 		return nil
 	}
 
@@ -42,10 +45,6 @@ func (mp *metaPartition) fsmCalcMetaPartitionMd5Sum(msg *storeMsg) error {
 		CalculateMultiVersionMd5Sum,
 	}
 	for _, calculateFunc := range calculateFuncs {
-		if mp.Md5ApplyId >= msg.snap.ApplyID() {
-			return nil
-		}
-
 		err := calculateFunc(msg, h, buff)
 		if err != nil {
 			log.LogErrorf("mp[%v] failed to calculate md5 sum, err(%v)", mp.config.PartitionId, err)
@@ -53,9 +52,9 @@ func (mp *metaPartition) fsmCalcMetaPartitionMd5Sum(msg *storeMsg) error {
 		}
 	}
 
-	if mp.Md5ApplyId < msg.snap.ApplyID() {
+	if mp.Md5ApplyId < applyID {
 		mp.Md5Sum = hex.EncodeToString(h.Sum(nil))
-		mp.Md5ApplyId = msg.snap.ApplyID()
+		mp.Md5ApplyId = applyID
 	}
 
 	return nil
@@ -149,8 +148,8 @@ func WriteInodeToBuffer(inode *Inode, buff *bytes.Buffer) (err error) {
 		} else if _, ok := inode.HybridCloudExtents.sortedEks.(*SortedObjExtents); ok {
 			ObjExtents := inode.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 			objExtData, err1 := ObjExtents.MarshalBinary()
-			if err != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
+			if err1 != nil {
+				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err1)
 				return err1
 			}
 			_, err = buff.Write(objExtData)
@@ -183,8 +182,8 @@ func WriteInodeToBuffer(inode *Inode, buff *bytes.Buffer) (err error) {
 		} else if _, ok := inode.HybridCloudExtentsMigration.sortedEks.(*SortedObjExtents); ok {
 			ObjExtents := inode.HybridCloudExtentsMigration.sortedEks.(*SortedObjExtents)
 			objExtData, err1 := ObjExtents.MarshalBinary()
-			if err != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
+			if err1 != nil {
+				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err1)
 				return err1
 			}
 			_, err = buff.Write(objExtData)
@@ -207,7 +206,7 @@ func CalculateInodeMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (err e
 			return false
 		}
 
-		_, err = h.Write(buff.Bytes())
+		_, err = buff.WriteTo(h)
 		if err != nil {
 			log.LogErrorf("[CalculateInodeMd5Sum] failed to write inode, err(%v)", err)
 			return false
@@ -265,7 +264,7 @@ func CalculateDentryMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (err 
 			log.LogErrorf("[CalculateDentryMd5Sum] failed to write dentry, err(%v)", err)
 			return false
 		}
-		_, err = h.Write(buff.Bytes())
+		_, err = buff.WriteTo(h)
 		if err != nil {
 			log.LogErrorf("[CalculateDentryMd5Sum] failed to write dentry, err(%v)", err)
 			return false
@@ -332,7 +331,11 @@ func CalculateExtentMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (err 
 			log.LogErrorf("[CalculateExtentMd5Sum] failed to write extent, err(%v)", err)
 			return false
 		}
-		_, err = h.Write(buff.Bytes())
+		_, err = buff.WriteTo(h)
+		if err != nil {
+			log.LogErrorf("[CalculateExtentMd5Sum] failed to write extent, err(%v)", err)
+			return false
+		}
 		return true
 	})
 
@@ -393,7 +396,11 @@ func CalculateMultipartMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (e
 			}
 		}
 
-		_, err = h.Write(buff.Bytes())
+		_, err = buff.WriteTo(h)
+		if err != nil {
+			log.LogErrorf("[CalculateMultipartMd5Sum] failed to write multipart, err(%v)", err)
+			return false
+		}
 		return true
 	})
 
@@ -505,7 +512,11 @@ func CalculateTxInfoMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (err 
 			}
 		}
 
-		_, err = h.Write(buff.Bytes())
+		_, err = buff.WriteTo(h)
+		if err != nil {
+			log.LogErrorf("[CalculateTxInfoMd5Sum] failed to write tx info, err(%v)", err)
+			return false
+		}
 		return true
 	})
 
@@ -558,7 +569,11 @@ func CalculateTxRbInodeMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (e
 			}
 		}
 
-		_, err = h.Write(buff.Bytes())
+		_, err = buff.WriteTo(h)
+		if err != nil {
+			log.LogErrorf("[CalculateTxRbInodeMd5Sum] failed to write tx rb inode, err(%v)", err)
+			return false
+		}
 		return true
 	})
 	return
@@ -608,7 +623,11 @@ func CalculateTxRbDentryMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (
 			return false
 		}
 
-		_, err = h.Write(buff.Bytes())
+		_, err = buff.WriteTo(h)
+		if err != nil {
+			log.LogErrorf("[CalculateTxRbDentryMd5Sum] failed to write tx rb dentry, err(%v)", err)
+			return false
+		}
 		return true
 	})
 
@@ -635,7 +654,7 @@ func CalculateUniqCheckerMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) 
 			return
 		}
 	}
-	_, err = h.Write(buff.Bytes())
+	_, err = buff.WriteTo(h)
 	if err != nil {
 		log.LogErrorf("[CalculateUniqCheckerMd5Sum] failed to write uniq checker, err(%v)", err)
 		return
@@ -644,18 +663,39 @@ func CalculateUniqCheckerMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) 
 }
 
 func CalculateMultiVersionMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (err error) {
-	var verData []byte
-	if verData, err = json.Marshal(msg.multiVerList); err != nil {
+	// Avoid JSON allocations and keep hashing order stable without mutating the source slice.
+	vers := make([]*proto.VolVersionInfo, 0, len(msg.multiVerList))
+	for _, vv := range msg.multiVerList {
+		if vv == nil {
+			continue
+		}
+		vers = append(vers, vv)
+	}
+	if len(vers) == 0 {
 		return
 	}
+
+	sort.Slice(vers, func(i, j int) bool {
+		return vers[i].Ver < vers[j].Ver
+	})
+
 	buff.Reset()
-	_, err = buff.Write(verData)
-	if err != nil {
-		log.LogErrorf("[CalculateMultiVersionMd5Sum] failed to write multi version, err(%v)", err)
-		return
+	for _, vv := range vers {
+		if err = binary.Write(buff, binary.BigEndian, vv.Ver); err != nil {
+			log.LogErrorf("[CalculateMultiVersionMd5Sum] failed to write ver, err(%v)", err)
+			return
+		}
+		if err = binary.Write(buff, binary.BigEndian, vv.DelTime); err != nil {
+			log.LogErrorf("[CalculateMultiVersionMd5Sum] failed to write delTime, err(%v)", err)
+			return
+		}
+		if err = binary.Write(buff, binary.BigEndian, vv.Status); err != nil {
+			log.LogErrorf("[CalculateMultiVersionMd5Sum] failed to write status, err(%v)", err)
+			return
+		}
 	}
-	_, err = h.Write(buff.Bytes())
-	if err != nil {
+
+	if _, err = buff.WriteTo(h); err != nil {
 		log.LogErrorf("[CalculateMultiVersionMd5Sum] failed to write multi version, err(%v)", err)
 		return
 	}

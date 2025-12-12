@@ -490,8 +490,7 @@ func (mp *metaPartition) fsmUnlinkInode(dbHandle interface{}, ino *Inode, uniqID
 
 // fsmUnlinkInode delete the specified inode from inode tree.
 func (mp *metaPartition) fsmUnlinkInodeBatch(dbHandle interface{}, ib InodeBatch) (resp []*InodeResponse, err error) {
-	var rsp *InodeResponse
-	rsp.Status = proto.OpOk
+	rsp := &InodeResponse{Status: proto.OpOk}
 	defer func() {
 		if rsp.Status != proto.OpOk {
 			for index := 0; index < len(ib); index++ {
@@ -798,7 +797,15 @@ func (mp *metaPartition) fsmAppendObjExtents(dbHandle interface{}, ino *Inode) (
 	if err != nil {
 		log.LogErrorf("fsmAppendExtents inode[%v] err(%v)", inode.Inode, err)
 		status = proto.OpConflictExtentsErr
+		return
 	}
+
+	if err = mp.inodeTree.Put(dbHandle, inode); err != nil {
+		status = proto.OpErr
+		log.LogErrorf("fsmAppendObjExtents mp(%v) inode(%v) Put error: %v", mp.config.PartitionId, inode.Inode, err)
+		return
+	}
+
 	return
 }
 

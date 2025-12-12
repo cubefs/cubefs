@@ -114,9 +114,12 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	}
 	defer fp.Close()
 	data, err := io.ReadAll(fp)
-	if err != nil || len(data) == 0 {
-		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
-			string(data))
+	if err != nil {
+		err = errors.NewErrorf("[loadMetadata]: ReadFile %s", err.Error())
+		return
+	}
+	if len(data) == 0 {
+		err = errors.NewErrorf("[loadMetadata]: ReadFile empty data")
 		return
 	}
 	mConf := &MetaPartitionConfig{}
@@ -1032,8 +1035,9 @@ func (mp *metaPartition) persistMetadata() (err error) {
 		return
 	}
 
-	// TODO Unhandled errors
-	os.MkdirAll(mp.config.RootDir, 0o755)
+	if err = os.MkdirAll(mp.config.RootDir, 0o755); err != nil {
+		return errors.NewErrorf("[persistMetadata] mkdir %s fail: %v", mp.config.RootDir, err)
+	}
 	filename := path.Join(mp.config.RootDir, metadataFileTmp)
 	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
@@ -1592,6 +1596,9 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 		return 0, err
 	}
 
+	// reset size before accumulating to avoid double counting when reloading
+	totalSize := uint64(0)
+
 	defer func() {
 		if snap != nil {
 			mp.ReleaseSnapShot(snap)
@@ -1611,7 +1618,7 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 			ino.LeaseExpireTime = uint64(ino.ModifyTime) + proto.ForbiddenMigrationRenewalSeonds
 			err1 := mp.UpdateInodeValue(ino)
 			if err1 != nil {
-				log.LogErrorf("UpdateInodeValue ino(%d) err: %s", ino.Inode, err.Error())
+				log.LogErrorf("UpdateInodeValue ino(%d) err: %s", ino.Inode, err1.Error())
 			}
 		}
 		mp.acucumUidSizeByLoad(ino)
@@ -1623,7 +1630,7 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 			}
 		}
 
-		mp.size += ino.Size
+		totalSize += ino.Size
 		inodeCnt++
 
 		if ino.Inode > maxInode {
@@ -1636,6 +1643,7 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 		log.LogErrorf("loadRocksdbInode mp[%d] err: %s", mp.config.PartitionId, err.Error())
 		return 0, err
 	}
+	mp.size = totalSize
 	mp.fileRange = fileRange
 	if inodeCnt != mp.inodeTree.Count() {
 		log.LogWarnf("loadRocksdbInode mp[%d] inodeCnt(%v) != storeInodeCnt(%v)", mp.config.PartitionId, inodeCnt, mp.inodeTree.Count())

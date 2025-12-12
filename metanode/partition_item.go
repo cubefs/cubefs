@@ -339,26 +339,35 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 
 		if si.SnapFormatVersion == SnapFormatVersion_1 {
-			iter.treeSnap.Range(TransactionType, func(i interface{}) bool {
+			if err = iter.treeSnap.Range(TransactionType, func(i interface{}) bool {
 				log.LogDebugf("[newMetaItemIterator] send transaction")
 				return produceItem(i)
-			})
+			}); err != nil {
+				produceError(err)
+				return
+			}
 			if checkClose() {
 				return
 			}
 
-			iter.treeSnap.Range(TransactionRollbackInodeType, func(i interface{}) bool {
+			if err = iter.treeSnap.Range(TransactionRollbackInodeType, func(i interface{}) bool {
 				log.LogDebugf("[newMetaItemIterator] send rb inodes")
 				return produceItem(i)
-			})
+			}); err != nil {
+				produceError(err)
+				return
+			}
 			if checkClose() {
 				return
 			}
 
-			iter.treeSnap.Range(TransactionRollbackDentryType, func(i interface{}) bool {
+			if err = iter.treeSnap.Range(TransactionRollbackDentryType, func(i interface{}) bool {
 				log.LogDebugf("[newMetaItemIterator] send rb dentries")
 				return produceItem(i)
-			})
+			}); err != nil {
+				produceError(err)
+				return
+			}
 			if checkClose() {
 				return
 			}
@@ -514,6 +523,11 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)
 	case *uniqChecker:
 		var raw []byte
+		/*
+			In order to support software update from v1 to v2, we need to use the checkerVersionV1 here.
+			For snapshot, it is not necessary to use the checkerVersionV2.
+			All the raft fsm apply id will larger than current value. So it is safe to use the checkerVersionV1 here.
+		*/
 		if raw, _, err = typedItem.Marshal(checkerVersionV1); err != nil {
 			si.err = err
 			si.Close()

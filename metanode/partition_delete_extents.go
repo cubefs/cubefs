@@ -244,6 +244,8 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		fileInfo os.FileInfo
 		err      error
 	)
+	cursorBuf := make([]byte, 8)
+	readBuf := make([]byte, 512*util.KB)
 	for {
 		// DeleteWorkerSleepMs()
 		time.Sleep(1 * time.Minute)
@@ -273,7 +275,6 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		// leader do delete extent for EXTENT_DEL_* file
 
 		// read delete extents from file
-		buf := make([]byte, 8)
 		fp, err := os.OpenFile(file, os.O_RDWR, 0o644)
 		if err != nil {
 			if !os.IsNotExist(err) {
@@ -286,7 +287,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		}
 
 		// get delete extents cursor at file header 8 bytes
-		if _, err = fp.ReadAt(buf, 0); err != nil {
+		if _, err = fp.ReadAt(cursorBuf, 0); err != nil {
 			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, "+
 				"read cursor least 8bytes, retry later", mp.config.PartitionId)
 			// TODO Unhandled errors
@@ -299,7 +300,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			extentV2 = true
 			extentKeyLen = uint64(proto.ExtentV2Length)
 		}
-		cursor := binary.BigEndian.Uint64(buf)
+		cursor := binary.BigEndian.Uint64(cursorBuf)
 		stat, err := fp.Stat()
 		if err != nil {
 			log.LogErrorf("[deleteExtentsFromList] mp(%v) stat file(%v) err(%v)", mp.config.PartitionId, fileName, err)
@@ -320,12 +321,11 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		deleteCnt := 0
 		errExts := make([]proto.ExtentKey, 0)
 		needDeleteExtents := make(map[uint64][]*proto.DelExtentParam)
-		buf = make([]byte, 512*util.KB)
 		err = func() (err error) {
 			// read extents from cursor
 			defer fp.Close()
 			// NOTE: read 256kb at once
-			rLen, err := fp.ReadAt(buf, int64(cursor))
+			rLen, err := fp.ReadAt(readBuf, int64(cursor))
 			log.LogDebugf("[deleteExtentsFromList] mp(%v) read len(%v) cursor(%v), err(%v)", mp.config.PartitionId, rLen, cursor, err)
 			if err != nil {
 				if err != io.EOF {
@@ -354,7 +354,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				}
 			}
 			cursor += uint64(rLen)
-			buff := bytes.NewBuffer(buf[:rLen])
+			buff := bytes.NewBuffer(readBuf[:rLen])
 			for buff.Len() != 0 {
 				lastUnread := buff.Len()
 				// NOTE: audjust cursor
@@ -480,6 +480,6 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				mp.config.PartitionId, err.Error())
 		}
 
-		log.LogDebugf("[deleteExtentsFromList] mp(%v) file(%v), cursor(%v), size(%v)", mp.config.PartitionId, fileName, cursor, len(buf))
+		log.LogDebugf("[deleteExtentsFromList] mp(%v) file(%v), cursor(%v), size(%v)", mp.config.PartitionId, fileName, cursor, len(readBuf))
 	}
 }

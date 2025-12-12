@@ -2679,7 +2679,7 @@ func (c *Cluster) PromoteLearnerByRange(param MetaPartitionPlanUserParams) (int,
 
 			storeMode, err := c.getMetaPartitionStoreMode(mp, peer.Addr)
 			if err != nil {
-				log.LogErrorf("Failed to get meta replica store mode, err: %s", err.Error())
+				log.LogErrorf("Failed to get meta replica store mode mp(%d) addr(%s), err: %s", mp.PartitionID, peer.Addr, err.Error())
 				continue
 			}
 			if storeMode != param.Mode {
@@ -2733,19 +2733,27 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(param MetaPartitionPlanUserP
 
 	err := c.GetLowMemPressureTopology(plan)
 	if err != nil {
-		log.LogErrorf("GetLowMemPressureTopology error: %s", err.Error())
+		log.LogErrorf("GetLowMemPressureTopology error name(%s) start(%d) end(%d) mode(%d) cnt(%d): %s",
+			param.Name, param.StartID, param.EndID, param.Mode, param.Count, err.Error())
 		return plan, err
 	}
 
 	err = c.FillAddLearnerPlan(plan, param.Name)
 	if err != nil {
-		log.LogErrorf("FillAddLearnerPlan error: %s", err.Error())
+		log.LogErrorf("FillAddLearnerPlan error name(%s) start(%d) end(%d) mode(%d) cnt(%d): %s",
+			param.Name, param.StartID, param.EndID, param.Mode, param.Count, err.Error())
 		return plan, err
+	}
+
+	if len(plan.Plan) == 0 {
+		log.LogWarnf("no replicas need to be migrated in volume(%s)", param.Name)
+		return nil, fmt.Errorf("no replicas need to be migrated in volume(%s)", param.Name)
 	}
 
 	err = c.FindAddLearnerDestination(plan)
 	if err != nil {
-		log.LogErrorf("FindAddLearnerDestination error: %s", err.Error())
+		log.LogErrorf("FindAddLearnerDestination error name(%s) start(%d) end(%d) mode(%d) cnt(%d): %s",
+			param.Name, param.StartID, param.EndID, param.Mode, param.Count, err.Error())
 		return plan, err
 	}
 
@@ -2755,10 +2763,6 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(param MetaPartitionPlanUserP
 		plan.TotalReplicaNum += len(item.Plan)
 	}
 	plan.UndoReplicaNum = int32(plan.TotalReplicaNum)
-
-	if plan.Total <= 0 {
-		return nil, fmt.Errorf("no replicas need to be migrated in volume(%s)", param.Name)
-	}
 
 	// Save plan into raft storage
 	err = c.syncAddBalanceTask(plan)
@@ -2785,6 +2789,10 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 		mps = vol.cloneMetaPartitionMap()
 	} else {
 		mps = c.getAllMetaPartitions()
+	}
+
+	if plan.Plan == nil {
+		plan.Plan = make([]*proto.MetaBalancePlan, 0, len(mps))
 	}
 
 	for _, mp := range mps {
@@ -2814,13 +2822,13 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 		for _, mr := range mp.Replicas {
 			mn, err := c.metaNode(mr.Addr)
 			if err != nil {
-				log.LogErrorf("Failed to get meta node(%s), err: %s", mr.Addr, err.Error())
+				log.LogErrorf("Failed to get meta node(%s) for mp(%d), err: %s", mr.Addr, mp.PartitionID, err.Error())
 				continue
 			}
 
 			storeMode, err := c.getMetaPartitionStoreMode(mp, mr.Addr)
 			if err != nil {
-				log.LogErrorf("Failed to get meta replica store mode, err: %s", err.Error())
+				log.LogErrorf("Failed to get meta replica store mode mp(%d) addr(%s), err: %s", mp.PartitionID, mr.Addr, err.Error())
 				continue
 			}
 
@@ -2834,6 +2842,11 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 				StoreMode:    storeMode,
 			}
 			mpPlan.Original = append(mpPlan.Original, mrRec)
+		}
+
+		// skip empty plan if all replicas were filtered out due to errors
+		if len(mpPlan.Original) == 0 {
+			continue
 		}
 
 		plan.Plan = append(plan.Plan, mpPlan)
@@ -2882,13 +2895,14 @@ func AddOneLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		return nil
 	}
 
+	requestNum := migratePlan.ModeCnt - count
 	getParam := &GetMigrateAddrParam{
 		Topo:        migratePlan.Low,
 		RocksdbTopo: migratePlan.RocksdbLow,
 		ZoneName:    "",
 		NodeSetID:   0,
-		Excludes:    make([]string, 0),
-		RequestNum:  migratePlan.ModeCnt - count,
+		Excludes:    make([]string, 0, len(mpPlan.Original)+len(mpPlan.Plan)),
+		RequestNum:  requestNum,
 		LeastSize:   mpPlan.Original[0].SrcMemSize,
 		IsRocksdb:   migratePlan.Mode == proto.StoreModeRocksDb,
 		RackLevel:   migratePlan.RackLevel,
@@ -2898,13 +2912,12 @@ func AddOneLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 	// try to find resource from the mp member which has the same store mode.
 	err := TryNodeSetIdFromOtherNodes(migratePlan, mpPlan, getParam)
 	if err == nil {
-		log.LogWarnf("TryNodeSetIdFromOtherNodes success")
 		return nil
 	}
 
 	zone, nodeSetID, err := GetZoneAndNodeSetInOtherMode(mpPlan, migratePlan.Mode)
 	if err != nil {
-		log.LogErrorf("AddOneLearnerToDestination failed: %s", err.Error())
+		log.LogErrorf("AddOneLearnerToDestination mp(%d) failed to get zone/nodeset: %s", mpPlan.ID, err.Error())
 		return err
 	}
 	getParam.ZoneName = zone
@@ -2923,7 +2936,7 @@ func AddOneLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		find, dests = GetMigrateAddrExcludeZone(getParam)
 	}
 	if !find {
-		log.LogWarnf("Display the failed details:")
+		log.LogWarnf("Display the failed details: mp(%d) need(%d)", mpPlan.ID, requestNum)
 		DisplayPlanFailedDetails(getParam, mpPlan, migratePlan, true)
 		return NotEnoughResource
 	}
@@ -3104,6 +3117,9 @@ func (c *Cluster) CreateCheckSumPlan(param MetaPartitionPlanUserParams) (*proto.
 			continue
 		}
 		count += 1
+	}
+	if count == 0 {
+		return nil, fmt.Errorf("no meta partitions in range start(%d) end(%d) volume(%s)", param.StartID, param.EndID, param.Name)
 	}
 
 	plan := &proto.MetaPartitionsChecksumPlan{
@@ -3463,15 +3479,12 @@ func (c *Cluster) CopyMd5SumToChecksumInfo(mp *MetaPartition, checksumInfo *prot
 	}
 
 	firstApplyID := checksumInfo.Replicas[0].ApplyID
+	firstMd5Sum := checksumInfo.Replicas[0].Md5Sum
 	for _, replica := range checksumInfo.Replicas {
 		if replica.ApplyID != firstApplyID {
 			return fmt.Errorf("mp[%v] applyID not same, %v[%v], %v[%v]",
 				mp.PartitionID, checksumInfo.Replicas[0].Addr, firstApplyID, replica.Addr, replica.ApplyID)
 		}
-	}
-
-	firstMd5Sum := checksumInfo.Replicas[0].Md5Sum
-	for _, replica := range checksumInfo.Replicas {
 		if replica.Md5Sum != firstMd5Sum {
 			return fmt.Errorf("mp[%v] Md5Sum not same, %v[%v], %v[%v]",
 				mp.PartitionID, checksumInfo.Replicas[0].Addr, firstMd5Sum, replica.Addr, replica.Md5Sum)

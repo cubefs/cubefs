@@ -41,6 +41,7 @@ func (m *MetaNode) startScheduleToUpdateSpaceInfo() {
 		defer func() {
 			updateSpaceInfoTicker.Stop()
 			checkStatusTicker.Stop()
+			checkRocksdbStatusTicker.Stop()
 		}()
 		for {
 			select {

@@ -42,12 +42,21 @@ const (
 	MetricsCollectionTimeout = 30 * time.Second
 )
 
-// Pre-compiled regex for better performance
+// MetaNodeMetrics holds all metrics for the meta node
 var (
-	statsP99Regex = regexp.MustCompile(`P99 : (\d+\.\d+)`)
+	rocksdbStatsList = []string{
+		"rocksdb.db.get.micros",
+		"rocksdb.db.write.micros",
+		"rocksdb.db.seek.micros",
+		"rocksdb.db.write.stall",
+		"rocksdb.db.flush.micros",
+		"rocksdb.sst.read.micros",
+		"rocksdb.bytes.per.read",
+		"rocksdb.bytes.per.write",
+	}
+	statsP99Regexp = regexp.MustCompile(`P99 : (\d+\.\d+)`)
 )
 
-// MetaNodeMetrics holds all metrics for the meta node
 type MetaNodeMetrics struct {
 	MetricConnectionCount          *exporter.Gauge
 	MetricMetaFailedPartition      *exporter.Gauge
@@ -221,17 +230,6 @@ func (m *MetaNode) updateFileStatsMetrics() {
 func (m *MetaNode) updateRocksdbStatsMetrics() {
 	m.metrics.RocksdbStats.Reset()
 
-	rocksdbStatsList := []string{
-		"rocksdb.db.get.micros",
-		"rocksdb.db.write.micros",
-		"rocksdb.db.seek.micros",
-		"rocksdb.db.write.stall",
-		"rocksdb.db.flush.micros",
-		"rocksdb.sst.read.micros",
-		"rocksdb.bytes.per.read",
-		"rocksdb.bytes.per.write",
-	}
-
 	manager, ok := m.metadataManager.(*metadataManager)
 	if !ok {
 		return
@@ -261,7 +259,7 @@ func getStatsP99(stats string, statsList []string) map[string]float64 {
 	for _, item := range statsList {
 		for _, line := range lines {
 			if strings.HasPrefix(line, item) {
-				statsP99 := statsP99Regex.FindStringSubmatch(line)
+				statsP99 := statsP99Regexp.FindStringSubmatch(line)
 				if statsP99 == nil || len(statsP99) < 2 {
 					break
 				}

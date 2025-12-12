@@ -656,10 +656,10 @@ func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 
 func (mp *metaPartition) updateSize() {
 	lastApplyId := uint64(0)
-	timer := time.NewTicker(time.Minute * 2)
-	defer timer.Stop()
 
 	go func() {
+		timer := time.NewTicker(time.Minute * 2)
+		defer timer.Stop()
 		for {
 			select {
 			case <-timer.C:
@@ -1521,12 +1521,6 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	}
 	resp.RaftInfo.Hosts = mp.config.Peers
 
-	if err != nil {
-		err = errors.Trace(err,
-			"[ResponseLoadMetaPartition] check snapshot")
-		return
-	}
-
 	data, err := json.Marshal(resp)
 	if err != nil {
 		err = errors.Trace(err, "[ResponseLoadMetaPartition] marshal")
@@ -1695,8 +1689,8 @@ func (mp *metaPartition) delPartitionDentriesVersion(verSeq uint64, wg *sync.Wai
 		p := &Packet{}
 		req := &proto.DeleteDentryRequest{
 			VolName:     mp.config.VolName,
-			ParentID:    mp.config.PartitionId,
-			PartitionID: den.ParentId,
+			ParentID:    den.ParentId,
+			PartitionID: mp.config.PartitionId,
 			Name:        den.Name,
 			Verseq:      verSeq,
 		}
@@ -1709,7 +1703,8 @@ func (mp *metaPartition) delPartitionDentriesVersion(verSeq uint64, wg *sync.Wai
 		}
 
 		// every 1000 inode sleep 1s
-		if count > 1000 || needSleep {
+		count++
+		if count >= 1000 || needSleep {
 			count %= 1000
 			needSleep = false
 			time.Sleep(time.Second)
@@ -1760,7 +1755,8 @@ func (mp *metaPartition) delPartitionExtendsVersion(verSeq uint64, wg *sync.Wait
 		}
 
 		// every 1000 inode sleep 1s
-		if count > 1000 || needSleep {
+		count++
+		if count >= 1000 || needSleep {
 			count %= 1000
 			needSleep = false
 			time.Sleep(time.Second)
@@ -1820,7 +1816,8 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 		}
 
 		// every 1000 inode sleep 1s
-		if count > 1000 || needSleep {
+		count++
+		if count >= 1000 || needSleep {
 			count %= 1000
 			needSleep = false
 			time.Sleep(time.Second)

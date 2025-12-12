@@ -2657,31 +2657,31 @@ func (m *metadataManager) opCalcMetaPartitionMd5Sum(conn net.Conn, p *Packet,
 		Request: req,
 	}
 
-	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode := json.NewDecoder(bytes.NewReader(p.Data))
 	decode.UseNumber()
-	if err = decode.Decode(adminTask); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+	replyErr := func(e error) {
+		p.PacketErrorWithBody(proto.OpErr, []byte(e.Error()))
 		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+	}
+	if err = decode.Decode(adminTask); err != nil {
+		log.LogErrorf("opCalcMetaPartitionMd5Sum failed to decode admin task, err(%v)", err)
+		replyErr(err)
 		return
 	}
 
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		log.LogErrorf("opCalcMetaPartitionMd5Sum failed to get partition, err(%v)", err)
+		replyErr(err)
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 
-	err = mp.CalcMetaPartitionMd5Sum()
-	if err != nil {
+	if err = mp.CalcMetaPartitionMd5Sum(); err != nil {
 		log.LogErrorf("CalcMetaPartitionMd5Sum failed, err: %s", err.Error())
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClientWithVer(conn, p)
+		replyErr(err)
 		return
 	}
 

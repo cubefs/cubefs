@@ -141,6 +141,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		reply := []byte(err.Error())
 		status = proto.OpArgMismatchErr
 		p.PacketErrorWithBody(status, reply)
+		return
 	}
 
 	start := time.Now()

@@ -89,7 +89,14 @@ func (mp *metaPartition) fsmTxCommitRM(dbHandle interface{}, txInfo *proto.Trans
 			continue
 		}
 
-		mp.fsmTxInodeCommit(dbHandle, ifo.TxID, ifo.Ino)
+		if st, er := mp.fsmTxInodeCommit(dbHandle, ifo.TxID, ifo.Ino); er != nil {
+			status = proto.OpErr
+			err = er
+			return
+		} else if st != proto.OpOk {
+			status = st
+			return
+		}
 	}
 
 	for _, ifo := range txInfo.TxDentryInfos {
@@ -97,7 +104,14 @@ func (mp *metaPartition) fsmTxCommitRM(dbHandle interface{}, txInfo *proto.Trans
 			continue
 		}
 
-		mp.fsmTxDentryCommit(dbHandle, ifo.TxID, ifo.ParentId, ifo.Name)
+		if st, er := mp.fsmTxDentryCommit(dbHandle, ifo.TxID, ifo.ParentId, ifo.Name); er != nil {
+			status = proto.OpErr
+			err = er
+			return
+		} else if st != proto.OpOk {
+			status = st
+			return
+		}
 	}
 
 	ifo.SetFinish()
@@ -133,7 +147,14 @@ func (mp *metaPartition) fsmTxRollbackRM(dbHandle interface{}, txInfo *proto.Tra
 			TxID:  ifo.TxID,
 			Inode: ifo.Ino,
 		}
-		mp.fsmTxInodeRollback(dbHandle, req)
+		if st, er := mp.fsmTxInodeRollback(dbHandle, req); er != nil {
+			status = proto.OpErr
+			err = er
+			return
+		} else if st != proto.OpOk {
+			status = st
+			return
+		}
 	}
 
 	// delete from rb tree
@@ -147,7 +168,14 @@ func (mp *metaPartition) fsmTxRollbackRM(dbHandle interface{}, txInfo *proto.Tra
 			Pid:  ifo.ParentId,
 			Name: ifo.Name,
 		}
-		mp.fsmTxDentryRollback(dbHandle, req)
+		if st, er := mp.fsmTxDentryRollback(dbHandle, req); er != nil {
+			status = proto.OpErr
+			err = er
+			return
+		} else if st != proto.OpOk {
+			status = st
+			return
+		}
 	}
 
 	ifo.SetFinish()
