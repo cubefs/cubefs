@@ -662,7 +662,7 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 
 	vols := mm.cluster.copyVols()
 	for _, vol := range vols {
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Before(time.Now())) {
+		if vol.IsDeleted() {
 			continue
 		}
 

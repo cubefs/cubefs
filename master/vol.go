@@ -447,6 +447,10 @@ func (mpsLock *mpsLockManager) CheckExceptionLock(interval time.Duration, expire
 	}
 }
 
+func (vol *Vol) IsDeleted() bool {
+	return (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Before(time.Now()))
+}
+
 func (vol *Vol) CheckStrategy(c *Cluster) {
 	// make sure resume all the processing ver deleting tasks before checking
 	if !atomic.CompareAndSwapInt32(&vol.VersionMgr.checkStrategy, 0, 1) {
