@@ -156,6 +156,7 @@ func TestBlobNodeDiskTbl(t *testing.T) {
 		diskInfo, err = nodeDiskTbl.GetDisk(dr1.DiskID)
 		require.NoError(t, err)
 		require.Equal(t, proto.DiskStatusRepairing, diskInfo.Status)
+		require.Less(t, dr1.LastUpdateAt, diskInfo.LastUpdateAt)
 	}
 
 	// list disk
@@ -259,6 +260,10 @@ func TestBlobNodeDiskDropTbl(t *testing.T) {
 
 		err = nodeDiskTbl.DroppedDisk(diskID1)
 		require.NoError(t, err)
+
+		diskInfo, err := nodeDiskTbl.GetDisk(dr1.DiskID)
+		require.NoError(t, err)
+		require.Less(t, dr1.LastUpdateAt, diskInfo.LastUpdateAt)
 
 		exist, err = nodeDiskTbl.IsDroppingDisk(diskID1)
 		require.NoError(t, err)

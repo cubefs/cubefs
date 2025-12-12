@@ -295,6 +295,7 @@ func (d *nodeDiskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskS
 	batch.PutCF(d.indexes[diskStatusIndex].tbl.GetCf(), []byte(newIndexKey), key)
 
 	diskInfo.Status = status
+	diskInfo.LastUpdateAt = time.Now()
 	value, err = d.rd.marshalDiskRecord(info)
 	if err != nil {
 		return errors.Info(err, "encode disk failed").Detail(err)
@@ -432,6 +433,7 @@ func (d *nodeDiskTable) DroppedDisk(diskID proto.DiskID) error {
 	batch.PutCF(d.indexes[diskStatusIndex].tbl.GetCf(), []byte(newIndexKey), key)
 
 	diskInfo.Status = status
+	diskInfo.LastUpdateAt = time.Now()
 	value, err = d.rd.marshalDiskRecord(info)
 	if err != nil {
 		return errors.Info(err, "encode disk failed").Detail(err)
