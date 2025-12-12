@@ -532,7 +532,7 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 	markDeleteVolNames := make(VolNameSet)
 	vols := c.copyVols()
 	for _, vol := range vols {
-		if vol.isUnavailable() {
+		if vol.IsDeleted() {
 			markDeleteVolNames[vol.Name] = struct{}{}
 			continue
 		}
@@ -599,7 +599,7 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 	markDeleteVolNames := make(VolNameSet)
 	vols := c.copyVols()
 	for _, vol := range vols {
-		if vol.isUnavailable() {
+		if vol.IsDeleted() {
 			markDeleteVolNames[vol.Name] = struct{}{}
 			continue
 		}
