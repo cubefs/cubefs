@@ -173,9 +173,7 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 	if !d.super.metaCacheAcceleration {
 		d.dctx.Clear()
 		d.dcache.Clear()
-		if d.dcacheNoEnt != nil {
-			d.dcacheNoEnt.Clear()
-		}
+		d.dcacheNoEnt.Clear()
 		ino := d.info.Inode
 		d.super.ic.Delete(ino)
 
@@ -202,10 +200,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	}()
 
 	// Delete from negative cache if file is being created
-	if d.dcacheNoEnt != nil {
-		d.dcacheNoEnt.Delete(req.Name)
-	}
-
+	d.dcacheNoEnt.Delete(req.Name)
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil,
 		fullPath, false, false)
 	if err != nil {
@@ -251,9 +246,7 @@ func (d *Dir) Forget() {
 	d.dctx.Clear()
 	d.super.ic.Delete(ino)
 	d.dcache.Clear()
-	if d.dcacheNoEnt != nil {
-		d.dcacheNoEnt.Clear()
-	}
+	d.dcacheNoEnt.Clear()
 	d.super.fslock.Lock()
 	delete(d.super.nodeCache, ino)
 	d.super.fslock.Unlock()
@@ -277,10 +270,9 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	log.LogDebugf("TRACE Mkdir:enter")
+
 	// Delete from negative cache if directory is being created
-	if d.dcacheNoEnt != nil {
-		d.dcacheNoEnt.Delete(req.Name)
-	}
+	d.dcacheNoEnt.Delete(req.Name)
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid,
 		req.Gid, nil, fullPath, false, false)
 	if err != nil {
@@ -377,7 +369,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	}
 	if dcachev2 {
 		// First check negative cache (file doesn't exist)
-		if d.dcacheNoEnt != nil && d.dcacheNoEnt.Get(req.Name) {
+		if d.dcacheNoEnt.Get(req.Name) {
 			if log.EnableDebug() {
 				log.LogDebugf("Lookup %v from parent %v hit negative cache (dcachev2), return ENOENT", path.Join(d.getCwd(), req.Name), d.info.Inode)
 			}
@@ -419,7 +411,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 	} else {
 		// First check negative cache (file doesn't exist)
-		if d.dcacheNoEnt != nil && d.dcacheNoEnt.Get(req.Name) {
+		if d.dcacheNoEnt.Get(req.Name) {
 			if log.EnableDebug() {
 				log.LogDebugf("Lookup %v from parent %v hit negative cache, return ENOENT", path.Join(d.getCwd(), req.Name), d.info.Inode)
 			}
@@ -915,10 +907,9 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	fullPath := path.Join(d.getCwd(), req.Name)
+
 	// Delete from negative cache if file is being created
-	if d.dcacheNoEnt != nil {
-		d.dcacheNoEnt.Delete(req.Name)
-	}
+	d.dcacheNoEnt.Delete(req.Name)
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid,
 		nil, fullPath, false, false)
 	if err != nil {
@@ -952,10 +943,9 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	fullPath := path.Join(d.getCwd(), req.NewName)
+
 	// Delete from negative cache if symlink is being created
-	if d.dcacheNoEnt != nil {
-		d.dcacheNoEnt.Delete(req.NewName)
-	}
+	d.dcacheNoEnt.Delete(req.NewName)
 	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid,
 		req.Gid, []byte(req.Target), fullPath, false, false)
 	if err != nil {
@@ -1042,6 +1032,16 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 		stat.EndStat("Getxattr", err, bgTime, 1)
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
+
+	// Optimize: directly return empty value for security.capability to avoid frequent server queries
+	// This avoids backend service access for system xattr that is frequently queried during write operations
+	if name == "security.capability" {
+		resp.Xattr = []byte{}
+		if log.EnableDebug() {
+			log.LogDebugf("TRACE GetXattr: ino(%v) name(%v) (optimized, returning empty)", ino, name)
+		}
+		return nil
+	}
 
 	if name == meta.SummaryKey {
 		var summaryInfo meta.SummaryInfo
