@@ -46,6 +46,7 @@ type DiskRepairMgr struct {
 	repairingDisks *migratingDisks
 
 	clusterMgrCli client.ClusterMgrAPI
+	diskGetter    DiskGetter
 
 	taskSwitch taskswitch.ISwitcher
 
@@ -59,7 +60,9 @@ type DiskRepairMgr struct {
 }
 
 // NewDiskRepairMgr returns repair manager
-func NewDiskRepairMgr(clusterMgrCli client.ClusterMgrAPI, taskSwitch taskswitch.ISwitcher, taskLogger recordlog.Encoder, cfg *MigrateConfig) *DiskRepairMgr {
+func NewDiskRepairMgr(clusterMgrCli client.ClusterMgrAPI, taskSwitch taskswitch.ISwitcher, taskLogger recordlog.Encoder,
+	cfg *MigrateConfig, diskGetter DiskGetter,
+) *DiskRepairMgr {
 	mgr := &DiskRepairMgr{
 		Closer:         closer.New(),
 		prepareQueue:   base.NewTaskQueue(time.Duration(cfg.PrepareQueueRetryDelayS) * time.Second),
@@ -73,6 +76,7 @@ func NewDiskRepairMgr(clusterMgrCli client.ClusterMgrAPI, taskSwitch taskswitch.
 		taskSwitch:    taskSwitch,
 		cfg:           cfg,
 		taskLogger:    taskLogger,
+		diskGetter:    diskGetter,
 
 		hasRevised: false,
 	}
@@ -761,12 +765,19 @@ func (mgr *DiskRepairMgr) checkAndClearJunkTasks() {
 func (mgr *DiskRepairMgr) AcquireTask(ctx context.Context, idc string) (task *proto.Task, err error) {
 	_, repairTask, _ := mgr.workQueue.Acquire(idc)
 	if repairTask != nil {
-		t := *repairTask.(*proto.MigrateTask)
+		t := repairTask.(*proto.MigrateTask).Copy()
+		if mgr.checkDiskInfo(ctx, t) {
+			err = mgr.workQueue.Update(idc, t.TaskID, t)
+			if err != nil {
+				return nil, err
+			}
+		}
 		data, err := t.Marshal()
 		if err != nil {
 			return task, err
 		}
 		task = &proto.Task{}
+		task.TaskID = t.TaskID
 		task.Data = data
 		task.ModuleType = proto.TypeBlobNode
 		return task, nil
@@ -980,4 +991,19 @@ func (mgr *DiskRepairMgr) DiskProgress(ctx context.Context, diskID proto.DiskID)
 	stats.TotalTasksCnt = int(migratingDisk.UsedChunkCnt)
 	stats.MigratedTasksCnt = stats.TotalTasksCnt - len(remainTasks)
 	return
+}
+
+func (mgr *DiskRepairMgr) checkDiskInfo(ctx context.Context, task *proto.MigrateTask) bool {
+	if !checkTaskUpdated(ctx, task, mgr.diskGetter) {
+		return false
+	}
+	base.InsistOn(ctx, "update task tbl to disk info changed", func() error {
+		task, err := task.ToTask()
+		if err != nil {
+			return err
+		}
+		return mgr.clusterMgrCli.UpdateMigrateTask(ctx, task)
+	})
+
+	return true
 }

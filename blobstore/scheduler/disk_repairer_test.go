@@ -57,7 +57,8 @@ func newDiskRepairer(t *testing.T) *DiskRepairMgr {
 			DiskConcurrency:      1,
 		},
 	}
-	return NewDiskRepairMgr(clusterMgr, taskSwitch, taskLogger, conf)
+	diskCache := NewMockDiskGetter(ctr)
+	return NewDiskRepairMgr(clusterMgr, taskSwitch, taskLogger, conf, diskCache)
 }
 
 func generateTaskArgs(task *proto.MigrateTask, reason string) *api.TaskArgs {
@@ -711,10 +712,17 @@ func TestDiskRepairerAcquireTask(t *testing.T) {
 	}
 	{
 		mgr := newDiskRepairer(t)
-		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, "z0", 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
+		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, idc, 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
-		_, err := mgr.AcquireTask(ctx, idc)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{
+			DiskID: 12121,
+			Host:   "http://127.2.1.2:8889",
+		}, true)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
+
+		task, err := mgr.AcquireTask(ctx, idc)
 		require.NoError(t, err)
+		require.Equal(t, t1.TaskID, task.TaskID)
 	}
 }
 

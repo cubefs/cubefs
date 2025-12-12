@@ -178,8 +178,10 @@ func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.Tas
 	conf.MigrateConfig.lockFailHandleFunc = func(ctx context.Context, task *proto.MigrateTask) error {
 		return ErrHandleLockVolFail
 	}
-	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch,
-		taskLogger, &conf.MigrateConfig, proto.TaskTypeDiskDrop)
+	baseMgr := NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskLogger,
+		&conf.MigrateConfig, proto.TaskTypeDiskDrop)
+	baseMgr.diskGetter = topologyMgr
+	mgr.IMigrator = baseMgr
 
 	return mgr
 }

@@ -55,6 +55,10 @@ type IClusterTopology interface {
 	closer.Closer
 }
 
+type DiskGetter interface {
+	GetDisk(diskID proto.DiskID) (disk *client.DiskInfoSimple, ok bool)
+}
+
 // IVolumeCache define the interface used for volume cache manager
 type IVolumeCache interface {
 	UpdateVolume(vid proto.Vid) (*client.VolumeInfoSimple, error)

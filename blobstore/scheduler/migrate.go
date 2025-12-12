@@ -376,6 +376,7 @@ type MigrateMgr struct {
 
 	clusterMgrCli client.ClusterMgrAPI
 	volumeUpdater client.TaskAPI
+	diskGetter    DiskGetter
 
 	taskSwitch taskswitch.ISwitcher
 
@@ -945,7 +946,13 @@ func (mgr *MigrateMgr) AcquireTask(ctx context.Context, idc string) (task *proto
 
 	_, migTask, _ := mgr.workQueue.Acquire(idc)
 	if migTask != nil {
-		t := *migTask.(*proto.MigrateTask)
+		t := migTask.(*proto.MigrateTask).Copy()
+		if mgr.checkDiskInfo(ctx, t) {
+			err = mgr.workQueue.Update(idc, t.TaskID, t)
+			if err != nil {
+				return nil, err
+			}
+		}
 		data, err := t.Marshal()
 		if err != nil {
 			return task, err
@@ -1203,4 +1210,51 @@ func (mgr *MigrateMgr) ReportTask(ctx context.Context, args *api.TaskArgs) (err 
 
 	mgr.ReportWorkerTaskStats(arg)
 	return nil
+}
+
+func (mgr *MigrateMgr) checkDiskInfo(ctx context.Context, task *proto.MigrateTask) bool {
+	if !checkTaskUpdated(ctx, task, mgr.diskGetter) {
+		return false
+	}
+
+	base.InsistOn(ctx, "update task tbl to disk info changed", func() error {
+		task, err := task.ToTask()
+		if err != nil {
+			return err
+		}
+		return mgr.clusterMgrCli.UpdateMigrateTask(ctx, task)
+	})
+
+	return true
+}
+
+func checkTaskUpdated(ctx context.Context, task *proto.MigrateTask, diskGetter DiskGetter) bool {
+	span := trace.SpanFromContextSafe(ctx)
+	updated := false
+	diskID := task.Destination.DiskID
+	if diskID != proto.InvalidDiskID {
+		disk, ok := diskGetter.GetDisk(diskID)
+		if ok && task.Destination.Host != disk.Host {
+			span.Debugf("disk info updated for destination of task[%s], old[%s], new[%s]",
+				task.TaskID, task.Destination.Host, disk.Host)
+			task.Destination.Host = disk.Host
+			updated = true
+		}
+	}
+
+	for idx := range task.Sources {
+		diskID = task.Sources[idx].DiskID
+		host := task.Sources[idx].Host
+		if diskID == proto.InvalidDiskID {
+			continue
+		}
+		disk, ok := diskGetter.GetDisk(diskID)
+		if ok && host != disk.Host {
+			span.Debugf("disk info updated for destination of task[%s], old[%s], new[%s]",
+				task.TaskID, host, disk.Host)
+			task.Sources[idx].Host = disk.Host
+			updated = true
+		}
+	}
+	return updated
 }

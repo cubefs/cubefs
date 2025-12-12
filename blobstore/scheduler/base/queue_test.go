@@ -51,6 +51,10 @@ func TestQueue(t *testing.T) {
 	require.Equal(t, msgString, msg)
 	require.Equal(t, true, exist)
 
+	// test update
+	err = q.Update(msgID, msgString)
+	require.NoError(t, err)
+
 	// test Requeue
 	err = q.Requeue(msgID, 0)
 	require.NoError(t, err)

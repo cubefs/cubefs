@@ -184,7 +184,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 		return nil, err
 	}
 
-	diskRepairMgr := NewDiskRepairMgr(clusterMgrCli, diskRepairTaskSwitch, taskLogger, &conf.DiskRepair)
+	diskRepairMgr := NewDiskRepairMgr(clusterMgrCli, diskRepairTaskSwitch, taskLogger, &conf.DiskRepair, topologyMgr)
 
 	manualMigMgr := NewManualMigrateMgr(clusterMgrCli, taskCli, taskLogger, &conf.ManualMigrate)
 

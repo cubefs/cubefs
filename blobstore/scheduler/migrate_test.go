@@ -375,10 +375,18 @@ func TestAcquireMigrateTask(t *testing.T) {
 		require.True(t, errors.Is(err, proto.ErrTaskEmpty))
 	}
 	{
-		// one task in queue
 		mgr := newMigrateMgr(t)
-		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
+		ctr := gomock.NewController(t)
+		diskCache := NewMockDiskGetter(ctr)
+		mgr.diskGetter = diskCache
+		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, idc, 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{
+			DiskID: 12121,
+			Host:   "http://127.2.1.2:8889",
+		}, true)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
+
 		task, err := mgr.AcquireTask(ctx, idc)
 		require.NoError(t, err)
 		require.Equal(t, t1.TaskID, task.TaskID)

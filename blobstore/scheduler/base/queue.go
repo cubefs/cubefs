@@ -35,6 +35,7 @@ var (
 	ErrUnmatchedSuid     = errors.New("unmatched task suid")
 	errNoSuchIDCQueue    = errors.New("no such idc queue")
 	errExistingMessageID = errors.New("existing message id")
+	errTaskStateNotDoing = errors.New("task state not doing")
 )
 
 const (
@@ -96,6 +97,28 @@ func (q *Queue) Push(id string, msg interface{}) error {
 	return nil
 }
 
+// Update only update doing list
+func (q *Queue) Update(id string, msg interface{}) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	elem, ok := q.msgs[id]
+	if !ok {
+		return ErrNoSuchMessageID
+	}
+	m := elem.Value.(*msgEx)
+	if m.state != msgStateDoing {
+		return errTaskStateNotDoing
+	}
+	q.doing.Remove(elem)
+	m.msg = msg
+
+	elem = q.doing.PushBack(m)
+	q.msgs[id] = elem
+
+	return nil
+}
+
 // Pop  fetch a msg from queue。
 func (q *Queue) Pop() (string, interface{}, bool) {
 	q.mu.Lock()
@@ -121,7 +144,7 @@ func (q *Queue) Pop() (string, interface{}, bool) {
 	m.state = msgStateDoing
 	m.deadline = now.Add(q.msgTimeout)
 
-	elem = q.doing.PushFront(m)
+	elem = q.doing.PushBack(m)
 	q.msgs[m.id] = elem
 
 	return m.id, m.msg, true
@@ -325,6 +348,17 @@ func (q *WorkerTaskQueue) Acquire(idc string) (taskID string, wtask WorkerTask, 
 		return taskID, task.(WorkerTask), exist
 	}
 	return "", nil, false
+}
+
+func (q *WorkerTaskQueue) Update(idc, taskID string, task WorkerTask) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	idcQueue, ok := q.idcQueues[idc]
+	if !ok {
+		return errNoSuchIDCQueue
+	}
+	return idcQueue.Update(taskID, task)
 }
 
 // Cancel cancel task
