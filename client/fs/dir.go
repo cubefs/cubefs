@@ -541,6 +541,11 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		}
 	}
 
+	// Optimization: fill attributes in Lookup to avoid separate Attr call (refer to go-fuse)
+	if info != nil {
+		fillAttr(info, &resp.Attr)
+	}
+
 	resp.EntryValid = LookupValidDuration
 
 	log.LogDebugf("TRACE Lookup exit: parent(%v) req(%v) cost (%v)", d.info.Inode, req, time.Since(*bgTime).String())
