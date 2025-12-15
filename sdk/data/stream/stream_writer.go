@@ -387,9 +387,10 @@ begin:
 	for _, req := range requests {
 		// if offset < fileSize, client should wait for all the async flush requests
 		// to complete
-		if !s.waitForFlush && req.ExtentKey == nil && offset >= fileSize {
+		if !s.waitForFlush && req.ExtentKey == nil && !req.CreateNewEk {
 			continue
 		}
+
 		err = s.flush(true, uuid.New().String())
 		if err != nil {
 			return
