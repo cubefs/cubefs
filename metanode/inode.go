@@ -796,6 +796,11 @@ func (i *Inode) UnmarshalKey(k []byte) (err error) {
 
 // MarshalValue marshals the value to bytes.
 func (i *Inode) MarshalInodeValue(buff *buf.ByteBufExt) {
+	i.MarshalInodeValueWithSkip(buff, false)
+}
+
+// MarshalInodeValueWithSkip marshals inode value with option to skip time fields for compatibility
+func (i *Inode) MarshalInodeValueWithSkip(buff *buf.ByteBufExt, skipTimeFields bool) {
 	var err error
 
 	// reset reserved, V4EBSExtentsFlag maybe changed after migration .eg
@@ -830,16 +835,18 @@ func (i *Inode) MarshalInodeValue(buff *buf.ByteBufExt) {
 		panic(err)
 	}
 
-	if err = buff.PutUint64(uint64(i.CreateTime)); err != nil {
-		panic(err)
-	}
+	if !skipTimeFields {
+		if err = buff.PutUint64(uint64(i.CreateTime)); err != nil {
+			panic(err)
+		}
 
-	if err = buff.PutUint64(uint64(i.AccessTime)); err != nil {
-		panic(err)
-	}
+		if err = buff.PutUint64(uint64(i.AccessTime)); err != nil {
+			panic(err)
+		}
 
-	if err = buff.PutUint64(uint64(i.ModifyTime)); err != nil {
-		panic(err)
+		if err = buff.PutUint64(uint64(i.ModifyTime)); err != nil {
+			panic(err)
+		}
 	}
 
 	// write SymLink
@@ -948,8 +955,10 @@ func (i *Inode) MarshalInodeValue(buff *buf.ByteBufExt) {
 		panic(err)
 	}
 
-	if err = buff.PutUint64(i.LeaseExpireTime); err != nil {
-		panic(err)
+	if !skipTimeFields {
+		if err = buff.PutUint64(i.LeaseExpireTime); err != nil {
+			panic(err)
+		}
 	}
 
 	if reserved&V4MigrationExtentsFlag > 0 {
@@ -1021,9 +1030,14 @@ func (i *Inode) MarshalValue() (val []byte) {
 
 // MarshalValue marshals the value to bytes.
 func (i *Inode) MarshalValueV2(buff *buf.ByteBufExt) {
+	i.MarshalValueV2WithSkip(buff, false)
+}
+
+// MarshalValueV2WithSkip marshals inode value with option to skip time fields for compatibility
+func (i *Inode) MarshalValueV2WithSkip(buff *buf.ByteBufExt, skipTimeFields bool) {
 	var err error
 	i.RLock()
-	i.MarshalInodeValue(buff)
+	i.MarshalInodeValueWithSkip(buff, skipTimeFields)
 
 	if i.multiSnap != nil {
 		if i.getLayerLen() > 0 || i.getVer() > 0 {
@@ -1044,7 +1058,7 @@ func (i *Inode) MarshalValueV2(buff *buf.ByteBufExt) {
 		for idx, ino := range i.multiSnap.multiVersions {
 			// TODO:tangjingyu log for debug only
 			log.LogWarnf("##### [MarshalValue] handle multiVersions idx(%v) inode[%v] ", idx, i)
-			ino.MarshalInodeValue(buff)
+			ino.MarshalInodeValueWithSkip(buff, skipTimeFields)
 		}
 	}
 	i.RUnlock()

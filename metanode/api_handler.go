@@ -1929,7 +1929,7 @@ func (m *MetaNode) calcMpMd5Handler(w http.ResponseWriter, r *http.Request) {
 	buff := bytes.NewBuffer(make([]byte, 0, 1024))
 	err = snap.RangeReuseInode(func(inode *Inode) bool {
 		buff.Reset()
-		err = WriteInodeToBuffer(inode, buff)
+		err = writeInodeToBufferForMd5(inode, buff)
 		if err != nil {
 			log.LogErrorf("[calcMpMd5Handler] failed to write inode, err(%v)", err)
 			return false

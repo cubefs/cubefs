@@ -3469,7 +3469,7 @@ func (c *Cluster) CopyMd5SumToChecksumInfo(mp *MetaPartition, checksumInfo *prot
 		}
 		if replica := replicaByAddr[response.Addr]; replica != nil {
 			replica.Md5Sum = response.Md5Sum
-			replica.ApplyID = response.ApplyID
+			replica.ApplyID = response.Md5ApplyId
 			count++
 		}
 	}

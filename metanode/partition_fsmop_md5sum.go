@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -60,152 +61,26 @@ func (mp *metaPartition) fsmCalcMetaPartitionMd5Sum(msg *storeMsg) error {
 	return nil
 }
 
-func WriteInodeToBuffer(inode *Inode, buff *bytes.Buffer) (err error) {
-	err = binary.Write(buff, binary.BigEndian, inode.Inode)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.Size)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.Generation)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.Type)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.Uid)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.Gid)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.NLink)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.Flag)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.StorageClass)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.ClientID)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	err = binary.Write(buff, binary.BigEndian, inode.LinkTarget)
-	if err != nil {
-		log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-		return
-	}
-	if inode.multiSnap != nil {
-		err = binary.Write(buff, binary.BigEndian, inode.multiSnap.verSeq)
-		if err != nil {
-			log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-			return
-		}
-		for _, multiVersion := range inode.multiSnap.multiVersions {
-			err = WriteInodeToBuffer(multiVersion, buff)
-			if err != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-				return
-			}
-		}
-	}
-	if inode.HybridCloudExtents != nil && inode.HybridCloudExtents.sortedEks != nil {
-		if _, ok := inode.HybridCloudExtents.sortedEks.(*SortedExtents); ok {
-			replicaExtents := inode.HybridCloudExtents.sortedEks.(*SortedExtents)
-			tmpBuf1 := GetInodeBuf()
-			defer PutInodeBuf(tmpBuf1)
-			err = replicaExtents.MarshalBinary(tmpBuf1, false)
-			if err != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-				return
-			}
-			_, err = buff.Write(tmpBuf1.Bytes())
-			if err != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-				return
-			}
-		} else if _, ok := inode.HybridCloudExtents.sortedEks.(*SortedObjExtents); ok {
-			ObjExtents := inode.HybridCloudExtents.sortedEks.(*SortedObjExtents)
-			objExtData, err1 := ObjExtents.MarshalBinary()
-			if err1 != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err1)
-				return err1
-			}
-			_, err = buff.Write(objExtData)
-			if err != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-				return
-			}
-		}
-	}
-	if inode.HybridCloudExtentsMigration != nil && inode.HybridCloudExtentsMigration.sortedEks != nil {
-		err = binary.Write(buff, binary.BigEndian, inode.HybridCloudExtentsMigration.storageClass)
-		if err != nil {
-			log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-			return
-		}
-		if _, ok := inode.HybridCloudExtentsMigration.sortedEks.(*SortedExtents); ok {
-			replicaExtents := inode.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
-			tmpBuf1 := GetInodeBuf()
-			defer PutInodeBuf(tmpBuf1)
-			err = replicaExtents.MarshalBinary(tmpBuf1, false)
-			if err != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-				return
-			}
-			_, err = buff.Write(tmpBuf1.Bytes())
-			if err != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-				return
-			}
-		} else if _, ok := inode.HybridCloudExtentsMigration.sortedEks.(*SortedObjExtents); ok {
-			ObjExtents := inode.HybridCloudExtentsMigration.sortedEks.(*SortedObjExtents)
-			objExtData, err1 := ObjExtents.MarshalBinary()
-			if err1 != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err1)
-				return err1
-			}
-			_, err = buff.Write(objExtData)
-			if err != nil {
-				log.LogErrorf("[WriteInodeToBuffer] failed to write inode, err(%v)", err)
-				return
-			}
-		}
-	}
-
-	return nil
+// writeInodeToBufferForMd5 serializes inode for MD5 calculation
+// It reuses MarshalValueV2WithSkip to ensure consistency with inode marshal logic
+// while skipping time fields (CreateTime, AccessTime, ModifyTime, LeaseExpireTime) for compatibility
+func writeInodeToBufferForMd5(inode *Inode, buff *bytes.Buffer) (err error) {
+	// Use MarshalValueV2WithSkip with skipTimeFields=true to maintain compatibility
+	tmpBuf := buf.NewByteBufEx(256)
+	inode.MarshalValueV2WithSkip(tmpBuf, true)
+	valBytes := tmpBuf.Bytes()
+	_, err = buff.Write(valBytes)
+	return
 }
 
 func CalculateInodeMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (err error) {
 	err = msg.snap.RangeReuseInode(func(inode *Inode) bool {
 		buff.Reset()
-		err = WriteInodeToBuffer(inode, buff)
+		err = writeInodeToBufferForMd5(inode, buff)
 		if err != nil {
 			log.LogErrorf("[CalculateInodeMd5Sum] failed to write inode, err(%v)", err)
 			return false
 		}
-
 		_, err = buff.WriteTo(h)
 		if err != nil {
 			log.LogErrorf("[CalculateInodeMd5Sum] failed to write inode, err(%v)", err)
@@ -213,7 +88,6 @@ func CalculateInodeMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (err e
 		}
 		return true
 	})
-
 	return
 }
 
@@ -528,7 +402,7 @@ func CalculateTxRbInodeMd5Sum(msg *storeMsg, h hash.Hash, buff *bytes.Buffer) (e
 		rbInode := i.(*TxRollbackInode)
 		buff.Reset()
 		if rbInode.inode != nil {
-			err = WriteInodeToBuffer(rbInode.inode, buff)
+			err = writeInodeToBufferForMd5(rbInode.inode, buff)
 			if err != nil {
 				log.LogErrorf("[CalculateTxRbInodeMd5Sum] failed to write tx rb inode, err(%v)", err)
 				return false
