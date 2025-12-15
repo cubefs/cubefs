@@ -5,6 +5,7 @@ package clustermgr
 
 import (
 	fmt "fmt"
+	github_com_cubefs_cubefs_blobstore_common_codemode "github.com/cubefs/cubefs/blobstore/common/codemode"
 	github_com_cubefs_cubefs_blobstore_common_proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
@@ -121,10 +122,129 @@ func (m *VolumeUnitInfoBase) GetHost() string {
 	return ""
 }
 
+type VolumeInfoBasePB struct {
+	Vid                  github_com_cubefs_cubefs_blobstore_common_proto.Vid          `protobuf:"varint,1,opt,name=vid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Vid" json:"vid,omitempty"`
+	CodeMode             github_com_cubefs_cubefs_blobstore_common_codemode.CodeMode  `protobuf:"varint,2,opt,name=code_mode,json=codeMode,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode" json:"code_mode,omitempty"`
+	Status               github_com_cubefs_cubefs_blobstore_common_proto.VolumeStatus `protobuf:"varint,3,opt,name=status,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.VolumeStatus" json:"status,omitempty"`
+	HealthScore          int                                                          `protobuf:"varint,4,opt,name=health_score,json=healthScore,proto3,casttype=int" json:"health_score,omitempty"`
+	Total                uint64                                                       `protobuf:"varint,5,opt,name=total,proto3" json:"total,omitempty"`
+	Free                 uint64                                                       `protobuf:"varint,6,opt,name=free,proto3" json:"free,omitempty"`
+	Used                 uint64                                                       `protobuf:"varint,7,opt,name=used,proto3" json:"used,omitempty"`
+	CreateByNodeID       uint64                                                       `protobuf:"varint,8,opt,name=create_by_node_id,json=createByNodeId,proto3" json:"create_by_node_id,omitempty"`
+	Epoch                uint32                                                       `protobuf:"varint,9,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,10,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                                     `json:"-"`
+	XXX_unrecognized     []byte                                                       `json:"-"`
+	XXX_sizecache        int32                                                        `json:"-"`
+}
+
+func (m *VolumeInfoBasePB) Reset()      { *m = VolumeInfoBasePB{} }
+func (*VolumeInfoBasePB) ProtoMessage() {}
+func (*VolumeInfoBasePB) Descriptor() ([]byte, []int) {
+	return fileDescriptor_498b213ad3bcd5ad, []int{1}
+}
+func (m *VolumeInfoBasePB) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *VolumeInfoBasePB) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_VolumeInfoBasePB.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *VolumeInfoBasePB) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_VolumeInfoBasePB.Merge(m, src)
+}
+func (m *VolumeInfoBasePB) XXX_Size() int {
+	return m.Size()
+}
+func (m *VolumeInfoBasePB) XXX_DiscardUnknown() {
+	xxx_messageInfo_VolumeInfoBasePB.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_VolumeInfoBasePB proto.InternalMessageInfo
+
+func (m *VolumeInfoBasePB) GetVid() github_com_cubefs_cubefs_blobstore_common_proto.Vid {
+	if m != nil {
+		return m.Vid
+	}
+	return 0
+}
+
+func (m *VolumeInfoBasePB) GetCodeMode() github_com_cubefs_cubefs_blobstore_common_codemode.CodeMode {
+	if m != nil {
+		return m.CodeMode
+	}
+	return 0
+}
+
+func (m *VolumeInfoBasePB) GetStatus() github_com_cubefs_cubefs_blobstore_common_proto.VolumeStatus {
+	if m != nil {
+		return m.Status
+	}
+	return 0
+}
+
+func (m *VolumeInfoBasePB) GetHealthScore() int {
+	if m != nil {
+		return m.HealthScore
+	}
+	return 0
+}
+
+func (m *VolumeInfoBasePB) GetTotal() uint64 {
+	if m != nil {
+		return m.Total
+	}
+	return 0
+}
+
+func (m *VolumeInfoBasePB) GetFree() uint64 {
+	if m != nil {
+		return m.Free
+	}
+	return 0
+}
+
+func (m *VolumeInfoBasePB) GetUsed() uint64 {
+	if m != nil {
+		return m.Used
+	}
+	return 0
+}
+
+func (m *VolumeInfoBasePB) GetCreateByNodeID() uint64 {
+	if m != nil {
+		return m.CreateByNodeID
+	}
+	return 0
+}
+
+func (m *VolumeInfoBasePB) GetEpoch() uint32 {
+	if m != nil {
+		return m.Epoch
+	}
+	return 0
+}
+
+func (m *VolumeInfoBasePB) GetRouteVersion() github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion {
+	if m != nil {
+		return m.RouteVersion
+	}
+	return 0
+}
+
 type RouteItemAddVolume struct {
 	Vid                  github_com_cubefs_cubefs_blobstore_common_proto.Vid          `protobuf:"varint,1,opt,name=vid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Vid" json:"vid,omitempty"`
 	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,2,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
 	Units                []VolumeUnitInfoBase                                         `protobuf:"bytes,3,rep,name=units,proto3" json:"units"`
+	VolumeInfoBase       VolumeInfoBasePB                                             `protobuf:"bytes,4,opt,name=volume_info_base,json=volumeInfoBase,proto3" json:"volume_info_base"`
 	XXX_NoUnkeyedLiteral struct{}                                                     `json:"-"`
 	XXX_unrecognized     []byte                                                       `json:"-"`
 	XXX_sizecache        int32                                                        `json:"-"`
@@ -133,7 +253,7 @@ type RouteItemAddVolume struct {
 func (m *RouteItemAddVolume) Reset()      { *m = RouteItemAddVolume{} }
 func (*RouteItemAddVolume) ProtoMessage() {}
 func (*RouteItemAddVolume) Descriptor() ([]byte, []int) {
-	return fileDescriptor_498b213ad3bcd5ad, []int{1}
+	return fileDescriptor_498b213ad3bcd5ad, []int{2}
 }
 func (m *RouteItemAddVolume) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -183,10 +303,18 @@ func (m *RouteItemAddVolume) GetUnits() []VolumeUnitInfoBase {
 	return nil
 }
 
+func (m *RouteItemAddVolume) GetVolumeInfoBase() VolumeInfoBasePB {
+	if m != nil {
+		return m.VolumeInfoBase
+	}
+	return VolumeInfoBasePB{}
+}
+
 type RouteItemUpdateVolume struct {
 	Vid                  github_com_cubefs_cubefs_blobstore_common_proto.Vid          `protobuf:"varint,1,opt,name=vid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Vid" json:"vid,omitempty"`
 	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,2,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
 	Unit                 VolumeUnitInfoBase                                           `protobuf:"bytes,3,opt,name=unit,proto3" json:"unit"`
+	VolumeInfoBase       VolumeInfoBasePB                                             `protobuf:"bytes,4,opt,name=volume_info_base,json=volumeInfoBase,proto3" json:"volume_info_base"`
 	XXX_NoUnkeyedLiteral struct{}                                                     `json:"-"`
 	XXX_unrecognized     []byte                                                       `json:"-"`
 	XXX_sizecache        int32                                                        `json:"-"`
@@ -195,7 +323,7 @@ type RouteItemUpdateVolume struct {
 func (m *RouteItemUpdateVolume) Reset()      { *m = RouteItemUpdateVolume{} }
 func (*RouteItemUpdateVolume) ProtoMessage() {}
 func (*RouteItemUpdateVolume) Descriptor() ([]byte, []int) {
-	return fileDescriptor_498b213ad3bcd5ad, []int{2}
+	return fileDescriptor_498b213ad3bcd5ad, []int{3}
 }
 func (m *RouteItemUpdateVolume) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -245,6 +373,13 @@ func (m *RouteItemUpdateVolume) GetUnit() VolumeUnitInfoBase {
 	return VolumeUnitInfoBase{}
 }
 
+func (m *RouteItemUpdateVolume) GetVolumeInfoBase() VolumeInfoBasePB {
+	if m != nil {
+		return m.VolumeInfoBase
+	}
+	return VolumeInfoBasePB{}
+}
+
 type VolumeRouteItem struct {
 	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion        `protobuf:"varint,1,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
 	Type                 github_com_cubefs_cubefs_blobstore_common_proto.VolumeRouteItemType `protobuf:"varint,2,opt,name=type,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.VolumeRouteItemType" json:"type,omitempty"`
@@ -257,7 +392,7 @@ type VolumeRouteItem struct {
 func (m *VolumeRouteItem) Reset()      { *m = VolumeRouteItem{} }
 func (*VolumeRouteItem) ProtoMessage() {}
 func (*VolumeRouteItem) Descriptor() ([]byte, []int) {
-	return fileDescriptor_498b213ad3bcd5ad, []int{3}
+	return fileDescriptor_498b213ad3bcd5ad, []int{4}
 }
 func (m *VolumeRouteItem) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -317,7 +452,7 @@ type GetVolumeRoutesArgs struct {
 func (m *GetVolumeRoutesArgs) Reset()      { *m = GetVolumeRoutesArgs{} }
 func (*GetVolumeRoutesArgs) ProtoMessage() {}
 func (*GetVolumeRoutesArgs) Descriptor() ([]byte, []int) {
-	return fileDescriptor_498b213ad3bcd5ad, []int{4}
+	return fileDescriptor_498b213ad3bcd5ad, []int{5}
 }
 func (m *GetVolumeRoutesArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -364,7 +499,7 @@ type GetVolumeRoutesRet struct {
 func (m *GetVolumeRoutesRet) Reset()      { *m = GetVolumeRoutesRet{} }
 func (*GetVolumeRoutesRet) ProtoMessage() {}
 func (*GetVolumeRoutesRet) Descriptor() ([]byte, []int) {
-	return fileDescriptor_498b213ad3bcd5ad, []int{5}
+	return fileDescriptor_498b213ad3bcd5ad, []int{6}
 }
 func (m *GetVolumeRoutesRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -409,6 +544,7 @@ func (m *GetVolumeRoutesRet) GetItems() []VolumeRouteItem {
 
 func init() {
 	proto.RegisterType((*VolumeUnitInfoBase)(nil), "cubefs.blobstore.api.clustermgr.VolumeUnitInfoBase")
+	proto.RegisterType((*VolumeInfoBasePB)(nil), "cubefs.blobstore.api.clustermgr.VolumeInfoBasePB")
 	proto.RegisterType((*RouteItemAddVolume)(nil), "cubefs.blobstore.api.clustermgr.RouteItemAddVolume")
 	proto.RegisterType((*RouteItemUpdateVolume)(nil), "cubefs.blobstore.api.clustermgr.RouteItemUpdateVolume")
 	proto.RegisterType((*VolumeRouteItem)(nil), "cubefs.blobstore.api.clustermgr.VolumeRouteItem")
@@ -419,45 +555,58 @@ func init() {
 func init() { proto.RegisterFile("volume.proto", fileDescriptor_498b213ad3bcd5ad) }
 
 var fileDescriptor_498b213ad3bcd5ad = []byte{
-	// 601 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x94, 0xcf, 0x6e, 0xd3, 0x4e,
-	0x10, 0xc7, 0xbb, 0x89, 0x93, 0xfe, 0x7e, 0x4b, 0x03, 0xd2, 0x52, 0x24, 0xd3, 0x83, 0x1d, 0xe5,
-	0xe4, 0xd3, 0x1a, 0x11, 0xc4, 0x05, 0x84, 0x5a, 0xb7, 0x52, 0x15, 0x09, 0x04, 0x5a, 0xb5, 0x39,
-	0x80, 0x50, 0xe5, 0x3f, 0x1b, 0x77, 0xd5, 0xd8, 0x6b, 0x79, 0xd7, 0x91, 0x22, 0x71, 0xe0, 0x11,
-	0x78, 0x02, 0x78, 0x1a, 0xa4, 0x72, 0xeb, 0xb1, 0x27, 0x8b, 0xba, 0x2f, 0xc0, 0x39, 0x17, 0x90,
-	0x77, 0x9b, 0x50, 0xe8, 0x01, 0x22, 0x44, 0x25, 0x4e, 0x9e, 0x9d, 0xdd, 0xf9, 0xce, 0xec, 0xc7,
-	0x33, 0x0b, 0xd7, 0x26, 0x7c, 0x5c, 0x24, 0x14, 0x67, 0x39, 0x97, 0x1c, 0xd9, 0x61, 0x11, 0xd0,
-	0x91, 0xc0, 0xc1, 0x98, 0x07, 0x42, 0xf2, 0x9c, 0x62, 0x3f, 0x63, 0x38, 0x1c, 0x17, 0x42, 0xd2,
-	0x3c, 0x89, 0xf3, 0x8d, 0xf5, 0x98, 0xc7, 0x5c, 0x9d, 0x75, 0x6b, 0x4b, 0x87, 0x6d, 0xdc, 0x8d,
-	0x39, 0x8f, 0xc7, 0xd4, 0x55, 0xab, 0xa0, 0x18, 0xb9, 0x7e, 0x3a, 0xd5, 0x5b, 0xbd, 0x8f, 0x0d,
-	0x88, 0x86, 0x2a, 0xc5, 0x7e, 0xca, 0xe4, 0x20, 0x1d, 0x71, 0xcf, 0x17, 0x14, 0xed, 0x41, 0x63,
-	0x52, 0xb0, 0xc8, 0x04, 0x5d, 0xe0, 0x18, 0xde, 0x66, 0x55, 0xda, 0xc6, 0xb0, 0x60, 0xd1, 0xac,
-	0xb4, 0x1f, 0xc4, 0x4c, 0x1e, 0x16, 0x01, 0x0e, 0x79, 0xe2, 0xea, 0x6a, 0xe6, 0x9f, 0x45, 0x51,
-	0x6e, 0xc8, 0x93, 0x84, 0xa7, 0x3a, 0x1d, 0xae, 0xe3, 0x88, 0x52, 0x43, 0xaf, 0xe1, 0x6a, 0xc4,
-	0xc4, 0xd1, 0x01, 0x8b, 0xcc, 0x46, 0x17, 0x38, 0x1d, 0x6f, 0xa7, 0x2a, 0xed, 0xf6, 0x0e, 0x13,
-	0x47, 0x83, 0x9d, 0x59, 0x69, 0x3f, 0x5c, 0x56, 0x5a, 0x47, 0x92, 0x76, 0x2d, 0x3a, 0x88, 0xd0,
-	0x3a, 0x6c, 0x49, 0x2e, 0xfd, 0xb1, 0xd9, 0xac, 0xab, 0x26, 0x7a, 0x81, 0x10, 0x34, 0x46, 0x39,
-	0xa5, 0xa6, 0xa1, 0x9c, 0xca, 0xae, 0x7d, 0x85, 0xa0, 0x91, 0xd9, 0xd2, 0xbe, 0xda, 0x46, 0x0e,
-	0x5c, 0x0d, 0x79, 0x92, 0xf9, 0xa1, 0x34, 0xdb, 0x5d, 0xe0, 0xfc, 0xe7, 0xdd, 0xac, 0x4a, 0x1b,
-	0x6e, 0x6b, 0x17, 0x4b, 0x63, 0x32, 0xdf, 0xae, 0xa3, 0x0f, 0xb9, 0x90, 0xe6, 0x6a, 0x17, 0x38,
-	0xff, 0x13, 0x65, 0xf7, 0xde, 0x37, 0x20, 0x22, 0xbc, 0x90, 0x74, 0x20, 0x69, 0xb2, 0x15, 0x45,
-	0x9a, 0x29, 0x7a, 0x01, 0x9b, 0x93, 0x0b, 0x8c, 0x1d, 0xef, 0x49, 0x55, 0xda, 0xcd, 0xa1, 0xa2,
-	0xd8, 0x5f, 0x9a, 0x22, 0x8b, 0x48, 0x2d, 0x85, 0x28, 0xec, 0xe4, 0x75, 0x9e, 0x83, 0x09, 0xcd,
-	0x05, 0xe3, 0xa9, 0x22, 0x69, 0x78, 0x9b, 0xb3, 0xd2, 0x7e, 0xbc, 0xac, 0xa8, 0x2a, 0x78, 0xa8,
-	0x75, 0xc8, 0x5a, 0x7e, 0x69, 0x85, 0x9e, 0xc3, 0x56, 0x91, 0x32, 0x29, 0xcc, 0x66, 0xb7, 0xe9,
-	0xdc, 0xb8, 0xdf, 0xc7, 0xbf, 0xe8, 0x3c, 0x7c, 0xb5, 0x89, 0x3c, 0xe3, 0xb8, 0xb4, 0x57, 0x88,
-	0xd6, 0xe9, 0x7d, 0x68, 0xc0, 0x3b, 0x0b, 0x40, 0xfb, 0x59, 0xe4, 0x4b, 0xfa, 0xaf, 0x33, 0x7a,
-	0x06, 0x8d, 0xfa, 0x6e, 0xaa, 0xdd, 0xfe, 0x08, 0x91, 0x92, 0xe9, 0x7d, 0x05, 0xf0, 0x96, 0x3e,
-	0xb2, 0xe0, 0x74, 0xf5, 0x26, 0xe0, 0xaf, 0xdc, 0xe4, 0x15, 0x34, 0xe4, 0x34, 0xa3, 0x17, 0x53,
-	0xb9, 0x3b, 0x2b, 0xed, 0xed, 0xa5, 0xe1, 0xff, 0x58, 0xf9, 0xde, 0x34, 0xa3, 0x44, 0x89, 0x22,
-	0x07, 0x1a, 0x4c, 0xd2, 0xe4, 0x02, 0xd3, 0x3a, 0xd6, 0x8f, 0x11, 0x9e, 0x3f, 0x46, 0x78, 0x2b,
-	0x9d, 0x12, 0x75, 0xa2, 0xf7, 0x06, 0xde, 0xde, 0xa5, 0xf2, 0x92, 0x92, 0xd8, 0xca, 0x63, 0x71,
-	0x4d, 0x10, 0x7a, 0x9f, 0x00, 0x44, 0x3f, 0xa5, 0x27, 0x54, 0x5e, 0xd7, 0x2f, 0x78, 0x0a, 0x5b,
-	0x35, 0x03, 0x61, 0x36, 0xd4, 0xc0, 0xdd, 0xfb, 0xcd, 0x6e, 0x5a, 0x00, 0x9f, 0x4f, 0x9b, 0x12,
-	0xf1, 0xfa, 0xa7, 0x67, 0xd6, 0xca, 0x97, 0x33, 0x0b, 0xbc, 0xad, 0x2c, 0x70, 0x5c, 0x59, 0xe0,
-	0xa4, 0xb2, 0xc0, 0xe7, 0xca, 0x02, 0xef, 0xce, 0x2d, 0x70, 0x72, 0x6e, 0x81, 0xd3, 0x73, 0x0b,
-	0xbc, 0xec, 0x60, 0xf7, 0xd1, 0x77, 0xc5, 0xa0, 0xad, 0x8a, 0xec, 0x7f, 0x0b, 0x00, 0x00, 0xff,
-	0xff, 0xc0, 0x07, 0x0d, 0x53, 0x74, 0x06, 0x00, 0x00,
+	// 809 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x55, 0x4f, 0x6f, 0xdb, 0x36,
+	0x14, 0x2f, 0x63, 0xd9, 0x4e, 0x98, 0x38, 0xeb, 0xb8, 0x0c, 0xd0, 0x7a, 0x90, 0x02, 0x9f, 0x8c,
+	0x1d, 0xe4, 0xad, 0x1e, 0xb6, 0x43, 0xf7, 0xa7, 0x91, 0x0d, 0x14, 0x06, 0xd6, 0xad, 0x60, 0x5b,
+	0x63, 0xd8, 0x1f, 0x08, 0x92, 0x48, 0xcb, 0x44, 0x2d, 0xd1, 0x10, 0x29, 0x03, 0x06, 0x76, 0xd8,
+	0xf6, 0x09, 0xf6, 0x7d, 0x76, 0x1e, 0xd0, 0xdd, 0x7a, 0xec, 0x49, 0x58, 0x95, 0x2f, 0xb0, 0xb3,
+	0x2f, 0x1b, 0x48, 0xda, 0x8e, 0xb7, 0x14, 0x58, 0x92, 0x21, 0x01, 0x76, 0x12, 0xdf, 0x7b, 0x7c,
+	0x3f, 0x3e, 0xfe, 0x7e, 0x8f, 0x4f, 0xf0, 0x60, 0xce, 0xa7, 0x45, 0x4a, 0xbd, 0x59, 0xce, 0x25,
+	0x47, 0x6e, 0x5c, 0x44, 0x74, 0x2c, 0xbc, 0x68, 0xca, 0x23, 0x21, 0x79, 0x4e, 0xbd, 0x70, 0xc6,
+	0xbc, 0x78, 0x5a, 0x08, 0x49, 0xf3, 0x34, 0xc9, 0xef, 0x1c, 0x25, 0x3c, 0xe1, 0x7a, 0x6f, 0x57,
+	0xad, 0x4c, 0xda, 0x9d, 0x77, 0x12, 0xce, 0x93, 0x29, 0xed, 0x6a, 0x2b, 0x2a, 0xc6, 0xdd, 0x30,
+	0x5b, 0x98, 0x50, 0xfb, 0xd7, 0x1d, 0x88, 0x46, 0xfa, 0x88, 0xa7, 0x19, 0x93, 0xc3, 0x6c, 0xcc,
+	0xfd, 0x50, 0x50, 0xf4, 0x04, 0x5a, 0xf3, 0x82, 0x11, 0x1b, 0x1c, 0x83, 0x8e, 0xe5, 0xdf, 0xaf,
+	0x4a, 0xd7, 0x1a, 0x15, 0x8c, 0x2c, 0x4b, 0xf7, 0x83, 0x84, 0xc9, 0x49, 0x11, 0x79, 0x31, 0x4f,
+	0xbb, 0xa6, 0x9a, 0xf5, 0x67, 0x53, 0x54, 0x37, 0xe6, 0x69, 0xca, 0x33, 0x73, 0x9c, 0xa7, 0xf2,
+	0xb0, 0x46, 0x43, 0xdf, 0xc1, 0x26, 0x61, 0xe2, 0x59, 0xc0, 0x88, 0xbd, 0x73, 0x0c, 0x3a, 0x2d,
+	0x7f, 0x50, 0x95, 0x6e, 0x63, 0xc0, 0xc4, 0xb3, 0xe1, 0x60, 0x59, 0xba, 0x1f, 0x5e, 0x16, 0xda,
+	0x64, 0xe2, 0x86, 0x02, 0x1d, 0x12, 0x74, 0x04, 0xeb, 0x92, 0xcb, 0x70, 0x6a, 0xd7, 0x54, 0xd5,
+	0xd8, 0x18, 0x08, 0x41, 0x6b, 0x9c, 0x53, 0x6a, 0x5b, 0xda, 0xa9, 0xd7, 0xca, 0x57, 0x08, 0x4a,
+	0xec, 0xba, 0xf1, 0xa9, 0x35, 0xea, 0xc0, 0x66, 0xcc, 0xd3, 0x59, 0x18, 0x4b, 0xbb, 0x71, 0x0c,
+	0x3a, 0xbb, 0xfe, 0x61, 0x55, 0xba, 0xb0, 0x6f, 0x5c, 0x2c, 0x4b, 0xf0, 0x3a, 0xac, 0xb2, 0x27,
+	0x5c, 0x48, 0xbb, 0x79, 0x0c, 0x3a, 0x7b, 0x58, 0xaf, 0xdb, 0xbf, 0x58, 0xf0, 0xb6, 0xe1, 0x71,
+	0xcd, 0xe1, 0x23, 0x1f, 0x0d, 0x61, 0x6d, 0xbe, 0x22, 0xb1, 0xe5, 0x7f, 0xb4, 0x2c, 0xdd, 0xde,
+	0xa5, 0xc9, 0x63, 0x04, 0x2b, 0x0c, 0xf4, 0x2d, 0xdc, 0x8b, 0x39, 0xa1, 0x41, 0xca, 0x09, 0x5d,
+	0x91, 0xf7, 0xd9, 0xb2, 0x74, 0xef, 0x5d, 0x1c, 0x50, 0xa5, 0xab, 0x6c, 0xaf, 0xcf, 0x09, 0x7d,
+	0xc8, 0x09, 0xc5, 0xbb, 0xf1, 0x6a, 0x85, 0xbe, 0x82, 0x0d, 0x21, 0x43, 0x59, 0x08, 0x4d, 0x5d,
+	0xcb, 0xbf, 0xbf, 0x2c, 0xdd, 0x8f, 0x2f, 0x5d, 0xab, 0xbe, 0xfe, 0x63, 0x8d, 0x83, 0x57, 0x78,
+	0xe8, 0x5d, 0x78, 0x30, 0xa1, 0xe1, 0x54, 0x4e, 0x02, 0x11, 0xf3, 0xdc, 0xa8, 0x50, 0xf7, 0x9b,
+	0xcb, 0xd2, 0xad, 0xb1, 0x4c, 0xe2, 0x7d, 0x13, 0x7c, 0xac, 0x62, 0x67, 0xfa, 0xd5, 0x5f, 0xa7,
+	0x5f, 0xe3, 0x35, 0xfa, 0x35, 0xb7, 0xf4, 0xfb, 0x04, 0xbe, 0x19, 0xe7, 0x34, 0x94, 0x34, 0x88,
+	0x16, 0x41, 0xa6, 0xb8, 0x62, 0xc4, 0xde, 0xd5, 0xfd, 0x8b, 0xaa, 0xd2, 0x3d, 0xec, 0xeb, 0xa0,
+	0xbf, 0xf8, 0x82, 0x13, 0x3a, 0x1c, 0xe0, 0xc3, 0x78, 0xdb, 0xd6, 0xcd, 0x43, 0x67, 0x3c, 0x9e,
+	0xd8, 0x7b, 0x8a, 0x01, 0x6c, 0x0c, 0x44, 0x61, 0x2b, 0xe7, 0x85, 0xa4, 0xc1, 0x9c, 0xe6, 0x82,
+	0xf1, 0xcc, 0x86, 0xe6, 0x41, 0x5c, 0x85, 0x1f, 0xac, 0x80, 0x46, 0x06, 0x07, 0x1f, 0xe4, 0x5b,
+	0x56, 0xfb, 0xc7, 0x1a, 0x44, 0x3a, 0x3c, 0x94, 0x34, 0x3d, 0x21, 0xc4, 0x50, 0x89, 0x1e, 0x6d,
+	0xf7, 0xcf, 0xa7, 0x55, 0xe9, 0xd6, 0x46, 0xfa, 0x0d, 0x5e, 0xbd, 0x8d, 0xce, 0xdd, 0x67, 0xe7,
+	0x3a, 0xee, 0x83, 0xbe, 0x84, 0xf5, 0x22, 0x63, 0x52, 0xb5, 0x53, 0xad, 0xb3, 0x7f, 0xb7, 0xe7,
+	0xfd, 0xcb, 0xdc, 0xf2, 0xce, 0x8f, 0x20, 0xdf, 0x7a, 0x5e, 0xba, 0xb7, 0xb0, 0xc1, 0x41, 0x21,
+	0xbc, 0x6d, 0x06, 0x61, 0xc0, 0xb2, 0x31, 0x0f, 0xa2, 0x50, 0x98, 0x56, 0xda, 0xbf, 0xfb, 0xfe,
+	0x05, 0xb1, 0xcf, 0x9e, 0xe5, 0x0a, 0xf9, 0x70, 0xfe, 0x37, 0x7f, 0xfb, 0xa7, 0x1a, 0x7c, 0x7b,
+	0xa3, 0xc1, 0xd3, 0x19, 0x09, 0x25, 0xfd, 0xbf, 0xcb, 0xf0, 0x10, 0x5a, 0x8a, 0x3e, 0xfd, 0xa8,
+	0xff, 0x93, 0x0a, 0x1a, 0xe6, 0x26, 0x44, 0xf8, 0x13, 0xc0, 0x37, 0xcc, 0xd6, 0x8d, 0x14, 0xe7,
+	0xc9, 0x02, 0xd7, 0x42, 0xd6, 0x37, 0xd0, 0x92, 0x8b, 0xd9, 0x7a, 0xb8, 0x3e, 0x58, 0x96, 0x6e,
+	0xff, 0x6a, 0x13, 0x70, 0x53, 0xf9, 0x93, 0xc5, 0x8c, 0x62, 0x0d, 0x8a, 0x3a, 0xd0, 0x62, 0x92,
+	0xa6, 0x2b, 0x25, 0x8e, 0x3c, 0xf3, 0x43, 0xf6, 0xd6, 0x3f, 0x64, 0xef, 0x24, 0x5b, 0x60, 0xbd,
+	0xa3, 0xfd, 0x3d, 0x7c, 0xeb, 0x01, 0x95, 0x5b, 0x48, 0xe2, 0x24, 0x4f, 0xc4, 0x0d, 0x91, 0xd0,
+	0xfe, 0x0d, 0x40, 0xf4, 0x8f, 0xe3, 0x31, 0x95, 0x37, 0x25, 0xc1, 0xe7, 0xb0, 0xae, 0x38, 0x10,
+	0xf6, 0x8e, 0x1e, 0x1b, 0xef, 0x5d, 0xb0, 0xab, 0x36, 0x84, 0xaf, 0x67, 0x86, 0x06, 0xf1, 0x7b,
+	0x2f, 0x5f, 0x39, 0xb7, 0xfe, 0x78, 0xe5, 0x80, 0x1f, 0x2a, 0x07, 0x3c, 0xaf, 0x1c, 0xf0, 0xa2,
+	0x72, 0xc0, 0xef, 0x95, 0x03, 0x7e, 0x3e, 0x75, 0xc0, 0x8b, 0x53, 0x07, 0xbc, 0x3c, 0x75, 0xc0,
+	0xd7, 0x2d, 0xaf, 0x7b, 0xef, 0x0c, 0x31, 0x6a, 0xe8, 0x22, 0x7b, 0x7f, 0x05, 0x00, 0x00, 0xff,
+	0xff, 0xce, 0x74, 0xc6, 0xd7, 0x78, 0x09, 0x00, 0x00,
 }
 
 func (this *VolumeUnitInfoBase) GoString() string {
@@ -479,11 +628,33 @@ func (this *VolumeUnitInfoBase) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
+func (this *VolumeInfoBasePB) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 14)
+	s = append(s, "&clustermgr.VolumeInfoBasePB{")
+	s = append(s, "Vid: "+fmt.Sprintf("%#v", this.Vid)+",\n")
+	s = append(s, "CodeMode: "+fmt.Sprintf("%#v", this.CodeMode)+",\n")
+	s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
+	s = append(s, "HealthScore: "+fmt.Sprintf("%#v", this.HealthScore)+",\n")
+	s = append(s, "Total: "+fmt.Sprintf("%#v", this.Total)+",\n")
+	s = append(s, "Free: "+fmt.Sprintf("%#v", this.Free)+",\n")
+	s = append(s, "Used: "+fmt.Sprintf("%#v", this.Used)+",\n")
+	s = append(s, "CreateByNodeID: "+fmt.Sprintf("%#v", this.CreateByNodeID)+",\n")
+	s = append(s, "Epoch: "+fmt.Sprintf("%#v", this.Epoch)+",\n")
+	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
 func (this *RouteItemAddVolume) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&clustermgr.RouteItemAddVolume{")
 	s = append(s, "Vid: "+fmt.Sprintf("%#v", this.Vid)+",\n")
 	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
@@ -494,6 +665,7 @@ func (this *RouteItemAddVolume) GoString() string {
 		}
 		s = append(s, "Units: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
+	s = append(s, "VolumeInfoBase: "+strings.Replace(this.VolumeInfoBase.GoString(), `&`, ``, 1)+",\n")
 	if this.XXX_unrecognized != nil {
 		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
 	}
@@ -504,11 +676,12 @@ func (this *RouteItemUpdateVolume) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&clustermgr.RouteItemUpdateVolume{")
 	s = append(s, "Vid: "+fmt.Sprintf("%#v", this.Vid)+",\n")
 	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
 	s = append(s, "Unit: "+strings.Replace(this.Unit.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "VolumeInfoBase: "+strings.Replace(this.VolumeInfoBase.GoString(), `&`, ``, 1)+",\n")
 	if this.XXX_unrecognized != nil {
 		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
 	}
@@ -642,6 +815,83 @@ func (m *VolumeUnitInfoBase) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *VolumeInfoBasePB) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *VolumeInfoBasePB) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *VolumeInfoBasePB) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if m.RouteVersion != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.RouteVersion))
+		i--
+		dAtA[i] = 0x50
+	}
+	if m.Epoch != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.Epoch))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.CreateByNodeID != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.CreateByNodeID))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.Used != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.Used))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.Free != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.Free))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.Total != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.Total))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.HealthScore != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.HealthScore))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Status != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.Status))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.CodeMode != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.CodeMode))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Vid != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.Vid))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *RouteItemAddVolume) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -666,6 +916,16 @@ func (m *RouteItemAddVolume) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i -= len(m.XXX_unrecognized)
 		copy(dAtA[i:], m.XXX_unrecognized)
 	}
+	{
+		size, err := m.VolumeInfoBase.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintVolume(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x22
 	if len(m.Units) > 0 {
 		for iNdEx := len(m.Units) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -717,6 +977,16 @@ func (m *RouteItemUpdateVolume) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i -= len(m.XXX_unrecognized)
 		copy(dAtA[i:], m.XXX_unrecognized)
 	}
+	{
+		size, err := m.VolumeInfoBase.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintVolume(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x22
 	{
 		size, err := m.Unit.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -912,6 +1182,48 @@ func (m *VolumeUnitInfoBase) Size() (n int) {
 	return n
 }
 
+func (m *VolumeInfoBasePB) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Vid != 0 {
+		n += 1 + sovVolume(uint64(m.Vid))
+	}
+	if m.CodeMode != 0 {
+		n += 1 + sovVolume(uint64(m.CodeMode))
+	}
+	if m.Status != 0 {
+		n += 1 + sovVolume(uint64(m.Status))
+	}
+	if m.HealthScore != 0 {
+		n += 1 + sovVolume(uint64(m.HealthScore))
+	}
+	if m.Total != 0 {
+		n += 1 + sovVolume(uint64(m.Total))
+	}
+	if m.Free != 0 {
+		n += 1 + sovVolume(uint64(m.Free))
+	}
+	if m.Used != 0 {
+		n += 1 + sovVolume(uint64(m.Used))
+	}
+	if m.CreateByNodeID != 0 {
+		n += 1 + sovVolume(uint64(m.CreateByNodeID))
+	}
+	if m.Epoch != 0 {
+		n += 1 + sovVolume(uint64(m.Epoch))
+	}
+	if m.RouteVersion != 0 {
+		n += 1 + sovVolume(uint64(m.RouteVersion))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
 func (m *RouteItemAddVolume) Size() (n int) {
 	if m == nil {
 		return 0
@@ -930,6 +1242,8 @@ func (m *RouteItemAddVolume) Size() (n int) {
 			n += 1 + l + sovVolume(uint64(l))
 		}
 	}
+	l = m.VolumeInfoBase.Size()
+	n += 1 + l + sovVolume(uint64(l))
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
@@ -949,6 +1263,8 @@ func (m *RouteItemUpdateVolume) Size() (n int) {
 		n += 1 + sovVolume(uint64(m.RouteVersion))
 	}
 	l = m.Unit.Size()
+	n += 1 + l + sovVolume(uint64(l))
+	l = m.VolumeInfoBase.Size()
 	n += 1 + l + sovVolume(uint64(l))
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -1037,6 +1353,26 @@ func (this *VolumeUnitInfoBase) String() string {
 	}, "")
 	return s
 }
+func (this *VolumeInfoBasePB) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&VolumeInfoBasePB{`,
+		`Vid:` + fmt.Sprintf("%v", this.Vid) + `,`,
+		`CodeMode:` + fmt.Sprintf("%v", this.CodeMode) + `,`,
+		`Status:` + fmt.Sprintf("%v", this.Status) + `,`,
+		`HealthScore:` + fmt.Sprintf("%v", this.HealthScore) + `,`,
+		`Total:` + fmt.Sprintf("%v", this.Total) + `,`,
+		`Free:` + fmt.Sprintf("%v", this.Free) + `,`,
+		`Used:` + fmt.Sprintf("%v", this.Used) + `,`,
+		`CreateByNodeID:` + fmt.Sprintf("%v", this.CreateByNodeID) + `,`,
+		`Epoch:` + fmt.Sprintf("%v", this.Epoch) + `,`,
+		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
+		`}`,
+	}, "")
+	return s
+}
 func (this *RouteItemAddVolume) String() string {
 	if this == nil {
 		return "nil"
@@ -1050,6 +1386,7 @@ func (this *RouteItemAddVolume) String() string {
 		`Vid:` + fmt.Sprintf("%v", this.Vid) + `,`,
 		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
 		`Units:` + repeatedStringForUnits + `,`,
+		`VolumeInfoBase:` + strings.Replace(strings.Replace(this.VolumeInfoBase.String(), "VolumeInfoBasePB", "VolumeInfoBasePB", 1), `&`, ``, 1) + `,`,
 		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
@@ -1063,6 +1400,7 @@ func (this *RouteItemUpdateVolume) String() string {
 		`Vid:` + fmt.Sprintf("%v", this.Vid) + `,`,
 		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
 		`Unit:` + strings.Replace(strings.Replace(this.Unit.String(), "VolumeUnitInfoBase", "VolumeUnitInfoBase", 1), `&`, ``, 1) + `,`,
+		`VolumeInfoBase:` + strings.Replace(strings.Replace(this.VolumeInfoBase.String(), "VolumeInfoBasePB", "VolumeInfoBasePB", 1), `&`, ``, 1) + `,`,
 		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
@@ -1315,6 +1653,247 @@ func (m *VolumeUnitInfoBase) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *VolumeInfoBasePB) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowVolume
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: VolumeInfoBasePB: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: VolumeInfoBasePB: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Vid", wireType)
+			}
+			m.Vid = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Vid |= github_com_cubefs_cubefs_blobstore_common_proto.Vid(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CodeMode", wireType)
+			}
+			m.CodeMode = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CodeMode |= github_com_cubefs_cubefs_blobstore_common_codemode.CodeMode(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			}
+			m.Status = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Status |= github_com_cubefs_cubefs_blobstore_common_proto.VolumeStatus(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HealthScore", wireType)
+			}
+			m.HealthScore = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.HealthScore |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Total", wireType)
+			}
+			m.Total = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Total |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Free", wireType)
+			}
+			m.Free = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Free |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Used", wireType)
+			}
+			m.Used = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Used |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreateByNodeID", wireType)
+			}
+			m.CreateByNodeID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CreateByNodeID |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Epoch", wireType)
+			}
+			m.Epoch = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Epoch |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RouteVersion", wireType)
+			}
+			m.RouteVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RouteVersion |= github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipVolume(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthVolume
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *RouteItemAddVolume) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1413,6 +1992,39 @@ func (m *RouteItemAddVolume) Unmarshal(dAtA []byte) error {
 			}
 			m.Units = append(m.Units, VolumeUnitInfoBase{})
 			if err := m.Units[len(m.Units)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VolumeInfoBase", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthVolume
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthVolume
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.VolumeInfoBase.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1535,6 +2147,39 @@ func (m *RouteItemUpdateVolume) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if err := m.Unit.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VolumeInfoBase", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthVolume
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthVolume
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.VolumeInfoBase.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

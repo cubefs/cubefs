@@ -54,6 +54,7 @@ func (v *VolumeMgr) GetVolumeRoutes(ctx context.Context, args *clustermgr.GetVol
 				for _, unit := range vol.vUnits {
 					addVolumeItem.Units = append(addVolumeItem.Units, clustermgr.VolumeUnitInfoBase(*unit.vuInfo))
 				}
+				addVolumeItem.VolumeInfoBase = clustermgr.VolumeInfoBasePB(vol.volInfoBase)
 				return nil
 			})
 			ret.Items[i].Item, err = types.MarshalAny(addVolumeItem)
@@ -67,6 +68,7 @@ func (v *VolumeMgr) GetVolumeRoutes(ctx context.Context, args *clustermgr.GetVol
 			vol.withRLocked(func() error {
 				unit := vol.vUnits[vuidPrefix.Index()]
 				updateVolumeItem.Unit = clustermgr.VolumeUnitInfoBase(*unit.vuInfo)
+				updateVolumeItem.VolumeInfoBase = clustermgr.VolumeInfoBasePB(vol.volInfoBase)
 				return nil
 			})
 			ret.Items[i].Item, err = types.MarshalAny(updateVolumeItem)

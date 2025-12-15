@@ -27,16 +27,31 @@ message VolumeUnitInfoBase {
   string host = 7;
 }
 
+message VolumeInfoBasePB {
+  uint32 vid = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Vid"];
+  uint32 code_mode = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode"];
+  uint32 status = 3 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.VolumeStatus"];
+  int32 health_score = 4 [(gogoproto.casttype) = "int"];
+  uint64 total = 5;
+  uint64 free = 6;
+  uint64 used = 7;
+  uint64 create_by_node_id = 8 [(gogoproto.customname) = "CreateByNodeID"];
+  uint32 epoch = 9;
+  uint64 route_version = 10 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+}
+
 message RouteItemAddVolume {
   uint32 vid = 1 [(gogoproto.customname) = "Vid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Vid"];
   uint64 route_version = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   repeated VolumeUnitInfoBase units = 3 [(gogoproto.nullable) = false];
+  VolumeInfoBasePB volume_info_base = 4 [(gogoproto.nullable) = false];
 }
 
 message RouteItemUpdateVolume {
   uint32 vid = 1 [(gogoproto.customname) = "Vid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Vid"];
   uint64 route_version = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   VolumeUnitInfoBase unit = 3 [(gogoproto.nullable) = false];
+  VolumeInfoBasePB volume_info_base = 4 [(gogoproto.nullable) = false];
 }
 
 message VolumeRouteItem {

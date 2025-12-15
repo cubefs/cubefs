@@ -61,18 +61,7 @@ func (v *VolumeInfo) Equal(expected *VolumeInfo) bool {
 	return true
 }
 
-type VolumeInfoBase struct {
-	Vid            proto.Vid          `json:"vid"`
-	CodeMode       codemode.CodeMode  `json:"code_mode"`
-	Status         proto.VolumeStatus `json:"status"`
-	HealthScore    int                `json:"health_score"`
-	Total          uint64             `json:"total"`
-	Free           uint64             `json:"free"`
-	Used           uint64             `json:"used"`
-	CreateByNodeID uint64             `json:"create_by_node_id"`
-	Epoch          uint32             `json:"epoch"`
-	RouteVersion   proto.RouteVersion `json:"route_version"`
-}
+type VolumeInfoBase VolumeInfoBasePB
 
 type AllocVolumeInfo struct {
 	VolumeInfo
