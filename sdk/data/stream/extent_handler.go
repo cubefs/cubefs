@@ -546,7 +546,13 @@ func (eh *ExtentHandler) cleanup() (err error) {
 			eh.conn = nil
 			// TODO unhandled error
 			status := eh.getStatus()
-			StreamWriteConnPool.PutConnect(conn, status >= ExtentStatusRecovery)
+			forceClose := status >= ExtentStatusRecovery
+			// If storeMode is TinyExtentType, the status is set to Recovery after successful writing.
+			// In this case, the connection should be put back to the pool instead of being closed.
+			if eh.storeMode == proto.TinyExtentType && status == ExtentStatusRecovery && eh.key != nil {
+				forceClose = false
+			}
+			StreamWriteConnPool.PutConnect(conn, forceClose)
 		}
 		close(eh.stop)
 	})

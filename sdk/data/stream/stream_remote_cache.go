@@ -225,6 +225,8 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte, gen ui
 			cReadRequests = append(cReadRequests, cReadRequest)
 		}
 	}
-	// log.LogDebugf("prepareCacheRequests: inode %v extent[offset=%v,size=%v] cReadRequests %v ", s.inode, offset, size, cReadRequests)
+	if log.EnableDebug() {
+		log.LogDebugf("prepareCacheRequests: inode %v extent[offset=%v,size=%v] cReadRequests %v ", s.inode, offset, size, cReadRequests)
+	}
 	return cReadRequests, nil
 }
