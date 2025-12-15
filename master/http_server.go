@@ -684,6 +684,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminRecoverBackupDataReplica).
 		HandlerFunc(m.recoverBackupDataReplica)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminCheckDataPartitionForVolReplicaNum).
+		HandlerFunc(m.checkDataPartitionForVolReplicaNum)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateDataPartitionReplicaNum).
+		HandlerFunc(m.updateDataPartitionReplicaNum)
 
 	// meta node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

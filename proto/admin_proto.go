@@ -55,6 +55,8 @@ const (
 	AdminCheckReplicaMeta                                  = "/dataPartition/checkReplicaMeta"
 	AdminRecoverReplicaMeta                                = "/dataPartition/recoverReplicaMeta"
 	AdminRecoverBackupDataReplica                          = "/dataPartition/recoverBackupDataReplica"
+	AdminCheckDataPartitionForVolReplicaNum                = "/dataPartition/checkVolReplicaNum"
+	AdminUpdateDataPartitionReplicaNum                     = "/dataPartition/updateReplicaNum"
 	AdminDeleteDataReplica                                 = "/dataReplica/delete"
 	AdminAddDataReplica                                    = "/dataReplica/add"
 	AdminDeleteVol                                         = "/vol/delete"

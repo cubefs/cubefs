@@ -2013,6 +2013,86 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) checkDataPartitionForVolReplicaNum(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCheckDataPartitionForVolReplicaNum))
+	defer func() {
+		doStatAndMetric(proto.AdminCheckDataPartitionForVolReplicaNum, metric, nil, nil)
+	}()
+
+	result := make(map[string][]uint64)
+	for _, name := range m.cluster.allVolNames() {
+		vol, err := m.cluster.getVol(name)
+		if err != nil {
+			log.LogErrorf("[queryMismatchedDpForVolReplicaNum] getVol(%v) failed: %v", name, err.Error())
+			continue
+		}
+		dps := vol.cloneDataPartitionMap()
+		for _, dp := range dps {
+			if vol.dpReplicaNum != dp.ReplicaNum {
+				if _, exists := result[vol.Name]; !exists {
+					result[vol.Name] = make([]uint64, 0)
+				}
+				result[vol.Name] = append(result[vol.Name], dp.PartitionID)
+			}
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(result))
+}
+
+func (m *Server) updateDataPartitionReplicaNum(w http.ResponseWriter, r *http.Request) {
+	var (
+		dp          *DataPartition
+		vol         *Vol
+		partitionID uint64
+		msg         string
+		err         error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateDataPartitionReplicaNum))
+	defer func() {
+		doStatAndMetric(proto.AdminUpdateDataPartitionReplicaNum, metric, err, nil)
+	}()
+
+	if partitionID, err = parseRequestToLoadDataPartition(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
+		return
+	}
+
+	if vol, err = m.cluster.getVol(dp.VolName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	dp.Lock()
+
+	if dp.isRecover || vol.dpReplicaNum != 3 || dp.ReplicaNum != 2 || len(dp.Hosts) != 2 {
+		dp.Unlock()
+		err = fmt.Errorf("dataPartition %v does not meet the conditions for updating replicaNum: "+
+			"dp isRecover %v, vol dpReplicaNum %v, dp replicaNum %v, dp hosts len %v",
+			dp.PartitionID, dp.isRecover, vol.dpReplicaNum, dp.ReplicaNum, len(dp.Hosts))
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	oldReplicaNum := dp.ReplicaNum
+	dp.ReplicaNum = dp.ReplicaNum + 1
+
+	dp.Unlock()
+
+	if err = m.cluster.syncUpdateDataPartition(dp); err != nil {
+		dp.ReplicaNum = oldReplicaNum
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	msg = fmt.Sprintf("dataPartition %v update replicaNum from %v to %v successfully", dp.PartitionID, oldReplicaNum, dp.ReplicaNum)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
 func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 	var (
 		msg         string
