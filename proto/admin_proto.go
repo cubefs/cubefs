@@ -129,9 +129,10 @@ const (
 	AdminEnableAutoDecommissionDisk  = "/admin/enableAutoDecommissionDisk"
 	AdminQueryAutoDecommissionDisk   = "/admin/queryAutoDecommissionDisk"
 
-	AdminCancelDpDistributionOptimization    = "/admin/cancelDpDistributionOptimization"
-	AdminQueryDistributionOptimizationStatus = "/admin/queryDistributionOptimizationStatus"
-	AdminSetDistributionOptimizationEnable   = "/admin/setDistributionOptimizationEnable"
+	AdminCancelDpDistributionOptimization          = "/admin/cancelDpDistributionOptimization"
+	AdminQueryDistributionOptimizationStatus       = "/admin/queryDistributionOptimizationStatus"
+	AdminSetDistributionOptimizationEnable         = "/admin/setDistributionOptimizationEnable"
+	AdminExecuteDistributionOptimizationMigrations = "/admin/executeDistributionOptimizationMigrations"
 	// graphql master api
 	AdminClusterAPI               = "/api/cluster"
 	AdminUserAPI                  = "/api/user"
@@ -445,6 +446,10 @@ var GApiInfo map[string]string = map[string]string{
 	"usertransfervol":                 UserTransferVol,
 	"userlist":                        UserList,
 	"usersofvol":                      UsersOfVol,
+	"adminexecutedistributionoptimizationmigrations": AdminExecuteDistributionOptimizationMigrations,
+	"admincanceldpdistributionoptimization":          AdminCancelDpDistributionOptimization,
+	"adminquerydistributionoptimizationstatus":       AdminQueryDistributionOptimizationStatus,
+	"adminsetdistributionoptimizationenable":         AdminSetDistributionOptimizationEnable,
 }
 
 const (

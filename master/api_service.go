@@ -9006,6 +9006,21 @@ func (m *Server) setDistributionOptimizationEnable(w http.ResponseWriter, r *htt
 		"set DistributionOptimizationEnables to [%v] successfully", enable)))
 }
 
+func (m *Server) executeDistributionOptimizationMigrations(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	metric := exporter.NewTPCnt("req_executeDistributionOptimizationMigrations")
+	defer func() {
+		metric.Set(err)
+		AuditLog(r, proto.AdminExecuteDistributionOptimizationMigrations,
+			"execute distribution optimization migrations", err)
+	}()
+
+	go m.cluster.executeDistributionOptimizationMigrations()
+
+	sendOkReply(w, r, newSuccessHTTPReply("triggered distribution optimization migrations successfully"))
+}
+
 func (m *Server) cancelDpDistributionOptimization(w http.ResponseWriter, r *http.Request) {
 	var err error
 

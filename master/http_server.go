@@ -408,6 +408,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetUpgradeCompatibleSettings).
 		HandlerFunc(m.getUpgradeCompatibleSettings)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminExecuteDistributionOptimizationMigrations).
+		HandlerFunc(m.executeDistributionOptimizationMigrations)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCancelDpDistributionOptimization).
 		HandlerFunc(m.cancelDpDistributionOptimization)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
