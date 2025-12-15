@@ -214,6 +214,21 @@ func (mr *MockClientAPIMockRecorder) GetVolumeInfo(arg0, arg1 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeInfo", reflect.TypeOf((*MockClientAPI)(nil).GetVolumeInfo), arg0, arg1)
 }
 
+// GetVolumeRoutes mocks base method.
+func (m *MockClientAPI) GetVolumeRoutes(arg0 context.Context, arg1 *clustermgr.GetVolumeRoutesArgs) (*clustermgr.GetVolumeRoutesRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolumeRoutes", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.GetVolumeRoutesRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVolumeRoutes indicates an expected call of GetVolumeRoutes.
+func (mr *MockClientAPIMockRecorder) GetVolumeRoutes(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeRoutes", reflect.TypeOf((*MockClientAPI)(nil).GetVolumeRoutes), arg0, arg1)
+}
+
 // HeartbeatDisk mocks base method.
 func (m *MockClientAPI) HeartbeatDisk(arg0 context.Context, arg1 []*clustermgr.DiskHeartBeatInfo) ([]*clustermgr.DiskHeartbeatRet, error) {
 	m.ctrl.T.Helper()

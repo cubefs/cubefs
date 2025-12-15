@@ -72,6 +72,7 @@ type APIAccess interface {
 type APIProxy interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetVolumeInfo(ctx context.Context, args *GetVolumeArgs) (*VolumeInfo, error)
+	GetVolumeRoutes(ctx context.Context, args *GetVolumeRoutesArgs) (*GetVolumeRoutesRet, error)
 	DiskInfo(ctx context.Context, id proto.DiskID) (*BlobNodeDiskInfo, error)
 	AllocVolume(ctx context.Context, args *AllocVolumeArgs) (AllocatedVolumeInfos, error)
 	AllocBid(ctx context.Context, args *BidScopeArgs) (*BidScopeRet, error)

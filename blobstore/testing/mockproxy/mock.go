@@ -40,6 +40,7 @@ func ProxyMockClusterMgrCli(tb testing.TB) cm.APIProxy {
 	cmCli := mocks.NewMockClientAPI(gomock.NewController(tb))
 	cmCli.EXPECT().RegisterService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	cmCli.EXPECT().AllocBid(gomock.Any(), gomock.Any()).Return(&cm.BidScopeRet{StartBid: proto.BlobID(1), EndBid: proto.BlobID(10000)}, nil).AnyTimes()
+	cmCli.EXPECT().GetVolumeRoutes(gomock.Any(), gomock.Any()).Return(&cm.GetVolumeRoutesRet{}, nil).AnyTimes()
 	cmCli.EXPECT().GetConfig(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (ret string, err error) {
 		switch key {
 		case proto.CodeModeExtendKey:

@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
 
 var (
@@ -49,8 +50,11 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
-func newCacher(t gomock.TestReporter, expiration int) (Cacher, *mocks.MockClientAPI, func()) {
-	cmCli := mocks.NewMockClientAPI(C(t))
+func newCacher(t gomock.TestReporter, expiration int, cmCli *mocks.MockClientAPI) (Cacher, *mocks.MockClientAPI, func()) {
+	if cmCli == nil {
+		cmCli = mocks.NewMockClientAPI(C(t))
+		cmCli.EXPECT().GetVolumeRoutes(A, A).Return(&clustermgr.GetVolumeRoutesRet{}, nil).AnyTimes()
+	}
 	var basePath string
 	for {
 		basePath = path.Join(os.TempDir(), "proxy-cacher", fmt.Sprintf("%d", rand.Intn(10000)+10000))
@@ -58,18 +62,23 @@ func newCacher(t gomock.TestReporter, expiration int) (Cacher, *mocks.MockClient
 			break
 		}
 	}
-	cacher, _ := New(1, ConfigCache{
+	cacher, err := New(1, ConfigCache{
 		DiskvBasePath:     basePath,
 		VolumeExpirationS: expiration,
 		DiskExpirationS:   expiration,
 	}, cmCli)
-	return cacher, cmCli, func() { os.RemoveAll(basePath) }
+	if err != nil {
+		t.Fatalf("create cacher failed: %v", err)
+	}
+	return cacher, cmCli, func() { closer.Close(cacher); os.RemoveAll(basePath) }
 }
 
 func TestProxyCacherConfigVolume(t *testing.T) {
 	config := ConfigCache{}
+	cmCli := mocks.NewMockClientAPI(C(t))
+	cmCli.EXPECT().GetVolumeRoutes(A, A).Return(&clustermgr.GetVolumeRoutesRet{}, nil).AnyTimes()
 	getCacher := func() *cacher {
-		c, err := New(1, config, nil)
+		c, err := New(1, config, cmCli)
 		require.NoError(t, err)
 		return c.(*cacher)
 	}
@@ -88,11 +97,12 @@ func TestProxyCacherConfigVolume(t *testing.T) {
 		c := getCacher()
 		require.Equal(t, cs.expCapacity, c.config.VolumeCapacity)
 		require.Equal(t, cs.expExpiration, c.config.VolumeExpirationS)
+		c.Close()
 	}
 }
 
 func TestProxyCacherErase(t *testing.T) {
-	c, cmCli, clean := newCacher(t, 0)
+	c, cmCli, clean := newCacher(t, 0, nil)
 	defer clean()
 	cc := c.(*cacher)
 

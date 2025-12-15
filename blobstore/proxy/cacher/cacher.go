@@ -33,9 +33,11 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/memcache"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
+	"github.com/cubefs/cubefs/blobstore/util/mutex"
 )
 
 // Cacher is 2-level cache of clustermgr data.
@@ -57,10 +59,13 @@ const (
 	_defaultCapacity    = 1 << 20
 	_defaultExpirationS = 0 // 0 means no expiration
 
-	_defaultClustermgrConcurrency = 32
+	_defaultClustermgrConcurrency    = 32
+	_defaultVolumeRouteSyncIntervalS = 20
 
 	prefixKeyVolume = "volume-"
 	prefixKeyDisk   = "disk-"
+
+	diskvKeyVolumeRouteVersion = "volume-route-version"
 )
 
 // ConfigCache is setting of cache.
@@ -72,6 +77,8 @@ type ConfigCache struct {
 	VolumeExpirationS int `json:"volume_expiration_seconds"`
 	DiskCapacity      int `json:"disk_capacity"`
 	DiskExpirationS   int `json:"disk_expiration_seconds"`
+
+	VolumeRouteSyncIntervalS int `json:"volume_route_sync_interval_seconds"`
 }
 
 type valueExpired interface {
@@ -123,6 +130,7 @@ func New(clusterID proto.ClusterID, config ConfigCache, cmClient clustermgr.APIP
 	defaulter.LessOrEqual(&config.VolumeExpirationS, _defaultExpirationS)
 	defaulter.LessOrEqual(&config.DiskCapacity, _defaultCapacity)
 	defaulter.LessOrEqual(&config.DiskExpirationS, _defaultExpirationS)
+	defaulter.LessOrEqual(&config.VolumeRouteSyncIntervalS, _defaultVolumeRouteSyncIntervalS)
 
 	vc, err := memcache.NewMemCache(config.VolumeCapacity)
 	if err != nil {
@@ -140,7 +148,7 @@ func New(clusterID proto.ClusterID, config ConfigCache, cmClient clustermgr.APIP
 	})
 
 	concurrency := keycount.NewBlockingKeyCountLimit(_defaultClustermgrConcurrency)
-	return &cacher{
+	cc := &cacher{
 		config:        config,
 		clusterID:     clusterID,
 		cmClient:      cmClient,
@@ -150,7 +158,20 @@ func New(clusterID proto.ClusterID, config ConfigCache, cmClient clustermgr.APIP
 		volumeCache:   vc,
 		diskCache:     dc,
 		diskv:         dv,
-	}, nil
+		Closer:        closer.New(),
+	}
+	version := cc.loadVolRouteVersion()
+	cc.setVolRouteVersion(version)
+
+	if version == 0 {
+		_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "volume_route_sync_version_0")
+		if err := cc.syncVolumeRoutes(ctx); err != nil {
+			return nil, err
+		}
+	}
+	go cc.volumeRouteLoop()
+
+	return cc, nil
 }
 
 type cacher struct {
@@ -165,6 +186,10 @@ type cacher struct {
 	diskCache   *memcache.MemCache
 
 	diskv *diskv.Diskv
+
+	volRouteVersion uint64
+	volumeLocks     [64]mutex.Mutex
+	closer.Closer
 }
 
 func (c *cacher) Erase(ctx context.Context, key string) error {

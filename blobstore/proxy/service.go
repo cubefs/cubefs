@@ -30,6 +30,7 @@ import (
 	alloc "github.com/cubefs/cubefs/blobstore/proxy/allocator"
 	"github.com/cubefs/cubefs/blobstore/proxy/cacher"
 	"github.com/cubefs/cubefs/blobstore/proxy/mq"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -127,7 +128,7 @@ func setUp() (*rpc.Router, []rpc.ProgressHandler) {
 }
 
 func tearDown() {
-	service.volumeMgr.Close()
+	service.Close()
 }
 
 func New(cfg Config, cmcli clustermgr.APIProxy) *Service {
@@ -174,6 +175,15 @@ func New(cfg Config, cmcli clustermgr.APIProxy) *Service {
 		cacher:         cacher,
 		shardRepairMgr: shardRepairMgr,
 		blobDeleteMgr:  blobDeleteMgr,
+	}
+}
+
+func (s *Service) Close() {
+	if s.volumeMgr != nil {
+		s.volumeMgr.Close()
+	}
+	if s.cacher != nil {
+		closer.Close(s.cacher)
 	}
 }
 

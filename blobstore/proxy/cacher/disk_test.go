@@ -29,7 +29,7 @@ import (
 )
 
 func TestProxyCacherDiskUpdate(t *testing.T) {
-	c, cmCli, clean := newCacher(t, 2)
+	c, cmCli, clean := newCacher(t, 2, nil)
 	defer clean()
 	cmCli.EXPECT().DiskInfo(A, A).Return(&cmapi.BlobNodeDiskInfo{}, nil).Times(4)
 
@@ -56,7 +56,7 @@ func TestProxyCacherDiskUpdate(t *testing.T) {
 }
 
 func TestProxyCacherDiskError(t *testing.T) {
-	c, cmCli, clean := newCacher(t, 0)
+	c, cmCli, clean := newCacher(t, 0, nil)
 	defer clean()
 	cmCli.EXPECT().DiskInfo(A, A).Return(nil, errors.New("mock error")).Times(1)
 	cmCli.EXPECT().DiskInfo(A, A).Return(nil, errcode.ErrCMDiskNotFound).Times(2)
@@ -70,7 +70,7 @@ func TestProxyCacherDiskError(t *testing.T) {
 }
 
 func TestProxyCacherDiskCacheMiss(t *testing.T) {
-	c, cmCli, clean := newCacher(t, 2)
+	c, cmCli, clean := newCacher(t, 2, nil)
 	defer clean()
 
 	cmCli.EXPECT().DiskInfo(A, A).Return(&cmapi.BlobNodeDiskInfo{}, nil).Times(3)

@@ -354,3 +354,11 @@ func (c *Client) GetVolumeRoutes(ctx context.Context, args *GetVolumeRoutesArgs)
 	err = c.GetWith(ctx, fmt.Sprintf("/volumeroutes/get?route_version=%d", args.RouteVersion), ret)
 	return
 }
+
+func (m *VolumeUnitInfoBase) Convert2Unit() Unit {
+	return Unit{
+		Vuid:   m.GetVuid(),
+		DiskID: m.GetDiskID(),
+		Host:   m.GetHost(),
+	}
+}
