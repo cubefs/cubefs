@@ -217,9 +217,6 @@ func (s *raft) doStop() {
 
 func (s *raft) runApply() {
 	defer func() {
-		if r := recover(); r != nil {
-			logger.Warn("raft[%v] runApply occurred panic,err[%v]", s.raftFsm.id, r)
-		}
 		s.doStop()
 		s.resetApply()
 		logger.Warn("raft[%v] quit runApply", s.raftFsm.id)
@@ -280,9 +277,6 @@ func (s *raft) runApply() {
 
 func (s *raft) run() {
 	defer func() {
-		if r := recover(); r != nil {
-			logger.Warn("raft[%v] run occurred panic,err[%v]", s.raftFsm.id, r)
-		}
 		s.doStop()
 		s.resetPending(ErrStopped)
 		s.raftFsm.readOnly.reset(ErrStopped)
