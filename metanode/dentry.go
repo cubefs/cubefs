@@ -643,6 +643,7 @@ func (d *Dentry) Unmarshal(data []byte) (err error) {
 		keyLen  uint32
 		valLen  uint32
 		keyData []byte
+		valData []byte
 	)
 
 	buff := GetReadBuf(data)
@@ -672,7 +673,18 @@ func (d *Dentry) Unmarshal(data []byte) (err error) {
 		return proto.ErrBufferSizeExceedMaximum
 	}
 
-	err = d.UnmarshalValue(buff.Bytes())
+	if buff.Len() < int(valLen) {
+		return fmt.Errorf("dentry value length %d exceeds buffer size %d", valLen, buff.Len())
+	}
+
+	if valData, err = buff.Next(int(valLen)); err != nil {
+		return
+	}
+
+	if err = d.UnmarshalValue(valData); err != nil {
+		return
+	}
+
 	return
 }
 
