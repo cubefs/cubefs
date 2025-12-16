@@ -646,7 +646,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string, autoDistributionOptimization string,
 	dpRepairTimeout string, dpTimeout string, mpTimeout string, dpBackupTimeout string,
-	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
+	decommissionDpLimit, decommissionDiskLimit, decommissionFirstHostDiskParallelLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
 	handleTimeout string, readDataNodeTimeout string, rackAware string,
 	distributionOptimizationConDpCnt, distributionOptimizationThreshold string,
 	remoteCacheTTL string, remoteCacheReadTimeout string,
@@ -705,6 +705,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if decommissionDiskLimit != "" {
 		request.addParam("decommissionDiskLimit", decommissionDiskLimit)
+	}
+	if decommissionFirstHostDiskParallelLimit != "" {
+		request.addParam("decommissionFirstHostDiskParallelLimit", decommissionFirstHostDiskParallelLimit)
 	}
 	if forbidWriteOpOfProtoVersion0 != "" {
 		request.addParam("forbidWriteOpOfProtoVersion0", forbidWriteOpOfProtoVersion0)

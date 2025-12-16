@@ -300,6 +300,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	dpBackupTimeout := ""
 	decommissionDpLimit := ""
 	decommissionDiskLimit := ""
+	decommissionFirstHostDiskParallelLimit := ""
 	forbidWriteOpOfProtoVersion0 := ""
 	dataMediaType := ""
 	handleTimeout := ""
@@ -651,7 +652,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt, autoDistributionOptimization,
-				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
+				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit, decommissionFirstHostDiskParallelLimit,
 				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware,
 				distributionOptimizationConDpCnt, distributionOptimizationThreshold,
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
@@ -687,6 +688,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&dpBackupTimeout, CliFlagDpBackupTimeout, "", "Data partition backup directory timeout(example: 1h)")
 	cmd.Flags().StringVar(&decommissionDpLimit, CliFlagDecommissionDpLimit, "", "Limit for parallel  decommission dp")
 	cmd.Flags().StringVar(&decommissionDiskLimit, CliFlagDecommissionDiskLimit, "", "Limit for parallel decommission disk")
+	cmd.Flags().StringVar(&decommissionFirstHostDiskParallelLimit, CliFlagDecommissionFirstHostDiskParallelLimit, "", "Limit for parallel decommission dp in first host disk")
 	cmd.Flags().StringVar(&forbidWriteOpOfProtoVersion0, CliForbidWriteOpOfProtoVersion0, "",
 		"set datanode and metanode whether forbid write operate of packet whose protocol version is version-0: [true | false]")
 	cmd.Flags().StringVar(&dataMediaType, "clusterDataMediaType", "", "set cluster media type, 1(ssd), 2(hdd)")

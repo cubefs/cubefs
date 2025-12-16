@@ -4500,6 +4500,16 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if val, ok := params[decommissionFirstHostDiskParallelLimit]; ok {
+		if firstHostDiskParallelLimit, ok := val.(uint64); ok {
+			if err = m.cluster.setDecommissionFirstHostDiskParallelLimit(firstHostDiskParallelLimit); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+
+	}
+
 	if val, ok := params[dataMediaTypeKey]; ok {
 		if mediaType, ok := val.(uint64); ok {
 			if err = m.cluster.setClusterMediaType(uint32(mediaType)); err != nil {
