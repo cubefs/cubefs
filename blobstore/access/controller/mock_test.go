@@ -64,15 +64,15 @@ func init() {
 	dataVolumes[1] = cmapi.VolumeInfo{
 		VolumeInfoBase: cmapi.VolumeInfoBase{Vid: 1, CodeMode: codemode.EC6P10L2},
 		Units: []cmapi.Unit{
-			{Vuid: 1011, DiskID: 1021, Host: "1031"},
-			{Vuid: 1012, DiskID: 1022, Host: "1032"},
+			{Vuid: 1011, DiskID: 1021},
+			{Vuid: 1012, DiskID: 1022},
 		},
 	}
 	dataVolumes[9] = cmapi.VolumeInfo{
 		VolumeInfoBase: cmapi.VolumeInfoBase{Vid: 9, CodeMode: codemode.EC16P20L2},
 		Units: []cmapi.Unit{
-			{Vuid: 9011, DiskID: 9021, Host: "9031"},
-			{Vuid: 9012, DiskID: 9022, Host: "9032"},
+			{Vuid: 9011, DiskID: 9021},
+			{Vuid: 9012, DiskID: 9022},
 		},
 	}
 	dataVolumes[vid404] = cmapi.VolumeInfo{VolumeInfoBase: cmapi.VolumeInfoBase{Vid: vid404}}

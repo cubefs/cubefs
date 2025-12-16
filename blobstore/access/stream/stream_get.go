@@ -613,6 +613,13 @@ func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,
 			break
 		}
 
+		diskInfo, err := serviceController.GetDiskHost(ctx, shard.DiskID)
+		if err != nil {
+			span.Warnf("get disk host failed: %s", err)
+			return errNeedReconstructRead
+		}
+		host := diskInfo.Host
+
 		toReadSize := util.Min(remainSize, uint64(shardSize-shardOffset))
 		args := blobnode.RangeGetShardArgs{
 			GetShardArgs: blobnode.GetShardArgs{
@@ -625,11 +632,11 @@ func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,
 			Size:   int64(toReadSize),
 		}
 
-		body, crc, err := h.getOneShardFromHost(ctx, serviceController, shard.Host, shard.DiskID, args,
+		body, crc, err := h.getOneShardFromHost(ctx, serviceController, host, shard.DiskID, args,
 			firstShardIdx+i, blob.Cid, blob.Vid, 1, nil)
 		if err != nil {
 			span.Warnf("read %s on blobnode(vuid:%d disk:%d host:%s) ecidx(%02d): %s", blob.ID(),
-				shard.Vuid, shard.DiskID, shard.Host, firstShardIdx+i, errors.Detail(err))
+				shard.Vuid, shard.DiskID, host, firstShardIdx+i, errors.Detail(err))
 			return errNeedReconstructRead
 		}
 		defer body.Close()
@@ -644,7 +651,7 @@ func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,
 			if newCrc := crc32.ChecksumIEEE(buf); newCrc != crc {
 				reportDownload(blob.Cid, "Download", "CrcMismatch")
 				span.Errorf("blob:%+v (host:%s diskid:%d vuid:%d) crc mismatch 0x%x(%d) != 0x%x(%d)",
-					blob, shard.Host, shard.DiskID, shard.Vuid, crc, crc, newCrc, newCrc)
+					blob, host, shard.DiskID, shard.Vuid, crc, crc, newCrc, newCrc)
 				return errNeedReconstructRead
 			}
 		}
@@ -860,7 +867,7 @@ func genSortedVuidByIDC(ctx context.Context,
 			index:  idx,
 			vuid:   phy.Vuid,
 			diskID: phy.DiskID,
-			host:   phy.Host,
+			host:   hostIDC.Host,
 		})
 	}
 

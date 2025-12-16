@@ -339,7 +339,6 @@ func initMockData() {
 				units = append(units, clustermgr.Unit{
 					Vuid:   proto.Vuid(id),
 					DiskID: proto.DiskID(id),
-					Host:   strconv.Itoa(id),
 				})
 			}
 			return
