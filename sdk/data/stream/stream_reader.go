@@ -209,6 +209,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 		reader          *ExtentReader
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
+		inodeInfo       *proto.InodeInfo
 	)
 	log.LogDebugf("action[streamer.read] ino(%v) offset %v size %v", s.inode, offset, size)
 	defer log.LogDebugf("streamer read ino(%v) offset %v size %v", s.inode, offset, size)
@@ -283,7 +284,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 				s.inode, req, s.client.bcacheEnable, s.client.bcacheOnlyForNotSSD, s.needBCache)
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
 				cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
-				inodeInfo, err := s.client.getInodeInfo(s.inode)
+				inodeInfo, err = s.client.getInodeInfo(s.inode)
 				if err != nil {
 					log.LogErrorf("Streamer read: getInodeInfo failed. ino(%v) req(%v) err(%v)", s.inode, req, err)
 					return 0, err
@@ -320,7 +321,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 				}
 				log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
 			} else if s.enableRemoteCache() {
-				inodeInfo, err := s.client.getInodeInfo(s.inode)
+				inodeInfo, err = s.client.getInodeInfo(s.inode)
 				if err != nil {
 					log.LogErrorf("Streamer read: getInodeInfo failed. ino(%v) req(%v) err(%v)", s.inode, req, err)
 					return 0, err
@@ -361,7 +362,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 			}
 
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
-				inodeInfo, err := s.client.getInodeInfo(s.inode)
+				inodeInfo, err = s.client.getInodeInfo(s.inode)
 				if err != nil {
 					log.LogErrorf("Streamer read: getInodeInfo failed. ino(%v) req(%v) err(%v)", s.inode, req, err)
 					return 0, err
