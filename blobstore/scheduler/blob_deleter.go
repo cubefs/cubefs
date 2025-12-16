@@ -60,7 +60,10 @@ const (
 )
 
 // ErrVunitLengthNotEqual vunit length not equal
-var ErrVunitLengthNotEqual = errors.New("vunit length not equal")
+var (
+	ErrVunitLengthNotEqual = errors.New("vunit length not equal")
+	ErrDiskNotFound        = errors.New("disk not found")
+)
 
 type deleteStageMgr struct {
 	l         sync.Mutex
@@ -673,6 +676,12 @@ func (mgr *BlobDeleteMgr) deleteShard(ctx context.Context, location proto.VunitL
 		span.Warnf("already delete and return: bid[%d], location[%+v], markDelete[%+v]",
 			bid, location, markDelete)
 		return nil
+	}
+
+	// check host update
+	disk, ok := mgr.clusterTopology.GetDisk(location.DiskID)
+	if ok {
+		location.Host = disk.Host
 	}
 
 	var stage proto.DeleteStage

@@ -44,6 +44,7 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 	clusterTopology := NewMockClusterTopology(ctr)
 	clusterTopology.EXPECT().GetVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
 	clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+	clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
 
 	selector := mocks.NewMockSelector(ctr)
 	selector.EXPECT().GetRandomN(any).AnyTimes().Return([]string{"http://127.0.0.1:9600"})
@@ -285,6 +286,11 @@ func TestTryRepair(t *testing.T) {
 	{
 		// repair success
 		mgr := newShardRepairMgr(t)
+
+		mgr.clusterTopology.(*MockClusterTopology).EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{
+			Host: volume.VunitLocations[0].Host,
+		}, true)
+
 		doneVolume, err := mgr.tryRepair(ctx, volume, &proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})
 		require.NoError(t, err)
 		require.True(t, doneVolume.EqualWith(volume))
@@ -298,6 +304,7 @@ func TestTryRepair(t *testing.T) {
 
 		clusterTopology := NewMockClusterTopology(ctr)
 		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, errcode.ErrUpdateVolCacheFreq)
+		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{Host: volume.VunitLocations[0].Host}, true)
 		mgr.clusterTopology = clusterTopology
 
 		doneVolume, err := mgr.tryRepair(ctx, volume, &proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})
@@ -313,6 +320,7 @@ func TestTryRepair(t *testing.T) {
 
 		clusterTopology := NewMockClusterTopology(ctr)
 		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, nil)
+		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{Host: volume.VunitLocations[0].Host}, true)
 		mgr.clusterTopology = clusterTopology
 
 		doneVolume, err := mgr.tryRepair(ctx, volume, &proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})
@@ -331,6 +339,7 @@ func TestTryRepair(t *testing.T) {
 		newVolume := MockGenVolInfo(proto.Vid(1), codemode.EC3P3, proto.VolumeStatusActive)
 		newVolume.VunitLocations[5].Vuid += 1
 		clusterTopology.EXPECT().UpdateVolume(any).Return(newVolume, nil)
+		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{Host: volume.VunitLocations[0].Host}, true)
 		mgr.clusterTopology = clusterTopology
 
 		doneVolume, err := mgr.tryRepair(ctx, volume, &proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})

@@ -400,6 +400,15 @@ func (mgr *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volu
 
 	span.Infof("repair shard: msg[%+v], vol info[%+v]", repairMsg, volInfo)
 
+	// update host info
+	for idx := range volInfo.VunitLocations {
+		location := &volInfo.VunitLocations[idx]
+		disk, ok := mgr.clusterTopology.GetDisk(location.DiskID)
+		if ok {
+			location.Host = disk.Host
+		}
+	}
+
 	hosts := mgr.blobnodeSelector.GetRandomN(1)
 	if len(hosts) == 0 {
 		return volInfo, ErrBlobnodeServiceUnavailable
