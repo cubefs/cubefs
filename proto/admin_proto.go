@@ -1026,6 +1026,7 @@ type MetaPartitionReport struct {
 	LocalPeers                []Peer
 	ReadOnlyReasons           uint32
 	StoreMode                 StoreMode
+	IsLearner                 bool
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -1862,13 +1863,35 @@ const (
 func (l RackAwareLevel) String() string {
 	switch l {
 	case RackAwareNone:
-		return "none"
+		return "nolimit"
 	case RackAwareWeak:
 		return "weak"
 	case RackAwareStrong:
 		return "strong"
 	default:
 		return "unknown"
+	}
+}
+
+// RecoverState represents the learner recovery state
+type RecoverState int
+
+const (
+	RecoverStateInit       RecoverState = 0 // Initial state
+	RecoverStateRecovering RecoverState = 1 // Recovering (IsRecover=true)
+	RecoverStateFailed     RecoverState = 2 // Recovery failed
+)
+
+func (s RecoverState) String() string {
+	switch s {
+	case RecoverStateInit:
+		return "Init"
+	case RecoverStateRecovering:
+		return "Recovering"
+	case RecoverStateFailed:
+		return "Failed"
+	default:
+		return "Unknown"
 	}
 }
 

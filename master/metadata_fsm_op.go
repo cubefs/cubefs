@@ -96,6 +96,7 @@ type clusterValue struct {
 	FlashWriteFlowLimit                    int64
 	FlashKeyFlowLimit                      int64
 	RemoteClientFlowLimit                  int64
+	LearnerRecoverTimeoutSeconds           int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -157,6 +158,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FlashWriteFlowLimit:                    c.cfg.flashWriteFlowLimit,
 		FlashKeyFlowLimit:                      c.cfg.flashKeyFlowLimit,
 		RemoteClientFlowLimit:                  c.cfg.remoteClientFlowLimit,
+		LearnerRecoverTimeoutSeconds:           c.cfg.LearnerRecoverTimeoutSeconds,
 	}
 	return cv
 }
@@ -175,6 +177,12 @@ type metaPartitionValue struct {
 	IsRecover          bool
 	Freeze             int8
 	LastDelReplicaTime int64
+	SrcAddr            string
+	LearnerDstAddr     string
+	RecoverStartTime   int64
+	RecoverFailCount   int
+	RecoverRetryTime   int64
+	RecoverState       int
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -192,6 +200,12 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		IsRecover:          mp.IsRecover,
 		Freeze:             mp.Freeze,
 		LastDelReplicaTime: mp.LastDelReplicaTime,
+		SrcAddr:            mp.SrcAddr,
+		LearnerDstAddr:     mp.LearnerDstAddr,
+		RecoverStartTime:   mp.RecoverStartTime,
+		RecoverFailCount:   mp.RecoverFailCount,
+		RecoverRetryTime:   mp.RecoverRetryTime,
+		RecoverState:       int(mp.RecoverState),
 	}
 	return
 }
@@ -1411,6 +1425,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.metaNodeGOGC = cv.MetaNodeGOGC
 		c.cfg.dataNodeGOGC = cv.DataNodeGOGC
 		c.cfg.RackAwareLevel = pt.RackAwareLevel(cv.RackAwareLevel)
+		if cv.LearnerRecoverTimeoutSeconds > 0 {
+			c.cfg.LearnerRecoverTimeoutSeconds = cv.LearnerRecoverTimeoutSeconds
+		} else {
+			c.cfg.LearnerRecoverTimeoutSeconds = defaultLearnerRecoverTimeout
+		}
 
 		if c.DecommissionFirstHostDiskParallelLimit == 0 {
 			c.DecommissionFirstHostDiskParallelLimit = defaultDecommissionFirstHostDiskParallelLimit
@@ -1940,6 +1959,12 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.IsRecover = mpv.IsRecover
 		mp.Freeze = mpv.Freeze
 		mp.LastDelReplicaTime = mpv.LastDelReplicaTime
+		mp.SrcAddr = mpv.SrcAddr
+		mp.LearnerDstAddr = mpv.LearnerDstAddr
+		mp.RecoverStartTime = mpv.RecoverStartTime
+		mp.RecoverFailCount = mpv.RecoverFailCount
+		mp.RecoverRetryTime = mpv.RecoverRetryTime
+		mp.RecoverState = proto.RecoverState(mpv.RecoverState)
 		vol.addMetaPartition(mp)
 		c.addBadMetaParitionIdMap(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
@@ -1948,7 +1973,8 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 }
 
 func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
-	if !mp.IsRecover {
+	// mp.RecoverState = proto.RecoverStateFailed need to clear state
+	if !mp.IsRecover && mp.RecoverState != proto.RecoverStateFailed {
 		return
 	}
 

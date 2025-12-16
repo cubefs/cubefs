@@ -368,6 +368,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				LocalPeers:                mConf.Peers,
 				ReadOnlyReasons:           0,
 				StoreMode:                 partition.GetStoreMode(),
+				IsLearner:                 mConf.IsLearner(),
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt, err = partition.TxGetCnt()
 			if err != nil {

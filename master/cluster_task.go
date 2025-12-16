@@ -99,130 +99,32 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 
 func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode) (err error) {
 	var (
-		newPeers        []proto.Peer
-		metaNode        *MetaNode
-		zone            *Zone
-		ns              *nodeSet
-		excludeNodeSets []uint64
-		finalHosts      []string
-		oldHosts        []string
-		zones           []string
-		auditMsg        string
+		newPeers          []proto.Peer
+		finalDstStoreMode proto.StoreMode
 	)
 
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
 		mp.volName, srcAddr, targetAddr, mp.PartitionID)
 
-	mp.RLock()
-	if !contains(mp.Hosts, srcAddr) {
-		mp.RUnlock()
-		log.LogErrorf("action[migrateMetaPartition],volName[%v], src[%s] not exist, partitionID[%v]",
-			mp.volName, srcAddr, mp.PartitionID)
-		return fmt.Errorf("migrateMetaPartition src [%s] is not exist in mp(%d)", srcAddr, mp.PartitionID)
-	}
-	oldHosts = mp.Hosts
-	if targetAddr != "" && contains(mp.Hosts, targetAddr) {
-		mp.RUnlock()
-		err = fmt.Errorf("migrateMetaPartition target [%s] is already exist in mp(%d) hosts:[%v]", targetAddr, mp.PartitionID, mp.Hosts)
-		log.LogErrorf(err.Error())
-		return err
-	}
-	mp.RUnlock()
-
-	param := &selectParam{
-		excludeNodeSets: nil,
-		replicaNum:      1,
-		excludeHosts:    oldHosts,
-		rackLevel:       c.getRackAwareLevel(),
-		excludeRacks:    c.GetExRacksByHosts(TypeMetaPartition, oldHosts, srcAddr),
-	}
-
-	nodeType := TypeMetaPartition
-	if dstStoreMode == proto.StoreModeDef {
-		dstStoreMode, err = c.getMetaPartitionStoreMode(mp, srcAddr)
-		if err != nil {
-			goto errHandler
-		}
-	}
-	if dstStoreMode == proto.StoreModeRocksDb {
-		nodeType = TypeRocksdbPartition
-	}
-
-	if err = c.validateDecommissionMetaPartition(mp, srcAddr, false); err != nil {
+	// Prepare migration parameters
+	newPeers, finalDstStoreMode, err = c.prepareMetaPartitionMigration(srcAddr, targetAddr, mp, dstStoreMode)
+	if err != nil {
+		log.LogErrorf("action[migrateMetaPartition],volName[%v], prepare failed,partitionID[%v],err[%v]",
+			mp.volName, mp.PartitionID, err)
 		goto errHandler
 	}
 
-	if metaNode, err = c.metaNode(srcAddr); err != nil {
-		goto errHandler
-	}
-
-	if zone, err = c.t.getZone(metaNode.ZoneName); err != nil {
-		goto errHandler
-	}
-
-	if ns, err = zone.getNodeSet(metaNode.NodeSetID); err != nil {
-		goto errHandler
-	}
-
-	if targetAddr != "" {
-		newPeers = []proto.Peer{{
-			Addr: targetAddr,
-		}}
-	} else if _, newPeers, err = ns.getAvailMetaNodeHosts(param, dstStoreMode); err != nil {
-		if _, ok := c.vols[mp.volName]; !ok {
-			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
-				c.Name, mp.PartitionID, mp.Hosts)
-			return
-		}
-		if c.isFaultDomain(c.vols[mp.volName]) {
-			log.LogWarnf("[migrateMetaPartition] clusterID[%v] partitionID:%v  on node:[%v]",
-				c.Name, mp.PartitionID, mp.Hosts)
-			return
-		}
-		// choose a meta node in other node set in the same zone
-		excludeNodeSets = append(excludeNodeSets, ns.ID)
-		param.excludeNodeSets = excludeNodeSets
-		if _, newPeers, err = zone.getAvailNodeHosts(nodeType, param); err != nil {
-			zones = mp.getLiveZones(srcAddr)
-			var excludeZone []string
-			if len(zones) == 0 {
-				excludeZone = append(excludeZone, zone.name)
-			} else {
-				excludeZone = append(excludeZone, zones[0])
-			}
-			// choose a meta node in other zone
-			if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param); err != nil {
-				goto errHandler
-			}
-		}
-	}
-
-	auditMsg = fmt.Sprintf("volName[%v] partitionID[%v] hosts[%v] srcAddr[%v] choose targetAddr[%v]",
-		mp.volName, mp.PartitionID, mp.Hosts, srcAddr, newPeers)
-	auditlog.LogMasterOp("migrateMetaPartition", auditMsg, err)
-
-	finalHosts = make([]string, 0, len(oldHosts))
-	for _, host := range oldHosts {
-		if host != srcAddr {
-			finalHosts = append(finalHosts, host) // remove old one
-		}
-	}
-	finalHosts = append(finalHosts, newPeers[0].Addr) // add new one
-	if err = c.checkMultipleReplicasOnSameMachine(finalHosts); err != nil {
-		return err
-	}
-
+	// Delete old replica and add new replica
 	if err = c.deleteMetaReplica(mp, srcAddr, false, false); err != nil {
 		goto errHandler
 	}
-
-	if err = c.addMetaReplica(mp, newPeers[0].Addr, dstStoreMode); err != nil {
+	if err = c.addMetaReplica(mp, newPeers[0].Addr, finalDstStoreMode); err != nil {
 		goto errHandler
 	}
 
+	// Mark as recovering and put into recovery queue
 	mp.IsRecover = true
 	c.putBadMetaPartitions(srcAddr, mp.PartitionID)
-
 	mp.RLock()
 	c.syncUpdateMetaPartition(mp)
 	mp.RUnlock()
@@ -235,9 +137,72 @@ errHandler:
 	msg := fmt.Sprintf("action[migrateMetaPartition],volName: %v,partitionID: %v,err: %v", mp.volName, mp.PartitionID, errors.Stack(err))
 	log.LogError(msg)
 	Warn(c.Name, msg)
-
 	if err != nil {
 		err = fmt.Errorf("action[migrateMetaPartition] vol[%v],partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+	}
+	return
+}
+
+// checkMultipleReplicasOnSameMachineForMigration checks if multiple replicas would be on the same machine after migration
+func (c *Cluster) checkMultipleReplicasOnSameMachineForMigration(oldHosts []string, newPeerAddr string) error {
+	finalHosts := make([]string, 0, len(oldHosts)+1)
+	finalHosts = append(finalHosts, oldHosts...)
+	finalHosts = append(finalHosts, newPeerAddr)
+	return c.checkMultipleReplicasOnSameMachine(finalHosts)
+}
+
+// migrateMetaPartitionByLearner migrates meta partition using learner mode
+// Synchronous process:
+// 1. Check if learner mode is enabled
+// 2. Select target node
+// 3. Add learner replica
+// 4. Add raft learner
+// 5. Update master hosts and mark as recovering in learner mode
+// 6. Put mp into recovery queue
+func (c *Cluster) migrateMetaPartitionByLearner(srcAddr, targetAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode) (err error) {
+	var (
+		newPeers          []proto.Peer
+		finalDstStoreMode proto.StoreMode
+	)
+
+	log.LogWarnf("action[migrateMetaPartitionByLearner],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
+		mp.volName, srcAddr, targetAddr, mp.PartitionID)
+	auditMsg := fmt.Sprintf("migrateMetaPartitionByLearner: vol[%v] mp[%v] start migrating from src[%v] to target[%v]",
+		mp.volName, mp.PartitionID, srcAddr, targetAddr)
+	auditlog.LogMasterOp("migrateMetaPartitionByLearner", auditMsg, nil)
+
+	// Check if learner mode is enabled
+	if !c.EnableMpDecommissionByLearner {
+		log.LogWarnf("action[migrateMetaPartitionByLearner],volName[%v], learner mode is disabled, fallback to normal migration",
+			mp.volName)
+		return c.migrateMetaPartition(srcAddr, targetAddr, mp, dstStoreMode)
+	}
+
+	// Prepare migration parameters
+	newPeers, finalDstStoreMode, err = c.prepareMetaPartitionMigration(srcAddr, targetAddr, mp, dstStoreMode)
+	if err != nil {
+		log.LogErrorf("action[migrateMetaPartitionByLearner],volName[%v], prepare failed,partitionID[%v],err[%v]",
+			mp.volName, mp.PartitionID, err)
+		goto errHandler
+	}
+
+	if err = c.addMetaReplicaLearner(mp, newPeers[0].Addr, finalDstStoreMode, srcAddr, false); err != nil {
+		goto errHandler
+	}
+
+	auditMsg = fmt.Sprintf("migrateMetaPartitionByLearner: vol[%v] mp[%v] migrate from src[%v] to learner[%v] success",
+		mp.volName, mp.PartitionID, srcAddr, newPeers[0].Addr)
+	auditlog.LogMasterOp("migrateMetaPartitionByLearner", auditMsg, nil)
+	Warn(c.Name, fmt.Sprintf("action[migrateMetaPartitionByLearner] clusterID[%v] vol[%v] meta partition[%v] "+
+		"migrate addr[%v] to learner[%v] success", c.Name, mp.volName, mp.PartitionID, srcAddr, newPeers[0].Addr))
+	return
+
+errHandler:
+	msg := fmt.Sprintf("action[migrateMetaPartitionByLearner],volName: %v,partitionID: %v,err: %v", mp.volName, mp.PartitionID, errors.Stack(err))
+	log.LogError(msg)
+	Warn(c.Name, msg)
+	if err != nil {
+		err = fmt.Errorf("action[migrateMetaPartitionByLearner] vol[%v],partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
 	}
 	return
 }
@@ -256,7 +221,133 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		err = fmt.Errorf("cluster mataPartition decommission switch is disabled")
 		return
 	}
+	// Use learner mode if enabled
+	if c.EnableMpDecommissionByLearner {
+		return c.migrateMetaPartitionByLearner(nodeAddr, "", mp, dstStoreMode)
+	}
 	return c.migrateMetaPartition(nodeAddr, "", mp, dstStoreMode)
+}
+
+// prepareMetaPartitionMigration prepares common parameters and validates for meta partition migration
+// Returns: newPeers, finalDstStoreMode, oldHosts, or error
+func (c *Cluster) prepareMetaPartitionMigration(srcAddr, targetAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode) (
+	newPeers []proto.Peer, finalDstStoreMode proto.StoreMode, err error,
+) {
+	// Validate source address
+	mp.RLock()
+	if !contains(mp.Hosts, srcAddr) {
+		mp.RUnlock()
+		err = fmt.Errorf("src [%s] is not exist in mp(%d)", srcAddr, mp.PartitionID)
+		return
+	}
+	oldHosts := mp.Hosts
+	if targetAddr != "" && contains(mp.Hosts, targetAddr) {
+		mp.RUnlock()
+		err = fmt.Errorf("target [%s] is already exist in mp(%d) hosts:[%v]", targetAddr, mp.PartitionID, mp.Hosts)
+		return
+	}
+	mp.RUnlock()
+
+	// Prepare select parameters
+	param := &selectParam{
+		excludeNodeSets: nil,
+		replicaNum:      1,
+		excludeHosts:    oldHosts,
+		rackLevel:       c.getRackAwareLevel(),
+		excludeRacks:    c.GetExRacksByHosts(TypeMetaPartition, oldHosts, srcAddr),
+	}
+
+	// Determine node type and store mode
+	nodeType := TypeMetaPartition
+	finalDstStoreMode = dstStoreMode
+	if dstStoreMode == proto.StoreModeDef {
+		finalDstStoreMode, err = c.getMetaPartitionStoreMode(mp, srcAddr)
+		if err != nil {
+			return
+		}
+	}
+	if finalDstStoreMode == proto.StoreModeRocksDb {
+		nodeType = TypeRocksdbPartition
+	}
+
+	// Validate decommission
+	if err = c.validateDecommissionMetaPartition(mp, srcAddr, false); err != nil {
+		return
+	}
+
+	// Get meta node, zone, and node set
+	metaNode, err := c.metaNode(srcAddr)
+	if err != nil {
+		return
+	}
+	zone, err := c.t.getZone(metaNode.ZoneName)
+	if err != nil {
+		return
+	}
+	ns, err := zone.getNodeSet(metaNode.NodeSetID)
+	if err != nil {
+		return
+	}
+
+	// Select target node
+	if targetAddr != "" {
+		newPeers = []proto.Peer{{Addr: targetAddr}}
+		// Get target meta node to get peer ID
+		targetMetaNode, err1 := c.metaNode(targetAddr)
+		if err1 != nil {
+			err = fmt.Errorf("target node [%s] not found: %v", targetAddr, err1)
+			return
+		}
+		newPeers[0].ID = targetMetaNode.ID
+		newPeers[0].HeartbeatPort = targetMetaNode.HeartbeatPort
+		newPeers[0].ReplicaPort = targetMetaNode.ReplicaPort
+	} else {
+		var excludeNodeSets []uint64
+		var zones []string
+		if _, newPeers, err = ns.getAvailMetaNodeHosts(param, finalDstStoreMode); err != nil {
+			if _, ok := c.vols[mp.volName]; !ok {
+				log.LogWarnf("[prepareMetaPartitionMigration] clusterID[%v] partitionID:%v  on node:[%v], err[%v]",
+					c.Name, mp.PartitionID, mp.Hosts, err)
+				return
+			}
+			if c.isFaultDomain(c.vols[mp.volName]) {
+				log.LogWarnf("[prepareMetaPartitionMigration] clusterID[%v] partitionID:%v  on node:[%v], err[%v]",
+					c.Name, mp.PartitionID, mp.Hosts, err)
+				return
+			}
+			// choose a meta node in other node set in the same zone
+			excludeNodeSets = append(excludeNodeSets, ns.ID)
+			param.excludeNodeSets = excludeNodeSets
+			if _, newPeers, err = zone.getAvailNodeHosts(nodeType, param); err != nil {
+				log.LogWarnf("[prepareMetaPartitionMigration] clusterID[%v] partitionID:%v  on node:[%v], zone[%v] err[%v]",
+					c.Name, mp.PartitionID, mp.Hosts, zone.name, err)
+
+				zones = mp.getLiveZones(srcAddr)
+				var excludeZone []string
+				if len(zones) == 0 {
+					excludeZone = append(excludeZone, zone.name)
+				} else {
+					excludeZone = append(excludeZone, zones[0])
+				}
+				// choose a meta node in other zone
+				if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param); err != nil {
+					return
+				}
+			}
+		}
+	}
+
+	// Log audit
+	auditMsg := fmt.Sprintf("volName[%v] partitionID[%v] hosts[%v] srcAddr[%v] choose targetAddr[%v]",
+		mp.volName, mp.PartitionID, mp.Hosts, srcAddr, newPeers)
+	auditlog.LogMasterOp("migrateMetaPartition", auditMsg, err)
+
+	// Check multiple replicas on same machine
+	if err = c.checkMultipleReplicasOnSameMachineForMigration(oldHosts, newPeers[0].Addr); err != nil {
+		return
+	}
+
+	return
 }
 
 func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr string, forceDel bool) (err error) {
@@ -400,6 +491,11 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 					break
 				}
 			}
+
+			if mp.RecoverState == proto.RecoverStateFailed {
+				diagnosis.FailedRecoveryMetaPartitionIDs = append(diagnosis.FailedRecoveryMetaPartitionIDs, mp.PartitionID)
+			}
+
 		}
 		vol.mpsLock.RUnlock()
 	}
@@ -439,11 +535,28 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[deleteMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
+			auditMsg := fmt.Sprintf("deleteMetaReplica: vol[%v] mp[%v] delete replica[%v] failed, err[%v]",
+				partition.volName, partition.PartitionID, addr, err)
+			auditlog.LogMasterOp("deleteMetaReplica", auditMsg, err)
+		} else {
+			auditMsg := fmt.Sprintf("deleteMetaReplica: vol[%v] mp[%v] delete replica[%v] success",
+				partition.volName, partition.PartitionID, addr)
+			auditlog.LogMasterOp("deleteMetaReplica", auditMsg, nil)
 		}
 	}()
 
-	if !partition.CheckLastDelReplicaTime() {
-		err = fmt.Errorf("deleteMetaReplica: the interval between deleting or decommission mp replica should over 5 minute. last %d", partition.LastDelReplicaTime)
+	isLearner := false
+	for _, peer := range partition.Peers {
+		if peer.Addr == addr {
+			isLearner = true
+			break
+		}
+	}
+
+	// partition.SrcAddr == addr means learner mode, and already checked
+	if !partition.CheckLastDelReplicaTime() && !isLearner {
+		err = fmt.Errorf("deleteMetaReplica: the interval between deleting or decommission mp replica should over 5 minute. last %d,  addr[%v]",
+			partition.LastDelReplicaTime, addr)
 		return
 	}
 
@@ -465,6 +578,20 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 	}
 
 	if err = c.deleteMetaPartition(partition, metaNode); err != nil {
+		return
+	}
+
+	// if delete learner replica, clear learner recovery state
+	if partition.LearnerDstAddr == addr {
+		err = c.clearLearnerRecoveryState(partition)
+		if err != nil {
+			log.LogErrorf("action[deleteMetaReplica] vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
+			return
+		}
+
+		auditMsg := fmt.Sprintf("deleteMetaReplica: vol[%v] mp[%v] delete learner replica[%v] success",
+			partition.volName, partition.PartitionID, addr)
+		auditlog.LogMasterOp("deleteMetaReplica", auditMsg, nil)
 		return
 	}
 	return
@@ -593,27 +720,38 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string, storeMod
 	return
 }
 
-func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, storeMode proto.StoreMode) (err error) {
+func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr string, storeMode proto.StoreMode, srcAddr string, manualPromote bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addMetaReplicaLearner],vol[%v],meta partition[%v],addr[%v],storeMode[%v],err[%v]",
-				partition.volName, partition.PartitionID, addr, storeMode, err)
+				partition.volName, partition.PartitionID, targetAddr, storeMode, err)
 		} else {
 			log.LogWarnf("action[addMetaReplicaLearner] success,vol[%v],meta partition[%v],addr[%v],storeMode[%v]",
-				partition.volName, partition.PartitionID, addr, storeMode)
+				partition.volName, partition.PartitionID, targetAddr, storeMode)
+		}
+
+		if partition.IsRecover {
+			c.putBadMetaPartitions(srcAddr, partition.PartitionID)
 		}
 	}()
 	log.LogWarnf("action[addMetaReplicaLearner] start,vol[%v],meta partition[%v],addr[%v],storeMode[%v],currentHosts[%v]",
-		partition.volName, partition.PartitionID, addr, storeMode, partition.Hosts)
+		partition.volName, partition.PartitionID, targetAddr, storeMode, partition.Hosts)
 
 	partition.Lock()
 	defer partition.Unlock()
-	if contains(partition.Hosts, addr) {
-		err = fmt.Errorf("vol[%v],mp[%v] hosts[%v] has contains host[%v]", partition.volName, partition.PartitionID, partition.Hosts, addr)
+	if contains(partition.Hosts, targetAddr) {
+		err = fmt.Errorf("vol[%v],mp[%v] hosts[%v] has contains host[%v]", partition.volName, partition.PartitionID, partition.Hosts, targetAddr)
 		log.LogWarnf("action[addMetaReplicaLearner] host already exists,vol[%v],meta partition[%v],addr[%v]",
-			partition.volName, partition.PartitionID, addr)
+			partition.volName, partition.PartitionID, targetAddr)
 		return
 	}
+
+	if !manualPromote && partition.IsRecover {
+		err = fmt.Errorf("vol[%v],mp[%v] is recovering, can't add learner", partition.volName, partition.PartitionID)
+		log.LogWarnf("action[addMetaReplicaLearner] %v", err)
+		return
+	}
+
 	// Check maximum learner number limit
 	learnerCount := 0
 	for _, peer := range partition.Peers {
@@ -629,33 +767,30 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, s
 		return
 	}
 
-	metaNode, err := c.metaNode(addr)
+	metaNode, err := c.metaNode(targetAddr)
 	if err != nil {
 		log.LogWarnf("action[addMetaReplicaLearner] getMetaNode failed,vol[%v],meta partition[%v],addr[%v],err[%v]",
-			partition.volName, partition.PartitionID, addr, err)
+			partition.volName, partition.PartitionID, targetAddr, err)
 		return
 	}
 
-	addPeer := proto.Peer{ID: metaNode.ID, Addr: addr, HeartbeatPort: metaNode.HeartbeatPort, ReplicaPort: metaNode.ReplicaPort, Type: raftProto.PeerLearner}
+	addPeer := proto.Peer{
+		ID:            metaNode.ID,
+		Addr:          targetAddr,
+		HeartbeatPort: metaNode.HeartbeatPort,
+		ReplicaPort:   metaNode.ReplicaPort,
+		Type:          raftProto.PeerLearner,
+		ManualPromote: manualPromote,
+	}
 	log.LogWarnf("action[addMetaReplicaLearner] peer info,vol[%v],meta partition[%v], peer[%v]", partition.volName, partition.PartitionID, addPeer.String())
 
-	// Add learner to raft cluster
-	if err = c.addMetaRaftLearner(partition, addPeer); err != nil {
-		log.LogWarnf("action[addMetaReplicaLearner] addMetaPartitionRaftLearner failed,vol[%v],meta partition[%v],peer[%v:%v],err[%v]",
-			partition.volName, partition.PartitionID, addPeer.ID, addPeer.Addr, err)
-		return
-	}
-	// Add learner to metadata replica list
-	newHosts := append(partition.Hosts, addPeer.Addr)
-	newPeers := append(partition.Peers, addPeer)
-	log.LogWarnf("action[addMetaReplicaLearner] persisting to rocksdb,vol[%v],meta partition[%v],newHosts[%v],newPeers[%v]",
-		partition.volName, partition.PartitionID, newHosts, newPeers)
-	if err = partition.persistToRocksDB("addMetaPartitionLearner", partition.volName, newHosts, newPeers, c); err != nil {
-		log.LogWarnf("action[addMetaReplicaLearner] persistToRocksDB failed,vol[%v],meta partition[%v],err[%v]",
-			partition.volName, partition.PartitionID, err)
-		return
-	}
-	// Create meta replica on the learner node
+	partition.Peers = append(partition.Peers, addPeer)
+	defer func() {
+		if err != nil {
+			partition.Peers = partition.Peers[:len(partition.Peers)-1]
+		}
+	}()
+
 	if err = c.createMetaReplica(partition, addPeer, storeMode); err != nil {
 		log.LogWarnf("action[addMetaReplicaLearner] createMetaReplica failed,vol[%v],meta partition[%v],peer[%v:%v],err[%v]",
 			partition.volName, partition.PartitionID, addPeer.ID, addPeer.Addr, err)
@@ -663,11 +798,52 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, s
 	}
 	log.LogWarnf("action[addMetaReplicaLearner] calling afterCreation,vol[%v],meta partition[%v],addr[%v]",
 		partition.volName, partition.PartitionID, addPeer.Addr)
+
+	// Add learner to raft cluster
+	if err = c.addMetaRaftLearner(partition, addPeer); err != nil {
+		log.LogWarnf("action[addMetaReplicaLearner] addMetaPartitionRaftLearner failed,vol[%v],meta partition[%v],peer[%v:%v],err[%v]",
+			partition.volName, partition.PartitionID, addPeer.ID, addPeer.Addr, err)
+		return
+	}
+
 	if err = partition.afterCreation(addPeer.Addr, c, storeMode); err != nil {
 		log.LogWarnf("action[addMetaReplicaLearner] afterCreation failed,vol[%v],meta partition[%v],addr[%v],err[%v]",
 			partition.volName, partition.PartitionID, addPeer.Addr, err)
 		return
 	}
+
+	// Add learner to metadata replica list
+	newHosts := append(partition.Hosts, addPeer.Addr)
+	newPeers := partition.Peers
+	if !manualPromote {
+		partition.IsRecover = true
+		partition.SrcAddr = srcAddr
+		partition.LearnerDstAddr = addPeer.Addr
+		partition.RecoverStartTime = time.Now().Unix()
+		partition.RecoverFailCount = 0
+		partition.RecoverState = proto.RecoverStateRecovering
+		auditMsg := fmt.Sprintf("addMetaReplicaLearner: vol[%v] mp[%v] added learner[%v] for decommission, srcAddr[%v] recoverStartTime[%v]",
+			partition.volName, partition.PartitionID, addPeer.Addr, srcAddr, time.Unix(partition.RecoverStartTime, 0).Format("2006-01-02 15:04:05"))
+		auditlog.LogMasterOp("addMetaReplicaLearner", auditMsg, nil)
+	} else {
+		auditMsg := fmt.Sprintf("addMetaReplicaLearner: vol[%v] mp[%v] added learner[%v] (manualPromote=true)",
+			partition.volName, partition.PartitionID, addPeer.Addr)
+		auditlog.LogMasterOp("addMetaReplicaLearner", auditMsg, nil)
+	}
+
+	log.LogWarnf("action[addMetaReplicaLearner] persisting to rocksdb,vol[%v],meta partition[%v],newHosts[%v],newPeers[%v]",
+		partition.volName, partition.PartitionID, newHosts, newPeers)
+	if err = partition.persistToRocksDB("addMetaPartitionLearner", partition.volName, newHosts, newPeers, c); err != nil {
+		log.LogWarnf("action[addMetaReplicaLearner] persistToRocksDB failed,vol[%v],meta partition[%v],err[%v]",
+			partition.volName, partition.PartitionID, err)
+
+		// Reset state on failure
+		partition.IsRecover = false
+		partition.SrcAddr = ""
+		partition.LearnerDstAddr = ""
+		return
+	}
+
 	log.LogWarnf("action[addMetaReplicaLearner] afterCreation completed,vol[%v],meta partition[%v],addr[%v]",
 		partition.volName, partition.PartitionID, addPeer.Addr)
 	return
@@ -675,17 +851,21 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, s
 
 func (c *Cluster) promoteMetaReplicaToVoter(partition *MetaPartition, addr string) (err error) {
 	defer func() {
-		if err != nil {
-			log.LogErrorf("action[promoteMetaReplicaToVoter],vol[%v],meta partition[%v],addr[%v],err[%v]",
-				partition.volName, partition.PartitionID, addr, err)
-		} else {
-			log.LogWarnf("action[promoteMetaReplicaToVoter] success,vol[%v],meta partition[%v],addr[%v]",
-				partition.volName, partition.PartitionID, addr)
-		}
+		auditMsg := fmt.Sprintf("promoteMetaReplicaToVoter: vol[%v] mp[%v] promote learner[%v] to voter finished, err[%v]",
+			partition.volName, partition.PartitionID, addr, err)
+		log.LogWarn(auditMsg)
+		auditlog.LogMasterOp("promoteMetaReplicaToVoter", auditMsg, nil)
 	}()
+
 	log.LogWarnf("action[promoteMetaReplicaToVoter] start,vol[%v],meta partition[%v],addr[%v],currentHosts[%v]",
 		partition.volName, partition.PartitionID, addr, partition.Hosts)
 
+	// Validate learner recovery status
+	if err = c.validateLearnerRecoveryStatus(partition, addr); err != nil {
+		return
+	}
+
+	// Validate learner recovery status
 	partition.Lock()
 	defer partition.Unlock()
 	if !contains(partition.Hosts, addr) {

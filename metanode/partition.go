@@ -113,6 +113,15 @@ type MetaPartitionConfig struct {
 	RocksWalTTL          uint64          `json:"rocks_wal_ttl"`
 }
 
+func (c *MetaPartitionConfig) IsLearner() bool {
+	for _, peer := range c.Peers {
+		if peer.Type == raftproto.PeerLearner && peer.ID == c.NodeId {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *MetaPartitionConfig) peersStr() string {
 	peersStr := ""
 	for _, peer := range c.Peers {

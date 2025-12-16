@@ -40,11 +40,12 @@ type Peer struct {
 	Addr          string             `json:"addr"`
 	HeartbeatPort string             `json:"raftHeartbeat"`
 	ReplicaPort   string             `json:"raftReplica"`
+	ManualPromote bool               `json:"manualPromote"` // if true, can't be promoted or deleted automatically
 }
 
 func (p *Peer) String() string {
-	return fmt.Sprintf("type[%v],id[%v],addr[%v],heartbeatPort[%v],replicaPort[%v]",
-		p.Type, p.ID, p.Addr, p.HeartbeatPort, p.ReplicaPort)
+	return fmt.Sprintf("type[%v],id[%v],addr[%v],heartbeatPort[%v],replicaPort[%v],manualPromote[%v]",
+		p.Type, p.ID, p.Addr, p.HeartbeatPort, p.ReplicaPort, p.ManualPromote)
 }
 
 // CreateMetaPartitionRequest defines the request to create a meta partition.

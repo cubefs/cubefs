@@ -19,6 +19,8 @@ import (
 	"math"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -216,18 +218,20 @@ func (c *Cluster) scheduleToCheckMetaPartitionRecoveryProgress() {
 					c.checkMetaPartitionRecoveryProgress()
 				}
 			}
-			time.Sleep(time.Second * defaultIntervalToCheckDataPartition)
+			time.Sleep(time.Second * defaultIntervalToCheck)
 		}
 	}()
 }
 
 func (c *Cluster) checkMetaPartitionRecoveryProgress() {
+	start := time.Now()
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogWarnf("checkMetaPartitionRecoveryProgress occurred panic,err[%v]", r)
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
 				"checkMetaPartitionRecoveryProgress occurred panic")
 		}
+		log.LogWarnf("checkMetaPartitionRecoveryProgress duration[%v]s", time.Since(start).Seconds())
 	}()
 
 	c.badPartitionMutex.Lock()
@@ -249,6 +253,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 					c.Name, partition.volName, partitionID))
 				continue
 			}
+
 			if vol.isUnavailable() {
 				continue
 			}
@@ -258,15 +263,33 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 				continue
 			}
 
-			if partition.getMinusOfMaxInodeID() < defaultMinusOfMaxInodeID {
-				partition.IsRecover = false
-				partition.RLock()
-				c.syncUpdateMetaPartition(partition)
-				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],vol[%v] partitionID[%v] has recovered success",
-					c.Name, partition.volName, partitionID))
+			// Check if it's learner mode decommission
+			partition.RLock()
+			isLearnerMode := partition.LearnerDstAddr != ""
+			learnerSrcAddr := partition.SrcAddr
+			learnerDstAddr := partition.LearnerDstAddr
+			partition.RUnlock()
+
+			if isLearnerMode {
+				// Learner mode decommission check
+				if err = c.checkLearnerModeRecovery(partition, learnerSrcAddr, learnerDstAddr); err != nil {
+					log.LogWarnf("checkMetaPartitionRecoveryProgress learner mode check failed,vol[%v],partitionID[%v],err[%v]",
+						partition.volName, partitionID, err)
+					newBadMpIds = append(newBadMpIds, partitionID)
+					continue
+				}
 			} else {
-				newBadMpIds = append(newBadMpIds, partitionID)
+				// Normal mode check
+				if partition.getMinusOfMaxInodeID() < defaultMinusOfMaxInodeID {
+					partition.IsRecover = false
+					partition.RLock()
+					c.syncUpdateMetaPartition(partition)
+					partition.RUnlock()
+					Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],vol[%v] partitionID[%v] has recovered success",
+						c.Name, partition.volName, partitionID))
+				} else {
+					newBadMpIds = append(newBadMpIds, partitionID)
+				}
 			}
 		}
 
@@ -280,4 +303,201 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 
 		return true
 	})
+}
+
+// markLearnerRecoverFailed marks learner mode recovery as failed and clears recovery flags
+func (c *Cluster) markLearnerRecoverFailed(mp *MetaPartition) {
+	mp.Lock()
+	defer mp.Unlock()
+	mp.IsRecover = false
+	// mp.SrcAddr = ""
+	// mp.LearnerDstAddr = ""
+	// mp.RecoverStartTime = 0
+	// mp.RecoverFailCount = 0
+	// mp.RecoverRetryTime = 0
+	mp.RecoverState = proto.RecoverStateFailed
+	c.syncUpdateMetaPartition(mp)
+	log.LogWarnf("markLearnerRecoverFailed mp[%v] marked as failed, recovery stopped", mp.PartitionID)
+}
+
+// recordRecoveryFailure records failure time for retry cooldown
+func (c *Cluster) recordRecoveryFailure(mp *MetaPartition) {
+	mp.Lock()
+	mp.RecoverRetryTime = time.Now().Unix()
+	mp.RecoverFailCount++
+	c.syncUpdateMetaPartition(mp)
+	mp.Unlock()
+}
+
+// clearLearnerRecoveryState clears learner recovery state and persists the change
+// If persistence fails, restores the original state
+func (c *Cluster) clearLearnerRecoveryState(mp *MetaPartition) (err error) {
+	mp.Lock()
+	defer mp.Unlock()
+	srcAddr := mp.SrcAddr
+	dstAddr := mp.LearnerDstAddr
+	recoverStartTime := mp.RecoverStartTime
+
+	mp.SrcAddr = ""
+	mp.LearnerDstAddr = ""
+	mp.IsRecover = false
+	mp.RecoverStartTime = 0
+	mp.RecoverFailCount = 0
+	mp.RecoverRetryTime = 0
+	mp.RecoverState = proto.RecoverStateInit
+	err = c.syncUpdateMetaPartition(mp)
+	if err != nil {
+		// Restore state on update failure
+		mp.IsRecover = true
+		mp.SrcAddr = srcAddr
+		mp.LearnerDstAddr = dstAddr
+		mp.RecoverStartTime = recoverStartTime
+		mp.RecoverState = proto.RecoverStateRecovering
+		log.LogWarnf("clearLearnerRecoveryState restore state on update failure, mp[%v]", mp.PartitionID)
+		return
+	}
+
+	auditMsg := fmt.Sprintf("clearLearnerRecoveryState: vol[%v] mp[%v] clear learner recovery state, src[%v] dst[%v] recoverStartTime[%v]",
+		mp.volName, mp.PartitionID, srcAddr, dstAddr, recoverStartTime)
+	auditlog.LogMasterOp("clearLearnerRecoveryState", auditMsg, nil)
+	return nil
+}
+
+// validateLearnerRecoveryStatus validates if learner is ready for promotion
+func (c *Cluster) validateLearnerRecoveryStatus(mp *MetaPartition, dstAddr string) (err error) {
+	// Load and find responses
+	c.doLoadMetaPartition(mp)
+	mp.RLock()
+	var leaderResponse, learnerResponse *proto.MetaPartitionLoadResponse
+	for _, lr := range mp.LoadResponse {
+		if lr.Addr == dstAddr {
+			learnerResponse = lr
+		}
+		if lr.RaftInfo.RaftStatus.Leader == lr.RaftInfo.RaftStatus.NodeID {
+			leaderResponse = lr
+		}
+	}
+	mp.RUnlock()
+
+	if leaderResponse == nil || learnerResponse == nil {
+		return fmt.Errorf("leader[%v] or learner[%v] response not found for mp[%v]", leaderResponse == nil, learnerResponse == nil, mp.PartitionID)
+	}
+
+	// Validate learner status
+	if learnerResponse.ApplyID == 0 {
+		return fmt.Errorf("learner applyId is 0 for mp[%v]", mp.PartitionID)
+	}
+
+	learnerMetaNode, err1 := c.metaNode(dstAddr)
+	if err1 != nil {
+		return fmt.Errorf("get learner metaNode[%v] failed: %v", dstAddr, err1)
+	}
+
+	// Check snapshot mode
+	if leaderResponse.RaftInfo.RaftStatus.Replicas == nil {
+		return fmt.Errorf("leader's replicas is nil for mp[%v]", mp.PartitionID)
+	}
+	learnerReplicaStatus, exists := leaderResponse.RaftInfo.RaftStatus.Replicas[learnerMetaNode.ID]
+	if !exists {
+		return fmt.Errorf("learner[%v] not found in leader's replicas for mp[%v]", dstAddr, mp.PartitionID)
+	}
+	if learnerReplicaStatus.Snapshoting {
+		return fmt.Errorf("learner[%v] is in snapshot mode for mp[%v]", dstAddr, mp.PartitionID)
+	}
+
+	// Check sync progress
+	maxIdDiff := math.Abs(float64(learnerResponse.MaxInode) - float64(leaderResponse.MaxInode))
+	applyIdDiff := math.Abs(float64(int64(learnerResponse.ApplyID) - int64(leaderResponse.ApplyID)))
+	if maxIdDiff >= defaultMinusOfMaxInodeID {
+		return fmt.Errorf("maxId difference[%v] >= 1000 for mp[%v]", maxIdDiff, mp.PartitionID)
+	}
+	if applyIdDiff >= defaultMinusOfMaxInodeID {
+		return fmt.Errorf("applyId difference[%v] >= 1000 for mp[%v]", applyIdDiff, mp.PartitionID)
+	}
+
+	return nil
+}
+
+// checkLearnerModeRecovery checks if learner mode decommission is ready to complete
+// Returns error if not ready, nil if ready to promote
+func (c *Cluster) checkLearnerModeRecovery(mp *MetaPartition, srcAddr, dstAddr string) (err error) {
+	if !contains(mp.Hosts, dstAddr) {
+		log.LogWarnf("checkLearnerModeRecovery dstAddr[%v] is not in mp[%v] hosts", dstAddr, mp.PartitionID)
+		return c.clearLearnerRecoveryState(mp)
+	}
+
+	// Get recovery status
+	mp.Lock()
+	recoverStartTime := mp.RecoverStartTime
+	failCount := mp.RecoverFailCount
+	lastFailTime := mp.RecoverRetryTime
+	if recoverStartTime == 0 {
+		recoverStartTime = time.Now().Unix()
+		mp.RecoverStartTime = recoverStartTime
+		c.syncUpdateMetaPartition(mp)
+	}
+	mp.Unlock()
+
+	// Log entry with key info only
+	recoverDuration := time.Now().Unix() - recoverStartTime
+	log.LogWarn("checkLearnerModeRecovery: vol[%v] mp[%v] src[%v] dst[%v] duration[%v]s failCount[%v]",
+		mp.volName, mp.PartitionID, srcAddr, dstAddr, recoverDuration, failCount)
+
+	// Check timeout and failure count
+	timeoutSeconds := c.cfg.LearnerRecoverTimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = defaultLearnerRecoverTimeout
+	}
+	if recoverDuration > timeoutSeconds {
+		auditMsg := fmt.Sprintf("checkLearnerModeRecovery: vol[%v] mp[%v] timeout[%vs] exceeds[%vs], marking failed",
+			mp.volName, mp.PartitionID, recoverDuration, timeoutSeconds)
+		auditlog.LogMasterOp("checkLearnerModeRecovery", auditMsg, nil)
+		c.markLearnerRecoverFailed(mp)
+		return fmt.Errorf("learner recovery timeout for mp[%v]", mp.PartitionID)
+	}
+
+	// Check retry cooldown
+	if lastFailTime > 0 {
+		if timeSinceLastFail := time.Now().Unix() - lastFailTime; timeSinceLastFail < learnerRecoverRetryInterval {
+			err = fmt.Errorf("retry cooldown, wait %vs", learnerRecoverRetryInterval-timeSinceLastFail)
+			return
+		}
+	}
+
+	if failCount >= learnerRecoverMaxFailCount {
+		auditMsg := fmt.Sprintf("checkLearnerModeRecovery: vol[%v] mp[%v] failCount[%v] exceeds[%v], marking failed",
+			mp.volName, mp.PartitionID, failCount, learnerRecoverMaxFailCount)
+		auditlog.LogMasterOp("checkLearnerModeRecovery", auditMsg, nil)
+		c.markLearnerRecoverFailed(mp)
+		return fmt.Errorf("learner recovery failure count exceeds limit for mp[%v]", mp.PartitionID)
+	}
+
+	// Promote learner to voter
+	if err = c.promoteMetaReplicaToVoter(mp, dstAddr); err != nil {
+		c.recordRecoveryFailure(mp)
+		auditlog.LogMasterOp("checkLearnerModeRecovery", fmt.Sprintf("promote learner[%v] failed: %v", dstAddr, err), err)
+		return
+	}
+
+	// Delete source replica
+	if srcAddr != "" {
+		if err = c.deleteMetaReplica(mp, srcAddr, false, false); err != nil {
+			c.recordRecoveryFailure(mp)
+			auditlog.LogMasterOp("checkLearnerModeRecovery", fmt.Sprintf("delete source replica[%v] failed: %v", srcAddr, err), err)
+			return
+		}
+		auditMsg := fmt.Sprintf("checkLearnerModeRecovery: vol[%v] mp[%v] delete source replica[%v]", mp.volName, mp.PartitionID, srcAddr)
+		auditlog.LogMasterOp("checkLearnerModeRecovery", auditMsg, nil)
+	}
+
+	// Clear recovery state
+	if err = c.clearLearnerRecoveryState(mp); err != nil {
+		return
+	}
+
+	auditMsg := fmt.Sprintf("checkLearnerModeRecovery: vol[%v] mp[%v] decommission success, src[%v] dst[%v] duration[%vs]",
+		mp.volName, mp.PartitionID, srcAddr, dstAddr, time.Now().Unix()-recoverStartTime)
+	auditlog.LogMasterOp("checkLearnerModeRecovery", auditMsg, nil)
+	Warn(c.Name, auditMsg)
+	return nil
 }

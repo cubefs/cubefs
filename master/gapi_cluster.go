@@ -619,6 +619,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 		MaxDataPartitionID:            m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:                 m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:            m.cluster.idAlloc.metaPartitionID,
+		LearnerRecoverTimeoutSeconds:  (time.Duration(m.cluster.cfg.LearnerRecoverTimeoutSeconds) * time.Second).String(),
 		MetaNodes:                     make([]proto.NodeView, 0),
 		DataNodes:                     make([]proto.NodeView, 0),
 		FlashNodes:                    make([]proto.NodeView, 0),

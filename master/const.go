@@ -86,6 +86,7 @@ const (
 	rdOnlyKey                              = "rdOnly"
 	srcAddrKey                             = "srcAddr"
 	targetAddrKey                          = "targetAddr"
+	manualPromoteKey                       = "manualPromote"
 	forceKey                               = "force"
 	raftForceDelKey                        = "raftForceDel"
 	weightKey                              = "weight"
@@ -145,6 +146,7 @@ const (
 	dpTimeoutKey                           = "dpTimeout"
 	mpTimeoutKey                           = "mpTimeout"
 	rackAwareLevelKey                      = "rackAware"
+	learnerRecoverTimeoutSecondsKey        = "learnerRecoverTimeoutSeconds"
 	ShowAll                                = "showAll"
 	trashIntervalKey                       = "trashInterval"
 	accessTimeIntervalKey                  = "accessTimeValidInterval"
@@ -274,6 +276,11 @@ const (
 
 	maxTrashInterval     = 365 * 24 * 60
 	mpReplicaDelInterval = 300 // 5 minutes
+
+	// Learner mode recovery constants
+	defaultLearnerRecoverTimeout = 3600 // 1 hour
+	learnerRecoverRetryInterval  = 120  // 2 minutes
+	learnerRecoverMaxFailCount   = 5    // maximum failure count
 
 	defaultRocksdbDiskThreshold float32 = 0.6
 )

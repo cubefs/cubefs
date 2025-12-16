@@ -5063,6 +5063,20 @@ func (c *Cluster) setRackAwareLevel(level proto.RackAwareLevel) (err error) {
 	return
 }
 
+func (c *Cluster) setLearnerRecoverTimeoutSeconds(timeout int64) (err error) {
+	oldVal := c.cfg.LearnerRecoverTimeoutSeconds
+	c.cfg.LearnerRecoverTimeoutSeconds = timeout
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setLearnerRecoverTimeoutSeconds] err[%v]", err)
+		c.cfg.LearnerRecoverTimeoutSeconds = oldVal
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+
+	log.LogInfof("action[setLearnerRecoverTimeoutSeconds] old: %v, new: %v", oldVal, timeout)
+	return
+}
+
 func (c *Cluster) setDataNodeDeleteLimitRate(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.DataNodeDeleteLimitRate)
 	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)

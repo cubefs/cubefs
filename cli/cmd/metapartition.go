@@ -17,6 +17,7 @@ package cmd
 import (
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -167,14 +168,21 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 
 			stdout("\n")
 			stdout("%v\n", "[Bad meta partitions(decommission not completed)]:")
-			badPartitionTablePattern := "%-8v    %-10v\n"
-			stdout(badPartitionTablePattern, "PATH", "PARTITION ID")
+			badPartitionTablePattern := "%-8v    %-10v    %-20v\n"
+			stdout(badPartitionTablePattern, "PATH", "PARTITION ID", "REPAIR STARTTIME")
 			for _, bmpv := range diagnosis.BadMetaPartitionIDs {
 				sort.SliceStable(bmpv.PartitionIDs, func(i, j int) bool {
 					return bmpv.PartitionIDs[i] < bmpv.PartitionIDs[j]
 				})
 				for _, pid := range bmpv.PartitionIDs {
-					stdout(badPartitionTablePattern, bmpv.Path, pid)
+					var partition *proto.MetaPartitionInfo
+					var repairStartTime string = "N/A"
+					if partition, err = client.ClientAPI().GetMetaPartition(pid); err == nil && partition != nil {
+						if partition.RecoverStartTime > 0 {
+							repairStartTime = time.Unix(partition.RecoverStartTime, 0).Format("2006-01-02 15:04:05")
+						}
+					}
+					stdout(badPartitionTablePattern, bmpv.Path, pid, repairStartTime)
 				}
 			}
 
@@ -252,6 +260,22 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 				return diagnosis.InConsistRreplicaCntMetaPartitionIDs[i] < diagnosis.InConsistRreplicaCntMetaPartitionIDs[j]
 			})
 			for _, pid := range diagnosis.InConsistRreplicaCntMetaPartitionIDs {
+				var partition *proto.MetaPartitionInfo
+				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+					continue
+				}
+				if partition != nil {
+					stdout("%v\n", formatMetaPartitionInfoRow(partition))
+				}
+			}
+
+			stdout("\n")
+			stdout("%v\n", "[Partition with failed recovery]:")
+			stdout("%v\n", partitionInfoTableHeader)
+			sort.SliceStable(diagnosis.FailedRecoveryMetaPartitionIDs, func(i, j int) bool {
+				return diagnosis.FailedRecoveryMetaPartitionIDs[i] < diagnosis.FailedRecoveryMetaPartitionIDs[j]
+			})
+			for _, pid := range diagnosis.FailedRecoveryMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
 					continue
@@ -382,6 +406,7 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
 	var optStoreMode string
+	var manualPromote bool
 	cmd := &cobra.Command{
 		Use:   CliOpAddLearner + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionAddLearnerShort,
@@ -402,7 +427,7 @@ func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().AddMetaPartitionLearner(partitionID, address, clientIDKey, storeMode); err != nil {
+			if err = client.AdminAPI().AddMetaPartitionLearner(partitionID, address, clientIDKey, storeMode, manualPromote); err != nil {
 				return
 			}
 			stdout("Add learner replica successfully\n")
@@ -416,6 +441,7 @@ func newMetaPartitionAddLearnerCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "memory", "specify volume default store mode: memory, rocksdb")
+	cmd.Flags().BoolVar(&manualPromote, "manualPromote", false, "if true, the learner can't be promoted or deleted automatically")
 	return cmd
 }
 

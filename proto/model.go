@@ -133,6 +133,12 @@ type MetaPartitionInfo struct {
 	MemStoreCnt               uint8
 	RockStoreCnt              uint8
 	StoreMode                 StoreMode
+	SrcAddr                   string       // Source address for learner mode decommission
+	LearnerDstAddr            string       // Destination address for learner mode decommission
+	RecoverStartTime          int64        // Start time of learner mode recovery
+	RecoverFailCount          int          // Failure count for promote or deleteMetaReplica operations
+	RecoverRetryTime          int64        // Last failure time for promote or deleteMetaReplica operations
+	RecoverState              RecoverState // Learner recovery state: 0=Init, 1=Recovering, 2=Failed
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -183,6 +189,7 @@ type ClusterView struct {
 	DpBackupTimeout                           string
 	DpTimeout                                 string
 	MpTimeout                                 string
+	LearnerRecoverTimeoutSeconds              string
 	DataNodeStatInfo                          *NodeStatInfo
 	MetaNodeStatInfo                          *NodeStatInfo
 	VolStatInfo                               []*VolStatInfo
@@ -488,6 +495,7 @@ type MetaPartitionDiagnosisV1 struct {
 	MaxInodeNotEqualIDs                  []uint64
 	DentryCountNotEqualIDs               []uint64
 	AbnormalRaftIDs                      []uint64
+	FailedRecoveryMetaPartitionIDs       []uint64
 }
 
 type FailedDpInfo struct {

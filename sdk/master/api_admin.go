@@ -259,13 +259,16 @@ func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, cli
 	return
 }
 
-func (api *AdminAPI) AddMetaPartitionLearner(metaPartitionID uint64, nodeAddr string, clientIDKey string, storeMode proto.StoreMode) (err error) {
+func (api *AdminAPI) AddMetaPartitionLearner(metaPartitionID uint64, nodeAddr string, clientIDKey string, storeMode proto.StoreMode, manualPromote bool) (err error) {
 	request := newRequest(get, proto.AdminAddMetaPartitionLearner).Header(api.h)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("clientIDKey", clientIDKey)
 	if storeMode != proto.StoreModeDef {
 		request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
+	}
+	if manualPromote {
+		request.addParam("manualPromote", "true")
 	}
 	_, err = api.mc.serveRequest(request)
 	return
@@ -648,7 +651,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	remoteCacheMultiRead string, flashNodeTimeoutCount string,
 	remoteCacheSameZoneTimeout string, remoteCacheSameRegionTimeout string, flashHotKeyMissCount string,
 	flashReadFlowLimit string, flashWriteFlowLimit string, flashKeyFlowLimit string, remoteClientFlowLimit string,
-	enableMpDecommissionByLearner string,
+	enableMpDecommissionByLearner string, learnerRecoverTimeoutSeconds string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -758,6 +761,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if enableMpDecommissionByLearner != "" {
 		request.addParam("enableMpDecommissionByLearner", enableMpDecommissionByLearner)
+	}
+	if learnerRecoverTimeoutSeconds != "" {
+		request.addParam("learnerRecoverTimeoutSeconds", learnerRecoverTimeoutSeconds)
 	}
 	_, err = api.mc.serveRequest(request)
 	return

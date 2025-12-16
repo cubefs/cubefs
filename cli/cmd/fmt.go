@@ -81,6 +81,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  Volume count                             : %v\n", len(cv.VolStatInfo)))
 	sb.WriteString(fmt.Sprintf("  Allow Mp Decomm                          : %v\n", formatEnabledDisabled(!cv.ForbidMpDecommission)))
 	sb.WriteString(fmt.Sprintf("  EnableMpDecommissionByLearner            : %v\n", cv.EnableMpDecommissionByLearner))
+	sb.WriteString(fmt.Sprintf("  LearnerRecoverTimeoutSeconds              : %v\n", cv.LearnerRecoverTimeoutSeconds))
 	sb.WriteString(fmt.Sprintf("  EbsAddr                                  : %v\n", cp.EbsAddr))
 	sb.WriteString(fmt.Sprintf("  LoadFactor                               : %v\n", cn.LoadFactor))
 	sb.WriteString(fmt.Sprintf("  DpRepairTimeout                          : %v\n", cv.DpRepairTimeout))
@@ -766,6 +767,24 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Store mode       : %v\n", partition.StoreMode.Str()))
 	sb.WriteString(fmt.Sprintf("Memory Replicas  : %v\n", partition.MemStoreCnt))
 	sb.WriteString(fmt.Sprintf("Rocksdb Replicas : %v\n", partition.RockStoreCnt))
+
+	sb.WriteString("\n")
+	sb.WriteString("Learner Mode Recovery:\n")
+	if partition.SrcAddr != "" {
+		sb.WriteString(fmt.Sprintf("SrcAddr          : %v\n", partition.SrcAddr))
+	}
+	if partition.LearnerDstAddr != "" {
+		sb.WriteString(fmt.Sprintf("LearnerDstAddr   : %v\n", partition.LearnerDstAddr))
+	}
+	if partition.RecoverStartTime > 0 {
+		sb.WriteString(fmt.Sprintf("RecoverStartTime : %v\n", time.Unix(partition.RecoverStartTime, 0).Format("2006-01-02 15:04:05")))
+	}
+	sb.WriteString(fmt.Sprintf("RecoverFailCount : %v\n", partition.RecoverFailCount))
+	if partition.RecoverRetryTime > 0 {
+		sb.WriteString(fmt.Sprintf("RecoverRetryTime : %v\n", time.Unix(partition.RecoverRetryTime, 0).Format("2006-01-02 15:04:05")))
+	}
+	sb.WriteString(fmt.Sprintf("RecoverState      : %v\n", partition.RecoverState.String()))
+
 	sb.WriteString("\n")
 	sb.WriteString("Replicas : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
@@ -1090,14 +1109,18 @@ func parseMpReadOnlyReasons(mask uint32) []string {
 	return reasons
 }
 
-var peerTableRowPattern = "%-6v    %-18v    %-12v    %-12v"
+var peerTableRowPattern = "%-6v    %-18v    %-12v    %-12v    %-12v"
 
 func formatPeerTableHeader() string {
-	return fmt.Sprintf(peerTableRowPattern, "ID", "ADDR", "HEARTBEATPORT", "REPLICAPORT")
+	return fmt.Sprintf(peerTableRowPattern, "ID", "ADDR", "HEARTBEATPORT", "REPLICAPORT", "MANUALPROMOTE")
 }
 
 func formatPeer(peer proto.Peer) string {
-	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr, peer.HeartbeatPort, peer.ReplicaPort)
+	manualPromoteStr := "false"
+	if peer.ManualPromote {
+		manualPromoteStr = "true"
+	}
+	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr, peer.HeartbeatPort, peer.ReplicaPort, manualPromoteStr)
 }
 
 var dataNodeDetailTableRowPattern = "%-6v    %-10v    %-65v    %-10v    %-10v    %-10v    %-10v"

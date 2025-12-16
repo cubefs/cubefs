@@ -49,6 +49,7 @@ type MetaReplica struct {
 	metaNode                  *MetaNode
 	ReadOnlyReasons           uint32
 	StoreMode                 proto.StoreMode
+	IsLearner                 bool
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -87,6 +88,12 @@ type MetaPartition struct {
 	sync.RWMutex
 
 	LastDelReplicaTime int64
+	SrcAddr            string             // Source address for learner mode decommission
+	LearnerDstAddr     string             // Destination address for learner mode decommission
+	RecoverStartTime   int64              // Start time of learner mode recovery
+	RecoverFailCount   int                // Failure count for promote or deleteMetaReplica operations
+	RecoverRetryTime   int64              // Last failure time for promote or deleteMetaReplica operations
+	RecoverState       proto.RecoverState // Learner recovery state: 0=Init, 1=Recovering, 2=Failed
 }
 
 func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
@@ -525,10 +532,11 @@ func (mp *MetaPartition) getLiveReplicasAddr(liveReplicas []*MetaReplica) (addrs
 	return
 }
 
+// Get live replicas, exclude learner replicas
 func (mp *MetaPartition) getLiveReplicas(timeOutSec int64) (liveReplicas []*MetaReplica) {
 	liveReplicas = make([]*MetaReplica, 0)
 	for _, mr := range mp.Replicas {
-		if mr.isActive(timeOutSec) {
+		if mr.isActive(timeOutSec) && !mr.IsLearner {
 			liveReplicas = append(liveReplicas, mr)
 		}
 	}
@@ -728,6 +736,7 @@ func (mp *MetaPartition) createTaskToCreateReplica(host string, storeMode proto.
 		VerSeq:      mp.VerSeq,
 		StoreMode:   storeMode,
 	}
+
 	t = proto.NewAdminTask(proto.OpCreateMetaPartition, host, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
 	return
@@ -851,6 +860,11 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	}
 
 	mr.setLastReportTime()
+
+	if mgr.IsLearner != mr.IsLearner {
+		mr.IsLearner = mgr.IsLearner
+		log.LogWarnf("action[updateMetric] mp [%v] meta replica[%v] is learner[%v]", mgr.PartitionID, mr.Addr, mr.IsLearner)
+	}
 
 	if mgr.StoreMode == proto.StoreModeMem && mr.metaNode.RdOnly {
 		mr.ReadOnlyReasons |= proto.MetaNodeReadOnly

@@ -996,55 +996,56 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cv := &proto.ClusterView{
-		Name:                                   m.cluster.Name,
-		CreateTime:                             time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
-		LeaderAddr:                             m.leaderInfo.addr,
-		DisableAutoAlloc:                       m.cluster.DisableAutoAllocate,
-		ForbidMpDecommission:                   m.cluster.ForbidMpDecommission,
-		EnableMpDecommissionByLearner:          m.cluster.EnableMpDecommissionByLearner,
-		MetaNodeThreshold:                      m.cluster.cfg.MetaNodeThreshold,
-		Applied:                                m.fsm.applied,
-		MaxDataPartitionID:                     m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:                          m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:                     m.cluster.idAlloc.metaPartitionID,
-		VolDeletionDelayTimeHour:               m.cluster.cfg.volDelayDeleteTimeHour,
-		MetaNodeGOGC:                           m.cluster.cfg.metaNodeGOGC,
-		DataNodeGOGC:                           m.cluster.cfg.dataNodeGOGC,
-		DpRepairTimeout:                        m.cluster.GetDecommissionDataPartitionRecoverTimeOut().String(),
-		DpBackupTimeout:                        m.cluster.GetDecommissionDataPartitionBackupTimeOut().String(),
-		MarkDiskBrokenThreshold:                m.cluster.getMarkDiskBrokenThreshold(),
-		EnableAutoDpMetaRepair:                 m.cluster.getEnableAutoDpMetaRepair(),
-		AutoDpMetaRepairParallelCnt:            m.cluster.GetAutoDpMetaRepairParallelCnt(),
-		EnableAutoDecommission:                 m.cluster.AutoDecommissionDiskIsEnabled(),
-		AutoDecommissionDiskInterval:           m.cluster.GetAutoDecommissionDiskInterval().String(),
-		EnableDistributionOptimization:         m.cluster.getEnableDistributionOptimization(),
-		DistributionOptimizationThreshold:      getDistributionOptimizationThreshold(),
-		DistributionOptimizationConDpCnt:       m.cluster.DistributionOptimizationConDpCnt.Load(),
-		DecommissionLimit:                      atomic.LoadUint64(&m.cluster.DecommissionLimit),
-		DecommissionFirstHostDiskParallelLimit: atomic.LoadUint64(&m.cluster.DecommissionFirstHostDiskParallelLimit),
-		DecommissionDiskLimit:                  m.cluster.GetDecommissionDiskLimit(),
-		DpTimeout:                              (time.Duration(m.cluster.getDataPartitionTimeoutSec()) * time.Second).String(),
-		MpTimeout:                              (time.Duration(m.cluster.getMetaPartitionTimeoutSec()) * time.Second).String(),
-		MasterNodes:                            make([]proto.NodeView, 0),
-		MetaNodes:                              make([]proto.NodeView, 0),
-		DataNodes:                              make([]proto.NodeView, 0),
-		VolStatInfo:                            make([]*proto.VolStatInfo, 0),
-		StatOfStorageClass:                     make([]*proto.StatOfStorageClass, 0),
-		StatMigrateStorageClass:                make([]*proto.StatOfStorageClass, 0),
-		BadPartitionIDs:                        make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs:                    make([]proto.BadPartitionView, 0),
-		ForbidWriteOpOfProtoVer0:               m.cluster.cfg.forbidWriteOpOfProtoVer0,
-		LegacyDataMediaType:                    m.cluster.legacyDataMediaType,
+		Name:                                      m.cluster.Name,
+		CreateTime:                                time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
+		LeaderAddr:                                m.leaderInfo.addr,
+		DisableAutoAlloc:                          m.cluster.DisableAutoAllocate,
+		ForbidMpDecommission:                      m.cluster.ForbidMpDecommission,
+		EnableMpDecommissionByLearner:             m.cluster.EnableMpDecommissionByLearner,
+		MetaNodeThreshold:                         m.cluster.cfg.MetaNodeThreshold,
+		Applied:                                   m.fsm.applied,
+		MaxDataPartitionID:                        m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:                             m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:                        m.cluster.idAlloc.metaPartitionID,
+		VolDeletionDelayTimeHour:                  m.cluster.cfg.volDelayDeleteTimeHour,
+		MetaNodeGOGC:                              m.cluster.cfg.metaNodeGOGC,
+		DataNodeGOGC:                              m.cluster.cfg.dataNodeGOGC,
+		DpRepairTimeout:                           m.cluster.GetDecommissionDataPartitionRecoverTimeOut().String(),
+		DpBackupTimeout:                           m.cluster.GetDecommissionDataPartitionBackupTimeOut().String(),
+		MarkDiskBrokenThreshold:                   m.cluster.getMarkDiskBrokenThreshold(),
+		EnableAutoDpMetaRepair:                    m.cluster.getEnableAutoDpMetaRepair(),
+		AutoDpMetaRepairParallelCnt:               m.cluster.GetAutoDpMetaRepairParallelCnt(),
+		EnableAutoDecommission:                    m.cluster.AutoDecommissionDiskIsEnabled(),
+		AutoDecommissionDiskInterval:              m.cluster.GetAutoDecommissionDiskInterval().String(),
+		EnableDistributionOptimization:            m.cluster.getEnableDistributionOptimization(),
+		DistributionOptimizationThreshold:         getDistributionOptimizationThreshold(),
+		DistributionOptimizationConDpCnt:          m.cluster.DistributionOptimizationConDpCnt.Load(),
+		DecommissionLimit:                         atomic.LoadUint64(&m.cluster.DecommissionLimit),
+		DecommissionFirstHostDiskParallelLimit:    atomic.LoadUint64(&m.cluster.DecommissionFirstHostDiskParallelLimit),
+		DecommissionDiskLimit:                     m.cluster.GetDecommissionDiskLimit(),
+		DpTimeout:                                 (time.Duration(m.cluster.getDataPartitionTimeoutSec()) * time.Second).String(),
+		MpTimeout:                                 (time.Duration(m.cluster.getMetaPartitionTimeoutSec()) * time.Second).String(),
+		LearnerRecoverTimeoutSeconds:              (time.Duration(m.cluster.cfg.LearnerRecoverTimeoutSeconds) * time.Second).String(),
+		MasterNodes:                               make([]proto.NodeView, 0),
+		MetaNodes:                                 make([]proto.NodeView, 0),
+		DataNodes:                                 make([]proto.NodeView, 0),
+		VolStatInfo:                               make([]*proto.VolStatInfo, 0),
+		StatOfStorageClass:                        make([]*proto.StatOfStorageClass, 0),
+		StatMigrateStorageClass:                   make([]*proto.StatOfStorageClass, 0),
+		BadPartitionIDs:                           make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:                       make([]proto.BadPartitionView, 0),
+		ForbidWriteOpOfProtoVer0:                  m.cluster.cfg.forbidWriteOpOfProtoVer0,
+		LegacyDataMediaType:                       m.cluster.legacyDataMediaType,
 		RaftPartitionCanUsingDifferentPortEnabled: m.cluster.RaftPartitionCanUsingDifferentPortEnabled(),
-		FlashNodes:                   make([]proto.NodeView, 0),
-		FlashNodeHandleReadTimeout:   m.cluster.cfg.flashNodeHandleReadTimeout,
-		FlashNodeReadDataNodeTimeout: m.cluster.cfg.flashNodeReadDataNodeTimeout,
-		RackAwareLevel:               m.cluster.cfg.RackAwareLevel,
-		FlashHotKeyMissCount:         m.cluster.cfg.flashHotKeyMissCount,
-		FlashReadFlowLimit:           m.cluster.cfg.flashReadFlowLimit,
-		FlashWriteFlowLimit:          m.cluster.cfg.flashWriteFlowLimit,
-		FlashKeyFlowLimit:            m.cluster.cfg.flashKeyFlowLimit,
-		RemoteClientFlowLimit:        m.cluster.cfg.remoteClientFlowLimit,
+		FlashNodes:                                make([]proto.NodeView, 0),
+		FlashNodeHandleReadTimeout:                m.cluster.cfg.flashNodeHandleReadTimeout,
+		FlashNodeReadDataNodeTimeout:              m.cluster.cfg.flashNodeReadDataNodeTimeout,
+		RackAwareLevel:                            m.cluster.cfg.RackAwareLevel,
+		FlashHotKeyMissCount:                      m.cluster.cfg.flashHotKeyMissCount,
+		FlashReadFlowLimit:                        m.cluster.cfg.flashReadFlowLimit,
+		FlashWriteFlowLimit:                       m.cluster.cfg.flashWriteFlowLimit,
+		FlashKeyFlowLimit:                         m.cluster.cfg.flashKeyFlowLimit,
+		RemoteClientFlowLimit:                     m.cluster.cfg.remoteClientFlowLimit,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -2074,13 +2075,14 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) addMetaPartitionLearner(w http.ResponseWriter, r *http.Request) {
 	var (
-		msg         string
-		addr        string
-		mp          *MetaPartition
-		partitionID uint64
-		allHosts    []string
-		err         error
-		storeMode   int
+		msg           string
+		addr          string
+		mp            *MetaPartition
+		partitionID   uint64
+		allHosts      []string
+		err           error
+		storeMode     int
+		manualPromote bool
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAddMetaPartitionLearner))
 	defer func() {
@@ -2110,6 +2112,13 @@ func (m *Server) addMetaPartitionLearner(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	manualPromote, err = extractBoolWithDefault(r, manualPromoteKey, false)
+	if err != nil {
+		log.LogWarnf("action[addMetaPartitionLearner] extractBoolWithDefault manualPromote failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
 		log.LogWarnf("action[addMetaPartitionLearner] getMetaPartitionByID failed,partitionID[%v],err[%v]", partitionID, err)
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
@@ -2126,18 +2135,11 @@ func (m *Server) addMetaPartitionLearner(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode)); err != nil {
+	if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode), "", manualPromote); err != nil {
 		log.LogWarnf("action[addMetaPartitionLearner] cluster.addMetaPartitionLearner failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-
-	mp.IsRecover = true
-	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
-
-	mp.RLock()
-	m.cluster.syncUpdateMetaPartition(mp)
-	mp.RUnlock()
 
 	log.LogWarnf("action[addMetaPartitionLearner] learner added successfully,partitionID[%v],addr[%v],set IsRecover=true", partitionID, addr)
 	msg = fmt.Sprintf("meta partitionID :%v  add learner [%v] successfully", partitionID, addr)
@@ -2217,6 +2219,7 @@ func (m *Server) deleteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
 	msg = fmt.Sprintf("meta partitionID :%v  delete replica [%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -3945,6 +3948,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[rackAwareLevelKey]; ok {
 		if v, ok := val.(uint8); ok {
 			if err = m.cluster.setRackAwareLevel(proto.RackAwareLevel(v)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[learnerRecoverTimeoutSecondsKey]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.cluster.setLearnerRecoverTimeoutSeconds(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -6612,6 +6624,12 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			MemStoreCnt:               memCnt,
 			RockStoreCnt:              rocksCnt,
 			StoreMode:                 storeMode,
+			SrcAddr:                   mp.SrcAddr,
+			LearnerDstAddr:            mp.LearnerDstAddr,
+			RecoverStartTime:          mp.RecoverStartTime,
+			RecoverFailCount:          mp.RecoverFailCount,
+			RecoverRetryTime:          mp.RecoverRetryTime,
+			RecoverState:              mp.RecoverState,
 		}
 		return mpInfo
 	}

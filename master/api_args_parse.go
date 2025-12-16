@@ -1698,6 +1698,21 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[rackAwareLevelKey] = uint8(val)
 	}
 
+	if value = r.FormValue(learnerRecoverTimeoutSecondsKey); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(learnerRecoverTimeoutSecondsKey)
+			return
+		}
+		if val <= 0 {
+			err = fmt.Errorf("learnerRecoverTimeoutSeconds must be greater than 0")
+			return
+		}
+		params[learnerRecoverTimeoutSecondsKey] = val
+	}
+
 	if value = r.FormValue(flashReadFlowLimit); value != "" {
 		noParams = false
 		val := int64(0)

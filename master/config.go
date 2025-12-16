@@ -230,8 +230,9 @@ type clusterConfig struct {
 	SingleNodeMode     bool
 	mpMigrateThreads   int
 
-	MaxWritableDataPartitionCnt int
-	RackAwareLevel              pt.RackAwareLevel
+	MaxWritableDataPartitionCnt  int
+	RackAwareLevel               pt.RackAwareLevel
+	LearnerRecoverTimeoutSeconds int64 // Timeout in seconds for learner mode recovery
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -278,6 +279,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.metaNodeMemMidPer = defaultMetaNodeMemHighPer
 	cfg.mpMigrateThreads = defaultMpMigrateThreads
 	cfg.RackAwareLevel = pt.RackAwareNone
+	cfg.LearnerRecoverTimeoutSeconds = defaultLearnerRecoverTimeout
 	return
 }
 
