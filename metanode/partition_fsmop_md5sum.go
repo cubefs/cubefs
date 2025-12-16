@@ -9,7 +9,6 @@ import (
 	"sort"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -66,7 +65,9 @@ func (mp *metaPartition) fsmCalcMetaPartitionMd5Sum(msg *storeMsg) error {
 // while skipping time fields (CreateTime, AccessTime, ModifyTime, LeaseExpireTime) for compatibility
 func writeInodeToBufferForMd5(inode *Inode, buff *bytes.Buffer) (err error) {
 	// Use MarshalValueV2WithSkip with skipTimeFields=true to maintain compatibility
-	tmpBuf := buf.NewByteBufEx(256)
+	tmpBuf := GetInodeBuf()
+	defer PutInodeBuf(tmpBuf)
+
 	inode.MarshalValueV2WithSkip(tmpBuf, true)
 	valBytes := tmpBuf.Bytes()
 	_, err = buff.Write(valBytes)
