@@ -72,32 +72,34 @@ func TestProxyCacherVolumeFlush(t *testing.T) {
 
 	volume := new(clustermgr.VolumeInfo)
 	volume.Units = []clustermgr.Unit{{Vuid: 1234}, {Vuid: 5678}}
+	version := proto.RouteVersion(12345678)
+	volume.RouteVersion = proto.RouteVersion(version)
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(volume, nil).Times(1)
 	for range [100]struct{}{} {
 		vol, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
-		require.Equal(t, uint32(0x9d31f755), vol.Version)
+		require.Equal(t, version, vol.RouteVersion)
 	}
 
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(volume, nil).Times(100)
 	for range [100]struct{}{} {
 		vol, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1, Flush: true})
 		require.NoError(t, err)
-		require.Equal(t, uint32(0x9d31f755), vol.Version)
+		require.Equal(t, version, vol.RouteVersion)
 	}
 
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(volume, nil).Times(1)
 	for range [100]struct{}{} {
 		vol, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 3, Flush: true, Version: 0x01})
 		require.NoError(t, err)
-		require.Equal(t, uint32(0x9d31f755), vol.Version)
+		require.Equal(t, version, vol.RouteVersion)
 	}
 
-	cmCli.EXPECT().GetVolumeInfo(A, A).Return(volume, nil).Times(100)
+	cmCli.EXPECT().GetVolumeInfo(A, A).Return(volume, nil).Times(1)
 	for range [100]struct{}{} {
 		vol, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 4, Flush: true, Version: 0x9d31f755})
 		require.NoError(t, err)
-		require.Equal(t, uint32(0x9d31f755), vol.Version)
+		require.Equal(t, version, vol.RouteVersion)
 	}
 }
 

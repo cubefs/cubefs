@@ -48,7 +48,7 @@ type VolumePhy struct {
 	Vid       proto.Vid
 	CodeMode  codemode.CodeMode
 	IsPunish  bool
-	Version   uint32
+	Version   uint64
 	Timestamp int64
 	Units     []Unit
 }
@@ -240,7 +240,7 @@ func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool)
 	}
 
 	singleID := fmt.Sprintf("get-volume-%d", id)
-	ver := uint32(0)
+	ver := uint64(0)
 	if phy != nil {
 		ver = phy.Version
 	}
@@ -282,14 +282,14 @@ func (v *volumeGetterImpl) getFromLocalCache(_ context.Context, id cvid) *Volume
 	return v.volumeMemCache.Get(id)
 }
 
-func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flush bool, ver uint32) (*VolumePhy, error) {
+func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flush bool, ver uint64) (*VolumePhy, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	hosts, err := v.service.GetServiceHosts(ctx, proto.ServiceNameProxy)
 	if err != nil {
 		return nil, err
 	}
 
-	var volume *proxy.VersionVolume
+	var volume *clustermgr.VolumeInfo
 	cid := v.config.ClusterID
 	id := addCVid(cid, vid)
 	triedHosts := make(map[string]struct{})
@@ -327,7 +327,7 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 	phy := &VolumePhy{
 		Vid:       volume.Vid,
 		CodeMode:  volume.CodeMode,
-		Version:   volume.Version,
+		Version:   uint64(volume.RouteVersion),
 		Timestamp: time.Now().UnixNano(),
 		Units:     make([]Unit, len(volume.Units)),
 	}
@@ -344,7 +344,7 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 }
 
 // flush update all proxy cache of this idc
-func (v *volumeGetterImpl) flush(ctx context.Context, vid proto.Vid, ver uint32, hosts []string, except map[string]struct{}) {
+func (v *volumeGetterImpl) flush(ctx context.Context, vid proto.Vid, ver uint64, hosts []string, except map[string]struct{}) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("to flush volume cache %d on proxy:%v version:%d except:%v", vid, hosts, ver, except)
 

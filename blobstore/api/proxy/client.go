@@ -59,8 +59,8 @@ func (c *client) SendDeleteMsg(ctx context.Context, host string, args *DeleteArg
 	return c.PostWith(ctx, host+"/deletemsg", nil, args)
 }
 
-func (c *client) GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (volume *VersionVolume, err error) {
-	volume = new(VersionVolume)
+func (c *client) GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (volume *clustermgr.VolumeInfo, err error) {
+	volume = new(clustermgr.VolumeInfo)
 	url := fmt.Sprintf("%s/cache/volume/%d?flush=%v&version=%d", host, args.Vid, args.Flush, args.Version)
 	err = c.GetWith(ctx, url, &volume)
 	return

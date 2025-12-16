@@ -122,13 +122,12 @@ func init() {
 
 	pcli := mocks.NewMockProxyClient(C(&testing.T{}))
 	pcli.EXPECT().GetCacheVolume(A, A, A).AnyTimes().DoAndReturn(
-		func(ctx context.Context, _ string, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+		func(ctx context.Context, _ string, args *proxy.CacheVolumeArgs) (*cmapi.VolumeInfo, error) {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			default:
 			}
-			volume := new(proxy.VersionVolume)
 			vid := args.Vid
 			dataMu.Lock()
 			dataCalled[vid]++
@@ -137,9 +136,7 @@ func init() {
 				if vid == vid404 {
 					return nil, errcode.ErrVolumeNotExist
 				}
-				volume.VolumeInfo = val
-				volume.Version = volume.GetVersion()
-				return volume, nil
+				return &val, nil
 			}
 			return nil, errNotFound
 		})

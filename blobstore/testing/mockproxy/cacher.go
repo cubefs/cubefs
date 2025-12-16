@@ -66,10 +66,10 @@ func (mr *MockCacherMockRecorder) GetDisk(arg0, arg1 interface{}) *gomock.Call {
 }
 
 // GetVolume mocks base method.
-func (m *MockCacher) GetVolume(arg0 context.Context, arg1 *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+func (m *MockCacher) GetVolume(arg0 context.Context, arg1 *proxy.CacheVolumeArgs) (*clustermgr.VolumeInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolume", arg0, arg1)
-	ret0, _ := ret[0].(*proxy.VersionVolume)
+	ret0, _ := ret[0].(*clustermgr.VolumeInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -58,7 +58,7 @@ func TestClient_GetCacheVolume(t *testing.T) {
 	cli := New(&Config{})
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"vid": 111, "units": [{"vuid": 425335980033}]}`))
+		w.Write([]byte(`{"vid": 111, "route_version": 2959854811, "units": [{"vuid": 425335980033}]}`))
 	}))
 	defer mockServer.Close()
 	for _, args := range []CacheVolumeArgs{
@@ -70,8 +70,7 @@ func TestClient_GetCacheVolume(t *testing.T) {
 		volume, err := cli.GetCacheVolume(context.Background(), mockServer.URL, &args)
 		require.NoError(t, err)
 		require.Equal(t, proto.Vid(111), volume.Vid)
-		require.Equal(t, uint32(0), volume.Version)
-		require.Equal(t, uint32(0xb06bccdb), volume.GetVersion())
+		require.Equal(t, uint64(0xb06bccdb), uint64(volume.RouteVersion))
 	}
 }
 

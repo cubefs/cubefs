@@ -78,7 +78,7 @@ var (
 	cc                controller.ClusterController
 
 	clusterInfo *clustermgr.ClusterInfo
-	dataVolume  *proxy.VersionVolume
+	dataVolume  *clustermgr.VolumeInfo
 	dataAllocs  []proxy.AllocRet
 	dataNodes   map[string]clustermgr.ServiceInfo
 	dataDisks   map[proto.DiskID]clustermgr.BlobNodeDiskInfo
@@ -329,7 +329,7 @@ func initMockData() {
 		Vid:      volumeID,
 	}
 
-	dataVolume = &proxy.VersionVolume{VolumeInfo: clustermgr.VolumeInfo{
+	dataVolume = &clustermgr.VolumeInfo{
 		VolumeInfoBase: clustermgr.VolumeInfoBase{
 			Vid:      volumeID,
 			CodeMode: codemode.EC6P6,
@@ -343,7 +343,7 @@ func initMockData() {
 			}
 			return
 		}(),
-	}}
+	}
 
 	proxyNodes := make([]clustermgr.ServiceNode, 32)
 	for idx := range proxyNodes {

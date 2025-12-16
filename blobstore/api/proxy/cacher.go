@@ -17,34 +17,17 @@ package proxy
 import (
 	"context"
 	"crypto/sha1"
-	"encoding/binary"
 	"encoding/hex"
-	"hash/crc32"
 	"strings"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
-// VersionVolume volume with version.
-type VersionVolume struct {
-	clustermgr.VolumeInfo
-	Version uint32 `json:"version,omitempty"`
-}
-
-// GetVersion calculate version with volume's units.
-func (v *VersionVolume) GetVersion() uint32 {
-	crcWriter := crc32.NewIEEE()
-	for _, unit := range v.Units {
-		binary.Write(crcWriter, binary.LittleEndian, uint64(unit.Vuid))
-	}
-	return crcWriter.Sum32()
-}
-
 // CacheVolumeArgs volume arguments.
 type CacheVolumeArgs struct {
 	Vid     proto.Vid `json:"vid"`
-	Version uint32    `json:"version,omitempty"`
+	Version uint64    `json:"version,omitempty"`
 	Flush   bool      `json:"flush,omitempty"`
 }
 
@@ -56,7 +39,7 @@ type CacheDiskArgs struct {
 
 // Cacher interface of proxy cache.
 type Cacher interface {
-	GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (*VersionVolume, error)
+	GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (*clustermgr.VolumeInfo, error)
 	GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (*clustermgr.BlobNodeDiskInfo, error)
 	// Erase cache in proxy memory and diskv.
 	// Volume key is "volume-{vid}", and disk key is "disk-{disk_id}".

@@ -48,7 +48,7 @@ func addCmdCacher(cmd *grumble.Command) {
 			volume, err := proxyCli.GetCacheVolume(common.CmdContext(), c.Flags.String(_host),
 				&proxy.CacheVolumeArgs{
 					Vid:     proto.Vid(c.Flags.Uint64("vid")),
-					Version: uint32(c.Flags.Uint64("version")),
+					Version: c.Flags.Uint64("version"),
 					Flush:   c.Flags.Bool("flush"),
 				})
 			if err != nil {

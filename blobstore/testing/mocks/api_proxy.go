@@ -66,10 +66,10 @@ func (mr *MockProxyClientMockRecorder) GetCacheDisk(arg0, arg1, arg2 interface{}
 }
 
 // GetCacheVolume mocks base method.
-func (m *MockProxyClient) GetCacheVolume(arg0 context.Context, arg1 string, arg2 *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+func (m *MockProxyClient) GetCacheVolume(arg0 context.Context, arg1 string, arg2 *proxy.CacheVolumeArgs) (*clustermgr.VolumeInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCacheVolume", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*proxy.VersionVolume)
+	ret0, _ := ret[0].(*clustermgr.VolumeInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

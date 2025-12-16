@@ -105,8 +105,8 @@ func newMockService(t *testing.T) *Service {
 
 	cacher := mock.NewMockCacher(ctr)
 	cacher.EXPECT().GetVolume(A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
-			volume := new(proxy.VersionVolume)
+		func(_ context.Context, args *proxy.CacheVolumeArgs) (*clustermgr.VolumeInfo, error) {
+			volume := new(clustermgr.VolumeInfo)
 			if args.Vid%2 == 0 {
 				volume.Vid = args.Vid
 				return volume, nil

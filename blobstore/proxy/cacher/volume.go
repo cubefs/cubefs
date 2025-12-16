@@ -33,7 +33,7 @@ import (
 const keyVolumeConcurrency = "volume"
 
 type expiryVolume struct {
-	proxy.VersionVolume
+	clustermgr.VolumeInfo
 	ExpiryAt int64 `json:"expiry,omitempty"` // seconds
 }
 
@@ -51,20 +51,20 @@ func decodeVolume(data []byte) (valueExpired, error) {
 	return volume, err
 }
 
-func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*clustermgr.VolumeInfo, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("try to get volume %+v", args)
 
 	vid := args.Vid
 	if vol := c.getVolume(span, vid); vol != nil {
 		if !args.Flush { // read cache
-			return &vol.VersionVolume, nil
+			return &vol.VolumeInfo, nil
 		}
 
-		if args.Version > 0 && args.Version != vol.Version {
+		if args.Version > 0 && args.Version != uint64(vol.RouteVersion) {
 			span.Infof("request to flush, but version mismatch request(%d) != cache(%d)",
-				args.Version, vol.Version)
-			return &vol.VersionVolume, nil
+				args.Version, vol.RouteVersion)
+			return &vol.VolumeInfo, nil
 		}
 	}
 
@@ -92,11 +92,11 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*p
 	}
 	c.volumeReport("clustermgr", "hit")
 
-	var result *proxy.VersionVolume
+	var result *clustermgr.VolumeInfo
 	if err := c.withVolumeLock(vid, func() error {
 		vol := c.newExpiryVolume(*volume)
 		c.storeVolume(ctx, vid, vol)
-		result = &vol.VersionVolume
+		result = &vol.VolumeInfo
 		return nil
 	}); err != nil {
 		return nil, err
@@ -255,11 +255,8 @@ func (c *cacher) applyVolumeUpdate(ctx context.Context, payload *clustermgr.Rout
 
 func (c *cacher) newExpiryVolume(info clustermgr.VolumeInfo) *expiryVolume {
 	vol := &expiryVolume{
-		VersionVolume: proxy.VersionVolume{
-			VolumeInfo: info,
-		},
+		VolumeInfo: info,
 	}
-	vol.VersionVolume.Version = vol.GetVersion()
 	c.fillVolumeExpiry(vol)
 	return vol
 }
