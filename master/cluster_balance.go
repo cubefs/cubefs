@@ -889,6 +889,8 @@ func UpdateLowPressureNodeTopo(migratePlan *proto.ClusterPlan, newPlan *proto.Mr
 }
 
 func FillExcludeAddrIntoGetParam(mpPlan *proto.MetaBalancePlan, getParam *GetMigrateAddrParam) {
+	getParam.Excludes = make([]string, 0, len(mpPlan.Original)+len(mpPlan.Plan))
+	getParam.ExcludeRacks = make([]string, 0, len(mpPlan.Original)+len(mpPlan.Plan))
 	for _, mrRec := range mpPlan.Original {
 		getParam.Excludes = append(getParam.Excludes, mrRec.Source)
 
@@ -947,6 +949,7 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 		return nil
 	}
 
+	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 	// try to find resource from the mp member which has the same store mode.
 	err := TryNodeSetIdFromOtherNodes(migratePlan, mpPlan, getParam)
 	if err == nil {
@@ -956,9 +959,11 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 	DisplayPlanFailedDetails(getParam, mpPlan, migratePlan, isRocksdb)
 
 	// try the others node set under the same zone.
+	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 	getParam.RequestNum = 3
 	find, dests = GetMigrateAddrExcludeNodeSet(getParam)
 	if !find {
+		FillExcludeAddrIntoGetParam(mpPlan, getParam)
 		find, dests = GetMigrateAddrExcludeZone(getParam)
 	}
 	if !find {
@@ -1109,7 +1114,12 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 }
 
 func GetMigrateAddrExcludeNodeSet(param *GetMigrateAddrParam) (find bool, address []*proto.MrBalanceInfo) {
-	zone, ok := param.Topo[param.ZoneName]
+	zoneMap := param.Topo
+	if param.IsRocksdb {
+		zoneMap = param.RocksdbTopo
+	}
+
+	zone, ok := zoneMap[param.ZoneName]
 	if !ok {
 		log.LogErrorf("Can't find zone: %s", param.ZoneName)
 		return
@@ -1119,15 +1129,19 @@ func GetMigrateAddrExcludeNodeSet(param *GetMigrateAddrParam) (find bool, addres
 		if nodeSet.NodeSetID == param.NodeSetID {
 			continue
 		}
+		excludes := append([]string(nil), param.Excludes...)
+		excludeRacks := append([]string(nil), param.ExcludeRacks...)
 		newParam := &GetMigrateAddrParam{
-			Topo:        param.Topo,
-			RocksdbTopo: param.RocksdbTopo,
-			ZoneName:    param.ZoneName,
-			NodeSetID:   nodeSet.NodeSetID,
-			Excludes:    param.Excludes,
-			RequestNum:  param.RequestNum,
-			LeastSize:   param.LeastSize,
-			IsRocksdb:   param.IsRocksdb,
+			Topo:         param.Topo,
+			RocksdbTopo:  param.RocksdbTopo,
+			ZoneName:     param.ZoneName,
+			NodeSetID:    nodeSet.NodeSetID,
+			Excludes:     excludes,
+			ExcludeRacks: excludeRacks,
+			RequestNum:   param.RequestNum,
+			LeastSize:    param.LeastSize,
+			IsRocksdb:    param.IsRocksdb,
+			RackLevel:    param.RackLevel,
 		}
 		find, address = GetMigrateDestAddr(newParam)
 		if find {
@@ -1141,21 +1155,30 @@ func GetMigrateAddrExcludeNodeSet(param *GetMigrateAddrParam) (find bool, addres
 }
 
 func GetMigrateAddrExcludeZone(param *GetMigrateAddrParam) (find bool, address []*proto.MrBalanceInfo) {
-	for _, zone := range param.Topo {
+	zoneMap := param.Topo
+	if param.IsRocksdb {
+		zoneMap = param.RocksdbTopo
+	}
+
+	for _, zone := range zoneMap {
 		if zone.ZoneName == param.ZoneName {
 			continue
 		}
 
 		for _, nodeSet := range zone.NodeSet {
+			excludes := append([]string(nil), param.Excludes...)
+			excludeRacks := append([]string(nil), param.ExcludeRacks...)
 			newParam := &GetMigrateAddrParam{
-				Topo:        param.Topo,
-				RocksdbTopo: param.RocksdbTopo,
-				ZoneName:    zone.ZoneName,
-				NodeSetID:   nodeSet.NodeSetID,
-				Excludes:    param.Excludes,
-				RequestNum:  param.RequestNum,
-				LeastSize:   param.LeastSize,
-				IsRocksdb:   param.IsRocksdb,
+				Topo:         param.Topo,
+				RocksdbTopo:  param.RocksdbTopo,
+				ZoneName:     zone.ZoneName,
+				NodeSetID:    nodeSet.NodeSetID,
+				Excludes:     excludes,
+				ExcludeRacks: excludeRacks,
+				RequestNum:   param.RequestNum,
+				LeastSize:    param.LeastSize,
+				IsRocksdb:    param.IsRocksdb,
+				RackLevel:    param.RackLevel,
 			}
 			find, address = GetMigrateDestAddr(newParam)
 			if find {
@@ -1235,8 +1258,14 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	}()
 
 	concurrency := gConfig.mpMigrateThreads
+	if concurrency <= 0 {
+		concurrency = 1
+	}
 	sem := make(chan struct{}, concurrency)
-	var wg sync.WaitGroup
+	var (
+		wg     sync.WaitGroup
+		failMu sync.Mutex
+	)
 
 	stopProcess := false
 	for _, mpPlan := range plan.Plan {
@@ -1251,7 +1280,9 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			if err != nil {
 				log.LogErrorf("handleMetaPartitionPlan err: %s", err.Error())
 				stopProcess = true
+				failMu.Lock()
 				plan.FailedList = append(plan.FailedList, mpPlan.ID)
+				failMu.Unlock()
 			}
 			<-sem
 		}(mpPlan)
@@ -2565,9 +2596,23 @@ func TryNodeSetIdFromOtherNodes(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 	}
 
 	for i, nodeSetId := range nodeSetList {
-		getParm.NodeSetID = nodeSetId
-		getParm.ZoneName = zoneList[i]
-		find, dests := GetMigrateDestAddr(getParm)
+		// clone param to avoid side effects from GetMigrateDestAddr (it will append Excludes/ExcludeRacks)
+		excludes := append([]string(nil), getParm.Excludes...)
+		excludeRacks := append([]string(nil), getParm.ExcludeRacks...)
+		curParam := &GetMigrateAddrParam{
+			Topo:         getParm.Topo,
+			RocksdbTopo:  getParm.RocksdbTopo,
+			ZoneName:     zoneList[i],
+			NodeSetID:    nodeSetId,
+			Excludes:     excludes,
+			ExcludeRacks: excludeRacks,
+			RequestNum:   getParm.RequestNum,
+			LeastSize:    getParm.LeastSize,
+			IsRocksdb:    getParm.IsRocksdb,
+			RackLevel:    getParm.RackLevel,
+		}
+
+		find, dests := GetMigrateDestAddr(curParam)
 		if find {
 			if migratePlan.Type == AddLearner {
 				mpPlan.Plan = dests
@@ -2901,7 +2946,6 @@ func AddOneLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		RocksdbTopo: migratePlan.RocksdbLow,
 		ZoneName:    "",
 		NodeSetID:   0,
-		Excludes:    make([]string, 0, len(mpPlan.Original)+len(mpPlan.Plan)),
 		RequestNum:  requestNum,
 		LeastSize:   mpPlan.Original[0].SrcMemSize,
 		IsRocksdb:   migratePlan.Mode == proto.StoreModeRocksDb,
@@ -2915,6 +2959,7 @@ func AddOneLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 		return nil
 	}
 
+	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 	zone, nodeSetID, err := GetZoneAndNodeSetInOtherMode(mpPlan, migratePlan.Mode)
 	if err != nil {
 		log.LogErrorf("AddOneLearnerToDestination mp(%d) failed to get zone/nodeset: %s", mpPlan.ID, err.Error())
@@ -2930,9 +2975,11 @@ func AddOneLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 	}
 
 	// try the others node set under the same zone.
+	FillExcludeAddrIntoGetParam(mpPlan, getParam)
 	find, dests = GetMigrateAddrExcludeNodeSet(getParam)
 	if !find {
 		// try to find resource from other zone.
+		FillExcludeAddrIntoGetParam(mpPlan, getParam)
 		find, dests = GetMigrateAddrExcludeZone(getParam)
 	}
 	if !find {
