@@ -2448,7 +2448,7 @@ func TestCreateModifyMetaPartitionStoreModePlan_InvalidVol(t *testing.T) {
 			},
 		},
 	}
-	param := MetaPartitionPlanUserParams{
+	param := &MetaPartitionPlanUserParams{
 		Name:    "no-such-vol",
 		StartID: 0,
 		EndID:   0,

@@ -5649,7 +5649,7 @@ func (m *Server) updateDataNode(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AdminUpdateDataNode, fmt.Sprintf("update datanode %v", nodeAddr), err)
 	}()
 
-	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
+	if nodeAddr, id, err = parseRequestForUpdateDataNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -5662,24 +5662,46 @@ func (m *Server) updateDataNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		id       uint64
-		err      error
+		nodeAddr  string
+		id        uint64
+		err       error
+		selectTag string
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateMetaNode))
 	defer func() {
 		doStatAndMetric(proto.AdminUpdateMetaNode, metric, err, nil)
-		AuditLog(r, proto.AdminUpdateMetaNode, fmt.Sprintf("update metanode %v", nodeAddr), err)
+		AuditLog(r, proto.AdminUpdateMetaNode, fmt.Sprintf("update metanode %v, id: %v, tag: %v", nodeAddr, id, selectTag), err)
 	}()
 
-	if nodeAddr, id, err = parseRequestForUpdateMetaNode(r); err != nil {
+	if nodeAddr, id, selectTag, err = parseRequestForUpdateMetaNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.updateMetaNodeBaseInfo(nodeAddr, id); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
+
+	if selectTag != "" {
+		value, ok := m.cluster.metaNodes.Load(nodeAddr)
+		if !ok {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMetaNodeNotExists, Msg: fmt.Sprintf("metanode %v not found", nodeAddr)})
+			return
+		}
+		metaNode := value.(*MetaNode)
+		oldTag := metaNode.SelectTag
+		metaNode.SelectTag = selectTag
+		err = m.cluster.syncUpdateMetaNode(metaNode)
+		if err != nil {
+			metaNode.SelectTag = oldTag
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
 	}
+
+	if id != 0 {
+		if err = m.cluster.updateMetaNodeBaseInfo(nodeAddr, id); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
@@ -5741,6 +5763,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		RocksdbDisks:              metaNode.RocksdbDisks,
 		RocksdbDiskThreshold:      metaNode.RocksdbDiskThreshold,
 		RocksdbKeyNumMax:          metaNode.RocksdbKeyNumMax,
+		SelectTag:                 metaNode.SelectTag,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }

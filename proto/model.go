@@ -61,6 +61,7 @@ type MetaNodeInfo struct {
 	RocksdbDiskThreshold      float32
 	RocksdbRdOnly             bool
 	RocksdbKeyNumMax          uint64
+	SelectTag                 string
 }
 
 // DataNode stores all the information about a data node

@@ -134,7 +134,7 @@ func parseTxMask(r *http.Request, oldMask proto.TxOpMask) (mask proto.TxOpMask, 
 	return
 }
 
-func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64, err error) {
+func parseRequestForUpdateDataNode(r *http.Request) (nodeAddr string, id uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2485,4 +2485,26 @@ func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, er
 	}
 
 	return val, nil
+}
+
+func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64, selectTag string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if nodeAddr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+
+	value := r.FormValue(idKey)
+	if value != "" {
+		id, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return
+		}
+	}
+
+	selectTag = r.FormValue(SelectTagKey)
+
+	return
 }

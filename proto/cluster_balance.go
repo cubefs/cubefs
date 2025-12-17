@@ -91,6 +91,10 @@ type ClusterPlan struct {
 	TotalReplicaNum int                          `json:"totalReplicaNum"`
 	ProcessPercent  float64                      `json:"processPercent"`
 	AutoPromote     bool                         `json:"autoPromoteLearner"`
+	SelectType      int                          `json:"selectType"` // 0: not set. 1: zone name. 2: node set id. 3: node address list.
+	ZoneName        string                       `json:"zoneName"`
+	NodeSetID       uint64                       `json:"nodesetId"`
+	SelectTag       string                       `json:"selectTag"`
 }
 
 type MetaReplicaChecksumInfo struct {

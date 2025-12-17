@@ -175,10 +175,12 @@ const (
 	remoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	remoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
 
-	StoreModeKey = "storeMode"
-	StartIdKey   = "start"
-	EndIdKey     = "end"
-	Promote      = "promote"
+	StoreModeKey  = "storeMode"
+	StartIdKey    = "start"
+	EndIdKey      = "end"
+	PromoteKey    = "promote"
+	SelectTypeKey = "selectType"
+	SelectTagKey  = "selectTag"
 )
 
 const (
@@ -576,4 +578,9 @@ const (
 	PlanStatusIdle     = 0
 	PlanStatusRun      = 1
 	PlanStatusStopping = 2
+
+	SelectTypeNotSet    = 0
+	SelectTypeZoneName  = 1
+	SelectTypeNodeSetId = 2
+	SelectTypeNodeAddrs = 3
 )

@@ -60,6 +60,7 @@ type MetaNode struct {
 	RocksdbDiskThreshold             float32
 	RocksdbRdOnly                    bool
 	RocksdbKeyNumMax                 uint64
+	SelectTag                        string
 }
 
 func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, rack, clusterID string) (node *MetaNode) {

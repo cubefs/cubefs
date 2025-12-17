@@ -48,6 +48,10 @@ type MetaPartitionPlanUserParams struct {
 	Mode               proto.StoreMode `json:"mode"`
 	Count              int             `json:"count"`
 	AutoPromoteLearner bool            `json:"autoPromoteLearner"`
+	SelectType         int             `json:"selectType"` // 0: not set. 1: zone name. 2: node set id. 3: node address list.
+	ZoneName           string          `json:"zoneName"`
+	NodeSetID          uint64          `json:"nodesetId"`
+	SelectTag          string          `json:"selectTag"`
 }
 
 func (m *Server) getMetaPartitionEmptyStatus(w http.ResponseWriter, r *http.Request) {
@@ -664,11 +668,13 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-// parseModifyMetaPartitionStoreModeParams parses and validates parameters for modifying meta partition store mode
-func parseModifyMetaPartitionStoreModeParams(r *http.Request) (param MetaPartitionPlanUserParams, err error) {
+// parseMetaPartitionPlanParams parses and validates parameters for modifying meta partition store mode
+func parseMetaPartitionPlanParams(r *http.Request) (param *MetaPartitionPlanUserParams, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
+
+	param = &MetaPartitionPlanUserParams{}
 
 	param.Name = r.FormValue(nameKey)
 	if param.Name != "" {
@@ -729,13 +735,50 @@ func parseModifyMetaPartitionStoreModeParams(r *http.Request) (param MetaPartiti
 	}
 
 	var promote bool
-	if value := r.FormValue(Promote); value != "" {
+	if value := r.FormValue(PromoteKey); value != "" {
 		promote, err = strconv.ParseBool(value)
 		if err != nil {
 			err = fmt.Errorf("invalid promote")
 			return
 		}
 		param.AutoPromoteLearner = promote
+	}
+
+	selectTypeStr := r.FormValue(SelectTypeKey)
+	if selectTypeStr != "" {
+		var selectType int
+		selectType, err = strconv.Atoi(selectTypeStr)
+		if err != nil {
+			err = fmt.Errorf("invalid select type")
+			return
+		}
+		param.SelectType = selectType
+	}
+
+	param.ZoneName = r.FormValue(zoneNameKey)
+	if param.SelectType == SelectTypeZoneName && param.ZoneName == "" {
+		err = fmt.Errorf("zone name is required when select type is 1")
+		return
+	}
+
+	nodeSetIdStr := r.FormValue(nodesetIdKey)
+	if nodeSetIdStr != "" {
+		if param.NodeSetID, err = strconv.ParseUint(nodeSetIdStr, 10, 64); err != nil {
+			err = fmt.Errorf("invalid node set id")
+			return
+		}
+	}
+
+	if param.SelectType == SelectTypeNodeSetId && param.NodeSetID == 0 {
+		err = fmt.Errorf("node set id is required when select type is 2")
+		return
+	}
+
+	param.SelectTag = r.FormValue(SelectTagKey)
+
+	if param.SelectType == SelectTypeNodeAddrs && param.SelectTag == "" {
+		err = fmt.Errorf("select tag is required when select type is 3")
+		return
 	}
 
 	return
@@ -760,7 +803,7 @@ func (m *Server) createMetaPartitionStoreModeChangePlan(w http.ResponseWriter, r
 		return
 	}
 
-	param, err := parseModifyMetaPartitionStoreModeParams(r)
+	param, err := parseMetaPartitionPlanParams(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -805,7 +848,7 @@ func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	param, err := parseModifyMetaPartitionStoreModeParams(r)
+	param, err := parseMetaPartitionPlanParams(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -817,6 +860,11 @@ func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
 		return
 	}
+
+	msg := fmt.Sprintf("volume(%s) start(%d) end(%d) mode(%d) count(%d) promote(%v) selectType(%d) zone(%s) nodesetId(%d) selectTag(%s)",
+		param.Name, param.StartID, param.EndID, param.Mode, param.Count,
+		param.AutoPromoteLearner, param.SelectType, param.ZoneName, param.NodeSetID, param.SelectTag)
+	AuditLog(r, "batchAddMpLearner", msg, nil)
 
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }
@@ -838,7 +886,7 @@ func (m *Server) batchPromoteMpLearner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	param, err := parseModifyMetaPartitionStoreModeParams(r)
+	param, err := parseMetaPartitionPlanParams(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -871,7 +919,7 @@ func (m *Server) calcMetaPartitionMd5Sum(w http.ResponseWriter, r *http.Request)
 		doStatAndMetric(proto.AdminCalcMetaPartitionMd5Sum, metric, err, nil)
 	}()
 
-	param, err := parseModifyMetaPartitionStoreModeParams(r)
+	param, err := parseMetaPartitionPlanParams(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

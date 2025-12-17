@@ -1252,6 +1252,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
 	sb.WriteString(fmt.Sprintf("  MemoryMpReplicas    : %v\n", mn.MemoryMpCount))
 	sb.WriteString(fmt.Sprintf("  RocksdbMpReplicas   : %v\n", mn.RocksdbMpCount))
+	sb.WriteString(fmt.Sprintf("  Select tag          : %v\n", mn.SelectTag))
 	return sb.String()
 }
 
