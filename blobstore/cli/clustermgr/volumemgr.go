@@ -207,20 +207,26 @@ func cmdListVolumeUnits(c *grumble.Context) error {
 	n := len(volumeInfo.Units)
 	loader := common.Loader(n)
 
-	taskArgs := make([]interface{}, n)
+	taskArgs := make([]any, n)
 	for i, arg := range volumeInfo.Units {
 		taskArgs[i] = arg
 	}
 	chunkInfos := make([]string, n)
-	task.C(func(i int, taskArgs interface{}) {
+	task.C(func(i int, taskArgs any) {
 		unit := taskArgs.(clustermgr.Unit)
-		info, err := blobnodeCli.StatChunk(ctx, unit.Host,
+		disk, err := cmClient.DiskInfo(ctx, unit.DiskID)
+		if err != nil {
+			chunkInfos[i] = fmt.Sprintf("ERROR: get disk %d %s", unit.DiskID, err.Error())
+			loader <- 1
+			return
+		}
+		info, err := blobnodeCli.StatChunk(ctx, disk.Host,
 			&blobnode.StatChunkArgs{
 				DiskID: unit.DiskID,
 				Vuid:   unit.Vuid,
 			})
 		if err != nil {
-			chunkInfos[i] = fmt.Sprintf("ERROR: %s %d %s", unit.Host, unit.Vuid, err.Error())
+			chunkInfos[i] = fmt.Sprintf("ERROR: %s %d %s", disk.Host, unit.Vuid, err.Error())
 		} else if verbose {
 			chunkInfos[i] = cfmt.ChunkInfoJoin(info, "\t")
 		} else {
@@ -325,7 +331,15 @@ func cmdGetInconsistentVolumes(c *grumble.Context) error {
 		Config: rpc.Config{ClientTimeoutMs: 3000},
 	})
 
-	var err error
+	blobnodeDisks, err := cmClients[0].ListHostDisk(ctx, "")
+	if err != nil {
+		return err
+	}
+	disks := make(map[proto.DiskID]string)
+	for _, disk := range blobnodeDisks {
+		disks[disk.DiskID] = disk.Host
+	}
+
 	for {
 		for i, cli := range cmClients {
 			if err = retry.Timed(3, 200).On(func() error {
@@ -337,7 +351,7 @@ func cmdGetInconsistentVolumes(c *grumble.Context) error {
 			lastCnt = len(listVolumeRets[i].Volumes)
 			nextMarker = listVolumeRets[i].Marker
 		}
-		cmVids, bnVids, err := getInconsistent(ctx, blobnodeCli, listVolumeRets, checkChunkStatus)
+		cmVids, bnVids, err := getInconsistent(ctx, blobnodeCli, disks, listVolumeRets, checkChunkStatus)
 		if err != nil {
 			return err
 		}
@@ -373,8 +387,9 @@ func cmdGetInconsistentVolumes(c *grumble.Context) error {
 	return nil
 }
 
-func getInconsistent(ctx context.Context, blobnodeCli blobnode.StorageAPI, listVolumeRets []clustermgr.ListVolumes,
-	checkChunkStatus bool,
+func getInconsistent(ctx context.Context,
+	blobnodeCli blobnode.StorageAPI, disks map[proto.DiskID]string,
+	listVolumeRets []clustermgr.ListVolumes, checkChunkStatus bool,
 ) ([]proto.Vid, []proto.Vid, error) {
 	cmVids := make([]proto.Vid, 0)
 	bnVids := make([]proto.Vid, 0)
@@ -390,6 +405,14 @@ func getInconsistent(ctx context.Context, blobnodeCli blobnode.StorageAPI, listV
 		}
 	}
 
+	getHost := func(id proto.DiskID, unithost string) string {
+		host := disks[id]
+		if host != "" {
+			return host
+		}
+		return unithost
+	}
+
 	for i := 0; i < len(listVolumeRets[0].Volumes); i++ {
 		// check cm volume info
 		for j := 1; j < len(listVolumeRets); j++ {
@@ -403,24 +426,26 @@ func getInconsistent(ctx context.Context, blobnodeCli blobnode.StorageAPI, listV
 		}
 		// check bn chunk status
 		unit := listVolumeRets[0].Volumes[i].Units[0]
-		info, err := blobnodeCli.StatChunk(ctx, unit.Host,
+		host := getHost(unit.DiskID, unit.Host)
+		info, err := blobnodeCli.StatChunk(ctx, host,
 			&blobnode.StatChunkArgs{
 				DiskID: unit.DiskID,
 				Vuid:   unit.Vuid,
 			})
 		if err != nil {
-			return nil, nil, fmt.Errorf("stat chunk error[%v] host[%s]", err, unit.Host)
+			return nil, nil, fmt.Errorf("stat chunk error[%v] host[%s]", err, host)
 		}
 		chunkStatus0 := info.Status
 		for k := 1; k < len(listVolumeRets[0].Volumes[i].Units); k++ {
 			unit = listVolumeRets[0].Volumes[i].Units[k]
-			info, err = blobnodeCli.StatChunk(ctx, unit.Host,
+			host = getHost(unit.DiskID, unit.Host)
+			info, err = blobnodeCli.StatChunk(ctx, host,
 				&blobnode.StatChunkArgs{
 					DiskID: unit.DiskID,
 					Vuid:   unit.Vuid,
 				})
 			if err != nil {
-				return nil, nil, fmt.Errorf("stat chunk error[%v] host[%s]", err, unit.Host)
+				return nil, nil, fmt.Errorf("stat chunk error[%v] host[%s]", err, host)
 			}
 			if info.Status != chunkStatus0 {
 				bnVids = append(bnVids, unit.Vuid.Vid())

@@ -87,11 +87,16 @@ func listShards(c *grumble.Context) error {
 		if vuid > 0 && unit.Vuid != vuid {
 			continue
 		}
+		disk, err := cmCli.DiskInfo(ctx, unit.DiskID)
+		if err != nil {
+			fmt.Fprintf(w, "error get disk %d %s\n", unit.DiskID, err)
+			continue
+		}
 		args := &blobnode.ListShardsArgs{DiskID: unit.DiskID, Vuid: unit.Vuid}
 		for {
-			shards, next, err := bnCli.ListShards(ctx, unit.Host, args)
+			shards, next, err := bnCli.ListShards(ctx, disk.Host, args)
 			if err != nil {
-				fmt.Fprintf(w, "error list %s %+v %s\n", unit.Host, args, err)
+				fmt.Fprintf(w, "error list %s %+v %s\n", disk.Host, args, err)
 				break
 			}
 			for _, shard := range shards {
@@ -124,13 +129,18 @@ func getShard(c *grumble.Context) error {
 		if vuid > 0 && unit.Vuid != vuid {
 			continue
 		}
-		shard, err := bnCli.StatShard(ctx, unit.Host, &blobnode.StatShardArgs{
+		disk, err := cmCli.DiskInfo(ctx, unit.DiskID)
+		if err != nil {
+			fmt.Printf("error get disk %d %s\n", unit.DiskID, err)
+			continue
+		}
+		shard, err := bnCli.StatShard(ctx, disk.Host, &blobnode.StatShardArgs{
 			DiskID: unit.DiskID,
 			Vuid:   unit.Vuid,
 			Bid:    bid,
 		})
 		fmt.Printf("stat host:%s disk:%d vuid:%d bid:%d\n",
-			unit.Host, unit.DiskID, unit.Vuid, bid)
+			disk.Host, unit.DiskID, unit.Vuid, bid)
 		if err != nil {
 			fmt.Println("\tError:", err.Error())
 		} else {
