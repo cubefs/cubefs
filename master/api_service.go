@@ -2058,16 +2058,23 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.addMetaReplica(mp, addr, proto.StoreMode(storeMode)); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	mp.IsRecover = true
-	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+	if m.cluster.EnableMpDecommissionByLearner {
+		if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode), "", false); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	} else {
+		if err = m.cluster.addMetaReplica(mp, addr, proto.StoreMode(storeMode)); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		mp.IsRecover = true
+		m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
 
-	mp.RLock()
-	m.cluster.syncUpdateMetaPartition(mp)
-	mp.RUnlock()
+		mp.RLock()
+		m.cluster.syncUpdateMetaPartition(mp)
+		mp.RUnlock()
+	}
 
 	msg = fmt.Sprintf("meta partitionID :%v  add replica [%v] successfully", partitionID, addr)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
@@ -2176,7 +2183,7 @@ func (m *Server) promoteMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.promoteMetaReplicaToVoter(mp, addr); err != nil {
+	if err = m.cluster.promoteMetaReplicaToVoter(mp, addr, true); err != nil {
 		log.LogWarnf("action[promoteMetaReplica] cluster.promoteMetaReplicaToVoter failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // CampaignType represents the type of campaigning
@@ -392,6 +393,8 @@ func (r *raftFsm) loadState(state proto.HardState) error {
 }
 
 func (r *raftFsm) recoverCommit() error {
+	log.LogWarnf("raft[%v] recoverCommit start, applied[%v] committed[%v]", r.id, r.raftLog.applied, r.raftLog.committed)
+
 	for r.raftLog.applied <= r.raftLog.committed {
 		committedEntries := r.raftLog.nextEnts(64 * MB)
 		for _, entry := range committedEntries {
@@ -423,6 +426,8 @@ func (r *raftFsm) recoverCommit() error {
 }
 
 func (r *raftFsm) applyConfChange(cc *proto.ConfChange) (ok bool) {
+	log.LogWarnf("raft[%v] applyConfChange start, cc[%v]", r.id, cc)
+
 	if cc.Peer.ID == NoLeader {
 		r.pendingConf = false
 		return
@@ -458,6 +463,7 @@ func (r *raftFsm) addPeer(peer proto.Peer) {
 func (r *raftFsm) removePeer(peer proto.Peer) (ok bool) {
 	r.pendingConf = false
 
+	log.LogWarnf("raft[%v] remove peer[%v]", r.id, peer.String())
 	replica, ok := r.replicas[peer.ID]
 	if !ok {
 		if logger.IsEnableWarn() {
@@ -471,6 +477,7 @@ func (r *raftFsm) removePeer(peer proto.Peer) (ok bool) {
 		return
 	}
 
+	log.LogWarnf("raft[%v] remove peer[%v]", r.id, peer.String())
 	delete(r.replicas, peer.ID)
 	ok = true
 

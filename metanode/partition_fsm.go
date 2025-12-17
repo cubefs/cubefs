@@ -712,6 +712,8 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			mp.uploadApplyID(index)
 		}
 	}()
+
+	log.LogWarnf("action[ApplyMemberChange] mp[%v] confChange[%v]", mp.config.PartitionId, confChange)
 	// change memory status
 	var (
 		updated bool
@@ -723,24 +725,28 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			return
 		}
 		updated, err = mp.confAddNode(req, index)
+		log.LogWarnf("action[ApplyMemberChange] mp[%v] confAddNode updated[%v] err[%v]", mp.config.PartitionId, updated, err)
 	case raftproto.ConfRemoveNode:
 		req := &proto.RemoveMetaPartitionRaftMemberRequest{}
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
 		updated, err = mp.confRemoveNode(req, index)
+		log.LogWarnf("action[ApplyMemberChange] mp[%v] confRemoveNode updated[%v] err[%v]", mp.config.PartitionId, updated, err)
 	case raftproto.ConfAddLearner:
 		req := &proto.AddMetaPartitionRaftMemberRequest{}
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
 		updated, err = mp.confAddLearner(req, index)
+		log.LogWarnf("action[ApplyMemberChange] mp[%v] confAddLearner updated[%v] err[%v]", mp.config.PartitionId, updated, err)
 	case raftproto.ConfPromoteLearner:
 		req := &proto.AddMetaPartitionRaftMemberRequest{}
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
 		updated, err = mp.confPromoteLearner(req, index)
+		log.LogWarnf("action[ApplyMemberChange] mp[%v] confPromoteLearner updated[%v] err[%v]", mp.config.PartitionId, updated, err)
 	case raftproto.ConfUpdateNode:
 		// updated, err = mp.confUpdateNode(req, index)
 	default:

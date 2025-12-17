@@ -79,6 +79,7 @@ const (
 	MetricDpMissingLeaderCount  = "dp_missing_Leader_count"
 	MetricMpMissingLeaderCount  = "mp_missing_Leader_count"
 	MetricMpMissingReplicaCount = "mp_missing_Replica_count"
+	MetricMpFailedRecoveryCount = "mp_failed_recovery_count"
 
 	MetricLcNodesCount      = "lc_nodes_count"
 	MetricLcVolStatus       = "lc_vol_status"
@@ -138,6 +139,7 @@ type monitorMetrics struct {
 	DpMissingLeaderCount             *exporter.GaugeVec
 	MpMissingLeaderCount             *exporter.Gauge
 	MpMissingReplicaCount            *exporter.Gauge
+	MpFailedRecoveryCount            *exporter.Gauge
 	metaEqualCheckFail               *exporter.GaugeVec
 	masterNoLeader                   *exporter.Gauge
 	masterNoCache                    *exporter.GaugeVec
@@ -524,6 +526,7 @@ func (mm *monitorMetrics) start() {
 	mm.DpMissingLeaderCount = exporter.NewGaugeVec(MetricDpMissingLeaderCount, "", []string{"replicaNum", "media"})
 	mm.MpMissingLeaderCount = exporter.NewGauge(MetricMpMissingLeaderCount)
 	mm.MpMissingReplicaCount = exporter.NewGauge(MetricMpMissingReplicaCount)
+	mm.MpFailedRecoveryCount = exporter.NewGauge(MetricMpFailedRecoveryCount)
 	mm.metaEqualCheckFail = exporter.NewGaugeVec(MetricMetaInconsistent, "", []string{"volume", "mpId"})
 
 	mm.masterSnapshot = exporter.NewGauge(MetricMasterSnapshot)
@@ -763,6 +766,7 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 
 	mpMissingLeaderCount := 0
 	mpMissingReplicaCount := 0
+	mpFailedRecoveryCount := 0
 
 	vols := mm.cluster.copyVols()
 	for _, vol := range vols {
@@ -798,6 +802,9 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 			if len(mp.getActiveAddrs(mm.cluster.getMetaPartitionTimeoutSec())) < int(mp.ReplicaNum) {
 				mpMissingReplicaCount++
 			}
+			if mp.RecoverState == proto.RecoverStateFailed {
+				mpFailedRecoveryCount++
+			}
 		}
 		vol.mpsLock.RUnlock()
 	}
@@ -814,6 +821,7 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 
 	mm.MpMissingLeaderCount.Set(float64(mpMissingLeaderCount))
 	mm.MpMissingReplicaCount.Set(float64(mpMissingReplicaCount))
+	mm.MpFailedRecoveryCount.Set(float64(mpFailedRecoveryCount))
 }
 
 func (mm *monitorMetrics) setVolNoCacheMetrics() {
@@ -1402,6 +1410,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 
 	mm.MpMissingLeaderCount.Set(0)
 	mm.MpMissingReplicaCount.Set(0)
+	mm.MpFailedRecoveryCount.Set(0)
 	mm.ReplicaMissingDPCount.Reset()
 	mm.DpMissingLeaderCount.Reset()
 

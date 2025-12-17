@@ -237,7 +237,7 @@ const (
 	retrySendSyncTaskInternal                         = 3 * time.Second
 	defaultRangeOfCountDifferencesAllowed             = 50
 	defaultMinusOfMaxInodeID                          = 1000
-	defaultMinusOfCommitID                            = 1000
+	defaultMinusOfApplyID                             = 1000
 	defaultNodeSetGrpBatchCnt                         = 3
 	defaultMaxReplicaCnt                              = 16
 	defaultIopsRLimit                          uint64 = 1 << 35

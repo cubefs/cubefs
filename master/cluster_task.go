@@ -98,6 +98,10 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 }
 
 func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode) (err error) {
+	if c.EnableMpDecommissionByLearner {
+		return c.migrateMetaPartitionByLearner(srcAddr, targetAddr, mp, dstStoreMode)
+	}
+
 	var (
 		newPeers          []proto.Peer
 		finalDstStoreMode proto.StoreMode
@@ -849,7 +853,7 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 	return
 }
 
-func (c *Cluster) promoteMetaReplicaToVoter(partition *MetaPartition, addr string) (err error) {
+func (c *Cluster) promoteMetaReplicaToVoter(partition *MetaPartition, addr string, check bool) (err error) {
 	defer func() {
 		auditMsg := fmt.Sprintf("promoteMetaReplicaToVoter: vol[%v] mp[%v] promote learner[%v] to voter finished, err[%v]",
 			partition.volName, partition.PartitionID, addr, err)
@@ -861,8 +865,10 @@ func (c *Cluster) promoteMetaReplicaToVoter(partition *MetaPartition, addr strin
 		partition.volName, partition.PartitionID, addr, partition.Hosts)
 
 	// Validate learner recovery status
-	if err = c.validateLearnerRecoveryStatus(partition, addr); err != nil {
-		return
+	if check {
+		if err = c.validateLearnerRecoveryStatus(partition, addr); err != nil {
+			return
+		}
 	}
 
 	// Validate learner recovery status

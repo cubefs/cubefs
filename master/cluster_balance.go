@@ -2334,7 +2334,7 @@ func (c *Cluster) doMetaPartitionMigrate(plan *proto.ClusterPlan, mpPlan *proto.
 		}
 
 		if plan.Type == AddLearner {
-			err = c.addMetaReplicaLearner(mp, mrPlan.Destination, plan.Mode)
+			err = c.addMetaReplicaLearner(mp, mrPlan.Destination, plan.Mode, "", false)
 		} else {
 			err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp, mrPlan.StoreMode)
 		}
@@ -3096,7 +3096,7 @@ func GetMetaReplicaCountByType(mp *MetaPartition, raftType raftProto.PeerType) i
 }
 
 func (c *Cluster) PromoteMetaReplicaLearnerAndDeleteRedundant(mp *MetaPartition, addr string, mode proto.StoreMode) error {
-	err := c.promoteMetaReplicaToVoter(mp, addr)
+	err := c.promoteMetaReplicaToVoter(mp, addr, true)
 	if err != nil {
 		log.LogErrorf("promote learner failed mp(%d) addr(%s): %v", mp.PartitionID, addr, err)
 		return err

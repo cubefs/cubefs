@@ -137,7 +137,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 	}
 	peerIndex := -1
 	data, _ := json.Marshal(req)
-	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	log.LogWarnf("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
 	for i, peer := range mp.config.Peers {
 		if peer.ID == req.RemovePeer.ID {
@@ -147,7 +147,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 		}
 	}
 	if !updated {
-		log.LogInfof("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		log.LogWarnf("NoUpdate RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 			req.PartitionId, mp.config.NodeId, string(data))
 		return
 	}
@@ -164,7 +164,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 		os.RemoveAll(mp.config.RootDir)
 		updated = false
 	}
-	log.LogInfof("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+	log.LogWarnf("Fininsh RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
 	return
 }

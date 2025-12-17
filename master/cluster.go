@@ -5073,7 +5073,7 @@ func (c *Cluster) setLearnerRecoverTimeoutSeconds(timeout int64) (err error) {
 		return
 	}
 
-	log.LogInfof("action[setLearnerRecoverTimeoutSeconds] old: %v, new: %v", oldVal, timeout)
+	log.LogWarnf("action[setLearnerRecoverTimeoutSeconds] old: %v, new: %v", oldVal, timeout)
 	return
 }
 
@@ -5341,6 +5341,8 @@ func (c *Cluster) setEnableMpDecommissionByLearner(enable bool) (err error) {
 		err = proto.ErrPersistenceByRaft
 		return
 	}
+
+	log.LogWarnf("action[setEnableMpDecommissionByLearner] old: %v, new: %v", oldFlag, enable)
 	return
 }
 

@@ -310,11 +310,6 @@ func (c *Cluster) markLearnerRecoverFailed(mp *MetaPartition) {
 	mp.Lock()
 	defer mp.Unlock()
 	mp.IsRecover = false
-	// mp.SrcAddr = ""
-	// mp.LearnerDstAddr = ""
-	// mp.RecoverStartTime = 0
-	// mp.RecoverFailCount = 0
-	// mp.RecoverRetryTime = 0
 	mp.RecoverState = proto.RecoverStateFailed
 	c.syncUpdateMetaPartition(mp)
 	log.LogWarnf("markLearnerRecoverFailed mp[%v] marked as failed, recovery stopped", mp.PartitionID)
@@ -337,6 +332,7 @@ func (c *Cluster) clearLearnerRecoveryState(mp *MetaPartition) (err error) {
 	srcAddr := mp.SrcAddr
 	dstAddr := mp.LearnerDstAddr
 	recoverStartTime := mp.RecoverStartTime
+	recoverState := mp.RecoverState
 
 	mp.SrcAddr = ""
 	mp.LearnerDstAddr = ""
@@ -352,7 +348,7 @@ func (c *Cluster) clearLearnerRecoveryState(mp *MetaPartition) (err error) {
 		mp.SrcAddr = srcAddr
 		mp.LearnerDstAddr = dstAddr
 		mp.RecoverStartTime = recoverStartTime
-		mp.RecoverState = proto.RecoverStateRecovering
+		mp.RecoverState = recoverState
 		log.LogWarnf("clearLearnerRecoveryState restore state on update failure, mp[%v]", mp.PartitionID)
 		return
 	}
@@ -411,7 +407,7 @@ func (c *Cluster) validateLearnerRecoveryStatus(mp *MetaPartition, dstAddr strin
 	if maxIdDiff >= defaultMinusOfMaxInodeID {
 		return fmt.Errorf("maxId difference[%v] >= 1000 for mp[%v]", maxIdDiff, mp.PartitionID)
 	}
-	if applyIdDiff >= defaultMinusOfMaxInodeID {
+	if applyIdDiff >= defaultMinusOfApplyID {
 		return fmt.Errorf("applyId difference[%v] >= 1000 for mp[%v]", applyIdDiff, mp.PartitionID)
 	}
 
@@ -440,7 +436,7 @@ func (c *Cluster) checkLearnerModeRecovery(mp *MetaPartition, srcAddr, dstAddr s
 
 	// Log entry with key info only
 	recoverDuration := time.Now().Unix() - recoverStartTime
-	log.LogWarn("checkLearnerModeRecovery: vol[%v] mp[%v] src[%v] dst[%v] duration[%v]s failCount[%v]",
+	log.LogWarnf("checkLearnerModeRecovery: vol[%v] mp[%v] src[%v] dst[%v] duration[%v]s failCount[%v]",
 		mp.volName, mp.PartitionID, srcAddr, dstAddr, recoverDuration, failCount)
 
 	// Check timeout and failure count
@@ -465,15 +461,19 @@ func (c *Cluster) checkLearnerModeRecovery(mp *MetaPartition, srcAddr, dstAddr s
 	}
 
 	if failCount >= learnerRecoverMaxFailCount {
-		auditMsg := fmt.Sprintf("checkLearnerModeRecovery: vol[%v] mp[%v] failCount[%v] exceeds[%v], marking failed",
+		log.LogWarnf("checkLearnerModeRecovery: vol[%v] mp[%v] failCount[%v] exceeds[%v], marking failed",
 			mp.volName, mp.PartitionID, failCount, learnerRecoverMaxFailCount)
-		auditlog.LogMasterOp("checkLearnerModeRecovery", auditMsg, nil)
 		c.markLearnerRecoverFailed(mp)
 		return fmt.Errorf("learner recovery failure count exceeds limit for mp[%v]", mp.PartitionID)
 	}
 
+	// Validate learner recovery status
+	if err = c.validateLearnerRecoveryStatus(mp, dstAddr); err != nil {
+		return
+	}
+
 	// Promote learner to voter
-	if err = c.promoteMetaReplicaToVoter(mp, dstAddr); err != nil {
+	if err = c.promoteMetaReplicaToVoter(mp, dstAddr, false); err != nil {
 		c.recordRecoveryFailure(mp)
 		auditlog.LogMasterOp("checkLearnerModeRecovery", fmt.Sprintf("promote learner[%v] failed: %v", dstAddr, err), err)
 		return
