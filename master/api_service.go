@@ -9051,9 +9051,9 @@ func (m *Server) executeDistributionOptimizationMigrations(w http.ResponseWriter
 			"execute distribution optimization migrations", err)
 	}()
 
-	go m.cluster.executeDistributionOptimizationMigrations()
+	processedDp := m.cluster.executeDistributionOptimizationMigrations()
 
-	sendOkReply(w, r, newSuccessHTTPReply("triggered distribution optimization migrations successfully"))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("processed %v dps in this distribution optimization round", processedDp)))
 }
 
 func (m *Server) cancelDpDistributionOptimization(w http.ResponseWriter, r *http.Request) {

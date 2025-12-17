@@ -38,32 +38,32 @@ func (c *Cluster) scheduleToDistributionOptimization() {
 			log.LogDebugf("action[distributionOptimizationController] distribution optimization is disabled, skip execution")
 			return
 		}
-		c.executeDistributionOptimizationMigrations()
+		_ = c.executeDistributionOptimizationMigrations()
 		return
 	}
 	c.runTask(task)
 }
 
-func (c *Cluster) executeDistributionOptimizationMigrations() {
+func (c *Cluster) executeDistributionOptimizationMigrations() int {
 	begin := time.Now()
+	processedCount := 0
 	log.LogWarnf("action[executeDistributionOptimizationMigrations] starting unified distribution optimization (NodeSet + Rack)")
 
 	defer func() {
 		duration := time.Since(begin)
-		log.LogWarnf("action[executeDistributionOptimizationMigrations] migration execution completed in %v", duration)
+		log.LogWarnf("action[executeDistributionOptimizationMigrations] migration execution completed in %v, processed %d DPs", duration, processedCount)
 	}()
 
 	activeTasks := c.countActiveDistributionOptimizationTasks()
 	limit := c.DistributionOptimizationConDpCnt.Load()
 	if int64(activeTasks) >= limit {
 		log.LogWarnf("action[executeDistributionOptimizationMigrations] already have %d active tasks, skipping execution", activeTasks)
-		return
+		return processedCount
 	}
 
 	abnormalDpSet := c.getAbnormalDps(true)
 
 	vols := c.copyVols()
-	processedCount := 0
 	availableSlots := int(limit) - activeTasks
 
 	for _, vol := range vols {
@@ -71,7 +71,7 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 		for _, dp := range partitions {
 			if processedCount >= availableSlots {
 				log.LogWarnf("action[executeDistributionOptimizationMigrations] reached available slots limit (%d)", availableSlots)
-				return
+				return processedCount
 			}
 
 			if dp.IsDiscard {
@@ -102,8 +102,7 @@ func (c *Cluster) executeDistributionOptimizationMigrations() {
 			processedCount++
 		}
 	}
-
-	log.LogWarnf("action[executeDistributionOptimizationMigrations] completed, processed %d DPs", processedCount)
+	return processedCount
 }
 
 func (c *Cluster) countActiveDistributionOptimizationTasks() int {

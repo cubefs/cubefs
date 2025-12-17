@@ -2620,8 +2620,8 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 	}
 
 	// Step 2: Try other NodeSets in the zone using zone.getAvailNodeHosts
-	log.LogInfof("action[selectTargetHostsInDistributionOptimization] all nodesets where the replicas are located failed, trying other nodesets in zone %s, excluded nodesets: %v",
-		zone.name, excludedNodesets)
+	log.LogInfof("action[selectTargetHostsInDistributionOptimization] all nodesets where the replicas are located failed, trying other nodesets in zone %s, excluded nodesets: %v, err %v",
+		zone.name, excludedNodesets, err)
 	rackLevel := proto.RackAwareNone
 	if c.getRackAwareLevel() != proto.RackAwareNone {
 		rackLevel = proto.RackAwareStrong // use the highest rack aware level for distribution optimization,
@@ -2646,6 +2646,8 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 		return ns, srcAddrs, availableHosts, nil
 	}
 
+	log.LogInfof("action[selectTargetHostsInDistributionOptimization] can't find target hosts in zone %s, err %v",
+		zone.name, err)
 	return nil, nil, nil, fmt.Errorf("cluster resources insufficient, can't find target hosts")
 }
 
