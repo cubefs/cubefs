@@ -1260,13 +1260,6 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	}
 
 	if c.cfg.DisableAutoCreate {
-		// if disable auto create, once alloc size is over capacity, not allow to create new dp
-		allocSize := uint64(len(vol.dataPartitions.partitions)) * vol.dataPartitionSize
-		totalSize := vol.capacity() * util.GB
-		if allocSize > totalSize {
-			return
-		}
-
 		for _, asc := range vol.allowedStorageClass {
 			if !proto.IsStorageClassReplica(asc) {
 				continue
@@ -1275,7 +1268,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 			dpCntOfMediaType := vol.dataPartitions.getDataPartitionsCountOfMediaType(mediaType)
 
 			if dpCntOfMediaType < minNumOfRWDataPartitions {
-				log.LogWarnf("autoCreateDataPartitions: vol(%v) mediaType(%v) less than %v, alloc new partitions",
+				log.LogWarnf("autoCreateDataPartitions: vol(%v) mediaType(%v) rwDpCount less than %v, alloc new partitions",
 					vol.Name, proto.MediaTypeString(mediaType), minNumOfRWDataPartitions)
 				c.batchCreateDataPartition(vol, minNumOfRWDataPartitions-dpCntOfMediaType, false, mediaType)
 			}
