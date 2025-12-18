@@ -1045,6 +1045,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 			fmt.Printf("available ahead read mem: %v\n", available)
 		}
 	}
+	// minimum file size (bytes) to trigger ahead read
+	opt.MinReadAheadSize = GlobalMountOptions[proto.MinReadAheadSize].GetInt64()
 	opt.ReadDirLimit = GlobalMountOptions[proto.ReadDirLimit].GetInt64()
 	opt.MaxWarmUpConcurrency = GlobalMountOptions[proto.MaxWarmUpConcurrency].GetInt64()
 	opt.StopWarmMeta = GlobalMountOptions[proto.StopWarmMeta].GetBool()

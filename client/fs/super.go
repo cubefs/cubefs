@@ -266,6 +266,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		AheadReadTotalMem:     opt.AheadReadTotalMem,
 		AheadReadBlockTimeOut: opt.AheadReadBlockTimeOut,
 		AheadReadWindowCnt:    opt.AheadReadWindowCnt,
+		MinReadAheadSize:      int(opt.MinReadAheadSize),
 		NeedRemoteCache:       true,
 		ForceRemoteCache:      opt.ForceRemoteCache,
 		EnableAsyncFlush:      opt.EnableAsyncFlush,

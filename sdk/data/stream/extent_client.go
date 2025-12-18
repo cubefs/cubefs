@@ -163,6 +163,7 @@ type ExtentConfig struct {
 	AheadReadTotalMem     int64
 	AheadReadBlockTimeOut int
 	AheadReadWindowCnt    int
+	MinReadAheadSize      int
 	// remoteCache
 	NeedRemoteCache  bool
 	ForceRemoteCache bool
@@ -903,6 +904,7 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 		go s.server()
 		go s.asyncBlockCache()
 		go s.asyncFlushManager()
+
 		if client.AheadRead != nil && s.aheadReadWindow != nil {
 			go s.aheadReadWindow.backgroundAheadReadTask()
 		}
