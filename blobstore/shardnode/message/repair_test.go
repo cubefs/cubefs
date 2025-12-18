@@ -83,6 +83,7 @@ func TestSliceRepairMgr_ExecuteWithCheckVolConsistency(t *testing.T) {
 	blobTp.EXPECT().RepairSlice(any, any, any, any).DoAndReturn(func(ctx context.Context, host string, volInfo *snproto.VolumeInfoSimple, repairMsg *snproto.SliceRepairMsg) error {
 		return nil
 	}).AnyTimes()
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	// mock blobnode selector
 	blobNodeSelector := mocks.NewMockSelector(ctr(t))
@@ -133,7 +134,10 @@ func TestSliceRepairMgr_ExecuteWithCheckVolConsistency_BlobnodeUnavailable(t *te
 	volTp.EXPECT().GetVolumeInfo(any, any).Return(volInfo, nil).AnyTimes()
 
 	vc := base.NewVolumeCache(volTp, 1)
-	mgr := newTestSliceRepairMgr(t, nil, nil, vc, nil, nil, blobNodeSelector)
+
+	tp := mocks.NewMockBlobTransport(ctr(t))
+	tp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
+	mgr := newTestSliceRepairMgr(t, nil, tp, vc, nil, nil, blobNodeSelector)
 
 	bid := proto.BlobID(1)
 	msg := &repairMsgExt{
@@ -162,6 +166,7 @@ func TestSliceRepairMgr_ExecuteWithCheckVolConsistency_OrphanShard(t *testing.T)
 	blobTp.EXPECT().RepairSlice(any, any, any, any).DoAndReturn(func(ctx context.Context, host string, volInfo *snproto.VolumeInfoSimple, repairMsg *snproto.SliceRepairMsg) error {
 		return rpc2.NewError(apierr.CodeOrphanShard, "orphan slice", "")
 	}).AnyTimes()
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	// mock blobnode selector
 	blobNodeSelector := mocks.NewMockSelector(ctr(t))
@@ -210,6 +215,7 @@ func TestSliceRepairMgr_ExecuteWithCheckVolConsistency_DiskNotFound(t *testing.T
 	blobTp.EXPECT().RepairSlice(any, any, any, any).DoAndReturn(func(ctx context.Context, host string, volInfo *snproto.VolumeInfoSimple, repairMsg *snproto.SliceRepairMsg) error {
 		return rpc2.NewError(apierr.CodeDiskNotFound, "disk not found", "")
 	}).AnyTimes()
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	// mock blobnode selector
 	blobNodeSelector := mocks.NewMockSelector(ctr(t))
@@ -293,6 +299,7 @@ func TestSliceRepairMgr_ExecuteWithCheckVolConsistency_UpdateVolume(t *testing.T
 		}
 		return nil
 	}).Times(2)
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	// mock blobnode selector
 	blobNodeSelector := mocks.NewMockSelector(ctr(t))
@@ -351,6 +358,7 @@ func TestSliceRepairMgr_ExecuteWithCheckVolConsistency_UpdateVolume2(t *testing.
 	blobTp.EXPECT().RepairSlice(any, any, any, any).DoAndReturn(func(ctx context.Context, host string, volInfo *snproto.VolumeInfoSimple, repairMsg *snproto.SliceRepairMsg) error {
 		return rpc2.NewError(int32(apierr.CodeDiskBroken), "disk broken", "")
 	}).AnyTimes()
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	// mock blobnode selector
 	blobNodeSelector := mocks.NewMockSelector(ctr(t))
@@ -390,6 +398,7 @@ func TestSliceRepairMgr_RepairShard(t *testing.T) {
 	blobTp.EXPECT().RepairSlice(any, any, any, any).DoAndReturn(func(ctx context.Context, host string, volInfo *snproto.VolumeInfoSimple, repairMsg *snproto.SliceRepairMsg) error {
 		return nil
 	}).AnyTimes()
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	// mock blobnode selector
 	blobNodeSelector := mocks.NewMockSelector(ctr(t))
@@ -425,6 +434,7 @@ func TestSliceRepairMgr_RepairShard_Error(t *testing.T) {
 	blobTp.EXPECT().RepairSlice(any, any, any, any).DoAndReturn(func(ctx context.Context, host string, volInfo *snproto.VolumeInfoSimple, repairMsg *snproto.SliceRepairMsg) error {
 		return errors.New("repair failed")
 	}).AnyTimes()
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	// mock blobnode selector
 	blobNodeSelector := mocks.NewMockSelector(ctr(t))

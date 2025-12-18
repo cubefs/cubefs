@@ -164,6 +164,15 @@ func (m *SliceRepairMgr) repairSlice(ctx context.Context, volInfo *snproto.Volum
 
 	span.Infof("repair slice: msg[%+v], vol info[%+v]", repairMsg, volInfo)
 
+	// update host info
+	for idx := range volInfo.VunitLocations {
+		location := &volInfo.VunitLocations[idx]
+		disk, _ := m.cfg.BlobTransport.GetBlobnodeDiskInfo(ctx, location.DiskID)
+		if disk != nil {
+			location.Host = disk.Host
+		}
+	}
+
 	hosts := m.blobNodeSelector.GetRandomN(1)
 	if len(hosts) == 0 {
 		return volInfo, ErrBlobnodeServiceUnavailable
@@ -208,7 +217,7 @@ func (m *SliceRepairMgr) processDiskNotFoundErr(ctx context.Context, volInfo *sn
 		}
 
 		// check disk status
-		disk, err := m.transport.GetBlobnodeDiskInfo(ctx, vunitInfo.DiskID)
+		disk, err := m.cfg.BlobTransport.GetBlobnodeDiskInfo(ctx, vunitInfo.DiskID)
 		if err != nil {
 			span.Errorf("get diskinfo failed, vunitInfo: %+v, err: %s", volInfo, err.Error())
 			continue
@@ -218,7 +227,7 @@ func (m *SliceRepairMgr) processDiskNotFoundErr(ctx context.Context, volInfo *sn
 			continue
 		}
 		// disk is repaired or dropped, means volInfo is too old, get new volInfo from cm
-		vol, err := m.transport.GetVolumeInfo(ctx, vunitInfo.Vuid.Vid())
+		vol, err := m.cfg.VolCache.UpdateVolume(vunitInfo.Vuid.Vid())
 		if err != nil {
 			span.Errorf("get volumeinfo failed, vunitInfo: %+v, err: %s", volInfo, err.Error())
 			continue

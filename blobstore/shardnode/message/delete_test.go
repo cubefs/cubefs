@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -81,6 +82,8 @@ func TestBlobDeleteMgr_DeleteWithCheckVolConsistency(t *testing.T) {
 	blobTp.EXPECT().DeleteSliceUnit(any, any, any).DoAndReturn(func(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
 		return nil
 	}).AnyTimes()
+
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	// mock volume info
 	vid := proto.Vid(1)
@@ -154,6 +157,8 @@ func TestBlobDeleteMgr_DeleteWithCheckVolConsistency2(t *testing.T) {
 		return nil
 	}).AnyTimes()
 
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
+
 	vc := base.NewVolumeCache(volTp, 1)
 	mgr := newTestBlobDeleteMgr(t, nil, blobTp, vc)
 
@@ -213,6 +218,8 @@ func TestBlobDeleteMgr_DeleteWithCheckVolConsistency3(t *testing.T) {
 	blobTp.EXPECT().DeleteSliceUnit(any, any, any).DoAndReturn(func(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
 		return nil
 	}).AnyTimes()
+
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	vc := base.NewVolumeCache(volTp, 1)
 	mgr := newTestBlobDeleteMgr(t, nil, blobTp, vc)
@@ -280,6 +287,8 @@ func TestBlobDeleteMgr_DeleteWithCheckVolConsistency4(t *testing.T) {
 		return nil
 	}).AnyTimes()
 
+	blobTp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
+
 	vc := base.NewVolumeCache(volTp, 1)
 	mgr := newTestBlobDeleteMgr(t, nil, blobTp, vc)
 
@@ -335,6 +344,7 @@ func TestBlobDeleteMgr_DeleteSlice_UpdateVolume(t *testing.T) {
 		return nil
 	}).Times(6)
 	tp.EXPECT().MarkDeleteSliceUnit(any, any, any).Return(nil).Times(3)
+	tp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
 
 	mgr := newMinimalBlobDeleteMgr(&MessageMgrConfig{
 		BlobTransport: tp,
@@ -367,6 +377,8 @@ func TestBlobDeleteMgr_DeleteSlice_UpdateVolume2(t *testing.T) {
 		return nil
 	}).Times(6)
 
+	tp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil).AnyTimes()
+
 	mgr := newMinimalBlobDeleteMgr(&MessageMgrConfig{
 		BlobTransport: tp,
 		VolCache:      vc,
@@ -383,6 +395,7 @@ func TestBlobDeleteMgr_DeleteSlice_UpdateVolume2(t *testing.T) {
 func TestBlobDeleteMgr_DeleteShard_BackToInitStage(t *testing.T) {
 	tp := mocks.NewMockBlobTransport(ctr(t))
 	tp.EXPECT().DeleteSliceUnit(any, any, any).Return(apierr.ErrShardNotMarkDelete)
+	tp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil)
 
 	// mock volume info
 	vid := proto.Vid(1)
@@ -409,6 +422,7 @@ func TestBlobDeleteMgr_DeleteShard_BackToInitStage(t *testing.T) {
 func TestBlobDeleteMgr_DeleteShard_AssumeSuccess(t *testing.T) {
 	tp := mocks.NewMockBlobTransport(ctr(t))
 	tp.EXPECT().DeleteSliceUnit(any, any, any).Return(apierr.ErrNoSuchBid)
+	tp.EXPECT().GetBlobnodeDiskInfo(any, any).Return(&clustermgr.BlobNodeDiskInfo{}, nil)
 
 	// mock volume info
 	vid := proto.Vid(1)

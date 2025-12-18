@@ -282,6 +282,12 @@ func (m *BlobDeleteMgr) deleteSliceUnit(ctx context.Context, info proto.VunitLoc
 		return nil
 	}
 
+	// check host update
+	disk, _ := m.cfg.BlobTransport.GetBlobnodeDiskInfo(ctx, info.DiskID)
+	if disk != nil {
+		info.Host = disk.Host
+	}
+
 	if markerDel {
 		stage = DeleteStageMarkDelete
 		err = m.cfg.BlobTransport.MarkDeleteSliceUnit(ctx, info, sliceId)

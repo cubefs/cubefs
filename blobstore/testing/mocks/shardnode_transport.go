@@ -903,6 +903,21 @@ func (mr *MockBlobTransportMockRecorder) DeleteSliceUnit(ctx, info, bid interfac
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSliceUnit", reflect.TypeOf((*MockBlobTransport)(nil).DeleteSliceUnit), ctx, info, bid)
 }
 
+// GetBlobnodeDiskInfo mocks base method.
+func (m *MockBlobTransport) GetBlobnodeDiskInfo(ctx context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBlobnodeDiskInfo", ctx, diskID)
+	ret0, _ := ret[0].(*clustermgr.BlobNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBlobnodeDiskInfo indicates an expected call of GetBlobnodeDiskInfo.
+func (mr *MockBlobTransportMockRecorder) GetBlobnodeDiskInfo(ctx, diskID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlobnodeDiskInfo", reflect.TypeOf((*MockBlobTransport)(nil).GetBlobnodeDiskInfo), ctx, diskID)
+}
+
 // MarkDeleteSliceUnit mocks base method.
 func (m *MockBlobTransport) MarkDeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) error {
 	m.ctrl.T.Helper()

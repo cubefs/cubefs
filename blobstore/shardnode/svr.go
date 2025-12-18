@@ -86,7 +86,8 @@ type Config struct {
 	ScClientConfig scheduler.Config   `json:"sc_client_config"`
 	SliceRepairCfg message.MessageCfg `json:"slice_repair_cfg"`
 
-	MetaStatsConfig storage.MetaStatsConfig `json:"meta_stats_config"`
+	MetaStatsConfig          storage.MetaStatsConfig `json:"meta_stats_config"`
+	TransportUpdateIntervalM int64                   `json:"transport_update_interval_m"`
 }
 
 // newService returns the singleton service instance
@@ -112,10 +113,11 @@ func createService(cfg *Config) *service {
 		return rpc2.DetectStatusCode(err) < apierr.CodeShardNodeNotLeader
 	}})
 	transport := base.NewTransport(base.TransportConfig{
-		CMClient: cmClient,
-		SNClient: snClient,
-		BNClient: bnapi.New(&bnapi.Config{}),
-		Self:     &cfg.NodeConfig,
+		CMClient:        cmClient,
+		SNClient:        snClient,
+		BNClient:        bnapi.New(&bnapi.Config{}),
+		Self:            &cfg.NodeConfig,
+		UpdateIntervalM: cfg.TransportUpdateIntervalM,
 	})
 	cfg.ShardBaseConfig.Transport = transport
 
@@ -194,7 +196,6 @@ func createService(cfg *Config) *service {
 			VolCache:      base.NewVolumeCache(transport, 10*time.Second),
 			MessageCfg:    cfg.SliceRepairCfg,
 		},
-		Transport: transport,
 		BlobNodeSelector: selector.MakeSelector(60*1000, func() (hosts []string, err error) {
 			return transport.GetService(context.Background(), proto.ServiceNameWorker)
 		}),
@@ -263,4 +264,5 @@ func (s *service) close() {
 	s.blobDelMgr.Close()
 	s.sliceRepairMgr.Close()
 	s.cfg.RaftConfig.Transport.Close()
+	closer.Close(s.transport)
 }

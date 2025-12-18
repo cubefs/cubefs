@@ -18,6 +18,7 @@ import (
 	"context"
 	"strconv"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/singleflight"
 
@@ -26,7 +27,9 @@ import (
 	shardnodeapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
 
 type (
@@ -35,7 +38,6 @@ type (
 		ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error)
 		GetRouteUpdate(ctx context.Context, routeVersion proto.RouteVersion) (proto.RouteVersion, []clustermgr.CatalogChangeItem, error)
 		GetService(ctx context.Context, name string) ([]string, error)
-		GetBlobnodeDiskInfo(ctx context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error)
 		NodeTransport
 		SpaceTransport
 		AllocVolTransport
@@ -81,6 +83,8 @@ type (
 		DeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
 		MarkDeleteSliceUnit(ctx context.Context, info proto.VunitLocation, bid proto.BlobID) (err error)
 		RepairSlice(ctx context.Context, host string, volInfo *snproto.VolumeInfoSimple, repairMsg *snproto.SliceRepairMsg) (err error)
+		// request cm client
+		GetBlobnodeDiskInfo(ctx context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error)
 	}
 
 	VolumeTransport interface {
@@ -94,15 +98,22 @@ type TransportConfig struct {
 	SNClient *shardnodeapi.Client
 	BNClient api.StorageAPI
 	Self     *clustermgr.ShardNodeInfo
+
+	UpdateIntervalM int64
 }
 
 func NewTransport(cfg TransportConfig) Transport {
-	return &transport{
+	t := &transport{
 		cmClient: cfg.CMClient,
 		snClient: cfg.SNClient,
 		bnClient: cfg.BNClient,
 		myself:   cfg.Self,
+
+		updateIntervalM: cfg.UpdateIntervalM,
+		Closer:          closer.New(),
 	}
+	go t.loopUpdateBlobnodeDisks()
+	return t
 }
 
 type transport struct {
@@ -115,7 +126,13 @@ type transport struct {
 
 	repairedDisks sync.Map
 
+	// for blob task
+	updateIntervalM     int64
+	allBlobnodeDisks    sync.Map
+	brokenBlobnodeDisks sync.Map
+
 	singleRun singleflight.Group
+	closer.Closer
 }
 
 func (t *transport) GetNode(ctx context.Context, nodeID proto.NodeID) (*clustermgr.ShardNodeInfo, error) {
@@ -411,7 +428,70 @@ func (t *transport) GetVolumeInfo(ctx context.Context, vid proto.Vid) (ret *snpr
 }
 
 func (t *transport) GetBlobnodeDiskInfo(ctx context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
-	return t.cmClient.DiskInfo(ctx, diskID)
+	v, ok := t.allBlobnodeDisks.Load(diskID)
+	if ok {
+		return v.(*clustermgr.BlobNodeDiskInfo), nil
+	}
+	return t.getBlobnodeDiskInfo(ctx, diskID)
+}
+
+func (t *transport) getBlobnodeDiskInfo(ctx context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
+	v, err, _ := t.singleRun.Do("blobnode-disk-"+strconv.Itoa(int(diskID)), func() (interface{}, error) {
+		disk, err := t.cmClient.DiskInfo(ctx, diskID)
+		if err != nil {
+			return nil, err
+		}
+		t.allBlobnodeDisks.Store(diskID, disk)
+		if disk.Status == proto.DiskStatusBroken || disk.Status == proto.DiskStatusRepairing {
+			t.brokenBlobnodeDisks.Store(diskID, disk)
+		}
+		return disk, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*clustermgr.BlobNodeDiskInfo), nil
+}
+
+func (t *transport) loopUpdateBlobnodeDisks() {
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "transport.loopUpdateBlobnodeDisks")
+	ticker := time.NewTicker(time.Duration(t.updateIntervalM) * time.Minute)
+	defer ticker.Stop()
+
+	t.listBlobnodeDisks(ctx)
+	for {
+		select {
+		case <-ticker.C:
+			t.listBlobnodeDisks(ctx)
+		case <-t.Closer.Done():
+			return
+		}
+	}
+}
+
+func (t *transport) listBlobnodeDisks(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+	args1 := &clustermgr.ListOptionArgs{
+		Marker: proto.InvalidDiskID,
+		Count:  200,
+	}
+	for {
+		ret, err := t.cmClient.ListDisk(context.Background(), args1)
+		if err != nil {
+			span.Errorf("update blobnode disks failed: %s", err)
+			return
+		}
+		for _, disk := range ret.Disks {
+			t.allBlobnodeDisks.Store(disk.DiskID, disk)
+			if disk.Status == proto.DiskStatusBroken {
+				t.brokenBlobnodeDisks.Store(disk.DiskID, disk)
+			}
+		}
+		if ret.Marker == proto.InvalidDiskID {
+			return
+		}
+		args1.Marker = ret.Marker
+	}
 }
 
 func sliceUint32ToInt(s []uint32) []uint8 {

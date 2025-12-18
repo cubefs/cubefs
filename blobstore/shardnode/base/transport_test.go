@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
 
 var ctr = gomock.NewController
@@ -34,6 +35,7 @@ func TestTransport_GetConfig(t *testing.T) {
 	value := "value"
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, ret *string) error {
 		*ret = value
 		return nil
@@ -43,7 +45,9 @@ func TestTransport_GetConfig(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	_value, err := tp.GetConfig(context.Background(), key)
 	require.Nil(t, err)
@@ -56,6 +60,7 @@ func TestTransport_ShardReport(t *testing.T) {
 	ret := clustermgr.ShardReportRet{ShardTasks: []clustermgr.ShardTask{task1, task2}}
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().PostWith(any, any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.ShardReportRet, arg *clustermgr.ShardReportArgs, option ...interface{}) error {
 		*info = ret
 		return nil
@@ -65,7 +70,9 @@ func TestTransport_ShardReport(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	tasks, err := tp.ShardReport(context.Background(), []clustermgr.ShardUnitInfo{{Suid: 123}, {Suid: 456}})
 	require.Nil(t, err)
@@ -79,6 +86,7 @@ func TestTransport_GetNode(t *testing.T) {
 	}
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.ShardNodeInfo) error {
 		*info = *nodeInfo
 		return nil
@@ -88,7 +96,9 @@ func TestTransport_GetNode(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	// request
 	_info, err := tp.GetNode(context.Background(), nodeID)
@@ -108,6 +118,7 @@ func TestTransport_Register(t *testing.T) {
 	}
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().PostWith(any, any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.NodeIDAllocRet, arg *clustermgr.ShardNodeInfo, option ...interface{}) error {
 		info.NodeID = nodeID
 		return nil
@@ -117,8 +128,10 @@ func TestTransport_Register(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
-		Self: &myself,
+		Self:            &myself,
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	err := tp.Register(context.Background())
 	require.Nil(t, err)
@@ -132,6 +145,7 @@ func TestTransport_GetDisk(t *testing.T) {
 	}
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.ShardNodeDiskInfo) error {
 		*info = *diskInfo
 		return nil
@@ -141,7 +155,9 @@ func TestTransport_GetDisk(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	// request
 	_info, err := tp.GetDisk(context.Background(), diskID, false)
@@ -166,6 +182,7 @@ func TestTransport_ListDisk(t *testing.T) {
 		Marker: 0,
 	}
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.ListShardNodeDiskRet) error {
 		*info = listInfo
 		return nil
@@ -178,8 +195,10 @@ func TestTransport_ListDisk(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
-		Self: &clustermgr.ShardNodeInfo{},
+		Self:            &clustermgr.ShardNodeInfo{},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	disks, err := tp.ListDisks(context.Background())
 	require.Nil(t, err)
@@ -191,6 +210,7 @@ func TestTransport_GetSpace(t *testing.T) {
 	space := clustermgr.Space{SpaceID: spaceID}
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.Space) error {
 		*info = space
 		return nil
@@ -200,7 +220,9 @@ func TestTransport_GetSpace(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	_space, err := tp.GetSpace(context.Background(), spaceID)
 	require.Nil(t, err)
@@ -216,6 +238,7 @@ func TestTransport_GetAllSpaces(t *testing.T) {
 	}
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.ListSpaceRet) error {
 		*info = listInfo
 		return nil
@@ -228,7 +251,9 @@ func TestTransport_GetAllSpaces(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	spaces, err := tp.GetAllSpaces(context.Background())
 	require.Nil(t, err)
@@ -254,6 +279,7 @@ func TestTransport_ListVolume(t *testing.T) {
 	}
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.ListVolumes) error {
 		*info = listInfo
 		return nil
@@ -263,7 +289,9 @@ func TestTransport_ListVolume(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	_listInfo, _vid, err := tp.ListVolume(context.Background(), defaultMarker, 1)
 	require.Nil(t, err)
@@ -288,6 +316,7 @@ func TestTransport_GetVolume(t *testing.T) {
 	}
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.VolumeInfo) error {
 		*info = *volInfo
 		return nil
@@ -297,7 +326,9 @@ func TestTransport_GetVolume(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	simpleInfo, err := tp.GetVolumeInfo(context.Background(), proto.Vid(1))
 	require.Nil(t, err)
@@ -315,6 +346,7 @@ func TestTransport_GetRepairedDisk(t *testing.T) {
 	}
 
 	mockCli := mocks.NewMockRPCClient(ctr(t))
+	mockListBlobnodeDisks(mockCli)
 	mockCli.EXPECT().GetWith(any, any, any).DoAndReturn(func(_ context.Context, _ string, info *clustermgr.ShardNodeDiskInfo) error {
 		*info = *diskInfo
 		return nil
@@ -324,7 +356,9 @@ func TestTransport_GetRepairedDisk(t *testing.T) {
 		CMClient: &clustermgr.Client{
 			Client: mockCli,
 		},
+		UpdateIntervalM: 1,
 	})
+	defer closer.Close(tp)
 
 	repaired, err := tp.IsRepairedDisk(context.Background(), diskID)
 	require.Nil(t, err)
@@ -333,4 +367,14 @@ func TestTransport_GetRepairedDisk(t *testing.T) {
 	repaired, err = tp.IsRepairedDisk(context.Background(), diskID)
 	require.Nil(t, err)
 	require.True(t, repaired)
+}
+
+func mockListBlobnodeDisks(mockCli *mocks.MockRPCClient) {
+	mockCli.EXPECT().
+		GetWith(any, any, gomock.AssignableToTypeOf(&clustermgr.ListDiskRet{})).
+		DoAndReturn(func(_ context.Context, _ string, info *clustermgr.ListDiskRet) error {
+			info.Marker = proto.InvalidDiskID
+			return nil
+		}).
+		AnyTimes()
 }
