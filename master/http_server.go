@@ -608,9 +608,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminMetaPartitionGetCleanTask).
 		HandlerFunc(m.getCleanMetaPartitionTask)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminCreateStoreModeChangePlan).
-		HandlerFunc(m.createMetaPartitionStoreModeChangePlan)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.CreateMetaNodeBalanceTask).
 		HandlerFunc(m.createMetaNodeBalancePlan)
 	router.NewRoute().Methods(http.MethodGet).

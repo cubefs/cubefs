@@ -1624,15 +1624,6 @@ func TestCheckMetaReplicasIsRocksdb(t *testing.T) {
 	}
 }
 
-func TestFillModifyStoreModePlan_InvalidVol(t *testing.T) {
-	c := &Cluster{}
-	plan := &proto.ClusterPlan{Mode: proto.StoreModeRocksDb}
-	err := c.FillModifyStoreModePlan(plan, "no-such-vol")
-	if err == nil {
-		t.Errorf("expected error when volume not found")
-	}
-}
-
 func TestIsRocksdbDiskUsageLow(t *testing.T) {
 	low := &MetaNode{RocksdbDisks: []*proto.MetaNodeRocksdbInfo{{UsageRatio: gConfig.metaNodeMemLowPer - 0.01}}}
 	if !IsRocksdbDiskUsageLow(low) {
@@ -2427,38 +2418,6 @@ func TestVerifyDestinationInMetaReplicas(t *testing.T) {
 
 	ret = verifyDestinationInMetaReplicas(mp, "node4")
 	require.False(t, ret)
-}
-
-func TestCreateModifyMetaPartitionStoreModePlan_InvalidVol(t *testing.T) {
-	c := &Cluster{
-		ClusterTopoSubItem: ClusterTopoSubItem{
-			t: &topology{
-				zones: []*Zone{
-					{
-						name: "zone1",
-						nodeSetMap: map[uint64]*nodeSet{
-							1: {
-								ID:        1,
-								metaNodes: new(sync.Map),
-							},
-						},
-					},
-				},
-				zoneMap: new(sync.Map),
-			},
-		},
-	}
-	param := &MetaPartitionPlanUserParams{
-		Name:    "no-such-vol",
-		StartID: 0,
-		EndID:   0,
-		Mode:    proto.StoreModeRocksDb,
-		Count:   1,
-	}
-	_, err := c.CreateModifyMetaPartitionStoreModePlan(param)
-	if err == nil {
-		t.Errorf("expected error when volume not found")
-	}
 }
 
 func TestHandleMetaPartitionPlan_BasicFlow(t *testing.T) {

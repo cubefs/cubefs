@@ -784,43 +784,6 @@ func parseMetaPartitionPlanParams(r *http.Request) (param *MetaPartitionPlanUser
 	return
 }
 
-func (m *Server) createMetaPartitionStoreModeChangePlan(w http.ResponseWriter, r *http.Request) {
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateStoreModeChangePlan))
-	defer func() {
-		doStatAndMetric(proto.AdminCreateStoreModeChangePlan, metric, nil, nil)
-	}()
-
-	if m.cluster.IsClusterPlanNotIdle() {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
-		return
-	}
-
-	// search the raft storage. Only store one plan
-	plan, err := m.cluster.loadBalanceTask()
-	if err == nil && plan != nil {
-		err = fmt.Errorf("there is a meta partition task plan already. Please remove it before create a new one")
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
-		return
-	}
-
-	param, err := parseMetaPartitionPlanParams(r)
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	plan, err = m.cluster.CreateModifyMetaPartitionStoreModePlan(param)
-	if err != nil {
-		log.LogErrorf("createMetaPartitionStoreModeChangePlan failed volume(%s) start(%d) end(%d) mode(%d) count(%d) err: %s", param.Name, param.StartID, param.EndID, param.Mode, param.Count, err.Error())
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
-		return
-	}
-
-	msg := fmt.Sprintf("volume(%s) start(%d) end(%d) mode(%d) count(%d) successfully", param.Name, param.StartID, param.EndID, param.Mode, param.Count)
-	AuditLog(r, "createMetaPartitionStoreModeChangePlan", msg, nil)
-	sendOkReply(w, r, newSuccessHTTPReply(plan))
-}
-
 func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminBatchAddMpLearner))
 	var err error

@@ -96,19 +96,6 @@ func TestOfflineMetaNode_ParamMissing(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func TestCreateMetaPartitionStoreModeChangePlan_ParamParseError(t *testing.T) {
-	s := newTestServer(t)
-	form := url.Values{}
-	form.Set("start", "not-number")
-	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w := httptest.NewRecorder()
-	s.createMetaPartitionStoreModeChangePlan(w, req)
-	resp := w.Result()
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-}
-
 func TestRemoveBackupMetaPartition_OK(t *testing.T) {
 	prev := useConnPool
 	useConnPool = false
