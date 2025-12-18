@@ -84,6 +84,8 @@ const (
 	AheadReadTotalMemGB
 	AheadReadBlockTimeOut
 	AheadReadWindowCnt
+	// min read ahead size
+	MinReadAheadSize
 	ReqChanCnt
 	// remotecache
 	ForceRemoteCache
@@ -198,6 +200,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[AheadReadTotalMemGB] = MountOption{"aheadReadTotalMemGB", "ahead read total mem(GB)", "", int64(30)}
 	opts[AheadReadBlockTimeOut] = MountOption{"aheadReadBlockTimeOut", "ahead read block expiration time", "", int64(3)}
 	opts[AheadReadWindowCnt] = MountOption{"aheadReadWindowCnt", "ahead read window block count", "", int64(128)}
+	opts[MinReadAheadSize] = MountOption{"minReadAheadSize", "minimum file size to trigger ahead read (bytes)", "", int64(1048576)} // default 1MB
 	opts[ForceRemoteCache] = MountOption{"forceRemoteCache", "All read requests are handled by the remote cache.", "", false}
 	opts[DebugCluster] = MountOption{"debugCluster", "display cluster name", "", ""}
 	opts[EnableAsyncFlush] = MountOption{"enableAsyncFlush", "async flush extent handler", "", true}
@@ -400,4 +403,5 @@ type MountOptions struct {
 	MinimumNlinkReadDir   int64
 	InodeLruLimit         int64
 	FuseServeThreads      int64
+	MinReadAheadSize      int64
 }

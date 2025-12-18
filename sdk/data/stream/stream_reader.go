@@ -85,6 +85,8 @@ type Streamer struct {
 
 	aheadReadBlockSize uint32
 	waitForFlush       bool
+	// minimum file size to trigger ahead read (bytes)
+	minReadAheadSize int
 }
 
 type bcacheKey struct {
@@ -131,8 +133,13 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool,
 	}
 	if client.AheadRead != nil {
 		s.aheadReadEnable = client.AheadRead.enable
-		s.aheadReadWindow = NewAheadReadWindow(client.AheadRead, s)
 		s.aheadReadBlockSize = util.CacheReadBlockSize
+		// set min read ahead size from config, default 1MB when zero
+		if client.extentConfig != nil && client.extentConfig.MinReadAheadSize > 0 {
+			s.minReadAheadSize = client.extentConfig.MinReadAheadSize
+		} else {
+			s.minReadAheadSize = util.MB // 1MB default
+		}
 	}
 	go s.server()
 	go s.asyncBlockCache()
@@ -264,7 +271,11 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 		} else {
 			log.LogDebugf("Stream read: ino(%v) req(%v) s.needBCache(%v) s.client.bcacheEnable(%v) aheadReadEnable(%v) aheadReadBlockSize(%v) %p",
 				s.inode, req, s.needBCache, s.client.bcacheEnable, s.aheadReadEnable, s.aheadReadBlockSize, s)
-			if s.aheadReadEnable {
+			if s.aheadReadEnable && filesize > s.minReadAheadSize {
+				// Lazily initialize ahead read window when threshold is satisfied
+				if s.aheadReadWindow == nil && s.client.AheadRead != nil {
+					s.aheadReadWindow = NewAheadReadWindow(s.client.AheadRead, s)
+				}
 				bgTime := stat.BeginStat()
 				readBytes, err = s.aheadRead(req, storageClass)
 				if err == nil && readBytes == req.Size {
