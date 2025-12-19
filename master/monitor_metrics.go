@@ -56,6 +56,7 @@ const (
 	MetricDiskLost                         = "disk_lost"
 	MetricDpUnableDecommissionCount        = "dp_unable_decommission_count"
 	MetricDpNoSamePeer                     = "dp_no_same_peer"
+	MetricMpNoSamePeer                     = "mp_no_same_peer"
 	MetricBadDiskDecommissionTimeOverLimit = "bad_disk_decommission_time_over_limit"
 	MetricDataNodesInactive                = "dataNodes_inactive"
 	MetricInactiveDataNodeInfo             = "inactive_dataNodes_info"
@@ -127,6 +128,7 @@ type monitorMetrics struct {
 	diskLost                         *exporter.GaugeVec
 	dpUnableDecommissionCount        *exporter.Gauge
 	dpNoSamePeer                     *exporter.GaugeVec
+	mpNoSamePeer                     *exporter.GaugeVec
 	badDiskDecommissionTimeOverLimit *exporter.GaugeVec
 	dataNodesNotWritable             *exporter.Gauge    // TODO: remove in the future
 	dataNodesAllocable               *exporter.Gauge    // TODO: remove in the future
@@ -516,6 +518,7 @@ func (mm *monitorMetrics) start() {
 	mm.diskLost = exporter.NewGaugeVec(MetricDiskLost, "", []string{"addr", "path"})
 	mm.dpUnableDecommissionCount = exporter.NewGauge(MetricDpUnableDecommissionCount)
 	mm.dpNoSamePeer = exporter.NewGaugeVec(MetricDpNoSamePeer, "", []string{"dpId"})
+	mm.mpNoSamePeer = exporter.NewGaugeVec(MetricMpNoSamePeer, "", []string{"mpId"})
 	mm.badDiskDecommissionTimeOverLimit = exporter.NewGaugeVec(MetricBadDiskDecommissionTimeOverLimit, "", []string{"addr", "path", "firstReportTime"})
 	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc", "rack"})
 	mm.partitionCreate = exporter.NewGaugeVec(MetricPartitionCreateMetrics, "", []string{"type", "racklevel", "media"})
@@ -620,6 +623,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setFlashNodesDiskErrorMetric()
 	mm.setDpUnableDecommissionMetric()
 	mm.setDpNoSamePeerMetric()
+	mm.setMpNoSamePeerMetric()
 	mm.setBadDiskDecommissionTimeOverLimit()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
@@ -980,7 +984,7 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 		}
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
-			if mp.IsRecover || mp.EqualCheckPass {
+			if mp.IsRecover.Load() || mp.EqualCheckPass {
 				continue
 			}
 			idStr := strconv.FormatUint(mp.PartitionID, 10)
@@ -1075,6 +1079,17 @@ func (mm *monitorMetrics) setDpNoSamePeerMetric() {
 		dpId := key.(uint64)
 		idStr := strconv.FormatUint(dpId, 10)
 		mm.dpNoSamePeer.SetWithLabelValues(1, idStr)
+		return true
+	})
+}
+
+func (mm *monitorMetrics) setMpNoSamePeerMetric() {
+	mm.mpNoSamePeer.Reset()
+
+	mm.cluster.NoSamePeerMps.Range(func(key, value interface{}) bool {
+		mpId := key.(uint64)
+		idStr := strconv.FormatUint(mpId, 10)
+		mm.mpNoSamePeer.SetWithLabelValues(1, idStr)
 		return true
 	})
 }
@@ -1402,6 +1417,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.diskLost.Reset()
 	mm.dpUnableDecommissionCount.Set(0)
 	mm.dpNoSamePeer.Reset()
+	mm.mpNoSamePeer.Reset()
 	mm.badDiskDecommissionTimeOverLimit.Reset()
 	mm.diskDecommissionSuccess.Reset()
 	mm.dataNodesInactive.Set(0)

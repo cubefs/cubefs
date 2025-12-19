@@ -1066,7 +1066,7 @@ func TestRemoveMetaReplica(t *testing.T) {
 		t.Error("no meta partition")
 		return
 	}
-	partition.IsRecover = false
+	partition.IsRecover.Store(false)
 	msAddr := mms8Addr
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
 	process(reqURL, t)
@@ -1805,6 +1805,18 @@ func TestSetAutoDpMetaRepairParallelCnt(t *testing.T) {
 	require.EqualValues(t, setVal, server.cluster.GetAutoDpMetaRepairParallelCnt())
 	process(unsetUrl, t)
 	require.EqualValues(t, oldVal, server.cluster.GetAutoDpMetaRepairParallelCnt())
+}
+
+func TestSetAutoMpMetaRepairParallelCnt(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.GetAutoMpMetaRepairParallelCnt()
+	setVal := 200
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoMpMetaRepairParallelCntKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoMpMetaRepairParallelCntKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.GetAutoMpMetaRepairParallelCnt())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.GetAutoMpMetaRepairParallelCnt())
 }
 
 func TestSetDpTimeout(t *testing.T) {

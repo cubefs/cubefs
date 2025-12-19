@@ -141,7 +141,7 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 	maxInodeCount := mp.LoadResponse[0].InodeCount
 	inodeEqual := true
 	maxInodeEqual := true
-	if mp.IsRecover {
+	if mp.IsRecover.Load() {
 		return
 	}
 	for _, loadResponse := range mp.LoadResponse {
@@ -184,7 +184,7 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 
 func (mp *MetaPartition) checkDentryCount(c *Cluster) (isEqual bool) {
 	isEqual = true
-	if mp.IsRecover {
+	if mp.IsRecover.Load() {
 		return
 	}
 	dentryCount := mp.LoadResponse[0].DentryCount
@@ -281,7 +281,8 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			} else {
 				// Normal mode check
 				if partition.getMinusOfMaxInodeID() < defaultMinusOfMaxInodeID {
-					partition.IsRecover = false
+					partition.IsRecover.Store(false)
+					partition.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 					partition.RLock()
 					c.syncUpdateMetaPartition(partition)
 					partition.RUnlock()
@@ -309,7 +310,8 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 func (c *Cluster) markLearnerRecoverFailed(mp *MetaPartition) {
 	mp.Lock()
 	defer mp.Unlock()
-	mp.IsRecover = false
+	mp.IsRecover.Store(false)
+	mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 	mp.RecoverState = proto.RecoverStateFailed
 	c.syncUpdateMetaPartition(mp)
 	log.LogWarnf("markLearnerRecoverFailed mp[%v] marked as failed, recovery stopped", mp.PartitionID)
@@ -336,7 +338,7 @@ func (c *Cluster) clearLearnerRecoveryState(mp *MetaPartition) (err error) {
 
 	mp.SrcAddr = ""
 	mp.LearnerDstAddr = ""
-	mp.IsRecover = false
+	mp.IsRecover.Store(false)
 	mp.RecoverStartTime = 0
 	mp.RecoverFailCount = 0
 	mp.RecoverRetryTime = 0
@@ -344,7 +346,7 @@ func (c *Cluster) clearLearnerRecoveryState(mp *MetaPartition) (err error) {
 	err = c.syncUpdateMetaPartition(mp)
 	if err != nil {
 		// Restore state on update failure
-		mp.IsRecover = true
+		mp.IsRecover.Store(true)
 		mp.SrcAddr = srcAddr
 		mp.LearnerDstAddr = dstAddr
 		mp.RecoverStartTime = recoverStartTime
@@ -501,4 +503,31 @@ func (c *Cluster) checkLearnerModeRecovery(mp *MetaPartition, srcAddr, dstAddr s
 	auditlog.LogMasterOp("checkLearnerModeRecovery", auditMsg, nil)
 	Warn(c.Name, auditMsg)
 	return nil
+}
+func (c *Cluster) scheduleToCheckMetaReplicaMeta() {
+	c.runTask(&cTask{
+		tickTime: time.Second * time.Duration(c.cfg.IntervalToCheckMetaPartition),
+		name:     "scheduleToCheckMetaReplicaMeta",
+		function: func() (fin bool) {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkMetaReplicaMeta()
+			}
+			return
+		},
+	})
+}
+
+func (c *Cluster) checkMetaReplicaMeta() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkMetaReplicaMeta occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkMetaReplicaMeta occurred panic")
+		}
+	}()
+
+	vols := c.allVols()
+	for _, vol := range vols {
+		vol.checkMetaReplicaMeta(c)
+	}
 }

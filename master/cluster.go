@@ -119,6 +119,7 @@ type ClusterDecommission struct {
 	DecommissionDisks                      sync.Map
 	DataNodeToDecommissionRepairDpMap      sync.Map
 	NoSamePeerDps                          sync.Map
+	NoSamePeerMps                          sync.Map
 	DecommissionFirstHostDiskParallelLimit uint64
 	DecommissionLimit                      uint64
 	AutoDecommissionDiskMux                sync.Mutex
@@ -129,9 +130,11 @@ type ClusterDecommission struct {
 	ForbidMpDecommission             bool
 	EnableMpDecommissionByLearner    bool
 	EnableAutoDpMetaRepair           atomicutil.Bool
+	EnableAutoMpMetaRepair           atomicutil.Bool
 	EnableAutoDecommissionDisk       atomicutil.Bool
 	AutoDecommissionInterval         atomicutil.Int64
 	AutoDpMetaRepairParallelCnt      atomicutil.Uint32
+	AutoMpMetaRepairParallelCnt      atomicutil.Uint32
 	EnableDistributionOptimization   atomicutil.Bool
 	DistributionOptimizationConDpCnt atomicutil.Int64
 	SSDNodeSetUnbalancedDPs          atomicutil.Int64
@@ -494,6 +497,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.S3ApiQosQuota = new(sync.Map)
 	c.MarkDiskBrokenThreshold.Store(defaultMarkDiskBrokenThreshold)
 	c.EnableAutoDpMetaRepair.Store(defaultEnableDpMetaRepair)
+	c.EnableAutoMpMetaRepair.Store(defaultEnableMpMetaRepair)
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
 	c.EnableDistributionOptimization.Store(defaultEnableDistributionOptimization)
 	c.DistributionOptimizationConDpCnt.Store(int64(defaultDistributionOptimizationConDpCnt))
@@ -533,6 +537,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToBadDisk()
 	c.scheduleToCheckVolUid()
 	c.scheduleToCheckDataReplicaMeta()
+	c.scheduleToCheckMetaReplicaMeta()
 	c.scheduleToUpdateFlashGroupRespCache()
 	c.scheduleStartBalanceTask()
 	c.scheduleToUpdateFlashGroupSlots()
@@ -7462,4 +7467,39 @@ func (c *Cluster) updateDistributionOptimizationStatus() {
 			ssdNodeSetUnbalancedDPs, ssdRackConflictDPs,
 			hddNodeSetUnbalancedDPs, hddRackConflictDPs)
 	}
+}
+
+func (c *Cluster) setEnableAutoMpMetaRepair(val bool) (err error) {
+	oldVal := c.EnableAutoMpMetaRepair.Load()
+	c.EnableAutoMpMetaRepair.Store(val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setEnableAutoMpMetaRepair] failed to set enable auto mp meta, err(%v)", err)
+		c.EnableAutoMpMetaRepair.Store(oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) getEnableAutoMpMetaRepair() (v bool) {
+	v = c.EnableAutoMpMetaRepair.Load()
+	return
+}
+
+func (c *Cluster) GetAutoMpMetaRepairParallelCnt() (cnt int) {
+	cnt = int(c.AutoMpMetaRepairParallelCnt.Load())
+	if cnt == 0 {
+		cnt = defaultAutoMpMetaRepairPallarelCnt
+	}
+	return
+}
+
+func (c *Cluster) setAutoMpMetaRepairParallelCnt(cnt int) (err error) {
+	old := c.AutoMpMetaRepairParallelCnt.Load()
+	c.AutoMpMetaRepairParallelCnt.Store(uint32(cnt))
+	if err = c.syncPutCluster(); err != nil {
+		c.AutoMpMetaRepairParallelCnt.Store(old)
+		return
+	}
+	return
 }

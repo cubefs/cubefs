@@ -178,6 +178,8 @@ type ClusterView struct {
 	MarkDiskBrokenThreshold                   float64
 	EnableAutoDpMetaRepair                    bool
 	AutoDpMetaRepairParallelCnt               int
+	EnableAutoMpMetaRepair                    bool
+	AutoMpMetaRepairParallelCnt               int
 	EnableAutoDecommission                    bool
 	AutoDecommissionDiskInterval              string
 	EnableDistributionOptimization            bool

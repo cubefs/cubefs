@@ -94,6 +94,7 @@ const (
 	defaultIntervalToCheck                     = 60
 	defaultIntervalToCheckHeartbeat            = 6
 	defaultIntervalToCheckDataPartition        = 5
+	defaultIntervalToCheckMetaPartition        = 5
 	defaultIntervalToCheckQos                  = 1
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck // in terms of seconds
 	noHeartBeatTimes                           = 3                           // number of times that no heartbeat reported
@@ -165,6 +166,7 @@ type clusterConfig struct {
 	httpProxyPoolSize                   uint64
 	httpPoolSize                        uint64
 	IntervalToCheckDataPartition        int // seconds
+	IntervalToCheckMetaPartition        int // seconds
 	IntervalToCheckQos                  int // seconds
 	numberOfDataPartitionsToFree        int
 	numberOfDataPartitionsToLoad        int
@@ -261,6 +263,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
 	cfg.MetaPartitionTimeOutSec = defaultMetaPartitionTimeOutSec
 	cfg.IntervalToCheckDataPartition = defaultIntervalToCheckDataPartition
+	cfg.IntervalToCheckMetaPartition = defaultIntervalToCheckMetaPartition
 	cfg.IntervalToCheckQos = defaultIntervalToCheckQos
 	cfg.IntervalToAlarmMissingDataPartition = defaultIntervalToAlarmMissingDataPartition
 	cfg.numberOfDataPartitionsToLoad = defaultNumberOfDataPartitionsToLoad

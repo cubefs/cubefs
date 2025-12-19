@@ -1503,7 +1503,7 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 			if c.IsClusterPlanNotRun() {
 				return ErrClusterPlanNotRunning
 			}
-			if mp.IsRecover {
+			if mp.IsRecover.Load() {
 				continue
 			}
 			if !mp.isLeaderExist() {
@@ -2018,7 +2018,7 @@ func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalanceP
 }
 
 func (c *Cluster) waitForMetaPartitionReady(mp *MetaPartition) error {
-	if !mp.IsRecover && mp.isLeaderExist() {
+	if !mp.IsRecover.Load() && mp.isLeaderExist() {
 		return nil
 	}
 
@@ -2028,7 +2028,7 @@ func (c *Cluster) waitForMetaPartitionReady(mp *MetaPartition) error {
 	for i := 0; i < CheckMetaLeaderRetry; i++ {
 		select {
 		case <-ticker.C:
-			if !mp.IsRecover && mp.isLeaderExist() {
+			if !mp.IsRecover.Load() && mp.isLeaderExist() {
 				return nil
 			}
 		case <-c.stopc:
@@ -2037,7 +2037,7 @@ func (c *Cluster) waitForMetaPartitionReady(mp *MetaPartition) error {
 		}
 	}
 
-	if mp.IsRecover {
+	if mp.IsRecover.Load() {
 		err := fmt.Errorf("skip rebalance meta partition(%d), because it is recovering.", mp.PartitionID)
 		log.LogWarn(err.Error())
 		return err
@@ -2911,6 +2911,68 @@ func (c *Cluster) AddLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan
 	}
 
 	return nil
+}
+
+func (c *Cluster) RemoveRedundantMetaReplica(mp *MetaPartition, excludeAddrs []string, param *MetaPartitionPlanUserParams) error {
+	count := GetMetaReplicaCountByType(mp, raftProto.PeerNormal)
+	if count <= int(mp.ReplicaNum) {
+		return nil
+	}
+
+	srcAddr, err := TryToSelectOneReplica(mp, excludeAddrs, param)
+	if err != nil {
+		log.LogErrorf("[RemoveRedundantMetaReplica] mp[%v] select one memory store mode replica failed, err: %s", mp.PartitionID, err.Error())
+		return err
+	}
+
+	// for learner promoting, it should not forbidden to delete.
+	mp.LastDelReplicaTime = mp.LastDelReplicaTime - mpReplicaDelInterval - 1
+
+	if err = c.deleteMetaReplica(mp, srcAddr, false, false); err != nil {
+		log.LogErrorf("[RemoveRedundantMetaReplica] mp[%v] addr[%v] delete meta replica failed, err: %s", mp.PartitionID, srcAddr, err.Error())
+		return err
+	}
+
+	mp.IsRecover.Store(true)
+	c.putBadMetaPartitions(srcAddr, mp.PartitionID)
+
+	mp.RLock()
+	c.syncUpdateMetaPartition(mp)
+	mp.RUnlock()
+	return nil
+}
+
+func TryToSelectOneReplica(mp *MetaPartition, excludeAddrs []string, param *MetaPartitionPlanUserParams) (string, error) {
+	excludeAddrsBackup := make([]string, 0, len(excludeAddrs)+1)
+	excludeAddrsBackup = append(excludeAddrsBackup, excludeAddrs...)
+	hasLeader := false
+	for _, mr := range mp.Replicas {
+		if mr.IsLeader {
+			excludeAddrsBackup = append(excludeAddrsBackup, mr.Addr)
+			hasLeader = true
+			break
+		}
+	}
+
+	// select one replica that is not leader and not in excludeAddr
+	srcAddr := SelectOneReplicaStrickly(mp, excludeAddrsBackup, param)
+	if srcAddr != "" {
+		return srcAddr, nil
+	}
+
+	if !hasLeader {
+		err := fmt.Errorf("can not select one replica to be removed")
+		log.LogErrorf("[TryToSelectOneReplica] %s", err.Error())
+		return "", err
+	}
+
+	srcAddr = SelectOneReplicaToDelete(mp, excludeAddrs, param)
+	if srcAddr == "" {
+		err := fmt.Errorf("no replica found after changing leader")
+		log.LogErrorf("[TryToSelectOneReplica] %s", err.Error())
+		return "", err
+	}
+	return srcAddr, nil
 }
 
 func SelectOneReplicaStrickly(mp *MetaPartition, excludeAddrs []string, param *MetaPartitionPlanUserParams) string {

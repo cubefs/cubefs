@@ -326,6 +326,7 @@ func (m *Server) clearMetadata() {
 
 	m.cluster.DataNodeToDecommissionRepairDpMap = sync.Map{}
 	m.cluster.NoSamePeerDps = sync.Map{}
+	m.cluster.NoSamePeerMps = sync.Map{}
 
 	if m.user != nil {
 		// leader change event may be before m.user initialization

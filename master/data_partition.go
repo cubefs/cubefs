@@ -3234,9 +3234,9 @@ func (partition *DataPartition) getAllDiskErrorReplica() []*DataReplica {
 	return diskErrReplicas
 }
 
-func (partition *DataPartition) isInterSectionBetweenMasterAndReplicasEmptySet() bool {
-	masterAddrs := make(map[string]bool, len(partition.Peers))
-	for _, peer := range partition.Peers {
+func isInterSectionBetweenMasterAndReplicasEmptySet(peers []proto.Peer, replicasPeers [][]proto.Peer) bool {
+	masterAddrs := make(map[string]bool, len(peers))
+	for _, peer := range peers {
 		masterAddrs[peer.Addr] = true
 	}
 
@@ -3244,13 +3244,13 @@ func (partition *DataPartition) isInterSectionBetweenMasterAndReplicasEmptySet()
 		return true
 	}
 
-	for _, replica := range partition.Replicas {
+	for _, localPeers := range replicasPeers {
 		// new created replica, no heart beat report, skip
-		if len(replica.LocalPeers) == 0 {
+		if len(localPeers) == 0 {
 			continue
 		}
-		replicaAddrs := make(map[string]bool, len(replica.LocalPeers))
-		for _, peer := range replica.LocalPeers {
+		replicaAddrs := make(map[string]bool, len(localPeers))
+		for _, peer := range localPeers {
 			replicaAddrs[peer.Addr] = true
 		}
 		for addr := range masterAddrs {
@@ -3274,7 +3274,12 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		return proto.ErrPerformingDecommission
 	}
 
-	if partition.isInterSectionBetweenMasterAndReplicasEmptySet() {
+	replicaPeers := make([][]proto.Peer, 0, len(partition.Replicas))
+	for _, replica := range partition.Replicas {
+		replicaPeers = append(replicaPeers, replica.LocalPeers)
+	}
+
+	if isInterSectionBetweenMasterAndReplicasEmptySet(partition.Peers, replicaPeers) {
 		log.LogErrorf("action[checkReplicaMeta]dp(%v) interSection between master and replicas is the empty set", partition.PartitionID)
 		c.NoSamePeerDps.Store(partition.PartitionID, struct{}{})
 		return proto.ErrDpNoSamePeer

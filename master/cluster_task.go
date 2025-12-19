@@ -112,6 +112,19 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
 		mp.volName, srcAddr, targetAddr, mp.PartitionID)
 
+	if err = mp.waitSetRestoreReplicaForbidden(); err != nil {
+		return
+	}
+
+	defer func() {
+		if !mp.IsRecover.Load() {
+			mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
+		}
+
+		mp.RLock()
+		c.syncUpdateMetaPartition(mp)
+		mp.RUnlock()
+	}()
 	// Prepare migration parameters
 	newPeers, finalDstStoreMode, err = c.prepareMetaPartitionMigration(srcAddr, targetAddr, mp, dstStoreMode)
 	if err != nil {
@@ -150,7 +163,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	}
 
 	// Mark as recovering and put into recovery queue
-	mp.IsRecover = true
+	mp.IsRecover.Store(true)
 	c.putBadMetaPartitions(srcAddr, mp.PartitionID)
 	mp.RLock()
 	c.syncUpdateMetaPartition(mp)
@@ -399,7 +412,7 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 		return
 	}
 
-	if mp.IsRecover && !mp.activeMaxInodeSimilar() {
+	if mp.IsRecover.Load() && !mp.activeMaxInodeSimilar() {
 		err = fmt.Errorf("vol[%v],meta partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, mp.PartitionID, nodeAddr)
 		return
 	}
@@ -600,11 +613,11 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 
 	partition.LastDelReplicaTime = time.Now().Unix()
 	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr, HeartbeatPort: metaNode.HeartbeatPort, ReplicaPort: metaNode.ReplicaPort}
-	if err = c.removeMetaPartitionRaftMember(partition, removePeer); err != nil {
+	if err = c.removeMetaPartitionRaftMember(partition, removePeer, forceDel); err != nil {
 		return
 	}
 
-	if err = c.deleteMetaPartition(partition, metaNode); err != nil {
+	if err = c.removeMetaHostMember(partition, removePeer); err != nil {
 		return
 	}
 
@@ -621,10 +634,19 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 		auditlog.LogMasterOp("deleteMetaReplica", auditMsg, nil)
 		return
 	}
+
+	if mr, err := partition.getMetaReplicaLeader(); err == nil && mr.Addr == addr {
+		if len(partition.Hosts) > 0 {
+			if metaNode, err := c.metaNode(partition.Hosts[0]); err == nil {
+				partition.tryToChangeLeader(c, metaNode)
+			}
+		}
+	}
+
 	return
 }
 
-func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *MetaNode) (err error) {
+func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *MetaNode, forceDel bool) (err error) {
 	partition.Lock()
 	mr, err := partition.getMetaReplica(removeMetaNode.Addr)
 	if err != nil {
@@ -632,7 +654,7 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
 		return nil
 	}
-	task := mr.createTaskToDeleteReplica(partition.PartitionID)
+	task := mr.createTaskToDeleteReplica(partition.PartitionID, forceDel)
 	partition.removeReplicaByAddr(removeMetaNode.Addr)
 	partition.removeMissingReplica(removeMetaNode.Addr)
 	partition.Unlock()
@@ -643,36 +665,7 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	return nil
 }
 
-func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer) (err error) {
-	partition.offlineMutex.Lock()
-	defer partition.offlineMutex.Unlock()
-	defer func() {
-		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0); err1 != nil {
-			err = errors.Trace(err, "updateMetaPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
-		}
-	}()
-	if err = c.updateMetaPartitionOfflinePeerIDWithLock(partition, removePeer.ID); err != nil {
-		return
-	}
-	mr, err := partition.getMetaReplicaLeader()
-	if err != nil {
-		return
-	}
-	t, err := partition.createTaskToRemoveRaftMember(removePeer)
-	if err != nil {
-		return
-	}
-	var leaderMetaNode *MetaNode
-	leaderMetaNode = mr.metaNode
-	if leaderMetaNode == nil {
-		leaderMetaNode, err = c.metaNode(mr.Addr)
-		if err != nil {
-			return
-		}
-	}
-	if _, err = leaderMetaNode.Sender.syncSendAdminTask(t); err != nil {
-		return
-	}
+func (c *Cluster) removeMetaHostMember(partition *MetaPartition, removePeer proto.Peer) (err error) {
 	newHosts := make([]string, 0, len(partition.Hosts)-1)
 	newPeers := make([]proto.Peer, 0, len(partition.Hosts)-1)
 	for _, host := range partition.Hosts {
@@ -690,16 +683,66 @@ func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, remove
 	if err = partition.persistToRocksDB("removeMetaPartitionRaftMember", partition.volName, newHosts, newPeers, c); err != nil {
 		return
 	}
-	if mr.Addr != removePeer.Addr {
+	return
+}
+
+func (c *Cluster) removeMetaPartitionRaftMember(partition *MetaPartition, removePeer proto.Peer, force bool) (err error) {
+	partition.offlineMutex.Lock()
+	defer partition.offlineMutex.Unlock()
+	defer func() {
+		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0); err1 != nil {
+			err = errors.Trace(err, "updateMetaPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
+		}
+	}()
+	if err = c.updateMetaPartitionOfflinePeerIDWithLock(partition, removePeer.ID); err != nil {
 		return
 	}
-	metaNode, err := c.metaNode(partition.Hosts[0])
+
+	t, err := partition.createTaskToRemoveRaftMember(removePeer, force)
 	if err != nil {
 		return
 	}
-	if err = partition.tryToChangeLeader(c, metaNode); err != nil {
-		return
+
+	var success bool
+	if mr, errLeader := partition.getMetaReplicaLeader(); errLeader == nil {
+		t.OperatorAddr = mr.Addr
+		if mr.metaNode != nil {
+			if _, errSend := mr.metaNode.Sender.syncSendAdminTask(t); errSend == nil {
+				success = true
+			}
+		} else if mn, errMn := c.metaNode(mr.Addr); errMn == nil {
+			if _, errSend := mn.Sender.syncSendAdminTask(t); errSend == nil {
+				success = true
+			}
+		}
 	}
+
+	if !success && force {
+		for _, replica := range partition.Replicas {
+			if replica.Addr == removePeer.Addr {
+				continue
+			}
+			t.OperatorAddr = replica.Addr
+			var mn *MetaNode
+			if replica.metaNode != nil {
+				mn = replica.metaNode
+			} else {
+				mn, _ = c.metaNode(replica.Addr)
+			}
+
+			if mn != nil {
+				if _, errSend := mn.Sender.syncSendAdminTask(t); errSend == nil {
+					success = true
+					break
+				}
+			}
+		}
+	}
+
+	if !success {
+		return fmt.Errorf("remove raft member failed, force: %v", force)
+	}
+
 	return
 }
 
@@ -757,7 +800,7 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 				partition.volName, partition.PartitionID, targetAddr, storeMode)
 		}
 
-		if partition.IsRecover {
+		if partition.IsRecover.Load() {
 			c.putBadMetaPartitions(srcAddr, partition.PartitionID)
 		}
 	}()
@@ -773,7 +816,7 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 		return
 	}
 
-	if !manualPromote && partition.IsRecover {
+	if !manualPromote && partition.IsRecover.Load() {
 		err = fmt.Errorf("vol[%v],mp[%v] is recovering, can't add learner", partition.volName, partition.PartitionID)
 		log.LogWarnf("action[addMetaReplicaLearner] %v", err)
 		return
@@ -843,7 +886,7 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 	newHosts := append(partition.Hosts, addPeer.Addr)
 	newPeers := partition.Peers
 	if !manualPromote {
-		partition.IsRecover = true
+		partition.IsRecover.Store(true)
 		partition.SrcAddr = srcAddr
 		partition.LearnerDstAddr = addPeer.Addr
 		partition.RecoverStartTime = time.Now().Unix()
@@ -865,7 +908,7 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 			partition.volName, partition.PartitionID, err)
 
 		// Reset state on failure
-		partition.IsRecover = false
+		partition.IsRecover.Store(false)
 		partition.SrcAddr = ""
 		partition.LearnerDstAddr = ""
 		return

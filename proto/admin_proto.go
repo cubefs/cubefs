@@ -767,6 +767,7 @@ func (r *AddMetaPartitionRaftMemberRequest) String() string {
 type RemoveMetaPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	RemovePeer  Peer
+	Force       bool
 }
 
 // LoadDataPartitionRequest defines the request of loading a data partition.
@@ -1100,6 +1101,7 @@ type DeleteFileResponse struct {
 // DeleteMetaPartitionRequest defines the request of deleting a meta partition.
 type DeleteMetaPartitionRequest struct {
 	PartitionID uint64
+	Force       bool
 }
 
 // DeleteMetaPartitionResponse defines the response to the request of deleting a meta partition.

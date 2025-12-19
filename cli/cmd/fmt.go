@@ -94,6 +94,8 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  AutoDecommissionDiskInterval             : %v\n", cv.AutoDecommissionDiskInterval))
 	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair                   : %v\n", cv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  AutoDpMetaRepairParallelCnt              : %v\n", cv.AutoDpMetaRepairParallelCnt))
+	sb.WriteString(fmt.Sprintf("  EnableAutoMpMetaRepair                   : %v\n", cv.EnableAutoMpMetaRepair))
+	sb.WriteString(fmt.Sprintf("  AutoMpMetaRepairParallelCnt              : %v\n", cv.AutoMpMetaRepairParallelCnt))
 	sb.WriteString(fmt.Sprintf("  EnableDistributionOptimization           : %v\n", cv.EnableDistributionOptimization))
 	sb.WriteString(fmt.Sprintf("  DistributionOptimizationThreshold        : %v\n", cv.DistributionOptimizationThreshold))
 	sb.WriteString(fmt.Sprintf("  DistributionOptimizationConDpCnt         : %v\n", cv.DistributionOptimizationConDpCnt))

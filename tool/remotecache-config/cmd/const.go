@@ -130,6 +130,8 @@ const (
 	CliFlagAutoDpMetaRepair             = "autoDpMetaRepair"
 	CliFlagAutoDpMetaRepairParallelCnt  = "autoDpMetaRepairParallelCnt"
 	CliFlagDpRepairTimeout              = "dpRepairTimeout"
+	CliFlagAutoMpMetaRepair             = "autoMpMetaRepair"
+	CliFlagAutoMpMetaRepairParallelCnt  = "autoMpMetaRepairParallelCnt"
 	CliFlagDpTimeout                    = "dpHeartbeatTimeout"
 	CliFlagMpTimeout                    = "mpHeartbeatTimeout"
 	CliFlagAutoDecommissionDisk         = "autoDecommissionDisk"

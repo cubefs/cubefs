@@ -1261,7 +1261,13 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 		err = nil
 	}
 	m.deletePartition(mp.GetBaseConfig().PartitionId)
-	os.RemoveAll(conf.RootDir)
+	if req.Force {
+		dirPath, dirName := path.Split(conf.RootDir)
+		newName := dirPath + "del_" + dirName
+		os.Rename(conf.RootDir, newName)
+	} else {
+		os.RemoveAll(conf.RootDir)
+	}
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
 	go func() {
@@ -1525,8 +1531,10 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		return
 	}
 
-	if !m.serveProxy(conn, mp, p) {
-		return nil
+	if !req.Force {
+		if !m.serveProxy(conn, mp, p) {
+			return nil
+		}
 	}
 	reqData, err = json.Marshal(req)
 	if err != nil {
@@ -1536,12 +1544,14 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		m.respondToClient(conn, p)
 		return
 	}
-	if err = mp.CanRemoveRaftMember(req.RemovePeer); err != nil {
-		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, RemovePeerID %d, err %s",
-			req.PartitionId, req.RemovePeer.ID, err.Error())
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		return
+	if !req.Force {
+		if err = mp.CanRemoveRaftMember(req.RemovePeer); err != nil {
+			err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, RemovePeerID %d, err %s",
+				req.PartitionId, req.RemovePeer.ID, err.Error())
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			return
+		}
 	}
 	if req.RemovePeer.ID == 0 {
 		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, "+
@@ -1550,6 +1560,31 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		m.respondToClient(conn, p)
 		return
 	}
+
+	if req.Force {
+		mpStruct, ok := mp.(*metaPartition)
+		if !ok {
+			err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember] mp is not *metaPartition struct")
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			return err
+		}
+		cc := &raftProto.ConfChange{
+			Type:    raftProto.ConfRemoveNode,
+			Peer:    raftProto.Peer{ID: req.RemovePeer.ID},
+			Context: reqData,
+		}
+		m.raftStore.RaftServer().RemoveRaftForce(req.PartitionId, cc)
+		if _, err = mpStruct.ApplyMemberChange(cc, 0); err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			return err
+		}
+		p.PacketOkReply()
+		m.respondToClient(conn, p)
+		return
+	}
+
 	_, err = mp.ChangeMember(raftProto.ConfRemoveNode,
 		raftProto.Peer{ID: req.RemovePeer.ID}, reqData)
 	if err != nil {

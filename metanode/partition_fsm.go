@@ -1254,6 +1254,9 @@ func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err e
 }
 
 func (mp *metaPartition) uploadApplyID(applyId uint64) {
+	if applyId == 0 {
+		return
+	}
 	atomic.StoreUint64(&mp.applyID, applyId)
 }
 

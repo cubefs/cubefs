@@ -655,7 +655,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
-	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string, autoDistributionOptimization string,
+	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string, enableAutoMpMetaRepair string, autoMpMetaRepairParallelCnt string, autoDistributionOptimization string,
 	dpRepairTimeout string, dpTimeout string, mpTimeout string, dpBackupTimeout string,
 	decommissionDpLimit, decommissionDiskLimit, decommissionFirstHostDiskParallelLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
 	handleTimeout string, readDataNodeTimeout string, rackAware string,
@@ -695,6 +695,12 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if autoDpMetaRepairParallelCnt != "" {
 		request.addParam("autoDpMetaRepairParallelCnt", autoDpMetaRepairParallelCnt)
+	}
+	if enableAutoMpMetaRepair != "" {
+		request.addParam("enableAutoMpMetaRepair", enableAutoMpMetaRepair)
+	}
+	if autoMpMetaRepairParallelCnt != "" {
+		request.addParam("autoMpMetaRepairParallelCnt", autoMpMetaRepairParallelCnt)
 	}
 	if autoDistributionOptimization != "" {
 		request.addParam("autoDistributionOptimization", autoDistributionOptimization)

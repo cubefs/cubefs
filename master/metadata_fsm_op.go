@@ -80,6 +80,8 @@ type clusterValue struct {
 	MarkDiskBrokenThreshold                float64
 	EnableAutoDpMetaRepair                 bool
 	AutoDpMetaRepairParallelCnt            uint32
+	EnableAutoMpMetaRepair                 bool
+	AutoMpMetaRepairParallelCnt            uint32
 	DataPartitionTimeoutSec                int64
 	MetaPartitionTimeoutSec                int64
 	ForbidWriteOpOfProtoVer0               bool
@@ -147,6 +149,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MarkDiskBrokenThreshold:                c.getMarkDiskBrokenThreshold(),
 		EnableAutoDpMetaRepair:                 c.getEnableAutoDpMetaRepair(),
 		AutoDpMetaRepairParallelCnt:            c.AutoDpMetaRepairParallelCnt.Load(),
+		EnableAutoMpMetaRepair:                 c.getEnableAutoMpMetaRepair(),
+		AutoMpMetaRepairParallelCnt:            c.AutoMpMetaRepairParallelCnt.Load(),
 		DataPartitionTimeoutSec:                c.getDataPartitionTimeoutSec(),
 		MetaPartitionTimeoutSec:                c.getMetaPartitionTimeoutSec(),
 		ForbidWriteOpOfProtoVer0:               c.cfg.forbidWriteOpOfProtoVer0,
@@ -193,6 +197,7 @@ type metaPartitionValue struct {
 	RecoverFailCount   int
 	RecoverRetryTime   int64
 	RecoverState       int
+	RestoreReplicaMeta uint32
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -207,7 +212,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		Hosts:              mp.hostsToString(),
 		Peers:              mp.Peers,
 		OfflinePeerID:      mp.OfflinePeerID,
-		IsRecover:          mp.IsRecover,
+		IsRecover:          mp.IsRecover.Load(),
 		Freeze:             mp.Freeze,
 		LastDelReplicaTime: mp.LastDelReplicaTime,
 		SrcAddr:            mp.SrcAddr,
@@ -216,6 +221,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		RecoverFailCount:   mp.RecoverFailCount,
 		RecoverRetryTime:   mp.RecoverRetryTime,
 		RecoverState:       int(mp.RecoverState),
+		RestoreReplicaMeta: atomic.LoadUint32(&mp.RestoreReplicaMeta),
 	}
 	return
 }
@@ -1274,12 +1280,20 @@ func (c *Cluster) updateEnableAutoDpMetaRepair(val bool) {
 	c.EnableAutoDpMetaRepair.Store(val)
 }
 
+func (c *Cluster) updateEnableAutoMpMetaRepair(val bool) {
+	c.EnableAutoMpMetaRepair.Store(val)
+}
+
 func (c *Cluster) updateAutoDecommissionDiskInterval(val int64) {
 	c.AutoDecommissionInterval.Store(val)
 }
 
 func (c *Cluster) updateAutoDpMetaRepairParallelCnt(cnt uint32) {
 	c.AutoDpMetaRepairParallelCnt.Store(cnt)
+}
+
+func (c *Cluster) updateAutoMpMetaRepairParallelCnt(cnt uint32) {
+	c.AutoMpMetaRepairParallelCnt.Store(cnt)
 }
 
 func (c *Cluster) updateDecommissionDiskLimit(val uint32) {
@@ -1487,7 +1501,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.checkDataReplicasEnable = cv.CheckDataReplicasEnable
 		c.updateMarkDiskBrokenThreshold(cv.MarkDiskBrokenThreshold)
 		c.updateEnableAutoDpMetaRepair(cv.EnableAutoDpMetaRepair)
+		c.updateEnableAutoMpMetaRepair(cv.EnableAutoMpMetaRepair)
 		c.updateAutoDpMetaRepairParallelCnt(cv.AutoDpMetaRepairParallelCnt)
+		c.updateAutoMpMetaRepairParallelCnt(cv.AutoMpMetaRepairParallelCnt)
 		c.updateDataPartitionTimeoutSec(cv.DataPartitionTimeoutSec)
 		c.cfg.raftPartitionAlreadyUseDifferentPort.Store(cv.RaftPartitionAlreadyUseDifferentPort)
 		c.updateMetaPartitionTimeoutSec(cv.MetaPartitionTimeoutSec)
@@ -1995,7 +2011,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
 		mp.OfflinePeerID = mpv.OfflinePeerID
-		mp.IsRecover = mpv.IsRecover
+		mp.IsRecover.Store(mpv.IsRecover)
 		mp.Freeze = mpv.Freeze
 		mp.LastDelReplicaTime = mpv.LastDelReplicaTime
 		mp.SrcAddr = mpv.SrcAddr
@@ -2004,6 +2020,13 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.RecoverFailCount = mpv.RecoverFailCount
 		mp.RecoverRetryTime = mpv.RecoverRetryTime
 		mp.RecoverState = proto.RecoverState(mpv.RecoverState)
+		mp.RestoreReplicaMeta = mpv.RestoreReplicaMeta
+		// If previous leader exited during restore (running/forbidden), reset to stop
+		// so that replica restore scheduling can proceed on new leader.
+		if (mp.RestoreReplicaMeta == RestoreReplicaMetaRunning && !mp.IsRecover.Load()) ||
+			(mp.RestoreReplicaMeta == RestoreReplicaMetaForbidden && !mp.IsRecover.Load()) {
+			mp.RestoreReplicaMeta = RestoreReplicaMetaStop
+		}
 		vol.addMetaPartition(mp)
 		c.addBadMetaParitionIdMap(mp)
 		log.LogInfof("action[loadMetaPartitions],vol[%v],mp[%v]", vol.Name, mp.PartitionID)
@@ -2012,8 +2035,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 }
 
 func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
-	// mp.RecoverState = proto.RecoverStateFailed need to clear state
-	if !mp.IsRecover && mp.RecoverState != proto.RecoverStateFailed {
+	if !mp.IsRecover.Load() && mp.RecoverState != proto.RecoverStateFailed {
 		return
 	}
 

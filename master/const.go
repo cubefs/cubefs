@@ -140,6 +140,7 @@ const (
 	autoDpMetaRepairKey                    = "autoDpMetaRepair"
 	autoDpMetaRepairParallelCntKey         = "autoDpMetaRepairParallelCnt"
 	enableMpDecommissionByLearnerKey       = "enableMpDecommissionByLearner"
+	autoMpMetaRepairParallelCntKey         = "autoMpMetaRepairParallelCnt"
 	autoDistributionOptimizationKey        = "autoDistributionOptimization"
 	distributionOptimizationConDpCntKey    = "distributionOptimizationConDpCnt"
 	distributionOptimizationThresholdKey   = "distributionOptimizationThreshold"
@@ -258,11 +259,13 @@ const (
 	defaultVolDelayDeleteTimeHour                     = 48
 	defaultMarkDiskBrokenThreshold                    = 0 // decommission all dp from disk
 	defaultEnableDpMetaRepair                         = false
+	defaultEnableMpMetaRepair                         = false
 	defaultEnableDistributionOptimization             = false
 	defaultDistributionOptimizationConDpCnt           = 400
 	defaultDistributionOptimizationIntervalSec        = 2 * 60 * 60
 	defaultDistributionOptimizationThreshold          = 0.8
 	defaultAutoDpMetaRepairPallarelCnt                = 100
+	defaultAutoMpMetaRepairPallarelCnt                = 20
 	defaultAutoDecommissionDiskInterval               = 10 * time.Second
 	maxMpCreationCount                                = 10
 	defaultVolForbidWriteOpOfProtoVersion0            = true

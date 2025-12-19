@@ -1641,7 +1641,7 @@ func (vol *Vol) getTasksToDeleteMetaPartitions() (tasks []*proto.AdminTask) {
 		log.LogDebugf("get delete task from vol(%s) mp(%d)", vol.Name, mp.PartitionID)
 		for _, replica := range mp.Replicas {
 			log.LogDebugf("get delete task from vol(%s) mp(%d),replica(%v)", vol.Name, mp.PartitionID, replica.Addr)
-			tasks = append(tasks, replica.createTaskToDeleteReplica(mp.PartitionID))
+			tasks = append(tasks, replica.createTaskToDeleteReplica(mp.PartitionID, false))
 		}
 	}
 	return
@@ -1831,7 +1831,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 				if err != nil {
 					return
 				}
-				task := mr.createTaskToDeleteReplica(mp.PartitionID)
+				task := mr.createTaskToDeleteReplica(mp.PartitionID, false)
 				tasks := make([]*proto.AdminTask, 0)
 				tasks = append(tasks, task)
 				c.addMetaNodeTasks(tasks)
@@ -2031,6 +2031,34 @@ func (vol *Vol) checkDataReplicaMeta(c *Cluster) (cnt int) {
 
 	if len(checkMetaDp) != 0 {
 		checkMetaDpWg.Wait()
+	}
+	return
+}
+
+func (vol *Vol) checkMetaReplicaMeta(c *Cluster) (cnt int) {
+	partitions := vol.getSortMetaPartitions()
+	checkMetaMp := make(map[uint64]*MetaPartition)
+	checkMetaPool := routinepool.NewRoutinePool(c.GetAutoMpMetaRepairParallelCnt())
+	defer checkMetaPool.WaitAndClose()
+	var checkMetaMpWg sync.WaitGroup
+
+	for _, mp := range partitions {
+		// NOTE: cluster or enable meta repair
+		if c.getEnableAutoDpMetaRepair() || vol.EnableAutoMetaRepair.Load() {
+			checkMetaMp[mp.PartitionID] = mp
+			localMp := mp
+			checkMetaMpWg.Add(1)
+			checkMetaPool.Submit(func() {
+				defer checkMetaMpWg.Done()
+				log.LogDebugf("[checkMetaPartitions] check meta for vol(%v) mp(%v)", mp.volName, mp.PartitionID)
+				localMp.checkReplicaMeta(c)
+			})
+			continue
+		}
+	}
+
+	if len(checkMetaMp) != 0 {
+		checkMetaMpWg.Wait()
 	}
 	return
 }

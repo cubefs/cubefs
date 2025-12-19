@@ -1015,6 +1015,8 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MarkDiskBrokenThreshold:                   m.cluster.getMarkDiskBrokenThreshold(),
 		EnableAutoDpMetaRepair:                    m.cluster.getEnableAutoDpMetaRepair(),
 		AutoDpMetaRepairParallelCnt:               m.cluster.GetAutoDpMetaRepairParallelCnt(),
+		EnableAutoMpMetaRepair:                    m.cluster.getEnableAutoMpMetaRepair(),
+		AutoMpMetaRepairParallelCnt:               m.cluster.GetAutoMpMetaRepairParallelCnt(),
 		EnableAutoDecommission:                    m.cluster.AutoDecommissionDiskIsEnabled(),
 		AutoDecommissionDiskInterval:              m.cluster.GetAutoDecommissionDiskInterval().String(),
 		EnableDistributionOptimization:            m.cluster.getEnableDistributionOptimization(),
@@ -2143,7 +2145,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
-		mp.IsRecover = true
+		mp.IsRecover.Store(true)
 		m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
 
 		mp.RLock()
@@ -2222,6 +2224,13 @@ func (m *Server) addMetaPartitionLearner(w http.ResponseWriter, r *http.Request)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
+	mp.IsRecover.Store(true)
+	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+
+	mp.RLock()
+	m.cluster.syncUpdateMetaPartition(mp)
+	mp.RUnlock()
 
 	log.LogWarnf("action[addMetaPartitionLearner] learner added successfully,partitionID[%v],addr[%v],set IsRecover=true", partitionID, addr)
 	msg = fmt.Sprintf("meta partitionID :%v  add learner [%v] successfully", partitionID, addr)
@@ -4466,6 +4475,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[autoDpMetaRepairParallelCntKey]; ok {
 		if cnt, ok := val.(int); ok {
 			if err = m.cluster.setAutoDpMetaRepairParallelCnt(cnt); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[autoMpMetaRepairParallelCntKey]; ok {
+		if cnt, ok := val.(int); ok {
+			if err = m.cluster.setAutoMpMetaRepairParallelCnt(cnt); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -6827,7 +6845,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.TxCnt = mp.TxCnt
 	mpView.TxRbInoCnt = mp.TxRbInoCnt
 	mpView.TxRbDenCnt = mp.TxRbDenCnt
-	mpView.IsRecover = mp.IsRecover
+	mpView.IsRecover = mp.IsRecover.Load()
 	mpView.Freeze = mp.Freeze
 	mpView.LastDelReplicaTime = mp.LastDelReplicaTime
 	mpView.StoreMode = mp.Replicas[0].StoreMode
@@ -6940,7 +6958,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			Replicas:                  replicas,
 			ReplicaNum:                mp.ReplicaNum,
 			Status:                    mp.Status,
-			IsRecover:                 mp.IsRecover,
+			IsRecover:                 mp.IsRecover.Load(),
 			Hosts:                     mp.Hosts,
 			Peers:                     mp.Peers,
 			Zones:                     zones,

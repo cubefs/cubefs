@@ -290,6 +290,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	autoDecommissionDiskInterval := ""
 	autoDpMetaRepair := ""
 	autoDpMetaRepairParallelCnt := ""
+	autoMpMetaRepair := ""
+	autoMpMetaRepairParallelCnt := ""
 	autoDistributionOptimization := ""
 	enableMpDecommissionByLearner := ""
 	opMaxDpCntLimit := ""
@@ -369,6 +371,17 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if autoDpMetaRepairParallelCnt != "" {
 				if _, err = strconv.ParseInt(autoDpMetaRepairParallelCnt, 10, 64); err != nil {
+					return
+				}
+			}
+
+			if autoMpMetaRepair != "" {
+				if _, err = strconv.ParseBool(autoMpMetaRepair); err != nil {
+					return
+				}
+			}
+			if autoMpMetaRepairParallelCnt != "" {
+				if _, err = strconv.ParseInt(autoMpMetaRepairParallelCnt, 10, 64); err != nil {
 					return
 				}
 			}
@@ -651,7 +664,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
-				autoDpMetaRepair, autoDpMetaRepairParallelCnt, autoDistributionOptimization,
+				autoDpMetaRepair, autoDpMetaRepairParallelCnt, autoMpMetaRepair, autoMpMetaRepairParallelCnt, autoDistributionOptimization,
 				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit, decommissionFirstHostDiskParallelLimit,
 				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware,
 				distributionOptimizationConDpCnt, distributionOptimizationThreshold,
@@ -678,6 +691,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	// cmd.Flags().StringVar(&markBrokenDiskThreshold, CliFlagMarkDiskBrokenThreshold, "", "Threshold to mark disk as broken")
 	cmd.Flags().StringVar(&autoDpMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable auto data partition meta repair")
 	cmd.Flags().StringVar(&autoDpMetaRepairParallelCnt, CliFlagAutoDpMetaRepairParallelCnt, "", "Parallel count of auto data partition meta repair")
+	cmd.Flags().StringVar(&autoMpMetaRepair, CliFlagAutoMpMetaRepair, "", "Enable or disable auto meta partition meta repair")
+	cmd.Flags().StringVar(&autoMpMetaRepairParallelCnt, CliFlagAutoMpMetaRepairParallelCnt, "", "Parallel count of auto meta partition meta repair")
 	cmd.Flags().StringVar(&autoDistributionOptimization, CliFlagAutoDistributionOptimization, "", "Enable or disable distribution optimization")
 	cmd.Flags().StringVar(&enableMpDecommissionByLearner, "enableMpDecommissionByLearner", "", "Enable or disable mp decommission by learner: [true | false]")
 	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
