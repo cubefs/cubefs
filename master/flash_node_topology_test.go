@@ -15,8 +15,10 @@
 package master
 
 import (
+	"sync"
 	"testing"
 
+	"github.com/cubefs/cubefs/remotecache/flashgroupmanager"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,7 +40,18 @@ func testFlashTopologyClear(t *testing.T) {
 	_, err = mc.AdminAPI().FlashGroupAddFlashNode(groups[2].ID, 1, testZone2, "")
 	require.NoError(t, err)
 	server.cluster.fsm.store.Flush()
-	server.cluster.flashNodeTopo.Clear()
+	server.cluster.flashNodeTopo.Range(func(key, value interface{}) bool {
+		if value == nil {
+			return true
+		}
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok {
+			return true
+		}
+		topo.Clear()
+		return true
+	})
+	server.cluster.flashNodeTopo = new(sync.Map)
 }
 
 func testFlashTopologyLoad(t *testing.T) {

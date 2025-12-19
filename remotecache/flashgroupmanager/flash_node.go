@@ -28,9 +28,10 @@ type FlashNodeValue struct {
 	ZoneName string
 	Version  string
 	// mutable
-	FlashGroupID   uint64 // 0: have not allocated to flash group
-	IsEnable       bool
-	TaskCountLimit int
+	FlashGroupID      uint64 // 0: have not allocated to flash group
+	IsEnable          bool
+	TaskCountLimit    int
+	FlashNodeTopoName string `json:"FlashNodeTopoName,omitempty"` // empty means default topology
 }
 
 type FlashNode struct {
@@ -50,7 +51,24 @@ type FlashNodeBadDiskInfo struct {
 	DiskPath string
 }
 
-func NewFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *FlashNode {
+func NewFlashNodeFromFnv(clusterID string, fnv *FlashNodeValue) *FlashNode {
+	node := new(FlashNode)
+	node.Addr = fnv.Addr
+	node.ZoneName = fnv.ZoneName
+	node.Version = fnv.Version
+	node.IsEnable = fnv.IsEnable
+	node.ReportTime = time.Now()
+	node.TaskManager = newAdminTaskManager(fnv.Addr, clusterID)
+	node.TaskManager.connPool = util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout, false)
+	topoName := fnv.FlashNodeTopoName
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+	node.FlashNodeTopoName = topoName
+	return node
+}
+
+func NewFlashNode(addr, zoneName, clusterID, version, topoName string, isEnable bool) *FlashNode {
 	node := new(FlashNode)
 	node.Addr = addr
 	node.ZoneName = zoneName
@@ -59,22 +77,27 @@ func NewFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *Fla
 	node.ReportTime = time.Now()
 	node.TaskManager = newAdminTaskManager(addr, clusterID)
 	node.TaskManager.connPool = util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout, false)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+	node.FlashNodeTopoName = topoName
 	return node
 }
 
 func (flashNode *FlashNode) GetFlashNodeViewInfo() (info *proto.FlashNodeViewInfo) {
 	flashNode.RLock()
 	info = &proto.FlashNodeViewInfo{
-		ID:            flashNode.ID,
-		Addr:          flashNode.Addr,
-		ReportTime:    flashNode.ReportTime,
-		IsActive:      flashNode.IsActive,
-		Version:       flashNode.Version,
-		ZoneName:      flashNode.ZoneName,
-		FlashGroupID:  flashNode.FlashGroupID,
-		IsEnable:      flashNode.IsEnable,
-		DiskStat:      flashNode.DiskStat,
-		LimiterStatus: flashNode.LimiterStatus,
+		ID:                flashNode.ID,
+		Addr:              flashNode.Addr,
+		ReportTime:        flashNode.ReportTime,
+		IsActive:          flashNode.IsActive,
+		Version:           flashNode.Version,
+		ZoneName:          flashNode.ZoneName,
+		FlashGroupID:      flashNode.FlashGroupID,
+		IsEnable:          flashNode.IsEnable,
+		DiskStat:          flashNode.DiskStat,
+		LimiterStatus:     flashNode.LimiterStatus,
+		FlashNodeTopoName: flashNode.FlashNodeTopoName,
 	}
 	flashNode.RUnlock()
 	return
@@ -141,7 +164,8 @@ func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHand
 	request.FlashReadFlowLimit = flashReadFlowLimit
 	request.FlashWriteFlowLimit = flashWriteFlowLimit
 	request.FlashKeyFlowLimit = flashKeyFlowLimit
-
+	request.TopoName = flashNode.FlashNodeTopoName
+	log.LogDebugf("createHeartbeatTask, flashNode:%v, topo:%v", flashNode.Addr, flashNode.FlashNodeTopoName)
 	task = proto.NewAdminTask(proto.OpFlashNodeHeartbeat, flashNode.Addr, request)
 	return
 }
@@ -153,6 +177,7 @@ func (flashNode *FlashNode) CreateSetIOLimitsTask(flow, iocc, factor int, opCode
 		Factor: factor,
 	}
 	task = proto.NewAdminTask(opCode, flashNode.Addr, request)
+	task.TopoName = flashNode.FlashNodeTopoName
 	return
 }
 

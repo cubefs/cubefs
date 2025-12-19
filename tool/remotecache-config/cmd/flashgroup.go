@@ -368,12 +368,16 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 }
 
 func newCmdFlashGroupClient(client *master.MasterClient) *cobra.Command {
-	return &cobra.Command{
+	var name string
+	cmd := &cobra.Command{
 		Use:   "client",
 		Short: "show flash group response passed from master to client",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			fgv, err := client.AdminAPI().ClientFlashGroups()
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			fgv, err := client.AdminAPI().ClientFlashGroups(name)
 			if err != nil {
 				return
 			}
@@ -382,6 +386,8 @@ func newCmdFlashGroupClient(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	return cmd
 }
 
 func newCmdFlashGroupSearch(client *master.MasterClient) *cobra.Command {

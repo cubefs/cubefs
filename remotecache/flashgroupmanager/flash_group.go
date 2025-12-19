@@ -17,18 +17,19 @@ const (
 )
 
 type FlashGroupValue struct {
-	ID               uint64
-	Slots            []uint32 // FlashGroup's position in hasher ring, set by cli. value is range of crc32.
-	ReservedSlots    []uint32
-	SlotStatus       proto.SlotStatus
-	PendingSlots     []uint32
-	Step             uint32
-	Weight           uint32
-	Status           proto.FlashGroupStatus
-	LostAllFlashNode int32
-	ReducingSlots    int32
-	IncreasingSlots  int32
-	ReduceAllTime    int64 // unix second
+	ID                uint64
+	Slots             []uint32 // FlashGroup's position in hasher ring, set by cli. value is range of crc32.
+	ReservedSlots     []uint32
+	SlotStatus        proto.SlotStatus
+	PendingSlots      []uint32
+	Step              uint32
+	Weight            uint32
+	Status            proto.FlashGroupStatus
+	LostAllFlashNode  int32
+	ReducingSlots     int32
+	IncreasingSlots   int32
+	ReduceAllTime     int64  // unix second
+	FlashNodeTopoName string `json:"FlashNodeTopoName,omitempty"` // empty means default topology
 }
 
 type FlashGroup struct {
@@ -40,15 +41,16 @@ type FlashGroup struct {
 func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
 	fg.lock.RLock()
 	view = proto.FlashGroupAdminView{
-		ID:              fg.ID,
-		Slots:           fg.Slots,
-		ReservedSlots:   fg.ReservedSlots,
-		IsReducingSlots: fg.ReducingSlots != 0,
-		Weight:          fg.Weight,
-		Status:          fg.Status,
-		SlotStatus:      fg.SlotStatus,
-		PendingSlots:    fg.PendingSlots,
-		Step:            fg.Step,
+		ID:                fg.ID,
+		Slots:             fg.Slots,
+		ReservedSlots:     fg.ReservedSlots,
+		IsReducingSlots:   fg.ReducingSlots != 0,
+		Weight:            fg.Weight,
+		Status:            fg.Status,
+		SlotStatus:        fg.SlotStatus,
+		PendingSlots:      fg.PendingSlots,
+		Step:              fg.Step,
+		FlashNodeTopoName: fg.FlashNodeTopoName,
 	}
 	view.ZoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
 	view.FlashNodeCount = len(fg.flashNodes)
@@ -59,7 +61,9 @@ func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
 	return
 }
 
-func newFlashGroup(id uint64, slots []uint32, slotStatus proto.SlotStatus, pendingSlots []uint32, step uint32, status proto.FlashGroupStatus, weight uint32) *FlashGroup {
+func newFlashGroup(id uint64, slots []uint32, slotStatus proto.SlotStatus, pendingSlots []uint32, step uint32,
+	status proto.FlashGroupStatus, weight uint32, topoName string,
+) *FlashGroup {
 	fg := new(FlashGroup)
 	fg.ID = id
 	fg.Slots = slots
@@ -70,6 +74,7 @@ func newFlashGroup(id uint64, slots []uint32, slotStatus proto.SlotStatus, pendi
 	fg.Weight = weight
 	fg.Status = status
 	fg.flashNodes = make(map[string]*FlashNode)
+	fg.FlashNodeTopoName = topoName
 	return fg
 }
 
@@ -284,7 +289,7 @@ func (fg *FlashGroup) getTargetZoneFlashNodeHosts(targetZone string) (hosts []st
 	return
 }
 
-func NewFlashGroupFromFgv(fgv FlashGroupValue) *FlashGroup {
+func NewFlashGroupFromFgv(fgv *FlashGroupValue) *FlashGroup {
 	fg := new(FlashGroup)
 	fg.ID = fgv.ID
 	fg.Slots = fgv.Slots
@@ -294,6 +299,11 @@ func NewFlashGroupFromFgv(fgv FlashGroupValue) *FlashGroup {
 	fg.Step = fgv.Step
 	fg.Weight = fgv.Weight
 	fg.Status = fgv.Status
+	topoName := fgv.FlashNodeTopoName
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+	fg.FlashNodeTopoName = topoName
 	fg.flashNodes = make(map[string]*FlashNode)
 	return fg
 }
@@ -309,16 +319,19 @@ func (fg *FlashGroup) UpdateStatus(status proto.FlashGroupStatus,
 	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, flashNodeTopo *FlashNodeTopology,
 ) (err error) {
 	fg.lock.Lock()
-	defer fg.lock.Unlock()
 	oldStatus := fg.Status
-	fg.Status = status
-	if oldStatus != status {
-		if err = syncUpdateFlashGroupFunc(fg); err != nil {
-			fg.Status = oldStatus
-			return
-		}
-		flashNodeTopo.updateClientCache()
+	if oldStatus == status {
+		fg.lock.Unlock()
+		return nil
 	}
+	fg.Status = status
+	if err := syncUpdateFlashGroupFunc(fg); err != nil {
+		fg.Status = oldStatus
+		fg.lock.Unlock()
+		return err
+	}
+	fg.lock.Unlock()
+	go flashNodeTopo.updateClientCache()
 	return nil
 }
 

@@ -181,7 +181,7 @@ func testFlashGroupClient(t *testing.T) {
 	_, err = mc.AdminAPI().FlashGroupAddFlashNode(groups[2].ID, 2, testZone3, "")
 	require.NoError(t, err)
 
-	fgs, err := mc.AdminAPI().ClientFlashGroups()
+	fgs, err := mc.AdminAPI().ClientFlashGroups(proto.DefaultTopoName)
 	require.NoError(t, err)
 	t.Logf("%+v", fgs)
 }

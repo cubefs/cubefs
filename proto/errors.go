@@ -30,6 +30,7 @@ var (
 	ErrDataPartitionNotExists = errors.New("data partition not exists")
 	ErrDataNodeNotExists      = errors.New("data node not exists")
 	ErrMetaNodeNotExists      = errors.New("meta node not exists")
+	ErrFlashNodeNotExists     = errors.New("flash node not exists")
 	ErrDuplicateVol           = errors.New("duplicate vol")
 	ErrActiveDataNodesTooLess = errors.New("no enough active data node")
 	ErrActiveMetaNodesTooLess = errors.New("no enough active meta node")

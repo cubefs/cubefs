@@ -41,6 +41,8 @@ const (
 	FlashManualWarmupAction = "warmup"
 	FlashManualClearAction  = "clear"
 	FlashManualCheckAction  = "check"
+
+	DefaultTopoName = "default"
 )
 
 var (
@@ -147,6 +149,7 @@ type FlashGroupInfo struct {
 type FlashGroupView struct {
 	Enable      bool
 	FlashGroups []*FlashGroupInfo
+	TopoName    string
 }
 
 type CoonHandler struct {
@@ -404,30 +407,32 @@ type FlashGroupsAdminView struct {
 }
 
 type FlashGroupAdminView struct {
-	ID              uint64
-	Slots           []uint32
-	ReservedSlots   []uint32
-	IsReducingSlots bool
-	Weight          uint32
-	Status          FlashGroupStatus
-	SlotStatus      SlotStatus
-	PendingSlots    []uint32
-	Step            uint32
-	FlashNodeCount  int
-	ZoneFlashNodes  map[string][]*FlashNodeViewInfo
+	ID                uint64
+	Slots             []uint32
+	ReservedSlots     []uint32
+	IsReducingSlots   bool
+	Weight            uint32
+	Status            FlashGroupStatus
+	SlotStatus        SlotStatus
+	PendingSlots      []uint32
+	Step              uint32
+	FlashNodeCount    int
+	ZoneFlashNodes    map[string][]*FlashNodeViewInfo
+	FlashNodeTopoName string
 }
 
 type FlashNodeViewInfo struct {
-	ID            uint64
-	Addr          string
-	ReportTime    time.Time
-	IsActive      bool
-	Version       string
-	ZoneName      string
-	FlashGroupID  uint64
-	IsEnable      bool
-	DiskStat      []*FlashNodeDiskCacheStat
-	LimiterStatus *FlashNodeLimiterStatusInfo
+	ID                uint64
+	Addr              string
+	ReportTime        time.Time
+	IsActive          bool
+	Version           string
+	ZoneName          string
+	FlashGroupID      uint64
+	IsEnable          bool
+	DiskStat          []*FlashNodeDiskCacheStat
+	LimiterStatus     *FlashNodeLimiterStatusInfo
+	FlashNodeTopoName string
 }
 
 type FlashNodeStat struct {
@@ -526,6 +531,7 @@ type FlashManualTask struct {
 	UpdateTime           *time.Time
 	EndTime              *time.Time
 	Done                 bool
+	TopoName             string
 	sync.Mutex
 }
 
@@ -774,4 +780,13 @@ func (w *WarmUpPathInfo) UnmarshalBinary(data []byte) error {
 
 func (w *WarmUpPathInfo) SetExpiration(t time.Duration) {
 	w.Expiration = time.Now().Add(t).UnixNano()
+}
+
+type FlashToposAdminView struct {
+	FlashTopos []FlashTopologyAdminView
+}
+
+type FlashTopologyAdminView struct {
+	ID   uint64
+	Name string
 }

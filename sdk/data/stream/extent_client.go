@@ -170,6 +170,8 @@ type ExtentConfig struct {
 	HeartBeatPing    bool
 	EnableAsyncFlush bool
 	MetaAcceleration bool
+
+	RemoteCacheName string
 }
 
 type MultiVerMgr struct {

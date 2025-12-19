@@ -311,6 +311,7 @@ const (
 	FlashNodeList              = "/flashNode/list"
 	FlashNodeSetReadIOLimits   = "/flashNode/setReadIOLimits"
 	FlashNodeSetWriteIOLimits  = "/flashNode/SetWriteIOLimits"
+	FlashNodeChangeTopo        = "/flashNode/changeTopo"
 
 	// Flash Mannual Task
 	CreateFlashNodeManualTask = "/flashNode/createFlashManualTask"
@@ -328,6 +329,11 @@ const (
 	AdminFlashGroupGet        = "/flashGroup/get"
 	AdminFlashGroupList       = "/flashGroup/list"
 	ClientFlashGroups         = "/client/flashGroups"
+
+	AdminFlashTopoList   = "/flashTopo/list"
+	AdminFlashTopoAdd    = "/flashTopo/add"
+	AdminFlashTopoDel    = "/flashTopo/delete"
+	AdminFlashTopoRename = "/flashTopo/rename"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -842,6 +848,7 @@ type FlashNodeHeartBeatInfos struct {
 	FlashReadFlowLimit           int64
 	FlashWriteFlowLimit          int64
 	FlashKeyFlowLimit            int64
+	TopoName                     string
 }
 
 // HeartBeatRequest define the heartbeat request.
@@ -1026,6 +1033,7 @@ type FlashNodeHeartbeatResponse struct {
 	LimiterStatus           *FlashNodeLimiterStatusInfo
 	FlashNodeTaskCountLimit int
 	ManualScanningTasks     map[string]*FlashNodeManualTaskResponse
+	TopoName                string
 }
 
 type FlashNodeLimiterStatus struct {

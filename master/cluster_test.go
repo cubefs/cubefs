@@ -372,10 +372,12 @@ func TestMasterClientLeaderChange(t *testing.T) {
 
 	cluster := &Cluster{
 		masterClient:  masterSDK.NewMasterClient(nil, false),
-		flashNodeTopo: flashgroupmanager.NewFlashNodeTopology(),
+		flashNodeTopo: new(sync.Map),
 		leaderInfo:    server.leaderInfo,
 	}
-	cluster.flashNodeTopo.SyncFlashGroupFunc = cluster.syncUpdateFlashGroup
+	topo := flashgroupmanager.NewFlashNodeTopology(proto.DefaultTopoName, 0)
+	topo.SyncFlashGroupFunc = cluster.syncUpdateFlashGroup
+	cluster.flashNodeTopo.Store(proto.DefaultTopoName, topo)
 	server.cluster = cluster
 
 	cluster.t = newTopology()

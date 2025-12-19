@@ -935,6 +935,7 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).Path(proto.FlashNodeList).HandlerFunc(m.listFlashNodes)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeSetReadIOLimits).HandlerFunc(m.setFlashNodeReadIOLimits)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeSetWriteIOLimits).HandlerFunc(m.setFlashNodeWriteIOLimits)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeChangeTopo).HandlerFunc(m.changeFlashNodeTopo)
 
 	// APIs for FlashNode manual tasks
 	router.NewRoute().Methods(http.MethodPost).
@@ -957,6 +958,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashGroupGet).HandlerFunc(m.getFlashGroup)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashGroupList).HandlerFunc(m.listFlashGroups)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.ClientFlashGroups).HandlerFunc(m.clientFlashGroups)
+
+	// APIs for FlashTopology
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoList).HandlerFunc(m.listFlashTopo)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoAdd).HandlerFunc(m.addFlashTopo)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoDel).HandlerFunc(m.deleteFlashTopo)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoRename).HandlerFunc(m.renameFlashTopo)
 }
 
 func (m *Server) registerHandler(router *mux.Router, model string, schema *graphql.Schema) {

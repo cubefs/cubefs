@@ -167,6 +167,7 @@ const (
 	flashNodeTimeoutCount        = "flashNodeTimeoutCount"
 	remoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	remoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
+	newNameKey                   = "newName"
 )
 
 const (
@@ -343,6 +344,9 @@ const (
 	opSyncS3QosSet    uint32 = 0x60
 	opSyncS3QosDelete uint32 = 0x61
 
+	opSyncAddFlashTopo     uint32 = 0x62
+	opSyncDeleteFlashTopo  uint32 = 0x63
+	opSyncUpdateFlashTopo  uint32 = 0x64
 	opSyncAddFlashNode     uint32 = 0x6A
 	opSyncDeleteFlashNode  uint32 = 0x6B
 	opSyncUpdateFlashNode  uint32 = 0x6C
@@ -492,6 +496,7 @@ const (
 	flashNodePrefix       = keySeparator + "fn" + keySeparator
 	flashGroupPrefix      = keySeparator + "fg" + keySeparator
 	flashManualTaskPrefix = keySeparator + "flt" + keySeparator
+	flashTopoPrefix       = keySeparator + "ft" + keySeparator
 
 	balanceTaskKey = keySeparator + "balanceTask"
 )

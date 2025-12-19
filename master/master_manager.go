@@ -201,6 +201,10 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
+	if err = m.cluster.loadFlashTopos(); err != nil {
+		panic(err)
+	}
+
 	if err = m.cluster.loadFlashNodes(); err != nil {
 		panic(err)
 	}
@@ -337,9 +341,18 @@ func (m *Server) clearMetadata() {
 	m.cluster.t = newTopology()
 	// m.cluster.apiLimiter.Clear()
 
-	m.cluster.flashNodeTopo.Clear()
-	m.cluster.flashNodeTopo = flashgroupmanager.NewFlashNodeTopology()
-	m.cluster.flashNodeTopo.SyncFlashGroupFunc = m.cluster.syncUpdateFlashGroup
+	m.cluster.flashNodeTopo.Range(func(key, value interface{}) bool {
+		if value == nil {
+			return true
+		}
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok {
+			return true
+		}
+		topo.Clear()
+		return true
+	})
+	m.cluster.flashNodeTopo = new(sync.Map)
 }
 
 func (m *Server) refreshUser() (err error) {

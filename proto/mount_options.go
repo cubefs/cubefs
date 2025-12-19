@@ -90,6 +90,7 @@ const (
 	ForceRemoteCache
 	DebugCluster
 	EnableAsyncFlush
+	RemoteCacheName
 
 	// warm up
 	ReadDirLimit
@@ -209,6 +210,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[MinimumNlinkReadDir] = MountOption{"minimumNlinkReadDir", "the minimum Nlink value of the directory that actively triggers the ReadDir operation", "", int64(10000)}
 	opts[InodeLruLimit] = MountOption{"inodeLruLimit", "capacity for inode lru", "", int64(2000000)}
 	opts[FuseServeThreads] = MountOption{"fuseServeThreads", "Fuse Serve Threads", "", int64(0)}
+	opts[RemoteCacheName] = MountOption{"remoteCacheName", "name for target remote cache topology", "", "default"}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -391,6 +393,7 @@ type MountOptions struct {
 	// remote cache
 	ForceRemoteCache bool
 	EnableAsyncFlush bool
+	RemoteCacheName  string
 
 	// warm up
 	ReadDirLimit          int64

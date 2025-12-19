@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/remotecache/flashgroupmanager"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -909,12 +910,22 @@ func (mm *monitorMetrics) setFlashNodesDiskErrorMetric() {
 		mm.flashNodesDiskError.DeleteLabelValues(v, k)
 	}
 
-	infos := mm.cluster.flashNodeTopo.BadDiskInfos()
-	for _, info := range infos {
-		key := fmt.Sprintf("%s_%s", info.Addr, info.DiskPath)
-		mm.flashNodesDiskError.SetWithLabelValues(1, info.Addr, key)
-		mm.flashNodesBadDisks[key] = info.Addr
-	}
+	mm.cluster.flashNodeTopo.Range(func(key, value interface{}) bool {
+		if value == nil {
+			return true
+		}
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok {
+			return true
+		}
+		infos := topo.BadDiskInfos()
+		for _, info := range infos {
+			key := fmt.Sprintf("%s_%s", info.Addr, info.DiskPath)
+			mm.flashNodesDiskError.SetWithLabelValues(1, info.Addr, key)
+			mm.flashNodesBadDisks[key] = info.Addr
+		}
+		return true
+	})
 }
 
 func (mm *monitorMetrics) setDiskLostMetric() {

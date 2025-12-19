@@ -46,6 +46,7 @@ type AdminTask struct {
 	Request      interface{}
 	Response     interface{}
 	RequestID    string
+	TopoName     string
 }
 
 // ToString returns the string format of the task.

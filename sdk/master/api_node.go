@@ -210,9 +210,24 @@ func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version string) (id uint6
 	return
 }
 
+// ByTopo variants: attach topology name as 'name' param while keeping original APIs compatible.
+func (api *NodeAPI) SetFlashNodeByTopo(addr string, enable bool, topoName string) (err error) {
+	req := newRequest(post, proto.FlashNodeSet).Header(api.h).
+		Param(anyParam{"addr", addr}, anyParam{"enable", enable})
+	req.addParam("name", topoName)
+	return api.mc.request(req)
+}
+
 func (api *NodeAPI) SetFlashNode(addr string, enable bool) (err error) {
 	return api.mc.request(newRequest(post, proto.FlashNodeSet).
 		Header(api.h).Param(anyParam{"addr", addr}, anyParam{"enable", enable}))
+}
+
+func (api *NodeAPI) RemoveFlashNodeByTopo(nodeAddr string, topoName string) (result string, err error) {
+	request := newRequest(post, proto.FlashNodeRemove).Header(api.h).addParam("addr", nodeAddr).NoTimeout()
+	request.addParam("name", topoName)
+	data, err := api.mc.serveRequest(request)
+	return string(data), err
 }
 
 func (api *NodeAPI) RemoveFlashNode(nodeAddr string) (result string, err error) {
@@ -221,13 +236,35 @@ func (api *NodeAPI) RemoveFlashNode(nodeAddr string) (result string, err error) 
 	return string(data), err
 }
 
+func (api *NodeAPI) RemoveAllInactiveFlashNodesByTopo(topoName string) (rmNodes []string, err error) {
+	req := newRequest(get, proto.FlashNodeRemoveAllInactive).Header(api.h)
+	req.addParam("name", topoName)
+	err = api.mc.requestWith(&rmNodes, req)
+	return
+}
+
 func (api *NodeAPI) RemoveAllInactiveFlashNodes() (rmNodes []string, err error) {
 	err = api.mc.requestWith(&rmNodes, newRequest(get, proto.FlashNodeRemoveAllInactive).Header(api.h))
 	return
 }
 
+func (api *NodeAPI) GetFlashNodeByTopo(addr string, topoName string) (node proto.FlashNodeViewInfo, err error) {
+	req := newRequest(get, proto.FlashNodeGet).Header(api.h).addParam("addr", addr)
+	req.addParam("name", topoName)
+	err = api.mc.requestWith(&node, req)
+	return
+}
+
 func (api *NodeAPI) GetFlashNode(addr string) (node proto.FlashNodeViewInfo, err error) {
 	err = api.mc.requestWith(&node, newRequest(get, proto.FlashNodeGet).Header(api.h).addParam("addr", addr))
+	return
+}
+
+func (api *NodeAPI) ListFlashNodesByTopo(active int, topoName string) (zoneFlashNodes map[string][]*proto.FlashNodeViewInfo, err error) {
+	zoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
+	req := newRequest(get, proto.FlashNodeList).Header(api.h).addParamAny("active", active)
+	req.addParam("name", topoName)
+	err = api.mc.requestWith(&zoneFlashNodes, req)
 	return
 }
 
@@ -248,4 +285,11 @@ func (api *NodeAPI) OfflineMetaNode(nodeAddr string) (err error) {
 		return
 	}
 	return
+}
+
+func (api *NodeAPI) ChangeFlashNodeTopo(nodeAddr, topoName string) (result string, err error) {
+	req := newRequest(post, proto.FlashNodeChangeTopo).Header(api.h).
+		Param(anyParam{"addr", nodeAddr}, anyParam{"name", topoName})
+	data, err := api.mc.serveRequest(req)
+	return string(data), err
 }

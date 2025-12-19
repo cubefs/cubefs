@@ -116,6 +116,7 @@ type RemoteCacheClient struct {
 	disableFlowLimitUpdate bool
 	WriteChunkSize         int64 // bytes
 	UpdateWarmPath         func([]byte, string)
+	remoteCacheName        string
 }
 
 func (rc *RemoteCacheClient) EnqueueConnTask(task *ConnPutTask) {
@@ -168,6 +169,7 @@ type ClientConfig struct {
 	FlowLimit              int64 // bytes per second, default 5GB
 	DisableFlowLimitUpdate bool
 	WriteChunkSize         int64 // bytes
+	RemoteCacheName        string
 }
 
 func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err error) {
@@ -228,6 +230,11 @@ func NewRemoteCacheClient(config *ClientConfig) (rc *RemoteCacheClient, err erro
 		rc.WriteChunkSize = proto.CACHE_WRITE_CHUCK_SIZE
 	} else {
 		rc.WriteChunkSize = config.WriteChunkSize
+	}
+	if config.RemoteCacheName == "" {
+		rc.remoteCacheName = proto.DefaultTopoName
+	} else {
+		rc.remoteCacheName = config.RemoteCacheName
 	}
 	rc.connPutChan = make(chan *ConnPutTask, DefaultConnPutChanSize)
 	rc.readPool = util.NewGTaskPool(DefaultReadPoolSize)
@@ -442,7 +449,7 @@ func (rc *RemoteCacheClient) refreshWithRecover() (panicErr error) {
 
 func (rc *RemoteCacheClient) UpdateClusterEnable() error {
 	if rc.mc != nil {
-		if fgv, err := rc.mc.AdminAPI().ClientFlashGroups(); err != nil {
+		if fgv, err := rc.mc.AdminAPI().ClientFlashGroups(rc.remoteCacheName); err != nil {
 			log.LogWarnf("updateFlashGroups: err(%v)", err)
 			return err
 		} else {
@@ -471,7 +478,7 @@ func (rc *RemoteCacheClient) UpdateFlashGroups() (err error) {
 	)
 
 	for i := 0; i < 3; i++ {
-		if fgv, err = rc.mc.AdminAPI().ClientFlashGroups(); err == nil {
+		if fgv, err = rc.mc.AdminAPI().ClientFlashGroups(rc.remoteCacheName); err == nil {
 			break
 		}
 		log.LogWarnf("updateFlashGroups: attempt %d failed, err(%v)", i+1, err)

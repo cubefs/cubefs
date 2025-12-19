@@ -32,12 +32,12 @@ import (
 	"github.com/google/uuid"
 )
 
-func (c *Cluster) addFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
+func (c *Cluster) addFlashNodeHeartbeatTasks(topoName string, tasks []*proto.AdminTask) {
 	for _, t := range tasks {
 		if t == nil {
 			continue
 		}
-		node, err := c.peekFlashNode(t.OperatorAddr)
+		node, err := c.peekFlashNode(topoName, t.OperatorAddr)
 		if err != nil {
 			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
@@ -51,7 +51,7 @@ func (c *Cluster) syncFlashNodeSetIOLimitTasks(tasks []*proto.AdminTask) {
 		if t == nil {
 			continue
 		}
-		node, err := c.peekFlashNode(t.OperatorAddr)
+		node, err := c.peekFlashNode(t.TopoName, t.OperatorAddr)
 		if err != nil {
 			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
@@ -88,9 +88,26 @@ func (c *Cluster) handleManualTaskProcessing(flashNode *flashgroupmanager.FlashN
 }
 
 func (c *Cluster) checkFlashNodeHeartbeat() {
-	tasks := c.flashNodeTopo.CreateFlashNodeHeartBeatTasks(c.masterAddr(), c.cfg.flashNodeHandleReadTimeout,
-		c.cfg.flashNodeReadDataNodeTimeout, c.cfg.flashHotKeyMissCount, c.cfg.flashReadFlowLimit, c.cfg.flashWriteFlowLimit, c.cfg.flashKeyFlowLimit)
-	c.addFlashNodeHeartbeatTasks(tasks)
+	c.flashNodeTopo.Range(func(key, value interface{}) bool {
+		if value == nil {
+			return true
+		}
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok {
+			return true
+		}
+		tasks := topo.CreateFlashNodeHeartBeatTasks(
+			c.masterAddr(),
+			c.cfg.flashNodeHandleReadTimeout,
+			c.cfg.flashNodeReadDataNodeTimeout,
+			c.cfg.flashHotKeyMissCount,
+			c.cfg.flashReadFlowLimit,
+			c.cfg.flashWriteFlowLimit,
+			c.cfg.flashKeyFlowLimit,
+		)
+		c.addFlashNodeHeartbeatTasks(topo.Name, tasks)
+		return true
+	})
 }
 
 func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
@@ -117,15 +134,47 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if id, err = m.cluster.addFlashNode(nodeAddr.V, zoneName.V, version.V); err != nil {
+	// all flashnode is added to default topo by default
+	topoName := proto.DefaultTopoName
+
+	if id, err = m.cluster.addFlashNode(topoName, nodeAddr.V, zoneName.V, version.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
-func (c *Cluster) addFlashNode(nodeAddr, zoneName, version string) (id uint64, err error) {
-	return c.flashNodeTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version,
+func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version string) (id uint64, err error) {
+	// check if flash node is registered before
+	var (
+		flashTopo      *flashgroupmanager.FlashNodeTopology
+		flashNode      *flashgroupmanager.FlashNode
+		registeredTopo string
+	)
+	c.flashNodeTopo.Range(func(key, value interface{}) bool {
+		if value == nil {
+			return true
+		}
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok {
+			return true
+		}
+		flashNode, err = topo.PeekFlashNode(nodeAddr)
+		if flashNode != nil {
+			registeredTopo = topo.Name
+			return false
+		}
+		return true
+	})
+	if flashNode != nil {
+		log.LogDebugf("action[addFlashNode] addr %v is already registered in :%v", nodeAddr, registeredTopo)
+		return flashNode.ID, nil
+	}
+	flashTopo, err = c.PeekFlashTopo(topoName)
+	if err != nil {
+		return
+	}
+	return flashTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version,
 		c.idAlloc.allocateCommonID, c.syncAddFlashNode)
 }
 
@@ -149,7 +198,21 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 			active = true
 		}
 	}
-	zoneFlashNodes := m.cluster.flashNodeTopo.ListFlashNodes(showAll, active)
+	// Backward Compatibility
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+	var (
+		flashTopo *flashgroupmanager.FlashNodeTopology
+		err       error
+	)
+	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	zoneFlashNodes := flashTopo.ListFlashNodes(showAll, active)
 	sendOkReply(w, r, newSuccessHTTPReply(zoneFlashNodes))
 }
 
@@ -164,8 +227,12 @@ func (m *Server) getFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
 	var flashNode *flashgroupmanager.FlashNode
-	if flashNode, err = m.cluster.peekFlashNode(nodeAddr.V); err != nil {
+	if flashNode, err = m.cluster.peekFlashNode(topoName, nodeAddr.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -183,9 +250,22 @@ func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	// Backward Compatibility
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+
+	var flashTopo *flashgroupmanager.FlashNodeTopology
+	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
 	var node *flashgroupmanager.FlashNode
-	if node, err = m.cluster.flashNodeTopo.PeekFlashNode(offLineAddr.V); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+	if node, err = flashTopo.PeekFlashNode(offLineAddr.V); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrFlashNodeNotExists))
 		return
 	}
 
@@ -194,7 +274,7 @@ func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.removeFlashNode(node); err != nil {
+	if err = m.cluster.removeFlashNode(flashTopo, node); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -202,11 +282,24 @@ func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Request) {
-	var err error
+	// Backward Compatibility
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+	var (
+		err       error
+		flashTopo *flashgroupmanager.FlashNodeTopology
+	)
+	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	removeAddresses := []string{}
-	removeNodes := m.cluster.flashNodeTopo.GetAllInactiveFlashNodes()
+	removeNodes := flashTopo.GetAllInactiveFlashNodes()
 	for _, node := range removeNodes {
-		if err = m.cluster.removeFlashNode(node); err != nil {
+		if err = m.cluster.removeFlashNode(flashTopo, node); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -215,8 +308,8 @@ func (m *Server) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Requ
 	sendOkReply(w, r, newSuccessHTTPReply(removeAddresses))
 }
 
-func (c *Cluster) removeFlashNode(flashNode *flashgroupmanager.FlashNode) (err error) {
-	return c.flashNodeTopo.RemoveFlashNode(c.Name, flashNode, c.syncDeleteFlashNode)
+func (c *Cluster) removeFlashNode(flashTopo *flashgroupmanager.FlashNodeTopology, flashNode *flashgroupmanager.FlashNode) (err error) {
+	return flashTopo.RemoveFlashNode(c.Name, flashNode, c.syncDeleteFlashNode)
 }
 
 func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +328,19 @@ func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if flashNode, err = m.cluster.flashNodeTopo.PeekFlashNode(nodeAddr.V); err != nil {
+	// Backward Compatibility
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+
+	flashTopo, err := m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if flashNode, err = flashTopo.PeekFlashNode(nodeAddr.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -244,7 +349,7 @@ func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		}
-		if err = m.cluster.updateFlashNode(flashNode, enable); err != nil {
+		if err = m.cluster.updateFlashNode(flashTopo, flashNode, enable); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -262,8 +367,9 @@ func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createFlashNodeManualTask(w http.ResponseWriter, r *http.Request) {
 	var (
-		bytes []byte
-		err   error
+		bytes     []byte
+		err       error
+		flashTopo *flashgroupmanager.FlashNodeTopology
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.CreateFlashNodeManualTask))
 	defer func() {
@@ -294,8 +400,17 @@ func (m *Server) createFlashNodeManualTask(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
+	// Backward Compatibility
+	if req.TopoName == "" {
+		req.TopoName = proto.DefaultTopoName
+	}
 
-	if m.cluster.flashNodeTopo == nil || !m.cluster.flashNodeTopo.CheckForActiveNode() {
+	flashTopo, err = m.cluster.PeekFlashTopo(req.TopoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if !flashTopo.CheckForActiveNode() {
 		err = fmt.Errorf("no available distributed cache nodes")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidCfg, Msg: err.Error()})
 		return
@@ -447,8 +562,11 @@ func (c *Cluster) handleFlashNodeTaskResponse(nodeAddr string, task *proto.Admin
 		err       error
 		flashNode *flashgroupmanager.FlashNode
 	)
-
-	if flashNode, err = c.peekFlashNode(nodeAddr); err != nil {
+	// Backward-compatible with older FlashNode versions.
+	if task.TopoName == "" {
+		task.TopoName = proto.DefaultTopoName
+	}
+	if flashNode, err = c.peekFlashNode(task.TopoName, nodeAddr); err != nil {
 		goto errHandler
 	}
 	flashNode.TaskManager.DelTask(task)
@@ -462,6 +580,9 @@ func (c *Cluster) handleFlashNodeTaskResponse(nodeAddr string, task *proto.Admin
 		err = c.handleFlashNodeScanResp(task.OperatorAddr, response)
 	case proto.OpFlashNodeHeartbeat:
 		response := task.Response.(*proto.FlashNodeHeartbeatResponse)
+		if response.TopoName == "" {
+			response.TopoName = proto.DefaultTopoName
+		}
 		err = c.handleFlashNodeHeartbeatResp(task.OperatorAddr, response)
 	default:
 		err = fmt.Errorf(fmt.Sprintf("flash unknown operate code %v", task.OpCode))
@@ -474,7 +595,7 @@ func (c *Cluster) handleFlashNodeTaskResponse(nodeAddr string, task *proto.Admin
 	return
 
 errHandler:
-	log.LogWarnf("flash handleFlashNodeTaskResponse failed, task: %v, err: %v", task.ToString(), err)
+	log.LogErrorf("flash handleFlashNodeTaskResponse failed, task: %v, err: %v", task.ToString(), err)
 }
 
 func (c *Cluster) handleFlashNodeHeartbeatResp(nodeAddr string, resp *proto.FlashNodeHeartbeatResponse) (err error) {
@@ -484,7 +605,7 @@ func (c *Cluster) handleFlashNodeHeartbeatResp(nodeAddr string, resp *proto.Flas
 		return
 	}
 	var node *flashgroupmanager.FlashNode
-	if node, err = c.peekFlashNode(nodeAddr); err != nil {
+	if node, err = c.peekFlashNode(resp.TopoName, nodeAddr); err != nil {
 		log.LogErrorf("action[handleFlashNodeHeartbeatResp], flashNode[%v], heartbeat error: %v", nodeAddr, err.Error())
 		return
 	}
@@ -494,8 +615,12 @@ func (c *Cluster) handleFlashNodeHeartbeatResp(nodeAddr string, resp *proto.Flas
 	return
 }
 
-func (c *Cluster) updateFlashNode(flashNode *flashgroupmanager.FlashNode, enable bool) (err error) {
-	return c.flashNodeTopo.UpdateFlashNode(flashNode, enable, c.syncUpdateFlashNode)
+func (c *Cluster) updateFlashNode(topo *flashgroupmanager.FlashNodeTopology, flashNode *flashgroupmanager.FlashNode, enable bool) (err error) {
+	if _, err = topo.PeekFlashNode(flashNode.Addr); err == nil {
+		err = topo.UpdateFlashNode(flashNode, enable, c.syncUpdateFlashNode)
+		return
+	}
+	return
 }
 
 func (c *Cluster) updateFlashNodeWorkRole(flashNode *flashgroupmanager.FlashNode, workRole string) error {
@@ -553,8 +678,13 @@ func (c *Cluster) syncPutFlashManualTaskInfo(opType uint32, flt *proto.FlashManu
 	return c.submit(metadata)
 }
 
-func (c *Cluster) peekFlashNode(addr string) (flashNode *flashgroupmanager.FlashNode, err error) {
-	return c.flashNodeTopo.PeekFlashNode(addr)
+func (c *Cluster) peekFlashNode(topoName, addr string) (flashNode *flashgroupmanager.FlashNode, err error) {
+	var flashTopo *flashgroupmanager.FlashNodeTopology
+	flashTopo, err = c.PeekFlashTopo(topoName)
+	if err != nil {
+		return
+	}
+	return flashTopo.PeekFlashNode(addr)
 }
 
 func argParserNodeAddr(nodeAddr *common.String) *common.Argument {
@@ -576,6 +706,7 @@ func (m *Server) setFlashNodeReadIOLimits(w http.ResponseWriter, r *http.Request
 		readIocc   int64
 		readFactor int64
 		err        error
+		flashTopo  *flashgroupmanager.FlashNodeTopology
 	)
 
 	if err = parseArgs(r, flow.Flow().OmitEmpty().OnEmpty(func() error {
@@ -602,10 +733,22 @@ func (m *Server) setFlashNodeReadIOLimits(w http.ResponseWriter, r *http.Request
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	// Backward Compatibility
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+
+	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
 	log.LogDebugf("action[setFlashNodeReadIOLimits],flow[%v] iocc[%v] factor [%v]",
 		readFlow, readIocc, readFactor)
 	tasks := make([]*proto.AdminTask, 0)
-	flashNodes := m.cluster.flashNodeTopo.GetAllActiveFlashNodes()
+	flashNodes := flashTopo.GetAllActiveFlashNodes()
 	for _, flashNode := range flashNodes {
 		task := flashNode.CreateSetIOLimitsTask(int(readFlow), int(readIocc), int(readFactor), proto.OpFlashNodeSetReadIOLimits)
 		tasks = append(tasks, task)
@@ -623,6 +766,7 @@ func (m *Server) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Reques
 		writeIocc   int64
 		writeFactor int64
 		err         error
+		flashTopo   *flashgroupmanager.FlashNodeTopology
 	)
 
 	if err = parseArgs(r, flow.Flow().OmitEmpty().OnEmpty(func() error {
@@ -649,14 +793,80 @@ func (m *Server) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	// Backward Compatibility
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+
+	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	log.LogDebugf("action[setFlashNodeWriteIOLimits],flow[%v] iocc[%v] factor [%v]",
 		writeFlow, writeIocc, writeFactor)
 	tasks := make([]*proto.AdminTask, 0)
-	flashNodes := m.cluster.flashNodeTopo.GetAllActiveFlashNodes()
+	flashNodes := flashTopo.GetAllActiveFlashNodes()
 	for _, flashNode := range flashNodes {
 		task := flashNode.CreateSetIOLimitsTask(int(writeFlow), int(writeIocc), int(writeFactor), proto.OpFlashNodeSetWriteIOLimits)
 		tasks = append(tasks, task)
 	}
 	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
 	sendOkReply(w, r, newSuccessHTTPReply("set WriteIOLimits for FlashNode is submit,check it later."))
+}
+
+func (m *Server) changeFlashNodeTopo(w http.ResponseWriter, r *http.Request) {
+	var (
+		err            error
+		flashNode      *flashgroupmanager.FlashNode
+		srcTop, dstTop *flashgroupmanager.FlashNodeTopology
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.FlashNodeChangeTopo))
+	defer func() {
+		doStatAndMetric(proto.FlashNodeChangeTopo, metric, err, nil)
+	}()
+	var nodeAddr common.String
+	if err = parseArgs(r, argParserNodeAddr(&nodeAddr)); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	targetTopoName := r.FormValue(nameKey)
+	if targetTopoName == "" {
+		err = fmt.Errorf("param name is not specified")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	m.cluster.flashNodeTopo.Range(func(key, value interface{}) bool {
+		if value == nil {
+			return true
+		}
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok {
+			return true
+		}
+		flashNode, err = topo.PeekFlashNode(nodeAddr.V)
+		if flashNode != nil {
+			srcTop = topo
+			return false
+		}
+		return true
+	})
+	if flashNode == nil {
+		err = fmt.Errorf("flashnode %v  is not found", nodeAddr.V)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	dstTop, err = m.cluster.PeekFlashTopo(targetTopoName)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	err = m.cluster.ChangeFlashNodeTopo(srcTop, dstTop, flashNode)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("fn[%v] change from topo[%v] to topo[%v]",
+		flashNode.Addr, srcTop.Name, dstTop.Name)))
 }

@@ -25,7 +25,7 @@ func TestNewFlashGroup(t *testing.T) {
 	status := proto.FlashGroupStatus_Active
 	weight := uint32(100)
 
-	fg := newFlashGroup(id, slots, slotStatus, pendingSlots, step, status, weight)
+	fg := newFlashGroup(id, slots, slotStatus, pendingSlots, step, status, weight, proto.DefaultTopoName)
 
 	assert.Equal(t, id, fg.ID)
 	assert.Equal(t, slots, fg.Slots)
@@ -40,7 +40,8 @@ func TestNewFlashGroup(t *testing.T) {
 
 // TestFlashGroup_GetAdminView tests the GetAdminView method
 func TestFlashGroup_GetAdminView(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3,
+		proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// Add some flash nodes
 	fn1 := &FlashNode{FlashNodeValue: FlashNodeValue{Addr: "node1", ZoneName: "zone1"}}
@@ -62,7 +63,8 @@ func TestFlashGroup_GetAdminView(t *testing.T) {
 
 // TestFlashGroup_ReduceSlot_AlreadyReducing tests that ReduceSlot doesn't start multiple goroutines
 func TestFlashGroup_ReduceSlot_AlreadyReducing(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3, 4, 5, 6, 7, 8}, proto.SlotStatus_Completed, []uint32{}, 8, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3, 4, 5, 6, 7, 8}, proto.SlotStatus_Completed, []uint32{},
+		8, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// Set the flag to indicate reduction is already in progress
 	atomic.StoreInt32(&fg.ReducingSlots, 1)
@@ -76,7 +78,8 @@ func TestFlashGroup_ReduceSlot_AlreadyReducing(t *testing.T) {
 
 // TestFlashGroup_ReduceSlot_NoSlots tests ReduceSlot behavior when there are no slots
 func TestFlashGroup_ReduceSlot_NoSlots(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{}, proto.SlotStatus_Completed, []uint32{}, 0, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{}, proto.SlotStatus_Completed, []uint32{}, 0,
+		proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// Set lost all flash nodes flag
 	atomic.StoreInt32(&fg.LostAllFlashNode, 1)
@@ -96,7 +99,8 @@ func TestFlashGroup_ReduceSlot_NoSlots(t *testing.T) {
 func TestFlashGroup_ReduceSlot_WithSlots(t *testing.T) {
 	// Create a flash group with 8 slots
 	initialSlots := []uint32{1, 2, 3, 4, 5, 6, 7, 8}
-	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 8, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 8,
+		proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// Set lost all flash nodes flag to trigger reduction
 	atomic.StoreInt32(&fg.LostAllFlashNode, 1)
@@ -121,7 +125,8 @@ func TestFlashGroup_ReduceSlot_WithSlots(t *testing.T) {
 func TestFlashGroup_executeReduceSlot(t *testing.T) {
 	// Create a flash group with 8 slots
 	initialSlots := []uint32{1, 2, 3, 4, 5, 6, 7, 8}
-	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 8, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 8,
+		proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	initialSlotCount := len(fg.Slots)
 
@@ -141,7 +146,8 @@ func TestFlashGroup_executeReduceSlot(t *testing.T) {
 
 // TestFlashGroup_executeReduceSlot_EmptySlots tests executeReduceSlot with no slots
 func TestFlashGroup_executeReduceSlot_EmptySlots(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{}, proto.SlotStatus_Completed, []uint32{}, 0, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{}, proto.SlotStatus_Completed, []uint32{}, 0,
+		proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// This should not panic or cause issues
 	fg.executeReduceSlot((len(fg.Slots)+4-1)/4, tSyncUpdateFlashGroup)
@@ -152,7 +158,8 @@ func TestFlashGroup_executeReduceSlot_EmptySlots(t *testing.T) {
 
 // TestFlashGroup_executeReduceSlot_SingleSlot tests executeReduceSlot with only one slot
 func TestFlashGroup_executeReduceSlot_SingleSlot(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1}, proto.SlotStatus_Completed, []uint32{}, 1, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1}, proto.SlotStatus_Completed, []uint32{}, 1,
+		proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	fg.executeReduceSlot((len(fg.Slots)+4-1)/4, tSyncUpdateFlashGroup)
 
@@ -163,7 +170,7 @@ func TestFlashGroup_executeReduceSlot_SingleSlot(t *testing.T) {
 
 // TestFlashGroup_IsLostAllFlashNode tests the IsLostAllFlashNode method
 func TestFlashGroup_IsLostAllFlashNode(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// Initially should be false
 	assert.False(t, fg.IsLostAllFlashNode())
@@ -179,7 +186,7 @@ func TestFlashGroup_IsLostAllFlashNode(t *testing.T) {
 
 // TestFlashGroup_GetStatus tests the GetStatus method
 func TestFlashGroup_GetStatus(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	status := fg.GetStatus()
 	assert.Equal(t, proto.FlashGroupStatus_Active, status)
@@ -193,7 +200,7 @@ func TestFlashGroup_GetStatus(t *testing.T) {
 // TestFlashGroup_getSlots tests the getSlots method
 func TestFlashGroup_getSlots(t *testing.T) {
 	initialSlots := []uint32{1, 2, 3, 4, 5}
-	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 5, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 5, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	slots := fg.GetSlots()
 
@@ -204,7 +211,7 @@ func TestFlashGroup_getSlots(t *testing.T) {
 
 // TestFlashGroup_getSlotStatus tests the getSlotStatus method
 func TestFlashGroup_getSlotStatus(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Creating, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Creating, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	status := fg.GetSlotStatus()
 	assert.Equal(t, proto.SlotStatus_Creating, status)
@@ -212,7 +219,7 @@ func TestFlashGroup_getSlotStatus(t *testing.T) {
 
 // TestFlashGroup_getFlashNodesCount tests the getFlashNodesCount method
 func TestFlashGroup_getFlashNodesCount(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// Initially no flash nodes
 	assert.Equal(t, 0, fg.GetFlashNodesCount())
@@ -226,14 +233,14 @@ func TestFlashGroup_getFlashNodesCount(t *testing.T) {
 
 // TestFlashGroup_getSlotsCount tests the getSlotsCount method
 func TestFlashGroup_getSlotsCount(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3, 4, 5}, proto.SlotStatus_Completed, []uint32{}, 5, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3, 4, 5}, proto.SlotStatus_Completed, []uint32{}, 5, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	assert.Equal(t, 5, fg.GetSlotsCount())
 }
 
 // TestFlashGroup_putFlashNode tests the putFlashNode method
 func TestFlashGroup_putFlashNode(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	fn := &FlashNode{FlashNodeValue: FlashNodeValue{Addr: "node1", ZoneName: "zone1"}}
 	fg.putFlashNode(fn)
@@ -244,7 +251,7 @@ func TestFlashGroup_putFlashNode(t *testing.T) {
 
 // TestFlashGroup_removeFlashNode tests the removeFlashNode method
 func TestFlashGroup_removeFlashNode(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// Add a flash node first
 	fn := &FlashNode{FlashNodeValue: FlashNodeValue{Addr: "node1", ZoneName: "zone1"}}
@@ -259,7 +266,7 @@ func TestFlashGroup_removeFlashNode(t *testing.T) {
 // TestFlashGroup_GetPendingSlotsCount tests the GetPendingSlotsCount method
 func TestFlashGroup_GetPendingSlotsCount(t *testing.T) {
 	pendingSlots := []uint32{1, 2, 3}
-	fg := newFlashGroup(1, []uint32{4, 5, 6}, proto.SlotStatus_Completed, pendingSlots, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{4, 5, 6}, proto.SlotStatus_Completed, pendingSlots, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	assert.Equal(t, 3, fg.GetPendingSlotsCount())
 }
@@ -287,7 +294,7 @@ func TestFlashGroup_NewFlashGroupFromFgv(t *testing.T) {
 		Status:       proto.FlashGroupStatus_Active,
 	}
 
-	fg := NewFlashGroupFromFgv(fgv)
+	fg := NewFlashGroupFromFgv(&fgv)
 
 	assert.Equal(t, fgv.ID, fg.ID)
 	assert.Equal(t, fgv.Slots, fg.Slots)
@@ -301,7 +308,7 @@ func TestFlashGroup_NewFlashGroupFromFgv(t *testing.T) {
 
 // TestFlashGroup_ConcurrentAccess tests concurrent access to FlashGroup methods
 func TestFlashGroup_ConcurrentAccess(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3, 4, 5, 6, 7, 8}, proto.SlotStatus_Completed, []uint32{}, 8, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3, 4, 5, 6, 7, 8}, proto.SlotStatus_Completed, []uint32{}, 8, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
@@ -339,7 +346,7 @@ func TestFlashGroup_ConcurrentAccess(t *testing.T) {
 
 // TestFlashGroup_IncreaseSlot_AlreadyIncreasing tests that IncreaseSlot doesn't start multiple goroutines
 func TestFlashGroup_IncreaseSlot_AlreadyIncreasing(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// Add some reserved slots
 	fg.ReservedSlots = []uint32{4, 5, 6, 7, 8}
@@ -356,7 +363,7 @@ func TestFlashGroup_IncreaseSlot_AlreadyIncreasing(t *testing.T) {
 
 // TestFlashGroup_IncreaseSlot_NoReservedSlots tests IncreaseSlot behavior when there are no reserved slots
 func TestFlashGroup_IncreaseSlot_NoReservedSlots(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// No reserved slots
 	assert.Equal(t, 0, len(fg.ReservedSlots))
@@ -377,7 +384,7 @@ func TestFlashGroup_IncreaseSlot_WithReservedSlots(t *testing.T) {
 	// Create a flash group with 3 slots and 8 reserved slots
 	initialSlots := []uint32{1, 2, 3}
 	reservedSlots := []uint32{4, 5, 6, 7, 8, 9, 10, 11}
-	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 	fg.ReservedSlots = reservedSlots
 
 	initialSlotCount := len(fg.Slots)
@@ -402,7 +409,7 @@ func TestFlashGroup_executeIncreaseSlot(t *testing.T) {
 	// Create a flash group with 3 slots and 8 reserved slots
 	initialSlots := []uint32{1, 2, 3}
 	reservedSlots := []uint32{4, 5, 6, 7, 8, 9, 10, 11}
-	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 	fg.ReservedSlots = reservedSlots
 
 	initialSlotCount := len(fg.Slots)
@@ -428,7 +435,7 @@ func TestFlashGroup_executeIncreaseSlot(t *testing.T) {
 
 // TestFlashGroup_executeIncreaseSlot_EmptyReservedSlots tests executeIncreaseSlot with no reserved slots
 func TestFlashGroup_executeIncreaseSlot_EmptyReservedSlots(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 
 	// No reserved slots
 	assert.Equal(t, 0, len(fg.ReservedSlots))
@@ -442,7 +449,7 @@ func TestFlashGroup_executeIncreaseSlot_EmptyReservedSlots(t *testing.T) {
 
 // TestFlashGroup_executeIncreaseSlot_SingleReservedSlot tests executeIncreaseSlot with only one reserved slot
 func TestFlashGroup_executeIncreaseSlot_SingleReservedSlot(t *testing.T) {
-	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, []uint32{1, 2, 3}, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 	fg.ReservedSlots = []uint32{4}
 
 	initialSlotCount := len(fg.Slots)
@@ -462,7 +469,7 @@ func TestFlashGroup_executeIncreaseSlot_SingleReservedSlot(t *testing.T) {
 func TestFlashGroup_executeIncreaseSlot_AllReservedSlots(t *testing.T) {
 	initialSlots := []uint32{1, 2, 3}
 	reservedSlots := []uint32{4, 5, 6}
-	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 	fg.ReservedSlots = reservedSlots
 
 	initialSlotCount := len(fg.Slots)
@@ -485,7 +492,7 @@ func TestFlashGroup_executeIncreaseSlot_AllReservedSlots(t *testing.T) {
 func TestFlashGroup_executeIncreaseSlot_ReduceAllTimeReset(t *testing.T) {
 	initialSlots := []uint32{1, 2, 3}
 	reservedSlots := []uint32{4, 5}
-	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 	fg.ReservedSlots = reservedSlots
 
 	// Set a non-zero ReduceAllTime
@@ -503,7 +510,7 @@ func TestFlashGroup_executeIncreaseSlot_ReduceAllTimeReset(t *testing.T) {
 func TestFlashGroup_executeIncreaseSlot_SyncError(t *testing.T) {
 	initialSlots := []uint32{1, 2, 3}
 	reservedSlots := []uint32{4, 5, 6}
-	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 	fg.ReservedSlots = reservedSlots
 
 	initialSlotCount := len(fg.Slots)
@@ -526,7 +533,7 @@ func TestFlashGroup_executeIncreaseSlot_SyncError(t *testing.T) {
 func TestFlashGroup_IncreaseSlot_ConcurrentExecution(t *testing.T) {
 	initialSlots := []uint32{1, 2, 3}
 	reservedSlots := []uint32{4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100)
+	fg := newFlashGroup(1, initialSlots, proto.SlotStatus_Completed, []uint32{}, 3, proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 	fg.ReservedSlots = reservedSlots
 
 	var wg sync.WaitGroup
@@ -584,7 +591,7 @@ func TestFlashGroup_IncreaseSlot_StepCalculation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fg := newFlashGroup(1, tc.slots, proto.SlotStatus_Completed, []uint32{}, uint32(len(tc.slots)), proto.FlashGroupStatus_Active, 100)
+			fg := newFlashGroup(1, tc.slots, proto.SlotStatus_Completed, []uint32{}, uint32(len(tc.slots)), proto.FlashGroupStatus_Active, 100, proto.DefaultTopoName)
 			fg.ReservedSlots = tc.reservedSlots
 
 			totalSlots := len(tc.slots) + len(tc.reservedSlots)

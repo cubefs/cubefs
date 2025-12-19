@@ -149,7 +149,7 @@ func (c *Cluster) loadFlashNodes() (err error) {
 			err = fmt.Errorf("action[loadFlashNodes],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
-		flashNode := NewFlashNode(fnv.Addr, fnv.ZoneName, c.Name, fnv.Version, fnv.IsEnable)
+		flashNode := NewFlashNodeFromFnv(c.Name, fnv)
 		flashNode.ID = fnv.ID
 		// load later in loadFlashTopology
 		flashNode.FlashGroupID = fnv.FlashGroupID
@@ -160,7 +160,8 @@ func (c *Cluster) loadFlashNodes() (err error) {
 			err = nil
 		}
 		c.flashNodeTopo.PutFlashNode(flashNode)
-		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v]", flashNode.ID, flashNode.Addr, flashNode.FlashGroupID)
+		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v topo: %v]",
+			flashNode.ID, flashNode.Addr, flashNode.FlashGroupID, flashNode.FlashNodeTopoName)
 	}
 	return
 }
@@ -172,19 +173,20 @@ func (c *Cluster) loadFlashGroups() (err error) {
 		return err
 	}
 	for _, value := range result {
-		var fgv FlashGroupValue
+		fgv := &FlashGroupValue{}
 		if err = json.Unmarshal(value, &fgv); err != nil {
 			err = fmt.Errorf("action[loadFlashGroups],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
 		flashGroup := NewFlashGroupFromFgv(fgv)
 		c.flashNodeTopo.SaveFlashGroup(flashGroup)
-		log.LogInfof("action[loadFlashGroups],flashGroup[%v]", flashGroup.ID)
+		log.LogInfof("action[loadFlashGroups],flashGroup[%v] topo %v", flashGroup.ID, flashGroup.FlashNodeTopoName)
 	}
 	return
 }
 
 func (c *Cluster) loadFlashTopology() (err error) {
+	// TODO: read syncMap
 	return c.flashNodeTopo.Load()
 }
 
