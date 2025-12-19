@@ -82,6 +82,7 @@ type DataNode struct {
 	DecommissionTime                   uint64
 	DecommissionCompleteTime           int64
 	DpCntLimit                         uint64             `json:"-"` // max count of data partition in a data node
+	CalculatedDpCntLimit               uint64             `json:"-"`
 	CpuUtil                            atomicutil.Float64 `json:"-"`
 	ioUtils                            atomic.Value       `json:"-"`
 	DecommissionDiskList               []string           // NOTE: the disks that running decommission
@@ -244,6 +245,8 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 	dataNode.DiskOpLogs = resp.DiskOpLogs
 	dataNode.DpOpLogs = resp.DpOpLogs
 
+	dataNode.CalculatedDpCntLimit = dataNode.calculateDpLimitByDiskCapacity(c)
+
 	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
@@ -391,10 +394,53 @@ func (dataNode *DataNode) GetPartitionLimitCnt() uint64 {
 	if dataNode.DpCntLimit != 0 {
 		return dataNode.DpCntLimit
 	}
-	if clusterDpCntLimit != 0 {
-		return clusterDpCntLimit
+
+	// pick the larger one between calculated limit and cluster value
+	dpCntLimit := dataNode.CalculatedDpCntLimit
+	if clusterLimit := atomic.LoadUint64(&clusterDpCntLimit); clusterLimit > dpCntLimit {
+		dpCntLimit = clusterLimit
 	}
+	if dpCntLimit != 0 {
+		return dpCntLimit
+	}
+
 	return defaultMaxDpCntLimit
+}
+
+// calculateDpLimitByDiskCapacity computes DP limit using disk capacity with formula:
+// node DP limit = baseCount * len(AllDisks) + (TotalGB * factor) / (120 * 10)
+// where factor is in tenths (e.g., factor=15 means 1.5)
+func (dataNode *DataNode) calculateDpLimitByDiskCapacity(c *Cluster) uint64 {
+	diskCount := len(dataNode.AllDisks)
+	if diskCount == 0 {
+		log.LogWarnf("[calculateDpLimitByDiskCapacity] node(%s) has no disks", dataNode.Addr)
+		return 0
+	}
+
+	if dataNode.Total == 0 {
+		log.LogWarnf("[calculateDpLimitByDiskCapacity] node(%s) total capacity is 0", dataNode.Addr)
+		return 0
+	}
+
+	// choose params by media type from cluster config
+	var baseCount uint64
+	var factor uint64
+	if dataNode.MediaType == proto.MediaType_SSD {
+		baseCount = c.cfg.DpLimitSsdBaseCount
+		factor = c.cfg.DpLimitSsdFactor
+	} else {
+		baseCount = c.cfg.DpLimitHddBaseCount
+		factor = c.cfg.DpLimitHddFactor
+	}
+
+	// Calculate: baseCount * diskCount + (totalCapacityGB * factor) / (120 * 10)
+	totalCapacityGB := dataNode.Total / util.GB
+	limit := baseCount*uint64(diskCount) + (totalCapacityGB*factor)/(defaultDpLimitUnitSizeGB*10)
+
+	log.LogInfof("[calculateDpLimitByDiskCapacity] node(%s) media(%s) limit(%d) = base(%d)*disks(%d) + totalGB(%d)*factor(%d)/(120*10)",
+		dataNode.Addr, proto.MediaTypeString(dataNode.MediaType), limit, baseCount, diskCount, totalCapacityGB, factor)
+
+	return limit
 }
 
 func (dataNode *DataNode) GetAvailableSpace() uint64 {

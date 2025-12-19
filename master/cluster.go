@@ -455,12 +455,6 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.delayDeleteVolsInfo = make([]*delayDeleteVolInfo, 0)
 	c.stopc = make(chan bool)
 	c.cfg = cfg
-	if clusterDpCntLimit == 0 {
-		atomic.StoreUint64(&clusterDpCntLimit, defaultMaxDpCntLimit)
-	}
-	if clusterMpCntLimit == 0 {
-		atomic.StoreUint64(&clusterMpCntLimit, defaultMaxMpCntLimit)
-	}
 	if distributionOptimizationThreshold.Load() == 0 {
 		distributionOptimizationThreshold.Store(defaultDistributionOptimizationThreshold)
 	}
@@ -5177,8 +5171,8 @@ func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
 	return
 }
 
-func (c *Cluster) getMaxDpCntLimit() (dpCntInLimit uint64) {
-	dpCntInLimit = atomic.LoadUint64(&clusterDpCntLimit)
+func (c *Cluster) getMaxDpCntLimit() (dpCntLimit uint64) {
+	dpCntLimit = atomic.LoadUint64(&clusterDpCntLimit)
 	return
 }
 
@@ -5187,10 +5181,9 @@ func (c *Cluster) setMaxDpCntLimit(val uint64) (err error) {
 		val = defaultMaxDpCntLimit
 	}
 	oldVal := c.getMaxDpCntLimit()
-	// atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
 	atomic.StoreUint64(&clusterDpCntLimit, val)
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[MaxDpCntLimit] err[%v]", err)
+		log.LogErrorf("[setMaxDpCntLimit] failed to set dp limit to value(%v), err(%v)", val, err)
 		atomic.StoreUint64(&clusterDpCntLimit, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return

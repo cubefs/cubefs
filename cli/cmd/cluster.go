@@ -69,6 +69,10 @@ const (
 	nodeAutoRepairRateKey                  = "autoRepairRate"
 	nodeMaxDpCntLimit                      = "maxDpCntLimit"
 	nodeMaxMpCntLimit                      = "maxMpCntLimit"
+	dpLimitSsdBaseCountKey                 = "dpLimitSsdBaseCount"
+	dpLimitSsdFactorKey                    = "dpLimitSsdFactor"
+	dpLimitHddBaseCountKey                 = "dpLimitHddBaseCount"
+	dpLimitHddFactorKey                    = "dpLimitHddFactor"
 	cmdForbidMpDecommission                = "forbid meta partition decommission"
 	// cmdSetDecommissionLimitShort           = "set cluster decommission limit"
 	cmdQueryDecommissionStatus = "query decommission status"
@@ -113,6 +117,10 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			stdout(fmt.Sprintf("  AutoRepairRate     : %v\n", clusterPara[nodeAutoRepairRateKey]))
 			stdout(fmt.Sprintf("  MaxDpCntLimit      : %v\n", clusterPara[nodeMaxDpCntLimit]))
 			stdout(fmt.Sprintf("  MaxMpCntLimit      : %v\n", clusterPara[nodeMaxMpCntLimit]))
+			stdout(fmt.Sprintf("  DpLimitSsdBaseCount: %v\n", clusterPara[dpLimitSsdBaseCountKey]))
+			stdout(fmt.Sprintf("  DpLimitSsdFactor   : %v\n", clusterPara[dpLimitSsdFactorKey]))
+			stdout(fmt.Sprintf("  DpLimitHddBaseCount: %v\n", clusterPara[dpLimitHddBaseCountKey]))
+			stdout(fmt.Sprintf("  DpLimitHddFactor   : %v\n", clusterPara[dpLimitHddFactorKey]))
 
 			stdout("\n")
 
@@ -311,6 +319,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	optFlashWriteFlowLimit := ""
 	optFlashKeyFlowLimit := ""
 	optRemoteClientFlowLimit := ""
+	optDpLimitSsdBaseCount := ""
+	optDpLimitSsdFactor := ""
+	optDpLimitHddBaseCount := ""
+	optDpLimitHddFactor := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -470,7 +482,6 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			// Validate distribution optimization parameters
 			if distributionOptimizationConDpCnt != "" {
 				var count int64
 				count, err = strconv.ParseInt(distributionOptimizationConDpCnt, 10, 64)
@@ -572,6 +583,31 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if optDpLimitSsdBaseCount != "" {
+				if _, err = strconv.ParseUint(optDpLimitSsdBaseCount, 10, 64); err != nil {
+					err = fmt.Errorf("param dpLimitSsdBaseCount(%v) should be uint", optDpLimitSsdBaseCount)
+					return
+				}
+			}
+			if optDpLimitSsdFactor != "" {
+				if _, err = strconv.ParseUint(optDpLimitSsdFactor, 10, 64); err != nil {
+					err = fmt.Errorf("param dpLimitSsdFactor(%v) should be uint", optDpLimitSsdFactor)
+					return
+				}
+			}
+			if optDpLimitHddBaseCount != "" {
+				if _, err = strconv.ParseUint(optDpLimitHddBaseCount, 10, 64); err != nil {
+					err = fmt.Errorf("param dpLimitHddBaseCount(%v) should be uint", optDpLimitHddBaseCount)
+					return
+				}
+			}
+			if optDpLimitHddFactor != "" {
+				if _, err = strconv.ParseUint(optDpLimitHddFactor, 10, 64); err != nil {
+					err = fmt.Errorf("param dpLimitHddFactor(%v) should be uint", optDpLimitHddFactor)
+					return
+				}
+			}
+
 			if optRemoteCacheMultiRead != "" {
 				if _, err = strconv.ParseBool(optRemoteCacheMultiRead); err != nil {
 					err = fmt.Errorf("param remoteCacheMultiRead(%v) should be true or false", optRemoteCacheMultiRead)
@@ -618,7 +654,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				distributionOptimizationConDpCnt, distributionOptimizationThreshold,
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
 				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount, optFlashReadFlowLimit, optFlashWriteFlowLimit, optFlashKeyFlowLimit, optRemoteClientFlowLimit,
-				enableMpDecommissionByLearner, learnerRecoverTimeoutSeconds); err != nil {
+				enableMpDecommissionByLearner, learnerRecoverTimeoutSeconds, optDpLimitSsdBaseCount, optDpLimitSsdFactor, optDpLimitHddBaseCount, optDpLimitHddFactor); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -670,6 +706,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optFlashWriteFlowLimit, CliFlagFlashWriteFlowLimit, "", "Flash write flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optFlashKeyFlowLimit, CliFlagFlashKeyFlowLimit, "", "Flash key flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optRemoteClientFlowLimit, CliFlagRemoteClientFlowLimit, "", "Remote client flow limit(must >= 0)")
+	cmd.Flags().StringVar(&optDpLimitSsdBaseCount, CliFlagDpLimitSsdBaseCount, "", "DP limit SSD base count")
+	cmd.Flags().StringVar(&optDpLimitSsdFactor, CliFlagDpLimitSsdFactor, "", "DP limit SSD factor per 120GB")
+	cmd.Flags().StringVar(&optDpLimitHddBaseCount, CliFlagDpLimitHddBaseCount, "", "DP limit HDD base count")
+	cmd.Flags().StringVar(&optDpLimitHddFactor, CliFlagDpLimitHddFactor, "", "DP limit HDD factor per 120GB")
 
 	return cmd
 }

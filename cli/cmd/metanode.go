@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
@@ -37,6 +38,7 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newMetaNodeListCmd(client),
 		newMetaNodeInfoCmd(client),
+		newMetaNodeSetCmd(client),
 		newMetaNodeDecommissionCmd(client),
 		newMetaNodeMigrateCmd(client),
 		newMetaNodeOfflineCmd(client),
@@ -48,6 +50,7 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 const (
 	cmdMetaNodeListShort             = "List information of meta nodes"
 	cmdMetaNodeInfoShort             = "Show information of meta nodes"
+	cmdMetaNodeSetShort              = "Set parameters for a meta node"
 	cmdMetaNodeDecommissionInfoShort = "Decommission partitions in a meta node to other nodes"
 	cmdMetaNodeMigrateInfoShort      = "Migrate partitions from a meta node to the other node"
 	cmdMetaNodeOfflineInfoShort      = "Offline meta node in background"
@@ -119,6 +122,38 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	return cmd
+}
+
+func newMetaNodeSetCmd(client *master.MasterClient) *cobra.Command {
+	var maxMpCntLimit uint64
+	cmd := &cobra.Command{
+		Use:   CliOpSet + " [{HOST}:{PORT}]",
+		Short: cmdMetaNodeSetShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			nodeAddr := args[0]
+			if !cmd.Flags().Changed(CliFlagMaxMpCntLimit) {
+				err = fmt.Errorf("no parameter specified, use --%s to set max MP count limit", CliFlagMaxMpCntLimit)
+				return
+			}
+			if err = client.NodeAPI().SetMetaNodeMaxMpCntLimit(nodeAddr, maxMpCntLimit); err != nil {
+				return
+			}
+			stdout("Set max MP count limit to %d for meta node %s successfully\n", maxMpCntLimit, nodeAddr)
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().Uint64Var(&maxMpCntLimit, CliFlagMaxMpCntLimit, 0, "Maximum MP count limit for this meta node")
 	return cmd
 }
 

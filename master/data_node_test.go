@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,4 +59,42 @@ func updateDisks(addr string, t *testing.T) {
 	require.Equal(t, updated, true)
 	require.Equal(t, allDisk, dn.AllDisks)
 	require.Equal(t, badDisk, dn.BadDisks)
+}
+
+func TestCalculateDpLimitByDiskCapacity(t *testing.T) {
+	t.Run("SSD", func(t *testing.T) {
+		cfg := newClusterConfig()
+		cfg.DpLimitSsdBaseCount = 150
+		cfg.DpLimitSsdFactor = 50 // 5.0 in tenths
+		cluster := &Cluster{cfg: cfg}
+
+		dn := &DataNode{
+			AllDisks:  []string{"/data1", "/data2"},
+			Total:     4096 * util.GB, // 4TB in bytes
+			MediaType: proto.MediaType_SSD,
+		}
+
+		got := dn.calculateDpLimitByDiskCapacity(cluster)
+		// expected = base*diskCount + (totalGB*factor)/(120*10) where factor is tenths
+		want := uint64(150*2 + (4096*50)/(120*10))
+		require.Equal(t, want, got)
+	})
+
+	t.Run("HDD", func(t *testing.T) {
+		cfg := newClusterConfig()
+		cfg.DpLimitHddBaseCount = 100
+		cfg.DpLimitHddFactor = 20 // 2.0 in tenths
+		cluster := &Cluster{cfg: cfg}
+
+		dn := &DataNode{
+			AllDisks:  []string{"/data1"},
+			Total:     14336 * util.GB, // 14TB in bytes
+			MediaType: proto.MediaType_HDD,
+		}
+
+		got := dn.calculateDpLimitByDiskCapacity(cluster)
+		// expected = base*diskCount + (totalGB*factor)/(120*10)
+		want := uint64(100*1 + (14336*20)/(120*10))
+		require.Equal(t, want, got)
+	})
 }

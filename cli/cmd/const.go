@@ -189,6 +189,10 @@ const (
 	CliFlagFlashWriteFlowLimit          = "flashWriteFlowLimit"
 	CliFlagFlashKeyFlowLimit            = "flashKeyFlowLimit"
 	CliFlagRemoteClientFlowLimit        = "remoteClientFlowLimit"
+	CliFlagDpLimitSsdBaseCount          = "dpLimitSsdBaseCount"
+	CliFlagDpLimitSsdFactor             = "dpLimitSsdFactor"
+	CliFlagDpLimitHddBaseCount          = "dpLimitHddBaseCount"
+	CliFlagDpLimitHddFactor             = "dpLimitHddFactor"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

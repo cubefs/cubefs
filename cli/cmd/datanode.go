@@ -38,6 +38,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newDataNodeListCmd(client),
 		newDataNodeInfoCmd(client),
+		newDataNodeSetCmd(client),
 		newDataNodeDecommissionCmd(client),
 		newDataNodeMigrateCmd(client),
 		newDataNodeQueryDecommissionProgress(client),
@@ -53,6 +54,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 const (
 	cmdDataNodeListShort                          = "List information of data nodes"
 	cmdDataNodeInfoShort                          = "Show information of a data node"
+	cmdDataNodeSetShort                           = "Set parameters for a data node"
 	cmdDataNodeDecommissionInfoShort              = "decommission partitions in a data node to others"
 	cmdDataNodeQueryDecommissionedDisksShort      = "query datanode decommissioned disks"
 	cmdDataNodeQueryDecommissionSuccessDisksShort = "query datanode decommissionSuccess disks"
@@ -119,6 +121,34 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	return cmd
+}
+
+func newDataNodeSetCmd(client *master.MasterClient) *cobra.Command {
+	var maxDpCntLimit uint64
+	cmd := &cobra.Command{
+		Use:   CliOpSet + " [{HOST}:{PORT}]",
+		Short: cmdDataNodeSetShort,
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			nodeAddr := args[0]
+			if !cmd.Flags().Changed(CliFlagMaxDpCntLimit) {
+				return fmt.Errorf("no parameter specified, use --%s to set max DP count limit", CliFlagMaxDpCntLimit)
+			}
+			if err := client.NodeAPI().SetDataNodeMaxDpCntLimit(nodeAddr, maxDpCntLimit); err != nil {
+				return err
+			}
+			stdoutln(fmt.Sprintf("Set max DP count limit to %d for data node %s successfully", maxDpCntLimit, nodeAddr))
+			return nil
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	cmd.Flags().Uint64Var(&maxDpCntLimit, CliFlagMaxDpCntLimit, 0, "Maximum DP count limit for this data node")
 	return cmd
 }
 

@@ -101,9 +101,29 @@ func (api *NodeAPI) GetDataNode(serverHost string) (node *proto.DataNodeInfo, er
 	return
 }
 
+func (api *NodeAPI) SetDataNodeMaxDpCntLimit(nodeAddr string, limit uint64) (err error) {
+	request := newRequest(get, proto.SetDpCntLimit).Header(api.h)
+	request.addParam("addr", nodeAddr)
+	request.addParam("maxDpCntLimit", strconv.FormatUint(limit, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *NodeAPI) GetMetaNode(serverHost string) (node *proto.MetaNodeInfo, err error) {
 	node = &proto.MetaNodeInfo{}
 	err = api.mc.requestWith(node, newRequest(get, proto.GetMetaNode).Header(api.h).addParam("addr", serverHost))
+	return
+}
+
+func (api *NodeAPI) SetMetaNodeMaxMpCntLimit(nodeAddr string, limit uint64) (err error) {
+	request := newRequest(get, proto.SetMpCntLimit).Header(api.h)
+	request.addParam("addr", nodeAddr)
+	request.addParam("maxMpCntLimit", strconv.FormatUint(limit, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
 	return
 }
 

@@ -162,6 +162,10 @@ const (
 	quotaClass                             = "quotaClass"
 	quotaOfClass                           = "quotaOfStorageClass"
 	dataMediaTypeKey                       = "dataMediaType"
+	dpLimitSsdBaseCountKey                 = "dpLimitSsdBaseCount"
+	dpLimitSsdFactorKey                    = "dpLimitSsdFactor"
+	dpLimitHddBaseCountKey                 = "dpLimitHddBaseCount"
+	dpLimitHddFactorKey                    = "dpLimitHddFactor"
 
 	remoteCacheEnable            = "remoteCacheEnable"
 	remoteCacheAutoPrepare       = "remoteCacheAutoPrepare"

@@ -97,6 +97,10 @@ type clusterValue struct {
 	FlashKeyFlowLimit                      int64
 	RemoteClientFlowLimit                  int64
 	LearnerRecoverTimeoutSeconds           int64
+	DpLimitSsdBaseCount                    uint64
+	DpLimitSsdFactor                       uint64
+	DpLimitHddBaseCount                    uint64
+	DpLimitHddFactor                       uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -159,6 +163,10 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		FlashKeyFlowLimit:                      c.cfg.flashKeyFlowLimit,
 		RemoteClientFlowLimit:                  c.cfg.remoteClientFlowLimit,
 		LearnerRecoverTimeoutSeconds:           c.cfg.LearnerRecoverTimeoutSeconds,
+		DpLimitSsdBaseCount:                    c.cfg.DpLimitSsdBaseCount,
+		DpLimitSsdFactor:                       c.cfg.DpLimitSsdFactor,
+		DpLimitHddBaseCount:                    c.cfg.DpLimitHddBaseCount,
+		DpLimitHddFactor:                       c.cfg.DpLimitHddFactor,
 	}
 	return cv
 }
@@ -1517,6 +1525,25 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.flashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
 		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout %v(ms), flashHotKeyMissCount %v, flashReadFlowLimit %v, flashWriteFlowLimit %v, flashKeyFlowLimit %v, remoteClientFlowLimit %v",
 			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount, cv.FlashReadFlowLimit, cv.FlashWriteFlowLimit, cv.FlashKeyFlowLimit, cv.RemoteClientFlowLimit)
+
+		if cv.DpLimitSsdBaseCount == 0 {
+			cv.DpLimitSsdBaseCount = defaultDpLimitSsdBaseCount
+		}
+		c.cfg.DpLimitSsdBaseCount = cv.DpLimitSsdBaseCount
+		if cv.DpLimitSsdFactor == 0 {
+			cv.DpLimitSsdFactor = defaultDpLimitSsdFactor
+		}
+		c.cfg.DpLimitSsdFactor = cv.DpLimitSsdFactor
+		if cv.DpLimitHddBaseCount == 0 {
+			cv.DpLimitHddBaseCount = defaultDpLimitHddBaseCount
+		}
+		c.cfg.DpLimitHddBaseCount = cv.DpLimitHddBaseCount
+		if cv.DpLimitHddFactor == 0 {
+			cv.DpLimitHddFactor = defaultDpLimitHddFactor
+		}
+		c.cfg.DpLimitHddFactor = cv.DpLimitHddFactor
+		log.LogInfof("action[loadClusterValue] dp limit params SSD(base=%d,factor=%d) HDD(base=%d,factor=%d)",
+			c.cfg.DpLimitSsdBaseCount, c.cfg.DpLimitSsdFactor, c.cfg.DpLimitHddBaseCount, c.cfg.DpLimitHddFactor)
 	}
 
 	return

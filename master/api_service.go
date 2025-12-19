@@ -4042,6 +4042,39 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	changedDpLimit := false
+	if val, ok := params[dpLimitSsdBaseCountKey]; ok {
+		if v, ok := val.(uint64); ok {
+			m.cluster.cfg.DpLimitSsdBaseCount = v
+			changedDpLimit = true
+		}
+	}
+	if val, ok := params[dpLimitSsdFactorKey]; ok {
+		if v, ok := val.(uint64); ok {
+			m.cluster.cfg.DpLimitSsdFactor = v
+			changedDpLimit = true
+		}
+	}
+	if val, ok := params[dpLimitHddBaseCountKey]; ok {
+		if v, ok := val.(uint64); ok {
+			m.cluster.cfg.DpLimitHddBaseCount = v
+			changedDpLimit = true
+		}
+	}
+	if val, ok := params[dpLimitHddFactorKey]; ok {
+		if v, ok := val.(uint64); ok {
+			m.cluster.cfg.DpLimitHddFactor = v
+			changedDpLimit = true
+		}
+	}
+
+	if changedDpLimit {
+		if err = m.cluster.syncPutCluster(); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
 	if val, ok := params[flashNodeReadDataNodeTimeout]; ok {
 		if v, ok := val.(int64); ok {
 			if err = m.setConfig(flashNodeReadDataNodeTimeout, strconv.FormatInt(v, 10)); err != nil {
@@ -5082,6 +5115,10 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[clusterLoadFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.ClusterLoadFactor)
 	resp[maxDpCntLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxDpCntLimit())
 	resp[maxMpCntLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxMpCntLimit())
+	resp[dpLimitSsdBaseCountKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitSsdBaseCount)
+	resp[dpLimitSsdFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitSsdFactor)
+	resp[dpLimitHddBaseCountKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitHddBaseCount)
+	resp[dpLimitHddFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitHddFactor)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }

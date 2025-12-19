@@ -1459,6 +1459,47 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[nodeDpMaxRepairErrCntKey] = val
 	}
 
+	if value = r.FormValue(dpLimitSsdBaseCountKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(dpLimitSsdBaseCountKey)
+			return
+		}
+		params[dpLimitSsdBaseCountKey] = val
+	}
+	if value = r.FormValue(dpLimitSsdFactorKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(dpLimitSsdFactorKey)
+			return
+		}
+		params[dpLimitSsdFactorKey] = val
+	}
+	if value = r.FormValue(dpLimitHddBaseCountKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(dpLimitHddBaseCountKey)
+			return
+		}
+		params[dpLimitHddBaseCountKey] = val
+	}
+	if value = r.FormValue(dpLimitHddFactorKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(dpLimitHddFactorKey)
+			return
+		}
+		params[dpLimitHddFactorKey] = val
+	}
+
 	if value = r.FormValue(clusterCreateTimeKey); value != "" {
 		noParams = false
 		params[clusterCreateTimeKey] = value

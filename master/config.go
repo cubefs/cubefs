@@ -135,6 +135,13 @@ const (
 	defaultFlashKeyFlowLimit            = 0
 	defaultRemoteClientFlowLimit        = 0
 
+	defaultDpLimitUnitSizeGB   uint64 = 120
+	defaultDpLimitSsdBaseCount uint64 = 200
+	// factor is in tenths, e.g. 50 -> 5.0
+	defaultDpLimitSsdFactor    uint64 = 50
+	defaultDpLimitHddBaseCount uint64 = 100
+	defaultDpLimitHddFactor    uint64 = 20
+
 	defaultMetaNodeGOGC = 100
 	defaultDataNodeGOGC = 100
 )
@@ -233,6 +240,10 @@ type clusterConfig struct {
 	MaxWritableDataPartitionCnt  int
 	RackAwareLevel               pt.RackAwareLevel
 	LearnerRecoverTimeoutSeconds int64 // Timeout in seconds for learner mode recovery
+	DpLimitSsdBaseCount          uint64
+	DpLimitSsdFactor             uint64
+	DpLimitHddBaseCount          uint64
+	DpLimitHddFactor             uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -280,6 +291,10 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.mpMigrateThreads = defaultMpMigrateThreads
 	cfg.RackAwareLevel = pt.RackAwareNone
 	cfg.LearnerRecoverTimeoutSeconds = defaultLearnerRecoverTimeout
+	cfg.DpLimitSsdBaseCount = defaultDpLimitSsdBaseCount
+	cfg.DpLimitSsdFactor = defaultDpLimitSsdFactor
+	cfg.DpLimitHddBaseCount = defaultDpLimitHddBaseCount
+	cfg.DpLimitHddFactor = defaultDpLimitHddFactor
 	return
 }
 

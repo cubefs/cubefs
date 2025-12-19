@@ -652,6 +652,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	remoteCacheSameZoneTimeout string, remoteCacheSameRegionTimeout string, flashHotKeyMissCount string,
 	flashReadFlowLimit string, flashWriteFlowLimit string, flashKeyFlowLimit string, remoteClientFlowLimit string,
 	enableMpDecommissionByLearner string, learnerRecoverTimeoutSeconds string,
+	dpLimitSsdBaseCount string, dpLimitSsdFactor string, dpLimitHddBaseCount string, dpLimitHddFactor string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -764,6 +765,18 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if learnerRecoverTimeoutSeconds != "" {
 		request.addParam("learnerRecoverTimeoutSeconds", learnerRecoverTimeoutSeconds)
+	}
+	if dpLimitSsdBaseCount != "" {
+		request.addParamAny("dpLimitSsdBaseCount", dpLimitSsdBaseCount)
+	}
+	if dpLimitSsdFactor != "" {
+		request.addParamAny("dpLimitSsdFactor", dpLimitSsdFactor)
+	}
+	if dpLimitHddBaseCount != "" {
+		request.addParamAny("dpLimitHddBaseCount", dpLimitHddBaseCount)
+	}
+	if dpLimitHddFactor != "" {
+		request.addParamAny("dpLimitHddFactor", dpLimitHddFactor)
 	}
 	_, err = api.mc.serveRequest(request)
 	return
