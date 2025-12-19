@@ -623,6 +623,7 @@ type metaNodeValue struct {
 	RdOnly        bool
 	maxMpCntLimit uint64
 	RocksdbRdOnly bool
+	SelectTag     string
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -637,6 +638,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		RdOnly:        metaNode.RdOnly,
 		maxMpCntLimit: metaNode.MpCntLimit,
 		RocksdbRdOnly: metaNode.RocksdbRdOnly,
+		SelectTag:     metaNode.SelectTag,
 	}
 }
 
@@ -1811,6 +1813,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode.NodeSetID = mnv.NodeSetID
 		metaNode.RdOnly = mnv.RdOnly
 		metaNode.RocksdbRdOnly = mnv.RocksdbRdOnly
+		metaNode.SelectTag = mnv.SelectTag
 
 		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
 		if ok {

@@ -668,8 +668,8 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-// parseMetaPartitionPlanParams parses and validates parameters for modifying meta partition store mode
-func parseMetaPartitionPlanParams(r *http.Request) (param *MetaPartitionPlanUserParams, err error) {
+// parseMetaPartitionPlanUserParams parses and validates parameters for modifying meta partition store mode
+func parseMetaPartitionPlanUserParams(r *http.Request) (param *MetaPartitionPlanUserParams, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -731,7 +731,8 @@ func parseMetaPartitionPlanParams(r *http.Request) (param *MetaPartitionPlanUser
 		}
 	}
 	if param.Count <= 0 || param.Count > 3 {
-		param.Count = 3
+		// default to 1
+		param.Count = 1
 	}
 
 	var promote bool
@@ -811,7 +812,7 @@ func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	param, err := parseMetaPartitionPlanParams(r)
+	param, err := parseMetaPartitionPlanUserParams(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -849,7 +850,7 @@ func (m *Server) batchPromoteMpLearner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	param, err := parseMetaPartitionPlanParams(r)
+	param, err := parseMetaPartitionPlanUserParams(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -882,7 +883,7 @@ func (m *Server) calcMetaPartitionMd5Sum(w http.ResponseWriter, r *http.Request)
 		doStatAndMetric(proto.AdminCalcMetaPartitionMd5Sum, metric, err, nil)
 	}()
 
-	param, err := parseMetaPartitionPlanParams(r)
+	param, err := parseMetaPartitionPlanUserParams(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
