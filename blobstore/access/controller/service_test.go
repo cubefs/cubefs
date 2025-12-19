@@ -203,6 +203,19 @@ func TestAccessServiceGetDiskHost(t *testing.T) {
 	}
 }
 
+func TestAccessServiceGetDiskHostExpired(t *testing.T) {
+	sc, err := controller.NewServiceController(
+		controller.ServiceConfig{IDC: idc, ServiceReloadSecs: 1, DiskMemoryExpirationS: 1}, cmcli, proxycli, nil)
+	require.NoError(t, err)
+
+	host, err := sc.GetDiskHost(serviceCtx, proto.DiskID(10001))
+	require.NoError(t, err)
+	require.True(t, host.Host == "blobnode-1")
+	time.Sleep(time.Second)
+	_, err = sc.GetDiskHost(serviceCtx, proto.DiskID(10001))
+	require.NoError(t, err)
+}
+
 func TestAccessServiceGetBrokenDiskHost(t *testing.T) {
 	brokenRet := cmapi.ListDiskRet{}
 	brokenRet.Disks = make([]*cmapi.BlobNodeDiskInfo, 2)

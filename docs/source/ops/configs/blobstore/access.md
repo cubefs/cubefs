@@ -56,9 +56,16 @@ Access configuration is based on the [public configuration](./base.md), and the 
 | service_reload_secs      | Interval for synchronizing service information | No, default is 3s                                                                      |
 | shard_reload_secs        | Interval for synchronizing shardnode           | No, default is 3s                                                                      |
 | load_disk_interval_s     | Interval for loading broken disk               | No, default is 300s                                                                    |
+| disk_punish_threshold    | Disk punish threshold                          | No, default is 3                                                                       |
+| disk_punish_valid_interval_s | Disk punish interval seconds               | No, default is 30s                                                                     |
+| disk_memory_expiration_s | Disk is expired in memory seconds              | No, default is 0 (no expiration)                                                       |
+| service_punish_threshold | Service punish threshold                       | No, default is 3                                                                       |
+| service_punish_valid_interval_s | Service punish interval seconds         | No, default is 30s                                                                     |
 | volume_memcache_size     | Memory cache size                              | No, default is 1048576 (1M)                                                            |
 | volume_memcache_punish_size   | Memory cache punish size                  | No, default is 1024                                                                    |
 | volume_memcache_expiration_ms | Memory cache expiration milliseconds      | No, default is 120000 (2 minutes)                                                      |
+| volume_punish_threshold  | Volume punish threshold                        | No, default is 10                                                                      |
+| volume_punish_interval_s | Volume punish interval seconds                 | No, default is 600                                                                     |
 | clustermgr_client_config | Clustermgr RPC configuration                   | Refer to the RPC configuration example [rpc](./rpc.md)                                 |
 
 ## Configuration Example

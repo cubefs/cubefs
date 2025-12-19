@@ -90,6 +90,8 @@ type hostItem struct {
 	lastModifyTime int64
 	// failedTimes record the service host failed times during some interval
 	failedTimes uint32
+
+	createAt time.Time
 }
 
 func (h *hostItem) isPunish() bool {
@@ -105,6 +107,7 @@ type ServiceConfig struct {
 	LoadDiskIntervalS           int    `json:"load_disk_interval_s"`
 	DiskPunishThreshold         uint32 `json:"disk_punish_threshold"`
 	DiskPunishValidIntervalS    int    `json:"disk_punish_valid_interval_s"`
+	DiskMemoryExpirationS       int    `json:"disk_memory_expiration_s"` // <= 0 means no expiration
 	ServicePunishThreshold      uint32 `json:"service_punish_threshold"`
 	ServicePunishValidIntervalS int    `json:"service_punish_valid_interval_s"`
 }
@@ -272,7 +275,7 @@ func (s *serviceControllerImpl) processBrokenDisks(
 	}
 
 	// clean cached disks, ignore cases when concurrency getting disk.
-	disks.Range(func(key, value interface{}) bool {
+	disks.Range(func(key, value any) bool {
 		disks.Delete(key)
 		return true
 	})
@@ -379,13 +382,16 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 	v, ok := s.allServices.Load(s.getServiceKey(_primaryDisk, diskID))
 	if ok {
 		item := v.(*hostItem)
-		return &HostIDC{
-			Host:     item.host,
-			IDC:      item.idc,
-			Punished: broken || item.isPunish(),
-		}, nil
+		expiration := time.Second * time.Duration(s.config.DiskMemoryExpirationS)
+		if expiration <= 0 || time.Since(item.createAt) < expiration {
+			return &HostIDC{
+				Host:     item.host,
+				IDC:      item.idc,
+				Punished: broken || item.isPunish(),
+			}, nil
+		}
 	}
-	ret, err, _ := s.group.Do("get-diskinfo-"+diskID.ToString(), func() (interface{}, error) {
+	ret, err, _ := s.group.Do("get-diskinfo-"+diskID.ToString(), func() (any, error) {
 		hosts, err := s.GetServiceHosts(ctx, proto.ServiceNameProxy)
 		if err != nil {
 			return nil, err
@@ -406,7 +412,7 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 	}
 	diskInfo := ret.(*clustermgr.BlobNodeDiskInfo)
 
-	item := &hostItem{host: diskInfo.Host, idc: diskInfo.Idc}
+	item := &hostItem{host: diskInfo.Host, idc: diskInfo.Idc, createAt: time.Now()}
 	s.allServices.Store(s.getServiceKey(_primaryDisk, diskInfo.DiskID), item)
 	return &HostIDC{
 		Host:     item.host,
@@ -429,7 +435,7 @@ func (s *serviceControllerImpl) GetShardnodeHost(ctx context.Context, diskID pro
 		}, nil
 	}
 
-	ret, err, _ := s.group.Do("get-shardnode-diskinfo-"+diskID.ToString(), func() (interface{}, error) {
+	ret, err, _ := s.group.Do("get-shardnode-diskinfo-"+diskID.ToString(), func() (any, error) {
 		// todo: support proxy get disk host, next version
 		info, err := s.cmClient.ShardNodeDiskInfo(ctx, diskID)
 		if err != nil {
