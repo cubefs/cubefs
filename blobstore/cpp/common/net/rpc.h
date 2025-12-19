@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "common/concepts.h"
 #include "common/net/byteorder.h"
 #include "common/net/session.h"
 #include "common/proto/rpc.pb.h"
@@ -80,11 +81,6 @@ inline bool DeserializeRpcHeader(const Buffer& buf, HeaderType& header, size_t& 
     body_offset = offset;
     return true;
 }
-
-template <typename T>
-concept Parameterable = requires(T& args, char* ptr, size_t size) {
-    { args.ParseFromArray(ptr, size) } -> std::convertible_to<bool>;
-};
 
 class Stream;
 
@@ -325,11 +321,11 @@ class RpcServerContext {
     seastar::future<> Close();
 
     // Parse Parameter
-    template <Parameterable T>
+    template <::blobstore::ProtobufMessageDeserializable T>
     seastar::future<Status<>> ParseParameter(T& args);
 };
 
-template <Parameterable T>
+template <::blobstore::ProtobufMessageDeserializable T>
 seastar::future<Status<>> RpcServerContext::ParseParameter(T& args) {
     Status<> result;
 
