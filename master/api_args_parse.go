@@ -2168,7 +2168,6 @@ func newErrHTTPReply(err error) *proto.HTTPReply {
 	if ok {
 		return &proto.HTTPReply{Code: code, Msg: err.Error()}
 	}
-
 	return &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()}
 }
 

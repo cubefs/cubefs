@@ -32,7 +32,6 @@ type Cluster struct {
 func newCluster(name string, cfg *clusterConfig, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition) (c *Cluster) {
 	c = new(Cluster)
 	c.Name = name
-	c.flashNodeTopo = NewFlashNodeTopology()
 	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	c.stopc = make(chan bool)
 	c.fsm = fsm
@@ -40,6 +39,8 @@ func newCluster(name string, cfg *clusterConfig, leaderInfo *LeaderInfo, fsm *Me
 	c.cfg = cfg
 	c.leaderInfo = leaderInfo
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
+	// TODO
+	c.flashNodeTopo = NewFlashNodeTopology("default", 0)
 	return
 }
 
@@ -86,7 +87,6 @@ func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
 		dur := time.Second * time.Duration(5)
 		ticker := time.NewTicker(dur)
 		defer ticker.Stop()
-		clientUpdateCh := c.flashNodeTopo.ClientUpdateChannel()
 		for {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.flashNodeTopo.UpdateClientResponse()
@@ -94,8 +94,6 @@ func (c *Cluster) scheduleToUpdateFlashGroupRespCache() {
 			select {
 			case <-c.stopc:
 				return
-			case <-clientUpdateCh:
-				ticker.Reset(dur)
 			case <-ticker.C:
 			}
 		}
@@ -296,7 +294,7 @@ func (c *Cluster) allMasterNodes() (masterNodes []proto.NodeView) {
 }
 
 func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
-	return c.flashNodeTopo.GetAllFlashNodes()
+	return c.flashNodeTopo.GetAllFlashNodesView()
 }
 
 func (c *Cluster) syncAddFlashGroup(flashGroup *FlashGroup) (err error) {

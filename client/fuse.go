@@ -1055,6 +1055,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.ForceRemoteCache = GlobalMountOptions[proto.ForceRemoteCache].GetBool()
 	opt.AheadReadEnable = GlobalMountOptions[proto.AheadReadEnable].GetBool()
 	opt.EnableAsyncFlush = GlobalMountOptions[proto.EnableAsyncFlush].GetBool()
+	opt.RemoteCacheName = GlobalMountOptions[proto.RemoteCacheName].GetString()
+
 	if opt.AheadReadEnable {
 		var (
 			total     uint64

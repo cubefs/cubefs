@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/remotecache/flashgroupmanager"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -136,12 +137,19 @@ func (fltMgr *flashManualTaskManager) process() {
 				ticker.Reset(time.Minute)
 				continue
 			}
-			lowLoadNode := fltMgr.findLowLoadNode()
+			topo := task.TopoName
+			lowLoadNode := fltMgr.findLowLoadNode(topo)
 			if lowLoadNode == "" {
 				log.LogWarnf("insufficient flash node resources")
 				continue
 			}
-			val, ok := fltMgr.cluster.flashNodeTopo.GetFlashNode(lowLoadNode)
+			var flashTopo *flashgroupmanager.FlashNodeTopology
+			flashTopo, err = fltMgr.cluster.PeekFlashTopo(topo)
+			if err != nil {
+				log.LogWarnf("flashManualTaskManager.process cannot find topo %v", topo)
+				continue
+			}
+			val, ok := flashTopo.GetFlashNode(lowLoadNode)
 			if !ok {
 				log.LogErrorf("process(%v), flashNode.Load, nodeAddr is not available, redo task", lowLoadNode)
 				continue
@@ -176,9 +184,18 @@ func (fltMgr *flashManualTaskManager) getTotalWorkCount() int {
 	return cnt
 }
 
-func (fltMgr *flashManualTaskManager) findLowLoadNode() string {
-	var nodeAddr string
-	scanNodes, allNodes := fltMgr.cluster.flashNodeTopo.FindLowLoadNode()
+func (fltMgr *flashManualTaskManager) findLowLoadNode(topoName string) string {
+	var (
+		nodeAddr  string
+		err       error
+		flashTopo *flashgroupmanager.FlashNodeTopology
+	)
+	flashTopo, err = fltMgr.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		log.LogWarnf("action[findLowLoadNode] cannot find topo(%v)", flashTopo)
+		return ""
+	}
+	scanNodes, allNodes := flashTopo.FindLowLoadNode()
 	if len(scanNodes) == 0 {
 		for addr := range allNodes {
 			scanNodes = append(scanNodes, addr)
@@ -276,7 +293,14 @@ func (fltMgr *flashManualTaskManager) dispatchTaskOp(tid string, opCode string) 
 		return fmt.Errorf("task[%v] has already ended. No further actions can be performed", tid)
 	}
 	task.Unlock()
-	val, ok := fltMgr.cluster.flashNodeTopo.GetFlashNode(task.ManualTaskStatistics.FlashNode)
+
+	flashTopo, err := fltMgr.cluster.PeekFlashTopo(task.TopoName)
+	if err != nil {
+		log.LogWarnf("dispatchTaskOp cannot find topo %v", task.TopoName)
+		return fmt.Errorf("task[%v] cannot find topo %v", tid, task.TopoName)
+	}
+
+	val, ok := flashTopo.GetFlashNode(task.ManualTaskStatistics.FlashNode)
 	if !ok {
 		return fmt.Errorf("nodeAddr[%v] is not available", task.ManualTaskStatistics.FlashNode)
 	}
@@ -286,7 +310,7 @@ func (fltMgr *flashManualTaskManager) dispatchTaskOp(tid string, opCode string) 
 	}
 	t := proto.NewAdminTask(proto.OpFlashNodeTaskCommand, task.ManualTaskStatistics.FlashNode, command)
 	node := val
-	_, err := node.TaskManager.SyncSendAdminTask(t)
+	_, err = node.TaskManager.SyncSendAdminTask(t)
 	return err
 }
 

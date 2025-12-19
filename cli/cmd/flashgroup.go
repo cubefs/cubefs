@@ -56,7 +56,8 @@ func newFlashGroupCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newCmdFlashGroupTurn(client *master.MasterClient) *cobra.Command {
-	return &cobra.Command{
+	var name string
+	cmd := &cobra.Command{
 		Use:   "turn [IsEnable]",
 		Short: "turn flash group cache",
 		Args:  cobra.MinimumNArgs(1),
@@ -65,7 +66,10 @@ func newCmdFlashGroupTurn(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			result, err := client.AdminAPI().TurnFlashGroup(enabled)
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			result, err := client.AdminAPI().TurnFlashGroupByName(name, enabled)
 			if err != nil {
 				return
 			}
@@ -73,6 +77,8 @@ func newCmdFlashGroupTurn(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	return cmd
 }
 
 func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
@@ -80,6 +86,7 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 	var optWeight int
 	var optGradualFlag bool
 	var optStep uint32
+	var name string
 	cmd := &cobra.Command{
 		Use:   CliOpCreate,
 		Short: "create a new flash group",
@@ -106,7 +113,10 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			fgView, err := client.AdminAPI().CreateFlashGroup(optSlots, optWeight, optGradualFlag, optStep)
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			fgView, err := client.AdminAPI().CreateFlashGroupByName(name, optSlots, optWeight, optGradualFlag, optStep)
 			if err != nil {
 				return
 			}
@@ -114,6 +124,7 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
 	cmd.Flags().StringVar(&optSlots, "slots", "", "set group in which slots, --slots=slot1,slot2,...")
 	cmd.Flags().IntVar(&optWeight, "weight", proto.FlashGroupDefaultWeight, "set group weight(default 1, must 1<=weight<=30), if it was specified slots count equal to 32*weight")
 	cmd.Flags().BoolVar(&optGradualFlag, "gradualFlag", false, "set whether the group's slots are created gradually or not(default false)")
@@ -122,7 +133,8 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 }
 
 func newCmdFlashGroupSet(client *master.MasterClient) *cobra.Command {
-	return &cobra.Command{
+	var name string
+	cmd := &cobra.Command{
 		Use:   CliOpSet + _flashgroupID + " [IsActive]",
 		Short: "set flash group active or not",
 		Args:  cobra.MinimumNArgs(2),
@@ -135,7 +147,10 @@ func newCmdFlashGroupSet(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			fgView, err := client.AdminAPI().SetFlashGroup(flashGroupID, isActive)
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			fgView, err := client.AdminAPI().SetFlashGroupByName(name, flashGroupID, isActive)
 			if err != nil {
 				return
 			}
@@ -143,12 +158,15 @@ func newCmdFlashGroupSet(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	return cmd
 }
 
 func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 	var optYes bool
 	var optGradualFlag bool
 	var optStep uint32
+	var name string
 	cmd := &cobra.Command{
 		Use:   CliOpRemove + _flashgroupID,
 		Short: "remove flash group by id",
@@ -177,7 +195,10 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			result, err := client.AdminAPI().RemoveFlashGroup(flashGroupID, optGradualFlag, optStep)
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			result, err := client.AdminAPI().RemoveFlashGroupByName(name, flashGroupID, optGradualFlag, optStep)
 			if err != nil {
 				return
 			}
@@ -185,6 +206,7 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().BoolVar(&optGradualFlag, "gradualFlag", false, "set whether the group's slots are deleted gradually or not(default false)")
 	cmd.Flags().Uint32Var(&optStep, "step", 1, "set the step size(default 1) for slot gradual deletion")
@@ -197,6 +219,7 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 		optZoneName string
 		optCount    int
 	)
+	var name string
 	cmd := &cobra.Command{
 		Use:   "nodeAdd" + _flashgroupID,
 		Short: "add flash node to given flash group",
@@ -206,7 +229,10 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			fgView, err := client.AdminAPI().FlashGroupAddFlashNode(flashGroupID, optCount, optZoneName, optAddr)
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			fgView, err := client.AdminAPI().FlashGroupAddFlashNodeByName(name, flashGroupID, optCount, optZoneName, optAddr)
 			if err != nil {
 				return
 			}
@@ -214,6 +240,7 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
 	cmd.Flags().StringVar(&optAddr, CliFlagAddress, "", "add flash node of given addr")
 	cmd.Flags().StringVar(&optZoneName, CliFlagFlashZoneName, "", "add flash node from given zone")
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "add given count flash node from zone")
@@ -227,6 +254,7 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 		optCount    int
 		optYes      bool
 	)
+	var name string
 	cmd := &cobra.Command{
 		Use:   "nodeRemove" + _flashgroupID,
 		Short: "remove flash node to given flash group",
@@ -253,7 +281,10 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			fgView, err := client.AdminAPI().FlashGroupRemoveFlashNode(flashGroupID, optCount, optZoneName, optAddr)
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			fgView, err := client.AdminAPI().FlashGroupRemoveFlashNodeByName(name, flashGroupID, optCount, optZoneName, optAddr)
 			if err != nil {
 				return
 			}
@@ -261,6 +292,7 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
 	cmd.Flags().StringVar(&optAddr, CliFlagAddress, "", "remove flash node of given addr")
 	cmd.Flags().StringVar(&optZoneName, CliFlagFlashZoneName, "", "remove flash node from given zone")
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "remove given count flash node from zone")
@@ -269,7 +301,8 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 }
 
 func newCmdFlashGroupGet(client *master.MasterClient) *cobra.Command {
-	return &cobra.Command{
+	var name string
+	cmd := &cobra.Command{
 		Use:   CliOpInfo + _flashgroupID + " [showHitRate ture/false] ",
 		Short: "get flash group by id, default don't show hit rate",
 		Args:  cobra.MinimumNArgs(1),
@@ -278,7 +311,10 @@ func newCmdFlashGroupGet(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			fgView, err := client.AdminAPI().GetFlashGroup(flashGroupID)
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			fgView, err := client.AdminAPI().GetFlashGroupByName(name, flashGroupID)
 			if err != nil {
 				return
 			}
@@ -303,10 +339,13 @@ func newCmdFlashGroupGet(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	return cmd
 }
 
 func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
-	return &cobra.Command{
+	var name string
+	cmd := &cobra.Command{
 		Use:   CliOpList + " [IsActive]",
 		Short: "list active or inactive flash groups",
 		Args:  cobra.MinimumNArgs(0),
@@ -317,9 +356,15 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 				if isActive, err = strconv.ParseBool(args[0]); err != nil {
 					return
 				}
-				fgView, err = client.AdminAPI().ListFlashGroup(isActive)
+				if name == "" {
+					name = proto.DefaultTopoName
+				}
+				fgView, err = client.AdminAPI().ListFlashGroupByName(name, isActive)
 			} else {
-				fgView, err = client.AdminAPI().ListFlashGroups()
+				if name == "" {
+					name = proto.DefaultTopoName
+				}
+				fgView, err = client.AdminAPI().ListFlashGroupsByName(name)
 			}
 			if err != nil {
 				return
@@ -351,7 +396,7 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 						slot: slot,
 					})
 				}
-				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), len(group.ReservedSlots), group.Status, group.SlotStatus, len(group.PendingSlots), group.Step, group.FlashNodeCount, group.IsReducingSlots))
+				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), len(group.ReservedSlots), group.Status, group.SlotStatus, len(group.PendingSlots), group.Step, group.FlashNodeCount, group.IsReducingSlots, group.FlashNodeTopoName))
 			}
 			stdoutln(alignTable(tbl...))
 
@@ -379,15 +424,21 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	return cmd
 }
 
 func newCmdFlashGroupClient(client *master.MasterClient) *cobra.Command {
-	return &cobra.Command{
+	var name string
+	cmd := &cobra.Command{
 		Use:   "client",
 		Short: "show flash group response passed from master to client",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			fgv, err := client.AdminAPI().ClientFlashGroups()
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			fgv, err := client.AdminAPI().ClientFlashGroups(name)
 			if err != nil {
 				return
 			}
@@ -396,6 +447,8 @@ func newCmdFlashGroupClient(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	return cmd
 }
 
 func newCmdFlashGroupSearch(client *master.MasterClient) *cobra.Command {

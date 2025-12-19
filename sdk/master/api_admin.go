@@ -1111,10 +1111,24 @@ func (api *AdminAPI) TurnFlashGroup(enable bool) (result string, err error) {
 	return string(data), err
 }
 
+func (api *AdminAPI) TurnFlashGroupByName(name string, enable bool) (result string, err error) {
+	request := newRequest(post, proto.AdminFlashGroupTurn).Header(api.h).
+		addParamAny("enable", enable).addParam("name", name)
+	data, err := api.mc.serveRequest(request)
+	return string(data), err
+}
+
 func (api *AdminAPI) CreateFlashGroup(slots string, weight int, gradualFlag bool, step uint32) (fgView proto.FlashGroupAdminView, err error) {
 	err = api.mc.requestWith(&fgView, newRequest(post, proto.AdminFlashGroupCreate).
 		Header(api.h).Param(anyParam{"slots", slots}, anyParam{"weight", weight}, anyParam{"gradualFlag", gradualFlag},
 		anyParam{"step", step}))
+	return
+}
+
+func (api *AdminAPI) CreateFlashGroupByName(name, slots string, weight int, gradualFlag bool, step uint32) (fgView proto.FlashGroupAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(post, proto.AdminFlashGroupCreate).
+		Header(api.h).Param(anyParam{"slots", slots}, anyParam{"weight", weight}, anyParam{"gradualFlag", gradualFlag},
+		anyParam{"step", step}, anyParam{"name", name}))
 	return
 }
 
@@ -1124,9 +1138,22 @@ func (api *AdminAPI) SetFlashGroup(flashGroupID uint64, isActive bool) (fgView p
 	return
 }
 
+func (api *AdminAPI) SetFlashGroupByName(name string, flashGroupID uint64, isActive bool) (fgView proto.FlashGroupAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(post, proto.AdminFlashGroupSet).
+		Header(api.h).Param(anyParam{"id", flashGroupID}, anyParam{"enable", isActive}, anyParam{"name", name}))
+	return
+}
+
 func (api *AdminAPI) RemoveFlashGroup(flashGroupID uint64, gradualFlag bool, step uint32) (result string, err error) {
 	request := newRequest(post, proto.AdminFlashGroupRemove).Header(api.h).Param(anyParam{"id", flashGroupID}, anyParam{"gradualFlag", gradualFlag},
 		anyParam{"step", step})
+	data, err := api.mc.serveRequest(request)
+	return string(data), err
+}
+
+func (api *AdminAPI) RemoveFlashGroupByName(name string, flashGroupID uint64, gradualFlag bool, step uint32) (result string, err error) {
+	request := newRequest(post, proto.AdminFlashGroupRemove).Header(api.h).Param(anyParam{"id", flashGroupID}, anyParam{"gradualFlag", gradualFlag},
+		anyParam{"step", step}, anyParam{"name", name})
 	data, err := api.mc.serveRequest(request)
 	return string(data), err
 }
@@ -1138,9 +1165,21 @@ func (api *AdminAPI) flashGroupFlashNodes(uri string, flashGroupID uint64, count
 	return
 }
 
+func (api *AdminAPI) flashGroupFlashNodesByName(name, uri string, flashGroupID uint64, count int, zoneName, addr string,
+) (fgView proto.FlashGroupAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(post, uri).Header(api.h).Param(
+		anyParam{"id", flashGroupID}, anyParam{"count", count}, anyParam{"zoneName", zoneName}, anyParam{"addr", addr}, anyParam{"name", name}))
+	return
+}
+
 func (api *AdminAPI) FlashGroupAddFlashNode(flashGroupID uint64, count int, zoneName, addr string,
 ) (fgView proto.FlashGroupAdminView, err error) {
 	return api.flashGroupFlashNodes(proto.AdminFlashGroupNodeAdd, flashGroupID, count, zoneName, addr)
+}
+
+func (api *AdminAPI) FlashGroupAddFlashNodeByName(name string, flashGroupID uint64, count int, zoneName, addr string,
+) (fgView proto.FlashGroupAdminView, err error) {
+	return api.flashGroupFlashNodesByName(name, proto.AdminFlashGroupNodeAdd, flashGroupID, count, zoneName, addr)
 }
 
 func (api *AdminAPI) FlashGroupRemoveFlashNode(flashGroupID uint64, count int, zoneName, addr string,
@@ -1148,9 +1187,20 @@ func (api *AdminAPI) FlashGroupRemoveFlashNode(flashGroupID uint64, count int, z
 	return api.flashGroupFlashNodes(proto.AdminFlashGroupNodeRemove, flashGroupID, count, zoneName, addr)
 }
 
+func (api *AdminAPI) FlashGroupRemoveFlashNodeByName(name string, flashGroupID uint64, count int, zoneName, addr string,
+) (fgView proto.FlashGroupAdminView, err error) {
+	return api.flashGroupFlashNodesByName(name, proto.AdminFlashGroupNodeRemove, flashGroupID, count, zoneName, addr)
+}
+
 func (api *AdminAPI) GetFlashGroup(flashGroupID uint64) (fgView proto.FlashGroupAdminView, err error) {
 	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupGet).
 		Header(api.h).addParamAny("id", flashGroupID))
+	return
+}
+
+func (api *AdminAPI) GetFlashGroupByName(name string, flashGroupID uint64) (fgView proto.FlashGroupAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupGet).
+		Header(api.h).Param(anyParam{"id", flashGroupID}, anyParam{"name", name}))
 	return
 }
 
@@ -1160,13 +1210,24 @@ func (api *AdminAPI) ListFlashGroup(isActive bool) (fgView proto.FlashGroupsAdmi
 	return
 }
 
+func (api *AdminAPI) ListFlashGroupByName(name string, isActive bool) (fgView proto.FlashGroupsAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).
+		Header(api.h).Param(anyParam{"enable", isActive}, anyParam{"name", name}))
+	return
+}
+
 func (api *AdminAPI) ListFlashGroups() (fgView proto.FlashGroupsAdminView, err error) {
 	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).Header(api.h))
 	return
 }
 
-func (api *AdminAPI) ClientFlashGroups() (fgView proto.FlashGroupView, err error) {
-	err = api.mc.requestWith(&fgView, newRequest(get, proto.ClientFlashGroups).Header(api.h))
+func (api *AdminAPI) ListFlashGroupsByName(name string) (fgView proto.FlashGroupsAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).Header(api.h).addParam("name", name))
+	return
+}
+
+func (api *AdminAPI) ClientFlashGroups(topoName string) (fgView proto.FlashGroupView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.ClientFlashGroups).Header(api.h).addParamAny("name", topoName))
 	return
 }
 
@@ -1227,4 +1288,44 @@ func (api *AdminAPI) GetRemoteCacheConfig() (config *proto.RemoteCacheConfig, er
 	config = &proto.RemoteCacheConfig{}
 	err = api.mc.requestWith(config, newRequest(get, proto.AdminGetRemoteCacheConfig).Header(api.h))
 	return
+}
+
+// Flash topology admin APIs
+func (api *AdminAPI) ListAllFlashTopos() (ftvs []*proto.FlashTopologyAdminView, err error) {
+	ftvs = make([]*proto.FlashTopologyAdminView, 0)
+	err = api.mc.requestWith(&ftvs, newRequest(get, proto.AdminFlashTopoList).Header(api.h))
+	return
+}
+
+func (api *AdminAPI) AddFlashTopo(name string) (result string, err error) {
+	req := newRequest(get, proto.AdminFlashTopoAdd).Header(api.h)
+	req.addParam("name", name)
+	var data []byte
+	if data, err = api.mc.serveRequest(req); err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) DelFlashTopo(name string, gradualFlag bool, step uint32) (result string, err error) {
+	req := newRequest(get, proto.AdminFlashTopoDel).Header(api.h)
+	req.addParam("name", name)
+	req.addParamAny("gradualFlag", gradualFlag)
+	req.addParamAny("step", step)
+	var data []byte
+	if data, err = api.mc.serveRequest(req); err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) RenameFlashTopo(srcName, dstName string) (result string, err error) {
+	req := newRequest(get, proto.AdminFlashTopoRename).Header(api.h)
+	req.addParam("name", srcName)
+	req.addParam("newName", dstName)
+	var data []byte
+	if data, err = api.mc.serveRequest(req); err != nil {
+		return
+	}
+	return string(data), nil
 }

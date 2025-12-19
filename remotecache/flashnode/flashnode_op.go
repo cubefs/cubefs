@@ -201,8 +201,10 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		return true
 	})
 	resp.Status = proto.TaskSucceeds
+	resp.TopoName = req.TopoName
 end:
 	adminTask.Response = resp
+	adminTask.TopoName = req.TopoName
 	f.respondToMaster(adminTask)
 	if log.EnableInfo() {
 		log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout %v(ms) readDataNodeTimeout %v(ms) hotkeymisscount %v",
