@@ -259,6 +259,7 @@ type NodeView struct {
 	Rack                     string
 	NodeSetID                uint64
 	ZoneName                 string
+	SelectTag                string
 }
 
 type DpRepairInfo struct {

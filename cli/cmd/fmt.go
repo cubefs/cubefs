@@ -1659,18 +1659,18 @@ func formatMetaPartitionFreeze(freeze int8) string {
 	}
 }
 
-var metaNodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v    %-8v    %-24v    %-8v"
+var metaNodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v    %-8v    %-24v    %-8v    %-8v"
 
 func formatMetaNodeViewTableHeader() string {
-	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable")
+	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "SelectTag")
 }
 
 func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-			view.Rack,
-			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), formatYesNo(view.IsRocksdbWritable))
+			view.Rack, formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
+			formatYesNo(view.IsRocksdbWritable), view.SelectTag)
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID              : %v\n", view.ID))

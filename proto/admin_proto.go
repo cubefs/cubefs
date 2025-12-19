@@ -240,7 +240,7 @@ const (
 	AdminAddMetaPartitionLearner       = "/metaPartition/addLearner"
 	AdminPromoteMetaReplica            = "/metaReplica/promote"
 	AdminPutDataPartitions             = "/dataPartitions/set"
-	AdminBatchAddMpLearner             = "/metaPartition/batchAddLearner"
+	AdminBatchMigrateMp                = "/metaPartition/batchMigrate"
 	AdminBatchPromoteMpLearner         = "/metaPartition/batchPromoteLearner"
 	AdminCalcMetaPartitionMd5Sum       = "/metaPartition/calcMd5Sum"
 	AdminGetMd5SumResult               = "/metaPartition/getMd5SumResult"

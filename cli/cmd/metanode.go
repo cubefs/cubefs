@@ -40,6 +40,7 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 		newMetaNodeDecommissionCmd(client),
 		newMetaNodeMigrateCmd(client),
 		newMetaNodeOfflineCmd(client),
+		newMetaNodeUpdateCmd(client),
 	)
 	return cmd
 }
@@ -50,6 +51,7 @@ const (
 	cmdMetaNodeDecommissionInfoShort = "Decommission partitions in a meta node to other nodes"
 	cmdMetaNodeMigrateInfoShort      = "Migrate partitions from a meta node to the other node"
 	cmdMetaNodeOfflineInfoShort      = "Offline meta node in background"
+	cmdMetaNodeUpdateShort           = "Update meta node"
 )
 
 func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -211,6 +213,35 @@ func newMetaNodeOfflineCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Kicking out metanode %s is in background now.\n Use 'cfs-cli mp-balance show' to get the result\n", nodeAddr)
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newMetaNodeUpdateCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpUpdate + " [{HOST}:{PORT}] [{SELECT_TAG}]",
+		Short: cmdMetaNodeUpdateShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var nodeAddr string
+			var selectTag string
+			defer func() {
+				errout(err)
+			}()
+			nodeAddr = args[0]
+			selectTag = args[1]
+			if err = client.NodeAPI().UpdateMetaNode(nodeAddr, selectTag); err != nil {
+				return
+			}
+			stdout("Update meta node select tag successfully\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {

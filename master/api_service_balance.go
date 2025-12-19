@@ -785,11 +785,11 @@ func parseMetaPartitionPlanUserParams(r *http.Request) (param *MetaPartitionPlan
 	return
 }
 
-func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminBatchAddMpLearner))
+func (m *Server) batchMigrateMetaPartition(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminBatchMigrateMp))
 	var err error
 	defer func() {
-		doStatAndMetric(proto.AdminBatchAddMpLearner, metric, err, nil)
+		doStatAndMetric(proto.AdminBatchMigrateMp, metric, err, nil)
 	}()
 
 	if m.cluster.IsClusterPlanNotIdle() {
@@ -828,7 +828,7 @@ func (m *Server) batchAddMpLearner(w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprintf("volume(%s) start(%d) end(%d) mode(%d) count(%d) promote(%v) selectType(%d) zone(%s) nodesetId(%d) selectTag(%s)",
 		param.Name, param.StartID, param.EndID, param.Mode, param.Count,
 		param.AutoPromoteLearner, param.SelectType, param.ZoneName, param.NodeSetID, param.SelectTag)
-	AuditLog(r, "batchAddMpLearner", msg, nil)
+	AuditLog(r, "batchMigrateMetaPartition", msg, nil)
 
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }

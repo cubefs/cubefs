@@ -623,8 +623,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.DeleteMetaNodeBalanceTask).
 		HandlerFunc(m.deleteMetaNodeBalancePlan)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminBatchAddMpLearner).
-		HandlerFunc(m.batchAddMpLearner)
+		Path(proto.AdminBatchMigrateMp).
+		HandlerFunc(m.batchMigrateMetaPartition)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminBatchPromoteMpLearner).
 		HandlerFunc(m.batchPromoteMpLearner)

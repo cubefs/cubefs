@@ -4798,6 +4798,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 			Rack:                     metaNode.Rack,
 			NodeSetID:                metaNode.NodeSetID,
 			ZoneName:                 metaNode.ZoneName,
+			SelectTag:                metaNode.SelectTag,
 		})
 		return true
 	})
