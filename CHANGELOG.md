@@ -1,3 +1,45 @@
+## Release v3.5.3 - 2025/12/31
+
+### **UPGRAGDE NOTICE**
+
+If you are using a CubeFS version earlier than v3.5.0, please refer to the UPGRADE NOTICE in version v3.5.0 for detailed upgrade steps and upgrade to v3.5.0 first.
+
+Upgrade nodes in this order: flshnode → master → datanode → metanode → objectnode → lcnode → cli → client.
+
+Upgrade lcnode and  flashnode when needed.
+
+Deploy flashgroupmanager when needed
+
+Clients should use versions later than 3.2.0. Older versions need to be upgraded promptly; otherwise, there will be a risk of compromising stability.
+
+### **Main Feature**
++ `flashgroupmanager`: Introduce flashgroupmanager node and topology to support flashnode cluster management. (@bboyCH4)
++ `flashnode`: Support block-level data read and write operations.  (#3977, @clinx)
++ `tools`: Add `rctest` (benchmark) and `rcconfig` (config) tools for remote cache system. (#3981,@bboyCH4,@clinx)
++ `client`: Provide SDK for FlashNode object storage data block upload/download service （#3985,@bboyCH4,@clinx）
++ `client`: Implement NearRead strategy to prioritize reading from the nearest replica to reduce latency. (#3976,@zhumingze1108)
+
+### **Enhance**
++ `client`: Support asynchronous flush for extent handler to improve write performance. (#3973,@bboyCH4)
++ `client`: Fuse library supports parallel processing of FUSE requests to improve concurrency. (#3974,@Victor1319)
++ `client`: Optimize metadata cache performance.  (#3974,@Victor1319)
++ `client`: Add `tcpAliveTime` parameter for better TCP connection management. (#3974,@Victor1319)
++ `master`: Support DP decommission status evolution history query. (#3987,@shuqiang-zheng)
++ `master`: Add `TryDecommissionRunningDiskIgnoreDps` to support differentiated strategies for disk decommission based on different reasons. (#3975,@shuqiang-zheng)
++ `master`: Add audit logs for `migrateMetaPartition` and record reasons for DP migration/rollback. (#3975,@shuqiang-zheng)
++ `datanode`: Support reason passthrough for DP migration. (#3975,@shuqiang-zheng)
++ `flashnode`: Optimize cache operation opcodes and processing logic. (#3988,@clinx,@bboyCH4)
++ `client`:Optimize the client-side readahead mechanism to enhance sequential read performance. (#3982,@bboyCH4) 
+
+
+### **Bugfix**
+* `master`: Decommission token consumed twice on restart during two-replica DP decommissioning(#3978,@shuqiang-zheng)
+* `client`: Fix `ltp iogen01` test failure when pre-reading (ahead read) is enabled. (#3980,@clinx)
+* `client`: Offset calculation error during client readahead with partial hits(#3979,@bboyCH4)
+* `master`: Some DPs remain in decommission queue when disk offline marking fails, affecting subsequent decommissions (#3983,@shuqiang-zheng)
+* `master`: Incorrect disk/node decommission progress display for 2-replica DPs due to leader change(#3984,@Victor1319)
+
+
 ## Release v3.5.2 - 2025/07/31
 
 ### **UPGRAGDE NOTICE**

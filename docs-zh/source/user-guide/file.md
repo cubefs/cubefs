@@ -76,6 +76,22 @@ cfs-client -c client.json
 | enableBcache     | bool   | 是否开启本地一级缓存，默认false                      | 否   |
 | maxStreamerLimit | string | 开启本地一级缓存时，文件元数据缓存数目                     | 否   |
 | bcacheDir        | string | 开启本地一级缓存时，需要开启读缓存的目标目录路                 | 否   |
+| enableAudit    | bool   | 是否开启本地审计日志，默认false                      | 否   |
+| aheadReadEnable    | bool   | 是否开启预读，默认false                      | 否   |
+| aheadReadTotalMemGB | int    | 预读总内存（GB），默认10                        | 否   |
+| aheadReadBlockTimeOut | int  | 预读数据块过期时间（秒），默认3                   | 否   |
+| aheadReadWindowCnt | int     | 预读窗口内并发块数，默认8                        | 否   |
+| minReadAheadSize | int       | 触发预读的最小文件大小（字节），默认10485760（10MB） | 否   |
+| enableAsyncFlush | bool      | 开启ExtentHandler异步刷写，默认true              | 否   |
+| readDirLimit     | int       | 预热流程读取目录项的最大数量限制，默认500          | 否   |
+| maxWarmUpConcurrency | int   | 预热任务最大并发 goroutine 数，默认2              | 否   |
+| stopWarmMeta     | bool      | 停止元数据预热，默认true                          | 否   |
+| metaCacheAcceleration | bool | 保留元数据缓存并一次获取 inode/extent，加速元数据，默认false | 否   |
+| inodeLruLimit    | int       | inode LRU 容量上限，默认10000000                 | 否   |
+| fuseServeThreads | int       | FUSE 服务线程数（0 表示按 CPU 自动），默认0        | 否   |
+
++ 在顺序写场景中，建议开启ExtentHandler异步刷写功能提升文件的写入性能。
++ 在顺序读场景中，建议开启预读功能提升文件的读取性能。
 
 ## 卸载文件系统
 执行如下命令卸载副本卷:

@@ -33,6 +33,18 @@
 | enableXattr   | bool   | Whether to use xattr, default is false                                                                                    | No       |
 | enableBcache  | bool   | Whether to enable local level-1 cache, default is false                                                                   | No       |
 | enableAudit   | bool   | Whether to enable local audit logs, default is false                                                                      | No       |
+| aheadReadEnable      | bool  | Enable read-ahead, default is false                                                                                | No       |
+| aheadReadTotalMemGB  | int   | Total memory for read-ahead (GB), default 10                                                                       | No       |
+| aheadReadBlockTimeOut| int   | Read-ahead block expiration time (seconds), default 3                                                               | No       |
+| aheadReadWindowCnt   | int   | Number of concurrent blocks in the read-ahead window, default 8                                                     | No       |
+| minReadAheadSize     | int   | Minimum file size to trigger read-ahead (bytes), default 10485760 (10MB)                                            | No       |
+| enableAsyncFlush     | bool  | Enable asynchronous flush for ExtentHandler, default true                                                           | No       |
+| readDirLimit         | int   | Maximum number of directory entries read during warm-up, default 500                                                | No       |
+| maxWarmUpConcurrency | int   | Maximum number of concurrent goroutines for warm-up, default 2                                                      | No       |
+| stopWarmMeta         | bool  | Stop metadata warm-up, default true                                                                                 | No       |
+| metaCacheAcceleration| bool  | Keep meta cache and get inode/extent in one go, default false                                                       | No       |
+| inodeLruLimit        | int   | Capacity limit for inode LRU, default 10000000                                                                      | No       |
+| fuseServeThreads     | int   | Number of FUSE serve threads (0 = auto by CPU), default 0                                                           | No       |
 
 ## Configuration Example
 

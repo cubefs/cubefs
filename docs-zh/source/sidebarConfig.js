@@ -78,6 +78,7 @@ module.exports = [
             'feature/trash.md',
             'feature/autofs.md',
             'feature/hybridcloud.md',
+            'feature/aheadread.md',
         ]
     },
     {
