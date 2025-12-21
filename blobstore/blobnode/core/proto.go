@@ -94,6 +94,7 @@ type DataHandler interface {
 	Flush() (err error)
 	Delete(ctx context.Context, shard *Shard) (err error)
 	Destroy(ctx context.Context) (err error)
+	GetConfig() (config *Config)
 	Close()
 }
 
