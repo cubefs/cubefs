@@ -32,9 +32,10 @@ const (
 )
 
 const (
-	DefaultInodeExpiration = 300 * time.Second
-	MaxInodeCache          = 10000000 // in terms of the number of items
-	DefaultMaxInodeCache   = 2000000
+	DefaultMetaInodeExpiration = 300 * time.Second
+	DefaultInodeExpiration     = 120 * time.Second
+	MaxInodeCache              = 10000000 // in terms of the number of items
+	DefaultMaxInodeCache       = 2000000
 )
 
 const (
