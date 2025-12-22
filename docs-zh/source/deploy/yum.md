@@ -9,6 +9,8 @@
 ::: tip 提示
 集群通过 ansible 托管，请确保 ansible 已经部署。
 ansible 安装命令：pip3 install ansible
+请同样确保你开启了ssh服务
+如果你在容器中，请确保你安装了wget并设置好了root用户的密码
 :::
 
 ``` bash
@@ -46,6 +48,8 @@ arm 版本部署要求 Glibc 版本为 2.32 及以上
 
 - `master` ，`datanode`，`metanode`，`objectnode`，`monitor`，`client`包含了每个模块的成员IP地址。
 - `cfs:vars` 模块定义了所有节点的ssh登陆信息，需要事先将集群中所有节点的登录名和密码进行统一。
+- 默认配置的登录用户为root，如果需要使用root登录，请确保开启ssh对root登录的限制（默认为关闭状态）。
+- 如使用普通用户登录，请确保具备执行所需任务的权限，可通过配置 Ansible 使用 sudo 进行权限提升
 ### master config 模块  
 
 定义了每个 Master 节点的启动参数。
