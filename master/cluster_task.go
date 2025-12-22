@@ -183,6 +183,119 @@ errHandler:
 	return
 }
 
+// selectTargetMetaPeer encapsulates meta node selection with zone/nodeset fallback.
+// srcAddr may be empty (self-heal) or provided (migration); targetAddr forces destination.
+// It returns a slice to keep the call sites consistent with migration flows.
+func (c *Cluster) selectTargetMetaPeer(mp *MetaPartition, srcAddr, targetAddr string, dstStoreMode proto.StoreMode) (
+	peers []proto.Peer, finalDstStoreMode proto.StoreMode, err error,
+) {
+	mp.RLock()
+	oldHosts := append([]string(nil), mp.Hosts...)
+	mp.RUnlock()
+
+	if len(oldHosts) == 0 {
+		err = fmt.Errorf("no hosts in meta partition %v", mp.PartitionID)
+		return
+	}
+
+	finalDstStoreMode = dstStoreMode
+	if finalDstStoreMode == proto.StoreModeDef {
+		finalDstStoreMode, err = c.getMetaPartitionStoreMode(mp, srcAddr)
+		if err != nil {
+			return
+		}
+	}
+
+	nodeType := TypeMetaPartition
+	if finalDstStoreMode == proto.StoreModeRocksDb {
+		nodeType = TypeRocksdbPartition
+	}
+
+	baseAddr := srcAddr
+	if baseAddr == "" {
+		for _, host := range oldHosts {
+			if _, e := c.metaNode(host); e == nil {
+				baseAddr = host
+				break
+			}
+		}
+	}
+	if baseAddr == "" {
+		err = fmt.Errorf("no alive hosts in meta partition %v, hosts: %v", mp.PartitionID, oldHosts)
+		return
+	}
+
+	metaNode, err := c.metaNode(baseAddr)
+	if err != nil {
+		return
+	}
+	zone, err := c.t.getZone(metaNode.ZoneName)
+	if err != nil {
+		return
+	}
+	ns, err := zone.getNodeSet(metaNode.NodeSetID)
+	if err != nil {
+		return
+	}
+
+	param := &selectParam{
+		replicaNum:   1,
+		excludeHosts: oldHosts,
+		rackLevel:    c.getRackAwareLevel(),
+		excludeRacks: c.GetExRacksByHosts(TypeMetaPartition, oldHosts, srcAddr),
+	}
+
+	if targetAddr != "" {
+		var targetMetaNode *MetaNode
+		targetMetaNode, err = c.metaNode(targetAddr)
+		if err != nil {
+			err = fmt.Errorf("target node [%s] not found: %v", targetAddr, err)
+			return
+		}
+		peers = []proto.Peer{{
+			ID:            targetMetaNode.ID,
+			Addr:          targetMetaNode.Addr,
+			HeartbeatPort: targetMetaNode.HeartbeatPort,
+			ReplicaPort:   targetMetaNode.ReplicaPort,
+		}}
+		return
+	}
+
+	if _, peers, err = ns.getAvailMetaNodeHosts(param, finalDstStoreMode); err == nil {
+		return
+	}
+
+	if _, ok := c.vols[mp.volName]; !ok {
+		log.LogWarnf("[selectTargetMetaPeer] clusterID[%v] partitionID:%v on node:[%v], err[%v]",
+			c.Name, mp.PartitionID, mp.Hosts, err)
+		return
+	}
+	if c.isFaultDomain(c.vols[mp.volName]) {
+		log.LogWarnf("[selectTargetMetaPeer] clusterID[%v] partitionID:%v on node:[%v], err[%v]",
+			c.Name, mp.PartitionID, mp.Hosts, err)
+		return
+	}
+
+	param.excludeNodeSets = append(param.excludeNodeSets, ns.ID)
+	if _, peers, err = zone.getAvailNodeHosts(nodeType, param); err == nil {
+		return
+	}
+
+	zones := mp.getLiveZones(srcAddr)
+	var excludeZone []string
+	if len(zones) == 0 {
+		excludeZone = append(excludeZone, zone.name)
+	} else {
+		excludeZone = append(excludeZone, zones[0])
+	}
+
+	if _, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param); err == nil {
+		return
+	}
+
+	return
+}
+
 // checkMultipleReplicasOnSameMachineForMigration checks if multiple replicas would be on the same machine after migration
 func (c *Cluster) checkMultipleReplicasOnSameMachineForMigration(oldHosts []string, newPeerAddr string) error {
 	finalHosts := make([]string, 0, len(oldHosts)+1)
@@ -288,94 +401,18 @@ func (c *Cluster) prepareMetaPartitionMigration(srcAddr, targetAddr string, mp *
 	}
 	mp.RUnlock()
 
-	// Prepare select parameters
-	param := &selectParam{
-		excludeNodeSets: nil,
-		replicaNum:      1,
-		excludeHosts:    oldHosts,
-		rackLevel:       c.getRackAwareLevel(),
-		excludeRacks:    c.GetExRacksByHosts(TypeMetaPartition, oldHosts, srcAddr),
-	}
-
-	// Determine node type and store mode
-	nodeType := TypeMetaPartition
-	finalDstStoreMode = dstStoreMode
-	if dstStoreMode == proto.StoreModeDef {
-		finalDstStoreMode, err = c.getMetaPartitionStoreMode(mp, srcAddr)
-		if err != nil {
-			return
-		}
-	}
-	if finalDstStoreMode == proto.StoreModeRocksDb {
-		nodeType = TypeRocksdbPartition
-	}
-
 	// Validate decommission
 	if err = c.validateDecommissionMetaPartition(mp, srcAddr, false); err != nil {
 		return
 	}
 
-	// Get meta node, zone, and node set
-	metaNode, err := c.metaNode(srcAddr)
-	if err != nil {
-		return
-	}
-	zone, err := c.t.getZone(metaNode.ZoneName)
-	if err != nil {
-		return
-	}
-	ns, err := zone.getNodeSet(metaNode.NodeSetID)
-	if err != nil {
-		return
-	}
-
 	// Select target node
-	if targetAddr != "" {
-		newPeers = []proto.Peer{{Addr: targetAddr}}
-		// Get target meta node to get peer ID
-		targetMetaNode, err1 := c.metaNode(targetAddr)
-		if err1 != nil {
-			err = fmt.Errorf("target node [%s] not found: %v", targetAddr, err1)
-			return
-		}
-		newPeers[0].ID = targetMetaNode.ID
-		newPeers[0].HeartbeatPort = targetMetaNode.HeartbeatPort
-		newPeers[0].ReplicaPort = targetMetaNode.ReplicaPort
-	} else {
-		var excludeNodeSets []uint64
-		var zones []string
-		if _, newPeers, err = ns.getAvailMetaNodeHosts(param, finalDstStoreMode); err != nil {
-			if _, ok := c.vols[mp.volName]; !ok {
-				log.LogWarnf("[prepareMetaPartitionMigration] clusterID[%v] partitionID:%v  on node:[%v], err[%v]",
-					c.Name, mp.PartitionID, mp.Hosts, err)
-				return
-			}
-			if c.isFaultDomain(c.vols[mp.volName]) {
-				log.LogWarnf("[prepareMetaPartitionMigration] clusterID[%v] partitionID:%v  on node:[%v], err[%v]",
-					c.Name, mp.PartitionID, mp.Hosts, err)
-				return
-			}
-			// choose a meta node in other node set in the same zone
-			excludeNodeSets = append(excludeNodeSets, ns.ID)
-			param.excludeNodeSets = excludeNodeSets
-			if _, newPeers, err = zone.getAvailNodeHosts(nodeType, param); err != nil {
-				log.LogWarnf("[prepareMetaPartitionMigration] clusterID[%v] partitionID:%v  on node:[%v], zone[%v] err[%v]",
-					c.Name, mp.PartitionID, mp.Hosts, zone.name, err)
-
-				zones = mp.getLiveZones(srcAddr)
-				var excludeZone []string
-				if len(zones) == 0 {
-					excludeZone = append(excludeZone, zone.name)
-				} else {
-					excludeZone = append(excludeZone, zones[0])
-				}
-				// choose a meta node in other zone
-				if _, newPeers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param); err != nil {
-					return
-				}
-			}
-		}
+	var selected []proto.Peer
+	selected, finalDstStoreMode, err = c.selectTargetMetaPeer(mp, srcAddr, targetAddr, dstStoreMode)
+	if err != nil {
+		return
 	}
+	newPeers = selected
 
 	// Log audit
 	auditMsg := fmt.Sprintf("volName[%v] partitionID[%v] hosts[%v] srcAddr[%v] choose targetAddr[%v]",
@@ -621,6 +658,10 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 		return
 	}
 
+	if err = c.deleteMetaPartition(partition, metaNode, forceDel); err != nil {
+		return
+	}
+
 	// if delete learner replica, clear learner recovery state
 	if partition.LearnerDstAddr == addr {
 		err = c.clearLearnerRecoveryState(partition)
@@ -666,6 +707,8 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 }
 
 func (c *Cluster) removeMetaHostMember(partition *MetaPartition, removePeer proto.Peer) (err error) {
+	partition.Lock()
+	defer partition.Unlock()
 	newHosts := make([]string, 0, len(partition.Hosts)-1)
 	newPeers := make([]proto.Peer, 0, len(partition.Hosts)-1)
 	for _, host := range partition.Hosts {

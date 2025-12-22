@@ -2135,6 +2135,11 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err = mp.waitSetRestoreReplicaForbidden(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
 	if m.cluster.EnableMpDecommissionByLearner {
 		if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode), "", false); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))

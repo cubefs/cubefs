@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/auditlog"
@@ -1182,37 +1183,314 @@ func (mp *MetaPartition) CheckMetaNodeReachScheduled(metaNode *MetaNode, storeMo
 	return metaNode.reachesThreshold()
 }
 
-func (mp *MetaPartition) checkReplicaMeta(c *Cluster) (err error) {
-	var auditMsg string
-	// TODO：check if mp is in balance task
-
+// checkIntersection checks if master peers and replica peers have intersection
+func (mp *MetaPartition) checkIntersection(c *Cluster) error {
 	mp.RLock()
+	defer mp.RUnlock()
+
 	replicaPeers := make([][]proto.Peer, 0, len(mp.Replicas))
 	for _, replica := range mp.Replicas {
 		replicaPeers = append(replicaPeers, replica.LocalPeers)
 	}
-	peers := mp.Peers
-	mp.RUnlock()
-	if isInterSectionBetweenMasterAndReplicasEmptySet(peers, replicaPeers) {
-		log.LogErrorf("action[checkReplicaMeta]mp(%v) interSection between master and replicas is the empty set", mp.PartitionID)
-		// reuse NoSamePeerDps for MP to avoid adding new map to Cluster
+
+	if isInterSectionBetweenMasterAndReplicasEmptySet(mp.Peers, replicaPeers) {
+		log.LogErrorf("action[checkIntersection]mp(%v) interSection between master and replicas is the empty set", mp.PartitionID)
 		c.NoSamePeerMps.Store(mp.PartitionID, struct{}{})
 		return proto.ErrDpNoSamePeer
+	}
+	return nil
+}
+
+// removeExcessiveReplicas removes auto-promotable learners and excessive voters
+func (mp *MetaPartition) removeExcessiveReplicas(c *Cluster) (err error) {
+	mp.RLock()
+	replicaCount := len(mp.Replicas)
+	hostCount := len(mp.Hosts)
+	peerCount := len(mp.Peers)
+	peers := append([]proto.Peer(nil), mp.Peers...)
+	mp.RUnlock()
+
+	if replicaCount != hostCount || hostCount != peerCount {
+		return nil
+	}
+
+	var (
+		removedAddrs []string
+		auditMsg     string
+	)
+
+	defer func() {
+		if err != nil {
+			auditMsg = fmt.Sprintf("mp(%v) remove excessive replicas failed, err %v", mp.PartitionID, err)
+			log.LogErrorf("action[removeExcessiveReplicas] %v", auditMsg)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		}
+		for _, addr := range removedAddrs {
+			auditMsg = fmt.Sprintf("mp(%v) remove excessive replica %v", mp.PartitionID, addr)
+			log.LogDebugf("action[removeExcessiveReplicas]%v, err %v", auditMsg, err)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		}
+	}()
+
+	nonLearnerPeers := make([]proto.Peer, 0)
+
+	// 1) Remove auto-promotable learners
+	for _, p := range peers {
+		if p.Type == raftProto.PeerLearner && !p.ManualPromote {
+			if err = c.deleteMetaReplica(mp, p.Addr, false, false); err != nil {
+				return err
+			}
+			removedAddrs = append(removedAddrs, p.Addr)
+		} else if p.Type != raftProto.PeerLearner {
+			nonLearnerPeers = append(nonLearnerPeers, p)
+		}
+	}
+
+	// 2) Remove extra voter when voter count exceeds ReplicaNum
+	if len(nonLearnerPeers) > int(mp.ReplicaNum) {
+		removeAddr := nonLearnerPeers[len(nonLearnerPeers)-1].Addr
+		if err = c.deleteMetaReplica(mp, removeAddr, false, false); err != nil {
+			return err
+		}
+		removedAddrs = append(removedAddrs, removeAddr)
+	}
+	return nil
+}
+
+// removeRedundantPeersFromReplicaMeta removes redundant peers reported by replicas
+func (mp *MetaPartition) removeRedundantPeersFromReplicaMeta(c *Cluster) (err error) {
+	type replicaView struct {
+		addr       string
+		localPeers []proto.Peer
+	}
+
+	mp.RLock()
+	replicas := make([]replicaView, 0, len(mp.Replicas))
+	for _, r := range mp.Replicas {
+		replicas = append(replicas, replicaView{
+			addr:       r.Addr,
+			localPeers: append([]proto.Peer(nil), r.LocalPeers...),
+		})
+	}
+	peers := append([]proto.Peer(nil), mp.Peers...)
+	mp.RUnlock()
+
+	var (
+		removedPeers []proto.Peer
+		auditMsg     string
+	)
+
+	defer func() {
+		if err != nil {
+			auditMsg = fmt.Sprintf("mp(%v) remove redundant peer from replica meta failed, err %v", mp.PartitionID, err)
+			log.LogErrorf("action[removeRedundantPeersFromReplicaMeta] %v", auditMsg)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		}
+		for _, peer := range removedPeers {
+			auditMsg = fmt.Sprintf("mp(%v) remove redundant peer %v from replica meta", mp.PartitionID, peer.Addr)
+			log.LogDebugf("action[removeRedundantPeersFromReplicaMeta]%v", auditMsg)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
+		}
+	}()
+
+	force := false
+	replicasToDelete := make([]proto.Peer, 0)
+
+	for _, replica := range replicas {
+		if mp.lostLeader(c) {
+			break
+		}
+		if len(replica.localPeers) == 0 {
+			continue
+		}
+		redundantPeers := findPeersToDeleteByConfig(replica.localPeers, peers)
+		for _, peer := range redundantPeers {
+			replicasToDelete = append(replicasToDelete, peer)
+			if err = c.removeMetaPartitionRaftMember(mp, peer, force); err != nil {
+				return err
+			}
+		}
+	}
+
+	for _, peer := range replicasToDelete {
+		metaNode, err := c.metaNode(peer.Addr)
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				continue
+			}
+			return err
+		}
+		if err = c.deleteMetaPartition(mp, metaNode, true); err != nil {
+			return err
+		}
+		removedPeers = append(removedPeers, peer)
+	}
+	return nil
+}
+
+// removeRedundantPeersFromMaster removes redundant peers from master peers
+func (mp *MetaPartition) removeRedundantPeersFromMaster(c *Cluster) (err error) {
+	type replicaView struct {
+		addr       string
+		localPeers []proto.Peer
+	}
+
+	mp.RLock()
+	replicas := make([]replicaView, 0, len(mp.Replicas))
+	for _, r := range mp.Replicas {
+		replicas = append(replicas, replicaView{
+			addr:       r.Addr,
+			localPeers: append([]proto.Peer(nil), r.LocalPeers...),
+		})
+	}
+	peers := append([]proto.Peer(nil), mp.Peers...)
+	mp.RUnlock()
+
+	var (
+		removedPeers []proto.Peer
+		auditMsg     string
+	)
+
+	defer func() {
+		if err != nil {
+			auditMsg = fmt.Sprintf("mp(%v) remove redundant peer from master failed, err %v", mp.PartitionID, err)
+			log.LogErrorf("action[removeRedundantPeersFromMaster] %v", auditMsg)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		}
+		for _, peer := range removedPeers {
+			auditMsg = fmt.Sprintf("mp(%v) remove redundant peer %v from master", mp.PartitionID, peer.Addr)
+			log.LogDebugf("action[removeRedundantPeersFromMaster]%v", auditMsg)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
+		}
+	}()
+
+	for _, replica := range replicas {
+		if len(replica.localPeers) == 0 {
+			continue
+		}
+		redundantPeers := findPeersToDeleteByConfig(peers, replica.localPeers)
+		for _, peer := range redundantPeers {
+			if err = c.removeMetaHostMember(mp, peer); err != nil {
+				return err
+			}
+			metaNode, err := c.metaNode(peer.Addr)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					continue
+				}
+				return err
+			}
+			if err = c.deleteMetaPartition(mp, metaNode, true); err != nil {
+				return err
+			}
+			removedPeers = append(removedPeers, peer)
+		}
+	}
+	return nil
+}
+
+// Automatically add a replica when non-learner count < ReplicaNum
+func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
+	mp.RLock()
+	peers := append([]proto.Peer(nil), mp.Peers...)
+	mp.RUnlock()
+
+	nonLearnerCount := 0
+	for _, p := range peers {
+		if p.Type != raftProto.PeerLearner {
+			nonLearnerCount++
+		}
+	}
+
+	if mp.ReplicaNum <= uint8(nonLearnerCount) {
+		return nil
+	}
+
+	var (
+		auditMsg  string
+		addedAddr string
+	)
+
+	defer func() {
+		if err != nil {
+			auditMsg = fmt.Sprintf("mp(%v) auto add replica failed, err %v", mp.PartitionID, err)
+			log.LogErrorf("action[addMissingReplicas] %v", auditMsg)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		} else {
+			auditMsg = fmt.Sprintf("mp(%v) auto add replica %v", mp.PartitionID, addedAddr)
+			log.LogDebugf("action[addMissingReplicas]%v", auditMsg)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
+		}
+	}()
+
+	if mp.lostLeader(c) {
+		err = errors.NewErrorf("mp(%v) lost leader skip auto add replica", mp.PartitionID)
+		auditlog.LogMasterOp("RestoreReplicaMeta", err.Error(), err)
+		return err
+	}
+
+	vol, err := c.getVol(mp.volName)
+	if err != nil {
+		auditMsg := fmt.Sprintf("mp(%v) getVol %v failed", mp.PartitionID, mp.volName)
+		log.LogErrorf("action[addMissingReplicas]%v, err %v", auditMsg, err)
+		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		return err
+	}
+
+	selectPeers, storeMode, err := c.selectTargetMetaPeer(mp, "", "", vol.DefaultStoreMode)
+	if err != nil {
+		auditMsg := fmt.Sprintf("mp(%v) selectTargetMetaPeer failed", mp.PartitionID)
+		log.LogErrorf("action[addMissingReplicas]%v, err %v", auditMsg, err)
+		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		return err
+	}
+
+	if len(selectPeers) == 0 {
+		err = fmt.Errorf("mp(%v) selectTargetMetaPeer returns empty peers", mp.PartitionID)
+		log.LogErrorf("action[addMissingReplicas] selectTargetMetaPeer empty result, err %v", err)
+		auditlog.LogMasterOp("RestoreReplicaMeta", "selectTargetMetaPeer empty result", err)
+		return err
+	}
+
+	if c.EnableMpDecommissionByLearner {
+		if err = c.addMetaReplicaLearner(mp, selectPeers[0].Addr, storeMode, "", false); err != nil {
+			return err
+		}
+	} else {
+		if err = c.addMetaReplica(mp, selectPeers[0].Addr, storeMode); err != nil {
+			return err
+		}
+	}
+
+	addedAddr = selectPeers[0].Addr
+	mp.IsRecover.Store(true)
+	mp.setRestoreReplicaStatus(RestoreReplicaMetaForbidden)
+	c.putBadMetaPartitions(addedAddr, mp.PartitionID)
+	mp.RLock()
+	c.syncUpdateMetaPartition(mp)
+	mp.RUnlock()
+	return nil
+}
+
+func (mp *MetaPartition) checkReplicaMeta(c *Cluster) (err error) {
+	// stage1: check intersection
+	if err = mp.checkIntersection(c); err != nil {
+		return err
 	}
 
 	if _, ok := c.NoSamePeerMps.Load(mp.PartitionID); ok {
 		c.NoSamePeerMps.Delete(mp.PartitionID)
 	}
 
+	// stage2: need restore check
 	if !mp.needReplicaMetaRestore(c) {
-		log.LogDebugf("action[checkReplicaMeta]mp(%v) do not need to restore meta",
-			mp.PartitionID)
+		log.LogDebugf("action[checkReplicaMeta]mp(%v) do not need to restore meta", mp.PartitionID)
 		return nil
 	}
 
+	// stage3: set running status
 	if !mp.setRestoreReplicaRunning() {
-		log.LogDebugf("action[checkReplicaMeta]mp(%v) set RestoreReplicaMetaRunning failed",
-			mp.PartitionID)
+		log.LogDebugf("action[checkReplicaMeta]mp(%v) set RestoreReplicaMetaRunning failed", mp.PartitionID)
 		return proto.ErrPerformingRestoreReplica
 	}
 
@@ -1223,230 +1501,37 @@ func (mp *MetaPartition) checkReplicaMeta(c *Cluster) (err error) {
 		mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 		return
 	}
+
 	defer func() {
-		// If the recovery process has already started (such as AutoAddReplica),
-		// maintain the Running status and reset it only after the recovery is completed.
 		if !mp.IsRecover.Load() {
 			mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 		}
-		// if update error, wait for next time, do not block decommission
 		mp.RLock()
 		c.syncUpdateMetaPartition(mp)
 		mp.RUnlock()
 	}()
 
-	mp.RLock()
-	hosts := mp.Hosts
-	replicas := mp.Replicas
-	mp.RUnlock()
-	// remove excessive replica
-	if len(replicas) == len(hosts) && len(hosts) == len(peers) &&
-		len(replicas) > int(mp.ReplicaNum) {
-		hostLen := len(mp.Hosts)
-		removeReplica := mp.Hosts[hostLen-1]
-		err = c.deleteMetaReplica(mp, removeReplica, false, false)
-		auditMsg = fmt.Sprintf("mp(%v) remove excessive peer %v ", mp.PartitionID, removeReplica)
-		log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
-		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-		if err != nil {
-			return
-		}
+	// stage4: remove excessive replicas
+	if err = mp.removeExcessiveReplicas(c); err != nil {
+		return err
 	}
 
-	mp.RLock()
-	replicas = mp.Replicas
-	mp.RUnlock()
-	// find redundant peers from replica meta
-	force := false
-	replicasToDelete := make([]proto.Peer, 0)
-	for _, replica := range replicas {
-		if mp.lostLeader(c) {
-			break
-		}
-		// new created replica, no heart beat report, skip
-		if len(replica.LocalPeers) == 0 {
-			continue
-		}
-		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, mp.Peers)
-		for _, peer := range redundantPeers {
-			replicasToDelete = append(replicasToDelete, peer)
-			// remove raft member
-			// mp.LastDelReplicaTime = time.Now().Unix()
-			err = c.removeMetaPartitionRaftMember(mp, peer, force)
-			auditMsg = fmt.Sprintf("mp(%v) remove redundant peer %v force %v:to replica %v: LocalPeers%v",
-				mp.PartitionID, peer, force, replica.Addr, replica.LocalPeers)
-			log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-			if err != nil {
-				return err
-			}
-		}
+	// stage5: remove redundant peers from replica meta
+	if err = mp.removeRedundantPeersFromReplicaMeta(c); err != nil {
+		return err
 	}
 
-	for _, peer := range replicasToDelete {
-		mp.removeReplicaByAddr(peer.Addr)
-		metaNode, err := c.metaNode(peer.Addr)
-		auditMsg = fmt.Sprintf("mp(%v) cannot found metanode for replica %v to delete",
-			mp.PartitionID, peer.Addr)
-		if err != nil {
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-			if strings.Contains(err.Error(), "not found") {
-				continue
-			}
-			return nil
-		}
-		err = c.deleteMetaPartition(mp, metaNode, true)
-		auditMsg = fmt.Sprintf("mp(%v) remove redundant replica on %v for master,by replicasToDelete ",
-			mp.PartitionID, peer.Addr)
-		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-		if err != nil {
-			return nil
-		}
+	// stage6: remove redundant peers from master
+	if err = mp.removeRedundantPeersFromMaster(c); err != nil {
+		return err
 	}
 
-	mp.RLock()
-	replicas = mp.Replicas
-	mp.RUnlock()
-	// find redundant peers from master
-	for _, replica := range replicas {
-		if len(replica.LocalPeers) == 0 {
-			continue
-		}
-		redundantPeers := findPeersToDeleteByConfig(mp.Peers, replica.LocalPeers)
-		for _, peer := range redundantPeers {
-			err = c.removeMetaHostMember(mp, peer)
-			auditMsg = fmt.Sprintf("mp(%v) remove redundant peer %v for master, base on replica %v,localPeers(%v) ",
-				mp.PartitionID, peer, replica.Addr, replica.LocalPeers)
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-			if err != nil {
-				return nil
-			}
-			// redundant peers on master may exist on metaNode, and the redundant replica will be
-			// added into mp.Replicas again by hear beat.
-			metaNode, err := c.metaNode(peer.Addr)
-			auditMsg = fmt.Sprintf("mp(%v) cannot found metanode for replica %v to delete",
-				mp.PartitionID, peer.Addr)
-			if err != nil {
-				auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-				if strings.Contains(err.Error(), "not found") {
-					continue
-				}
-				return nil
-			}
-			err = c.deleteMetaReplica(mp, metaNode.Addr, false, true)
-			auditMsg = fmt.Sprintf("mp(%v) remove redundant replica on %v for master,base on replica %v,localPeers(%v) ",
-				mp.PartitionID, peer.Addr, replica.Addr, replica.LocalPeers)
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-			if err != nil {
-				return nil
-			}
-		}
+	// stage7: add missing replicas
+	if err = mp.autoAddReplica(c); err != nil {
+		return err
 	}
 
-	mp.RLock()
-	hosts = mp.Hosts
-	mp.RUnlock()
-	// find missing replica, add new replica
-	if mp.ReplicaNum > uint8(len(hosts)) {
-		if mp.lostLeader(c) {
-			auditMsg = fmt.Sprintf("mp(%v) lost leader skip auto add replica", mp.PartitionID)
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
-			return
-		}
-		addr, err := mp.chooseTargetMetaNode(c)
-		if err != nil {
-			auditMsg = fmt.Sprintf("mp(%v) chooseTargetMetaNode", mp.PartitionID)
-			log.LogErrorf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-			return err
-		}
-
-		vol, err := c.getVol(mp.volName)
-		if err != nil {
-			auditMsg = fmt.Sprintf("mp(%v) getVol %v failed", mp.PartitionID, mp.volName)
-			log.LogErrorf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-			return err
-		}
-		storeMode := vol.DefaultStoreMode
-
-		if err = c.addMetaReplicaLearner(mp, addr, storeMode); err != nil {
-			auditMsg = fmt.Sprintf("mp(%v) addMetaReplicaLearner %v", mp.PartitionID, addr)
-			log.LogErrorf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-			return err
-		}
-		mp.IsRecover.Store(true)
-		c.putBadMetaPartitions(addr, mp.PartitionID)
-		mp.RLock()
-		c.syncUpdateMetaPartition(mp)
-		mp.RUnlock()
-	}
-	return
-}
-
-func (mp *MetaPartition) chooseTargetMetaNode(c *Cluster) (addr string, err error) {
-	var (
-		targetHosts  []string
-		metaNode     *MetaNode
-		zone         *Zone
-		ns           *nodeSet
-		excludeHosts []string
-	)
-
-	mp.RLock()
-	hosts := append([]string(nil), mp.Hosts...)
-	excludeHosts = append(excludeHosts, mp.Hosts...)
-	mp.RUnlock()
-
-	if len(hosts) == 0 {
-		return "", fmt.Errorf("no hosts in meta partition %v", mp.PartitionID)
-	}
-
-	for _, h := range hosts {
-		if metaNode, err = c.metaNode(h); err == nil {
-			break
-		}
-	}
-	if metaNode == nil {
-		return "", fmt.Errorf("no alive hosts in meta partition %v, hosts: %v", mp.PartitionID, hosts)
-	}
-
-	if zone, err = c.t.getZone(metaNode.ZoneName); err != nil {
-		return
-	}
-	if ns, err = zone.getNodeSet(metaNode.NodeSetID); err != nil {
-		return
-	}
-
-	param := &selectParam{
-		replicaNum:   1,
-		excludeHosts: excludeHosts,
-		rackLevel:    c.getRackAwareLevel(),
-		excludeRacks: c.GetExRacksByHosts(TypeMetaPartition, excludeHosts, ""),
-	}
-
-	// 1. Try same nodeset
-	if targetHosts, _, err = ns.getAvailMetaNodeHosts(param, proto.StoreModeMem); err == nil {
-		addr = targetHosts[0]
-		return
-	}
-
-	// 2. Try other nodeset in same zone
-	param.excludeNodeSets = append(param.excludeNodeSets, ns.ID)
-	if targetHosts, _, err = zone.getAvailNodeHosts(TypeMetaPartition, param); err == nil {
-		addr = targetHosts[0]
-		return
-	}
-
-	// 3. Try other zone
-	zones := mp.getLiveZones("")
-	if targetHosts, _, err = c.getHostFromNormalZone(TypeMetaPartition, zones, 1, "", proto.MediaType_Unspecified, param); err == nil {
-		addr = targetHosts[0]
-		return
-	}
-
-	return "", fmt.Errorf("no target meta node found")
+	return nil
 }
 
 func (mp *MetaPartition) needReplicaMetaRestore(c *Cluster) bool {

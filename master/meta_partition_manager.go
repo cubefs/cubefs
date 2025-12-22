@@ -339,6 +339,7 @@ func (c *Cluster) clearLearnerRecoveryState(mp *MetaPartition) (err error) {
 	mp.SrcAddr = ""
 	mp.LearnerDstAddr = ""
 	mp.IsRecover.Store(false)
+	mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 	mp.RecoverStartTime = 0
 	mp.RecoverFailCount = 0
 	mp.RecoverRetryTime = 0
@@ -347,6 +348,7 @@ func (c *Cluster) clearLearnerRecoveryState(mp *MetaPartition) (err error) {
 	if err != nil {
 		// Restore state on update failure
 		mp.IsRecover.Store(true)
+		mp.setRestoreReplicaStatus(RestoreReplicaMetaForbidden)
 		mp.SrcAddr = srcAddr
 		mp.LearnerDstAddr = dstAddr
 		mp.RecoverStartTime = recoverStartTime
