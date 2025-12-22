@@ -444,7 +444,10 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			})
 		}
 	}
-	fullPath := path.Join(d.getCwd(), req.Name)
+	fullPath := req.Name
+	if log.EnableDebug() {
+		fullPath = path.Join(d.getCwd(), req.Name)
+	}
 	d.super.fslock.Lock()
 	child, ok := d.super.nodeCache[ino]
 	if !ok {
@@ -753,21 +756,23 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	defer func() {
 		stat.EndStat("Rename", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
-		d.super.fslock.Lock()
-		node, ok := d.super.nodeCache[srcInode]
-		if ok && srcInode != 0 {
-			if dir, ok := node.(*Dir); ok {
-				dir.name = req.NewName
-				dir.parentIno = dstDir.info.Inode
-				// log.LogDebugf("TRACE Rename: dir(%v) rename to (%v)", dir.info.Inode, dstPath)
-			} else {
-				file := node.(*File)
-				file.name = req.NewName
-				file.parentIno = dstDir.info.Inode
-				// log.LogDebugf("TRACE Rename: file(%v) rename to (%v)", file.info.Inode, dstPath)
+		if err == nil {
+			d.super.fslock.Lock()
+			node, ok := d.super.nodeCache[srcInode]
+			if ok && srcInode != 0 {
+				if dir, ok := node.(*Dir); ok {
+					dir.name = req.NewName
+					dir.parentIno = dstDir.info.Inode
+					// log.LogDebugf("TRACE Rename: dir(%v) rename to (%v)", dir.info.Inode, dstPath)
+				} else {
+					file := node.(*File)
+					file.name = req.NewName
+					file.parentIno = dstDir.info.Inode
+					// log.LogDebugf("TRACE Rename: file(%v) rename to (%v)", file.info.Inode, dstPath)
+				}
 			}
+			d.super.fslock.Unlock()
 		}
-		d.super.fslock.Unlock()
 		auditlog.LogClientOp("Rename", srcPath, dstPath, err, time.Since(start).Microseconds(), srcInode, dstInode)
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
@@ -1110,7 +1115,6 @@ func (d *Dir) getCwd() string {
 
 	var pathComponents []string
 	curIno := d.info.Inode
-
 	for curIno != d.super.rootIno {
 		d.super.fslock.Lock()
 		node, ok := d.super.nodeCache[curIno]
@@ -1122,11 +1126,11 @@ func (d *Dir) getCwd() string {
 		}
 
 		curDir, ok := node.(*Dir)
+
 		if !ok {
 			log.LogErrorf("Type error: Cannot convert node to *Dir, ino(%v)", curIno)
 			return "unknown" + buildPath(pathComponents)
 		}
-
 		pathComponents = append(pathComponents, curDir.name)
 		curIno = curDir.parentIno
 	}

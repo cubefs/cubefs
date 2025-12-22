@@ -148,6 +148,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.owner = opt.Owner
 	s.cluster = s.mw.Cluster()
 	inodeExpiration := DefaultInodeExpiration
+	if opt.MetaCacheAcceleration {
+		inodeExpiration = DefaultMetaInodeExpiration
+	}
 	if opt.IcacheTimeout >= 0 {
 		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
 	}
