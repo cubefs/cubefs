@@ -24,6 +24,7 @@ Access configuration is based on the [public configuration](./base.md), and the 
 | mem_pool_size_classes     | Memory control for file read/write                       | No                                                                                                          |
 | code_mode_put_quorums     | Reset codemode put quorum                                | No                                                                                                          |
 | code_mode_get_ordered     | Config codemode get shards with order                    | No                                                                                                          |
+| code_mode_get_ignore_idc  | Config codemode get shards ignore idc distance           | No                                                                                                          |
 | encoder_concurrency       | EC encoding/decoding concurrency                         | No, default is 1000                                                                                         |
 | encoder_enableverify      | Whether to enable EC encoding/decoding verification      | No, default is enabled                                                                                      |
 | min_read_shards_x         | Number of shards to download concurrently for EC reading | No, default is 1. The larger the number, the higher the fault tolerance, but also the higher the bandwidth. |
@@ -177,6 +178,9 @@ Support for `health_port` began with version v3.2.1.
         "code_mode_get_ordered": {
             "12": true,
             "15": true
+        },
+        "code_mode_get_ignore_idc": {
+            "14": true
         },
         "alloc_retry_times": 3,
         "alloc_retry_interval_ms": 100,

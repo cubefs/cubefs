@@ -199,7 +199,9 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 
 						// do not use local shards
 						ordered := h.CodeModesGetOrdered[blobVolume.CodeMode]
-						sortedVuids = genSortedVuidByIDC(ctx, serviceController, h.IDC, blobVolume.Units[:tactic.N+tactic.M], ordered)
+						ignoreIDC := h.CodeModesGetIgnoreIDC[blobVolume.CodeMode]
+						sortedVuids = genSortedVuidByIDC(ctx,
+							serviceController, h.IDC, blobVolume.Units[:tactic.N+tactic.M], ordered, ignoreIDC)
 						spanpipe.Debugf("to read %s with read-shard-x:%d active-shard-n:%d of data-n:%d party-n:%d",
 							blob.ID(), h.MinReadShardsX, len(sortedVuids), tactic.N, tactic.M)
 						if len(sortedVuids) < tactic.N {
@@ -838,7 +840,8 @@ func genLocationBlobs(location *proto.Location, readSize uint64, offset uint64) 
 }
 
 func genSortedVuidByIDC(ctx context.Context,
-	serviceController controller.ServiceController, idc string, vuidPhys []controller.Unit, ordered bool,
+	serviceController controller.ServiceController, idc string, vuidPhys []controller.Unit,
+	ordered bool, ignoreIDC bool,
 ) []sortedVuid {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -859,7 +862,11 @@ func genSortedVuidByIDC(ctx context.Context,
 			continue
 		}
 
-		dis := distance(idc, hostIDC.IDC, hostIDC.Punished)
+		destIDC := hostIDC.IDC
+		if ignoreIDC {
+			destIDC = idc
+		}
+		dis := distance(idc, destIDC, hostIDC.Punished)
 		if _, ok := sortMap[dis]; !ok {
 			sortMap[dis] = make([]sortedVuid, 0, 8)
 		}

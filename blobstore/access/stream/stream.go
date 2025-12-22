@@ -171,6 +171,8 @@ type StreamConfig struct {
 	// EC24P8 in 1AZ, C(32, 8) = 10518300 matrix
 	// Inverted matrix memory: (24 + 24*24 + 24*24*8) * 10518300 ~= 51 GB
 	CodeModesGetOrdered map[codemode.CodeMode]bool `json:"code_mode_get_ordered"`
+	// CodeModesGetIgnoreIDC no distance when getting cross idc
+	CodeModesGetIgnoreIDC map[codemode.CodeMode]bool `json:"code_mode_get_ignore_idc"`
 
 	ClusterConfig   controller.ClusterConfig `json:"cluster_config"`
 	BlobnodeConfig  blobnode.Config          `json:"blobnode_config"`

@@ -50,6 +50,9 @@
             "12": true,
             "15": true
         },
+        "code_mode_get_ignore_idc": {
+            "14": true
+        },
         "alloc_retry_interval_ms": 100,
         "alloc_retry_times": 3,
         "encoder_concurrency": 1000,
