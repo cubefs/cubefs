@@ -441,7 +441,7 @@ begin:
 				log.LogDebugf("action[streamer.write] ino %v doOverWriteByAppend extent key (%v)", s.inode, req.ExtentKey)
 				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct, storageClass, isMigration)
 			}
-			if s.aheadReadEnable {
+			if s.aheadReadEnable && s.aheadReadWindow != nil && s.aheadReadWindow.cache != nil {
 				s.aheadReadWindow.evictCacheBlock(req)
 			}
 			if s.client.bcacheEnable {
