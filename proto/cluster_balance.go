@@ -109,6 +109,7 @@ type MetaPartitionChecksumInfo struct {
 	Replicas    []*MetaReplicaChecksumInfo `json:"replicas"`
 	StartTime   time.Time                  `json:"startTime"`
 	Msg         string                     `json:"msg"`
+	LastApplyID uint64                     `json:"lastApplyID"`
 }
 
 type MetaPartitionsChecksumPlan struct {

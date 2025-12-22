@@ -402,10 +402,11 @@ func (c *Cluster) validateLearnerRecoveryStatus(mp *MetaPartition, dstAddr strin
 	}
 
 	// Check sync progress
-	maxIdDiff := math.Abs(float64(learnerResponse.MaxInode) - float64(leaderResponse.MaxInode))
-	applyIdDiff := math.Abs(float64(int64(learnerResponse.ApplyID) - int64(leaderResponse.ApplyID)))
-	if maxIdDiff >= defaultMinusOfMaxInodeID {
-		return fmt.Errorf("maxId difference[%v] >= 1000 for mp[%v]", maxIdDiff, mp.PartitionID)
+	var applyIdDiff uint64
+	if leaderResponse.RaftInfo.RaftStatus.Commit >= learnerReplicaStatus.Commit {
+		applyIdDiff = leaderResponse.RaftInfo.RaftStatus.Commit - learnerReplicaStatus.Commit
+	} else {
+		applyIdDiff = learnerReplicaStatus.Commit - leaderResponse.RaftInfo.RaftStatus.Commit
 	}
 	if applyIdDiff >= defaultMinusOfApplyID {
 		return fmt.Errorf("applyId difference[%v] >= 1000 for mp[%v]", applyIdDiff, mp.PartitionID)

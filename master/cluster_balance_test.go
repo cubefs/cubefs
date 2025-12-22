@@ -1635,17 +1635,6 @@ func TestIsRocksdbDiskUsageLow(t *testing.T) {
 	}
 }
 
-func TestGetReplicasStoreModeCount(t *testing.T) {
-	mp := &MetaPartition{Replicas: []*MetaReplica{
-		{StoreMode: proto.StoreModeMem},
-		{StoreMode: proto.StoreModeRocksDb},
-		{StoreMode: proto.StoreModeRocksDb},
-	}}
-	if cnt := GetReplicasStoreModeCount(mp, proto.StoreModeRocksDb); cnt != 2 {
-		t.Errorf("expected 2, got %d", cnt)
-	}
-}
-
 func TestGetMetaPartitionMemorySize(t *testing.T) {
 	// zero count
 	mp := &MetaPartition{

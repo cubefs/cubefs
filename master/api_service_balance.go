@@ -839,7 +839,7 @@ func (m *Server) batchMigrateMetaPartition(w http.ResponseWriter, r *http.Reques
 // - startId: start mp id (optional; default 0)
 // - endId: end mp id (optional; default 0)
 func (m *Server) batchPromoteMpLearner(w http.ResponseWriter, r *http.Request) {
-	metric := exporter.NewTPCnt(proto.AdminBatchPromoteMpLearner)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminBatchPromoteMpLearner))
 	var err error
 	defer func() {
 		doStatAndMetric(proto.AdminBatchPromoteMpLearner, metric, err, nil)
