@@ -141,6 +141,7 @@ const (
 	autoDpMetaRepairParallelCntKey         = "autoDpMetaRepairParallelCnt"
 	enableMpDecommissionByLearnerKey       = "enableMpDecommissionByLearner"
 	autoMpMetaRepairParallelCntKey         = "autoMpMetaRepairParallelCnt"
+	autoMpMetaRepairKey                    = "autoMpMetaRepair"
 	autoDistributionOptimizationKey        = "autoDistributionOptimization"
 	distributionOptimizationConDpCntKey    = "distributionOptimizationConDpCnt"
 	distributionOptimizationThresholdKey   = "distributionOptimizationThreshold"

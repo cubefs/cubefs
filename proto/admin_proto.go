@@ -1436,6 +1436,7 @@ type SimpleVolView struct {
 	DeleteExecTime          time.Time
 	DpRepairBlockSize       uint64
 	EnableAutoDpMetaRepair  bool
+	EnableAutoMpMetaRepair  bool
 	AccessTimeInterval      int64
 	EnablePersistAccessTime bool
 

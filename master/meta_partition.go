@@ -1205,12 +1205,11 @@ func (mp *MetaPartition) checkIntersection(c *Cluster) error {
 func (mp *MetaPartition) removeExcessiveReplicas(c *Cluster) (err error) {
 	mp.RLock()
 	replicaCount := len(mp.Replicas)
-	hostCount := len(mp.Hosts)
 	peerCount := len(mp.Peers)
 	peers := append([]proto.Peer(nil), mp.Peers...)
 	mp.RUnlock()
 
-	if replicaCount != hostCount || hostCount != peerCount {
+	if replicaCount != peerCount {
 		return nil
 	}
 
@@ -1421,6 +1420,12 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 			log.LogDebugf("action[addMissingReplicas]%v", auditMsg)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
 		}
+		if !mp.IsRecover.Load() {
+			mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
+		}
+		mp.RLock()
+		c.syncUpdateMetaPartition(mp)
+		mp.RUnlock()
 	}()
 
 	if mp.lostLeader(c) {
@@ -1453,6 +1458,7 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 	}
 
 	if c.EnableMpDecommissionByLearner {
+		mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 		if err = c.addMetaReplicaLearner(mp, selectPeers[0].Addr, storeMode, "", false); err != nil {
 			return err
 		}
@@ -1460,15 +1466,12 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 		if err = c.addMetaReplica(mp, selectPeers[0].Addr, storeMode); err != nil {
 			return err
 		}
+		addedAddr = selectPeers[0].Addr
+		mp.IsRecover.Store(true)
+		mp.setRestoreReplicaStatus(RestoreReplicaMetaForbidden)
+		c.putBadMetaPartitions(addedAddr, mp.PartitionID)
 	}
 
-	addedAddr = selectPeers[0].Addr
-	mp.IsRecover.Store(true)
-	mp.setRestoreReplicaStatus(RestoreReplicaMetaForbidden)
-	c.putBadMetaPartitions(addedAddr, mp.PartitionID)
-	mp.RLock()
-	c.syncUpdateMetaPartition(mp)
-	mp.RUnlock()
 	return nil
 }
 

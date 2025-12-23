@@ -400,6 +400,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optLeaderRetryTime int64
 	var optEnableQuota string
 	var optEnableDpAutoMetaRepair string
+	var optEnableMpAutoMetaRepair string
 	var optTrashInterval int64
 	var optAccessTimeValidInterval int64
 	var optEnablePersistAccessTime string
@@ -728,6 +729,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  EnablePersistAccessTime        : %v \n", vv.EnablePersistAccessTime))
 			}
+
 			if optEnableDpAutoMetaRepair != "" {
 				enable := false
 				if enable, err = strconv.ParseBool(optEnableDpAutoMetaRepair); err != nil {
@@ -742,6 +744,22 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v\n", vv.EnableAutoDpMetaRepair))
+			}
+
+			if optEnableMpAutoMetaRepair != "" {
+				enable := false
+				if enable, err = strconv.ParseBool(optEnableMpAutoMetaRepair); err != nil {
+					return
+				}
+				if vv.EnableAutoMpMetaRepair != enable {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  EnableAutoMpMetaRepair : %v -> %v\n", vv.EnableAutoMpMetaRepair, enable))
+					vv.EnableAutoMpMetaRepair = enable
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  EnableAutoMpMetaRepair : %v\n", vv.EnableAutoMpMetaRepair))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  EnableAutoMpMetaRepair : %v\n", vv.EnableAutoMpMetaRepair))
 			}
 
 			if optVolStorageClass != 0 {
@@ -962,6 +980,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optLeaderRetryTime, "leader-retry-timeout", -1, "Specify leader retry timeout for mp read [Unit: second] for volume, default 0")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optEnableDpAutoMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable dp auto meta repair")
+	cmd.Flags().StringVar(&optEnableMpAutoMetaRepair, CliFlagAutoMpMetaRepair, "", "Enable or disable mp auto meta repair")
 	cmd.Flags().IntVar(&optVolStorageClass, CliFlagVolStorageClass, 0, "specify volStorageClass")
 	cmd.Flags().IntVar(&optVolQuotaClass, CliFlagVolQuotaClass, 0, "specify target storage class for quota, 1(SSD), 2(HDD)")
 	cmd.Flags().IntVar(&optVolQuotaOfClass, CliFlagVolQuotaOfClass, -1, "specify quota of target storage class, GB")

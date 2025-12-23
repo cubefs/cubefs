@@ -577,7 +577,8 @@ func createTestVol(name string) *Vol {
 		EnablePersistAccessTime:  false,
 		AccessTimeValidInterval:  0,
 		LeaderRetryTimeout:       0,
-		EnableAutoMetaRepair:     atomicutil.Bool{},
+		EnableAutoDpMetaRepair:   atomicutil.Bool{},
+		EnableAutoMpMetaRepair:   atomicutil.Bool{},
 		ForbidWriteOpOfProtoVer0: atomicutil.Bool{},
 
 		allowedStorageClass:     []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_Replica_SSD},

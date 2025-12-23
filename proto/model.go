@@ -118,6 +118,7 @@ type MetaPartitionInfo struct {
 	ReplicaNum                uint8
 	Status                    int8
 	IsRecover                 bool
+	RestoreReplicaMeta        uint32
 	Hosts                     []string
 	Peers                     []Peer
 	Zones                     []string
@@ -489,17 +490,18 @@ type MetaPartitionDiagnosis struct {
 }
 
 type MetaPartitionDiagnosisV1 struct {
-	InactiveMetaNodes                    []string
-	NoLeaderMetaPartitionIDs             []uint64
-	LackReplicaMetaPartitionIDs          []uint64
-	BadMetaPartitionIDs                  []BadPartitionView
-	UnavailableMetaPartitionIDs          []uint64
-	InConsistRreplicaCntMetaPartitionIDs []uint64
-	InodeCountNotEqualIDs                []uint64
-	MaxInodeNotEqualIDs                  []uint64
-	DentryCountNotEqualIDs               []uint64
-	AbnormalRaftIDs                      []uint64
-	FailedRecoveryMetaPartitionIDs       []uint64
+	InactiveMetaNodes                []string
+	NoLeaderMetaPartitionIDs         []uint64
+	LackReplicaMetaPartitionIDs      []uint64
+	BadMetaPartitionIDs              []BadPartitionView
+	UnavailableMetaPartitionIDs      []uint64
+	ExcessiveReplicaMetaPartitionIDs []uint64
+	LearnerFlagMismatchIDs           []uint64
+	InodeCountNotEqualIDs            []uint64
+	MaxInodeNotEqualIDs              []uint64
+	DentryCountNotEqualIDs           []uint64
+	AbnormalRaftIDs                  []uint64
+	FailedRecoveryMetaPartitionIDs   []uint64
 }
 
 type FailedDpInfo struct {

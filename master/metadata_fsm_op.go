@@ -439,9 +439,10 @@ type volValue struct {
 	AccessTimeInterval                                     int64
 	EnablePersistAccessTime                                bool
 
-	Forbidden            bool
-	DpRepairBlockSize    uint64
-	EnableAutoMetaRepair bool
+	Forbidden              bool
+	DpRepairBlockSize      uint64
+	EnableAutoDpMetaRepair bool
+	EnableAutoMpMetaRepair bool
 
 	VolStorageClass          uint32
 	AllowedStorageClass      []uint32
@@ -532,7 +533,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DeleteExecTime:          vol.DeleteExecTime,
 		User:                    vol.user,
 		DpRepairBlockSize:       vol.dpRepairBlockSize,
-		EnableAutoMetaRepair:    vol.EnableAutoMetaRepair.Load(),
+		EnableAutoDpMetaRepair:  vol.EnableAutoDpMetaRepair.Load(),
+		EnableAutoMpMetaRepair:  vol.EnableAutoMpMetaRepair.Load(),
 		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 

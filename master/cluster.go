@@ -4692,7 +4692,8 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlowWlimit:   req.qosLimitArgs.flowWVal,
 
 		DpReadOnlyWhenVolFull:   req.DpReadOnlyWhenVolFull,
-		EnableAutoMetaRepair:    false,
+		EnableAutoDpMetaRepair:  false,
+		EnableAutoMpMetaRepair:  false,
 		TrashInterval:           req.trashInterval,
 		AccessTimeInterval:      req.accessTimeValidInterval,
 		EnablePersistAccessTime: req.enablePersistAccessTime,

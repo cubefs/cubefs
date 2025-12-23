@@ -60,6 +60,7 @@ type VolVarargs struct {
 	crossZone                bool
 	accessTimeInterval       int64
 	enableAutoDpMetaRepair   bool
+	enableAutoMpMetaRepair   bool
 	accessTimeValidInterval  int64
 	enablePersistAccessTime  bool
 	leaderRetryTimeout       int64
@@ -179,7 +180,8 @@ type Vol struct {
 	EnablePersistAccessTime  bool
 	AccessTimeValidInterval  int64
 	LeaderRetryTimeout       int64 // s
-	EnableAutoMetaRepair     atomicutil.Bool
+	EnableAutoDpMetaRepair   atomicutil.Bool
+	EnableAutoMpMetaRepair   atomicutil.Bool
 	ForbidWriteOpOfProtoVer0 atomicutil.Bool
 
 	TopoSubItem
@@ -280,7 +282,8 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.DisableAuditLog = false
 	vol.mpsLock = newMpsLockManager(vol)
 	vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
-	vol.EnableAutoMetaRepair.Store(defaultEnableDpMetaRepair)
+	vol.EnableAutoDpMetaRepair.Store(defaultEnableDpMetaRepair)
+	vol.EnableAutoMpMetaRepair.Store(defaultEnableMpMetaRepair)
 	vol.TrashInterval = vv.TrashInterval
 	vol.AccessTimeValidInterval = vv.AccessTimeInterval
 	vol.EnablePersistAccessTime = vv.EnablePersistAccessTime
@@ -335,7 +338,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	if vol.dpRepairBlockSize == 0 {
 		vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
 	}
-	vol.EnableAutoMetaRepair.Store(vv.EnableAutoMetaRepair)
+	vol.EnableAutoDpMetaRepair.Store(vv.EnableAutoDpMetaRepair)
+	vol.EnableAutoMpMetaRepair.Store(vv.EnableAutoMpMetaRepair)
 	vol.EnablePersistAccessTime = vv.EnablePersistAccessTime
 	vol.AccessTimeValidInterval = vv.AccessTimeInterval
 	if vol.AccessTimeValidInterval == 0 {
@@ -1885,7 +1889,8 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.TrashInterval = args.trashInterval
 	vol.AccessTimeValidInterval = args.accessTimeValidInterval
 	vol.AccessTimeInterval = args.accessTimeInterval
-	vol.EnableAutoMetaRepair.Store(args.enableAutoDpMetaRepair)
+	vol.EnableAutoDpMetaRepair.Store(args.enableAutoDpMetaRepair)
+	vol.EnableAutoMpMetaRepair.Store(args.enableAutoMpMetaRepair)
 	vol.EnablePersistAccessTime = args.enablePersistAccessTime
 	vol.volStorageClass = args.volStorageClass
 	vol.allowedStorageClass = append([]uint32{}, args.allowedStorageClass...)
@@ -1953,7 +1958,8 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		accessTimeValidInterval:  vol.AccessTimeValidInterval,
 		trashInterval:            vol.TrashInterval,
 		enablePersistAccessTime:  vol.EnablePersistAccessTime,
-		enableAutoDpMetaRepair:   vol.EnableAutoMetaRepair.Load(),
+		enableAutoDpMetaRepair:   vol.EnableAutoDpMetaRepair.Load(),
+		enableAutoMpMetaRepair:   vol.EnableAutoMpMetaRepair.Load(),
 		volStorageClass:          vol.volStorageClass,
 		allowedStorageClass:      append([]uint32{}, vol.allowedStorageClass...),
 		forbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
@@ -2016,7 +2022,7 @@ func (vol *Vol) checkDataReplicaMeta(c *Cluster) (cnt int) {
 			continue
 		}
 		// NOTE: cluster or enable meta repair
-		if c.getEnableAutoDpMetaRepair() || vol.EnableAutoMetaRepair.Load() {
+		if c.getEnableAutoDpMetaRepair() || vol.EnableAutoDpMetaRepair.Load() {
 			checkMetaDp[dp.PartitionID] = dp
 			localDp := dp
 			checkMetaDpWg.Add(1)
@@ -2044,7 +2050,7 @@ func (vol *Vol) checkMetaReplicaMeta(c *Cluster) (cnt int) {
 
 	for _, mp := range partitions {
 		// NOTE: cluster or enable meta repair
-		if c.getEnableAutoDpMetaRepair() || vol.EnableAutoMetaRepair.Load() {
+		if c.getEnableAutoMpMetaRepair() || vol.EnableAutoMpMetaRepair.Load() {
 			checkMetaMp[mp.PartitionID] = mp
 			localMp := mp
 			checkMetaMpWg.Add(1)

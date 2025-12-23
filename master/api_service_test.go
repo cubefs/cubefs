@@ -1807,6 +1807,18 @@ func TestSetAutoDpMetaRepairParallelCnt(t *testing.T) {
 	require.EqualValues(t, oldVal, server.cluster.GetAutoDpMetaRepairParallelCnt())
 }
 
+func TestSetEnableAutoMpMetaRepair(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getEnableAutoMpMetaRepair()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoMpMetaRepairKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoMpMetaRepairKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.getEnableAutoMpMetaRepair())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getEnableAutoMpMetaRepair())
+}
+
 func TestSetAutoMpMetaRepairParallelCnt(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
 	oldVal := server.cluster.GetAutoMpMetaRepairParallelCnt()
@@ -1940,16 +1952,41 @@ func TestUpdateVolAutoDpMetaRepair(t *testing.T) {
 		process(reqURL, t)
 	}()
 	reqUrl := fmt.Sprintf("%v%v?%v=%v&%v=%v", hostAddr, proto.AdminUpdateVol, nameKey, vol.Name, volAuthKey, buildAuthKey(testOwner))
-	oldVal := vol.EnableAutoMetaRepair.Load()
+	oldVal := vol.EnableAutoDpMetaRepair.Load()
 	setVal := !oldVal
 	setUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoDpMetaRepairKey, setVal)
 	unsetUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoDpMetaRepairKey, oldVal)
 
 	process(setUrl, t)
-	require.EqualValues(t, setVal, vol.EnableAutoMetaRepair.Load())
+	require.EqualValues(t, setVal, vol.EnableAutoDpMetaRepair.Load())
 
 	process(unsetUrl, t)
-	require.EqualValues(t, oldVal, vol.EnableAutoMetaRepair.Load())
+	require.EqualValues(t, oldVal, vol.EnableAutoDpMetaRepair.Load())
+}
+
+func TestUpdateVolAutoMpMetaRepair(t *testing.T) {
+	name := "enableAutoMpMetaRepairVol"
+	createVol(map[string]interface{}{nameKey: name, remoteCacheReadTimeout: proto.ReadDeadlineTime}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v?%v=%v&%v=%v", hostAddr, proto.AdminUpdateVol, nameKey, vol.Name, volAuthKey, buildAuthKey(testOwner))
+	oldVal := vol.EnableAutoMpMetaRepair.Load()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoMpMetaRepairKey, setVal)
+	unsetUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoMpMetaRepairKey, oldVal)
+
+	process(setUrl, t)
+	require.EqualValues(t, setVal, vol.EnableAutoMpMetaRepair.Load())
+
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, vol.EnableAutoMpMetaRepair.Load())
 }
 
 func TestGetMetaPartitionEmptyStatus(t *testing.T) {

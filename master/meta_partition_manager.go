@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -65,8 +66,10 @@ func (mp *MetaPartition) checkPeerDiffWithRaft(c *Cluster) {
 		addrArr  = make(map[uint64]string)
 		leaderID uint64
 	)
+	for _, peer := range mp.Peers {
+		addrArr[peer.ID] = peer.Addr
+	}
 	for _, mr := range mp.Replicas {
-		addrArr[mr.nodeID] = mr.Addr
 		if mr.IsLeader {
 			leaderID = mr.nodeID
 		}
@@ -78,6 +81,12 @@ func (mp *MetaPartition) checkPeerDiffWithRaft(c *Cluster) {
 		}
 		for peer := range info.RaftInfo.RaftStatus.Replicas {
 			if _, ok := addrArr[peer]; !ok {
+				c.AbnormalRaftMP.Store(mp.PartitionID, mp)
+				return
+			}
+		}
+		for peerID := range addrArr {
+			if _, ok := info.RaftInfo.RaftStatus.Replicas[peerID]; !ok {
 				c.AbnormalRaftMP.Store(mp.PartitionID, mp)
 				return
 			}
@@ -474,6 +483,11 @@ func (c *Cluster) checkLearnerModeRecovery(mp *MetaPartition, srcAddr, dstAddr s
 
 	// Validate learner recovery status
 	if err = c.validateLearnerRecoveryStatus(mp, dstAddr); err != nil {
+		if strings.Contains(err.Error(), "response not found") {
+			c.recordRecoveryFailure(mp)
+			log.LogWarnf("checkLearnerModeRecovery: vol[%v] mp[%v] learner recovery status validation failed, err[%v]",
+				mp.volName, mp.PartitionID, err)
+		}
 		return
 	}
 

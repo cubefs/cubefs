@@ -321,6 +321,7 @@ type updateVolReq struct {
 	crossZone                bool
 	trashInterval            int64
 	enableAutoDpMetaRepair   bool
+	enableAutoMpMetaRepair   bool
 	accessTimeValidInterval  int64
 	enablePersistAccessTime  bool
 	volStorageClass          uint32
@@ -453,7 +454,11 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	if req.enablePersistAccessTime, err = extractBoolWithDefault(r, enablePersistAccessTimeKey, vol.EnablePersistAccessTime); err != nil {
 		return
 	}
-	if req.enableAutoDpMetaRepair, err = extractBoolWithDefault(r, autoDpMetaRepairKey, vol.EnableAutoMetaRepair.Load()); err != nil {
+
+	if req.enableAutoDpMetaRepair, err = extractBoolWithDefault(r, autoDpMetaRepairKey, vol.EnableAutoDpMetaRepair.Load()); err != nil {
+		return
+	}
+	if req.enableAutoMpMetaRepair, err = extractBoolWithDefault(r, autoMpMetaRepairKey, vol.EnableAutoMpMetaRepair.Load()); err != nil {
 		return
 	}
 
@@ -1653,6 +1658,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 		params[autoDpMetaRepairParallelCntKey] = int(val)
+	}
+
+	if value = r.FormValue(autoMpMetaRepairKey); value != "" {
+		noParams = false
+		val := false
+		val, err = strconv.ParseBool(value)
+		if err != nil {
+			err = unmatchedKey(autoMpMetaRepairKey)
+			return
+		}
+		params[autoMpMetaRepairKey] = val
 	}
 
 	if value = r.FormValue(autoMpMetaRepairParallelCntKey); value != "" {

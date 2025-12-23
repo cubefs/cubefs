@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/strutil"
@@ -301,6 +302,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  TrashInterval                   : %v\n", time.Duration(svv.TrashInterval)*time.Minute))
 	sb.WriteString(fmt.Sprintf("  DpRepairBlockSize               : %v\n", strutil.FormatSize(svv.DpRepairBlockSize)))
 	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair          : %v\n", svv.EnableAutoDpMetaRepair))
+	sb.WriteString(fmt.Sprintf("  EnableAutoMpMetaRepair          : %v\n", svv.EnableAutoMpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
 	sb.WriteString(fmt.Sprintf("  AccessTimeValidInterval         : %v\n", time.Duration(svv.AccessTimeInterval)*time.Second))
 	sb.WriteString(fmt.Sprintf("  MetaLeaderRetryTimeout          : %v\n", time.Duration(svv.LeaderRetryTimeOut)*time.Second))
@@ -445,6 +447,10 @@ var (
 	partitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-12v    %-18v"
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS")
+
+	partitionLearnerMismatchTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
+	partitionLearnerMismatchTableHeader  = fmt.Sprintf(partitionLearnerMismatchTablePattern,
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MISMATCH")
 
 	PeerAbnormalRaftPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-12v    %-12v   %v%v%v"
 	PeerAbnormalRaftPartitionInfoHeader       = fmt.Sprintf(PeerAbnormalRaftPartitionInfoTablePattern,
@@ -593,6 +599,31 @@ func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
 	return fmt.Sprintf(partitionInfoTablePattern,
 		partition.PartitionID, partition.VolName, partition.ReplicaNum,
 		formatDataPartitionStatus(partition.Status), "N/A", strings.Join(partition.Hosts, ", "))
+}
+
+func formatMetaPartitionLearnerMismatchRow(partition *proto.MetaPartitionInfo) string {
+	masterLearner := make(map[string]bool)
+	replicaLearner := make(map[string]bool)
+	for _, p := range partition.Peers {
+		masterLearner[p.Addr] = p.Type == raftProto.PeerLearner
+	}
+	for _, r := range partition.Replicas {
+		replicaLearner[r.Addr] = r.IsLearner
+	}
+
+	mismatch := make([]string, 0)
+	for addr, isLearner := range masterLearner {
+		if rIsLearner, ok := replicaLearner[addr]; ok && rIsLearner != isLearner {
+			mismatch = append(mismatch, fmt.Sprintf("%v master=%v replica=%v", addr, isLearner, rIsLearner))
+		}
+	}
+	if len(mismatch) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf(partitionLearnerMismatchTablePattern,
+		partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), strings.Join(mismatch, "; "))
 }
 
 func formatMetaPartitionInfoRowWithRaft(partition *proto.MetaPartitionInfo) string {
@@ -760,6 +791,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("PartitionID   : %v\n", partition.PartitionID))
 	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatMetaPartitionStatus(partition.Status)))
 	sb.WriteString(fmt.Sprintf("Recovering    : %v\n", formatIsRecover(partition.IsRecover)))
+	sb.WriteString(fmt.Sprintf("RestoreStatus : %v\n", formatRestoreReplicaStatus(partition.RestoreReplicaMeta)))
 	sb.WriteString(fmt.Sprintf("Start         : %v\n", partition.Start))
 	sb.WriteString(fmt.Sprintf("End           : %v\n", partition.End))
 	sb.WriteString(fmt.Sprintf("MaxInodeID    : %v\n", partition.MaxInodeID))
@@ -785,7 +817,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	if partition.RecoverRetryTime > 0 {
 		sb.WriteString(fmt.Sprintf("RecoverRetryTime : %v\n", time.Unix(partition.RecoverRetryTime, 0).Format("2006-01-02 15:04:05")))
 	}
-	sb.WriteString(fmt.Sprintf("RecoverState      : %v\n", partition.RecoverState.String()))
+	sb.WriteString(fmt.Sprintf("RecoverState     : %v\n", partition.RecoverState.String()))
 
 	sb.WriteString("\n")
 	sb.WriteString("Replicas : \n")
@@ -900,6 +932,19 @@ func formatDataPartitionStatus(status int8) string {
 		return "Unavailable"
 	default:
 		return "Unknown"
+	}
+}
+
+func formatRestoreReplicaStatus(status uint32) string {
+	switch status {
+	case 0:
+		return "Stop"
+	case 1:
+		return "Running"
+	case 2:
+		return "Forbidden"
+	default:
+		return fmt.Sprintf("Unknown(%d)", status)
 	}
 }
 
@@ -1078,7 +1123,7 @@ func parseDpReadOnlyReasons(mask uint32) []string {
 	return reasons
 }
 
-var metaReplicaTableRowPattern = "%-65v    %-8v    %-10v    %-9v    %-6v    %-6v    %-10v"
+var metaReplicaTableRowPattern = "%-65v    %-10v    %-10v    %-9v    %-9v    %-6v    %-10v"
 
 func formatMetaReplicaTableHeader() string {
 	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "MaxInodeID", "ISLEADER", "ISLEARNER", "STATUS", "StoreMode", "REPORT TIME")
@@ -1111,10 +1156,10 @@ func parseMpReadOnlyReasons(mask uint32) []string {
 	return reasons
 }
 
-var peerTableRowPattern = "%-6v    %-18v    %-12v    %-12v    %-12v"
+var peerTableRowPattern = "%-6v    %-18v    %-15v   %-12v   %-12v  %-12v"
 
 func formatPeerTableHeader() string {
-	return fmt.Sprintf(peerTableRowPattern, "ID", "ADDR", "HEARTBEATPORT", "REPLICAPORT", "MANUALPROMOTE")
+	return fmt.Sprintf(peerTableRowPattern, "ID", "ADDR", "HEARTBEATPORT", "REPLICAPORT", "ISLEARNER", "MANUALPROMOTE")
 }
 
 func formatPeer(peer proto.Peer) string {
@@ -1122,7 +1167,11 @@ func formatPeer(peer proto.Peer) string {
 	if peer.ManualPromote {
 		manualPromoteStr = "true"
 	}
-	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr, peer.HeartbeatPort, peer.ReplicaPort, manualPromoteStr)
+	isLearnerStr := "false"
+	if peer.Type == raftProto.PeerLearner {
+		isLearnerStr = "true"
+	}
+	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr, peer.HeartbeatPort, peer.ReplicaPort, isLearnerStr, manualPromoteStr)
 }
 
 var dataNodeDetailTableRowPattern = "%-6v    %-10v    %-65v    %-10v    %-10v    %-10v    %-10v"

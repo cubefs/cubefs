@@ -167,6 +167,21 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			}
 
 			stdout("\n")
+			stdout("%v\n", "[Meta partition learner flag mismatch]:")
+			stdout("%v\n", partitionLearnerMismatchTableHeader)
+			for _, pid := range diagnosis.LearnerFlagMismatchIDs {
+				var partition *proto.MetaPartitionInfo
+				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+					continue
+				}
+				if partition != nil {
+					if row := formatMetaPartitionLearnerMismatchRow(partition); row != "" {
+						stdout("%v\n", row)
+					}
+				}
+			}
+
+			stdout("\n")
 			stdout("%v\n", "[Bad meta partitions(decommission not completed)]:")
 			badPartitionTablePattern := "%-8v    %-10v    %-20v\n"
 			stdout(badPartitionTablePattern, "PATH", "PARTITION ID", "REPAIR STARTTIME")
@@ -256,10 +271,10 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			stdout("\n")
 			stdout("%v\n", "[Partition with excessive replicas]:")
 			stdout("%v\n", partitionInfoTableHeader)
-			sort.SliceStable(diagnosis.InConsistRreplicaCntMetaPartitionIDs, func(i, j int) bool {
-				return diagnosis.InConsistRreplicaCntMetaPartitionIDs[i] < diagnosis.InConsistRreplicaCntMetaPartitionIDs[j]
+			sort.SliceStable(diagnosis.ExcessiveReplicaMetaPartitionIDs, func(i, j int) bool {
+				return diagnosis.ExcessiveReplicaMetaPartitionIDs[i] < diagnosis.ExcessiveReplicaMetaPartitionIDs[j]
 			})
-			for _, pid := range diagnosis.InConsistRreplicaCntMetaPartitionIDs {
+			for _, pid := range diagnosis.ExcessiveReplicaMetaPartitionIDs {
 				var partition *proto.MetaPartitionInfo
 				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
 					continue

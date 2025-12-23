@@ -42,8 +42,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/cubefs/cubefs/util/strutil"
-
-	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 )
 
 func apiToMetricsName(api string) (reqMetricName string) {
@@ -2102,6 +2100,12 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAddMetaReplica))
 	defer func() {
+		if !mp.IsRecover.Load() {
+			mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
+		}
+		mp.RLock()
+		m.cluster.syncUpdateMetaPartition(mp)
+		mp.RUnlock()
 		doStatAndMetric(proto.AdminAddMetaReplica, metric, err, nil)
 		AuditLog(r, proto.AdminAddMetaReplica, fmt.Sprintf("meta partitionID :%v  add replica [%v]", partitionID, addr), err)
 	}()
@@ -2135,27 +2139,22 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = mp.waitSetRestoreReplicaForbidden(); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
 	if m.cluster.EnableMpDecommissionByLearner {
 		if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode), "", false); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 	} else {
+		if err = mp.waitSetRestoreReplicaForbidden(); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
 		if err = m.cluster.addMetaReplica(mp, addr, proto.StoreMode(storeMode)); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 		mp.IsRecover.Store(true)
 		m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
-
-		mp.RLock()
-		m.cluster.syncUpdateMetaPartition(mp)
-		mp.RUnlock()
 	}
 
 	msg = fmt.Sprintf("meta partitionID :%v  add replica [%v] successfully", partitionID, addr)
@@ -2181,6 +2180,9 @@ func (m *Server) addMetaPartitionLearner(w http.ResponseWriter, r *http.Request)
 			log.LogWarnf("action[addMetaPartitionLearner] HTTP request failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
 		} else {
 			log.LogWarnf("action[addMetaPartitionLearner] HTTP request success,partitionID[%v],addr[%v]", partitionID, addr)
+		}
+		if !mp.IsRecover.Load() {
+			mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 		}
 	}()
 
@@ -2229,13 +2231,6 @@ func (m *Server) addMetaPartitionLearner(w http.ResponseWriter, r *http.Request)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-
-	mp.IsRecover.Store(true)
-	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
-
-	mp.RLock()
-	m.cluster.syncUpdateMetaPartition(mp)
-	mp.RUnlock()
 
 	log.LogWarnf("action[addMetaPartitionLearner] learner added successfully,partitionID[%v],addr[%v],set IsRecover=true", partitionID, addr)
 	msg = fmt.Sprintf("meta partitionID :%v  add learner [%v] successfully", partitionID, addr)
@@ -3171,6 +3166,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.dpReplicaNum = uint8(req.replicaNum)
 	newArgs.dpReadOnlyWhenVolFull = req.dpReadOnlyWhenVolFull
 	newArgs.enableAutoDpMetaRepair = req.enableAutoDpMetaRepair
+	newArgs.enableAutoMpMetaRepair = req.enableAutoMpMetaRepair
 	newArgs.volStorageClass = req.volStorageClass
 	newArgs.forbidWriteOpOfProtoVer0 = req.forbidWriteOpOfProtoVer0
 
@@ -3732,7 +3728,8 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		Forbidden:               vol.Forbidden,
 		DeleteExecTime:          vol.DeleteExecTime,
 		DpRepairBlockSize:       vol.dpRepairBlockSize,
-		EnableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
+		EnableAutoDpMetaRepair:  vol.EnableAutoDpMetaRepair.Load(),
+		EnableAutoMpMetaRepair:  vol.EnableAutoMpMetaRepair.Load(),
 		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 
@@ -4480,6 +4477,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[autoDpMetaRepairParallelCntKey]; ok {
 		if cnt, ok := val.(int); ok {
 			if err = m.cluster.setAutoDpMetaRepairParallelCnt(cnt); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[autoMpMetaRepairKey]; ok {
+		if autoRepair, ok := val.(bool); ok {
+			if err = m.cluster.setEnableAutoMpMetaRepair(autoRepair); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -6911,15 +6917,6 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		storeMode := proto.StoreModeDef
 		for i := 0; i < len(replicas); i++ {
 			// Check if this replica is a learner by matching with Peers
-			isLearner := false
-			for _, peer := range mp.Peers {
-				if peer.ID == mp.Replicas[i].nodeID {
-					if peer.Type == raftProto.PeerLearner {
-						isLearner = true
-					}
-					break
-				}
-			}
 			replicas[i] = &proto.MetaReplicaInfo{
 				Addr:            mp.Replicas[i].Addr,
 				NodeID:          mp.Replicas[i].nodeID,
@@ -6928,7 +6925,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				ReportTime:      mp.Replicas[i].ReportTime,
 				Status:          mp.Replicas[i].Status,
 				IsLeader:        mp.Replicas[i].IsLeader,
-				IsLearner:       isLearner,
+				IsLearner:       mp.Replicas[i].IsLearner,
 				InodeCount:      mp.Replicas[i].InodeCount,
 				DentryCount:     mp.Replicas[i].DentryCount,
 				MaxInode:        mp.Replicas[i].MaxInodeID,
@@ -6964,6 +6961,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			ReplicaNum:                mp.ReplicaNum,
 			Status:                    mp.Status,
 			IsRecover:                 mp.IsRecover.Load(),
+			RestoreReplicaMeta:        atomic.LoadUint32(&mp.RestoreReplicaMeta),
 			Hosts:                     mp.Hosts,
 			Peers:                     mp.Peers,
 			Zones:                     zones,

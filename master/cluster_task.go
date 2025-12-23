@@ -550,7 +550,7 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
-			if uint8(len(mp.Hosts)) < mp.ReplicaNum || uint8(len(mp.getActiveAddrs(defaultMetaPartitionTimeOutSec))) < mp.ReplicaNum {
+			if isLackReplicaMetaPartition(mp) {
 				diagnosis.LackReplicaMetaPartitionIDs = append(diagnosis.LackReplicaMetaPartitionIDs, mp.PartitionID)
 			}
 
@@ -559,7 +559,11 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 			}
 
 			if IsExcessiveReplicaMetaPartition(mp) {
-				diagnosis.InConsistRreplicaCntMetaPartitionIDs = append(diagnosis.InConsistRreplicaCntMetaPartitionIDs, mp.PartitionID)
+				diagnosis.ExcessiveReplicaMetaPartitionIDs = append(diagnosis.ExcessiveReplicaMetaPartitionIDs, mp.PartitionID)
+			}
+
+			if hasLearnerFlagMismatch(mp) {
+				diagnosis.LearnerFlagMismatchIDs = append(diagnosis.LearnerFlagMismatchIDs, mp.PartitionID)
 			}
 
 			for _, replica := range mp.Replicas {
@@ -599,7 +603,7 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
 		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v], AbnormalRaftIDs count:[%v]",
 		c.Name, len(diagnosis.LackReplicaMetaPartitionIDs), len(diagnosis.NoLeaderMetaPartitionIDs),
-		len(diagnosis.UnavailableMetaPartitionIDs), len(diagnosis.InConsistRreplicaCntMetaPartitionIDs), len(diagnosis.AbnormalRaftIDs))
+		len(diagnosis.UnavailableMetaPartitionIDs), len(diagnosis.ExcessiveReplicaMetaPartitionIDs), len(diagnosis.AbnormalRaftIDs))
 
 	if diagnosis.InactiveMetaNodes, err = c.checkInactiveMetaNodes(); err != nil {
 		return
@@ -845,10 +849,24 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 
 		if partition.IsRecover.Load() {
 			c.putBadMetaPartitions(srcAddr, partition.PartitionID)
+		} else {
+			partition.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 		}
+
+		partition.RLock()
+		c.syncUpdateMetaPartition(partition)
+		partition.RUnlock()
 	}()
 	log.LogWarnf("action[addMetaReplicaLearner] start,vol[%v],meta partition[%v],addr[%v],storeMode[%v],currentHosts[%v]",
 		partition.volName, partition.PartitionID, targetAddr, storeMode, partition.Hosts)
+
+	if !manualPromote {
+		if err = partition.waitSetRestoreReplicaForbidden(); err != nil {
+			log.LogWarnf("action[addMetaReplicaLearner] waitSetRestoreReplicaForbidden failed,vol[%v],meta partition[%v],err[%v]",
+				partition.volName, partition.PartitionID, err)
+			return
+		}
+	}
 
 	partition.Lock()
 	defer partition.Unlock()
@@ -1893,27 +1911,13 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 }
 
 func IsExcessiveReplicaMetaPartition(mp *MetaPartition) bool {
-	raftLearner := make([]string, 0, len(mp.Peers))
 	count := uint8(0)
 	for _, peer := range mp.Peers {
 		if peer.Type == raftProto.PeerLearner {
-			raftLearner = append(raftLearner, peer.Addr)
 			continue
 		}
 		count++
 	}
-	if count > mp.ReplicaNum {
-		return true
-	}
-
-	count = 0
-	for _, mr := range mp.Replicas {
-		if contains(raftLearner, mr.Addr) {
-			continue
-		}
-		count++
-	}
-
 	return count > mp.ReplicaNum
 }
 
@@ -1927,4 +1931,27 @@ func getMetaReplicaLearnerInfo(mp *MetaPartition, learnerAddr string) (isLearner
 	}
 
 	return false, false, fmt.Errorf("learnerAddr[%s] not found in mp[%v]", learnerAddr, mp.PartitionID)
+}
+
+func hasLearnerFlagMismatch(mp *MetaPartition) bool {
+	masterLearner := make(map[string]bool)
+	for _, p := range mp.Peers {
+		masterLearner[p.Addr] = p.Type == raftProto.PeerLearner
+	}
+	for _, r := range mp.Replicas {
+		if isLearner, ok := masterLearner[r.Addr]; ok && isLearner != r.IsLearner {
+			return true
+		}
+	}
+	return false
+}
+
+func isLackReplicaMetaPartition(mp *MetaPartition) bool {
+	nonLearner := uint8(0)
+	for _, peer := range mp.Peers {
+		if peer.Type != raftProto.PeerLearner {
+			nonLearner++
+		}
+	}
+	return nonLearner < mp.ReplicaNum
 }

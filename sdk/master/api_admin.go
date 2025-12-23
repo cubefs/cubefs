@@ -380,6 +380,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("enableQuota", strconv.FormatBool(vv.EnableQuota))
 	request.addParam("deleteLockTime", strconv.FormatInt(vv.DeleteLockTime, 10))
 	request.addParam("autoDpMetaRepair", strconv.FormatBool(vv.EnableAutoDpMetaRepair))
+	request.addParam("autoMpMetaRepair", strconv.FormatBool(vv.EnableAutoMpMetaRepair))
 	request.addParam("clientIDKey", clientIDKey)
 	request.addParam("interval", strconv.FormatInt(vv.TrashInterval, 10))
 	request.addParam("trashInterval", strconv.FormatInt(vv.TrashInterval, 10))
@@ -697,7 +698,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 		request.addParam("autoDpMetaRepairParallelCnt", autoDpMetaRepairParallelCnt)
 	}
 	if enableAutoMpMetaRepair != "" {
-		request.addParam("enableAutoMpMetaRepair", enableAutoMpMetaRepair)
+		request.addParam("autoMpMetaRepair", enableAutoMpMetaRepair)
 	}
 	if autoMpMetaRepairParallelCnt != "" {
 		request.addParam("autoMpMetaRepairParallelCnt", autoMpMetaRepairParallelCnt)
