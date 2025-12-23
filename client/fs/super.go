@@ -239,6 +239,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		FollowerRead:      opt.FollowerRead,
 		NearRead:          opt.NearRead,
 		MaximallyRead:     opt.MaximallyRead,
+		Preload:           false, // Explicitly set to false to ensure data partition updates
 		ReadRate:          opt.ReadRate,
 		WriteRate:         opt.WriteRate,
 		BcacheEnable:      opt.EnableBcache,
@@ -426,6 +427,18 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 // ClusterName returns the cluster name.
 func (s *Super) ClusterName() string {
 	return s.cluster
+}
+
+// GetMetaWrapper returns the MetaWrapper instance
+// This is useful for components that need direct access to MetaWrapper
+func (s *Super) GetMetaWrapper() *meta.MetaWrapper {
+	return s.mw
+}
+
+// GetExtentClient returns the ExtentClient instance
+// This is useful for components that need direct access to ExtentClient
+func (s *Super) GetExtentClient() *stream.ExtentClient {
+	return s.ec
 }
 
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {

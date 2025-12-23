@@ -433,6 +433,32 @@ build_rcconfig(){
     pushd $SrcPath >/dev/null
     echo -n "build cfs-remotecache-config      "
     CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-remotecache-config ${SrcPath}/tool/remotecache-config/*.go  && echo "success" || echo "failed"
+<<<<<<< HEAD
+=======
+    popd >/dev/null
+}
+
+build_bazil_fuse_demo(){
+    pushd $SrcPath >/dev/null
+    echo -n "build bazil-fuse-demo      "
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/bazil-fuse-demo ${SrcPath}/test/bazil_fuse_demo/main.go  && echo "success" || echo "failed"
+>>>>>>> e989b25cd2... feature(client): Add nfs gateway demo
+    popd >/dev/null
+}
+
+build_nfs_gateway(){
+    pushd ${SrcPath}/client/nfs_gateway >/dev/null
+    echo -n "build nfs-gateway          "
+    # Ensure go.sum exists and is up to date
+    if [ ! -f go.sum ] || [ -f ${SrcPath}/go.sum ]; then
+        # Copy parent go.sum as base, then update with direct dependencies
+        if [ -f ${SrcPath}/go.sum ]; then
+            cp ${SrcPath}/go.sum . 2>/dev/null || true
+        fi
+        # Update go.sum with direct dependencies (go-billy, go-nfs, etc.)
+        go mod tidy >/dev/null 2>&1 || true
+    fi
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/nfs-gateway .  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
@@ -542,6 +568,9 @@ case "$cmd" in
         ;;
     "rcconfig")
         build_rcconfig
+        ;;
+    "nfs_gateway")
+        build_nfs_gateway
         ;;
     *)
         ;;
