@@ -16,10 +16,12 @@ package rpc2
 
 import (
 	"crypto/rand"
+	"fmt"
 	"io"
+	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/stretchr/testify/require"
 )
 
@@ -157,4 +159,107 @@ func TestStreamClientClose(t *testing.T) {
 	require.ErrorIs(t, err, ErrFrameHeader)
 	err = <-errrecv
 	require.ErrorIs(t, err, ErrFrameHeader)
+}
+
+func handleStreamMultiFrame(_ ResponseWriter, req *Request) error {
+	var para strMessage
+	req.ParseParameter(&para)
+
+	stream := GenericServerStream[streamReq, streamResp]{ServerStream: req.ServerStream()}
+	stream.SendHeader(&para)
+	sender := req.ServerStream().(*serverStream)
+
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		var resp streamResp
+		resp.Value = msg.Value
+
+		hdr := ResponseHeader{Version: Version, Magic: Magic}
+		hdr.ContentLength = int64(resp.Size())
+		var cell headerCell
+		cell.Set(hdr.Size())
+
+		if _, err = sender.req.conn.SizedWrite(sender.req.Context(),
+			io.MultiReader(codec2CellReader(cell, &hdr)), _headerCell+hdr.Size()); err != nil {
+			return err
+		}
+		if _, err = sender.req.conn.SizedWrite(sender.req.Context(),
+			Codec2Reader(&resp), resp.Size()); err != nil {
+			return err
+		}
+	}
+}
+
+func TestStreamMultiFrame(t *testing.T) {
+	handler := &Router{}
+	handler.Register("/", handleStreamMultiFrame)
+	server, cli, shutdown := newServer("tcp", handler)
+	defer shutdown()
+	sc := StreamClient[streamReq, streamResp]{Client: cli}
+
+	var para strMessage
+	req, err := NewRequest(testCtx, server.Name, "/", &para, nil)
+	require.NoError(t, err)
+	req.StreamCmd = StreamCmd_SYN
+	req.ContentLength = 0
+
+	resp, err := sc.Client.Do(req, &para)
+	require.NoError(t, err)
+	sender := &clientStream{
+		req:     req,
+		header:  resp.Header,
+		trailer: resp.Trailer.ToHeader(),
+	}
+	cc := &GenericClientStream[streamReq, streamResp]{ClientStream: sender}
+
+	recv := make(chan struct{})
+	var got uint32
+	go func() {
+		defer close(recv)
+		for {
+			if _, errx := cc.Recv(); errx != nil {
+				return
+			}
+			atomic.AddUint32(&got, 1)
+		}
+	}()
+	for idx := range [10]struct{}{} {
+		var req streamReq
+		req.Value = fmt.Sprintf("request-%d", idx)
+
+		hdr := RequestHeader{Version: Version, Magic: Magic}
+		hdr.ContentLength = int64(req.Size())
+		var cell headerCell
+		cell.Set(hdr.Size())
+
+		_, err = sender.req.conn.SizedWrite(sender.req.Context(),
+			io.MultiReader(codec2CellReader(cell, &hdr)), _headerCell+hdr.Size())
+		require.NoError(t, err)
+		_, err = sender.req.conn.SizedWrite(sender.req.Context(),
+			Codec2Reader(&req), req.Size())
+		require.NoError(t, err)
+	}
+
+	alive := true
+	for alive {
+		select {
+		case <-recv:
+			alive = false
+		default:
+			time.Sleep(10 * time.Millisecond)
+			if atomic.LoadUint32(&got) == 10 {
+				alive = false
+			}
+		}
+	}
+	cc.CloseSend()
+	<-recv
+	require.Equal(t, uint32(10), atomic.LoadUint32(&got))
 }

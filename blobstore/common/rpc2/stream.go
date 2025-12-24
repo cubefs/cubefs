@@ -197,9 +197,19 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 		cs.trailer.Merge(resp.Trailer.ToHeader())
 		if resp.Status != 200 {
 			err = NewError(resp.Status, resp.Reason, resp.Error)
+		} else {
+			err = io.EOF
 		}
-		err = io.EOF
 		return cs.closeIfError(err)
+	}
+
+	if resp.ContentLength > 0 && frame.Len() == 0 { // message in next frame
+		msgFrame, msgErr := conn.ReadFrame(cs.Context())
+		if msgErr != nil {
+			return cs.closeIfError(msgErr)
+		}
+		frame.Close()
+		frame = msgFrame
 	}
 
 	if int64(frame.Len()) < resp.ContentLength {
@@ -324,6 +334,16 @@ func (ss *serverStream) RecvMsg(a any) (err error) {
 	if req.StreamCmd == StreamCmd_FIN {
 		err = io.EOF
 		return
+	}
+
+	if req.ContentLength > 0 && frame.Len() == 0 { // message in next frame
+		msgFrame, msgErr := ss.req.conn.ReadFrame(ss.Context())
+		if msgErr != nil {
+			err = msgErr
+			return
+		}
+		frame.Close()
+		frame = msgFrame
 	}
 
 	if int64(frame.Len()) < req.ContentLength {
