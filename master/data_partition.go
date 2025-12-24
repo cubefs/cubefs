@@ -1612,7 +1612,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			}
 		}
 	} else {
-		if partition.lostLeader(c) {
+		if !partition.lostLeader(c) {
+			if raftForce {
+				raftForce = false
+			}
+		} else {
 			// auto add replica may be skipped, so check with ReplicaNum or Peers
 			diskErrReplicaNum := partition.getReplicaDiskErrorNum()
 			if diskErrReplicaNum == partition.ReplicaNum || diskErrReplicaNum == uint8(len(partition.Peers)) {
