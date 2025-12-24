@@ -710,7 +710,8 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int, sync bool) {
 
 // Write writes the data.
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error,
-	storageClass uint32, isMigration, waitForFlush bool) (write int, err error) {
+	storageClass uint32, isMigration, waitForFlush bool,
+) (write int, err error) {
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 	s := client.GetStreamer(inode)
 	if s == nil {

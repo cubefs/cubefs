@@ -102,7 +102,8 @@ func NewFlashNodeTopology() (t *FlashNodeTopology) {
 }
 
 func (t *FlashNodeTopology) gradualCreateFlashGroup(fgID uint64, syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc,
-	setSlots []uint32, setWeight uint32, step uint32) (flashGroup *FlashGroup, err error) {
+	setSlots []uint32, setWeight uint32, step uint32,
+) (flashGroup *FlashGroup, err error) {
 	t.createFlashGroupLock.Lock()
 	defer t.createFlashGroupLock.Unlock()
 
@@ -130,7 +131,8 @@ func (t *FlashNodeTopology) gradualCreateFlashGroup(fgID uint64, syncUpdateFlash
 }
 
 func (t *FlashNodeTopology) createFlashGroup(fgID uint64, syncAddFlashGroupFunc SyncAddFlashGroupFunc,
-	setSlots []uint32, setWeight uint32) (flashGroup *FlashGroup, err error) {
+	setSlots []uint32, setWeight uint32,
+) (flashGroup *FlashGroup, err error) {
 	t.createFlashGroupLock.Lock()
 	defer t.createFlashGroupLock.Unlock()
 
@@ -291,8 +293,8 @@ func (t *FlashNodeTopology) allocateNewSlotsForCreateFlashGroup(fgID uint64, set
 	if len(slots) > 0 {
 		return
 	}
-
-	for len(slots) < int(weight)*defaultFlashGroupSlotsCount {
+	target := uint32(defaultFlashGroupSlotsCount) * weight
+	for uint32(len(slots)) < target {
 		slot := allocateNewSlot()
 		if _, ok := t.slotsMap[slot]; ok {
 			continue
@@ -315,7 +317,8 @@ func (t *FlashNodeTopology) GetFlashGroupsAdminView(fgStatus proto.FlashGroupSta
 }
 
 func (t *FlashNodeTopology) gradualRemoveFlashGroup(flashGroup *FlashGroup,
-	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, step uint32) (err error) {
+	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, step uint32,
+) (err error) {
 	t.createFlashGroupLock.Lock()
 	defer t.createFlashGroupLock.Unlock()
 
@@ -324,7 +327,8 @@ func (t *FlashNodeTopology) gradualRemoveFlashGroup(flashGroup *FlashGroup,
 
 func (t *FlashNodeTopology) gradualExpandOrShrinkFlashGroupSlots(flashGroup *FlashGroup,
 	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, newSlotStatus proto.SlotStatus,
-	pendingSlots []uint32, step uint32) (err error) {
+	pendingSlots []uint32, step uint32,
+) (err error) {
 	flashGroup.lock.Lock()
 	oldSlotStatus := flashGroup.SlotStatus
 	oldStep := flashGroup.Step
@@ -416,7 +420,8 @@ func (t *FlashNodeTopology) Clear() {
 }
 
 func (t *FlashNodeTopology) AddFlashNode(clusterName, nodeAddr, zoneName, version string,
-	allocateCommonIDFunc AllocateCommonIDFunc, syncAddFlashNodeFunc SyncAddFlashNodeFunc) (id uint64, err error) {
+	allocateCommonIDFunc AllocateCommonIDFunc, syncAddFlashNodeFunc SyncAddFlashNodeFunc,
+) (id uint64, err error) {
 	t.mu.Lock()
 	defer func() {
 		t.mu.Unlock()
@@ -474,7 +479,8 @@ func (t *FlashNodeTopology) ListFlashNodes(showAll, active bool) map[string][]*p
 }
 
 func (t *FlashNodeTopology) UpdateFlashNode(flashNode *FlashNode, enable bool,
-	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (err error) {
 	flashNode.Lock()
 	defer flashNode.Unlock()
 	if flashNode.IsEnable != enable {
@@ -492,7 +498,8 @@ func (t *FlashNodeTopology) UpdateFlashNode(flashNode *FlashNode, enable bool,
 }
 
 func (t *FlashNodeTopology) RemoveFlashNode(clusterName string, flashNode *FlashNode,
-	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc) (err error) {
+	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc,
+) (err error) {
 	log.LogWarnf("action[removeFlashNode], ZoneName[%s] Node[%s] offline", flashNode.ZoneName, flashNode.Addr)
 	var flashGroupID uint64
 	if flashGroupID, err = t.deleteFlashNode(clusterName, flashNode, syncDeleteFlashNodeFunc); err != nil {
@@ -523,7 +530,8 @@ func (t *FlashNodeTopology) RemoveFlashNode(clusterName string, flashNode *Flash
 }
 
 func (t *FlashNodeTopology) deleteFlashNode(clusterName string, flashNode *FlashNode,
-	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc) (oldFlashGroupID uint64, err error) {
+	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc,
+) (oldFlashGroupID uint64, err error) {
 	flashNode.Lock()
 	defer flashNode.Unlock()
 	oldFlashGroupID = flashNode.FlashGroupID
@@ -578,7 +586,8 @@ func (t *FlashNodeTopology) TurnFlashGroup(enabled bool) {
 
 func (t *FlashNodeTopology) CreateFlashGroup(id uint64, syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc,
 	syncAddFlashGroupFunc SyncAddFlashGroupFunc, setSlots []uint32, setWeight uint32, gradualFlag bool,
-	step uint32) (fg *FlashGroup, err error) {
+	step uint32,
+) (fg *FlashGroup, err error) {
 	if gradualFlag {
 		if fg, err = t.gradualCreateFlashGroup(id, syncUpdateFlashGroupFunc, setSlots, setWeight, step); err != nil {
 			return
@@ -595,7 +604,8 @@ func (t *FlashNodeTopology) CreateFlashGroup(id uint64, syncUpdateFlashGroupFunc
 func (t *FlashNodeTopology) RemoveFlashGroup(id uint64, gradualFlag bool,
 	step uint32, syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc,
 	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
-	syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc) (flashGroup *FlashGroup, err error) {
+	syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
+) (flashGroup *FlashGroup, err error) {
 	if flashGroup, err = t.GetFlashGroup(id); err != nil {
 		return
 	}
@@ -622,7 +632,8 @@ func (t *FlashNodeTopology) RemoveFlashGroup(id uint64, gradualFlag bool,
 }
 
 func (t *FlashNodeTopology) removeAllFlashNodeFromFlashGroup(flashGroup *FlashGroup,
-	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (err error) {
 	flashNodeHosts := flashGroup.GetFlashNodeHosts(false)
 	successHost := make([]string, 0)
 	for _, flashNodeHost := range flashNodeHosts {
@@ -638,7 +649,8 @@ func (t *FlashNodeTopology) removeAllFlashNodeFromFlashGroup(flashGroup *FlashGr
 }
 
 func (t *FlashNodeTopology) removeFlashNodeFromFlashGroup(addr string, flashGroup *FlashGroup,
-	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (err error) {
 	var flashNode *FlashNode
 	if flashNode, err = t.setFlashNodeToUnused(addr, flashGroup.ID, syncUpdateFlashNodeFunc); err != nil {
 		return
@@ -682,7 +694,8 @@ func (t *FlashNodeTopology) setFlashNodeToUnused(addr string, flashGroupID uint6
 }
 
 func (t *FlashNodeTopology) FlashGroupAddFlashNode(flashGroupID uint64, addr string, zoneName string,
-	count int, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (flashGroup *FlashGroup, err error) {
+	count int, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (flashGroup *FlashGroup, err error) {
 	if flashGroup, err = t.GetFlashGroup(flashGroupID); err != nil {
 		return
 	}
@@ -699,7 +712,8 @@ func (t *FlashNodeTopology) FlashGroupAddFlashNode(flashGroupID uint64, addr str
 }
 
 func (t *FlashNodeTopology) addFlashNodeToFlashGroup(addr string, flashGroup *FlashGroup,
-	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (err error) {
 	var flashNode *FlashNode
 	if flashNode, err = t.setFlashNodeToFlashGroup(addr, flashGroup.ID, syncUpdateFlashNodeFunc); err != nil {
 		return
@@ -709,7 +723,8 @@ func (t *FlashNodeTopology) addFlashNodeToFlashGroup(addr string, flashGroup *Fl
 }
 
 func (t *FlashNodeTopology) setFlashNodeToFlashGroup(addr string, flashGroupID uint64,
-	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (flashNode *FlashNode, err error) {
+	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (flashNode *FlashNode, err error) {
 	if flashNode, err = t.PeekFlashNode(addr); err != nil {
 		return
 	}
@@ -735,7 +750,8 @@ func (t *FlashNodeTopology) setFlashNodeToFlashGroup(addr string, flashGroupID u
 }
 
 func (t *FlashNodeTopology) selectFlashNodesFromZoneAddToFlashGroup(zoneName string, count int, excludeHosts []string,
-	flashGroup *FlashGroup, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	flashGroup *FlashGroup, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (err error) {
 	flashNodeZone, err := t.GetZone(zoneName)
 	if err != nil {
 		return
@@ -758,7 +774,8 @@ func (t *FlashNodeTopology) selectFlashNodesFromZoneAddToFlashGroup(zoneName str
 }
 
 func (t *FlashNodeTopology) FlashGroupRemoveFlashNode(flashGroupID uint64, addr string, zoneName string,
-	count int, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (flashGroup *FlashGroup, err error) {
+	count int, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (flashGroup *FlashGroup, err error) {
 	if flashGroup, err = t.GetFlashGroup(flashGroupID); err != nil {
 		return
 	}
@@ -772,7 +789,8 @@ func (t *FlashNodeTopology) FlashGroupRemoveFlashNode(flashGroupID uint64, addr 
 }
 
 func (t *FlashNodeTopology) removeFlashNodesFromTargetZone(zoneName string, count int,
-	flashGroup *FlashGroup, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	flashGroup *FlashGroup, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (err error) {
 	flashNodeHosts := flashGroup.getTargetZoneFlashNodeHosts(zoneName)
 	if len(flashNodeHosts) < count {
 		return fmt.Errorf("flashNodeHostsCount:%v less than expectCount:%v,flashNodeHosts:%v", len(flashNodeHosts), count, flashNodeHosts)
@@ -822,7 +840,8 @@ func (t *FlashNodeTopology) SaveFlashGroup(group *FlashGroup) {
 }
 
 func (t *FlashNodeTopology) CreateFlashNodeHeartBeatTasks(leader string, handleReadTimeout, readDataNodeTimeout,
-	hotKeyMissCount int, flashReadFlowLimit int64, flashWriteFlowLimit int64, flashKeyFlowLimit int64) []*proto.AdminTask {
+	hotKeyMissCount int, flashReadFlowLimit int64, flashWriteFlowLimit int64, flashKeyFlowLimit int64,
+) []*proto.AdminTask {
 	tasks := make([]*proto.AdminTask, 0)
 	t.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
 		node := flashNode.(*FlashNode)
@@ -895,7 +914,8 @@ func (t *FlashNodeTopology) Load() (err error) {
 }
 
 func (t *FlashNodeTopology) UpdateFlashGroupSlots(syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
-	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) {
+	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) {
 	isNotUpdated := true
 	t.flashGroupMap.Range(func(key, value interface{}) bool {
 		flashGroup := value.(*FlashGroup)
@@ -923,7 +943,8 @@ func (t *FlashNodeTopology) UpdateFlashGroupSlots(syncDeleteFlashGroupFunc SyncD
 }
 
 func (t *FlashNodeTopology) updateFlashGroupSlots(flashGroup *FlashGroup, syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
-	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (err error) {
 	var needDeleteFgFlag bool
 
 	if flashGroup.GetSlotStatus() == proto.SlotStatus_Deleting {
@@ -935,7 +956,8 @@ func (t *FlashNodeTopology) updateFlashGroupSlots(flashGroup *FlashGroup, syncDe
 }
 
 func (t *FlashNodeTopology) checkShrinkOrDeleteFlashGroup(flashGroup *FlashGroup,
-	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (needDeleteFgFlag bool, err error) {
+	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+) (needDeleteFgFlag bool, err error) {
 	leftPendingSlotsNum := uint32(flashGroup.GetPendingSlotsCount()) - flashGroup.Step
 	if (leftPendingSlotsNum <= 0) && (flashGroup.GetPendingSlotsCount() == flashGroup.GetSlotsCount()) {
 		needDeleteFgFlag = true

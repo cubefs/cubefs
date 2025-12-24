@@ -116,7 +116,8 @@ func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Cluster) createFlashGroup(setSlots []uint32, setWeight uint32, gradualFlag bool,
-	step uint32) (fg *flashgroupmanager.FlashGroup, err error) {
+	step uint32,
+) (fg *flashgroupmanager.FlashGroup, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addFlashGroup],clusterID[%v] err:%v ", c.Name, err.Error())

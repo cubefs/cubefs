@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	syslog "log"
+	"math"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
@@ -230,13 +231,25 @@ func (m *FlashGroupManager) initCluster() {
 }
 
 func (m *FlashGroupManager) createRaftServer(cfg *config.Config) (err error) {
+	hp := m.config.heartbeatPort
+	rp := m.config.replicaPort
+
+	if hp < 0 || hp > 65535 {
+		return fmt.Errorf("invalid heartbeatPort: %d", hp)
+	}
+	if rp < 0 || rp > 65535 {
+		return fmt.Errorf("invalid replicaPort: %d", rp)
+	}
+	if hp > int64(math.MaxInt) || rp > int64(math.MaxInt) {
+		return fmt.Errorf("port overflows int")
+	}
 	raftCfg := &raftstore.Config{
 		NodeID:            m.id,
 		RaftPath:          m.walDir,
 		IPAddr:            cfg.GetString(IP),
 		NumOfLogsToRetain: m.retainLogs,
-		HeartbeatPort:     int(m.config.heartbeatPort),
-		ReplicaPort:       int(m.config.replicaPort),
+		HeartbeatPort:     int(hp),
+		ReplicaPort:       int(rp),
 		TickInterval:      m.tickInterval,
 		ElectionTick:      m.electionTick,
 		RecvBufSize:       m.raftRecvBufSize,

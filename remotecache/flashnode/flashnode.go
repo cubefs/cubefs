@@ -795,8 +795,8 @@ func unescapeMountField(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\\' && i+3 < len(s) {
-			if o, err := strconv.ParseInt(s[i+1:i+4], 8, 0); err == nil {
-				b.WriteByte(byte(o))
+			if u, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
+				b.WriteByte(byte(u))
 				i += 3
 				continue
 			}

@@ -306,7 +306,8 @@ func (fg *FlashGroup) GetPendingSlotsCount() (count int) {
 }
 
 func (fg *FlashGroup) UpdateStatus(status proto.FlashGroupStatus,
-	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, flashNodeTopo *FlashNodeTopology) (err error) {
+	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, flashNodeTopo *FlashNodeTopology,
+) (err error) {
 	fg.lock.Lock()
 	defer fg.lock.Unlock()
 	oldStatus := fg.Status
@@ -322,7 +323,8 @@ func (fg *FlashGroup) UpdateStatus(status proto.FlashGroupStatus,
 }
 
 func (fg *FlashGroup) UpdateSlots(topology *FlashNodeTopology, needDeleteFgFlag bool, syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
-	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc) (err error) {
+	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc,
+) (err error) {
 	fg.lock.Lock()
 	var updatedSlotsNum uint32
 	var newSlotStatus proto.SlotStatus

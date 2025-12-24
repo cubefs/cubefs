@@ -2290,7 +2290,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 		if partition.DecommissionDstNodeSet == 0 {
 			// mark success, remove in advance
 			if !c.isOverloadDataNode(partition.DecommissionType, datanode) {
-				partition.SetDecommissionStatus(DecommissionSuccess)
+				partition.SetDecommissionStatus(DecommissionSuccess, "isOverloadDataNodeFalse", err.Error())
 				log.LogInfof("action[TryAcquireDecommissionToken]dp %v canceled because src node is no longer overload, src node %v, err %v",
 					partition.PartitionID, partition.DecommissionSrcAddr, err.Error())
 				return true

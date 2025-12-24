@@ -91,12 +91,21 @@ func parsePeerAddr(peerAddr string) (id uint64, ip string, port uint64, err erro
 func (cfg *clusterConfig) parsePeers(peerStr string) error {
 	peerArr := strings.Split(peerStr, commaSplit)
 	cfg.peerAddrs = peerArr
+	hp := cfg.heartbeatPort
+	rp := cfg.replicaPort
+
+	if hp < 0 || hp > 65535 {
+		return fmt.Errorf("invalid heartbeatPort: %d", hp)
+	}
+	if rp < 0 || rp > 65535 {
+		return fmt.Errorf("invalid replicaPort: %d", rp)
+	}
 	for _, peerAddr := range peerArr {
 		id, ip, port, err := parsePeerAddr(peerAddr)
 		if err != nil {
 			return err
 		}
-		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip, HeartbeatPort: int(cfg.heartbeatPort), ReplicaPort: int(cfg.replicaPort)})
+		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip, HeartbeatPort: int(hp), ReplicaPort: int(rp)})
 		address := fmt.Sprintf("%v:%v", ip, port)
 		syslog.Println(address)
 		AddrDatabase[id] = address
