@@ -7746,6 +7746,8 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		fnRemoteClientFlowLimit  int64
 		oldIntValue              int
 		oldInt64Value            int64
+		storeMode                int
+		oldStoreMode             proto.StoreMode
 	)
 
 	switch key {
@@ -7843,6 +7845,13 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		oldInt64Value = m.config.remoteClientFlowLimit
 		m.config.remoteClientFlowLimit = fnRemoteClientFlowLimit
 
+	case cfgDefaultVolStoreMode:
+		storeMode, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		oldStoreMode = m.config.DefaultVolStoreMode
+		m.config.DefaultVolStoreMode = proto.StoreMode(storeMode)
 	default:
 		err = keyNotFound("config")
 		return err
@@ -7874,6 +7883,8 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.config.flashKeyFlowLimit = oldInt64Value
 		case remoteClientFlowLimit:
 			m.config.remoteClientFlowLimit = oldInt64Value
+		case cfgDefaultVolStoreMode:
+			m.config.DefaultVolStoreMode = oldStoreMode
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
@@ -7911,6 +7922,8 @@ func (m *Server) getConfig(key string) (value string, err error) {
 		value = strconv.FormatInt(m.config.flashWriteFlowLimit, 10)
 	case remoteClientFlowLimit:
 		value = strconv.FormatInt(m.config.remoteClientFlowLimit, 10)
+	case cfgDefaultVolStoreMode:
+		value = strconv.Itoa(int(m.config.DefaultVolStoreMode))
 	default:
 		err = keyNotFound("config")
 	}

@@ -1053,18 +1053,18 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 	}
 
 	if !ok {
-		log.LogErrorf("Can't find zone: %s", param.ZoneName)
+		log.LogWarnf("Can't find zone: %s", param.ZoneName)
 		return
 	}
 
 	nodeSet, ok := zone.NodeSet[param.NodeSetID]
 	if !ok {
-		log.LogErrorf("Can't find node set: %d", param.NodeSetID)
+		log.LogWarnf("Can't find node set: %d", param.NodeSetID)
 		return
 	}
 
 	if nodeSet.Number < param.RequestNum {
-		log.LogErrorf("RequestNum: %d, but node set: %d only has %d free nodes", param.RequestNum, param.NodeSetID, nodeSet.Number)
+		log.LogWarnf("RequestNum: %d, but node set: %d only has %d free nodes", param.RequestNum, param.NodeSetID, nodeSet.Number)
 		return
 	}
 
@@ -1153,7 +1153,7 @@ func GetMigrateAddrExcludeNodeSet(param *GetMigrateAddrParam) (find bool, addres
 
 	zone, ok := zoneMap[param.ZoneName]
 	if !ok {
-		log.LogErrorf("Can't find zone: %s", param.ZoneName)
+		log.LogWarnf("Can't find zone: %s", param.ZoneName)
 		return
 	}
 
@@ -1181,7 +1181,7 @@ func GetMigrateAddrExcludeNodeSet(param *GetMigrateAddrParam) (find bool, addres
 		}
 	}
 
-	log.LogErrorf("requestNum(%d) zone(%s) not enough resource in the same zone.", param.RequestNum, param.ZoneName)
+	log.LogWarnf("requestNum(%d) zone(%s) not enough resource in the same zone.", param.RequestNum, param.ZoneName)
 	find = false
 	return
 }
@@ -1219,7 +1219,7 @@ func GetMigrateAddrExcludeZone(param *GetMigrateAddrParam) (find bool, address [
 		}
 	}
 
-	log.LogErrorf("RequestNum(%d) not enough resource in other zones.", param.RequestNum)
+	log.LogWarnf("RequestNum(%d) not enough resource in other zones.", param.RequestNum)
 	find = false
 	return
 }
@@ -1299,10 +1299,10 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		failMu sync.Mutex
 	)
 
-	var stopProcess atomic.Bool
-	stopProcess.Store(false)
+	var stopProcess uint32
+	atomic.StoreUint32(&stopProcess, 0)
 	for _, mpPlan := range plan.Plan {
-		if stopProcess.Load() {
+		if atomic.LoadUint32(&stopProcess) != 0 {
 			break
 		}
 		sem <- struct{}{}
@@ -1312,7 +1312,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			err := c.handleMetaPartitionPlan(plan, mpPlan)
 			if err != nil {
 				log.LogErrorf("handleMetaPartitionPlan err: %s", err.Error())
-				stopProcess.Store(true)
+				atomic.StoreUint32(&stopProcess, 1)
 				failMu.Lock()
 				plan.FailedList = append(plan.FailedList, mpPlan.ID)
 				failMu.Unlock()
@@ -1326,7 +1326,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		plan.Status = PlanTaskStop
 		plan.Msg = "migrate plan is stopped"
 	} else {
-		if stopProcess.Load() {
+		if atomic.LoadUint32(&stopProcess) != 0 {
 			plan.Status = PlanTaskError
 			plan.Msg = "Stop task because some meta partition failed. Please check the detail in each msg."
 		} else {
@@ -2348,8 +2348,8 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 				fmt.Fprintf(&unusableBuf, "\n")
 				return true
 			}
-			if !metaNode.RocksdbRdOnly {
-				fmt.Fprintf(&unusableBuf, "%s RocksdbRdOnly is false\n", metaNode.Addr)
+			if metaNode.RocksdbRdOnly {
+				fmt.Fprintf(&unusableBuf, "%s RocksdbRdOnly is true\n", metaNode.Addr)
 				return true
 			}
 			if !IsRocksdbDiskUsageLow(metaNode) {
@@ -2621,7 +2621,7 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(param *MetaPartitionPlanUser
 
 	err = c.FindAddLearnerDestination(plan, param)
 	if err != nil {
-		log.LogErrorf("FindAddLearnerDestination error name(%s) start(%d) end(%d) mode(%d) cnt(%d): %s",
+		log.LogWarnf("FindAddLearnerDestination error name(%s) start(%d) end(%d) mode(%d) cnt(%d): %s",
 			param.Name, param.StartID, param.EndID, param.Mode, param.Count, err.Error())
 		return plan, err
 	}
@@ -2678,6 +2678,11 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 		}
 		count := GetMetaPartitionReadyReplicaCount(plan, mp)
 		if count >= plan.ModeCnt {
+			continue
+		}
+		learnerCount := GetMetaPartitionLearnerCount(mp)
+		if learnerCount >= plan.ModeCnt {
+			log.LogWarnf("mp(%d) already has (%d) learners modeCount(%d), skip", mp.PartitionID, learnerCount, plan.ModeCnt)
 			continue
 		}
 
@@ -2741,7 +2746,7 @@ func (c *Cluster) FindAddLearnerDestination(migratePlan *proto.ClusterPlan, para
 
 			if i <= 0 {
 				migratePlan.Msg = fmt.Sprintf("require to migrate (%d) mp, but not create plan", len(migratePlan.Plan))
-				log.LogErrorf(migratePlan.Msg)
+				log.LogWarnf(migratePlan.Msg)
 				return
 			}
 
@@ -2774,13 +2779,26 @@ func (c *Cluster) AddLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan
 		log.LogWarnf("mp(%d) already has (%d) ready replicas, no need to fill learner plan", mpPlan.ID, count)
 		return fmt.Errorf("mp(%d) already has (%d) ready replicas, no need to fill learner plan", mpPlan.ID, count)
 	}
+	count = migratePlan.ModeCnt - count
+
+	learnerCount := GetMetaPartitionLearnerCount(mp)
+	if (count + learnerCount) > proto.MaxMetaPartitionLearnerNum {
+		count = proto.MaxMetaPartitionLearnerNum - learnerCount
+		mpPlan.Msg = fmt.Sprintf("mp(%d) already has (%d) learners, only add (%d) learners", mpPlan.ID, learnerCount, count)
+		log.LogWarnf(mpPlan.Msg)
+	}
+
+	if count <= 0 {
+		log.LogInfof("mp(%d) no need to add learners, count: %d", mpPlan.ID, count)
+		return nil
+	}
 
 	getParam := &GetMigrateAddrParam{
 		Topo:        migratePlan.Low,
 		RocksdbTopo: migratePlan.RocksdbLow,
 		ZoneName:    migratePlan.ZoneName,
 		NodeSetID:   migratePlan.NodeSetID,
-		RequestNum:  migratePlan.ModeCnt - count,
+		RequestNum:  count,
 		LeastSize:   mpPlan.Original[0].SrcMemSize,
 		IsRocksdb:   migratePlan.Mode == proto.StoreModeRocksDb,
 		RackLevel:   migratePlan.RackLevel,
@@ -2852,9 +2870,7 @@ func (c *Cluster) RemoveRedundantMetaReplica(mp *MetaPartition, excludeAddrs []s
 
 func TryToSelectOneReplica(mp *MetaPartition, excludeAddrs []string, param *MetaPartitionPlanUserParams) (string, error) {
 	excludeAddrsBackup := make([]string, 0, len(excludeAddrs)+1)
-	for _, addr := range excludeAddrs {
-		excludeAddrsBackup = append(excludeAddrsBackup, addr)
-	}
+	excludeAddrsBackup = append(excludeAddrsBackup, excludeAddrs...)
 	hasLeader := false
 	for _, mr := range mp.Replicas {
 		if mr.IsLeader {
@@ -3413,6 +3429,16 @@ func GetMetaPartitionLearnerList(mp *MetaPartition) []string {
 		}
 	}
 	return learnerList
+}
+
+func GetMetaPartitionLearnerCount(mp *MetaPartition) int {
+	count := 0
+	for _, peer := range mp.Peers {
+		if peer.Type == raftProto.PeerLearner {
+			count += 1
+		}
+	}
+	return count
 }
 
 func GetMetaPartitionReadyReplicaCount(plan *proto.ClusterPlan, mp *MetaPartition) int {

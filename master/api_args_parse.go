@@ -921,8 +921,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	storeMode := int(proto.StoreModeMem)
+	req.storeMode = proto.StoreModeDef
 	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
+		var storeMode int
 		storeMode, err = strconv.Atoi(storeModeStr)
 		if err != nil {
 			err = unmatchedKey(StoreModeKey)
@@ -932,8 +933,8 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 			err = unmatchedKey(StoreModeKey)
 			return
 		}
+		req.storeMode = proto.StoreMode(storeMode)
 	}
-	req.storeMode = proto.StoreMode(storeMode)
 
 	return
 }
@@ -2174,6 +2175,7 @@ func parseSetConfigParam(r *http.Request) (config map[string]string, err error) 
 		flashHotKeyMissCount,
 		flashReadFlowLimit,
 		flashWriteFlowLimit,
+		cfgDefaultVolStoreMode,
 	}
 	for _, key := range keyList {
 		if value := r.FormValue(key); value != "" {

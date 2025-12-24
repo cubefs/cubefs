@@ -4680,8 +4680,13 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlashNodeTimeoutCount:        req.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   req.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: req.remoteCacheSameRegionTimeout,
-		DefaultStoreMode:             req.storeMode,
 		Status:                       proto.VolStatusInitializing,
+	}
+
+	if req.storeMode == proto.StoreModeMem || req.storeMode == proto.StoreModeRocksDb {
+		vv.DefaultStoreMode = req.storeMode
+	} else {
+		vv.DefaultStoreMode = c.cfg.DefaultVolStoreMode
 	}
 
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, 0)

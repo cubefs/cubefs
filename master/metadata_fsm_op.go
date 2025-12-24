@@ -101,6 +101,7 @@ type clusterValue struct {
 	DpLimitSsdFactor                       uint64
 	DpLimitHddBaseCount                    uint64
 	DpLimitHddFactor                       uint64
+	DefaultVolStoreMode                    proto.StoreMode
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -167,6 +168,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DpLimitSsdFactor:                       c.cfg.DpLimitSsdFactor,
 		DpLimitHddBaseCount:                    c.cfg.DpLimitHddBaseCount,
 		DpLimitHddFactor:                       c.cfg.DpLimitHddFactor,
+		DefaultVolStoreMode:                    c.cfg.DefaultVolStoreMode,
 	}
 	return cv
 }
@@ -1544,6 +1546,12 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.DpLimitHddFactor = cv.DpLimitHddFactor
 		log.LogInfof("action[loadClusterValue] dp limit params SSD(base=%d,factor=%d) HDD(base=%d,factor=%d)",
 			c.cfg.DpLimitSsdBaseCount, c.cfg.DpLimitSsdFactor, c.cfg.DpLimitHddBaseCount, c.cfg.DpLimitHddFactor)
+
+		if cv.DefaultVolStoreMode == proto.StoreModeMem || cv.DefaultVolStoreMode == proto.StoreModeRocksDb {
+			c.cfg.DefaultVolStoreMode = cv.DefaultVolStoreMode
+		} else {
+			c.cfg.DefaultVolStoreMode = proto.StoreModeMem
+		}
 	}
 
 	return

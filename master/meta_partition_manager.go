@@ -402,14 +402,14 @@ func (c *Cluster) validateLearnerRecoveryStatus(mp *MetaPartition, dstAddr strin
 	}
 
 	// Check sync progress
-	var applyIdDiff uint64
+	var commitDiff uint64
 	if leaderResponse.RaftInfo.RaftStatus.Commit >= learnerReplicaStatus.Commit {
-		applyIdDiff = leaderResponse.RaftInfo.RaftStatus.Commit - learnerReplicaStatus.Commit
+		commitDiff = leaderResponse.RaftInfo.RaftStatus.Commit - learnerReplicaStatus.Commit
 	} else {
-		applyIdDiff = learnerReplicaStatus.Commit - leaderResponse.RaftInfo.RaftStatus.Commit
+		commitDiff = learnerReplicaStatus.Commit - leaderResponse.RaftInfo.RaftStatus.Commit
 	}
-	if applyIdDiff >= defaultMinusOfApplyID {
-		return fmt.Errorf("applyId difference[%v] >= 1000 for mp[%v]", applyIdDiff, mp.PartitionID)
+	if commitDiff >= defaultMinusOfCommit {
+		return fmt.Errorf("applyId difference[%v] >= 1000 for mp[%v]", commitDiff, mp.PartitionID)
 	}
 
 	return nil

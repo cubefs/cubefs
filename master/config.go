@@ -82,6 +82,8 @@ const (
 	flashWriteFlowLimit          = "flashWriteFlowLimit"
 	flashKeyFlowLimit            = "flashKeyFlowLimit"
 	remoteClientFlowLimit        = "remoteClientFlowLimit"
+
+	cfgDefaultVolStoreMode = "defaultVolStoreMode"
 )
 
 // default value
@@ -244,6 +246,8 @@ type clusterConfig struct {
 	DpLimitSsdFactor             uint64
 	DpLimitHddBaseCount          uint64
 	DpLimitHddFactor             uint64
+
+	DefaultVolStoreMode pt.StoreMode
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

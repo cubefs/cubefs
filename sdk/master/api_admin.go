@@ -495,7 +495,9 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParamAny("flashNodeTimeoutCount", flashNodeTimeoutCount)
 	request.addParamAny("remoteCacheSameZoneTimeout", remoteCacheSameZoneTimeout)
 	request.addParamAny("remoteCacheSameRegionTimeout", remoteCacheSameRegionTimeout)
-	request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
+	if storeMode != proto.StoreModeDef {
+		request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
+	}
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
 	}

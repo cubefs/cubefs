@@ -818,6 +818,7 @@ func createDefaultReq(name string, owner string) *createVolReq {
 		volType:         proto.VolumeTypeHot,
 		qosLimitArgs:    &qosArgs{},
 		volStorageClass: defaultVolStorageClass,
+		storeMode:       proto.StoreModeMem,
 	}
 }
 
