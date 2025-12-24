@@ -8,7 +8,7 @@
 ``` bash
 #!/bin/bash
 set -e
-TARGET_PATH="/home/service/chubaofs/adls/mnt-perform-test" # mount point of CubeFS volume
+TARGET_PATH="/home/service/cubefs/adls/mnt-perform-test" # mount point of CubeFS volume
 for FILE_SIZE in 1024 2048 4096 8192 16384 32768 65536 131072 # file size
 do
     CMD="/usr/lib64/openmpi/bin/mpirun --allow-run-as-root -mca plm_rsh_args '-p 18822' -np 512 --hostfile hfile64 mdtest -n 1000 -w $FILE_SIZE -e $FILE_SIZE -y -u -i 3 -N 1 -F -R -d $TARGET_PATH"
