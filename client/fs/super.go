@@ -91,8 +91,9 @@ type Super struct {
 	bc           *bcache.BcacheClient
 	ebsc         *blobstore.BlobStoreClient
 
-	taskPool []common.TaskPool
-	closeC   chan struct{}
+	taskPool    []common.TaskPool
+	readDirPool *common.TaskPool
+	closeC      chan struct{}
 
 	// warm up configurable parameters
 	readDirLimit          int64
@@ -232,6 +233,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.stopWarmMeta = opt.StopWarmMeta
 	s.metaCacheAcceleration = opt.MetaCacheAcceleration
 	s.minimumNlinkReadDir = opt.MinimumNlinkReadDir
+	if s.metaCacheAcceleration {
+		tp := common.New(64, 640)
+		s.readDirPool = &tp
+	}
 
 	extentConfig := &stream.ExtentConfig{
 		Volume:            opt.Volname,
