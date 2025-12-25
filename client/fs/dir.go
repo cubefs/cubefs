@@ -484,11 +484,13 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				missCache, d.info.Nlink, atomic.LoadUint32(&d.missCount), d.super.metaCacheAcceleration, d.info.Inode, d.getCwd())
 			atomic.StoreInt64(&d.lastTime, now.Unix())
 			atomic.StoreUint32(&d.missCount, 0)
-			meta.GetExtetnsPool.Run(func() {
-				log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", d.info.Inode, d.getCwd())
-				auditlog.LogClientOp("TriggerReadDirAllParent", d.getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
-				d.ReadDirAll(context.Background())
-			})
+			if d.super.readDirPool != nil {
+				d.super.readDirPool.Run(func() {
+					log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", d.info.Inode, d.getCwd())
+					auditlog.LogClientOp("TriggerReadDirAllParent", d.getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
+					d.ReadDirAll(context.Background())
+				})
+			}
 		}
 	}
 	fullPath := req.Name
