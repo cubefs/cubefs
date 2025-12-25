@@ -970,6 +970,16 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
+	// Optimize: directly return empty value for security.capability to avoid frequent server queries
+	// This avoids backend service access for system xattr that is frequently queried during write operations
+	if name == "security.capability" {
+		resp.Xattr = []byte{}
+		if log.EnableDebug() {
+			log.LogDebugf("TRACE GetXattr: ino(%v) name(%v) (optimized, returning empty)", ino, name)
+		}
+		return nil
+	}
+
 	if name == meta.SummaryKey {
 		var summaryInfo meta.SummaryInfo
 		summaryInfo, err = d.super.mw.GetSummary_ll(ino, 20)
