@@ -135,6 +135,7 @@ func testConfig(t *testing.T) {
 		{`"cachePercent":0.2,`, `"cacheTotal":1024,`},
 		{fmt.Sprintf("\"diskDataPath\":[\"%s\"],", "/cfs/tmpfs:0"), `"diskDataPath":[],`},
 		{`"disableTmpfs": true,`},
+		{`"reservedSpace":1,`},
 		{fmt.Sprintf("\"masterAddr\":[\"%s\"],", masterAddr), `"masterAddr":[],`},
 	} {
 		for _, line := range lines[1:] {
