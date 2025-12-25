@@ -1547,7 +1547,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		log.LogInfof("action[loadClusterValue] dp limit params SSD(base=%d,factor=%d) HDD(base=%d,factor=%d)",
 			c.cfg.DpLimitSsdBaseCount, c.cfg.DpLimitSsdFactor, c.cfg.DpLimitHddBaseCount, c.cfg.DpLimitHddFactor)
 
-		if cv.DefaultVolStoreMode == proto.StoreModeMem || cv.DefaultVolStoreMode == proto.StoreModeRocksDb {
+		if cv.DefaultVolStoreMode.Valid() {
 			c.cfg.DefaultVolStoreMode = cv.DefaultVolStoreMode
 		} else {
 			c.cfg.DefaultVolStoreMode = proto.StoreModeMem

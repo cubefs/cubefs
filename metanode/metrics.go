@@ -37,9 +37,11 @@ const (
 	MetricConnectionCount          = "connectionCnt"
 	MetricFileStats                = "fileStats"
 	RocksdbStats                   = "rocksdbStats"
+	RocksdbDiskUsage               = "rocksdbDiskUsage"
 
 	// Timeout for metrics collection
 	MetricsCollectionTimeout = 30 * time.Second
+	RocksdbDiskUsageHigh     = 0.8
 )
 
 // MetaNodeMetrics holds all metrics for the meta node
@@ -64,6 +66,7 @@ type MetaNodeMetrics struct {
 	MetricMetaPartitionDentryCount *exporter.GaugeVec
 	MetricFileStats                *exporter.GaugeVec
 	RocksdbStats                   *exporter.GaugeVec
+	RocksdbDiskUsage               *exporter.GaugeVec
 
 	metricStopCh chan struct{}
 	ctx          context.Context
@@ -85,6 +88,7 @@ func (m *MetaNode) startStat() {
 		MetricMetaPartitionDentryCount: exporter.NewGaugeVec(MetricMetaPartitionDentryCount, "", []string{"volName"}),
 		MetricFileStats:                exporter.NewGaugeVec(MetricFileStats, "", []string{"volName", "sizeRange"}),
 		RocksdbStats:                   exporter.NewGaugeVec(RocksdbStats, "", []string{"rocksdbDir", "key"}),
+		RocksdbDiskUsage:               exporter.NewGaugeVec(RocksdbDiskUsage, "", []string{"rocksdbDir"}),
 	}
 
 	go m.collectPartitionMetrics()
@@ -184,6 +188,7 @@ func (m *MetaNode) collectPartitionMetrics() {
 			if m.rocksdbEnableStats {
 				m.updateRocksdbStatsMetrics()
 			}
+			m.updateRocksdbDiskUsageMetrics()
 		}
 	}
 }
@@ -274,6 +279,27 @@ func getStatsP99(stats string, statsList []string) map[string]float64 {
 	}
 
 	return statsMap
+}
+
+func (m *MetaNode) updateRocksdbDiskUsageMetrics() {
+	m.metrics.RocksdbDiskUsage.Reset()
+	for _, disk := range m.disks {
+		if !disk.IsRocksDBDisk {
+			continue
+		}
+		availableTotal := disk.Total - float64(disk.ReservedSpace)
+		if availableTotal <= 0 {
+			m.metrics.RocksdbDiskUsage.SetWithLabelValues(1.0, disk.Path)
+			continue
+		}
+		usage := disk.Used / availableTotal
+		if usage > 1 {
+			usage = 1
+		}
+		if usage > RocksdbDiskUsageHigh {
+			m.metrics.RocksdbDiskUsage.SetWithLabelValues(usage, disk.Path)
+		}
+	}
 }
 
 // stopStat stops the metrics collection

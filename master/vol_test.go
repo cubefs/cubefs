@@ -100,6 +100,7 @@ func TestCreateColdVol(t *testing.T) {
 	checkCreateVolParam(volCapacityKey, req, "", 100, t)
 	req[remoteCacheReadTimeout] = proto.ReadDeadlineTime
 	req[zoneNameKey] = testZone2
+	req[StoreModeKey] = proto.StoreModeMem
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
 	// check default val of normal vol
@@ -215,6 +216,7 @@ func createVol(kv map[string]interface{}, t *testing.T) {
 	checkWithDefault(kv, volOwnerKey, testOwner)
 	checkWithDefault(kv, zoneNameKey, testZone2)
 	checkWithDefault(kv, volCapacityKey, 300)
+	checkWithDefault(kv, StoreModeKey, proto.StoreModeMem)
 
 	switch kv[volTypeKey].(int) {
 	case proto.VolumeTypeHot:

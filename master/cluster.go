@@ -4683,10 +4683,12 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		Status:                       proto.VolStatusInitializing,
 	}
 
-	if req.storeMode == proto.StoreModeMem || req.storeMode == proto.StoreModeRocksDb {
+	if req.storeMode.Valid() {
 		vv.DefaultStoreMode = req.storeMode
-	} else {
+	} else if c.cfg.DefaultVolStoreMode.Valid() {
 		vv.DefaultStoreMode = c.cfg.DefaultVolStoreMode
+	} else {
+		vv.DefaultStoreMode = proto.StoreModeMem
 	}
 
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, 0)

@@ -453,7 +453,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 
 	storeModeStr := cfg.GetString(cfgDefaultVolStoreMode)
 	if storeModeStr != "" {
-		storeModeStr := strings.ToLower(storeModeStr)
+		storeModeStr = strings.ToLower(storeModeStr)
 		switch storeModeStr {
 		case "memory":
 			m.config.DefaultVolStoreMode = proto.StoreModeMem

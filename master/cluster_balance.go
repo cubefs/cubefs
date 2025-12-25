@@ -2881,7 +2881,7 @@ func TryToSelectOneReplica(mp *MetaPartition, excludeAddrs []string, param *Meta
 	}
 
 	// select one replica that is not leader and not in excludeAddr
-	srcAddr := SelectOneReplicaToDelete(mp, excludeAddrsBackup, param)
+	srcAddr := SelectOneReplicaStrickly(mp, excludeAddrsBackup, param)
 	if srcAddr != "" {
 		return srcAddr, nil
 	}
@@ -2901,7 +2901,7 @@ func TryToSelectOneReplica(mp *MetaPartition, excludeAddrs []string, param *Meta
 	return srcAddr, nil
 }
 
-func SelectOneReplicaToDelete(mp *MetaPartition, excludeAddrs []string, param *MetaPartitionPlanUserParams) string {
+func SelectOneReplicaStrickly(mp *MetaPartition, excludeAddrs []string, param *MetaPartitionPlanUserParams) string {
 	for _, mr := range mp.Replicas {
 		if contains(excludeAddrs, mr.Addr) {
 			continue
@@ -2925,6 +2925,15 @@ func SelectOneReplicaToDelete(mp *MetaPartition, excludeAddrs []string, param *M
 			}
 		}
 	}
+	return ""
+}
+
+func SelectOneReplicaToDelete(mp *MetaPartition, excludeAddrs []string, param *MetaPartitionPlanUserParams) string {
+	addr := SelectOneReplicaStrickly(mp, excludeAddrs, param)
+	if addr != "" {
+		return addr
+	}
+
 	for _, mr := range mp.Replicas {
 		if contains(excludeAddrs, mr.Addr) {
 			continue

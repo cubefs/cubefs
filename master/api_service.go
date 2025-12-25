@@ -7850,6 +7850,9 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		if err != nil {
 			return err
 		}
+		if storeMode != int(proto.StoreModeMem) && storeMode != int(proto.StoreModeRocksDb) {
+			return fmt.Errorf("invalid default volume store mode: %s", value)
+		}
 		oldStoreMode = m.config.DefaultVolStoreMode
 		m.config.DefaultVolStoreMode = proto.StoreMode(storeMode)
 	default:
