@@ -19,20 +19,22 @@ pkg_check_modules(SPDK spdk_nvme spdk_env_dpdk)
 if (SPDK_FOUND)
     pkg_check_modules(OPENSSL REQUIRED openssl)
 endif()
-message(STATUS "SPDK libs:" SPDK_LIBRARIES)
+message(STATUS "SPDK libs: " ${SPDK_LIBRARIES})
 
-FILE(GLOB common_srcs ${PROJECT_SOURCE_DIR}/common/*.cc)
-FILE(GLOB net_srcs ${PROJECT_SOURCE_DIR}/common/net/*.cc)
-FILE(GLOB proto_files ${PROJECT_SOURCE_DIR}/common/proto/*.proto)
-FOREACH(proto_file ${proto_files})
-    STRING(REGEX REPLACE "[^/]proto" "" proto_file_name ${proto_file})
-    LIST(APPEND proto_srcs "${proto_file_name}.pb.cc")
-    ADD_CUSTOM_COMMAND(
-        OUTPUT "${proto_file_name}.pb.h" "${proto_file_name}.pb.cc"
-        COMMAND protoc --proto_path=${PROJECT_SOURCE_DIR}/common/proto --cpp_out=${PROJECT_SOURCE_DIR}/common/proto/ ${proto_file}
-        DEPENDS ${proto_file}
+file(GLOB_RECURSE COMMON_SRC ${PROJECT_SOURCE_DIR}/common/*.cc)
+
+file(GLOB PROTO_FILES ${PROJECT_SOURCE_DIR}/common/proto/*.proto)
+set(PROTO_SRC "")
+
+foreach(PROTO_FILE ${PROTO_FILES})
+    string(REGEX REPLACE "[^/]proto" "" PROTO_FILE_NAME ${PROTO_FILE})
+    list(APPEND PROTO_SRC "${PROTO_FILE_NAME}.pb.cc")
+    add_custom_command(
+        OUTPUT "${PROTO_FILE_NAME}.pb.h" "${PROTO_FILE_NAME}.pb.cc"
+        COMMAND protoc --proto_path=${PROJECT_SOURCE_DIR}/common/proto --cpp_out=${PROJECT_SOURCE_DIR}/common/proto/ ${PROTO_FILE}
+        DEPENDS ${PROTO_FILE}
     )
-ENDFOREACH(proto_file)
+endforeach()
 
 include_directories(${PROJECT_SOURCE_DIR})
 add_definitions(-DSPDLOG_FMT_EXTERNAL)
@@ -40,14 +42,8 @@ if (${SPDK_FOUND})
     add_definitions(-DHAS_SPDK)
 endif()
 
-add_library(COMMON_OBJS OBJECT ${common_srcs})
+add_library(COMMON_OBJS OBJECT ${COMMON_SRC} ${PROTO_SRC})
 target_link_libraries(COMMON_OBJS Seastar::seastar)
-
-add_library(PROTO_OBJS OBJECT ${proto_srcs})
-target_link_libraries(PROTO_OBJS Seastar::seastar)
-
-add_library(NET_OBJS OBJECT ${net_srcs})
-target_link_libraries(NET_OBJS Seastar::seastar)
 
 add_subdirectory(blobnode)
 add_subdirectory(demos)

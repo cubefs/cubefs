@@ -32,9 +32,7 @@ endif()
 add_executable(net_server_router_test net_server_router_test.cc mock_stream.h)
 target_link_libraries(net_server_router_test
     PRIVATE
-        $<TARGET_OBJECTS:NET_OBJS>
         $<TARGET_OBJECTS:COMMON_OBJS>
-        $<TARGET_OBJECTS:PROTO_OBJS>
         protobuf::libprotobuf
         Seastar::seastar
         Seastar::seastar_testing
