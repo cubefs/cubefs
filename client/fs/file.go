@@ -815,6 +815,15 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 	name := req.Name
 	size := req.Size
 	pos := req.Position
+
+	// Optimize: directly return empty value for security.capability to avoid frequent server queries
+	// This avoids backend service access for system xattr that is frequently queried during write operations
+	if name == "security.capability" {
+		resp.Xattr = []byte{}
+		log.LogDebugf("TRACE GetXattr: ino(%v) name(%v) (optimized, returning empty)", ino, name)
+		return nil
+	}
+
 	info, err := f.super.mw.XAttrGet_ll(ino, name)
 	if err != nil {
 		log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
