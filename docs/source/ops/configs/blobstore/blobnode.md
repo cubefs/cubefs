@@ -69,6 +69,7 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "set_default_switch": "whether to set switch.suggest you set it to true,will set: need_compact_check,allow_force_compact,allow_clean_trash",
     "must_mount_point": "whether the data storage directory must be a mount point",
     "must_mount_point_meta": "if meta_root_prefix is ​​configured, turning on must_mount_point_meta will check if the metadata directory of each disk is a mount point, default false",
+    "enable_put_shard_verify": "enable true to check if the shard meta exists before writing to the bid/shard. if it exists, return shard.crc directly to avoid uploading the same bid/shard multiple times. disable false to allow multiple uploads of the same bid/shard, relying on chunk compacting for garbage collection. default false",
     "write_thread_cnt": "limit the number of write threads, default 4",
     "read_thread_cnt": "limit the number of read threads, default 4",
     "delete_thread_cnt": "limit the number of delete threads, default 1",

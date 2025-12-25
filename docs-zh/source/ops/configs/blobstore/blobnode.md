@@ -68,6 +68,7 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 		"set_default_switch": "是否默认设置开关.建议该项填true,会设置need_compact_check,allow_force_compact,allow_clean_trash",
 		"must_mount_point": "数据存放目录是否强制是挂载点",
 		"must_mount_point_meta": "如果配置了 meta_root_prefix，开启 must_mount_point_meta 后会检查每个磁盘的元数据目录是否为挂载点，默认值 false",
+		"enable_put_shard_verify": "开启 true 表示在写入 bid/shard 前先检查 shard meta 是否存在，若存在直接返回 shard.crc，避免重复上传同一个 bid/shard 多次，关闭 false 表示允许对同一个 bid/shard 上传多次，依赖 chunk compacting 进行垃圾回收，默认值 false",
 		"write_thread_cnt": "限制写线程个数, 默认值4",
 		"read_thread_cnt": "限制读线程个数, 默认值4",
 		"delete_thread_cnt": "限制删线程个数, 默认值1",

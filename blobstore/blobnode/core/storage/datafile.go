@@ -512,6 +512,10 @@ func (cd *datafile) Destroy(ctx context.Context) (err error) {
 	return os.Remove(cd.File)
 }
 
+func (cd *datafile) GetConfig() (config *core.Config) {
+	return cd.conf
+}
+
 func (cd *datafile) String() string {
 	return fmt.Sprintf(`
 -----------------------------
