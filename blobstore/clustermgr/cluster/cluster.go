@@ -970,6 +970,7 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 			if diskStatInfosM[idc] == nil {
 				diskStatInfosM[idc] = &clustermgr.DiskStatInfo{IDC: idc}
 			}
+			status := disk.info.Status
 			blobNodeHeartbeatInfo, isBlobNodeDisk := disk.info.extraInfo.(*clustermgr.DiskHeartBeatInfo)
 			if isBlobNodeDisk {
 				free = blobNodeHeartbeatInfo.Free
@@ -980,8 +981,10 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 					diskFreeItem = blobNodeHeartbeatInfo.OversoldFreeChunkCnt
 				}
 				diskMaxItem = blobNodeHeartbeatInfo.MaxChunkCnt
-				diskStatInfosM[idc].TotalFreeChunk += originalDiskFreeItem
-				diskStatInfosM[idc].TotalOversoldFreeChunk += diskFreeItem
+				if status == proto.DiskStatusNormal {
+					diskStatInfosM[idc].TotalFreeChunk += originalDiskFreeItem
+					diskStatInfosM[idc].TotalOversoldFreeChunk += diskFreeItem
+				}
 				diskStatInfosM[idc].TotalChunk += diskMaxItem
 			}
 			shardNodeHeartbeatInfo, isShardNodeDisk := disk.info.extraInfo.(*clustermgr.ShardNodeDiskHeartbeatInfo)
@@ -990,11 +993,12 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 				size = shardNodeHeartbeatInfo.Size
 				diskFreeItem = int64(shardNodeHeartbeatInfo.FreeShardCnt)
 				diskMaxItem = int64(shardNodeHeartbeatInfo.MaxShardCnt)
-				diskStatInfosM[idc].TotalFreeShard += diskFreeItem
+				if status == proto.DiskStatusNormal {
+					diskStatInfosM[idc].TotalFreeShard += diskFreeItem
+				}
 				diskStatInfosM[idc].TotalShard += diskMaxItem
 			}
 			readonly := disk.info.Readonly
-			status := disk.info.Status
 			// rack can be the same in different idc, so we make rack string with idc
 			rack = idc + "-" + rack
 			spaceStatInfo.TotalDisk += 1
