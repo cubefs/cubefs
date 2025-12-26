@@ -48,7 +48,7 @@ var AddrDatabase = make(map[uint64]string)
 
 type clusterConfig struct {
 	cfsProto.RemoteCacheConfig
-	httpProxyPoolSize uint64
+	httpProxyPoolSize int
 	heartbeatPort     int64
 	replicaPort       int64
 	peerAddrs         []string

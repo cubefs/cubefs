@@ -163,7 +163,7 @@ func (m *FlashGroupManager) newReverseProxy() *httputil.ReverseProxy {
 	tr := &http.Transport{}
 	if m.config != nil {
 		tr = proto.GetHttpTransporter(&proto.HttpCfg{
-			PoolSize: int(m.config.httpProxyPoolSize),
+			PoolSize: m.config.httpProxyPoolSize,
 		})
 	}
 
