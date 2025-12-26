@@ -13,6 +13,15 @@ Deploy flashgroupmanager when needed
 Clients should use versions later than 3.2.0. Older versions need to be upgraded promptly; otherwise, there will be a risk of compromising stability.
 
 ### **Main Feature**
+
+#### High-throughput LLM/MLLM training with 8ms+ compute–storage latency tolerance
++ `client`: Support asynchronous flush for extent handler to improve write performance. Write speed exceeds 1.2 GB/s; on a high-spec H20 training node, a single client can achieve 10+ GB/s aggregate throughput with 10 concurrent large-file writes.(#3973,@bboyCH4)
++ `client`: Optimize the client read-ahead mechanism and memory footprint; single-file read speeds exceed 2 GB/s. (#3982,@bboyCH4)
++ `client`: Metadata cache acceleration for small-file prewarm (#3995,@Victor1319)
+
+Note: Refer to the latest community documentation for enabling and tuning.
+
+#### Distributed cache can run as an independent service
 + `flashgroupmanager`: Introduce flashgroupmanager node and topology to support flashnode cluster management. (@bboyCH4)
 + `flashnode`: Support block-level data read and write operations.  (#3977, @clinx)
 + `tools`: Add `rctest` (benchmark) and `rcconfig` (config) tools for remote cache system. (#3981,@bboyCH4,@clinx)
@@ -20,7 +29,6 @@ Clients should use versions later than 3.2.0. Older versions need to be upgraded
 + `client`: Implement NearRead strategy to prioritize reading from the nearest replica to reduce latency. (#3976,@zhumingze1108)
 
 ### **Enhance**
-+ `client`: Support asynchronous flush for extent handler to improve write performance. (#3973,@bboyCH4)
 + `client`: Fuse library supports parallel processing of FUSE requests to improve concurrency. (#3974,@Victor1319)
 + `client`: Optimize metadata cache performance.  (#3974,@Victor1319)
 + `client`: Add `tcpAliveTime` parameter for better TCP connection management. (#3974,@Victor1319)
@@ -29,7 +37,7 @@ Clients should use versions later than 3.2.0. Older versions need to be upgraded
 + `master`: Add audit logs for `migrateMetaPartition` and record reasons for DP migration/rollback. (#3975,@shuqiang-zheng)
 + `datanode`: Support reason passthrough for DP migration. (#3975,@shuqiang-zheng)
 + `flashnode`: Optimize cache operation opcodes and processing logic. (#3988,@clinx,@bboyCH4)
-+ `client`:Optimize the client-side readahead mechanism to enhance sequential read performance. (#3982,@bboyCH4) 
+
 
 
 ### **Bugfix**
@@ -53,6 +61,16 @@ Upgrade lcnode and deploy flashnode when needed.
 Clients should use versions later than 3.2.0. Older versions need to be upgraded promptly; otherwise, there will be a risk of compromising stability.
 
 ### **Main Feature**
+
+####  For large language models (LLMs) and multimodal LLM (MLLM) training, delivers high throughput (LLM checkpoints) and tolerates high-latency compute–storage separation (8 ms+), achieving training durations comparable to public cloud deployments in the same region
+
+
+
+
+
+
+
+
 + `master/lcnode`: Lifecycle adds filtering rule based on file size. (#3893, @Victor1319)
 + `master`: dp decommission support priority&concurrency control. (#3891, @shuqiang-zheng)
 + `master`: Add master replica abnormality alarm. (#3882, @zhumingze1108)
