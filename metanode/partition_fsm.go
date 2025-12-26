@@ -804,7 +804,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	// NOTE: open write batch for write
 	dbWriteHandle, err = mp.inodeTree.CreateBatchWriteHandle()
 	if err != nil {
-		log.LogErrorf("ApplyBaseSnapshot: metaPartition(%v) create batch write handle failed:%v", mp.config.PartitionId, err)
+		log.LogErrorf("ApplySnapshot: metaPartition(%v) create batch write handle failed:%v", mp.config.PartitionId, err)
 		return
 	}
 	defer mp.inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
@@ -860,11 +860,11 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		if err != nil && err != io.EOF {
 			if err == ErrRocksdbOperation {
 				log.LogErrorf("[ApplySnapshot] failed to operate rocksdb, err(%v)", err)
-				exporter.WarningRocksdbError(fmt.Sprintf("action[ApplyBaseSnapshot] clusterID[%s] volumeName[%s] partitionID[%v]"+
+				exporter.WarningRocksdbError(fmt.Sprintf("action[ApplySnapshot] clusterID[%s] volumeName[%s] partitionID[%v]"+
 					" apply base snapshot failed witch rocksdb error", mp.manager.metaNode.clusterId, mp.config.VolName,
 					mp.config.PartitionId))
 			}
-			log.LogErrorf("ApplyBaseSnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
+			log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
 			return
 		}
 		if err == io.EOF {
@@ -897,7 +897,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				log.LogErrorf("[ApplySnapshot] mp(%v) failed to clear handle", mp.config.PartitionId)
 				err = nil
 			}
-			log.LogWarnf("ApplySnapshot: clear batch write handle success, partition(%v), applyId(%v)", mp.config.PartitionId, appIndexID)
 
 			err = mp.flushAndCheckApplyID(appIndexID)
 			if err != nil {
@@ -969,6 +968,10 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		nextStart := time.Now()
 		data, err = iter.Next()
 		if err != nil {
+			if err != io.EOF {
+				log.LogErrorf("ApplySnapshot: iter.Next failed, partitionID(%v) index(%v) appIndexID(%v) err(%v)",
+					mp.config.PartitionId, index, appIndexID, err)
+			}
 			return
 		}
 		nextCost := time.Since(nextStart)
@@ -1053,7 +1056,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				cursor = ino.Inode
 			}
 			if _, _, err = mp.inodeTree.ReplaceOrInsert(dbWriteHandle, ino, true); err != nil {
-				log.LogErrorf("ApplyBaseSnapshot: create inode failed, partitionID(%v) inode(%v)", mp.config.PartitionId, ino)
+				log.LogErrorf("ApplySnapshot: create inode failed, partitionID(%v) inode(%v)", mp.config.PartitionId, ino)
 				return
 			}
 			log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode[%v].", mp.config.PartitionId, ino)
@@ -1066,7 +1069,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				return
 			}
 			if _, _, err = mp.dentryTree.ReplaceOrInsert(dbWriteHandle, dentry, true); err != nil {
-				log.LogErrorf("ApplyBaseSnapshot: create dentry failed, partitionID(%v) dentry(%v) error(%v)", mp.config.PartitionId, dentry, err)
+				log.LogErrorf("ApplySnapshot: create dentry failed, partitionID(%v) dentry(%v) error(%v)", mp.config.PartitionId, dentry, err)
 				return
 			}
 			log.LogDebugf("ApplySnapshot: create dentry: partitionID(%v) dentry(%v)", mp.config.PartitionId, dentry)
@@ -1076,7 +1079,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				return
 			}
 			if _, _, err = mp.extendTree.ReplaceOrInsert(dbWriteHandle, extend, true); err != nil {
-				log.LogErrorf("ApplyBaseSnapshot: create extentd attributes failed, partitionID(%v) extend(%v) error(%v)", mp.config.PartitionId, extend, err)
+				log.LogErrorf("ApplySnapshot: create extentd attributes failed, partitionID(%v) extend(%v) error(%v)", mp.config.PartitionId, extend, err)
 				return
 			}
 			log.LogDebugf("ApplySnapshot: set extend attributes: partitionID(%v) extend(%v)",
