@@ -1235,6 +1235,27 @@ func (c *Cluster) UpdateMigrateDestination(migratePlan *proto.ClusterPlan, mpPla
 		return err
 	}
 
+	if migratePlan.Type == AddLearner {
+		param := &MetaPartitionPlanUserParams{
+			Mode:               migratePlan.Mode,
+			Count:              migratePlan.ModeCnt,
+			StartID:            migratePlan.StartId,
+			EndID:              migratePlan.EndId,
+			SelectType:         migratePlan.SelectType,
+			ZoneName:           migratePlan.ZoneName,
+			NodeSetID:          migratePlan.NodeSetID,
+			SelectTag:          migratePlan.SelectTag,
+			AutoPromoteLearner: migratePlan.AutoPromote,
+		}
+		err = c.AddLearnerToDestination(migratePlan, mpPlan, param)
+		if err != nil {
+			log.LogErrorf("AddLearnerToDestination error: %s", err.Error())
+			return err
+		}
+
+		return nil
+	}
+
 	// renew the planed destination meta node.
 	if mpPlan.CrossZone {
 		err = FindMigrateDestRetainZone(migratePlan, mpPlan)
