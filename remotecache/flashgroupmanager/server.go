@@ -200,8 +200,7 @@ func (m *FlashGroupManager) checkConfig(cfg *config.Config) (err error) {
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
-
-	m.config.httpProxyPoolSize = uint64(cfg.GetInt64(HttpReversePoolSize))
+	m.config.httpProxyPoolSize = cfg.GetInt(HttpReversePoolSize)
 	if m.config.httpProxyPoolSize < defaultHttpReversePoolSize {
 		m.config.httpProxyPoolSize = defaultHttpReversePoolSize
 	}
