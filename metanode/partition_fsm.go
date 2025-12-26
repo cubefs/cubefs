@@ -784,6 +784,16 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		verList       []*proto.VolVersionInfo
 		dbWriteHandle interface{}
 	)
+	const (
+		// Reduce snapshot apply tail-latency by batching RocksDB commits.
+		// This avoids "each record commit" that can block for a long time (flush/compaction),
+		// which in turn can stall iter.Next() and trigger leader-side write timeouts.
+		applySnapBatchMaxItems = 2000
+		applySnapBatchMaxBytes = 8 * 1024 * 1024
+
+		applySnapSlowNextThreshold   = 5 * time.Second
+		applySnapSlowCommitThreshold = 5 * time.Second
+	)
 	// NOTE: clear mp
 	err = mp.Clear()
 	if err != nil {
@@ -873,6 +883,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			log.LogInfof("mp[%v] updateVerList (%v) seq [%v]", mp.config.PartitionId, mp.multiVersionList.VerList, mp.verSeq)
 			err = nil
 			// NOTE: store rocksdb metadata
+			// Final commit with applyID. (Previous commits during snapshot apply used needCommitApplyID=false.)
 			err = mp.inodeTree.CommitBatchWrite(dbWriteHandle, true)
 			if err != nil {
 				log.LogErrorf("[ApplySnapshot] mp(%v) failed to write mp metadata", mp.config.PartitionId)
@@ -927,10 +938,43 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	var leaderSnapFormatVer uint32
 	leaderSnapFormatVer = math.MaxUint32
 
+	var (
+		batchItems = 0
+		batchBytes = 0
+	)
+
+	flushBatch := func(forceCommitApplyID bool) error {
+		start := time.Now()
+		if err := mp.inodeTree.CommitBatchWrite(dbWriteHandle, forceCommitApplyID); err != nil {
+			log.LogErrorf("ApplySnapshot: commit batch write failed, partitionID(%v) index(%v) forceApplyID(%v) err(%v)",
+				mp.config.PartitionId, index, forceCommitApplyID, err)
+			return err
+		}
+		if err := mp.inodeTree.ClearBatchWriteHandle(dbWriteHandle); err != nil {
+			log.LogErrorf("ApplySnapshot: clear batch write handle failed, partitionID(%v) index(%v) err(%v)",
+				mp.config.PartitionId, index, err)
+			return err
+		}
+		cost := time.Since(start)
+		if cost >= applySnapSlowCommitThreshold {
+			log.LogWarnf("ApplySnapshot: slow commit, partitionID(%v) index(%v) items(%d) bytes(%d) cost(%s) forceApplyID(%v)",
+				mp.config.PartitionId, index, batchItems, batchBytes, cost.String(), forceCommitApplyID)
+		}
+		batchItems = 0
+		batchBytes = 0
+		return nil
+	}
+
 	for {
+		nextStart := time.Now()
 		data, err = iter.Next()
 		if err != nil {
 			return
+		}
+		nextCost := time.Since(nextStart)
+		if nextCost >= applySnapSlowNextThreshold {
+			log.LogWarnf("ApplySnapshot: iter.Next slow, partitionID(%v) index(%v) appIndexID(%v) cost(%s)",
+				mp.config.PartitionId, index, appIndexID, nextCost.String())
 		}
 
 		if mp.raftClosed() {
@@ -1109,14 +1153,16 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			}
 		}
 
-		if err = mp.inodeTree.CommitBatchWrite(dbWriteHandle, true); err != nil {
-			log.LogErrorf("ApplyBaseSnapshot: metaPartition(%v) commit write handle failed:%v", mp.config.PartitionId, err)
-			dbWriteHandle = nil
-			return
-		}
-		if err = mp.inodeTree.ClearBatchWriteHandle(dbWriteHandle); err != nil {
-			log.LogErrorf("ApplyBaseSnapshot: metaPartition(%v) create batch write handle failed:%v", mp.config.PartitionId, err)
-			return
+		// Batch commit to RocksDB to avoid long stalls between iter.Next() calls.
+		batchItems++
+		batchBytes += len(data)
+
+		needFlush := batchItems >= applySnapBatchMaxItems ||
+			batchBytes >= applySnapBatchMaxBytes
+		if needFlush {
+			if err = flushBatch(false); err != nil {
+				return
+			}
 		}
 	}
 }

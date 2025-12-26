@@ -22,7 +22,6 @@ import (
 	"net/http/httputil"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -451,18 +450,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 
 	m.config.MaxWritableDataPartitionCnt = cfg.GetIntWithDefault(cfgMaxWritableDataPartitionCnt, 1000)
 
-	storeModeStr := cfg.GetString(cfgDefaultVolStoreMode)
-	if storeModeStr != "" {
-		storeModeStr = strings.ToLower(storeModeStr)
-		switch storeModeStr {
-		case "memory":
-			m.config.DefaultVolStoreMode = proto.StoreModeMem
-		case "rocksdb":
-			m.config.DefaultVolStoreMode = proto.StoreModeRocksDb
-		default:
-			return fmt.Errorf("Unknown default volume store mode: %s", storeModeStr)
-		}
-	}
 	return
 }
 
