@@ -2,7 +2,6 @@ package flashgroupmanager
 
 import (
 	"fmt"
-	"math"
 	"net/http"
 	"net/http/httputil"
 	"time"
@@ -163,14 +162,8 @@ func (m *FlashGroupManager) registerAPIMiddleware(route *mux.Router) {
 func (m *FlashGroupManager) newReverseProxy() *httputil.ReverseProxy {
 	tr := &http.Transport{}
 	if m.config != nil {
-		ps := m.config.httpProxyPoolSize // uint64
-		if ps > uint64(math.MaxInt) {
-			log.LogErrorf("newReverseProxy httpProxyPoolSize[%d] invalid", ps)
-			return nil
-		}
-		poolSize := int(ps)
 		tr = proto.GetHttpTransporter(&proto.HttpCfg{
-			PoolSize: poolSize,
+			PoolSize: m.config.httpProxyPoolSize,
 		})
 	}
 
