@@ -23,5 +23,5 @@ java/src/main/resources/*.so
 .cache
 .clangd
 blobstore/cpp/build
-blobstore/cpp/common/proto/*.pb.cc
-blobstore/cpp/common/proto/*.pb.h
+blobstore/cpp/**/*.pb.cc
+blobstore/cpp/**/*.pb.h

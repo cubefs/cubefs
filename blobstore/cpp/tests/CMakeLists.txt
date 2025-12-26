@@ -11,6 +11,7 @@ add_executable(trace_test trace_test.cc)
 target_link_libraries(trace_test
     PRIVATE
         $<TARGET_OBJECTS:COMMON_OBJS>
+        protobuf::libprotobuf
         Seastar::seastar
         Seastar::seastar_testing
         Boost::unit_test_framework
@@ -23,6 +24,7 @@ if (benchmark_FOUND)
     target_link_libraries(trace_bench
         PRIVATE
             $<TARGET_OBJECTS:COMMON_OBJS>
+            protobuf::libprotobuf
             Seastar::seastar
             benchmark::benchmark
             benchmark::benchmark_main
