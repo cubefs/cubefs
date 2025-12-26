@@ -676,7 +676,7 @@ func (s *Service) loop() {
 			clusterInfo := clustermgr.ClusterInfo{
 				Region:    s.Region,
 				ClusterID: s.ClusterID,
-				Readonly:  s.Readonly,
+				Readonly:  s.getClusterReadonlyStatus(ctx),
 				Nodes:     make([]string, 0),
 			}
 			spaceStatInfo := s.BlobNodeMgr.Stat(ctx, proto.DiskTypeHDD)

@@ -15,15 +15,22 @@
 package clustermgr
 
 import (
+	"context"
+	"encoding/json"
 	"io"
+	"os"
 	"strconv"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/configmgr"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 /*
@@ -125,7 +132,7 @@ func (s *Service) Stat(c *rpc.Context) {
 	ret.BlobNodeSpaceStat = *(s.BlobNodeMgr.Stat(ctx, proto.DiskTypeHDD))
 	ret.ShardNodeSpaceStat = *(s.ShardNodeMgr.Stat(ctx, proto.DiskTypeNVMeSSD))
 	ret.VolumeStat = s.VolumeMgr.Stat(ctx)
-	ret.ReadOnly = s.Readonly
+	ret.ReadOnly = s.getClusterReadonlyStatus(ctx)
 	c.RespondJSON(ret)
 }
 
@@ -165,6 +172,35 @@ func (s *Service) SnapshotDump(c *rpc.Context) {
 	}
 }
 
+// ClusterSetReadonly switches cluster readonly mode and persists it in config kv.
+func (s *Service) ClusterSetReadonly(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	args := new(clustermgr.SetClusterReadonlyArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+	span.Warnf("accept ClusterSetReadonly request, args: %v", args)
+
+	setArgs := &clustermgr.ConfigSetArgs{
+		Key:   proto.ClusterReadonlyKey,
+		Value: util.Any2String(args.Readonly),
+	}
+	data, err := json.Marshal(setArgs)
+	if err != nil {
+		c.RespondError(errors.Info(apierrors.ErrIllegalArguments).Detail(err))
+		return
+	}
+	proposeInfo := base.EncodeProposeInfo(s.ConfigMgr.GetModuleName(), configmgr.OperTypeSetConfig, data, base.ProposeContext{ReqID: span.TraceID()})
+	if err = s.raftNode.Propose(ctx, proposeInfo); err != nil {
+		span.Error(err)
+		c.RespondError(apierrors.ErrRaftPropose)
+		return
+	}
+	c.Respond()
+}
+
 func (s *Service) checkPeerIDExist(peerID uint64) bool {
 	peers := s.raftNode.Status().Peers
 	found := false
@@ -174,6 +210,24 @@ func (s *Service) checkPeerIDExist(peerID uint64) bool {
 		}
 	}
 	return found
+}
+
+func (s *Service) getClusterReadonlyStatus(ctx context.Context) bool {
+	span := trace.SpanFromContextSafe(ctx)
+	readonlyStatus, err := s.ConfigMgr.Get(ctx, proto.ClusterReadonlyKey) // linear read is not required.
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			span.Warnf("get clusterReadonlyStatus configMgr get failed %v", err)
+		}
+		return s.Config.Readonly
+	}
+	var ret bool
+	err = util.String2Any(readonlyStatus, &ret)
+	if err != nil {
+		span.Warnf("get clusterReadonlyStatus parse failed %v, readonlyStatus %s", err, readonlyStatus)
+		return s.Config.Readonly
+	}
+	return ret
 }
 
 func marshalMemberContext(host string) ([]byte, error) {

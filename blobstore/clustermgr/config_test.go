@@ -45,6 +45,7 @@ func TestConfig(t *testing.T) {
 		// failed case
 		require.Error(t, testClusterClient.SetConfig(ctx, proto.CodeModeConfigKey, string(b)))
 		require.Error(t, testClusterClient.SetConfig(ctx, proto.CodeModeExtendKey, string(b)))
+		require.Error(t, testClusterClient.SetConfig(ctx, proto.ClusterReadonlyKey, string(b)))
 		err = testClusterClient.SetConfig(ctx, proto.VolumeChunkSizeKey, string(b))
 		require.Error(t, err)
 		err = testClusterClient.SetConfig(ctx, proto.ShardInitDoneKey, string(b))

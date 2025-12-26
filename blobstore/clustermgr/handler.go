@@ -190,6 +190,7 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.POST("/bid/alloc", service.BidAlloc, rpc.OptArgsBody())
 
 	//==================manage==========================
+	rpc.RegisterArgsParser(&clustermgr.SetClusterReadonlyArgs{}, "json")
 
 	rpc.POST("/member/add", service.MemberAdd, rpc.OptArgsBody())
 
@@ -200,6 +201,8 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.GET("/stat", service.Stat)
 
 	rpc.GET("/snapshot/dump", service.SnapshotDump)
+
+	rpc.POST("/cluster/set", service.ClusterSetReadonly, rpc.OptArgsQuery())
 
 	//==================kv==========================
 	rpc.RegisterArgsParser(&clustermgr.ListKvOpts{}, "json")

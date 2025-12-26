@@ -119,3 +119,22 @@ func TestManage(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+func TestSetCluster(t *testing.T) {
+	testService, clean := initTestService(t)
+	defer clean()
+	testClusterClient := initTestClusterClient(testService)
+	ctx := newCtx()
+
+	statInfo, err := testClusterClient.Stat(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, statInfo)
+	require.Equal(t, statInfo.ReadOnly, false)
+
+	err = testClusterClient.SetClusterReadonly(ctx, &clustermgr.SetClusterReadonlyArgs{Readonly: true})
+	require.NoError(t, err)
+
+	statInfo, err = testClusterClient.Stat(ctx)
+	require.NoError(t, err)
+	require.Equal(t, statInfo.ReadOnly, true)
+}

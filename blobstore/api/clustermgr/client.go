@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 const (
@@ -133,4 +134,13 @@ func (c *Client) Stat(ctx context.Context) (ret *StatInfo, err error) {
 
 func (c *Client) Snapshot(ctx context.Context) (*http.Response, error) {
 	return c.Get(ctx, "/snapshot/dump")
+}
+
+type SetClusterReadonlyArgs struct {
+	Readonly bool `json:"readonly"`
+}
+
+func (c *Client) SetClusterReadonly(ctx context.Context, args *SetClusterReadonlyArgs) (err error) {
+	err = c.PostWith(ctx, "/cluster/set?readonly="+util.Any2String(args.Readonly), nil, nil)
+	return
 }
