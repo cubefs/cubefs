@@ -238,11 +238,12 @@ func (api *AdminAPI) AddDataReplica(dataPartitionID uint64, nodeAddr, clientIDKe
 	return
 }
 
-func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string) (err error) {
+func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string, raftForceDel bool) (err error) {
 	request := newRequest(get, proto.AdminDeleteMetaReplica).Header(api.h)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("force", strconv.FormatBool(raftForceDel))
 	_, err = api.mc.serveRequest(request)
 	return
 }

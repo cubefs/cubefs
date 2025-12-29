@@ -183,8 +183,8 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 
 			stdout("\n")
 			stdout("%v\n", "[Bad meta partitions(decommission not completed)]:")
-			badPartitionTablePattern := "%-8v    %-10v    %-20v\n"
-			stdout(badPartitionTablePattern, "PATH", "PARTITION ID", "REPAIR STARTTIME")
+			badPartitionTablePattern := "%-20v    %-12v    %-20v\n"
+			stdout(badPartitionTablePattern, "PATH", "PARTITIONID", "REPAIR STARTTIME")
 			for _, bmpv := range diagnosis.BadMetaPartitionIDs {
 				sort.SliceStable(bmpv.PartitionIDs, func(i, j int) bool {
 					return bmpv.PartitionIDs[i] < bmpv.PartitionIDs[j]
@@ -385,6 +385,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 
 func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	var raftForceDel bool
 	cmd := &cobra.Command{
 		Use:   CliOpDelReplica + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionDeleteReplicaShort,
@@ -402,7 +403,7 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().DeleteMetaReplica(partitionID, address, clientIDKey); err != nil {
+			if err = client.AdminAPI().DeleteMetaReplica(partitionID, address, clientIDKey, raftForceDel); err != nil {
 				return
 			}
 			stdout("Delete replication successfully\n")
@@ -415,6 +416,7 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().BoolVarP(&raftForceDel, CliFlagDecommissionRaftForce, "r", false, "true for raftForceDel")
 	return cmd
 }
 

@@ -71,6 +71,7 @@ func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, rack, clusterID str
 		ZoneName:      zoneName,
 		Rack:          rack,
 		Sender:        newAdminTaskManager(addr, clusterID),
+		Total:         1, // avoid zero leading to NaN in ratio calculation
 	}
 	node.CpuUtil.Store(0)
 	return

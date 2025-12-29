@@ -2154,6 +2154,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		mp.IsRecover.Store(true)
+		mp.RecoverStartTime = time.Now().Unix()
 		m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
 	}
 

@@ -523,7 +523,12 @@ func (mp *MetaPartition) hasMissingOneReplica(addr string, replicaNum int) (err 
 		}
 	}
 
-	hostNum := len(mp.Replicas)
+	hostNum := 0
+	for _, replica := range mp.Replicas {
+		if !replica.IsLearner {
+			hostNum++
+		}
+	}
 	if hostNum <= replicaNum-1 && inReplicas {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", mp.PartitionID, proto.ErrHasOneMissingReplica))
@@ -591,7 +596,16 @@ func (mp *MetaPartition) getActiveAddrs(timeOutSec int64) (liveAddrs []string) {
 }
 
 func (mp *MetaPartition) isMissingReplica(addr string, timeOutSec int64) bool {
-	return !contains(mp.getActiveAddrs(timeOutSec), addr)
+	exist := false
+	for _, replica := range mp.Replicas {
+		if replica.Addr == addr {
+			exist = true
+			if replica.isMissing(timeOutSec) {
+				return true
+			}
+		}
+	}
+	return !exist
 }
 
 func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64) (isWarn bool) {
@@ -622,7 +636,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, tim
 					isActive = metaNode.IsActive
 				}
 				msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on node:%v  "+
-					"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
+					"miss time > %v  replicaLastRepostTime:%v   nodeLastReportTime:%v  nodeisActive:%v",
 					clusterID, mp.volName, mp.PartitionID, replica.Addr, timeOutSec, replica.ReportTime, lastReportTime, isActive)
 				Warn(clusterID, msg)
 				if WarnMetrics != nil {
@@ -641,7 +655,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, tim
 	for _, addr := range mp.Hosts {
 		if mp.isMissingReplica(addr, timeOutSec) && mp.shouldReportMissingReplica(addr, interval) {
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on node:%v  "+
-				"miss time  > %v ",
+				"miss time > %v",
 				clusterID, mp.volName, mp.PartitionID, addr, timeOutSec)
 			Warn(clusterID, msg)
 			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
@@ -783,14 +797,19 @@ func (mp *MetaPartition) createTaskToPromoteLearner(promotePeer proto.Peer, lead
 	return
 }
 
-func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer, force bool) (t *proto.AdminTask, err error) {
+func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer, force bool, autoRemove bool) (t *proto.AdminTask, err error) {
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil && !force {
 		return nil, errors.NewError(err)
 	}
-	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer, Force: force}
-	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftMember, mr.Addr, req)
+	var leaderAddr string
+	if mr != nil {
+		leaderAddr = mr.Addr
+	}
+	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer, Force: force, AutoRemove: autoRemove}
+	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftMember, leaderAddr, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
+	err = nil
 	return
 }
 
@@ -1296,17 +1315,17 @@ func (mp *MetaPartition) removeRedundantPeersFromReplicaMeta(c *Cluster) (err er
 	replicasToDelete := make([]proto.Peer, 0)
 
 	for _, replica := range replicas {
-		if mp.lostLeader(c) {
-			break
-		}
 		if len(replica.localPeers) == 0 {
 			continue
+		}
+		if mp.lostLeader(c) {
+			return
 		}
 		redundantPeers := findPeersToDeleteByConfig(replica.localPeers, peers)
 		for _, peer := range redundantPeers {
 			replicasToDelete = append(replicasToDelete, peer)
-			if err = c.removeMetaPartitionRaftMember(mp, peer, force); err != nil {
-				return err
+			if err = c.removeMetaPartitionRaftMember(mp, peer, force, true); err != nil {
+				return
 			}
 		}
 	}
@@ -1343,12 +1362,19 @@ func (mp *MetaPartition) removeRedundantPeersFromMaster(c *Cluster) (err error) 
 		})
 	}
 	peers := append([]proto.Peer(nil), mp.Peers...)
+	liveReplicas := mp.getLiveReplicas(defaultMetaPartitionTimeOutSec)
+	liveAddrs := mp.getLiveReplicasAddr(liveReplicas)
 	mp.RUnlock()
 
 	var (
 		removedPeers []proto.Peer
 		auditMsg     string
 	)
+
+	nonLearnerNum := len(liveAddrs)
+	if nonLearnerNum <= int(mp.ReplicaNum/2+1) {
+		return nil
+	}
 
 	defer func() {
 		if err != nil {
@@ -1369,6 +1395,9 @@ func (mp *MetaPartition) removeRedundantPeersFromMaster(c *Cluster) (err error) 
 		}
 		redundantPeers := findPeersToDeleteByConfig(peers, replica.localPeers)
 		for _, peer := range redundantPeers {
+			if contains(liveAddrs, peer.Addr) && peer.Type == raftProto.PeerNormal && nonLearnerNum <= int(mp.ReplicaNum/2+1) {
+				continue
+			}
 			if err = c.removeMetaHostMember(mp, peer); err != nil {
 				return err
 			}
@@ -1383,6 +1412,9 @@ func (mp *MetaPartition) removeRedundantPeersFromMaster(c *Cluster) (err error) 
 				return err
 			}
 			removedPeers = append(removedPeers, peer)
+			if contains(liveAddrs, peer.Addr) && peer.Type == raftProto.PeerNormal {
+				nonLearnerNum--
+			}
 		}
 	}
 	return nil
@@ -1468,6 +1500,7 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 		}
 		addedAddr = selectPeers[0].Addr
 		mp.IsRecover.Store(true)
+		mp.RecoverStartTime = time.Now().Unix()
 		mp.setRestoreReplicaStatus(RestoreReplicaMetaForbidden)
 		c.putBadMetaPartitions(addedAddr, mp.PartitionID)
 	}
@@ -1476,7 +1509,6 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 }
 
 func (mp *MetaPartition) checkReplicaMeta(c *Cluster) (err error) {
-	// stage1: check intersection
 	if err = mp.checkIntersection(c); err != nil {
 		return err
 	}
@@ -1485,13 +1517,11 @@ func (mp *MetaPartition) checkReplicaMeta(c *Cluster) (err error) {
 		c.NoSamePeerMps.Delete(mp.PartitionID)
 	}
 
-	// stage2: need restore check
 	if !mp.needReplicaMetaRestore(c) {
 		log.LogDebugf("action[checkReplicaMeta]mp(%v) do not need to restore meta", mp.PartitionID)
 		return nil
 	}
 
-	// stage3: set running status
 	if !mp.setRestoreReplicaRunning() {
 		log.LogDebugf("action[checkReplicaMeta]mp(%v) set RestoreReplicaMetaRunning failed", mp.PartitionID)
 		return proto.ErrPerformingRestoreReplica
@@ -1514,22 +1544,22 @@ func (mp *MetaPartition) checkReplicaMeta(c *Cluster) (err error) {
 		mp.RUnlock()
 	}()
 
-	// stage4: remove excessive replicas
+	// stage1: remove excessive replicas
 	if err = mp.removeExcessiveReplicas(c); err != nil {
 		return err
 	}
 
-	// stage5: remove redundant peers from replica meta
+	// stage2: remove redundant peers from replica meta
 	if err = mp.removeRedundantPeersFromReplicaMeta(c); err != nil {
 		return err
 	}
 
-	// stage6: remove redundant peers from master
+	// stage3: remove redundant peers from master
 	if err = mp.removeRedundantPeersFromMaster(c); err != nil {
 		return err
 	}
 
-	// stage7: add missing replicas
+	// stage4: add missing replicas
 	if err = mp.autoAddReplica(c); err != nil {
 		return err
 	}

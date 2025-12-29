@@ -107,7 +107,7 @@ func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, clust
 	dataNode.HeartbeatPort = raftHeartbeatPort
 	dataNode.ReplicaPort = raftReplicaPort
 	dataNode.ZoneName = zoneName
-	dataNode.Rack = rack // 设置 rack 字段
+	dataNode.Rack = rack
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	dataNode.DiskQosConfig = make(map[string]string)

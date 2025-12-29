@@ -2037,6 +2037,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 }
 
 func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
+	// mp.RecoverState = proto.RecoverStateFailed need to clear state
 	if !mp.IsRecover.Load() && mp.RecoverState != proto.RecoverStateFailed {
 		return
 	}

@@ -768,6 +768,7 @@ type RemoveMetaPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	RemovePeer  Peer
 	Force       bool
+	AutoRemove  bool
 }
 
 // LoadDataPartitionRequest defines the request of loading a data partition.

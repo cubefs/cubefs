@@ -3465,7 +3465,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	// find missing replica, add new replica
 	if partition.ReplicaNum > uint8(len(partition.Hosts)) {
 		if partition.ReplicaNum == 1 {
-			err = errors.NewErrorf("can handle 1-replica")
+			err = errors.NewErrorf("can't handle 1-replica")
 			auditMsg = fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto add replica",
 				partition.PartitionID, partition.ReplicaNum, len(partition.Hosts))
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)

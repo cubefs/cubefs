@@ -1525,10 +1525,12 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 		return err
 	}
 
-	if !mp.IsExsitPeer(req.RemovePeer) {
-		p.PacketOkReply()
+	if !mp.IsExsitPeer(req.RemovePeer) && !req.Force && !req.AutoRemove {
+		err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember]: partitionID=%d, remove peer %d not exist in leader view",
+			req.PartitionId, req.RemovePeer.ID)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
-		return
+		return err
 	}
 
 	if !req.Force {

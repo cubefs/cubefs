@@ -62,46 +62,47 @@ func (mp *MetaPartition) checkPeerDiffWithRaft(c *Cluster) {
 	if !mp.doCompare() {
 		return
 	}
-	var (
-		addrArr  = make(map[uint64]string)
-		leaderID uint64
-	)
+
+	// master view: peerID -> addr
+	masterPeers := make(map[uint64]string)
 	for _, peer := range mp.Peers {
-		addrArr[peer.ID] = peer.Addr
+		masterPeers[peer.ID] = peer.Addr
 	}
-	for _, mr := range mp.Replicas {
-		if mr.IsLeader {
-			leaderID = mr.nodeID
+
+	// Traverse the Raft information reported by each replica and compare it fully with the master
+	for _, info := range mp.LoadResponse {
+		if info.RaftInfo.RaftStatus.Leader == info.RaftInfo.RaftStatus.NodeID {
+			if len(info.RaftInfo.PendingPeers) != 0 || len(info.RaftInfo.DownReplicas) != 0 {
+				c.AbnormalRaftMP.Store(mp.PartitionID, mp)
+				return
+			}
+			break
 		}
 	}
 
 	for _, info := range mp.LoadResponse {
-		if info.RaftInfo.RaftStatus.NodeID != leaderID {
-			continue
+		// raft view from this replica
+		raftPeers := make(map[uint64]string)
+		for _, p := range info.RaftInfo.Hosts {
+			raftPeers[p.ID] = p.Addr
 		}
-		for peer := range info.RaftInfo.RaftStatus.Replicas {
-			if _, ok := addrArr[peer]; !ok {
+
+		// replicas in Raft that are additional compared to master
+		for peerID := range raftPeers {
+			if _, ok := masterPeers[peerID]; !ok {
 				c.AbnormalRaftMP.Store(mp.PartitionID, mp)
 				return
 			}
 		}
-		for peerID := range addrArr {
-			if _, ok := info.RaftInfo.RaftStatus.Replicas[peerID]; !ok {
+		// peers that the master has are additional compared to raft
+		for peerID := range masterPeers {
+			if _, ok := raftPeers[peerID]; !ok {
 				c.AbnormalRaftMP.Store(mp.PartitionID, mp)
 				return
 			}
 		}
-		if len(info.RaftInfo.PendingPeers) != 0 {
-			c.AbnormalRaftMP.Store(mp.PartitionID, mp)
-			return
-		}
-		if len(info.RaftInfo.DownReplicas) != 0 {
-			c.AbnormalRaftMP.Store(mp.PartitionID, mp)
-			return
-		}
-		c.AbnormalRaftMP.Delete(mp.PartitionID)
-		return
 	}
+
 	c.AbnormalRaftMP.Delete(mp.PartitionID)
 }
 
@@ -264,11 +265,6 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			}
 
 			if vol.isUnavailable() {
-				continue
-			}
-
-			if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.mpReplicaNum) {
-				newBadMpIds = append(newBadMpIds, partitionID)
 				continue
 			}
 

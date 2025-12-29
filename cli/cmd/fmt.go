@@ -444,45 +444,45 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 }
 
 var (
-	partitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-12v    %-18v"
+	partitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-12v    %-18v"
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS")
 
-	partitionLearnerMismatchTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
+	partitionLearnerMismatchTablePattern = "%-8v    %-16v    %-8v    %-12v    %-24v"
 	partitionLearnerMismatchTableHeader  = fmt.Sprintf(partitionLearnerMismatchTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MISMATCH")
 
-	PeerAbnormalRaftPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-12v    %-12v   %v%v%v"
+	PeerAbnormalRaftPartitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-12v    %-32v   %v%v%v%v"
 	PeerAbnormalRaftPartitionInfoHeader       = fmt.Sprintf(PeerAbnormalRaftPartitionInfoTablePattern,
-		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS", "DIFF-RAFT-MEMBERS", "|DOWN-MEMBERS", "|PEND-MEMBERS")
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS", "RAFT>MASTER", "|MASTER>RAFT", "|DOWN", "|PEND")
 
-	badMpReplicaPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-64v    %-24v"
+	badMpReplicaPartitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-64v    %-24v"
 	badMpReplicaPartitionInfoTableHeader  = fmt.Sprintf(badMpReplicaPartitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
 
-	badReplicaPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-64v    %-24v"
+	badReplicaPartitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-64v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
 
-	repFileCountDifferPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
+	repFileCountDifferPartitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-24v"
 	RepFileCountDifferInfoTableHeader           = fmt.Sprintf(repFileCountDifferPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS(fileCount)")
 
-	repUsedSizeDifferPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
+	repUsedSizeDifferPartitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-24v"
 	RepUsedSizeDifferInfoTableHeader           = fmt.Sprintf(repUsedSizeDifferPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS(usedSize)")
 
-	inodeCountNotEqualInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
+	inodeCountNotEqualInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-24v"
 	inodeCountNotEqualInfoTableHeader  = fmt.Sprintf(inodeCountNotEqualInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(inodeCount)")
 	maxInodeNotEqualInfoTableHeader = fmt.Sprintf(inodeCountNotEqualInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(maxInode)")
 
-	dentryCountNotEqualInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
+	dentryCountNotEqualInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-24v"
 	dentryCountNotEqualInfoTableHeader  = fmt.Sprintf(dentryCountNotEqualInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(dentryCount)")
 
-	diskErrorReplicaPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-64v    %-24v"
+	diskErrorReplicaPartitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-64v    %-24v"
 	diskErrorReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS", "DiskError_REPLICAS")
 )
@@ -628,9 +628,9 @@ func formatMetaPartitionLearnerMismatchRow(partition *proto.MetaPartitionInfo) s
 
 func formatMetaPartitionInfoRowWithRaft(partition *proto.MetaPartitionInfo) string {
 	var (
-		info         *proto.MetaPartitionLoadResponse
 		addrArr      = make(map[uint64]string)
-		diffHosts    []string
+		raftMore     []string
+		masterMore   []string
 		downHosts    []string
 		pendingHosts []string
 	)
@@ -638,39 +638,49 @@ func formatMetaPartitionInfoRowWithRaft(partition *proto.MetaPartitionInfo) stri
 		addrArr[peer.ID] = peer.Addr
 	}
 
-	for _, info = range partition.LoadResponse {
+	for _, info := range partition.LoadResponse {
 		if info.RaftInfo.RaftStatus.Leader == info.RaftInfo.RaftStatus.NodeID {
+			for _, dr := range info.RaftInfo.DownReplicas {
+				if host, ok := addrArr[dr.NodeID]; ok {
+					downHosts = append(downHosts, host)
+				}
+			}
+			for _, pr := range info.RaftInfo.PendingPeers {
+				if host, ok := addrArr[pr]; ok {
+					pendingHosts = append(pendingHosts, host)
+				}
+			}
 			break
 		}
 	}
-	if info == nil {
-		return ""
-	}
-	for _, peer := range info.RaftInfo.Hosts {
-		if _, ok := addrArr[peer.ID]; ok {
-			continue
+	for _, info := range partition.LoadResponse {
+		raftPeers := make(map[uint64]string)
+		for _, p := range info.RaftInfo.Hosts {
+			raftPeers[p.ID] = p.Addr
 		}
-		diffHosts = append(diffHosts, peer.Addr)
-		addrArr[peer.ID] = peer.Addr
+		for id, addr := range raftPeers {
+			if _, ok := addrArr[id]; !ok {
+				raftMore = append(raftMore, fmt.Sprintf("%s@%s", addr, info.Addr))
+			}
+		}
+		for id, addr := range addrArr {
+			if _, ok := raftPeers[id]; !ok {
+				masterMore = append(masterMore, addr)
+			}
+		}
 	}
 
-	for _, dr := range info.RaftInfo.DownReplicas {
-		if host, ok := addrArr[dr.NodeID]; ok {
-			downHosts = append(downHosts, host)
-		}
-	}
-	for _, pr := range info.RaftInfo.PendingPeers {
-		if host, ok := addrArr[pr]; ok {
-			pendingHosts = append(pendingHosts, host)
-		}
-	}
 	var (
-		diffInfo    = "N/A"
-		downInfo    = "N/A"
-		pendingInfo = "N/A"
+		raftMoreInfo   = "N/A"
+		masterMoreInfo = "N/A"
+		downInfo       = "N/A"
+		pendingInfo    = "N/A"
 	)
-	if len(diffHosts) != 0 {
-		diffInfo = strings.Join(diffHosts, ", ")
+	if len(raftMore) != 0 {
+		raftMoreInfo = strings.Join(raftMore, ", ")
+	}
+	if len(masterMore) != 0 {
+		masterMoreInfo = strings.Join(masterMore, ", ")
 	}
 	if len(downHosts) != 0 {
 		downInfo = strings.Join(downHosts, ", ")
@@ -682,7 +692,7 @@ func formatMetaPartitionInfoRowWithRaft(partition *proto.MetaPartitionInfo) stri
 	return fmt.Sprintf(PeerAbnormalRaftPartitionInfoTablePattern,
 		partition.PartitionID, partition.VolName, partition.ReplicaNum,
 		formatDataPartitionStatus(partition.Status), "N/A", strings.Join(partition.Hosts, ", "),
-		diffInfo+"|", downInfo+"|", pendingInfo)
+		raftMoreInfo+"|", masterMoreInfo+"|", downInfo+"|", pendingInfo)
 }
 
 func formatBadReplicaMpInfoRow(partition *proto.MetaPartitionInfo) string {
@@ -1123,7 +1133,7 @@ func parseDpReadOnlyReasons(mask uint32) []string {
 	return reasons
 }
 
-var metaReplicaTableRowPattern = "%-65v    %-10v    %-10v    %-9v    %-9v    %-6v    %-10v"
+var metaReplicaTableRowPattern = "%-65v    %-10v    %-10v    %-9v    %-12v    %-6v    %-10v"
 
 func formatMetaReplicaTableHeader() string {
 	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "MaxInodeID", "ISLEADER", "ISLEARNER", "STATUS", "StoreMode", "REPORT TIME")
@@ -1268,7 +1278,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 // 	return sb.String()
 // }
 
-var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-65v    %-6v    %-6v    %-6v    %-10v"
+var metaNodeDetailTableRowPattern = "%-6v    %-8v    %-65v    %-10v    %-10v    %-6v    %-10v"
 
 func formatMetaNodeDetailTableHeader() string {
 	return fmt.Sprintf(metaNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME")

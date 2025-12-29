@@ -286,7 +286,7 @@ const (
 	defaultMpMigrateThreads                           = 10
 
 	maxTrashInterval     = 365 * 24 * 60
-	mpReplicaDelInterval = 300 // 5 minutes
+	mpReplicaDelInterval = 30 // 5 minutes
 
 	// Learner mode recovery constants
 	defaultLearnerRecoverTimeout = 3600 // 1 hour
