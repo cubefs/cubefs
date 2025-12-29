@@ -1560,6 +1560,7 @@ func (tr *TransactionResource) rollbackInodeInternal(handle interface{}, rbInode
 		var ino, item *Inode
 		item, err = mp.inodeTree.CopyGet(rbInode.inode)
 		if err != nil {
+			status = proto.OpErr
 			log.LogErrorf("rollbackInodeInternal: failed to get inode(%v), err(%v)", rbInode.inode.Inode, err)
 			return
 		}
@@ -1577,6 +1578,8 @@ func (tr *TransactionResource) rollbackInodeInternal(handle interface{}, rbInode
 			}
 			_, _, err = mp.inodeTree.ReplaceOrInsert(handle, rbInode.inode, true)
 			if err != nil {
+				status = proto.OpErr
+				log.LogErrorf("rollbackInodeInternal: failed to replace or insert inode(%v), err(%v)", rbInode.inode.Inode, err)
 				return
 			}
 		} else {
@@ -1595,6 +1598,11 @@ func (tr *TransactionResource) rollbackInodeInternal(handle interface{}, rbInode
 		return
 	}
 	_, err = tr.txRbInodeTree.Delete(handle, rbInode)
+	if err != nil {
+		status = proto.OpErr
+		log.LogErrorf("rollbackInodeInternal: failed to delete inode(%v), err(%v)", rbInode.inode.Inode, err)
+		return
+	}
 	return
 }
 

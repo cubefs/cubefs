@@ -15,6 +15,8 @@
 package metanode
 
 import (
+	"fmt"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -89,12 +91,9 @@ func (mp *metaPartition) fsmTxCommitRM(dbHandle interface{}, txInfo *proto.Trans
 			continue
 		}
 
-		if st, er := mp.fsmTxInodeCommit(dbHandle, ifo.TxID, ifo.Ino); er != nil {
-			status = proto.OpErr
-			err = er
-			return
-		} else if st != proto.OpOk {
+		if st, _ := mp.fsmTxInodeCommit(dbHandle, ifo.TxID, ifo.Ino); st == proto.OpErr {
 			status = st
+			err = fmt.Errorf("fsmTxInodeCommit failed, txID %s, inode %d", ifo.TxID, ifo.Ino)
 			return
 		}
 	}
@@ -104,12 +103,9 @@ func (mp *metaPartition) fsmTxCommitRM(dbHandle interface{}, txInfo *proto.Trans
 			continue
 		}
 
-		if st, er := mp.fsmTxDentryCommit(dbHandle, ifo.TxID, ifo.ParentId, ifo.Name); er != nil {
-			status = proto.OpErr
-			err = er
-			return
-		} else if st != proto.OpOk {
+		if st, _ := mp.fsmTxDentryCommit(dbHandle, ifo.TxID, ifo.ParentId, ifo.Name); st == proto.OpErr {
 			status = st
+			err = fmt.Errorf("fsmTxDentryCommit failed, txID %s, parentId %d, name %s", ifo.TxID, ifo.ParentId, ifo.Name)
 			return
 		}
 	}
@@ -147,12 +143,9 @@ func (mp *metaPartition) fsmTxRollbackRM(dbHandle interface{}, txInfo *proto.Tra
 			TxID:  ifo.TxID,
 			Inode: ifo.Ino,
 		}
-		if st, er := mp.fsmTxInodeRollback(dbHandle, req); er != nil {
-			status = proto.OpErr
-			err = er
-			return
-		} else if st != proto.OpOk {
+		if st, _ := mp.fsmTxInodeRollback(dbHandle, req); st == proto.OpErr {
 			status = st
+			err = fmt.Errorf("fsmTxRollbackRM failed, txID %s, inode %d", ifo.TxID, ifo.Ino)
 			return
 		}
 	}
@@ -168,12 +161,9 @@ func (mp *metaPartition) fsmTxRollbackRM(dbHandle interface{}, txInfo *proto.Tra
 			Pid:  ifo.ParentId,
 			Name: ifo.Name,
 		}
-		if st, er := mp.fsmTxDentryRollback(dbHandle, req); er != nil {
-			status = proto.OpErr
-			err = er
-			return
-		} else if st != proto.OpOk {
+		if st, _ := mp.fsmTxDentryRollback(dbHandle, req); st == proto.OpErr {
 			status = st
+			err = fmt.Errorf("fsmTxDentryRollback failed, txID %s, parentId %d, name %s", ifo.TxID, ifo.ParentId, ifo.Name)
 			return
 		}
 	}
