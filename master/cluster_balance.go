@@ -48,7 +48,10 @@ type GetMigrateAddrParam struct {
 	RackLevel    proto.RackAwareLevel
 }
 
-var NotEnoughResource = fmt.Errorf("not enough resource")
+var (
+	NotEnoughResource        = fmt.Errorf("not enough resource")
+	ErrClusterPlanNotRunning = fmt.Errorf("cluster plan is not running")
+)
 
 func (c *Cluster) FreezeEmptyMetaPartitionJob(name string, freezeList []*MetaPartition) error {
 	c.mu.Lock()
@@ -1373,6 +1376,10 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 }
 
 func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan) (err error) {
+	if c.IsClusterPlanNotRun() {
+		return ErrClusterPlanNotRunning
+	}
+
 	if VerifyMetaReplicaPlanNotAllInit(mpPlan) {
 		return nil
 	}
@@ -1428,6 +1435,10 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 }
 
 func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, mp *MetaPartition, mrPlan *proto.MrBalanceInfo) (err error) {
+	if c.IsClusterPlanNotRun() {
+		return ErrClusterPlanNotRunning
+	}
+
 	// check the memory/rocksdb disk usage of destination metanode.
 	overLoad, err := c.VerifyMetaNodeExceedMemMid(mrPlan.Destination, plan.Mode)
 	if err != nil {
@@ -1489,6 +1500,9 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 	for i := 0; i < maxRetry; i++ {
 		select {
 		case <-ticker.C:
+			if c.IsClusterPlanNotRun() {
+				return ErrClusterPlanNotRunning
+			}
 			if mp.IsRecover {
 				continue
 			}
@@ -3217,7 +3231,7 @@ func (c *Cluster) StartTodoMetaPartitionCheckSum(plan *proto.MetaPartitionsCheck
 
 func (c *Cluster) DoMetaPartitionCheckSum(checksumInfo *proto.MetaPartitionChecksumInfo) error {
 	if c.IsClusterPlanNotRun() {
-		return fmt.Errorf("cluster plan is not running")
+		return ErrClusterPlanNotRunning
 	}
 
 	mp, err := c.getMetaPartitionByID(checksumInfo.PartitionID)
@@ -3352,7 +3366,7 @@ func (c *Cluster) WaitForMetaPartitionCheckSumResult(mp *MetaPartition, checksum
 		select {
 		case <-ticker.C:
 			if c.IsClusterPlanNotRun() {
-				return fmt.Errorf("cluster plan is not running")
+				return ErrClusterPlanNotRunning
 			}
 			err = c.CopyMd5SumToChecksumInfo(mp, checksumInfo)
 			if err == nil {
