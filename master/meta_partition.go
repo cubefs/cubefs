@@ -1260,7 +1260,12 @@ func (mp *MetaPartition) removeExcessiveReplicas(c *Cluster) (err error) {
 
 	// 2) Remove extra voter when voter count exceeds ReplicaNum
 	if len(nonLearnerPeers) > int(mp.ReplicaNum) {
-		removeAddr := nonLearnerPeers[len(nonLearnerPeers)-1].Addr
+		var removeAddr string
+		if mp.SrcAddr != "" {
+			removeAddr = mp.SrcAddr
+		} else {
+			removeAddr = nonLearnerPeers[len(nonLearnerPeers)-1].Addr
+		}
 		if err = c.deleteMetaReplica(mp, removeAddr, false, false); err != nil {
 			return err
 		}
