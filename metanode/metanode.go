@@ -175,6 +175,14 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
+	// Init metrics early so startup-time checks can emit alerts.
+	m.startStat()
+	defer func() {
+		if err != nil {
+			m.stopStat()
+		}
+	}()
+
 	// Initialize components
 	if err = m.newRocksdbManager(cfg); err != nil {
 		return
@@ -208,7 +216,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 
 	go m.startUpdateNodeInfo()
-	m.startStat()
 
 	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
 
@@ -914,6 +921,20 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 	}
 	m.rocksdbs = make([]*RocksdbOperator, len(m.rocksDirs))
 	for i, dbPath := range m.rocksDirs {
+		// Check disk type for rocksdbDir: alert if not NVMe.
+		if m.metrics != nil && m.metrics.RocksdbNonNvmeDisk != nil {
+			// Default to healthy; will be overwritten to 1 on non-NVMe.
+			m.metrics.RocksdbNonNvmeDisk.SetWithLabelValues(0, dbPath)
+		}
+		if ok, dev, chkErr := isNvmeDisk(dbPath); chkErr != nil {
+			log.LogWarnf("[newRocksdbManager] failed to detect disk type for rocksdbDir(%v): err(%v)", dbPath, chkErr)
+		} else if !ok {
+			log.LogWarnf("[newRocksdbManager] rocksdbDir(%v) is not on NVMe device(%v)", dbPath, dev)
+			if m.metrics != nil && m.metrics.RocksdbNonNvmeDisk != nil {
+				m.metrics.RocksdbNonNvmeDisk.SetWithLabelValues(1, dbPath)
+			}
+		}
+
 		err = m.rocksdbManager.Register(dbPath)
 		if err != nil {
 			log.LogErrorf("[newRocksdbManager] failed to register rocksdb(%v), err(%v)", dbPath, err)

@@ -38,6 +38,7 @@ const (
 	MetricFileStats                = "fileStats"
 	RocksdbStats                   = "rocksdbStats"
 	RocksdbDiskUsage               = "rocksdbDiskUsage"
+	RocksdbNonNvmeDisk             = "rocksdbNonNvmeDisk"
 
 	// Timeout for metrics collection
 	MetricsCollectionTimeout = 30 * time.Second
@@ -67,6 +68,7 @@ type MetaNodeMetrics struct {
 	MetricFileStats                *exporter.GaugeVec
 	RocksdbStats                   *exporter.GaugeVec
 	RocksdbDiskUsage               *exporter.GaugeVec
+	RocksdbNonNvmeDisk             *exporter.GaugeVec
 
 	metricStopCh chan struct{}
 	ctx          context.Context
@@ -89,6 +91,7 @@ func (m *MetaNode) startStat() {
 		MetricFileStats:                exporter.NewGaugeVec(MetricFileStats, "", []string{"volName", "sizeRange"}),
 		RocksdbStats:                   exporter.NewGaugeVec(RocksdbStats, "", []string{"rocksdbDir", "key"}),
 		RocksdbDiskUsage:               exporter.NewGaugeVec(RocksdbDiskUsage, "", []string{"rocksdbDir"}),
+		RocksdbNonNvmeDisk:             exporter.NewGaugeVec(RocksdbNonNvmeDisk, "", []string{"rocksdbDir"}),
 	}
 
 	go m.collectPartitionMetrics()

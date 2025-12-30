@@ -1503,15 +1503,17 @@ func (m *mockPartition) Closed() bool                       { return false }
 func TestHandleMetaReplicaPlan_StatusTransitions(t *testing.T) {
 	c := &Cluster{stopc: make(chan bool, 1), partition: &mockPartition{isLeader: true}}
 	addr := "127.0.0.1:17210"
+	addr2 := "127.0.0.2:17210"
 	mn := &MetaNode{ID: 1, Addr: addr, IsActive: true, MaxMemAvailWeight: gConfig.metaNodeReservedMem * 2}
 	c.metaNodes.Store(addr, mn)
-	mp := &MetaPartition{PartitionID: 200, Replicas: []*MetaReplica{{Addr: addr, metaNode: mn, IsLeader: true}}}
+	mp := &MetaPartition{PartitionID: 200, Replicas: []*MetaReplica{{Addr: addr, metaNode: mn, IsLeader: false}, {Addr: addr2, metaNode: mn, IsLeader: true}}}
 	plan := &proto.ClusterPlan{
 		Type: AutoPlan,
 		Mode: proto.StoreModeMem,
 	}
 	mpPlan := &proto.MetaBalancePlan{ID: 200}
 	mrPlan := &proto.MrBalanceInfo{Source: addr, Destination: addr, Status: PlanTaskInit}
+	c.SetClusterPlanRunning()
 	// since destination equals existing host, expect error from doMetaPartitionMigrate
 	err := c.handleMetaReplicaPlan(plan, mpPlan, mp, mrPlan)
 	if err == nil {
@@ -2445,6 +2447,7 @@ func TestHandleMetaPartitionPlan_BasicFlow(t *testing.T) {
 	// plan and mrPlan
 	plan := &proto.ClusterPlan{}
 	mpPlan := &proto.MetaBalancePlan{ID: 100, Plan: []*proto.MrBalanceInfo{{Source: addr, Destination: addr}}}
+	c.SetClusterPlanRunning()
 	err := c.handleMetaPartitionPlan(plan, mpPlan)
 	require.NoError(t, err)
 }
