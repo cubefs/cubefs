@@ -313,6 +313,8 @@ retry:
 		return
 	}
 
+	client.extentConfig = config
+
 	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload,
 		config.VerReadSeq, config.VolStorageClass, config.VolAllowedStorageClass, config.InnerReq)
 	if err != nil {
@@ -406,7 +408,7 @@ retry:
 		client.metaWrapper.RemoteCacheBloom = client.RemoteCacheBloom
 		// client.RemoteCacheBloom().AddUint64(0)
 	}
-	client.extentConfig = config
+
 	if config.NeedRemoteCache {
 		client.RemoteCache.Init(client)
 	} else {
