@@ -266,7 +266,7 @@ const (
 	defaultDistributionOptimizationIntervalSec        = 2 * 60 * 60
 	defaultDistributionOptimizationThreshold          = 0.8
 	defaultAutoDpMetaRepairPallarelCnt                = 100
-	defaultAutoMpMetaRepairPallarelCnt                = 20
+	defaultAutoMpMetaRepairPallarelCnt                = 10
 	defaultAutoDecommissionDiskInterval               = 10 * time.Second
 	maxMpCreationCount                                = 10
 	defaultVolForbidWriteOpOfProtoVersion0            = true
@@ -285,8 +285,9 @@ const (
 	dataNodeDecommissionInfoStatType                  = 2
 	defaultMpMigrateThreads                           = 10
 
-	maxTrashInterval     = 365 * 24 * 60
-	mpReplicaDelInterval = 30 // 5 minutes
+	maxTrashInterval               = 365 * 24 * 60
+	mpReplicaDelInterval           = 300 // 5 minutes
+	maxMpAutoAddReplicaParallelCnt = 5   // max parallel count of auto add replica
 
 	// Learner mode recovery constants
 	defaultLearnerRecoverTimeout = 3600 // 1 hour

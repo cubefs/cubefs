@@ -452,7 +452,7 @@ var (
 	partitionLearnerMismatchTableHeader  = fmt.Sprintf(partitionLearnerMismatchTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MISMATCH")
 
-	PeerAbnormalRaftPartitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-12v    %-32v   %v%v%v%v"
+	PeerAbnormalRaftPartitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-12v    %-60v   %v%v%v%v"
 	PeerAbnormalRaftPartitionInfoHeader       = fmt.Sprintf(PeerAbnormalRaftPartitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS", "RAFT>MASTER", "|MASTER>RAFT", "|DOWN", "|PEND")
 
@@ -638,6 +638,7 @@ func formatMetaPartitionInfoRowWithRaft(partition *proto.MetaPartitionInfo) stri
 		addrArr[peer.ID] = peer.Addr
 	}
 
+	// Find leader replica and check masterMore with leader
 	for _, info := range partition.LoadResponse {
 		if info.RaftInfo.RaftStatus.Leader == info.RaftInfo.RaftStatus.NodeID {
 			for _, dr := range info.RaftInfo.DownReplicas {
@@ -650,9 +651,22 @@ func formatMetaPartitionInfoRowWithRaft(partition *proto.MetaPartitionInfo) stri
 					pendingHosts = append(pendingHosts, host)
 				}
 			}
+
+			// Check masterMore: compare master with leader only
+			leaderRaftPeers := make(map[uint64]string)
+			for _, p := range info.RaftInfo.Hosts {
+				leaderRaftPeers[p.ID] = p.Addr
+			}
+			for id, addr := range addrArr {
+				if _, ok := leaderRaftPeers[id]; !ok {
+					masterMore = append(masterMore, addr)
+				}
+			}
 			break
 		}
 	}
+
+	// Check all replicas: raft peers that are additional compared to master
 	for _, info := range partition.LoadResponse {
 		raftPeers := make(map[uint64]string)
 		for _, p := range info.RaftInfo.Hosts {
@@ -661,11 +675,6 @@ func formatMetaPartitionInfoRowWithRaft(partition *proto.MetaPartitionInfo) stri
 		for id, addr := range raftPeers {
 			if _, ok := addrArr[id]; !ok {
 				raftMore = append(raftMore, fmt.Sprintf("%s@%s", addr, info.Addr))
-			}
-		}
-		for id, addr := range addrArr {
-			if _, ok := raftPeers[id]; !ok {
-				masterMore = append(masterMore, addr)
 			}
 		}
 	}

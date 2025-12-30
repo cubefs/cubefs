@@ -69,9 +69,11 @@ func (mp *MetaPartition) checkPeerDiffWithRaft(c *Cluster) {
 		masterPeers[peer.ID] = peer.Addr
 	}
 
-	// Traverse the Raft information reported by each replica and compare it fully with the master
+	// Find leader replica
+	var leaderInfo *proto.MetaPartitionLoadResponse
 	for _, info := range mp.LoadResponse {
 		if info.RaftInfo.RaftStatus.Leader == info.RaftInfo.RaftStatus.NodeID {
+			leaderInfo = info
 			if len(info.RaftInfo.PendingPeers) != 0 || len(info.RaftInfo.DownReplicas) != 0 {
 				c.AbnormalRaftMP.Store(mp.PartitionID, mp)
 				return
@@ -80,26 +82,36 @@ func (mp *MetaPartition) checkPeerDiffWithRaft(c *Cluster) {
 		}
 	}
 
+	// Check all replicas: replicas in Raft that are additional compared to master
 	for _, info := range mp.LoadResponse {
-		// raft view from this replica
 		raftPeers := make(map[uint64]string)
 		for _, p := range info.RaftInfo.Hosts {
 			raftPeers[p.ID] = p.Addr
 		}
 
-		// replicas in Raft that are additional compared to master
 		for peerID := range raftPeers {
 			if _, ok := masterPeers[peerID]; !ok {
 				c.AbnormalRaftMP.Store(mp.PartitionID, mp)
 				return
 			}
 		}
-		// peers that the master has are additional compared to raft
-		for peerID := range masterPeers {
-			if _, ok := raftPeers[peerID]; !ok {
-				c.AbnormalRaftMP.Store(mp.PartitionID, mp)
-				return
-			}
+	}
+
+	// No leader found, cannot compare
+	if leaderInfo == nil {
+		return
+	}
+
+	// Check only leader: peers that the master has are additional compared to raft leader
+	leaderRaftPeers := make(map[uint64]string)
+	for _, p := range leaderInfo.RaftInfo.Hosts {
+		leaderRaftPeers[p.ID] = p.Addr
+	}
+
+	for peerID := range masterPeers {
+		if _, ok := leaderRaftPeers[peerID]; !ok {
+			c.AbnormalRaftMP.Store(mp.PartitionID, mp)
+			return
 		}
 	}
 
@@ -254,6 +266,10 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			partition, err := c.getMetaPartitionByID(partitionID)
 			if err != nil {
 				Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v], partitionID[%v] is not exist", c.Name, partitionID))
+				continue
+			}
+
+			if !partition.IsRecover.Load() {
 				continue
 			}
 
@@ -516,6 +532,7 @@ func (c *Cluster) checkLearnerModeRecovery(mp *MetaPartition, srcAddr, dstAddr s
 	Warn(c.Name, auditMsg)
 	return nil
 }
+
 func (c *Cluster) scheduleToCheckMetaReplicaMeta() {
 	c.runTask(&cTask{
 		tickTime: time.Second * time.Duration(c.cfg.IntervalToCheckMetaPartition),

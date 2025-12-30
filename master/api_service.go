@@ -5518,6 +5518,37 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(diagnosis))
 }
 
+func (m *Server) resetMetaPartitionDecommissionStatus(w http.ResponseWriter, r *http.Request) {
+	var (
+		mpID uint64
+		mp   *MetaPartition
+		err  error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminResetMetaPartitionDecommissionStatus))
+	defer func() {
+		doStatAndMetric(proto.AdminResetMetaPartitionDecommissionStatus, metric, nil, nil)
+		AuditLog(r, proto.AdminResetMetaPartitionDecommissionStatus, fmt.Sprintf("reset decommission status for mp[%d]", mpID), nil)
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if mpID, err = extractMetaPartitionID(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if mp, err = m.cluster.getMetaPartitionByID(mpID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.cluster.clearLearnerRecoveryState(mp); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("reset decommission status for mp[%d] success", mpID)))
+}
+
 // Decommission a disk. This will decommission all the data partitions on this disk.
 // If parameter diskDisable is true, creating data partitions on this disk will be not allowed.
 func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {

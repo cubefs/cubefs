@@ -2166,3 +2166,39 @@ func TestQueryDistributionOptimizationStatus(t *testing.T) {
 	require.Contains(t, statusData, "BalanceThreshold")
 	require.Contains(t, statusData, "EnableDistributionOptimization")
 }
+
+func TestResetMetaPartitionDecommissionStatus(t *testing.T) {
+	// Test for MetaPartition
+	maxPartitionID := commonVol.maxMetaPartitionID()
+	mp := commonVol.MetaPartitions[maxPartitionID]
+	require.NotNil(t, mp, "meta partition should exist")
+
+	// Set up decommission state
+	mp.IsRecover.Store(true)
+	mp.SrcAddr = mms1Addr
+	mp.LearnerDstAddr = mms2Addr
+	mp.RecoverStartTime = time.Now().Unix()
+	mp.RecoverFailCount = 5
+	mp.RecoverRetryTime = time.Now().Unix()
+	mp.RecoverState = proto.RecoverStateRecovering
+	mp.setRestoreReplicaStatus(RestoreReplicaMetaForbidden)
+
+	// Call reset API
+	reqURL := fmt.Sprintf("%v%v?id=%v", hostAddr, proto.AdminResetMetaPartitionDecommissionStatus, mp.PartitionID)
+	process(reqURL, t)
+
+	// Verify state is reset
+	require.False(t, mp.IsRecover.Load(), "IsRecover should be false")
+	require.Empty(t, mp.SrcAddr, "SrcAddr should be empty")
+	require.Empty(t, mp.LearnerDstAddr, "LearnerDstAddr should be empty")
+	require.Zero(t, mp.RecoverStartTime, "RecoverStartTime should be zero")
+	require.Zero(t, mp.RecoverFailCount, "RecoverFailCount should be zero")
+	require.Zero(t, mp.RecoverRetryTime, "RecoverRetryTime should be zero")
+	require.Equal(t, proto.RecoverStateInit, mp.RecoverState, "RecoverState should be Init")
+	require.Equal(t, RestoreReplicaMetaStop, mp.RestoreReplicaMeta, "RestoreReplicaMeta should be Stop")
+
+	// Test with invalid partition ID
+	invalidReqURL := fmt.Sprintf("%v%v?id=%v", hostAddr, proto.AdminResetMetaPartitionDecommissionStatus, 999999)
+	reply := processNoCheck(invalidReqURL, t)
+	require.NotEqualValues(t, proto.ErrCodeSuccess, reply.Code, "should fail with invalid partition ID")
+}

@@ -2049,7 +2049,7 @@ func (vol *Vol) checkMetaReplicaMeta(c *Cluster) (cnt int) {
 	var checkMetaMpWg sync.WaitGroup
 
 	for _, mp := range partitions {
-		// NOTE: cluster or enable meta repair
+		// cluster or vol level enable meta repair
 		if c.getEnableAutoMpMetaRepair() || vol.EnableAutoMpMetaRepair.Load() {
 			checkMetaMp[mp.PartitionID] = mp
 			localMp := mp

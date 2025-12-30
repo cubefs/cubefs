@@ -3952,6 +3952,16 @@ func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView) {
 	return
 }
 
+func (c *Cluster) badMetaPartitionCount() (count int) {
+	c.badPartitionMutex.RLock()
+	defer c.badPartitionMutex.RUnlock()
+	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	return
+}
+
 func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, partitionID uint64) {
 	c.badPartitionMutex.Lock()
 	defer c.badPartitionMutex.Unlock()
