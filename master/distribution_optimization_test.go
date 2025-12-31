@@ -309,7 +309,30 @@ func TestCountActiveDistributionOptimizationTasks(t *testing.T) {
 		ClusterVolSubItem: ClusterVolSubItem{
 			vols: make(map[string]*Vol),
 		},
+		ClusterTopoSubItem: ClusterTopoSubItem{
+			dataNodes: sync.Map{},
+		},
 	}
+
+	// Add mock data node
+	mockNode := &DataNode{
+		Addr:      "192.168.1.1:17310",
+		ZoneName:  "zone1",
+		NodeSetID: 1,
+	}
+	cluster.dataNodes.Store("192.168.1.1:17310", mockNode)
+
+	// Create topology with zone and nodeset
+	cluster.t = newTopology()
+	zone := newZone("zone1", 0)
+	ns := newNodeSet(cluster, 1, 10, "zone1", "")
+	zone.putNodeSet(ns)
+	cluster.t.putZone(zone)
+
+	// Add partitions to nodeset's decommission list
+	// Partitions 1 and 2 should be counted as active
+	ns.decommissionDataPartitionList.cacheMap[uint64(1)] = nil
+	ns.decommissionDataPartitionList.cacheMap[uint64(2)] = nil
 
 	// Create test volume
 	vol := &Vol{
@@ -320,34 +343,39 @@ func TestCountActiveDistributionOptimizationTasks(t *testing.T) {
 	// Add test data partitions with different states
 	partitions := []*DataPartition{
 		{
-			PartitionID:        1,
-			DecommissionType:   proto.DistributionOptimization,
-			DecommissionStatus: DecommissionRunning,
-			IsDiscard:          false,
+			PartitionID:         1,
+			DecommissionType:    proto.DistributionOptimization,
+			DecommissionStatus:  DecommissionRunning,
+			DecommissionSrcAddr: "192.168.1.1:17310",
+			IsDiscard:           false,
 		},
 		{
-			PartitionID:        2,
-			DecommissionType:   proto.DistributionOptimization,
-			DecommissionStatus: DecommissionPrepare,
-			IsDiscard:          false,
+			PartitionID:         2,
+			DecommissionType:    proto.DistributionOptimization,
+			DecommissionStatus:  DecommissionPrepare,
+			DecommissionSrcAddr: "192.168.1.1:17310",
+			IsDiscard:           false,
 		},
 		{
 			PartitionID:        3,
 			DecommissionType:   proto.DistributionOptimization,
 			DecommissionStatus: DecommissionFail,
 			IsDiscard:          false,
+			// No DecommissionSrcAddr - should not be counted
 		},
 		{
-			PartitionID:        4,
-			DecommissionType:   proto.ManualDecommission,
-			DecommissionStatus: DecommissionRunning,
-			IsDiscard:          false,
+			PartitionID:         4,
+			DecommissionType:    proto.ManualDecommission,
+			DecommissionStatus:  DecommissionRunning,
+			DecommissionSrcAddr: "192.168.1.1:17310",
+			IsDiscard:           false,
 		},
 		{
-			PartitionID:        5,
-			DecommissionType:   proto.DistributionOptimization,
-			DecommissionStatus: DecommissionRunning,
-			IsDiscard:          true, // discarded
+			PartitionID:         5,
+			DecommissionType:    proto.DistributionOptimization,
+			DecommissionStatus:  DecommissionRunning,
+			DecommissionSrcAddr: "192.168.1.1:17310",
+			IsDiscard:           true, // discarded
 		},
 	}
 

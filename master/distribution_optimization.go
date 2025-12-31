@@ -83,7 +83,7 @@ func (c *Cluster) executeDistributionOptimizationMigrations() int {
 				continue
 			}
 
-			if !dp.IsDecommissionFailed() && !dp.IsDecommissionInitial() {
+			if dp.isPerformingDecommission(c) {
 				continue
 			}
 
@@ -116,8 +116,7 @@ func (c *Cluster) countActiveDistributionOptimizationTasks() int {
 				continue
 			}
 
-			if dp.DecommissionType == proto.DistributionOptimization && !dp.IsDecommissionFailed() &&
-				!dp.IsDecommissionInitial() {
+			if dp.DecommissionType == proto.DistributionOptimization && dp.isPerformingDecommission(c) {
 				count++
 			}
 		}
@@ -258,7 +257,7 @@ func (c *Cluster) processPartitionDistributionOptimization(dp *DataPartition, ho
 		return fmt.Errorf("srcAddrs or dstAddrs is empty, no migration needed")
 	}
 
-	if !dp.IsDecommissionFailed() && !dp.IsDecommissionInitial() {
+	if dp.isPerformingDecommission(c) {
 		return fmt.Errorf("dp is decommissing")
 	}
 

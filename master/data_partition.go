@@ -1508,7 +1508,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	}
 
 	if partition.isPerformingDecommission(c) {
-		if partition.hasGotDecommissionToken(c) || weight <= partition.DecommissionWeight {
+		if (partition.hasGotDecommissionToken(c) || weight <= partition.DecommissionWeight) && migrateType != DistributionOptimization {
 			task := DecommissionTask{
 				DecommissionSrcAddr:        srcAddr,
 				DecommissionSrcAddrs:       srcAddrs,
@@ -1549,7 +1549,9 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			}
 			partition.setRestoreReplicaStop()
 			partition.ResetDecommissionStatus()
-			partition.enqueueDecommissionTask(task)
+			if task.DecommissionType != DistributionOptimization {
+				partition.enqueueDecommissionTask(task)
+			}
 		}
 	}
 
