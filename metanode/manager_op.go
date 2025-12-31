@@ -1262,8 +1262,9 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	}
 	m.deletePartition(mp.GetBaseConfig().PartitionId)
 	if req.Force {
+		curTime := time.Now().Format(StaleMetadataTimeFormat)
 		dirPath, dirName := path.Split(conf.RootDir)
-		newName := dirPath + "del_" + dirName
+		newName := dirPath + "del_" + dirName + "_" + curTime
 		os.Rename(conf.RootDir, newName)
 	} else {
 		os.RemoveAll(conf.RootDir)
