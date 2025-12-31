@@ -839,7 +839,7 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 		mode = defaultRocksdMode
 	}
 	rocksdbMode := ParseRocksdbMode(mode)
-	rocksdbEnableStats := cfg.GetBoolWithDefault(cfgRocksdbEnableStats, false)
+	rocksdbEnableStats := cfg.GetBoolWithDefault(cfgRocksdbEnableStats, true)
 	m.rocksdbEnableStats = rocksdbEnableStats
 	rocksdbKeyNumMax := cfg.GetInt64(cfgRocksdbKeyNumMax)
 	if rocksdbKeyNumMax <= 0 {
@@ -861,13 +861,7 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 	if hardCompactionLimit < 0 {
 		hardCompactionLimit = 0
 	}
-	periodicCompactSec := cfg.GetInt64(cfsRocksdbPeriodicCompactSecond)
-	if periodicCompactSec < 0 {
-		periodicCompactSec = 0
-	}
-	if periodicCompactSec > 0 && periodicCompactSec < defaultPeriodicCompactSec {
-		periodicCompactSec = defaultPeriodicCompactSec
-	}
+	periodicCompactSec := cfg.GetInt64WithDefault(cfsRocksdbPeriodicCompactSecond, defaultPeriodicCompactSec)
 
 	rocksdbModeFile := path.Join(m.metadataDir, RocksdbModeMetaFile)
 	if fileutil.Exist(rocksdbModeFile) {
@@ -912,7 +906,7 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 		MaxBackgroundFlushes:     maxBackgroundFlushes,
 		SoftCompactionLimit:      uint64(softCompactionLimit),
 		HardCompactionLimit:      uint64(hardCompactionLimit),
-		PeriodicCompactSec:       uint64(periodicCompactSec),
+		PeriodicCompactSec:       periodicCompactSec,
 	}
 	if rocksdbMode == PerDiskRocksdbMode {
 		m.rocksdbManager = NewPerDiskRocksdbManager(config)

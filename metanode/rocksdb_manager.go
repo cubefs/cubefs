@@ -45,7 +45,7 @@ type RocksdbManagerConfig struct {
 	MaxBackgroundFlushes     int    `json:"maxBackgroundFlushes"`
 	SoftCompactionLimit      uint64 `json:"softCompactionLimit"`
 	HardCompactionLimit      uint64 `json:"hardCompactionLimit"`
-	PeriodicCompactSec       uint64 `json:"periodicCompactionSecond"`
+	PeriodicCompactSec       int64  `json:"periodicCompactionSecond"`
 }
 
 type RocksdbManager interface {
@@ -82,7 +82,7 @@ type PerDiskRocksdbManager struct {
 	maxBackgroundFlushes     int
 	softCompactionLimit      uint64
 	hardCompactionLimit      uint64
-	periodicCompactSec       uint64
+	periodicCompactSec       int64
 	mutex                    sync.Mutex
 	dbs                      map[string]*RocksdbHandle
 }
@@ -316,7 +316,7 @@ type PerPartitionRocksdbManager struct {
 	maxBackgroundFlushes     int
 	softCompactionLimit      uint64
 	hardCompactionLimit      uint64
-	periodicCompactSec       uint64
+	periodicCompactSec       int64
 	mutex                    sync.Mutex
 	partitionCnt             map[string]int
 	dbs                      map[string]*RocksdbDirInfo
