@@ -5,7 +5,6 @@
 #include <seastar/core/coroutine.hh>
 
 #include "common/logger.h"
-#include "common/net/byteorder.h"
 #include "rpc_stream.h"
 
 namespace blobstore {

@@ -3,7 +3,7 @@
 #include <seastar/core/coroutine.hh>
 #include <seastar/core/smp.hh>
 
-#include "byteorder.h"
+#include "common/byteorder.h"
 #include "tcp_session.h"
 
 namespace blobstore {

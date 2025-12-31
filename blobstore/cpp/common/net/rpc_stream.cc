@@ -1,6 +1,6 @@
 #include "rpc_stream.h"
 
-#include "byteorder.h"
+#include "common/byteorder.h"
 #include "common/logger.h"
 
 namespace blobstore {

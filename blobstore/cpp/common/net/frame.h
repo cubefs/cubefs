@@ -2,7 +2,7 @@
 
 #include <seastar/net/packet.hh>
 
-#include "common/net/byteorder.h"
+#include "common/byteorder.h"
 
 namespace blobstore {
 namespace net {

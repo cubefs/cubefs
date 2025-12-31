@@ -6,7 +6,7 @@
 #include <seastar/core/when_all.hh>
 #include <seastar/coroutine/maybe_yield.hh>
 
-#include "byteorder.h"
+#include "common/byteorder.h"
 #include "common/util.h"
 
 namespace blobstore {

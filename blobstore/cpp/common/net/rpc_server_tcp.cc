@@ -5,7 +5,6 @@
 #include <seastar/core/when_all.hh>
 #include <seastar/net/api.hh>
 
-#include "byteorder.h"
 #include "common/logger.h"
 #include "rpc.h"
 #include "rpc_server.h"

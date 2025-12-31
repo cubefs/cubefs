@@ -11,8 +11,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "common/byteorder.h"
 #include "common/concepts.h"
-#include "common/net/byteorder.h"
 #include "common/net/session.h"
 #include "common/proto/rpc.pb.h"
 #include "common/status.h"

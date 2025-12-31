@@ -1,7 +1,8 @@
 #pragma once
 
+#include <cstdint>
+
 namespace blobstore {
-namespace net {
 
 class LittleEndian {
    public:
@@ -129,5 +130,4 @@ class BigEndian {
     }
 };
 
-}  // namespace net
 }  // namespace blobstore
