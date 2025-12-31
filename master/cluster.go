@@ -142,6 +142,12 @@ type ClusterDecommission struct {
 	HDDNodeSetUnbalancedDPs          atomicutil.Int64
 	HDDRackConflictDPs               atomicutil.Int64
 	server                           *Server
+
+	// Meta partition decommission limits by type
+	MetaAutoAddReplicaLimit     atomicutil.Uint32
+	MetaManualDecommissionLimit atomicutil.Uint32
+	MetaBalanceLimit            atomicutil.Uint32
+	MetaManualAddReplicaLimit   atomicutil.Uint32
 }
 
 type CleanTask struct {
@@ -482,6 +488,10 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.DecommissionLimit = defaultDecommissionParallelLimit
 	c.DecommissionFirstHostDiskParallelLimit = defaultDecommissionFirstHostDiskParallelLimit
 	c.checkAutoCreateDataPartition = false
+	c.MetaAutoAddReplicaLimit.Store(defaultMetaAutoAddReplicaLimit)
+	c.MetaManualDecommissionLimit.Store(defaultMetaManualDecommissionLimit)
+	c.MetaBalanceLimit.Store(defaultMetaBalanceLimit)
+	c.MetaManualAddReplicaLimit.Store(defaultMetaManualAddReplicaLimit)
 	c.masterClient = masterSDK.NewMasterClient(nil, false)
 	c.masterClient.SetTransport(proto.GetHttpTransporter(&proto.HttpCfg{
 		PoolSize: int(cfg.httpPoolSize),
@@ -3952,11 +3962,36 @@ func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView) {
 	return
 }
 
-func (c *Cluster) badMetaPartitionCount() (count int) {
+func (c *Cluster) getBadMetaPartitionsRepairView() (bmprvs []proto.BadPartitionRepairView) {
 	c.badPartitionMutex.RLock()
 	defer c.badPartitionMutex.RUnlock()
+
+	bmprvs = make([]proto.BadPartitionRepairView, 0)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
-		count++
+		badMetaPartitionIds := value.([]uint64)
+		mpRepairInfos := make([]proto.RepairInfo, 0)
+		path := key.(string)
+
+		for _, partitionID := range badMetaPartitionIds {
+			partition, err := c.getMetaPartitionByID(partitionID)
+			if err != nil {
+				log.LogDebugf("getBadMetaPartitionsRepairView: partition[%v] not found", partitionID)
+				continue
+			}
+			mpRepairInfo := proto.RepairInfo{
+				PartitionID:                partitionID,
+				DecommissionRepairProgress: 0, // Not used for MetaPartition
+				RecoverStartTime:           time.Unix(partition.RecoverStartTime, 0),
+				RecoverUpdateTime:          time.Time{}, // Not used for MetaPartition
+				DecommissionType:           partition.DecommissionType,
+			}
+			mpRepairInfos = append(mpRepairInfos, mpRepairInfo)
+			log.LogDebugf("getBadMetaPartitionsRepairView: partitionID[%v], mpRepairInfo[%v]",
+				partitionID, mpRepairInfo)
+		}
+
+		bmprv := proto.BadPartitionRepairView{Path: path, PartitionInfos: mpRepairInfos}
+		bmprvs = append(bmprvs, bmprv)
 		return true
 	})
 	return
@@ -4048,7 +4083,7 @@ func (c *Cluster) getBadDataPartitionsRepairView() (bprvs []proto.BadPartitionRe
 	bprvs = make([]proto.BadPartitionRepairView, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		badDataPartitionIds := value.([]uint64)
-		dpRepairInfos := make([]proto.DpRepairInfo, 0)
+		dpRepairInfos := make([]proto.RepairInfo, 0)
 		path := key.(string)
 
 		for _, partitionID := range badDataPartitionIds {
@@ -4061,7 +4096,7 @@ func (c *Cluster) getBadDataPartitionsRepairView() (bprvs []proto.BadPartitionRe
 				log.LogDebugf("getBadDataPartitionsRepairView: replica for partitionID[%v] addr[%v] is empty", partitionID, partition.DecommissionDstAddr)
 				continue
 			}
-			dpRepairInfo := proto.DpRepairInfo{
+			dpRepairInfo := proto.RepairInfo{
 				PartitionID:                partitionID,
 				DecommissionRepairProgress: replica.DecommissionRepairProgress,
 				RecoverUpdateTime:          partition.RecoverUpdateTime,
@@ -4153,7 +4188,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 				errChannel <- err1
 				return
 			}
-			if err1 = c.migrateMetaPartition(srcAddr, targetAddr, mp, storeMode); err1 != nil {
+			if err1 = c.migrateMetaPartition(srcAddr, targetAddr, mp, storeMode, proto.ManualDecommission); err1 != nil {
 				errChannel <- err1
 			}
 		}(toBeOfflineMps[idx])

@@ -301,6 +301,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 				}
 			} else {
 				// Normal mode check
+				// TODO：检查超时
 				if partition.getMinusOfMaxInodeID() < defaultMinusOfMaxInodeID {
 					partition.IsRecover.Store(false)
 					partition.setRestoreReplicaStatus(RestoreReplicaMetaStop)
@@ -356,9 +357,11 @@ func (c *Cluster) clearLearnerRecoveryState(mp *MetaPartition) (err error) {
 	dstAddr := mp.LearnerDstAddr
 	recoverStartTime := mp.RecoverStartTime
 	recoverState := mp.RecoverState
+	decommissionType := mp.DecommissionType
 
 	mp.SrcAddr = ""
 	mp.LearnerDstAddr = ""
+	mp.DecommissionType = proto.InitialDecommission
 	mp.IsRecover.Store(false)
 	mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 	mp.RecoverStartTime = 0
@@ -368,6 +371,7 @@ func (c *Cluster) clearLearnerRecoveryState(mp *MetaPartition) (err error) {
 	err = c.syncUpdateMetaPartition(mp)
 	if err != nil {
 		// Restore state on update failure
+		mp.DecommissionType = decommissionType
 		mp.IsRecover.Store(true)
 		mp.setRestoreReplicaStatus(RestoreReplicaMetaForbidden)
 		mp.SrcAddr = srcAddr

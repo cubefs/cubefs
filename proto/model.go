@@ -212,6 +212,10 @@ type ClusterView struct {
 	FlashNodeReadDataNodeTimeout              int
 	RocksdbDiskUsed                           uint64
 	RocksdbDiskAvail                          uint64
+	MetaAutoAddReplicaLimit                   uint32
+	MetaManualDecommissionLimit               uint32
+	MetaBalanceLimit                          uint32
+	MetaManualAddReplicaLimit                 uint32
 	RocksdbDiskTotal                          uint64
 	RocksdbMpCount                            uint64
 	MemoryMpCount                             uint64
@@ -265,7 +269,7 @@ type NodeView struct {
 	SelectTag                string
 }
 
-type DpRepairInfo struct {
+type RepairInfo struct {
 	PartitionID                uint64
 	DecommissionRepairProgress float64
 	RecoverStartTime           time.Time
@@ -275,7 +279,7 @@ type DpRepairInfo struct {
 
 type BadPartitionRepairView struct {
 	Path           string
-	PartitionInfos []DpRepairInfo
+	PartitionInfos []RepairInfo
 }
 
 type BadPartitionView struct {
@@ -493,7 +497,7 @@ type MetaPartitionDiagnosisV1 struct {
 	InactiveMetaNodes                []string
 	NoLeaderMetaPartitionIDs         []uint64
 	LackReplicaMetaPartitionIDs      []uint64
-	BadMetaPartitionIDs              []BadPartitionView
+	BadMetaPartitionInfos            []BadPartitionRepairView
 	UnavailableMetaPartitionIDs      []uint64
 	ExcessiveReplicaMetaPartitionIDs []uint64
 	LearnerFlagMismatchIDs           []uint64

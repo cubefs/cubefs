@@ -1834,6 +1834,54 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[learnerRecoverTimeoutSecondsKey] = val
 	}
 
+	if value = r.FormValue(metaAutoAddReplicaLimitKey); value != "" {
+		noParams = false
+		val := uint32(0)
+		tmp, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(metaAutoAddReplicaLimitKey)
+			return params, err
+		}
+		val = uint32(tmp)
+		params[metaAutoAddReplicaLimitKey] = val
+	}
+
+	if value = r.FormValue(metaManualDecommissionLimitKey); value != "" {
+		noParams = false
+		val := uint32(0)
+		tmp, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(metaManualDecommissionLimitKey)
+			return params, err
+		}
+		val = uint32(tmp)
+		params[metaManualDecommissionLimitKey] = val
+	}
+
+	if value = r.FormValue(metaBalanceLimitKey); value != "" {
+		noParams = false
+		val := uint32(0)
+		tmp, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(metaBalanceLimitKey)
+			return params, err
+		}
+		val = uint32(tmp)
+		params[metaBalanceLimitKey] = val
+	}
+
+	if value = r.FormValue(metaManualAddReplicaLimitKey); value != "" {
+		noParams = false
+		val := uint32(0)
+		tmp, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(metaManualDecommissionLimitKey)
+			return params, err
+		}
+		val = uint32(tmp)
+		params[metaManualDecommissionLimitKey] = val
+	}
+
 	if value = r.FormValue(flashReadFlowLimit); value != "" {
 		noParams = false
 		val := int64(0)

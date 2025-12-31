@@ -105,10 +105,14 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  DecommissionDpLimit                      : %v\n", cv.DecommissionLimit))
 	sb.WriteString(fmt.Sprintf("  DecommissionDiskLimit                    : %v\n", cv.DecommissionDiskLimit))
 	sb.WriteString(fmt.Sprintf("  DpBackupTimeout                          : %v\n", cv.DpBackupTimeout))
+	sb.WriteString(fmt.Sprintf("  MetaAutoAddReplicaLimit                  : %v\n", cv.MetaAutoAddReplicaLimit))
+	sb.WriteString(fmt.Sprintf("  MetaManualDecommissionLimit              : %v\n", cv.MetaManualDecommissionLimit))
+	sb.WriteString(fmt.Sprintf("  MetaBalanceLimit                         : %v\n", cv.MetaBalanceLimit))
+	sb.WriteString(fmt.Sprintf("  MetaManualAddReplicaLimit                : %v\n", cv.MetaManualAddReplicaLimit))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVersion0             : %v\n", cv.ForbidWriteOpOfProtoVer0))
 	sb.WriteString(fmt.Sprintf("  LegacyDataMediaType                      : %v\n", cv.LegacyDataMediaType))
 	sb.WriteString(fmt.Sprintf("  RaftPartitionCanUsingDifferentPortEnabled: %v\n", cv.RaftPartitionCanUsingDifferentPortEnabled))
-	sb.WriteString(fmt.Sprintf("  RackAwareLevel                            : %v\n", cv.RackAwareLevel.String()))
+	sb.WriteString(fmt.Sprintf("  RackAwareLevel                           : %v\n", cv.RackAwareLevel.String()))
 
 	sb.WriteString(fmt.Sprintf("  FlashNodeHandleReadTimeout       : %v ms\n", cv.FlashNodeHandleReadTimeout))
 	sb.WriteString(fmt.Sprintf("  FlashNodeReadDataNodeTimeout     : %v ms\n", cv.FlashNodeReadDataNodeTimeout))
@@ -122,6 +126,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  FlashReadFlowLimit               : %v\n", cv.FlashReadFlowLimit))
 	sb.WriteString(fmt.Sprintf("  FlashWriteFlowLimit              : %v\n", cv.FlashWriteFlowLimit))
 	sb.WriteString(fmt.Sprintf("  FlashKeyFlowLimit                : %v\n", cv.FlashKeyFlowLimit))
+
 	return sb.String()
 }
 

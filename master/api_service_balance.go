@@ -409,7 +409,7 @@ func (m *Server) migrateMetaPartitionHandler(w http.ResponseWriter, r *http.Requ
 		mode = proto.StoreMode(modeInt)
 	}
 
-	if err = m.cluster.migrateMetaPartition(srcAddr, targetAddr, mp, mode); err != nil {
+	if err = m.cluster.migrateMetaPartition(srcAddr, targetAddr, mp, mode, proto.ManualDecommission); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

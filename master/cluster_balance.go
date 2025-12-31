@@ -2228,9 +2228,9 @@ func (c *Cluster) doMetaPartitionMigrate(plan *proto.ClusterPlan, mpPlan *proto.
 		}
 
 		if plan.Type == AddLearner {
-			err = c.addMetaReplicaLearner(mp, mrPlan.Destination, plan.Mode, mrPlan.Source, !plan.AutoPromote)
+			err = c.addMetaReplicaLearner(mp, mrPlan.Destination, plan.Mode, mrPlan.Source, !plan.AutoPromote, proto.MpBalance)
 		} else {
-			err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp, mrPlan.StoreMode)
+			err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp, mrPlan.StoreMode, proto.MpBalance)
 		}
 
 		if err == nil {

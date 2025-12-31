@@ -71,6 +71,10 @@ const (
 	nodeMarkDeleteRateKey                  = "markDeleteRate"
 	nodeDeleteWorkerSleepMs                = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey                  = "autoRepairRate"
+	metaAutoAddReplicaLimitKey             = "metaAutoAddReplicaLimit"
+	metaManualDecommissionLimitKey         = "metaManualDecommissionLimit"
+	metaBalanceLimitKey                    = "metaBalanceLimit"
+	metaManualAddReplicaLimitKey           = "metaManualAddReplicaLimit"
 	nodeDpRepairTimeOutKey                 = "dpRepairTimeOut"
 	nodeDpBackupKey                        = "dpBackupTimeout"
 	nodeDpMaxRepairErrCntKey               = "dpMaxRepairErrCnt"
@@ -269,25 +273,29 @@ const (
 	defaultAutoMpMetaRepairPallarelCnt                = 10
 	defaultAutoDecommissionDiskInterval               = 10 * time.Second
 	maxMpCreationCount                                = 10
-	defaultVolForbidWriteOpOfProtoVersion0            = true
-	defaultMetaNodeMemHighPer                         = 0.75
-	defaultMetaNodeMemLowPer                          = 0.3
-	metaNodeReserveMemorySize                         = 3 * 1024 * 1024 * 1024
-	metaNodeMemoryRatio                               = 2
-	defaultPlanExpireHours                            = 72
-	defaultGOGCLowerLimit                             = 30
-	defaultGOGCUpperLimit                             = 100
-	lowPriorityDecommissionWeight                     = 2
-	mediumPriorityDecommissionWeight                  = 4
-	highPriorityDecommissionWeight                    = 6
-	highestPriorityDecommissionWeight                 = 8
-	diskDecommissionInfoStatType                      = 1
-	dataNodeDecommissionInfoStatType                  = 2
-	defaultMpMigrateThreads                           = 10
+	// Meta partition decommission limits by type
+	defaultMetaAutoAddReplicaLimit         = 5
+	defaultMetaManualDecommissionLimit     = 5
+	defaultMetaBalanceLimit                = 10
+	defaultMetaManualAddReplicaLimit       = 5
+	defaultVolForbidWriteOpOfProtoVersion0 = true
+	defaultMetaNodeMemHighPer              = 0.75
+	defaultMetaNodeMemLowPer               = 0.3
+	metaNodeReserveMemorySize              = 3 * 1024 * 1024 * 1024
+	metaNodeMemoryRatio                    = 2
+	defaultPlanExpireHours                 = 72
+	defaultGOGCLowerLimit                  = 30
+	defaultGOGCUpperLimit                  = 100
+	lowPriorityDecommissionWeight          = 2
+	mediumPriorityDecommissionWeight       = 4
+	highPriorityDecommissionWeight         = 6
+	highestPriorityDecommissionWeight      = 8
+	diskDecommissionInfoStatType           = 1
+	dataNodeDecommissionInfoStatType       = 2
+	defaultMpMigrateThreads                = 10
 
-	maxTrashInterval               = 365 * 24 * 60
-	mpReplicaDelInterval           = 300 // 5 minutes
-	maxMpAutoAddReplicaParallelCnt = 5   // max parallel count of auto add replica
+	maxTrashInterval     = 365 * 24 * 60
+	mpReplicaDelInterval = 300 // 5 minutes
 
 	// Learner mode recovery constants
 	defaultLearnerRecoverTimeout = 3600 // 1 hour

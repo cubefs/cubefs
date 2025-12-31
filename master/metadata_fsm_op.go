@@ -104,6 +104,10 @@ type clusterValue struct {
 	DpLimitHddBaseCount                    uint64
 	DpLimitHddFactor                       uint64
 	DefaultVolStoreMode                    proto.StoreMode
+	MetaAutoAddReplicaLimit                uint32
+	MetaManualDecommissionLimit            uint32
+	MetaBalanceLimit                       uint32
+	MetaManualAddReplicaLimit              uint32
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -173,6 +177,10 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DpLimitHddBaseCount:                    c.cfg.DpLimitHddBaseCount,
 		DpLimitHddFactor:                       c.cfg.DpLimitHddFactor,
 		DefaultVolStoreMode:                    c.cfg.DefaultVolStoreMode,
+		MetaAutoAddReplicaLimit:                c.MetaAutoAddReplicaLimit.Load(),
+		MetaManualDecommissionLimit:            c.MetaManualDecommissionLimit.Load(),
+		MetaBalanceLimit:                       c.MetaBalanceLimit.Load(),
+		MetaManualAddReplicaLimit:              c.MetaManualAddReplicaLimit.Load(),
 	}
 	return cv
 }
@@ -1459,6 +1467,24 @@ func (c *Cluster) loadClusterValue() (err error) {
 		} else {
 			c.cfg.LearnerRecoverTimeoutSeconds = defaultLearnerRecoverTimeout
 		}
+
+		// Load MetaPartition decommission limits
+		if cv.MetaAutoAddReplicaLimit <= 0 {
+			cv.MetaAutoAddReplicaLimit = defaultMetaAutoAddReplicaLimit
+		}
+		c.MetaAutoAddReplicaLimit.Store(cv.MetaAutoAddReplicaLimit)
+		if cv.MetaManualDecommissionLimit <= 0 {
+			cv.MetaManualDecommissionLimit = defaultMetaManualDecommissionLimit
+		}
+		c.MetaManualDecommissionLimit.Store(cv.MetaManualDecommissionLimit)
+		if cv.MetaBalanceLimit <= 0 {
+			cv.MetaBalanceLimit = defaultMetaBalanceLimit
+		}
+		c.MetaBalanceLimit.Store(cv.MetaBalanceLimit)
+		if cv.MetaManualAddReplicaLimit <= 0 {
+			cv.MetaManualAddReplicaLimit = defaultMetaManualAddReplicaLimit
+		}
+		c.MetaManualAddReplicaLimit.Store(cv.MetaManualAddReplicaLimit)
 
 		if c.DecommissionFirstHostDiskParallelLimit == 0 {
 			c.DecommissionFirstHostDiskParallelLimit = defaultDecommissionFirstHostDiskParallelLimit

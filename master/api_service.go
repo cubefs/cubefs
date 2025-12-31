@@ -1046,6 +1046,10 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashWriteFlowLimit:                       m.cluster.cfg.flashWriteFlowLimit,
 		FlashKeyFlowLimit:                         m.cluster.cfg.flashKeyFlowLimit,
 		RemoteClientFlowLimit:                     m.cluster.cfg.remoteClientFlowLimit,
+		MetaAutoAddReplicaLimit:                   m.cluster.MetaAutoAddReplicaLimit.Load(),
+		MetaManualDecommissionLimit:               m.cluster.MetaManualDecommissionLimit.Load(),
+		MetaBalanceLimit:                          m.cluster.MetaBalanceLimit.Load(),
+		MetaManualAddReplicaLimit:                 m.cluster.MetaManualAddReplicaLimit.Load(),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -2140,11 +2144,15 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if m.cluster.EnableMpDecommissionByLearner {
-		if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode), "", false); err != nil {
+		if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode), "", false, proto.ManualAddReplica); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 	} else {
+		if err = m.cluster.CheckMetaPartitionDecommissionLimit(proto.ManualAddReplica); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
 		if err = mp.waitSetRestoreReplicaForbidden(); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
@@ -2153,6 +2161,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
+		mp.DecommissionType = proto.ManualAddReplica
 		mp.IsRecover.Store(true)
 		mp.RecoverStartTime = time.Now().Unix()
 		m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
@@ -2227,7 +2236,7 @@ func (m *Server) addMetaPartitionLearner(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode), "", manualPromote); err != nil {
+	if err = m.cluster.addMetaReplicaLearner(mp, addr, proto.StoreMode(storeMode), "", manualPromote, proto.ManualAddReplica); err != nil {
 		log.LogWarnf("action[addMetaPartitionLearner] cluster.addMetaPartitionLearner failed,partitionID[%v],addr[%v],err[%v]", partitionID, addr, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -4588,6 +4597,42 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[forbidWriteOpOfProtoVersion0]; ok {
 		if forbidWriteOpOfProtoVer0, ok := val.(bool); ok {
 			if err = m.cluster.setForbidWriteOpOfProtoVersion0(forbidWriteOpOfProtoVer0); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[metaAutoAddReplicaLimitKey]; ok {
+		if limit, ok := val.(uint32); ok {
+			if err = m.cluster.SetMetaPartitionDecommissionLimit(proto.AutoAddReplica, limit); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[metaManualDecommissionLimitKey]; ok {
+		if limit, ok := val.(uint32); ok {
+			if err = m.cluster.SetMetaPartitionDecommissionLimit(proto.ManualDecommission, limit); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[metaBalanceLimitKey]; ok {
+		if limit, ok := val.(uint32); ok {
+			if err = m.cluster.SetMetaPartitionDecommissionLimit(proto.MpBalance, limit); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[metaManualAddReplicaLimitKey]; ok {
+		if limit, ok := val.(uint32); ok {
+			if err = m.cluster.SetMetaPartitionDecommissionLimit(proto.ManualDecommission, limit); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}

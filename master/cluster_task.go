@@ -97,9 +97,9 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 	}()
 }
 
-func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode) (err error) {
+func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode, decommissionType uint32) (err error) {
 	if c.EnableMpDecommissionByLearner {
-		return c.migrateMetaPartitionByLearner(srcAddr, targetAddr, mp, dstStoreMode)
+		return c.migrateMetaPartitionByLearner(srcAddr, targetAddr, mp, dstStoreMode, decommissionType)
 	}
 
 	var (
@@ -108,6 +108,10 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		isLearner         bool
 		manualPromote     bool
 	)
+
+	if err = c.CheckMetaPartitionDecommissionLimit(decommissionType); err != nil {
+		return
+	}
 
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
 		mp.volName, srcAddr, targetAddr, mp.PartitionID)
@@ -165,6 +169,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	// Mark as recovering and put into recovery queue
 	mp.IsRecover.Store(true)
 	mp.RecoverStartTime = time.Now().Unix()
+	mp.DecommissionType = decommissionType
 	c.putBadMetaPartitions(srcAddr, mp.PartitionID)
 	mp.RLock()
 	c.syncUpdateMetaPartition(mp)
@@ -313,7 +318,7 @@ func (c *Cluster) checkMultipleReplicasOnSameMachineForMigration(oldHosts []stri
 // 4. Add raft learner
 // 5. Update master hosts and mark as recovering in learner mode
 // 6. Put mp into recovery queue
-func (c *Cluster) migrateMetaPartitionByLearner(srcAddr, targetAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode) (err error) {
+func (c *Cluster) migrateMetaPartitionByLearner(srcAddr, targetAddr string, mp *MetaPartition, dstStoreMode proto.StoreMode, decommissionType uint32) (err error) {
 	var (
 		newPeers          []proto.Peer
 		finalDstStoreMode proto.StoreMode
@@ -329,7 +334,7 @@ func (c *Cluster) migrateMetaPartitionByLearner(srcAddr, targetAddr string, mp *
 	if !c.EnableMpDecommissionByLearner {
 		log.LogWarnf("action[migrateMetaPartitionByLearner],volName[%v], learner mode is disabled, fallback to normal migration",
 			mp.volName)
-		return c.migrateMetaPartition(srcAddr, targetAddr, mp, dstStoreMode)
+		return c.migrateMetaPartition(srcAddr, targetAddr, mp, dstStoreMode, decommissionType)
 	}
 
 	// Prepare migration parameters
@@ -340,7 +345,7 @@ func (c *Cluster) migrateMetaPartitionByLearner(srcAddr, targetAddr string, mp *
 		goto errHandler
 	}
 
-	if err = c.addMetaReplicaLearner(mp, newPeers[0].Addr, finalDstStoreMode, srcAddr, false); err != nil {
+	if err = c.addMetaReplicaLearner(mp, newPeers[0].Addr, finalDstStoreMode, srcAddr, false, decommissionType); err != nil {
 		goto errHandler
 	}
 
@@ -375,11 +380,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		err = fmt.Errorf("cluster mataPartition decommission switch is disabled")
 		return
 	}
-	// Use learner mode if enabled
-	if c.EnableMpDecommissionByLearner {
-		return c.migrateMetaPartitionByLearner(nodeAddr, "", mp, dstStoreMode)
-	}
-	return c.migrateMetaPartition(nodeAddr, "", mp, dstStoreMode)
+	return c.migrateMetaPartition(nodeAddr, "", mp, dstStoreMode, proto.ManualDecommission)
 }
 
 // prepareMetaPartitionMigration prepares common parameters and validates for meta partition migration
@@ -594,7 +595,7 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 	diagnosis.DentryCountNotEqualIDs = setAbnormalIDs(c.dentryCountNotEqualMP)
 	diagnosis.AbnormalRaftIDs = setAbnormalIDs(c.AbnormalRaftMP)
 
-	diagnosis.BadMetaPartitionIDs = c.getBadMetaPartitionsView()
+	diagnosis.BadMetaPartitionInfos = c.getBadMetaPartitionsRepairView()
 
 	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
 		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v], AbnormalRaftIDs count:[%v]",
@@ -877,7 +878,7 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string, storeMod
 	return
 }
 
-func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr string, storeMode proto.StoreMode, srcAddr string, manualPromote bool) (err error) {
+func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr string, storeMode proto.StoreMode, srcAddr string, manualPromote bool, decommissionType uint32) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addMetaReplicaLearner],vol[%v],meta partition[%v],addr[%v],storeMode[%v],err[%v]",
@@ -905,6 +906,11 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 		partition.volName, partition.PartitionID, targetAddr, storeMode, partition.Hosts)
 
 	if !manualPromote {
+		if err = c.CheckMetaPartitionDecommissionLimit(decommissionType); err != nil {
+			log.LogWarnf("action[addMetaReplicaLearner] checkMetaPartitionDecommissionLimit failed,vol[%v],meta partition[%v],err[%v]",
+				partition.volName, partition.PartitionID, err)
+			return
+		}
 		if err = partition.waitSetRestoreReplicaForbidden(); err != nil {
 			log.LogWarnf("action[addMetaReplicaLearner] waitSetRestoreReplicaForbidden failed,vol[%v],meta partition[%v],err[%v]",
 				partition.volName, partition.PartitionID, err)
@@ -992,6 +998,7 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 	newPeers := partition.Peers
 	if !manualPromote {
 		partition.IsRecover.Store(true)
+		partition.DecommissionType = decommissionType
 		partition.SrcAddr = srcAddr
 		partition.LearnerDstAddr = addPeer.Addr
 		partition.RecoverStartTime = time.Now().Unix()
@@ -1016,6 +1023,7 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 		partition.IsRecover.Store(false)
 		partition.SrcAddr = ""
 		partition.LearnerDstAddr = ""
+		partition.DecommissionType = proto.InitialDecommission
 		return
 	}
 

@@ -17,7 +17,6 @@ package cmd
 import (
 	"sort"
 	"strconv"
-	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -182,22 +181,81 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			}
 
 			stdout("\n")
+			// Group bad meta partitions by decommission type
+			typeGroups := make(map[uint32][]struct {
+				Path      string
+				Partition proto.RepairInfo
+			})
+			for _, bmpv := range diagnosis.BadMetaPartitionInfos {
+				for _, pinfo := range bmpv.PartitionInfos {
+					decommissionType := pinfo.DecommissionType
+					typeGroups[decommissionType] = append(typeGroups[decommissionType], struct {
+						Path      string
+						Partition proto.RepairInfo
+					}{bmpv.Path, pinfo})
+				}
+			}
+
+			typeOrder := []uint32{4, 1, 7, 5} // AutoAddReplica, ManualDecommission, MpBalance, ManualAddReplica
+			typeNames := map[uint32]string{
+				1: "ManualDecommission",
+				4: "AutoAddReplica",
+				5: "ManualAddReplica",
+				7: "MpBalance",
+			}
+
 			stdout("%v\n", "[Bad meta partitions(decommission not completed)]:")
 			badPartitionTablePattern := "%-20v    %-12v    %-20v\n"
-			stdout(badPartitionTablePattern, "PATH", "PARTITIONID", "REPAIR STARTTIME")
-			for _, bmpv := range diagnosis.BadMetaPartitionIDs {
-				sort.SliceStable(bmpv.PartitionIDs, func(i, j int) bool {
-					return bmpv.PartitionIDs[i] < bmpv.PartitionIDs[j]
-				})
-				for _, pid := range bmpv.PartitionIDs {
-					var partition *proto.MetaPartitionInfo
-					var repairStartTime string = "N/A"
-					if partition, err = client.ClientAPI().GetMetaPartition(pid); err == nil && partition != nil {
-						if partition.RecoverStartTime > 0 {
-							repairStartTime = time.Unix(partition.RecoverStartTime, 0).Format("2006-01-02 15:04:05")
+
+			for _, dtype := range typeOrder {
+				if group, ok := typeGroups[dtype]; ok {
+					stdout("[" + typeNames[dtype] + "]:\n")
+					stdout(badPartitionTablePattern, "PATH", "PARTITIONID", "REPAIR STARTTIME")
+
+					sort.SliceStable(group, func(i, j int) bool {
+						return group[i].Partition.PartitionID < group[j].Partition.PartitionID
+					})
+
+					for _, item := range group {
+						repairStartTime := "N/A"
+						if !item.Partition.RecoverStartTime.IsZero() {
+							repairStartTime = item.Partition.RecoverStartTime.Format("2006-01-02 15:04:05")
 						}
+						stdout(badPartitionTablePattern,
+							item.Path,
+							item.Partition.PartitionID,
+							repairStartTime)
 					}
-					stdout(badPartitionTablePattern, bmpv.Path, pid, repairStartTime)
+					delete(typeGroups, dtype)
+				}
+			}
+
+			// Display any remaining types not in the predefined order
+			if len(typeGroups) > 0 {
+				stdout("\n[Other]:\n")
+				stdout(badPartitionTablePattern, "PATH", "PARTITIONID", "REPAIR STARTTIME")
+
+				var otherGroup []struct {
+					Path      string
+					Partition proto.RepairInfo
+				}
+				for _, group := range typeGroups {
+					otherGroup = append(otherGroup, group...)
+				}
+
+				sort.SliceStable(otherGroup, func(i, j int) bool {
+					return otherGroup[i].Partition.PartitionID < otherGroup[j].Partition.PartitionID
+				})
+
+				for _, item := range otherGroup {
+					repairStartTime := "N/A"
+					if !item.Partition.RecoverStartTime.IsZero() {
+						repairStartTime = item.Partition.RecoverStartTime.Format("2006-01-02 15:04:05")
+					}
+					stdout(badPartitionTablePattern,
+						item.Path,
+						item.Partition.PartitionID,
+						repairStartTime)
 				}
 			}
 

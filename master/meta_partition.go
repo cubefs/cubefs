@@ -101,6 +101,7 @@ type MetaPartition struct {
 	RecoverState       proto.RecoverState // Learner recovery state: 0=Init, 1=Recovering, 2=Failed
 
 	RestoreReplicaMeta uint32
+	DecommissionType   uint32
 }
 
 func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
@@ -1411,8 +1412,9 @@ func (mp *MetaPartition) removeRedundantPeersFromMaster(c *Cluster) (err error) 
 
 // Automatically add a replica when non-learner count < ReplicaNum
 func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
-	if c.badMetaPartitionCount() >= maxMpAutoAddReplicaParallelCnt {
-		return errors.NewErrorf("autoAddReplica throttled: bad meta partitions in flight >= %d", maxMpAutoAddReplicaParallelCnt)
+	// Limit the number of autoAddReplica
+	if c.CheckMetaPartitionDecommissionLimit(proto.AutoAddReplica) != nil {
+		return errors.NewErrorf("autoAddReplica throttled: meta partition decommission limit reached for type AutoAddReplica")
 	}
 
 	mp.RLock()
@@ -1473,7 +1475,7 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 
 	if c.EnableMpDecommissionByLearner {
 		mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
-		if err = c.addMetaReplicaLearner(mp, selectPeers[0].Addr, storeMode, "", false); err != nil {
+		if err = c.addMetaReplicaLearner(mp, selectPeers[0].Addr, storeMode, "", false, proto.AutoAddReplica); err != nil {
 			return err
 		}
 	} else {
@@ -1481,6 +1483,7 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 			return err
 		}
 		addedAddr = selectPeers[0].Addr
+		mp.DecommissionType = proto.AutoAddReplica
 		mp.IsRecover.Store(true)
 		mp.RecoverStartTime = time.Now().Unix()
 		mp.setRestoreReplicaStatus(RestoreReplicaMetaForbidden)

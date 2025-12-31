@@ -194,14 +194,14 @@ The "reset" command will be released in next version`,
 			if !showSimplified && (showAll || showBadDp) {
 				typeGroups := make(map[uint32][]struct {
 					Path      string
-					Partition proto.DpRepairInfo
+					Partition proto.RepairInfo
 				})
 				for _, bdpv := range diagnosis.BadDataPartitionInfos {
 					for _, pinfo := range bdpv.PartitionInfos {
 						decommissionType := pinfo.DecommissionType
 						typeGroups[decommissionType] = append(typeGroups[decommissionType], struct {
 							Path      string
-							Partition proto.DpRepairInfo
+							Partition proto.RepairInfo
 						}{bdpv.Path, pinfo})
 					}
 				}
@@ -243,7 +243,7 @@ The "reset" command will be released in next version`,
 
 					var otherGroup []struct {
 						Path      string
-						Partition proto.DpRepairInfo
+						Partition proto.RepairInfo
 					}
 					for _, group := range typeGroups {
 						otherGroup = append(otherGroup, group...)

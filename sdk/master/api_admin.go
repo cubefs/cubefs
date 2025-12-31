@@ -667,6 +667,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	remoteCacheSameZoneTimeout string, remoteCacheSameRegionTimeout string, flashHotKeyMissCount string,
 	flashReadFlowLimit string, flashWriteFlowLimit string, flashKeyFlowLimit string, remoteClientFlowLimit string,
 	enableMpDecommissionByLearner string, learnerRecoverTimeoutSeconds string,
+	metaAutoAddReplicaLimit string, metaManualDecommissionLimit string, metaBalanceLimit string, metaManualAddReplicaLimit string,
 	dpLimitSsdBaseCount string, dpLimitSsdFactor string, dpLimitHddBaseCount string, dpLimitHddFactor string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
@@ -801,6 +802,18 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if dpLimitHddFactor != "" {
 		request.addParamAny("dpLimitHddFactor", dpLimitHddFactor)
+	}
+	if metaAutoAddReplicaLimit != "" {
+		request.addParam("metaAutoAddReplicaLimit", metaAutoAddReplicaLimit)
+	}
+	if metaManualDecommissionLimit != "" {
+		request.addParam("metaManualDecommissionLimit", metaManualDecommissionLimit)
+	}
+	if metaBalanceLimit != "" {
+		request.addParam("metaBalanceLimit", metaBalanceLimit)
+	}
+	if metaManualAddReplicaLimit != "" {
+		request.addParam("metaManualAddReplicaLimit", metaManualAddReplicaLimit)
 	}
 	_, err = api.mc.serveRequest(request)
 	return

@@ -303,6 +303,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	decommissionDpLimit := ""
 	decommissionDiskLimit := ""
 	decommissionFirstHostDiskParallelLimit := ""
+	metaAutoAddReplicaLimit := ""
+	metaManualDecommissionLimit := ""
+	metaBalanceLimit := ""
+	metaManualAddReplicaLimit := ""
 	forbidWriteOpOfProtoVersion0 := ""
 	dataMediaType := ""
 	handleTimeout := ""
@@ -670,7 +674,9 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				distributionOptimizationConDpCnt, distributionOptimizationThreshold,
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
 				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount, optFlashReadFlowLimit, optFlashWriteFlowLimit, optFlashKeyFlowLimit, optRemoteClientFlowLimit,
-				enableMpDecommissionByLearner, learnerRecoverTimeoutSeconds, optDpLimitSsdBaseCount, optDpLimitSsdFactor, optDpLimitHddBaseCount, optDpLimitHddFactor); err != nil {
+				enableMpDecommissionByLearner, learnerRecoverTimeoutSeconds,
+				metaAutoAddReplicaLimit, metaManualDecommissionLimit, metaBalanceLimit, metaManualAddReplicaLimit,
+				optDpLimitSsdBaseCount, optDpLimitSsdFactor, optDpLimitHddBaseCount, optDpLimitHddFactor); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -704,6 +710,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&decommissionDpLimit, CliFlagDecommissionDpLimit, "", "Limit for parallel  decommission dp")
 	cmd.Flags().StringVar(&decommissionDiskLimit, CliFlagDecommissionDiskLimit, "", "Limit for parallel decommission disk")
 	cmd.Flags().StringVar(&decommissionFirstHostDiskParallelLimit, CliFlagDecommissionFirstHostDiskParallelLimit, "", "Limit for parallel decommission dp in first host disk")
+	cmd.Flags().StringVar(&metaAutoAddReplicaLimit, CliFlagMetaAutoAddReplicaLimit, "", "Limit for parallel meta partition auto add replica decommission")
+	cmd.Flags().StringVar(&metaManualDecommissionLimit, CliFlagMetaManualDecommissionLimit, "", "Limit for parallel meta partition manual decommission")
+	cmd.Flags().StringVar(&metaBalanceLimit, CliFlagMetaBalanceLimit, "", "Limit for parallel meta partition balance decommission")
+	cmd.Flags().StringVar(&metaManualAddReplicaLimit, CliFlagMetaManualAddReplicaLimit, "", "Limit for parallel meta partition manual add replica decommission")
 	cmd.Flags().StringVar(&forbidWriteOpOfProtoVersion0, CliForbidWriteOpOfProtoVersion0, "",
 		"set datanode and metanode whether forbid write operate of packet whose protocol version is version-0: [true | false]")
 	cmd.Flags().StringVar(&dataMediaType, "clusterDataMediaType", "", "set cluster media type, 1(ssd), 2(hdd)")

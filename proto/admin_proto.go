@@ -1625,6 +1625,7 @@ const (
 	AutoAddReplica
 	ManualAddReplica
 	DistributionOptimization
+	MpBalance // Meta partition balance decommission type
 )
 
 const (
