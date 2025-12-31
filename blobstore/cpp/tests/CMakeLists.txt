@@ -7,6 +7,18 @@ endif()
 find_package(Boost REQUIRED COMPONENTS unit_test_framework)
 enable_testing()
 
+add_executable(common_test common_test.cc)
+target_link_libraries(common_test
+    PRIVATE
+        $<TARGET_OBJECTS:COMMON_OBJS>
+        protobuf::libprotobuf
+        Seastar::seastar
+        Seastar::seastar_testing
+        Boost::unit_test_framework
+)
+target_compile_definitions(common_test PRIVATE SEASTAR_TESTING_MAIN)
+add_test(NAME CommonTest COMMAND common_test -- -c 1)
+
 add_executable(trace_test trace_test.cc)
 target_link_libraries(trace_test
     PRIVATE

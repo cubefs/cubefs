@@ -38,7 +38,7 @@ function(generate_proto_files output_var proto_dir)
 
         add_custom_command(
             OUTPUT ${proto_h} ${proto_cc}
-            COMMAND protoc --proto_path=${proto_dir} --cpp_out=${proto_dir}/ ${proto_file}
+            COMMAND protoc --proto_path=${PROJECT_SOURCE_DIR} --cpp_out=${PROJECT_SOURCE_DIR}/ ${proto_file}
             DEPENDS ${proto_file}
             COMMENT "Generating protobuf files from ${proto_dir}/${proto_name}.proto"
         )
