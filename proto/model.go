@@ -702,6 +702,16 @@ type DecommissionDataPartitionInfo struct {
 	DecommissionRetryTime string
 }
 
+type QueryDecommissionStatusRequest struct {
+	DecommissionType   uint32 `json:"decommissionType"`   // DecommissionType: AutoDecommission, ManualDecommission, etc. Optional, if not specified (or MaxUint32), returns all types
+	DecommissionStatus uint32 `json:"decommissionStatus"` // DecommissionStatus: DecommissionInitial, DecommissionRunning, etc. Optional, if not specified (or MaxUint32), returns all statuses
+}
+
+type QueryDecommissionStatusResponse struct {
+	DataPartitions []DecommissionDataPartitionInfo `json:"dataPartitions"`
+	TotalCount     int                             `json:"totalCount"`
+}
+
 type DecommissionedDisks struct {
 	Node  string
 	Disks []string
@@ -761,17 +771,23 @@ type MetaNodeView struct {
 }
 
 type DistributionOptimizationStatus struct {
-	TotalUnbalancedDPs             int
-	NodeSetUnbalancedDPs           int
-	RackConflictDPs                int
-	CrossZoneDPs                   int
 	DecommissioningDPIDs           []uint64
 	ConcurrentDpCount              int64
 	BalanceIntervalSec             int64
 	BalanceThreshold               float64
 	EnableDistributionOptimization bool
-	DomainDistribution             *DomainDistributionInfo
-	RackDistribution               *RackDistributionInfo
+	// Statistics by MediaType
+	SSDStats *MediaTypeDistributionStats
+	HDDStats *MediaTypeDistributionStats
+}
+
+type MediaTypeDistributionStats struct {
+	TotalUnbalancedDPs   int
+	NodeSetUnbalancedDPs int
+	RackConflictDPs      int
+	CrossZoneDPs         int
+	DomainDistribution   *DomainDistributionInfo
+	RackDistribution     *RackDistributionInfo
 }
 
 type DomainDistributionInfo struct {

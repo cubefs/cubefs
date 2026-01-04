@@ -1693,20 +1693,43 @@ func formatDistributionOptimizationStatus(status *proto.DistributionOptimization
 	sb.WriteString(fmt.Sprintf("  Interval                : %v\n", time.Duration(status.BalanceIntervalSec)*time.Second))
 	sb.WriteString(fmt.Sprintf("  Threshold               : %.2f\n", status.BalanceThreshold))
 
-	sb.WriteString("\n[Distribution Status Summary]\n")
-	sb.WriteString(fmt.Sprintf("  TotalUnbalancedDPs      : %v\n", status.TotalUnbalancedDPs))
-	sb.WriteString(fmt.Sprintf("  NodeSetUnbalancedDPs    : %v\n", status.NodeSetUnbalancedDPs))
-	sb.WriteString(fmt.Sprintf("  RackConflictDPs         : %v\n", status.RackConflictDPs))
+	// SSD Zone Statistics
+	if status.SSDStats != nil {
+		sb.WriteString("\n[SSD]\n")
+		sb.WriteString("  [Distribution Status]\n")
+		sb.WriteString(fmt.Sprintf("    TotalUnbalancedDPs      : %v\n", status.SSDStats.TotalUnbalancedDPs))
+		sb.WriteString(fmt.Sprintf("    NodeSetUnbalancedDPs    : %v\n", status.SSDStats.NodeSetUnbalancedDPs))
+		sb.WriteString(fmt.Sprintf("    RackConflictDPs         : %v\n", status.SSDStats.RackConflictDPs))
 
-	sb.WriteString("\n[NodeSet Distribution]\n")
-	sb.WriteString(fmt.Sprintf("  SingleNodeSetDPs        : %v\n", status.DomainDistribution.SingleDomainDPs))
-	sb.WriteString(fmt.Sprintf("  TwoNodeSetDPs           : %v\n", status.DomainDistribution.TwoDomainDPs))
-	sb.WriteString(fmt.Sprintf("  ThreeNodeSetDPs         : %v\n", status.DomainDistribution.ThreeDomainDPs))
+		sb.WriteString("  [NodeSet Distribution]\n")
+		sb.WriteString(fmt.Sprintf("    SingleNodeSetDPs        : %v\n", status.SSDStats.DomainDistribution.SingleDomainDPs))
+		sb.WriteString(fmt.Sprintf("    TwoNodeSetDPs           : %v\n", status.SSDStats.DomainDistribution.TwoDomainDPs))
+		sb.WriteString(fmt.Sprintf("    ThreeNodeSetDPs         : %v\n", status.SSDStats.DomainDistribution.ThreeDomainDPs))
 
-	sb.WriteString("\n[Rack Distribution]\n")
-	sb.WriteString(fmt.Sprintf("  NoRackConflictDPs       : %v\n", status.RackDistribution.NoRackConflictDPs))
-	sb.WriteString(fmt.Sprintf("  MinorRackConflictDPs    : %v (2 replicas in same rack)\n", status.RackDistribution.MinorRackConflictDPs))
-	sb.WriteString(fmt.Sprintf("  MajorRackConflictDPs    : %v (3+ replicas in same rack)\n", status.RackDistribution.MajorRackConflictDPs))
+		sb.WriteString("  [Rack Distribution]\n")
+		sb.WriteString(fmt.Sprintf("    NoRackConflictDPs       : %v\n", status.SSDStats.RackDistribution.NoRackConflictDPs))
+		sb.WriteString(fmt.Sprintf("    MinorRackConflictDPs    : %v (2 replicas in same rack)\n", status.SSDStats.RackDistribution.MinorRackConflictDPs))
+		sb.WriteString(fmt.Sprintf("    MajorRackConflictDPs    : %v (3+ replicas in same rack)\n", status.SSDStats.RackDistribution.MajorRackConflictDPs))
+	}
+
+	// HDD Zone Statistics
+	if status.HDDStats != nil {
+		sb.WriteString("\n[HDD]\n")
+		sb.WriteString("  [Distribution Status]\n")
+		sb.WriteString(fmt.Sprintf("    TotalUnbalancedDPs      : %v\n", status.HDDStats.TotalUnbalancedDPs))
+		sb.WriteString(fmt.Sprintf("    NodeSetUnbalancedDPs    : %v\n", status.HDDStats.NodeSetUnbalancedDPs))
+		sb.WriteString(fmt.Sprintf("    RackConflictDPs         : %v\n", status.HDDStats.RackConflictDPs))
+
+		sb.WriteString("  [NodeSet Distribution]\n")
+		sb.WriteString(fmt.Sprintf("    SingleNodeSetDPs        : %v\n", status.HDDStats.DomainDistribution.SingleDomainDPs))
+		sb.WriteString(fmt.Sprintf("    TwoNodeSetDPs           : %v\n", status.HDDStats.DomainDistribution.TwoDomainDPs))
+		sb.WriteString(fmt.Sprintf("    ThreeNodeSetDPs         : %v\n", status.HDDStats.DomainDistribution.ThreeDomainDPs))
+
+		sb.WriteString("  [Rack Distribution]\n")
+		sb.WriteString(fmt.Sprintf("    NoRackConflictDPs       : %v\n", status.HDDStats.RackDistribution.NoRackConflictDPs))
+		sb.WriteString(fmt.Sprintf("    MinorRackConflictDPs    : %v (2 replicas in same rack)\n", status.HDDStats.RackDistribution.MinorRackConflictDPs))
+		sb.WriteString(fmt.Sprintf("    MajorRackConflictDPs    : %v (3+ replicas in same rack)\n", status.HDDStats.RackDistribution.MajorRackConflictDPs))
+	}
 
 	if len(status.DecommissioningDPIDs) > 0 {
 		sb.WriteString("\n[Decommissioning DPs]\n")

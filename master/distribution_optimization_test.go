@@ -401,9 +401,15 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 		dataPartitions: newDataPartitionMap("test-vol"),
 	}
 
+	// Add more mock nodes for rack conflict testing
+	mockNodes["192.168.1.4:17310"] = &DataNode{Addr: "192.168.1.4:17310", Rack: "rack1", NodeSetID: 1, ZoneName: "zone1"}
+	cluster.dataNodes.Store("192.168.1.4:17310", mockNodes["192.168.1.4:17310"])
+
 	partitions := []*DataPartition{
+		// SSD partitions
 		{
 			PartitionID: 1,
+			MediaType:   proto.MediaType_SSD,
 			Hosts:       []string{"192.168.1.1:17310", "192.168.1.2:17310", "192.168.1.3:17310"},
 			Replicas: []*DataReplica{
 				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
@@ -416,7 +422,8 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 		},
 		{
 			PartitionID: 2,
-			Hosts:       []string{"192.168.1.1:17310", "192.168.1.2:17310"}, // Same NodeSet, different racks
+			MediaType:   proto.MediaType_SSD,
+			Hosts:       []string{"192.168.1.1:17310", "192.168.1.2:17310"}, // Same NodeSet, different racks - optimal
 			Replicas: []*DataReplica{
 				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
 				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: mockNodes["192.168.1.2:17310"]},
@@ -425,7 +432,8 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 		},
 		{
 			PartitionID: 3,
-			Hosts:       []string{"192.168.1.1:17310", "192.168.1.1:17310"}, // Same NodeSet, same rack (conflict)
+			MediaType:   proto.MediaType_SSD,
+			Hosts:       []string{"192.168.1.1:17310", "192.168.1.4:17310"}, // Same NodeSet, same rack - rack conflict
 			Replicas: []*DataReplica{
 				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
 				{DataReplica: proto.DataReplica{Addr: "192.168.1.4:17310"}, dataNode: mockNodes["192.168.1.4:17310"]},
@@ -434,6 +442,7 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 		},
 		{
 			PartitionID: 4,
+			MediaType:   proto.MediaType_SSD,
 			Hosts:       []string{"192.168.1.1:17310", "192.168.2.1:17310"}, // Cross-zone: zone1 + zone2
 			Replicas: []*DataReplica{
 				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
@@ -443,11 +452,43 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 		},
 		{
 			PartitionID: 5,
-			Hosts:       []string{"192.168.1.1:17310", "192.168.1.3:17310", "192.168.2.1:17310"}, // 2 in zone1 (different nodesets) + 1 in zone2
+			MediaType:   proto.MediaType_SSD,
+			Hosts:       []string{"192.168.1.1:17310", "192.168.1.3:17310", "192.168.2.1:17310"}, // 2 in zone1 (different nodesets) + 1 in zone2 - NodeSet unbalanced
 			Replicas: []*DataReplica{
 				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
 				{DataReplica: proto.DataReplica{Addr: "192.168.1.3:17310"}, dataNode: mockNodes["192.168.1.3:17310"]},
 				{DataReplica: proto.DataReplica{Addr: "192.168.2.1:17310"}, dataNode: mockNodes["192.168.2.1:17310"]},
+			},
+			IsDiscard: false,
+		},
+		// HDD partitions
+		{
+			PartitionID: 6,
+			MediaType:   proto.MediaType_HDD,
+			Hosts:       []string{"192.168.1.1:17310", "192.168.1.2:17310"}, // Same NodeSet, different racks - optimal
+			Replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.2:17310"}, dataNode: mockNodes["192.168.1.2:17310"]},
+			},
+			IsDiscard: false,
+		},
+		{
+			PartitionID: 7,
+			MediaType:   proto.MediaType_HDD,
+			Hosts:       []string{"192.168.1.1:17310", "192.168.1.3:17310"}, // Different NodeSets - NodeSet unbalanced
+			Replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.3:17310"}, dataNode: mockNodes["192.168.1.3:17310"]},
+			},
+			IsDiscard: false,
+		},
+		{
+			PartitionID: 8,
+			MediaType:   proto.MediaType_HDD,
+			Hosts:       []string{"192.168.1.1:17310", "192.168.1.4:17310"}, // Same NodeSet, same rack - rack conflict
+			Replicas: []*DataReplica{
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.1:17310"}, dataNode: mockNodes["192.168.1.1:17310"]},
+				{DataReplica: proto.DataReplica{Addr: "192.168.1.4:17310"}, dataNode: mockNodes["192.168.1.4:17310"]},
 			},
 			IsDiscard: false,
 		},
@@ -467,7 +508,57 @@ func TestGetDistributionOptimizationStatus(t *testing.T) {
 	require.Equal(t, 0.8, status.BalanceThreshold, "BalanceThreshold mismatch")
 	require.True(t, status.EnableDistributionOptimization, "EnableDistributionOptimization mismatch")
 	require.Equal(t, []uint64{1}, status.DecommissioningDPIDs, "DecommissioningDPIDs mismatch")
-	require.Equal(t, 2, status.CrossZoneDPs, "CrossZoneDPs should be 2 (dp4 and dp5 are cross-zone)")
-	require.NotNil(t, status.DomainDistribution, "DomainDistribution should not be nil")
-	require.NotNil(t, status.RackDistribution, "RackDistribution should not be nil")
+
+	// Verify SSDStats
+	require.NotNil(t, status.SSDStats, "SSDStats should not be nil")
+	// dp1: NodeSet unbalanced (NodeSet1 has 2, NodeSet2 has 1) + rack conflict (rack1 has 2) -> unbalanced
+	// dp3: rack conflict (rack1 has 2) -> unbalanced
+	// dp4: cross-zone but NodeSet balanced and no rack conflict -> not unbalanced
+	// dp5: NodeSet unbalanced (zone1 has 2 in different NodeSets) -> unbalanced
+	require.Equal(t, 3, status.SSDStats.TotalUnbalancedDPs, "SSD TotalUnbalancedDPs should be 3 (dp1, dp3, dp5)")
+	require.Equal(t, 2, status.SSDStats.NodeSetUnbalancedDPs, "SSD NodeSetUnbalancedDPs should be 2 (dp1 and dp5)")
+	// dp1: rack conflict (rack1 has 2 replicas in zone1)
+	// dp3: rack conflict (rack1 has 2 replicas in zone1)
+	// dp5: rack conflict (rack1 has 2 replicas in zone1)
+	require.Equal(t, 3, status.SSDStats.RackConflictDPs, "SSD RackConflictDPs should be 3 (dp1, dp3, and dp5)")
+	require.Equal(t, 2, status.SSDStats.CrossZoneDPs, "SSD CrossZoneDPs should be 2 (dp4 and dp5)")
+	// dp2: SingleDomainDPs (NodeSet1 only in zone1)
+	// dp3: SingleDomainDPs (NodeSet1 only in zone1, but has rack conflict)
+	// dp4: SingleDomainDPs (each zone has 1 NodeSet: zone1 has NodeSet1, zone2 has NodeSet3)
+	require.Equal(t, 3, status.SSDStats.DomainDistribution.SingleDomainDPs, "SSD SingleDomainDPs should be 3 (dp2, dp3, and dp4)")
+	// dp1: TwoDomainDPs (NodeSet1 and NodeSet2 in zone1)
+	// dp5: TwoDomainDPs (NodeSet1 and NodeSet2 in zone1, plus zone2)
+	require.Equal(t, 2, status.SSDStats.DomainDistribution.TwoDomainDPs, "SSD TwoDomainDPs should be 2 (dp1 and dp5)")
+	require.Equal(t, 0, status.SSDStats.DomainDistribution.ThreeDomainDPs, "SSD ThreeDomainDPs should be 0")
+	// dp2: NoRackConflictDPs (different racks)
+	// dp4: NoRackConflictDPs (different zones, no conflict)
+	require.Equal(t, 2, status.SSDStats.RackDistribution.NoRackConflictDPs, "SSD NoRackConflictDPs should be 2 (dp2 and dp4)")
+	// dp1: MinorRackConflictDPs (rack1 has 2 replicas)
+	// dp3: MinorRackConflictDPs (rack1 has 2 replicas)
+	// dp5: MinorRackConflictDPs (rack1 has 2 replicas in zone1)
+	require.Equal(t, 3, status.SSDStats.RackDistribution.MinorRackConflictDPs, "SSD MinorRackConflictDPs should be 3 (dp1, dp3, and dp5)")
+	require.Equal(t, 0, status.SSDStats.RackDistribution.MajorRackConflictDPs, "SSD MajorRackConflictDPs should be 0")
+
+	// Verify HDDStats
+	require.NotNil(t, status.HDDStats, "HDDStats should not be nil")
+	// dp7: NodeSet unbalanced (NodeSet1 and NodeSet2) + rack conflict (rack1 has 2 replicas) -> unbalanced
+	// dp8: rack conflict (rack1 has 2 replicas) -> unbalanced
+	require.Equal(t, 2, status.HDDStats.TotalUnbalancedDPs, "HDD TotalUnbalancedDPs should be 2 (dp7 and dp8)")
+	require.Equal(t, 1, status.HDDStats.NodeSetUnbalancedDPs, "HDD NodeSetUnbalancedDPs should be 1 (dp7)")
+	// dp7: rack conflict (rack1 has 2 replicas in zone1)
+	// dp8: rack conflict (rack1 has 2 replicas in zone1)
+	require.Equal(t, 2, status.HDDStats.RackConflictDPs, "HDD RackConflictDPs should be 2 (dp7 and dp8)")
+	require.Equal(t, 0, status.HDDStats.CrossZoneDPs, "HDD CrossZoneDPs should be 0")
+	// dp6: SingleDomainDPs (NodeSet1 only)
+	// dp8: SingleDomainDPs (NodeSet1 only, but has rack conflict)
+	require.Equal(t, 2, status.HDDStats.DomainDistribution.SingleDomainDPs, "HDD SingleDomainDPs should be 2 (dp6 and dp8)")
+	// dp7: TwoDomainDPs (NodeSet1 and NodeSet2 in zone1)
+	require.Equal(t, 1, status.HDDStats.DomainDistribution.TwoDomainDPs, "HDD TwoDomainDPs should be 1 (dp7)")
+	require.Equal(t, 0, status.HDDStats.DomainDistribution.ThreeDomainDPs, "HDD ThreeDomainDPs should be 0")
+	// dp6: NoRackConflictDPs (different racks)
+	require.Equal(t, 1, status.HDDStats.RackDistribution.NoRackConflictDPs, "HDD NoRackConflictDPs should be 1 (dp6)")
+	// dp7: MinorRackConflictDPs (rack1 has 2 replicas)
+	// dp8: MinorRackConflictDPs (rack1 has 2 replicas)
+	require.Equal(t, 2, status.HDDStats.RackDistribution.MinorRackConflictDPs, "HDD MinorRackConflictDPs should be 2 (dp7 and dp8)")
+	require.Equal(t, 0, status.HDDStats.RackDistribution.MajorRackConflictDPs, "HDD MajorRackConflictDPs should be 0")
 }

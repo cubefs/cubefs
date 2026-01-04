@@ -91,8 +91,10 @@ const (
 	MetricDiskDecommissionSuccess = "disk_decommission_success"
 	MetricMetaNotRocksdbWritable  = "meta_rocksdb_not_writable"
 
-	MetricNodeSetUnbalancedDPs = "nodeset_unbalanced_dp_count"
-	MetricRackConflictDPs      = "rack_conflict_dp_count"
+	MetricSSDNodeSetUnbalancedDPs = "ssd_nodeset_unbalanced_dp_count"
+	MetricSSDRackConflictDPs      = "ssd_rack_conflict_dp_count"
+	MetricHDDNodeSetUnbalancedDPs = "hdd_nodeset_unbalanced_dp_count"
+	MetricHDDRackConflictDPs      = "hdd_rack_conflict_dp_count"
 )
 
 const (
@@ -166,8 +168,10 @@ type monitorMetrics struct {
 
 	metaNodesNotRocksdbWritable *exporter.Gauge
 
-	nodeSetUnbalancedDPs *exporter.Gauge
-	rackConflictDPs      *exporter.Gauge
+	ssdNodeSetUnbalancedDPs *exporter.Gauge
+	ssdRackConflictDPs      *exporter.Gauge
+	hddNodeSetUnbalancedDPs *exporter.Gauge
+	hddRackConflictDPs      *exporter.Gauge
 
 	lastCheckPartitionCreateTime time.Time
 }
@@ -545,8 +549,10 @@ func (mm *monitorMetrics) start() {
 	mm.diskDecommissionSuccess = exporter.NewGaugeVec(MetricDiskDecommissionSuccess, "", []string{"addr", "path"})
 	mm.metaNodesNotRocksdbWritable = exporter.NewGauge(MetricMetaNotRocksdbWritable)
 
-	mm.nodeSetUnbalancedDPs = exporter.NewGauge(MetricNodeSetUnbalancedDPs)
-	mm.rackConflictDPs = exporter.NewGauge(MetricRackConflictDPs)
+	mm.ssdNodeSetUnbalancedDPs = exporter.NewGauge(MetricSSDNodeSetUnbalancedDPs)
+	mm.ssdRackConflictDPs = exporter.NewGauge(MetricSSDRackConflictDPs)
+	mm.hddNodeSetUnbalancedDPs = exporter.NewGauge(MetricHDDNodeSetUnbalancedDPs)
+	mm.hddRackConflictDPs = exporter.NewGauge(MetricHDDRackConflictDPs)
 
 	go mm.statMetrics()
 }
@@ -1414,8 +1420,10 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.ReplicaMissingDPCount.Reset()
 	mm.DpMissingLeaderCount.Reset()
 
-	mm.nodeSetUnbalancedDPs.Set(0)
-	mm.rackConflictDPs.Set(0)
+	mm.ssdNodeSetUnbalancedDPs.Set(0)
+	mm.ssdRackConflictDPs.Set(0)
+	mm.hddNodeSetUnbalancedDPs.Set(0)
+	mm.hddRackConflictDPs.Set(0)
 }
 
 func (mm *monitorMetrics) setNotRocksdbWritableMetaNodesCount() {
@@ -1434,11 +1442,18 @@ func (mm *monitorMetrics) setNotRocksdbWritableMetaNodesCount() {
 }
 
 func (mm *monitorMetrics) setDistributionOptimizationMetrics() {
-	nodeSetUnbalancedDPs := mm.cluster.getNodeSetUnbalancedDPs()
-	rackConflictDPs := mm.cluster.getRackConflictDPs()
-	mm.nodeSetUnbalancedDPs.Set(float64(nodeSetUnbalancedDPs))
-	mm.rackConflictDPs.Set(float64(rackConflictDPs))
-	log.LogDebugf("action[setDistributionOptimizationMetrics] nodeSetUnbalancedDPs: %d, rackConflictDPs: %d",
-		nodeSetUnbalancedDPs, rackConflictDPs)
+	ssdNodeSetUnbalancedDPs := mm.cluster.SSDNodeSetUnbalancedDPs.Load()
+	ssdRackConflictDPs := mm.cluster.SSDRackConflictDPs.Load()
+	hddNodeSetUnbalancedDPs := mm.cluster.HDDNodeSetUnbalancedDPs.Load()
+	hddRackConflictDPs := mm.cluster.HDDRackConflictDPs.Load()
+
+	mm.ssdNodeSetUnbalancedDPs.Set(float64(ssdNodeSetUnbalancedDPs))
+	mm.ssdRackConflictDPs.Set(float64(ssdRackConflictDPs))
+	mm.hddNodeSetUnbalancedDPs.Set(float64(hddNodeSetUnbalancedDPs))
+	mm.hddRackConflictDPs.Set(float64(hddRackConflictDPs))
+
+	log.LogDebugf("action[setDistributionOptimizationMetrics] SSD: %d/%d, HDD: %d/%d",
+		ssdNodeSetUnbalancedDPs, ssdRackConflictDPs,
+		hddNodeSetUnbalancedDPs, hddRackConflictDPs)
 	mm.nodeStat.Reset()
 }

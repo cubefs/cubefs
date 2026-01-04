@@ -294,17 +294,14 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 		BalanceIntervalSec:             defaultDistributionOptimizationIntervalSec,
 		BalanceThreshold:               getDistributionOptimizationThreshold(),
 		EnableDistributionOptimization: c.getEnableDistributionOptimization(),
-		DomainDistribution: &proto.DomainDistributionInfo{
-			SingleDomainDPs: 0,
-			TwoDomainDPs:    0,
-			ThreeDomainDPs:  0,
+		SSDStats: &proto.MediaTypeDistributionStats{
+			DomainDistribution: &proto.DomainDistributionInfo{},
+			RackDistribution:   &proto.RackDistributionInfo{},
 		},
-		RackDistribution: &proto.RackDistributionInfo{
-			NoRackConflictDPs:    0,
-			MinorRackConflictDPs: 0,
-			MajorRackConflictDPs: 0,
+		HDDStats: &proto.MediaTypeDistributionStats{
+			DomainDistribution: &proto.DomainDistributionInfo{},
+			RackDistribution:   &proto.RackDistributionInfo{},
 		},
-		CrossZoneDPs: 0,
 	}
 
 	vols := c.copyVols()
@@ -319,11 +316,23 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 				status.DecommissioningDPIDs = append(status.DecommissioningDPIDs, dp.PartitionID)
 			}
 
+			// Determine MediaType for this DP
+			mediaType := dp.MediaType
+			var mediaStats *proto.MediaTypeDistributionStats
+			if mediaType == proto.MediaType_HDD {
+				mediaStats = status.HDDStats
+			} else if mediaType == proto.MediaType_SSD {
+				mediaStats = status.SSDStats
+			} else {
+				// For unspecified or other types, skip media-specific stats
+				continue
+			}
+
 			// Analyze NodeSet distribution
 			zoneNsDistribution, isNodeSetBalanced := getDpNodesetDistribution(dp)
 			zoneCount := len(zoneNsDistribution)
 			if zoneCount > 1 {
-				status.CrossZoneDPs++
+				mediaStats.CrossZoneDPs++
 			}
 
 			// Statistics of nodeset distribution - each DP is counted only once.
@@ -337,11 +346,11 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 
 			switch maxNodesetCount {
 			case 0, 1:
-				status.DomainDistribution.SingleDomainDPs++
+				mediaStats.DomainDistribution.SingleDomainDPs++
 			case 2:
-				status.DomainDistribution.TwoDomainDPs++
+				mediaStats.DomainDistribution.TwoDomainDPs++
 			case 3:
-				status.DomainDistribution.ThreeDomainDPs++
+				mediaStats.DomainDistribution.ThreeDomainDPs++
 			}
 
 			// Analyze rack distribution
@@ -364,26 +373,26 @@ func (c *Cluster) getDistributionOptimizationStatus() *proto.DistributionOptimiz
 				// Use conflict levels for classification
 				switch rackConflictLevel {
 				case 1:
-					status.RackDistribution.MinorRackConflictDPs++
+					mediaStats.RackDistribution.MinorRackConflictDPs++
 				case 2:
-					status.RackDistribution.MajorRackConflictDPs++
+					mediaStats.RackDistribution.MajorRackConflictDPs++
 				}
 			} else {
-				status.RackDistribution.NoRackConflictDPs++
+				mediaStats.RackDistribution.NoRackConflictDPs++
 			}
 
 			// Count different types of unbalanced DPs
 			isUnbalanced := false
 			if !isNodeSetBalanced {
-				status.NodeSetUnbalancedDPs++
+				mediaStats.NodeSetUnbalancedDPs++
 				isUnbalanced = true
 			}
 			if isConflict {
-				status.RackConflictDPs++
+				mediaStats.RackConflictDPs++
 				isUnbalanced = true
 			}
 			if isUnbalanced {
-				status.TotalUnbalancedDPs++
+				mediaStats.TotalUnbalancedDPs++
 			}
 		}
 	}

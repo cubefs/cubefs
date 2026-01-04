@@ -111,6 +111,7 @@ const (
 	AdminQueryDecommissionToken            = "/admin/queryDecommissionToken"
 	AdminQueryDiskDecommissionInfoStat     = "/admin/queryDiskDecommissionInfoStat"
 	AdminQueryDataNodeDecommissionInfoStat = "/admin/queryDataNodeDecommissionInfoStat"
+	AdminQueryDpDecommissionStatus         = "/admin/queryDpDecommissionStatus"
 	AdminSetFileStats                      = "/admin/setFileStats"
 	AdminGetFileStats                      = "/admin/getFileStats"
 	AdminGetClusterValue                   = "/admin/getClusterValue"

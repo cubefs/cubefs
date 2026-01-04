@@ -133,8 +133,10 @@ type ClusterDecommission struct {
 	AutoDpMetaRepairParallelCnt      atomicutil.Uint32
 	EnableDistributionOptimization   atomicutil.Bool
 	DistributionOptimizationConDpCnt atomicutil.Int64
-	NodeSetUnbalancedDPs             atomicutil.Int64
-	RackConflictDPs                  atomicutil.Int64
+	SSDNodeSetUnbalancedDPs          atomicutil.Int64
+	SSDRackConflictDPs               atomicutil.Int64
+	HDDNodeSetUnbalancedDPs          atomicutil.Int64
+	HDDRackConflictDPs               atomicutil.Int64
 	server                           *Server
 }
 
@@ -494,8 +496,10 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
 	c.EnableDistributionOptimization.Store(defaultEnableDistributionOptimization)
 	c.DistributionOptimizationConDpCnt.Store(int64(defaultDistributionOptimizationConDpCnt))
-	c.NodeSetUnbalancedDPs.Store(0)
-	c.RackConflictDPs.Store(0)
+	c.SSDNodeSetUnbalancedDPs.Store(0)
+	c.SSDRackConflictDPs.Store(0)
+	c.HDDNodeSetUnbalancedDPs.Store(0)
+	c.HDDRackConflictDPs.Store(0)
 	c.server = server
 	c.flashNodeTopo = flashgroupmanager.NewFlashNodeTopology()
 	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
@@ -7533,20 +7537,28 @@ func (c *Cluster) setDistributionOptimizationThreshold(threshold float64) error 
 	return nil
 }
 
-func (c *Cluster) getNodeSetUnbalancedDPs() int64 {
-	return c.NodeSetUnbalancedDPs.Load()
-}
-
-func (c *Cluster) getRackConflictDPs() int64 {
-	return c.RackConflictDPs.Load()
-}
-
 func (c *Cluster) updateDistributionOptimizationStatus() {
 	status := c.getDistributionOptimizationStatus()
 	if status != nil {
-		c.NodeSetUnbalancedDPs.Store(int64(status.NodeSetUnbalancedDPs))
-		c.RackConflictDPs.Store(int64(status.RackConflictDPs))
-		log.LogDebugf("action[updateDistributionOptimizationStatus] updated NodeSetUnbalancedDPs: %d, RackConflictDPs: %d",
-			status.NodeSetUnbalancedDPs, status.RackConflictDPs)
+		var ssdNodeSetUnbalancedDPs, ssdRackConflictDPs int64
+		var hddNodeSetUnbalancedDPs, hddRackConflictDPs int64
+
+		if status.SSDStats != nil {
+			ssdNodeSetUnbalancedDPs = int64(status.SSDStats.NodeSetUnbalancedDPs)
+			ssdRackConflictDPs = int64(status.SSDStats.RackConflictDPs)
+		}
+		if status.HDDStats != nil {
+			hddNodeSetUnbalancedDPs = int64(status.HDDStats.NodeSetUnbalancedDPs)
+			hddRackConflictDPs = int64(status.HDDStats.RackConflictDPs)
+		}
+
+		c.SSDNodeSetUnbalancedDPs.Store(ssdNodeSetUnbalancedDPs)
+		c.SSDRackConflictDPs.Store(ssdRackConflictDPs)
+		c.HDDNodeSetUnbalancedDPs.Store(hddNodeSetUnbalancedDPs)
+		c.HDDRackConflictDPs.Store(hddRackConflictDPs)
+
+		log.LogDebugf("action[updateDistributionOptimizationStatus] updated SSD: %d/%d, HDD: %d/%d",
+			ssdNodeSetUnbalancedDPs, ssdRackConflictDPs,
+			hddNodeSetUnbalancedDPs, hddRackConflictDPs)
 	}
 }
