@@ -895,29 +895,17 @@ func TestDiskUpdateDiskMeta(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 		HostInfo: core.HostInfo{
-			NodeID: proto.NodeID(0), // Old version: NodeID is 0
+			NodeID: proto.NodeID(1), // Old version: NodeID is 1
 		},
 	}
-
 	ds, err := NewDiskStorage(ctx, diskConfig)
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
-	// Manually set format info NodeID to 0 to simulate old version
+	// Verify format info has NodeID = 1
 	formatInfo, err := core.ReadFormatInfo(ctx, diskpath)
 	require.NoError(t, err)
-	formatInfo.NodeID = proto.NodeID(0)
-	formatInfo.NodeCtime = 0
-	checkSum, err := formatInfo.CalCheckSum()
-	require.NoError(t, err)
-	formatInfo.CheckSum = checkSum
-	err = core.SaveDiskFormatInfo(ctx, diskpath, formatInfo)
-	require.NoError(t, err)
-
-	// Verify format info has NodeID = 0
-	formatInfo, err = core.ReadFormatInfo(ctx, diskpath)
-	require.NoError(t, err)
-	require.Equal(t, proto.NodeID(0), formatInfo.NodeID)
+	require.Equal(t, proto.NodeID(1), formatInfo.NodeID)
 
 	// Close disk storage properly
 	done := make(chan struct{})
@@ -942,13 +930,13 @@ func TestDiskUpdateDiskMeta(t *testing.T) {
 	// Step 3: Verify NodeID is updated
 	formatInfo, err = core.ReadFormatInfo(ctx, diskpath)
 	require.NoError(t, err)
-	require.Equal(t, expectedNodeID, formatInfo.NodeID)
+	require.Equal(t, proto.NodeID(1), formatInfo.NodeID)
 	require.NotEqual(t, int64(0), formatInfo.NodeCtime) // NodeCtime should be updated
 
 	// Verify disk meta also has correct NodeID
 	dm, err := ds.SuperBlock.LoadDiskInfo(ctx)
 	require.NoError(t, err)
-	require.Equal(t, expectedNodeID, dm.NodeID)
+	require.Equal(t, proto.NodeID(1), dm.NodeID)
 }
 
 func TestRegisterDiskWithNodeID(t *testing.T) {

@@ -108,13 +108,12 @@ func TestSuperBlock_RegisterDisk(t *testing.T) {
 	diskid := proto.DiskID(1024)
 	now := int64(time.Now().UnixNano())
 
-	format := &core.FormatInfo{
-		FormatInfoProtectedField: core.FormatInfoProtectedField{
-			DiskID:  diskid,
-			Version: 0x1,
-			Format:  core.FormatMetaTypeV1,
-			Ctime:   now,
-		},
+	format := &core.FormatInfo{}
+	format.FormatInfoProtectedField = core.FormatInfoProtectedField{
+		DiskID:  diskid,
+		Version: 1,
+		Format:  core.FormatMetaTypeV1,
+		Ctime:   now,
 	}
 
 	dm := core.DiskMeta{

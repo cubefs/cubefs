@@ -352,21 +352,44 @@ func setDefaultIOStat(dryRun bool) error {
 	return nil
 }
 
-func readFormatInfo(ctx context.Context, diskRootPath string) (
-	formatInfo *core.FormatInfo, err error,
-) {
+func readFormatInfo(ctx context.Context, diskRootPath string, nodeID proto.NodeID) (formatInfo *core.FormatInfo, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	_, err = os.ReadDir(diskRootPath)
 	if err != nil {
 		span.Errorf("read disk root path error:%s", diskRootPath)
 		return nil, err
 	}
+
 	formatInfo, err = core.ReadFormatInfo(ctx, diskRootPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			span.Warnf("format file not exist. must be first register")
+			span.Warnf("disk[%s] format file not exist. must be first register", diskRootPath)
 			return new(core.FormatInfo), nil
 		}
+
+		// case: format.info v1 upgrade to v2
+		if err == core.ErrFormatV2CrcIsEmpty {
+			if err = formatInfo.VerifyV1(); err != nil {
+				span.Errorf("Failed verify disk[%s] v1 format info, err:%+v", diskRootPath, err)
+				return nil, err
+			}
+
+			// upgrade to v2, format info v1 -> v2, write to disk
+			formatInfo.NodeID = nodeID
+			formatInfo.NodeCtime = time.Now().UnixNano()
+			if err = formatInfo.CalCheckSum(); err != nil {
+				span.Errorf("Failed cal disk[%s] format info crc: %v", diskRootPath, err)
+				return nil, err
+			}
+
+			if err = core.SaveDiskFormatInfo(ctx, diskRootPath, formatInfo); err != nil {
+				span.Errorf("Failed save disk[%s] format info, err:%v", diskRootPath, err)
+				return nil, err
+			}
+			return formatInfo, nil
+		}
+
+		span.Errorf("Failed read disk[%s] format info, err:%+v", diskRootPath, err)
 		return nil, err
 	}
 
@@ -503,12 +526,18 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 			}
 
 			// read disk meta. get DiskID
-			format, err := readFormatInfo(ctx, diskConf.Path)
+			format, err := readFormatInfo(ctx, diskConf.Path, conf.NodeID)
 			if err != nil {
 				svr.handleStartDiskError(ctx, foundDiskPathInCluster, diskConf.Path, 0, err)
 				return // skip
 			}
 			span.Debugf("local disk meta: %v", format)
+
+			// check node id after NewDiskStorage. only when it is not new disk
+			if format.DiskID != 0 && (format.NodeID != conf.NodeID || format.NodeID == proto.NodeID(0)) {
+				span.Fatalf("disk[%d:%s] nodeID not match, registered cm[%d], local[%d]",
+					format.DiskID, diskConf.Path, conf.NodeID, format.NodeID)
+			}
 
 			// found diskInfo store in cluster mgr
 			var ds core.DiskAPI
@@ -537,11 +566,6 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 			if err != nil {
 				svr.handleStartDiskError(ctx, foundDiskPathInCluster, diskConf.Path, format.DiskID, err)
 				return
-			}
-			// check node id after NewDiskStorage. only when it is not new disk
-			if format.DiskID != 0 && (format.NodeID != conf.NodeID || format.NodeID == proto.NodeID(0)) {
-				span.Fatalf("disk[%d:%s] nodeID not match, registered cm[%d], local[%d]",
-					format.DiskID, diskConf.Path, conf.NodeID, format.NodeID)
 			}
 
 			// new disk, register to cm: not found in cm, or format.diskID==0 and old disk is repaired

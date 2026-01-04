@@ -41,6 +41,7 @@ import (
 
 type diskMock struct {
 	diskID   proto.DiskID
+	nodeID   proto.NodeID
 	conf     *core.Config
 	dataPath string
 	metaPath string
@@ -51,6 +52,10 @@ type diskMock struct {
 
 func (mock *diskMock) ID() proto.DiskID {
 	return mock.diskID
+}
+
+func (mock *diskMock) NodeID() proto.NodeID {
+	return mock.nodeID
 }
 
 func (mock *diskMock) Status() (status proto.DiskStatus) {

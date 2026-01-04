@@ -1210,11 +1210,11 @@ func TestService_OnlyBlobnode_OpenFailedEIO(t *testing.T) {
 	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskInfo1, diskInfo2}, nil)
 	cmCli.EXPECT().SetDisk(A, A, A).Return(nil)
 
-	patches := gomonkey.ApplyFunc(readFormatInfo, func(ctx context.Context, path string) (*core.FormatInfo, error) {
+	patches := gomonkey.ApplyFunc(readFormatInfo, func(ctx context.Context, path string, nodeID proto.NodeID) (*core.FormatInfo, error) {
 		if path == path1 || path == path2 {
 			return nil, syscall.EIO
 		}
-		return &core.FormatInfo{CheckSum: 1}, nil
+		return &core.FormatInfo{CheckSumV2: 1}, nil
 	})
 	defer patches.Reset()
 	patches2 := gomonkey.ApplyFunc(disk.NewDiskStorage, func(ctx context.Context, diskConf core.Config) (*disk.DiskStorageWrapper, error) {
@@ -1432,7 +1432,7 @@ func TestService_OnlyBlobnode_Fatal(t *testing.T) {
 	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskInfo1, diskInfo2}, nil)
 	// cmCli.EXPECT().AllocDiskID(A).Return(proto.DiskID(102), nil)
 
-	patches := gomonkey.ApplyFunc(readFormatInfo, func(ctx context.Context, path string) (*core.FormatInfo, error) {
+	patches := gomonkey.ApplyFunc(readFormatInfo, func(ctx context.Context, path string, nodeID proto.NodeID) (*core.FormatInfo, error) {
 		if path == path1 {
 			return nil, errMock
 		}
@@ -1494,17 +1494,17 @@ func TestService_OnlyBlobnode_OpenOldDisk(t *testing.T) {
 	cmCli.EXPECT().AddNode(A, A).Return(proto.NodeID(1), nil).Times(1)
 	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskInfo1}, nil)
 
-	format := &core.FormatInfo{
-		FormatInfoProtectedField: core.FormatInfoProtectedField{
-			DiskID:  proto.DiskID(1),
-			NodeID:  proto.NodeID(1),
-			Version: 1,
-			Format:  core.FormatMetaTypeV1,
-		},
+	format := &core.FormatInfo{}
+	format.FormatInfoProtectedField = core.FormatInfoProtectedField{
+		DiskID:  proto.DiskID(1),
+		Version: 1,
+		Format:  core.FormatMetaTypeV1,
+		Ctime:   time.Now().UnixNano(),
 	}
-	checkSum, err := format.CalCheckSum()
+	format.NodeID = 1
+
+	err = format.CalCheckSum()
 	require.NoError(t, err)
-	format.CheckSum = checkSum
 	err = core.SaveDiskFormatInfo(ctx, path1, format)
 	require.NoError(t, err)
 

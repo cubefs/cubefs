@@ -39,16 +39,12 @@ import (
 const (
 	formatConfigFile    = ".format.json"
 	formatConfigFileTmp = ".format.json.tmp"
-)
 
-const (
 	_systemMeta      = ".sys"
 	_trashPrefix     = ".trash"
 	_dataSpacePrefix = "data"
 	_metaSpacePrefix = "meta"
-)
 
-const (
 	FormatMetaTypeV1       = "fs"
 	formatInfoCheckSumPoly = uint32(0xebf0ace5)
 )
@@ -56,20 +52,32 @@ const (
 var (
 	ErrFormatInfoCheckSum = errors.New("format info check sum error")
 	ErrInvalidPathPrefix  = errors.New("invalid path prefix")
+	ErrFormatV2CrcIsEmpty = errors.New("format info version 2 crc is empty")
 )
 
+// FormatInfoProtectedFieldInitVersion (not contains NodeID and NodeCtime)
 type FormatInfoProtectedField struct {
-	Version   uint8        `json:"version"`
-	DiskID    proto.DiskID `json:"diskid"`
+	DiskID  proto.DiskID `json:"diskid"`
+	Version uint8        `json:"version"`
+	Ctime   int64        `json:"ctime"`
+	Format  string       `json:"format"`
+}
+
+type FormatInfoV1 struct {
+	FormatInfoProtectedField
+	CheckSum uint32 `json:"check_sum"`
+}
+
+// version 2: with v1 version and NodeID, NodeCtime
+type FormatInfoProtectedFieldV2 struct {
+	FormatInfoV1
 	NodeID    proto.NodeID `json:"nodeid"`
-	Ctime     int64        `json:"ctime"`
 	NodeCtime int64        `json:"node_ctime"`
-	Format    string       `json:"format"`
 }
 
 type FormatInfo struct {
-	FormatInfoProtectedField
-	CheckSum uint32 `json:"check_sum"`
+	FormatInfoProtectedFieldV2
+	CheckSumV2 uint32 `json:"check_sum_v2"`
 }
 
 func sysRootPath(diskRoot string) (path string) {
@@ -159,7 +167,7 @@ func SaveDiskFormatInfo(ctx context.Context, diskPath string, formatInfo *Format
 	}
 	file.Close()
 
-	// rename
+	// rename, replace save with new file
 	err = os.Rename(configFileTemp, configFile)
 	if err != nil {
 		span.Errorf("Failed rename, err:%v", err)
@@ -167,13 +175,10 @@ func SaveDiskFormatInfo(ctx context.Context, diskPath string, formatInfo *Format
 	}
 
 	span.Infof("save format info success")
-
 	return nil
 }
 
-func ReadFormatInfo(ctx context.Context, diskRootPath string) (
-	formatInfo *FormatInfo, err error,
-) {
+func ReadFormatInfo(ctx context.Context, diskRootPath string) (info *FormatInfo, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	configFile := filepath.Join(sysRootPath(diskRootPath), formatConfigFile)
@@ -183,18 +188,22 @@ func ReadFormatInfo(ctx context.Context, diskRootPath string) (
 		return nil, err
 	}
 
-	formatInfo = &FormatInfo{}
-	if err = json.Unmarshal(buf, formatInfo); err != nil {
+	info = &FormatInfo{}
+	if err = json.Unmarshal(buf, info); err != nil {
 		span.Errorf("Failed unmarshal, err:%v", err)
 		return nil, err
 	}
 
-	err = formatInfo.Verify()
-	if err != nil {
+	if info.CheckSumV2 == 0 {
+		return info, ErrFormatV2CrcIsEmpty
+	}
+
+	if err = info.Verify(); err != nil {
 		span.Errorf("Failed check format info crc, err:%v", err)
 		return nil, err
 	}
-	return formatInfo, nil
+
+	return info, nil
 }
 
 func IsFormatConfigExist(diskRootPath string) (bool, error) {
@@ -202,7 +211,61 @@ func IsFormatConfigExist(diskRootPath string) (bool, error) {
 	return base.IsFileExists(configFile)
 }
 
-func (fi *FormatInfo) CalCheckSum() (uint32, error) {
+func (fi *FormatInfo) Verify() error {
+	if fi.CheckSumV2 == 0 {
+		return ErrFormatV2CrcIsEmpty
+	}
+
+	checkSum, err := fi.calCheckSumV2()
+	if err != nil {
+		return err
+	}
+
+	if checkSum != fi.CheckSumV2 {
+		return ErrFormatInfoCheckSum
+	}
+	return nil
+}
+
+func (fi *FormatInfo) VerifyV1() error {
+	checkSum, err := fi.calCheckSumV1()
+	if err != nil {
+		return err
+	}
+
+	if checkSum != fi.CheckSum {
+		return ErrFormatInfoCheckSum
+	}
+	return nil
+}
+
+func (fi *FormatInfo) CalCheckSum() error {
+	checkSum, err := fi.calCheckSumV2()
+	if err != nil {
+		return err
+	}
+
+	fi.CheckSumV2 = checkSum
+	return nil
+}
+
+func (fi *FormatInfo) calCheckSumV2() (uint32, error) {
+	crc := crc32.New(crc32.MakeTable(formatInfoCheckSumPoly))
+
+	b, err := json.Marshal(fi.FormatInfoProtectedFieldV2)
+	if err != nil {
+		return proto.InvalidCrc32, err
+	}
+
+	_, err = crc.Write(b)
+	if err != nil {
+		return proto.InvalidCrc32, err
+	}
+
+	return crc.Sum32(), nil
+}
+
+func (fi *FormatInfo) calCheckSumV1() (uint32, error) {
 	crc := crc32.New(crc32.MakeTable(formatInfoCheckSumPoly))
 
 	b, err := json.Marshal(fi.FormatInfoProtectedField)
@@ -216,15 +279,4 @@ func (fi *FormatInfo) CalCheckSum() (uint32, error) {
 	}
 
 	return crc.Sum32(), nil
-}
-
-func (fi *FormatInfo) Verify() error {
-	checkSum, err := fi.CalCheckSum()
-	if err != nil {
-		return err
-	}
-	if checkSum != fi.CheckSum {
-		return ErrFormatInfoCheckSum
-	}
-	return nil
 }

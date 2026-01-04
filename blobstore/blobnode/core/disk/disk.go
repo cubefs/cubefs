@@ -46,15 +46,15 @@ const (
 	RandomIntervalS = 30
 )
 
-var StateTransitionRules = map[clustermgr.ChunkStatus][]clustermgr.ChunkStatus{
-	clustermgr.ChunkStatusDefault:  {clustermgr.ChunkStatusNormal},
-	clustermgr.ChunkStatusNormal:   {clustermgr.ChunkStatusNormal, clustermgr.ChunkStatusReadOnly},
-	clustermgr.ChunkStatusReadOnly: {clustermgr.ChunkStatusNormal, clustermgr.ChunkStatusReadOnly, clustermgr.ChunkStatusRelease},
-}
-
 var (
 	_chunkVer = []byte{0x1}
 	_diskVer  = []byte{0x1}
+
+	StateTransitionRules = map[clustermgr.ChunkStatus][]clustermgr.ChunkStatus{
+		clustermgr.ChunkStatusDefault:  {clustermgr.ChunkStatusNormal},
+		clustermgr.ChunkStatusNormal:   {clustermgr.ChunkStatusNormal, clustermgr.ChunkStatusReadOnly},
+		clustermgr.ChunkStatusReadOnly: {clustermgr.ChunkStatusNormal, clustermgr.ChunkStatusReadOnly, clustermgr.ChunkStatusRelease},
+	}
 )
 
 type DiskStorageWrapper struct {
@@ -238,6 +238,7 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 
 type DiskStorage struct {
 	DiskID proto.DiskID
+	nodeID proto.NodeID
 
 	Lock       sync.RWMutex
 	SuperBlock *SuperBlock
@@ -391,6 +392,10 @@ func (ds *DiskStorage) GetMetaPath() (path string) {
 
 func (ds *DiskStorage) ID() (id proto.DiskID) {
 	return ds.DiskID
+}
+
+func (ds *DiskStorage) NodeID() proto.NodeID {
+	return ds.nodeID
 }
 
 func (ds *DiskStorage) SetStatus(status proto.DiskStatus) {
@@ -1059,10 +1064,8 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	}
 
 	// TODO: support NodeID: old verstion -> v1.5.2: we will remove these code in the next version
-	if formatInfo.NodeID == 0 || dm.NodeID == 0 {
-		formatInfo.NodeID = conf.NodeID
-		formatInfo.NodeCtime = time.Now().UnixNano()
-		dm, err = updateDiskMeta(ctx, sb, formatInfo, conf.Path)
+	if dm.NodeID == 0 {
+		dm, err = updateDiskMeta(ctx, sb, *formatInfo, conf.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -1105,6 +1108,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 
 	ds = &DiskStorage{
 		DiskID:           dm.DiskID,
+		nodeID:           dm.NodeID, // from formatInfo
 		SuperBlock:       sb,
 		DataPath:         diskDataPath,
 		MetaPath:         diskMetaPath,
@@ -1158,22 +1162,20 @@ func registerDisk(ctx context.Context, sb *SuperBlock, conf *core.Config) (dm co
 
 	now := time.Now().UnixNano()
 
-	format := &core.FormatInfo{
-		FormatInfoProtectedField: core.FormatInfoProtectedField{
-			DiskID:    diskID,
-			NodeID:    conf.NodeID,
-			Version:   _diskVer[0],
-			Format:    core.FormatMetaTypeV1,
-			Ctime:     now,
-			NodeCtime: now,
-		},
+	format := &core.FormatInfo{}
+	format.NodeID = conf.NodeID
+	format.NodeCtime = now
+	format.FormatInfoProtectedField = core.FormatInfoProtectedField{
+		DiskID:  diskID,
+		Version: _diskVer[0],
+		Format:  core.FormatMetaTypeV1,
+		Ctime:   now,
 	}
-	checkSum, err := format.CalCheckSum()
-	if err != nil {
+
+	if err = format.CalCheckSum(); err != nil {
 		span.Errorf("cal format info crc failed: %v", err)
 		return
 	}
-	format.CheckSum = checkSum
 
 	// dm.Host =
 	dm = core.DiskMeta{
@@ -1200,20 +1202,13 @@ func registerDisk(ctx context.Context, sb *SuperBlock, conf *core.Config) (dm co
 	return
 }
 
-func updateDiskMeta(ctx context.Context, sb *SuperBlock, format *core.FormatInfo, path string) (dm core.DiskMeta, err error) {
+func updateDiskMeta(ctx context.Context, sb *SuperBlock, format core.FormatInfo, path string) (dm core.DiskMeta, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("update disk[%d:%s] meta", format.DiskID, path)
 
-	checkSum, err := format.CalCheckSum()
-	if err != nil {
-		span.Errorf("cal format info crc failed: %v", err)
-		return
-	}
-	format.CheckSum = checkSum
-
 	// update disk meta
 	dm = core.DiskMeta{
-		FormatInfo: *format,
+		FormatInfo: format,
 		Mtime:      format.NodeCtime,
 		Registered: true,
 		Status:     proto.DiskStatusNormal,
@@ -1225,12 +1220,7 @@ func updateDiskMeta(ctx context.Context, sb *SuperBlock, format *core.FormatInfo
 		return
 	}
 
-	if err = core.SaveDiskFormatInfo(ctx, path, format); err != nil {
-		span.Errorf("Failed save disk[%s] format info, err:%v", path, err)
-		return
-	}
-
-	span.Infof("update disk[%d:%s] meta, success", format.DiskID, path)
+	span.Infof("update disk[%d:%s] meta, success", dm.DiskID, path)
 	return
 }
 

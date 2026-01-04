@@ -265,6 +265,20 @@ func (mr *MockDiskAPIMockRecorder) LoadDiskInfo(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadDiskInfo", reflect.TypeOf((*MockDiskAPI)(nil).LoadDiskInfo), arg0)
 }
 
+// NodeID mocks base method.
+func (m *MockDiskAPI) NodeID() proto.NodeID {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NodeID")
+	ret0, _ := ret[0].(proto.NodeID)
+	return ret0
+}
+
+// NodeID indicates an expected call of NodeID.
+func (mr *MockDiskAPIMockRecorder) NodeID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NodeID", reflect.TypeOf((*MockDiskAPI)(nil).NodeID))
+}
+
 // PrepareClose mocks base method.
 func (m *MockDiskAPI) PrepareClose(arg0 context.Context) {
 	m.ctrl.T.Helper()

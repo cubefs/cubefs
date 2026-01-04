@@ -160,6 +160,7 @@ type ChunkAPI interface {
 
 type DiskAPI interface {
 	ID() proto.DiskID
+	NodeID() proto.NodeID
 	Status() (status proto.DiskStatus)
 	DiskInfo() (info clustermgr.BlobNodeDiskInfo)
 	Stats() (stat DiskStats)
