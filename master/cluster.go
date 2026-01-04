@@ -3915,6 +3915,10 @@ func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 	if ok {
 		newBadPartitionIDs = badPartitionIDs.([]uint64)
 	}
+	// Check for duplicates before adding
+	if in(partitionID, newBadPartitionIDs) {
+		return
+	}
 	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
 	c.BadMetaPartitionIds.Store(addr, newBadPartitionIDs)
 }
@@ -3948,6 +3952,10 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 	badPartitionIDs, ok := c.BadDataPartitionIds.Load(key)
 	if ok {
 		newBadPartitionIDs = badPartitionIDs.([]uint64)
+	}
+	// Check for duplicates before adding
+	if in(partitionID, newBadPartitionIDs) {
+		return
 	}
 	newBadPartitionIDs = append(newBadPartitionIDs, partitionID)
 	c.BadDataPartitionIds.Store(key, newBadPartitionIDs)
