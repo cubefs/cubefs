@@ -48,7 +48,7 @@ func isNvmeDisk(dirPath string) (bool, string, error) {
 	}
 
 	// Handle dm-/md-/mapper devices via sysfs recursion.
-	if isNvmeBySysfs(block, 4) {
+	if isNvmeBySysfs(block) {
 		return true, source, nil
 	}
 	return false, source, nil
@@ -151,26 +151,55 @@ func unescapeMountInfoPath(s string) string {
 	return b.String()
 }
 
-func isNvmeBySysfs(block string, depth int) bool {
-	if depth <= 0 || block == "" {
-		return false
-	}
-	if strings.HasPrefix(block, "nvme") {
-		return true
+func isNvmeBySysfs(block string) bool {
+	// Some mount sources are partitions (e.g. sda1, nvme0n1p1). Partitions may not expose
+	// queue/rotational; in that case, resolve to the parent block device and check it.
+	if ok, nonRot := readNonRotational(block); ok {
+		return nonRot
 	}
 
-	slavesDir := filepath.Join("/sys/class/block", block, "slaves")
-	ents, err := os.ReadDir(slavesDir)
-	if err != nil {
-		return false
-	}
-	for _, ent := range ents {
-		if !ent.IsDir() {
-			continue
-		}
-		if isNvmeBySysfs(ent.Name(), depth-1) {
-			return true
+	parent := parentBlockDevice(block)
+	if parent != "" && parent != block {
+		if ok, nonRot := readNonRotational(parent); ok {
+			return nonRot
 		}
 	}
 	return false
+}
+
+func readNonRotational(block string) (ok bool, nonRotational bool) {
+	rotPath := filepath.Join("/sys/class/block", block, "queue", "rotational")
+	b, err := os.ReadFile(rotPath)
+	if err != nil {
+		// Fallback to /sys/block which sometimes differs for certain device nodes.
+		rotPath = filepath.Join("/sys/block", block, "queue", "rotational")
+		b, err = os.ReadFile(rotPath)
+		if err != nil {
+			return false, false
+		}
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return false, false
+	}
+	return true, v == 0
+}
+
+func parentBlockDevice(block string) string {
+	// /sys/class/block/<dev>/partition exists for partitions.
+	if _, err := os.Stat(filepath.Join("/sys/class/block", block, "partition")); err != nil {
+		return block
+	}
+	rp, err := filepath.EvalSymlinks(filepath.Join("/sys/class/block", block))
+	if err != nil || rp == "" {
+		return block
+	}
+	// For partitions, realpath typically ends with .../block/<parent>/<partition>.
+	// E.g. .../block/sda/sda1 -> parent is "sda"
+	//      .../block/nvme0n1/nvme0n1p1 -> parent is "nvme0n1"
+	parent := filepath.Base(filepath.Dir(rp))
+	if parent == "" || parent == "." || parent == "/" {
+		return block
+	}
+	return parent
 }
