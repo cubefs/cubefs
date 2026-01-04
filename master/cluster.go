@@ -4093,6 +4093,15 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 		toBeOfflineMps = partitions
 	}
 
+	tmpOfflineMps := make([]*MetaPartition, 0, len(toBeOfflineMps))
+	for _, mp := range toBeOfflineMps {
+		// If srcAddr is not empty in learner usage, it is doing migrating.
+		if mp.SrcAddr == "" {
+			tmpOfflineMps = append(tmpOfflineMps, mp)
+		}
+	}
+	toBeOfflineMps = tmpOfflineMps
+
 	if len(toBeOfflineMps) <= 0 && len(partitions) != 0 {
 		return fmt.Errorf("migrateMataNode no partition can migrate from [%s] to [%s] limit [%v]", srcAddr, targetAddr, limit)
 	}
