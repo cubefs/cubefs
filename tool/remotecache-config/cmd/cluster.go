@@ -216,7 +216,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
 				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount,
 				optFlashReadFlowLimit, optFlashWriteFlowLimit, optFlashKeyFlowLimit, optRemoteClientFlowLimit,
-				"", "", "", "", "", ""); err != nil {
+				"", "", "", "", "", "", "", "", "", ""); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")

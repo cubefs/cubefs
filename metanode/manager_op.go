@@ -1565,27 +1565,7 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 	}
 
 	if req.Force {
-		mpStruct, ok := mp.(*metaPartition)
-		if !ok {
-			err = errors.NewErrorf("[opRemoveMetaPartitionRaftMember] mp is not *metaPartition struct")
-			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-			m.respondToClient(conn, p)
-			return err
-		}
-		cc := &raftProto.ConfChange{
-			Type:    raftProto.ConfRemoveNode,
-			Peer:    raftProto.Peer{ID: req.RemovePeer.ID},
-			Context: reqData,
-		}
-		m.raftStore.RaftServer().RemoveRaftForce(req.PartitionId, cc)
-		if _, err = mpStruct.ApplyMemberChange(cc, 0); err != nil {
-			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-			m.respondToClient(conn, p)
-			return err
-		}
-		p.PacketOkReply()
-		m.respondToClient(conn, p)
-		return
+		return m.forceRemoveRaftMember(conn, p, mp, req, reqData)
 	}
 
 	_, err = mp.ChangeMember(raftProto.ConfRemoveNode,
@@ -1599,6 +1579,33 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 	m.respondToClient(conn, p)
 
 	return
+}
+
+// forceRemoveRaftMember forcefully removes a raft member from the meta partition
+func (m *metadataManager) forceRemoveRaftMember(conn net.Conn, p *Packet, mp MetaPartition,
+	req *proto.RemoveMetaPartitionRaftMemberRequest, reqData []byte,
+) (err error) {
+	mpStruct, ok := mp.(*metaPartition)
+	if !ok {
+		err = errors.NewErrorf("[forceRemoveRaftMember] mp is not *metaPartition struct")
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	cc := &raftProto.ConfChange{
+		Type:    raftProto.ConfRemoveNode,
+		Peer:    raftProto.Peer{ID: req.RemovePeer.ID},
+		Context: reqData,
+	}
+	m.raftStore.RaftServer().RemoveRaftForce(req.PartitionId, cc)
+	if _, err = mpStruct.ApplyMemberChange(cc, 0); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+	return nil
 }
 
 func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,

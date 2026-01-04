@@ -301,7 +301,6 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 				}
 			} else {
 				// Normal mode check
-				// TODO：检查超时
 				if partition.getMinusOfMaxInodeID() < defaultMinusOfMaxInodeID {
 					partition.IsRecover.Store(false)
 					partition.setRestoreReplicaStatus(RestoreReplicaMetaStop)
