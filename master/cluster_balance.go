@@ -1446,7 +1446,7 @@ func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.M
 		return err
 	}
 	if overLoad {
-		return fmt.Errorf("destination metanode(%s) is overload before migrate mp(%v)", mrPlan.Destination, mpPlan.ID)
+		return fmt.Errorf("destination metanode(%s) can't allocate partition before migrate mp(%v)", mrPlan.Destination, mpPlan.ID)
 	}
 
 	err = c.waitForMetaPartitionReady(mp)
