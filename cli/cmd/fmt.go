@@ -1733,6 +1733,7 @@ func formatDistributionOptimizationStatus(status *proto.DistributionOptimization
 
 	if len(status.DecommissioningDPIDs) > 0 {
 		sb.WriteString("\n[Decommissioning DPs]\n")
+		sb.WriteString(fmt.Sprintf("  Count: %d\n", len(status.DecommissioningDPIDs)))
 		sb.WriteString("  DPIDs: ")
 		for i, id := range status.DecommissioningDPIDs {
 			if i > 0 {
