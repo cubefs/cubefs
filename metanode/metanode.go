@@ -908,6 +908,7 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 		HardCompactionLimit:      uint64(hardCompactionLimit),
 		PeriodicCompactSec:       periodicCompactSec,
 	}
+	config = AdjustRocksdbOptions(config)
 	if rocksdbMode == PerDiskRocksdbMode {
 		m.rocksdbManager = NewPerDiskRocksdbManager(config)
 	} else {
@@ -947,4 +948,17 @@ func (m *MetaNode) stopRocksdbManager() {
 	for _, db := range m.rocksdbs {
 		m.rocksdbManager.CloseRocksdb(db)
 	}
+}
+
+func AdjustRocksdbOptions(config *RocksdbManagerConfig) *RocksdbManagerConfig {
+	if config.BlockCacheSize == 0 {
+		rocksdbBlockCacheSize := configTotalMem / 5
+		if rocksdbBlockCacheSize < DefaultCacheSize {
+			config.BlockCacheSize = DefaultCacheSize
+		} else {
+			config.BlockCacheSize = rocksdbBlockCacheSize
+		}
+	}
+
+	return config
 }
