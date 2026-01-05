@@ -389,6 +389,9 @@ const (
 
 	opSyncAddCheckSumPlan    uint32 = 0x74
 	opSyncUpdateCheckSumPlan uint32 = 0x75
+
+	opSyncAddPromoteLearnerPlan    uint32 = 0x76
+	opSyncUpdatePromoteLearnerPlan uint32 = 0x77
 )
 
 func init() {
@@ -527,8 +530,9 @@ const (
 	flashGroupPrefix      = keySeparator + "fg" + keySeparator
 	flashManualTaskPrefix = keySeparator + "flt" + keySeparator
 
-	balanceTaskKey  = keySeparator + "balanceTask"
-	checkSumPlanKey = keySeparator + "checkSumPlan"
+	balanceTaskKey        = keySeparator + "balanceTask"
+	checkSumPlanKey       = keySeparator + "checkSumPlan"
+	promoteLearnerPlanKey = keySeparator + "promoteLearnerPlan"
 )
 
 // selector enum

@@ -126,3 +126,33 @@ type MetaPartitionsChecksumPlan struct {
 	Expire       time.Time                    `json:"expire"`
 	Msg          string                       `json:"msg"`
 }
+
+type MetaPartitionLearnerInfo struct {
+	ID         uint64   `json:"id"`
+	Learners   []string `json:"learners"`
+	DeleteAddr []string `json:"deleteAddr"`
+}
+
+type PromoteLearnerPlan struct {
+	Name       string                      `json:"name"`
+	StartID    uint64                      `json:"startId"`
+	EndID      uint64                      `json:"endId"`
+	Mode       StoreMode                   `json:"mode"`
+	SelectType int                         `json:"selectType"` // 0: not set. 1: zone name. 2: node set id. 3: node address list.
+	ZoneName   string                      `json:"zoneName"`
+	NodeSetID  uint64                      `json:"nodesetId"`
+	SelectTag  string                      `json:"selectTag"`
+	Learners   []*MetaPartitionLearnerInfo `json:"learners"`
+	TotalNum   int32                       `json:"totalNum"`
+	UndoNum    int32                       `json:"undoNum"`
+	RunningNum int32                       `json:"runningNum"`
+	DoneNum    int32                       `json:"doneNum"`
+	FailedNum  int32                       `json:"failedNum"`
+	FailedList []uint64                    `json:"failedList"`
+	Progress   float64                     `json:"progress"`
+	StartTime  time.Time                   `json:"startTime"`
+	EndTime    time.Time                   `json:"endTime"`
+	Expire     time.Time                   `json:"expire"`
+	Status     string                      `json:"status"`
+	Msg        string                      `json:"msg"`
+}

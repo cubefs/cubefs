@@ -122,6 +122,7 @@ var (
 	ErrFlashNodeRunLimited                     = errors.New("run limited")
 	ErrNoRenewMpStoreModeTask                  = errors.New("no renew meta partition store mode task")
 	ErrNoCheckSumPlan                          = errors.New("no check sum plan")
+	ErrNoPromoteLearnerPlan                    = errors.New("no promote learner plan")
 )
 
 // http response error code and error message definitions

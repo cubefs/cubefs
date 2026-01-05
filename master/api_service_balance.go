@@ -857,23 +857,36 @@ func (m *Server) batchPromoteMpLearner(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// do promote
-	count, failIDs, err := m.cluster.PromoteLearnerByRange(param)
+	promotePlan, err := m.cluster.CreatePromoteLearnerPlan(param)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 
-	msg := fmt.Sprintf("promote learner done: vol(%s) start(%d) end(%d) promoted(%d) failed(%d)", param.Name, param.StartID, param.EndID, count, len(failIDs))
-	AuditLog(r, "promoteMpLearnerByRange", msg, nil)
-	sendOkReply(w, r, newSuccessHTTPReply(map[string]any{
-		"volume":     param.Name,
-		"startId":    param.StartID,
-		"endId":      param.EndID,
-		"mode":       param.Mode,
-		"promoted":   count,
-		"failedNum":  len(failIDs),
-		"failedList": failIDs,
-	}))
+	msg := fmt.Sprintf("create promote learner plan: vol(%s) start(%d) end(%d) total(%d)", param.Name, param.StartID, param.EndID, promotePlan.TotalNum)
+	AuditLog(r, "CreatePromoteLearnerPlan", msg, nil)
+	sendOkReply(w, r, newSuccessHTTPReply(promotePlan))
+}
+
+func (m *Server) getPromoteMpLearnerPlan(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetPromoteMpLearnerPlan))
+	var err error
+	defer func() {
+		doStatAndMetric(proto.AdminGetPromoteMpLearnerPlan, metric, err, nil)
+	}()
+
+	plan, err := m.cluster.loadPromoteLearnerPlan()
+	if err != nil && err != proto.ErrNoPromoteLearnerPlan {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	if plan == nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "no promote learner plan"})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }
 
 func (m *Server) calcMetaPartitionMd5Sum(w http.ResponseWriter, r *http.Request) {

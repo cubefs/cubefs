@@ -629,6 +629,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminBatchPromoteMpLearner).
 		HandlerFunc(m.batchPromoteMpLearner)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetPromoteMpLearnerPlan).
+		HandlerFunc(m.getPromoteMpLearnerPlan)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCalcMetaPartitionMd5Sum).
 		HandlerFunc(m.calcMetaPartitionMd5Sum)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

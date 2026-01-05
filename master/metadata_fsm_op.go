@@ -2588,3 +2588,70 @@ func (c *Cluster) syncDeleteCheckSumPlan() error {
 	}
 	return err
 }
+
+func (c *Cluster) syncAddPromoteLearnerPlan(plan *proto.PromoteLearnerPlan) (err error) {
+	return c.putPromoteLearnerPlanInfo(opSyncAddPromoteLearnerPlan, plan)
+}
+
+func (c *Cluster) syncUpdatePromoteLearnerPlan(plan *proto.PromoteLearnerPlan) (err error) {
+	return c.putPromoteLearnerPlanInfo(opSyncUpdatePromoteLearnerPlan, plan)
+}
+
+func (c *Cluster) putPromoteLearnerPlanInfo(opType uint32, plan *proto.PromoteLearnerPlan) (err error) {
+	planTask := new(RaftCmd)
+	planTask.Op = opType
+	planTask.K = promoteLearnerPlanKey
+	taskContent, err := json.Marshal(plan)
+	if err != nil {
+		return fmt.Errorf("promote learner plan op(%d) encode err: %s", opType, err.Error())
+	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err = gz.Write(taskContent)
+	if err != nil {
+		return fmt.Errorf("zip promote learner plan op(%d) err: %s", opType, err.Error())
+	}
+	gz.Close()
+	planTask.V = buf.Bytes()
+
+	return c.submit(planTask)
+}
+
+func (c *Cluster) loadPromoteLearnerPlan() (*proto.PromoteLearnerPlan, error) {
+	result, err := c.fsm.store.GetByKey([]byte(promoteLearnerPlanKey))
+	if err != nil {
+		return nil, fmt.Errorf("loadPromoteLearnerPlan GetByKey err: %s", err.Error())
+	}
+
+	if len(result) == 0 {
+		return nil, proto.ErrNoPromoteLearnerPlan
+	}
+
+	reader := bytes.NewReader(result)
+	gz, err := gzip.NewReader(reader)
+	if err != nil {
+		return nil, fmt.Errorf("loadPromoteLearnerPlan decode gzip err: %s", err.Error())
+	}
+	defer gz.Close()
+
+	taskContent, err := io.ReadAll(gz)
+	if err != nil {
+		return nil, fmt.Errorf("loadPromoteLearnerPlan decode gzip err: %s", err.Error())
+	}
+
+	plan := new(proto.PromoteLearnerPlan)
+	err = json.Unmarshal(taskContent, plan)
+	if err != nil {
+		return nil, fmt.Errorf("loadPromoteLearnerPlan decode json err: %s", err.Error())
+	}
+
+	return plan, nil
+}
+
+func (c *Cluster) syncDeletePromoteLearnerPlan() error {
+	err := c.fsm.store.DelByKey([]byte(promoteLearnerPlanKey), true)
+	if err != nil {
+		log.LogErrorf("DelByKey err: %s", err.Error())
+	}
+	return err
+}
