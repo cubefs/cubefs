@@ -206,6 +206,7 @@ type metaPartitionValue struct {
 	RecoverRetryTime   int64
 	RecoverState       int
 	RestoreReplicaMeta uint32
+	DecommissionType   uint32
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -230,6 +231,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		RecoverRetryTime:   mp.RecoverRetryTime,
 		RecoverState:       int(mp.RecoverState),
 		RestoreReplicaMeta: atomic.LoadUint32(&mp.RestoreReplicaMeta),
+		DecommissionType:   mp.DecommissionType,
 	}
 	return
 }
@@ -2049,6 +2051,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.RecoverRetryTime = mpv.RecoverRetryTime
 		mp.RecoverState = proto.RecoverState(mpv.RecoverState)
 		mp.RestoreReplicaMeta = mpv.RestoreReplicaMeta
+		mp.DecommissionType = mpv.DecommissionType
 		// If previous leader exited during restore (running/forbidden), reset to stop
 		// so that replica restore scheduling can proceed on new leader.
 		if (mp.RestoreReplicaMeta == RestoreReplicaMetaRunning && !mp.IsRecover.Load()) ||
