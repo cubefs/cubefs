@@ -2880,7 +2880,7 @@ func (c *Cluster) RemoveRedundantMetaReplica(mp *MetaPartition, excludeAddrs []s
 		return nil
 	}
 
-	srcAddr, err := TryToSelectOneReplica(mp, excludeAddrs, param)
+	srcAddr, err := c.TryToSelectOneReplica(mp, excludeAddrs, param)
 	if err != nil {
 		log.LogErrorf("[RemoveRedundantMetaReplica] mp[%v] select one memory store mode replica failed, err: %s", mp.PartitionID, err.Error())
 		return err
@@ -2903,7 +2903,7 @@ func (c *Cluster) RemoveRedundantMetaReplica(mp *MetaPartition, excludeAddrs []s
 	return nil
 }
 
-func TryToSelectOneReplica(mp *MetaPartition, excludeAddrs []string, param *MetaPartitionPlanUserParams) (string, error) {
+func (c *Cluster) TryToSelectOneReplica(mp *MetaPartition, excludeAddrs []string, param *MetaPartitionPlanUserParams) (string, error) {
 	excludeAddrsBackup := make([]string, 0, len(excludeAddrs)+1)
 	excludeAddrsBackup = append(excludeAddrsBackup, excludeAddrs...)
 	hasLeader := false
@@ -2933,6 +2933,20 @@ func TryToSelectOneReplica(mp *MetaPartition, excludeAddrs []string, param *Meta
 		log.LogErrorf("[TryToSelectOneReplica] %s", err.Error())
 		return "", err
 	}
+
+	leader, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		log.LogErrorf("getMetaReplicaLeader error: %s", err.Error())
+		return "", err
+	}
+	if srcAddr == leader.Addr {
+		err = c.tryToChangeMetaPartitionLeader(mp, srcAddr)
+		if err != nil {
+			log.LogErrorf("tryToChangeMetaPartitionLeader error: %s", err.Error())
+			return "", err
+		}
+	}
+
 	return srcAddr, nil
 }
 
@@ -3508,4 +3522,41 @@ func GetMetaPartitionReadyReplicaCount(plan *proto.ClusterPlan, mp *MetaPartitio
 		}
 	}
 	return count
+}
+
+func (c *Cluster) tryToChangeMetaPartitionLeader(mp *MetaPartition, oldLeader string) error {
+	var newLeader string
+	for _, replica := range mp.Replicas {
+		if replica.Addr != oldLeader {
+			newLeader = replica.Addr
+			break
+		}
+	}
+
+	if newLeader == "" {
+		return fmt.Errorf("no new leader found for mp[%v]", mp.PartitionID)
+	}
+
+	for i := 0; i < CheckMetaLeaderRetry; i++ {
+		err := mp.tryToChangeLeaderByHost(newLeader)
+		if err != nil {
+			log.LogErrorf("metapartition[%d] try to change leader to host[%s] failed, err[%s]",
+				mp.PartitionID, newLeader, err.Error())
+		}
+
+		leader, err := mp.getMetaReplicaLeader()
+		if err != nil {
+			log.LogWarnf("metapartition[%d] has no leader", mp.PartitionID)
+			time.Sleep(defaultIntervalToCheckHeartbeat * time.Second)
+			continue
+		}
+		if leader.Addr != oldLeader {
+			// the leader is not the source node, the meta partition can be migrated.
+			return nil
+		}
+
+		time.Sleep(defaultIntervalToCheckHeartbeat * time.Second)
+	}
+
+	return fmt.Errorf("Try to change mp[%v] leader from %s to %s failed", mp.PartitionID, oldLeader, newLeader)
 }
