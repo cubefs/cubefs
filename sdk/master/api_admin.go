@@ -1180,6 +1180,14 @@ func (api *AdminAPI) QueryDistributionOptimizationStatus() (status *proto.Distri
 	return
 }
 
+func (api *AdminAPI) QueryDpDecommissionStatus(decommissionType int) (response *proto.QueryDecommissionStatusResponse, err error) {
+	response = &proto.QueryDecommissionStatusResponse{}
+	request := newRequest(get, proto.AdminQueryDpDecommissionStatus).Header(api.h)
+	request.addParam("decommissionType", strconv.FormatInt(int64(decommissionType), 10))
+	err = api.mc.requestWith(response, request)
+	return
+}
+
 func (api *AdminAPI) GetRemoteCacheConfig() (config *proto.RemoteCacheConfig, err error) {
 	config = &proto.RemoteCacheConfig{}
 	err = api.mc.requestWith(config, newRequest(get, proto.AdminGetRemoteCacheConfig).Header(api.h))

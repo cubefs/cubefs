@@ -702,14 +702,15 @@ type DecommissionDataPartitionInfo struct {
 	DecommissionRetryTime string
 }
 
-type QueryDecommissionStatusRequest struct {
-	DecommissionType   uint32 `json:"decommissionType"`   // DecommissionType: AutoDecommission, ManualDecommission, etc. Optional, if not specified (or MaxUint32), returns all types
-	DecommissionStatus uint32 `json:"decommissionStatus"` // DecommissionStatus: DecommissionInitial, DecommissionRunning, etc. Optional, if not specified (or MaxUint32), returns all statuses
+type StatusGroup struct {
+	Status         string                          `json:"status"`
+	DataPartitions []DecommissionDataPartitionInfo `json:"dataPartitions"`
+	Count          int                             `json:"count"`
 }
 
 type QueryDecommissionStatusResponse struct {
-	DataPartitions []DecommissionDataPartitionInfo `json:"dataPartitions"`
-	TotalCount     int                             `json:"totalCount"`
+	StatusGroups []StatusGroup `json:"statusGroups"`
+	TotalCount   int           `json:"totalCount"`
 }
 
 type DecommissionedDisks struct {

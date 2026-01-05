@@ -2612,6 +2612,143 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
 
+func (m *Server) queryDecommissionStatus(w http.ResponseWriter, r *http.Request) {
+	var (
+		decommissionType int
+		err              error
+		statusMap        map[uint32][]proto.DecommissionDataPartitionInfo
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDpDecommissionStatus))
+	defer func() {
+		doStatAndMetric(proto.AdminQueryDpDecommissionStatus, metric, err, nil)
+		AuditLog(r, proto.AdminQueryDpDecommissionStatus,
+			fmt.Sprintf("decommissionType: %v", decommissionType), err)
+	}()
+
+	// Parse request parameters
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	typeStr := r.FormValue(decommissionTypeKey)
+	if typeStr == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "decommissionType parameter is required"})
+		return
+	}
+
+	decommissionType, err = extractUint(r, decommissionTypeKey)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// default is ManualDecommission
+	if decommissionType == 0 {
+		decommissionType = int(ManualDecommission)
+	}
+
+	// Initialize status map to group DPs by status
+	statusMap = make(map[uint32][]proto.DecommissionDataPartitionInfo)
+
+	// Query all data partitions matching the criteria
+	vols := m.cluster.allVols()
+	for _, vol := range vols {
+		partitions := vol.dataPartitions.clonePartitions()
+		for _, dp := range partitions {
+			if dp.IsDiscard {
+				continue
+			}
+
+			if dp.DecommissionType != uint32(decommissionType) {
+				continue
+			}
+
+			// Get the decommission status
+			dpStatus := dp.GetDecommissionStatus()
+
+			// Build DecommissionDataPartitionInfo
+			var replicas []string
+			for _, replica := range dp.Replicas {
+				replicas = append(replicas, replica.Addr)
+			}
+			diskRetryMap := dp.cloneDecommissionDiskRetryMap()
+			var progress string
+			var dataReplica *DataReplica
+			if dp.DecommissionDstAddr != "" {
+				if dataReplica, err = dp.getReplica(dp.DecommissionDstAddr); err == nil {
+					progress = fmt.Sprintf("%.2f%%", dataReplica.DecommissionRepairProgress*float64(100))
+				}
+			}
+
+			info := proto.DecommissionDataPartitionInfo{
+				PartitionId:           dp.PartitionID,
+				ReplicaNum:            dp.ReplicaNum,
+				Status:                GetDecommissionStatusMessage(dpStatus),
+				SpecialStep:           GetSpecialDecommissionStatusMessage(dp.GetSpecialReplicaDecommissionStep()),
+				Progress:              progress,
+				DiskRetryMap:          diskRetryMap,
+				Retry:                 dp.DecommissionRetry,
+				RaftForce:             dp.DecommissionRaftForce,
+				Recover:               dp.isRecover,
+				SrcAddress:            dp.DecommissionSrcAddr,
+				SrcAddresses:          dp.DecommissionSrcAddrs,
+				SrcDiskPath:           dp.DecommissionSrcDiskPath,
+				DstAddress:            dp.DecommissionDstAddr,
+				DstAddresses:          dp.DecommissionDstAddrs,
+				DstNodeSet:            dp.DecommissionDstNodeSet,
+				Term:                  dp.DecommissionTerm,
+				Weight:                dp.DecommissionWeight,
+				Replicas:              replicas,
+				ErrorMessage:          dp.DecommissionErrorMessage,
+				NeedRollbackTimes:     atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes),
+				DecommissionType:      GetDecommissionTypeMessage(dp.DecommissionType),
+				RestoreReplicaType:    GetRestoreReplicaMessage(dp.RestoreReplica),
+				IsDiscard:             dp.IsDiscard,
+				RecoverStartTime:      dp.RecoverStartTime.Format("2006-01-02 15:04:05"),
+				RecoverUpdateTime:     dp.RecoverUpdateTime.Format("2006-01-02 15:04:05"),
+				DecommissionRetryTime: dp.DecommissionRetryTime.Format("2006-01-02 15:04:05"),
+			}
+			// Group by status
+			statusMap[dpStatus] = append(statusMap[dpStatus], info)
+		}
+	}
+
+	// Build response with status groups
+	type statusGroupWithValue struct {
+		statusValue uint32
+		group       proto.StatusGroup
+	}
+	var statusGroupsWithValue []statusGroupWithValue
+	totalCount := 0
+	for status, dps := range statusMap {
+		statusGroupsWithValue = append(statusGroupsWithValue, statusGroupWithValue{
+			statusValue: status,
+			group: proto.StatusGroup{
+				Status:         GetDecommissionStatusMessage(status),
+				DataPartitions: dps,
+				Count:          len(dps),
+			},
+		})
+		totalCount += len(dps)
+	}
+
+	sort.Slice(statusGroupsWithValue, func(i, j int) bool {
+		return statusGroupsWithValue[i].statusValue < statusGroupsWithValue[j].statusValue
+	})
+
+	statusGroups := make([]proto.StatusGroup, 0, len(statusGroupsWithValue))
+	for _, sg := range statusGroupsWithValue {
+		statusGroups = append(statusGroups, sg.group)
+	}
+
+	response := proto.QueryDecommissionStatusResponse{
+		StatusGroups: statusGroups,
+		TotalCount:   totalCount,
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(response))
+}
+
 // Mark the volume as deleted, which will then be deleted later.
 func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (

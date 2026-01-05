@@ -1745,3 +1745,84 @@ func formatDistributionOptimizationStatus(status *proto.DistributionOptimization
 
 	return sb.String()
 }
+
+func formatQueryDecommissionStatusResponse(response *proto.QueryDecommissionStatusResponse) string {
+	if response == nil {
+		return ""
+	}
+
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("Total Count: %d\n\n", response.TotalCount))
+
+	for _, group := range response.StatusGroups {
+		sb.WriteString(fmt.Sprintf("[Status: %s] (Count: %d)\n", group.Status, group.Count))
+		if len(group.DataPartitions) == 0 {
+			sb.WriteString("  No data partitions\n\n")
+			continue
+		}
+
+		// Table header: srcAddrs, dstAddrs, srcAddr, dstAddr, dstNodeset, Weight
+		sb.WriteString(fmt.Sprintf("  %-6s %-40s %-40s %-20s %-20s %-12s %-8s %-10s %-10s\n",
+			"ID", "SrcAddresses", "DstAddresses", "SrcAddress", "DstAddress", "DstNodeSet", "Weight", "Progress", "Error"))
+		sb.WriteString("  " + strings.Repeat("-", 190) + "\n")
+
+		// Table rows
+		for _, dp := range group.DataPartitions {
+			progress := dp.Progress
+			if progress == "" {
+				progress = "N/A"
+			}
+			errorMsg := dp.ErrorMessage
+			if errorMsg == "" {
+				errorMsg = "None"
+			} else if len(errorMsg) > 50 {
+				errorMsg = errorMsg[:47] + "..."
+			}
+
+			// Format SrcAddresses (srcAddrs)
+			srcAddresses := "N/A"
+			if len(dp.SrcAddresses) > 0 {
+				srcAddresses = strings.Join(dp.SrcAddresses, ",")
+				if len(srcAddresses) > 38 {
+					srcAddresses = srcAddresses[:35] + "..."
+				}
+			}
+
+			// Format DstAddresses (dstAddrs)
+			dstAddresses := "N/A"
+			if len(dp.DstAddresses) > 0 {
+				dstAddresses = strings.Join(dp.DstAddresses, ",")
+				if len(dstAddresses) > 38 {
+					dstAddresses = dstAddresses[:35] + "..."
+				}
+			}
+
+			// Format SrcAddress (srcAddr)
+			srcAddress := dp.SrcAddress
+			if srcAddress == "" {
+				srcAddress = "N/A"
+			}
+
+			// Format DstAddress (dstAddr)
+			dstAddress := dp.DstAddress
+			if dstAddress == "" {
+				dstAddress = "N/A"
+			}
+
+			// Format DstNodeSet
+			dstNodeSet := "N/A"
+			if dp.DstNodeSet > 0 {
+				dstNodeSet = fmt.Sprintf("%d", dp.DstNodeSet)
+			}
+
+			// Format Weight
+			weight := fmt.Sprintf("%d", dp.Weight)
+
+			sb.WriteString(fmt.Sprintf("  %-6d %-40s %-40s %-20s %-20s %-12s %-8s %-10s %-10s\n",
+				dp.PartitionId, srcAddresses, dstAddresses, srcAddress, dstAddress, dstNodeSet, weight, progress, errorMsg))
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}

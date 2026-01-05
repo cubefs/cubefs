@@ -52,6 +52,7 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterQueryDiskOpCmd(client),
 		newClusterChangeMasterLeaderCmd(client),
 		newClusterQueryDistributionOptimizationStatusCmd(client),
+		newClusterQueryDpDecommissionStatusCmd(client),
 	)
 	return clusterCmd
 }
@@ -83,6 +84,7 @@ const (
 	cmdQueryDpOpShort                            = "query Dp_op information of a cluster"
 	cmdQueryDiskOpShort                          = "query Disk_op information of a cluster"
 	cmdQueryClusterDistributionOptimizationShort = "query distribution optimization status"
+	cmdQueryDpDecommissionStatusShort            = "query data partition decommission status by type"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -1004,5 +1006,38 @@ func newClusterQueryDistributionOptimizationStatusCmd(client *master.MasterClien
 			stdout("%v", formatDistributionOptimizationStatus(status))
 		},
 	}
+	return cmd
+}
+
+func newClusterQueryDpDecommissionStatusCmd(client *master.MasterClient) *cobra.Command {
+	var decommissionType int
+	cmd := &cobra.Command{
+		Use:   "query-dp-decommission-status",
+		Short: cmdQueryDpDecommissionStatusShort,
+		Long: `Query data partition decommission status by decommission type.
+Decommission types:
+  1 - ManualDecommission
+  2 - AutoDecommission
+  4 - AutoAddReplica
+  5 - ManualAddReplica
+  6 - DistributionOptimization`,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					errout(err)
+				}
+			}()
+
+			response, err := client.AdminAPI().QueryDpDecommissionStatus(decommissionType)
+			if err != nil {
+				return
+			}
+
+			stdout("%v", formatQueryDecommissionStatusResponse(response))
+		},
+	}
+	cmd.Flags().IntVar(&decommissionType, "type", 0, "Decommission type (required)")
+	cmd.MarkFlagRequired("type")
 	return cmd
 }

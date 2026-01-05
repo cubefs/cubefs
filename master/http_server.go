@@ -670,6 +670,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminQueryDataPartitionDecommissionStatusUpdateRecords).
 		HandlerFunc(m.queryDataPartitionDecommissionStatusUpdateRecords)
 	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminQueryDpDecommissionStatus).
+		HandlerFunc(m.queryDecommissionStatus)
+	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminCheckReplicaMeta).
 		HandlerFunc(m.checkReplicaMeta)
 	router.NewRoute().Methods(http.MethodGet).
