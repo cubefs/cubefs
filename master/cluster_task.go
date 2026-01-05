@@ -105,6 +105,8 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	var (
 		newPeers          []proto.Peer
 		finalDstStoreMode proto.StoreMode
+		isLearner         bool
+		manualPromote     bool
 	)
 
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
@@ -118,12 +120,33 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		goto errHandler
 	}
 
+	isLearner, manualPromote, err = getMetaReplicaLearnerInfo(mp, srcAddr)
+	if err != nil {
+		log.LogErrorf("action[migrateMetaPartition] getMetaReplicaLearnerInfo partitionID[%v] addr[%s], err[%v]",
+			mp.PartitionID, srcAddr, err)
+		goto errHandler
+	}
+
 	// Delete old replica and add new replica
 	if err = c.deleteMetaReplica(mp, srcAddr, false, false); err != nil {
 		goto errHandler
 	}
-	if err = c.addMetaReplica(mp, newPeers[0].Addr, finalDstStoreMode); err != nil {
-		goto errHandler
+	if isLearner {
+		if manualPromote {
+			err = c.addMetaReplicaLearner(mp, newPeers[0].Addr, finalDstStoreMode, "", true)
+			if err != nil {
+				log.LogErrorf("action[migrateMetaPartition] addMetaReplicaLearner partitionID[%v] addr[%s], err[%v]",
+					mp.PartitionID, newPeers[0].Addr, err)
+				goto errHandler
+			}
+		} else {
+			log.LogWarnf("action[migrateMetaPartition] partitionID[%v] learner addr[%s] delete",
+				mp.PartitionID, srcAddr)
+		}
+	} else {
+		if err = c.addMetaReplica(mp, newPeers[0].Addr, finalDstStoreMode); err != nil {
+			goto errHandler
+		}
 	}
 
 	// Mark as recovering and put into recovery queue
@@ -1806,4 +1829,16 @@ func IsExcessiveReplicaMetaPartition(mp *MetaPartition) bool {
 	}
 
 	return count > mp.ReplicaNum
+}
+
+func getMetaReplicaLearnerInfo(mp *MetaPartition, learnerAddr string) (isLearner bool, manualPromote bool, err error) {
+	for _, peer := range mp.Peers {
+		if peer.Addr == learnerAddr {
+			isLearner = peer.Type == raftProto.PeerLearner
+			manualPromote = peer.ManualPromote
+			return
+		}
+	}
+
+	return false, false, fmt.Errorf("learnerAddr[%s] not found in mp[%v]", learnerAddr, mp.PartitionID)
 }
