@@ -1551,6 +1551,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			partition.ResetDecommissionStatus()
 			if task.DecommissionType != DistributionOptimization {
 				partition.enqueueDecommissionTask(task)
+			} else {
+				var addrsToRelease []string
+				addrsToRelease = append(addrsToRelease, task.DecommissionDstAddr)
+				addrsToRelease = append(addrsToRelease, task.DecommissionDstAddrs...)
+				c.releaseDataReservedResource(addrsToRelease, partition)
 			}
 		}
 	}

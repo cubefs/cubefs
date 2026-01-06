@@ -3540,19 +3540,40 @@ func (c *Cluster) recalculateAllNodesPreReservedSpace() {
 			// Get all decommission data partitions from this nodeset
 			decommissionDPs := ns.decommissionDataPartitionList.GetAllDecommissionDataPartitions()
 			for _, dp := range decommissionDPs {
+				if len(dp.Replicas) == 0 {
+					continue
+				}
+				// Use the maximum used space among all replicas to avoid underestimating
+				// the space needed for migration, as the migrating replica might be smaller
+				maxUsedSize := c.getDataPartitionMaxUsedSize(dp)
+
+				// Calculate reserved space for current decommission task
 				var dstAddrs []string
 				dstAddrs = append(dstAddrs, dp.DecommissionDstAddr)
 				dstAddrs = append(dstAddrs, dp.DecommissionDstAddrs...)
-				if len(dstAddrs) > 0 && len(dp.Replicas) > 0 {
-					// Use the maximum used space among all replicas to avoid underestimating
-					// the space needed for migration, as the migrating replica might be smaller
-					maxUsedSize := c.getDataPartitionMaxUsedSize(dp)
-					// Accumulate reserved space for each destination address
-					for _, dstAddr := range dstAddrs {
-						if dstAddr != "" {
-							if _, exists := nodeReservedSize[dstAddr]; exists {
-								nodeReservedSize[dstAddr] += maxUsedSize
-								nodeReservedCount[dstAddr]++
+				for _, dstAddr := range dstAddrs {
+					if dstAddr != "" {
+						if _, exists := nodeReservedSize[dstAddr]; exists {
+							nodeReservedSize[dstAddr] += maxUsedSize
+							nodeReservedCount[dstAddr]++
+						}
+					}
+				}
+
+				// Calculate reserved space for queued decommission tasks
+				if dp.hasQueuedTasks() {
+					queuedTasks := dp.cloneDecommissionTaskQueue()
+					for _, task := range queuedTasks {
+						var taskDstAddrs []string
+						taskDstAddrs = append(taskDstAddrs, task.DecommissionDstAddr)
+						taskDstAddrs = append(taskDstAddrs, task.DecommissionDstAddrs...)
+						// Accumulate reserved space for each destination address in queued tasks
+						for _, dstAddr := range taskDstAddrs {
+							if dstAddr != "" {
+								if _, exists := nodeReservedSize[dstAddr]; exists {
+									nodeReservedSize[dstAddr] += maxUsedSize
+									nodeReservedCount[dstAddr]++
+								}
 							}
 						}
 					}
@@ -6160,8 +6181,8 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			ignoreIDs = append(ignoreIDs, dp.PartitionID)
 			continue
 		}
-		if dp.DecommissionDstAddr != "" {
-			if err = c.addDataReservedResource([]string{dp.DecommissionDstAddr}, dp); err != nil {
+		if disk.DstAddr != "" {
+			if err = c.addDataReservedResource([]string{disk.DstAddr}, dp); err != nil {
 				log.LogWarnf("action[TryDecommissionDisk] dp %v simulate resource change failed: %v", dp.PartitionID, err)
 				continue
 			}
@@ -6169,8 +6190,8 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		triggerCondition := fmt.Sprintf("disk(%v)_%v_dp(%v)", disk.SrcAddr+"_"+disk.DiskPath, disk.Type, dp.PartitionID)
 		if err = dp.MarkDecommissionStatus(node.Addr, disk.DstAddr, disk.DiskPath, 0, disk.DecommissionRaftForce,
 			disk.DecommissionTerm, disk.Type, disk.DecommissionWeight, c, nil, nil, triggerCondition); err != nil {
-			if dp.DecommissionDstAddr != "" {
-				c.releaseDataReservedResource([]string{dp.DecommissionDstAddr}, dp)
+			if disk.DstAddr != "" {
+				c.releaseDataReservedResource([]string{disk.DstAddr}, dp)
 			}
 			if strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
 				c.syncUpdateDataPartition(dp)
