@@ -958,3 +958,42 @@ func (m *Server) getMd5SumResult(w http.ResponseWriter, r *http.Request) {
 
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }
+
+func (m *Server) decommissionRocksdbDir(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDecommissionRocksdbDir))
+	var (
+		err        error
+		addr       string
+		rocksdbDir string
+	)
+	defer func() {
+		doStatAndMetric(proto.AdminDecommissionRocksdbDir, metric, err, nil)
+	}()
+
+	if m.cluster.IsClusterPlanNotIdle() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: m.cluster.GetClusterPlanStatusMsg()})
+		return
+	}
+
+	if addr, err = parseAndExtractNodeAddr(r); err != nil {
+		log.LogErrorf("parse node addr failed, err: %v", err)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrParamError))
+		return
+	}
+
+	rocksdbDir = r.FormValue(RocksdbDirKey)
+	if rocksdbDir == "" {
+		err = fmt.Errorf("rocksdb dir is required")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	plan, err := m.cluster.CreateDecommissionRocksdbDirPlan(addr, rocksdbDir)
+	if err != nil {
+		log.LogErrorf("CreateDecommissionRocksdbDirPlan failed: %s", err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(plan))
+}

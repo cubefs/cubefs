@@ -1522,6 +1522,7 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	resp.CommittedID = mp.getCommittedID()
 	resp.Md5ApplyId = mp.Md5ApplyId
 	resp.Md5Sum = mp.Md5Sum
+	resp.RocksdbDir = mp.config.RocksDBDir
 
 	resp.RaftInfo.DownReplicas = mp.config.RaftStore.RaftServer().GetDownReplicas(mp.config.PartitionId)
 	resp.RaftInfo.PendingPeers = mp.config.RaftStore.RaftServer().GetPendingReplica(mp.config.PartitionId)

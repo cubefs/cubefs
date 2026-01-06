@@ -192,6 +192,7 @@ const (
 	PromoteKey    = "promote"
 	SelectTypeKey = "selectType"
 	SelectTagKey  = "selectTag"
+	RocksdbDirKey = "rocksdbDir"
 )
 
 const (
@@ -583,11 +584,12 @@ const (
 	PlanTaskStop  = "stop"
 	PlanTaskDone  = "done"
 
-	ManualPlan  = "manual"
-	AutoPlan    = "auto"
-	OfflinePlan = "offline"
-	ModifyStore = "modifyStoreMode"
-	AddLearner  = "addLearner"
+	ManualPlan      = "manual"
+	AutoPlan        = "auto"
+	OfflinePlan     = "offline"
+	ModifyStore     = "modifyStoreMode"
+	AddLearner      = "addLearner"
+	DecommissionDir = "decommissionDir"
 
 	CheckMetaLeaderRetry    = 10
 	CheckMetaLeaderInterval = 30

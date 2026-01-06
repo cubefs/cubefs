@@ -184,7 +184,6 @@ const (
 	RaftStatus     = "/get/raftStatus"
 
 	// node APIs
-
 	AddDataNode                               = "/dataNode/add"
 	DecommissionDataNode                      = "/dataNode/decommission"
 	QueryDataNodeDecoProgress                 = "/dataNode/queryDecommissionProgress"
@@ -225,6 +224,7 @@ const (
 	RunMetaNodeBalanceTask                    = "/metaNode/runBalanceTask"
 	StopMetaNodeBalanceTask                   = "/metaNode/stopBalanceTask"
 	DeleteMetaNodeBalanceTask                 = "/metaNode/deleteBalanceTask"
+	AdminDecommissionRocksdbDir               = "/metaNode/decommissionRocksdbDir"
 	OfflineMetaNode                           = "/metaNode/offline"
 	AdminUpdateDataNode                       = "/dataNode/update"
 	AdminGetInvalidNodes                      = "/invalid/nodes"
@@ -1171,6 +1171,7 @@ type MetaPartitionLoadResponse struct {
 	RaftInfo    RaftInfo
 	Md5ApplyId  uint64
 	Md5Sum      string
+	RocksdbDir  string
 }
 
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.

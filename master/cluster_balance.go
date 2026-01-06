@@ -3715,3 +3715,121 @@ func (c *Cluster) RestartPromoteLearnerPlan() error {
 
 	return nil
 }
+
+func (c *Cluster) CreateDecommissionRocksdbDirPlan(addr string, rocksdbDir string) (*proto.ClusterPlan, error) {
+	plan := &proto.ClusterPlan{
+		Low:        make(map[string]*proto.ZonePressureView),
+		RocksdbLow: make(map[string]*proto.ZonePressureView),
+		Type:       DecommissionDir,
+		Status:     PlanTaskRun,
+		Mode:       proto.StoreModeRocksDb,
+		RackLevel:  c.getRackAwareLevel(),
+		FailedList: make([]uint64, 0),
+	}
+
+	err := c.GetLowMemPressureTopology(plan)
+	if err != nil {
+		log.LogErrorf("GetLowMemPressureTopology error: %s", err.Error())
+		return plan, err
+	}
+
+	err = c.FillDecommissionRocksdbDirToPlan(addr, rocksdbDir, plan)
+	if err != nil {
+		log.LogErrorf("FillDecommissionRocksdbDirToPlan error: %s", err.Error())
+		return plan, err
+	}
+
+	err = c.FindMigrateDestination(plan)
+	if err != nil {
+		log.LogErrorf("FindMigrateDestination error: %s", err.Error())
+		return plan, err
+	}
+	plan.Total = len(plan.Plan)
+	if plan.Total <= 0 {
+		plan.Msg = "failed to create decommission rocksdb dir plan"
+		return plan, fmt.Errorf("failed to create decommission rocksdb dir plan")
+	}
+	plan.UndoNum = int32(plan.Total)
+	for _, mpPlan := range plan.Plan {
+		plan.TotalReplicaNum += len(mpPlan.Plan)
+	}
+	plan.UndoReplicaNum = int32(plan.TotalReplicaNum)
+	plan.StartTime = time.Now()
+
+	err = c.syncAddBalanceTask(plan)
+	if err != nil {
+		log.LogErrorf("syncAddBalanceTask error: %s", err.Error())
+		return plan, err
+	}
+
+	c.SetClusterPlanRunning()
+	go c.DoMetaPartitionBalanceTask(plan)
+
+	return plan, nil
+}
+
+func (c *Cluster) FillDecommissionRocksdbDirToPlan(addr string, rocksdbDir string, plan *proto.ClusterPlan) (err error) {
+	// get the copied meta partition list.
+	mps := c.getAllMetaPartitionsByMetaNode(addr)
+	plan.Plan = make([]*proto.MetaBalancePlan, 0, len(mps))
+
+	for _, mp := range mps {
+		if !IsRocksdbDirInMetaPartition(mp, addr, rocksdbDir) {
+			continue
+		}
+		isRocksdbReplica := false
+		for _, mr := range mp.Replicas {
+			if mr.Addr == addr {
+				isRocksdbReplica = mr.StoreMode == proto.StoreModeRocksDb
+				break
+			}
+		}
+		if !isRocksdbReplica {
+			continue
+		}
+		mpPlan := &proto.MetaBalancePlan{
+			ID:         mp.PartitionID,
+			Original:   make([]*proto.MrBalanceInfo, 0, len(mp.Replicas)),
+			OverLoad:   make([]*proto.MrBalanceInfo, 0, 1),
+			Plan:       make([]*proto.MrBalanceInfo, 0, 1),
+			InodeCount: mp.InodeCount,
+			PlanNum:    0,
+		}
+		estimateSize := GetMetaPartitionMemorySize(mp)
+		for _, mr := range mp.Replicas {
+			mn, err := c.metaNode(mr.Addr)
+			if err != nil {
+				log.LogErrorf("Failed to get meta node(%s), err: %s", mr.Addr, err.Error())
+				return err
+			}
+			mrRec := GetMetaReplicaRecord(mn)
+			mrRec.SrcMemSize = estimateSize
+			mrRec.StoreMode = mr.StoreMode
+			mpPlan.Original = append(mpPlan.Original, mrRec)
+			if mr.Addr == addr {
+				mpPlan.OverLoad = append(mpPlan.OverLoad, mrRec)
+				mpPlan.PlanNum += 1
+			}
+		}
+		if mpPlan.PlanNum <= 0 {
+			continue
+		}
+		plan.Plan = append(plan.Plan, mpPlan)
+
+		plan.Total++
+		if plan.Total >= MaxMpMigrateNum {
+			break
+		}
+	}
+
+	return nil
+}
+
+func IsRocksdbDirInMetaPartition(mp *MetaPartition, addr, rocksdbDir string) bool {
+	for _, resp := range mp.LoadResponse {
+		if resp.Addr == addr && resp.RocksdbDir == rocksdbDir {
+			return true
+		}
+	}
+	return false
+}
