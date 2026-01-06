@@ -150,7 +150,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	}
 	if isLearner {
 		if manualPromote {
-			err = c.addMetaReplicaLearner(mp, newPeers[0].Addr, finalDstStoreMode, "", true)
+			err = c.addMetaReplicaLearner(mp, newPeers[0].Addr, finalDstStoreMode, "", true, decommissionType)
 			if err != nil {
 				log.LogErrorf("action[migrateMetaPartition] addMetaReplicaLearner partitionID[%v] addr[%s], err[%v]",
 					mp.PartitionID, newPeers[0].Addr, err)
