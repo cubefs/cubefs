@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -136,6 +137,8 @@ func BenchmarkSnapshot(b *testing.B) {
 
 func snapshotTest(t *testing.T) {
 	var err error
+	rocksdbDir := "/tmp/cubefs/raft2"
+	os.RemoveAll(rocksdbDir)
 	mdSnapshot, err := server.cluster.fsm.Snapshot()
 	if err != nil {
 		t.Error(err)
@@ -145,7 +148,7 @@ func snapshotTest(t *testing.T) {
 	s := &Server{}
 
 	var dbStore *raftstore_db.RocksDBStore
-	dbStore, err = raftstore_db.NewRocksDBStore("/tmp/cubefs/raft2", LRUCacheSize, WriteBufferSize)
+	dbStore, err = raftstore_db.NewRocksDBStore(rocksdbDir, LRUCacheSize, WriteBufferSize)
 	if err != nil {
 		t.Fatalf("init rocks db store fail cause: %v", err)
 	}
