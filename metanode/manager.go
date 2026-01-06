@@ -586,6 +586,8 @@ func (m *metadataManager) onStart() (err error) {
 func (m *metadataManager) onStop() {
 	if m.partitions != nil {
 		wg := sync.WaitGroup{}
+		m.mu.RLock()
+		defer m.mu.RUnlock()
 		for _, partition := range m.partitions {
 			mp := partition
 			wg.Add(1)

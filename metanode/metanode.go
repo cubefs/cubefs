@@ -417,11 +417,6 @@ func (m *MetaNode) parseRaftConfig(cfg *config.Config) error {
 
 func (m *MetaNode) parseRocksdbConfig(cfg *config.Config) error {
 	m.rocksDirs = cfg.GetStringSlice(cfgRocksDirs)
-	if len(m.rocksDirs) == 0 {
-		dbDir := path.Join(m.metadataDir, "db")
-		log.LogInfof("[parseConfig] rocksdb dir not found, using meta dir(%v)", dbDir)
-		m.rocksDirs = append(m.rocksDirs, dbDir)
-	}
 
 	// Create db directories
 	for _, dbDir := range m.rocksDirs {
@@ -915,15 +910,9 @@ func (m *MetaNode) newRocksdbManager(cfg *config.Config) (err error) {
 		m.rocksdbManager = NewPerPartitionRocksdbManager(config)
 	}
 	m.rocksdbs = make([]*RocksdbOperator, len(m.rocksDirs))
-	tmpDirs := cfg.GetStringSlice(cfgRocksDirs)
-	checkRocksdbDir := true
-	if len(tmpDirs) == 0 {
-		checkRocksdbDir = false
-	}
+
 	for i, dbPath := range m.rocksDirs {
-		if checkRocksdbDir {
-			m.warnIfNotNvmeDevice(dbPath)
-		}
+		m.warnIfNotNvmeDevice(dbPath)
 
 		err = m.rocksdbManager.Register(dbPath)
 		if err != nil {
