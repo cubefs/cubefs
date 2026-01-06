@@ -398,6 +398,9 @@ func (r *PerPartitionRocksdbManager) OpenRocksdb(dbPath string, metaPartitionId 
 }
 
 func (r *PerPartitionRocksdbManager) CloseRocksdb(db *RocksdbOperator) {
+	if db == nil {
+		return
+	}
 	err := db.CloseDb()
 	if err != nil {
 		log.LogErrorf("[CloseRocksdb] failed to close rocksdb(%v), err(%v)", db.dir, err)
