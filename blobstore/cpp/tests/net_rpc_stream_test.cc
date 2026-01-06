@@ -10,7 +10,7 @@
 #include "common/proto/rpc.pb.h"
 #include "common/status.h"
 #include "common/util.h"
-#include "mock_stream.h"
+#include "net_mock_stream.h"
 
 namespace {
 

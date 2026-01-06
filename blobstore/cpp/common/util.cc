@@ -19,5 +19,10 @@ std::string GenerateTraceid() {
     return fmt::format("{0:0>16x}", num);
 }
 
+uint8_t TrailingZeros64(uint64_t x) noexcept {
+    if (x == 0) return 64;
+    return kDeBruijn64Tab[((x & -x) * kDeBruijn64) >> (64 - 6)];
+}
+
 }  // namespace blobstore
 

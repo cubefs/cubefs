@@ -9,7 +9,7 @@
 #include "common/net/rpc_server.h"
 #include "common/status.h"
 #include "common/util.h"
-#include "mock_stream.h"
+#include "net_mock_stream.h"
 
 namespace {
 

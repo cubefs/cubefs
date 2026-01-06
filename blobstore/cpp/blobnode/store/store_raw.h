@@ -62,16 +62,9 @@ class RawStore final : public Store, public SliceHandler {
 
     std::vector<ChunkIndex> free_chunk_queue_;
 
-    // Slice meta storage - indexed by slice position
-    struct SliceRegistry {
-        uint32_t split_slice_num_per_array = 0;
-        // Slice index stored in array, sorted by slice index incrementally
-        // Layout: [0-N), [N-2N), [2N-3N) ... where N = split_slice_num_per_array
-        std::array<std::vector<SliceMetaPtr>, kDefaultSliceSplitMapNum> slices;
-        // Checkpoint buffer for persistence (1MB)
-        Buffer checkpoint_buffer;
-    };
-    SliceRegistry slice_registry_;
+    // All slice meta in memory
+    std::vector<SliceMetaPtr> slice_registry_;
+    Buffer checkpoint_buffer_;
 
     // Slice allocator - manages free slice indexes
     std::unique_ptr<SliceAllocator> slice_allocator_;

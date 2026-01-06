@@ -56,7 +56,7 @@ FutureStatus<StorePtr> RawStore::Open(StoreConfig cfg) noexcept {
     store_ptr->dev_ = std::move(ss.Value());
 
     // read super block and unmarshal
-    auto buf = AlignedBuffer<::blobstore::kSectorSize>(kRawStoreSuperblockSize);
+    auto buf = store_ptr->dev_->Alloc(kRawStoreSuperblockSize);
     auto rs = co_await store_ptr->dev_->Read(kRawStoreSuperblockStart, buf.get_write(),
                                              kRawStoreSuperblockSize);
     if (!rs) {
@@ -75,7 +75,7 @@ FutureStatus<StorePtr> RawStore::Open(StoreConfig cfg) noexcept {
         co_return s;
     }
     store_ptr->superblock_ = superblock;
-    store_ptr->slice_registry_.checkpoint_buffer = AlignedBuffer<::blobstore::kSectorSize>(1 << 20);
+    store_ptr->checkpoint_buffer_ = store_ptr->dev_->Alloc(1 << 20);
 
     if (superblock.DiskMeta().format() == ::blobstore::kFormatDiskTypeRawDeviceV1) {
         store_ptr->format_ = rawStoreFormatLayoutV1;

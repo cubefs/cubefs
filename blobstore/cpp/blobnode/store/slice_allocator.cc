@@ -1,33 +1,48 @@
 #include "slice_allocator.h"
 
-#include <cstdint>
+#include "common/util.h"
 
 namespace blobstore {
 namespace blobnode {
 
-SliceAllocator::SliceAllocator(SliceIndex max_slice_index) : max_slice_index_(max_slice_index) {}
+SliceAllocator::SliceAllocator(SliceIndex total, bool free) noexcept : free_queue_(total) {
+    assert(total > 0);
+    max_index_ = total - 1;
+    size_t words = CeilDiv<uint32_t>(total, 64);
+    free_bitmap_.resize(words, 0);
 
-Status<SliceIndex> SliceAllocator::Alloc() noexcept { // TODO
-    Status<SliceIndex> s;
-    return s;
-}
-
-Status<> SliceAllocator::Free(SliceIndex si) noexcept { // TODO
-    Status<> s;
-    return s;
-}
-
-SliceIndex SliceAllocator::CurrentSliceIndex() noexcept { return current_slice_index_; }
-
-void SliceAllocator::ResetCurrentSliceIndex(SliceIndex current_slice_index) {
-    if (current_slice_index > 0) {
-        current_slice_index_ = current_slice_index + 1;
+    if (free) {
+        for (SliceIndex ii = 0; ii < total; ++ii) {
+            BitFree(ii);
+            free_queue_.Push(ii);
+        }
     }
 }
 
-int TrailingZeros64(uint64_t x) noexcept {
-    if (x == 0) return 64;
-    return kDeBruijn64Tab[((x & -x) * kDeBruijn64) >> (64 - 6)];
+Status<SliceIndex> SliceAllocator::Alloc() noexcept {
+    Status<SliceIndex> s;
+    SliceIndex index;
+    if (!free_queue_.Pop(index)) {
+        s.SetCode(ErrCode::ErrInvalid).SetReason("store: allocator no available slice");
+        return s;
+    }
+    BitAllocated(index);
+    s.SetValue(index);
+    return s;
+}
+
+Status<> SliceAllocator::Free(SliceIndex index) noexcept {
+    Status<> s;
+    if (index > max_index_) {
+        s.SetCode(ErrCode::ErrInvalid).SetReason("store: allocator index out of range");
+        return s;
+    }
+    if (BitIsFree(index)) {
+        return s;
+    }
+    BitFree(index);
+    free_queue_.Push(index);
+    return s;
 }
 
 }  // namespace blobnode

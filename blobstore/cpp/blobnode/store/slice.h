@@ -35,13 +35,6 @@ using SliceMetaBlocker = MetaBlocker<kSliceMetaMagicSize, kSliceMetaMagic>;
 struct Slice;
 using SlicePtr = seastar::lw_shared_ptr<Slice>;
 
-struct FreeSliceItem
-    : boost::intrusive::list_base_hook<boost::intrusive::link_mode<boost::intrusive::auto_unlink>> {
-};
-
-using FreeSliceList =
-    boost::intrusive::list<FreeSliceItem, boost::intrusive::constant_time_size<false>>;
-
 struct SliceMeta;
 using SliceMetaPtr = seastar::lw_shared_ptr<SliceMeta>;
 
