@@ -41,9 +41,9 @@ class Store {
 
     virtual FutureStatus<> Load(Trace& t) noexcept = 0;
     virtual FutureStatus<> Format(Trace& t, DiskMetaInfo disk_meta) noexcept = 0;
-    virtual FutureStatus<DiskMetaInfo> LoadFormat(Trace& t) noexcept = 0;
-    virtual FutureStatus<> UpdateFormatInfo(Trace& t, DiskID disk_id,
-                                            DiskMetaInfo disk_meta) noexcept = 0;
+    virtual FutureStatus<> UpdateDiskMeta(Trace& t, DiskMetaInfo disk_meta) noexcept = 0;
+    virtual FutureStatus<DiskMetaInfo> GetDiskMeta(Trace& t) noexcept = 0;
+
     // OpenChunk return chunk with specified vuid and chunkID,
     // it may create new chunk when specified chunkID not exist
     virtual FutureStatus<ChunkHandlerPtr> OpenChunk(Trace& t, ChunkID chunk_id,

@@ -54,6 +54,10 @@ struct StoreConfig {
     DeviceDriverType dev_driver_type;
 };
 
+// All version raw store's superblock MUST be here.
+constexpr uint64_t kRawStoreSuperblockStart = 0;
+constexpr uint64_t kRawStoreSuperblockSize = 4ull << 20;
+
 // layout
 struct rawStoreFormatLayout {
     uint64_t start_offset = 0;
@@ -70,8 +74,8 @@ struct rawStoreFormatLayout {
 
 // v1 layout (sizes kept same as Go)
 constexpr rawStoreFormatLayout rawStoreFormatLayoutV1{
-    .start_offset = 0,
-    .super_block_size = (4ull << 20),
+    .start_offset = kRawStoreSuperblockStart,
+    .super_block_size = kRawStoreSuperblockSize,
     // 4K log header + 64MB log record arena
     .log_arena_size = (64ull << 20),
     .log_header_size = (4ull << 10),

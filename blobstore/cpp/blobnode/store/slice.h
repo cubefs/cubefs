@@ -37,10 +37,6 @@ using SlicePtr = seastar::lw_shared_ptr<Slice>;
 
 struct FreeSliceItem
     : boost::intrusive::list_base_hook<boost::intrusive::link_mode<boost::intrusive::auto_unlink>> {
-    struct free_element {
-        uint64_t cell;
-        uint32_t cell_idx;
-    };
 };
 
 using FreeSliceList =

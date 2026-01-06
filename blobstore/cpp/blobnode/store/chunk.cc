@@ -22,7 +22,15 @@ ChunkHandler::ChunkHandler(const ChunkConfig& cfg)
       format_slice_size_(cfg.format_slice_size),
       format_block_size_(cfg.format_block_size),
       sliceHandler_(cfg.slice_handler),
-      device_(cfg.device){};
+      device_(cfg.device),
+      free_callback_(cfg.free_callback){};
+
+ChunkHandler::~ChunkHandler() {
+    if (free_callback_) {
+        ChunkIndex index = chunk_meta_.chunk_meta_info.index();
+        free_callback_(index);
+    }
+}
 
 ChunkHandlerPtr ChunkHandler::Create(const ChunkConfig& cfg) {
     ChunkHandlerPtr handler = seastar::make_lw_shared<ChunkHandler>(cfg);

@@ -15,9 +15,9 @@
 #pragma once
 
 #include <array>
-#include <boost/intrusive/list.hpp>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <seastar/core/rwlock.hh>
 #include <seastar/core/seastar.hh>
 #include <unordered_map>
@@ -48,14 +48,6 @@ struct ChunkMetaInfoView {
     const ChunkMetaInfo* meta;  // 只读视图
 };
 
-struct FreeChunkItem
-    : boost::intrusive::list_base_hook<boost::intrusive::link_mode<boost::intrusive::auto_unlink>> {
-    ChunkHandlerPtr chunk;
-};
-
-using FreeChunkList =
-    boost::intrusive::list<FreeChunkItem, boost::intrusive::constant_time_size<false>>;
-
 struct ChunkMeta {
     ChunkMetaInfo chunk_meta_info;
     size_t block_size;
@@ -74,6 +66,7 @@ struct ChunkConfig {
     ChunkMeta meta;
     SliceHandler* slice_handler;
     Device* device;
+    std::function<void(ChunkIndex)> free_callback;
 };
 
 // ChunkHandler manages slices within a chunk.
@@ -90,6 +83,9 @@ class ChunkHandler {
     SliceHandler* sliceHandler_;
     Device* device_;
 
+    // Callback to free chunk index when ChunkHandler is destroyed
+    std::function<void(ChunkIndex)> free_callback_;
+
     auto& SliceBucket(SliceID id) noexcept {
         const auto idx = id % kChunkSliceBucket;
         return slices_[idx];
@@ -103,6 +99,7 @@ class ChunkHandler {
     ChunkHandler& operator=(ChunkHandler&&) = delete;
 
     explicit ChunkHandler(const ChunkConfig& cfg);
+    ~ChunkHandler();
     static ChunkHandlerPtr Create(const ChunkConfig& cfg);
 
     // UpdateMetaInfo update chunk meta info in memory

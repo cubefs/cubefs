@@ -22,7 +22,9 @@
 #include "blobnode/device/device.h"
 #include "blobnode/device/kernel_device.h"
 #include "blobnode/device/spdk_device.h"
+#include "common/const.h"
 #include "common/status.h"
+#include "common/util.h"
 
 namespace blobstore {
 namespace blobnode {
@@ -32,7 +34,6 @@ RawStore::RawStore(StoreConfig cfg_in) : cfg_(std::move(cfg_in)) {
     for (auto i = 0; i < kDefaultChunkSemaCount; ++i) {
         chunk_op_limiter_.emplace_back(1);
     }
-    // TODO: init format_
 }
 
 FutureStatus<StorePtr> RawStore::Open(StoreConfig cfg) noexcept {
@@ -55,17 +56,18 @@ FutureStatus<StorePtr> RawStore::Open(StoreConfig cfg) noexcept {
     store_ptr->dev_ = std::move(ss.Value());
 
     // read super block and unmarshal
-    auto buf = seastar::temporary_buffer<char>::aligned(::blobstore::kSectorSize,
-                                                        rawStoreFormatLayoutV1.super_block_size);
-    auto rs = co_await store_ptr->dev_->Read(rawStoreFormatLayoutV1.start_offset, buf.get_write(),
-                                             rawStoreFormatLayoutV1.super_block_size);
+    auto buf = AlignedBuffer<::blobstore::kSectorSize>(kRawStoreSuperblockSize);
+    auto rs = co_await store_ptr->dev_->Read(kRawStoreSuperblockStart, buf.get_write(),
+                                             kRawStoreSuperblockSize);
     if (!rs) {
         s.SetCode(rs.Code()).SetReason(rs.Reason());
         co_return s;
     }
 
     SuperBlock superblock;
-    superblock.block_size = rawStoreFormatLayoutV1.super_block_size;
+    superblock.block_size = kRawStoreSuperblockSize;
+
+    // TODO: 1.not exist 2. broken
 
     auto us = superblock.Decode(buf.get());
     if (!us) {
@@ -73,8 +75,14 @@ FutureStatus<StorePtr> RawStore::Open(StoreConfig cfg) noexcept {
         co_return s;
     }
     store_ptr->superblock_ = superblock;
-    store_ptr->slice_registry_.checkpoint_buffer =
-        seastar::temporary_buffer<char>::aligned(::blobstore::kSectorSize, (1ull << 20));
+    store_ptr->slice_registry_.checkpoint_buffer = AlignedBuffer<::blobstore::kSectorSize>(1 << 20);
+
+    if (superblock.DiskMeta().format() == ::blobstore::kFormatDiskTypeRawDeviceV1) {
+        store_ptr->format_ = rawStoreFormatLayoutV1;
+    } else {
+        s.SetCode(ErrCode::ErrInvalid).SetReason("store: Open invalid format device");
+        co_return s;
+    }
 
     s.SetValue(std::move(store_ptr));
     co_return s;
@@ -99,14 +107,13 @@ FutureStatus<> RawStore::Format(Trace& t, DiskMetaInfo disk_meta) noexcept {
     co_return s;
 }
 
-FutureStatus<DiskMetaInfo> RawStore::LoadFormat(Trace& t) noexcept {
+FutureStatus<DiskMetaInfo> RawStore::GetDiskMeta(Trace& t) noexcept {
     Status<DiskMetaInfo> s;
     s.SetValue(superblock_.DiskMeta());
     co_return s;
 };
 
-FutureStatus<> RawStore::UpdateFormatInfo(Trace& t, DiskID disk_id,
-                                          DiskMetaInfo disk_meta) noexcept {
+FutureStatus<> RawStore::UpdateDiskMeta(Trace& t, DiskMetaInfo disk_meta) noexcept {
     Status<> s;
     if (disk_meta.format() == ::blobstore::kFormatDiskTypeRawDeviceV1) {
         SuperBlockInfo superblock;
@@ -140,17 +147,18 @@ FutureStatus<ChunkHandlerPtr> RawStore::OpenChunk(Trace& t, ChunkID chunk_id,
 
     auto chunk = alloc_s.Value();
     auto chunk_meta = chunk->GetMeta();
+    Vuid vuid = chunk_id.GetVuid();
     chunk_meta.chunk_meta_info.set_chunk_id(reinterpret_cast<const char*>(chunk_id.data.data()));
+    chunk_meta.chunk_meta_info.set_vuid(vuid);
     chunk_meta.chunk_meta_info.set_status(static_cast<uint32_t>(ChunkStatus::Normal));
     chunk_meta.chunk_meta_info.set_epoch(chunk_meta.chunk_meta_info.epoch() + 1);
     auto update_s = co_await UpsertChunkMeta(chunk_meta);
     if (!update_s) {
-        FreeChunk(chunk);
         s.SetCode(update_s.Code()).SetReason(update_s.Reason());
         co_return s;
     }
     chunk->UpdateMeta(std::move(chunk_meta));
-    AddChunk(chunk_id, chunk);
+    chunk_registry_.Insert(chunk_id, chunk);
     s.SetValue(std::move(chunk));
     co_return s;
 }
@@ -193,11 +201,19 @@ FutureStatus<> RawStore::UpdateChunkMeta(Trace& t, ChunkID chunk_id,
     }
     // update vuids and chunk meta in memory
     chunk->UpdateMeta(std::move(meta));
-    AddVuid(chunk_meta.vuid(), chunk_id);
+    chunk_registry_.Insert(chunk_id, chunk);
     co_return s;
 }
 
-Status<ChunkID> RawStore::GetVuidBind(Trace& t, Vuid vuid) noexcept { return GetVuid(vuid); }
+Status<ChunkID> RawStore::GetVuidBind(Trace& t, Vuid vuid) noexcept {
+    Status<ChunkID> s;
+    auto it = chunk_registry_.vuids.find(vuid);
+    if (it == chunk_registry_.vuids.end()) {
+        s.SetCode(ErrCode::ErrNotFound).SetReason("store: vuid not found");
+        return s;
+    }
+    return s.SetValue(it->second);
+}
 
 // DeleteChunk marks a chunk as released and schedules it for cleanup.
 // Note: This function uses rwlock because it spans co_await points,
@@ -227,8 +243,7 @@ FutureStatus<> RawStore::DeleteChunk(Trace& t, ChunkID chunk_id) noexcept {
         co_return s;
     }
 
-    chunk_registry_.chunks.erase(chunk_id);
-    chunk_registry_.vuids.erase(chunk_id.GetVuid());
+    chunk_registry_.Remove(chunk_id);
 
     chunk->UpdateMeta(std::move(meta));
     chunk_registry_.pending_clean_chunks.push_back(chunk);
@@ -336,9 +351,9 @@ FutureStatus<> RawStore::FormatV1(Trace& t, DiskMetaInfo disk_meta) noexcept {
     offset += format_.log_arena_size * 2;
     layout->set_chunk_meta_start(offset);
     offset += chunk_meta_size;
-    layout->set_slice_data_start(offset);
-    offset += slice_meta_size;
     layout->set_slice_meta_start(offset);
+    offset += slice_meta_size;
+    layout->set_slice_data_start(offset);
     layout->set_max_chunk_count(max_chunk_count);
     layout->set_max_slice_count(max_slice_count);
 
@@ -383,15 +398,30 @@ void RawStore::ReleaseChunkLimit(ChunkID chunk_id) noexcept {
 
 Status<ChunkHandlerPtr> RawStore::AllocChunk() noexcept {
     Status<ChunkHandlerPtr> s;
-    // TODO
+    if (free_chunk_queue_.empty()) {
+        s.SetCode(ErrCode::ErrInvalid).SetReason("store: no available chunk");
+        return s;
+    }
+
+    ChunkIndex idx = free_chunk_queue_.back();
+    free_chunk_queue_.pop_back();
+
+    ChunkMeta meta;
+    meta.chunk_meta_info.set_index(idx);
+
+    auto cfg = ChunkConfig{
+        .format_slice_size = static_cast<uint32_t>(format_.slice_size),
+        .format_block_size = static_cast<uint32_t>(format_.block_size),
+        .meta = std::move(meta),
+        .slice_handler = this,
+        .device = dev_.get(),
+        .free_callback = [this](ChunkIndex index) { FreeChunk(index); },
+    };
+    s.SetValue(std::move(ChunkHandler::Create(std::move(cfg))));
     return s;
 }
 
-void RawStore::FreeChunk(ChunkHandlerPtr ch) noexcept {
-    auto* node = new FreeChunkItem{};
-    node->chunk = std::move(ch);
-    chunk_pool_.free_list.push_back(*node);
-}
+void RawStore::FreeChunk(ChunkIndex index) noexcept { free_chunk_queue_.push_back(index); }
 
 FutureStatus<> RawStore::UpsertChunkMeta(ChunkMeta chunk_meta) noexcept {
     Status<> s;
@@ -401,8 +431,6 @@ FutureStatus<> RawStore::UpsertChunkMeta(ChunkMeta chunk_meta) noexcept {
 
 Status<ChunkHandlerPtr> RawStore::GetChunk(ChunkID chunk_id) noexcept {
     Status<ChunkHandlerPtr> s;
-    // co_await chunk_registry_.lock.read_lock();
-    // auto unlock = seastar::defer([this]{ chunk_registry_.lock.read_unlock(); });
     auto it = chunk_registry_.chunks.find(chunk_id);
     if (it == chunk_registry_.chunks.end()) {
         s.SetCode(ErrCode::ErrNotFound).SetReason("store: chunk not found");
@@ -412,38 +440,16 @@ Status<ChunkHandlerPtr> RawStore::GetChunk(ChunkID chunk_id) noexcept {
     return s;
 }
 
-Status<ChunkHandlerPtr> RawStore::GetChunkByVuid(Vuid vuid) noexcept {
+Status<ChunkHandlerPtr> RawStore::GetChunk(Vuid vuid) noexcept {
     Status<ChunkHandlerPtr> s;
     auto it_id = chunk_registry_.vuids.find(vuid);
     if (it_id == chunk_registry_.vuids.end()) {
         s.SetCode(ErrCode::ErrNotFound).SetReason("store: vuid not found");
         return s;
     }
-    auto it = chunk_registry_.chunks.find(it_id->second);
-    if (it == chunk_registry_.chunks.end()) {
-        s.SetCode(ErrCode::ErrNotFound).SetReason("store: chunk not found");
-        return s;
-    }
-    return s.SetValue(it->second);
-}
-
-void RawStore::AddChunk(ChunkID chunk_id, ChunkHandlerPtr ch) noexcept {
-    chunk_registry_.chunks[chunk_id] = std::move(ch);
-}
-
-Status<ChunkID> RawStore::GetVuid(Vuid v) noexcept {
-    Status<ChunkID> s;
-    auto it = chunk_registry_.vuids.find(v);
-    if (it == chunk_registry_.vuids.end()) {
-        s.SetCode(ErrCode::ErrNotFound).SetReason("store: vuid not found");
-        return s;
-    }
-    return s.SetValue(it->second);
-}
-
-void RawStore::AddVuid(Vuid vuid, ChunkID chunk_id) noexcept {
-    chunk_registry_.vuids[vuid] = chunk_id;
-    return;
+    auto chunk_id = it_id->second;
+    s = GetChunk(chunk_id);
+    return s;
 }
 
 }  // namespace blobnode

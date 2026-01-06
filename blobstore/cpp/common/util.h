@@ -12,6 +12,12 @@ namespace blobstore {
 
 using Buffer = seastar::temporary_buffer<char>;
 
+// Create an aligned temporary buffer
+template <size_t Alignment>
+Buffer AlignedBuffer(size_t size) {
+    return seastar::temporary_buffer<char>::aligned(Alignment, size);
+}
+
 seastar::temporary_buffer<char> foreign_buffer_copy(
     seastar::foreign_ptr<std::unique_ptr<seastar::temporary_buffer<char>>> org);
 

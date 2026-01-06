@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/functional/hash.hpp>
-#include <boost/intrusive/list.hpp>
 #include <seastar/core/rwlock.hh>
 #include <seastar/core/seastar.hh>
 #include <seastar/core/semaphore.hh>
@@ -46,15 +44,23 @@ class RawStore final : public Store, public SliceHandler {
         std::unordered_map<Vuid, ChunkID> vuids;
         std::vector<ChunkHandlerPtr> pending_clean_chunks;
         seastar::rwlock lock;
+
+        void Insert(ChunkID chunk_id, ChunkHandlerPtr chunk_ptr) noexcept {
+            chunks[chunk_id] = std::move(chunk_ptr);
+            vuids[chunk_id.GetVuid()] = chunk_id;
+        }
+        void Remove(ChunkID chunk_id) noexcept {
+            chunks.erase(chunk_id);
+            vuids.erase(chunk_id.GetVuid());
+        }
     };
     ChunkRegistry chunk_registry_;
 
-    // Available chunks pool - from recycle or newly allocated
-    struct ChunkPool {
-        uint32_t next_chunk_index = 0;
-        FreeChunkList free_list;
-    };
-    ChunkPool chunk_pool_;
+    // Per-ChunkID semaphore to serialize chunk operations (open/update/delete)
+    // This ensures operations on the same chunk are not interleaved
+    std::vector<seastar::semaphore> chunk_op_limiter_;
+
+    std::vector<ChunkIndex> free_chunk_queue_;
 
     // Slice meta storage - indexed by slice position
     struct SliceRegistry {
@@ -66,10 +72,6 @@ class RawStore final : public Store, public SliceHandler {
         Buffer checkpoint_buffer;
     };
     SliceRegistry slice_registry_;
-
-    // Per-ChunkID semaphore to serialize chunk operations (open/update/delete)
-    // This ensures operations on the same chunk are not interleaved
-    std::vector<seastar::semaphore> chunk_op_limiter_;
 
     // Slice allocator - manages free slice indexes
     std::unique_ptr<SliceAllocator> slice_allocator_;
@@ -87,13 +89,10 @@ class RawStore final : public Store, public SliceHandler {
     FutureStatus<> AcquireChunkLimit(ChunkID chunk_id) noexcept;
     void ReleaseChunkLimit(ChunkID chunk_id) noexcept;
     Status<ChunkHandlerPtr> AllocChunk() noexcept;
-    void FreeChunk(ChunkHandlerPtr ch) noexcept;
+    void FreeChunk(ChunkIndex index) noexcept;
     FutureStatus<> UpsertChunkMeta(ChunkMeta chunk_meta) noexcept;
     Status<ChunkHandlerPtr> GetChunk(ChunkID chunk_id) noexcept;
-    Status<ChunkHandlerPtr> GetChunkByVuid(Vuid vuid) noexcept;
-    void AddChunk(ChunkID chunk_id, ChunkHandlerPtr ch) noexcept;
-    Status<ChunkID> GetVuid(Vuid vuid) noexcept;
-    void AddVuid(Vuid Vuid, ChunkID chunk_id) noexcept;
+    Status<ChunkHandlerPtr> GetChunk(Vuid vuid) noexcept;
     FutureStatus<> UpsertSliceMetaInPersistence(SliceMetaPtr sm) noexcept;
     void UpsertSliceMetaInMemory(SliceMetaPtr sm) noexcept;
 
@@ -103,9 +102,9 @@ class RawStore final : public Store, public SliceHandler {
 
     FutureStatus<> Load(Trace& t) noexcept override;
     FutureStatus<> Format(Trace& t, DiskMetaInfo disk_meta) noexcept override;
-    FutureStatus<DiskMetaInfo> LoadFormat(Trace& t) noexcept override;
-    FutureStatus<> UpdateFormatInfo(Trace& t, DiskID disk_id,
-                                    DiskMetaInfo disk_meta) noexcept override;
+    FutureStatus<> UpdateDiskMeta(Trace& t, DiskMetaInfo disk_meta) noexcept override;
+    FutureStatus<DiskMetaInfo> GetDiskMeta(Trace& t) noexcept override;
+
     // OpenChunk return chunk with specified Vuid and chunkID,
     // it may create new chunk when specified chunk ID not exist
     FutureStatus<ChunkHandlerPtr> OpenChunk(Trace& t, ChunkID chunk_id,
