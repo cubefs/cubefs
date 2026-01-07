@@ -280,8 +280,8 @@ const (
 	defaultMetaBalanceLimit                = 10
 	defaultMetaManualAddReplicaLimit       = 5
 	defaultVolForbidWriteOpOfProtoVersion0 = true
-	defaultMetaNodeMemHighPer              = 0.75
-	defaultMetaNodeMemLowPer               = 0.3
+	defaultMetaNodeMemHighPer              = 0.8
+	defaultMetaNodeMemLowPer               = 0.7
 	metaNodeReserveMemorySize              = 3 * 1024 * 1024 * 1024
 	metaNodeMemoryRatio                    = 2
 	defaultPlanExpireHours                 = 72

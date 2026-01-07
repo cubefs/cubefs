@@ -1450,7 +1450,13 @@ func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.M
 		return err
 	}
 	if overLoad {
-		return fmt.Errorf("destination metanode(%s) can't allocate partition before migrate mp(%v)", mrPlan.Destination, mpPlan.ID)
+		metaNode, err := c.metaNode(mrPlan.Destination)
+		if err != nil {
+			log.LogErrorf("Failed to get meta node(%s): err: %s", mrPlan.Destination, err.Error())
+			return err
+		}
+		msg, _ := GetMetaNodeResourceReason(metaNode, plan.Mode)
+		return fmt.Errorf("stop to migrate mp(%v) with reason: %s", mpPlan.ID, msg)
 	}
 
 	err = c.waitForMetaPartitionReady(mp)
@@ -2320,8 +2326,6 @@ func (c *Cluster) GetClusterPlanStatusMsg() string {
 }
 
 func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
-	var nodeMemRatio float64
-
 	var unusableBuf strings.Builder
 	unusableBuf.WriteString("Unusable metanodes status:\n")
 	var usableBuf strings.Builder
@@ -2334,100 +2338,12 @@ func (c *Cluster) AnalyzeMetaNodes(storeMode proto.StoreMode) {
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
 
-		nodeMemRatio = CaculateNodeMemoryRatio(metaNode)
-		if nodeMemRatio > gConfig.metaNodeMemHighPer {
-			fmt.Fprintf(&unusableBuf, "metanode memory %s total: %d, used: %d, ratio: %f > %f\n", metaNode.Addr, metaNode.NodeMemTotal, metaNode.NodeMemUsed, nodeMemRatio, gConfig.metaNodeMemHighPer)
-			return true
-		}
-
-		if storeMode == proto.StoreModeMem {
-			if canAllocPartition(metaNode, MetaNodeType, 1) {
-				if metaNode.Ratio <= gConfig.metaNodeMemLowPer && nodeMemRatio <= gConfig.metaNodeMemLowPer {
-					fmt.Fprintf(&usableBuf, " %s", metaNode.Addr)
-					return true
-				}
-			}
+		msg, allocatable := GetMetaNodeResourceReason(metaNode, storeMode)
+		if allocatable {
+			usableBuf.WriteString(msg + "\n")
 		} else {
-			if canAllocPartition(metaNode, RocksdbType, 1) {
-				if IsRocksdbDiskUsageLow(metaNode) {
-					fmt.Fprintf(&usableBuf, " %s", metaNode.Addr)
-					return true
-				}
-			}
+			unusableBuf.WriteString(msg + "\n")
 		}
-
-		if !metaNode.PartitionCntLimitedEx(1) {
-			fmt.Fprintf(&unusableBuf, "%s mpCount(%v) > limit(%v)\n", metaNode.Addr, metaNode.MetaPartitionCount, metaNode.GetPartitionLimitCnt())
-			return true
-		}
-		if !metaNode.IsActive {
-			fmt.Fprintf(&unusableBuf, "%s is not active\n", metaNode.Addr)
-			return true
-		}
-		if metaNode.MetaPartitionCount >= defaultMaxMetaPartitionCountOnEachNode {
-			fmt.Fprintf(&unusableBuf, "%s metaPartitionCount(%v) >= defaultMaxMetaPartitionCountOnEachNode(%v)\n", metaNode.Addr, metaNode.MetaPartitionCount, defaultMaxMetaPartitionCountOnEachNode)
-			return true
-		}
-		if metaNode.systemMemoryReachesThreshold() {
-			fmt.Fprintf(&unusableBuf, "system memory %s total(%v) used(%v) threshold(%v)\n", metaNode.Addr, metaNode.NodeMemUsed, metaNode.NodeMemTotal, metaNode.Threshold)
-			return true
-		}
-
-		if storeMode == proto.StoreModeRocksDb {
-			systemMemoryFreeSize := metaNode.NodeMemTotal - metaNode.NodeMemUsed
-			if systemMemoryFreeSize <= gConfig.metaNodeReservedMem {
-				fmt.Fprintf(&unusableBuf, "%s systemMemoryFreeSize(%v) <= reservedMem(%v)\n", metaNode.Addr, systemMemoryFreeSize, gConfig.metaNodeReservedMem)
-				return true
-			}
-			if metaNode.reachesRocksdbDisksThreshold() {
-				fmt.Fprintf(&unusableBuf, "rocksdb disk %s total(%v) used(%v) threshold(%v)\n", metaNode.Addr, metaNode.GetRocksdbTotal(), metaNode.GetRocksdbUsed(), metaNode.RocksdbDiskThreshold)
-				return true
-			}
-			if !metaNode.rocksdbDiskKeyNumUnderMax() {
-				fmt.Fprintf(&unusableBuf, "%s max(%v)", metaNode.Addr, metaNode.RocksdbKeyNumMax)
-				for _, disk := range metaNode.RocksdbDisks {
-					fmt.Fprintf(&unusableBuf, "KeyNum(%v)", disk.KeyNum)
-				}
-				fmt.Fprintf(&unusableBuf, "\n")
-				return true
-			}
-			if metaNode.RocksdbRdOnly {
-				fmt.Fprintf(&unusableBuf, "%s RocksdbRdOnly is true\n", metaNode.Addr)
-				return true
-			}
-			if !IsRocksdbDiskUsageLow(metaNode) {
-				for _, rocksdbDisk := range metaNode.RocksdbDisks {
-					if rocksdbDisk.UsageRatio >= gConfig.metaNodeMemLowPer {
-						fmt.Fprintf(&unusableBuf, "%s RocksdbDiskUsageRatio(%v) >= lowPer(%v)\n", metaNode.Addr, rocksdbDisk.UsageRatio, gConfig.metaNodeMemLowPer)
-					}
-				}
-				return true
-			}
-
-		} else {
-			if metaNode.MaxMemAvailWeight <= gConfig.metaNodeReservedMem {
-				fmt.Fprintf(&unusableBuf, "%s maxMemAvailWeight(%v) <= reservedMem(%v)\n", metaNode.Addr, metaNode.MaxMemAvailWeight, gConfig.metaNodeReservedMem)
-				return true
-			}
-			if metaNode.reachesThreshold() {
-				fmt.Fprintf(&unusableBuf, "metanode memory %s total(%v) used(%v) threshold(%v)\n", metaNode.Addr, metaNode.Total, metaNode.Used, metaNode.Threshold)
-				return true
-			}
-			if metaNode.RdOnly {
-				fmt.Fprintf(&unusableBuf, "%s is rdOnly\n", metaNode.Addr)
-				return true
-			}
-			if metaNode.Ratio > gConfig.metaNodeMemLowPer {
-				fmt.Fprintf(&unusableBuf, "%s metanode memory ratio(%v) > lowPer(%v)\n", metaNode.Addr, metaNode.Ratio, gConfig.metaNodeMemLowPer)
-				return true
-			}
-			if nodeMemRatio > gConfig.metaNodeMemLowPer {
-				fmt.Fprintf(&unusableBuf, "%s system memory ratio(%v) > lowPer(%v)\n", metaNode.Addr, nodeMemRatio, gConfig.metaNodeMemLowPer)
-				return true
-			}
-		}
-
-		log.LogWarnf("failed to analyze metaNode(%s). Please check the conditions", metaNode.Addr)
 
 		return true
 	})
@@ -3836,4 +3752,99 @@ func IsRocksdbDirInMetaPartition(mp *MetaPartition, addr, rocksdbDir string) boo
 		}
 	}
 	return false
+}
+
+func GetMetaNodeResourceReason(metaNode *MetaNode, storeMode proto.StoreMode) (msg string, allocatAble bool) {
+	nodeMemRatio := CaculateNodeMemoryRatio(metaNode)
+	if nodeMemRatio > gConfig.metaNodeMemHighPer {
+		msg = fmt.Sprintf("metanode memory %s total: %d, used: %d, ratio: %f > %f", metaNode.Addr, metaNode.NodeMemTotal, metaNode.NodeMemUsed, nodeMemRatio, gConfig.metaNodeMemHighPer)
+		return
+	}
+
+	if storeMode == proto.StoreModeMem {
+		if canAllocPartition(metaNode, MetaNodeType, 1) {
+			if metaNode.Ratio <= gConfig.metaNodeMemLowPer && nodeMemRatio <= gConfig.metaNodeMemLowPer {
+				msg = fmt.Sprintf("%s can allocate memory replica", metaNode.Addr)
+				allocatAble = true
+				return
+			}
+		}
+	} else {
+		if canAllocPartition(metaNode, RocksdbType, 1) {
+			if IsRocksdbDiskUsageLow(metaNode) {
+				msg = fmt.Sprintf("%s can allocate rocksdb replica", metaNode.Addr)
+				allocatAble = true
+				return
+			}
+		}
+	}
+
+	if !metaNode.PartitionCntLimitedEx(1) {
+		msg = fmt.Sprintf("%s mpCount(%v) > limit(%v)", metaNode.Addr, metaNode.MetaPartitionCount, metaNode.GetPartitionLimitCnt())
+		return
+	}
+	if !metaNode.IsActive {
+		msg = fmt.Sprintf("%s is not active", metaNode.Addr)
+		return
+	}
+	if metaNode.MetaPartitionCount >= defaultMaxMetaPartitionCountOnEachNode {
+		msg = fmt.Sprintf("%s metaPartitionCount(%v) >= defaultMaxMetaPartitionCountOnEachNode(%v)", metaNode.Addr, metaNode.MetaPartitionCount, defaultMaxMetaPartitionCountOnEachNode)
+		return
+	}
+	if metaNode.systemMemoryReachesThreshold() {
+		msg = fmt.Sprintf("system memory %s total(%v) used(%v) threshold(%v)", metaNode.Addr, metaNode.NodeMemUsed, metaNode.NodeMemTotal, metaNode.Threshold)
+		return
+	}
+
+	if storeMode == proto.StoreModeRocksDb {
+		systemMemoryFreeSize := metaNode.NodeMemTotal - metaNode.NodeMemUsed
+		if systemMemoryFreeSize <= gConfig.metaNodeReservedMem {
+			msg = fmt.Sprintf("%s systemMemoryFreeSize(%v) <= reservedMem(%v)", metaNode.Addr, systemMemoryFreeSize, gConfig.metaNodeReservedMem)
+			return
+		}
+		if metaNode.reachesRocksdbDisksThreshold() {
+			msg = fmt.Sprintf("rocksdb disk %s total(%v) used(%v) threshold(%v)", metaNode.Addr, metaNode.GetRocksdbTotal(), metaNode.GetRocksdbUsed(), metaNode.RocksdbDiskThreshold)
+			return
+		}
+		if !metaNode.rocksdbDiskKeyNumUnderMax() {
+			msg = fmt.Sprintf("%s max(%v)", metaNode.Addr, metaNode.RocksdbKeyNumMax)
+			return
+		}
+		if metaNode.RocksdbRdOnly {
+			msg = fmt.Sprintf("%s RocksdbRdOnly is true", metaNode.Addr)
+			return
+		}
+		if !IsRocksdbDiskUsageLow(metaNode) {
+			for _, rocksdbDisk := range metaNode.RocksdbDisks {
+				if rocksdbDisk.UsageRatio >= gConfig.metaNodeMemLowPer {
+					msg = fmt.Sprintf("%s RocksdbDiskUsageRatio(%v) >= lowPer(%v)", metaNode.Addr, rocksdbDisk.UsageRatio, gConfig.metaNodeMemLowPer)
+					return
+				}
+			}
+		}
+	} else {
+		if metaNode.MaxMemAvailWeight <= gConfig.metaNodeReservedMem {
+			msg = fmt.Sprintf("%s maxMemAvailWeight(%v) <= reservedMem(%v)", metaNode.Addr, metaNode.MaxMemAvailWeight, gConfig.metaNodeReservedMem)
+			return
+		}
+		if metaNode.reachesThreshold() {
+			msg = fmt.Sprintf("metanode memory %s total(%v) used(%v) threshold(%v)", metaNode.Addr, metaNode.Total, metaNode.Used, metaNode.Threshold)
+			return
+		}
+		if metaNode.RdOnly {
+			msg = fmt.Sprintf("%s is rdOnly", metaNode.Addr)
+			return
+		}
+		if metaNode.Ratio > gConfig.metaNodeMemLowPer {
+			msg = fmt.Sprintf("%s metanode memory ratio(%v) > lowPer(%v)", metaNode.Addr, metaNode.Ratio, gConfig.metaNodeMemLowPer)
+			return
+		}
+		if nodeMemRatio > gConfig.metaNodeMemLowPer {
+			msg = fmt.Sprintf("%s system memory ratio(%v) > lowPer(%v)", metaNode.Addr, nodeMemRatio, gConfig.metaNodeMemLowPer)
+			return
+		}
+	}
+
+	msg = fmt.Sprintf("metaNode(%s) is not writable with unknown reason", metaNode.Addr)
+	return
 }
