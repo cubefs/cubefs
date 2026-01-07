@@ -491,6 +491,8 @@ type MetaPartitionDiagnosis struct {
 	InodeCountNotEqualReplicaMetaPartitionIDs  []uint64
 	MaxInodeNotEqualReplicaMetaPartitionIDs    []uint64
 	DentryCountNotEqualReplicaMetaPartitionIDs []uint64
+	AutoLearnerMetaPartitionIDs                []uint64
+	ManualLearnerMetaPartitionIDs              []uint64
 }
 
 type MetaPartitionDiagnosisV1 struct {
@@ -506,6 +508,8 @@ type MetaPartitionDiagnosisV1 struct {
 	DentryCountNotEqualIDs           []uint64
 	AbnormalRaftIDs                  []uint64
 	FailedRecoveryMetaPartitionIDs   []uint64
+	AutoLearnerMetaPartitionIDs      []uint64
+	ManualLearnerMetaPartitionIDs    []uint64
 }
 
 type FailedDpInfo struct {

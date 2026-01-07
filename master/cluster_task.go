@@ -28,6 +28,18 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+type DiagnoseMetaPartitionInfo struct {
+	NoLeaderMps                   []*MetaPartition
+	LackReplicaMps                []*MetaPartition
+	BadReplicaMps                 []*MetaPartition
+	ExcessReplicaMPs              []*MetaPartition
+	InodeCountNotEqualReplicaMps  []*MetaPartition
+	MaxInodeNotEqualMPs           []*MetaPartition
+	DentryCountNotEqualReplicaMps []*MetaPartition
+	AutoLearner                   []*MetaPartition
+	ManualLearner                 []*MetaPartition
+}
+
 func (c *Cluster) addDataNodeTasks(tasks []*proto.AdminTask) {
 	for _, t := range tasks {
 		c.addDataNodeTask(t)
@@ -471,15 +483,19 @@ func (c *Cluster) checkInactiveMetaNodes() (inactiveMetaNodes []string, err erro
 type VolNameSet map[string]struct{}
 
 func (c *Cluster) checkReplicaMetaPartitions() (
-	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
-	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, maxInodeNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error,
+	diagnoseInfo *DiagnoseMetaPartitionInfo, err error,
 ) {
-	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
-	noLeaderMetaPartitions = make([]*MetaPartition, 0)
-	excessReplicaMetaPartitions = make([]*MetaPartition, 0)
-	inodeCountNotEqualMPs = make([]*MetaPartition, 0)
-	maxInodeNotEqualMPs = make([]*MetaPartition, 0)
-	dentryCountNotEqualMPs = make([]*MetaPartition, 0)
+	diagnoseInfo = &DiagnoseMetaPartitionInfo{
+		NoLeaderMps:                   make([]*MetaPartition, 0),
+		LackReplicaMps:                make([]*MetaPartition, 0),
+		BadReplicaMps:                 make([]*MetaPartition, 0),
+		ExcessReplicaMPs:              make([]*MetaPartition, 0),
+		InodeCountNotEqualReplicaMps:  make([]*MetaPartition, 0),
+		MaxInodeNotEqualMPs:           make([]*MetaPartition, 0),
+		DentryCountNotEqualReplicaMps: make([]*MetaPartition, 0),
+		AutoLearner:                   make([]*MetaPartition, 0),
+		ManualLearner:                 make([]*MetaPartition, 0),
+	}
 	markDeleteVolNames := make(VolNameSet)
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -490,17 +506,27 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			if uint8(len(mp.Hosts)) < mp.ReplicaNum || uint8(len(mp.getActiveAddrs(defaultMetaPartitionTimeOutSec))) < mp.ReplicaNum {
-				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
+				diagnoseInfo.LackReplicaMps = append(diagnoseInfo.LackReplicaMps, mp)
 			}
 			if !mp.isLeaderExist() && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.MpNoLeaderReportIntervalSec) {
-				noLeaderMetaPartitions = append(noLeaderMetaPartitions, mp)
+				diagnoseInfo.NoLeaderMps = append(diagnoseInfo.NoLeaderMps, mp)
 			}
 			if uint8(len(mp.Hosts)) > mp.ReplicaNum || uint8(len(mp.Replicas)) > mp.ReplicaNum {
-				excessReplicaMetaPartitions = append(excessReplicaMetaPartitions, mp)
+				diagnoseInfo.ExcessReplicaMPs = append(diagnoseInfo.ExcessReplicaMPs, mp)
 			}
 			for _, replica := range mp.Replicas {
 				if replica.Status == proto.Unavailable {
-					unavailableReplicaMPs = append(unavailableReplicaMPs, mp)
+					diagnoseInfo.BadReplicaMps = append(diagnoseInfo.BadReplicaMps, mp)
+					break
+				}
+			}
+			for _, peer := range mp.Peers {
+				if peer.Type == raftProto.PeerLearner {
+					if peer.ManualPromote {
+						diagnoseInfo.ManualLearner = append(diagnoseInfo.ManualLearner, mp)
+					} else {
+						diagnoseInfo.AutoLearner = append(diagnoseInfo.AutoLearner, mp)
+					}
 					break
 				}
 			}
@@ -510,28 +536,28 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 	c.inodeCountNotEqualMP.Range(func(key, value interface{}) bool {
 		mp := value.(*MetaPartition)
 		if _, ok := markDeleteVolNames[mp.volName]; !ok {
-			inodeCountNotEqualMPs = append(inodeCountNotEqualMPs, mp)
+			diagnoseInfo.InodeCountNotEqualReplicaMps = append(diagnoseInfo.InodeCountNotEqualReplicaMps, mp)
 		}
 		return true
 	})
 	c.maxInodeNotEqualMP.Range(func(key, value interface{}) bool {
 		mp := value.(*MetaPartition)
 		if _, ok := markDeleteVolNames[mp.volName]; !ok {
-			maxInodeNotEqualMPs = append(maxInodeNotEqualMPs, mp)
+			diagnoseInfo.MaxInodeNotEqualMPs = append(diagnoseInfo.MaxInodeNotEqualMPs, mp)
 		}
 		return true
 	})
 	c.dentryCountNotEqualMP.Range(func(key, value interface{}) bool {
 		mp := value.(*MetaPartition)
 		if _, ok := markDeleteVolNames[mp.volName]; !ok {
-			dentryCountNotEqualMPs = append(dentryCountNotEqualMPs, mp)
+			diagnoseInfo.DentryCountNotEqualReplicaMps = append(diagnoseInfo.DentryCountNotEqualReplicaMps, mp)
 		}
 		return true
 	})
 	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
 		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v]",
-		c.Name, len(lackReplicaMetaPartitions), len(noLeaderMetaPartitions),
-		len(unavailableReplicaMPs), len(excessReplicaMetaPartitions))
+		c.Name, len(diagnoseInfo.LackReplicaMps), len(diagnoseInfo.NoLeaderMps),
+		len(diagnoseInfo.BadReplicaMps), len(diagnoseInfo.ExcessReplicaMPs))
 	return
 }
 
@@ -574,6 +600,16 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 				diagnosis.FailedRecoveryMetaPartitionIDs = append(diagnosis.FailedRecoveryMetaPartitionIDs, mp.PartitionID)
 			}
 
+			for _, peer := range mp.Peers {
+				if peer.Type == raftProto.PeerLearner {
+					if peer.ManualPromote {
+						diagnosis.ManualLearnerMetaPartitionIDs = append(diagnosis.ManualLearnerMetaPartitionIDs, mp.PartitionID)
+					} else {
+						diagnosis.AutoLearnerMetaPartitionIDs = append(diagnosis.AutoLearnerMetaPartitionIDs, mp.PartitionID)
+					}
+					break
+				}
+			}
 		}
 		vol.mpsLock.RUnlock()
 	}

@@ -490,6 +490,10 @@ var (
 	diskErrorReplicaPartitionInfoTablePattern = "%-8v    %-16v    %-8v    %-12v    %-64v    %-24v"
 	diskErrorReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS", "DiskError_REPLICAS")
+
+	partitionLearnerTablePattern = "%-8v    %-32v    %-64v    %-64v"
+	partitionLearnerTableHeader  = fmt.Sprintf(partitionLearnerTablePattern,
+		"ID", "VOLUME", "NORMAL", "LEARNER")
 )
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
@@ -1934,4 +1938,20 @@ func formatQueryDecommissionStatusResponse(response *proto.QueryDecommissionStat
 	}
 
 	return sb.String()
+}
+
+func formatMetaPartitionLearnerInfoRow(partition *proto.MetaPartitionInfo, manual bool) string {
+	normals := make([]string, 0, len(partition.Peers))
+	learners := make([]string, 0, len(partition.Peers))
+	for _, peer := range partition.Peers {
+		if peer.Type == raftProto.PeerLearner {
+			if peer.ManualPromote == manual {
+				learners = append(learners, peer.Addr)
+			}
+		} else {
+			normals = append(normals, peer.Addr)
+		}
+	}
+	return fmt.Sprintf(partitionLearnerTablePattern,
+		partition.PartitionID, partition.VolName, strings.Join(normals, ", "), strings.Join(learners, ", "))
 }

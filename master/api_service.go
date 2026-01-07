@@ -5465,13 +5465,7 @@ func (m *Server) diagnoseMetaPartitionDelayDelted(w http.ResponseWriter, r *http
 		err                             error
 		rstMsg                          *proto.MetaPartitionDiagnosis
 		inactiveNodes                   []string
-		noLeaderMps                     []*MetaPartition
-		lackReplicaMps                  []*MetaPartition
-		badReplicaMps                   []*MetaPartition
-		excessReplicaMPs                []*MetaPartition
-		inodeCountNotEqualReplicaMps    []*MetaPartition
-		maxInodeNotEqualMPs             []*MetaPartition
-		dentryCountNotEqualReplicaMps   []*MetaPartition
+		diagnoseInfo                    *DiagnoseMetaPartitionInfo
 		corruptMpIDs                    []uint64
 		lackReplicaMpIDs                []uint64
 		badReplicaMpIDs                 []uint64
@@ -5479,6 +5473,8 @@ func (m *Server) diagnoseMetaPartitionDelayDelted(w http.ResponseWriter, r *http
 		inodeCountNotEqualReplicaMpIDs  []uint64
 		maxInodeNotEqualReplicaMpIDs    []uint64
 		dentryCountNotEqualReplicaMpIDs []uint64
+		autoLearnerMpIDs                []uint64
+		manualLearnerMpIDs              []uint64
 		badMetaPartitions               []badPartitionView
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseMetaPartition))
@@ -5493,31 +5489,36 @@ func (m *Server) diagnoseMetaPartitionDelayDelted(w http.ResponseWriter, r *http
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if lackReplicaMps, noLeaderMps, badReplicaMps, excessReplicaMPs,
-		inodeCountNotEqualReplicaMps, maxInodeNotEqualMPs, dentryCountNotEqualReplicaMps, err = m.cluster.checkReplicaMetaPartitions(); err != nil {
+	if diagnoseInfo, err = m.cluster.checkReplicaMetaPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	for _, mp := range noLeaderMps {
+	for _, mp := range diagnoseInfo.NoLeaderMps {
 		corruptMpIDs = append(corruptMpIDs, mp.PartitionID)
 	}
-	for _, mp := range lackReplicaMps {
+	for _, mp := range diagnoseInfo.LackReplicaMps {
 		lackReplicaMpIDs = append(lackReplicaMpIDs, mp.PartitionID)
 	}
-	for _, mp := range badReplicaMps {
+	for _, mp := range diagnoseInfo.BadReplicaMps {
 		badReplicaMpIDs = append(badReplicaMpIDs, mp.PartitionID)
 	}
-	for _, mp := range excessReplicaMPs {
+	for _, mp := range diagnoseInfo.ExcessReplicaMPs {
 		excessReplicaMpIDs = append(excessReplicaMpIDs, mp.PartitionID)
 	}
-	for _, mp := range inodeCountNotEqualReplicaMps {
+	for _, mp := range diagnoseInfo.InodeCountNotEqualReplicaMps {
 		inodeCountNotEqualReplicaMpIDs = append(inodeCountNotEqualReplicaMpIDs, mp.PartitionID)
 	}
-	for _, mp := range maxInodeNotEqualMPs {
+	for _, mp := range diagnoseInfo.MaxInodeNotEqualMPs {
 		maxInodeNotEqualReplicaMpIDs = append(maxInodeNotEqualReplicaMpIDs, mp.PartitionID)
 	}
-	for _, mp := range dentryCountNotEqualReplicaMps {
+	for _, mp := range diagnoseInfo.DentryCountNotEqualReplicaMps {
 		dentryCountNotEqualReplicaMpIDs = append(dentryCountNotEqualReplicaMpIDs, mp.PartitionID)
+	}
+	for _, mp := range diagnoseInfo.AutoLearner {
+		autoLearnerMpIDs = append(autoLearnerMpIDs, mp.PartitionID)
+	}
+	for _, mp := range diagnoseInfo.ManualLearner {
+		manualLearnerMpIDs = append(manualLearnerMpIDs, mp.PartitionID)
 	}
 	badMetaPartitions = m.cluster.getBadMetaPartitionsView()
 	rstMsg = &proto.MetaPartitionDiagnosis{
@@ -5530,6 +5531,8 @@ func (m *Server) diagnoseMetaPartitionDelayDelted(w http.ResponseWriter, r *http
 		InodeCountNotEqualReplicaMetaPartitionIDs:  inodeCountNotEqualReplicaMpIDs,
 		MaxInodeNotEqualReplicaMetaPartitionIDs:    maxInodeNotEqualReplicaMpIDs,
 		DentryCountNotEqualReplicaMetaPartitionIDs: dentryCountNotEqualReplicaMpIDs,
+		AutoLearnerMetaPartitionIDs:                autoLearnerMpIDs,
+		ManualLearnerMetaPartitionIDs:              manualLearnerMpIDs,
 	}
 	log.LogInfof("diagnose metaPartition cluster[%v], inactiveNodes:[%v], corruptMpIDs:[%v], "+
 		"lackReplicaMpIDs:[%v], badReplicaMpIDs:[%v], excessReplicaDpIDs[%v] "+

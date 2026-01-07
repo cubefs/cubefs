@@ -82,6 +82,7 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newListCorruptMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
+	var printManual bool
 	cmd := &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptMetaPartitionShort,
@@ -357,8 +358,43 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 					stdout("%v\n", formatMetaPartitionInfoRow(partition))
 				}
 			}
+
+			stdout("\n")
+			stdout("%v\n", "[Partition with auto learner]:")
+			stdout("%v\n", partitionLearnerTableHeader)
+			sort.SliceStable(diagnosis.AutoLearnerMetaPartitionIDs, func(i, j int) bool {
+				return diagnosis.AutoLearnerMetaPartitionIDs[i] < diagnosis.AutoLearnerMetaPartitionIDs[j]
+			})
+			for _, pid := range diagnosis.AutoLearnerMetaPartitionIDs {
+				var partition *proto.MetaPartitionInfo
+				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+					continue
+				}
+				if partition != nil {
+					stdout("%v\n", formatMetaPartitionLearnerInfoRow(partition, false))
+				}
+			}
+
+			if printManual {
+				stdout("\n")
+				stdout("%v\n", "[Partition with manual learner]:")
+				stdout("%v\n", partitionLearnerTableHeader)
+				sort.SliceStable(diagnosis.ManualLearnerMetaPartitionIDs, func(i, j int) bool {
+					return diagnosis.ManualLearnerMetaPartitionIDs[i] < diagnosis.ManualLearnerMetaPartitionIDs[j]
+				})
+				for _, pid := range diagnosis.ManualLearnerMetaPartitionIDs {
+					var partition *proto.MetaPartitionInfo
+					if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+						continue
+					}
+					if partition != nil {
+						stdout("%v\n", formatMetaPartitionLearnerInfoRow(partition, true))
+					}
+				}
+			}
 		},
 	}
+	cmd.Flags().BoolVar(&printManual, "manual", false, "print manual learner partitions")
 	return cmd
 }
 
