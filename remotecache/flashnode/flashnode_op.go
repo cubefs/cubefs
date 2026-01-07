@@ -147,6 +147,16 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	decode := json.NewDecoder(bytes.NewBuffer(data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err == nil {
+		if req.FlashNodeSlots != nil {
+			atomic.StoreInt32(&f.legacyMaster, 0)
+			if f.nodeID != req.FlashNodeID {
+				log.LogWarnf("heartbeat nodeID mismatch: local(%v) != remote(%v)", f.nodeID, req.FlashNodeID)
+				return
+			}
+			f.updateSlotSyncMap(req.FlashNodeSlots)
+		} else {
+			atomic.StoreInt32(&f.legacyMaster, 1)
+		}
 		f.SetTimeout(req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout)
 		if req.FlashHotKeyMissCount != 0 {
 			f.hotKeyMissCount = int32(req.FlashHotKeyMissCount)
@@ -207,8 +217,8 @@ end:
 	adminTask.TopoName = req.TopoName
 	f.respondToMaster(adminTask)
 	if log.EnableInfo() {
-		log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout %v(ms) readDataNodeTimeout %v(ms) hotkeymisscount %v",
-			conn.RemoteAddr().String(), req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout, req.FlashHotKeyMissCount)
+		log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout %v(ms) readDataNodeTimeout %v(ms) hotkeymisscount %v FlashNodeSlots is nil(%v)",
+			conn.RemoteAddr().String(), req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout, req.FlashHotKeyMissCount, req.FlashNodeSlots == nil)
 	}
 	return
 }
@@ -247,6 +257,12 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 
 	volume = req.CacheRequest.Volume
 	cr := req.CacheRequest
+	if atomic.LoadInt32(&f.legacyMaster) == 0 {
+		ownerSlotId := uint32(cr.Slot & 0xFFFFFFFF)
+		if _, ok := f.slotSyncMap.Load(ownerSlotId); !ok {
+			return proto.ErrorRequireDataIsCaching
+		}
+	}
 
 	f.updateSlotStat(cr.Slot)
 
@@ -1098,7 +1114,12 @@ func (f *FlashNode) opCachePrepare(conn net.Conn, p *proto.Packet) (err error) {
 		err = proto.ErrorNoCachePrepareRequest
 		return
 	}
-
+	if atomic.LoadInt32(&f.legacyMaster) == 0 {
+		ownerSlotId := uint32(req.CacheRequest.Slot & 0xFFFFFFFF)
+		if _, ok := f.slotSyncMap.Load(ownerSlotId); !ok {
+			return fmt.Errorf("slot(%d) not found", ownerSlotId)
+		}
+	}
 	f.updateSlotStat(req.CacheRequest.Slot)
 	volume = req.CacheRequest.Volume
 

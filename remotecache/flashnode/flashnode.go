@@ -17,6 +17,7 @@ package flashnode
 import (
 	"bufio"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"os"
 	"path/filepath"
@@ -88,6 +89,8 @@ const (
 // Configuration keys
 const (
 	LogDir                          = "logDir"
+	MetaDir                         = "metaDir"
+	FlashNodeIDFile                 = "flashnode_id"
 	Stat                            = "stat"
 	cfgMemTotal                     = "memTotal"
 	cfgCachePercent                 = "cachePercent"
@@ -128,6 +131,7 @@ const (
 type FlashNode struct {
 	// from configuration
 	logDir                      string
+	metaDir                     string
 	listen                      string
 	zoneName                    string
 	memTotal                    uint64
@@ -189,6 +193,7 @@ type FlashNode struct {
 	enableWarmUpPaths            bool
 
 	slotMap                  sync.Map // [uint32]*SlotStat
+	slotSyncMap              sync.Map // [uint32]bool (value always true); periodically synced from master
 	readCount                uint64
 	missCache                *cachengine.MissCache
 	hotKeyMissCount          int32
@@ -197,6 +202,7 @@ type FlashNode struct {
 	keyRateLimitThreshold    int32
 	keyLimiterFlow           int64
 	reservedSpace            int64 // reserved disk space
+	legacyMaster             int32
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -278,11 +284,38 @@ func (f *FlashNode) shutdown() {
 	f.stopCacheEngine()
 }
 
+func (f *FlashNode) updateSlotSyncMap(slots []uint32) {
+	remote := make(map[uint32]struct{}, len(slots))
+	for _, sid := range slots {
+		remote[sid] = struct{}{}
+		if _, ok := f.slotSyncMap.Load(sid); !ok {
+			f.slotSyncMap.Store(sid, true)
+		}
+	}
+	f.slotSyncMap.Range(func(key, _ interface{}) bool {
+		sid, ok := key.(uint32)
+		if !ok {
+			f.slotSyncMap.Delete(key)
+			return true
+		}
+		if _, exists := remote[sid]; !exists {
+			f.slotSyncMap.Delete(sid)
+		}
+		return true
+	})
+}
+
 func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if cfg == nil {
 		return errors.New("invalid configuration")
 	}
 	f.logDir = cfg.GetString(LogDir)
+	f.metaDir = cfg.GetString(MetaDir)
+	if f.metaDir != "" {
+		if err = os.MkdirAll(f.metaDir, 0o755); err != nil {
+			return errors.NewErrorf("mkdir meta directory [%v] err[%v]", f.metaDir, err)
+		}
+	}
 	f.listen = strings.TrimSpace(cfg.GetString(proto.ListenPort))
 	if f.listen == "" {
 		return errors.New("bad listen config")
@@ -332,6 +365,9 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		if err = os.MkdirAll(f.memDataPath, 0o755); err != nil {
 			return errors.NewErrorf("mkdir cache directory [%v] err[%v]", f.memDataPath, err)
 		}
+		if f.metaDir == "" {
+			f.metaDir = f.memDataPath
+		}
 		memTotal := cfg.GetInt64(cfgMemTotal)
 		if memTotal <= 0 {
 			total, _, err := util.GetMemInfo()
@@ -369,6 +405,9 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 					log.LogErrorf("mkdir cache directory [%v] err[%v]", path, err)
 					continue
 				}
+			}
+			if f.metaDir == "" {
+				f.metaDir = path
 			}
 			if os.Getenv(cachengine.EnvDockerTmpfs) == "" && !hasMountsOnLastTwoLevels(path) {
 				log.LogErrorf("path[%v] is not a mount point, skip it", path)
@@ -586,6 +625,62 @@ func (f *FlashNode) GetBatchReadPoolStatus() *util.PoolStatus {
 	return f.batchReadPool.Status()
 }
 
+func (f *FlashNode) loadOrInitNodeID() (uint64, bool) {
+	if f.metaDir == "" {
+		return 0, false
+	}
+	filePath := filepath.Join(f.metaDir, FlashNodeIDFile)
+	idData, err := os.ReadFile(filePath)
+	if err == nil {
+		content := strings.TrimSpace(string(idData))
+		parts := strings.Split(content, "|")
+		if len(parts) != 2 {
+			log.LogErrorf("Invalid NodeID file format: %s", content)
+			panic(fmt.Sprintf("Invalid NodeID file format: %s", content))
+		}
+
+		id, err := strconv.ParseUint(parts[0], 10, 64)
+		if err != nil {
+			log.LogErrorf("Invalid NodeID format: %v", err)
+			panic(fmt.Sprintf("Invalid NodeID format: %v", err))
+		}
+
+		crcVal, err := strconv.ParseUint(parts[1], 10, 32)
+		if err != nil {
+			log.LogErrorf("Invalid CRC format: %v", err)
+			panic(fmt.Sprintf("Invalid CRC format: %v", err))
+		}
+
+		if crc32.ChecksumIEEE([]byte(parts[0])) != uint32(crcVal) {
+			log.LogErrorf("NodeID CRC mismatch! Disk: %d, Calc: %d", crcVal, crc32.ChecksumIEEE([]byte(parts[0])))
+			panic("NodeID CRC mismatch")
+		}
+
+		log.LogInfof("Loaded NodeID from disk: %d", id)
+		return id, true
+	}
+	return 0, false
+}
+
+func (f *FlashNode) saveNodeIDToDisk(id uint64) error {
+	filePath := filepath.Join(f.metaDir, FlashNodeIDFile)
+	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	idStr := fmt.Sprintf("%d", id)
+	crc := crc32.ChecksumIEEE([]byte(idStr))
+	content := fmt.Sprintf("%s|%d", idStr, crc)
+
+	if _, err := file.WriteString(content); err != nil {
+		return err
+	}
+
+	return file.Sync()
+}
+
 func (f *FlashNode) register() error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -614,11 +709,21 @@ func (f *FlashNode) register() error {
 			}
 			f.localAddr = fmt.Sprintf("%s:%v", localIP, f.listen)
 
-			nodeID, err := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "")
+			id, loadedFromDisk := f.loadOrInitNodeID()
+			nodeID, err := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "", id)
 			if err != nil {
 				log.LogErrorf("action[register] cannot register remotecache to master err(%v).", err)
 				break
 			}
+
+			if nodeID > 0 {
+				if !loadedFromDisk || id != nodeID {
+					if err := f.saveNodeIDToDisk(nodeID); err != nil {
+						log.LogErrorf("action[register] save nodeID to disk failed: %v", err)
+					}
+				}
+			}
+
 			f.nodeID = nodeID
 			log.LogInfof("action[register] remotecache(%d) cluster(%s) localAddr(%s)", f.nodeID, f.clusterID, f.localAddr)
 			return nil

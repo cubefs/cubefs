@@ -147,6 +147,7 @@ func testConfig(t *testing.T) {
 	}
 	cfg = config.LoadConfigString(confStr)
 	require.NoError(t, flashServer.parseConfig(cfg))
+	_ = flashServer.saveNodeIDToDisk(10)
 	require.NoError(t, flashServer.start(cfg))
 	t.Log("listen tcp    on:", flashServer.localAddr)
 	t.Log("listen extent on:", extentListener.Addr().String())

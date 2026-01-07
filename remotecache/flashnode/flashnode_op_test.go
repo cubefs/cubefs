@@ -102,7 +102,9 @@ func testTCPCachePrepare(t *testing.T) {
 		Inode:           _inode,
 		FixedFileOffset: _offset,
 		TTL:             _ttl,
+		Slot:            1,
 	}
+	flashServer.slotSyncMap.Store(uint32(1), true)
 	p.MarshalDataPb(prepare)
 	require.NoError(t, p.WriteToConn(conn))
 	require.NoError(t, r.ReadFromConn(conn, 3))
@@ -162,7 +164,9 @@ func testTCPCacheRead(t *testing.T) {
 		FixedFileOffset: _offset,
 		TTL:             _ttl,
 		Version:         10, // error version
+		Slot:            1,
 	}
+	flashServer.slotSyncMap.Store(uint32(1), true)
 	p.MarshalDataPb(prepare)
 	require.NoError(t, p.WriteToConn(conn))
 	require.NoError(t, r.ReadFromConn(conn, 3))

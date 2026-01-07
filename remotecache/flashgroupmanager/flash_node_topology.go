@@ -13,6 +13,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/httpclient"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/google/uuid"
@@ -28,6 +29,7 @@ type (
 	SyncAddFlashNodeFunc     func(flashNode *FlashNode) (err error)
 	SyncUpdateFlashNodeFunc  func(flashNode *FlashNode) (err error)
 	SyncDeleteFlashNodeFunc  func(flashNode *FlashNode) (err error)
+	SyncMoveFlashNodeFunc    func(oldAddr string, newValue *FlashNodeValue) (err error)
 	SyncAddFlashGroupFunc    func(flashGroup *FlashGroup) (err error)
 	SyncDeleteFlashGroupFunc func(flashGroup *FlashGroup) (err error)
 	SyncUpdateFlashGroupFunc func(flashGroup *FlashGroup) (err error)
@@ -80,9 +82,10 @@ type FlashNodeTopology struct {
 	createFlashGroupLock sync.RWMutex      // create/delete flashGroup
 	slotsMap             map[uint32]uint64 // key:slot, value: FlashGroupID
 
-	flashGroupMap sync.Map // key: FlashGroupID, value: *FlashGroup
-	flashNodeMap  sync.Map // key: FlashNodeAddr, value: *FlashNode
-	zoneMap       sync.Map // key: zoneName, value: *FlashNodeZone
+	flashGroupMap  sync.Map // key: FlashGroupID, value: *FlashGroup
+	flashNodeMap   sync.Map // key: FlashNodeAddr, value: *FlashNode
+	flashNodeIDMap sync.Map // key: FlashNodeID, value: *FlashNode
+	zoneMap        sync.Map // key: zoneName, value: *FlashNodeZone
 
 	clientEmpty        []byte       // empty response cache
 	clientOff          atomic.Value // []byte, default nil (on)
@@ -400,8 +403,10 @@ func (t *FlashNodeTopology) PutZoneIfAbsent(zone *FlashNodeZone) (old *FlashNode
 
 func (t *FlashNodeTopology) PutFlashNode(flashNode *FlashNode) (err error) {
 	if _, loaded := t.flashNodeMap.LoadOrStore(flashNode.Addr, flashNode); loaded {
+		t.flashNodeIDMap.LoadOrStore(flashNode.ID, flashNode)
 		return
 	}
+	t.flashNodeIDMap.LoadOrStore(flashNode.ID, flashNode)
 	zone, err := t.GetZone(flashNode.ZoneName)
 	if err != nil {
 		return
@@ -419,6 +424,10 @@ func (t *FlashNodeTopology) Clear() {
 		t.zoneMap.Delete(key)
 		return true
 	})
+	t.flashNodeIDMap.Range(func(key, _ interface{}) bool {
+		t.flashNodeIDMap.Delete(key)
+		return true
+	})
 	t.flashNodeMap.Range(func(key, node interface{}) bool {
 		t.flashNodeMap.Delete(key)
 		flashNode := node.(*FlashNode)
@@ -428,9 +437,107 @@ func (t *FlashNodeTopology) Clear() {
 	t.clientCache.Store([]byte(nil))
 }
 
+func (t *FlashNodeTopology) resetFlashNodeTaskManagerTargetAddr(fn *FlashNode, targetAddr string, conflict bool) {
+	if fn == nil || fn.TaskManager == nil {
+		return
+	}
+	fn.TaskManager.Lock()
+	fn.TaskManager.targetAddr = targetAddr
+	if fn.TaskManager.connPool != nil {
+		fn.TaskManager.connPool.Close()
+	}
+	if conflict {
+		fn.TaskManager.connPool = util.NewConnectPoolWithTimeoutAndCap(0, 1, idleConnTimeout, connectTimeout, true)
+	} else {
+		fn.TaskManager.connPool = util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout, false)
+	}
+	fn.TaskManager.Unlock()
+}
+
+func addrPortPlus1024(addr string) (string, error) {
+	arr := strings.SplitN(addr, ":", 2)
+	if len(arr) != 2 || arr[0] == "" || arr[1] == "" {
+		return "", fmt.Errorf("invalid addr %q", addr)
+	}
+	p, err := strconv.ParseUint(arr[1], 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("invalid addr %q: parse port: %w", addr, err)
+	}
+	return fmt.Sprintf("%s:%d", arr[0], p+1024), nil
+}
+
+func (t *FlashNodeTopology) moveFlashNodeAddr(
+	flashNode *FlashNode,
+	newAddr, newZoneName, newVersion string,
+	syncMoveFlashNodeFunc SyncMoveFlashNodeFunc, conflict bool,
+) (err error) {
+	if flashNode == nil {
+		return fmt.Errorf("moveFlashNodeAddr: flashNode is nil")
+	}
+	if newAddr == "" {
+		return fmt.Errorf("moveFlashNodeAddr: newAddr is empty")
+	}
+	if syncMoveFlashNodeFunc == nil {
+		return fmt.Errorf("moveFlashNodeAddr: syncMoveFlashNodeFunc is nil")
+	}
+
+	flashNode.Lock()
+	defer flashNode.Unlock()
+
+	if flashNode.Addr == newAddr && flashNode.ZoneName == newZoneName && flashNode.Version == newVersion {
+		return nil
+	}
+
+	oldAddr := flashNode.Addr
+	oldZoneName := flashNode.ZoneName
+
+	newValue := flashNode.FlashNodeValue
+	newValue.Addr = newAddr
+	newValue.ZoneName = newZoneName
+	newValue.Version = newVersion
+
+	if err = syncMoveFlashNodeFunc(oldAddr, &newValue); err != nil {
+		return err
+	}
+
+	if flashNode.FlashGroupID != UnusedFlashNodeFlashGroupID {
+		if fg, err1 := t.GetFlashGroup(flashNode.FlashGroupID); err1 == nil {
+			fg.RemoveFlashNode(oldAddr)
+		}
+	}
+	t.flashNodeMap.Delete(oldAddr)
+	if oldZone, err1 := t.GetZone(oldZoneName); err1 == nil {
+		oldZone.flashNode.Delete(oldAddr)
+	}
+
+	flashNode.Addr = newAddr
+	flashNode.ZoneName = newZoneName
+	flashNode.Version = newVersion
+
+	t.resetFlashNodeTaskManagerTargetAddr(flashNode, newAddr, conflict)
+
+	t.flashNodeMap.Store(newAddr, flashNode)
+
+	if !conflict {
+		if _, err1 := t.GetZone(newZoneName); err1 != nil {
+			t.PutZoneIfAbsent(NewFlashNodeZone(newZoneName))
+		}
+		if z, err1 := t.GetZone(newZoneName); err1 == nil {
+			z.putFlashNode(flashNode)
+		}
+		if flashNode.FlashGroupID != UnusedFlashNodeFlashGroupID {
+			if fg, err1 := t.GetFlashGroup(flashNode.FlashGroupID); err1 == nil {
+				fg.putFlashNode(flashNode)
+			}
+		}
+	}
+	return nil
+}
+
 func (t *FlashNodeTopology) AddFlashNode(clusterName, nodeAddr, zoneName, version string,
-	allocateCommonIDFunc AllocateCommonIDFunc, syncAddFlashNodeFunc SyncAddFlashNodeFunc,
-) (id uint64, err error) {
+	id uint64, allocateCommonIDFunc AllocateCommonIDFunc,
+	syncAddFlashNodeFunc SyncAddFlashNodeFunc, syncMoveFlashNodeFunc SyncMoveFlashNodeFunc,
+) (nodeID uint64, err error) {
 	t.mu.Lock()
 	defer func() {
 		t.mu.Unlock()
@@ -439,7 +546,31 @@ func (t *FlashNodeTopology) AddFlashNode(clusterName, nodeAddr, zoneName, versio
 		}
 	}()
 	var flashNode *FlashNode
-	_, err = t.PeekFlashNode(nodeAddr)
+	if id > 0 {
+		if value, ok := t.flashNodeIDMap.Load(id); ok {
+			flashNode = value.(*FlashNode)
+			if flashNode.Addr != nodeAddr {
+				log.LogWarnf("FlashNode ID[%d] IP changed from %s to %s", id, flashNode.Addr, nodeAddr)
+				if v, ok2 := t.flashNodeMap.Load(nodeAddr); ok2 {
+					if conflictNode, ok3 := v.(*FlashNode); ok3 && conflictNode != nil && conflictNode.ID != id {
+						newAddr, err1 := addrPortPlus1024(conflictNode.Addr)
+						if err1 != nil {
+							return 0, err1
+						}
+						if err = t.moveFlashNodeAddr(conflictNode, newAddr, conflictNode.ZoneName, conflictNode.Version, syncMoveFlashNodeFunc, true); err != nil {
+							return 0, err
+						}
+					}
+				}
+				if err = t.moveFlashNodeAddr(flashNode, nodeAddr, zoneName, version, syncMoveFlashNodeFunc, false); err != nil {
+					return 0, err
+				}
+			}
+			return flashNode.ID, nil
+		}
+	}
+
+	flashNode, err = t.PeekFlashNode(nodeAddr)
 	if err == nil {
 		return flashNode.ID, nil
 	}
@@ -448,10 +579,10 @@ func (t *FlashNodeTopology) AddFlashNode(clusterName, nodeAddr, zoneName, versio
 	if err != nil {
 		t.PutZoneIfAbsent(NewFlashNodeZone(zoneName))
 	}
-	if id, err = allocateCommonIDFunc(); err != nil {
+	if nodeID, err = allocateCommonIDFunc(); err != nil {
 		return
 	}
-	flashNode.ID = id
+	flashNode.ID = nodeID
 	if err = syncAddFlashNodeFunc(flashNode); err != nil {
 		return
 	}
@@ -468,6 +599,16 @@ func (t *FlashNodeTopology) PeekFlashNode(addr string) (flashNode *FlashNode, er
 	value, ok := t.flashNodeMap.Load(addr)
 	if !ok {
 		err = errors.Trace(notFoundMsg(fmt.Sprintf("flashnode[%v] from topo[%v]", addr, t.Name)), "")
+		return
+	}
+	flashNode = value.(*FlashNode)
+	return
+}
+
+func (t *FlashNodeTopology) PeekFlashNodeById(id uint64) (flashNode *FlashNode, err error) {
+	value, ok := t.flashNodeIDMap.Load(id)
+	if !ok {
+		err = errors.Trace(notFoundMsg(fmt.Sprintf("flashnode[%v] from topo[%v]", id, t.Name)), "")
 		return
 	}
 	flashNode = value.(*FlashNode)
@@ -557,6 +698,7 @@ func (t *FlashNodeTopology) deleteFlashNode(clusterName string, flashNode *Flash
 	}
 	// delFlashNodeFromCache
 	t.flashNodeMap.Delete(flashNode.Addr)
+	t.flashNodeIDMap.Delete(flashNode.ID)
 	var zone *FlashNodeZone
 	zone, err = t.GetZone(flashNode.ZoneName)
 	if err != nil {
@@ -903,8 +1045,15 @@ func (t *FlashNodeTopology) CreateFlashNodeHeartBeatTasks(leader string, handleR
 	t.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
 		node := flashNode.(*FlashNode)
 		node.checkLiveliness()
+		slots := make([]uint32, 0)
+		if node.FlashGroupID != UnusedFlashNodeFlashGroupID {
+			if valGroup, ok := t.flashGroupMap.Load(node.FlashGroupID); ok {
+				slots = valGroup.(*FlashGroup).GetSlots()
+			}
+		}
+
 		task := node.createHeartbeatTask(leader, handleReadTimeout, readDataNodeTimeout, hotKeyMissCount,
-			flashReadFlowLimit, flashWriteFlowLimit, flashKeyFlowLimit)
+			flashReadFlowLimit, flashWriteFlowLimit, flashKeyFlowLimit, slots)
 		tasks = append(tasks, task)
 		return true
 	})

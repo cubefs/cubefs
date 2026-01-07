@@ -32,7 +32,6 @@ type Cluster struct {
 func newCluster(name string, cfg *clusterConfig, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition) (c *Cluster) {
 	c = new(Cluster)
 	c.Name = name
-	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	c.stopc = make(chan bool)
 	c.fsm = fsm
 	c.partition = partition
@@ -41,6 +40,7 @@ func newCluster(name string, cfg *clusterConfig, leaderInfo *LeaderInfo, fsm *Me
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 	// TODO
 	c.flashNodeTopo = NewFlashNodeTopology("default", 0)
+	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	return
 }
 
@@ -59,9 +59,9 @@ func (c *Cluster) createFlashGroup(setSlots []uint32, setWeight uint32, gradualF
 	return
 }
 
-func (c *Cluster) addFlashNode(nodeAddr, zoneName, version string) (id uint64, err error) {
-	return c.flashNodeTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version,
-		c.idAlloc.allocateCommonID, c.syncAddFlashNode)
+func (c *Cluster) addFlashNode(nodeAddr, zoneName, version string, id uint64) (nodeID uint64, err error) {
+	return c.flashNodeTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version, id,
+		c.idAlloc.allocateCommonID, c.syncAddFlashNode, c.syncMoveFlashNode)
 }
 
 func (c *Cluster) updateFlashNode(flashNode *FlashNode, enable bool) (err error) {
@@ -341,6 +341,25 @@ func (c *Cluster) syncDeleteFlashNode(flashNode *FlashNode) (err error) {
 
 func (c *Cluster) syncUpdateFlashNode(flashNode *FlashNode) (err error) {
 	return c.syncPutFlashNodeInfo(opSyncUpdateFlashNode, flashNode)
+}
+
+func (c *Cluster) syncMoveFlashNode(oldAddr string, newValue *FlashNodeValue) (err error) {
+	if newValue == nil {
+		return fmt.Errorf("syncMoveFlashNode: newValue is nil")
+	}
+	oldKey := flashNodePrefix + strconv.FormatUint(newValue.ID, 10) + keySeparator + oldAddr
+	newKey := flashNodePrefix + strconv.FormatUint(newValue.ID, 10) + keySeparator + newValue.Addr
+	newV, err := json.Marshal(*newValue)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	mv := &moveKeyValueCmd{NewK: newKey, NewV: newV}
+	mvBytes, err := json.Marshal(mv)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	metadata := &RaftCmd{Op: opSyncMoveFlashNode, K: oldKey, V: mvBytes}
+	return c.submit(metadata)
 }
 
 func (c *Cluster) tryToChangeLeaderByHost() error {

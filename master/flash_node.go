@@ -115,6 +115,7 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 		nodeAddr common.String
 		zoneName common.String
 		version  common.String
+		nodeID   common.Uint
 		id       uint64
 		err      error
 	)
@@ -130,26 +131,25 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}),
 		version.Key("version").OmitEmpty(),
+		nodeID.Key("id").OmitEmpty(),
 	); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	// all flashnode is added to default topo by default
 	topoName := proto.DefaultTopoName
-
-	if id, err = m.cluster.addFlashNode(topoName, nodeAddr.V, zoneName.V, version.V); err != nil {
+	if id, err = m.cluster.addFlashNode(topoName, nodeAddr.V, zoneName.V, version.V, nodeID.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
-func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version string) (id uint64, err error) {
+func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version string, id uint64) (nodeID uint64, err error) {
 	// check if flash node is registered before
 	var (
-		flashTopo      *flashgroupmanager.FlashNodeTopology
-		flashNode      *flashgroupmanager.FlashNode
-		registeredTopo string
+		flashTopo *flashgroupmanager.FlashNodeTopology
+		flashNode *flashgroupmanager.FlashNode
 	)
 	c.flashNodeTopo.Range(func(key, value interface{}) bool {
 		if value == nil {
@@ -159,23 +159,19 @@ func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version string) (id
 		if !ok {
 			return true
 		}
-		flashNode, err = topo.PeekFlashNode(nodeAddr)
+		flashNode, err = topo.PeekFlashNodeById(id)
 		if flashNode != nil {
-			registeredTopo = topo.Name
+			topoName = topo.Name
 			return false
 		}
 		return true
 	})
-	if flashNode != nil {
-		log.LogDebugf("action[addFlashNode] addr %v is already registered in :%v", nodeAddr, registeredTopo)
-		return flashNode.ID, nil
-	}
 	flashTopo, err = c.PeekFlashTopo(topoName)
 	if err != nil {
 		return
 	}
-	return flashTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version,
-		c.idAlloc.allocateCommonID, c.syncAddFlashNode)
+	return flashTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version, id,
+		c.idAlloc.allocateCommonID, c.syncAddFlashNode, c.syncMoveFlashNode)
 }
 
 func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
@@ -653,6 +649,25 @@ func (c *Cluster) syncPutFlashNodeInfo(opType uint32, flashNode *flashgroupmanag
 	if err != nil {
 		return errors.New(err.Error())
 	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) syncMoveFlashNode(oldAddr string, newValue *flashgroupmanager.FlashNodeValue) (err error) {
+	if newValue == nil {
+		return fmt.Errorf("syncMoveFlashNode: newValue is nil")
+	}
+	oldKey := flashNodePrefix + strconv.FormatUint(newValue.ID, 10) + keySeparator + oldAddr
+	newKey := flashNodePrefix + strconv.FormatUint(newValue.ID, 10) + keySeparator + newValue.Addr
+	newV, err := json.Marshal(*newValue)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	mv := &moveKeyValueCmd{NewK: newKey, NewV: newV}
+	mvBytes, err := json.Marshal(mv)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	metadata := &RaftCmd{Op: opSyncMoveFlashNode, K: oldKey, V: mvBytes}
 	return c.submit(metadata)
 }
 

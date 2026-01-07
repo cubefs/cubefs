@@ -161,6 +161,20 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
+	case opSyncMoveFlashNode:
+		mv := new(moveKeyValueCmd)
+		if err = json.Unmarshal(cmd.V, mv); err != nil {
+			log.LogErrorf("action[fsmApply],unmarshal moveKeyValueCmd, data:%v, err:%v", command, err.Error())
+			panic(err)
+		}
+		if mv.NewK == "" {
+			panic(fmt.Errorf("action[fsmApply] empty new key for opSyncMoveFlashNode, oldK=%s", cmd.K))
+		}
+		deleteSet[cmd.K] = util.Null{}
+		cmdMap[mv.NewK] = mv.NewV
+		if err = mf.store.BatchDeleteAndPut(deleteSet, cmdMap, true); err != nil {
+			panic(err)
+		}
 	case opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo:
 		mf.UserAppCmdHandler(cmd.Op, cmd.K, cmdMap)
 		//if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
