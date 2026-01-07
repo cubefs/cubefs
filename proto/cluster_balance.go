@@ -71,6 +71,7 @@ type ClusterPlan struct {
 	Plan            []*MetaBalancePlan           `json:"plan" bson:"plan"`
 	DoneNum         int32                        `json:"doneMpCount" bson:"donenum"`
 	RunningNum      int32                        `json:"runningMpCount"`
+	ErrorNum        int32                        `json:"errorMpCount"`
 	UndoNum         int32                        `json:"undoMpCount"`
 	Total           int                          `json:"total" bson:"total"`
 	Status          string                       `json:"status" bson:"status"`
@@ -87,6 +88,7 @@ type ClusterPlan struct {
 	FailedList      []uint64                     `json:"FailedMetaPartitions"`
 	DoneReplicaNum  int32                        `json:"doneReplicaNum"`
 	RunReplicaNum   int32                        `json:"runningReplicaNum"`
+	ErrorReplicaNum int32                        `json:"errorReplicaNum"`
 	UndoReplicaNum  int32                        `json:"undoReplicaNum"`
 	TotalReplicaNum int                          `json:"totalReplicaNum"`
 	ProcessPercent  float64                      `json:"processPercent"`

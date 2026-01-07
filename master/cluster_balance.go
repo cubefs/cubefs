@@ -1423,6 +1423,10 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 			mpPlan.Msg = err.Error()
 			mrPlan.Msg = err.Error()
 			mrPlan.Status = PlanTaskError
+			atomic.AddInt32(&plan.RunReplicaNum, -1)
+			atomic.AddInt32(&plan.ErrorReplicaNum, 1)
+			atomic.AddInt32(&plan.RunningNum, -1)
+			atomic.AddInt32(&plan.ErrorNum, 1)
 			return err
 		}
 		atomic.AddInt32(&plan.RunReplicaNum, -1)
