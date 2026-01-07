@@ -4170,10 +4170,13 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	}
 
 	tmpOfflineMps := make([]*MetaPartition, 0, len(toBeOfflineMps))
+	remainCount := 0
 	for _, mp := range toBeOfflineMps {
 		// If srcAddr is not empty in learner usage, it is doing migrating.
 		if mp.SrcAddr == "" {
 			tmpOfflineMps = append(tmpOfflineMps, mp)
+		} else {
+			remainCount++
 		}
 	}
 	toBeOfflineMps = tmpOfflineMps
@@ -4224,7 +4227,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	default:
 	}
 
-	if limit < len(partitions) {
+	if limit < len(partitions) || remainCount > 0 {
 		log.LogWarnf("action[migrateMetaNode] clusterID[%v] migrate from [%s] to [%s] cnt[%d] success",
 			c.Name, srcAddr, targetAddr, limit)
 		return
