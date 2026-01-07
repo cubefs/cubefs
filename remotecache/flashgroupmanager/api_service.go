@@ -341,6 +341,7 @@ func (m *FlashGroupManager) addFlashNode(w http.ResponseWriter, r *http.Request)
 		nodeAddr common.String
 		zoneName common.String
 		version  common.String
+		nodeID   common.Uint
 		id       uint64
 		err      error
 	)
@@ -356,11 +357,12 @@ func (m *FlashGroupManager) addFlashNode(w http.ResponseWriter, r *http.Request)
 			return nil
 		}),
 		version.Key("version").OmitEmpty(),
+		nodeID.Key("id").OmitEmpty(),
 	); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if id, err = m.cluster.addFlashNode(nodeAddr.V, zoneName.V, version.V); err != nil {
+	if id, err = m.cluster.addFlashNode(nodeAddr.V, zoneName.V, version.V, nodeID.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

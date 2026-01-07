@@ -152,7 +152,7 @@ func (flashNode *FlashNode) checkLiveliness() {
 
 func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int,
 	flashNodeReadDataNodeTimeout int, flashHotKeyMissCount int,
-	flashReadFlowLimit int64, flashWriteFlowLimit int64, flashKeyFlowLimit int64,
+	flashReadFlowLimit int64, flashWriteFlowLimit int64, flashKeyFlowLimit int64, slots []uint32,
 ) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
@@ -164,6 +164,8 @@ func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHand
 	request.FlashReadFlowLimit = flashReadFlowLimit
 	request.FlashWriteFlowLimit = flashWriteFlowLimit
 	request.FlashKeyFlowLimit = flashKeyFlowLimit
+	request.FlashNodeSlots = slots
+	request.FlashNodeID = flashNode.ID
 	request.TopoName = flashNode.FlashNodeTopoName
 	log.LogDebugf("createHeartbeatTask, flashNode:%v, topo:%v", flashNode.Addr, flashNode.FlashNodeTopoName)
 	task = proto.NewAdminTask(proto.OpFlashNodeHeartbeat, flashNode.Addr, request)

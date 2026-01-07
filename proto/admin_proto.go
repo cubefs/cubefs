@@ -893,6 +893,8 @@ type FlashNodeHeartBeatInfos struct {
 	FlashWriteFlowLimit          int64
 	FlashKeyFlowLimit            int64
 	TopoName                     string
+	FlashNodeSlots               []uint32
+	FlashNodeID                  uint64
 }
 
 // HeartBeatRequest define the heartbeat request.

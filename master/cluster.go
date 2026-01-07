@@ -7584,7 +7584,7 @@ func (c *Cluster) ChangeFlashNodeTopo(srcTop, dstTop *flashgroupmanager.FlashNod
 		log.LogWarnf("ChangeFlashNodeTopo remove fn %v from topo %v failed: %v", fn.Addr, srcTop.Name, err.Error())
 		return
 	}
-	_, err = dstTop.AddFlashNode(c.Name, fn.Addr, fn.ZoneName, fn.Version, c.idAlloc.allocateCommonID, c.syncAddFlashNode)
+	_, err = dstTop.AddFlashNode(c.Name, fn.Addr, fn.ZoneName, fn.Version, fn.ID, c.idAlloc.allocateCommonID, c.syncAddFlashNode, c.syncMoveFlashNode)
 	if err != nil {
 		log.LogWarnf("ChangeFlashNodeTopo add fn %v to topo %v failed: %v", fn.Addr, dstTop.Name, err.Error())
 		return

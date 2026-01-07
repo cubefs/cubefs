@@ -16,6 +16,11 @@ type RaftCmd struct {
 	V  []byte `json:"v"`
 }
 
+type moveKeyValueCmd struct {
+	NewK string `json:"new_k"`
+	NewV []byte `json:"new_v"`
+}
+
 func (m *RaftCmd) Marshal() ([]byte, error) {
 	return json.Marshal(m)
 }

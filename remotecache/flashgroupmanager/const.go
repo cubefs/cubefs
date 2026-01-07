@@ -25,6 +25,7 @@ const (
 
 const (
 	opSyncAllocCommonID    uint32 = 0x0C
+	opSyncMoveFlashNode    uint32 = 0x69
 	opSyncAddFlashNode     uint32 = 0x6A
 	opSyncDeleteFlashNode  uint32 = 0x6B
 	opSyncUpdateFlashNode  uint32 = 0x6C
