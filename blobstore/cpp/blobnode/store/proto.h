@@ -67,6 +67,7 @@ struct rawStoreFormatLayout {
     uint64_t chunk_arena_size = 0;
     uint64_t chunk_meta_size = 0;
     uint64_t slice_meta_size = 0;
+    uint64_t slice_meta_reserved_multiplier = 0;
     uint64_t slice_size = 0;
     uint64_t block_size = 0;
 };
@@ -82,6 +83,8 @@ constexpr rawStoreFormatLayout rawStoreFormatLayoutV1{
     .chunk_arena_size = (16ull << 30),
     .chunk_meta_size = (4ull << 10),
     .slice_meta_size = 128ull,
+    // reserved multiplier of slice meta
+    .slice_meta_reserved_multiplier = 1ull,
     // every block(32KB-4) with 4 byte crc
     .slice_size = (4ull << 20),
     .block_size = (32ull << 10),

@@ -53,6 +53,9 @@ class Slice : public BaseJournalEntry {
     Slice() = delete;
     explicit Slice(SliceMetaInfo meta, size_t meta_block_size)
         : meta_(meta), meta_block_size_(meta_block_size) {}
+    static SlicePtr Create(SliceMetaInfo meta, size_t meta_block_size) {
+        return seastar::make_lw_shared<Slice>(std::move(meta), meta_block_size);
+    }
 
     uint64_t GetSliceID() const { return meta_.slice_id(); }
     void SetSliceID(uint64_t slice_id) { meta_.set_slice_id(slice_id); }

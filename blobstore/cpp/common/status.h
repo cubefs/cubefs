@@ -28,6 +28,9 @@ enum class ErrCode {
     ErrNetworkPipe = 511,
     ErrNetworkReset = 512,
     ErrNetworkProtocol = 513,
+
+    // blobnode 6xx
+    ErrBlobnodeStoreInit = 601,
 };
 
 const char* GetReason(ErrCode code);

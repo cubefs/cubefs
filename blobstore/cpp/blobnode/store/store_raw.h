@@ -83,6 +83,10 @@ class RawStore final : public Store {
 
     explicit RawStore(StoreConfig cfg);
     FutureStatus<> FormatV1(Trace& t, DiskMetaInfo disk_meta) noexcept;
+    FutureStatus<> FormatV1Chunk(Trace& t, size_t max_chunk_count,
+                                 uint64_t chunk_meta_offset) noexcept;
+    FutureStatus<> FormatV1Slice(Trace& t, size_t max_slice_count,
+                                 uint64_t slice_meta_offset) noexcept;
     FutureStatus<> UpsertSuperBlock(SuperBlockInfo superblock) noexcept;
     FutureStatus<> AcquireChunkLimit(ChunkID chunk_id) noexcept;
     void ReleaseChunkLimit(ChunkID chunk_id) noexcept;

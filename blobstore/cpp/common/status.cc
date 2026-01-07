@@ -22,6 +22,8 @@ static std::unordered_map<ErrCode, const char*> codeMaps = {
     {ErrCode::ErrNetworkPipe, "net: broken pipe"},
     {ErrCode::ErrNetworkReset, "net: connection reset"},
     {ErrCode::ErrNetworkProtocol, "net: protocol error"},
+
+    {ErrCode::ErrBlobnodeStoreInit, "blobnode: store init"},
 };
 
 const char* GetReason(ErrCode code) {

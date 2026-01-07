@@ -14,6 +14,8 @@
 
 #include "store_raw.h"
 
+#include <array>
+#include <cstring>
 #include <memory>
 #include <seastar/core/coroutine.hh>
 #include <seastar/util/defer.hh>
@@ -64,10 +66,23 @@ FutureStatus<StorePtr> RawStore::Open(StoreConfig cfg) noexcept {
         co_return s;
     }
 
-    SuperBlock superblock;
-    superblock.block_size = kRawStoreSuperblockSize;
+    // first formatted
+    bool init = true;
+    const char* data = buf.get();
+    for (size_t i = 0; i < kRawStoreSuperblockSize; ++i) {
+        if (data[i] != 0) {
+            init = false;
+            break;
+        }
+    }
+    if (init) {
+        s.SetCode(ErrCode::ErrBlobnodeStoreInit);
+        co_return s;
+    }
 
-    // TODO: 1.not exist 2. broken
+    SuperBlock superblock{
+        .block_size = kRawStoreSuperblockSize,
+    };
 
     auto us = superblock.Decode(buf.get());
     if (!us) {
@@ -347,6 +362,10 @@ FutureStatus<> RawStore::LoadChunks(Trace& t) noexcept {
         co_return s;
     }
 
+    // initialize free chunk queue
+    free_chunk_queue_.clear();
+    free_chunk_queue_.reserve(max_chunk_count);
+
     uint64_t current_chunk_index = 0;
     while (current_chunk_index < max_chunk_count) {
         const uint64_t offset = current_chunk_index * format_.chunk_meta_size;
@@ -418,8 +437,7 @@ FutureStatus<> RawStore::LoadSlices(Trace& t) noexcept {
 
         const char* data = slice_meta_buffer_.get() + offset;
         for (uint32_t i = 0; i < slice_batch_num && current_slice_index < max_slice_count; i++) {
-            SlicePtr slice =
-                seastar::make_lw_shared<Slice>(SliceMetaInfo{}, format_.slice_meta_size);
+            SlicePtr slice = Slice::Create(SliceMetaInfo{}, format_.slice_meta_size);
             s = slice->Decode(data);
             if (!s) {
                 co_return s;
@@ -473,25 +491,25 @@ FutureStatus<> RawStore::FormatV1(Trace& t, DiskMetaInfo disk_meta) noexcept {
     auto available_size = capacity - format_.super_block_size - format_.log_arena_size * 2;
     auto max_chunk_count = available_size / format_.chunk_arena_size;
     auto chunk_meta_size = max_chunk_count * format_.chunk_meta_size;
-    auto slice_meta_size =
-        max_chunk_count * format_.chunk_arena_size / format_.slice_size * format_.slice_meta_size;
+    auto data_size = max_chunk_count * format_.chunk_arena_size;
+    auto slice_meta_size = data_size / format_.slice_size * format_.slice_meta_size;
+    auto slice_meta_reserved = slice_meta_size * format_.slice_meta_reserved_multiplier;
     // padding to valid disk sliceSize size range
-    while (chunk_meta_size + slice_meta_size + max_chunk_count * format_.chunk_arena_size >
-           available_size) {
+    while (chunk_meta_size + slice_meta_size + slice_meta_reserved + data_size > available_size) {
         max_chunk_count -= 1;
         chunk_meta_size = max_chunk_count * format_.chunk_meta_size;
-        slice_meta_size = max_chunk_count * format_.chunk_arena_size / format_.slice_size *
-                          format_.slice_meta_size;
+        data_size = max_chunk_count * format_.chunk_arena_size;
+        slice_meta_size = data_size / format_.slice_size * format_.slice_meta_size;
+        slice_meta_reserved = slice_meta_size * format_.slice_meta_reserved_multiplier;
     }
-    // calculate slice count
-    auto max_slice_count = max_chunk_count * format_.chunk_arena_size / format_.slice_size;
+    auto max_slice_count = data_size / format_.slice_size;
 
     // write header finally which means format has been done
-    SuperBlockInfo superblock;
-    auto meta = superblock.mutable_meta();
+    SuperBlockInfo superblock_info;
+    auto meta = superblock_info.mutable_meta();
     *meta = disk_meta;
-    auto layout = superblock.mutable_layout();
 
+    auto layout = superblock_info.mutable_layout();
     uint64_t offset = format_.start_offset;
     offset += format_.super_block_size;
     layout->set_log_arena_start(offset);
@@ -499,11 +517,12 @@ FutureStatus<> RawStore::FormatV1(Trace& t, DiskMetaInfo disk_meta) noexcept {
     layout->set_chunk_meta_start(offset);
     offset += chunk_meta_size;
     layout->set_slice_meta_start(offset);
-    offset += slice_meta_size;
+    offset += slice_meta_size + slice_meta_reserved;
     layout->set_slice_data_start(offset);
     layout->set_max_chunk_count(max_chunk_count);
     layout->set_max_slice_count(max_slice_count);
 
+    // 1. Format journal (journal arena A and B)
     const auto journal_cfg = JournalConfig{
         .start_offset = layout->log_arena_start(),
         .journal_arena_size = format_.log_arena_size,
@@ -512,19 +531,113 @@ FutureStatus<> RawStore::FormatV1(Trace& t, DiskMetaInfo disk_meta) noexcept {
     if (!s) {
         co_return s;
     }
-    // TODO: init free chunks, free slices
 
-    s = co_await UpsertSuperBlock(std::move(superblock));
+    // 2. Initialize all chunk metas to zero and write to disk
+    s = co_await FormatV1Chunk(t, max_chunk_count, layout->chunk_meta_start());
+    if (!s) {
+        co_return s;
+    }
+
+    // 3. Initialize all slice metas to zero and write to disk
+    s = co_await FormatV1Slice(t, max_slice_count, layout->slice_meta_start());
+    if (!s) {
+        co_return s;
+    }
+
+    // 4. Write superblock meta last
+    s = co_await UpsertSuperBlock(superblock_info);
     co_return s;
 }
 
-FutureStatus<> RawStore::UpsertSuperBlock(SuperBlockInfo superblock) noexcept {
+FutureStatus<> RawStore::FormatV1Chunk(Trace& t, size_t max_chunk_count,
+                                       uint64_t chunk_meta_offset) noexcept {
     Status<> s;
 
-    auto new_superblock = superblock_;
-    auto buf = dev_->Alloc(format_.super_block_size);
-    new_superblock.super_block_info = std::move(superblock);
-    s = new_superblock.Encode(buf.get_write());
+    ChunkMetaInfo chunk_meta_info;
+    chunk_meta_info.set_status(static_cast<uint32_t>(ChunkStatus::Init));
+    ChunkMeta empty_chunk_meta{
+        .chunk_meta_info = chunk_meta_info,
+        .block_size = format_.chunk_meta_size,
+    };
+
+    // Batch write chunk metas
+    size_t batch_buf_size = 1 << 20;
+    size_t kChunkMetaBatchSize = batch_buf_size / format_.chunk_meta_size;
+    auto batch_buf = dev_->Alloc(batch_buf_size);
+    std::memset(batch_buf.get_write(), 0, batch_buf_size);
+
+    for (ChunkIndex idx = 0; idx < max_chunk_count; idx += kChunkMetaBatchSize) {
+        size_t batch_count = std::min(kChunkMetaBatchSize, max_chunk_count - idx);
+        char* batch_ptr = batch_buf.get_write();
+
+        for (size_t i = 0; i < batch_count; ++i) {
+            empty_chunk_meta.chunk_meta_info.set_index(idx + i);
+            auto save_s = empty_chunk_meta.Encode(batch_ptr + i * format_.chunk_meta_size);
+            if (!save_s) {
+                s.SetCode(save_s.Code()).SetReason(save_s.Reason());
+                co_return s;
+            }
+        }
+
+        uint64_t batch_offset = chunk_meta_offset + idx * format_.chunk_meta_size;
+        s = co_await dev_->Write(batch_offset, batch_buf.get(),
+                                 batch_count * format_.chunk_meta_size);
+        if (!s) {
+            co_return s;
+        }
+    }
+
+    co_return s;
+}
+
+FutureStatus<> RawStore::FormatV1Slice(Trace& t, size_t max_slice_count,
+                                       uint64_t slice_meta_offset) noexcept {
+    Status<> s;
+
+    SliceMetaInfo empty_slice_meta;
+    SlicePtr slice = Slice::Create(empty_slice_meta, format_.slice_meta_size);
+    slice->SetFlag(+SliceStatus::Init);
+
+    // Batch write slice metas
+    size_t slice_batch_buf_size = 1 << 20;
+    size_t kSliceMetaBatchSize = slice_batch_buf_size / format_.slice_meta_size;
+    auto slice_batch_buf = dev_->Alloc(slice_batch_buf_size);
+    std::memset(slice_batch_buf.get_write(), 0, slice_batch_buf_size);
+
+    for (SliceIndex idx = 0; idx < max_slice_count; idx += kSliceMetaBatchSize) {
+        size_t batch_count = std::min(kSliceMetaBatchSize, max_slice_count - idx);
+        char* batch_ptr = slice_batch_buf.get_write();
+
+        for (size_t i = 0; i < batch_count; ++i) {
+            slice->SetIndex(idx + i);
+            auto save_s = slice->Encode(batch_ptr + i * format_.slice_meta_size);
+            if (!save_s) {
+                s.SetCode(save_s.Code()).SetReason(save_s.Reason());
+                co_return s;
+            }
+        }
+
+        uint64_t batch_offset = slice_meta_offset + idx * format_.slice_meta_size;
+        s = co_await dev_->Write(batch_offset, slice_batch_buf.get(),
+                                 batch_count * format_.slice_meta_size);
+        if (!s) {
+            co_return s;
+        }
+    }
+
+    co_return s;
+}
+
+FutureStatus<> RawStore::UpsertSuperBlock(SuperBlockInfo superblock_info) noexcept {
+    Status<> s;
+
+    auto superblock = SuperBlock{
+        .super_block_info = superblock_info,
+        .block_size = format_.super_block_size,
+    };
+    auto buf = dev_->Alloc(superblock.block_size);
+
+    s = superblock.Encode(buf.get_write());
     if (!s) {
         co_return s;
     }
@@ -533,7 +646,7 @@ FutureStatus<> RawStore::UpsertSuperBlock(SuperBlockInfo superblock) noexcept {
         co_return s;
     }
 
-    superblock_ = std::move(new_superblock);
+    superblock_ = std::move(superblock);
     co_return s;
 }
 
