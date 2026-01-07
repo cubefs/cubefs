@@ -281,3 +281,13 @@ func (api *NodeAPI) UpdateMetaNode(nodeAddr, selectTag string) (err error) {
 	}
 	return
 }
+
+func (api *NodeAPI) DecommissionRocksdbDir(addr, rocksdbDir string) (err error) {
+	request := newRequest(get, proto.AdminDecommissionRocksdbDir).Header(api.h).NoTimeout()
+	request.addParam("addr", addr)
+	request.addParam("rocksdbDir", rocksdbDir)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
