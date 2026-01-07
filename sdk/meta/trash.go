@@ -256,9 +256,9 @@ func (trash *Trash) CleanTrashPatchCache(parentPathAbsolute string, fileName str
 func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fileName string, isDir bool) (err error) {
 	start := time.Now()
 	defer func() {
-		log.LogDebugf("action[MoveToTrash] : parentPathAbsolute(%v) fileName(%v) consume %v", parentPathAbsolute, fileName, time.Since(start).Seconds())
+		log.LogDebugf("action[MoveToTrash] parentPathAbsolute(%v) fileName(%v) consume %v", parentPathAbsolute, fileName, time.Since(start).Seconds())
 	}()
-	log.LogDebugf("action[MoveToTrash] : parentPathAbsolute(%v) fileName(%v) parentIno（%v）", parentPathAbsolute, fileName, parentIno)
+	log.LogDebugf("action[MoveToTrash] parentPathAbsolute(%v) fileName(%v) parentIno(%v)", parentPathAbsolute, fileName, parentIno)
 retry:
 	if err = trash.createCurrent(true); err != nil {
 		return err
@@ -298,11 +298,11 @@ retry:
 				break
 			}
 		} else {
-			log.LogDebugf("action[MoveToTrash]break")
+			log.LogDebugf("action[MoveToTrash] break")
 			break
 		}
 	}
-	log.LogDebugf("action[MoveToTrash]  startCheck: srcPath(%v) dstPath(%v) consume %v", srcPath, dstPath, time.Since(startCheck).Seconds())
+	log.LogDebugf("action[MoveToTrash] startCheck: srcPath(%v) dstPath(%v) consume %v", srcPath, dstPath, time.Since(startCheck).Seconds())
 	startRename := time.Now()
 	var (
 		needStoreXattr = false
@@ -756,7 +756,7 @@ func (trash *Trash) LookupPath(path string, byCache bool) (*proto.InodeInfo, err
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("InodeGet_ll path %v  failed:%v", path, err.Error()))
 	}
-	// trash.subDirCache.Store(path, info)
+	trash.subDirCache.Put(path, info)
 	return info, nil
 }
 
@@ -1032,7 +1032,7 @@ func (trash *Trash) buildDeletedFileParentDirs() {
 		for !noMore {
 			batches, err := trash.mw.ReadDirLimit_ll(bucket.Inode, from, DefaultReaddirLimit, true)
 			if err != nil {
-				log.LogErrorf("action[buildDeletedFileParentDirs] ReadDirLimit_ll: bucket(%v) err(%v) from(%v)", bucketPath, err, from)
+				log.LogWarnf("action[buildDeletedFileParentDirs] ReadDirLimit_ll: bucket(%v) err(%v) from(%v)", bucketPath, err, from)
 				break
 			}
 			batchNr := uint64(len(batches))

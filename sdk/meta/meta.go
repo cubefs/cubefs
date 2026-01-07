@@ -65,6 +65,7 @@ const (
 	statusNotEmpty
 	statusLeaseOccupiedByOthers
 	statusLeaseGenerationNotMatch
+	statusLimitedIo
 )
 
 const (
@@ -553,6 +554,8 @@ func parseStatus(result uint8) (status int) {
 		status = statusLeaseOccupiedByOthers
 	case proto.OpLeaseGenerationNotMatch:
 		status = statusLeaseGenerationNotMatch
+	case proto.OpLimitedIoErr:
+		status = statusLimitedIo
 	default:
 		status = statusError
 	}
@@ -608,6 +611,8 @@ func statusToErrno(status int) error {
 		return errors.New("lease occupied by others")
 	case statusLeaseGenerationNotMatch:
 		return errors.New("lease generation not match")
+	case statusLimitedIo:
+		return errors.New("operation rate limited")
 	default:
 	}
 	return syscall.EIO

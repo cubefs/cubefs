@@ -1073,14 +1073,18 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string, v
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		if status != statusNoent {
-			err = errors.New(packet.GetResultMsg())
-			log.LogErrorf("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-			errMetric := exporter.NewCounter("fileOpenFailed")
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: mw.volname, exporter.Err: "EIO"})
-		} else {
+		if status == statusNoent {
 			log.LogDebugf("lookup exit: packet(%v) mp(%v) req(%v) NoEntry", packet, mp, *req)
+			return
 		}
+		err = errors.New(packet.GetResultMsg())
+		if status == statusLimitedIo {
+			log.LogWarnf("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		} else {
+			log.LogErrorf("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		}
+		errMetric := exporter.NewCounter("fileOpenFailed")
+		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: mw.volname, exporter.Err: "EIO"})
 		return
 	}
 
@@ -1140,7 +1144,11 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64, isAs
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		if status == statusLimitedIo {
+			log.LogWarnf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		} else {
+			log.LogErrorf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		}
 		return
 	}
 	resp := new(proto.InodeGetResponse)
@@ -1191,7 +1199,11 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		if status == statusLimitedIo {
+			log.LogWarnf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		} else {
+			log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		}
 		return
 	}
 
@@ -1263,8 +1275,12 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
+		if status == statusLimitedIo {
+			log.LogWarnf("readDirLimit: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		} else {
+			log.LogErrorf("readDirLimit: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		}
 		children = make([]proto.Dentry, 0)
-		log.LogErrorf("readDirLimit: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
@@ -2468,7 +2484,11 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		if status == statusLimitedIo {
+			log.LogWarnf("batchGetXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		} else {
+			log.LogErrorf("batchGetXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		}
 		return nil, err
 	}
 

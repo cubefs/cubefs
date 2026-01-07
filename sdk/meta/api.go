@@ -763,7 +763,11 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
 		if err != nil {
-			log.LogWarnf("Delete_ll: shouldNotMoveToTrash failed:%v", err)
+			if strings.Contains(err.Error(), "operation rate limited") {
+				log.LogWarnf("Delete_ll: shouldNotMoveToTrash name %v failed %v, retry later", name, err)
+			} else {
+				log.LogErrorf("Delete_ll: shouldNotMoveToTrash name %v failed %v", name, err)
+			}
 			return nil, err
 		}
 		if !ret {
@@ -777,7 +781,11 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 					log.LogDebugf("Delete_ll: trash full, delete %v directly, err %v", name, err.Error())
 					goto deleteDirectly
 				}
-				log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
+				if strings.Contains(err.Error(), "operation rate limited") {
+					log.LogWarnf("Delete_ll: MoveToTrash name %v  failed %v, retry later", name, err)
+				} else {
+					log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
+				}
 			}
 			return nil, err
 		}
@@ -907,7 +915,11 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
 		if err != nil {
-			log.LogErrorf("Delete_ll: shouldNotMoveToTrash name %v failed %v", name, err)
+			if strings.Contains(err.Error(), "operation rate limited") {
+				log.LogWarnf("Delete_ll: shouldNotMoveToTrash name %v failed %v, retry later", name, err)
+			} else {
+				log.LogErrorf("Delete_ll: shouldNotMoveToTrash name %v failed %v", name, err)
+			}
 			return nil, err
 		}
 		if !ret {
@@ -921,7 +933,11 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 					log.LogDebugf("Delete_ll: trash full, delete %v directly, err %v", name, err.Error())
 					goto deleteDirectly
 				}
-				log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
+				if strings.Contains(err.Error(), "operation rate limited") {
+					log.LogWarnf("Delete_ll: MoveToTrash name %v  failed %v, retry later", name, err)
+				} else {
+					log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
+				}
 			}
 
 			return nil, err

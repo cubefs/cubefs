@@ -319,7 +319,11 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
 	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir, fullPath, false)
 	if err != nil {
-		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+		if strings.Contains(err.Error(), "operation rate limited") {
+			log.LogWarnf("Remove: parent(%v) name(%v) err(%v), retry later", d.info.Inode, req.Name, err)
+		} else {
+			log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
+		}
 		return ParseError(err)
 	}
 	if info != nil {
