@@ -2726,7 +2726,7 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 		}
 
 		if vol.DefaultStoreMode != plan.Mode {
-			plan.Msg = fmt.Sprintf("volume(%s) default store mode(%d) is not equal to plan mode(%d)", volName, vol.DefaultStoreMode, plan.Mode)
+			plan.Msg = fmt.Sprintf("Please use 'cfs-cli volume update %s --store-mode %s' to update the store mode", volName, plan.Mode.Str())
 		}
 
 		mps = vol.cloneMetaPartitionMap()
