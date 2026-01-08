@@ -1576,3 +1576,75 @@ func TestService_DataInspect(t *testing.T) {
 		log.Infof("inspect stat: %+v\n", data)
 	}
 }
+
+func TestService_Blobnode_registerNode(t *testing.T) {
+	ctx := context.Background()
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"AddNode")
+	require.NoError(t, err)
+	defer os.RemoveAll(workDir)
+
+	path1 := filepath.Join(workDir, "path1")
+	err = os.MkdirAll(path1, 0o755)
+	require.NoError(t, err)
+	path2 := filepath.Join(workDir, "path2")
+	err = os.MkdirAll(path2, 0o755)
+	require.NoError(t, err)
+
+	conf := Config{
+		Disks: []core.Config{
+			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
+			{BaseConfig: core.BaseConfig{Path: path2, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
+		},
+	}
+
+	A := gomock.Any()
+	ctr := gomock.NewController(t)
+	cmCli := mocks.NewMockClientAPI(ctr)
+	cmCli.EXPECT().GetConfig(A, A).Return("[]", nil).AnyTimes()
+	cmCli.EXPECT().AddNode(A, A).Return(proto.NodeID(1), nil).Times(1)
+
+	format := &core.FormatInfo{}
+	format.FormatInfoProtectedField = core.FormatInfoProtectedField{
+		DiskID:  proto.DiskID(1),
+		Version: 1,
+		Format:  core.FormatMetaTypeV1,
+		Ctime:   time.Now().UnixNano(),
+	}
+	format.NodeID = 1
+	format.NodeCtime = format.Ctime
+
+	err = format.CalCheckSum()
+	require.NoError(t, err)
+	err = core.SaveDiskFormatInfo(ctx, path1, format)
+	require.NoError(t, err)
+
+	format2 := *format
+	err = format2.CalCheckSum()
+	require.NoError(t, err)
+	err = core.SaveDiskFormatInfo(ctx, path2, &format2)
+	require.NoError(t, err)
+
+	configInit(&conf)
+	svr := &Service{
+		ClusterMgrClient: cmCli,
+		Disks:            make(map[proto.DiskID]core.DiskAPI),
+		Conf:             &conf,
+		closeCh:          make(chan struct{}),
+	}
+	svr.ctx, svr.cancel = context.WithCancel(ctx)
+
+	err = svr.registerNode(ctx, &conf)
+	require.NoError(t, err)
+	require.Equal(t, proto.NodeID(1), conf.NodeID)
+
+	// error, node id not match
+	conf.NodeID = 0
+	format2.NodeID = 999
+	err = format2.CalCheckSum()
+	require.NoError(t, err)
+	err = core.SaveDiskFormatInfo(ctx, path2, &format2)
+	require.NoError(t, err)
+
+	err = svr.registerNode(ctx, &conf)
+	require.NotNil(t, err)
+}

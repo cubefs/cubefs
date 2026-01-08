@@ -322,6 +322,13 @@ func (s *Service) registerNode(ctx context.Context, conf *Config) error {
 		return err
 	}
 
+	// diskNodeID: 1. is zero: a.new node; b. old version upgrade; c. all borken disks;
+	// 2. not zero: v1.5.2 node restart(change IP or not change)
+	localNodeID, err := getNodeID(ctx, conf)
+	if err != nil {
+		return err
+	}
+
 	nodeToCm := cmapi.BlobNodeInfo{
 		NodeInfo: cmapi.NodeInfo{
 			ClusterID: conf.ClusterID,
@@ -330,12 +337,18 @@ func (s *Service) registerNode(ctx context.Context, conf *Config) error {
 			Rack:      conf.Rack,
 			Host:      conf.Host,
 			Role:      proto.NodeRoleBlobNode,
+			NodeID:    localNodeID,
 		},
 	}
 
 	nodeID, err := s.ClusterMgrClient.AddNode(ctx, &nodeToCm)
 	if err != nil && rpc.DetectStatusCode(err) != http.StatusCreated {
 		return err
+	}
+
+	// assert nodeID == localNodeID
+	if localNodeID != 0 && nodeID != localNodeID {
+		return errors.Newf("node id not match, cm:%d, local:%d]", nodeID, localNodeID)
 	}
 
 	conf.NodeID = nodeID // we update nodeID, which can be used in the subsequent process. e.g. to add disk
@@ -396,6 +409,37 @@ func readFormatInfo(ctx context.Context, diskRootPath string, nodeID proto.NodeI
 	return formatInfo, err
 }
 
+func getNodeID(ctx context.Context, conf *Config) (proto.NodeID, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	nodeID := proto.NodeID(0)
+
+	// If a broken disk is detected during boot:
+	//   1. If the IP address hasn't been changed, we can query historical bad disk records in cm;
+	//   2. If the IP address has been changed, we can not query it in cm.
+	for _, diskConf := range conf.Disks {
+		// bad disk
+		_, err := os.ReadDir(diskConf.Path)
+		if err != nil {
+			span.Warnf("read disk[%s] root path error:%+v", diskConf.Path, err)
+			continue
+		}
+
+		formatInfo, err := core.ReadFormatInfo(ctx, diskConf.Path)
+		if err != nil {
+			// new disk; format.info v1 upgrade to v2; bad disk; or other error
+			span.Warnf("Failed read disk[%s] format info, err:%+v", diskConf.Path, err)
+			continue
+		}
+
+		if formatInfo.NodeID != 0 && nodeID != 0 && nodeID != formatInfo.NodeID {
+			return 0, errors.Newf("disk[%s] node id not match", diskConf.Path)
+		}
+		nodeID = formatInfo.NodeID
+	}
+
+	return nodeID, nil
+}
+
 func isAllInConfig(ctx context.Context, registeredDisks []*cmapi.BlobNodeDiskInfo, conf *Config) bool {
 	span := trace.SpanFromContextSafe(ctx)
 	configDiskMap := make(map[string]struct{})
@@ -441,6 +485,10 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debug("start blobnode service...")
 
+	if err = svr.registerNode(ctx, &conf); err != nil {
+		span.Fatalf("fail to register node to clusterMgr, err:%+v", err)
+	}
+
 	node := cmapi.ServiceNode{
 		ClusterID: uint64(conf.ClusterID),
 		Name:      proto.ServiceNameBlobNode,
@@ -450,10 +498,6 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	err = svr.ClusterMgrClient.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
 	if err != nil {
 		span.Fatalf("blobnode register to clusterMgr error:%+v", err)
-	}
-
-	if err = svr.registerNode(ctx, &conf); err != nil {
-		span.Fatalf("fail to register node to clusterMgr, err:%+v", err)
 	}
 
 	registeredDisks, err := svr.ClusterMgrClient.ListHostDisk(ctx, conf.Host)
