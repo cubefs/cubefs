@@ -253,7 +253,14 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
 				"checkMetaPartitionRecoveryProgress occurred panic")
 		}
-		log.LogWarnf("checkMetaPartitionRecoveryProgress duration[%v]s", time.Since(start).Seconds())
+
+		cost := time.Since(start)
+		msg := fmt.Sprintf("checkMetaPartitionRecoveryProgress duration[%v]", cost.String())
+		if cost > time.Second*5 {
+			log.LogWarn(msg)
+		} else {
+			log.LogInfo(msg)
+		}
 	}()
 
 	c.badPartitionMutex.Lock()
