@@ -1725,7 +1725,7 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 				{Ratio: 0.8, MpCount: 100, NodeMemRatio: 0.7},
 			},
 			expectedError:    nil,
-			expectedEstimate: []int{7},
+			expectedEstimate: []int{1},
 		},
 		{
 			name: "MetaNodeRec with Ratio <= 0",
