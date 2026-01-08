@@ -28,7 +28,7 @@ ChunkHandler::~ChunkHandler() {
     }
 }
 
-ChunkHandlerPtr ChunkHandler::Create(ChunkConfig&& cfg, ChunkMeta&& meta) {
+ChunkHandlerPtr ChunkHandler::Create(ChunkConfig&& cfg, ChunkMeta meta) {
     return seastar::make_lw_shared<ChunkHandler>(std::move(cfg), std::move(meta));
 }
 

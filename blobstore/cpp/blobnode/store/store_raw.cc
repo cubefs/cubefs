@@ -75,7 +75,6 @@ FutureStatus<StorePtr> RawStore::Open(StoreConfig cfg) noexcept {
         co_return s;
     }
     store_ptr->superblock_ = superblock;
-    store_ptr->checkpoint_buffer_ = store_ptr->dev_->Alloc(1 << 20);
 
     if (superblock.DiskMeta().format() == ::blobstore::kFormatDiskTypeRawDeviceV1) {
         store_ptr->format_ = rawStoreFormatLayoutV1;
@@ -92,7 +91,39 @@ FutureStatus<StorePtr> RawStore::Open(StoreConfig cfg) noexcept {
 
 FutureStatus<> RawStore::Load(Trace& t) noexcept {
     Status<> s;
-    // TODO
+    if (!superblock_.IsFormatted()) {
+        s.SetCode(ErrCode::ErrInvalid).SetReason("store: disk not formatted");
+        co_return s;
+    }
+
+    s = co_await LoadChunks(t);
+    if (!s) {
+        co_return s;
+    }
+
+    s = co_await LoadSlices(t);
+    if (!s) {
+        co_return s;
+    }
+
+    JournalConfig journal_cfg{
+        .start_offset = superblock_.Layout().log_arena_start(),
+        .journal_arena_size = format_.log_arena_size,
+    };
+    std::map<JournalRecordType, CheckpointCallBack> callbacks;
+    callbacks[JournalRecordType::SliceMeta] =
+        [this](const JournalEntryMap& entries) -> FutureStatus<> {
+        co_return co_await CheckPoint(entries);
+    };
+
+    auto journal_res = co_await Journal::Create(journal_cfg, dev_.get(), callbacks);
+    if (!journal_res) {
+        s.SetCode(journal_res.Code()).SetReason(journal_res.Reason());
+        co_return s;
+    }
+    journal_ = std::move(journal_res.Value());
+
+    s = co_await ReplayLog(t);
     co_return s;
 }
 
@@ -118,7 +149,7 @@ FutureStatus<> RawStore::UpdateDiskMeta(Trace& t, DiskMetaInfo disk_meta) noexce
     if (disk_meta.format() == ::blobstore::kFormatDiskTypeRawDeviceV1) {
         SuperBlockInfo superblock;
         superblock.mutable_meta()->CopyFrom(disk_meta);
-        superblock.mutable_layout()->CopyFrom(superblock_.super_block_info.layout());
+        superblock.mutable_layout()->CopyFrom(superblock_.Layout());
         s = co_await UpsertSuperBlock(superblock);
     } else {
         s.SetCode(ErrCode::ErrInvalid).SetReason("store: invalid format type of disk");
@@ -301,6 +332,122 @@ FutureStatus<> RawStore::DeleteSlice(SlicePtr sm) noexcept {
     co_return s;
 }
 
+FutureStatus<> RawStore::LoadChunks(Trace& t) noexcept {
+    Status<> s;
+
+    const auto max_chunk_count = superblock_.Layout().max_chunk_count();
+    const auto chunk_meta_start_offset = superblock_.ChunkMetaStartOffset();
+    auto chunk_meta_buf = dev_->Alloc(format_.chunk_meta_size * max_chunk_count);
+
+    // read all chunk meta once
+    auto read_s = co_await dev_->Read(chunk_meta_start_offset, chunk_meta_buf.get_write(),
+                                      format_.chunk_meta_size * max_chunk_count);
+    if (!read_s) {
+        s.SetCode(read_s.Code()).SetReason(read_s.Reason());
+        co_return s;
+    }
+
+    uint64_t current_chunk_index = 0;
+    while (current_chunk_index < max_chunk_count) {
+        const uint64_t offset = current_chunk_index * format_.chunk_meta_size;
+        ChunkMeta chunk_meta;
+        chunk_meta.block_size = format_.chunk_meta_size;
+        s = chunk_meta.Decode(chunk_meta_buf.get() + offset);
+        if (!s) {
+            co_return s;
+        }
+
+        current_chunk_index++;
+        ChunkConfig chunk_cfg{
+            .format_slice_size = static_cast<uint32_t>(format_.slice_size),
+            .format_block_size = static_cast<uint32_t>(format_.block_size),
+            .device = dev_.get(),
+            .cb_chunk_free = [this](ChunkIndex index) { FreeChunk(index); },
+            .cb_slice_alloc = [this](SliceID slice_id, Vuid vuid, uint32_t chunk_epoch)
+                -> Status<SlicePtr> { return AllocSlice(slice_id, vuid, chunk_epoch); },
+            .cb_slice_update = [this](SlicePtr slice) -> FutureStatus<> {
+                return UpdateSlice(slice);
+            },
+            .cb_slice_delete = [this](SlicePtr slice) -> FutureStatus<> {
+                return DeleteSlice(slice);
+            },
+        };
+        auto chunk = ChunkHandler::Create(std::move(chunk_cfg), chunk_meta);
+
+        if (chunk_meta.IsFree()) {
+            continue;
+        }
+        if (chunk_meta.IsReleasing()) {
+            chunk_registry_.pending_clean_chunks.push_back(chunk);
+            continue;
+        }
+
+        chunk_registry_.Insert(chunk_meta.GetChunkID(), chunk);
+    }
+
+    co_return s;
+}
+
+FutureStatus<> RawStore::LoadSlices(Trace& t) noexcept {
+    Status<> s;
+
+    // init slice vector
+    const auto max_slice_count = superblock_.Layout().max_slice_count();
+    slice_registry_.resize(max_slice_count);
+    slice_dirty_bitmap_.resize((max_slice_count >> kSliceMetaBucketShift) + 1, 0);
+
+    slice_meta_buffer_ = dev_->Alloc(max_slice_count * format_.slice_meta_size);
+
+    // init slice allocator
+    slice_allocator_ = std::make_unique<SliceAllocator>(max_slice_count);
+
+    uint64_t current_slice_index = 0;
+    constexpr uint32_t slice_batch_num = 1024;
+    const auto batch_size = format_.slice_meta_size * slice_batch_num;
+
+    uint64_t offset = 0;
+    while (current_slice_index < max_slice_count) {
+        offset = current_slice_index * format_.slice_meta_size;
+        uint64_t disk_off = superblock_.SliceMetaStartOffset() + offset;
+        if (const auto read_s =
+                co_await dev_->Read(disk_off, slice_meta_buffer_.get_write() + offset, batch_size);
+            !read_s) {
+            s.SetCode(read_s.Code()).SetReason(read_s.Reason());
+            co_return s;
+        }
+
+        const char* data = slice_meta_buffer_.get() + offset;
+        for (uint32_t i = 0; i < slice_batch_num && current_slice_index < max_slice_count; i++) {
+            SlicePtr slice =
+                seastar::make_lw_shared<Slice>(SliceMetaInfo{}, format_.slice_meta_size);
+            s = slice->Decode(data);
+            if (!s) {
+                co_return s;
+            }
+            current_slice_index++;
+            data += format_.slice_meta_size;
+            UpsertSliceMetaInMemory(slice);  // insert to slice_registry_
+
+            if (slice->IsNormal()) {
+                auto chunk_s = GetChunk(slice->GetVuid());
+                if (!chunk_s) {
+                    s.SetCode(chunk_s.Code()).SetReason("get chunk failed for vuid");
+                    co_return s;
+                }
+                chunk_s.Value()->AddSlice(slice);
+                continue;
+            }
+            if (slice->IsEmpty()) {
+                slice_allocator_->Free(slice->GetIndex());
+                continue;
+            }
+            // other case
+        }
+    }
+
+    co_return s;
+}
+
 FutureStatus<> RawStore::UpsertSliceMetaInPersistence(SlicePtr sm) noexcept {
     Status<> s;
     // TODO
@@ -357,7 +504,15 @@ FutureStatus<> RawStore::FormatV1(Trace& t, DiskMetaInfo disk_meta) noexcept {
     layout->set_max_chunk_count(max_chunk_count);
     layout->set_max_slice_count(max_slice_count);
 
-    // TODO: Init Journal, free chunks, free slices
+    const auto journal_cfg = JournalConfig{
+        .start_offset = layout->log_arena_start(),
+        .journal_arena_size = format_.log_arena_size,
+    };
+    s = co_await Journal::Format(dev_.get(), journal_cfg);
+    if (!s) {
+        co_return s;
+    }
+    // TODO: init free chunks, free slices
 
     s = co_await UpsertSuperBlock(std::move(superblock));
     co_return s;
@@ -453,6 +608,95 @@ Status<ChunkHandlerPtr> RawStore::GetChunk(Vuid vuid) noexcept {
     auto chunk_id = it_id->second;
     s = GetChunk(chunk_id);
     return s;
+}
+
+FutureStatus<> RawStore::CheckPoint(const JournalEntryMap& entries) noexcept {
+    Status<> s;
+    for (const auto& entry : entries | std::views::values) {
+        switch (entry->Type()) {
+            case JournalRecordType::SliceMeta: {
+                Slice* slice_meta = dynamic_cast<Slice*>(entry.get());
+                const auto buf_off = slice_meta->GetIndex() * format_.slice_meta_size;
+                s = slice_meta->Encode(slice_meta_buffer_.get_write() + buf_off);
+                if (!s) {
+                    co_return s;
+                }
+                const uint32_t bit_idx = slice_meta->GetIndex() >> kSliceMetaBucketShift;
+                slice_dirty_bitmap_[bit_idx] = 1;
+                break;
+            }
+            default:
+                s.SetCode(ErrCode::ErrUnsupported).SetReason("store: journal type not supported");
+                co_return s;
+        }
+    }
+    auto t = blobstore::Trace("check-point");
+    co_return co_await FlushSliceMeta(t);
+}
+
+FutureStatus<> RawStore::ReplayLog(Trace& t) noexcept {
+    Status<> s = co_await journal_->Replay(
+        [this](JournalRecordType type, const char* data, size_t size) -> FutureStatus<> {
+            Status<> apply_s;
+            switch (type) {
+                case JournalRecordType::SliceMeta: {
+                    SlicePtr slice =
+                        seastar::make_lw_shared<Slice>(SliceMetaInfo{}, format_.slice_meta_size);
+                    apply_s = slice->UnmarshalFrom(data, size);
+                    if (!apply_s) {
+                        break;
+                    }
+                    const auto idx = slice->GetIndex();
+                    const auto buffer_off = format_.slice_meta_size * idx;
+                    if (apply_s = slice->Encode(slice_meta_buffer_.get_write() + buffer_off);
+                        !apply_s) {
+                        break;
+                    }
+                    slice_dirty_bitmap_[idx >> kSliceMetaBucketShift] = 1;
+                    UpsertSliceMetaInMemory(std::move(slice));
+                    break;
+                }
+                default:
+                    apply_s.SetCode(ErrCode::ErrUnsupported)
+                        .SetReason("store: journal type unsupported");
+            }
+            co_return apply_s;
+        },
+        [this, &t]() -> FutureStatus<> { co_return co_await FlushSliceMeta(t); });
+    co_return s;
+}
+
+FutureStatus<> RawStore::FlushSliceMeta(Trace& t) noexcept {
+    Status<> s;
+    size_t start = 0;
+    size_t batch = 0;
+    constexpr size_t max_batch = (1 << 20) / kSliceMetaBucketSize;
+
+    size_t length = slice_dirty_bitmap_.size();
+    for (size_t i = 0; i < length; i++) {
+        if (slice_dirty_bitmap_[i]) {
+            if (!batch) {
+                start = i;
+            }
+            batch++;
+            if ((batch < max_batch) && (i < length - 1)) {
+                continue;
+            }
+        }
+        if (!batch) {
+            continue;
+        }
+        const auto buff_off = start * kSliceMetaBucketSize;
+        const auto disk_off = superblock_.SliceMetaStartOffset() + buff_off;
+        const auto size = batch * kSliceMetaBucketSize;
+        if (s = co_await dev_->Write(disk_off, slice_meta_buffer_.get() + buff_off, size); !s) {
+            co_return s;
+        }
+        batch = 0;
+    }
+
+    slice_dirty_bitmap_.assign(length, 0);
+    co_return s;
 }
 
 }  // namespace blobnode

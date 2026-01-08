@@ -23,6 +23,7 @@
 #include "common/status.h"
 #include "common/types.h"
 #include "common/util.h"
+#include "journal.h"
 
 namespace blobstore {
 namespace blobnode {
@@ -42,7 +43,7 @@ using SliceMetaBlocker = MetaBlocker<kSliceMetaMagicSize, kSliceMetaMagic>;
 class Slice;
 using SlicePtr = seastar::lw_shared_ptr<Slice>;
 
-class Slice {
+class Slice : public BaseJournalEntry {
     SliceMetaInfo meta_;
     size_t meta_block_size_;
 
@@ -87,7 +88,25 @@ class Slice {
     Status<> Decode(const char* b) {
         return SliceMetaBlocker::Decode(meta_block_size_, b, &meta_, kSliceMetaName);
     }
-};
 
+    Status<> MarshalTo(char* buffer) override {
+        Status<> s;
+        if (!meta_.SerializeToArray(buffer, Size())) {
+            s.SetCode(ErrCode::ErrUnknown).SetReason("store: marshal slice meta failed");
+        }
+        return s;
+    }
+    Status<> UnmarshalFrom(const char* buffer, size_t size) override {
+        Status<> s;
+        if (!meta_.ParseFromArray(buffer, static_cast<int>(size))) {
+            s.SetCode(ErrCode::ErrUnknown).SetReason("store: unmarshal slice meta failed");
+        }
+        return s;
+    }
+
+    uint32_t ID() override { return meta_.index(); }
+    uint8_t Size() override { return meta_.ByteSizeLong(); }
+    JournalRecordType Type() override { return JournalRecordType::SliceMeta; }
+};
 }  // namespace blobnode
 }  // namespace blobstore

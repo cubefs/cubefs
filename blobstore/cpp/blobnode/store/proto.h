@@ -27,7 +27,6 @@ using JournalHeaderVer = uint64_t;
 
 constexpr JournalHeaderVer kInitJournalHeaderVer = 1;
 // constexpr uint32_t kDeviceSectorSize = 512;
-constexpr uint32_t kSliceMetaSize = 32 + 32;
 
 enum class JournalHeaderFlag : uint8_t {
     UnCheckpoint = 0,
@@ -82,7 +81,7 @@ constexpr rawStoreFormatLayout rawStoreFormatLayoutV1{
     .log_record_size = (4ull << 10),
     .chunk_arena_size = (16ull << 30),
     .chunk_meta_size = (4ull << 10),
-    .slice_meta_size = 512ull,
+    .slice_meta_size = 128ull,
     // every block(32KB-4) with 4 byte crc
     .slice_size = (4ull << 20),
     .block_size = (32ull << 10),

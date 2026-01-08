@@ -33,6 +33,9 @@
 namespace blobstore {
 namespace blobnode {
 
+constexpr size_t kSliceMetaBucketSize = 4096;
+constexpr size_t kSliceMetaBucketShift = 5;  // 1 << kSliceMetaBucketShift slice per bucket
+
 // RawStore implements Store interface for raw device access.
 class RawStore final : public Store {
     SuperBlock superblock_;
@@ -63,14 +66,16 @@ class RawStore final : public Store {
     std::vector<ChunkIndex> free_chunk_queue_;
 
     // All slice meta in memory
+    // Slice meta in memory
     std::vector<SlicePtr> slice_registry_;
-    Buffer checkpoint_buffer_;
+    std::vector<uint8_t> slice_dirty_bitmap_;
+    Buffer slice_meta_buffer_;
 
     // Slice allocator - manages free slice indexes
     std::unique_ptr<SliceAllocator> slice_allocator_;
 
     // Write-ahead log manager (A/B arena pattern)
-    JournalPtr log_mgr_;
+    JournalPtr journal_;
 
     StoreConfig cfg_;
     DevicePtr dev_;
@@ -88,6 +93,11 @@ class RawStore final : public Store {
     Status<ChunkHandlerPtr> GetChunk(Vuid vuid) noexcept;
     FutureStatus<> UpsertSliceMetaInPersistence(SlicePtr sm) noexcept;
     void UpsertSliceMetaInMemory(SlicePtr sm) noexcept;
+    FutureStatus<> LoadChunks(Trace& t) noexcept;
+    FutureStatus<> LoadSlices(Trace& t) noexcept;
+    FutureStatus<> ReplayLog(Trace& t) noexcept;
+    FutureStatus<> FlushSliceMeta(Trace& t) noexcept;
+    FutureStatus<> CheckPoint(const JournalEntryMap& entries) noexcept;
 
     // AllocSlice alloc new slice from available
     Status<SlicePtr> AllocSlice(SliceID slice_id, Vuid vuid, uint32_t chunk_epoch) noexcept;

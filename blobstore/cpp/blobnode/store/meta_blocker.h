@@ -8,6 +8,7 @@
 
 #include "common/byteorder.h"
 #include "common/concepts.h"
+#include "common/crc.h"
 #include "common/status.h"
 
 namespace blobstore {
@@ -16,8 +17,8 @@ namespace blobnode {
 // MetaBlocker provides unified encode/decode for protobuf messages
 //
 // Wire format:
-//   | magic (4B) | len (4B) | meta (len B) | crc (4B) | padding |
-//   |<---- kHeaderSize ---->|                         |
+//   | magic (4B) | len (4B) | meta (len B) | padding | crc (4B) |
+//   |<---- kHeaderSize ---->|                                   |
 //   |<-------------------- BlockSize -------------------------->|
 //
 // Template parameters:
@@ -35,7 +36,7 @@ class MetaBlocker {
         return block_size - kHeaderSize - kCrcSize;
     }
 
-    template <::blobstore::ProtobufMessageSerializable Meta>
+    template <::blobstore::ProtobufMessageSerdes Meta>
     static Status<> Encode(size_t block_size, const Meta& meta, char* b, const std::string& name) {
         Status<> s;
 
@@ -54,11 +55,12 @@ class MetaBlocker {
             return s;
         }
 
-        // TODO: add crc
+        uint32_t crc = CRC32_IEEE(0, b, kHeaderSize + len);
+        BigEndian::PutUint32(b + block_size - kCrcSize, crc);
         return s;
     }
 
-    template <::blobstore::ProtobufMessageDeserializable Meta>
+    template <::blobstore::ProtobufMessageSerdes Meta>
     static Status<> Decode(size_t block_size, const char* b, Meta* meta, const std::string& name) {
         Status<> s;
 
@@ -73,11 +75,15 @@ class MetaBlocker {
             return s;
         }
 
-        // TODO: Verify CRC
-
         const char* data = b + kHeaderSize;
         if (!meta->ParseFromArray(data, static_cast<int>(len))) {
             s.SetCode(ErrCode::ErrInvalid).SetReason(name + ": deoce parse failed");
+            return s;
+        }
+
+        uint32_t crc = BigEndian::Uint32(b + block_size - kCrcSize);
+        if (crc != CRC32_IEEE(0, b, meta->ByteSizeLong() + kHeaderSize)) {
+            s.SetCode(ErrCode::ErrInvalid).SetReason(name + ": decode crc mismatch");
             return s;
         }
         return s;

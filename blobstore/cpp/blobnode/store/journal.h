@@ -133,8 +133,9 @@ struct JournalArenaConfig {
     uint64_t replay_batch_size;
 };
 
-using CheckpointCallBack =
-    std::function<FutureStatus<>(const std::map<uint64_t, BaseJournalEntryPtr> &)>;
+using JournalEntryMap = std::map<uint64_t, BaseJournalEntryPtr>;
+using CheckpointCallBack = std::function<FutureStatus<>(const JournalEntryMap &)>;
+
 // |-----------|---------|----------|---------|
 // |  version  | flag    | payload  |  crc32  |
 // |-----------|---------|----------|---------|
@@ -258,8 +259,7 @@ class Journal {
     // Callback functions
     CheckpointCallBack *checkpoint_cbs_[static_cast<uint8_t>(JournalRecordType::Max)]{};
     // for increment checkpoint
-    std::map<uint64_t, BaseJournalEntryPtr>
-        dirty_records_[static_cast<uint8_t>(JournalRecordType::Max)][2] = {};
+    JournalEntryMap dirty_records_[static_cast<uint8_t>(JournalRecordType::Max)][2] = {};
 
     seastar::gate gate_;
 };

@@ -36,7 +36,10 @@ struct SuperBlock {
     size_t block_size;
 
     bool IsFormatted() { return super_block_info.meta().registered(); }
+    const LayoutInfo& Layout() { return super_block_info.layout(); }
     const DiskMetaInfo& DiskMeta() { return super_block_info.meta(); }
+    uint64_t SliceMetaStartOffset() const { return super_block_info.layout().slice_meta_start(); }
+    uint64_t ChunkMetaStartOffset() const { return super_block_info.layout().chunk_meta_start(); }
 
     Status<> Encode(char* b) {
         return SuperBlocker::Encode(block_size, super_block_info, b, kSuperBlockName);

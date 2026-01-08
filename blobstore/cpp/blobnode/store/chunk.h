@@ -55,6 +55,27 @@ struct ChunkMeta {
     inline uint64_t GetChunkSize() const { return chunk_meta_info.chunk_size(); }
     inline void SetChunkSize(uint64_t size) { return chunk_meta_info.set_chunk_size(size); }
 
+    inline ChunkID GetChunkID() const {
+        ChunkID id;
+        const auto& bytes = chunk_meta_info.chunk_id();
+        if (bytes.size() == ChunkID::kLength) {
+            std::memcpy(id.data.data(), bytes.data(), ChunkID::kLength);
+        }
+        return id;
+    }
+    inline void SetChunkID(const ChunkID& id) {
+        chunk_meta_info.set_chunk_id(id.data.data(), ChunkID::kLength);
+    }
+
+    // new or recycled chunk can be reused
+    bool IsFree() const {
+        return chunk_meta_info.status() == static_cast<uint32_t>(ChunkStatus::Init);
+    }
+    // need to recycle
+    bool IsReleasing() const {
+        return chunk_meta_info.status() == static_cast<uint32_t>(ChunkStatus::Release);
+    }
+
     Status<> Encode(char* b) {
         return ChunkMetaBlocker::Encode(block_size, chunk_meta_info, b, kChunkMetaName);
     }
@@ -97,7 +118,7 @@ class ChunkHandler {
 
     explicit ChunkHandler(ChunkConfig&& cfg, ChunkMeta&& meta);
     ~ChunkHandler();
-    static ChunkHandlerPtr Create(ChunkConfig&& cfg, ChunkMeta&& meta);
+    static ChunkHandlerPtr Create(ChunkConfig&& cfg, ChunkMeta meta);
 
     // UpdateMetaInfo update chunk meta info in memory
     void UpdateMeta(ChunkMeta meta) noexcept { chunk_meta_ = meta; }
