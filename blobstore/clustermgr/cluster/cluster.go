@@ -532,12 +532,14 @@ func (d *manager) AllowNodeIPChange(ctx context.Context, info *clustermgr.NodeIn
 		dropping = oldNodeItem.dropping
 		return nil
 	})
-	oldNodeInfo.Host = info.Host
-	oldNodeInfo.Rack = info.Rack
-	if oldNodeInfo != *info || oldNodeInfo.Status == proto.NodeStatusDropped || dropping {
+	if oldNodeInfo.Status == proto.NodeStatusDropped || dropping {
 		return false
 	}
-	return true
+	oldNodeInfo.Host = info.Host
+	oldNodeInfo.Rack = info.Rack
+	oldNodeInfo.NodeSetID = 0
+	oldNodeInfo.Status = 0
+	return oldNodeInfo == *info
 }
 
 func (d *manager) ValidateNodeInfo(ctx context.Context, info *clustermgr.NodeInfo) error {

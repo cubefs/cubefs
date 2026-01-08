@@ -128,30 +128,36 @@ func TestNodeUpdate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, nodeID, proto.NodeID(1))
 
-	info, err := testClusterClient.NodeInfo(ctx, 1)
+	oldInfo, err := testClusterClient.NodeInfo(ctx, 1)
 	require.NoError(t, err)
 
 	// update node
+	info := *oldInfo
+	info.NodeSetID = 0
+	info.Status = 0
 	info.Host = "127.0.0.1:9110"
 	info.Rack = "newRack"
-	nodeID, err = testClusterClient.AddNode(ctx, info)
+	nodeID, err = testClusterClient.AddNode(ctx, &info)
 	require.NoError(t, err)
 	require.Equal(t, nodeID, proto.NodeID(1))
 
 	info1, err := testClusterClient.NodeInfo(ctx, 1)
 	require.NoError(t, err)
-	require.Equal(t, info, info1)
+	require.NotEqual(t, oldInfo, info1)
+	info1.Host = nodeInfo.Host
+	info1.Rack = nodeInfo.Rack
+	require.Equal(t, oldInfo, info1)
 
 	// update not exist node
 	info.NodeID = proto.NodeID(100)
 	info.Host = "127.0.0.1:1111"
-	_, err = testClusterClient.AddNode(ctx, info)
+	_, err = testClusterClient.AddNode(ctx, &info)
 	require.Error(t, err)
 
 	// update node idc not allowed
 	info.NodeID = proto.NodeID(1)
 	info.Idc = testService.IDC[1]
-	_, err = testClusterClient.AddNode(ctx, info)
+	_, err = testClusterClient.AddNode(ctx, &info)
 	require.Error(t, err)
 }
 
