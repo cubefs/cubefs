@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -117,10 +118,12 @@ func (cb *CacheBlock) Close() (err error) {
 
 func (cb *CacheBlock) Delete(reason string) (err error) {
 	_ = cb.Close()
-	if cb.Exist() {
-		err = os.Remove(cb.filePath)
+	if err = os.Remove(cb.filePath); err != nil && !os.IsNotExist(err) {
 		auditlog.LogFlashNodeOp("BlockDelete", fmt.Sprintf("delete block %v, by :%v",
 			cb.info(), reason), err)
+	} else if err == nil {
+		auditlog.LogFlashNodeOp("BlockDelete", fmt.Sprintf("delete block %v, by :%v",
+			cb.info(), reason), nil)
 	}
 	return
 }
@@ -343,31 +346,32 @@ func (cb *CacheBlock) GetExpiredTime() time.Time {
 }
 
 func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string) (allocSize, usedSize int64, expiredTime time.Time, err error) {
+	buf := make([]byte, HeaderSize)
+	if _, err = io.ReadFull(file, buf); err != nil {
+		return
+	}
+
+	seconds := int64(binary.BigEndian.Uint64(buf[32:40]))
+	expiredTime = time.Unix(seconds, 0)
+	currentTime := time.Now()
+	if expiredTime.Before(currentTime) {
+		err = fmt.Errorf("cacheBlock(%v) was expired, expiredTime(%v) currentTime(%v) ",
+			cb.blockKey, expiredTime.Format("2006-01-02 15:04:05"), currentTime.Format("2006-01-02 15:04:05"))
+		return
+	}
+
 	var stat os.FileInfo
-	var seconds int64
-	var reserved1, reserved2 uint64
 	if stat, err = file.Stat(); err != nil {
 		return
 	}
 
-	if err = binary.Read(file, binary.BigEndian, &reserved1); err != nil {
-		return
-	}
-	if err = binary.Read(file, binary.BigEndian, &reserved2); err != nil {
-		return
-	}
-
-	if err = binary.Read(file, binary.BigEndian, &allocSize); err != nil {
-		return
-	}
+	allocSize = int64(binary.BigEndian.Uint64(buf[16:24]))
 	if allocSize == 0 {
 		err = fmt.Errorf("allocSize is zero")
 		return
 	}
 
-	if err = binary.Read(file, binary.BigEndian, &usedSize); err != nil {
-		return
-	}
+	usedSize = int64(binary.BigEndian.Uint64(buf[24:32]))
 	if usedSize == 0 {
 		err = fmt.Errorf("usedSize is zero")
 		return
@@ -384,18 +388,6 @@ func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string
 		}
 	}
 
-	if err = binary.Read(file, binary.BigEndian, &seconds); err != nil {
-		err = fmt.Errorf("expired seconds read failed, err:%v", err)
-		return
-	}
-
-	expiredTime = time.Unix(seconds, 0)
-	currentTime := time.Now()
-	if expiredTime.Before(currentTime) {
-		err = fmt.Errorf("cacheBlock(%v) was expired, expiredTime(%v) currentTime(%v) ",
-			cb.blockKey, expiredTime.Format("2006-01-02 15:04:05"), currentTime.Format("2006-01-02 15:04:05"))
-		return
-	}
 	return
 }
 
@@ -413,26 +405,26 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 		}
 	}()
 
-	var file *os.File
-	blockParent := path.Join(cb.rootPath+cb.sourceType, cb.volume)
-
-	if _, err = os.Stat(blockParent); err != nil {
-		if !os.IsNotExist(err.(*os.PathError)) {
-			return fmt.Errorf("initFilePath stat directory[%v] failed: %s", blockParent, err.Error())
+	if !isLoad {
+		blockParent := path.Join(cb.rootPath+cb.sourceType, cb.volume)
+		if _, err = os.Stat(blockParent); err != nil {
+			if !os.IsNotExist(err.(*os.PathError)) {
+				return fmt.Errorf("initFilePath stat directory[%v] failed: %s", blockParent, err.Error())
+			}
+			if err = os.Mkdir(blockParent, 0o755); err != nil {
+				if !os.IsExist(err) {
+					return
+				}
+			}
 		}
-		if err = os.Mkdir(blockParent, 0o755); err != nil {
-			if !os.IsExist(err) {
-				return
+		if _, err := os.Stat(cb.filePath); err != nil {
+			if !os.IsNotExist(err.(*os.PathError)) {
+				return fmt.Errorf("initFilePath stat filePath[%v] failed: %s", cb.filePath, err.Error())
 			}
 		}
 	}
 
-	if _, err := os.Stat(cb.filePath); err != nil {
-		if !os.IsNotExist(err.(*os.PathError)) {
-			return fmt.Errorf("initFilePath stat filePath[%v] failed: %s", cb.filePath, err.Error())
-		}
-	}
-
+	var file *os.File
 	if file, err = os.OpenFile(cb.filePath, _cacheBlockOpenOpt, 0o666); err != nil {
 		return err
 	}
@@ -447,6 +439,10 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 			file.Close()
 			return
 		}
+		_, err = os.Stat(cb.filePath)
+		msg := fmt.Sprintf("init cache block(%s) to local: err %v", cb.info(), err)
+		log.LogDebugf("%v", msg)
+		auditlog.LogFlashNodeOp("BlockInit", msg, err)
 	} else {
 		var allocSize, usedSize int64
 		var expiredTime time.Time
@@ -454,20 +450,11 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 			file.Close()
 			return fmt.Errorf("initFilePath check file header failed: %s", err.Error())
 		}
-		cb.updateAllocSize(allocSize)
-		cb.maybeUpdateUsedSize(usedSize)
+		cb.allocSize = allocSize
+		cb.usedSize = usedSize
 		cb.ttl = int64(time.Until(expiredTime).Seconds())
-		if _, err = cb.cacheEngine.lruFhCache.Set(cb.blockKey, file, time.Hour); err != nil {
-			file.Close()
-			return
-		}
+		file.Close()
 		cb.notifyReady()
-	}
-	_, err = os.Stat(cb.filePath)
-	if !isLoad {
-		msg := fmt.Sprintf("init cache block(%s) to local: err %v", cb.info(), err)
-		log.LogDebugf("%v", msg)
-		auditlog.LogFlashNodeOp("BlockInit", msg, err)
 	}
 	return
 }
@@ -885,43 +872,48 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 	return
 }
 
-func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string, uniKey string, allocSize uint64, clientIP string) (block *CacheBlock, err error) {
+func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string, uniKey string, allocSize uint64, clientIP string, asyncDeleteCh chan func()) (block *CacheBlock, cacheItem *lruCacheItem, err error) {
 	key := GenCacheBlockKeyV2(volume, uniKey)
-	cacheItem, ok := c.getCacheItem(key)
+	cacheItem1, ok := c.getCacheItem(key)
 	if ok {
-		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
-			if blockValue, got := cacheItem.lruCache.Peek(key); got {
+		if atomic.LoadInt32(&cacheItem1.disk.Status) == proto.ReadWrite {
+			if blockValue, got := cacheItem1.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
-				return
+				return block, nil, nil
 			}
 		}
 	}
 
 	v, ok := c.lruCacheMap.Load(dataPath)
 	if !ok {
-		return nil, errors.NewErrorf("no lru cache item related to dataPath(%v)", dataPath)
+		return nil, nil, errors.NewErrorf("no lru cache item related to dataPath(%v)", dataPath)
 	}
 	cacheItem = v.(*lruCacheItem)
 	if atomic.LoadInt32(&cacheItem.disk.Status) == proto.Unavailable {
-		return nil, errors.NewErrorf("lru cache item related to dataPath(%v) is unavailable", dataPath)
+		return nil, nil, errors.NewErrorf("lru cache item related to dataPath(%v) is unavailable", dataPath)
 	}
 	block = NewCacheBlockV2(cacheItem.config.Path, volume, uniKey, allocSize, clientIP, cacheItem.disk, c.keyRateLimitThreshold, c.keyLimiterFlow)
 	block.cacheEngine = c
 	defer func() {
 		if err != nil {
-			block.Delete(fmt.Sprintf("create block from exist failed %v", err))
+			deleteFunc := func() {
+				block.Delete(fmt.Sprintf("create block from exist failed %v", err))
+			}
+			if asyncDeleteCh != nil {
+				select {
+				case asyncDeleteCh <- deleteFunc:
+				default:
+					deleteFunc()
+				}
+			} else {
+				deleteFunc()
+			}
 		}
 	}()
-
 	if err = block.initFilePath(true); err != nil {
 		return
 	}
 	block.initKeyLimiter(c.keyRateLimitThreshold, c.keyLimiterFlow)
-	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
-		return
-	}
-	c.setCacheItem(key, cacheItem)
-
 	return
 }
 
