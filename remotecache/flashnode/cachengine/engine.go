@@ -52,6 +52,7 @@ const (
 	DefaultCacheMaxUsedRatio = 0.99
 	DefaultEnableTmpfs       = true
 
+	BatchSetCacheLimit           = 10240
 	LRUCacheBlockCacheType       = 0
 	LRUFileHandleCacheType       = 1
 	MaxEvictCountPerRound        = 100
@@ -308,6 +309,26 @@ func (c *CacheEngine) setCacheItem(key string, cacheItem *lruCacheItem) {
 	c.keyToDiskMap[key] = cacheItem
 }
 
+func (c *CacheEngine) batchSetCacheItem(items []*lruCacheItem, blocks []*CacheBlock) {
+	item := items[0]
+	c.keyToDiskRWMu.Lock()
+	for i, block := range blocks {
+		c.keyToDiskMap[block.blockKey] = items[i]
+	}
+	c.keyToDiskRWMu.Unlock()
+	var (
+		ikeys       []interface{}
+		values      []interface{}
+		expirations []time.Duration
+	)
+	for _, block := range blocks {
+		ikeys = append(ikeys, block.blockKey)
+		values = append(values, block)
+		expirations = append(expirations, time.Duration(block.ttl)*time.Second)
+	}
+	_, _ = item.lruCache.BatchSet(ikeys, values, expirations)
+}
+
 func (c *CacheEngine) deleteCacheItem(key string) {
 	c.keyToDiskRWMu.Lock()
 	defer c.keyToDiskRWMu.Unlock()
@@ -401,13 +422,39 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 		syslog.Print(msg)
 		log.LogInfo(msg)
 	}()
-	filePathChan := make(chan cacheLoadFile, 1024)
+	filePathChan := make(chan cacheLoadFile, 2048)
+	asyncDeleteCh := make(chan func(), 2048)
+	var deleteWg sync.WaitGroup
+	for i := 0; i < c.cacheLoadWorkerNum; i++ {
+		deleteWg.Add(1)
+		go func() {
+			defer deleteWg.Done()
+			for f := range asyncDeleteCh {
+				f()
+			}
+		}()
+	}
+
 	for i := 0; i < c.cacheLoadWorkerNum; i++ {
 		fileLoadWg.Add(1)
 		go func() {
 			defer fileLoadWg.Done()
+			batchItems := make([]*lruCacheItem, 0, BatchSetCacheLimit)
+			batchBlocks := make([]*CacheBlock, 0, BatchSetCacheLimit)
 			for fileInfo := range filePathChan {
-				c.handlerFile(&fileInfo, &cbNum, &errorCbNum)
+				item, block, err1 := c.handlerFile(&fileInfo, &cbNum, &errorCbNum, asyncDeleteCh)
+				if err1 == nil && item != nil && block != nil {
+					batchItems = append(batchItems, item)
+					batchBlocks = append(batchBlocks, block)
+					if len(batchBlocks) >= BatchSetCacheLimit {
+						c.batchSetCacheItem(batchItems, batchBlocks)
+						batchItems = batchItems[:0]
+						batchBlocks = batchBlocks[:0]
+					}
+				}
+			}
+			if len(batchBlocks) > 0 {
+				c.batchSetCacheItem(batchItems, batchBlocks)
 			}
 		}()
 	}
@@ -459,21 +506,26 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 	dirScanWg.Wait()
 	close(filePathChan)
 	fileLoadWg.Wait()
+	close(asyncDeleteCh)
+	deleteWg.Wait()
 	return
 }
 
-func (c *CacheEngine) handlerFile(file *cacheLoadFile, cbNum *atomicutil.Int64, errorCbNum *atomicutil.Int64) {
+func (c *CacheEngine) handlerFile(file *cacheLoadFile, cbNum *atomicutil.Int64, errorCbNum *atomicutil.Int64, asyncDeleteCh chan func()) (item *lruCacheItem, block *CacheBlock, err error) {
 	if SourceTypeDefault == file.sourceType {
-		inode, offset, version, err := unmarshalCacheBlockName(file.fileName)
-		if err != nil {
+		bg := stat.BeginStat()
+		inode, offset, version, err1 := unmarshalCacheBlockName(file.fileName)
+		stat.EndStat("UnmarshalCacheBlockName", err1, bg, 1)
+		if err1 != nil {
+			err = err1
 			log.LogErrorf("action[LoadDisk] unmarshal cacheBlockName(%v) from dataPath(%v) volume(%v) err(%v) ",
 				file.fileName, file.fullPath, file.volume, err.Error())
 			return
 		}
 		log.LogDebugf("acton[LoadDisk] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
 			file.fullPath, file.fileName, file.volume, inode, offset, version)
-
-		if _, err := c.createCacheBlockFromExist(file.dataPath, file.volume, inode, offset, version, 0, ""); err != nil {
+		block, item, err = c.createCacheBlockFromExist(file.dataPath, file.volume, inode, offset, version, 0, "", asyncDeleteCh)
+		if err != nil {
 			c.DeleteCacheBlock(GenCacheBlockKey(file.volume, inode, offset, version))
 			log.LogInfof("action[LoadDisk] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
 				file.fileName, file.fullPath, file.volume, err.Error())
@@ -483,7 +535,10 @@ func (c *CacheEngine) handlerFile(file *cacheLoadFile, cbNum *atomicutil.Int64, 
 	} else {
 		log.LogDebugf("acton[LoadDisk] dataPath(%v) cacheBlockName(%v) volume(%v)",
 			file.fullPath, file.fileName, file.volume)
-		if _, err := c.createCacheBlockFromExistV2(file.dataPath, file.volume, file.fileName, 0, ""); err != nil {
+		bg := stat.BeginStat()
+		block, item, err = c.createCacheBlockFromExistV2(file.dataPath, file.volume, file.fileName, 0, "", asyncDeleteCh)
+		stat.EndStat("CreateCacheBlockFromExistV2", err, bg, 1)
+		if err != nil {
 			c.DeleteCacheBlock(GenCacheBlockKeyV2(file.volume, file.fileName))
 			log.LogInfof("action[LoadDisk] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
 				file.fileName, file.fullPath, file.volume, err.Error())
@@ -492,6 +547,7 @@ func (c *CacheEngine) handlerFile(file *cacheLoadFile, cbNum *atomicutil.Int64, 
 		}
 	}
 	cbNum.Add(1)
+	return
 }
 
 func (c *CacheEngine) Start() (err error) {
@@ -686,43 +742,45 @@ func (c *CacheEngine) selectAvailableLruCache() (cacheItem *lruCacheItem, err er
 	return nil, errors.NewErrorf("no available disk can select")
 }
 
-func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64, clientIP string) (block *CacheBlock, err error) {
+func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64, clientIP string, asyncDeleteCh chan func()) (block *CacheBlock, cacheItem *lruCacheItem, err error) {
 	key := GenCacheBlockKey(volume, inode, fixedOffset, version)
 	if cacheItem, ok := c.getCacheItem(key); ok {
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
-				return
+				return block, nil, nil
 			}
 		}
 	}
 
 	v, ok := c.lruCacheMap.Load(dataPath)
 	if !ok {
-		return nil, errors.NewErrorf("no lru cache item related to dataPath(%v)", dataPath)
+		return nil, nil, errors.NewErrorf("no lru cache item related to dataPath(%v)", dataPath)
 	}
-	cacheItem := v.(*lruCacheItem)
+	cacheItem = v.(*lruCacheItem)
 	if atomic.LoadInt32(&cacheItem.disk.Status) == proto.Unavailable {
-		return nil, errors.NewErrorf("lru cache item related to dataPath(%v) is unavailable", dataPath)
+		return nil, nil, errors.NewErrorf("lru cache item related to dataPath(%v) is unavailable", dataPath)
 	}
 	block = NewCacheBlock(cacheItem.config.Path, volume, inode, fixedOffset, version, allocSize, c.readSourceFunc,
 		clientIP, cacheItem.disk)
 	block.cacheEngine = c
 	defer func() {
 		if err != nil {
-			block.Delete(fmt.Sprintf("create block from exist failed %v", err))
+			deleteFunc := func() {
+				block.Delete(fmt.Sprintf("create block from exist failed %v", err))
+			}
+			if asyncDeleteCh != nil {
+				select {
+				case asyncDeleteCh <- deleteFunc:
+				default:
+					deleteFunc()
+				}
+			} else {
+				deleteFunc()
+			}
 		}
 	}()
-
-	if err = block.initFilePath(true); err != nil {
-		return
-	}
-
-	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
-		return
-	}
-	c.setCacheItem(key, cacheItem)
-
+	err = block.initFilePath(true)
 	return
 }
 

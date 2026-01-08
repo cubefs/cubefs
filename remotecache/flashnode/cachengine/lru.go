@@ -37,6 +37,7 @@ type LruCache interface {
 	Get(key interface{}) (interface{}, error)
 	Peek(key interface{}) (interface{}, bool)
 	Set(key interface{}, value interface{}, expiration time.Duration) (int, error)
+	BatchSet(keys []interface{}, values []interface{}, expirations []time.Duration) (int, error)
 	Evict(key interface{}) bool
 	EvictAll(cacheEvictWorkerNum int)
 	Close() error
@@ -378,6 +379,90 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		c.evictExceed(toEvicts, true)
 		c.lock.Unlock()
 	}
+	return n, nil
+}
+
+func (c *fCache) BatchSet(keys []interface{}, values []interface{}, expirations []time.Duration) (n int, err error) {
+	if len(keys) != len(values) || len(keys) != len(expirations) {
+		return 0, fmt.Errorf("keys, values and expirations length mismatch")
+	}
+
+	c.lock.Lock()
+
+	var toEvicts map[interface{}]interface{}
+	if c.cacheType == LRUFileHandleCacheType {
+		toEvicts = make(map[interface{}]interface{})
+	}
+
+	for i, key := range keys {
+		value := values[i]
+		expiration := expirations[i]
+		if expiration == 0 {
+			expiration = c.ttl
+		}
+		currentExpiration := GenerateRandTime(expiration)
+
+		if ent, ok := c.items[key]; ok {
+			c.lru.MoveToFront(ent)
+			v := ent.Value.(*entry)
+			v.value = value
+			v.createAt = time.Now()
+			v.expiredAt = time.Now().Add(currentExpiration)
+			continue
+		}
+
+		if c.cacheType == LRUCacheBlockCacheType {
+			newCb := value.(*CacheBlock)
+			cbSize := newCb.getAllocSize()
+			atomic.AddInt64(&c.allocated, cbSize)
+		}
+
+		c.items[key] = c.lru.PushFront(&entry{
+			key:       key,
+			value:     value,
+			createAt:  time.Now(),
+			expiredAt: time.Now().Add(currentExpiration),
+		})
+	}
+
+	if c.cacheType == LRUFileHandleCacheType && c.lru.Len() > c.capacity {
+		for i := 0; i < MaxEvictCountPerRound && c.lru.Len() != 0; i++ {
+			ent := c.lru.Back()
+			if ent != nil {
+				toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
+				n++
+			}
+		}
+	} else if c.cacheType == LRUCacheBlockCacheType {
+		if toEvicts == nil {
+			toEvicts = make(map[interface{}]interface{})
+		}
+		minEvictCount := 0
+		evictCount := 0
+		for (c.lru.Len() > c.capacity || atomic.LoadInt64(&c.allocated) > c.maxSize || evictCount < minEvictCount) && c.lru.Len() != 0 {
+			if minEvictCount == 0 {
+				minEvictCount = 50
+			}
+			evictCount++
+			ent := c.lru.Back()
+			if ent != nil {
+				c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
+				toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
+				n++
+			}
+		}
+	}
+
+	if c.cacheType == LRUFileHandleCacheType {
+		c.lock.Unlock()
+		if len(toEvicts) > 0 {
+			go c.evictExceed(toEvicts, false)
+		}
+	} else {
+		c.evictExceed(toEvicts, true)
+		c.lock.Unlock()
+	}
+
 	return n, nil
 }
 
