@@ -52,6 +52,9 @@ struct ChunkMeta {
     ChunkMetaInfo chunk_meta_info;
     size_t block_size;
 
+    inline uint64_t GetChunkSize() const { return chunk_meta_info.chunk_size(); }
+    inline void SetChunkSize(uint64_t size) { return chunk_meta_info.set_chunk_size(size); }
+
     Status<> Encode(char* b) {
         return ChunkMetaBlocker::Encode(block_size, chunk_meta_info, b, kChunkMetaName);
     }
@@ -63,29 +66,23 @@ struct ChunkMeta {
 struct ChunkConfig {
     uint32_t format_slice_size;
     uint32_t format_block_size;
-    ChunkMeta meta;
-    SliceHandler* slice_handler;
+
     Device* device;
-    std::function<void(ChunkIndex)> free_callback;
+
+    std::function<void(ChunkIndex)> cb_chunk_free;
+
+    std::function<Status<SlicePtr>(SliceID, Vuid, uint32_t)> cb_slice_alloc;
+    std::function<FutureStatus<>(SlicePtr)> cb_slice_update;
+    std::function<FutureStatus<>(SlicePtr)> cb_slice_delete;
 };
 
 // ChunkHandler manages slices within a chunk.
 class ChunkHandler {
+    ChunkConfig config_;
     ChunkMeta chunk_meta_;
-    uint32_t format_slice_size_;  // Slice size in bytes 1MB/2MB/4MB...
-    uint32_t format_block_size_;  // Block size in bytes 32KB
 
     //  Slice storage using bucket-based sharding for O(1) access
     std::array<std::unordered_map<SliceID, SlicePtr>, kChunkSliceBucket> slices_;
-
-    // sliceHandler_ points to Store implementation for slice allocation
-    // Lifetime: valid as long as the disk/store is active
-    SliceHandler* sliceHandler_;
-    Device* device_;
-
-    // Callback to free chunk index when ChunkHandler is destroyed
-    std::function<void(ChunkIndex)> free_callback_;
-
     auto& SliceBucket(SliceID id) noexcept {
         const auto idx = id % kChunkSliceBucket;
         return slices_[idx];
@@ -98,9 +95,9 @@ class ChunkHandler {
     ChunkHandler& operator=(const ChunkHandler&) = delete;
     ChunkHandler& operator=(ChunkHandler&&) = delete;
 
-    explicit ChunkHandler(const ChunkConfig& cfg);
+    explicit ChunkHandler(ChunkConfig&& cfg, ChunkMeta&& meta);
     ~ChunkHandler();
-    static ChunkHandlerPtr Create(const ChunkConfig& cfg);
+    static ChunkHandlerPtr Create(ChunkConfig&& cfg, ChunkMeta&& meta);
 
     // UpdateMetaInfo update chunk meta info in memory
     void UpdateMeta(ChunkMeta meta) noexcept { chunk_meta_ = meta; }
@@ -110,9 +107,9 @@ class ChunkHandler {
     // GetAllSlices get all slices
     std::vector<SlicePtr> GetAllSlices() noexcept;
     Status<SlicePtr> GetSlice(SliceID id) noexcept;
-    void AddSlice(SliceMetaPtr sm) noexcept;
-    void DelSlice(SliceID id) noexcept;
     Status<SlicePtr> AllocSlice(SliceID id) noexcept;
+    void AddSlice(SlicePtr slice) noexcept;
+    FutureStatus<> DelSlice(SliceID id) noexcept;
 };
 
 }  // namespace blobnode

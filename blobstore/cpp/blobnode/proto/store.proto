@@ -29,9 +29,9 @@ message SliceMetaInfo {
     uint32 chunk_epoch = 4;
     // LastBlockCrcRaw hold last block increment checksum raw, it'll flush into the tail of slice data as block write full
     uint32 last_block_crc_raw = 5;
-    uint64 offset = 6;
-    uint32 size = 7;
-    uint32 flag = 8;
+    // flag_size: high 8 bits = flag, low 24 bits = size
+    // flag range: 0-255, size range: 0-16MB (2^24 - 1)
+    uint32 flag_size = 6;
 }
 
 message LogHeaderInfo {

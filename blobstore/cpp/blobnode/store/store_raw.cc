@@ -281,33 +281,33 @@ FutureStatus<> RawStore::Close(Trace& t) noexcept {
     co_return s;
 }
 
-// SliceHandler implements
+// slice implements
 
-Status<SliceMetaPtr> RawStore::AllocSlice(SliceID sid, Vuid vuid, uint32_t chunk_epoch) {
-    Status<SliceMetaPtr> s;
+Status<SlicePtr> RawStore::AllocSlice(SliceID sid, Vuid vuid, uint32_t chunk_epoch) noexcept {
+    Status<SlicePtr> s;
     // TODO
     return s;
 }
 
-FutureStatus<> RawStore::UpdateSlice(SliceMetaPtr sm) {
+FutureStatus<> RawStore::UpdateSlice(SlicePtr sm) noexcept {
     auto s = co_await UpsertSliceMetaInPersistence(sm);
     // TODO
     co_return s;
 }
 
-FutureStatus<> RawStore::DeleteSlice(SliceMetaPtr sm) {
+FutureStatus<> RawStore::DeleteSlice(SlicePtr sm) noexcept {
     Status<> s;
     // TODO
     co_return s;
 }
 
-FutureStatus<> RawStore::UpsertSliceMetaInPersistence(SliceMetaPtr sm) noexcept {
+FutureStatus<> RawStore::UpsertSliceMetaInPersistence(SlicePtr sm) noexcept {
     Status<> s;
     // TODO
     co_return s;
 }
 
-void RawStore::UpsertSliceMetaInMemory(SliceMetaPtr sm) noexcept {
+void RawStore::UpsertSliceMetaInMemory(SlicePtr sm) noexcept {
     // TODO
 }
 
@@ -408,16 +408,19 @@ Status<ChunkHandlerPtr> RawStore::AllocChunk() noexcept {
 
     ChunkMeta meta;
     meta.chunk_meta_info.set_index(idx);
+    meta.SetChunkSize(format_.chunk_arena_size);  // chunk has free size
 
     auto cfg = ChunkConfig{
         .format_slice_size = static_cast<uint32_t>(format_.slice_size),
         .format_block_size = static_cast<uint32_t>(format_.block_size),
-        .meta = std::move(meta),
-        .slice_handler = this,
         .device = dev_.get(),
-        .free_callback = [this](ChunkIndex index) { FreeChunk(index); },
+        .cb_chunk_free = [this](ChunkIndex index) { FreeChunk(index); },
+        .cb_slice_alloc = [this](SliceID slice_id, Vuid vuid, uint32_t chunk_epoch)
+            -> Status<SlicePtr> { return AllocSlice(slice_id, vuid, chunk_epoch); },
+        .cb_slice_update = [this](SlicePtr slice) -> FutureStatus<> { return UpdateSlice(slice); },
+        .cb_slice_delete = [this](SlicePtr slice) -> FutureStatus<> { return DeleteSlice(slice); },
     };
-    s.SetValue(std::move(ChunkHandler::Create(std::move(cfg))));
+    s.SetValue(ChunkHandler::Create(std::move(cfg), std::move(meta)));
     return s;
 }
 

@@ -18,6 +18,7 @@
 
 #include "blobnode/proto/store.pb.h"
 #include "blobnode/store/meta_blocker.h"
+#include "blobnode/store/proto.h"
 #include "common/const.h"
 #include "common/status.h"
 #include "common/types.h"
@@ -26,55 +27,66 @@
 namespace blobstore {
 namespace blobnode {
 
+// flag_size field layout: | flag (8 bits) | size (24 bits) |
+// flag range: 0-255, size range: 0-16MB (2^24 - 1)
+constexpr uint32_t kFlagSizeFlagShift = 24;
+constexpr uint32_t kFlagSizeFlagMask = 0xFF000000;
+constexpr uint32_t kFlagSizeSizeMask = 0x00FFFFFF;
+
 constexpr std::size_t kSliceMetaMagicSize = 4;
 constexpr std::array<std::uint8_t, kSliceMetaMagicSize> kSliceMetaMagic{0xaa, 0xbb, 0xcc, 0xdd};
 
 static constexpr std::string kSliceMetaName = "slicemeta";
 using SliceMetaBlocker = MetaBlocker<kSliceMetaMagicSize, kSliceMetaMagic>;
 
-struct Slice;
+class Slice;
 using SlicePtr = seastar::lw_shared_ptr<Slice>;
 
-struct SliceMeta;
-using SliceMetaPtr = seastar::lw_shared_ptr<SliceMeta>;
+class Slice {
+    SliceMetaInfo meta_;
+    size_t meta_block_size_;
 
-struct SliceMeta {
-    // TODO: need slice meta checksum
-    SliceMetaInfo meta_info;
-    size_t block_size;
+    Buffer lastSector_;
 
-    bool IsEmpty() {
-        return meta_info.vuid() == 0 &&
-               meta_info.flag() == static_cast<uint32_t>(SliceStatus::Init);
+   public:
+    Slice() = delete;
+    explicit Slice(SliceMetaInfo meta, size_t meta_block_size)
+        : meta_(meta), meta_block_size_(meta_block_size) {}
+
+    uint64_t GetSliceID() const { return meta_.slice_id(); }
+    void SetSliceID(uint64_t slice_id) { meta_.set_slice_id(slice_id); }
+
+    SliceIndex GetIndex() const { return meta_.index(); }
+    void SetIndex(SliceIndex index) { meta_.set_index(index); }
+
+    Vuid GetVuid() const { return meta_.vuid(); }
+    void SetVuid(Vuid vuid) { meta_.set_vuid(vuid); }
+
+    uint32_t GetChunkEpoch() const { return meta_.chunk_epoch(); }
+    void SetChunkEpoch(uint32_t epoch) { meta_.set_chunk_epoch(epoch); }
+
+    uint32_t GetLastBlockCrcRaw() const { return meta_.last_block_crc_raw(); }
+    void SetLastBlockCrcRaw(uint32_t crc) { meta_.set_last_block_crc_raw(crc); }
+
+    uint32_t GetSize() const { return meta_.flag_size() & kFlagSizeSizeMask; }
+    void SetSize(uint32_t size) {
+        meta_.set_flag_size((meta_.flag_size() & kFlagSizeFlagMask) | (size & kFlagSizeSizeMask));
     }
 
-    void ResetToDelete() { meta_info.set_flag(static_cast<uint32_t>(SliceStatus::MarkDelete)); }
+    uint8_t GetFlag() const { return meta_.flag_size() >> kFlagSizeFlagShift; }
+    void SetFlag(uint8_t flag) {
+        meta_.set_flag_size((flag << kFlagSizeFlagShift) | (meta_.flag_size() & 0x00FFFFFF));
+    }
 
-    bool IsNormal() { return meta_info.flag() == static_cast<uint32_t>(SliceStatus::Normal); }
+    bool IsEmpty() { return GetVuid() == 0 && GetFlag() == +SliceStatus::Init; }
+    bool IsNormal() const { return GetFlag() == +SliceStatus::Normal; }
 
     Status<> Encode(char* b) {
-        return SliceMetaBlocker::Encode(block_size, meta_info, b, kSliceMetaName);
+        return SliceMetaBlocker::Encode(meta_block_size_, meta_, b, kSliceMetaName);
     }
     Status<> Decode(const char* b) {
-        return SliceMetaBlocker::Decode(block_size, b, &meta_info, kSliceMetaName);
+        return SliceMetaBlocker::Decode(meta_block_size_, b, &meta_, kSliceMetaName);
     }
-};
-
-struct Slice {
-    // sm is the same pointer to the store's slice meta to save memory cost
-    SliceMetaPtr sm;
-    Buffer lastSector;
-};
-
-class SliceHandler {
-   public:
-    virtual ~SliceHandler() = default;
-    // AllocSlice alloc new slice from available
-    virtual Status<SliceMetaPtr> AllocSlice(SliceID id, Vuid vuid, uint32_t chunk_epoch) = 0;
-    // UpdateSlice update slice meta info in persistence
-    virtual FutureStatus<> UpdateSlice(SliceMetaPtr slice_meta) = 0;
-    // DeleteSlice delete slice in persistence
-    virtual FutureStatus<> DeleteSlice(SliceMetaPtr slice_meta) = 0;
 };
 
 }  // namespace blobnode

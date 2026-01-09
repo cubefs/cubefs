@@ -34,7 +34,7 @@ namespace blobstore {
 namespace blobnode {
 
 // RawStore implements Store interface for raw device access.
-class RawStore final : public Store, public SliceHandler {
+class RawStore final : public Store {
     SuperBlock superblock_;
 
     // Chunk management - all chunks currently in use
@@ -63,7 +63,7 @@ class RawStore final : public Store, public SliceHandler {
     std::vector<ChunkIndex> free_chunk_queue_;
 
     // All slice meta in memory
-    std::vector<SliceMetaPtr> slice_registry_;
+    std::vector<SlicePtr> slice_registry_;
     Buffer checkpoint_buffer_;
 
     // Slice allocator - manages free slice indexes
@@ -86,8 +86,15 @@ class RawStore final : public Store, public SliceHandler {
     FutureStatus<> UpsertChunkMeta(ChunkMeta chunk_meta) noexcept;
     Status<ChunkHandlerPtr> GetChunk(ChunkID chunk_id) noexcept;
     Status<ChunkHandlerPtr> GetChunk(Vuid vuid) noexcept;
-    FutureStatus<> UpsertSliceMetaInPersistence(SliceMetaPtr sm) noexcept;
-    void UpsertSliceMetaInMemory(SliceMetaPtr sm) noexcept;
+    FutureStatus<> UpsertSliceMetaInPersistence(SlicePtr sm) noexcept;
+    void UpsertSliceMetaInMemory(SlicePtr sm) noexcept;
+
+    // AllocSlice alloc new slice from available
+    Status<SlicePtr> AllocSlice(SliceID slice_id, Vuid vuid, uint32_t chunk_epoch) noexcept;
+    // UpdateSlice update slice meta info in persistence
+    FutureStatus<> UpdateSlice(SlicePtr slice) noexcept;
+    // DeleteSlice delete slice in persistence
+    FutureStatus<> DeleteSlice(SlicePtr slice) noexcept;
 
    public:
     ~RawStore(){};
@@ -118,13 +125,6 @@ class RawStore final : public Store, public SliceHandler {
     // ListVuidMetas return all Vuid meta info
     Status<std::unordered_map<Vuid, ChunkID>> ListVuidMetas(Trace& t) noexcept override;
     FutureStatus<> Close(Trace& t) noexcept override;
-
-    // AllocSlice alloc new slice from available
-    Status<SliceMetaPtr> AllocSlice(SliceID sid, Vuid vuid, uint32_t chunk_epoch) override;
-    // UpdateSlice update slice meta info in persistence
-    FutureStatus<> UpdateSlice(SliceMetaPtr slice_meta_ptr) override;
-    // DeleteSlice delete slice in persistence
-    FutureStatus<> DeleteSlice(SliceMetaPtr slice_meta_ptr) override;
 };
 
 }  // namespace blobnode

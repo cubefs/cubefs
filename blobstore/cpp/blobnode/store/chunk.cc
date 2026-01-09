@@ -14,27 +14,22 @@
 
 #include "chunk.h"
 
+#include <seastar/core/coroutine.hh>
+
 namespace blobstore {
 namespace blobnode {
 
-ChunkHandler::ChunkHandler(const ChunkConfig& cfg)
-    : chunk_meta_(std::move(cfg.meta)),  // TODO: move ??
-      format_slice_size_(cfg.format_slice_size),
-      format_block_size_(cfg.format_block_size),
-      sliceHandler_(cfg.slice_handler),
-      device_(cfg.device),
-      free_callback_(cfg.free_callback){};
+ChunkHandler::ChunkHandler(ChunkConfig&& cfg, ChunkMeta&& meta)
+    : config_(std::move(cfg)), chunk_meta_(std::move(meta)){};
 
 ChunkHandler::~ChunkHandler() {
-    if (free_callback_) {
-        ChunkIndex index = chunk_meta_.chunk_meta_info.index();
-        free_callback_(index);
+    if (config_.cb_chunk_free) {
+        config_.cb_chunk_free(chunk_meta_.chunk_meta_info.index());
     }
 }
 
-ChunkHandlerPtr ChunkHandler::Create(const ChunkConfig& cfg) {
-    ChunkHandlerPtr handler = seastar::make_lw_shared<ChunkHandler>(cfg);
-    return std::move(handler);
+ChunkHandlerPtr ChunkHandler::Create(ChunkConfig&& cfg, ChunkMeta&& meta) {
+    return seastar::make_lw_shared<ChunkHandler>(std::move(cfg), std::move(meta));
 }
 
 std::vector<SlicePtr> ChunkHandler::GetAllSlices() noexcept {
@@ -53,32 +48,23 @@ Status<SlicePtr> ChunkHandler::GetSlice(SliceID id) noexcept {
     auto& m = SliceBucket(id);
     auto it = m.find(id);
     if (it == m.end()) {
-        s.SetCode(ErrCode::ErrNotFound).SetReason("store: slice not found");
+        s.SetCode(ErrCode::ErrNotFound).SetReason("store: slice not found in chunk");
         return s;
     }
     s.SetValue(it->second);
     return s;
 }
 
-void ChunkHandler::AddSlice(SliceMetaPtr sm) noexcept {
-    SliceID id = sm->meta_info.slice_id();
+void ChunkHandler::AddSlice(SlicePtr slice) noexcept {
+    SliceID id = slice->GetSliceID();
     auto& m = SliceBucket(id);
     if (m.find(id) == m.end()) {
-        auto slice = seastar::make_lw_shared<Slice>();
-        slice->sm = std::move(sm);
-        m.emplace(id, std::move(slice));
-        chunk_meta_.chunk_meta_info.set_chunk_size(chunk_meta_.chunk_meta_info.chunk_size() +
-                                                   format_slice_size_);
-    }
-}
+        m.emplace(id, slice);
 
-void ChunkHandler::DelSlice(SliceID id) noexcept {
-    auto& m = SliceBucket(id);
-    auto it = m.find(id);
-    if (it != m.end()) {
-        m.erase(it);
-        chunk_meta_.chunk_meta_info.set_chunk_size(chunk_meta_.chunk_meta_info.chunk_size() -
-                                                   format_slice_size_);
+        auto size = chunk_meta_.GetChunkSize();
+        if (size > config_.format_slice_size) {
+            chunk_meta_.SetChunkSize(size - config_.format_slice_size);
+        }
     }
 }
 
@@ -89,19 +75,31 @@ Status<SlicePtr> ChunkHandler::AllocSlice(SliceID id) noexcept {
         return s.SetValue(it->second);
     }
 
-    auto rs = sliceHandler_->AllocSlice(id, chunk_meta_.chunk_meta_info.vuid(),
-                                        chunk_meta_.chunk_meta_info.epoch());
-    if (!rs.OK()) {
+    auto rs = config_.cb_slice_alloc(id, chunk_meta_.chunk_meta_info.vuid(),
+                                     chunk_meta_.chunk_meta_info.epoch());
+    if (!rs) {
         s.SetCode(rs.Code()).SetReason(rs.Reason());
         return s;
     }
-
-    auto slice = seastar::make_lw_shared<Slice>();
-    slice->sm = rs.Value();
+    auto slice = rs.Value();
     m[id] = slice;
 
     s.SetValue(std::move(slice));
     return s;
+}
+
+FutureStatus<> ChunkHandler::DelSlice(SliceID id) noexcept {
+    Status<> s;
+    auto& m = SliceBucket(id);
+    auto it = m.find(id);
+    if (it != m.end()) {
+        SlicePtr slice = it->second;
+        m.erase(id);
+        chunk_meta_.SetChunkSize(chunk_meta_.GetChunkSize() - config_.format_slice_size);
+
+        s = co_await config_.cb_slice_delete(slice);
+    }
+    co_return s;
 }
 
 }  // namespace blobnode

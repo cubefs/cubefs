@@ -51,5 +51,6 @@ enum class SliceStatus : uint8_t {
 
     Max = 3,
 };
+inline uint8_t operator+(SliceStatus status) { return static_cast<uint8_t>(status); }
 
 }  // namespace blobstore
