@@ -667,13 +667,18 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 	isLearner := false
 	nonLearnerNum := 0
 	aliveHosts := make([]string, 0)
+	removePeer := proto.Peer{}
 	for _, peer := range partition.Peers {
-		if peer.Addr == addr && peer.Type == raftProto.PeerLearner {
-			isLearner = true
+		if peer.Addr == addr {
+			removePeer = peer
+			if peer.Type == raftProto.PeerLearner {
+				isLearner = true
+			}
 		}
 		metaNode, err1 := c.metaNode(peer.Addr)
 		if err1 != nil {
-			return
+			log.LogWarnf("action[deleteMetaReplica] metaNode[%v] not found, err[%v]", peer.Addr, err1)
+			continue
 		}
 		if !metaNode.IsActive {
 			continue
@@ -709,25 +714,30 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 	}
 
 	metaNode, err := c.metaNode(addr)
-	if err != nil {
-		return
+	if metaNode != nil {
+		removePeer = proto.Peer{ID: metaNode.ID, Addr: addr, HeartbeatPort: metaNode.HeartbeatPort, ReplicaPort: metaNode.ReplicaPort}
+	} else {
+		log.LogWarnf("action[deleteMetaReplica] metaNode[%v] not found, err[%v]", addr, err)
 	}
 
 	partition.LastDelReplicaTime = time.Now().Unix()
-	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr, HeartbeatPort: metaNode.HeartbeatPort, ReplicaPort: metaNode.ReplicaPort}
-	if err = c.removeMetaPartitionRaftMember(partition, removePeer, forceDel, false); err != nil {
-		log.LogErrorf("action[removeMetaPartitionRaftMember] vol[%v],data partition[%v],forceDel[%v],err[%v]", partition.volName, partition.PartitionID, forceDel, err)
-		return
+	if removePeer.ID != 0 {
+		if err = c.removeMetaPartitionRaftMember(partition, removePeer, forceDel, false); err != nil {
+			log.LogErrorf("action[removeMetaPartitionRaftMember] vol[%v],data partition[%v],forceDel[%v],err[%v]", partition.volName, partition.PartitionID, forceDel, err)
+			return
+		}
+
+		if err = c.removeMetaHostMember(partition, removePeer); err != nil {
+			log.LogErrorf("action[removeMetaHostMember] vol[%v],data partition[%v],forceDel[%v],err[%v]", partition.volName, partition.PartitionID, forceDel, err)
+			return
+		}
 	}
 
-	if err = c.removeMetaHostMember(partition, removePeer); err != nil {
-		log.LogErrorf("action[removeMetaHostMember] vol[%v],data partition[%v],forceDel[%v],err[%v]", partition.volName, partition.PartitionID, forceDel, err)
-		return
-	}
-
-	if err = c.deleteMetaPartition(partition, metaNode, forceDel); err != nil {
-		log.LogErrorf("action[deleteMetaPartition] vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
-		return
+	if metaNode != nil {
+		if err = c.deleteMetaPartition(partition, metaNode, forceDel); err != nil {
+			log.LogErrorf("action[deleteMetaPartition] vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
+			return
+		}
 	}
 
 	// if delete learner replica, clear learner recovery state
