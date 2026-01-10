@@ -600,12 +600,23 @@ func (c *Cluster) handleFlashNodeHeartbeatResp(nodeAddr string, resp *proto.Flas
 			c.Name, nodeAddr, resp.Result))
 		return
 	}
-	var node *flashgroupmanager.FlashNode
-	if node, err = c.peekFlashNode(resp.TopoName, nodeAddr); err != nil {
+	var (
+		node *flashgroupmanager.FlashNode
+		topo *flashgroupmanager.FlashNodeTopology
+	)
+	if topo, err = c.PeekFlashTopo(resp.TopoName); err != nil {
+		log.LogErrorf("action[handleFlashNodeHeartbeatResp], topo[%v] not found", resp.TopoName)
+		return
+	}
+	if node, err = topo.PeekFlashNode(nodeAddr); err != nil {
 		log.LogErrorf("action[handleFlashNodeHeartbeatResp], flashNode[%v], heartbeat error: %v", nodeAddr, err.Error())
 		return
 	}
 	node.SetActive()
+	if err = node.UpdateZoneName(topo, resp.ZoneName, c.syncUpdateFlashNode); err != nil {
+		log.LogErrorf("action[handleFlashNodeHeartbeatResp], flashNode[%v], update zone name %v failed: %v", nodeAddr, resp.ZoneName, err.Error())
+		return
+	}
 	node.UpdateFlashNodeStatHeartbeat(resp)
 	c.handleManualTaskProcessing(node, resp)
 	return
