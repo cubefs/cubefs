@@ -53,7 +53,7 @@ func newFlashNodeCmd(client *master.MasterClient) *cobra.Command {
 func newCmdFlashNodeRename(client *master.MasterClient) *cobra.Command {
 	var name string
 	cmd := &cobra.Command{
-		Use:   "rename" + _flashnodeAddr,
+		Use:   "changeTopo" + _flashnodeAddr,
 		Short: "change flash node to target topology",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) (err error) {
@@ -72,7 +72,7 @@ func newCmdFlashNodeRename(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "name", "n", "", "target flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", "", "target flash topology name")
 	return cmd
 }
 
@@ -98,7 +98,7 @@ func newCmdFlashNodeSet(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	return cmd
 }
 
@@ -132,7 +132,7 @@ func newCmdFlashNodeRemove(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
-	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	return cmd
 }
 
@@ -171,7 +171,7 @@ func newCmdFlashNodeRemoveAllInactive(client *master.MasterClient) *cobra.Comman
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
-	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	return cmd
 }
 
@@ -193,7 +193,7 @@ func newCmdFlashNodeGet(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	return cmd
 }
 
@@ -236,7 +236,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	return cmd
 }
 
@@ -263,7 +263,7 @@ func newCmdFlashNodeHTTPStat(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	return cmd
 }
 
@@ -290,7 +290,7 @@ func newCmdFlashNodeHTTPStatAll(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	return cmd
 }
 
@@ -321,7 +321,7 @@ func newCmdFlashNodeHTTPSlotStat(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	return cmd
 }
 
@@ -354,7 +354,7 @@ func newCmdFlashNodeHTTPEvict(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "name", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	return cmd
 }
 
@@ -381,7 +381,7 @@ func newCmdFlashNodeHTTPInactiveDisk(client *master.MasterClient) *cobra.Command
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "name", "n", "default", "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", "default", "flash topology name")
 	return cmd
 }
 
