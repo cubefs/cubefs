@@ -411,14 +411,43 @@ func (m *Server) listFlashGroups(w http.ResponseWriter, r *http.Request) {
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}
+	// Whether to list across all topologies
+	showAllTopo := false
+	if v := r.FormValue("showAllTopo"); v != "" {
+		if b, e := strconv.ParseBool(v); e == nil {
+			showAllTopo = b
+		}
+	}
 
-	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
-	if err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
+	if showAllTopo {
+		// aggregate groups from all topologies
+		var result proto.FlashGroupsAdminView
+		m.cluster.flashNodeTopo.Range(func(_, value interface{}) bool {
+			if value == nil {
+				return true
+			}
+			topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+			if !ok {
+				return true
+			}
+			view := topo.GetFlashGroupsAdminView(fgStatus, allStatus)
+			if view != nil && len(view.FlashGroups) > 0 {
+				result.FlashGroups = append(result.FlashGroups, view.FlashGroups...)
+			}
+			return true
+		})
+		sendOkReply(w, r, newSuccessHTTPReply(&result))
+		return
+	} else {
+		flashTopo, err = m.cluster.PeekFlashTopo(topoName)
+		if err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		fgv := flashTopo.GetFlashGroupsAdminView(fgStatus, allStatus)
+		sendOkReply(w, r, newSuccessHTTPReply(fgv))
 		return
 	}
-	fgv := flashTopo.GetFlashGroupsAdminView(fgStatus, allStatus)
-	sendOkReply(w, r, newSuccessHTTPReply(fgv))
 }
 
 func (m *Server) clientFlashGroups(w http.ResponseWriter, r *http.Request) {

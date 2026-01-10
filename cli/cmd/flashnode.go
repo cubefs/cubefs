@@ -199,6 +199,7 @@ func newCmdFlashNodeGet(client *master.MasterClient) *cobra.Command {
 
 func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 	var name string
+	var showAllTopo bool
 	cmd := &cobra.Command{
 		Use:   CliOpList,
 		Short: "list all flash nodes or [active true/false] flash nodes",
@@ -223,7 +224,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 			if name == "" {
 				name = proto.DefaultTopoName
 			}
-			zoneFlashNodes, err := client.NodeAPI().ListFlashNodesByTopo(activeFilter, name)
+			zoneFlashNodes, err := client.NodeAPI().ListFlashNodesByTopo(activeFilter, name, showAllTopo)
 			if err != nil {
 				return
 			}
@@ -237,6 +238,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().BoolVar(&showAllTopo, "showAllTopo", false, "list flash nodes across all topologies (default false)")
 	return cmd
 }
 

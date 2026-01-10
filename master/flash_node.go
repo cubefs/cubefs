@@ -181,6 +181,7 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 	}()
 	showAll := true
 	active := false
+	showAllTopo := false
 	if err := r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -194,6 +195,12 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 			active = true
 		}
 	}
+	// whether to show all topologies
+	if v := r.FormValue("showAllTopo"); v != "" {
+		if b, e := strconv.ParseBool(v); e == nil {
+			showAllTopo = b
+		}
+	}
 	// Backward Compatibility
 	topoName := r.FormValue(nameKey)
 	if topoName == "" {
@@ -203,6 +210,26 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 		flashTopo *flashgroupmanager.FlashNodeTopology
 		err       error
 	)
+	if showAllTopo {
+		// aggregate nodes from all topologies
+		all := make(map[string][]*proto.FlashNodeViewInfo)
+		m.cluster.flashNodeTopo.Range(func(_, value interface{}) bool {
+			if value == nil {
+				return true
+			}
+			topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+			if !ok {
+				return true
+			}
+			mset := topo.ListFlashNodes(showAll, active)
+			for zone, nodes := range mset {
+				all[zone] = append(all[zone], nodes...)
+			}
+			return true
+		})
+		sendOkReply(w, r, newSuccessHTTPReply(all))
+		return
+	}
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
