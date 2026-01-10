@@ -260,10 +260,11 @@ func (api *NodeAPI) GetFlashNode(addr string) (node proto.FlashNodeViewInfo, err
 	return
 }
 
-func (api *NodeAPI) ListFlashNodesByTopo(active int, topoName string) (zoneFlashNodes map[string][]*proto.FlashNodeViewInfo, err error) {
+func (api *NodeAPI) ListFlashNodesByTopo(active int, topoName string, showAllTopo bool) (zoneFlashNodes map[string][]*proto.FlashNodeViewInfo, err error) {
 	zoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
 	req := newRequest(get, proto.FlashNodeList).Header(api.h).addParamAny("active", active)
 	req.addParam("name", topoName)
+	req.addParamAny("showAllTopo", showAllTopo)
 	err = api.mc.requestWith(&zoneFlashNodes, req)
 	return
 }

@@ -1100,9 +1100,9 @@ func (api *AdminAPI) ListFlashGroup(isActive bool) (fgView proto.FlashGroupsAdmi
 	return
 }
 
-func (api *AdminAPI) ListFlashGroupByName(name string, isActive bool) (fgView proto.FlashGroupsAdminView, err error) {
+func (api *AdminAPI) ListFlashGroupByName(name string, isActive bool, showAllTopo bool) (fgView proto.FlashGroupsAdminView, err error) {
 	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).
-		Header(api.h).Param(anyParam{"enable", isActive}, anyParam{"name", name}))
+		Header(api.h).Param(anyParam{"enable", isActive}, anyParam{"name", name}, anyParam{"showAllTopo", showAllTopo}))
 	return
 }
 
@@ -1111,8 +1111,9 @@ func (api *AdminAPI) ListFlashGroups() (fgView proto.FlashGroupsAdminView, err e
 	return
 }
 
-func (api *AdminAPI) ListFlashGroupsByName(name string) (fgView proto.FlashGroupsAdminView, err error) {
-	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).Header(api.h).addParam("name", name))
+func (api *AdminAPI) ListFlashGroupsByName(name string, showAllTopo bool) (fgView proto.FlashGroupsAdminView, err error) {
+	err = api.mc.requestWith(&fgView, newRequest(get, proto.AdminFlashGroupList).Header(api.h).
+		Param(anyParam{"name", name}, anyParam{"showAllTopo", showAllTopo}))
 	return
 }
 

@@ -344,6 +344,7 @@ func newCmdFlashGroupGet(client *master.MasterClient) *cobra.Command {
 
 func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 	var name string
+	var showAllTopo bool
 	cmd := &cobra.Command{
 		Use:   CliOpList + " [IsActive]",
 		Short: "list active or inactive flash groups",
@@ -358,12 +359,12 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 				if name == "" {
 					name = proto.DefaultTopoName
 				}
-				fgView, err = client.AdminAPI().ListFlashGroupByName(name, isActive)
+				fgView, err = client.AdminAPI().ListFlashGroupByName(name, isActive, showAllTopo)
 			} else {
 				if name == "" {
 					name = proto.DefaultTopoName
 				}
-				fgView, err = client.AdminAPI().ListFlashGroupsByName(name)
+				fgView, err = client.AdminAPI().ListFlashGroupsByName(name, showAllTopo)
 			}
 			if err != nil {
 				return
@@ -388,6 +389,7 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().BoolVar(&showAllTopo, "showAllTopo", false, "list flash groups across all topologies (default false)")
 	return cmd
 }
 
@@ -439,7 +441,7 @@ func newCmdFlashGroupSearch(client *master.MasterClient) *cobra.Command {
 			if name == "" {
 				name = proto.DefaultTopoName
 			}
-			fgView, err := client.AdminAPI().ListFlashGroupsByName(name)
+			fgView, err := client.AdminAPI().ListFlashGroupsByName(name, false)
 			if err != nil {
 				return
 			}
@@ -498,7 +500,7 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 			if name == "" {
 				name = proto.DefaultTopoName
 			}
-			fgView, err := client.AdminAPI().ListFlashGroupsByName(name)
+			fgView, err := client.AdminAPI().ListFlashGroupsByName(name, false)
 			if err != nil {
 				return
 			}
@@ -569,7 +571,7 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 
 			stdoutln(alignTable(tbl1...))
 
-			fnView, err := client.NodeAPI().ListFlashNodesByTopo(-1, name)
+			fnView, err := client.NodeAPI().ListFlashNodesByTopo(-1, name, false)
 			if err != nil {
 				return
 			}
