@@ -226,3 +226,37 @@ func (flashNode *FlashNode) SetToUnused(addr string, flashGroupID uint64, syncUp
 	}()
 	return nil
 }
+
+func (flashNode *FlashNode) UpdateZoneName(t *FlashNodeTopology, newZoneName string, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	needUpdate := false
+	flashNode.RLock()
+	if flashNode.ZoneName != newZoneName {
+		needUpdate = true
+	}
+	flashNode.RUnlock()
+	if !needUpdate {
+		return
+	}
+	var oldZone, newZone *FlashNodeZone
+	// create new zone if absent
+	newZone, err = t.GetZone(newZoneName)
+	if err != nil {
+		newZone = t.PutZoneIfAbsent(NewFlashNodeZone(newZoneName))
+		err = nil
+	}
+	// find old zone
+	oldZone, err = t.GetZone(flashNode.ZoneName)
+	if err != nil {
+		return
+	}
+	// update zone name
+	flashNode.Lock()
+	flashNode.ZoneName = newZoneName
+	flashNode.Unlock()
+	syncUpdateFlashNodeFunc(flashNode)
+	// delete from old zone
+	oldZone.flashNode.Delete(flashNode.Addr)
+	// put in new zone
+	newZone.putFlashNode(flashNode)
+	return
+}
