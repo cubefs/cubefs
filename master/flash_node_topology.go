@@ -61,6 +61,8 @@ func (c *Cluster) loadFlashNodes() (err error) {
 		}
 		err = topo.PutFlashNode(flashNode)
 		if err != nil {
+			log.LogWarnf("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v topo: %v region:%v] put topo %v failed %v",
+				flashNode.ID, flashNode.Addr, flashNode.FlashGroupID, flashNode.FlashNodeTopoName, flashNode.Region, topo.Name, err.Error())
 			return
 		}
 		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v add to topoName: %v]",
@@ -88,7 +90,11 @@ func (c *Cluster) loadFlashGroups() (err error) {
 			log.LogErrorf("action[loadFlashGroups],flashGroup[%v] topo %v not found", flashGroup.ID, flashGroup.FlashNodeTopoName)
 			continue
 		}
-		topo.SaveFlashGroup(flashGroup)
+		err = topo.SaveFlashGroup(flashGroup)
+		if err != nil {
+			log.LogWarnf("action[loadFlashGroups], flashGroup%v] put topo %v failed %v", flashGroup.ID, topo.Name, err.Error())
+			return
+		}
 		log.LogInfof("action[loadFlashGroups],flashGroup[%v] topo %v", flashGroup.ID, flashGroup.FlashNodeTopoName)
 	}
 	return
@@ -102,11 +108,11 @@ func (c *Cluster) loadFlashTopos() (err error) {
 	}
 	if len(result) == 0 {
 		// forward compatibility: create default FlashNodeTopology
-		if err = c.AddFlashTopo(proto.DefaultTopoName); err != nil {
+		if err = c.AddFlashTopo(proto.DefaultTopoName, proto.DefaultRegionName); err != nil {
 			return
 		}
 		log.LogInfof("action[loadFlashTopos] load default topo")
-		if err = c.AddFlashTopo(proto.IdleTopoName); err != nil {
+		if err = c.AddFlashTopo(proto.IdleTopoName, proto.DefaultRegionName); err != nil {
 			return
 		}
 		log.LogInfof("action[loadFlashTopos] load default idle")
@@ -119,7 +125,7 @@ func (c *Cluster) loadFlashTopos() (err error) {
 				err = fmt.Errorf("action[loadFlashTopos],value:%v,unmarshal err:%v", string(value), err)
 				return
 			}
-			topo := flashgroupmanager.NewFlashNodeTopology(ftv.Name, ftv.ID)
+			topo := flashgroupmanager.NewFlashNodeTopology(ftv.Name, ftv.Region, ftv.ID)
 			topo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 			c.flashNodeTopo.Store(ftv.Name, topo)
 			if ftv.Name == proto.IdleTopoName {
@@ -129,7 +135,7 @@ func (c *Cluster) loadFlashTopos() (err error) {
 		}
 		// always have idle topo
 		if !findIdle {
-			if err = c.AddFlashTopo(proto.IdleTopoName); err != nil {
+			if err = c.AddFlashTopo(proto.IdleTopoName, proto.DefaultRegionName); err != nil {
 				return
 			}
 		}
@@ -147,8 +153,8 @@ func (c *Cluster) loadFlashTopology() (err error) {
 			err = errors.New("[loadFlashTopology]cannot convert to FlashNodeTopology")
 			return true
 		}
-		topo.Load()
-		return true
+		err = topo.Load()
+		return err == nil
 	})
 	return
 }

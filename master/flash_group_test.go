@@ -139,7 +139,7 @@ func testFlashGroupNode(t *testing.T) {
 	require.NoError(t, err)
 	_, err = mc.NodeAPI().RemoveFlashNode(mfs3Addr)
 	require.NoError(t, err)
-	_, err = mc.NodeAPI().AddFlashNode(mfs3Addr, testZone2, "", 0)
+	_, err = mc.NodeAPI().AddFlashNode(mfs3Addr, testZone2, "", proto.DefaultRegionName, 0)
 	require.NoError(t, err)
 }
 

@@ -136,16 +136,21 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	region := r.FormValue(regionKey)
+	if region == "" {
+		region = proto.DefaultRegionName
+	}
 	// all flashnode is added to idle topo by default
 	topoName := proto.IdleTopoName
-	if id, err = m.cluster.addFlashNode(topoName, nodeAddr.V, zoneName.V, version.V, nodeID.V); err != nil {
+	if id, err = m.cluster.addFlashNode(topoName, nodeAddr.V, zoneName.V, version.V, region, nodeID.V); err != nil {
+		log.LogWarnf("addFlashNode: fn[%v] topo %v nodeID %v region %v failed:err %v", topoName, nodeAddr.V, nodeID.V, region, err.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
-func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version string, id uint64) (nodeID uint64, err error) {
+func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version, region string, id uint64) (nodeID uint64, err error) {
 	// check if flash node is registered before
 	var (
 		flashTopo *flashgroupmanager.FlashNodeTopology
@@ -159,18 +164,28 @@ func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version string, id 
 		if !ok {
 			return true
 		}
-		flashNode, err = topo.PeekFlashNodeById(id)
+		if id == 0 { // flash node is upgraded from v3.5.3 before
+			flashNode, err = topo.PeekFlashNode(nodeAddr)
+		} else {
+			flashNode, err = topo.PeekFlashNodeById(id)
+		}
 		if flashNode != nil {
+			err = flashNode.TryUpdateInfos(region, c.syncUpdateFlashNode)
 			topoName = topo.Name
 			return false
 		}
 		return true
 	})
+	// only catch update fail
+	if err != nil && flashNode != nil {
+		log.LogWarnf("addFlashNode: update infos failed for fn[%v]:err %v", id, err.Error())
+		return
+	}
 	flashTopo, err = c.PeekFlashTopo(topoName)
 	if err != nil {
 		return
 	}
-	return flashTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version, id,
+	return flashTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version, region, id,
 		c.idAlloc.allocateCommonID, c.syncAddFlashNode, c.syncMoveFlashNode)
 }
 

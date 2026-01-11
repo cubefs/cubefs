@@ -164,7 +164,12 @@ func (c *Cluster) loadFlashNodes() (err error) {
 			c.flashNodeTopo.PutZoneIfAbsent(NewFlashNodeZone(flashNode.ZoneName))
 			err = nil
 		}
-		c.flashNodeTopo.PutFlashNode(flashNode)
+		err = c.flashNodeTopo.PutFlashNode(flashNode)
+		if err != nil {
+			log.LogWarnf("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v topo: %v region:%v] put topo %v failed %v",
+				flashNode.ID, flashNode.Addr, flashNode.FlashGroupID, flashNode.FlashNodeTopoName, flashNode.Region, c.flashNodeTopo.Name, err.Error())
+			return
+		}
 		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v topo: %v]",
 			flashNode.ID, flashNode.Addr, flashNode.FlashGroupID, flashNode.FlashNodeTopoName)
 	}

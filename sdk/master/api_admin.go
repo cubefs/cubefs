@@ -1168,9 +1168,10 @@ func (api *AdminAPI) ListAllFlashTopos() (ftvs []*proto.FlashTopologyAdminView, 
 	return
 }
 
-func (api *AdminAPI) AddFlashTopo(name string) (result string, err error) {
+func (api *AdminAPI) AddFlashTopo(name, region string) (result string, err error) {
 	req := newRequest(get, proto.AdminFlashTopoAdd).Header(api.h)
 	req.addParam("name", name)
+	req.addParam("region", region)
 	var data []byte
 	if data, err = api.mc.serveRequest(req); err != nil {
 		return

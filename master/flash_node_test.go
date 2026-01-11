@@ -17,6 +17,7 @@ package master
 import (
 	"testing"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,44 +29,44 @@ func testFlashNode(t *testing.T) {
 }
 
 func testFlashNodeSet(t *testing.T) {
-	fnView, err := mc.NodeAPI().GetFlashNode(mfs1Addr)
+	fnView, err := mc.NodeAPI().GetFlashNodeByTopo(mfs1Addr, proto.IdleTopoName)
 	require.NoError(t, err)
 	require.True(t, fnView.IsEnable)
 
-	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs1Addr, false))
-	fnView, err = mc.NodeAPI().GetFlashNode(mfs1Addr)
+	require.NoError(t, mc.NodeAPI().SetFlashNodeByTopo(mfs1Addr, false, proto.IdleTopoName))
+	fnView, err = mc.NodeAPI().GetFlashNodeByTopo(mfs1Addr, proto.IdleTopoName)
 	require.NoError(t, err)
 	require.False(t, fnView.IsEnable)
-	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs1Addr, true))
+	require.NoError(t, mc.NodeAPI().SetFlashNodeByTopo(mfs1Addr, true, proto.IdleTopoName))
 }
 
 func testFlashNodeRemove(t *testing.T) {
 	addr := mfs8Addr
-	_, err := mc.NodeAPI().GetFlashNode(addr)
+	_, err := mc.NodeAPI().GetFlashNodeByTopo(addr, proto.IdleTopoName)
 	require.Error(t, err)
 	flashServer := addFlashServer(addr, testZone1)
 	defer flashServer.Stop()
 
-	_, err = mc.NodeAPI().AddFlashNode("not-addr", testZone1, "", 0)
+	_, err = mc.NodeAPI().AddFlashNode("not-addr", testZone1, "", proto.DefaultRegionName, 0)
 	require.Error(t, err)
-	id, err := mc.NodeAPI().AddFlashNode(addr, testZone1, "", 0)
+	id, err := mc.NodeAPI().AddFlashNode(addr, testZone1, "", proto.DefaultRegionName, 0)
 	require.NoError(t, err)
-	fnView, err := mc.NodeAPI().GetFlashNode(addr)
+	fnView, err := mc.NodeAPI().GetFlashNodeByTopo(addr, proto.IdleTopoName)
 	require.NoError(t, err)
 	require.Equal(t, id, fnView.ID)
 
-	_, err = mc.NodeAPI().RemoveFlashNode(addr)
+	_, err = mc.NodeAPI().RemoveFlashNodeByTopo(addr, proto.IdleTopoName)
 	require.NoError(t, err)
 	_, err = mc.NodeAPI().RemoveFlashNode("not-addr")
 	require.Error(t, err)
-	_, err = mc.NodeAPI().RemoveFlashNode(addr)
+	_, err = mc.NodeAPI().RemoveFlashNodeByTopo(addr, proto.IdleTopoName)
 	require.Error(t, err)
-	_, err = mc.NodeAPI().GetFlashNode(addr)
+	_, err = mc.NodeAPI().GetFlashNodeByTopo(addr, proto.IdleTopoName)
 	require.Error(t, err)
 }
 
 func testFlashNodeGet(t *testing.T) {
-	_, err := mc.NodeAPI().GetFlashNode("not-addr")
+	_, err := mc.NodeAPI().GetFlashNodeByTopo("not-addr", proto.IdleTopoName)
 	require.Error(t, err)
 	testCases := []struct {
 		NodeAddr string
@@ -80,26 +81,26 @@ func testFlashNodeGet(t *testing.T) {
 		{mfs7Addr, testZone3},
 	}
 	for _, testCase := range testCases {
-		fnView, err := mc.NodeAPI().GetFlashNode(testCase.NodeAddr)
+		fnView, err := mc.NodeAPI().GetFlashNodeByTopo(testCase.NodeAddr, proto.IdleTopoName)
 		require.NoError(t, err)
 		require.Equal(t, testCase.NodeAddr, fnView.Addr)
 	}
 }
 
 func testFlashNodeList(t *testing.T) {
-	zoneNodes, err := mc.NodeAPI().ListFlashNodes(-1)
+	zoneNodes, err := mc.NodeAPI().ListFlashNodesByTopo(-1, proto.IdleTopoName, false)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(zoneNodes))
 	require.Equal(t, 2, len(zoneNodes[testZone1]))
 	require.Equal(t, 2, len(zoneNodes[testZone2]))
 	require.Equal(t, 3, len(zoneNodes[testZone3]))
 
-	require.NoError(t, mc.NodeAPI().SetFlashNode(mfs7Addr, false))
+	require.NoError(t, mc.NodeAPI().SetFlashNodeByTopo(mfs7Addr, false, proto.IdleTopoName))
 	defer func() {
-		require.NoError(t, mc.NodeAPI().SetFlashNode(mfs7Addr, true))
+		require.NoError(t, mc.NodeAPI().SetFlashNodeByTopo(mfs7Addr, true, proto.IdleTopoName))
 	}()
 
-	zoneNodes, err = mc.NodeAPI().ListFlashNodes(1)
+	zoneNodes, err = mc.NodeAPI().ListFlashNodesByTopo(1, proto.IdleTopoName, false)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(zoneNodes))
 	require.Equal(t, 2, len(zoneNodes[testZone1]))

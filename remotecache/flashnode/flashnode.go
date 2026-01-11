@@ -125,6 +125,7 @@ const (
 	paramIocc                       = "iocc"
 	paramFlow                       = "flow"
 	paramFactor                     = "factor"
+	cfgRegion                       = "region"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
@@ -203,6 +204,7 @@ type FlashNode struct {
 	keyLimiterFlow           int64
 	reservedSpace            int64 // reserved disk space
 	legacyMaster             int32
+	region                   string
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -483,6 +485,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
 	f.waitForCacheBlock = cfg.GetBoolWithDefault(cfgWaitForBlockCache, false)
 	f.enableWarmUpPaths = cfg.GetBoolWithDefault(cfgEnableWarmUpPaths, false)
+	f.region = cfg.GetString(cfgRegion)
 	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
 	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)
 	log.LogInfof("[parseConfig] load totalMem[%d].", f.memTotal)
@@ -496,6 +499,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load  enableTmpfs[%v].", f.enableTmpfs)
 	log.LogInfof("[parseConfig] load  enableWarmUpPaths[%v].", f.enableWarmUpPaths)
 	log.LogInfof("[parseConfig] load  memDataPath[%v].", f.memDataPath)
+	log.LogInfof("[parseConfig] load region[%v].", f.region)
 	for _, d := range f.disks {
 		log.LogInfof("[parseConfig] load diskDataPath[%v] totalSize[%d] capacity[%d]", d.Path, d.TotalSpace, d.Capacity)
 	}
@@ -710,7 +714,7 @@ func (f *FlashNode) register() error {
 			f.localAddr = fmt.Sprintf("%s:%v", localIP, f.listen)
 
 			id, loadedFromDisk := f.loadOrInitNodeID()
-			nodeID, err := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "", id)
+			nodeID, err := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "", f.region, id)
 			if err != nil {
 				log.LogErrorf("action[register] cannot register remotecache to master err(%v).", err)
 				break

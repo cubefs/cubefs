@@ -1510,9 +1510,9 @@ var (
 	hybridCloudStorageTablePattern = "%-12v    %-12v    %-12v    %-12v"
 	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern,
 		"STORAGE CLASS", "INODE COUNT", "USED SIZE", "QUOTA")
-	formatFlashNodeSimpleViewTableTitle = arow("Zone", "ID", "Address", "Active", "Enable", "FlashGroupID", "TopoName", "ReportTime")
+	formatFlashNodeSimpleViewTableTitle = arow("Zone", "Region", "ID", "Address", "Active", "Enable", "FlashGroupID", "TopoName", "ReportTime")
 	formatFlashNodeViewTableTitle       = append(formatFlashNodeSimpleViewTableTitle[:], "DataPath", "HitRate", "Evicts", "Limit", "MaxAlloc", "HasAlloc", "Num", "Status")
-	formatFlashGroupViewTile            = arow("ID", "Weight", "Slots", "ReservedSlots", "Status", "SlotStatus", "PendingSlots", "Step", "FlashNodeCount", "ReducingSlots", "TopoName")
+	formatFlashGroupViewTile            = arow("ID", "Weight", "Slots", "ReservedSlots", "Status", "SlotStatus", "PendingSlots", "Step", "FlashNodeCount", "ReducingSlots", "TopoName", "Region")
 	QosHeader                           = fmt.Sprintf(qosPattern, "NAME", "TOTAL-MB", "USED-MB")
 )
 
@@ -1527,6 +1527,7 @@ func formatFlashNodeView(fn *proto.FlashNodeViewInfo) string {
 		arow("  Address", fn.Addr),
 		arow("  Version", fn.Version),
 		arow("  ZoneName", fn.ZoneName),
+		arow("  Region", fn.Region),
 		arow("  FlashGroupID", fn.FlashGroupID),
 		arow("  TopoName", fn.FlashNodeTopoName),
 		arow("  ReportTime", formatTimeToString(fn.ReportTime)),
@@ -1547,7 +1548,8 @@ func formatFlashGroupView(fg *proto.FlashGroupAdminView) string {
 		fmt.Sprintf("  PedningSlots:%v\n", fg.PendingSlots) +
 		fmt.Sprintf("  Step:%v\n", fg.Step) +
 		fmt.Sprintf("  FlashNodeCount:%v\n", fg.FlashNodeCount) +
-		fmt.Sprintf("  TopoName:%v\n", fg.FlashNodeTopoName)
+		fmt.Sprintf("  TopoName:%v\n", fg.FlashNodeTopoName) +
+		fmt.Sprintf("  Region:%v\n", fg.Region)
 }
 
 var (

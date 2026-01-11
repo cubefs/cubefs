@@ -558,12 +558,16 @@ func (m *Server) addFlashTopo(w http.ResponseWriter, r *http.Request) {
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}
+	region := r.FormValue(regionKey)
+	if region == "" {
+		region = proto.DefaultRegionName
+	}
 	_, err := m.cluster.PeekFlashTopo(topoName)
 	if err == nil {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is already exist", topoName)))
 		return
 	}
-	err = m.cluster.AddFlashTopo(topoName)
+	err = m.cluster.AddFlashTopo(topoName, region)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("add topo[%v] failed %v", topoName, err.Error())))
 		return

@@ -39,7 +39,7 @@ func newCluster(name string, cfg *clusterConfig, leaderInfo *LeaderInfo, fsm *Me
 	c.leaderInfo = leaderInfo
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 	// TODO
-	c.flashNodeTopo = NewFlashNodeTopology("default", 0)
+	c.flashNodeTopo = NewFlashNodeTopology(proto.DefaultTopoName, proto.DefaultRegionName, 0)
 	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	return
 }
@@ -60,7 +60,7 @@ func (c *Cluster) createFlashGroup(setSlots []uint32, setWeight uint32, gradualF
 }
 
 func (c *Cluster) addFlashNode(nodeAddr, zoneName, version string, id uint64) (nodeID uint64, err error) {
-	return c.flashNodeTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version, id,
+	return c.flashNodeTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version, c.flashNodeTopo.Region, id,
 		c.idAlloc.allocateCommonID, c.syncAddFlashNode, c.syncMoveFlashNode)
 }
 

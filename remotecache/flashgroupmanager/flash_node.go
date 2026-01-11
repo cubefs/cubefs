@@ -32,6 +32,7 @@ type FlashNodeValue struct {
 	IsEnable          bool
 	TaskCountLimit    int
 	FlashNodeTopoName string `json:"FlashNodeTopoName,omitempty"` // empty means default topology
+	Region            string
 }
 
 type FlashNode struct {
@@ -71,10 +72,15 @@ func NewFlashNodeFromFnv(clusterID string, fnv *FlashNodeValue) *FlashNode {
 		}
 	}
 	node.FlashNodeTopoName = topoName
+	region := fnv.Region
+	if topoName == proto.DefaultTopoName && region == "" {
+		region = proto.DefaultRegionName
+	}
+	node.Region = region
 	return node
 }
 
-func NewFlashNode(addr, zoneName, clusterID, version, topoName string, isEnable bool) *FlashNode {
+func NewFlashNode(addr, zoneName, clusterID, version, topoName, region string, isEnable bool) *FlashNode {
 	node := new(FlashNode)
 	node.Addr = addr
 	node.ZoneName = zoneName
@@ -87,6 +93,7 @@ func NewFlashNode(addr, zoneName, clusterID, version, topoName string, isEnable 
 		topoName = proto.IdleTopoName
 	}
 	node.FlashNodeTopoName = topoName
+	node.Region = region
 	return node
 }
 
@@ -104,6 +111,7 @@ func (flashNode *FlashNode) GetFlashNodeViewInfo() (info *proto.FlashNodeViewInf
 		DiskStat:          flashNode.DiskStat,
 		LimiterStatus:     flashNode.LimiterStatus,
 		FlashNodeTopoName: flashNode.FlashNodeTopoName,
+		Region:            flashNode.Region,
 	}
 	flashNode.RUnlock()
 	return
@@ -258,10 +266,35 @@ func (flashNode *FlashNode) UpdateZoneName(t *FlashNodeTopology, newZoneName str
 	flashNode.Lock()
 	flashNode.ZoneName = newZoneName
 	flashNode.Unlock()
-	syncUpdateFlashNodeFunc(flashNode)
+	err = syncUpdateFlashNodeFunc(flashNode)
+	if err != nil {
+		return
+	}
 	// delete from old zone
 	oldZone.flashNode.Delete(flashNode.Addr)
 	// put in new zone
 	newZone.putFlashNode(flashNode)
+	return
+}
+
+func (flashNode *FlashNode) TryUpdateInfos(region string, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	needUpdate := false
+	flashNode.RLock()
+	if flashNode.Region != region {
+		needUpdate = true
+	}
+	flashNode.RUnlock()
+	if !needUpdate {
+		return
+	}
+	flashNode.Lock()
+	flashNode.Region = region
+	flashNode.Unlock()
+
+	err = syncUpdateFlashNodeFunc(flashNode)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("TryUpdateInfos: update region %v for fn[%v]", region, flashNode.Addr)
 	return
 }
