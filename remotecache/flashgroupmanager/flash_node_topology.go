@@ -591,7 +591,7 @@ func (t *FlashNodeTopology) AddFlashNode(clusterName, nodeAddr, zoneName, versio
 	if err = t.PutFlashNode(flashNode); err != nil {
 		return
 	}
-	log.LogInfof("action[addFlashNode],clusterID[%v] Addr:%v ZoneName:%v success", clusterName, nodeAddr, zoneName)
+	log.LogInfof("action[addFlashNode],clusterID[%v] Addr:%v topo %v, ZoneName:%v success", clusterName, nodeAddr, zoneName, t.Name)
 	return
 }
 
@@ -619,6 +619,7 @@ func (t *FlashNodeTopology) ListFlashNodes(showAll, active bool) map[string][]*p
 	zoneFlashNodes := make(map[string][]*proto.FlashNodeViewInfo)
 	t.flashNodeMap.Range(func(key, value interface{}) bool {
 		flashNode := value.(*FlashNode)
+		log.LogDebugf("ListFlashNodes: ListFlashNodes topo %v fn %v, showAll %v active %v", t.Name, flashNode, showAll, active)
 		if showAll || flashNode.isActiveAndEnable() == active {
 			zoneFlashNodes[flashNode.ZoneName] = append(zoneFlashNodes[flashNode.ZoneName], flashNode.GetFlashNodeViewInfo())
 		}
@@ -654,7 +655,7 @@ func (t *FlashNodeTopology) UpdateFlashNode(flashNode *FlashNode, enable bool,
 func (t *FlashNodeTopology) RemoveFlashNode(clusterName string, flashNode *FlashNode,
 	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc,
 ) (err error) {
-	log.LogWarnf("action[removeFlashNode], ZoneName[%s] Node[%s] offline", flashNode.ZoneName, flashNode.Addr)
+	log.LogDebugf("action[removeFlashNode], ZoneName[%s] Node[%s] offline", flashNode.ZoneName, flashNode.Addr)
 	var flashGroupID uint64
 	if flashGroupID, err = t.deleteFlashNode(clusterName, flashNode, syncDeleteFlashNodeFunc); err != nil {
 		return
@@ -909,7 +910,17 @@ func (t *FlashNodeTopology) addFlashNodeToFlashGroup(addr string, flashGroup *Fl
 		}
 		zone.flashNode.Delete(flashNode.Addr)
 		// add to targetTopo
-		targetTopo.PutFlashNode(flashNode)
+		_, err = targetTopo.GetZone(flashNode.ZoneName)
+		if err != nil {
+			targetTopo.PutZoneIfAbsent(NewFlashNodeZone(flashNode.ZoneName))
+			err = nil
+		}
+		err = targetTopo.PutFlashNode(flashNode)
+		if err != nil {
+			log.LogWarnf("action[AddFlashNodeToFlashGroupWithTargetTopo] addr %v add to  topo %v:err %v",
+				addr, t.Name, err.Error())
+			return
+		}
 		targetTopo.updateClientCache()
 	}
 	return

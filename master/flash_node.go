@@ -136,8 +136,8 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	// all flashnode is added to default topo by default
-	topoName := proto.DefaultTopoName
+	// all flashnode is added to idle topo by default
+	topoName := proto.IdleTopoName
 	if id, err = m.cluster.addFlashNode(topoName, nodeAddr.V, zoneName.V, version.V, nodeID.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -210,6 +210,7 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 		flashTopo *flashgroupmanager.FlashNodeTopology
 		err       error
 	)
+	log.LogDebugf("listFlashNodes: showAllTopo %v, showAll %v active %v", showAllTopo, showAll, active)
 	if showAllTopo {
 		// aggregate nodes from all topologies
 		all := make(map[string][]*proto.FlashNodeViewInfo)
@@ -221,6 +222,7 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return true
 			}
+			log.LogDebugf("listFlashNodes: ListFlashNodes topo %v %v, showAll %v active %v", topo.Name, showAllTopo, showAll, active)
 			mset := topo.ListFlashNodes(showAll, active)
 			for zone, nodes := range mset {
 				all[zone] = append(all[zone], nodes...)

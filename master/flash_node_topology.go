@@ -40,9 +40,8 @@ func (c *Cluster) loadFlashNodes() (err error) {
 			return
 		}
 		flashNode := flashgroupmanager.NewFlashNodeFromFnv(c.Name, fnv)
-		flashNode.ID = fnv.ID
-		flashNode.FlashGroupID = fnv.FlashGroupID
-
+		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v topoName: %v]",
+			flashNode.ID, flashNode.Addr, flashNode.FlashGroupID, flashNode.FlashNodeTopoName)
 		var topo *flashgroupmanager.FlashNodeTopology
 		topo, err = c.PeekFlashTopo(flashNode.FlashNodeTopoName)
 		if err != nil {
@@ -60,8 +59,11 @@ func (c *Cluster) loadFlashNodes() (err error) {
 			topo.PutZoneIfAbsent(flashgroupmanager.NewFlashNodeZone(flashNode.ZoneName))
 			err = nil
 		}
-		topo.PutFlashNode(flashNode)
-		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v topoName: %v]",
+		err = topo.PutFlashNode(flashNode)
+		if err != nil {
+			return
+		}
+		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v add to topoName: %v]",
 			flashNode.ID, flashNode.Addr, flashNode.FlashGroupID, flashNode.FlashNodeTopoName)
 	}
 	return
@@ -100,15 +102,17 @@ func (c *Cluster) loadFlashTopos() (err error) {
 	}
 	if len(result) == 0 {
 		// forward compatibility: create default FlashNodeTopology
-		name := proto.DefaultTopoName
-		// TODO: chi-test add to rocksDP, may hang. if hung , use go c.syncAddFlashTopo
-		if err = c.AddFlashTopo(name); err != nil {
+		if err = c.AddFlashTopo(proto.DefaultTopoName); err != nil {
 			return
 		}
 		log.LogInfof("action[loadFlashTopos] load default topo")
+		if err = c.AddFlashTopo(proto.IdleTopoName); err != nil {
+			return
+		}
+		log.LogInfof("action[loadFlashTopos] load default idle")
 	} else {
 		// TODO: chi-test
-		findDefault := false
+		findIdle := false
 		for _, value := range result {
 			ftv := &flashgroupmanager.FlashNodeTopologyValue{}
 			if err = json.Unmarshal(value, &ftv); err != nil {
@@ -118,13 +122,16 @@ func (c *Cluster) loadFlashTopos() (err error) {
 			topo := flashgroupmanager.NewFlashNodeTopology(ftv.Name, ftv.ID)
 			topo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 			c.flashNodeTopo.Store(ftv.Name, topo)
-			if ftv.Name == proto.DefaultTopoName {
-				findDefault = true
+			if ftv.Name == proto.IdleTopoName {
+				findIdle = true
 			}
 			log.LogInfof("action[loadFlashTopos] load topo %v", ftv.Name)
 		}
-		if !findDefault {
-			panic("default topo is not found")
+		// always have idle topo
+		if !findIdle {
+			if err = c.AddFlashTopo(proto.IdleTopoName); err != nil {
+				return
+			}
 		}
 	}
 	return
