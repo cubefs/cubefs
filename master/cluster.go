@@ -7552,7 +7552,7 @@ func (c *Cluster) DelFlashTopo(name string, gradualFlag bool, step uint32) (err 
 	if err != nil {
 		return
 	}
-	dstTop, err = c.PeekFlashTopo(proto.DefaultTopoName)
+	dstTop, err = c.PeekFlashTopo(proto.IdleTopoName)
 	if err != nil {
 		return
 	}
@@ -7561,12 +7561,14 @@ func (c *Cluster) DelFlashTopo(name string, gradualFlag bool, step uint32) (err 
 	for _, fn := range flashNodes {
 		err = c.ChangeFlashNodeTopo(srcTopo, dstTop, fn)
 		if err != nil {
+			log.LogWarnf("ChangeFlashNodeTopo:fn[%v] %v-> %v failed %v", fn.Addr, srcTopo.Name, dstTop.Name, err)
 			return err
 		}
 	}
 	// delete all flash groups in the topo
 	err = srcTopo.DeleteAllFlashGroups(gradualFlag, step, c.syncUpdateFlashGroup, c.syncUpdateFlashNode, c.syncDeleteFlashGroup)
 	if err != nil {
+		log.LogWarnf("ChangeFlashNodeTopo:DeleteAllFlashGroups %v failed %v", srcTopo.Name, err)
 		return
 	}
 	c.flashNodeTopo.Delete(name)
@@ -7584,7 +7586,11 @@ func (c *Cluster) ChangeFlashNodeTopo(srcTop, dstTop *flashgroupmanager.FlashNod
 		log.LogWarnf("ChangeFlashNodeTopo remove fn %v from topo %v failed: %v", fn.Addr, srcTop.Name, err.Error())
 		return
 	}
-	_, err = dstTop.AddFlashNode(c.Name, fn.Addr, fn.ZoneName, fn.Version, fn.ID, c.idAlloc.allocateCommonID, c.syncAddFlashNode, c.syncMoveFlashNode)
+	// keep node id
+	allocateCommonIDFunc := func() (id uint64, err error) {
+		return fn.ID, nil
+	}
+	_, err = dstTop.AddFlashNode(c.Name, fn.Addr, fn.ZoneName, fn.Version, 0, allocateCommonIDFunc, c.syncAddFlashNode, c.syncMoveFlashNode)
 	if err != nil {
 		log.LogWarnf("ChangeFlashNodeTopo add fn %v to topo %v failed: %v", fn.Addr, dstTop.Name, err.Error())
 		return
@@ -7606,10 +7612,6 @@ func (c *Cluster) RenameFlashNodeTopo(srcTop *flashgroupmanager.FlashNodeTopolog
 	c.flashNodeTopo.Store(newName, srcTop)
 	// 3. sync update
 	err = c.syncUpdateFlashTopo(srcTop)
-	// 4. if src name is default topo, create new default topo
-	if oldName == proto.DefaultTopoName {
-		err = c.AddFlashTopo(proto.DefaultTopoName)
-	}
 	return err
 }
 

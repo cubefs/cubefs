@@ -200,35 +200,27 @@ func newCmdFlashNodeGet(client *master.MasterClient) *cobra.Command {
 func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 	var name string
 	var showAllTopo bool
+	var active int
 	cmd := &cobra.Command{
 		Use:   CliOpList,
 		Short: "list all flash nodes or [active true/false] flash nodes",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			var active bool
-			activeFilter := -1
 			filterStr := "all"
-			if len(args) == 1 {
-				if active, err = strconv.ParseBool(args[0]); err != nil {
-					err = fmt.Errorf("Parse bool fail: %v\n", err)
-					return
-				}
-				if active {
-					activeFilter = 1
-					filterStr = "active:true"
-				} else {
-					activeFilter = 0
-					filterStr = "active:false"
-				}
+			switch active {
+			case 1:
+				filterStr = "active:true"
+			default:
+				filterStr = "all"
 			}
 			if name == "" {
 				name = proto.DefaultTopoName
 			}
-			zoneFlashNodes, err := client.NodeAPI().ListFlashNodesByTopo(activeFilter, name, showAllTopo)
+			zoneFlashNodes, err := client.NodeAPI().ListFlashNodesByTopo(active, name, showAllTopo)
 			if err != nil {
 				return
 			}
-			stdoutln(fmt.Sprintf("[FlashNodes] %s", filterStr))
+			stdoutln(fmt.Sprintf("[FlashNodes] %s, showAllTopo[%v]", filterStr, showAllTopo))
 			tbl := table{formatFlashNodeViewTableTitle}
 			for _, flashNodeViewInfos := range zoneFlashNodes {
 				tbl = showFlashNodesView(flashNodeViewInfos, true, nil, tbl)
@@ -239,6 +231,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	cmd.Flags().BoolVar(&showAllTopo, "showAllTopo", false, "list flash nodes across all topologies (default false)")
+	cmd.Flags().IntVar(&active, "active", 1, "filter flash nodes by activity: 1(true), -1(all)")
 	return cmd
 }
 

@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	UnusedFlashNodeFlashGroupID      = 0
 	DefaultWaitClientUpdateFgTimeSec = 65
 	WaitForRecoverCount              = 20
+	UnusedFlashNodeFlashGroupID      = 0
 )
 
 type FlashGroupValue struct {

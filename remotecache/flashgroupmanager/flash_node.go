@@ -54,6 +54,8 @@ type FlashNodeBadDiskInfo struct {
 
 func NewFlashNodeFromFnv(clusterID string, fnv *FlashNodeValue) *FlashNode {
 	node := new(FlashNode)
+	node.ID = fnv.ID
+	node.FlashGroupID = fnv.FlashGroupID
 	node.Addr = fnv.Addr
 	node.ZoneName = fnv.ZoneName
 	node.Version = fnv.Version
@@ -64,6 +66,9 @@ func NewFlashNodeFromFnv(clusterID string, fnv *FlashNodeValue) *FlashNode {
 	topoName := fnv.FlashNodeTopoName
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
+		if fnv.FlashGroupID == UnusedFlashNodeFlashGroupID {
+			topoName = proto.IdleTopoName
+		}
 	}
 	node.FlashNodeTopoName = topoName
 	return node
@@ -79,7 +84,7 @@ func NewFlashNode(addr, zoneName, clusterID, version, topoName string, isEnable 
 	node.TaskManager = newAdminTaskManager(addr, clusterID)
 	node.TaskManager.connPool = util.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout, false)
 	if topoName == "" {
-		topoName = proto.DefaultTopoName
+		topoName = proto.IdleTopoName
 	}
 	node.FlashNodeTopoName = topoName
 	return node

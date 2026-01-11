@@ -43,6 +43,7 @@ const (
 	FlashManualCheckAction  = "check"
 
 	DefaultTopoName = "default"
+	IdleTopoName    = "idle"
 )
 
 var (

@@ -72,6 +72,12 @@ func (m *Server) turnFlashGroup(w http.ResponseWriter, r *http.Request) {
 		topoName = proto.DefaultTopoName
 	}
 
+	if topoName == proto.IdleTopoName {
+		err = fmt.Errorf("idle topo doesn't support this option")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -124,6 +130,12 @@ func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 	topoName := r.FormValue(nameKey)
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
+	}
+
+	if topoName == proto.IdleTopoName {
+		err = fmt.Errorf("idle topo doesn't support this option")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	flashGroup, err := m.cluster.createFlashGroup(setSlots, setWeight, gradualFlag, step, topoName)
@@ -195,6 +207,12 @@ func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
 		topoName = proto.DefaultTopoName
 	}
 
+	if topoName == proto.IdleTopoName {
+		err = fmt.Errorf("idle topo doesn't support this option")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -239,6 +257,12 @@ func (m *Server) setFlashGroup(w http.ResponseWriter, r *http.Request) {
 		topoName = proto.DefaultTopoName
 	}
 
+	if topoName == proto.IdleTopoName {
+		err = fmt.Errorf("idle topo doesn't support this option")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -277,6 +301,12 @@ func (m *Server) getFlashGroup(w http.ResponseWriter, r *http.Request) {
 		topoName = proto.DefaultTopoName
 	}
 
+	if topoName == proto.IdleTopoName {
+		err = fmt.Errorf("idle topo doesn't support this option")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -291,10 +321,10 @@ func (m *Server) getFlashGroup(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) flashGroupAddFlashNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		err         error
-		flashTopo   *flashgroupmanager.FlashNodeTopology
-		defaultTopo *flashgroupmanager.FlashNodeTopology
-		flashGroup  *flashgroupmanager.FlashGroup
+		err        error
+		flashTopo  *flashgroupmanager.FlashNodeTopology
+		idleTopo   *flashgroupmanager.FlashNodeTopology
+		flashGroup *flashgroupmanager.FlashGroup
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupNodeAdd))
 	defer func() {
@@ -310,6 +340,13 @@ func (m *Server) flashGroupAddFlashNode(w http.ResponseWriter, r *http.Request) 
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}
+
+	if topoName == proto.IdleTopoName {
+		err = fmt.Errorf("idle topo doesn't support this option")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	// check if target topo is exist
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
@@ -322,15 +359,15 @@ func (m *Server) flashGroupAddFlashNode(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	defaultTopo, err = m.cluster.PeekFlashTopo(proto.DefaultTopoName)
+	idleTopo, err = m.cluster.PeekFlashTopo(proto.IdleTopoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	_, err = defaultTopo.PeekFlashNode(addr)
+	_, err = idleTopo.PeekFlashNode(addr)
 	if err == nil {
-		// all flash node not attached to fg is added to default topo by default
-		if err = defaultTopo.AddFlashNodeToFlashGroupWithTargetTopo(flashTopo, flashGroup,
+		// all flash node not attached to fg is added to idle topo by default
+		if err = idleTopo.AddFlashNodeToFlashGroupWithTargetTopo(flashTopo, flashGroup,
 			addr, zoneName, count, m.cluster.syncUpdateFlashNode); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
@@ -365,6 +402,12 @@ func (m *Server) flashGroupRemoveFlashNode(w http.ResponseWriter, r *http.Reques
 	topoName := r.FormValue(nameKey)
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
+	}
+
+	if topoName == proto.IdleTopoName {
+		err = fmt.Errorf("idle topo doesn't support this option")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
@@ -411,6 +454,13 @@ func (m *Server) listFlashGroups(w http.ResponseWriter, r *http.Request) {
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}
+
+	if topoName == proto.IdleTopoName {
+		err = fmt.Errorf("idle topo doesn't support this option")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	// Whether to list across all topologies
 	showAllTopo := false
 	if v := r.FormValue("showAllTopo"); v != "" {
@@ -470,6 +520,12 @@ func (m *Server) clientFlashGroups(w http.ResponseWriter, r *http.Request) {
 		topoName = proto.DefaultTopoName
 	}
 
+	if topoName == proto.IdleTopoName {
+		err = fmt.Errorf("idle topo doesn't support this option")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -524,7 +580,7 @@ func (m *Server) deleteFlashTopo(w http.ResponseWriter, r *http.Request) {
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}
-	if topoName == proto.DefaultTopoName {
+	if topoName == proto.DefaultTopoName || topoName == proto.IdleTopoName {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is not allowed to deleted", topoName)))
 		return
 	}
@@ -554,7 +610,7 @@ func (m *Server) deleteFlashTopo(w http.ResponseWriter, r *http.Request) {
 	}
 	err = m.cluster.DelFlashTopo(topoName, gradualFlag, step)
 	if err != nil {
-		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("add topo[%v] failed %v", topoName, err.Error())))
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("del topo[%v] failed %v", topoName, err.Error())))
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("topo[%v] is deleted", topoName)))
@@ -568,6 +624,10 @@ func (m *Server) renameFlashTopo(w http.ResponseWriter, r *http.Request) {
 	srcName := r.FormValue(nameKey)
 	if srcName == "" {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "old name should not be empty"})
+		return
+	}
+	if srcName == proto.IdleTopoName {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "idle topo cannot be renamed"})
 		return
 	}
 	dstName := r.FormValue(newNameKey)
