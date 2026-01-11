@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
@@ -30,6 +31,7 @@ type FlashGroupValue struct {
 	IncreasingSlots   int32
 	ReduceAllTime     int64  // unix second
 	FlashNodeTopoName string `json:"FlashNodeTopoName,omitempty"` // empty means default topology
+	Region            string
 }
 
 type FlashGroup struct {
@@ -51,6 +53,7 @@ func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
 		PendingSlots:      fg.PendingSlots,
 		Step:              fg.Step,
 		FlashNodeTopoName: fg.FlashNodeTopoName,
+		Region:            fg.Region,
 	}
 	view.ZoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
 	view.FlashNodeCount = len(fg.flashNodes)
@@ -62,7 +65,7 @@ func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
 }
 
 func newFlashGroup(id uint64, slots []uint32, slotStatus proto.SlotStatus, pendingSlots []uint32, step uint32,
-	status proto.FlashGroupStatus, weight uint32, topoName string,
+	status proto.FlashGroupStatus, weight uint32, topoName, region string,
 ) *FlashGroup {
 	fg := new(FlashGroup)
 	fg.ID = id
@@ -75,6 +78,7 @@ func newFlashGroup(id uint64, slots []uint32, slotStatus proto.SlotStatus, pendi
 	fg.Status = status
 	fg.flashNodes = make(map[string]*FlashNode)
 	fg.FlashNodeTopoName = topoName
+	fg.Region = region
 	return fg
 }
 
@@ -272,10 +276,14 @@ func (fg *FlashGroup) RemoveFlashNode(addr string) {
 	fg.lock.Unlock()
 }
 
-func (fg *FlashGroup) putFlashNode(fn *FlashNode) {
+func (fg *FlashGroup) putFlashNode(fn *FlashNode) (err error) {
+	if fg.Region != fn.Region {
+		return fmt.Errorf("fg %v region[%v] not equal to fn[%v] region[%v]", fg.ID, fg.Region, fn.Addr, fn.Region)
+	}
 	fg.lock.Lock()
 	fg.flashNodes[fn.Addr] = fn
 	fg.lock.Unlock()
+	return
 }
 
 func (fg *FlashGroup) getTargetZoneFlashNodeHosts(targetZone string) (hosts []string) {
@@ -304,6 +312,11 @@ func NewFlashGroupFromFgv(fgv *FlashGroupValue) *FlashGroup {
 		topoName = proto.DefaultTopoName
 	}
 	fg.FlashNodeTopoName = topoName
+	region := fgv.Region
+	if topoName == proto.DefaultTopoName && fg.Region == "" {
+		region = proto.DefaultRegionName
+	}
+	fg.Region = region
 	fg.flashNodes = make(map[string]*FlashNode)
 	return fg
 }

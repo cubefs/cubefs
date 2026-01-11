@@ -221,9 +221,10 @@ func (api *NodeAPI) QueryDataNodeDecommissionProgress(addr string) (progress *pr
 	return
 }
 
-func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version string, id uint64) (nodeID uint64, err error) {
+func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version, region string, id uint64) (nodeID uint64, err error) {
 	request := newRequest(post, proto.FlashNodeAdd).Header(api.h).
-		addParam("addr", serverAddr).addParam("zoneName", zoneName).addParam("version", version).addParam("id", strconv.FormatUint(id, 10))
+		addParam("addr", serverAddr).addParam("zoneName", zoneName).addParam("version", version).
+		addParam("id", strconv.FormatUint(id, 10)).addParam("region", region)
 	val, err := api.mc.serveRequest(request)
 	if err != nil {
 		return

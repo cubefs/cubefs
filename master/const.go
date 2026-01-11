@@ -186,6 +186,7 @@ const (
 	remoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	remoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
 	newNameKey                   = "newName"
+	regionKey                    = "region"
 
 	StoreModeKey  = "storeMode"
 	StartIdKey    = "start"

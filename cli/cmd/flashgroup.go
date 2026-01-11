@@ -382,7 +382,7 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 				sort.Slice(group.ReservedSlots, func(i, j int) bool {
 					return group.ReservedSlots[i] < group.ReservedSlots[j]
 				})
-				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), len(group.ReservedSlots), group.Status, group.SlotStatus, len(group.PendingSlots), group.Step, group.FlashNodeCount, group.IsReducingSlots, group.FlashNodeTopoName))
+				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), len(group.ReservedSlots), group.Status, group.SlotStatus, len(group.PendingSlots), group.Step, group.FlashNodeCount, group.IsReducingSlots, group.FlashNodeTopoName, group.Region))
 			}
 			stdoutln(alignTable(tbl...))
 			return
@@ -587,9 +587,11 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			graphFlashNodeTitle := make([]interface{}, len(formatFlashNodeViewTableTitle)+1)
-			copy(graphFlashNodeTitle, formatFlashNodeViewTableTitle[:6])
-			graphFlashNodeTitle[6] = "GroupStatus"
-			copy(graphFlashNodeTitle[7:], formatFlashNodeViewTableTitle[6:])
+			// Insert "GroupStatus" after FlashGroupID column.
+			// With Region added, FlashGroupID is at index 6 in the simple view header.
+			copy(graphFlashNodeTitle, formatFlashNodeViewTableTitle[:7])
+			graphFlashNodeTitle[7] = "GroupStatus"
+			copy(graphFlashNodeTitle[8:], formatFlashNodeViewTableTitle[7:])
 			stdoutln("[FlashNodes Busy]")
 			tbl = showFlashNodesView(busyNodes, true, groupStatusMap, table{graphFlashNodeTitle})
 			stdoutln(alignTable(tbl...))

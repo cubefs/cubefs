@@ -40,6 +40,7 @@ func newCmdFlashTopoList(client *master.MasterClient) *cobra.Command {
 
 func newCmdFlashTopoAdd(client *master.MasterClient) *cobra.Command {
 	var name string
+	var region string
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "add a flash topology",
@@ -48,7 +49,10 @@ func newCmdFlashTopoAdd(client *master.MasterClient) *cobra.Command {
 				// keep consistent with server default if empty, but still allow explicit default
 				name = "default"
 			}
-			result, err := client.AdminAPI().AddFlashTopo(name)
+			if region == "" {
+				region = "default"
+			}
+			result, err := client.AdminAPI().AddFlashTopo(name, region)
 			if err != nil {
 				return
 			}
@@ -57,6 +61,7 @@ func newCmdFlashTopoAdd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&name, "name", "n", "default", "flash topology name")
+	cmd.Flags().StringVar(&region, "region", "default", "flash topology region")
 	return cmd
 }
 

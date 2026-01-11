@@ -42,8 +42,9 @@ const (
 	FlashManualClearAction  = "clear"
 	FlashManualCheckAction  = "check"
 
-	DefaultTopoName = "default"
-	IdleTopoName    = "idle"
+	DefaultTopoName   = "default"
+	IdleTopoName      = "idle"
+	DefaultRegionName = "default"
 )
 
 var (
@@ -420,6 +421,7 @@ type FlashGroupAdminView struct {
 	FlashNodeCount    int
 	ZoneFlashNodes    map[string][]*FlashNodeViewInfo
 	FlashNodeTopoName string
+	Region            string
 }
 
 type FlashNodeViewInfo struct {
@@ -434,6 +436,7 @@ type FlashNodeViewInfo struct {
 	DiskStat          []*FlashNodeDiskCacheStat
 	LimiterStatus     *FlashNodeLimiterStatusInfo
 	FlashNodeTopoName string
+	Region            string
 }
 
 type FlashNodeStat struct {
@@ -791,4 +794,5 @@ type FlashTopologyAdminView struct {
 	ID        uint64
 	Name      string
 	CacheVols []string
+	Region    string
 }

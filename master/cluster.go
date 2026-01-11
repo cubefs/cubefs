@@ -7527,7 +7527,7 @@ func (c *Cluster) ListAllFlashTopos() (ftvs []*proto.FlashTopologyAdminView) {
 	return ftvs
 }
 
-func (c *Cluster) AddFlashTopo(name string) (err error) {
+func (c *Cluster) AddFlashTopo(name, region string) (err error) {
 	var id uint64
 	// TODO-chi: may be a bug
 	if c.idAlloc == nil {
@@ -7537,7 +7537,7 @@ func (c *Cluster) AddFlashTopo(name string) (err error) {
 			return
 		}
 	}
-	topo := flashgroupmanager.NewFlashNodeTopology(name, id)
+	topo := flashgroupmanager.NewFlashNodeTopology(name, region, id)
 	topo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	c.flashNodeTopo.Store(name, topo)
 	if err = c.syncAddFlashTopo(topo); err != nil {
@@ -7556,7 +7556,7 @@ func (c *Cluster) DelFlashTopo(name string, gradualFlag bool, step uint32) (err 
 	if err != nil {
 		return
 	}
-	// add flashnode to default topo
+	// add flashnode to default idel
 	flashNodes := srcTopo.GetFlashNodes()
 	for _, fn := range flashNodes {
 		err = c.ChangeFlashNodeTopo(srcTopo, dstTop, fn)
@@ -7590,7 +7590,7 @@ func (c *Cluster) ChangeFlashNodeTopo(srcTop, dstTop *flashgroupmanager.FlashNod
 	allocateCommonIDFunc := func() (id uint64, err error) {
 		return fn.ID, nil
 	}
-	_, err = dstTop.AddFlashNode(c.Name, fn.Addr, fn.ZoneName, fn.Version, 0, allocateCommonIDFunc, c.syncAddFlashNode, c.syncMoveFlashNode)
+	_, err = dstTop.AddFlashNode(c.Name, fn.Addr, fn.ZoneName, fn.Version, fn.Region, 0, allocateCommonIDFunc, c.syncAddFlashNode, c.syncMoveFlashNode)
 	if err != nil {
 		log.LogWarnf("ChangeFlashNodeTopo add fn %v to topo %v failed: %v", fn.Addr, dstTop.Name, err.Error())
 		return

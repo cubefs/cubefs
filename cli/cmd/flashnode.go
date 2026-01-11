@@ -206,7 +206,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 		Short: "list all flash nodes or [active true/false] flash nodes",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			filterStr := "all"
+			var filterStr string
 			switch active {
 			case 1:
 				filterStr = "active:true"
@@ -387,13 +387,13 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 	var groupActiveInfo string
 	for _, fn := range flashNodeViewInfos {
 		groupActiveInfo = ""
-		nodeInfo := arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
+		nodeInfo := arow(fn.ZoneName, fn.Region, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
 			fn.FlashGroupID, fn.FlashNodeTopoName, formatTimeToString(fn.ReportTime))
 		if groupStats != nil {
 			if v, ok := groupStats[fn.FlashGroupID]; ok {
 				groupActiveInfo = v
 			}
-			nodeInfo = arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
+			nodeInfo = arow(fn.ZoneName, fn.Region, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
 				fn.FlashGroupID, groupActiveInfo, fn.FlashNodeTopoName, formatTimeToString(fn.ReportTime))
 		}
 		if !showStat {
@@ -424,11 +424,11 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 			}
 			if index != 0 {
 				if groupStats != nil {
-					// pre-stat columns: Zone, ID, Address, Active, Enable, FlashGroupID, GroupStatus, TopoName, ReportTime
-					nodeInfo = arow("", "", "", "", "", "", "", "", "")
+					// pre-stat columns: Zone, Region, ID, Address, Active, Enable, FlashGroupID, GroupStatus, TopoName, ReportTime
+					nodeInfo = arow("", "", "", "", "", "", "", "", "", "")
 				} else {
-					// pre-stat columns: Zone, ID, Address, Active, Enable, FlashGroupID, TopoName, ReportTime
-					nodeInfo = arow("", "", "", "", "", "", "", "")
+					// pre-stat columns: Zone, Region, ID, Address, Active, Enable, FlashGroupID, TopoName, ReportTime
+					nodeInfo = arow("", "", "", "", "", "", "", "", "")
 				}
 			}
 			nodeInfo = append(nodeInfo, dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, num, status)
