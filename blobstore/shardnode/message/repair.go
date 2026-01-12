@@ -64,7 +64,12 @@ func NewSliceRepairMgr(cfg *SliceRepairMgrConfig) (*SliceRepairMgr, error) {
 		cfg.messageType = snproto.MessageTypeRepair
 	}
 
-	repairMgr := &SliceRepairMgr{}
+	repairMgr := &SliceRepairMgr{
+		transport:                cfg.Transport,
+		scClient:                 cfg.SCClient,
+		blobNodeSelector:         cfg.BlobNodeSelector,
+		chunkMissMigrateReporter: base.NewAbnormalReporter(cfg.ClusterID, base.ShardRepair, base.ChunkMissMigrateAbnormal),
+	}
 	cfg.executor = repairMgr
 	cfg.reporter = base.NewRepairSliceTaskReporter(cfg.ClusterID)
 	msgMgr, err := newMessageMgr(cfg.MessageMgrConfig)

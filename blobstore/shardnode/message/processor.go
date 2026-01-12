@@ -352,7 +352,7 @@ func (m *messageMgr) runConsumeTask(ctx context.Context, tier snproto.MessageTie
 			copy(batchCopy, batch)
 			m.consumeTaskPoolsByTier[tier].Run(func() {
 				if err := m.execute(ctx, batchCopy); err != nil {
-					span.Errorf("delete batch failed, err: %s", errors.Detail(err))
+					span.Errorf("execute batch failed, err: %s", errors.Detail(err))
 				}
 			})
 			batch = batch[:0]
