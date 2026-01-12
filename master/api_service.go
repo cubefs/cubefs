@@ -6386,29 +6386,49 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		rstMsg      string
 		offLineAddr string
-		limit       int
+		oldLimit    int
+		newLimit    int
 		err         error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionMetaNode))
 	defer func() {
 		doStatAndMetric(proto.DecommissionMetaNode, metric, err, nil)
-		AuditLog(r, proto.DecommissionMetaNode, fmt.Sprintf("decommission metanode [%v] limit %d", offLineAddr, limit), err)
+		AuditLog(r, proto.DecommissionMetaNode, fmt.Sprintf("decommission metanode [%v] limit %d", offLineAddr, newLimit), err)
 	}()
 
-	if offLineAddr, limit, err = parseDecomNodeReq(r); err != nil {
+	if offLineAddr, oldLimit, err = parseDecomNodeReq(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
+	}
+
+	if oldLimit <= 0 {
+		newLimit = util.DefaultMigrateMpCnt
+	} else {
+		newLimit = oldLimit
+	}
+	currentCount := m.cluster.GetMetaPartitionDecommissionCount(proto.ManualDecommission)
+	clusterLimit := m.cluster.GetMetaPartitionDecommissionLimit(proto.ManualDecommission)
+	if clusterLimit > 0 {
+		if currentCount >= clusterLimit {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("meta partition decommission limit reached for type %s: current=%d, limit=%d",
+				GetMetaPartitionDecommissionTypeName(proto.ManualDecommission), currentCount, clusterLimit)))
+			return
+		}
+		clusterLimit = clusterLimit - currentCount
+		if newLimit > int(clusterLimit) {
+			newLimit = int(clusterLimit)
+		}
 	}
 
 	if _, err = m.cluster.metaNode(offLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
-	if err = m.cluster.migrateMetaNode(offLineAddr, "", limit); err != nil {
+	if err = m.cluster.migrateMetaNode(offLineAddr, "", newLimit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg = fmt.Sprintf("decommissionMetaNode metaNode [%v] limit %d has offline successfully", offLineAddr, limit)
+	rstMsg = fmt.Sprintf("decommissionMetaNode metaNode [%v] limit old[%d] new[%d] has offline successfully", offLineAddr, oldLimit, newLimit)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
