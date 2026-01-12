@@ -133,6 +133,7 @@ type MetaPartitionLearnerInfo struct {
 	ID         uint64   `json:"id"`
 	Learners   []string `json:"learners"`
 	DeleteAddr []string `json:"deleteAddr"`
+	Msg        string   `json:"msg"`
 }
 
 type PromoteLearnerPlan struct {

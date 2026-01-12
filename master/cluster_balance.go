@@ -3432,13 +3432,8 @@ func (c *Cluster) DoPromoteLearnerPlan(plan *proto.PromoteLearnerPlan) error {
 		planMu sync.Mutex
 	)
 
-	var stopProcess uint32
-	atomic.StoreUint32(&stopProcess, 0)
-
+	stopProcess := false
 	for _, learnerInfo := range plan.Learners {
-		if atomic.LoadUint32(&stopProcess) != 0 {
-			break
-		}
 		sem <- struct{}{}
 		wg.Add(1)
 
@@ -3455,7 +3450,7 @@ func (c *Cluster) DoPromoteLearnerPlan(plan *proto.PromoteLearnerPlan) error {
 			planMu.Lock()
 			if err != nil {
 				log.LogErrorf("DoPromoteLearnerPlan PromoteMetaReplicaAndWait error: %s", err.Error())
-				atomic.StoreUint32(&stopProcess, 1)
+				stopProcess = true
 				plan.FailedNum++
 				plan.FailedList = append(plan.FailedList, info.ID)
 				plan.Msg = err.Error()
@@ -3479,7 +3474,7 @@ func (c *Cluster) DoPromoteLearnerPlan(plan *proto.PromoteLearnerPlan) error {
 		plan.Status = PlanTaskStop
 		plan.Msg = "promote learner plan is stopped"
 	} else {
-		if atomic.LoadUint32(&stopProcess) != 0 {
+		if stopProcess {
 			plan.Status = PlanTaskError
 		} else {
 			plan.Status = PlanTaskDone
@@ -3497,7 +3492,19 @@ func (c *Cluster) DoPromoteLearnerPlan(plan *proto.PromoteLearnerPlan) error {
 }
 
 func (c *Cluster) PromoteMetaReplicaAndWait(plan *proto.PromoteLearnerPlan, learnerInfo *proto.MetaPartitionLearnerInfo) error {
-	mp, err := c.getMetaPartitionByID(learnerInfo.ID)
+	var (
+		mp      *MetaPartition
+		srcAddr string
+		err     error
+	)
+
+	defer func() {
+		if err != nil {
+			plan.Msg = err.Error()
+		}
+	}()
+
+	mp, err = c.getMetaPartitionByID(learnerInfo.ID)
 	if err != nil {
 		log.LogErrorf("PromoteMetaReplicaAndWait getMetaPartition error: %s", err.Error())
 		return err
@@ -3507,10 +3514,17 @@ func (c *Cluster) PromoteMetaReplicaAndWait(plan *proto.PromoteLearnerPlan, lear
 		if c.IsClusterPlanNotRun() {
 			return nil
 		}
+		// wait for mp ready.
+		err = c.waitForMetaPartitionReady(mp)
+		if err != nil {
+			log.LogErrorf("waitForMetaPartitionReady error: %s", err.Error())
+			return err
+		}
+
 		if !IsMetaReplicaLearner(mp, learner) {
 			continue
 		}
-		srcAddr, err := c.TryToSelectOneReplica(mp, learnerInfo.Learners, plan)
+		srcAddr, err = c.TryToSelectOneReplica(mp, learnerInfo.Learners, plan)
 		if err != nil {
 			log.LogErrorf("[PromoteMetaReplicaAndWait] mp[%v] select one memory store mode replica failed, err: %s", mp.PartitionID, err.Error())
 			return err

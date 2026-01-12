@@ -591,7 +591,7 @@ const (
 	AddLearner      = "addLearner"
 	DecommissionDir = "decommissionDir"
 
-	CheckMetaLeaderRetry    = 10
+	CheckMetaLeaderRetry    = 20
 	CheckMetaLeaderInterval = 30
 	RetryCheckStatusNum     = 600
 	MaxInodePerMp           = 4000000
