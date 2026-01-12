@@ -52,6 +52,10 @@ const (
 	DefaultSoftCompactionLimit      = 512 * util.GB
 	DefaultHardCompactionLimit      = 2 * util.TB
 	DefaultBlockSize                = 16 * util.KB
+
+	DefaultKeyPrefixLength = 10
+	// Memtable prefix bloom size ratio (10% of write buffer)
+	DefaultMemtablePrefixBloomRatio = 0.1
 )
 
 var (
@@ -274,11 +278,12 @@ func (dbInfo *RocksdbOperator) newRocksdbOptions(opts *RocksDBOptions) (
 	dbOpts.SetMinWriteBufferNumberToMerge(opts.MinWriteBuffToMerge)
 	dbOpts.SetLevelCompactionDynamicLevelBytes(true)
 	dbOpts.SetTargetFileSizeMultiplier(2)
+	// NOTE: prefix extractor optimization for faster prefix seek
+	dbOpts.SetPrefixExtractor(gorocksdb.NewFixedPrefixTransform(DefaultKeyPrefixLength))
+	dbOpts.SetMemTablePrefixBloomSizeRatio(DefaultMemtablePrefixBloomRatio)
 	tableOpts = gorocksdb.NewDefaultBlockBasedTableOptions()
 	cache = gorocksdb.NewLRUCache(opts.BlockCacheSize)
 	tableOpts.SetBlockCache(cache)
-	tableOpts.SetCacheIndexAndFilterBlocks(true)
-	tableOpts.SetPinL0FilterAndIndexBlocksInCache(true)
 	tableOpts.SetFilterPolicy(gorocksdb.NewBloomFilter(10))
 	tableOpts.SetBlockSize(DefaultBlockSize)
 	// from SetFormatVersion comments, it's better to use 3.

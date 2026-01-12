@@ -788,8 +788,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		// Reduce snapshot apply tail-latency by batching RocksDB commits.
 		// This avoids "each record commit" that can block for a long time (flush/compaction),
 		// which in turn can stall iter.Next() and trigger leader-side write timeouts.
-		applySnapBatchMaxItems = 2000
-		applySnapBatchMaxBytes = 8 * 1024 * 1024
+		applySnapBatchMaxItems = 10000
+		applySnapBatchMaxBytes = 64 * 1024 * 1024
 
 		applySnapSlowNextThreshold   = 5 * time.Second
 		applySnapSlowCommitThreshold = 5 * time.Second
@@ -1166,6 +1166,11 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if err = flushBatch(false); err != nil {
 				return
 			}
+		}
+		nextCost = time.Since(nextStart)
+		if nextCost >= applySnapSlowNextThreshold {
+			log.LogWarnf("ApplySnapshot: write slow, partitionID(%v) index(%v) appIndexID(%v) needFlush(%v) cost(%s)",
+				mp.config.PartitionId, index, appIndexID, needFlush, nextCost.String())
 		}
 	}
 }
