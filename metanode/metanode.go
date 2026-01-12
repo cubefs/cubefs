@@ -937,7 +937,6 @@ func (m *MetaNode) stopRocksdbManager() {
 		}
 	}
 	m.rocksdbs = nil
-	m.rocksdbManager = nil
 }
 
 func AdjustRocksdbOptions(config *RocksdbManagerConfig) *RocksdbManagerConfig {
