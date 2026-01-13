@@ -1036,6 +1036,7 @@ type FlashNodeHeartbeatResponse struct {
 	FlashNodeTaskCountLimit int
 	ManualScanningTasks     map[string]*FlashNodeManualTaskResponse
 	TopoName                string
+	Vols                    []string
 }
 
 type FlashNodeLimiterStatus struct {

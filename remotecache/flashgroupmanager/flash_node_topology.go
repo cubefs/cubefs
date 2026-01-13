@@ -1193,7 +1193,26 @@ func (t *FlashNodeTopology) BadDiskInfos() []*FlashNodeBadDiskInfo {
 }
 
 func (t *FlashNodeTopology) GetFlashTopoAdminView() (ftv *proto.FlashTopologyAdminView) {
-	ftv = &proto.FlashTopologyAdminView{ID: t.ID, Name: t.Name}
+	var (
+		volsMap = make(map[string]struct{})
+		vols    = make([]string, 0)
+	)
+	t.flashNodeMap.Range(func(addr, node interface{}) bool {
+		flashNode, ok := node.(*FlashNode)
+		if !ok {
+			return true
+		}
+		for _, volName := range flashNode.CacheVols {
+			if _, ok := volsMap[volName]; !ok {
+				volsMap[volName] = struct{}{}
+			}
+		}
+		return true
+	})
+	for volName := range volsMap {
+		vols = append(vols, volName)
+	}
+	ftv = &proto.FlashTopologyAdminView{ID: t.ID, Name: t.Name, CacheVols: vols}
 	return ftv
 }
 

@@ -125,6 +125,7 @@ func (cb *CacheBlock) Delete(reason string) (err error) {
 		auditlog.LogFlashNodeOp("BlockDelete", fmt.Sprintf("delete block %v, by :%v",
 			cb.info(), reason), nil)
 	}
+	cb.cacheEngine.volMap.LoadAndDelete(cb.volume)
 	return
 }
 
@@ -865,7 +866,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 		if _, err = cacheItem.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
 			return
 		}
-		c.setCacheItem(key, cacheItem)
+		c.setCacheItem(key, cacheItem, "")
 		ci = cacheItem
 	}
 
@@ -914,6 +915,10 @@ func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string
 		return
 	}
 	block.initKeyLimiter(c.keyRateLimitThreshold, c.keyLimiterFlow)
+	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
+		return
+	}
+	c.setCacheItem(key, cacheItem, "")
 	return
 }
 
