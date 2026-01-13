@@ -286,7 +286,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 		}
 	}
 
-	if len(diskErrorAddrs) != (int)(partition.ReplicaNum) && len(diskErrorAddrs) > 0 {
+	if len(diskErrorAddrs) != (int)(partition.ReplicaNum) && len(diskErrorAddrs) > 0 && partition.Status > proto.ReadOnly {
 		partition.Status = proto.ReadOnly
 	}
 
