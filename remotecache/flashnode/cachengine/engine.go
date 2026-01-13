@@ -138,6 +138,7 @@ type CacheEngine struct {
 	keyRateLimitThreshold int32
 	keyLimiterFlow        int64
 	reservedSpace         int64 // reserved disk space
+	volMap                sync.Map
 }
 
 type (
@@ -303,10 +304,13 @@ func (c *CacheEngine) getCacheItem(key string) (*lruCacheItem, bool) {
 	return cacheItem, ok
 }
 
-func (c *CacheEngine) setCacheItem(key string, cacheItem *lruCacheItem) {
+func (c *CacheEngine) setCacheItem(key string, cacheItem *lruCacheItem, volName string) {
 	c.keyToDiskRWMu.Lock()
-	defer c.keyToDiskRWMu.Unlock()
 	c.keyToDiskMap[key] = cacheItem
+	c.keyToDiskRWMu.Unlock()
+	if volName != "" {
+		c.volMap.LoadOrStore(volName, struct{}{})
+	}
 }
 
 func (c *CacheEngine) batchSetCacheItem(items []*lruCacheItem, blocks []*CacheBlock) {
@@ -780,7 +784,15 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 			}
 		}
 	}()
-	err = block.initFilePath(true)
+	if err = block.initFilePath(true); err != nil {
+		return
+	}
+
+	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
+		return
+	}
+	c.setCacheItem(key, cacheItem, volume)
+
 	return
 }
 
@@ -854,7 +866,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		if !isPrepare {
 			cacheItem.lruCache.AddMisses()
 		}
-		c.setCacheItem(key, cacheItem)
+		c.setCacheItem(key, cacheItem, volume)
 	}
 
 	return
@@ -1027,7 +1039,7 @@ func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interfac
 		}
 		return true
 	})
-
+	c.volMap.LoadAndDelete(evictVol)
 	log.LogWarnf("action[EvictCacheByVolume] evict volume(%v) finish", evictVol)
 	return
 }
@@ -1045,6 +1057,10 @@ func (c *CacheEngine) EvictCacheAll() {
 	})
 	wg.Wait()
 	c.clearCacheItems()
+	c.volMap.Range(func(key, value interface{}) bool {
+		c.volMap.Delete(key.(string))
+		return true
+	})
 	log.LogWarn("action[EvictCacheAll] evict all finish")
 }
 
@@ -1247,4 +1263,13 @@ func (c *CacheEngine) SetReadDataNodeTimeout(timeout int) {
 
 func (c *CacheEngine) GetReadDataNodeTimeout() int {
 	return c.readDataNodeTimeout
+}
+
+func (c *CacheEngine) GetCacheVols() (vols []string) {
+	vols = make([]string, 0)
+	c.volMap.Range(func(key, value interface{}) bool {
+		vols = append(vols, key.(string))
+		return true
+	})
+	return vols
 }

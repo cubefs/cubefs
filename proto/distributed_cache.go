@@ -787,6 +787,7 @@ type FlashToposAdminView struct {
 }
 
 type FlashTopologyAdminView struct {
-	ID   uint64
-	Name string
+	ID        uint64
+	Name      string
+	CacheVols []string
 }

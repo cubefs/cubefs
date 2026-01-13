@@ -212,6 +212,8 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	})
 	resp.Status = proto.TaskSucceeds
 	resp.TopoName = req.TopoName
+	resp.Vols = f.cacheEngine.GetCacheVols()
+	resp.ZoneName = f.zoneName
 end:
 	adminTask.Response = resp
 	adminTask.TopoName = req.TopoName

@@ -44,6 +44,7 @@ type FlashNode struct {
 	IsActive      bool
 	LimiterStatus *proto.FlashNodeLimiterStatusInfo
 	WorkRole      string
+	CacheVols     []string
 }
 
 type FlashNodeBadDiskInfo struct {
@@ -137,6 +138,7 @@ func (flashNode *FlashNode) UpdateFlashNodeStatHeartbeat(resp *proto.FlashNodeHe
 	flashNode.DiskStat = resp.Stat
 	flashNode.LimiterStatus = resp.LimiterStatus
 	flashNode.TaskCountLimit = resp.FlashNodeTaskCountLimit
+	flashNode.CacheVols = resp.Vols
 	flashNode.Unlock()
 }
 
