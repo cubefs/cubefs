@@ -112,6 +112,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/setRocksdbKeyNumMax", m.setRocksdbKeyNumMaxHandler)
 	http.HandleFunc("/compactRocksdb", m.compactRocksdbHandler)
 	http.HandleFunc("/calcMpMd5", m.calcMpMd5Handler)
+	http.HandleFunc("/setTruncateBlockMax", m.setTruncateBlockMaxHandler)
 	return
 }
 
@@ -1974,4 +1975,52 @@ func (m *MetaNode) calcMpMd5Handler(w http.ResponseWriter, r *http.Request) {
 	dentryMd5Str := hex.EncodeToString(h.Sum(nil))
 
 	resp.Msg = fmt.Sprintf("mp id=%v applyid(%v) mode(%v), inode_count=%v, inode_md5=%v, dentry_count=%v, dentry_md5=%v", id, mp.GetAppliedID(), partition.inodeTree.GetStoreMode(), count, md5Str, dentryCount, dentryMd5Str)
+}
+
+func (m *MetaNode) setTruncateBlockMaxHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := json.Marshal(resp)
+		w.Write(data)
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	mpIdStr := r.FormValue("id")
+	if mpIdStr == "" {
+		err = fmt.Errorf("missing id parameter")
+		return
+	}
+	id, err := strconv.ParseUint(mpIdStr, 10, 64)
+	if err != nil {
+		log.LogErrorf("[setTruncateBlockMaxHandler] failed to parse id, err(%v)", err)
+		return
+	}
+
+	countStr := r.FormValue("count")
+	if countStr == "" {
+		err = fmt.Errorf("missing count parameter")
+		return
+	}
+	count, err := strconv.Atoi(countStr)
+	if err != nil {
+		log.LogErrorf("[setTruncateBlockMaxHandler] failed to parse count, err(%v)", err)
+		return
+	}
+
+	err = m.raftStore.SetTruncateBlockMax(id, count)
+	if err != nil {
+		log.LogErrorf("[setTruncateBlockMaxHandler] failed to set partition[%v] truncate block max to %v, err(%v)", id, count, err)
+		return
+	}
+
+	log.LogInfof("[setTruncateBlockMaxHandler] set truncate block max success: partition=%v, count=%v", id, count)
+	resp.Msg = fmt.Sprintf("set truncate block max success: partition=%v, count=%v", id, count)
 }

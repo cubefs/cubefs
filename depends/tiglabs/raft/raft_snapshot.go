@@ -132,6 +132,13 @@ func (s *raft) removeSnappingChecked(nodeID uint64, rs *snapshotStatus) {
 	}
 }
 
+// isSendingSnapshot returns true if there is any ongoing snapshot being sent to followers
+func (s *raft) isSendingSnapshot() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.snapping) > 0
+}
+
 func (s *raft) sendSnapshot(m *proto.Message) {
 	util.RunWorker(func() {
 		rs := newSnapshotStatus()

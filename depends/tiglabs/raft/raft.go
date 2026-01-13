@@ -27,6 +27,8 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 )
 
+const DefaultBlockMax = 100
+
 type proposal struct {
 	cmdType proto.EntryType
 	future  *Future
@@ -132,6 +134,8 @@ type raft struct {
 	done              chan struct{}
 	mu                sync.Mutex
 	applyLk           sync.Mutex
+	blockMax          int
+	blockCount        int
 }
 
 func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
@@ -170,6 +174,8 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		electc:        make(chan struct{}, 1),
 		stopc:         make(chan struct{}),
 		done:          make(chan struct{}),
+		blockMax:      DefaultBlockMax,
+		blockCount:    0,
 	}
 	raft.curApplied.Set(r.raftLog.applied)
 	raft.peerState.replace(raftConfig.Peers)
@@ -542,9 +548,18 @@ func (s *raft) status() *Status {
 
 func (s *raft) truncate(index uint64) {
 	logger.Debug("raft[%v] truncate index %v", s.raftFsm.id, index)
+	// Skip truncate if restoring snapshot (as a follower)
 	if s.restoringSnapshot.Get() {
 		return
 	}
+	// Skip truncate if sending snapshot to any follower (as a leader)
+	// This prevents truncating logs that followers still need after snapshot completes
+	if s.isSendingSnapshot() && s.blockCount < s.blockMax {
+		logger.Debug("raft[%v] skip truncate because sending snapshot to follower", s.raftFsm.id)
+		s.blockCount++
+		return
+	}
+	s.blockCount = 0
 
 	select {
 	case <-s.stopc:

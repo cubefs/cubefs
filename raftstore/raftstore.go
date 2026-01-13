@@ -40,6 +40,7 @@ type RaftStore interface {
 	RaftServer() *raft.RaftServer
 	RemoveBackup(id uint64) error
 	GetPeers(id uint64) []uint64
+	SetTruncateBlockMax(id uint64, count int) error
 }
 
 // raftStore implements the RaftStore interface
@@ -229,4 +230,8 @@ func (s *raftStore) RemoveBackup(id uint64) error {
 
 func (s *raftStore) GetPeers(id uint64) (nodes []uint64) {
 	return s.raftServer.GetPeers(id)
+}
+
+func (s *raftStore) SetTruncateBlockMax(id uint64, count int) error {
+	return s.raftServer.SetTruncateBlockMax(id, count)
 }

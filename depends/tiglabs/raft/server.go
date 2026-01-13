@@ -547,3 +547,16 @@ func (rs *RaftServer) GetPeers(id uint64) []uint64 {
 
 	return ret
 }
+
+func (rs *RaftServer) SetTruncateBlockMax(id uint64, count int) error {
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if !ok {
+		return ErrRaftNotExists
+	}
+
+	raft.blockMax = count
+	return nil
+}
