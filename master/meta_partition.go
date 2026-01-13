@@ -1616,16 +1616,6 @@ func (mp *MetaPartition) setRestoreReplicaStatus(status uint32) {
 	atomic.StoreUint32(&mp.RestoreReplicaMeta, status)
 }
 
-func (mp *MetaPartition) waitSetRestoreReplicaForbidden() error {
-	for i := 0; i < defaultSetRestoreReplicaStatusLimit; i++ {
-		if mp.setRestoreReplicaForbidden() {
-			return nil
-		}
-		time.Sleep(time.Second)
-	}
-	return errors.NewErrorf("set RestoreReplicaMetaForbidden timeout")
-}
-
 func (mp *MetaPartition) lostLeader(c *Cluster) bool {
 	return mp.getLeaderAddrWithLock() == "" && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.MpNoLeaderReportIntervalSec)
 }

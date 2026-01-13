@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -128,7 +129,9 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
 		mp.volName, srcAddr, targetAddr, mp.PartitionID)
 
-	if err = mp.waitSetRestoreReplicaForbidden(); err != nil {
+	if !mp.setRestoreReplicaForbidden() {
+		currentStatus := atomic.LoadUint32(&mp.RestoreReplicaMeta)
+		err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, current status: %s", GetRestoreReplicaMessage(currentStatus))
 		return
 	}
 
@@ -957,8 +960,10 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 				partition.volName, partition.PartitionID, err)
 			return
 		}
-		if err = partition.waitSetRestoreReplicaForbidden(); err != nil {
-			log.LogWarnf("action[addMetaReplicaLearner] waitSetRestoreReplicaForbidden failed,vol[%v],meta partition[%v],err[%v]",
+		if !partition.setRestoreReplicaForbidden() {
+			currentStatus := atomic.LoadUint32(&partition.RestoreReplicaMeta)
+			err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, current status: %s", GetRestoreReplicaMessage(currentStatus))
+			log.LogWarnf("action[addMetaReplicaLearner] setRestoreReplicaForbidden failed,vol[%v],meta partition[%v],err[%v]",
 				partition.volName, partition.PartitionID, err)
 			return
 		}

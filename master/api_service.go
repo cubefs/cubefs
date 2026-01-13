@@ -2153,7 +2153,9 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
-		if err = mp.waitSetRestoreReplicaForbidden(); err != nil {
+		if !mp.setRestoreReplicaForbidden() {
+			currentStatus := atomic.LoadUint32(&mp.RestoreReplicaMeta)
+			err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, current status: %s", GetRestoreReplicaMessage(currentStatus))
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
