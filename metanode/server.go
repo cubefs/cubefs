@@ -114,9 +114,7 @@ func (m *MetaNode) handleConnectionError(err error, context string) {
 	}
 
 	errMsg := err.Error()
-	if strings.Contains(errMsg, io.EOF.Error()) {
-		log.LogWarnf("%s: connection closed by client: %v", context, err)
-	} else {
+	if !strings.Contains(errMsg, io.EOF.Error()) {
 		log.LogErrorf("%s: connection error: %v", context, err)
 	}
 }
