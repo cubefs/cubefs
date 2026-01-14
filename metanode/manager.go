@@ -586,9 +586,17 @@ func (m *metadataManager) onStart() (err error) {
 func (m *metadataManager) onStop() {
 	if m.partitions != nil {
 		wg := sync.WaitGroup{}
+		// NOTE: Do NOT hold m.mu.RLock while waiting for mp.Stop().
+		// mp.Stop() -> AfterStop() may call m.detachPartition() which needs m.mu.Lock(),
+		// holding RLock across wg.Wait() will deadlock the shutdown path.
 		m.mu.RLock()
-		defer m.mu.RUnlock()
+		partitions := make([]MetaPartition, 0, len(m.partitions))
 		for _, partition := range m.partitions {
+			partitions = append(partitions, partition)
+		}
+		m.mu.RUnlock()
+
+		for _, partition := range partitions {
 			mp := partition
 			wg.Add(1)
 			go func() {
