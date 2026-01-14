@@ -69,6 +69,7 @@ type ClusterPlan struct {
 	Low             map[string]*ZonePressureView `json:"-" bson:"-"`
 	RocksdbLow      map[string]*ZonePressureView `json:"-" bson:"-"`
 	Plan            []*MetaBalancePlan           `json:"plan" bson:"plan"`
+	Name            string                       `json:"name"`
 	DoneNum         int32                        `json:"doneMpCount" bson:"donenum"`
 	RunningNum      int32                        `json:"runningMpCount"`
 	ErrorNum        int32                        `json:"errorMpCount"`

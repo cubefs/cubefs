@@ -27,7 +27,7 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 )
 
-const DefaultBlockMax = 100
+const DefaultBlockMax = 10
 
 type proposal struct {
 	cmdType proto.EntryType
@@ -555,7 +555,7 @@ func (s *raft) truncate(index uint64) {
 	// Skip truncate if sending snapshot to any follower (as a leader)
 	// This prevents truncating logs that followers still need after snapshot completes
 	if s.isSendingSnapshot() && s.blockCount < s.blockMax {
-		logger.Debug("raft[%v] skip truncate because sending snapshot to follower", s.raftFsm.id)
+		logger.Debug("raft[%v] skip truncate because sending snapshot to follower, blockCount(%v), blockMax(%v)", s.raftFsm.id, s.blockCount, s.blockMax)
 		s.blockCount++
 		return
 	}

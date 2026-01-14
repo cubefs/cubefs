@@ -557,6 +557,8 @@ func (rs *RaftServer) SetTruncateBlockMax(id uint64, count int) error {
 		return ErrRaftNotExists
 	}
 
+	oldCount := raft.blockMax
 	raft.blockMax = count
+	logger.Debug("raft[%v] set truncate block max from %v to %v", id, oldCount, count)
 	return nil
 }

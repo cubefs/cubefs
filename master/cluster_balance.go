@@ -2563,6 +2563,7 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(param *MetaPartitionPlanUser
 		Low:            make(map[string]*proto.ZonePressureView),
 		RocksdbLow:     make(map[string]*proto.ZonePressureView),
 		Plan:           make([]*proto.MetaBalancePlan, 0),
+		Name:           param.Name,
 		Status:         PlanTaskRun,
 		Type:           AddLearner,
 		Mode:           param.Mode,
