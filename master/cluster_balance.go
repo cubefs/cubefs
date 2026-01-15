@@ -1335,7 +1335,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			defer wg.Done()
 			err := c.handleMetaPartitionPlan(plan, mpPlan)
 			if err != nil {
-				log.LogErrorf("handleMetaPartitionPlan err: %s", err.Error())
+				log.LogErrorf("mp[%v] handleMetaPartitionPlan err: %s", mpPlan.ID, err.Error())
 				atomic.StoreUint32(&stopProcess, 1)
 				failMu.Lock()
 				plan.FailedList = append(plan.FailedList, mpPlan.ID)
@@ -1419,7 +1419,7 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 		atomic.AddInt32(&plan.RunReplicaNum, 1)
 		err = c.handleMetaReplicaPlan(plan, mpPlan, mp, mrPlan)
 		if err != nil {
-			log.LogErrorf("handleMetaReplicaPlan err: %s", err.Error())
+			log.LogErrorf("handleMetaReplicaPlan mp[%v] err: %s", mp.PartitionID, err.Error())
 			mpPlan.Msg = err.Error()
 			mrPlan.Msg = err.Error()
 			mrPlan.Status = PlanTaskError
@@ -1786,7 +1786,7 @@ func (c *Cluster) DeleteMetaPartitionBalanceTask() error {
 func CheckRaftStatus(mp *MetaPartition, mrAddr string) (bool, error) {
 	mr, err := mp.getMetaReplica(mrAddr)
 	if err != nil {
-		log.LogErrorf("getMetaReplica: %s", err.Error())
+		log.LogErrorf("mp[%v] getMetaReplica: %s", mp.PartitionID, err.Error())
 		return false, err
 	}
 
