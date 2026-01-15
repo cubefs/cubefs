@@ -337,6 +337,8 @@ func (c *Cluster) migrateMetaPartitionByLearner(srcAddr, targetAddr string, mp *
 	var (
 		newPeers          []proto.Peer
 		finalDstStoreMode proto.StoreMode
+		isLearner         bool
+		manualPromote     bool
 	)
 
 	log.LogWarnf("action[migrateMetaPartitionByLearner],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
@@ -360,8 +362,30 @@ func (c *Cluster) migrateMetaPartitionByLearner(srcAddr, targetAddr string, mp *
 		goto errHandler
 	}
 
-	if err = c.addMetaReplicaLearner(mp, newPeers[0].Addr, finalDstStoreMode, srcAddr, false, decommissionType); err != nil {
+	isLearner, manualPromote, err = getMetaReplicaLearnerInfo(mp, srcAddr)
+	if err != nil {
+		log.LogErrorf("action[migrateMetaPartitionByLearner] getMetaReplicaLearnerInfo partitionID[%v] addr[%s], err[%v]",
+			mp.PartitionID, srcAddr, err)
 		goto errHandler
+	}
+
+	if isLearner && manualPromote {
+		if err = c.addMetaReplicaLearner(mp, newPeers[0].Addr, finalDstStoreMode, "", true, decommissionType); err != nil {
+			log.LogErrorf("action[migrateMetaPartitionByLearner] addMetaReplicaLearner partitionID[%v] addr[%s], err[%v]",
+				mp.PartitionID, newPeers[0].Addr, err)
+			goto errHandler
+		}
+		if err = c.deleteMetaReplica(mp, srcAddr, false, false); err != nil {
+			log.LogErrorf("action[migrateMetaPartitionByLearner] deleteMetaReplica partitionID[%v] addr[%s], err[%v]",
+				mp.PartitionID, srcAddr, err)
+			goto errHandler
+		}
+	} else {
+		if err = c.addMetaReplicaLearner(mp, newPeers[0].Addr, finalDstStoreMode, srcAddr, false, decommissionType); err != nil {
+			log.LogErrorf("action[migrateMetaPartitionByLearner] addMetaReplicaLearner partitionID[%v] addr[%s], err[%v]",
+				mp.PartitionID, newPeers[0].Addr, err)
+			goto errHandler
+		}
 	}
 
 	auditMsg = fmt.Sprintf("migrateMetaPartitionByLearner: vol[%v] mp[%v] migrate from src[%v] to learner[%v] success",
