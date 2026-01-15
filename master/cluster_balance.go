@@ -2598,8 +2598,8 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(param *MetaPartitionPlanUser
 	}
 
 	if len(plan.Plan) == 0 {
-		log.LogWarnf("no replicas need to be migrated in volume(%s)", param.Name)
-		return nil, fmt.Errorf("no replicas need to be migrated in volume(%s)", param.Name)
+		log.LogWarnf("Empty plan. request parameters: %+v", param)
+		return nil, c.AnalyzeEmptyPlanReason(plan)
 	}
 
 	err = c.FindAddLearnerDestination(plan, param)
@@ -3862,4 +3862,52 @@ func GetMetaNodeResourceReason(metaNode *MetaNode, storeMode proto.StoreMode) (m
 
 	msg = fmt.Sprintf("metaNode(%s) is not writable with unknown reason", metaNode.Addr)
 	return
+}
+
+func (c *Cluster) AnalyzeEmptyPlanReason(plan *proto.ClusterPlan) (err error) {
+	var mps map[uint64]*MetaPartition
+	if plan.Name != "" {
+		vol, err := c.getVol(plan.Name)
+		if err != nil {
+			return err
+		}
+
+		mps = vol.cloneMetaPartitionMap()
+	} else {
+		mps = c.getAllMetaPartitions()
+	}
+
+	matchedCount := 0
+	excessReplicaMps := make([]uint64, 0, len(mps))
+	for _, mp := range mps {
+		if plan.StartId != 0 && mp.PartitionID < plan.StartId {
+			continue
+		}
+		if plan.EndId != 0 && mp.PartitionID > plan.EndId {
+			continue
+		}
+		matchedCount++
+
+		if len(mp.Replicas) > int(mp.ReplicaNum) {
+			excessReplicaMps = append(excessReplicaMps, mp.PartitionID)
+		}
+	}
+
+	if matchedCount == 0 {
+		err = fmt.Errorf("no meta partitions found in vol(%s) start(%d) end(%d)", plan.Name, plan.StartId, plan.EndId)
+		log.LogWarnf(err.Error())
+		return err
+	}
+
+	if len(excessReplicaMps) == 0 {
+		err = fmt.Errorf("volume(%s) total %d meta partitions checked, no replicas need to be migrated",
+			plan.Name, matchedCount)
+		log.LogWarnf(err.Error())
+		return err
+	}
+
+	err = fmt.Errorf("no learner migration needed. But %d partitions have excess replicas: %v",
+		len(excessReplicaMps), excessReplicaMps)
+	log.LogWarnf(err.Error())
+	return err
 }
