@@ -1330,6 +1330,21 @@ func parseAndExtractVolDeletionDelayTime(r *http.Request) (volDeletionDelayTimeH
 	return
 }
 
+func parseAndExtractFlashTopoDeletionDelayTime(r *http.Request) (flashTopoDeletionDelayTimeHour int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(flashTopoDeletionDelayTimeKey); value == "" {
+		err = keyNotFound(flashTopoDeletionDelayTimeKey)
+		return
+	}
+	if flashTopoDeletionDelayTimeHour, err = strconv.Atoi(value); err != nil {
+		return
+	}
+	return
+}
+
 func parseAndExtractMetaNodeGOGC(r *http.Request) (metaNodeGOGC int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

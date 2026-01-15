@@ -225,7 +225,8 @@ type clusterConfig struct {
 	AutoMpMigrate      bool
 	SingleNodeMode     bool
 
-	MaxWritableDataPartitionCnt int
+	MaxWritableDataPartitionCnt  int
+	flashTopoDelayDeleteTimeHour int64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -269,6 +270,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.metaNodeMemHighPer = defaultMetaNodeMemHighPer
 	cfg.metaNodeMemLowPer = defaultMetaNodeMemLowPer
 	cfg.metaNodeMemMidPer = defaultMetaNodeMemHighPer
+	cfg.flashTopoDelayDeleteTimeHour = defaultFlashTopoDelayDeleteTimeHour
 	return
 }
 

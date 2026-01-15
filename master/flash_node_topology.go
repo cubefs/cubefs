@@ -119,15 +119,26 @@ func (c *Cluster) loadFlashTopos() (err error) {
 	} else {
 		// TODO: chi-test
 		findIdle := false
+		// collect markDeleted topos for delayed deletion enqueue
+		marked := make([]*flashgroupmanager.FlashNodeTopology, 0)
+		// load all topos from store
 		for _, value := range result {
 			ftv := &flashgroupmanager.FlashNodeTopologyValue{}
 			if err = json.Unmarshal(value, &ftv); err != nil {
 				err = fmt.Errorf("action[loadFlashTopos],value:%v,unmarshal err:%v", string(value), err)
 				return
 			}
-			topo := flashgroupmanager.NewFlashNodeTopology(ftv.Name, ftv.Region, ftv.ID)
+			topo := flashgroupmanager.NewFlashNodeTopology(ftv.Name, ftv.Region, ftv.ID, ftv.Status)
+			// restore delete info
+			topo.DeleteExecTime = ftv.DeleteExecTime
+			topo.DeleteStep = ftv.DeleteStep
+			topo.DeleteGradualFlag = ftv.DeleteGradualFlag
 			topo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 			c.flashNodeTopo.Store(ftv.Name, topo)
+			// collect markDeleted topos
+			if ftv.Status == proto.TopoStatusMarkDelete {
+				marked = append(marked, topo)
+			}
 			if ftv.Name == proto.IdleTopoName {
 				findIdle = true
 			}
@@ -138,6 +149,20 @@ func (c *Cluster) loadFlashTopos() (err error) {
 			if err = c.AddFlashTopo(proto.IdleTopoName, proto.DefaultRegionName); err != nil {
 				return
 			}
+		}
+		// enqueue mark-deleted topos to delay delete map (single pass)
+		idleTopo, _ := c.PeekFlashTopo(proto.IdleTopoName)
+		if len(marked) > 0 {
+			c.deleteFlashTopoMutex.Lock()
+			for _, topo := range marked {
+				c.delayDeleteFlashTopoInfo[topo.Name] = &DelayDeleteFlashTopoInfo{
+					idleTopo:    idleTopo,
+					gradualFlag: topo.DeleteGradualFlag,
+					step:        topo.DeleteStep,
+				}
+				log.LogInfof("action[loadFlashTopos] enqueue markDeleted topo %v for delayed deletion at %v", topo.Name, topo.DeleteExecTime)
+			}
+			c.deleteFlashTopoMutex.Unlock()
 		}
 	}
 	return

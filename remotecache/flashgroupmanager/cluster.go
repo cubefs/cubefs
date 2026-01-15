@@ -39,7 +39,7 @@ func newCluster(name string, cfg *clusterConfig, leaderInfo *LeaderInfo, fsm *Me
 	c.leaderInfo = leaderInfo
 	c.idAlloc = newIDAllocator(c.fsm.store, c.partition)
 	// TODO
-	c.flashNodeTopo = NewFlashNodeTopology(proto.DefaultTopoName, proto.DefaultRegionName, 0)
+	c.flashNodeTopo = NewFlashNodeTopology(proto.DefaultTopoName, proto.DefaultRegionName, 0, proto.TopoStatusNormal)
 	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	return
 }

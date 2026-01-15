@@ -24,24 +24,25 @@ import (
 
 // Keys in the request
 const (
-	addrKey                 = "addr"
-	diskPathKey             = "disk"
-	nameKey                 = "name"
-	idKey                   = "id"
-	countKey                = "count"
-	enableKey               = "enable"
-	thresholdKey            = "threshold"
-	volDeletionDelayTimeKey = "volDeletionDelayTime"
-	metaNodeGOGCKey         = "metaNodeGOGC"
-	dataNodeGOGCKey         = "dataNodeGOGC"
-	dirQuotaKey             = "dirQuota"
-	dirLimitKey             = "dirSizeLimit"
-	dataPartitionSizeKey    = "dpSize"
-	metaPartitionCountKey   = "mpCount"
-	dataPartitionCountKey   = "dpCount"
-	volCapacityKey          = "capacity"
-	volDeleteLockTimeKey    = "deleteLockTime"
-	volTypeKey              = "volType"
+	addrKey                       = "addr"
+	diskPathKey                   = "disk"
+	nameKey                       = "name"
+	idKey                         = "id"
+	countKey                      = "count"
+	enableKey                     = "enable"
+	thresholdKey                  = "threshold"
+	volDeletionDelayTimeKey       = "volDeletionDelayTime"
+	flashTopoDeletionDelayTimeKey = "flashTopoDeletionDelayTime"
+	metaNodeGOGCKey               = "metaNodeGOGC"
+	dataNodeGOGCKey               = "dataNodeGOGC"
+	dirQuotaKey                   = "dirQuota"
+	dirLimitKey                   = "dirSizeLimit"
+	dataPartitionSizeKey          = "dpSize"
+	metaPartitionCountKey         = "mpCount"
+	dataPartitionCountKey         = "dpCount"
+	volCapacityKey                = "capacity"
+	volDeleteLockTimeKey          = "deleteLockTime"
+	volTypeKey                    = "volType"
 
 	dataNodesetSelectorKey = "dataNodesetSelector"
 	metaNodesetSelectorKey = "metaNodesetSelector"
@@ -257,6 +258,7 @@ const (
 	highestPriorityDecommissionWeight             = 8
 	diskDecommissionInfoStatType                  = 1
 	dataNodeDecommissionInfoStatType              = 2
+	defaultFlashTopoDelayDeleteTimeHour           = 48
 
 	maxTrashInterval     = 365 * 24 * 60
 	mpReplicaDelInterval = 300 // 5 minutes

@@ -302,6 +302,11 @@ func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
+		return
+	}
 
 	var node *flashgroupmanager.FlashNode
 	if node, err = flashTopo.PeekFlashNode(offLineAddr.V); err != nil {
@@ -334,6 +339,11 @@ func (m *Server) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Requ
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
 		return
 	}
 	removeAddresses := []string{}
@@ -377,6 +387,11 @@ func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 	flashTopo, err := m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
 		return
 	}
 
@@ -814,6 +829,11 @@ func (m *Server) setFlashNodeReadIOLimits(w http.ResponseWriter, r *http.Request
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
+		return
+	}
 
 	log.LogDebugf("action[setFlashNodeReadIOLimits],flow[%v] iocc[%v] factor [%v]",
 		readFlow, readIocc, readFactor)
@@ -874,6 +894,11 @@ func (m *Server) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
+		return
+	}
 	log.LogDebugf("action[setFlashNodeWriteIOLimits],flow[%v] iocc[%v] factor [%v]",
 		writeFlow, writeIocc, writeFactor)
 	tasks := make([]*proto.AdminTask, 0)
@@ -930,6 +955,15 @@ func (m *Server) changeFlashNodeTopo(w http.ResponseWriter, r *http.Request) {
 	dstTop, err = m.cluster.PeekFlashTopo(targetTopoName)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// forbid operations when source or target topo is markDeleted
+	if srcTop != nil && srcTop.IsMarkDelete() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("src topo[%v] is markDeleted, operation not allowed", srcTop.Name)})
+		return
+	}
+	if dstTop.IsMarkDelete() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("dst topo[%v] is markDeleted, operation not allowed", dstTop.Name)})
 		return
 	}
 	err = srcTop.ChangeFlashNodeTopo(m.cluster.Name, dstTop, flashNode, m.cluster.syncDeleteFlashNode,
