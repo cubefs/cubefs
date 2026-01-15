@@ -915,9 +915,6 @@ func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string
 		return
 	}
 	block.initKeyLimiter(c.keyRateLimitThreshold, c.keyLimiterFlow)
-	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
-		return
-	}
 	c.setCacheItem(key, cacheItem, "")
 	return
 }

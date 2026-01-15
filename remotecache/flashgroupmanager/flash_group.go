@@ -286,7 +286,7 @@ func (fg *FlashGroup) putFlashNode(fn *FlashNode) (err error) {
 	return
 }
 
-func (fg *FlashGroup) getTargetZoneFlashNodeHosts(targetZone string) (hosts []string) {
+func (fg *FlashGroup) GetTargetZoneFlashNodeHosts(targetZone string) (hosts []string) {
 	fg.lock.RLock()
 	for _, flashNode := range fg.flashNodes {
 		if flashNode.ZoneName == targetZone {
@@ -344,7 +344,7 @@ func (fg *FlashGroup) UpdateStatus(status proto.FlashGroupStatus,
 		return err
 	}
 	fg.lock.Unlock()
-	go flashNodeTopo.updateClientCache()
+	go flashNodeTopo.UpdateClientCache()
 	return nil
 }
 

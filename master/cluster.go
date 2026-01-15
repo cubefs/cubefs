@@ -7556,17 +7556,10 @@ func (c *Cluster) DelFlashTopo(name string, gradualFlag bool, step uint32) (err 
 	if err != nil {
 		return
 	}
-	// add flashnode to default idel
-	flashNodes := srcTopo.GetFlashNodes()
-	for _, fn := range flashNodes {
-		err = c.ChangeFlashNodeTopo(srcTopo, dstTop, fn)
-		if err != nil {
-			log.LogWarnf("ChangeFlashNodeTopo:fn[%v] %v-> %v failed %v", fn.Addr, srcTopo.Name, dstTop.Name, err)
-			return err
-		}
-	}
-	// delete all flash groups in the topo
-	err = srcTopo.DeleteAllFlashGroups(gradualFlag, step, c.syncUpdateFlashGroup, c.syncUpdateFlashNode, c.syncDeleteFlashGroup)
+	// delete all flashnode and flash groups in the topo
+	err = srcTopo.DeleteAllFlashGroups(c.Name, dstTop, gradualFlag, step,
+		c.syncUpdateFlashGroup, c.syncUpdateFlashNode, c.syncDeleteFlashGroup,
+		c.syncDeleteFlashNode, c.syncAddFlashNode, c.syncMoveFlashNode)
 	if err != nil {
 		log.LogWarnf("ChangeFlashNodeTopo:DeleteAllFlashGroups %v failed %v", srcTopo.Name, err)
 		return
@@ -7576,26 +7569,6 @@ func (c *Cluster) DelFlashTopo(name string, gradualFlag bool, step uint32) (err 
 		return err
 	}
 	return
-}
-
-func (c *Cluster) ChangeFlashNodeTopo(srcTop, dstTop *flashgroupmanager.FlashNodeTopology,
-	fn *flashgroupmanager.FlashNode,
-) (err error) {
-	err = srcTop.RemoveFlashNode(c.Name, fn, c.syncDeleteFlashNode)
-	if err != nil {
-		log.LogWarnf("ChangeFlashNodeTopo remove fn %v from topo %v failed: %v", fn.Addr, srcTop.Name, err.Error())
-		return
-	}
-	// keep node id
-	allocateCommonIDFunc := func() (id uint64, err error) {
-		return fn.ID, nil
-	}
-	_, err = dstTop.AddFlashNode(c.Name, fn.Addr, fn.ZoneName, fn.Version, fn.Region, 0, allocateCommonIDFunc, c.syncAddFlashNode, c.syncMoveFlashNode)
-	if err != nil {
-		log.LogWarnf("ChangeFlashNodeTopo add fn %v to topo %v failed: %v", fn.Addr, dstTop.Name, err.Error())
-		return
-	}
-	return nil
 }
 
 func (c *Cluster) RenameFlashNodeTopo(srcTop *flashgroupmanager.FlashNodeTopology, newName string) (err error) {
@@ -7613,6 +7586,58 @@ func (c *Cluster) RenameFlashNodeTopo(srcTop *flashgroupmanager.FlashNodeTopolog
 	// 3. sync update
 	err = c.syncUpdateFlashTopo(srcTop)
 	return err
+}
+
+func (c *Cluster) RemoveFlashNodesFromFlashGroup(srcTop, idelTop *flashgroupmanager.FlashNodeTopology, flashGroupID uint64,
+	addr string, zoneName string, count int) (flashGroup *flashgroupmanager.FlashGroup, err error) {
+	defer func() {
+		if err != nil {
+			log.LogWarnf("action[RemoveFlashNodesFromFlashGroup] remove flash nodes:%v count %v zone %v from flashGroup:%v topo :%v failed:%v",
+				addr, count, zoneName, flashGroupID, srcTop.Name, err.Error())
+		}
+	}()
+	if flashGroup, err = srcTop.GetFlashGroup(flashGroupID); err != nil {
+		return
+	}
+
+	var fn *flashgroupmanager.FlashNode
+	if addr != "" {
+		if fn, err = srcTop.PeekFlashNode(addr); err != nil {
+			return
+		}
+		if err = srcTop.ChangeFlashNodeTopo(c.Name, idelTop, fn, c.syncDeleteFlashNode, c.syncAddFlashNode,
+			c.syncMoveFlashNode); err != nil {
+			return
+		}
+		log.LogInfof("action[RemoveFlashNodesFromFlashGroup] remove flash node:%v from flashGroup:%v topo :%v success",
+			addr, flashGroupID, srcTop.Name)
+	} else {
+		flashNodeHosts := flashGroup.GetTargetZoneFlashNodeHosts(zoneName)
+		if len(flashNodeHosts) < count {
+			err = fmt.Errorf("flashNodeHostsCount:%v less than expectCount:%v,flashNodeHosts:%v", len(flashNodeHosts), count, flashNodeHosts)
+			return
+		}
+		successHost := make([]string, 0)
+		for _, flashNodeHost := range flashNodeHosts {
+			if fn, err = srcTop.PeekFlashNode(flashNodeHost); err != nil {
+				return
+			}
+			if err = srcTop.ChangeFlashNodeTopo(c.Name, idelTop, fn, c.syncDeleteFlashNode, c.syncAddFlashNode,
+				c.syncMoveFlashNode); err != nil {
+				err = fmt.Errorf("successHost:%v, flashNodeHosts:%v err:%v", successHost, flashNodeHosts, err)
+				return
+			}
+			successHost = append(successHost, flashNodeHost)
+			if len(successHost) >= count {
+				break
+			}
+		}
+		log.LogInfof("action[RemoveFlashNodesFromFlashGroup] remove flash nodes:%v from flashGroup:%v topo :%v success",
+			successHost, flashGroupID, srcTop.Name)
+	}
+	srcTop.UpdateClientCache()
+
+	return
 }
 
 func (c *Cluster) getMetaPartitionStoreMode(mp *MetaPartition, srcAddr string) (storeMode proto.StoreMode, err error) {

@@ -210,7 +210,8 @@ func (c *Cluster) scheduleToUpdateFlashGroupSlots() {
 			name:     "scheduleToUpdateFlashGroupSlots",
 			function: func() (fin bool) {
 				if c.partition != nil && c.partition.IsRaftLeader() {
-					c.flashNodeTopo.UpdateFlashGroupSlots(c.syncDeleteFlashGroup, c.syncUpdateFlashGroup, c.syncUpdateFlashNode)
+					c.flashNodeTopo.UpdateFlashGroupSlots(c.Name, nil, c.syncDeleteFlashGroup, c.syncUpdateFlashGroup,
+						c.syncUpdateFlashNode, c.syncDeleteFlashNode, c.syncAddFlashNode, c.syncMoveFlashNode)
 				}
 				return
 			},

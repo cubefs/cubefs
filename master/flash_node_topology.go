@@ -198,13 +198,15 @@ func (c *Cluster) scheduleToUpdateFlashGroupSlots() {
 				return
 			case <-ticker.C:
 				if c.partition != nil && c.partition.IsRaftLeader() {
+					idleTopo, _ := c.PeekFlashTopo(proto.IdleTopoName)
 					c.flashNodeTopo.Range(func(key, value interface{}) bool {
 						topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
 						if !ok {
 							log.LogErrorf("action[scheduleToUpdateFlashGroupSlots] cannot convert to FlashNodeTopology")
 							return true
 						}
-						topo.UpdateFlashGroupSlots(c.syncDeleteFlashGroup, c.syncUpdateFlashGroup, c.syncUpdateFlashNode)
+						topo.UpdateFlashGroupSlots(c.Name, idleTopo, c.syncDeleteFlashGroup, c.syncUpdateFlashGroup, c.syncUpdateFlashNode,
+							c.syncDeleteFlashNode, c.syncAddFlashNode, c.syncMoveFlashNode)
 						return true
 					})
 				}

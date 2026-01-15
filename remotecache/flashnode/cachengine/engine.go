@@ -784,9 +784,7 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 			}
 		}
 	}()
-	if err = block.initFilePath(true); err != nil {
-		return
-	}
+	block.initFilePath(true)
 
 	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
 		return

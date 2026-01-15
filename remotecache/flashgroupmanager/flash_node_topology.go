@@ -166,7 +166,7 @@ func (t *FlashNodeTopology) createFlashGroup(fgID uint64, syncAddFlashGroupFunc 
 	return
 }
 
-func (t *FlashNodeTopology) removeFlashGroup(flashGroup *FlashGroup, syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc) (err error) {
+func (t *FlashNodeTopology) DettachFlashGroup(flashGroup *FlashGroup, syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc) (err error) {
 	t.createFlashGroupLock.Lock()
 	defer t.createFlashGroupLock.Unlock()
 
@@ -332,7 +332,7 @@ func (t *FlashNodeTopology) GetFlashGroupsAdminView(fgStatus proto.FlashGroupSta
 	return
 }
 
-func (t *FlashNodeTopology) gradualRemoveFlashGroup(flashGroup *FlashGroup,
+func (t *FlashNodeTopology) GradualRemoveFlashGroup(flashGroup *FlashGroup,
 	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, step uint32,
 ) (err error) {
 	t.createFlashGroupLock.Lock()
@@ -376,7 +376,7 @@ func allocateNewSlot() (slot uint32) {
 	return
 }
 
-func (t *FlashNodeTopology) updateClientCache() {
+func (t *FlashNodeTopology) UpdateClientCache() {
 	// update clientCache directly, do not care leader or not
 	t.UpdateClientResponse()
 }
@@ -599,7 +599,7 @@ func (t *FlashNodeTopology) AddFlashNode(clusterName, nodeAddr, zoneName, versio
 	if err = t.PutFlashNode(flashNode); err != nil {
 		return
 	}
-	log.LogInfof("action[addFlashNode],clusterID[%v] Addr:%v topo %v, ZoneName:%v region %v nodeID %v success", clusterName, nodeAddr, t.Name, zoneName, flashNode.Region, flashNode.ID)
+	log.LogInfof("action[addFlashNode],clusterID[%v] Addr:%v topo %v, ZoneName:%v region %v nodeID %v success", clusterName, nodeAddr, flashNode.FlashNodeTopoName, flashNode.ZoneName, flashNode.Region, flashNode.ID)
 	return
 }
 
@@ -655,7 +655,7 @@ func (t *FlashNodeTopology) UpdateFlashNode(flashNode *FlashNode, enable bool,
 	}
 	flashNode.Unlock()
 	if needUpdateClientCache {
-		t.updateClientCache()
+		t.UpdateClientCache()
 	}
 	return
 }
@@ -665,7 +665,7 @@ func (t *FlashNodeTopology) RemoveFlashNode(clusterName string, flashNode *Flash
 ) (err error) {
 	log.LogDebugf("action[removeFlashNode], ZoneName[%s] Node[%s] offline", flashNode.ZoneName, flashNode.Addr)
 	var flashGroupID uint64
-	if flashGroupID, err = t.deleteFlashNode(clusterName, flashNode, syncDeleteFlashNodeFunc); err != nil {
+	if flashGroupID, err = t.deleteFlashNode(flashNode, syncDeleteFlashNodeFunc); err != nil {
 		return
 	}
 	if flashGroupID != UnusedFlashNodeFlashGroupID {
@@ -674,7 +674,7 @@ func (t *FlashNodeTopology) RemoveFlashNode(clusterName string, flashNode *Flash
 			return
 		}
 		flashGroup.RemoveFlashNode(flashNode.Addr)
-		t.updateClientCache()
+		t.UpdateClientCache()
 	}
 	go func() {
 		time.Sleep(time.Duration(DefaultWaitClientUpdateFgTimeSec) * time.Second)
@@ -692,7 +692,7 @@ func (t *FlashNodeTopology) RemoveFlashNode(clusterName string, flashNode *Flash
 	return
 }
 
-func (t *FlashNodeTopology) deleteFlashNode(clusterName string, flashNode *FlashNode,
+func (t *FlashNodeTopology) deleteFlashNode(flashNode *FlashNode,
 	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc,
 ) (oldFlashGroupID uint64, err error) {
 	flashNode.Lock()
@@ -700,8 +700,7 @@ func (t *FlashNodeTopology) deleteFlashNode(clusterName string, flashNode *Flash
 	oldFlashGroupID = flashNode.FlashGroupID
 	flashNode.FlashGroupID = UnusedFlashNodeFlashGroupID
 	if err = syncDeleteFlashNodeFunc(flashNode); err != nil {
-		log.LogErrorf("action[deleteFlashNode],clusterID[%v] node[%v] offline failed,err[%v]",
-			clusterName, flashNode.Addr, err)
+		log.LogErrorf("action[deleteFlashNode] node[%v] update failed,err[%v]", flashNode.Addr, err)
 		flashNode.FlashGroupID = oldFlashGroupID
 		return
 	}
@@ -761,14 +760,17 @@ func (t *FlashNodeTopology) CreateFlashGroup(id uint64, syncUpdateFlashGroupFunc
 			return
 		}
 	}
-	t.updateClientCache()
+	t.UpdateClientCache()
 	return
 }
 
-func (t *FlashNodeTopology) RemoveFlashGroup(id uint64, gradualFlag bool,
+func (t *FlashNodeTopology) RemoveFlashGroup(clusterName string, idleTopo *FlashNodeTopology, id uint64, gradualFlag bool,
 	step uint32, syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc,
 	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
 	syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
+	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc,
+	syncAddFlashNodeFunc SyncAddFlashNodeFunc,
+	syncMoveFlashNodeFunc SyncMoveFlashNodeFunc,
 ) (flashGroup *FlashGroup, err error) {
 	if flashGroup, err = t.GetFlashGroup(id); err != nil {
 		return
@@ -779,32 +781,48 @@ func (t *FlashNodeTopology) RemoveFlashGroup(id uint64, gradualFlag bool,
 	}
 	remainingSlotsNum := uint32(flashGroup.GetSlotsCount()) - step
 	if gradualFlag && remainingSlotsNum > 0 {
-		err = t.gradualRemoveFlashGroup(flashGroup, syncUpdateFlashGroupFunc, step)
+		err = t.GradualRemoveFlashGroup(flashGroup, syncUpdateFlashGroupFunc, step)
 		return
 	}
 	// remove flash nodes then del the flash group
-	err = t.removeAllFlashNodeFromFlashGroup(flashGroup, syncUpdateFlashNodeFunc)
+	err = t.removeAllFlashNodeFromFlashGroup(clusterName, idleTopo, flashGroup, syncUpdateFlashNodeFunc, syncDeleteFlashNodeFunc,
+		syncAddFlashNodeFunc, syncMoveFlashNodeFunc)
 	if err != nil {
 		return
 	}
-	err = t.removeFlashGroup(flashGroup, syncDeleteFlashGroupFunc)
+	err = t.DettachFlashGroup(flashGroup, syncDeleteFlashGroupFunc)
 	if err != nil {
 		return
 	}
-	t.updateClientCache()
+	t.UpdateClientCache()
 	return
 }
 
-func (t *FlashNodeTopology) removeAllFlashNodeFromFlashGroup(flashGroup *FlashGroup,
-	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+func (t *FlashNodeTopology) removeAllFlashNodeFromFlashGroup(clusterName string, idleTopo *FlashNodeTopology, flashGroup *FlashGroup,
+	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc, syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc,
+	syncAddFlashNodeFunc SyncAddFlashNodeFunc, syncMoveFlashNodeFunc SyncMoveFlashNodeFunc,
 ) (err error) {
 	flashNodeHosts := flashGroup.GetFlashNodeHosts(false)
 	successHost := make([]string, 0)
 	for _, flashNodeHost := range flashNodeHosts {
-		if err = t.removeFlashNodeFromFlashGroup(flashNodeHost, flashGroup, syncUpdateFlashNodeFunc); err != nil {
-			log.LogErrorf("remove flashNode from flashGroup failed, successHost:%v, flashNodeHosts:%v err:%v",
-				successHost, flashNodeHosts, err)
-			return
+		// TODO: flashgroupmanager doesn't have idle topo
+		if idleTopo == nil {
+			if err = t.removeFlashNodeFromFlashGroup(flashNodeHost, flashGroup, syncUpdateFlashNodeFunc); err != nil {
+				log.LogErrorf("remove flashNode from flashGroup failed, successHost:%v, flashNodeHosts:%v err:%v",
+					successHost, flashNodeHosts, err)
+				return
+			}
+		} else {
+			// move all fn to idle
+			var fn *FlashNode
+			if fn, err = t.PeekFlashNode(flashNodeHost); err != nil {
+				return
+			}
+			if err = t.ChangeFlashNodeTopo(clusterName, idleTopo, fn, syncDeleteFlashNodeFunc, syncAddFlashNodeFunc,
+				syncMoveFlashNodeFunc); err != nil {
+				err = fmt.Errorf("successHost:%v, flashNodeHosts:%v err:%v", successHost, flashNodeHosts, err)
+				return
+			}
 		}
 		successHost = append(successHost, flashNodeHost)
 	}
@@ -861,8 +879,14 @@ func (t *FlashNodeTopology) AddFlashNodeToFlashGroupWithTargetTopo(targetTopo *F
 	flashGroup *FlashGroup, addr string, zoneName string,
 	count int, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
 ) (err error) {
-	log.LogDebugf("action[AddFlashNodeToFlashGroupWithTargetTopo] add addr %v to flashGroup %v from topo %v by topo %v",
+	log.LogDebugf("action[AddFlashNodeToFlashGroupWithTargetTopo] add fn[%v] to flashGroup %v[%v] by topo %v",
 		addr, flashGroup.ID, flashGroup.FlashNodeTopoName, t.Name)
+	defer func() {
+		if err != nil {
+			log.LogWarnf("action[AddFlashNodeToFlashGroupWithTargetTopo] add fn[%v] to flashGroup %v[%v] by topo %v:err %v",
+				addr, flashGroup.ID, flashGroup.FlashNodeTopoName, t.Name, err.Error())
+		}
+	}()
 	if addr != "" {
 		err = t.addFlashNodeToFlashGroup(addr, flashGroup, syncUpdateFlashNodeFunc, targetTopo, true)
 	} else {
@@ -874,7 +898,7 @@ func (t *FlashNodeTopology) AddFlashNodeToFlashGroupWithTargetTopo(targetTopo *F
 			addr, flashGroup.ID, flashGroup.FlashNodeTopoName, t.Name, err.Error())
 		return
 	}
-	t.updateClientCache()
+	t.UpdateClientCache()
 	log.LogDebugf("action[AddFlashNodeToFlashGroupWithTargetTopo] add addr %v to flashGroup %v from topo %v by topo %v success",
 		addr, flashGroup.ID, flashGroup.FlashNodeTopoName, t.Name)
 	return
@@ -895,7 +919,7 @@ func (t *FlashNodeTopology) FlashGroupAddFlashNode(flashGroupID uint64, addr str
 	if err != nil {
 		return
 	}
-	t.updateClientCache()
+	t.UpdateClientCache()
 	return
 }
 
@@ -933,7 +957,7 @@ func (t *FlashNodeTopology) addFlashNodeToFlashGroup(addr string, flashGroup *Fl
 				addr, t.Name, err.Error())
 			return
 		}
-		targetTopo.updateClientCache()
+		targetTopo.UpdateClientCache()
 	}
 	return
 }
@@ -1013,7 +1037,7 @@ func (t *FlashNodeTopology) FlashGroupRemoveFlashNode(flashGroupID uint64, addr 
 			addr, flashGroupID, t.Name)
 		return
 	}
-	t.updateClientCache()
+	t.UpdateClientCache()
 	log.LogInfof("action[FlashGroupRemoveFlashNode] remove flash node:%v from flashGroup:%v topo :%v success",
 		addr, flashGroupID, t.Name)
 	return
@@ -1022,7 +1046,7 @@ func (t *FlashNodeTopology) FlashGroupRemoveFlashNode(flashGroupID uint64, addr 
 func (t *FlashNodeTopology) removeFlashNodesFromTargetZone(zoneName string, count int,
 	flashGroup *FlashGroup, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
 ) (err error) {
-	flashNodeHosts := flashGroup.getTargetZoneFlashNodeHosts(zoneName)
+	flashNodeHosts := flashGroup.GetTargetZoneFlashNodeHosts(zoneName)
 	if len(flashNodeHosts) < count {
 		return fmt.Errorf("flashNodeHostsCount:%v less than expectCount:%v,flashNodeHosts:%v", len(flashNodeHosts), count, flashNodeHosts)
 	}
@@ -1160,8 +1184,10 @@ func (t *FlashNodeTopology) Load() (err error) {
 	return
 }
 
-func (t *FlashNodeTopology) UpdateFlashGroupSlots(syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
+func (t *FlashNodeTopology) UpdateFlashGroupSlots(clusterName string, idleTopo *FlashNodeTopology, syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
 	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc, syncAddFlashNodeFunc SyncAddFlashNodeFunc,
+	syncMoveFlashNodeFunc SyncMoveFlashNodeFunc,
 ) {
 	isNotUpdated := true
 	t.flashGroupMap.Range(func(key, value interface{}) bool {
@@ -1175,7 +1201,8 @@ func (t *FlashNodeTopology) UpdateFlashGroupSlots(syncDeleteFlashGroupFunc SyncD
 		if slotStatus == proto.SlotStatus_Completed {
 			return true
 		} else if slotStatus == proto.SlotStatus_Creating || slotStatus == proto.SlotStatus_Deleting {
-			if err := t.updateFlashGroupSlots(flashGroup, syncDeleteFlashGroupFunc, syncUpdateFlashGroupFunc, syncUpdateFlashNodeFunc); err == nil {
+			if err := t.updateFlashGroupSlots(clusterName, idleTopo, flashGroup, syncDeleteFlashGroupFunc, syncUpdateFlashGroupFunc,
+				syncUpdateFlashNodeFunc, syncDeleteFlashNodeFunc, syncAddFlashNodeFunc, syncMoveFlashNodeFunc); err == nil {
 				isNotUpdated = false
 			}
 			return true
@@ -1185,31 +1212,36 @@ func (t *FlashNodeTopology) UpdateFlashGroupSlots(syncDeleteFlashGroupFunc SyncD
 		}
 	})
 	if !isNotUpdated {
-		t.updateClientCache()
+		t.UpdateClientCache()
 	}
 }
 
-func (t *FlashNodeTopology) updateFlashGroupSlots(flashGroup *FlashGroup, syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
+func (t *FlashNodeTopology) updateFlashGroupSlots(clusterName string, idleTopo *FlashNodeTopology, flashGroup *FlashGroup, syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
 	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc, syncAddFlashNodeFunc SyncAddFlashNodeFunc,
+	syncMoveFlashNodeFunc SyncMoveFlashNodeFunc,
 ) (err error) {
 	var needDeleteFgFlag bool
 
 	if flashGroup.GetSlotStatus() == proto.SlotStatus_Deleting {
-		if needDeleteFgFlag, err = t.checkShrinkOrDeleteFlashGroup(flashGroup, syncUpdateFlashNodeFunc); err != nil {
+		if needDeleteFgFlag, err = t.checkShrinkOrDeleteFlashGroup(clusterName, idleTopo, flashGroup, syncUpdateFlashNodeFunc,
+			syncDeleteFlashNodeFunc, syncAddFlashNodeFunc, syncMoveFlashNodeFunc); err != nil {
 			return
 		}
 	}
 	return flashGroup.UpdateSlots(t, needDeleteFgFlag, syncDeleteFlashGroupFunc, syncUpdateFlashGroupFunc)
 }
 
-func (t *FlashNodeTopology) checkShrinkOrDeleteFlashGroup(flashGroup *FlashGroup,
-	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
+func (t *FlashNodeTopology) checkShrinkOrDeleteFlashGroup(clusterName string, idleTopo *FlashNodeTopology, flashGroup *FlashGroup,
+	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc, syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc,
+	syncAddFlashNodeFunc SyncAddFlashNodeFunc, syncMoveFlashNodeFunc SyncMoveFlashNodeFunc,
 ) (needDeleteFgFlag bool, err error) {
 	leftPendingSlotsNum := uint32(flashGroup.GetPendingSlotsCount()) - flashGroup.Step
 	if (leftPendingSlotsNum <= 0) && (flashGroup.GetPendingSlotsCount() == flashGroup.GetSlotsCount()) {
 		needDeleteFgFlag = true
 		// if slots num is reduced to 0, the fn of fg need to be removed
-		if err = t.removeAllFlashNodeFromFlashGroup(flashGroup, syncUpdateFlashNodeFunc); err != nil {
+		if err = t.removeAllFlashNodeFromFlashGroup(clusterName, idleTopo, flashGroup, syncUpdateFlashNodeFunc,
+			syncDeleteFlashNodeFunc, syncAddFlashNodeFunc, syncMoveFlashNodeFunc); err != nil {
 			return
 		}
 	}
@@ -1257,18 +1289,22 @@ func (t *FlashNodeTopology) GetFlashTopoAdminView() (ftv *proto.FlashTopologyAdm
 	return ftv
 }
 
-func (t *FlashNodeTopology) DeleteAllFlashGroups(gradualFlag bool, step uint32,
+func (t *FlashNodeTopology) DeleteAllFlashGroups(clusterName string, idleTopo *FlashNodeTopology, gradualFlag bool, step uint32,
 	syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc,
 	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc,
 	syncDeleteFlashGroupFunc SyncDeleteFlashGroupFunc,
+	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc,
+	syncAddFlashNodeFunc SyncAddFlashNodeFunc,
+	syncMoveFlashNodeFunc SyncMoveFlashNodeFunc,
 ) (err error) {
 	t.flashGroupMap.Range(func(addr, value interface{}) bool {
 		flashGroup, ok := value.(*FlashGroup)
 		if !ok {
 			return true
 		}
-		_, err = t.RemoveFlashGroup(flashGroup.ID, gradualFlag, step, syncUpdateFlashGroupFunc,
-			syncUpdateFlashNodeFunc, syncDeleteFlashGroupFunc)
+		_, err = t.RemoveFlashGroup(clusterName, idleTopo, flashGroup.ID, gradualFlag, step, syncUpdateFlashGroupFunc,
+			syncUpdateFlashNodeFunc, syncDeleteFlashGroupFunc, syncDeleteFlashNodeFunc, syncAddFlashNodeFunc,
+			syncMoveFlashNodeFunc)
 		if err != nil {
 			log.LogWarnf("DeleteAllFlashGroups: topo(%v) delete flashGroup failed(%v)", t.Name, err.Error())
 			return false
@@ -1324,4 +1360,26 @@ func (t *FlashNodeTopology) Rename(newName string, syncUpdateFlashNodeFunc SyncU
 		return
 	}
 	return
+}
+
+func (t *FlashNodeTopology) ChangeFlashNodeTopo(clusterName string, dstTop *FlashNodeTopology, fn *FlashNode,
+	syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc, syncAddFlashNodeFunc SyncAddFlashNodeFunc,
+	syncMoveFlashNodeFunc SyncMoveFlashNodeFunc,
+) (err error) {
+	err = t.RemoveFlashNode(clusterName, fn, syncDeleteFlashNodeFunc)
+	if err != nil {
+		log.LogWarnf("ChangeFlashNodeTopo remove fn %v from topo %v failed: %v", fn.Addr, t.Name, err.Error())
+		return
+	}
+	// keep node id
+	allocateCommonIDFunc := func() (id uint64, err error) {
+		return fn.ID, nil
+	}
+	_, err = dstTop.AddFlashNode(clusterName, fn.Addr, fn.ZoneName, fn.Version, fn.Region, 0,
+		allocateCommonIDFunc, syncAddFlashNodeFunc, syncMoveFlashNodeFunc)
+	if err != nil {
+		log.LogWarnf("ChangeFlashNodeTopo add fn %v to topo %v failed: %v", fn.Addr, dstTop.Name, err.Error())
+		return
+	}
+	return nil
 }

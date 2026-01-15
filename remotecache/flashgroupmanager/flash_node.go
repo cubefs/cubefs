@@ -274,6 +274,7 @@ func (flashNode *FlashNode) UpdateZoneName(t *FlashNodeTopology, newZoneName str
 	oldZone.flashNode.Delete(flashNode.Addr)
 	// put in new zone
 	newZone.putFlashNode(flashNode)
+	log.LogDebugf("fn %v zoneName %v -> %v", flashNode.Addr, oldZone.name, newZone.name)
 	return
 }
 

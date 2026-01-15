@@ -17,6 +17,7 @@ package mocktest
 import (
 	"bytes"
 	"encoding/json"
+	syslog "log"
 	"net"
 	"time"
 
@@ -102,40 +103,46 @@ func (mfs *MockFlashServer) serveConn(rc net.Conn) {
 	conn.SetKeepAlive(true)
 	conn.SetNoDelay(true)
 
-	req := proto.NewPacket()
-	err := req.ReadFromConn(conn, proto.NoReadDeadlineTime)
+	p := proto.NewPacket()
+	err := p.ReadFromConn(conn, proto.NoReadDeadlineTime)
 	if err != nil {
 		return
 	}
-	adminTask := &proto.AdminTask{}
-	decode := json.NewDecoder(bytes.NewBuffer(req.Data))
-	decode.UseNumber()
-	if err = decode.Decode(adminTask); err != nil {
-		responseAckErrToMaster(conn, req, err)
-		return
-	}
-
-	switch req.Opcode {
+	switch p.Opcode {
 	case proto.OpFlashNodeHeartbeat:
-		err = mfs.handleHeartbeats(conn, req, adminTask)
-		Printf("[mocktest] flashnode [%s] report heartbeat to master err:%v\n", mfs.TCPAddr, err)
+		mfs.handleHeartbeats(conn, p)
 	default:
-		Printf("[mocktest] flashnode unknown code [%d]\n", req.Opcode)
+		syslog.Printf("[mocktest] flashnode unknown code [%d]", p.Opcode)
 	}
 }
 
-func (mfs *MockFlashServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, task *proto.AdminTask) (err error) {
-	if err = responseAckOKToMaster(conn, pkg, nil); err != nil {
+func (mfs *MockFlashServer) handleHeartbeats(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	if err = responseAckOKToMaster(conn, p, nil); err != nil {
 		return
 	}
+	req := &proto.HeartBeatRequest{}
 	resp := &proto.FlashNodeHeartbeatResponse{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		syslog.Printf("handleHeartbeats, flashNode:%v, p.reqID %v, topo:%v failed:len %v %v", conn.LocalAddr().String(),
+			p.ReqID, req.TopoName, len(data), err.Error())
+		return
+	}
 	resp.Stat = make([]*proto.FlashNodeDiskCacheStat, 0)
 	resp.LimiterStatus = &proto.FlashNodeLimiterStatusInfo{}
 	resp.FlashNodeTaskCountLimit = 8
 	resp.ManualScanningTasks = make(map[string]*proto.FlashNodeManualTaskResponse)
 	resp.Status = proto.TaskSucceeds
-	task.Response = resp
-	if err = mfs.mc.NodeAPI().ResponseFlashNodeTask(task); err != nil {
+	resp.TopoName = req.TopoName
+	resp.ZoneName = mfs.zoneName
+	adminTask.Response = resp
+	adminTask.TopoName = req.TopoName
+	if err = mfs.mc.NodeAPI().ResponseFlashNodeTask(adminTask); err != nil {
 		return
 	}
 	return
