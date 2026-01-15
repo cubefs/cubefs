@@ -327,8 +327,9 @@ func (m *FlashGroupManager) removeFlashGroup(w http.ResponseWriter, r *http.Requ
 	}
 
 	var flashGroup *FlashGroup
-	if flashGroup, err = m.cluster.flashNodeTopo.RemoveFlashGroup(flashGroupID.V, gradualFlag, step,
-		m.cluster.syncUpdateFlashGroup, m.cluster.syncUpdateFlashNode, m.cluster.syncDeleteFlashGroup); err != nil {
+	if flashGroup, err = m.cluster.flashNodeTopo.RemoveFlashGroup(m.cluster.Name, nil, flashGroupID.V, gradualFlag, step,
+		m.cluster.syncUpdateFlashGroup, m.cluster.syncUpdateFlashNode, m.cluster.syncDeleteFlashGroup,
+		m.cluster.syncDeleteFlashNode, m.cluster.syncAddFlashNode, m.cluster.syncMoveFlashNode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

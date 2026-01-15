@@ -84,6 +84,7 @@ func testFlashNodeGet(t *testing.T) {
 		fnView, err := mc.NodeAPI().GetFlashNodeByTopo(testCase.NodeAddr, proto.IdleTopoName)
 		require.NoError(t, err)
 		require.Equal(t, testCase.NodeAddr, fnView.Addr)
+		require.Equal(t, testCase.ZoneName, fnView.ZoneName)
 	}
 }
 
@@ -107,7 +108,7 @@ func testFlashNodeList(t *testing.T) {
 	require.Equal(t, 2, len(zoneNodes[testZone2]))
 	require.Equal(t, 2, len(zoneNodes[testZone3]))
 
-	zoneNodes, err = mc.NodeAPI().ListFlashNodes(0)
+	zoneNodes, err = mc.NodeAPI().ListFlashNodesByTopo(0, proto.IdleTopoName, false)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(zoneNodes[testZone3]))
 }

@@ -932,7 +932,8 @@ func (m *Server) changeFlashNodeTopo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	err = m.cluster.ChangeFlashNodeTopo(srcTop, dstTop, flashNode)
+	err = srcTop.ChangeFlashNodeTopo(m.cluster.Name, dstTop, flashNode, m.cluster.syncDeleteFlashNode,
+		m.cluster.syncAddFlashNode, m.cluster.syncMoveFlashNode)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

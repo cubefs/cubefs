@@ -171,10 +171,10 @@ func (c *Cluster) createFlashGroup(setSlots []uint32, setWeight uint32, gradualF
 
 func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
 	var (
-		err         error
-		gradualFlag bool
-		step        uint32
-		flashTopo   *flashgroupmanager.FlashNodeTopology
+		err                 error
+		gradualFlag         bool
+		step                uint32
+		flashTopo, idleTopo *flashgroupmanager.FlashNodeTopology
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupRemove))
 	defer func() {
@@ -218,9 +218,15 @@ func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	idleTopo, err = m.cluster.PeekFlashTopo(proto.IdleTopoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	var flashGroup *flashgroupmanager.FlashGroup
-	if flashGroup, err = flashTopo.RemoveFlashGroup(flashGroupID.V, gradualFlag, step,
-		m.cluster.syncUpdateFlashGroup, m.cluster.syncUpdateFlashNode, m.cluster.syncDeleteFlashGroup); err != nil {
+	if flashGroup, err = flashTopo.RemoveFlashGroup(m.cluster.Name, idleTopo, flashGroupID.V, gradualFlag, step,
+		m.cluster.syncUpdateFlashGroup, m.cluster.syncUpdateFlashNode, m.cluster.syncDeleteFlashGroup,
+		m.cluster.syncDeleteFlashNode, m.cluster.syncAddFlashNode, m.cluster.syncMoveFlashNode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -364,21 +370,19 @@ func (m *Server) flashGroupAddFlashNode(w http.ResponseWriter, r *http.Request) 
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	_, err = idleTopo.PeekFlashNode(addr)
-	if err == nil {
-		// all flash node not attached to fg is added to idle topo by default
-		if err = idleTopo.AddFlashNodeToFlashGroupWithTargetTopo(flashTopo, flashGroup,
-			addr, zoneName, count, m.cluster.syncUpdateFlashNode); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-	} else {
-		// flash node is changed from topo A to topo B, fg is unbound
-		if err = flashTopo.AddFlashNodeToFlashGroupWithTargetTopo(flashTopo, flashGroup,
-			addr, zoneName, count, m.cluster.syncUpdateFlashNode); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
+	if addr != "" {
+		_, err = idleTopo.PeekFlashNode(addr)
+	}
+
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if err = idleTopo.AddFlashNodeToFlashGroupWithTargetTopo(flashTopo, flashGroup,
+		addr, zoneName, count, m.cluster.syncUpdateFlashNode); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
@@ -386,8 +390,8 @@ func (m *Server) flashGroupAddFlashNode(w http.ResponseWriter, r *http.Request) 
 
 func (m *Server) flashGroupRemoveFlashNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		err       error
-		flashTopo *flashgroupmanager.FlashNodeTopology
+		err                  error
+		flashTopo, targetTop *flashgroupmanager.FlashNodeTopology
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupNodeRemove))
 	defer func() {
@@ -415,9 +419,16 @@ func (m *Server) flashGroupRemoveFlashNode(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
+	targetTop, err = m.cluster.PeekFlashTopo(proto.IdleTopoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
 	var flashGroup *flashgroupmanager.FlashGroup
-	if flashGroup, err = flashTopo.FlashGroupRemoveFlashNode(flashGroupID,
-		addr, zoneName, count, m.cluster.syncUpdateFlashNode); err != nil {
+	if flashGroup, err = m.cluster.RemoveFlashNodesFromFlashGroup(flashTopo, targetTop, flashGroupID,
+		addr, zoneName, count); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
