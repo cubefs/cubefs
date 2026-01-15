@@ -15,6 +15,7 @@
 package clustermgr
 
 import (
+	"context"
 	"errors"
 	"sort"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/desertbit/grumble"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
@@ -70,6 +72,8 @@ Examples:
 			f.StringL("nodes", "", "comma-separated node hosts to analyze")
 			f.StringL("idc", "", "analyze all nodes in the specified IDC")
 			f.IntL("margin", 1, "safety margin above N (0=exact N, 1=N+1, 2=N+2, etc.)")
+			f.BoolL("move_task", false, "auto create migrate tasks for blocking volume")
+			f.BoolL("force", false, "auto create migrate tasks above 1000")
 		},
 	})
 }
@@ -84,6 +88,8 @@ type volumeChunkInfo struct {
 	Margin       int            // safety margin (default 1)
 	NodeChunkCnt map[string]int // host -> chunk count on this host
 }
+
+var zone_line string = common.Optimal.Sprintf("+ %s- +", strings.Repeat("- ", 30))
 
 // nodeInfo stores node information with rack
 type nodeInfo struct {
@@ -100,6 +106,8 @@ func cmdMigrate(c *grumble.Context) error {
 	nodesArg := c.Flags.String("nodes")
 	idcArg := c.Flags.String("idc")
 	margin := c.Flags.Int("margin")
+	moveTask := c.Flags.Bool("move_task")
+	force := c.Flags.Bool("force")
 
 	if margin == 0 {
 		fmt.Println("WARNING: margin=0 means only N chunks required (minimum for recovery, no redundancy)")
@@ -120,6 +128,8 @@ func cmdMigrate(c *grumble.Context) error {
 			}
 		}
 	}
+
+	fmt.Println(zone_line)
 
 	if len(inputNodes) > 0 {
 		fmt.Printf("Analyzing %d specified nodes...\n", len(inputNodes))
@@ -235,11 +245,12 @@ func cmdMigrate(c *grumble.Context) error {
 	}
 
 	// Step 2: Get volume info using ListVolume
+	fmt.Println(zone_line)
 	fmt.Println("Fetching volume information...")
 	allVolumes := make(map[proto.Vid]*clustermgr.VolumeInfo)
 	listVolumeArgs := &clustermgr.ListVolumeArgs{
 		Marker: proto.Vid(0),
-		Count:  1000,
+		Count:  10000,
 	}
 	for {
 		volumes, err := cmClient.ListVolume(ctx, listVolumeArgs)
@@ -259,8 +270,8 @@ func cmdMigrate(c *grumble.Context) error {
 	}
 
 	// Step 3: Parse volume units to find affected volumes and build chunk distribution
+	fmt.Println(zone_line)
 	fmt.Println("Analyzing volume distribution...")
-	vidNodeChunks := make(map[proto.Vid]map[string]int) // vid -> host -> chunk count
 	volumeInfos := make(map[proto.Vid]*volumeChunkInfo)
 	for vid, volInfo := range allVolumes {
 		nodeChunkCnt := make(map[string]int)
@@ -280,7 +291,6 @@ func cmdMigrate(c *grumble.Context) error {
 		required := tactic.N + margin
 		tolerance := totalChunks - required
 
-		vidNodeChunks[vid] = nodeChunkCnt
 		volumeInfos[vid] = &volumeChunkInfo{
 			Vid:          vid,
 			CodeMode:     volInfo.CodeMode.String(),
@@ -292,10 +302,11 @@ func cmdMigrate(c *grumble.Context) error {
 		}
 	}
 	if verbose {
-		fmt.Printf("Found %d volumes with chunks on target nodes\n", len(volumeInfos))
+		fmt.Printf("Found %s volumes with chunks on target nodes\n", common.Normal.Sprint(len(volumeInfos)))
 	}
 
 	// Step 4: Greedy algorithm to find maximum safe migration set
+	fmt.Println(zone_line)
 	fmt.Println("Greedy add node to find maximum...")
 	canMigrate := func(selectedHosts map[string]bool) bool {
 		for vid, info := range volumeInfos {
@@ -391,11 +402,12 @@ func cmdMigrate(c *grumble.Context) error {
 
 	// Step 5: Output results
 	fmt.Println()
+	fmt.Println(zone_line)
 	fmt.Printf("=== Migration Result ===\n")
-	fmt.Printf("Nodes analyzed      : %d\n", len(allHosts))
-	fmt.Printf("Volumes affected    : %d\n", len(volumeInfos))
-	fmt.Printf("Safety margin       : N+%d\n", margin)
-	fmt.Printf("Safe to migrate     : %d nodes\n", len(selectedHosts))
+	fmt.Printf("Nodes analyzed      : %s\n", common.Normal.Sprint(len(allHosts)))
+	fmt.Printf("Volumes affected    : %s\n", common.Normal.Sprint(len(volumeInfos)))
+	fmt.Printf("Safety margin       : N+%s\n", common.Danger.Sprint(margin))
+	fmt.Printf("Safe to migrate     : %s nodes\n", common.Loaded.Sprint(len(selectedHosts)))
 	fmt.Println()
 
 	// Check if all input nodes can be migrated (when --nodes was specified)
@@ -411,6 +423,9 @@ func cmdMigrate(c *grumble.Context) error {
 			fmt.Println("✓ CHECK OK! All specified nodes can be migrated together.")
 		} else {
 			fmt.Println("✗ CHECK FAILED! Not all specified nodes can be migrated together.")
+			fmt.Println()
+
+			blockingVolumes(ctx, cmClient, inputNodes, volumeInfos, allVolumes, diskToHost, moveTask, force)
 		}
 		fmt.Println()
 	}
@@ -422,8 +437,8 @@ func cmdMigrate(c *grumble.Context) error {
 	}
 
 	// Show nodes that can be migrated
-	fmt.Println("Nodes that can be migrated together:")
-	fmt.Println()
+	fmt.Println(zone_line)
+	fmt.Println(common.Loaded.Sprint("Nodes that can be migrated together:"))
 	fmt.Printf("%-5s %-20s %-30s %-15s\n", "No.", "Rack", "Host", "Chunks")
 	fmt.Println(strings.Repeat("-", 75))
 
@@ -456,7 +471,8 @@ func cmdMigrate(c *grumble.Context) error {
 
 	if len(remaining) > 0 {
 		fmt.Println()
-		fmt.Printf("The following %d nodes CANNOT be migrated together:\n", len(remaining))
+		fmt.Println(zone_line)
+		fmt.Println(common.Danger.Sprintf("The following %d nodes CANNOT be migrated", len(remaining)))
 		for _, host := range remaining {
 			chunkCount := 0
 			for _, info := range volumeInfos {
@@ -471,4 +487,139 @@ func cmdMigrate(c *grumble.Context) error {
 	}
 
 	return nil
+}
+
+func blockingVolumes(ctx context.Context,
+	cmClient *clustermgr.Client,
+	inputNodes []string,
+	volumeInfos map[proto.Vid]*volumeChunkInfo,
+	allVolumes map[proto.Vid]*clustermgr.VolumeInfo,
+	diskToHost map[proto.DiskID]string,
+	moveTask, force bool,
+) {
+	// Build input node set
+	inputNodeSet := make(map[string]bool)
+	for _, node := range inputNodes {
+		inputNodeSet[node] = true
+	}
+
+	// Find blocking volumes
+	type blockingVol struct {
+		info       *volumeChunkInfo
+		lostChunks int
+	}
+	var blockingVolumes []blockingVol
+
+	for _, info := range volumeInfos {
+		lostChunks := 0
+		for host, cnt := range info.NodeChunkCnt {
+			if inputNodeSet[host] {
+				lostChunks += cnt
+			}
+		}
+		if lostChunks > info.Tolerance {
+			blockingVolumes = append(blockingVolumes, blockingVol{info: info, lostChunks: lostChunks})
+		}
+	}
+	if len(blockingVolumes) == 0 {
+		return
+	}
+
+	// Sort by severity
+	sort.Slice(blockingVolumes, func(i, j int) bool {
+		ei := blockingVolumes[i].lostChunks - blockingVolumes[i].info.Tolerance
+		ej := blockingVolumes[j].lostChunks - blockingVolumes[j].info.Tolerance
+		return ei > ej
+	})
+
+	fmt.Println(zone_line)
+	fmt.Printf("Blocking volumes: %s (need migrate)\n", common.Warn.Sprint(len(blockingVolumes)))
+	fmt.Printf("%-12s %-15s %-6s %-8s %-10s %-8s %-8s\n",
+		"Vid", "CodeMode", "N", "Total", "Tolerance", "Lost", "Exceed")
+	fmt.Println(strings.Repeat("-", 75))
+
+	showCount := len(blockingVolumes)
+	if showCount > 30 {
+		showCount = 30
+	}
+	totalExceed := 0
+	for i, bv := range blockingVolumes {
+		exceed := bv.lostChunks - bv.info.Tolerance
+		totalExceed += exceed
+		if i < showCount {
+			fmt.Printf("%-12d %-15s %-6d %-8d %-10d %-8d %-8d\n",
+				bv.info.Vid, bv.info.CodeMode, bv.info.N, bv.info.TotalChunks,
+				bv.info.Tolerance, bv.lostChunks, exceed)
+		}
+	}
+	if len(blockingVolumes) > showCount {
+		fmt.Printf("... and %s more volumes\n", common.Warn.Sprint(len(blockingVolumes)-showCount))
+	}
+
+	fmt.Println()
+	fmt.Printf("Summary: %d blocking volumes, need to pre-migrate at least %s chunks\n",
+		len(blockingVolumes), common.Warn.Sprint(totalExceed))
+
+	// Auto create migrate tasks if --move_task is set
+	if !moveTask {
+		return
+	}
+
+	fmt.Println()
+	fmt.Println(zone_line)
+	fmt.Printf("Preparing migrate tasks for %d blocking volumes...\n", len(blockingVolumes))
+
+	schedulers, err := cmClient.GetService(ctx, clustermgr.GetServiceArgs{Name: proto.ServiceNameScheduler})
+	if err != nil || len(schedulers.Nodes) == 0 {
+		fmt.Println("List scheduler error:", err)
+		return
+	}
+	clusterID := proto.ClusterID(schedulers.Nodes[0].ClusterID)
+	schedulerCli := scheduler.New(&scheduler.Config{}, cmClient, clusterID)
+
+	var vuidsToMigrate []proto.Vuid
+	for _, bv := range blockingVolumes {
+		volInfo := allVolumes[bv.info.Vid]
+		if volInfo == nil {
+			continue
+		}
+		exceed := bv.lostChunks - bv.info.Tolerance
+		migrated := 0
+		for _, unit := range volInfo.Units {
+			if host, ok := diskToHost[unit.DiskID]; ok && inputNodeSet[host] {
+				if migrated < exceed {
+					vuidsToMigrate = append(vuidsToMigrate, unit.Vuid)
+					migrated++
+				}
+			}
+		}
+	}
+
+	fmt.Printf("Total VUIDs to migrate: %d\n", len(vuidsToMigrate))
+	if len(vuidsToMigrate) > 1000 && !force {
+		fmt.Println("too many migrate task (>1000)")
+		return
+	}
+	for range [3]struct{}{} {
+		if !common.Confirm(fmt.Sprintf("Create %s migrate tasks?", common.Danger.Sprint(len(vuidsToMigrate)))) {
+			fmt.Println("Cancelled.")
+			return
+		}
+	}
+
+	successCnt, failCnt := 0, 0
+	for _, vuid := range vuidsToMigrate {
+		if err := schedulerCli.AddManualMigrateTask(ctx, &scheduler.AddManualMigrateArgs{
+			Vuid:           vuid,
+			DirectDownload: true,
+		}); err != nil {
+			fmt.Printf("  ✗ Failed to create task for VUID %d (vid=%d): %v\n", vuid, vuid.Vid(), err)
+			failCnt++
+		} else {
+			fmt.Printf("  ✓ Created task for VUID %d (vid=%d)\n", vuid, vuid.Vid())
+			successCnt++
+		}
+	}
+	fmt.Printf("Migrate tasks created: %s success, %s failed\n",
+		common.Loaded.Sprint(successCnt), common.Dead.Sprint(failCnt))
 }
