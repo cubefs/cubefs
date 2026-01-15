@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -83,6 +84,11 @@ func (m *Server) turnFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
+		return
+	}
 	enabled := enable.V
 	flashTopo.TurnFlashGroup(enabled)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("turn %v", enabled)))
@@ -135,6 +141,12 @@ func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 	if topoName == proto.IdleTopoName {
 		err = fmt.Errorf("idle topo doesn't support this option")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	// forbid operations on markDeleted topology
+	if flashTopo, e := m.cluster.PeekFlashTopo(topoName); e == nil && flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
 		return
 	}
 
@@ -218,6 +230,11 @@ func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
+		return
+	}
 	idleTopo, err = m.cluster.PeekFlashTopo(proto.IdleTopoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -272,6 +289,11 @@ func (m *Server) setFlashGroup(w http.ResponseWriter, r *http.Request) {
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
 		return
 	}
 	if flashGroup, err = flashTopo.GetFlashGroup(flashGroupID.V); err != nil {
@@ -359,6 +381,11 @@ func (m *Server) flashGroupAddFlashNode(w http.ResponseWriter, r *http.Request) 
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
+		return
+	}
 	// check if target flash group is exist
 	if flashGroup, err = flashTopo.GetFlashGroup(flashGroupID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -417,6 +444,11 @@ func (m *Server) flashGroupRemoveFlashNode(w http.ResponseWriter, r *http.Reques
 	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
 		return
 	}
 
@@ -599,7 +631,7 @@ func (m *Server) deleteFlashTopo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is not allowed to deleted", topoName)))
 		return
 	}
-	_, err := m.cluster.PeekFlashTopo(topoName)
+	flashTopo, err := m.cluster.PeekFlashTopo(topoName)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is not exist", topoName)))
 		return
@@ -607,6 +639,7 @@ func (m *Server) deleteFlashTopo(w http.ResponseWriter, r *http.Request) {
 	var (
 		gradualFlag bool
 		step        uint32
+		forceDel    bool
 	)
 	if gradualFlag, err = getGradualFlag(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -623,12 +656,42 @@ func (m *Server) deleteFlashTopo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	err = m.cluster.DelFlashTopo(topoName, gradualFlag, step)
+	// parse optional forceDel flag (default false)
+	if v := r.FormValue("forceDel"); v != "" {
+		if b, e := strconv.ParseBool(v); e == nil {
+			forceDel = b
+		}
+	}
+	if !forceDel && flashTopo.IsMarkDelete() {
+		// already marked, return schedule hint
+		var when string
+		if !flashTopo.DeleteExecTime.IsZero() {
+			when = flashTopo.DeleteExecTime.Format(proto.TimeFormat)
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("topo[%v] is already markDeleted, scheduled at %v", topoName, when)))
+		return
+	}
+	err = m.cluster.DelFlashTopo(topoName, gradualFlag, step, forceDel)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("del topo[%v] failed %v", topoName, err.Error())))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("topo[%v] is deleted", topoName)))
+	if forceDel {
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("topo[%v] is deleted", topoName)))
+		return
+	}
+	// first time markDeleted: return hint with expected deletion time
+	// re-peek to get updated DeleteExecTime persisted by MarkDelete
+	if flashTopo, err = m.cluster.PeekFlashTopo(topoName); err == nil {
+		var when string
+		if !flashTopo.DeleteExecTime.IsZero() {
+			when = flashTopo.DeleteExecTime.Format(proto.TimeFormat)
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("topo[%v] is markDeleted, scheduled at %v", topoName, when)))
+		return
+	}
+	// fallback
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("topo[%v] is markDeleted", topoName)))
 }
 
 func (m *Server) renameFlashTopo(w http.ResponseWriter, r *http.Request) {
@@ -668,6 +731,44 @@ func (m *Server) renameFlashTopo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("topo[%v] rename to [%v] success", srcName, dstName)))
+}
+
+func (m *Server) cancelDeleteFlashTopo(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashTopoCancelDelete))
+	var err error
+	defer func() {
+		doStatAndMetric(proto.AdminFlashTopoCancelDelete, metric, err, nil)
+	}()
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "name should not be empty"})
+		return
+	}
+	flashTopo, err := m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is not exist", topoName)))
+		return
+	}
+	// only allow cancel when in markDeleted
+	if !flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is not markDeleted", topoName)))
+		return
+	}
+	// reset status and delete params
+	flashTopo.Status = proto.TopoStatusNormal
+	flashTopo.DeleteExecTime = time.Time{}
+	flashTopo.DeleteGradualFlag = false
+	flashTopo.DeleteStep = 0
+	// remove from delay queue if present
+	m.cluster.deleteFlashTopoMutex.Lock()
+	delete(m.cluster.delayDeleteFlashTopoInfo, topoName)
+	m.cluster.deleteFlashTopoMutex.Unlock()
+	// persist
+	if err = m.cluster.syncUpdateFlashTopo(flashTopo); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("topo[%v] cancel markDeleted", topoName)))
 }
 
 func getSetSlots(r *http.Request) (slots []uint32, err error) {

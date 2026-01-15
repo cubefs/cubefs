@@ -655,6 +655,13 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 	return
 }
 
+func (api *AdminAPI) SetMasterFlashTopoDeletionDelayTime(flashTopoDeletionDelayTimeHour int) (err error) {
+	request := newRequest(get, proto.AdminSetMasterFlashTopoDeletionDelayTime)
+	request.addParam("flashTopoDeletionDelayTime", strconv.FormatInt(int64(flashTopoDeletionDelayTimeHour), 10))
+	_, err = api.mc.serveRequest(request)
+	return
+}
+
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string, enableAutoMpMetaRepair string, autoMpMetaRepairParallelCnt string, autoDistributionOptimization string,
@@ -1309,11 +1316,12 @@ func (api *AdminAPI) AddFlashTopo(name, region string) (result string, err error
 	return string(data), nil
 }
 
-func (api *AdminAPI) DelFlashTopo(name string, gradualFlag bool, step uint32) (result string, err error) {
+func (api *AdminAPI) DelFlashTopo(name string, gradualFlag bool, step uint32, forceDel bool) (result string, err error) {
 	req := newRequest(get, proto.AdminFlashTopoDel).Header(api.h)
 	req.addParam("name", name)
 	req.addParamAny("gradualFlag", gradualFlag)
 	req.addParamAny("step", step)
+	req.addParamAny("forceDel", forceDel)
 	var data []byte
 	if data, err = api.mc.serveRequest(req); err != nil {
 		return
@@ -1325,6 +1333,16 @@ func (api *AdminAPI) RenameFlashTopo(srcName, dstName string) (result string, er
 	req := newRequest(get, proto.AdminFlashTopoRename).Header(api.h)
 	req.addParam("name", srcName)
 	req.addParam("newName", dstName)
+	var data []byte
+	if data, err = api.mc.serveRequest(req); err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) CancelDeleteFlashTopo(name string) (result string, err error) {
+	req := newRequest(get, proto.AdminFlashTopoCancelDelete).Header(api.h)
+	req.addParam("name", name)
 	var data []byte
 	if data, err = api.mc.serveRequest(req); err != nil {
 		return

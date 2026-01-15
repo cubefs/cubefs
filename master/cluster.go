@@ -98,6 +98,20 @@ type ClusterTopoSubItem struct {
 	nsMutex sync.RWMutex // nodeset mutex
 }
 
+// nolint: structcheck
+type ClusterFlashTopoSubItem struct {
+	flashNodeTopo            *sync.Map
+	flashManMgr              *flashManualTaskManager
+	deleteFlashTopoMutex     sync.RWMutex // delete flash topo mutex
+	delayDeleteFlashTopoInfo map[string]*DelayDeleteFlashTopoInfo
+}
+
+type DelayDeleteFlashTopoInfo struct {
+	idleTopo    *flashgroupmanager.FlashNodeTopology
+	gradualFlag bool
+	step        uint32
+}
+
 type DataNodeToDecommissionRepairDpInfo struct {
 	mu                            sync.Mutex
 	CurParallel                   uint64
@@ -204,13 +218,11 @@ type Cluster struct {
 	ac           *authSDK.AuthClient
 	masterClient *masterSDK.MasterClient
 
-	// flashNodeTopo *flashgroupmanager.FlashNodeTopology
-	flashNodeTopo *sync.Map
-	cleanTask     map[string]*CleanTask
-	Cleaning      bool
-	mu            sync.Mutex
-	PlanRun       bool
-	flashManMgr   *flashManualTaskManager
+	ClusterFlashTopoSubItem
+	cleanTask map[string]*CleanTask
+	Cleaning  bool
+	mu        sync.Mutex
+	PlanRun   bool
 }
 
 type cTask struct {
@@ -519,12 +531,14 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.flashNodeTopo = new(sync.Map)
 	c.cleanTask = make(map[string]*CleanTask)
 	c.flashManMgr = newFlashManualTaskManager(c)
+	c.delayDeleteFlashTopoInfo = make(map[string]*DelayDeleteFlashTopoInfo)
 	atomic.StoreUint32(&c.planStatus, PlanStatusIdle)
 	return
 }
 
 func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckDelayDeleteVols()
+	c.scheduleToCheckDelayDeleteFlashTopos()
 	c.scheduleToCheckDataPartitions()
 	c.scheduleToLoadDataPartitions()
 	c.scheduleToCheckReleaseDataPartitions()
@@ -737,6 +751,59 @@ func (c *Cluster) scheduleToCheckDelayDeleteVols() {
 					}
 				}
 				c.deleteVolMutex.Unlock()
+				return
+			},
+		})
+}
+
+func (c *Cluster) scheduleToCheckDelayDeleteFlashTopos() {
+	c.runTask(
+		&cTask{
+			tickTime: 5 * time.Second,
+			name:     "scheduleToCheckDelayDeleteFlashTopos",
+			function: func() (fin bool) {
+				if len(c.delayDeleteFlashTopoInfo) == 0 {
+					return
+				}
+				c.deleteFlashTopoMutex.Lock()
+				ready := make([]string, 0)
+				for topoName, info := range c.delayDeleteFlashTopoInfo {
+					srcTopo, err := c.PeekFlashTopo(topoName)
+					if err != nil {
+						// topo may already be removed, cleanup entry
+						ready = append(ready, topoName)
+						continue
+					}
+					if time.Until(srcTopo.DeleteExecTime) > 0 {
+						continue
+					}
+					// execute force deletion steps asynchronously
+					go func(name string, idleTopo *flashgroupmanager.FlashNodeTopology, gradual bool, step uint32) {
+						src, err := c.PeekFlashTopo(name)
+						if err != nil {
+							log.LogWarnf("scheduleToCheckDelayDeleteFlashTopos: peek topo %v failed: %v", name, err)
+							return
+						}
+						if err = src.DeleteAllFlashGroups(c.Name, idleTopo, gradual, step,
+							c.syncUpdateFlashGroup, c.syncUpdateFlashNode, c.syncDeleteFlashGroup,
+							c.syncDeleteFlashNode, c.syncAddFlashNode, c.syncMoveFlashNode); err != nil {
+							log.LogWarnf("scheduleToCheckDelayDeleteFlashTopos: DeleteAllFlashGroups topo %v failed: %v", name, err)
+							return
+						}
+						c.flashNodeTopo.Delete(name)
+						if err = c.syncDeleteFlashTopo(src); err != nil {
+							log.LogWarnf("scheduleToCheckDelayDeleteFlashTopos: syncDeleteFlashTopo topo %v failed: %v", name, err)
+							return
+						}
+						log.LogInfof("scheduleToCheckDelayDeleteFlashTopos: topo %v deleted", name)
+					}(topoName, info.idleTopo, info.gradualFlag, info.step)
+					ready = append(ready, topoName)
+				}
+				// remove processed entries
+				for _, name := range ready {
+					delete(c.delayDeleteFlashTopoInfo, name)
+				}
+				c.deleteFlashTopoMutex.Unlock()
 				return
 			},
 		})
@@ -7537,7 +7604,7 @@ func (c *Cluster) AddFlashTopo(name, region string) (err error) {
 			return
 		}
 	}
-	topo := flashgroupmanager.NewFlashNodeTopology(name, region, id)
+	topo := flashgroupmanager.NewFlashNodeTopology(name, region, id, proto.TopoStatusNormal)
 	topo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 	c.flashNodeTopo.Store(name, topo)
 	if err = c.syncAddFlashTopo(topo); err != nil {
@@ -7546,7 +7613,7 @@ func (c *Cluster) AddFlashTopo(name, region string) (err error) {
 	return
 }
 
-func (c *Cluster) DelFlashTopo(name string, gradualFlag bool, step uint32) (err error) {
+func (c *Cluster) DelFlashTopo(name string, gradualFlag bool, step uint32, forceDel bool) (err error) {
 	var srcTopo, dstTop *flashgroupmanager.FlashNodeTopology
 	srcTopo, err = c.PeekFlashTopo(name)
 	if err != nil {
@@ -7556,6 +7623,26 @@ func (c *Cluster) DelFlashTopo(name string, gradualFlag bool, step uint32) (err 
 	if err != nil {
 		return
 	}
+	log.LogDebugf("DelFlashTopo: delete topo %v forceDel %v", name, forceDel)
+	// delay delete
+	if !forceDel {
+		err = srcTopo.MarkDelete(c.syncUpdateFlashTopo, atomic.LoadInt64(&c.cfg.flashTopoDelayDeleteTimeHour),
+			gradualFlag, step)
+		if err != nil {
+			log.LogWarnf("MarkDelete: mark topo %v markDeleted failed: err %v", srcTopo.Name, err.Error())
+			return
+		}
+		c.deleteFlashTopoMutex.Lock()
+		c.delayDeleteFlashTopoInfo[srcTopo.Name] = &DelayDeleteFlashTopoInfo{
+			idleTopo:    dstTop,
+			gradualFlag: gradualFlag,
+			step:        step,
+		}
+		c.deleteFlashTopoMutex.Unlock()
+		log.LogDebugf("DelFlashTopo: topo %v is delay deleted at %v", name, srcTopo.DeleteExecTime.String())
+		return
+	}
+
 	// delete all flashnode and flash groups in the topo
 	err = srcTopo.DeleteAllFlashGroups(c.Name, dstTop, gradualFlag, step,
 		c.syncUpdateFlashGroup, c.syncUpdateFlashNode, c.syncDeleteFlashGroup,
@@ -7568,6 +7655,7 @@ func (c *Cluster) DelFlashTopo(name string, gradualFlag bool, step uint32) (err 
 	if err = c.syncDeleteFlashTopo(srcTopo); err != nil {
 		return err
 	}
+	log.LogDebugf("DelFlashTopo: delete topo %v  success", name)
 	return
 }
 

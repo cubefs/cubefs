@@ -18,6 +18,8 @@ func newFlashTopoCmd(client *master.MasterClient) *cobra.Command {
 		newCmdFlashTopoAdd(client),
 		newCmdFlashTopoDel(client),
 		newCmdFlashTopoRename(client),
+		newCmdFlashTopoCancelDel(client),
+		newCmdFlashTopoSetDelayDeleteTime(client),
 	)
 	return cmd
 }
@@ -65,6 +67,27 @@ func newCmdFlashTopoAdd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
+func newCmdFlashTopoCancelDel(client *master.MasterClient) *cobra.Command {
+	var name string
+	cmd := &cobra.Command{
+		Use:   "cancelDel",
+		Short: "cancel delayed deletion for a flash topology in markDeleted status",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			if strings.TrimSpace(name) == "" {
+				return fmt.Errorf("name should not be empty")
+			}
+			result, err := client.AdminAPI().CancelDeleteFlashTopo(name)
+			if err != nil {
+				return
+			}
+			stdoutln(result)
+			return
+		},
+	}
+	cmd.Flags().StringVarP(&name, "name", "n", "", "flash topology name")
+	return cmd
+}
+
 func newCmdFlashTopoRename(client *master.MasterClient) *cobra.Command {
 	return &cobra.Command{
 		Use:   "rename [srcName] [dstName]",
@@ -96,6 +119,7 @@ func newCmdFlashTopoDel(client *master.MasterClient) *cobra.Command {
 	var optYes bool
 	var optGradualFlag bool
 	var optStep uint32
+	var optForceDel bool
 	cmd := &cobra.Command{
 		Use:   "del",
 		Short: "delete a flash topology",
@@ -120,7 +144,7 @@ func newCmdFlashTopoDel(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			result, err := client.AdminAPI().DelFlashTopo(name, optGradualFlag, optStep)
+			result, err := client.AdminAPI().DelFlashTopo(name, optGradualFlag, optStep, optForceDel)
 			if err != nil {
 				return
 			}
@@ -132,5 +156,27 @@ func newCmdFlashTopoDel(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().BoolVar(&optGradualFlag, "gradualFlag", false, "set whether the topology's slots are deleted gradually or not(default false)")
 	cmd.Flags().Uint32Var(&optStep, "step", 1, "set the step size(default 1) for slot gradual deletion")
+	cmd.Flags().BoolVar(&optForceDel, "forceDel", false, "force delete the topology immediately (default false)")
+	return cmd
+}
+
+func newCmdFlashTopoSetDelayDeleteTime(client *master.MasterClient) *cobra.Command {
+	var hours int
+	cmd := &cobra.Command{
+		Use:   "setDelayDeleteTime",
+		Short: "set flash topology delayed deletion time (hours)",
+		Args:  cobra.MinimumNArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			if hours <= 0 {
+				return fmt.Errorf("hours must be greater than 0")
+			}
+			if err = client.AdminAPI().SetMasterFlashTopoDeletionDelayTime(hours); err != nil {
+				return
+			}
+			stdoutlnf("set flashTopoDeletionDelayTime to %d h successfully", hours)
+			return
+		},
+	}
+	cmd.Flags().IntVar(&hours, "hours", 48, "delayed deletion time in hours")
 	return cmd
 }

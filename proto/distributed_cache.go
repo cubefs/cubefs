@@ -32,6 +32,11 @@ const (
 )
 
 const (
+	TopoStatusNormal     uint32 = 0
+	TopoStatusMarkDelete uint32 = 1
+)
+
+const (
 	SlotStatus_Completed SlotStatus = 0x0
 	SlotStatus_Creating  SlotStatus = 0x1
 	SlotStatus_Deleting  SlotStatus = 0x2
@@ -791,8 +796,10 @@ type FlashToposAdminView struct {
 }
 
 type FlashTopologyAdminView struct {
-	ID        uint64
-	Name      string
-	CacheVols []string
-	Region    string
+	ID              uint64
+	Name            string
+	CacheVols       []string
+	Region          string
+	Status          string
+	DelayDeleteTime string
 }

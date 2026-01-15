@@ -726,6 +726,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminSetMasterVolDeletionDelayTime).
 		HandlerFunc(m.setMasterVolDeletionDelayTime)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetMasterFlashTopoDeletionDelayTime).
+		HandlerFunc(m.setMasterFlashTopoDeletionDelayTime)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminFlashTopoCancelDelete).
+		HandlerFunc(m.cancelDeleteFlashTopo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetMetaNodeGOGC).
 		HandlerFunc(m.setMetaNodeGOGC)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

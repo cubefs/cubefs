@@ -33,6 +33,7 @@ type (
 	SyncAddFlashGroupFunc    func(flashGroup *FlashGroup) (err error)
 	SyncDeleteFlashGroupFunc func(flashGroup *FlashGroup) (err error)
 	SyncUpdateFlashGroupFunc func(flashGroup *FlashGroup) (err error)
+	SyncUpdateFlashTopoFunc  func(flashGroup *FlashNodeTopology) (err error)
 )
 
 type FlashNodeZone struct {
@@ -72,9 +73,13 @@ func (zone *FlashNodeZone) selectFlashNodes(count int, excludeHosts []string) (n
 }
 
 type FlashNodeTopologyValue struct {
-	ID     uint64
-	Name   string
-	Region string
+	ID                uint64
+	Name              string
+	Region            string
+	Status            uint32
+	DeleteExecTime    time.Time
+	DeleteGradualFlag bool
+	DeleteStep        uint32
 }
 
 type FlashNodeTopology struct {
@@ -96,7 +101,7 @@ type FlashNodeTopology struct {
 	FlashNodeTopologyValue // support multi-region
 }
 
-func NewFlashNodeTopology(name, region string, id uint64) (t *FlashNodeTopology) {
+func NewFlashNodeTopology(name, region string, id uint64, status uint32) (t *FlashNodeTopology) {
 	empty, err := json.Marshal(newSuccessHTTPReply(proto.FlashGroupView{}))
 	if err != nil {
 		panic(fmt.Sprintf("action[NewFlashNodeTopology] json marshal %v", err))
@@ -108,6 +113,8 @@ func NewFlashNodeTopology(name, region string, id uint64) (t *FlashNodeTopology)
 	t.ID = id
 	t.Name = name
 	t.Region = region
+	t.Status = status
+	t.DeleteExecTime = time.Time{}
 	t.clientOff.Store([]byte(nil))
 	t.clientCache.Store([]byte(nil))
 	return t
@@ -1285,7 +1292,14 @@ func (t *FlashNodeTopology) GetFlashTopoAdminView() (ftv *proto.FlashTopologyAdm
 	for volName := range volsMap {
 		vols = append(vols, volName)
 	}
-	ftv = &proto.FlashTopologyAdminView{ID: t.ID, Name: t.Name, CacheVols: vols, Region: t.Region}
+	ddt := ""
+	if !t.DeleteExecTime.IsZero() {
+		ddt = t.DeleteExecTime.Format(proto.TimeFormat) // 或 .String()
+	}
+	ftv = &proto.FlashTopologyAdminView{
+		ID: t.ID, Name: t.Name, CacheVols: vols, Region: t.Region,
+		Status: t.GetTopoStatusMsg(), DelayDeleteTime: ddt,
+	}
 	return ftv
 }
 
@@ -1382,4 +1396,34 @@ func (t *FlashNodeTopology) ChangeFlashNodeTopo(clusterName string, dstTop *Flas
 		return
 	}
 	return nil
+}
+
+func (t *FlashNodeTopology) MarkDelete(syncUpdateFlashTopoFunc SyncUpdateFlashTopoFunc, delayHour int64,
+	gradualFlag bool, step uint32) (err error) {
+	if !atomic.CompareAndSwapUint32(&t.Status, proto.TopoStatusNormal, proto.TopoStatusMarkDelete) {
+		err = fmt.Errorf("wrong status: topo is now(%v)", t.GetTopoStatusMsg())
+		return
+	}
+	t.DeleteExecTime = time.Now().Add(time.Duration(delayHour) * time.Hour)
+	t.DeleteGradualFlag = gradualFlag
+	t.DeleteStep = step
+	err = syncUpdateFlashTopoFunc(t)
+	log.LogDebugf("MarkDelete: mark topo %v markDeleted: err[%v]", t.Name, err)
+	return
+}
+
+func (t *FlashNodeTopology) GetTopoStatusMsg() string {
+	switch atomic.LoadUint32(&t.Status) {
+	case proto.TopoStatusNormal:
+		return "normal"
+	case proto.TopoStatusMarkDelete:
+		return "markDeleted"
+	default:
+		return "unkown"
+	}
+}
+
+// IsMarkDelete reports whether the topology has been marked for delayed deletion.
+func (t *FlashNodeTopology) IsMarkDelete() bool {
+	return atomic.LoadUint32(&t.Status) == proto.TopoStatusMarkDelete
 }

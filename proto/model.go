@@ -178,6 +178,7 @@ type ClusterView struct {
 	MaxMetaNodeID                             uint64
 	MaxMetaPartitionID                        uint64
 	VolDeletionDelayTimeHour                  int64
+	FlashTopoDeletionDelayTimeHour            int64
 	MetaNodeGOGC                              int
 	DataNodeGOGC                              int
 	MarkDiskBrokenThreshold                   float64

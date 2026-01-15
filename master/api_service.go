@@ -209,6 +209,33 @@ func (m *Server) setMasterVolDeletionDelayTime(w http.ResponseWriter, r *http.Re
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volDeletionDelayTime to %v h successfully", volDeletionDelayTimeHour)))
 }
 
+func (m *Server) setMasterFlashTopoDeletionDelayTime(w http.ResponseWriter, r *http.Request) {
+	var (
+		flashTopoDeletionDelayTimeHour int
+		err                            error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetMasterFlashTopoDeletionDelayTime))
+	defer func() {
+		doStatAndMetric(proto.AdminSetMasterFlashTopoDeletionDelayTime, metric, err, nil)
+		AuditLog(r, proto.AdminSetMasterFlashTopoDeletionDelayTime, fmt.Sprintf("set flashTopoDeletionDelayTime to %v h", flashTopoDeletionDelayTimeHour), err)
+	}()
+
+	if flashTopoDeletionDelayTimeHour, err = parseAndExtractFlashTopoDeletionDelayTime(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// inline update with raft persistence (mirror setMasterVolDeletionDelayTime behavior)
+	old := atomic.LoadInt64(&m.cluster.cfg.flashTopoDelayDeleteTimeHour)
+	atomic.StoreInt64(&m.cluster.cfg.flashTopoDelayDeleteTimeHour, int64(flashTopoDeletionDelayTimeHour))
+	if err = m.cluster.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMasterFlashTopoDeletionDelayTime] err[%v]", err)
+		atomic.StoreInt64(&m.cluster.cfg.flashTopoDelayDeleteTimeHour, old)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set flashTopoDeletionDelayTime to %v h successfully", flashTopoDeletionDelayTimeHour)))
+}
+
 func (m *Server) setMetaNodeGOGC(w http.ResponseWriter, r *http.Request) {
 	var (
 		metaNodeGOGC int
@@ -1006,6 +1033,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxMetaNodeID:                             m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:                        m.cluster.idAlloc.metaPartitionID,
 		VolDeletionDelayTimeHour:                  m.cluster.cfg.volDelayDeleteTimeHour,
+		FlashTopoDeletionDelayTimeHour:            atomic.LoadInt64(&m.cluster.cfg.flashTopoDelayDeleteTimeHour),
 		MetaNodeGOGC:                              m.cluster.cfg.metaNodeGOGC,
 		DataNodeGOGC:                              m.cluster.cfg.dataNodeGOGC,
 		DpRepairTimeout:                           m.cluster.GetDecommissionDataPartitionRecoverTimeOut().String(),

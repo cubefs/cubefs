@@ -249,7 +249,8 @@ type clusterConfig struct {
 	DpLimitHddBaseCount          uint64
 	DpLimitHddFactor             uint64
 
-	DefaultVolStoreMode pt.StoreMode
+	DefaultVolStoreMode          pt.StoreMode
+	flashTopoDelayDeleteTimeHour int64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -295,6 +296,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.metaNodeMemHighPer = defaultMetaNodeMemHighPer
 	cfg.metaNodeMemLowPer = defaultMetaNodeMemLowPer
 	cfg.metaNodeMemMidPer = defaultMetaNodeMemHighPer
+	cfg.flashTopoDelayDeleteTimeHour = defaultFlashTopoDelayDeleteTimeHour
 	cfg.mpMigrateThreads = defaultMpMigrateThreads
 	cfg.RackAwareLevel = pt.RackAwareNone
 	cfg.LearnerRecoverTimeoutSeconds = defaultLearnerRecoverTimeout
