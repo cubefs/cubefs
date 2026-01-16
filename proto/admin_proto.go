@@ -247,6 +247,7 @@ const (
 	AdminBatchMigrateMp                       = "/metaPartition/batchMigrate"
 	AdminBatchPromoteMpLearner                = "/metaPartition/batchPromoteLearner"
 	AdminGetPromoteMpLearnerPlan              = "/metaPartition/getPromoteLearnerPlan"
+	AdminStopPromoteMpLearnerPlan             = "/metaPartition/stopPromoteLearnerPlan"
 	AdminCalcMetaPartitionMd5Sum              = "/metaPartition/calcMd5Sum"
 	AdminGetMd5SumResult                      = "/metaPartition/getMd5SumResult"
 

@@ -2038,6 +2038,9 @@ func (c *Cluster) waitForMetaPartitionReady(mp *MetaPartition) error {
 	for i := 0; i < CheckMetaLeaderRetry; i++ {
 		select {
 		case <-ticker.C:
+			if c.IsClusterPlanNotRun() {
+				return ErrClusterPlanNotRunning
+			}
 			if !mp.IsRecover.Load() && mp.isLeaderExist() {
 				return nil
 			}
@@ -3433,14 +3436,22 @@ func (c *Cluster) DoPromoteLearnerPlan(plan *proto.PromoteLearnerPlan) error {
 		planMu sync.Mutex
 	)
 
-	stopProcess := false
+	var stopProcess int32
+	atomic.StoreInt32(&stopProcess, 0)
 	for _, learnerInfo := range plan.Learners {
+		if atomic.LoadInt32(&stopProcess) != 0 {
+			break
+		}
 		sem <- struct{}{}
 		wg.Add(1)
 
 		planMu.Lock()
 		plan.RunningNum++
 		plan.UndoNum--
+		err := c.syncUpdatePromoteLearnerPlan(plan)
+		if err != nil {
+			log.LogErrorf("syncUpdatePromoteLearnerPlan error: %s", err.Error())
+		}
 		planMu.Unlock()
 
 		go func(info *proto.MetaPartitionLearnerInfo) {
@@ -3448,26 +3459,34 @@ func (c *Cluster) DoPromoteLearnerPlan(plan *proto.PromoteLearnerPlan) error {
 
 			err := c.PromoteMetaReplicaAndWait(plan, info)
 			<-sem
-			planMu.Lock()
+
 			if err != nil {
 				log.LogErrorf("DoPromoteLearnerPlan PromoteMetaReplicaAndWait error: %s", err.Error())
-				stopProcess = true
+				atomic.StoreInt32(&stopProcess, 1)
+				planMu.Lock()
 				plan.FailedNum++
+				plan.RunningNum--
 				plan.FailedList = append(plan.FailedList, info.ID)
 				plan.Msg = err.Error()
+				err := c.syncUpdatePromoteLearnerPlan(plan)
+				if err != nil {
+					log.LogErrorf("syncUpdatePromoteLearnerPlan error: %s", err.Error())
+				}
+				planMu.Unlock()
+				return
 			}
+			planMu.Lock()
 			plan.RunningNum--
 			plan.DoneNum++
-			plan.Progress = float64(plan.DoneNum) / float64(plan.TotalNum) * 100
+			if plan.TotalNum > 0 {
+				plan.Progress = float64(plan.DoneNum) / float64(plan.TotalNum) * 100
+			}
+			err = c.syncUpdatePromoteLearnerPlan(plan)
+			if err != nil {
+				log.LogErrorf("syncUpdatePromoteLearnerPlan error: %s", err.Error())
+			}
 			planMu.Unlock()
 		}(learnerInfo)
-
-		planMu.Lock()
-		err := c.syncUpdatePromoteLearnerPlan(plan)
-		planMu.Unlock()
-		if err != nil {
-			log.LogErrorf("syncUpdatePromoteLearnerPlan error: %s", err.Error())
-		}
 	}
 	wg.Wait()
 
@@ -3475,7 +3494,7 @@ func (c *Cluster) DoPromoteLearnerPlan(plan *proto.PromoteLearnerPlan) error {
 		plan.Status = PlanTaskStop
 		plan.Msg = "promote learner plan is stopped"
 	} else {
-		if stopProcess {
+		if atomic.LoadInt32(&stopProcess) != 0 {
 			plan.Status = PlanTaskError
 		} else {
 			plan.Status = PlanTaskDone
@@ -3501,7 +3520,7 @@ func (c *Cluster) PromoteMetaReplicaAndWait(plan *proto.PromoteLearnerPlan, lear
 
 	defer func() {
 		if err != nil {
-			plan.Msg = err.Error()
+			learnerInfo.Msg = err.Error()
 		}
 	}()
 
@@ -3512,9 +3531,6 @@ func (c *Cluster) PromoteMetaReplicaAndWait(plan *proto.PromoteLearnerPlan, lear
 	}
 
 	for _, learner := range learnerInfo.Learners {
-		if c.IsClusterPlanNotRun() {
-			return nil
-		}
 		// wait for mp ready.
 		err = c.waitForMetaPartitionReady(mp)
 		if err != nil {

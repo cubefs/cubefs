@@ -889,6 +889,32 @@ func (m *Server) getPromoteMpLearnerPlan(w http.ResponseWriter, r *http.Request)
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }
 
+func (m *Server) stopPromoteMpLearnerPlan(w http.ResponseWriter, r *http.Request) {
+	var (
+		err   error
+		force bool
+		value string
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminStopPromoteMpLearnerPlan))
+	defer func() {
+		doStatAndMetric(proto.AdminStopPromoteMpLearnerPlan, metric, err, nil)
+	}()
+
+	if value = r.FormValue(forceKey); value != "" {
+		force, _ = strconv.ParseBool(value)
+	}
+
+	err = m.cluster.StopMetaPartitionBalanceTask(force)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	AuditLog(r, "stopPromoteMpLearnerPlan", "stop promote learner plan", nil)
+
+	sendOkReply(w, r, newSuccessHTTPReply("Stop promote learner plan successfully."))
+}
+
 func (m *Server) calcMetaPartitionMd5Sum(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCalcMetaPartitionMd5Sum))
 	var err error
