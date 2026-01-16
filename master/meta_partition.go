@@ -1389,6 +1389,9 @@ func (mp *MetaPartition) removeRedundantPeersFromMaster(c *Cluster) (err error) 
 		if contains(liveAddrs, peer.Addr) && peer.Type == raftProto.PeerNormal && nonLearnerNum <= int(mp.ReplicaNum/2+1) {
 			continue
 		}
+		if peer.Type == raftProto.PeerLearner && peer.ManualPromote {
+			continue
+		}
 		if err = c.removeMetaHostMember(mp, peer); err != nil {
 			return err
 		}
