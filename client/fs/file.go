@@ -299,8 +299,21 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		f.super.ec.RefreshExtentsCache(ino)
 	}
 
-	if f.super.keepCache && resp != nil {
-		resp.Flags |= fuse.OpenKeepCache
+	// Set OpenDirectIO or OpenKeepCache based on configuration
+	// OpenDirectIO bypasses page cache for better write performance when direct=0
+	// This avoids the overhead of balance_dirty_pages when WritebackCache is enabled
+	// OpenDirectIO only affects kernel behavior and doesn't interfere with req.Flags checks
+	if resp != nil {
+		if f.super.keepCache {
+			// If keepCache is enabled, use OpenKeepCache to preserve page cache
+			resp.Flags |= fuse.OpenKeepCache
+		} else {
+			// If keepCache is disabled, set OpenDirectIO for hot volumes to bypass page cache
+			// This improves performance in direct=0 scenarios by avoiding WritebackCache overhead
+			if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+				resp.Flags |= fuse.OpenDirectIO
+			}
+		}
 	}
 	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
 		log.LogDebugf("TRANCE open ino(%v) info(%v)", ino, f.info)
