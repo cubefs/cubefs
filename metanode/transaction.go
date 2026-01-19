@@ -1376,9 +1376,9 @@ func (tr *TransactionResource) getTxRbInode(ino uint64) (rbInode *TxRollbackInod
 }
 
 func (tr *TransactionResource) copyGetTxRbInode(ino uint64) (rbInode *TxRollbackInode, err error) {
-	keyNode := &TxRollbackInode{
-		inode: NewInode(ino, 0),
-	}
+	keyNode := GetRbInodeKey(ino)
+	defer PutRbInodeKey(keyNode)
+
 	item, err := tr.txRbInodeTree.CopyGet(keyNode)
 	if err != nil {
 		log.LogErrorf("get tx rb inode failed ino(%v) err: %s", ino, err.Error())
@@ -1395,9 +1395,8 @@ func (tr *TransactionResource) deleteTxRollbackInode(dbHandle interface{}, ino u
 	tr.Lock()
 	defer tr.Unlock()
 
-	keyNode := &TxRollbackInode{
-		txInodeInfo: proto.NewTxInodeInfo("", ino, 0),
-	}
+	keyNode := GetRbInodeKey(ino)
+	defer PutRbInodeKey(keyNode)
 
 	var item *TxRollbackInode
 	item, err = tr.txRbInodeTree.Get(keyNode)

@@ -1951,7 +1951,7 @@ func (b *TransactionRollbackInodeRocks) Delete(handle interface{}, inode *TxRoll
 	keyBuf := b.GetRocksdbNormalKey(byte(TransactionRollbackInodeTable))
 	defer PutRocksdbNormalKey(keyBuf)
 
-	return b.RocksTree.Delete(handle, &b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(keyBuf, inode.txInodeInfo.Ino))
+	return b.RocksTree.Delete(handle, &b.baseInfo.txRbInodeCnt, transactionRollbackInodeEncodingKey(keyBuf, inode.inode.Inode))
 }
 
 func (b *TransactionRollbackDentryRocks) Delete(handle interface{}, dentry *TxRollbackDentry) (bool, error) {
