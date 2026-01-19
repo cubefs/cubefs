@@ -269,9 +269,6 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.zoneName = cfg.GetString(cfgZoneName)
 	m.rack = cfg.GetString(cfgRack)
-	if m.rack == "" {
-		m.rack = proto.DefaultRack
-	}
 
 	// Parse delete batch count
 	if deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount); deleteBatchCount > 1 {

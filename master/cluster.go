@@ -1339,12 +1339,11 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, ra
 	if zoneName == "" {
 		zoneName = DefaultZoneName
 	}
-	if rack == "" {
-		rack = proto.DefaultRack
-	}
 
 	log.LogInfof("[addMetaNode] to add: metanode(%v) zone(%v) rack(%v) nodesetId(%v)",
 		nodeAddr, zoneName, rack, nodesetId)
+	auditlog.LogMasterOp("AddMetaNode", fmt.Sprintf("[addMetaNode] to add: metanode(%v) zone(%v) rack(%v) nodesetId(%v)",
+		nodeAddr, zoneName, rack, nodesetId), nil)
 
 	// Check if metanode already exists
 	if value, ok := c.metaNodes.Load(nodeAddr); ok {
@@ -1358,6 +1357,10 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, ra
 		// Validate zone consistency
 		if zoneName != metaNode.ZoneName {
 			return metaNode.ID, fmt.Errorf("zoneName not equal to old, new %s, old %s", zoneName, metaNode.ZoneName)
+		}
+
+		if rack == "" {
+			rack = metaNode.Rack
 		}
 
 		// Check if rack is different and old rack is not default
@@ -1414,6 +1417,10 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, ra
 		return metaNode.ID, nil
 	}
 
+	if rack == "" {
+		rack = proto.DefaultRack
+	}
+
 	// Check raft partition port requirements
 	if c.cfg.raftPartitionCanUseDifferentPort.Load() {
 		if len(heartbeatPort) == 0 || len(replicaPort) == 0 {
@@ -1460,7 +1467,6 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, ra
 
 	log.LogInfof("action[addMetaNode] metanode id[%v] zonename[%v] rack[%v] add meta node to nodesetid[%v]",
 		id, zoneName, rack, ns.ID)
-
 	// Sync metanode to storage
 	if err = c.syncAddMetaNode(metaNode); err != nil {
 		goto errHandler
@@ -1551,12 +1557,11 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 	if zoneName == "" {
 		zoneName = DefaultZoneName
 	}
-	if rack == "" {
-		rack = proto.DefaultRack
-	}
 
 	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) rack(%v) nodesetId(%v) mediaType(%v)",
 		nodeAddr, zoneName, rack, nodesetId, mediaType)
+	auditlog.LogMasterOp("AddDataNode", fmt.Sprintf("[addDataNode] to add: datanode(%v) zone(%v) rack(%v) nodesetId(%v) mediaType(%v)",
+		nodeAddr, zoneName, rack, nodesetId, mediaType), nil)
 
 	if !proto.IsValidMediaType(mediaType) {
 		if !proto.IsValidMediaType(c.legacyDataMediaType) {
@@ -1582,6 +1587,10 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		}
 		if mediaType != dataNode.MediaType {
 			return dataNode.ID, fmt.Errorf("mediaType not equal old, new %v, old %v", mediaType, dataNode.MediaType)
+		}
+
+		if rack == "" {
+			rack = dataNode.Rack
 		}
 
 		// Check if rack is different and old rack is not default
@@ -1635,6 +1644,10 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		}
 
 		return dataNode.ID, nil
+	}
+
+	if rack == "" {
+		rack = proto.DefaultRack
 	}
 
 	if c.cfg.raftPartitionCanUseDifferentPort.Load() {

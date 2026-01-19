@@ -462,9 +462,6 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 
 	s.rack = cfg.GetString(ConfigKeyRack)
-	if s.rack == "" {
-		s.rack = proto.DefaultRack
-	}
 
 	s.zoneName = cfg.GetString(ConfigKeyZone)
 	if s.zoneName == "" {

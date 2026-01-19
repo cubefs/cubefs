@@ -155,7 +155,7 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, raftHeartbeatPort, raftR
 		return
 	}
 	zoneName = extractStrWithDefault(r, zoneNameKey, DefaultZoneName)
-	rack = extractStrWithDefault(r, rackKey, proto.DefaultRack)
+	rack = extractStrWithDefault(r, rackKey, "")
 	// for old version node registration, heartbeat port and replica port may be empty
 	raftHeartbeatPort = extractStr(r, heartbeatPortKey)
 	raftReplicaPort = extractStr(r, replicaPortKey)
