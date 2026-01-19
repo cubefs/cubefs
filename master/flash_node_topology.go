@@ -40,12 +40,10 @@ func (c *Cluster) loadFlashNodes() (err error) {
 			return
 		}
 		flashNode := flashgroupmanager.NewFlashNodeFromFnv(c.Name, fnv)
-		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v topoName: %v]",
-			flashNode.ID, flashNode.Addr, flashNode.FlashGroupID, flashNode.FlashNodeTopoName)
 		var topo *flashgroupmanager.FlashNodeTopology
 		topo, err = c.PeekFlashTopo(flashNode.FlashNodeTopoName)
 		if err != nil {
-			log.LogErrorf("action[loadFlashNodes],flashNode[%v] topo %v not found", flashNode.Addr, flashNode.FlashNodeTopoName)
+			log.LogWarnf("action[loadFlashNodes],flashNode[%v] topo %v not found", flashNode.String(), flashNode.FlashNodeTopoName)
 			// If the topo cannot be found, the fn will not be loaded.
 			// You have to restart the fn service to perform operations, and the restart will trigger re-registration
 			// to the default node automatically. Therefore, when the topo is missing, you can directly add it to the default node.
@@ -61,12 +59,10 @@ func (c *Cluster) loadFlashNodes() (err error) {
 		}
 		err = topo.PutFlashNode(flashNode)
 		if err != nil {
-			log.LogWarnf("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v topo: %v region:%v] put topo %v failed %v",
-				flashNode.ID, flashNode.Addr, flashNode.FlashGroupID, flashNode.FlashNodeTopoName, flashNode.Region, topo.Name, err.Error())
+			log.LogWarnf("action[loadFlashNodes], flashNode[%v] put topo %v failed %v", flashNode.String(), topo.Name, err.Error())
 			return
 		}
-		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v add to topoName: %v]",
-			flashNode.ID, flashNode.Addr, flashNode.FlashGroupID, flashNode.FlashNodeTopoName)
+		log.LogInfof("action[loadFlashNodes] load %v success", flashNode.String())
 	}
 	return
 }
