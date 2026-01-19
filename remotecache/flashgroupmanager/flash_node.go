@@ -58,6 +58,12 @@ func NewFlashNodeFromFnv(clusterID string, fnv *FlashNodeValue) *FlashNode {
 	node.ID = fnv.ID
 	node.FlashGroupID = fnv.FlashGroupID
 	node.Addr = fnv.Addr
+	// avoid panic
+	if fnv.ZoneName == "" {
+		fnv.ZoneName = proto.DefaultZoneName
+		log.LogWarnf("action[NewFlashNodeFromFnv], flashNode[flashNodeId:%v addr:%s flashGroupId:%v] zone is empty",
+			fnv.ID, fnv.Addr, fnv.FlashGroupID)
+	}
 	node.ZoneName = fnv.ZoneName
 	node.Version = fnv.Version
 	node.IsEnable = fnv.IsEnable
@@ -241,6 +247,10 @@ func (flashNode *FlashNode) SetToUnused(addr string, flashGroupID uint64, syncUp
 }
 
 func (flashNode *FlashNode) UpdateZoneName(t *FlashNodeTopology, newZoneName string, syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc) (err error) {
+	// may be from old version flash node
+	if newZoneName == "" {
+		newZoneName = proto.DefaultZoneName
+	}
 	needUpdate := false
 	flashNode.RLock()
 	if flashNode.ZoneName != newZoneName {
