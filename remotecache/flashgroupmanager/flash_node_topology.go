@@ -50,7 +50,7 @@ func (zone *FlashNodeZone) putFlashNode(flashNode *FlashNode) {
 	zone.flashNode.Store(flashNode.Addr, flashNode)
 }
 
-func (zone *FlashNodeZone) selectFlashNodes(count int, excludeHosts []string) (newHosts []string, err error) {
+func (zone *FlashNodeZone) selectFlashNodes(count int, excludeHosts []string, region string) (newHosts []string, err error) {
 	zone.mu.Lock()
 	defer zone.mu.Unlock()
 	zone.flashNode.Range(func(_, value interface{}) bool {
@@ -61,7 +61,7 @@ func (zone *FlashNodeZone) selectFlashNodes(count int, excludeHosts []string) (n
 		if len(newHosts) >= count {
 			return false
 		}
-		if flashNode.isWriteable() {
+		if flashNode.isWriteable() && flashNode.Region == region {
 			newHosts = append(newHosts, flashNode.Addr)
 		}
 		return true
@@ -1011,10 +1011,12 @@ func (t *FlashNodeTopology) selectFlashNodesFromZoneAddToFlashGroup(zoneName str
 	if err != nil {
 		return
 	}
-	newHosts, err := flashNodeZone.selectFlashNodes(count, excludeHosts)
+	newHosts, err := flashNodeZone.selectFlashNodes(count, excludeHosts, targetTopo.Region)
 	if err != nil {
 		return
 	}
+	log.LogDebugf("action[selectFlashNodesFromZoneAddToFlashGroup] select newHosts:%v from zone %v topo %v",
+		newHosts, zoneName, t.Name)
 	successHost := make([]string, 0)
 	for _, newHost := range newHosts {
 		if err = t.addFlashNodeToFlashGroup(newHost, flashGroup, syncUpdateFlashNodeFunc, targetTopo, removeFlashNodes); err != nil {
