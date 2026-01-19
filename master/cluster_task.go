@@ -977,7 +977,14 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 	}()
 	log.LogWarnf("action[addMetaReplicaLearner] start,vol[%v],meta partition[%v],addr[%v],storeMode[%v],currentHosts[%v]",
 		partition.volName, partition.PartitionID, targetAddr, storeMode, partition.Hosts)
+	// partition.SrcAddr == addr means learner mode, and already checked
+	if !partition.CheckLastDelReplicaTime() && srcAddr != "" {
+		err = fmt.Errorf("addMetaReplicaLearner: the interval between migrate mp replica should over 5 minute. last %d,  addr[%v]",
+			partition.LastDelReplicaTime, srcAddr)
+		return
+	}
 
+	// partition.SrcAddr == addr means learner mode, and already checked
 	if !manualPromote {
 		if err = c.CheckMetaPartitionDecommissionLimit(decommissionType); err != nil {
 			log.LogWarnf("action[addMetaReplicaLearner] checkMetaPartitionDecommissionLimit failed,vol[%v],meta partition[%v],err[%v]",
