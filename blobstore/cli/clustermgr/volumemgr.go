@@ -207,33 +207,26 @@ func cmdListVolumeUnits(c *grumble.Context) error {
 	n := len(volumeInfo.Units)
 	loader := common.Loader(n)
 
-	taskArgs := make([]any, n)
-	for i, arg := range volumeInfo.Units {
-		taskArgs[i] = arg
-	}
-	chunkInfos := make([]string, n)
-	task.C(func(i int, taskArgs any) {
-		unit := taskArgs.(clustermgr.Unit)
+	chunkInfos := task.ConcurrentResult(func(_ int, unit clustermgr.Unit) string {
 		disk, err := cmClient.DiskInfo(ctx, unit.DiskID)
 		if err != nil {
-			chunkInfos[i] = fmt.Sprintf("ERROR: get disk %d %s", unit.DiskID, err.Error())
 			loader <- 1
-			return
+			return fmt.Sprintf("ERROR: get disk %d %s", unit.DiskID, err.Error())
 		}
 		info, err := blobnodeCli.StatChunk(ctx, disk.Host,
 			&blobnode.StatChunkArgs{
 				DiskID: unit.DiskID,
 				Vuid:   unit.Vuid,
 			})
-		if err != nil {
-			chunkInfos[i] = fmt.Sprintf("ERROR: %s %d %s", disk.Host, unit.Vuid, err.Error())
-		} else if verbose {
-			chunkInfos[i] = cfmt.ChunkInfoJoin(info, "\t")
-		} else {
-			chunkInfos[i] = fmt.Sprint(info)
-		}
+
 		loader <- 1
-	}, taskArgs)
+		if err != nil {
+			return fmt.Sprintf("ERROR: %s %d %s", disk.Host, unit.Vuid, err.Error())
+		} else if verbose {
+			return cfmt.ChunkInfoJoin(info, "\t")
+		}
+		return fmt.Sprint(info)
+	}, volumeInfo.Units...)
 	time.Sleep(100 * time.Millisecond)
 
 	fmt.Println("chunks:")

@@ -28,11 +28,18 @@ import (
 
 func TestTaskExecuteConcurrent(t *testing.T) {
 	unique := uint32(0)
-	args := []interface{}{uint32(1), uint32(2), uint32(4)}
-	task.C(func(index int, arg interface{}) {
+	task.Concurrent(func(index int, arg uint32) {
 		time.Sleep(time.Millisecond * 100)
-		atomic.AddUint32(&unique, arg.(uint32))
-	}, args)
+		atomic.AddUint32(&unique, arg)
+	}, 1, 2, 4) // copy mode, call Concurrent will create args = []uint32{1, 2, 4}
+	require.Equal(t, uint32(7), atomic.LoadUint32(&unique))
+
+	atomic.StoreUint32(&unique, 0)
+	args := []uint32{1, 2, 4}
+	task.Concurrent(func(index int, arg uint32) {
+		time.Sleep(time.Millisecond * 100)
+		atomic.AddUint32(&unique, arg)
+	}, args...) // reference mode
 	require.Equal(t, uint32(7), atomic.LoadUint32(&unique))
 }
 
@@ -40,10 +47,10 @@ func TestTaskExecuteContextCancel(t *testing.T) {
 	unique := uint32(0)
 	ctx, cancel := context.WithCancel(context.Background())
 	err := task.Run(ctx, func() error {
-		task.C(func(index int, arg interface{}) {
+		task.Concurrent(func(index int, arg uint32) {
 			time.Sleep(time.Millisecond * 2000)
 			atomic.AddUint32(&unique, 1)
-		}, []interface{}{1, 2, 4})
+		}, 1, 2, 4)
 		return nil
 	}, func() error {
 		time.Sleep(time.Millisecond * 5000)
@@ -54,4 +61,19 @@ func TestTaskExecuteContextCancel(t *testing.T) {
 	})
 	require.Contains(t, err.Error(), "canceled")
 	require.Equal(t, uint32(0), atomic.LoadUint32(&unique))
+}
+
+func TestTaskExecuteConcurrentResult(t *testing.T) {
+	{
+		results := task.ConcurrentResult(func(index int, arg string) int {
+			return len(arg)
+		})
+		require.Empty(t, len(results))
+	}
+	{
+		results := task.ConcurrentResult(func(index int, arg int) int {
+			return arg * arg
+		}, 1, 2, 4, 7)
+		require.Equal(t, []int{1, 4, 16, 49}, results)
+	}
 }

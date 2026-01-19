@@ -33,8 +33,8 @@ func VolumeInfoF(vol *clustermgr.VolumeInfo) []string {
 	if vol == nil {
 		return nilStrings[:]
 	}
-	usedC := common.ColorizeUint64(vol.Used, vol.Total)
-	freeC := common.ColorizeUint64Free(vol.Free, vol.Total)
+	usedC := common.ColorizeInteger(vol.Used, vol.Total)
+	freeC := common.ColorizeIntegerFree(vol.Free, vol.Total)
 	vals := make([]string, 0, 32)
 	vals = append(vals, []string{
 		fmt.Sprintf("Vid        : %d", vol.Vid),
@@ -92,7 +92,7 @@ func ClusterInfoF(info *clustermgr.ClusterInfo) []string {
 	if info == nil {
 		return nilStrings[:]
 	}
-	avaiC := common.ColorizeInt64(-info.Available, info.Capacity)
+	avaiC := common.ColorizeInteger(-info.Available, info.Capacity)
 	vals := make([]string, 0, 8)
 	vals = append(vals, []string{
 		fmt.Sprintf("Region    : %s", info.Region),

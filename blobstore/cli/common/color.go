@@ -16,6 +16,8 @@ package common
 
 import (
 	"github.com/fatih/color"
+
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 // colorize defined
@@ -97,7 +99,7 @@ func Colorize(percent int) *color.Color {
 }
 
 // ColorizeFloat color by float64 [-1.0, 1.0] ratio
-func ColorizeFloat(ratio float64) *color.Color {
+func ColorizeFloat[T util.Float](ratio T) *color.Color {
 	return Colorize(int(ratio * 100))
 }
 
@@ -108,37 +110,13 @@ func percentIfFree(free bool, percent int) int {
 	return percent
 }
 
-// ColorizeInt by int
-func ColorizeInt(used, total int) *color.Color {
-	return Colorize(percentIfFree(used < 0, used*100/total))
-}
-
-// ColorizeInt32 by int32
-func ColorizeInt32(used, total int32) *color.Color {
+// ColorizeInteger colorize by any integer type
+// When used < 0 (signed types only), it indicates free space calculation
+func ColorizeInteger[T util.Integer](used, total T) *color.Color {
 	return Colorize(percentIfFree(used < 0, int(used*100/total)))
 }
 
-// ColorizeInt64 by int64
-func ColorizeInt64(used, total int64) *color.Color {
-	return Colorize(percentIfFree(used < 0, int(used*100/total)))
-}
-
-// ColorizeUint32 by uint32
-func ColorizeUint32(used, total uint32) *color.Color {
-	return Colorize(int(used * 100 / total))
-}
-
-// ColorizeUint64 by uint64
-func ColorizeUint64(used, total uint64) *color.Color {
-	return Colorize(int(used * 100 / total))
-}
-
-// ColorizeUint32Free free by uint32
-func ColorizeUint32Free(free, total uint32) *color.Color {
-	return Colorize(percentIfFree(true, -int(free*100/total)))
-}
-
-// ColorizeUint64Free free by uint64
-func ColorizeUint64Free(free, total uint64) *color.Color {
+// ColorizeIntegerFree colorize free space by any integer type
+func ColorizeIntegerFree[T util.Integer](free, total T) *color.Color {
 	return Colorize(percentIfFree(true, -int(free*100/total)))
 }

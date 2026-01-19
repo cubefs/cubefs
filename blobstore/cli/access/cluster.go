@@ -95,7 +95,7 @@ func showClusters(c *grumble.Context) error {
 			fmt.Println()
 		}
 		fmt.Printf("\tspace in region: %s (%s / %s)\n", region,
-			common.ColorizeInt64(-available, capacity).Sprint(humanize.IBytes(uint64(available))),
+			common.ColorizeInteger(-available, capacity).Sprint(humanize.IBytes(uint64(available))),
 			humanize.IBytes(uint64(capacity)))
 	}
 
@@ -126,7 +126,7 @@ func showClusterWithConfig() error {
 		fmt.Println()
 
 		fmt.Printf("\tspace in cluster: %s (%s / %s)\n", clusterID,
-			common.ColorizeInt64(-stat.BlobNodeSpaceStat.WritableSpace, stat.BlobNodeSpaceStat.TotalSpace).
+			common.ColorizeInteger(-stat.BlobNodeSpaceStat.WritableSpace, stat.BlobNodeSpaceStat.TotalSpace).
 				Sprint(humanize.IBytes(uint64(stat.BlobNodeSpaceStat.WritableSpace))),
 			humanize.IBytes(uint64(stat.BlobNodeSpaceStat.TotalSpace)))
 	}

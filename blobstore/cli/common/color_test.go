@@ -17,7 +17,6 @@ package common_test
 import (
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
@@ -59,7 +58,6 @@ func TestCmdCommonColorRatio(t *testing.T) {
 		{1000, 100, "highlight [Dead]"},
 	}
 
-	rand.Seed(time.Now().Unix())
 	for _, cs := range cases {
 		for i := 0; i < 10; i++ {
 			percent := rand.Intn(cs.rand) + cs.offset
@@ -78,24 +76,19 @@ func TestCmdCommonColorRatio(t *testing.T) {
 		f := rand.Float64()
 		c := common.ColorizeFloat(f)
 		c.Printf("used(%.3f) unknow ", f)
-		c = common.ColorizeFloat(-f)
+		c = common.ColorizeFloat(-float32(f))
 		c.Printf("free(%.3f) unknow ", -f)
 		fmt.Println()
 	}
 	fmt.Println()
 
-	common.ColorizeInt(0, 100).Printf("ColorizeInt --> used(%d/%d) white\n", 0, 100)
-	common.ColorizeInt(-1, 1000).Printf("ColorizeInt --> free(%d/%d) dead", -1, 10000)
+	common.ColorizeInteger(0, 100).Printf("Int    --> used(%d/%d) white\n", 0, 100)
+	common.ColorizeInteger(-1, 1000).Printf("Int    --> free(%d/%d) dead", -1, 10000)
 	fmt.Println()
 
-	common.ColorizeInt(80, 100).Printf("ColorizeInt --> used(%d/%d) yellow\n", 80, 100)
-	common.ColorizeInt(-80, 100).Printf("ColorizeInt --> free(%d/%d) green\n", 80, 100)
-	common.ColorizeInt32(80, 100).Printf("ColorizeInt32 --> used(%d/%d) yellow\n", 80, 100)
-	common.ColorizeInt32(-80, 100).Printf("ColorizeInt32 --> free(%d/%d) green\n", 80, 100)
-	common.ColorizeInt64(80, 100).Printf("ColorizeInt64 --> used(%d/%d) yellow\n", 80, 100)
-	common.ColorizeInt64(-80, 100).Printf("ColorizeInt64 --> free(%d/%d) green\n", 80, 100)
-	common.ColorizeUint32(80, 100).Printf("ColorizeUint32 --> used(%d/%d) yellow\n", 80, 100)
-	common.ColorizeUint32Free(80, 100).Printf("ColorizeUint32Free --> free(%d/%d) green\n", 80, 100)
-	common.ColorizeUint64(80, 100).Printf("ColorizeUint64 --> used(%d/%d) yellow\n", 80, 100)
-	common.ColorizeUint64Free(80, 100).Printf("ColorizeUint64Free --> free(%d/%d) green\n", 80, 100)
+	common.ColorizeInteger(80, 100).Printf("Int    --> used(%d/%d) yellow\n", 80, 100)
+	common.ColorizeInteger(-80, 100).Printf("Int    --> free(%d/%d) green\n", 80, 100)
+	common.ColorizeInteger(int32(80), 100).Printf("Int32  --> used(%d/%d) yellow\n", 80, 100)
+	common.ColorizeInteger(-80, int32(100)).Printf("Int32  --> free(%d/%d) green\n", 80, 100)
+	common.ColorizeIntegerFree(uint64(80), 100).Printf("Uint64 --> free(%d/%d) green\n", 80, 100)
 }

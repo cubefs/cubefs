@@ -16,23 +16,15 @@ package task
 
 import "context"
 
-var (
-	// C alias of Concurrent
-	C = Concurrent
-	// CC alias of ConcurrentContext
-	CC = ConcurrentContext
-)
-
 // Concurrent is tasks run concurrently.
-func Concurrent(f func(index int, arg interface{}), args []interface{}) {
-	ConcurrentContext(context.Background(), f, args)
+func Concurrent[T any](f func(index int, arg T), args ...T) {
+	ConcurrentContext(context.Background(), f, args...)
 }
 
 // ConcurrentContext is tasks run concurrently with context.
-// How to make []interface{} see: https://golang.org/doc/faq#convert_slice_of_interface
-func ConcurrentContext(ctx context.Context, f func(index int, arg interface{}), args []interface{}) {
+func ConcurrentContext[T any](ctx context.Context, f func(index int, arg T), args ...T) {
 	tasks := make([]func() error, len(args))
-	for ii := 0; ii < len(args); ii++ {
+	for ii := range args {
 		index, arg := ii, args[ii]
 		tasks[ii] = func() error {
 			f(index, arg)
@@ -40,4 +32,24 @@ func ConcurrentContext(ctx context.Context, f func(index int, arg interface{}), 
 		}
 	}
 	Run(ctx, tasks...)
+}
+
+// ConcurrentResult runs tasks concurrently and collects results.
+func ConcurrentResult[T, R any](f func(index int, arg T) R, args ...T) []R {
+	return ConcurrentResultContext(context.Background(), f, args...)
+}
+
+// ConcurrentResultContext runs tasks concurrently with context and collects results.
+func ConcurrentResultContext[T, R any](ctx context.Context, f func(index int, arg T) R, args ...T) []R {
+	results := make([]R, len(args))
+	tasks := make([]func() error, len(args))
+	for ii := range args {
+		idx, arg := ii, args[ii]
+		tasks[ii] = func() error {
+			results[idx] = f(idx, arg)
+			return nil
+		}
+	}
+	Run(ctx, tasks...)
+	return results
 }
