@@ -162,6 +162,8 @@ const (
 
 	// storage device media type, for hybrid cloud, in string: SDD or HDD
 	ConfigMediaType = "mediaType"
+	// storage pool ID for datanode
+	ConfigPoolId = "poolId"
 )
 
 const cpuSampleDuration = 1 * time.Second
@@ -260,6 +262,7 @@ type DataNode struct {
 	dpBackupTimeout                    time.Duration
 	cacheCap                           int
 	mediaType                          uint32              // type of storage hardware medi
+	poolId                             uint8               // storage pool ID
 	nodeForbidWriteOpOfProtoVer0       bool                // whether forbid by node granularity,
 	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
 	DirectReadVols                     map[string]struct{}
@@ -522,6 +525,23 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return err
 	}
 	s.mediaType = mediaType
+
+	// Parse poolId (optional, for backward compatibility)
+	if cfg.HasKey(ConfigPoolId) {
+		var poolIdVal uint32
+		if err, poolIdVal = cfg.GetUint32(ConfigPoolId); err != nil {
+			err = fmt.Errorf("parseConfig: parse configKey[%v] err: %v", ConfigPoolId, err.Error())
+			log.LogError(err.Error())
+			return err
+		}
+		if poolIdVal > 255 {
+			err = fmt.Errorf("parseConfig: poolId(%v) out of range, must be 0-255", poolIdVal)
+			log.LogError(err.Error())
+			return err
+		}
+		s.poolId = uint8(poolIdVal)
+		log.LogDebugf("action[parseConfig] load poolId(%v).", s.poolId)
+	}
 
 	s.ExtentCacheTtlByMin = cfg.GetIntWithDefault(ConfigExtentCacheTtlByMin, DefaultExtentCacheTtlByMin)
 
@@ -872,7 +892,7 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			// register this data node on the master
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.raftHeartbeat, s.raftReplica,
-				s.zoneName, s.serviceIDKey, s.rack, s.mediaType); err != nil {
+				s.zoneName, s.serviceIDKey, s.rack, s.mediaType, s.poolId); err != nil {
 				if strings.Contains(err.Error(), proto.ErrDataNodeAdd.Error()) {
 					failMsg := fmt.Sprintf("[register] register to master[%v] failed: %v",
 						masterAddr, err)
