@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/diskmon"
 	"github.com/cubefs/cubefs/util/exporter"
 )
 
@@ -39,6 +40,7 @@ const (
 	RocksdbStats                   = "rocksdbStats"
 	RocksdbDiskUsage               = "rocksdbDiskUsage"
 	RocksdbNonNvmeDisk             = "rocksdbNonNvmeDisk"
+	RocksdbDiskError               = "rocksdbDiskError"
 
 	// Timeout for metrics collection
 	MetricsCollectionTimeout = 30 * time.Second
@@ -69,6 +71,7 @@ type MetaNodeMetrics struct {
 	RocksdbStats                   *exporter.GaugeVec
 	RocksdbDiskUsage               *exporter.GaugeVec
 	RocksdbNonNvmeDisk             *exporter.GaugeVec
+	RocksdbDiskError               *exporter.GaugeVec
 
 	metricStopCh chan struct{}
 	ctx          context.Context
@@ -92,6 +95,7 @@ func (m *MetaNode) startStat() {
 		RocksdbStats:                   exporter.NewGaugeVec(RocksdbStats, "", []string{"rocksdbDir", "key"}),
 		RocksdbDiskUsage:               exporter.NewGaugeVec(RocksdbDiskUsage, "", []string{"rocksdbDir"}),
 		RocksdbNonNvmeDisk:             exporter.NewGaugeVec(RocksdbNonNvmeDisk, "", []string{"rocksdbDir"}),
+		RocksdbDiskError:               exporter.NewGaugeVec(RocksdbDiskError, "", []string{"rocksdbDir"}),
 	}
 
 	go m.collectPartitionMetrics()
@@ -289,6 +293,11 @@ func (m *MetaNode) updateRocksdbDiskUsageMetrics() {
 	for _, disk := range m.disks {
 		if !disk.IsRocksDBDisk {
 			continue
+		}
+		if disk.Status == diskmon.Unavailable {
+			m.metrics.RocksdbDiskError.SetWithLabelValues(1, disk.Path)
+		} else {
+			m.metrics.RocksdbDiskError.SetWithLabelValues(0, disk.Path)
 		}
 		availableTotal := disk.Total - float64(disk.ReservedSpace)
 		if availableTotal <= 0 {
