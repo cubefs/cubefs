@@ -1261,11 +1261,23 @@ func (mp *MetaPartition) removeExcessiveReplicas(c *Cluster) (err error) {
 
 	// 2) Remove extra voter when voter count exceeds ReplicaNum
 	if len(nonLearnerPeers) > int(mp.ReplicaNum) {
-		var removeAddr string
+		var (
+			removeAddr string
+			leaderAddr = mp.getLeaderAddr()
+		)
+
 		if mp.SrcAddr != "" {
 			removeAddr = mp.SrcAddr
 		} else {
 			removeAddr = nonLearnerPeers[len(nonLearnerPeers)-1].Addr
+		}
+		if removeAddr == leaderAddr {
+			for i := len(nonLearnerPeers) - 1; i >= 0; i-- {
+				if nonLearnerPeers[i].Addr != leaderAddr {
+					removeAddr = nonLearnerPeers[i].Addr
+					break
+				}
+			}
 		}
 		if err = c.deleteMetaReplica(mp, removeAddr, false, false); err != nil {
 			return err
@@ -1620,10 +1632,10 @@ func (mp *MetaPartition) setRestoreReplicaStatus(status uint32) {
 }
 
 func (mp *MetaPartition) lostLeader(c *Cluster) bool {
-	return mp.getLeaderAddrWithLock() == "" && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.MpNoLeaderReportIntervalSec)
+	return mp.getLeaderAddr() == "" && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.MpNoLeaderReportIntervalSec)
 }
 
-func (mp *MetaPartition) getLeaderAddrWithLock() string {
+func (mp *MetaPartition) getLeaderAddr() string {
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
 		return ""
