@@ -138,6 +138,7 @@ type DataPartition struct {
 	RestoreReplica           uint32
 	MediaType                uint32
 	ForbidWriteOpOfProtoVer0 bool
+	PoolId                   uint8 // storage pool ID, 0 means use mediaType default
 
 	decommissionTaskQueue   []DecommissionTask
 	decommissionTaskQueueMu sync.RWMutex
@@ -535,6 +536,12 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.IsRecover = partition.isRecover
 	dpr.IsDiscard = partition.IsDiscard
 	dpr.MediaType = partition.MediaType
+	// If PoolId is 0, use mediaType to determine pool
+	if partition.PoolId == 0 {
+		dpr.PoolId = getDefaultPoolIdByMediaType(partition.MediaType)
+	} else {
+		dpr.PoolId = partition.PoolId
+	}
 	return
 }
 

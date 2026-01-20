@@ -221,6 +221,10 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
+	if err = m.cluster.loadStoragePools(); err != nil {
+		panic(err)
+	}
+
 	if err = m.cluster.loadVols(); err != nil {
 		panic(err)
 	}

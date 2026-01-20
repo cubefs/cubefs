@@ -1769,6 +1769,7 @@ type Zone struct {
 	DiskQosConfig              map[string]string
 	DiskQosConfigLock          sync.RWMutex
 	dataMediaType              uint32
+	PoolId                     uint8
 	sync.RWMutex
 }
 
@@ -1778,6 +1779,7 @@ type zoneValue struct {
 	DataNodesetSelector string
 	MetaNodesetSelector string
 	DataMediaType       uint32
+	PoolId              uint8
 }
 
 func newZone(name string, dataMediaType uint32) (zone *Zone) {
@@ -1791,6 +1793,7 @@ func newZone(name string, dataMediaType uint32) (zone *Zone) {
 	zone.metaMemoryNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
 	zone.metaRocksdbNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, RocksdbType)
 	zone.SetDataMediaType(dataMediaType)
+	zone.PoolId = getDefaultPoolIdByMediaType(dataMediaType)
 	return
 }
 
@@ -1839,6 +1842,7 @@ func (zone *Zone) getFsmValue() *zoneValue {
 		DataNodesetSelector: zone.GetDataNodesetSelector(),
 		MetaNodesetSelector: zone.GetMetaNodesetSelector(),
 		DataMediaType:       zone.GetDataMediaType(),
+		PoolId:              zone.PoolId,
 	}
 }
 

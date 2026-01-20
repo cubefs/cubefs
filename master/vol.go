@@ -81,6 +81,8 @@ type VolVarargs struct {
 	remoteCacheSameZoneTimeout   int64 // microsecond
 	remoteCacheSameRegionTimeout int64 // ms
 	DefaultStoreMode             proto.StoreMode
+	defaultPoolId                uint8
+	allowedPools                 []uint8
 	DpTag                        string
 	MpTag                        string
 }
@@ -210,9 +212,13 @@ type Vol struct {
 	StatByDpMediaType       []*proto.StatOfStorageClass
 	QuotaByClass            []*proto.StatOfStorageClass
 	DefaultStoreMode        proto.StoreMode
-	SelectType              int32
-	DpTag                   string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
-	MpTag                   string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
+
+	// Storage Pool
+	defaultPoolId uint8   // default pool ID for writing
+	allowedPools  []uint8 // allowed pool IDs for this volume
+	SelectType    int32
+	DpTag         string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
+	MpTag         string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -299,6 +305,11 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	vol.StatMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
 	vol.ForbidWriteOpOfProtoVer0.Store(defaultVolForbidWriteOpOfProtoVersion0)
+
+	// Load pool configuration
+	vol.defaultPoolId = vv.DefaultPoolId
+	vol.allowedPools = make([]uint8, len(vv.AllowedPools))
+	copy(vol.allowedPools, vv.AllowedPools)
 
 	vol.QuotaByClass = vv.QuotaOfClass
 	if len(vol.QuotaByClass) == 0 {
@@ -1329,6 +1340,59 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 			vol.Name, createDpCount, proto.MediaTypeString(mediaType))
 		c.batchCreateDataPartition(vol, createDpCount, false, mediaType)
 	}
+
+	// Auto create data partitions for each allowed pool
+	if len(vol.allowedPools) > 0 {
+		for _, poolId := range vol.allowedPools {
+			pool, err := c.getStoragePool(poolId)
+			if err != nil {
+				log.LogWarnf("action[autoCreateDataPartitions] vol[%v] pool[%v] not found, skip", vol.Name, poolId)
+				continue
+			}
+
+			// Get mediaType from pool's storage class
+			var mediaType uint32
+			storageClass := uint32(pool.StorageClass)
+			switch storageClass {
+			case proto.StorageClass_Replica_SSD:
+				mediaType = proto.MediaType_SSD
+			case proto.StorageClass_Replica_HDD:
+				mediaType = proto.MediaType_HDD
+			case proto.StorageClass_BlobStore:
+				// Skip EC pools for now, as they may need different handling
+				continue
+			default:
+				log.LogWarnf("action[autoCreateDataPartitions] vol[%v] pool[%v] unsupported storageClass[%v], skip",
+					vol.Name, poolId, storageClass)
+				continue
+			}
+
+			// Count data partitions in this pool
+			dpCntOfPool := vol.dataPartitions.getDataPartitionsCountOfPool(poolId)
+			rwDpCntOfPool := vol.dataPartitions.getReadWriteDataPartitionCntByPool(poolId)
+
+			log.LogInfof("action[autoCreateDataPartitions] vol(%v) poolId(%v) mediaType:%v, rwDpCountOfPool:%v, totalDpCountOfPool:%v",
+				vol.Name, poolId, proto.MediaTypeString(mediaType), rwDpCntOfPool, dpCntOfPool)
+
+			var createDpCount int
+			if poolId == vol.defaultPoolId && vol.Capacity > 200000 && rwDpCntOfPool < 200 {
+				createDpCount = vol.calculateExpansionNum()
+				log.LogInfof("action[autoCreateDataPartitions] vol(%v) defaultPoolId(%v), calculated createDpCount:%v",
+					vol.Name, poolId, createDpCount)
+			} else if rwDpCntOfPool < minNumOfRWDataPartitions {
+				createDpCount = minNumOfRWDataPartitions - rwDpCntOfPool
+				log.LogInfof("action[autoCreateDataPartitions] vol(%v) poolId(%v), min createDpCount:%v",
+					vol.Name, poolId, createDpCount)
+			} else {
+				continue
+			}
+
+			vol.dataPartitions.lastAutoCreateTime = time.Now()
+			log.LogInfof("action[autoCreateDataPartitions] vol[%v] createDpCount[%v] for poolId(%v) mediaType(%v)",
+				vol.Name, createDpCount, poolId, proto.MediaTypeString(mediaType))
+			c.batchCreateDataPartitionForPool(vol, createDpCount, false, mediaType, poolId)
+		}
+	}
 }
 
 // Calculate the expansion number (the number of data partitions to be allocated to the given volume)
@@ -1925,6 +1989,15 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.remoteCacheSameZoneTimeout = args.remoteCacheSameZoneTimeout
 	vol.remoteCacheSameRegionTimeout = args.remoteCacheSameRegionTimeout
 	vol.DefaultStoreMode = args.DefaultStoreMode
+
+	// Update pool configuration if provided
+	if args.defaultPoolId != 0 {
+		vol.defaultPoolId = args.defaultPoolId
+	}
+	if len(args.allowedPools) > 0 {
+		vol.allowedPools = make([]uint8, len(args.allowedPools))
+		copy(vol.allowedPools, args.allowedPools)
+	}
 	vol.DpTag = args.DpTag
 	vol.MpTag = args.MpTag
 }
@@ -1990,6 +2063,8 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		remoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		remoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
 		DefaultStoreMode:             vol.DefaultStoreMode,
+		defaultPoolId:                vol.defaultPoolId,
+		allowedPools:                 append([]uint8{}, vol.allowedPools...),
 		DpTag:                        vol.DpTag,
 		MpTag:                        vol.MpTag,
 	}

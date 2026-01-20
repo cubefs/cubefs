@@ -98,6 +98,7 @@ type InodeInfo struct {
 	PersistAccessTime time.Time `json:"pat"`
 
 	StorageClass                  uint32              `json:"storageClass"`
+	PoolId                        uint8               `json:"poolId"` // storage pool ID
 	LeaseExpireTime               uint64              `json:"leaseExpireTime"`
 	ForbiddenLc                   bool                `json:"forbiddenLc"`
 	MigrationStorageClass         uint32              `json:"migrationStorageClass"`
@@ -232,6 +233,7 @@ type CreateInodeRequest struct {
 	Target      []byte `json:"tgt"`
 	RequestExtend
 	StorageType uint32 `json:"storageType"`
+	PoolId      uint8  `json:"poolId"` // storage pool ID, 0 means use volume default
 }
 
 // CreateInodeResponse defines the response to the request of creating an inode.

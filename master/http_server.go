@@ -950,6 +950,20 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetAllZones).
 		HandlerFunc(m.listZone)
+
+	// Storage Pool management APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminCreateStoragePool).
+		HandlerFunc(m.createStoragePool)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetStoragePool).
+		HandlerFunc(m.getStoragePool)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminListStoragePools).
+		HandlerFunc(m.listStoragePools)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateStoragePool).
+		HandlerFunc(m.updateStoragePool)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetAllNodeSets).
 		HandlerFunc(m.listNodeSets)

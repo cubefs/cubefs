@@ -92,6 +92,7 @@ type DataNode struct {
 	DiskOpLogs                         []proto.OpLog
 	DpOpLogs                           []proto.OpLog
 	Tag                                string
+	PoolId                             uint8
 }
 
 func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, clusterID string, mediaType uint32) (dataNode *DataNode) {

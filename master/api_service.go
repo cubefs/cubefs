@@ -119,6 +119,8 @@ type ZoneView struct {
 	MetaNodesetSelector string
 	NodeSet             map[uint64]*NodeSetView
 	DataMediaType       string
+	PoolId              uint8
+	PoolName            string
 }
 
 func newZoneView(name string) *ZoneView {
@@ -461,6 +463,8 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		cv.DataNodesetSelector = zone.GetDataNodesetSelector()
 		cv.MetaNodesetSelector = zone.GetMetaNodesetSelector()
 		cv.DataMediaType = zone.GetDataMediaTypeString()
+		cv.PoolId = zone.PoolId
+		cv.PoolName = m.cluster.getPoolNameById(zone.PoolId)
 		tv.Zones = append(tv.Zones, cv)
 
 		nsc := zone.getAllNodeSet()
@@ -594,6 +598,9 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 		cv.Status = zone.getStatusToString()
 		cv.DataNodesetSelector = zone.GetDataNodesetSelector()
 		cv.MetaNodesetSelector = zone.GetMetaNodesetSelector()
+		cv.DataMediaType = zone.GetDataMediaTypeString()
+		cv.PoolId = zone.PoolId
+		cv.PoolName = m.cluster.getPoolNameById(zone.PoolId)
 		zoneViews = append(zoneViews, cv)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
@@ -3245,6 +3252,15 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		newArgs.MpTag = FormatTag(req.mpsSelectTag)
 	}
 
+	// Update pool configuration if provided
+	if req.defaultPoolId != 0 {
+		newArgs.defaultPoolId = req.defaultPoolId
+	}
+	if len(req.allowedPools) > 0 {
+		newArgs.allowedPools = make([]uint8, len(req.allowedPools))
+		copy(newArgs.allowedPools, req.allowedPools)
+	}
+
 	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v], FR[%v], metaFR[%v], MMR[%v]",
 		req.name, req.zoneName, vol.zoneName, req.replicaNum, req.followerRead, req.metaFollowerRead, req.maximallyRead)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
@@ -3811,6 +3827,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		VolStorageClass:          vol.volStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 		QuotaOfStorageClass:      quotaOfClass,
+		DefaultPoolId:            vol.defaultPoolId,
 
 		RemoteCacheEnable:            vol.remoteCacheEnable,
 		RemoteCachePath:              vol.remoteCachePath,
@@ -3892,6 +3909,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		err               error
 		nodesetId         uint64
 		rack              string
+		poolId            uint8
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddDataNode))
 	defer func() {
@@ -3899,7 +3917,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AddDataNode, fmt.Sprintf("add datanode %v", nodeAddr), err)
 	}()
 
-	if nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, mediaType, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, mediaType, poolId, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3916,7 +3934,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType, poolId); err != nil {
 		log.LogErrorf("addDataNode: add failed, addr %s, zone %s, set %d, type %d, err %s",
 			nodeAddr, zoneName, nodesetId, mediaType, err.Error())
 		err = errors.NewErrorf("add datanode failed, err %s, hint %s", err.Error(), proto.ErrDataNodeAdd.Error())
@@ -3995,6 +4013,8 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		DiskOpLogs:                            dataNode.DiskOpLogs,
 		DpOpLogs:                              dataNode.DpOpLogs,
 		Tag:                                   dataNode.Tag,
+		PoolId:                                dataNode.PoolId,
+		PoolName:                              m.cluster.getPoolNameById(dataNode.PoolId),
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -6118,7 +6138,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AddMetaNode, fmt.Sprintf("add metanode %v", nodeAddr), err)
 	}()
 
-	if nodeAddr, heartbeatPort, replicaPort, zoneName, rack, _, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, heartbeatPort, replicaPort, zoneName, rack, _, _, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -7270,6 +7290,9 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			stat := volStat(vol, false)
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize,
 				stat.UsedSize, stat.DpReadOnlyWhenVolFull)
+			volInfo.DefaultPoolId = vol.defaultPoolId
+			volInfo.AllowedPools = make([]uint8, len(vol.allowedPools))
+			copy(volInfo.AllowedPools, vol.allowedPools)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -10543,4 +10566,167 @@ func calcVolumeRocksdbInfo(vol *Vol, view *proto.SimpleVolView) {
 
 	view.RocksdbMpCount = rocksdbMpCount
 	view.MemoryMpCount = memoryMpCount
+}
+
+// createStoragePool creates a new storage pool
+func (m *Server) createStoragePool(w http.ResponseWriter, r *http.Request) {
+	var (
+		poolInfo *proto.StoragePoolInfo
+		err      error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateStoragePool))
+	defer func() {
+		doStatAndMetric(proto.AdminCreateStoragePool, metric, err, nil)
+		AuditLog(r, proto.AdminCreateStoragePool, fmt.Sprintf("create pool id[%d] name[%s]", poolInfo.Id, poolInfo.Name), err)
+	}()
+
+	// Parse request parameters
+	if poolInfo, err = parseRequestToCreateStoragePool(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if poolInfo.Id == 0 {
+		err = fmt.Errorf("pool id is required")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if poolInfo.Name == "" {
+		err = fmt.Errorf("pool name is required")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	// System default pools cannot be created manually
+	if poolInfo.Id <= MaxDefaultPoolId {
+		err = fmt.Errorf("pool id %d is reserved for system default pools", poolInfo.Id)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.createStoragePool(poolInfo); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("create storage pool id[%d] name[%s] successfully", poolInfo.Id, poolInfo.Name)))
+}
+
+// getStoragePool gets storage pool by ID
+func (m *Server) getStoragePool(w http.ResponseWriter, r *http.Request) {
+	var (
+		poolId uint8
+		err    error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetStoragePool))
+	defer func() {
+		doStatAndMetric(proto.AdminGetStoragePool, metric, err, nil)
+	}()
+
+	if poolId, err = extractUint8(r, "id"); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	pool, err := m.cluster.getStoragePool(poolId)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	// Convert to view
+	view := &proto.StoragePoolView{
+		Id:           pool.Id,
+		Name:         pool.Name,
+		StorageClass: proto.StorageClassString(uint32(pool.StorageClass)),
+		CId:          pool.CId,
+		ECAddr:       pool.ECAddr,
+		CreateTime:   time.Unix(pool.CreateTime, 0).Format(time.RFC3339),
+		UpdateTime:   time.Unix(pool.UpdateTime, 0).Format(time.RFC3339),
+		Status:       poolStatusToString(pool.Status),
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(view))
+}
+
+// listStoragePools lists all storage pools
+func (m *Server) listStoragePools(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminListStoragePools))
+	defer func() {
+		doStatAndMetric(proto.AdminListStoragePools, metric, nil, nil)
+	}()
+
+	pools := m.cluster.listStoragePools()
+	views := make([]*proto.StoragePoolView, 0, len(pools))
+
+	for _, pool := range pools {
+		view := &proto.StoragePoolView{
+			Id:           pool.Id,
+			Name:         pool.Name,
+			StorageClass: proto.StorageClassString(uint32(pool.StorageClass)),
+			CId:          pool.CId,
+			ECAddr:       pool.ECAddr,
+			CreateTime:   time.Unix(pool.CreateTime, 0).Format(time.RFC3339),
+			UpdateTime:   time.Unix(pool.UpdateTime, 0).Format(time.RFC3339),
+			Status:       poolStatusToString(pool.Status),
+		}
+		views = append(views, view)
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(views))
+}
+
+// updateStoragePool updates storage pool fields
+func (m *Server) updateStoragePool(w http.ResponseWriter, r *http.Request) {
+	var (
+		poolId   uint8
+		poolInfo *proto.StoragePoolInfo
+		err      error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateStoragePool))
+	defer func() {
+		doStatAndMetric(proto.AdminUpdateStoragePool, metric, err, nil)
+		AuditLog(r, proto.AdminUpdateStoragePool, fmt.Sprintf("update pool id[%d]", poolId), err)
+	}()
+
+	// Parse request parameters
+	if poolId, poolInfo, err = parseRequestToUpdateStoragePool(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.updateStoragePool(poolId, poolInfo); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update storage pool id[%d] successfully", poolId)))
+}
+
+// poolStatusToString converts pool status to string
+func poolStatusToString(status uint8) string {
+	switch status {
+	case proto.PoolStatusAvailable:
+		return "Available"
+	case proto.PoolStatusDisabled:
+		return "Disabled"
+	case proto.PoolStatusDeleting:
+		return "Deleting"
+	default:
+		return "Unknown"
+	}
+}
+
+// extractUint8 extracts uint8 value from request
+func extractUint8(r *http.Request, key string) (value uint8, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return 0, fmt.Errorf("parameter %s is required", key)
+	}
+	val, err := strconv.ParseUint(str, 10, 8)
+	if err != nil {
+		return 0, fmt.Errorf("parameter %s must be a valid uint8: %v", key, err)
+	}
+	return uint8(val), nil
 }

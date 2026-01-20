@@ -107,6 +107,8 @@ type DataNodeInfo struct {
 	MediaType                             uint32
 	DiskOpLogs                            []OpLog
 	DpOpLogs                              []OpLog
+	PoolId                                uint8
+	PoolName                              string
 	Tag                                   string
 }
 
@@ -277,6 +279,8 @@ type NodeView struct {
 	NodeSetID                uint64
 	ZoneName                 string
 	Tag                      string
+	PoolId                   uint8
+	PoolName                 string
 }
 
 type RepairInfo struct {

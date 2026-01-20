@@ -112,6 +112,7 @@ type clusterValue struct {
 	DefaultDpTag                           string
 	DefaultMpTag                           string
 	AutoFixTag                             atomicutil.Bool
+	DefaultPoolId                          uint8
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -188,6 +189,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DefaultDpTag:                           c.cfg.DefaultDpTag,
 		DefaultMpTag:                           c.cfg.DefaultMpTag,
 		AutoFixTag:                             c.cfg.AutoFixTag,
+		DefaultPoolId:                          c.defaultPoolId,
 	}
 	return cv
 }
@@ -285,6 +287,7 @@ type dataPartitionValue struct {
 	RestoreReplica                  uint32
 	MediaType                       uint32
 	DecommissionTaskQueue           []DecommissionTask
+	PoolId                          uint8
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -327,6 +330,14 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.RestoreReplica = dpv.RestoreReplica
 	dp.MediaType = dpv.MediaType
 	dp.decommissionTaskQueue = dpv.DecommissionTaskQueue
+
+	// Set PoolId from loaded value, or use default based on media type
+	dp.PoolId = dpv.PoolId
+	if dp.PoolId == 0 {
+		dp.PoolId = getDefaultPoolIdByMediaType(dp.MediaType)
+		log.LogWarnf("action[Restore] dataPartition[%v] PoolId is 0, set to default pool[%d] based on mediaType[%v]",
+			dp.PartitionID, dp.PoolId, proto.MediaTypeString(dp.MediaType))
+	}
 
 	// to ensure progress of checkReplicaMeta can be run again, the status of RestoreReplicaMeta can not be
 	// set to RestoreReplicaMetaStop otherwise for checkReplicaMeta cannot be executed.
@@ -393,6 +404,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		RestoreReplica:                  atomic.LoadUint32(&dp.RestoreReplica),
 		MediaType:                       dp.MediaType,
 		DecommissionTaskQueue:           dp.cloneDecommissionTaskQueue(),
+		PoolId:                          dp.PoolId,
 	}
 	for _, replica := range dp.Replicas {
 		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
@@ -485,6 +497,10 @@ type volValue struct {
 	SelectType       int32
 	DpTag            string
 	MpTag            string
+
+	// Storage Pool
+	DefaultPoolId uint8
+	AllowedPools  []uint8
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -578,9 +594,13 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DefaultStoreMode:             vol.DefaultStoreMode,
 		DpTag:                        vol.DpTag,
 		MpTag:                        vol.MpTag,
+		DefaultPoolId:                vol.defaultPoolId,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)
+
+	vv.AllowedPools = make([]uint8, len(vol.allowedPools))
+	copy(vv.AllowedPools, vol.allowedPools)
 
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, len(vol.QuotaByClass))
 	copy(vv.QuotaOfClass, vol.QuotaByClass)
@@ -625,6 +645,7 @@ type dataNodeValue struct {
 	PreReservedSpace                   uint64
 	PreReservedDpCount                 uint32
 	Tag                                string
+	PoolId                             uint8
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -657,6 +678,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		PreReservedSpace:                   dataNode.PreReservedSpace,
 		PreReservedDpCount:                 dataNode.PreReservedDpCount,
 		Tag:                                dataNode.Tag,
+		PoolId:                             dataNode.PoolId,
 	}
 }
 
@@ -1295,6 +1317,15 @@ func (c *Cluster) updateMaxDpCntLimit(val uint64) {
 	atomic.StoreUint64(&clusterDpCntLimit, val)
 }
 
+func (c *Cluster) updateDefaultPoolId(val uint8) error {
+	// Validate pool exists
+	if _, err := c.getStoragePool(val); err != nil {
+		return fmt.Errorf("pool with id %d does not exist", val)
+	}
+	c.defaultPoolId = val
+	return c.syncPutCluster()
+}
+
 func (c *Cluster) updateMaxMpCntLimit(val uint64) {
 	atomic.StoreUint64(&clusterMpCntLimit, val)
 }
@@ -1379,8 +1410,16 @@ func (c *Cluster) loadZoneValue() (err error) {
 			zone.SetDataMediaType(c.legacyDataMediaType)
 		}
 
-		log.LogInfof("action[loadZoneValue] load zoneName[%v] with qosConfig[%v], dataMediaType[%v]",
-			zone.name, cv.DiskQosConfig, proto.MediaTypeString(zone.dataMediaType))
+		// Set PoolId from loaded value, or use default based on media type
+		zone.PoolId = cv.PoolId
+		if zone.PoolId == 0 {
+			zone.PoolId = getDefaultPoolIdByMediaType(zone.dataMediaType)
+			log.LogWarnf("action[loadZoneValue] zone[%v] PoolId is 0, set to default pool[%d] based on mediaType[%v]",
+				zone.name, zone.PoolId, proto.MediaTypeString(zone.dataMediaType))
+		}
+
+		log.LogInfof("action[loadZoneValue] load zoneName[%v] with qosConfig[%v], dataMediaType[%v], poolId[%d]",
+			zone.name, cv.DiskQosConfig, proto.MediaTypeString(zone.dataMediaType), zone.PoolId)
 		zone.loadDataNodeQosConfig()
 	}
 
@@ -1630,6 +1669,15 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.DefaultDpTag = cv.DefaultDpTag
 		c.cfg.DefaultMpTag = cv.DefaultMpTag
 		c.cfg.AutoFixTag = cv.AutoFixTag
+
+		// Load default pool ID
+		if cv.DefaultPoolId == 0 {
+			// Set default to SSD pool if not configured
+			c.defaultPoolId = DefaultSSDPoolId
+		} else {
+			c.defaultPoolId = cv.DefaultPoolId
+		}
+		log.LogInfof("action[loadClusterValue] defaultPoolId[%v]", c.defaultPoolId)
 	}
 
 	return
@@ -1854,6 +1902,14 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		dataNode.RdOnly = dnv.RdOnly
+
+		// Set PoolId from loaded value, or use default based on media type
+		dataNode.PoolId = dnv.PoolId
+		if dataNode.PoolId == 0 {
+			dataNode.PoolId = getDefaultPoolIdByMediaType(dataNode.MediaType)
+			log.LogWarnf("action[loadDataNodes] dataNode[%v] PoolId is 0, set to default pool[%d] based on mediaType[%v]",
+				dataNode.Addr, dataNode.PoolId, proto.MediaTypeString(dataNode.MediaType))
+		}
 		for _, disk := range dnv.DecommissionedDisks {
 			dataNode.addDecommissionedDisk(disk)
 		}
@@ -1961,6 +2017,39 @@ func (c *Cluster) loadVolsViews() (err error, volViews []*volValue) {
 	return
 }
 
+func (c *Cluster) setPoolForLegacyVol(vol *Vol) {
+	// For legacy volumes, set default poolId based on volStorageClass if not set
+	if vol.defaultPoolId == 0 {
+		if vol.volStorageClass != 0 {
+			vol.defaultPoolId = getDefaultPoolIdByStorageClass(vol.volStorageClass)
+		} else {
+			// Use cluster default poolId
+			vol.defaultPoolId = c.defaultPoolId
+		}
+		log.LogInfof("action[setPoolForLegacyVol] vol[%v] defaultPoolId set to %v", vol.Name, vol.defaultPoolId)
+	}
+
+	// For legacy volumes, set allowedPools based on allowedStorageClass if not set
+	if len(vol.allowedPools) == 0 && len(vol.allowedStorageClass) > 0 {
+		vol.allowedPools = make([]uint8, 0, len(vol.allowedStorageClass))
+		for _, sc := range vol.allowedStorageClass {
+			poolId := getDefaultPoolIdByStorageClass(sc)
+			// Avoid duplicates
+			found := false
+			for _, p := range vol.allowedPools {
+				if p == poolId {
+					found = true
+					break
+				}
+			}
+			if !found {
+				vol.allowedPools = append(vol.allowedPools, poolId)
+			}
+		}
+		log.LogInfof("action[setPoolForLegacyVol] vol[%v] allowedPools set to %v", vol.Name, vol.allowedPools)
+	}
+}
+
 func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
 	if vv.volStorageClass != proto.StorageClass_Unspecified {
 		log.LogDebugf("vol(%v) no need to set storageClass", vv.Name)
@@ -1996,6 +2085,7 @@ func (c *Cluster) loadVols() (err error) {
 
 		vol := newVolFromVolValue(vv)
 		c.setStorageClassForLegacyVol(vol)
+		c.setPoolForLegacyVol(vol)
 
 		if len(vol.QuotaByClass) == 0 {
 			for _, c := range vol.allowedStorageClass {

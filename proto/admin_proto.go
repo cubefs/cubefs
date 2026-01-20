@@ -285,6 +285,12 @@ const (
 	GetNodeSet      = "/nodeSet/get"
 	UpdateNodeSet   = "/nodeSet/update"
 
+	// Storage Pool APIs
+	AdminCreateStoragePool = "/admin/pool/create"
+	AdminGetStoragePool    = "/admin/pool/get"
+	AdminListStoragePools  = "/admin/pool/list"
+	AdminUpdateStoragePool = "/admin/pool/update"
+
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
 	ForceDelete         = "Force-Delete"
@@ -1206,6 +1212,7 @@ type DataPartitionResponse struct {
 	IsRecover     bool
 	IsDiscard     bool
 	MediaType     uint32
+	PoolId        uint8
 }
 
 // DataPartitionsView defines the view of a data partition
@@ -1457,6 +1464,7 @@ type SimpleVolView struct {
 	Forbidden               bool
 	DisableAuditLog         bool
 	DeleteExecTime          time.Time
+	DefaultPoolId           uint8 // default storage pool ID for the volume
 	DpRepairBlockSize       uint64
 	EnableAutoDpMetaRepair  bool
 	EnableAutoMpMetaRepair  bool
@@ -1552,6 +1560,8 @@ type VolInfo struct {
 	TotalSize             uint64
 	UsedSize              uint64
 	DpReadOnlyWhenVolFull bool
+	DefaultPoolId         uint8
+	AllowedPools          []uint8
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, dpReadOnlyWhenVolFull bool) *VolInfo {
@@ -1923,6 +1933,37 @@ func (l RackAwareLevel) IsValid() bool {
 
 type CalcMetaPartitionMd5SumRequest struct {
 	PartitionID uint64
+}
+
+// Storage Pool status constants
+const (
+	PoolStatusAvailable uint8 = 1
+	PoolStatusDisabled  uint8 = 2
+	PoolStatusDeleting  uint8 = 3
+)
+
+// StoragePoolInfo defines the storage pool information
+type StoragePoolInfo struct {
+	Id           uint8  `json:"id"`
+	Name         string `json:"name"`
+	StorageClass uint8  `json:"storageClass"`
+	CId          int    `json:"cId,omitempty"`    // EC cluster ID (only for EC pool)
+	ECAddr       string `json:"ecAddr,omitempty"` // EC cluster address (only for EC pool)
+	CreateTime   int64  `json:"createTime"`
+	UpdateTime   int64  `json:"updateTime"`
+	Status       uint8  `json:"status"`
+}
+
+// StoragePoolView provides the view of storage pool
+type StoragePoolView struct {
+	Id           uint8  `json:"id"`
+	Name         string `json:"name"`
+	StorageClass string `json:"storageClass"`
+	CId          int    `json:"cId,omitempty"`
+	ECAddr       string `json:"ecAddr,omitempty"`
+	CreateTime   string `json:"createTime"`
+	UpdateTime   string `json:"updateTime"`
+	Status       string `json:"status"`
 }
 
 const (

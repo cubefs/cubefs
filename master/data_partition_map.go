@@ -500,3 +500,43 @@ func (dpMap *DataPartitionMap) CheckReadWritableCntUnderLimit(limit int, mediaTy
 	}
 	return nil
 }
+
+func (dpMap *DataPartitionMap) getDataPartitionsCountOfPool(poolId uint8) int {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+
+	count := 0
+	for _, dp := range dpMap.partitionMap {
+		// If dp.PoolId is 0, use mediaType to determine pool
+		dpPoolId := dp.PoolId
+		if dpPoolId == 0 {
+			dpPoolId = getDefaultPoolIdByMediaType(dp.MediaType)
+		}
+		if dpPoolId == poolId {
+			count++
+		}
+	}
+	return count
+}
+
+func (dpMap *DataPartitionMap) getReadWriteDataPartitionCntByPool(poolId uint8) int {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+
+	count := 0
+	for _, dp := range dpMap.partitionMap {
+		// Only count read-write partitions
+		if dp.Status != proto.ReadWrite {
+			continue
+		}
+		// If dp.PoolId is 0, use mediaType to determine pool
+		dpPoolId := dp.PoolId
+		if dpPoolId == 0 {
+			dpPoolId = getDefaultPoolIdByMediaType(dp.MediaType)
+		}
+		if dpPoolId == poolId {
+			count++
+		}
+	}
+	return count
+}
