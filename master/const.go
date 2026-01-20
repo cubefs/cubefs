@@ -595,8 +595,8 @@ const (
 	CheckMetaLeaderInterval = 30
 	RetryCheckStatusNum     = 600
 	MaxInodePerMp           = 4000000
-	RetryDoMigrateNum       = 3
-	RetryMigrateInterVal    = 10
+	RetryDoMigrateNum       = 10
+	RetryMigrateInterVal    = 30
 	MaxMpMigrateNum         = 1000
 
 	PlanStatusIdle     = 0

@@ -2282,6 +2282,7 @@ func IsRetryMigrateMpError(err error) bool {
 		"network is unreachable",
 		"host is down",
 		"eof",
+		"raft already exists",
 	}
 	for _, retryMsg := range retryMsgList {
 		if strings.Contains(msg, retryMsg) {
