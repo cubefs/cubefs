@@ -23,7 +23,11 @@ import (
 )
 
 const (
-	DefaultZoneName = "default"
+	DefaultZoneName                = "default"
+	MinAutoDpMetaRepairParallelCnt = 1
+	MaxAutoDpMetaRepairParallelCnt = 10000
+	MinAutoMpMetaRepairParallelCnt = 1
+	MaxAutoMpMetaRepairParallelCnt = 1000
 )
 
 // MetaNode defines the structure of a meta node

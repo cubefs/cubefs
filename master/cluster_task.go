@@ -131,7 +131,13 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 
 	if !mp.setRestoreReplicaForbidden() {
 		currentStatus := atomic.LoadUint32(&mp.RestoreReplicaMeta)
-		err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, current status: %s", GetRestoreReplicaMessage(currentStatus))
+		message := ""
+		if currentStatus == RestoreReplicaMetaForbidden {
+			message = "mp is decommissioning, please wait for the decommission to complete"
+		} else {
+			message = "mp is autoHealing, please wait for the autoHealing to complete"
+		}
+		err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, %s", message)
 		return
 	}
 
@@ -993,7 +999,13 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 		}
 		if !partition.setRestoreReplicaForbidden() {
 			currentStatus := atomic.LoadUint32(&partition.RestoreReplicaMeta)
-			err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, current status: %s", GetRestoreReplicaMessage(currentStatus))
+			message := ""
+			if currentStatus == RestoreReplicaMetaForbidden {
+				message = "mp is decommissioning, please wait for the decommission to complete"
+			} else {
+				message = "mp is autoHealing, please wait for the autoHealing to complete"
+			}
+			err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, %s", message)
 			log.LogWarnf("action[addMetaReplicaLearner] setRestoreReplicaForbidden failed,vol[%v],meta partition[%v],err[%v]",
 				partition.volName, partition.PartitionID, err)
 			return

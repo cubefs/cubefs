@@ -2155,7 +2155,13 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		}
 		if !mp.setRestoreReplicaForbidden() {
 			currentStatus := atomic.LoadUint32(&mp.RestoreReplicaMeta)
-			err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, current status: %s", GetRestoreReplicaMessage(currentStatus))
+			message := ""
+			if currentStatus == RestoreReplicaMetaForbidden {
+				message = "mp is decommissioning, please wait for the decommission to complete"
+			} else {
+				message = "mp is autoHealing, please wait for the autoHealing to complete"
+			}
+			err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, %s", message)
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}

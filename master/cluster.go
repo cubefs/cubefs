@@ -6795,13 +6795,17 @@ func (c *Cluster) setAutoDecommissionDiskInterval(interval time.Duration) (err e
 
 func (c *Cluster) GetAutoDpMetaRepairParallelCnt() (cnt int) {
 	cnt = int(c.AutoDpMetaRepairParallelCnt.Load())
-	if cnt == 0 {
+	if cnt < proto.MinAutoDpMetaRepairParallelCnt || cnt > proto.MaxAutoDpMetaRepairParallelCnt {
 		cnt = defaultAutoDpMetaRepairPallarelCnt
 	}
 	return
 }
 
 func (c *Cluster) setAutoDpMetaRepairParallelCnt(cnt int) (err error) {
+	if cnt < proto.MinAutoDpMetaRepairParallelCnt || cnt > proto.MaxAutoDpMetaRepairParallelCnt {
+		return fmt.Errorf("autoDpMetaRepairParallelCnt must be between %d and %d",
+			proto.MinAutoDpMetaRepairParallelCnt, proto.MaxAutoDpMetaRepairParallelCnt)
+	}
 	old := c.AutoDpMetaRepairParallelCnt.Load()
 	c.AutoDpMetaRepairParallelCnt.Store(uint32(cnt))
 	if err = c.syncPutCluster(); err != nil {
@@ -7576,13 +7580,17 @@ func (c *Cluster) getEnableAutoMpMetaRepair() (v bool) {
 
 func (c *Cluster) GetAutoMpMetaRepairParallelCnt() (cnt int) {
 	cnt = int(c.AutoMpMetaRepairParallelCnt.Load())
-	if cnt == 0 {
+	if cnt < proto.MinAutoMpMetaRepairParallelCnt || cnt > proto.MaxAutoMpMetaRepairParallelCnt {
 		cnt = defaultAutoMpMetaRepairPallarelCnt
 	}
 	return
 }
 
 func (c *Cluster) setAutoMpMetaRepairParallelCnt(cnt int) (err error) {
+	if cnt < proto.MinAutoMpMetaRepairParallelCnt || cnt > proto.MaxAutoMpMetaRepairParallelCnt {
+		return fmt.Errorf("autoMpMetaRepairParallelCnt must be between %d and %d",
+			proto.MinAutoMpMetaRepairParallelCnt, proto.MaxAutoMpMetaRepairParallelCnt)
+	}
 	old := c.AutoMpMetaRepairParallelCnt.Load()
 	c.AutoMpMetaRepairParallelCnt.Store(uint32(cnt))
 	if err = c.syncPutCluster(); err != nil {

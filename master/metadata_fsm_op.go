@@ -1301,10 +1301,16 @@ func (c *Cluster) updateAutoDecommissionDiskInterval(val int64) {
 }
 
 func (c *Cluster) updateAutoDpMetaRepairParallelCnt(cnt uint32) {
+	if cnt < uint32(proto.MinAutoDpMetaRepairParallelCnt) || cnt > uint32(proto.MaxAutoDpMetaRepairParallelCnt) {
+		cnt = uint32(defaultAutoDpMetaRepairPallarelCnt)
+	}
 	c.AutoDpMetaRepairParallelCnt.Store(cnt)
 }
 
 func (c *Cluster) updateAutoMpMetaRepairParallelCnt(cnt uint32) {
+	if cnt < uint32(proto.MinAutoMpMetaRepairParallelCnt) || cnt > uint32(proto.MaxAutoMpMetaRepairParallelCnt) {
+		cnt = uint32(defaultAutoMpMetaRepairPallarelCnt)
+	}
 	c.AutoMpMetaRepairParallelCnt.Store(cnt)
 }
 
