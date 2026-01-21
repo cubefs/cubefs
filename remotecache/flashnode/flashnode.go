@@ -133,6 +133,7 @@ type FlashNode struct {
 	// from configuration
 	logDir                      string
 	metaDir                     string
+	backupMetaDirs              []string
 	listen                      string
 	zoneName                    string
 	memTotal                    uint64
@@ -408,9 +409,6 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 					continue
 				}
 			}
-			if f.metaDir == "" {
-				f.metaDir = path
-			}
 			if os.Getenv(cachengine.EnvDockerTmpfs) == "" && !hasMountsOnLastTwoLevels(path) {
 				log.LogErrorf("path[%v] is not a mount point, skip it", path)
 				continue
@@ -441,7 +439,13 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 			disk.Path = path
 			disk.Status = proto.ReadWrite
 			disks = append(disks, disk)
+			if f.metaDir == "" {
+				f.metaDir = path
+			} else if f.metaDir != path {
+				f.backupMetaDirs = append(f.backupMetaDirs, path)
+			}
 		}
+
 		if len(disks) < 1 {
 			return errors.NewErrorf("the number of disks configured is less than 1")
 		}
@@ -680,6 +684,24 @@ func (f *FlashNode) saveNodeIDToDisk(id uint64) error {
 
 	if _, err := file.WriteString(content); err != nil {
 		return err
+	}
+	if len(f.backupMetaDirs) > 0 {
+		go func(dirs []string, data string) {
+			for _, dir := range dirs {
+				backupPath := filepath.Join(dir, FlashNodeIDFile)
+				bf, err1 := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+				if err1 != nil {
+					log.LogWarnf("Failed to open backup nodeID file %s: %v", backupPath, err1)
+					continue
+				}
+				if _, err1 := bf.WriteString(data); err != nil {
+					log.LogWarnf("Failed to write backup nodeID file %s: %v", backupPath, err1)
+				} else if err1 := bf.Sync(); err1 != nil {
+					log.LogWarnf("Failed to sync backup nodeID file %s: %v", backupPath, err1)
+				}
+				bf.Close()
+			}
+		}(f.backupMetaDirs, content)
 	}
 
 	return file.Sync()

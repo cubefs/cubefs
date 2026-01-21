@@ -634,7 +634,7 @@ func (t *FlashNodeTopology) ListFlashNodes(showAll, active bool) map[string][]*p
 	zoneFlashNodes := make(map[string][]*proto.FlashNodeViewInfo)
 	t.flashNodeMap.Range(func(key, value interface{}) bool {
 		flashNode := value.(*FlashNode)
-		log.LogDebugf("ListFlashNodes: ListFlashNodes topo %v fn %v, showAll %v active %v", t.Name, flashNode, showAll, active)
+		log.LogDebugf("ListFlashNodes: ListFlashNodes topo %v key %v fn %v, showAll %v active %v", t.Name, key, flashNode, showAll, active)
 		if showAll || flashNode.isActiveAndEnable() == active {
 			zoneFlashNodes[flashNode.ZoneName] = append(zoneFlashNodes[flashNode.ZoneName], flashNode.GetFlashNodeViewInfo())
 		}
@@ -944,6 +944,7 @@ func (t *FlashNodeTopology) addFlashNodeToFlashGroup(addr string, flashGroup *Fl
 	}
 	if removeFlashNodes {
 		t.flashNodeMap.Delete(flashNode.Addr)
+		t.flashNodeIDMap.Delete(flashNode.ID)
 		var zone *FlashNodeZone
 		zone, err = t.GetZone(flashNode.ZoneName)
 		if err != nil {

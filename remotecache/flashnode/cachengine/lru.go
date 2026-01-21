@@ -51,6 +51,7 @@ type LruCache interface {
 	CheckDiskSpace(dataPath string, key interface{}, size int64, reservedSpace int64) (n int, err error)
 	FreePreAllocatedSize(key interface{})
 	GetCreateTime(key interface{}) (time.Time, bool)
+	SetCapacity(capacity int)
 }
 
 type Status struct {
@@ -678,4 +679,10 @@ func (c *fCache) backgroundCleanup(itemCount int, diskSpaceLeft int64) {
 	if log.EnableInfo() {
 		log.LogInfof("[backgroundCleanup] Completed cleanup of %d items in %v", cleanedCount, time.Since(startTime))
 	}
+}
+
+func (c *fCache) SetCapacity(capacity int) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.capacity = capacity
 }

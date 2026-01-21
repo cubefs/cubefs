@@ -35,6 +35,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/evictVol", f.handleEvictVolume)
 	http.HandleFunc("/evictAll", f.handleEvictAll)
 	http.HandleFunc("/inactiveDisk", f.handleInactiveDisk)
+	http.HandleFunc("/resetCacheErrCnt", f.handleResetCacheErrCnt)
 	http.HandleFunc("/setWriteDiskQos", f.handleSetWriteDiskQos)
 	http.HandleFunc("/setReadDiskQos", f.handleSetReadDiskQos)
 	http.HandleFunc("/getDiskQos", f.handleGetDiskQos)
@@ -45,6 +46,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/batchReadPoolStatus", f.handleBatchReadPoolStatus)
 	http.HandleFunc("/setWarmupMetaTotalToken", f.handleSetWarmupMetaTotalToken)
 	http.HandleFunc("/addWarmupPath", f.handleAddWarmupPath)
+	http.HandleFunc("/setDiskCacheCapacity", f.handleSetDiskCacheCapacity)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -175,6 +177,20 @@ func (f *FlashNode) handleInactiveDisk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.cacheEngine.DoInactiveDisk(dataPath)
+	replyOK(w, r, nil)
+}
+
+func (f *FlashNode) handleResetCacheErrCnt(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	dataPath := r.FormValue("dataPath")
+	if dataPath == "" {
+		replyErr(w, r, proto.ErrCodeParamError, "dataPath can not be empty", nil)
+		return
+	}
+	if err := f.cacheEngine.ResetCacheErrCnt(dataPath); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
 	replyOK(w, r, nil)
 }
 
@@ -498,4 +514,31 @@ func (f *FlashNode) handleAddWarmupPath(w http.ResponseWriter, r *http.Request) 
 		"dirPath":    wup.DirPath,
 		"expiration": wup.Expiration,
 	})
+}
+
+func (f *FlashNode) handleSetDiskCacheCapacity(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	dataPath := r.FormValue("dataPath")
+	capacityStr := r.FormValue("capacity")
+	if capacityStr == "" {
+		replyErr(w, r, proto.ErrCodeParamError, "capacity can not be empty", nil)
+		return
+	}
+	capacity, err := strconv.Atoi(capacityStr)
+	if err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, "capacity must be integer", nil)
+		return
+	}
+	if capacity <= 0 {
+		replyErr(w, r, proto.ErrCodeParamError, "capacity must be positive", nil)
+		return
+	}
+	if err := f.cacheEngine.SetDiskCacheCapacity(dataPath, capacity); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	replyOK(w, r, nil)
 }
