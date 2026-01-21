@@ -1121,6 +1121,55 @@ func (c *CacheEngine) GetEvictCount() map[string]int {
 	return result
 }
 
+func (c *CacheEngine) GetCacheErrorCount() map[string]int64 {
+	result := make(map[string]int64)
+	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		cacheItem := value.(*lruCacheItem)
+		result[cacheItem.config.Path] = int64(atomic.LoadUint64(&cacheItem.cacheErrCnt))
+		return true
+	})
+	return result
+}
+
+func (c *CacheEngine) ResetCacheErrCnt(dataPath string) error {
+	if value, ok := c.lruCacheMap.Load(dataPath); ok {
+		cacheItem := value.(*lruCacheItem)
+		atomic.StoreUint64(&cacheItem.cacheErrCnt, 0)
+		cacheItem.cacheErrCbSet.Range(func(key, value interface{}) bool {
+			cacheItem.cacheErrCbSet.Delete(key)
+			return true
+		})
+		return nil
+	}
+	return fmt.Errorf("no lru cache item related to dataPath(%v)", dataPath)
+}
+
+func (c *CacheEngine) SetDiskCacheCapacity(dataPath string, capacity int) error {
+	if dataPath == "" {
+		c.lruCacheMap.Range(func(key, value interface{}) bool {
+			cacheItem := value.(*lruCacheItem)
+			cacheItem.config.Capacity = capacity
+			if cacheItem.disk != nil {
+				cacheItem.disk.Capacity = capacity
+			}
+			cacheItem.lruCache.SetCapacity(capacity)
+			return true
+		})
+		return nil
+	} else {
+		if value, ok := c.lruCacheMap.Load(dataPath); ok {
+			cacheItem := value.(*lruCacheItem)
+			cacheItem.config.Capacity = capacity
+			if cacheItem.disk != nil {
+				cacheItem.disk.Capacity = capacity
+			}
+			cacheItem.lruCache.SetCapacity(capacity)
+			return nil
+		}
+		return fmt.Errorf("no lru cache item related to dataPath(%v)", dataPath)
+	}
+}
+
 func (c *CacheEngine) GetCacheBytes() map[string]int64 {
 	result := make(map[string]int64)
 	c.lruCacheMap.Range(func(key, value interface{}) bool {

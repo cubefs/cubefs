@@ -19,6 +19,7 @@ const (
 	MetricFlashNodeWriteCount          = "flashNodeWriteCount"
 	MetricFlashNodeHitRate             = "flashNodeHitRate"
 	MetricFlashNodeEvictCount          = "flashNodeEvictCount"
+	MetricFlashNodeCacheErrorCount     = "flashNodeCacheErrorCount"
 	MetricFlashNodeCacheBytes          = "flashNodeCacheBytes"
 	MetricFlashNodeHandleReadLatency   = "flashNodeHandleReadLatency"
 	MetricFlashNodeSourceDataLatency   = "flashNodeSourceDataLatency"
@@ -37,6 +38,7 @@ type FlashNodeMetrics struct {
 	MetricWriteBytes          *exporter.Gauge
 	MetricWriteCount          *exporter.Gauge
 	MetricEvictCount          *exporter.Gauge
+	MetricCacheErrorCount     *exporter.Gauge
 	MetricHitRate             *exporter.Gauge
 	MetricCacheBytes          *exporter.Gauge
 	MetricHandleReadLatency   *exporter.Gauge
@@ -59,6 +61,7 @@ func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
 	f.metrics.MetricWriteBytes = exporter.NewGauge(MetricFlashNodeWriteBytes)
 	f.metrics.MetricWriteCount = exporter.NewGauge(MetricFlashNodeWriteCount)
 	f.metrics.MetricEvictCount = exporter.NewGauge(MetricFlashNodeEvictCount)
+	f.metrics.MetricCacheErrorCount = exporter.NewGauge(MetricFlashNodeCacheErrorCount)
 	f.metrics.MetricHitRate = exporter.NewGauge(MetricFlashNodeHitRate)
 	f.metrics.MetricCacheBytes = exporter.NewGauge(MetricFlashNodeCacheBytes)
 	f.metrics.MetricHandleReadLatency = exporter.NewGauge(MetricFlashNodeHandleReadLatency)
@@ -102,6 +105,7 @@ func (fm *FlashNodeMetrics) doStat() {
 	fm.setWriteBytesMetric()
 	fm.setWriteCountMetric()
 	fm.setEvictCountMetric()
+	fm.setCacheErrorCountMetric()
 	fm.setHitRateMetric()
 	fm.setCacheBytesMetric()
 	fm.setLatencyMetric()
@@ -142,6 +146,13 @@ func (fm *FlashNodeMetrics) setEvictCountMetric() {
 	evictCountMap := fm.flashNode.cacheEngine.GetEvictCount()
 	for dataPath, evictCount := range evictCountMap {
 		fm.MetricEvictCount.SetWithLabels(float64(evictCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: dataPath})
+	}
+}
+
+func (fm *FlashNodeMetrics) setCacheErrorCountMetric() {
+	cacheErrorCountMap := fm.flashNode.cacheEngine.GetCacheErrorCount()
+	for dataPath, cacheErrorCount := range cacheErrorCountMap {
+		fm.MetricCacheErrorCount.SetWithLabels(float64(cacheErrorCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: dataPath})
 	}
 }
 
