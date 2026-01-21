@@ -309,6 +309,11 @@ func (i *InodeBTree) Put(handle interface{}, inode *Inode) error {
 	return nil
 }
 
+func (i *InodeBTree) Insert(handle interface{}, inode *Inode) error {
+	i.BTree.Insert(inode)
+	return nil
+}
+
 func (i *DentryBTree) Update(handle interface{}, dentry *Dentry) error {
 	i.BTree.ReplaceOrInsert(dentry, false)
 	return nil
@@ -316,6 +321,11 @@ func (i *DentryBTree) Update(handle interface{}, dentry *Dentry) error {
 
 func (i *DentryBTree) Put(handle interface{}, dentry *Dentry) error {
 	i.BTree.ReplaceOrInsert(dentry, true)
+	return nil
+}
+
+func (i *DentryBTree) Insert(handle interface{}, dentry *Dentry) error {
+	i.BTree.Insert(dentry)
 	return nil
 }
 
@@ -329,6 +339,11 @@ func (i *ExtendBTree) Put(handle interface{}, extend *Extend) error {
 	return nil
 }
 
+func (i *ExtendBTree) Insert(handle interface{}, extend *Extend) error {
+	i.BTree.Insert(extend)
+	return nil
+}
+
 func (i *MultipartBTree) Update(handle interface{}, multipart *Multipart) error {
 	i.BTree.ReplaceOrInsert(multipart, false)
 	return nil
@@ -336,6 +351,11 @@ func (i *MultipartBTree) Update(handle interface{}, multipart *Multipart) error 
 
 func (i *MultipartBTree) Put(handle interface{}, multipart *Multipart) error {
 	i.BTree.ReplaceOrInsert(multipart, true)
+	return nil
+}
+
+func (i *MultipartBTree) Insert(handle interface{}, multipart *Multipart) error {
+	i.BTree.Insert(multipart)
 	return nil
 }
 
@@ -349,6 +369,11 @@ func (i *TransactionBTree) Put(handle interface{}, tx *proto.TransactionInfo) er
 	return nil
 }
 
+func (i *TransactionBTree) Insert(handle interface{}, tx *proto.TransactionInfo) error {
+	i.BTree.Insert(tx)
+	return nil
+}
+
 func (i *TransactionRollbackInodeBTree) Update(handle interface{}, inode *TxRollbackInode) error {
 	i.BTree.ReplaceOrInsert(inode, false)
 	return nil
@@ -359,6 +384,11 @@ func (i *TransactionRollbackInodeBTree) Put(handle interface{}, inode *TxRollbac
 	return nil
 }
 
+func (i *TransactionRollbackInodeBTree) Insert(handle interface{}, inode *TxRollbackInode) error {
+	i.BTree.Insert(inode)
+	return nil
+}
+
 func (i *TransactionRollbackDentryBTree) Update(handle interface{}, dentry *TxRollbackDentry) error {
 	i.BTree.ReplaceOrInsert(dentry, false)
 	return nil
@@ -366,6 +396,11 @@ func (i *TransactionRollbackDentryBTree) Update(handle interface{}, dentry *TxRo
 
 func (i *TransactionRollbackDentryBTree) Put(handle interface{}, dentry *TxRollbackDentry) error {
 	i.BTree.ReplaceOrInsert(dentry, true)
+	return nil
+}
+
+func (i *TransactionRollbackDentryBTree) Insert(handle interface{}, dentry *TxRollbackDentry) error {
+	i.BTree.Insert(dentry)
 	return nil
 }
 
@@ -716,6 +751,13 @@ func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem, ok
 	ok = false
 	b.Unlock()
 	return
+}
+
+// Insert adds the item without existence check.
+func (b *BTree) Insert(key BtreeItem) {
+	b.Lock()
+	b.tree.ReplaceOrInsert(key)
+	b.Unlock()
 }
 
 // Ascend is the wrapper of the google's btree Ascend.

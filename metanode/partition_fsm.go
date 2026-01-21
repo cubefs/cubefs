@@ -1055,7 +1055,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if cursor < ino.Inode {
 				cursor = ino.Inode
 			}
-			if _, _, err = mp.inodeTree.ReplaceOrInsert(dbWriteHandle, ino, true); err != nil {
+			err = mp.inodeTree.Insert(dbWriteHandle, ino)
+			if err != nil {
 				log.LogErrorf("ApplySnapshot: create inode failed, partitionID(%v) inode(%v)", mp.config.PartitionId, ino)
 				return
 			}
@@ -1068,7 +1069,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if err = dentry.UnmarshalValue(snap.V); err != nil {
 				return
 			}
-			if _, _, err = mp.dentryTree.ReplaceOrInsert(dbWriteHandle, dentry, true); err != nil {
+			err = mp.dentryTree.Insert(dbWriteHandle, dentry)
+			if err != nil {
 				log.LogErrorf("ApplySnapshot: create dentry failed, partitionID(%v) dentry(%v) error(%v)", mp.config.PartitionId, dentry, err)
 				return
 			}
@@ -1078,7 +1080,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if extend, err = NewExtendFromBytes(snap.V); err != nil {
 				return
 			}
-			if _, _, err = mp.extendTree.ReplaceOrInsert(dbWriteHandle, extend, true); err != nil {
+			err = mp.extendTree.Insert(dbWriteHandle, extend)
+			if err != nil {
 				log.LogErrorf("ApplySnapshot: create extentd attributes failed, partitionID(%v) extend(%v) error(%v)", mp.config.PartitionId, extend, err)
 				return
 			}
@@ -1086,7 +1089,9 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				mp.config.PartitionId, extend)
 		case opFSMCreateMultipart:
 			multipart := MultipartFromBytes(snap.V)
-			if _, _, err = mp.multipartTree.ReplaceOrInsert(dbWriteHandle, multipart, true); err != nil {
+			// multipart decode is inside constructor
+			err = mp.multipartTree.Insert(dbWriteHandle, multipart)
+			if err != nil {
 				log.LogErrorf("ApplySnapshot: create multipart failed, partitionID(%v) extend(%v) error(%v)", mp.config.PartitionId, multipart, err)
 				return
 			}
@@ -1097,7 +1102,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if err != nil {
 				log.LogErrorf("[ApplySnapshot] mp(%v) failed to unmarshal tx, err(%v)", mp.config.PartitionId, err)
 			}
-			_, _, err = mp.txProcessor.txManager.txTree.ReplaceOrInsert(dbWriteHandle, txInfo, true)
+			err = mp.txProcessor.txManager.txTree.Insert(dbWriteHandle, txInfo)
 			if err != nil {
 				log.LogErrorf("ApplySnapshot: put tx failed, partitionID(%v) tx(%v) err(%v)", mp.config.PartitionId, txInfo, err)
 				return
@@ -1109,7 +1114,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if err != nil {
 				log.LogErrorf("[ApplySnapshot] mp(%v) failed to unmarshal tx rb inode, err(%v)", mp.config.PartitionId, err)
 			}
-			_, _, err = mp.txProcessor.txResource.txRbInodeTree.ReplaceOrInsert(dbWriteHandle, txRbInode, true)
+			err = mp.txProcessor.txResource.txRbInodeTree.Insert(dbWriteHandle, txRbInode)
 			if err != nil {
 				log.LogErrorf("ApplySnapshot: put rb inode failed, partitionID(%v) rb inode(%v) err(%v)", mp.config.PartitionId, txRbInode, err)
 				return
@@ -1121,7 +1126,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			if err != nil {
 				log.LogErrorf("[ApplySnapshot] mp(%v) failed to unmarshal tx rb dentry, err(%v)", mp.config.PartitionId, err)
 			}
-			_, _, err = mp.txProcessor.txResource.txRbDentryTree.ReplaceOrInsert(dbWriteHandle, txRbDentry, true)
+			err = mp.txProcessor.txResource.txRbDentryTree.Insert(dbWriteHandle, txRbDentry)
 			if err != nil {
 				log.LogErrorf("ApplySnapshot: put rb dentry failed, partitionID(%v) rb dentry(%v) err(%v)", mp.config.PartitionId, txRbDentry, err)
 				return

@@ -133,6 +133,7 @@ type InodeTree interface {
 	CopyGet(ino *Inode) (*Inode, error)
 	Put(handle interface{}, inode *Inode) error
 	Update(handle interface{}, inode *Inode) error
+	Insert(handle interface{}, inode *Inode) error
 	ReplaceOrInsert(handle interface{}, inode *Inode, replace bool) (*Inode, bool, error)
 	Delete(handle interface{}, inode *Inode) (bool, error)
 	Range(start, end *Inode, cb func(i *Inode) bool) error
@@ -150,6 +151,7 @@ type DentryTree interface {
 	CopyGet(dent *Dentry) (*Dentry, error)
 	Update(handle interface{}, dentry *Dentry) error
 	Put(handle interface{}, dentry *Dentry) error
+	Insert(handle interface{}, dentry *Dentry) error
 	ReplaceOrInsert(handle interface{}, dentry *Dentry, replace bool) (*Dentry, bool, error)
 	Delete(handle interface{}, dentry *Dentry) (bool, error)
 	Range(start, end *Dentry, cb func(d *Dentry) bool) error
@@ -165,6 +167,7 @@ type ExtendTree interface {
 	CopyGet(extent *Extend) (*Extend, error)
 	Put(handle interface{}, extend *Extend) error
 	Update(handle interface{}, extend *Extend) error
+	Insert(handle interface{}, ext *Extend) error
 	ReplaceOrInsert(handle interface{}, ext *Extend, replace bool) (*Extend, bool, error)
 	Delete(handle interface{}, extend *Extend) (bool, error)
 	Range(start, end *Extend, cb func(e *Extend) bool) error
@@ -179,6 +182,7 @@ type MultipartTree interface {
 	CopyGet(multi *Multipart) (*Multipart, error)
 	Put(handle interface{}, mutipart *Multipart) error
 	Update(handle interface{}, mutipart *Multipart) error
+	Insert(handle interface{}, mul *Multipart) error
 	ReplaceOrInsert(handle interface{}, mul *Multipart, replace bool) (*Multipart, bool, error)
 	Delete(handle interface{}, mutipart *Multipart) (bool, error)
 	Range(start, end *Multipart, cb func(m *Multipart) bool) error
@@ -195,6 +199,7 @@ type TransactionTree interface {
 	CopyGet(tx *proto.TransactionInfo) (*proto.TransactionInfo, error)
 	Put(handle interface{}, tx *proto.TransactionInfo) error
 	Update(handle interface{}, tx *proto.TransactionInfo) error
+	Insert(handle interface{}, tx *proto.TransactionInfo) error
 	ReplaceOrInsert(handle interface{}, tx *proto.TransactionInfo, replace bool) (*proto.TransactionInfo, bool, error)
 	Delete(handle interface{}, txId string) (bool, error)
 	Range(start, end *proto.TransactionInfo, cb func(t *proto.TransactionInfo) bool) error
@@ -209,6 +214,7 @@ type TransactionRollbackInodeTree interface {
 	CopyGet(inode *TxRollbackInode) (*TxRollbackInode, error)
 	Put(handle interface{}, inode *TxRollbackInode) error
 	Update(handle interface{}, inode *TxRollbackInode) error
+	Insert(handle interface{}, inode *TxRollbackInode) error
 	ReplaceOrInsert(handle interface{}, inode *TxRollbackInode, replace bool) (*TxRollbackInode, bool, error)
 	Delete(handle interface{}, inode *TxRollbackInode) (bool, error)
 	Range(start, end *TxRollbackInode, cb func(i *TxRollbackInode) bool) error
@@ -223,6 +229,7 @@ type TransactionRollbackDentryTree interface {
 	CopyGet(dentry *TxRollbackDentry) (*TxRollbackDentry, error)
 	Update(handle interface{}, dentry *TxRollbackDentry) error
 	Put(handle interface{}, dentry *TxRollbackDentry) error
+	Insert(handle interface{}, dentry *TxRollbackDentry) error
 	ReplaceOrInsert(handle interface{}, dentry *TxRollbackDentry, replace bool) (*TxRollbackDentry, bool, error)
 	Delete(handle interface{}, dentry *TxRollbackDentry) (bool, error)
 	Range(start, end *TxRollbackDentry, cb func(d *TxRollbackDentry) bool) error
