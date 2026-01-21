@@ -576,12 +576,9 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			busyNodes := make([]*proto.FlashNodeViewInfo, 0)
-			idleNodes := make([]*proto.FlashNodeViewInfo, 0)
 			for _, nodes := range fnView {
 				for _, node := range nodes {
-					if node.FlashGroupID == 0 {
-						idleNodes = append(idleNodes, node)
-					} else {
+					if node.FlashGroupID != 0 {
 						busyNodes = append(busyNodes, node)
 					}
 				}
@@ -594,9 +591,6 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 			copy(graphFlashNodeTitle[8:], formatFlashNodeViewTableTitle[7:])
 			stdoutln("[FlashNodes Busy]")
 			tbl = showFlashNodesView(busyNodes, true, groupStatusMap, table{graphFlashNodeTitle})
-			stdoutln(alignTable(tbl...))
-			stdoutln("[FlashNodes Idle]")
-			tbl = showFlashNodesView(idleNodes, true, nil, table{formatFlashNodeViewTableTitle})
 			stdoutln(alignTable(tbl...))
 			return
 		},

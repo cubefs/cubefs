@@ -396,6 +396,31 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Validate remoteCacheTopoName: when not the default, it must exist in master
+	if opt.RemoteCacheName != "" && opt.RemoteCacheName != proto.DefaultTopoName {
+		mc := master.NewMasterClientFromString(opt.Master, false)
+		ftvs, e := mc.AdminAPI().ListAllFlashTopos()
+		if e != nil {
+			err = errors.NewErrorf("validate remoteCacheTopoName failed: list flashTopo err(%v)", e)
+			fmt.Println(err)
+			daemonize.SignalOutcome(err)
+			os.Exit(1)
+		}
+		found := false
+		for _, v := range ftvs {
+			if v != nil && v.Name == opt.RemoteCacheName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			err = errors.NewErrorf("remoteCacheTopoName(%s) not exist", opt.RemoteCacheName)
+			fmt.Println(err)
+			daemonize.SignalOutcome(err)
+			os.Exit(1)
+		}
+	}
+
 	if opt.MaxCPUs > 0 {
 		runtime.GOMAXPROCS(int(opt.MaxCPUs))
 	}
