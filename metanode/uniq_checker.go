@@ -176,20 +176,16 @@ func (checker *uniqChecker) legalIn(bid uint64, applyId uint64) bool {
 
 	// Fast path: check if already exists (read lock)
 	checker.RLock()
-	if _, exists := checker.op[bid]; exists {
+	if val, ok := checker.op[bid]; ok {
 		checker.RUnlock()
-		return false
+		log.LogDebugf("uniqChecker legalIn bid %v applyId %v val.applyId %v", bid, applyId, val.applyId)
+		return val.applyId >= applyId
 	}
 	checker.RUnlock()
 
 	// Slow path: add new entry (write lock)
 	checker.Lock()
 	defer checker.Unlock()
-
-	if val, ok := checker.op[bid]; ok {
-		log.LogDebugf("uniqChecker legalIn bid %v applyId %v val.applyId %v", bid, applyId, val.applyId)
-		return val.applyId >= applyId
-	}
 
 	uniqVal := &uniqOp{bid, time.Now().Unix(), applyId}
 	checker.op[bid] = uniqVal
