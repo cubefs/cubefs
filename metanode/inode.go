@@ -45,6 +45,7 @@ const (
 	V2EnableEbsFlag       uint64 = 0x02
 	V3EnableSnapInodeFlag uint64 = 0x04
 	V4EnableHybridCloud   uint64 = 0x08
+	V5EnablePool          uint64 = 0x10
 	// V4EBSExtentsFlag       uint64 = 0x20
 	V4MigrationExtentsFlag uint64 = 0x40
 )
@@ -95,6 +96,7 @@ type Inode struct {
 	Flag         int32
 	StorageClass uint32
 	ClientID     uint32
+	PoolId       uint8 // storage pool ID, 0 means use storageClass default
 
 	// pointer
 	LinkTarget []byte // SymLink target name
@@ -498,6 +500,7 @@ func (i *Inode) String() string {
 	}
 	buff.WriteString(fmt.Sprintf("ClientID[%v]", i.ClientID))
 	buff.WriteString(fmt.Sprintf("LeaseExpireTime[%v]", i.LeaseExpireTime))
+	buff.WriteString(fmt.Sprintf("PoolId[%v]", i.PoolId))
 	buff.WriteString("}")
 	return buff.String()
 }
@@ -635,6 +638,20 @@ func (i *Inode) CopyDirectly() BtreeItem {
 		}
 	}
 	return newIno
+}
+
+// getDefaultPoolIdByStorageClass returns default pool ID based on storage class
+func getDefaultPoolIdByStorageClass(storageClass uint32) uint8 {
+	switch storageClass {
+	case proto.StorageClass_Replica_SSD:
+		return DefaultSSDPoolId
+	case proto.StorageClass_Replica_HDD:
+		return DefaultHDDPoolId
+	case proto.StorageClass_BlobStore:
+		return DefaultECPoolId
+	default:
+		panic(fmt.Sprintf("getDefaultPoolIdByStorageClass: unsupported storageClass[%v]", storageClass))
+	}
 }
 
 // MarshalToJSON is the wrapper of json.Marshal.
@@ -875,6 +892,8 @@ func (i *Inode) MarshalInodeValueWithSkip(buff *buf.ByteBufExt, skipTimeFields b
 	}
 
 	reserved |= V4EnableHybridCloud
+	reserved |= V5EnablePool
+
 	isFile := proto.IsRegular(i.Type)
 	// to check flag
 
@@ -1020,6 +1039,27 @@ func (i *Inode) MarshalInodeValueWithSkip(buff *buf.ByteBufExt, skipTimeFields b
 				i.Inode, sem.storageClass)))
 		}
 	}
+
+	// write size first, then write poolId
+	v5Buff := GetInodeBuf()
+	defer PutInodeBuf(v5Buff)
+
+	i.MarshalInodeV5Info(v5Buff)
+
+	v5Bytes := v5Buff.Bytes()
+	if err = buff.PutUint32(uint32(len(v5Bytes))); err != nil {
+		panic(err)
+	}
+
+	if _, err = buff.Write(v5Bytes); err != nil {
+		panic(err)
+	}
+}
+
+func (i *Inode) MarshalInodeV5Info(buff *buf.ByteBufExt) {
+	if err := buff.PutUint8(i.PoolId); err != nil {
+		panic(err)
+	}
 }
 
 func (i *Inode) MarshalValue() (val []byte) {
@@ -1155,6 +1195,7 @@ func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
 	isFile := i.IsFile()
 	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
 	v4 := i.Reserved&V4EnableHybridCloud > 0
+	v5 := i.Reserved&V5EnablePool > 0
 
 	if i.Reserved == 0 {
 		extents := NewSortedExtents()
@@ -1339,6 +1380,35 @@ func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
 			}
 		}
 	}
+
+	// read extra info from buffer
+	if v5 {
+		var v5Size uint32
+		v5Size, err = buff.ReadUint32()
+		if err != nil {
+			err = UnmarshalInodeFiledError("v5Size(v5)", err)
+			return
+		}
+
+		if v5Size >= 1 {
+			i.PoolId, err = buff.ReadUint8()
+			if err != nil {
+				err = UnmarshalInodeFiledError("PoolId(v5)", err)
+				return
+			}
+
+			if i.PoolId == 0 {
+				err = UnmarshalInodeFiledError("PoolId(v5)", errors.New("poolId is 0"))
+				return
+			}
+
+		}
+	}
+
+	if i.PoolId == 0 {
+		i.PoolId = getDefaultPoolIdByStorageClass(i.StorageClass)
+	}
+
 	return
 }
 

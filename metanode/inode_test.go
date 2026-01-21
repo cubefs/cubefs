@@ -2,11 +2,17 @@ package metanode
 
 import (
 	"bytes"
+	"encoding/binary"
+	"fmt"
+	"io"
 	"os"
+	"sync"
 	"testing"
 	"unsafe"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -285,112 +291,6 @@ func TestInodeMarshalValue(t *testing.T) {
 	}
 }
 
-// func TestInodeMarshalVersion(t *testing.T) {
-// 	clusterEnableSnapshot = true
-// 	defer func() {
-// 		clusterEnableSnapshot = false
-// 	}()
-
-// 	oldIno := NewInode(1023, uint32(os.ModeDir))
-// 	oldIno.Uid = 101
-// 	oldIno.Gid = 102
-// 	oldIno.Generation = 104
-// 	oldIno.CreateTime = 105
-// 	oldIno.AccessTime = 106
-// 	oldIno.ModifyTime = 107
-// 	oldIno.LinkTarget = []byte("test op")
-// 	oldIno.NLink = 108
-// 	oldIno.Flag = 109
-// 	oldIno.StorageClass = proto.StorageClass_Replica_SSD
-// 	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
-// 	oldIno.multiSnap = NewMultiSnap(101)
-
-// 	inoV1 := NewInode(oldIno.Inode, 1024)
-// 	inoV1.StorageClass = proto.StorageClass_BlobStore
-// 	inoV2 := NewInode(oldIno.Inode, 1025)
-// 	inoV2.StorageClass = proto.StorageClass_Replica_SSD
-// 	oldIno.multiSnap.multiVersions = append(oldIno.multiSnap.multiVersions, inoV1, inoV2)
-
-// 	data, err := oldIno.Marshal()
-// 	if err != nil {
-// 		t.Fail()
-// 	}
-
-// 	ino2 := NewInode(0, 0)
-// 	err = ino2.Unmarshal(data)
-// 	if err != nil {
-// 		t.Fail()
-// 	}
-
-// 	data2, err := ino2.Marshal()
-// 	require.NoError(t, err)
-// 	if !bytes.Equal(data, data2) {
-// 		t.FailNow()
-// 	}
-// }
-
-// old bytes marshal from version 3.5.0
-func TestInodeMarshalCompitable(t *testing.T) {
-	// normal(dir, file, empty file), ebs(dir, file, empty file)
-	checkInodeCompatibility := func(raw []byte, oldIno *Inode, t *testing.T) {
-		data, err := oldIno.Marshal()
-		require.NoError(t, err)
-		if bytes.Equal(raw, data) {
-			return
-		}
-
-		t.FailNow()
-	}
-
-	oldIno := NewInode(1024, uint32(os.ModeDir))
-	oldIno.Uid = 101
-	oldIno.Gid = 102
-	oldIno.Generation = 104
-	oldIno.CreateTime = 105
-	oldIno.AccessTime = 106
-	oldIno.ModifyTime = 107
-	oldIno.LinkTarget = []byte("test op")
-	oldIno.NLink = 108
-	oldIno.Flag = 109
-	oldIno.StorageClass = proto.StorageClass_Replica_SSD
-
-	// dir
-	oldIno.Type = uint32(os.ModeDir)
-	// old data is marshal bytes by old version inode marshal
-	oldData := []byte{0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 99, 128, 0, 0, 0, 0, 0, 0, 101, 0, 0, 0, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 0, 0, 0, 0, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 106, 0, 0, 0, 0, 0, 0, 0, 107, 0, 0, 0, 7, 116, 101, 115, 116, 32, 111, 112, 0, 0, 0, 108, 0, 0, 0, 109, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	checkInodeCompatibility(oldData, oldIno, t)
-
-	// empty file
-	oldIno.Type = 0
-	oldData = []byte{0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 99, 0, 0, 0, 0, 0, 0, 0, 101, 0, 0, 0, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 0, 0, 0, 0, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 106, 0, 0, 0, 0, 0, 0, 0, 107, 0, 0, 0, 7, 116, 101, 115, 116, 32, 111, 112, 0, 0, 0, 108, 0, 0, 0, 109, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	checkInodeCompatibility(oldData, oldIno, t)
-
-	// old ebs file
-	oldIno.HybridCloudExtents.sortedEks = NewSortedObjExtentsFromObjEks(
-		[]proto.ObjExtentKey{
-			{Size: uint64(100), FileOffset: uint64(100)},
-		},
-	)
-	oldIno.StorageClass = proto.StorageClass_BlobStore
-	oldData = []byte{0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 140, 0, 0, 0, 0, 0, 0, 0, 101, 0, 0, 0, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 0, 0, 0, 0, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 106, 0, 0, 0, 0, 0, 0, 0, 107, 0, 0, 0, 7, 116, 101, 115, 116, 32, 111, 112, 0, 0, 0, 108, 0, 0, 0, 109, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 37, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	checkInodeCompatibility(oldData, oldIno, t)
-
-	// replica file
-	oldIno.StorageClass = proto.StorageClass_Replica_SSD
-	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
-	oldData = []byte{0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 139, 0, 0, 0, 0, 0, 0, 0, 101, 0, 0, 0, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 0, 0, 0, 0, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 106, 0, 0, 0, 0, 0, 0, 0, 107, 0, 0, 0, 7, 116, 101, 115, 116, 32, 111, 112, 0, 0, 0, 108, 0, 0, 0, 109, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	checkInodeCompatibility(oldData, oldIno, t)
-
-	// check for migration
-	oldIno.StorageClass = proto.StorageClass_Replica_HDD
-	oldIno.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{
-		sortedEks:    NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 1024}}),
-		storageClass: proto.MediaType_SSD,
-	}
-	oldData = []byte{0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 195, 0, 0, 0, 0, 0, 0, 0, 101, 0, 0, 0, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 0, 0, 0, 0, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 106, 0, 0, 0, 0, 0, 0, 0, 107, 0, 0, 0, 7, 116, 101, 115, 116, 32, 111, 112, 0, 0, 0, 108, 0, 0, 0, 109, 0, 0, 0, 0, 0, 0, 0, 72, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	checkInodeCompatibility(oldData, oldIno, t)
-}
-
 func BenchmarkInodeMarshal(b *testing.B) {
 	oldIno := NewInode(1024, 0)
 	oldIno.Uid = 101
@@ -456,4 +356,679 @@ func BenchmarkInodeUnmarshal(b *testing.B) {
 	}
 
 	_ = newInode
+}
+
+// TestInodeV5PoolIdCompatibility tests compatibility between old version (v4) and new version (v5) formats
+func TestInodeV5PoolIdCompatibility(t *testing.T) {
+	// Helper function to create a test inode
+	createInode := func(poolId uint8, storageClass uint32) *Inode {
+		ino := NewInode(1024, 0)
+		ino.Uid = 101
+		ino.Gid = 102
+		ino.Generation = 104
+		ino.CreateTime = 105
+		ino.AccessTime = 106
+		ino.ModifyTime = 107
+		ino.NLink = 108
+		ino.Flag = 109
+		ino.StorageClass = storageClass
+		ino.PoolId = poolId
+		ino.ClientID = 1001
+		ino.LeaseExpireTime = 2000
+		return ino
+	}
+
+	marshalOldVersion := func(ino *Inode) ([]byte, error) {
+		buff := GetInodeBuf()
+		defer PutInodeBuf(buff)
+		oldMarshalInode(ino, buff)
+		return buff.Bytes(), nil
+	}
+
+	unmarshalOldVersion := func(data []byte) (*Inode, error) {
+		buff := GetReadBuf(data)
+		defer PutReadBuf(buff)
+
+		ino := NewInode(0, 0)
+		err := oldUnmarshalInodeValueV2(ino, buff)
+		if err != nil {
+			return nil, err
+		}
+		return ino, nil
+	}
+
+	ino := createInode(1, proto.StorageClass_Replica_SSD)
+	data1, err := marshalOldVersion(ino)
+	require.NoError(t, err)
+
+	targetIno := NewInode(0, 0)
+	err = targetIno.UnmarshalInodeValueV2(GetReadBuf(data1))
+	require.NoError(t, err)
+
+	data2, err := marshalOldVersion(targetIno)
+	require.NoError(t, err)
+	assert.Equal(t, data1, data2)
+
+	// Test 1: New version marshal -> New version unmarshal (normal case)
+	t.Run("NewVersionRoundTrip", func(t *testing.T) {
+		testCases := []struct {
+			name           string
+			poolId         uint8
+			storageClass   uint32
+			expectedPoolId uint8
+		}{
+			{"SSD with PoolId 1", 1, proto.StorageClass_Replica_SSD, 1},
+			{"HDD with PoolId 2", 2, proto.StorageClass_Replica_HDD, 2},
+			{"BlobStore with PoolId 3", 3, proto.StorageClass_BlobStore, 3},
+			{"BlobStore with PoolId 4", 4, proto.StorageClass_BlobStore, 4},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				ino := createInode(tc.poolId, tc.storageClass)
+				data, err := ino.Marshal()
+				require.NoError(t, err)
+
+				targetIno := NewInode(0, 0)
+				err = targetIno.Unmarshal(data)
+				require.NoError(t, err)
+
+				assert.Equal(t, tc.expectedPoolId, targetIno.PoolId, "PoolId should match")
+				assert.Equal(t, ino.StorageClass, targetIno.StorageClass, "StorageClass should match")
+				assert.Equal(t, ino.ClientID, targetIno.ClientID, "ClientID should match")
+			})
+		}
+	})
+
+	// Test 2: Old version data (v4, without v5) -> New version unmarshal
+	// This tests forward compatibility: new code should be able to read old data
+	t.Run("OldVersionToNewVersion", func(t *testing.T) {
+		testCases := []struct {
+			name           string
+			storageClass   uint32
+			expectedPoolId uint8
+		}{
+			{"SSD should get default PoolId", proto.StorageClass_Replica_SSD, DefaultSSDPoolId},
+			{"HDD should get default PoolId", proto.StorageClass_Replica_HDD, DefaultHDDPoolId},
+			{"BlobStore should get default PoolId", proto.StorageClass_BlobStore, DefaultECPoolId},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				// Create inode and marshal with old version (no v5 section)
+				ino := createInode(0, tc.storageClass)
+				oldData, err := marshalOldVersion(ino)
+				require.NoError(t, err)
+
+				// Unmarshal with new version code
+				targetIno := NewInode(0, 0)
+				buf := GetReadBuf(oldData)
+				err = targetIno.UnmarshalInodeValueV2(buf)
+				require.NoError(t, err, "New version should be able to unmarshal old version data")
+
+				// New version should automatically assign PoolId based on StorageClass
+				assert.Equal(t, tc.expectedPoolId, targetIno.PoolId,
+					"New version should assign default PoolId based on StorageClass when v5 section is missing")
+				assert.Equal(t, ino.StorageClass, targetIno.StorageClass, "StorageClass should match")
+				assert.Equal(t, ino.ClientID, targetIno.ClientID, "ClientID should match")
+			})
+		}
+	})
+
+	// Test 3: New version data (v4+v5) -> Old version unmarshal simulation
+	// This tests backward compatibility: old code should be able to read new data (ignoring v5)
+	// We simulate this by using old version unmarshal function
+	t.Run("NewVersionToOldVersion", func(t *testing.T) {
+		testCases := []struct {
+			name         string
+			poolId       uint8
+			storageClass uint32
+		}{
+			{"SSD with PoolId 1", 1, proto.StorageClass_Replica_SSD},
+			{"HDD with PoolId 2", 2, proto.StorageClass_Replica_HDD},
+			{"BlobStore with PoolId 3", 3, proto.StorageClass_BlobStore},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				// Marshal with new version (includes v5)
+				ino := createInode(tc.poolId, tc.storageClass)
+
+				buff := GetInodeBuf()
+				ino.MarshalValueV2(buff)
+
+				targetIno, err := unmarshalOldVersion(buff.Bytes())
+				require.NoError(t, err, "Old version should be able to unmarshal new data (ignoring v5)")
+
+				// Old version would have PoolId=0, but new version code will set default
+				// So we check that StorageClass and other v4 fields are preserved
+				assert.Equal(t, uint8(0), targetIno.PoolId, "Old version should have PoolId=0")
+				assert.Equal(t, ino.StorageClass, targetIno.StorageClass, "StorageClass should match")
+				assert.Equal(t, ino.ClientID, targetIno.ClientID, "ClientID should match")
+				assert.Equal(t, ino.LeaseExpireTime, targetIno.LeaseExpireTime, "LeaseExpireTime should match")
+			})
+		}
+	})
+
+	// Test 4: Multiple round trips should be consistent
+	t.Run("MultipleRoundTrips", func(t *testing.T) {
+		ino := createInode(1, proto.StorageClass_Replica_SSD)
+
+		// First round trip
+		data1, err := ino.Marshal()
+		require.NoError(t, err)
+		ino1 := NewInode(0, 0)
+		err = ino1.Unmarshal(data1)
+		require.NoError(t, err)
+
+		// Second round trip
+		data2, err := ino1.Marshal()
+		require.NoError(t, err)
+		ino2 := NewInode(0, 0)
+		err = ino2.Unmarshal(data2)
+		require.NoError(t, err)
+
+		// Should be consistent
+		assert.Equal(t, ino.PoolId, ino1.PoolId, "PoolId should be consistent after first round trip")
+		assert.Equal(t, ino1.PoolId, ino2.PoolId, "PoolId should be consistent after second round trip")
+		assert.Equal(t, ino.StorageClass, ino2.StorageClass, "StorageClass should be consistent")
+	})
+}
+
+func oldMarshalInode(i *Inode, buff *buf.ByteBufExt) {
+
+	var err error
+	skipTimeFields := false
+
+	// reset reserved, V4EBSExtentsFlag maybe changed after migration .eg
+	reserved := uint64(0)
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogErrorf("MarshalInodeValue ino(%v)  storageClass(%v) reserved(%d) Recovered from panic:%v",
+				i.String(), i.StorageClass, reserved, err)
+			log.LogFlush()
+			panic(err)
+		}
+		i.Reserved = reserved
+	}()
+
+	if err = buff.PutUint32(uint32(i.Type)); err != nil {
+		panic(err)
+	}
+
+	if err = buff.PutUint32(uint32(i.Uid)); err != nil {
+		panic(err)
+	}
+
+	if err = buff.PutUint32(uint32(i.Gid)); err != nil {
+		panic(err)
+	}
+
+	if err = buff.PutUint64(i.Size); err != nil {
+		panic(err)
+	}
+
+	if err = buff.PutUint64(i.Generation); err != nil {
+		panic(err)
+	}
+
+	if !skipTimeFields {
+		if err = buff.PutUint64(uint64(i.CreateTime)); err != nil {
+			panic(err)
+		}
+
+		if err = buff.PutUint64(uint64(i.AccessTime)); err != nil {
+			panic(err)
+		}
+
+		if err = buff.PutUint64(uint64(i.ModifyTime)); err != nil {
+			panic(err)
+		}
+	}
+
+	// write SymLink
+	symSize := uint32(len(i.LinkTarget))
+
+	if err = buff.PutUint32(symSize); err != nil {
+		panic(err)
+	}
+
+	if _, err = buff.Write(i.LinkTarget); err != nil {
+		panic(err)
+	}
+
+	if err = buff.PutUint32(i.NLink); err != nil {
+		panic(err)
+	}
+
+	if err = buff.PutUint32(uint32(i.Flag)); err != nil {
+		panic(err)
+	}
+
+	enableSnapshot := false
+	if i.multiSnap != nil {
+		reserved |= V3EnableSnapInodeFlag
+		enableSnapshot = true
+	}
+
+	reserved |= V4EnableHybridCloud
+	isFile := proto.IsRegular(i.Type)
+	// to check flag
+
+	if !proto.IsValidStorageClass(i.StorageClass) && isFile && i.Size > 0 {
+		panic(fmt.Sprintf("ino(%v) MarshalInodeValue failed, unsupport StorageClass %v", i.Inode, i.StorageClass))
+	}
+
+	if proto.IsStorageClassBlobStore(i.StorageClass) {
+		if i.HybridCloudExtents.sortedEks != nil {
+			ObjExtents := i.HybridCloudExtents.sortedEks.(*SortedObjExtents)
+			if ObjExtents != nil && len(ObjExtents.eks) > 0 {
+				// i.Reserved |= V4EBSExtentsFlag
+				reserved |= V2EnableEbsFlag
+			}
+		}
+	}
+
+	if i.HybridCloudExtentsMigration != nil && i.HybridCloudExtentsMigration.storageClass != proto.MediaType_Unspecified {
+		reserved |= V4MigrationExtentsFlag
+	}
+
+	if err = buff.PutUint64(reserved); err != nil {
+		panic(err)
+	}
+
+	if reserved&V2EnableEbsFlag > 0 {
+		// marshal cache ExtentsKey
+		if err = buff.PutUint32(uint32(0)); err != nil {
+			panic(err)
+		}
+
+		ObjExtents := i.HybridCloudExtents.sortedEks.(*SortedObjExtents)
+		objExtData, err := ObjExtents.MarshalBinary()
+		if err != nil {
+			panic(err)
+		}
+		if err = buff.PutUint32(uint32(len(objExtData))); err != nil {
+			panic(err)
+		}
+		if _, err = buff.Write(objExtData); err != nil {
+			panic(err)
+		}
+	} else {
+		var dataLen int
+		var extData []byte
+		if i.HybridCloudExtents.HasReplicaExts() {
+			replicaExtents := i.HybridCloudExtents.sortedEks.(*SortedExtents)
+			tmpBuf1 := GetInodeBuf()
+			defer PutInodeBuf(tmpBuf1)
+
+			err = replicaExtents.MarshalBinary(tmpBuf1, enableSnapshot)
+			if err != nil {
+				panic(err)
+			}
+			extData = tmpBuf1.Bytes()
+			dataLen = len(extData)
+		}
+
+		if err = buff.PutUint32(uint32(dataLen)); err != nil {
+			panic(err)
+		}
+		if _, err = buff.Write(extData); err != nil {
+			panic(err)
+		}
+	}
+
+	if i.multiSnap != nil {
+		if err = buff.PutUint64(i.getVer()); err != nil {
+			panic(err)
+		}
+	}
+
+	if err = buff.PutUint32(i.StorageClass); err != nil {
+		panic(err)
+	}
+
+	if err = buff.PutUint32(i.ClientID); err != nil {
+		panic(err)
+	}
+
+	if !skipTimeFields {
+		if err = buff.PutUint64(i.LeaseExpireTime); err != nil {
+			panic(err)
+		}
+	}
+
+	if reserved&V4MigrationExtentsFlag > 0 {
+		sem := i.HybridCloudExtentsMigration
+
+		if err = buff.PutUint32(sem.storageClass); err != nil {
+			panic(err)
+		}
+
+		if err = buff.PutUint64(uint64(sem.expiredTime)); err != nil {
+			panic(err)
+		}
+
+		if sem.Empty() {
+			if err = buff.PutUint32(uint32(0)); err != nil {
+				panic(err)
+			}
+			return
+		}
+
+		if proto.IsStorageClassReplica(sem.storageClass) {
+			replicaExtents, ok := sem.sortedEks.(*SortedExtents)
+			if !ok {
+				panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, inode(%v) StorageClass(%v) but type of sortedEks not match",
+					i.Inode, sem.storageClass)))
+			}
+
+			tmpBuf := GetInodeBuf()
+			defer PutInodeBuf(tmpBuf)
+
+			err = replicaExtents.MarshalBinary(tmpBuf, enableSnapshot)
+			if err != nil {
+				panic(err)
+			}
+			extData := tmpBuf.Bytes()
+
+			if err = buff.PutUint32(uint32(len(extData))); err != nil {
+				panic(err)
+			}
+
+			if _, err = buff.Write(extData); err != nil {
+				panic(err)
+			}
+		} else if proto.IsStorageClassBlobStore(sem.storageClass) {
+			ObjExtents := sem.sortedEks.(*SortedObjExtents)
+			objExtData, err := ObjExtents.MarshalBinary()
+			if err != nil {
+				panic(err)
+			}
+			if err = binary.Write(buff, binary.BigEndian, uint32(len(objExtData))); err != nil {
+				panic(err)
+			}
+			if _, err = buff.Write(objExtData); err != nil {
+				panic(err)
+			}
+		} else {
+			log.LogFlush()
+			panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, inode(%v) unsupport migrate StorageClass(%v)",
+				i.Inode, sem.storageClass)))
+		}
+	}
+}
+
+func oldUnmarshalInodeValueV2(i *Inode, buff *buf.ReadByteBuff) (err error) {
+	if i.Type, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("Type", err)
+		return
+	}
+
+	if i.Uid, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("Uid", err)
+		return
+	}
+
+	if i.Gid, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("Gid", err)
+		return
+	}
+
+	if i.Size, err = buff.ReadUint64(); err != nil {
+		err = UnmarshalInodeFiledError("Size", err)
+		return
+	}
+
+	if i.Generation, err = buff.ReadUint64(); err != nil {
+		err = UnmarshalInodeFiledError("Generation", err)
+		return
+	}
+
+	if i.CreateTime, err = buff.ReadInt64(); err != nil {
+		err = UnmarshalInodeFiledError("CreateTime", err)
+		return
+	}
+
+	if i.AccessTime, err = buff.ReadInt64(); err != nil {
+		err = UnmarshalInodeFiledError("AccessTime", err)
+		return
+	}
+
+	if i.ModifyTime, err = buff.ReadInt64(); err != nil {
+		err = UnmarshalInodeFiledError("ModifyTime", err)
+		return
+	}
+
+	// read symLink
+	symSize := uint32(0)
+	if symSize, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("symSize", err)
+		return
+	}
+
+	if symSize > 0 {
+		if symSize > proto.MaxBufferSize {
+			return proto.ErrBufferSizeExceedMaximum
+		}
+		i.LinkTarget = make([]byte, symSize)
+		if _, err = io.ReadFull(buff, i.LinkTarget); err != nil {
+			err = UnmarshalInodeFiledError("LinkTarget", err)
+			return
+		}
+	}
+
+	if i.NLink, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("NLink", err)
+		return
+	}
+
+	flag := uint32(0)
+	if flag, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("Flag", err)
+		return
+	}
+	i.Flag = int32(flag)
+
+	if i.Reserved, err = buff.ReadUint64(); err != nil {
+		err = UnmarshalInodeFiledError("Reserved", err)
+		return
+	}
+
+	if i.HybridCloudExtents == nil {
+		i.HybridCloudExtents = NewSortedHybridCloudExtents()
+	}
+
+	if i.HybridCloudExtentsMigration == nil {
+		i.HybridCloudExtentsMigration = NewSortedHybridCloudExtentsMigration()
+	}
+
+	isFile := i.IsFile()
+	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
+	v4 := i.Reserved&V4EnableHybridCloud > 0
+
+	if i.Reserved == 0 {
+		extents := NewSortedExtents()
+		if err, _ = extents.UnmarshalBinary(buff.Bytes(), false); err != nil {
+			return fmt.Errorf("UnmarshalBinary failed, ino %d, ino %v", i.Inode, i)
+		}
+		if extents.Len() > 0 {
+			i.HybridCloudExtents.sortedEks = extents
+		}
+
+		i.StorageClass = legacyReplicaStorageClass
+		if i.StorageClass == proto.StorageClass_Unspecified && isFile && extents.Len() > 0 {
+			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config, ino %d", i.Inode)
+		}
+		return
+	}
+
+	if i.Reserved&V2EnableEbsFlag > 0 {
+		// unmarshal extents cache for old version
+		extSize := uint32(0)
+		if extSize, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("extSize(v4)", err)
+			return
+		}
+
+		// TODO remove in next version
+		if extSize > 0 {
+			extBytes := make([]byte, extSize)
+			log.LogErrorf("attention: ummarshal got cache extents not zero, ino %d, size %d", i.Inode, extSize)
+			if _, err = io.ReadFull(buff, extBytes); err != nil {
+				err = UnmarshalInodeFiledError("extBytes(v4)", err)
+				return
+			}
+		}
+
+		ObjExtSize := uint32(0)
+		if ObjExtSize, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("HybridCloudExtents.ObjExtSize(v4)", err)
+			return
+		}
+
+		if ObjExtSize > 0 {
+			objExtBytes := make([]byte, ObjExtSize)
+			if _, err = io.ReadFull(buff, objExtBytes); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtents.objExtBytes(v4)", err)
+				return
+			}
+			ObjExtents := NewSortedObjExtents()
+			if err = ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtents.ObjExtents(v4)", err)
+				return
+			}
+			i.HybridCloudExtents.sortedEks = ObjExtents
+		}
+		i.StorageClass = proto.StorageClass_BlobStore
+	} else {
+		extSize := uint32(0)
+		if extSize, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("HybridCloudExtents.extSize(v4)", err)
+			return
+		}
+
+		if extSize > 0 {
+			var ekRef *sync.Map
+			var err1 error
+			eks := NewSortedExtents()
+			ekData, err1 := buff.Next(int(extSize))
+			if err1 != nil {
+				err = UnmarshalInodeFiledError("Read HybridCloudExtents.SortedExtents(v4)", err1)
+				return err
+			}
+
+			if err, ekRef = eks.UnmarshalBinary(ekData, v3); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtents.SortedExtents(v4)", err)
+				return
+			}
+
+			i.HybridCloudExtents.sortedEks = eks
+			if ekRef != nil {
+				if i.multiSnap == nil {
+					i.multiSnap = NewMultiSnap(0)
+				}
+				i.multiSnap.ekRefMap = ekRef
+			}
+		}
+		i.StorageClass = legacyReplicaStorageClass
+		if !proto.IsValidStorageClass(i.StorageClass) {
+			i.StorageClass = proto.StorageClass_BlobStore
+		}
+	}
+
+	if v3 {
+		var seq uint64
+		if seq, err = buff.ReadUint64(); err != nil {
+			err = UnmarshalInodeFiledError("multiSnap.verSeq(v4)", err)
+			log.LogWarnf("[UnmarshalInodeValue] ino(%v) err[%v]", i, err.Error())
+			return
+		}
+
+		if seq != 0 {
+			i.setVer(seq)
+		}
+	}
+
+	// hybridcloud format
+	if v4 {
+		if i.StorageClass, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("StorageClass(v4)", err)
+			return
+		}
+
+		if i.ClientID, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("ForbiddenMigration(v4)", err)
+			return
+		}
+
+		if i.LeaseExpireTime, err = buff.ReadUint64(); err != nil {
+			err = UnmarshalInodeFiledError("LeaseExpireTime(v4)", err)
+			return
+		}
+
+		if i.StorageClass == proto.StorageClass_Unspecified && isFile {
+			i.StorageClass = proto.StorageClass_BlobStore
+		}
+
+		if i.Reserved&V4MigrationExtentsFlag > 0 {
+			if i.HybridCloudExtentsMigration == nil {
+				i.HybridCloudExtentsMigration = NewSortedHybridCloudExtentsMigration()
+			}
+
+			if i.HybridCloudExtentsMigration.storageClass, err = buff.ReadUint32(); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.storageClass(v4)", err)
+				return
+			}
+
+			if i.HybridCloudExtentsMigration.expiredTime, err = buff.ReadInt64(); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.expiredTime(v4)", err)
+				return
+			}
+
+			if proto.IsStorageClassReplica(i.HybridCloudExtentsMigration.storageClass) {
+				extSize := uint32(0)
+				if extSize, err = buff.ReadUint32(); err != nil {
+					err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.extSize(v4)", err)
+					return
+				}
+
+				if extSize > 0 {
+					extBytes, err1 := buff.Next(int(extSize))
+					if err1 != nil {
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.extBytes(v4)", err1)
+						return
+					}
+					i.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
+					if err, _ = i.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).UnmarshalBinary(extBytes, v3); err != nil {
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.SortedExtents(v4)", err)
+						return
+					}
+				}
+
+			} else if proto.IsStorageClassBlobStore(i.HybridCloudExtentsMigration.storageClass) {
+				ObjExtSize := uint32(0)
+				if err = binary.Read(buff, binary.BigEndian, &ObjExtSize); err != nil {
+					err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.ObjExtSize(v4)", err)
+					return
+				}
+				log.LogDebugf("[UnmarshalInodeValue] ino(%v) migrateStorageClass(%v) ObjExtSize(%v)",
+					i.Inode, i.HybridCloudExtentsMigration.storageClass, ObjExtSize)
+				if ObjExtSize > 0 {
+					objExtBytes := make([]byte, ObjExtSize)
+					if _, err = io.ReadFull(buff, objExtBytes); err != nil {
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.objExtBytes(v4)", err)
+						return
+					}
+					ObjExtents := NewSortedObjExtents()
+					if err = ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.ObjExtents(v4)", err)
+						return
+					}
+					i.HybridCloudExtentsMigration.sortedEks = ObjExtents
+				}
+			}
+		}
+	}
+	return
 }

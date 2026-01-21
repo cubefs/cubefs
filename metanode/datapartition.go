@@ -90,6 +90,12 @@ func (v *Vol) GetVolView() *proto.SimpleVolView {
 	return v.info
 }
 
+func (v *Vol) GetDefaultPoolId() uint8 {
+	v.Lock()
+	defer v.Unlock()
+	return v.info.DefaultPoolId
+}
+
 func (v *Vol) replaceOrInsert(partition *DataPartition) {
 	v.Lock()
 	defer v.Unlock()

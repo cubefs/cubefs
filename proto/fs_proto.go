@@ -220,6 +220,7 @@ type QuotaCreateInodeRequest struct {
 	Gid         uint32   `json:"gid"`
 	Target      []byte   `json:"tgt"`
 	QuotaIds    []uint32 `json:"qids"`
+	PoolId      uint8    `json:"poolId"` // storage pool ID, 0 means use volume default
 	RequestExtend
 	StorageType uint32 `json:"storageType"`
 }
@@ -268,6 +269,7 @@ type TxCreateInodeRequest struct {
 	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
 	StorageType uint32           `json:"storageType"`
+	PoolId      uint8            `json:"poolId"` // storage pool ID, 0 means use volume default
 	RequestExtend
 }
 

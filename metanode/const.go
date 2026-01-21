@@ -359,3 +359,10 @@ var (
 // ============================================================================
 
 const DelMetaPartitionHdr = "del_partition_"
+
+// Default Storage Pool IDs
+const (
+	DefaultSSDPoolId uint8 = 1
+	DefaultHDDPoolId uint8 = 2
+	DefaultECPoolId  uint8 = 3
+)

@@ -269,6 +269,12 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		if ino.LeaseExpireTime == 0 {
 			ino.LeaseExpireTime = uint64(ino.ModifyTime) + proto.ForbiddenMigrationRenewalSeonds
 		}
+		// Set default poolId if not set (for legacy inodes)
+		if ino.PoolId == 0 {
+			ino.PoolId = getDefaultPoolIdByStorageClass(ino.StorageClass)
+			log.LogWarnf("[loadInode] inode[%v] PoolId is 0, set to default pool[%d] based on storageClass[%v]",
+				ino.Inode, ino.PoolId, proto.StorageClassString(ino.StorageClass))
+		}
 		mp.acucumUidSizeByLoad(ino)
 		// data crc
 		if _, err = crcCheck.Write(data); err != nil {

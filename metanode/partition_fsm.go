@@ -1242,6 +1242,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		}
 		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
 		ino.StorageClass = mp.GetVolStorageClass()
+		ino.PoolId = mp.vol.GetDefaultPoolId()
 		go mp.initInode(ino)
 	}
 }

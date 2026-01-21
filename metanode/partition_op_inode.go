@@ -77,6 +77,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.QuotaInfos = quotaInfos
 	info.StorageClass = ino.StorageClass
+	info.PoolId = ino.PoolId
 	info.LeaseExpireTime = ino.LeaseExpireTime
 	info.ForbiddenLc = ino.LeaseNotExpire()
 
@@ -103,6 +104,7 @@ func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uin
 		QuotaInfos:            quotaInfos,
 		Target:                nil,
 		StorageClass:          inode.StorageClass,
+		PoolId:                inode.PoolId,
 		LeaseExpireTime:       inode.LeaseExpireTime,
 		MigrationStorageClass: inode.HybridCloudExtentsMigration.storageClass,
 	}
@@ -188,6 +190,13 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 	ino.LinkTarget = req.Target
 	ino.StorageClass = requiredStorageClass
 
+	// Set PoolId: use client-specified poolId if provided, otherwise use volume's defaultPoolId,
+	// if volume's defaultPoolId is also 0, use default poolId based on storageClass
+	ino.PoolId = req.PoolId
+	if ino.PoolId == 0 {
+		ino.PoolId = mp.vol.GetDefaultPoolId()
+	}
+
 	if proto.IsStorageClassReplica(ino.StorageClass) {
 		ino.HybridCloudExtents.sortedEks = NewSortedExtents()
 	} else if ino.StorageClass == proto.StorageClass_BlobStore {
@@ -257,6 +266,11 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
 	ino.StorageClass = requiredStorageClass
+
+	ino.PoolId = req.PoolId
+	if ino.PoolId == 0 {
+		ino.PoolId = mp.vol.GetDefaultPoolId()
+	}
 
 	for _, quotaId := range req.QuotaIds {
 		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
@@ -1002,6 +1016,11 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	txIno.Inode.Gid = req.Gid
 	txIno.Inode.LinkTarget = req.Target
 	txIno.Inode.StorageClass = requiredStorageClass
+
+	txIno.Inode.PoolId = req.PoolId
+	if txIno.Inode.PoolId == 0 {
+		txIno.Inode.PoolId = mp.vol.GetDefaultPoolId()
+	}
 
 	if log.EnableDebug() {
 		log.LogDebugf("NewTxInode: TxInode: %v", txIno)

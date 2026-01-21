@@ -30,6 +30,12 @@ func (b *ByteBufExt) PutUint64(val uint64) error {
 	return err
 }
 
+func (b *ByteBufExt) PutUint8(val uint8) error {
+	b.bs[0] = val
+	_, err := b.Write(b.bs[:1])
+	return err
+}
+
 type ReadByteBuff struct {
 	data []byte
 	off  int
@@ -83,6 +89,16 @@ func (b *ReadByteBuff) ReadUint32() (val uint32, err error) {
 
 	val = binary.BigEndian.Uint32(b.data[b.off:])
 	b.off += 4
+	return
+}
+
+func (b *ReadByteBuff) ReadUint8() (val uint8, err error) {
+	if err = b.checkValid(1); err != nil {
+		return 0, err
+	}
+
+	val = b.data[b.off]
+	b.off += 1
 	return
 }
 
