@@ -311,6 +311,6 @@ func (flashNode *FlashNode) TryUpdateInfos(region string, syncUpdateFlashNodeFun
 }
 
 func (flashNode *FlashNode) String() string {
-	return fmt.Sprintf("flashNodeId:%v addr:%v zone %v flashGroupId:%v topoName: %v",
-		flashNode.ID, flashNode.Addr, flashNode.ZoneName, flashNode.FlashGroupID, flashNode.FlashNodeTopoName)
+	return fmt.Sprintf("flashNodeId:%v addr:%v zone %v flashGroupId:%v topoName: %v region: %v",
+		flashNode.ID, flashNode.Addr, flashNode.ZoneName, flashNode.FlashGroupID, flashNode.FlashNodeTopoName, flashNode.Region)
 }

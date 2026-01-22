@@ -297,11 +297,11 @@ func (t *FlashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 func (t *FlashNodeTopology) GetFlashGroup(fgID uint64) (flashGroup *FlashGroup, err error) {
 	value, ok := t.flashGroupMap.Load(fgID)
 	if !ok {
-		return nil, fmt.Errorf("flashGroup[%v] is not found in region %v", fgID, t.Region)
+		return nil, fmt.Errorf("flashGroup[%v] is not found in topo %v region %v", fgID, t.Name, t.Region)
 	}
 	flashGroup = value.(*FlashGroup)
 	if flashGroup == nil {
-		return nil, fmt.Errorf("flashGroup[%v] is not found in region %v", fgID, t.Region)
+		return nil, fmt.Errorf("flashGroup[%v] is not found in topo %v region %v", fgID, t.Name, t.Region)
 	}
 	return
 }
@@ -613,7 +613,8 @@ func (t *FlashNodeTopology) AddFlashNode(clusterName, nodeAddr, zoneName, versio
 func (t *FlashNodeTopology) PeekFlashNode(addr string) (flashNode *FlashNode, err error) {
 	value, ok := t.flashNodeMap.Load(addr)
 	if !ok {
-		err = errors.Trace(notFoundMsg(fmt.Sprintf("flashnode[%v] from topo[%v] region %v", addr, t.Name, t.Region)), "")
+		err = errors.Trace(notFoundMsg(fmt.Sprintf("flashnode[%v] from topo[%v] region %v",
+			addr, t.Name, t.Region)), "")
 		return
 	}
 	flashNode = value.(*FlashNode)
@@ -634,7 +635,8 @@ func (t *FlashNodeTopology) ListFlashNodes(showAll, active bool) map[string][]*p
 	zoneFlashNodes := make(map[string][]*proto.FlashNodeViewInfo)
 	t.flashNodeMap.Range(func(key, value interface{}) bool {
 		flashNode := value.(*FlashNode)
-		log.LogDebugf("ListFlashNodes: ListFlashNodes topo %v key %v fn %v, showAll %v active %v", t.Name, key, flashNode, showAll, active)
+		log.LogDebugf("ListFlashNodes: ListFlashNodes topo %v key %v fn %v, showAll %v active %v",
+			t.Name, key, flashNode, showAll, active)
 		if showAll || flashNode.isActiveAndEnable() == active {
 			zoneFlashNodes[flashNode.ZoneName] = append(zoneFlashNodes[flashNode.ZoneName], flashNode.GetFlashNodeViewInfo())
 		}

@@ -60,7 +60,15 @@ func (c *Cluster) loadFlashNodes() (err error) {
 		err = topo.PutFlashNode(flashNode)
 		if err != nil {
 			log.LogWarnf("action[loadFlashNodes], flashNode[%v] put topo %v failed %v", flashNode.String(), topo.Name, err.Error())
-			return
+			topo, err = c.PeekFlashTopo(proto.IdleTopoName)
+			if err != nil {
+				return
+			}
+			err = topo.PutFlashNode(flashNode)
+			if err != nil {
+				return
+			}
+			flashNode.FlashNodeTopoName = proto.IdleTopoName
 		}
 		log.LogInfof("action[loadFlashNodes] load %v success", flashNode.String())
 	}
