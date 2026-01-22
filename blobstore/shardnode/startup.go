@@ -407,6 +407,7 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.MaxExecuteSliceNum, uint64(64))
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.TierConfig.SafeMessageTimeout.Duration, 12*time.Hour)
 	defaulter.LessOrEqual(&cfg.DeleteBlobCfg.TierConfig.PunishTimeout.Duration, 1*time.Minute)
+	defaulter.LessOrEqual(&cfg.SliceRepairCfg.RetryTimes, 3)
 	defaulter.LessOrEqual(&cfg.SliceRepairCfg.RateLimit, float64(1024))
 	defaulter.LessOrEqual(&cfg.SliceRepairCfg.RateLimitBurst, 64)
 	defaulter.LessOrEqual(&cfg.SliceRepairCfg.FailedMsgChannelSize, 10<<10)
