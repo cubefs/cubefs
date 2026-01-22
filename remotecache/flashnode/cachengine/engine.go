@@ -1273,7 +1273,7 @@ func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
 				msg := fmt.Sprintf("too many cache error, "+
 					"data path(%v), cacheErrCnt(%v), cacheErrCbCnt(%v) threshold(%v)",
 					cacheItem.config.Path, cacheErrCnt, cacheErrCbCnt, cacheItem.config.DiskUnavailableCbErrorCount)
-				log.LogWarnf(msg)
+				log.LogError(msg)
 				atomic.StoreInt32(&cacheItem.disk.Status, proto.Unavailable)
 				go func() {
 					cacheItem.lruCache.EvictAll(c.cacheEvictWorkerNum)
@@ -1288,7 +1288,7 @@ func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
 				}
 
 				if c.errorCacheNum == c.totalCacheNum {
-					log.LogWarnf("all lru cache is unavailable, try to set this flashNode inactive")
+					log.LogError("all lru cache is unavailable, try to set this flashNode inactive")
 					if err := c.doInactiveFlashNode(); err != nil {
 						log.LogErrorf("inactive flashNode failed, err:%v", err)
 					}
