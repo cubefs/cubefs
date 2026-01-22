@@ -50,7 +50,8 @@ type GetMigrateAddrParam struct {
 
 var (
 	NotEnoughResource        = fmt.Errorf("not enough resource")
-	ErrClusterPlanNotRunning = fmt.Errorf("cluster plan is not running")
+	ErrClusterPlanNotRunning = fmt.Errorf("plan task is stopped by user")
+	ErrClusterStop           = fmt.Errorf("cluster is stopp")
 )
 
 func (c *Cluster) FreezeEmptyMetaPartitionJob(name string, freezeList []*MetaPartition) error {
@@ -1377,7 +1378,8 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 
 func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan) (err error) {
 	if c.IsClusterPlanNotRun() {
-		return ErrClusterPlanNotRunning
+		log.LogWarnf("plan task is stopped by user. mp[%v]", mpPlan.ID)
+		return nil
 	}
 
 	if VerifyMetaReplicaPlanNotAllInit(mpPlan) {
@@ -1440,7 +1442,9 @@ func (c *Cluster) handleMetaPartitionPlan(plan *proto.ClusterPlan, mpPlan *proto
 
 func (c *Cluster) handleMetaReplicaPlan(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, mp *MetaPartition, mrPlan *proto.MrBalanceInfo) (err error) {
 	if c.IsClusterPlanNotRun() {
-		return ErrClusterPlanNotRunning
+		err = fmt.Errorf("plan task is stopped by user. mp[%v]", mpPlan.ID)
+		log.LogWarnf(err.Error())
+		return err
 	}
 
 	// check the memory/rocksdb disk usage of destination metanode.
@@ -1511,7 +1515,7 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 		select {
 		case <-ticker.C:
 			if c.IsClusterPlanNotRun() {
-				return ErrClusterPlanNotRunning
+				return fmt.Errorf("plan task is stopped by user. mp[%v]", mp.PartitionID)
 			}
 			if mp.IsRecover.Load() {
 				continue
@@ -1531,7 +1535,7 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 			}
 		case <-c.stopc:
 			c.SetClusterPlanStopping()
-			return fmt.Errorf("cluster is stopping")
+			return ErrClusterStop
 		}
 	}
 	if err != nil {
@@ -2039,14 +2043,14 @@ func (c *Cluster) waitForMetaPartitionReady(mp *MetaPartition) error {
 		select {
 		case <-ticker.C:
 			if c.IsClusterPlanNotRun() {
-				return ErrClusterPlanNotRunning
+				return fmt.Errorf("plan task is stopped by user. mp[%v]", mp.PartitionID)
 			}
 			if !mp.IsRecover.Load() && mp.isLeaderExist() {
 				return nil
 			}
 		case <-c.stopc:
 			c.SetClusterPlanStopping()
-			return fmt.Errorf("cluster is stopping")
+			return ErrClusterStop
 		}
 	}
 
@@ -2214,7 +2218,8 @@ func (c *Cluster) doMetaPartitionMigrate(plan *proto.ClusterPlan, mpPlan *proto.
 	log.LogWarnf("Start to migrate meta partition(%d) from %s to %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
 	for i := 0; i < RetryDoMigrateNum; i++ {
 		if c.IsClusterPlanNotRun() {
-			err = fmt.Errorf("plan status(%d) is not running", atomic.LoadUint32(&c.planStatus))
+			err = fmt.Errorf("status(%d) plan is stopped by user. mp[%v]", atomic.LoadUint32(&c.planStatus), mpPlan.ID)
+			log.LogWarnf(err.Error())
 			return err
 		}
 		if c.partition == nil || !c.partition.IsRaftLeader() {
@@ -2237,7 +2242,11 @@ func (c *Cluster) doMetaPartitionMigrate(plan *proto.ClusterPlan, mpPlan *proto.
 
 		if !mp.CheckLastDelReplicaTime() {
 			log.LogWarnf("doMetaPartitionMigrate: mp try wait, last %d, mp %d", mp.LastDelReplicaTime, mp.PartitionID)
-			time.Sleep(time.Second * (mpReplicaDelInterval + 10))
+			err = c.SleepInMetaReplicaDelInterval()
+			if err != nil {
+				log.LogErrorf("SleepInMetaReplicaDelInterval error: %s", err.Error())
+				return err
+			}
 		}
 
 		if plan.Type == AddLearner {
@@ -3250,7 +3259,7 @@ func (c *Cluster) WaitForMetaPartitionCheckSumResult(mp *MetaPartition, checksum
 			}
 		case <-c.stopc:
 			c.SetClusterPlanStopping()
-			return fmt.Errorf("cluster is stopping")
+			return ErrClusterStop
 		}
 	}
 	if err != nil {
@@ -3931,4 +3940,23 @@ func (c *Cluster) AnalyzeEmptyPlanReason(plan *proto.ClusterPlan) (err error) {
 		len(excessReplicaMps), excessReplicaMps)
 	log.LogWarnf(err.Error())
 	return err
+}
+
+func (c *Cluster) SleepInMetaReplicaDelInterval() error {
+	ticker := time.NewTicker(time.Second * 10)
+	defer ticker.Stop()
+
+	for i := 0; i <= (mpReplicaDelInterval / 10); i++ {
+		select {
+		case <-ticker.C:
+			if c.IsClusterPlanNotRun() {
+				return ErrClusterPlanNotRunning
+			}
+		case <-c.stopc:
+			c.SetClusterPlanStopping()
+			return ErrClusterStop
+		}
+	}
+
+	return nil
 }
