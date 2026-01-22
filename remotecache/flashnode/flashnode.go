@@ -639,6 +639,34 @@ func (f *FlashNode) loadOrInitNodeID() (uint64, bool) {
 	}
 	filePath := filepath.Join(f.metaDir, FlashNodeIDFile)
 	idData, err := os.ReadFile(filePath)
+	if err != nil && cachengine.IsDiskErr(err.Error()) {
+		if len(f.backupMetaDirs) != 0 {
+			for _, dir := range f.backupMetaDirs {
+				filePath = filepath.Join(dir, FlashNodeIDFile)
+				idData, err = os.ReadFile(filePath)
+				if err != nil && cachengine.IsDiskErr(err.Error()) {
+					continue
+				}
+				break
+			}
+			if err != nil && cachengine.IsDiskErr(err.Error()) {
+				panic(fmt.Sprintf("Load NodeID file get err: %s", err.Error()))
+			}
+		} else {
+			panic(fmt.Sprintf("Load NodeID file get err: %s", err.Error()))
+		}
+	}
+	if err != nil {
+		if len(f.backupMetaDirs) != 0 {
+			for _, dir := range f.backupMetaDirs {
+				filePath = filepath.Join(dir, FlashNodeIDFile)
+				idData, err = os.ReadFile(filePath)
+				if err == nil {
+					break
+				}
+			}
+		}
+	}
 	if err == nil {
 		content := strings.TrimSpace(string(idData))
 		parts := strings.Split(content, "|")
@@ -735,7 +763,7 @@ func (f *FlashNode) register() error {
 			}
 			f.localAddr = fmt.Sprintf("%s:%v", localIP, f.listen)
 
-			id, loadedFromDisk := f.loadOrInitNodeID()
+			id, _ := f.loadOrInitNodeID()
 			nodeID, err := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "", f.region, id)
 			if err != nil {
 				log.LogErrorf("action[register] cannot register remotecache to master err(%v).", err)
@@ -743,10 +771,8 @@ func (f *FlashNode) register() error {
 			}
 
 			if nodeID > 0 {
-				if !loadedFromDisk || id != nodeID {
-					if err := f.saveNodeIDToDisk(nodeID); err != nil {
-						log.LogErrorf("action[register] save nodeID to disk failed: %v", err)
-					}
+				if err := f.saveNodeIDToDisk(nodeID); err != nil {
+					log.LogErrorf("action[register] save nodeID to disk failed: %v", err)
 				}
 			}
 
