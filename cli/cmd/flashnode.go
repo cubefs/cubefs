@@ -231,7 +231,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	cmd.Flags().BoolVar(&showAllTopo, "showAllTopo", false, "list flash nodes across all topologies (default false)")
-	cmd.Flags().IntVar(&active, "active", 1, "filter flash nodes by activity: 1(true), -1(all)")
+	cmd.Flags().IntVar(&active, "active", -1, "filter flash nodes by activity: 1(true), -1(all)")
 	return cmd
 }
 
