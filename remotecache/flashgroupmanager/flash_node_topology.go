@@ -1402,7 +1402,8 @@ func (t *FlashNodeTopology) ChangeFlashNodeTopo(clusterName string, dstTop *Flas
 }
 
 func (t *FlashNodeTopology) MarkDelete(syncUpdateFlashTopoFunc SyncUpdateFlashTopoFunc, delayHour int64,
-	gradualFlag bool, step uint32) (err error) {
+	gradualFlag bool, step uint32,
+) (err error) {
 	if !atomic.CompareAndSwapUint32(&t.Status, proto.TopoStatusNormal, proto.TopoStatusMarkDelete) {
 		err = fmt.Errorf("wrong status: topo is now(%v)", t.GetTopoStatusMsg())
 		return

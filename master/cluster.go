@@ -219,10 +219,10 @@ type Cluster struct {
 	masterClient *masterSDK.MasterClient
 
 	ClusterFlashTopoSubItem
-	cleanTask map[string]*CleanTask
-	Cleaning  bool
-	mu        sync.Mutex
-	PlanRun   bool
+	cleanTask  map[string]*CleanTask
+	Cleaning   bool
+	mu         sync.Mutex
+	planStatus uint32
 }
 
 type cTask struct {
@@ -7677,7 +7677,8 @@ func (c *Cluster) RenameFlashNodeTopo(srcTop *flashgroupmanager.FlashNodeTopolog
 }
 
 func (c *Cluster) RemoveFlashNodesFromFlashGroup(srcTop, idelTop *flashgroupmanager.FlashNodeTopology, flashGroupID uint64,
-	addr string, zoneName string, count int) (flashGroup *flashgroupmanager.FlashGroup, err error) {
+	addr string, zoneName string, count int,
+) (flashGroup *flashgroupmanager.FlashGroup, err error) {
 	defer func() {
 		if err != nil {
 			log.LogWarnf("action[RemoveFlashNodesFromFlashGroup] remove flash nodes:%v count %v zone %v from flashGroup:%v topo :%v failed:%v",

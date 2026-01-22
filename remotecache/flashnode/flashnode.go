@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"fmt"
 	"hash/crc32"
+	syslog "log"
 	"net"
 	"os"
 	"path/filepath"
@@ -775,9 +776,9 @@ func (f *FlashNode) register() error {
 					log.LogErrorf("action[register] save nodeID to disk failed: %v", err)
 				}
 			}
-
 			f.nodeID = nodeID
 			log.LogInfof("action[register] remotecache(%d) cluster(%s) localAddr(%s)", f.nodeID, f.clusterID, f.localAddr)
+			syslog.Printf("Flash node registered successfully. ID: %d, Cluster: %s, LocalAddr: %s", f.nodeID, f.clusterID, f.localAddr)
 			return nil
 		}
 

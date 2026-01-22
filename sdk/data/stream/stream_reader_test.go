@@ -116,7 +116,7 @@ func (s *MockTCPServer) handleConn(conn net.Conn) {
 				reply.ResultCode = proto.OpErr
 			}
 
-		case proto.OpFlashSDKHeartbeat:
+		case proto.OpFlashNodeHeartbeat:
 			time.Sleep(time.Millisecond)
 			reply.ResultCode = proto.OpOk
 
