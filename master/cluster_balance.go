@@ -3668,7 +3668,7 @@ func (c *Cluster) RestartPromoteLearnerPlan() error {
 	return nil
 }
 
-func (c *Cluster) CreateDecommissionRocksdbDirPlan(addr string, rocksdbDir string) (*proto.ClusterPlan, error) {
+func (c *Cluster) CreateDecommissionRocksdbDirPlan(param *MetaPartitionPlanUserParams) (*proto.ClusterPlan, error) {
 	plan := &proto.ClusterPlan{
 		Low:        make(map[string]*proto.ZonePressureView),
 		RocksdbLow: make(map[string]*proto.ZonePressureView),
@@ -3677,6 +3677,10 @@ func (c *Cluster) CreateDecommissionRocksdbDirPlan(addr string, rocksdbDir strin
 		Mode:       proto.StoreModeRocksDb,
 		RackLevel:  c.getRackAwareLevel(),
 		FailedList: make([]uint64, 0),
+		SelectType: param.SelectType,
+		ZoneName:   param.ZoneName,
+		NodeSetID:  param.NodeSetID,
+		SelectTag:  param.SelectTag,
 	}
 
 	err := c.GetLowMemPressureTopology(plan)
@@ -3685,7 +3689,7 @@ func (c *Cluster) CreateDecommissionRocksdbDirPlan(addr string, rocksdbDir strin
 		return plan, err
 	}
 
-	err = c.FillDecommissionRocksdbDirToPlan(addr, rocksdbDir, plan)
+	err = c.FillDecommissionRocksdbDirToPlan(param.MetaNodeAddr, param.RocksdbDir, plan)
 	if err != nil {
 		log.LogErrorf("FillDecommissionRocksdbDirToPlan error: %s", err.Error())
 		return plan, err

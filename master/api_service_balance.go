@@ -52,6 +52,8 @@ type MetaPartitionPlanUserParams struct {
 	ZoneName           string          `json:"zoneName"`
 	NodeSetID          uint64          `json:"nodesetId"`
 	SelectTag          string          `json:"selectTag"`
+	MetaNodeAddr       string          `json:"metaNodeAddr"`
+	RocksdbDir         string          `json:"rocksdbDir"`
 }
 
 func (m *Server) getMetaPartitionEmptyStatus(w http.ResponseWriter, r *http.Request) {
@@ -782,6 +784,9 @@ func parseMetaPartitionPlanUserParams(r *http.Request) (param *MetaPartitionPlan
 		return
 	}
 
+	param.MetaNodeAddr = r.FormValue(addrKey)
+	param.RocksdbDir = r.FormValue(RocksdbDirKey)
+
 	return
 }
 
@@ -988,9 +993,8 @@ func (m *Server) getMd5SumResult(w http.ResponseWriter, r *http.Request) {
 func (m *Server) decommissionRocksdbDir(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDecommissionRocksdbDir))
 	var (
-		err        error
-		addr       string
-		rocksdbDir string
+		err   error
+		param *MetaPartitionPlanUserParams
 	)
 	defer func() {
 		doStatAndMetric(proto.AdminDecommissionRocksdbDir, metric, err, nil)
@@ -1001,20 +1005,19 @@ func (m *Server) decommissionRocksdbDir(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if addr, err = parseAndExtractNodeAddr(r); err != nil {
-		log.LogErrorf("parse node addr failed, err: %v", err)
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrParamError))
-		return
-	}
-
-	rocksdbDir = r.FormValue(RocksdbDirKey)
-	if rocksdbDir == "" {
-		err = fmt.Errorf("rocksdb dir is required")
+	param, err = parseMetaPartitionPlanUserParams(r)
+	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	plan, err := m.cluster.CreateDecommissionRocksdbDirPlan(addr, rocksdbDir)
+	if param.MetaNodeAddr == "" || param.RocksdbDir == "" {
+		err = fmt.Errorf("meta node addr or rocksdb dir is required")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	plan, err := m.cluster.CreateDecommissionRocksdbDirPlan(param)
 	if err != nil {
 		log.LogErrorf("CreateDecommissionRocksdbDirPlan failed: %s", err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
