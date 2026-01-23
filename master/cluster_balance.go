@@ -456,8 +456,10 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 			nsView.Number = len(nsView.MetaNodes)
 			rocksdbNsView.Number = len(rocksdbNsView.MetaNodes)
 		}
+		migratePlan.Lock()
 		migratePlan.Low[zone.name] = zoneView
 		migratePlan.RocksdbLow[zone.name] = rocksdbZoneView
+		migratePlan.Unlock()
 	}
 
 	return nil
@@ -890,6 +892,9 @@ func SrcIsPlaned(mpPlan *proto.MetaBalancePlan, srcAddr string) (int, bool) {
 }
 
 func UpdateLowPressureNodeTopo(migratePlan *proto.ClusterPlan, newPlan *proto.MrBalanceInfo) error {
+	migratePlan.Lock()
+	defer migratePlan.Unlock()
+
 	zone, ok := migratePlan.Low[newPlan.DstZoneName]
 	if !ok {
 		return fmt.Errorf("Error to get destination zone: %s", newPlan.DstZoneName)
@@ -1230,8 +1235,10 @@ func GetMigrateAddrExcludeZone(param *GetMigrateAddrParam) (find bool, address [
 
 func (c *Cluster) UpdateMigrateDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan) error {
 	// Renew the low pressure memory topology.
+	migratePlan.Lock()
 	migratePlan.Low = make(map[string]*proto.ZonePressureView)
 	migratePlan.RocksdbLow = make(map[string]*proto.ZonePressureView)
+	migratePlan.Unlock()
 
 	err := c.GetLowMemPressureTopology(migratePlan)
 	if err != nil {

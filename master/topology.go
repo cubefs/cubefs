@@ -32,10 +32,13 @@ import (
 type selectParam struct {
 	excludeHosts    []string
 	replicaNum      int
-	selectType      uint32
+	thresholdType   uint32
 	rackLevel       proto.RackAwareLevel
 	excludeRacks    []string
 	excludeNodeSets []uint64
+	threshold       float64
+	selectType      int32
+	selectTag       string
 }
 
 func (sp *selectParam) copy() *selectParam {
@@ -52,9 +55,13 @@ func (sp *selectParam) copy() *selectParam {
 	return &selectParam{
 		excludeHosts:    excludeHosts,
 		replicaNum:      sp.replicaNum,
+		thresholdType:   sp.thresholdType,
 		rackLevel:       sp.rackLevel,
 		excludeRacks:    excludeRacks,
 		excludeNodeSets: excludeNodeSets,
+		threshold:       sp.threshold,
+		selectType:      sp.selectType,
+		selectTag:       sp.selectTag,
 	}
 }
 
@@ -62,8 +69,8 @@ func (sp *selectParam) String() string {
 	if sp == nil {
 		return "nil"
 	}
-	return fmt.Sprintf("excludeHosts: %v, replicaNum: %v, rackLevel: %v, excludeRacks: %v, excludeNodeSets: %v",
-		sp.excludeHosts, sp.replicaNum, sp.rackLevel, sp.excludeRacks, sp.excludeNodeSets)
+	return fmt.Sprintf("excludeHosts: %v, replicaNum: %v, rackLevel: %v, excludeRacks: %v, excludeNodeSets: %v, selectType: %v, selectTag: %v",
+		sp.excludeHosts, sp.replicaNum, sp.rackLevel, sp.excludeRacks, sp.excludeNodeSets, sp.selectType, sp.selectTag)
 }
 
 type rsManager struct {
@@ -2713,9 +2720,9 @@ func updateDecommissionWeight(dps []*DataPartition, c *Cluster) {
 }
 
 func (t *DecommissionTask) decommissionInfo() string {
-	return fmt.Sprintf("srcAddr(%v)_srcDiskPath(%v)_srcAddrs(%v)_dstAddr(%v)_dstAddrs(%v)_dstNodeSet(%v)_force(%v)_term(%v)_weight(%v)_type(%v)",
+	return fmt.Sprintf("srcAddr(%v)_srcDiskPath(%v)_srcAddrs(%v)_dstAddr(%v)_dstAddrs(%v)_dstNodeSet(%v)_force(%v)_term(%v)_weight(%v)_type(%v)_selectTag(%v)",
 		t.DecommissionSrcAddr, t.DecommissionSrcDiskPath, t.DecommissionSrcAddrs, t.DecommissionDstAddr, t.DecommissionDstAddrs, t.DecommissionDstNodeSet,
-		t.DecommissionRaftForce, t.DecommissionTerm, t.DecommissionWeight, GetDecommissionTypeMessage(t.DecommissionType))
+		t.DecommissionRaftForce, t.DecommissionTerm, t.DecommissionWeight, GetDecommissionTypeMessage(t.DecommissionType), t.DecommissionSelectTag)
 }
 
 func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataPartition, c *Cluster) {

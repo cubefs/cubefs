@@ -41,6 +41,7 @@ type Peer struct {
 	HeartbeatPort string             `json:"raftHeartbeat"`
 	ReplicaPort   string             `json:"raftReplica"`
 	ManualPromote bool               `json:"manualPromote"` // if true, can't be promoted or deleted automatically
+	SelectTag     string             `json:"selectTag"`     // select tag of the peer
 }
 
 func (p *Peer) String() string {

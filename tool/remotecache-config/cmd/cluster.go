@@ -206,17 +206,22 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			if err = client.AdminAPI().SetClusterParas("", "", "",
-				"", "", "", "", clientIDKey,
-				"", "",
-				"", "", "", "", "",
-				"", "", "", "", "", "", "",
-				"", handleTimeout, readDataNodeTimeout, "", "",
-				"", "",
-				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount,
-				optFlashReadFlowLimit, optFlashWriteFlowLimit, optFlashKeyFlowLimit, optRemoteClientFlowLimit,
-				"", "", "", "", "", "", "", "", "", ""); err != nil {
+			if err = client.AdminAPI().SetClusterParas(&master.ClusterParas{
+				ClientIDKey:                  clientIDKey,
+				HandleTimeout:                handleTimeout,
+				ReadDataNodeTimeout:          readDataNodeTimeout,
+				RemoteCacheTTL:               optRcTTL,
+				RemoteCacheReadTimeout:       optRcReadTimeout,
+				RemoteCacheMultiRead:         optRemoteCacheMultiRead,
+				FlashNodeTimeoutCount:        optFlashNodeTimeoutCount,
+				RemoteCacheSameZoneTimeout:   optRemoteCacheSameZoneTimeout,
+				RemoteCacheSameRegionTimeout: optRemoteCacheSameRegionTimeout,
+				FlashHotKeyMissCount:         optFlashHotKeyMissCount,
+				FlashReadFlowLimit:           optFlashReadFlowLimit,
+				FlashWriteFlowLimit:          optFlashWriteFlowLimit,
+				FlashKeyFlowLimit:            optFlashKeyFlowLimit,
+				RemoteClientFlowLimit:        optRemoteClientFlowLimit,
+			}); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")

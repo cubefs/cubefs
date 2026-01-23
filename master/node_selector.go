@@ -51,7 +51,7 @@ func (ns *nodeSet) getNodes(nodeType NodeType) *sync.Map {
 
 type NodeSelector interface {
 	GetName() string
-	Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error)
+	Select(ns *nodeSet, param *selectParam) (newHosts []string, peers []proto.Peer, err error)
 }
 
 type weightedNode struct {
@@ -78,6 +78,7 @@ type Node interface {
 	GetStorageInfo() string
 	IsOffline() bool
 	GetZoneName() string
+	GetSelectTag() string
 }
 
 // SortedWeightedNodes defines an array sorted by carry
@@ -148,7 +149,7 @@ func (s *CarryWeightNodeSelector) getTotalMax(nodes *sync.Map) (total uint64) {
 	return
 }
 
-func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, excludeHosts []string, threshold float64) (SortedWeightedNodes, int) {
+func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, param *selectParam) (SortedWeightedNodes, int) {
 	var nodes *sync.Map
 	switch s.nodeType {
 	case DataNodeType:
@@ -163,18 +164,22 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 	availCount := 0
 	nodes.Range(func(key, value interface{}) bool {
 		node := value.(Node)
-		if contains(excludeHosts, node.GetAddr()) {
+		if contains(param.excludeHosts, node.GetAddr()) {
 			// log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			return true
 		}
 		if node.IsOffline() {
-			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType, node.GetStorageInfo(), excludeHosts)
+			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType, node.GetStorageInfo(), param.excludeHosts)
 			return true
 		}
 
-		if !canAllocPartition(node, s.nodeType, threshold) {
+		if !canAllocPartition(node, s.nodeType, param.threshold) {
 			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType,
-				node.GetStorageInfo(), excludeHosts)
+				node.GetStorageInfo(), param.excludeHosts)
+			return true
+		}
+
+		if param.selectType == proto.SelectTypeTag && param.selectTag != node.GetSelectTag() {
 			return true
 		}
 
@@ -225,7 +230,7 @@ func (s *CarryWeightNodeSelector) selectNodeForWrite(node Node) {
 	s.Unlock()
 }
 
-func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
+func (s *CarryWeightNodeSelector) Select(ns *nodeSet, param *selectParam) (newHosts []string, peers []proto.Peer, err error) {
 	nodes := ns.getNodes(s.nodeType)
 	total := s.getTotalMax(nodes)
 	// prepare carry for every nodes
@@ -234,23 +239,23 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
-	if replicaNum == 0 {
+	if param.replicaNum == 0 {
 		return
 	}
 	// if we cannot get enough writable nodes, return error
-	weightedNodes, count := s.getCarryNodes(ns, total, excludeHosts, threshold)
-	if len(weightedNodes) < replicaNum {
-		err = fmt.Errorf("action[%s NodeSelector-Select] no enough writable hosts,replicaNum: %d MatchNodeCount:%d",
-			s.GetName(), replicaNum, len(weightedNodes))
+	weightedNodes, count := s.getCarryNodes(ns, total, param)
+	if len(weightedNodes) < param.replicaNum {
+		err = fmt.Errorf("action[%s NodeSelector-Select] no enough writable hosts,replicaNum: %d MatchNodeCount:%d, selectTag: %s",
+			s.GetName(), param.replicaNum, len(weightedNodes), param.selectTag)
 		return
 	}
 	// create enough carry nodes
 	// we say a node is "carry node", when its carry >= 1.0
-	s.setNodeCarry(weightedNodes, count, replicaNum)
+	s.setNodeCarry(weightedNodes, count, param.replicaNum)
 	// sort nodes by weight
 	sort.Sort(weightedNodes)
 	// pick first N nodes
-	for i := 0; i < replicaNum; i++ {
+	for i := 0; i < param.replicaNum; i++ {
 		node := weightedNodes[i].Ptr
 		s.selectNodeForWrite(node)
 		orderHosts = append(orderHosts, node.GetAddr())
@@ -297,11 +302,11 @@ func (s *AvailableSpaceFirstNodeSelector) GetName() string {
 	return AvailableSpaceFirstNodeSelectorName
 }
 
-func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
+func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, param *selectParam) (newHosts []string, peers []proto.Peer, err error) {
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
-	if replicaNum == 0 {
+	if param.replicaNum == 0 {
 		return
 	}
 	orderHosts := make([]string, 0)
@@ -309,10 +314,13 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 	sortedNodes := make([]Node, 0)
 	nodes.Range(func(key, value interface{}) bool {
 		node := value.(Node)
-		if contains(excludeHosts, node.GetAddr()) {
+		if contains(param.excludeHosts, node.GetAddr()) {
 			return true
 		}
-		if !canAllocPartition(node, s.nodeType, threshold) {
+		if !canAllocPartition(node, s.nodeType, param.threshold) {
+			return true
+		}
+		if param.selectType == proto.SelectTypeTag && param.selectTag != node.GetSelectTag() {
 			return true
 		}
 		sortedNodes = append(sortedNodes, node)
@@ -320,9 +328,9 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 	})
 
 	// if we cannot get enough nodes, return error
-	if len(sortedNodes) < replicaNum {
+	if len(sortedNodes) < param.replicaNum {
 		err = fmt.Errorf("action[%vNodeSelector-Select] no enough hosts,replicaNum:%v  MatchNodeCount:%v  ",
-			s.GetName(), replicaNum, len(sortedNodes))
+			s.GetName(), param.replicaNum, len(sortedNodes))
 		return
 	}
 	// sort nodes by available space
@@ -344,7 +352,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 	excludedNodes := make([]Node, 0)
 	distinctIpSet := make(map[string]struct{})
 	// outer loop: select until we get replica number of nodes
-	for len(orderHosts) < replicaNum {
+	for len(orderHosts) < param.replicaNum {
 		// for each execution of inner loop, select nodes with distinct ip, try to avoid multiple replicas of a partition locate on same machine
 		for i := 0; i < len(sortedNodes); i++ {
 			node := sortedNodes[i]
@@ -362,7 +370,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), ReplicaPort: node.GetReplicaPort(), HeartbeatPort: node.GetHeartbeatPort()}
 			peers = append(peers, peer)
 
-			if len(orderHosts) == replicaNum {
+			if len(orderHosts) == param.replicaNum {
 				break
 			}
 		}
@@ -372,9 +380,9 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 		distinctIpSet = make(map[string]struct{})
 	}
 	// if we cannot get enough writable nodes, return error
-	if len(orderHosts) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
-			s.GetName(), replicaNum, len(orderHosts))
+	if len(orderHosts) < param.replicaNum {
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
+			s.GetName(), param.replicaNum, len(orderHosts), param.selectTag)
 		return
 	}
 	log.LogInfof("action[%vNodeSelector-Select] peers[%v]", s.GetName(), peers)
@@ -402,24 +410,27 @@ func (s *RoundRobinNodeSelector) GetName() string {
 	return RoundRobinNodeSelectorName
 }
 
-func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
+func (s *RoundRobinNodeSelector) Select(ns *nodeSet, param *selectParam) (newHosts []string, peers []proto.Peer, err error) {
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
 	// if replica == 0, return
-	if replicaNum == 0 {
+	if param.replicaNum == 0 {
 		return
 	}
 	orderHosts := make([]string, 0)
 	nodes := ns.getNodes(s.nodeType)
 	sortedNodes := make([]Node, 0)
 	nodes.Range(func(key, value interface{}) bool {
+		if param.selectType == proto.SelectTypeTag && param.selectTag != value.(Node).GetSelectTag() {
+			return true
+		}
 		sortedNodes = append(sortedNodes, value.(Node))
 		return true
 	})
 	// if we cannot get enough nodes, return error
-	if len(sortedNodes) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
-			s.GetName(), replicaNum, len(sortedNodes))
+	if len(sortedNodes) < param.replicaNum {
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
+			s.GetName(), param.replicaNum, len(sortedNodes), param.selectTag)
 		return
 	}
 	// sort nodes by id, so we can get a node list that is as stable as possible
@@ -428,14 +439,14 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 	})
 	nodeIndex := 0
 	// pick first N nodes
-	for i := 0; i < replicaNum && nodeIndex < len(sortedNodes); i++ {
+	for i := 0; i < param.replicaNum && nodeIndex < len(sortedNodes); i++ {
 		selectedIndex := len(sortedNodes)
 		// loop until we get a writable node
 		for nodeIndex < len(sortedNodes) {
 			node := sortedNodes[(nodeIndex+s.index)%len(sortedNodes)]
 			nodeIndex += 1
-			if canAllocPartition(node, s.nodeType, threshold) {
-				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
+			if canAllocPartition(node, s.nodeType, param.threshold) {
+				if param.excludeHosts == nil || !contains(param.excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
 				}
@@ -451,9 +462,9 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 		}
 	}
 	// if we cannot get enough writable nodes, return error
-	if len(orderHosts) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
-			s.GetName(), replicaNum, len(orderHosts))
+	if len(orderHosts) < param.replicaNum {
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
+			s.GetName(), param.replicaNum, len(orderHosts), param.selectTag)
 		return
 	}
 	// move the index of selector
@@ -533,23 +544,26 @@ func (s *StrawNodeSelector) selectOneNode(nodes []Node, excludedIpSet map[string
 	return
 }
 
-func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
+func (s *StrawNodeSelector) Select(ns *nodeSet, param *selectParam) (newHosts []string, peers []proto.Peer, err error) {
 	nodes := make([]Node, 0)
 	ns.getNodes(s.nodeType).Range(func(key, value interface{}) bool {
 		node := asNodeWrap(value, s.nodeType)
-		if contains(excludeHosts, node.GetAddr()) {
+		if contains(param.excludeHosts, node.GetAddr()) {
 			return true
 		}
-		if !canAllocPartition(node, s.nodeType, threshold) {
+		if !canAllocPartition(node, s.nodeType, param.threshold) {
+			return true
+		}
+		if param.selectType == proto.SelectTypeTag && param.selectTag != node.GetSelectTag() {
 			return true
 		}
 		nodes = append(nodes, node)
 		return true
 	})
 
-	if len(nodes) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
-			s.GetName(), replicaNum, len(nodes))
+	if len(nodes) < param.replicaNum {
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
+			s.GetName(), param.replicaNum, len(nodes), param.selectTag)
 		return
 	}
 
@@ -560,7 +574,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 	// If raftPartitionCanUsingDifferentPort is enabled, candidate nodes may contain nodes with same ip
 
 	// outer loop: select until we get replica number of nodes
-	for len(orderHosts) < replicaNum {
+	for len(orderHosts) < param.replicaNum {
 		// for each execution of inner loop, select nodes with distinct ip, try to avoid multiple replicas of a partition locate on same machine
 		for {
 			index, node := s.selectOneNode(nodes, distinctIpSet)
@@ -577,7 +591,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 			node.SelectNodeForWrite()
 			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), ReplicaPort: node.GetReplicaPort(), HeartbeatPort: node.GetHeartbeatPort()}
 			peers = append(peers, peer)
-			if len(orderHosts) == replicaNum {
+			if len(orderHosts) == param.replicaNum {
 				break
 			}
 		}
@@ -586,9 +600,9 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 	}
 
 	// if we cannot get enough writable nodes, return error
-	if len(orderHosts) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
-			s.GetName(), replicaNum, len(orderHosts))
+	if len(orderHosts) < param.replicaNum {
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
+			s.GetName(), param.replicaNum, len(orderHosts), param.selectTag)
 		return
 	}
 	log.LogInfof("action[%vNodeSelector-Select] peers[%v]", s.GetName(), peers)
@@ -645,25 +659,24 @@ func (ns *nodeSet) getAvailMetaNodeHosts(param *selectParam, storeMode proto.Sto
 		nodeType = RocksdbType
 	}
 
-	var threshold float64
-	switch param.selectType {
+	switch param.thresholdType {
 	case proto.SelectType_Normal:
-		threshold = 1
+		param.threshold = 1
 	case proto.SelectType_DistributionOptimization:
-		threshold = getDistributionOptimizationThreshold()
+		param.threshold = getDistributionOptimizationThreshold()
 	}
 
 	// If rack isolation is not enabled, use non-rack-aware selector directly
 	if param.rackLevel == proto.RackAwareNone {
-		return ns.getNodeSelector(nodeType, storeMode).Select(ns, param.excludeHosts, param.replicaNum, threshold)
+		return ns.getNodeSelector(nodeType, storeMode).Select(ns, param)
 	}
 
 	// Rack isolation enabled, prioritize strong constraint mode
-	return ns.selectNodesWithRack(param, nodeType, storeMode, threshold)
+	return ns.selectNodesWithRack(param, nodeType, storeMode)
 }
 
 // selectMetaNodesWithRack selects meta nodes with rack awareness
-func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, storeMode proto.StoreMode, threshold float64) (newHosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
 	rsets := ns.getRackSets()
 
 	paramCopy := param.copy()
@@ -690,7 +703,7 @@ func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, st
 		// Select nodes
 		selector := rack.getNodeSelector(nodeType, storeMode)
 
-		rhosts, rpeers, err := selector.Select(rack, paramCopy.excludeHosts, 1, threshold)
+		rhosts, rpeers, err := selector.Select(rack, paramCopy)
 		if err != nil {
 			log.LogErrorf("action[getAvailMetaNodeHosts] node selection failed for rack[%v], param[%v], err: %v",
 				rack, paramCopy.String(), err.Error())
@@ -718,19 +731,18 @@ func (ns *nodeSet) getAvailDataNodeHosts(param *selectParam) (hosts []string, pe
 	ns.dataNodeSelectorLock.Lock()
 	defer ns.dataNodeSelectorLock.Unlock()
 
-	var threshold float64
-	switch param.selectType {
+	switch param.thresholdType {
 	case proto.SelectType_Normal:
-		threshold = 1
+		param.threshold = 1
 	case proto.SelectType_DistributionOptimization:
-		threshold = getDistributionOptimizationThreshold()
+		param.threshold = getDistributionOptimizationThreshold()
 	}
 
 	if param.rackLevel == proto.RackAwareNone {
-		return ns.dataNodeSelector.Select(ns, param.excludeHosts, param.replicaNum, threshold)
+		return ns.dataNodeSelector.Select(ns, param)
 	}
 
-	return ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeDef, threshold)
+	return ns.selectNodesWithRack(param, DataNodeType, proto.StoreModeDef)
 }
 
 func (s *CarryWeightNodeSelector) prepareCarryForDataNodes(nodes *sync.Map, total uint64) {

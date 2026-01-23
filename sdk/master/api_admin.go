@@ -403,6 +403,13 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParamAny("remoteCacheSameRegionTimeout", vv.RemoteCacheSameRegionTimeout)
 	request.addParam("storeMode", strconv.FormatInt(int64(vv.DefaultStoreMode), 10))
 
+	if vv.DpSelectTag != "" {
+		request.addParam("dpSelectTag", vv.DpSelectTag)
+	}
+	if vv.MpSelectTag != "" {
+		request.addParam("mpSelectTag", vv.MpSelectTag)
+	}
+
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
 		request.addParam("txForceReset", strconv.FormatBool(txForceReset))
@@ -662,30 +669,75 @@ func (api *AdminAPI) SetMasterFlashTopoDeletionDelayTime(flashTopoDeletionDelayT
 	return
 }
 
-func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
-	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
-	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string, enableAutoMpMetaRepair string, autoMpMetaRepairParallelCnt string, autoDistributionOptimization string,
-	dpRepairTimeout string, dpTimeout string, mpTimeout string, dpBackupTimeout string,
-	decommissionDpLimit, decommissionDiskLimit, decommissionFirstHostDiskParallelLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
-	handleTimeout string, readDataNodeTimeout string, rackAware string,
-	distributionOptimizationConDpCnt, distributionOptimizationThreshold string,
-	remoteCacheTTL string, remoteCacheReadTimeout string,
-	remoteCacheMultiRead string, flashNodeTimeoutCount string,
-	remoteCacheSameZoneTimeout string, remoteCacheSameRegionTimeout string, flashHotKeyMissCount string,
-	flashReadFlowLimit string, flashWriteFlowLimit string, flashKeyFlowLimit string, remoteClientFlowLimit string,
-	enableMpDecommissionByLearner string, learnerRecoverTimeoutSeconds string,
-	metaAutoAddReplicaLimit string, metaManualDecommissionLimit string, metaBalanceLimit string, metaManualAddReplicaLimit string,
-	dpLimitSsdBaseCount string, dpLimitSsdFactor string, dpLimitHddBaseCount string, dpLimitHddFactor string,
-) (err error) {
+type ClusterParas struct {
+	BatchCount                             string
+	MarkDeleteRate                         string
+	DeleteWorkerSleepMs                    string
+	AutoRepairRate                         string
+	LoadFactor                             string
+	MaxDpCntLimit                          string
+	MaxMpCntLimit                          string
+	ClientIDKey                            string
+	EnableAutoDecommissionDisk             string
+	AutoDecommissionDiskInterval           string
+	EnableAutoDpMetaRepair                 string
+	AutoDpMetaRepairParallelCnt            string
+	EnableAutoMpMetaRepair                 string
+	AutoMpMetaRepairParallelCnt            string
+	AutoDistributionOptimization           string
+	DpRepairTimeout                        string
+	DpTimeout                              string
+	MpTimeout                              string
+	DpBackupTimeout                        string
+	DecommissionDpLimit                    string
+	DecommissionDiskLimit                  string
+	DecommissionFirstHostDiskParallelLimit string
+	ForbidWriteOpOfProtoVersion0           string
+	MediaType                              string
+	HandleTimeout                          string
+	ReadDataNodeTimeout                    string
+	RackAware                              string
+	DistributionOptimizationConDpCnt       string
+	DistributionOptimizationThreshold      string
+	RemoteCacheTTL                         string
+	RemoteCacheReadTimeout                 string
+	RemoteCacheMultiRead                   string
+	FlashNodeTimeoutCount                  string
+	RemoteCacheSameZoneTimeout             string
+	RemoteCacheSameRegionTimeout           string
+	FlashHotKeyMissCount                   string
+	FlashReadFlowLimit                     string
+	FlashWriteFlowLimit                    string
+	FlashKeyFlowLimit                      string
+	RemoteClientFlowLimit                  string
+	EnableMpDecommissionByLearner          string
+	LearnerRecoverTimeoutSeconds           string
+	MetaAutoAddReplicaLimit                string
+	MetaManualDecommissionLimit            string
+	MetaBalanceLimit                       string
+	MetaManualAddReplicaLimit              string
+	DpLimitSsdBaseCount                    string
+	DpLimitSsdFactor                       string
+	DpLimitHddBaseCount                    string
+	DpLimitHddFactor                       string
+	AutoFixSelectTag                       string
+	DefaultDpSelectTag                     string
+	DefaultMpSelectTag                     string
+}
+
+func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
+	if params == nil {
+		return fmt.Errorf("cluster params is nil")
+	}
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
-	request.addParam("batchCount", batchCount)
-	request.addParam("markDeleteRate", markDeleteRate)
-	request.addParam("deleteWorkerSleepMs", deleteWorkerSleepMs)
-	request.addParam("autoRepairRate", autoRepairRate)
-	request.addParam("loadFactor", loadFactor)
-	request.addParam("maxDpCntLimit", maxDpCntLimit)
-	request.addParam("maxMpCntLimit", maxMpCntLimit)
-	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("batchCount", params.BatchCount)
+	request.addParam("markDeleteRate", params.MarkDeleteRate)
+	request.addParam("deleteWorkerSleepMs", params.DeleteWorkerSleepMs)
+	request.addParam("autoRepairRate", params.AutoRepairRate)
+	request.addParam("loadFactor", params.LoadFactor)
+	request.addParam("maxDpCntLimit", params.MaxDpCntLimit)
+	request.addParam("maxMpCntLimit", params.MaxMpCntLimit)
+	request.addParam("clientIDKey", params.ClientIDKey)
 
 	// request.addParam("dataNodesetSelector", dataNodesetSelector)
 	// request.addParam("metaNodesetSelector", metaNodesetSelector)
@@ -694,133 +746,142 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	// if markDiskBrokenThreshold != "" {
 	//	request.addParam("markDiskBrokenThreshold", markDiskBrokenThreshold)
 	// }
-	if enableAutoDecommissionDisk != "" {
-		request.addParam("autoDecommissionDisk", enableAutoDecommissionDisk)
+	if params.EnableAutoDecommissionDisk != "" {
+		request.addParam("autoDecommissionDisk", params.EnableAutoDecommissionDisk)
 	}
-	if autoDecommissionDiskInterval != "" {
-		request.addParam("autoDecommissionDiskInterval", autoDecommissionDiskInterval)
+	if params.AutoDecommissionDiskInterval != "" {
+		request.addParam("autoDecommissionDiskInterval", params.AutoDecommissionDiskInterval)
 	}
-	if enableAutoDpMetaRepair != "" {
-		request.addParam("autoDpMetaRepair", enableAutoDpMetaRepair)
+	if params.EnableAutoDpMetaRepair != "" {
+		request.addParam("autoDpMetaRepair", params.EnableAutoDpMetaRepair)
 	}
-	if autoDpMetaRepairParallelCnt != "" {
-		request.addParam("autoDpMetaRepairParallelCnt", autoDpMetaRepairParallelCnt)
+	if params.AutoDpMetaRepairParallelCnt != "" {
+		request.addParam("autoDpMetaRepairParallelCnt", params.AutoDpMetaRepairParallelCnt)
 	}
-	if enableAutoMpMetaRepair != "" {
-		request.addParam("autoMpMetaRepair", enableAutoMpMetaRepair)
+	if params.EnableAutoMpMetaRepair != "" {
+		request.addParam("autoMpMetaRepair", params.EnableAutoMpMetaRepair)
 	}
-	if autoMpMetaRepairParallelCnt != "" {
-		request.addParam("autoMpMetaRepairParallelCnt", autoMpMetaRepairParallelCnt)
+	if params.AutoMpMetaRepairParallelCnt != "" {
+		request.addParam("autoMpMetaRepairParallelCnt", params.AutoMpMetaRepairParallelCnt)
 	}
-	if autoDistributionOptimization != "" {
-		request.addParam("autoDistributionOptimization", autoDistributionOptimization)
+	if params.AutoDistributionOptimization != "" {
+		request.addParam("autoDistributionOptimization", params.AutoDistributionOptimization)
 	}
-	if dpRepairTimeout != "" {
-		request.addParam("dpRepairTimeOut", dpRepairTimeout)
+	if params.DpRepairTimeout != "" {
+		request.addParam("dpRepairTimeOut", params.DpRepairTimeout)
 	}
-	if dpTimeout != "" {
-		request.addParam("dpTimeout", dpTimeout)
+	if params.DpTimeout != "" {
+		request.addParam("dpTimeout", params.DpTimeout)
 	}
-	if mpTimeout != "" {
-		request.addParam("mpTimeout", mpTimeout)
+	if params.MpTimeout != "" {
+		request.addParam("mpTimeout", params.MpTimeout)
 	}
-	if dpBackupTimeout != "" {
-		request.addParam("dpBackupTimeout", dpBackupTimeout)
+	if params.DpBackupTimeout != "" {
+		request.addParam("dpBackupTimeout", params.DpBackupTimeout)
 	}
-	if decommissionDpLimit != "" {
-		request.addParam("decommissionLimit", decommissionDpLimit)
+	if params.DecommissionDpLimit != "" {
+		request.addParam("decommissionLimit", params.DecommissionDpLimit)
 	}
-	if decommissionDiskLimit != "" {
-		request.addParam("decommissionDiskLimit", decommissionDiskLimit)
+	if params.DecommissionDiskLimit != "" {
+		request.addParam("decommissionDiskLimit", params.DecommissionDiskLimit)
 	}
-	if decommissionFirstHostDiskParallelLimit != "" {
-		request.addParam("decommissionFirstHostDiskParallelLimit", decommissionFirstHostDiskParallelLimit)
+	if params.DecommissionFirstHostDiskParallelLimit != "" {
+		request.addParam("decommissionFirstHostDiskParallelLimit", params.DecommissionFirstHostDiskParallelLimit)
 	}
-	if forbidWriteOpOfProtoVersion0 != "" {
-		request.addParam("forbidWriteOpOfProtoVersion0", forbidWriteOpOfProtoVersion0)
+	if params.ForbidWriteOpOfProtoVersion0 != "" {
+		request.addParam("forbidWriteOpOfProtoVersion0", params.ForbidWriteOpOfProtoVersion0)
 	}
-	if mediaType != "" {
-		request.addParam("dataMediaType", mediaType)
+	if params.MediaType != "" {
+		request.addParam("dataMediaType", params.MediaType)
 	}
-	if handleTimeout != "" {
-		request.addParam("flashNodeHandleReadTimeout", handleTimeout)
+	if params.HandleTimeout != "" {
+		request.addParam("flashNodeHandleReadTimeout", params.HandleTimeout)
 	}
-	if readDataNodeTimeout != "" {
-		request.addParam("flashNodeReadDataNodeTimeout", readDataNodeTimeout)
+	if params.ReadDataNodeTimeout != "" {
+		request.addParam("flashNodeReadDataNodeTimeout", params.ReadDataNodeTimeout)
 	}
-	if rackAware != "" {
-		request.addParam("rackAware", rackAware)
+	if params.RackAware != "" {
+		request.addParam("rackAware", params.RackAware)
 	}
 	// Distribution optimization parameters
-	if distributionOptimizationConDpCnt != "" {
-		request.addParam("distributionOptimizationConDpCnt", distributionOptimizationConDpCnt)
+	if params.DistributionOptimizationConDpCnt != "" {
+		request.addParam("distributionOptimizationConDpCnt", params.DistributionOptimizationConDpCnt)
 	}
-	if distributionOptimizationThreshold != "" {
-		request.addParam("distributionOptimizationThreshold", distributionOptimizationThreshold)
+	if params.DistributionOptimizationThreshold != "" {
+		request.addParam("distributionOptimizationThreshold", params.DistributionOptimizationThreshold)
 	}
-	if flashHotKeyMissCount != "" {
-		request.addParam("flashHotKeyMissCount", flashHotKeyMissCount)
+	if params.FlashHotKeyMissCount != "" {
+		request.addParam("flashHotKeyMissCount", params.FlashHotKeyMissCount)
 	}
 	// remoteCache config
-	if remoteCacheTTL != "" {
-		request.addParamAny("remoteCacheTTL", remoteCacheTTL)
+	if params.RemoteCacheTTL != "" {
+		request.addParamAny("remoteCacheTTL", params.RemoteCacheTTL)
 	}
-	if remoteCacheReadTimeout != "" {
-		request.addParamAny("remoteCacheReadTimeout", remoteCacheReadTimeout)
+	if params.RemoteCacheReadTimeout != "" {
+		request.addParamAny("remoteCacheReadTimeout", params.RemoteCacheReadTimeout)
 	}
-	if remoteCacheMultiRead != "" {
-		request.addParamAny("remoteCacheMultiRead", remoteCacheMultiRead)
+	if params.RemoteCacheMultiRead != "" {
+		request.addParamAny("remoteCacheMultiRead", params.RemoteCacheMultiRead)
 	}
-	if flashNodeTimeoutCount != "" {
-		request.addParamAny("flashNodeTimeoutCount", flashNodeTimeoutCount)
+	if params.FlashNodeTimeoutCount != "" {
+		request.addParamAny("flashNodeTimeoutCount", params.FlashNodeTimeoutCount)
 	}
-	if remoteCacheSameZoneTimeout != "" {
-		request.addParamAny("remoteCacheSameZoneTimeout", remoteCacheSameZoneTimeout)
+	if params.RemoteCacheSameZoneTimeout != "" {
+		request.addParamAny("remoteCacheSameZoneTimeout", params.RemoteCacheSameZoneTimeout)
 	}
-	if remoteCacheSameRegionTimeout != "" {
-		request.addParamAny("remoteCacheSameRegionTimeout", remoteCacheSameRegionTimeout)
+	if params.RemoteCacheSameRegionTimeout != "" {
+		request.addParamAny("remoteCacheSameRegionTimeout", params.RemoteCacheSameRegionTimeout)
 	}
-	if flashReadFlowLimit != "" {
-		request.addParamAny("flashReadFlowLimit", flashReadFlowLimit)
+	if params.FlashReadFlowLimit != "" {
+		request.addParamAny("flashReadFlowLimit", params.FlashReadFlowLimit)
 	}
-	if flashWriteFlowLimit != "" {
-		request.addParamAny("flashWriteFlowLimit", flashWriteFlowLimit)
+	if params.FlashWriteFlowLimit != "" {
+		request.addParamAny("flashWriteFlowLimit", params.FlashWriteFlowLimit)
 	}
-	if flashKeyFlowLimit != "" {
-		request.addParamAny("flashKeyFlowLimit", flashKeyFlowLimit)
+	if params.FlashKeyFlowLimit != "" {
+		request.addParamAny("flashKeyFlowLimit", params.FlashKeyFlowLimit)
 	}
-	if remoteClientFlowLimit != "" {
-		request.addParamAny("remoteClientFlowLimit", remoteClientFlowLimit)
+	if params.RemoteClientFlowLimit != "" {
+		request.addParamAny("remoteClientFlowLimit", params.RemoteClientFlowLimit)
 	}
-	if enableMpDecommissionByLearner != "" {
-		request.addParam("enableMpDecommissionByLearner", enableMpDecommissionByLearner)
+	if params.EnableMpDecommissionByLearner != "" {
+		request.addParam("enableMpDecommissionByLearner", params.EnableMpDecommissionByLearner)
 	}
-	if learnerRecoverTimeoutSeconds != "" {
-		request.addParam("learnerRecoverTimeoutSeconds", learnerRecoverTimeoutSeconds)
+	if params.LearnerRecoverTimeoutSeconds != "" {
+		request.addParam("learnerRecoverTimeoutSeconds", params.LearnerRecoverTimeoutSeconds)
 	}
-	if dpLimitSsdBaseCount != "" {
-		request.addParamAny("dpLimitSsdBaseCount", dpLimitSsdBaseCount)
+	if params.DpLimitSsdBaseCount != "" {
+		request.addParamAny("dpLimitSsdBaseCount", params.DpLimitSsdBaseCount)
 	}
-	if dpLimitSsdFactor != "" {
-		request.addParamAny("dpLimitSsdFactor", dpLimitSsdFactor)
+	if params.DpLimitSsdFactor != "" {
+		request.addParamAny("dpLimitSsdFactor", params.DpLimitSsdFactor)
 	}
-	if dpLimitHddBaseCount != "" {
-		request.addParamAny("dpLimitHddBaseCount", dpLimitHddBaseCount)
+	if params.DpLimitHddBaseCount != "" {
+		request.addParamAny("dpLimitHddBaseCount", params.DpLimitHddBaseCount)
 	}
-	if dpLimitHddFactor != "" {
-		request.addParamAny("dpLimitHddFactor", dpLimitHddFactor)
+	if params.DpLimitHddFactor != "" {
+		request.addParamAny("dpLimitHddFactor", params.DpLimitHddFactor)
 	}
-	if metaAutoAddReplicaLimit != "" {
-		request.addParam("metaAutoAddReplicaLimit", metaAutoAddReplicaLimit)
+	if params.MetaAutoAddReplicaLimit != "" {
+		request.addParam("metaAutoAddReplicaLimit", params.MetaAutoAddReplicaLimit)
 	}
-	if metaManualDecommissionLimit != "" {
-		request.addParam("metaManualDecommissionLimit", metaManualDecommissionLimit)
+	if params.MetaManualDecommissionLimit != "" {
+		request.addParam("metaManualDecommissionLimit", params.MetaManualDecommissionLimit)
 	}
-	if metaBalanceLimit != "" {
-		request.addParam("metaBalanceLimit", metaBalanceLimit)
+	if params.MetaBalanceLimit != "" {
+		request.addParam("metaBalanceLimit", params.MetaBalanceLimit)
 	}
-	if metaManualAddReplicaLimit != "" {
-		request.addParam("metaManualAddReplicaLimit", metaManualAddReplicaLimit)
+	if params.MetaManualAddReplicaLimit != "" {
+		request.addParam("metaManualAddReplicaLimit", params.MetaManualAddReplicaLimit)
+	}
+	if params.AutoFixSelectTag != "" {
+		request.addParam("autoFixSelectTag", params.AutoFixSelectTag)
+	}
+	if params.DefaultDpSelectTag != "" {
+		request.addParam("defaultDpSelectTag", params.DefaultDpSelectTag)
+	}
+	if params.DefaultMpSelectTag != "" {
+		request.addParam("defaultMpSelectTag", params.DefaultMpSelectTag)
 	}
 	_, err = api.mc.serveRequest(request)
 	return
@@ -1348,4 +1409,15 @@ func (api *AdminAPI) CancelDeleteFlashTopo(name string) (result string, err erro
 		return
 	}
 	return string(data), nil
+}
+
+func (api *AdminAPI) GetSelectTagSummary() (summary *proto.SelectTagSummary, err error) {
+	summary = &proto.SelectTagSummary{}
+	err = api.mc.requestWith(summary, newRequest(get, proto.AdminGetSelectTagSummary).Header(api.h))
+	return
+}
+
+func (api *AdminAPI) ClearSelectTagFailedKeys() (err error) {
+	err = api.mc.request(newRequest(get, proto.AdminClearSelectTagFailedKeys).Header(api.h))
+	return
 }

@@ -107,6 +107,7 @@ type DataNodeInfo struct {
 	MediaType                             uint32
 	DiskOpLogs                            []OpLog
 	DpOpLogs                              []OpLog
+	SelectTag                             string
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -162,6 +163,7 @@ type MetaReplicaInfo struct {
 	DentryCount     uint64
 	ReadOnlyReasons uint32
 	StoreMode       StoreMode
+	SelectTag       string
 }
 
 // ClusterView provides the view of a cluster.
@@ -236,6 +238,9 @@ type ClusterView struct {
 	FlashWriteFlowLimit                       int64
 	FlashKeyFlowLimit                         int64
 	RemoteClientFlowLimit                     int64
+	DefaultDpSelectTag                        string
+	DefaultMpSelectTag                        string
+	AutoFixSelectTag                          bool
 }
 
 // ClusterNode defines the structure of a cluster node

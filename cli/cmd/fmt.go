@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -113,6 +114,9 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  LegacyDataMediaType                      : %v\n", cv.LegacyDataMediaType))
 	sb.WriteString(fmt.Sprintf("  RaftPartitionCanUsingDifferentPortEnabled: %v\n", cv.RaftPartitionCanUsingDifferentPortEnabled))
 	sb.WriteString(fmt.Sprintf("  RackAwareLevel                           : %v\n", cv.RackAwareLevel.String()))
+	sb.WriteString(fmt.Sprintf("  AutoFixSelectTag                         : %v\n", cv.AutoFixSelectTag))
+	sb.WriteString(fmt.Sprintf("  DefaultDpSelectTag                       : %v\n", cv.DefaultDpSelectTag))
+	sb.WriteString(fmt.Sprintf("  DefaultMpSelectTag                       : %v\n", cv.DefaultMpSelectTag))
 
 	sb.WriteString(fmt.Sprintf("  FlashNodeHandleReadTimeout       : %v ms\n", cv.FlashNodeHandleReadTimeout))
 	sb.WriteString(fmt.Sprintf("  FlashNodeReadDataNodeTimeout     : %v ms\n", cv.FlashNodeReadDataNodeTimeout))
@@ -222,10 +226,10 @@ func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) stri
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v 	%-8v   %-8v     %-24v"
+var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v 	%-8v   %-8v     %-24v     %-24v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "SelectTag")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
@@ -233,7 +237,7 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
 			view.Rack,
-			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0))
+			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), view.SelectTag)
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
@@ -243,6 +247,7 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	sb.WriteString(fmt.Sprintf("  MEDIA   : %v", formatNodeMediaType(view.MediaType)))
 	sb.WriteString(fmt.Sprintf("  Rack    : %v", view.Rack))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
+	sb.WriteString(fmt.Sprintf("  SelectTag : %v", view.SelectTag))
 	return sb.String()
 }
 
@@ -350,6 +355,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Default store mode              : %v\n", svv.DefaultStoreMode.Str()))
 	sb.WriteString(fmt.Sprintf("  RocksdbMpReplicaCount           : %v\n", svv.RocksdbMpCount))
 	sb.WriteString(fmt.Sprintf("  MemoryMpReplicaCount            : %v\n", svv.MemoryMpCount))
+	sb.WriteString(fmt.Sprintf("  DpSelectTag                     : %v\n", svv.DpSelectTag))
+	sb.WriteString(fmt.Sprintf("  MpSelectTag                     : %v\n", svv.MpSelectTag))
 	return sb.String()
 }
 
@@ -1160,7 +1167,8 @@ func formatMetaReplicaTableHeader() string {
 func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(metaReplicaTableRowPattern, formatAddr(replica.Addr, replica.DomainAddr), replica.MaxInodeID,
-			replica.IsLeader, replica.IsLearner, formatMetaPartitionStatus(replica.Status), replica.StoreMode.Str(), formatTime(replica.ReportTime))
+			replica.IsLeader, replica.IsLearner, formatMetaPartitionStatus(replica.Status), replica.StoreMode.Str(),
+			formatTime(replica.ReportTime))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, formatAddr(replica.Addr, replica.DomainAddr)))
@@ -1184,10 +1192,10 @@ func parseMpReadOnlyReasons(mask uint32) []string {
 	return reasons
 }
 
-var peerTableRowPattern = "%-6v    %-18v    %-15v   %-12v   %-12v  %-12v"
+var peerTableRowPattern = "%-6v    %-18v    %-15v   %-12v   %-12v  %-12v  %-12v"
 
 func formatPeerTableHeader() string {
-	return fmt.Sprintf(peerTableRowPattern, "ID", "ADDR", "HEARTBEATPORT", "REPLICAPORT", "ISLEARNER", "MANUALPROMOTE")
+	return fmt.Sprintf(peerTableRowPattern, "ID", "ADDR", "HEARTBEATPORT", "REPLICAPORT", "ISLEARNER", "MANUALPROMOTE", "SELECTTAG")
 }
 
 func formatPeer(peer proto.Peer) string {
@@ -1199,19 +1207,20 @@ func formatPeer(peer proto.Peer) string {
 	if peer.Type == raftProto.PeerLearner {
 		isLearnerStr = "true"
 	}
-	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr, peer.HeartbeatPort, peer.ReplicaPort, isLearnerStr, manualPromoteStr)
+	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr, peer.HeartbeatPort, peer.ReplicaPort, isLearnerStr, manualPromoteStr, peer.SelectTag)
 }
 
-var dataNodeDetailTableRowPattern = "%-6v    %-10v    %-65v    %-10v    %-10v    %-10v    %-10v"
+var dataNodeDetailTableRowPattern = "%-6v    %-10v    %-65v    %-10v    %-10v    %-10v    %-10v    %-10v"
 
 func formatDataNodeDetailTableHeader() string {
-	return fmt.Sprintf(dataNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME")
+	return fmt.Sprintf(dataNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME", "SelectTag")
 }
 
 func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	if rowTable {
 		return fmt.Sprintf(dataNodeDetailTableRowPattern, dn.ID, dn.ZoneName, formatAddr(dn.Addr, dn.DomainAddr),
-			formatSize(dn.Used), formatSize(dn.Total), formatNodeStatus(dn.IsActive), formatTimeToString(dn.ReportTime))
+			formatSize(dn.Used), formatSize(dn.Total), formatNodeStatus(dn.IsActive), formatTimeToString(dn.ReportTime),
+			dn.SelectTag)
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                        : %v\n", dn.ID))
@@ -1242,6 +1251,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Can alloc partition       : %v\n", dn.CanAllocPartition))
 	sb.WriteString(fmt.Sprintf("  Max partition count       : %v\n", dn.MaxDpCntLimit))
 	sb.WriteString(fmt.Sprintf("  CpuUtil                   : %.1f%%\n", dn.CpuUtil))
+	sb.WriteString(fmt.Sprintf("  SelectTag                 : %v\n", dn.SelectTag))
 	sb.WriteString("  IoUtils             :\n")
 	for device, used := range dn.IoUtils {
 		sb.WriteString(fmt.Sprintf("                        %v:%.1f%%\n", device, used))
@@ -1958,4 +1968,16 @@ func formatMetaPartitionLearnerInfoRow(partition *proto.MetaPartitionInfo, manua
 	}
 	return fmt.Sprintf(partitionLearnerTablePattern,
 		partition.PartitionID, partition.VolName, strings.Join(normals, ", "), strings.Join(learners, ", "))
+}
+
+var selectTagPattern = regexp.MustCompile("^[0-9A-Za-z]{1,49}$")
+
+func ValidateSelectTag(selectTag string) bool {
+	tags := strings.Split(selectTag, ",")
+	for _, tag := range tags {
+		if !selectTagPattern.MatchString(tag) {
+			return false
+		}
+	}
+	return true
 }

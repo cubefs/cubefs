@@ -1,6 +1,9 @@
 package proto
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type MrBalanceInfo struct {
 	Source       string    `json:"source" bson:"source"`
@@ -66,6 +69,7 @@ type ZonePressureView struct {
 }
 
 type ClusterPlan struct {
+	sync.RWMutex                                 // 保护 Low 和 RocksdbLow map 的并发访问
 	Low             map[string]*ZonePressureView `json:"-" bson:"-"`
 	RocksdbLow      map[string]*ZonePressureView `json:"-" bson:"-"`
 	Plan            []*MetaBalancePlan           `json:"plan" bson:"plan"`
@@ -159,4 +163,22 @@ type PromoteLearnerPlan struct {
 	Expire     time.Time                   `json:"expire"`
 	Status     string                      `json:"status"`
 	Msg        string                      `json:"msg"`
+}
+
+type SelectTagSummary struct {
+	AutoFixSelectTag    bool     `json:"autoFixSelectTag"`
+	ClusterDpSelectTag  string   `json:"clusterDpSelectTag"`
+	ClusterMpSelectTag  string   `json:"clusterMpSelectTag"`
+	VolumeNum           int      `json:"volumeNum"`
+	VolWithTagNum       int      `json:"volumeWithTagNum"`
+	VolWithSelectTag    []string `json:"volWithSelectTag"`
+	MismatchDpNum       int      `json:"mismatchDpNum"`
+	DecommissionDpNum   int      `json:"decommissionDpNum"`
+	MismatchMpNum       int      `json:"mismatchMpNum"`
+	MpPlanStatus        string   `json:"mpPlanStatus"`
+	MigratingDps        []uint64 `json:"migratingDps"`
+	MigratingMps        []uint64 `json:"migratingMps"`
+	DpCheckThreadStatus string   `json:"dpCheckThreadStatus"`
+	MpCheckThreadStatus string   `json:"mpCheckThreadStatus"`
+	MpFailedKeys        []string `json:"mpFailedKeys"`
 }

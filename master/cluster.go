@@ -569,6 +569,8 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToDistributionOptimization()
 	c.scheduleToUpdateDistributionOptimizationStatus()
 	c.scheduleToRecalculatePreReservedSpace()
+	c.scheduleToCheckDpSelectTag()
+	c.scheduleToCheckMpSelectTag()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -3233,6 +3235,8 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		excludeHosts:    dp.Hosts,
 		rackLevel:       c.getRackAwareLevel(),
 		excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, dp.Hosts, srcAddr),
+		selectType:      proto.SelectTypeTag,
+		selectTag:       c.GetDataNodeSelectTag(srcAddr),
 	}
 
 	// delete if not normal data partition
@@ -4970,6 +4974,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0, Rack: dataNode.Rack,
 			NodeSetID: dataNode.NodeSetID,
 			ZoneName:  dataNode.ZoneName,
+			SelectTag: dataNode.SelectTag,
 		})
 		return true
 	})
@@ -6167,7 +6172,16 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 					continue
 				}
 				triggerCondition := fmt.Sprintf("autoDecommission_diskErrDp(%v)", dp.PartitionID)
-				err = c.markDecommissionDataPartition(dp, dataNode, 0, false, AutoDecommission, highPriorityDecommissionWeight, nil, nil, triggerCondition)
+				err = c.markDecommissionDataPartition(dp, dataNode, &DecommissionMarkParam{
+					DstNodeSetID:     0,
+					RaftForce:        false,
+					MigrateType:      AutoDecommission,
+					SelectTag:        "",
+					Weight:           highPriorityDecommissionWeight,
+					SrcAddrs:         nil,
+					DstAddrs:         nil,
+					TriggerCondition: triggerCondition,
+				})
 				if err != nil && !strings.Contains(err.Error(), proto.ErrPerformingDecommission.Error()) {
 					log.LogErrorf("[handleDataNodeBadDisk] failed to decommssion dp(%v) on data node(%v) disk(%v), err(%v)", dataNode.Addr, disk.DiskPath, dp.PartitionID, err)
 					continue
@@ -6294,8 +6308,21 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			}
 		}
 		triggerCondition := fmt.Sprintf("disk(%v)_%v_dp(%v)", disk.SrcAddr+"_"+disk.DiskPath, disk.Type, dp.PartitionID)
-		if err = dp.MarkDecommissionStatus(node.Addr, disk.DstAddr, disk.DiskPath, 0, disk.DecommissionRaftForce,
-			disk.DecommissionTerm, disk.Type, disk.DecommissionWeight, c, nil, nil, triggerCondition); err != nil {
+		statusParam := &DecommissionStatusParam{
+			SrcAddr:          node.Addr,
+			DstAddr:          disk.DstAddr,
+			SrcDisk:          disk.DiskPath,
+			DstNodeSetID:     0,
+			RaftForce:        disk.DecommissionRaftForce,
+			Term:             disk.DecommissionTerm,
+			MigrateType:      disk.Type,
+			SelectTag:        "",
+			Weight:           disk.DecommissionWeight,
+			SrcAddrs:         nil,
+			DstAddrs:         nil,
+			TriggerCondition: triggerCondition,
+		}
+		if err = dp.MarkDecommissionStatus(statusParam, c); err != nil {
 			if disk.DstAddr != "" {
 				c.releaseDataReservedResource([]string{disk.DstAddr}, dp)
 			}
@@ -7115,7 +7142,10 @@ func (c *Cluster) rangeAllParitions(f func(d *DataPartition) bool) {
 	}
 }
 
-func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode, dstNodeSetID uint64, raftForce bool, migrateType uint32, weight int, srcAddrs []string, dstAddrs []string, triggerCondition string) (err error) {
+func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode, param *DecommissionMarkParam) (err error) {
+	if param == nil {
+		return errors.NewErrorf("decommission param is nil")
+	}
 	addr := src.Addr
 	replica, err := dp.getReplica(addr)
 	if err != nil {
@@ -7133,12 +7163,26 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 		return
 	}
 
-	if err = dp.MarkDecommissionStatus(addr, "", replica.DiskPath, dstNodeSetID, raftForce, uint64(time.Now().Unix()), migrateType, weight, c, srcAddrs, dstAddrs, triggerCondition); err != nil {
+	statusParam := &DecommissionStatusParam{
+		SrcAddr:          addr,
+		DstAddr:          "",
+		SrcDisk:          replica.DiskPath,
+		DstNodeSetID:     param.DstNodeSetID,
+		RaftForce:        param.RaftForce,
+		Term:             uint64(time.Now().Unix()),
+		MigrateType:      param.MigrateType,
+		SelectTag:        param.SelectTag,
+		Weight:           param.Weight,
+		SrcAddrs:         param.SrcAddrs,
+		DstAddrs:         param.DstAddrs,
+		TriggerCondition: param.TriggerCondition,
+	}
+	if err = dp.MarkDecommissionStatus(statusParam, c); err != nil {
 		if !strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) && !strings.Contains(err.Error(), proto.ErrDecommissionTaskEnqueue.Error()) &&
 			!strings.Contains(err.Error(), proto.ErrWaitForAutoAddReplica.Error()) {
 			dp.DecommissionSrcAddr = addr
 			dp.DecommissionSrcDiskPath = replica.DiskPath
-			dp.markRollbackFailed(false, triggerCondition, err.Error())
+			dp.markRollbackFailed(false, param.TriggerCondition, err.Error())
 			dp.DecommissionErrorMessage = err.Error()
 			c.syncUpdateDataPartition(dp)
 			dp.addRetryTimesByDiskPath(dp.DecommissionSrcAddr + "_" + dp.DecommissionSrcDiskPath)

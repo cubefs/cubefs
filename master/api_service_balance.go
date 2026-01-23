@@ -1026,3 +1026,28 @@ func (m *Server) decommissionRocksdbDir(w http.ResponseWriter, r *http.Request) 
 
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }
+
+func (m *Server) getSelectTagSummary(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetSelectTagSummary))
+	var err error
+	defer func() {
+		doStatAndMetric(proto.AdminGetSelectTagSummary, metric, err, nil)
+	}()
+
+	summary, err := m.cluster.getSelectTagSummary()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(summary))
+}
+
+func (m *Server) clearSelectTagFailedKeys(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminClearSelectTagFailedKeys))
+	defer func() {
+		doStatAndMetric(proto.AdminClearSelectTagFailedKeys, metric, nil, nil)
+	}()
+
+	MpFailedKeys = make([]string, 0)
+	sendOkReply(w, r, newSuccessHTTPReply("Clear select tag failed keys successfully."))
+}

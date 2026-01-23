@@ -1078,6 +1078,9 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaManualDecommissionLimit:               m.cluster.MetaManualDecommissionLimit.Load(),
 		MetaBalanceLimit:                          m.cluster.MetaBalanceLimit.Load(),
 		MetaManualAddReplicaLimit:                 m.cluster.MetaManualAddReplicaLimit.Load(),
+		DefaultDpSelectTag:                        m.cluster.cfg.DefaultDpSelectTag,
+		DefaultMpSelectTag:                        m.cluster.cfg.DefaultMpSelectTag,
+		AutoFixSelectTag:                          m.cluster.cfg.AutoFixSelectTag,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -2523,7 +2526,16 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	triggerCondition := fmt.Sprintf("manualDecommission_dp(%v)", dp.PartitionID)
-	err = m.cluster.markDecommissionDataPartition(dp, node, dstNodeSet, raftForce, uint32(decommissionType), weight, nil, nil, triggerCondition)
+	err = m.cluster.markDecommissionDataPartition(dp, node, &DecommissionMarkParam{
+		DstNodeSetID:     dstNodeSet,
+		RaftForce:        raftForce,
+		MigrateType:      uint32(decommissionType),
+		SelectTag:        "",
+		Weight:           weight,
+		SrcAddrs:         nil,
+		DstAddrs:         nil,
+		TriggerCondition: triggerCondition,
+	})
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -3141,6 +3153,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.dpsSelectTag = r.FormValue(DpSelectTagKey)
+	req.mpsSelectTag = r.FormValue(MpSelectTagKey)
+
 	newArgs := getVolVarargs(vol)
 	if err = parseArgs(r,
 		newArg("remoteCacheEnable", &newArgs.remoteCacheEnable).OmitEmpty(),
@@ -3215,6 +3230,20 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.enableAutoMpMetaRepair = req.enableAutoMpMetaRepair
 	newArgs.volStorageClass = req.volStorageClass
 	newArgs.forbidWriteOpOfProtoVer0 = req.forbidWriteOpOfProtoVer0
+	if req.dpsSelectTag != "" {
+		if req.dpsSelectTag == EmptySelectTag {
+			newArgs.DpSelectTag = DefaultSelectTag
+		} else {
+			newArgs.DpSelectTag = req.dpsSelectTag
+		}
+	}
+	if req.mpsSelectTag != "" {
+		if req.mpsSelectTag == EmptySelectTag {
+			newArgs.MpSelectTag = DefaultSelectTag
+		} else {
+			newArgs.MpSelectTag = req.mpsSelectTag
+		}
+	}
 
 	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v], FR[%v], metaFR[%v], MMR[%v]",
 		req.name, req.zoneName, vol.zoneName, req.replicaNum, req.followerRead, req.metaFollowerRead, req.maximallyRead)
@@ -3795,6 +3824,8 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
 		DefaultStoreMode:             vol.DefaultStoreMode,
+		DpSelectTag:                  vol.DpSelectTag,
+		MpSelectTag:                  vol.MpSelectTag,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)
@@ -3963,6 +3994,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		MediaType:                             dataNode.MediaType,
 		DiskOpLogs:                            dataNode.DiskOpLogs,
 		DpOpLogs:                              dataNode.DpOpLogs,
+		SelectTag:                             dataNode.SelectTag,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -4669,6 +4701,37 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[metaManualAddReplicaLimitKey]; ok {
 		if limit, ok := val.(uint32); ok {
 			if err = m.cluster.SetMetaPartitionDecommissionLimit(proto.ManualDecommission, limit); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[cfgAutoFixSelectTag]; ok {
+		if autoFixSelectTag, ok := val.(string); ok {
+			if err = m.setConfig(cfgAutoFixSelectTag, autoFixSelectTag); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[cfgDefaultDpSelectTag]; ok {
+		if defaultDpSelectTag, ok := val.(string); ok {
+			if defaultDpSelectTag == EmptySelectTag {
+				defaultDpSelectTag = DefaultSelectTag
+			}
+			if err = m.setConfig(cfgDefaultDpSelectTag, defaultDpSelectTag); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+	if val, ok := params[cfgDefaultMpSelectTag]; ok {
+		if defaultMpSelectTag, ok := val.(string); ok {
+			if defaultMpSelectTag == EmptySelectTag {
+				defaultMpSelectTag = DefaultSelectTag
+			}
+			if err = m.setConfig(cfgDefaultMpSelectTag, defaultMpSelectTag); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -6087,9 +6150,10 @@ func (m *Server) checkInvalidIDNodes(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) updateDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr string
-		id       uint64
-		err      error
+		nodeAddr  string
+		id        uint64
+		err       error
+		selectTag string
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateDataNode))
 	defer func() {
@@ -6097,10 +6161,33 @@ func (m *Server) updateDataNode(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AdminUpdateDataNode, fmt.Sprintf("update datanode %v", nodeAddr), err)
 	}()
 
-	if nodeAddr, id, err = parseRequestForUpdateDataNode(r); err != nil {
+	if nodeAddr, id, selectTag, err = parseRequestForUpdateNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if selectTag != "" {
+		value, ok := m.cluster.dataNodes.Load(nodeAddr)
+		if !ok {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeDataNodeNotExists, Msg: fmt.Sprintf("datanode %v not found", nodeAddr)})
+			return
+		}
+		dataNode := value.(*DataNode)
+		oldTag := dataNode.SelectTag
+		if selectTag == EmptySelectTag {
+			selectTag = DefaultSelectTag
+		}
+		dataNode.SelectTag = selectTag
+		err = m.cluster.syncUpdateDataNode(dataNode)
+		if err != nil {
+			dataNode.SelectTag = oldTag
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update datanode %v select tag %v successfully", nodeAddr, selectTag)))
+		return
+	}
+
 	if err = m.cluster.updateDataNodeBaseInfo(nodeAddr, id); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -6121,7 +6208,7 @@ func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AdminUpdateMetaNode, fmt.Sprintf("update metanode %v, id: %v, tag: %v", nodeAddr, id, selectTag), err)
 	}()
 
-	if nodeAddr, id, selectTag, err = parseRequestForUpdateMetaNode(r); err != nil {
+	if nodeAddr, id, selectTag, err = parseRequestForUpdateNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -6134,6 +6221,9 @@ func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 		}
 		metaNode := value.(*MetaNode)
 		oldTag := metaNode.SelectTag
+		if selectTag == EmptySelectTag {
+			selectTag = DefaultSelectTag
+		}
 		metaNode.SelectTag = selectTag
 		err = m.cluster.syncUpdateMetaNode(metaNode)
 		if err != nil {
@@ -6141,6 +6231,8 @@ func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update metanode %v select tag %v successfully", nodeAddr, selectTag)))
+		return
 	}
 
 	if id != 0 {
@@ -7103,7 +7195,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			IsRecover:                 mp.IsRecover.Load(),
 			RestoreReplicaMeta:        atomic.LoadUint32(&mp.RestoreReplicaMeta),
 			Hosts:                     mp.Hosts,
-			Peers:                     mp.Peers,
+			Peers:                     make([]proto.Peer, len(mp.Peers)),
 			Zones:                     zones,
 			NodeSets:                  nodeSets,
 			Racks:                     racks,
@@ -7124,6 +7216,15 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			RecoverFailCount:          mp.RecoverFailCount,
 			RecoverRetryTime:          mp.RecoverRetryTime,
 			RecoverState:              mp.RecoverState,
+		}
+		copy(mpInfo.Peers, mp.Peers)
+		for i, peer := range mpInfo.Peers {
+			for _, replica := range mp.Replicas {
+				if replica.Addr == peer.Addr {
+					mpInfo.Peers[i].SelectTag = formatMetaReplicaSelectTag(peer.SelectTag, replica.metaNode)
+					break
+				}
+			}
 		}
 		return mpInfo
 	}
@@ -8176,6 +8277,9 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		oldInt64Value            int64
 		storeMode                int
 		oldStoreMode             proto.StoreMode
+		defaultSelectTag         string
+		oldSelectTag             string
+		autoFixSelectTag         bool
 	)
 
 	switch key {
@@ -8283,6 +8387,31 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		}
 		oldStoreMode = m.config.DefaultVolStoreMode
 		m.config.DefaultVolStoreMode = proto.StoreMode(storeMode)
+
+	case cfgDefaultDpSelectTag:
+		defaultSelectTag = value
+		oldSelectTag = m.config.DefaultDpSelectTag
+		if defaultSelectTag == EmptySelectTag {
+			defaultSelectTag = DefaultSelectTag
+		}
+		m.config.DefaultDpSelectTag = defaultSelectTag
+
+	case cfgDefaultMpSelectTag:
+		defaultSelectTag = value
+		oldSelectTag = m.config.DefaultMpSelectTag
+		if defaultSelectTag == EmptySelectTag {
+			defaultSelectTag = DefaultSelectTag
+		}
+		m.config.DefaultMpSelectTag = defaultSelectTag
+
+	case cfgAutoFixSelectTag:
+		autoFixSelectTag, err = strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		oldBoolValue = m.config.AutoFixSelectTag
+		m.config.AutoFixSelectTag = autoFixSelectTag
+
 	default:
 		err = keyNotFound("config")
 		return err
@@ -8316,6 +8445,12 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.config.remoteClientFlowLimit = oldInt64Value
 		case cfgDefaultVolStoreMode:
 			m.config.DefaultVolStoreMode = oldStoreMode
+		case cfgDefaultDpSelectTag:
+			m.config.DefaultDpSelectTag = oldSelectTag
+		case cfgDefaultMpSelectTag:
+			m.config.DefaultMpSelectTag = oldSelectTag
+		case cfgAutoFixSelectTag:
+			m.config.AutoFixSelectTag = oldBoolValue
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
@@ -8355,6 +8490,12 @@ func (m *Server) getConfig(key string) (value string, err error) {
 		value = strconv.FormatInt(m.config.remoteClientFlowLimit, 10)
 	case cfgDefaultVolStoreMode:
 		value = strconv.Itoa(int(m.config.DefaultVolStoreMode))
+	case cfgDefaultDpSelectTag:
+		value = m.config.DefaultDpSelectTag
+	case cfgDefaultMpSelectTag:
+		value = m.config.DefaultMpSelectTag
+	case cfgAutoFixSelectTag:
+		value = strconv.FormatBool(m.config.AutoFixSelectTag)
 	default:
 		err = keyNotFound("config")
 	}

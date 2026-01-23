@@ -444,3 +444,7 @@ func (metaNode *MetaNode) rocksdbDiskKeyNumUnderMax() bool {
 
 	return false
 }
+
+func (metaNode *MetaNode) GetSelectTag() string {
+	return metaNode.SelectTag
+}

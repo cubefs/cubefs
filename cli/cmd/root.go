@@ -85,6 +85,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 		newFlashGroupCmd(client),
 		newFlashTopoCmd(client),
 		newBalanceCmd(client),
+		newSelectTagCmd(client),
 	)
 	return cmd
 }

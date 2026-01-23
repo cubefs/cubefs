@@ -332,6 +332,9 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	optDpLimitSsdFactor := ""
 	optDpLimitHddBaseCount := ""
 	optDpLimitHddFactor := ""
+	optAutoFixSelectTag := ""
+	optDefaultDpSelectTag := ""
+	optDefaultMpSelectTag := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -676,19 +679,80 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
+			if optAutoFixSelectTag != "" {
+				if _, err = strconv.ParseBool(optAutoFixSelectTag); err != nil {
+					err = fmt.Errorf("param autoFixSelectTag(%v) should be true or false", optAutoFixSelectTag)
+					return
+				}
+			}
+			if optDefaultDpSelectTag != "" {
+				if !ValidateSelectTag(optDefaultDpSelectTag) {
+					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+					return
+				}
+			}
+			if optDefaultMpSelectTag != "" {
+				if !ValidateSelectTag(optDefaultMpSelectTag) {
+					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+					return
+				}
+			}
 
-			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
-				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
-				autoDecommissionDisk, autoDecommissionDiskInterval,
-				autoDpMetaRepair, autoDpMetaRepairParallelCnt, autoMpMetaRepair, autoMpMetaRepairParallelCnt, autoDistributionOptimization,
-				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit, decommissionFirstHostDiskParallelLimit,
-				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout, rackAware,
-				distributionOptimizationConDpCnt, distributionOptimizationThreshold,
-				optRcTTL, optRcReadTimeout, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, optFlashHotKeyMissCount, optFlashReadFlowLimit, optFlashWriteFlowLimit, optFlashKeyFlowLimit, optRemoteClientFlowLimit,
-				enableMpDecommissionByLearner, learnerRecoverTimeoutSeconds,
-				metaAutoAddReplicaLimit, metaManualDecommissionLimit, metaBalanceLimit, metaManualAddReplicaLimit,
-				optDpLimitSsdBaseCount, optDpLimitSsdFactor, optDpLimitHddBaseCount, optDpLimitHddFactor); err != nil {
+			if err = client.AdminAPI().SetClusterParas(&master.ClusterParas{
+				BatchCount:                             optDelBatchCount,
+				MarkDeleteRate:                         optMarkDeleteRate,
+				DeleteWorkerSleepMs:                    optDelWorkerSleepMs,
+				AutoRepairRate:                         optAutoRepairRate,
+				LoadFactor:                             optLoadFactor,
+				MaxDpCntLimit:                          opMaxDpCntLimit,
+				MaxMpCntLimit:                          opMaxMpCntLimit,
+				ClientIDKey:                            clientIDKey,
+				EnableAutoDecommissionDisk:             autoDecommissionDisk,
+				AutoDecommissionDiskInterval:           autoDecommissionDiskInterval,
+				EnableAutoDpMetaRepair:                 autoDpMetaRepair,
+				AutoDpMetaRepairParallelCnt:            autoDpMetaRepairParallelCnt,
+				EnableAutoMpMetaRepair:                 autoMpMetaRepair,
+				AutoMpMetaRepairParallelCnt:            autoMpMetaRepairParallelCnt,
+				AutoDistributionOptimization:           autoDistributionOptimization,
+				DpRepairTimeout:                        dpRepairTimeout,
+				DpTimeout:                              dpTimeout,
+				MpTimeout:                              mpTimeout,
+				DpBackupTimeout:                        dpBackupTimeout,
+				DecommissionDpLimit:                    decommissionDpLimit,
+				DecommissionDiskLimit:                  decommissionDiskLimit,
+				DecommissionFirstHostDiskParallelLimit: decommissionFirstHostDiskParallelLimit,
+				ForbidWriteOpOfProtoVersion0:           forbidWriteOpOfProtoVersion0,
+				MediaType:                              dataMediaType,
+				HandleTimeout:                          handleTimeout,
+				ReadDataNodeTimeout:                    readDataNodeTimeout,
+				RackAware:                              rackAware,
+				DistributionOptimizationConDpCnt:       distributionOptimizationConDpCnt,
+				DistributionOptimizationThreshold:      distributionOptimizationThreshold,
+				RemoteCacheTTL:                         optRcTTL,
+				RemoteCacheReadTimeout:                 optRcReadTimeout,
+				RemoteCacheMultiRead:                   optRemoteCacheMultiRead,
+				FlashNodeTimeoutCount:                  optFlashNodeTimeoutCount,
+				RemoteCacheSameZoneTimeout:             optRemoteCacheSameZoneTimeout,
+				RemoteCacheSameRegionTimeout:           optRemoteCacheSameRegionTimeout,
+				FlashHotKeyMissCount:                   optFlashHotKeyMissCount,
+				FlashReadFlowLimit:                     optFlashReadFlowLimit,
+				FlashWriteFlowLimit:                    optFlashWriteFlowLimit,
+				FlashKeyFlowLimit:                      optFlashKeyFlowLimit,
+				RemoteClientFlowLimit:                  optRemoteClientFlowLimit,
+				EnableMpDecommissionByLearner:          enableMpDecommissionByLearner,
+				LearnerRecoverTimeoutSeconds:           learnerRecoverTimeoutSeconds,
+				MetaAutoAddReplicaLimit:                metaAutoAddReplicaLimit,
+				MetaManualDecommissionLimit:            metaManualDecommissionLimit,
+				MetaBalanceLimit:                       metaBalanceLimit,
+				MetaManualAddReplicaLimit:              metaManualAddReplicaLimit,
+				DpLimitSsdBaseCount:                    optDpLimitSsdBaseCount,
+				DpLimitSsdFactor:                       optDpLimitSsdFactor,
+				DpLimitHddBaseCount:                    optDpLimitHddBaseCount,
+				DpLimitHddFactor:                       optDpLimitHddFactor,
+				AutoFixSelectTag:                       optAutoFixSelectTag,
+				DefaultDpSelectTag:                     optDefaultDpSelectTag,
+				DefaultMpSelectTag:                     optDefaultMpSelectTag,
+			}); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -755,6 +819,9 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDpLimitSsdFactor, CliFlagDpLimitSsdFactor, "", "DP limit SSD factor per 120GB")
 	cmd.Flags().StringVar(&optDpLimitHddBaseCount, CliFlagDpLimitHddBaseCount, "", "DP limit HDD base count")
 	cmd.Flags().StringVar(&optDpLimitHddFactor, CliFlagDpLimitHddFactor, "", "DP limit HDD factor per 120GB")
+	cmd.Flags().StringVar(&optAutoFixSelectTag, CliFlagAutoFixSelectTag, "", "Auto fix select tag(true|false)")
+	cmd.Flags().StringVar(&optDefaultDpSelectTag, CliFlagDefaultDpSelectTag, "", "Default DP select tag. split with ','. 'null' means null string")
+	cmd.Flags().StringVar(&optDefaultMpSelectTag, CliFlagDefaultMpSelectTag, "", "Default MP select tag. split with ','. 'null' means null string")
 
 	return cmd
 }

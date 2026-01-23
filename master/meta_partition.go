@@ -104,7 +104,7 @@ type MetaPartition struct {
 	DecommissionType   uint32
 }
 
-func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
+func (mp *MetaPartition) newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
 	mr = &MetaReplica{start: start, end: end, nodeID: metaNode.ID, Addr: metaNode.Addr}
 	mr.metaNode = metaNode
 	mr.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
@@ -456,7 +456,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	defer mp.Unlock()
 	mr, err := mp.getMetaReplica(metaNode.Addr)
 	if err != nil {
-		mr = newMetaReplica(mp.Start, mp.End, metaNode)
+		mr = mp.newMetaReplica(mp.Start, mp.End, metaNode)
 		mp.addReplica(mr)
 	}
 	mr.updateMetric(mgr)
@@ -933,7 +933,7 @@ func (mp *MetaPartition) afterCreation(nodeAddr string, c *Cluster, storeMode pr
 	if err != nil {
 		return err
 	}
-	mr := newMetaReplica(mp.Start, mp.End, metaNode)
+	mr := mp.newMetaReplica(mp.Start, mp.End, metaNode)
 	mr.Status = proto.ReadWrite
 	mr.ReportTime = time.Now().Unix()
 	mr.StoreMode = storeMode

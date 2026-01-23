@@ -409,6 +409,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optVolQuotaClass int
 	var optVolQuotaOfClass int
 	var optStoreMode string
+	var optDpSelectTag string
+	var optMpSelectTag string
 
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
@@ -922,6 +924,24 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Default store mode : %v\n",
 					vv.DefaultStoreMode.Str()))
 			}
+			if optDpSelectTag != "" {
+				if !ValidateSelectTag(optDpSelectTag) {
+					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+					return
+				}
+				vv.DpSelectTag = optDpSelectTag
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  DpSelectTag : %v\n", vv.DpSelectTag))
+			}
+			if optMpSelectTag != "" {
+				if !ValidateSelectTag(optMpSelectTag) {
+					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+					return
+				}
+				vv.MpSelectTag = optMpSelectTag
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  MpSelectTag : %v\n", vv.MpSelectTag))
+			}
 
 			if err != nil {
 				return
@@ -1003,6 +1023,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, 0, "Remote cache same zone timeout microsecond(must > 0),default 400")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, 0, "Remote cache same region timeout millisecond(must > 0),default 2")
 	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "memory", "Specify default store mode of mp: memory, rocksdb")
+	cmd.Flags().StringVar(&optDpSelectTag, CliFlagDpSelectTag, "", "Specify dp select tag, split with ','. 'null' means null string")
+	cmd.Flags().StringVar(&optMpSelectTag, CliFlagMpSelectTag, "", "Specify mp select tag, split with ','. 'null' means null string")
 
 	return cmd
 }

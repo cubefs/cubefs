@@ -282,6 +282,10 @@ func newMetaNodeUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			nodeAddr = args[0]
 			selectTag = args[1]
+			if !selectTagPattern.MatchString(selectTag) {
+				stdoutln(fmt.Sprintf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed"))
+				return
+			}
 			if err = client.NodeAPI().UpdateMetaNode(nodeAddr, selectTag); err != nil {
 				return
 			}

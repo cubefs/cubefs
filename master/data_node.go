@@ -91,6 +91,7 @@ type DataNode struct {
 	ReceivedForbidWriteOpOfProtoVer0   bool
 	DiskOpLogs                         []proto.OpLog
 	DpOpLogs                           []proto.OpLog
+	SelectTag                          string
 }
 
 func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, clusterID string, mediaType uint32) (dataNode *DataNode) {
@@ -1007,4 +1008,8 @@ func (dataNode *DataNode) createTaskToReloadDisk(diskPath string) (resp *proto.P
 	task := proto.NewAdminTask(proto.OpReloadDisk, dataNode.Addr, newReloadDiskRequest(diskPath))
 	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
 	return resp, err
+}
+
+func (dataNode *DataNode) GetSelectTag() string {
+	return dataNode.SelectTag
 }

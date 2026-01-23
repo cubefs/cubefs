@@ -252,6 +252,8 @@ const (
 	AdminStopPromoteMpLearnerPlan             = "/metaPartition/stopPromoteLearnerPlan"
 	AdminCalcMetaPartitionMd5Sum              = "/metaPartition/calcMd5Sum"
 	AdminGetMd5SumResult                      = "/metaPartition/getMd5SumResult"
+	AdminGetSelectTagSummary                  = "/admin/getSelectTagSummary"
+	AdminClearSelectTagFailedKeys             = "/admin/clearSelectTagFailedKeys"
 
 	// admin multi version snapshot
 	AdminCreateVersion     = "/multiVer/create"
@@ -1484,6 +1486,8 @@ type SimpleVolView struct {
 	DefaultStoreMode        StoreMode
 	RocksdbMpCount          uint64
 	MemoryMpCount           uint64
+	DpSelectTag             string
+	MpSelectTag             string
 }
 
 type NodeSetInfo struct {
@@ -1643,6 +1647,7 @@ const (
 	AutoAddReplica
 	ManualAddReplica
 	DistributionOptimization
+	SelectTagDecommission
 	MpBalance // Meta partition balance decommission type
 )
 
@@ -1918,3 +1923,8 @@ func (l RackAwareLevel) IsValid() bool {
 type CalcMetaPartitionMd5SumRequest struct {
 	PartitionID uint64
 }
+
+const (
+	SelectTypeNone = iota
+	SelectTypeTag
+)

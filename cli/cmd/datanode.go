@@ -47,6 +47,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeCancelDecommissionCmd(client),
 		// newDataNodeDiskOpCmd(client),
 		// newDataNodeDpOpCmd(client),
+		newDataNodeUpdateCmd(client),
 	)
 	return cmd
 }
@@ -62,6 +63,7 @@ const (
 	cmdDataNodeQueryDecommissionProgress          = "query datanode decommission progress"
 	// cmdDataNodeDiskOpShort                    = "Show Disk_op information of a data node"
 	// cmdDataNodeDpOpShort                      = "Show Dp_op information of a data node"
+	cmdDataNodeUpdateShort = "Update select tag for a data node"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -359,3 +361,33 @@ func newDataNodeCancelDecommissionCmd(client *master.MasterClient) *cobra.Comman
 // 	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
 // 	return cmd
 // }
+
+func newDataNodeUpdateCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpUpdate + " [{HOST}:{PORT}] [{SELECT_TAG}]",
+		Short: cmdDataNodeUpdateShort,
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			nodeAddr := args[0]
+			selectTag := args[1]
+
+			if !selectTagPattern.MatchString(selectTag) {
+				stdoutln(fmt.Sprintf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed"))
+				return nil
+			}
+			if err := client.NodeAPI().UpdateDataNode(nodeAddr, selectTag); err != nil {
+				stdoutln(fmt.Sprintf("failed to update datanode(%s) select tag(%s): %s", nodeAddr, selectTag, err.Error()))
+				return err
+			}
+			stdoutln(fmt.Sprintf("Update datanode(%v) select tag %v successfully", nodeAddr, selectTag))
+			return nil
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}

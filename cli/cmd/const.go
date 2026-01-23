@@ -180,6 +180,8 @@ const (
 	CliFlagVolQuotaClass                     = "quotaClass"
 	CliFlagVolQuotaOfClass                   = "quotaOfStorageClass"
 	CliFlagStoreMode                         = "store-mode"
+	CliFlagDpSelectTag                       = "dpSelectTag"
+	CliFlagMpSelectTag                       = "mpSelectTag"
 
 	CliFlagRemoteCacheEnable            = "remoteCacheEnable"
 	CliFlagRemoteCachePath              = "remoteCachePath"
@@ -201,6 +203,9 @@ const (
 	CliFlagDpLimitSsdFactor             = "dpLimitSsdFactor"
 	CliFlagDpLimitHddBaseCount          = "dpLimitHddBaseCount"
 	CliFlagDpLimitHddFactor             = "dpLimitHddFactor"
+	CliFlagAutoFixSelectTag             = "autoFixSelectTag"
+	CliFlagDefaultDpSelectTag           = "defaultDpSelectTag"
+	CliFlagDefaultMpSelectTag           = "defaultMpSelectTag"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

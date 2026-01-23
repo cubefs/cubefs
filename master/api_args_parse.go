@@ -134,19 +134,6 @@ func parseTxMask(r *http.Request, oldMask proto.TxOpMask) (mask proto.TxOpMask, 
 	return
 }
 
-func parseRequestForUpdateDataNode(r *http.Request) (nodeAddr string, id uint64, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	if nodeAddr, err = extractNodeAddr(r); err != nil {
-		return
-	}
-	if id, err = extractNodeID(r); err != nil {
-		return
-	}
-	return
-}
-
 func parseRequestForAddNode(r *http.Request) (nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack string, mediaType uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -329,6 +316,8 @@ type updateVolReq struct {
 	quotaOfClass             uint64
 	quotaClass               uint32
 	storeMode                int
+	dpsSelectTag             string
+	mpsSelectTag             string
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -1941,6 +1930,26 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[remoteClientFlowLimit] = val
 	}
 
+	if value = r.FormValue(cfgAutoFixSelectTag); value != "" {
+		noParams = false
+		_, err = strconv.ParseBool(value)
+		if err != nil {
+			err = unmatchedKey(cfgAutoFixSelectTag)
+			return
+		}
+		params[cfgAutoFixSelectTag] = value
+	}
+
+	if value = r.FormValue(cfgDefaultDpSelectTag); value != "" {
+		noParams = false
+		params[cfgDefaultDpSelectTag] = value
+	}
+
+	if value = r.FormValue(cfgDefaultMpSelectTag); value != "" {
+		noParams = false
+		params[cfgDefaultMpSelectTag] = value
+	}
+
 	if noParams {
 		err = fmt.Errorf("no key assigned")
 		return
@@ -2317,6 +2326,8 @@ func parseSetConfigParam(r *http.Request) (config map[string]string, err error) 
 		flashReadFlowLimit,
 		flashWriteFlowLimit,
 		cfgDefaultVolStoreMode,
+		cfgDefaultDpSelectTag,
+		cfgDefaultMpSelectTag,
 	}
 	for _, key := range keyList {
 		if value := r.FormValue(key); value != "" {
@@ -2671,7 +2682,7 @@ func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, er
 	return val, nil
 }
 
-func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64, selectTag string, err error) {
+func parseRequestForUpdateNode(r *http.Request) (nodeAddr string, id uint64, selectTag string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}

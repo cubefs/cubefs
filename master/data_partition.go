@@ -44,6 +44,33 @@ type DecommissionTask struct {
 	DecommissionDstNodeSet     uint64
 	DecommissionWeight         int
 	DecommissionType           uint32
+	DecommissionSelectTag      string
+}
+
+type DecommissionStatusParam struct {
+	SrcAddr          string
+	DstAddr          string
+	SrcDisk          string
+	DstNodeSetID     uint64
+	RaftForce        bool
+	Term             uint64
+	MigrateType      uint32
+	SelectTag        string
+	Weight           int
+	SrcAddrs         []string
+	DstAddrs         []string
+	TriggerCondition string
+}
+
+type DecommissionMarkParam struct {
+	DstNodeSetID     uint64
+	RaftForce        bool
+	MigrateType      uint32
+	SelectTag        string
+	Weight           int
+	SrcAddrs         []string
+	DstAddrs         []string
+	TriggerCondition string
 }
 
 // duplicate DecommissionTask definition removed (see definition above)
@@ -107,6 +134,7 @@ type DataPartition struct {
 	DecommissionRetryTime    time.Time
 	RepairBlockSize          uint64
 	DecommissionType         uint32
+	DecommissionSelectTag    string
 	RestoreReplica           uint32
 	MediaType                uint32
 	ForbidWriteOpOfProtoVer0 bool
@@ -1063,7 +1091,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		log.LogErrorf("action[buildDpInfo]failed to get volume %v, err %v", partition.VolName, err)
 	}
 
-	return &proto.DataPartitionInfo{
+	dpInfo := &proto.DataPartitionInfo{
 		PartitionID:              partition.PartitionID,
 		PartitionType:            partition.PartitionType,
 		LastLoadedTime:           partition.LastLoadedTime,
@@ -1071,7 +1099,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		Status:                   partition.Status,
 		Replicas:                 replicas,
 		Hosts:                    partition.Hosts,
-		Peers:                    partition.Peers,
+		Peers:                    make([]proto.Peer, len(partition.Peers)),
 		Zones:                    zones,
 		NodeSets:                 nodeSets,
 		Racks:                    racks,
@@ -1088,6 +1116,16 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		MediaType:                partition.MediaType,
 		ForbidWriteOpOfProtoVer0: partition.ForbidWriteOpOfProtoVer0,
 	}
+	copy(dpInfo.Peers, partition.Peers)
+	for i, peer := range dpInfo.Peers {
+		for _, replica := range partition.Replicas {
+			if replica.Addr == peer.Addr {
+				dpInfo.Peers[i].SelectTag = formatDataReplicaSelectTag(peer.SelectTag, replica.dataNode)
+				break
+			}
+		}
+	}
+	return dpInfo
 }
 
 const (
@@ -1166,6 +1204,8 @@ func GetDecommissionTypeMessage(status uint32) string {
 		return "ManualAddReplica"
 	case DistributionOptimization:
 		return "DistributionOptimization"
+	case SelectTagDecommission:
+		return "SelectTagDecommission"
 	default:
 		return fmt.Sprintf("Unkown:%v", status)
 	}
@@ -1472,15 +1512,29 @@ func isReplicasContainsHost(replicas []*DataReplica, host string) bool {
 	return false
 }
 
-func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, dstNodeSetID uint64, raftForce bool, term uint64,
-	migrateType uint32, weight int, c *Cluster, srcAddrs []string, dstAddrs []string, triggerCondition string,
-) (err error) {
+func (partition *DataPartition) MarkDecommissionStatus(param *DecommissionStatusParam, c *Cluster) (err error) {
 	defer func() {
 		if err != nil {
 			msg := fmt.Sprintf("dp(%v) mark decommission status failed", partition.decommissionInfo())
 			auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
 		}
 	}()
+
+	if param == nil {
+		return errors.NewErrorf("decommission param is nil")
+	}
+
+	srcAddr := param.SrcAddr
+	dstAddr := param.DstAddr
+	srcDisk := param.SrcDisk
+	dstNodeSetID := param.DstNodeSetID
+	raftForce := param.RaftForce
+	term := param.Term
+	migrateType := param.MigrateType
+	weight := param.Weight
+	srcAddrs := param.SrcAddrs
+	dstAddrs := param.DstAddrs
+	triggerCondition := param.TriggerCondition
 
 	if dstAddr != "" {
 		if err = c.checkDataNodeAddrMediaTypeForMigrate(srcAddr, dstAddr); err != nil {
@@ -1521,6 +1575,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 				DecommissionDstNodeSet:     dstNodeSetID,
 				DecommissionWeight:         weight,
 				DecommissionType:           migrateType,
+				DecommissionSelectTag:      param.SelectTag,
 			}
 			if dstAddr != "" {
 				task.DecommissionDstAddrSpecify = true
@@ -1540,6 +1595,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 				DecommissionDstNodeSet:     partition.DecommissionDstNodeSet,
 				DecommissionWeight:         partition.DecommissionWeight,
 				DecommissionType:           partition.DecommissionType,
+				DecommissionSelectTag:      partition.DecommissionSelectTag,
 			}
 			// after removing from original decommissionDpList and resetting the decommission status, re-mark high-priority decommission task
 			if partition.DecommissionSrcAddr != "" {
@@ -1562,6 +1618,10 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 
 	// set DecommissionType first for recovering replica meta
 	partition.DecommissionType = migrateType
+	if migrateType == SelectTagDecommission {
+		partition.DecommissionSelectTag = param.SelectTag
+	}
+
 	if err = partition.tryRecoverReplicaMeta(c, migrateType); err != nil {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v]tryRecoverReplicaMeta failed:%v",
 			partition.PartitionID, err)
@@ -1771,6 +1831,7 @@ directly:
 		partition.DecommissionWeight = weight
 		partition.DecommissionRaftForce = raftForce
 		partition.DecommissionType = migrateType
+		partition.DecommissionSelectTag = param.SelectTag
 		return
 	}
 	// forbidden dp to restore meta for replica
@@ -1795,6 +1856,7 @@ directly:
 	// initial or failed restart
 	partition.ResetDecommissionStatus()
 	partition.DecommissionType = migrateType
+	partition.DecommissionSelectTag = param.SelectTag
 	partition.SetDecommissionStatus(markDecommission, triggerCondition, "")
 	partition.DecommissionSrcAddr = srcAddr
 	partition.DecommissionDstAddr = dstAddr
@@ -1887,6 +1949,7 @@ func (partition *DataPartition) updateDecommissionStatusByTask(task Decommission
 	partition.DecommissionDstNodeSet = task.DecommissionDstNodeSet
 	partition.DecommissionWeight = task.DecommissionWeight
 	partition.DecommissionType = task.DecommissionType
+	partition.DecommissionSelectTag = task.DecommissionSelectTag
 }
 
 func (partition *DataPartition) clearDecommissionTaskQueue() {
@@ -2317,10 +2380,21 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 		partition.SetDecommissionStatus(DecommissionInitial, "processNextDecommissionSrcHost", "")
 	}
 
-	if err = partition.MarkDecommissionStatus(nextSrcAddr, nextDstAddr, replica.DiskPath, partition.DecommissionDstNodeSet,
-		partition.DecommissionRaftForce, partition.DecommissionTerm, partition.DecommissionType, partition.DecommissionWeight,
-		c, updatedSrcHosts, updatedDstHosts, "processNextDecommissionSrcHost",
-	); err != nil {
+	param := &DecommissionStatusParam{
+		SrcAddr:          nextSrcAddr,
+		DstAddr:          nextDstAddr,
+		SrcDisk:          replica.DiskPath,
+		DstNodeSetID:     partition.DecommissionDstNodeSet,
+		RaftForce:        partition.DecommissionRaftForce,
+		Term:             partition.DecommissionTerm,
+		MigrateType:      partition.DecommissionType,
+		SelectTag:        partition.DecommissionSelectTag,
+		Weight:           partition.DecommissionWeight,
+		SrcAddrs:         updatedSrcHosts,
+		DstAddrs:         updatedDstHosts,
+		TriggerCondition: "processNextDecommissionSrcHost",
+	}
+	if err = partition.MarkDecommissionStatus(param, c); err != nil {
 		log.LogWarnf("action[ProcessNextDecommissionSrcHost] dp(%v) mark decommission failed, err %v",
 			partition.PartitionID, err)
 		return false
@@ -2350,8 +2424,21 @@ func (partition *DataPartition) processNextDecommissionTask(c *Cluster) bool {
 		partition.SetDecommissionStatus(DecommissionInitial, "processNextDecommissionTask", "")
 	}
 
-	if err = partition.MarkDecommissionStatus(t.DecommissionSrcAddr, t.DecommissionDstAddr, t.DecommissionSrcDiskPath, t.DecommissionDstNodeSet, t.DecommissionRaftForce, t.DecommissionTerm,
-		t.DecommissionType, t.DecommissionWeight, c, t.DecommissionSrcAddrs, t.DecommissionDstAddrs, "processNextDecommissionTask"); err != nil {
+	param := &DecommissionStatusParam{
+		SrcAddr:          t.DecommissionSrcAddr,
+		DstAddr:          t.DecommissionDstAddr,
+		SrcDisk:          t.DecommissionSrcDiskPath,
+		DstNodeSetID:     t.DecommissionDstNodeSet,
+		RaftForce:        t.DecommissionRaftForce,
+		Term:             t.DecommissionTerm,
+		MigrateType:      t.DecommissionType,
+		SelectTag:        t.DecommissionSelectTag,
+		Weight:           t.DecommissionWeight,
+		SrcAddrs:         t.DecommissionSrcAddrs,
+		DstAddrs:         t.DecommissionDstAddrs,
+		TriggerCondition: "processNextDecommissionTask",
+	}
+	if err = partition.MarkDecommissionStatus(param, c); err != nil {
 		if !strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) && !strings.Contains(err.Error(), proto.ErrDecommissionTaskEnqueue.Error()) &&
 			!strings.Contains(err.Error(), proto.ErrWaitForAutoAddReplica.Error()) {
 			partition.updateDecommissionStatusByTask(t)
@@ -2416,6 +2503,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	partition.DecommissionErrorMessage = ""
 	partition.DecommissionType = InitialDecommission
+	partition.DecommissionSelectTag = ""
 	partition.RecoverStartTime = time.Time{}
 	partition.RecoverUpdateTime = time.Time{}
 	partition.DecommissionRetryTime = time.Time{}
@@ -2699,6 +2787,10 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster, allowPre
 			rackLevel:       c.getRackAwareLevel(),
 			excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, excludeHosts, partition.DecommissionSrcAddr),
 		}
+		if partition.DecommissionType == SelectTagDecommission {
+			param.selectType = proto.SelectTypeTag
+			param.selectTag = partition.DecommissionSelectTag
+		}
 		targetHosts, _, err = ns.getAvailDataNodeHosts(param)
 		if err != nil {
 			if partition.DecommissionDstNodeSet != 0 {
@@ -2929,7 +3021,7 @@ func selectTargetHostsInDistributionOptimization(addrs []string, replicaNum int,
 		excludeHosts:    addrs,
 		rackLevel:       rackLevel,
 		excludeNodeSets: excludedNodesets,
-		selectType:      proto.SelectType_DistributionOptimization,
+		thresholdType:   proto.SelectType_DistributionOptimization,
 	}
 	availableHosts, _, err := zone.getAvailNodeHosts(TypeDataPartition, param)
 	if err == nil && len(availableHosts) == replicaNum {
@@ -3053,11 +3145,11 @@ func selectOptimalNodes(currentAddrs []string, targetNsID uint64, c *Cluster) ([
 	}
 
 	param := &selectParam{
-		replicaNum:   len(migrateAddrs),
-		excludeHosts: currentAddrs,
-		excludeRacks: excludeRacks,
-		rackLevel:    rackLevel,
-		selectType:   proto.SelectType_DistributionOptimization,
+		replicaNum:    len(migrateAddrs),
+		excludeHosts:  currentAddrs,
+		excludeRacks:  excludeRacks,
+		rackLevel:     rackLevel,
+		thresholdType: proto.SelectType_DistributionOptimization,
 	}
 
 	newHosts, _, err := targetNs.getAvailDataNodeHosts(param)
@@ -3491,7 +3583,16 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			return nil
 		}
 		triggerCondition := fmt.Sprintf("autoAddReplica_dp(%v)", partition.PartitionID)
-		err = c.markDecommissionDataPartition(partition, node, 0, false, AutoAddReplica, highPriorityDecommissionWeight, nil, nil, triggerCondition)
+		err = c.markDecommissionDataPartition(partition, node, &DecommissionMarkParam{
+			DstNodeSetID:     0,
+			RaftForce:        false,
+			MigrateType:      AutoAddReplica,
+			SelectTag:        "",
+			Weight:           highPriorityDecommissionWeight,
+			SrcAddrs:         nil,
+			DstAddrs:         nil,
+			TriggerCondition: triggerCondition,
+		})
 		auditMsg = fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto add replica",
 			partition.PartitionID, partition.ReplicaNum, len(partition.Hosts))
 		log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)
