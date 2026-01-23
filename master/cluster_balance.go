@@ -1967,6 +1967,12 @@ func (c *Cluster) DoMetaNodeOffline(offLineAddr string) (err error) {
 
 func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition) error {
 	var newLeader string
+	learners := make([]string, 0, len(mp.Peers))
+	for _, peer := range mp.Peers {
+		if peer.Type == raftProto.PeerLearner {
+			learners = append(learners, peer.Addr)
+		}
+	}
 	for i := 0; i < CheckMetaLeaderRetry; i++ {
 		leader, err := mp.getMetaReplicaLeader()
 		if err != nil {
@@ -1981,7 +1987,10 @@ func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo,
 		}
 
 		// try to change leader.
-		newLeader = selectOneLeaderAddr(mrPlan, mpPlan, mp, newLeader)
+		excludeAddrs := make([]string, 0, len(learners)+1)
+		excludeAddrs = append(excludeAddrs, learners...)
+		excludeAddrs = append(excludeAddrs, newLeader)
+		newLeader = selectOneLeaderAddr(mrPlan, mpPlan, mp, excludeAddrs)
 		if newLeader == "" {
 			err = fmt.Errorf("selectOneLeaderAddr mp[%d] source: %s failed", mp.PartitionID, mrPlan.Source)
 			log.LogErrorf(err.Error())
@@ -2006,9 +2015,12 @@ func (c *Cluster) changeAndCheckMetaPartitionLeader(mrPlan *proto.MrBalanceInfo,
 	return fmt.Errorf("Try to change leader to %s failed. leader: %s, migrate source: %s", newLeader, leader.Addr, mrPlan.Source)
 }
 
-func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition, leader string) string {
+func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalancePlan, mp *MetaPartition, excludeAddrs []string) string {
 	// Select one address which is not in the meta partition plan.
 	for _, replica := range mp.Replicas {
+		if contains(excludeAddrs, replica.Addr) {
+			continue
+		}
 		isSelected := true
 		for _, item := range mpPlan.Plan {
 			if item.Source == replica.Addr {
@@ -2016,14 +2028,17 @@ func selectOneLeaderAddr(mrPlan *proto.MrBalanceInfo, mpPlan *proto.MetaBalanceP
 				break
 			}
 		}
-		if isSelected && replica.Addr != leader {
+		if isSelected {
 			return replica.Addr
 		}
 	}
 
 	// Select one address which is not the current source address.
 	for _, replica := range mp.Replicas {
-		if mrPlan.Source != replica.Addr && replica.Addr != leader {
+		if contains(excludeAddrs, replica.Addr) {
+			continue
+		}
+		if mrPlan.Source != replica.Addr {
 			return replica.Addr
 		}
 	}

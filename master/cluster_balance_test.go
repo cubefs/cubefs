@@ -1577,7 +1577,7 @@ func TestSelectOneLeaderAddr(t *testing.T) {
 		Replicas: []*MetaReplica{{Addr: "a"}, {Addr: "b"}, {Addr: "c"}},
 	}
 	mpPlan := &proto.MetaBalancePlan{Plan: []*proto.MrBalanceInfo{{Source: "a"}}}
-	got := selectOneLeaderAddr(&proto.MrBalanceInfo{Source: "a"}, mpPlan, mp, "b")
+	got := selectOneLeaderAddr(&proto.MrBalanceInfo{Source: "a"}, mpPlan, mp, []string{"b"})
 	if got == "" || got == "a" || got == "b" {
 		t.Errorf("unexpected addr: %s", got)
 	}
