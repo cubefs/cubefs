@@ -480,4 +480,75 @@ func TestClustermgrClient(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, offset, offset2)
 	}
+	{
+		stats := &proto.VolumeDegradeStats{
+			BatchSize: 10000,
+			BlobStats: []proto.VolumeDegradeBatch{
+				{
+					BatchIndex: 1,
+					CodeModeStats: []proto.VolumeDegradeCodeMode{
+						{
+							Mode: codemode.EC3P3,
+							DegradeStats: []proto.VolumeDegradeLevel{
+								{
+									Level: 1,
+									Count: 123,
+								},
+							},
+						},
+					},
+				},
+			},
+			VolStats: []proto.VolumeDegradeBatch{
+				{
+					BatchIndex: 1,
+					CodeModeStats: []proto.VolumeDegradeCodeMode{
+						{
+							Mode: codemode.EC3P3,
+							DegradeStats: []proto.VolumeDegradeLevel{
+								{
+									Level: 1,
+									Count: 123,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		// set degrade stats failed
+		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(errMock)
+		err := cli.SetVolumeDegradeStats(ctx, stats)
+		require.NotNil(t, err)
+
+		// set degrade stats success
+		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
+		err = cli.SetVolumeDegradeStats(ctx, stats)
+		require.NoError(t, err)
+
+		// get degrade stats failed
+		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{}, errMock)
+		_, err = cli.GetVolumeDegradeStats(ctx)
+		require.NotNil(t, err)
+
+		// get degrade stats success
+		statsBytes, _ := json.Marshal(stats)
+		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: statsBytes}, nil)
+		statsRet, err := cli.GetVolumeDegradeStats(ctx)
+		require.NoError(t, err)
+		require.Equal(t, statsRet.BatchSize, stats.BatchSize)
+		require.Equal(t, statsRet.BlobStats[0].BatchIndex, stats.BlobStats[0].BatchIndex)
+		require.Equal(t, statsRet.VolStats[0].BatchIndex, stats.VolStats[0].BatchIndex)
+
+		// delete degrade stats failed
+		cli.client.(*MockClusterManager).EXPECT().DeleteKV(any, any).Return(errMock)
+		err = cli.DeleteVolumeDegradeStats(ctx)
+		require.NotNil(t, err)
+
+		// delete degrade stats success
+		cli.client.(*MockClusterManager).EXPECT().DeleteKV(any, any).Return(nil)
+		err = cli.DeleteVolumeDegradeStats(ctx)
+		require.NoError(t, err)
+	}
 }
