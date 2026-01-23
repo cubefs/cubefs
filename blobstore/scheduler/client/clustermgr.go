@@ -98,6 +98,9 @@ type ClusterMgrTaskAPI interface {
 	SetVolumeInspectCheckPoint(ctx context.Context, startVid proto.Vid) (err error)
 	GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (offset int64, err error)
 	SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) (err error)
+	GetVolumeDegradeStats(ctx context.Context) (stats *proto.VolumeDegradeStats, err error)
+	SetVolumeDegradeStats(ctx context.Context, stats *proto.VolumeDegradeStats) (err error)
+	DeleteVolumeDegradeStats(ctx context.Context) (err error)
 }
 
 // ClusterMgrAPI define the interface of clustermgr used by scheduler
@@ -149,6 +152,7 @@ const (
 	_migratingDiskPrefix = "migrating"
 	_checkPoint          = "checkpoint"
 	_consumeOffset       = "consume_offset"
+	_volumeDegradeStats  = "volume_degrade_stats"
 )
 
 var (
@@ -1272,6 +1276,52 @@ func (c *clustermgrClient) listAllShardDisks(ctx context.Context, status proto.D
 			break
 		}
 		args.Marker = selectMarker
+	}
+	return
+}
+
+func (c *clustermgrClient) GetVolumeDegradeStats(ctx context.Context) (*proto.VolumeDegradeStats, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("getting volume degrade stats")
+
+	ret, err := c.client.GetKV(ctx, _volumeDegradeStats)
+	if err != nil {
+		span.Errorf("failed to get volume degrade stats from kv: err[%+v]", err)
+		return nil, err
+	}
+
+	var stats proto.VolumeDegradeStats
+	if err := json.Unmarshal(ret.Value, &stats); err != nil {
+		span.Errorf("failed to unmarshal stats: err[%+v]", err)
+		return nil, err
+	}
+
+	return &stats, nil
+}
+
+func (c *clustermgrClient) SetVolumeDegradeStats(ctx context.Context, stats *proto.VolumeDegradeStats) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("setting volume degrade stats: [%+v]", stats)
+
+	statsBytes, err := json.Marshal(stats)
+	if err != nil {
+		span.Errorf("failed to marshal volume degrade stats: err[%+v]", err)
+		return
+	}
+	err = c.client.SetKV(ctx, _volumeDegradeStats, statsBytes)
+	if err != nil {
+		span.Errorf("failed to set volume degrade stats to kv: err[%+v]", err)
+	}
+	return
+}
+
+func (c *clustermgrClient) DeleteVolumeDegradeStats(ctx context.Context) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("deleting volume degrade stats")
+
+	err = c.client.DeleteKV(ctx, _volumeDegradeStats)
+	if err != nil {
+		span.Errorf("failed to delete volume degrade stats from kv: err[%+v]", err)
 	}
 	return
 }

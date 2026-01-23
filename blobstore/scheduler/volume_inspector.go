@@ -147,6 +147,8 @@ func (d *badShardDeduplicator) key(vid proto.Vid, bid proto.BlobID, badIdxs []ui
 
 // VolumeInspectMgrCfg inspect task manager config
 type VolumeInspectMgrCfg struct {
+	ClusterID proto.ClusterID `json:"-"`
+
 	InspectIntervalS int `json:"inspect_interval_s"`
 	InspectBatch     int `json:"inspect_batch"`
 
@@ -156,6 +158,9 @@ type VolumeInspectMgrCfg struct {
 
 	// timeout of inspect
 	TimeoutMs int `json:"timeout_ms"`
+
+	// Degrade stats
+	DegradeStats VolumeDegradeStatsCfg `json:"degrade_stats"`
 }
 
 // VolumeInspectMgr inspect task manager
@@ -183,6 +188,8 @@ type VolumeInspectMgr struct {
 	completeTaskCounter counter.Counter
 	timeoutCounter      counter.Counter
 
+	degradeStats *VolumeDegradeStatsMgr
+
 	cfg *VolumeInspectMgrCfg
 }
 
@@ -201,6 +208,7 @@ func NewVolumeInspectMgr(
 		clusterMgrCli:     clusterMgrCli,
 		repairShardSender: repairShardSender,
 		sendDeduplicator:  newBadShardDeduplicator(defaultDuplicateCnt),
+		degradeStats:      newVolumeDegradeStatsMgr(cfg.ClusterID, clusterMgrCli, &cfg.DegradeStats),
 		cfg:               cfg,
 	}
 }
@@ -422,6 +430,13 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 		}
 	}
 
+	// sort the missingShards to ensure that the degradeStats batch processing works correctly.
+	sort.Slice(missedShards, func(i, j int) bool {
+		vidI := missedShards[i][0].Vuid.Vid()
+		vidJ := missedShards[j][0].Vuid.Vid()
+		return vidI < vidJ
+	})
+
 	// clear & stats tasks
 	for taskID, task := range mgr.tasks {
 		span.Debugf("check task and clear: task_id[%s]", taskID)
@@ -463,6 +478,8 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 				return mgr.trySendShardRepairMsg(ctx, vid, bid, bads)
 			})
 		}
+
+		mgr.degradeStats.updateDegradeInfo(ctx, uint32(vid), volInfo.CodeMode, bidsBads)
 	}
 
 	err := retry.Timed(3, 200).On(func() error {

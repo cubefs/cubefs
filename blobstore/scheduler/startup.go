@@ -194,6 +194,9 @@ func NewService(conf *Config) (svr *Service, err error) {
 		return nil, err
 	}
 	inspectMgr := NewVolumeInspectMgr(clusterMgrCli, mqProxy, inspectorTaskSwitch, &conf.VolumeInspect)
+	if err = inspectMgr.degradeStats.initialize(); err != nil {
+		return nil, err
+	}
 
 	//===========shard module migrate manager===============
 	// new shard disk repair manager
