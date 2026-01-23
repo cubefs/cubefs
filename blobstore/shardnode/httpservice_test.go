@@ -79,7 +79,8 @@ func TestHttpService_HTTPGet(t *testing.T) {
 	url := fmt.Sprintf("http://127.0.0.1:11000/shard/stats?disk_id=%d&suid=%d", diskID, suid)
 	resp1, err := client.Get(ctx, url)
 	require.Nil(t, err)
-	json.NewDecoder(resp1.Body).Decode(ret1)
+	err = json.NewDecoder(resp1.Body).Decode(ret1)
+	require.NoError(t, err)
 	resp1.Body.Close()
 	require.Equal(t, suid, ret1.Suid)
 
@@ -87,7 +88,8 @@ func TestHttpService_HTTPGet(t *testing.T) {
 	ret2 := &shardnode.ShardnodeTaskStatsRet{}
 	resp2, err := client.Get(ctx, "http://127.0.0.1:11000/blob/delete/stats")
 	require.Nil(t, err)
-	json.NewDecoder(resp2.Body).Decode(ret2)
+	err = json.NewDecoder(resp2.Body).Decode(ret2)
+	require.NoError(t, err)
 	resp2.Body.Close()
 	require.NotNil(t, ret2)
 
@@ -95,7 +97,8 @@ func TestHttpService_HTTPGet(t *testing.T) {
 	ret3 := &shardnode.ShardnodeTaskStatsRet{}
 	resp3, err := client.Get(ctx, "http://127.0.0.1:11000/slice/repair/stats")
 	require.Nil(t, err)
-	json.NewDecoder(resp3.Body).Decode(ret3)
+	err = json.NewDecoder(resp3.Body).Decode(ret3)
+	require.NoError(t, err)
 	resp3.Body.Close()
 	require.NotNil(t, ret3)
 }

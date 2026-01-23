@@ -45,12 +45,20 @@ func (s *HttpService) HttpShardStats(c *rpc.Context) {
 
 func (s *HttpService) HttpDeleteBlobStats(c *rpc.Context) {
 	ret := s.deleteBlobStats()
-	c.RespondJSON(ret)
+	if ret == nil {
+		c.RespondJSON(shardnode.ShardnodeTaskStatsRet{})
+		return
+	}
+	c.RespondJSON(*ret)
 }
 
 func (s *HttpService) HttpRepairSliceStats(c *rpc.Context) {
 	ret := s.repairSliceStats()
-	c.RespondJSON(ret)
+	if ret == nil {
+		c.RespondJSON(shardnode.ShardnodeTaskStatsRet{})
+		return
+	}
+	c.RespondJSON(*ret)
 }
 
 func newHttpHandler(service *HttpService) *rpc.Router {
