@@ -7061,7 +7061,6 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				ReportTime:      mp.Replicas[i].ReportTime,
 				Status:          mp.Replicas[i].Status,
 				IsLeader:        mp.Replicas[i].IsLeader,
-				IsLearner:       mp.Replicas[i].IsLearner,
 				InodeCount:      mp.Replicas[i].InodeCount,
 				DentryCount:     mp.Replicas[i].DentryCount,
 				MaxInode:        mp.Replicas[i].MaxInodeID,
@@ -7076,6 +7075,11 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				rocksCnt++
 			}
 			storeMode |= mp.Replicas[i].StoreMode
+			replicas[i].IsLearner, _, err = getMetaReplicaLearnerInfo(mp, replicas[i].Addr)
+			if err != nil {
+				replicas[i].IsLearner = mp.Replicas[i].IsLearner
+				log.LogErrorf("getMetaReplicaLearnerInfo mp[%v] replica[%v] error: %v", mp.PartitionID, replicas[i].Addr, err)
+			}
 		}
 
 		forbidden := true
