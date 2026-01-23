@@ -185,15 +185,24 @@ v3.3.0版本开始支持并发修复磁盘。
 * list_vol_step，请求clustermgr列举卷大小，可控制请求clustermgr的qps，默认100
 * list_vol_interval_ms，请求clustermgr列举卷的时间间隔，默认10ms
 * timeout_ms，检查一批巡检任务是否完成的时间间隔，默认10000ms
+* degrade_stats，降级状态统计
+  * enable，是否启用 volume 降级统计功能，默认false
+  * batch，批量统计大小，默认10000，最好是inspect_batch的倍数
+
 ```json
 {
-    "inspect_interval_s": 100,     
-    "inspect_batch": 10,    
-    "list_vol_step": 20,    
-    "list_vol_interval_ms": 10,    
-    "timeout_ms": 10000   
+    "inspect_interval_s": 100,
+    "inspect_batch": 10,
+    "list_vol_step": 20,
+    "list_vol_interval_ms": 10,
+    "timeout_ms": 10000,
+    "degrade_stats": {
+        "enable": true,
+        "batch": 1000
+    }
 }
 ```
+
 ### shard_repair示例
 
 * task_pool_size，修补任务的并发度，默认10

@@ -123,6 +123,20 @@ func (mr *MockClusterMgrAPIMockRecorder) DeleteMigratingDisk(arg0, arg1, arg2 in
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMigratingDisk", reflect.TypeOf((*MockClusterMgrAPI)(nil).DeleteMigratingDisk), arg0, arg1, arg2)
 }
 
+// DeleteVolumeDegradeStats mocks base method.
+func (m *MockClusterMgrAPI) DeleteVolumeDegradeStats(arg0 context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteVolumeDegradeStats", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteVolumeDegradeStats indicates an expected call of DeleteVolumeDegradeStats.
+func (mr *MockClusterMgrAPIMockRecorder) DeleteVolumeDegradeStats(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVolumeDegradeStats", reflect.TypeOf((*MockClusterMgrAPI)(nil).DeleteVolumeDegradeStats), arg0)
+}
+
 // GetConfig mocks base method.
 func (m *MockClusterMgrAPI) GetConfig(arg0 context.Context, arg1 string) (string, error) {
 	m.ctrl.T.Helper()
@@ -241,6 +255,21 @@ func (m *MockClusterMgrAPI) GetShardInfo(arg0 context.Context, arg1 proto.ShardI
 func (mr *MockClusterMgrAPIMockRecorder) GetShardInfo(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardInfo", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetShardInfo), arg0, arg1)
+}
+
+// GetVolumeDegradeStats mocks base method.
+func (m *MockClusterMgrAPI) GetVolumeDegradeStats(arg0 context.Context) (*proto.VolumeDegradeStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolumeDegradeStats", arg0)
+	ret0, _ := ret[0].(*proto.VolumeDegradeStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVolumeDegradeStats indicates an expected call of GetVolumeDegradeStats.
+func (mr *MockClusterMgrAPIMockRecorder) GetVolumeDegradeStats(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeDegradeStats", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetVolumeDegradeStats), arg0)
 }
 
 // GetVolumeInfo mocks base method.
@@ -639,6 +668,20 @@ func (m *MockClusterMgrAPI) SetShardDiskRepairing(arg0 context.Context, arg1 pro
 func (mr *MockClusterMgrAPIMockRecorder) SetShardDiskRepairing(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetShardDiskRepairing", reflect.TypeOf((*MockClusterMgrAPI)(nil).SetShardDiskRepairing), arg0, arg1)
+}
+
+// SetVolumeDegradeStats mocks base method.
+func (m *MockClusterMgrAPI) SetVolumeDegradeStats(arg0 context.Context, arg1 *proto.VolumeDegradeStats) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetVolumeDegradeStats", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetVolumeDegradeStats indicates an expected call of SetVolumeDegradeStats.
+func (mr *MockClusterMgrAPIMockRecorder) SetVolumeDegradeStats(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetVolumeDegradeStats", reflect.TypeOf((*MockClusterMgrAPI)(nil).SetVolumeDegradeStats), arg0, arg1)
 }
 
 // SetVolumeInspectCheckPoint mocks base method.
