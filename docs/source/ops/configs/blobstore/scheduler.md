@@ -187,15 +187,24 @@ Starting from version v3.3.0, concurrent disk repair is supported.
 * list_vol_step, the size of requesting clustermgr to list volumes, which can control the QPS of requesting clustermgr, default is 100
 * list_vol_interval_ms, time interval for requesting clustermgr to list volumes, default is 10ms
 * timeout_ms, time interval for checking whether a batch of inspection tasks is completed, default is 10000ms
+* degrade_stats, volume degrade stats
+  * enable: enable volume degrade stats or not, default is false
+  * batch: Batch size for statistics, defaults to 10000, ideally a multiple of inspect_batch
+
 ```json
 {
-    "inspect_interval_s": 100,     
-    "inspect_batch": 10,    
-    "list_vol_step": 20,    
-    "list_vol_interval_ms": 10,    
-    "timeout_ms": 10000   
+    "inspect_interval_s": 100,
+    "inspect_batch": 10,
+    "list_vol_step": 20,
+    "list_vol_interval_ms": 10,
+    "timeout_ms": 10000,
+    "degrade_stats": {
+        "enable": true,
+        "batch": 1000
+    }
 }
 ```
+
 ### shard_repair
 
 * task_pool_size, concurrency of repair tasks, default is 10
