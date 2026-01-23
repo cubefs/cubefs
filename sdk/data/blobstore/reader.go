@@ -106,7 +106,7 @@ type ClientConfig struct {
 	ReadConcurrency int
 	FileCache       bool
 	FileSize        uint64
-	StorageClass    uint32
+	PoolId          uint8
 }
 
 func NewReader(config ClientConfig) (reader *Reader) {

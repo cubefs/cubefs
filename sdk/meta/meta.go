@@ -250,6 +250,8 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.ownerValidation = config.ValidateOwner
 	mw.mc = masterSDK.NewMasterClient(config.Masters, false)
 	mw.onAsyncTaskError = config.OnAsyncTaskError
+
+	// Get master client for pool cache access
 	mw.metaSendTimeout = config.MetaSendTimeout
 	mw.conns = util.NewConnectPool()
 	mw.partitions = make(map[uint64]*MetaPartition)
@@ -384,6 +386,11 @@ func (mw *MetaWrapper) Cluster() string {
 
 func (mw *MetaWrapper) LocalIP() string {
 	return mw.localIP
+}
+
+// GetMasterClient returns the master client for accessing master APIs
+func (mw *MetaWrapper) GetMasterClient() *masterSDK.MasterClient {
+	return mw.mc
 }
 
 // updateHostLatency updates the ping latency information for meta hosts

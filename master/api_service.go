@@ -3740,12 +3740,12 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	volView := newSimpleView(vol)
+	volView := newSimpleView(m.cluster, vol)
 
 	sendOkReply(w, r, newSuccessHTTPReply(volView))
 }
 
-func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
+func newSimpleView(c *Cluster, vol *Vol) (view *proto.SimpleVolView) {
 	var (
 		volInodeCount  uint64
 		volDentryCount uint64
@@ -3829,6 +3829,9 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		QuotaOfStorageClass:      quotaOfClass,
 		DefaultPoolId:            vol.defaultPoolId,
 
+		// Initialize pools map
+		Pools: make(map[uint8]*proto.StoragePoolView),
+
 		RemoteCacheEnable:            vol.remoteCacheEnable,
 		RemoteCachePath:              vol.remoteCachePath,
 		RemoteCacheAutoPrepare:       vol.remoteCacheAutoPrepare,
@@ -3870,6 +3873,26 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 	}
 
 	calcVolumeRocksdbInfo(vol, view)
+
+	// Populate pools information
+	if len(vol.allowedPools) > 0 {
+		for _, poolId := range vol.allowedPools {
+			if pool, err := c.getStoragePool(poolId); err == nil {
+				poolView := &proto.StoragePoolView{
+					Id:           pool.Id,
+					Name:         pool.Name,
+					StorageClass: pool.StorageClass,
+					CId:          pool.CId,
+					ECAddr:       pool.ECAddr,
+					CreateTime:   time.Unix(pool.CreateTime, 0).Format(time.RFC3339),
+					UpdateTime:   time.Unix(pool.UpdateTime, 0).Format(time.RFC3339),
+					Status:       poolStatusToString(pool.Status),
+				}
+				view.Pools[poolId] = poolView
+			}
+		}
+	}
+
 	return
 }
 
@@ -10599,7 +10622,7 @@ func (m *Server) createStoragePool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// System default pools cannot be created manually
-	if poolInfo.Id <= MaxDefaultPoolId {
+	if poolInfo.Id <= proto.MaxDefaultPoolId {
 		err = fmt.Errorf("pool id %d is reserved for system default pools", poolInfo.Id)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -10639,7 +10662,7 @@ func (m *Server) getStoragePool(w http.ResponseWriter, r *http.Request) {
 	view := &proto.StoragePoolView{
 		Id:           pool.Id,
 		Name:         pool.Name,
-		StorageClass: proto.StorageClassString(uint32(pool.StorageClass)),
+		StorageClass: pool.StorageClass,
 		CId:          pool.CId,
 		ECAddr:       pool.ECAddr,
 		CreateTime:   time.Unix(pool.CreateTime, 0).Format(time.RFC3339),
@@ -10664,7 +10687,7 @@ func (m *Server) listStoragePools(w http.ResponseWriter, r *http.Request) {
 		view := &proto.StoragePoolView{
 			Id:           pool.Id,
 			Name:         pool.Name,
-			StorageClass: proto.StorageClassString(uint32(pool.StorageClass)),
+			StorageClass: pool.StorageClass,
 			CId:          pool.CId,
 			ECAddr:       pool.ECAddr,
 			CreateTime:   time.Unix(pool.CreateTime, 0).Format(time.RFC3339),

@@ -8217,24 +8217,24 @@ func (c *Cluster) loadStoragePools() (err error) {
 	// Initialize default pools if not exist
 	defaultPools := []*StoragePool{
 		{
-			Id:           DefaultSSDPoolId,
-			Name:         DefaultSSDPoolName,
+			Id:           proto.DefaultSSDPoolId,
+			Name:         proto.DefaultSSDPoolName,
 			StorageClass: uint8(proto.StorageClass_Replica_SSD),
 			CreateTime:   time.Now().Unix(),
 			UpdateTime:   time.Now().Unix(),
 			Status:       proto.PoolStatusAvailable,
 		},
 		{
-			Id:           DefaultHDDPoolId,
-			Name:         DefaultHDDPoolName,
+			Id:           proto.DefaultHDDPoolId,
+			Name:         proto.DefaultHDDPoolName,
 			StorageClass: uint8(proto.StorageClass_Replica_HDD),
 			CreateTime:   time.Now().Unix(),
 			UpdateTime:   time.Now().Unix(),
 			Status:       proto.PoolStatusAvailable,
 		},
 		{
-			Id:           DefaultECPoolId,
-			Name:         DefaultECPoolName,
+			Id:           proto.DefaultECPoolId,
+			Name:         proto.DefaultECPoolName,
 			StorageClass: uint8(proto.StorageClass_BlobStore),
 			CreateTime:   time.Now().Unix(),
 			UpdateTime:   time.Now().Unix(),
@@ -8296,31 +8296,12 @@ func (c *Cluster) getStoragePoolCount() (count int) {
 
 const (
 	storagePoolPrefix = "storagePool"
-
-	// Default storage pool IDs
-	DefaultSSDPoolId uint8 = 1
-	DefaultHDDPoolId uint8 = 2
-	DefaultECPoolId  uint8 = 3
-	MaxDefaultPoolId uint8 = 3
-
-	// Default storage pool names
-	DefaultSSDPoolName = "defSSDPool"
-	DefaultHDDPoolName = "defaultHDDPool"
-	DefaultECPoolName  = "defaultECPool"
 )
 
 // getDefaultPoolIdByMediaType returns default pool ID based on media type
+// This is a wrapper function that uses proto.GetDefaultPoolIdByMediaType
 func getDefaultPoolIdByMediaType(mediaType uint32) uint8 {
-	switch mediaType {
-	case proto.MediaType_SSD:
-		return DefaultSSDPoolId
-	case proto.MediaType_HDD:
-		return DefaultHDDPoolId
-	default:
-		// Default to SSD pool for unspecified media type
-		log.LogWarnf("action[getDefaultPoolIdByMediaType] unsupported mediaType[%d], defaulting to SSD pool", mediaType)
-		return DefaultSSDPoolId
-	}
+	return proto.GetDefaultPoolIdByMediaType(mediaType)
 }
 
 // getPoolNameById returns pool name by pool ID
@@ -8328,30 +8309,11 @@ func (c *Cluster) getPoolNameById(poolId uint8) string {
 	if pool, err := c.getStoragePool(poolId); err == nil {
 		return pool.Name
 	}
-	// Return default names for system pools if not found
-	switch poolId {
-	case DefaultSSDPoolId:
-		return DefaultSSDPoolName
-	case DefaultHDDPoolId:
-		return DefaultHDDPoolName
-	case DefaultECPoolId:
-		return DefaultECPoolName
-	default:
-		return fmt.Sprintf("UnknownPool-%d", poolId)
-	}
+	return fmt.Sprintf("UnknownPool-%d", poolId)
 }
 
 // getDefaultPoolIdByStorageClass returns default pool ID based on storage class
+// This is a wrapper function that uses proto.GetDefaultPoolIdByStorageClass
 func getDefaultPoolIdByStorageClass(storageClass uint32) uint8 {
-	switch storageClass {
-	case proto.StorageClass_Replica_SSD:
-		return DefaultSSDPoolId
-	case proto.StorageClass_Replica_HDD:
-		return DefaultHDDPoolId
-	case proto.StorageClass_BlobStore:
-		return DefaultECPoolId
-	default:
-		// Default to SSD pool for unspecified storage class
-		return DefaultSSDPoolId
-	}
+	return proto.GetDefaultPoolIdByStorageClass(storageClass)
 }

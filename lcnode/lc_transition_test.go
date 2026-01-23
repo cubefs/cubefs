@@ -39,7 +39,7 @@ func (m *MockExtentClient) CloseStream(inode uint64) error {
 	return nil
 }
 
-func (m *MockExtentClient) Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error) {
+func (m *MockExtentClient) Read(inode uint64, data []byte, offset int, size int, poolId uint8, isMigration bool) (read int, err error) {
 	if isMigration {
 		for i := 0; i < size; i++ {
 			data[i] = m.data[i]
@@ -52,7 +52,7 @@ func (m *MockExtentClient) Read(inode uint64, data []byte, offset int, size int,
 	return len(data), io.EOF
 }
 
-func (m *MockExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration, waitForFlush bool) (write int, err error) {
+func (m *MockExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, poolId uint8, isMigration, waitForFlush bool) (write int, err error) {
 	m.data = data
 	return
 }

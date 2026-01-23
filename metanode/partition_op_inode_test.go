@@ -77,6 +77,7 @@ func TestInodeGetPerf(t *testing.T) {
 	require.NoError(t, err)
 	for idx := 1; idx < cnt; idx++ {
 		ino := NewInode(uint64(idx), 0)
+		ino.PoolId = proto.DefaultSSDPoolId
 		mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 	}
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -92,6 +93,7 @@ func TestInodeGetPerf(t *testing.T) {
 		start := time.Now()
 		for _, id := range ids {
 			ino := NewInode(id, 0)
+			ino.PoolId = proto.DefaultSSDPoolId
 			item, _ := mp.inodeTree.CopyGet(ino)
 			require.NotNil(t, item)
 			newIno := item
@@ -108,6 +110,7 @@ func prepareInodeForInodeTest(t *testing.T, mp MetaPartition, mode uint32) (resp
 		PartitionID: mp.GetBaseConfig().PartitionId,
 		Mode:        mode,
 		StorageType: proto.StorageClass_Replica_SSD,
+		PoolId:      proto.DefaultSSDPoolId,
 	}
 	err := mp.CreateInode(req, p, "")
 	require.NoError(t, err)

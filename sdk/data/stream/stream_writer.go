@@ -77,16 +77,16 @@ type OpenRequest struct {
 
 // WriteRequest defines a write request.
 type WriteRequest struct {
-	fileOffset   int
-	size         int
-	data         []byte
-	flags        int
-	writeBytes   int
-	err          error
-	done         chan struct{}
-	checkFunc    func() error
-	storageClass uint32
-	isMigration  bool
+	fileOffset  int
+	size        int
+	data        []byte
+	flags       int
+	writeBytes  int
+	err         error
+	done        chan struct{}
+	checkFunc   func() error
+	poolId      uint8
+	isMigration bool
 }
 
 // FlushRequest defines a flush request.
@@ -126,7 +126,7 @@ func (s *Streamer) IssueOpenRequest() error {
 	return nil
 }
 
-func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error) {
+func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFunc func() error, poolId uint8, isMigration bool) (write int, err error) {
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
@@ -139,7 +139,7 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 	request.flags = flags
 	request.done = make(chan struct{}, 1)
 	request.checkFunc = checkFunc
-	request.storageClass = storageClass
+	request.poolId = poolId
 	request.isMigration = isMigration
 
 	s.request <- request
@@ -331,7 +331,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 		request.done <- struct{}{}
 	case *WriteRequest:
 		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags,
-			request.checkFunc, request.storageClass, request.isMigration)
+			request.checkFunc, request.poolId, request.isMigration)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size, request.fullPath)
@@ -353,7 +353,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 }
 
 func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error,
-	storageClass uint32, isMigration bool,
+	poolId uint8, isMigration bool,
 ) (total int, err error) {
 	var (
 		direct     bool
@@ -371,8 +371,8 @@ begin:
 		offset = fileSize
 	}
 
-	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v) flags(%v) storageClass(%v) isMigration(%v)",
-		s.inode, offset, size, flags, storageClass, isMigration)
+	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v) flags(%v) poolId(%v) isMigration(%v)",
+		s.inode, offset, size, flags, poolId, isMigration)
 
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
@@ -419,7 +419,7 @@ begin:
 			log.LogDebugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v] before compare seq",
 				s.inode, s.verSeq, req.ExtentKey.GetSeq(), req.ExtentKey)
 			if req.ExtentKey.GetSeq() == s.verSeq {
-				writeSize, err = s.doOverwrite(req, direct, storageClass)
+				writeSize, err = s.doOverwrite(req, direct, poolId)
 				if err == proto.ErrCodeVersionOp {
 					log.LogDebugf("action[streamer.write] write need version update")
 					if err = s.GetExtentsForceRefresh(); err != nil {
@@ -439,7 +439,7 @@ begin:
 				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
 			} else {
 				log.LogDebugf("action[streamer.write] ino %v doOverWriteByAppend extent key (%v)", s.inode, req.ExtentKey)
-				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct, storageClass, isMigration)
+				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct, poolId, isMigration)
 			}
 			if s.aheadReadEnable && s.aheadReadWindow != nil && s.aheadReadWindow.cache != nil {
 				s.aheadReadWindow.evictCacheBlock(req)
@@ -455,7 +455,7 @@ begin:
 					return
 				}
 			}
-			writeSize, err = s.doWriteAppend(req, direct, storageClass, isMigration)
+			writeSize, err = s.doWriteAppend(req, direct, poolId, isMigration)
 		}
 		if err != nil {
 			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
@@ -472,21 +472,21 @@ begin:
 	return
 }
 
-func (s *Streamer) doOverWriteByAppend(req *ExtentRequest, direct bool, storageClass uint32, isMigration bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) doOverWriteByAppend(req *ExtentRequest, direct bool, poolId uint8, isMigration bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	// the extent key needs to be updated because when preparing the requests,
 	// the obtained extent key could be a local key which can be inconsistent with the remote key.
 	// the OpTryWriteAppend is a special case, ignore it
 	req.ExtentKey = s.extents.Get(uint64(req.FileOffset))
-	return s.doDirectWriteByAppend(req, direct, proto.OpRandomWriteAppend, storageClass, isMigration)
+	return s.doDirectWriteByAppend(req, direct, proto.OpRandomWriteAppend, poolId, isMigration)
 }
 
-func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool, storageClass uint32, isMigration bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool, poolId uint8, isMigration bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	req.ExtentKey = s.handler.key
-	return s.doDirectWriteByAppend(req, direct, proto.OpTryWriteAppend, storageClass, isMigration)
+	return s.doDirectWriteByAppend(req, direct, proto.OpTryWriteAppend, poolId, isMigration)
 }
 
 func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uint8,
-	storageClass uint32, isMigration bool,
+	poolId uint8, isMigration bool,
 ) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	var (
 		dp        *wrapper.DataPartition
@@ -511,10 +511,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 	}
 
 	retry := true
-	if proto.IsCold(s.client.volumeType) || proto.IsStorageClassBlobStore(storageClass) {
-		retry = false
-	}
-	log.LogDebugf("action[doDirectWriteByAppend] inode %v  data process", s.inode)
+	log.LogDebugf("action[doDirectWriteByAppend] inode %v data process", s.inode)
 
 	addr := dp.LeaderAddr
 	if storage.IsTinyExtent(req.ExtentKey.ExtentId) {
@@ -628,14 +625,14 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 			return
 		}
 		log.LogDebugf("action[doDirectWriteByAppend] inode %v meta extent split with ek (%v)", s.inode, extKey)
-		if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey, storageClass); err != nil {
+		if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey, poolId); err != nil {
 			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
 	} else {
 		discards := s.extents.Append(extKey, true)
 		var st int
-		if st, err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards, s.isCache, storageClass, isMigration); err != nil {
+		if st, err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards, s.isCache, poolId, isMigration); err != nil {
 			status = int32(st)
 			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
@@ -656,7 +653,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 	return
 }
 
-func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uint32) (total int, err error) {
+func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, poolId uint8) (total int, err error) {
 	var dp *wrapper.DataPartition
 
 	err = s.flush(true, uuid.New().String())
@@ -700,10 +697,6 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uin
 	}
 
 	retry := true
-	if proto.IsCold(s.client.volumeType) || proto.IsStorageClassBlobStore(storageClass) {
-		retry = false
-	}
-
 	sc := NewStreamConn(dp, false, s.client.streamRetryTimeout)
 
 	for total < size {
@@ -817,7 +810,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int, isMigration bo
 				seq = s.verSeq
 			}
 			log.LogDebugf("tryInitExtentHandlerByLastEk  ino(%v) NewExtentHandler", s.inode)
-			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size), dp.MediaType, isMigration)
+			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size), dp.PoolId, isMigration)
 			handler.key = &proto.ExtentKey{
 				FileOffset:   currentEK.FileOffset,
 				PartitionId:  currentEK.PartitionId,
@@ -873,7 +866,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int, isMigration bo
 // First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
 // it indicates that the extent may have been fully utilized by the previous version.
 // Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
-func (s *Streamer) doWriteAppend(req *ExtentRequest, direct bool, storageClass uint32, isMigration bool) (writeSize int, err error) {
+func (s *Streamer) doWriteAppend(req *ExtentRequest, direct bool, poolId uint8, isMigration bool) (writeSize int, err error) {
 	var status int32
 	// try append write, get response
 	log.LogDebugf("action[streamer.write] doWriteAppend req: ExtentKey(%v) FileOffset(%v) size(%v)",
@@ -881,18 +874,18 @@ func (s *Streamer) doWriteAppend(req *ExtentRequest, direct bool, storageClass u
 	// First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
 	// it indicates that the extent may have been fully utilized by the previous version.
 	// Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
-	if writeSize, err, status = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, true, storageClass, isMigration); status == LastEKVersionNotEqual {
+	if writeSize, err, status = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, true, poolId, isMigration); status == LastEKVersionNotEqual {
 		log.LogDebugf("action[streamer.write] tryDirectAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-		if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct, storageClass, isMigration); status == int32(proto.OpTryOtherExtent) {
+		if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct, poolId, isMigration); status == int32(proto.OpTryOtherExtent) {
 			log.LogDebugf("action[streamer.write] doWriteAppend again req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-			writeSize, err, _ = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, false, storageClass, isMigration)
+			writeSize, err, _ = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, false, poolId, isMigration)
 		}
 	}
 	log.LogDebugf("action[streamer.write] doWriteAppend status %v err %v", status, err)
 	return
 }
 
-func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, reUseEk bool, storageClass uint32, isMigration bool) (total int, err error, status int32) {
+func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, reUseEk bool, poolId uint8, isMigration bool) (total int, err error, status int32) {
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -902,102 +895,74 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 	// store only for the first write operation.
 	storeMode = s.GetStoreMod(offset, size)
 
-	log.LogDebugf("doWriteAppendEx enter: ino(%v) offset(%v) size(%v) storeMode(%v) storageClass(%v)",
-		s.inode, offset, size, storeMode, storageClass)
-	if proto.IsHot(s.client.volumeType) || proto.IsStorageClassReplica(storageClass) {
-		if reUseEk {
-			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size, isMigration); isLastEkVerNotEqual {
-				log.LogDebugf("doWriteAppendEx enter: ino(%v) tryInitExtentHandlerByLastEk worked but seq not equal", s.inode)
-				status = LastEKVersionNotEqual
-				return
-			}
-		} else if s.handler != nil {
-			// Close handler synchronously to avoid race conditions
-			err = s.closeOpenHandler(true)
-			if err != nil {
-				log.LogErrorf("doWriteAppendEx: closeOpenHandler failed, ino(%v) err(%v)", s.inode, err)
-				return
-			}
-			s.handler = nil
+	log.LogDebugf("doWriteAppendEx enter: ino(%v) offset(%v) size(%v) storeMode(%v) poolId(%v)",
+		s.inode, offset, size, storeMode, poolId)
+
+	if reUseEk {
+		if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size, isMigration); isLastEkVerNotEqual {
+			log.LogDebugf("doWriteAppendEx enter: ino(%v) tryInitExtentHandlerByLastEk worked but seq not equal", s.inode)
+			status = LastEKVersionNotEqual
+			return
 		}
+	} else if s.handler != nil {
+		// Close handler synchronously to avoid race conditions
+		err = s.closeOpenHandler(true)
+		if err != nil {
+			log.LogErrorf("doWriteAppendEx: closeOpenHandler failed, ino(%v) err(%v)", s.inode, err)
+			return
+		}
+		s.handler = nil
+	}
 
-		for i := 0; i < MaxNewHandlerRetry; i++ {
-			// Start write protection for this handler
-			if s.handler == nil {
-				s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass, isMigration)
-				log.LogDebugf("doWriteAppendEx: ino(%v) offset(%v) size(%v), new handler(%v)",
-					s.inode, offset, size, s.handler)
-				s.dirty = false
-			} else if s.handler.storeMode != storeMode {
-				// store mode changed, so close open handler and start a new one
-				log.LogDebugf("doWriteAppendEx: ino(%v) offset(%v) size(%v), closeOpenHandler handler(%v)",
-					s.inode, offset, size, s.handler)
-				err = s.closeOpenHandler(true) // Use synchronous close
-				if err != nil {
-					log.LogErrorf("doWriteAppendEx: closeOpenHandler failed during store mode change, ino(%v) err(%v)", s.inode, err)
-					break
-				}
-				s.handler = nil
-				continue
-			}
-
-			// Check if handler is still valid before writing
-			if s.handler == nil {
-				log.LogErrorf("doWriteAppendEx: handler is nil after creation, ino(%v)", s.inode)
-				err = errors.New("handler is nil after creation")
-				break
-			}
-
-			log.LogDebugf("doWriteAppendEx: handler(%v) offset(%v) size(%v)",
-				s.handler, offset, size)
-			ek, err = s.handler.write(data, offset, size, direct)
-			if err == nil && ek != nil {
-				ek.SetSeq(s.verSeq)
-				if !s.dirty {
-					s.dirtylist.Put(s.handler)
-					s.dirty = true
-				}
-				log.LogDebugf("doWriteAppendEx: handler write success ino(%v) offset(%v) size(%v) "+
-					"storeMode(%v) handler(%v)", s.inode, offset, size, storeMode, s.handler)
-				break
-			}
-			log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) "+
-				"storeMode(%v) handler(%v) err(%v)",
-				s.inode, offset, size, storeMode, s.handler, err)
-			err = s.closeOpenHandler(false)
+	for i := 0; i < MaxNewHandlerRetry; i++ {
+		// Start write protection for this handler
+		if s.handler == nil {
+			s.handler = NewExtentHandler(s, offset, storeMode, 0, poolId, isMigration)
+			log.LogDebugf("doWriteAppendEx: ino(%v) offset(%v) size(%v), new handler(%v)",
+				s.inode, offset, size, s.handler)
+			s.dirty = false
+		} else if s.handler.storeMode != storeMode {
+			// store mode changed, so close open handler and start a new one
+			log.LogDebugf("doWriteAppendEx: ino(%v) offset(%v) size(%v), closeOpenHandler handler(%v)",
+				s.inode, offset, size, s.handler)
+			err = s.closeOpenHandler(true) // Use synchronous close
 			if err != nil {
-				log.LogErrorf("doWriteAppendEx: closeOpenHandler failed after write error, ino(%v) err(%v)", s.inode, err)
+				log.LogErrorf("doWriteAppendEx: closeOpenHandler failed during store mode change, ino(%v) err(%v)", s.inode, err)
 				break
 			}
 			s.handler = nil
+			continue
 		}
-	} else {
-		log.LogDebugf("doWriteAppendEx: start write protection, handler(%v)", s.handler)
-		s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass, isMigration)
-		s.dirty = false
 
 		// Check if handler is still valid before writing
 		if s.handler == nil {
-			log.LogErrorf("doWriteAppendEx: handler is nil after creation (non-hot path), ino(%v)", s.inode)
+			log.LogErrorf("doWriteAppendEx: handler is nil after creation, ino(%v)", s.inode)
 			err = errors.New("handler is nil after creation")
-		} else {
-			ek, err = s.handler.write(data, offset, size, direct)
-			if err == nil && ek != nil {
-				if !s.dirty {
-					s.dirtylist.Put(s.handler)
-					s.dirty = true
-				}
-			}
+			break
 		}
 
-		// Close handler synchronously
-		closeErr := s.closeOpenHandler(true)
-		if closeErr != nil {
-			log.LogErrorf("doWriteAppendEx: closeOpenHandler failed (non-hot path), ino(%v) err(%v)", s.inode, closeErr)
-			if err == nil {
-				err = closeErr
+		log.LogDebugf("doWriteAppendEx: handler(%v) offset(%v) size(%v)",
+			s.handler, offset, size)
+		ek, err = s.handler.write(data, offset, size, direct)
+		if err == nil && ek != nil {
+			ek.SetSeq(s.verSeq)
+			if !s.dirty {
+				s.dirtylist.Put(s.handler)
+				s.dirty = true
 			}
+			log.LogDebugf("doWriteAppendEx: handler write success ino(%v) offset(%v) size(%v) "+
+				"storeMode(%v) handler(%v)", s.inode, offset, size, storeMode, s.handler)
+			break
 		}
+		log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) "+
+			"storeMode(%v) handler(%v) err(%v)",
+			s.inode, offset, size, storeMode, s.handler, err)
+		err = s.closeOpenHandler(false)
+		if err != nil {
+			log.LogErrorf("doWriteAppendEx: closeOpenHandler failed after write error, ino(%v) err(%v)", s.inode, err)
+			break
+		}
+		s.handler = nil
 	}
 
 	if err != nil || ek == nil {

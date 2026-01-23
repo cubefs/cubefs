@@ -693,7 +693,7 @@ type AppendExtentKeyWithCheckRequest struct {
 	VerSeq         uint64      `json:"seq"`
 	IsSplit        bool
 	IsCache        bool
-	StorageClass   uint32 `json:"storageClass"`
+	PoolId         uint8 `json:"poolId"`
 	IsMigration    bool
 }
 

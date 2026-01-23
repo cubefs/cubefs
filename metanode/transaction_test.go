@@ -117,6 +117,7 @@ func (i *TxRollbackInode) Equal(txRbInode *TxRollbackInode) bool {
 
 func TestRollbackInodeLess(t *testing.T) {
 	inode := NewInode(101, 0)
+	inode.PoolId = proto.DefaultSSDPoolId
 	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	rbInode := NewTxRollbackInode(inode, []uint32{}, txInodeInfo, TxAdd)
 
@@ -145,6 +146,7 @@ func TestRollbackInodeSerialization(t *testing.T) {
 		Flag:                        1,
 		Reserved:                    3,
 		StorageClass:                proto.StorageClass_Replica_HDD,
+		PoolId:                      proto.DefaultHDDPoolId,
 		HybridCloudExtents:          NewSortedHybridCloudExtents(),
 		HybridCloudExtentsMigration: NewSortedHybridCloudExtentsMigration(),
 		//Extents: NewSortedExtentsFromEks([]proto.ExtentKey{
@@ -304,6 +306,7 @@ func testTxRscOp(t *testing.T) {
 	txInodeInfo1.Timeout = 5
 	txInodeInfo1.CreateTime = time.Now().UnixNano()
 	inode1 := NewInode(inodeNum, FileModeType)
+	inode1.PoolId = proto.DefaultSSDPoolId
 	rbInode1 := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo1, TxAdd)
 
 	txInodeInfo2 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
@@ -404,6 +407,7 @@ func mockAddTxInode(mp *metaPartition, t *testing.T) *TxRollbackInode {
 	txInodeInfo1.Timeout = 5
 	txInodeInfo1.CreateTime = time.Now().UnixNano()
 	inode1 := NewInode(inodeNum, FileModeType)
+	inode1.PoolId = proto.DefaultSSDPoolId
 	rbInode := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo1, TxDelete)
 	txRsc := mp.txProcessor.txResource
 
@@ -425,6 +429,7 @@ func mockAddTxInode(mp *metaPartition, t *testing.T) *TxRollbackInode {
 
 func mockDeleteTxInode(mp *metaPartition, t *testing.T) *TxRollbackInode {
 	inode2 := NewInode(inodeNum2, FileModeType)
+	inode2.PoolId = proto.DefaultSSDPoolId
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	err = mp.inodeTree.Put(handle, inode2)
@@ -542,7 +547,9 @@ func testTxRscRollback(t *testing.T) {
 	// NOTE: add dentry parent inode
 	handle, err := txRsc.txRbInodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	err = txRsc.txProcessor.mp.inodeTree.Put(handle, NewInode(pInodeNum, DirModeType))
+	tmpIno := NewInode(pInodeNum, DirModeType)
+	tmpIno.PoolId = proto.DefaultSSDPoolId
+	err = txRsc.txProcessor.mp.inodeTree.Put(handle, tmpIno)
 	require.NoError(t, err)
 	err = txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)

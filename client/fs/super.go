@@ -86,10 +86,14 @@ type Super struct {
 	runningMonitor      *RunningMonitor
 	syncMetaCache       int32
 
+	logpath string
+
 	readThreads  int
 	writeThreads int
 	bc           *bcache.BcacheClient
-	ebsc         *blobstore.BlobStoreClient
+
+	ebsc     map[uint8]*blobstore.BlobStoreClient
+	ebscLock sync.RWMutex
 
 	taskPool    []common.TaskPool
 	readDirPool *common.TaskPool
@@ -102,6 +106,11 @@ type Super struct {
 	metaCacheAcceleration bool
 	minimumNlinkReadDir   int64
 	inodeLruLimit         int64
+
+	// storage pool cache
+	poolCache     map[uint8]*proto.StoragePoolView
+	poolCacheLock sync.RWMutex
+	poolCacheTime time.Time
 }
 
 // Functions that Super needs to implement
@@ -291,37 +300,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.mw.VerReadSeq = s.ec.GetReadVer()
 
-	needCreateBlobClient := false
-	if !proto.IsValidStorageClass(opt.VolStorageClass) {
-		// for compatability: old version server modules has no filed VolStorageClas
-		if proto.IsCold(opt.VolType) {
-			needCreateBlobClient = true
-			log.LogInfof("[NewSuper] to create blobstore client for old fashion cold volume")
-		}
-	} else {
-		if proto.IsVolSupportStorageClass(extentConfig.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
-			needCreateBlobClient = true
-			log.LogInfof("[NewSuper] to create blobstore client for volume allowed blobstore storageClass")
-		}
-	}
-	if needCreateBlobClient {
-		s.ebsc, err = blobstore.NewEbsClient(access.Config{
-			ConnMode: access.NoLimitConnMode,
-			Consul: access.ConsulConfig{
-				Address: opt.EbsEndpoint,
-			},
-			MaxSizePutOnce: MaxSizePutOnce,
-			Logger: &access.Logger{
-				Filename: path.Join(opt.Logpath, "client/ebs.log"),
-			},
-			LogLevel: log.GetBlobLogLevel(),
-		})
-		if err != nil {
-			log.LogErrorf("[NewSuper] create blobstore client err: %v", err)
-			return nil, errors.Trace(err, "NewEbsClient failed!")
-		}
-	}
-
 	s.mw.Client = s.ec
 
 	if !opt.EnablePosixACL {
@@ -340,6 +318,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if opt.NeedRestoreFuse {
 		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestore))
 	}
+	s.logpath = opt.Logpath
 
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
 		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
@@ -353,7 +332,49 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	// Start warm up meta paths goroutine
 	go s.loopWarmUpMetaPaths()
 
+	// Initialize and start pool cache update
+	s.poolCache = make(map[uint8]*proto.StoragePoolView)
+	s.updatePoolCache()
+	go s.loopUpdatePoolCache()
+
 	return s, nil
+}
+
+func (s *Super) getBlobStoreClient(pool *proto.StoragePoolView) (*blobstore.BlobStoreClient, error) {
+	s.ebscLock.RLock()
+	ebsc, ok := s.ebsc[pool.Id]
+	s.ebscLock.RUnlock()
+	if ok {
+		return ebsc, nil
+	}
+
+	s.ebscLock.Lock()
+	defer s.ebscLock.Unlock()
+
+	ebsc, ok = s.ebsc[pool.Id]
+	if ok {
+		return ebsc, nil
+	}
+
+	log.LogWarnf("getBlobStoreClient: create blobstore client for pool(%v)", pool.String())
+	ebsc, err := blobstore.NewEbsClient(access.Config{
+		ConnMode: access.NoLimitConnMode,
+		Consul: access.ConsulConfig{
+			Address: pool.ECAddr,
+		},
+		MaxSizePutOnce: MaxSizePutOnce,
+		Logger: &access.Logger{
+			Filename: path.Join(s.logpath, "client/ebs.log"),
+		},
+		LogLevel: log.GetBlobLogLevel(),
+	})
+	if err != nil {
+		log.LogErrorf("[getBlobStoreClient] create blobstore client err: %v", err)
+		return nil, errors.Trace(err, "NewEbsClient failed!")
+	}
+
+	s.ebsc[pool.Id] = ebsc
+	return ebsc, nil
 }
 
 func (s *Super) scheduleFlush() {
@@ -923,6 +944,64 @@ func (s *Super) loopWarmUpMetaPaths() {
 			}
 		}
 	}
+}
+
+// updatePoolCache updates the storage pool cache from master
+func (s *Super) updatePoolCache() {
+	if s.mw == nil {
+		log.LogWarnf("updatePoolCache: meta wrapper not available")
+		return
+	}
+
+	mc := s.mw.GetMasterClient()
+	if mc == nil {
+		log.LogWarnf("updatePoolCache: master client not available")
+		return
+	}
+
+	pools, err := mc.AdminAPI().ListStoragePools()
+	if err != nil {
+		log.LogWarnf("updatePoolCache: failed to get storage pools from master: %v", err)
+		return
+	}
+
+	s.poolCacheLock.Lock()
+	defer s.poolCacheLock.Unlock()
+
+	// Clear and rebuild cache
+	s.poolCache = make(map[uint8]*proto.StoragePoolView)
+	for _, pool := range pools {
+		s.poolCache[pool.Id] = pool
+	}
+	s.poolCacheTime = time.Now()
+
+	log.LogInfof("updatePoolCache: updated pool cache, count[%d]", len(s.poolCache))
+}
+
+// loopUpdatePoolCache periodically updates the storage pool cache
+func (s *Super) loopUpdatePoolCache() {
+	// Update every 5 minutes (same as volume view update interval)
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.closeC:
+			log.LogInfof("loopUpdatePoolCache: exit")
+			return
+		case <-ticker.C:
+			s.updatePoolCache()
+		}
+	}
+}
+
+// getPoolInfo gets storage pool information by pool ID
+func (s *Super) getPoolInfo(poolId uint8) (pool *proto.StoragePoolView, found bool) {
+	s.poolCacheLock.RLock()
+	defer s.poolCacheLock.RUnlock()
+
+	pool, found = s.poolCache[poolId]
+	return
 }
 
 // processWarmUpMetaPaths processes all warm up paths in the map

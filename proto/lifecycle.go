@@ -422,6 +422,7 @@ type ScanDentry struct {
 	Op           string     `json:"op"`           // to delete or migrate
 	Size         uint64     `json:"size"`         // for migrate: size of the current dentry
 	StorageClass uint32     `json:"sc"`           // for migrate: storage class of the current dentry
+	PoolId       uint8      `json:"poolId"`       // for migrate: pool id of the current dentry
 	LeaseExpire  uint64     `json:"leaseExpire"`  // for migrate: used to determine whether a file is modified
 	HasMek       bool       `json:"mek"`          // for migrate: if HasMek, call DeleteMigrationExtentKey instead of migrating
 	HasInodeInfo bool       `json:"hasInodeInfo"` // indicates whether inode info was successfully retrieved

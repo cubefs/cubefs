@@ -94,9 +94,48 @@ func isReadEio(err error) bool {
 	return true
 }
 
+// getStorageClassByPoolIdFromSuper returns storage class based on pool ID using Super's pool cache
+// Otherwise, returns the storage class corresponding to the pool ID from pool cache
+func getStorageClassByPoolIdFromSuper(s *Super, poolId uint8) *proto.StoragePoolView {
+	pool, _ := s.getPoolInfo(poolId)
+	return pool
+}
+
+// getStorageClassByPoolId returns storage class based on pool ID
+// Otherwise, returns the storage class corresponding to the pool ID from pool cache
+func (f *File) getStorageClassByPoolId(poolId uint8) *proto.StoragePoolView {
+	return getStorageClassByPoolIdFromSuper(f.super, poolId)
+}
+
+// getECAddrByPoolId returns EC address based on pool ID
+// Returns empty string if pool is not EC pool or not found
+func (f *File) getECAddrByPoolId(poolId uint8) string {
+	if poolId == 0 {
+		return ""
+	}
+
+	// Try to get pool info from cache
+	if pool, found := f.super.getPoolInfo(poolId); found {
+		return pool.ECAddr
+	}
+
+	return ""
+}
+
 // NewFile returns a new file.
 func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename string) fs.Node {
-	if proto.IsCold(s.volType) || proto.IsStorageClassBlobStore(i.StorageClass) {
+	// Get storage class from poolId if available, otherwise use existing StorageClass
+	// Use helper function that can access Super's pool cache
+	pool := getStorageClassByPoolIdFromSuper(s, i.PoolId)
+	storageClass := uint32(pool.StorageClass)
+
+	ebsc, err := s.getBlobStoreClient(pool)
+	if err != nil {
+		log.LogErrorf("NewFile: get blobstore client for pool(%v) err: %v", pool.String(), err)
+		return nil
+	}
+
+	if proto.IsCold(s.volType) || proto.IsStorageClassBlobStore(storageClass) {
 		var (
 			fReader    *blobstore.Reader
 			fWriter    *blobstore.Writer
@@ -111,13 +150,13 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			Bc:              s.bc,
 			Mw:              s.mw,
 			Ec:              s.ec,
-			Ebsc:            s.ebsc,
+			Ebsc:            ebsc,
 			EnableBcache:    s.enableBcache,
 			WConcurrency:    s.writeThreads,
 			ReadConcurrency: s.readThreads,
 			FileCache:       false,
 			FileSize:        i.Size,
-			StorageClass:    i.StorageClass,
+			PoolId:          i.PoolId,
 		}
 		log.LogDebugf("Trace NewFile:flag(%v). clientConf(%v)", flag, clientConf)
 
@@ -277,8 +316,12 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	if req.Flags&0x0f != syscall.O_RDONLY {
 		openForWrite = true
 	}
+	// Get storage class from poolId if available, otherwise use existing StorageClass
+	pool := f.getStorageClassByPoolId(f.info.PoolId)
+	storageClass := uint32(pool.StorageClass)
+
 	isCache := false
-	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(storageClass) {
 		isCache = true
 	}
 	if needBCache {
@@ -302,8 +345,15 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	if f.super.keepCache && resp != nil {
 		resp.Flags |= fuse.OpenKeepCache
 	}
-	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
-		log.LogDebugf("TRANCE open ino(%v) info(%v)", ino, f.info)
+	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(storageClass) {
+		log.LogDebugf("TRANCE open ino(%v) info(%v), pool(%v)", ino, f.info, pool.String())
+
+		ebsc, err := f.super.getBlobStoreClient(pool)
+		if err != nil {
+			log.LogErrorf("Open: get blobstore client for pool(%v) err: %v", pool.String(), err)
+			return nil, err
+		}
+
 		fileSize, _ := f.fileSizeVersion2(ino)
 		clientConf := blobstore.ClientConfig{
 			VolName:         f.super.volname,
@@ -313,13 +363,13 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			Bc:              f.super.bc,
 			Mw:              f.super.mw,
 			Ec:              f.super.ec,
-			Ebsc:            f.super.ebsc,
+			Ebsc:            ebsc,
 			EnableBcache:    f.super.enableBcache,
 			WConcurrency:    f.super.writeThreads,
 			ReadConcurrency: f.super.readThreads,
 			FileCache:       false,
 			FileSize:        uint64(fileSize),
-			StorageClass:    f.info.StorageClass,
+			PoolId:          f.info.PoolId,
 		}
 		f.fWriter.FreeCache()
 		switch req.Flags & 0x0f {
@@ -384,12 +434,6 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
 
 	start := time.Now()
-
-	// log.LogErrorf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
-	// if f.fWriter != nil {
-	//	f.fWriter.Close()
-	// }
-
 	err = f.super.ec.CloseStream(ino)
 	if err != nil {
 		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
@@ -403,21 +447,6 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	return nil
 }
 
-func (f *File) shouldAccessReplicaStorageClass() (accessReplicaStorageClass bool) {
-	accessReplicaStorageClass = false
-	if proto.IsValidStorageClass(f.info.StorageClass) {
-		if proto.IsStorageClassReplica(f.info.StorageClass) {
-			accessReplicaStorageClass = true
-		}
-	} else {
-		// for compatability: old version server modules has no field StorageClass
-		if proto.IsHot(f.super.volType) {
-			accessReplicaStorageClass = true
-		}
-	}
-	return
-}
-
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 	bgTime := stat.BeginStat()
@@ -427,8 +456,13 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		stat.StatBandWidth("Read", uint32(req.Size))
 		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
-	log.LogDebugf("TRACE Read enter: ino(%v) storageClass(%v) offset(%v) filesize(%v) reqsize(%v) req(%v)",
-		f.info.Inode, f.info.StorageClass, req.Offset, f.info.Size, req.Size, req)
+
+	// Get storage class from poolId if available, otherwise use existing StorageClass
+	pool := f.getStorageClassByPoolId(f.info.PoolId)
+	storageClass := uint32(pool.StorageClass)
+
+	log.LogDebugf("TRACE Read enter: ino(%v) poolId(%v) storageClass(%v) offset(%v) filesize(%v) reqsize(%v) req(%v)",
+		f.info.Inode, f.info.PoolId, storageClass, req.Offset, f.info.Size, req.Size, req)
 
 	start := time.Now()
 
@@ -438,10 +472,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	}()
 
 	var size int
-	if f.shouldAccessReplicaStorageClass() {
+	if proto.IsStorageClassReplica(storageClass) {
 		f.super.ec.GetStreamer(f.info.Inode).SetParentInode(f.parentIno)
+		// Use storageClass derived from poolId
 		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset),
-			req.Size, f.info.StorageClass, false)
+			req.Size, f.info.PoolId, false)
 	} else {
 		size, err = f.fReader.Read(ctx, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	}
@@ -498,9 +533,13 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	ino := f.info.Inode
 	reqlen := len(req.Data)
-	log.LogDebugf("TRACE Write enter: ino(%v) storageClass(%v) offset(%v) len(%v) flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
-		ino, f.info.StorageClass, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaInfos, req)
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	// Get storage class from poolId if available, otherwise use existing StorageClass
+	pool := f.getStorageClassByPoolId(f.info.PoolId)
+	storageClass := uint32(pool.StorageClass)
+
+	log.LogDebugf("TRACE Write enter: ino(%v) poolId(%v) storageClass(%v) offset(%v) len(%v) flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
+		ino, f.info.PoolId, storageClass, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaInfos, req)
+	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(storageClass) {
 		filesize, _ := f.fileSize(ino)
 		if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 
@@ -527,13 +566,13 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if f.super.enSyncWrite {
 			flags |= proto.FlagsSyncWrite
 		}
-		if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+		if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(storageClass) {
 			waitForFlush = false
 			flags |= proto.FlagsSyncWrite
 		}
 	}
 
-	if req.FileFlags&fuse.OpenAppend != 0 || proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+	if req.FileFlags&fuse.OpenAppend != 0 || proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(storageClass) {
 		flags |= proto.FlagsAppend
 	}
 
@@ -559,10 +598,12 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		}
 		return nil
 	}
+
 	var size int
-	if f.shouldAccessReplicaStorageClass() {
+	if proto.IsStorageClassReplica(storageClass) {
 		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
-		if size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags, checkFunc, f.info.StorageClass,
+		// Use storageClass derived from poolId
+		if size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags, checkFunc, pool.Id,
 			false, waitForFlush); err == ParseError(syscall.ENOSPC) {
 			return
 		}
@@ -570,6 +611,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		atomic.StoreInt32(&f.idle, 0)
 		size, err = f.fWriter.Write(context.Background(), int(req.Offset), req.Data, flags)
 	}
+
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleError("Write", msg)
@@ -630,7 +672,11 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	// Get storage class from poolId if available, otherwise use existing StorageClass
+	pool := f.getStorageClassByPoolId(f.info.PoolId)
+	storageClass := uint32(pool.StorageClass)
+
+	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(storageClass) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
 		f.Lock()
@@ -682,7 +728,11 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	// Get storage class from poolId if available, otherwise use existing StorageClass
+	pool := f.getStorageClassByPoolId(f.info.PoolId)
+	storageClass := uint32(pool.StorageClass)
+
+	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(storageClass) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
 		err = f.fWriter.Flush(f.info.Inode, context.Background())
@@ -718,15 +768,19 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	ino := f.info.Inode
 	start := time.Now()
+	// Get storage class from poolId if available, otherwise use existing StorageClass
+	pool := f.getStorageClassByPoolId(f.info.PoolId)
+	storageClass := uint32(pool.StorageClass)
+
 	openForWrite := false
 	if req.Flags&0x0f != syscall.O_RDONLY {
 		openForWrite = true
 	}
 	isCache := false
-	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(storageClass) {
 		isCache = true
 	}
-	if req.Valid.Size() && (proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass)) {
+	if req.Valid.Size() && (proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(storageClass)) {
 		// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
 		// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
 		if err := f.super.ec.OpenStream(ino, openForWrite, isCache, path.Join(f.getParentPath(), f.name)); err != nil {
@@ -754,7 +808,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		return ParseError(err)
 	}
 
-	if req.Valid.Size() && (proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass)) {
+	if req.Valid.Size() && (proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(storageClass)) {
 		if req.Size != info.Size {
 			log.LogWarnf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, info.Size)
 		}

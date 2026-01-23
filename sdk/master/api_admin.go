@@ -899,6 +899,21 @@ func (api *AdminAPI) GetClusterParas() (delParas map[string]string, err error) {
 	return
 }
 
+// ListStoragePools lists all storage pools
+func (api *AdminAPI) ListStoragePools() (pools []*proto.StoragePoolView, err error) {
+	pools = []*proto.StoragePoolView{}
+	err = api.mc.requestWith(&pools, newRequest(get, proto.AdminListStoragePools).Header(api.h))
+	return
+}
+
+// GetStoragePool gets storage pool by ID
+func (api *AdminAPI) GetStoragePool(poolId uint8) (pool *proto.StoragePoolView, err error) {
+	pool = &proto.StoragePoolView{}
+	err = api.mc.requestWith(pool, newRequest(get, proto.AdminGetStoragePool).Header(api.h).
+		addParam("id", strconv.FormatUint(uint64(poolId), 10)))
+	return
+}
+
 func (api *AdminAPI) ListQuota(volName string) (quotaInfo []*proto.QuotaInfo, err error) {
 	resp := &proto.ListMasterQuotaResponse{}
 	if err = api.mc.requestWith(resp, newRequest(get, proto.QuotaList).

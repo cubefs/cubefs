@@ -90,9 +90,9 @@ type Streamer struct {
 }
 
 type bcacheKey struct {
-	cacheKey     string
-	extentKey    *proto.ExtentKey
-	storageClass uint32
+	cacheKey  string
+	extentKey *proto.ExtentKey
+	poolId    uint8
 }
 
 // NewStreamer returns a new streamer.
@@ -181,7 +181,7 @@ func (s *Streamer) GetExtentsForceRefresh() error {
 
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
-func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, storageClass uint32) (*ExtentReader, error) {
+func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, poolId uint8) (*ExtentReader, error) {
 	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
 		if strings.Contains(err.Error(), "no writable data partition") {
@@ -199,18 +199,13 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, storageClass uint32) (*E
 		return nil, DpDiscardError
 	}
 
-	retryRead := true
-	if proto.IsCold(s.client.volumeType) || proto.IsStorageClassBlobStore(storageClass) {
-		retryRead = false
-	}
-
 	enableFollowerRead := s.client.dataWrapper.FollowerRead() && !s.client.dataWrapper.InnerReq()
-	reader := NewExtentReader(s.inode, ek, partition, enableFollowerRead, retryRead)
+	reader := NewExtentReader(s.inode, ek, partition, enableFollowerRead, true)
 	reader.maxRetryTimeout = s.client.streamRetryTimeout
 	return reader, nil
 }
 
-func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) (total int, err error) {
+func (s *Streamer) read(data []byte, offset int, size int, poolId uint8) (total int, err error) {
 	var (
 		readBytes       int
 		reader          *ExtentReader
@@ -277,7 +272,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 					s.aheadReadWindow = NewAheadReadWindow(s.client.AheadRead, s)
 				}
 				bgTime := stat.BeginStat()
-				readBytes, err = s.aheadRead(req, storageClass)
+				readBytes, err = s.aheadRead(req, poolId)
 				if err == nil && readBytes == req.Size {
 					stat.EndStat("ReadFromMem", err, bgTime, 1)
 					total += readBytes
@@ -366,7 +361,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 			}
 
 			// read extent
-			reader, err = s.GetExtentReader(req.ExtentKey, storageClass)
+			reader, err = s.GetExtentReader(req.ExtentKey, poolId)
 			if err != nil {
 				log.LogErrorf("action[streamer.read] req %v err %v", req, err)
 				break
@@ -440,7 +435,7 @@ func (s *Streamer) asyncBlockCache() {
 			} else {
 				data = make([]byte, ek.Size)
 			}
-			reader, err := s.GetExtentReader(ek, pending.storageClass)
+			reader, err := s.GetExtentReader(ek, pending.poolId)
 			if err != nil {
 				log.LogErrorf("asyncBlockCache: GetExtentReader err %v", err)
 				return

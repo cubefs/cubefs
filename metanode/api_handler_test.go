@@ -87,6 +87,7 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 
 	ino := NewInode(1, 0)
 	ino.StorageClass = proto.StorageClass_Replica_SSD
+	ino.PoolId = proto.DefaultSSDPoolId
 	ino.HybridCloudExtents.sortedEks = NewSortedExtents()
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)

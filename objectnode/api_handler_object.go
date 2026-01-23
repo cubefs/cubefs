@@ -300,7 +300,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// read file
 	start = time.Now()
-	err = vol.readFile(fileInfo.Inode, fileSize, param.Object(), writer, offset, size, fileInfo.StorageClass)
+	err = vol.readFile(fileInfo.Inode, fileSize, param.Object(), writer, offset, size, fileInfo.StorageClass, fileInfo.PoolId)
 	span.AppendTrackLog("file.r", start, err)
 	if err != nil {
 		log.LogErrorf("getObjectHandler: read file fail: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",

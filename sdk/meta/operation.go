@@ -1295,7 +1295,7 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 }
 
 func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey,
-	discard []proto.ExtentKey, isSplit bool, isCache bool, storageClass uint32, isMigration bool,
+	discard []proto.ExtentKey, isSplit bool, isCache bool, poolId uint8, isMigration bool,
 ) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -1310,7 +1310,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		DiscardExtents: discard,
 		IsSplit:        isSplit,
 		IsCache:        isCache,
-		StorageClass:   storageClass,
+		PoolId:         poolId,
 		IsMigration:    isMigration,
 	}
 

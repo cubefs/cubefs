@@ -16,7 +16,6 @@ package stream
 
 import (
 	"container/list"
-	"context"
 	"fmt"
 	"path"
 	"runtime/debug"
@@ -34,12 +33,10 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/bloom"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/stat"
 
 	"golang.org/x/time/rate"
 )
@@ -54,8 +51,8 @@ const (
 )
 
 type (
-	SplitExtentKeyFunc            func(parentInode, inode uint64, key proto.ExtentKey, storageClass uint32) error
-	AppendExtentKeyFunc           func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey, isCache bool, storageClass uint32, isMigration bool) (int, error)
+	SplitExtentKeyFunc            func(parentInode, inode uint64, key proto.ExtentKey, poolId uint8) error
+	AppendExtentKeyFunc           func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey, isCache bool, poolId uint8, isMigration bool) (int, error)
 	GetExtentsFunc                func(inode uint64, isCache bool, openForWrite bool, isMigration bool) (uint64, uint64, []proto.ExtentKey, error)
 	TruncateFunc                  func(inode, size uint64, fullPath string) error
 	EvictIcacheFunc               func(inode uint64)
@@ -714,7 +711,7 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int, sync bool) {
 
 // Write writes the data.
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error,
-	storageClass uint32, isMigration, waitForFlush bool,
+	poolId uint8, isMigration, waitForFlush bool,
 ) (write int, err error) {
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 	s := client.GetStreamer(inode)
@@ -723,9 +720,9 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 		return 0, syscall.EBADF
 	}
 
-	if !client.dataWrapper.CanWriteByClass(storageClass) {
-		log.LogWarnf("Write: target storage class is alrady full, can't write more. pref %s, class %s",
-			prefix, proto.StorageClassString(storageClass))
+	if !client.dataWrapper.CanWriteByClass(uint32(poolId)) {
+		log.LogWarnf("Write: target storage class is alrady full, can't write more. pref %s, class %d",
+			prefix, poolId)
 		return 0, syscall.EDQUOT
 	}
 
@@ -734,7 +731,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 		s.GetExtents(isMigration)
 	})
 	s.waitForFlush = waitForFlush
-	write, err = s.IssueWriteRequest(offset, data, flags, checkFunc, storageClass, isMigration)
+	write, err = s.IssueWriteRequest(offset, data, flags, checkFunc, poolId, isMigration)
 	if err != nil {
 		log.LogError(errors.Stack(err))
 	}
@@ -767,7 +764,7 @@ func (client *ExtentClient) Flush(inode uint64) error {
 	return s.IssueFlushRequest()
 }
 
-func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error) {
+func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int, poolId uint8, isMigration bool) (read int, err error) {
 	// log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v) storageClass(%v) isMigration(%v)",
 	//	inode, len(data), offset, size, storageClass, isMigration)
 	// t1 := time.Now()
@@ -795,9 +792,9 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 		}
 		// errGetExtents = s.GetExtents(isMigration)
 		if log.EnableDebug() {
-			log.LogDebugf("Read: ino(%v) offset(%v) size(%v) storageClass(%v) isMigration(%v) errGetExtents(%v) "+
+			log.LogDebugf("Read: ino(%v) offset(%v) size(%v) poolId(%v) isMigration(%v) errGetExtents(%v) "+
 				"rdonly(%v) dirty(%v)",
-				inode, offset, size, storageClass, isMigration, errGetExtents, s.rdonly, s.dirty)
+				inode, offset, size, poolId, isMigration, errGetExtents, s.rdonly, s.dirty)
 		}
 	})
 	if errGetExtents != nil {
@@ -815,83 +812,9 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 		}
 	}
 
-	read, err = s.read(data, offset, size, storageClass)
+	read, err = s.read(data, offset, size, poolId)
 	// log.LogErrorf("======> ExtentClient Read Exit, inode(%v), time[%v us].", inode, time.Since(t1).Microseconds())
 	return
-}
-
-func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data []byte, offset int, size int, storageClass uint32) (read int, err error, isStream bool) {
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("read-extent", err, bgTime, 1)
-	}()
-
-	var reader *ExtentReader
-	var req *ExtentRequest
-	if size == 0 {
-		return
-	}
-
-	s := client.GetStreamer(inode)
-	if s == nil {
-		err = fmt.Errorf("Read: stream is not opened yet, ino(%v) ek(%v)", inode, ek)
-		return
-	}
-	err = s.IssueFlushRequest()
-	if err != nil {
-		return
-	}
-	reader, err = s.GetExtentReader(ek, storageClass)
-	if err != nil {
-		return
-	}
-
-	needCache := false
-	cacheKey := util.GenerateKey(s.client.volumeName, s.inode, ek.FileOffset)
-	if _, ok := client.inflightL1cache.Load(cacheKey); !ok && client.shouldBcache() {
-		client.inflightL1cache.Store(cacheKey, true)
-		needCache = true
-	}
-	defer client.inflightL1cache.Delete(cacheKey)
-
-	// do cache.
-	if needCache {
-		// read full extent
-		buf := make([]byte, ek.Size)
-		req = NewExtentRequest(int(ek.FileOffset), int(ek.Size), buf, ek)
-		read, err = reader.Read(req)
-		if err != nil {
-			return
-		}
-		read = copy(data, req.Data[offset:offset+size])
-		if client.cacheBcache != nil {
-			buf := make([]byte, len(req.Data))
-			copy(buf, req.Data)
-			go func() {
-				log.LogDebugf("ReadExtent L2->L1 Enter cacheKey(%v),client.shouldBcache(%v),needCache(%v)", cacheKey, client.shouldBcache(), needCache)
-				if err := client.cacheBcache(client.volumeName, cacheKey, buf); err != nil {
-					client.BcacheHealth = false
-					log.LogDebugf("ReadExtent L2->L1 failed, err(%v), set BcacheHealth to false.", err)
-				}
-				log.LogDebugf("ReadExtent L2->L1 Exit cacheKey(%v),client.BcacheHealth(%v),needCache(%v)", cacheKey, client.BcacheHealth, needCache)
-			}()
-		}
-		return
-	} else {
-		// read data by offset:size
-		req = NewExtentRequest(int(ek.FileOffset)+offset, size, data, ek)
-		ctx := context.Background()
-		s.client.readLimiter.Wait(ctx)
-		s.client.LimitManager.ReadAlloc(ctx, size)
-		isStream = true
-
-		read, err = reader.Read(req)
-		if err != nil {
-			return
-		}
-		read = copy(data, req.Data)
-		return
-	}
 }
 
 // GetStreamer returns the streamer.
@@ -976,9 +899,9 @@ func (client *ExtentClient) CheckDataPartitionExsit(partitionID uint64) error {
 	return err
 }
 
-func (client *ExtentClient) GetDataPartitionForWrite(mediaType uint32) error {
+func (client *ExtentClient) GetDataPartitionForWrite(poolId uint8) error {
 	exclude := make(map[string]struct{})
-	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude, mediaType, 0)
+	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude, poolId, 0)
 	return err
 }
 

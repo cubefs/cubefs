@@ -233,6 +233,7 @@ type file struct {
 
 	path         string
 	storageClass uint32
+	poolId       uint8
 	openForWrite bool
 }
 
@@ -793,7 +794,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		info = newInfo
 	}
 	var fileCache bool
-	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass)
+	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass, info.PoolId)
 	if f == nil {
 		return statusEMFILE
 	}
@@ -1611,7 +1612,7 @@ func (c *client) checkPermission() (err error) {
 	return
 }
 
-func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, path string, storageClass uint32) *file {
+func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, path string, storageClass uint32, poolId uint8) *file {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
 	fd, ok := c.fdset.NextClear(0)
@@ -1619,7 +1620,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 		return nil
 	}
 	c.fdset.Set(fd)
-	f := &file{fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path, storageClass: storageClass}
+	f := &file{fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path, storageClass: storageClass, poolId: poolId}
 	if flags&0x0f != syscall.O_RDONLY {
 		f.openForWrite = true
 	}
@@ -1638,7 +1639,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 			ReadConcurrency: c.readBlockThread,
 			FileCache:       fileCache,
 			FileSize:        fileSize,
-			StorageClass:    storageClass,
+			PoolId:          poolId,
 		}
 		f.fileWriter.FreeCache()
 		switch flags & 0xff {
@@ -1796,7 +1797,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 			}
 			return nil
 		}
-		n, err = c.ec.Write(f.ino, offset, data, flags, checkFunc, f.storageClass, false, false)
+		n, err = c.ec.Write(f.ino, offset, data, flags, checkFunc, f.poolId, false, false)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.id, f.ino), offset, data, flags)
 	}
@@ -1808,7 +1809,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 
 func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
 	if proto.IsHot(c.volType) || proto.IsStorageClassReplica(f.storageClass) {
-		n, err = c.ec.Read(f.ino, data, offset, len(data), f.storageClass, false)
+		n, err = c.ec.Read(f.ino, data, offset, len(data), f.poolId, false)
 	} else {
 		n, err = f.fileReader.Read(c.ctx(c.id, f.ino), data, offset, len(data))
 	}

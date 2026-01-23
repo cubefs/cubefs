@@ -732,13 +732,13 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}()
 
 	if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(invisibleTempDataInode.StorageClass) {
-		if _, err = v.ebsWrite(invisibleTempDataInode.Inode, reader, md5Hash, invisibleTempDataInode.StorageClass); err != nil {
+		if _, err = v.ebsWrite(invisibleTempDataInode.Inode, reader, md5Hash, invisibleTempDataInode.PoolId); err != nil {
 			log.LogErrorf("PutObject: ebs write fail: volume(%v) path(%v) inode(%v) err(%v)",
 				v.name, path, invisibleTempDataInode.Inode, err)
 			return
 		}
 	} else {
-		if _, err = v.streamWrite(invisibleTempDataInode.Inode, reader, md5Hash, invisibleTempDataInode.StorageClass); err != nil {
+		if _, err = v.streamWrite(invisibleTempDataInode.Inode, reader, md5Hash, invisibleTempDataInode.PoolId); err != nil {
 			log.LogErrorf("PutObject: stream write fail: volume(%v) path(%v) inode(%v) err(%v)",
 				v.name, path, invisibleTempDataInode.Inode, err)
 			return
@@ -1085,14 +1085,14 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		}
 	}()
 	if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(tempInodeInfo.StorageClass) {
-		if size, err = v.ebsWrite(tempInodeInfo.Inode, reader, md5Hash, tempInodeInfo.StorageClass); err != nil {
+		if size, err = v.ebsWrite(tempInodeInfo.Inode, reader, md5Hash, tempInodeInfo.PoolId); err != nil {
 			log.LogErrorf("WritePart: ebs write fail: volume(%v) inode(%v) multipartID(%v) partID(%v) err(%v)",
 				v.name, tempInodeInfo.Inode, multipartId, partId, err)
 			return nil, err
 		}
 	} else {
 		// Write data to data node
-		if size, err = v.streamWrite(tempInodeInfo.Inode, reader, md5Hash, tempInodeInfo.StorageClass); err != nil {
+		if size, err = v.streamWrite(tempInodeInfo.Inode, reader, md5Hash, tempInodeInfo.PoolId); err != nil {
 			log.LogErrorf("WritePart: stream write fail: volume(%v) inode(%v) multipartID(%v) partID(%v) err(%v)",
 				v.name, tempInodeInfo.Inode, multipartId, partId, err)
 			return nil, err
@@ -1385,13 +1385,13 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	return fInfo, nil
 }
 
-func (v *Volume) ebsWrite(inode uint64, reader io.Reader, h hash.Hash, storageClass uint32) (size uint64, err error) {
+func (v *Volume) ebsWrite(inode uint64, reader io.Reader, h hash.Hash, poolId uint8) (size uint64, err error) {
 	ctx := context.Background()
-	size, err = v.getEbsWriter(inode, storageClass).WriteFromReader(ctx, reader, h)
+	size, err = v.getEbsWriter(inode, poolId).WriteFromReader(ctx, reader, h)
 	return
 }
 
-func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, storageClass uint32) (size uint64, err error) {
+func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, poolId uint8) (size uint64, err error) {
 	var (
 		buf                   = make([]byte, 2*util.BlockSize)
 		teeReader             = io.TeeReader(reader, h)
@@ -1417,7 +1417,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, storag
 				}
 				return nil
 			}
-			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0, checkFunc, storageClass,
+			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0, checkFunc, poolId,
 				false, false); err != nil {
 				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
 				exporter.Warning(fmt.Sprintf("write data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
@@ -1466,7 +1466,7 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 			size = int(rest)
 		}
 		// no reference to this appendInodeHash
-		n, err = v.ec.Read(inode, buf, offset, size, proto.StorageClass_Unspecified, false)
+		n, err = v.ec.Read(inode, buf, offset, size, 0, false)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("appendInodeHash: data read fail, inode(%v) offset(%v) size(%v) err(%v)", inode, offset, size, err)
 			return
@@ -1569,7 +1569,7 @@ func (v *Volume) loadUserDefinedMetadata(inode uint64) (metadata map[string]stri
 	return
 }
 
-func (v *Volume) readFile(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64, storageClass uint32) (err error) {
+func (v *Volume) readFile(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64, storageClass uint32, poolId uint8) (err error) {
 	isCache := false
 	if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(storageClass) {
 		isCache = true
@@ -1584,13 +1584,13 @@ func (v *Volume) readFile(inode, inodeSize uint64, path string, writer io.Writer
 		}
 	}()
 	if proto.IsHot(v.volType) || proto.IsStorageClassReplica(storageClass) {
-		return v.read(inode, inodeSize, path, writer, offset, size, storageClass)
+		return v.read(inode, inodeSize, path, writer, offset, size, poolId)
 	} else {
-		return v.readEbs(inode, inodeSize, path, writer, offset, size, storageClass)
+		return v.readEbs(inode, inodeSize, path, writer, offset, size, poolId)
 	}
 }
 
-func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64, storageClass uint32) error {
+func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64, poolId uint8) error {
 	upper := size + offset
 	if upper > inodeSize {
 		upper = inodeSize - offset
@@ -1598,7 +1598,7 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 
 	ctx := context.Background()
 	_ = context.WithValue(ctx, "objectnode", 1) // nolint: staticcheck
-	reader := v.getEbsReader(inode, storageClass)
+	reader := v.getEbsReader(inode, poolId)
 	var n int
 	var rest uint64
 	tmp := buf.ClodVolReaderBufPool.Get().([]byte)
@@ -1639,7 +1639,7 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 	return nil
 }
 
-func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64, storageClass uint32) error {
+func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64, poolId uint8) error {
 	upper := size + offset
 	if upper > inodeSize {
 		upper = inodeSize - offset
@@ -1660,7 +1660,7 @@ func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, of
 		if err != nil {
 			return err
 		}
-		n, err = v.ec.Read(inode, tmp, off, readSize, storageClass, false)
+		n, err = v.ec.Read(inode, tmp, off, readSize, 0, false)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, inode, offset, size, err)
@@ -1699,7 +1699,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 		return err
 	}
 
-	return v.readFile(ino, inoInfo.Size, path, writer, offset, size, inoInfo.StorageClass)
+	return v.readFile(ino, inoInfo.Size, path, writer, offset, size, inoInfo.StorageClass, inoInfo.PoolId)
 }
 
 func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrInfo, err error) {
@@ -1828,6 +1828,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 		Metadata:        metadata,
 		RetainUntilDate: retainUntilDate,
 		StorageClass:    inoInfo.StorageClass,
+		PoolId:          inoInfo.PoolId,
 	}
 	return
 }
@@ -2847,11 +2848,11 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	var ebsWriter *blobstore.Writer
 	if proto.IsCold(sv.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
 		sctx = context.Background()
-		ebsReader = sv.getEbsReader(sInode, sInodeInfo.StorageClass)
+		ebsReader = sv.getEbsReader(sInode, sInodeInfo.PoolId)
 	}
 	if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(tInodeInfo.StorageClass) {
 		tctx = context.Background()
-		ebsWriter = v.getEbsWriter(tInodeInfo.Inode, tInodeInfo.StorageClass)
+		ebsWriter = v.getEbsWriter(tInodeInfo.Inode, tInodeInfo.PoolId)
 	}
 
 	for {
@@ -2866,7 +2867,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		if proto.IsCold(sv.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
 			readN, err = ebsReader.Read(sctx, buf, readOffset, readSize)
 		} else {
-			readN, err = sv.ec.Read(sInode, buf, readOffset, readSize, sInodeInfo.StorageClass, false)
+			readN, err = sv.ec.Read(sInode, buf, readOffset, readSize, sInodeInfo.PoolId, false)
 		}
 		if err != nil && err != io.EOF {
 			return
@@ -2876,7 +2877,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 				writeN, err = ebsWriter.WriteWithoutPool(tctx, writeOffset, buf[:readN])
 			} else {
 				writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], 0, nil,
-					tInodeInfo.StorageClass, false, false)
+					tInodeInfo.PoolId, false, false)
 			}
 			if err != nil {
 				log.LogErrorf("CopyFile: write target path from volume (%v) path(%v) fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",
@@ -3129,7 +3130,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 	return v, nil
 }
 
-func (v *Volume) getEbsWriter(ino uint64, storageClass uint32) (writer *blobstore.Writer) {
+func (v *Volume) getEbsWriter(ino uint64, poolId uint8) (writer *blobstore.Writer) {
 	clientConf := blobstore.ClientConfig{
 		VolName:         v.name,
 		VolType:         v.volType,
@@ -3144,7 +3145,7 @@ func (v *Volume) getEbsWriter(ino uint64, storageClass uint32) (writer *blobstor
 		ReadConcurrency: readThreads,
 		FileCache:       false,
 		FileSize:        0,
-		StorageClass:    storageClass,
+		PoolId:          poolId,
 	}
 
 	writer = blobstore.NewWriter(clientConf)
@@ -3152,7 +3153,7 @@ func (v *Volume) getEbsWriter(ino uint64, storageClass uint32) (writer *blobstor
 	return
 }
 
-func (v *Volume) getEbsReader(ino uint64, storageClass uint32) (reader *blobstore.Reader) {
+func (v *Volume) getEbsReader(ino uint64, poolId uint8) (reader *blobstore.Reader) {
 	clientConf := blobstore.ClientConfig{
 		VolName:         v.name,
 		VolType:         v.volType,
@@ -3167,7 +3168,7 @@ func (v *Volume) getEbsReader(ino uint64, storageClass uint32) (reader *blobstor
 		ReadConcurrency: readThreads,
 		FileCache:       false,
 		FileSize:        0,
-		StorageClass:    storageClass,
+		PoolId:          poolId,
 	}
 
 	reader = blobstore.NewReader(clientConf)

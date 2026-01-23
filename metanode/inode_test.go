@@ -21,6 +21,7 @@ import (
 func TestEmptyV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_HDD
+	ino.PoolId = 101
 	data, err := ino.Marshal()
 	require.NoError(t, err)
 	targetIno := NewInode(0, 0)
@@ -32,6 +33,7 @@ func TestEmptyV4Inode_Marshal(t *testing.T) {
 func TestHDDV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 1)
 	ino.StorageClass = proto.MediaType_HDD
+	ino.PoolId = 101
 	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
@@ -62,6 +64,7 @@ func TestHDDV4Inode_Marshal(t *testing.T) {
 func TestEmptyEBSV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
+	ino.PoolId = 101
 	var data []byte
 	data, _ = ino.Marshal()
 	targetIno := NewInode(0, 0)
@@ -72,7 +75,7 @@ func TestEmptyEBSV4Inode_Marshal(t *testing.T) {
 func TestEBSV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
-
+	ino.PoolId = 101
 	ino.HybridCloudExtents.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
 
@@ -86,11 +89,13 @@ func TestEBSV4Inode_Marshal(t *testing.T) {
 func TestSDDToHDDV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
+	ino.PoolId = 101
 	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
 	ino.HybridCloudExtentsMigration.storageClass = proto.MediaType_HDD
+	ino.HybridCloudExtentsMigration.poolId = 102
 	ino.HybridCloudExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 14,
 		ExtentId: 16, ExtentOffset: 0, Size: 0, CRC: 0,
@@ -106,11 +111,13 @@ func TestSDDToHDDV4Inode_Marshal(t *testing.T) {
 func TestSDDToEBSV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
+	ino.PoolId = 101
 	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
 	ino.HybridCloudExtentsMigration.storageClass = proto.StorageClass_BlobStore
+	ino.HybridCloudExtentsMigration.poolId = 103
 	ino.HybridCloudExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
 	var data []byte
@@ -123,7 +130,7 @@ func TestSDDToEBSV4Inode_Marshal(t *testing.T) {
 func TestV4InodeCopy(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
-
+	ino.PoolId = 101
 	ino.HybridCloudExtents.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
 	temp := ino.Copy().(*Inode)
@@ -133,7 +140,7 @@ func TestV4InodeCopy(t *testing.T) {
 func TestV4InodeCopyDirectly(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
-
+	ino.PoolId = 101
 	ino.HybridCloudExtents.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
 	temp := ino.CopyDirectly().(*Inode)
@@ -143,7 +150,9 @@ func TestV4InodeCopyDirectly(t *testing.T) {
 func TestV4MigrationInodeCopy(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
+	ino.PoolId = 101
 	ino.HybridCloudExtentsMigration.storageClass = proto.MediaType_HDD
+	ino.HybridCloudExtentsMigration.poolId = 102
 	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
@@ -160,7 +169,9 @@ func TestV4MigrationInodeCopy(t *testing.T) {
 func TestV4MigrationInodeCopyDirectly(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
+	ino.PoolId = 101
 	ino.HybridCloudExtentsMigration.storageClass = proto.StorageClass_BlobStore
+	ino.HybridCloudExtentsMigration.poolId = 102
 	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
@@ -212,7 +223,7 @@ func TestInodeMarshal(t *testing.T) {
 	oldIno.NLink = 108
 	oldIno.Flag = 109
 	oldIno.StorageClass = proto.StorageClass_Replica_SSD
-
+	oldIno.PoolId = 101
 	// dir
 	oldIno.Type = uint32(os.ModeDir)
 	checkInodeMarshal(oldIno, t)
@@ -245,12 +256,14 @@ func TestInodeMarshal(t *testing.T) {
 	// check for migration empty
 	oldIno.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{
 		storageClass: proto.MediaType_SSD,
+		poolId:       103,
 	}
 	checkInodeMarshal(oldIno, t)
 
 	oldIno.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{
 		sortedEks:    NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 1024}}),
 		storageClass: proto.MediaType_SSD,
+		poolId:       103,
 	}
 	checkInodeMarshal(oldIno, t)
 
@@ -276,6 +289,7 @@ func TestInodeMarshalValue(t *testing.T) {
 	oldIno.NLink = 108
 	oldIno.Flag = 109
 	oldIno.StorageClass = proto.StorageClass_Replica_SSD
+	oldIno.PoolId = 101
 	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
 
 	buf1 := GetInodeBuf()
@@ -303,7 +317,7 @@ func BenchmarkInodeMarshal(b *testing.B) {
 	oldIno.Flag = 109
 	oldIno.StorageClass = proto.StorageClass_Replica_SSD
 	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
-
+	oldIno.PoolId = 101
 	log.SetLogLevelV2(log.WarnLevel)
 
 	buff := GetInodeBuf()
@@ -332,6 +346,7 @@ func BenchmarkInodeUnmarshal(b *testing.B) {
 	oldIno.Flag = 109
 	oldIno.StorageClass = proto.StorageClass_Replica_SSD
 	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
+	oldIno.PoolId = 101
 
 	buff := GetInodeBuf()
 	defer PutInodeBuf(buff)
@@ -375,12 +390,28 @@ func TestInodeV5PoolIdCompatibility(t *testing.T) {
 		ino.PoolId = poolId
 		ino.ClientID = 1001
 		ino.LeaseExpireTime = 2000
+
+		if proto.IsStorageClassReplica(storageClass) {
+			ino.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{
+				storageClass: storageClass,
+				poolId:       101,
+				expiredTime:  2000,
+				sortedEks:    NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}}),
+			}
+		} else {
+			ino.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{
+				storageClass: storageClass,
+				poolId:       101,
+				expiredTime:  2000,
+				sortedEks:    NewSortedObjExtentsFromObjEks([]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}}),
+			}
+		}
 		return ino
 	}
 
 	marshalOldVersion := func(ino *Inode) ([]byte, error) {
 		buff := GetInodeBuf()
-		defer PutInodeBuf(buff)
+		// defer PutInodeBuf(buff)
 		oldMarshalInode(ino, buff)
 		return buff.Bytes(), nil
 	}
@@ -436,6 +467,7 @@ func TestInodeV5PoolIdCompatibility(t *testing.T) {
 				assert.Equal(t, tc.expectedPoolId, targetIno.PoolId, "PoolId should match")
 				assert.Equal(t, ino.StorageClass, targetIno.StorageClass, "StorageClass should match")
 				assert.Equal(t, ino.ClientID, targetIno.ClientID, "ClientID should match")
+				assert.Equal(t, ino.HybridCloudExtentsMigration.poolId, targetIno.HybridCloudExtentsMigration.poolId, "HybridCloudExtentsMigration.poolId should match")
 			})
 		}
 	})
@@ -448,9 +480,9 @@ func TestInodeV5PoolIdCompatibility(t *testing.T) {
 			storageClass   uint32
 			expectedPoolId uint8
 		}{
-			{"SSD should get default PoolId", proto.StorageClass_Replica_SSD, DefaultSSDPoolId},
-			{"HDD should get default PoolId", proto.StorageClass_Replica_HDD, DefaultHDDPoolId},
-			{"BlobStore should get default PoolId", proto.StorageClass_BlobStore, DefaultECPoolId},
+			{"SSD should get default PoolId", proto.StorageClass_Replica_SSD, proto.DefaultSSDPoolId},
+			{"HDD should get default PoolId", proto.StorageClass_Replica_HDD, proto.DefaultHDDPoolId},
+			{"BlobStore should get default PoolId", proto.StorageClass_BlobStore, proto.DefaultECPoolId},
 		}
 
 		for _, tc := range testCases {
@@ -536,7 +568,6 @@ func TestInodeV5PoolIdCompatibility(t *testing.T) {
 }
 
 func oldMarshalInode(i *Inode, buff *buf.ByteBufExt) {
-
 	var err error
 	skipTimeFields := false
 

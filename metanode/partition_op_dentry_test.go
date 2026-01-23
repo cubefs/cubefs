@@ -29,6 +29,7 @@ func prepareInodeForDentryTest(t *testing.T, mp MetaPartition, mode uint32) (res
 		PartitionID: mp.GetBaseConfig().PartitionId,
 		Mode:        mode,
 		StorageType: proto.StorageClass_Replica_SSD,
+		PoolId:      proto.DefaultSSDPoolId,
 	}
 	resp = &proto.CreateInodeResponse{}
 	err := mp.CreateInode(req, p, "")

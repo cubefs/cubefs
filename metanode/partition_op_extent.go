@@ -52,7 +52,9 @@ func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, in
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	}
+
 	iParm.StorageClass = inode.StorageClass
+	iParm.PoolId = inode.PoolId
 
 	mp.uidManager.acLock.Lock()
 	if mp.uidManager.getUidAcl(inode.Uid) {
@@ -120,13 +122,25 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 
-	if req.StorageClass == proto.StorageClass_Unspecified {
-		log.LogInfof("[ExtentAppendWithCheck] mp(%v) inode(%v) storageClass(%v), reqStorageClass(%v), maybe from lower version client, set it as inode StorageClass",
-			mp.config.PartitionId, inoParm.Inode, proto.StorageClassString(inoParm.StorageClass), proto.StorageClassString(req.StorageClass))
-		req.StorageClass = inoParm.StorageClass
-	} else if !proto.IsStorageClassReplica(req.StorageClass) {
-		err = errors.New(fmt.Sprintf("mp(%v) inode(%v) wrong storageClass(%v), expect replica storageClass",
-			mp.config.PartitionId, inoParm.Inode, req.StorageClass))
+	if req.PoolId == 0 {
+		log.LogInfof("[ExtentAppendWithCheck] mp(%v) inode(%v) poolId(%v), reqPoolId(%v), maybe from lower version client, set it as inode PoolId",
+			mp.config.PartitionId, inoParm.Inode, inoParm.PoolId, req.PoolId)
+		req.PoolId = inoParm.PoolId
+	}
+
+	pool := mp.vol.GetPool(req.PoolId)
+	if pool == nil {
+		err = errors.New(fmt.Sprintf("mp(%v) inode(%v) wrong poolId(%v), pool not found",
+			mp.config.PartitionId, inoParm.Inode, req.PoolId))
+		log.LogErrorf("[ExtentAppendWithCheck] %v", err)
+		reply := []byte(err.Error())
+		p.PacketErrorWithBody(proto.OpMismatchStorageClass, reply)
+		return
+	}
+
+	if !proto.IsStorageClassReplica(uint32(pool.StorageClass)) {
+		err = errors.New(fmt.Sprintf("mp(%v) inode(%v) wrong poolId(%v), expect replica poolId",
+			mp.config.PartitionId, inoParm.Inode, req.PoolId))
 		log.LogErrorf("[ExtentAppendWithCheck] %v", err)
 
 		reply := []byte(err.Error())
@@ -162,12 +176,11 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	// extent key verSeq not set value since marshal will not include verseq
 	// use inode verSeq instead
 	inoParm.setVer(mp.verSeq)
-	if !req.IsCache {
-		inoParm.StorageClass = req.StorageClass
-	}
+	inoParm.PoolId = req.PoolId
 
 	if req.IsMigration {
-		inoParm.HybridCloudExtentsMigration.storageClass = req.StorageClass
+		inoParm.HybridCloudExtentsMigration.storageClass = uint32(pool.StorageClass)
+		inoParm.HybridCloudExtentsMigration.poolId = pool.Id
 		inoParm.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
 		inoParm.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).Append(ext)
 	} else {

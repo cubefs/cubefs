@@ -1465,6 +1465,7 @@ type SimpleVolView struct {
 	DisableAuditLog         bool
 	DeleteExecTime          time.Time
 	DefaultPoolId           uint8 // default storage pool ID for the volume
+	DefaultPoolId           uint8 // default storage pool ID for the volume
 	DpRepairBlockSize       uint64
 	EnableAutoDpMetaRepair  bool
 	EnableAutoMpMetaRepair  bool
@@ -1497,6 +1498,9 @@ type SimpleVolView struct {
 	MemoryMpCount           uint64
 	DpTag                   string
 	MpTag                   string
+
+	// Storage pools information map[poolId]*StoragePoolView
+	Pools map[uint8]*StoragePoolView `json:"pools,omitempty"`
 }
 
 type NodeSetInfo struct {
@@ -1744,6 +1748,21 @@ var storageClassStringMap = map[uint32]string{
 	StorageClass_BlobStore:   "BlobStore",
 }
 
+var storageClassMap = map[string]uint32{
+	"Unspecified": StorageClass_Unspecified,
+	"ReplicaSSD":  StorageClass_Replica_SSD,
+	"ReplicaHDD":  StorageClass_Replica_HDD,
+	"BlobStore":   StorageClass_BlobStore,
+}
+
+func GetStorageClassByString(storageClass string) uint32 {
+	val, ok := storageClassMap[storageClass]
+	if !ok {
+		return StorageClass_Unspecified
+	}
+	return val
+}
+
 func StorageClassString(storageClass uint32) (value string) {
 	value, ok := storageClassStringMap[storageClass]
 	if !ok {
@@ -1958,7 +1977,7 @@ type StoragePoolInfo struct {
 type StoragePoolView struct {
 	Id           uint8  `json:"id"`
 	Name         string `json:"name"`
-	StorageClass string `json:"storageClass"`
+	StorageClass uint8  `json:"storageClass"`
 	CId          int    `json:"cId,omitempty"`
 	ECAddr       string `json:"ecAddr,omitempty"`
 	CreateTime   string `json:"createTime"`
@@ -1970,3 +1989,53 @@ const (
 	SelectTypeNone = iota
 	SelectTypeTag
 )
+
+func (s *StoragePoolView) String() string {
+	return fmt.Sprintf("Id(%v) Name(%s) StorageClass(%v) CId(%v) ECAddr(%s) CreateTime(%s) UpdateTime(%s) Status(%s)",
+		s.Id, s.Name, StorageClassString(uint32(s.StorageClass)), s.CId, s.ECAddr, s.CreateTime, s.UpdateTime, s.Status)
+}
+
+// Default Storage Pool IDs
+const (
+	DefaultSSDPoolId uint8 = 1
+	DefaultHDDPoolId uint8 = 2
+	DefaultECPoolId  uint8 = 3
+	MaxDefaultPoolId uint8 = 3
+)
+
+// Default storage pool names
+const (
+	DefaultSSDPoolName = "defSSDPool"
+	DefaultHDDPoolName = "defaultHDDPool"
+	DefaultECPoolName  = "defaultECPool"
+)
+
+// GetDefaultPoolIdByMediaType returns default pool ID based on media type
+func GetDefaultPoolIdByMediaType(mediaType uint32) uint8 {
+	switch mediaType {
+	case MediaType_SSD:
+		return DefaultSSDPoolId
+	case MediaType_HDD:
+		return DefaultHDDPoolId
+	default:
+		// Default to SSD pool for unspecified media type
+		log.LogWarnf("GetDefaultPoolIdByMediaType: unsupported mediaType[%d], defaulting to SSD pool", mediaType)
+		return DefaultSSDPoolId
+	}
+}
+
+// GetDefaultPoolIdByStorageClass returns default pool ID based on storage class
+func GetDefaultPoolIdByStorageClass(storageClass uint32) uint8 {
+	switch storageClass {
+	case StorageClass_Replica_SSD:
+		return DefaultSSDPoolId
+	case StorageClass_Replica_HDD:
+		return DefaultHDDPoolId
+	case StorageClass_BlobStore:
+		return DefaultECPoolId
+	default:
+		// Default to SSD pool for unspecified storage class
+		log.LogWarnf("GetDefaultPoolIdByStorageClass: unsupported storageClass[%d], defaulting to SSD pool", storageClass)
+		return DefaultSSDPoolId
+	}
+}

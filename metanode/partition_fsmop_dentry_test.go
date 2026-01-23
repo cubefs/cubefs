@@ -70,6 +70,7 @@ func prepareInodeForFsmDentryTest(t *testing.T, mp *metaPartition, ino uint64, m
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	inode := NewInode(ino, mode)
+	inode.PoolId = proto.DefaultSSDPoolId
 	status, err := mp.fsmCreateInode(handle, inode)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)

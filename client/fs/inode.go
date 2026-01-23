@@ -55,11 +55,18 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 	node, isFind := s.nodeCache[ino]
 	s.fslock.Unlock()
 	if isFind {
-		s, ok := node.(*Dir)
+		dir, ok := node.(*Dir)
 		if ok {
-			s.info = info
+			dir.info = info
 		} else {
-			migrated := info.StorageClass != node.(*File).info.StorageClass
+			pool := getStorageClassByPoolIdFromSuper(s, info.PoolId)
+			ebsc, err := s.getBlobStoreClient(pool)
+			if err != nil {
+				log.LogErrorf("InodeGet: get blobstore client for pool(%v) err: %v", pool.String(), err)
+				return nil, err
+			}
+
+			migrated := info.PoolId != node.(*File).info.PoolId
 			// the first time storage class change to blob store
 			if migrated && proto.IsStorageClassBlobStore(info.StorageClass) {
 				f := node.(*File)
@@ -72,13 +79,13 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 					Bc:              f.super.bc,
 					Mw:              f.super.mw,
 					Ec:              f.super.ec,
-					Ebsc:            f.super.ebsc,
+					Ebsc:            ebsc,
 					EnableBcache:    f.super.enableBcache,
 					WConcurrency:    f.super.writeThreads,
 					ReadConcurrency: f.super.readThreads,
 					FileCache:       false,
 					FileSize:        uint64(fileSize),
-					StorageClass:    f.info.StorageClass,
+					PoolId:          f.info.PoolId,
 				}
 				f.fWriter.FreeCache()
 				switch f.flag & 0x0f {

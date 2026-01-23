@@ -42,6 +42,7 @@ type SortedHybridCloudExtentsMigration struct {
 	sortedEks    interface{}
 	storageClass uint32
 	expiredTime  int64 // delay delete
+	poolId       uint8
 }
 
 func (sem *SortedHybridCloudExtentsMigration) GetSortedEks() interface{} {

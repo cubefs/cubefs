@@ -790,7 +790,7 @@ func TestAddDataNode(t *testing.T) {
 		server.cluster.dataNodes.Delete(nodeAddr)
 
 		// Call addDataNode
-		id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType,0)
+		id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType, 0)
 
 		// Verify results
 		require.NoError(t, err)
@@ -822,7 +822,7 @@ func TestAddDataNode(t *testing.T) {
 		// Ensure node doesn't exist
 		server.cluster.dataNodes.Delete(nodeAddr)
 
-		id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType,0)
+		id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType, 0)
 
 		require.NoError(t, err)
 		require.Greater(t, id, uint64(0))
@@ -857,7 +857,7 @@ func TestAddDataNode(t *testing.T) {
 		// Ensure node doesn't exist
 		server.cluster.dataNodes.Delete(nodeAddr)
 
-		id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, invalidMediaType,0)
+		id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, invalidMediaType, 0)
 
 		// Should succeed using legacy media type
 		require.NoError(t, err)
@@ -891,7 +891,7 @@ func TestAddDataNode(t *testing.T) {
 		// Ensure node doesn't exist
 		server.cluster.dataNodes.Delete(nodeAddr)
 
-		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, invalidMediaType,0)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, invalidMediaType, 0)
 
 		// Should return error
 		require.Error(t, err)
@@ -910,11 +910,11 @@ func TestAddDataNode(t *testing.T) {
 
 		// Add node first
 		server.cluster.dataNodes.Delete(nodeAddr)
-		firstId, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType,0)
+		firstId, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType, 0)
 		require.NoError(t, err)
 
 		// Add same node with same parameters again
-		secondId, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType,0)
+		secondId, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType, 0)
 
 		// Should return same ID, no error
 		require.NoError(t, err)
@@ -932,7 +932,7 @@ func TestAddDataNode(t *testing.T) {
 
 		// Add node first
 		server.cluster.dataNodes.Delete(nodeAddr)
-		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, firstNodesetId, mediaType,0)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, firstNodesetId, mediaType, 0)
 		require.NoError(t, err)
 
 		// Get actual allocated nodesetId
@@ -942,7 +942,7 @@ func TestAddDataNode(t *testing.T) {
 
 		// Try to add with different nodesetId
 		differentNodesetId := actualNodesetId + 1
-		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, differentNodesetId, mediaType,0)
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, differentNodesetId, mediaType, 0)
 
 		// Should return error
 		require.Error(t, err)
@@ -961,11 +961,11 @@ func TestAddDataNode(t *testing.T) {
 
 		// Add node first
 		server.cluster.dataNodes.Delete(nodeAddr)
-		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, firstZoneName, rack, nodesetId, mediaType,0)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, firstZoneName, rack, nodesetId, mediaType, 0)
 		require.NoError(t, err)
 
 		// Try to add with different zone
-		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, secondZoneName, rack, nodesetId, mediaType,0)
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, secondZoneName, rack, nodesetId, mediaType, 0)
 
 		// Should return error
 		require.Error(t, err)
@@ -984,11 +984,11 @@ func TestAddDataNode(t *testing.T) {
 
 		// Add node first
 		server.cluster.dataNodes.Delete(nodeAddr)
-		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, firstMediaType,0)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, firstMediaType, 0)
 		require.NoError(t, err)
 
 		// Try to add with different media type
-		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, secondMediaType,0)
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, secondMediaType, 0)
 
 		// Should return error
 		require.Error(t, err)
@@ -1007,11 +1007,11 @@ func TestAddDataNode(t *testing.T) {
 
 		// Add node first
 		server.cluster.dataNodes.Delete(nodeAddr)
-		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, firstRack, nodesetId, mediaType,0)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, firstRack, nodesetId, mediaType, 0)
 		require.NoError(t, err)
 
 		// Try to add with different rack (non-default rack)
-		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, secondRack, nodesetId, mediaType,0)
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, secondRack, nodesetId, mediaType, 0)
 
 		// Should return error
 		require.Error(t, err)
@@ -1030,11 +1030,11 @@ func TestAddDataNode(t *testing.T) {
 
 		// Add node first (using default rack)
 		server.cluster.dataNodes.Delete(nodeAddr)
-		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, defaultRack, nodesetId, mediaType,0)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, defaultRack, nodesetId, mediaType, 0)
 		require.NoError(t, err)
 
 		// Try to add with different rack (from default rack to new rack)
-		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, newRack, nodesetId, mediaType,0)
+		_, err = server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, newRack, nodesetId, mediaType, 0)
 
 		// Should succeed (allow update from default rack)
 		require.NoError(t, err)
@@ -1059,11 +1059,11 @@ func TestAddDataNode(t *testing.T) {
 
 		// Add node first (without port info)
 		server.cluster.dataNodes.Delete(nodeAddr)
-		_, err := server.cluster.addDataNode(nodeAddr, firstHeartbeatPort, firstReplicaPort, zoneName, rack, nodesetId, mediaType,0)
+		_, err := server.cluster.addDataNode(nodeAddr, firstHeartbeatPort, firstReplicaPort, zoneName, rack, nodesetId, mediaType, 0)
 		require.NoError(t, err)
 
 		// Update port info
-		_, err = server.cluster.addDataNode(nodeAddr, newHeartbeatPort, newReplicaPort, zoneName, rack, nodesetId, mediaType,0)
+		_, err = server.cluster.addDataNode(nodeAddr, newHeartbeatPort, newReplicaPort, zoneName, rack, nodesetId, mediaType, 0)
 
 		// Should succeed
 		require.NoError(t, err)
@@ -1090,7 +1090,7 @@ func TestAddDataNode(t *testing.T) {
 
 		// Note: This test might fail because the specified nodeset may not exist
 		// This depends on the test environment setup
-		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, specificNodesetId, mediaType,0)
+		_, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, specificNodesetId, mediaType, 0)
 
 		// If nodeset doesn't exist, should return error
 		if err != nil {
@@ -1126,7 +1126,7 @@ func TestAddDataNode(t *testing.T) {
 		server.cluster.dataNodes.Delete(nodeAddr)
 
 		// Try to add node without ports
-		_, err := server.cluster.addDataNode(nodeAddr, emptyHeartbeatPort, emptyReplicaPort, zoneName, rack, nodesetId, mediaType,0)
+		_, err := server.cluster.addDataNode(nodeAddr, emptyHeartbeatPort, emptyReplicaPort, zoneName, rack, nodesetId, mediaType, 0)
 
 		// Should return error
 		require.Error(t, err)
@@ -1157,7 +1157,7 @@ func TestAddDataNode(t *testing.T) {
 			wg.Add(1)
 			go func(index int) {
 				defer wg.Done()
-				id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType,0)
+				id, err := server.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType, 0)
 				results[index] = struct {
 					id  uint64
 					err error

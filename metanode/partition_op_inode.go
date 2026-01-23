@@ -494,7 +494,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet, rem
 	var inodes InodeBatch
 	start := time.Now()
 	for i, id := range req.Inodes {
-		inodes = append(inodes, NewInode(id, 0))
+		inodes = append(inodes, NewInodeWithPoolId(id, 0, proto.DefaultSSDPoolId))
 		ino := id
 		fullPath := ""
 		if len(req.FullPaths) > i {
@@ -705,7 +705,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 		}()
 	}
 	txInfo := req.TxInfo.GetCopy()
-	ino := NewInode(req.Inode, 0)
+	ino := NewInodeWithPoolId(req.Inode, 0, proto.DefaultSSDPoolId)
 	inoResp := mp.getInode(ino, true)
 	if inoResp.Status != proto.OpOk {
 		err = fmt.Errorf("ino[%v] not exists", ino.Inode)
@@ -758,13 +758,14 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
 		}()
 	}
+
 	var r interface{}
 	var val []byte
 	if req.UniqID > 0 {
 		val = InodeOnceLinkMarshal(req)
 		r, err = mp.submit(opFSMCreateLinkInodeOnce, val)
 	} else {
-		ino := NewInode(req.Inode, 0)
+		ino := NewInodeWithPoolId(req.Inode, 0, proto.DefaultSSDPoolId)
 		ino.setVer(mp.verSeq)
 		val, err = ino.Marshal()
 		if err != nil {
@@ -937,7 +938,7 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 	var inodes InodeBatch
 
 	for i, id := range req.Inodes {
-		inodes = append(inodes, NewInode(id, 0))
+		inodes = append(inodes, NewInodeWithPoolId(id, 0, proto.DefaultSSDPoolId))
 		ino := id
 		fullPath := ""
 		if len(req.FullPaths) > i {

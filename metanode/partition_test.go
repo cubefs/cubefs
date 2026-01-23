@@ -86,6 +86,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	// add data to mp
 	ino := NewInode(0, 0)
+	ino.PoolId = proto.DefaultHDDPoolId
 	ino.StorageClass = proto.StorageClass_Replica_HDD
 	mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 	dentry := &Dentry{}
@@ -177,12 +178,14 @@ func TestMetaPartition_LoadHybridCloudMigrationSnapshot(t *testing.T) {
 	require.True(t, ok)
 	ino := NewInode(2, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
+	ino.PoolId = proto.DefaultECPoolId
 	ino.HybridCloudExtents.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{
 			Size: uint64(1024), FileOffset: uint64(0), BlobSize: 4194304, BlobsLen: 1,
 			Blobs: []proto.Blob{{Count: 1, MinBid: 30138734, Vid: 525}},
 		}})
 	ino.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Replica_SSD
+	ino.HybridCloudExtentsMigration.poolId = proto.DefaultSSDPoolId
 	ino.HybridCloudExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 0, PartitionId: 164,
 		ExtentId: 55, ExtentOffset: 0, Size: 1024, CRC: 0,
@@ -222,6 +225,7 @@ func prepareDataForMpTest(t *testing.T, mp *metaPartition) {
 	require.NoError(t, err)
 
 	ino := NewInode(0, DirModeType)
+	ino.PoolId = proto.DefaultHDDPoolId
 	_, _, err = mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 	require.NoError(t, err)
 
@@ -478,6 +482,7 @@ func TestDoFileStats(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 10000000; i++ {
 		ino := NewInode(uint64(i), 0)
+		ino.PoolId = proto.DefaultHDDPoolId
 		_, _, err = mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 		require.NoError(t, err)
 	}
@@ -628,6 +633,7 @@ func TestUpdateSizeLoopFunc(t *testing.T) {
 	inoA.Type = 0 // regular
 	inoA.NLink = 1
 	inoA.Size = 100
+	inoA.PoolId = proto.DefaultSSDPoolId
 	inoA.StorageClass = proto.StorageClass_Replica_SSD
 	_, _, err = mp.inodeTree.ReplaceOrInsert(h, inoA, true)
 	require.NoError(t, err)
@@ -639,6 +645,7 @@ func TestUpdateSizeLoopFunc(t *testing.T) {
 	inoB.StorageClass = proto.StorageClass_Replica_SSD
 	inoB.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{}
 	inoB.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Replica_HDD
+	inoB.HybridCloudExtentsMigration.poolId = proto.DefaultHDDPoolId
 	inoB.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
 	_, _, err = mp.inodeTree.ReplaceOrInsert(h, inoB, true)
 	require.NoError(t, err)
@@ -723,9 +730,11 @@ func TestScanRocksdb(t *testing.T) {
 	}
 	// ino1: id=5, size=5 (<10), regular
 	ino1 := NewInode(5, 0)
+	ino1.PoolId = proto.DefaultSSDPoolId
 	ino1.NLink = 1
 	ino1.Size = 5
 	ino1.StorageClass = proto.StorageClass_Replica_SSD
+	ino1.PoolId = proto.DefaultSSDPoolId
 	_, _, err = mp.inodeTree.ReplaceOrInsert(h, ino1, true)
 	if err != nil {
 		t.Fatalf("insert ino1 error:%v", err)
@@ -735,6 +744,7 @@ func TestScanRocksdb(t *testing.T) {
 	ino2.NLink = 1
 	ino2.Size = 20
 	ino2.StorageClass = proto.StorageClass_Replica_SSD
+	ino2.PoolId = proto.DefaultSSDPoolId
 	_, _, err = mp.inodeTree.ReplaceOrInsert(h, ino2, true)
 	if err != nil {
 		t.Fatalf("insert ino2 error:%v", err)

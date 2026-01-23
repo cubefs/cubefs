@@ -14,7 +14,9 @@ func TestStoreDentry(t *testing.T) {
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	for i := 0; i < 100; i++ {
-		_, _, err := mp.inodeTree.ReplaceOrInsert(handle, NewInode(uint64(101+i), DirModeType), true)
+		ino := NewInode(uint64(101+i), DirModeType)
+		ino.PoolId = proto.DefaultSSDPoolId
+		_, _, err := mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 		require.NoError(t, err)
 	}
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -55,7 +57,9 @@ func TestStoreDentryCompitable(t *testing.T) {
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	for i := 0; i < 5; i++ {
-		_, _, err := mp.inodeTree.ReplaceOrInsert(handle, NewInode(uint64(101+i), DirModeType), true)
+		ino := NewInode(uint64(101+i), DirModeType)
+		ino.PoolId = proto.DefaultSSDPoolId
+		_, _, err := mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 		require.NoError(t, err)
 	}
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -92,7 +96,7 @@ func TestStoreInode(t *testing.T) {
 	baseInode.NLink = 108
 	baseInode.Flag = 109
 	baseInode.StorageClass = proto.StorageClass_Replica_SSD
-
+	baseInode.PoolId = proto.DefaultSSDPoolId
 	mp := newMetaPartition(1024, nil, proto.StoreModeMem)
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
@@ -149,6 +153,7 @@ func TestStoreInodeCompitable(t *testing.T) {
 	baseInode.NLink = 108
 	baseInode.Flag = 109
 	baseInode.StorageClass = proto.StorageClass_Replica_SSD
+	baseInode.PoolId = proto.DefaultSSDPoolId
 
 	rootDir, err := os.MkdirTemp("", "")
 	if err != nil {

@@ -51,6 +51,7 @@ func TestMetaQuotaInodeMarshalUnmarshal(t *testing.T) {
 	inode.Size = 1024
 	inode.Type = 0o644
 	inode.StorageClass = proto.StorageClass_Replica_SSD // Set valid StorageClass
+	inode.PoolId = proto.DefaultSSDPoolId
 
 	quotaIds := []uint32{100, 200, 300}
 	qInode := &MetaQuotaInode{
@@ -78,6 +79,7 @@ func TestMetaQuotaInodeMarshalUnmarshal(t *testing.T) {
 func TestMetaQuotaInodeMarshalEmptyQuotaIds(t *testing.T) {
 	inode := NewInode(1, 2)
 	inode.StorageClass = proto.StorageClass_Replica_SSD // Set valid StorageClass
+	inode.PoolId = proto.DefaultSSDPoolId
 	qInode := &MetaQuotaInode{
 		inode:    inode,
 		quotaIds: []uint32{},
@@ -113,6 +115,7 @@ func TestMetaQuotaTxMetaQuotaInodeMarshalUnmarshal(t *testing.T) {
 	txinode.Inode.Size = 2048
 	txinode.Inode.Type = 0o755
 	txinode.Inode.StorageClass = proto.StorageClass_Replica_HDD // Set valid StorageClass
+	txinode.Inode.PoolId = proto.DefaultHDDPoolId
 
 	quotaIds := []uint32{400, 500}
 	txQInode := &TxMetaQuotaInode{
@@ -506,6 +509,8 @@ func TestMetaQuotaManagerEdgeCases(t *testing.T) {
 	// Test with empty quota IDs
 	inode := NewInode(1, 2)
 	inode.StorageClass = proto.StorageClass_Replica_SSD // Set valid StorageClass
+	inode.PoolId = proto.DefaultSSDPoolId
+
 	qInode := &MetaQuotaInode{
 		inode:    inode,
 		quotaIds: nil,
@@ -541,6 +546,8 @@ func TestMetaQuotaManagerLargeQuotaIds(t *testing.T) {
 
 	inode := NewInode(1, 2)
 	inode.StorageClass = proto.StorageClass_BlobStore // Set valid StorageClass
+	inode.PoolId = proto.DefaultECPoolId
+
 	qInode := &MetaQuotaInode{
 		inode:    inode,
 		quotaIds: quotaIds,

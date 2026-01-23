@@ -1506,13 +1506,13 @@ func (mw *MetaWrapper) DentryUpdate_ll(parentID uint64, name string, inode uint6
 	return
 }
 
-func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.ExtentKey, storageClass uint32) error {
+func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.ExtentKey, poolId uint8) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek, nil, true, false, storageClass, false)
+	status, err := mw.appendExtentKey(mp, inode, ek, nil, true, false, poolId, false)
 	if err != nil || status != statusOK {
 		log.LogErrorf("SplitExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
 		return statusToErrno(status)
@@ -1524,14 +1524,14 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 
 // Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey, discard []proto.ExtentKey,
-	isCache bool, storageClass uint32, isMigration bool,
+	isCache bool, poolId uint8, isMigration bool,
 ) (int, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return statusError, syscall.ENOENT
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek, discard, false, isCache, storageClass, isMigration)
+	status, err := mw.appendExtentKey(mp, inode, ek, discard, false, isCache, poolId, isMigration)
 	if err != nil || status != statusOK {
 		log.LogErrorf("MetaWrapper AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
 		return status, statusToErrno(status)

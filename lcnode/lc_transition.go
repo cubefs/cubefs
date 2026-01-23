@@ -30,8 +30,8 @@ import (
 type ExtentApi interface {
 	OpenStream(inode uint64, openForWrite, isCache bool, fullPath string) error
 	CloseStream(inode uint64) error
-	Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error)
-	Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration, waitForFlush bool) (write int, err error)
+	Read(inode uint64, data []byte, offset int, size int, poolId uint8, isMigration bool) (read int, err error)
+	Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, poolId uint8, isMigration, waitForFlush bool) (write int, err error)
 	Flush(inode uint64) error
 	Close() error
 }
@@ -95,7 +95,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		}
 		buf = buf[:readSize]
 
-		readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, false)
+		readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.PoolId, false)
 		if err != nil && err != io.EOF {
 			err = fmt.Errorf("read source file err(%v)", err)
 			log.LogWarnf("migrate: inode(%v) readOffset(%v) storageClass(%v): %v",
@@ -103,7 +103,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 			return
 		}
 		if readN > 0 {
-			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, proto.OpTypeToStorageType(e.Op), true, false)
+			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, e.PoolId, true, false)
 			if err != nil {
 				err = fmt.Errorf("write dst file err(%v)", err)
 				log.LogWarnf("migrate: inode(%v), writeOffset(%v): %v", e.Inode, writeOffset, err)
@@ -198,9 +198,9 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 		buf = buf[:readSize]
 
 		if isMigrationExtent {
-			readN, err = t.ecForW.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, isMigrationExtent)
+			readN, err = t.ecForW.Read(e.Inode, buf, readOffset, readSize, e.PoolId, isMigrationExtent)
 		} else {
-			readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, isMigrationExtent)
+			readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.PoolId, isMigrationExtent)
 		}
 
 		if err != nil && err != io.EOF {

@@ -29,6 +29,8 @@ func prepareInodeForExtendTest(t *testing.T, mp MetaPartition) (ino uint64) {
 		VolName:     mp.GetBaseConfig().VolName,
 		PartitionID: mp.GetBaseConfig().PartitionId,
 		Mode:        FileModeType,
+		PoolId:      proto.DefaultSSDPoolId,
+		StorageType: proto.StorageClass_Replica_SSD,
 	}
 	err := mp.CreateInode(req, p, "")
 	require.NoError(t, err)

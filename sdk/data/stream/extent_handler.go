@@ -182,7 +182,7 @@ type ExtentHandler struct {
 	stop chan struct{}
 	sync.Once
 
-	storageClass uint32
+	poolId uint8
 
 	isMigration bool
 
@@ -191,7 +191,7 @@ type ExtentHandler struct {
 
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
-	storageClass uint32, isMigration bool,
+	poolId uint8, isMigration bool,
 ) *ExtentHandler {
 	// TODO: for debug
 	// log.LogDebugf("NewExtentHandler, inode(%v) storageClass(%v), stack:\n%v",
@@ -212,7 +212,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 		stop:               make(chan struct{}),
 		meetLimitedIoError: false,
 		verUpdate:          make(chan uint64),
-		storageClass:       proto.GetMediaTypeByStorageClass(storageClass),
+		poolId:             poolId,
 		isMigration:        isMigration,
 	}
 
@@ -224,8 +224,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)Ver(%v)key(%v)lastKey(%v)flight(%d)dirty(%v)storageClass(%v)inflight(%v)dirty(%v)}",
-		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.stream.verSeq, eh.key, eh.lastKey, eh.inflight, eh.dirty, eh.storageClass, eh.inflight, eh.dirty)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)Ver(%v)key(%v)lastKey(%v)flight(%d)dirty(%v)poolId(%v)inflight(%v)dirty(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.stream.verSeq, eh.key, eh.lastKey, eh.inflight, eh.dirty, eh.poolId, eh.inflight, eh.dirty)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -243,16 +243,11 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 		blksize = util.BlockSize
 	}
 
-	// If this write request is not continuous, and cannot be merged
-	// into the extent handler, just close it and return error.
-	// In this case, the caller should try to create a new extent handler.
-	if proto.IsHot(eh.stream.client.volumeType) || proto.IsStorageClassReplica(eh.storageClass) {
-		if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
-			(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
+	if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
+		(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
 
-			err = errors.New("ExtentHandler: full or incontinuous")
-			return
-		}
+		err = errors.New("ExtentHandler: full or incontinuous")
+		return
 	}
 
 	for total < size {
@@ -567,15 +562,11 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 
 	if eh.key != nil {
 		if eh.dirty {
-			if proto.IsCold(eh.stream.client.volumeType) || proto.IsStorageClassBlobStore(eh.storageClass) &&
-				eh.status == ExtentStatusError {
-				return
-			}
 			var status int
 			ekey := *eh.key
 			doAppend := func() (err error) {
 				discard := eh.stream.extents.Append(&ekey, true)
-				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard, eh.stream.isCache, eh.storageClass, eh.isMigration)
+				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard, eh.stream.isCache, eh.poolId, eh.isMigration)
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
 					if errUpdateExtents := eh.stream.GetExtentsForceRefresh(); errUpdateExtents != nil {
 						log.LogErrorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
@@ -694,7 +685,7 @@ func (eh *ExtentHandler) waitForFlush() (err error) {
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 	log.LogDebugf("ExtentHandler recoverPacket: eh(%v), packet(%v)", eh, packet)
 	packet.errCount++
-	if packet.errCount >= MaxPacketErrorCount || proto.IsCold(eh.stream.client.volumeType) || proto.IsStorageClassBlobStore(eh.storageClass) {
+	if packet.errCount >= MaxPacketErrorCount {
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
 
@@ -717,7 +708,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 			time.Sleep(retryInterval)
 		}
 
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0, eh.storageClass, eh.isMigration)
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0, eh.poolId, eh.isMigration)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
@@ -749,7 +740,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
-			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.storageClass, eh.id); err != nil {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.poolId, eh.id); err != nil {
 				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), "+
 					"clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})
@@ -893,9 +884,6 @@ func (eh *ExtentHandler) setRecovery() bool {
 }
 
 func (eh *ExtentHandler) setError() bool {
-	//	log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
-	if proto.IsHot(eh.stream.client.volumeType) || proto.IsStorageClassReplica(eh.storageClass) {
-		eh.stream.setError()
-	}
+	eh.stream.setError()
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
 }

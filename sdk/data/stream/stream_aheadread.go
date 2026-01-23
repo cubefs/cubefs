@@ -82,16 +82,16 @@ func putAheadReadBlock(block *AheadReadBlock) {
 }
 
 type AheadReadTask struct {
-	p            *Packet
-	dp           *wrapper.DataPartition
-	time         time.Time
-	req          *ExtentRequest
-	cacheSize    int
-	cacheType    string
-	logTime      *time.Time
-	reqID        string
-	storageClass uint32
-	retry        uint32
+	p         *Packet
+	dp        *wrapper.DataPartition
+	time      time.Time
+	req       *ExtentRequest
+	cacheSize int
+	cacheType string
+	logTime   *time.Time
+	reqID     string
+	poolId    uint8
+	retry     uint32
 }
 
 type AheadReadWindow struct {
@@ -388,7 +388,7 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	}
 }
 
-func (arw *AheadReadWindow) addNextTask(offset int, stTime time.Time, reqID string, storageClass uint32, key string) {
+func (arw *AheadReadWindow) addNextTask(offset int, stTime time.Time, reqID string, poolId uint8, key string) {
 	rightOffset := atomic.LoadUint64(&arw.rightOffset)
 	ek := arw.streamer.getCurrentExtent(int(rightOffset))
 	if ek == nil {
@@ -421,11 +421,11 @@ func (arw *AheadReadWindow) addNextTask(offset int, stTime time.Time, reqID stri
 	}
 	log.LogDebugf("addNextTask inode(%v) key(%v) offset(%v) move from(%v) reqID(%v) ek(%v) winCnt(%v)",
 		arw.streamer.inode, key, offset, rightOffset, reqID, ek, diffWinCnt)
-	arw.doMultiAheadRead(int(newOffset), curReq, dp, stTime, reqID, storageClass, diffWinCnt)
+	arw.doMultiAheadRead(int(newOffset), curReq, dp, stTime, reqID, poolId, diffWinCnt)
 }
 
 func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp *wrapper.DataPartition,
-	startTime time.Time, reqID string, storageClass uint32, winCnt int,
+	startTime time.Time, reqID string, poolId uint8, winCnt int,
 ) {
 	curReq := &ExtentRequest{
 		FileOffset: req.FileOffset,
@@ -465,7 +465,7 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp 
 		}
 
 		size := util.Min(remainSize, int(arw.streamer.aheadReadBlockSize))
-		task := arw.getAheadReadTask(dp, curReq, id, size, storageClass)
+		task := arw.getAheadReadTask(dp, curReq, id, size, poolId)
 		if task != nil {
 			task.time = startTime
 			task.cacheType = "pass"
@@ -481,7 +481,7 @@ func (arw *AheadReadWindow) doMultiAheadRead(offset int, req *ExtentRequest, dp 
 }
 
 func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *ExtentRequest, id int, size int,
-	storageClass uint32,
+	poolId uint8,
 ) *AheadReadTask {
 	cacheOffset := id * int(arw.streamer.aheadReadBlockSize)
 	if dp == nil {
@@ -496,12 +496,12 @@ func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *Ext
 	}
 	p := NewReadPacket(req.ExtentKey, cacheOffset, size, arw.streamer.inode, req.FileOffset, true)
 	task := &AheadReadTask{
-		p:            p,
-		dp:           dp,
-		req:          req,
-		cacheSize:    size,
-		storageClass: storageClass,
-		retry:        0,
+		p:         p,
+		dp:        dp,
+		req:       req,
+		cacheSize: size,
+		poolId:    poolId,
+		retry:     0,
 	}
 	return task
 }
@@ -543,7 +543,7 @@ func (s *Streamer) getNextExtent(offset int) (ek *proto.ExtentKey) {
 	return
 }
 
-func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize int, err error) {
+func (s *Streamer) aheadRead(req *ExtentRequest, poolId uint8) (readSize int, err error) {
 	var (
 		offset      int
 		cacheOffset int
@@ -609,7 +609,7 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 						"cacheBlockOffset(%v) cacheBlockSize(%v) reqID(%v)",
 						s.inode, req.FileOffset, offset, needSize, cacheBlock.offset, curSize, reqID)
 				}
-				go s.aheadReadWindow.addNextTask(req.FileOffset, startTime, reqID, storageClass, key)
+				go s.aheadReadWindow.addNextTask(req.FileOffset, startTime, reqID, poolId, key)
 			}
 			if (cacheBlock.offset + curSize) > uint64(offset+needSize) {
 				// all require data is cached, copy completely return directly
@@ -650,7 +650,7 @@ func (s *Streamer) aheadRead(req *ExtentRequest, storageClass uint32) (readSize 
 		log.LogDebugf("aheadRead pass ahead win inode(%v) offset(%v) need(%v) "+
 			"req(%v) reqID(%v)", s.inode, offset, needSize, req, reqID)
 	}
-	go s.aheadReadWindow.doMultiAheadRead(offset, req, dp, startTime, reqID, storageClass,
+	go s.aheadReadWindow.doMultiAheadRead(offset, req, dp, startTime, reqID, poolId,
 		s.aheadReadWindow.cache.winCnt)
 	return
 }

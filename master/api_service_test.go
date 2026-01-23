@@ -241,7 +241,7 @@ func createDefaultMasterServerForTest() *Server {
 	}
 
 	commonVol = vol
-	fmt.Printf("Volume[%+v] has created\n", newSimpleView(commonVol))
+	fmt.Printf("Volume[%+v] has created\n", newSimpleView(testServer.cluster, commonVol))
 
 	if err = createUserWithPolicy(testServer); err != nil {
 		panic(err)

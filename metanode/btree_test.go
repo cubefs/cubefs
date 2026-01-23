@@ -199,6 +199,7 @@ func TestInodeTree_Create(t *testing.T) {
 				LinkTarget:   []byte("linkTarget"),
 				NLink:        3,
 				StorageClass: proto.StorageClass_Replica_SSD,
+				PoolId:       101,
 
 				HybridCloudExtents: NewSortedHybridCloudExtents(),
 			},
@@ -215,6 +216,7 @@ func TestInodeTree_Create(t *testing.T) {
 				Size:         4096,
 				NLink:        1,
 				StorageClass: proto.StorageClass_Replica_SSD,
+				PoolId:       101,
 
 				HybridCloudExtents: NewSortedHybridCloudExtents(),
 			},
@@ -299,6 +301,7 @@ func TestInodeTreeCreate(t *testing.T) {
 	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
 	// create
 	inode := NewInode(1000, 0)
+	inode.PoolId = proto.DefaultSSDPoolId
 	_, _, errForMem = inodeCreate(memInodeTree, inode, true)
 	_, _, errForRocks = inodeCreate(rocksInodeTree, inode, true)
 	if errForRocks != nil || errForMem != nil {
@@ -354,6 +357,7 @@ func TestInodeTreeGet(t *testing.T) {
 	// create
 	for index := 1; index <= 100; index++ {
 		inode := NewInode(uint64(index), 0)
+		inode.PoolId = 101
 		_, _, errForMem = inodeCreate(memInodeTree, inode, true)
 		_, _, errForRocks = inodeCreate(rocksInodeTree, inode, true)
 	}
@@ -426,6 +430,7 @@ func TestInodeTreeGetMaxInode(t *testing.T) {
 	// create
 	for index := 1; index <= inodeCount; index++ {
 		inode := NewInode(uint64(index), 0)
+		inode.PoolId = proto.DefaultSSDPoolId
 		_, _, _ = inodeCreate(memInodeTree, inode, true)
 		_, _, _ = inodeCreate(rocksInodeTree, inode, true)
 	}
@@ -456,6 +461,7 @@ func TestInodeTreeRange(t *testing.T) {
 	// create
 	for index := 1; index <= inodeCount; index++ {
 		inode := NewInode(uint64(index), 0)
+		inode.PoolId = proto.DefaultSSDPoolId
 		_, _, _ = inodeCreate(memInodeTree, inode, true)
 		_, _, _ = inodeCreate(rocksInodeTree, inode, true)
 	}
@@ -498,6 +504,7 @@ func TestInodeTreeMaxItem(t *testing.T) {
 	// create
 	for index := 1; index <= inodeCount; index++ {
 		inode := NewInode(uint64(index), 0)
+		inode.PoolId = proto.DefaultSSDPoolId
 		_, _, _ = inodeCreate(memInodeTree, inode, true)
 		_, _, _ = inodeCreate(rocksInodeTree, inode, true)
 	}

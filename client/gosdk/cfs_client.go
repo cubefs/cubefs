@@ -150,6 +150,7 @@ type (
 		flags        int
 		mode         uint32
 		storageClass uint32 // for hybrid cloud
+		poolId       uint8
 
 		// dir only
 		dirp *dirStream
@@ -1057,7 +1058,7 @@ func (c *Client) write(f *File, offset int64, data []byte, flags int) (n int, er
 			}
 			return nil
 		}
-		n, err = c.ec.Write(f.ino, int(offset), data, flags, checkFunc, f.storageClass, false, false)
+		n, err = c.ec.Write(f.ino, int(offset), data, flags, checkFunc, f.poolId, false, false)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.ID, f.ino), int(offset), data, flags)
 	}
@@ -1069,7 +1070,7 @@ func (c *Client) write(f *File, offset int64, data []byte, flags int) (n int, er
 
 func (c *Client) read(f *File, offset int64, data []byte) (n int, err error) {
 	if proto.IsHot(c.volType) {
-		n, err = c.ec.Read(f.ino, data, int(offset), len(data), f.storageClass, false)
+		n, err = c.ec.Read(f.ino, data, int(offset), len(data), f.poolId, false)
 	} else {
 		n, err = f.fileReader.Read(c.ctx(c.ID, f.ino), data, int(offset), len(data))
 	}

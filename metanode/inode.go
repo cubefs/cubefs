@@ -511,6 +511,18 @@ func NewSimpleInode(ino uint64) *Inode {
 	}
 }
 
+func NewInodeTest(ino uint64, t uint32) *Inode {
+	inode := NewInode(ino, t)
+	inode.PoolId = proto.DefaultSSDPoolId
+	return inode
+}
+
+func NewInodeWithPoolId(ino uint64, t uint32, poolId uint8) *Inode {
+	inode := NewInode(ino, t)
+	inode.PoolId = poolId
+	return inode
+}
+
 // NewInode returns a new Inode instance with specified Inode ID, name and type.
 // The AccessTime and ModifyTime will be set to the current time.
 func NewInode(ino uint64, t uint32) *Inode {
@@ -563,6 +575,7 @@ func (i *Inode) Copy() BtreeItem {
 	newIno.Flag = i.Flag
 	newIno.Reserved = i.Reserved
 	newIno.StorageClass = i.StorageClass
+	newIno.PoolId = i.PoolId
 	newIno.LeaseExpireTime = i.LeaseExpireTime
 	newIno.ClientID = i.ClientID
 	// newIno.ObjExtents = i.ObjExtents.Clone()
@@ -583,6 +596,7 @@ func (i *Inode) Copy() BtreeItem {
 	if i.HybridCloudExtentsMigration.sortedEks != nil {
 		newIno.HybridCloudExtentsMigration.storageClass = i.HybridCloudExtentsMigration.storageClass
 		newIno.HybridCloudExtentsMigration.expiredTime = i.HybridCloudExtentsMigration.expiredTime
+		newIno.HybridCloudExtentsMigration.poolId = i.HybridCloudExtentsMigration.poolId
 		if proto.IsStorageClassReplica(i.HybridCloudExtentsMigration.storageClass) {
 			newIno.HybridCloudExtentsMigration.sortedEks = i.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).Clone()
 		} else {
@@ -618,6 +632,7 @@ func (i *Inode) CopyDirectly() BtreeItem {
 	newIno.Flag = i.Flag
 	newIno.Reserved = i.Reserved
 	newIno.StorageClass = i.StorageClass
+	newIno.PoolId = i.PoolId
 	newIno.LeaseExpireTime = i.LeaseExpireTime
 	newIno.ClientID = i.ClientID
 	// newIno.ObjExtents = i.ObjExtents.Clone()
@@ -631,6 +646,7 @@ func (i *Inode) CopyDirectly() BtreeItem {
 	if i.HybridCloudExtentsMigration.sortedEks != nil {
 		newIno.HybridCloudExtentsMigration.storageClass = i.HybridCloudExtentsMigration.storageClass
 		newIno.HybridCloudExtentsMigration.expiredTime = i.HybridCloudExtentsMigration.expiredTime
+		newIno.HybridCloudExtentsMigration.poolId = i.HybridCloudExtentsMigration.poolId
 		if proto.IsStorageClassReplica(i.HybridCloudExtentsMigration.storageClass) {
 			newIno.HybridCloudExtentsMigration.sortedEks = i.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).Clone()
 		} else {
@@ -641,17 +657,9 @@ func (i *Inode) CopyDirectly() BtreeItem {
 }
 
 // getDefaultPoolIdByStorageClass returns default pool ID based on storage class
+// This is a wrapper function that uses proto.GetDefaultPoolIdByStorageClass
 func getDefaultPoolIdByStorageClass(storageClass uint32) uint8 {
-	switch storageClass {
-	case proto.StorageClass_Replica_SSD:
-		return DefaultSSDPoolId
-	case proto.StorageClass_Replica_HDD:
-		return DefaultHDDPoolId
-	case proto.StorageClass_BlobStore:
-		return DefaultECPoolId
-	default:
-		panic(fmt.Sprintf("getDefaultPoolIdByStorageClass: unsupported storageClass[%v]", storageClass))
-	}
+	return proto.GetDefaultPoolIdByStorageClass(storageClass)
 }
 
 // MarshalToJSON is the wrapper of json.Marshal.
@@ -742,7 +750,7 @@ func (i *Inode) Unmarshal(data []byte) (err error) {
 
 	err = i.UnmarshalValue(buff.Bytes())
 	if err != nil {
-		err = errors.NewErrorf("[Unmarshal] inode(%v) UnmarshalValue: %s", i.Inode, err.Error())
+		err = errors.NewErrorf("[Unmarshal] inode(%v) UnmarshalValue: %s, stack(%v)", i.Inode, err.Error(), string(debug.Stack()))
 	}
 
 	return
@@ -995,7 +1003,7 @@ func (i *Inode) MarshalInodeValueWithSkip(buff *buf.ByteBufExt, skipTimeFields b
 			if err = buff.PutUint32(uint32(0)); err != nil {
 				panic(err)
 			}
-			return
+			goto v5label
 		}
 
 		if proto.IsStorageClassReplica(sem.storageClass) {
@@ -1040,11 +1048,12 @@ func (i *Inode) MarshalInodeValueWithSkip(buff *buf.ByteBufExt, skipTimeFields b
 		}
 	}
 
+v5label:
 	// write size first, then write poolId
 	v5Buff := GetInodeBuf()
 	defer PutInodeBuf(v5Buff)
 
-	i.MarshalInodeV5Info(v5Buff)
+	i.MarshalInodeV5Info(v5Buff, reserved)
 
 	v5Bytes := v5Buff.Bytes()
 	if err = buff.PutUint32(uint32(len(v5Bytes))); err != nil {
@@ -1056,9 +1065,15 @@ func (i *Inode) MarshalInodeValueWithSkip(buff *buf.ByteBufExt, skipTimeFields b
 	}
 }
 
-func (i *Inode) MarshalInodeV5Info(buff *buf.ByteBufExt) {
+func (i *Inode) MarshalInodeV5Info(buff *buf.ByteBufExt, reserved uint64) {
 	if err := buff.PutUint8(i.PoolId); err != nil {
 		panic(err)
+	}
+
+	if reserved&V4MigrationExtentsFlag > 0 {
+		if err := buff.PutUint8(i.HybridCloudExtentsMigration.poolId); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -1383,30 +1398,43 @@ func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
 
 	// read extra info from buffer
 	if v5 {
-		var v5Size uint32
-		v5Size, err = buff.ReadUint32()
+		_, err = buff.ReadUint32()
 		if err != nil {
 			err = UnmarshalInodeFiledError("v5Size(v5)", err)
 			return
 		}
 
-		if v5Size >= 1 {
-			i.PoolId, err = buff.ReadUint8()
+		i.PoolId, err = buff.ReadUint8()
+		if err != nil {
+			err = UnmarshalInodeFiledError("PoolId(v5)", err)
+			return
+		}
+
+		if i.PoolId == 0 {
+			err = UnmarshalInodeFiledError("PoolId(v5)", errors.New("poolId is 0"))
+			return
+		}
+
+		if i.Reserved&V4MigrationExtentsFlag > 0 {
+			i.HybridCloudExtentsMigration.poolId, err = buff.ReadUint8()
 			if err != nil {
-				err = UnmarshalInodeFiledError("PoolId(v5)", err)
+				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.poolId(v5)", err)
 				return
 			}
 
-			if i.PoolId == 0 {
-				err = UnmarshalInodeFiledError("PoolId(v5)", errors.New("poolId is 0"))
+			if i.HybridCloudExtentsMigration.poolId == 0 {
+				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.poolId(v5)", errors.New("poolId is 0"))
 				return
 			}
-
 		}
 	}
 
 	if i.PoolId == 0 {
 		i.PoolId = getDefaultPoolIdByStorageClass(i.StorageClass)
+	}
+
+	if i.Reserved&V4MigrationExtentsFlag > 0 && i.HybridCloudExtentsMigration != nil && i.HybridCloudExtentsMigration.poolId == 0 {
+		i.HybridCloudExtentsMigration.poolId = getDefaultPoolIdByStorageClass(i.HybridCloudExtentsMigration.storageClass)
 	}
 
 	return
@@ -2572,9 +2600,11 @@ func (i *Inode) UpdateHybridCloudParams(paramIno *Inode) {
 	i.LeaseExpireTime = paramIno.LeaseExpireTime
 	i.ClientID = paramIno.ClientID
 	i.HybridCloudExtentsMigration.storageClass = paramIno.HybridCloudExtentsMigration.storageClass
+	i.HybridCloudExtentsMigration.poolId = paramIno.HybridCloudExtentsMigration.poolId
 	i.HybridCloudExtentsMigration.sortedEks = paramIno.HybridCloudExtentsMigration.sortedEks
 	i.HybridCloudExtentsMigration.expiredTime = paramIno.HybridCloudExtentsMigration.expiredTime
 	i.Type = paramIno.Type
+	i.PoolId = paramIno.PoolId
 }
 
 func (i *Inode) ResetValue() {
@@ -2600,6 +2630,7 @@ func (i *Inode) ResetValue() {
 		i.HybridCloudExtentsMigration.expiredTime = 0
 		i.HybridCloudExtentsMigration.sortedEks = nil
 		i.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Unspecified
+		i.HybridCloudExtentsMigration.poolId = 0
 	} else {
 		i.HybridCloudExtentsMigration = NewSortedHybridCloudExtentsMigration()
 	}

@@ -96,6 +96,12 @@ func (v *Vol) GetDefaultPoolId() uint8 {
 	return v.info.DefaultPoolId
 }
 
+func (v *Vol) GetPool(poolId uint8) *proto.StoragePoolView {
+	v.Lock()
+	defer v.Unlock()
+	return v.info.Pools[poolId]
+}
+
 func (v *Vol) replaceOrInsert(partition *DataPartition) {
 	v.Lock()
 	defer v.Unlock()

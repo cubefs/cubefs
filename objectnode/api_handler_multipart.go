@@ -382,7 +382,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	}
 	reader, writer := io.Pipe()
 	go func() {
-		err = srcVol.readFile(srcFileInfo.Inode, size, srcObject, writer, fb, cl, srcFileInfo.StorageClass)
+		err = srcVol.readFile(srcFileInfo.Inode, size, srcObject, writer, fb, cl, srcFileInfo.StorageClass, srcFileInfo.PoolId)
 		if err != nil {
 			log.LogErrorf("uploadPartCopyHandler: read srcObj err(%v): requestId(%v) srcVol(%v) path(%v)",
 				err, GetRequestID(r), srcBucket, srcObject)

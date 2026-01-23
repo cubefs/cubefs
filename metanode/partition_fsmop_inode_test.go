@@ -70,8 +70,9 @@ func mockPartitionRaftForFsmInodeTest(t *testing.T, ctrl *gomock.Controller, sto
 func prepareInodeForFsmInodeTest(t *testing.T, mp *metaPartition, ino uint64) {
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode := NewInode(ino, FileModeType)
+	inode := NewInodeTest(ino, FileModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
+	inode.PoolId = proto.DefaultSSDPoolId
 	status, err := mp.fsmCreateInode(handle, inode)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
@@ -82,7 +83,7 @@ func prepareInodeForFsmInodeTest(t *testing.T, mp *metaPartition, ino uint64) {
 func prepareDirInodeForFsmInodeTest(t *testing.T, mp *metaPartition, ino uint64) {
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode := NewInode(ino, DirModeType)
+	inode := NewInodeTest(ino, DirModeType)
 	status, err := mp.fsmCreateInode(handle, inode)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)
@@ -124,7 +125,7 @@ func testFsmLinkInode(t *testing.T, mp *metaPartition) {
 	const ino = 1000
 	prepareInodeForFsmInodeTest(t, mp, ino)
 
-	inode := NewInode(ino, FileModeType)
+	inode := NewInodeTest(ino, FileModeType)
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	resp, err := mp.fsmCreateLinkInode(handle, inode, 0)
@@ -139,7 +140,7 @@ func testFsmLinkInode(t *testing.T, mp *metaPartition) {
 	prepareDirInodeForFsmInodeTest(t, mp, dirIno)
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode = NewInode(dirIno, DirModeType)
+	inode = NewInodeTest(dirIno, DirModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp, err = mp.fsmCreateLinkInode(handle, inode, 0)
 	require.NoError(t, err)
@@ -168,11 +169,11 @@ func testFsmUnlinkInode(t *testing.T, mp *metaPartition) {
 
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode := NewInode(ino, FileModeType)
+	inode := NewInodeTest(ino, FileModeType)
 	resp, err := mp.fsmCreateLinkInode(handle, inode, 0)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
-	inode = NewInode(dirIno, DirModeType)
+	inode = NewInodeTest(dirIno, DirModeType)
 	resp, err = mp.fsmCreateLinkInode(handle, inode, 0)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
@@ -184,11 +185,11 @@ func testFsmUnlinkInode(t *testing.T, mp *metaPartition) {
 
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode = NewInode(ino, FileModeType)
+	inode = NewInodeTest(ino, FileModeType)
 	resp, err = mp.fsmUnlinkInode(handle, inode, 0)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
-	inode = NewInode(dirIno, DirModeType)
+	inode = NewInodeTest(dirIno, DirModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp, err = mp.fsmUnlinkInode(handle, inode, 0)
 	require.NoError(t, err)
@@ -201,12 +202,12 @@ func testFsmUnlinkInode(t *testing.T, mp *metaPartition) {
 
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode = NewInode(ino, FileModeType)
+	inode = NewInodeTest(ino, FileModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp, err = mp.fsmUnlinkInode(handle, inode, 0)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
-	inode = NewInode(dirIno, DirModeType)
+	inode = NewInodeTest(dirIno, DirModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
 	resp, err = mp.fsmUnlinkInode(handle, inode, 0)
 	require.NoError(t, err)
@@ -235,7 +236,7 @@ func testFsmAppendInode(t *testing.T, mp *metaPartition) {
 
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode := NewInode(ino, FileModeType)
+	inode := NewInodeTest(ino, FileModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status, err := mp.fsmAppendExtentsWithCheck(handle, inode, false)
 	require.NoError(t, err)
@@ -275,7 +276,7 @@ func testFsmAppendInodeRandomWrite(t *testing.T, mp *metaPartition) {
 
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode := NewInode(ino, FileModeType)
+	inode := NewInodeTest(ino, FileModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status, err := mp.fsmAppendExtentsWithCheck(handle, inode, false)
 	require.NoError(t, err)
@@ -288,7 +289,7 @@ func testFsmAppendInodeRandomWrite(t *testing.T, mp *metaPartition) {
 
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode = NewInode(ino, FileModeType)
+	inode = NewInodeTest(ino, FileModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status, err = mp.fsmAppendExtentsWithCheck(handle, inode, false)
 	require.NoError(t, err)
@@ -302,7 +303,7 @@ func testFsmAppendInodeRandomWrite(t *testing.T, mp *metaPartition) {
 	// NOTE: random write to first extent
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode = NewInode(ino, FileModeType)
+	inode = NewInodeTest(ino, FileModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status, err = mp.fsmAppendExtentsWithCheck(handle, inode, false)
 	require.NoError(t, err)
@@ -331,7 +332,7 @@ func testFsmLinkInodeUniqIDIdempotent(t *testing.T, mp *metaPartition) {
 
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode := NewInode(ino, FileModeType)
+	inode := NewInodeTest(ino, FileModeType)
 	resp, err := mp.fsmCreateLinkInode(handle, inode, 111)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
@@ -342,7 +343,7 @@ func testFsmLinkInodeUniqIDIdempotent(t *testing.T, mp *metaPartition) {
 	mp.applyID = 101
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode = NewInode(ino, FileModeType)
+	inode = NewInodeTest(ino, FileModeType)
 	resp, err = mp.fsmCreateLinkInode(handle, inode, 111)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
@@ -366,7 +367,7 @@ func testFsmUnlinkInodeUniqIDIdempotent(t *testing.T, mp *metaPartition) {
 	prepareInodeForFsmInodeTest(t, mp, ino)
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode := NewInode(ino, FileModeType)
+	inode := NewInodeTest(ino, FileModeType)
 	resp, err := mp.fsmCreateLinkInode(handle, inode, 0)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
@@ -378,7 +379,7 @@ func testFsmUnlinkInodeUniqIDIdempotent(t *testing.T, mp *metaPartition) {
 
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode = NewInode(ino, FileModeType)
+	inode = NewInodeTest(ino, FileModeType)
 	resp, err = mp.fsmUnlinkInode(handle, inode, 222)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
@@ -389,7 +390,7 @@ func testFsmUnlinkInodeUniqIDIdempotent(t *testing.T, mp *metaPartition) {
 	mp.applyID = 201
 	handle, err = mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode = NewInode(ino, FileModeType)
+	inode = NewInodeTest(ino, FileModeType)
 	resp, err = mp.fsmUnlinkInode(handle, inode, 222)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, resp.Status)
@@ -414,7 +415,7 @@ func testFsmUnlinkFileInode(t *testing.T, mp *metaPartition) {
 
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode := NewInode(ino, FileModeType)
+	inode := NewInodeTest(ino, FileModeType)
 	inode.StorageClass = proto.StorageClass_Replica_SSD
 	status, err := mp.fsmAppendExtentsWithCheck(handle, inode, false)
 	require.NoError(t, err)

@@ -21,8 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -71,8 +69,8 @@ func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error)
 	return
 }
 
-func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType uint32, ehID uint64) (dp *DataPartition, err error) {
-	dp = s.getLocalLeaderDataPartition(exclude, mediaType, ehID)
+func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, poolId uint8, ehID uint64) (dp *DataPartition, err error) {
+	dp = s.getLocalLeaderDataPartition(exclude, poolId, ehID)
 	if dp != nil {
 		log.LogDebugf("Select: select dp[%v] address[%p] from LocalLeaderDataPartition", dp, dp)
 		return dp, nil
@@ -82,14 +80,14 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType ui
 	partitions := s.partitions
 	s.RUnlock()
 
-	dp = s.getRandomDataPartition(partitions, exclude, mediaType, ehID)
+	dp = s.getRandomDataPartition(partitions, exclude, poolId, ehID)
 
 	if dp != nil {
 		return dp, nil
 	}
 
-	log.LogErrorf("DefaultRandomSelector: ehID(%v) no writable data partition with %v partitions and exclude(%v) mediaType(%v)",
-		ehID, len(partitions), exclude, proto.MediaTypeString(mediaType))
+	log.LogErrorf("DefaultRandomSelector: ehID(%v) no writable data partition with %v partitions and exclude(%v) poolId(%v)",
+		ehID, len(partitions), exclude, poolId)
 	return nil, fmt.Errorf("en(%v) no writable data partition", ehID)
 }
 
@@ -152,14 +150,14 @@ func (s *DefaultRandomSelector) Count() int {
 	return len(s.partitions)
 }
 
-func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}, mediaType uint32, ehID uint64) *DataPartition {
+func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}, poolId uint8, ehID uint64) *DataPartition {
 	s.RLock()
 	localLeaderPartitions := s.localLeaderPartitions
 	s.RUnlock()
-	return s.getRandomDataPartition(localLeaderPartitions, exclude, mediaType, ehID)
+	return s.getRandomDataPartition(localLeaderPartitions, exclude, poolId, ehID)
 }
 
-func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}, mediaType uint32, ehID uint64) (
+func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}, poolId uint8, ehID uint64) (
 	dp *DataPartition,
 ) {
 	length := len(partitions)
@@ -167,14 +165,14 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 		return nil
 	}
 
-	dpCountOfMediaType := 0
+	dpCountOfPoolId := 0
 	excludeCount := 0
 
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(length)
 	dp = partitions[index]
-	if dp.MediaType == mediaType {
-		dpCountOfMediaType += 1
+	if dp.PoolId == poolId {
+		dpCountOfPoolId += 1
 		if !isExcluded(dp, exclude) {
 			log.LogDebugf("DefaultRandomSelector: eh(%v) random select dp(%v) index(%v)", ehID, dp.PartitionID, index)
 			return dp
@@ -183,25 +181,25 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	}
 
 	log.LogDebugf("DefaultRandomSelector: eh(%v) first random partition(%v) MediaType(%v) was excluded, get partition from others",
-		ehID, dp.PartitionID, proto.MediaTypeString(dp.MediaType))
+		ehID, dp.PartitionID, dp.PoolId)
 
 	var currIndex int
 	for i := 0; i < length; i++ {
 		currIndex = (index + i) % length
 		dp = partitions[currIndex]
-		if dp.MediaType == mediaType {
-			dpCountOfMediaType += 1
+		if dp.PoolId == poolId {
+			dpCountOfPoolId += 1
 			if !isExcluded(dp, exclude) {
-				log.LogDebugf("DefaultRandomSelector: eh(%v) iteratively select dp(%v) MediaType(%v), index %v",
-					ehID, dp.PartitionID, proto.MediaTypeString(dp.MediaType), currIndex)
+				log.LogDebugf("DefaultRandomSelector: eh(%v) iteratively select dp(%v) poolId(%v), index %v",
+					ehID, dp.PartitionID, dp.PoolId, currIndex)
 				return dp
 			}
 			excludeCount += 1
 		}
 	}
 
-	log.LogWarnf("DefaultRandomSelector: eh(%v) failed to select dp of mediaType(%v), dpCountOfMediaType(%v), excludeCount(%v)",
-		ehID, proto.MediaTypeString(mediaType), dpCountOfMediaType, excludeCount)
+	log.LogWarnf("DefaultRandomSelector: eh(%v) failed to select dp of poolId(%v), dpCountOfPoolId(%v), excludeCount(%v)",
+		ehID, poolId, dpCountOfPoolId, excludeCount)
 	return nil
 }
 

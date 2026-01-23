@@ -35,6 +35,7 @@ func GetInodeBuf() *buf.ByteBufExt {
 }
 
 // PutInodeBuf returns an inode buffer to the pool
+// NOTE: the byte data may be modified after calling PutInodeBuf, so do not use the byte data after calling PutInodeBuf
 func PutInodeBuf(buf *buf.ByteBufExt) {
 	if buf != nil {
 		buf.Reset()

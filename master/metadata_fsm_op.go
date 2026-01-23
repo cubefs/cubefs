@@ -1673,7 +1673,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		// Load default pool ID
 		if cv.DefaultPoolId == 0 {
 			// Set default to SSD pool if not configured
-			c.defaultPoolId = DefaultSSDPoolId
+			c.defaultPoolId = proto.DefaultSSDPoolId
 		} else {
 			c.defaultPoolId = cv.DefaultPoolId
 		}

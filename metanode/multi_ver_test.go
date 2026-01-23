@@ -104,6 +104,24 @@ func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *meta
 	}
 	mp.vol.info = &proto.SimpleVolView{
 		VolStorageClass: proto.StorageClass_Replica_SSD,
+		Pools: map[uint8]*proto.StoragePoolView{
+			proto.DefaultHDDPoolId: {
+				Id:           proto.DefaultHDDPoolId,
+				Name:         "default",
+				StorageClass: uint8(proto.StorageClass_Replica_HDD),
+			},
+			proto.DefaultSSDPoolId: {
+				Id:           proto.DefaultSSDPoolId,
+				Name:         "default",
+				StorageClass: uint8(proto.StorageClass_Replica_SSD),
+			},
+			proto.DefaultECPoolId: {
+				Id:           proto.DefaultECPoolId,
+				Name:         "default",
+				StorageClass: uint8(proto.StorageClass_BlobStore),
+			},
+		},
+		DefaultPoolId: proto.DefaultHDDPoolId,
 	}
 
 	return mp
@@ -254,6 +272,7 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 
 	ino := NewInode(inoID, mode)
 	ino.StorageClass = proto.StorageClass_Replica_HDD
+	ino.PoolId = proto.DefaultHDDPoolId
 	ino.HybridCloudExtents.sortedEks = NewSortedExtents()
 	ino.setVer(mp.verSeq)
 	if t != nil {
@@ -1351,9 +1370,11 @@ func testInodeVerMarshal(t *testing.T) {
 	mp.verSeq = 100000
 	ino1 := NewInode(10, 5)
 	ino1.StorageClass = proto.StorageClass_Replica_HDD
+	ino1.PoolId = proto.DefaultHDDPoolId
 	ino1.setVer(topSeq)
 	ino1_1 := NewInode(10, 5)
 	ino1_1.setVer(sndSeq)
+	ino1_1.PoolId = proto.DefaultHDDPoolId
 	ino1_1.StorageClass = proto.StorageClass_Replica_HDD
 	ino1.multiSnap.multiVersions = append(ino1.multiSnap.multiVersions, ino1_1)
 	v1, err := ino1.Marshal()
