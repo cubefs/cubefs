@@ -202,6 +202,29 @@ type WriteDataRequest struct {
 	direct  bool
 }
 
+// writeDataRequestPool is a pool for WriteDataRequest objects to avoid repeated allocations
+var writeDataRequestPool = &sync.Pool{
+	New: func() interface{} {
+		return &WriteDataRequest{}
+	},
+}
+
+// getWriteDataRequest gets a WriteDataRequest from the pool
+func getWriteDataRequest() *WriteDataRequest {
+	return writeDataRequestPool.Get().(*WriteDataRequest)
+}
+
+// putWriteDataRequest returns a WriteDataRequest to the pool
+func putWriteDataRequest(req *WriteDataRequest) {
+	// Reset fields to avoid memory leaks
+	req.data = nil
+	req.offset = 0
+	req.size = 0
+	req.blksize = 0
+	req.direct = false
+	writeDataRequestPool.Put(req)
+}
+
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 	storageClass uint32, isMigration bool,
@@ -245,18 +268,20 @@ func (eh *ExtentHandler) String() string {
 }
 
 func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blksize int, direct bool) {
-	// Send write request through channel
-	req := &WriteDataRequest{
-		data:    data,
-		offset:  offset,
-		size:    size,
-		blksize: blksize,
-		direct:  direct,
-	}
+	// Get write request from pool
+	req := getWriteDataRequest()
+	req.data = data
+	req.offset = offset
+	req.size = size
+	req.blksize = blksize
+	req.direct = direct
+
 	select {
 	case eh.writeDataChan <- req:
 	case <-eh.doneWriteData:
 		log.LogWarnf("ExtentHandler writeWithPacket: channel closed, eh(%v)", eh)
+		// Return to pool if failed to send
+		putWriteDataRequest(req)
 	}
 }
 
@@ -270,14 +295,26 @@ func (eh *ExtentHandler) writeDataConsumer() {
 			}
 			eh.processWriteData(req)
 		case <-eh.doneWriteData:
-			log.LogDebugf("ExtentHandler writeDataConsumer: done, eh(%v)", eh)
-			return
+			// Drain remaining requests and return them to pool
+			for {
+				select {
+				case req := <-eh.writeDataChan:
+					if req != nil {
+						putWriteDataRequest(req)
+					}
+				default:
+					log.LogDebugf("ExtentHandler writeDataConsumer: done, eh(%v)", eh)
+					return
+				}
+			}
 		}
 	}
 }
 
 // processWriteData processes the write data request
 func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
+	defer putWriteDataRequest(req) // Return to pool after processing
+	eh.flushMu.Lock()
 	total := 0
 	for total < req.size {
 		if eh.packet == nil {
@@ -298,10 +335,12 @@ func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
 		}
 
 		if int(eh.packet.Size) >= req.blksize {
+			eh.flushMu.Unlock()
 			eh.flushPacket()
+			eh.flushMu.Lock()
 		}
 	}
-
+	eh.flushMu.Unlock()
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -351,7 +390,7 @@ func (eh *ExtentHandler) sender() {
 	for {
 		select {
 		case packet := <-eh.request:
-			log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
+			// log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
 			if eh.getStatus() >= ExtentStatusRecovery {
 				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
 				eh.reply <- packet
