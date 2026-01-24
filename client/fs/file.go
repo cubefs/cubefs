@@ -502,11 +502,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 	bgTime := stat.BeginStat()
-	runningStat := f.super.runningMonitor.AddClientOp("filewrite", req.Hdr().Pid)
+	//runningStat := f.super.runningMonitor.AddClientOp("filewrite", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Write", err, bgTime, 1)
 		stat.StatBandWidth("Write", uint32(len(req.Data)))
-		f.super.runningMonitor.SubClientOp(runningStat, err)
+		//f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
@@ -550,11 +550,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		flags |= proto.FlagsAppend
 	}
 
-	start := time.Now()
-	metric := exporter.NewTPCnt("filewrite")
-	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
-	}()
+	// start := time.Now()
+	// metric := exporter.NewTPCnt("filewrite")
+	// defer func() {
+	// 	metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
+	// }()
 
 	checkFunc := func() error {
 		if !f.super.mw.EnableQuota {
@@ -618,9 +618,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 			return ParseError(err)
 		}
 	}
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v) ",
-		ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, elapsed.String())
+	// elapsed := time.Since(start)
+	// // log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v) ",
+	// // 	ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, elapsed.String())
 	return nil
 }
 
