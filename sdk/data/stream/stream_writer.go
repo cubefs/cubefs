@@ -127,28 +127,22 @@ func (s *Streamer) IssueOpenRequest() error {
 }
 
 func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error) {
+
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
 
 	s.writeLock.Lock()
-	request := writeRequestPool.Get().(*WriteRequest)
-	request.data = data
-	request.fileOffset = offset
-	request.size = len(data)
-	request.flags = flags
-	request.done = make(chan struct{}, 1)
-	request.checkFunc = checkFunc
-	request.storageClass = storageClass
-	request.isMigration = isMigration
+	defer s.writeLock.Unlock()
 
-	s.request <- request
-	s.writeLock.Unlock()
+	// Check and handle version update if needed (same as handleRequest does)
+	if atomic.LoadInt32(&s.needUpdateVer) == 1 {
+		s.closeOpenHandler(true)
+		atomic.StoreInt32(&s.needUpdateVer, 0)
+	}
 
-	<-request.done
-	err = request.err
-	write = request.writeBytes
-	writeRequestPool.Put(request)
+	// Call write directly in current goroutine to avoid channel communication overhead
+	write, err = s.write(data, offset, len(data), flags, checkFunc, storageClass, isMigration)
 	return
 }
 
