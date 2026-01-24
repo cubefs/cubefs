@@ -187,6 +187,19 @@ type ExtentHandler struct {
 	isMigration bool
 
 	flushMu sync.Mutex
+
+	// Channel for write data requests (data and blksize)
+	writeDataChan chan *WriteDataRequest
+	doneWriteData chan struct{}
+}
+
+// WriteDataRequest represents a write data request with data and blksize
+type WriteDataRequest struct {
+	data    []byte
+	offset  int
+	size    int
+	blksize int
+	direct  bool
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -214,10 +227,13 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 		verUpdate:          make(chan uint64),
 		storageClass:       proto.GetMediaTypeByStorageClass(storageClass),
 		isMigration:        isMigration,
+		writeDataChan:      make(chan *WriteDataRequest, 1024),
+		doneWriteData:      make(chan struct{}),
 	}
 
 	go eh.receiver()
 	go eh.sender()
+	go eh.writeDataConsumer()
 
 	return eh
 }
@@ -228,8 +244,67 @@ func (eh *ExtentHandler) String() string {
 		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.stream.verSeq, eh.key, eh.lastKey, eh.inflight, eh.dirty, eh.storageClass, eh.inflight, eh.dirty)
 }
 
+func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blksize int, direct bool) {
+	// Send write request through channel
+	req := &WriteDataRequest{
+		data:    data,
+		offset:  offset,
+		size:    size,
+		blksize: blksize,
+		direct:  direct,
+	}
+	select {
+	case eh.writeDataChan <- req:
+	case <-eh.doneWriteData:
+		log.LogWarnf("ExtentHandler writeWithPacket: channel closed, eh(%v)", eh)
+	}
+}
+
+// writeDataConsumer is a consumer goroutine that processes write data requests
+func (eh *ExtentHandler) writeDataConsumer() {
+	for {
+		select {
+		case req := <-eh.writeDataChan:
+			if req == nil {
+				continue
+			}
+			eh.processWriteData(req)
+		case <-eh.doneWriteData:
+			log.LogDebugf("ExtentHandler writeDataConsumer: done, eh(%v)", eh)
+			return
+		}
+	}
+}
+
+// processWriteData processes the write data request
+func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
+	total := 0
+	for total < req.size {
+		if eh.packet == nil {
+			eh.packet = NewWritePacket(eh.inode, req.offset+total, eh.storeMode)
+			log.LogDebugf("ExtentHandler write packet nil and new packet: eh(%v) offset(%v)",
+				eh, eh.packet.KernelOffset)
+			if req.direct {
+				eh.packet.Opcode = proto.OpSyncWrite
+			}
+			// log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
+		}
+		packsize := int(eh.packet.Size)
+		write := util.Min(req.size-total, req.blksize-packsize)
+		if write > 0 {
+			copy(eh.packet.Data[packsize:packsize+write], req.data[total:total+write])
+			eh.packet.Size += uint32(write)
+			total += write
+		}
+
+		if int(eh.packet.Size) >= req.blksize {
+			eh.flushPacket()
+		}
+	}
+
+}
+
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
-	var total, write int
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
 		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
@@ -255,30 +330,10 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 		}
 	}
 
-	for total < size {
-		if eh.packet == nil {
-			eh.packet = NewWritePacket(eh.inode, offset+total, eh.storeMode)
-			log.LogDebugf("ExtentHandler write packet nil and new packet: eh(%v) offset(%v)",
-				eh, eh.packet.KernelOffset)
-			if direct {
-				eh.packet.Opcode = proto.OpSyncWrite
-			}
-			// log.LogDebugf("ExtentHandler Write: NewPacket, eh(%v) packet(%v)", eh, eh.packet)
-		}
-		packsize := int(eh.packet.Size)
-		write = util.Min(size-total, blksize-packsize)
-		if write > 0 {
-			copy(eh.packet.Data[packsize:packsize+write], data[total:total+write])
-			eh.packet.Size += uint32(write)
-			total += write
-		}
+	// Send write request through channel to consumer
+	eh.writeWithPacket(data, offset, size, blksize, direct)
 
-		if int(eh.packet.Size) >= blksize {
-			eh.flushPacket()
-		}
-	}
-
-	eh.size += total
+	eh.size += size
 
 	// This is just a local cache to prepare write requests.
 	// Partition and extent are not allocated.
@@ -541,6 +596,7 @@ func (eh *ExtentHandler) cleanup() (err error) {
 	eh.Once.Do(func() {
 		eh.doneSender <- struct{}{}
 		eh.doneReceiver <- struct{}{}
+		close(eh.doneWriteData)
 		if eh.conn != nil {
 			conn := eh.conn
 			eh.conn = nil
