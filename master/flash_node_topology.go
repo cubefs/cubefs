@@ -52,11 +52,6 @@ func (c *Cluster) loadFlashNodes() (err error) {
 				return
 			}
 		}
-		_, err = topo.GetZone(flashNode.ZoneName)
-		if err != nil {
-			topo.PutZoneIfAbsent(flashgroupmanager.NewFlashNodeZone(flashNode.ZoneName))
-			err = nil
-		}
 		err = topo.PutFlashNode(flashNode)
 		if err != nil {
 			log.LogWarnf("action[loadFlashNodes], flashNode[%v] put topo %v failed %v", flashNode.String(), topo.Name, err.Error())

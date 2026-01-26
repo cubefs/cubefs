@@ -165,20 +165,22 @@ func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version, region str
 			return true
 		}
 		if id == 0 { // flash node is upgraded from v3.5.3 before
-			flashNode, err = topo.PeekFlashNode(nodeAddr)
+			flashNode, _ = topo.PeekFlashNode(nodeAddr)
 		} else {
-			flashNode, err = topo.PeekFlashNodeById(id)
+			flashNode, _ = topo.PeekFlashNodeById(id)
 		}
 		if flashNode != nil {
-			err = flashNode.TryUpdateInfos(region, c.syncUpdateFlashNode)
+			if flashNode.Region != region {
+				err = fmt.Errorf("region is conflict: [%v]  previously registered[%v]", region, flashNode.Region)
+			}
 			topoName = topo.Name
 			return false
 		}
 		return true
 	})
-	// only catch update fail
-	if err != nil && flashNode != nil {
-		log.LogWarnf("addFlashNode: update infos failed for fn[%v]:err %v", id, err.Error())
+
+	if err != nil {
+		log.LogWarnf("addFlashNode fn[%v]:err %v", id, err.Error())
 		return
 	}
 	flashTopo, err = c.PeekFlashTopo(topoName)
