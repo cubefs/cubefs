@@ -768,6 +768,9 @@ func (f *FlashNode) register() error {
 			nodeID, err := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "", f.region, id)
 			if err != nil {
 				log.LogErrorf("action[register] cannot register remotecache to master err(%v).", err)
+				if strings.Contains(err.Error(), "region is conflict") {
+					return err
+				}
 				break
 			}
 

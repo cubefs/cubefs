@@ -421,6 +421,11 @@ func (t *FlashNodeTopology) PutFlashNode(flashNode *FlashNode) (err error) {
 		return
 	}
 	t.flashNodeIDMap.LoadOrStore(flashNode.ID, flashNode)
+	_, err = t.GetZone(flashNode.ZoneName)
+	if err != nil {
+		t.PutZoneIfAbsent(NewFlashNodeZone(flashNode.ZoneName))
+		err = nil
+	}
 	zone, err := t.GetZone(flashNode.ZoneName)
 	if err != nil {
 		return

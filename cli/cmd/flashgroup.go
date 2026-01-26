@@ -370,7 +370,10 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			sort.Slice(fgView.FlashGroups, func(i, j int) bool {
-				return fgView.FlashGroups[i].ID < fgView.FlashGroups[j].ID
+				if fgView.FlashGroups[i].Region == fgView.FlashGroups[j].Region {
+					return fgView.FlashGroups[i].ID < fgView.FlashGroups[j].ID
+				}
+				return fgView.FlashGroups[i].Region < fgView.FlashGroups[j].Region
 			})
 
 			stdoutln("[Flash Groups]")

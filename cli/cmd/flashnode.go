@@ -382,7 +382,10 @@ func newCmdFlashNodeHTTPInactiveDisk(client *master.MasterClient) *cobra.Command
 
 func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat bool, groupStats map[uint64]string, tbl table) table {
 	sort.Slice(flashNodeViewInfos, func(i, j int) bool {
-		return flashNodeViewInfos[i].ID < flashNodeViewInfos[j].ID
+		if flashNodeViewInfos[i].Region == flashNodeViewInfos[j].Region {
+			return flashNodeViewInfos[i].ID < flashNodeViewInfos[j].ID
+		}
+		return flashNodeViewInfos[i].Region < flashNodeViewInfos[j].Region
 	})
 	var groupActiveInfo string
 	for _, fn := range flashNodeViewInfos {
