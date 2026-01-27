@@ -33,6 +33,12 @@ var types = map[string]func() rpc2.Codec{
 	"shardnode.ShardnodeTaskStatsArgs": func() rpc2.Codec { return new(shardnode.ShardnodeTaskStatsArgs) },
 	"shardnode.ShardnodeTaskStatsRet":  func() rpc2.Codec { return new(shardnode.ShardnodeTaskStatsRet) },
 
+	"shardnode.ListShardArgs": func() rpc2.Codec { return new(shardnode.ListShardArgs) },
+	"shardnode.ListShardRet":  func() rpc2.Codec { return new(shardnode.ListShardRet) },
+
+	"shardnode.ListVolumeArgs": func() rpc2.Codec { return new(shardnode.ListVolumeArgs) },
+	"shardnode.ListVolumeRet":  func() rpc2.Codec { return new(shardnode.ListVolumeRet) },
+
 	"nil":              func() rpc2.Codec { return nil },
 	"rpc2.NoParameter": func() rpc2.Codec { return rpc2.NoParameter },
 }

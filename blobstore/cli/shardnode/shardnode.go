@@ -15,7 +15,13 @@
 package shardnode
 
 import (
+	"strings"
+
 	"github.com/desertbit/grumble"
+
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
+	"github.com/cubefs/cubefs/blobstore/cli/config"
 )
 
 func Register(app *grumble.App) {
@@ -24,7 +30,25 @@ func Register(app *grumble.App) {
 		Help: "shardnode manager tools",
 	}
 	app.AddCommand(snCommand)
-	addCmdVol(snCommand)
 	addCmdShard(snCommand)
+	addCmdRecover(snCommand)
 	addCmdTCMalloc(snCommand)
+}
+
+func newCMClient(f grumble.FlagMap) *clustermgr.Client {
+	clusterID := f.String("cluster_id")
+	if clusterID == "" {
+		clusterID = fmt.Sprintf("%d", config.DefaultClusterID())
+	}
+	var hosts []string
+	if str := strings.TrimSpace(f.String("hosts")); str != "" {
+		hosts = strings.Split(str, " ")
+	}
+	return config.NewCluster(clusterID, hosts, f.String("secret"))
+}
+
+func clusterFlags(f *grumble.Flags) {
+	f.StringL("cluster_id", "", "specific clustermgr cluster id")
+	f.StringL("secret", "", "specific clustermgr secret")
+	f.StringL("hosts", "", "specific clustermgr hosts")
 }

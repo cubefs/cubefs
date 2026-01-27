@@ -17,12 +17,13 @@ package shardnode
 import (
 	"errors"
 
+	"github.com/desertbit/grumble"
+
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/args"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
-	"github.com/desertbit/grumble"
 )
 
 func addCmdTCMalloc(cmd *grumble.Command) {
