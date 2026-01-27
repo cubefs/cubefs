@@ -781,7 +781,7 @@ func (f *FlashNode) register() error {
 			}
 			f.nodeID = nodeID
 			log.LogInfof("action[register] remotecache(%d) cluster(%s) localAddr(%s)", f.nodeID, f.clusterID, f.localAddr)
-			syslog.Printf("Flash node registered successfully. ID: %d, Cluster: %s, LocalAddr: %s", f.nodeID, f.clusterID, f.localAddr)
+			syslog.Printf("Flash node registered successfully. ID: %d, Cluster: %s, LocalAddr: %s, region: %s", f.nodeID, f.clusterID, f.localAddr, f.region)
 			return nil
 		}
 
