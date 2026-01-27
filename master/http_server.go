@@ -475,9 +475,15 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminAbortDecommissionDisk).
 		HandlerFunc(m.abortDecommissionDisk)
+	// router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+	// 	Path(proto.AdminVolAddAllowedStorageClass).
+	// 	HandlerFunc(m.volAddAllowedStorageClass)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminVolAddAllowedStorageClass).
-		HandlerFunc(m.volAddAllowedStorageClass)
+		Path(proto.AdminVolAddPool).
+		HandlerFunc(m.volAddPool)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminVolUpdatePoolId).
+		HandlerFunc(m.volUpdatePoolId)
 
 	// multi version snapshot APIs
 	// TODO: hybrid cloud not support snapshot version yet, forbidden AdminCreateVersion until snapshot version is supported

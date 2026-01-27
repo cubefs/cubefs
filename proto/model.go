@@ -138,6 +138,8 @@ type MetaPartitionInfo struct {
 	Freeze                    int8
 	StatByStorageClass        []*StatOfStorageClass
 	StatByMigrateStorageClass []*StatOfStorageClass
+	StatByPool                []*StatOfStorageClass
+	StatByMigratePool         []*StatOfStorageClass
 	ForbidWriteOpOfProtoVer0  bool
 	MemStoreCnt               uint8
 	RockStoreCnt              uint8
@@ -225,6 +227,7 @@ type ClusterView struct {
 	MetaManualDecommissionLimit               uint32
 	MetaBalanceLimit                          uint32
 	MetaManualAddReplicaLimit                 uint32
+	DefaultPoolId                             uint8
 	RocksdbDiskTotal                          uint64
 	RocksdbMpCount                            uint64
 	MemoryMpCount                             uint64
@@ -408,7 +411,10 @@ type VolStatInfo struct {
 	LeaderRetryTimeOut      int
 	StatByStorageClass      []*StatOfStorageClass
 	StatMigrateStorageClass []*StatOfStorageClass
+	StatByPool              []*StatOfStorageClass
+	StatByMigratePool       []*StatOfStorageClass
 	StatByDpMediaType       []*StatOfStorageClass
+	StatByDpPool            []*StatOfStorageClass
 }
 
 // DataPartition represents the structure of storing the file contents.
@@ -439,6 +445,7 @@ type DataPartitionInfo struct {
 	Forbidden                bool
 	MediaType                uint32
 	ForbidWriteOpOfProtoVer0 bool
+	PoolId                   uint8 // storage pool ID
 }
 
 // FileInCore define file in data partition

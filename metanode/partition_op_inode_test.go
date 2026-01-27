@@ -358,6 +358,7 @@ func testOpUnlinkFile(t *testing.T, mp MetaPartition) {
 
 	unlinkResp := unlinkInodeForInodeTest(t, mp, resp.Info.Inode)
 	require.EqualValues(t, 0, unlinkResp.Info.Nlink)
+	require.EqualValues(t, resp.Info.PoolId, unlinkResp.Info.PoolId)
 }
 
 func TestOpUnlinkFile(t *testing.T) {

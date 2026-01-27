@@ -475,6 +475,30 @@ func (api *AdminAPI) VolAddAllowedStorageClass(volName string, addAllowedStorage
 	return
 }
 
+func (api *AdminAPI) VolAddPool(volName string, poolId uint8, authKey, clientIDKey string) (err error) {
+	request := newRequest(http.MethodGet, proto.AdminVolAddPool).Header(api.h)
+	request.addParam("name", volName)
+	request.addParam("poolId", strconv.FormatUint(uint64(poolId), 10))
+	request.addParam("authKey", authKey)
+	request.addParam("clientIDKey", clientIDKey)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) VolUpdatePoolId(volName string, poolId uint8, authKey, clientIDKey string) (err error) {
+	request := newRequest(http.MethodGet, proto.AdminVolUpdatePoolId).Header(api.h)
+	request.addParam("name", volName)
+	request.addParam("poolId", strconv.FormatUint(uint64(poolId), 10))
+	request.addParam("authKey", authKey)
+	request.addParam("clientIDKey", clientIDKey)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, deleteLockTime int64, crossZone, normalZonesFirst bool,
 	business string, mpCount, dpCount, replicaNum, dpSize int, followerRead bool, zoneName string, ebsBlkSize int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
@@ -482,6 +506,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
 	remoteCacheMaxFileSizeGB int64, remoteCacheOnlyForNotSSD string, remoteCacheMultiRead string, flashNodeTimeoutCount int64,
 	remoteCacheSameZoneTimeout int64, remoteCacheSameRegionTimeout int64, storeMode proto.StoreMode,
+	poolId uint8, pools string,
 ) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
 	request.addParam("name", volName)
@@ -531,6 +556,12 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	}
 	if txConflictRetryInterval > 0 {
 		request.addParam("txConflictRetryInterval", strconv.FormatInt(txConflictRetryInterval, 10))
+	}
+	if poolId > 0 {
+		request.addParam("poolId", strconv.FormatUint(uint64(poolId), 10))
+	}
+	if pools != "" {
+		request.addParam("allowedPools", pools)
 	}
 	_, err = api.mc.serveRequest(request)
 	return
@@ -725,6 +756,7 @@ type ClusterParas struct {
 	AutoFixTag                             string
 	DefaultDpTag                           string
 	DefaultMpTag                           string
+	PoolId                                 string
 }
 
 func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
@@ -864,6 +896,9 @@ func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
 	if params.DpLimitHddFactor != "" {
 		request.addParamAny("dpLimitHddFactor", params.DpLimitHddFactor)
 	}
+	if params.PoolId != "" {
+		request.addParam("poolId", params.PoolId)
+	}
 	if params.MetaAutoAddReplicaLimit != "" {
 		request.addParam("metaAutoAddReplicaLimit", params.MetaAutoAddReplicaLimit)
 	}
@@ -912,6 +947,41 @@ func (api *AdminAPI) GetStoragePool(poolId uint8) (pool *proto.StoragePoolView, 
 	err = api.mc.requestWith(pool, newRequest(get, proto.AdminGetStoragePool).Header(api.h).
 		addParam("id", strconv.FormatUint(uint64(poolId), 10)))
 	return
+}
+
+// CreateStoragePool creates a new storage pool
+func (api *AdminAPI) CreateStoragePool(poolInfo *proto.StoragePoolInfo) (err error) {
+	params := []anyParam{
+		{"id", poolInfo.Id},
+		{"name", poolInfo.Name},
+	}
+	if poolInfo.StorageClass > 0 {
+		params = append(params, anyParam{"storageClass", poolInfo.StorageClass})
+	}
+	if poolInfo.CId > 0 {
+		params = append(params, anyParam{"cId", poolInfo.CId})
+	}
+	if poolInfo.ECAddr != "" {
+		params = append(params, anyParam{"ecAddr", poolInfo.ECAddr})
+	}
+	return api.mc.request(newRequest(post, proto.AdminCreateStoragePool).Header(api.h).Param(params...))
+}
+
+// UpdateStoragePool updates storage pool fields
+func (api *AdminAPI) UpdateStoragePool(poolId uint8, poolInfo *proto.StoragePoolInfo) (err error) {
+	params := []anyParam{
+		{"id", poolId},
+	}
+	if poolInfo.Name != "" {
+		params = append(params, anyParam{"name", poolInfo.Name})
+	}
+	if poolInfo.CId > 0 {
+		params = append(params, anyParam{"cId", poolInfo.CId})
+	}
+	if poolInfo.ECAddr != "" {
+		params = append(params, anyParam{"ecAddr", poolInfo.ECAddr})
+	}
+	return api.mc.request(newRequest(post, proto.AdminUpdateStoragePool).Header(api.h).Param(params...))
 }
 
 func (api *AdminAPI) ListQuota(volName string) (quotaInfo []*proto.QuotaInfo, err error) {

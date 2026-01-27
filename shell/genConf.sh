@@ -56,8 +56,9 @@ genData() {
     local rack=$(get_ip_config "$ip" "rack")
     local zone=$(get_ip_config "$ip" "zone")
     local disk_size=$(get_ip_config "$ip" "disk_size")
+    local media_type=$(get_ip_config "$ip" "mediaType")
     
-    echo "  IP $ip: rack=$rack, zone=$zone, disk_size=$disk_size"
+    echo "  IP $ip: rack=$rack, zone=$zone, disk_size=$disk_size, mediaType=$media_type"
     
     local dataDir=$baseDir/data$id
     if [ ! -d "$dataDir/disk" ]; then
@@ -71,6 +72,7 @@ genData() {
         sed "s/_rack_/${rack}/g" | \
         sed "s/_zone_/${zone}/g" | \
         sed "s/_disk_size_/${disk_size}/g" | \
+        sed "s/_media_type_/${media_type}/g" | \
         sed "s|_dir_|${dataDir}|g" | \
         sed "s|_master_addr_|${MASTER_ADDR}|g" > "$confFile"
         echo "gen data$id.conf success"

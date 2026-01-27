@@ -109,13 +109,17 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
-	if req.IsCache && req.IsMigration {
-		err = errors.New("ExtentAppendWithCheck parameter IsCache and IsMigration can not be ture at the same time")
+
+	// not support cache op
+	if req.IsCache {
+		err = fmt.Errorf("ExtentAppendWithCheck not support cache op, reqId %d, cache %v", p.ReqID, req.IsCache)
 		log.LogError(err)
 		reply := []byte(err.Error())
+		status = proto.OpArgMismatchErr
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
+
 	var inoParm *Inode
 	if inoParm, _, err = mp.CheckQuota(req.Inode, p); err != nil {
 		log.LogErrorf("ExtentAppendWithCheck CheckQuota fail err [%v]", err)
@@ -148,16 +152,6 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 
-	// not support cache op
-	if req.IsCache {
-		err = fmt.Errorf("ExtentAppendWithCheck not support cache op, reqId %d, cache %v", p.ReqID, req.IsCache)
-		log.LogError(err)
-		reply := []byte(err.Error())
-		status = proto.OpArgMismatchErr
-		p.PacketErrorWithBody(status, reply)
-		return
-	}
-
 	start := time.Now()
 	if mp.IsEnableAuditLog() && !req.IsMigration {
 		appendMsg := req.EkString()
@@ -172,7 +166,6 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	}
 
 	ext := req.Extent
-
 	// extent key verSeq not set value since marshal will not include verseq
 	// use inode verSeq instead
 	inoParm.setVer(mp.verSeq)

@@ -720,8 +720,8 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 		return 0, syscall.EBADF
 	}
 
-	if !client.dataWrapper.CanWriteByClass(uint32(poolId)) {
-		log.LogWarnf("Write: target storage class is alrady full, can't write more. pref %s, class %d",
+	if !client.dataWrapper.CanWriteByPool(poolId) {
+		log.LogWarnf("Write: target storage pool is alrady full, can't write more. pref %s, poolId %d",
 			prefix, poolId)
 		return 0, syscall.EDQUOT
 	}
@@ -804,7 +804,7 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	}
 	log.LogDebugf("Read: ino(%v) offset(%v) size(%v) storageClass(%v) isMigration(%v) errGetExtents(%v) "+
 		"rdonly(%v) dirty(%v) waitForFlush(%v)",
-		inode, offset, size, storageClass, isMigration, errGetExtents, s.rdonly, s.dirty, s.waitForFlush)
+		inode, offset, size, poolId, isMigration, errGetExtents, s.rdonly, s.dirty, s.waitForFlush)
 	if !s.rdonly || s.dirty {
 		err = s.IssueFlushRequest()
 		if err != nil {

@@ -320,7 +320,7 @@ func (c *Cluster) selectTargetMetaPeer(mp *MetaPartition, srcAddr, targetAddr st
 		excludeZone = append(excludeZone, zones[0])
 	}
 
-	if _, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param); err == nil {
+	if _, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", param); err == nil {
 		return
 	}
 

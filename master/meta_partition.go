@@ -51,6 +51,8 @@ type MetaReplica struct {
 	ForbidWriteOpOfProtoVer0  bool
 	StatByStorageClass        []*proto.StatOfStorageClass
 	StatByMigrateStorageClass []*proto.StatOfStorageClass
+	StatByPool                []*proto.StatOfStorageClass
+	StatByMigratePool         []*proto.StatOfStorageClass
 	metaNode                  *MetaNode
 	ReadOnlyReasons           uint32
 	StoreMode                 proto.StoreMode
@@ -90,6 +92,8 @@ type MetaPartition struct {
 	ForbidWriteOpOfProtoVer0  bool
 	StatByStorageClass        []*proto.StatOfStorageClass
 	StatByMigrateStorageClass []*proto.StatOfStorageClass
+	StatByPool                []*proto.StatOfStorageClass
+	StatByMigratePool         []*proto.StatOfStorageClass
 	sync.RWMutex
 
 	LastDelReplicaTime int64
@@ -109,6 +113,8 @@ func (mp *MetaPartition) newMetaReplica(start, end uint64, metaNode *MetaNode) (
 	mr.metaNode = metaNode
 	mr.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	mr.StatByMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
+	mr.StatByPool = make([]*proto.StatOfStorageClass, 0)
+	mr.StatByMigratePool = make([]*proto.StatOfStorageClass, 0)
 	mr.LocalPeers = make([]proto.Peer, 0)
 	mr.ReportTime = time.Now().Unix()
 	return
@@ -127,6 +133,8 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
 	mp.EqualCheckPass = true
 	mp.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
+	mp.StatByPool = make([]*proto.StatOfStorageClass, 0)
+	mp.StatByMigratePool = make([]*proto.StatOfStorageClass, 0)
 	return
 }
 
@@ -563,6 +571,8 @@ func (mp *MetaPartition) checkReplicas(timeOutSec int64) {
 			mr.Status = proto.Unavailable
 			mr.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 			mr.StatByMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
+			mr.StatByPool = make([]*proto.StatOfStorageClass, 0)
+			mr.StatByMigratePool = make([]*proto.StatOfStorageClass, 0)
 		}
 	}
 }
@@ -888,6 +898,18 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 		mr.StatByMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
 	}
 
+	if mgr.StatByPool != nil {
+		mr.StatByPool = mgr.StatByPool
+	} else if len(mr.StatByPool) != 0 {
+		mr.StatByPool = make([]*proto.StatOfStorageClass, 0)
+	}
+
+	if mgr.StatByMigratePool != nil {
+		mr.StatByMigratePool = mgr.StatByMigratePool
+	} else if len(mr.StatByMigratePool) != 0 {
+		mr.StatByMigratePool = make([]*proto.StatOfStorageClass, 0)
+	}
+
 	mr.setLastReportTime()
 
 	if mgr.IsLearner != mr.IsLearner {
@@ -1081,6 +1103,10 @@ func (mp *MetaPartition) setStatByStorageClass() {
 	var ok bool
 	statNormalStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
 	statMigrateStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
+	statByPoolMap := make(map[uint8]*proto.StatOfStorageClass)
+	statByMigratePoolMap := make(map[uint8]*proto.StatOfStorageClass)
+	var statPool *proto.StatOfStorageClass
+	var statMigratePool *proto.StatOfStorageClass
 
 	for _, r := range mp.Replicas {
 		if r.StatByStorageClass == nil {
@@ -1116,6 +1142,33 @@ func (mp *MetaPartition) setStatByStorageClass() {
 				mpMigrateStat.UsedSizeBytes = rMigrateStat.UsedSizeBytes
 			}
 		}
+
+		// stat pool
+		for _, rStat := range r.StatByPool {
+			if statPool, ok = statByPoolMap[rStat.PoolId]; !ok {
+				statPool = proto.NewStatOfStorageClassByPool(rStat.PoolId)
+				statByPoolMap[rStat.PoolId] = statPool
+			}
+			if rStat.InodeCount > statPool.InodeCount {
+				statPool.InodeCount = rStat.InodeCount
+			}
+			if rStat.UsedSizeBytes > statPool.UsedSizeBytes {
+				statPool.UsedSizeBytes = rStat.UsedSizeBytes
+			}
+		}
+
+		for _, rStat := range r.StatByMigratePool {
+			if statMigratePool, ok = statByMigratePoolMap[rStat.PoolId]; !ok {
+				statMigratePool = proto.NewStatOfStorageClassByPool(rStat.PoolId)
+				statByMigratePoolMap[rStat.PoolId] = statMigratePool
+			}
+			if rStat.UsedSizeBytes > statMigratePool.UsedSizeBytes {
+				statMigratePool.UsedSizeBytes = rStat.UsedSizeBytes
+			}
+			if rStat.InodeCount > statMigratePool.InodeCount {
+				statMigratePool.InodeCount = rStat.InodeCount
+			}
+		}
 	}
 
 	normalToSlice := make([]*proto.StatOfStorageClass, 0)
@@ -1129,6 +1182,18 @@ func (mp *MetaPartition) setStatByStorageClass() {
 		migrateToSlice = append(migrateToSlice, mpStat)
 	}
 	mp.StatByMigrateStorageClass = migrateToSlice
+
+	poolToSlice := make([]*proto.StatOfStorageClass, 0)
+	for _, stat := range statByPoolMap {
+		poolToSlice = append(poolToSlice, stat)
+	}
+	mp.StatByPool = poolToSlice
+
+	migratePoolToSlice := make([]*proto.StatOfStorageClass, 0)
+	for _, stat := range statByMigratePoolMap {
+		migratePoolToSlice = append(migratePoolToSlice, stat)
+	}
+	mp.StatByMigratePool = migratePoolToSlice
 }
 
 func (mp *MetaPartition) getLiveZones(offlineAddr string) (zones []string) {

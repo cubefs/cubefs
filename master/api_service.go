@@ -464,7 +464,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		cv.MetaNodesetSelector = zone.GetMetaNodesetSelector()
 		cv.DataMediaType = zone.GetDataMediaTypeString()
 		cv.PoolId = zone.PoolId
-		cv.PoolName = m.cluster.getPoolNameById(zone.PoolId)
+		cv.PoolName = m.cluster.getPoolNameById(cv.PoolId)
 		tv.Zones = append(tv.Zones, cv)
 
 		nsc := zone.getAllNodeSet()
@@ -600,7 +600,7 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 		cv.MetaNodesetSelector = zone.GetMetaNodesetSelector()
 		cv.DataMediaType = zone.GetDataMediaTypeString()
 		cv.PoolId = zone.PoolId
-		cv.PoolName = m.cluster.getPoolNameById(zone.PoolId)
+		cv.PoolName = m.cluster.getPoolNameById(cv.PoolId)
 		zoneViews = append(zoneViews, cv)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
@@ -1088,6 +1088,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		DefaultDpTag:                              m.cluster.cfg.DefaultDpTag,
 		DefaultMpTag:                              m.cluster.cfg.DefaultMpTag,
 		AutoFixTag:                                m.cluster.cfg.AutoFixTag.Load(),
+		DefaultPoolId:                             m.cluster.defaultPoolId,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -1736,7 +1737,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		volName                    string
 		vol                        *Vol
 		reqCreateCount             int
-		mediaType                  uint32
+		poolId                     uint8
 		lastTotalDataPartitions    int
 		clusterTotalDataPartitions int
 		err                        error
@@ -1748,7 +1749,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AdminCreateDataPartition, rstMsg, err)
 	}()
 
-	if reqCreateCount, volName, mediaType, err = parseRequestToCreateDataPartition(r); err != nil {
+	if reqCreateCount, volName, poolId, err = parseRequestToCreateDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1757,7 +1758,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	log.LogInfof("[createDataPartition] createCount(%v) volName(%v) mediaType(%v) force(%v)", reqCreateCount, volName, mediaType, force)
+	log.LogInfof("[createDataPartition] createCount(%v) volName(%v) poolId(%v) force(%v)", reqCreateCount, volName, poolId, force)
 
 	if reqCreateCount > maxInitDataPartitionCnt {
 		err = fmt.Errorf("count[%d] exceeds maximum limit[%d]", reqCreateCount, maxInitDataPartitionCnt)
@@ -1774,24 +1775,26 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mediaType == proto.MediaType_Unspecified {
-		mediaType = proto.GetMediaTypeByStorageClass(vol.volStorageClass)
+	if poolId == proto.UnSpecifiedPoolId {
+		poolId = vol.defaultPoolId
 		log.LogInfof("[createDataPartition] vol(%v) no assigned mediaType in volStorageClass, choose mediaType(%v) by volStorageClass(%v)",
-			volName, proto.MediaTypeString(mediaType), proto.StorageClassString(vol.volStorageClass))
-	} else if !proto.IsValidMediaType(mediaType) {
-		err = fmt.Errorf("invalid param mediaType(%v)", mediaType)
+			volName, proto.StorageClassString(vol.volStorageClass), poolId)
+	}
+
+	if !vol.isAllowedPool(poolId) {
+		err = fmt.Errorf("pool(%v) not in vol allowed pools(%v)", poolId, vol.allowedPools)
 		log.LogErrorf("[createDataPartition] vol(%v), err: %v", volName, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
 	if !force {
-		err = vol.dataPartitions.CheckReadWritableCntUnderLimit(m.config.MaxWritableDataPartitionCnt, mediaType)
+		err = vol.dataPartitions.CheckReadWritableCntUnderLimit(m.config.MaxWritableDataPartitionCnt, poolId)
 		if err != nil {
 			if strings.Contains(err.Error(), "reach limit") {
-				log.LogWarnf("createDataPartition vol(%s) count(%d) media(%d) err: %s", volName, reqCreateCount, mediaType, err.Error())
+				log.LogWarnf("createDataPartition vol(%s) count(%d) poolId(%d) err: %s", volName, reqCreateCount, poolId, err.Error())
 			} else {
-				log.LogErrorf("createDataPartition vol(%s) count(%d) media(%d) err: %s", volName, reqCreateCount, mediaType, err.Error())
+				log.LogErrorf("createDataPartition vol(%s) count(%d) poolId(%d) err: %s", volName, reqCreateCount, poolId, err.Error())
 			}
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
@@ -1801,7 +1804,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
 
-	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false, mediaType)
+	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false, poolId)
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
@@ -3403,10 +3406,8 @@ func (m *Server) HasBothReplicaAndBlobstore(storageClass uint32, allowedStorageC
 }
 
 func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error) {
-	scope := "cluster"
+	// check zone name
 	if req.zoneName != "" {
-		scope = fmt.Sprintf("assigned zones(%v)", req.zoneName)
-
 		notExistZones := make([]string, 0)
 		reqZoneList := strings.Split(req.zoneName, ",")
 		for _, reqZone := range reqZoneList {
@@ -3422,42 +3423,28 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		}
 	}
 
-	resourceChecker := NewStorageClassResourceChecker(m.cluster, req.zoneName)
-
-	if req.volStorageClass == proto.StorageClass_Unspecified {
-		// when volStorageClass not specified, try to set as replica with fastest mediaType if resource can support
-		req.volStorageClass = m.cluster.GetFastestReplicaStorageClassInCluster(resourceChecker, req.zoneName)
-		if req.volStorageClass == proto.StorageClass_Unspecified {
-			err = fmt.Errorf("volStorageClass not specified and %v has no resource to auto choose replca storageClass", scope)
-			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
-			return err
-		}
-
-		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), volStorageClass not specified, auto set as: %v",
-			req.name, proto.StorageClassString(req.volStorageClass))
-	}
-
-	if !proto.IsValidStorageClass(req.volStorageClass) {
-		err = fmt.Errorf("invalid volStorageClass: %v", req.volStorageClass)
+	availablePools := m.cluster.getAvailablePools(req.zoneName)
+	if len(availablePools) == 0 {
+		err = fmt.Errorf("no available pools in zone(%v)", req.zoneName)
 		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 		return err
 	}
 
-	if !resourceChecker.HasResourceOfStorageClass(req.volStorageClass) {
-		err = fmt.Errorf("%v has no resoure to support volStorageClass(%v)", scope, proto.StorageClassString(req.volStorageClass))
-		log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
-		return
+	if _, ok := availablePools[req.defaultPoolId]; !ok {
+		err = fmt.Errorf("defaultPoolId(%v) not found in available pools(%v)", req.defaultPoolId, availablePools)
+		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
+		return err
+	}
+
+	for _, poolId := range req.allowedPools {
+		if _, ok := availablePools[poolId]; !ok {
+			err = fmt.Errorf("allowedPoolId(%v) not found in available pools(%v)", poolId, availablePools)
+			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
+			return err
+		}
 	}
 
 	log.LogInfof("[checkStorageClassForCreateVol] volStorageClass: %v", proto.StorageClassString(req.volStorageClass))
-
-	if len(req.allowedStorageClass) == 0 {
-		req.allowedStorageClass = append(req.allowedStorageClass, req.volStorageClass)
-		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), allowedStorageClass not specified, auto set as volStorageClass(%v)",
-			req.name, req.volStorageClass)
-		return
-	}
-
 	// will support both replica and blobstore later
 	if m.HasBothReplicaAndBlobstore(req.volStorageClass, req.allowedStorageClass) {
 		err = fmt.Errorf("vol not support both replica and blobstore")
@@ -3465,55 +3452,11 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		return
 	}
 
-	isVolStorageClassInAllowed := false
-	for idx, asc := range req.allowedStorageClass {
-		if !proto.IsValidStorageClass(asc) {
-			err = fmt.Errorf("allowedStorageClass index(%v) invalid value(%v)", idx, asc)
-			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
-			return err
-		}
-
-		if !resourceChecker.HasResourceOfStorageClass(asc) {
-			err = fmt.Errorf("%v has no resoure to support allowedStorageClass(%v)", scope, proto.StorageClassString(asc))
-			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
-			return
-		}
-
-		if proto.IsStorageClassBlobStore(asc) {
-			if req.coldArgs.objBlockSize == 0 {
-				req.coldArgs.objBlockSize = defaultEbsBlkSize
-				log.LogInfof("[checkStorageClassForCreateVol] vol(%v) allowed %v, set objBlockSize as default(%v)",
-					req.name, proto.StorageClassString(proto.StorageClass_BlobStore), defaultEbsBlkSize)
-			}
-		}
-
-		// To control the complexity of the entire system at the current stage,
-		// not allow normal dp and cache/preload dp both exist in a volume at the same time:
-		// If volStorageClass is replica, will not create cache/preload dp even blobStore contained in allowedStorageClass
-		// if volStorageClass is blobStore, replica storage class can not be supported
-		if proto.IsStorageClassBlobStore(req.volStorageClass) && proto.IsStorageClassReplica(asc) {
-			err = fmt.Errorf("volStorageClass is blobStore, in this case not support replica storage class")
-			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
-			return
-		}
-
-		if asc == req.volStorageClass {
-			isVolStorageClassInAllowed = true
-		}
-	}
-
-	// auto add volStorageClass to allowedStorageClass if omit
-	if !isVolStorageClassInAllowed {
-		log.LogInfof("[checkStorageClassForCreateVol] creating vol(%v) auto append volStorageClass(%v) to allowedStorageClass",
-			req.name, req.volStorageClass)
-		req.allowedStorageClass = append(req.allowedStorageClass, req.volStorageClass)
-	}
-
 	sort.Slice(req.allowedStorageClass, func(i, j int) bool {
 		return req.allowedStorageClass[i] < req.allowedStorageClass[j]
 	})
 
-	if m.HasMultiReplicaStorageClass(req.allowedStorageClass) {
+	if len(req.allowedStorageClass) > 1 {
 		if !req.crossZone {
 			err = fmt.Errorf("more than one replica storageClass in request allowedStorageClass, but crossZone is false")
 			log.LogErrorf("[checkStorageClassForCreateVol] vol(%v) err: %v", req.name, err.Error())
@@ -3537,12 +3480,6 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 		return err
 	}
 
-	// property volType of volume is maintained for compatibility, now it's determined by volStorageClass
-	if err, req.volType = proto.GetVolTypeByStorageClass(req.volStorageClass); err != nil {
-		log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err when got volType:%v", req.name, err.Error())
-		return err
-	}
-
 	if req.capacity == 0 {
 		err = fmt.Errorf("vol capacity can't be zero, %d", req.capacity)
 		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
@@ -3563,50 +3500,8 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 		req.dpCount = defaultInitDataPartitionCnt
 	}
 
-	if proto.IsStorageClassReplica(req.volStorageClass) {
-		if req.dpReplicaNum == 0 {
-			req.dpReplicaNum = defaultReplicaNum
-			log.LogInfof("[checkCreateVolReq] creating vol(%v), req dpReplicaNum is 0, set as defaultReplicaNum(%v)",
-				req.name, defaultReplicaNum)
-		}
-
-		if req.dpReplicaNum > 3 {
-			err = fmt.Errorf("hot vol's replicaNum should be 1 to 3, received replicaNum is[%v]", req.dpReplicaNum)
-			log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
-			return err
-		}
-
-		return nil
-	} else if proto.IsStorageClassBlobStore(req.volStorageClass) {
-		if req.dpReplicaNum > 16 {
-			err = fmt.Errorf("cold vol's replicaNum should less then 17, received replicaNum is[%v]", req.dpReplicaNum)
-			log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
-			return err
-		}
-	}
-	req.followerRead = true
-
-	args := req.coldArgs
-
-	if args.objBlockSize == 0 {
-		args.objBlockSize = defaultEbsBlkSize
-	}
-
-	if int(req.dpReplicaNum) > m.cluster.dataNodeCount() {
-		err = fmt.Errorf("dp replicaNum %d can't be large than dataNodeCnt %d", req.dpReplicaNum, m.cluster.dataNodeCount())
-		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
-		return err
-	}
-
 	if req.accessTimeValidInterval < proto.MinAccessTimeValidInterval {
 		return fmt.Errorf("accessTimeValidInterval must greater than or equal to 1800")
-	}
-	req.coldArgs = args
-
-	if proto.IsHot(req.volType) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) && !req.followerRead {
-		err = fmt.Errorf("hot volume dpReplicaNum(%v) less than 3, followerRead must set true", req.dpReplicaNum)
-		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
-		return err
 	}
 
 	if req.remoteCacheReadTimeout < proto.ReadDeadlineTime {
@@ -3620,6 +3515,31 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 		return fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, req.storeMode)
 	}
 
+	if proto.IsHot(req.volType) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) && !req.followerRead {
+		err = fmt.Errorf("hot volume dpReplicaNum(%v) less than 3, followerRead must set true", req.dpReplicaNum)
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
+	}
+
+	if req.dpReplicaNum == 0 {
+		req.dpReplicaNum = defaultReplicaNum
+		log.LogInfof("[checkCreateVolReq] creating vol(%v), req dpReplicaNum is 0, set as defaultReplicaNum(%v)",
+			req.name, defaultReplicaNum)
+	}
+
+	if proto.IsStorageClassReplica(req.volStorageClass) {
+		return nil
+	}
+
+	// req.followerRead = true
+
+	args := req.coldArgs
+
+	if args.objBlockSize == 0 {
+		args.objBlockSize = defaultEbsBlkSize
+	}
+
+	req.coldArgs = args
 	return nil
 }
 
@@ -3634,7 +3554,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AdminCreateVol, fmt.Sprintf("create vol[%v] ", req.name), err)
 	}()
 
-	if err = parseRequestToCreateVol(r, req); err != nil {
+	if err = parseRequestToCreateVol(r, req, m); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3801,10 +3721,10 @@ func newSimpleView(c *Cluster, vol *Vol) (view *proto.SimpleVolView) {
 		RwDpCnt:                 vol.dataPartitions.readableAndWritableCnt,
 		RwDpOfSSDCnt:            vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(proto.MediaType_SSD),
 		RwDpOfHDDCnt:            vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(proto.MediaType_HDD),
+		RwDpCntByPoolId:         vol.dataPartitions.getReadWriteCntByPoolId(),
 		MpCnt:                   len(vol.MetaPartitions),
 		DpCnt:                   len(vol.dataPartitions.partitionMap),
-		DpOfSSDCnt:              vol.dataPartitions.getDataPartitionsCountOfMediaType(proto.MediaType_SSD),
-		DpOfHDDCnt:              vol.dataPartitions.getDataPartitionsCountOfMediaType(proto.MediaType_HDD),
+		DpCntByPoolId:           vol.dataPartitions.getReadWriteDataPartitionCntByPoolId(),
 		CreateTime:              time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
 		DeleteLockTime:          vol.DeleteLockTime,
 		Description:             vol.description,
@@ -4541,6 +4461,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err = m.cluster.setClusterCreateTime(createTime.Unix()); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[poolIdKey]; ok {
+		if poolId, ok := val.(uint8); ok {
+			if err = m.cluster.updateDefaultPoolId(poolId); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -7101,9 +7030,14 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 
 	stat.TrashInterval = vol.TrashInterval
 	stat.DefaultStorageClass = vol.volStorageClass
+
 	stat.StatByStorageClass = vol.StatByStorageClass
 	stat.StatMigrateStorageClass = vol.StatMigrateStorageClass
+	stat.StatByPool = vol.StatByPool
+	stat.StatByMigratePool = vol.StatByMigratePool
+
 	stat.StatByDpMediaType = vol.StatByDpMediaType
+	stat.StatByDpPool = vol.StatByDpPool
 	stat.MetaFollowerRead = vol.MetaFollowerRead
 	stat.MetaNearRead = vol.MetaNearRead
 	stat.MaximallyRead = vol.MaximallyRead
@@ -7261,6 +7195,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			Freeze:                    mp.Freeze,
 			StatByStorageClass:        mp.StatByStorageClass,
 			StatByMigrateStorageClass: mp.StatByMigrateStorageClass,
+			StatByPool:                mp.StatByPool,
+			StatByMigratePool:         mp.StatByMigratePool,
 			ForbidWriteOpOfProtoVer0:  mp.ForbidWriteOpOfProtoVer0,
 			MemStoreCnt:               memCnt,
 			RockStoreCnt:              rocksCnt,
@@ -10258,22 +10194,182 @@ func (m *Server) resetDecommissionDataNodeStatus(w http.ResponseWriter, r *http.
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Request) {
+// func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Request) {
+// 	var (
+// 		name                   string
+// 		authKey                string
+// 		err                    error
+// 		msg                    string
+// 		addAllowedStorageClass uint32
+// 		ebsBlockSize           int
+// 		vol                    *Vol
+// 		force                  bool
+// 	)
+
+// 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolAddAllowedStorageClass))
+// 	defer func() {
+// 		doStatAndMetric(proto.AdminVolAddAllowedStorageClass, metric, err, map[string]string{exporter.Vol: name})
+// 		AuditLog(r, proto.AdminVolAddAllowedStorageClass, fmt.Sprintf("add allowed storage class for %v", name), err)
+// 	}()
+
+// 	if err = r.ParseForm(); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if name, err = extractName(r); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if authKey, err = extractAuthKey(r); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if force, err = extractBoolWithDefault(r, forceKey, false); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if !m.cluster.dataMediaTypeVaild {
+// 		err := fmt.Errorf("cluster media type still not set, can't add storage class")
+// 		log.LogErrorf("volAddAllowedStorageClass: vol %s, err %v", name, err.Error())
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if addAllowedStorageClass, err = extractUint32(r, allowedStorageClassKey); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if ebsBlockSize, err = extractUint(r, ebsBlkSizeKey); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if !proto.IsValidStorageClass(addAllowedStorageClass) {
+// 		err = fmt.Errorf("invalid storageClass(%v)", addAllowedStorageClass)
+// 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if vol, err = m.cluster.getVol(name); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if !vol.AllPartitionForbidVer0() {
+// 		err = fmt.Errorf("there is still some dp or mp not forbidden write")
+// 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
+// 		if !force || !vol.ForbidWriteOpOfProtoVer0.Load() {
+// 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+// 			return
+// 		}
+// 	}
+
+// 	if in := vol.isStorageClassInAllowed(addAllowedStorageClass); in {
+// 		err = fmt.Errorf("storageClass(%v) already in vol allowedStorageClass(%v)",
+// 			addAllowedStorageClass, vol.allowedStorageClass)
+// 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if m.HasBothReplicaAndBlobstore(addAllowedStorageClass, vol.allowedStorageClass) {
+// 		err = fmt.Errorf("vol not support both replica and blobstore")
+// 		log.LogErrorf("[volAddAllowedStorageClass] create vol(%v) err: %v", vol.Name, err.Error())
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if proto.IsStorageClassBlobStore(vol.volStorageClass) {
+// 		err = fmt.Errorf("volStorageClass is %v, can not add allowedStorageClass",
+// 			proto.StorageClassString(vol.volStorageClass))
+// 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	resourceChecker := NewStorageClassResourceChecker(m.cluster, vol.zoneName)
+// 	if !resourceChecker.HasResourceOfStorageClass(addAllowedStorageClass) {
+// 		scope := "cluster"
+// 		if vol.zoneName != "" {
+// 			scope = fmt.Sprintf("assigned zones(%v)", vol.zoneName)
+// 		}
+
+// 		err = fmt.Errorf("%v has no resoure to support storageClass(%v), and be sure crossZone(%v) enabled",
+// 			scope, proto.StorageClassString(addAllowedStorageClass), vol.crossZone)
+// 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+
+// 	if m.cluster.FaultDomain {
+// 		err = fmt.Errorf("cluster fault domain is on, not support multiple allowedStorageClass at the same time")
+// 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
+// 		sendErrReply(w, r, newErrHTTPReply(err))
+// 		return
+// 	}
+
+// 	verList := vol.VersionMgr.getVersionList()
+// 	if len(verList.VerList) > 1 {
+// 		err = fmt.Errorf("vol(%v) now has or used to have snapshot version, not support multiple allowedStorageClass, verListLen(%v)",
+// 			name, len(verList.VerList))
+// 		log.LogErrorf("[volAddAllowedStorageClass] err: %v", err.Error())
+// 		sendErrReply(w, r, newErrHTTPReply(err))
+// 		return
+// 	}
+
+// 	newArgs := getVolVarargs(vol)
+
+// 	if proto.IsStorageClassBlobStore(addAllowedStorageClass) && ebsBlockSize == 0 {
+// 		if vol.EbsBlkSize == 0 {
+// 			ebsBlockSize = defaultEbsBlkSize
+// 			log.LogInfof("[volAddAllowedStorageClass] vol(%v) allowedStorageClass(%v) use default ebsBlockSize(%v)",
+// 				name, proto.StorageClassString(proto.StorageClass_BlobStore), ebsBlockSize)
+// 		} else {
+// 			ebsBlockSize = vol.EbsBlkSize
+// 			log.LogInfof("[volAddAllowedStorageClass] vol(%v) allowedStorageClass(%v) use old ebsBlockSize(%v)",
+// 				name, proto.StorageClassString(proto.StorageClass_BlobStore), defaultEbsBlkSize)
+// 		}
+// 	}
+// 	newArgs.coldArgs.objBlockSize = ebsBlockSize
+
+// 	newArgs.allowedStorageClass = append(newArgs.allowedStorageClass, addAllowedStorageClass)
+// 	sort.Slice(newArgs.allowedStorageClass, func(i, j int) bool {
+// 		return newArgs.allowedStorageClass[i] < newArgs.allowedStorageClass[j]
+// 	})
+// 	log.LogInfof("[volAddAllowedStorageClass] vol(%v) to add allowedStorageClass, old(%v), add(%v)",
+// 		name, vol.allowedStorageClass, addAllowedStorageClass)
+
+// 	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
+// 		sendErrReply(w, r, newErrHTTPReply(err))
+// 		return
+// 	}
+
+// 	msg = fmt.Sprintf("add vol(%v) allowedStorageClass successfully, new allowedStorageClass: %v",
+// 		name, newArgs.allowedStorageClass)
+// 	log.LogInfof("[volAddAllowedStorageClass] %v, added(%v), current(%v)",
+// 		msg, addAllowedStorageClass, vol.allowedStorageClass)
+// 	sendOkReply(w, r, newSuccessHTTPReply("success"))
+// }
+
+func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 	var (
-		name                   string
-		authKey                string
-		err                    error
-		msg                    string
-		addAllowedStorageClass uint32
-		ebsBlockSize           int
-		vol                    *Vol
-		force                  bool
+		name    string
+		authKey string
+		err     error
+		poolId  uint8
+		vol     *Vol
 	)
 
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolAddAllowedStorageClass))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolAddPool))
 	defer func() {
-		doStatAndMetric(proto.AdminVolAddAllowedStorageClass, metric, err, map[string]string{exporter.Vol: name})
-		AuditLog(r, proto.AdminVolAddAllowedStorageClass, fmt.Sprintf("add allowed storage class for %v", name), err)
+		doStatAndMetric(proto.AdminVolAddPool, metric, err, map[string]string{exporter.Vol: name})
+		AuditLog(r, proto.AdminVolAddPool, fmt.Sprintf("add pool for %v", name), err)
 	}()
 
 	if err = r.ParseForm(); err != nil {
@@ -10291,31 +10387,7 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if force, err = extractBoolWithDefault(r, forceKey, false); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if !m.cluster.dataMediaTypeVaild {
-		err := fmt.Errorf("cluster media type still not set, can't add storage class")
-		log.LogErrorf("volAddAllowedStorageClass: vol %s, err %v", name, err.Error())
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if addAllowedStorageClass, err = extractUint32(r, allowedStorageClassKey); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if ebsBlockSize, err = extractUint(r, ebsBlkSizeKey); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if !proto.IsValidStorageClass(addAllowedStorageClass) {
-		err = fmt.Errorf("invalid storageClass(%v)", addAllowedStorageClass)
-		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
+	if poolId, err = extractUint8(r, poolIdKey); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -10325,99 +10397,131 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !vol.AllPartitionForbidVer0() {
-		err = fmt.Errorf("there is still some dp or mp not forbidden write")
-		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
-		if !force || !vol.ForbidWriteOpOfProtoVer0.Load() {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
-			return
-		}
-	}
-
-	if in := vol.isStorageClassInAllowed(addAllowedStorageClass); in {
-		err = fmt.Errorf("storageClass(%v) already in vol allowedStorageClass(%v)",
-			addAllowedStorageClass, vol.allowedStorageClass)
-		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
+	// Check if pool already exists in allowed pools
+	if vol.isPoolInAllowed(poolId) {
+		err = fmt.Errorf("pool(%v) already in vol allowed pools(%v)", poolId, vol.allowedPools)
+		log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if m.HasBothReplicaAndBlobstore(addAllowedStorageClass, vol.allowedStorageClass) {
-		err = fmt.Errorf("vol not support both replica and blobstore")
-		log.LogErrorf("[volAddAllowedStorageClass] create vol(%v) err: %v", vol.Name, err.Error())
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if proto.IsStorageClassBlobStore(vol.volStorageClass) {
-		err = fmt.Errorf("volStorageClass is %v, can not add allowedStorageClass",
-			proto.StorageClassString(vol.volStorageClass))
-		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	resourceChecker := NewStorageClassResourceChecker(m.cluster, vol.zoneName)
-	if !resourceChecker.HasResourceOfStorageClass(addAllowedStorageClass) {
-		scope := "cluster"
-		if vol.zoneName != "" {
-			scope = fmt.Sprintf("assigned zones(%v)", vol.zoneName)
-		}
-
-		err = fmt.Errorf("%v has no resoure to support storageClass(%v), and be sure crossZone(%v) enabled",
-			scope, proto.StorageClassString(addAllowedStorageClass), vol.crossZone)
-		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if m.cluster.FaultDomain {
-		err = fmt.Errorf("cluster fault domain is on, not support multiple allowedStorageClass at the same time")
-		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
-	verList := vol.VersionMgr.getVersionList()
-	if len(verList.VerList) > 1 {
-		err = fmt.Errorf("vol(%v) now has or used to have snapshot version, not support multiple allowedStorageClass, verListLen(%v)",
-			name, len(verList.VerList))
-		log.LogErrorf("[volAddAllowedStorageClass] err: %v", err.Error())
-		sendErrReply(w, r, newErrHTTPReply(err))
+	// Verify pool exists
+	if _, err = m.cluster.getStoragePool(poolId); err != nil {
+		log.LogErrorf("[volAddPool] vol(%v), pool(%v) not exists, err: %v", name, poolId, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("pool %v does not exist", poolId)})
 		return
 	}
 
 	newArgs := getVolVarargs(vol)
-
-	if proto.IsStorageClassBlobStore(addAllowedStorageClass) && ebsBlockSize == 0 {
-		if vol.EbsBlkSize == 0 {
-			ebsBlockSize = defaultEbsBlkSize
-			log.LogInfof("[volAddAllowedStorageClass] vol(%v) allowedStorageClass(%v) use default ebsBlockSize(%v)",
-				name, proto.StorageClassString(proto.StorageClass_BlobStore), ebsBlockSize)
-		} else {
-			ebsBlockSize = vol.EbsBlkSize
-			log.LogInfof("[volAddAllowedStorageClass] vol(%v) allowedStorageClass(%v) use old ebsBlockSize(%v)",
-				name, proto.StorageClassString(proto.StorageClass_BlobStore), defaultEbsBlkSize)
-		}
-	}
-	newArgs.coldArgs.objBlockSize = ebsBlockSize
-
-	newArgs.allowedStorageClass = append(newArgs.allowedStorageClass, addAllowedStorageClass)
-	sort.Slice(newArgs.allowedStorageClass, func(i, j int) bool {
-		return newArgs.allowedStorageClass[i] < newArgs.allowedStorageClass[j]
+	newArgs.allowedPools = append(newArgs.allowedPools, poolId)
+	sort.Slice(newArgs.allowedPools, func(i, j int) bool {
+		return newArgs.allowedPools[i] < newArgs.allowedPools[j]
 	})
-	log.LogInfof("[volAddAllowedStorageClass] vol(%v) to add allowedStorageClass, old(%v), add(%v)",
-		name, vol.allowedStorageClass, addAllowedStorageClass)
+
+	pool, _ := m.cluster.getStoragePool(poolId)
+	if !vol.isStorageClassInAllowed(uint32(pool.StorageClass)) {
+		newArgs.allowedStorageClass = append(newArgs.allowedStorageClass, uint32(pool.StorageClass))
+		sort.Slice(newArgs.allowedStorageClass, func(i, j int) bool {
+			return newArgs.allowedStorageClass[i] < newArgs.allowedStorageClass[j]
+		})
+		log.LogInfof("[volAddPool] vol(%v) pool(%v) storageClass not in allowedStorageClass, update allowedStorageClass to %v",
+			name, poolId, newArgs.allowedStorageClass)
+	}
+
+	if m.HasBothReplicaAndBlobstore(newArgs.volStorageClass, newArgs.allowedStorageClass) {
+		err = fmt.Errorf("vol not support both replica and blobstore")
+		log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	log.LogInfof("[volAddPool] vol(%v) to add pool, old(%v), add(%v)",
+		name, vol.allowedPools, poolId)
 
 	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	msg = fmt.Sprintf("add vol(%v) allowedStorageClass successfully, new allowedStorageClass: %v",
-		name, newArgs.allowedStorageClass)
-	log.LogInfof("[volAddAllowedStorageClass] %v, added(%v), current(%v)",
-		msg, addAllowedStorageClass, vol.allowedStorageClass)
+	msg := fmt.Sprintf("add vol(%v) pool successfully, new allowed pools: %v",
+		name, newArgs.allowedPools)
+	log.LogInfof("[volAddPool] %v, added(%v), current(%v)",
+		msg, poolId, newArgs.allowedPools)
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
+func (m *Server) volUpdatePoolId(w http.ResponseWriter, r *http.Request) {
+	var (
+		name          string
+		authKey       string
+		err           error
+		defaultPoolId uint8
+		vol           *Vol
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolUpdatePoolId))
+	defer func() {
+		doStatAndMetric(proto.AdminVolUpdatePoolId, metric, err, map[string]string{exporter.Vol: name})
+		AuditLog(r, proto.AdminVolUpdatePoolId, fmt.Sprintf("update default poolId for %v", name), err)
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if authKey, err = extractAuthKey(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if defaultPoolId, err = extractUint8(r, poolIdKey); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+
+	// Verify pool exists
+	if _, err = m.cluster.getStoragePool(defaultPoolId); err != nil {
+		log.LogErrorf("[volUpdatePoolId] vol(%v), pool(%v) not exists, err: %v", name, defaultPoolId, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("pool %v does not exist", defaultPoolId)})
+		return
+	}
+
+	// Check if pool is in allowed pools (if allowed pools are set)
+	if len(vol.allowedPools) > 0 && !vol.isPoolInAllowed(defaultPoolId) {
+		err = fmt.Errorf("pool(%v) not in vol allowed pools(%v)", defaultPoolId, vol.allowedPools)
+		log.LogErrorf("[volUpdatePoolId] vol(%v), err: %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	newArgs := getVolVarargs(vol)
+	newArgs.defaultPoolId = defaultPoolId
+
+	pool, _ := m.cluster.getStoragePool(defaultPoolId)
+	newArgs.volStorageClass = uint32(pool.StorageClass)
+
+	log.LogInfof("[volUpdatePoolId] vol(%v) to update defaultPoolId, old(%v), new(%v)",
+		name, vol.defaultPoolId, defaultPoolId)
+
+	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	msg := fmt.Sprintf("update vol(%v) defaultPoolId successfully, new defaultPoolId: %v",
+		name, defaultPoolId)
+	log.LogInfof("[volUpdatePoolId] %v", msg)
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 

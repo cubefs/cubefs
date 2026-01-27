@@ -39,6 +39,7 @@ type selectParam struct {
 	threshold       float64
 	selectType      int32
 	tag             string
+	poolId          uint8
 }
 
 func (sp *selectParam) copy() *selectParam {
@@ -69,8 +70,8 @@ func (sp *selectParam) String() string {
 	if sp == nil {
 		return "nil"
 	}
-	return fmt.Sprintf("excludeHosts: %v, replicaNum: %v, rackLevel: %v, excludeRacks: %v, excludeNodeSets: %v, selectType: %v, tag: %v",
-		sp.excludeHosts, sp.replicaNum, sp.rackLevel, sp.excludeRacks, sp.excludeNodeSets, sp.selectType, sp.tag)
+	return fmt.Sprintf("excludeHosts: %v, replicaNum: %v, rackLevel: %v, excludeRacks: %v, excludeNodeSets: %v, selectType: %v, tag: %v, poolId: %v",
+		sp.excludeHosts, sp.replicaNum, sp.rackLevel, sp.excludeRacks, sp.excludeNodeSets, sp.selectType, sp.tag, sp.poolId)
 }
 
 type rsManager struct {
@@ -1587,7 +1588,7 @@ func (t *topology) getZonesByMediaType(mediaType uint32) (zones []*Zone) {
 	return
 }
 
-func (t *topology) getZonesOfNodeType(nodeType NodeType, dataMediaType uint32) (zones []*Zone) {
+func (t *topology) getZonesOfNodeType(nodeType NodeType, poolId uint8) (zones []*Zone) {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
 
@@ -1604,7 +1605,7 @@ func (t *topology) getZonesOfNodeType(nodeType NodeType, dataMediaType uint32) (
 			}
 		}
 
-		if dataMediaType != proto.MediaType_Unspecified && zone.dataMediaType != dataMediaType {
+		if poolId != 0 && zone.PoolId != poolId {
 			return true
 		}
 
@@ -1649,11 +1650,11 @@ func calculateDemandWriteNodes(zoneNum int, replicaNum int, isSpecialZoneName bo
 	return
 }
 
-func (t *topology) pickUpZonesByNodeType(zones []*Zone, nodeType NodeType, dataMediaType uint32) (zonesOfMediaType []*Zone) {
-	log.LogDebugf("[pickUpZonesByNodeType] zoneLen(%v) nodeType(%v) require mediaType(%v)",
-		len(zones), NodeTypeString(nodeType), proto.MediaTypeString(dataMediaType))
+func (t *topology) pickUpZonesByNodeType(zones []*Zone, nodeType NodeType, poolId uint8) (zonesOfPoolId []*Zone) {
+	log.LogDebugf("[pickUpZonesByNodeType] zoneLen(%v) nodeType(%v) poolId(%v)",
+		len(zones), NodeTypeString(nodeType), poolId)
 
-	zonesOfMediaType = make([]*Zone, 0)
+	zonesOfPoolId = make([]*Zone, 0)
 	for _, zone := range zones {
 		if nodeType == DataNodeType && zone.dataNodeCount() == 0 {
 			log.LogDebugf("[pickUpZonesByNodeType] skip zone(%v), for no datanodes", zone.name)
@@ -1663,45 +1664,42 @@ func (t *topology) pickUpZonesByNodeType(zones []*Zone, nodeType NodeType, dataM
 			continue
 		}
 
-		if dataMediaType != proto.MediaType_Unspecified && zone.dataMediaType != dataMediaType {
-			log.LogDebugf("[pickUpZonesByNodeType] skip zone(%v), zoneDataMediaType(%v), require mediaType(%v)",
-				zone.name, proto.MediaTypeString(zone.dataMediaType), proto.MediaTypeString(dataMediaType))
+		if poolId != 0 && zone.PoolId != poolId {
+			log.LogDebugf("[pickUpZonesByNodeType] skip zone(%v), zonePoolId(%v), require poolId(%v)",
+				zone.name, zone.PoolId, poolId)
 			continue
 		}
 
-		log.LogDebugf("[pickUpZonesByNodeType] pick up zone(%v), dataMediaType(%v)",
-			zone.name, proto.MediaTypeString(dataMediaType))
-		zonesOfMediaType = append(zonesOfMediaType, zone)
+		log.LogDebugf("[pickUpZonesByNodeType] pick up zone(%v), poolId(%v)", zone.name, zone.PoolId)
+		zonesOfPoolId = append(zonesOfPoolId, zone)
 	}
 
-	return zonesOfMediaType
+	return zonesOfPoolId
 }
 
 // Choose the zone if it is writable and adapt to the rules for classifying zones
 func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string,
-	specialZones []*Zone, dataMediaType uint32,
+	specialZones []*Zone, poolId uint8,
 ) (zones []*Zone, err error) {
-	log.LogInfof("[allocZonesForNode] NodeType(%v) dataMediaType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZonesLen(%v) ",
-		NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), zoneNumNeed, replicaNum, excludeZone, len(specialZones))
+	log.LogInfof("[allocZonesForNode] NodeType(%v) poolId(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZonesLen(%v), poolId(%v) ",
+		NodeTypeString(rsMgr.nodeType), poolId, zoneNumNeed, replicaNum, excludeZone, len(specialZones), poolId)
 
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("[allocZonesForNode] getDomainExcludeZones(%v), get zoneNum: %v",
 			t.domainExcludeZones, len(zones))
 	} else if len(specialZones) > 0 {
-		zones = t.pickUpZonesByNodeType(specialZones, rsMgr.nodeType, dataMediaType)
+		zones = t.pickUpZonesByNodeType(specialZones, rsMgr.nodeType, poolId)
 		zoneNumNeed = len(zones)
-		log.LogInfof("[allocZonesForNode] pick up mediaType(%v) from specialZones, get zoneNum: %v",
-			proto.MediaTypeString(dataMediaType), zoneNumNeed)
+		log.LogInfof("[allocZonesForNode] pick up poolId(%v) from specialZones, get zoneNum: %v", poolId, zoneNumNeed)
 	} else {
 		// if domain enable, will not enter here
-		zones = t.getZonesOfNodeType(rsMgr.nodeType, dataMediaType)
-		log.LogInfof("[allocZonesForNode] pick up mediaType(%v) from all zone, get zoneNum: %v",
-			proto.MediaTypeString(dataMediaType), len(zones))
+		zones = t.getZonesOfNodeType(rsMgr.nodeType, poolId)
+		log.LogInfof("[allocZonesForNode] pick up poolId(%v) from all zone, get zoneNum: %v", poolId, len(zones))
 	}
+
 	if len(zones) == 1 {
-		log.LogInfof("action[allocZonesForNode] pick up mediaType(%v) only one zone: %v",
-			proto.MediaTypeString(dataMediaType), zones[0].name)
+		log.LogInfof("action[allocZonesForNode] pick up poolId(%v) only one zone: %v", poolId, zones[0].name)
 		return zones, nil
 	}
 
@@ -1721,16 +1719,16 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 		}
 
 		if zone.canWriteForNode(rsMgr.nodeType, uint8(demandWriteNodesCntPerZone)) {
-			log.LogInfof("[allocZonesForNode] nodeType(%v) dataMediaType(%v), pick up candidate zone: %v",
-				NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), zone.name)
+			log.LogInfof("[allocZonesForNode] nodeType(%v) poolId(%v), pick up candidate zone: %v",
+				NodeTypeString(rsMgr.nodeType), poolId, zone.name)
 			candidateZones = append(candidateZones, zone)
 		} else {
-			log.LogInfof("[allocZonesForNode] nodeType(%v) dataMediaType(%v), not enough writable node, skip zone: %v",
-				NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), zone.name)
+			log.LogInfof("[allocZonesForNode] nodeType(%v) poolId(%v), not enough writable node, skip zone: %v",
+				NodeTypeString(rsMgr.nodeType), poolId, zone.name)
 		}
 	}
-	log.LogInfof("[allocZonesForNode] nodeType(%v) dataMediaType(%v), candidate num: %v",
-		NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), len(candidateZones))
+	log.LogInfof("[allocZonesForNode] nodeType(%v) poolId(%v), candidate num: %v",
+		NodeTypeString(rsMgr.nodeType), poolId, len(candidateZones))
 	if len(candidateZones) < 1 {
 		if rsMgr.nodeType == DataNodeType {
 			err = proto.ErrNoZoneToCreateDataPartition
@@ -1739,13 +1737,13 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 		}
 
 		log.LogErrorf("[allocZonesForNode] nodeType(%v), dataMediaType(%v), reqZoneNum[%v], candidateZones[%v], demandWriteNodes[%v], err:%v",
-			NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), zoneNumNeed, len(candidateZones),
+			NodeTypeString(rsMgr.nodeType), poolId, zoneNumNeed, len(candidateZones),
 			demandWriteNodesCntPerZone, err.Error())
 		return nil, err
 	}
 	if zoneNumNeed >= 2 && len(candidateZones) == 1 {
 		log.LogWarnf("[allocZonesForNode] nodeType(%v), dataMediaType(%v), demandWriteNodes[%v], reqZoneNum is [%v] but only one candidateZone",
-			NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), demandWriteNodesCntPerZone, zoneNumNeed)
+			NodeTypeString(rsMgr.nodeType), poolId, demandWriteNodesCntPerZone, zoneNumNeed)
 	}
 
 	zones = candidateZones
@@ -3120,19 +3118,18 @@ func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForMetaNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
 	} else if len(specialZones) > 0 {
-		zones = t.pickUpZonesByNodeType(specialZones, MetaNodeType, proto.MediaType_Unspecified)
+		zones = t.pickUpZonesByNodeType(specialZones, MetaNodeType, proto.UnSpecifiedPoolId)
 		zoneNum = len(zones)
 		log.LogInfof("action[allocZonesForMetaNode] pick up mediaType from specialZones, get zoneNum: %v", zoneNum)
 	} else {
 		// if domain enable, will not enter here
-		zones = t.getZonesOfNodeType(MetaNodeType, proto.MediaType_Unspecified)
+		zones = t.getZonesOfNodeType(MetaNodeType, proto.UnSpecifiedPoolId)
 		log.LogInfof("[allocZonesForNode] pick up mediaType(%v) from all zone, get zoneNum: %v",
-			proto.MediaTypeString(proto.MediaType_Unspecified), len(zones))
+			proto.UnSpecifiedPoolId, len(zones))
 	}
 
 	if len(zones) == 1 {
-		log.LogInfof("action[allocZonesForNode] pick up mediaType(%v) only one zone: %v",
-			proto.MediaTypeString(proto.MediaType_Unspecified), zones[0].name)
+		log.LogInfof("action[allocZonesForNode] pick up mediaType(%v) only one zone: %v", proto.UnSpecifiedPoolId, zones[0].name)
 		return zones, nil
 	}
 

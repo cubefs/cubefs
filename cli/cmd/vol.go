@@ -18,7 +18,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -61,7 +60,8 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolSetAuditLogCmd(client),
 		newVolSetTrashIntervalCmd(client),
 		newVolSetDpRepairBlockSize(client),
-		newVolAddAllowedStorageClassCmd(client),
+		newVolAddPoolCmd(client),
+		newVolUpdatePoolIdCmd(client),
 		newVolQueryOpCmd(client),
 		newVolGetInodeByIdCmd(client),
 		newVolCheckDomain(client),
@@ -141,8 +141,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optTxConflictRetryInterval int64
 	var optDeleteLockTime int64
 	var clientIDKey string
-	var optVolStorageClass uint32
-	var optAllowedStorageClass string
 	var optYes bool
 	var optRcEnable string
 	var optRcPath string
@@ -156,6 +154,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optRemoteCacheSameZoneTimeout int64
 	var optRemoteCacheSameRegionTimeout int64
 	var optStoreMode string
+	var optPoolId uint8
+	var optPools string
 
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -181,10 +181,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
 
-			if optReplicaNum == "" && proto.IsStorageClassBlobStore(optVolStorageClass) {
-				optReplicaNum = "1"
-			}
-			if !proto.IsStorageClassBlobStore(optVolStorageClass) && optFollowerRead == "" && (optReplicaNum == "1" || optReplicaNum == "2") {
+			if optFollowerRead == "" && (optReplicaNum == "1" || optReplicaNum == "2") {
 				followerRead = true
 			}
 
@@ -261,8 +258,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  TransactionTimeout       : %v min\n", optTxTimeout)
 				stdout("  TxConflictRetryNum       : %v\n", optTxConflictRetryNum)
 				stdout("  TxConflictRetryInterval  : %v ms\n", optTxConflictRetryInterval)
-				stdout("  volStorageClass          : %v\n", optVolStorageClass)
-				stdout("  allowedStorageClass      : %v\n", optAllowedStorageClass)
 				stdout("  enableQuota              : %v\n", optEnableQuota)
 				stdout("  metaFollowerRead         : %v\n", optMetaFollowerRead)
 				stdout("  metaNearRead             : %v\n", optMetaNearRead)
@@ -280,6 +275,12 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  rcSameRegionTimeout      : %v ms\n", optRemoteCacheSameRegionTimeout)
 				if optStoreMode != "" {
 					stdout("  StoreMode                : %v\n", optStoreMode)
+				}
+				if optPoolId > 0 {
+					stdout("  defaultPoolId            : %v\n", optPoolId)
+				}
+				if optPools != "" {
+					stdout("  allowedPools             : %v\n", optPools)
 				}
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
@@ -302,10 +303,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optMPCount, optDPCount, int(replicaNum), optDPSize, followerRead,
 				optZoneName, optEbsBlkSize, dpReadOnlyWhenVolFull,
 				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
-				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMetaNearRead, optMaximallyRead,
+				proto.StorageClass_Unspecified, "", optMetaFollowerRead, optMetaNearRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB,
 				optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, storeMode)
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, storeMode, optPoolId, optPools)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -337,11 +338,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: hour] for volume")
-	cmd.Flags().Uint32Var(&optVolStorageClass, CliFlagVolStorageClass, proto.StorageClass_Unspecified,
-		"Specify which StorageClass the clients mounts this vol should write to: [1:SSD | 2:HDD | 3:Blobstore]")
-	cmd.Flags().StringVar(&optAllowedStorageClass, CliFlagAllowedStorageClass, cmdVolDefaultAllowedStorageClass,
-		"Specify which StorageClasses the vol will support, \nformat is comma separated uint32:\"StorageClass1, StorageClass2\",\n"+
-			"1:SSD, 2:HDD, empty value means determine by master")
 	cmd.Flags().StringVar(&optRcEnable, CliFlagRemoteCacheEnable, "", "Remote cache enable")
 	cmd.Flags().StringVar(&optRcPath, CliFlagRemoteCachePath, "", "Remote cache path, split with (,)")
 	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare, let flashnode read ahead when client append ek")
@@ -354,6 +350,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, proto.DefaultRemoteCacheSameZoneTimeout, "Remote cache same zone timeout microsecond(must > 0)")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout, "Remote cache same region timeout millisecond(must > 0)")
 	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "Specify default store mode of mp: memory, rocksdb")
+	cmd.Flags().Uint8Var(&optPoolId, "poolId", 0, "Specify default storage pool ID for the volume")
+	cmd.Flags().StringVar(&optPools, "pools", "", "Specify allowed storage pools for the volume (comma-separated pool IDs, e.g., \"1,2,3\")")
 
 	return cmd
 }
@@ -404,7 +402,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optTrashInterval int64
 	var optAccessTimeValidInterval int64
 	var optEnablePersistAccessTime string
-	var optVolStorageClass int
 	var optForbidWriteOpOfProtoVer0 string
 	var optVolQuotaClass int
 	var optVolQuotaOfClass int
@@ -764,21 +761,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  EnableAutoMpMetaRepair : %v\n", vv.EnableAutoMpMetaRepair))
 			}
 
-			if optVolStorageClass != 0 {
-				if !proto.IsValidStorageClass(uint32(optVolStorageClass)) {
-					err = fmt.Errorf("invalid param volStorageClass: %v\n", optVolStorageClass)
-					return
-				}
-
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  volStorageClass : %v -> %v\n",
-					vv.VolStorageClass, optVolStorageClass))
-				vv.VolStorageClass = uint32(optVolStorageClass)
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  volStorageClass : %v\n",
-					proto.StorageClassString(vv.VolStorageClass)))
-			}
-
 			if optVolQuotaClass > 0 {
 				if !proto.IsStorageClassReplica(uint32(optVolQuotaClass)) {
 					err = fmt.Errorf("invalid param optVolQuotaClass: %v", optVolQuotaClass)
@@ -1001,7 +983,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optEnableDpAutoMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable dp auto meta repair")
 	cmd.Flags().StringVar(&optEnableMpAutoMetaRepair, CliFlagAutoMpMetaRepair, "", "Enable or disable mp auto meta repair")
-	cmd.Flags().IntVar(&optVolStorageClass, CliFlagVolStorageClass, 0, "specify volStorageClass")
 	cmd.Flags().IntVar(&optVolQuotaClass, CliFlagVolQuotaClass, 0, "specify target storage class for quota, 1(SSD), 2(HDD)")
 	cmd.Flags().IntVar(&optVolQuotaOfClass, CliFlagVolQuotaOfClass, -1, "specify quota of target storage class, GB")
 
@@ -1040,6 +1021,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 		optDataDetail       bool
 		opHybridCloudDetail bool
 		opQosDetail         bool
+		opPoolDetail        bool
 	)
 
 	cmd := &cobra.Command{
@@ -1103,6 +1085,52 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if opPoolDetail {
+				var info *proto.VolStatInfo
+				if info, err = client.ClientAPI().GetVolumeStat(volumeName); err != nil {
+					err = fmt.Errorf("get volume pool detail information failed:%v", err)
+					return
+				}
+
+				// Get all pools to build pool ID to name mapping
+				var pools []*proto.StoragePoolView
+				if pools, err = client.AdminAPI().ListStoragePools(); err != nil {
+					err = fmt.Errorf("get storage pools failed:%v", err)
+					return
+				}
+				poolNameMap := make(map[uint8]string)
+				for _, pool := range pools {
+					poolNameMap[pool.Id] = pool.Name
+				}
+
+				stdout("Usage by storage pool:\n")
+				stdout("%v\n", hybridCloudPoolTableHeader)
+				sort.Slice(info.StatByPool, func(i, j int) bool {
+					return info.StatByPool[i].PoolId < info.StatByPool[j].PoolId
+				})
+				for _, view := range info.StatByPool {
+					stdout("%v\n", formatHybridCloudPoolTableRow(view, poolNameMap))
+				}
+
+				stdout("\nUsage by dp storage pool:\n")
+				stdout("%v\n", hybridCloudPoolTableHeader)
+				sort.Slice(info.StatByDpPool, func(i, j int) bool {
+					return info.StatByDpPool[i].PoolId < info.StatByDpPool[j].PoolId
+				})
+				for _, view := range info.StatByDpPool {
+					stdout("%v\n", formatHybridCloudPoolTableRow(view, poolNameMap))
+				}
+
+				stdout("\nMigration Usage by storage pool:\n")
+				stdout("%v\n", hybridCloudPoolTableHeader)
+				sort.Slice(info.StatByMigratePool, func(i, j int) bool {
+					return info.StatByMigratePool[i].PoolId < info.StatByMigratePool[j].PoolId
+				})
+				for _, view := range info.StatByMigratePool {
+					stdout("%v\n", formatHybridCloudPoolTableRow(view, poolNameMap))
+				}
+			}
+
 			// print metadata detail
 			if optMetaDetail {
 				var views []*proto.MetaPartitionView
@@ -1148,6 +1176,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVarP(&optDataDetail, "data-partition", "d", false, "Display data partition detail information")
 	cmd.Flags().BoolVarP(&opHybridCloudDetail, "storage-class", "s", false, "Display hybrid cloud detail information")
 	cmd.Flags().BoolVarP(&opQosDetail, "qos", "q", false, "Display qos detail information")
+	cmd.Flags().BoolVarP(&opPoolDetail, "pool", "p", false, "Display storage pool detail information")
 
 	return cmd
 }
@@ -1571,57 +1600,92 @@ func newVolSetTrashIntervalCmd(client *master.MasterClient) *cobra.Command {
 }
 
 var (
-	cmdVolAddAllowedStorageClassUse   = "addAllowedStorageClass [VOLUME] [STORAGE_CLASS_TO_ADD] [flags]"
-	cmdVolAddAllowedStorageClassShort = "add a storageClass to volume's allowedStorageClass list: [1:SSD | 2:HDD | 3:Blobstore]"
+	cmdVolAddPoolUse   = "addPool [VOLUME] [POOL_ID] [flags]"
+	cmdVolAddPoolShort = "add a storage pool to volume's allowed pools list"
 )
 
-func newVolAddAllowedStorageClassCmd(client *master.MasterClient) *cobra.Command {
+func newVolAddPoolCmd(client *master.MasterClient) *cobra.Command {
 	var optClientIDKey string
-	var ascUint64 uint64
-	var addAllowedStorageClass uint32
-	var optEbsBlkSize int
-	var force bool
+	var poolId uint8
 
 	cmd := &cobra.Command{
-		Use:   cmdVolAddAllowedStorageClassUse,
-		Short: cmdVolAddAllowedStorageClassShort,
+		Use:   cmdVolAddPoolUse,
+		Short: cmdVolAddPoolShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			volName := args[0]
-			addAllowedStorageClassStr := args[1]
+			poolIdStr := args[1]
 			var err error
 			defer func() {
 				errout(err)
 			}()
 
-			ascUint64, err = strconv.ParseUint(addAllowedStorageClassStr, 10, 32)
-			if err != nil || ascUint64 > math.MaxUint32 {
-				err = fmt.Errorf("parse param[addAllowedStorageClass] is not valid uint32[%d], err %v", ascUint64, err)
+			poolIdUint64, err := strconv.ParseUint(poolIdStr, 10, 8)
+			if err != nil {
+				err = fmt.Errorf("parse param[poolId] is not valid uint8[%s], err %v", poolIdStr, err)
 				return
 			}
-			addAllowedStorageClass = uint32(ascUint64)
-
-			if !proto.IsValidStorageClass(addAllowedStorageClass) {
-				err = fmt.Errorf("param[addAllowedStorageClass] is not valid storageClass: %v", addAllowedStorageClass)
-				return
-			}
+			poolId = uint8(poolIdUint64)
 
 			var vv *proto.SimpleVolView
 			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volName); err != nil {
 				return
 			}
 
-			if err = client.AdminAPI().VolAddAllowedStorageClass(volName, addAllowedStorageClass, optEbsBlkSize, util.CalcAuthKey(vv.Owner), optClientIDKey, force); err != nil {
+			if err = client.AdminAPI().VolAddPool(volName, poolId, util.CalcAuthKey(vv.Owner), optClientIDKey); err != nil {
 				return
 			}
 
-			stdout("Volume add allowedStorageClass successfully\n")
+			stdout("Volume add pool successfully\n")
 		},
 	}
 
 	cmd.Flags().StringVar(&optClientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
-	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlockSize for BlobStore")
-	cmd.Flags().BoolVar(&force, "force", false, "true|false, ignore mp & dp check when true")
+	return cmd
+}
+
+var (
+	cmdVolUpdatePoolIdUse   = "updatePoolId [VOLUME] [POOL_ID] [flags]"
+	cmdVolUpdatePoolIdShort = "update default storage pool ID for the volume"
+)
+
+func newVolUpdatePoolIdCmd(client *master.MasterClient) *cobra.Command {
+	var optClientIDKey string
+	var poolId uint8
+
+	cmd := &cobra.Command{
+		Use:   cmdVolUpdatePoolIdUse,
+		Short: cmdVolUpdatePoolIdShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			volName := args[0]
+			poolIdStr := args[1]
+			var err error
+			defer func() {
+				errout(err)
+			}()
+
+			poolIdUint64, err := strconv.ParseUint(poolIdStr, 10, 8)
+			if err != nil {
+				err = fmt.Errorf("parse param[poolId] is not valid uint8[%s], err %v", poolIdStr, err)
+				return
+			}
+			poolId = uint8(poolIdUint64)
+
+			var vv *proto.SimpleVolView
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volName); err != nil {
+				return
+			}
+
+			if err = client.AdminAPI().VolUpdatePoolId(volName, poolId, util.CalcAuthKey(vv.Owner), optClientIDKey); err != nil {
+				return
+			}
+
+			stdout("Volume update default poolId successfully\n")
+		},
+	}
+
+	cmd.Flags().StringVar(&optClientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 

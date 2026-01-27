@@ -61,10 +61,31 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 			if zones, err = client.AdminAPI().ListZones(); err != nil {
 				return
 			}
-			zoneTablePattern := "%-8v    %-10v\n"
-			stdout(zoneTablePattern, "ZONE", "STATUS")
+			stdoutln("[Zones]")
+			zoneTablePattern := "%-12v    %-10v    %-15v    %-20v    %-20v    %-30v\n"
+			stdout(zoneTablePattern, "ZONE", "STATUS", "DATA_NODESET_SEL", "META_NODESET_SEL", "DATA_MEDIA_TYPE", "POOL")
 			for _, zone := range zones {
-				stdout(zoneTablePattern, zone.Name, zone.Status)
+				dataNodesetSel := zone.DataNodesetSelector
+				if dataNodesetSel == "" {
+					dataNodesetSel = "-"
+				}
+				metaNodesetSel := zone.MetaNodesetSelector
+				if metaNodesetSel == "" {
+					metaNodesetSel = "-"
+				}
+				dataMediaType := zone.DataMediaType
+				if dataMediaType == "" {
+					dataMediaType = "-"
+				}
+				// Use zone's PoolId and PoolName directly
+				poolInfoStr := "-"
+				if zone.PoolId > 0 {
+					poolInfoStr = fmt.Sprintf("%d", zone.PoolId)
+					if zone.PoolName != "" {
+						poolInfoStr = fmt.Sprintf("%d(%s)", zone.PoolId, zone.PoolName)
+					}
+				}
+				stdout(zoneTablePattern, zone.Name, zone.Status, dataNodesetSel, metaNodesetSel, dataMediaType, poolInfoStr)
 			}
 		},
 	}

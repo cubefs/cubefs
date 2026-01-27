@@ -331,6 +331,8 @@ const (
 	AdminEnablePersistAccessTime = "/vol/enablePersistAccessTime"
 
 	AdminVolAddAllowedStorageClass = "/vol/addAllowedStorageClass"
+	AdminVolAddPool                = "/vol/addPool"
+	AdminVolUpdatePoolId           = "/vol/updatePoolId"
 	// FlashNode API
 	FlashNodeAdd               = "/flashNode/add"
 	FlashNodeSet               = "/flashNode/set"
@@ -382,6 +384,8 @@ var GApiInfo map[string]string = map[string]string{
 	"adminvolshrink":                           AdminVolShrink,
 	"adminvolexpand":                           AdminVolExpand,
 	"adminvoladdallowedstorageclass":           AdminVolAddAllowedStorageClass,
+	"adminvoladdpool":                          AdminVolAddPool,
+	"adminvolupdatepoolid":                     AdminVolUpdatePoolId,
 	"admincreatevol":                           AdminCreateVol,
 	"admingetvol":                              AdminGetVol,
 	"adminclusterfreeze":                       AdminClusterFreeze,
@@ -1041,6 +1045,8 @@ type MetaPartitionReport struct {
 	QuotaReportInfos          []*QuotaReportInfo
 	StatByStorageClass        []*StatOfStorageClass
 	StatByMigrateStorageClass []*StatOfStorageClass
+	StatByPool                []*StatOfStorageClass
+	StatByMigratePool         []*StatOfStorageClass
 	LocalPeers                []Peer
 	ReadOnlyReasons           uint32
 	StoreMode                 StoreMode
@@ -1220,6 +1226,7 @@ type DataPartitionsView struct {
 	DataPartitions []*DataPartitionResponse
 	VolReadOnly    bool // if true, refresh dps even rw count less than 1
 	StatByClass    []*StatOfStorageClass
+	StatByPool     []*StatOfStorageClass
 }
 
 type DiskDataPartitionsView struct {
@@ -1420,10 +1427,10 @@ type SimpleVolView struct {
 	RwDpCnt                 int
 	RwDpOfSSDCnt            int
 	RwDpOfHDDCnt            int
+	RwDpCntByPoolId         map[uint8]int
 	MpCnt                   int
 	DpCnt                   int
-	DpOfSSDCnt              int
-	DpOfHDDCnt              int
+	DpCntByPoolId           map[uint8]int
 	FollowerRead            bool
 	MetaFollowerRead        bool
 	MetaNearRead            bool
@@ -1464,7 +1471,6 @@ type SimpleVolView struct {
 	Forbidden               bool
 	DisableAuditLog         bool
 	DeleteExecTime          time.Time
-	DefaultPoolId           uint8 // default storage pool ID for the volume
 	DefaultPoolId           uint8 // default storage pool ID for the volume
 	DpRepairBlockSize       uint64
 	EnableAutoDpMetaRepair  bool
@@ -1588,6 +1594,8 @@ type ZoneView struct {
 	MetaNodesetSelector string
 	NodeSet             map[uint64]*NodeSetView
 	DataMediaType       string
+	PoolId              uint8  // storage pool ID
+	PoolName            string // storage pool name
 }
 
 type NodeSetView struct {
@@ -1797,19 +1805,6 @@ func IsVolSupportStorageClass(allowedStorageClass []uint32, storeClass uint32) b
 	return false
 }
 
-func GetVolTypeByStorageClass(storageClass uint32) (err error, volType int) {
-	if IsStorageClassReplica(storageClass) {
-		volType = VolumeTypeHot
-	} else if storageClass == StorageClass_BlobStore {
-		volType = VolumeTypeCold
-	} else {
-		err = fmt.Errorf("got invalid volType by storageClass(%v)", storageClass)
-		volType = VolumeTypeInvalid
-	}
-
-	return
-}
-
 func GetMediaTypeByStorageClass(storageClass uint32) (mediaType uint32) {
 	switch storageClass {
 	case StorageClass_Replica_SSD:
@@ -1997,15 +1992,16 @@ func (s *StoragePoolView) String() string {
 
 // Default Storage Pool IDs
 const (
-	DefaultSSDPoolId uint8 = 1
-	DefaultHDDPoolId uint8 = 2
-	DefaultECPoolId  uint8 = 3
-	MaxDefaultPoolId uint8 = 3
+	UnSpecifiedPoolId uint8 = 0
+	DefaultSSDPoolId  uint8 = 1
+	DefaultHDDPoolId  uint8 = 2
+	DefaultECPoolId   uint8 = 3
+	MaxDefaultPoolId  uint8 = 3
 )
 
 // Default storage pool names
 const (
-	DefaultSSDPoolName = "defSSDPool"
+	DefaultSSDPoolName = "defaultSSDPool"
 	DefaultHDDPoolName = "defaultHDDPool"
 	DefaultECPoolName  = "defaultECPool"
 )
@@ -2025,17 +2021,16 @@ func GetDefaultPoolIdByMediaType(mediaType uint32) uint8 {
 }
 
 // GetDefaultPoolIdByStorageClass returns default pool ID based on storage class
-func GetDefaultPoolIdByStorageClass(storageClass uint32) uint8 {
+func GetDefaultPoolIdByStorageClass(storageClass uint32) (uint8, error) {
 	switch storageClass {
 	case StorageClass_Replica_SSD:
-		return DefaultSSDPoolId
+		return DefaultSSDPoolId, nil
 	case StorageClass_Replica_HDD:
-		return DefaultHDDPoolId
+		return DefaultHDDPoolId, nil
 	case StorageClass_BlobStore:
-		return DefaultECPoolId
+		return DefaultECPoolId, nil
 	default:
 		// Default to SSD pool for unspecified storage class
-		log.LogWarnf("GetDefaultPoolIdByStorageClass: unsupported storageClass[%d], defaulting to SSD pool", storageClass)
-		return DefaultSSDPoolId
+		return 0, fmt.Errorf("unsupported storageClass[%d], defaulting to SSD pool", storageClass)
 	}
 }

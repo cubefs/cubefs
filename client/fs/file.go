@@ -129,13 +129,14 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 	pool := getStorageClassByPoolIdFromSuper(s, i.PoolId)
 	storageClass := uint32(pool.StorageClass)
 
-	ebsc, err := s.getBlobStoreClient(pool)
-	if err != nil {
-		log.LogErrorf("NewFile: get blobstore client for pool(%v) err: %v", pool.String(), err)
-		return nil
-	}
+	if proto.IsStorageClassBlobStore(storageClass) {
 
-	if proto.IsCold(s.volType) || proto.IsStorageClassBlobStore(storageClass) {
+		ebsc, err := s.getBlobStoreClient(pool)
+		if err != nil {
+			log.LogErrorf("NewFile: get blobstore client for pool(%v) err: %v", pool.String(), err)
+			return nil
+		}
+
 		var (
 			fReader    *blobstore.Reader
 			fWriter    *blobstore.Writer

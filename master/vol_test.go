@@ -401,14 +401,14 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	vol.addMetaPartition(mp2)
 	vol.updateViewCache(server.cluster)
 	for id := 0; id < 30000; id++ {
-		dp := newDataPartition(uint64(id), 3, name, volID, 0, defaultMediaType)
+		dp := newDataPartition(uint64(id), 3, name, volID, 0, defaultMediaType, defaultPoolId)
 		vol.dataPartitions.put(dp)
 	}
 	go func() {
 		var id uint64 = 30000
 		for {
 			id++
-			dp := newDataPartition(id, 3, name, volID, 0, defaultMediaType)
+			dp := newDataPartition(id, 3, name, volID, 0, defaultMediaType, defaultPoolId)
 			vol.dataPartitions.put(dp)
 			time.Sleep(time.Second)
 		}

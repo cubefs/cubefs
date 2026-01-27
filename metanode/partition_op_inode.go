@@ -47,6 +47,7 @@ func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
 	info.CreateTime = time.Unix(ino.CreateTime, 0)
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
+	info.PoolId = ino.PoolId
 	info.StorageClass = ino.StorageClass
 	info.MigrationStorageClass = ino.HybridCloudExtentsMigration.storageClass
 	info.LeaseExpireTime = ino.LeaseExpireTime

@@ -491,7 +491,7 @@ func (c *Cluster) selectOneTargetMetaReplica(mp *MetaPartition, srcAddr string, 
 		excludeZone = append(excludeZone, zones[0])
 	}
 
-	_, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param)
+	_, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", param)
 	if err == nil {
 		return peers[0].Addr, nil
 	}

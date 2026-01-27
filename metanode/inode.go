@@ -658,7 +658,7 @@ func (i *Inode) CopyDirectly() BtreeItem {
 
 // getDefaultPoolIdByStorageClass returns default pool ID based on storage class
 // This is a wrapper function that uses proto.GetDefaultPoolIdByStorageClass
-func getDefaultPoolIdByStorageClass(storageClass uint32) uint8 {
+func getDefaultPoolIdByStorageClass(storageClass uint32) (uint8, error) {
 	return proto.GetDefaultPoolIdByStorageClass(storageClass)
 }
 
@@ -1430,11 +1430,19 @@ func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
 	}
 
 	if i.PoolId == 0 {
-		i.PoolId = getDefaultPoolIdByStorageClass(i.StorageClass)
+		i.PoolId, err = getDefaultPoolIdByStorageClass(i.StorageClass)
+		if err != nil {
+			err = UnmarshalInodeFiledError("PoolId(v5)", err)
+			return
+		}
 	}
 
 	if i.Reserved&V4MigrationExtentsFlag > 0 && i.HybridCloudExtentsMigration != nil && i.HybridCloudExtentsMigration.poolId == 0 {
-		i.HybridCloudExtentsMigration.poolId = getDefaultPoolIdByStorageClass(i.HybridCloudExtentsMigration.storageClass)
+		i.HybridCloudExtentsMigration.poolId, err = getDefaultPoolIdByStorageClass(i.HybridCloudExtentsMigration.storageClass)
+		if err != nil {
+			err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.poolId(v5)", err)
+			return
+		}
 	}
 
 	return

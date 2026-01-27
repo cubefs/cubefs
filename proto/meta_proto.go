@@ -164,11 +164,20 @@ type StatOfStorageClass struct {
 	InodeCount    uint64
 	UsedSizeBytes uint64
 	QuotaGB       uint64
+	PoolId        uint8
 }
 
 func NewStatOfStorageClass(storageClass uint32) *StatOfStorageClass {
 	return &StatOfStorageClass{
 		StorageClass:  storageClass,
+		InodeCount:    0,
+		UsedSizeBytes: 0,
+	}
+}
+
+func NewStatOfStorageClassByPool(poolId uint8) *StatOfStorageClass {
+	return &StatOfStorageClass{
+		PoolId:        poolId,
 		InodeCount:    0,
 		UsedSizeBytes: 0,
 	}

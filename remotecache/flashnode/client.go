@@ -14,7 +14,7 @@ type ExtentApi interface {
 	OpenStream(inode uint64, openForWrite, isCache bool, fullPath string) error
 	CloseStream(inode uint64) error
 	EvictStream(inode uint64) error
-	Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error)
+	Read(inode uint64, data []byte, offset int, size int, poolId uint8, isMigration bool) (read int, err error)
 	Flush(inode uint64) error
 	Close() error
 	ForceRefreshExtentsCache(inode uint64) error

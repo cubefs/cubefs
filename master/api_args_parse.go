@@ -795,7 +795,7 @@ func parseAllowedStorageClass(r *http.Request) (allowedStorageClass []uint32, er
 	return
 }
 
-func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
+func parseRequestToCreateVol(r *http.Request, req *createVolReq, m *Server) (err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -842,35 +842,52 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	// handling compatibility
-	if vscStr := r.FormValue(volStorageClassKey); vscStr != "" {
-		// handling compatibility for new version requesters who send only volStorageClassKey, but no volTypeKey
-		if req.volStorageClass, err = extractUint32WithDefault(r, volStorageClassKey, proto.StorageClass_Unspecified); err != nil {
-			return
-		}
+	// Parse defaultPoolId (optional)
 
-		// StorageClass_Unspecified means let master determine SSD or HDD in subsequent procedure
-		if req.volStorageClass == proto.StorageClass_Unspecified || proto.IsStorageClassReplica(req.volStorageClass) {
-			req.volType = proto.VolumeTypeHot
-		} else if req.volStorageClass == proto.StorageClass_BlobStore {
-			req.volType = proto.VolumeTypeCold
-		}
-	} else {
-		// handling compatibility for old version requesters who send only volTypeKey,  but no volStorageClassKey
-		if req.volType, err = extractUint(r, volTypeKey); err != nil {
-			return
-		}
+	if req.defaultPoolId, err = extractUint8WithDefault(r, poolIdKey, m.cluster.defaultPoolId); err != nil {
+		return
+	}
 
-		if proto.IsHot(req.volType) {
-			// let master determine SSD or HDD in subsequent procedure
-			req.volStorageClass = proto.StorageClass_Unspecified
-		} else if proto.IsCold(req.volType) {
-			req.volStorageClass = proto.StorageClass_BlobStore
-		} else {
-			err = fmt.Errorf("invalid volType: %v", req.volType)
-			log.LogErrorf("[parseRequestToCreateVol] err: %v", err)
-			return
+	req.allowedPools = append(req.allowedPools, req.defaultPoolId)
+
+	if _, err = m.cluster.getStoragePool(req.defaultPoolId); err != nil {
+		return fmt.Errorf("defaultPoolId[%d] not found", req.defaultPoolId)
+	}
+
+	// Parse allowedPools (optional, comma-separated)
+	if allowedPoolsStr := r.FormValue(allowedPoolsKey); allowedPoolsStr != "" {
+		allowedPoolsStrList := strings.Split(allowedPoolsStr, ",")
+		encountered := map[uint8]bool{}
+		encountered[req.defaultPoolId] = true
+
+		for _, poolStr := range allowedPoolsStrList {
+
+			poolId, err := extractUint8WithDefault(r, poolStr, 0)
+			if err != nil {
+				return fmt.Errorf("invalid allowedPools: %v", err)
+			}
+			if _, err = m.cluster.getStoragePool(poolId); err != nil {
+				return fmt.Errorf("allowedPools[%d] not found", poolId)
+			}
+
+			if !encountered[poolId] {
+				encountered[poolId] = true
+				req.allowedPools = append(req.allowedPools, poolId)
+			}
 		}
+	}
+
+	pool, _ := m.cluster.getStoragePool(req.defaultPoolId)
+	req.volStorageClass = uint32(pool.StorageClass)
+
+	req.volType = proto.VolumeTypeHot
+	if proto.IsStorageClassBlobStore(req.volStorageClass) {
+		req.volType = proto.VolumeTypeCold
+	}
+
+	for _, poolId := range req.allowedPools {
+		pool, _ := m.cluster.getStoragePool(poolId)
+		req.allowedStorageClass = append(req.allowedStorageClass, uint32(pool.StorageClass))
 	}
 
 	followerRead, followerExist, err := extractFollowerRead(r)
@@ -882,6 +899,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return fmt.Errorf("vol with 1 or 2 replica should enable followerRead")
 	}
 	req.followerRead = followerRead
+
 	if !proto.IsStorageClassBlobStore(req.volStorageClass) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) {
 		req.followerRead = true
 	}
@@ -975,35 +993,6 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.allowedStorageClass, err = parseAllowedStorageClass(r); err != nil {
-		return
-	}
-
-	// Parse defaultPoolId (optional)
-	if poolIdStr := r.FormValue(poolIdKey); poolIdStr != "" {
-		var poolIdVal uint64
-		if poolIdVal, err = strconv.ParseUint(poolIdStr, 10, 8); err != nil {
-			return fmt.Errorf("invalid defaultPoolId: %v", err)
-		}
-		req.defaultPoolId = uint8(poolIdVal)
-	}
-
-	// Parse allowedPools (optional, comma-separated)
-	if allowedPoolsStr := r.FormValue("allowedPools"); allowedPoolsStr != "" {
-		allowedPoolsStrList := strings.Split(allowedPoolsStr, ",")
-		encountered := map[uint8]bool{}
-		for _, poolStr := range allowedPoolsStrList {
-			var poolVal uint64
-			if poolVal, err = strconv.ParseUint(strings.TrimSpace(poolStr), 10, 8); err != nil {
-				return fmt.Errorf("invalid allowedPools: %v", err)
-			}
-			poolId := uint8(poolVal)
-			if !encountered[poolId] {
-				encountered[poolId] = true
-				req.allowedPools = append(req.allowedPools, poolId)
-			}
-		}
-	}
 	if req.remoteCacheEnable, err = extractBoolWithDefault(r, remoteCacheEnable, false); err != nil {
 		return
 	}
@@ -1037,7 +1026,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	req.storeMode = proto.StoreModeDef
+	req.storeMode = m.config.DefaultVolStoreMode
 	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
 		var storeMode int
 		storeMode, err = strconv.Atoi(storeModeStr)
@@ -1055,7 +1044,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	return
 }
 
-func parseRequestToCreateDataPartition(r *http.Request) (count int, volName string, mediaType uint32, err error) {
+func parseRequestToCreateDataPartition(r *http.Request) (count int, volName string, poolId uint8, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1070,7 +1059,7 @@ func parseRequestToCreateDataPartition(r *http.Request) (count int, volName stri
 		return
 	}
 
-	if mediaType, err = extractMediaType(r); err != nil {
+	if poolId, err = extractUint8WithDefault(r, poolIdKey, 0); err != nil {
 		return
 	}
 
@@ -2031,6 +2020,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[cfgDefaultMpTag] = value
 	}
 
+	if value = r.FormValue(poolIdKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 8)
+		if err != nil {
+			err = unmatchedKey(poolIdKey)
+			return
+		}
+		params[poolIdKey] = uint8(val)
+	}
+
 	if noParams {
 		err = fmt.Errorf("no key assigned")
 		return
@@ -2730,6 +2730,19 @@ func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint
 	return val, nil
 }
 
+func extractUint8WithDefault(r *http.Request, key string, def uint8) (val uint8, err error) {
+	str := r.FormValue(key)
+	if str == "" {
+		return def, nil
+	}
+
+	var tmpVal uint64
+	if tmpVal, err = strconv.ParseUint(str, 10, 8); err != nil {
+		return 0, unmatchedKey(key)
+	}
+	return uint8(tmpVal), nil
+}
+
 func extractInt64WithDefault(r *http.Request, key string, def int64) (val int64, err error) {
 	str := r.FormValue(key)
 	if str == "" {
@@ -2781,85 +2794,6 @@ func parseRequestForUpdateNode(r *http.Request) (nodeAddr string, id uint64, sel
 	}
 
 	selectTag = r.FormValue(TagKey)
-
-	return
-}
-
-// parseRequestToCreateStoragePool parses request parameters for creating storage pool
-func parseRequestToCreateStoragePool(r *http.Request) (poolInfo *proto.StoragePoolInfo, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-
-	poolInfo = &proto.StoragePoolInfo{}
-
-	// Parse pool ID
-	if idStr := r.FormValue(idKey); idStr != "" {
-		var id uint64
-		if id, err = strconv.ParseUint(idStr, 10, 8); err != nil {
-			return nil, fmt.Errorf("invalid pool id: %v", err)
-		}
-		poolInfo.Id = uint8(id)
-	}
-
-	// Parse pool name
-	poolInfo.Name = r.FormValue(nameKey)
-
-	// Parse storage class
-	if scStr := r.FormValue(poolStorageClassKey); scStr != "" {
-		var sc uint64
-		if sc, err = strconv.ParseUint(scStr, 10, 8); err != nil {
-			return nil, fmt.Errorf("invalid storage class: %v", err)
-		}
-		poolInfo.StorageClass = uint8(sc)
-	}
-
-	// Parse CId (EC cluster ID)
-	if cidStr := r.FormValue(poolCIdKey); cidStr != "" {
-		if poolInfo.CId, err = strconv.Atoi(cidStr); err != nil {
-			return nil, fmt.Errorf("invalid cId: %v", err)
-		}
-	}
-
-	// Parse ECAddr (EC cluster address)
-	poolInfo.ECAddr = r.FormValue(poolECAddrKey)
-
-	return
-}
-
-// parseRequestToUpdateStoragePool parses request parameters for updating storage pool
-func parseRequestToUpdateStoragePool(r *http.Request) (poolId uint8, poolInfo *proto.StoragePoolInfo, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-
-	// Parse pool ID (required)
-	var id uint64
-	if idStr := r.FormValue(idKey); idStr != "" {
-		if id, err = strconv.ParseUint(idStr, 10, 8); err != nil {
-			return 0, nil, fmt.Errorf("invalid pool id: %v", err)
-		}
-		poolId = uint8(id)
-	} else {
-		return 0, nil, fmt.Errorf("pool id is required")
-	}
-
-	poolInfo = &proto.StoragePoolInfo{
-		Id: poolId,
-	}
-
-	// Parse pool name (optional)
-	poolInfo.Name = r.FormValue(nameKey)
-
-	// Parse CId (EC cluster ID, optional)
-	if cidStr := r.FormValue(poolCIdKey); cidStr != "" {
-		if poolInfo.CId, err = strconv.Atoi(cidStr); err != nil {
-			return 0, nil, fmt.Errorf("invalid cId: %v", err)
-		}
-	}
-
-	// Parse ECAddr (EC cluster address, optional)
-	poolInfo.ECAddr = r.FormValue(poolECAddrKey)
 
 	return
 }

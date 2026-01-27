@@ -59,16 +59,16 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 		if ok {
 			dir.info = info
 		} else {
-			pool := getStorageClassByPoolIdFromSuper(s, info.PoolId)
-			ebsc, err := s.getBlobStoreClient(pool)
-			if err != nil {
-				log.LogErrorf("InodeGet: get blobstore client for pool(%v) err: %v", pool.String(), err)
-				return nil, err
-			}
-
 			migrated := info.PoolId != node.(*File).info.PoolId
 			// the first time storage class change to blob store
 			if migrated && proto.IsStorageClassBlobStore(info.StorageClass) {
+				pool := getStorageClassByPoolIdFromSuper(s, info.PoolId)
+				ebsc, err := s.getBlobStoreClient(pool)
+				if err != nil {
+					log.LogErrorf("InodeGet: get blobstore client for pool(%v) err: %v", pool.String(), err)
+					return nil, err
+				}
+
 				f := node.(*File)
 				fileSize, _ := f.fileSizeVersion2(f.info.Inode)
 				clientConf := blobstore.ClientConfig{

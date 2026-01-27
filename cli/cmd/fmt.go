@@ -225,26 +225,48 @@ func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) stri
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v 	%-8v   %-8v     %-24v     %-24v"
+var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v 	%-8v   %-8v     %-24v     %-10v    %-10v    %-24v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "TAG")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOpOfProtoVer0", "TAG")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
+		poolInfo := "-"
+		if view.PoolId > 0 {
+			if view.PoolName != "" {
+				poolInfo = fmt.Sprintf("%d(%s)", view.PoolId, view.PoolName)
+			} else {
+				poolInfo = fmt.Sprintf("%d", view.PoolId)
+			}
+		}
+		zoneInfo := view.ZoneName
+		if zoneInfo == "" {
+			zoneInfo = "-"
+		}
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-			view.Rack,
+			zoneInfo, poolInfo, view.Rack,
 			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), view.Tag)
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
-	sb.WriteString(fmt.Sprintf("  Active  : %v", formatNodeStatus(view.Status)))
-	sb.WriteString(fmt.Sprintf("  MEDIA   : %v", formatNodeMediaType(view.MediaType)))
-	sb.WriteString(fmt.Sprintf("  Rack    : %v", view.Rack))
+	sb.WriteString(fmt.Sprintf("  Active  : %v\n", formatNodeStatus(view.Status)))
+	sb.WriteString(fmt.Sprintf("  MEDIA   : %v\n", formatNodeMediaType(view.MediaType)))
+	if view.ZoneName != "" {
+		sb.WriteString(fmt.Sprintf("  Zone    : %v\n", view.ZoneName))
+	}
+	if view.PoolId > 0 {
+		poolInfo := fmt.Sprintf("%d", view.PoolId)
+		if view.PoolName != "" {
+			poolInfo = fmt.Sprintf("%d(%s)", view.PoolId, view.PoolName)
+		}
+		sb.WriteString(fmt.Sprintf("  Pool    : %v\n", poolInfo))
+	}
+	sb.WriteString(fmt.Sprintf("  Rack    : %v\n", view.Rack))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
 	sb.WriteString(fmt.Sprintf("  Tag : %v", view.Tag))
 	return sb.String()
@@ -279,8 +301,24 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Dentry count                    : %v\n", svv.DentryCount))
 	sb.WriteString(fmt.Sprintf("  Description                     : %v\n", string([]rune(svv.Description)[:])))
 	sb.WriteString(fmt.Sprintf("  DpCnt                           : %v\n", svv.DpCnt))
-	sb.WriteString(fmt.Sprintf("  DpOfSSDCnt                      : %v\n", svv.DpOfSSDCnt))
-	sb.WriteString(fmt.Sprintf("  DpOfHDDCnt                      : %v\n", svv.DpOfHDDCnt))
+	if len(svv.DpCntByPoolId) > 0 {
+		sb.WriteString(fmt.Sprintf("  DpCntByPoolId                   :\n"))
+		poolIds := make([]uint8, 0, len(svv.DpCntByPoolId))
+		for poolId := range svv.DpCntByPoolId {
+			poolIds = append(poolIds, poolId)
+		}
+		sort.Slice(poolIds, func(i, j int) bool {
+			return poolIds[i] < poolIds[j]
+		})
+		for _, poolId := range poolIds {
+			cnt := svv.DpCntByPoolId[poolId]
+			poolName := ""
+			if pool, ok := svv.Pools[poolId]; ok {
+				poolName = fmt.Sprintf(" (%s)", pool.Name)
+			}
+			sb.WriteString(fmt.Sprintf("    Pool[%d]%s: %d\n", poolId, poolName, cnt))
+		}
+	}
 	sb.WriteString(fmt.Sprintf("  DpReplicaNum                    : %v\n", svv.DpReplicaNum))
 	sb.WriteString(fmt.Sprintf("  Follower read                   : %v\n", formatEnabledDisabled(svv.FollowerRead)))
 	sb.WriteString(fmt.Sprintf("  Meta Follower read              : %v\n", formatEnabledDisabled(svv.MetaFollowerRead)))
@@ -297,6 +335,24 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  RwDpCnt                         : %v\n", svv.RwDpCnt))
 	sb.WriteString(fmt.Sprintf("  RwDpOfSSDCnt                    : %v\n", svv.RwDpOfSSDCnt))
 	sb.WriteString(fmt.Sprintf("  RwDpOfHDDCnt                    : %v\n", svv.RwDpOfHDDCnt))
+	if len(svv.RwDpCntByPoolId) > 0 {
+		sb.WriteString(fmt.Sprintf("  RwDpCntByPoolId                 :\n"))
+		poolIds := make([]uint8, 0, len(svv.RwDpCntByPoolId))
+		for poolId := range svv.RwDpCntByPoolId {
+			poolIds = append(poolIds, poolId)
+		}
+		sort.Slice(poolIds, func(i, j int) bool {
+			return poolIds[i] < poolIds[j]
+		})
+		for _, poolId := range poolIds {
+			cnt := svv.RwDpCntByPoolId[poolId]
+			poolName := ""
+			if pool, ok := svv.Pools[poolId]; ok {
+				poolName = fmt.Sprintf(" (%s)", pool.Name)
+			}
+			sb.WriteString(fmt.Sprintf("    Pool[%d]%s: %d\n", poolId, poolName, cnt))
+		}
+	}
 	sb.WriteString(fmt.Sprintf("  Status                          : %v\n", formatVolumeStatus(svv.Status)))
 	sb.WriteString(fmt.Sprintf("  ZoneName                        : %v\n", svv.ZoneName))
 	sb.WriteString(fmt.Sprintf("  VolType                         : %v\n", svv.VolType))
@@ -317,6 +373,23 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  MetaLeaderRetryTimeout          : %v\n", time.Duration(svv.LeaderRetryTimeOut)*time.Second))
 	sb.WriteString(fmt.Sprintf("  EnablePersistAccessTime         : %v\n", svv.EnablePersistAccessTime))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0        : %v\n", svv.ForbidWriteOpOfProtoVer0))
+	if svv.DefaultPoolId > 0 {
+		sb.WriteString(fmt.Sprintf("  DefaultPoolId                   : %v\n", svv.DefaultPoolId))
+	}
+	if len(svv.Pools) > 0 {
+		sb.WriteString(fmt.Sprintf("  Storage Pools                   :\n"))
+		poolIds := make([]uint8, 0, len(svv.Pools))
+		for poolId := range svv.Pools {
+			poolIds = append(poolIds, poolId)
+		}
+		sort.Slice(poolIds, func(i, j int) bool {
+			return poolIds[i] < poolIds[j]
+		})
+		for _, poolId := range poolIds {
+			pool := svv.Pools[poolId]
+			sb.WriteString(fmt.Sprintf("    Pool[%d] %s: %s\n", pool.Id, pool.Name, proto.StorageClassString(uint32(pool.StorageClass))))
+		}
+	}
 	if svv.Forbidden && svv.Status == 1 {
 		sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", time.Until(svv.DeleteExecTime)))
 	}
@@ -446,12 +519,36 @@ var (
 	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
 		"ID", "REPLICAS", "STATUS", "ISRECOVER", "MEDIA", "LEADER", "MEMBERS")
+
+	dataPartitionListTablePattern = "%-8v    %-16v    %-8v    %-12v    %-10v    %-8v    %-18v"
+	dataPartitionListTableHeader  = fmt.Sprintf(dataPartitionListTablePattern,
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MEDIA", "POOL", "MEMBERS")
 )
 
 func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 	return fmt.Sprintf(dataPartitionTablePattern,
 		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), view.IsRecover,
 		proto.MediaTypeString(view.MediaType), view.LeaderAddr, strings.Join(view.Hosts, ","))
+}
+
+// formatDataPartitionListTableHeader returns the table header for DP list
+func formatDataPartitionListTableHeader() string {
+	return dataPartitionListTableHeader
+}
+
+// formatDataPartitionListTableRow returns a table row for DP list
+func formatDataPartitionListTableRow(dp *proto.DataPartitionInfo) string {
+	// Note: DataPartitionInfo doesn't have PoolId field, use "-" for now
+	poolInfo := "-"
+	members := strings.Join(dp.Hosts, ",")
+	if len(members) > 50 {
+		members = members[:47] + "..."
+	}
+	return fmt.Sprintf(dataPartitionListTablePattern,
+		dp.PartitionID, dp.VolName, dp.ReplicaNum,
+		formatDataPartitionStatus(dp.Status),
+		proto.MediaTypeString(dp.MediaType),
+		poolInfo, members)
 }
 
 var (
@@ -741,7 +838,7 @@ func formatBadReplicaMpInfoRow(partition *proto.MetaPartitionInfo) string {
 		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
 }
 
-func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
+func formatDataPartitionInfo(partition *proto.DataPartitionInfo, poolId uint8) string {
 	sb := strings.Builder{}
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("volume name   : %v\n", partition.VolName))
@@ -756,6 +853,9 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
 	sb.WriteString(fmt.Sprintf("MediaType     : %v\n", proto.MediaTypeString(partition.MediaType)))
+	if poolId > 0 {
+		sb.WriteString(fmt.Sprintf("PoolId        : %v\n", poolId))
+	}
 	sb.WriteString(fmt.Sprintf("ForbidWriteOpOfProtoVer0 : %v\n", partition.ForbidWriteOpOfProtoVer0))
 	sb.WriteString("\n")
 	sb.WriteString("Replicas : \n")
@@ -1403,6 +1503,13 @@ func formatZoneView(zv *proto.ZoneView) string {
 	sb.WriteString(fmt.Sprintf("Zone Name:        %v\n", zv.Name))
 	sb.WriteString(fmt.Sprintf("Status:           %v\n", zv.Status))
 	sb.WriteString(fmt.Sprintf("DataMediaType:    %v\n", zv.DataMediaType))
+	if zv.PoolId > 0 {
+		poolInfo := fmt.Sprintf("%d", zv.PoolId)
+		if zv.PoolName != "" {
+			poolInfo = fmt.Sprintf("%d(%s)", zv.PoolId, zv.PoolName)
+		}
+		sb.WriteString(fmt.Sprintf("Pool:             %v\n", poolInfo))
+	}
 	sb.WriteString("Nodeset Selector:\n")
 	sb.WriteString(fmt.Sprintf("       Data:%v\n", zv.DataNodesetSelector))
 	sb.WriteString(fmt.Sprintf("       Meta:%v\n", zv.MetaNodesetSelector))
@@ -1711,6 +1818,9 @@ var (
 	hybridCloudStorageTablePattern = "%-12v    %-12v    %-12v    %-12v"
 	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern,
 		"STORAGE CLASS", "INODE COUNT", "USED SIZE", "QUOTA")
+	hybridCloudPoolTablePattern = "%-20v    %-12v    %-12v    %-12v"
+	hybridCloudPoolTableHeader  = fmt.Sprintf(hybridCloudPoolTablePattern,
+		"STORAGE POOL", "INODE COUNT", "USED SIZE", "QUOTA")
 	formatFlashNodeSimpleViewTableTitle = arow("Zone", "Region", "ID", "Address", "Active", "Enable", "FlashGroupID", "TopoName", "ReportTime")
 	formatFlashNodeViewTableTitle       = append(formatFlashNodeSimpleViewTableTitle[:], "DataPath", "HitRate", "Evicts", "Limit", "MaxAlloc", "HasAlloc", "Num", "Status")
 	formatFlashGroupViewTile            = arow("ID", "Weight", "Slots", "ReservedSlots", "Status", "SlotStatus", "PendingSlots", "Step", "FlashNodeCount", "ReducingSlots", "TopoName", "Region")
@@ -1719,6 +1829,17 @@ var (
 
 func formatHybridCloudStorageTableRow(view *proto.StatOfStorageClass) (row string) {
 	row = fmt.Sprintf(hybridCloudStorageTablePattern, proto.StorageClassString(view.StorageClass), view.InodeCount, strutil.FormatSize(view.UsedSizeBytes), quotaLimitStr(view.QuotaGB))
+	return
+}
+
+// formatHybridCloudPoolTableRow formats a row for pool statistics table
+func formatHybridCloudPoolTableRow(view *proto.StatOfStorageClass, poolNameMap map[uint8]string) (row string) {
+	poolInfo := fmt.Sprintf("%d", view.PoolId)
+	poolName := poolNameMap[view.PoolId]
+	if poolName != "" {
+		poolInfo = fmt.Sprintf("%d(%s)", view.PoolId, poolName)
+	}
+	row = fmt.Sprintf(hybridCloudPoolTablePattern, poolInfo, view.InodeCount, strutil.FormatSize(view.UsedSizeBytes), quotaLimitStr(view.QuotaGB))
 	return
 }
 

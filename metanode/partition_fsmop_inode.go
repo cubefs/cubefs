@@ -636,28 +636,28 @@ func (mp *metaPartition) fsmAppendExtents(dbHandle interface{}, ino *Inode) (sta
 	return
 }
 
-func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, ino *Inode, isSplit bool) (status uint8, err error) {
+func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, inoParam *Inode, isSplit bool) (status uint8, err error) {
 	var (
 		delExtents       []proto.ExtentKey
 		discardExtentKey []proto.ExtentKey
 		fsmIno           *Inode
 	)
 
-	if mp.verSeq < ino.getVer() {
+	if mp.verSeq < inoParam.getVer() {
 		status = proto.OpArgMismatchErr
-		log.LogErrorf("fsmAppendExtentsWithCheck.mp[%v] param ino[%v] mp seq [%v]", mp.config.PartitionId, ino, mp.verSeq)
+		log.LogErrorf("fsmAppendExtentsWithCheck.mp[%v] param ino[%v] mp seq [%v]", mp.config.PartitionId, inoParam, mp.verSeq)
 		return
 	}
 	status = proto.OpOk
-	fsmIno, err = mp.inodeTree.CopyGet(ino)
+	fsmIno, err = mp.inodeTree.CopyGet(inoParam)
 	if err != nil {
 		status = proto.OpErr
-		log.LogErrorf("fsmAppendExtentsWithCheck inode(%d) rocksdb op error", ino.Inode)
+		log.LogErrorf("fsmAppendExtentsWithCheck inode(%d) rocksdb op error", inoParam.Inode)
 		return
 	}
 
 	if fsmIno == nil || fsmIno.ShouldDelete() {
-		log.LogInfof("fsmAppendExtentsWithCheck: inode already not exist, mp %d, ino %d", mp.config.PartitionId, ino.Inode)
+		log.LogInfof("fsmAppendExtentsWithCheck: inode already not exist, mp %d, ino %d", mp.config.PartitionId, inoParam.Inode)
 		status = proto.OpNotExistErr
 		return
 	}
@@ -667,18 +667,18 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, ino *In
 		eks         []proto.ExtentKey
 		isMigration bool
 	)
-	storageClass := ino.StorageClass
-	if ino.HybridCloudExtents.sortedEks != nil && len(ino.HybridCloudExtents.sortedEks.(*SortedExtents).eks) != 0 {
-		eks = ino.HybridCloudExtents.sortedEks.(*SortedExtents).CopyExtents()
-	} else if ino.HybridCloudExtentsMigration.sortedEks != nil && len(ino.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).eks) != 0 {
+	storageClass := inoParam.StorageClass
+	if inoParam.HybridCloudExtents.sortedEks != nil && len(inoParam.HybridCloudExtents.sortedEks.(*SortedExtents).eks) != 0 {
+		eks = inoParam.HybridCloudExtents.sortedEks.(*SortedExtents).CopyExtents()
+	} else if inoParam.HybridCloudExtentsMigration.sortedEks != nil && len(inoParam.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).eks) != 0 {
 		isMigration = true
-		storageClass = ino.HybridCloudExtentsMigration.storageClass
-		eks = ino.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).CopyExtents()
+		storageClass = inoParam.HybridCloudExtentsMigration.storageClass
+		eks = inoParam.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).CopyExtents()
 	}
 
 	if err = fsmIno.updateStorageClass(storageClass, isMigration); err != nil {
 		log.LogErrorf("action[fsmAppendExtentsWithCheck] updateStorageClass inode(%v) isMigration(%v), failed: %v",
-			ino.Inode, isMigration, err.Error())
+			inoParam.Inode, isMigration, err.Error())
 		status = proto.OpMismatchStorageClass
 		return
 	}
@@ -687,7 +687,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, ino *In
 		fsmIno.Inode, fsmIno.getLayerLen(), eks, isMigration)
 	if len(eks) < 1 {
 		log.LogWarnf("fsmAppendExtentsWithCheck: recive eks less than 1, may be wrong, mp %d, ino %d",
-			mp.config.PartitionId, ino.Inode)
+			mp.config.PartitionId, inoParam.Inode)
 		return
 	}
 	if len(eks) > 1 {
@@ -706,7 +706,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, ino *In
 		mpId:             mp.config.PartitionId,
 		mpVer:            mp.verSeq,
 		ek:               eks[0],
-		ct:               ino.ModifyTime,
+		ct:               inoParam.ModifyTime,
 		discardExtents:   discardExtentKey,
 		volType:          mp.volType,
 		multiVersionList: mp.multiVersionList,

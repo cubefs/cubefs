@@ -205,13 +205,21 @@ type Vol struct {
 	volLock sync.RWMutex
 
 	// hybrid cloud
-	allowedStorageClass     []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
-	volStorageClass         uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
+	allowedStorageClass []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
+	volStorageClass     uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
+
 	StatByStorageClass      []*proto.StatOfStorageClass
 	StatMigrateStorageClass []*proto.StatOfStorageClass
-	StatByDpMediaType       []*proto.StatOfStorageClass
-	QuotaByClass            []*proto.StatOfStorageClass
-	DefaultStoreMode        proto.StoreMode
+	StatByPool              []*proto.StatOfStorageClass
+	StatByMigratePool       []*proto.StatOfStorageClass
+
+	StatByDpMediaType []*proto.StatOfStorageClass
+	StatByDpPool      []*proto.StatOfStorageClass
+
+	QuotaByClass  []*proto.StatOfStorageClass
+	QuotaByPoolId []*proto.StatOfStorageClass
+
+	DefaultStoreMode proto.StoreMode
 
 	// Storage Pool
 	defaultPoolId uint8   // default pool ID for writing
@@ -304,6 +312,8 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.volStorageClass = vv.VolStorageClass
 	vol.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	vol.StatMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
+	vol.StatByPool = make([]*proto.StatOfStorageClass, 0)
+	vol.StatByMigratePool = make([]*proto.StatOfStorageClass, 0)
 	vol.ForbidWriteOpOfProtoVer0.Store(defaultVolForbidWriteOpOfProtoVersion0)
 
 	// Load pool configuration
@@ -766,30 +776,43 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	return
 }
 
+func (vol *Vol) isAllowedPool(poolId uint8) bool {
+	for _, p := range vol.allowedPools {
+		if p == poolId {
+			return true
+		}
+	}
+	return false
+}
+
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
 	vol.SetReadOnlyForVolFull(shouldDpInhibitWriteByVolFull)
 
-	statsByClass := vol.getStorageStatWithClass()
-	for _, stat := range statsByClass {
-		log.LogDebugf("checkDataPartitions: try setPartitionsRdOnlyWithMediaType, rdOnly(%v), stat %s, name %s",
+	statsByPoolId := vol.getStorageStatWithPoolId()
+	for _, stat := range statsByPoolId {
+		log.LogDebugf("checkDataPartitions: try setPartitionsRdOnlyWithPoolId, rdOnly(%v), stat %s, name %s",
 			vol.DpReadOnlyWhenVolFull, stat.String(), vol.Name)
 	}
 
-	if vol.Status != proto.VolStatusMarkDelete && vol.Status != proto.VolStatusInitFailed && vol.Status != proto.VolStatusInitializing && proto.IsHot(vol.VolType) &&
+	if vol.Status != proto.VolStatusMarkDelete && vol.Status != proto.VolStatusInitFailed && vol.Status != proto.VolStatusInitializing &&
 		(time.Now().Unix()-vol.createTime >= defaultIntervalToCheckDataPartition) {
-		for _, asc := range vol.allowedStorageClass {
-			// check if need create dp for each allowedStorageClass of vol
-			if !proto.IsStorageClassReplica(asc) {
+		for _, poolId := range vol.allowedPools {
+			pool, err := c.getStoragePool(poolId)
+			if err != nil {
+				log.LogWarnf("[checkDataPartitions] vol(%v) poolId(%v) not found, skip", vol.Name, poolId)
 				continue
 			}
 
-			mediaType := proto.GetMediaTypeByStorageClass(asc)
-			dpCntOfMediaType := vol.dataPartitions.getDataPartitionsCountOfMediaType(mediaType)
-			if dpCntOfMediaType == 0 {
-				log.LogInfof("[checkDataPartitions] vol(%v) mediaType(%v) dp count is 0, try to create 1 dp",
-					vol.Name, proto.MediaTypeString(mediaType))
-				c.batchCreateDataPartition(vol, 1, false, mediaType)
+			if !proto.IsStorageClassReplica(uint32(pool.StorageClass)) {
+				continue
+			}
+
+			dpCntOfPoolId := vol.dataPartitions.getDataPartitionsCountOfPool(poolId)
+			if dpCntOfPoolId == 0 {
+				log.LogInfof("[checkDataPartitions] vol(%v) poolId(%v) dp count is 0, try to create 1 dp",
+					vol.Name, poolId)
+				c.batchCreateDataPartition(vol, 1, false, poolId)
 			}
 		}
 	}
@@ -798,7 +821,11 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	var rwDpCountOfHDD int
 
 	partitions := vol.dataPartitions.clonePartitions()
+
 	statByMedia := map[uint32]uint64{}
+	statByPoolId := map[uint8]uint64{}
+	dpCntByPoolId := map[uint8]int{}
+
 	defer func() {
 		datas := make([]*proto.StatOfStorageClass, 0, len(statByMedia))
 		for t, c := range statByMedia {
@@ -807,7 +834,17 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 				UsedSizeBytes: c,
 			})
 		}
+
+		datasByPoolId := make([]*proto.StatOfStorageClass, 0, len(statByPoolId))
+		for p, c := range statByPoolId {
+			datasByPoolId = append(datasByPoolId, &proto.StatOfStorageClass{
+				PoolId:        p,
+				UsedSizeBytes: c,
+			})
+		}
+
 		vol.StatByDpMediaType = datas
+		vol.StatByDpPool = datasByPoolId
 	}()
 
 	for _, dp := range partitions {
@@ -816,9 +853,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		}
 
 		statByMedia[dp.MediaType] += dp.getMaxUsedSpace()
+		statByPoolId[dp.PoolId] += dp.getMaxUsedSpace()
 
 		dpRdOnly := shouldDpInhibitWriteByVolFull
-		if stat := statsByClass[proto.GetStorageClassByMediaType(dp.MediaType)]; stat.Full() && vol.DpReadOnlyWhenVolFull {
+		if stat := statsByPoolId[dp.PoolId]; stat.Full() && vol.DpReadOnlyWhenVolFull {
 			dpRdOnly = true
 		}
 
@@ -840,6 +878,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 			if dp.MediaType == proto.MediaType_SSD {
 				rwDpCountOfSSD++
 			}
+			dpCntByPoolId[dp.PoolId]++
 		}
 
 		dp.checkDiskError(c.Name, c.leaderInfo.addr)
@@ -849,8 +888,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 	vol.dataPartitions.setReadWriteDataPartitionCntByMediaType(rwDpCountOfHDD, proto.MediaType_HDD)
 	vol.dataPartitions.setReadWriteDataPartitionCntByMediaType(rwDpCountOfSSD, proto.MediaType_SSD)
-	log.LogInfof("[checkDataPartitions] vol(%v), rwDpCountOfHDD(%v), rwDpCountOfSSD(%v)",
-		vol.Name, rwDpCountOfHDD, rwDpCountOfSSD)
+	vol.dataPartitions.setReadWriteCntByPoolId(dpCntByPoolId)
+
+	log.LogInfof("[checkDataPartitions] vol(%v), rwDpCountOfHDD(%v), rwDpCountOfSSD(%v), dpCntByPoolId(%v)",
+		vol.Name, rwDpCountOfHDD, rwDpCountOfSSD, dpCntByPoolId)
 	return
 }
 
@@ -927,6 +968,14 @@ func (vol *Vol) getQuotaByClass() map[uint32]uint64 {
 	return m
 }
 
+func (vol *Vol) getQuotaByPoolId() map[uint8]uint64 {
+	m := make(map[uint8]uint64)
+	for _, c := range vol.QuotaByPoolId {
+		m[c.PoolId] = c.QuotaGB
+	}
+	return m
+}
+
 func (vol *Vol) getStorageStatWithClass() map[uint32]*proto.StatOfStorageClass {
 	usedByClass := make(map[uint32]uint64)
 	quotaByClass := vol.getQuotaByClass()
@@ -950,6 +999,28 @@ func (vol *Vol) getStorageStatWithClass() map[uint32]*proto.StatOfStorageClass {
 	return totalStats
 }
 
+func (vol *Vol) getStorageStatWithPoolId() map[uint8]*proto.StatOfStorageClass {
+	usedByPoolId := make(map[uint8]uint64)
+	quotaByPoolId := vol.getQuotaByPoolId()
+
+	vol.rangeMetaPartition(func(mp *MetaPartition) bool {
+		for _, mpStat := range mp.StatByPool {
+			usedByPoolId[mpStat.PoolId] += mpStat.UsedSizeBytes
+		}
+		return true
+	})
+
+	totalStats := make(map[uint8]*proto.StatOfStorageClass, len(usedByPoolId))
+	for p, u := range usedByPoolId {
+		totalStats[p] = &proto.StatOfStorageClass{
+			UsedSizeBytes: u,
+			QuotaGB:       quotaByPoolId[p],
+		}
+	}
+
+	return totalStats
+}
+
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var tasks []*proto.AdminTask
 	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
@@ -964,9 +1035,14 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		ok                         bool
 		statByStorageClassMap      map[uint32]*proto.StatOfStorageClass
 		statMigrateStorageClassMap map[uint32]*proto.StatOfStorageClass
+		statByPoolMap              map[uint8]*proto.StatOfStorageClass
+		statByMigratePoolMap       map[uint8]*proto.StatOfStorageClass
 	)
+
 	statByStorageClassMap = make(map[uint32]*proto.StatOfStorageClass)
 	statMigrateStorageClassMap = make(map[uint32]*proto.StatOfStorageClass)
+	statByPoolMap = make(map[uint8]*proto.StatOfStorageClass)
+	statByMigratePoolMap = make(map[uint8]*proto.StatOfStorageClass)
 	quotaByClass := vol.getQuotaByClass()
 
 	for _, mp := range mps {
@@ -1005,13 +1081,32 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 			volMigrateStat.InodeCount += mpMigrateStat.InodeCount
 			volMigrateStat.UsedSizeBytes += mpMigrateStat.UsedSizeBytes
 		}
+
+		for _, mpStat := range mp.StatByPool {
+			if stat, ok = statByPoolMap[mpStat.PoolId]; !ok {
+				stat = proto.NewStatOfStorageClassByPool(mpStat.PoolId)
+				statByPoolMap[mpStat.PoolId] = stat
+			}
+
+			stat.InodeCount += mpStat.InodeCount
+			stat.UsedSizeBytes += mpStat.UsedSizeBytes
+		}
+
+		for _, mpMigrateStat := range mp.StatByMigratePool {
+			if stat, ok = statByMigratePoolMap[mpMigrateStat.PoolId]; !ok {
+				stat = proto.NewStatOfStorageClassByPool(mpMigrateStat.PoolId)
+				statByMigratePoolMap[mpMigrateStat.PoolId] = stat
+			}
+
+			stat.InodeCount += mpMigrateStat.InodeCount
+			stat.UsedSizeBytes += mpMigrateStat.UsedSizeBytes
+		}
 	}
 
 	StatOfStorageClassSlice := make([]*proto.StatOfStorageClass, 0)
 	for _, stat = range statByStorageClassMap {
 		StatOfStorageClassSlice = append(StatOfStorageClassSlice, stat)
 	}
-
 	vol.StatByStorageClass = StatOfStorageClassSlice
 
 	StatMigrateStorageClassSlice := make([]*proto.StatOfStorageClass, 0)
@@ -1019,6 +1114,18 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		StatMigrateStorageClassSlice = append(StatMigrateStorageClassSlice, volMigrateStat)
 	}
 	vol.StatMigrateStorageClass = StatMigrateStorageClassSlice
+
+	StatByPoolSlice := make([]*proto.StatOfStorageClass, 0)
+	for _, stat = range statByPoolMap {
+		StatByPoolSlice = append(StatByPoolSlice, stat)
+	}
+	vol.StatByPool = StatByPoolSlice
+
+	StatByMigratePoolSlice := make([]*proto.StatOfStorageClass, 0)
+	for _, stat = range statByMigratePoolMap {
+		StatByMigratePoolSlice = append(StatByMigratePoolSlice, stat)
+	}
+	vol.StatByMigratePool = StatByMigratePoolSlice
 
 	c.addMetaNodeTasks(tasks)
 	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)
@@ -1286,112 +1393,66 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 	}
 
 	if c.cfg.DisableAutoCreate {
-		for _, asc := range vol.allowedStorageClass {
-			if !proto.IsStorageClassReplica(asc) {
+		for _, poolId := range vol.allowedPools {
+			pool, err := c.getStoragePool(poolId)
+			if err != nil {
+				log.LogWarnf("autoCreateDataPartitions: vol(%v) poolId(%v) not found, skip", vol.Name, poolId)
 				continue
 			}
-			mediaType := proto.GetMediaTypeByStorageClass(asc)
-			dpCntOfMediaType := vol.dataPartitions.getDataPartitionsCountOfMediaType(mediaType)
 
-			if dpCntOfMediaType < minNumOfRWDataPartitions {
-				log.LogWarnf("autoCreateDataPartitions: vol(%v) mediaType(%v) rwDpCount less than %v, alloc new partitions",
-					vol.Name, proto.MediaTypeString(mediaType), minNumOfRWDataPartitions)
-				c.batchCreateDataPartition(vol, minNumOfRWDataPartitions-dpCntOfMediaType, false, mediaType)
+			if !proto.IsStorageClassReplica(uint32(pool.StorageClass)) {
+				continue
+			}
+
+			rwDpCntOfPool := vol.dataPartitions.getReadWriteDataPartitionCntByPool(poolId)
+			if rwDpCntOfPool < minNumOfRWDataPartitions {
+				log.LogWarnf("autoCreateDataPartitions: vol(%v) poolId(%v) rwDpCount less than %v, alloc new partitions",
+					vol.Name, poolId, minNumOfRWDataPartitions)
+				c.batchCreateDataPartitionForPool(vol, minNumOfRWDataPartitions-rwDpCntOfPool, false, poolId)
 			}
 		}
-
 		return
 	}
 
-	statByClass := vol.getStorageStatWithClass()
-
+	statByPoolId := vol.getStorageStatWithPoolId()
 	// check for hot vol
-	for _, asc := range vol.allowedStorageClass {
-		if !proto.IsStorageClassReplica(asc) {
+	for _, poolId := range vol.allowedPools {
+		pool, err := c.getStoragePool(poolId)
+		if err != nil {
+			log.LogWarnf("autoCreateDataPartitions: vol(%v) poolId(%v) not found, skip", vol.Name, poolId)
 			continue
 		}
 
-		stat := statByClass[asc]
+		if !proto.IsStorageClassReplica(uint32(pool.StorageClass)) {
+			continue
+		}
+
+		stat := statByPoolId[poolId]
 		if vol.DpReadOnlyWhenVolFull && stat.Full() {
-			log.LogInfof("action[autoCreateDataPartitions] target class meet cap limit, can't create, vol %s, asc %s",
-				vol.Name, proto.StorageClassString(asc))
+			log.LogInfof("action[autoCreateDataPartitions] target poolId meet cap limit, can't create, vol %s, poolId %s", vol.Name, poolId)
 			continue
 		}
 
-		mediaType := proto.GetMediaTypeByStorageClass(asc)
-		rwDpCountOfMediaType := vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
-		log.LogInfof("action[autoCreateDataPartitions] vol(%v) mediaType:%v, rwDpCountOfMediaType:%v",
-			vol.Name, proto.MediaTypeString(mediaType), rwDpCountOfMediaType)
+		rwDpCntOfPool := vol.dataPartitions.getReadWriteDataPartitionCntByPool(poolId)
+		log.LogInfof("action[autoCreateDataPartitions] vol(%v) poolId:%v, rwDpCntOfPool:%v", vol.Name, poolId, rwDpCntOfPool)
+
 		var createDpCount int
-		if asc == vol.volStorageClass && vol.Capacity > 200000 && rwDpCountOfMediaType < 200 {
+		if poolId == vol.defaultPoolId && vol.Capacity > 200000 && rwDpCntOfPool < 200 {
 			createDpCount = vol.calculateExpansionNum()
-			log.LogInfof("action[autoCreateDataPartitions] vol(%v) volStorageClass(%v), calculated createDpCount:%v",
-				vol.Name, asc, createDpCount)
-		} else if rwDpCountOfMediaType < minNumOfRWDataPartitions {
-			createDpCount = minNumOfRWDataPartitions - rwDpCountOfMediaType
-			log.LogInfof("action[autoCreateDataPartitions] vol(%v) volStorageClass(%v), min createDpCount:%v",
-				vol.Name, asc, createDpCount)
+			log.LogInfof("action[autoCreateDataPartitions] vol(%v) defaultPoolId(%v), calculated createDpCount:%v",
+				vol.Name, poolId, createDpCount)
+		} else if rwDpCntOfPool < minNumOfRWDataPartitions {
+			createDpCount = minNumOfRWDataPartitions - rwDpCntOfPool
+			log.LogInfof("action[autoCreateDataPartitions] vol(%v) poolId(%v), min createDpCount:%v",
+				vol.Name, poolId, createDpCount)
 		} else {
 			continue
 		}
 
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
-		log.LogInfof("action[autoCreateDataPartitions] vol[%v] createDpCount[%v] for mediaType(%v)",
-			vol.Name, createDpCount, proto.MediaTypeString(mediaType))
-		c.batchCreateDataPartition(vol, createDpCount, false, mediaType)
-	}
-
-	// Auto create data partitions for each allowed pool
-	if len(vol.allowedPools) > 0 {
-		for _, poolId := range vol.allowedPools {
-			pool, err := c.getStoragePool(poolId)
-			if err != nil {
-				log.LogWarnf("action[autoCreateDataPartitions] vol[%v] pool[%v] not found, skip", vol.Name, poolId)
-				continue
-			}
-
-			// Get mediaType from pool's storage class
-			var mediaType uint32
-			storageClass := uint32(pool.StorageClass)
-			switch storageClass {
-			case proto.StorageClass_Replica_SSD:
-				mediaType = proto.MediaType_SSD
-			case proto.StorageClass_Replica_HDD:
-				mediaType = proto.MediaType_HDD
-			case proto.StorageClass_BlobStore:
-				// Skip EC pools for now, as they may need different handling
-				continue
-			default:
-				log.LogWarnf("action[autoCreateDataPartitions] vol[%v] pool[%v] unsupported storageClass[%v], skip",
-					vol.Name, poolId, storageClass)
-				continue
-			}
-
-			// Count data partitions in this pool
-			dpCntOfPool := vol.dataPartitions.getDataPartitionsCountOfPool(poolId)
-			rwDpCntOfPool := vol.dataPartitions.getReadWriteDataPartitionCntByPool(poolId)
-
-			log.LogInfof("action[autoCreateDataPartitions] vol(%v) poolId(%v) mediaType:%v, rwDpCountOfPool:%v, totalDpCountOfPool:%v",
-				vol.Name, poolId, proto.MediaTypeString(mediaType), rwDpCntOfPool, dpCntOfPool)
-
-			var createDpCount int
-			if poolId == vol.defaultPoolId && vol.Capacity > 200000 && rwDpCntOfPool < 200 {
-				createDpCount = vol.calculateExpansionNum()
-				log.LogInfof("action[autoCreateDataPartitions] vol(%v) defaultPoolId(%v), calculated createDpCount:%v",
-					vol.Name, poolId, createDpCount)
-			} else if rwDpCntOfPool < minNumOfRWDataPartitions {
-				createDpCount = minNumOfRWDataPartitions - rwDpCntOfPool
-				log.LogInfof("action[autoCreateDataPartitions] vol(%v) poolId(%v), min createDpCount:%v",
-					vol.Name, poolId, createDpCount)
-			} else {
-				continue
-			}
-
-			vol.dataPartitions.lastAutoCreateTime = time.Now()
-			log.LogInfof("action[autoCreateDataPartitions] vol[%v] createDpCount[%v] for poolId(%v) mediaType(%v)",
-				vol.Name, createDpCount, poolId, proto.MediaTypeString(mediaType))
-			c.batchCreateDataPartitionForPool(vol, createDpCount, false, mediaType, poolId)
-		}
+		log.LogInfof("action[autoCreateDataPartitions] vol[%v] createDpCount[%v] for poolId(%v)",
+			vol.Name, createDpCount, poolId)
+		c.batchCreateDataPartitionForPool(vol, createDpCount, false, poolId)
 	}
 }
 
@@ -1854,7 +1915,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		}
 	} else {
 		if hosts, peers, err = c.getHostFromNormalZoneForCreate(nodeType,
-			int(vol.mpReplicaNum), vol.zoneName, proto.StorageClass_Unspecified, c.getRackAwareLevel(), vol); err != nil {
+			int(vol.mpReplicaNum), vol.zoneName, proto.UnSpecifiedPoolId, c.getRackAwareLevel(), vol); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZoneForCreate err[%v]", err)
 			return nil, errors.NewError(err)
 		}
@@ -2170,6 +2231,20 @@ func (vol *Vol) isStorageClassInAllowed(storageClass uint32) (in bool) {
 	}
 
 	return in
+}
+
+func (vol *Vol) isPoolInAllowed(poolId uint8) (in bool) {
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
+
+	for _, ap := range vol.allowedPools {
+		if ap == poolId {
+			in = true
+			return
+		}
+	}
+
+	return
 }
 
 func (vol *Vol) getSortMetaPartitions() (mps []*MetaPartition) {

@@ -1226,7 +1226,7 @@ func dentrySetExpiration(info *proto.DentryInfo, t time.Duration) {
 	info.SetExpiration(time.Now().Add(t).UnixNano())
 }
 
-func (d *Dir) canRenameByQuota(dstDir *Dir, srcName string) bool {
+func (d *Dir) canRenameByQuota(_ *Dir, srcName string) bool {
 	fullPaths := d.super.mw.GetQuotaFullPaths()
 	if len(fullPaths) == 0 {
 		return true

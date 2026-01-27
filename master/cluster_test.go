@@ -134,7 +134,7 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 		t.Error(err)
 	}
 	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID,
-		proto.PartitionTypeNormal, defaultMediaType)
+		proto.PartitionTypeNormal, defaultMediaType, defaultPoolId)
 	c.BadDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckDiskRecoveryProgress()
 }
@@ -1208,7 +1208,7 @@ func TestPreReservedSpaceFunctions(t *testing.T) {
 	require.NoError(t, err)
 
 	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID,
-		proto.PartitionTypeNormal, defaultMediaType)
+		proto.PartitionTypeNormal, defaultMediaType, defaultPoolId)
 
 	// Add test replica to data partition
 	replica := newDataReplica(testDataNode)
@@ -1265,7 +1265,7 @@ func TestPreReservedSpaceFunctions(t *testing.T) {
 	t.Run("getDataPartitionMaxUsedSize", func(t *testing.T) {
 		// Create data partition with multiple replicas
 		testDP := newDataPartition(partitionID+1, 3, vol.Name, vol.ID,
-			proto.PartitionTypeNormal, defaultMediaType)
+			proto.PartitionTypeNormal, defaultMediaType, defaultPoolId)
 
 		// Add replicas with different used sizes
 		replica1 := &DataReplica{DataReplica: proto.DataReplica{Used: 500 * 1024 * 1024}} // 500MB
@@ -1284,7 +1284,7 @@ func TestPreReservedSpaceFunctions(t *testing.T) {
 	t.Run("getDataPartitionMaxUsedSize_empty_replicas", func(t *testing.T) {
 		// Create data partition with no replicas
 		testDP := newDataPartition(partitionID+2, 3, vol.Name, vol.ID,
-			proto.PartitionTypeNormal, defaultMediaType)
+			proto.PartitionTypeNormal, defaultMediaType, defaultPoolId)
 
 		// Get max used size
 		maxUsed := server.cluster.getDataPartitionMaxUsedSize(testDP)

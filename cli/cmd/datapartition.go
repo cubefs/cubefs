@@ -86,7 +86,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			if partition, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
 				return
 			}
-			stdoutf("%v", formatDataPartitionInfo(partition))
+			stdoutf("%v", formatDataPartitionInfo(partition, partition.PoolId))
 		},
 	}
 	return cmd

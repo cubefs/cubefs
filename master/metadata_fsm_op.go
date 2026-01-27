@@ -298,7 +298,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 		}
 	}
 	dp = newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID,
-		dpv.PartitionType, dpv.MediaType)
+		dpv.PartitionType, dpv.MediaType, dpv.PoolId)
 	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 	dp.Peers = dpv.Peers
 	dp.OfflinePeerID = dpv.OfflinePeerID
@@ -2021,7 +2021,7 @@ func (c *Cluster) setPoolForLegacyVol(vol *Vol) {
 	// For legacy volumes, set default poolId based on volStorageClass if not set
 	if vol.defaultPoolId == 0 {
 		if vol.volStorageClass != 0 {
-			vol.defaultPoolId = getDefaultPoolIdByStorageClass(vol.volStorageClass)
+			vol.defaultPoolId, _ = getDefaultPoolIdByStorageClass(vol.volStorageClass)
 		} else {
 			// Use cluster default poolId
 			vol.defaultPoolId = c.defaultPoolId
@@ -2033,7 +2033,7 @@ func (c *Cluster) setPoolForLegacyVol(vol *Vol) {
 	if len(vol.allowedPools) == 0 && len(vol.allowedStorageClass) > 0 {
 		vol.allowedPools = make([]uint8, 0, len(vol.allowedStorageClass))
 		for _, sc := range vol.allowedStorageClass {
-			poolId := getDefaultPoolIdByStorageClass(sc)
+			poolId, _ := getDefaultPoolIdByStorageClass(sc)
 			// Avoid duplicates
 			found := false
 			for _, p := range vol.allowedPools {

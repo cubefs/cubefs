@@ -92,6 +92,7 @@ var (
 	commonVol              *Vol
 	defaultVolStorageClass = proto.StorageClass_Replica_SSD
 	defaultMediaType       = proto.MediaType_SSD
+	defaultPoolId          = proto.DefaultSSDPoolId
 	cfsUser                *proto.UserInfo
 
 	mockServerLock   sync.Mutex

@@ -205,6 +205,7 @@ const (
 	poolCIdKey          = "cId"
 	poolECAddrKey       = "ecAddr"
 	poolIdKey           = "poolId"
+	allowedPoolsKey     = "allowedPools"
 )
 
 const (

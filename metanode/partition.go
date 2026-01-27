@@ -317,6 +317,8 @@ type MetaPartition interface {
 	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
 	GetStatByStorageClass() []*proto.StatOfStorageClass
 	GetMigrateStatByStorageClass() []*proto.StatOfStorageClass
+	GetStatByPool() []*proto.StatOfStorageClass
+	GetMigrateStatByPool() []*proto.StatOfStorageClass
 	SetFreeze(req *proto.FreezeMetaPartitionRequest) (err error)
 	GetSnapShot() (Snapshot, error)
 	ReleaseSnapShot(snap Snapshot)
@@ -550,6 +552,8 @@ type metaPartition struct {
 	accessTimeValidInterval   uint64
 	statByStorageClass        []*proto.StatOfStorageClass
 	statByMigrateStorageClass []*proto.StatOfStorageClass
+	statByPool                []*proto.StatOfStorageClass
+	statByMigratePool         []*proto.StatOfStorageClass
 	syncAtimeCh               chan uint64
 
 	rocksdbManager  RocksdbManager
@@ -1905,6 +1909,14 @@ func (mp *metaPartition) GetMigrateStatByStorageClass() []*proto.StatOfStorageCl
 	return mp.statByMigrateStorageClass
 }
 
+func (mp *metaPartition) GetStatByPool() []*proto.StatOfStorageClass {
+	return mp.statByPool
+}
+
+func (mp *metaPartition) GetMigrateStatByPool() []*proto.StatOfStorageClass {
+	return mp.statByMigratePool
+}
+
 func (mp *metaPartition) CloseAndBackupRaft() (err error) {
 	err = mp.raftPartition.CloseAndBackup()
 	return
@@ -2070,6 +2082,10 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 	var statStorageClass *proto.StatOfStorageClass
 	statByMigStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
 	var statMigStorageClass *proto.StatOfStorageClass
+	statByPoolMap := make(map[uint8]*proto.StatOfStorageClass)
+	var statPool *proto.StatOfStorageClass
+	statByMigPoolMap := make(map[uint8]*proto.StatOfStorageClass)
+	var statMigPool *proto.StatOfStorageClass
 	var ok bool
 
 	uidRebuild := mp.acucumRebuildStart()
@@ -2099,12 +2115,21 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 		statStorageClass.InodeCount++
 		statStorageClass.UsedSizeBytes += inode.Size
 
+		// stat pool
+		if statPool, ok = statByPoolMap[inode.PoolId]; !ok {
+			statPool = proto.NewStatOfStorageClassByPool(inode.PoolId)
+			statByPoolMap[inode.PoolId] = statPool
+		}
+		statPool.InodeCount++
+		statPool.UsedSizeBytes += inode.Size
+
 		// stat migration Extents
 		if inode.HybridCloudExtentsMigration == nil ||
 			inode.HybridCloudExtentsMigration.sortedEks == nil ||
 			!proto.IsValidStorageClass(inode.HybridCloudExtentsMigration.storageClass) {
 			return true
 		}
+
 		migrateStorageClass := inode.HybridCloudExtentsMigration.storageClass
 		if statMigStorageClass, ok = statByMigStorageClassMap[migrateStorageClass]; !ok {
 			statMigStorageClass = proto.NewStatOfStorageClass(migrateStorageClass)
@@ -2114,6 +2139,14 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 		migrateSize += inode.Size
 		statMigStorageClass.InodeCount++
 		statMigStorageClass.UsedSizeBytes += inode.Size
+
+		// stat migration pool
+		if statMigPool, ok = statByMigPoolMap[inode.HybridCloudExtentsMigration.poolId]; !ok {
+			statMigPool = proto.NewStatOfStorageClassByPool(inode.HybridCloudExtentsMigration.poolId)
+			statByMigPoolMap[inode.HybridCloudExtentsMigration.poolId] = statMigPool
+		}
+		statMigPool.InodeCount++
+		statMigPool.UsedSizeBytes += inode.Size
 
 		if uidRebuild {
 			mp.acucumUidSizeByStore(inode)
@@ -2143,6 +2176,17 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 		migrateToSlice = append(migrateToSlice, migStat)
 	}
 	mp.statByMigrateStorageClass = migrateToSlice
+
+	poolToSlice := make([]*proto.StatOfStorageClass, 0)
+	for _, stat := range statByPoolMap {
+		poolToSlice = append(poolToSlice, stat)
+	}
+	mp.statByPool = poolToSlice
+
+	migratePoolToSlice := make([]*proto.StatOfStorageClass, 0)
+	for _, stat := range statByMigPoolMap {
+		migratePoolToSlice = append(migratePoolToSlice, stat)
+	}
 
 	log.LogDebugf("[updateSize] update mp(%d) size(%d) success, inodeCount(%d), dentryCount(%d), "+
 		"migrateInodeCount(%v) migrateSize(%v)",
