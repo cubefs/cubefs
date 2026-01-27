@@ -36,6 +36,16 @@ func NewTP(name string) (tp *TimePoint) {
 	return
 }
 
+// NewTPWithStartTime creates a TimePoint with a specific start time
+func NewTPWithStartTime(name string, startTime time.Time) (tp *TimePoint) {
+	tp = new(TimePoint)
+	tp.name = fmt.Sprintf("%s_hist", metricsName(name))
+	tp.labels = make(map[string]string)
+	tp.val = 0
+	tp.startTime = startTime
+	return
+}
+
 func (tp *TimePoint) Set() {
 	if !enabledPrometheus {
 		return
@@ -76,6 +86,24 @@ func NewTPCnt(name string) (tpc *TimePointCount) {
 	tpc = new(TimePointCount)
 	tpc.to = ump.BeforeTP(fmt.Sprintf("%s_%s_%s", getClusterName(), modulename, name))
 	tpc.tp = NewTP(name)
+	tpc.cnt = NewCounter(fmt.Sprintf("%s_count", name))
+	return
+}
+
+// NewTPCntWithStartTime creates a TimePointCount with a specific start time
+func NewTPCntWithStartTime(name string, startTime time.Time) (tpc *TimePointCount) {
+	defer func() {
+		e := recover()
+		if e != nil {
+			log.LogErrorf("execute NewTPCntWithStartTime panic, cluster %s, module %s, name %s, err %v",
+				clustername, modulename, name, e)
+			log.LogFlush()
+			panic(e)
+		}
+	}()
+	tpc = new(TimePointCount)
+	tpc.to = ump.BeforeTP(fmt.Sprintf("%s_%s_%s", getClusterName(), modulename, name))
+	tpc.tp = NewTPWithStartTime(name, startTime)
 	tpc.cnt = NewCounter(fmt.Sprintf("%s_count", name))
 	return
 }

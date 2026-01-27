@@ -40,6 +40,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/cubefs/cubefs/util/ump"
@@ -95,6 +96,9 @@ type Super struct {
 	readDirPool *common.TaskPool
 	closeC      chan struct{}
 
+	// metric reporting channel and goroutine
+	metricCh chan *metricData
+
 	// warm up configurable parameters
 	readDirLimit          int64
 	maxWarmUpConcurrency  int64
@@ -115,7 +119,65 @@ const (
 	DefaultTaskPoolSize         = 30
 	WarmUpCheckInterval         = 30 * time.Second
 	RemoteMetaCacheDuration     = 48 * time.Hour
+	MetricChannelSize           = 10000 // buffer size for metric channel
 )
+
+// metricData is a lightweight structure passed through channel to avoid allocation in critical path
+type metricData struct {
+	// For TimePointCount metrics - pass name and startTime instead of creating object
+	metricName string
+	startTime  time.Time
+	err        error
+
+	// For Counter metrics
+	counterName string
+	counterVal  int64
+
+	// Store label values separately to avoid map allocation in critical path
+	volname string
+	errType string
+}
+
+// metricTask represents a metric reporting task (allocated in background goroutine)
+type metricTask struct {
+	// For TimePointCount metrics
+	tpMetric *exporter.TimePointCount
+	err      error
+	labels   map[string]string
+
+	// For Counter metrics
+	counterName string
+	counterVal  int64
+
+	// Store label values separately to avoid map allocation in critical path
+	volname string
+	errType string
+}
+
+// metricTaskPool is a pool for metricTask objects to avoid repeated allocations
+var metricTaskPool = &sync.Pool{
+	New: func() interface{} {
+		return &metricTask{}
+	},
+}
+
+// getMetricTask gets a metricTask from the pool
+func getMetricTask() *metricTask {
+	return metricTaskPool.Get().(*metricTask)
+}
+
+// putMetricTask returns a metricTask to the pool
+func putMetricTask(task *metricTask) {
+	// Reset fields to avoid memory leaks
+	task.tpMetric = nil
+	task.err = nil
+	task.labels = nil
+	task.counterName = ""
+	task.counterVal = 0
+	task.volname = ""
+	task.errType = ""
+	metricTaskPool.Put(task)
+}
 
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
@@ -185,6 +247,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.taskPool = []common.TaskPool{common.New(DefaultTaskPoolSize, DefaultTaskPoolSize), common.New(DefaultTaskPoolSize, DefaultTaskPoolSize)}
 	s.runningMonitor = NewRunningMonitor(opt.ClientOpTimeOut)
 	s.runningMonitor.Start()
+	s.metricCh = make(chan *metricData, MetricChannelSize)
+	go s.metricReporter()
 
 	if opt.MaxStreamerLimit > 0 {
 		DisableMetaCache = false
@@ -876,7 +940,66 @@ func getDelInodes(src []uint64, act []*proto.InodeInfo) []uint64 {
 
 func (s *Super) Close() {
 	close(s.closeC)
+	if s.metricCh != nil {
+		close(s.metricCh)
+	}
 	s.mw.Close()
+}
+
+// metricReporter is a background goroutine that processes metric reporting tasks
+func (s *Super) metricReporter() {
+	for {
+		select {
+		case <-s.closeC:
+			return
+		case data, ok := <-s.metricCh:
+			if !ok {
+				return
+			}
+			if data == nil {
+				continue
+			}
+			// Get metricTask from pool and populate it (allocated in background goroutine)
+			task := getMetricTask()
+			task.err = data.err
+			task.counterName = data.counterName
+			task.counterVal = data.counterVal
+			task.volname = data.volname
+			task.errType = data.errType
+
+			// Handle TimePointCount metrics - create metric in background goroutine
+			if data.metricName != "" {
+				// Create metric in background goroutine with recorded startTime to avoid NewTPCnt overhead in critical path
+				task.tpMetric = exporter.NewTPCntWithStartTime(data.metricName, data.startTime)
+				var labels map[string]string
+				if task.volname != "" {
+					// Build labels map in background goroutine to avoid allocation in critical path
+					labels = map[string]string{exporter.Vol: task.volname}
+				}
+				if labels != nil {
+					task.tpMetric.SetWithLabels(task.err, labels)
+				}
+			}
+			// Handle Counter metrics
+			if task.counterName != "" {
+				counter := exporter.NewCounter(task.counterName)
+				// Build labels map in background goroutine to avoid allocation in critical path
+				var labels map[string]string
+				if task.volname != "" {
+					labels = map[string]string{exporter.Vol: task.volname}
+					if task.errType != "" {
+						labels[exporter.Err] = task.errType
+					}
+				}
+				if labels != nil {
+					counter.AddWithLabels(task.counterVal, labels)
+				}
+			}
+
+			// Return task to pool after processing
+			putMetricTask(task)
+		}
+	}
 }
 
 func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, retryInterval int64) {

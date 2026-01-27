@@ -461,11 +461,23 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
-		errMetric := exporter.NewCounter("fileReadFailed")
-		if !isReadEio(err) {
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
-		} else {
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		// Send error metric to background goroutine
+		volname := f.super.volname
+		errType := "NOTSUP"
+		if isReadEio(err) {
+			errType = "EIO"
+		}
+		select {
+		case f.super.metricCh <- &metricData{
+			counterName: "fileReadFailed",
+			counterVal:  1,
+			volname:     volname,
+			errType:     errType,
+		}:
+		default:
+			// Channel is full, report synchronously to avoid losing metrics
+			errMetric := exporter.NewCounter("fileReadFailed")
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: volname, exporter.Err: errType})
 		}
 		return ParseError(err)
 	}
@@ -481,8 +493,20 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	if size > req.Size {
 		msg := fmt.Sprintf("Read: read size larger than request size, ino(%v) req(%v) size(%v)", f.info.Inode, req, size)
 		f.super.handleError("Read", msg)
-		errMetric := exporter.NewCounter("fileReadFailed")
-		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "ERANGE"})
+		// Send error metric to background goroutine
+		volname := f.super.volname
+		select {
+		case f.super.metricCh <- &metricData{
+			counterName: "fileReadFailed",
+			counterVal:  1,
+			volname:     volname,
+			errType:     "ERANGE",
+		}:
+		default:
+			// Channel is full, report synchronously to avoid losing metrics
+			errMetric := exporter.NewCounter("fileReadFailed")
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: volname, exporter.Err: "ERANGE"})
+		}
 		return fuse.ERANGE
 	}
 
@@ -502,11 +526,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 	bgTime := stat.BeginStat()
-	//runningStat := f.super.runningMonitor.AddClientOp("filewrite", req.Hdr().Pid)
+	runningStat := f.super.runningMonitor.AddClientOp("filewrite", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Write", err, bgTime, 1)
 		stat.StatBandWidth("Write", uint32(len(req.Data)))
-		//f.super.runningMonitor.SubClientOp(runningStat, err)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
@@ -550,11 +574,24 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		flags |= proto.FlagsAppend
 	}
 
-	// start := time.Now()
-	// metric := exporter.NewTPCnt("filewrite")
-	// defer func() {
-	// 	metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
-	// }()
+	start := time.Now()
+	defer func() {
+		// Only record start time in critical path, create metric in background goroutine
+		volname := f.super.volname
+		errVal := err
+		select {
+		case f.super.metricCh <- &metricData{
+			metricName: "filewrite",
+			startTime:  start,
+			err:        errVal,
+			volname:    volname,
+		}:
+		default:
+			// Channel is full, report synchronously to avoid losing metrics
+			metric := exporter.NewTPCntWithStartTime("filewrite", start)
+			metric.SetWithLabels(errVal, map[string]string{exporter.Vol: volname})
+		}
+	}()
 
 	checkFunc := func() error {
 		if !f.super.mw.EnableQuota {
@@ -586,11 +623,23 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleError("Write", msg)
-		errMetric := exporter.NewCounter("fileWriteFailed")
-		if !isWriteEio(err) {
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
-		} else {
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		// Send error metric to background goroutine
+		volname := f.super.volname
+		errType := "NOTSUP"
+		if isWriteEio(err) {
+			errType = "EIO"
+		}
+		select {
+		case f.super.metricCh <- &metricData{
+			counterName: "fileWriteFailed",
+			counterVal:  1,
+			volname:     volname,
+			errType:     errType,
+		}:
+		default:
+			// Channel is full, report synchronously to avoid losing metrics
+			errMetric := exporter.NewCounter("fileWriteFailed")
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: volname, exporter.Err: errType})
 		}
 		if err == syscall.EOPNOTSUPP {
 			return fuse.ENOTSUP
@@ -609,18 +658,33 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if err != nil {
 			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
 			f.super.handleError("Wrtie", msg)
-			errMetric := exporter.NewCounter("fileWriteFailed")
-			if !isWriteEio(err) {
-				errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
-			} else {
-				errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+			// Send error metric to background goroutine
+			volname := f.super.volname
+			errType := "NOTSUP"
+			if isWriteEio(err) {
+				errType = "EIO"
+			}
+			select {
+			case f.super.metricCh <- &metricData{
+				counterName: "fileWriteFailed",
+				counterVal:  1,
+				volname:     volname,
+				errType:     errType,
+			}:
+			default:
+				// Channel is full, report synchronously to avoid losing metrics
+				errMetric := exporter.NewCounter("fileWriteFailed")
+				errMetric.AddWithLabels(1, map[string]string{exporter.Vol: volname, exporter.Err: errType})
 			}
 			return ParseError(err)
 		}
 	}
-	// elapsed := time.Since(start)
-	// // log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v) ",
-	// // 	ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, elapsed.String())
+	if log.EnableDebug() {
+		elapsed := time.Since(start)
+		log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v) ",
+			ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, elapsed.String())
+	}
+
 	return nil
 }
 
@@ -656,11 +720,23 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		f.super.handleError("Flush", msg)
 		log.LogErrorf("TRACE Flush err: ino(%v) err(%v)", f.info.Inode, err)
 
-		errMetric := exporter.NewCounter("fileWriteFailed")
-		if !isReadEio(err) {
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
-		} else {
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		// Send error metric to background goroutine
+		volname := f.super.volname
+		errType := "NOTSUP"
+		if isReadEio(err) {
+			errType = "EIO"
+		}
+		select {
+		case f.super.metricCh <- &metricData{
+			counterName: "fileWriteFailed",
+			counterVal:  1,
+			volname:     volname,
+			errType:     errType,
+		}:
+		default:
+			// Channel is full, report synchronously to avoid losing metrics
+			errMetric := exporter.NewCounter("fileWriteFailed")
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: volname, exporter.Err: errType})
 		}
 
 		return ParseError(err)
