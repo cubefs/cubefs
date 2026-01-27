@@ -915,7 +915,6 @@ func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string
 		return
 	}
 	block.initKeyLimiter(c.keyRateLimitThreshold, c.keyLimiterFlow)
-	c.setCacheItem(key, cacheItem, "")
 	return
 }
 

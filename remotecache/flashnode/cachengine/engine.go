@@ -427,9 +427,10 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 		log.LogInfo(msg)
 	}()
 	filePathChan := make(chan cacheLoadFile, 2048)
-	asyncDeleteCh := make(chan func(), 2048)
+	asyncDeleteCh := make(chan func(), 10240)
 	var deleteWg sync.WaitGroup
-	for i := 0; i < c.cacheLoadWorkerNum; i++ {
+
+	for i := 0; i < c.cacheLoadWorkerNum*16; i++ {
 		deleteWg.Add(1)
 		go func() {
 			defer deleteWg.Done()
@@ -784,13 +785,13 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 			}
 		}
 	}()
-	block.initFilePath(true)
-
-	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
+	err = block.initFilePath(true)
+	if err != nil {
 		return
 	}
-	c.setCacheItem(key, cacheItem, volume)
-
+	if volume != "" {
+		c.volMap.LoadOrStore(volume, struct{}{})
+	}
 	return
 }
 
