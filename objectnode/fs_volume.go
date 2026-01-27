@@ -738,7 +738,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			return
 		}
 	} else {
-		if _, err = v.streamWrite(invisibleTempDataInode.Inode, reader, md5Hash, invisibleTempDataInode.PoolId); err != nil {
+		if _, err = v.streamWrite(invisibleTempDataInode.Inode, reader, md5Hash, invisibleTempDataInode.PoolId, invisibleTempDataInode.StorageClass); err != nil {
 			log.LogErrorf("PutObject: stream write fail: volume(%v) path(%v) inode(%v) err(%v)",
 				v.name, path, invisibleTempDataInode.Inode, err)
 			return
@@ -1092,7 +1092,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		}
 	} else {
 		// Write data to data node
-		if size, err = v.streamWrite(tempInodeInfo.Inode, reader, md5Hash, tempInodeInfo.PoolId); err != nil {
+		if size, err = v.streamWrite(tempInodeInfo.Inode, reader, md5Hash, tempInodeInfo.PoolId, tempInodeInfo.StorageClass); err != nil {
 			log.LogErrorf("WritePart: stream write fail: volume(%v) inode(%v) multipartID(%v) partID(%v) err(%v)",
 				v.name, tempInodeInfo.Inode, multipartId, partId, err)
 			return nil, err
@@ -1391,7 +1391,7 @@ func (v *Volume) ebsWrite(inode uint64, reader io.Reader, h hash.Hash, poolId ui
 	return
 }
 
-func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, poolId uint8) (size uint64, err error) {
+func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, poolId uint8, storageClass uint32) (size uint64, err error) {
 	var (
 		buf                   = make([]byte, 2*util.BlockSize)
 		teeReader             = io.TeeReader(reader, h)
@@ -1418,7 +1418,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, poolId
 				return nil
 			}
 			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0, checkFunc, poolId,
-				false, false); err != nil {
+				storageClass, false, false); err != nil {
 				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
 				exporter.Warning(fmt.Sprintf("write data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
 					v.name, inode, offset, readN, err))
@@ -2877,7 +2877,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 				writeN, err = ebsWriter.WriteWithoutPool(tctx, writeOffset, buf[:readN])
 			} else {
 				writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], 0, nil,
-					tInodeInfo.PoolId, false, false)
+					tInodeInfo.PoolId, tInodeInfo.StorageClass, false, false)
 			}
 			if err != nil {
 				log.LogErrorf("CopyFile: write target path from volume (%v) path(%v) fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",

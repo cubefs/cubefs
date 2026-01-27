@@ -605,7 +605,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
 		// Use storageClass derived from poolId
 		if size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags, checkFunc, pool.Id,
-			false, waitForFlush); err == ParseError(syscall.ENOSPC) {
+			f.info.StorageClass, false, waitForFlush); err == ParseError(syscall.ENOSPC) {
 			return
 		}
 	} else {

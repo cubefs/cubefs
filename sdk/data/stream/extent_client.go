@@ -711,7 +711,7 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int, sync bool) {
 
 // Write writes the data.
 func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error,
-	poolId uint8, isMigration, waitForFlush bool,
+	poolId uint8, storageClass uint32, isMigration, waitForFlush bool,
 ) (write int, err error) {
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 	s := client.GetStreamer(inode)
@@ -720,9 +720,9 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 		return 0, syscall.EBADF
 	}
 
-	if !client.dataWrapper.CanWriteByPool(poolId) {
-		log.LogWarnf("Write: target storage pool is alrady full, can't write more. pref %s, poolId %d",
-			prefix, poolId)
+	if !client.dataWrapper.CanWriteByPool(poolId) || !client.dataWrapper.CanWriteByClass(storageClass) {
+		log.LogWarnf("Write: target storage pool is alrady full, can't write more. pref %s, poolId %d, storageClass %d",
+			prefix, poolId, storageClass)
 		return 0, syscall.EDQUOT
 	}
 

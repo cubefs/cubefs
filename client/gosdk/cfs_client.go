@@ -1058,7 +1058,7 @@ func (c *Client) write(f *File, offset int64, data []byte, flags int) (n int, er
 			}
 			return nil
 		}
-		n, err = c.ec.Write(f.ino, int(offset), data, flags, checkFunc, f.poolId, false, false)
+		n, err = c.ec.Write(f.ino, int(offset), data, flags, checkFunc, f.poolId, f.storageClass, false, false)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.ID, f.ino), int(offset), data, flags)
 	}

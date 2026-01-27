@@ -89,9 +89,10 @@ type Wrapper struct {
 
 	volStorageClass        uint32
 	volAllowedStorageClass []uint32
-	// volStatByClass         map[uint32]*proto.StatOfStorageClass
-	volStatByPool map[uint8]*proto.StatOfStorageClass
-	HostsDelay    sync.Map
+
+	volStatByClass map[uint32]*proto.StatOfStorageClass
+	volStatByPool  map[uint8]*proto.StatOfStorageClass
+	HostsDelay     sync.Map
 
 	readFailedHosts map[uint64]map[string]time.Time
 }
@@ -501,6 +502,14 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 	}
 	w.volStatByPool = m
 
+	m2 := make(map[uint32]*proto.StatOfStorageClass)
+	for _, st := range dpv.StatByClass {
+		m2[st.StorageClass] = st
+		log.LogInfof("updateDataPartition: get storage class stat info: volume(%v) stat(%s) VolReadOnly(%v)",
+			w.VolName, st.String(), dpv.VolReadOnly)
+	}
+	w.volStatByClass = m2
+
 	w.Lock.Unlock()
 
 	return w.updateDataPartitionByRsp(forceUpdate, UpdateDpPolicy, dpv.DataPartitions)
@@ -515,6 +524,17 @@ func (w *Wrapper) CanWriteByPool(poolId uint8) bool {
 	}
 
 	st := w.volStatByPool[poolId]
+	return !st.Full()
+}
+
+func (w *Wrapper) CanWriteByClass(class uint32) bool {
+	w.Lock.RLock()
+	defer w.Lock.RUnlock()
+
+	if len(w.volStatByClass) == 0 {
+		return true
+	}
+	st := w.volStatByClass[class]
 	return !st.Full()
 }
 
