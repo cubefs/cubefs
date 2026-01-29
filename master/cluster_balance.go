@@ -2695,11 +2695,6 @@ func (c *Cluster) FillAddLearnerPlan(plan *proto.ClusterPlan, volName string) er
 		if count >= plan.ModeCnt {
 			continue
 		}
-		learnerCount := GetMetaPartitionLearnerCount(mp)
-		if learnerCount >= plan.ModeCnt {
-			log.LogWarnf("mp(%d) already has (%d) learners modeCount(%d), skip", mp.PartitionID, learnerCount, plan.ModeCnt)
-			continue
-		}
 
 		mpPlan := &proto.MetaBalancePlan{
 			ID:         mp.PartitionID,
