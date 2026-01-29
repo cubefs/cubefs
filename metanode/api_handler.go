@@ -113,6 +113,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/compactRocksdb", m.compactRocksdbHandler)
 	http.HandleFunc("/calcMpMd5", m.calcMpMd5Handler)
 	http.HandleFunc("/setTruncateBlockMax", m.setTruncateBlockMaxHandler)
+	http.HandleFunc("/setRocksdbDiskThreshold", m.setRocksdbDiskThresholdHandler)
 	return
 }
 
@@ -2023,4 +2024,34 @@ func (m *MetaNode) setTruncateBlockMaxHandler(w http.ResponseWriter, r *http.Req
 
 	log.LogInfof("[setTruncateBlockMaxHandler] set truncate block max success: partition=%v, count=%v", id, count)
 	resp.Msg = fmt.Sprintf("set truncate block max success: partition=%v, count=%v", id, count)
+}
+
+func (m *MetaNode) setRocksdbDiskThresholdHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	thresholdStr := r.FormValue("threshold")
+	if thresholdStr == "" {
+		err = fmt.Errorf("missing threshold parameter")
+		return
+	}
+	threshold, err := strconv.ParseFloat(thresholdStr, 64)
+	if err != nil {
+		log.LogErrorf("[setRocksdbDiskThresholdHandler] failed to parse threshold, err(%v)", err)
+		return
+	}
+
+	m.metadataManager.SetRocksdbDiskThreshold(threshold)
+	log.LogInfof("[setRocksdbDiskThresholdHandler] set rocksdb disk threshold success: threshold=%v", threshold)
+	resp.Msg = fmt.Sprintf("set rocksdb disk threshold success: threshold=%v", threshold)
 }

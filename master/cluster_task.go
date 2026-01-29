@@ -1701,7 +1701,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 
 	// change cpu util and io used
 	metaNode.CpuUtil.Store(resp.CpuUtil)
-	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold, c.cfg.MetaNodeRocksdbDiskThreshold)
+	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
 	metaNode.setNodeActive()
 	metaNode.updateRocksdbDisks(resp)
 

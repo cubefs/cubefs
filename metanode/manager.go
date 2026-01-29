@@ -73,6 +73,7 @@ type MetadataManager interface {
 	checkVolVerList() (err error)
 	ReloadPartition(id uint64) (err error)
 	UpdateQosLimit()
+	SetRocksdbDiskThreshold(threshold float64)
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -1145,4 +1146,8 @@ func (m *metadataManager) GetMetaPartitionDir(partitionId string, storeMode prot
 	}
 
 	return metaPartitionDir
+}
+
+func (m *metadataManager) SetRocksdbDiskThreshold(threshold float64) {
+	m.rocksDBDiskUsageThreshold = threshold
 }

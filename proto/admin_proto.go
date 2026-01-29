@@ -1052,6 +1052,7 @@ type MetaNodeHeartbeatResponse struct {
 	ReceivedForbidWriteOpOfProtoVer0 bool
 	RocksDBDiskInfo                  []*MetaNodeRocksdbInfo
 	RocksDBKeyNumMax                 uint64
+	RocksdbDiskThreshold             float32
 }
 
 // LcNodeHeartbeatResponse defines the response to the lc node heartbeat.

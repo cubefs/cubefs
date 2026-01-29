@@ -416,6 +416,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		resp.RocksDBDiskInfo = diskStat
 		resp.RocksDBKeyNumMax = m.metaNode.rocksdbKeyNumMax
 		resp.Status = proto.TaskSucceeds
+		resp.RocksdbDiskThreshold = float32(m.rocksDBDiskUsageThreshold)
 	end:
 		adminTask.Request = nil
 		adminTask.Response = resp

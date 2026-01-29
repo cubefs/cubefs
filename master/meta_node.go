@@ -173,7 +173,7 @@ func (metaNode *MetaNode) setNodeActive() {
 	metaNode.IsActive = true
 }
 
-func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold, rocksdbDiskThreshold float32) {
+func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold float32) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 
@@ -197,7 +197,7 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.Threshold = threshold
 	metaNode.NodeMemTotal = resp.NodeMemTotal
 	metaNode.NodeMemUsed = resp.NodeMemUsed
-	metaNode.RocksdbDiskThreshold = rocksdbDiskThreshold
+	metaNode.RocksdbDiskThreshold = resp.RocksdbDiskThreshold
 }
 
 func (metaNode *MetaNode) reachesThreshold() bool {
