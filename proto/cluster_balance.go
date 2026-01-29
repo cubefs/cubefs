@@ -1,6 +1,8 @@
 package proto
 
 import (
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -101,7 +103,7 @@ type ClusterPlan struct {
 	SelectType      int                          `json:"selectType"` // 0: not set. 1: zone name. 2: node set id. 3: node address list.
 	ZoneName        string                       `json:"zoneName"`
 	NodeSetID       uint64                       `json:"nodesetId"`
-	SelectTag       string                       `json:"selectTag"`
+	Tag             string                       `json:"tag"`
 }
 
 type MetaReplicaChecksumInfo struct {
@@ -149,7 +151,7 @@ type PromoteLearnerPlan struct {
 	SelectType int                         `json:"selectType"` // 0: not set. 1: zone name. 2: node set id. 3: node address list.
 	ZoneName   string                      `json:"zoneName"`
 	NodeSetID  uint64                      `json:"nodesetId"`
-	SelectTag  string                      `json:"selectTag"`
+	Tag        string                      `json:"tag"`
 	Learners   []*MetaPartitionLearnerInfo `json:"learners"`
 	TotalNum   int32                       `json:"totalNum"`
 	UndoNum    int32                       `json:"undoNum"`
@@ -165,20 +167,32 @@ type PromoteLearnerPlan struct {
 	Msg        string                      `json:"msg"`
 }
 
-type SelectTagSummary struct {
-	AutoFixSelectTag    bool     `json:"autoFixSelectTag"`
-	ClusterDpSelectTag  string   `json:"clusterDpSelectTag"`
-	ClusterMpSelectTag  string   `json:"clusterMpSelectTag"`
+type TagSummary struct {
+	AutoFixTag          bool     `json:"autoFixTag"`
+	ClusterDpTag        string   `json:"clusterDpTag"`
+	ClusterMpTag        string   `json:"clusterMpTag"`
 	VolumeNum           int      `json:"volumeNum"`
 	VolWithTagNum       int      `json:"volumeWithTagNum"`
-	VolWithSelectTag    []string `json:"volWithSelectTag"`
+	VolWithTag          []string `json:"volWithTag"`
 	MismatchDpNum       int      `json:"mismatchDpNum"`
 	DecommissionDpNum   int      `json:"decommissionDpNum"`
 	MismatchMpNum       int      `json:"mismatchMpNum"`
 	MpPlanStatus        string   `json:"mpPlanStatus"`
 	MigratingDps        []uint64 `json:"migratingDps"`
-	MigratingMps        []uint64 `json:"migratingMps"`
+	MpDecommissionNum   uint32   `json:"mpDecommissionNum"`
 	DpCheckThreadStatus string   `json:"dpCheckThreadStatus"`
 	MpCheckThreadStatus string   `json:"mpCheckThreadStatus"`
 	MpFailedKeys        []string `json:"mpFailedKeys"`
+}
+
+var TagPattern = regexp.MustCompile("^[0-9A-Za-z]{1,49}$")
+
+func ValidateTag(tag string) bool {
+	tags := strings.Split(tag, ",")
+	for _, tag := range tags {
+		if !TagPattern.MatchString(tag) {
+			return false
+		}
+	}
+	return true
 }

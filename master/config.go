@@ -84,9 +84,9 @@ const (
 	remoteClientFlowLimit        = "remoteClientFlowLimit"
 
 	cfgDefaultVolStoreMode = "defaultVolStoreMode"
-	cfgDefaultDpSelectTag  = "defaultDpSelectTag"
-	cfgDefaultMpSelectTag  = "defaultMpSelectTag"
-	cfgAutoFixSelectTag    = "autoFixSelectTag"
+	cfgDefaultDpTag        = "defaultDpTag"
+	cfgDefaultMpTag        = "defaultMpTag"
+	cfgAutoFixTag          = "autoFixTag"
 )
 
 // default value
@@ -254,9 +254,9 @@ type clusterConfig struct {
 
 	DefaultVolStoreMode          pt.StoreMode
 	flashTopoDelayDeleteTimeHour int64
-	DefaultDpSelectTag           string
-	DefaultMpSelectTag           string
-	AutoFixSelectTag             bool
+	DefaultDpTag                 string
+	DefaultMpTag                 string
+	AutoFixTag                   bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

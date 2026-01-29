@@ -569,8 +569,8 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToDistributionOptimization()
 	c.scheduleToUpdateDistributionOptimizationStatus()
 	c.scheduleToRecalculatePreReservedSpace()
-	c.scheduleToCheckDpSelectTag()
-	c.scheduleToCheckMpSelectTag()
+	c.scheduleToCheckDpTag()
+	c.scheduleToCheckMpTag()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -3235,8 +3235,10 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		excludeHosts:    dp.Hosts,
 		rackLevel:       c.getRackAwareLevel(),
 		excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, dp.Hosts, srcAddr),
-		selectType:      proto.SelectTypeTag,
-		selectTag:       c.GetDataNodeSelectTag(srcAddr),
+	}
+	if c.IsDataPartitionTagSet(dp.VolName) {
+		param.selectType = proto.SelectTypeTag
+		param.tag = c.GetDataNodeTag(srcAddr)
 	}
 
 	// delete if not normal data partition
@@ -4974,7 +4976,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0, Rack: dataNode.Rack,
 			NodeSetID: dataNode.NodeSetID,
 			ZoneName:  dataNode.ZoneName,
-			SelectTag: dataNode.SelectTag,
+			Tag:       dataNode.Tag,
 		})
 		return true
 	})
@@ -4993,7 +4995,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 			Rack:                     metaNode.Rack,
 			NodeSetID:                metaNode.NodeSetID,
 			ZoneName:                 metaNode.ZoneName,
-			SelectTag:                metaNode.SelectTag,
+			Tag:                      metaNode.Tag,
 		})
 		return true
 	})
@@ -6175,8 +6177,8 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 				err = c.markDecommissionDataPartition(dp, dataNode, &DecommissionMarkParam{
 					DstNodeSetID:     0,
 					RaftForce:        false,
-					MigrateType:      AutoDecommission,
-					SelectTag:        "",
+					MigrateType:      proto.AutoDecommission,
+					Tag:              "",
 					Weight:           highPriorityDecommissionWeight,
 					SrcAddrs:         nil,
 					DstAddrs:         nil,
@@ -6316,7 +6318,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			RaftForce:        disk.DecommissionRaftForce,
 			Term:             disk.DecommissionTerm,
 			MigrateType:      disk.Type,
-			SelectTag:        "",
+			Tag:              "",
 			Weight:           disk.DecommissionWeight,
 			SrcAddrs:         nil,
 			DstAddrs:         nil,
@@ -7171,7 +7173,7 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 		RaftForce:        param.RaftForce,
 		Term:             uint64(time.Now().Unix()),
 		MigrateType:      param.MigrateType,
-		SelectTag:        param.SelectTag,
+		Tag:              param.Tag,
 		Weight:           param.Weight,
 		SrcAddrs:         param.SrcAddrs,
 		DstAddrs:         param.DstAddrs,

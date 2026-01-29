@@ -108,9 +108,9 @@ type clusterValue struct {
 	MetaManualDecommissionLimit            uint32
 	MetaBalanceLimit                       uint32
 	MetaManualAddReplicaLimit              uint32
-	DefaultDpSelectTag                     string
-	DefaultMpSelectTag                     string
-	AutoFixSelectTag                       bool
+	DefaultDpTag                           string
+	DefaultMpTag                           string
+	AutoFixTag                             bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -184,9 +184,9 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaManualDecommissionLimit:            c.MetaManualDecommissionLimit.Load(),
 		MetaBalanceLimit:                       c.MetaBalanceLimit.Load(),
 		MetaManualAddReplicaLimit:              c.MetaManualAddReplicaLimit.Load(),
-		DefaultDpSelectTag:                     c.cfg.DefaultDpSelectTag,
-		DefaultMpSelectTag:                     c.cfg.DefaultMpSelectTag,
-		AutoFixSelectTag:                       c.cfg.AutoFixSelectTag,
+		DefaultDpTag:                           c.cfg.DefaultDpTag,
+		DefaultMpTag:                           c.cfg.DefaultMpTag,
+		AutoFixTag:                             c.cfg.AutoFixTag,
 	}
 	return cv
 }
@@ -322,7 +322,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionNeedRollbackTimes = dpv.DecommissionNeedRollbackTimes
 	dp.DecommissionErrorMessage = dpv.DecommissionErrorMessage
 	dp.DecommissionType = dpv.DecommissionType
-	dp.DecommissionSelectTag = dpv.DecommissionSelectTag
+	dp.DecommissionTag = dpv.DecommissionSelectTag
 	dp.RestoreReplica = dpv.RestoreReplica
 	dp.MediaType = dpv.MediaType
 	dp.decommissionTaskQueue = dpv.DecommissionTaskQueue
@@ -388,7 +388,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionErrorMessage:        dp.DecommissionErrorMessage,
 		DecommissionNeedRollbackTimes:   dp.DecommissionNeedRollbackTimes,
 		DecommissionType:                dp.DecommissionType,
-		DecommissionSelectTag:           dp.DecommissionSelectTag,
+		DecommissionSelectTag:           dp.DecommissionTag,
 		RestoreReplica:                  atomic.LoadUint32(&dp.RestoreReplica),
 		MediaType:                       dp.MediaType,
 		DecommissionTaskQueue:           dp.cloneDecommissionTaskQueue(),
@@ -482,8 +482,8 @@ type volValue struct {
 
 	DefaultStoreMode proto.StoreMode
 	SelectType       int32
-	DpSelectTag      string
-	MpSelectTag      string
+	DpTag            string
+	MpTag            string
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -575,8 +575,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
 		DefaultStoreMode:             vol.DefaultStoreMode,
-		DpSelectTag:                  vol.DpSelectTag,
-		MpSelectTag:                  vol.MpSelectTag,
+		DpTag:                        vol.DpTag,
+		MpTag:                        vol.MpTag,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)
@@ -623,7 +623,7 @@ type dataNodeValue struct {
 	MaxDpCntLimit                      uint64
 	PreReservedSpace                   uint64
 	PreReservedDpCount                 uint32
-	SelectTag                          string
+	Tag                                string
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -655,7 +655,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		MaxDpCntLimit:                      dataNode.DpCntLimit,
 		PreReservedSpace:                   dataNode.PreReservedSpace,
 		PreReservedDpCount:                 dataNode.PreReservedDpCount,
-		SelectTag:                          dataNode.SelectTag,
+		Tag:                                dataNode.Tag,
 	}
 }
 
@@ -670,7 +670,7 @@ type metaNodeValue struct {
 	RdOnly        bool
 	maxMpCntLimit uint64
 	RocksdbRdOnly bool
-	SelectTag     string
+	Tag           string
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -685,7 +685,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		RdOnly:        metaNode.RdOnly,
 		maxMpCntLimit: metaNode.MpCntLimit,
 		RocksdbRdOnly: metaNode.RocksdbRdOnly,
-		SelectTag:     metaNode.SelectTag,
+		Tag:           metaNode.Tag,
 	}
 }
 
@@ -1626,9 +1626,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 		} else {
 			c.cfg.DefaultVolStoreMode = proto.StoreModeMem
 		}
-		c.cfg.DefaultDpSelectTag = cv.DefaultDpSelectTag
-		c.cfg.DefaultMpSelectTag = cv.DefaultMpSelectTag
-		c.cfg.AutoFixSelectTag = cv.AutoFixSelectTag
+		c.cfg.DefaultDpTag = cv.DefaultDpTag
+		c.cfg.DefaultMpTag = cv.DefaultMpTag
+		c.cfg.AutoFixTag = cv.AutoFixTag
 	}
 
 	return
@@ -1875,7 +1875,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DpCntLimit = dnv.MaxDpCntLimit
 		dataNode.PreReservedSpace = dnv.PreReservedSpace
 		dataNode.PreReservedDpCount = dnv.PreReservedDpCount
-		dataNode.SelectTag = dnv.SelectTag
+		dataNode.Tag = dnv.Tag
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
@@ -1926,7 +1926,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode.NodeSetID = mnv.NodeSetID
 		metaNode.RdOnly = mnv.RdOnly
 		metaNode.RocksdbRdOnly = mnv.RocksdbRdOnly
-		metaNode.SelectTag = mnv.SelectTag
+		metaNode.Tag = mnv.Tag
 
 		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
 		if ok {

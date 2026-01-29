@@ -81,8 +81,8 @@ type VolVarargs struct {
 	remoteCacheSameZoneTimeout   int64 // microsecond
 	remoteCacheSameRegionTimeout int64 // ms
 	DefaultStoreMode             proto.StoreMode
-	DpSelectTag                  string
-	MpSelectTag                  string
+	DpTag                        string
+	MpTag                        string
 }
 
 // nolint: structcheck
@@ -211,8 +211,8 @@ type Vol struct {
 	QuotaByClass            []*proto.StatOfStorageClass
 	DefaultStoreMode        proto.StoreMode
 	SelectType              int32
-	DpSelectTag             string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
-	MpSelectTag             string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
+	DpTag                   string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
+	MpTag                   string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -371,8 +371,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	if vol.remoteCacheSameRegionTimeout == 0 {
 		vol.remoteCacheSameRegionTimeout = proto.DefaultRemoteCacheSameRegionTimeout
 	}
-	vol.DpSelectTag = vv.DpSelectTag
-	vol.MpSelectTag = vv.MpSelectTag
+	vol.DpTag = vv.DpTag
+	vol.MpTag = vv.MpTag
 	return vol
 }
 
@@ -1925,8 +1925,8 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.remoteCacheSameZoneTimeout = args.remoteCacheSameZoneTimeout
 	vol.remoteCacheSameRegionTimeout = args.remoteCacheSameRegionTimeout
 	vol.DefaultStoreMode = args.DefaultStoreMode
-	vol.DpSelectTag = args.DpSelectTag
-	vol.MpSelectTag = args.MpSelectTag
+	vol.DpTag = args.DpTag
+	vol.MpTag = args.MpTag
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1990,8 +1990,8 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		remoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		remoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
 		DefaultStoreMode:             vol.DefaultStoreMode,
-		DpSelectTag:                  vol.DpSelectTag,
-		MpSelectTag:                  vol.MpSelectTag,
+		DpTag:                        vol.DpTag,
+		MpTag:                        vol.MpTag,
 	}
 }
 

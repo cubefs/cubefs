@@ -65,7 +65,7 @@ type MetaNodeInfo struct {
 	RocksdbDiskThreshold      float32
 	RocksdbRdOnly             bool
 	RocksdbKeyNumMax          uint64
-	SelectTag                 string
+	Tag                       string
 }
 
 // DataNode stores all the information about a data node
@@ -107,7 +107,7 @@ type DataNodeInfo struct {
 	MediaType                             uint32
 	DiskOpLogs                            []OpLog
 	DpOpLogs                              []OpLog
-	SelectTag                             string
+	Tag                                   string
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -163,7 +163,7 @@ type MetaReplicaInfo struct {
 	DentryCount     uint64
 	ReadOnlyReasons uint32
 	StoreMode       StoreMode
-	SelectTag       string
+	Tag             string
 }
 
 // ClusterView provides the view of a cluster.
@@ -238,9 +238,9 @@ type ClusterView struct {
 	FlashWriteFlowLimit                       int64
 	FlashKeyFlowLimit                         int64
 	RemoteClientFlowLimit                     int64
-	DefaultDpSelectTag                        string
-	DefaultMpSelectTag                        string
-	AutoFixSelectTag                          bool
+	DefaultDpTag                              string
+	DefaultMpTag                              string
+	AutoFixTag                                bool
 }
 
 // ClusterNode defines the structure of a cluster node
@@ -276,7 +276,7 @@ type NodeView struct {
 	Rack                     string
 	NodeSetID                uint64
 	ZoneName                 string
-	SelectTag                string
+	Tag                      string
 }
 
 type RepairInfo struct {

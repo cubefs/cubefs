@@ -51,7 +51,7 @@ type MetaPartitionPlanUserParams struct {
 	SelectType         int             `json:"selectType"` // 0: not set. 1: zone name. 2: node set id. 3: node address list.
 	ZoneName           string          `json:"zoneName"`
 	NodeSetID          uint64          `json:"nodesetId"`
-	SelectTag          string          `json:"selectTag"`
+	Tag                string          `json:"tag"`
 	MetaNodeAddr       string          `json:"metaNodeAddr"`
 	RocksdbDir         string          `json:"rocksdbDir"`
 }
@@ -777,10 +777,10 @@ func parseMetaPartitionPlanUserParams(r *http.Request) (param *MetaPartitionPlan
 		return
 	}
 
-	param.SelectTag = r.FormValue(SelectTagKey)
+	param.Tag = r.FormValue(TagKey)
 
-	if param.SelectType == SelectTypeNodeAddrs && param.SelectTag == "" {
-		err = fmt.Errorf("select tag is required when select type is 3")
+	if param.SelectType == SelectTypeNodeAddrs && param.Tag == "" {
+		err = fmt.Errorf("tag is required when select type is 3")
 		return
 	}
 
@@ -832,7 +832,7 @@ func (m *Server) batchMigrateMetaPartition(w http.ResponseWriter, r *http.Reques
 
 	msg := fmt.Sprintf("volume(%s) start(%d) end(%d) mode(%d) count(%d) promote(%v) selectType(%d) zone(%s) nodesetId(%d) selectTag(%s)",
 		param.Name, param.StartID, param.EndID, param.Mode, param.Count,
-		param.AutoPromoteLearner, param.SelectType, param.ZoneName, param.NodeSetID, param.SelectTag)
+		param.AutoPromoteLearner, param.SelectType, param.ZoneName, param.NodeSetID, param.Tag)
 	AuditLog(r, "batchMigrateMetaPartition", msg, nil)
 
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
@@ -1027,14 +1027,14 @@ func (m *Server) decommissionRocksdbDir(w http.ResponseWriter, r *http.Request) 
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }
 
-func (m *Server) getSelectTagSummary(w http.ResponseWriter, r *http.Request) {
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetSelectTagSummary))
+func (m *Server) getTagSummary(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetTagSummary))
 	var err error
 	defer func() {
-		doStatAndMetric(proto.AdminGetSelectTagSummary, metric, err, nil)
+		doStatAndMetric(proto.AdminGetTagSummary, metric, err, nil)
 	}()
 
-	summary, err := m.cluster.getSelectTagSummary()
+	summary, err := m.cluster.getTagSummary()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
@@ -1042,10 +1042,10 @@ func (m *Server) getSelectTagSummary(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(summary))
 }
 
-func (m *Server) clearSelectTagFailedKeys(w http.ResponseWriter, r *http.Request) {
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminClearSelectTagFailedKeys))
+func (m *Server) clearTagFailedKeys(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminClearTagFailedKeys))
 	defer func() {
-		doStatAndMetric(proto.AdminClearSelectTagFailedKeys, metric, nil, nil)
+		doStatAndMetric(proto.AdminClearTagFailedKeys, metric, nil, nil)
 	}()
 
 	MpFailedKeys = make([]string, 0)

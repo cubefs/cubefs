@@ -44,7 +44,7 @@ type DecommissionTask struct {
 	DecommissionDstNodeSet     uint64
 	DecommissionWeight         int
 	DecommissionType           uint32
-	DecommissionSelectTag      string
+	DecommissionTag            string
 }
 
 type DecommissionStatusParam struct {
@@ -55,7 +55,7 @@ type DecommissionStatusParam struct {
 	RaftForce        bool
 	Term             uint64
 	MigrateType      uint32
-	SelectTag        string
+	Tag              string
 	Weight           int
 	SrcAddrs         []string
 	DstAddrs         []string
@@ -66,7 +66,7 @@ type DecommissionMarkParam struct {
 	DstNodeSetID     uint64
 	RaftForce        bool
 	MigrateType      uint32
-	SelectTag        string
+	Tag              string
 	Weight           int
 	SrcAddrs         []string
 	DstAddrs         []string
@@ -134,7 +134,7 @@ type DataPartition struct {
 	DecommissionRetryTime    time.Time
 	RepairBlockSize          uint64
 	DecommissionType         uint32
-	DecommissionSelectTag    string
+	DecommissionTag          string
 	RestoreReplica           uint32
 	MediaType                uint32
 	ForbidWriteOpOfProtoVer0 bool
@@ -1120,7 +1120,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 	for i, peer := range dpInfo.Peers {
 		for _, replica := range partition.Replicas {
 			if replica.Addr == peer.Addr {
-				dpInfo.Peers[i].SelectTag = formatDataReplicaSelectTag(peer.SelectTag, replica.dataNode)
+				dpInfo.Peers[i].Tag = formatDataReplicaTag(peer.Tag, replica.dataNode)
 				break
 			}
 		}
@@ -1575,7 +1575,7 @@ func (partition *DataPartition) MarkDecommissionStatus(param *DecommissionStatus
 				DecommissionDstNodeSet:     dstNodeSetID,
 				DecommissionWeight:         weight,
 				DecommissionType:           migrateType,
-				DecommissionSelectTag:      param.SelectTag,
+				DecommissionTag:            param.Tag,
 			}
 			if dstAddr != "" {
 				task.DecommissionDstAddrSpecify = true
@@ -1595,7 +1595,7 @@ func (partition *DataPartition) MarkDecommissionStatus(param *DecommissionStatus
 				DecommissionDstNodeSet:     partition.DecommissionDstNodeSet,
 				DecommissionWeight:         partition.DecommissionWeight,
 				DecommissionType:           partition.DecommissionType,
-				DecommissionSelectTag:      partition.DecommissionSelectTag,
+				DecommissionTag:            partition.DecommissionTag,
 			}
 			// after removing from original decommissionDpList and resetting the decommission status, re-mark high-priority decommission task
 			if partition.DecommissionSrcAddr != "" {
@@ -1618,8 +1618,8 @@ func (partition *DataPartition) MarkDecommissionStatus(param *DecommissionStatus
 
 	// set DecommissionType first for recovering replica meta
 	partition.DecommissionType = migrateType
-	if migrateType == SelectTagDecommission {
-		partition.DecommissionSelectTag = param.SelectTag
+	if migrateType == proto.TagDecommission {
+		partition.DecommissionTag = param.Tag
 	}
 
 	if err = partition.tryRecoverReplicaMeta(c, migrateType); err != nil {
@@ -1831,7 +1831,7 @@ directly:
 		partition.DecommissionWeight = weight
 		partition.DecommissionRaftForce = raftForce
 		partition.DecommissionType = migrateType
-		partition.DecommissionSelectTag = param.SelectTag
+		partition.DecommissionTag = param.Tag
 		return
 	}
 	// forbidden dp to restore meta for replica
@@ -1856,7 +1856,7 @@ directly:
 	// initial or failed restart
 	partition.ResetDecommissionStatus()
 	partition.DecommissionType = migrateType
-	partition.DecommissionSelectTag = param.SelectTag
+	partition.DecommissionTag = param.Tag
 	partition.SetDecommissionStatus(markDecommission, triggerCondition, "")
 	partition.DecommissionSrcAddr = srcAddr
 	partition.DecommissionDstAddr = dstAddr
@@ -1949,7 +1949,7 @@ func (partition *DataPartition) updateDecommissionStatusByTask(task Decommission
 	partition.DecommissionDstNodeSet = task.DecommissionDstNodeSet
 	partition.DecommissionWeight = task.DecommissionWeight
 	partition.DecommissionType = task.DecommissionType
-	partition.DecommissionSelectTag = task.DecommissionSelectTag
+	partition.DecommissionTag = task.DecommissionTag
 }
 
 func (partition *DataPartition) clearDecommissionTaskQueue() {
@@ -2388,7 +2388,7 @@ func (partition *DataPartition) ProcessNextDecommissionSrcHost(c *Cluster) bool 
 		RaftForce:        partition.DecommissionRaftForce,
 		Term:             partition.DecommissionTerm,
 		MigrateType:      partition.DecommissionType,
-		SelectTag:        partition.DecommissionSelectTag,
+		Tag:              partition.DecommissionTag,
 		Weight:           partition.DecommissionWeight,
 		SrcAddrs:         updatedSrcHosts,
 		DstAddrs:         updatedDstHosts,
@@ -2432,7 +2432,7 @@ func (partition *DataPartition) processNextDecommissionTask(c *Cluster) bool {
 		RaftForce:        t.DecommissionRaftForce,
 		Term:             t.DecommissionTerm,
 		MigrateType:      t.DecommissionType,
-		SelectTag:        t.DecommissionSelectTag,
+		Tag:              t.DecommissionTag,
 		Weight:           t.DecommissionWeight,
 		SrcAddrs:         t.DecommissionSrcAddrs,
 		DstAddrs:         t.DecommissionDstAddrs,
@@ -2502,8 +2502,8 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.SetDecommissionStatus(DecommissionInitial, "resetDecommissionStatus", "")
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	partition.DecommissionErrorMessage = ""
-	partition.DecommissionType = InitialDecommission
-	partition.DecommissionSelectTag = ""
+	partition.DecommissionType = proto.InitialDecommission
+	partition.DecommissionTag = ""
 	partition.RecoverStartTime = time.Time{}
 	partition.RecoverUpdateTime = time.Time{}
 	partition.DecommissionRetryTime = time.Time{}
@@ -2787,9 +2787,9 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster, allowPre
 			rackLevel:       c.getRackAwareLevel(),
 			excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, excludeHosts, partition.DecommissionSrcAddr),
 		}
-		if partition.DecommissionType == SelectTagDecommission {
+		if partition.DecommissionType == proto.TagDecommission && c.IsDataPartitionTagSet(partition.VolName) {
 			param.selectType = proto.SelectTypeTag
-			param.selectTag = partition.DecommissionSelectTag
+			param.tag = partition.DecommissionTag
 		}
 		targetHosts, _, err = ns.getAvailDataNodeHosts(param)
 		if err != nil {
@@ -3586,8 +3586,8 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		err = c.markDecommissionDataPartition(partition, node, &DecommissionMarkParam{
 			DstNodeSetID:     0,
 			RaftForce:        false,
-			MigrateType:      AutoAddReplica,
-			SelectTag:        "",
+			MigrateType:      proto.AutoAddReplica,
+			Tag:              "",
 			Weight:           highPriorityDecommissionWeight,
 			SrcAddrs:         nil,
 			DstAddrs:         nil,

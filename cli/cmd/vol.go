@@ -409,8 +409,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optVolQuotaClass int
 	var optVolQuotaOfClass int
 	var optStoreMode string
-	var optDpSelectTag string
-	var optMpSelectTag string
+	var optDpTag string
+	var optMpTag string
 
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
@@ -924,23 +924,23 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Default store mode : %v\n",
 					vv.DefaultStoreMode.Str()))
 			}
-			if optDpSelectTag != "" {
-				if !ValidateSelectTag(optDpSelectTag) {
+			if optDpTag != "" {
+				if !proto.ValidateTag(optDpTag) {
 					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
 					return
 				}
-				vv.DpSelectTag = optDpSelectTag
+				vv.DpTag = optDpTag
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  DpSelectTag : %v\n", vv.DpSelectTag))
+				confirmString.WriteString(fmt.Sprintf("  DpTag : %v\n", vv.DpTag))
 			}
-			if optMpSelectTag != "" {
-				if !ValidateSelectTag(optMpSelectTag) {
+			if optMpTag != "" {
+				if !proto.ValidateTag(optMpTag) {
 					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
 					return
 				}
-				vv.MpSelectTag = optMpSelectTag
+				vv.MpTag = optMpTag
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  MpSelectTag : %v\n", vv.MpSelectTag))
+				confirmString.WriteString(fmt.Sprintf("  MpTag : %v\n", vv.MpTag))
 			}
 
 			if err != nil {
@@ -1022,9 +1022,9 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, 0, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value(default 5)")
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, 0, "Remote cache same zone timeout microsecond(must > 0),default 400")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, 0, "Remote cache same region timeout millisecond(must > 0),default 2")
-	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "memory", "Specify default store mode of mp: memory, rocksdb")
-	cmd.Flags().StringVar(&optDpSelectTag, CliFlagDpSelectTag, "", "Specify dp select tag, split with ','. 'null' means null string")
-	cmd.Flags().StringVar(&optMpSelectTag, CliFlagMpSelectTag, "", "Specify mp select tag, split with ','. 'null' means null string")
+	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "Specify default store mode of mp: memory, rocksdb")
+	cmd.Flags().StringVar(&optDpTag, CliFlagDpTag, "", "Specify dp select tag, split with ','. 'null' means null string")
+	cmd.Flags().StringVar(&optMpTag, CliFlagMpTag, "", "Specify mp select tag, split with ','. 'null' means null string")
 
 	return cmd
 }

@@ -78,7 +78,7 @@ type Node interface {
 	GetStorageInfo() string
 	IsOffline() bool
 	GetZoneName() string
-	GetSelectTag() string
+	GetTag() string
 }
 
 // SortedWeightedNodes defines an array sorted by carry
@@ -179,7 +179,7 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 			return true
 		}
 
-		if param.selectType == proto.SelectTypeTag && param.selectTag != node.GetSelectTag() {
+		if param.selectType == proto.SelectTypeTag && param.tag != node.GetTag() {
 			return true
 		}
 
@@ -246,7 +246,7 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, param *selectParam) (newHo
 	weightedNodes, count := s.getCarryNodes(ns, total, param)
 	if len(weightedNodes) < param.replicaNum {
 		err = fmt.Errorf("action[%s NodeSelector-Select] no enough writable hosts,replicaNum: %d MatchNodeCount:%d, selectTag: %s",
-			s.GetName(), param.replicaNum, len(weightedNodes), param.selectTag)
+			s.GetName(), param.replicaNum, len(weightedNodes), param.tag)
 		return
 	}
 	// create enough carry nodes
@@ -320,7 +320,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, param *selectParam
 		if !canAllocPartition(node, s.nodeType, param.threshold) {
 			return true
 		}
-		if param.selectType == proto.SelectTypeTag && param.selectTag != node.GetSelectTag() {
+		if param.selectType == proto.SelectTypeTag && param.tag != node.GetTag() {
 			return true
 		}
 		sortedNodes = append(sortedNodes, node)
@@ -382,7 +382,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, param *selectParam
 	// if we cannot get enough writable nodes, return error
 	if len(orderHosts) < param.replicaNum {
 		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
-			s.GetName(), param.replicaNum, len(orderHosts), param.selectTag)
+			s.GetName(), param.replicaNum, len(orderHosts), param.tag)
 		return
 	}
 	log.LogInfof("action[%vNodeSelector-Select] peers[%v]", s.GetName(), peers)
@@ -421,7 +421,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, param *selectParam) (newHos
 	nodes := ns.getNodes(s.nodeType)
 	sortedNodes := make([]Node, 0)
 	nodes.Range(func(key, value interface{}) bool {
-		if param.selectType == proto.SelectTypeTag && param.selectTag != value.(Node).GetSelectTag() {
+		if param.selectType == proto.SelectTypeTag && param.tag != value.(Node).GetTag() {
 			return true
 		}
 		sortedNodes = append(sortedNodes, value.(Node))
@@ -430,7 +430,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, param *selectParam) (newHos
 	// if we cannot get enough nodes, return error
 	if len(sortedNodes) < param.replicaNum {
 		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
-			s.GetName(), param.replicaNum, len(sortedNodes), param.selectTag)
+			s.GetName(), param.replicaNum, len(sortedNodes), param.tag)
 		return
 	}
 	// sort nodes by id, so we can get a node list that is as stable as possible
@@ -464,7 +464,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, param *selectParam) (newHos
 	// if we cannot get enough writable nodes, return error
 	if len(orderHosts) < param.replicaNum {
 		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
-			s.GetName(), param.replicaNum, len(orderHosts), param.selectTag)
+			s.GetName(), param.replicaNum, len(orderHosts), param.tag)
 		return
 	}
 	// move the index of selector
@@ -554,7 +554,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, param *selectParam) (newHosts []
 		if !canAllocPartition(node, s.nodeType, param.threshold) {
 			return true
 		}
-		if param.selectType == proto.SelectTypeTag && param.selectTag != node.GetSelectTag() {
+		if param.selectType == proto.SelectTypeTag && param.tag != node.GetTag() {
 			return true
 		}
 		nodes = append(nodes, node)
@@ -563,7 +563,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, param *selectParam) (newHosts []
 
 	if len(nodes) < param.replicaNum {
 		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
-			s.GetName(), param.replicaNum, len(nodes), param.selectTag)
+			s.GetName(), param.replicaNum, len(nodes), param.tag)
 		return
 	}
 
@@ -602,7 +602,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, param *selectParam) (newHosts []
 	// if we cannot get enough writable nodes, return error
 	if len(orderHosts) < param.replicaNum {
 		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v selectTag: %s",
-			s.GetName(), param.replicaNum, len(orderHosts), param.selectTag)
+			s.GetName(), param.replicaNum, len(orderHosts), param.tag)
 		return
 	}
 	log.LogInfof("action[%vNodeSelector-Select] peers[%v]", s.GetName(), peers)

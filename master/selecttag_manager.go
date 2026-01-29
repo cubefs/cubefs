@@ -25,47 +25,48 @@ import (
 )
 
 const (
-	DefaultSelectTag            = ""
-	MaxSelectTagDecommissionNum = 100
-	CheckSelectTagInterval      = 1 * time.Minute
-	StatusSleeping              = "sleeping"
-	StatusChecking              = "checking"
-	StatusDecommissioning       = "decommissioning"
-	StatusCreatingPlan          = "creating plan"
-	StatusIdle                  = "idle"
-	StatusRunning               = "running"
-	StatusStopping              = "stopping"
-	EmptySelectTag              = "null"
+	DefaultTag            = ""
+	MaxTagDecommissionNum = 100
+	CheckTagInterval      = 1 * time.Minute
+	StatusSleeping        = "sleeping"
+	StatusChecking        = "checking"
+	StatusDecommissioning = "decommissioning"
+	StatusCreatingPlan    = "creating plan"
+	StatusIdle            = "idle"
+	StatusRunning         = "running"
+	StatusStopping        = "stopping"
+	EmptyTag              = "null"
+	MaxMpDecommissionNum  = 5
 )
 
 var (
-	DpSelectTagThreadStatus = StatusSleeping
-	MpSelectTagThreadStatus = StatusSleeping
-	MpFailedKeys            = make([]string, 0)
+	DpTagThreadStatus = StatusSleeping
+	MpTagThreadStatus = StatusSleeping
+	MpFailedKeys      = make([]string, 0)
 )
 
-func (c *Cluster) scheduleToCheckDpSelectTag() {
+func (c *Cluster) scheduleToCheckDpTag() {
 	c.runTask(&cTask{
-		tickTime: CheckSelectTagInterval,
-		name:     "scheduleToCheckDpSelectTag",
+		tickTime: CheckTagInterval,
+		name:     "scheduleToCheckDpTag",
 		function: func() (fin bool) {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkDpSelectTag()
+				c.checkDpTag()
 			}
 			return
 		},
 	})
 }
 
-func (c *Cluster) checkDpSelectTag() {
-	if !c.cfg.AutoFixSelectTag {
+func (c *Cluster) checkDpTag() {
+	if !c.cfg.AutoFixTag {
 		return
 	}
-	DpSelectTagThreadStatus = StatusChecking
+	DpTagThreadStatus = StatusChecking
 	defer func() {
-		DpSelectTagThreadStatus = StatusSleeping
+		DpTagThreadStatus = StatusSleeping
 		if r := recover(); r != nil {
-			log.LogWarnf("checkDpSelectTag occurred panic,err[%v]", r)
+			log.LogWarnf("checkDpTag occurred panic,err[%v]", r)
 		}
 	}()
 
@@ -75,30 +76,30 @@ func (c *Cluster) checkDpSelectTag() {
 		if vol.isInitializingOrInitFailed() {
 			continue
 		}
-		selectTagList := vol.GetDpSelectTagList(c)
-		if len(selectTagList) == 0 {
+		tagList := vol.GetDpTagList(c)
+		if len(tagList) == 0 {
 			continue
 		}
 
-		vol.FixDataPartitionSelectTag(c)
+		vol.FixDataPartitionTag(c)
 
-		count += vol.countSelectTagDecommissionTask(c)
+		count += vol.countTagDecommissionTask(c)
 	}
-	if count >= MaxSelectTagDecommissionNum {
+	if count >= MaxTagDecommissionNum {
 		return
 	}
 
-	DpSelectTagThreadStatus = StatusDecommissioning
+	DpTagThreadStatus = StatusDecommissioning
 
-	total := MaxSelectTagDecommissionNum - count
+	total := MaxTagDecommissionNum - count
 	for _, vol := range vols {
 		if vol.isInitializingOrInitFailed() {
 			continue
 		}
 
-		num, err := vol.createSelectTagDecommissionTask(c, total)
+		num, err := vol.createTagDecommissionTask(c, total)
 		if err != nil {
-			log.LogErrorf("checkDpSelectTag,vol[%v] create select tag decommission task failed,err[%v]", vol.Name, err)
+			log.LogErrorf("checkDpTag,vol[%v] create tag decommission task failed,err[%v]", vol.Name, err)
 			continue
 		}
 		total -= num
@@ -108,10 +109,10 @@ func (c *Cluster) checkDpSelectTag() {
 	}
 }
 
-func (vol *Vol) FixDataPartitionSelectTag(c *Cluster) {
-	dpSelectTagList := vol.GetDpSelectTagList(c)
-	if len(dpSelectTagList) == 0 {
-		dpSelectTagList = []string{"", "", ""}
+func (vol *Vol) FixDataPartitionTag(c *Cluster) {
+	dpTagList := vol.GetDpTagList(c)
+	if len(dpTagList) == 0 {
+		dpTagList = []string{"", "", ""}
 	}
 
 	partitions := vol.dataPartitions.clonePartitions()
@@ -121,18 +122,18 @@ func (vol *Vol) FixDataPartitionSelectTag(c *Cluster) {
 		}
 		partition.Lock()
 		replicas := partition.Replicas
-		if len(replicas) == 0 {
+		if len(replicas) < 3 {
 			partition.Unlock()
 			continue
 		}
 
 		desiredTags := make([]string, 0, len(replicas))
-		if len(dpSelectTagList) >= len(replicas) {
-			desiredTags = append(desiredTags, dpSelectTagList[:len(replicas)]...)
+		if len(dpTagList) >= len(replicas) {
+			desiredTags = append(desiredTags, dpTagList...)
 		} else {
-			desiredTags = append(desiredTags, dpSelectTagList...)
-			for i := len(dpSelectTagList); i < len(replicas); i++ {
-				desiredTags = append(desiredTags, DefaultSelectTag)
+			desiredTags = append(desiredTags, dpTagList...)
+			for i := len(dpTagList); i < len(replicas); i++ {
+				desiredTags = append(desiredTags, DefaultTag)
 			}
 		}
 
@@ -147,12 +148,16 @@ func (vol *Vol) FixDataPartitionSelectTag(c *Cluster) {
 			if replica == nil {
 				continue
 			}
-			selectTag := GetDataPartitionPeerSelectTag(partition, replica.Addr)
-			if required[selectTag] > 0 {
-				required[selectTag]--
+			tag := GetDataPartitionPeerTag(partition, replica.Addr)
+			if required[tag] > 0 {
+				required[tag]--
 				continue
 			}
 			candidates = append(candidates, replica)
+		}
+		if len(candidates) == 0 {
+			partition.Unlock()
+			continue
 		}
 
 		for _, tag := range desiredTags {
@@ -161,18 +166,18 @@ func (vol *Vol) FixDataPartitionSelectTag(c *Cluster) {
 			}
 			replica := candidates[0]
 			candidates = candidates[1:]
-			selectTag := GetDataPartitionPeerSelectTag(partition, replica.Addr)
-			if selectTag != tag {
-				SetDataPartitionPeerSelectTag(partition, replica.Addr, tag)
+			currentTag := GetDataPartitionPeerTag(partition, replica.Addr)
+			if currentTag != tag {
+				SetDataPartitionPeerTag(partition, replica.Addr, tag)
 				changed = true
 			}
 			required[tag]--
 		}
 
 		for _, replica := range candidates {
-			selectTag := GetDataPartitionPeerSelectTag(partition, replica.Addr)
-			if selectTag != DefaultSelectTag {
-				SetDataPartitionPeerSelectTag(partition, replica.Addr, DefaultSelectTag)
+			tag := GetDataPartitionPeerTag(partition, replica.Addr)
+			if tag != DefaultTag {
+				SetDataPartitionPeerTag(partition, replica.Addr, DefaultTag)
 				changed = true
 			}
 		}
@@ -181,32 +186,35 @@ func (vol *Vol) FixDataPartitionSelectTag(c *Cluster) {
 		if changed {
 			err := c.syncUpdateDataPartition(partition)
 			if err != nil {
-				log.LogErrorf("FixDataPartitionSelectTag,vol[%v] partition[%v] fix dp select tag failed,err[%v]", vol.Name, partition.PartitionID, err)
+				log.LogErrorf("FixDataPartitionTag,vol[%v] partition[%v] fix dp tag failed,err[%v]", vol.Name, partition.PartitionID, err)
 			}
 		}
 	}
 }
 
-func (vol *Vol) countSelectTagDecommissionTask(c *Cluster) (count int) {
+func (vol *Vol) countTagDecommissionTask(c *Cluster) (count int) {
 	partitions := vol.dataPartitions.clonePartitions()
 	for _, partition := range partitions {
 		if partition.IsDiscard {
 			continue
 		}
-		if partition.DecommissionType == SelectTagDecommission && partition.isPerformingDecommission(c) {
+		if partition.DecommissionType == proto.TagDecommission && partition.isPerformingDecommission(c) {
 			count++
 		}
 	}
 	return count
 }
 
-func (vol *Vol) createSelectTagDecommissionTask(c *Cluster, limit int) (num int, err error) {
+func (vol *Vol) createTagDecommissionTask(c *Cluster, limit int) (num int, err error) {
 	partitions := vol.dataPartitions.clonePartitions()
 	for _, partition := range partitions {
 		if partition.IsDiscard {
 			continue
 		}
 		if partition.isPerformingDecommission(c) {
+			continue
+		}
+		if len(partition.Replicas) < 3 {
 			continue
 		}
 
@@ -218,15 +226,17 @@ func (vol *Vol) createSelectTagDecommissionTask(c *Cluster, limit int) (num int,
 			if dataNode == nil {
 				continue
 			}
-			selectTag := GetDataPartitionPeerSelectTag(partition, replica.Addr)
-			if dataNode.SelectTag == DefaultSelectTag || dataNode.SelectTag == selectTag {
+			tag := GetDataPartitionPeerTag(partition, replica.Addr)
+			if tag == DefaultTag || dataNode.Tag == tag {
 				continue
 			}
+
+			log.LogWarnf("checkDpTag create dp decommission: vol[%v] dpId[%v] addr[%v] tag[%v]", vol.Name, partition.PartitionID, replica.Addr, tag)
 			err = c.markDecommissionDataPartition(partition, dataNode, &DecommissionMarkParam{
 				DstNodeSetID:     0,
 				RaftForce:        false,
-				MigrateType:      SelectTagDecommission,
-				SelectTag:        selectTag,
+				MigrateType:      proto.TagDecommission,
+				Tag:              tag,
 				Weight:           0,
 				SrcAddrs:         nil,
 				DstAddrs:         nil,
@@ -245,20 +255,20 @@ func (vol *Vol) createSelectTagDecommissionTask(c *Cluster, limit int) (num int,
 	return num, nil
 }
 
-func (vol *Vol) GetDpSelectTagList(c *Cluster) []string {
+func (vol *Vol) GetDpTagList(c *Cluster) []string {
 	var (
-		dpSelectTagList []string
-		result          []string
+		dpTagList []string
+		result    []string
 	)
 
 	result = make([]string, 0, vol.dpReplicaNum)
 
-	dpSelectTag := vol.DpSelectTag
-	if dpSelectTag != "" {
-		dpSelectTagList = strings.Split(dpSelectTag, ",")
-		for _, tag := range dpSelectTagList {
+	dpTag := vol.DpTag
+	if dpTag != "" {
+		dpTagList = strings.Split(dpTag, ",")
+		for _, tag := range dpTagList {
 			tag = strings.TrimSpace(tag)
-			if tag == "" || tag == EmptySelectTag {
+			if tag == "" || tag == EmptyTag {
 				continue
 			}
 			result = append(result, tag)
@@ -269,12 +279,12 @@ func (vol *Vol) GetDpSelectTagList(c *Cluster) []string {
 		return result
 	}
 
-	dpSelectTag = c.cfg.DefaultDpSelectTag
-	if dpSelectTag != "" {
-		dpSelectTagList = strings.Split(dpSelectTag, ",")
-		for _, tag := range dpSelectTagList {
+	dpTag = c.cfg.DefaultDpTag
+	if dpTag != "" {
+		dpTagList = strings.Split(dpTag, ",")
+		for _, tag := range dpTagList {
 			tag = strings.TrimSpace(tag)
-			if tag == "" || tag == EmptySelectTag {
+			if tag == "" || tag == EmptyTag {
 				continue
 			}
 			result = append(result, tag)
@@ -283,28 +293,36 @@ func (vol *Vol) GetDpSelectTagList(c *Cluster) []string {
 	return result
 }
 
-func (c *Cluster) scheduleToCheckMpSelectTag() {
+func (c *Cluster) scheduleToCheckMpTag() {
 	c.runTask(&cTask{
-		tickTime: CheckSelectTagInterval,
-		name:     "scheduleToCheckMpSelectTag",
+		tickTime: CheckTagInterval,
+		name:     "scheduleToCheckMpTag",
 		function: func() (fin bool) {
 			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkMpSelectTag()
+				c.checkMpTag()
 			}
 			return
 		},
 	})
 }
 
-func (c *Cluster) checkMpSelectTag() {
-	if !c.cfg.AutoFixSelectTag {
+func (c *Cluster) checkMpTag() {
+	if !c.cfg.AutoFixTag {
 		return
 	}
-	MpSelectTagThreadStatus = StatusChecking
+	if c.IsClusterPlanNotIdle() {
+		return
+	}
+	MpTagThreadStatus = StatusChecking
+	if !c.TrySetClusterPlanRunning() {
+		MpTagThreadStatus = StatusSleeping
+		return
+	}
 	defer func() {
-		MpSelectTagThreadStatus = StatusSleeping
+		MpTagThreadStatus = StatusSleeping
+		c.SetClusterPlanIdle()
 		if r := recover(); r != nil {
-			log.LogWarnf("checkMpSelectTag occurred panic,err[%v]", r)
+			log.LogWarnf("checkMpTag occurred panic,err[%v]", r)
 		}
 	}()
 
@@ -313,70 +331,142 @@ func (c *Cluster) checkMpSelectTag() {
 		if vol.isInitializingOrInitFailed() {
 			continue
 		}
-		selectTagList := vol.GetMpSelectTagList(c)
-		if len(selectTagList) == 0 {
+		tagList := vol.GetMpTagList(c)
+		if len(tagList) == 0 {
 			continue
 		}
 
-		vol.FixMetaPartitionSelectTag(c)
-		log.LogDebugf("checkMpSelectTag,vol[%v] fix mp select tag", vol.Name)
+		vol.FixMetaPartitionTag(c)
+		log.LogDebugf("checkMpTag,vol[%v] fix mp tag", vol.Name)
 	}
 
-	if c.IsClusterPlanNotIdle() {
-		return
-	}
+	MpTagThreadStatus = StatusCreatingPlan
 
-	MpSelectTagThreadStatus = StatusCreatingPlan
-
-	mismatches := c.collectMpSelectTagMismatches(vols)
-	selectedGroup := c.selectMpSelectTagMismatchGroup(mismatches)
+	mismatches := c.collectMpTagMismatches(vols)
+	selectedGroup := c.selectMpTagMismatchGroup(mismatches)
 	if len(selectedGroup) == 0 {
 		return
 	}
 
-	if err := c.createAndRunMpSelectTagPlan(selectedGroup); err != nil {
-		log.LogWarnf("checkMpSelectTag, create and run mp select tag plan failed, err[%v]", err)
+	num := c.GetMetaPartitionDecommissionCount(proto.TagDecommission)
+	if num >= MaxMpDecommissionNum {
 		return
 	}
-}
 
-func (c *Cluster) createAndRunMpSelectTagPlan(selectedGroup []*mpSelectTagMismatch) error {
-	clearPlanStatus := true
-	c.SetClusterPlanRunning()
-	defer func() {
-		if clearPlanStatus {
-			c.SetClusterPlanIdle()
+	for _, item := range selectedGroup {
+		if item.tag == DefaultTag {
+			continue
 		}
-	}()
+		if contains(MpFailedKeys, item.tag+"|"+item.storeMode.Str()) {
+			continue
+		}
+		if item.partition.IsRecover.Load() {
+			continue
+		}
 
-	plan := c.createMpSelectTagPlan(selectedGroup)
-	if plan == nil {
-		return nil
-	}
-	if err := c.syncAddBalanceTask(plan); err != nil {
-		log.LogWarnf("checkMpSelectTag, syncAddBalanceTask failed, tag[%v] mode[%v] err[%v]",
-			plan.SelectTag, plan.Mode, err)
-		return err
-	}
+		dstAddr, err := c.selectOneTargetMetaReplica(item.partition, item.replica.Addr, item.tag, item.storeMode)
+		if err != nil {
+			log.LogWarnf("checkMpTag, select one target meta replica failed, vol[%v] mp[%v] addr[%v] err[%v]",
+				item.vol.Name, item.partition.PartitionID, item.replica.Addr, err)
+			key := item.tag + "|" + item.storeMode.Str()
+			MpFailedKeys = append(MpFailedKeys, key)
+			continue
+		}
 
-	log.LogWarnf("checkMpSelectTag, create plan success, tag[%v] mode[%v] mpCount[%v] replicaCount[%v]",
-		plan.SelectTag, plan.Mode, plan.Total, plan.TotalReplicaNum)
-	clearPlanStatus = false
-	go c.DoMetaPartitionBalanceTask(plan)
-	return nil
+		if !item.partition.CheckLastDelReplicaTime() {
+			continue
+		}
+
+		log.LogWarnf("checkMpTag add learner: mp[%d] addr[%s]->dst[%s] tag[%s] storeMode[%s]", item.partition.PartitionID, item.replica.Addr, dstAddr, item.tag, item.storeMode.Str())
+		err = c.migrateMetaPartitionByLearner(item.replica.Addr, dstAddr, item.partition, item.storeMode, proto.TagDecommission)
+		if err != nil {
+			log.LogWarnf("checkMpTag, add meta replica learner failed, vol[%v] mp[%v] addr[%v] err[%v]",
+				item.vol.Name, item.partition.PartitionID, item.replica.Addr, err)
+			continue
+		}
+
+		num++
+		if num >= MaxMpDecommissionNum {
+			break
+		}
+	}
 }
 
-type mpSelectTagMismatch struct {
+func (c *Cluster) selectOneTargetMetaReplica(mp *MetaPartition, srcAddr string, selectTag string, storeMode proto.StoreMode) (string, error) {
+	mp.RLock()
+	oldHosts := append([]string(nil), mp.Hosts...)
+	mp.RUnlock()
+
+	nodeType := TypeMetaPartition
+	if storeMode == proto.StoreModeRocksDb {
+		nodeType = TypeRocksdbPartition
+	}
+
+	metaNode, err := c.metaNode(srcAddr)
+	if err != nil {
+		log.LogWarnf("selectOneTargetMetaReplica, get meta node failed, mp[%d] addr[%s] err[%v]", mp.PartitionID, srcAddr, err)
+		return "", err
+	}
+
+	zone, err := c.t.getZone(metaNode.ZoneName)
+	if err != nil {
+		log.LogWarnf("selectOneTargetMetaReplica, get zone failed, mp[%d] addr[%s] err[%v]", mp.PartitionID, srcAddr, err)
+		return "", err
+	}
+
+	ns, err := zone.getNodeSet(metaNode.NodeSetID)
+	if err != nil {
+		log.LogWarnf("selectOneTargetMetaReplica, get node set failed, mp[%d] addr[%s] err[%v]", mp.PartitionID, srcAddr, err)
+		return "", err
+	}
+
+	param := &selectParam{
+		replicaNum:   1,
+		excludeHosts: oldHosts,
+		rackLevel:    c.getRackAwareLevel(),
+		excludeRacks: c.GetExRacksByHosts(nodeType, oldHosts, srcAddr),
+		selectType:   proto.SelectTypeTag,
+		tag:          selectTag,
+	}
+
+	_, peers, err := ns.getAvailMetaNodeHosts(param, storeMode)
+	if err == nil {
+		return peers[0].Addr, nil
+	}
+
+	param.excludeNodeSets = append(param.excludeNodeSets, ns.ID)
+	_, peers, err = zone.getAvailNodeHosts(nodeType, param)
+	if err == nil {
+		return peers[0].Addr, nil
+	}
+
+	zones := mp.getLiveZones(srcAddr)
+	var excludeZone []string
+	if len(zones) == 0 {
+		excludeZone = append(excludeZone, zone.name)
+	} else {
+		excludeZone = append(excludeZone, zones[0])
+	}
+
+	_, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", proto.MediaType_Unspecified, param)
+	if err == nil {
+		return peers[0].Addr, nil
+	}
+
+	return "", fmt.Errorf("selectOneTargetMetaReplica, no available meta node hosts, mp[%d] addr[%s] err[%v]", mp.PartitionID, srcAddr, err)
+}
+
+type mpTagMismatch struct {
 	vol       *Vol
 	partition *MetaPartition
 	replica   *MetaReplica
 	metaNode  *MetaNode
 	storeMode proto.StoreMode
-	selectTag string
+	tag       string
 }
 
-func (c *Cluster) collectMpSelectTagMismatches(vols map[string]*Vol) []*mpSelectTagMismatch {
-	mismatches := make([]*mpSelectTagMismatch, 0)
+func (c *Cluster) collectMpTagMismatches(vols map[string]*Vol) []*mpTagMismatch {
+	mismatches := make([]*mpTagMismatch, 0)
 	for _, vol := range vols {
 		if vol.isInitializingOrInitFailed() {
 			continue
@@ -392,6 +482,10 @@ func (c *Cluster) collectMpSelectTagMismatches(vols map[string]*Vol) []*mpSelect
 			if len(replicas) == 0 {
 				continue
 			}
+			if partition.IsRecover.Load() {
+				continue
+			}
+
 			for _, replica := range replicas {
 				if replica == nil {
 					continue
@@ -401,51 +495,52 @@ func (c *Cluster) collectMpSelectTagMismatches(vols map[string]*Vol) []*mpSelect
 					var err error
 					metaNode, err = c.metaNode(replica.Addr)
 					if err != nil {
-						log.LogWarnf("checkMpSelectTag, get metanode failed, vol[%v] mp[%v] addr[%v] err[%v]",
+						log.LogWarnf("checkMpTag, get metanode failed, vol[%v] mp[%v] addr[%v] err[%v]",
 							vol.Name, partition.PartitionID, replica.Addr, err)
 						continue
 					}
 				}
-				selectTag := GetMetaPartitionPeerSelectTag(partition, replica.Addr)
-				if metaNode.SelectTag == selectTag {
+				tag := GetMetaPartitionPeerTag(partition, replica.Addr)
+				if metaNode.Tag == tag {
 					continue
 				}
 				storeMode, err := c.getMetaPartitionStoreMode(partition, replica.Addr)
 				if err != nil {
-					log.LogWarnf("checkMpSelectTag, get store mode failed, vol[%v] mp[%v] addr[%v] err[%v]",
+					log.LogWarnf("checkMpTag, get store mode failed, vol[%v] mp[%v] addr[%v] err[%v]",
 						vol.Name, partition.PartitionID, replica.Addr, err)
 					continue
 				}
-				mismatches = append(mismatches, &mpSelectTagMismatch{
+				mismatches = append(mismatches, &mpTagMismatch{
 					vol:       vol,
 					partition: partition,
 					replica:   replica,
 					metaNode:  metaNode,
 					storeMode: storeMode,
-					selectTag: selectTag,
+					tag:       tag,
 				})
+				break
 			}
 		}
 	}
 	return mismatches
 }
 
-func (c *Cluster) selectMpSelectTagMismatchGroup(mismatches []*mpSelectTagMismatch) []*mpSelectTagMismatch {
+func (c *Cluster) selectMpTagMismatchGroup(mismatches []*mpTagMismatch) []*mpTagMismatch {
 	if len(mismatches) == 0 {
 		return nil
 	}
-	grouped := make(map[string][]*mpSelectTagMismatch)
+	grouped := make(map[string][]*mpTagMismatch)
 	for _, item := range mismatches {
-		if item.selectTag == DefaultSelectTag {
+		if item.tag == DefaultTag {
 			continue
 		}
-		key := item.selectTag + "|" + item.storeMode.Str()
+		key := item.tag + "|" + item.storeMode.Str()
 		if contains(MpFailedKeys, key) {
 			continue
 		}
 		grouped[key] = append(grouped[key], item)
 	}
-	var selectedGroup []*mpSelectTagMismatch
+	var selectedGroup []*mpTagMismatch
 	for _, group := range grouped {
 		if len(group) > len(selectedGroup) {
 			selectedGroup = group
@@ -454,186 +549,10 @@ func (c *Cluster) selectMpSelectTagMismatchGroup(mismatches []*mpSelectTagMismat
 	return selectedGroup
 }
 
-func (c *Cluster) createMpSelectTagPlan(group []*mpSelectTagMismatch) *proto.ClusterPlan {
-	if len(group) == 0 {
-		return nil
-	}
-	selectTag := group[0].selectTag
-	storeMode := group[0].storeMode
-	plan := &proto.ClusterPlan{
-		Low:            make(map[string]*proto.ZonePressureView),
-		RocksdbLow:     make(map[string]*proto.ZonePressureView),
-		Plan:           make([]*proto.MetaBalancePlan, 0),
-		Name:           "",
-		Status:         PlanTaskRun,
-		Type:           AddLearner,
-		Mode:           storeMode,
-		ModeCnt:        1,
-		StartId:        0,
-		EndId:          0,
-		RackLevel:      c.getRackAwareLevel(),
-		FailedList:     make([]uint64, 0),
-		AutoPromote:    true,
-		SelectType:     SelectTypeNodeAddrs,
-		SelectTag:      selectTag,
-		DoneNum:        0,
-		RunningNum:     0,
-		DoneReplicaNum: 0,
-		RunReplicaNum:  0,
-	}
-	if err := c.GetLowMemPressureTopology(plan); err != nil {
-		log.LogWarnf("checkMpSelectTag, GetLowMemPressureTopology failed, tag[%v] mode[%v] err[%v]",
-			selectTag, storeMode, err)
-		return nil
-	}
-	totalReplica, err := c.fillMpSelectTagPlan(plan, group)
-	if err != nil {
-		log.LogWarnf("checkMpSelectTag, fillMpSelectTagPlan failed, tag[%v] mode[%v] err[%v]",
-			selectTag, storeMode, err)
-		if err == NotEnoughResource {
-			key := group[0].selectTag + "|" + group[0].storeMode.Str()
-			MpFailedKeys = append(MpFailedKeys, key)
-		}
-		return nil
-	}
-	if len(plan.Plan) == 0 || totalReplica == 0 {
-		return nil
-	}
-	plan.Total = len(plan.Plan)
-	plan.TotalReplicaNum = totalReplica
-	plan.UndoNum = int32(plan.Total)
-	plan.UndoReplicaNum = int32(plan.TotalReplicaNum)
-	plan.StartTime = time.Now()
-	return plan
-}
-
-func (c *Cluster) fillMpSelectTagPlan(plan *proto.ClusterPlan, group []*mpSelectTagMismatch) (int, error) {
-	mpPlanMap := make(map[uint64]*proto.MetaBalancePlan)
-	totalReplica := 0
-	for _, item := range group {
-		if totalReplica >= MaxMpMigrateNum {
-			break
-		}
-		mpPlan := mpPlanMap[item.partition.PartitionID]
-		if mpPlan == nil {
-			mpPlan = c.buildMpSelectTagMpPlan(item)
-			if mpPlan == nil {
-				continue
-			}
-			mpPlanMap[item.partition.PartitionID] = mpPlan
-			plan.Plan = append(plan.Plan, mpPlan)
-		}
-		dest, err := c.pickMpSelectTagDestination(plan, mpPlan, item)
-		if err != nil {
-			return totalReplica, err
-		}
-		if dest == nil {
-			continue
-		}
-		mpPlan.Plan = append(mpPlan.Plan, dest)
-		mpPlan.PlanNum = len(mpPlan.Plan)
-		totalReplica++
-	}
-	return totalReplica, nil
-}
-
-func (c *Cluster) buildMpSelectTagMpPlan(item *mpSelectTagMismatch) *proto.MetaBalancePlan {
-	item.partition.RLock()
-	replicas := append([]*MetaReplica(nil), item.partition.Replicas...)
-	item.partition.RUnlock()
-	mpPlan := &proto.MetaBalancePlan{
-		ID:         item.partition.PartitionID,
-		Original:   make([]*proto.MrBalanceInfo, 0, len(replicas)),
-		OverLoad:   make([]*proto.MrBalanceInfo, 0),
-		Plan:       make([]*proto.MrBalanceInfo, 0),
-		InodeCount: item.partition.InodeCount,
-		PlanNum:    0,
-	}
-	memorySize := GetMetaPartitionMemorySize(item.partition)
-	for _, mr := range replicas {
-		if mr == nil {
-			continue
-		}
-		mn := mr.metaNode
-		if mn == nil {
-			var err error
-			mn, err = c.metaNode(mr.Addr)
-			if err != nil {
-				log.LogWarnf("checkMpSelectTag, get metanode failed, vol[%v] mp[%v] addr[%v] err[%v]",
-					item.vol.Name, item.partition.PartitionID, mr.Addr, err)
-				continue
-			}
-		}
-		replicaStoreMode, err := c.getMetaPartitionStoreMode(item.partition, mr.Addr)
-		if err != nil {
-			log.LogWarnf("checkMpSelectTag, get store mode failed, vol[%v] mp[%v] addr[%v] err[%v]",
-				item.vol.Name, item.partition.PartitionID, mr.Addr, err)
-			continue
-		}
-		mrRec := &proto.MrBalanceInfo{
-			Source:       mr.Addr,
-			SrcMemSize:   memorySize,
-			SrcNodeSetId: mn.NodeSetID,
-			SrcZoneName:  mn.ZoneName,
-			SrcRack:      mn.Rack,
-			Status:       PlanTaskInit,
-			StoreMode:    replicaStoreMode,
-		}
-		mpPlan.Original = append(mpPlan.Original, mrRec)
-	}
-	if len(mpPlan.Original) == 0 {
-		return nil
-	}
-	return mpPlan
-}
-
-func (c *Cluster) pickMpSelectTagDestination(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, item *mpSelectTagMismatch) (*proto.MrBalanceInfo, error) {
-	memorySize := GetMetaPartitionMemorySize(item.partition)
-	buildGetParam := func() *GetMigrateAddrParam {
-		getParam := &GetMigrateAddrParam{
-			Topo:        plan.Low,
-			RocksdbTopo: plan.RocksdbLow,
-			ZoneName:    item.metaNode.ZoneName,
-			NodeSetID:   item.metaNode.NodeSetID,
-			RequestNum:  1,
-			LeastSize:   memorySize,
-			IsRocksdb:   plan.Mode == proto.StoreModeRocksDb,
-			RackLevel:   plan.RackLevel,
-		}
-		FillExcludeAddrIntoGetParam(mpPlan, getParam)
-		return getParam
-	}
-	find, dests := GetMigrateDestAddr(buildGetParam())
-	if !find {
-		find, dests = GetMigrateAddrExcludeNodeSet(buildGetParam())
-	}
-	if !find {
-		find, dests = GetMigrateAddrExcludeZone(buildGetParam())
-	}
-	if !find || len(dests) == 0 {
-		log.LogWarnf("checkMpSelectTag, no destination found, vol[%v] mp[%v] src[%v] tag[%v]",
-			item.vol.Name, item.partition.PartitionID, item.replica.Addr, item.selectTag)
-		return nil, NotEnoughResource
-	}
-	dest := dests[0]
-	dest.Source = item.replica.Addr
-	for _, original := range mpPlan.Original {
-		if original.Source == item.replica.Addr {
-			dest.SrcMemSize = original.SrcMemSize
-			dest.SrcNodeSetId = original.SrcNodeSetId
-			dest.SrcZoneName = original.SrcZoneName
-			dest.SrcRack = original.SrcRack
-			dest.StoreMode = original.StoreMode
-			break
-		}
-	}
-	return dest, nil
-}
-
-func (vol *Vol) FixMetaPartitionSelectTag(c *Cluster) {
-	mpSelectTagList := vol.GetMpSelectTagList(c)
-	if len(mpSelectTagList) == 0 {
-		mpSelectTagList = []string{"", "", ""}
+func (vol *Vol) FixMetaPartitionTag(c *Cluster) {
+	mpTagList := vol.GetMpTagList(c)
+	if len(mpTagList) == 0 {
+		mpTagList = []string{"", "", ""}
 	}
 
 	partitions := vol.cloneMetaPartitionMap()
@@ -648,12 +567,12 @@ func (vol *Vol) FixMetaPartitionSelectTag(c *Cluster) {
 			continue
 		}
 		desiredTags := make([]string, 0, len(replicas))
-		if len(mpSelectTagList) >= len(replicas) {
-			desiredTags = append(desiredTags, mpSelectTagList[:len(replicas)]...)
+		if len(mpTagList) >= len(replicas) {
+			desiredTags = append(desiredTags, mpTagList...)
 		} else {
-			desiredTags = append(desiredTags, mpSelectTagList...)
-			for i := len(mpSelectTagList); i < len(replicas); i++ {
-				desiredTags = append(desiredTags, DefaultSelectTag)
+			desiredTags = append(desiredTags, mpTagList...)
+			for i := len(mpTagList); i < len(replicas); i++ {
+				desiredTags = append(desiredTags, DefaultTag)
 			}
 		}
 
@@ -668,12 +587,17 @@ func (vol *Vol) FixMetaPartitionSelectTag(c *Cluster) {
 			if replica == nil {
 				continue
 			}
-			selectTag := GetMetaPartitionPeerSelectTag(partition, replica.Addr)
-			if required[selectTag] > 0 {
-				required[selectTag]--
+			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
+			if required[tag] > 0 {
+				required[tag]--
 				continue
 			}
 			candidates = append(candidates, replica)
+		}
+
+		if len(candidates) == 0 {
+			partition.Unlock()
+			continue
 		}
 
 		for _, tag := range desiredTags {
@@ -682,18 +606,18 @@ func (vol *Vol) FixMetaPartitionSelectTag(c *Cluster) {
 			}
 			replica := candidates[0]
 			candidates = candidates[1:]
-			selectTag := GetMetaPartitionPeerSelectTag(partition, replica.Addr)
-			if selectTag != tag {
-				SetMetaPartitionPeerSelectTag(partition, replica.Addr, tag)
+			currentTag := GetMetaPartitionPeerTag(partition, replica.Addr)
+			if currentTag != tag {
+				SetMetaPartitionPeerTag(partition, replica.Addr, tag)
 				changed = true
 			}
 			required[tag]--
 		}
 
 		for _, replica := range candidates {
-			selectTag := GetMetaPartitionPeerSelectTag(partition, replica.Addr)
-			if selectTag != DefaultSelectTag {
-				SetMetaPartitionPeerSelectTag(partition, replica.Addr, DefaultSelectTag)
+			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
+			if tag != DefaultTag {
+				SetMetaPartitionPeerTag(partition, replica.Addr, DefaultTag)
 				changed = true
 			}
 		}
@@ -701,26 +625,26 @@ func (vol *Vol) FixMetaPartitionSelectTag(c *Cluster) {
 		if changed {
 			err := c.syncUpdateMetaPartition(partition)
 			if err != nil {
-				log.LogErrorf("FixMetaPartitionSelectTag,vol[%v] partition[%v] fix mp select tag failed,err[%v]", vol.Name, partition.PartitionID, err)
+				log.LogErrorf("FixMetaPartitionTag,vol[%v] partition[%v] fix mp tag failed,err[%v]", vol.Name, partition.PartitionID, err)
 			}
 		}
 	}
 }
 
-func (vol *Vol) GetMpSelectTagList(c *Cluster) []string {
+func (vol *Vol) GetMpTagList(c *Cluster) []string {
 	var (
-		mpSelectTagList []string
-		result          []string
+		mpTagList []string
+		result    []string
 	)
 
 	result = make([]string, 0, vol.mpReplicaNum)
 
-	mpSelectTag := vol.MpSelectTag
-	if mpSelectTag != "" {
-		mpSelectTagList = strings.Split(mpSelectTag, ",")
-		for _, tag := range mpSelectTagList {
+	mpTag := vol.MpTag
+	if mpTag != "" {
+		mpTagList = strings.Split(mpTag, ",")
+		for _, tag := range mpTagList {
 			tag = strings.TrimSpace(tag)
-			if tag == "" || tag == EmptySelectTag {
+			if tag == "" || tag == EmptyTag {
 				continue
 			}
 			result = append(result, tag)
@@ -730,12 +654,12 @@ func (vol *Vol) GetMpSelectTagList(c *Cluster) []string {
 		return result
 	}
 
-	mpSelectTag = c.cfg.DefaultMpSelectTag
-	if mpSelectTag != "" {
-		mpSelectTagList = strings.Split(mpSelectTag, ",")
-		for _, tag := range mpSelectTagList {
+	mpTag = c.cfg.DefaultMpTag
+	if mpTag != "" {
+		mpTagList = strings.Split(mpTag, ",")
+		for _, tag := range mpTagList {
 			tag = strings.TrimSpace(tag)
-			if tag == "" || tag == EmptySelectTag {
+			if tag == "" || tag == EmptyTag {
 				continue
 			}
 			result = append(result, tag)
@@ -744,34 +668,33 @@ func (vol *Vol) GetMpSelectTagList(c *Cluster) []string {
 	return result
 }
 
-func (c *Cluster) getSelectTagSummary() (summary *proto.SelectTagSummary, err error) {
-	summary = &proto.SelectTagSummary{
-		AutoFixSelectTag:    c.cfg.AutoFixSelectTag,
-		ClusterDpSelectTag:  c.cfg.DefaultDpSelectTag,
-		ClusterMpSelectTag:  c.cfg.DefaultMpSelectTag,
-		MigratingDps:        make([]uint64, 0, MaxSelectTagDecommissionNum),
-		MigratingMps:        make([]uint64, 0, MaxMpMigrateNum),
-		DpCheckThreadStatus: DpSelectTagThreadStatus,
-		MpCheckThreadStatus: MpSelectTagThreadStatus,
+func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
+	summary = &proto.TagSummary{
+		AutoFixTag:          c.cfg.AutoFixTag,
+		ClusterDpTag:        c.cfg.DefaultDpTag,
+		ClusterMpTag:        c.cfg.DefaultMpTag,
+		MigratingDps:        make([]uint64, 0, MaxTagDecommissionNum),
+		DpCheckThreadStatus: DpTagThreadStatus,
+		MpCheckThreadStatus: MpTagThreadStatus,
 		MpFailedKeys:        MpFailedKeys,
 	}
 
 	vols := c.allVols()
-	summary.VolWithSelectTag = make([]string, 0, len(vols))
+	summary.VolWithTag = make([]string, 0, len(vols))
 	for _, vol := range vols {
 		if vol.isInitializingOrInitFailed() {
 			continue
 		}
 		summary.VolumeNum++
-		if vol.MpSelectTag == "" && vol.DpSelectTag == "" {
+		if vol.MpTag == "" && vol.DpTag == "" {
 			continue
 		}
 		summary.VolWithTagNum++
-		summary.VolWithSelectTag = append(summary.VolWithSelectTag, vol.Name)
-		summary.MismatchDpNum += vol.countDpSelectTagMismatch()
-		summary.MismatchMpNum += vol.countMpSelectTagMismatch()
-		vol.getDecommissionSelectTagDps(c, summary)
-		summary.DecommissionDpNum += vol.countSelectTagDecommissionTask(c)
+		summary.VolWithTag = append(summary.VolWithTag, vol.Name)
+		summary.MismatchDpNum += vol.countDpTagMismatch()
+		summary.MismatchMpNum += vol.countMpTagMismatch()
+		vol.getDecommissionTagDps(c, summary)
+		summary.DecommissionDpNum += vol.countTagDecommissionTask(c)
 	}
 	switch atomic.LoadUint32(&c.planStatus) {
 	case PlanStatusRun:
@@ -784,35 +707,13 @@ func (c *Cluster) getSelectTagSummary() (summary *proto.SelectTagSummary, err er
 		summary.MpPlanStatus = "unknown"
 	}
 
-	c.getMpSelectTagPlan(summary)
+	summary.MpDecommissionNum = c.GetMetaPartitionDecommissionCount(proto.TagDecommission)
 
 	return summary, nil
 }
 
-func (c *Cluster) getMpSelectTagPlan(summary *proto.SelectTagSummary) {
-	plans, err := c.loadBalanceTask()
-	if err != nil {
-		return
-	}
-	if plans == nil {
-		return
-	}
-	for _, plan := range plans.Plan {
-		isMigrating := false
-		for _, mrPlan := range plan.Plan {
-			if mrPlan.Status != PlanTaskDone {
-				isMigrating = true
-				break
-			}
-		}
-		if isMigrating {
-			summary.MigratingMps = append(summary.MigratingMps, plan.ID)
-		}
-	}
-}
-
-func (vol *Vol) getDecommissionSelectTagDps(c *Cluster, summary *proto.SelectTagSummary) {
-	if len(summary.MigratingDps) >= MaxSelectTagDecommissionNum {
+func (vol *Vol) getDecommissionTagDps(c *Cluster, summary *proto.TagSummary) {
+	if len(summary.MigratingDps) >= MaxTagDecommissionNum {
 		return
 	}
 	partitions := vol.dataPartitions.clonePartitions()
@@ -820,16 +721,16 @@ func (vol *Vol) getDecommissionSelectTagDps(c *Cluster, summary *proto.SelectTag
 		if partition.IsDiscard {
 			continue
 		}
-		if partition.DecommissionType == SelectTagDecommission && partition.isPerformingDecommission(c) {
+		if partition.DecommissionType == proto.TagDecommission && partition.isPerformingDecommission(c) {
 			summary.MigratingDps = append(summary.MigratingDps, partition.PartitionID)
-			if len(summary.MigratingDps) >= MaxSelectTagDecommissionNum {
+			if len(summary.MigratingDps) >= MaxTagDecommissionNum {
 				return
 			}
 		}
 	}
 }
 
-func (vol *Vol) countDpSelectTagMismatch() (count int) {
+func (vol *Vol) countDpTagMismatch() (count int) {
 	partitions := vol.dataPartitions.clonePartitions()
 	for _, partition := range partitions {
 		if partition.IsDiscard {
@@ -842,8 +743,8 @@ func (vol *Vol) countDpSelectTagMismatch() (count int) {
 			if replica.dataNode == nil {
 				continue
 			}
-			selectTag := GetDataPartitionPeerSelectTag(partition, replica.Addr)
-			if selectTag != replica.dataNode.SelectTag {
+			tag := GetDataPartitionPeerTag(partition, replica.Addr)
+			if tag != replica.dataNode.Tag {
 				count++
 				break
 			}
@@ -852,7 +753,7 @@ func (vol *Vol) countDpSelectTagMismatch() (count int) {
 	return count
 }
 
-func (vol *Vol) countMpSelectTagMismatch() (count int) {
+func (vol *Vol) countMpTagMismatch() (count int) {
 	partitions := vol.cloneMetaPartitionMap()
 	for _, partition := range partitions {
 		if partition == nil {
@@ -865,8 +766,8 @@ func (vol *Vol) countMpSelectTagMismatch() (count int) {
 			if replica.metaNode == nil {
 				continue
 			}
-			selectTag := GetMetaPartitionPeerSelectTag(partition, replica.Addr)
-			if selectTag != replica.metaNode.SelectTag {
+			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
+			if tag != replica.metaNode.Tag {
 				count++
 				break
 			}
@@ -875,68 +776,94 @@ func (vol *Vol) countMpSelectTagMismatch() (count int) {
 	return count
 }
 
-func formatMetaReplicaSelectTag(selectTag string, metanode *MetaNode) string {
-	if selectTag == metanode.SelectTag || selectTag == DefaultSelectTag || strings.Contains(selectTag, "->") {
-		return selectTag
+func formatMetaReplicaTag(tag string, metanode *MetaNode) string {
+	if tag == metanode.Tag || tag == DefaultTag || strings.Contains(tag, "->") {
+		return tag
 	}
-	return fmt.Sprintf("%s->%s", metanode.SelectTag, selectTag)
+	return fmt.Sprintf("%s->%s", metanode.Tag, tag)
 }
 
-func formatDataReplicaSelectTag(selectTag string, datanode *DataNode) string {
-	if selectTag == datanode.SelectTag || selectTag == DefaultSelectTag || strings.Contains(selectTag, "->") {
-		return selectTag
+func formatDataReplicaTag(tag string, datanode *DataNode) string {
+	if tag == datanode.Tag || tag == DefaultTag || strings.Contains(tag, "->") {
+		return tag
 	}
-	return fmt.Sprintf("%s->%s", datanode.SelectTag, selectTag)
+	return fmt.Sprintf("%s->%s", datanode.Tag, tag)
 }
 
-func GetMetaPartitionPeerSelectTag(mp *MetaPartition, addr string) string {
+func GetMetaPartitionPeerTag(mp *MetaPartition, addr string) string {
 	for _, peer := range mp.Peers {
 		if peer.Addr == addr {
-			return peer.SelectTag
+			return peer.Tag
 		}
 	}
-	return DefaultSelectTag
+	return DefaultTag
 }
 
-func SetMetaPartitionPeerSelectTag(mp *MetaPartition, addr, selectTag string) {
+func SetMetaPartitionPeerTag(mp *MetaPartition, addr, tag string) {
 	for i, peer := range mp.Peers {
 		if peer.Addr == addr {
-			mp.Peers[i].SelectTag = selectTag
+			mp.Peers[i].Tag = tag
 			return
 		}
 	}
 }
 
-func GetDataPartitionPeerSelectTag(dp *DataPartition, addr string) string {
+func GetDataPartitionPeerTag(dp *DataPartition, addr string) string {
 	for _, peer := range dp.Peers {
 		if peer.Addr == addr {
-			return peer.SelectTag
+			return peer.Tag
 		}
 	}
-	return DefaultSelectTag
+	return DefaultTag
 }
 
-func SetDataPartitionPeerSelectTag(dp *DataPartition, addr, selectTag string) {
+func SetDataPartitionPeerTag(dp *DataPartition, addr, tag string) {
 	for i, peer := range dp.Peers {
 		if peer.Addr == addr {
-			dp.Peers[i].SelectTag = selectTag
+			dp.Peers[i].Tag = tag
 			return
 		}
 	}
 }
 
-func (c *Cluster) GetMetaNodeSelectTag(addr string) string {
+func (c *Cluster) GetMetaNodeTag(addr string) string {
 	metaNode, err := c.metaNode(addr)
 	if err != nil {
-		return DefaultSelectTag
+		return DefaultTag
 	}
-	return metaNode.SelectTag
+	return metaNode.Tag
 }
 
-func (c *Cluster) GetDataNodeSelectTag(addr string) string {
+func (c *Cluster) GetDataNodeTag(addr string) string {
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
-		return DefaultSelectTag
+		return DefaultTag
 	}
-	return dataNode.SelectTag
+	return dataNode.Tag
+}
+
+func (c *Cluster) IsMetaPartitionTagSet(volName string) bool {
+	if c.cfg.DefaultMpTag != "" {
+		return true
+	}
+
+	vol, err := c.getVol(volName)
+	if err != nil {
+		return false
+	}
+
+	return vol.MpTag != ""
+}
+
+func (c *Cluster) IsDataPartitionTagSet(volName string) bool {
+	if c.cfg.DefaultDpTag != "" {
+		return true
+	}
+
+	vol, err := c.getVol(volName)
+	if err != nil {
+		return false
+	}
+
+	return vol.DpTag != ""
 }

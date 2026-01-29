@@ -334,7 +334,7 @@ const (
 	AutoAddReplica           = proto.AutoAddReplica
 	ManualAddReplica         = proto.ManualAddReplica
 	DistributionOptimization = proto.DistributionOptimization
-	SelectTagDecommission    = proto.SelectTagDecommission
+	SelectTagDecommission    = proto.TagDecommission
 )
 
 type DecommissionDisk struct {

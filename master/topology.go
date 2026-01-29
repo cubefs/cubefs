@@ -38,7 +38,7 @@ type selectParam struct {
 	excludeNodeSets []uint64
 	threshold       float64
 	selectType      int32
-	selectTag       string
+	tag             string
 }
 
 func (sp *selectParam) copy() *selectParam {
@@ -61,7 +61,7 @@ func (sp *selectParam) copy() *selectParam {
 		excludeNodeSets: excludeNodeSets,
 		threshold:       sp.threshold,
 		selectType:      sp.selectType,
-		selectTag:       sp.selectTag,
+		tag:             sp.tag,
 	}
 }
 
@@ -69,8 +69,8 @@ func (sp *selectParam) String() string {
 	if sp == nil {
 		return "nil"
 	}
-	return fmt.Sprintf("excludeHosts: %v, replicaNum: %v, rackLevel: %v, excludeRacks: %v, excludeNodeSets: %v, selectType: %v, selectTag: %v",
-		sp.excludeHosts, sp.replicaNum, sp.rackLevel, sp.excludeRacks, sp.excludeNodeSets, sp.selectType, sp.selectTag)
+	return fmt.Sprintf("excludeHosts: %v, replicaNum: %v, rackLevel: %v, excludeRacks: %v, excludeNodeSets: %v, selectType: %v, tag: %v",
+		sp.excludeHosts, sp.replicaNum, sp.rackLevel, sp.excludeRacks, sp.excludeNodeSets, sp.selectType, sp.tag)
 }
 
 type rsManager struct {
@@ -2720,9 +2720,9 @@ func updateDecommissionWeight(dps []*DataPartition, c *Cluster) {
 }
 
 func (t *DecommissionTask) decommissionInfo() string {
-	return fmt.Sprintf("srcAddr(%v)_srcDiskPath(%v)_srcAddrs(%v)_dstAddr(%v)_dstAddrs(%v)_dstNodeSet(%v)_force(%v)_term(%v)_weight(%v)_type(%v)_selectTag(%v)",
+	return fmt.Sprintf("srcAddr(%v)_srcDiskPath(%v)_srcAddrs(%v)_dstAddr(%v)_dstAddrs(%v)_dstNodeSet(%v)_force(%v)_term(%v)_weight(%v)_type(%v)_tag(%v)",
 		t.DecommissionSrcAddr, t.DecommissionSrcDiskPath, t.DecommissionSrcAddrs, t.DecommissionDstAddr, t.DecommissionDstAddrs, t.DecommissionDstNodeSet,
-		t.DecommissionRaftForce, t.DecommissionTerm, t.DecommissionWeight, GetDecommissionTypeMessage(t.DecommissionType), t.DecommissionSelectTag)
+		t.DecommissionRaftForce, t.DecommissionTerm, t.DecommissionWeight, GetDecommissionTypeMessage(t.DecommissionType), t.DecommissionTag)
 }
 
 func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataPartition, c *Cluster) {

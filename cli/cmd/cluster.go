@@ -332,9 +332,9 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	optDpLimitSsdFactor := ""
 	optDpLimitHddBaseCount := ""
 	optDpLimitHddFactor := ""
-	optAutoFixSelectTag := ""
-	optDefaultDpSelectTag := ""
-	optDefaultMpSelectTag := ""
+	optAutoFixTag := ""
+	optDefaultDpTag := ""
+	optDefaultMpTag := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -679,21 +679,21 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			if optAutoFixSelectTag != "" {
-				if _, err = strconv.ParseBool(optAutoFixSelectTag); err != nil {
-					err = fmt.Errorf("param autoFixSelectTag(%v) should be true or false", optAutoFixSelectTag)
+			if optAutoFixTag != "" {
+				if _, err = strconv.ParseBool(optAutoFixTag); err != nil {
+					err = fmt.Errorf("param autoFixTag(%v) should be true or false", optAutoFixTag)
 					return
 				}
 			}
-			if optDefaultDpSelectTag != "" {
-				if !ValidateSelectTag(optDefaultDpSelectTag) {
-					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+			if optDefaultDpTag != "" {
+				if !proto.ValidateTag(optDefaultDpTag) {
+					err = fmt.Errorf("tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
 					return
 				}
 			}
-			if optDefaultMpSelectTag != "" {
-				if !ValidateSelectTag(optDefaultMpSelectTag) {
-					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+			if optDefaultMpTag != "" {
+				if !proto.ValidateTag(optDefaultMpTag) {
+					err = fmt.Errorf("tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
 					return
 				}
 			}
@@ -749,9 +749,9 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				DpLimitSsdFactor:                       optDpLimitSsdFactor,
 				DpLimitHddBaseCount:                    optDpLimitHddBaseCount,
 				DpLimitHddFactor:                       optDpLimitHddFactor,
-				AutoFixSelectTag:                       optAutoFixSelectTag,
-				DefaultDpSelectTag:                     optDefaultDpSelectTag,
-				DefaultMpSelectTag:                     optDefaultMpSelectTag,
+				AutoFixTag:                             optAutoFixTag,
+				DefaultDpTag:                           optDefaultDpTag,
+				DefaultMpTag:                           optDefaultMpTag,
 			}); err != nil {
 				return
 			}
@@ -819,9 +819,9 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDpLimitSsdFactor, CliFlagDpLimitSsdFactor, "", "DP limit SSD factor per 120GB")
 	cmd.Flags().StringVar(&optDpLimitHddBaseCount, CliFlagDpLimitHddBaseCount, "", "DP limit HDD base count")
 	cmd.Flags().StringVar(&optDpLimitHddFactor, CliFlagDpLimitHddFactor, "", "DP limit HDD factor per 120GB")
-	cmd.Flags().StringVar(&optAutoFixSelectTag, CliFlagAutoFixSelectTag, "", "Auto fix select tag(true|false)")
-	cmd.Flags().StringVar(&optDefaultDpSelectTag, CliFlagDefaultDpSelectTag, "", "Default DP select tag. split with ','. 'null' means null string")
-	cmd.Flags().StringVar(&optDefaultMpSelectTag, CliFlagDefaultMpSelectTag, "", "Default MP select tag. split with ','. 'null' means null string")
+	cmd.Flags().StringVar(&optAutoFixTag, CliFlagAutoFixTag, "", "Auto fix select tag(true|false)")
+	cmd.Flags().StringVar(&optDefaultDpTag, CliFlagDefaultDpTag, "", "Default DP select tag. split with ','. 'null' means null string")
+	cmd.Flags().StringVar(&optDefaultMpTag, CliFlagDefaultMpTag, "", "Default MP select tag. split with ','. 'null' means null string")
 
 	return cmd
 }

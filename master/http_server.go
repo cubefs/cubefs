@@ -647,11 +647,11 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminDecommissionRocksdbDir).
 		HandlerFunc(m.decommissionRocksdbDir)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminGetSelectTagSummary).
-		HandlerFunc(m.getSelectTagSummary)
+		Path(proto.AdminGetTagSummary).
+		HandlerFunc(m.getTagSummary)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminClearSelectTagFailedKeys).
-		HandlerFunc(m.clearSelectTagFailedKeys)
+		Path(proto.AdminClearTagFailedKeys).
+		HandlerFunc(m.clearTagFailedKeys)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).

@@ -1930,24 +1930,24 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[remoteClientFlowLimit] = val
 	}
 
-	if value = r.FormValue(cfgAutoFixSelectTag); value != "" {
+	if value = r.FormValue(cfgAutoFixTag); value != "" {
 		noParams = false
 		_, err = strconv.ParseBool(value)
 		if err != nil {
-			err = unmatchedKey(cfgAutoFixSelectTag)
+			err = unmatchedKey(cfgAutoFixTag)
 			return
 		}
-		params[cfgAutoFixSelectTag] = value
+		params[cfgAutoFixTag] = value
 	}
 
-	if value = r.FormValue(cfgDefaultDpSelectTag); value != "" {
+	if value = r.FormValue(cfgDefaultDpTag); value != "" {
 		noParams = false
-		params[cfgDefaultDpSelectTag] = value
+		params[cfgDefaultDpTag] = value
 	}
 
-	if value = r.FormValue(cfgDefaultMpSelectTag); value != "" {
+	if value = r.FormValue(cfgDefaultMpTag); value != "" {
 		noParams = false
-		params[cfgDefaultMpSelectTag] = value
+		params[cfgDefaultMpTag] = value
 	}
 
 	if noParams {
@@ -2326,8 +2326,8 @@ func parseSetConfigParam(r *http.Request) (config map[string]string, err error) 
 		flashReadFlowLimit,
 		flashWriteFlowLimit,
 		cfgDefaultVolStoreMode,
-		cfgDefaultDpSelectTag,
-		cfgDefaultMpSelectTag,
+		cfgDefaultDpTag,
+		cfgDefaultMpTag,
 	}
 	for _, key := range keyList {
 		if value := r.FormValue(key); value != "" {
@@ -2699,7 +2699,7 @@ func parseRequestForUpdateNode(r *http.Request) (nodeAddr string, id uint64, sel
 		}
 	}
 
-	selectTag = r.FormValue(SelectTagKey)
+	selectTag = r.FormValue(TagKey)
 
 	return
 }

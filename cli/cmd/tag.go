@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	cmdSelectTagUse   = "select-tag [COMMAND]"
-	cmdSelectTagShort = "select tag management"
+	cmdSelectTagUse   = "tag [COMMAND]"
+	cmdSelectTagShort = "tag management"
 )
 
 func newSelectTagCmd(client *master.MasterClient) *cobra.Command {
@@ -55,7 +55,7 @@ func newShowSelectTagSummaryCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			var task *proto.SelectTagSummary
+			var task *proto.TagSummary
 			if task, err = client.AdminAPI().GetSelectTagSummary(); err != nil {
 				return
 			}

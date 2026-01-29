@@ -270,8 +270,10 @@ func (c *Cluster) selectTargetMetaPeer(mp *MetaPartition, srcAddr, targetAddr st
 		excludeHosts: oldHosts,
 		rackLevel:    c.getRackAwareLevel(),
 		excludeRacks: c.GetExRacksByHosts(TypeMetaPartition, oldHosts, srcAddr),
-		selectType:   proto.SelectTypeTag,
-		selectTag:    c.GetMetaNodeSelectTag(srcAddr),
+	}
+	if c.IsMetaPartitionTagSet(mp.volName) {
+		param.selectType = proto.SelectTypeTag
+		param.tag = c.GetMetaNodeTag(srcAddr)
 	}
 
 	if targetAddr != "" {

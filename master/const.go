@@ -189,15 +189,15 @@ const (
 	newNameKey                   = "newName"
 	regionKey                    = "region"
 
-	StoreModeKey   = "storeMode"
-	StartIdKey     = "start"
-	EndIdKey       = "end"
-	PromoteKey     = "promote"
-	SelectTypeKey  = "selectType"
-	SelectTagKey   = "selectTag"
-	RocksdbDirKey  = "rocksdbDir"
-	DpSelectTagKey = "dpSelectTag"
-	MpSelectTagKey = "mpSelectTag"
+	StoreModeKey  = "storeMode"
+	StartIdKey    = "start"
+	EndIdKey      = "end"
+	PromoteKey    = "promote"
+	SelectTypeKey = "selectType"
+	TagKey        = "tag"
+	RocksdbDirKey = "rocksdbDir"
+	DpTagKey      = "dpTag"
+	MpTagKey      = "mpTag"
 )
 
 const (

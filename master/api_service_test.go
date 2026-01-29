@@ -1443,7 +1443,18 @@ func TestListNodeSets(t *testing.T) {
 }
 
 func TestGetNodeSets(t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?nodesetId=1", hostAddr, proto.GetNodeSet)
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	ns := nsc[0]
+	reqURL := fmt.Sprintf("%v%v?nodesetId=%v", hostAddr, proto.GetNodeSet, ns.ID)
 	process(reqURL, t)
 }
 

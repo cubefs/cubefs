@@ -401,13 +401,15 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParamAny("flashNodeTimeoutCount", vv.FlashNodeTimeoutCount)
 	request.addParamAny("remoteCacheSameZoneTimeout", vv.RemoteCacheSameZoneTimeout)
 	request.addParamAny("remoteCacheSameRegionTimeout", vv.RemoteCacheSameRegionTimeout)
-	request.addParam("storeMode", strconv.FormatInt(int64(vv.DefaultStoreMode), 10))
 
-	if vv.DpSelectTag != "" {
-		request.addParam("dpSelectTag", vv.DpSelectTag)
+	if vv.DefaultStoreMode != proto.StoreModeDef {
+		request.addParam("storeMode", strconv.FormatInt(int64(vv.DefaultStoreMode), 10))
 	}
-	if vv.MpSelectTag != "" {
-		request.addParam("mpSelectTag", vv.MpSelectTag)
+	if vv.DpTag != "" {
+		request.addParam("dpTag", vv.DpTag)
+	}
+	if vv.MpTag != "" {
+		request.addParam("mpTag", vv.MpTag)
 	}
 
 	if txMask != "" {
@@ -720,9 +722,9 @@ type ClusterParas struct {
 	DpLimitSsdFactor                       string
 	DpLimitHddBaseCount                    string
 	DpLimitHddFactor                       string
-	AutoFixSelectTag                       string
-	DefaultDpSelectTag                     string
-	DefaultMpSelectTag                     string
+	AutoFixTag                             string
+	DefaultDpTag                           string
+	DefaultMpTag                           string
 }
 
 func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
@@ -874,14 +876,14 @@ func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
 	if params.MetaManualAddReplicaLimit != "" {
 		request.addParam("metaManualAddReplicaLimit", params.MetaManualAddReplicaLimit)
 	}
-	if params.AutoFixSelectTag != "" {
-		request.addParam("autoFixSelectTag", params.AutoFixSelectTag)
+	if params.AutoFixTag != "" {
+		request.addParam("autoFixTag", params.AutoFixTag)
 	}
-	if params.DefaultDpSelectTag != "" {
-		request.addParam("defaultDpSelectTag", params.DefaultDpSelectTag)
+	if params.DefaultDpTag != "" {
+		request.addParam("defaultDpTag", params.DefaultDpTag)
 	}
-	if params.DefaultMpSelectTag != "" {
-		request.addParam("defaultMpSelectTag", params.DefaultMpSelectTag)
+	if params.DefaultMpTag != "" {
+		request.addParam("defaultMpTag", params.DefaultMpTag)
 	}
 	_, err = api.mc.serveRequest(request)
 	return
@@ -1411,13 +1413,13 @@ func (api *AdminAPI) CancelDeleteFlashTopo(name string) (result string, err erro
 	return string(data), nil
 }
 
-func (api *AdminAPI) GetSelectTagSummary() (summary *proto.SelectTagSummary, err error) {
-	summary = &proto.SelectTagSummary{}
-	err = api.mc.requestWith(summary, newRequest(get, proto.AdminGetSelectTagSummary).Header(api.h))
+func (api *AdminAPI) GetSelectTagSummary() (summary *proto.TagSummary, err error) {
+	summary = &proto.TagSummary{}
+	err = api.mc.requestWith(summary, newRequest(get, proto.AdminGetTagSummary).Header(api.h))
 	return
 }
 
 func (api *AdminAPI) ClearSelectTagFailedKeys() (err error) {
-	err = api.mc.request(newRequest(get, proto.AdminClearSelectTagFailedKeys).Header(api.h))
+	err = api.mc.request(newRequest(get, proto.AdminClearTagFailedKeys).Header(api.h))
 	return
 }

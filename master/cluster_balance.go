@@ -427,7 +427,7 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 				metaNode := value.(*MetaNode)
 
 				if migratePlan.SelectType == SelectTypeNodeAddrs {
-					if metaNode.SelectTag != migratePlan.SelectTag {
+					if metaNode.Tag != migratePlan.Tag {
 						return true
 					}
 				}
@@ -1255,7 +1255,7 @@ func (c *Cluster) UpdateMigrateDestination(migratePlan *proto.ClusterPlan, mpPla
 			SelectType:         migratePlan.SelectType,
 			ZoneName:           migratePlan.ZoneName,
 			NodeSetID:          migratePlan.NodeSetID,
-			SelectTag:          migratePlan.SelectTag,
+			Tag:                migratePlan.Tag,
 			AutoPromoteLearner: migratePlan.AutoPromote,
 		}
 		err = c.AddLearnerToDestination(migratePlan, mpPlan, param)
@@ -1309,7 +1309,9 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 		return err
 	}
 
-	c.SetClusterPlanRunning()
+	if !c.TrySetClusterPlanRunning() {
+		return fmt.Errorf("another plan task is already running")
+	}
 	go c.DoMetaPartitionBalanceTask(plan)
 
 	return nil
@@ -1597,7 +1599,8 @@ func (c *Cluster) StopMetaPartitionBalanceTask(force bool) error {
 	defer c.mu.Unlock()
 
 	if force {
-		c.SetClusterPlanIdle()
+		// Force mode: directly set to idle regardless of current state
+		atomic.StoreUint32(&c.planStatus, PlanStatusIdle)
 		return nil
 	}
 
@@ -1771,7 +1774,9 @@ func (c *Cluster) RestartMetaPartitionBalanceTask() error {
 		return nil
 	}
 
-	c.SetClusterPlanRunning()
+	if !c.TrySetClusterPlanRunning() {
+		return fmt.Errorf("another plan task is already running")
+	}
 	go c.DoMetaPartitionBalanceTask(plan)
 
 	return nil
@@ -2336,12 +2341,22 @@ func (c *Cluster) IsClusterPlanStopping() bool {
 	return atomic.LoadUint32(&c.planStatus) == PlanStatusStopping
 }
 
+// TrySetClusterPlanRunning atomically tries to set plan status from Idle to Running.
+// Returns true if successful, false if already running or stopping.
+func (c *Cluster) TrySetClusterPlanRunning() bool {
+	return atomic.CompareAndSwapUint32(&c.planStatus, PlanStatusIdle, PlanStatusRun)
+}
+
+// SetClusterPlanRunning sets plan status to Running (for backward compatibility).
+// Use TrySetClusterPlanRunning for thread-safe state transitions.
 func (c *Cluster) SetClusterPlanRunning() {
 	atomic.StoreUint32(&c.planStatus, PlanStatusRun)
 }
 
+// SetClusterPlanIdle atomically sets plan status to Idle, but only if it's currently Running.
+// This prevents race conditions where multiple goroutines try to set idle state.
 func (c *Cluster) SetClusterPlanIdle() {
-	atomic.StoreUint32(&c.planStatus, PlanStatusIdle)
+	atomic.CompareAndSwapUint32(&c.planStatus, PlanStatusRun, PlanStatusIdle)
 }
 
 func (c *Cluster) SetClusterPlanStopping() {
@@ -2508,7 +2523,7 @@ func (c *Cluster) CreatePromoteLearnerPlan(param *MetaPartitionPlanUserParams) (
 		SelectType: param.SelectType,
 		ZoneName:   param.ZoneName,
 		NodeSetID:  param.NodeSetID,
-		SelectTag:  param.SelectTag,
+		Tag:        param.Tag,
 		UndoNum:    0,
 		RunningNum: 0,
 		DoneNum:    0,
@@ -2586,7 +2601,9 @@ func (c *Cluster) CreatePromoteLearnerPlan(param *MetaPartitionPlanUserParams) (
 		return nil, err
 	}
 
-	c.SetClusterPlanRunning()
+	if !c.TrySetClusterPlanRunning() {
+		return nil, fmt.Errorf("another plan task is already running")
+	}
 	go c.DoPromoteLearnerPlan(promotePlan)
 
 	return promotePlan, nil
@@ -2615,7 +2632,7 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(param *MetaPartitionPlanUser
 		SelectType:     param.SelectType,
 		ZoneName:       param.ZoneName,
 		NodeSetID:      param.NodeSetID,
-		SelectTag:      param.SelectTag,
+		Tag:            param.Tag,
 	}
 
 	err := c.GetLowMemPressureTopology(plan)
@@ -2659,7 +2676,9 @@ func (c *Cluster) CreateMetaPartitionAddLearnerPlan(param *MetaPartitionPlanUser
 		return nil, err
 	}
 
-	c.SetClusterPlanRunning()
+	if !c.TrySetClusterPlanRunning() {
+		return nil, fmt.Errorf("another plan task is already running")
+	}
 	go c.DoMetaPartitionBalanceTask(plan)
 
 	return plan, nil
@@ -2879,7 +2898,7 @@ func SelectOneReplicaStrickly(mp *MetaPartition, excludeAddrs []string, param *M
 				return mr.Addr
 			}
 		case SelectTypeNodeAddrs:
-			if mr.metaNode.SelectTag != param.SelectTag {
+			if mr.metaNode.Tag != param.Tag {
 				return mr.Addr
 			}
 		default:
@@ -2917,7 +2936,9 @@ func (c *Cluster) CreateAndRunCheckSumPlan(param *MetaPartitionPlanUserParams) (
 		return plan, nil
 	}
 
-	c.SetClusterPlanRunning()
+	if !c.TrySetClusterPlanRunning() {
+		return plan, fmt.Errorf("another plan task is already running")
+	}
 	go c.DoMetaPartitionCheckSumTask(plan)
 
 	return plan, nil
@@ -3025,7 +3046,9 @@ func (c *Cluster) RestartMetaPartitionCheckSumTask() error {
 		return nil
 	}
 
-	c.SetClusterPlanRunning()
+	if !c.TrySetClusterPlanRunning() {
+		return fmt.Errorf("another plan task is already running")
+	}
 	go c.DoMetaPartitionCheckSumTask(plan)
 
 	return nil
@@ -3400,7 +3423,7 @@ func GetMetaPartitionReadyReplicaCount(plan *proto.ClusterPlan, mp *MetaPartitio
 				count += 1
 			}
 		case SelectTypeNodeAddrs:
-			if mr.metaNode.SelectTag == plan.SelectTag {
+			if mr.metaNode.Tag == plan.Tag {
 				count += 1
 			}
 		default:
@@ -3620,7 +3643,7 @@ func (c *Cluster) TryToSelectOneReplica(mp *MetaPartition, excludeAddrs []string
 		SelectType: plan.SelectType,
 		ZoneName:   plan.ZoneName,
 		NodeSetID:  plan.NodeSetID,
-		SelectTag:  plan.SelectTag,
+		Tag:        plan.Tag,
 		Mode:       plan.Mode,
 	}
 
@@ -3688,7 +3711,9 @@ func (c *Cluster) RestartPromoteLearnerPlan() error {
 		return nil
 	}
 
-	c.SetClusterPlanRunning()
+	if !c.TrySetClusterPlanRunning() {
+		return fmt.Errorf("another plan task is already running")
+	}
 	go c.DoPromoteLearnerPlan(plan)
 
 	return nil
@@ -3706,7 +3731,7 @@ func (c *Cluster) CreateDecommissionRocksdbDirPlan(param *MetaPartitionPlanUserP
 		SelectType: param.SelectType,
 		ZoneName:   param.ZoneName,
 		NodeSetID:  param.NodeSetID,
-		SelectTag:  param.SelectTag,
+		Tag:        param.Tag,
 	}
 
 	err := c.GetLowMemPressureTopology(plan)
@@ -3744,7 +3769,9 @@ func (c *Cluster) CreateDecommissionRocksdbDirPlan(param *MetaPartitionPlanUserP
 		return plan, err
 	}
 
-	c.SetClusterPlanRunning()
+	if !c.TrySetClusterPlanRunning() {
+		return plan, fmt.Errorf("another plan task is already running")
+	}
 	go c.DoMetaPartitionBalanceTask(plan)
 
 	return plan, nil
