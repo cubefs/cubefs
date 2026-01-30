@@ -176,7 +176,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 		logBytes []byte
 		err      error
 	)
-	startTime := time.Now().UnixNano()
+	startTime := time.Now()
 
 	ctx := req.Context()
 	span := trace.SpanFromContext(ctx)
@@ -192,7 +192,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 		bodyLimit:      j.cfg.BodyLimit,
 		no2xxBody:      j.cfg.No2xxBody,
 		span:           span,
-		startTime:      time.Now(),
+		startTime:      startTime,
 		statusCode:     http.StatusOK,
 		ResponseWriter: w,
 	}
@@ -218,7 +218,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	bodySize := rc.bodyRead
 	decodeReq.Header["BodySize"] = bodySize
 
-	endTime := time.Now().UnixNano() / 1000
+	endTime := time.Now()
 	b := j.logPool.Get().(*bytes.Buffer)
 	defer j.logPool.Put(b)
 	b.Reset()
@@ -226,7 +226,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	auditLog := &AuditLog{
 		ReqType:   "REQ",
 		Module:    j.module,
-		StartTime: startTime / 100,
+		StartTime: startTime.UnixMicro(),
 		Method:    req.Method,
 		Path:      decodeReq.Path,
 		ReqHeader: decodeReq.Header,
@@ -263,7 +263,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	}
 
 	auditLog.RespLength = _w.getBodyWritten()
-	auditLog.Duration = endTime - startTime/1000
+	auditLog.Duration = endTime.UnixMicro() - startTime.UnixMicro()
 
 	if j.logFile == nil || j.logFilter.Filter(auditLog) {
 		if !j.cfg.MetricsFilter {
@@ -292,7 +292,7 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 		logBytes []byte
 		err      error
 	)
-	startTime := time.Now().UnixNano()
+	startTime := time.Now()
 
 	span := req.Span()
 	defer span.Finish()
@@ -303,7 +303,7 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 		bodyLimit:      j.cfg.BodyLimit,
 		no2xxBody:      j.cfg.No2xxBody,
 		span:           span,
-		startTime:      time.Now(),
+		startTime:      startTime,
 		ResponseWriter: w,
 	}
 	defer func() {
@@ -317,7 +317,7 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 		decodeReq.Params = compactNewline(para)
 	}
 
-	endTime := time.Now().UnixNano() / 1000
+	endTime := time.Now()
 	b := j.logPool.Get().(*bytes.Buffer)
 	defer j.logPool.Put(b)
 	b.Reset()
@@ -325,7 +325,7 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 	auditLog := &AuditLog{
 		ReqType:   "REQ",
 		Module:    j.module,
-		StartTime: startTime / 100,
+		StartTime: startTime.UnixMicro(),
 		Method:    req.StreamCmd.String(),
 		Path:      decodeReq.Path,
 		ReqHeader: decodeReq.Header,
@@ -369,7 +369,7 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 		auditLog.RespBody = string(_w.getBody())
 	}
 
-	auditLog.Duration = endTime - startTime/1000
+	auditLog.Duration = endTime.UnixMicro() - startTime.UnixMicro()
 
 	if j.logFile == nil || j.logFilter.Filter(auditLog) {
 		if !j.cfg.MetricsFilter {
