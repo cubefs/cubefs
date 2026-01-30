@@ -203,6 +203,7 @@ const (
 	OpMetaGetUniqID       uint8 = 0xAC
 	OpMetaGetAppliedID    uint8 = 0xAD
 	OpMetaUpdateInodeMeta uint8 = 0xAE
+	OpMetaScanInodeByPool uint8 = 0xAF
 
 	// Multi version snapshot
 	OpRandomWriteAppend     uint8 = 0xB1
@@ -367,6 +368,7 @@ var GOpInfo map[string]uint8 = map[string]uint8{
 	"metalinkinode":                     OpMetaLinkInode,
 	"metatxlinkinode":                   OpMetaTxLinkInode,
 	"metaupdateinodemeta":               OpMetaUpdateInodeMeta,
+	"metascaninodebypool":               OpMetaScanInodeByPool,
 	"metadeletedentry":                  OpMetaDeleteDentry,
 	"metatxdeletedentry":                OpMetaTxDeleteDentry,
 	"metabatchdeletedentry":             OpMetaBatchDeleteDentry,
@@ -837,6 +839,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaTxGet"
 	case OpMetaGetAppliedID:
 		m = "OpMetaGetAppliedId"
+	case OpMetaUpdateInodeMeta:
+		m = "OpMetaUpdateInodeMeta"
+	case OpMetaScanInodeByPool:
+		m = "OpMetaScanInodeByPool"
 	case OpMetaBatchSetInodeQuota:
 		m = "OpMetaBatchSetInodeQuota"
 	case OpMetaBatchDeleteInodeQuota:

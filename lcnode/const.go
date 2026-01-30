@@ -48,7 +48,7 @@ const (
 	defaultSimpleQueueInitCapacity   = 1000000
 	defaultLcNodeTaskCountLimit      = 1
 	maxLcNodeTaskCountLimit          = 20
-	defaultDelayDelMinute            = 1440           // default retention min(1 day) of old eks after migration
+	defaultDelayDelMinute            = 10080          // default retention min(7 days) of old eks after migration
 	MaxSizePutOnce                   = int64(1) << 23 // 8MB
 	DirTrashSkip                     = ".Trash"
 

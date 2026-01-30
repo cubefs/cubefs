@@ -129,7 +129,7 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 	}
 	if err = o.mc.AdminAPI().SetBucketLifecycle(&req); err != nil {
 		log.LogErrorf("putBucketLifecycle failed: SetBucketLifecycle err: requestID(%v) bucket[%v] err(%v)", GetRequestID(r), param.Bucket(), err)
-		if err.Error() == proto.ErrNoSupportStorageClass.Error() {
+		if err.Error() == proto.ErrNoSupportPool.Error() {
 			errorCode = LifeCycleErrMalformedXML
 		}
 		return

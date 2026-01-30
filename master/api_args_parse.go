@@ -2824,6 +2824,12 @@ func parseRequestToCreateStoragePool(r *http.Request) (poolInfo *proto.StoragePo
 		if sc, err = strconv.ParseUint(scStr, 10, 8); err != nil {
 			return nil, fmt.Errorf("invalid storage class: %v", err)
 		}
+		if sc == 0 {
+			return nil, fmt.Errorf("storage class cannot be 0 (Unspecified), must be 1 (ReplicaSSD), 2 (ReplicaHDD), or 3 (BlobStore)")
+		}
+		if !proto.IsValidStorageClass(uint32(sc)) {
+			return nil, fmt.Errorf("invalid storage class: %d, must be 1 (ReplicaSSD), 2 (ReplicaHDD), or 3 (BlobStore)", sc)
+		}
 		poolInfo.StorageClass = uint8(sc)
 	}
 

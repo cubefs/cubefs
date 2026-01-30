@@ -9045,15 +9045,20 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// lifecycle transition storage class must in vol allowedStorageClass
-	if len(vol.allowedStorageClass) < 2 {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportStorageClass))
+	if len(vol.allowedPools) < 2 {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportPool))
 		return
 	}
 
+	// lifecycle transition pool must in vol allowedPools
 	for _, rule := range req.Rules {
 		for _, t := range rule.Transitions {
-			if !allowedStorageClass(t.StorageClass, vol.allowedStorageClass) {
-				sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportStorageClass))
+			if !vol.isPoolInAllowed(t.FromPoolId) {
+				sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportPool))
+				return
+			}
+			if !vol.isPoolInAllowed(t.ToPoolId) {
+				sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportPool))
 				return
 			}
 		}
@@ -10397,6 +10402,13 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !vol.crossZone {
+		err = fmt.Errorf("vol(%v) is not cross zone, not support add pool", name)
+		log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	// Check if pool already exists in allowed pools
 	if vol.isPoolInAllowed(poolId) {
 		err = fmt.Errorf("pool(%v) already in vol allowed pools(%v)", poolId, vol.allowedPools)
@@ -10417,6 +10429,16 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(newArgs.allowedPools, func(i, j int) bool {
 		return newArgs.allowedPools[i] < newArgs.allowedPools[j]
 	})
+
+	availablePools := m.cluster.getAvailablePools(vol.zoneName)
+	if _, ok := availablePools[poolId]; !ok {
+		err = fmt.Errorf("pool(%v) not found in available pools(%v)", poolId, availablePools)
+		log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	log.LogInfof("[volAddPool] vol(%v) to add pool, old(%v), add(%v)", name, vol.allowedPools, poolId)
 
 	pool, _ := m.cluster.getStoragePool(poolId)
 	if !vol.isStorageClassInAllowed(uint32(pool.StorageClass)) {

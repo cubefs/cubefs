@@ -10,8 +10,9 @@ export NETWORK_START_IP=101
 
 # Node Count Configuration
 export MASTER_COUNT=3          # Number of master nodes (usually 3)
-export DATA_COUNT=13            # Number of data nodes
+export DATA_COUNT=14            # Number of data nodes
 export META_COUNT=6            # Number of meta nodes
+export LC_COUNT=1            # Number of lc nodes
 
 # Port Configuration
 export MASTER_PORT=17010
@@ -44,6 +45,7 @@ IP_LIST=$(generate_ips)
 MASTER_IPS=""
 DATA_IPS=""
 META_IPS=""
+LC_IPS=""
 
 # All nodes use the same IP addresses starting from 172.16.1.101
 i=0
@@ -84,31 +86,46 @@ while [ $i -lt $META_COUNT ]; do
     i=$((i + 1))
 done
 
+# Lc nodes use the same IP addresses as master nodes
+i=0
+while [ $i -lt $LC_COUNT ]; do
+    ip_num=$((NETWORK_START_IP + i))
+    ip="${NETWORK_BASE}.${ip_num}"
+    
+    if [ $i -gt 0 ]; then
+        LC_IPS="$LC_IPS "
+    fi
+    LC_IPS="$LC_IPS$ip"
+    i=$((i + 1))
+done
+
 export MASTER_IPS
 export DATA_IPS
 export META_IPS
+export LC_IPS
 
 # IP-specific configuration mapping
-# Format: IP_CONFIG["ip_address"]="rack=value,zone=value,mediaType=value"
+# Format: IP_CONFIG["ip_address"]="rack=value,zone=value,mediaType=value,poolId=value"
 # mediaType values: 1=SSD, 2=HDD, 3=EC
+# poolId: storage pool ID (0 means not specified, use default)
 # disk_size uses default value (3930691768) if not specified
 # Example configurations for different IPs
 # master
-IP_CONFIG_172_16_1_101="rack=r1,zone=default,mediaType=1"
-IP_CONFIG_172_16_1_102="rack=r1,zone=default,mediaType=1"
-IP_CONFIG_172_16_1_103="rack=r2,zone=default,mediaType=1"
-IP_CONFIG_172_16_1_104="rack=r2,zone=default,mediaType=1"
-IP_CONFIG_172_16_1_105="rack=r3,zone=default,mediaType=1"
-IP_CONFIG_172_16_1_106="rack=r3,zone=default,mediaType=1"
-IP_CONFIG_172_16_1_107="rack=r1,zone=z2,mediaType=1"
-IP_CONFIG_172_16_1_108="rack=r1,zone=z2,mediaType=1"
-IP_CONFIG_172_16_1_109="rack=r1,zone=z1,mediaType=1"
-IP_CONFIG_172_16_1_110="rack=r1,zone=z3,mediaType=2"
-IP_CONFIG_172_16_1_111="rack=r1,zone=z3,mediaType=2"
-IP_CONFIG_172_16_1_112="rack=r1,zone=z3,mediaType=2"
-IP_CONFIG_172_16_1_113="rack=r1,zone=z3,mediaType=2"
-IP_CONFIG_172_16_1_114="rack=r1,zone=z1,mediaType=1"
-IP_CONFIG_172_16_1_115="rack=r1,zone=z1,mediaType=1"
+IP_CONFIG_172_16_1_101="rack=r1,zone=default,mediaType=1,poolId=1"
+IP_CONFIG_172_16_1_102="rack=r1,zone=default,mediaType=1,poolId=1"
+IP_CONFIG_172_16_1_103="rack=r2,zone=default,mediaType=1,poolId=1"
+IP_CONFIG_172_16_1_104="rack=r2,zone=default,mediaType=1,poolId=1"
+IP_CONFIG_172_16_1_105="rack=r3,zone=default,mediaType=1,poolId=1"
+IP_CONFIG_172_16_1_106="rack=r3,zone=default,mediaType=1,poolId=1"
+IP_CONFIG_172_16_1_107="rack=r1,zone=z2,mediaType=2,poolId=2"
+IP_CONFIG_172_16_1_108="rack=r1,zone=z2,mediaType=2,poolId=2"
+IP_CONFIG_172_16_1_109="rack=r1,zone=z2,mediaType=2,poolId=2"
+IP_CONFIG_172_16_1_110="rack=r1,zone=z2,mediaType=2,poolId=2"
+IP_CONFIG_172_16_1_111="rack=r1,zone=z3,mediaType=2,poolId=4"
+IP_CONFIG_172_16_1_112="rack=r1,zone=z3,mediaType=2,poolId=4"
+IP_CONFIG_172_16_1_113="rack=r1,zone=z3,mediaType=2,poolId=4"
+IP_CONFIG_172_16_1_114="rack=r1,zone=z3,mediaType=2,poolId=4"
+IP_CONFIG_172_16_1_115="rack=r1,zone=z1,mediaType=1,poolId=1"
 
 # Function to get IP-specific configuration
 get_ip_config() {
@@ -126,6 +143,7 @@ get_ip_config() {
             "zone") echo "z1" ;;
             "disk_size") echo "3930691768" ;;
             "mediaType") echo "1" ;;
+            "poolId") echo "0" ;;
             *) echo "" ;;
         esac
         return
@@ -144,6 +162,9 @@ get_ip_config() {
             ;;
         "mediaType")
             echo "$config_string" | sed 's/.*mediaType=\([^,]*\).*/\1/'
+            ;;
+        "poolId")
+            echo "$config_string" | sed 's/.*poolId=\([^,]*\).*/\1/'
             ;;
         *)
             echo ""

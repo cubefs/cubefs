@@ -1164,6 +1164,13 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKeyAfterMigrationRequest, p *Packet,
 	remoteAddr string,
 ) (err error) {
+	if req.PoolId == 0 {
+		err = fmt.Errorf("mp(%v) inode(%v) poolId is 0", mp.config.PartitionId, req.Inode)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
+		return
+	}
+
 	inoParm := NewInode(req.Inode, 0)
 	var oldIno *Inode
 	oldIno, err = mp.inodeTree.Get(inoParm)
@@ -1202,6 +1209,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpLeaseOccupiedByOthers, []byte(errMsg))
 		return
 	}
+
 	leaseExpire := inoParm.LeaseExpireTime
 	if leaseExpire != req.LeaseExpire {
 		errMsg := fmt.Sprintf("mp(%v) inode(%v) write generation not match, curent(%v) request(%v)",
@@ -1210,33 +1218,41 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpLeaseGenerationNotMatch, []byte(errMsg))
 		return
 	}
-	// wal logs for UpdateExtentKeyAfterMigration is persisted, but return no leader later,
-	// and request is send to meta node by retry
-	if inoParm.StorageClass == req.StorageClass {
-		msg := fmt.Sprintf("mp(%v) inode(%v) storageClass(%v) is same with req, may be migrated before",
-			mp.config.PartitionId, inoParm.Inode, inoParm.StorageClass)
+
+	// already migrated
+	if inoParm.PoolId == req.PoolId {
+		msg := fmt.Sprintf("mp(%v) inode(%v) poolId(%v) is same with req, may be migrated before",
+			mp.config.PartitionId, inoParm.Inode, inoParm.PoolId)
 		log.LogWarnf("action[UpdateExtentKeyAfterMigration] %v", msg)
-		p.PacketErrorWithBody(proto.OpNotPerm, []byte(msg))
+		p.PacketOkReply()
 		return
 	}
+
+	pool := mp.vol.GetPool(req.PoolId)
+	if pool == nil {
+		err = fmt.Errorf("mp(%v) inode(%v) get pool(%v) err: %v", mp.config.PartitionId, inoParm.Inode, req.PoolId, err)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
 	// store ek after migration in HybridCloudExtentsMigration
-	inoParm.HybridCloudExtentsMigration.storageClass = req.StorageClass
+	inoParm.HybridCloudExtentsMigration.storageClass = uint32(pool.StorageClass)
+	inoParm.HybridCloudExtentsMigration.poolId = req.PoolId
 	inoParm.HybridCloudExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
 
-	if req.StorageClass == proto.StorageClass_BlobStore {
+	if proto.IsStorageClassBlobStore(uint32(pool.StorageClass)) {
 		inoParm.HybridCloudExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
-	} else if req.StorageClass == proto.StorageClass_Replica_HDD {
+	} else if proto.IsStorageClassReplica(uint32(pool.StorageClass)) {
 		if oldIno.HybridCloudExtentsMigration.sortedEks == nil &&
-			oldIno.HybridCloudExtentsMigration.storageClass == proto.StorageClass_Unspecified {
+			oldIno.HybridCloudExtentsMigration.poolId == 0 {
 			log.LogDebugf("action[UpdateExtentKeyAfterMigration] inoParm %v has no migration data", inoParm.Inode)
 			inoParm.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
 		} else {
-			if oldIno.HybridCloudExtentsMigration.storageClass != proto.StorageClass_Replica_HDD {
-				err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v) migrateStorageClass(%v): inode is migrating or migrated from (%v), can not migrate to %v",
-					mp.config.PartitionId, inoParm.Inode, proto.StorageClassString(inoParm.StorageClass),
-					proto.StorageClassString(oldIno.HybridCloudExtentsMigration.storageClass),
-					proto.StorageClassString(oldIno.HybridCloudExtentsMigration.storageClass),
-					proto.StorageClassString(proto.StorageClass_Replica_HDD))
+			if oldIno.HybridCloudExtentsMigration.poolId != req.PoolId {
+				err = fmt.Errorf("mp(%v) inode(%v) poolId(%v) migrate to poolId(%v): inode is migrating or migrated from (%v), can not migrate to %v",
+					mp.config.PartitionId, inoParm.Inode, oldIno.HybridCloudExtentsMigration.poolId, req.PoolId,
+					oldIno.HybridCloudExtentsMigration.poolId, req.PoolId)
 				log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 				p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 				return
@@ -1471,4 +1487,86 @@ func (mp *metaPartition) UpdateInodeMeta(req *proto.UpdateInodeMetaRequest, p *P
 	log.LogDebugf("action[UpdateInodeMeta] inode[%v] exit", req.Inode)
 	p.PacketOkReply()
 	return
+}
+
+// ScanInodeByPool scans inodes by pool ID with pagination support
+// Similar to ReadDirLimit, it uses startInode as a marker for pagination
+func (mp *metaPartition) ScanInodeByPool(req *proto.ScanInodeByPoolRequest, resp *proto.ScanInodeByPoolResponse) (err error) {
+	// Validate page size (max 10000)
+	pageSize := req.PageSize
+	if pageSize == 0 || pageSize > 10000 {
+		pageSize = 10000
+	}
+
+	var (
+		inodes       []*proto.InodeInfo
+		totalScanned uint64
+		nextInode    uint64
+	)
+
+	startInode := &Inode{
+		Inode: req.StartInode,
+	}
+
+	endInode := &Inode{
+		Inode: mp.config.End + 1,
+	}
+
+	log.LogDebugf("ScanInodeByPool: mp[%d] poolId[%d] startInode[%d] endInode[%d]",
+		mp.config.PartitionId, req.PoolId, req.StartInode, mp.config.End+1)
+
+	err = mp.inodeTree.Range(startInode, endInode, func(inode *Inode) bool {
+		totalScanned++
+
+		// Filter by pool ID
+		if inode.PoolId != req.PoolId {
+			return true
+		}
+
+		// Filter by min size
+		if inode.Size <= req.MinSize {
+			return true
+		}
+
+		// Filter by lease
+		if req.CheckLease && inode.LeaseNotExpire() {
+			return true
+		}
+
+		if inode.ShouldDelete() {
+			return true
+		}
+
+		// Build InodeInfo
+		info := &proto.InodeInfo{}
+		if !replyInfo(info, inode, nil) {
+			return true
+		}
+
+		inodes = append(inodes, info)
+
+		// Check if we've collected enough inodes
+		if uint32(len(inodes)) >= pageSize {
+			nextInode = inode.Inode + 1
+			return false // Stop iteration
+		}
+
+		return true
+	})
+
+	if err != nil {
+		log.LogWarnf("ScanInodeByPool: mp[%d] poolId[%d] startInode[%d] pageSize[%d] found[%d] totalScanned[%d] nextInode[%d] hasMore[%v] error[%v]",
+			mp.config.PartitionId, req.PoolId, req.StartInode, pageSize, len(inodes), totalScanned, nextInode, resp.HasMore, err)
+		return err
+	}
+
+	resp.Inodes = inodes
+	resp.TotalScanned = totalScanned
+	resp.NextInode = nextInode
+	resp.HasMore = (nextInode > 0 && nextInode <= mp.config.End)
+
+	log.LogDebugf("ScanInodeByPool: mp[%d] poolId[%d] startInode[%d] pageSize[%d] found[%d] totalScanned[%d] nextInode[%d] hasMore[%v]",
+		mp.config.PartitionId, req.PoolId, req.StartInode, pageSize, len(inodes), totalScanned, nextInode, resp.HasMore)
+
+	return nil
 }

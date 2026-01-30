@@ -419,7 +419,7 @@ func (a *Audit) LogMigrationOp(clientAddr, volume, op, fullPath string, err erro
 	a.AddLog(entry)
 }
 
-func (a *Audit) LogLcNodeOp(op, vol, name, path string, pid, inode, size, leaseExpire uint64, hasMek bool, from, to uint32, latency int64, err error) {
+func (a *Audit) LogLcNodeOp(op, vol, name, path string, pid, inode, size, leaseExpire uint64, hasMek bool, from, to uint8, latency int64, err error) {
 	var errStr string
 	if err != nil {
 		errStr = err.Error()
@@ -553,7 +553,7 @@ func LogMigrationOp(clientAddr, volume, op, fullPath string, err error, latency 
 	gAdt.LogMigrationOp(clientAddr, volume, op, fullPath, err, latency, ino, from, to)
 }
 
-func LogLcNodeOp(op, vol, name, path string, pid, inode, size, leaseExpire uint64, hasMek bool, from, to uint32, latency int64, err error) {
+func LogLcNodeOp(op, vol, name, path string, pid, inode, size, leaseExpire uint64, hasMek bool, from, to uint8, latency int64, err error) {
 	gAdtMutex.RLock()
 	defer gAdtMutex.RUnlock()
 	if gAdt == nil {

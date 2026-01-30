@@ -57,8 +57,9 @@ genData() {
     local zone=$(get_ip_config "$ip" "zone")
     local disk_size=$(get_ip_config "$ip" "disk_size")
     local media_type=$(get_ip_config "$ip" "mediaType")
+    local pool_id=$(get_ip_config "$ip" "poolId")
     
-    echo "  IP $ip: rack=$rack, zone=$zone, disk_size=$disk_size, mediaType=$media_type"
+    echo "  IP $ip: rack=$rack, zone=$zone, disk_size=$disk_size, mediaType=$media_type, poolId=$pool_id"
     
     local dataDir=$baseDir/data$id
     if [ ! -d "$dataDir/disk" ]; then
@@ -73,6 +74,7 @@ genData() {
         sed "s/_zone_/${zone}/g" | \
         sed "s/_disk_size_/${disk_size}/g" | \
         sed "s/_media_type_/${media_type}/g" | \
+        sed "s/_poolId_/${pool_id}/g" | \
         sed "s|_dir_|${dataDir}|g" | \
         sed "s|_master_addr_|${MASTER_ADDR}|g" > "$confFile"
         echo "gen data$id.conf success"
@@ -86,6 +88,36 @@ data_id=1
 for ip in $DATA_IPS; do
     genData $data_id "$ip"
     data_id=$((data_id + 1))
+done
+
+
+genLcNode() {
+    local id=${1}
+    local ip=${2}
+    echo "start gen data$id.conf for IP $ip"
+    
+    local lcDir=$baseDir/lc$id
+    if [ ! -d "$lcDir/logs" ]; then
+        echo "mkdir -p $lcDir/logs"
+        mkdir -p $lcDir/logs
+    fi
+
+    local confFile="${confDir}/lc$id.conf"
+    if [ ! -f "$confFile" ]; then
+        sed "s/_ip_/${ip}/g" ${tplDir}/lcnode.tpl | \
+        sed "s|_dir_|${lcDir}|g" | \
+        sed "s|_master_addr_|${MASTER_ADDR}|g" > "$confFile"
+        echo "gen lc$id.conf success"
+    else
+        echo "lc$id.conf already exists, skipping generation"
+    fi
+}
+
+# Generate Data node configurations
+lc_id=1
+for ip in $LC_IPS; do
+    genLcNode $lc_id "$ip"
+    lc_id=$((lc_id + 1))
 done
 
 genMeta() {

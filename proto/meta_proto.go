@@ -237,3 +237,35 @@ type SelectMetaNodeInfo struct {
 	NewNodeAddr string `json:"new_node_addr"`
 	StoreMode   uint8  `json:"store_mode"`
 }
+
+// ScanInodeByPoolRequest defines the request to scan inodes by pool ID
+type ScanInodeByPoolRequest struct {
+	PartitionID uint64 `json:"partition_id"`
+	PoolId      uint8  `json:"pool_id"`
+	PageSize    uint32 `json:"page_size"`   // Maximum number of inodes to return (max 10000)
+	StartInode  uint64 `json:"start_inode"` // Start inode ID for pagination (0 for first page)
+	MinSize     uint64 `json:"min_size"`    // Minimum size of the inode to return
+	CheckLease  bool   `json:"check_lease"` // Check lease of the inode to return
+}
+
+func (req *ScanInodeByPoolRequest) String() string {
+	if req == nil {
+		return "nil"
+	}
+
+	return fmt.Sprintf("partitionID[%d] poolId[%d] pageSize[%d] startInode[%d] minSize[%d] checkLease[%v]",
+		req.PartitionID, req.PoolId, req.PageSize, req.StartInode, req.MinSize, req.CheckLease)
+}
+
+// ScanInodeByPoolResponse defines the response to ScanInodeByPoolRequest
+type ScanInodeByPoolResponse struct {
+	Inodes       []*InodeInfo `json:"inodes"`        // List of inode info
+	NextInode    uint64       `json:"next_inode"`    // Next inode ID for pagination (0 if no more)
+	HasMore      bool         `json:"has_more"`      // Whether there are more inodes to scan
+	TotalScanned uint64       `json:"total_scanned"` // Total number of inodes scanned in this request
+}
+
+func (resp *ScanInodeByPoolResponse) String() string {
+	return fmt.Sprintf("inodes[%v] nextInode[%d] hasMore[%v] totalScanned[%d]",
+		len(resp.Inodes), resp.NextInode, resp.HasMore, resp.TotalScanned)
+}

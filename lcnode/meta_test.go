@@ -76,7 +76,7 @@ func (*MockMetaWrapper) Evict(inode uint64, fullPath string, isAsync bool) error
 	return nil
 }
 
-func (*MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, writeGen uint64, delayDelMinute uint64, fullPath string) error {
+func (*MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, poolId uint8, leaseExpireTime uint64, delayDelMinute uint64, fullPath string) error {
 	return nil
 }
 
@@ -127,6 +127,15 @@ func (*MockMetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint
 			Inode: 5,
 			Type:  uint32(os.ModeDir),
 		},
+	}, nil
+}
+
+func (*MockMetaWrapper) ScanInodeByPool(req *proto.ScanInodeByPoolRequest) (*proto.ScanInodeByPoolResponse, error) {
+	return &proto.ScanInodeByPoolResponse{
+		Inodes:       []*proto.InodeInfo{},
+		NextInode:    0,
+		HasMore:      false,
+		TotalScanned: 0,
 	}, nil
 }
 

@@ -1638,8 +1638,14 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 
 	// Validate poolId if provided
 	if poolId != 0 {
-		if _, err = c.getStoragePool(poolId); err != nil {
+		var oldPool *StoragePool
+		if oldPool, err = c.getStoragePool(poolId); err != nil {
 			return 0, fmt.Errorf("storage pool with id %d does not exist", poolId)
+		}
+
+		if uint32(oldPool.StorageClass) != proto.GetStorageClassByMediaType(mediaType) {
+			return 0, fmt.Errorf("storage pool with id %d is not a replica pool, storageClass %d, mediaType %d",
+				poolId, oldPool.StorageClass, mediaType)
 		}
 	}
 
@@ -1750,6 +1756,7 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		log.LogInfof("[addDataNode] create zone(%v) by datanode(%v), mediaType(%v)",
 			zoneName, nodeAddr, proto.MediaTypeString(mediaType))
 		zone = newZone(zoneName, mediaType)
+		zone.PoolId = poolId
 		needPersistZone = true
 	}
 
@@ -6943,6 +6950,7 @@ func (c *Cluster) SetBucketLifecycle(req *proto.LcConfiguration) error {
 			return err
 		}
 	}
+
 	_ = c.lcMgr.SetS3BucketLifecycle(lcConf)
 	log.LogInfof("action[SetS3BucketLifecycle],clusterID[%v] vol:%v", c.Name, lcConf.VolName)
 	return nil

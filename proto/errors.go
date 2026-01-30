@@ -116,7 +116,7 @@ var (
 	ErrSnapshotNotEnabled                      = errors.New("cluster not enable snapshot")
 	ErrMemberChange                            = errors.New("raft prev member change is not finished.")
 	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
-	ErrNoSupportStorageClass                   = errors.New("Lifecycle storage class not allowed")
+	ErrNoSupportPool                           = errors.New("Lifecycle pool not allowed")
 	ErrDataNodeAdd                             = errors.New("DataNode mediaType not match")
 	ErrNeedForbidVer0                          = errors.New("Need set volume ForbidWriteOpOfProtoVer0 first")
 	ErrTmpfsNoSpace                            = errors.New("no space left on device")
@@ -196,7 +196,7 @@ const (
 	ErrCodeVersionOpError
 	ErrCodeNodeSetNotExists
 	ErrCodeNoSuchLifecycleConfiguration
-	ErrCodeNoSupportStorageClass
+	ErrCodeNoSupportPool
 	ErrCodeTmpfsNoSpace
 )
 
@@ -264,7 +264,7 @@ var Err2CodeMap = map[error]int32{
 	ErrCodeVersionOp:                   ErrCodeVersionOpError,
 	ErrNodeSetNotExists:                ErrCodeNodeSetNotExists,
 	ErrNoSuchLifecycleConfiguration:    ErrCodeNoSuchLifecycleConfiguration,
-	ErrNoSupportStorageClass:           ErrCodeNoSupportStorageClass,
+	ErrNoSupportPool:                   ErrCodeNoSupportPool,
 	ErrTmpfsNoSpace:                    ErrCodeTmpfsNoSpace,
 }
 
@@ -341,7 +341,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeVolNotDelete:                    ErrVolNotDelete,
 	ErrCodeVolHasDeleted:                   ErrVolHasDeleted,
 	ErrCodeNoSuchLifecycleConfiguration:    ErrNoSuchLifecycleConfiguration,
-	ErrCodeNoSupportStorageClass:           ErrNoSupportStorageClass,
+	ErrCodeNoSupportPool:                   ErrNoSupportPool,
 	ErrCodeTmpfsNoSpace:                    ErrTmpfsNoSpace,
 }
 

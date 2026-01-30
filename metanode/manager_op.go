@@ -2515,6 +2515,49 @@ func (m *metadataManager) opMetaUpdateInodeMeta(conn net.Conn, p *Packet,
 	return
 }
 
+func (m *metadataManager) opMetaScanInodeByPool(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	req := &proto.ScanInodeByPoolRequest{}
+	if err = m.parseRequestAndHandleError(conn, p, req, false); err != nil {
+		return
+	}
+
+	// Validate page size (max 10000)
+	if req.PageSize == 0 {
+		req.PageSize = 10000
+	}
+	if req.PageSize > 10000 {
+		req.PageSize = 10000
+	}
+
+	mp, handledByProxy, err := m.getPartitionCheckProxy(conn, p, req.PartitionID, false)
+	if err != nil || handledByProxy {
+		return
+	}
+
+	resp := &proto.ScanInodeByPoolResponse{}
+	err = mp.ScanInodeByPool(req, resp)
+	if err != nil {
+		m.handleOpError(conn, p, err, false)
+		return
+	}
+
+	var reply []byte
+	if reply, err = json.Marshal(resp); err != nil {
+		m.handleOpError(conn, p, err, false)
+		return
+	}
+	p.PacketOkWithBody(reply)
+	_ = m.respondToClient(conn, p)
+
+	if log.EnableDebug() {
+		log.LogDebugf("%s [opMetaScanInodeByPool] req: %d - %v, resp: %v",
+			remoteAddr, p.GetReqID(), req, resp)
+	}
+	return
+}
+
 func (m *metadataManager) opFreezeEmptyMetaPartition(conn net.Conn, p *Packet,
 	remoteAddr string,
 ) (err error) {

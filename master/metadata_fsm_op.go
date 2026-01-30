@@ -2522,6 +2522,20 @@ func (c *Cluster) loadLcConfs() (err error) {
 			err = fmt.Errorf("action[loadLcConfs],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
+
+		if lcConf.Rules != nil {
+			for _, rule := range lcConf.Rules {
+				for _, transition := range rule.Transitions {
+					if transition.FromPoolId == 0 || transition.ToPoolId == 0 {
+						log.LogWarnf("action[loadLcConfs],vol[%v] rule[%v] fromPoolId[%v] toPoolId[%v] is not valid, disable rule",
+							lcConf.VolName, rule.ID, transition.FromPoolId, transition.ToPoolId)
+						rule.Status = proto.RuleDisabled
+						break
+					}
+				}
+			}
+		}
+
 		_ = c.lcMgr.SetS3BucketLifecycle(lcConf)
 		log.LogInfof("action[loadLcConfs],vol[%v]", lcConf.VolName)
 	}

@@ -58,20 +58,11 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		log.LogWarnf("migrate: ec OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
-	defer func() {
-		if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
-			log.LogWarnf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
-		}
-	}()
+
 	if err = t.ecForW.OpenStream(e.Inode, false, false, ""); err != nil {
 		log.LogWarnf("migrate: ecForW OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
-	defer func() {
-		if closeErr := t.ecForW.CloseStream(e.Inode); closeErr != nil {
-			log.LogWarnf("migrate: ecForW CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
-		}
-	}()
 
 	var (
 		md5Hash     = md5.New()
@@ -95,7 +86,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		}
 		buf = buf[:readSize]
 
-		readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.PoolId, false)
+		readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.SrcPoolId, false)
 		if err != nil && err != io.EOF {
 			err = fmt.Errorf("read source file err(%v)", err)
 			log.LogWarnf("migrate: inode(%v) readOffset(%v) storageClass(%v): %v",
@@ -103,7 +94,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 			return
 		}
 		if readN > 0 {
-			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, e.PoolId, e.StorageClass, true, false)
+			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, e.DstPoolId, e.StorageClass, true, false)
 			if err != nil {
 				err = fmt.Errorf("write dst file err(%v)", err)
 				log.LogWarnf("migrate: inode(%v), writeOffset(%v): %v", e.Inode, writeOffset, err)
@@ -128,6 +119,16 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 
 	md5Value = hex.EncodeToString(md5Hash.Sum(nil))
 	log.LogInfof("migrate file finished, inode(%v), md5Value: %v", e.Inode, md5Value)
+
+	if closeErr := t.ecForW.CloseStream(e.Inode); closeErr != nil {
+		log.LogWarnf("migrate: ecForW CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
+		return closeErr
+	}
+
+	if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
+		log.LogWarnf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
+		return closeErr
+	}
 
 	// check read from src extent
 	srcMd5Hash := md5.New()
@@ -181,6 +182,22 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 		buf        = make([]byte, 2*util.BlockSize)
 	)
 
+	ec := t.ec
+	if isMigrationExtent {
+		ec = t.ecForW
+	}
+
+	if err = ec.OpenStream(e.Inode, false, false, ""); err != nil {
+		log.LogWarnf("readFromExtentClient: OpenStream fail, inode(%v) err: %v", e.Inode, err)
+		return
+	}
+
+	defer func() {
+		if closeErr := ec.CloseStream(e.Inode); closeErr != nil {
+			log.LogWarnf("readFromExtentClient: CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
+		}
+	}()
+
 	if size > 0 {
 		readOffset = from
 	} else {
@@ -197,11 +214,7 @@ func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writ
 		}
 		buf = buf[:readSize]
 
-		if isMigrationExtent {
-			readN, err = t.ecForW.Read(e.Inode, buf, readOffset, readSize, e.PoolId, isMigrationExtent)
-		} else {
-			readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.PoolId, isMigrationExtent)
-		}
+		readN, err = ec.Read(e.Inode, buf, readOffset, readSize, e.SrcPoolId, isMigrationExtent)
 
 		if err != nil && err != io.EOF {
 			return
@@ -225,15 +238,15 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
 		return
 	}
-	if err = t.ec.OpenStream(e.Inode, false, false, ""); err != nil {
-		log.LogWarnf("migrate blobstore: OpenStream fail, inode(%v) err: %v", e.Inode, err)
-		return
-	}
-	defer func() {
-		if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
-			log.LogWarnf("migrate blobstore: CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
-		}
-	}()
+	// if err = t.ec.OpenStream(e.Inode, false, false, ""); err != nil {
+	// 	log.LogWarnf("migrate blobstore: OpenStream fail, inode(%v) err: %v", e.Inode, err)
+	// 	return
+	// }
+	// defer func() {
+	// 	if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
+	// 		log.LogWarnf("migrate blobstore: CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
+	// 	}
+	// }()
 
 	var srcErr error
 	var dstErr error

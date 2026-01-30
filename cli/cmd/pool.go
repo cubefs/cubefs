@@ -172,6 +172,14 @@ func newPoolCreateCmd(client *sdk.MasterClient) *cobra.Command {
 				err = fmt.Errorf("pool name is required")
 				return
 			}
+			if storageClass == 0 {
+				err = fmt.Errorf("storage class cannot be 0 (Unspecified), must be 1 (ReplicaSSD), 2 (ReplicaHDD), or 3 (BlobStore)")
+				return
+			}
+			if !proto.IsValidStorageClass(uint32(storageClass)) {
+				err = fmt.Errorf("invalid storage class: %d, must be 1 (ReplicaSSD), 2 (ReplicaHDD), or 3 (BlobStore)", storageClass)
+				return
+			}
 			poolInfo := &proto.StoragePoolInfo{
 				Id:           poolId,
 				Name:         poolName,
@@ -187,7 +195,7 @@ func newPoolCreateCmd(client *sdk.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().Uint8Var(&poolId, "id", 0, "Pool ID (must be greater than 3)")
 	cmd.Flags().StringVar(&poolName, "name", "", "Pool name (required)")
-	cmd.Flags().Uint8Var(&storageClass, "storageClass", 0, "Storage class (0=Unspecified, 1=ReplicaSSD, 2=ReplicaHDD, 3=BlobStore)")
+	cmd.Flags().Uint8Var(&storageClass, "storageClass", 0, "Storage class (1=ReplicaSSD, 2=ReplicaHDD, 3=BlobStore), cannot be 0")
 	cmd.Flags().IntVar(&cId, "cId", 0, "EC cluster ID (only for EC pool)")
 	cmd.Flags().StringVar(&ecAddr, "ecAddr", "", "EC cluster address (only for EC pool)")
 	return cmd

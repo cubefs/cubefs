@@ -3152,7 +3152,7 @@ func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
 }
 
 func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, objExtentKeys []proto.ObjExtentKey,
-	leaseExpire uint64, delayDelMinute uint64, fullPath string,
+	poolId uint8, leaseExpire uint64, delayDelMinute uint64, fullPath string,
 ) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
@@ -3161,7 +3161,7 @@ func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType u
 			inode, storageType, objExtentKeys, leaseExpire, err.Error())
 		return err
 	}
-	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, objExtentKeys, leaseExpire, delayDelMinute, fullPath)
+	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, poolId, objExtentKeys, leaseExpire, delayDelMinute, fullPath)
 	if err != nil || status != statusOK {
 		msg := fmt.Sprintf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) leaseExpire(%v) status(%v) err: %v",
 			inode, storageType, objExtentKeys, leaseExpire, status, err)
@@ -3191,6 +3191,26 @@ func (mw *MetaWrapper) DeleteMigrationExtentKey(inode uint64, fullPath string) e
 		return statusToErrno(status)
 	}
 	return nil
+}
+
+// ScanInodeByPool scans inodes by pool ID with pagination support
+func (mw *MetaWrapper) ScanInodeByPool(req *proto.ScanInodeByPoolRequest) (
+	resp *proto.ScanInodeByPoolResponse, err error,
+) {
+	mp := mw.getPartitionByID(req.PartitionID)
+	if mp == nil {
+		err = fmt.Errorf("not found mp by partitionID(%v)", req.PartitionID)
+		log.LogErrorf("ScanInodeByPool: req(%v) err: %v", req.String(), err)
+		return nil, err
+	}
+
+	resp, err = mw.scanInodeByPool(mp, req)
+	if err != nil {
+		log.LogErrorf("ScanInodeByPool: req(%v) err: %v", req.String(), err)
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func (mw *MetaWrapper) ListVols(keywords string) (volsInfo []*proto.VolInfo, err error) {

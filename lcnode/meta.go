@@ -23,9 +23,10 @@ type MetaWrapper interface {
 	InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInfo, error)
 	DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string, isAsync bool) (inode *proto.InodeInfo, err error)
 	Evict(inode uint64, fullPath string, isAsync bool) error
-	UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, leaseExpireTime uint64, delayDelMinute uint64, fullPath string) error
+	UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, poolId uint8, leaseExpireTime uint64, delayDelMinute uint64, fullPath string) error
 	DeleteMigrationExtentKey(inode uint64, fullPath string) error
 	ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error)
 	BatchInodeGet(inodes []uint64) []*proto.InodeInfo
+	ScanInodeByPool(req *proto.ScanInodeByPoolRequest) (*proto.ScanInodeByPoolResponse, error)
 	Close() error
 }

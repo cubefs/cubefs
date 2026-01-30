@@ -30,9 +30,16 @@ const (
 	RuleMaxCounts        = 1000
 	MaxIdLength          = 255
 
+	ScanByDir uint8 = 0
+	ScanByMp  uint8 = 1
+
 	OpTypeDelete          = "DELETE"
 	OpTypeStorageClassHDD = "HDD"
 	OpTypeStorageClassEBS = "BLOBSTORE"
+
+	// DelayDelMinute constraints
+	MinDelayDelMinute = 60     // Minimum delay delete time: 1 hour
+	MaxDelayDelMinute = 525600 // Maximum delay delete time: 1 year (365 days * 24 hours * 60 minutes)
 )
 
 func OpTypeToStorageType(op string) uint32 {
@@ -65,30 +72,38 @@ type Expiration struct {
 }
 
 type Filter struct {
-	Prefix  string `json:"Prefix,omitempty" xml:"Prefix,omitempty" bson:"Prefix,omitempty"`
+	Prefix  string `json:"Prefix" xml:"Prefix" bson:"Prefix"`
 	MinSize uint64 `json:"MinSize" xml:"MinSize" bson:"MinSize"`
+	ByMp    uint8  `json:"ByMp" xml:"ByMp" bson:"ByMp"`
 }
 
 type Transition struct {
-	Date         *time.Time `json:"Date,omitempty" xml:"Date,omitempty" bson:"Date,omitempty"`
-	Days         *int       `json:"Days,omitempty" xml:"Days,omitempty" bson:"Days,omitempty"`
-	StorageClass string     `json:"StorageClass,omitempty" xml:"StorageClass,omitempty" bson:"StorageClass,omitempty"`
+	Date           *time.Time `json:"Date,omitempty" xml:"Date,omitempty" bson:"Date,omitempty"`
+	Days           *int       `json:"Days,omitempty" xml:"Days,omitempty" bson:"Days,omitempty"`
+	StorageClass   string     `json:"StorageClass,omitempty" xml:"StorageClass,omitempty" bson:"StorageClass,omitempty"`
+	FromPoolId     uint8      `json:"FromPoolId" xml:"FromPoolId" bson:"FromPoolId"`
+	ToPoolId       uint8      `json:"ToPoolId" xml:"ToPoolId" bson:"ToPoolId"`
+	DelayDelMinute *uint64    `json:"DelayDelMinute" xml:"DelayDelMinute" bson:"DelayDelMinute"` // Delay delete in minutes after migration (1 hour to 1 year)
 }
 
 var (
-	LifeCycleErrTooManyRules   = errors.New("Rules number should not exceed allowed limit of 1000")
-	LifeCycleErrMissingRules   = errors.New("No Lifecycle Rules found in request")
-	LifeCycleErrMissingActions = errors.New("At least one action needs to be specified in a rule")
-	LifeCycleErrMissingRuleID  = errors.New("No Lifecycle Rule ID in request")
-	LifeCycleErrTooLongRuleID  = errors.New("ID length should not exceed allowed limit of 255")
-	LifeCycleErrInvalidRuleID  = errors.New("Invalid Rule ID")
-	LifeCycleErrSameRuleID     = errors.New("Rule ID must be unique. Found same ID for more than one rule")
-	LifeCycleErrDateType       = errors.New("'Date' must be at midnight GMT")
-	LifeCycleErrDaysType       = errors.New("'Days' for Expiration action must be a positive integer")
-	LifeCycleErrStorageClass   = errors.New("'StorageClass' must be different for 'Transition' actions in same 'Rule'")
-	LifeCycleErrMalformedXML   = errors.New("The XML you provided was not well-formed or did not validate against our published schema")
-	LifeCycleErrConflictRules  = errors.New("Conflicting rule prefix")
-	LifeCycleErrRulePrefix     = errors.New("Rule prefix cannot start with '/'")
+	LifeCycleErrTooManyRules    = errors.New("Rules number should not exceed allowed limit of 1000")
+	LifeCycleErrMissingRules    = errors.New("No Lifecycle Rules found in request")
+	LifeCycleErrMissingActions  = errors.New("At least one action needs to be specified in a rule")
+	LifeCycleErrMissingRuleID   = errors.New("No Lifecycle Rule ID in request")
+	LifeCycleErrTooLongRuleID   = errors.New("ID length should not exceed allowed limit of 255")
+	LifeCycleErrInvalidRuleID   = errors.New("Invalid Rule ID")
+	LifeCycleErrSameRuleID      = errors.New("Rule ID must be unique. Found same ID for more than one rule")
+	LifeCycleErrDateType        = errors.New("'Date' must be at midnight GMT")
+	LifeCycleErrDaysType        = errors.New("'Days' for Expiration action must be a positive integer")
+	LifeCycleErrStorageClass    = errors.New("'StorageClass' must be different for 'Transition' actions in same 'Rule'")
+	LifeCycleErrPoolId          = errors.New("'FromPoolId' and 'ToPoolId' must be specified for 'Transition' actions")
+	LifeCycleErrMalformedXML    = errors.New("The XML you provided was not well-formed or did not validate against our published schema")
+	LifeCycleErrByMpAndPrefix   = errors.New("'ByMp' and 'Prefix' cannot be specified at the same time")
+	LifeCycleErrConflictRules   = errors.New("Conflicting rule prefix")
+	LifeCycleErrRulePrefix      = errors.New("Rule prefix cannot start with '/'")
+	LifeCycleErrTransitionCycle = errors.New("Circular dependency detected in transition rules")
+	LifeCycleErrDelayDelMinute  = errors.New("'DelayDelMinute' must be between MinDelayDelMinute (1 hour) and MaxDelayDelMinute (1 year) minutes")
 )
 
 func ValidRules(Rules []*Rule) error {
@@ -116,6 +131,11 @@ func ValidRules(Rules []*Rule) error {
 		return err
 	}
 
+	// Check for circular dependencies in transition rules
+	if err := validateTransitionCycles(Rules); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -126,34 +146,75 @@ func ValidRulePrefix(Rules []*Rule) error {
 		}
 		return nil
 	}
-	var prefixes []string
+
+	// Collect fromPoolIds for each rule
+	type ruleInfo struct {
+		prefix      string
+		fromPoolIds map[uint8]bool
+	}
+	var ruleInfos []ruleInfo
+
 	for _, rule := range Rules {
 		if rule.Filter == nil {
 			return LifeCycleErrConflictRules
 		}
-		if rule.Filter != nil {
-			if rule.GetPrefix() == "" {
-				return LifeCycleErrConflictRules
-			} else {
-				if strings.HasPrefix(rule.GetPrefix(), "/") {
-					return LifeCycleErrRulePrefix
+
+		if strings.HasPrefix(rule.GetPrefix(), "/") {
+			return LifeCycleErrRulePrefix
+		}
+
+		if rule.Filter.ByMp == ScanByMp && rule.Filter.Prefix != "" {
+			return LifeCycleErrByMpAndPrefix
+		}
+
+		// Collect all fromPoolIds from transitions
+		fromPoolIds := make(map[uint8]bool)
+		if rule.Transitions != nil {
+			for _, transition := range rule.Transitions {
+				if transition.FromPoolId != 0 {
+					fromPoolIds[transition.FromPoolId] = true
 				}
-				prefixes = append(prefixes, rule.GetPrefix())
 			}
 		}
+
+		ruleInfos = append(ruleInfos, ruleInfo{
+			prefix:      rule.GetPrefix(),
+			fromPoolIds: fromPoolIds,
+		})
 	}
 
-	for i, p1 := range prefixes {
-		for j, p2 := range prefixes {
+	// Check prefix conflicts only for rules with same fromPoolId
+	for i, r1 := range ruleInfos {
+		for j, r2 := range ruleInfos {
 			if i == j {
 				continue
 			}
-			if strings.HasPrefix(p1, p2) {
-				return LifeCycleErrConflictRules
+
+			// Check if rules have common fromPoolId
+			hasCommonFromPoolId := false
+			if len(r1.fromPoolIds) > 0 && len(r2.fromPoolIds) > 0 {
+				for poolId := range r1.fromPoolIds {
+					if r2.fromPoolIds[poolId] {
+						hasCommonFromPoolId = true
+						break
+					}
+				}
 			}
-			if strings.HasPrefix(p2, p1) {
-				return LifeCycleErrConflictRules
+
+			// Only check prefix conflict if rules have same fromPoolId
+			if hasCommonFromPoolId {
+				if r1.prefix == "" || r2.prefix == "" {
+					return LifeCycleErrConflictRules
+				}
+
+				if strings.HasPrefix(r1.prefix, r2.prefix) {
+					return LifeCycleErrConflictRules
+				}
+				if strings.HasPrefix(r2.prefix, r1.prefix) {
+					return LifeCycleErrConflictRules
+				}
 			}
+			// If no common fromPoolId, allow prefix overlap
 		}
 	}
 
@@ -212,20 +273,15 @@ func validRule(r *Rule) error {
 	if r.Transitions != nil {
 		daysMap := make(map[string]int)
 		dateMap := make(map[string]*time.Time)
-		singleMap := make(map[string]int)
 		for _, transition := range r.Transitions {
-			singleMap[transition.StorageClass]++
-			if singleMap[transition.StorageClass] > 1 {
-				return LifeCycleErrStorageClass
-			}
 			if err := validTransition(transition, dateMap, daysMap); err != nil {
 				return err
 			}
 		}
 
-		if err := validTransitions(dateMap, daysMap, r.Expiration); err != nil {
-			return err
-		}
+		// if err := validTransitions(dateMap, daysMap, r.Expiration); err != nil {
+		// 	return err
+		// }
 	}
 
 	return nil
@@ -265,10 +321,19 @@ func validTransition(t *Transition, dateMap map[string]*time.Time, daysMap map[s
 	if t.Date == nil && t.Days == nil {
 		return LifeCycleErrMalformedXML
 	}
-	// StorageClass must be the specified
-	if t.StorageClass != OpTypeStorageClassHDD && t.StorageClass != OpTypeStorageClassEBS {
-		return LifeCycleErrMalformedXML
+
+	// FromPoolId and ToPoolId must be specified
+	if t.FromPoolId == 0 || t.ToPoolId == 0 {
+		return LifeCycleErrPoolId
 	}
+
+	// Validate DelayDelMinute if specified (1 hour to 1 year)
+	if t.DelayDelMinute != nil {
+		if *t.DelayDelMinute < MinDelayDelMinute || *t.DelayDelMinute > MaxDelayDelMinute {
+			return LifeCycleErrDelayDelMinute
+		}
+	}
+
 	// Date must be midnight UTC
 	if t.Date != nil {
 		date := t.Date.In(time.UTC)
@@ -287,48 +352,114 @@ func validTransition(t *Transition, dateMap map[string]*time.Time, daysMap map[s
 	return nil
 }
 
-func validTransitions(dateMap map[string]*time.Time, daysMap map[string]int, expiration *Expiration) error {
-	// transitions and expiration must be all in date form or all in days form
-	if len(dateMap) > 0 && len(daysMap) > 0 {
-		return LifeCycleErrMalformedXML
+// func validTransitions(dateMap map[string]*time.Time, daysMap map[string]int, expiration *Expiration) error {
+// 	// transitions and expiration must be all in date form or all in days form
+// 	if len(dateMap) > 0 && len(daysMap) > 0 {
+// 		return LifeCycleErrMalformedXML
+// 	}
+
+// 	if len(dateMap) > 0 {
+// 		var s []*time.Time
+// 		if c, ok := dateMap[OpTypeStorageClassHDD]; ok {
+// 			s = append(s, c)
+// 		}
+// 		if c, ok := dateMap[OpTypeStorageClassEBS]; ok {
+// 			s = append(s, c)
+// 		}
+// 		for i := 0; i < len(s)-1; i++ {
+// 			if !s[i+1].After(*s[i]) {
+// 				return LifeCycleErrMalformedXML
+// 			}
+// 		}
+// 		if expiration != nil {
+// 			if expiration.Days != nil || !expiration.Date.After(*s[len(s)-1]) {
+// 				return LifeCycleErrMalformedXML
+// 			}
+// 		}
+// 	}
+
+// 	if len(daysMap) > 0 {
+// 		var s []int
+// 		if c, ok := daysMap[OpTypeStorageClassHDD]; ok {
+// 			s = append(s, c)
+// 		}
+// 		if c, ok := daysMap[OpTypeStorageClassEBS]; ok {
+// 			s = append(s, c)
+// 		}
+// 		for i := 0; i < len(s)-1; i++ {
+// 			if s[i+1] <= s[i] {
+// 				return LifeCycleErrMalformedXML
+// 			}
+// 		}
+// 		if expiration != nil {
+// 			if expiration.Date != nil || *expiration.Days <= s[len(s)-1] {
+// 				return LifeCycleErrMalformedXML
+// 			}
+// 		}
+// 	}
+
+// 	return nil
+// }
+
+// validateTransitionCycles checks for circular dependencies in transition rules
+// It builds a directed graph from all transitions and uses DFS to detect cycles
+func validateTransitionCycles(rules []*Rule) error {
+	// Build adjacency list: map[fromPoolId] -> []toPoolId
+	graph := make(map[uint8][]uint8)
+	allPools := make(map[uint8]bool)
+
+	// Collect all transitions from all rules
+	for _, rule := range rules {
+		if rule.Transitions == nil {
+			continue
+		}
+		for _, transition := range rule.Transitions {
+			// Only check transitions with both FromPoolId and ToPoolId specified
+			if transition.FromPoolId == 0 || transition.ToPoolId == 0 {
+				continue
+			}
+			// Skip self-loops (from same pool to same pool)
+			if transition.FromPoolId == transition.ToPoolId {
+				continue
+			}
+			fromPool := transition.FromPoolId
+			toPool := transition.ToPoolId
+			graph[fromPool] = append(graph[fromPool], toPool)
+			allPools[fromPool] = true
+			allPools[toPool] = true
+		}
 	}
 
-	if len(dateMap) > 0 {
-		var s []*time.Time
-		if c, ok := dateMap[OpTypeStorageClassHDD]; ok {
-			s = append(s, c)
-		}
-		if c, ok := dateMap[OpTypeStorageClassEBS]; ok {
-			s = append(s, c)
-		}
-		for i := 0; i < len(s)-1; i++ {
-			if !s[i+1].After(*s[i]) {
-				return LifeCycleErrMalformedXML
+	// Use DFS to detect cycles
+	visited := make(map[uint8]bool)
+	recStack := make(map[uint8]bool)
+
+	var dfs func(uint8) bool
+	dfs = func(poolId uint8) bool {
+		visited[poolId] = true
+		recStack[poolId] = true
+
+		// Check all neighbors
+		for _, neighbor := range graph[poolId] {
+			if !visited[neighbor] {
+				if dfs(neighbor) {
+					return true
+				}
+			} else if recStack[neighbor] {
+				// Found a back edge, cycle detected
+				return true
 			}
 		}
-		if expiration != nil {
-			if expiration.Days != nil || !expiration.Date.After(*s[len(s)-1]) {
-				return LifeCycleErrMalformedXML
-			}
-		}
+
+		recStack[poolId] = false
+		return false
 	}
 
-	if len(daysMap) > 0 {
-		var s []int
-		if c, ok := daysMap[OpTypeStorageClassHDD]; ok {
-			s = append(s, c)
-		}
-		if c, ok := daysMap[OpTypeStorageClassEBS]; ok {
-			s = append(s, c)
-		}
-		for i := 0; i < len(s)-1; i++ {
-			if s[i+1] <= s[i] {
-				return LifeCycleErrMalformedXML
-			}
-		}
-		if expiration != nil {
-			if expiration.Date != nil || *expiration.Days <= s[len(s)-1] {
-				return LifeCycleErrMalformedXML
+	// Check all pools for cycles
+	for poolId := range allPools {
+		if !visited[poolId] {
+			if dfs(poolId) {
+				return LifeCycleErrTransitionCycle
 			}
 		}
 	}
@@ -403,8 +534,11 @@ type LcNodeRuleTaskStatistics struct {
 	ExpiredMToBlobstoreNum   int64
 	ExpiredMToBlobstoreBytes int64
 	ExpiredSkipNum           int64
+	ExpiredMNum              int64
+	ExpiredMBytes            int64
 
 	ErrorDeleteNum       int64
+	ErrorMNum            int64
 	ErrorMToHddNum       int64
 	ErrorMToBlobstoreNum int64
 	ErrorReadDirNum      int64
@@ -414,17 +548,19 @@ type LcNodeRuleTaskStatistics struct {
 // lcnode <-> meta
 
 type ScanDentry struct {
-	ParentId     uint64     `json:"pid"`          // FileID value of the parent inode.
-	Inode        uint64     `json:"inode"`        // FileID value of the current inode.
-	Name         string     `json:"name"`         // Name of the current dentry.
-	Path         string     `json:"path"`         // Path of the current dentry.
-	Type         uint32     `json:"type"`         // Type of the current dentry.
-	Op           string     `json:"op"`           // to delete or migrate
-	Size         uint64     `json:"size"`         // for migrate: size of the current dentry
-	StorageClass uint32     `json:"sc"`           // for migrate: storage class of the current dentry
-	PoolId       uint8      `json:"poolId"`       // for migrate: pool id of the current dentry
-	LeaseExpire  uint64     `json:"leaseExpire"`  // for migrate: used to determine whether a file is modified
-	HasMek       bool       `json:"mek"`          // for migrate: if HasMek, call DeleteMigrationExtentKey instead of migrating
-	HasInodeInfo bool       `json:"hasInodeInfo"` // indicates whether inode info was successfully retrieved
-	InodeInfo    *InodeInfo `json:"inodeInfo"`    // inode info of the current dentry
+	ParentId       uint64     `json:"pid"`            // FileID value of the parent inode.
+	Inode          uint64     `json:"inode"`          // FileID value of the current inode.
+	Name           string     `json:"name"`           // Name of the current dentry.
+	Path           string     `json:"path"`           // Path of the current dentry.
+	Type           uint32     `json:"type"`           // Type of the current dentry.
+	Op             string     `json:"op"`             // to delete or migrate
+	Size           uint64     `json:"size"`           // for migrate: size of the current dentry
+	StorageClass   uint32     `json:"sc"`             // for migrate: storage class of the current dentry
+	SrcPoolId      uint8      `json:"srcPoolId"`      // for migrate: pool id of the current dentry
+	DstPoolId      uint8      `json:"dstPoolId"`      // for migrate: pool id of the destination dentry
+	LeaseExpire    uint64     `json:"leaseExpire"`    // for migrate: used to determine whether a file is modified
+	HasMek         bool       `json:"mek"`            // for migrate: if HasMek, call DeleteMigrationExtentKey instead of migrating
+	HasInodeInfo   bool       `json:"hasInodeInfo"`   // indicates whether inode info was successfully retrieved
+	InodeInfo      *InodeInfo `json:"inodeInfo"`      // inode info of the current dentry
+	DelayDelMinute uint64     `json:"delayDelMinute"` // delay delete in minutes after migration
 }

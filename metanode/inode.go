@@ -2553,7 +2553,7 @@ func (i *Inode) SetMtime() {
 	i.ModifyTime = mtime
 }
 
-func (i *Inode) updateStorageClass(storageClass uint32, isMigration bool) error {
+func (i *Inode) updateStorageClass(storageClass uint32, poolId uint8, isMigration bool) error {
 	i.Lock()
 	defer i.Unlock()
 	// update ek to Extents(SSD layer), no need to update storage class for Inode
@@ -2569,6 +2569,12 @@ func (i *Inode) updateStorageClass(storageClass uint32, isMigration bool) error 
 		} else if i.HybridCloudExtentsMigration.storageClass != storageClass {
 			return errors.New(fmt.Sprintf("storageClass %v not equal to HybridCloudExtentsMigration.storageClass %v",
 				storageClass, i.HybridCloudExtentsMigration.storageClass))
+		}
+		if i.HybridCloudExtentsMigration.poolId == 0 {
+			i.HybridCloudExtentsMigration.poolId = poolId
+		} else if i.HybridCloudExtentsMigration.poolId != poolId {
+			return errors.New(fmt.Sprintf("poolId %v not equal to HybridCloudExtentsMigration.poolId %v",
+				poolId, i.HybridCloudExtentsMigration.poolId))
 		}
 		return nil
 	}

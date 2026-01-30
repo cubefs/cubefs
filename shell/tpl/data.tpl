@@ -12,6 +12,7 @@
   "logDir": "_dir_/logs",
   "warnLogDir": "_dir_/logs",
   "logLevel": "debug",
+  "poolId":_poolId_,
   "disks": [
   	"_dir_/disk:1073741824"
   ],

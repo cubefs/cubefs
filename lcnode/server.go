@@ -55,6 +55,12 @@ type LcNode struct {
 	control          common.Control
 	lcScanners       map[string]*LcScanner
 	snapshotScanners map[string]*SnapshotScanner
+
+	rwlock sync.RWMutex
+	pools  map[uint8]*proto.StoragePoolView
+
+	localIP string
+	bindIp  bool
 }
 
 func NewServer() *LcNode {
@@ -87,6 +93,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = l.parseConfig(cfg); err != nil {
 		return
 	}
+	l.refreshPools()
 	l.register()
 	l.lastHeartbeat = time.Now()
 
@@ -189,18 +196,34 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	log.LogWarnf("loadConfig: setup config: %v(%v)", configLcNodeTaskCountLimit, lcNodeTaskCountLimit)
 
-	// parse delayDelMinute
+	// parse delayDelMinute (min: MinDelayDelMinute minutes = 1 hour, max: MaxDelayDelMinute minutes = 1 year, default: 10080 minutes = 7 days)
 	delay := cfg.GetInt64(configDelayDelMinute)
 	if delay <= 0 {
 		delayDelMinute = defaultDelayDelMinute
 	} else {
-		delayDelMinute = uint64(delay)
+		delayVal := uint64(delay)
+		// Validate range: MinDelayDelMinute minutes (1 hour) to MaxDelayDelMinute minutes (1 year)
+		if delayVal < proto.MinDelayDelMinute {
+			log.LogWarnf("loadConfig: delayDelMinute(%v) is less than minimum (%v minutes), using minimum", delayVal, proto.MinDelayDelMinute)
+			delayVal = proto.MinDelayDelMinute
+		} else if delayVal > proto.MaxDelayDelMinute {
+			log.LogWarnf("loadConfig: delayDelMinute(%v) is greater than maximum (%v minutes), using maximum", delayVal, proto.MaxDelayDelMinute)
+			delayVal = proto.MaxDelayDelMinute
+		}
+		delayDelMinute = delayVal
 	}
 	log.LogWarnf("loadConfig: setup config: %v(%v)", configDelayDelMinute, delayDelMinute)
 
 	// parse useCreateTime
 	useCreateTime = cfg.GetBool(configUseCreateTime)
 	log.LogWarnf("loadConfig: setup config: %v(%v)", configUseCreateTime, useCreateTime)
+
+	// parse localIP and bindIp
+	l.localIP = cfg.GetString("localIP")
+	l.bindIp = cfg.GetBool(proto.BindIpKey)
+	if l.localIP != "" {
+		log.LogWarnf("loadConfig: setup config: localIP(%v) bindIp(%v)", l.localIP, l.bindIp)
+	}
 
 	stream.SetExentRetryArgs(defaultAllocRetryInterval, defaultWriteRetryInterval, defaultExtenthandlerMaxRetryMin, true)
 
@@ -225,6 +248,10 @@ func (l *LcNode) register() {
 			masterAddr := l.mc.Leader()
 			l.clusterID = ci.Cluster
 			localIP := ci.Ip
+			// Use configured LocalIP if available, otherwise use IP from master
+			if l.localIP != "" {
+				localIP = l.localIP
+			}
 			l.localServerAddr = fmt.Sprintf("%s:%v", localIP, l.listen)
 			if !util.IsIPV4(localIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
@@ -269,6 +296,9 @@ func (l *LcNode) checkRegister() {
 func (l *LcNode) startServer() (err error) {
 	log.LogInfo("Start: startServer")
 	addr := fmt.Sprintf(":%v", l.listen)
+	if l.bindIp && l.localIP != "" {
+		addr = fmt.Sprintf("%s:%v", l.localIP, l.listen)
+	}
 	listener, err := net.Listen("tcp", addr)
 	log.LogInfof("action[startServer] listen tcp address(%v).", addr)
 	if err != nil {
@@ -375,6 +405,9 @@ func (l *LcNode) httpServiceStart() {
 		HandlerFunc(l.httpServiceGetFile)
 
 	addr := fmt.Sprintf(":%v", l.httpListen)
+	if l.bindIp && l.localIP != "" {
+		addr = fmt.Sprintf("%s:%v", l.localIP, l.httpListen)
+	}
 	server := &http.Server{
 		Addr:         addr,
 		Handler:      router,
@@ -502,11 +535,11 @@ func (l *LcNode) httpServiceGetFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer extentClient.Close()
 
-	if err = extentClient.OpenStream(ino, false, false, ""); err != nil {
-		http.Error(w, fmt.Sprintf("OpenStream err: %v", err.Error()), http.StatusBadRequest)
-		return
-	}
-	defer extentClient.CloseStream(ino)
+	// if err = extentClient.OpenStream(ino, false, false, ""); err != nil {
+	// 	http.Error(w, fmt.Sprintf("OpenStream err: %v", err.Error()), http.StatusBadRequest)
+	// 	return
+	// }
+	// defer extentClient.CloseStream(ino)
 
 	t := &TransitionMgr{
 		ec:     extentClient,
@@ -522,4 +555,35 @@ func (l *LcNode) httpServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.LogInfof("httpServiceGetFile success, vol(%v), ino(%v), size(%v)", vol, ino, size)
+}
+
+func (l *LcNode) refreshPools() {
+	getPools := func() {
+		pools, err := l.mc.AdminAPI().ListStoragePools()
+		if err != nil {
+			log.LogErrorf("getPools err: %v", err)
+			return
+		}
+
+		poolsMap := make(map[uint8]*proto.StoragePoolView)
+		for _, pool := range pools {
+			poolsMap[pool.Id] = pool
+		}
+
+		log.LogWarnf("refreshPools success, pools: %v", poolsMap)
+
+		l.rwlock.Lock()
+		defer l.rwlock.Unlock()
+
+		l.pools = poolsMap
+	}
+
+	getPools()
+
+	go func() {
+		for {
+			time.Sleep(time.Minute * 5)
+			getPools()
+		}
+	}()
 }

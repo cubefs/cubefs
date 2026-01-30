@@ -1833,7 +1833,7 @@ func GetStorageClassByMediaType(mediaType uint32) (storageClass uint32) {
 
 const (
 	ForbiddenMigrationRenewalPeriod = 1 * time.Hour
-	ForbiddenMigrationRenewalSeonds = 3600
+	ForbiddenMigrationRenewalSeonds = 36
 )
 
 // const ForbiddenMigrationRenewalPeriod = 10 * time.Second // for debug
@@ -1986,8 +1986,11 @@ const (
 )
 
 func (s *StoragePoolView) String() string {
-	return fmt.Sprintf("Id(%v) Name(%s) StorageClass(%v) CId(%v) ECAddr(%s) CreateTime(%s) UpdateTime(%s) Status(%s)",
-		s.Id, s.Name, StorageClassString(uint32(s.StorageClass)), s.CId, s.ECAddr, s.CreateTime, s.UpdateTime, s.Status)
+	if s == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("Id: %d, Name: %s, StorageClass: %d, CId: %d, ECAddr: %s, CreateTime: %s, UpdateTime: %s, Status: %s",
+		s.Id, s.Name, s.StorageClass, s.CId, s.ECAddr, s.CreateTime, s.UpdateTime, s.Status)
 }
 
 // Default Storage Pool IDs

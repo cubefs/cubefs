@@ -3024,7 +3024,7 @@ func (mw *MetaWrapper) renewalForbiddenMigration(mp *MetaPartition, inode uint64
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode uint64, storageType uint32,
+func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode uint64, storageType uint32, poolId uint8,
 	extentKeys []proto.ObjExtentKey, leaseExpire uint64, delayDelMinute uint64, fullPath string,
 ) (status int, err error) {
 	bgTime := stat.BeginStat()
@@ -3037,6 +3037,7 @@ func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode ui
 		StorageClass:     storageType,
 		NewObjExtentKeys: extentKeys,
 		LeaseExpire:      leaseExpire,
+		PoolId:           poolId,
 	}
 	req.DelayDeleteMinute = delayDelMinute
 	req.FullPaths = []string{fullPath}
@@ -3124,6 +3125,65 @@ func (mw *MetaWrapper) deleteMigrationExtentKey(mp *MetaPartition, inode uint64,
 
 	log.LogDebugf("deleteMigrationExtentKey exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, nil
+}
+
+func (mw *MetaWrapper) scanInodeByPool(mp *MetaPartition, req *proto.ScanInodeByPoolRequest) (
+	resp *proto.ScanInodeByPoolResponse, err error,
+) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("scanInodeByPool", err, bgTime, 1)
+	}()
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaScanInodeByPool
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		err = fmt.Errorf("marshal request err(%v)", err)
+		log.LogErrorf("scanInodeByPool: mp(%v) req(%v) err: %v", mp, *req, err)
+		return
+	}
+
+	if log.EnableDebug() {
+		log.LogDebugf("scanInodeByPool enter: packet(%v) mp(%v) req(%v)",
+			packet, mp, string(packet.Data))
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		err = fmt.Errorf("sendToMetaPartition err(%v)", err)
+		log.LogErrorf("scanInodeByPool: packet(%v) mp(%v) req(%v) err: %v", packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = fmt.Errorf("%v", string(packet.Data))
+		log.LogErrorf("scanInodeByPool: packet(%v) mp(%v) req(%v) status(%v) err: %v",
+			packet, mp, *req, status, err)
+		return
+	}
+
+	resp = &proto.ScanInodeByPoolResponse{}
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("scanInodeByPool: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)",
+			packet, mp, *req, err, string(packet.Data))
+		return
+	}
+
+	if log.EnableDebug() {
+		log.LogDebugf("scanInodeByPool exit: packet(%v) mp(%v) req(%v) resp(%v)",
+			packet, mp, *req, resp)
+	}
+
+	return resp, nil
 }
 
 func (mw *MetaWrapper) forbiddenMigration(mp *MetaPartition, inode uint64) (status int, err error) {

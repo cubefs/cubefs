@@ -41,23 +41,24 @@ const (
 )
 
 type LcScanner struct {
-	ID            string
-	Volume        string
-	mw            MetaWrapper
-	lcnode        *LcNode
-	transitionMgr *TransitionMgr
-	adminTask     *proto.AdminTask
-	rule          *proto.Rule
-	dirChan       *unboundedchan.UnboundedChan
-	fileChan      chan interface{}
-	dirRPool      *routinepool.RoutinePool
-	fileRPool     *routinepool.RoutinePool
-	currentStat   *proto.LcNodeRuleTaskStatistics
-	limiter       *rate.Limiter
-	now           time.Time
-	receiveStop   bool
-	receiveStopC  chan bool
-	stopC         chan bool
+	ID             string
+	Volume         string
+	mw             MetaWrapper
+	lcnode         *LcNode
+	transitionMgr  *TransitionMgr
+	adminTask      *proto.AdminTask
+	rule           *proto.Rule
+	dirChan        *unboundedchan.UnboundedChan
+	fileChan       chan interface{}
+	dirRPool       *routinepool.RoutinePool
+	fileRPool      *routinepool.RoutinePool
+	currentStat    *proto.LcNodeRuleTaskStatistics
+	limiter        *rate.Limiter
+	now            time.Time
+	receiveStop    bool
+	receiveStopC   chan bool
+	stopC          chan bool
+	scanMpFinished bool
 }
 
 func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
@@ -175,6 +176,13 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	return scanner, nil
 }
 
+func (s *LcScanner) getPool(poolId uint8) *proto.StoragePoolView {
+	s.lcnode.rwlock.RLock()
+	defer s.lcnode.rwlock.RUnlock()
+
+	return s.lcnode.pools[poolId]
+}
+
 func (l *LcNode) startLcScan(adminTask *proto.AdminTask) (err error) {
 	request := adminTask.Request.(*proto.LcNodeRuleTaskRequest)
 	log.LogInfof("startLcScan: scan task(%v) received!", request.Task)
@@ -235,6 +243,10 @@ func (s *LcScanner) Start() (err error) {
 
 	go s.handleFileChan()
 	go s.handleDirChan()
+
+	if s.rule.Filter != nil && s.rule.Filter.ByMp == proto.ScanByMp {
+		go s.scanInodesByMp()
+	}
 
 	var currentPath string
 	if len(prefixDirs) > 0 {
@@ -315,6 +327,139 @@ func (s *LcScanner) FindPrefixInode() (inode uint64, prefixDirs []string, err er
 	inode = parentId
 
 	return
+}
+
+func (s *LcScanner) scanInodesByMp() {
+	log.LogInfof("scanInodesByMp: scan inodes by mp %v", s.ID)
+	defer func() {
+		log.LogInfof("scanInodesByMp: exit scan inodes by mp %v", s.ID)
+		s.scanMpFinished = true
+	}()
+
+	rule := s.rule
+	minSize := rule.MinSize()
+
+	// Collect all unique FromPoolIds from transitions
+	fromPoolIdMap := make(map[uint8]bool)
+	if rule.Transitions != nil {
+		for _, transition := range rule.Transitions {
+			if transition.FromPoolId != 0 {
+				fromPoolIdMap[transition.FromPoolId] = true
+			}
+		}
+	}
+
+	if len(fromPoolIdMap) == 0 {
+		log.LogWarnf("scanInodesByMp: no valid FromPoolId found in transitions")
+		return
+	}
+
+	// Get all meta partitions
+	mps, err := s.lcnode.mc.ClientAPI().GetMetaPartitions(s.Volume)
+	if err != nil {
+		log.LogErrorf("scanInodesByMp: get meta partitions err %v", err)
+		return
+	}
+
+	// Scan each mp for each fromPoolId
+	for _, mp := range mps {
+		for fromPoolId := range fromPoolIdMap {
+			// Check if we should stop
+			select {
+			case <-s.stopC:
+				log.LogInfof("scanInodesByMp: receive stop signal, exit")
+				return
+			default:
+			}
+
+			s.scanInodesByMpAndPool(mp.PartitionID, fromPoolId, minSize)
+		}
+	}
+}
+
+func (s *LcScanner) scanInodesByMpAndPool(partitionID uint64, poolId uint8, minSize uint64) {
+	log.LogInfof("scanInodesByMpAndPool: partitionID(%v) poolId(%v) minSize(%v)", partitionID, poolId, minSize)
+
+	var startInode uint64 = 0
+	pageSize := uint32(10000) // Max page size
+
+	for {
+		// Check if we should stop
+		select {
+		case <-s.stopC:
+			log.LogInfof("scanInodesByMpAndPool: receive stop signal, exit")
+			return
+		default:
+		}
+
+		// Build request
+		req := &proto.ScanInodeByPoolRequest{
+			PartitionID: partitionID,
+			PoolId:      poolId,
+			PageSize:    pageSize,
+			StartInode:  startInode,
+			MinSize:     minSize,
+			CheckLease:  true,
+		}
+
+		// Call ScanInodeByPool
+		resp, err := s.mw.ScanInodeByPool(req)
+		if err != nil {
+			log.LogWarnf("scanInodesByMpAndPool: ScanInodeByPool failed partitionID(%v) poolId(%v) startInode(%v) err: %v",
+				partitionID, poolId, startInode, err)
+			return
+		}
+
+		if resp == nil || len(resp.Inodes) == 0 {
+			log.LogDebugf("scanInodesByMpAndPool: no more inodes partitionID(%v) poolId(%v)", partitionID, poolId)
+			return
+		}
+
+		// Convert InodeInfo to ScanDentry and send to fileChan
+		for _, inodeInfo := range resp.Inodes {
+			// Check if we should stop
+			select {
+			case <-s.stopC:
+				log.LogInfof("scanInodesByMpAndPool: receive stop signal, exit")
+				return
+			default:
+			}
+
+			// Create ScanDentry from InodeInfo
+			dentry := &proto.ScanDentry{
+				Inode:        inodeInfo.Inode,
+				Type:         inodeInfo.Mode,
+				Size:         inodeInfo.Size,
+				StorageClass: inodeInfo.StorageClass,
+				LeaseExpire:  inodeInfo.LeaseExpireTime,
+				HasMek:       inodeInfo.HasMigrationEk,
+				HasInodeInfo: true,
+				InodeInfo:    inodeInfo,
+				Path:         "",
+			}
+
+			// Send to fileChan
+			select {
+			case <-s.stopC:
+				log.LogInfof("scanInodesByMpAndPool: receive stop signal, exit")
+				return
+			case s.fileChan <- dentry:
+				// Successfully sent
+			}
+		}
+
+		// Check if there are more inodes to scan
+		if !resp.HasMore || resp.NextInode == 0 {
+			log.LogDebugf("scanInodesByMpAndPool: no more inodes partitionID(%v) poolId(%v) nextInode(%v) hasMore(%v)",
+				partitionID, poolId, resp.NextInode, resp.HasMore)
+			return
+		}
+
+		// Update startInode for next page
+		startInode = resp.NextInode
+		log.LogDebugf("scanInodesByMpAndPool: continue scanning partitionID(%v) poolId(%v) nextInode(%v) totalScanned(%v)",
+			partitionID, poolId, startInode, resp.TotalScanned)
+	}
 }
 
 func (s *LcScanner) handleFileChan() {
@@ -412,12 +557,9 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		return
 	}
 
-	op := s.inodeExpired(info, s.rule.Expiration, s.rule.Transitions)
+	op := s.inodeExpired(info, s.rule.Expiration, s.rule.Transitions, dentry)
 	dentry.Op = op
-	dentry.Size = info.Size
-	dentry.StorageClass = info.StorageClass
-	dentry.LeaseExpire = info.LeaseExpireTime
-	dentry.HasMek = info.HasMigrationEk
+
 	if op == "" {
 		log.LogInfof("handleFile: %+v, ctime(%v), atime(%v), is not expired", dentry, info.CreateTime, info.AccessTime)
 		return
@@ -428,7 +570,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	defer func() {
 		auditlog.LogLcNodeOp(op, s.Volume, dentry.Name, dentry.Path, dentry.ParentId, dentry.Inode, dentry.Size, dentry.LeaseExpire,
-			dentry.HasMek, dentry.StorageClass, proto.OpTypeToStorageType(op), time.Since(start).Milliseconds(), err)
+			dentry.HasMek, dentry.SrcPoolId, dentry.DstPoolId, time.Since(start).Milliseconds(), err)
 	}()
 
 	switch op {
@@ -461,10 +603,16 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 				return
 			}
 			atomic.AddInt64(&s.currentStat.ErrorMToHddNum, 1)
+			atomic.AddInt64(&s.currentStat.ErrorMNum, 1)
 			log.LogErrorf("migrate err: %v, dentry: %+v", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.LeaseExpire, delayDelMinute, dentry.Path)
+		// Use DelayDelMinute from dentry, or system default if not set
+		delayDel := dentry.DelayDelMinute
+		if delayDel == 0 {
+			delayDel = delayDelMinute // Use system default from config
+		}
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path)
 		if err != nil {
 			if isSkipErr(err) {
 				err = fmt.Errorf("skip (%v)", err)
@@ -472,12 +620,16 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 				return
 			}
 			atomic.AddInt64(&s.currentStat.ErrorMToHddNum, 1)
+			atomic.AddInt64(&s.currentStat.ErrorMNum, 1)
 			err = fmt.Errorf("UpdateExtentKeyAfterMigration err(%v)", err)
 			log.LogErrorf("%v, dentry: %+v", err, dentry)
 			return
 		}
+
 		atomic.AddInt64(&s.currentStat.ExpiredMToHddNum, 1)
+		atomic.AddInt64(&s.currentStat.ExpiredMNum, 1)
 		atomic.AddInt64(&s.currentStat.ExpiredMToHddBytes, int64(dentry.Size))
+		atomic.AddInt64(&s.currentStat.ExpiredMBytes, int64(dentry.Size))
 
 	case proto.OpTypeStorageClassEBS:
 		if dentry.HasMek {
@@ -500,7 +652,12 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			log.LogErrorf("migrate blobstore err: %v, dentry: %+v", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.LeaseExpire, delayDelMinute, dentry.Path)
+		// Use DelayDelMinute from dentry, or system default if not set
+		delayDel := dentry.DelayDelMinute
+		if delayDel == 0 {
+			delayDel = delayDelMinute // Use system default from config
+		}
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path)
 		if err != nil {
 			if isSkipErr(err) {
 				err = fmt.Errorf("skip (%v)", err)
@@ -539,40 +696,47 @@ func isSkipErr(err error) bool {
 	return false
 }
 
-func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration, condT []*proto.Transition) (op string) {
-	if inode == nil {
+func (s *LcScanner) inodeExpired(info *proto.InodeInfo, condE *proto.Expiration, condT []*proto.Transition, dentry *proto.ScanDentry) (op string) {
+	dentry.Size = info.Size
+	dentry.StorageClass = info.StorageClass
+	dentry.LeaseExpire = info.LeaseExpireTime
+	dentry.HasMek = info.HasMigrationEk
+
+	if info == nil {
 		return
 	}
 
-	if inode.ForbiddenLc {
-		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, LeaseExpireTime(%v)", inode, inode.LeaseExpireTime)
+	if info.ForbiddenLc {
+		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, LeaseExpireTime(%v)", info.Inode, info.LeaseExpireTime)
 		return
 	}
 
 	// execute expiration priority
 	if condE != nil {
-		if expired(inode, s.now.Unix(), condE.Days, condE.Date) {
+		if expired(info, s.now.Unix(), condE.Days, condE.Date) {
 			op = proto.OpTypeDelete
 			return
 		}
 	}
 
-	// match from the coldest storage type
 	if condT != nil {
 		for _, cond := range condT {
-			if cond.StorageClass == proto.OpTypeStorageClassEBS {
-				if expired(inode, s.now.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_BlobStore {
-					op = proto.OpTypeStorageClassEBS
-					return
-				}
+			if info.PoolId != cond.FromPoolId {
+				continue
 			}
-		}
-		for _, cond := range condT {
-			if cond.StorageClass == proto.OpTypeStorageClassHDD {
-				if expired(inode, s.now.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_Replica_HDD {
-					op = proto.OpTypeStorageClassHDD
-					return
+
+			if expired(info, s.now.Unix(), cond.Days, cond.Date) {
+				op = proto.OpTypeStorageClassHDD
+				dentry.DstPoolId = cond.ToPoolId
+				dentry.SrcPoolId = cond.FromPoolId
+				// Set DelayDelMinute from transition, or use system default if not specified
+				if cond.DelayDelMinute != nil {
+					dentry.DelayDelMinute = *cond.DelayDelMinute
+				} else {
+					// Use system default from config (default is 7 days = 10080 minutes)
+					dentry.DelayDelMinute = delayDelMinute
 				}
+				return
 			}
 		}
 	}
@@ -767,7 +931,9 @@ func (s *LcScanner) checkScanning() {
 			response.Rule = s.rule
 			response.ExpiredDeleteNum = s.currentStat.ExpiredDeleteNum
 			response.ExpiredMToHddNum = s.currentStat.ExpiredMToHddNum
+			response.ExpiredMNum = s.currentStat.ExpiredMNum
 			response.ExpiredMToBlobstoreNum = s.currentStat.ExpiredMToBlobstoreNum
+			response.ExpiredMBytes = s.currentStat.ExpiredMBytes
 			response.ExpiredMToHddBytes = s.currentStat.ExpiredMToHddBytes
 			response.ExpiredMToBlobstoreBytes = s.currentStat.ExpiredMToBlobstoreBytes
 			response.ExpiredSkipNum = s.currentStat.ExpiredSkipNum
@@ -776,8 +942,10 @@ func (s *LcScanner) checkScanning() {
 			response.TotalDirScannedNum = s.currentStat.TotalDirScannedNum
 			response.ErrorDeleteNum = s.currentStat.ErrorDeleteNum
 			response.ErrorMToHddNum = s.currentStat.ErrorMToHddNum
+			response.ErrorMNum = s.currentStat.ErrorMNum
 			response.ErrorMToBlobstoreNum = s.currentStat.ErrorMToBlobstoreNum
 			response.ErrorReadDirNum = s.currentStat.ErrorReadDirNum
+
 			log.LogInfof("receive receiveStopC response(%+v)", response)
 
 			s.lcnode.scannerMutex.Lock()
@@ -832,9 +1000,13 @@ func (s *LcScanner) checkScanning() {
 }
 
 func (s *LcScanner) DoneScanning() bool {
-	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v)",
-		s.dirChan.Len(), len(s.fileChan), s.fileRPool.RunningNum(), s.dirRPool.RunningNum())
-	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0
+	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v) scanMpFinished(%v)",
+		s.dirChan.Len(), len(s.fileChan), s.fileRPool.RunningNum(), s.dirRPool.RunningNum(), s.scanMpFinished)
+	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && s.scanMpFinished
+}
+
+func (s *LcScanner) DoneScanningMp() bool {
+	return s.rule.Filter != nil && s.rule.Filter.ByMp == proto.ScanByMp && s.scanMpFinished
 }
 
 func (s *LcScanner) Stop() {

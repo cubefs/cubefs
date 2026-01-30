@@ -179,6 +179,7 @@ type OpInode interface {
 	SetCreateTime(req *SetCreateTimeRequest, reqData []byte, p *Packet) (err error) // for debugging
 	DeleteMigrationExtentKey(req *proto.DeleteMigrationExtentKeyRequest, p *Packet, remoteAddr string) (err error)
 	UpdateInodeMeta(req *proto.UpdateInodeMetaRequest, p *Packet) (err error)
+	ScanInodeByPool(req *proto.ScanInodeByPoolRequest, resp *proto.ScanInodeByPoolResponse) (err error)
 }
 
 type OpExtend interface {

@@ -76,6 +76,17 @@ while [ $i -le $DATA_COUNT ]; do
 done
 echo "Data node services started successfully"
 
+
+# Start lc services
+echo "Starting lc node services..."
+i=1
+while [ $i -le $LC_COUNT ]; do
+    echo "Starting lc${i}..."
+    ./build/bin/cfs-server -c ${confDir}/lc${i}.conf &
+    i=$((i + 1))
+done
+echo "Lc node services started successfully"
+
 # Configure cluster
 echo "Configuring cluster..."
 ./build/bin/cfs-cli config set --addr 172.16.1.101:17010
