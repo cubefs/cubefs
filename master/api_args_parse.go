@@ -999,7 +999,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq, m *Server) (err
 	if req.remoteCacheTTL, err = extractInt64WithDefault(r, remoteCacheTTL, proto.DefaultRemoteCacheTTL); err != nil {
 		return
 	}
-	if req.remoteCacheReadTimeout, err = extractInt64WithDefault(r, remoteCacheReadTimeout, proto.ReadDeadlineTime); err != nil {
+	if req.remoteCacheReadTimeout, err = extractInt64WithDefault(r, remoteCacheReadTimeout, proto.DefaultRemoteCacheClientReadTimeout); err != nil {
 		return
 	}
 
