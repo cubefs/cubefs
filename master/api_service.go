@@ -2639,6 +2639,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		newArg("flashNodeTimeoutCount", &newArgs.flashNodeTimeoutCount).OmitEmpty(),
 		newArg("remoteCacheSameZoneTimeout", &newArgs.remoteCacheSameZoneTimeout).OmitEmpty(),
 		newArg("remoteCacheSameRegionTimeout", &newArgs.remoteCacheSameRegionTimeout).OmitEmpty(),
+		newArg("remoteCacheDisableTTL", &newArgs.remoteCacheDisableTTL).OmitEmpty(),
 	); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3266,6 +3267,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
+		RemoteCacheDisableTTL:        vol.remoteCacheDisableTTL,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)

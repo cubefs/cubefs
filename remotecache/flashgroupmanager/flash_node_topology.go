@@ -1115,6 +1115,7 @@ func (t *FlashNodeTopology) SaveFlashGroup(group *FlashGroup) (err error) {
 
 func (t *FlashNodeTopology) CreateFlashNodeHeartBeatTasks(leader string, handleReadTimeout, readDataNodeTimeout,
 	hotKeyMissCount int, flashReadFlowLimit int64, flashWriteFlowLimit int64, flashKeyFlowLimit int64,
+	remoteCacheDisableTTLMap map[string]bool,
 ) []*proto.AdminTask {
 	tasks := make([]*proto.AdminTask, 0)
 	t.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
@@ -1128,7 +1129,7 @@ func (t *FlashNodeTopology) CreateFlashNodeHeartBeatTasks(leader string, handleR
 		}
 
 		task := node.createHeartbeatTask(leader, handleReadTimeout, readDataNodeTimeout, hotKeyMissCount,
-			flashReadFlowLimit, flashWriteFlowLimit, flashKeyFlowLimit, slots)
+			flashReadFlowLimit, flashWriteFlowLimit, flashKeyFlowLimit, slots, remoteCacheDisableTTLMap)
 		tasks = append(tasks, task)
 		return true
 	})

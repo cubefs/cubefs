@@ -78,6 +78,7 @@ type VolVarargs struct {
 	flashNodeTimeoutCount        int64
 	remoteCacheSameZoneTimeout   int64 // microsecond
 	remoteCacheSameRegionTimeout int64 // ms
+	remoteCacheDisableTTL        bool
 }
 
 // nolint: structcheck
@@ -98,6 +99,7 @@ type TxSubItem struct {
 	flashNodeTimeoutCount        int64
 	remoteCacheSameZoneTimeout   int64 // microsecond
 	remoteCacheSameRegionTimeout int64 // ms
+	remoteCacheDisableTTL        bool
 
 	PreloadCacheOn          bool
 	NeedToLowerReplica      bool
@@ -252,6 +254,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.flashNodeTimeoutCount = vv.FlashNodeTimeoutCount
 	vol.remoteCacheSameZoneTimeout = vv.RemoteCacheSameZoneTimeout
 	vol.remoteCacheSameRegionTimeout = vv.RemoteCacheSameRegionTimeout
+	vol.remoteCacheDisableTTL = vv.RemoteCacheDisableTTL
 
 	limitQosVal := &qosArgs{
 		qosEnable:     vv.VolQosEnable,
@@ -1839,6 +1842,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.flashNodeTimeoutCount = args.flashNodeTimeoutCount
 	vol.remoteCacheSameZoneTimeout = args.remoteCacheSameZoneTimeout
 	vol.remoteCacheSameRegionTimeout = args.remoteCacheSameRegionTimeout
+	vol.remoteCacheDisableTTL = args.remoteCacheDisableTTL
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1899,6 +1903,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		flashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		remoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		remoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
+		remoteCacheDisableTTL:        vol.remoteCacheDisableTTL,
 	}
 }
 

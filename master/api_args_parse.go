@@ -771,6 +771,7 @@ type createVolReq struct {
 	flashNodeTimeoutCount        int64
 	remoteCacheSameZoneTimeout   int64
 	remoteCacheSameRegionTimeout int64
+	remoteCacheDisableTTL        bool
 }
 
 func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
@@ -1021,6 +1022,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 	if req.remoteCacheSameRegionTimeout, err = extractInt64WithDefault(r, remoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout); err != nil {
+		return
+	}
+	if req.remoteCacheDisableTTL, err = extractBoolWithDefault(r, remoteCacheDisableTTL, false); err != nil {
 		return
 	}
 	return

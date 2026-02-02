@@ -405,6 +405,7 @@ type volValue struct {
 	FlashNodeTimeoutCount        int64
 	RemoteCacheSameZoneTimeout   int64
 	RemoteCacheSameRegionTimeout int64
+	RemoteCacheDisableTTL        bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -493,6 +494,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
+		RemoteCacheDisableTTL:        vol.remoteCacheDisableTTL,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)

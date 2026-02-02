@@ -320,6 +320,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  flashNodeTimeoutCount           : %v\n", svv.FlashNodeTimeoutCount))
 	sb.WriteString(fmt.Sprintf("  remoteCacheSameZoneTimeout      : %v\n", svv.RemoteCacheSameZoneTimeout))
 	sb.WriteString(fmt.Sprintf("  remoteCacheSameRegionTimeout    : %v\n", svv.RemoteCacheSameRegionTimeout))
+	sb.WriteString(fmt.Sprintf("  remoteCacheDisableTTL           : %v\n", formatEnabledDisabled(svv.RemoteCacheDisableTTL)))
 
 	// qos of volume
 	sb.WriteString(fmt.Sprintf("  QosEnable                       : %v\n", svv.QosInfo.QosEnable))

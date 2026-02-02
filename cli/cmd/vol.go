@@ -154,6 +154,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optFlashNodeTimeoutCount int64
 	var optRemoteCacheSameZoneTimeout int64
 	var optRemoteCacheSameRegionTimeout int64
+	var optRemoteCacheDisableTTL string
 
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -271,6 +272,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  flashNodeTimeoutCount    : %v\n", optFlashNodeTimeoutCount)
 				stdout("  rcSameZoneTimeout        : %v microSecond\n", optRemoteCacheSameZoneTimeout)
 				stdout("  rcSameRegionTimeout      : %v ms\n", optRemoteCacheSameRegionTimeout)
+				stdout("  remoteCacheDisableTTL      : %v\n", optRemoteCacheDisableTTL)
 
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
@@ -281,6 +283,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			remoteCacheDisableTTL, _ := strconv.ParseBool(optRemoteCacheDisableTTL)
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
 				optMPCount, optDPCount, int(replicaNum), optDPSize, followerRead,
@@ -289,7 +292,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB,
 				optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout)
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, remoteCacheDisableTTL)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -336,6 +339,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, cmdVolDefaultFlashNodeTimeoutCount, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value")
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, proto.DefaultRemoteCacheSameZoneTimeout, "Remote cache same zone timeout microsecond(must > 0)")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout, "Remote cache same region timeout millisecond(must > 0)")
+	cmd.Flags().StringVar(&optRemoteCacheDisableTTL, "remoteCacheDisableTTL", "false", "Remote cache disable TTL(true|false), default false")
 
 	return cmd
 }
@@ -368,6 +372,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optFlashNodeTimeoutCount int64
 	var optRemoteCacheSameZoneTimeout int64
 	var optRemoteCacheSameRegionTimeout int64
+	var optRemoteCacheDisableTTL string
 
 	var optYes bool
 	var optTxMask string
@@ -855,6 +860,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				{&vv.FlashNodeTimeoutCount, optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount},
 				{&vv.RemoteCacheSameZoneTimeout, optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout},
 				{&vv.RemoteCacheSameRegionTimeout, optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout},
+				{&vv.RemoteCacheDisableTTL, optRemoteCacheDisableTTL, "remoteCacheDisableTTL"},
 			} {
 				if err = checkChangedFlag(rcOpt.val, rcOpt.opt, rcOpt.name); err != nil {
 					return
@@ -938,6 +944,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, 0, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value(default 5)")
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, 0, "Remote cache same zone timeout microsecond(must > 0),default 400")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, 0, "Remote cache same region timeout millisecond(must > 0),default 2")
+	cmd.Flags().StringVar(&optRemoteCacheDisableTTL, "remoteCacheDisableTTL", "", "Remote cache disable TTL(true|false), default false")
 
 	return cmd
 }
