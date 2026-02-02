@@ -207,6 +207,7 @@ type FlashNode struct {
 	reservedSpace            int64 // reserved disk space
 	legacyMaster             int32
 	region                   string
+	remoteCacheDisableTTLMap map[string]bool // volume -> disableTTL, fetched during registration
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -610,6 +611,12 @@ func (f *FlashNode) startCacheEngine() (err error) {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
+	// Apply remoteCacheDisableTTLMap if it was fetched during registration
+	// This ensures cache blocks can be loaded correctly even if expired
+	if f.remoteCacheDisableTTLMap != nil {
+		f.cacheEngine.SetRemoteCacheDisableTTL(f.remoteCacheDisableTTLMap)
+		log.LogInfof("action[startCacheEngine] applied remoteCacheDisableTTLMap with %d volumes", len(f.remoteCacheDisableTTLMap))
+	}
 	stat.PrintModuleStat = func(writer *bufio.Writer) {
 		if f.cacheEngine != nil {
 			lruSum, fhLen, keyMapLen := f.cacheEngine.GetCacheLengths()
@@ -780,7 +787,17 @@ func (f *FlashNode) register() error {
 				}
 			}
 			f.nodeID = nodeID
-			log.LogInfof("action[register] remotecache(%d) cluster(%s) localAddr(%s)", f.nodeID, f.clusterID, f.localAddr)
+			// Try to get remoteCacheDisableTTLMap from master
+			// If the API is not available (old master), it will return empty map without error
+			remoteCacheDisableTTLMap, err := f.mc.NodeAPI().GetRemoteCacheDisableTTLMap()
+			if err != nil {
+				// If there's an error (shouldn't happen as GetRemoteCacheDisableTTLMap returns empty map on error),
+				// use empty map and continue
+				remoteCacheDisableTTLMap = make(map[string]bool)
+				log.LogDebugf("action[register] failed to get remoteCacheDisableTTLMap: %v, using empty map", err)
+			}
+			f.remoteCacheDisableTTLMap = remoteCacheDisableTTLMap
+			log.LogInfof("action[register] remotecache(%d) cluster(%s) localAddr(%s) remoteCacheDisableTTLMap(%d volumes)", f.nodeID, f.clusterID, f.localAddr, len(remoteCacheDisableTTLMap))
 			syslog.Printf("Flash node registered successfully. ID: %d, Cluster: %s, LocalAddr: %s, region: %s", f.nodeID, f.clusterID, f.localAddr, f.region)
 			return nil
 		}

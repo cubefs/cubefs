@@ -137,8 +137,8 @@ type CacheEngine struct {
 	readDataNodeTimeout   int
 	keyRateLimitThreshold int32
 	keyLimiterFlow        int64
-	reservedSpace         int64 // reserved disk space
-	volMap                sync.Map
+	reservedSpace         int64    // reserved disk space
+	volMap                sync.Map // volume -> struct{}{} (track volumes with cache)
 }
 
 type (
@@ -290,6 +290,35 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 func (c *CacheEngine) isCacheBlockFileName(filename string) (isCacheBlockDir bool) {
 	isCacheBlockDir = RegexpCacheBlockFileName.MatchString(filename)
 	return
+}
+
+func (c *CacheEngine) SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap map[string]bool) {
+	// Update volMap in all lruCache instances
+	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		cacheItem := value.(*lruCacheItem)
+		cacheItem.lruCache.SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap)
+		return true
+	})
+	// Also update lruFhCache if it exists
+	if c.lruFhCache != nil {
+		c.lruFhCache.SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap)
+	}
+}
+
+// IsVolumeDisableTTL checks if remoteCacheDisableTTL is enabled for a specific volume
+func (c *CacheEngine) IsVolumeDisableTTL(volume string) bool {
+	var disableTTL bool
+	found := false
+	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		cacheItem := value.(*lruCacheItem)
+		disableTTL = cacheItem.lruCache.IsVolumeDisableTTL(volume)
+		found = true
+		return false // stop iteration after first cache
+	})
+	if !found && c.lruFhCache != nil {
+		disableTTL = c.lruFhCache.IsVolumeDisableTTL(volume)
+	}
+	return disableTTL
 }
 
 func (c *CacheEngine) SetKeyLimiterFlow(keyLimiterFlow int64) {

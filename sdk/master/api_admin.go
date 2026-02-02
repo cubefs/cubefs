@@ -409,6 +409,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParamAny("flashNodeTimeoutCount", vv.FlashNodeTimeoutCount)
 	request.addParamAny("remoteCacheSameZoneTimeout", vv.RemoteCacheSameZoneTimeout)
 	request.addParamAny("remoteCacheSameRegionTimeout", vv.RemoteCacheSameRegionTimeout)
+	request.addParamAny("remoteCacheDisableTTL", vv.RemoteCacheDisableTTL)
 
 	if vv.DefaultStoreMode != proto.StoreModeDef {
 		request.addParam("storeMode", strconv.FormatInt(int64(vv.DefaultStoreMode), 10))
@@ -519,7 +520,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
 	remoteCacheMaxFileSizeGB int64, remoteCacheOnlyForNotSSD string, remoteCacheMultiRead string, flashNodeTimeoutCount int64,
 	remoteCacheSameZoneTimeout int64, remoteCacheSameRegionTimeout int64, storeMode proto.StoreMode,
-	poolId uint8, pools string,
+	poolId uint8, pools string, remoteCacheDisableTTL bool,
 ) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
 	request.addParam("name", volName)
@@ -555,6 +556,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParamAny("flashNodeTimeoutCount", flashNodeTimeoutCount)
 	request.addParamAny("remoteCacheSameZoneTimeout", remoteCacheSameZoneTimeout)
 	request.addParamAny("remoteCacheSameRegionTimeout", remoteCacheSameRegionTimeout)
+	request.addParam("remoteCacheDisableTTL", strconv.FormatBool(remoteCacheDisableTTL))
 	if storeMode != proto.StoreModeDef {
 		request.addParam("storeMode", strconv.FormatInt(int64(storeMode), 10))
 	}

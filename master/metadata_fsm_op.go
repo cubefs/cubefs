@@ -493,6 +493,7 @@ type volValue struct {
 	FlashNodeTimeoutCount        int64
 	RemoteCacheSameZoneTimeout   int64
 	RemoteCacheSameRegionTimeout int64
+	RemoteCacheDisableTTL        bool
 
 	DefaultStoreMode proto.StoreMode
 	SelectType       int32
@@ -592,6 +593,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
+		RemoteCacheDisableTTL:        vol.remoteCacheDisableTTL,
 		DefaultStoreMode:             vol.DefaultStoreMode,
 		DpTag:                        vol.DpTag,
 		MpTag:                        vol.MpTag,

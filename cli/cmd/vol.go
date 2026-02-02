@@ -156,6 +156,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optStoreMode string
 	var optPoolId uint8
 	var optPools string
+	var optRemoteCacheDisableTTL string
 
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -286,6 +287,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				if optPools != "" {
 					stdout("  allowedPools             : %v\n", optPools)
 				}
+				stdout("  remoteCacheDisableTTL      : %v\n", optRemoteCacheDisableTTL)
+
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -302,6 +305,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			remoteCacheDisableTTL, _ := strconv.ParseBool(optRemoteCacheDisableTTL)
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
 				optMPCount, optDPCount, int(replicaNum), optDPSize, followerRead,
@@ -310,7 +314,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				proto.StorageClass_Unspecified, "", optMetaFollowerRead, optMetaNearRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB,
 				optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, storeMode, optPoolId, optPools)
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, storeMode, optPoolId, optPools, remoteCacheDisableTTL)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -356,6 +360,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "Specify default store mode of mp: memory, rocksdb")
 	cmd.Flags().Uint8Var(&optPoolId, "poolId", 0, "Specify default storage pool ID for the volume")
 	cmd.Flags().StringVar(&optPools, "pools", "", "Specify allowed storage pools for the volume (comma-separated pool IDs, e.g., \"1,2,...\")")
+	cmd.Flags().StringVar(&optRemoteCacheDisableTTL, "remoteCacheDisableTTL", "false", "Remote cache disable TTL(true|false), default false")
 
 	return cmd
 }
@@ -389,6 +394,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optFlashNodeTimeoutCount int64
 	var optRemoteCacheSameZoneTimeout int64
 	var optRemoteCacheSameRegionTimeout int64
+	var optRemoteCacheDisableTTL string
 
 	var optYes bool
 	var optTxMask string
@@ -950,6 +956,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				{&vv.FlashNodeTimeoutCount, optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount},
 				{&vv.RemoteCacheSameZoneTimeout, optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout},
 				{&vv.RemoteCacheSameRegionTimeout, optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout},
+				{&vv.RemoteCacheDisableTTL, optRemoteCacheDisableTTL, "remoteCacheDisableTTL"},
 			} {
 				if err = checkChangedFlag(rcOpt.val, rcOpt.opt, rcOpt.name); err != nil {
 					return
@@ -1071,6 +1078,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "Specify default store mode of mp: memory, rocksdb")
 	cmd.Flags().StringVar(&optDpTag, CliFlagDpTag, "", proto.ValidateTagFormat)
 	cmd.Flags().StringVar(&optMpTag, CliFlagMpTag, "", proto.ValidateTagFormat)
+	cmd.Flags().StringVar(&optRemoteCacheDisableTTL, "remoteCacheDisableTTL", "", "Remote cache disable TTL(true|false), default false")
 
 	return cmd
 }

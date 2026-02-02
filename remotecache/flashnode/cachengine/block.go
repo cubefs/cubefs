@@ -346,7 +346,7 @@ func (cb *CacheBlock) GetExpiredTime() time.Time {
 	return expiredTime
 }
 
-func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string) (allocSize, usedSize int64, expiredTime time.Time, err error) {
+func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string, disableTTL bool) (allocSize, usedSize int64, expiredTime time.Time, err error) {
 	buf := make([]byte, HeaderSize)
 	if _, err = io.ReadFull(file, buf); err != nil {
 		return
@@ -356,9 +356,15 @@ func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File, sourceType string
 	expiredTime = time.Unix(seconds, 0)
 	currentTime := time.Now()
 	if expiredTime.Before(currentTime) {
-		err = fmt.Errorf("cacheBlock(%v) was expired, expiredTime(%v) currentTime(%v) ",
+		// If disableTTL is true, skip expiration check and continue loading
+		if !disableTTL {
+			err = fmt.Errorf("cacheBlock(%v) was expired, expiredTime(%v) currentTime(%v) ",
+				cb.blockKey, expiredTime.Format("2006-01-02 15:04:05"), currentTime.Format("2006-01-02 15:04:05"))
+			return
+		}
+		// disableTTL is true, log but don't return error
+		log.LogDebugf("cacheBlock(%v) was expired but disableTTL is true, continue loading, expiredTime(%v) currentTime(%v) ",
 			cb.blockKey, expiredTime.Format("2006-01-02 15:04:05"), currentTime.Format("2006-01-02 15:04:05"))
-		return
 	}
 
 	var stat os.FileInfo
@@ -445,9 +451,14 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 		log.LogDebugf("%v", msg)
 		auditlog.LogFlashNodeOp("BlockInit", msg, err)
 	} else {
+		// Check if remoteCacheDisableTTL is enabled for this volume
+		disableTTL := false
+		if cb.cacheEngine != nil {
+			disableTTL = cb.cacheEngine.IsVolumeDisableTTL(cb.volume)
+		}
 		var allocSize, usedSize int64
 		var expiredTime time.Time
-		if allocSize, usedSize, expiredTime, err = cb.checkCacheBlockFileHeader(file, cb.sourceType); err != nil {
+		if allocSize, usedSize, expiredTime, err = cb.checkCacheBlockFileHeader(file, cb.sourceType, disableTTL); err != nil {
 			file.Close()
 			return fmt.Errorf("initFilePath check file header failed: %s", err.Error())
 		}

@@ -111,6 +111,7 @@ const (
 	AdminResetDataPartitionRestoreStatus                   = "/admin/resetDataPartitionRestoreStatus"
 	AdminGetOpLog                                          = "/admin/getOpLog"
 	AdminGetRemoteCacheConfig                              = "/admin/getRemoteCacheConfig"
+	AdminGetRemoteCacheDisableTTLMap                       = "/admin/getRemoteCacheDisableTTLMap"
 
 	// #nosec G101
 	AdminQueryDecommissionToken            = "/admin/queryDecommissionToken"
@@ -912,6 +913,7 @@ type FlashNodeHeartBeatInfos struct {
 	TopoName                     string
 	FlashNodeSlots               []uint32
 	FlashNodeID                  uint64
+	RemoteCacheDisableTTL        map[string]bool // volume -> disableTTL
 }
 
 // HeartBeatRequest define the heartbeat request.
@@ -1512,6 +1514,7 @@ type SimpleVolView struct {
 	FlashNodeTimeoutCount        int64
 	RemoteCacheSameZoneTimeout   int64 // microsecond
 	RemoteCacheSameRegionTimeout int64 // ms
+	RemoteCacheDisableTTL        bool
 
 	QosInfo QosSimpleInfo // qos status
 

@@ -81,11 +81,15 @@ type VolVarargs struct {
 	flashNodeTimeoutCount        int64
 	remoteCacheSameZoneTimeout   int64 // microsecond
 	remoteCacheSameRegionTimeout int64 // ms
+<<<<<<< HEAD
 	DefaultStoreMode             proto.StoreMode
 	defaultPoolId                uint8
 	allowedPools                 []uint8
 	DpTag                        string
 	MpTag                        string
+=======
+	remoteCacheDisableTTL        bool
+>>>>>>> e2be66b2fe... feat(master): add disable ttl config for vol
 }
 
 // nolint: structcheck
@@ -106,6 +110,7 @@ type TxSubItem struct {
 	flashNodeTimeoutCount        int64
 	remoteCacheSameZoneTimeout   int64 // microsecond
 	remoteCacheSameRegionTimeout int64 // ms
+	remoteCacheDisableTTL        bool
 
 	PreloadCacheOn          bool
 	NeedToLowerReplica      bool
@@ -280,6 +285,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.flashNodeTimeoutCount = vv.FlashNodeTimeoutCount
 	vol.remoteCacheSameZoneTimeout = vv.RemoteCacheSameZoneTimeout
 	vol.remoteCacheSameRegionTimeout = vv.RemoteCacheSameRegionTimeout
+	vol.remoteCacheDisableTTL = vv.RemoteCacheDisableTTL
 
 	limitQosVal := &qosArgs{
 		qosEnable:     vv.VolQosEnable,
@@ -2050,6 +2056,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.flashNodeTimeoutCount = args.flashNodeTimeoutCount
 	vol.remoteCacheSameZoneTimeout = args.remoteCacheSameZoneTimeout
 	vol.remoteCacheSameRegionTimeout = args.remoteCacheSameRegionTimeout
+<<<<<<< HEAD
 	vol.DefaultStoreMode = args.DefaultStoreMode
 
 	// Update pool configuration if provided
@@ -2062,6 +2069,9 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	}
 	vol.DpTag = args.DpTag
 	vol.MpTag = args.MpTag
+=======
+	vol.remoteCacheDisableTTL = args.remoteCacheDisableTTL
+>>>>>>> e2be66b2fe... feat(master): add disable ttl config for vol
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -2130,11 +2140,15 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		flashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		remoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
 		remoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
+<<<<<<< HEAD
 		DefaultStoreMode:             vol.DefaultStoreMode,
 		defaultPoolId:                vol.defaultPoolId,
 		allowedPools:                 append([]uint8{}, vol.allowedPools...),
 		DpTag:                        vol.DpTag,
 		MpTag:                        vol.MpTag,
+=======
+		remoteCacheDisableTTL:        vol.remoteCacheDisableTTL,
+>>>>>>> e2be66b2fe... feat(master): add disable ttl config for vol
 	}
 }
 

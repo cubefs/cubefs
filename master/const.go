@@ -189,6 +189,7 @@ const (
 	flashNodeTimeoutCount        = "flashNodeTimeoutCount"
 	remoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	remoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
+	remoteCacheDisableTTL        = "remoteCacheDisableTTL"
 	newNameKey                   = "newName"
 	regionKey                    = "region"
 

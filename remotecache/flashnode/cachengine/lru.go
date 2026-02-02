@@ -18,6 +18,7 @@ import (
 	"container/list"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -52,6 +53,8 @@ type LruCache interface {
 	FreePreAllocatedSize(key interface{})
 	GetCreateTime(key interface{}) (time.Time, bool)
 	SetCapacity(capacity int)
+	SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap map[string]bool)
+	IsVolumeDisableTTL(volume string) bool
 }
 
 type Status struct {
@@ -88,6 +91,9 @@ type fCache struct {
 
 	onDelete OnDeleteF
 	onClose  OnCloseF
+
+	// volMap stores volume -> remoteCacheDisableTTL mapping
+	volMap sync.Map // volume (string) -> disableTTL (bool)
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
@@ -477,10 +483,22 @@ func (c *fCache) evictExceed(toEvicts map[interface{}]interface{}, removeOuter b
 }
 
 func (c *fCache) Get(key interface{}) (interface{}, error) {
+	// Extract volume from key and check if remoteCacheDisableTTL is enabled
+	disableTTL := false
+	if keyStr, ok := key.(string); ok {
+		volume := extractVolumeFromKey(keyStr)
+		if volume != "" {
+			if val, ok := c.volMap.Load(volume); ok {
+				disableTTL = val.(bool)
+			}
+		}
+	}
+
 	c.lock.RLock()
 	if ent, ok := c.items[key]; ok {
 		v := ent.Value.(*entry)
-		if v.expiredAt.After(time.Now()) {
+		// If disableTTL is true, skip TTL check
+		if disableTTL || v.expiredAt.After(time.Now()) {
 			c.lock.RUnlock()
 			atomic.AddInt32(&c.hits, 1)
 			c.lruUpdateChan <- v
@@ -491,7 +509,8 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 		c.lock.Lock()
 		if newEnt, found := c.items[key]; found {
 			newV := newEnt.Value.(*entry)
-			if newV.expiredAt.After(time.Now()) {
+			// If disableTTL is true, skip TTL check
+			if disableTTL || newV.expiredAt.After(time.Now()) {
 				c.lock.Unlock()
 				atomic.AddInt32(&c.hits, 1)
 				c.lruUpdateChan <- newV
@@ -575,6 +594,45 @@ func (c *fCache) deleteElement(ent *list.Element) interface{} {
 
 func (c *fCache) Len() int {
 	return c.lru.Len()
+}
+
+// SetRemoteCacheDisableTTL updates the remoteCacheDisableTTL map for volumes
+func (c *fCache) SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap map[string]bool) {
+	// Update volMap with remoteCacheDisableTTL for each volume
+	for volume, disableTTL := range remoteCacheDisableTTLMap {
+		if disableTTL {
+			c.volMap.Store(volume, true)
+		} else {
+			c.volMap.Delete(volume)
+		}
+	}
+	// Remove volumes that are not in the map (they should use default TTL behavior)
+	c.volMap.Range(func(key, value interface{}) bool {
+		vol := key.(string)
+		if _, exists := remoteCacheDisableTTLMap[vol]; !exists {
+			c.volMap.Delete(vol)
+		}
+		return true
+	})
+}
+
+// IsVolumeDisableTTL checks if remoteCacheDisableTTL is enabled for a specific volume
+func (c *fCache) IsVolumeDisableTTL(volume string) bool {
+	if val, ok := c.volMap.Load(volume); ok {
+		return val.(bool)
+	}
+	return false
+}
+
+// extractVolumeFromKey extracts volume name from cache block key
+// For GenCacheBlockKey: format is "volume/inode#offset#version", volume is the first path component
+// For GenCacheBlockKeyV2: format is "volume/key", volume is the first path component
+func extractVolumeFromKey(key string) string {
+	parts := strings.Split(key, "/")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return ""
 }
 
 // removeElement is used to remove a given list element from the cache

@@ -87,7 +87,33 @@ func (c *Cluster) handleManualTaskProcessing(flashNode *flashgroupmanager.FlashN
 	log.LogInfof("action[handleFlashNodeHeartbeatResp], flashNode[%v], heartbeat success", flashNode.Addr)
 }
 
+// getRemoteCacheDisableTTLMap returns a map of volume -> remoteCacheDisableTTL for all volumes
+func (c *Cluster) getRemoteCacheDisableTTLMap() map[string]bool {
+	remoteCacheDisableTTLMap := make(map[string]bool)
+	c.volMutex.RLock()
+	for name, vol := range c.vols {
+		if vol.remoteCacheEnable && vol.remoteCacheDisableTTL {
+			remoteCacheDisableTTLMap[name] = true
+		}
+	}
+	c.volMutex.RUnlock()
+	return remoteCacheDisableTTLMap
+}
+
+func (m *Server) getRemoteCacheDisableTTLMap(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetRemoteCacheDisableTTLMap))
+	defer func() {
+		doStatAndMetric(proto.AdminGetRemoteCacheDisableTTLMap, metric, err, nil)
+	}()
+	remoteCacheDisableTTLMap := m.cluster.getRemoteCacheDisableTTLMap()
+	sendOkReply(w, r, newSuccessHTTPReply(remoteCacheDisableTTLMap))
+}
+
 func (c *Cluster) checkFlashNodeHeartbeat() {
+	// Collect remoteCacheDisableTTL for all volumes
+	remoteCacheDisableTTLMap := c.getRemoteCacheDisableTTLMap()
+
 	c.flashNodeTopo.Range(func(key, value interface{}) bool {
 		if value == nil {
 			return true
@@ -104,6 +130,7 @@ func (c *Cluster) checkFlashNodeHeartbeat() {
 			c.cfg.flashReadFlowLimit,
 			c.cfg.flashWriteFlowLimit,
 			c.cfg.flashKeyFlowLimit,
+			remoteCacheDisableTTLMap,
 		)
 		c.addFlashNodeHeartbeatTasks(topo.Name, tasks)
 		return true
@@ -187,8 +214,9 @@ func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version, region str
 	if err != nil {
 		return
 	}
-	return flashTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version, region, id,
+	nodeID, err = flashTopo.AddFlashNode(c.Name, nodeAddr, zoneName, version, region, id,
 		c.idAlloc.allocateCommonID, c.syncAddFlashNode, c.syncMoveFlashNode)
+	return
 }
 
 func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {

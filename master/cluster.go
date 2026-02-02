@@ -4941,6 +4941,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlashNodeTimeoutCount:        req.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   req.remoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: req.remoteCacheSameRegionTimeout,
+		RemoteCacheDisableTTL:        req.remoteCacheDisableTTL,
 		Status:                       proto.VolStatusInitializing,
 	}
 

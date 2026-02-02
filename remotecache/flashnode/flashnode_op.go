@@ -173,6 +173,15 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 			f.diskReadFlow = int(req.FlashReadFlowLimit)
 			f.limitRead.ResetFlow(f.diskReadFlow)
 		}
+		// Update remoteCacheDisableTTL map
+		// If RemoteCacheDisableTTL is nil (old master version), clear all disableTTL settings
+		// If RemoteCacheDisableTTL is not nil (new master version), update with the provided map
+		if req.RemoteCacheDisableTTL != nil {
+			f.cacheEngine.SetRemoteCacheDisableTTL(req.RemoteCacheDisableTTL)
+		} else {
+			// Old master version: clear all disableTTL settings to use default TTL behavior
+			f.cacheEngine.SetRemoteCacheDisableTTL(make(map[string]bool))
+		}
 	} else {
 		log.LogWarnf("decode HeartBeatRequest error: %s", err.Error())
 		resp.Status = proto.TaskFailed
