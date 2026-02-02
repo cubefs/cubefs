@@ -566,12 +566,19 @@ func (vol *Vol) FixMetaPartitionTag(c *Cluster) {
 			partition.Unlock()
 			continue
 		}
-		desiredTags := make([]string, 0, len(replicas))
-		if len(mpTagList) >= len(replicas) {
+		nonLearnerCount := 0
+		for _, replica := range replicas {
+			if replica != nil && !replica.IsLearner {
+				nonLearnerCount++
+			}
+		}
+
+		desiredTags := make([]string, 0, nonLearnerCount)
+		if len(mpTagList) >= nonLearnerCount {
 			desiredTags = append(desiredTags, mpTagList...)
 		} else {
 			desiredTags = append(desiredTags, mpTagList...)
-			for i := len(mpTagList); i < len(replicas); i++ {
+			for i := len(mpTagList); i < nonLearnerCount; i++ {
 				desiredTags = append(desiredTags, DefaultTag)
 			}
 		}
@@ -587,6 +594,15 @@ func (vol *Vol) FixMetaPartitionTag(c *Cluster) {
 			if replica == nil {
 				continue
 			}
+			if replica.IsLearner {
+				tag := GetMetaPartitionPeerTag(partition, replica.Addr)
+				if tag != DefaultTag {
+					SetMetaPartitionPeerTag(partition, replica.Addr, DefaultTag)
+					changed = true
+				}
+				continue
+			}
+
 			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
 			if required[tag] > 0 {
 				required[tag]--
