@@ -35,44 +35,16 @@ func newFlashNodeCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newCmdFlashNodeSet(client),
-		newCmdFlashNodeRename(client),
 		newCmdFlashNodeRemove(client),
 		newCmdFlashNodeGet(client),
 		newCmdFlashNodeList(client),
 		newCmdFlashNodeRemoveAllInactive(client),
-
 		newCmdFlashNodeHTTPStat(client),
 		newCmdFlashNodeHTTPStatAll(client),
 		newCmdFlashNodeHTTPEvict(client),
 		newCmdFlashNodeHTTPInactiveDisk(client),
 		newCmdFlashNodeHTTPSlotStat(client),
 	)
-	return cmd
-}
-
-func newCmdFlashNodeRename(client *master.MasterClient) *cobra.Command {
-	var name string
-	cmd := &cobra.Command{
-		Use:   "changeTopo" + _flashnodeAddr,
-		Short: "change flash node to target topology",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(_ *cobra.Command, args []string) (err error) {
-			addr := strings.TrimSpace(args[0])
-			if addr == "" {
-				return fmt.Errorf("addr should not be empty")
-			}
-			if strings.TrimSpace(name) == "" {
-				return fmt.Errorf("name should not be empty")
-			}
-			result, err := client.NodeAPI().ChangeFlashNodeTopo(addr, name)
-			if err != nil {
-				return
-			}
-			stdoutln(result)
-			return
-		},
-	}
-	cmd.Flags().StringVarP(&name, "topoName", "n", "", "target flash topology name")
 	return cmd
 }
 
@@ -132,7 +104,7 @@ func newCmdFlashNodeRemove(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
-	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.IdleTopoName, "flash topology name")
 	return cmd
 }
 
