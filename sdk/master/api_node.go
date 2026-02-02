@@ -321,7 +321,7 @@ func (api *NodeAPI) ChangeFlashNodeTopo(nodeAddr, topoName string) (result strin
 func (api *NodeAPI) UpdateMetaNode(nodeAddr, selectTag string) (err error) {
 	request := newRequest(get, proto.AdminUpdateMetaNode).Header(api.h).NoTimeout()
 	request.addParam("addr", nodeAddr)
-	request.addParam("selectTag", selectTag)
+	request.addParam("tag", selectTag)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -331,7 +331,7 @@ func (api *NodeAPI) UpdateMetaNode(nodeAddr, selectTag string) (err error) {
 func (api *NodeAPI) UpdateDataNode(nodeAddr, selectTag string) (err error) {
 	request := newRequest(get, proto.AdminUpdateDataNode).Header(api.h).NoTimeout()
 	request.addParam("addr", nodeAddr)
-	request.addParam("selectTag", selectTag)
+	request.addParam("tag", selectTag)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

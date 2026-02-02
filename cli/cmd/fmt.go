@@ -228,7 +228,7 @@ func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) stri
 var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v 	%-8v   %-8v     %-24v     %-24v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "Tag")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "TAG")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
@@ -1194,7 +1194,7 @@ func parseMpReadOnlyReasons(mask uint32) []string {
 var peerTableRowPattern = "%-6v    %-18v    %-15v   %-12v   %-12v  %-12v  %-12v"
 
 func formatPeerTableHeader() string {
-	return fmt.Sprintf(peerTableRowPattern, "ID", "ADDR", "HEARTBEATPORT", "REPLICAPORT", "ISLEARNER", "MANUALPROMOTE", "SELECTTAG")
+	return fmt.Sprintf(peerTableRowPattern, "ID", "ADDR", "HEARTBEATPORT", "REPLICAPORT", "ISLEARNER", "MANUALPROMOTE", "TAG")
 }
 
 func formatPeer(peer proto.Peer) string {
@@ -1212,7 +1212,7 @@ func formatPeer(peer proto.Peer) string {
 var dataNodeDetailTableRowPattern = "%-6v    %-10v    %-65v    %-10v    %-10v    %-10v    %-10v    %-10v"
 
 func formatDataNodeDetailTableHeader() string {
-	return fmt.Sprintf(dataNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME", "Tag")
+	return fmt.Sprintf(dataNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME", "TAG")
 }
 
 func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
@@ -1787,7 +1787,7 @@ func formatMetaPartitionFreeze(freeze int8) string {
 var metaNodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v    %-8v    %-24v    %-8v    %-8v"
 
 func formatMetaNodeViewTableHeader() string {
-	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "Tag")
+	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "TAG")
 }
 
 func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
