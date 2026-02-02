@@ -760,7 +760,7 @@ func (vol *Vol) countDpTagMismatch() (count int) {
 				continue
 			}
 			tag := GetDataPartitionPeerTag(partition, replica.Addr)
-			if tag != replica.dataNode.Tag {
+			if tag != DefaultTag && tag != replica.dataNode.Tag {
 				count++
 				break
 			}
@@ -783,7 +783,7 @@ func (vol *Vol) countMpTagMismatch() (count int) {
 				continue
 			}
 			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
-			if tag != replica.metaNode.Tag {
+			if tag != DefaultTag && tag != replica.metaNode.Tag {
 				count++
 				break
 			}
