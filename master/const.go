@@ -198,6 +198,7 @@ const (
 	RocksdbDirKey = "rocksdbDir"
 	DpTagKey      = "dpTag"
 	MpTagKey      = "mpTag"
+	SelectTagKey  = "selectTag"
 )
 
 const (

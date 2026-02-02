@@ -777,7 +777,7 @@ func parseMetaPartitionPlanUserParams(r *http.Request) (param *MetaPartitionPlan
 		return
 	}
 
-	param.Tag = r.FormValue(TagKey)
+	param.Tag = r.FormValue(SelectTagKey)
 
 	if param.SelectType == SelectTypeNodeAddrs && param.Tag == "" {
 		err = fmt.Errorf("tag is required when select type is 3")
