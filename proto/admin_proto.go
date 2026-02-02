@@ -313,7 +313,6 @@ const (
 	FlashNodeList              = "/flashNode/list"
 	FlashNodeSetReadIOLimits   = "/flashNode/setReadIOLimits"
 	FlashNodeSetWriteIOLimits  = "/flashNode/SetWriteIOLimits"
-	FlashNodeChangeTopo        = "/flashNode/changeTopo"
 
 	// Flash Mannual Task
 	CreateFlashNodeManualTask = "/flashNode/createFlashManualTask"

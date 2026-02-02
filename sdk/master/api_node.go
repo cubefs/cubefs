@@ -288,10 +288,3 @@ func (api *NodeAPI) OfflineMetaNode(nodeAddr string) (err error) {
 	}
 	return
 }
-
-func (api *NodeAPI) ChangeFlashNodeTopo(nodeAddr, topoName string) (result string, err error) {
-	req := newRequest(post, proto.FlashNodeChangeTopo).Header(api.h).
-		Param(anyParam{"addr", nodeAddr}, anyParam{"name", topoName})
-	data, err := api.mc.serveRequest(req)
-	return string(data), err
-}
