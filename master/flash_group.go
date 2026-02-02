@@ -213,8 +213,13 @@ func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	// Backward Compatibility
-	topoName := r.FormValue(nameKey)
+	var topoName string
+	if flashTopo, err = m.cluster.PeekFlashTopoByFgId(flashGroupID.V); err != nil {
+		// Backward Compatibility
+		topoName = r.FormValue(nameKey)
+	} else {
+		topoName = flashTopo.Name
+	}
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}
@@ -274,8 +279,13 @@ func (m *Server) setFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	// Backward Compatibility
-	topoName := r.FormValue(nameKey)
+	var topoName string
+	if flashTopo, err = m.cluster.PeekFlashTopoByFgId(flashGroupID.V); err != nil {
+		// Backward Compatibility
+		topoName = r.FormValue(nameKey)
+	} else {
+		topoName = flashTopo.Name
+	}
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}
@@ -323,8 +333,14 @@ func (m *Server) getFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	// Backward Compatibility
-	topoName := r.FormValue(nameKey)
+	var topoName string
+	if flashTopo, err = m.cluster.PeekFlashTopoByFgId(flashGroupID.V); err != nil {
+		// Backward Compatibility
+		topoName = r.FormValue(nameKey)
+	} else {
+		topoName = flashTopo.Name
+	}
+
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}
@@ -363,8 +379,13 @@ func (m *Server) flashGroupAddFlashNode(w http.ResponseWriter, r *http.Request) 
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	// Backward Compatibility
-	topoName := r.FormValue(nameKey)
+	var topoName string
+	if flashTopo, err = m.cluster.PeekFlashTopoByFgId(flashGroupID); err != nil {
+		// Backward Compatibility
+		topoName = r.FormValue(nameKey)
+	} else {
+		topoName = flashTopo.Name
+	}
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}
@@ -429,8 +450,13 @@ func (m *Server) flashGroupRemoveFlashNode(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	// Backward Compatibility
-	topoName := r.FormValue(nameKey)
+	var topoName string
+	if flashTopo, err = m.cluster.PeekFlashTopoByFgId(flashGroupID); err != nil {
+		// Backward Compatibility
+		topoName = r.FormValue(nameKey)
+	} else {
+		topoName = flashTopo.Name
+	}
 	if topoName == "" {
 		topoName = proto.DefaultTopoName
 	}

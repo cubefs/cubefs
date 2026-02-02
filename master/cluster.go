@@ -6908,6 +6908,27 @@ func (c *Cluster) PeekFlashTopo(name string) (flashTopo *flashgroupmanager.Flash
 	return
 }
 
+func (c *Cluster) PeekFlashTopoByFgId(fgId uint64) (flashTopo *flashgroupmanager.FlashNodeTopology, err error) {
+	if fgId == 0 {
+		log.LogWarnf("fg id is 0")
+		return nil, errors.NewErrorf("fg id is 0")
+	}
+	c.flashNodeTopo.Range(func(key, value interface{}) bool {
+		topo := value.(*flashgroupmanager.FlashNodeTopology)
+		if _, err1 := topo.GetFlashGroup(fgId); err1 == nil {
+			flashTopo = topo
+			return false
+		}
+		return true
+	})
+
+	if flashTopo == nil {
+		log.LogWarnf("flashTopo by fgId[%v]", fgId)
+		err = errors.Trace(notFoundMsg(fmt.Sprintf("flashTopo by fgId[%v]", fgId)), "")
+	}
+	return
+}
+
 func (c *Cluster) ListAllFlashTopos() (ftvs []*proto.FlashTopologyAdminView) {
 	ftvs = make([]*proto.FlashTopologyAdminView, 0)
 	c.flashNodeTopo.Range(func(key, value interface{}) bool {
