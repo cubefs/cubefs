@@ -207,7 +207,7 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
-	cmd.Flags().BoolVar(&optGradualFlag, "gradualFlag", false, "set whether the group's slots are deleted gradually or not(default false)")
+	cmd.Flags().BoolVar(&optGradualFlag, "gradualFlag", true, "set whether the group's slots are deleted gradually or not(default false)")
 	cmd.Flags().Uint32Var(&optStep, "step", 1, "set the step size(default 1) for slot gradual deletion")
 	return cmd
 }
