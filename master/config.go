@@ -256,7 +256,7 @@ type clusterConfig struct {
 	flashTopoDelayDeleteTimeHour int64
 	DefaultDpTag                 string
 	DefaultMpTag                 string
-	AutoFixTag                   bool
+	AutoFixTag                   atomicutil.Bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

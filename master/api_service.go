@@ -1080,7 +1080,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaManualAddReplicaLimit:                 m.cluster.MetaManualAddReplicaLimit.Load(),
 		DefaultDpTag:                              m.cluster.cfg.DefaultDpTag,
 		DefaultMpTag:                              m.cluster.cfg.DefaultMpTag,
-		AutoFixTag:                                m.cluster.cfg.AutoFixTag,
+		AutoFixTag:                                m.cluster.cfg.AutoFixTag.Load(),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -8433,8 +8433,8 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		if err != nil {
 			return err
 		}
-		oldBoolValue = m.config.AutoFixTag
-		m.config.AutoFixTag = autoFixTag
+		oldBoolValue = m.config.AutoFixTag.Load()
+		m.config.AutoFixTag.Store(autoFixTag)
 
 	default:
 		err = keyNotFound("config")
@@ -8474,7 +8474,7 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		case cfgDefaultMpTag:
 			m.config.DefaultMpTag = oldSelectTag
 		case cfgAutoFixTag:
-			m.config.AutoFixTag = oldBoolValue
+			m.config.AutoFixTag.Store(oldBoolValue)
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
@@ -8519,7 +8519,7 @@ func (m *Server) getConfig(key string) (value string, err error) {
 	case cfgDefaultMpTag:
 		value = m.config.DefaultMpTag
 	case cfgAutoFixTag:
-		value = strconv.FormatBool(m.config.AutoFixTag)
+		value = strconv.FormatBool(m.config.AutoFixTag.Load())
 	default:
 		err = keyNotFound("config")
 	}

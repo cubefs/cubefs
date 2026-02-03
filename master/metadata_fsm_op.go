@@ -30,6 +30,7 @@ import (
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	pt "github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -110,7 +111,7 @@ type clusterValue struct {
 	MetaManualAddReplicaLimit              uint32
 	DefaultDpTag                           string
 	DefaultMpTag                           string
-	AutoFixTag                             bool
+	AutoFixTag                             atomicutil.Bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {

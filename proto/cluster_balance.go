@@ -183,6 +183,10 @@ type TagSummary struct {
 	DpCheckThreadStatus string   `json:"dpCheckThreadStatus"`
 	MpCheckThreadStatus string   `json:"mpCheckThreadStatus"`
 	MpFailedKeys        []string `json:"mpFailedKeys"`
+	LastMpQuitReason    string   `json:"lastMpQuitReason"`
+	LastDpQuitReason    string   `json:"lastDpQuitReason"`
+	MismatchMps         []uint64 `json:"mismatchMps"`
+	MismatchDps         []uint64 `json:"mismatchDps"`
 }
 
 var TagPattern = regexp.MustCompile("^[0-9A-Za-z]{1,49}$")

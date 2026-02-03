@@ -37,12 +37,21 @@ const (
 	StatusStopping        = "stopping"
 	EmptyTag              = "null"
 	MaxMpDecommissionNum  = 5
+
+	ReasonPlanBusy                = "plan status is busy"
+	ReasonDisableAutoFixTag       = "cluster auto fix tag is disabled"
+	ReasonFailedToSetPlanRun      = "failed to set plan run"
+	ReasonCloseOK                 = "close ok"
+	ReasonSelectTagEmpty          = "select tag is empty"
+	ReasonReachMaxDecommissionNum = "reach max decommission num"
 )
 
 var (
 	DpTagThreadStatus = StatusSleeping
 	MpTagThreadStatus = StatusSleeping
 	MpFailedKeys      = make([]string, 0)
+	LastMpQuitReason  string
+	LastDpQuitReason  string
 )
 
 func (c *Cluster) scheduleToCheckDpTag() {
@@ -59,7 +68,8 @@ func (c *Cluster) scheduleToCheckDpTag() {
 }
 
 func (c *Cluster) checkDpTag() {
-	if !c.cfg.AutoFixTag {
+	if !c.cfg.AutoFixTag.Load() {
+		LastDpQuitReason = ReasonDisableAutoFixTag
 		return
 	}
 	DpTagThreadStatus = StatusChecking
@@ -86,6 +96,7 @@ func (c *Cluster) checkDpTag() {
 		count += vol.countTagDecommissionTask(c)
 	}
 	if count >= MaxTagDecommissionNum {
+		LastDpQuitReason = ReasonReachMaxDecommissionNum
 		return
 	}
 
@@ -107,6 +118,7 @@ func (c *Cluster) checkDpTag() {
 			break
 		}
 	}
+	LastDpQuitReason = ReasonCloseOK
 }
 
 func (vol *Vol) FixDataPartitionTag(c *Cluster) {
@@ -149,6 +161,11 @@ func (vol *Vol) FixDataPartitionTag(c *Cluster) {
 				continue
 			}
 			tag := GetDataPartitionPeerTag(partition, replica.Addr)
+			dataNode := replica.getReplicaNode()
+			if dataNode != nil && tag != dataNode.Tag {
+				candidates = append(candidates, replica)
+				continue
+			}
 			if required[tag] > 0 {
 				required[tag]--
 				continue
@@ -307,15 +324,18 @@ func (c *Cluster) scheduleToCheckMpTag() {
 }
 
 func (c *Cluster) checkMpTag() {
-	if !c.cfg.AutoFixTag {
+	if !c.cfg.AutoFixTag.Load() {
+		LastMpQuitReason = ReasonDisableAutoFixTag
 		return
 	}
 	if c.IsClusterPlanNotIdle() {
+		LastMpQuitReason = ReasonPlanBusy
 		return
 	}
 	MpTagThreadStatus = StatusChecking
 	if !c.TrySetClusterPlanRunning() {
 		MpTagThreadStatus = StatusSleeping
+		LastMpQuitReason = ReasonFailedToSetPlanRun
 		return
 	}
 	defer func() {
@@ -345,11 +365,13 @@ func (c *Cluster) checkMpTag() {
 	mismatches := c.collectMpTagMismatches(vols)
 	selectedGroup := c.selectMpTagMismatchGroup(mismatches)
 	if len(selectedGroup) == 0 {
+		LastMpQuitReason = ReasonSelectTagEmpty
 		return
 	}
 
 	num := c.GetMetaPartitionDecommissionCount(proto.TagDecommission)
 	if num >= MaxMpDecommissionNum {
+		LastMpQuitReason = ReasonReachMaxDecommissionNum
 		return
 	}
 
@@ -390,6 +412,7 @@ func (c *Cluster) checkMpTag() {
 			break
 		}
 	}
+	LastMpQuitReason = ReasonCloseOK
 }
 
 func (c *Cluster) selectOneTargetMetaReplica(mp *MetaPartition, srcAddr string, selectTag string, storeMode proto.StoreMode) (string, error) {
@@ -604,6 +627,10 @@ func (vol *Vol) FixMetaPartitionTag(c *Cluster) {
 			}
 
 			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
+			if replica.metaNode != nil && tag != replica.metaNode.Tag {
+				candidates = append(candidates, replica)
+				continue
+			}
 			if required[tag] > 0 {
 				required[tag]--
 				continue
@@ -686,13 +713,17 @@ func (vol *Vol) GetMpTagList(c *Cluster) []string {
 
 func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
 	summary = &proto.TagSummary{
-		AutoFixTag:          c.cfg.AutoFixTag,
+		AutoFixTag:          c.cfg.AutoFixTag.Load(),
 		ClusterDpTag:        c.cfg.DefaultDpTag,
 		ClusterMpTag:        c.cfg.DefaultMpTag,
 		MigratingDps:        make([]uint64, 0, MaxTagDecommissionNum),
 		DpCheckThreadStatus: DpTagThreadStatus,
 		MpCheckThreadStatus: MpTagThreadStatus,
 		MpFailedKeys:        MpFailedKeys,
+		LastMpQuitReason:    LastMpQuitReason,
+		LastDpQuitReason:    LastDpQuitReason,
+		MismatchMps:         make([]uint64, 0, MaxTagDecommissionNum),
+		MismatchDps:         make([]uint64, 0, MaxTagDecommissionNum),
 	}
 
 	vols := c.allVols()
@@ -707,8 +738,8 @@ func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
 		}
 		summary.VolWithTagNum++
 		summary.VolWithTag = append(summary.VolWithTag, vol.Name)
-		summary.MismatchDpNum += vol.countDpTagMismatch()
-		summary.MismatchMpNum += vol.countMpTagMismatch()
+		summary.MismatchDpNum += vol.countDpTagMismatch(summary)
+		summary.MismatchMpNum += vol.countMpTagMismatch(summary)
 		vol.getDecommissionTagDps(c, summary)
 		summary.DecommissionDpNum += vol.countTagDecommissionTask(c)
 	}
@@ -746,7 +777,7 @@ func (vol *Vol) getDecommissionTagDps(c *Cluster, summary *proto.TagSummary) {
 	}
 }
 
-func (vol *Vol) countDpTagMismatch() (count int) {
+func (vol *Vol) countDpTagMismatch(summary *proto.TagSummary) (count int) {
 	partitions := vol.dataPartitions.clonePartitions()
 	for _, partition := range partitions {
 		if partition.IsDiscard {
@@ -762,6 +793,9 @@ func (vol *Vol) countDpTagMismatch() (count int) {
 			tag := GetDataPartitionPeerTag(partition, replica.Addr)
 			if tag != DefaultTag && tag != replica.dataNode.Tag {
 				count++
+				if len(summary.MismatchDps) < MaxTagDecommissionNum {
+					summary.MismatchDps = append(summary.MismatchDps, partition.PartitionID)
+				}
 				break
 			}
 		}
@@ -769,7 +803,7 @@ func (vol *Vol) countDpTagMismatch() (count int) {
 	return count
 }
 
-func (vol *Vol) countMpTagMismatch() (count int) {
+func (vol *Vol) countMpTagMismatch(summary *proto.TagSummary) (count int) {
 	partitions := vol.cloneMetaPartitionMap()
 	for _, partition := range partitions {
 		if partition == nil {
@@ -785,6 +819,9 @@ func (vol *Vol) countMpTagMismatch() (count int) {
 			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
 			if tag != DefaultTag && tag != replica.metaNode.Tag {
 				count++
+				if len(summary.MismatchMps) < MaxTagDecommissionNum {
+					summary.MismatchMps = append(summary.MismatchMps, partition.PartitionID)
+				}
 				break
 			}
 		}

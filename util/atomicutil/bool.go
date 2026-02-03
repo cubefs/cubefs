@@ -14,7 +14,11 @@
 
 package atomicutil
 
-import "sync/atomic"
+import (
+	"encoding/json"
+	"fmt"
+	"sync/atomic"
+)
 
 type Bool struct {
 	val uint32
@@ -53,4 +57,38 @@ func (b *Bool) Swap(new bool) (old bool) {
 	}
 	old = atomic.SwapUint32(&b.val, tmp) == 1
 	return
+}
+
+func (b *Bool) MarshalJSON() ([]byte, error) {
+	return json.Marshal(b.Load())
+}
+
+func (b *Bool) UnmarshalJSON(data []byte) error {
+	// Accept bools from existing persisted cluster values; also handle legacy 0/1.
+	var boolVal bool
+	if err := json.Unmarshal(data, &boolVal); err == nil {
+		b.Store(boolVal)
+		return nil
+	}
+
+	var intVal int
+	if err := json.Unmarshal(data, &intVal); err == nil {
+		b.Store(intVal != 0)
+		return nil
+	}
+
+	var strVal string
+	if err := json.Unmarshal(data, &strVal); err == nil {
+		switch strVal {
+		case "true", "1":
+			b.Store(true)
+			return nil
+		case "false", "0", "":
+			b.Store(false)
+			return nil
+		}
+		return fmt.Errorf("atomicutil.Bool: invalid string value %q", strVal)
+	}
+
+	return fmt.Errorf("atomicutil.Bool: invalid json %s", string(data))
 }

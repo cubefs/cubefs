@@ -516,8 +516,12 @@ func TestVolCountDpSelectTagMismatch(t *testing.T) {
 			},
 		},
 	}
+	summary := &proto.TagSummary{
+		MismatchDps: make([]uint64, 0, MaxTagDecommissionNum),
+		MismatchMps: make([]uint64, 0, MaxTagDecommissionNum),
+	}
 
-	count := vol.countDpTagMismatch()
+	count := vol.countDpTagMismatch(summary)
 	assert.Equal(t, 1, count) // only PartitionID 2 mismatches
 }
 
@@ -558,16 +562,20 @@ func TestVolCountMpSelectTagMismatch(t *testing.T) {
 	}
 	vol.mpsLock = newMpsLockManager(vol)
 
-	count := vol.countMpTagMismatch()
+	summary := &proto.TagSummary{
+		MismatchDps: make([]uint64, 0, MaxTagDecommissionNum),
+		MismatchMps: make([]uint64, 0, MaxTagDecommissionNum),
+	}
+	count := vol.countMpTagMismatch(summary)
 	assert.Equal(t, 1, count) // only PartitionID 2 mismatches
 }
 
 // TestCheckDpSelectTagWithAutoFixDisabled tests no check is performed when AutoFixTag is disabled
 func TestCheckDpSelectTagWithAutoFixDisabled(t *testing.T) {
+	cfg := &clusterConfig{}
+	cfg.AutoFixTag.Store(false)
 	c := &Cluster{
-		cfg: &clusterConfig{
-			AutoFixTag: false,
-		},
+		cfg: cfg,
 	}
 
 	// Record initial status
@@ -585,10 +593,10 @@ func TestCheckDpSelectTagWithAutoFixDisabled(t *testing.T) {
 
 // TestCheckMpSelectTagWithAutoFixDisabled tests no check is performed when AutoFixTag is disabled
 func TestCheckMpSelectTagWithAutoFixDisabled(t *testing.T) {
+	cfg := &clusterConfig{}
+	cfg.AutoFixTag.Store(false)
 	c := &Cluster{
-		cfg: &clusterConfig{
-			AutoFixTag: false,
-		},
+		cfg: cfg,
 	}
 
 	// Record initial status
@@ -632,12 +640,13 @@ func TestGetSelectTagSummary(t *testing.T) {
 	}
 	vol2.mpsLock = newMpsLockManager(vol2)
 
+	cfg := &clusterConfig{
+		DefaultDpTag: "default-dp",
+		DefaultMpTag: "default-mp",
+	}
+	cfg.AutoFixTag.Store(true)
 	c := &Cluster{
-		cfg: &clusterConfig{
-			AutoFixTag:   true,
-			DefaultDpTag: "default-dp",
-			DefaultMpTag: "default-mp",
-		},
+		cfg: cfg,
 		ClusterVolSubItem: ClusterVolSubItem{
 			vols: map[string]*Vol{
 				"vol1": vol1,
@@ -929,6 +938,11 @@ func TestCollectMpSelectTagMismatches(t *testing.T) {
 
 // TestEdgeCases tests edge cases
 func TestEdgeCases(t *testing.T) {
+	summary := &proto.TagSummary{
+		MismatchDps: make([]uint64, 0, MaxTagDecommissionNum),
+		MismatchMps: make([]uint64, 0, MaxTagDecommissionNum),
+	}
+
 	t.Run("empty data partition list", func(t *testing.T) {
 		vol := &Vol{
 			Name: "empty-vol",
@@ -948,7 +962,7 @@ func TestEdgeCases(t *testing.T) {
 			MetaPartitions: map[uint64]*MetaPartition{},
 		}
 		vol.mpsLock = newMpsLockManager(vol)
-		count := vol.countMpTagMismatch()
+		count := vol.countMpTagMismatch(summary)
 		assert.Equal(t, 0, count)
 	})
 
@@ -967,7 +981,7 @@ func TestEdgeCases(t *testing.T) {
 			},
 		}
 		// Should not panic
-		count := vol.countDpTagMismatch()
+		count := vol.countDpTagMismatch(summary)
 		assert.Equal(t, 0, count)
 	})
 }
