@@ -79,7 +79,9 @@ func NewFlashNodeFromFnv(clusterID string, fnv *FlashNodeValue) *FlashNode {
 	}
 	node.FlashNodeTopoName = topoName
 	region := fnv.Region
-	if topoName == proto.DefaultTopoName && region == "" {
+	// For backward compatibility: if region is empty (from old version without region concept),
+	// set it to default region regardless of topoName
+	if region == "" {
 		region = proto.DefaultRegionName
 	}
 	node.Region = region

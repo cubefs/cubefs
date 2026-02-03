@@ -170,7 +170,7 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 	// all flashnode is added to idle topo by default
 	topoName := proto.IdleTopoName
 	if id, err = m.cluster.addFlashNode(topoName, nodeAddr.V, zoneName.V, version.V, region, nodeID.V); err != nil {
-		log.LogWarnf("addFlashNode: fn[%v] topo %v nodeID %v region %v failed:err %v", topoName, nodeAddr.V, nodeID.V, region, err.Error())
+		log.LogWarnf("addFlashNode: fn[%v] topo %v nodeID %v region %v failed:err %v", nodeAddr.V, topoName, nodeID.V, region, err.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

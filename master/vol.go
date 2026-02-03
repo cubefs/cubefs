@@ -345,6 +345,9 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	if vol.remoteCacheReadTimeout == 0 {
 		vol.remoteCacheReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
 	}
+	if vol.remoteCacheReadTimeout == proto.ReadDeadlineTime {
+		vol.remoteCacheReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
+	}
 	if vol.remoteCacheMaxFileSizeGB == 0 {
 		vol.remoteCacheMaxFileSizeGB = proto.DefaultRemoteCacheMaxFileSizeGB
 	}
