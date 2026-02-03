@@ -1,0 +1,185 @@
+---
+alwaysApply: false
+description: Go 并发编程规范 - 当用户处理 goroutine、channel、sync 原语或共享状态时使用
+---
+
+# Go 并发编程规范
+
+## 1. 核心原则（红线）
+
+| 规则 | 说明 |
+|-----|------|
+| **goroutine 必须可退出** | 监听 ctx.Done() 或明确的关闭信号 |
+| **共享状态必须保护** | 使用 Mutex/RWMutex/atomic/channel |
+| **channel 由发送方关闭** | 接收方不应关闭 channel |
+| **用 -race 检测** | 开发和 CI 中使用 `go test -race` |
+
+---
+
+## 2. Goroutine 使用指南
+
+```go
+// ✅ goroutine 有退出路径
+go func() {
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case conn := <-s.connections:
+            s.handleConnection(conn)
+        }
+    }
+}()
+
+// ✅ WaitGroup 等待完成
+var wg sync.WaitGroup
+for _, item := range items {
+    wg.Add(1)
+    go func(item Item) {
+        defer wg.Done()
+        process(ctx, item)
+    }(item)  // 必须传递副本
+}
+wg.Wait()
+```
+
+### 使用 errgroup（推荐）
+
+```go
+g, ctx := errgroup.WithContext(ctx)
+g.SetLimit(10)  // 限制并发数
+for _, url := range urls {
+    url := url
+    g.Go(func() error { return fetch(ctx, url) })
+}
+return g.Wait()
+```
+
+---
+
+## 3. Channel 使用指南
+
+| 规则 | 说明 |
+|-----|------|
+| 发送方关闭 | 接收方不应关闭 channel |
+| 关闭后不可发送 | 向已关闭的 channel 发送会 panic |
+| 接收可检测关闭 | `v, ok := <-ch`，ok 为 false 表示已关闭 |
+| nil channel 阻塞 | 读写 nil channel 永远阻塞 |
+
+```go
+// 超时与取消
+select {
+case result := <-resultCh:
+    return result, nil
+case <-ctx.Done():
+    return Result{}, ctx.Err()
+}
+```
+
+---
+
+## 4. Sync 包使用指南
+
+### Mutex
+
+```go
+// Mutex 紧邻保护的数据
+type SafeCounter struct {
+    mu    sync.Mutex
+    count int
+}
+
+func (c *SafeCounter) Increment() {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.count++
+}
+
+// 读多写少场景用 RWMutex
+type SafeCache struct {
+    mu    sync.RWMutex
+    items map[string]Item
+}
+
+func (c *SafeCache) Get(key string) (Item, bool) {
+    c.mu.RLock()
+    defer c.mu.RUnlock()
+    item, ok := c.items[key]
+    return item, ok
+}
+```
+
+### sync.Once
+
+```go
+// 延迟初始化
+type Connection struct {
+    once sync.Once
+    conn *sql.DB
+}
+
+func (c *Connection) Get() *sql.DB {
+    c.once.Do(func() {
+        c.conn = openConnection()
+    })
+    return c.conn
+}
+```
+
+---
+
+## 5. Atomic 操作
+
+```go
+// Go 1.19+：类型安全的 atomic
+var counter atomic.Int64
+counter.Add(1)
+value := counter.Load()
+
+// 原子指针
+var config atomic.Pointer[Config]
+config.Store(newCfg)
+cfg := config.Load()
+```
+
+---
+
+## 6. 常见并发问题
+
+### 数据竞争
+```go
+// ❌ 数据竞争
+var count int
+go func() { count++ }()
+
+// ✅ 使用 atomic
+var count atomic.Int64
+go func() { count.Add(1) }()
+```
+
+### 死锁
+```go
+// ❌ 锁顺序不一致
+from.mu.Lock()
+to.mu.Lock()  // 可能死锁
+
+// ✅ 固定锁顺序（按地址排序）
+```
+
+---
+
+## 7. 代码审核检查清单
+
+| 检查内容 | 风险说明 |
+|----------|----------|
+| 所有 `go func` 是否有退出路径（ctx.Done） | goroutine 泄漏 |
+| 共享变量是否有同步保护 | 数据竞争 |
+| channel 谁负责关闭，是否会阻塞 | 死锁/泄漏 |
+| Mutex 是否总是配对 Lock/Unlock | 死锁 |
+| 循环中 goroutine 是否正确传递循环变量 | 变量捕获问题 |
+
+```bash
+# 检测数据竞争
+go test ./... -race
+```
+

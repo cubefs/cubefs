@@ -1,0 +1,115 @@
+---
+description: Go Code Review 规范 - 当用户请求对 Go 代码进行代码评审时自动应用
+alwaysApply: false
+---
+
+# Go Code Review 规范
+
+## 关注点
+
+### P0：正确性与安全（必须通过）
+
+- 需求实现完整性
+- 边界条件处理（nil、空 slice、零值、最大/最小值）
+- 错误处理完整性（不吞错、有上下文）
+- 并发安全（数据竞争、锁粒度、死锁）
+- 幂等性（重复请求/重试）
+- SQL 注入防护（参数化查询）
+- 认证授权检查（越权访问）
+- 输入验证（白名单、长度限制、类型检查）
+- 敏感信息保护（日志脱敏、响应不泄露内部信息）
+
+### P1：性能与可靠性（重要）
+
+- 算法复杂度合理
+- 避免不必要的内存分配（预分配 slice/map）
+- 避免不必要的拷贝（使用指针接收者）
+- 数据库查询优化（索引、N+1、慢查询）
+- 资源释放（连接、文件、Body）
+- 超时与取消（context）
+- 重试与退避（外部依赖）
+- 优雅关闭（信号处理）
+
+### P2：可维护性（建议）
+
+- 分层架构清晰（Handler → Service → Repository）
+- 包结构清晰，边界明确（internal/pkg）
+- 命名清晰表达意图（无 stutter）
+- 函数职责单一、接口小而精
+
+### P3：可观测性（可选）
+
+- 关键操作日志（结构化字段）
+- TraceId/RequestId 贯穿链路
+- 健康检查与就绪检查
+
+---
+
+## Go API 服务端专项
+
+### 错误处理
+- 错误是否使用 `%w` 包装
+- 是否有被忽略的错误（`_ = err`）
+- 错误判断是否使用 `errors.Is/As`
+
+### Context 使用
+- 所有跨边界调用是否传递 ctx
+- 外部调用是否设置超时
+- goroutine 是否可退出（监听 ctx.Done）
+
+### 并发安全
+- 并发写共享变量是否加锁或使用原子操作
+- goroutine 是否有明确的退出路径
+- channel 由谁关闭，是否可能阻塞
+- 循环变量捕获问题（Go 1.22 前）
+
+### 资源管理
+- `resp.Body.Close()` 是否被保证调用（defer）
+- 循环中的 defer 是否会导致资源堆积
+
+### 数据库操作
+- SQL 是否参数化
+- 事务是否正确提交/回滚
+- 是否存在 N+1 查询
+
+### 敏感信息
+- 敏感信息是否通过环境变量/配置中心获取
+- 日志是否脱敏
+- 错误响应是否泄露内部信息
+
+---
+
+## Kubernetes Operator 专项
+
+### Reconcile 函数设计
+- 多次执行 Reconcile 是否产生相同结果（幂等性）
+- 是否使用 Get + Create/Update 模式而非直接 Create
+- 是否在 Reconcile 开始时获取最新资源状态
+- 是否处理资源 NotFound（已删除）情况
+- 是否检查 DeletionTimestamp 处理删除流程
+- 是否避免在 Reconcile 中执行阻塞操作
+
+### Status 更新
+- 是否使用 `r.Status().Update()` 而非 `r.Update()`
+- 是否只在状态实际变化时更新
+- Status 是否反映“当前实际状态”而非“期望状态”
+- 是否设置 ObservedGeneration 跟踪处理进度
+
+### Finalizer 使用
+- 是否只在需要清理外部资源时使用 Finalizer
+- 清理逻辑是否幂等（资源不存在时应成功返回）
+- 清理完成后是否移除 Finalizer
+
+### 错误处理与 Requeue
+- 临时错误是否返回 error 触发自动重试
+- 永久性错误是否更新 Status 并返回 nil（不重试）
+- 等待外部条件时是否使用 RequeueAfter 而非 error
+
+---
+
+## 参考资源
+
+- [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
+- [Effective Go](https://go.dev/doc/effective_go)
+- [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md)
+- [Kubebuilder Book](https://book.kubebuilder.io/)

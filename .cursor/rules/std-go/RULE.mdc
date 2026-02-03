@@ -1,0 +1,70 @@
+---
+alwaysApply: true
+description: 规则包索引 - Go 服务端开发规范。执行任何 Go 服务端开发任务前必须先阅读此索引，根据场景查阅对应规则文件。
+---
+
+# rules-go 规则包导航
+
+<mandatory>
+本文件是规则包的**强制入口**。在执行任何 Go 服务端开发任务前，必须：
+1. 先阅读本索引，识别当前任务涉及的场景
+2. 根据导航地图查阅对应的规则文件
+3. 遵循规则文件中的具体要求
+
+**禁止行为**：跳过本索引直接生成代码。
+
+**重要说明**：
+- 本规则专注于 Go 语言核心最佳实践，框架无关
+- 如果开发 SDK/库，请使用 `rules-go-sdk`
+- **项目已有规范优先**：对于有 CONTRIBUTING.md 或代码规范的项目（如 Kubernetes 等大型开源项目），应优先遵循项目已有规范，本规则作为补充参考
+</mandatory>
+
+---
+
+## 规则导航地图
+
+<navigation>
+根据你当前的任务场景，查阅对应的规则文件：
+
+| 场景 | 规则文件 | 路径 | 优先级 |
+|-----|---------|-----|-------|
+| 设计项目结构与包划分 | AI 工作流规范 | `ai-workflow.mdc` | 🔴 必读 |
+| 定义接口与类型 | AI 工作流规范 | `ai-workflow.mdc` | 🔴 必读 |
+| 设计 API Handler/Controller | AI 工作流规范 | `ai-workflow.mdc` | 🔴 必读 |
+| 处理请求/响应 | AI 工作流规范 | `ai-workflow.mdc` | 🔴 必读 |
+| 编写 Service/Repository 层 | AI 工作流规范 | `ai-workflow.mdc` | 🔴 必读 |
+| 处理错误（error-first） | AI 工作流规范 | `ai-workflow.mdc` | 🔴 必读 |
+| 使用 context 和设置超时 | AI 工作流规范 | `ai-workflow.mdc` | 🔴 必读 |
+| 编写数据库/缓存操作 | AI 工作流规范 | `ai-workflow.mdc` | 🔴 必读 |
+| 编写 goroutine/channel | 并发安全规范 | `concurrency.mdc` | 🔴 必读 |
+| 保护共享状态 | 并发安全规范 | `concurrency.mdc` | 🔴 必读 |
+| 使用 sync 原语 | 并发安全规范 | `concurrency.mdc` | 🔴 必读 |
+| 编写日志与可观测性 | AI 工作流规范 | `ai-workflow.mdc` | 🟡 按需 |
+| 配置管理 | AI 工作流规范 | `ai-workflow.mdc` | 🟡 按需 |
+| 代码生成后输出审核指南 | AI 工作流规范 | `ai-workflow.mdc` | 🔴 必读 |
+| 进行代码评审 | 代码评审规范 | `code-review.mdc` | 🔴 必读 |
+| **开发 Kubernetes Operator** | Operator 开发规范 | `operator.mdc` | 🔴 必读 |
+| 编写 Reconcile 函数 | Operator 开发规范 | `operator.mdc` | 🔴 必读 |
+| 设计 CRD Status | Operator 开发规范 | `operator.mdc` | 🔴 必读 |
+| 使用 Finalizer 清理资源 | Operator 开发规范 | `operator.mdc` | 🔴 必读 |
+| Operator 错误处理与重试 | Operator 开发规范 | `operator.mdc` | 🔴 必读 |
+| 配置 Watch 和事件处理 | Operator 开发规范 | `operator.mdc` | 🟡 按需 |
+
+**优先级说明**：
+- 🔴 必读：任务开始前必须阅读完整规则
+- 🟡 按需：需要时查阅相关章节
+</navigation>
+
+---
+
+## 强制规则（红线）
+
+<constraints>
+1. **索引优先**：执行 Go 开发任务前，先查阅本索引确定需要阅读的规则文件
+2. **错误必包装**：用 `%w` 包装，用 `errors.Is/As` 判断
+3. **context 必传**：所有外部调用必须传递 context 并设置超时
+4. **并发必保护**：共享变量必须用 sync.Mutex/atomic 保护
+5. **goroutine 可退出**：监听 ctx.Done()，避免泄漏
+6. **SQL 必参数化**：禁止字符串拼接 SQL
+7. **敏感信息保护**：日志禁止输出敏感信息
+</constraints>

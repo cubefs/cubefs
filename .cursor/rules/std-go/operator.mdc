@@ -1,0 +1,137 @@
+---
+alwaysApply: false
+description: Kubernetes Operator 开发规范 - 当开发 Kubernetes Operator、Controller 或使用 controller-runtime 时应用
+---
+
+# Kubernetes Operator 开发规范
+
+## 1. 核心原则（红线）
+
+| 规则 | 说明 |
+|-----|------|
+| **Reconcile 必须幂等** | 多次执行相同输入产生相同结果 |
+| **使用 Get+Create/Update 模式** | 先检查资源是否存在再操作 |
+| **Status 反映实际状态** | Status 描述“当前是什么”，非期望 |
+| **设置 OwnerReference** | 子资源随父资源级联删除 |
+| **合理使用 Finalizer** | 仅在需要清理外部资源时使用 |
+
+---
+
+## 2. Reconcile 模式
+
+```go
+func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    app := &myappv1.App{}
+    if err := r.Get(ctx, req.NamespacedName, app); err != nil {
+        return ctrl.Result{}, client.IgnoreNotFound(err)
+    }
+    
+    // 检查删除
+    if !app.DeletionTimestamp.IsZero() {
+        return r.handleDeletion(ctx, app)
+    }
+    
+    // 状态收敛：确保子资源存在且符合期望
+    if err := r.ensureDeployment(ctx, app); err != nil { return ctrl.Result{}, err }
+    if err := r.ensureService(ctx, app); err != nil { return ctrl.Result{}, err }
+    
+    return ctrl.Result{}, r.updateStatus(ctx, app)
+}
+
+// 幂等的资源创建：Get + Create/Update
+func (r *AppReconciler) ensureDeployment(ctx context.Context, app *myappv1.App) error {
+    deploy := &appsv1.Deployment{}
+    err := r.Get(ctx, client.ObjectKey{Namespace: app.Namespace, Name: app.Name + "-deployment"}, deploy)
+    if apierrors.IsNotFound(err) {
+        deploy = r.buildDeployment(app)
+        controllerutil.SetControllerReference(app, deploy, r.Scheme)
+        return r.Create(ctx, deploy)
+    }
+    if err != nil { return err }
+    // 检查并更新
+    expected := r.buildDeployment(app)
+    if needsUpdate(deploy, expected) {
+        deploy.Spec = expected.Spec
+        return r.Update(ctx, deploy)
+    }
+    return nil
+}
+```
+
+---
+
+## 3. Status 更新
+
+- 使用 `r.Status().Update()` 而非 `r.Update()`
+- 只在状态实际变化时更新
+- 设置 ObservedGeneration 跟踪处理进度
+
+```go
+type AppStatus struct {
+    Phase              AppPhase           `json:"phase,omitempty"`
+    Conditions         []metav1.Condition `json:"conditions,omitempty"`
+    ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+}
+```
+
+---
+
+## 4. Finalizer
+
+| 场景 | 是否需要 |
+|-----|----------|
+| 管理集群外部资源（云资源、外部 DB） | ✅ 需要 |
+| 清理非 Owned 的集群内资源 | ✅ 需要 |
+| 只管理 Owned 资源（自动级联删除） | ❌ 不需要 |
+
+```go
+func (r *AppReconciler) handleDeletion(ctx context.Context, app *myappv1.App) (ctrl.Result, error) {
+    if !controllerutil.ContainsFinalizer(app, finalizerName) {
+        return ctrl.Result{}, nil
+    }
+    
+    // 清理外部资源（必须幂等）
+    if err := r.cleanupExternalResources(ctx, app); err != nil {
+        return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+    }
+    
+    // 清理成功，移除 Finalizer
+    controllerutil.RemoveFinalizer(app, finalizerName)
+    return ctrl.Result{}, r.Update(ctx, app)
+}
+```
+
+---
+
+## 5. Requeue 策略
+
+| 场景 | 返回值 |
+|-----|--------|
+| 成功完成 | `ctrl.Result{}, nil` |
+| 资源不存在 | `ctrl.Result{}, nil` |
+| 临时错误 | `ctrl.Result{}, err` （自动指数退避） |
+| 等待外部条件 | `ctrl.Result{RequeueAfter: 30s}, nil` |
+| 并发冲突 | `ctrl.Result{Requeue: true}, nil` |
+| 永久错误 | 更新 Status + `ctrl.Result{}, nil` |
+
+---
+
+## 6. 常用工具函数
+
+```go
+import "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+// OwnerReference
+controllerutil.SetControllerReference(owner, controlled, scheme)
+
+// Finalizer
+controllerutil.ContainsFinalizer(obj, finalizer)
+controllerutil.AddFinalizer(obj, finalizer)
+controllerutil.RemoveFinalizer(obj, finalizer)
+
+// CreateOrUpdate（推荐）
+op, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+    obj.Spec.Replicas = ptr.To(int32(3))
+    return controllerutil.SetControllerReference(owner, obj, r.Scheme)
+})
+```
