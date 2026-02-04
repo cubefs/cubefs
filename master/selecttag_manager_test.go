@@ -283,8 +283,8 @@ func TestFormatDataReplicaSelectTag(t *testing.T) {
 	}
 }
 
-// TestSelectMpSelectTagMismatchGroup tests selecting meta partition select tag mismatch group
-func TestSelectMpSelectTagMismatchGroup(t *testing.T) {
+// TestSelectMpSelectTagUnmatchGroup tests selecting meta partition select tag unmatch group
+func TestSelectMpSelectTagUnmatchGroup(t *testing.T) {
 	c := &Cluster{}
 
 	tests := []struct {
@@ -455,8 +455,8 @@ func TestClusterIsDataPartitionSelectTagSet(t *testing.T) {
 	}
 }
 
-// TestVolCountDpSelectTagMismatch tests counting data partition select tag mismatches
-func TestVolCountDpSelectTagMismatch(t *testing.T) {
+// TestVolCountDpSelectTagUnmatch tests counting data partition select tag unmatches
+func TestVolCountDpSelectTagUnmatch(t *testing.T) {
 	vol := &Vol{
 		Name: "test-vol",
 		dataPartitions: &DataPartitionMap{
@@ -517,16 +517,16 @@ func TestVolCountDpSelectTagMismatch(t *testing.T) {
 		},
 	}
 	summary := &proto.TagSummary{
-		MismatchDps: make([]uint64, 0, MaxTagDecommissionNum),
-		MismatchMps: make([]uint64, 0, MaxTagDecommissionNum),
+		UnmatchDpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
+		UnmatchMpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
 	}
 
-	count := vol.countDpTagMismatch(summary)
+	count := vol.countDpTagUnmatch(summary)
 	assert.Equal(t, 1, count) // only PartitionID 2 mismatches
 }
 
-// TestVolCountMpSelectTagMismatch tests counting meta partition select tag mismatches
-func TestVolCountMpSelectTagMismatch(t *testing.T) {
+// TestVolCountMpSelectTagUnmatch tests counting meta partition select tag unmatches
+func TestVolCountMpSelectTagUnmatch(t *testing.T) {
 	vol := &Vol{
 		Name: "test-vol",
 		MetaPartitions: map[uint64]*MetaPartition{
@@ -563,10 +563,10 @@ func TestVolCountMpSelectTagMismatch(t *testing.T) {
 	vol.mpsLock = newMpsLockManager(vol)
 
 	summary := &proto.TagSummary{
-		MismatchDps: make([]uint64, 0, MaxTagDecommissionNum),
-		MismatchMps: make([]uint64, 0, MaxTagDecommissionNum),
+		UnmatchDpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
+		UnmatchMpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
 	}
-	count := vol.countMpTagMismatch(summary)
+	count := vol.countMpTagUnmatch(summary)
 	assert.Equal(t, 1, count) // only PartitionID 2 mismatches
 }
 
@@ -665,8 +665,8 @@ func TestGetSelectTagSummary(t *testing.T) {
 	assert.Equal(t, "default-dp", summary.ClusterDpTag)
 	assert.Equal(t, "default-mp", summary.ClusterMpTag)
 	assert.Equal(t, 2, summary.VolumeNum)
-	assert.Equal(t, 1, summary.VolWithTagNum) // only vol1 has tags
-	assert.Contains(t, summary.VolWithTag, "vol1")
+	assert.Equal(t, 2, summary.VolWithTagNum) // default tags make vol2 effective
+	assert.Equal(t, 0, summary.VolWithoutTagNum)
 }
 
 // TestContainsHelper tests the contains helper function
@@ -872,8 +872,8 @@ func TestFixMetaPartitionSelectTagBasic(t *testing.T) {
 	assert.Equal(t, []string{"zone1", "zone2", "zone3"}, mpSelectTagList)
 }
 
-// TestCollectMpSelectTagMismatches tests collecting meta partition select tag mismatches
-func TestCollectMpSelectTagMismatches(t *testing.T) {
+// TestCollectMpSelectTagUnmatches tests collecting meta partition select tag unmatches
+func TestCollectMpSelectTagUnmatches(t *testing.T) {
 	metaNode1 := &MetaNode{
 		Addr: "192.168.0.1:9090",
 		Tag:  "actual-tag1",
@@ -939,8 +939,8 @@ func TestCollectMpSelectTagMismatches(t *testing.T) {
 // TestEdgeCases tests edge cases
 func TestEdgeCases(t *testing.T) {
 	summary := &proto.TagSummary{
-		MismatchDps: make([]uint64, 0, MaxTagDecommissionNum),
-		MismatchMps: make([]uint64, 0, MaxTagDecommissionNum),
+		UnmatchDpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
+		UnmatchMpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
 	}
 
 	t.Run("empty data partition list", func(t *testing.T) {
@@ -962,7 +962,7 @@ func TestEdgeCases(t *testing.T) {
 			MetaPartitions: map[uint64]*MetaPartition{},
 		}
 		vol.mpsLock = newMpsLockManager(vol)
-		count := vol.countMpTagMismatch(summary)
+		count := vol.countMpTagUnmatch(summary)
 		assert.Equal(t, 0, count)
 	})
 
@@ -981,7 +981,7 @@ func TestEdgeCases(t *testing.T) {
 			},
 		}
 		// Should not panic
-		count := vol.countDpTagMismatch(summary)
+		count := vol.countDpTagUnmatch(summary)
 		assert.Equal(t, 0, count)
 	})
 }

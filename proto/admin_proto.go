@@ -254,6 +254,7 @@ const (
 	AdminGetMd5SumResult                      = "/metaPartition/getMd5SumResult"
 	AdminGetTagSummary                        = "/admin/getTagSummary"
 	AdminClearTagFailedKeys                   = "/admin/clearTagFailedKeys"
+	AdminGetVolTagSummary                     = "/admin/getVolTagSummary"
 
 	// admin multi version snapshot
 	AdminCreateVersion     = "/multiVer/create"

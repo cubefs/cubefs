@@ -652,6 +652,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminClearTagFailedKeys).
 		HandlerFunc(m.clearTagFailedKeys)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetVolTagSummary).
+		HandlerFunc(m.getVolTagSummary)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).

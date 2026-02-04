@@ -194,28 +194,41 @@ type MetaNodeSpace struct {
 	Tag                string  `json:"tag"`
 }
 
+type TagMismatchSample struct {
+	Vol         string `json:"volume,omitempty"`
+	PartitionID uint64 `json:"partitionId"`
+	NodeAddr    string `json:"nodeAddr"`
+	PeerTag     string `json:"peerTag"`
+	NodeTag     string `json:"nodeTag"`
+}
+
 type TagSummary struct {
 	AutoFixTag          bool                      `json:"autoFixTag"`
 	ClusterDpTag        string                    `json:"clusterDpTag"`
 	ClusterMpTag        string                    `json:"clusterMpTag"`
 	VolumeNum           int                       `json:"volumeNum"`
 	VolWithTagNum       int                       `json:"volumeWithTagNum"`
-	VolWithTag          []string                  `json:"volWithTag"`
-	MismatchDpNum       int                       `json:"mismatchDpNum"`
+	VolWithoutTagNum    int                       `json:"volumeWithoutTagNum"`
+	TotalDpNum          int                       `json:"totalDpNum"`
+	TotalMpNum          int                       `json:"totalMpNum"`
+	UnmatchDpNum        int                       `json:"unmatchDpNum"`
 	DecommissionDpNum   int                       `json:"decommissionDpNum"`
-	MismatchMpNum       int                       `json:"mismatchMpNum"`
+	UnmatchMpNum        int                       `json:"unmatchMpNum"`
 	MpPlanStatus        string                    `json:"mpPlanStatus"`
-	MigratingDps        []uint64                  `json:"migratingDps"`
 	MpDecommissionNum   uint32                    `json:"mpDecommissionNum"`
 	DpCheckThreadStatus string                    `json:"dpCheckThreadStatus"`
 	MpCheckThreadStatus string                    `json:"mpCheckThreadStatus"`
-	MpFailedKeys        []string                  `json:"mpFailedKeys"`
-	LastMpQuitReason    string                    `json:"lastMpQuitReason"`
-	LastDpQuitReason    string                    `json:"lastDpQuitReason"`
-	MismatchMps         []uint64                  `json:"mismatchMps"`
-	MismatchDps         []uint64                  `json:"mismatchDps"`
+	UnmatchDpSamples    []TagMismatchSample       `json:"unmatchDpSamples"`
+	UnmatchMpSamples    []TagMismatchSample       `json:"unmatchMpSamples"`
+	DataNodeTagCount    map[string]int            `json:"dataNodeTagCount"`
+	MetaNodeTagCount    map[string]int            `json:"metaNodeTagCount"`
 	DataNodeSpace       map[string]*DataNodeSpace `json:"dataNodeSpace"`
 	MetaNodeSpace       map[string]*MetaNodeSpace `json:"metaNodeSpace"`
+	FailedMpKeys        []string                  `json:"failedMpKeys"`
+	LastDpQuitReason    string                    `json:"DpThreadLastQuitReason"`
+	LastMpQuitReason    string                    `json:"MpThreadLastQuitReason"`
+	LastDpThreadTime    time.Time                 `json:"DpThreadLastQuitTime"`
+	LastMpThreadTime    time.Time                 `json:"MpThreadLastQuitTime"`
 }
 
 var TagPattern = regexp.MustCompile("^[0-9A-Za-z]{1,49}$")
@@ -228,4 +241,21 @@ func ValidateTag(tag string) bool {
 		}
 	}
 	return true
+}
+
+type VolTagSummary struct {
+	MpTag            string              `json:"mpTag"`
+	DpTag            string              `json:"dpTag"`
+	EffectiveMpTags  []string            `json:"effectiveMpTags"`
+	EffectiveDpTags  []string            `json:"effectiveDpTags"`
+	Vol              string              `json:"volume"`
+	VolStatus        uint8               `json:"volStatus"`
+	TotalDpNum       int                 `json:"totalDpNum"`
+	TotalMpNum       int                 `json:"totalMpNum"`
+	UnmatchDpNum     int                 `json:"unmatchDpNum"`
+	UnmatchDps       []uint64            `json:"unmatchDps"`
+	UnmatchMpNum     int                 `json:"unmatchMpNum"`
+	UnmatchMps       []uint64            `json:"unmatchMps"`
+	UnmatchDpSamples []TagMismatchSample `json:"unmatchDpSamples"`
+	UnmatchMpSamples []TagMismatchSample `json:"unmatchMpSamples"`
 }

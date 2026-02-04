@@ -52,6 +52,8 @@ var (
 	MpFailedKeys      = make([]string, 0)
 	LastMpQuitReason  string
 	LastDpQuitReason  string
+	LastDpThreadTime  time.Time
+	LastMpThreadTime  time.Time
 )
 
 func (c *Cluster) scheduleToCheckDpTag() {
@@ -75,6 +77,7 @@ func (c *Cluster) checkDpTag() {
 	DpTagThreadStatus = StatusChecking
 	defer func() {
 		DpTagThreadStatus = StatusSleeping
+		LastDpThreadTime = time.Now()
 		if r := recover(); r != nil {
 			log.LogWarnf("checkDpTag occurred panic,err[%v]", r)
 		}
@@ -358,6 +361,7 @@ func (c *Cluster) checkMpTag() {
 	defer func() {
 		MpTagThreadStatus = StatusSleeping
 		c.SetClusterPlanIdle()
+		LastMpThreadTime = time.Now()
 		if r := recover(); r != nil {
 			log.LogWarnf("checkMpTag occurred panic,err[%v]", r)
 		}
@@ -748,33 +752,44 @@ func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
 		AutoFixTag:          c.cfg.AutoFixTag.Load(),
 		ClusterDpTag:        c.cfg.DefaultDpTag,
 		ClusterMpTag:        c.cfg.DefaultMpTag,
-		MigratingDps:        make([]uint64, 0, MaxTagDecommissionNum),
 		DpCheckThreadStatus: DpTagThreadStatus,
 		MpCheckThreadStatus: MpTagThreadStatus,
-		MpFailedKeys:        MpFailedKeys,
-		LastMpQuitReason:    LastMpQuitReason,
-		LastDpQuitReason:    LastDpQuitReason,
-		MismatchMps:         make([]uint64, 0, MaxTagDecommissionNum),
-		MismatchDps:         make([]uint64, 0, MaxTagDecommissionNum),
+		UnmatchDpSamples:    make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
+		UnmatchMpSamples:    make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
+		DataNodeTagCount:    make(map[string]int),
+		MetaNodeTagCount:    make(map[string]int),
 		DataNodeSpace:       make(map[string]*proto.DataNodeSpace),
 		MetaNodeSpace:       make(map[string]*proto.MetaNodeSpace),
+		FailedMpKeys:        make([]string, 0, len(MpFailedKeys)),
 	}
 
 	vols := c.allVols()
-	summary.VolWithTag = make([]string, 0, len(vols))
 	for _, vol := range vols {
 		if vol.isInitializingOrInitFailed() {
 			continue
 		}
 		summary.VolumeNum++
 		if vol.MpTag == "" && vol.DpTag == "" && c.cfg.DefaultMpTag == "" && c.cfg.DefaultDpTag == "" {
-			continue
+			summary.VolWithoutTagNum++
+		} else {
+			summary.VolWithTagNum++
 		}
-		summary.VolWithTagNum++
-		summary.VolWithTag = append(summary.VolWithTag, vol.Name)
-		summary.MismatchDpNum += vol.countDpTagMismatch(summary)
-		summary.MismatchMpNum += vol.countMpTagMismatch(summary)
-		vol.getDecommissionTagDps(c, summary)
+		dps := vol.dataPartitions.clonePartitions()
+		for _, dp := range dps {
+			if dp.IsDiscard {
+				continue
+			}
+			summary.TotalDpNum++
+		}
+		mps := vol.cloneMetaPartitionMap()
+		for _, mp := range mps {
+			if mp == nil {
+				continue
+			}
+			summary.TotalMpNum++
+		}
+		summary.UnmatchDpNum += vol.countDpTagUnmatch(summary)
+		summary.UnmatchMpNum += vol.countMpTagUnmatch(summary)
 		summary.DecommissionDpNum += vol.countTagDecommissionTask(c)
 	}
 	switch atomic.LoadUint32(&c.planStatus) {
@@ -791,29 +806,42 @@ func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
 	summary.MpDecommissionNum = c.GetMetaPartitionDecommissionCount(proto.TagDecommission)
 
 	c.collectNodeSpaceInfo(summary)
+	summary.FailedMpKeys = append(summary.FailedMpKeys, MpFailedKeys...)
+	summary.LastDpQuitReason = LastDpQuitReason
+	summary.LastMpQuitReason = LastMpQuitReason
+	summary.LastDpThreadTime = LastDpThreadTime
+	summary.LastMpThreadTime = LastMpThreadTime
 
 	return summary, nil
 }
 
-func (vol *Vol) getDecommissionTagDps(c *Cluster, summary *proto.TagSummary) {
-	if len(summary.MigratingDps) >= MaxTagDecommissionNum {
+func appendMismatchDpSample(summary *proto.TagSummary, volName string, partitionID uint64, addr, peerTag, nodeTag string) {
+	if len(summary.UnmatchDpSamples) >= MaxTagDecommissionNum {
 		return
 	}
-	partitions := vol.dataPartitions.clonePartitions()
-	for _, partition := range partitions {
-		if partition.IsDiscard {
-			continue
-		}
-		if partition.DecommissionType == proto.TagDecommission && partition.isPerformingDecommission(c) {
-			summary.MigratingDps = append(summary.MigratingDps, partition.PartitionID)
-			if len(summary.MigratingDps) >= MaxTagDecommissionNum {
-				return
-			}
-		}
-	}
+	summary.UnmatchDpSamples = append(summary.UnmatchDpSamples, proto.TagMismatchSample{
+		Vol:         volName,
+		PartitionID: partitionID,
+		NodeAddr:    addr,
+		PeerTag:     peerTag,
+		NodeTag:     nodeTag,
+	})
 }
 
-func (vol *Vol) countDpTagMismatch(summary *proto.TagSummary) (count int) {
+func appendMismatchMpSample(summary *proto.TagSummary, volName string, partitionID uint64, addr, peerTag, nodeTag string) {
+	if len(summary.UnmatchMpSamples) >= MaxTagDecommissionNum {
+		return
+	}
+	summary.UnmatchMpSamples = append(summary.UnmatchMpSamples, proto.TagMismatchSample{
+		Vol:         volName,
+		PartitionID: partitionID,
+		NodeAddr:    addr,
+		PeerTag:     peerTag,
+		NodeTag:     nodeTag,
+	})
+}
+
+func (vol *Vol) countDpTagUnmatch(summary *proto.TagSummary) (count int) {
 	partitions := vol.dataPartitions.clonePartitions()
 	for _, partition := range partitions {
 		if partition.IsDiscard {
@@ -829,9 +857,7 @@ func (vol *Vol) countDpTagMismatch(summary *proto.TagSummary) (count int) {
 			tag := GetDataPartitionPeerTag(partition, replica.Addr)
 			if tag != DefaultTag && tag != replica.dataNode.Tag {
 				count++
-				if len(summary.MismatchDps) < MaxTagDecommissionNum {
-					summary.MismatchDps = append(summary.MismatchDps, partition.PartitionID)
-				}
+				appendMismatchDpSample(summary, vol.Name, partition.PartitionID, replica.Addr, tag, replica.dataNode.Tag)
 				break
 			}
 		}
@@ -839,7 +865,7 @@ func (vol *Vol) countDpTagMismatch(summary *proto.TagSummary) (count int) {
 	return count
 }
 
-func (vol *Vol) countMpTagMismatch(summary *proto.TagSummary) (count int) {
+func (vol *Vol) countMpTagUnmatch(summary *proto.TagSummary) (count int) {
 	partitions := vol.cloneMetaPartitionMap()
 	for _, partition := range partitions {
 		if partition == nil {
@@ -855,9 +881,7 @@ func (vol *Vol) countMpTagMismatch(summary *proto.TagSummary) (count int) {
 			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
 			if tag != DefaultTag && tag != replica.metaNode.Tag {
 				count++
-				if len(summary.MismatchMps) < MaxTagDecommissionNum {
-					summary.MismatchMps = append(summary.MismatchMps, partition.PartitionID)
-				}
+				appendMismatchMpSample(summary, vol.Name, partition.PartitionID, replica.Addr, tag, replica.metaNode.Tag)
 				break
 			}
 		}
@@ -1002,6 +1026,7 @@ func (vol *Vol) IsMetaPartitionHasTag(c *Cluster) bool {
 func (c *Cluster) collectNodeSpaceInfo(summary *proto.TagSummary) {
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
+		summary.DataNodeTagCount[dataNode.Tag]++
 
 		if v, ok := summary.DataNodeSpace[dataNode.Tag]; ok {
 			v.Used += dataNode.Used
@@ -1030,6 +1055,7 @@ func (c *Cluster) collectNodeSpaceInfo(summary *proto.TagSummary) {
 
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
+		summary.MetaNodeTagCount[metaNode.Tag]++
 
 		if v, ok := summary.MetaNodeSpace[metaNode.Tag]; ok {
 			v.MemUsed += metaNode.Used
@@ -1075,4 +1101,110 @@ func (c *Cluster) collectNodeSpaceInfo(summary *proto.TagSummary) {
 			val.SystemMemoryRatio = float64(val.SystemMemoryUsed) / float64(val.SystemMemoryTotal)
 		}
 	}
+}
+
+func (c *Cluster) getVolTagSummary(name string) (summary *proto.VolTagSummary, err error) {
+	vol, err := c.getVol(name)
+	if err != nil {
+		log.LogErrorf("getVolTagSummary: get vol[%s] failed: %v", name, err)
+		return nil, err
+	}
+
+	mps := vol.cloneMetaPartitionMap()
+	dps := vol.dataPartitions.clonePartitions()
+
+	summary = &proto.VolTagSummary{
+		Vol:              name,
+		MpTag:            vol.MpTag,
+		DpTag:            vol.DpTag,
+		EffectiveMpTags:  vol.GetMpTagList(c),
+		EffectiveDpTags:  vol.GetDpTagList(c),
+		VolStatus:        vol.Status,
+		UnmatchDpNum:     0,
+		UnmatchMpNum:     0,
+		UnmatchDps:       make([]uint64, 0, len(dps)),
+		UnmatchMps:       make([]uint64, 0, len(mps)),
+		UnmatchDpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
+		UnmatchMpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
+	}
+
+	for _, dp := range dps {
+		if dp.IsDiscard {
+			continue
+		}
+		summary.TotalDpNum++
+
+		for _, replica := range dp.Replicas {
+			if replica == nil {
+				continue
+			}
+			if replica.dataNode == nil {
+				continue
+			}
+			tag := GetDataPartitionPeerTag(dp, replica.Addr)
+			if tag != DefaultTag && tag != replica.dataNode.Tag {
+				if len(summary.UnmatchDpSamples) < MaxTagDecommissionNum {
+					summary.UnmatchDpSamples = append(summary.UnmatchDpSamples, proto.TagMismatchSample{
+						Vol:         vol.Name,
+						PartitionID: dp.PartitionID,
+						NodeAddr:    replica.Addr,
+						PeerTag:     tag,
+						NodeTag:     replica.dataNode.Tag,
+					})
+				}
+				summary.UnmatchDps = append(summary.UnmatchDps, dp.PartitionID)
+				break
+			}
+		}
+	}
+
+	for _, mp := range mps {
+		if mp == nil {
+			continue
+		}
+		summary.TotalMpNum++
+		for _, replica := range mp.Replicas {
+			if replica == nil {
+				continue
+			}
+			if replica.metaNode == nil {
+				continue
+			}
+			tag := GetMetaPartitionPeerTag(mp, replica.Addr)
+			if tag != DefaultTag && tag != replica.metaNode.Tag {
+				if len(summary.UnmatchMpSamples) < MaxTagDecommissionNum {
+					summary.UnmatchMpSamples = append(summary.UnmatchMpSamples, proto.TagMismatchSample{
+						Vol:         vol.Name,
+						PartitionID: mp.PartitionID,
+						NodeAddr:    replica.Addr,
+						PeerTag:     tag,
+						NodeTag:     replica.metaNode.Tag,
+					})
+				}
+				summary.UnmatchMps = append(summary.UnmatchMps, mp.PartitionID)
+				break
+			}
+		}
+	}
+
+	summary.UnmatchDpNum = len(summary.UnmatchDps)
+	summary.UnmatchMpNum = len(summary.UnmatchMps)
+
+	return summary, nil
+}
+
+func FormatTag(tag string) string {
+	tagList := strings.Split(tag, ",")
+	newList := make([]string, 0, len(tagList))
+	for _, tag := range tagList {
+		tag = strings.TrimSpace(tag)
+		if tag == "" || tag == EmptyTag {
+			continue
+		}
+		newList = append(newList, tag)
+	}
+	if len(newList) == 0 {
+		return DefaultTag
+	}
+	return strings.Join(newList, ",")
 }

@@ -1042,6 +1042,32 @@ func (m *Server) getTagSummary(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(summary))
 }
 
+func (m *Server) getVolTagSummary(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetVolTagSummary))
+	var err error
+	defer func() {
+		doStatAndMetric(proto.AdminGetVolTagSummary, metric, err, nil)
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	name := r.FormValue(nameKey)
+	if name == "" {
+		log.LogErrorf("getVolTagSummary: name is required")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "name is required"})
+		return
+	}
+
+	summary, err := m.cluster.getVolTagSummary(name)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(summary))
+}
+
 func (m *Server) clearTagFailedKeys(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminClearTagFailedKeys))
 	defer func() {

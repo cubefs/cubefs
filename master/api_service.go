@@ -3239,18 +3239,10 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.volStorageClass = req.volStorageClass
 	newArgs.forbidWriteOpOfProtoVer0 = req.forbidWriteOpOfProtoVer0
 	if req.dpsSelectTag != "" {
-		if req.dpsSelectTag == EmptyTag {
-			newArgs.DpTag = DefaultTag
-		} else {
-			newArgs.DpTag = req.dpsSelectTag
-		}
+		newArgs.DpTag = FormatTag(req.dpsSelectTag)
 	}
 	if req.mpsSelectTag != "" {
-		if req.mpsSelectTag == EmptyTag {
-			newArgs.MpTag = DefaultTag
-		} else {
-			newArgs.MpTag = req.mpsSelectTag
-		}
+		newArgs.MpTag = FormatTag(req.mpsSelectTag)
 	}
 
 	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v], FR[%v], metaFR[%v], MMR[%v]",
@@ -4729,9 +4721,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed").Error()})
 				return
 			}
-			if defaultDpSelectTag == EmptyTag {
-				defaultDpSelectTag = DefaultTag
-			}
+			defaultDpSelectTag = FormatTag(defaultDpSelectTag)
 			if err = m.setConfig(cfgDefaultDpTag, defaultDpSelectTag); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
@@ -4744,9 +4734,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed").Error()})
 				return
 			}
-			if defaultMpSelectTag == EmptyTag {
-				defaultMpSelectTag = DefaultTag
-			}
+			defaultMpSelectTag = FormatTag(defaultMpSelectTag)
 			if err = m.setConfig(cfgDefaultMpTag, defaultMpSelectTag); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return

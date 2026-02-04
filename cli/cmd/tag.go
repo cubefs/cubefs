@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -34,6 +35,7 @@ func newSelectTagCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newShowSelectTagSummaryCmd(client),
+		newShowSelectTagVolSummaryCmd(client),
 		newClearSelectTagFailedKeysCmd(client),
 	)
 	return cmd
@@ -42,6 +44,8 @@ func newSelectTagCmd(client *master.MasterClient) *cobra.Command {
 const (
 	cmdShowSelectTagSummary          = "summary"
 	cmdShowSelectTagSummaryShort     = "Show select tag summary"
+	cmdShowSelectTagVolSummary       = "vol-summary"
+	cmdShowSelectTagVolSummaryShort  = "Show select tag summary for a volume"
 	cmdClearSelectTagFailedKeys      = "clear-failed-keys"
 	cmdClearSelectTagFailedKeysShort = "Clear select tag failed keys"
 )
@@ -57,6 +61,35 @@ func newShowSelectTagSummaryCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			var task *proto.TagSummary
 			if task, err = client.AdminAPI().GetSelectTagSummary(); err != nil {
+				return
+			}
+			out, err := json.MarshalIndent(task, "", "    ")
+			if err != nil {
+				stdout("marshal task failed: %s", err.Error())
+				return
+			}
+			stdout("%s", string(out))
+		},
+	}
+	return cmd
+}
+
+func newShowSelectTagVolSummaryCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   cmdShowSelectTagVolSummary,
+		Short: cmdShowSelectTagVolSummaryShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			if len(args) < 1 {
+				err = fmt.Errorf("volume name is required")
+				return
+			}
+			volName := args[0]
+			var task *proto.VolTagSummary
+			if task, err = client.AdminAPI().GetVolTagSummary(volName); err != nil {
 				return
 			}
 			out, err := json.MarshalIndent(task, "", "    ")

@@ -1419,6 +1419,14 @@ func (api *AdminAPI) GetSelectTagSummary() (summary *proto.TagSummary, err error
 	return
 }
 
+func (api *AdminAPI) GetVolTagSummary(name string) (summary *proto.VolTagSummary, err error) {
+	summary = &proto.VolTagSummary{}
+	req := newRequest(get, proto.AdminGetVolTagSummary).Header(api.h)
+	req.addParam("name", name)
+	err = api.mc.requestWith(summary, req)
+	return
+}
+
 func (api *AdminAPI) ClearSelectTagFailedKeys() (err error) {
 	err = api.mc.request(newRequest(get, proto.AdminClearTagFailedKeys).Header(api.h))
 	return
