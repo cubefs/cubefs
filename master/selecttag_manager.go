@@ -177,12 +177,29 @@ func (vol *Vol) FixDataPartitionTag(c *Cluster) {
 			continue
 		}
 
+		pickCandidateIndex := func(tag string, replicas []*DataReplica) int {
+			for i, replica := range replicas {
+				dataNode := replica.getReplicaNode()
+				if dataNode != nil && dataNode.Tag == tag {
+					return i
+				}
+			}
+			if len(replicas) > 0 {
+				return 0
+			}
+			return -1
+		}
+
 		for _, tag := range desiredTags {
 			if required[tag] == 0 || len(candidates) == 0 {
 				continue
 			}
-			replica := candidates[0]
-			candidates = candidates[1:]
+			index := pickCandidateIndex(tag, candidates)
+			if index < 0 {
+				continue
+			}
+			replica := candidates[index]
+			candidates = append(candidates[:index], candidates[index+1:]...)
 			currentTag := GetDataPartitionPeerTag(partition, replica.Addr)
 			if currentTag != tag {
 				SetDataPartitionPeerTag(partition, replica.Addr, tag)
@@ -642,12 +659,28 @@ func (vol *Vol) FixMetaPartitionTag(c *Cluster) {
 			continue
 		}
 
+		pickCandidateIndex := func(tag string, replicas []*MetaReplica) int {
+			for i, replica := range replicas {
+				if replica.metaNode != nil && replica.metaNode.Tag == tag {
+					return i
+				}
+			}
+			if len(replicas) > 0 {
+				return 0
+			}
+			return -1
+		}
+
 		for _, tag := range desiredTags {
 			if required[tag] == 0 || len(candidates) == 0 {
 				continue
 			}
-			replica := candidates[0]
-			candidates = candidates[1:]
+			index := pickCandidateIndex(tag, candidates)
+			if index < 0 {
+				continue
+			}
+			replica := candidates[index]
+			candidates = append(candidates[:index], candidates[index+1:]...)
 			currentTag := GetMetaPartitionPeerTag(partition, replica.Addr)
 			if currentTag != tag {
 				SetMetaPartitionPeerTag(partition, replica.Addr, tag)
