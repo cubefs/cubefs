@@ -105,7 +105,7 @@ func (v *volumeMgr) handleFullVols(ctx context.Context, isBackup bool) {
 		if len(fullVols) > 0 {
 			for _, vid := range fullVols {
 				info.Delete(vid)
-				span.Debugf("volume is full, vid: %v,codeMode: %v", vid, codeMode)
+				span.Infof("volume is full, vid: %v,codeMode: %v", vid, codeMode)
 			}
 		}
 	}
@@ -155,7 +155,7 @@ func (v *volumeMgr) discardVolume(ctx context.Context, token string, isBackup bo
 	if err != nil {
 		return
 	}
-	span.Debugf("retain failed vid: %v", vid)
+	span.Infof("retain failed vid: %v", vid)
 	for _, info := range v.modeInfos {
 		if vol, ok := info.Get(vid, isBackup); ok {
 			vol.mu.Lock()

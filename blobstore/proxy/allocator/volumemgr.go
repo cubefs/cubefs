@@ -177,6 +177,7 @@ func (m *modeInfo) getAvailableList(fsize int64, switchable bool) (vols []*volum
 		tmp := m.current
 		m.current = m.backup
 		m.backup = tmp
+		log.Infof("switch current and backup, current total free: %d, total num: %d", totalFree, m.current.Len())
 	}
 	if m.current.TotalFree() < fsize {
 		m.lock.Unlock()
@@ -600,6 +601,9 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 			}
 			modeCfg := v.getCodeModeConfig(allocArg.CodeMode)
 			for index, vol := range volumeRets {
+				if allocArg.IsInit && index >= 2*modeCfg.DefaultAllocVolsNum {
+					break
+				}
 				allocVolInfo := &volume{
 					AllocVolumeInfo: vol,
 				}
