@@ -756,6 +756,8 @@ func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
 		LastDpQuitReason:    LastDpQuitReason,
 		MismatchMps:         make([]uint64, 0, MaxTagDecommissionNum),
 		MismatchDps:         make([]uint64, 0, MaxTagDecommissionNum),
+		DataNodeSpace:       make(map[string]*proto.DataNodeSpace),
+		MetaNodeSpace:       make(map[string]*proto.MetaNodeSpace),
 	}
 
 	vols := c.allVols()
@@ -765,7 +767,7 @@ func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
 			continue
 		}
 		summary.VolumeNum++
-		if vol.MpTag == "" && vol.DpTag == "" {
+		if vol.MpTag == "" && vol.DpTag == "" && c.cfg.DefaultMpTag == "" && c.cfg.DefaultDpTag == "" {
 			continue
 		}
 		summary.VolWithTagNum++
@@ -787,6 +789,8 @@ func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
 	}
 
 	summary.MpDecommissionNum = c.GetMetaPartitionDecommissionCount(proto.TagDecommission)
+
+	c.collectNodeSpaceInfo(summary)
 
 	return summary, nil
 }
@@ -993,4 +997,82 @@ func (vol *Vol) IsMetaPartitionHasTag(c *Cluster) bool {
 	}
 
 	return false
+}
+
+func (c *Cluster) collectNodeSpaceInfo(summary *proto.TagSummary) {
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+
+		if v, ok := summary.DataNodeSpace[dataNode.Tag]; ok {
+			v.Used += dataNode.Used
+			v.Free += dataNode.AvailableSpace
+			v.Total += dataNode.Total
+		} else {
+			summary.DataNodeSpace[dataNode.Tag] = &proto.DataNodeSpace{
+				Used:        dataNode.Used,
+				Free:        dataNode.AvailableSpace,
+				Total:       dataNode.Total,
+				Tag:         dataNode.Tag,
+				WritableNum: 0,
+			}
+		}
+		if dataNode.IsWriteAble() {
+			summary.DataNodeSpace[dataNode.Tag].WritableNum++
+		}
+		return true
+	})
+
+	for _, val := range summary.DataNodeSpace {
+		if val.Total > 0 {
+			val.Ratio = float64(val.Used) / float64(val.Total)
+		}
+	}
+
+	c.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode := node.(*MetaNode)
+
+		if v, ok := summary.MetaNodeSpace[metaNode.Tag]; ok {
+			v.MemUsed += metaNode.Used
+			v.MemTotal += metaNode.Total
+			v.RocksdbUsed += metaNode.GetRocksdbUsed()
+			v.RocksdbTotal += metaNode.GetRocksdbTotal()
+			v.SystemMemoryUsed += metaNode.NodeMemUsed
+			v.SystemMemoryTotal += metaNode.NodeMemTotal
+		} else {
+			summary.MetaNodeSpace[metaNode.Tag] = &proto.MetaNodeSpace{
+				MemUsed:            metaNode.Used,
+				MemTotal:           metaNode.Total,
+				Tag:                metaNode.Tag,
+				MemWritableNum:     0,
+				RocksdbUsed:        metaNode.GetRocksdbUsed(),
+				RocksdbTotal:       metaNode.GetRocksdbTotal(),
+				RocksdbWritableNum: 0,
+				SystemMemoryUsed:   metaNode.NodeMemUsed,
+				SystemMemoryTotal:  metaNode.NodeMemTotal,
+			}
+		}
+		if metaNode.IsWriteAble() {
+			summary.MetaNodeSpace[metaNode.Tag].MemWritableNum++
+		}
+		if metaNode.IsRocksdbWriteAble() {
+			summary.MetaNodeSpace[metaNode.Tag].RocksdbWritableNum++
+		}
+
+		return true
+	})
+
+	for _, val := range summary.MetaNodeSpace {
+		val.MemFree = val.MemTotal - val.MemUsed
+		val.RocksdbFree = val.RocksdbTotal - val.RocksdbUsed
+		val.SystemMemoryFree = val.SystemMemoryTotal - val.SystemMemoryUsed
+		if val.MemTotal > 0 {
+			val.MemRatio = float64(val.MemUsed) / float64(val.MemTotal)
+		}
+		if val.RocksdbTotal > 0 {
+			val.RocksdbRatio = float64(val.RocksdbUsed) / float64(val.RocksdbTotal)
+		}
+		if val.SystemMemoryTotal > 0 {
+			val.SystemMemoryRatio = float64(val.SystemMemoryUsed) / float64(val.SystemMemoryTotal)
+		}
+	}
 }

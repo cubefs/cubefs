@@ -167,26 +167,55 @@ type PromoteLearnerPlan struct {
 	Msg        string                      `json:"msg"`
 }
 
+type DataNodeSpace struct {
+	Used        uint64  `json:"used"`
+	Free        uint64  `json:"free"`
+	Total       uint64  `json:"total"`
+	Ratio       float64 `json:"ratio"`
+	WritableNum int     `json:"writableNum"`
+	Tag         string  `json:"tag"`
+}
+
+type MetaNodeSpace struct {
+	MemUsed            uint64  `json:"memUsed"`
+	MemFree            uint64  `json:"memFree"`
+	MemTotal           uint64  `json:"memTotal"`
+	MemRatio           float64 `json:"memRatio"`
+	MemWritableNum     int     `json:"memWritableNum"`
+	RocksdbUsed        uint64  `json:"rocksdbUsed"`
+	RocksdbFree        uint64  `json:"rocksdbFree"`
+	RocksdbTotal       uint64  `json:"rocksdbTotal"`
+	RocksdbRatio       float64 `json:"rocksdbRatio"`
+	RocksdbWritableNum int     `json:"rocksdbWritableNum"`
+	SystemMemoryUsed   uint64  `json:"systemMemoryUsed"`
+	SystemMemoryFree   uint64  `json:"systemMemoryFree"`
+	SystemMemoryTotal  uint64  `json:"systemMemoryTotal"`
+	SystemMemoryRatio  float64 `json:"systemMemoryRatio"`
+	Tag                string  `json:"tag"`
+}
+
 type TagSummary struct {
-	AutoFixTag          bool     `json:"autoFixTag"`
-	ClusterDpTag        string   `json:"clusterDpTag"`
-	ClusterMpTag        string   `json:"clusterMpTag"`
-	VolumeNum           int      `json:"volumeNum"`
-	VolWithTagNum       int      `json:"volumeWithTagNum"`
-	VolWithTag          []string `json:"volWithTag"`
-	MismatchDpNum       int      `json:"mismatchDpNum"`
-	DecommissionDpNum   int      `json:"decommissionDpNum"`
-	MismatchMpNum       int      `json:"mismatchMpNum"`
-	MpPlanStatus        string   `json:"mpPlanStatus"`
-	MigratingDps        []uint64 `json:"migratingDps"`
-	MpDecommissionNum   uint32   `json:"mpDecommissionNum"`
-	DpCheckThreadStatus string   `json:"dpCheckThreadStatus"`
-	MpCheckThreadStatus string   `json:"mpCheckThreadStatus"`
-	MpFailedKeys        []string `json:"mpFailedKeys"`
-	LastMpQuitReason    string   `json:"lastMpQuitReason"`
-	LastDpQuitReason    string   `json:"lastDpQuitReason"`
-	MismatchMps         []uint64 `json:"mismatchMps"`
-	MismatchDps         []uint64 `json:"mismatchDps"`
+	AutoFixTag          bool                      `json:"autoFixTag"`
+	ClusterDpTag        string                    `json:"clusterDpTag"`
+	ClusterMpTag        string                    `json:"clusterMpTag"`
+	VolumeNum           int                       `json:"volumeNum"`
+	VolWithTagNum       int                       `json:"volumeWithTagNum"`
+	VolWithTag          []string                  `json:"volWithTag"`
+	MismatchDpNum       int                       `json:"mismatchDpNum"`
+	DecommissionDpNum   int                       `json:"decommissionDpNum"`
+	MismatchMpNum       int                       `json:"mismatchMpNum"`
+	MpPlanStatus        string                    `json:"mpPlanStatus"`
+	MigratingDps        []uint64                  `json:"migratingDps"`
+	MpDecommissionNum   uint32                    `json:"mpDecommissionNum"`
+	DpCheckThreadStatus string                    `json:"dpCheckThreadStatus"`
+	MpCheckThreadStatus string                    `json:"mpCheckThreadStatus"`
+	MpFailedKeys        []string                  `json:"mpFailedKeys"`
+	LastMpQuitReason    string                    `json:"lastMpQuitReason"`
+	LastDpQuitReason    string                    `json:"lastDpQuitReason"`
+	MismatchMps         []uint64                  `json:"mismatchMps"`
+	MismatchDps         []uint64                  `json:"mismatchDps"`
+	DataNodeSpace       map[string]*DataNodeSpace `json:"dataNodeSpace"`
+	MetaNodeSpace       map[string]*MetaNodeSpace `json:"metaNodeSpace"`
 }
 
 var TagPattern = regexp.MustCompile("^[0-9A-Za-z]{1,49}$")
