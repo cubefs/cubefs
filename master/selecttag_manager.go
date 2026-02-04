@@ -86,8 +86,8 @@ func (c *Cluster) checkDpTag() {
 		if vol.isInitializingOrInitFailed() {
 			continue
 		}
-		tagList := vol.GetDpTagList(c)
-		if len(tagList) == 0 {
+
+		if !vol.IsDataPartitionHasTag(c) {
 			continue
 		}
 
@@ -351,8 +351,7 @@ func (c *Cluster) checkMpTag() {
 		if vol.isInitializingOrInitFailed() {
 			continue
 		}
-		tagList := vol.GetMpTagList(c)
-		if len(tagList) == 0 {
+		if !vol.IsMetaPartitionHasTag(c) {
 			continue
 		}
 
@@ -919,4 +918,46 @@ func (c *Cluster) IsDataPartitionTagSet(volName string) bool {
 	}
 
 	return vol.DpTag != ""
+}
+
+func (vol *Vol) IsDataPartitionHasTag(c *Cluster) bool {
+	tagList := vol.GetDpTagList(c)
+	if len(tagList) > 0 {
+		return true
+	}
+
+	partitions := vol.dataPartitions.clonePartitions()
+	for _, partition := range partitions {
+		if partition.IsDiscard {
+			continue
+		}
+		for _, peer := range partition.Peers {
+			if peer.Tag != DefaultTag {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (vol *Vol) IsMetaPartitionHasTag(c *Cluster) bool {
+	tagList := vol.GetMpTagList(c)
+	if len(tagList) > 0 {
+		return true
+	}
+
+	partitions := vol.cloneMetaPartitionMap()
+	for _, partition := range partitions {
+		if partition == nil {
+			continue
+		}
+		for _, peer := range partition.Peers {
+			if peer.Tag != DefaultTag {
+				return true
+			}
+		}
+	}
+
+	return false
 }
