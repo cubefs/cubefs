@@ -175,6 +175,14 @@ func initNoContentLengthServer(t *testing.T) (server *httptest.Server, tmpDir st
 	return server, tmpDir, lc
 }
 
+func TestSamePrometheusConfig(t *testing.T) {
+	cfg := Config{MetricConfig: PrometheusConfig{Idc: "same-idc"}}
+	_, _, err := Open("prometheus", &cfg)
+	require.NoError(t, err)
+	_, _, err = Open("prometheus", &cfg)
+	require.NoError(t, err)
+}
+
 func TestOpen(t *testing.T) {
 	cfg := Config{
 		Filters: []FilterConfig{{Must: Conditions{"term": {"method": "GET"}}}},
