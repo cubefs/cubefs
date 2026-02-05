@@ -1483,6 +1483,7 @@ type SimpleVolView struct {
 	AllowedStorageClass      []uint32
 	ForbidWriteOpOfProtoVer0 bool
 	QuotaOfStorageClass      []*StatOfStorageClass
+	QuotaOfPool              []*StatOfStorageClass
 
 	RemoteCacheEnable            bool
 	RemoteCachePath              string
@@ -1505,8 +1506,8 @@ type SimpleVolView struct {
 	DpTag                   string
 	MpTag                   string
 
-	// Storage pools information map[poolId]*StoragePoolView
-	Pools map[uint8]*StoragePoolView `json:"pools,omitempty"`
+	// Storage pools information map[poolId]*StoragePoolInfo
+	Pools map[uint8]*StoragePoolInfo `json:"pools,omitempty"`
 }
 
 type NodeSetInfo struct {
@@ -1833,6 +1834,8 @@ func GetStorageClassByMediaType(mediaType uint32) (storageClass uint32) {
 
 const (
 	ForbiddenMigrationRenewalPeriod = 1 * time.Hour
+	// TODO: remove this constant after testing
+	// ForbiddenMigrationRenewalSeonds = 3600
 	ForbiddenMigrationRenewalSeonds = 36
 )
 
@@ -1956,6 +1959,20 @@ const (
 	PoolStatusDeleting  uint8 = 3
 )
 
+// PoolStatusString converts pool status to string
+func PoolStatusString(status uint8) string {
+	switch status {
+	case PoolStatusAvailable:
+		return "Available"
+	case PoolStatusDisabled:
+		return "Disabled"
+	case PoolStatusDeleting:
+		return "Deleting"
+	default:
+		return "Unknown"
+	}
+}
+
 // StoragePoolInfo defines the storage pool information
 type StoragePoolInfo struct {
 	Id           uint8  `json:"id"`
@@ -1968,30 +1985,19 @@ type StoragePoolInfo struct {
 	Status       uint8  `json:"status"`
 }
 
-// StoragePoolView provides the view of storage pool
-type StoragePoolView struct {
-	Id           uint8  `json:"id"`
-	Name         string `json:"name"`
-	StorageClass uint8  `json:"storageClass"`
-	CId          int    `json:"cId,omitempty"`
-	ECAddr       string `json:"ecAddr,omitempty"`
-	CreateTime   string `json:"createTime"`
-	UpdateTime   string `json:"updateTime"`
-	Status       string `json:"status"`
+func (s *StoragePoolInfo) String() string {
+	if s == nil {
+		return "nil"
+	}
+
+	return fmt.Sprintf("Id: %d, Name: %s, StorageClass: %d, CId: %d, ECAddr: %s, CreateTime: %s, UpdateTime: %s, Status: %v",
+		s.Id, s.Name, s.StorageClass, s.CId, s.ECAddr, time.Unix(s.CreateTime, 0).Format(time.RFC3339), time.Unix(s.UpdateTime, 0).Format(time.RFC3339), s.Status)
 }
 
 const (
 	SelectTypeNone = iota
 	SelectTypeTag
 )
-
-func (s *StoragePoolView) String() string {
-	if s == nil {
-		return "nil"
-	}
-	return fmt.Sprintf("Id: %d, Name: %s, StorageClass: %d, CId: %d, ECAddr: %s, CreateTime: %s, UpdateTime: %s, Status: %s",
-		s.Id, s.Name, s.StorageClass, s.CId, s.ECAddr, s.CreateTime, s.UpdateTime, s.Status)
-}
 
 // Default Storage Pool IDs
 const (
@@ -2019,7 +2025,7 @@ func GetDefaultPoolIdByMediaType(mediaType uint32) uint8 {
 	default:
 		// Default to SSD pool for unspecified media type
 		log.LogWarnf("GetDefaultPoolIdByMediaType: unsupported mediaType[%d], defaulting to SSD pool", mediaType)
-		return DefaultSSDPoolId
+		return UnSpecifiedPoolId
 	}
 }
 

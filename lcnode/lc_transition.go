@@ -54,15 +54,30 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
 		return
 	}
+
+	var ecClosed, ecForWClosed bool
+
 	if err = t.ec.OpenStream(e.Inode, false, false, ""); err != nil {
 		log.LogWarnf("migrate: ec OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
 
+	defer func() {
+		if !ecClosed {
+			t.ec.CloseStream(e.Inode)
+		}
+	}()
+
 	if err = t.ecForW.OpenStream(e.Inode, false, false, ""); err != nil {
 		log.LogWarnf("migrate: ecForW OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
+
+	defer func() {
+		if !ecForWClosed {
+			t.ecForW.CloseStream(e.Inode)
+		}
+	}()
 
 	var (
 		md5Hash     = md5.New()
@@ -120,11 +135,13 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	md5Value = hex.EncodeToString(md5Hash.Sum(nil))
 	log.LogInfof("migrate file finished, inode(%v), md5Value: %v", e.Inode, md5Value)
 
+	ecClosed = true
 	if closeErr := t.ecForW.CloseStream(e.Inode); closeErr != nil {
 		log.LogWarnf("migrate: ecForW CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		return closeErr
 	}
 
+	ecForWClosed = true
 	if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
 		log.LogWarnf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		return closeErr

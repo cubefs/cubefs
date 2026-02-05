@@ -108,9 +108,12 @@ type Super struct {
 	inodeLruLimit         int64
 
 	// storage pool cache
-	poolCache     map[uint8]*proto.StoragePoolView
+	poolCache     map[uint8]*proto.StoragePoolInfo
 	poolCacheLock sync.RWMutex
 	poolCacheTime time.Time
+
+	// client specified pool ID for new inodes (0 means use volume default)
+	clientPoolId uint8
 }
 
 // Functions that Super needs to implement
@@ -151,6 +154,38 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 	s.SetTransaction(opt.EnableTransaction, opt.TxTimeout, opt.TxConflictRetryNum, opt.TxConflictRetryInterval)
 	s.mw.EnableQuota = opt.EnableQuota
+
+	// Validate and set client specified pool ID
+	if opt.PoolId > 0 {
+		// Get volume information to validate pool ID
+		mc := s.mw.GetMasterClient()
+		if mc != nil {
+			volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+			if err != nil {
+				log.LogWarnf("NewSuper: failed to get volume info for poolId validation: %v", err)
+				return nil, errors.Trace(err, "failed to get volume info for poolId validation")
+			}
+			// Check if poolId is in volume's allowed pools
+			poolValid := false
+			if len(volInfo.Pools) > 0 {
+				for poolId := range volInfo.Pools {
+					if poolId == opt.PoolId {
+						poolValid = true
+						break
+					}
+				}
+			}
+			if !poolValid {
+				return nil, fmt.Errorf("poolId %d is not in volume's allowed pools", opt.PoolId)
+			}
+			s.clientPoolId = opt.PoolId
+			s.mw.SetClientPoolId(opt.PoolId)
+			log.LogInfof("NewSuper: client poolId %d validated and set", opt.PoolId)
+		}
+	} else {
+		s.clientPoolId = 0
+		s.mw.SetClientPoolId(0)
+	}
 
 	s.volname = opt.Volname
 	s.masters = opt.Master
@@ -333,16 +368,16 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	go s.loopWarmUpMetaPaths()
 
 	// Initialize and start pool cache update
-	s.poolCache = make(map[uint8]*proto.StoragePoolView)
+	s.poolCache = make(map[uint8]*proto.StoragePoolInfo)
 	s.updatePoolCache()
 	go s.loopUpdatePoolCache()
 
 	return s, nil
 }
 
-func (s *Super) getBlobStoreClient(pool *proto.StoragePoolView) (*blobstore.BlobStoreClient, error) {
+func (s *Super) getBlobStoreClient(poolId uint8) (*blobstore.BlobStoreClient, error) {
 	s.ebscLock.RLock()
-	ebsc, ok := s.ebsc[pool.Id]
+	ebsc, ok := s.ebsc[poolId]
 	s.ebscLock.RUnlock()
 	if ok {
 		return ebsc, nil
@@ -351,9 +386,15 @@ func (s *Super) getBlobStoreClient(pool *proto.StoragePoolView) (*blobstore.Blob
 	s.ebscLock.Lock()
 	defer s.ebscLock.Unlock()
 
-	ebsc, ok = s.ebsc[pool.Id]
+	ebsc, ok = s.ebsc[poolId]
 	if ok {
 		return ebsc, nil
+	}
+
+	pool, ok := s.getPoolInfo(poolId)
+	if !ok {
+		log.LogErrorf("getBlobStoreClient: pool(%v) not found", pool.String())
+		return nil, errors.New(fmt.Sprintf("pool(%v) not found", pool.String()))
 	}
 
 	log.LogWarnf("getBlobStoreClient: create blobstore client for pool(%v)", pool.String())
@@ -969,7 +1010,7 @@ func (s *Super) updatePoolCache() {
 	defer s.poolCacheLock.Unlock()
 
 	// Clear and rebuild cache
-	s.poolCache = make(map[uint8]*proto.StoragePoolView)
+	s.poolCache = make(map[uint8]*proto.StoragePoolInfo)
 	for _, pool := range pools {
 		s.poolCache[pool.Id] = pool
 	}
@@ -996,7 +1037,7 @@ func (s *Super) loopUpdatePoolCache() {
 }
 
 // getPoolInfo gets storage pool information by pool ID
-func (s *Super) getPoolInfo(poolId uint8) (pool *proto.StoragePoolView, found bool) {
+func (s *Super) getPoolInfo(poolId uint8) (pool *proto.StoragePoolInfo, found bool) {
 	s.poolCacheLock.RLock()
 	defer s.poolCacheLock.RUnlock()
 

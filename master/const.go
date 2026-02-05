@@ -169,6 +169,8 @@ const (
 	forbidWriteOpOfProtoVersion0           = "forbidWriteOpOfProtoVersion0"
 	quotaClass                             = "quotaClass"
 	quotaOfClass                           = "quotaOfStorageClass"
+	quotaPool                              = "quotaPool"
+	quotaOfPool                            = "quotaOfPool"
 	dataMediaTypeKey                       = "dataMediaType"
 	dpLimitSsdBaseCountKey                 = "dpLimitSsdBaseCount"
 	dpLimitSsdFactorKey                    = "dpLimitSsdFactor"
@@ -425,6 +427,8 @@ const (
 
 	opSyncAddPromoteLearnerPlan    uint32 = 0x76
 	opSyncUpdatePromoteLearnerPlan uint32 = 0x77
+
+	opSyncPutStoragePool uint32 = 0x78
 )
 
 func init() {
@@ -521,6 +525,7 @@ const (
 	lcConfigurationAcronym = "lc"
 	lcTaskAcronym          = "lct"
 	lcResultAcronym        = "lcr"
+	storagePoolAcronym     = "sp"
 	S3QoS                  = "s3qos"
 	maxDataPartitionIDKey  = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey  = keySeparator + "max_mp_id"
@@ -536,6 +541,7 @@ const (
 	nodeSetPrefix          = keySeparator + nodeSetAcronym + keySeparator
 	nodeSetGrpPrefix       = keySeparator + nodeSetGrpAcronym + keySeparator
 	DomainPrefix           = keySeparator + domainAcronym + keySeparator
+	storagePoolPrefix      = keySeparator + storagePoolAcronym + keySeparator
 	zonePrefix             = keySeparator + zoneAcronym + keySeparator
 
 	apiLimiterPrefix = keySeparator + apiLimiterAcronym + keySeparator

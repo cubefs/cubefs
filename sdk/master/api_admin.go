@@ -361,6 +361,7 @@ func (api *AdminAPI) UpdateVolume(
 	txOpLimit int,
 	clientIDKey string,
 	optVolCapClass int,
+	optVolQuotaPool int,
 ) (err error) {
 	request := newRequest(get, proto.AdminUpdateVol).Header(api.h)
 	request.addParam("name", vv.Name)
@@ -431,6 +432,10 @@ func (api *AdminAPI) UpdateVolume(
 	if optVolCapClass > 0 {
 		request.addParam("quotaClass", strconv.FormatInt(int64(optVolCapClass), 10))
 		request.addParam("quotaOfStorageClass", strconv.FormatInt(int64(vv.QuotaOfStorageClass[0].QuotaGB), 10))
+	}
+	if optVolQuotaPool > 0 {
+		request.addParam("quotaPool", strconv.FormatInt(int64(optVolQuotaPool), 10))
+		request.addParam("quotaOfPool", strconv.FormatInt(int64(vv.QuotaOfPool[0].QuotaGB), 10))
 	}
 	_, err = api.mc.serveRequest(request)
 	return
@@ -935,15 +940,15 @@ func (api *AdminAPI) GetClusterParas() (delParas map[string]string, err error) {
 }
 
 // ListStoragePools lists all storage pools
-func (api *AdminAPI) ListStoragePools() (pools []*proto.StoragePoolView, err error) {
-	pools = []*proto.StoragePoolView{}
+func (api *AdminAPI) ListStoragePools() (pools []*proto.StoragePoolInfo, err error) {
+	pools = []*proto.StoragePoolInfo{}
 	err = api.mc.requestWith(&pools, newRequest(get, proto.AdminListStoragePools).Header(api.h))
 	return
 }
 
 // GetStoragePool gets storage pool by ID
-func (api *AdminAPI) GetStoragePool(poolId uint8) (pool *proto.StoragePoolView, err error) {
-	pool = &proto.StoragePoolView{}
+func (api *AdminAPI) GetStoragePool(poolId uint8) (pool *proto.StoragePoolInfo, err error) {
+	pool = &proto.StoragePoolInfo{}
 	err = api.mc.requestWith(pool, newRequest(get, proto.AdminGetStoragePool).Header(api.h).
 		addParam("id", strconv.FormatUint(uint64(poolId), 10)))
 	return

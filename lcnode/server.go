@@ -57,7 +57,7 @@ type LcNode struct {
 	snapshotScanners map[string]*SnapshotScanner
 
 	rwlock sync.RWMutex
-	pools  map[uint8]*proto.StoragePoolView
+	pools  map[uint8]*proto.StoragePoolInfo
 
 	localIP string
 	bindIp  bool
@@ -565,7 +565,7 @@ func (l *LcNode) refreshPools() {
 			return
 		}
 
-		poolsMap := make(map[uint8]*proto.StoragePoolView)
+		poolsMap := make(map[uint8]*proto.StoragePoolInfo)
 		for _, pool := range pools {
 			poolsMap[pool.Id] = pool
 		}

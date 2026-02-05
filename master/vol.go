@@ -68,6 +68,7 @@ type VolVarargs struct {
 	allowedStorageClass      []uint32
 	forbidWriteOpOfProtoVer0 bool
 	quotaByClass             map[uint32]uint64
+	quotaByPool              map[uint8]uint64
 
 	remoteCacheEnable            bool
 	remoteCachePath              string
@@ -327,6 +328,14 @@ func newVol(vv volValue) (vol *Vol) {
 			vol.QuotaByClass = append(vol.QuotaByClass, proto.NewStatOfStorageClass(c))
 		}
 	}
+
+	vol.QuotaByPoolId = vv.QuotaOfPool
+	if len(vol.QuotaByPoolId) == 0 {
+		for _, c := range vol.allowedPools {
+			vol.QuotaByPoolId = append(vol.QuotaByPoolId, proto.NewStatOfStorageClassByPool(c))
+		}
+	}
+
 	vol.quotaManager = &MasterQuotaManager{
 		MpQuotaInfoMap: make(map[uint64][]*proto.QuotaReportInfo),
 		IdQuotaInfoMap: make(map[uint32]*proto.QuotaInfo),
@@ -1044,6 +1053,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	statByPoolMap = make(map[uint8]*proto.StatOfStorageClass)
 	statByMigratePoolMap = make(map[uint8]*proto.StatOfStorageClass)
 	quotaByClass := vol.getQuotaByClass()
+	quotaByPoolId := vol.getQuotaByPoolId()
 
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden, c.getMetaPartitionTimeoutSec())
@@ -1084,7 +1094,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 
 		for _, mpStat := range mp.StatByPool {
 			if stat, ok = statByPoolMap[mpStat.PoolId]; !ok {
-				stat = proto.NewStatOfStorageClassByPool(mpStat.PoolId)
+				stat = proto.NewStatOfStorageClassByPoolWithQuota(mpStat.PoolId, quotaByPoolId[mpStat.PoolId])
 				statByPoolMap[mpStat.PoolId] = stat
 			}
 
@@ -1408,7 +1418,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 			if rwDpCntOfPool < minNumOfRWDataPartitions {
 				log.LogWarnf("autoCreateDataPartitions: vol(%v) poolId(%v) rwDpCount less than %v, alloc new partitions",
 					vol.Name, poolId, minNumOfRWDataPartitions)
-				c.batchCreateDataPartitionForPool(vol, minNumOfRWDataPartitions-rwDpCntOfPool, false, poolId)
+				c.batchCreateDataPartition(vol, minNumOfRWDataPartitions-rwDpCntOfPool, false, poolId)
 			}
 		}
 		return
@@ -1452,7 +1462,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] createDpCount[%v] for poolId(%v)",
 			vol.Name, createDpCount, poolId)
-		c.batchCreateDataPartitionForPool(vol, createDpCount, false, poolId)
+		c.batchCreateDataPartition(vol, createDpCount, false, poolId)
 	}
 }
 
@@ -2038,6 +2048,15 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	}
 	vol.QuotaByClass = quotaClass
 
+	// Update quota by pool - merge with existing quotas
+	if args.quotaByPool != nil && len(args.quotaByPool) > 0 {
+		quotaByPool := make([]*proto.StatOfStorageClass, 0, len(args.quotaByPool))
+		for poolId, quotaGB := range args.quotaByPool {
+			quotaByPool = append(quotaByPool, proto.NewStatOfStorageClassByPoolWithQuota(poolId, quotaGB))
+		}
+		vol.QuotaByPoolId = quotaByPool
+	}
+
 	vol.remoteCacheEnable = args.remoteCacheEnable
 	vol.remoteCachePath = args.remoteCachePath
 	vol.remoteCacheAutoPrepare = args.remoteCacheAutoPrepare
@@ -2076,6 +2095,11 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		quotaByClass[c.StorageClass] = c.QuotaGB
 	}
 
+	quotaByPool := make(map[uint8]uint64)
+	for _, c := range vol.QuotaByPoolId {
+		quotaByPool[c.PoolId] = c.QuotaGB
+	}
+
 	return &VolVarargs{
 		zoneName:                 vol.zoneName,
 		crossZone:                vol.crossZone,
@@ -2111,6 +2135,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		allowedStorageClass:      append([]uint32{}, vol.allowedStorageClass...),
 		forbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 		quotaByClass:             quotaByClass,
+		quotaByPool:              quotaByPool,
 
 		remoteCacheEnable:            vol.remoteCacheEnable,
 		remoteCachePath:              vol.remoteCachePath,

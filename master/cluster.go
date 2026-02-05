@@ -225,7 +225,7 @@ type Cluster struct {
 	planStatus uint32
 
 	// Storage Pool management
-	storagePools  sync.Map // map[uint8]*StoragePool
+	storagePools  map[uint8]*StoragePool
 	poolMutex     sync.RWMutex
 	defaultPoolId uint8 // default pool ID for new volumes
 }
@@ -1750,12 +1750,20 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		}
 	}
 
+	if poolId == 0 {
+		poolId = getDefaultPoolIdByMediaType(mediaType)
+	}
+
 	needPersistZone := false
 	dataNode = newDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, c.Name, mediaType)
 	if zone, _ = c.t.getZone(zoneName); zone == nil {
 		log.LogInfof("[addDataNode] create zone(%v) by datanode(%v), mediaType(%v)",
 			zoneName, nodeAddr, proto.MediaTypeString(mediaType))
 		zone = newZone(zoneName, mediaType)
+		needPersistZone = true
+	}
+
+	if zone.PoolId == 0 {
 		zone.PoolId = poolId
 		needPersistZone = true
 	}
@@ -1767,10 +1775,6 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 
 	if mediaType != zone.dataMediaType {
 		return dataNode.ID, fmt.Errorf("zone mediaType not equalt old, new %v, old %v", mediaType, zone.dataMediaType)
-	}
-
-	if poolId == 0 {
-		poolId = getDefaultPoolIdByMediaType(mediaType)
 	}
 
 	if zone.PoolId != poolId {
@@ -2225,54 +2229,6 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, po
 	return
 }
 
-func (c *Cluster) batchCreateDataPartitionForPool(vol *Vol, reqCount int, init bool, poolId uint8) (err error) {
-	log.LogInfof("[batchCreateDataPartitionForPool] vol(%v) poolId(%v) reqCount(%v) init(%v)",
-		vol.Name, poolId, reqCount, init)
-
-	if !init {
-		if _, err = vol.needCreateDataPartition(); err != nil {
-			log.LogWarnf("action[batchCreateDataPartitionForPool] create data partition failed, err[%v]", err)
-			return
-		}
-	}
-
-	var createdCnt int
-	for i := 0; i < reqCount; i++ {
-		if c.DisableAutoAllocate && !init {
-			log.LogWarn("disable auto allocate dataPartition")
-			return fmt.Errorf("cluster is disable auto allocate dataPartition")
-		}
-
-		if vol.Forbidden {
-			log.LogWarn("disable auto allocate dataPartition by forbidden volume")
-			return fmt.Errorf("volume is forbidden")
-		}
-
-		dp, createErr := c.createDataPartition(vol.Name, poolId)
-		if createErr != nil {
-			log.LogErrorf("action[batchCreateDataPartitionForPool] after create [%v] data partition, occurred error,err[%v]", i, createErr)
-			err = createErr
-			break
-		}
-
-		// Set poolId for the created data partition
-		if dp != nil {
-			dp.PoolId = poolId
-			// Update the partition in storage if needed
-			if updateErr := c.syncUpdateDataPartition(dp); updateErr != nil {
-				log.LogWarnf("action[batchCreateDataPartitionForPool] failed to update dp poolId, err[%v]", updateErr)
-			}
-		}
-
-		createdCnt++
-	}
-
-	log.LogInfof("action[batchCreateDataPartitionForPool] vol(%v) poolId(%v) created data partition count: %v",
-		vol.Name, poolId, createdCnt)
-	vol.dataPartitions.IncReadWriteDataPartitionCntByPoolId(createdCnt, poolId)
-	return
-}
-
 func (c *Cluster) isFaultDomain(vol *Vol) bool {
 	var specifyZoneNeedDomain bool
 	if c.FaultDomain && !vol.crossZone && !c.needFaultDomain {
@@ -2490,7 +2446,7 @@ func (c *Cluster) getZoneListFromVolZoneName(vol *Vol, poolId uint8) (zoneListOf
 			continue
 		}
 
-		if zone.PoolId != poolId {
+		if poolId != proto.UnSpecifiedPoolId && zone.PoolId != poolId {
 			log.LogDebugf("[getZoneListFromVolZoneName] vol(%v) skip zone(%v), zone poolId(%v), require poolId(%v)",
 				vol.Name, zoneName, zone.PoolId, poolId)
 			continue
@@ -4580,33 +4536,6 @@ func (c *Cluster) HasResourceOfStorageBlobStore() (has bool) {
 	return has
 }
 
-// StorageClassResourceChecker : check if the cluster has resource to support the specified storage class
-type StorageClassResourceChecker struct {
-	StorageClassResourceSet map[uint32]struct{}
-}
-
-func (checker *StorageClassResourceChecker) HasResourceOfStorageClass(storageClass uint32) (has bool) {
-	_, has = checker.StorageClassResourceSet[storageClass]
-	return
-}
-
-func NewStorageClassResourceChecker(c *Cluster, zoneNameList string) (checker *StorageClassResourceChecker) {
-	checker = &StorageClassResourceChecker{
-		StorageClassResourceSet: make(map[uint32]struct{}),
-	}
-
-	dataNodeMediaTypeMap := c.t.getDataMediaTypeCanUse(zoneNameList)
-	for storageClass := range dataNodeMediaTypeMap {
-		checker.StorageClassResourceSet[storageClass] = struct{}{}
-	}
-
-	if c.HasResourceOfStorageBlobStore() {
-		checker.StorageClassResourceSet[proto.StorageClass_BlobStore] = struct{}{}
-	}
-
-	return
-}
-
 func (c *Cluster) getAvailablePools(zoneNameList string) (pools map[uint8]struct{}) {
 	poolsMap := make(map[uint8]struct{})
 	zoneList := strings.Split(zoneNameList, ",")
@@ -4618,7 +4547,7 @@ func (c *Cluster) getAvailablePools(zoneNameList string) (pools map[uint8]struct
 			return true
 		}
 
-		if mediaType, _ := zone.GetDataMediaTypeCanUse(); mediaType != proto.MediaType_Unspecified {
+		if zone.PoolId != proto.UnSpecifiedPoolId && zone.dataNodeCount() > 0 {
 			poolsMap[zone.PoolId] = struct{}{}
 		}
 
@@ -4999,37 +4928,6 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	vol = newVol(vv)
-
-	// Set defaultPoolId if not provided
-	if vol.defaultPoolId == 0 {
-		vol.defaultPoolId = c.defaultPoolId
-		log.LogInfof("[doCreateVol] vol[%v] defaultPoolId not specified, using cluster default[%v]", vol.Name, vol.defaultPoolId)
-	}
-
-	// Set allowedPools if not provided, derive from allowedStorageClass
-	if len(vol.allowedPools) == 0 && len(vol.allowedStorageClass) > 0 {
-		vol.allowedPools = make([]uint8, 0, len(vol.allowedStorageClass))
-		for _, sc := range vol.allowedStorageClass {
-			poolId, err1 := getDefaultPoolIdByStorageClass(sc)
-			if err1 != nil {
-				return nil, err1
-			}
-
-			// Avoid duplicates
-			found := false
-			for _, p := range vol.allowedPools {
-				if p == poolId {
-					found = true
-					break
-				}
-			}
-			if !found {
-				vol.allowedPools = append(vol.allowedPools, poolId)
-			}
-		}
-		log.LogInfof("[doCreateVol] vol[%v] allowedPools not specified, derived from allowedStorageClass: %v", vol.Name, vol.allowedPools)
-	}
-
 	log.LogInfof("[doCreateVol] vol, %v", vol)
 
 	// refresh oss secure
@@ -8047,21 +7945,15 @@ func (c *Cluster) createStoragePool(req *proto.StoragePoolInfo) (err error) {
 	defer c.poolMutex.Unlock()
 
 	// Check if pool ID already exists
-	if _, ok := c.storagePools.Load(req.Id); ok {
+	if _, ok := c.storagePools[req.Id]; ok {
 		return fmt.Errorf("storage pool with id %d already exists", req.Id)
 	}
 
 	// Check if pool name already exists
-	c.storagePools.Range(func(key, value interface{}) bool {
-		pool := value.(*StoragePool)
+	for _, pool := range c.storagePools {
 		if pool.Name == req.Name {
-			err = fmt.Errorf("storage pool with name %s already exists", req.Name)
-			return false
+			return fmt.Errorf("storage pool with name %s already exists", req.Name)
 		}
-		return true
-	})
-	if err != nil {
-		return
 	}
 
 	// Validate storage class
@@ -8088,11 +7980,11 @@ func (c *Cluster) createStoragePool(req *proto.StoragePoolInfo) (err error) {
 		Status:       proto.PoolStatusAvailable,
 	}
 
-	c.storagePools.Store(req.Id, pool)
+	c.storagePools[req.Id] = pool
 
 	// Persist to metadata
 	if err = c.syncPutStoragePool(pool); err != nil {
-		c.storagePools.Delete(req.Id)
+		delete(c.storagePools, req.Id)
 		return err
 	}
 
@@ -8106,13 +7998,12 @@ func (c *Cluster) getStoragePool(id uint8) (pool *StoragePool, err error) {
 	c.poolMutex.RLock()
 	defer c.poolMutex.RUnlock()
 
-	value, ok := c.storagePools.Load(id)
+	pool, ok := c.storagePools[id]
 	if !ok {
 		return nil, fmt.Errorf("storage pool with id %d not found", id)
 	}
 
-	pool = value.(*StoragePool)
-	return
+	return pool, nil
 }
 
 // listStoragePools lists all storage pools
@@ -8120,14 +8011,12 @@ func (c *Cluster) listStoragePools() (pools []*StoragePool) {
 	c.poolMutex.RLock()
 	defer c.poolMutex.RUnlock()
 
-	pools = make([]*StoragePool, 0)
-	c.storagePools.Range(func(key, value interface{}) bool {
-		pool := value.(*StoragePool)
+	pools = make([]*StoragePool, 0, len(c.storagePools))
+	for _, pool := range c.storagePools {
 		// Create a copy to avoid race conditions
 		poolCopy := *pool
 		pools = append(pools, &poolCopy)
-		return true
-	})
+	}
 
 	// Sort by ID
 	sort.Slice(pools, func(i, j int) bool {
@@ -8142,12 +8031,10 @@ func (c *Cluster) updateStoragePool(id uint8, req *proto.StoragePoolInfo) (err e
 	c.poolMutex.Lock()
 	defer c.poolMutex.Unlock()
 
-	value, ok := c.storagePools.Load(id)
+	pool, ok := c.storagePools[id]
 	if !ok {
 		return fmt.Errorf("storage pool with id %d not found", id)
 	}
-
-	pool := value.(*StoragePool)
 
 	// Storage class update is not supported
 	if req.StorageClass != 0 {
@@ -8164,16 +8051,10 @@ func (c *Cluster) updateStoragePool(id uint8, req *proto.StoragePoolInfo) (err e
 
 	// Check if new name already exists
 	if req.Name != "" {
-		c.storagePools.Range(func(key, value interface{}) bool {
-			existingPool := value.(*StoragePool)
+		for _, existingPool := range c.storagePools {
 			if existingPool.Id != id && existingPool.Name == req.Name {
-				err = fmt.Errorf("storage pool with name %s already exists", req.Name)
-				return false
+				return fmt.Errorf("storage pool with name %s already exists", req.Name)
 			}
-			return true
-		})
-		if err != nil {
-			return
 		}
 	}
 
@@ -8209,6 +8090,9 @@ func (c *Cluster) updateStoragePool(id uint8, req *proto.StoragePoolInfo) (err e
 
 // syncPutStoragePool persists storage pool to metadata
 func (c *Cluster) syncPutStoragePool(pool *StoragePool) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncPutStoragePool
+	metadata.K = fmt.Sprintf("%s%d", storagePoolPrefix, pool.Id)
 	poolInfo := &proto.StoragePoolInfo{
 		Id:           pool.Id,
 		Name:         pool.Name,
@@ -8219,102 +8103,20 @@ func (c *Cluster) syncPutStoragePool(pool *StoragePool) (err error) {
 		UpdateTime:   pool.UpdateTime,
 		Status:       pool.Status,
 	}
-
-	value, err := json.Marshal(poolInfo)
+	log.LogInfof("action[syncPutStoragePool] pool value:[%+v]", poolInfo)
+	metadata.V, err = json.Marshal(poolInfo)
 	if err != nil {
 		return
 	}
-
-	key := fmt.Sprintf("%s%s_%d", storagePoolPrefix, storagePoolPrefix, pool.Id)
-	_, err = c.fsm.store.Put(key, value, true)
-	return err
-}
-
-// loadStoragePools loads all storage pools from metadata
-func (c *Cluster) loadStoragePools() (err error) {
-	// Initialize default pools if not exist
-	defaultPools := []*StoragePool{
-		{
-			Id:           proto.DefaultSSDPoolId,
-			Name:         proto.DefaultSSDPoolName,
-			StorageClass: uint8(proto.StorageClass_Replica_SSD),
-			CreateTime:   time.Now().Unix(),
-			UpdateTime:   time.Now().Unix(),
-			Status:       proto.PoolStatusAvailable,
-		},
-		{
-			Id:           proto.DefaultHDDPoolId,
-			Name:         proto.DefaultHDDPoolName,
-			StorageClass: uint8(proto.StorageClass_Replica_HDD),
-			CreateTime:   time.Now().Unix(),
-			UpdateTime:   time.Now().Unix(),
-			Status:       proto.PoolStatusAvailable,
-		},
-		{
-			Id:           proto.DefaultECPoolId,
-			Name:         proto.DefaultECPoolName,
-			StorageClass: uint8(proto.StorageClass_BlobStore),
-			CreateTime:   time.Now().Unix(),
-			UpdateTime:   time.Now().Unix(),
-			Status:       proto.PoolStatusAvailable,
-		},
-	}
-
-	// Load from metadata store
-	prefix := fmt.Sprintf("%s%s_", storagePoolPrefix, storagePoolPrefix)
-	result, err := c.fsm.store.SeekForPrefix([]byte(prefix))
-	if err != nil {
-		log.LogErrorf("action[loadStoragePools] seek prefix failed, prefix[%s] err[%v]", prefix, err)
-	} else {
-		for _, value := range result {
-			var poolInfo proto.StoragePoolInfo
-			if err := json.Unmarshal(value, &poolInfo); err != nil {
-				log.LogErrorf("action[loadStoragePools] unmarshal pool failed, err[%v]", err)
-				continue
-			}
-
-			pool := &StoragePool{
-				Id:           poolInfo.Id,
-				Name:         poolInfo.Name,
-				StorageClass: poolInfo.StorageClass,
-				CId:          poolInfo.CId,
-				ECAddr:       poolInfo.ECAddr,
-				CreateTime:   poolInfo.CreateTime,
-				UpdateTime:   poolInfo.UpdateTime,
-				Status:       poolInfo.Status,
-			}
-
-			c.storagePools.Store(pool.Id, pool)
-		}
-	}
-
-	// Initialize default pools if they don't exist
-	for _, defaultPool := range defaultPools {
-		if _, ok := c.storagePools.Load(defaultPool.Id); !ok {
-			c.storagePools.Store(defaultPool.Id, defaultPool)
-			if err = c.syncPutStoragePool(defaultPool); err != nil {
-				log.LogErrorf("action[loadStoragePools] sync default pool failed, id[%d] err[%v]",
-					defaultPool.Id, err)
-			}
-		}
-	}
-
-	log.LogInfof("action[loadStoragePools] load pools success, count[%d]", c.getStoragePoolCount())
-	return
+	return c.submit(metadata)
 }
 
 // getStoragePoolCount returns the count of storage pools
 func (c *Cluster) getStoragePoolCount() (count int) {
-	c.storagePools.Range(func(key, value interface{}) bool {
-		count++
-		return true
-	})
-	return
+	c.poolMutex.RLock()
+	defer c.poolMutex.RUnlock()
+	return len(c.storagePools)
 }
-
-const (
-	storagePoolPrefix = "storagePool"
-)
 
 // getDefaultPoolIdByMediaType returns default pool ID based on media type
 // This is a wrapper function that uses proto.GetDefaultPoolIdByMediaType

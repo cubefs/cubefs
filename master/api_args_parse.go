@@ -338,6 +338,8 @@ type updateVolReq struct {
 	forbidWriteOpOfProtoVer0 bool
 	quotaOfClass             uint64
 	quotaClass               uint32
+	quotaOfPool              uint64
+	quotaPool                uint8
 	storeMode                int
 	dpsSelectTag             string
 	mpsSelectTag             string
@@ -523,6 +525,37 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 
 	if req.quotaOfClass > req.capacity {
 		return fmt.Errorf("parseVolUpdateReq: quotaOfClass %d can't bigger than capacity %d", req.quotaOfClass, req.capacity)
+	}
+
+	req.quotaPool, err = extractUint8WithDefault(r, quotaPool, 0)
+	if err != nil {
+		log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
+		return
+	}
+
+	if req.quotaPool != 0 {
+		// Validate pool exists and is in volume's allowed pools
+		if len(vol.allowedPools) == 0 {
+			return fmt.Errorf("%s is not valid, volume has no allowed pools", quotaPool)
+		}
+
+		if !vol.isPoolInAllowed(req.quotaPool) {
+			return fmt.Errorf("%s is not valid, pool is not in volume's allowed pools", quotaPool)
+		}
+
+		if req.quotaPool != 0 && r.FormValue(quotaOfPool) == "" {
+			return fmt.Errorf("%s can't be empty when set quotaPool info", quotaOfPool)
+		}
+	}
+
+	req.quotaOfPool, err = extractUint64(r, quotaOfPool)
+	if err != nil {
+		log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
+		return
+	}
+
+	if req.quotaOfPool > req.capacity {
+		return fmt.Errorf("parseVolUpdateReq: quotaOfPool %d can't bigger than capacity %d", req.quotaOfPool, req.capacity)
 	}
 
 	if vol.volStorageClass == proto.StorageClass_BlobStore {
@@ -862,14 +895,14 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq, m *Server) (err
 
 		for _, poolStr := range allowedPoolsStrList {
 
-			poolId, err := extractUint8WithDefault(r, poolStr, 0)
+			poolIdUint64, err := strconv.ParseUint(poolStr, 10, 8)
 			if err != nil {
-				return fmt.Errorf("invalid allowedPools: %v", err)
+				return fmt.Errorf("invalid allowedPools: %v, poolStr: %s, allowedPoolsStr: %s", err, poolStr, allowedPoolsStr)
 			}
+			poolId := uint8(poolIdUint64)
 			if _, err = m.cluster.getStoragePool(poolId); err != nil {
-				return fmt.Errorf("allowedPools[%d] not found", poolId)
+				return fmt.Errorf("allowedPools[%d] not found, poolStr: %s, allowedPoolsStr: %s", poolId, poolStr, allowedPoolsStr)
 			}
-
 			if !encountered[poolId] {
 				encountered[poolId] = true
 				req.allowedPools = append(req.allowedPools, poolId)

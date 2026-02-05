@@ -102,6 +102,7 @@ const (
 	MinimumNlinkReadDir
 	InodeLruLimit
 	FuseServeThreads
+	PoolId
 	MaxMountOption
 )
 
@@ -213,6 +214,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[InodeLruLimit] = MountOption{"inodeLruLimit", "capacity for inode lru", "", int64(2000000)}
 	opts[FuseServeThreads] = MountOption{"fuseServeThreads", "Fuse Serve Threads", "", int64(0)}
 	opts[RemoteCacheName] = MountOption{"remoteCacheTopoName", "name for target remote cache topology", "", "default"}
+	opts[PoolId] = MountOption{"poolId", "Storage pool ID for new inodes (0 means use volume default)", "", int64(0)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -306,6 +308,20 @@ func (opt *MountOption) GetInt64() int64 {
 		return int64(-1)
 	}
 	return val
+}
+
+func (opt *MountOption) GetUint8() uint8 {
+	val, ok := opt.value.(int64)
+	if !ok {
+		return uint8(0)
+	}
+	if val < 0 {
+		return uint8(0)
+	}
+	if val > 255 {
+		return uint8(255)
+	}
+	return uint8(val)
 }
 
 type MountOptions struct {
@@ -407,4 +423,5 @@ type MountOptions struct {
 	InodeLruLimit         int64
 	FuseServeThreads      int64
 	MinReadAheadSize      int64
+	PoolId                uint8
 }

@@ -480,6 +480,7 @@ type volValue struct {
 	AllowedStorageClass      []uint32
 	ForbidWriteOpOfProtoVer0 bool
 	QuotaOfClass             []*proto.StatOfStorageClass
+	QuotaOfPool              []*proto.StatOfStorageClass
 
 	RemoteCacheEnable            bool
 	RemoteCachePath              string
@@ -604,6 +605,9 @@ func newVolValue(vol *Vol) (vv *volValue) {
 
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, len(vol.QuotaByClass))
 	copy(vv.QuotaOfClass, vol.QuotaByClass)
+
+	vv.QuotaOfPool = make([]*proto.StatOfStorageClass, len(vol.QuotaByPoolId))
+	copy(vv.QuotaOfPool, vol.QuotaByPoolId)
 
 	return
 }
@@ -827,6 +831,8 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAddLcTask
 	case lcResultAcronym:
 		m.Op = opSyncAddLcResult
+	case storagePoolAcronym:
+		m.Op = opSyncPutStoragePool
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
@@ -1905,11 +1911,16 @@ func (c *Cluster) loadDataNodes() (err error) {
 
 		// Set PoolId from loaded value, or use default based on media type
 		dataNode.PoolId = dnv.PoolId
+
 		if dataNode.PoolId == 0 {
 			dataNode.PoolId = getDefaultPoolIdByMediaType(dataNode.MediaType)
 			log.LogWarnf("action[loadDataNodes] dataNode[%v] PoolId is 0, set to default pool[%d] based on mediaType[%v]",
 				dataNode.Addr, dataNode.PoolId, proto.MediaTypeString(dataNode.MediaType))
+			if dataNode.PoolId == proto.UnSpecifiedPoolId {
+				return fmt.Errorf("action[loadDataNodes] dataNode[%v] PoolId is 0, and default pool is unspecified", dataNode.Addr)
+			}
 		}
+
 		for _, disk := range dnv.DecommissionedDisks {
 			dataNode.addDecommissionedDisk(disk)
 		}
@@ -2017,15 +2028,14 @@ func (c *Cluster) loadVolsViews() (err error, volViews []*volValue) {
 	return
 }
 
-func (c *Cluster) setPoolForLegacyVol(vol *Vol) {
+func (c *Cluster) setPoolForLegacyVol(vol *Vol) (err error) {
 	// For legacy volumes, set default poolId based on volStorageClass if not set
 	if vol.defaultPoolId == 0 {
-		if vol.volStorageClass != 0 {
-			vol.defaultPoolId, _ = getDefaultPoolIdByStorageClass(vol.volStorageClass)
-		} else {
-			// Use cluster default poolId
-			vol.defaultPoolId = c.defaultPoolId
+		vol.defaultPoolId, err = getDefaultPoolIdByStorageClass(vol.volStorageClass)
+		if err != nil {
+			return err
 		}
+
 		log.LogInfof("action[setPoolForLegacyVol] vol[%v] defaultPoolId set to %v", vol.Name, vol.defaultPoolId)
 	}
 
@@ -2033,7 +2043,10 @@ func (c *Cluster) setPoolForLegacyVol(vol *Vol) {
 	if len(vol.allowedPools) == 0 && len(vol.allowedStorageClass) > 0 {
 		vol.allowedPools = make([]uint8, 0, len(vol.allowedStorageClass))
 		for _, sc := range vol.allowedStorageClass {
-			poolId, _ := getDefaultPoolIdByStorageClass(sc)
+			poolId, err := getDefaultPoolIdByStorageClass(sc)
+			if err != nil {
+				return err
+			}
 			// Avoid duplicates
 			found := false
 			for _, p := range vol.allowedPools {
@@ -2048,6 +2061,8 @@ func (c *Cluster) setPoolForLegacyVol(vol *Vol) {
 		}
 		log.LogInfof("action[setPoolForLegacyVol] vol[%v] allowedPools set to %v", vol.Name, vol.allowedPools)
 	}
+
+	return nil
 }
 
 func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
@@ -2084,12 +2099,23 @@ func (c *Cluster) loadVols() (err error) {
 		}
 
 		vol := newVolFromVolValue(vv)
+
 		c.setStorageClassForLegacyVol(vol)
-		c.setPoolForLegacyVol(vol)
+		err = c.setPoolForLegacyVol(vol)
+		if err != nil {
+			log.LogErrorf("action[loadVols],vol[%v] setPoolForLegacyVol error %v", vol.Name, err)
+			return err
+		}
 
 		if len(vol.QuotaByClass) == 0 {
 			for _, c := range vol.allowedStorageClass {
 				vol.QuotaByClass = append(vol.QuotaByClass, proto.NewStatOfStorageClass(c))
+			}
+		}
+
+		if len(vol.QuotaByPoolId) == 0 {
+			for _, c := range vol.allowedPools {
+				vol.QuotaByPoolId = append(vol.QuotaByPoolId, proto.NewStatOfStorageClassByPool(c))
 			}
 		}
 
@@ -2615,6 +2641,91 @@ func (c *Cluster) loadLcResults() (err error) {
 		c.lcMgr.lcRuleTaskStatus.AddResult(rsp)
 		log.LogInfof("action[loadLcResults], id[%v]", rsp.ID)
 	}
+	return
+}
+
+func (c *Cluster) loadStoragePools() (err error) {
+	c.poolMutex.Lock()
+	defer c.poolMutex.Unlock()
+
+	// Initialize map if not already initialized
+	if c.storagePools == nil {
+		c.storagePools = make(map[uint8]*StoragePool)
+	}
+
+	// Load from metadata store
+	result, err := c.fsm.store.SeekForPrefix([]byte(storagePoolPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadStoragePools],err:%v", err.Error())
+		return err
+	}
+
+	for _, value := range result {
+		var poolInfo proto.StoragePoolInfo
+		if err = json.Unmarshal(value, &poolInfo); err != nil {
+			err = fmt.Errorf("action[loadStoragePools],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+
+		pool := &StoragePool{
+			Id:           poolInfo.Id,
+			Name:         poolInfo.Name,
+			StorageClass: poolInfo.StorageClass,
+			CId:          poolInfo.CId,
+			ECAddr:       poolInfo.ECAddr,
+			CreateTime:   poolInfo.CreateTime,
+			UpdateTime:   poolInfo.UpdateTime,
+			Status:       poolInfo.Status,
+		}
+
+		c.storagePools[pool.Id] = pool
+		log.LogInfof("action[loadStoragePools], id[%v] name[%v]", pool.Id, pool.Name)
+	}
+
+	// Initialize default pools if they don't exist
+	defaultPools := []*StoragePool{
+		{
+			Id:           proto.DefaultSSDPoolId,
+			Name:         proto.DefaultSSDPoolName,
+			StorageClass: uint8(proto.StorageClass_Replica_SSD),
+			CreateTime:   time.Now().Unix(),
+			UpdateTime:   time.Now().Unix(),
+			Status:       proto.PoolStatusAvailable,
+		},
+		{
+			Id:           proto.DefaultHDDPoolId,
+			Name:         proto.DefaultHDDPoolName,
+			StorageClass: uint8(proto.StorageClass_Replica_HDD),
+			CreateTime:   time.Now().Unix(),
+			UpdateTime:   time.Now().Unix(),
+			Status:       proto.PoolStatusAvailable,
+		},
+		{
+			Id:           proto.DefaultECPoolId,
+			Name:         proto.DefaultECPoolName,
+			StorageClass: uint8(proto.StorageClass_BlobStore),
+			CreateTime:   time.Now().Unix(),
+			UpdateTime:   time.Now().Unix(),
+			Status:       proto.PoolStatusAvailable,
+			ECAddr:       c.server.bStoreAddr,
+		},
+	}
+
+	for _, defaultPool := range defaultPools {
+		if _, ok := c.storagePools[defaultPool.Id]; !ok {
+			c.storagePools[defaultPool.Id] = defaultPool
+			if err = c.syncPutStoragePool(defaultPool); err != nil {
+				log.LogErrorf("action[loadStoragePools] sync default pool failed, id[%d] err[%v]",
+					defaultPool.Id, err)
+			}
+		}
+	}
+
+	if !c.HasResourceOfStorageBlobStore() {
+		c.storagePools[proto.DefaultECPoolId].Status = proto.PoolStatusDisabled
+	}
+
+	log.LogInfof("action[loadStoragePools] load pools success, count[%d]", len(c.storagePools))
 	return
 }
 

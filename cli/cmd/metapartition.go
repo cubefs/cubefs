@@ -65,6 +65,8 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 				err         error
 				partitionID uint64
 				partition   *proto.MetaPartitionInfo
+				pools       []*proto.StoragePoolInfo
+				poolNameMap map[uint8]string
 			)
 			defer func() {
 				errout(err)
@@ -75,7 +77,16 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			if partition, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
 				return
 			}
-			stdout("%v\n", formatMetaPartitionInfo(partition))
+			// Get pool name map for better display
+			if pools, err = client.AdminAPI().ListStoragePools(); err == nil {
+				poolNameMap = make(map[uint8]string)
+				for _, pool := range pools {
+					poolNameMap[pool.Id] = pool.Name
+				}
+			} else {
+				poolNameMap = make(map[uint8]string)
+			}
+			stdout("%v\n", formatMetaPartitionInfoWithPoolNames(partition, poolNameMap))
 		},
 	}
 	return cmd

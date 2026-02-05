@@ -1771,7 +1771,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if proto.IsStorageClassBlobStore(vol.volStorageClass) {
-		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("low frequency vol can't create dp")))
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("blob store vol can't create dp")))
 		return
 	}
 
@@ -3198,6 +3198,15 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		log.LogWarnf("updateVol: try update vol capcity, class %d, cap %d, name %s", req.quotaClass, req.quotaOfClass, req.name)
 	}
 
+	if req.quotaPool != 0 {
+		// Initialize quotaByPool if not exists
+		if newArgs.quotaByPool == nil {
+			newArgs.quotaByPool = make(map[uint8]uint64)
+		}
+		newArgs.quotaByPool[req.quotaPool] = req.quotaOfPool
+		log.LogWarnf("updateVol: try update vol capcity, pool %d, cap %d, name %s", req.quotaPool, req.quotaOfPool, req.name)
+	}
+
 	// check whether can close forbidWriteOpOfProtoVer0
 	if req.forbidWriteOpOfProtoVer0 != vol.ForbidWriteOpOfProtoVer0.Load() && !req.forbidWriteOpOfProtoVer0 && len(vol.allowedStorageClass) > 1 {
 		err = fmt.Errorf("can't update forbidWriteOpOfProtoVer0 to false")
@@ -3456,15 +3465,15 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		return req.allowedStorageClass[i] < req.allowedStorageClass[j]
 	})
 
-	if len(req.allowedStorageClass) > 1 {
+	if len(req.allowedPools) > 1 {
 		if !req.crossZone {
-			err = fmt.Errorf("more than one replica storageClass in request allowedStorageClass, but crossZone is false")
+			err = fmt.Errorf("more than one replica pool in request allowedPools, but crossZone is false")
 			log.LogErrorf("[checkStorageClassForCreateVol] vol(%v) err: %v", req.name, err.Error())
 			return
 		}
 
 		if m.cluster.FaultDomain {
-			err = fmt.Errorf("cluster.FaultDomain is true, can not create vol with req.allowedStorageClass has multi replica storageClass")
+			err = fmt.Errorf("cluster.FaultDomain is true, can not create vol with req.allowedPools has multi replica pool")
 			log.LogErrorf("[checkStorageClassForCreateVol] vol(%v) err: %v", req.name, err.Error())
 			return
 		}
@@ -3684,6 +3693,11 @@ func newSimpleView(c *Cluster, vol *Vol) (view *proto.SimpleVolView) {
 		quotaOfClass = append(quotaOfClass, proto.NewStatOfStorageClassEx(t, c))
 	}
 
+	quotaOfPool := []*proto.StatOfStorageClass{}
+	for p, c := range vol.getQuotaByPoolId() {
+		quotaOfPool = append(quotaOfPool, proto.NewStatOfStorageClassByPoolWithQuota(p, c))
+	}
+
 	view = &proto.SimpleVolView{
 		ID:                 vol.ID,
 		Name:               vol.Name,
@@ -3747,10 +3761,11 @@ func newSimpleView(c *Cluster, vol *Vol) (view *proto.SimpleVolView) {
 		VolStorageClass:          vol.volStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 		QuotaOfStorageClass:      quotaOfClass,
+		QuotaOfPool:              quotaOfPool,
 		DefaultPoolId:            vol.defaultPoolId,
 
 		// Initialize pools map
-		Pools: make(map[uint8]*proto.StoragePoolView),
+		Pools: make(map[uint8]*proto.StoragePoolInfo),
 
 		RemoteCacheEnable:            vol.remoteCacheEnable,
 		RemoteCachePath:              vol.remoteCachePath,
@@ -3798,17 +3813,17 @@ func newSimpleView(c *Cluster, vol *Vol) (view *proto.SimpleVolView) {
 	if len(vol.allowedPools) > 0 {
 		for _, poolId := range vol.allowedPools {
 			if pool, err := c.getStoragePool(poolId); err == nil {
-				poolView := &proto.StoragePoolView{
+				poolInfo := &proto.StoragePoolInfo{
 					Id:           pool.Id,
 					Name:         pool.Name,
 					StorageClass: pool.StorageClass,
 					CId:          pool.CId,
 					ECAddr:       pool.ECAddr,
-					CreateTime:   time.Unix(pool.CreateTime, 0).Format(time.RFC3339),
-					UpdateTime:   time.Unix(pool.UpdateTime, 0).Format(time.RFC3339),
-					Status:       poolStatusToString(pool.Status),
+					CreateTime:   pool.CreateTime,
+					UpdateTime:   pool.UpdateTime,
+					Status:       pool.Status,
 				}
-				view.Pools[poolId] = poolView
+				view.Pools[poolId] = poolInfo
 			}
 		}
 	}
@@ -10741,6 +10756,12 @@ func (m *Server) createStoragePool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if proto.IsStorageClassBlobStore(uint32(poolInfo.StorageClass)) {
+		err = fmt.Errorf("temporarily not support create blobstore pool")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if poolInfo.Name == "" {
 		err = fmt.Errorf("pool name is required")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -10784,19 +10805,7 @@ func (m *Server) getStoragePool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert to view
-	view := &proto.StoragePoolView{
-		Id:           pool.Id,
-		Name:         pool.Name,
-		StorageClass: pool.StorageClass,
-		CId:          pool.CId,
-		ECAddr:       pool.ECAddr,
-		CreateTime:   time.Unix(pool.CreateTime, 0).Format(time.RFC3339),
-		UpdateTime:   time.Unix(pool.UpdateTime, 0).Format(time.RFC3339),
-		Status:       poolStatusToString(pool.Status),
-	}
-
-	sendOkReply(w, r, newSuccessHTTPReply(view))
+	sendOkReply(w, r, newSuccessHTTPReply(pool))
 }
 
 // listStoragePools lists all storage pools
@@ -10807,23 +10816,7 @@ func (m *Server) listStoragePools(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	pools := m.cluster.listStoragePools()
-	views := make([]*proto.StoragePoolView, 0, len(pools))
-
-	for _, pool := range pools {
-		view := &proto.StoragePoolView{
-			Id:           pool.Id,
-			Name:         pool.Name,
-			StorageClass: pool.StorageClass,
-			CId:          pool.CId,
-			ECAddr:       pool.ECAddr,
-			CreateTime:   time.Unix(pool.CreateTime, 0).Format(time.RFC3339),
-			UpdateTime:   time.Unix(pool.UpdateTime, 0).Format(time.RFC3339),
-			Status:       poolStatusToString(pool.Status),
-		}
-		views = append(views, view)
-	}
-
-	sendOkReply(w, r, newSuccessHTTPReply(views))
+	sendOkReply(w, r, newSuccessHTTPReply(pools))
 }
 
 // updateStoragePool updates storage pool fields
@@ -10851,20 +10844,6 @@ func (m *Server) updateStoragePool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update storage pool id[%d] successfully", poolId)))
-}
-
-// poolStatusToString converts pool status to string
-func poolStatusToString(status uint8) string {
-	switch status {
-	case proto.PoolStatusAvailable:
-		return "Available"
-	case proto.PoolStatusDisabled:
-		return "Disabled"
-	case proto.PoolStatusDeleting:
-		return "Deleting"
-	default:
-		return "Unknown"
-	}
 }
 
 // extractUint8 extracts uint8 value from request

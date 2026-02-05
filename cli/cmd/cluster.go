@@ -111,21 +111,19 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			stdout("%v", formatClusterView(cv, cn, cp))
 
 			// Display default pool information
-			if cv.DefaultPoolId > 0 {
-				var pools []*proto.StoragePoolView
-				if pools, err = client.AdminAPI().ListStoragePools(); err == nil {
-					for _, pool := range pools {
-						if pool.Id == cv.DefaultPoolId {
-							stdout(fmt.Sprintf("  DefaultPoolId       : %v\n", cv.DefaultPoolId))
-							stdout(fmt.Sprintf("  DefaultPoolName     : %v\n", pool.Name))
-							stdout(fmt.Sprintf("  DefaultPoolClass    : %v\n", proto.StorageClassString(uint32(pool.StorageClass))))
-							break
-						}
+			var pools []*proto.StoragePoolInfo
+			if pools, err = client.AdminAPI().ListStoragePools(); err == nil {
+				for _, pool := range pools {
+					if pool.Id == cv.DefaultPoolId {
+						stdout(fmt.Sprintf("  DefaultPoolId       : %v\n", cv.DefaultPoolId))
+						stdout(fmt.Sprintf("  DefaultPoolName     : %v\n", pool.Name))
+						stdout(fmt.Sprintf("  DefaultPoolClass    : %v\n", proto.StorageClassString(uint32(pool.StorageClass))))
+						break
 					}
-				} else {
-					// If failed to get pools, just show the ID
-					stdout(fmt.Sprintf("  DefaultPoolId       : %v\n", cv.DefaultPoolId))
 				}
+			} else {
+				// If failed to get pools, just show the ID
+				stdout(fmt.Sprintf("  DefaultPoolId       : %v\n", cv.DefaultPoolId))
 			}
 
 			if clusterPara, err = client.AdminAPI().GetClusterParas(); err != nil {
@@ -782,7 +780,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			}); err != nil {
 				return
 			}
-			fmt.Println("Cluster parameters have been set successfully.")
+			stdout("Cluster parameters have been set successfully.")
 		},
 	}
 	cmd.Flags().StringVar(&optDelBatchCount, CliFlagDelBatchCount, "", "MetaNode delete batch count")
@@ -846,7 +844,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDpLimitSsdFactor, CliFlagDpLimitSsdFactor, "", "DP limit SSD factor per 120GB")
 	cmd.Flags().StringVar(&optDpLimitHddBaseCount, CliFlagDpLimitHddBaseCount, "", "DP limit HDD base count")
 	cmd.Flags().StringVar(&optDpLimitHddFactor, CliFlagDpLimitHddFactor, "", "DP limit HDD factor per 120GB")
-	cmd.Flags().StringVar(&optDefaultPoolId, "defaultPoolId", "", "Default pool ID")
+	cmd.Flags().StringVar(&optDefaultPoolId, CliFlagDefaultPoolId, "", "set cluster default pool id")
 	return cmd
 }
 

@@ -65,6 +65,13 @@ const (
 
 var GetExtetnsPool = taskpool.New(50, 100)
 
+// SetClientPoolId sets the client specified pool ID for new inodes
+func (mw *MetaWrapper) SetClientPoolId(poolId uint8) {
+	mw.Lock()
+	defer mw.Unlock()
+	mw.clientPoolId = poolId
+}
+
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
 	rootIno, err := mw.LookupPath(subdir, false)
 	if err != nil {

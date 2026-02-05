@@ -204,6 +204,9 @@ type MetaWrapper struct {
 	HostTimeoutCount sync.Map // [string]int32 - host address to timeout count mapping
 
 	RemoteCacheBloom func() *bloom.BloomFilter
+
+	// Client specified pool ID for new inodes (0 means use volume default)
+	clientPoolId uint8
 }
 
 type uniqidRange struct {

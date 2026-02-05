@@ -120,8 +120,8 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 
-	var inoParm *Inode
-	if inoParm, _, err = mp.CheckQuota(req.Inode, p); err != nil {
+	var inoParm, fsmInode *Inode
+	if inoParm, fsmInode, err = mp.CheckQuota(req.Inode, p); err != nil {
 		log.LogErrorf("ExtentAppendWithCheck CheckQuota fail err [%v]", err)
 		return
 	}
@@ -163,6 +163,14 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), appendMsg, opErr, time.Since(start).Milliseconds(), req.Inode, 0)
 		}()
+	}
+
+	if req.IsMigration && fsmInode.NeedDeleteMigrationExtentKey() {
+		err = fmt.Errorf("inode(%v) need delete migration extent key, can't append migration extent", req.Inode)
+		log.LogErrorf("ExtentAppendWithCheck: %v", err)
+		reply := []byte(err.Error())
+		p.PacketErrorWithBody(proto.OpMismatchStorageClass, reply)
+		return
 	}
 
 	ext := req.Extent

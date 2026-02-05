@@ -18,7 +18,6 @@ import (
 	"container/list"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -226,31 +225,6 @@ func (t *topology) isZoneInList(zone string, zoneList []string) (inList bool) {
 		}
 	}
 
-	return
-}
-
-// dataMediaTypeSet: map[StorageClass]dataNodeCount
-func (t *topology) getDataMediaTypeCanUse(zoneNameList string) (dataMediaTypeMap map[uint32]int) {
-	dataMediaTypeMap = make(map[uint32]int)
-
-	zoneList := strings.Split(zoneNameList, ",")
-
-	t.zoneMap.Range(func(zoneName, value interface{}) bool {
-		zone := value.(*Zone)
-		if zoneNameList != "" && !t.isZoneInList(zone.name, zoneList) {
-			return true
-		}
-
-		if mediaType, zoneMediaTypeDataCount := zone.GetDataMediaTypeCanUse(); mediaType != proto.MediaType_Unspecified {
-			if count, ok := dataMediaTypeMap[mediaType]; !ok {
-				dataMediaTypeMap[mediaType] = zoneMediaTypeDataCount
-			} else {
-				dataMediaTypeMap[mediaType] = count + zoneMediaTypeDataCount
-			}
-		}
-
-		return true
-	})
 	return
 }
 
@@ -2399,20 +2373,6 @@ func (zone *Zone) GetDataMediaType() uint32 {
 
 func (zone *Zone) SetDataMediaType(newMediaType uint32) {
 	atomic.StoreUint32(&zone.dataMediaType, newMediaType)
-}
-
-func (zone *Zone) GetDataMediaTypeCanUse() (dataMediaType uint32, dataCount int) {
-	dataMediaType = atomic.LoadUint32(&zone.dataMediaType)
-	if !proto.IsValidMediaType(dataMediaType) {
-		return proto.MediaType_Unspecified, 0
-	}
-
-	dataCount = zone.dataNodeCount()
-	if dataCount == 0 {
-		return proto.MediaType_Unspecified, 0
-	}
-
-	return dataMediaType, dataCount
 }
 
 type DecommissionDataPartitionList struct {

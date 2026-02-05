@@ -22,6 +22,12 @@ import (
 	"github.com/cubefs/cubefs/util"
 )
 
+const (
+	DeleteMarkFlag               = 1 << 0
+	InodeDelTop                  = 1 << 1
+	DeleteMigrationExtentKeyFlag = 1 << 2 // only delete migration ek by delay
+)
+
 // CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
 	Name string
@@ -180,6 +186,15 @@ func NewStatOfStorageClassByPool(poolId uint8) *StatOfStorageClass {
 		PoolId:        poolId,
 		InodeCount:    0,
 		UsedSizeBytes: 0,
+	}
+}
+
+func NewStatOfStorageClassByPoolWithQuota(poolId uint8, quotaGB uint64) *StatOfStorageClass {
+	return &StatOfStorageClass{
+		PoolId:        poolId,
+		InodeCount:    0,
+		UsedSizeBytes: 0,
+		QuotaGB:       quotaGB,
 	}
 }
 

@@ -39,6 +39,7 @@ func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
 	info.Uid = ino.Uid
 	info.Gid = ino.Gid
 	info.Generation = ino.Generation
+	info.Flag = ino.Flag
 	info.VerSeq = ino.getVer()
 	if length := len(ino.LinkTarget); length > 0 {
 		info.Target = make([]byte, length)
@@ -68,6 +69,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	info.Uid = ino.Uid
 	info.Gid = ino.Gid
 	info.Generation = ino.Generation
+	info.Flag = ino.Flag
 	info.VerSeq = ino.getVer()
 	if length := len(ino.LinkTarget); length > 0 {
 		info.Target = make([]byte, length)
@@ -99,6 +101,7 @@ func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uin
 		Uid:                   inode.Uid,
 		Gid:                   inode.Gid,
 		Generation:            inode.Generation,
+		Flag:                  inode.Flag,
 		ModifyTime:            time.Unix(inode.ModifyTime, 0),
 		CreateTime:            time.Unix(inode.CreateTime, 0),
 		AccessTime:            time.Unix(inode.AccessTime, 0),
@@ -1565,8 +1568,6 @@ func (mp *metaPartition) ScanInodeByPool(req *proto.ScanInodeByPoolRequest, resp
 	resp.NextInode = nextInode
 	resp.HasMore = (nextInode > 0 && nextInode <= mp.config.End)
 
-	log.LogDebugf("ScanInodeByPool: mp[%d] poolId[%d] startInode[%d] pageSize[%d] found[%d] totalScanned[%d] nextInode[%d] hasMore[%v]",
-		mp.config.PartitionId, req.PoolId, req.StartInode, pageSize, len(inodes), totalScanned, nextInode, resp.HasMore)
-
+	log.LogDebugf("ScanInodeByPool: mp[%d] req(%v) resp(%v)", mp.config.PartitionId, req.String(), resp.String())
 	return nil
 }

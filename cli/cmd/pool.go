@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	sdk "github.com/cubefs/cubefs/sdk/master"
@@ -57,7 +58,7 @@ func newPoolListCmd(client *sdk.MasterClient) *cobra.Command {
 		Short:   cmdPoolListShort,
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
-			var pools []*proto.StoragePoolView
+			var pools []*proto.StoragePoolInfo
 			var err error
 			defer func() {
 				errout(err)
@@ -83,7 +84,7 @@ func newPoolInfoCmd(client *sdk.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				poolId uint8
-				pool   *proto.StoragePoolView
+				pool   *proto.StoragePoolInfo
 				err    error
 			)
 			defer func() {
@@ -112,7 +113,7 @@ func formatPoolViewTableHeader() string {
 }
 
 // formatPoolViewTableRow returns a table row for pool list
-func formatPoolViewTableRow(pool *proto.StoragePoolView) string {
+func formatPoolViewTableRow(pool *proto.StoragePoolInfo) string {
 	pattern := "%-8v    %-20v    %-15v    %-8v    %-30v    %-20v    %-10v"
 	storageClassStr := proto.StorageClassString(uint32(pool.StorageClass))
 	cIdStr := "-"
@@ -123,15 +124,16 @@ func formatPoolViewTableRow(pool *proto.StoragePoolView) string {
 	if pool.ECAddr != "" {
 		ecAddrStr = pool.ECAddr
 	}
-	createTime := pool.CreateTime
+	createTime := time.Unix(pool.CreateTime, 0).Format(time.RFC3339)
 	if len(createTime) > 10 {
 		createTime = createTime[:10] // Show only date part
 	}
-	return fmt.Sprintf(pattern, pool.Id, pool.Name, storageClassStr, cIdStr, ecAddrStr, pool.Status, createTime)
+	statusStr := proto.PoolStatusString(pool.Status)
+	return fmt.Sprintf(pattern, pool.Id, pool.Name, storageClassStr, cIdStr, ecAddrStr, statusStr, createTime)
 }
 
 // formatPoolViewDetail returns detailed information of a pool
-func formatPoolViewDetail(pool *proto.StoragePoolView) string {
+func formatPoolViewDetail(pool *proto.StoragePoolInfo) string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID           : %v\n", pool.Id))
 	sb.WriteString(fmt.Sprintf("  Name         : %v\n", pool.Name))
@@ -142,9 +144,9 @@ func formatPoolViewDetail(pool *proto.StoragePoolView) string {
 	if pool.ECAddr != "" {
 		sb.WriteString(fmt.Sprintf("  ECAddr       : %v\n", pool.ECAddr))
 	}
-	sb.WriteString(fmt.Sprintf("  Status       : %v\n", pool.Status))
-	sb.WriteString(fmt.Sprintf("  CreateTime   : %v\n", pool.CreateTime))
-	sb.WriteString(fmt.Sprintf("  UpdateTime   : %v\n", pool.UpdateTime))
+	sb.WriteString(fmt.Sprintf("  Status       : %v\n", proto.PoolStatusString(pool.Status)))
+	sb.WriteString(fmt.Sprintf("  CreateTime   : %v\n", time.Unix(pool.CreateTime, 0).Format(time.RFC3339)))
+	sb.WriteString(fmt.Sprintf("  UpdateTime   : %v\n", time.Unix(pool.UpdateTime, 0).Format(time.RFC3339)))
 	return sb.String()
 }
 

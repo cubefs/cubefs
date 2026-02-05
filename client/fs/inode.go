@@ -62,10 +62,9 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 			migrated := info.PoolId != node.(*File).info.PoolId
 			// the first time storage class change to blob store
 			if migrated && proto.IsStorageClassBlobStore(info.StorageClass) {
-				pool := getStorageClassByPoolIdFromSuper(s, info.PoolId)
-				ebsc, err := s.getBlobStoreClient(pool)
+				ebsc, err := s.getBlobStoreClient(info.PoolId)
 				if err != nil {
-					log.LogErrorf("InodeGet: get blobstore client for pool(%v) err: %v", pool.String(), err)
+					log.LogErrorf("InodeGet: get blobstore client for pool(%v) err: %v", info.PoolId, err)
 					return nil, err
 				}
 

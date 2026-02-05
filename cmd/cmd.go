@@ -198,6 +198,10 @@ func main() {
 		log.LogWarnf("logLeftSpaceLimitRatio is not a legal float value: %v", err.Error())
 		logLeftSpaceLimitRatio = log.DefaultLogLeftSpaceLimitRatio
 	}
+
+	if role == RoleMaster {
+		localIp = cfg.GetString("ip")
+	}
 	// Init server instance with specified role configuration.
 	var (
 		server common.Server
@@ -368,7 +372,7 @@ func main() {
 
 			if e != nil {
 				log.LogFlush()
-				err = errors.NewErrorf("cannot listen pprof %v err %v", profPort, e)
+				err = errors.NewErrorf("cannot listen pprof %v err %v, bindIp %v, localIp %v", profPort, e, bindIp, localIp)
 				syslog.Println(err)
 				daemonize.SignalOutcome(err)
 				os.Exit(1)

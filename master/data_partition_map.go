@@ -34,28 +34,26 @@ const (
 // DataPartitionMap stores all the data partitionMap
 type DataPartitionMap struct {
 	sync.RWMutex
-	partitionMap            map[uint64]*DataPartition
-	readableAndWritableCnt  int    // number of readable and writable partitionMap
-	lastLoadedIndex         uint64 // last loaded partition index
-	lastReleasedIndex       uint64 // last released partition index
-	partitions              []*DataPartition
-	responseCache           []byte
-	responseCompressCache   []byte
-	lastAutoCreateTime      time.Time
-	volName                 string
-	readMutex               sync.RWMutex
-	partitionMapByMediaType map[uint32]map[uint64]struct{} // level-1 key: mediaType, level-2 key: dpId
-	partitionMapByPoolId    map[uint8]map[uint64]struct{}  // level-1 key: poolId, level-2 key: dpId
-	rwCntByMediaType        map[uint32]int                 // readable and writable dp count by mediaType
-	rwCntByPoolId           map[uint8]int                  // readable and writable dp count by poolId
-	maxDpId                 uint64
-	lastUpdateMaxDpIdTime   int64
+	partitionMap           map[uint64]*DataPartition
+	readableAndWritableCnt int    // number of readable and writable partitionMap
+	lastLoadedIndex        uint64 // last loaded partition index
+	lastReleasedIndex      uint64 // last released partition index
+	partitions             []*DataPartition
+	responseCache          []byte
+	responseCompressCache  []byte
+	lastAutoCreateTime     time.Time
+	volName                string
+	readMutex              sync.RWMutex
+	partitionMapByPoolId   map[uint8]map[uint64]struct{} // level-1 key: poolId, level-2 key: dpId
+	rwCntByMediaType       map[uint32]int                // readable and writable dp count by mediaType
+	rwCntByPoolId          map[uint8]int                 // readable and writable dp count by poolId
+	maxDpId                uint64
+	lastUpdateMaxDpIdTime  int64
 }
 
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
 	dpMap.partitionMap = make(map[uint64]*DataPartition)
-	dpMap.partitionMapByMediaType = make(map[uint32]map[uint64]struct{})
 	dpMap.partitionMapByPoolId = make(map[uint8]map[uint64]struct{})
 	dpMap.rwCntByMediaType = make(map[uint32]int)
 	dpMap.rwCntByPoolId = make(map[uint8]int)
@@ -103,21 +101,7 @@ func (dpMap *DataPartitionMap) del(dp *DataPartition) {
 		}
 	}
 	delete(dpMap.partitionMap, dp.PartitionID)
-
-	dpMap.delByMediaType(dp)
 	dpMap.delByPoolId(dp)
-}
-
-func (dpMap *DataPartitionMap) delByMediaType(dp *DataPartition) {
-	dpIdSet, ok := dpMap.partitionMapByMediaType[dp.MediaType]
-	if !ok {
-		log.LogCriticalf("[DataPartitionMap] delByMediaType: not record of mediaType(%v) when trying to del dpId(%v)",
-			dp.MediaType, dp.PartitionID)
-		return
-	}
-
-	delete(dpIdSet, dp.PartitionID)
-	log.LogDebugf("[DataPartitionMap] delByMediaType: mediaType(%v), dpId(%v)", dp.MediaType, dp.PartitionID)
 }
 
 func (dpMap *DataPartitionMap) delByPoolId(dp *DataPartition) {
@@ -139,7 +123,6 @@ func (dpMap *DataPartitionMap) put(dp *DataPartition) {
 	if !ok {
 		dpMap.partitions = append(dpMap.partitions, dp)
 		dpMap.partitionMap[dp.PartitionID] = dp
-		dpMap.putByMediaType(dp)
 		dpMap.putByPoolId(dp)
 		return
 	}
@@ -156,18 +139,6 @@ func (dpMap *DataPartitionMap) put(dp *DataPartition) {
 			break
 		}
 	}
-}
-
-func (dpMap *DataPartitionMap) putByMediaType(dp *DataPartition) {
-	dpIdSet, ok := dpMap.partitionMapByMediaType[dp.MediaType]
-	if !ok {
-		dpIdSet = make(map[uint64]struct{})
-		dpMap.partitionMapByMediaType[dp.MediaType] = dpIdSet
-		log.LogDebugf("[DataPartitionMap] putByMediaType: add set for mediaType(%v), dpId(%v)", dp.MediaType, dp.PartitionID)
-	}
-
-	dpIdSet[dp.PartitionID] = struct{}{}
-	log.LogDebugf("[DataPartitionMap] putByMediaType: put by mediaType(%v), dpId(%v)", dp.MediaType, dp.PartitionID)
 }
 
 func (dpMap *DataPartitionMap) putByPoolId(dp *DataPartition) {

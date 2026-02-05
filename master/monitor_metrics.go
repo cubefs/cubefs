@@ -521,7 +521,7 @@ func (mm *monitorMetrics) start() {
 	mm.dpNoSamePeer = exporter.NewGaugeVec(MetricDpNoSamePeer, "", []string{"dpId"})
 	mm.mpNoSamePeer = exporter.NewGaugeVec(MetricMpNoSamePeer, "", []string{"mpId"})
 	mm.badDiskDecommissionTimeOverLimit = exporter.NewGaugeVec(MetricBadDiskDecommissionTimeOverLimit, "", []string{"addr", "path", "firstReportTime"})
-	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc", "rack", "poolId"})
+	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc", "rack", "pool"})
 	mm.partitionCreate = exporter.NewGaugeVec(MetricPartitionCreateMetrics, "", []string{"type", "racklevel", "media"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.InactiveDataNodeInfo = exporter.NewGaugeVec(MetricInactiveDataNodeInfo, "", []string{"clusterName", "addr"})
@@ -938,7 +938,7 @@ func (mm *monitorMetrics) setVolMetrics() {
 				ratio = math.Round(used/float64(quota)*1000) / 1000
 			}
 
-			poodIdString := fmt.Sprintf("pool_%d", s.PoolId)
+			poodIdString := mm.cluster.getPoolNameById(s.PoolId)
 			mm.volStats.SetWithLabelValues(used, volName, "pool_used", poodIdString)
 			mm.volStats.SetWithLabelValues(float64(quota), volName, "pool_total", poodIdString)
 			mm.volStats.SetWithLabelValues(ratio, volName, "pool_ratio", poodIdString)
@@ -946,8 +946,7 @@ func (mm *monitorMetrics) setVolMetrics() {
 
 		for _, s := range vol.StatByDpPool {
 			used := float64(s.UsedSizeBytes / util.GB)
-			poodIdString := fmt.Sprintf("dp_pool_%d", s.PoolId)
-			mm.volStats.SetWithLabelValues(used, volName, "dp_pool_used", poodIdString)
+			mm.volStats.SetWithLabelValues(used, volName, "dp_pool_used", mm.cluster.getPoolNameById(s.PoolId))
 		}
 
 		for _, s := range vol.StatByDpMediaType {
@@ -1210,15 +1209,15 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 
 		mm.nodeStat.Delete(map[string]string{"addr": mAddr})
 
-		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, mAddr, "usageRatio", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, mAddr, "memTotal", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, mAddr, "memUsed", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsRocksdbWriteAble(), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc, rack)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc, rack)
+		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, mAddr, "usageRatio", zone, setId, media, writable, alloc, rack, "")
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, mAddr, "memTotal", zone, setId, media, writable, alloc, rack, "")
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, mAddr, "memUsed", zone, setId, media, writable, alloc, rack, "")
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc, rack, "")
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc, rack, "")
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc, rack, "")
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsRocksdbWriteAble(), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc, rack, "")
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc, rack, "")
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc, rack, "")
 
 		return true
 	})
@@ -1228,6 +1227,8 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 
 func (mm *monitorMetrics) updateDataNodesStat() {
 	var inactiveDataNodesCount uint64
+
+	log.LogInfof("action[updateDataNodesStat] dataNodes count[%v]", mm.cluster.dataNodeCount())
 
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
@@ -1246,7 +1247,7 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 		media := proto.MediaTypeString(dataNode.MediaType)
 		dAddr := dataNode.Addr
 		rack := dataNode.Rack
-		poolId := strconv.Itoa(int(dataNode.PoolId))
+		poolId := mm.cluster.getPoolNameById(dataNode.PoolId)
 
 		writable := "false"
 		if dataNode.IsWriteAble() {
@@ -1353,19 +1354,11 @@ func (mm *monitorMetrics) setNotWritableDataNodesCount() {
 }
 
 func (mm *monitorMetrics) deleteS3LcVolMetric(id string) {
-	mm.lcVolStatus.DeleteLabelValues(id)
-	mm.lcVolScanned.DeleteLabelValues(id, "file")
-	mm.lcVolScanned.DeleteLabelValues(id, "dir")
-	mm.lcVolExpired.DeleteLabelValues(id, "delete")
-	mm.lcVolExpired.DeleteLabelValues(id, "hdd")
-	mm.lcVolExpired.DeleteLabelValues(id, "blobstore")
-	mm.lcVolExpired.DeleteLabelValues(id, "skip")
-	mm.lcVolMigrateBytes.DeleteLabelValues(id, "hdd")
-	mm.lcVolMigrateBytes.DeleteLabelValues(id, "blobstore")
-	mm.lcVolError.DeleteLabelValues(id, "delete")
-	mm.lcVolError.DeleteLabelValues(id, "hdd")
-	mm.lcVolError.DeleteLabelValues(id, "blobstore")
-	mm.lcVolError.DeleteLabelValues(id, "readdir")
+	mm.lcVolStatus.Reset()
+	mm.lcVolScanned.Reset()
+	mm.lcVolExpired.Reset()
+	mm.lcVolMigrateBytes.Reset()
+	mm.lcVolError.Reset()
 }
 
 func (mm *monitorMetrics) setLcMetrics() {
@@ -1386,16 +1379,22 @@ func (mm *monitorMetrics) setLcMetrics() {
 		mm.lcId[id] = struct{}{}
 		mm.lcVolScanned.SetWithLabelValues(float64(stat.TotalFileScannedNum), id, "file")
 		mm.lcVolScanned.SetWithLabelValues(float64(stat.TotalDirScannedNum), id, "dir")
+
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredDeleteNum), id, "delete")
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredMToHddNum), id, "hdd")
+		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredMNum), id, "expired")
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredMToBlobstoreNum), id, "blobstore")
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredSkipNum), id, "skip")
+
 		mm.lcVolMigrateBytes.SetWithLabelValues(float64(stat.ExpiredMToHddBytes), id, "hdd")
+		mm.lcVolMigrateBytes.SetWithLabelValues(float64(stat.ExpiredMBytes), id, "expiredBytes")
 		mm.lcVolMigrateBytes.SetWithLabelValues(float64(stat.ExpiredMToBlobstoreBytes), id, "blobstore")
+
 		mm.lcVolError.SetWithLabelValues(float64(stat.ErrorDeleteNum), id, "delete")
 		mm.lcVolError.SetWithLabelValues(float64(stat.ErrorMToHddNum), id, "hdd")
 		mm.lcVolError.SetWithLabelValues(float64(stat.ErrorMToBlobstoreNum), id, "blobstore")
 		mm.lcVolError.SetWithLabelValues(float64(stat.ErrorReadDirNum), id, "readdir")
+		mm.lcVolError.SetWithLabelValues(float64(stat.ErrorMNum), id, "error")
 	}
 }
 
@@ -1452,6 +1451,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.metaNodesTotal.Set(0)
 	mm.metaNodesUsed.Set(0)
 	mm.metaNodesIncreased.Set(0)
+	mm.nodeStat.Reset()
 	// mm.diskError.Set(0)
 	mm.diskLost.Reset()
 	mm.dpUnableDecommissionCount.Set(0)
@@ -1510,5 +1510,5 @@ func (mm *monitorMetrics) setDistributionOptimizationMetrics() {
 	log.LogDebugf("action[setDistributionOptimizationMetrics] SSD: %d/%d, HDD: %d/%d",
 		ssdNodeSetUnbalancedDPs, ssdRackConflictDPs,
 		hddNodeSetUnbalancedDPs, hddRackConflictDPs)
-	mm.nodeStat.Reset()
+	// mm.nodeStat.Reset()
 }

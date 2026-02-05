@@ -431,7 +431,7 @@ func (c *Client) OpenFile(path string, flags int, mode uint32) (*File, error) {
 		info = newInfo
 	}
 	var fileCache bool
-	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass)
+	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass, info.PoolId)
 	if f == nil {
 		return nil, syscall.EMFILE
 	}
@@ -1113,7 +1113,7 @@ func (c *Client) lookupPath(path string) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
-func (c *Client) allocFD(ino uint64, flags int, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, path string, storageClass uint32) *File {
+func (c *Client) allocFD(ino uint64, flags int, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, path string, storageClass uint32, poolId uint8) *File {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
 	fd, ok := c.fdset.NextClear(0)
@@ -1121,7 +1121,7 @@ func (c *Client) allocFD(ino uint64, flags int, mode uint32, fileCache bool, fil
 		return nil
 	}
 	c.fdset.Set(fd)
-	f := &File{client: c, fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path, storageClass: storageClass}
+	f := &File{client: c, fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path, storageClass: storageClass, poolId: poolId}
 	if proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(c.volStorageClass) {
 		clientConf := blobstore.ClientConfig{
 			VolName:         c.cfg.VolName,

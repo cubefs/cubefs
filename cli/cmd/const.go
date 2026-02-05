@@ -206,7 +206,7 @@ const (
 	CliFlagAutoFixTag                   = "autoFixTag"
 	CliFlagDefaultDpTag                 = "defaultDpTag"
 	CliFlagDefaultMpTag                 = "defaultMpTag"
-
+	CliFlagDefaultPoolId                = "defaultPoolId"
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	// Shorthand format of resource name

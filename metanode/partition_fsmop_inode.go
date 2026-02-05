@@ -678,6 +678,12 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, inoPara
 		eks = inoParam.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).CopyExtents()
 	}
 
+	if isMigration && fsmIno.NeedDeleteMigrationExtentKey() {
+		log.LogWarnf("fsmAppendExtentsWithCheck: inode(%v) need delete migration extent key, can't append migration extent", inoParam.Inode)
+		status = proto.OpMismatchStorageClass
+		return
+	}
+
 	if err = fsmIno.updateStorageClass(storageClass, poolId, isMigration); err != nil {
 		log.LogErrorf("action[fsmAppendExtentsWithCheck] updateStorageClass inode(%v) isMigration(%v), failed: %v",
 			inoParam.Inode, isMigration, err.Error())

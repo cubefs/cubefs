@@ -405,6 +405,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optForbidWriteOpOfProtoVer0 string
 	var optVolQuotaClass int
 	var optVolQuotaOfClass int
+	var optVolQuotaPool int
+	var optVolQuotaOfPool int
 	var optStoreMode string
 	var optDpTag string
 	var optMpTag string
@@ -786,6 +788,63 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				vv.QuotaOfStorageClass[0] = proto.NewStatOfStorageClassEx(uint32(optVolQuotaClass), uint64(optVolQuotaOfClass))
 			}
 
+			if optVolQuotaPool > 0 {
+				if optVolQuotaOfPool < 0 {
+					err = fmt.Errorf("invalid param optVolQuotaOfPool: %v", optVolQuotaOfPool)
+					return
+				}
+
+				// Validate pool exists
+				var pools []*proto.StoragePoolInfo
+				if pools, err = client.AdminAPI().ListStoragePools(); err != nil {
+					err = fmt.Errorf("failed to get storage pools: %v", err)
+					return
+				}
+				poolExists := false
+				var poolName string
+				for _, pool := range pools {
+					if pool.Id == uint8(optVolQuotaPool) {
+						poolExists = true
+						poolName = pool.Name
+						break
+					}
+				}
+				if !poolExists {
+					err = fmt.Errorf("pool with id %d does not exist", optVolQuotaPool)
+					return
+				}
+
+				// Validate pool is in volume's allowed pools
+				poolInAllowed := false
+				if len(vv.Pools) > 0 {
+					for poolId := range vv.Pools {
+						if poolId == uint8(optVolQuotaPool) {
+							poolInAllowed = true
+							break
+						}
+					}
+				}
+				if !poolInAllowed {
+					err = fmt.Errorf("pool %d(%s) is not in volume's allowed pools", optVolQuotaPool, poolName)
+					return
+				}
+
+				old := uint64(0)
+				// Check existing quota by pool (QuotaByPoolId is not in SimpleVolView, need to check QuotaOfStorageClass with PoolId)
+				for _, c := range vv.QuotaOfPool {
+					if c.PoolId == uint8(optVolQuotaPool) {
+						old = c.QuotaGB
+						break
+					}
+				}
+
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  QuotaOfPool (%d(%s)) : %v -> %v\n",
+					optVolQuotaPool, poolName, quotaLimitStr(old), quotaLimitStr(uint64(optVolQuotaOfPool))))
+
+				vv.QuotaOfPool[0] = proto.NewStatOfStorageClassByPoolWithQuota(uint8(optVolQuotaPool), uint64(optVolQuotaOfPool))
+			}
+
 			if optForbidWriteOpOfProtoVer0 != "" {
 				enable := false
 				if enable, err = strconv.ParseBool(optForbidWriteOpOfProtoVer0); err != nil {
@@ -944,7 +1003,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv, optTxTimeout, optTxMask, optTxForceReset, optTxConflictRetryNum,
-				optTxConflictRetryInterval, optTxOpLimitVal, clientIDKey, optVolQuotaClass)
+				optTxConflictRetryInterval, optTxOpLimitVal, clientIDKey, optVolQuotaClass, optVolQuotaPool)
 			if err != nil {
 				return
 			}
@@ -985,6 +1044,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableMpAutoMetaRepair, CliFlagAutoMpMetaRepair, "", "Enable or disable mp auto meta repair")
 	cmd.Flags().IntVar(&optVolQuotaClass, CliFlagVolQuotaClass, 0, "specify target storage class for quota, 1(SSD), 2(HDD)")
 	cmd.Flags().IntVar(&optVolQuotaOfClass, CliFlagVolQuotaOfClass, -1, "specify quota of target storage class, GB")
+	cmd.Flags().IntVar(&optVolQuotaPool, "quotaPool", 0, "specify target storage pool ID for quota")
+	cmd.Flags().IntVar(&optVolQuotaOfPool, "quotaOfPool", -1, "specify quota of target storage pool, GB")
 
 	cmd.Flags().Int64Var(&optTrashInterval, CliFlagTrashInterval, -1, "The retention period for files in trash")
 	cmd.Flags().Int64Var(&optAccessTimeValidInterval, CliFlagAccessTimeValidInterval, -1, fmt.Sprintf("Effective time interval for accesstime, at least %v [Unit: second]", proto.MinAccessTimeValidInterval))
@@ -1093,7 +1154,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				}
 
 				// Get all pools to build pool ID to name mapping
-				var pools []*proto.StoragePoolView
+				var pools []*proto.StoragePoolInfo
 				if pools, err = client.AdminAPI().ListStoragePools(); err != nil {
 					err = fmt.Errorf("get storage pools failed:%v", err)
 					return
@@ -1155,14 +1216,22 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					err = fmt.Errorf("Get volume data detail information failed:\n%v\n", err)
 					return
 				}
-				stdout("Data partitions:\n")
-				stdout("%v\n", dataPartitionTableHeader)
+				// Get pool name map for better display
+				var pools []*proto.StoragePoolInfo
+				var poolNameMap map[uint8]string
+				if pools, err = client.AdminAPI().ListStoragePools(); err == nil {
+					poolNameMap = make(map[uint8]string)
+					for _, pool := range pools {
+						poolNameMap[pool.Id] = pool.Name
+					}
+				} else {
+					poolNameMap = make(map[uint8]string)
+				}
 				sort.SliceStable(view.DataPartitions, func(i, j int) bool {
 					return view.DataPartitions[i].PartitionID < view.DataPartitions[j].PartitionID
 				})
-				for _, dp := range view.DataPartitions {
-					stdout("%v\n", formatDataPartitionTableRow(dp))
-				}
+				stdout("Data partitions:\n")
+				stdout("%v", formatDataPartitionTableWithAdaptiveWidth(view.DataPartitions, poolNameMap))
 			}
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

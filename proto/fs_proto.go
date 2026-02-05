@@ -94,6 +94,7 @@ type InodeInfo struct {
 	Target            []byte                    `json:"tgt"`
 	QuotaInfos        map[uint32]*MetaQuotaInfo `json:"qifs"`
 	VerSeq            uint64                    `json:"seq"`
+	Flag              int32                     `json:"flag"`
 	expiration        int64
 	PersistAccessTime time.Time `json:"pat"`
 
@@ -105,6 +106,10 @@ type InodeInfo struct {
 	HasMigrationEk                bool                `json:"hasMigrationEk"`
 	MigrationExtentKeyExpiredTime time.Time           `json:"mekExpiredTime"`
 	Extents                       *GetExtentsResponse `json:"eks"`
+}
+
+func (info *InodeInfo) IsDeletingMigrationExtent() bool {
+	return info.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag
 }
 
 func (info *InodeInfo) HasExtents() bool {

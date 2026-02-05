@@ -5,6 +5,7 @@
   "ip": "_ip_",
   "bindIp": "true",
   "listen": "17010",
+  "prof":"17020",
   "peers": "_peers_",
 "legacyDataMediaType":"1",
   "retainLogs": "2000",

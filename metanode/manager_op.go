@@ -41,6 +41,7 @@ import (
 
 const (
 	MaxUsedMemFactor = 1.1
+	MaxPageSize      = 10000
 )
 
 // decodeAdminTask decodes adminTask from packet data using decoder with UseNumber
@@ -2523,12 +2524,12 @@ func (m *metadataManager) opMetaScanInodeByPool(conn net.Conn, p *Packet,
 		return
 	}
 
-	// Validate page size (max 10000)
+	// Validate page size (max MaxPageSize)
 	if req.PageSize == 0 {
-		req.PageSize = 10000
+		req.PageSize = MaxPageSize
 	}
-	if req.PageSize > 10000 {
-		req.PageSize = 10000
+	if req.PageSize > MaxPageSize {
+		req.PageSize = MaxPageSize
 	}
 
 	mp, handledByProxy, err := m.getPartitionCheckProxy(conn, p, req.PartitionID, false)

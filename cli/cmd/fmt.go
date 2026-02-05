@@ -377,6 +377,12 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		sb.WriteString(fmt.Sprintf("  DefaultPoolId                   : %v\n", svv.DefaultPoolId))
 	}
 	if len(svv.Pools) > 0 {
+		// Create a map for quota lookup by pool ID
+		quotaMap := make(map[uint8]uint64)
+		for _, p := range svv.QuotaOfPool {
+			quotaMap[p.PoolId] = p.QuotaGB
+		}
+
 		sb.WriteString(fmt.Sprintf("  Storage Pools                   :\n"))
 		poolIds := make([]uint8, 0, len(svv.Pools))
 		for poolId := range svv.Pools {
@@ -387,7 +393,11 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		})
 		for _, poolId := range poolIds {
 			pool := svv.Pools[poolId]
-			sb.WriteString(fmt.Sprintf("    Pool[%d] %s: %s\n", pool.Id, pool.Name, proto.StorageClassString(uint32(pool.StorageClass))))
+			quotaStr := ""
+			if quota, ok := quotaMap[poolId]; ok {
+				quotaStr = fmt.Sprintf(", quota(%s)", quotaLimitStr(quota))
+			}
+			sb.WriteString(fmt.Sprintf("    Pool[%d] %s: %s%s\n", pool.Id, pool.Name, proto.StorageClassString(uint32(pool.StorageClass)), quotaStr))
 		}
 	}
 	if svv.Forbidden && svv.Status == 1 {
@@ -410,6 +420,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		}
 		sb.WriteString(fmt.Sprintf("  QuotaOfClass(%s)       : %v\n", proto.StorageClassString(c.StorageClass), quotaLimitStr(c.QuotaGB)))
 	}
+
 	sb.WriteString(fmt.Sprintf("  remoteCacheEnable               : %v\n", svv.RemoteCacheEnable))
 	sb.WriteString(fmt.Sprintf("  remoteCachePath                 : %v\n", svv.RemoteCachePath))
 	sb.WriteString(fmt.Sprintf("  remoteCacheAutoPrepare          : %v\n", svv.RemoteCacheAutoPrepare))
@@ -516,19 +527,127 @@ func formatVerInfoTableRow(verInfo *proto.VolVersionInfo) string {
 }
 
 var (
-	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-10v     %-18v    %-18v"
+	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-10v     %-8v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
-		"ID", "REPLICAS", "STATUS", "ISRECOVER", "MEDIA", "LEADER", "MEMBERS")
+		"ID", "REPLICAS", "STATUS", "ISRECOVER", "MEDIA", "POOL", "LEADER", "MEMBERS")
 
 	dataPartitionListTablePattern = "%-8v    %-16v    %-8v    %-12v    %-10v    %-8v    %-18v"
 	dataPartitionListTableHeader  = fmt.Sprintf(dataPartitionListTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEDIA", "POOL", "MEMBERS")
 )
 
-func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
+func formatDataPartitionTableRow(view *proto.DataPartitionResponse, poolNameMap map[uint8]string) string {
+	poolIdStr := "-"
+	if view.PoolId > 0 {
+		poolIdStr = fmt.Sprintf("%d", view.PoolId)
+		if poolNameMap != nil {
+			if poolName, ok := poolNameMap[view.PoolId]; ok && poolName != "" {
+				poolIdStr = fmt.Sprintf("%d(%s)", view.PoolId, poolName)
+			}
+		}
+	}
 	return fmt.Sprintf(dataPartitionTablePattern,
 		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), view.IsRecover,
-		proto.MediaTypeString(view.MediaType), view.LeaderAddr, strings.Join(view.Hosts, ","))
+		proto.MediaTypeString(view.MediaType), poolIdStr, view.LeaderAddr, strings.Join(view.Hosts, ","))
+}
+
+// formatDataPartitionTableWithAdaptiveWidth formats data partition table with adaptive column widths
+func formatDataPartitionTableWithAdaptiveWidth(partitions []*proto.DataPartitionResponse, poolNameMap map[uint8]string) string {
+	if len(partitions) == 0 {
+		return ""
+	}
+
+	// Prepare all row data
+	type rowData struct {
+		id        string
+		replicas  string
+		status    string
+		isRecover string
+		media     string
+		pool      string
+		leader    string
+		members   string
+	}
+
+	rows := make([]rowData, 0, len(partitions)+1)
+
+	// Header row
+	header := rowData{
+		id:        "ID",
+		replicas:  "REPLICAS",
+		status:    "STATUS",
+		isRecover: "ISRECOVER",
+		media:     "MEDIA",
+		pool:      "POOL",
+		leader:    "LEADER",
+		members:   "MEMBERS",
+	}
+	rows = append(rows, header)
+
+	// Data rows
+	for _, dp := range partitions {
+		poolIdStr := "-"
+		if dp.PoolId > 0 {
+			poolIdStr = fmt.Sprintf("%d", dp.PoolId)
+			if poolNameMap != nil {
+				if poolName, ok := poolNameMap[dp.PoolId]; ok && poolName != "" {
+					poolIdStr = fmt.Sprintf("%d(%s)", dp.PoolId, poolName)
+				}
+			}
+		}
+
+		row := rowData{
+			id:        fmt.Sprintf("%d", dp.PartitionID),
+			replicas:  fmt.Sprintf("%d", dp.ReplicaNum),
+			status:    formatDataPartitionStatus(dp.Status),
+			isRecover: fmt.Sprintf("%v", dp.IsRecover),
+			media:     proto.MediaTypeString(dp.MediaType),
+			pool:      poolIdStr,
+			leader:    dp.LeaderAddr,
+			members:   strings.Join(dp.Hosts, ","),
+		}
+		rows = append(rows, row)
+	}
+
+	// Calculate max width for each column
+	maxWidths := [7]int{0, 0, 0, 0, 0, 0, 0}
+	for _, row := range rows {
+		if len(row.id) > maxWidths[0] {
+			maxWidths[0] = len(row.id)
+		}
+		if len(row.replicas) > maxWidths[1] {
+			maxWidths[1] = len(row.replicas)
+		}
+		if len(row.status) > maxWidths[2] {
+			maxWidths[2] = len(row.status)
+		}
+		if len(row.isRecover) > maxWidths[3] {
+			maxWidths[3] = len(row.isRecover)
+		}
+		if len(row.media) > maxWidths[4] {
+			maxWidths[4] = len(row.media)
+		}
+		if len(row.pool) > maxWidths[5] {
+			maxWidths[5] = len(row.pool)
+		}
+		if len(row.leader) > maxWidths[6] {
+			maxWidths[6] = len(row.leader)
+		}
+		// Members column doesn't need width calculation as it can be long
+	}
+
+	// Build format string
+	formatStr := fmt.Sprintf("%%-%ds    %%-%ds    %%-%ds    %%-%ds    %%-%ds    %%-%ds    %%-%ds    %%s",
+		maxWidths[0], maxWidths[1], maxWidths[2], maxWidths[3], maxWidths[4], maxWidths[5], maxWidths[6])
+
+	// Format all rows
+	var sb strings.Builder
+	for _, row := range rows {
+		sb.WriteString(fmt.Sprintf(formatStr, row.id, row.replicas, row.status, row.isRecover, row.media, row.pool, row.leader, row.members))
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
 }
 
 // formatDataPartitionListTableHeader returns the table header for DP list
@@ -1020,6 +1139,166 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudStorageTableHeader))
 		for _, view := range partition.StatByMigrateStorageClass {
 			sb.WriteString(fmt.Sprintf("%v\n", formatHybridCloudStorageTableRow(view)))
+		}
+	}
+
+	if len(partition.StatByPool) != 0 {
+		sb.WriteString("\n")
+		sort.Slice(partition.StatByPool, func(i, j int) bool {
+			return partition.StatByPool[i].PoolId < partition.StatByPool[j].PoolId
+		})
+		sb.WriteString("Usage by storage pool:\n")
+		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudPoolTableHeader))
+		for _, view := range partition.StatByPool {
+			poolInfo := fmt.Sprintf("%d", view.PoolId)
+			sb.WriteString(fmt.Sprintf(hybridCloudPoolTablePattern, poolInfo, view.InodeCount, strutil.FormatSize(view.UsedSizeBytes), quotaLimitStr(view.QuotaGB)))
+			sb.WriteString("\n")
+		}
+	}
+
+	if len(partition.StatByMigratePool) != 0 {
+		sb.WriteString("\n")
+		sort.Slice(partition.StatByMigratePool, func(i, j int) bool {
+			return partition.StatByMigratePool[i].PoolId < partition.StatByMigratePool[j].PoolId
+		})
+		sb.WriteString("Migration Usage by storage pool:\n")
+		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudPoolTableHeader))
+		for _, view := range partition.StatByMigratePool {
+			poolInfo := fmt.Sprintf("%d", view.PoolId)
+			sb.WriteString(fmt.Sprintf(hybridCloudPoolTablePattern, poolInfo, view.InodeCount, strutil.FormatSize(view.UsedSizeBytes), quotaLimitStr(view.QuotaGB)))
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
+// formatMetaPartitionInfoWithPoolNames formats meta partition info with pool name map
+func formatMetaPartitionInfoWithPoolNames(partition *proto.MetaPartitionInfo, poolNameMap map[uint8]string) string {
+	sb := strings.Builder{}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("volume name   : %v\n", partition.VolName))
+	sb.WriteString(fmt.Sprintf("PartitionID   : %v\n", partition.PartitionID))
+	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatMetaPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("Recovering    : %v\n", formatIsRecover(partition.IsRecover)))
+	sb.WriteString(fmt.Sprintf("RestoreStatus : %v\n", formatRestoreReplicaStatus(partition.RestoreReplicaMeta)))
+	sb.WriteString(fmt.Sprintf("Start         : %v\n", partition.Start))
+	sb.WriteString(fmt.Sprintf("End           : %v\n", partition.End))
+	sb.WriteString(fmt.Sprintf("MaxInodeID    : %v\n", partition.MaxInodeID))
+	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
+	sb.WriteString(fmt.Sprintf("Freeze        : %v\n", formatMetaPartitionFreeze(partition.Freeze)))
+	sb.WriteString(fmt.Sprintf("ForbidWriteOpOfProtoVer0 : %v\n", partition.ForbidWriteOpOfProtoVer0))
+	sb.WriteString(fmt.Sprintf("Store mode       : %v\n", partition.StoreMode.Str()))
+	sb.WriteString(fmt.Sprintf("Memory Replicas  : %v\n", partition.MemStoreCnt))
+	sb.WriteString(fmt.Sprintf("Rocksdb Replicas : %v\n", partition.RockStoreCnt))
+
+	sb.WriteString("\n")
+	sb.WriteString("Learner Mode Recovery:\n")
+	if partition.SrcAddr != "" {
+		sb.WriteString(fmt.Sprintf("SrcAddr          : %v\n", partition.SrcAddr))
+	}
+	if partition.LearnerDstAddr != "" {
+		sb.WriteString(fmt.Sprintf("LearnerDstAddr   : %v\n", partition.LearnerDstAddr))
+	}
+	if partition.RecoverStartTime > 0 {
+		sb.WriteString(fmt.Sprintf("RecoverStartTime : %v\n", time.Unix(partition.RecoverStartTime, 0).Format("2006-01-02 15:04:05")))
+	}
+	sb.WriteString(fmt.Sprintf("RecoverFailCount : %v\n", partition.RecoverFailCount))
+	if partition.RecoverRetryTime > 0 {
+		sb.WriteString(fmt.Sprintf("RecoverRetryTime : %v\n", time.Unix(partition.RecoverRetryTime, 0).Format("2006-01-02 15:04:05")))
+	}
+	sb.WriteString(fmt.Sprintf("RecoverState     : %v\n", partition.RecoverState.String()))
+
+	sb.WriteString("\n")
+	sb.WriteString("Replicas : \n")
+	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
+	for _, replica := range partition.Replicas {
+		sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplica("", replica, true)))
+		if replica.Status == proto.ReadOnly {
+			sb.WriteString("ReadOnlyReasons : \n")
+			reasons := parseMpReadOnlyReasons(replica.ReadOnlyReasons)
+			for i, reason := range reasons {
+				sb.WriteString(fmt.Sprintf("[%v] %v\n", i+1, reason))
+			}
+		}
+	}
+	sb.WriteString("\n")
+	sb.WriteString("Peers :\n")
+	sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
+	for _, peer := range partition.Peers {
+		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
+	}
+	sb.WriteString("\n")
+	sb.WriteString("Hosts :\n")
+	for _, host := range partition.Hosts {
+		sb.WriteString(fmt.Sprintf("  [%v]", host))
+	}
+	sb.WriteString("\n")
+	sb.WriteString("Zones :\n")
+	for _, zone := range partition.Zones {
+		sb.WriteString(fmt.Sprintf("  [%v]", zone))
+	}
+	sb.WriteString("\n")
+	sb.WriteString("NodeSets :\n")
+	for _, nodeSet := range partition.NodeSets {
+		sb.WriteString(fmt.Sprintf("  [%v]", nodeSet))
+	}
+	sb.WriteString("\n")
+	sb.WriteString("Racks :\n")
+	for _, rack := range partition.Racks {
+		sb.WriteString(fmt.Sprintf("  [%v]", rack))
+	}
+	sb.WriteString("\n")
+	sb.WriteString("\n")
+	sb.WriteString("MissingNodes :\n")
+	for partitionHost, id := range partition.MissNodes {
+		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
+	}
+
+	if len(partition.StatByStorageClass) != 0 {
+		sb.WriteString("\n")
+		sort.Slice(partition.StatByStorageClass, func(i, j int) bool {
+			return partition.StatByStorageClass[i].StorageClass < partition.StatByStorageClass[j].StorageClass
+		})
+		sb.WriteString("Usage by storageClass:\n")
+		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudStorageTableHeader))
+		for _, view := range partition.StatByStorageClass {
+			sb.WriteString(fmt.Sprintf("%v\n", formatHybridCloudStorageTableRow(view)))
+		}
+	}
+
+	if len(partition.StatByMigrateStorageClass) != 0 {
+		sb.WriteString("\n")
+		sort.Slice(partition.StatByMigrateStorageClass, func(i, j int) bool {
+			return partition.StatByMigrateStorageClass[i].StorageClass < partition.StatByMigrateStorageClass[j].StorageClass
+		})
+		sb.WriteString("\nMigration Usage by storage class:\n")
+		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudStorageTableHeader))
+		for _, view := range partition.StatByMigrateStorageClass {
+			sb.WriteString(fmt.Sprintf("%v\n", formatHybridCloudStorageTableRow(view)))
+		}
+	}
+
+	if len(partition.StatByPool) != 0 {
+		sb.WriteString("\n")
+		sort.Slice(partition.StatByPool, func(i, j int) bool {
+			return partition.StatByPool[i].PoolId < partition.StatByPool[j].PoolId
+		})
+		sb.WriteString("Usage by storage pool:\n")
+		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudPoolTableHeader))
+		for _, view := range partition.StatByPool {
+			sb.WriteString(fmt.Sprintf("%v\n", formatHybridCloudPoolTableRow(view, poolNameMap)))
+		}
+	}
+
+	if len(partition.StatByMigratePool) != 0 {
+		sb.WriteString("\n")
+		sort.Slice(partition.StatByMigratePool, func(i, j int) bool {
+			return partition.StatByMigratePool[i].PoolId < partition.StatByMigratePool[j].PoolId
+		})
+		sb.WriteString("Migration Usage by storage pool:\n")
+		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudPoolTableHeader))
+		for _, view := range partition.StatByMigratePool {
+			sb.WriteString(fmt.Sprintf("%v\n", formatHybridCloudPoolTableRow(view, poolNameMap)))
 		}
 	}
 	return sb.String()

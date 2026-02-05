@@ -96,14 +96,14 @@ func isReadEio(err error) bool {
 
 // getStorageClassByPoolIdFromSuper returns storage class based on pool ID using Super's pool cache
 // Otherwise, returns the storage class corresponding to the pool ID from pool cache
-func getStorageClassByPoolIdFromSuper(s *Super, poolId uint8) *proto.StoragePoolView {
+func getStorageClassByPoolIdFromSuper(s *Super, poolId uint8) *proto.StoragePoolInfo {
 	pool, _ := s.getPoolInfo(poolId)
 	return pool
 }
 
 // getStorageClassByPoolId returns storage class based on pool ID
 // Otherwise, returns the storage class corresponding to the pool ID from pool cache
-func (f *File) getStorageClassByPoolId(poolId uint8) *proto.StoragePoolView {
+func (f *File) getStorageClassByPoolId(poolId uint8) *proto.StoragePoolInfo {
 	return getStorageClassByPoolIdFromSuper(f.super, poolId)
 }
 
@@ -125,15 +125,11 @@ func (f *File) getECAddrByPoolId(poolId uint8) string {
 // NewFile returns a new file.
 func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename string) fs.Node {
 	// Get storage class from poolId if available, otherwise use existing StorageClass
-	// Use helper function that can access Super's pool cache
-	pool := getStorageClassByPoolIdFromSuper(s, i.PoolId)
-	storageClass := uint32(pool.StorageClass)
+	if proto.IsStorageClassBlobStore(i.StorageClass) {
 
-	if proto.IsStorageClassBlobStore(storageClass) {
-
-		ebsc, err := s.getBlobStoreClient(pool)
+		ebsc, err := s.getBlobStoreClient(i.PoolId)
 		if err != nil {
-			log.LogErrorf("NewFile: get blobstore client for pool(%v) err: %v", pool.String(), err)
+			log.LogErrorf("NewFile: get blobstore client for pool(%v) err: %v", i.PoolId, err)
 			return nil
 		}
 
@@ -317,12 +313,9 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	if req.Flags&0x0f != syscall.O_RDONLY {
 		openForWrite = true
 	}
-	// Get storage class from poolId if available, otherwise use existing StorageClass
-	pool := f.getStorageClassByPoolId(f.info.PoolId)
-	storageClass := uint32(pool.StorageClass)
 
 	isCache := false
-	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(storageClass) {
+	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
 		isCache = true
 	}
 	if needBCache {
@@ -346,12 +339,12 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	if f.super.keepCache && resp != nil {
 		resp.Flags |= fuse.OpenKeepCache
 	}
-	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(storageClass) {
-		log.LogDebugf("TRANCE open ino(%v) info(%v), pool(%v)", ino, f.info, pool.String())
+	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+		log.LogDebugf("TRANCE open ino(%v) info(%v), poolId(%v)", ino, f.info, f.info.PoolId)
 
-		ebsc, err := f.super.getBlobStoreClient(pool)
+		ebsc, err := f.super.getBlobStoreClient(f.info.PoolId)
 		if err != nil {
-			log.LogErrorf("Open: get blobstore client for pool(%v) err: %v", pool.String(), err)
+			log.LogErrorf("Open: get blobstore client for pool(%v) err: %v", f.info.PoolId, err)
 			return nil, err
 		}
 

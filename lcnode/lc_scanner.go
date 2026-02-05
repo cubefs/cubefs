@@ -176,13 +176,6 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	return scanner, nil
 }
 
-func (s *LcScanner) getPool(poolId uint8) *proto.StoragePoolView {
-	s.lcnode.rwlock.RLock()
-	defer s.lcnode.rwlock.RUnlock()
-
-	return s.lcnode.pools[poolId]
-}
-
 func (l *LcNode) startLcScan(adminTask *proto.AdminTask) (err error) {
 	request := adminTask.Request.(*proto.LcNodeRuleTaskRequest)
 	log.LogInfof("startLcScan: scan task(%v) received!", request.Task)
@@ -246,6 +239,8 @@ func (s *LcScanner) Start() (err error) {
 
 	if s.rule.Filter != nil && s.rule.Filter.ByMp == proto.ScanByMp {
 		go s.scanInodesByMp()
+		go s.checkScanning()
+		return
 	}
 
 	var currentPath string
@@ -415,6 +410,9 @@ func (s *LcScanner) scanInodesByMpAndPool(partitionID uint64, poolId uint8, minS
 			return
 		}
 
+		log.LogInfof("scanInodesByMpAndPool: scan inodes by mp and pool partitionID(%v) poolId(%v) inodes(%v), resp(%v)",
+			partitionID, poolId, len(resp.Inodes), resp.String())
+
 		// Convert InodeInfo to ScanDentry and send to fileChan
 		for _, inodeInfo := range resp.Inodes {
 			// Check if we should stop
@@ -554,6 +552,12 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	if info != nil && info.Size < s.rule.MinSize() {
 		log.LogInfof("handleFile: %+v, minSize(%d) size(%v) no need to process", dentry, s.rule.MinSize(), info.Size)
+		return
+	}
+
+	if info.IsDeletingMigrationExtent() {
+		log.LogInfof("handleFile: %+v, is deleting migration extent, skip", dentry)
+		atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
 		return
 	}
 
@@ -1002,7 +1006,7 @@ func (s *LcScanner) checkScanning() {
 func (s *LcScanner) DoneScanning() bool {
 	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v) scanMpFinished(%v)",
 		s.dirChan.Len(), len(s.fileChan), s.fileRPool.RunningNum(), s.dirRPool.RunningNum(), s.scanMpFinished)
-	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && s.scanMpFinished
+	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && s.DoneScanning()
 }
 
 func (s *LcScanner) DoneScanningMp() bool {

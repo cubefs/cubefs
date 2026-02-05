@@ -35,9 +35,9 @@ import (
 )
 
 const (
-	DeleteMarkFlag               = 1 << 0
-	InodeDelTop                  = 1 << 1
-	DeleteMigrationExtentKeyFlag = 1 << 2 // only delete migration ek by delay
+	DeleteMarkFlag               = proto.DeleteMarkFlag
+	InodeDelTop                  = proto.InodeDelTop
+	DeleteMigrationExtentKeyFlag = proto.DeleteMigrationExtentKeyFlag // only delete migration ek by delay
 )
 
 const (
@@ -512,9 +512,7 @@ func NewSimpleInode(ino uint64) *Inode {
 }
 
 func NewInodeTest(ino uint64, t uint32) *Inode {
-	inode := NewInode(ino, t)
-	inode.PoolId = proto.DefaultSSDPoolId
-	return inode
+	return NewInodeWithPoolId(ino, t, proto.DefaultSSDPoolId)
 }
 
 func NewInodeWithPoolId(ino uint64, t uint32, poolId uint8) *Inode {
