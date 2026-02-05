@@ -79,19 +79,13 @@ func NewPrometheusSender(conf PrometheusConfig) (ps *PrometheusSender) {
 		"service": conf.Service,
 		"team":    conf.Team,
 	}
-	responseCodeCounter := getResponseCounterVec(subsystem, constLabels)
-	responseErrCodeCounter := getResponseErrCounterVec(subsystem, constLabels)
-	responseDurationCounter := getResponseDurationVec(subsystem, constLabels)
-	responseLengthCounter := getResponseLengthCounterVec(subsystem, constLabels)
-	requestLengthCounter := getRequestLengthCounterVec(subsystem, constLabels)
-	xwarnCounter := getXwarnCountVec(constLabels)
 
-	prometheus.MustRegister(responseCodeCounter)
-	prometheus.MustRegister(responseErrCodeCounter)
-	prometheus.MustRegister(responseDurationCounter)
-	prometheus.MustRegister(responseLengthCounter)
-	prometheus.MustRegister(requestLengthCounter)
-	prometheus.MustRegister(xwarnCounter)
+	responseCodeCounter := mustRegisterOrGet(getResponseCounterVec(subsystem, constLabels)).(*prometheus.CounterVec)
+	responseErrCodeCounter := mustRegisterOrGet(getResponseErrCounterVec(subsystem, constLabels)).(*prometheus.CounterVec)
+	responseDurationCounter := mustRegisterOrGet(getResponseDurationVec(subsystem, constLabels)).(*prometheus.HistogramVec)
+	responseLengthCounter := mustRegisterOrGet(getResponseLengthCounterVec(subsystem, constLabels)).(*prometheus.CounterVec)
+	requestLengthCounter := mustRegisterOrGet(getRequestLengthCounterVec(subsystem, constLabels)).(*prometheus.CounterVec)
+	xwarnCounter := mustRegisterOrGet(getXwarnCountVec(constLabels)).(*prometheus.CounterVec)
 
 	sizeBuckets := make([]string, 0, len(conf.SizeBuckets))
 	for idx := range conf.SizeBuckets {
@@ -272,4 +266,14 @@ func getXwarnCountVec(constLabels map[string]string) *prometheus.CounterVec {
 		},
 		[]string{"xwarn", "code"},
 	)
+}
+
+func mustRegisterOrGet(c prometheus.Collector) prometheus.Collector {
+	if err := prometheus.Register(c); err != nil {
+		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			return are.ExistingCollector
+		}
+		panic(err)
+	}
+	return c
 }
