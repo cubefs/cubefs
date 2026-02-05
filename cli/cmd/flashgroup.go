@@ -218,7 +218,6 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 		optZoneName string
 		optCount    int
 	)
-	var name string
 	cmd := &cobra.Command{
 		Use:   "nodeAdd" + _flashgroupID,
 		Short: "add flash node to given flash group",
@@ -228,10 +227,7 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			if name == "" {
-				name = proto.DefaultTopoName
-			}
-			fgView, err := client.AdminAPI().FlashGroupAddFlashNodeByName(name, flashGroupID, optCount, optZoneName, optAddr)
+			fgView, err := client.AdminAPI().FlashGroupAddFlashNodeByName(proto.DefaultTopoName, flashGroupID, optCount, optZoneName, optAddr)
 			if err != nil {
 				return
 			}
@@ -239,7 +235,6 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
 	cmd.Flags().StringVar(&optAddr, CliFlagAddress, "", "add flash node of given addr")
 	cmd.Flags().StringVar(&optZoneName, CliFlagFlashZoneName, "", "add flash node from given zone")
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "add given count flash node from zone")
@@ -542,6 +537,37 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 				return slots[i].slot < slots[j].slot
 			})
 			stdoutln("[Flash Groups]")
+			// Keep consistent with `flashgroup list`: show a group summary table first.
+			sort.Slice(fgView.FlashGroups, func(i, j int) bool {
+				if fgView.FlashGroups[i].Region == fgView.FlashGroups[j].Region {
+					return fgView.FlashGroups[i].ID < fgView.FlashGroups[j].ID
+				}
+				return fgView.FlashGroups[i].Region < fgView.FlashGroups[j].Region
+			})
+			tblGroups := table{formatFlashGroupViewTile}
+			for _, group := range fgView.FlashGroups {
+				sort.Slice(group.Slots, func(i, j int) bool {
+					return group.Slots[i] < group.Slots[j]
+				})
+				sort.Slice(group.ReservedSlots, func(i, j int) bool {
+					return group.ReservedSlots[i] < group.ReservedSlots[j]
+				})
+				tblGroups = tblGroups.append(arow(
+					group.ID,
+					group.Weight,
+					len(group.Slots),
+					len(group.ReservedSlots),
+					group.Status,
+					group.SlotStatus,
+					len(group.PendingSlots),
+					group.Step,
+					group.FlashNodeCount,
+					group.IsReducingSlots,
+					group.FlashNodeTopoName,
+					group.Region,
+				))
+			}
+			stdoutln(alignTable(tblGroups...))
 			stdoutln("[Slots]")
 			tbl := table{arow("Slot", "ID", "Status", "Count", "Ref", "Proportion")}
 			for idx, slot := range slots {
