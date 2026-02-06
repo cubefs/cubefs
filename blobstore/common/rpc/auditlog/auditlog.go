@@ -16,6 +16,7 @@ package auditlog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -114,11 +115,7 @@ func (a *AuditLog) ToJson() (b []byte) {
 	return
 }
 
-func Open(module string, cfg *Config) (ph interface {
-	rpc2.Interceptor
-	rpc.ProgressHandler
-}, logFile LogCloser, err error,
-) {
+func Open(module string, cfg *Config) (auditHandler AuditHandler, logFile LogCloser, err error) {
 	if cfg.BodyLimit < 0 {
 		cfg.BodyLimit = 0
 	} else if cfg.BodyLimit == 0 {
@@ -292,7 +289,7 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 	endTime := time.Now().UnixNano() / 1000
 
 	auditLog := &AuditLog{
-		ReqType:   "REQ",
+		ReqType:   "REQ2",
 		Module:    j.module,
 		StartTime: startTime / 100,
 		Method:    req.StreamCmd.String(),
@@ -341,6 +338,57 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 	auditLog.Duration = endTime - startTime/1000
 
 	j.filterLogging(auditLog, true)
+	return err
+}
+
+func (j *jsonAuditlog) Audit(ctx context.Context, handler func(context.Context, *AuditLog) error) error {
+	span := trace.SpanFromContext(ctx)
+	var newSpan bool
+	if span == nil {
+		span, ctx = trace.StartSpanFromContext(ctx, j.module)
+		newSpan = true
+	}
+
+	auditLog := &AuditLog{
+		ReqType: "AUDIT",
+		Module:  j.module,
+	}
+
+	startTime := time.Now()
+
+	err := handler(ctx, auditLog)
+
+	auditLog.StartTime = startTime.UnixMicro()
+	auditLog.Duration = time.Since(startTime).Microseconds()
+	auditLog.StatusCode = rpc.DetectStatusCode(err)
+
+	fakeRespHeader := make(M)
+	fakeRespHeader["Trace-ID"] = span.TraceID()
+
+	if trackN := span.TrackLogN(); trackN > 0 {
+		traceLogs := make([]string, 0, trackN)
+		span.TrackLogRange(func(b *bytes.Buffer) bool {
+			traceLogs = append(traceLogs, b.String())
+			return true
+		})
+		fakeRespHeader[rpc.HeaderTraceLog] = traceLogs
+	}
+	if tagsN := span.TagsN(); tagsN > 0 {
+		tags := make([]string, 0, tagsN)
+		span.TagsRange(func(key string, val any) bool {
+			tags = append(tags, key+":"+fmt.Sprint(val))
+			return true
+		})
+		fakeRespHeader[rpc.HeaderTraceTags] = tags
+	}
+
+	auditLog.RespHeader = fakeRespHeader
+
+	j.filterLogging(auditLog, true)
+
+	if newSpan {
+		span.Finish()
+	}
 	return err
 }
 
