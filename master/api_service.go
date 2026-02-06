@@ -6255,6 +6255,12 @@ func (m *Server) updateDataNode(w http.ResponseWriter, r *http.Request) {
 		if selectTag == EmptyTag {
 			selectTag = DefaultTag
 		}
+
+		if m.ValidateDataNodeTagInOtherZone(nodeAddr, dataNode.ZoneName, selectTag) {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("select tag %v is already used in other zone", selectTag).Error()})
+			return
+		}
+
 		dataNode.Tag = selectTag
 		err = m.cluster.syncUpdateDataNode(dataNode)
 		if err != nil {
@@ -6306,6 +6312,12 @@ func (m *Server) updateMetaNode(w http.ResponseWriter, r *http.Request) {
 		if selectTag == EmptyTag {
 			selectTag = DefaultTag
 		}
+
+		if m.ValidateMetaNodeTagInOtherZone(nodeAddr, metaNode.ZoneName, selectTag) {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("select tag %v is already used in other zone", selectTag).Error()})
+			return
+		}
+
 		metaNode.Tag = selectTag
 		err = m.cluster.syncUpdateMetaNode(metaNode)
 		if err != nil {
@@ -10972,4 +10984,58 @@ func extractUint8(r *http.Request, key string) (value uint8, err error) {
 		return 0, fmt.Errorf("parameter %s must be a valid uint8: %v", key, err)
 	}
 	return uint8(val), nil
+}
+
+func (m *Server) ValidateDataNodeTagInOtherZone(nodeAddr, zoneName, tag string) bool {
+	if tag == DefaultTag {
+		return false
+	}
+
+	InOtherZone := false
+	m.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode, ok := node.(*DataNode)
+		if !ok {
+			return true
+		}
+
+		if dataNode.Addr == nodeAddr {
+			return true
+		}
+
+		if dataNode.ZoneName != zoneName && dataNode.Tag == tag {
+			InOtherZone = true
+			return false
+		}
+
+		return true
+	})
+
+	return InOtherZone
+}
+
+func (m *Server) ValidateMetaNodeTagInOtherZone(nodeAddr, zoneName, tag string) bool {
+	if tag == DefaultTag {
+		return false
+	}
+
+	InOtherZone := false
+	m.cluster.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode, ok := node.(*MetaNode)
+		if !ok {
+			return true
+		}
+
+		if metaNode.Addr == nodeAddr {
+			return true
+		}
+
+		if metaNode.ZoneName != zoneName && metaNode.Tag == tag {
+			InOtherZone = true
+			return false
+		}
+
+		return true
+	})
+
+	return InOtherZone
 }

@@ -381,7 +381,6 @@ func newDataNodeUpdateCmd(client *master.MasterClient) *cobra.Command {
 				return nil
 			}
 			if err := client.NodeAPI().UpdateDataNode(nodeAddr, selectTag); err != nil {
-				stdoutln(fmt.Sprintf("failed to update datanode(%s) select tag(%s): %s", nodeAddr, selectTag, err.Error()))
 				return err
 			}
 			stdoutln(fmt.Sprintf("Update datanode(%v) select tag %v successfully", nodeAddr, selectTag))
