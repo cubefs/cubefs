@@ -483,6 +483,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive,
 					IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
 					Rack: dataNode.Rack,
+					Tag:  dataNode.Tag,
 				}
 
 				rackDataNodes[rackName] = append(rackDataNodes[rackName], nodeView)
@@ -501,6 +502,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
 					IsRocksdbWritable: metaNode.IsRocksdbWriteAble(),
 					Rack:              metaNode.Rack,
+					Tag:               metaNode.Tag,
 				}
 
 				rackMetaNodes[rackName] = append(rackMetaNodes[rackName], nodeView)

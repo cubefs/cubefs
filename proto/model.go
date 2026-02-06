@@ -820,6 +820,7 @@ type MetaNodeView struct {
 	SystemRatio              float64
 	IsRocksdbWritable        bool
 	Rack                     string
+	Tag                      string
 }
 
 type DistributionOptimizationStatus struct {
