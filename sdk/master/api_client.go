@@ -114,6 +114,7 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 
 func (api *ClientAPI) GetDataPartitionsFromLeader(volName string) (view *proto.DataPartitionsView, err error) {
 	request := newRequest(get, proto.ClientDataPartitions).Header(api.h).addParam("name", volName)
+	request.addParam("full", "true")
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

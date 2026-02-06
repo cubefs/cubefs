@@ -1229,6 +1229,22 @@ type DataPartitionsView struct {
 	StatByPool     []*StatOfStorageClass
 }
 
+func (v *DataPartitionsView) SetDpReadOnly() *DataPartitionsView {
+	v1 := new(DataPartitionsView)
+	v1.DataPartitions = v.DataPartitions
+	v1.VolReadOnly = v.VolReadOnly
+	v1.StatByClass = v.StatByClass
+	v1.StatByPool = v.StatByPool
+
+	for _, dp := range v1.DataPartitions {
+		if dp.PoolId >= MaxDefaultPoolId && !v.VolReadOnly && dp.Status == ReadWrite {
+			dp.Status = ReadOnly
+		}
+	}
+
+	return v1
+}
+
 type DiskDataPartitionsView struct {
 	DataPartitions []*DataPartitionReport
 }

@@ -134,19 +134,6 @@ func parseTxMask(r *http.Request, oldMask proto.TxOpMask) (mask proto.TxOpMask, 
 	return
 }
 
-func parseRequestForUpdateDataNode(r *http.Request) (nodeAddr string, id uint64, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	if nodeAddr, err = extractNodeAddr(r); err != nil {
-		return
-	}
-	if id, err = extractNodeID(r); err != nil {
-		return
-	}
-	return
-}
-
 func parseRequestForAddNode(r *http.Request) (nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack string, mediaType uint32, poolId uint8, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -793,36 +780,6 @@ type createVolReq struct {
 func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
 	if args.objBlockSize, err = extractUint(r, ebsBlkSizeKey); err != nil {
 		return
-	}
-
-	return
-}
-
-func parseAllowedStorageClass(r *http.Request) (allowedStorageClass []uint32, err error) {
-	allowedStorageClass = make([]uint32, 0)
-	allowedStorageClassString := extractStr(r, allowedStorageClassKey)
-	if allowedStorageClassString == "" {
-		return
-	}
-
-	allowedStorageClassStrList := strings.Split(allowedStorageClassString, ",")
-	encountered := map[uint64]bool{}
-	for _, ascStr := range allowedStorageClassStrList {
-		var ascUint64 uint64
-		if ascUint64, err = strconv.ParseUint(ascStr, 10, 32); err != nil || ascUint64 > math.MaxUint32 {
-			err = fmt.Errorf("parse (%s) failed, content(%v) is not valid uint32, err(%v)",
-				allowedStorageClassKey, allowedStorageClassString, err)
-			log.LogErrorf("[parseRequestToCreateVol] %v", err.Error())
-			return
-		}
-
-		// pick non-recurring elements
-		ascUint32 := uint32(ascUint64)
-		if !encountered[ascUint64] {
-			encountered[ascUint64] = true
-			allowedStorageClass = append(allowedStorageClass, ascUint32)
-			log.LogDebugf("[parseAllowedStorageClass] pick allowedStorageClass(%v)", proto.StorageClassString(ascUint32))
-		}
 	}
 
 	return

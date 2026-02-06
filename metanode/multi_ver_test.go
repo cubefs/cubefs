@@ -104,7 +104,7 @@ func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *meta
 	}
 	mp.vol.info = &proto.SimpleVolView{
 		VolStorageClass: proto.StorageClass_Replica_SSD,
-		Pools: map[uint8]*proto.StoragePoolView{
+		Pools: map[uint8]*proto.StoragePoolInfo{
 			proto.DefaultHDDPoolId: {
 				Id:           proto.DefaultHDDPoolId,
 				Name:         "default",

@@ -188,25 +188,25 @@ type ExtentClient struct {
 	writeLimiter       *rate.Limiter
 	disableMetaCache   bool
 	streamRetryTimeout time.Duration
-	volumeType         int
-	volumeName         string
-	bcacheEnable       bool
-	bcacheDir          string
-	BcacheHealth       bool
-	preload            bool
-	LimitManager       *manager.LimitManager
-	dataWrapper        *wrapper.Wrapper
-	metaWrapper        *meta.MetaWrapper
-	appendExtentKey    AppendExtentKeyFunc
-	splitExtentKey     SplitExtentKeyFunc
-	getExtents         GetExtentsFunc
-	truncate           TruncateFunc
-	evictIcache        EvictIcacheFunc // May be null, must check before using
-	loadBcache         LoadBcacheFunc
-	cacheBcache        CacheBcacheFunc
-	evictBcache        EvictBacheFunc
+	// volumeType         int
+	volumeName      string
+	bcacheEnable    bool
+	bcacheDir       string
+	BcacheHealth    bool
+	preload         bool
+	LimitManager    *manager.LimitManager
+	dataWrapper     *wrapper.Wrapper
+	metaWrapper     *meta.MetaWrapper
+	appendExtentKey AppendExtentKeyFunc
+	splitExtentKey  SplitExtentKeyFunc
+	getExtents      GetExtentsFunc
+	truncate        TruncateFunc
+	evictIcache     EvictIcacheFunc // May be null, must check before using
+	loadBcache      LoadBcacheFunc
+	cacheBcache     CacheBcacheFunc
+	evictBcache     EvictBacheFunc
 
-	inflightL1cache           sync.Map
+	// inflightL1cache           sync.Map
 	inflightL1BigBlock        int32
 	multiVerMgr               *MultiVerMgr
 	renewalForbiddenMigration RenewalForbiddenMigrationFunc
@@ -844,9 +844,9 @@ func (client *ExtentClient) GetRate() string {
 	return fmt.Sprintf("read: %v\nwrite: %v\n", getRate(client.readLimiter), getRate(client.writeLimiter))
 }
 
-func (client *ExtentClient) shouldBcache() bool {
-	return client.bcacheEnable && client.BcacheHealth
-}
+// func (client *ExtentClient) shouldBcache() bool {
+// 	return client.bcacheEnable && client.BcacheHealth
+// }
 
 func getRate(lim *rate.Limiter) string {
 	val := int(lim.Limit())

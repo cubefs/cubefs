@@ -701,14 +701,14 @@ func isSkipErr(err error) bool {
 }
 
 func (s *LcScanner) inodeExpired(info *proto.InodeInfo, condE *proto.Expiration, condT []*proto.Transition, dentry *proto.ScanDentry) (op string) {
+	if info == nil {
+		return
+	}
+
 	dentry.Size = info.Size
 	dentry.StorageClass = info.StorageClass
 	dentry.LeaseExpire = info.LeaseExpireTime
 	dentry.HasMek = info.HasMigrationEk
-
-	if info == nil {
-		return
-	}
 
 	if info.ForbiddenLc {
 		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, LeaseExpireTime(%v)", info.Inode, info.LeaseExpireTime)
@@ -723,25 +723,23 @@ func (s *LcScanner) inodeExpired(info *proto.InodeInfo, condE *proto.Expiration,
 		}
 	}
 
-	if condT != nil {
-		for _, cond := range condT {
-			if info.PoolId != cond.FromPoolId {
-				continue
-			}
+	for _, cond := range condT {
+		if info.PoolId != cond.FromPoolId {
+			continue
+		}
 
-			if expired(info, s.now.Unix(), cond.Days, cond.Date) {
-				op = proto.OpTypeStorageClassHDD
-				dentry.DstPoolId = cond.ToPoolId
-				dentry.SrcPoolId = cond.FromPoolId
-				// Set DelayDelMinute from transition, or use system default if not specified
-				if cond.DelayDelMinute != nil {
-					dentry.DelayDelMinute = *cond.DelayDelMinute
-				} else {
-					// Use system default from config (default is 7 days = 10080 minutes)
-					dentry.DelayDelMinute = delayDelMinute
-				}
-				return
+		if expired(info, s.now.Unix(), cond.Days, cond.Date) {
+			op = proto.OpTypeStorageClassHDD
+			dentry.DstPoolId = cond.ToPoolId
+			dentry.SrcPoolId = cond.FromPoolId
+			// Set DelayDelMinute from transition, or use system default if not specified
+			if cond.DelayDelMinute != nil {
+				dentry.DelayDelMinute = *cond.DelayDelMinute
+			} else {
+				// Use system default from config (default is 7 days = 10080 minutes)
+				dentry.DelayDelMinute = delayDelMinute
 			}
+			return
 		}
 	}
 	return

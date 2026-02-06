@@ -245,20 +245,24 @@ type delayDeleteVolInfo struct {
 }
 
 type followerReadManager struct {
-	volDataPartitionsView     map[string][]byte
-	volDataPartitionsCompress map[string][]byte
-	status                    map[string]bool
-	lastUpdateTick            map[string]time.Time
-	needCheck                 bool
-	c                         *Cluster
-	volViewMap                map[string]*volValue
-	rwMutex                   sync.RWMutex
+	volDataPartitionsView         map[string][]byte
+	volDataPartitionsCompress     map[string][]byte
+	volDataPartitionsPool         map[string][]byte
+	volDataPartitionsPoolCompress map[string][]byte
+	status                        map[string]bool
+	lastUpdateTick                map[string]time.Time
+	needCheck                     bool
+	c                             *Cluster
+	volViewMap                    map[string]*volValue
+	rwMutex                       sync.RWMutex
 }
 
 func newFollowerReadManager(c *Cluster) (mgr *followerReadManager) {
 	mgr = new(followerReadManager)
 	mgr.volDataPartitionsView = make(map[string][]byte)
 	mgr.volDataPartitionsCompress = make(map[string][]byte)
+	mgr.volDataPartitionsPool = make(map[string][]byte)
+	mgr.volDataPartitionsPoolCompress = make(map[string][]byte)
 	mgr.status = make(map[string]bool)
 	mgr.lastUpdateTick = make(map[string]time.Time)
 	mgr.c = c
@@ -271,6 +275,8 @@ func (mgr *followerReadManager) reSet() {
 
 	mgr.volDataPartitionsView = make(map[string][]byte)
 	mgr.volDataPartitionsCompress = make(map[string][]byte)
+	mgr.volDataPartitionsPool = make(map[string][]byte)
+	mgr.volDataPartitionsPoolCompress = make(map[string][]byte)
 	mgr.status = make(map[string]bool)
 	mgr.lastUpdateTick = make(map[string]time.Time)
 }
@@ -319,11 +325,13 @@ func (mgr *followerReadManager) getVolumeDpView() {
 		}
 
 		mgr.c.masterClient.SetLeader(mgr.c.leaderInfo.addr)
+
 		log.LogDebugf("followerReadManager.getVolumeDpView %v leader(%v)", vv.Name, mgr.c.masterClient.Leader())
 		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitionsFromLeader(vv.Name); err != nil {
 			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v leader(%v)", vv.Name, err, mgr.c.masterClient.Leader())
 			continue
 		}
+
 		time.Sleep(avgSleepTime)
 		mgr.updateVolViewFromLeader(vv.Name, view)
 	}
@@ -346,7 +354,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 		time.Sleep(avgSleepTime)
 
 		var body []byte
-		if body, err = vol.getDataPartitionsView(); err != nil {
+		if body, err = vol.getDataPartitionsView(true); err != nil {
 			log.LogErrorf("followerReadManager.sendFollowerVolumeDpView err %v", err)
 			continue
 		}
@@ -386,6 +394,8 @@ func (mgr *followerReadManager) DelObsoleteVolRecord(obsoleteVolNames map[string
 		log.LogDebugf("followerReadManager.DelObsoleteVolRecord, delete obsolete vol: %v", volName)
 		delete(mgr.volDataPartitionsView, volName)
 		delete(mgr.volDataPartitionsCompress, volName)
+		delete(mgr.volDataPartitionsPool, volName)
+		delete(mgr.volDataPartitionsPoolCompress, volName)
 		delete(mgr.status, volName)
 		delete(mgr.lastUpdateTick, volName)
 	}
@@ -415,21 +425,46 @@ func (mgr *followerReadManager) updateVolViewFromLeader(key string, view *proto.
 		return
 	}
 
-	reply := newSuccessHTTPReply(view)
-	if body, err := json.Marshal(reply); err != nil {
-		log.LogErrorf("action[updateDpResponseCache] marshal error %v", err)
-		return
-	} else {
-		mgr.rwMutex.Lock()
-		defer mgr.rwMutex.Unlock()
-		mgr.volDataPartitionsView[key] = body
+	mgr.rwMutex.Lock()
+	defer mgr.rwMutex.Unlock()
+
+	updateView := func(full bool, view *proto.DataPartitionsView) error {
+		reply := newSuccessHTTPReply(view)
+		body, err := json.Marshal(reply)
+		if err != nil {
+			log.LogErrorf("action[updateDpResponseCache] marshal error %v", err)
+			return err
+		}
+
+		if full {
+			mgr.volDataPartitionsPool[key] = body
+		} else {
+			mgr.volDataPartitionsView[key] = body
+		}
+
 		gzipData, err := compressor.New(compressor.EncodingGzip).Compress(body)
 		if err != nil {
 			log.LogErrorf("action[updateDpResponseCache] compress error:%+v", err)
-			return
+			return err
 		}
-		mgr.volDataPartitionsCompress[key] = gzipData
+
+		if full {
+			mgr.volDataPartitionsPoolCompress[key] = gzipData
+		} else {
+			mgr.volDataPartitionsCompress[key] = gzipData
+		}
+
+		return nil
 	}
+
+	if err := updateView(true, view); err != nil {
+		return
+	}
+
+	if err := updateView(false, view.SetDpReadOnly()); err != nil {
+		return
+	}
+
 	mgr.status[key] = true
 	mgr.lastUpdateTick[key] = time.Now()
 }
@@ -955,8 +990,8 @@ func (c *Cluster) checkDataPartitions() {
 		}
 		vol.checkDataPartitions(c)
 		if c.metaReady {
-			vol.dataPartitions.updateResponseCache(true, 0, vol)
-			vol.dataPartitions.updateCompressCache(true, 0, vol)
+			vol.dataPartitions.updateResponseCache(true, 0, vol, true)
+			vol.dataPartitions.updateCompressCache(true, 0, vol, true)
 		}
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ",
 			vol.Name, vol.dataPartitions.readableAndWritableCnt)
@@ -2223,7 +2258,7 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, po
 		createdCnt++
 	}
 
-	log.LogInfof("action[batchCreateDataPartition] vol(%v) mediaType(%v) poolId(%v) created data partition count: %v",
+	log.LogInfof("action[batchCreateDataPartition] vol(%v) poolId(%v) created data partition count: %v",
 		vol.Name, poolId, createdCnt)
 	vol.dataPartitions.IncReadWriteDataPartitionCntByPoolId(createdCnt, poolId)
 	return
@@ -4801,8 +4836,8 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 	vol.updateViewCache(c)
 	// NOTE: update dp view cache
-	vol.dataPartitions.updateResponseCache(true, 0, vol)
-	vol.dataPartitions.updateCompressCache(true, 0, vol)
+	vol.dataPartitions.updateResponseCache(true, 0, vol, true)
+	vol.dataPartitions.updateCompressCache(true, 0, vol, true)
 
 	vol.volLock.Lock()
 	vol.Status = proto.VolStatusNormal
@@ -7935,7 +7970,7 @@ func (s *StoragePool) String() string {
 		return "nil"
 	}
 
-	return fmt.Sprintf("Id(%v) Name(%s) StorageClass(%v) CId(%v) ECAddr(%s) CreateTime(%s) UpdateTime(%s) Status(%s)",
+	return fmt.Sprintf("Id(%v) Name(%v) StorageClass(%v) CId(%v) ECAddr(%v) CreateTime(%v) UpdateTime(%v) Status(%v)",
 		s.Id, s.Name, proto.StorageClassString(uint32(s.StorageClass)), s.CId, s.ECAddr, s.CreateTime, s.UpdateTime, s.Status)
 }
 

@@ -107,20 +107,20 @@ func (f *File) getStorageClassByPoolId(poolId uint8) *proto.StoragePoolInfo {
 	return getStorageClassByPoolIdFromSuper(f.super, poolId)
 }
 
-// getECAddrByPoolId returns EC address based on pool ID
-// Returns empty string if pool is not EC pool or not found
-func (f *File) getECAddrByPoolId(poolId uint8) string {
-	if poolId == 0 {
-		return ""
-	}
+// // getECAddrByPoolId returns EC address based on pool ID
+// // Returns empty string if pool is not EC pool or not found
+// func (f *File) getECAddrByPoolId(poolId uint8) string {
+// 	if poolId == 0 {
+// 		return ""
+// 	}
 
-	// Try to get pool info from cache
-	if pool, found := f.super.getPoolInfo(poolId); found {
-		return pool.ECAddr
-	}
+// 	// Try to get pool info from cache
+// 	if pool, found := f.super.getPoolInfo(poolId); found {
+// 		return pool.ECAddr
+// 	}
 
-	return ""
-}
+// 	return ""
+// }
 
 // NewFile returns a new file.
 func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename string) fs.Node {

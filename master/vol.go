@@ -635,12 +635,12 @@ func (vol *Vol) getRWMetaPartitionNum() (num uint64, isHeartBeatDone bool) {
 	return num, true
 }
 
-func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
-	return vol.dataPartitions.updateResponseCache(false, 0, vol)
+func (vol *Vol) getDataPartitionsView(poolAware bool) (body []byte, err error) {
+	return vol.dataPartitions.updateResponseCache(false, 0, vol, poolAware)
 }
 
-func (vol *Vol) getDataPartitionViewCompress() (body []byte, err error) {
-	return vol.dataPartitions.updateCompressCache(false, 0, vol)
+func (vol *Vol) getDataPartitionViewCompress(poolAware bool) (body []byte, err error) {
+	return vol.dataPartitions.updateCompressCache(false, 0, vol, poolAware)
 }
 
 func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
@@ -983,29 +983,6 @@ func (vol *Vol) getQuotaByPoolId() map[uint8]uint64 {
 		m[c.PoolId] = c.QuotaGB
 	}
 	return m
-}
-
-func (vol *Vol) getStorageStatWithClass() map[uint32]*proto.StatOfStorageClass {
-	usedByClass := make(map[uint32]uint64)
-	quotaByClass := vol.getQuotaByClass()
-
-	vol.rangeMetaPartition(func(mp *MetaPartition) bool {
-		stats := mp.StatByStorageClass
-		for _, mpStat := range stats {
-			usedByClass[mpStat.StorageClass] += mpStat.UsedSizeBytes
-		}
-		return true
-	})
-
-	totalStats := make(map[uint32]*proto.StatOfStorageClass, len(usedByClass))
-	for t, u := range usedByClass {
-		totalStats[t] = &proto.StatOfStorageClass{
-			UsedSizeBytes: u,
-			QuotaGB:       quotaByClass[t],
-		}
-	}
-
-	return totalStats
 }
 
 func (vol *Vol) getStorageStatWithPoolId() map[uint8]*proto.StatOfStorageClass {
@@ -1439,7 +1416,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 
 		stat := statByPoolId[poolId]
 		if vol.DpReadOnlyWhenVolFull && stat.Full() {
-			log.LogInfof("action[autoCreateDataPartitions] target poolId meet cap limit, can't create, vol %s, poolId %s", vol.Name, poolId)
+			log.LogInfof("action[autoCreateDataPartitions] target poolId meet cap limit, can't create, vol %v, poolId %v", vol.Name, poolId)
 			continue
 		}
 

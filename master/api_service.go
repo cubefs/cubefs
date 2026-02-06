@@ -6842,6 +6842,13 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	poolAware, err := extractBoolWithDefault(r, "full", false)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	log.LogInfof("action[getDataPartitions] current is leader[%v], compress[%v]",
 		m.cluster.partition.IsRaftLeader(), compress)
 	if !m.cluster.partition.IsRaftLeader() {
@@ -6862,9 +6869,9 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if compress {
-		body, err = vol.getDataPartitionViewCompress()
+		body, err = vol.getDataPartitionViewCompress(poolAware)
 	} else {
-		body, err = vol.getDataPartitionsView()
+		body, err = vol.getDataPartitionsView(poolAware)
 	}
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -9086,16 +9093,6 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set vol[%v] lifecycle successfully", vol.Name)))
-}
-
-func allowedStorageClass(sc string, allowed []uint32) bool {
-	storageType := proto.OpTypeToStorageType(sc)
-	for _, a := range allowed {
-		if storageType == a {
-			return true
-		}
-	}
-	return false
 }
 
 func (m *Server) GetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
