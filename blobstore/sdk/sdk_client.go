@@ -17,6 +17,7 @@ package sdk
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
@@ -48,17 +50,20 @@ const (
 	limitNameGet    = "get"
 	limitNamePut    = "put"
 	limitNameDelete = "delete"
+
+	moduleName = "sdk"
 )
 
 type noopBody struct{}
 
-var _ io.ReadCloser = (*noopBody)(nil)
+var _ io.ReadCloser = noopBody{}
 
 func (rc noopBody) Read(p []byte) (n int, err error) { return 0, io.EOF }
 func (rc noopBody) Close() error                     { return nil }
 
 type Config struct {
 	stream.StreamConfig `json:"stream"`
+	AuditLog            auditlog.Config `json:"auditlog"`
 
 	Limit           stream.LimitConfig `json:"limit"`
 	MaxSizePutOnce  int64              `json:"max_size_put_once"`
@@ -76,14 +81,34 @@ type sdkHandler struct {
 	limiter stream.Limiter
 	closer  closer.Closer
 	memPool *resourcepool.MemPool
+
+	auditor     auditlog.Auditor
+	auditCloser auditlog.LogCloser
 }
 
-func New(conf *Config) (acapi.Client, error) {
+type SDK interface {
+	acapi.Client
+	Close()
+}
+
+func New(conf *Config) (SDK, error) {
 	fixConfig(conf)
 	// add region magic checksum to the secret keys
 	security.InitWithRegionMagic(conf.StreamConfig.ClusterConfig.RegionMagic)
 
 	cl := closer.New()
+
+	auditor := auditlog.NoopAuditHandler
+	auditCloser := auditlog.NoopLogCloser
+	var err error
+	if conf.AuditLog.LogDir != "" {
+		auditor, auditCloser, err = auditlog.Open(moduleName, &conf.AuditLog)
+		if err != nil {
+			log.Errorf("failed to initialize auditlog: %v", err)
+			return nil, err
+		}
+	}
+
 	h, err := stream.NewStreamHandler(&conf.StreamConfig, cl.Done())
 	if err != nil {
 		log.Errorf("new stream handler failed, err: %+v", err)
@@ -106,15 +131,34 @@ func New(conf *Config) (acapi.Client, error) {
 		memPool: admin.MemPool,
 		limiter: stream.NewLimiter(conf.Limit),
 		closer:  cl,
+
+		auditor:     auditor,
+		auditCloser: auditCloser,
 	}, nil
 }
 
-func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadCloser, error) {
+func (s *sdkHandler) Close() {
+	s.closer.Close()
+	s.auditCloser.Close()
+}
+
+func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (body io.ReadCloser, err error) {
+	ctx = acapi.ClientWithReqidContext(ctx)
+	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
+		auditline.Method = "Get"
+		auditline.ReqParams = requestParams(args)
+
+		body, err = s._get(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _get(ctx context.Context, args *acapi.GetArgs) (io.ReadCloser, error) {
 	if !args.IsValid() {
 		return nil, errcode.ErrIllegalArguments
 	}
 
-	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("accept sdk get request args:%+v", args)
 
@@ -138,11 +182,22 @@ func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadClose
 }
 
 func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failedLocations []proto.Location, err error) {
+	ctx = acapi.ClientWithReqidContext(ctx)
+	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
+		auditline.Method = "Delete"
+		auditline.ReqParams = requestParams(args)
+
+		failedLocations, err = s._delete(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _delete(ctx context.Context, args *acapi.DeleteArgs) (failedLocations []proto.Location, err error) {
 	if !args.IsValid() {
 		return nil, errcode.ErrIllegalArguments
 	}
 
-	ctx = acapi.ClientWithReqidContext(ctx)
 	locations := make([]proto.Location, 0, len(args.Locations)) // check location size
 	for _, loc := range args.Locations {
 		if loc.Size_ > 0 {
@@ -179,6 +234,18 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 }
 
 func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Location, hm acapi.HashSumMap, err error) {
+	ctx = acapi.ClientWithReqidContext(ctx)
+	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
+		auditline.Method = "Put"
+		auditline.ReqParams = requestParams(args)
+
+		lc, hm, err = s._put(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _put(ctx context.Context, args *acapi.PutArgs) (lc proto.Location, hm acapi.HashSumMap, err error) {
 	if args == nil {
 		return proto.Location{}, nil, errcode.ErrIllegalArguments
 	}
@@ -190,8 +257,6 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 		}
 		return proto.Location{Slices: make([]proto.Slice, 0)}, hashSumMap, nil
 	}
-
-	ctx = acapi.ClientWithReqidContext(ctx)
 
 	name := limitNamePut
 	if err := s.limiter.Acquire(name); err != nil {
@@ -224,63 +289,103 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 	return s.putParts(ctx, args)
 }
 
-func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (shardnode.ListBlobRet, error) {
-	if !args.IsValid() {
-		return shardnode.ListBlobRet{}, errcode.ErrIllegalArguments
-	}
-
+func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (ret shardnode.ListBlobRet, err error) {
 	ctx = acapi.ClientWithReqidContext(ctx)
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk ListBlob request, args: %v", *args)
-	if args.Count == 0 {
-		args.Count = defaultListCount
-	}
 
-	return s.handler.ListBlob(ctx, args)
+	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
+		auditline.Method = "ListBlob"
+		auditline.ReqParams = requestParams(args)
+
+		if !args.IsValid() {
+			err = errcode.ErrIllegalArguments
+			return err
+		}
+
+		span := trace.SpanFromContextSafe(ctx)
+		span.Debugf("accept sdk ListBlob request, args: %v", *args)
+		if args.Count == 0 {
+			args.Count = defaultListCount
+		}
+
+		ret, err = s.handler.ListBlob(ctx, args)
+		return err
+	})
+	return
 }
 
-func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error {
-	if !args.IsValid() {
-		return errcode.ErrIllegalArguments
-	}
-
-	// delete meta at shardnode, then delete data at blobnode
+func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) (err error) {
 	ctx = acapi.ClientWithReqidContext(ctx)
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk DeleteBlob request, name=%s, args: %v", args.BlobName, *args)
-	return s.handler.DeleteBlob(ctx, args)
+
+	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
+		auditline.Method = "DeleteBlob"
+		auditline.ReqParams = requestParams(args)
+
+		if !args.IsValid() {
+			err = errcode.ErrIllegalArguments
+			return err
+		}
+
+		// delete meta at shardnode, then delete data at blobnode
+		span := trace.SpanFromContextSafe(ctx)
+		span.Debugf("accept sdk DeleteBlob request, name=%s, args: %v", args.BlobName, *args)
+		err = s.handler.DeleteBlob(ctx, args)
+		return err
+	})
+	return
 }
 
-func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.ReadCloser, error) {
-	if !args.IsValid() {
-		return nil, errcode.ErrIllegalArguments
-	}
-
+func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (body io.ReadCloser, err error) {
 	ctx = acapi.ClientWithReqidContext(ctx)
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk GetBlob request, name=%s, clusterID:%d, mode:%d, offset:%d, size:%d",
-		args.BlobName, args.ClusterID, args.Mode, args.Offset, args.ReadSize)
-	loc, err := s.handler.GetBlob(ctx, args)
-	if err != nil {
-		return nil, err
-	}
 
-	arg := &acapi.GetArgs{
-		Location: *loc,
-		Offset:   args.Offset,
-		ReadSize: args.ReadSize,
-		Writer:   args.Writer,
-	}
+	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
+		auditline.Method = "GetBlob"
+		auditline.ReqParams = requestParams(args)
 
-	return s.getBlobData(ctx, arg)
+		if !args.IsValid() {
+			err = errcode.ErrIllegalArguments
+			return err
+		}
+
+		span := trace.SpanFromContextSafe(ctx)
+		span.Debugf("accept sdk GetBlob request, name=%s, clusterID:%d, mode:%d, offset:%d, size:%d",
+			args.BlobName, args.ClusterID, args.Mode, args.Offset, args.ReadSize)
+
+		var loc *proto.Location
+		loc, err = s.handler.GetBlob(ctx, args)
+		if err != nil {
+			return err
+		}
+
+		arg := &acapi.GetArgs{
+			Location: *loc,
+			Offset:   args.Offset,
+			ReadSize: args.ReadSize,
+			Writer:   args.Writer,
+		}
+
+		body, err = s.getBlobData(ctx, arg)
+		return err
+	})
+	return
 }
 
 func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid proto.ClusterID, hashes acapi.HashSumMap, err error) {
+	ctx = acapi.ClientWithReqidContext(ctx)
+	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
+		auditline.Method = "PutBlob"
+		auditline.ReqParams = requestParams(args)
+
+		cid, hashes, err = s._putBlob(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _putBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid proto.ClusterID, hashes acapi.HashSumMap, err error) {
 	if !args.IsValid() {
 		return 0, nil, errcode.ErrIllegalArguments
 	}
 
-	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("accept sdk PutBlob request, name=%s, codeMode:%d, seal:%t, size:%d, hashes:%v",
 		args.BlobName, args.CodeMode, args.NeedSeal, args.Size, args.Hashes)
@@ -1233,4 +1338,12 @@ func fixLocationSize(loc proto.Location, size uint64) (proto.Location, error) {
 	}
 
 	return loc, nil
+}
+
+func requestParams(args any) string {
+	data, err := json.Marshal(args)
+	if err != nil {
+		return fmt.Sprintf(`{"error":"marshal args: %v"}`, err)
+	}
+	return string(data)
 }
