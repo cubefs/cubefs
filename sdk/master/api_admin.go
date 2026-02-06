@@ -1510,9 +1510,11 @@ func (api *AdminAPI) CancelDeleteFlashTopo(name string) (result string, err erro
 	return string(data), nil
 }
 
-func (api *AdminAPI) GetSelectTagSummary() (summary *proto.TagSummary, err error) {
+func (api *AdminAPI) GetSelectTagSummary(detail bool) (summary *proto.TagSummary, err error) {
 	summary = &proto.TagSummary{}
-	err = api.mc.requestWith(summary, newRequest(get, proto.AdminGetTagSummary).Header(api.h))
+	req := newRequest(get, proto.AdminGetTagSummary).Header(api.h)
+	req.addParamAny("detail", detail)
+	err = api.mc.requestWith(summary, req)
 	return
 }
 

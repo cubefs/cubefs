@@ -1029,12 +1029,28 @@ func (m *Server) decommissionRocksdbDir(w http.ResponseWriter, r *http.Request) 
 
 func (m *Server) getTagSummary(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetTagSummary))
-	var err error
+	var (
+		err    error
+		detail bool
+	)
 	defer func() {
 		doStatAndMetric(proto.AdminGetTagSummary, metric, err, nil)
 	}()
 
-	summary, err := m.cluster.getTagSummary()
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	detailStr := r.FormValue(DetailKey)
+	if detailStr == "" {
+		detailStr = "false"
+	}
+	detail, err = strconv.ParseBool(detailStr)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "invalid detail"})
+		return
+	}
+
+	summary, err := m.cluster.getTagSummary(detail)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return

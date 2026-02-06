@@ -202,6 +202,7 @@ const (
 	DpTagKey      = "dpTag"
 	MpTagKey      = "mpTag"
 	SelectTagKey  = "selectTag"
+	DetailKey     = "detail"
 
 	// Storage Pool keys
 	poolStorageClassKey = "storageClass"

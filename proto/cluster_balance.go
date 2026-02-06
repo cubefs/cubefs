@@ -218,17 +218,17 @@ type TagSummary struct {
 	MpDecommissionNum   uint32                    `json:"mpDecommissionNum"`
 	DpCheckThreadStatus string                    `json:"dpCheckThreadStatus"`
 	MpCheckThreadStatus string                    `json:"mpCheckThreadStatus"`
-	UnmatchDpSamples    []TagMismatchSample       `json:"unmatchDpSamples"`
-	UnmatchMpSamples    []TagMismatchSample       `json:"unmatchMpSamples"`
+	UnmatchDpSamples    []TagMismatchSample       `json:"unmatchDpSamples,omitempty"`
+	UnmatchMpSamples    []TagMismatchSample       `json:"unmatchMpSamples,omitempty"`
 	DataNodeTagCount    map[string]int            `json:"dataNodeTagCount"`
 	MetaNodeTagCount    map[string]int            `json:"metaNodeTagCount"`
-	DataNodeSpace       map[string]*DataNodeSpace `json:"dataNodeSpace"`
-	MetaNodeSpace       map[string]*MetaNodeSpace `json:"metaNodeSpace"`
-	FailedMpKeys        []string                  `json:"failedMpKeys"`
-	LastDpQuitReason    string                    `json:"DpThreadLastQuitReason"`
-	LastMpQuitReason    string                    `json:"MpThreadLastQuitReason"`
-	LastDpThreadTime    time.Time                 `json:"DpThreadLastQuitTime"`
-	LastMpThreadTime    time.Time                 `json:"MpThreadLastQuitTime"`
+	DataNodeSpace       map[string]*DataNodeSpace `json:"dataNodeSpace,omitempty"`
+	MetaNodeSpace       map[string]*MetaNodeSpace `json:"metaNodeSpace,omitempty"`
+	FailedMpKeys        []string                  `json:"failedMpKeys,omitempty"`
+	LastDpQuitReason    string                    `json:"DpThreadLastQuitReason,omitempty"`
+	LastMpQuitReason    string                    `json:"MpThreadLastQuitReason,omitempty"`
+	LastDpThreadTime    *time.Time                `json:"DpThreadLastQuitTime,omitempty"`
+	LastMpThreadTime    *time.Time                `json:"MpThreadLastQuitTime,omitempty"`
 }
 
 var TagPattern = regexp.MustCompile("^[0-9A-Za-z]{1,49}$")

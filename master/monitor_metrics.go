@@ -521,7 +521,7 @@ func (mm *monitorMetrics) start() {
 	mm.dpNoSamePeer = exporter.NewGaugeVec(MetricDpNoSamePeer, "", []string{"dpId"})
 	mm.mpNoSamePeer = exporter.NewGaugeVec(MetricMpNoSamePeer, "", []string{"mpId"})
 	mm.badDiskDecommissionTimeOverLimit = exporter.NewGaugeVec(MetricBadDiskDecommissionTimeOverLimit, "", []string{"addr", "path", "firstReportTime"})
-	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc", "rack", "pool"})
+	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc", "rack", "pool", "tag"})
 	mm.partitionCreate = exporter.NewGaugeVec(MetricPartitionCreateMetrics, "", []string{"type", "racklevel", "media"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.InactiveDataNodeInfo = exporter.NewGaugeVec(MetricInactiveDataNodeInfo, "", []string{"clusterName", "addr"})
@@ -1197,6 +1197,7 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		media := "default"
 		mAddr := metaNode.Addr
 		rack := metaNode.Rack
+		tag := metaNode.Tag
 
 		writable := "false"
 		if metaNode.IsWriteAble() {
@@ -1209,15 +1210,15 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 
 		mm.nodeStat.Delete(map[string]string{"addr": mAddr})
 
-		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, mAddr, "usageRatio", zone, setId, media, writable, alloc, rack, "")
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, mAddr, "memTotal", zone, setId, media, writable, alloc, rack, "")
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, mAddr, "memUsed", zone, setId, media, writable, alloc, rack, "")
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc, rack, "")
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc, rack, "")
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc, rack, "")
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsRocksdbWriteAble(), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc, rack, "")
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc, rack, "")
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc, rack, "")
+		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, mAddr, "usageRatio", zone, setId, media, writable, alloc, rack, "", tag)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, mAddr, "memTotal", zone, setId, media, writable, alloc, rack, "", tag)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, mAddr, "memUsed", zone, setId, media, writable, alloc, rack, "", tag)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc, rack, "", tag)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc, rack, "", tag)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc, rack, "", tag)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsRocksdbWriteAble(), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc, rack, "", tag)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc, rack, "", tag)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc, rack, "", tag)
 
 		return true
 	})
@@ -1248,6 +1249,7 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 		dAddr := dataNode.Addr
 		rack := dataNode.Rack
 		poolId := mm.cluster.getPoolNameById(dataNode.PoolId)
+		tag := dataNode.Tag
 
 		writable := "false"
 		if dataNode.IsWriteAble() {
@@ -1260,16 +1262,16 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 
 		mm.nodeStat.Delete(map[string]string{"addr": dAddr})
 
-		mm.nodeStat.SetWithLabelValues(float64(dataNode.DataPartitionCount), MetricRoleDataNode, dAddr, "dpCount", zone, setId, media, writable, alloc, rack, poolId)
-		mm.nodeStat.SetWithLabelValues(float64(dataNode.Total), MetricRoleDataNode, dAddr, "diskTotal", zone, setId, media, writable, alloc, rack, poolId)
-		mm.nodeStat.SetWithLabelValues(float64(dataNode.Used), MetricRoleDataNode, dAddr, "diskUsed", zone, setId, media, writable, alloc, rack, poolId)
-		mm.nodeStat.SetWithLabelValues(float64(dataNode.AvailableSpace), MetricRoleDataNode, dAddr, "diskAvail", zone, setId, media, writable, alloc, rack, poolId)
-		mm.nodeStat.SetWithLabelValues(dataNode.UsageRatio, MetricRoleDataNode, dAddr, "usageRatio", zone, setId, media, writable, alloc, rack, poolId)
-		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.BadDisks)), MetricRoleDataNode, dAddr, "badDiskCount", zone, setId, media, writable, alloc, rack, poolId)
-		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.LostDisks)), MetricRoleDataNode, dAddr, "lostDiskCount", zone, setId, media, writable, alloc, rack, poolId)
-		mm.nodeStat.SetBoolWithLabelValues(dataNode.isActive, MetricRoleDataNode, dAddr, "active", zone, setId, media, writable, alloc, rack, poolId)
-		mm.nodeStat.SetBoolWithLabelValues(dataNode.IsWriteAble(), MetricRoleDataNode, dAddr, "writable", zone, setId, media, writable, alloc, rack, poolId)
-		mm.nodeStat.SetBoolWithLabelValues(dataNode.canAllocDp(), MetricRoleDataNode, dAddr, "canAlloc", zone, setId, media, writable, alloc, rack, poolId)
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.DataPartitionCount), MetricRoleDataNode, dAddr, "dpCount", zone, setId, media, writable, alloc, rack, poolId, tag)
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.Total), MetricRoleDataNode, dAddr, "diskTotal", zone, setId, media, writable, alloc, rack, poolId, tag)
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.Used), MetricRoleDataNode, dAddr, "diskUsed", zone, setId, media, writable, alloc, rack, poolId, tag)
+		mm.nodeStat.SetWithLabelValues(float64(dataNode.AvailableSpace), MetricRoleDataNode, dAddr, "diskAvail", zone, setId, media, writable, alloc, rack, poolId, tag)
+		mm.nodeStat.SetWithLabelValues(dataNode.UsageRatio, MetricRoleDataNode, dAddr, "usageRatio", zone, setId, media, writable, alloc, rack, poolId, tag)
+		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.BadDisks)), MetricRoleDataNode, dAddr, "badDiskCount", zone, setId, media, writable, alloc, rack, poolId, tag)
+		mm.nodeStat.SetWithLabelValues(float64(len(dataNode.LostDisks)), MetricRoleDataNode, dAddr, "lostDiskCount", zone, setId, media, writable, alloc, rack, poolId, tag)
+		mm.nodeStat.SetBoolWithLabelValues(dataNode.isActive, MetricRoleDataNode, dAddr, "active", zone, setId, media, writable, alloc, rack, poolId, tag)
+		mm.nodeStat.SetBoolWithLabelValues(dataNode.IsWriteAble(), MetricRoleDataNode, dAddr, "writable", zone, setId, media, writable, alloc, rack, poolId, tag)
+		mm.nodeStat.SetBoolWithLabelValues(dataNode.canAllocDp(), MetricRoleDataNode, dAddr, "canAlloc", zone, setId, media, writable, alloc, rack, poolId, tag)
 
 		return true
 	})

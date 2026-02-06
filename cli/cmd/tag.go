@@ -51,19 +51,70 @@ const (
 )
 
 func newShowSelectTagSummaryCmd(client *master.MasterClient) *cobra.Command {
+	var optDetail bool
+	var optMeta bool
+	var optData bool
 	cmd := &cobra.Command{
 		Use:   cmdShowSelectTagSummary,
 		Short: cmdShowSelectTagSummaryShort,
 		Run: func(cmd *cobra.Command, args []string) {
-			var err error
+			var (
+				err error
+				out []byte
+			)
 			defer func() {
 				errout(err)
 			}()
-			var task *proto.TagSummary
-			if task, err = client.AdminAPI().GetSelectTagSummary(); err != nil {
+			if optMeta && optData {
+				err = fmt.Errorf("flags meta and data are mutually exclusive")
 				return
 			}
-			out, err := json.MarshalIndent(task, "", "    ")
+			var task *proto.TagSummary
+			if task, err = client.AdminAPI().GetSelectTagSummary(optDetail); err != nil {
+				return
+			}
+			output := make(map[string]any)
+			if optMeta {
+				output["autoFixTag"] = task.AutoFixTag
+				output["volumeNum"] = task.VolumeNum
+				output["volumeWithTagNum"] = task.VolWithTagNum
+				output["clusterMpTag"] = task.ClusterMpTag
+				output["totalMpNum"] = task.TotalMpNum
+				output["unmatchMpNum"] = task.UnmatchMpNum
+				output["mpDecommissionNum"] = task.MpDecommissionNum
+				output["metaNodeTagCount"] = task.MetaNodeTagCount
+				output["metaNodeSpace"] = task.MetaNodeSpace
+				if optDetail {
+					output["unmatchMpSamples"] = task.UnmatchMpSamples
+					output["mpPlanStatus"] = task.MpPlanStatus
+					output["failedMpKeys"] = task.FailedMpKeys
+					output["mpCheckThreadStatus"] = task.MpCheckThreadStatus
+					output["MpThreadLastQuitReason"] = task.LastMpQuitReason
+					output["MpThreadLastQuitTime"] = task.LastMpThreadTime
+				}
+			} else if optData {
+				output["autoFixTag"] = task.AutoFixTag
+				output["volumeNum"] = task.VolumeNum
+				output["volumeWithTagNum"] = task.VolWithTagNum
+				output["clusterDpTag"] = task.ClusterDpTag
+				output["totalDpNum"] = task.TotalDpNum
+				output["unmatchDpNum"] = task.UnmatchDpNum
+				output["decommissionDpNum"] = task.DecommissionDpNum
+				output["dataNodeTagCount"] = task.DataNodeTagCount
+				output["dataNodeSpace"] = task.DataNodeSpace
+				if optDetail {
+					output["unmatchDpSamples"] = task.UnmatchDpSamples
+					output["dpCheckThreadStatus"] = task.DpCheckThreadStatus
+					output["DpThreadLastQuitReason"] = task.LastDpQuitReason
+					output["DpThreadLastQuitTime"] = task.LastDpThreadTime
+				}
+			}
+
+			if optMeta || optData {
+				out, err = json.MarshalIndent(output, "", "    ")
+			} else {
+				out, err = json.MarshalIndent(task, "", "    ")
+			}
 			if err != nil {
 				stdout("marshal task failed: %s", err.Error())
 				return
@@ -71,15 +122,24 @@ func newShowSelectTagSummaryCmd(client *master.MasterClient) *cobra.Command {
 			stdout("%s", string(out))
 		},
 	}
+	cmd.Flags().BoolVarP(&optDetail, "all", "a", false, "Show all details information")
+	cmd.Flags().BoolVarP(&optMeta, "meta", "m", false, "Show metaNode/metaPartition related information")
+	cmd.Flags().BoolVarP(&optData, "data", "d", false, "Show dataNode/dataPartition related information")
 	return cmd
 }
 
 func newShowSelectTagVolSummaryCmd(client *master.MasterClient) *cobra.Command {
+	var optDetail bool
+	var optMeta bool
+	var optData bool
 	cmd := &cobra.Command{
 		Use:   cmdShowSelectTagVolSummary,
 		Short: cmdShowSelectTagVolSummaryShort,
 		Run: func(cmd *cobra.Command, args []string) {
-			var err error
+			var (
+				err error
+				out []byte
+			)
 			defer func() {
 				errout(err)
 			}()
@@ -87,12 +147,45 @@ func newShowSelectTagVolSummaryCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("volume name is required")
 				return
 			}
+			if optMeta && optData {
+				err = fmt.Errorf("flags meta and data are mutually exclusive")
+				return
+			}
 			volName := args[0]
 			var task *proto.VolTagSummary
 			if task, err = client.AdminAPI().GetVolTagSummary(volName); err != nil {
 				return
 			}
-			out, err := json.MarshalIndent(task, "", "    ")
+			output := make(map[string]any)
+			if optMeta {
+				output["volume"] = task.Vol
+				output["volStatus"] = task.VolStatus
+				output["mpTag"] = task.MpTag
+				output["effectiveMpTags"] = task.EffectiveMpTags
+				output["totalMpNum"] = task.TotalMpNum
+				output["unmatchMpNum"] = task.UnmatchMpNum
+				if optDetail {
+					output["unmatchMps"] = task.UnmatchMps
+					output["unmatchMpSamples"] = task.UnmatchMpSamples
+				}
+			} else if optData {
+				output["volume"] = task.Vol
+				output["volStatus"] = task.VolStatus
+				output["dpTag"] = task.DpTag
+				output["effectiveDpTags"] = task.EffectiveDpTags
+				output["totalDpNum"] = task.TotalDpNum
+				output["unmatchDpNum"] = task.UnmatchDpNum
+				if optDetail {
+					output["unmatchDps"] = task.UnmatchDps
+					output["unmatchDpSamples"] = task.UnmatchDpSamples
+				}
+			}
+
+			if optMeta || optData {
+				out, err = json.MarshalIndent(output, "", "    ")
+			} else {
+				out, err = json.MarshalIndent(task, "", "    ")
+			}
 			if err != nil {
 				stdout("marshal task failed: %s", err.Error())
 				return
@@ -100,6 +193,9 @@ func newShowSelectTagVolSummaryCmd(client *master.MasterClient) *cobra.Command {
 			stdout("%s", string(out))
 		},
 	}
+	cmd.Flags().BoolVarP(&optDetail, "all", "a", false, "Show all details information")
+	cmd.Flags().BoolVarP(&optMeta, "meta", "m", false, "Show metaNode/metaPartition related information")
+	cmd.Flags().BoolVarP(&optData, "data", "d", false, "Show dataNode/dataPartition related information")
 	return cmd
 }
 

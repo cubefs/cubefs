@@ -870,6 +870,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDpLimitHddBaseCount, CliFlagDpLimitHddBaseCount, "", "DP limit HDD base count")
 	cmd.Flags().StringVar(&optDpLimitHddFactor, CliFlagDpLimitHddFactor, "", "DP limit HDD factor per 120GB")
 	cmd.Flags().StringVar(&optDefaultPoolId, CliFlagDefaultPoolId, "", "set cluster default pool id")
+	cmd.Flags().StringVar(&optAutoFixTag, CliFlagAutoFixTag, "", "Auto fix and migrate by tag(true|false)")
+	cmd.Flags().StringVar(&optDefaultDpTag, CliFlagDefaultDpTag, "", "Default DP select tag. split with ','. 'null' means null string")
+	cmd.Flags().StringVar(&optDefaultMpTag, CliFlagDefaultMpTag, "", "Default MP select tag. split with ','. 'null' means null string")
+
 	return cmd
 }
 

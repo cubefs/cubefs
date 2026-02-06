@@ -329,7 +329,7 @@ func TestSelectMpSelectTagUnmatchGroup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := c.selectMpTagMismatchGroup(tt.mismatches)
+			result := c.selectMpTagMismatchGroup(tt.mismatches, nil)
 			assert.Equal(t, tt.expected, len(result))
 		})
 	}
@@ -658,7 +658,7 @@ func TestGetSelectTagSummary(t *testing.T) {
 		},
 	}
 
-	summary, err := c.getTagSummary()
+	summary, err := c.getTagSummary(false)
 	require.NoError(t, err)
 	assert.NotNil(t, summary)
 	assert.True(t, summary.AutoFixTag)

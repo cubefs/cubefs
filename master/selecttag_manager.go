@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -37,6 +38,7 @@ const (
 	StatusStopping        = "stopping"
 	EmptyTag              = "null"
 	MaxMpDecommissionNum  = 5
+	MaxMpFailedKeys       = 1024
 
 	ReasonPlanBusy                = "plan status is busy"
 	ReasonDisableAutoFixTag       = "cluster auto fix tag is disabled"
@@ -54,7 +56,27 @@ var (
 	LastDpQuitReason  string
 	LastDpThreadTime  time.Time
 	LastMpThreadTime  time.Time
+	tagStateMu        sync.Mutex
 )
+
+func addMpFailedKey(key string) {
+	tagStateMu.Lock()
+	defer tagStateMu.Unlock()
+	if contains(MpFailedKeys, key) {
+		return
+	}
+	MpFailedKeys = append(MpFailedKeys, key)
+	if len(MpFailedKeys) > MaxMpFailedKeys {
+		MpFailedKeys = MpFailedKeys[len(MpFailedKeys)-MaxMpFailedKeys:]
+	}
+}
+
+func snapshotTagState() (dpStatus, mpStatus, lastDpReason, lastMpReason string, lastDpTime, lastMpTime time.Time, failedKeys []string) {
+	tagStateMu.Lock()
+	defer tagStateMu.Unlock()
+	failedKeys = append([]string(nil), MpFailedKeys...)
+	return DpTagThreadStatus, MpTagThreadStatus, LastDpQuitReason, LastMpQuitReason, LastDpThreadTime, LastMpThreadTime, failedKeys
+}
 
 func (c *Cluster) scheduleToCheckDpTag() {
 	c.runTask(&cTask{
@@ -71,13 +93,21 @@ func (c *Cluster) scheduleToCheckDpTag() {
 
 func (c *Cluster) checkDpTag() {
 	if !c.cfg.AutoFixTag.Load() {
+		tagStateMu.Lock()
+		DpTagThreadStatus = StatusSleeping
 		LastDpQuitReason = ReasonDisableAutoFixTag
+		LastDpThreadTime = time.Now()
+		tagStateMu.Unlock()
 		return
 	}
+	tagStateMu.Lock()
 	DpTagThreadStatus = StatusChecking
+	tagStateMu.Unlock()
 	defer func() {
+		tagStateMu.Lock()
 		DpTagThreadStatus = StatusSleeping
 		LastDpThreadTime = time.Now()
+		tagStateMu.Unlock()
 		if r := recover(); r != nil {
 			log.LogWarnf("checkDpTag occurred panic,err[%v]", r)
 		}
@@ -99,7 +129,9 @@ func (c *Cluster) checkDpTag() {
 		count += vol.countTagDecommissionTask(c)
 	}
 	if count >= MaxTagDecommissionNum {
+		tagStateMu.Lock()
 		LastDpQuitReason = ReasonReachMaxDecommissionNum
+		tagStateMu.Unlock()
 		return
 	}
 
@@ -121,7 +153,9 @@ func (c *Cluster) checkDpTag() {
 			break
 		}
 	}
+	tagStateMu.Lock()
 	LastDpQuitReason = ReasonCloseOK
+	tagStateMu.Unlock()
 }
 
 func (vol *Vol) FixDataPartitionTag(c *Cluster) {
@@ -345,23 +379,38 @@ func (c *Cluster) scheduleToCheckMpTag() {
 
 func (c *Cluster) checkMpTag() {
 	if !c.cfg.AutoFixTag.Load() {
+		tagStateMu.Lock()
+		MpTagThreadStatus = StatusSleeping
 		LastMpQuitReason = ReasonDisableAutoFixTag
+		LastMpThreadTime = time.Now()
+		tagStateMu.Unlock()
 		return
 	}
 	if c.IsClusterPlanNotIdle() {
+		tagStateMu.Lock()
+		MpTagThreadStatus = StatusSleeping
 		LastMpQuitReason = ReasonPlanBusy
+		LastMpThreadTime = time.Now()
+		tagStateMu.Unlock()
 		return
 	}
+	tagStateMu.Lock()
 	MpTagThreadStatus = StatusChecking
+	tagStateMu.Unlock()
 	if !c.TrySetClusterPlanRunning() {
+		tagStateMu.Lock()
 		MpTagThreadStatus = StatusSleeping
 		LastMpQuitReason = ReasonFailedToSetPlanRun
+		LastMpThreadTime = time.Now()
+		tagStateMu.Unlock()
 		return
 	}
 	defer func() {
+		tagStateMu.Lock()
 		MpTagThreadStatus = StatusSleeping
-		c.SetClusterPlanIdle()
 		LastMpThreadTime = time.Now()
+		tagStateMu.Unlock()
+		c.SetClusterPlanIdle()
 		if r := recover(); r != nil {
 			log.LogWarnf("checkMpTag occurred panic,err[%v]", r)
 		}
@@ -380,18 +429,25 @@ func (c *Cluster) checkMpTag() {
 		log.LogDebugf("checkMpTag,vol[%v] fix mp tag", vol.Name)
 	}
 
+	tagStateMu.Lock()
 	MpTagThreadStatus = StatusCreatingPlan
+	tagStateMu.Unlock()
 
 	mismatches := c.collectMpTagMismatches(vols)
-	selectedGroup := c.selectMpTagMismatchGroup(mismatches)
+	_, _, _, _, _, _, failedKeys := snapshotTagState()
+	selectedGroup := c.selectMpTagMismatchGroup(mismatches, failedKeys)
 	if len(selectedGroup) == 0 {
+		tagStateMu.Lock()
 		LastMpQuitReason = ReasonSelectTagEmpty
+		tagStateMu.Unlock()
 		return
 	}
 
 	num := c.GetMetaPartitionDecommissionCount(proto.TagDecommission)
 	if num >= MaxMpDecommissionNum {
+		tagStateMu.Lock()
 		LastMpQuitReason = ReasonReachMaxDecommissionNum
+		tagStateMu.Unlock()
 		return
 	}
 
@@ -399,7 +455,7 @@ func (c *Cluster) checkMpTag() {
 		if item.tag == DefaultTag {
 			continue
 		}
-		if contains(MpFailedKeys, item.tag+"|"+item.storeMode.Str()) {
+		if contains(failedKeys, item.tag+"|"+item.storeMode.Str()) {
 			continue
 		}
 		if item.partition.IsRecover.Load() {
@@ -411,7 +467,7 @@ func (c *Cluster) checkMpTag() {
 			log.LogWarnf("checkMpTag, select one target meta replica failed, vol[%v] mp[%v] addr[%v] err[%v]",
 				item.vol.Name, item.partition.PartitionID, item.replica.Addr, err)
 			key := item.tag + "|" + item.storeMode.Str()
-			MpFailedKeys = append(MpFailedKeys, key)
+			addMpFailedKey(key)
 			continue
 		}
 
@@ -432,7 +488,9 @@ func (c *Cluster) checkMpTag() {
 			break
 		}
 	}
+	tagStateMu.Lock()
 	LastMpQuitReason = ReasonCloseOK
+	tagStateMu.Unlock()
 }
 
 func (c *Cluster) selectOneTargetMetaReplica(mp *MetaPartition, srcAddr string, selectTag string, storeMode proto.StoreMode) (string, error) {
@@ -473,13 +531,13 @@ func (c *Cluster) selectOneTargetMetaReplica(mp *MetaPartition, srcAddr string, 
 	}
 
 	_, peers, err := ns.getAvailMetaNodeHosts(param, storeMode)
-	if err == nil {
+	if err == nil && len(peers) > 0 {
 		return peers[0].Addr, nil
 	}
 
 	param.excludeNodeSets = append(param.excludeNodeSets, ns.ID)
 	_, peers, err = zone.getAvailNodeHosts(nodeType, param)
-	if err == nil {
+	if err == nil && len(peers) > 0 {
 		return peers[0].Addr, nil
 	}
 
@@ -568,7 +626,7 @@ func (c *Cluster) collectMpTagMismatches(vols map[string]*Vol) []*mpTagMismatch 
 	return mismatches
 }
 
-func (c *Cluster) selectMpTagMismatchGroup(mismatches []*mpTagMismatch) []*mpTagMismatch {
+func (c *Cluster) selectMpTagMismatchGroup(mismatches []*mpTagMismatch, failedKeys []string) []*mpTagMismatch {
 	if len(mismatches) == 0 {
 		return nil
 	}
@@ -578,7 +636,7 @@ func (c *Cluster) selectMpTagMismatchGroup(mismatches []*mpTagMismatch) []*mpTag
 			continue
 		}
 		key := item.tag + "|" + item.storeMode.Str()
-		if contains(MpFailedKeys, key) {
+		if contains(failedKeys, key) {
 			continue
 		}
 		grouped[key] = append(grouped[key], item)
@@ -747,20 +805,21 @@ func (vol *Vol) GetMpTagList(c *Cluster) []string {
 	return result
 }
 
-func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
+func (c *Cluster) getTagSummary(detail bool) (summary *proto.TagSummary, err error) {
+	dpStatus, mpStatus, lastDpReason, lastMpReason, lastDpTime, lastMpTime, failedKeys := snapshotTagState()
 	summary = &proto.TagSummary{
 		AutoFixTag:          c.cfg.AutoFixTag.Load(),
 		ClusterDpTag:        c.cfg.DefaultDpTag,
 		ClusterMpTag:        c.cfg.DefaultMpTag,
-		DpCheckThreadStatus: DpTagThreadStatus,
-		MpCheckThreadStatus: MpTagThreadStatus,
+		DpCheckThreadStatus: dpStatus,
+		MpCheckThreadStatus: mpStatus,
 		UnmatchDpSamples:    make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
 		UnmatchMpSamples:    make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
 		DataNodeTagCount:    make(map[string]int),
 		MetaNodeTagCount:    make(map[string]int),
 		DataNodeSpace:       make(map[string]*proto.DataNodeSpace),
 		MetaNodeSpace:       make(map[string]*proto.MetaNodeSpace),
-		FailedMpKeys:        make([]string, 0, len(MpFailedKeys)),
+		FailedMpKeys:        make([]string, 0, len(failedKeys)),
 	}
 
 	vols := c.allVols()
@@ -788,8 +847,11 @@ func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
 			}
 			summary.TotalMpNum++
 		}
-		summary.UnmatchDpNum += vol.countDpTagUnmatch(summary)
-		summary.UnmatchMpNum += vol.countMpTagUnmatch(summary)
+		if detail {
+			summary.UnmatchDpNum += vol.countDpTagUnmatch(summary)
+			summary.UnmatchMpNum += vol.countMpTagUnmatch(summary)
+		}
+
 		summary.DecommissionDpNum += vol.countTagDecommissionTask(c)
 	}
 	switch atomic.LoadUint32(&c.planStatus) {
@@ -805,12 +867,23 @@ func (c *Cluster) getTagSummary() (summary *proto.TagSummary, err error) {
 
 	summary.MpDecommissionNum = c.GetMetaPartitionDecommissionCount(proto.TagDecommission)
 
+	if !detail {
+		return summary, nil
+	}
+
 	c.collectNodeSpaceInfo(summary)
-	summary.FailedMpKeys = append(summary.FailedMpKeys, MpFailedKeys...)
-	summary.LastDpQuitReason = LastDpQuitReason
-	summary.LastMpQuitReason = LastMpQuitReason
-	summary.LastDpThreadTime = LastDpThreadTime
-	summary.LastMpThreadTime = LastMpThreadTime
+
+	summary.FailedMpKeys = append(summary.FailedMpKeys, failedKeys...)
+	summary.LastDpQuitReason = lastDpReason
+	summary.LastMpQuitReason = lastMpReason
+	if !lastDpTime.IsZero() {
+		last := lastDpTime
+		summary.LastDpThreadTime = &last
+	}
+	if !lastMpTime.IsZero() {
+		last := lastMpTime
+		summary.LastMpThreadTime = &last
+	}
 
 	return summary, nil
 }

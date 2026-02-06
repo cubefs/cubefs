@@ -203,7 +203,7 @@ const (
 	CliFlagDpLimitSsdFactor             = "dpLimitSsdFactor"
 	CliFlagDpLimitHddBaseCount          = "dpLimitHddBaseCount"
 	CliFlagDpLimitHddFactor             = "dpLimitHddFactor"
-	CliFlagAutoFixTag                   = "autoFixTag"
+	CliFlagAutoFixTag                   = "autoMigrateByTag"
 	CliFlagDefaultDpTag                 = "defaultDpTag"
 	CliFlagDefaultMpTag                 = "defaultMpTag"
 	CliFlagDefaultPoolId                = "defaultPoolId"
