@@ -80,6 +80,10 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 				return err
 			}
 			sort.SliceStable(dataNodes, func(i, j int) bool {
+				// Sort by zone name first, then by ID
+				if dataNodes[i].ZoneName != dataNodes[j].ZoneName {
+					return dataNodes[i].ZoneName < dataNodes[j].ZoneName
+				}
 				return dataNodes[i].ID < dataNodes[j].ID
 			})
 			stdoutln("[Data nodes]")

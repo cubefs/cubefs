@@ -22,6 +22,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -875,9 +876,15 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq, m *Server) (err
 		req.volType = proto.VolumeTypeCold
 	}
 
+	// Use a map to deduplicate StorageClass
+	storageClassMap := make(map[uint32]bool)
 	for _, poolId := range req.allowedPools {
 		pool, _ := m.cluster.getStoragePool(poolId)
-		req.allowedStorageClass = append(req.allowedStorageClass, uint32(pool.StorageClass))
+		storageClass := uint32(pool.StorageClass)
+		if !storageClassMap[storageClass] {
+			storageClassMap[storageClass] = true
+			req.allowedStorageClass = append(req.allowedStorageClass, storageClass)
+		}
 	}
 
 	followerRead, followerExist, err := extractFollowerRead(r)
@@ -2803,10 +2810,27 @@ func parseRequestToCreateStoragePool(r *http.Request) (poolInfo *proto.StoragePo
 			return nil, fmt.Errorf("invalid pool id: %v", err)
 		}
 		poolInfo.Id = uint8(id)
+		// Validate pool ID range: 1-255
+		if poolInfo.Id == 0 || poolInfo.Id > 255 {
+			return nil, fmt.Errorf("pool id must be between 1 and 255, got %d", poolInfo.Id)
+		}
 	}
 
 	// Parse pool name
 	poolInfo.Name = r.FormValue(nameKey)
+	// Validate pool name: only letters and numbers, max 32 characters
+	if poolInfo.Name != "" {
+		if len(poolInfo.Name) > 32 {
+			return nil, fmt.Errorf("pool name must not exceed 32 characters, got %d", len(poolInfo.Name))
+		}
+		matched, err := regexp.MatchString("^[a-zA-Z0-9]+$", poolInfo.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate pool name: %v", err)
+		}
+		if !matched {
+			return nil, fmt.Errorf("pool name must contain only letters and numbers, got: %s", poolInfo.Name)
+		}
+	}
 
 	// Parse storage class
 	if scStr := r.FormValue(poolStorageClassKey); scStr != "" {
@@ -2859,6 +2883,19 @@ func parseRequestToUpdateStoragePool(r *http.Request) (poolId uint8, poolInfo *p
 
 	// Parse pool name (optional)
 	poolInfo.Name = r.FormValue(nameKey)
+	// Validate pool name: only letters and numbers, max 32 characters
+	if poolInfo.Name != "" {
+		if len(poolInfo.Name) > 32 {
+			return 0, nil, fmt.Errorf("pool name must not exceed 32 characters, got %d", len(poolInfo.Name))
+		}
+		matched, err := regexp.MatchString("^[a-zA-Z0-9]+$", poolInfo.Name)
+		if err != nil {
+			return 0, nil, fmt.Errorf("failed to validate pool name: %v", err)
+		}
+		if !matched {
+			return 0, nil, fmt.Errorf("pool name must contain only letters and numbers, got: %s", poolInfo.Name)
+		}
+	}
 
 	// Parse CId (EC cluster ID, optional)
 	if cidStr := r.FormValue(poolCIdKey); cidStr != "" {

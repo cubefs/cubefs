@@ -526,11 +526,6 @@ func formatVerInfoTableRow(verInfo *proto.VolVersionInfo) string {
 		verInfo.Ver, time.UnixMicro(int64(verInfo.Ver)).Local().Format(time.RFC1123), verInfo.Status, "")
 }
 
-var (
-	dataPartitionTablePattern     = "%-8v    %-8v    %-10v    %-10v     %-10v     %-8v     %-18v    %-18v"
-	dataPartitionListTablePattern = "%-8v    %-16v    %-8v    %-12v    %-10v    %-8v    %-18v"
-)
-
 // formatDataPartitionTableWithAdaptiveWidth formats data partition table with adaptive column widths
 func formatDataPartitionTableWithAdaptiveWidth(partitions []*proto.DataPartitionResponse, poolNameMap map[uint8]string) string {
 	if len(partitions) == 0 {

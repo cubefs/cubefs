@@ -2188,6 +2188,7 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 	for _, stat := range statByMigPoolMap {
 		migratePoolToSlice = append(migratePoolToSlice, stat)
 	}
+	mp.statByMigratePool = migratePoolToSlice
 
 	log.LogDebugf("[updateSize] update mp(%d) size(%d) success, inodeCount(%d), dentryCount(%d), "+
 		"migrateInodeCount(%v) migrateSize(%v)",

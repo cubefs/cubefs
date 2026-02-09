@@ -83,9 +83,10 @@ func newPoolInfoCmd(client *sdk.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				poolId uint8
-				pool   *proto.StoragePoolInfo
-				err    error
+				poolId    uint8
+				pool      *proto.StoragePoolInfo
+				dataNodes []proto.NodeView
+				err       error
 			)
 			defer func() {
 				errout(err)
@@ -99,8 +100,19 @@ func newPoolInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			if pool, err = client.AdminAPI().GetStoragePool(poolId); err != nil {
 				return
 			}
+			// Get datanode list for replica storage pools
+			if proto.IsStorageClassReplica(uint32(pool.StorageClass)) {
+				if allDataNodes, err := client.AdminAPI().GetClusterDataNodes(); err == nil {
+					// Filter datanodes by poolId
+					for _, node := range allDataNodes {
+						if node.PoolId == poolId {
+							dataNodes = append(dataNodes, node)
+						}
+					}
+				}
+			}
 			stdoutln("[Storage Pool Info]")
-			stdoutln(formatPoolViewDetail(pool))
+			stdoutln(formatPoolViewDetail(pool, dataNodes))
 		},
 	}
 	return cmd
@@ -133,7 +145,7 @@ func formatPoolViewTableRow(pool *proto.StoragePoolInfo) string {
 }
 
 // formatPoolViewDetail returns detailed information of a pool
-func formatPoolViewDetail(pool *proto.StoragePoolInfo) string {
+func formatPoolViewDetail(pool *proto.StoragePoolInfo, dataNodes []proto.NodeView) string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID           : %v\n", pool.Id))
 	sb.WriteString(fmt.Sprintf("  Name         : %v\n", pool.Name))
@@ -147,6 +159,35 @@ func formatPoolViewDetail(pool *proto.StoragePoolInfo) string {
 	sb.WriteString(fmt.Sprintf("  Status       : %v\n", proto.PoolStatusString(pool.Status)))
 	sb.WriteString(fmt.Sprintf("  CreateTime   : %v\n", time.Unix(pool.CreateTime, 0).Format(time.RFC3339)))
 	sb.WriteString(fmt.Sprintf("  UpdateTime   : %v\n", time.Unix(pool.UpdateTime, 0).Format(time.RFC3339)))
+
+	// Show datanode list for replica storage pools
+	if len(dataNodes) > 0 {
+		sb.WriteString(fmt.Sprintf("  DataNodes    : %d nodes\n", len(dataNodes)))
+		sb.WriteString(formatDataNodeList(dataNodes))
+	}
+
+	return sb.String()
+}
+
+// formatDataNodeList formats the datanode list for display
+func formatDataNodeList(dataNodes []proto.NodeView) string {
+	if len(dataNodes) == 0 {
+		return ""
+	}
+	sb := strings.Builder{}
+	sb.WriteString("\n    [Data Node List]\n")
+	// Table header
+	pattern := "    %-20v    %-10v    %-10v    %-15v    %-15v\n"
+	sb.WriteString(fmt.Sprintf(pattern, "ADDR", "ID", "STATUS", "ZONE", "NODESET_ID"))
+
+	// Table rows
+	for _, node := range dataNodes {
+		status := "Inactive"
+		if node.Status {
+			status = "Active"
+		}
+		sb.WriteString(fmt.Sprintf(pattern, node.Addr, node.ID, status, node.ZoneName, node.NodeSetID))
+	}
 	return sb.String()
 }
 
@@ -198,7 +239,7 @@ func newPoolCreateCmd(client *sdk.MasterClient) *cobra.Command {
 	cmd.Flags().Uint8Var(&poolId, "id", 0, "Pool ID (must be greater than 3)")
 	cmd.Flags().StringVar(&poolName, "name", "", "Pool name (required)")
 	cmd.Flags().Uint8Var(&storageClass, "storageClass", 0, "Storage class (1=ReplicaSSD, 2=ReplicaHDD, 3=BlobStore), cannot be 0")
-	cmd.Flags().IntVar(&cId, "cId", 0, "EC cluster ID (only for EC pool)")
+	// cmd.Flags().IntVar(&cId, "cId", 0, "EC cluster ID (only for EC pool)")
 	cmd.Flags().StringVar(&ecAddr, "ecAddr", "", "EC cluster address (only for EC pool)")
 	return cmd
 }
@@ -236,7 +277,7 @@ func newPoolUpdateCmd(client *sdk.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().Uint8Var(&poolId, "id", 0, "Pool ID (required)")
 	cmd.Flags().StringVar(&poolName, "name", "", "Pool name (optional)")
-	cmd.Flags().IntVar(&cId, "cId", 0, "EC cluster ID (optional, only for EC pool)")
-	cmd.Flags().StringVar(&ecAddr, "ecAddr", "", "EC cluster address (optional, only for EC pool)")
+	// cmd.Flags().IntVar(&cId, "cId", 0, "EC cluster ID (optional, only for EC pool)")
+	// cmd.Flags().StringVar(&ecAddr, "ecAddr", "", "EC cluster address (optional, only for EC pool)
 	return cmd
 }

@@ -215,6 +215,8 @@ type ClusterView struct {
 	DataNodes                                 []NodeView
 	StatOfStorageClass                        []*StatOfStorageClass
 	StatMigrateStorageClass                   []*StatOfStorageClass
+	StatOfPool                                []*StatOfStorageClass
+	StatMigratePool                           []*StatOfStorageClass
 	ForbidWriteOpOfProtoVer0                  bool
 	LegacyDataMediaType                       uint32
 	RaftPartitionCanUsingDifferentPortEnabled bool

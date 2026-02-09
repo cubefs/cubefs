@@ -74,6 +74,10 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			sort.SliceStable(metaNodes, func(i, j int) bool {
+				// Sort by zone name first, then by ID
+				if metaNodes[i].ZoneName != metaNodes[j].ZoneName {
+					return metaNodes[i].ZoneName < metaNodes[j].ZoneName
+				}
 				return metaNodes[i].ID < metaNodes[j].ID
 			})
 			stdout("[Meta nodes]\n")

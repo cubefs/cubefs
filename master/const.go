@@ -162,6 +162,7 @@ const (
 	mediaTypeKey                           = "mediaType"
 	allowedStorageClassKey                 = "allowedStorageClass"
 	volStorageClassKey                     = "volStorageClass"
+	volPoolKey                             = "volPool"
 	opLogDimensionKey                      = "opLogDimension"
 	volNameKey                             = "volName"
 	dpIdKey                                = "dpId"

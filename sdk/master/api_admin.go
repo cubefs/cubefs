@@ -56,9 +56,15 @@ func (api *AdminAPI) GetOpLog(dimension string, volName string, addr string, dpI
 }
 
 func (api *AdminAPI) GetCluster(volStorageClass bool) (cv *proto.ClusterView, err error) {
+	return api.GetClusterWithPool(volStorageClass, false)
+}
+
+func (api *AdminAPI) GetClusterWithPool(volStorageClass, volPool bool) (cv *proto.ClusterView, err error) {
 	cv = &proto.ClusterView{}
-	err = api.mc.requestWith(cv, newRequest(get, proto.AdminGetCluster).Header(api.h).
-		addParam("volStorageClass", strconv.FormatBool(volStorageClass)))
+	req := newRequest(get, proto.AdminGetCluster).Header(api.h).
+		addParam("volStorageClass", strconv.FormatBool(volStorageClass)).
+		addParam("volPool", strconv.FormatBool(volPool))
+	err = api.mc.requestWith(cv, req)
 	return
 }
 
@@ -183,12 +189,12 @@ func (api *AdminAPI) LoadDataPartition(volName string, partitionID uint64, clien
 	))
 }
 
-func (api *AdminAPI) CreateDataPartition(volName string, count int, clientIDKey string, mediaType uint32) (err error) {
+func (api *AdminAPI) CreateDataPartition(volName string, count int, clientIDKey string, poolId uint8) (err error) {
 	return api.mc.request(newRequest(get, proto.AdminCreateDataPartition).Header(api.h).Param(
 		anyParam{"name", volName},
 		anyParam{"count", count},
 		anyParam{"clientIDKey", clientIDKey},
-		anyParam{"mediaType", mediaType},
+		anyParam{"poolId", poolId},
 	))
 }
 

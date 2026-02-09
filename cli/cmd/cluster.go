@@ -89,6 +89,7 @@ const (
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 	var volStorageClass bool
+	var volPool bool
 	cmd := &cobra.Command{
 		Use:   CliOpInfo,
 		Short: cmdClusterInfoShort,
@@ -98,7 +99,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			var cn *proto.ClusterNodeInfo
 			var cp *proto.ClusterIP
 			var clusterPara map[string]string
-			if cv, err = client.AdminAPI().GetCluster(volStorageClass); err != nil {
+			if cv, err = client.AdminAPI().GetClusterWithPool(volStorageClass, volPool); err != nil {
 				errout(err)
 			}
 			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
@@ -156,9 +157,33 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 					stdout("%v\n", formatHybridCloudStorageTableRow(view))
 				}
 			}
+
+			if volPool {
+				// Get pool name map for display
+				var pools []*proto.StoragePoolInfo
+				poolNameMap := make(map[uint8]string)
+				if pools, err = client.AdminAPI().ListStoragePools(); err == nil {
+					for _, pool := range pools {
+						poolNameMap[pool.Id] = pool.Name
+					}
+				}
+
+				stdout("Usage by pool:\n")
+				stdout("%v\n", hybridCloudPoolTableHeader)
+				for _, view := range cv.StatOfPool {
+					stdout("%v\n", formatHybridCloudPoolTableRow(view, poolNameMap))
+				}
+
+				stdout("\nMigration Usage by pool:\n")
+				stdout("%v\n", hybridCloudPoolTableHeader)
+				for _, view := range cv.StatMigratePool {
+					stdout("%v\n", formatHybridCloudPoolTableRow(view, poolNameMap))
+				}
+			}
 		},
 	}
 	cmd.Flags().BoolVarP(&volStorageClass, "storage-class", "s", false, "Display hybrid cloud storage info")
+	cmd.Flags().BoolVarP(&volPool, "pool", "p", false, "Display cluster usage statistics by pool")
 	return cmd
 }
 

@@ -1007,6 +1007,7 @@ func (m *Server) getOpLog(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	var volStorageClass bool
+	var volPool bool
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetCluster))
 	defer func() {
@@ -1021,6 +1022,15 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	if value := r.FormValue(volStorageClassKey); value != "" {
 		var err error
 		volStorageClass, err = strconv.ParseBool(value)
+		if err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	if value := r.FormValue(volPoolKey); value != "" {
+		var err error
+		volPool, err = strconv.ParseBool(value)
 		if err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
@@ -1067,6 +1077,8 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		VolStatInfo:                               make([]*proto.VolStatInfo, 0),
 		StatOfStorageClass:                        make([]*proto.StatOfStorageClass, 0),
 		StatMigrateStorageClass:                   make([]*proto.StatOfStorageClass, 0),
+		StatOfPool:                                make([]*proto.StatOfStorageClass, 0),
+		StatMigratePool:                           make([]*proto.StatOfStorageClass, 0),
 		BadPartitionIDs:                           make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:                       make([]proto.BadPartitionView, 0),
 		ForbidWriteOpOfProtoVer0:                  m.cluster.cfg.forbidWriteOpOfProtoVer0,
@@ -1167,6 +1179,69 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 			return cv.StatMigrateStorageClass[i].StorageClass < cv.StatMigrateStorageClass[j].StorageClass
 		})
 
+	}
+
+	if volPool {
+		log.LogInfof("[getCluster] get pool stat")
+		poolStats := make(map[uint8]*proto.StatOfStorageClass)
+		migratePoolStats := make(map[uint8]*proto.StatOfStorageClass)
+		for _, name := range vols {
+			vol, err := m.cluster.getVol(name)
+			if err != nil {
+				log.LogErrorf("[getCluster] cannot get vol(%v) err(%v)", name, err)
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+
+			volPoolStats := vol.StatByPool
+			for _, stat := range volPoolStats {
+				_, ok := poolStats[stat.PoolId]
+				if !ok {
+					// NOTE: copy a new stat
+					poolStats[stat.PoolId] = &proto.StatOfStorageClass{
+						PoolId:        stat.PoolId,
+						StorageClass:  stat.StorageClass,
+						InodeCount:    stat.InodeCount,
+						UsedSizeBytes: stat.UsedSizeBytes,
+					}
+					continue
+				}
+				total := poolStats[stat.PoolId]
+				total.InodeCount += stat.InodeCount
+				total.UsedSizeBytes += stat.UsedSizeBytes
+			}
+
+			volMigratePoolStats := vol.StatByMigratePool
+			for _, migrateStat := range volMigratePoolStats {
+				_, ok := migratePoolStats[migrateStat.PoolId]
+				if !ok {
+					migratePoolStats[migrateStat.PoolId] = &proto.StatOfStorageClass{
+						PoolId:        migrateStat.PoolId,
+						StorageClass:  migrateStat.StorageClass,
+						InodeCount:    migrateStat.InodeCount,
+						UsedSizeBytes: migrateStat.UsedSizeBytes,
+					}
+					continue
+				}
+				migrateTotal := migratePoolStats[migrateStat.PoolId]
+				migrateTotal.InodeCount += migrateStat.InodeCount
+				migrateTotal.UsedSizeBytes += migrateStat.UsedSizeBytes
+			}
+		}
+
+		for _, stat := range poolStats {
+			cv.StatOfPool = append(cv.StatOfPool, stat)
+		}
+		sort.Slice(cv.StatOfPool, func(i, j int) bool {
+			return cv.StatOfPool[i].PoolId < cv.StatOfPool[j].PoolId
+		})
+
+		for _, migStat := range migratePoolStats {
+			cv.StatMigratePool = append(cv.StatMigratePool, migStat)
+		}
+		sort.Slice(cv.StatMigratePool, func(i, j int) bool {
+			return cv.StatMigratePool[i].PoolId < cv.StatMigratePool[j].PoolId
+		})
 	}
 
 	cv.BadPartitionIDs = m.cluster.getBadDataPartitionsView()
@@ -3208,7 +3283,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check whether can close forbidWriteOpOfProtoVer0
-	if req.forbidWriteOpOfProtoVer0 != vol.ForbidWriteOpOfProtoVer0.Load() && !req.forbidWriteOpOfProtoVer0 && len(vol.allowedStorageClass) > 1 {
+	if req.forbidWriteOpOfProtoVer0 != vol.ForbidWriteOpOfProtoVer0.Load() && !req.forbidWriteOpOfProtoVer0 && len(vol.allowedPools) > 1 {
 		err = fmt.Errorf("can't update forbidWriteOpOfProtoVer0 to false")
 		log.LogErrorf("updateVol: there are two allowed storage class, can't close forbidWriteOpOfProtoVer0. name %s, allowed %v", vol.Name, vol.allowedStorageClass)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3467,9 +3542,8 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 
 	if len(req.allowedPools) > 1 {
 		if !req.crossZone {
-			err = fmt.Errorf("more than one replica pool in request allowedPools, but crossZone is false")
-			log.LogErrorf("[checkStorageClassForCreateVol] vol(%v) err: %v", req.name, err.Error())
-			return
+			req.crossZone = true
+			log.LogWarnf("[checkStorageClassForCreateVol] vol(%v) more than one replica pool in request allowedPools, but crossZone is false, set crossZone to true", req.name)
 		}
 
 		if m.cluster.FaultDomain {
@@ -10414,9 +10488,16 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !vol.crossZone {
-		err = fmt.Errorf("vol(%v) is not cross zone, not support add pool", name)
-		log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
+	// if !vol.crossZone {
+	// 	err = fmt.Errorf("vol(%v) is not cross zone, not support add pool", name)
+	// 	log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
+	// 	sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	// 	return
+	// }
+
+	if !vol.AllPartitionForbidVer0() {
+		err = fmt.Errorf("there is still some dp or mp not forbidden write")
+		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -10441,6 +10522,11 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(newArgs.allowedPools, func(i, j int) bool {
 		return newArgs.allowedPools[i] < newArgs.allowedPools[j]
 	})
+
+	if !vol.crossZone {
+		newArgs.crossZone = true
+		log.LogWarnf("[volAddPool] vol(%v) is not cross zone, set crossZone to true", name)
+	}
 
 	availablePools := m.cluster.getAvailablePools(vol.zoneName)
 	if _, ok := availablePools[poolId]; !ok {

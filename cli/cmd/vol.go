@@ -1228,6 +1228,10 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					poolNameMap = make(map[uint8]string)
 				}
 				sort.SliceStable(view.DataPartitions, func(i, j int) bool {
+					// Sort by pool ID first, then by partition ID
+					if view.DataPartitions[i].PoolId != view.DataPartitions[j].PoolId {
+						return view.DataPartitions[i].PoolId < view.DataPartitions[j].PoolId
+					}
 					return view.DataPartitions[i].PartitionID < view.DataPartitions[j].PartitionID
 				})
 				stdout("Data partitions:\n")
@@ -1401,7 +1405,7 @@ const (
 
 func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var mediaType uint32
+	var poolId uint8
 
 	cmd := &cobra.Command{
 		Use:   cmdVolAddDPCmdUse,
@@ -1422,7 +1426,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
-			if err = client.AdminAPI().CreateDataPartition(volume, int(count), clientIDKey, mediaType); err != nil {
+			if err = client.AdminAPI().CreateDataPartition(volume, int(count), clientIDKey, poolId); err != nil {
 				return
 			}
 			stdout("Add dp success.\n")
@@ -1435,7 +1439,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
-	cmd.Flags().Uint32Var(&mediaType, CliFlagMediaType, proto.MediaType_Unspecified, "Specify the mediaType of datapartition, [1(SSD) | 2(HDD)]")
+	cmd.Flags().Uint8Var(&poolId, "poolId", 0, "Specify the pool ID of datapartition")
 	return cmd
 }
 
