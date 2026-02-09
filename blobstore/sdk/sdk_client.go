@@ -17,6 +17,7 @@ package sdk
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
@@ -49,6 +51,8 @@ const (
 	limitNameGet    = "get"
 	limitNamePut    = "put"
 	limitNameDelete = "delete"
+
+	moduleName = "sdk"
 )
 
 type noopBody struct{}
@@ -60,6 +64,7 @@ func (rc noopBody) Close() error                     { return nil }
 
 type Config struct {
 	stream.StreamConfig `json:"stream"`
+	AuditLog            auditlog.Config `json:"auditlog"`
 
 	Limit           stream.LimitConfig `json:"limit"`
 	MaxSizePutOnce  int64              `json:"max_size_put_once"`
@@ -77,14 +82,39 @@ type sdkHandler struct {
 	limiter stream.Limiter
 	closer  closer.Closer
 	memPool *resourcepool.MemPool
+
+	alHandler auditlog.AuditHandler
+	alCloser  auditlog.LogCloser
 }
 
-func New(conf *Config) (acapi.Client, error) {
+type SDK interface {
+	acapi.Client
+	Close()
+}
+
+func New(conf *Config) (SDK, error) {
 	fixConfig(conf)
 	// add region magic checksum to the secret keys
 	security.InitWithRegionMagic(conf.StreamConfig.ClusterConfig.RegionMagic)
 
 	cl := closer.New()
+
+	var err error
+	oh := auditlog.NoopAuditHandler
+	lc := auditlog.NoopLogCloser
+
+	if conf.AuditLog.LogDir != "" {
+		oh, lc, err = auditlog.Open(moduleName, &conf.AuditLog)
+		if err != nil {
+			log.Errorf("failed to initialize audit log: %v", err)
+			if lc != nil {
+				lc.Close()
+			}
+
+			return nil, err
+		}
+	}
+
 	h, err := stream.NewStreamHandler(&conf.StreamConfig, cl.Done())
 	if err != nil {
 		log.Errorf("new stream handler failed, err: %+v", err)
@@ -107,10 +137,37 @@ func New(conf *Config) (acapi.Client, error) {
 		memPool: admin.MemPool,
 		limiter: stream.NewLimiter(conf.Limit),
 		closer:  cl,
+
+		alHandler: oh,
+		alCloser:  lc,
 	}, nil
 }
 
-func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadCloser, error) {
+func (s *sdkHandler) Close() {
+	s.closer.Close()
+	s.alCloser.Close()
+}
+
+func requestParams(args any) string {
+	data, err := json.Marshal(args)
+	if err != nil {
+		return fmt.Sprintf(`{"error":"failed to marshal args: %v"}`, err)
+	}
+	return string(data)
+}
+
+func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (body io.ReadCloser, err error) {
+	s.alHandler.Audit(ctx, func(ctx context.Context, log *auditlog.AuditLog) error {
+		log.Method = "Get"
+		log.ReqParams = requestParams(args)
+
+		body, err = s._get(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _get(ctx context.Context, args *acapi.GetArgs) (io.ReadCloser, error) {
 	if !args.IsValid() {
 		return nil, errcode.ErrIllegalArguments
 	}
@@ -139,6 +196,17 @@ func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadClose
 }
 
 func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failedLocations []proto.Location, err error) {
+	s.alHandler.Audit(ctx, func(ctx context.Context, log *auditlog.AuditLog) error {
+		log.Method = "Delete"
+		log.ReqParams = requestParams(args)
+
+		failedLocations, err = s._delete(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _delete(ctx context.Context, args *acapi.DeleteArgs) (failedLocations []proto.Location, err error) {
 	if !args.IsValid() {
 		return nil, errcode.ErrIllegalArguments
 	}
@@ -180,6 +248,17 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 }
 
 func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Location, hm acapi.HashSumMap, err error) {
+	s.alHandler.Audit(ctx, func(ctx context.Context, log *auditlog.AuditLog) error {
+		log.Method = "Put"
+		log.ReqParams = requestParams(args)
+
+		lc, hm, err = s._put(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _put(ctx context.Context, args *acapi.PutArgs) (lc proto.Location, hm acapi.HashSumMap, err error) {
 	if args == nil {
 		return proto.Location{}, nil, errcode.ErrIllegalArguments
 	}
@@ -225,7 +304,18 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 	return s.putParts(ctx, args)
 }
 
-func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (shardnode.ListBlobRet, error) {
+func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (ret shardnode.ListBlobRet, err error) {
+	s.alHandler.Audit(ctx, func(ctx context.Context, log *auditlog.AuditLog) error {
+		log.Method = "ListBlob"
+		log.ReqParams = requestParams(args)
+
+		ret, err = s._listBlob(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _listBlob(ctx context.Context, args *acapi.ListBlobArgs) (shardnode.ListBlobRet, error) {
 	if !args.IsValid() {
 		return shardnode.ListBlobRet{}, errcode.ErrIllegalArguments
 	}
@@ -240,7 +330,16 @@ func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (sh
 	return s.handler.ListBlob(ctx, args)
 }
 
-func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error {
+func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) (err error) {
+	return s.alHandler.Audit(ctx, func(ctx context.Context, log *auditlog.AuditLog) error {
+		log.Method = "DeleteBlob"
+		log.ReqParams = requestParams(args)
+
+		return s._deleteBlob(ctx, args)
+	})
+}
+
+func (s *sdkHandler) _deleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error {
 	if !args.IsValid() {
 		return errcode.ErrIllegalArguments
 	}
@@ -252,7 +351,18 @@ func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) er
 	return s.handler.DeleteBlob(ctx, args)
 }
 
-func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.ReadCloser, error) {
+func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (body io.ReadCloser, err error) {
+	s.alHandler.Audit(ctx, func(ctx context.Context, log *auditlog.AuditLog) error {
+		log.Method = "GetBlob"
+		log.ReqParams = requestParams(args)
+
+		body, err = s._getBlob(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _getBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.ReadCloser, error) {
 	if !args.IsValid() {
 		return nil, errcode.ErrIllegalArguments
 	}
@@ -277,6 +387,17 @@ func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.R
 }
 
 func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid proto.ClusterID, hashes acapi.HashSumMap, err error) {
+	s.alHandler.Audit(ctx, func(ctx context.Context, log *auditlog.AuditLog) error {
+		log.Method = "PutBlob"
+		log.ReqParams = requestParams(args)
+
+		cid, hashes, err = s._putBlob(ctx, args)
+		return err
+	})
+	return
+}
+
+func (s *sdkHandler) _putBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid proto.ClusterID, hashes acapi.HashSumMap, err error) {
 	if !args.IsValid() {
 		return 0, nil, errcode.ErrIllegalArguments
 	}
