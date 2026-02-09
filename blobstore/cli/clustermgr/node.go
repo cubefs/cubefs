@@ -17,6 +17,7 @@ package clustermgr
 import (
 	"context"
 	"errors"
+	"net"
 	"sort"
 	"strings"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 func addCmdNode(cmd *grumble.Command) {
@@ -45,9 +47,10 @@ func addCmdNode(cmd *grumble.Command) {
 		Help: "suggest which nodes can be safely migrated together (EC N+margin alive)",
 		LongHelp: `Suggest which nodes can be safely migrated together.
 
-Node selection (priority: --nodes > --idc > auto-detect all):
+Node selection (priority: --nodes > --idc + --rack > auto-detect all):
   - --nodes: analyze specific nodes
-  - --idc: analyze all nodes in the specified IDC
+  - --idc: analyze all nodes in the specified IDC (optional)
+  - --rack: analyze all nodes in the specified Rack (optional)
   - neither: auto-detect all nodes in cluster
 
 If output nodes match input nodes exactly, it means all input nodes can be migrated safely.
@@ -69,8 +72,9 @@ Examples:
 			flags.VerboseRegister(f)
 			clusterFlags(f)
 			f.IntL("max", 0, "max number of nodes to migrate together (0=find maximum)")
-			f.StringL("nodes", "", "comma-separated node hosts to analyze")
+			f.StringL("nodes", "", "comma-separated node hosts to analyze, ip -> http://ip:8889")
 			f.StringL("idc", "", "analyze all nodes in the specified IDC")
+			f.StringL("rack", "", "analyze all nodes in the specified Rack")
 			f.IntL("margin", 1, "safety margin above N (0=exact N, 1=N+1, 2=N+2, etc.)")
 			f.BoolL("move_task", false, "auto create migrate tasks for blocking volume")
 			f.BoolL("force", false, "auto create migrate tasks above 1000")
@@ -105,6 +109,7 @@ func cmdMigrate(c *grumble.Context) error {
 	maxNodes := c.Flags.Int("max")
 	nodesArg := c.Flags.String("nodes")
 	idcArg := c.Flags.String("idc")
+	rackArg := c.Flags.String("rack")
 	margin := c.Flags.Int("margin")
 	moveTask := c.Flags.Bool("move_task")
 	force := c.Flags.Bool("force")
@@ -123,9 +128,32 @@ func cmdMigrate(c *grumble.Context) error {
 	var inputNodes []string
 	if nodesArg != "" {
 		for _, host := range strings.Split(nodesArg, ",") {
-			if host = strings.TrimSpace(host); host != "" {
-				inputNodes = append(inputNodes, host)
+			host = strings.TrimSpace(host)
+			scheme := "http://"
+			if strings.HasPrefix(host, "https://") {
+				scheme = "https://"
 			}
+			host = strings.TrimPrefix(strings.TrimPrefix(host, "http://"), "https://")
+			if !strings.Contains(host, ":") {
+				host += ":8889"
+			}
+
+			ipStr, portStr, err := net.SplitHostPort(host)
+			if err != nil {
+				return err
+			}
+			if net.ParseIP(ipStr) == nil {
+				return fmt.Errorf("invalid ip %s", ipStr)
+			}
+			var port int
+			if err = util.String2Any(portStr, &port); err != nil {
+				return err
+			}
+			if port < 1 || port > 65535 {
+				return fmt.Errorf("invalid port %s", portStr)
+			}
+
+			inputNodes = append(inputNodes, scheme+host)
 		}
 	}
 
@@ -163,7 +191,8 @@ func cmdMigrate(c *grumble.Context) error {
 		fmt.Println("Fetching all nodes from cluster...")
 		listOptionArgs := &clustermgr.ListOptionArgs{
 			Idc:    idcArg,
-			Marker: proto.DiskID(0),
+			Rack:   rackArg,
+			Marker: 0,
 			Count:  100,
 		}
 		for {
