@@ -231,13 +231,21 @@ func (writer *asyncWriter) flushToFile() {
 				FileNameDateFormat) + RotatedExtension
 			if _, err := os.Lstat(oldFile); err != nil {
 				if err := writer.rename(oldFile); err == nil {
+					// Open new file first, then close old file after success to avoid file handle leaks
 					if fp, err := os.OpenFile(writer.fileName, FileOpt, 0o666); err == nil {
-						writer.file.Close()
+						oldFileHandle := writer.file
 						writer.file = fp
 						writer.logSize = 0
 						_ = os.Chmod(writer.fileName, 0o666)
+						// Close old file handle after new file is successfully opened
+						if oldFileHandle != nil {
+							oldFileHandle.Close()
+						}
 					} else {
 						syslog.Printf("log rotate: openFile %v error: %v", writer.fileName, err)
+						// New file open failed, old file handle remains valid
+						// Although the file has been renamed, the handle is still valid
+						// Subsequent writes may fail, but at least no file handle leak occurs
 					}
 				} else {
 					syslog.Printf("log rotate: rename %v error: %v ", oldFile, err)
@@ -248,8 +256,12 @@ func (writer *asyncWriter) flushToFile() {
 		}
 		writer.logSize += int64(flushLength)
 		// TODO Unhandled errors
-		if _, err := writer.file.Write(writer.flushTmp.Bytes()); err != nil {
-			syslog.Printf("log write to %v error: %v", writer.fileName, err)
+		if writer.file != nil {
+			if _, err := writer.file.Write(writer.flushTmp.Bytes()); err != nil {
+				syslog.Printf("log write to %v error: %v", writer.fileName, err)
+			}
+		} else {
+			syslog.Printf("log write error: file handle is nil for %v", writer.fileName)
 		}
 	}
 
@@ -335,6 +347,8 @@ type Log struct {
 	rotate         *LogRotate
 	lastRolledTime time.Time
 	printStderr    int32
+	stopRotation   chan struct{}  // channel to stop log rotation goroutine
+	rotationWg     sync.WaitGroup // wait for log rotation goroutine to exit
 }
 
 var (
@@ -364,6 +378,10 @@ func (l *Log) outputStderr(calldepth int, s string) {
 
 // InitLog initializes the log.
 func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLimitRatio float64) (*Log, error) {
+	// If an old log object exists, close it first to avoid resource leaks
+	if gLog != nil {
+		gLog.Close()
+	}
 	l := new(Log)
 	l.printStderr = 1
 	if dir != "" {
@@ -414,13 +432,18 @@ func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLim
 	}
 
 	l.rotate = rotate
+	l.stopRotation = make(chan struct{})
 	err := l.initLog(dir, module, level)
 	if err != nil {
 		return nil, err
 	}
 	l.lastRolledTime = time.Now()
 	if dir != "" {
-		go l.checkLogRotation(dir, module)
+		l.rotationWg.Add(1)
+		go func() {
+			defer l.rotationWg.Done()
+			l.checkLogRotation(dir, module)
+		}()
 	}
 
 	gLog = l
@@ -513,12 +536,43 @@ func (l *Log) Flush() {
 		l.readLogger,
 		l.updateLogger,
 		l.criticalLogger,
+		l.qosLogger,
 	}
 	for _, logger := range loggers {
 		if logger != nil {
 			logger.Flush()
 		}
 	}
+}
+
+// Close closes the log and releases all resources.
+func (l *Log) Close() error {
+	if l == nil {
+		return nil
+	}
+	// Stop log rotation goroutine
+	if l.stopRotation != nil {
+		close(l.stopRotation)
+		l.rotationWg.Wait()
+	}
+	// Close all log writers
+	loggers := []*LogObject{
+		l.debugLogger,
+		l.infoLogger,
+		l.warnLogger,
+		l.errorLogger,
+		l.readLogger,
+		l.updateLogger,
+		l.criticalLogger,
+		l.qosLogger,
+	}
+	for _, logger := range loggers {
+		if logger != nil && logger.object != nil {
+			// Close async writer, which stops the goroutine and closes the file handle
+			logger.object.Close()
+		}
+	}
+	return nil
 }
 
 const (
@@ -849,42 +903,43 @@ func LogDisableStderrOutput() {
 
 func (l *Log) checkLogRotation(logDir, module string) {
 	var needDelFiles RotatedFile
+	ticker := time.NewTicker(DefaultRotateInterval)
+	defer ticker.Stop()
 	for {
 		needDelFiles = needDelFiles[:0]
 		// check disk space
 		fs := syscall.Statfs_t{}
 		if err := syscall.Statfs(logDir, &fs); err != nil {
 			LogErrorf("check disk space: %s", err.Error())
-			time.Sleep(DefaultRotateInterval)
-			continue
-		}
-		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
-		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
-		if diskSpaceLeft <= 0 {
-			LogDebugf("logLeftSpaceLimit has been reached, need to clear %v Mb of Space", (-diskSpaceLeft)/1024/1024)
-		}
-		err := l.removeLogFile(logDir, diskSpaceLeft, module)
-		if err != nil {
-			time.Sleep(DefaultRotateInterval)
-			continue
-		}
-		// check if it is time to rotate
-		now := time.Now()
-		if now.Day() == l.lastRolledTime.Day() {
-			time.Sleep(DefaultRotateInterval)
-			continue
-		}
+		} else {
+			diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
+			diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
+			if diskSpaceLeft <= 0 {
+				LogDebugf("logLeftSpaceLimit has been reached, need to clear %v Mb of Space", (-diskSpaceLeft)/1024/1024)
+			}
+			err := l.removeLogFile(logDir, diskSpaceLeft, module)
+			if err == nil {
+				// check if it is time to rotate
+				now := time.Now()
+				if now.Day() != l.lastRolledTime.Day() {
+					// rotate log files
+					l.debugLogger.SetRotation()
+					l.infoLogger.SetRotation()
+					l.warnLogger.SetRotation()
+					l.errorLogger.SetRotation()
+					l.readLogger.SetRotation()
+					l.updateLogger.SetRotation()
+					l.criticalLogger.SetRotation()
 
-		// rotate log files
-		l.debugLogger.SetRotation()
-		l.infoLogger.SetRotation()
-		l.warnLogger.SetRotation()
-		l.errorLogger.SetRotation()
-		l.readLogger.SetRotation()
-		l.updateLogger.SetRotation()
-		l.criticalLogger.SetRotation()
-
-		l.lastRolledTime = now
+					l.lastRolledTime = now
+				}
+			}
+		}
+		select {
+		case <-l.stopRotation:
+			return
+		case <-ticker.C:
+		}
 	}
 }
 
