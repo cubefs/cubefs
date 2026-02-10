@@ -798,7 +798,6 @@ func (f *FlashNode) opFlashNodeScan(conn net.Conn, p *proto.Packet) (err error) 
 
 func (f *FlashNode) opFlashNodeCacheVols(conn net.Conn, p *proto.Packet) (err error) {
 	data := p.Data
-	responseAckOKToMaster(conn, p)
 	req := &proto.FlashNodeCacheVolsRequest{}
 	adminTask := &proto.AdminTask{
 		Request: req,
@@ -807,13 +806,32 @@ func (f *FlashNode) opFlashNodeCacheVols(conn net.Conn, p *proto.Packet) (err er
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
 		log.LogErrorf("decode FlashNodeCacheVolsRequest error: %s", err.Error())
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		if e := p.WriteToConn(conn); e != nil {
+			log.LogErrorf("opFlashNodeCacheVols write error response: %s", e.Error())
+		}
 		return err
 	}
 	resp := &proto.FlashNodeCacheVolsResponse{
 		VolCacheSizeMap: f.cacheEngine.GetVolCacheSizeMap(),
 	}
 	adminTask.Response = resp
-	f.respondToMaster(adminTask)
+	// Marshal the complete AdminTask (including Response) to packet.Data
+	body, err := json.Marshal(adminTask)
+	if err != nil {
+		log.LogErrorf("marshal FlashNodeCacheVolsResponse error: %s", err.Error())
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		if e := p.WriteToConn(conn); e != nil {
+			log.LogErrorf("opFlashNodeCacheVols write error response: %s", e.Error())
+		}
+		return err
+	}
+	p.PacketOkWithBody(body)
+	if err = p.WriteToConn(conn); err != nil {
+		log.LogErrorf("opFlashNodeCacheVols write response: %s", err.Error())
+		return err
+	}
+	log.LogDebugf("opFlashNodeCacheVols resp(%v)", resp)
 	return
 }
 
