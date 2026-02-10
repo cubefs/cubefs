@@ -15,6 +15,7 @@
 package master
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -670,10 +671,6 @@ func (c *Cluster) handleFlashNodeTaskResponse(nodeAddr string, task *proto.Admin
 			response.TopoName = proto.DefaultTopoName
 		}
 		err = c.handleFlashNodeHeartbeatResp(task.OperatorAddr, response)
-	case proto.OpFlashNodeCacheVols:
-		// Response is already unmarshaled, no specific handling needed here
-		response := task.Response.(*proto.FlashNodeCacheVolsResponse)
-		_ = response // Response will be collected in queryCacheVols
 	default:
 		err = fmt.Errorf(fmt.Sprintf("flash unknown operate code %v", task.OpCode))
 		goto errHandler
@@ -971,6 +968,7 @@ func (c *Cluster) queryCacheVols(topoName string) (map[string]int64, error) {
 
 	flashNodes := flashTopo.GetAllActiveFlashNodes()
 	if len(flashNodes) == 0 {
+		log.LogWarnf("action[queryCacheVols] no available flash nodes ")
 		return make(map[string]int64), nil
 	}
 
@@ -1006,12 +1004,31 @@ func (c *Cluster) queryCacheVols(topoName string) (map[string]int64, error) {
 				log.LogWarnf("action[queryCacheVols] task to %v failed with code %v", t.OperatorAddr, packet.ResultCode)
 				return
 			}
-			// Unmarshal response
-			if err = unmarshalTaskResponse(t); err != nil {
-				log.LogWarnf("action[queryCacheVols] unmarshalTaskResponse from %v failed: %v", t.OperatorAddr, err)
+			// Unmarshal AdminTask from packet.Data, then parse Response field separately
+			var adminTaskMap map[string]interface{}
+			decode := json.NewDecoder(bytes.NewBuffer(packet.Data))
+			decode.UseNumber()
+			if err = decode.Decode(&adminTaskMap); err != nil {
+				log.LogWarnf("action[queryCacheVols] decode AdminTask from %v failed: %v", t.OperatorAddr, err)
 				return
 			}
-			response := t.Response.(*proto.FlashNodeCacheVolsResponse)
+			// Parse Response field as FlashNodeCacheVolsResponse
+			responseData, ok := adminTaskMap["Response"]
+			if !ok {
+				log.LogWarnf("action[queryCacheVols] Response field not found from %v", t.OperatorAddr)
+				return
+			}
+			responseBytes, err := json.Marshal(responseData)
+			if err != nil {
+				log.LogWarnf("action[queryCacheVols] marshal Response from %v failed: %v", t.OperatorAddr, err)
+				return
+			}
+			response := &proto.FlashNodeCacheVolsResponse{}
+			if err = json.Unmarshal(responseBytes, response); err != nil {
+				log.LogWarnf("action[queryCacheVols] unmarshal FlashNodeCacheVolsResponse from %v failed: %v", t.OperatorAddr, err)
+				return
+			}
+			log.LogDebugf("action[queryCacheVols] response %v from %v ", response, t.OperatorAddr)
 			mu.Lock()
 			for vol, cacheSize := range response.VolCacheSizeMap {
 				resultMap[vol] += cacheSize

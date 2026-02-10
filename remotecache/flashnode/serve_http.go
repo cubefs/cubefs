@@ -47,6 +47,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/setWarmupMetaTotalToken", f.handleSetWarmupMetaTotalToken)
 	http.HandleFunc("/addWarmupPath", f.handleAddWarmupPath)
 	http.HandleFunc("/setDiskCacheCapacity", f.handleSetDiskCacheCapacity)
+	http.HandleFunc("/queryCacheVols", f.handleQueryCacheVols)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -544,4 +545,9 @@ func (f *FlashNode) handleSetDiskCacheCapacity(w http.ResponseWriter, r *http.Re
 		return
 	}
 	replyOK(w, r, nil)
+}
+
+func (f *FlashNode) handleQueryCacheVols(w http.ResponseWriter, r *http.Request) {
+	volCacheSizeMap := f.cacheEngine.GetVolCacheSizeMap()
+	replyOK(w, r, volCacheSizeMap)
 }
