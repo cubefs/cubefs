@@ -92,6 +92,12 @@ type cacheLoadFile struct {
 	sourceType string
 }
 
+// CacheVolInfo stores volume cache information
+type CacheVolInfo struct {
+	Count     uint32 // number of cache blocks for this volume
+	CacheSize int64  // total cache size for this volume
+}
+
 type lruCacheItem struct {
 	lruCache      LruCache
 	config        CacheConfig
@@ -138,7 +144,7 @@ type CacheEngine struct {
 	keyRateLimitThreshold int32
 	keyLimiterFlow        int64
 	reservedSpace         int64    // reserved disk space
-	volMap                sync.Map // volume -> struct{}{} (track volumes with cache)
+	volMap                sync.Map // volume -> *CacheVolInfo (track volumes with cache)
 }
 
 type (
@@ -333,12 +339,40 @@ func (c *CacheEngine) getCacheItem(key string) (*lruCacheItem, bool) {
 	return cacheItem, ok
 }
 
-func (c *CacheEngine) setCacheItem(key string, cacheItem *lruCacheItem, volName string) {
+func (c *CacheEngine) setCacheItem(key string, cacheItem *lruCacheItem, volName string, cacheSize int64) {
 	c.keyToDiskRWMu.Lock()
 	c.keyToDiskMap[key] = cacheItem
 	c.keyToDiskRWMu.Unlock()
 	if volName != "" {
-		c.volMap.LoadOrStore(volName, struct{}{})
+		c.incrementVolCounter(volName, cacheSize)
+	}
+}
+
+// incrementVolCounter increments the counter for a volume and updates cache size
+func (c *CacheEngine) incrementVolCounter(volume string, cacheSize int64) {
+	value, _ := c.volMap.LoadOrStore(volume, &CacheVolInfo{Count: 0, CacheSize: 0})
+	volInfo := value.(*CacheVolInfo)
+	atomic.AddUint32(&volInfo.Count, 1)
+	if cacheSize > 0 {
+		atomic.AddInt64(&volInfo.CacheSize, cacheSize)
+	}
+}
+
+// decrementVolCounter decrements the counter for a volume and updates cache size
+// If counter reaches 0, the volume is removed from volMap
+func (c *CacheEngine) decrementVolCounter(volume string, cacheSize int64) {
+	value, ok := c.volMap.Load(volume)
+	if !ok {
+		return
+	}
+	volInfo := value.(*CacheVolInfo)
+	newCount := atomic.AddUint32(&volInfo.Count, ^uint32(0)) // decrement by 1
+	if cacheSize > 0 {
+		atomic.AddInt64(&volInfo.CacheSize, -cacheSize)
+	}
+	// Remove from volMap only when counter reaches 0
+	if newCount == 0 {
+		c.volMap.Delete(volume)
 	}
 }
 
@@ -819,7 +853,7 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 		return
 	}
 	if volume != "" {
-		c.volMap.LoadOrStore(volume, struct{}{})
+		c.incrementVolCounter(volume, block.getAllocSize())
 	}
 	return
 }
@@ -894,7 +928,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		if !isPrepare {
 			cacheItem.lruCache.AddMisses()
 		}
-		c.setCacheItem(key, cacheItem, volume)
+		c.setCacheItem(key, cacheItem, volume, block.getAllocSize())
 	}
 
 	return
@@ -1067,7 +1101,8 @@ func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interfac
 		}
 		return true
 	})
-	c.volMap.LoadAndDelete(evictVol)
+	// Delete volume from volMap after all blocks are evicted
+	c.volMap.Delete(evictVol)
 	log.LogWarnf("action[EvictCacheByVolume] evict volume(%v) finish", evictVol)
 	return
 }
@@ -1085,6 +1120,7 @@ func (c *CacheEngine) EvictCacheAll() {
 	})
 	wg.Wait()
 	c.clearCacheItems()
+	// Clear all volumes from volMap
 	c.volMap.Range(func(key, value interface{}) bool {
 		c.volMap.Delete(key.(string))
 		return true
