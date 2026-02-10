@@ -80,6 +80,8 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 		err = f.opFlashNodeTaskCommand(conn, p)
 	case proto.OpApplyWarmupMetaToken:
 		err = f.opApplyWarmupMetaToken(conn, p)
+	case proto.OpFlashNodeCacheVols:
+		err = f.opFlashNodeCacheVols(conn, p)
 	default:
 		// compatibility for historical opcodes
 		switch p.Opcode {
@@ -791,6 +793,27 @@ func (f *FlashNode) opFlashNodeScan(conn net.Conn, p *proto.Packet) (err error) 
 	err = f.startTaskScan(adminTask)
 	f.respondToMaster(adminTask)
 
+	return
+}
+
+func (f *FlashNode) opFlashNodeCacheVols(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	responseAckOKToMaster(conn, p)
+	req := &proto.FlashNodeCacheVolsRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		log.LogErrorf("decode FlashNodeCacheVolsRequest error: %s", err.Error())
+		return err
+	}
+	resp := &proto.FlashNodeCacheVolsResponse{
+		VolCacheSizeMap: f.cacheEngine.GetVolCacheSizeMap(),
+	}
+	adminTask.Response = resp
+	f.respondToMaster(adminTask)
 	return
 }
 

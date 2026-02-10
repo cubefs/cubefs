@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
@@ -669,6 +670,10 @@ func (c *Cluster) handleFlashNodeTaskResponse(nodeAddr string, task *proto.Admin
 			response.TopoName = proto.DefaultTopoName
 		}
 		err = c.handleFlashNodeHeartbeatResp(task.OperatorAddr, response)
+	case proto.OpFlashNodeCacheVols:
+		// Response is already unmarshaled, no specific handling needed here
+		response := task.Response.(*proto.FlashNodeCacheVolsResponse)
+		_ = response // Response will be collected in queryCacheVols
 	default:
 		err = fmt.Errorf(fmt.Sprintf("flash unknown operate code %v", task.OpCode))
 		goto errHandler
@@ -939,4 +944,82 @@ func (m *Server) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Reques
 	}
 	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
 	sendOkReply(w, r, newSuccessHTTPReply("set WriteIOLimits for FlashNode is submit,check it later."))
+}
+
+func (m *Server) queryCacheVols(w http.ResponseWriter, r *http.Request) {
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+	result, err := m.cluster.queryCacheVols(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(result))
+}
+
+func (c *Cluster) queryCacheVols(topoName string) (map[string]int64, error) {
+	flashTopo, err := c.PeekFlashTopo(topoName)
+	if err != nil {
+		return nil, err
+	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		return nil, fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)
+	}
+
+	flashNodes := flashTopo.GetAllActiveFlashNodes()
+	if len(flashNodes) == 0 {
+		return make(map[string]int64), nil
+	}
+
+	// Create tasks for all flashnodes
+	tasks := make([]*proto.AdminTask, 0, len(flashNodes))
+	for _, flashNode := range flashNodes {
+		request := &proto.FlashNodeCacheVolsRequest{}
+		task := proto.NewAdminTask(proto.OpFlashNodeCacheVols, flashNode.Addr, request)
+		task.TopoName = topoName
+		tasks = append(tasks, task)
+	}
+
+	// Send tasks concurrently and collect responses
+	resultMap := make(map[string]int64)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for _, task := range tasks {
+		wg.Add(1)
+		go func(t *proto.AdminTask) {
+			defer wg.Done()
+			flashNode, err := c.peekFlashNode(topoName, t.OperatorAddr)
+			if err != nil {
+				log.LogWarnf("action[queryCacheVols] peekFlashNode %v failed: %v", t.OperatorAddr, err)
+				return
+			}
+			packet, err := flashNode.SyncSendAdminTask(t)
+			if err != nil {
+				log.LogWarnf("action[queryCacheVols] SyncSendAdminTask to %v failed: %v", t.OperatorAddr, err)
+				return
+			}
+			if packet.ResultCode != proto.OpOk {
+				log.LogWarnf("action[queryCacheVols] task to %v failed with code %v", t.OperatorAddr, packet.ResultCode)
+				return
+			}
+			// Unmarshal response
+			if err = unmarshalTaskResponse(t); err != nil {
+				log.LogWarnf("action[queryCacheVols] unmarshalTaskResponse from %v failed: %v", t.OperatorAddr, err)
+				return
+			}
+			response := t.Response.(*proto.FlashNodeCacheVolsResponse)
+			mu.Lock()
+			for vol, cacheSize := range response.VolCacheSizeMap {
+				resultMap[vol] += cacheSize
+			}
+			mu.Unlock()
+		}(task)
+	}
+
+	wg.Wait()
+	return resultMap, nil
 }
