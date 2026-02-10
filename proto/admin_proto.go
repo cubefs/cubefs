@@ -332,10 +332,11 @@ const (
 	AdminFlashGroupList       = "/flashGroup/list"
 	ClientFlashGroups         = "/client/flashGroups"
 
-	AdminFlashTopoList   = "/flashTopo/list"
-	AdminFlashTopoAdd    = "/flashTopo/add"
-	AdminFlashTopoDel    = "/flashTopo/delete"
-	AdminFlashTopoRename = "/flashTopo/rename"
+	AdminFlashTopoList           = "/flashTopo/list"
+	AdminFlashTopoAdd            = "/flashTopo/add"
+	AdminFlashTopoDel            = "/flashTopo/delete"
+	AdminFlashTopoRename         = "/flashTopo/rename"
+	AdminFlashTopoQueryCacheVols = "/flashTopo/queryCacheVols"
 )
 
 var GApiInfo map[string]string = map[string]string{

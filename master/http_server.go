@@ -970,6 +970,7 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoAdd).HandlerFunc(m.addFlashTopo)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoDel).HandlerFunc(m.deleteFlashTopo)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoRename).HandlerFunc(m.renameFlashTopo)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoQueryCacheVols).HandlerFunc(m.queryCacheVols)
 }
 
 func (m *Server) registerHandler(router *mux.Router, model string, schema *graphql.Schema) {

@@ -143,6 +143,8 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.FlashNodeHeartbeatResponse{}
 	case proto.OpFlashNodeScan:
 		response = &proto.FlashNodeManualTaskResponse{}
+	case proto.OpFlashNodeCacheVols:
+		response = &proto.FlashNodeCacheVolsResponse{}
 
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))

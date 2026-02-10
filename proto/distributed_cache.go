@@ -586,6 +586,12 @@ type FlashNodeManualTaskResponse struct {
 	ManualTaskStatistics
 }
 
+type FlashNodeCacheVolsRequest struct{}
+
+type FlashNodeCacheVolsResponse struct {
+	VolCacheSizeMap map[string]int64 // volume -> cache size
+}
+
 type FlashNodeManualTaskCommand struct {
 	ID      string
 	Command string

@@ -308,6 +308,7 @@ const (
 	OpFlashSDKHeartbeat         uint8 = 0xCB
 	OpFlashNodeBatchReadObject  uint8 = 0xCC
 	OpApplyWarmupMetaToken      uint8 = 0xCD
+	OpFlashNodeCacheVols        uint8 = 0xCE
 )
 
 const (
@@ -746,6 +747,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpFlashNodeScan"
 	case OpFlashNodeTaskCommand:
 		m = "OpFlashNodeTaskCommand"
+	case OpFlashNodeCacheVols:
+		m = "OpFlashNodeCacheVols"
 	case OpSetRepairingStatus:
 		m = "OpSetRepairingStatus"
 	case OpFreezeEmptyMetaPartition:

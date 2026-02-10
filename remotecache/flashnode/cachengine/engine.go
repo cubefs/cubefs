@@ -1386,3 +1386,15 @@ func (c *CacheEngine) GetCacheVols() (vols []string) {
 	})
 	return vols
 }
+
+// GetVolCacheSizeMap returns a map of volume -> cache size
+func (c *CacheEngine) GetVolCacheSizeMap() map[string]int64 {
+	result := make(map[string]int64)
+	c.volMap.Range(func(key, value interface{}) bool {
+		vol := key.(string)
+		volInfo := value.(*CacheVolInfo)
+		result[vol] = atomic.LoadInt64(&volInfo.CacheSize)
+		return true
+	})
+	return result
+}
