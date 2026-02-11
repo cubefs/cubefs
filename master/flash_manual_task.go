@@ -72,11 +72,15 @@ func isDuplicated(flt *proto.FlashManualTask, fltMgr *flashManualTaskManager) (e
 	}
 	volName := flt.VolName
 	rootDir := flt.GetPathPrefix()
+	topoName := flt.TopoName
 
 	var tmpDir string
 	fltMgr.flashManualTasks.Range(func(_, v interface{}) bool {
 		t := v.(*proto.FlashManualTask)
 		if t.VolName != volName {
+			return true
+		}
+		if t.TopoName != topoName {
 			return true
 		}
 		tmpDir = t.GetPathPrefix()

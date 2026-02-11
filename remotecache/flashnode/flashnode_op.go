@@ -179,8 +179,10 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		// If RemoteCacheDisableTTL is nil (old master version), clear all disableTTL settings
 		// If RemoteCacheDisableTTL is not nil (new master version), update with the provided map
 		if req.RemoteCacheDisableTTL != nil {
+			f.cacheEngine.SetVolCache(1)
 			f.cacheEngine.SetRemoteCacheDisableTTL(req.RemoteCacheDisableTTL)
 		} else {
+			f.cacheEngine.SetVolCache(0)
 			// Old master version: clear all disableTTL settings to use default TTL behavior
 			f.cacheEngine.SetRemoteCacheDisableTTL(make(map[string]bool))
 		}
