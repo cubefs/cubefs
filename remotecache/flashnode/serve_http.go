@@ -81,7 +81,10 @@ func (f *FlashNode) handleSubmitTask(w http.ResponseWriter, r *http.Request) {
 		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
 		return
 	}
-
+	// Backward Compatibility
+	if req.TopoName == "" {
+		req.TopoName = proto.DefaultTopoName
+	}
 	start := time.Now()
 	req.StartTime = &start
 	req.UpdateTime = &start

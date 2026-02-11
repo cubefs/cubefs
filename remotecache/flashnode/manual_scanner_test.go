@@ -41,10 +41,11 @@ func testManualScanner(t *testing.T) {
 		ec:             NewMockExtentClient(),
 		RemoteCache:    rc,
 		manualTask: &proto.FlashManualTask{
-			Id:      "test_manual_scan_id",
-			VolName: "test_vol",
-			Action:  proto.FlashManualWarmupAction,
-			Status:  int(proto.Flash_Task_Running),
+			Id:       "test_manual_scan_id",
+			VolName:  "test_vol",
+			Action:   proto.FlashManualWarmupAction,
+			Status:   int(proto.Flash_Task_Running),
+			TopoName: proto.DefaultTopoName,
 		},
 	}
 	err := scanner.Start()

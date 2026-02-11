@@ -943,6 +943,7 @@ func (f *FlashNode) getValidViewInfo(req *proto.FlashNodeManualTaskRequest) (met
 			NeedRemoteCache:             true,
 			HeartBeatPing:               true,
 			ForceRemoteCache:            true,
+			RemoteCacheName:             task.TopoName,
 		}
 		log.LogInfof("[NewS3Scanner] extentConfig: vol(%v) volStorageClass(%v) allowedStorageClass(%v), followerRead(%v)",
 			extentConfig.Volume, extentConfig.VolStorageClass, extentConfig.VolAllowedStorageClass, extentConfig.FollowerRead)
