@@ -70,6 +70,8 @@ const (
 	MetricMasterSnapshot                   = "master_snapshot"
 	MetricMastersInactive                  = "masters_inactive"
 	MetricInactiveMasterInfo               = "inactive_masters_info"
+	MetricFlashNodesInactive               = "flashNodes_inactive"
+	MetricInactiveFlashNodeInfo            = "inactive_flashNodes_info"
 
 	MetricMissingDp                = "missing_dp"
 	MetricDpNoLeader               = "dp_no_leader"
@@ -141,6 +143,8 @@ type monitorMetrics struct {
 	InactiveMetaNodeInfo             *exporter.GaugeVec // TODO: remove in the future
 	mastersInactive                  *exporter.Gauge
 	InactiveMasterInfo               *exporter.GaugeVec
+	flashNodesInactive               *exporter.Gauge
+	InactiveFlashNodeInfo            *exporter.GaugeVec
 	ReplicaMissingDPCount            *exporter.GaugeVec
 	DpMissingLeaderCount             *exporter.GaugeVec
 	MpMissingLeaderCount             *exporter.Gauge
@@ -530,6 +534,8 @@ func (mm *monitorMetrics) start() {
 	mm.masterNoCache = exporter.NewGaugeVec(MetricMasterNoCache, "", []string{"volName"})
 	mm.mastersInactive = exporter.NewGauge(MetricMastersInactive)
 	mm.InactiveMasterInfo = exporter.NewGaugeVec(MetricInactiveMasterInfo, "", []string{"clusterName", "addr"})
+	mm.flashNodesInactive = exporter.NewGauge(MetricFlashNodesInactive)
+	mm.InactiveFlashNodeInfo = exporter.NewGaugeVec(MetricInactiveFlashNodeInfo, "", []string{"clusterName", "addr"})
 
 	mm.nodesetMetaTotal = exporter.NewGaugeVec(MetricNodesetMetaTotalGB, "", []string{"nodeset"})
 	mm.nodesetMetaUsed = exporter.NewGaugeVec(MetricNodesetMetaUsedGB, "", []string{"nodeset"})
@@ -624,6 +630,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.updateDataNodesStat()
 	mm.updateMetaNodesStat()
 	mm.updateMastersStat()
+	mm.updateFlashNodesStat()
 }
 
 func (mm *monitorMetrics) setMpAndDpMetrics() {
@@ -1128,6 +1135,37 @@ func (mm *monitorMetrics) updateMastersStat() {
 	}
 }
 
+func (mm *monitorMetrics) updateFlashNodesStat() {
+	var inactiveFlashNodesCount uint64
+
+	mm.cluster.flashNodeTopo.Range(func(key, value interface{}) bool {
+		if value == nil {
+			return true
+		}
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok {
+			return true
+		}
+		// Get all flashnodes (showAll=true returns all nodes regardless of active parameter)
+		allNodes := topo.ListFlashNodes(true, true)
+
+		// Process all nodes
+		for _, nodes := range allNodes {
+			for _, nodeInfo := range nodes {
+				if !nodeInfo.IsActive {
+					inactiveFlashNodesCount++
+					mm.InactiveFlashNodeInfo.SetWithLabelValues(1, mm.cluster.Name, nodeInfo.Addr)
+				} else {
+					mm.InactiveFlashNodeInfo.DeleteLabelValues(mm.cluster.Name, nodeInfo.Addr)
+				}
+			}
+		}
+		return true
+	})
+
+	mm.flashNodesInactive.Set(float64(inactiveFlashNodesCount))
+}
+
 func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
 	var notWritabelMetaNodesCount int64
 	mm.cluster.metaNodes.Range(func(addr, node interface{}) bool {
@@ -1375,8 +1413,10 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
 	mm.mastersInactive.Set(0)
+	mm.flashNodesInactive.Set(0)
 
 	mm.InactiveMasterInfo.Reset()
+	mm.InactiveFlashNodeInfo.Reset()
 
 	mm.dataNodesNotWritable.Set(0)
 	mm.dataNodesAllocable.Set(0)

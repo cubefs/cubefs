@@ -1,11 +1,13 @@
 package flashnode
 
 import (
+	"os"
 	"path"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/remotecache/flashnode/cachengine"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
@@ -28,6 +30,7 @@ const (
 	MetricFlashNodeRunLimitedCount     = "flashNodeRunLimitedCount"
 	MetricFlashNodeLruUsageRatio       = "flashNodeLruUsageRatio"
 	MetricFlashNodeDiskUsageRatio      = "flashNodeDiskUsageRatio"
+	MetricFlashNodeMemoryRatio         = "flashNodeMemoryRatio"
 )
 
 type FlashNodeMetrics struct {
@@ -48,6 +51,7 @@ type FlashNodeMetrics struct {
 	MetricRunLimitedCount     *exporter.Gauge
 	MetricLruUsageRatio       *exporter.Gauge
 	MetricDiskUsageRatio      *exporter.Gauge
+	MetricMemoryRatio         *exporter.Gauge
 }
 
 func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
@@ -71,6 +75,7 @@ func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
 	f.metrics.MetricRunLimitedCount = exporter.NewGauge(MetricFlashNodeRunLimitedCount)
 	f.metrics.MetricLruUsageRatio = exporter.NewGauge(MetricFlashNodeLruUsageRatio)
 	f.metrics.MetricDiskUsageRatio = exporter.NewGauge(MetricFlashNodeDiskUsageRatio)
+	f.metrics.MetricMemoryRatio = exporter.NewGauge(MetricFlashNodeMemoryRatio)
 	for _, d := range disks {
 		cachengine.StatMap[path.Join(d.Path, cachengine.DefaultCacheDirName)] = new(cachengine.MetricStat)
 	}
@@ -112,6 +117,7 @@ func (fm *FlashNodeMetrics) doStat() {
 	fm.setLimitedCountMetric()
 	fm.setLruUsageRatioMetric()
 	fm.setDiskUsageRatioMetric()
+	fm.setMemoryRatioMetric()
 }
 
 func (fm *FlashNodeMetrics) setReadBytesMetric() {
@@ -198,6 +204,30 @@ func (fm *FlashNodeMetrics) setDiskUsageRatioMetric() {
 	for dataPath, usageRatio := range diskUsageRatioMap {
 		fm.MetricDiskUsageRatio.SetWithLabels(usageRatio, map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: dataPath})
 	}
+}
+
+func (fm *FlashNodeMetrics) setMemoryRatioMetric() {
+	// Get system total memory
+	totalMem, _, err := util.GetMemInfo()
+	if err != nil {
+		log.LogErrorf("setMemoryRatioMetric: failed to get system memory info, err: %v", err)
+		return
+	}
+	if totalMem == 0 {
+		log.LogWarnf("setMemoryRatioMetric: system total memory is 0")
+		return
+	}
+
+	// Get process memory usage
+	processMem, err := util.GetProcessMemory(os.Getpid())
+	if err != nil {
+		log.LogErrorf("setMemoryRatioMetric: failed to get process memory, err: %v", err)
+		return
+	}
+
+	// Calculate memory ratio: process memory / system total memory
+	memoryRatio := float64(processMem) / float64(totalMem)
+	fm.MetricMemoryRatio.SetWithLabels(memoryRatio, map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
 }
 
 func (fm *FlashNodeMetrics) updateReadBytesMetric(size uint64, d string) {
