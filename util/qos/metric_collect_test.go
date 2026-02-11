@@ -180,24 +180,20 @@ func TestMetricsCollector_AddOp(t *testing.T) {
 
 	mc.addOp(Read, 1024, 50*time.Millisecond, false)
 
-	time.Sleep(150 * time.Millisecond)
-	windows := mc.windows(Read)
-	require.NotNil(t, windows)
-	require.True(t, len(windows) > 0)
-
-	found := false
-	for _, win := range windows {
-		if win.opCnt > 0 {
-			assert.Equal(t, int64(1), win.opCnt)
-			assert.Equal(t, int64(1024), win.byteSize)
-			assert.Equal(t, int64(50*time.Millisecond), win.latencyNs)
-			assert.Equal(t, int64(1), win.successCnt)
-			assert.Equal(t, int64(0), win.errorCnt)
-			found = true
-			break
+	assert.Eventually(t, func() bool {
+		mc.rotateAll()
+		windows := mc.windows(Read)
+		for _, win := range windows {
+			if win.opCnt > 0 {
+				return win.opCnt == 1 &&
+					win.byteSize == 1024 &&
+					win.latencyNs == int64(50*time.Millisecond) &&
+					win.successCnt == 1 &&
+					win.errorCnt == 0
+			}
 		}
-	}
-	assert.True(t, found, "Operation should be recorded in one of the windows")
+		return false
+	}, 500*time.Millisecond, 10*time.Millisecond, "Operation should be recorded in one of the windows")
 }
 
 func TestMetricsCollector_AddReject(t *testing.T) {
@@ -206,19 +202,16 @@ func TestMetricsCollector_AddReject(t *testing.T) {
 
 	mc.addReject(Read)
 
-	time.Sleep(100 * time.Millisecond)
-	windows := mc.windows(Read)
-	require.NotNil(t, windows)
-
-	found := false
-	for _, win := range windows {
-		if win.rejectCnt > 0 {
-			assert.Equal(t, int64(1), win.rejectCnt)
-			found = true
-			break
+	assert.Eventually(t, func() bool {
+		mc.rotateAll()
+		windows := mc.windows(Read)
+		for _, win := range windows {
+			if win.rejectCnt > 0 {
+				return win.rejectCnt == 1
+			}
 		}
-	}
-	assert.True(t, found, "Reject should be recorded in one of the windows")
+		return false
+	}, 500*time.Millisecond, 10*time.Millisecond, "Reject should be recorded in one of the windows")
 }
 
 func TestMetricsCollector_WindowsStats(t *testing.T) {
@@ -302,18 +295,16 @@ func TestMetricsCollector_RotateAndSample(t *testing.T) {
 
 	mc.rotateAndSample()
 
-	time.Sleep(50 * time.Millisecond)
-	windows := mc.windows(Read)
-	require.NotNil(t, windows)
-
-	found := false
-	for _, win := range windows {
-		if win.sampleCnt > 0 {
-			found = true
-			break
+	assert.Eventually(t, func() bool {
+		mc.rotateAll()
+		windows := mc.windows(Read)
+		for _, win := range windows {
+			if win.sampleCnt > 0 {
+				return true
+			}
 		}
-	}
-	assert.True(t, found, "Samples should be recorded after rotateAndSample")
+		return false
+	}, 500*time.Millisecond, 10*time.Millisecond, "Samples should be recorded after rotateAndSample")
 }
 
 func TestMetricsCollector_EmptyWindows(t *testing.T) {
