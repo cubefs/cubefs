@@ -30,7 +30,7 @@ func TestLcScanner(t *testing.T) {
 	lcScanRoutineNumPerTask = 1
 	maxDirChanNum = 0
 	scanCheckInterval = 1
-	days1, days2, days3 := 1, 2, 3
+	days1, days3 := 1, 3
 	scanner := &LcScanner{
 		ID:     "test_id",
 		Volume: "test_vol",
@@ -50,10 +50,8 @@ func TestLcScanner(t *testing.T) {
 				{
 					StorageClass: proto.OpTypeStorageClassHDD,
 					Days:         &days1,
-				},
-				{
-					StorageClass: proto.OpTypeStorageClassEBS,
-					Days:         &days2,
+					FromPoolId:   proto.DefaultSSDPoolId,
+					ToPoolId:     proto.DefaultHDDPoolId,
 				},
 			},
 			Expiration: &proto.Expiration{
@@ -77,14 +75,13 @@ func TestLcScanner(t *testing.T) {
 	require.Equal(t, int64(3), scanner.currentStat.TotalFileExpiredNum)
 	require.Equal(t, int64(4), scanner.currentStat.TotalDirScannedNum)
 	require.Equal(t, int64(1), scanner.currentStat.ExpiredDeleteNum)
-	require.Equal(t, int64(1), scanner.currentStat.ExpiredMToHddNum)
-	require.Equal(t, int64(1), scanner.currentStat.ExpiredMToBlobstoreNum)
-	require.Equal(t, int64(100), scanner.currentStat.ExpiredMToHddBytes)
-	require.Equal(t, int64(200), scanner.currentStat.ExpiredMToBlobstoreBytes)
+	require.Equal(t, int64(2), scanner.currentStat.ExpiredMToHddNum)
+	require.Equal(t, int64(2), scanner.currentStat.ExpiredMNum)
+	require.Equal(t, int64(300), scanner.currentStat.ExpiredMToHddBytes)
+	require.Equal(t, int64(300), scanner.currentStat.ExpiredMBytes)
 	require.Equal(t, int64(0), scanner.currentStat.ExpiredSkipNum)
 	require.Equal(t, int64(0), scanner.currentStat.ErrorDeleteNum)
 	require.Equal(t, int64(0), scanner.currentStat.ErrorMToHddNum)
-	require.Equal(t, int64(0), scanner.currentStat.ErrorMToBlobstoreNum)
 	require.Equal(t, int64(0), scanner.currentStat.ErrorReadDirNum)
 
 	dentry := &proto.ScanDentry{

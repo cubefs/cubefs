@@ -184,14 +184,14 @@ func TestRead(t *testing.T) {
 		getObjFunc       func(*meta.MetaWrapper, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
 		bcacheGetFunc    func(*bcache.BcacheClient, string, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, uint64) error
-		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int, uint32) (int, error, bool)
-		ebsReadFunc      func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
-		expectError      error
+		// readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int, uint32) (int, error, bool)
+		ebsReadFunc func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
+		expectError error
 	}{
-		{true, 2, MockGetObjExtentsTrue, MockGetTrue, MockCheckDataPartitionExistTrue, MockReadExtentTrue, MockEbscReadTrue, os.ErrInvalid},
-		{false, 2, MockGetObjExtentsFalse, MockGetTrue, MockCheckDataPartitionExistTrue, MockReadExtentTrue, MockEbscReadTrue, syscall.EIO},
-		{false, 2, MockGetObjExtentsTrue, MockGetTrue, MockCheckDataPartitionExistTrue, MockReadExtentTrue, MockEbscReadFalse, syscall.EIO},
-		{false, 2, MockGetObjExtentsTrue, MockGetTrue, MockCheckDataPartitionExistTrue, MockReadExtentTrue, MockEbscReadTrue, nil},
+		{true, 2, MockGetObjExtentsTrue, MockGetTrue, MockCheckDataPartitionExistTrue, MockEbscReadTrue, os.ErrInvalid},
+		{false, 2, MockGetObjExtentsFalse, MockGetTrue, MockCheckDataPartitionExistTrue, MockEbscReadTrue, syscall.EIO},
+		{false, 2, MockGetObjExtentsTrue, MockGetTrue, MockCheckDataPartitionExistTrue, MockEbscReadFalse, syscall.EIO},
+		{false, 2, MockGetObjExtentsTrue, MockGetTrue, MockCheckDataPartitionExistTrue, MockEbscReadTrue, nil},
 	}
 
 	for _, tc := range testCase {
@@ -209,10 +209,6 @@ func TestRead(t *testing.T) {
 			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 		}
 		err = gohook.HookMethod(ec, "CheckDataPartitionExsit", tc.checkDpExistFunc, nil)
-		if err != nil {
-			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
-		}
-		err = gohook.HookMethod(ec, "ReadExtent", tc.readExtentFunc, nil)
 		if err != nil {
 			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 		}
@@ -317,39 +313,39 @@ func TestReadSliceRange(t *testing.T) {
 		extentKey        proto.ExtentKey
 		bcacheGetFunc    func(*bcache.BcacheClient, string, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, uint64) error
-		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int, uint32) (int, error, bool)
-		ebsReadFunc      func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
-		expectError      error
+		// readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int, uint32) (int, error, bool)
+		ebsReadFunc func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
+		expectError error
 	}{
 		{
 			false,
 			proto.ExtentKey{},
 			MockGetTrue, MockCheckDataPartitionExistTrue,
-			MockReadExtentTrue, MockEbscReadTrue, nil,
+			MockEbscReadTrue, nil,
 		},
 		{
 			false,
 			proto.ExtentKey{},
 			MockGetTrue, MockCheckDataPartitionExistTrue,
-			MockReadExtentTrue, MockEbscReadFalse, syscall.EIO,
+			MockEbscReadFalse, syscall.EIO,
 		},
 		{
 			true,
 			proto.ExtentKey{},
 			MockGetTrue, MockCheckDataPartitionExistTrue,
-			MockReadExtentTrue, MockEbscReadFalse, nil,
+			MockEbscReadFalse, nil,
 		},
 		{
 			true,
 			proto.ExtentKey{},
 			MockGetFalse, MockCheckDataPartitionExistTrue,
-			MockReadExtentTrue, MockEbscReadFalse, syscall.EIO,
+			MockEbscReadFalse, syscall.EIO,
 		},
 		{
 			true,
 			proto.ExtentKey{},
 			MockGetFalse, MockCheckDataPartitionExistTrue,
-			MockReadExtentTrue, MockEbscReadTrue, nil,
+			MockEbscReadTrue, nil,
 		},
 	}
 
@@ -378,10 +374,6 @@ func TestReadSliceRange(t *testing.T) {
 			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 		}
 		err = gohook.HookMethod(ec, "CheckDataPartitionExsit", tc.checkDpExistFunc, nil)
-		if err != nil {
-			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
-		}
-		err = gohook.HookMethod(ec, "ReadExtent", tc.readExtentFunc, nil)
 		if err != nil {
 			panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
 		}
@@ -435,13 +427,13 @@ func MockEbscReadFalse(ebsc *BlobStoreClient, ctx context.Context, volName strin
 }
 
 func MockReadExtentTrue(client *stream.ExtentClient, inode uint64, ek *proto.ExtentKey,
-	data []byte, offset int, size int, storageClass uint32,
+	data []byte, offset int, size int, poolId uint8, storageClass uint32,
 ) (read int, err error, b bool) {
 	return len("Hello world"), nil, true
 }
 
 func MockReadExtentFalse(client *stream.ExtentClient, inode uint64, ek *proto.ExtentKey,
-	data []byte, offset int, size int, storageClass uint32,
+	data []byte, offset int, size int, poolId uint8, storageClass uint32,
 ) (read int, err error) {
 	return 0, errors.New("Read extent failed")
 }
@@ -455,7 +447,7 @@ func MockCheckDataPartitionExistFalse(client *stream.ExtentClient, partitionID u
 }
 
 func MockWriteTrue(client *stream.ExtentClient, inode uint64, offset int, data []byte,
-	flags int, checkFunc func() error, storageClass uint32, isMigration, waitForFlush bool,
+	flags int, checkFunc func() error, poolId uint8, storageClass uint32, isMigration, waitForFlush bool,
 ) (write int, err error) {
 	return len(data), nil
 }

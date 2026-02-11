@@ -3507,6 +3507,11 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		}
 	}
 
+	if req.defaultPoolId == proto.DefaultECPoolId {
+		log.LogWarnf("[checkStorageClassForCreateVol] create vol(%v) defaultPoolId is defaultECPoolId, skip check available pools", req.name)
+		return nil
+	}
+
 	availablePools := m.cluster.getAvailablePools(req.zoneName)
 	if len(availablePools) == 0 {
 		err = fmt.Errorf("no available pools in zone(%v)", req.zoneName)
@@ -3646,6 +3651,8 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	fmt.Println("reqtest", req)
 
 	if vol, err = m.cluster.createVol(req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -10576,6 +10583,7 @@ func (m *Server) volUpdatePoolId(w http.ResponseWriter, r *http.Request) {
 		authKey       string
 		err           error
 		defaultPoolId uint8
+		poolName      string
 		vol           *Vol
 	)
 
@@ -10605,15 +10613,38 @@ func (m *Server) volUpdatePoolId(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// poolName is required
+	if poolName = r.FormValue(poolNameKey); poolName == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "poolName is required"})
+		return
+	}
+
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
 
-	// Verify pool exists
-	if _, err = m.cluster.getStoragePool(defaultPoolId); err != nil {
+	// Check if poolId is the same as current default poolId
+	if vol.defaultPoolId == defaultPoolId {
+		err = fmt.Errorf("cannot update to the same pool. Current poolId: %v, new poolId: %v", vol.defaultPoolId, defaultPoolId)
+		log.LogErrorf("[volUpdatePoolId] vol(%v), err: %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	// Verify pool exists and poolName matches poolId
+	pool, err := m.cluster.getStoragePool(defaultPoolId)
+	if err != nil {
 		log.LogErrorf("[volUpdatePoolId] vol(%v), pool(%v) not exists, err: %v", name, defaultPoolId, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("pool %v does not exist", defaultPoolId)})
+		return
+	}
+
+	// Verify poolId and poolName match
+	if pool.Name != poolName {
+		err = fmt.Errorf("poolId %v and poolName %v do not match. Expected poolName: %v", defaultPoolId, poolName, pool.Name)
+		log.LogErrorf("[volUpdatePoolId] vol(%v), err: %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
@@ -10628,19 +10659,18 @@ func (m *Server) volUpdatePoolId(w http.ResponseWriter, r *http.Request) {
 	newArgs := getVolVarargs(vol)
 	newArgs.defaultPoolId = defaultPoolId
 
-	pool, _ := m.cluster.getStoragePool(defaultPoolId)
 	newArgs.volStorageClass = uint32(pool.StorageClass)
 
-	log.LogInfof("[volUpdatePoolId] vol(%v) to update defaultPoolId, old(%v), new(%v)",
-		name, vol.defaultPoolId, defaultPoolId)
+	log.LogInfof("[volUpdatePoolId] vol(%v) to update defaultPoolId, old(%v), new(%v, %v)",
+		name, vol.defaultPoolId, defaultPoolId, poolName)
 
 	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	msg := fmt.Sprintf("update vol(%v) defaultPoolId successfully, new defaultPoolId: %v",
-		name, defaultPoolId)
+	msg := fmt.Sprintf("update vol(%v) defaultPoolId successfully, new defaultPoolId: %v (%v)",
+		name, defaultPoolId, poolName)
 	log.LogInfof("[volUpdatePoolId] %v", msg)
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }

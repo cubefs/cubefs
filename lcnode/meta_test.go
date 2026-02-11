@@ -46,23 +46,27 @@ func (*MockMetaWrapper) InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInf
 			Inode:      1,
 			AccessTime: time.Now().AddDate(0, 0, -2),
 			Size:       100,
+			PoolId:     proto.DefaultSSDPoolId,
 		}, nil
 	case 2:
 		return &proto.InodeInfo{
 			Inode:      2,
 			AccessTime: time.Now().AddDate(0, 0, -3),
 			Size:       200,
+			PoolId:     proto.DefaultSSDPoolId,
 		}, nil
 	case 3:
 		return &proto.InodeInfo{
 			Inode:      3,
 			AccessTime: time.Now().AddDate(0, 0, -4),
+			PoolId:     proto.DefaultSSDPoolId,
 		}, nil
 	case 6:
 		return &proto.InodeInfo{
 			Inode:       6,
 			AccessTime:  time.Now().AddDate(0, 0, -4),
 			ForbiddenLc: true,
+			PoolId:      proto.DefaultSSDPoolId,
 		}, nil
 	}
 	return nil, nil

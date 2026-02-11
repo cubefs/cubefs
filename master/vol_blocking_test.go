@@ -51,6 +51,7 @@ func TestVolumeInitializationBlocking(t *testing.T) {
 				volType:         proto.VolumeTypeHot,
 				qosLimitArgs:    &qosArgs{},
 				volStorageClass: defaultVolStorageClass,
+				defaultPoolId:   defaultPoolId,
 			}
 
 			// simulate the process of creating a volume
@@ -103,6 +104,7 @@ func TestConcurrentVolumeCreation(t *testing.T) {
 				volType:         proto.VolumeTypeHot,
 				qosLimitArgs:    &qosArgs{},
 				volStorageClass: defaultVolStorageClass,
+				defaultPoolId:   defaultPoolId,
 			}
 
 			vol, err := server.cluster.createVol(req)
@@ -149,6 +151,7 @@ func TestVolumeInitializationTimeout(t *testing.T) {
 		volType:         proto.VolumeTypeHot,
 		qosLimitArgs:    &qosArgs{},
 		volStorageClass: defaultVolStorageClass,
+		defaultPoolId:   defaultPoolId,
 	}
 
 	start := time.Now()
@@ -184,6 +187,7 @@ func TestVolumeStatusTransitions(t *testing.T) {
 		volType:         proto.VolumeTypeHot,
 		qosLimitArgs:    &qosArgs{},
 		volStorageClass: defaultVolStorageClass,
+		defaultPoolId:   defaultPoolId,
 	}
 
 	vol, err := server.cluster.createVol(req)

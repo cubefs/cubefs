@@ -87,23 +87,24 @@ type Transition struct {
 }
 
 var (
-	LifeCycleErrTooManyRules    = errors.New("Rules number should not exceed allowed limit of 1000")
-	LifeCycleErrMissingRules    = errors.New("No Lifecycle Rules found in request")
-	LifeCycleErrMissingActions  = errors.New("At least one action needs to be specified in a rule")
-	LifeCycleErrMissingRuleID   = errors.New("No Lifecycle Rule ID in request")
-	LifeCycleErrTooLongRuleID   = errors.New("ID length should not exceed allowed limit of 255")
-	LifeCycleErrInvalidRuleID   = errors.New("Invalid Rule ID")
-	LifeCycleErrSameRuleID      = errors.New("Rule ID must be unique. Found same ID for more than one rule")
-	LifeCycleErrDateType        = errors.New("'Date' must be at midnight GMT")
-	LifeCycleErrDaysType        = errors.New("'Days' for Expiration action must be a positive integer")
-	LifeCycleErrStorageClass    = errors.New("'StorageClass' must be different for 'Transition' actions in same 'Rule'")
-	LifeCycleErrPoolId          = errors.New("'FromPoolId' and 'ToPoolId' must be specified for 'Transition' actions")
-	LifeCycleErrMalformedXML    = errors.New("The XML you provided was not well-formed or did not validate against our published schema")
-	LifeCycleErrByMpAndPrefix   = errors.New("'ByMp' and 'Prefix' cannot be specified at the same time")
-	LifeCycleErrConflictRules   = errors.New("Conflicting rule prefix")
-	LifeCycleErrRulePrefix      = errors.New("Rule prefix cannot start with '/'")
-	LifeCycleErrTransitionCycle = errors.New("Circular dependency detected in transition rules")
-	LifeCycleErrDelayDelMinute  = errors.New("'DelayDelMinute' must be between MinDelayDelMinute (1 hour) and MaxDelayDelMinute (1 year) minutes")
+	LifeCycleErrTooManyRules        = errors.New("Rules number should not exceed allowed limit of 1000")
+	LifeCycleErrMissingRules        = errors.New("No Lifecycle Rules found in request")
+	LifeCycleErrMissingActions      = errors.New("At least one action needs to be specified in a rule")
+	LifeCycleErrMissingRuleID       = errors.New("No Lifecycle Rule ID in request")
+	LifeCycleErrTooLongRuleID       = errors.New("ID length should not exceed allowed limit of 255")
+	LifeCycleErrInvalidRuleID       = errors.New("Invalid Rule ID")
+	LifeCycleErrSameRuleID          = errors.New("Rule ID must be unique. Found same ID for more than one rule")
+	LifeCycleErrDateType            = errors.New("'Date' must be at midnight GMT")
+	LifeCycleErrDaysType            = errors.New("'Days' for Expiration action must be a positive integer")
+	LifeCycleErrStorageClass        = errors.New("'StorageClass' must be different for 'Transition' actions in same 'Rule'")
+	LifeCycleErrPoolId              = errors.New("'FromPoolId' and 'ToPoolId' must be specified for 'Transition' actions")
+	LifeCycleErrDuplicateFromPoolId = errors.New("'FromPoolId' must be unique within a rule's transitions")
+	LifeCycleErrMalformedXML        = errors.New("The XML you provided was not well-formed or did not validate against our published schema")
+	LifeCycleErrByMpAndPrefix       = errors.New("'ByMp' and 'Prefix' cannot be specified at the same time")
+	LifeCycleErrConflictRules       = errors.New("Conflicting rule prefix")
+	LifeCycleErrRulePrefix          = errors.New("Rule prefix cannot start with '/'")
+	LifeCycleErrTransitionCycle     = errors.New("Circular dependency detected in transition rules")
+	LifeCycleErrDelayDelMinute      = errors.New("'DelayDelMinute' must be between MinDelayDelMinute (1 hour) and MaxDelayDelMinute (1 year) minutes")
 )
 
 func ValidRules(Rules []*Rule) error {
@@ -141,8 +142,21 @@ func ValidRules(Rules []*Rule) error {
 
 func ValidRulePrefix(Rules []*Rule) error {
 	if len(Rules) == 1 {
-		if strings.HasPrefix(Rules[0].GetPrefix(), "/") {
+		rule := Rules[0]
+		if strings.HasPrefix(rule.GetPrefix(), "/") {
 			return LifeCycleErrRulePrefix
+		}
+		// Check for duplicate FromPoolId in transitions even for single rule
+		fromPoolIds := make(map[uint8]bool)
+		if rule.Transitions != nil {
+			for _, transition := range rule.Transitions {
+				if transition.FromPoolId != 0 {
+					if fromPoolIds[transition.FromPoolId] {
+						return LifeCycleErrDuplicateFromPoolId
+					}
+					fromPoolIds[transition.FromPoolId] = true
+				}
+			}
 		}
 		return nil
 	}
@@ -167,11 +181,14 @@ func ValidRulePrefix(Rules []*Rule) error {
 			return LifeCycleErrByMpAndPrefix
 		}
 
-		// Collect all fromPoolIds from transitions
+		// Collect all fromPoolIds from transitions and check for duplicates
 		fromPoolIds := make(map[uint8]bool)
 		if rule.Transitions != nil {
 			for _, transition := range rule.Transitions {
 				if transition.FromPoolId != 0 {
+					if fromPoolIds[transition.FromPoolId] {
+						return LifeCycleErrDuplicateFromPoolId
+					}
 					fromPoolIds[transition.FromPoolId] = true
 				}
 			}

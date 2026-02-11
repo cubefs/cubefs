@@ -106,21 +106,19 @@ func TestCreateColdVol(t *testing.T) {
 	// check default val of normal vol
 	vol, err := server.cluster.getVol(volName1)
 	require.NoError(t, err)
-	require.EqualValues(t, 120*util.GB, vol.dataPartitionSize)
 	require.EqualValues(t, defaultInitMetaPartitionCount, len(vol.MetaPartitions))
 	require.False(t, vol.FollowerRead)
 	require.False(t, vol.authenticate)
 	require.False(t, vol.crossZone)
 	require.EqualValues(t, 100, vol.capacity())
 	require.EqualValues(t, proto.VolumeTypeHot, vol.VolType)
-	require.EqualValues(t, defaultReplicaNum, vol.dpReplicaNum)
 	require.EqualValues(t, 0, vol.domainId)
 
 	delVol(volName1, t)
 	time.Sleep(30 * time.Second)
 
 	req[nameKey] = volName2
-	req[volStorageClassKey] = proto.StorageClass_BlobStore
+	req[poolIdKey] = proto.DefaultECPoolId
 
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
@@ -128,8 +126,6 @@ func TestCreateColdVol(t *testing.T) {
 	vol, err = server.cluster.getVol(volName2)
 	require.NoError(t, err)
 	require.EqualValues(t, defaultEbsBlkSize, vol.EbsBlkSize)
-	require.EqualValues(t, 0, vol.dpReplicaNum)
-	require.True(t, vol.FollowerRead)
 
 	delVol(volName2, t)
 

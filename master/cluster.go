@@ -4815,7 +4815,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	// NOTE: init data partitions
-	if proto.IsStorageClassReplica(vol.volStorageClass) && vol.Capacity > 0 {
+	if proto.IsStorageClassReplica(vol.volStorageClass) {
 		for _, poolId := range req.allowedPools {
 			pool, err := c.getStoragePool(poolId)
 			if err != nil {

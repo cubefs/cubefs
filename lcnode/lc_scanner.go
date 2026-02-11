@@ -1004,11 +1004,15 @@ func (s *LcScanner) checkScanning() {
 func (s *LcScanner) DoneScanning() bool {
 	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v) scanMpFinished(%v)",
 		s.dirChan.Len(), len(s.fileChan), s.fileRPool.RunningNum(), s.dirRPool.RunningNum(), s.scanMpFinished)
-	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && s.DoneScanning()
+	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && s.DoneScanningMp()
 }
 
 func (s *LcScanner) DoneScanningMp() bool {
-	return s.rule.Filter != nil && s.rule.Filter.ByMp == proto.ScanByMp && s.scanMpFinished
+	if s.rule.Filter == nil || s.rule.Filter.ByMp != proto.ScanByMp {
+		return true
+	}
+
+	return s.scanMpFinished
 }
 
 func (s *LcScanner) Stop() {

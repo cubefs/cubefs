@@ -88,6 +88,7 @@ func BenchmarkSnapshot(b *testing.B) {
 		zoneName:         testZone2,
 		description:      "",
 		qosLimitArgs:     &qosArgs{},
+		defaultPoolId:    defaultPoolId,
 	}
 	for i := 0; i != volForSnapshotCount; i++ {
 		req.name = fmt.Sprintf("%v_%v", volForSnapshot, i)

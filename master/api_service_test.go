@@ -209,20 +209,25 @@ func createDefaultMasterServerForTest() *Server {
 	}
 
 	req := &createVolReq{
-		name:             commonVolName,
-		owner:            "cfs",
-		dpSize:           11,
-		mpCount:          3,
-		dpReplicaNum:     3,
-		capacity:         300,
-		followerRead:     false,
-		authenticate:     false,
-		crossZone:        false,
-		normalZonesFirst: false,
-		zoneName:         testZone2,
-		description:      "",
-		qosLimitArgs:     &qosArgs{},
-		volStorageClass:  defaultVolStorageClass,
+		name:                    commonVolName,
+		owner:                   "cfs",
+		dpSize:                  11,
+		mpCount:                 3,
+		dpReplicaNum:            3,
+		capacity:                300,
+		followerRead:            false,
+		authenticate:            false,
+		crossZone:               false,
+		normalZonesFirst:        false,
+		zoneName:                testZone2,
+		description:             "",
+		qosLimitArgs:            &qosArgs{},
+		volStorageClass:         defaultVolStorageClass,
+		defaultPoolId:           defaultPoolId,
+		storeMode:               proto.StoreModeMem,
+		accessTimeValidInterval: proto.MinAccessTimeValidInterval,
+		remoteCacheReadTimeout:  proto.ReadDeadlineTime,
+		allowedPools:            []uint8{defaultPoolId},
 	}
 
 	err = testServer.checkCreateVolReq(req)
@@ -324,6 +329,8 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	if err = server.Start(cfg); err != nil {
 		return
 	}
+
+	server.cluster.loadStoragePools()
 	time.Sleep(5 * time.Second)
 	fmt.Println(server.config.peerAddrs, server.leaderInfo.addr)
 	return server, nil
@@ -595,20 +602,20 @@ func TestMarkDeleteVol(t *testing.T) {
 
 func TestVolSetBucketLifecycle(t *testing.T) {
 	req := &createVolReq{
-		name:                "bktLifecycle",
-		owner:               "cfs",
-		dpSize:              11,
-		mpCount:             3,
-		dpReplicaNum:        3,
-		capacity:            300,
-		followerRead:        false,
-		authenticate:        false,
-		crossZone:           true,
-		zoneName:            "",
-		description:         "",
-		qosLimitArgs:        &qosArgs{},
-		volStorageClass:     defaultVolStorageClass,
-		allowedStorageClass: []uint32{defaultVolStorageClass, proto.StorageClass_Replica_HDD},
+		name:          "bktLifecycle",
+		owner:         "cfs",
+		dpSize:        11,
+		mpCount:       3,
+		dpReplicaNum:  3,
+		capacity:      300,
+		followerRead:  false,
+		authenticate:  false,
+		crossZone:     true,
+		zoneName:      "",
+		description:   "",
+		qosLimitArgs:  &qosArgs{},
+		defaultPoolId: proto.DefaultSSDPoolId,
+		allowedPools:  []uint8{proto.DefaultSSDPoolId, proto.DefaultHDDPoolId},
 	}
 
 	_, err := server.cluster.createVol(req)
@@ -630,6 +637,8 @@ func TestVolSetBucketLifecycle(t *testing.T) {
 			{
 				Days:         &days,
 				StorageClass: "HDD",
+				FromPoolId:   proto.DefaultSSDPoolId,
+				ToPoolId:     proto.DefaultHDDPoolId,
 			},
 		},
 	}
@@ -670,7 +679,8 @@ func TestUpdateVol(t *testing.T) {
 	volName := "updateVol"
 	req := map[string]interface{}{}
 	req[nameKey] = volName
-	req[volStorageClassKey] = proto.StorageClass_BlobStore
+	// req[volStorageClassKey] = proto.StorageClass_BlobStore
+	req[poolIdKey] = proto.DefaultECPoolId
 	req[remoteCacheReadTimeout] = proto.ReadDeadlineTime
 
 	createVol(req, t)

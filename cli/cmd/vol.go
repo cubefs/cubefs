@@ -1725,6 +1725,7 @@ var (
 func newVolUpdatePoolIdCmd(client *master.MasterClient) *cobra.Command {
 	var optClientIDKey string
 	var poolId uint8
+	var poolName string
 
 	cmd := &cobra.Command{
 		Use:   cmdVolUpdatePoolIdUse,
@@ -1745,12 +1746,65 @@ func newVolUpdatePoolIdCmd(client *master.MasterClient) *cobra.Command {
 			}
 			poolId = uint8(poolIdUint64)
 
+			// poolName is required
+			if poolName == "" {
+				err = fmt.Errorf("poolName is required, please specify --poolName")
+				return
+			}
+
 			var vv *proto.SimpleVolView
 			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volName); err != nil {
 				return
 			}
 
-			if err = client.AdminAPI().VolUpdatePoolId(volName, poolId, util.CalcAuthKey(vv.Owner), optClientIDKey); err != nil {
+			// Get current default pool info
+			var oldPool *proto.StoragePoolInfo
+			oldPoolId := vv.DefaultPoolId
+			if oldPoolId != 0 {
+				if oldPool, err = client.AdminAPI().GetStoragePool(oldPoolId); err != nil {
+					// If old pool doesn't exist, continue without old pool name
+					oldPool = nil
+				}
+			}
+
+			// Check if poolId is the same as current default poolId
+			if oldPoolId == poolId {
+				err = fmt.Errorf("cannot update to the same pool. Current poolId: %v, new poolId: %v", oldPoolId, poolId)
+				return
+			}
+
+			// Get new pool info and verify poolId and poolName match
+			var newPool *proto.StoragePoolInfo
+			if newPool, err = client.AdminAPI().GetStoragePool(poolId); err != nil {
+				err = fmt.Errorf("pool %v does not exist: %v", poolId, err)
+				return
+			}
+
+			if newPool.Name != poolName {
+				err = fmt.Errorf("poolId %v and poolName %v do not match. Expected poolName: %v", poolId, poolName, newPool.Name)
+				return
+			}
+
+			// Display confirmation prompt
+			stdout("\n[Volume Update PoolId Confirmation]\n")
+			stdout("  Volume Name        : %v\n", volName)
+			if oldPool != nil {
+				stdout("  Current PoolId     : %v (%v)\n", oldPoolId, oldPool.Name)
+			} else if oldPoolId != 0 {
+				stdout("  Current PoolId     : %v (pool not found)\n", oldPoolId)
+			} else {
+				stdout("  Current PoolId     : not set\n")
+			}
+			stdout("  New PoolId         : %v (%v)\n", poolId, poolName)
+			stdout("\nConfirm (yes/no)[no]: ")
+			var userConfirm string
+			_, _ = fmt.Scanln(&userConfirm)
+			if userConfirm != "yes" {
+				err = fmt.Errorf("Abort by user.\n")
+				return
+			}
+
+			if err = client.AdminAPI().VolUpdatePoolId(volName, poolId, poolName, util.CalcAuthKey(vv.Owner), optClientIDKey); err != nil {
 				return
 			}
 
@@ -1759,6 +1813,7 @@ func newVolUpdatePoolIdCmd(client *master.MasterClient) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&optClientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().StringVar(&poolName, "poolName", "", "pool name (required, must match poolId)")
 	return cmd
 }
 
@@ -1836,7 +1891,7 @@ func newVolGetInodeByIdCmd(client *master.MasterClient) *cobra.Command {
 				return err
 			}
 			mpId = mw.GetPartitionByInodeId_ll(ino).PartitionID
-			verAll = true
+			verAll = false
 
 			mp, err := client.ClientAPI().GetMetaPartition(mpId)
 			if err != nil {
@@ -1851,6 +1906,7 @@ func newVolGetInodeByIdCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			jsonBytes, err := json.MarshalIndent(inodeDetail, "", "  ")
+			// jsonBytes, err := json.Marshal(inodeDetail)
 			if err != nil {
 				return fmt.Errorf("failed to marshal inode detail to JSON: %v", err.Error())
 			}

@@ -2103,6 +2103,7 @@ func (c *Cluster) loadVols() (err error) {
 		c.setStorageClassForLegacyVol(vol)
 		err = c.setPoolForLegacyVol(vol)
 		if err != nil {
+			fmt.Println("errtest", err, vol.Name, vol.allowedPools, vol.defaultPoolId, vol.volStorageClass)
 			log.LogErrorf("action[loadVols],vol[%v] setPoolForLegacyVol error %v", vol.Name, err)
 			return err
 		}

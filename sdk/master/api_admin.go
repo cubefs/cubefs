@@ -498,10 +498,11 @@ func (api *AdminAPI) VolAddPool(volName string, poolId uint8, authKey, clientIDK
 	return
 }
 
-func (api *AdminAPI) VolUpdatePoolId(volName string, poolId uint8, authKey, clientIDKey string) (err error) {
+func (api *AdminAPI) VolUpdatePoolId(volName string, poolId uint8, poolName, authKey, clientIDKey string) (err error) {
 	request := newRequest(http.MethodGet, proto.AdminVolUpdatePoolId).Header(api.h)
 	request.addParam("name", volName)
 	request.addParam("poolId", strconv.FormatUint(uint64(poolId), 10))
+	request.addParam("poolName", poolName)
 	request.addParam("authKey", authKey)
 	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {

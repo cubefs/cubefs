@@ -323,7 +323,6 @@ func (mc *MetaHttpClient) GetInodeDetail(pid uint64, ino uint64, verAll bool) (*
 	}
 
 	apiResponse := &ApiResponse{}
-
 	err = json.Unmarshal(bodyBytes, apiResponse)
 	if err != nil {
 		log.LogErrorf("Failed to unmarshal response: %v", err)

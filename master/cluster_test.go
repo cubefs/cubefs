@@ -324,6 +324,8 @@ func TestBalanceMetaPartition(t *testing.T) {
 		zoneName:         testZone1 + "," + testZone2,
 		description:      "",
 		qosLimitArgs:     &qosArgs{},
+		defaultPoolId:    defaultPoolId,
+		allowedPools:     []uint8{defaultPoolId},
 	}
 	_, err := server.cluster.createVol(req)
 	require.NoError(t, err)
@@ -400,21 +402,26 @@ func TestCreateVolWithDpCount(t *testing.T) {
 
 	t.Run("dpCount >= defaultInitDpCntForVolCreateCheck", func(t *testing.T) {
 		req := &createVolReq{
-			name:             commonVolName + "001",
-			owner:            "cfs",
-			dpSize:           11,
-			mpCount:          30,
-			dpCount:          30,
-			dpReplicaNum:     3,
-			capacity:         100,
-			followerRead:     false,
-			authenticate:     false,
-			crossZone:        true,
-			normalZonesFirst: false,
-			zoneName:         testZone1 + "," + testZone2,
-			description:      "",
-			qosLimitArgs:     &qosArgs{},
-			volStorageClass:  defaultVolStorageClass,
+			name:                    commonVolName + "001",
+			owner:                   "cfs",
+			dpSize:                  11,
+			mpCount:                 30,
+			dpCount:                 30,
+			dpReplicaNum:            3,
+			capacity:                100,
+			followerRead:            false,
+			authenticate:            false,
+			crossZone:               true,
+			normalZonesFirst:        false,
+			zoneName:                testZone1 + "," + testZone2,
+			description:             "",
+			qosLimitArgs:            &qosArgs{},
+			volStorageClass:         defaultVolStorageClass,
+			defaultPoolId:           defaultPoolId,
+			storeMode:               proto.StoreModeMem,
+			accessTimeValidInterval: proto.MinAccessTimeValidInterval,
+			remoteCacheReadTimeout:  proto.ReadDeadlineTime,
+			allowedPools:            []uint8{defaultPoolId},
 		}
 
 		// auto set allowedStorageClass[] in createVolReq
@@ -434,21 +441,26 @@ func TestCreateVolWithDpCount(t *testing.T) {
 
 	t.Run("dpCount > max count", func(t *testing.T) {
 		req := &createVolReq{
-			name:             commonVolName + "002",
-			owner:            "cfs",
-			dpSize:           3,
-			mpCount:          30,
-			dpCount:          300,
-			dpReplicaNum:     3,
-			capacity:         100,
-			followerRead:     false,
-			authenticate:     false,
-			crossZone:        true,
-			normalZonesFirst: false,
-			zoneName:         testZone1 + "," + testZone2,
-			description:      "",
-			qosLimitArgs:     &qosArgs{},
-			volStorageClass:  defaultVolStorageClass,
+			name:                    commonVolName + "002",
+			owner:                   "cfs",
+			dpSize:                  3,
+			mpCount:                 30,
+			dpCount:                 300,
+			dpReplicaNum:            3,
+			capacity:                100,
+			followerRead:            false,
+			authenticate:            false,
+			crossZone:               true,
+			normalZonesFirst:        false,
+			zoneName:                testZone1 + "," + testZone2,
+			description:             "",
+			qosLimitArgs:            &qosArgs{},
+			volStorageClass:         defaultVolStorageClass,
+			defaultPoolId:           defaultPoolId,
+			storeMode:               proto.StoreModeMem,
+			accessTimeValidInterval: proto.MinAccessTimeValidInterval,
+			remoteCacheReadTimeout:  proto.ReadDeadlineTime,
+			allowedPools:            []uint8{defaultPoolId},
 		}
 
 		err := server.checkCreateVolReq(req)
