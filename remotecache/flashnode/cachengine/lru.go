@@ -32,7 +32,20 @@ const (
 	LRUUpdateChanSize          = 1000000
 	MaxPushFrontConsumption    = 100000
 	BackgroundCleanupItemCount = 50
+	StatChanSize               = 100000
 )
+
+const (
+	StatHit = iota
+	StatMiss
+	StatEvict
+)
+
+type StatUpdate struct {
+	Key   interface{}
+	Type  int
+	Count int32
+}
 
 type LruCache interface {
 	Get(key interface{}) (interface{}, error)
@@ -48,13 +61,14 @@ type LruCache interface {
 	GetRateStat() RateStat
 	GetAllocated() int64
 	GetExpiredTime(key interface{}) (time.Time, bool)
-	AddMisses()
+	AddMisses(key interface{})
 	CheckDiskSpace(dataPath string, key interface{}, size int64, reservedSpace int64) (n int, err error)
 	FreePreAllocatedSize(key interface{})
 	GetCreateTime(key interface{}) (time.Time, bool)
 	SetCapacity(capacity int)
 	SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap map[string]bool)
 	IsVolumeDisableTTL(volume string) bool
+	SetStatCh(ch chan StatUpdate)
 }
 
 type Status struct {
@@ -100,6 +114,7 @@ type fCache struct {
 	disk      *Disk
 
 	lruUpdateChan chan *entry
+	statCh        chan StatUpdate
 }
 
 // entry in the cache.
@@ -162,6 +177,19 @@ func NewCache(cacheType int, capacity int, maxSize int64, ttl time.Duration, onD
 		}
 	}()
 	return c
+}
+
+func (c *fCache) SetStatCh(ch chan StatUpdate) {
+	c.statCh = ch
+}
+
+func (c *fCache) sendStat(key interface{}, statType int, count int32) {
+	if c.statCh != nil {
+		select {
+		case c.statCh <- StatUpdate{Key: key, Type: statType, Count: count}:
+		default:
+		}
+	}
 }
 
 func (c *fCache) AttachDisk(d *Disk) {
@@ -501,11 +529,13 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 		if disableTTL || v.expiredAt.After(time.Now()) {
 			c.lock.RUnlock()
 			atomic.AddInt32(&c.hits, 1)
+			c.sendStat(key, StatHit, 1)
 			c.lruUpdateChan <- v
 			return v.value, nil
 		}
 		c.lock.RUnlock()
 		atomic.AddInt32(&c.misses, 1)
+		c.sendStat(key, StatMiss, 1)
 		c.lock.Lock()
 		if newEnt, found := c.items[key]; found {
 			newV := newEnt.Value.(*entry)
@@ -513,6 +543,7 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 			if disableTTL || newV.expiredAt.After(time.Now()) {
 				c.lock.Unlock()
 				atomic.AddInt32(&c.hits, 1)
+				c.sendStat(key, StatHit, 1)
 				c.lruUpdateChan <- newV
 				return newV.value, nil
 			}
@@ -530,6 +561,7 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 	}
 	c.lock.RUnlock()
 	atomic.AddInt32(&c.misses, 1)
+	c.sendStat(key, StatMiss, 1)
 	return nil, fmt.Errorf("key[%s] not found", key)
 }
 
@@ -589,6 +621,7 @@ func (c *fCache) deleteElement(ent *list.Element) interface{} {
 	v := ent.Value.(*entry)
 	c.removeElement(ent)
 	atomic.AddInt32(&c.evicts, 1)
+	c.sendStat(v.key, StatEvict, 1)
 	return v.value
 }
 
@@ -710,8 +743,9 @@ func (c *fCache) GetCreateTime(key interface{}) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func (c *fCache) AddMisses() {
+func (c *fCache) AddMisses(key interface{}) {
 	atomic.AddInt32(&c.misses, 1)
+	c.sendStat(key, StatMiss, 1)
 }
 
 func (c *fCache) backgroundCleanup(itemCount int, diskSpaceLeft int64) {

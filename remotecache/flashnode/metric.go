@@ -31,6 +31,9 @@ const (
 	MetricFlashNodeLruUsageRatio       = "flashNodeLruUsageRatio"
 	MetricFlashNodeDiskUsageRatio      = "flashNodeDiskUsageRatio"
 	MetricFlashNodeMemoryRatio         = "flashNodeMemoryRatio"
+	MetricFlashNodeVolHitCount         = "flashNodeVolHitCount"
+	MetricFlashNodeVolMissCount        = "flashNodeVolMissCount"
+	MetricFlashNodeVolEvictCount       = "flashNodeVolEvictCount"
 )
 
 type FlashNodeMetrics struct {
@@ -52,6 +55,9 @@ type FlashNodeMetrics struct {
 	MetricLruUsageRatio       *exporter.Gauge
 	MetricDiskUsageRatio      *exporter.Gauge
 	MetricMemoryRatio         *exporter.Gauge
+	MetricVolHitCount         *exporter.Gauge
+	MetricVolMissCount        *exporter.Gauge
+	MetricVolEvictCount       *exporter.Gauge
 }
 
 func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
@@ -76,6 +82,9 @@ func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
 	f.metrics.MetricLruUsageRatio = exporter.NewGauge(MetricFlashNodeLruUsageRatio)
 	f.metrics.MetricDiskUsageRatio = exporter.NewGauge(MetricFlashNodeDiskUsageRatio)
 	f.metrics.MetricMemoryRatio = exporter.NewGauge(MetricFlashNodeMemoryRatio)
+	f.metrics.MetricVolHitCount = exporter.NewGauge(MetricFlashNodeVolHitCount)
+	f.metrics.MetricVolMissCount = exporter.NewGauge(MetricFlashNodeVolMissCount)
+	f.metrics.MetricVolEvictCount = exporter.NewGauge(MetricFlashNodeVolEvictCount)
 	for _, d := range disks {
 		cachengine.StatMap[path.Join(d.Path, cachengine.DefaultCacheDirName)] = new(cachengine.MetricStat)
 	}
@@ -118,6 +127,7 @@ func (fm *FlashNodeMetrics) doStat() {
 	fm.setLruUsageRatioMetric()
 	fm.setDiskUsageRatioMetric()
 	fm.setMemoryRatioMetric()
+	fm.setVolCacheStatsMetric()
 }
 
 func (fm *FlashNodeMetrics) setReadBytesMetric() {
@@ -239,5 +249,19 @@ func (fm *FlashNodeMetrics) updateReadBytesMetric(size uint64, d string) {
 func (fm *FlashNodeMetrics) updateReadCountMetric(d string) {
 	if stat, ok := cachengine.StatMap[d]; ok {
 		atomic.AddUint64(&stat.ReadCount, 1)
+	}
+}
+
+func (fm *FlashNodeMetrics) setVolCacheStatsMetric() {
+	volStats := fm.flashNode.cacheEngine.GetAndResetVolStats()
+	for vol, stats := range volStats {
+		labels := map[string]string{
+			"cluster":          fm.flashNode.clusterID,
+			exporter.FlashNode: fm.flashNode.localAddr,
+			"vol":              vol,
+		}
+		fm.MetricVolHitCount.SetWithLabels(float64(stats.Hits), labels)
+		fm.MetricVolMissCount.SetWithLabels(float64(stats.Misses), labels)
+		fm.MetricVolEvictCount.SetWithLabels(float64(stats.Evicts), labels)
 	}
 }

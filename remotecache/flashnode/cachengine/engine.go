@@ -98,6 +98,12 @@ type CacheVolInfo struct {
 	CacheSize int64  // total cache size for this volume
 }
 
+type VolCacheStats struct {
+	Hits   int32
+	Misses int32
+	Evicts int32
+}
+
 type lruCacheItem struct {
 	lruCache      LruCache
 	config        CacheConfig
@@ -140,11 +146,14 @@ type CacheEngine struct {
 	enableTmpfs bool // for testing in docker
 	localAddr   string
 
+	volCache              int32
 	readDataNodeTimeout   int
 	keyRateLimitThreshold int32
 	keyLimiterFlow        int64
 	reservedSpace         int64    // reserved disk space
 	volMap                sync.Map // volume -> *CacheVolInfo (track volumes with cache)
+	volStatsMap           sync.Map // volume -> *VolCacheStats
+	statCh                chan StatUpdate
 }
 
 type (
@@ -172,6 +181,9 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	s.keyLimiterFlow = keyLimiterFlow
 	s.reservedSpace = reservedSpace
 	s.keyToDiskMap = make(map[string]*lruCacheItem)
+	s.statCh = make(chan StatUpdate, StatChanSize)
+	s.startStatWorkers(4)
+
 	if s.enableTmpfs {
 		fullPath := path.Join(memDataDir, DefaultCacheDirName)
 		memCacheConfig := CacheConfig{
@@ -198,6 +210,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 				cb := v.(*CacheBlock)
 				return cb.Close()
 			})
+		cache.SetStatCh(s.statCh)
 		s.lruCacheMap.Store(fullPath, &lruCacheItem{lruCache: cache, config: memCacheConfig, disk: disks[0]})
 		s.totalCacheNum = 1
 		s.lruFhCache = NewCache(LRUFileHandleCacheType, fhCapacity, -1, expireTime,
@@ -257,6 +270,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 				cb := v.(*CacheBlock)
 				return cb.Close()
 			})
+		cache.SetStatCh(s.statCh)
 		s.lruCacheMap.Store(fullPath, &lruCacheItem{lruCache: cache, config: diskCacheConfig, disk: d})
 		s.totalCacheNum++
 
@@ -291,6 +305,10 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 			return file.Close()
 		})
 	return
+}
+
+func (c *CacheEngine) SetVolCache(v int32) {
+	atomic.StoreInt32(&c.volCache, v)
 }
 
 func (c *CacheEngine) isCacheBlockFileName(filename string) (isCacheBlockDir bool) {
@@ -926,7 +944,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 			return
 		}
 		if !isPrepare {
-			cacheItem.lruCache.AddMisses()
+			cacheItem.lruCache.AddMisses(key)
 		}
 		c.setCacheItem(key, cacheItem, volume, block.getAllocSize())
 	}
@@ -1394,6 +1412,66 @@ func (c *CacheEngine) GetVolCacheSizeMap() map[string]int64 {
 		vol := key.(string)
 		volInfo := value.(*CacheVolInfo)
 		result[vol] = atomic.LoadInt64(&volInfo.CacheSize)
+		return true
+	})
+	return result
+}
+
+func (c *CacheEngine) startStatWorkers(workerNum int) {
+	for i := 0; i < workerNum; i++ {
+		go func() {
+			for {
+				select {
+				case <-c.closeCh:
+					return
+				case statV, ok := <-c.statCh:
+					if !ok {
+						return
+					}
+					if atomic.LoadInt32(&c.volCache) == 0 {
+						continue
+					}
+					keyStr, ok := statV.Key.(string)
+					if !ok {
+						continue
+					}
+					volume := extractVolumeFromKey(keyStr)
+					if volume == "" {
+						continue
+					}
+					val, _ := c.volStatsMap.LoadOrStore(volume, &VolCacheStats{})
+					stats := val.(*VolCacheStats)
+					switch statV.Type {
+					case StatHit:
+						atomic.AddInt32(&stats.Hits, statV.Count)
+					case StatMiss:
+						atomic.AddInt32(&stats.Misses, statV.Count)
+					case StatEvict:
+						atomic.AddInt32(&stats.Evicts, statV.Count)
+					}
+				}
+			}
+		}()
+	}
+}
+
+func (c *CacheEngine) GetAndResetVolStats() map[string]*VolCacheStats {
+	result := make(map[string]*VolCacheStats)
+	c.volStatsMap.Range(func(key, value interface{}) bool {
+		vol := key.(string)
+		stats := value.(*VolCacheStats)
+		// Atomic swap to reset and get previous value
+		hits := atomic.SwapInt32(&stats.Hits, 0)
+		misses := atomic.SwapInt32(&stats.Misses, 0)
+		evicts := atomic.SwapInt32(&stats.Evicts, 0)
+
+		if hits > 0 || misses > 0 || evicts > 0 {
+			result[vol] = &VolCacheStats{
+				Hits:   hits,
+				Misses: misses,
+				Evicts: evicts,
+			}
+		}
 		return true
 	})
 	return result
