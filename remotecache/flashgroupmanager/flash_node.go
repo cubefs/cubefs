@@ -219,6 +219,7 @@ func (flashNode *FlashNode) CreateFnScanTask(masterAddr string, manualTask *prot
 		Task:       manualTask,
 	}
 	task = proto.NewAdminTaskEx(proto.OpFlashNodeScan, flashNode.Addr, request, manualTask.Id)
+	task.TopoName = manualTask.TopoName
 	return
 }
 

@@ -187,7 +187,7 @@ func (s *ManualScanner) checkScanning() {
 				response.Done = true
 				log.LogInfof("checkScanning completed response(%+v)", response)
 				s.Stop()
-				msg := fmt.Sprintf("task(%+v) produce completed", response)
+				msg := fmt.Sprintf("vol(%v) path(%v) topo(%v) task(%+v) produce completed", s.manualTask.VolName, s.manualTask.ManualTaskConfig.Prefix, s.manualTask.TopoName, response)
 				auditlog.LogFlashNodeOp("Warmup", msg, nil)
 				s.flashNode.manualScanners.Delete(s.ID)
 				s.flashNode.respondToMaster(s.adminTask)
