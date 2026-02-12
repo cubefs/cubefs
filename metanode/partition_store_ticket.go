@@ -28,6 +28,7 @@ import (
 
 type storeMsg struct {
 	command      uint32
+	applyIndex   uint64
 	snap         Snapshot
 	quotaRebuild bool
 	uidRebuild   bool
@@ -46,13 +47,13 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	dumpFunc := func(msg *storeMsg) {
 		log.LogWarnf("[startSchedule] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
-			msg.snap.ApplyID())
+			msg.applyIndex)
 		if err := mp.store(msg); err == nil {
 			// truncate raft log
 			if mp.raftPartition != nil && curIndex > 0 {
 				log.LogWarnf("[startSchedule] start trunc, partitionId=%d: nowAppID"+
 					"=%d, applyID=%d", mp.config.PartitionId, curIndex,
-					msg.snap.ApplyID())
+					msg.applyIndex)
 				mp.raftPartition.Truncate(curIndex)
 			} else {
 				// maybe happen when start load dentry
@@ -66,7 +67,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					curIndex = 0
 				}
 			} else {
-				curIndex = msg.snap.ApplyID()
+				curIndex = msg.applyIndex
 			}
 			if msg.snap != nil {
 				msg.snap.Close()
@@ -106,17 +107,17 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					maxMsg *storeMsg
 				)
 				for _, msg := range msgs {
-					if curIndex >= msg.snap.ApplyID() {
+					if curIndex >= msg.applyIndex {
 						if msg.snap != nil {
 							msg.snap.Close()
 						}
 						continue
 					}
-					if maxIdx < msg.snap.ApplyID() {
+					if maxIdx < msg.applyIndex {
 						if maxMsg != nil && maxMsg.snap != nil {
 							maxMsg.snap.Close()
 						}
-						maxIdx = msg.snap.ApplyID()
+						maxIdx = msg.applyIndex
 						maxMsg = msg
 					} else {
 						if msg.snap != nil {

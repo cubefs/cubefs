@@ -313,6 +313,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			log.LogErrorf("[Apply]: failed to open snapshot for mp(%v), store(%v), err(%v)", mp.config.PartitionId, mp.config.StoreMode, err)
 			return
 		}
+
 		msg := &storeMsg{
 			command:      opFSMStoreTick,
 			snap:         snap,
@@ -321,6 +322,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			uniqId:       uniqId,
 			uniqChecker:  uniqChecker,
 			multiVerList: mp.GetAllVerList(),
+			applyIndex:   index,
 		}
 		log.LogDebugf("opFSMStoreTick: quotaRebuild [%v] uidRebuild [%v]", quotaRebuild, uidRebuild)
 		mp.storeChan <- msg
