@@ -323,6 +323,7 @@ func (fltMgr *flashManualTaskManager) stopInteractiveTask(task *proto.FlashManua
 	var err error
 	t := time.Now()
 	task.Status = int(proto.Flash_Task_Failed)
+	task.ErrMsg = "stop interactive task"
 	task.EndTime = &t
 	if err = fltMgr.cluster.syncAddFlashManualTask(task); err != nil {
 		return err

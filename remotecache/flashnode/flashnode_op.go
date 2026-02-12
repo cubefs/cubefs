@@ -792,6 +792,7 @@ func (f *FlashNode) opFlashNodeScan(conn net.Conn, p *proto.Packet) (err error) 
 		f.respondToMaster(adminTask)
 		return
 	}
+	adminTask.TopoName = req.Task.TopoName
 	err = f.startTaskScan(adminTask)
 	f.respondToMaster(adminTask)
 

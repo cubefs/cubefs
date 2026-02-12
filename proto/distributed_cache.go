@@ -540,6 +540,7 @@ type FlashManualTask struct {
 	UpdateTime           *time.Time
 	EndTime              *time.Time
 	Done                 bool
+	ErrMsg               string
 	TopoName             string
 	sync.Mutex
 }
@@ -628,6 +629,7 @@ func (flt *FlashManualTask) SetResponse(taskRsp *FlashNodeManualTaskResponse) {
 	flt.ManualTaskStatistics.TotalCacheSize = taskRsp.TotalCacheSize
 	flt.ManualTaskStatistics.LastCacheSize = taskRsp.LastCacheSize
 	flt.Done = taskRsp.Done
+	flt.ErrMsg = taskRsp.StartErr
 }
 
 type CacheMissEntry struct {
