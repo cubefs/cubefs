@@ -38,6 +38,7 @@ type ManualScanner struct {
 	manualTask     *proto.FlashManualTask
 	limiter        *rate.Limiter
 	prepareLimiter *rate.Limiter
+	flowLimiter    *rate.Limiter
 	createTime     time.Time
 	currentStat    *proto.ManualTaskStatistics
 	dirChan        *unboundedchan.UnboundedChan
@@ -66,6 +67,20 @@ func NewManualScanner(adminTask *proto.AdminTask, f *FlashNode, metaWrapper *met
 	if handlerFileRoutineNum <= 0 {
 		handlerFileRoutineNum = f.handlerFileRoutineNumPerTask
 	}
+
+	prepareLimit := scanTask.ManualTaskConfig.PrepareLimitPerSecond
+	if prepareLimit == 0 {
+		prepareLimit = _defaultPrepareLimitPerSecond
+	}
+
+	flowLimit := scanTask.ManualTaskConfig.FlowLimitPerSecond
+	var flowLimiter *rate.Limiter
+	if flowLimit == 0 {
+		flowLimiter = rate.NewLimiter(rate.Inf, 0)
+	} else {
+		flowLimiter = rate.NewLimiter(rate.Limit(flowLimit), int(flowLimit/2))
+	}
+
 	scanner := &ManualScanner{
 		ID:             scanTask.Id,
 		Volume:         scanTask.VolName,
@@ -79,7 +94,8 @@ func NewManualScanner(adminTask *proto.AdminTask, f *FlashNode, metaWrapper *met
 		fileRPool:      routinepool.NewRoutinePool(handlerFileRoutineNum),
 		currentStat:    &proto.ManualTaskStatistics{FlashNode: f.localAddr},
 		limiter:        rate.NewLimiter(rate.Limit(f.manualScanLimitPerSecond), _defaultManualScanLimitBurst),
-		prepareLimiter: rate.NewLimiter(rate.Limit(f.prepareLimitPerSecond), int(f.prepareLimitPerSecond/2)),
+		prepareLimiter: rate.NewLimiter(rate.Limit(prepareLimit), int(prepareLimit/2)),
+		flowLimiter:    flowLimiter,
 		createTime:     time.Now(),
 		receiveStopC:   make(chan struct{}),
 		stopC:          make(chan struct{}),
@@ -319,6 +335,7 @@ func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
 		log.LogInfof("skip warmUp, file size(%d) above MaxFileSizeLimit(%d), inode(%v)", i.Size, config.MaxFileSizeLimit, i.Inode)
 		return nil
 	}
+	s.flowLimiter.WaitN(context.Background(), int(i.Size))
 	_, _, extents, err = s.mw.GetExtents(i.Inode, false, false, false)
 	if err != nil {
 		log.LogWarnf("warmUp: mw GetExtents fail, inode(%v) err: %v ", i.Inode, err)

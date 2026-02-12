@@ -553,6 +553,8 @@ type ManualTaskConfig struct {
 	MinFileSizeLimit        int64
 	MaxFileSizeLimit        int64
 	WarmUpPathExpire        int64
+	PrepareLimitPerSecond   int64
+	FlowLimitPerSecond      int64
 }
 
 type ManualTaskStatistics struct {

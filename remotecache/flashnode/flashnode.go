@@ -71,9 +71,9 @@ const (
 	_defaultFlashNodeScanRoutineNumPerTask = 20
 	_defaultHandlerFileRoutineNumPerTask   = 20
 	_maxHandlerFileRoutineNumPerTask       = 500
-	_defaultManualScanLimitPerSecond       = 10000
+	_defaultManualScanLimitPerSecond       = 100000
 	_defaultPrepareLimitPerSecond          = 10000
-	_defaultManualScanLimitBurst           = 1000
+	_defaultManualScanLimitBurst           = 100000
 	_slotStatValidPeriod                   = 10 * time.Minute // min
 	_defaultPrepareRoutineNum              = 20
 	_defaultMissEntryExpiration            = 2 * time.Minute

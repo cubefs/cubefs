@@ -31,6 +31,7 @@ func testManualScanner(t *testing.T) {
 		currentStat:    &proto.ManualTaskStatistics{FlashNode: flashServer.localAddr},
 		limiter:        rate.NewLimiter(rate.Limit(flashServer.manualScanLimitPerSecond), _defaultManualScanLimitBurst),
 		prepareLimiter: rate.NewLimiter(rate.Limit(flashServer.prepareLimitPerSecond), int(flashServer.prepareLimitPerSecond/2)),
+		flowLimiter:    rate.NewLimiter(rate.Inf, 0),
 		createTime:     time.Now(),
 		receiveStopC:   make(chan struct{}),
 		stopC:          make(chan struct{}),
