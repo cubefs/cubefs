@@ -106,7 +106,7 @@ func (f *FlashNode) handleSubmitTask(w http.ResponseWriter, r *http.Request) {
 			return true
 		}
 		tmpDir = t.GetPathPrefix()
-		if rootDir != tmpDir {
+		if rootDir != tmpDir && (tmpDir != "" && !strings.HasPrefix(rootDir, tmpDir+"/")) {
 			return true
 		}
 		if !proto.ManualTaskDone(t.Status) {
