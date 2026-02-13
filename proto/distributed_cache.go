@@ -555,6 +555,7 @@ type ManualTaskConfig struct {
 	WarmUpPathExpire        int64
 	PrepareLimitPerSecond   int64
 	FlowLimitPerSecond      int64
+	PrintProgress           bool
 }
 
 type ManualTaskStatistics struct {
@@ -567,6 +568,8 @@ type ManualTaskStatistics struct {
 	TotalCacheSize      int64
 	LastCacheSize       int64
 	FlashNode           string
+	TotalEntryNum       int64
+	LoadProgress        string
 }
 
 type FlashNodeManualTaskRequest struct {
@@ -630,6 +633,7 @@ func (flt *FlashManualTask) SetResponse(taskRsp *FlashNodeManualTaskResponse) {
 	flt.ManualTaskStatistics.ErrorReadDirNum = taskRsp.ErrorReadDirNum
 	flt.ManualTaskStatistics.TotalCacheSize = taskRsp.TotalCacheSize
 	flt.ManualTaskStatistics.LastCacheSize = taskRsp.LastCacheSize
+	flt.ManualTaskStatistics.TotalEntryNum = taskRsp.TotalEntryNum
 	flt.Done = taskRsp.Done
 	flt.ErrMsg = taskRsp.StartErr
 }

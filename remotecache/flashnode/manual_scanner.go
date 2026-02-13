@@ -25,6 +25,7 @@ const (
 	defaultUnboundedChanInitCapacity = 10000
 	defaultReadDirLimit              = 1000
 	maxDirChanNum                    = 100000
+	loadDirWorkerCount               = 8
 )
 
 type ManualScanner struct {
@@ -54,6 +55,7 @@ type ManualScanner struct {
 	pauseCond      *sync.Cond
 	closeOnce      sync.Once
 	mu             sync.Mutex
+	loadedEntries  int32
 }
 
 func NewManualScanner(adminTask *proto.AdminTask, f *FlashNode, metaWrapper *meta.MetaWrapper, extentClient *stream.ExtentClient) *ManualScanner {
@@ -104,6 +106,9 @@ func NewManualScanner(adminTask *proto.AdminTask, f *FlashNode, metaWrapper *met
 		pause:          0,
 		pauseCond:      sync.NewCond(&sync.Mutex{}),
 	}
+	if !scanTask.ManualTaskConfig.PrintProgress {
+		scanner.loadedEntries = 1
+	}
 	if extentClient != nil {
 		scanner.ec = extentClient
 		scanner.RemoteCache = &extentClient.RemoteCache
@@ -146,7 +151,10 @@ func (s *ManualScanner) Start() (err error) {
 	response.StartTime = &s.createTime
 
 	s.writeDirChan(firstDentry)
-
+	if atomic.LoadInt32(&s.loadedEntries) == 0 {
+		atomic.AddInt64(&s.currentStat.TotalEntryNum, 1)
+		go s.loadDirTotalEntries(parentId)
+	}
 	go s.checkScanning()
 
 	return
@@ -227,13 +235,15 @@ func (s *ManualScanner) copyResponse() *proto.FlashNodeManualTaskResponse {
 	response.ErrorReadDirNum = s.currentStat.ErrorReadDirNum
 	response.TotalCacheSize = s.currentStat.TotalCacheSize
 	response.LastCacheSize = s.currentStat.LastCacheSize
+	response.TotalEntryNum = s.currentStat.TotalEntryNum
 	return response
 }
 
 func (s *ManualScanner) DoneScanning() bool {
-	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v) pause(%v)",
-		s.dirChan.Len(), len(s.fileChan), s.fileRPool.RunningNum(), s.dirRPool.RunningNum(), s.pause)
-	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && atomic.LoadInt32(&s.pause) == 0 && len(s.RemoteCache.PrepareCh) == 0
+	loadedEntries := atomic.LoadInt32(&s.loadedEntries)
+	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v) pause(%v) loadedEntries(%v)",
+		s.dirChan.Len(), len(s.fileChan), s.fileRPool.RunningNum(), s.dirRPool.RunningNum(), s.pause, loadedEntries)
+	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && atomic.LoadInt32(&s.pause) == 0 && len(s.RemoteCache.PrepareCh) == 0 && loadedEntries == 1
 }
 
 func (s *ManualScanner) handleFileChan() {
@@ -335,7 +345,6 @@ func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
 		log.LogInfof("skip warmUp, file size(%d) above MaxFileSizeLimit(%d), inode(%v)", i.Size, config.MaxFileSizeLimit, i.Inode)
 		return nil
 	}
-	s.flowLimiter.WaitN(context.Background(), int(i.Size))
 	_, _, extents, err = s.mw.GetExtents(i.Inode, false, false, false)
 	if err != nil {
 		log.LogWarnf("warmUp: mw GetExtents fail, inode(%v) err: %v ", i.Inode, err)
@@ -362,6 +371,7 @@ func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
 	eLen := len(extents)
 	for index, extent := range extents {
 		s.prepareLimiter.Wait(context.Background())
+		s.flowLimiter.WaitN(context.Background(), int(extent.Size))
 		prepareReq := stream.NewPrepareRemoteCacheRequest(i.Inode, extent, true, i.WriteGen, eLen-1 == index)
 		s.RemoteCache.PrepareCh <- prepareReq
 		atomic.AddInt64(&s.currentStat.TotalExtentKeyNum, 1)
@@ -700,4 +710,82 @@ func (s *ManualScanner) processCommand(command string) {
 		log.LogInfof("invalid task opCode: %v tid %v", command, s.ID)
 	}
 	s.mu.Unlock()
+}
+
+func (s *ManualScanner) loadDirTotalEntries(inode uint64) {
+	log.LogInfof("Enter loadDirTotalEntries, inode: %v, task: %v", inode, s.ID)
+	signalChan := make(chan struct{}, loadDirWorkerCount)
+	signalChan <- struct{}{}
+	s.loadDirTotalEntriesRecursive(inode, signalChan, true)
+}
+
+func (s *ManualScanner) loadDirTotalEntriesRecursive(inode uint64, signalChan chan struct{}, async bool) {
+	defer func() {
+		if async {
+			<-signalChan
+			if len(signalChan) == 0 {
+				atomic.StoreInt32(&s.loadedEntries, 1)
+				log.LogInfof("Exit loadDirTotalEntriesRecursive, currentStat.TotalEntryNum: %v, task: %v", s.currentStat.TotalEntryNum, s.ID)
+			}
+		}
+	}()
+	marker := ""
+	done := false
+
+	for !done {
+		select {
+		case <-s.stopC:
+			log.LogInfof("receive stop, stop loadDirTotalEntriesRecursive %v", s.ID)
+			return
+		default:
+		}
+
+		s.applyPauseIfEnabled("loadDirTotalEntriesRecursive", fmt.Sprintf("%d:%s", inode, marker))
+		children, err := s.mw.ReadDirLimit_ll(inode, marker, uint64(defaultReadDirLimit))
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("loadDirTotalEntriesRecursive ReadDirLimit_ll err(%v), inode(%v), marker(%v)", err, inode, marker)
+			return
+		}
+
+		if err == syscall.ENOENT {
+			break
+		}
+
+		if marker != "" && len(children) >= 1 && marker == children[0].Name {
+			if len(children) <= 1 {
+				break
+			} else {
+				children = children[1:]
+			}
+		}
+
+		// Recursively process directories
+		for _, child := range children {
+			select {
+			case <-s.stopC:
+				log.LogInfof("receive stop, stop loadDirTotalEntriesRecursive iterator %v", s.ID)
+				return
+			default:
+			}
+
+			atomic.AddInt64(&s.currentStat.TotalEntryNum, 1)
+
+			// If it's a directory, recursively process it
+			if os.FileMode(child.Type).IsDir() {
+				select {
+				case signalChan <- struct{}{}:
+					go s.loadDirTotalEntriesRecursive(child.Inode, signalChan, true)
+				default:
+					s.loadDirTotalEntriesRecursive(child.Inode, signalChan, false)
+				}
+			}
+		}
+
+		childrenNr := len(children)
+		if (marker == "" && childrenNr < defaultReadDirLimit) || (marker != "" && childrenNr+1 < defaultReadDirLimit) {
+			done = true
+		} else {
+			marker = children[childrenNr-1].Name
+		}
+	}
 }

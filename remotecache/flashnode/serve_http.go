@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -106,11 +107,15 @@ func (f *FlashNode) handleSubmitTask(w http.ResponseWriter, r *http.Request) {
 			return true
 		}
 		tmpDir = t.GetPathPrefix()
-		if rootDir != tmpDir && (tmpDir != "" && !strings.HasPrefix(rootDir, tmpDir+"/")) {
+		if rootDir != tmpDir &&
+			tmpDir != "" && rootDir != "" &&
+			tmpDir != "/" && rootDir != "/" &&
+			!strings.HasPrefix(rootDir, tmpDir+"/") &&
+			!strings.HasPrefix(tmpDir, rootDir+"/") {
 			return true
 		}
 		if !proto.ManualTaskDone(t.Status) {
-			err = fmt.Errorf("manual task[%v] is running with the same directory", t.Id)
+			err = fmt.Errorf("manual task[%v] is running on an overlapping directory[%v]", t.Id, tmpDir)
 			return false
 		}
 		return true
@@ -344,6 +349,23 @@ func (f *FlashNode) handleScannerCommand(w http.ResponseWriter, r *http.Request)
 	scanner := mScanner.(*ManualScanner)
 	if opCode == "info" {
 		resp := scanner.copyResponse()
+		if resp.Done {
+			resp.LoadProgress = "100%"
+		} else if scanner.manualTask.ManualTaskConfig.PrintProgress && atomic.LoadInt32(&scanner.loadedEntries) == 1 {
+			if resp.TotalEntryNum <= 0 {
+				resp.LoadProgress = "0%"
+			} else {
+				doneEntries := resp.TotalFileScannedNum + resp.TotalDirScannedNum
+				percent := (doneEntries * 100) / resp.TotalEntryNum
+				if percent > 99 {
+					percent = 99
+				}
+				if percent < 0 {
+					percent = 0
+				}
+				resp.LoadProgress = fmt.Sprintf("%d%%", percent)
+			}
+		}
 		info := map[string]interface{}{
 			"task":             resp,
 			"dirChanLen":       scanner.dirChan.Len(),

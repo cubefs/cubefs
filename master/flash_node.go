@@ -545,8 +545,36 @@ func (m *Server) flashManualTask(w http.ResponseWriter, r *http.Request) {
 	switch opCode {
 	case "info":
 		vol := r.FormValue("vol")
-		rsp := m.cluster.flashManMgr.findMatchTasks(vol, tId)
-		sendOkReply(w, r, newSuccessHTTPReply(rsp))
+		mTasks := m.cluster.flashManMgr.findMatchTasks(vol, tId)
+		for _, rsp := range mTasks {
+			if rsp == nil || rsp.ManualTaskStatistics == nil {
+				continue
+			}
+			if !rsp.ManualTaskConfig.PrintProgress {
+				continue
+			}
+			if rsp.Done {
+				rsp.ManualTaskStatistics.LoadProgress = "100%"
+				continue
+			}
+			stats := rsp.ManualTaskStatistics
+			if stats.TotalEntryNum <= 0 {
+				stats.LoadProgress = "0%"
+				continue
+			}
+
+			doneEntries := stats.TotalFileScannedNum + stats.TotalDirScannedNum
+			percent := (doneEntries * 100) / stats.TotalEntryNum
+			if percent > 99 {
+				percent = 99
+			}
+			if percent < 0 {
+				percent = 0
+			}
+			stats.LoadProgress = fmt.Sprintf("%d%%", percent)
+		}
+
+		sendOkReply(w, r, newSuccessHTTPReply(mTasks))
 	case "set":
 		limit := r.FormValue("total_limit")
 		if limit != "" {
