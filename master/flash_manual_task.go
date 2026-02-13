@@ -85,11 +85,15 @@ func isDuplicated(flt *proto.FlashManualTask, fltMgr *flashManualTaskManager) (e
 			return true
 		}
 		tmpDir = t.GetPathPrefix()
-		if rootDir != tmpDir && (tmpDir != "" && !strings.HasPrefix(rootDir, tmpDir+"/")) {
+		if rootDir != tmpDir &&
+			tmpDir != "" && rootDir != "" &&
+			tmpDir != "/" && rootDir != "/" &&
+			!strings.HasPrefix(rootDir, tmpDir+"/") &&
+			!strings.HasPrefix(tmpDir, rootDir+"/") {
 			return true
 		}
 		if !proto.ManualTaskDone(t.Status) {
-			err = fmt.Errorf("manual task[%v] is running with the same directory", t.Id)
+			err = fmt.Errorf("manual task[%v] is running on an overlapping directory[%v]", t.Id, tmpDir)
 			return false
 		}
 		return true
@@ -324,7 +328,7 @@ func (fltMgr *flashManualTaskManager) stopInteractiveTask(task *proto.FlashManua
 	var err error
 	t := time.Now()
 	task.Status = int(proto.Flash_Task_Failed)
-	task.ErrMsg = "stop interactive task"
+	task.ErrMsg = fmt.Sprintf("Master stopped the warmup task because no progress was reported for %v", FlashTaskInteractiveTimeout)
 	task.EndTime = &t
 	if err = fltMgr.cluster.syncAddFlashManualTask(task); err != nil {
 		return err
