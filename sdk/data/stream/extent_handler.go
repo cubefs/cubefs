@@ -195,11 +195,12 @@ type ExtentHandler struct {
 
 // WriteDataRequest represents a write data request with data and blksize
 type WriteDataRequest struct {
-	data    []byte
-	offset  int
-	size    int
-	blksize int
-	direct  bool
+	data        []byte
+	offset      int
+	size        int
+	blksize     int
+	direct      bool
+	releaseData func()
 }
 
 // writeDataRequestPool is a pool for WriteDataRequest objects to avoid repeated allocations
@@ -222,6 +223,7 @@ func putWriteDataRequest(req *WriteDataRequest) {
 	req.size = 0
 	req.blksize = 0
 	req.direct = false
+	req.releaseData = nil
 	writeDataRequestPool.Put(req)
 }
 
@@ -267,10 +269,20 @@ func (eh *ExtentHandler) String() string {
 		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.stream.verSeq, eh.key, eh.lastKey, eh.inflight, eh.dirty, eh.storageClass, eh.inflight, eh.dirty)
 }
 
-func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blksize int, direct bool) {
+func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blksize int, direct bool,
+	retainForAsyncRelease func() func()) {
 	// Get write request from pool
 	req := getWriteDataRequest()
-	req.data = data
+	if retainForAsyncRelease != nil {
+		req.data = data
+		req.releaseData = retainForAsyncRelease()
+	} else {
+		// If caller doesn't provide async lifetime management, make a defensive copy
+		// because writeDataConsumer processes the slice asynchronously.
+		dataCopy := make([]byte, len(data))
+		copy(dataCopy, data)
+		req.data = dataCopy
+	}
 	req.offset = offset
 	req.size = size
 	req.blksize = blksize
@@ -280,6 +292,9 @@ func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blks
 	case eh.writeDataChan <- req:
 	case <-eh.doneWriteData:
 		log.LogWarnf("ExtentHandler writeWithPacket: channel closed, eh(%v)", eh)
+		if req.releaseData != nil {
+			req.releaseData()
+		}
 		// Return to pool if failed to send
 		putWriteDataRequest(req)
 	}
@@ -300,6 +315,9 @@ func (eh *ExtentHandler) writeDataConsumer() {
 				select {
 				case req := <-eh.writeDataChan:
 					if req != nil {
+						if req.releaseData != nil {
+							req.releaseData()
+						}
 						putWriteDataRequest(req)
 					}
 				default:
@@ -314,6 +332,11 @@ func (eh *ExtentHandler) writeDataConsumer() {
 // processWriteData processes the write data request
 func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
 	defer putWriteDataRequest(req) // Return to pool after processing
+	defer func() {
+		if req.releaseData != nil {
+			req.releaseData()
+		}
+	}()
 	eh.flushMu.Lock()
 	total := 0
 	for total < req.size {
@@ -343,7 +366,7 @@ func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
 	eh.flushMu.Unlock()
 }
 
-func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
+func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool, retainForAsyncRelease func() func()) (ek *proto.ExtentKey, err error) {
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
 		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
@@ -370,7 +393,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	}
 
 	// Send write request through channel to consumer
-	eh.writeWithPacket(data, offset, size, blksize, direct)
+	eh.writeWithPacket(data, offset, size, blksize, direct, retainForAsyncRelease)
 
 	eh.size += size
 

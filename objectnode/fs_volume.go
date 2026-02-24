@@ -47,7 +47,37 @@ import (
 const (
 	rootIno               = proto.RootIno
 	OSSMetaUpdateDuration = time.Duration(time.Second * 30)
+	streamWriteBufSize    = 2 * util.BlockSize
 )
+
+var streamWriteBufPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, streamWriteBufSize)
+		return &buf
+	},
+}
+
+func getStreamWriteBuf() []byte {
+	return *(streamWriteBufPool.Get().(*[]byte))
+}
+
+func putStreamWriteBuf(b []byte) {
+	if cap(b) < streamWriteBufSize {
+		return
+	}
+	b = b[:streamWriteBufSize]
+	streamWriteBufPool.Put(&b)
+}
+
+func buildRetainForAsyncRelease(b []byte) (func() func(), func()) {
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			putStreamWriteBuf(b)
+		})
+	}
+	return func() func() { return release }, release
+}
 
 // AsyncTaskErrorFunc is a callback method definition for asynchronous tasks when an error occurs.
 // It is mainly used to notify other objects when an error occurs during asynchronous task execution.
@@ -1380,13 +1410,14 @@ func (v *Volume) ebsWrite(inode uint64, reader io.Reader, h hash.Hash, storageCl
 
 func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, storageClass uint32) (size uint64, err error) {
 	var (
-		buf                   = make([]byte, 2*util.BlockSize)
 		teeReader             = io.TeeReader(reader, h)
 		readN, writeN, offset int
 	)
 	for {
+		buf := getStreamWriteBuf()
 		readN, err = teeReader.Read(buf)
 		if err != nil && err != io.EOF {
+			putStreamWriteBuf(buf)
 			return
 		}
 		if readN > 0 {
@@ -1404,8 +1435,11 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, storag
 				}
 				return nil
 			}
+
+			retainForAsyncRelease, releaseNow := buildRetainForAsyncRelease(buf)
 			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0, checkFunc, storageClass,
-				false, false); err != nil {
+				false, false, retainForAsyncRelease); err != nil {
+				releaseNow()
 				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
 				exporter.Warning(fmt.Sprintf("write data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
 					v.name, inode, offset, readN, err))
@@ -1414,6 +1448,8 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, storag
 			offset += writeN
 			// copy to md5 buffer, and then write to md5
 			size += uint64(writeN)
+		} else {
+			putStreamWriteBuf(buf)
 		}
 		if err == io.EOF {
 			err = nil
@@ -2825,7 +2861,6 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		writeOffset int
 		readSize    int
 		rest        int
-		buf         = make([]byte, 2*util.BlockSize)
 	)
 
 	var sctx context.Context
@@ -2845,10 +2880,11 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		if rest = int(fileSize) - readOffset; rest <= 0 {
 			break
 		}
-		readSize = len(buf)
-		if rest < len(buf) {
+		readSize = streamWriteBufSize
+		if rest < streamWriteBufSize {
 			readSize = rest
 		}
+		buf := getStreamWriteBuf()
 		buf = buf[:readSize]
 		if proto.IsCold(sv.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
 			readN, err = ebsReader.Read(sctx, buf, readOffset, readSize)
@@ -2856,14 +2892,17 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			readN, err = sv.ec.Read(sInode, buf, readOffset, readSize, sInodeInfo.StorageClass, false)
 		}
 		if err != nil && err != io.EOF {
+			putStreamWriteBuf(buf)
 			return
 		}
 		if readN > 0 {
 			if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(tInodeInfo.StorageClass) {
 				writeN, err = ebsWriter.WriteWithoutPool(tctx, writeOffset, buf[:readN])
 			} else {
+				retainForAsyncRelease, releaseNow := buildRetainForAsyncRelease(buf)
 				writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], 0, nil,
-					tInodeInfo.StorageClass, false, false)
+					tInodeInfo.StorageClass, false, false, retainForAsyncRelease)
+				releaseNow()
 			}
 			if err != nil {
 				log.LogErrorf("CopyFile: write target path from volume (%v) path(%v) fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",
@@ -2873,6 +2912,11 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			readOffset += readN
 			writeOffset += writeN
 			md5Hash.Write(buf[:readN])
+			if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(tInodeInfo.StorageClass) {
+				putStreamWriteBuf(buf)
+			}
+		} else {
+			putStreamWriteBuf(buf)
 		}
 		if err == io.EOF {
 			err = nil

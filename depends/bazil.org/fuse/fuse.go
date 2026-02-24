@@ -107,6 +107,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -425,7 +426,7 @@ func (h *Header) RespondError(err error) {
 	buf := newBuffer(0)
 	hOut := (*outHeader)(unsafe.Pointer(&buf[0]))
 	hOut.Error = -int32(errno)
-	h.respondDoNotReuseMsg(buf)
+	h.respond(buf)
 }
 
 // All requests read from the kernel, without data, are shorter than
@@ -454,10 +455,24 @@ func allocMessage() interface{} {
 func getMessage(c *Conn) *message {
 	m := reqPool.Get().(*message)
 	m.conn = c
+	atomic.StoreInt32(&m.refCount, 1)
 	return m
 }
 
+func retainMessage(m *message) {
+	if m == nil {
+		return
+	}
+	atomic.AddInt32(&m.refCount, 1)
+}
+
 func putMessage(m *message) {
+	if m == nil {
+		return
+	}
+	if atomic.AddInt32(&m.refCount, -1) != 0 {
+		return
+	}
 	m.buf = m.buf[:bufSize]
 	m.conn = nil
 	m.off = 0
@@ -466,10 +481,11 @@ func putMessage(m *message) {
 
 // a message represents the bytes of a single FUSE message
 type message struct {
-	conn *Conn
-	buf  []byte    // all bytes
-	hdr  *inHeader // header
-	off  int       // offset for reading additional fields
+	conn     *Conn
+	buf      []byte    // all bytes
+	hdr      *inHeader // header
+	off      int       // offset for reading additional fields
+	refCount int32
 }
 
 func (m *message) len() uintptr {
@@ -1967,6 +1983,18 @@ type WriteRequest struct {
 	Flags     WriteFlags
 	LockOwner uint64
 	FileFlags OpenFlags
+}
+
+// RetainMessageForAsyncRelease keeps the underlying request buffer alive and
+// returns a one-shot release callback.
+func (r *WriteRequest) RetainMessageForAsyncRelease() func() {
+	retainMessage(r.msg)
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			putMessage(r.msg)
+		})
+	}
 }
 
 var _ = Request(&WriteRequest{})
