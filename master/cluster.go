@@ -185,6 +185,18 @@ type Cluster struct {
 	mu          sync.Mutex
 	PlanRun     bool
 	flashManMgr *flashManualTaskManager
+
+	// Dynamic IP support: node ID to address mapping
+	dataNodeAddrMap sync.Map // map[uint64]*NodeAddress
+	metaNodeAddrMap sync.Map // map[uint64]*NodeAddress
+}
+
+// NodeAddress stores the address information of a node
+type NodeAddress struct {
+	Addr          string    // IP:Port
+	HeartbeatPort string    // Raft heartbeat port
+	ReplicaPort   string    // Raft replica port
+	UpdateTime    time.Time // Last update time
 }
 
 type cTask struct {
@@ -1233,11 +1245,99 @@ func (c *Cluster) RaftPartitionCanUsingDifferentPortEnabled() bool {
 	return enabled
 }
 
-func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName string, nodesetId uint64) (id uint64, err error) {
+func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName string, nodesetId uint64, existingNodeID uint64) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 
 	var metaNode *MetaNode
+
+	log.LogInfof("[addMetaNode] to add: metanode(%v) zone(%v) nodesetId(%v) existingNodeID(%v)",
+		nodeAddr, zoneName, nodesetId, existingNodeID)
+
+	// Priority: Check if node exists by ID (for dynamic IP support)
+	if existingNodeID > 0 {
+		log.LogInfof("[addMetaNode] node provides existingNodeID(%v), checking if it exists", existingNodeID)
+
+		// Iterate through all meta nodes to find the one with matching ID
+		var foundNode *MetaNode
+		c.metaNodes.Range(func(key, value interface{}) bool {
+			node := value.(*MetaNode)
+			if node.ID == existingNodeID {
+				foundNode = node
+				return false // Found it, stop iteration
+			}
+			return true // Continue iteration
+		})
+
+		if foundNode != nil {
+			metaNode = foundNode
+			oldAddr := metaNode.Addr
+
+			log.LogInfof("[addMetaNode] found existing node by ID(%v), oldAddr(%v), newAddr(%v)",
+				existingNodeID, oldAddr, nodeAddr)
+
+			// Validate parameters consistency
+			if nodesetId > 0 && nodesetId != metaNode.NodeSetID {
+				return metaNode.ID, fmt.Errorf("nodeID(%v) already in nodeset(%v), but request nodeset(%v)",
+					existingNodeID, metaNode.NodeSetID, nodesetId)
+			}
+			if zoneName != "" && zoneName != metaNode.ZoneName {
+				return metaNode.ID, fmt.Errorf("nodeID(%v) zoneName not equal, old(%s), new(%s)",
+					existingNodeID, metaNode.ZoneName, zoneName)
+			}
+
+			// Check if address changed (dynamic IP scenario)
+			if oldAddr != nodeAddr {
+				log.LogWarnf("[addMetaNode] IP changed for nodeID(%v): %s -> %s",
+					existingNodeID, oldAddr, nodeAddr)
+
+				metaNode.Lock()
+				metaNode.Addr = nodeAddr
+				metaNode.Unlock()
+
+				// Update address mapping (remove old, add new)
+				c.metaNodes.Delete(oldAddr)
+				c.metaNodes.Store(nodeAddr, metaNode)
+
+				// Persist the update
+				if err = c.syncUpdateMetaNode(metaNode); err != nil {
+					log.LogErrorf("[addMetaNode] failed to sync update metanode after IP change: %v", err)
+					return metaNode.ID, err
+				}
+
+				// Update all meta partitions that contain this node
+				if updateErr := c.updateMetaPartitionsAfterNodeIPChange(oldAddr, nodeAddr, heartbeatPort, replicaPort); updateErr != nil {
+					log.LogErrorf("[addMetaNode] failed to update meta partitions after IP change: %v", updateErr)
+					// Don't return error, just log it - partition updates can be retried
+				}
+			}
+
+			// Update port information if needed
+			if len(heartbeatPort) > 0 && len(replicaPort) > 0 {
+				metaNode.Lock()
+				if len(metaNode.HeartbeatPort) == 0 || len(metaNode.ReplicaPort) == 0 {
+					metaNode.HeartbeatPort = heartbeatPort
+					metaNode.ReplicaPort = replicaPort
+					if err = c.syncUpdateMetaNode(metaNode); err != nil {
+						metaNode.Unlock()
+						return metaNode.ID, err
+					}
+				}
+				metaNode.Unlock()
+			}
+
+			// Update dynamic IP address mapping
+			c.updateMetaNodeAddress(metaNode.ID, nodeAddr, heartbeatPort, replicaPort)
+
+			log.LogInfof("[addMetaNode] successfully updated node(%v) with new addr(%v)", metaNode.ID, nodeAddr)
+			return metaNode.ID, nil
+		}
+
+		// ID not found - node claims to have ID but it doesn't exist in cluster
+		log.LogWarnf("[addMetaNode] node claims to have ID(%v) but not found in cluster, will treat as new node",
+			existingNodeID)
+	}
+
 	if value, ok := c.metaNodes.Load(nodeAddr); ok {
 		metaNode = value.(*MetaNode)
 		if nodesetId > 0 && nodesetId != metaNode.ID {
@@ -1256,6 +1356,9 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 				}
 			}
 		}
+
+		// Update address mapping even if node exists (for dynamic IP support)
+		c.updateMetaNodeAddress(metaNode.ID, nodeAddr, heartbeatPort, replicaPort)
 
 		return metaNode.ID, nil
 	}
@@ -1296,6 +1399,10 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 	}
 	metaNode.ID = id
 	metaNode.NodeSetID = ns.ID
+
+	// Update node ID to address mapping for dynamic IP support
+	c.updateMetaNodeAddress(id, nodeAddr, heartbeatPort, replicaPort)
+
 	log.LogInfof("action[addMetaNode] metanode id[%v] zonename [%v] add meta node to nodesetid[%v]", id, zoneName, ns.ID)
 	if err = c.syncAddMetaNode(metaNode); err != nil {
 		goto errHandler
@@ -1369,7 +1476,7 @@ func (c *Cluster) checkSetZoneMediaTypePersist(zone *Zone, mediaType uint32) (ch
 	return true, nil
 }
 
-func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName string, nodesetId uint64, mediaType uint32) (id uint64, err error) {
+func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName string, nodesetId uint64, mediaType uint32, existingNodeID uint64) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
@@ -1379,8 +1486,8 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		zoneName = DefaultZoneName
 	}
 
-	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
-		nodeAddr, zoneName, nodesetId, mediaType)
+	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v) existingNodeID(%v)",
+		nodeAddr, zoneName, nodesetId, mediaType, existingNodeID)
 
 	if !proto.IsValidMediaType(mediaType) {
 		if !proto.IsValidMediaType(c.legacyDataMediaType) {
@@ -1392,6 +1499,94 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		mediaType = c.legacyDataMediaType
 		log.LogWarnf("[addDataNode] adding datanode(%v), set mediaType as cluster LegacyDataMediaType(%v)",
 			nodeAddr, proto.MediaTypeString(c.legacyDataMediaType))
+	}
+
+	// Priority: Check if node exists by ID (for dynamic IP support)
+	if existingNodeID > 0 {
+		log.LogInfof("[addDataNode] node provides existingNodeID(%v), checking if it exists", existingNodeID)
+
+		// Iterate through all data nodes to find the one with matching ID
+		var foundNode *DataNode
+		c.dataNodes.Range(func(key, value interface{}) bool {
+			node := value.(*DataNode)
+			if node.ID == existingNodeID {
+				foundNode = node
+				return false // Found it, stop iteration
+			}
+			return true // Continue iteration
+		})
+
+		if foundNode != nil {
+			dataNode = foundNode
+			oldAddr := dataNode.Addr
+
+			log.LogInfof("[addDataNode] found existing node by ID(%v), oldAddr(%v), newAddr(%v)",
+				existingNodeID, oldAddr, nodeAddr)
+
+			// Validate parameters consistency
+			if nodesetId > 0 && nodesetId != dataNode.NodeSetID {
+				return dataNode.ID, fmt.Errorf("nodeID(%v) already in nodeset(%v), but request nodeset(%v)",
+					existingNodeID, dataNode.NodeSetID, nodesetId)
+			}
+			if zoneName != dataNode.ZoneName {
+				return dataNode.ID, fmt.Errorf("nodeID(%v) zoneName not equal, old(%s), new(%s)",
+					existingNodeID, dataNode.ZoneName, zoneName)
+			}
+			if mediaType != dataNode.MediaType {
+				return dataNode.ID, fmt.Errorf("nodeID(%v) mediaType not equal, old(%v), new(%v)",
+					existingNodeID, dataNode.MediaType, mediaType)
+			}
+
+			// Check if address changed (dynamic IP scenario)
+			if oldAddr != nodeAddr {
+				log.LogWarnf("[addDataNode] IP changed for nodeID(%v): %s -> %s",
+					existingNodeID, oldAddr, nodeAddr)
+
+				dataNode.Lock()
+				dataNode.Addr = nodeAddr
+				dataNode.Unlock()
+
+				// Update address mapping (remove old, add new)
+				c.dataNodes.Delete(oldAddr)
+				c.dataNodes.Store(nodeAddr, dataNode)
+
+				// Persist the update
+				if err = c.syncUpdateDataNode(dataNode); err != nil {
+					log.LogErrorf("[addDataNode] failed to sync update datanode after IP change: %v", err)
+					return dataNode.ID, err
+				}
+
+				// Update all partitions that contain this node
+				if updateErr := c.updateDataPartitionsAfterNodeIPChange(oldAddr, nodeAddr, raftHeartbeatPort, raftReplicaPort); updateErr != nil {
+					log.LogErrorf("[addDataNode] failed to update data partitions after IP change: %v", updateErr)
+					// Don't return error, just log it - partition updates can be retried
+				}
+			}
+
+			// Update port information if needed
+			if len(raftHeartbeatPort) > 0 && len(raftReplicaPort) > 0 {
+				dataNode.Lock()
+				if len(dataNode.HeartbeatPort) == 0 || len(dataNode.ReplicaPort) == 0 {
+					dataNode.HeartbeatPort = raftHeartbeatPort
+					dataNode.ReplicaPort = raftReplicaPort
+					if err = c.syncUpdateDataNode(dataNode); err != nil {
+						dataNode.Unlock()
+						return dataNode.ID, err
+					}
+				}
+				dataNode.Unlock()
+			}
+
+			// Update dynamic IP address mapping
+			c.updateDataNodeAddress(dataNode.ID, nodeAddr, raftHeartbeatPort, raftReplicaPort)
+
+			log.LogInfof("[addDataNode] successfully updated node(%v) with new addr(%v)", dataNode.ID, nodeAddr)
+			return dataNode.ID, nil
+		}
+
+		// ID not found - node claims to have ID but it doesn't exist in cluster
+		log.LogWarnf("[addDataNode] node claims to have ID(%v) but not found in cluster, will treat as new node",
+			existingNodeID)
 	}
 
 	// datanode existed
@@ -1420,6 +1615,9 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 				}
 			}
 		}
+
+		// Update address mapping even if node exists (for dynamic IP support)
+		c.updateDataNodeAddress(dataNode.ID, nodeAddr, raftHeartbeatPort, raftReplicaPort)
 
 		return dataNode.ID, nil
 	}
@@ -1483,6 +1681,10 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 	}
 	dataNode.ID = id
 	dataNode.NodeSetID = ns.ID
+
+	// Update node ID to address mapping for dynamic IP support
+	c.updateDataNodeAddress(id, nodeAddr, raftHeartbeatPort, raftReplicaPort)
+
 	log.LogInfof("action[addDataNode] datanode id[%v] zonename[%v] MediaType[%v] add node to nodesetid[%v]",
 		id, zoneName, dataNode.MediaType, ns.ID)
 	if err = c.syncAddDataNode(dataNode); err != nil {
@@ -1954,6 +2156,16 @@ func (c *Cluster) createDataPartition(volName string, mediaType uint32) (dp *Dat
 	dp = newDataPartition(partitionID, dpReplicaNum, volName, vol.ID, proto.PartitionTypeNormal, mediaType)
 	dp.Hosts = targetHosts
 	dp.Peers = targetPeers
+
+	// Set dynamic IP mode if enabled
+	if c.cfg.EnableDynamicIP {
+		dp.UseDynamicIP = true
+		dp.MemberIDs = make([]uint64, len(targetPeers))
+		for i, peer := range targetPeers {
+			dp.MemberIDs[i] = peer.ID
+		}
+		log.LogInfof("action[createDataPartition] partitionID[%v] created with dynamic IP mode, memberIDs[%v]", partitionID, dp.MemberIDs)
+	}
 
 	log.LogInfof("action[createDataPartition] partitionID [%v] get host [%v]", partitionID, targetHosts)
 
@@ -6813,5 +7025,282 @@ func (c *Cluster) checkMultipleReplicasOnSameMachine(hosts []string) (err error)
 			distinctIp[ip] = struct{}{}
 		}
 	}
+	return nil
+}
+
+// Dynamic IP support functions
+
+// updateDataNodeAddress updates the address mapping for a data node
+func (c *Cluster) updateDataNodeAddress(nodeID uint64, addr, heartbeatPort, replicaPort string) {
+	nodeAddr := &NodeAddress{
+		Addr:          addr,
+		HeartbeatPort: heartbeatPort,
+		ReplicaPort:   replicaPort,
+		UpdateTime:    time.Now(),
+	}
+	c.dataNodeAddrMap.Store(nodeID, nodeAddr)
+
+	log.LogInfof("action[updateDataNodeAddress] nodeID[%v] addr[%v] heartbeat[%v] replica[%v]",
+		nodeID, addr, heartbeatPort, replicaPort)
+
+	// Notify RaftStore to update address
+	if c.server != nil && c.server.raftStore != nil {
+		heartbeatPortInt, _ := strconv.Atoi(heartbeatPort)
+		replicaPortInt, _ := strconv.Atoi(replicaPort)
+		c.server.raftStore.UpdateNodeAddress(nodeID, addr, heartbeatPortInt, replicaPortInt)
+		log.LogInfof("action[updateDataNodeAddress] notified RaftStore nodeID[%v]", nodeID)
+	}
+}
+
+// updateMetaNodeAddress updates the address mapping for a meta node
+func (c *Cluster) updateMetaNodeAddress(nodeID uint64, addr, heartbeatPort, replicaPort string) {
+	nodeAddr := &NodeAddress{
+		Addr:          addr,
+		HeartbeatPort: heartbeatPort,
+		ReplicaPort:   replicaPort,
+		UpdateTime:    time.Now(),
+	}
+	c.metaNodeAddrMap.Store(nodeID, nodeAddr)
+
+	log.LogInfof("action[updateMetaNodeAddress] nodeID[%v] addr[%v] heartbeat[%v] replica[%v]",
+		nodeID, addr, heartbeatPort, replicaPort)
+
+	// Notify RaftStore to update address
+	if c.server != nil && c.server.raftStore != nil {
+		heartbeatPortInt, _ := strconv.Atoi(heartbeatPort)
+		replicaPortInt, _ := strconv.Atoi(replicaPort)
+		c.server.raftStore.UpdateNodeAddress(nodeID, addr, heartbeatPortInt, replicaPortInt)
+		log.LogInfof("action[updateMetaNodeAddress] notified RaftStore nodeID[%v]", nodeID)
+	}
+}
+
+// getDataNodeAddress retrieves the address of a data node by its ID
+func (c *Cluster) getDataNodeAddress(nodeID uint64) *NodeAddress {
+	if val, ok := c.dataNodeAddrMap.Load(nodeID); ok {
+		return val.(*NodeAddress)
+	}
+	return nil
+}
+
+// getMetaNodeAddress retrieves the address of a meta node by its ID
+func (c *Cluster) getMetaNodeAddress(nodeID uint64) *NodeAddress {
+	if val, ok := c.metaNodeAddrMap.Load(nodeID); ok {
+		return val.(*NodeAddress)
+	}
+	return nil
+}
+
+// getDataNodeAddresses retrieves addresses for multiple data nodes
+func (c *Cluster) getDataNodeAddresses(nodeIDs []uint64) (hosts []string, peers []proto.Peer) {
+	hosts = make([]string, 0, len(nodeIDs))
+	peers = make([]proto.Peer, 0, len(nodeIDs))
+
+	for _, nodeID := range nodeIDs {
+		addr := c.getDataNodeAddress(nodeID)
+		if addr != nil {
+			hosts = append(hosts, addr.Addr)
+			peers = append(peers, proto.Peer{
+				ID:            nodeID,
+				Addr:          addr.Addr,
+				HeartbeatPort: addr.HeartbeatPort,
+				ReplicaPort:   addr.ReplicaPort,
+			})
+		} else {
+			log.LogWarnf("action[getDataNodeAddresses] nodeID[%v] address not found", nodeID)
+		}
+	}
+
+	return
+}
+
+// getMetaNodeAddresses retrieves addresses for multiple meta nodes
+func (c *Cluster) getMetaNodeAddresses(nodeIDs []uint64) (hosts []string, peers []proto.Peer) {
+	hosts = make([]string, 0, len(nodeIDs))
+	peers = make([]proto.Peer, 0, len(nodeIDs))
+
+	for _, nodeID := range nodeIDs {
+		addr := c.getMetaNodeAddress(nodeID)
+		if addr != nil {
+			hosts = append(hosts, addr.Addr)
+			peers = append(peers, proto.Peer{
+				ID:            nodeID,
+				Addr:          addr.Addr,
+				HeartbeatPort: addr.HeartbeatPort,
+				ReplicaPort:   addr.ReplicaPort,
+			})
+		} else {
+			log.LogWarnf("action[getMetaNodeAddresses] nodeID[%v] address not found", nodeID)
+		}
+	}
+
+	return
+}
+
+// deleteDataNodeAddress removes the address mapping for a data node
+func (c *Cluster) deleteDataNodeAddress(nodeID uint64) {
+	c.dataNodeAddrMap.Delete(nodeID)
+	log.LogInfof("action[deleteDataNodeAddress] nodeID[%v]", nodeID)
+}
+
+// deleteMetaNodeAddress removes the address mapping for a meta node
+func (c *Cluster) deleteMetaNodeAddress(nodeID uint64) {
+	c.metaNodeAddrMap.Delete(nodeID)
+	log.LogInfof("action[deleteMetaNodeAddress] nodeID[%v]", nodeID)
+}
+
+// updateDataPartitionsAfterNodeIPChange updates all data partitions that contain the old address
+func (c *Cluster) updateDataPartitionsAfterNodeIPChange(oldAddr, newAddr, heartbeatPort, replicaPort string) error {
+	log.LogInfof("action[updateDataPartitionsAfterNodeIPChange] updating partitions from oldAddr(%v) to newAddr(%v)", oldAddr, newAddr)
+
+	updatedCount := 0
+	errorCount := 0
+
+	// Get all volumes
+	vols := c.allVols()
+
+	// Iterate through all volumes and their data partitions
+	for _, vol := range vols {
+		vol.dataPartitions.Range(func(dp *DataPartition) bool {
+			// Check if this partition contains the old address
+			if !dp.hasHost(oldAddr) {
+				return true // Continue to next partition
+			}
+
+			dp.Lock()
+
+			// Update Hosts
+			updated := false
+			for i, host := range dp.Hosts {
+				if host == oldAddr {
+					dp.Hosts[i] = newAddr
+					updated = true
+					log.LogInfof("action[updateDataPartitionsAfterNodeIPChange] partition[%v] updated host[%v] -> [%v]",
+						dp.PartitionID, oldAddr, newAddr)
+				}
+			}
+
+			// Update Peers
+			for i, peer := range dp.Peers {
+				if peer.Addr == oldAddr {
+					dp.Peers[i].Addr = newAddr
+					// Update ports if available
+					if heartbeatPort != "" {
+						dp.Peers[i].HeartbeatPort = heartbeatPort
+					}
+					if replicaPort != "" {
+						dp.Peers[i].ReplicaPort = replicaPort
+					}
+					updated = true
+					log.LogInfof("action[updateDataPartitionsAfterNodeIPChange] partition[%v] updated peer[%v] -> [%v]",
+						dp.PartitionID, oldAddr, newAddr)
+				}
+			}
+
+			if updated {
+				// Persist the partition update
+				if err := c.syncUpdateDataPartition(dp); err != nil {
+					log.LogErrorf("action[updateDataPartitionsAfterNodeIPChange] failed to sync partition[%v]: %v",
+						dp.PartitionID, err)
+					errorCount++
+				} else {
+					updatedCount++
+				}
+			}
+
+			dp.Unlock()
+			return true // Continue to next partition
+		})
+	}
+
+	log.LogInfof("action[updateDataPartitionsAfterNodeIPChange] completed: updated %d partitions, %d errors",
+		updatedCount, errorCount)
+
+	if errorCount > 0 {
+		return fmt.Errorf("failed to update %d partitions", errorCount)
+	}
+
+	return nil
+}
+
+// updateMetaPartitionsAfterNodeIPChange updates all meta partitions that contain the old address
+func (c *Cluster) updateMetaPartitionsAfterNodeIPChange(oldAddr, newAddr, heartbeatPort, replicaPort string) error {
+	log.LogInfof("action[updateMetaPartitionsAfterNodeIPChange] updating partitions from oldAddr(%v) to newAddr(%v)", oldAddr, newAddr)
+
+	updatedCount := 0
+	errorCount := 0
+
+	// Get all volumes
+	vols := c.allVols()
+
+	// Iterate through all volumes and their meta partitions
+	for _, vol := range vols {
+		vol.mpsLock.RLock()
+		for _, mp := range vol.MetaPartitions {
+			// Check if this partition contains the old address
+			hasOldAddr := false
+			for _, host := range mp.Hosts {
+				if host == oldAddr {
+					hasOldAddr = true
+					break
+				}
+			}
+
+			if !hasOldAddr {
+				continue
+			}
+
+			mp.Lock()
+
+			// Update Hosts
+			updated := false
+			for i, host := range mp.Hosts {
+				if host == oldAddr {
+					mp.Hosts[i] = newAddr
+					updated = true
+					log.LogInfof("action[updateMetaPartitionsAfterNodeIPChange] partition[%v] updated host[%v] -> [%v]",
+						mp.PartitionID, oldAddr, newAddr)
+				}
+			}
+
+			// Update Peers
+			for i, peer := range mp.Peers {
+				if peer.Addr == oldAddr {
+					mp.Peers[i].Addr = newAddr
+					// Update ports if available
+					if heartbeatPort != "" {
+						mp.Peers[i].HeartbeatPort = heartbeatPort
+					}
+					if replicaPort != "" {
+						mp.Peers[i].ReplicaPort = replicaPort
+					}
+					updated = true
+					log.LogInfof("action[updateMetaPartitionsAfterNodeIPChange] partition[%v] updated peer[%v] -> [%v]",
+						mp.PartitionID, oldAddr, newAddr)
+				}
+			}
+
+			if updated {
+				// Persist the partition update
+				if err := c.syncUpdateMetaPartition(mp); err != nil {
+					log.LogErrorf("action[updateMetaPartitionsAfterNodeIPChange] failed to sync partition[%v]: %v",
+						mp.PartitionID, err)
+					errorCount++
+				} else {
+					updatedCount++
+				}
+			}
+
+			mp.Unlock()
+		}
+		vol.mpsLock.RUnlock()
+	}
+
+	log.LogInfof("action[updateMetaPartitionsAfterNodeIPChange] completed: updated %d partitions, %d errors",
+		updatedCount, errorCount)
+
+	if errorCount > 0 {
+		return fmt.Errorf("failed to update %d partitions", errorCount)
+	}
+
 	return nil
 }

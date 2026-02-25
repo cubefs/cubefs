@@ -553,13 +553,31 @@ func (m *MetaNode) register() (err error) {
 		}
 		m.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
 
+		// Try to load existing node ID from local disk (for dynamic IP support)
+		var existingNodeID uint64
+		existingNodeID, err = m.loadNodeID()
+		if err == nil {
+			log.LogInfof("action[register] found local nodeID(%v), will register with this ID", existingNodeID)
+		} else {
+			log.LogInfof("action[register] no local nodeID found: %v, will request new ID from master", err)
+			existingNodeID = 0 // Explicitly set to 0 for first-time registration
+		}
+
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.raftHeartbeatPort, m.raftReplicatePort, m.zoneName, m.serviceIDKey); err != nil {
+		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.raftHeartbeatPort, m.raftReplicatePort, m.zoneName, m.serviceIDKey, existingNodeID); err != nil {
 			log.LogErrorf("[register] tryCnt(%v), register to master fail: address(%v) err(%s)", tryCnt, nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
 		m.nodeId = nodeID
+
+		// Save nodeID to local disk if it's new or changed (for dynamic IP support)
+		if existingNodeID != nodeID {
+			if saveErr := m.saveNodeID(nodeID); saveErr != nil {
+				log.LogErrorf("action[register] failed to save nodeID: %v", saveErr)
+				// Don't block registration flow, just log the error
+			}
+		}
 
 		if proto.IsStorageClassReplica(legacyReplicaStorageClass) {
 			legacyReplicaStorageClassMsg = fmt.Sprintf("[register] from master, legacyReplicaStorageClass(%v)",
@@ -578,6 +596,42 @@ func (m *MetaNode) register() (err error) {
 		log.LogInfo(volsForbidWriteOpVerMsg)
 		return
 	}
+}
+
+// saveNodeID saves the node ID to local disk for dynamic IP support
+func (m *MetaNode) saveNodeID(nodeID uint64) error {
+	// Save to metadata directory
+	nodeidPath := fmt.Sprintf("%s/%s", m.metadataDir, NodeIDFileName)
+	content := []byte(strconv.FormatUint(nodeID, 10))
+
+	err := os.WriteFile(nodeidPath, content, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write node ID file to %s: %v", nodeidPath, err)
+	}
+
+	log.LogInfof("action[saveNodeID] saved nodeID(%v) to %s", nodeID, nodeidPath)
+	return nil
+}
+
+// loadNodeID loads the node ID from local disk for dynamic IP support
+func (m *MetaNode) loadNodeID() (nodeID uint64, err error) {
+	nodeidPath := fmt.Sprintf("%s/%s", m.metadataDir, NodeIDFileName)
+	data, readErr := os.ReadFile(nodeidPath)
+	if readErr != nil {
+		if !os.IsNotExist(readErr) {
+			log.LogWarnf("action[loadNodeID] failed to read from %s: %v", nodeidPath, readErr)
+		}
+		return 0, fmt.Errorf("node ID file not found: %v", readErr)
+	}
+
+	nodeID, err = strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		log.LogErrorf("action[loadNodeID] failed to parse node ID from %s: %v", nodeidPath, err)
+		return 0, err
+	}
+
+	log.LogInfof("action[loadNodeID] loaded nodeID(%v) from %s", nodeID, nodeidPath)
+	return nodeID, nil
 }
 
 // NewServer creates a new meta node instance.

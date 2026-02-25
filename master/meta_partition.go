@@ -70,8 +70,8 @@ type MetaPartition struct {
 	Freeze                    int8
 	volID                     uint64
 	volName                   string
-	Hosts                     []string
-	Peers                     []proto.Peer
+	Hosts                     []string      // Deprecated: use MemberIDs for dynamic IP mode
+	Peers                     []proto.Peer  // Deprecated: use MemberIDs for dynamic IP mode
 	OfflinePeerID             uint64
 	MissNodes                 map[string]int64
 	LoadResponse              []*proto.MetaPartitionLoadResponse
@@ -86,6 +86,10 @@ type MetaPartition struct {
 	sync.RWMutex
 
 	LastDelReplicaTime int64
+
+	// New fields for dynamic IP support
+	MemberIDs    []uint64 // Node IDs of replicas (used in dynamic IP mode)
+	UseDynamicIP bool     // Whether this partition uses dynamic IP mode
 }
 
 func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {

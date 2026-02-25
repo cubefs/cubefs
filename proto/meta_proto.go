@@ -35,9 +35,14 @@ type CreateNameSpaceResponse struct {
 // Peer defines the peer of the node id and address.
 type Peer struct {
 	ID            uint64 `json:"id"`
-	Addr          string `json:"addr"`
-	HeartbeatPort string `json:"raftHeartbeat"`
-	ReplicaPort   string `json:"raftReplica"`
+	Addr          string `json:"addr,omitempty"`          // omitempty for backward compatibility with dynamic IP
+	HeartbeatPort string `json:"raftHeartbeat,omitempty"` // omitempty for backward compatibility with dynamic IP
+	ReplicaPort   string `json:"raftReplica,omitempty"`   // omitempty for backward compatibility with dynamic IP
+}
+
+// NewPeerWithID creates a new Peer with only the ID (for dynamic IP mode)
+func NewPeerWithID(id uint64) Peer {
+	return Peer{ID: id}
 }
 
 // CreateMetaPartitionRequest defines the request to create a meta partition.

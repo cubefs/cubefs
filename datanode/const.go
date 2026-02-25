@@ -97,6 +97,11 @@ const (
 	MinAvaliTinyExtentCnt = 5
 )
 
+// Node ID persistence
+const (
+	NodeIDFileName = "NODEID" // File name for persisting node ID
+)
+
 // Sector size
 const (
 	DiskSectorSize = 512

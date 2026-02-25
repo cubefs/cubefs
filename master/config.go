@@ -226,6 +226,10 @@ type clusterConfig struct {
 	SingleNodeMode     bool
 
 	MaxWritableDataPartitionCnt int
+
+	// Dynamic IP support: whether to enable dynamic IP mode for new partitions
+	// When enabled, partitions will store node IDs instead of IP addresses
+	EnableDynamicIP bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -269,6 +273,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.metaNodeMemHighPer = defaultMetaNodeMemHighPer
 	cfg.metaNodeMemLowPer = defaultMetaNodeMemLowPer
 	cfg.metaNodeMemMidPer = defaultMetaNodeMemHighPer
+	cfg.EnableDynamicIP = false // Disabled by default for backward compatibility
 	return
 }
 

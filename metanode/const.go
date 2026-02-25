@@ -270,6 +270,9 @@ const (
 	defaultSyncInodeAtimeCnt           = 102400
 	RaftCommitDiffMax                  = 100
 	DefaultGOGCValue                   = 100
+
+	// Node ID persistence (for dynamic IP support)
+	NodeIDFileName = "NODEID"
 )
 
 const (

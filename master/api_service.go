@@ -3301,6 +3301,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		id                uint64
 		err               error
 		nodesetId         uint64
+		existingNodeID    uint64
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddDataNode))
 	defer func() {
@@ -3325,7 +3326,15 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, nodesetId, mediaType); err != nil {
+	// Extract existing node ID if provided (for dynamic IP support)
+	if value = r.FormValue("nodeID"); value != "" {
+		if existingNodeID, err = strconv.ParseUint(value, 10, 64); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		log.LogInfof("addDataNode: node provides existingNodeID(%v)", existingNodeID)
+	}
+	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, nodesetId, mediaType, existingNodeID); err != nil {
 		log.LogErrorf("addDataNode: add failed, addr %s, zone %s, set %d, type %d, err %s",
 			nodeAddr, zoneName, nodesetId, mediaType, err.Error())
 		err = errors.NewErrorf("add datanode failed, err %s, hint %s", err.Error(), proto.ErrDataNodeAdd.Error())
@@ -5252,13 +5261,14 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 
 func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr      string
-		heartbeatPort string
-		replicaPort   string
-		zoneName      string
-		id            uint64
-		err           error
-		nodesetId     uint64
+		nodeAddr       string
+		heartbeatPort  string
+		replicaPort    string
+		zoneName       string
+		id             uint64
+		err            error
+		nodesetId      uint64
+		existingNodeID uint64
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddMetaNode))
 	defer func() {
@@ -5283,7 +5293,15 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, nodesetId); err != nil {
+	// Extract existing node ID if provided (for dynamic IP support)
+	if value = r.FormValue("nodeID"); value != "" {
+		if existingNodeID, err = strconv.ParseUint(value, 10, 64); err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		log.LogInfof("addMetaNode: node provides existingNodeID(%v)", existingNodeID)
+	}
+	if id, err = m.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, nodesetId, existingNodeID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

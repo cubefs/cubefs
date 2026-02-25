@@ -40,8 +40,8 @@ type DataPartition struct {
 	isRecover        bool
 	Replicas         []*DataReplica
 	LeaderReportTime int64
-	Hosts            []string // host addresses
-	Peers            []proto.Peer
+	Hosts            []string      // Deprecated: use MemberIDs for dynamic IP mode
+	Peers            []proto.Peer  // Deprecated: use MemberIDs for dynamic IP mode
 	offlineMutex     sync.RWMutex
 	sync.RWMutex
 
@@ -90,6 +90,10 @@ type DataPartition struct {
 	RestoreReplica           uint32
 	MediaType                uint32
 	ForbidWriteOpOfProtoVer0 bool
+
+	// New fields for dynamic IP support
+	MemberIDs    []uint64 // Node IDs of replicas (used in dynamic IP mode)
+	UseDynamicIP bool     // Whether this partition uses dynamic IP mode
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,

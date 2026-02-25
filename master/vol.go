@@ -1730,6 +1730,16 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	mp.setHosts(hosts)
 	mp.setPeers(peers)
 
+	// Set dynamic IP mode if enabled
+	if c.cfg.EnableDynamicIP {
+		mp.UseDynamicIP = true
+		mp.MemberIDs = make([]uint64, len(peers))
+		for i, peer := range peers {
+			mp.MemberIDs[i] = peer.ID
+		}
+		log.LogInfof("action[doCreateMetaPartition] partitionID[%v] created with dynamic IP mode, memberIDs[%v]", partitionID, mp.MemberIDs)
+	}
+
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(host string) {

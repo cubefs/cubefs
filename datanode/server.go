@@ -830,10 +830,20 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			}
 			s.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
 
+			// Try to load existing node ID from local disk (for dynamic IP support)
+			var existingNodeID uint64
+			existingNodeID, err = s.loadNodeID(cfg)
+			if err == nil {
+				log.LogInfof("action[register] found local nodeID(%v), will register with this ID", existingNodeID)
+			} else {
+				log.LogInfof("action[register] no local nodeID found: %v, will request new ID from master", err)
+				existingNodeID = 0 // Explicitly set to 0 for first-time registration
+			}
+
 			// register this data node on the master
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.raftHeartbeat, s.raftReplica,
-				s.zoneName, s.serviceIDKey, s.mediaType); err != nil {
+				s.zoneName, s.serviceIDKey, s.mediaType, existingNodeID); err != nil {
 				if strings.Contains(err.Error(), proto.ErrDataNodeAdd.Error()) {
 					failMsg := fmt.Sprintf("[register] register to master[%v] failed: %v",
 						masterAddr, err)
@@ -849,6 +859,15 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			}
 			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
 			s.nodeID = nodeID
+
+			// Save nodeID to local disk if it's new or changed (for dynamic IP support)
+			if existingNodeID != nodeID {
+				if saveErr := s.saveNodeID(nodeID, cfg); saveErr != nil {
+					log.LogErrorf("action[register] failed to save nodeID: %v", saveErr)
+					// Don't block registration flow, just log the error
+				}
+			}
+
 			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
 			syslog.Printf("register: register DataNode: nodeID(%v) %v \n", s.nodeID, s.localServerAddr)
 
@@ -863,6 +882,107 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			return
 		}
 	}
+}
+
+// saveNodeID saves the node ID to local disk for dynamic IP support
+func (s *DataNode) saveNodeID(nodeID uint64, cfg *config.Config) error {
+	// Get disk paths from configuration
+	diskPaths, err := getDiskPathsFromConfig(cfg)
+	if err != nil || len(diskPaths) == 0 {
+		return fmt.Errorf("no available disk paths to save node ID: %v", err)
+	}
+
+	// Save to all disks for redundancy
+	savedCount := 0
+	var lastErr error
+	for _, diskPath := range diskPaths {
+		nodeidPath := fmt.Sprintf("%s/%s", diskPath, NodeIDFileName)
+		content := []byte(strconv.FormatUint(nodeID, 10))
+
+		err := os.WriteFile(nodeidPath, content, 0644)
+		if err != nil {
+			log.LogWarnf("action[saveNodeID] failed to write to %s: %v", nodeidPath, err)
+			lastErr = err
+			continue
+		}
+
+		log.LogInfof("action[saveNodeID] saved nodeID(%v) to %s", nodeID, nodeidPath)
+		savedCount++
+	}
+
+	if savedCount == 0 {
+		return fmt.Errorf("failed to save node ID to any disk: %v", lastErr)
+	}
+
+	log.LogInfof("action[saveNodeID] successfully saved nodeID(%v) to %d disk(s)", nodeID, savedCount)
+	return nil
+}
+
+// loadNodeID loads the node ID from local disk for dynamic IP support
+func (s *DataNode) loadNodeID(cfg *config.Config) (nodeID uint64, err error) {
+	// Get disk paths from configuration
+	diskPaths, err := getDiskPathsFromConfig(cfg)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get disk paths: %v", err)
+	}
+
+	// Try to read nodeID file from all disks
+	for _, diskPath := range diskPaths {
+		nodeidPath := fmt.Sprintf("%s/%s", diskPath, NodeIDFileName)
+		data, readErr := os.ReadFile(nodeidPath)
+		if readErr != nil {
+			if !os.IsNotExist(readErr) {
+				log.LogWarnf("action[loadNodeID] failed to read from %s: %v", nodeidPath, readErr)
+			}
+			continue
+		}
+
+		nodeID, err = strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+		if err != nil {
+			log.LogErrorf("action[loadNodeID] failed to parse node ID from %s: %v", nodeidPath, err)
+			continue
+		}
+
+		log.LogInfof("action[loadNodeID] loaded nodeID(%v) from %s", nodeID, nodeidPath)
+		return nodeID, nil
+	}
+
+	// Node ID file not found on any disk
+	return 0, fmt.Errorf("node ID file not found on any disk")
+}
+
+// getDiskPathsFromConfig extracts disk paths from configuration
+func getDiskPathsFromConfig(cfg *config.Config) ([]string, error) {
+	var paths []string
+
+	// Try diskPath first
+	diskPath := cfg.GetString(ConfigKeyDiskPath)
+	if diskPath != "" {
+		// Parse diskPath if set
+		parsedPaths, err := parseDiskPath(diskPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse diskPath: %v", err)
+		}
+		paths = parsedPaths
+	} else {
+		// Use disks from config if diskPath not set
+		for _, p := range cfg.GetSlice(ConfigKeyDisks) {
+			paths = append(paths, p.(string))
+		}
+	}
+
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no disk configuration found")
+	}
+
+	// Extract just the path part (before colon if formatted as PATH:RESERVE_SIZE)
+	diskPaths := make([]string, 0, len(paths))
+	for _, p := range paths {
+		arr := strings.Split(p, ":")
+		diskPaths = append(diskPaths, arr[0])
+	}
+
+	return diskPaths, nil
 }
 
 type DataNodeInfo struct {

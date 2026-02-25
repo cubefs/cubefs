@@ -155,12 +155,16 @@ type metaPartitionValue struct {
 	ReplicaNum         uint8
 	Status             int8
 	VolName            string
-	Hosts              string
+	Hosts              string       `json:"hosts,omitempty"`       // Deprecated: for backward compatibility
 	OfflinePeerID      uint64
-	Peers              []proto.Peer
+	Peers              []proto.Peer `json:"peers,omitempty"`       // Deprecated: for backward compatibility
 	IsRecover          bool
 	Freeze             int8
 	LastDelReplicaTime int64
+
+	// New fields for dynamic IP support
+	MemberIDs    []uint64 `json:"memberIDs,omitempty"`
+	UseDynamicIP bool     `json:"useDynamicIP"`
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -172,26 +176,37 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		ReplicaNum:         mp.ReplicaNum,
 		Status:             mp.Status,
 		VolName:            mp.volName,
-		Hosts:              mp.hostsToString(),
-		Peers:              mp.Peers,
 		OfflinePeerID:      mp.OfflinePeerID,
 		IsRecover:          mp.IsRecover,
 		Freeze:             mp.Freeze,
 		LastDelReplicaTime: mp.LastDelReplicaTime,
 	}
+
+	// Support both old and new modes
+	if mp.UseDynamicIP {
+		// New mode: only save member IDs
+		mpv.MemberIDs = mp.MemberIDs
+		mpv.UseDynamicIP = true
+	} else {
+		// Old mode: save Hosts and Peers for backward compatibility
+		mpv.Hosts = mp.hostsToString()
+		mpv.Peers = mp.Peers
+		mpv.UseDynamicIP = false
+	}
+
 	return
 }
 
 type dataPartitionValue struct {
 	PartitionID                     uint64
 	ReplicaNum                      uint8
-	Hosts                           string
-	Peers                           []proto.Peer
+	Hosts                           string                            `json:"hosts,omitempty"`    // Deprecated: for backward compatibility
+	Peers                           []proto.Peer                      `json:"peers,omitempty"`    // Deprecated: for backward compatibility
 	Status                          int8
 	VolID                           uint64
 	VolName                         string
 	OfflinePeerID                   uint64
-	Replicas                        []*replicaValue
+	Replicas                        []*replicaValue                   `json:"replicas,omitempty"` // Deprecated: for backward compatibility
 	IsRecover                       bool
 	PartitionType                   int
 	RdOnly                          bool
@@ -220,19 +235,41 @@ type dataPartitionValue struct {
 	DecommissionType                uint32
 	RestoreReplica                  uint32
 	MediaType                       uint32
+
+	// New fields for dynamic IP support
+	MemberIDs    []uint64 `json:"memberIDs,omitempty"`
+	UseDynamicIP bool     `json:"useDynamicIP"`
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
+	// Update peer IDs from current dataNodes (for backward compatibility)
 	for i := 0; i < len(dpv.Peers); i++ {
 		dn, ok := c.dataNodes.Load(dpv.Peers[i].Addr)
 		if ok && dn.(*DataNode).ID != dpv.Peers[i].ID {
 			dpv.Peers[i].ID = dn.(*DataNode).ID
 		}
 	}
+
 	dp = newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID,
 		dpv.PartitionType, dpv.MediaType)
-	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
-	dp.Peers = dpv.Peers
+
+	// Restore based on dynamic IP mode flag
+	if dpv.UseDynamicIP && len(dpv.MemberIDs) > 0 {
+		// New mode: restore from MemberIDs
+		dp.MemberIDs = dpv.MemberIDs
+		dp.UseDynamicIP = true
+		// Query addresses from mapping table
+		dp.Hosts, dp.Peers = c.getDataNodeAddresses(dp.MemberIDs)
+		log.LogInfof("action[Restore] dataPartition[%v] restored in dynamic IP mode, memberIDs[%v]",
+			dp.PartitionID, dp.MemberIDs)
+	} else {
+		// Old mode: restore from Hosts and Peers
+		dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
+		dp.Peers = dpv.Peers
+		dp.UseDynamicIP = false
+		log.LogInfof("action[Restore] dataPartition[%v] restored in static IP mode", dp.PartitionID)
+	}
+
 	dp.OfflinePeerID = dpv.OfflinePeerID
 	dp.isRecover = dpv.IsRecover
 	dp.RdOnly = dpv.RdOnly
@@ -286,13 +323,10 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 	dpv = &dataPartitionValue{
 		PartitionID:                     dp.PartitionID,
 		ReplicaNum:                      dp.ReplicaNum,
-		Hosts:                           dp.hostsToString(),
-		Peers:                           dp.Peers,
 		Status:                          dp.Status,
 		VolID:                           dp.VolID,
 		VolName:                         dp.VolName,
 		OfflinePeerID:                   dp.OfflinePeerID,
-		Replicas:                        make([]*replicaValue, 0),
 		IsRecover:                       dp.isRecover,
 		PartitionType:                   dp.PartitionType,
 		RdOnly:                          dp.RdOnly,
@@ -321,10 +355,24 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		RestoreReplica:                  atomic.LoadUint32(&dp.RestoreReplica),
 		MediaType:                       dp.MediaType,
 	}
-	for _, replica := range dp.Replicas {
-		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
-		dpv.Replicas = append(dpv.Replicas, rv)
+
+	// Support both old and new modes
+	if dp.UseDynamicIP {
+		// New mode: only save member IDs
+		dpv.MemberIDs = dp.MemberIDs
+		dpv.UseDynamicIP = true
+	} else {
+		// Old mode: save Hosts, Peers, and Replicas for backward compatibility
+		dpv.Hosts = dp.hostsToString()
+		dpv.Peers = dp.Peers
+		dpv.Replicas = make([]*replicaValue, 0)
+		for _, replica := range dp.Replicas {
+			rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
+			dpv.Replicas = append(dpv.Replicas, rv)
+		}
+		dpv.UseDynamicIP = false
 	}
+
 	return
 }
 
@@ -1859,15 +1907,37 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.gridId[%v],mpv.VolID[%v]", mpv.VolName, vol.ID, mpv.VolID))
 			continue
 		}
+
+		// Update peer IDs from current metaNodes (for backward compatibility)
 		for i := 0; i < len(mpv.Peers); i++ {
 			mn, ok := c.metaNodes.Load(mpv.Peers[i].Addr)
 			if ok && mn.(*MetaNode).ID != mpv.Peers[i].ID {
 				mpv.Peers[i].ID = mn.(*MetaNode).ID
 			}
 		}
+
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID, 0)
-		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
-		mp.setPeers(mpv.Peers)
+
+		// Restore based on dynamic IP mode flag
+		if mpv.UseDynamicIP && len(mpv.MemberIDs) > 0 {
+			// New mode: restore from MemberIDs
+			mp.MemberIDs = mpv.MemberIDs
+			mp.UseDynamicIP = true
+			// Query addresses from mapping table
+			hosts, peers := c.getMetaNodeAddresses(mp.MemberIDs)
+			mp.setHosts(hosts)
+			mp.setPeers(peers)
+			log.LogInfof("action[loadMetaPartitions] vol[%v] mp[%v] restored in dynamic IP mode, memberIDs[%v]",
+				vol.Name, mp.PartitionID, mp.MemberIDs)
+		} else {
+			// Old mode: restore from Hosts and Peers
+			mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
+			mp.setPeers(mpv.Peers)
+			mp.UseDynamicIP = false
+			log.LogInfof("action[loadMetaPartitions] vol[%v] mp[%v] restored in static IP mode",
+				vol.Name, mp.PartitionID)
+		}
+
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
 		mp.Freeze = mpv.Freeze

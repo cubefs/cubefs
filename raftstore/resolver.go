@@ -41,6 +41,9 @@ type NodeManager interface {
 	// add node address with specified port.
 	AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int)
 
+	// update node address with specified port (for dynamic IP support)
+	UpdateNodeAddress(nodeID uint64, addr string, heartbeat int, replicate int)
+
 	// delete node address information
 	DeleteNode(nodeID uint64)
 }
@@ -95,6 +98,26 @@ func (r *nodeResolver) AddNodeWithPort(nodeID uint64, addr string, heartbeat int
 		replicate = DefaultReplicaPort
 	}
 	if len(strings.TrimSpace(addr)) != 0 {
+		r.nodeMap.Store(nodeID, &nodeAddress{
+			Heartbeat: fmt.Sprintf("%s:%d", addr, heartbeat),
+			Replicate: fmt.Sprintf("%s:%d", addr, replicate),
+		})
+	}
+}
+
+// UpdateNodeAddress updates node address with specified port (for dynamic IP support).
+// It first deletes the old address and then adds the new one.
+func (r *nodeResolver) UpdateNodeAddress(nodeID uint64, addr string, heartbeat int, replicate int) {
+	if heartbeat == 0 {
+		heartbeat = DefaultHeartbeatPort
+	}
+	if replicate == 0 {
+		replicate = DefaultReplicaPort
+	}
+	if len(strings.TrimSpace(addr)) != 0 {
+		// Delete old address first
+		r.nodeMap.Delete(nodeID)
+		// Store new address
 		r.nodeMap.Store(nodeID, &nodeAddress{
 			Heartbeat: fmt.Sprintf("%s:%d", addr, heartbeat),
 			Replicate: fmt.Sprintf("%s:%d", addr, replicate),

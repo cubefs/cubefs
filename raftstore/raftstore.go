@@ -64,6 +64,11 @@ func (s *raftStore) AddNodeWithPort(nodeID uint64, addr string, heartbeat int, r
 	s.resolver.AddNodeWithPort(nodeID, addr, heartbeat, replicate)
 }
 
+// UpdateNodeAddress updates the address of an existing node (for dynamic IP support).
+func (s *raftStore) UpdateNodeAddress(nodeID uint64, addr string, heartbeat int, replicate int) {
+	s.resolver.UpdateNodeAddress(nodeID, addr, heartbeat, replicate)
+}
+
 // DeleteNode deletes the node with the given ID in the raft store.
 func (s *raftStore) DeleteNode(nodeID uint64) {
 	s.resolver.DeleteNode(nodeID)

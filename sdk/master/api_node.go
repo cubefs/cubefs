@@ -50,7 +50,7 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string, mediaType uint32) (
 	return
 }
 
-func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicaPort, zoneName, clientIDKey string, mediaType uint32) (id uint64, err error) {
+func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicaPort, zoneName, clientIDKey string, mediaType uint32, existingNodeID uint64) (id uint64, err error) {
 	request := newRequest(get, proto.AddDataNode).Header(api.h)
 	request.addParam("addr", serverAddr)
 	request.addParam("heartbeatPort", raftHeartbeatPort)
@@ -58,6 +58,10 @@ func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftR
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
 	request.addParam("mediaType", strconv.Itoa(int(mediaType)))
+	// Add existingNodeID if provided (for dynamic IP support)
+	if existingNodeID > 0 {
+		request.addParam("nodeID", strconv.FormatUint(existingNodeID, 10))
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -78,13 +82,17 @@ func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err err
 	return
 }
 
-func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicatePort, zoneName, clientIDKey string) (id uint64, err error) {
+func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicatePort, zoneName, clientIDKey string, existingNodeID uint64) (id uint64, err error) {
 	request := newRequest(get, proto.AddMetaNode).Header(api.h)
 	request.addParam("heartbeatPort", raftHeartbeatPort)
 	request.addParam("replicaPort", raftReplicatePort)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
+	// Add existingNodeID if provided (for dynamic IP support)
+	if existingNodeID > 0 {
+		request.addParam("nodeID", strconv.FormatUint(existingNodeID, 10))
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
