@@ -292,6 +292,19 @@ func (fltMgr *flashManualTaskManager) dispatchTaskOp(tid string, opCode string) 
 	if !ok {
 		return fmt.Errorf("no record found for tid[%v]", tid)
 	}
+
+	if opCode == "stop" {
+		task.Lock()
+		if task.Status == int(proto.Flash_Task_Init) {
+			t := time.Now()
+			task.EndTime = &t
+			task.Status = int(proto.Flash_Task_Stop)
+			task.Unlock()
+			return fltMgr.cluster.syncAddFlashManualTask(task)
+		}
+		task.Unlock()
+	}
+
 	task.Lock()
 	if task.ManualTaskStatistics == nil || task.ManualTaskStatistics.FlashNode == "" {
 		task.Unlock()
@@ -387,7 +400,8 @@ func (c *Cluster) handleFlashNodeScanResp(nodeAddr string, resp *proto.FlashNode
 		}
 		manualTask.Lock()
 		manualTask.SetResponse(resp)
-		manualTask.EndTime = resp.EndTime
+		t := time.Now()
+		manualTask.EndTime = &t
 		manualTask.Status = int(proto.Flash_Task_Failed)
 		manualTask.Unlock()
 		if e := c.syncAddFlashManualTask(manualTask); e != nil {
@@ -407,6 +421,8 @@ func (c *Cluster) handleFlashNodeScanResp(nodeAddr string, resp *proto.FlashNode
 		manualTask.EndTime = resp.EndTime
 		manualTask.Status = int(proto.Flash_Task_Success)
 		if resp.Status == proto.TaskStop {
+			t := time.Now()
+			manualTask.EndTime = &t
 			manualTask.Status = int(proto.Flash_Task_Stop)
 		}
 		manualTask.Unlock()
