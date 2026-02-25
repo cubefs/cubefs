@@ -713,18 +713,21 @@ func (s *ManualScanner) processCommand(command string) {
 }
 
 func (s *ManualScanner) loadDirTotalEntries(inode uint64) {
+	startTime := time.Now()
 	log.LogInfof("Enter loadDirTotalEntries, inode: %v, task: %v", inode, s.ID)
 	signalChan := make(chan struct{}, loadDirWorkerCount)
 	signalChan <- struct{}{}
-	s.loadDirTotalEntriesRecursive(inode, signalChan, true)
+	s.loadDirTotalEntriesRecursive(inode, signalChan, true, startTime)
 }
 
-func (s *ManualScanner) loadDirTotalEntriesRecursive(inode uint64, signalChan chan struct{}, async bool) {
+func (s *ManualScanner) loadDirTotalEntriesRecursive(inode uint64, signalChan chan struct{}, async bool, startTime time.Time) {
 	defer func() {
 		if async {
 			<-signalChan
 			if len(signalChan) == 0 {
 				atomic.StoreInt32(&s.loadedEntries, 1)
+				msg := fmt.Sprintf("vol(%v) path(%v) topo(%v) entries(%v) counting completed cost(%v)", s.manualTask.VolName, s.manualTask.ManualTaskConfig.Prefix, s.manualTask.TopoName, atomic.LoadInt64(&s.currentStat.TotalEntryNum), time.Since(startTime))
+				auditlog.LogFlashNodeOp("EntriesCounting", msg, nil)
 				log.LogInfof("Exit loadDirTotalEntriesRecursive, currentStat.TotalEntryNum: %v, task: %v", s.currentStat.TotalEntryNum, s.ID)
 			}
 		}
@@ -774,9 +777,9 @@ func (s *ManualScanner) loadDirTotalEntriesRecursive(inode uint64, signalChan ch
 			if os.FileMode(child.Type).IsDir() {
 				select {
 				case signalChan <- struct{}{}:
-					go s.loadDirTotalEntriesRecursive(child.Inode, signalChan, true)
+					go s.loadDirTotalEntriesRecursive(child.Inode, signalChan, true, startTime)
 				default:
-					s.loadDirTotalEntriesRecursive(child.Inode, signalChan, false)
+					s.loadDirTotalEntriesRecursive(child.Inode, signalChan, false, startTime)
 				}
 			}
 		}
