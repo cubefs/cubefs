@@ -1148,6 +1148,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	// handle compatibility in upgrade scenarios
 	needLoadTxStuff := false
 	needLoadUniqStuff := false
+	needStoreMultiVer := false
 	if crc_count >= CRC_COUNT_TX_STUFF {
 		needLoadTxStuff = true
 		loadFuncs = append(loadFuncs, mp.loadTxInfo)
@@ -1164,7 +1165,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 			return
 		}
 	} else {
-		mp.storeMultiVersion(snapshotPath, &storeMsg{multiVerList: mp.multiVersionList.VerList})
+		needStoreMultiVer = true
 	}
 
 	errs := make([]error, len(loadFuncs))
@@ -1220,6 +1221,13 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 
 	if err = mp.loadApplyID(snapshotPath); err != nil {
 		return
+	}
+
+	if needStoreMultiVer {
+		_, _ = mp.storeMultiVersion(snapshotPath, &storeMsg{
+			multiVerList: mp.multiVersionList.VerList,
+			applyIndex:   mp.GetApplyID(),
+		})
 	}
 	return
 }
@@ -1333,9 +1341,9 @@ func (mp *metaPartition) doFileStats(thresholds []uint64) {
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
-	log.LogWarnf("metaPartition %d storeMode(%d) store apply %v", mp.config.PartitionId, mp.config.StoreMode, sm.snap.ApplyID())
+	log.LogWarnf("metaPartition %d storeMode(%d) store applyIndex %v", mp.config.PartitionId, mp.config.StoreMode, sm.applyIndex)
 	defer func() {
-		log.LogWarnf("metaPartition %d storeMode(%d) store apply %v finish", mp.config.PartitionId, mp.config.StoreMode, sm.snap.ApplyID())
+		log.LogWarnf("metaPartition %d storeMode(%d) store applyIndex %v finish", mp.config.PartitionId, mp.config.StoreMode, sm.applyIndex)
 	}()
 
 	if mp.inodeTree.GetStoreMode() == proto.StoreModeRocksDb {
@@ -1384,7 +1392,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		}
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
-	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.snap.ApplyID())
+	log.LogWarnf("metaPartition %d store applyIndex %v", mp.config.PartitionId, sm.applyIndex)
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
 		return
 	}
@@ -1426,7 +1434,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		return
 	}
 
-	mp.storedApplyId = sm.snap.ApplyID()
+	mp.storedApplyId = sm.applyIndex
 	return
 }
 
@@ -1862,6 +1870,7 @@ func (mp *metaPartition) storeSnapshotFiles() (err error) {
 	defer snap.Close()
 	msg := &storeMsg{
 		snap:         snap,
+		applyIndex:   mp.GetAppliedID(),
 		uniqId:       mp.GetUniqId(),
 		uniqChecker:  newUniqChecker(),
 		multiVerList: mp.multiVersionList.VerList,
@@ -2246,7 +2255,7 @@ func (mp *metaPartition) storeRocksdb(sm *storeMsg) (err error) {
 		}
 	}
 
-	mp.storedApplyId = sm.snap.ApplyID()
+	mp.storedApplyId = sm.applyIndex
 	return nil
 }
 

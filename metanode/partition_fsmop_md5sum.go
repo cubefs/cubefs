@@ -17,7 +17,7 @@ func (mp *metaPartition) fsmCalcMetaPartitionMd5Sum(msg *storeMsg) error {
 		log.LogErrorf("fsmCalcMetaPartitionMd5Sum mp[%v] snap is nil", mp.config.PartitionId)
 		return nil
 	}
-	applyID := msg.snap.ApplyID()
+	applyID := msg.applyIndex
 	log.LogWarnf("fsmCalcMetaPartitionMd5Sum mp[%v] applyID: %v", mp.config.PartitionId, applyID)
 	defer func() {
 		msg.snap.Close()

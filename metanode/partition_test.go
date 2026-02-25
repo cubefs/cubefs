@@ -68,6 +68,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	msg := &storeMsg{
 		command:     1,
 		snap:        snap,
+		applyIndex:  mp.GetAppliedID(),
 		uniqId:      mp.GetUniqId(),
 		uniqChecker: mp.uniqChecker,
 	}
@@ -111,6 +112,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	msg = &storeMsg{
 		command:     1,
 		snap:        snap,
+		applyIndex:  mp.GetAppliedID(),
 		uniqId:      mp.GetUniqId(),
 		uniqChecker: mp.uniqChecker,
 	}

@@ -1833,6 +1833,7 @@ func testMpMultiVerStore(t *testing.T) {
 	defer snap.Close()
 	crc, _ := mp.storeMultiVersion(filePath, &storeMsg{
 		multiVerList: []*proto.VolVersionInfo{{Ver: 20, Status: proto.VersionNormal}, {Ver: 30, Status: proto.VersionNormal}},
+		applyIndex:   mp.GetAppliedID(),
 		snap:         snap,
 	})
 	err = mp.loadMultiVer(filePath, crc)

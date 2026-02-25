@@ -80,6 +80,7 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 	msg := &storeMsg{
 		command:     1,
 		snap:        snap,
+		applyIndex:  mp.GetAppliedID(),
 		uniqChecker: newUniqChecker(),
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)

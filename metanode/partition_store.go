@@ -1006,11 +1006,11 @@ func (mp *metaPartition) storeMultiVersion(rootDir string, sm *storeMsg) (crc ui
 	}
 	crc = sign.Sum32()
 
-	if _, err = fp.WriteString(fmt.Sprintf("%d|%s", sm.snap.ApplyID(), string(verData))); err != nil {
+	if _, err = fp.WriteString(fmt.Sprintf("%d|%s", sm.applyIndex, string(verData))); err != nil {
 		return
 	}
 	log.LogInfof("storeMultiVersion: store complete: partitionID(%v) volume(%v) applyID(%v) verData(%v) crc(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.snap.ApplyID(), string(verData), crc)
+		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, string(verData), crc)
 	return
 }
 
@@ -1080,12 +1080,12 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	}()
 
 	cursor := mp.GetCursor()
-	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.snap.ApplyID(), cursor)); err != nil {
+	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, cursor)); err != nil {
 		return
 	}
 
 	log.LogWarnf("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.snap.ApplyID(), cursor)
+		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, cursor)
 	return
 }
 

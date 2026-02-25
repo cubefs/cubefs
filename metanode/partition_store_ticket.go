@@ -146,10 +146,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				case opFSMStoreTick:
 					msgs = append(msgs, msg)
 				case opFSMCalcMetaPartitionMd5Sum:
-					applyID := uint64(0)
-					if msg.snap != nil {
-						applyID = msg.snap.ApplyID()
-					}
+					applyID := msg.applyIndex
 					if applyID <= lastApplyID {
 						if applyID == 0 && lastApplyID == 0 {
 							mp.Md5Sum = "mpisnull"

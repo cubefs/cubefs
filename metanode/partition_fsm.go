@@ -570,6 +570,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			uniqId:       uniqId,
 			uniqChecker:  uniqChecker,
 			multiVerList: mp.GetAllVerList(),
+			applyIndex:   index,
 		}
 		mp.storeChan <- msg
 	default:
@@ -920,6 +921,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				uniqChecker:  uniqChecker.clone(),
 				multiVerList: mp.GetVerList(),
 				snap:         snap,
+				applyIndex:   appIndexID,
 			}
 			select {
 			case <-mp.stopC:
