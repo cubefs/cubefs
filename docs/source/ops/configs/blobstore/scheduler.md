@@ -200,7 +200,7 @@ Starting from version v3.3.0, concurrent disk repair is supported.
     "timeout_ms": 10000,
     "degrade_stats": {
         "enable": true,
-        "batch": 1000
+        "batch": 10000
     }
 }
 ```
