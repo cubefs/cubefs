@@ -198,7 +198,7 @@ v3.3.0版本开始支持并发修复磁盘。
     "timeout_ms": 10000,
     "degrade_stats": {
         "enable": true,
-        "batch": 1000
+        "batch": 10000
     }
 }
 ```
