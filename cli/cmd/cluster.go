@@ -736,13 +736,13 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if optDefaultDpTag != "" {
 				if !proto.ValidateTag(optDefaultDpTag) {
-					err = fmt.Errorf("tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+					err = fmt.Errorf(proto.TagFormatErr + " Error value: " + optDefaultDpTag)
 					return
 				}
 			}
 			if optDefaultMpTag != "" {
 				if !proto.ValidateTag(optDefaultMpTag) {
-					err = fmt.Errorf("tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+					err = fmt.Errorf(proto.TagFormatErr + " Error value: " + optDefaultMpTag)
 					return
 				}
 			}
@@ -871,8 +871,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDpLimitHddFactor, CliFlagDpLimitHddFactor, "", "DP limit HDD factor per 120GB")
 	cmd.Flags().StringVar(&optDefaultPoolId, CliFlagDefaultPoolId, "", "set cluster default pool id")
 	cmd.Flags().StringVar(&optAutoFixTag, CliFlagAutoFixTag, "", "Auto fix and migrate by tag(true|false)")
-	cmd.Flags().StringVar(&optDefaultDpTag, CliFlagDefaultDpTag, "", "Default DP select tag. split with ','. 'null' means null string")
-	cmd.Flags().StringVar(&optDefaultMpTag, CliFlagDefaultMpTag, "", "Default MP select tag. split with ','. 'null' means null string")
+	cmd.Flags().StringVar(&optDefaultDpTag, CliFlagDefaultDpTag, "", proto.ValidateTagFormat)
+	cmd.Flags().StringVar(&optDefaultMpTag, CliFlagDefaultMpTag, "", proto.ValidateTagFormat)
 
 	return cmd
 }

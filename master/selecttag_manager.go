@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,6 +29,7 @@ import (
 const (
 	DefaultTag            = ""
 	MaxTagDecommissionNum = 100
+	TagReplicaRuleNum     = 3
 	CheckTagInterval      = 1 * time.Minute
 	StatusSleeping        = "sleeping"
 	StatusChecking        = "checking"
@@ -39,6 +41,7 @@ const (
 	EmptyTag              = "null"
 	MaxMpDecommissionNum  = 5
 	MaxMpFailedKeys       = 1024
+	MaxTagSampleNum       = 10
 
 	ReasonPlanBusy                = "plan status is busy"
 	ReasonDisableAutoFixTag       = "cluster auto fix tag is disabled"
@@ -135,7 +138,9 @@ func (c *Cluster) checkDpTag() {
 		return
 	}
 
+	tagStateMu.Lock()
 	DpTagThreadStatus = StatusDecommissioning
+	tagStateMu.Unlock()
 
 	total := MaxTagDecommissionNum - count
 	for _, vol := range vols {
@@ -158,10 +163,82 @@ func (c *Cluster) checkDpTag() {
 	tagStateMu.Unlock()
 }
 
+type tagReplicaInfo struct {
+	addr       string
+	nodeTag    string
+	hasNodeTag bool
+	isLearner  bool
+}
+
+func applyTagRulesToPeers(tagRules *TagRulesInfo, peers []proto.Peer, replicas []tagReplicaInfo) (changed bool) {
+	if tagRules == nil {
+		return false
+	}
+
+	tagRules.ClearMatch()
+	peerIndexMap := make(map[string]int, len(peers))
+	for i, peer := range peers {
+		peerIndexMap[peer.Addr] = i
+	}
+	getPeerTag := func(addr string) string {
+		if idx, ok := peerIndexMap[addr]; ok {
+			return peers[idx].Tag
+		}
+		return DefaultTag
+	}
+	setPeerTag := func(addr, tag string) {
+		if idx, ok := peerIndexMap[addr]; ok {
+			peers[idx].Tag = tag
+		}
+	}
+
+	// First pass: preserve tags that already satisfy destination slots.
+	for _, replica := range replicas {
+		currentTag := getPeerTag(replica.addr)
+		if replica.isLearner {
+			if currentTag != DefaultTag {
+				setPeerTag(replica.addr, DefaultTag)
+				changed = true
+			}
+			continue
+		}
+		if !replica.hasNodeTag {
+			continue
+		}
+		if tagRules.MarkDestinationTag(replica.nodeTag) {
+			if currentTag != replica.nodeTag {
+				setPeerTag(replica.addr, replica.nodeTag)
+				changed = true
+			}
+			continue
+		}
+		if tagRules.IsRuleAllTagMarked() {
+			break
+		}
+	}
+
+	// Second pass: fill remaining rule slots by source tag mapping.
+	for _, replica := range replicas {
+		if replica.isLearner || !replica.hasNodeTag {
+			continue
+		}
+		if tagRules.IsRuleAllTagMarked() {
+			break
+		}
+		currentTag := getPeerTag(replica.addr)
+		dst, ok := tagRules.FindDst(replica.nodeTag)
+		if ok && currentTag != dst {
+			setPeerTag(replica.addr, dst)
+			changed = true
+		}
+	}
+	return changed
+}
+
 func (vol *Vol) FixDataPartitionTag(c *Cluster) {
-	dpTagList := vol.GetDpTagList(c)
-	if len(dpTagList) == 0 {
-		dpTagList = []string{"", "", ""}
+	dpTagRules := vol.GetDpTagList(c)
+	if dpTagRules.IsEmpty() {
+		return
 	}
 
 	partitions := vol.dataPartitions.clonePartitions()
@@ -170,89 +247,19 @@ func (vol *Vol) FixDataPartitionTag(c *Cluster) {
 			continue
 		}
 		partition.Lock()
-		replicas := partition.Replicas
-		if len(replicas) < 3 {
-			partition.Unlock()
-			continue
-		}
-
-		desiredTags := make([]string, 0, len(replicas))
-		if len(dpTagList) >= len(replicas) {
-			desiredTags = append(desiredTags, dpTagList...)
-		} else {
-			desiredTags = append(desiredTags, dpTagList...)
-			for i := len(dpTagList); i < len(replicas); i++ {
-				desiredTags = append(desiredTags, DefaultTag)
-			}
-		}
-
-		required := make(map[string]int)
-		for _, tag := range desiredTags {
-			required[tag]++
-		}
-
-		candidates := make([]*DataReplica, 0, len(replicas))
-		changed := false
-		for _, replica := range replicas {
+		replicaInfos := make([]tagReplicaInfo, 0, len(partition.Replicas))
+		for _, replica := range partition.Replicas {
 			if replica == nil {
 				continue
 			}
-			tag := GetDataPartitionPeerTag(partition, replica.Addr)
 			dataNode := replica.getReplicaNode()
-			if dataNode != nil && tag != dataNode.Tag {
-				candidates = append(candidates, replica)
+			if dataNode == nil {
+				replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, hasNodeTag: false, isLearner: false})
 				continue
 			}
-			if required[tag] > 0 {
-				required[tag]--
-				continue
-			}
-			candidates = append(candidates, replica)
+			replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, nodeTag: dataNode.Tag, hasNodeTag: true, isLearner: false})
 		}
-		if len(candidates) == 0 {
-			partition.Unlock()
-			continue
-		}
-
-		pickCandidateIndex := func(tag string, replicas []*DataReplica) int {
-			for i, replica := range replicas {
-				dataNode := replica.getReplicaNode()
-				if dataNode != nil && dataNode.Tag == tag {
-					return i
-				}
-			}
-			if len(replicas) > 0 {
-				return 0
-			}
-			return -1
-		}
-
-		for _, tag := range desiredTags {
-			if required[tag] == 0 || len(candidates) == 0 {
-				continue
-			}
-			index := pickCandidateIndex(tag, candidates)
-			if index < 0 {
-				continue
-			}
-			replica := candidates[index]
-			candidates = append(candidates[:index], candidates[index+1:]...)
-			currentTag := GetDataPartitionPeerTag(partition, replica.Addr)
-			if currentTag != tag {
-				SetDataPartitionPeerTag(partition, replica.Addr, tag)
-				changed = true
-			}
-			required[tag]--
-		}
-
-		for _, replica := range candidates {
-			tag := GetDataPartitionPeerTag(partition, replica.Addr)
-			if tag != DefaultTag {
-				SetDataPartitionPeerTag(partition, replica.Addr, DefaultTag)
-				changed = true
-			}
-		}
-
+		changed := applyTagRulesToPeers(dpTagRules, partition.Peers, replicaInfos)
 		partition.Unlock()
 		if changed {
 			err := c.syncUpdateDataPartition(partition)
@@ -326,42 +333,184 @@ func (vol *Vol) createTagDecommissionTask(c *Cluster, limit int) (num int, err e
 	return num, nil
 }
 
-func (vol *Vol) GetDpTagList(c *Cluster) []string {
-	var (
-		dpTagList []string
-		result    []string
-	)
+type TagMapInfo struct {
+	Src   string
+	Dst   string
+	Match bool
+}
 
-	result = make([]string, 0, vol.dpReplicaNum)
+type TagGroupInfo struct {
+	Groups []*TagMapInfo
+}
 
-	dpTag := vol.DpTag
-	if dpTag != "" {
-		dpTagList = strings.Split(dpTag, ",")
-		for _, tag := range dpTagList {
-			tag = strings.TrimSpace(tag)
-			if tag == "" || tag == EmptyTag {
-				continue
+type TagRulesInfo struct {
+	Rules     []*TagGroupInfo
+	unmatched int
+}
+
+func (t *TagRulesInfo) IsEmpty() bool {
+	return t == nil || len(t.Rules) == 0
+}
+
+func (t *TagRulesInfo) MarkDestinationTag(dst string) bool {
+	if t == nil {
+		return false
+	}
+	for _, rule := range t.Rules {
+		for _, m := range rule.Groups {
+			if m.Dst == dst && !m.Match {
+				m.Match = true
+				if t.unmatched > 0 {
+					t.unmatched--
+				}
+				return true
 			}
-			result = append(result, tag)
 		}
 	}
+	return false
+}
 
-	if len(result) > 0 {
-		return result
+func (t *TagRulesInfo) IsRuleAllTagMarked() bool {
+	if t == nil {
+		return true
 	}
+	return t.unmatched == 0
+}
 
-	dpTag = c.cfg.DefaultDpTag
-	if dpTag != "" {
-		dpTagList = strings.Split(dpTag, ",")
-		for _, tag := range dpTagList {
-			tag = strings.TrimSpace(tag)
-			if tag == "" || tag == EmptyTag {
-				continue
+func (t *TagRulesInfo) FindDst(src string) (string, bool) {
+	if t == nil {
+		return "", false
+	}
+	// Prefer exact source match first; fallback to DefaultTag only when no exact rule remains.
+	for _, rule := range t.Rules {
+		for _, m := range rule.Groups {
+			if m.Src == src && !m.Match {
+				m.Match = true
+				if t.unmatched > 0 {
+					t.unmatched--
+				}
+				return m.Dst, true
 			}
-			result = append(result, tag)
 		}
+	}
+	for _, rule := range t.Rules {
+		for _, m := range rule.Groups {
+			if m.Src == DefaultTag && !m.Match {
+				m.Match = true
+				if t.unmatched > 0 {
+					t.unmatched--
+				}
+				return m.Dst, true
+			}
+		}
+	}
+	return "", false
+}
+
+func (t *TagRulesInfo) ClearMatch() {
+	if t == nil {
+		return
+	}
+	t.unmatched = 0
+	for _, rule := range t.Rules {
+		for _, m := range rule.Groups {
+			m.Match = false
+			t.unmatched++
+		}
+	}
+}
+
+func (t *TagRulesInfo) DstTags() []string {
+	if t == nil {
+		return nil
+	}
+	var tags []string
+	for _, rule := range t.Rules {
+		for _, m := range rule.Groups {
+			tags = append(tags, m.Dst)
+		}
+	}
+	return tags
+}
+
+func getEmptyTagRulesInfo() *TagRulesInfo {
+	info := &TagRulesInfo{}
+	info.Rules = make([]*TagGroupInfo, 1)
+	info.Rules[0] = &TagGroupInfo{}
+	info.Rules[0].Groups = make([]*TagMapInfo, TagReplicaRuleNum)
+	for i := 0; i < TagReplicaRuleNum; i++ {
+		info.Rules[0].Groups[i] = &TagMapInfo{}
+		info.Rules[0].Groups[i].Src = DefaultTag
+		info.Rules[0].Groups[i].Dst = DefaultTag
+		info.Rules[0].Groups[i].Match = false
+	}
+	info.ClearMatch()
+	return info
+}
+
+func parseTagRules(tag string) *TagRulesInfo {
+	if tag == "" {
+		return getEmptyTagRulesInfo()
+	}
+	info := &TagRulesInfo{}
+	totalMappings := 0
+	rules := strings.Split(tag, ";")
+	for _, rule := range rules {
+		rule = strings.TrimSpace(rule)
+		if rule == "" || rule == EmptyTag {
+			continue
+		}
+		group := &TagGroupInfo{
+			Groups: make([]*TagMapInfo, 0, TagReplicaRuleNum),
+		}
+		parts := strings.Split(rule, "->")
+		if len(parts) == 2 {
+			srcTags := splitTagItems(parts[0])
+			dstTags := splitTagItems(parts[1])
+			for i := 0; i < len(srcTags) && i < len(dstTags); i++ {
+				group.Groups = append(group.Groups, &TagMapInfo{Src: srcTags[i], Dst: dstTags[i]})
+			}
+		} else {
+			log.LogErrorf("parseTagRules, rule[%v] format error", rule)
+			continue
+		}
+		if len(group.Groups) > 0 {
+			info.Rules = append(info.Rules, group)
+			totalMappings += len(group.Groups)
+		}
+	}
+	if len(info.Rules) == 0 {
+		return getEmptyTagRulesInfo()
+	}
+	if totalMappings < TagReplicaRuleNum {
+		padCount := TagReplicaRuleNum - totalMappings
+		for i := 0; i < padCount; i++ {
+			info.Rules[0].Groups = append(info.Rules[0].Groups, &TagMapInfo{Src: DefaultTag, Dst: DefaultTag})
+		}
+	}
+	info.ClearMatch()
+	return info
+}
+
+func splitTagItems(s string) []string {
+	items := strings.Split(s, ",")
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" || item == EmptyTag {
+			continue
+		}
+		result = append(result, item)
 	}
 	return result
+}
+
+func (vol *Vol) GetDpTagList(c *Cluster) *TagRulesInfo {
+	result := parseTagRules(vol.DpTag)
+	if result != nil {
+		return result
+	}
+	return parseTagRules(c.cfg.DefaultDpTag)
 }
 
 func (c *Cluster) scheduleToCheckMpTag() {
@@ -433,9 +582,8 @@ func (c *Cluster) checkMpTag() {
 	MpTagThreadStatus = StatusCreatingPlan
 	tagStateMu.Unlock()
 
-	mismatches := c.collectMpTagMismatches(vols)
 	_, _, _, _, _, _, failedKeys := snapshotTagState()
-	selectedGroup := c.selectMpTagMismatchGroup(mismatches, failedKeys)
+	selectedGroup := c.collectAndSelectMpTagMismatchGroup(vols, failedKeys)
 	if len(selectedGroup) == 0 {
 		tagStateMu.Lock()
 		LastMpQuitReason = ReasonSelectTagEmpty
@@ -550,7 +698,7 @@ func (c *Cluster) selectOneTargetMetaReplica(mp *MetaPartition, srcAddr string, 
 	}
 
 	_, peers, err = c.getHostFromNormalZone(nodeType, excludeZone, 1, "", param)
-	if err == nil {
+	if err == nil && len(peers) > 0 {
 		return peers[0].Addr, nil
 	}
 
@@ -566,8 +714,16 @@ type mpTagMismatch struct {
 	tag       string
 }
 
-func (c *Cluster) collectMpTagMismatches(vols map[string]*Vol) []*mpTagMismatch {
-	mismatches := make([]*mpTagMismatch, 0)
+func (c *Cluster) collectAndSelectMpTagMismatchGroup(vols map[string]*Vol, failedKeys []string) []*mpTagMismatch {
+	failedKeySet := make(map[string]struct{}, len(failedKeys))
+	for _, key := range failedKeys {
+		failedKeySet[key] = struct{}{}
+	}
+
+	grouped := make(map[string][]*mpTagMismatch)
+	var selectedGroupKey string
+	maxGroupSize := 0
+
 	for _, vol := range vols {
 		if vol.isInitializingOrInitFailed() {
 			continue
@@ -602,7 +758,7 @@ func (c *Cluster) collectMpTagMismatches(vols map[string]*Vol) []*mpTagMismatch 
 					}
 				}
 				tag := GetMetaPartitionPeerTag(partition, replica.Addr)
-				if metaNode.Tag == tag {
+				if metaNode.Tag == tag || tag == DefaultTag {
 					continue
 				}
 				storeMode, err := c.getMetaPartitionStoreMode(partition, replica.Addr)
@@ -611,49 +767,34 @@ func (c *Cluster) collectMpTagMismatches(vols map[string]*Vol) []*mpTagMismatch 
 						vol.Name, partition.PartitionID, replica.Addr, err)
 					continue
 				}
-				mismatches = append(mismatches, &mpTagMismatch{
+				key := tag + "|" + storeMode.Str()
+				if _, skip := failedKeySet[key]; skip {
+					continue
+				}
+				item := &mpTagMismatch{
 					vol:       vol,
 					partition: partition,
 					replica:   replica,
 					metaNode:  metaNode,
 					storeMode: storeMode,
 					tag:       tag,
-				})
+				}
+				grouped[key] = append(grouped[key], item)
+				if len(grouped[key]) > maxGroupSize {
+					maxGroupSize = len(grouped[key])
+					selectedGroupKey = key
+				}
 				break
 			}
 		}
 	}
-	return mismatches
-}
-
-func (c *Cluster) selectMpTagMismatchGroup(mismatches []*mpTagMismatch, failedKeys []string) []*mpTagMismatch {
-	if len(mismatches) == 0 {
-		return nil
-	}
-	grouped := make(map[string][]*mpTagMismatch)
-	for _, item := range mismatches {
-		if item.tag == DefaultTag {
-			continue
-		}
-		key := item.tag + "|" + item.storeMode.Str()
-		if contains(failedKeys, key) {
-			continue
-		}
-		grouped[key] = append(grouped[key], item)
-	}
-	var selectedGroup []*mpTagMismatch
-	for _, group := range grouped {
-		if len(group) > len(selectedGroup) {
-			selectedGroup = group
-		}
-	}
-	return selectedGroup
+	return grouped[selectedGroupKey]
 }
 
 func (vol *Vol) FixMetaPartitionTag(c *Cluster) {
-	mpTagList := vol.GetMpTagList(c)
-	if len(mpTagList) == 0 {
-		mpTagList = []string{"", "", ""}
+	mpTagRules := vol.GetMpTagList(c)
+	if mpTagRules.IsEmpty() {
+		return
 	}
 
 	partitions := vol.cloneMetaPartitionMap()
@@ -662,102 +803,21 @@ func (vol *Vol) FixMetaPartitionTag(c *Cluster) {
 			continue
 		}
 		partition.Lock()
-		replicas := partition.Replicas
-		if len(replicas) == 0 {
-			partition.Unlock()
-			continue
-		}
-		nonLearnerCount := 0
-		for _, replica := range replicas {
-			if replica != nil && !replica.IsLearner {
-				nonLearnerCount++
-			}
-		}
-
-		desiredTags := make([]string, 0, nonLearnerCount)
-		if len(mpTagList) >= nonLearnerCount {
-			desiredTags = append(desiredTags, mpTagList...)
-		} else {
-			desiredTags = append(desiredTags, mpTagList...)
-			for i := len(mpTagList); i < nonLearnerCount; i++ {
-				desiredTags = append(desiredTags, DefaultTag)
-			}
-		}
-
-		required := make(map[string]int)
-		for _, tag := range desiredTags {
-			required[tag]++
-		}
-
-		candidates := make([]*MetaReplica, 0, len(replicas))
-		changed := false
-		for _, replica := range replicas {
+		replicaInfos := make([]tagReplicaInfo, 0, len(partition.Replicas))
+		for _, replica := range partition.Replicas {
 			if replica == nil {
 				continue
 			}
 			if replica.IsLearner {
-				tag := GetMetaPartitionPeerTag(partition, replica.Addr)
-				if tag != DefaultTag {
-					SetMetaPartitionPeerTag(partition, replica.Addr, DefaultTag)
-					changed = true
-				}
+				replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, isLearner: true})
 				continue
 			}
-
-			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
-			if replica.metaNode != nil && tag != replica.metaNode.Tag {
-				candidates = append(candidates, replica)
+			if replica.metaNode == nil {
 				continue
 			}
-			if required[tag] > 0 {
-				required[tag]--
-				continue
-			}
-			candidates = append(candidates, replica)
+			replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, nodeTag: replica.metaNode.Tag, hasNodeTag: true, isLearner: false})
 		}
-
-		if len(candidates) == 0 {
-			partition.Unlock()
-			continue
-		}
-
-		pickCandidateIndex := func(tag string, replicas []*MetaReplica) int {
-			for i, replica := range replicas {
-				if replica.metaNode != nil && replica.metaNode.Tag == tag {
-					return i
-				}
-			}
-			if len(replicas) > 0 {
-				return 0
-			}
-			return -1
-		}
-
-		for _, tag := range desiredTags {
-			if required[tag] == 0 || len(candidates) == 0 {
-				continue
-			}
-			index := pickCandidateIndex(tag, candidates)
-			if index < 0 {
-				continue
-			}
-			replica := candidates[index]
-			candidates = append(candidates[:index], candidates[index+1:]...)
-			currentTag := GetMetaPartitionPeerTag(partition, replica.Addr)
-			if currentTag != tag {
-				SetMetaPartitionPeerTag(partition, replica.Addr, tag)
-				changed = true
-			}
-			required[tag]--
-		}
-
-		for _, replica := range candidates {
-			tag := GetMetaPartitionPeerTag(partition, replica.Addr)
-			if tag != DefaultTag {
-				SetMetaPartitionPeerTag(partition, replica.Addr, DefaultTag)
-				changed = true
-			}
-		}
+		changed := applyTagRulesToPeers(mpTagRules, partition.Peers, replicaInfos)
 		partition.Unlock()
 		if changed {
 			err := c.syncUpdateMetaPartition(partition)
@@ -768,41 +828,12 @@ func (vol *Vol) FixMetaPartitionTag(c *Cluster) {
 	}
 }
 
-func (vol *Vol) GetMpTagList(c *Cluster) []string {
-	var (
-		mpTagList []string
-		result    []string
-	)
-
-	result = make([]string, 0, vol.mpReplicaNum)
-
-	mpTag := vol.MpTag
-	if mpTag != "" {
-		mpTagList = strings.Split(mpTag, ",")
-		for _, tag := range mpTagList {
-			tag = strings.TrimSpace(tag)
-			if tag == "" || tag == EmptyTag {
-				continue
-			}
-			result = append(result, tag)
-		}
-	}
-	if len(result) > 0 {
+func (vol *Vol) GetMpTagList(c *Cluster) *TagRulesInfo {
+	result := parseTagRules(vol.MpTag)
+	if result != nil {
 		return result
 	}
-
-	mpTag = c.cfg.DefaultMpTag
-	if mpTag != "" {
-		mpTagList = strings.Split(mpTag, ",")
-		for _, tag := range mpTagList {
-			tag = strings.TrimSpace(tag)
-			if tag == "" || tag == EmptyTag {
-				continue
-			}
-			result = append(result, tag)
-		}
-	}
-	return result
+	return parseTagRules(c.cfg.DefaultMpTag)
 }
 
 func (c *Cluster) getTagSummary(detail bool) (summary *proto.TagSummary, err error) {
@@ -813,8 +844,8 @@ func (c *Cluster) getTagSummary(detail bool) (summary *proto.TagSummary, err err
 		ClusterMpTag:        c.cfg.DefaultMpTag,
 		DpCheckThreadStatus: dpStatus,
 		MpCheckThreadStatus: mpStatus,
-		UnmatchDpSamples:    make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
-		UnmatchMpSamples:    make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
+		UnmatchDpSamples:    make([]proto.TagMismatchSample, 0, MaxTagSampleNum),
+		UnmatchMpSamples:    make([]proto.TagMismatchSample, 0, MaxTagSampleNum),
 		DataNodeTagCount:    make(map[string]int),
 		MetaNodeTagCount:    make(map[string]int),
 		DataNodeSpace:       make(map[string]*proto.DataNodeSpace),
@@ -889,7 +920,7 @@ func (c *Cluster) getTagSummary(detail bool) (summary *proto.TagSummary, err err
 }
 
 func appendMismatchDpSample(summary *proto.TagSummary, volName string, partitionID uint64, addr, peerTag, nodeTag string) {
-	if len(summary.UnmatchDpSamples) >= MaxTagDecommissionNum {
+	if len(summary.UnmatchDpSamples) >= MaxTagSampleNum {
 		return
 	}
 	summary.UnmatchDpSamples = append(summary.UnmatchDpSamples, proto.TagMismatchSample{
@@ -902,7 +933,7 @@ func appendMismatchDpSample(summary *proto.TagSummary, volName string, partition
 }
 
 func appendMismatchMpSample(summary *proto.TagSummary, volName string, partitionID uint64, addr, peerTag, nodeTag string) {
-	if len(summary.UnmatchMpSamples) >= MaxTagDecommissionNum {
+	if len(summary.UnmatchMpSamples) >= MaxTagSampleNum {
 		return
 	}
 	summary.UnmatchMpSamples = append(summary.UnmatchMpSamples, proto.TagMismatchSample{
@@ -1055,8 +1086,7 @@ func (c *Cluster) IsDataPartitionTagSet(volName string) bool {
 }
 
 func (vol *Vol) IsDataPartitionHasTag(c *Cluster) bool {
-	tagList := vol.GetDpTagList(c)
-	if len(tagList) > 0 {
+	if vol.DpTag != DefaultTag || c.cfg.DefaultDpTag != DefaultTag {
 		return true
 	}
 
@@ -1076,8 +1106,7 @@ func (vol *Vol) IsDataPartitionHasTag(c *Cluster) bool {
 }
 
 func (vol *Vol) IsMetaPartitionHasTag(c *Cluster) bool {
-	tagList := vol.GetMpTagList(c)
-	if len(tagList) > 0 {
+	if vol.MpTag != DefaultTag || c.cfg.DefaultMpTag != DefaultTag {
 		return true
 	}
 
@@ -1185,20 +1214,20 @@ func (c *Cluster) getVolTagSummary(name string) (summary *proto.VolTagSummary, e
 
 	mps := vol.cloneMetaPartitionMap()
 	dps := vol.dataPartitions.clonePartitions()
+	UnmatchDps := make([]uint64, 0, len(dps))
+	UnmatchMps := make([]uint64, 0, len(mps))
 
 	summary = &proto.VolTagSummary{
 		Vol:              name,
 		MpTag:            vol.MpTag,
 		DpTag:            vol.DpTag,
-		EffectiveMpTags:  vol.GetMpTagList(c),
-		EffectiveDpTags:  vol.GetDpTagList(c),
+		EffectiveMpTags:  vol.GetMpTagList(c).DstTags(),
+		EffectiveDpTags:  vol.GetDpTagList(c).DstTags(),
 		VolStatus:        vol.Status,
 		UnmatchDpNum:     0,
 		UnmatchMpNum:     0,
-		UnmatchDps:       make([]uint64, 0, len(dps)),
-		UnmatchMps:       make([]uint64, 0, len(mps)),
-		UnmatchDpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
-		UnmatchMpSamples: make([]proto.TagMismatchSample, 0, MaxTagDecommissionNum),
+		UnmatchDpSamples: make([]proto.TagMismatchSample, 0, MaxTagSampleNum),
+		UnmatchMpSamples: make([]proto.TagMismatchSample, 0, MaxTagSampleNum),
 	}
 
 	for _, dp := range dps {
@@ -1216,7 +1245,7 @@ func (c *Cluster) getVolTagSummary(name string) (summary *proto.VolTagSummary, e
 			}
 			tag := GetDataPartitionPeerTag(dp, replica.Addr)
 			if tag != DefaultTag && tag != replica.dataNode.Tag {
-				if len(summary.UnmatchDpSamples) < MaxTagDecommissionNum {
+				if len(summary.UnmatchDpSamples) < MaxTagSampleNum {
 					summary.UnmatchDpSamples = append(summary.UnmatchDpSamples, proto.TagMismatchSample{
 						Vol:         vol.Name,
 						PartitionID: dp.PartitionID,
@@ -1225,7 +1254,7 @@ func (c *Cluster) getVolTagSummary(name string) (summary *proto.VolTagSummary, e
 						NodeTag:     replica.dataNode.Tag,
 					})
 				}
-				summary.UnmatchDps = append(summary.UnmatchDps, dp.PartitionID)
+				UnmatchDps = append(UnmatchDps, dp.PartitionID)
 				break
 			}
 		}
@@ -1245,7 +1274,7 @@ func (c *Cluster) getVolTagSummary(name string) (summary *proto.VolTagSummary, e
 			}
 			tag := GetMetaPartitionPeerTag(mp, replica.Addr)
 			if tag != DefaultTag && tag != replica.metaNode.Tag {
-				if len(summary.UnmatchMpSamples) < MaxTagDecommissionNum {
+				if len(summary.UnmatchMpSamples) < MaxTagSampleNum {
 					summary.UnmatchMpSamples = append(summary.UnmatchMpSamples, proto.TagMismatchSample{
 						Vol:         vol.Name,
 						PartitionID: mp.PartitionID,
@@ -1254,30 +1283,64 @@ func (c *Cluster) getVolTagSummary(name string) (summary *proto.VolTagSummary, e
 						NodeTag:     replica.metaNode.Tag,
 					})
 				}
-				summary.UnmatchMps = append(summary.UnmatchMps, mp.PartitionID)
+				UnmatchMps = append(UnmatchMps, mp.PartitionID)
 				break
 			}
 		}
 	}
 
-	summary.UnmatchDpNum = len(summary.UnmatchDps)
-	summary.UnmatchMpNum = len(summary.UnmatchMps)
+	summary.UnmatchDpNum = len(UnmatchDps)
+	summary.UnmatchMpNum = len(UnmatchMps)
+	summary.UnmatchDps = joinUint64(UnmatchDps)
+	summary.UnmatchMps = joinUint64(UnmatchMps)
 
 	return summary, nil
 }
 
 func FormatTag(tag string) string {
-	tagList := strings.Split(tag, ",")
-	newList := make([]string, 0, len(tagList))
-	for _, tag := range tagList {
-		tag = strings.TrimSpace(tag)
-		if tag == "" || tag == EmptyTag {
-			continue
-		}
-		newList = append(newList, tag)
-	}
-	if len(newList) == 0 {
+	if tag == EmptyTag {
 		return DefaultTag
 	}
-	return strings.Join(newList, ",")
+
+	rules := strings.Split(tag, ";")
+	formattedRules := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		rule = strings.TrimSpace(rule)
+		if rule == "" || rule == EmptyTag {
+			continue
+		}
+		parts := strings.Split(rule, "->")
+		if len(parts) == 2 {
+			src := formatTagGroup(parts[0])
+			dst := formatTagGroup(parts[1])
+			if src != "" && dst != "" {
+				formattedRules = append(formattedRules, src+"->"+dst)
+			}
+		} else {
+			log.LogErrorf("FormatTag, rule[%s] format error", rule)
+		}
+	}
+	if len(formattedRules) == 0 {
+		return DefaultTag
+	}
+	return strings.Join(formattedRules, ";")
+}
+
+func formatTagGroup(group string) string {
+	items := splitTagItems(group)
+	if len(items) == 0 {
+		return ""
+	}
+	return strings.Join(items, ",")
+}
+
+func joinUint64(values []uint64) string {
+	if len(values) == 0 {
+		return ""
+	}
+	items := make([]string, 0, len(values))
+	for _, v := range values {
+		items = append(items, strconv.FormatUint(v, 10))
+	}
+	return strings.Join(items, ",")
 }

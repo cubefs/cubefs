@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -111,9 +112,9 @@ func newShowSelectTagSummaryCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			if optMeta || optData {
-				out, err = json.MarshalIndent(output, "", "    ")
+				out, err = marshalIndentNoEscape(output)
 			} else {
-				out, err = json.MarshalIndent(task, "", "    ")
+				out, err = marshalIndentNoEscape(task)
 			}
 			if err != nil {
 				stdout("marshal task failed: %s", err.Error())
@@ -182,9 +183,9 @@ func newShowSelectTagVolSummaryCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			if optMeta || optData {
-				out, err = json.MarshalIndent(output, "", "    ")
+				out, err = marshalIndentNoEscape(output)
 			} else {
-				out, err = json.MarshalIndent(task, "", "    ")
+				out, err = marshalIndentNoEscape(task)
 			}
 			if err != nil {
 				stdout("marshal task failed: %s", err.Error())
@@ -215,4 +216,19 @@ func newClearSelectTagFailedKeysCmd(client *master.MasterClient) *cobra.Command 
 		},
 	}
 	return cmd
+}
+
+func marshalIndentNoEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "    ")
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	out := buf.Bytes()
+	if len(out) > 0 && out[len(out)-1] == '\n' {
+		out = out[:len(out)-1]
+	}
+	return out, nil
 }

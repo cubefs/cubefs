@@ -21,6 +21,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -3241,14 +3242,32 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.dpsSelectTag = r.FormValue(DpTagKey)
-	if req.dpsSelectTag != "" && !proto.ValidateTag(req.dpsSelectTag) {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed").Error()})
-		return
+	if req.dpsSelectTag != "" {
+		req.dpsSelectTag, err = url.QueryUnescape(req.dpsSelectTag)
+		if err != nil {
+			log.LogWarnf("dpTag: %s, query unescape error", req.dpsSelectTag)
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if !proto.ValidateTag(req.dpsSelectTag) {
+			log.LogWarnf("dpTag: %s, validate error", req.dpsSelectTag)
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: proto.TagFormatErr})
+			return
+		}
 	}
 	req.mpsSelectTag = r.FormValue(MpTagKey)
-	if req.mpsSelectTag != "" && !proto.ValidateTag(req.mpsSelectTag) {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed").Error()})
-		return
+	if req.mpsSelectTag != "" {
+		req.mpsSelectTag, err = url.QueryUnescape(req.mpsSelectTag)
+		if err != nil {
+			log.LogWarnf("mpTag: %s, query unescape error", req.mpsSelectTag)
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if !proto.ValidateTag(req.mpsSelectTag) {
+			log.LogWarnf("mpTag: %s, validate error", req.mpsSelectTag)
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: proto.TagFormatErr})
+			return
+		}
 	}
 
 	newArgs := getVolVarargs(vol)
@@ -4786,8 +4805,14 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[cfgDefaultDpTag]; ok {
 		if defaultDpSelectTag, ok := val.(string); ok {
+			defaultDpSelectTag, err = url.QueryUnescape(defaultDpSelectTag)
+			if err != nil {
+				log.LogWarnf("defaultDpTag: %s, query unescape error", defaultDpSelectTag)
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
 			if !proto.ValidateTag(defaultDpSelectTag) {
-				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed").Error()})
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: proto.TagFormatErr})
 				return
 			}
 			defaultDpSelectTag = FormatTag(defaultDpSelectTag)
@@ -4799,8 +4824,14 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[cfgDefaultMpTag]; ok {
 		if defaultMpSelectTag, ok := val.(string); ok {
+			defaultMpSelectTag, err = url.QueryUnescape(defaultMpSelectTag)
+			if err != nil {
+				log.LogWarnf("defaultMpTag: %s, query unescape error", defaultMpSelectTag)
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
 			if !proto.ValidateTag(defaultMpSelectTag) {
-				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed").Error()})
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: proto.TagFormatErr})
 				return
 			}
 			defaultMpSelectTag = FormatTag(defaultMpSelectTag)

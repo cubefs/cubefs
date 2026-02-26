@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -413,10 +414,10 @@ func (api *AdminAPI) UpdateVolume(
 		request.addParam("storeMode", strconv.FormatInt(int64(vv.DefaultStoreMode), 10))
 	}
 	if vv.DpTag != "" {
-		request.addParam("dpTag", vv.DpTag)
+		request.addParam("dpTag", url.QueryEscape(vv.DpTag))
 	}
 	if vv.MpTag != "" {
-		request.addParam("mpTag", vv.MpTag)
+		request.addParam("mpTag", url.QueryEscape(vv.MpTag))
 	}
 
 	if txMask != "" {
@@ -927,10 +928,10 @@ func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
 		request.addParam("autoFixTag", params.AutoFixTag)
 	}
 	if params.DefaultDpTag != "" {
-		request.addParam("defaultDpTag", params.DefaultDpTag)
+		request.addParam("defaultDpTag", url.QueryEscape(params.DefaultDpTag))
 	}
 	if params.DefaultMpTag != "" {
-		request.addParam("defaultMpTag", params.DefaultMpTag)
+		request.addParam("defaultMpTag", url.QueryEscape(params.DefaultMpTag))
 	}
 	_, err = api.mc.serveRequest(request)
 	return

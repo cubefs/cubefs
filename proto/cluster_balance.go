@@ -234,14 +234,43 @@ type TagSummary struct {
 var TagPattern = regexp.MustCompile("^[0-9A-Za-z]{1,49}$")
 
 func ValidateTag(tag string) bool {
-	tags := strings.Split(tag, ",")
-	for _, tag := range tags {
-		if !TagPattern.MatchString(tag) {
+	if tag == "null" {
+		return true
+	}
+	rules := strings.Split(tag, ";")
+	srcTagSet := make(map[string]struct{}, 0)
+	for _, rule := range rules {
+		groups := strings.Split(rule, "->")
+		if len(groups) != 2 {
 			return false
+		}
+		srcItems := strings.Split(groups[0], ",")
+		dstItems := strings.Split(groups[1], ",")
+		if len(srcItems) != len(dstItems) || len(srcItems) == 0 {
+			return false
+		}
+		for _, item := range srcItems {
+			if !TagPattern.MatchString(item) {
+				return false
+			}
+			srcTagSet[item] = struct{}{}
+		}
+		for _, item := range dstItems {
+			if !TagPattern.MatchString(item) {
+				return false
+			}
+			if _, exist := srcTagSet[item]; exist {
+				return false
+			}
 		}
 	}
 	return true
 }
+
+const (
+	ValidateTagFormat = "Example: 'tag1->tag2', 'tag1,tag1->tag2,tag2;tag3->tag4' or 'null' to clear tag."
+	TagFormatErr      = "tag format error. " + ValidateTagFormat
+)
 
 type VolTagSummary struct {
 	MpTag            string              `json:"mpTag"`
@@ -253,9 +282,9 @@ type VolTagSummary struct {
 	TotalDpNum       int                 `json:"totalDpNum"`
 	TotalMpNum       int                 `json:"totalMpNum"`
 	UnmatchDpNum     int                 `json:"unmatchDpNum"`
-	UnmatchDps       []uint64            `json:"unmatchDps"`
+	UnmatchDps       string              `json:"unmatchDps"`
 	UnmatchMpNum     int                 `json:"unmatchMpNum"`
-	UnmatchMps       []uint64            `json:"unmatchMps"`
+	UnmatchMps       string              `json:"unmatchMps"`
 	UnmatchDpSamples []TagMismatchSample `json:"unmatchDpSamples"`
 	UnmatchMpSamples []TagMismatchSample `json:"unmatchMpSamples"`
 }

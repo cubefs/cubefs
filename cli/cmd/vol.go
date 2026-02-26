@@ -971,7 +971,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if optDpTag != "" {
 				if !proto.ValidateTag(optDpTag) {
-					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+					err = fmt.Errorf(proto.TagFormatErr + " Error value: " + optDpTag)
 					return
 				}
 				vv.DpTag = optDpTag
@@ -980,7 +980,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if optMpTag != "" {
 				if !proto.ValidateTag(optMpTag) {
-					err = fmt.Errorf("select tag invalid: length must be < 50 and only [0-9a-zA-Z] allowed")
+					err = fmt.Errorf(proto.TagFormatErr + " Error value: " + optMpTag)
 					return
 				}
 				vv.MpTag = optMpTag
@@ -1069,8 +1069,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, 0, "Remote cache same zone timeout microsecond(must > 0),default 400")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, 0, "Remote cache same region timeout millisecond(must > 0),default 2")
 	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "Specify default store mode of mp: memory, rocksdb")
-	cmd.Flags().StringVar(&optDpTag, CliFlagDpTag, "", "Specify dp select tag, split with ','. 'null' means null string")
-	cmd.Flags().StringVar(&optMpTag, CliFlagMpTag, "", "Specify mp select tag, split with ','. 'null' means null string")
+	cmd.Flags().StringVar(&optDpTag, CliFlagDpTag, "", proto.ValidateTagFormat)
+	cmd.Flags().StringVar(&optMpTag, CliFlagMpTag, "", proto.ValidateTagFormat)
 
 	return cmd
 }
