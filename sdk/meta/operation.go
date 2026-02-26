@@ -1147,7 +1147,7 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64, isAs
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		if status == statusLimitedIo {
+		if status == statusLimitedIo || packet.ResultCode == proto.OpNotExistErr {
 			log.LogWarnf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		} else {
 			log.LogErrorf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())

@@ -132,13 +132,13 @@ const (
 	Flash_Task_Init ManualTaskStatus = iota
 	Flash_Task_Running
 	Flash_Task_Pause
-	Flash_Task_Success
+	Flash_Task_End
 	Flash_Task_Failed
 	Flash_Task_Stop
 )
 
 func ManualTaskDone(status int) bool {
-	success, failed, stop := int(Flash_Task_Success), int(Flash_Task_Failed), int(Flash_Task_Stop)
+	success, failed, stop := int(Flash_Task_End), int(Flash_Task_Failed), int(Flash_Task_Stop)
 	return status == success || status == failed || status == stop
 }
 
@@ -552,7 +552,7 @@ type ManualTaskConfig struct {
 	TotalFileSizeLimit      int64
 	MinFileSizeLimit        int64
 	MaxFileSizeLimit        int64
-	WarmUpPathExpire        int64
+	WarmUpPathExpire        int64 `json:"-"`
 	PrepareLimitPerSecond   int64
 	FlowLimitPerSecond      int64
 	PrintProgress           bool
@@ -570,6 +570,7 @@ type ManualTaskStatistics struct {
 	FlashNode           string
 	TotalEntryNum       int64
 	LoadProgress        string
+	CompletionRate      string
 }
 
 type FlashNodeManualTaskRequest struct {
@@ -632,6 +633,7 @@ func (flt *FlashManualTask) SetResponse(taskRsp *FlashNodeManualTaskResponse) {
 	flt.ManualTaskStatistics.ErrorCacheNum = taskRsp.ErrorCacheNum
 	flt.ManualTaskStatistics.ErrorReadDirNum = taskRsp.ErrorReadDirNum
 	flt.ManualTaskStatistics.TotalCacheSize = taskRsp.TotalCacheSize
+	flt.ManualTaskStatistics.TotalExtentKeyNum = taskRsp.TotalExtentKeyNum
 	flt.ManualTaskStatistics.LastCacheSize = taskRsp.LastCacheSize
 	flt.ManualTaskStatistics.TotalEntryNum = taskRsp.TotalEntryNum
 	flt.Done = taskRsp.Done

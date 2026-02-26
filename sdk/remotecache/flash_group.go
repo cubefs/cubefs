@@ -151,9 +151,10 @@ func (fg *FlashGroup) moveToUnknownRank(addr string, err error, timeoutCount int
 	unknowns := fg.rankedHost[UnknownZoneRank]
 	unknowns = append(unknowns, addr)
 	fg.rankedHost[UnknownZoneRank] = unknowns
+	oldTimeoutCount := fg.hostTimeoutCount[addr]
 	fg.hostTimeoutCount[addr] = 0
 
-	log.LogWarnf("moveToUnknownRank: fgID(%v) host(%v) timeoutCount reset to 0 by err %v", fg.ID, addr, err.Error())
+	log.LogWarnf("moveToUnknownRank: fgID(%v) host(%v) timeoutCount(%v) reset to 0 by err %v", fg.ID, addr, oldTimeoutCount, err.Error())
 	return moved
 }
 

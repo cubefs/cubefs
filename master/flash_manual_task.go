@@ -419,7 +419,7 @@ func (c *Cluster) handleFlashNodeScanResp(nodeAddr string, resp *proto.FlashNode
 		manualTask.Lock()
 		manualTask.SetResponse(resp)
 		manualTask.EndTime = resp.EndTime
-		manualTask.Status = int(proto.Flash_Task_Success)
+		manualTask.Status = int(proto.Flash_Task_End)
 		if resp.Status == proto.TaskStop {
 			t := time.Now()
 			manualTask.EndTime = &t

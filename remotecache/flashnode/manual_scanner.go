@@ -235,6 +235,7 @@ func (s *ManualScanner) copyResponse() *proto.FlashNodeManualTaskResponse {
 	response.ErrorReadDirNum = s.currentStat.ErrorReadDirNum
 	response.TotalCacheSize = s.currentStat.TotalCacheSize
 	response.LastCacheSize = s.currentStat.LastCacheSize
+	response.TotalExtentKeyNum = s.currentStat.TotalExtentKeyNum
 	response.TotalEntryNum = s.currentStat.TotalEntryNum
 	return response
 }
@@ -301,6 +302,7 @@ func (s *ManualScanner) handleFile(dentry *proto.ScanItem) {
 	s.limiter.Wait(context.Background())
 	info, err := s.mw.InodeGet_ll(dentry.Inode, true)
 	if err != nil {
+		atomic.AddInt64(&s.currentStat.ErrorCacheNum, 1)
 		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
 		return
 	}

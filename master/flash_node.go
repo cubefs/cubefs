@@ -474,6 +474,9 @@ func (m *Server) createFlashNodeManualTask(w http.ResponseWriter, r *http.Reques
 	if req.ManualTaskStatistics == nil {
 		req.ManualTaskStatistics = &proto.ManualTaskStatistics{}
 	}
+	if req.ManualTaskConfig.PrepareLimitPerSecond == 0 {
+		req.ManualTaskConfig.PrepareLimitPerSecond = 10000
+	}
 	// Validate file size limits
 	if req.ManualTaskConfig.MinFileSizeLimit > req.ManualTaskConfig.MaxFileSizeLimit {
 		err = fmt.Errorf("MinFileSizeLimit(%d) cannot be greater than MaxFileSizeLimit(%d)",
@@ -549,6 +552,16 @@ func (m *Server) flashManualTask(w http.ResponseWriter, r *http.Request) {
 		for _, rsp := range mTasks {
 			if rsp == nil || rsp.ManualTaskStatistics == nil {
 				continue
+			}
+			if rsp.Status == int(proto.Flash_Task_End) {
+				stats := rsp.ManualTaskStatistics
+				numerator := stats.TotalFileScannedNum + stats.TotalDirScannedNum
+				denominator := numerator + stats.ErrorCacheNum + stats.ErrorReadDirNum
+				if denominator == 0 {
+					stats.CompletionRate = "0%"
+				} else {
+					stats.CompletionRate = fmt.Sprintf("%d%%", (numerator*100)/denominator)
+				}
 			}
 			if !rsp.ManualTaskConfig.PrintProgress {
 				continue
