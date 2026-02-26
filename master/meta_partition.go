@@ -106,6 +106,7 @@ type MetaPartition struct {
 
 	RestoreReplicaMeta uint32
 	DecommissionType   uint32
+	Region             string // Region name for this meta partition
 }
 
 func (mp *MetaPartition) newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
@@ -135,6 +136,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	mp.StatByPool = make([]*proto.StatOfStorageClass, 0)
 	mp.StatByMigratePool = make([]*proto.StatOfStorageClass, 0)
+	mp.Region = proto.DefaultRegion // Default region
 	return
 }
 

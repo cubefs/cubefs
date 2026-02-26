@@ -776,6 +776,10 @@ type createVolReq struct {
 	// Storage Pool
 	defaultPoolId uint8
 	allowedPools  []uint8
+
+	// Meta Region
+	defaultRegion  string
+	allowedRegions []string
 }
 
 func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
@@ -934,6 +938,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq, m *Server) (err
 
 	req.zoneName = extractStr(r, zoneNameKey)
 	req.description = extractStr(r, descriptionKey)
+
+	// Parse default region (use cluster default if not specified)
+	req.defaultRegion = extractStrWithDefault(r, defaultRegionKey, m.cluster.defaultMetaRegion)
+	req.allowedRegions = []string{req.defaultRegion}
 
 	req.domainId, err = extractUint64WithDefault(r, domainIdKey, 0)
 	if err != nil {
@@ -2056,6 +2064,11 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[poolIdKey] = uint8(val)
 	}
 
+	if value = r.FormValue(defaultMetaRegionKey); value != "" {
+		noParams = false
+		params[defaultMetaRegionKey] = value
+	}
+
 	if noParams {
 		err = fmt.Errorf("no key assigned")
 		return
@@ -2922,4 +2935,22 @@ func parseRequestToUpdateStoragePool(r *http.Request) (poolId uint8, poolInfo *p
 	poolInfo.ECAddr = r.FormValue(poolECAddrKey)
 
 	return
+}
+
+// validateRegionName validates region name: only letters and numbers, max 32 characters
+func validateRegionName(region string) error {
+	if region == "" {
+		return nil // Empty region is allowed (will default to "default")
+	}
+	if len(region) > 32 {
+		return fmt.Errorf("region name must not exceed 32 characters, got %d", len(region))
+	}
+	matched, err := regexp.MatchString("^[a-zA-Z0-9]+$", region)
+	if err != nil {
+		return fmt.Errorf("failed to validate region name: %v", err)
+	}
+	if !matched {
+		return fmt.Errorf("region name must contain only letters and numbers, got: %s", region)
+	}
+	return nil
 }

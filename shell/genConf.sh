@@ -128,8 +128,9 @@ genMeta() {
     # Get IP-specific configuration
     local rack=$(get_ip_config "$ip" "rack")
     local zone=$(get_ip_config "$ip" "zone")
+    local region=$(get_ip_config "$ip" "region")
     
-    echo "  IP $ip: rack=$rack, zone=$zone"
+    echo "  IP $ip: rack=$rack, zone=$zone, region=$region"
     
     local metaDir=$baseDir/meta$id
     local confFile="${confDir}/meta$id.conf"
@@ -137,6 +138,7 @@ genMeta() {
         sed "s/_ip_/${ip}/g" ${tplDir}/meta.tpl | \
         sed "s/_rack_/${rack}/g" | \
         sed "s/_zone_/${zone}/g" | \
+        sed "s/_region_/${region}/g" | \
         sed "s|_dir_|${metaDir}|g" | \
         sed "s|_master_addr_|${MASTER_ADDR}|g" > "$confFile"
         echo "gen meta$id.conf success"

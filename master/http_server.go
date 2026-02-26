@@ -484,6 +484,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminVolUpdatePoolId).
 		HandlerFunc(m.volUpdatePoolId)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminVolAddRegion).
+		HandlerFunc(m.volAddRegion)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminVolUpdateDefaultRegion).
+		HandlerFunc(m.volUpdateDefaultRegion)
 
 	// multi version snapshot APIs
 	// TODO: hybrid cloud not support snapshot version yet, forbidden AdminCreateVersion until snapshot version is supported
@@ -956,6 +962,14 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetAllZones).
 		HandlerFunc(m.listZone)
+
+	// region management APIs
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetRegionList).
+		HandlerFunc(m.listRegion)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetRegionInfo).
+		HandlerFunc(m.getRegionInfo)
 
 	// Storage Pool management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

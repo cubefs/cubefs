@@ -195,6 +195,9 @@ const (
 	remoteCacheWriteFlow         = "fwriteFlow"
 	newNameKey                   = "newName"
 	regionKey                    = "region"
+	defaultRegionKey             = "defaultRegion"
+	allowedRegionsKey            = "allowedRegions"
+	defaultMetaRegionKey         = "defaultMetaRegion"
 
 	StoreModeKey  = "storeMode"
 	StartIdKey    = "start"

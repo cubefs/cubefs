@@ -314,7 +314,7 @@ func NewFlashGroupFromFgv(fgv *FlashGroupValue) *FlashGroup {
 	fg.FlashNodeTopoName = topoName
 	region := fgv.Region
 	if topoName == proto.DefaultTopoName && fg.Region == "" {
-		region = proto.DefaultRegionName
+		region = proto.DefaultRegion
 	}
 	fg.Region = region
 	fg.flashNodes = make(map[string]*FlashNode)

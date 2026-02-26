@@ -111,6 +111,22 @@ func (api *AdminAPI) ListZones() (zoneViews []*proto.ZoneView, err error) {
 	return
 }
 
+func (api *AdminAPI) ListRegions() (regionViews []*proto.RegionView, err error) {
+	regionViews = make([]*proto.RegionView, 0)
+	err = api.mc.requestWith(&regionViews, newRequest(get, proto.AdminGetRegionList).Header(api.h))
+	return
+}
+
+func (api *AdminAPI) GetRegionInfo(regionName string) (regionView *proto.RegionView, err error) {
+	regionView = &proto.RegionView{}
+	req := newRequest(get, proto.AdminGetRegionInfo).Header(api.h)
+	if regionName != "" {
+		req.addParam("name", regionName)
+	}
+	err = api.mc.requestWith(regionView, req)
+	return
+}
+
 func (api *AdminAPI) ListNodeSets(zoneName string) (nodeSetStats []*proto.NodeSetStat, err error) {
 	params := make([]anyParam, 0)
 	if zoneName != "" {
@@ -514,6 +530,56 @@ func (api *AdminAPI) VolUpdatePoolId(volName string, poolId uint8, poolName, aut
 	return
 }
 
+func (api *AdminAPI) VolAddRegion(volName, region, authKey, clientIDKey string) (err error) {
+	request := newRequest(http.MethodGet, proto.AdminVolAddRegion).Header(api.h)
+	request.addParam("name", volName)
+	request.addParam("region", region)
+	request.addParam("authKey", authKey)
+	if clientIDKey != "" {
+		request.addParam("clientIDKey", clientIDKey)
+	}
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+// VolUpdateDefaultRegion updates the default region for a volume
+func (api *AdminAPI) VolUpdateDefaultRegion(volName, region, authKey, clientIDKey string) (err error) {
+	request := newRequest(http.MethodGet, proto.AdminVolUpdateDefaultRegion).Header(api.h)
+	request.addParam("name", volName)
+	request.addParam("region", region)
+	request.addParam("authKey", authKey)
+	if clientIDKey != "" {
+		request.addParam("clientIDKey", clientIDKey)
+	}
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+// SetDefaultMetaRegion sets the default meta region using SetClusterParas
+func (api *AdminAPI) SetDefaultMetaRegion(region string) (err error) {
+	params := &ClusterParas{
+		DefaultMetaRegion: region,
+	}
+	return api.SetClusterParas(params)
+}
+
+// GetDefaultMetaRegion gets the default meta region from GetClusterParas
+func (api *AdminAPI) GetDefaultMetaRegion() (region string, err error) {
+	var paras map[string]string
+	if paras, err = api.GetClusterParas(); err != nil {
+		return
+	}
+	region = paras["defaultMetaRegion"]
+	if region == "" {
+		region = proto.DefaultRegion
+	}
+	return
+}
+
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, deleteLockTime int64, crossZone, normalZonesFirst bool,
 	business string, mpCount, dpCount, replicaNum, dpSize int, followerRead bool, zoneName string, ebsBlkSize int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
@@ -776,6 +842,7 @@ type ClusterParas struct {
 	DefaultDpTag                           string
 	DefaultMpTag                           string
 	PoolId                                 string
+	DefaultMetaRegion                      string
 }
 
 func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
@@ -923,6 +990,9 @@ func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
 	}
 	if params.PoolId != "" {
 		request.addParam("poolId", params.PoolId)
+	}
+	if params.DefaultMetaRegion != "" {
+		request.addParam("defaultMetaRegion", params.DefaultMetaRegion)
 	}
 	if params.MetaAutoAddReplicaLimit != "" {
 		request.addParam("metaAutoAddReplicaLimit", params.MetaAutoAddReplicaLimit)

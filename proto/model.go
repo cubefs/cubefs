@@ -66,6 +66,7 @@ type MetaNodeInfo struct {
 	RocksdbRdOnly             bool
 	RocksdbKeyNumMax          uint64
 	Tag                       string
+	Region                    string // Region name, "default" if not specified
 }
 
 // DataNode stores all the information about a data node
@@ -144,6 +145,7 @@ type MetaPartitionInfo struct {
 	MemStoreCnt               uint8
 	RockStoreCnt              uint8
 	StoreMode                 StoreMode
+	Region                    string       // Region name for this meta partition
 	SrcAddr                   string       // Source address for learner mode decommission
 	LearnerDstAddr            string       // Destination address for learner mode decommission
 	RecoverStartTime          int64        // Start time of learner mode recovery
@@ -235,6 +237,7 @@ type ClusterView struct {
 	MemoryMpCount                             uint64
 	RackAwareLevel                            RackAwareLevel
 	RemoteCacheTTL                            int64
+	DefaultMetaRegion                         string // Default meta region for the cluster
 	RemoteCacheReadTimeout                    int64
 	RemoteCacheMultiRead                      bool
 	FlashNodeTimeoutCount                     int64
@@ -288,6 +291,7 @@ type NodeView struct {
 	Tag                      string
 	PoolId                   uint8
 	PoolName                 string
+	Region                   string // Region name, "default" if not specified
 	// CanAllocPartition: for data nodes, canAlloc && canAllocDp; for meta nodes, same meaning as MetaNodeInfo.CanAllowPartition.
 	CanAllocPartition bool
 	// DataPartitionCount is filled for data nodes in cluster list APIs; 0 otherwise.
@@ -865,4 +869,17 @@ type RackDistributionInfo struct {
 	NoRackConflictDPs    int
 	MinorRackConflictDPs int
 	MajorRackConflictDPs int
+}
+
+// RegionView defines the view of a region
+type RegionView struct {
+	Name      string                // Region name
+	MetaCount int                   // Number of meta nodes in this region
+	MetaNodes []*RegionMetaNodeView // Meta nodes grouped by zone
+}
+
+// RegionMetaNodeView defines meta node view in region context
+type RegionMetaNodeView struct {
+	ZoneName  string     // Zone name
+	MetaNodes []NodeView // Meta nodes in this zone
 }

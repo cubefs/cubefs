@@ -62,6 +62,7 @@ type MetaNode struct {
 	RocksdbRdOnly                    bool
 	RocksdbKeyNumMax                 uint64
 	Tag                              string
+	Region                           string // Region name, "default" if not specified
 }
 
 func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, rack, clusterID string) (node *MetaNode) {
@@ -72,7 +73,8 @@ func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, rack, clusterID str
 		ZoneName:      zoneName,
 		Rack:          rack,
 		Sender:        newAdminTaskManager(addr, clusterID),
-		Total:         1, // avoid zero leading to NaN in ratio calculation
+		Total:         1,         // avoid zero leading to NaN in ratio calculation
+		Region:        "default", // Default region name
 	}
 	node.CpuUtil.Store(0)
 	return

@@ -87,6 +87,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 		newBalanceCmd(client),
 		newSelectTagCmd(client),
 		newPoolCmd(client),
+		newRegionCmd(client),
 	)
 	return cmd
 }

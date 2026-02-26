@@ -2036,7 +2036,7 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		log.LogWarnf("updateInodeIDUpperBound: disable auto create meta partition, mp %d", mp.PartitionID)
 		return
 	}
-	if err = vol.splitMetaPartition(c, mp, end, metaPartitionInodeIdStep, false); err != nil {
+	if err = vol.splitMetaPartition(c, mp, end, metaPartitionInodeIdStep, false, mp.Region); err != nil {
 		log.LogErrorf("mpId[%v], splitMetaPartition err %v", mp.PartitionID, err)
 	}
 	return

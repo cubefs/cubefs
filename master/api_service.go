@@ -122,6 +122,7 @@ type ZoneView struct {
 	DataMediaType       string
 	PoolId              uint8
 	PoolName            string
+	MetaRegion          string // Region name, "default" if not specified
 }
 
 func newZoneView(name string) *ZoneView {
@@ -466,6 +467,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		cv.DataMediaType = zone.GetDataMediaTypeString()
 		cv.PoolId = zone.PoolId
 		cv.PoolName = m.cluster.getPoolNameById(cv.PoolId)
+		cv.MetaRegion = zone.MetaRegion
 		tv.Zones = append(tv.Zones, cv)
 
 		nsc := zone.getAllNodeSet()
@@ -605,9 +607,131 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 		cv.DataMediaType = zone.GetDataMediaTypeString()
 		cv.PoolId = zone.PoolId
 		cv.PoolName = m.cluster.getPoolNameById(cv.PoolId)
+		cv.MetaRegion = zone.MetaRegion
 		zoneViews = append(zoneViews, cv)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
+}
+
+func (m *Server) listRegion(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetRegionList))
+	defer func() {
+		doStatAndMetric(proto.AdminGetRegionList, metric, nil, nil)
+	}()
+
+	// Get all meta nodes
+	metaNodes := m.cluster.allMetaNodes()
+
+	// Group meta nodes by region
+	regionMap := make(map[string][]proto.NodeView)
+	for _, node := range metaNodes {
+		region := node.Region
+		regionMap[region] = append(regionMap[region], node)
+	}
+
+	// Build region views
+	regionViews := make([]*proto.RegionView, 0)
+	for regionName, nodes := range regionMap {
+		// Group nodes by zone
+		zoneMap := make(map[string][]proto.NodeView)
+		for _, node := range nodes {
+			zoneName := node.ZoneName
+			zoneMap[zoneName] = append(zoneMap[zoneName], node)
+		}
+
+		// Build zone views
+		zoneViews := make([]*proto.RegionMetaNodeView, 0)
+		for zoneName, zoneNodes := range zoneMap {
+			zoneViews = append(zoneViews, &proto.RegionMetaNodeView{
+				ZoneName:  zoneName,
+				MetaNodes: zoneNodes,
+			})
+		}
+
+		// Sort zones by name
+		sort.Slice(zoneViews, func(i, j int) bool {
+			return zoneViews[i].ZoneName < zoneViews[j].ZoneName
+		})
+
+		regionViews = append(regionViews, &proto.RegionView{
+			Name:      regionName,
+			MetaCount: len(nodes),
+			MetaNodes: zoneViews,
+		})
+	}
+
+	// Sort regions by name
+	sort.Slice(regionViews, func(i, j int) bool {
+		return regionViews[i].Name < regionViews[j].Name
+	})
+
+	sendOkReply(w, r, newSuccessHTTPReply(regionViews))
+}
+
+func (m *Server) getRegionInfo(w http.ResponseWriter, r *http.Request) {
+	var (
+		regionName string
+		err        error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetRegionInfo))
+	defer func() {
+		doStatAndMetric(proto.AdminGetRegionInfo, metric, err, nil)
+	}()
+
+	if regionName = r.FormValue("name"); regionName == "" {
+		regionName = "default"
+	}
+
+	// Get all meta nodes
+	metaNodes := m.cluster.allMetaNodes()
+
+	// Filter nodes by region
+	var regionNodes []proto.NodeView
+	for _, node := range metaNodes {
+		nodeRegion := node.Region
+		if nodeRegion == "" {
+			nodeRegion = "default"
+		}
+		if nodeRegion == regionName {
+			regionNodes = append(regionNodes, node)
+		}
+	}
+
+	// Group nodes by zone
+	zoneMap := make(map[string][]proto.NodeView)
+	for _, node := range regionNodes {
+		zoneName := node.ZoneName
+		if zoneName == "" {
+			zoneName = "default"
+		}
+		zoneMap[zoneName] = append(zoneMap[zoneName], node)
+	}
+
+	// Build zone views
+	zoneViews := make([]*proto.RegionMetaNodeView, 0)
+	for zoneName, zoneNodes := range zoneMap {
+		// Sort nodes by ID
+		sort.Slice(zoneNodes, func(i, j int) bool {
+			return zoneNodes[i].ID < zoneNodes[j].ID
+		})
+		zoneViews = append(zoneViews, &proto.RegionMetaNodeView{
+			ZoneName:  zoneName,
+			MetaNodes: zoneNodes,
+		})
+	}
+
+	// Sort zones by name
+	sort.Slice(zoneViews, func(i, j int) bool {
+		return zoneViews[i].ZoneName < zoneViews[j].ZoneName
+	})
+
+	regionView := &proto.RegionView{
+		Name:      regionName,
+		MetaCount: len(regionNodes),
+		MetaNodes: zoneViews,
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(regionView))
 }
 
 func (m *Server) listNodeSets(w http.ResponseWriter, r *http.Request) {
@@ -1107,6 +1231,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		DefaultMpTag:                              m.cluster.cfg.DefaultMpTag,
 		AutoFixTag:                                m.cluster.cfg.AutoFixTag.Load(),
 		DefaultPoolId:                             m.cluster.defaultPoolId,
+		DefaultMetaRegion:                         m.cluster.defaultMetaRegion,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -3879,6 +4004,8 @@ func newSimpleView(c *Cluster, vol *Vol) (view *proto.SimpleVolView) {
 		DefaultStoreMode:             vol.DefaultStoreMode,
 		DpTag:                        vol.DpTag,
 		MpTag:                        vol.MpTag,
+		DefaultRegion:                vol.defaultRegion,
+		AllowedRegions:               vol.allowedRegions,
 		RemoteCacheDisableTTL:        vol.remoteCacheDisableTTL,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
@@ -4607,6 +4734,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[poolIdKey]; ok {
 		if poolId, ok := val.(uint8); ok {
 			if err = m.cluster.updateDefaultPoolId(poolId); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[defaultMetaRegionKey]; ok {
+		if region, ok := val.(string); ok {
+			if err = m.cluster.updateDefaultMetaRegion(region); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -5680,6 +5816,9 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[dpLimitSsdFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitSsdFactor)
 	resp[dpLimitHddBaseCountKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitHddBaseCount)
 	resp[dpLimitHddFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitHddFactor)
+	resp[poolIdKey] = fmt.Sprintf("%v", m.cluster.defaultPoolId)
+	region := m.cluster.defaultMetaRegion
+	resp[defaultMetaRegionKey] = region
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
@@ -6229,6 +6368,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		replicaPort   string
 		zoneName      string
 		rack          string
+		region        string
 		id            uint64
 		err           error
 		nodesetId     uint64
@@ -6247,6 +6387,8 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
 		return
 	}
+	// Parse region parameter
+	region = extractStrWithDefault(r, regionKey, proto.DefaultRegion)
 	var value string
 	if value = r.FormValue(idKey); value == "" {
 		nodesetId = 0
@@ -6256,7 +6398,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId); err != nil {
+	if id, err = m.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId, region); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -6449,6 +6591,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		RocksdbDiskThreshold:      metaNode.RocksdbDiskThreshold,
 		RocksdbKeyNumMax:          metaNode.RocksdbKeyNumMax,
 		Tag:                       metaNode.Tag,
+		Region:                    metaNode.Region,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
@@ -7258,7 +7401,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 			mpView.MemCount++
 		}
 	}
-
+	mpView.Region = mp.Region
 	return
 }
 
@@ -7375,6 +7518,10 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			RecoverFailCount:          mp.RecoverFailCount,
 			RecoverRetryTime:          mp.RecoverRetryTime,
 			RecoverState:              mp.RecoverState,
+			Region:                    mp.Region,
+		}
+		if mpInfo.Region == "" {
+			mpInfo.Region = proto.DefaultRegion
 		}
 		copy(mpInfo.Peers, mp.Peers)
 		for i, peer := range mpInfo.Peers {

@@ -39,6 +39,7 @@ type selectParam struct {
 	selectType      int32
 	tag             string
 	poolId          uint8
+	region          string
 }
 
 func (sp *selectParam) copy() *selectParam {
@@ -1551,7 +1552,7 @@ func (t *topology) getZonesByMediaType(mediaType uint32) (zones []*Zone) {
 	return
 }
 
-func (t *topology) getZonesOfNodeType(nodeType NodeType, poolId uint8) (zones []*Zone) {
+func (t *topology) getZonesOfNodeType(nodeType NodeType, poolId uint8, region string) (zones []*Zone) {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
 
@@ -1569,6 +1570,10 @@ func (t *topology) getZonesOfNodeType(nodeType NodeType, poolId uint8) (zones []
 		}
 
 		if poolId != 0 && zone.PoolId != poolId {
+			return true
+		}
+
+		if region != "" && zone.MetaRegion != region {
 			return true
 		}
 
@@ -1613,7 +1618,7 @@ func calculateDemandWriteNodes(zoneNum int, replicaNum int, isSpecialZoneName bo
 	return
 }
 
-func (t *topology) pickUpZonesByNodeType(zones []*Zone, nodeType NodeType, poolId uint8) (zonesOfPoolId []*Zone) {
+func (t *topology) pickUpZonesByNodeType(zones []*Zone, nodeType NodeType, poolId uint8, region string) (zonesOfPoolId []*Zone) {
 	log.LogDebugf("[pickUpZonesByNodeType] zoneLen(%v) nodeType(%v) poolId(%v)",
 		len(zones), NodeTypeString(nodeType), poolId)
 
@@ -1624,6 +1629,12 @@ func (t *topology) pickUpZonesByNodeType(zones []*Zone, nodeType NodeType, poolI
 			continue
 		} else if nodeType == MetaNodeType && zone.metaNodeCount() == 0 {
 			log.LogDebugf("[pickUpZonesByNodeType] skip zone(%v), for no metanodes", zone.name)
+			continue
+		}
+
+		if region != "" && zone.MetaRegion != region {
+			log.LogDebugf("[pickUpZonesByNodeType] skip zone(%v), zone region(%v), require region(%v)",
+				zone.name, zone.MetaRegion, region)
 			continue
 		}
 
@@ -1652,12 +1663,12 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 		log.LogInfof("[allocZonesForNode] getDomainExcludeZones(%v), get zoneNum: %v",
 			t.domainExcludeZones, len(zones))
 	} else if len(specialZones) > 0 {
-		zones = t.pickUpZonesByNodeType(specialZones, rsMgr.nodeType, poolId)
+		zones = t.pickUpZonesByNodeType(specialZones, rsMgr.nodeType, poolId, "")
 		zoneNumNeed = len(zones)
 		log.LogInfof("[allocZonesForNode] pick up poolId(%v) from specialZones, get zoneNum: %v", poolId, zoneNumNeed)
 	} else {
 		// if domain enable, will not enter here
-		zones = t.getZonesOfNodeType(rsMgr.nodeType, poolId)
+		zones = t.getZonesOfNodeType(rsMgr.nodeType, poolId, "")
 		log.LogInfof("[allocZonesForNode] pick up poolId(%v) from all zone, get zoneNum: %v", poolId, len(zones))
 	}
 
@@ -1731,6 +1742,7 @@ type Zone struct {
 	DiskQosConfigLock          sync.RWMutex
 	dataMediaType              uint32
 	PoolId                     uint8
+	MetaRegion                 string // Region name, "default" if not specified
 	sync.RWMutex
 }
 
@@ -1741,6 +1753,7 @@ type zoneValue struct {
 	MetaNodesetSelector string
 	DataMediaType       uint32
 	PoolId              uint8
+	Region              string // Region name, "default" if not specified
 }
 
 func newZone(name string, dataMediaType uint32) (zone *Zone) {
@@ -1755,6 +1768,7 @@ func newZone(name string, dataMediaType uint32) (zone *Zone) {
 	zone.metaRocksdbNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, RocksdbType)
 	zone.SetDataMediaType(dataMediaType)
 	// zone.PoolId = getDefaultPoolIdByMediaType(dataMediaType)
+	zone.MetaRegion = proto.DefaultRegion
 	return
 }
 
@@ -1804,6 +1818,7 @@ func (zone *Zone) getFsmValue() *zoneValue {
 		MetaNodesetSelector: zone.GetMetaNodesetSelector(),
 		DataMediaType:       zone.GetDataMediaType(),
 		PoolId:              zone.PoolId,
+		Region:              zone.MetaRegion,
 	}
 }
 
@@ -3062,17 +3077,17 @@ func (zone *Zone) canWriteForMetaNode(replicaNum uint8, storeMode proto.StoreMod
 	return
 }
 
-func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []string, specialZones []*Zone, nodeType uint32) (zones []*Zone, err error) {
+func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []string, specialZones []*Zone, nodeType uint32, region string) (zones []*Zone, err error) {
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForMetaNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
 	} else if len(specialZones) > 0 {
-		zones = t.pickUpZonesByNodeType(specialZones, MetaNodeType, proto.UnSpecifiedPoolId)
+		zones = t.pickUpZonesByNodeType(specialZones, MetaNodeType, proto.UnSpecifiedPoolId, region)
 		zoneNum = len(zones)
 		log.LogInfof("action[allocZonesForMetaNode] pick up mediaType from specialZones, get zoneNum: %v", zoneNum)
 	} else {
 		// if domain enable, will not enter here
-		zones = t.getZonesOfNodeType(MetaNodeType, proto.UnSpecifiedPoolId)
+		zones = t.getZonesOfNodeType(MetaNodeType, proto.UnSpecifiedPoolId, region)
 		log.LogInfof("[allocZonesForNode] pick up mediaType(%v) from all zone, get zoneNum: %v",
 			proto.UnSpecifiedPoolId, len(zones))
 	}

@@ -84,6 +84,7 @@ type MetaNode struct {
 	raftSyncSnapFormatVersion          uint32 // format version of snapshot that raft leader sent to follower
 	zoneName                           string
 	rack                               string
+	region                             string
 	httpStopC                          chan uint8
 	smuxStopC                          chan uint8
 	metrics                            *MetaNodeMetrics
@@ -269,6 +270,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.zoneName = cfg.GetString(cfgZoneName)
 	m.rack = cfg.GetString(cfgRack)
+	m.region = cfg.GetString(cfgRegion)
+	if m.region == "" {
+		m.region = "default"
+	}
 
 	// Parse delete batch count
 	if deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount); deleteBatchCount > 1 {
@@ -697,7 +702,7 @@ func (m *MetaNode) register() (err error) {
 		m.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
 
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.raftHeartbeatPort, m.raftReplicatePort, m.rack, m.zoneName, m.serviceIDKey); err != nil {
+		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.raftHeartbeatPort, m.raftReplicatePort, m.rack, m.zoneName, m.serviceIDKey, m.region); err != nil {
 			log.LogErrorf("[register] tryCnt(%v), register to master fail: address(%v) err(%s)", tryCnt, nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue

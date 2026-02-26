@@ -47,9 +47,9 @@ func testFlashNodeRemove(t *testing.T) {
 	flashServer := addFlashServer(addr, testZone1)
 	defer flashServer.Stop()
 
-	_, err = mc.NodeAPI().AddFlashNode("not-addr", testZone1, "", proto.DefaultRegionName, 0)
+	_, err = mc.NodeAPI().AddFlashNode("not-addr", testZone1, "", proto.DefaultRegion, 0)
 	require.Error(t, err)
-	id, err := mc.NodeAPI().AddFlashNode(addr, testZone1, "", proto.DefaultRegionName, 0)
+	id, err := mc.NodeAPI().AddFlashNode(addr, testZone1, "", proto.DefaultRegion, 0)
 	require.NoError(t, err)
 	fnView, err := mc.NodeAPI().GetFlashNodeByTopo(addr, proto.IdleTopoName)
 	require.NoError(t, err)

@@ -115,6 +115,7 @@ type clusterValue struct {
 	DefaultMpTag                           string
 	AutoFixTag                             atomicutil.Bool
 	DefaultPoolId                          uint8
+	DefaultMetaRegion                      string // Default meta region for new volumes
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -220,6 +221,7 @@ type metaPartitionValue struct {
 	RecoverState       int
 	RestoreReplicaMeta uint32
 	DecommissionType   uint32
+	Region             string // Region name for this meta partition
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -245,6 +247,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		RecoverState:       int(mp.RecoverState),
 		RestoreReplicaMeta: atomic.LoadUint32(&mp.RestoreReplicaMeta),
 		DecommissionType:   mp.DecommissionType,
+		Region:             mp.Region,
 	}
 	return
 }
@@ -508,6 +511,10 @@ type volValue struct {
 	// Storage Pool
 	DefaultPoolId uint8
 	AllowedPools  []uint8
+
+	// Meta Region
+	DefaultRegion  string   // Default region for this volume
+	AllowedRegions []string // Allowed regions for this volume
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -611,6 +618,11 @@ func newVolValue(vol *Vol) (vv *volValue) {
 	vv.AllowedPools = make([]uint8, len(vol.allowedPools))
 	copy(vv.AllowedPools, vol.allowedPools)
 
+	// Meta Region
+	vv.DefaultRegion = vol.defaultRegion
+	vv.AllowedRegions = make([]string, len(vol.allowedRegions))
+	copy(vv.AllowedRegions, vol.allowedRegions)
+
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, len(vol.QuotaByClass))
 	copy(vv.QuotaOfClass, vol.QuotaByClass)
 
@@ -706,6 +718,7 @@ type metaNodeValue struct {
 	maxMpCntLimit uint64
 	RocksdbRdOnly bool
 	Tag           string
+	Region        string // Region name, "default" if not specified
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -721,6 +734,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		maxMpCntLimit: metaNode.MpCntLimit,
 		RocksdbRdOnly: metaNode.RocksdbRdOnly,
 		Tag:           metaNode.Tag,
+		Region:        metaNode.Region, // Save region field
 	}
 }
 
@@ -1340,6 +1354,15 @@ func (c *Cluster) updateDefaultPoolId(val uint8) error {
 	return c.syncPutCluster()
 }
 
+func (c *Cluster) updateDefaultMetaRegion(region string) error {
+	// Validate region exists
+	if !c.isValidRegion(region) {
+		return fmt.Errorf("region %v does not exist in cluster", region)
+	}
+	c.defaultMetaRegion = region
+	return c.syncPutCluster()
+}
+
 func (c *Cluster) updateMaxMpCntLimit(val uint64) {
 	atomic.StoreUint64(&clusterMpCntLimit, val)
 }
@@ -1432,8 +1455,13 @@ func (c *Cluster) loadZoneValue() (err error) {
 				zone.name, zone.PoolId, proto.MediaTypeString(zone.dataMediaType))
 		}
 
-		log.LogInfof("action[loadZoneValue] load zoneName[%v] with qosConfig[%v], dataMediaType[%v], poolId[%d]",
-			zone.name, cv.DiskQosConfig, proto.MediaTypeString(zone.dataMediaType), zone.PoolId)
+		zone.MetaRegion = cv.Region
+		if zone.MetaRegion == "" {
+			zone.MetaRegion = proto.DefaultRegion
+		}
+
+		log.LogInfof("action[loadZoneValue] load zoneName[%v] with qosConfig[%v], dataMediaType[%v], poolId[%d], region[%v]",
+			zone.name, cv.DiskQosConfig, proto.MediaTypeString(zone.dataMediaType), zone.PoolId, zone.MetaRegion)
 		zone.loadDataNodeQosConfig()
 	}
 
@@ -1699,6 +1727,14 @@ func (c *Cluster) loadClusterValue() (err error) {
 			c.defaultPoolId = cv.DefaultPoolId
 		}
 		log.LogInfof("action[loadClusterValue] defaultPoolId[%v]", c.defaultPoolId)
+
+		// Load default meta region
+		if cv.DefaultMetaRegion == "" {
+			c.defaultMetaRegion = proto.DefaultRegion
+		} else {
+			c.defaultMetaRegion = cv.DefaultMetaRegion
+		}
+		log.LogInfof("action[loadClusterValue] defaultMetaRegion[%v]", c.defaultMetaRegion)
 	}
 
 	return
@@ -2010,6 +2046,10 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode.RdOnly = mnv.RdOnly
 		metaNode.RocksdbRdOnly = mnv.RocksdbRdOnly
 		metaNode.Tag = mnv.Tag
+		metaNode.Region = mnv.Region
+		if metaNode.Region == "" {
+			metaNode.Region = proto.DefaultRegion
+		}
 
 		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
 		if ok {
@@ -2216,6 +2256,10 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.RecoverState = proto.RecoverState(mpv.RecoverState)
 		mp.RestoreReplicaMeta = mpv.RestoreReplicaMeta
 		mp.DecommissionType = mpv.DecommissionType
+		mp.Region = mpv.Region
+		if mp.Region == "" {
+			mp.Region = proto.DefaultRegion
+		}
 		// If previous leader exited during restore (running/forbidden), reset to stop
 		// so that replica restore scheduling can proceed on new leader.
 		if (mp.RestoreReplicaMeta == RestoreReplicaMetaRunning && !mp.IsRecover.Load()) ||

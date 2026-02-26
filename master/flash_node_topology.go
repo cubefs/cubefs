@@ -107,11 +107,11 @@ func (c *Cluster) loadFlashTopos() (err error) {
 	}
 	if len(result) == 0 {
 		// forward compatibility: create default FlashNodeTopology
-		if err = c.AddFlashTopo(proto.DefaultTopoName, proto.DefaultRegionName); err != nil {
+		if err = c.AddFlashTopo(proto.DefaultTopoName, proto.DefaultRegion); err != nil {
 			return
 		}
 		log.LogInfof("action[loadFlashTopos] load default topo")
-		if err = c.AddFlashTopo(proto.IdleTopoName, proto.DefaultRegionName); err != nil {
+		if err = c.AddFlashTopo(proto.IdleTopoName, proto.DefaultRegion); err != nil {
 			return
 		}
 		log.LogInfof("action[loadFlashTopos] load default idle")
@@ -151,7 +151,7 @@ func (c *Cluster) loadFlashTopos() (err error) {
 		}
 		// always have idle topo
 		if !findIdle {
-			if err = c.AddFlashTopo(proto.IdleTopoName, proto.DefaultRegionName); err != nil {
+			if err = c.AddFlashTopo(proto.IdleTopoName, proto.DefaultRegion); err != nil {
 				return
 			}
 		}

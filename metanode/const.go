@@ -250,6 +250,7 @@ const (
 	cfgRaftReplicaPort   = "raftReplicaPort"
 	cfgZoneName          = "zoneName"
 	cfgRack              = "rack"
+	cfgRegion            = "region"
 
 	// Performance configuration
 	cfgDeleteBatchCount = "deleteBatchCount"

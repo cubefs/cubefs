@@ -140,7 +140,7 @@ func testFlashGroupNode(t *testing.T) {
 	// mfs3 is put into idle
 	_, err = mc.NodeAPI().RemoveFlashNodeByTopo(mfs3Addr, proto.IdleTopoName)
 	require.NoError(t, err)
-	_, err = mc.NodeAPI().AddFlashNode(mfs3Addr, testZone2, "", proto.DefaultRegionName, 0)
+	_, err = mc.NodeAPI().AddFlashNode(mfs3Addr, testZone2, "", proto.DefaultRegion, 0)
 	require.NoError(t, err)
 }
 

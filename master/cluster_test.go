@@ -380,7 +380,7 @@ func TestMasterClientLeaderChange(t *testing.T) {
 			delayDeleteFlashTopoInfo: make(map[string]*DelayDeleteFlashTopoInfo),
 		},
 	}
-	topo := flashgroupmanager.NewFlashNodeTopology(proto.DefaultTopoName, proto.DefaultRegionName, uint64(0), proto.TopoStatusNormal)
+	topo := flashgroupmanager.NewFlashNodeTopology(proto.DefaultTopoName, proto.DefaultRegion, uint64(0), proto.TopoStatusNormal)
 	topo.SyncFlashGroupFunc = cluster.syncUpdateFlashGroup
 	cluster.flashNodeTopo.Store(proto.DefaultTopoName, topo)
 	server.cluster = cluster
@@ -494,7 +494,7 @@ func TestAddMetaNode(t *testing.T) {
 		server.cluster.metaNodes.Delete(nodeAddr)
 
 		// Call addMetaNode
-		id, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+		id, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId, proto.DefaultRegion)
 
 		// Verify results
 		require.NoError(t, err)
@@ -524,7 +524,7 @@ func TestAddMetaNode(t *testing.T) {
 		// Ensure node doesn't exist
 		server.cluster.metaNodes.Delete(nodeAddr)
 
-		id, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+		id, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId, proto.DefaultRegion)
 
 		require.NoError(t, err)
 		require.Greater(t, id, uint64(0))
@@ -547,11 +547,11 @@ func TestAddMetaNode(t *testing.T) {
 
 		// Add node first
 		server.cluster.metaNodes.Delete(nodeAddr)
-		firstId, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+		firstId, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId, "")
 		require.NoError(t, err)
 
 		// Add same node with same parameters again
-		secondId, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+		secondId, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId, "")
 
 		// Should return same ID, no error
 		require.NoError(t, err)
@@ -568,7 +568,7 @@ func TestAddMetaNode(t *testing.T) {
 
 		// Add node first
 		server.cluster.metaNodes.Delete(nodeAddr)
-		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, firstNodesetId)
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, firstNodesetId, proto.DefaultRegion)
 		require.NoError(t, err)
 
 		// Get actual allocated nodesetId
@@ -578,7 +578,7 @@ func TestAddMetaNode(t *testing.T) {
 
 		// Try to add with different nodesetId
 		differentNodesetId := actualNodesetId + 1
-		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, differentNodesetId)
+		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, differentNodesetId, proto.DefaultRegion)
 
 		// Should return error
 		require.Error(t, err)
@@ -596,11 +596,11 @@ func TestAddMetaNode(t *testing.T) {
 
 		// Add node first
 		server.cluster.metaNodes.Delete(nodeAddr)
-		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, firstZoneName, rack, nodesetId)
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, firstZoneName, rack, nodesetId, proto.DefaultRegion)
 		require.NoError(t, err)
 
 		// Try to add with different zone
-		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, secondZoneName, rack, nodesetId)
+		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, secondZoneName, rack, nodesetId, proto.DefaultRegion)
 
 		// Should return error
 		require.Error(t, err)
@@ -618,11 +618,11 @@ func TestAddMetaNode(t *testing.T) {
 
 		// Add node first
 		server.cluster.metaNodes.Delete(nodeAddr)
-		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, firstRack, nodesetId)
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, firstRack, nodesetId, proto.DefaultRegion)
 		require.NoError(t, err)
 
 		// Try to add with different rack (non-default rack)
-		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, secondRack, nodesetId)
+		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, secondRack, nodesetId, proto.DefaultRegion)
 
 		// Should return error
 		require.Error(t, err)
@@ -640,11 +640,11 @@ func TestAddMetaNode(t *testing.T) {
 
 		// Add node first (using default rack)
 		server.cluster.metaNodes.Delete(nodeAddr)
-		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, defaultRack, nodesetId)
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, defaultRack, nodesetId, proto.DefaultRegion)
 		require.NoError(t, err)
 
 		// Try to add with different rack (from default rack to new rack)
-		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, newRack, nodesetId)
+		_, err = server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, newRack, nodesetId, proto.DefaultRegion)
 
 		// Should succeed (allow update from default rack)
 		require.NoError(t, err)
@@ -668,11 +668,11 @@ func TestAddMetaNode(t *testing.T) {
 
 		// Add node first (without port info)
 		server.cluster.metaNodes.Delete(nodeAddr)
-		_, err := server.cluster.addMetaNode(nodeAddr, firstHeartbeatPort, firstReplicaPort, zoneName, rack, nodesetId)
+		_, err := server.cluster.addMetaNode(nodeAddr, firstHeartbeatPort, firstReplicaPort, zoneName, rack, nodesetId, proto.DefaultRegion)
 		require.NoError(t, err)
 
 		// Update port info
-		_, err = server.cluster.addMetaNode(nodeAddr, newHeartbeatPort, newReplicaPort, zoneName, rack, nodesetId)
+		_, err = server.cluster.addMetaNode(nodeAddr, newHeartbeatPort, newReplicaPort, zoneName, rack, nodesetId, proto.DefaultRegion)
 
 		// Should succeed
 		require.NoError(t, err)
@@ -698,7 +698,7 @@ func TestAddMetaNode(t *testing.T) {
 
 		// Note: This test might fail because the specified nodeset may not exist
 		// This depends on the test environment setup
-		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, specificNodesetId)
+		_, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, specificNodesetId, "")
 
 		// If nodeset doesn't exist, should return error
 		if err != nil {
@@ -733,7 +733,7 @@ func TestAddMetaNode(t *testing.T) {
 		server.cluster.metaNodes.Delete(nodeAddr)
 
 		// Try to add node without ports
-		_, err := server.cluster.addMetaNode(nodeAddr, emptyHeartbeatPort, emptyReplicaPort, zoneName, rack, nodesetId)
+		_, err := server.cluster.addMetaNode(nodeAddr, emptyHeartbeatPort, emptyReplicaPort, zoneName, rack, nodesetId, "")
 
 		// Should return error
 		require.Error(t, err)
@@ -763,7 +763,7 @@ func TestAddMetaNode(t *testing.T) {
 			wg.Add(1)
 			go func(index int) {
 				defer wg.Done()
-				id, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId)
+				id, err := server.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId, "")
 				results[index] = struct {
 					id  uint64
 					err error

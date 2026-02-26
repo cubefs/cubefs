@@ -286,7 +286,7 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 	}
 	region := r.FormValue(regionKey)
 	if region == "" {
-		region = proto.DefaultRegionName
+		region = proto.DefaultRegion
 	}
 	// all flashnode is added to idle topo by default
 	if id, topoName, err = m.cluster.addFlashNode(proto.IdleTopoName, nodeAddr.V, zoneName.V, version.V, region, nodeID.V); err != nil {

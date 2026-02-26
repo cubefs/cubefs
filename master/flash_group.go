@@ -629,7 +629,7 @@ func (m *Server) addFlashTopo(w http.ResponseWriter, r *http.Request) {
 	}
 	region := r.FormValue(regionKey)
 	if region == "" {
-		region = proto.DefaultRegionName
+		region = proto.DefaultRegion
 	}
 	_, err := m.cluster.PeekFlashTopo(topoName)
 	if err == nil {

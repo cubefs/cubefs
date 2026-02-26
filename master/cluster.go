@@ -232,6 +232,9 @@ type Cluster struct {
 	storagePools  map[uint8]*StoragePool
 	poolMutex     sync.RWMutex
 	defaultPoolId uint8 // default pool ID for new volumes
+
+	// Meta Region management
+	defaultMetaRegion string // default meta region for new volumes
 }
 
 type cTask struct {
@@ -1448,7 +1451,7 @@ func (c *Cluster) RaftPartitionCanUsingDifferentPortEnabled() bool {
 	return enabled
 }
 
-func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack string, nodesetId uint64) (id uint64, err error) {
+func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack string, nodesetId uint64, region string) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 
@@ -1460,10 +1463,20 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, ra
 		zoneName = DefaultZoneName
 	}
 
-	log.LogInfof("[addMetaNode] to add: metanode(%v) zone(%v) rack(%v) nodesetId(%v)",
-		nodeAddr, zoneName, rack, nodesetId)
-	auditlog.LogMasterOp("AddMetaNode", fmt.Sprintf("[addMetaNode] to add: metanode(%v) zone(%v) rack(%v) nodesetId(%v)",
-		nodeAddr, zoneName, rack, nodesetId), nil)
+	// Set default region if not specified
+	if region == "" {
+		region = "default"
+	}
+
+	// Validate region name format
+	if err = validateRegionName(region); err != nil {
+		return 0, err
+	}
+
+	log.LogInfof("[addMetaNode] to add: metanode(%v) zone(%v) rack(%v) nodesetId(%v) region(%v)",
+		nodeAddr, zoneName, rack, nodesetId, region)
+	auditlog.LogMasterOp("AddMetaNode", fmt.Sprintf("[addMetaNode] to add: metanode(%v) zone(%v) rack(%v) nodesetId(%v) region(%v)",
+		nodeAddr, zoneName, rack, nodesetId, region), nil)
 
 	// Check if metanode already exists
 	if value, ok := c.metaNodes.Load(nodeAddr); ok {
@@ -1477,6 +1490,11 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, ra
 		// Validate zone consistency
 		if zoneName != metaNode.ZoneName {
 			return metaNode.ID, fmt.Errorf("zoneName not equal to old, new %s, old %s", zoneName, metaNode.ZoneName)
+		}
+
+		// Validate region consistency - region cannot be changed
+		if region != metaNode.Region {
+			return metaNode.ID, fmt.Errorf("region cannot be changed, current region %s, requested region %s", metaNode.Region, region)
 		}
 
 		if rack == "" {
@@ -1550,15 +1568,42 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, ra
 		}
 	}
 
-	// Create new metanode
-	metaNode = newMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, c.Name)
-
 	// Get or create zone
 	zone, err = c.t.getZone(zoneName)
 	if err != nil {
 		log.LogInfof("[addMetaNode] create zone(%v) by metanode(%v)", zoneName, nodeAddr)
 		zone = c.t.putZoneIfAbsent(newZone(zoneName, proto.MediaType_Unspecified))
 	}
+
+	// Validate zone region consistency - a zone must belong to one region
+	if zone.MetaRegion == "" {
+		// Set default region for existing zone
+		zone.MetaRegion = region
+		needPersistZone := true
+		if needPersistZone {
+			if persistErr := c.sycnPutZoneInfo(zone); persistErr != nil {
+				log.LogErrorf("[addMetaNode] persist zone(%v) region failed, err: %v", zoneName, persistErr)
+				return 0, persistErr
+			}
+		}
+	} else if zone.MetaRegion != region {
+
+		if zone.MetaRegion != proto.DefaultRegion || zone.metaNodeCount() > 0 {
+			return 0, fmt.Errorf("zone(%v) already belongs to region(%v), cannot add metanode with region(%v), zone has %v meta nodes",
+				zoneName, zone.MetaRegion, region, zone.metaNodeCount())
+		}
+
+		zone.MetaRegion = region
+		if err = c.sycnPutZoneInfo(zone); err != nil {
+			return 0, err
+		}
+
+		log.LogWarnf("[addMetaNode] zone(%v) region is not set, set to %v", zoneName, region)
+	}
+
+	// Create new metanode
+	metaNode = newMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, c.Name)
+	metaNode.Region = region
 
 	// Get or create nodeset
 	var ns *nodeSet
@@ -2351,7 +2396,7 @@ func (c *Cluster) createDataPartition(volName string, poolId uint8) (dp *DataPar
 		}
 	} else {
 		if targetHosts, targetPeers, err = c.getHostFromNormalZoneForCreate(TypeDataPartition,
-			int(dpReplicaNum), zoneName, poolId, c.getRackAwareLevel(), vol); err != nil {
+			int(dpReplicaNum), zoneName, poolId, c.getRackAwareLevel(), vol, ""); err != nil {
 			goto errHandler
 		}
 	}
@@ -2483,8 +2528,8 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	return
 }
 
-func (c *Cluster) getZoneListFromVolZoneName(vol *Vol, poolId uint8) (zoneListOfMediaType []*Zone) {
-	zoneListOfMediaType = make([]*Zone, 0)
+func (c *Cluster) getZoneListFromVolZoneName(vol *Vol, poolId uint8, region string) (zoneListOfPool []*Zone) {
+	zoneListOfPool = make([]*Zone, 0)
 
 	specificZoneList := strings.Split(vol.zoneName, ",")
 	for _, zoneName := range specificZoneList {
@@ -2499,7 +2544,13 @@ func (c *Cluster) getZoneListFromVolZoneName(vol *Vol, poolId uint8) (zoneListOf
 			continue
 		}
 
-		zoneListOfMediaType = append(zoneListOfMediaType, zone)
+		if region != "" && zone.MetaRegion != region {
+			log.LogDebugf("[getZoneListFromVolZoneName] vol(%v) skip zone(%v), zone region(%v), require region(%v)",
+				vol.Name, zoneName, zone.MetaRegion, region)
+			continue
+		}
+
+		zoneListOfPool = append(zoneListOfPool, zone)
 		log.LogDebugf("[getZoneListFromVolZoneName] vol(%v) pick up zone(%v) of poolId(%v)", vol.Name, zoneName, zone.PoolId)
 	}
 
@@ -2510,7 +2561,7 @@ func (c *Cluster) getZoneListFromVolZoneName(vol *Vol, poolId uint8) (zoneListOf
 // if vol is not cross zone, return 1
 // if vol enable cross zone and the zone number of cluster less than defaultReplicaNum return 2
 // otherwise, return defaultReplicaNum
-func (c *Cluster) decideZoneNum(vol *Vol, poolId uint8) (zoneNum int) {
+func (c *Cluster) decideZoneNum(vol *Vol, poolId uint8, region string) (zoneNum int) {
 	if !vol.crossZone {
 		zoneNum = 1
 		log.LogInfof("[decideZoneNum] to create vol(%v), zoneName(%v) poolId(%v), crossZone is not set, decide zoneNum: %v",
@@ -2518,16 +2569,16 @@ func (c *Cluster) decideZoneNum(vol *Vol, poolId uint8) (zoneNum int) {
 		return
 	}
 
-	specificZoneListOfMediaType := c.getZoneListFromVolZoneName(vol, poolId)
-	log.LogInfof("[decideZoneNum] to create vol(%v), zoneName(%v) crossZone(%v), zoneCount of poolId(%v): %v",
-		vol.Name, vol.zoneName, vol.crossZone, poolId, len(specificZoneListOfMediaType))
+	specificZoneListOfPool := c.getZoneListFromVolZoneName(vol, poolId, region)
+	log.LogInfof("[decideZoneNum] to create vol(%v), zoneName(%v) crossZone(%v), zoneCount of poolId(%v), region(%v): %v",
+		vol.Name, vol.zoneName, vol.crossZone, poolId, region, len(specificZoneListOfPool))
 
 	var zoneLen int
 	if c.FaultDomain {
 		zoneLen = len(c.t.domainExcludeZones)
 	} else {
-		if len(specificZoneListOfMediaType) >= 1 {
-			zoneLen = len(specificZoneListOfMediaType)
+		if len(specificZoneListOfPool) >= 1 {
+			zoneLen = len(specificZoneListOfPool)
 		} else {
 			zoneLen = 2
 		}
@@ -2656,13 +2707,14 @@ func (c *Cluster) getSpecificZoneList(specifiedZone string) (zones []*Zone, err 
 }
 
 func (c *Cluster) getHostFromNormalZoneForCreate(nodeType uint32, replicaNum int,
-	specifiedZoneName string, poolId uint8, rackLevel proto.RackAwareLevel, vol *Vol) (hosts []string, peers []proto.Peer, err error,
+	specifiedZoneName string, poolId uint8, rackLevel proto.RackAwareLevel, vol *Vol, region string) (hosts []string, peers []proto.Peer, err error,
 ) {
-	zoneNum := c.decideZoneNum(vol, poolId) // zoneNum scope [1,3]
+	zoneNum := c.decideZoneNum(vol, poolId, region) // zoneNum scope [1,3]
 	param := &selectParam{
 		replicaNum: replicaNum,
 		rackLevel:  rackLevel,
 		poolId:     poolId,
+		region:     region,
 	}
 	return c.getHostFromNormalZone(nodeType, nil, zoneNum, specifiedZoneName, param)
 }
@@ -2694,7 +2746,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 		}
 	} else {
 		rsMgr = &c.t.metaTopology
-		if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, param.replicaNum, excludeZones, specifiedZones, nodeType); err != nil {
+		if zonesQualified, err = c.t.allocZonesForMetaNode(zoneNumNeed, param.replicaNum, excludeZones, specifiedZones, nodeType, param.region); err != nil {
 			return
 		}
 	}
@@ -4925,6 +4977,10 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		DefaultPoolId: req.defaultPoolId,
 		AllowedPools:  req.allowedPools,
 
+		// Set default region: use provided value or cluster default
+		DefaultRegion:  req.defaultRegion,
+		AllowedRegions: req.allowedRegions,
+
 		RemoteCacheEnable:            req.remoteCacheEnable,
 		RemoteCacheAutoPrepare:       req.remoteCacheAutoPrepare,
 		RemoteCacheTTL:               req.remoteCacheTTL,
@@ -5065,6 +5121,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 			NodeSetID:                metaNode.NodeSetID,
 			ZoneName:                 metaNode.ZoneName,
 			Tag:                      metaNode.Tag,
+			Region:                   metaNode.Region,
 			CanAllocPartition:        (metaNode.IsWriteAble() || metaNode.IsRocksdbWriteAble()) && metaNode.PartitionCntLimited(),
 			MetaPartitionCount:       uint32(metaNode.MetaPartitionCount),
 			PartitionLimitCnt:        metaNode.GetPartitionLimitCnt(),
@@ -8242,4 +8299,21 @@ func (c *Cluster) getPoolNameById(poolId uint8) string {
 // This is a wrapper function that uses proto.GetDefaultPoolIdByStorageClass
 func getDefaultPoolIdByStorageClass(storageClass uint32) (uint8, error) {
 	return proto.GetDefaultPoolIdByStorageClass(storageClass)
+}
+
+// isValidRegion checks if region exists in cluster
+func (c *Cluster) isValidRegion(region string) bool {
+	if region == "" {
+		region = proto.DefaultRegion
+	}
+
+	// Check zones
+	zones := c.t.getAllZones()
+	for _, zone := range zones {
+		if zone.MetaRegion == region {
+			return true
+		}
+	}
+
+	return false
 }

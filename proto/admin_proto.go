@@ -44,6 +44,8 @@ const (
 	AdminGetMonitorPushAddr                                = "/admin/getMonitorPushAddr"
 	AdminGetClusterDataNodes                               = "/admin/cluster/getAllDataNodes"
 	AdminGetClusterMetaNodes                               = "/admin/cluster/getAllMetaNodes"
+	AdminGetRegionList                                     = "/admin/region/list"
+	AdminGetRegionInfo                                     = "/admin/region/info"
 	AdminGetDataPartition                                  = "/dataPartition/get"
 	AdminLoadDataPartition                                 = "/dataPartition/load"
 	AdminCreateDataPartition                               = "/dataPartition/create"
@@ -335,6 +337,8 @@ const (
 	AdminVolAddAllowedStorageClass = "/vol/addAllowedStorageClass"
 	AdminVolAddPool                = "/vol/addPool"
 	AdminVolUpdatePoolId           = "/vol/updatePoolId"
+	AdminVolAddRegion              = "/vol/addRegion"
+	AdminVolUpdateDefaultRegion    = "/vol/updateDefaultRegion"
 
 	// FlashNode API
 	FlashNodeAdd                = "/flashNode/add"
@@ -1291,6 +1295,7 @@ type MetaPartitionView struct {
 	StoreMode          StoreMode
 	MemCount           uint8
 	RocksCount         uint8
+	Region             string // Region name for this meta partition
 }
 
 type DataNodeDisksRequest struct{}
@@ -1540,6 +1545,10 @@ type SimpleVolView struct {
 
 	// Storage pools information map[poolId]*StoragePoolInfo
 	Pools map[uint8]*StoragePoolInfo `json:"pools,omitempty"`
+
+	// Meta Region
+	DefaultRegion  string   `json:"defaultRegion,omitempty"`  // Default region for this volume
+	AllowedRegions []string `json:"allowedRegions,omitempty"` // Allowed regions for this volume
 }
 
 type NodeSetInfo struct {
@@ -1629,6 +1638,7 @@ type ZoneView struct {
 	DataMediaType       string
 	PoolId              uint8  // storage pool ID
 	PoolName            string // storage pool name
+	Region              string // Region name, "default" if not specified
 }
 
 type NodeSetView struct {

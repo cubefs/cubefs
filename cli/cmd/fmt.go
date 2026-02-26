@@ -63,6 +63,8 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  MetaNode available               : %v GB\n", cv.MetaNodeStatInfo.AvailGB))
 	sb.WriteString(fmt.Sprintf("  MetaNode total                   : %v GB\n", cv.MetaNodeStatInfo.TotalGB))
 	sb.WriteString(fmt.Sprintf("  RocksdbDiskUsed                  : %v GB\n", cv.RocksdbDiskUsed))
+	// Display default meta region
+	sb.WriteString(fmt.Sprintf("  Default Meta Region              : %v\n", cv.DefaultMetaRegion))
 	sb.WriteString(fmt.Sprintf("  RocksdbDiskAvail                 : %v GB\n", cv.RocksdbDiskAvail))
 	sb.WriteString(fmt.Sprintf("  RocksdbDiskTotal                 : %v GB\n", cv.RocksdbDiskTotal))
 	sb.WriteString(fmt.Sprintf("  RocksdbMpReplicaCount            : %v\n", cv.RocksdbMpCount))
@@ -331,6 +333,13 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  RwDpCnt                         : %v\n", svv.RwDpCnt))
 	sb.WriteString(fmt.Sprintf("  RwDpOfSSDCnt                    : %v\n", svv.RwDpOfSSDCnt))
 	sb.WriteString(fmt.Sprintf("  RwDpOfHDDCnt                    : %v\n", svv.RwDpOfHDDCnt))
+	// Display default region
+	sb.WriteString(fmt.Sprintf("  Default Region                  : %v\n", svv.DefaultRegion))
+	// Display allowed regions
+	if len(svv.AllowedRegions) > 0 {
+		sb.WriteString(fmt.Sprintf("  Allowed Regions                : %v\n", strings.Join(svv.AllowedRegions, ", ")))
+	}
+
 	if len(svv.RwDpCntByPoolId) > 0 {
 		sb.WriteString("  RwDpCntByPoolId                 :\n")
 		for poolId, pool := range svv.Pools {
@@ -998,6 +1007,11 @@ func formatMetaPartitionInfoWithPoolNames(partition *proto.MetaPartitionInfo, po
 	sb.WriteString(fmt.Sprintf("Store mode       : %v\n", partition.StoreMode.Str()))
 	sb.WriteString(fmt.Sprintf("Memory Replicas  : %v\n", partition.MemStoreCnt))
 	sb.WriteString(fmt.Sprintf("Rocksdb Replicas : %v\n", partition.RockStoreCnt))
+	region := partition.Region
+	if region == "" {
+		region = proto.DefaultRegion
+	}
+	sb.WriteString(fmt.Sprintf("Region           : %v\n", region))
 
 	sb.WriteString("\n")
 	sb.WriteString("Learner Mode Recovery:\n")
@@ -1113,21 +1127,90 @@ func formatMetaPartitionInfoWithPoolNames(partition *proto.MetaPartitionInfo, po
 }
 
 var (
-	metaPartitionTablePattern = "%-8v    %-12v    %-10v    %-12v    %-12v    %-12v    %-8v    %-12v    %-18v"
+	metaPartitionTablePattern = "%-8v    %-12v    %-10v    %-12v    %-12v    %-12v    %-8v    %-12v    %-18v    %-12v"
 	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
-		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "STATUS", "LEADER", "MEMBERS")
+		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "STATUS", "LEADER", "MEMBERS", "REGION")
 )
 
-func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {
+// formatMetaPartitionTableWithAutoAlign formats meta partition table with auto-aligned columns
+func formatMetaPartitionTableWithAutoAlign(views []*proto.MetaPartitionView) string {
+	if len(views) == 0 {
+		return ""
+	}
+
 	rangeToString := func(num uint64) string {
 		if num >= math.MaxInt64 {
 			return "unlimited"
 		}
 		return strconv.FormatUint(num, 10)
 	}
-	return fmt.Sprintf(metaPartitionTablePattern,
-		view.PartitionID, view.MaxInodeID, view.DentryCount, view.InodeCount, view.Start, rangeToString(view.End), formatMetaPartitionStatus(view.Status),
-		view.LeaderAddr, strings.Join(view.Members, ","))
+
+	// Calculate max width for each column
+	maxWidths := make([]int, 10)
+	headers := []string{"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "STATUS", "LEADER", "MEMBERS", "REGION"}
+
+	// Initialize with header widths
+	for i, h := range headers {
+		maxWidths[i] = len(h)
+	}
+
+	// Calculate max widths from data
+	for _, view := range views {
+		region := view.Region
+		if region == "" {
+			region = proto.DefaultRegion
+		}
+		values := []string{
+			strconv.FormatUint(view.PartitionID, 10),
+			strconv.FormatUint(view.MaxInodeID, 10),
+			strconv.FormatUint(view.DentryCount, 10),
+			strconv.FormatUint(view.InodeCount, 10),
+			strconv.FormatUint(view.Start, 10),
+			rangeToString(view.End),
+			formatMetaPartitionStatus(view.Status),
+			view.LeaderAddr,
+			strings.Join(view.Members, ","),
+			region,
+		}
+		for i, v := range values {
+			if len(v) > maxWidths[i] {
+				maxWidths[i] = len(v)
+			}
+		}
+	}
+
+	// Build format pattern
+	patternParts := make([]string, len(maxWidths))
+	for i, w := range maxWidths {
+		patternParts[i] = fmt.Sprintf("%%-%dv", w)
+	}
+	pattern := strings.Join(patternParts, "    ")
+
+	// Build output
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(pattern, headers[0], headers[1], headers[2], headers[3], headers[4], headers[5], headers[6], headers[7], headers[8], headers[9]))
+	sb.WriteString("\n")
+
+	for _, view := range views {
+		region := view.Region
+		if region == "" {
+			region = proto.DefaultRegion
+		}
+		sb.WriteString(fmt.Sprintf(pattern,
+			view.PartitionID,
+			view.MaxInodeID,
+			view.DentryCount,
+			view.InodeCount,
+			view.Start,
+			rangeToString(view.End),
+			formatMetaPartitionStatus(view.Status),
+			view.LeaderAddr,
+			strings.Join(view.Members, ","),
+			region))
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
 }
 
 var (
@@ -1539,6 +1622,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  MemoryMpReplicas    : %v\n", mn.MemoryMpCount))
 	sb.WriteString(fmt.Sprintf("  RocksdbMpReplicas   : %v\n", mn.RocksdbMpCount))
 	sb.WriteString(fmt.Sprintf("  Tag                 : %v\n", mn.Tag))
+	sb.WriteString(fmt.Sprintf("  Region              : %v\n", mn.Region))
 	return sb.String()
 }
 
@@ -2003,19 +2087,21 @@ func formatMetaPartitionFreeze(freeze int8) string {
 	}
 }
 
-var metaNodeViewTableRowPattern = "%-6v    %-32v    %-6v    %-8v    %-8v    %-42v    %-8v    %-8v    %-24v    %-8v    %-8v    %-16v"
+var metaNodeViewTableRowPattern = "%-6v    %-32v    %-6v    %-8v    %-8v    %-42v    %-8v    %-8v    %-24v    %-8v    %-8v    %-10v    %-10v    %-16v"
 
 func formatMetaNodeViewTableHeader() string {
-	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "MP", "MAX_MP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "TAG")
+	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "MP", "MAX_MP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "REGION", "ZONE", "TAG")
 }
 
 func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
+		region := view.Region
+		zoneName := view.ZoneName
 		return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			view.MetaPartitionCount, view.PartitionLimitCnt,
 			formatYesNo(view.IsWritable), formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
 			view.Rack, formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
-			formatYesNo(view.IsRocksdbWritable), view.Tag)
+			formatYesNo(view.IsRocksdbWritable), region, zoneName, view.Tag)
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID              : %v\n", view.ID))

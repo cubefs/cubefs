@@ -62,6 +62,8 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolSetDpRepairBlockSize(client),
 		newVolAddPoolCmd(client),
 		newVolUpdatePoolIdCmd(client),
+		newVolAddRegionCmd(client),
+		newVolUpdateDefaultRegionCmd(client),
 		newVolQueryOpCmd(client),
 		newVolGetInodeByIdCmd(client),
 		newVolCheckDomain(client),
@@ -1227,13 +1229,10 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 				stdout("Meta partitions:\n")
-				stdout("%v\n", metaPartitionTableHeader)
 				sort.SliceStable(views, func(i, j int) bool {
 					return views[i].PartitionID < views[j].PartitionID
 				})
-				for _, view := range views {
-					stdout("%v\n", formatMetaPartitionTableRow(view))
-				}
+				stdout("%v", formatMetaPartitionTableWithAutoAlign(views))
 			}
 
 			// print data detail
@@ -1737,6 +1736,82 @@ func newVolAddPoolCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			stdout("Volume add pool successfully\n")
+		},
+	}
+
+	cmd.Flags().StringVar(&optClientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	return cmd
+}
+
+var (
+	cmdVolAddRegionUse   = "addRegion [VOLUME] [REGION] [flags]"
+	cmdVolAddRegionShort = "add a region to volume's allowed regions list"
+)
+
+func newVolAddRegionCmd(client *master.MasterClient) *cobra.Command {
+	var optClientIDKey string
+	var region string
+
+	cmd := &cobra.Command{
+		Use:   cmdVolAddRegionUse,
+		Short: cmdVolAddRegionShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			volName := args[0]
+			region = args[1]
+			var err error
+			defer func() {
+				errout(err)
+			}()
+
+			var vv *proto.SimpleVolView
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volName); err != nil {
+				return
+			}
+
+			if err = client.AdminAPI().VolAddRegion(volName, region, util.CalcAuthKey(vv.Owner), optClientIDKey); err != nil {
+				return
+			}
+
+			stdout("Volume add region successfully\n")
+		},
+	}
+
+	cmd.Flags().StringVar(&optClientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	return cmd
+}
+
+var (
+	cmdVolUpdateDefaultRegionUse   = "updateDefaultRegion [VOLUME] [REGION] [flags]"
+	cmdVolUpdateDefaultRegionShort = "update default region for the volume"
+)
+
+func newVolUpdateDefaultRegionCmd(client *master.MasterClient) *cobra.Command {
+	var optClientIDKey string
+	var region string
+
+	cmd := &cobra.Command{
+		Use:   cmdVolUpdateDefaultRegionUse,
+		Short: cmdVolUpdateDefaultRegionShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			volName := args[0]
+			region = args[1]
+			var err error
+			defer func() {
+				errout(err)
+			}()
+
+			var vv *proto.SimpleVolView
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volName); err != nil {
+				return
+			}
+
+			if err = client.AdminAPI().VolUpdateDefaultRegion(volName, region, util.CalcAuthKey(vv.Owner), optClientIDKey); err != nil {
+				return
+			}
+
+			stdout("Volume update default region successfully\n")
 		},
 	}
 

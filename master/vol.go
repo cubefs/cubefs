@@ -88,6 +88,10 @@ type VolVarargs struct {
 	allowedPools                 []uint8
 	DpTag                        string
 	MpTag                        string
+
+	// Meta Region
+	defaultRegion  string
+	allowedRegions []string
 }
 
 // nolint: structcheck
@@ -232,6 +236,11 @@ type Vol struct {
 	SelectType    int32
 	DpTag         string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
 	MpTag         string // format: 'group1,group2,group3'. or ',,group'. Default value is ""
+
+	// Meta Region
+	defaultRegion        string   // default region for this volume
+	allowedRegions       []string // allowed regions for this volume
+	lastAutoCreateMpTime time.Time
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -327,6 +336,19 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.defaultPoolId = vv.DefaultPoolId
 	vol.allowedPools = make([]uint8, len(vv.AllowedPools))
 	copy(vol.allowedPools, vv.AllowedPools)
+
+	// Load region configuration
+	vol.defaultRegion = vv.DefaultRegion
+	if len(vv.AllowedRegions) > 0 {
+		vol.allowedRegions = make([]string, len(vv.AllowedRegions))
+		copy(vol.allowedRegions, vv.AllowedRegions)
+	} else {
+		// Default to default region if not set
+		if vol.defaultRegion == "" {
+			vol.defaultRegion = proto.DefaultRegion
+		}
+		vol.allowedRegions = []string{vol.defaultRegion}
+	}
 
 	vol.QuotaByClass = vv.QuotaOfClass
 	if len(vol.QuotaByClass) == 0 {
@@ -741,7 +763,7 @@ func (vol *Vol) addMetaPartitions(c *Cluster, count int) (err error) {
 			end = defaultMaxMetaPartitionInodeID
 		}
 
-		if err = vol.createMetaPartition(c, start, end); err != nil {
+		if err = vol.createMetaPartition(c, start, end, vol.defaultRegion); err != nil {
 			log.LogErrorf("action[addMetaPartitions] vol[%v] add meta partition err[%v]", vol.Name, err)
 			break
 		}
@@ -781,7 +803,7 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 		if index == count-1 {
 			end = defaultMaxMetaPartitionInodeID
 		}
-		if err = vol.createMetaPartition(c, start, end); err != nil {
+		if err = vol.createMetaPartition(c, start, end, vol.defaultRegion); err != nil {
 			log.LogErrorf("action[initMetaPartitions] vol[%v] init meta partition err[%v]", vol.Name, err)
 			break
 		}
@@ -1055,7 +1077,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 			nextStart := mp.MaxInodeID + metaPartitionInodeIdStep
 			log.LogInfof(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits start[%v] maxinodeid:[%v] default step:[%v],nextStart[%v]",
 				c.Name, vol.Name, mp.PartitionID, mp.Start, mp.MaxInodeID, metaPartitionInodeIdStep, nextStart))
-			if err = vol.splitMetaPartition(c, mp, nextStart, metaPartitionInodeIdStep, false); err != nil {
+			if err = vol.splitMetaPartition(c, mp, nextStart, metaPartitionInodeIdStep, false, mp.Region); err != nil {
 				Warn(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err))
 			}
 		}
@@ -1133,6 +1155,8 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 
 	c.addMetaNodeTasks(tasks)
 	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)
+
+	vol.checkAutoMetaPartitionCreationByRegion(c)
 }
 
 func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint64) {
@@ -1157,7 +1181,7 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint6
 		if RWMPNum < lowerLimitRWMetaPartition {
 			end = maxMP.MaxInodeID + metaPartitionInodeStep
 		}
-		if err := vol.splitMetaPartition(c, maxMP, end, metaPartitionInodeStep, true); err != nil {
+		if err := vol.splitMetaPartition(c, maxMP, end, metaPartitionInodeStep, true, maxMP.Region); err != nil {
 			msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta maxMP[%v] failed,err[%v]\n",
 				maxMP.PartitionID, err)
 			Warn(c.Name, msg)
@@ -1816,7 +1840,7 @@ func (vol *Vol) String() string {
 		vol.Name, vol.ID, vol.dpReplicaNum, vol.mpReplicaNum, vol.Capacity, vol.Status)
 }
 
-func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64, ignoreNoLeader bool) (nextMp *MetaPartition, err error) {
+func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64, ignoreNoLeader bool, region string) (nextMp *MetaPartition, err error) {
 	mp.Lock()
 	defer mp.Unlock()
 
@@ -1835,7 +1859,7 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, 
 	}
 
 	cmdMap[updateMpRaftCmd.K] = updateMpRaftCmd
-	if nextMp, err = vol.doCreateMetaPartition(c, mp.End+1, defaultMaxMetaPartitionInodeID); err != nil {
+	if nextMp, err = vol.doCreateMetaPartition(c, mp.End+1, defaultMaxMetaPartitionInodeID, region); err != nil {
 		Warn(c.Name, fmt.Sprintf("action[updateEnd] clusterID[%v] partitionID[%v] create meta partition err[%v]",
 			c.Name, mp.PartitionID, err))
 		log.LogErrorf("action[updateEnd] partitionID[%v] err[%v]", mp.PartitionID, err)
@@ -1858,7 +1882,7 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, 
 	return
 }
 
-func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64, ignoreNoLeader bool) (err error) {
+func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64, ignoreNoLeader bool, region string) (err error) {
 	if c.DisableAutoAllocate {
 		err = errors.NewErrorf("cluster auto allocate is disable")
 		return
@@ -1877,7 +1901,7 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, me
 		return
 	}
 
-	nextMp, err := vol.doSplitMetaPartition(c, mp, end, metaPartitionInodeIdStep, ignoreNoLeader)
+	nextMp, err := vol.doSplitMetaPartition(c, mp, end, metaPartitionInodeIdStep, ignoreNoLeader, region)
 	if err != nil {
 		return
 	}
@@ -1887,9 +1911,9 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, me
 	return
 }
 
-func (vol *Vol) createMetaPartition(c *Cluster, start, end uint64) (err error) {
+func (vol *Vol) createMetaPartition(c *Cluster, start, end uint64, region string) (err error) {
 	var mp *MetaPartition
-	if mp, err = vol.doCreateMetaPartition(c, start, end); err != nil {
+	if mp, err = vol.doCreateMetaPartition(c, start, end, region); err != nil {
 		return
 	}
 	if err = c.syncAddMetaPartition(mp); err != nil {
@@ -1899,7 +1923,7 @@ func (vol *Vol) createMetaPartition(c *Cluster, start, end uint64) (err error) {
 	return
 }
 
-func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPartition, err error) {
+func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64, region string) (mp *MetaPartition, err error) {
 	var (
 		hosts       []string
 		partitionID uint64
@@ -1918,9 +1942,10 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 			return nil, errors.NewError(err)
 		}
 	} else {
+		// Get hosts from specified region
 		if hosts, peers, err = c.getHostFromNormalZoneForCreate(nodeType,
-			int(vol.mpReplicaNum), vol.zoneName, proto.UnSpecifiedPoolId, c.getRackAwareLevel(), vol); err != nil {
-			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZoneForCreate err[%v]", err)
+			int(vol.mpReplicaNum), vol.zoneName, proto.UnSpecifiedPoolId, c.getRackAwareLevel(), vol, region); err != nil {
+			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZoneForCreateWithRegion err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	}
@@ -1937,6 +1962,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.Name, vol.ID, vol.VersionMgr.getLatestVer())
 	mp.setHosts(hosts)
 	mp.setPeers(peers)
+	mp.Region = region // Set region for MP
 
 	storeMode := proto.StoreModeMem
 	if vol.DefaultStoreMode == proto.StoreModeRocksDb {
@@ -2076,6 +2102,15 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	}
 	vol.DpTag = args.DpTag
 	vol.MpTag = args.MpTag
+
+	// Update region configuration if provided
+	if args.defaultRegion != "" {
+		vol.defaultRegion = args.defaultRegion
+	}
+	if len(args.allowedRegions) > 0 {
+		vol.allowedRegions = make([]string, len(args.allowedRegions))
+		copy(vol.allowedRegions, args.allowedRegions)
+	}
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -2151,6 +2186,8 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		allowedPools:                 append([]uint8{}, vol.allowedPools...),
 		DpTag:                        vol.DpTag,
 		MpTag:                        vol.MpTag,
+		defaultRegion:                vol.defaultRegion,
+		allowedRegions:               append([]string{}, vol.allowedRegions...),
 	}
 }
 
@@ -2270,6 +2307,18 @@ func (vol *Vol) isPoolInAllowed(poolId uint8) (in bool) {
 	return
 }
 
+func (vol *Vol) isRegionInAllowed(region string) bool {
+	vol.volLock.RLock()
+	defer vol.volLock.RUnlock()
+
+	for _, r := range vol.allowedRegions {
+		if r == region {
+			return true
+		}
+	}
+	return false
+}
+
 func (vol *Vol) getSortMetaPartitions() (mps []*MetaPartition) {
 	vol.mpsLock.RLock()
 	mps = make([]*MetaPartition, 0, len(vol.MetaPartitions))
@@ -2289,4 +2338,122 @@ func (vol *Vol) isInitializingOrInitFailed() bool {
 
 func (vol *Vol) isUnavailable() bool {
 	return vol.isInitializingOrInitFailed() || vol.Status == proto.VolStatusMarkDelete
+}
+
+// getWritableMpCntByRegion returns the count of read-write meta partitions in a specific region
+func (vol *Vol) getWritableMpCntByRegion(region string) int {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+
+	count := 0
+	for _, mp := range vol.MetaPartitions {
+		if mp.Region == region && mp.Status == proto.ReadWrite {
+			count++
+		}
+	}
+	return count
+}
+
+// isMaxMpExceedThresholdInRegion checks if the max meta partition in a specific region exceeds the threshold
+func (vol *Vol) isMaxMpExceedThresholdInRegion(region string) bool {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+
+	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
+	threshold := 0.8 // 80% threshold
+
+	// Find the max MP in this region
+	var maxMP *MetaPartition
+	var maxMPID uint64
+	for mpID, mp := range vol.MetaPartitions {
+		if mp.Region == region && mp.Status == proto.ReadWrite {
+			if mpID > maxMPID {
+				maxMP = mp
+				maxMPID = mpID
+			}
+		}
+	}
+
+	if maxMP == nil {
+		return false
+	}
+
+	// Calculate usage ratio: (MaxInodeID - Start) / InodeIdStep
+	usageRatio := float64(maxMP.MaxInodeID-maxMP.Start) / float64(metaPartitionInodeIdStep)
+	ok := usageRatio >= threshold
+	if ok {
+		log.LogInfof("action[isMaxMpExceedThresholdInRegion] vol(%v) region(%v), max MP exceeds threshold, usageRatio:%.2f, threshold:%v, mp ID:%v, start:%v, maxInodeID:%v",
+			vol.Name, region, usageRatio, threshold, maxMP.PartitionID, maxMP.Start, maxMP.MaxInodeID)
+	}
+
+	return ok
+}
+
+// checkAutoMetaPartitionCreationByRegion checks each region and creates meta partitions if needed
+func (vol *Vol) checkAutoMetaPartitionCreationByRegion(c *Cluster) {
+	if time.Since(vol.lastAutoCreateMpTime) < time.Minute {
+		return
+	}
+
+	log.LogInfof("action[checkAutoMetaPartitionCreationByRegion] vol(%v) lastAutoCreateMpTime(%v)",
+		vol.Name, vol.lastAutoCreateMpTime)
+
+	defer func() {
+		vol.lastAutoCreateMpTime = time.Now()
+		log.LogInfof("action[checkAutoMetaPartitionCreationByRegion] finished vol(%v) lastAutoCreateMpTime(%v)",
+			vol.Name, vol.lastAutoCreateMpTime)
+	}()
+
+	if c.cfg.DisableAutoCreate {
+		return
+	}
+
+	// Check each allowed region
+	for _, region := range vol.allowedRegions {
+
+		rwMpCntOfRegion := vol.getWritableMpCntByRegion(region)
+		maxMpExceedThreshold := vol.isMaxMpExceedThresholdInRegion(region)
+		log.LogInfof("action[checkAutoMetaPartitionCreationByRegion] vol(%v) region:%v, rwMpCntOfRegion:%v, maxMpExceedThreshold:%v",
+			vol.Name, region, rwMpCntOfRegion, maxMpExceedThreshold)
+
+		// Check if we need to create more MPs
+		var createMpCount int
+		minNumOfRWMetaPartitions := defaultInitMetaPartitionCount
+		if rwMpCntOfRegion < minNumOfRWMetaPartitions {
+			createMpCount = minNumOfRWMetaPartitions - rwMpCntOfRegion
+			log.LogInfof("action[checkAutoMetaPartitionCreationByRegion] vol(%v) region(%v), min createMpCount:%v",
+				vol.Name, region, createMpCount)
+		} else if maxMpExceedThreshold {
+			// If max MP exceeds threshold, create a new MP by splitting
+			createMpCount = 1
+			log.LogInfof("action[checkAutoMetaPartitionCreationByRegion] vol(%v) region(%v), max MP exceeds threshold, createMpCount:1",
+				vol.Name, region)
+		}
+		vol.autoCreateMetaPartitionsForRegion(c, region, createMpCount)
+	}
+}
+
+// autoCreateMetaPartitionsForRegion creates meta partitions in a specific region
+func (vol *Vol) autoCreateMetaPartitionsForRegion(c *Cluster, region string, count int) {
+	for i := 0; i < count; i++ {
+		maxPartitionID := vol.maxMetaPartitionID()
+		maxMP, err := vol.metaPartition(maxPartitionID)
+		if err != nil {
+			log.LogErrorf("action[autoCreateMetaPartitionsForRegion] vol(%v) region(%v), get max MP failed, err: %v", vol.Name, region, err)
+			return
+		}
+
+		maxInodeID := maxMP.MaxInodeID
+		if maxInodeID == 0 {
+			maxInodeID = maxMP.Start
+		}
+
+		end := maxInodeID + gConfig.MetaPartitionInodeIdStep
+		if err := vol.splitMetaPartition(c, maxMP, end, gConfig.MetaPartitionInodeIdStep, true, region); err != nil {
+			log.LogErrorf("action[autoCreateMetaPartitionsForRegion],split meta maxMP[%v] failed,err[%v]\n", maxMP.PartitionID, err)
+			return
+		}
+
+		log.LogInfof("action[autoCreateMetaPartitionsForRegion] vol[%v] region[%v] create meta partition success", vol.Name, region)
+	}
 }

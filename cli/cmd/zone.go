@@ -62,8 +62,8 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 				return
 			}
 			stdoutln("[Zones]")
-			zoneTablePattern := "%-12v    %-10v    %-15v    %-20v    %-20v    %-30v\n"
-			stdout(zoneTablePattern, "ZONE", "STATUS", "DATA_NODESET_SEL", "META_NODESET_SEL", "DATA_MEDIA_TYPE", "POOL")
+			zoneTablePattern := "%-12v    %-10v    %-15v    %-20v    %-20v    %-30v    %-12v\n"
+			stdout(zoneTablePattern, "ZONE", "STATUS", "DATA_NODESET_SEL", "META_NODESET_SEL", "DATA_MEDIA_TYPE", "POOL", "META_REGION")
 			for _, zone := range zones {
 				dataNodesetSel := zone.DataNodesetSelector
 				if dataNodesetSel == "" {
@@ -85,7 +85,12 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 						poolInfoStr = fmt.Sprintf("%d(%s)", zone.PoolId, zone.PoolName)
 					}
 				}
-				stdout(zoneTablePattern, zone.Name, zone.Status, dataNodesetSel, metaNodesetSel, dataMediaType, poolInfoStr)
+				// Get meta region, default to "default" if empty
+				metaRegion := zone.Region
+				if metaRegion == "" {
+					metaRegion = "default"
+				}
+				stdout(zoneTablePattern, zone.Name, zone.Status, dataNodesetSel, metaNodesetSel, dataMediaType, poolInfoStr, metaRegion)
 			}
 		},
 	}

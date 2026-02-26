@@ -58,7 +58,7 @@ func (mfs *MockFlashServer) register() {
 	var nodeID uint64
 	var err error
 	for range [100]struct{}{} {
-		nodeID, err = mfs.mc.NodeAPI().AddFlashNode(mfs.TCPAddr, mfs.zoneName, "", proto.DefaultRegionName, 0)
+		nodeID, err = mfs.mc.NodeAPI().AddFlashNode(mfs.TCPAddr, mfs.zoneName, "", proto.DefaultRegion, 0)
 		if err == nil {
 			mfs.nodeID = nodeID
 			break

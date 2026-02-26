@@ -12,6 +12,7 @@
   "logDir": "_dir_/logs",
   "warnLogDir": "_dir_/logs",
   "memRatio": "70",
+  "region":"_region_",
   "metadataDir": "_dir_/meta",
   "raftDir": "_dir_/raft",
   "masterAddr": [

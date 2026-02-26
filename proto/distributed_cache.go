@@ -47,9 +47,9 @@ const (
 	FlashManualClearAction  = "clear"
 	FlashManualCheckAction  = "check"
 
-	DefaultTopoName   = "default"
-	IdleTopoName      = "idle"
-	DefaultRegionName = "default"
+	DefaultTopoName = "default"
+	IdleTopoName    = "idle"
+	DefaultRegion   = "default"
 )
 
 var (

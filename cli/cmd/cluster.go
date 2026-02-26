@@ -53,6 +53,7 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterChangeMasterLeaderCmd(client),
 		newClusterQueryDistributionOptimizationStatusCmd(client),
 		newClusterQueryDpDecommissionStatusCmd(client),
+		newClusterSetDefaultMetaRegionCmd(client),
 	)
 	return clusterCmd
 }
@@ -85,6 +86,7 @@ const (
 	cmdQueryDiskOpShort                          = "query Disk_op information of a cluster"
 	cmdQueryClusterDistributionOptimizationShort = "query distribution optimization status"
 	cmdQueryDpDecommissionStatusShort            = "query data partition decommission status by type"
+	cmdClusterSetDefaultMetaRegionShort          = "Set default meta region for new volumes"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -1228,5 +1230,26 @@ Decommission types:
 	}
 	cmd.Flags().IntVar(&decommissionType, "type", 0, "Decommission type (required)")
 	cmd.MarkFlagRequired("type")
+	return cmd
+}
+
+func newClusterSetDefaultMetaRegionCmd(client *master.MasterClient) *cobra.Command {
+	var region string
+	cmd := &cobra.Command{
+		Use:   "setDefaultMetaRegion [REGION]",
+		Short: cmdClusterSetDefaultMetaRegionShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			region = args[0]
+			if err = client.AdminAPI().SetDefaultMetaRegion(region); err != nil {
+				return
+			}
+			stdout("Set default meta region to %v successfully\n", region)
+		},
+	}
 	return cmd
 }
