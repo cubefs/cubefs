@@ -46,7 +46,11 @@ func GetMatchParation(path string) (*disk.PartitionStat, error) {
 		match := getMatchCount(path, partition.Mountpoint)
 		if match == len(partition.Mountpoint) && match > maxMatch {
 			matchParation = partition
+			maxMatch = match
 		}
+	}
+	if maxMatch == 0 {
+		return nil, nil
 	}
 	return &matchParation, nil
 }
