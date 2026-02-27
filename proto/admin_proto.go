@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -2022,6 +2023,19 @@ const (
 	DefaultECPoolId   uint8 = 3
 	MaxDefaultPoolId  uint8 = 3
 )
+
+func PoolIdMapToString(m map[uint8]struct{}) string {
+	ids := make([]uint8, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	idsStr := make([]string, 0, len(ids))
+	for _, id := range ids {
+		idsStr = append(idsStr, strconv.Itoa(int(id)))
+	}
+	return strings.Join(idsStr, ",")
+}
 
 // Default storage pool names
 const (

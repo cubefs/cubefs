@@ -549,6 +549,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
 	log.LogDebugf("action[parseConfig] load zoneName(%v), rack(%v).", s.zoneName, s.rack)
 	log.LogDebugf("action[parseConfig] load mediaType(%v).", s.mediaType)
+	syslog.Printf("action[parseConfig] load poolId(%d), mediaType(%v), zoneName(%v), rack(%v).", s.poolId, s.mediaType, s.zoneName, s.rack)
 	return
 }
 
@@ -893,7 +894,7 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.raftHeartbeat, s.raftReplica,
 				s.zoneName, s.serviceIDKey, s.rack, s.mediaType, s.poolId); err != nil {
-				if strings.Contains(err.Error(), proto.ErrDataNodeAdd.Error()) {
+				if strings.Contains(err.Error(), proto.ErrDataNodeAddFailed) {
 					failMsg := fmt.Sprintf("[register] register to master[%v] failed: %v",
 						masterAddr, err)
 					log.LogError(failMsg)

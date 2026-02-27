@@ -2722,6 +2722,10 @@ func (c *Cluster) loadStoragePools() (err error) {
 		}
 	}
 
+	if _, ok := c.storagePools[proto.DefaultECPoolId]; ok {
+		c.storagePools[proto.DefaultECPoolId].ECAddr = c.server.bStoreAddr
+	}
+
 	if !c.HasResourceOfStorageBlobStore() {
 		c.storagePools[proto.DefaultECPoolId].Status = proto.PoolStatusDisabled
 	}

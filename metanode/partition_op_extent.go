@@ -630,6 +630,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	fileSize = ino.Size
 	ino.setVer(mp.verSeq)
 	ino.StorageClass = i.StorageClass
+	ino.PoolId = i.PoolId
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

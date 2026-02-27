@@ -217,17 +217,6 @@ func (t *topology) putMetaNodeToCache(metaNode *MetaNode) {
 	t.metaTopology.nodes.Store(metaNode.Addr, metaNode)
 }
 
-func (t *topology) isZoneInList(zone string, zoneList []string) (inList bool) {
-	for i := 0; i < len(zoneList); i++ {
-		if zone == zoneList[i] {
-			inList = true
-			break
-		}
-	}
-
-	return
-}
-
 type nodeSetCollection []*nodeSet
 
 func (nsc nodeSetCollection) Len() int {
@@ -1765,7 +1754,7 @@ func newZone(name string, dataMediaType uint32) (zone *Zone) {
 	zone.metaMemoryNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
 	zone.metaRocksdbNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, RocksdbType)
 	zone.SetDataMediaType(dataMediaType)
-	zone.PoolId = getDefaultPoolIdByMediaType(dataMediaType)
+	// zone.PoolId = getDefaultPoolIdByMediaType(dataMediaType)
 	return
 }
 

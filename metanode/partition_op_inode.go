@@ -131,36 +131,6 @@ func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uin
 	return
 }
 
-// for compatibility: handle req from old version client without filed StorageType
-func (mp *metaPartition) checkCreateInoStorageClassForCompatibility(reqStorageClass uint32, inodeId uint64) (resultStorageClass uint32, err error) {
-	if proto.IsValidStorageClass(reqStorageClass) {
-		resultStorageClass = reqStorageClass
-		return
-	}
-
-	if reqStorageClass != proto.StorageClass_Unspecified {
-		err = fmt.Errorf("unknown req storageClass(%v)", reqStorageClass)
-		return
-	}
-
-	if proto.IsHot(mp.volType) {
-		if !proto.IsValidStorageClass(mp.GetVolStorageClass()) {
-			err = fmt.Errorf("CreateInode req without StorageClass but metanode config legacyReplicaStorageClass not set")
-			return
-		}
-
-		resultStorageClass = mp.GetVolStorageClass()
-		log.LogDebugf("legacy CreateInode req, hot vol(%v), mpId(%v), ino(%v), set ino storageClass as config legacyReplicaStorageClass(%v)",
-			mp.config.VolName, mp.config.PartitionId, inodeId, proto.StorageClassString(resultStorageClass))
-	} else {
-		resultStorageClass = proto.StorageClass_BlobStore
-		log.LogDebugf("legacy CreateInode req, cold vol(%v), mpId(%v), ino(%v), set ino storageClass as blobstore",
-			mp.config.VolName, mp.config.PartitionId, inodeId)
-	}
-
-	return
-}
-
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr string) (err error) {
 	var (
@@ -177,11 +147,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 		}()
 	}
-	if requiredStorageClass, err = mp.checkCreateInoStorageClassForCompatibility(req.StorageType, inoID); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		log.LogErrorf("[CreateInode] %v, req(%+v)", err.Error(), req)
-		return
-	}
+
 	inoID, err = mp.nextInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
@@ -200,6 +166,15 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 	if ino.PoolId == 0 {
 		ino.PoolId = mp.vol.GetDefaultPoolId()
 	}
+
+	pool := mp.vol.GetPool(ino.PoolId)
+	if pool == nil {
+		err = fmt.Errorf("pool(%v) not found", ino.PoolId)
+		log.LogErrorf("[CreateInode] pool(%v) not found", ino.PoolId)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	ino.StorageClass = uint32(pool.StorageClass)
 
 	if proto.IsStorageClassReplica(ino.StorageClass) {
 		ino.HybridCloudExtents.sortedEks = NewSortedExtents()
@@ -254,11 +229,6 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 		}()
 	}
-	if requiredStorageClass, err = mp.checkCreateInoStorageClassForCompatibility(req.StorageType, inoID); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		log.LogErrorf("[QuotaCreateInode] %v, req(%+v)", err.Error(), req)
-		return
-	}
 
 	inoID, err = mp.nextInodeID()
 	if err != nil {
@@ -275,6 +245,15 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 	if ino.PoolId == 0 {
 		ino.PoolId = mp.vol.GetDefaultPoolId()
 	}
+
+	pool := mp.vol.GetPool(ino.PoolId)
+	if pool == nil {
+		err = fmt.Errorf("pool(%v) not found", ino.PoolId)
+		log.LogErrorf("[CreateInode] pool(%v) not found", ino.PoolId)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	ino.StorageClass = uint32(pool.StorageClass)
 
 	for _, quotaId := range req.QuotaIds {
 		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
@@ -984,11 +963,6 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 		}()
 	}
-	if requiredStorageClass, err = mp.checkCreateInoStorageClassForCompatibility(req.StorageType, inoID); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		log.LogErrorf("[QuotaCreateInode] %v, req(%+v)", err.Error(), req)
-		return
-	}
 
 	inoID, err = mp.nextInodeID()
 	if err != nil {
@@ -1026,6 +1000,15 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	if txIno.Inode.PoolId == 0 {
 		txIno.Inode.PoolId = mp.vol.GetDefaultPoolId()
 	}
+
+	pool := mp.vol.GetPool(txIno.Inode.PoolId)
+	if pool == nil {
+		err = fmt.Errorf("pool(%v) not found", txIno.Inode.PoolId)
+		log.LogErrorf("[CreateInode] pool(%v) not found", txIno.Inode.PoolId)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	txIno.Inode.StorageClass = uint32(pool.StorageClass)
 
 	if log.EnableDebug() {
 		log.LogDebugf("NewTxInode: TxInode: %v", txIno)

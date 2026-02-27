@@ -120,18 +120,14 @@ func newPoolInfoCmd(client *sdk.MasterClient) *cobra.Command {
 
 // formatPoolViewTableHeader returns the table header for pool list
 func formatPoolViewTableHeader() string {
-	pattern := "%-8v    %-20v    %-15v    %-8v    %-30v    %-20v    %-10v"
-	return fmt.Sprintf(pattern, "ID", "NAME", "STORAGE_CLASS", "C_ID", "EC_ADDR", "STATUS", "CREATE_TIME")
+	pattern := "%-8v    %-20v    %-15v    %-20v    %-10v    %-30v"
+	return fmt.Sprintf(pattern, "ID", "NAME", "STORAGE_CLASS", "STATUS", "CREATE_TIME", "EC_ADDR")
 }
 
 // formatPoolViewTableRow returns a table row for pool list
 func formatPoolViewTableRow(pool *proto.StoragePoolInfo) string {
-	pattern := "%-8v    %-20v    %-15v    %-8v    %-30v    %-20v    %-10v"
+	pattern := "%-8v    %-20v    %-15v    %-20v    %-10v    %-30v"
 	storageClassStr := proto.StorageClassString(uint32(pool.StorageClass))
-	cIdStr := "-"
-	if pool.CId > 0 {
-		cIdStr = strconv.Itoa(pool.CId)
-	}
 	ecAddrStr := "-"
 	if pool.ECAddr != "" {
 		ecAddrStr = pool.ECAddr
@@ -141,7 +137,7 @@ func formatPoolViewTableRow(pool *proto.StoragePoolInfo) string {
 		createTime = createTime[:10] // Show only date part
 	}
 	statusStr := proto.PoolStatusString(pool.Status)
-	return fmt.Sprintf(pattern, pool.Id, pool.Name, storageClassStr, cIdStr, ecAddrStr, statusStr, createTime)
+	return fmt.Sprintf(pattern, pool.Id, pool.Name, storageClassStr, statusStr, createTime, ecAddrStr)
 }
 
 // formatPoolViewDetail returns detailed information of a pool

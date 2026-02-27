@@ -16,6 +16,10 @@ package proto
 
 import "github.com/cubefs/cubefs/util/errors"
 
+const (
+	ErrDataNodeAddFailed = "add datanode failed"
+)
+
 // err
 var (
 	ErrSuc                    = errors.New("success")
@@ -117,7 +121,6 @@ var (
 	ErrMemberChange                            = errors.New("raft prev member change is not finished.")
 	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
 	ErrNoSupportPool                           = errors.New("Lifecycle pool not allowed")
-	ErrDataNodeAdd                             = errors.New("DataNode mediaType not match")
 	ErrNeedForbidVer0                          = errors.New("Need set volume ForbidWriteOpOfProtoVer0 first")
 	ErrTmpfsNoSpace                            = errors.New("no space left on device")
 	ErrNoMpMigratePlan                         = errors.New("no meta partition migrate plan")

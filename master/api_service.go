@@ -3509,12 +3509,18 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		}
 	}
 
+	if m.HasBothReplicaAndBlobstore(req.volStorageClass, req.allowedStorageClass) {
+		err = fmt.Errorf("vol not support both replica and blobstore")
+		log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
+		return
+	}
+
 	if req.defaultPoolId == proto.DefaultECPoolId {
 		log.LogWarnf("[checkStorageClassForCreateVol] create vol(%v) defaultPoolId is defaultECPoolId, skip check available pools", req.name)
 		return nil
 	}
 
-	availablePools := m.cluster.getAvailablePools(req.zoneName)
+	availablePools := m.cluster.getAvailablePools()
 	if len(availablePools) == 0 {
 		err = fmt.Errorf("no available pools in zone(%v)", req.zoneName)
 		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
@@ -3522,14 +3528,14 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 	}
 
 	if _, ok := availablePools[req.defaultPoolId]; !ok {
-		err = fmt.Errorf("defaultPoolId(%v) not found in available pools(%v)", req.defaultPoolId, availablePools)
+		err = fmt.Errorf("defaultPoolId(%v) not found in available pools(%v)", req.defaultPoolId, proto.PoolIdMapToString(availablePools))
 		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 		return err
 	}
 
 	for _, poolId := range req.allowedPools {
 		if _, ok := availablePools[poolId]; !ok {
-			err = fmt.Errorf("allowedPoolId(%v) not found in available pools(%v)", poolId, availablePools)
+			err = fmt.Errorf("allowedPoolId(%v) not found in available pools(%v)", poolId, proto.PoolIdMapToString(availablePools))
 			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 			return err
 		}
@@ -3978,7 +3984,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, rack, nodesetId, mediaType, poolId); err != nil {
 		log.LogErrorf("addDataNode: add failed, addr %s, zone %s, set %d, type %d, err %s",
 			nodeAddr, zoneName, nodesetId, mediaType, err.Error())
-		err = errors.NewErrorf("add datanode failed, err %s, hint %s", err.Error(), proto.ErrDataNodeAdd.Error())
+		err = errors.NewErrorf("%s, err %s,", proto.ErrDataNodeAddFailed, err.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -10509,13 +10515,6 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// if !vol.crossZone {
-	// 	err = fmt.Errorf("vol(%v) is not cross zone, not support add pool", name)
-	// 	log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
-	// 	sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-	// 	return
-	// }
-
 	if !vol.AllPartitionForbidVer0() {
 		err = fmt.Errorf("there is still some dp or mp not forbidden write")
 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
@@ -10532,9 +10531,17 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify pool exists
-	if _, err = m.cluster.getStoragePool(poolId); err != nil {
+	pool, err := m.cluster.getStoragePool(poolId)
+	if err != nil {
 		log.LogErrorf("[volAddPool] vol(%v), pool(%v) not exists, err: %v", name, poolId, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("pool %v does not exist", poolId)})
+		return
+	}
+
+	if proto.IsStorageClassBlobStore(uint32(pool.StorageClass)) {
+		err = fmt.Errorf("pool(%v) is blobstore, not support add pool", poolId)
+		log.LogErrorf("[volAddPool] vol(%v), pool(%v) is blobstore, not support add pool, err: %v", name, poolId, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
@@ -10549,17 +10556,15 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 		log.LogWarnf("[volAddPool] vol(%v) is not cross zone, set crossZone to true", name)
 	}
 
-	availablePools := m.cluster.getAvailablePools(vol.zoneName)
+	availablePools := m.cluster.getAvailablePools()
 	if _, ok := availablePools[poolId]; !ok {
-		err = fmt.Errorf("pool(%v) not found in available pools(%v)", poolId, availablePools)
+		err = fmt.Errorf("pool(%v) not found in available pools(%v)", poolId, proto.PoolIdMapToString(availablePools))
 		log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
 	log.LogInfof("[volAddPool] vol(%v) to add pool, old(%v), add(%v)", name, vol.allowedPools, poolId)
-
-	pool, _ := m.cluster.getStoragePool(poolId)
 	if !vol.isStorageClassInAllowed(uint32(pool.StorageClass)) {
 		newArgs.allowedStorageClass = append(newArgs.allowedStorageClass, uint32(pool.StorageClass))
 		sort.Slice(newArgs.allowedStorageClass, func(i, j int) bool {
@@ -10567,13 +10572,6 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 		})
 		log.LogInfof("[volAddPool] vol(%v) pool(%v) storageClass not in allowedStorageClass, update allowedStorageClass to %v",
 			name, poolId, newArgs.allowedStorageClass)
-	}
-
-	if m.HasBothReplicaAndBlobstore(newArgs.volStorageClass, newArgs.allowedStorageClass) {
-		err = fmt.Errorf("vol not support both replica and blobstore")
-		log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
 	}
 
 	log.LogInfof("[volAddPool] vol(%v) to add pool, old(%v), add(%v)",
@@ -10866,16 +10864,17 @@ func (m *Server) createStoragePool(w http.ResponseWriter, r *http.Request) {
 		err      error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateStoragePool))
-	defer func() {
-		doStatAndMetric(proto.AdminCreateStoragePool, metric, err, nil)
-		AuditLog(r, proto.AdminCreateStoragePool, fmt.Sprintf("create pool id[%d] name[%s]", poolInfo.Id, poolInfo.Name), err)
-	}()
 
 	// Parse request parameters
 	if poolInfo, err = parseRequestToCreateStoragePool(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	defer func() {
+		doStatAndMetric(proto.AdminCreateStoragePool, metric, err, nil)
+		AuditLog(r, proto.AdminCreateStoragePool, fmt.Sprintf("create pool id[%d] name[%s]", poolInfo.Id, poolInfo.Name), err)
+	}()
 
 	if poolInfo.Id == 0 {
 		err = fmt.Errorf("pool id is required")

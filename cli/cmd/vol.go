@@ -236,6 +236,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
+			if len(strings.Split(optPools, ",")) > 1 {
+				crossZone = true
+			}
+
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -315,7 +319,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity")
-	cmd.Flags().StringVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Disable cross zone")
+	cmd.Flags().StringVar(&optCrossZone, CliFlagCrossZone, cmdVolDefaultCrossZone, "Cross zone (true|false), default false; default true if multiple pools are specified")
 	cmd.Flags().StringVar(&optNormalZonesFirst, CliNormalZonesFirst, cmdVolDefaultCrossZone, "Write to normal zone first")
 	cmd.Flags().StringVar(&optBusiness, CliFlagBusiness, cmdVolDefaultBusiness, "Description")
 	cmd.Flags().IntVar(&optMPCount, CliFlagMPCount, cmdVolDefaultMPCount, "Specify init meta partition count")
@@ -351,7 +355,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout, "Remote cache same region timeout millisecond(must > 0)")
 	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "Specify default store mode of mp: memory, rocksdb")
 	cmd.Flags().Uint8Var(&optPoolId, "poolId", 0, "Specify default storage pool ID for the volume")
-	cmd.Flags().StringVar(&optPools, "pools", "", "Specify allowed storage pools for the volume (comma-separated pool IDs, e.g., \"1,2,3\")")
+	cmd.Flags().StringVar(&optPools, "pools", "", "Specify allowed storage pools for the volume (comma-separated pool IDs, e.g., \"1,2,...\")")
 
 	return cmd
 }

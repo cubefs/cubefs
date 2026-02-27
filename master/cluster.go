@@ -1679,7 +1679,7 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		}
 
 		if uint32(oldPool.StorageClass) != proto.GetStorageClassByMediaType(mediaType) {
-			return 0, fmt.Errorf("storage pool with id %d is not a replica pool, storageClass %d, mediaType %d",
+			return 0, fmt.Errorf("class of storage pool with id %d is not same with mediaType, storageClass %d, mediaType %d",
 				poolId, oldPool.StorageClass, mediaType)
 		}
 	}
@@ -1809,11 +1809,11 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 	}
 
 	if mediaType != zone.dataMediaType {
-		return dataNode.ID, fmt.Errorf("zone mediaType not equalt old, new %v, old %v", mediaType, zone.dataMediaType)
+		return dataNode.ID, fmt.Errorf("zone %s mediaType not equalt old, new %v, old %v", zoneName, mediaType, zone.dataMediaType)
 	}
 
 	if zone.PoolId != poolId {
-		return dataNode.ID, fmt.Errorf("zone poolId not equal to old, new %v, old %v", poolId, zone.PoolId)
+		return dataNode.ID, fmt.Errorf("zone %s poolId not equal to old, new %v, old %v", zoneName, poolId, zone.PoolId)
 	}
 
 	// Set datanode poolId
@@ -4571,16 +4571,12 @@ func (c *Cluster) HasResourceOfStorageBlobStore() (has bool) {
 	return has
 }
 
-func (c *Cluster) getAvailablePools(zoneNameList string) (pools map[uint8]struct{}) {
+func (c *Cluster) getAvailablePools() (pools map[uint8]struct{}) {
 	poolsMap := make(map[uint8]struct{})
-	zoneList := strings.Split(zoneNameList, ",")
 	t := c.t
 
 	t.zoneMap.Range(func(zoneName, value interface{}) bool {
 		zone := value.(*Zone)
-		if zoneNameList != "" && !t.isZoneInList(zone.name, zoneList) {
-			return true
-		}
 
 		if zone.PoolId != proto.UnSpecifiedPoolId && zone.dataNodeCount() > 0 {
 			poolsMap[zone.PoolId] = struct{}{}
@@ -8084,10 +8080,11 @@ func (c *Cluster) updateStoragePool(id uint8, req *proto.StoragePoolInfo) (err e
 		}
 	}
 
-	// Check if new name already exists
+	// Check if new name already exists (excluding current pool)
 	if req.Name != "" {
 		for _, existingPool := range c.storagePools {
-			if existingPool.Id != id && existingPool.Name == req.Name {
+			// Skip current pool, check if name conflicts with other pools
+			if existingPool.Name == req.Name {
 				return fmt.Errorf("storage pool with name %s already exists", req.Name)
 			}
 		}
