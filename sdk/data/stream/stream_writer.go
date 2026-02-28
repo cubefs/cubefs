@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -59,8 +60,17 @@ const (
 // AsyncFlushRequest represents an asynchronous flush request
 type AsyncFlushRequest struct {
 	handler   *ExtentHandler
-	done      chan error
+	done      chan struct{}
+	err       error
+	doneOnce  sync.Once
 	clearFunc func() // Function to execute cleanup operations
+}
+
+func (r *AsyncFlushRequest) finish(err error) {
+	r.doneOnce.Do(func() {
+		r.err = err
+		close(r.done)
+	})
 }
 
 // VerUpdateRequest defines an verseq update request.
@@ -1006,7 +1016,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 }
 
 func (s *Streamer) flushAsync(wait bool, id string) (err error) {
-	pending := make(map[*ExtentHandler]chan error)
+	pending := make(map[*ExtentHandler]*AsyncFlushRequest)
 	asyncExtentHandler := make([]*ExtentHandler, 0)
 	for {
 		element := s.dirtylist.Get()
@@ -1029,10 +1039,10 @@ func (s *Streamer) flushAsync(wait bool, id string) (err error) {
 			// If there are in-flight packets, use async flush
 			log.LogDebugf("Streamer(%v) flush using async flush for eh(%v) with inflight(%v) id(%v) wait(%v)",
 				s.inode, eh, atomic.LoadInt32(&eh.inflight), id, wait)
-			ch := s.requestAsyncFlush(eh, clearFunc)
+			req := s.requestAsyncFlush(eh, clearFunc)
 			if wait {
 				if _, ok := pending[eh]; !ok {
-					pending[eh] = ch
+					pending[eh] = req
 				}
 			} else {
 				asyncExtentHandler = append(asyncExtentHandler, eh)
@@ -1063,10 +1073,10 @@ func (s *Streamer) flushAsync(wait bool, id string) (err error) {
 		var firstErr error
 		for len(pending) > 0 {
 			progressed := false
-			for eh, ch := range pending {
+			for eh, req := range pending {
 				select {
-				case e := <-ch:
-					s.removePendingAsyncFlush(eh.id)
+				case <-req.done:
+					e := req.err
 					delete(pending, eh)
 					if e != nil && firstErr == nil {
 						firstErr = e

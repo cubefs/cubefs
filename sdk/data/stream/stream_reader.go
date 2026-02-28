@@ -520,7 +520,8 @@ func (s *Streamer) asyncFlushManager() {
 			case <-s.asyncFlushDone:
 				log.LogDebugf("asyncFlushManager: received stop signal, skipping request for handler(%v)", req.handler)
 				// Streamer is being released, fail the request
-				req.done <- errors.New("streamer is being released")
+				s.removePendingAsyncFlush(req.handler.id)
+				req.finish(errors.New("streamer is being released"))
 				continue
 			default:
 				// Continue processing
@@ -604,13 +605,15 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 	if nextReq == nil {
 		log.LogWarnf("completeAsyncFlush: No pending async flush requests found for streamer(%v) handler(%v)",
 			s.inode, handler)
-		req.done <- errors.New("no pending async flush requests")
+		s.removePendingAsyncFlush(handler.id)
+		req.finish(errors.New("no pending async flush requests"))
 		return
 	}
 	if nextReq.handler.id > handler.id {
 		log.LogWarnf("completeAsyncFlush: streamer(%v) handler(%v) is skipped, nextReq(%v)",
 			s.inode, handler, nextReq.handler.id)
-		req.done <- nil
+		s.removePendingAsyncFlush(handler.id)
+		req.finish(nil)
 		return
 	}
 	if nextReq.handler.id < handler.id {
@@ -629,7 +632,8 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 				if nextReq == nil {
 					log.LogErrorf("completeAsyncFlush: No pending async flush requests found while waiting for "+
 						"streamer(%v) handler(%v)", s.inode, handler)
-					req.done <- errors.New("no pending async flush requests")
+					s.removePendingAsyncFlush(handler.id)
+					req.finish(errors.New("no pending async flush requests"))
 					return
 				}
 				if nextReq.handler.id >= handler.id {
@@ -649,11 +653,12 @@ end:
 			req.clearFunc()
 		}
 	}
-	req.done <- err
+	s.removePendingAsyncFlush(handler.id)
+	req.finish(err)
 }
 
 // requestAsyncFlush initiates an asynchronous flush for a handler
-func (s *Streamer) requestAsyncFlush(handler *ExtentHandler, clearFunc func()) chan error {
+func (s *Streamer) requestAsyncFlush(handler *ExtentHandler, clearFunc func()) *AsyncFlushRequest {
 	log.LogDebugf("requestAsyncFlush handler %v", handler)
 
 	// Check if this handler already has an active async flush request
@@ -661,13 +666,13 @@ func (s *Streamer) requestAsyncFlush(handler *ExtentHandler, clearFunc func()) c
 		existingReq := s.getActiveHandlerFlush(handler.id)
 		if existingReq != nil {
 			log.LogDebugf("Handler %v already has active async flush request, returning existing", handler.id)
-			return existingReq.done
+			return existingReq
 		}
 	}
 
 	req := &AsyncFlushRequest{
 		handler:   handler,
-		done:      make(chan error, 1),
+		done:      make(chan struct{}),
 		clearFunc: clearFunc,
 	}
 
@@ -679,8 +684,9 @@ func (s *Streamer) requestAsyncFlush(handler *ExtentHandler, clearFunc func()) c
 	case <-s.asyncFlushDone:
 		// Streamer is being released, fail the request immediately
 		log.LogWarnf("requestAsyncFlush: streamer is being released, failing request for handler(%v)", handler)
-		req.done <- errors.New("streamer is being released")
-		return req.done
+		s.removePendingAsyncFlush(handler.id)
+		req.finish(errors.New("streamer is being released"))
+		return req
 	default:
 		// Continue with normal processing
 	}
@@ -696,7 +702,7 @@ func (s *Streamer) requestAsyncFlush(handler *ExtentHandler, clearFunc func()) c
 		go s.completeAsyncFlush(req)
 	}
 
-	return req.done
+	return req
 }
 
 // isHandlerFlushActive checks if a handler already has an active async flush request
