@@ -3520,22 +3520,10 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		return nil
 	}
 
-	availablePools := m.cluster.getAvailablePools()
-	if len(availablePools) == 0 {
-		err = fmt.Errorf("no available pools in zone(%v)", req.zoneName)
-		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
-		return err
-	}
-
-	if _, ok := availablePools[req.defaultPoolId]; !ok {
-		err = fmt.Errorf("defaultPoolId(%v) not found in available pools(%v)", req.defaultPoolId, proto.PoolIdMapToString(availablePools))
-		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
-		return err
-	}
-
+	availablePools := m.cluster.getAvailablePools(req.zoneName)
 	for _, poolId := range req.allowedPools {
 		if _, ok := availablePools[poolId]; !ok {
-			err = fmt.Errorf("allowedPoolId(%v) not found in available pools(%v)", poolId, proto.PoolIdMapToString(availablePools))
+			err = fmt.Errorf("poolId(%v) not found in available pools(%v) for zoneName(%v)", poolId, proto.PoolIdMapToString(availablePools), req.zoneName)
 			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 			return err
 		}
@@ -10550,15 +10538,16 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(newArgs.allowedPools, func(i, j int) bool {
 		return newArgs.allowedPools[i] < newArgs.allowedPools[j]
 	})
+	newArgs.quotaByPool[poolId] = 0
 
 	if !vol.crossZone {
 		newArgs.crossZone = true
 		log.LogWarnf("[volAddPool] vol(%v) is not cross zone, set crossZone to true", name)
 	}
 
-	availablePools := m.cluster.getAvailablePools()
+	availablePools := m.cluster.getAvailablePools(vol.zoneName)
 	if _, ok := availablePools[poolId]; !ok {
-		err = fmt.Errorf("pool(%v) not found in available pools(%v)", poolId, proto.PoolIdMapToString(availablePools))
+		err = fmt.Errorf("pool(%v) not found in available pools(%v) for zoneName(%v)", poolId, proto.PoolIdMapToString(availablePools), vol.zoneName)
 		log.LogErrorf("[volAddPool] vol(%v), err: %v", name, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

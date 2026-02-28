@@ -523,7 +523,10 @@ func (w *Wrapper) CanWriteByPool(poolId uint8) bool {
 		return true
 	}
 
-	st := w.volStatByPool[poolId]
+	st, ok := w.volStatByPool[poolId]
+	if !ok {
+		return true
+	}
 	return !st.Full()
 }
 
@@ -534,7 +537,10 @@ func (w *Wrapper) CanWriteByClass(class uint32) bool {
 	if len(w.volStatByClass) == 0 {
 		return true
 	}
-	st := w.volStatByClass[class]
+	st, ok := w.volStatByClass[class]
+	if !ok {
+		return true
+	}
 	return !st.Full()
 }
 

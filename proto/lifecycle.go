@@ -101,6 +101,7 @@ var (
 	LifeCycleErrDuplicateFromPoolId = errors.New("'FromPoolId' must be unique within a rule's transitions")
 	LifeCycleErrMalformedXML        = errors.New("The XML you provided was not well-formed or did not validate against our published schema")
 	LifeCycleErrByMpAndPrefix       = errors.New("'ByMp' and 'Prefix' cannot be specified at the same time")
+	LifeCycleErrByMpAndDir          = errors.New("'ByMp' can only be set to o(ScanByDir) or 1(ScanByMp)")
 	LifeCycleErrConflictRules       = errors.New("Conflicting rule prefix")
 	LifeCycleErrRulePrefix          = errors.New("Rule prefix cannot start with '/'")
 	LifeCycleErrTransitionCycle     = errors.New("Circular dependency detected in transition rules")
@@ -141,25 +142,25 @@ func ValidRules(Rules []*Rule) error {
 }
 
 func ValidRulePrefix(Rules []*Rule) error {
-	if len(Rules) == 1 {
-		rule := Rules[0]
-		if strings.HasPrefix(rule.GetPrefix(), "/") {
-			return LifeCycleErrRulePrefix
-		}
-		// Check for duplicate FromPoolId in transitions even for single rule
-		fromPoolIds := make(map[uint8]bool)
-		if rule.Transitions != nil {
-			for _, transition := range rule.Transitions {
-				if transition.FromPoolId != 0 {
-					if fromPoolIds[transition.FromPoolId] {
-						return LifeCycleErrDuplicateFromPoolId
-					}
-					fromPoolIds[transition.FromPoolId] = true
-				}
-			}
-		}
-		return nil
-	}
+	// if len(Rules) == 1 {
+	// 	rule := Rules[0]
+	// 	if strings.HasPrefix(rule.GetPrefix(), "/") {
+	// 		return LifeCycleErrRulePrefix
+	// 	}
+	// 	// Check for duplicate FromPoolId in transitions even for single rule
+	// 	fromPoolIds := make(map[uint8]bool)
+	// 	if rule.Transitions != nil {
+	// 		for _, transition := range rule.Transitions {
+	// 			if transition.FromPoolId != 0 {
+	// 				if fromPoolIds[transition.FromPoolId] {
+	// 					return LifeCycleErrDuplicateFromPoolId
+	// 				}
+	// 				fromPoolIds[transition.FromPoolId] = true
+	// 			}
+	// 		}
+	// 	}
+	// 	return nil
+	// }
 
 	// Collect fromPoolIds for each rule
 	type ruleInfo struct {
@@ -175,6 +176,10 @@ func ValidRulePrefix(Rules []*Rule) error {
 
 		if strings.HasPrefix(rule.GetPrefix(), "/") {
 			return LifeCycleErrRulePrefix
+		}
+
+		if rule.Filter.ByMp != ScanByMp && rule.Filter.ByMp != ScanByDir {
+			return LifeCycleErrByMpAndDir
 		}
 
 		if rule.Filter.ByMp == ScanByMp && rule.Filter.Prefix != "" {

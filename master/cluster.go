@@ -4571,12 +4571,17 @@ func (c *Cluster) HasResourceOfStorageBlobStore() (has bool) {
 	return has
 }
 
-func (c *Cluster) getAvailablePools() (pools map[uint8]struct{}) {
+func (c *Cluster) getAvailablePools(zoneNameList string) (pools map[uint8]struct{}) {
 	poolsMap := make(map[uint8]struct{})
 	t := c.t
 
+	zoneList := strings.Split(zoneNameList, ",")
 	t.zoneMap.Range(func(zoneName, value interface{}) bool {
 		zone := value.(*Zone)
+
+		if zoneNameList != "" && !contains(zoneList, zone.name) {
+			return true
+		}
 
 		if zone.PoolId != proto.UnSpecifiedPoolId && zone.dataNodeCount() > 0 {
 			poolsMap[zone.PoolId] = struct{}{}

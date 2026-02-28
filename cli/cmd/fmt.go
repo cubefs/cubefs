@@ -303,19 +303,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  DpCnt                           : %v\n", svv.DpCnt))
 	if len(svv.DpCntByPoolId) > 0 {
 		sb.WriteString("  DpCntByPoolId                   :\n")
-		poolIds := make([]uint8, 0, len(svv.DpCntByPoolId))
-		for poolId := range svv.DpCntByPoolId {
-			poolIds = append(poolIds, poolId)
-		}
-		sort.Slice(poolIds, func(i, j int) bool {
-			return poolIds[i] < poolIds[j]
-		})
-		for _, poolId := range poolIds {
+		for poolId, pool := range svv.Pools {
 			cnt := svv.DpCntByPoolId[poolId]
-			poolName := ""
-			if pool, ok := svv.Pools[poolId]; ok {
-				poolName = fmt.Sprintf(" (%s)", pool.Name)
-			}
+			poolName := fmt.Sprintf(" (%s)", pool.Name)
 			sb.WriteString(fmt.Sprintf("    Pool[%d]%s: %d\n", poolId, poolName, cnt))
 		}
 	}
@@ -337,19 +327,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  RwDpOfHDDCnt                    : %v\n", svv.RwDpOfHDDCnt))
 	if len(svv.RwDpCntByPoolId) > 0 {
 		sb.WriteString("  RwDpCntByPoolId                 :\n")
-		poolIds := make([]uint8, 0, len(svv.RwDpCntByPoolId))
-		for poolId := range svv.RwDpCntByPoolId {
-			poolIds = append(poolIds, poolId)
-		}
-		sort.Slice(poolIds, func(i, j int) bool {
-			return poolIds[i] < poolIds[j]
-		})
-		for _, poolId := range poolIds {
+		for poolId, pool := range svv.Pools {
 			cnt := svv.RwDpCntByPoolId[poolId]
-			poolName := ""
-			if pool, ok := svv.Pools[poolId]; ok {
-				poolName = fmt.Sprintf(" (%s)", pool.Name)
-			}
+			poolName := fmt.Sprintf(" (%s)", pool.Name)
 			sb.WriteString(fmt.Sprintf("    Pool[%d]%s: %d\n", poolId, poolName, cnt))
 		}
 	}

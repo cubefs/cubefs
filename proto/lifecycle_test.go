@@ -41,6 +41,30 @@ func TestValidRules(t *testing.T) {
 		require.Equal(t, LifeCycleErrTooManyRules, err)
 	})
 
+	t.Run("invalid ByMp", func(t *testing.T) {
+		days := 30
+		rules := []*Rule{
+			{
+				ID:     "rule-1",
+				Status: RuleEnabled,
+				Filter: &Filter{
+					ByMp: 2,
+				},
+				Transitions: []*Transition{
+					{
+						Days:         &days,
+						FromPoolId:   1,
+						ToPoolId:     2,
+						StorageClass: OpTypeStorageClassHDD,
+					},
+				},
+			},
+		}
+		err := ValidRules(rules)
+		require.Error(t, err)
+		require.Equal(t, LifeCycleErrByMpAndDir, err)
+	})
+
 	t.Run("duplicate rule ID", func(t *testing.T) {
 		days := 30
 		rules := []*Rule{

@@ -78,12 +78,18 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		return
 	}
 	ino := NewInode(req.Inode, 0)
-	if _, _, err = mp.CheckQuota(req.Inode, p); err != nil {
+	_, oldIno, err := mp.CheckQuota(req.Inode, p)
+	if err != nil {
 		log.LogErrorf("ExtentAppend fail status [%v]", err)
 		return
 	}
+
 	ext := req.Extent
 	ino.GetExtents().Append(ext)
+
+	ino.PoolId = oldIno.PoolId
+	ino.StorageClass = oldIno.StorageClass
+
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

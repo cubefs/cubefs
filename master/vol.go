@@ -1032,6 +1032,11 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	quotaByClass := vol.getQuotaByClass()
 	quotaByPoolId := vol.getQuotaByPoolId()
 
+	for _, pool := range vol.allowedPools {
+		statByPoolMap[pool] = proto.NewStatOfStorageClassByPoolWithQuota(pool, quotaByPoolId[pool])
+		statByMigratePoolMap[pool] = proto.NewStatOfStorageClassByPool(pool)
+	}
+
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden, c.getMetaPartitionTimeoutSec())
 		if doSplit && !c.cfg.DisableAutoCreate {
