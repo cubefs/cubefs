@@ -165,6 +165,12 @@ func (s *ManualScanner) checkScanning() {
 	repeatMinute := 0
 	dur := time.Second * time.Duration(s.flashNode.scanCheckInterval)
 	taskCheckTimer := time.NewTimer(dur)
+
+	var lastFileScannedNum int64
+	var lastDirScannedNum int64
+	var lastEntryNum int64
+	lastChangeTime := time.Now()
+
 	for {
 		repeatMinute++
 		if minuteProgressCount > 0 && repeatMinute >= minuteProgressCount {
@@ -217,6 +223,33 @@ func (s *ManualScanner) checkScanning() {
 				s.flashNode.respondToMaster(s.adminTask)
 				return
 			}
+
+			curFileScanned := atomic.LoadInt64(&s.currentStat.TotalFileScannedNum)
+			curDirScanned := atomic.LoadInt64(&s.currentStat.TotalDirScannedNum)
+			curEntryNum := atomic.LoadInt64(&s.currentStat.TotalEntryNum)
+			if curFileScanned != lastFileScannedNum || curDirScanned != lastDirScannedNum || curEntryNum != lastEntryNum || atomic.LoadInt32(&s.pause) == 1 || len(s.RemoteCache.PrepareCh) != 0 {
+				lastFileScannedNum = curFileScanned
+				lastDirScannedNum = curDirScanned
+				lastEntryNum = curEntryNum
+				lastChangeTime = time.Now()
+			} else if time.Since(lastChangeTime) >= time.Duration(s.manualTask.ManualTaskConfig.TaskTimeoutMinutes)*time.Minute {
+				log.LogErrorf("checkScanning timeout for task(%v) eklen(%v)", s.adminTask, s.currentStat.TotalExtentKeyNum)
+				taskCheckTimer.Stop()
+				t := time.Now()
+				response := s.copyResponse()
+				response.EndTime = &t
+				response.Status = proto.TaskFailed
+				response.Done = true
+				response.StartErr = fmt.Sprintf("task execution timeout: no progress for %d minutes", s.manualTask.ManualTaskConfig.TaskTimeoutMinutes)
+				log.LogInfof("checkScanning timeout response(%+v)", response)
+				s.Stop()
+				msg := fmt.Sprintf("vol(%v) path(%v) topo(%v) task(%+v) timeout", s.manualTask.VolName, s.manualTask.ManualTaskConfig.Prefix, s.manualTask.TopoName, response)
+				auditlog.LogFlashNodeOp("Warmup", msg, nil)
+				s.flashNode.manualScanners.Delete(s.ID)
+				s.flashNode.respondToMaster(s.adminTask)
+				return
+			}
+
 			taskCheckTimer.Reset(dur)
 		}
 	}

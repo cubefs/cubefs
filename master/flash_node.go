@@ -477,6 +477,9 @@ func (m *Server) createFlashNodeManualTask(w http.ResponseWriter, r *http.Reques
 	if req.ManualTaskConfig.PrepareLimitPerSecond == 0 {
 		req.ManualTaskConfig.PrepareLimitPerSecond = 10000
 	}
+	if req.ManualTaskConfig.TaskTimeoutMinutes == 0 {
+		req.ManualTaskConfig.TaskTimeoutMinutes = 20
+	}
 	// Validate file size limits
 	if req.ManualTaskConfig.MinFileSizeLimit > req.ManualTaskConfig.MaxFileSizeLimit {
 		err = fmt.Errorf("MinFileSizeLimit(%d) cannot be greater than MaxFileSizeLimit(%d)",
