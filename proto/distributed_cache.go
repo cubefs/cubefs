@@ -556,6 +556,7 @@ type ManualTaskConfig struct {
 	PrepareLimitPerSecond   int64
 	FlowLimitPerSecond      int64
 	PrintProgress           bool
+	TaskTimeoutMinutes      int
 }
 
 type ManualTaskStatistics struct {
