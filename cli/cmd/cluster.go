@@ -849,7 +849,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&dataMediaType, "clusterDataMediaType", "", "set cluster media type, 1(ssd), 2(hdd)")
 	cmd.Flags().StringVar(&handleTimeout, "flashNodeHandleReadTimeout", "", "Specify flash node handle read timeout (example:1000ms)")
 	cmd.Flags().StringVar(&readDataNodeTimeout, "flashNodeReadDataNodeTimeout", "", "Specify flash node read data node timeout (example:3000ms)")
-	cmd.Flags().StringVar(&rackAware, CliFlagRackAware, "", "Set rack aware level: 0(nolimit), 1(weak), 2(strong)")
+	// cmd.Flags().StringVar(&rackAware, CliFlagRackAware, "", "Set rack aware level: 0(nolimit), 1(weak), 2(strong)")
 	cmd.Flags().StringVar(&learnerRecoverTimeoutSeconds, "learnerRecoverTimeoutSeconds", "", "Set learner mode recovery timeout in seconds (must > 0)")
 	// Distribution optimization parameters
 	cmd.Flags().StringVar(&distributionOptimizationConDpCnt, CliFlagDistributionOptimizationConDpCnt, "", "Concurrent data partition count for distribution optimization")

@@ -4349,13 +4349,18 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if val, ok := params[rackAwareLevelKey]; ok {
-		if v, ok := val.(uint8); ok {
-			if err = m.cluster.setRackAwareLevel(proto.RackAwareLevel(v)); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
+	// if val, ok := params[rackAwareLevelKey]; ok {
+	// 	if v, ok := val.(uint8); ok {
+	// 		if err = m.cluster.setRackAwareLevel(proto.RackAwareLevel(v)); err != nil {
+	// 			sendErrReply(w, r, newErrHTTPReply(err))
+	// 			return
+	// 		}
+	// 	}
+	// }
+
+	if err = m.cluster.setRackAwareLevel(proto.RackAwareNone); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 
 	if val, ok := params[learnerRecoverTimeoutSecondsKey]; ok {

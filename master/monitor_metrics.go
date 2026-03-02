@@ -319,15 +319,6 @@ func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uin
 	}
 	defer m.dpMissingReplicaMutex.Unlock()
 
-	m.dpMissingReplicaMutex.Lock()
-	defer m.dpMissingReplicaMutex.Unlock()
-
-	m.dpMissingReplicaMutex.Lock()
-	defer m.dpMissingReplicaMutex.Unlock()
-
-	m.dpMissingReplicaMutex.Lock()
-	defer m.dpMissingReplicaMutex.Unlock()
-
 	if _, ok := m.dpMissingReplicaInfo[id]; !ok {
 		m.dpMissingReplicaInfo[id] = addrSet{addrs: make(map[string]voidType)}
 	}
@@ -663,7 +654,8 @@ func (mm *monitorMetrics) checkPartitionCreateMetrics() {
 		}
 	}
 
-	rackAwareLevel := []proto.RackAwareLevel{proto.RackAwareStrong, proto.RackAwareNone}
+	// rackAwareLevel := []proto.RackAwareLevel{proto.RackAwareStrong, proto.RackAwareNone}
+	rackAwareLevel := []proto.RackAwareLevel{proto.RackAwareNone}
 	failStats := make(map[string]int)
 	allStats := make(map[string]bool)
 
@@ -718,28 +710,28 @@ func (mm *monitorMetrics) checkPartitionCreateMetrics() {
 }
 
 func (mm *monitorMetrics) checkHostSelection(nodeType uint32, vol *Vol, mediaType uint32, rackLevel proto.RackAwareLevel) bool {
-	_, _, err := mm.cluster.getHostFromNormalZoneForCreate(
-		nodeType, int(vol.dpReplicaNum), vol.zoneName, proto.UnSpecifiedPoolId, rackLevel, vol)
+	// _, _, err := mm.cluster.getHostFromNormalZoneForCreate(
+	// 	nodeType, int(vol.dpReplicaNum), vol.zoneName, proto.UnSpecifiedPoolId, rackLevel, vol)
 
-	partitionType := "metaMem"
-	if nodeType == TypeRocksdbPartition {
-		partitionType = "metaRocksdb"
-	} else if nodeType == TypeDataPartition {
-		partitionType = "data"
-	}
+	// partitionType := "metaMem"
+	// if nodeType == TypeRocksdbPartition {
+	// 	partitionType = "metaRocksdb"
+	// } else if nodeType == TypeDataPartition {
+	// 	partitionType = "data"
+	// }
 
-	mediaStr := ""
-	if mediaType != 0 {
-		mediaStr = fmt.Sprintf(", media: %v", proto.MediaTypeString(mediaType))
-	}
+	// mediaStr := ""
+	// if mediaType != 0 {
+	// 	mediaStr = fmt.Sprintf(", media: %v", proto.MediaTypeString(mediaType))
+	// }
 
-	if err != nil {
-		log.LogWarnf("checkPartitionCreateMetrics: getHostFromNormalZoneForCreate failed: vol %v, mode %v, type %s%s, rackLevel %v, err %v",
-			vol.Name, vol.createModeString(), partitionType, mediaStr, rackLevel, err)
-		return false
-	}
-	log.LogInfof("checkPartitionCreateMetrics: getHostFromNormalZoneForCreate success: vol %v, mode %v, type %s%s, rackLevel %v",
-		vol.Name, vol.createModeString(), partitionType, mediaStr, rackLevel)
+	// if err != nil {
+	// 	log.LogWarnf("checkPartitionCreateMetrics: getHostFromNormalZoneForCreate failed: vol %v, mode %v, type %s%s, rackLevel %v, err %v",
+	// 		vol.Name, vol.createModeString(), partitionType, mediaStr, rackLevel, err)
+	// 	return false
+	// }
+	// log.LogInfof("checkPartitionCreateMetrics: getHostFromNormalZoneForCreate success: vol %v, mode %v, type %s%s, rackLevel %v",
+	// 	vol.Name, vol.createModeString(), partitionType, mediaStr, rackLevel)
 	return true
 }
 

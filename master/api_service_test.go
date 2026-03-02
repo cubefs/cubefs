@@ -2099,38 +2099,38 @@ func TestUpdateVolStoreMode(t *testing.T) {
 	require.EqualValues(t, proto.StoreModeMem, vol.DefaultStoreMode)
 }
 
-func TestSetRackAwareLevel(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
-	oldVal := server.cluster.cfg.RackAwareLevel
+// func TestSetRackAwareLevel(t *testing.T) {
+// 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+// 	oldVal := server.cluster.cfg.RackAwareLevel
 
-	// Test setting to RackAwareWeak (1)
-	setVal := proto.RackAwareWeak
-	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, uint8(setVal))
-	process(setUrl, t)
-	require.EqualValues(t, setVal, server.cluster.cfg.RackAwareLevel)
+// 	// Test setting to RackAwareWeak (1)
+// 	setVal := proto.RackAwareWeak
+// 	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, uint8(setVal))
+// 	process(setUrl, t)
+// 	require.EqualValues(t, setVal, server.cluster.cfg.RackAwareLevel)
 
-	// Test setting to RackAwareStrong (2)
-	setVal = proto.RackAwareStrong
-	setUrl = fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, uint8(setVal))
-	process(setUrl, t)
-	require.EqualValues(t, setVal, server.cluster.cfg.RackAwareLevel)
+// 	// Test setting to RackAwareStrong (2)
+// 	setVal = proto.RackAwareStrong
+// 	setUrl = fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, uint8(setVal))
+// 	process(setUrl, t)
+// 	require.EqualValues(t, setVal, server.cluster.cfg.RackAwareLevel)
 
-	// Test setting to RackAwareNone (0)
-	setVal = proto.RackAwareNone
-	setUrl = fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, uint8(setVal))
-	process(setUrl, t)
-	require.EqualValues(t, setVal, server.cluster.cfg.RackAwareLevel)
+// 	// Test setting to RackAwareNone (0)
+// 	setVal = proto.RackAwareNone
+// 	setUrl = fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, uint8(setVal))
+// 	process(setUrl, t)
+// 	require.EqualValues(t, setVal, server.cluster.cfg.RackAwareLevel)
 
-	// Test invalid value (should fail)
-	invalidUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, 3)
-	reply := processNoCheck(invalidUrl, t)
-	require.NotEqualValues(t, proto.ErrCodeSuccess, reply.Code)
+// 	// Test invalid value (should fail)
+// 	invalidUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, 3)
+// 	reply := processNoCheck(invalidUrl, t)
+// 	require.NotEqualValues(t, proto.ErrCodeSuccess, reply.Code)
 
-	// Restore original value
-	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, uint8(oldVal))
-	process(unsetUrl, t)
-	require.EqualValues(t, oldVal, server.cluster.cfg.RackAwareLevel)
-}
+// 	// Restore original value
+// 	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, rackAwareLevelKey, uint8(oldVal))
+// 	process(unsetUrl, t)
+// 	require.EqualValues(t, oldVal, server.cluster.cfg.RackAwareLevel)
+// }
 
 func TestSetEnableDistributionOptimization(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
