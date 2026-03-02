@@ -558,7 +558,7 @@ func (m *Server) flashManualTask(w http.ResponseWriter, r *http.Request) {
 			}
 			if rsp.Status == int(proto.Flash_Task_End) {
 				stats := rsp.ManualTaskStatistics
-				numerator := stats.TotalFileScannedNum + stats.TotalDirScannedNum
+				numerator := stats.TotalFileCachedNum + stats.TotalDirScannedNum
 				denominator := numerator + stats.ErrorCacheNum + stats.ErrorReadDirNum
 				if denominator == 0 {
 					stats.CompletionRate = "0%"

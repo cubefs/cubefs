@@ -166,7 +166,7 @@ func (s *ManualScanner) checkScanning() {
 	dur := time.Second * time.Duration(s.flashNode.scanCheckInterval)
 	taskCheckTimer := time.NewTimer(dur)
 
-	var lastFileScannedNum int64
+	var lastFileCachedNum int64
 	var lastDirScannedNum int64
 	var lastEntryNum int64
 	lastChangeTime := time.Now()
@@ -224,11 +224,13 @@ func (s *ManualScanner) checkScanning() {
 				return
 			}
 
-			curFileScanned := atomic.LoadInt64(&s.currentStat.TotalFileScannedNum)
+			curFileCachedNum := atomic.LoadInt64(&s.currentStat.TotalFileCachedNum)
 			curDirScanned := atomic.LoadInt64(&s.currentStat.TotalDirScannedNum)
 			curEntryNum := atomic.LoadInt64(&s.currentStat.TotalEntryNum)
-			if curFileScanned != lastFileScannedNum || curDirScanned != lastDirScannedNum || curEntryNum != lastEntryNum || atomic.LoadInt32(&s.pause) == 1 || len(s.RemoteCache.PrepareCh) != 0 {
-				lastFileScannedNum = curFileScanned
+			log.LogInfof("checkScanning progress id(%v): curFileCachedNum(%v) lastFileCachedNum(%v) curDirScanned(%v) lastDirScannedNum(%v) curEntryNum(%v) lastEntryNum(%v) pause(%v) prepareChLen(%v)",
+				s.ID, curFileCachedNum, lastFileCachedNum, curDirScanned, lastDirScannedNum, curEntryNum, lastEntryNum, atomic.LoadInt32(&s.pause), len(s.RemoteCache.PrepareCh))
+			if curFileCachedNum != lastFileCachedNum || curDirScanned != lastDirScannedNum || curEntryNum != lastEntryNum || atomic.LoadInt32(&s.pause) == 1 || len(s.RemoteCache.PrepareCh) != 0 {
+				lastFileCachedNum = curFileCachedNum
 				lastDirScannedNum = curDirScanned
 				lastEntryNum = curEntryNum
 				lastChangeTime = time.Now()
@@ -239,10 +241,10 @@ func (s *ManualScanner) checkScanning() {
 				response := s.copyResponse()
 				response.EndTime = &t
 				response.Status = proto.TaskFailed
-				response.Done = true
+				response.Done = false
 				response.StartErr = fmt.Sprintf("task execution timeout: no progress for %d minutes", s.manualTask.ManualTaskConfig.TaskTimeoutMinutes)
 				log.LogInfof("checkScanning timeout response(%+v)", response)
-				s.Stop()
+				go s.Stop()
 				msg := fmt.Sprintf("vol(%v) path(%v) topo(%v) task(%+v) timeout", s.manualTask.VolName, s.manualTask.ManualTaskConfig.Prefix, s.manualTask.TopoName, response)
 				auditlog.LogFlashNodeOp("Warmup", msg, nil)
 				s.flashNode.manualScanners.Delete(s.ID)
