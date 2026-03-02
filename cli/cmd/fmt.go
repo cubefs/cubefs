@@ -113,9 +113,9 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  LegacyDataMediaType                      : %v\n", cv.LegacyDataMediaType))
 	sb.WriteString(fmt.Sprintf("  RaftPartitionCanUsingDifferentPortEnabled: %v\n", cv.RaftPartitionCanUsingDifferentPortEnabled))
 	sb.WriteString(fmt.Sprintf("  RackAwareLevel                           : %v\n", cv.RackAwareLevel.String()))
-	sb.WriteString(fmt.Sprintf("  AutoFixTag                         : %v\n", cv.AutoFixTag))
-	sb.WriteString(fmt.Sprintf("  DefaultDpTag                       : %v\n", cv.DefaultDpTag))
-	sb.WriteString(fmt.Sprintf("  DefaultMpTag                       : %v\n", cv.DefaultMpTag))
+	sb.WriteString(fmt.Sprintf("  AutoFixTag                               : %v\n", cv.AutoFixTag))
+	sb.WriteString(fmt.Sprintf("  DpTagMapRules                            : %v\n", cv.DefaultDpTag))
+	sb.WriteString(fmt.Sprintf("  MpTagMapRules                            : %v\n", cv.DefaultMpTag))
 
 	sb.WriteString(fmt.Sprintf("  FlashNodeHandleReadTimeout       : %v ms\n", cv.FlashNodeHandleReadTimeout))
 	sb.WriteString(fmt.Sprintf("  FlashNodeReadDataNodeTimeout     : %v ms\n", cv.FlashNodeReadDataNodeTimeout))
@@ -418,8 +418,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Default store mode              : %v\n", svv.DefaultStoreMode.Str()))
 	sb.WriteString(fmt.Sprintf("  RocksdbMpReplicaCount           : %v\n", svv.RocksdbMpCount))
 	sb.WriteString(fmt.Sprintf("  MemoryMpReplicaCount            : %v\n", svv.MemoryMpCount))
-	sb.WriteString(fmt.Sprintf("  DpTag                     : %v\n", svv.DpTag))
-	sb.WriteString(fmt.Sprintf("  MpTag                     : %v\n", svv.MpTag))
+	sb.WriteString(fmt.Sprintf("  DpTagMapRules                   : %v\n", svv.DpTag))
+	sb.WriteString(fmt.Sprintf("  MpTagMapRules                   : %v\n", svv.MpTag))
 	return sb.String()
 }
 

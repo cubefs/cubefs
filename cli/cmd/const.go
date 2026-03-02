@@ -180,8 +180,8 @@ const (
 	CliFlagVolQuotaClass                     = "quotaClass"
 	CliFlagVolQuotaOfClass                   = "quotaOfStorageClass"
 	CliFlagStoreMode                         = "store-mode"
-	CliFlagDpTag                             = "dpTag"
-	CliFlagMpTag                             = "mpTag"
+	CliFlagDpTag                             = "dpTagMapRules"
+	CliFlagMpTag                             = "mpTagMapRules"
 
 	CliFlagRemoteCacheEnable            = "remoteCacheEnable"
 	CliFlagRemoteCachePath              = "remoteCachePath"
@@ -204,8 +204,8 @@ const (
 	CliFlagDpLimitHddBaseCount          = "dpLimitHddBaseCount"
 	CliFlagDpLimitHddFactor             = "dpLimitHddFactor"
 	CliFlagAutoFixTag                   = "autoMigrateByTag"
-	CliFlagDefaultDpTag                 = "defaultDpTag"
-	CliFlagDefaultMpTag                 = "defaultMpTag"
+	CliFlagDefaultDpTag                 = "dpTagMapRules"
+	CliFlagDefaultMpTag                 = "mpTagMapRules"
 	CliFlagDefaultPoolId                = "defaultPoolId"
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
