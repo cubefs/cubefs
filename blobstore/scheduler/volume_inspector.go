@@ -176,6 +176,7 @@ type VolumeInspectMgr struct {
 
 	taskSwitch    taskswitch.ISwitcher
 	clusterMgrCli client.ClusterMgrAPI
+	diskGetter    DiskGetter
 
 	repairShardSender client.ProxyAPI
 	sendDeduplicator  *badShardDeduplicator
@@ -191,6 +192,7 @@ func NewVolumeInspectMgr(
 	clusterMgrCli client.ClusterMgrAPI,
 	repairShardSender client.ProxyAPI,
 	taskSwitch taskswitch.ISwitcher, cfg *VolumeInspectMgrCfg,
+	getter DiskGetter,
 ) *VolumeInspectMgr {
 	return &VolumeInspectMgr{
 		Closer:            closer.New(),
@@ -199,6 +201,7 @@ func NewVolumeInspectMgr(
 		firstPrepare:      true,
 		taskSwitch:        taskSwitch,
 		clusterMgrCli:     clusterMgrCli,
+		diskGetter:        getter,
 		repairShardSender: repairShardSender,
 		sendDeduplicator:  newBadShardDeduplicator(defaultDuplicateCnt),
 		cfg:               cfg,
@@ -540,6 +543,14 @@ func (mgr *VolumeInspectMgr) genTaskID(vol *client.VolumeInfoSimple) string {
 }
 
 func (mgr *VolumeInspectMgr) genInspectTask(taskID string, vol *client.VolumeInfoSimple) *proto.VolumeInspectTask {
+	for idx := range vol.VunitLocations {
+		diskID := vol.VunitLocations[idx].DiskID
+		disk, ok := mgr.diskGetter.GetDisk(diskID)
+		if ok {
+			vol.VunitLocations[idx].Host = disk.Host
+		}
+	}
+
 	return &proto.VolumeInspectTask{
 		TaskID:   taskID,
 		Mode:     vol.CodeMode,

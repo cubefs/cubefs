@@ -67,10 +67,12 @@ func TestBadShardDeduplicator(t *testing.T) {
 func newInspector(t *testing.T) *VolumeInspectMgr {
 	ctr := gomock.NewController(t)
 	clusterMgr := NewMockClusterMgrAPI(ctr)
+	getter := NewMockDiskGetter(ctr)
 	taskSwitch := mocks.NewMockSwitcher(ctr)
 	shardRepairSender := NewMockMqProxyAPI(ctr)
 	conf := &VolumeInspectMgrCfg{InspectIntervalS: defaultInspectIntervalS, TimeoutMs: 1}
-	return NewVolumeInspectMgr(clusterMgr, shardRepairSender, taskSwitch, conf)
+
+	return NewVolumeInspectMgr(clusterMgr, shardRepairSender, taskSwitch, conf, getter)
 }
 
 func TestInspectorRun(t *testing.T) {
@@ -107,6 +109,7 @@ func TestInspectorPrepare(t *testing.T) {
 		volume1 := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusIdle)
 		volume2 := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusActive)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInspectCheckPoint(any).AnyTimes().Return(&proto.VolumeInspectCheckPoint{}, nil)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(nil, false)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume1}, proto.Vid(0), nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume2}, proto.Vid(0), nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return(nil, proto.Vid(0), nil)
@@ -123,6 +126,7 @@ func TestInspectorPrepare(t *testing.T) {
 		volume1 := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusIdle)
 		volume2 := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusActive)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInspectCheckPoint(any).AnyTimes().Return(&proto.VolumeInspectCheckPoint{}, nil)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(nil, false)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume1}, proto.Vid(0), nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume2}, proto.Vid(0), nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return(nil, proto.Vid(0), nil)
@@ -143,6 +147,7 @@ func TestInspectorWaitCompleted(t *testing.T) {
 		volume := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusIdle)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInspectCheckPoint(any).AnyTimes().Return(&proto.VolumeInspectCheckPoint{}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume}, proto.Vid(0), nil)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(nil, false)
 
 		mgr.prepare(ctx)
 		require.Equal(t, 1, len(mgr.tasks))
@@ -165,6 +170,7 @@ func TestInspectorFinish(t *testing.T) {
 		volume := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusIdle)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInspectCheckPoint(any).AnyTimes().Return(&proto.VolumeInspectCheckPoint{}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume}, proto.Vid(0), nil)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(nil, false)
 
 		mgr.prepare(ctx)
 		require.Equal(t, 1, len(mgr.tasks))
@@ -186,6 +192,7 @@ func TestInspectorFinish(t *testing.T) {
 		volume := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusIdle)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInspectCheckPoint(any).AnyTimes().Return(&proto.VolumeInspectCheckPoint{}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume}, proto.Vid(0), nil)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(nil, false)
 
 		mgr.prepare(ctx)
 		require.Equal(t, 1, len(mgr.tasks))
@@ -208,6 +215,7 @@ func TestInspectorFinish(t *testing.T) {
 		volume := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusIdle)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInspectCheckPoint(any).AnyTimes().Return(&proto.VolumeInspectCheckPoint{}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume}, proto.Vid(0), nil)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(nil, false)
 
 		mgr.prepare(ctx)
 		require.Equal(t, 1, len(mgr.tasks))
@@ -258,6 +266,7 @@ func TestInspectorAcquire(t *testing.T) {
 		volume := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusIdle)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInspectCheckPoint(any).AnyTimes().Return(&proto.VolumeInspectCheckPoint{}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume}, proto.Vid(0), nil)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(nil, false)
 
 		mgr.prepare(ctx)
 		require.Equal(t, 1, len(mgr.tasks))
@@ -297,6 +306,7 @@ func TestInspectorComplete(t *testing.T) {
 		volume := MockGenVolInfo(100012, codemode.EC6P6, proto.VolumeStatusIdle)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInspectCheckPoint(any).AnyTimes().Return(&proto.VolumeInspectCheckPoint{}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListVolume(any, any, any).Return([]*client.VolumeInfoSimple{volume}, proto.Vid(0), nil)
+		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(nil, false)
 
 		mgr.prepare(ctx)
 		require.Equal(t, 1, len(mgr.tasks))
