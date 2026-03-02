@@ -1699,13 +1699,13 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 			err = proto.ErrNoZoneToCreateMetaPartition
 		}
 
-		log.LogErrorf("[allocZonesForNode] nodeType(%v), dataMediaType(%v), reqZoneNum[%v], candidateZones[%v], demandWriteNodes[%v], err:%v",
+		log.LogErrorf("[allocZonesForNode] nodeType(%v), poolId(%v), reqZoneNum[%v], candidateZones[%v], demandWriteNodes[%v], err:%v",
 			NodeTypeString(rsMgr.nodeType), poolId, zoneNumNeed, len(candidateZones),
 			demandWriteNodesCntPerZone, err.Error())
 		return nil, err
 	}
 	if zoneNumNeed >= 2 && len(candidateZones) == 1 {
-		log.LogWarnf("[allocZonesForNode] nodeType(%v), dataMediaType(%v), demandWriteNodes[%v], reqZoneNum is [%v] but only one candidateZone",
+		log.LogWarnf("[allocZonesForNode] nodeType(%v), poolId(%v), demandWriteNodes[%v], reqZoneNum is [%v] but only one candidateZone",
 			NodeTypeString(rsMgr.nodeType), poolId, demandWriteNodesCntPerZone, zoneNumNeed)
 	}
 

@@ -697,6 +697,9 @@ func isSkipErr(err error) bool {
 	if strings.Contains(err.Error(), "ExtentNotFoundError") {
 		return true
 	}
+	if strings.Contains(err.Error(), "file modified when migrating") {
+		return true
+	}
 	return false
 }
 

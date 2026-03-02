@@ -3539,11 +3539,16 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		return nil
 	}
 
-	availablePools := m.cluster.getAvailablePools(req.zoneName)
+	zoneName := req.zoneName
+	if !req.crossZone && zoneName == "" {
+		zoneName = DefaultZoneName
+	}
+
+	availablePools := m.cluster.getAvailablePools(zoneName)
 	for _, poolId := range req.allowedPools {
 		if _, ok := availablePools[poolId]; !ok {
 			err = fmt.Errorf("poolId(%v) not found in available pools(%v) for zoneName(%v)", poolId, proto.PoolIdMapToString(availablePools), req.zoneName)
-			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
+			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", zoneName, err.Error())
 			return err
 		}
 	}
@@ -3666,8 +3671,6 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
-	fmt.Println("reqtest", req)
 
 	if vol, err = m.cluster.createVol(req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -6978,7 +6981,7 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		m.cluster.partition.IsRaftLeader(), compress)
 	if !m.cluster.partition.IsRaftLeader() {
 		var ok bool
-		if body, ok = m.cluster.followerReadManager.getVolViewAsFollower(name, compress); !ok {
+		if body, ok = m.cluster.followerReadManager.getVolViewAsFollower(name, compress, poolAware); !ok {
 			log.LogErrorf("action[getDataPartitions] volume [%v] not get partitions info", name)
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("follower volume info not found")))
 			return

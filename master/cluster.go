@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,6 +51,9 @@ const (
 	VolumeCreateWindowSeconds = 5 * 60
 	// Volume initialization timeout in seconds
 	VolumeInitTimeoutSeconds = 600
+	// Pool name validation constants
+	MinPoolNameLength = 3
+	MaxPoolNameLength = 32
 )
 
 var (
@@ -487,14 +491,22 @@ func (mgr *followerReadManager) checkViewContent(volName string, view *proto.Dat
 	return true
 }
 
-func (mgr *followerReadManager) getVolViewAsFollower(key string, compress bool) (value []byte, ok bool) {
+func (mgr *followerReadManager) getVolViewAsFollower(key string, compress bool, poolAware bool) (value []byte, ok bool) {
 	mgr.rwMutex.RLock()
 	defer mgr.rwMutex.RUnlock()
 	ok = true
 	if compress {
-		value = mgr.volDataPartitionsCompress[key]
+		if poolAware {
+			value = mgr.volDataPartitionsPoolCompress[key]
+		} else {
+			value = mgr.volDataPartitionsCompress[key]
+		}
 	} else {
-		value = mgr.volDataPartitionsView[key]
+		if poolAware {
+			value = mgr.volDataPartitionsPool[key]
+		} else {
+			value = mgr.volDataPartitionsView[key]
+		}
 	}
 	log.LogDebugf("getVolViewAsFollower. volume %v return!", key)
 	return
@@ -4625,8 +4637,8 @@ func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, targetDpCount int, po
 	}
 
 	if dpCountOfPoolId < defaultInitDataPartitionCnt {
-		err = fmt.Errorf("action[initDataPartitionsForCreateVol] vol[%v] poolId[%v] initDataPartitions failed, createdCount(%v), less than minLimit(%d)",
-			vol.Name, poolId, dpCountOfPoolId, defaultInitDataPartitionCnt)
+		err = fmt.Errorf("action[initDataPartitionsForCreateVol] vol[%v] poolId[%v] initDataPartitions failed, createdCount(%v), less than minLimit(%d), error: %v",
+			vol.Name, poolId, dpCountOfPoolId, defaultInitDataPartitionCnt, err)
 
 		vol.volLock.Lock()
 		oldVolStatus := vol.Status
@@ -4767,6 +4779,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	var readWriteDataPartitions int
+	var pool *StoragePool
 
 	if req.zoneName, err = c.checkZoneName(req.name, req.crossZone, req.normalZonesFirst, req.zoneName, req.domainId); err != nil {
 		return
@@ -4814,25 +4827,22 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		vol.volLock.Unlock()
 		goto errHandler
 	}
-
 	// NOTE: init data partitions
-	if proto.IsStorageClassReplica(vol.volStorageClass) {
-		for _, poolId := range req.allowedPools {
-			pool, err := c.getStoragePool(poolId)
-			if err != nil {
-				goto errHandler
-			}
-
-			if !proto.IsStorageClassReplica(uint32(pool.StorageClass)) {
-				continue
-			}
-
-			if readWriteDataPartitions, err = c.initDataPartitionsForCreateVol(vol, req.dpCount, poolId); err != nil {
-				goto errHandler
-			}
-			log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for replica",
-				req.name, readWriteDataPartitions, pool.String())
+	for _, poolId := range req.allowedPools {
+		pool, err = c.getStoragePool(poolId)
+		if err != nil {
+			goto errHandler
 		}
+
+		if !proto.IsStorageClassReplica(uint32(pool.StorageClass)) {
+			continue
+		}
+
+		if readWriteDataPartitions, err = c.initDataPartitionsForCreateVol(vol, req.dpCount, poolId); err != nil {
+			goto errHandler
+		}
+		log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for replica",
+			req.name, readWriteDataPartitions, pool.String())
 	}
 
 	vol.updateViewCache(c)
@@ -7975,10 +7985,31 @@ func (s *StoragePool) String() string {
 		s.Id, s.Name, proto.StorageClassString(uint32(s.StorageClass)), s.CId, s.ECAddr, s.CreateTime, s.UpdateTime, s.Status)
 }
 
+// validatePoolName validates pool name format and length
+func validatePoolName(name string) error {
+	if len(name) < MinPoolNameLength {
+		return fmt.Errorf("pool name must be at least %d characters long", MinPoolNameLength)
+	}
+	if len(name) > MaxPoolNameLength {
+		return fmt.Errorf("pool name must be at most %d characters long", MaxPoolNameLength)
+	}
+	// Only allow alphanumeric characters
+	matched, _ := regexp.MatchString("^[a-zA-Z0-9]+$", name)
+	if !matched {
+		return fmt.Errorf("pool name can only contain letters and numbers")
+	}
+	return nil
+}
+
 // createStoragePool creates a new storage pool
 func (c *Cluster) createStoragePool(req *proto.StoragePoolInfo) (err error) {
 	c.poolMutex.Lock()
 	defer c.poolMutex.Unlock()
+
+	// Validate pool name
+	if err = validatePoolName(req.Name); err != nil {
+		return err
+	}
 
 	// Check if pool ID already exists
 	if _, ok := c.storagePools[req.Id]; ok {
@@ -8087,9 +8118,14 @@ func (c *Cluster) updateStoragePool(id uint8, req *proto.StoragePoolInfo) (err e
 
 	// Check if new name already exists (excluding current pool)
 	if req.Name != "" {
+		// Validate pool name format
+		if err = validatePoolName(req.Name); err != nil {
+			return err
+		}
+		// Check if name conflicts with other pools
 		for _, existingPool := range c.storagePools {
 			// Skip current pool, check if name conflicts with other pools
-			if existingPool.Name == req.Name {
+			if existingPool.Id != id && existingPool.Name == req.Name {
 				return fmt.Errorf("storage pool with name %s already exists", req.Name)
 			}
 		}
