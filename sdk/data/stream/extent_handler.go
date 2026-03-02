@@ -495,10 +495,11 @@ func (eh *ExtentHandler) receiver() {
 func (eh *ExtentHandler) processReply(packet *Packet) {
 	log.LogDebugf("processReply begin: packet(%v), eh(%v)", packet, eh)
 	defer func() {
-		log.LogDebugf("processReply end: packet(%v), eh(%v)", packet, eh)
-		if atomic.AddInt32(&eh.inflight, -1) <= 0 {
+		inflight := atomic.AddInt32(&eh.inflight, -1)
+		log.LogWarnf("processReply end: packet(%v), eh(%v), inflightAfterDec(%v)", packet, eh, inflight)
+		if inflight <= 0 {
 			eh.empty <- struct{}{}
-			log.LogDebugf("processReply trigger empty: packet(%v), eh(%v)", packet, eh)
+			log.LogWarnf("processReply trigger empty: packet(%v), eh(%v), inflightAfterDec(%v)", packet, eh, inflight)
 		}
 	}()
 
@@ -790,6 +791,7 @@ func (eh *ExtentHandler) waitForFlush() (err error) {
 	}
 	ticker := time.NewTicker(time.Millisecond)
 	defer ticker.Stop()
+	lastWarn := time.Now()
 	for {
 		select {
 		case <-eh.empty:
@@ -804,6 +806,10 @@ func (eh *ExtentHandler) waitForFlush() (err error) {
 		case <-ticker.C: // eh.empty may be empty
 			if atomic.LoadInt32(&eh.inflight) <= 0 {
 				return
+			}
+			if time.Since(lastWarn) >= time.Second {
+				lastWarn = time.Now()
+				log.LogWarnf("ExtentHandler waitForFlush waiting: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 			}
 		}
 	}
@@ -992,7 +998,8 @@ func (eh *ExtentHandler) flushPacket() {
 func (eh *ExtentHandler) pushToRequest(packet *Packet) {
 	// Increase before sending the packet, because inflight is used
 	// to determine if the handler has finished.
-	atomic.AddInt32(&eh.inflight, 1)
+	inflight := atomic.AddInt32(&eh.inflight, 1)
+	log.LogWarnf("pushToRequest: eh(%v) packetReqID(%v) inflightAfterInc(%v)", eh, packet.ReqID, inflight)
 	eh.request <- packet
 }
 
