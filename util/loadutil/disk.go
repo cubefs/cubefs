@@ -22,37 +22,17 @@ import (
 	"github.com/shirou/gopsutil/disk"
 )
 
-func getMatchCount(lhs string, rhs string) int {
-	count := len(lhs)
-	if count > len(rhs) {
-		count = len(rhs)
-	}
-	for i := 0; i < count; i++ {
-		if lhs[i] != rhs[i] {
-			return i + 1
-		}
-	}
-	return count
-}
-
 func GetMatchParation(path string) (*disk.PartitionStat, error) {
-	partitons, err := disk.Partitions(true)
+	partitions, err := disk.Partitions(true)
 	if err != nil {
 		return nil, err
 	}
-	maxMatch := 0
-	matchParation := disk.PartitionStat{}
-	for _, partition := range partitons {
-		match := getMatchCount(path, partition.Mountpoint)
-		if match == len(partition.Mountpoint) && match > maxMatch {
-			matchParation = partition
-			maxMatch = match
+	for i := range partitions {
+		if path == partitions[i].Mountpoint {
+			return &partitions[i], nil
 		}
 	}
-	if maxMatch == 0 {
-		return nil, nil
-	}
-	return &matchParation, nil
+	return nil, nil
 }
 
 var (
@@ -267,6 +247,7 @@ func GetDisksIoSample(partitions []*disk.PartitionStat, duration time.Duration) 
 		for i := 0; i < count; i++ {
 			first, err := getDiskIoSampleItem(partitions[i])
 			if err != nil {
+				err = fmt.Errorf("err %v for device %s mountpoint %s", err, partitions[i].Device, partitions[i].Mountpoint)
 				return nil, err
 			}
 			firstItems = append(firstItems, first)
@@ -277,6 +258,7 @@ func GetDisksIoSample(partitions []*disk.PartitionStat, duration time.Duration) 
 			first := firstItems[i]
 			second, err := getDiskIoSampleItem(partitions[i])
 			if err != nil {
+				err = fmt.Errorf("err %v for device %s mountpoint %s", err, partitions[i].Device, partitions[i].Mountpoint)
 				return nil, err
 			}
 			sample.partition = partitions[i]

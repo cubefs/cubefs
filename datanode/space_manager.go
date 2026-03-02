@@ -204,7 +204,7 @@ func (manager *SpaceManager) StartDiskSample() {
 				partitions := manager.GetAllDiskPartitions()
 				samples, err := loadutil.GetDisksIoSample(partitions, diskSampleDuration)
 				if err != nil {
-					log.LogErrorf("failed to sample disk %v\n", err.Error())
+					log.LogWarnf("failed to sample disk, err %v\n", err.Error())
 					return
 				}
 				manager.FillIoUtils(samples)
