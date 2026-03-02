@@ -450,7 +450,7 @@ func getEmptyTagRulesInfo() *TagRulesInfo {
 
 func parseTagRules(tag string) *TagRulesInfo {
 	if tag == "" {
-		return getEmptyTagRulesInfo()
+		return nil
 	}
 	info := &TagRulesInfo{}
 	totalMappings := 0
@@ -480,7 +480,7 @@ func parseTagRules(tag string) *TagRulesInfo {
 		}
 	}
 	if len(info.Rules) == 0 {
-		return getEmptyTagRulesInfo()
+		return nil
 	}
 	if totalMappings < TagReplicaRuleNum {
 		padCount := TagReplicaRuleNum - totalMappings
@@ -510,7 +510,11 @@ func (vol *Vol) GetDpTagList(c *Cluster) *TagRulesInfo {
 	if result != nil {
 		return result
 	}
-	return parseTagRules(c.cfg.DefaultDpTag)
+	result = parseTagRules(c.cfg.DefaultDpTag)
+	if result != nil {
+		return result
+	}
+	return getEmptyTagRulesInfo()
 }
 
 func (c *Cluster) scheduleToCheckMpTag() {
@@ -833,7 +837,11 @@ func (vol *Vol) GetMpTagList(c *Cluster) *TagRulesInfo {
 	if result != nil {
 		return result
 	}
-	return parseTagRules(c.cfg.DefaultMpTag)
+	result = parseTagRules(c.cfg.DefaultMpTag)
+	if result != nil {
+		return result
+	}
+	return getEmptyTagRulesInfo()
 }
 
 func (c *Cluster) getTagSummary(detail bool) (summary *proto.TagSummary, err error) {
