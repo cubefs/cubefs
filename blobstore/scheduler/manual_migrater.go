@@ -35,13 +35,13 @@ type ManualMigrateMgr struct {
 
 // NewManualMigrateMgr returns manual migrate manager
 func NewManualMigrateMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.TaskAPI,
-	taskLogger recordlog.Encoder, conf *MigrateConfig,
+	taskLogger recordlog.Encoder, conf *MigrateConfig, diskGetter DiskGetter,
 ) *ManualMigrateMgr {
 	mgr := &ManualMigrateMgr{
 		clusterMgrCli: clusterMgrCli,
 	}
 	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskswitch.NewEnabledTaskSwitch(), taskLogger,
-		conf, proto.TaskTypeManualMigrate)
+		conf, proto.TaskTypeManualMigrate, diskGetter)
 	mgr.abnormalReporter = base.NewAbnormalReporter(conf.ClusterID, ShardRepair, base.ChunkMissMigrateAbnormal)
 	conf.reportTaskCallback = mgr.reportMissChuckMigrated
 	return mgr

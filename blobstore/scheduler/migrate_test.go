@@ -72,7 +72,7 @@ func newMigrateMgr(t *testing.T) *MigrateMgr {
 		},
 	}
 
-	mgr := NewMigrateMgr(clusterMgr, volumeUpdater, taskSwitch, taskLogger, conf, proto.TaskTypeBalance)
+	mgr := NewMigrateMgr(clusterMgr, volumeUpdater, taskSwitch, taskLogger, conf, proto.TaskTypeBalance, nil)
 	return mgr
 }
 
@@ -375,17 +375,29 @@ func TestAcquireMigrateTask(t *testing.T) {
 		require.True(t, errors.Is(err, proto.ErrTaskEmpty))
 	}
 	{
-		mgr := newMigrateMgr(t)
 		ctr := gomock.NewController(t)
+		clusterMgr := NewMockClusterMgrAPI(ctr)
+		taskSwitch := mocks.NewMockSwitcher(ctr)
+		taskLogger := mocks.NewMockRecordLogEncoder(ctr)
+		volumeUpdater := NewMockTaskAPI(ctr)
 		diskCache := NewMockDiskGetter(ctr)
-		mgr.diskGetter = diskCache
+		conf := &MigrateConfig{
+			ClusterID: 0,
+			TaskCommonConfig: base.TaskCommonConfig{
+				PrepareQueueRetryDelayS: 0,
+				FinishQueueRetryDelayS:  0,
+				CancelPunishDurationS:   0,
+				WorkQueueSize:           3,
+			},
+		}
+		mgr := NewMigrateMgr(clusterMgr, volumeUpdater, taskSwitch, taskLogger, conf, proto.TaskTypeBalance, diskCache)
 		t1 := mockGenMigrateTask(proto.TaskTypeDiskRepair, idc, 1, 1, proto.MigrateStatePrepared, newMockVolInfoMap())
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
-		mgr.diskGetter.(*MockDiskGetter).EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{
+		diskCache.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{
 			DiskID: 12121,
 			Host:   "http://127.2.1.2:8889",
 		}, true)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
+		clusterMgr.EXPECT().UpdateMigrateTask(any, any).Return(nil)
 
 		task, err := mgr.AcquireTask(ctx, idc)
 		require.NoError(t, err)

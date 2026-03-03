@@ -35,7 +35,7 @@ func newManualMigrater(t *testing.T) *ManualMigrateMgr {
 	volumeUpdater := NewMockTaskAPI(ctr)
 	taskLogger := mocks.NewMockRecordLogEncoder(ctr)
 	migrater := NewMockMigrater(ctr)
-	mgr := NewManualMigrateMgr(clusterMgr, volumeUpdater, taskLogger, &MigrateConfig{ClusterID: 1})
+	mgr := NewManualMigrateMgr(clusterMgr, volumeUpdater, taskLogger, &MigrateConfig{ClusterID: 1}, nil)
 	mgr.IMigrator = migrater
 	return mgr
 }

@@ -68,11 +68,9 @@ func NewBalanceMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.Task
 		clusterMgrCli:   clusterMgrCli,
 		cfg:             conf,
 	}
-	baseMgr := NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskLogger,
-		&conf.MigrateConfig, proto.TaskTypeBalance)
-	baseMgr.diskGetter = clusterTopology
-	baseMgr.isBalanceAlloc = true
-	mgr.IMigrator = baseMgr
+	conf.MigrateConfig.IsBalanceAlloc = true
+	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskLogger,
+		&conf.MigrateConfig, proto.TaskTypeBalance, clusterTopology)
 	return mgr
 }
 

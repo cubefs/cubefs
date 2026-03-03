@@ -186,7 +186,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 
 	diskRepairMgr := NewDiskRepairMgr(clusterMgrCli, diskRepairTaskSwitch, taskLogger, &conf.DiskRepair, topologyMgr)
 
-	manualMigMgr := NewManualMigrateMgr(clusterMgrCli, taskCli, taskLogger, &conf.ManualMigrate)
+	manualMigMgr := NewManualMigrateMgr(clusterMgrCli, taskCli, taskLogger, &conf.ManualMigrate, topologyMgr)
 
 	mqProxy := client.NewProxyClient(&conf.Proxy, cmapi.New(&conf.ClusterMgr), conf.ClusterID)
 	inspectorTaskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeVolumeInspect.String())
