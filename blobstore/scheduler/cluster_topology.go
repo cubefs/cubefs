@@ -220,9 +220,6 @@ func (m *ClusterTopologyMgr) loopUpdate() {
 }
 
 func (m *ClusterTopologyMgr) loadNormalDisks() {
-	if !m.cfg.Leader { // only leader need load normal disks
-		return
-	}
 	span, ctx := trace.StartSpanFromContext(context.Background(), "loadNormalDisks")
 
 	disks, err := m.clusterMgrCli.ListClusterDisks(ctx)

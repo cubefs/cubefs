@@ -97,8 +97,13 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 
 	for {
 		var message *sarama.ConsumerMessage
+		var ok bool
 		select {
-		case message = <-claim.Messages():
+		case message, ok = <-claim.Messages():
+			if !ok {
+				span.Errorf("session has closed")
+				return nil
+			}
 			if message == nil {
 				span.Debug("no message for consume and continue")
 				continue
