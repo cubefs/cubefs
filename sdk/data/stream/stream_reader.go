@@ -77,6 +77,7 @@ type Streamer struct {
 
 	// Local async flush tracking map (per streamer)
 	pendingAsyncFlushMap sync.Map // handler.id -> *AsyncFlushRequest (using ExtentHandler ID)
+	asyncFlushCompleted  uint64   // monotonic counter for completed/removed pending requests
 
 	// Handler protection for write operations
 	writeInProgress     bool           // indicates if a write operation is in progress
@@ -499,8 +500,19 @@ func (s *Streamer) UpdateStringPath(fullPath string) {
 // asyncFlushManager manages asynchronous flush operations using channel-based producer-consumer pattern
 func (s *Streamer) asyncFlushManager() {
 	log.LogDebugf("asyncFlushManager:  started for streamer(%v)", s)
+	const (
+		stuckAgeThreshold      = 5 * time.Minute
+		noProgressPanicTimeout = 1 * time.Minute
+	)
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
+	var (
+		stalledSince       time.Time
+		lastCompleted      = atomic.LoadUint64(&s.asyncFlushCompleted)
+		lastOldestID       uint64
+		lastOldestInflight int32
+		lastOldestRequeue  uint64
+	)
 	for {
 		select {
 		case <-s.asyncFlushDone:
@@ -547,6 +559,41 @@ func (s *Streamer) asyncFlushManager() {
 				}
 			}
 		case <-t.C:
+			oldestReq := s.getNextPendingAsyncFlush()
+			if oldestReq == nil || oldestReq.handler == nil {
+				stalledSince = time.Time{}
+				lastCompleted = atomic.LoadUint64(&s.asyncFlushCompleted)
+				lastOldestID = 0
+				lastOldestInflight = 0
+				lastOldestRequeue = 0
+			} else {
+				oldestID := oldestReq.handler.id
+				oldestInflight := atomic.LoadInt32(&oldestReq.handler.inflight)
+				oldestRequeue := atomic.LoadUint64(&oldestReq.requeueCount)
+				completed := atomic.LoadUint64(&s.asyncFlushCompleted)
+				progressed := completed != lastCompleted ||
+					oldestID != lastOldestID ||
+					oldestInflight != lastOldestInflight ||
+					oldestRequeue != lastOldestRequeue
+
+				if progressed {
+					stalledSince = time.Time{}
+					lastCompleted = completed
+					lastOldestID = oldestID
+					lastOldestInflight = oldestInflight
+					lastOldestRequeue = oldestRequeue
+				} else if stalledSince.IsZero() {
+					stalledSince = time.Now()
+				}
+
+				oldestAge := time.Since(time.Unix(0, oldestReq.firstEnqueueAt))
+				if oldestAge >= stuckAgeThreshold && !stalledSince.IsZero() && time.Since(stalledSince) >= noProgressPanicTimeout {
+					pendingReqs := s.getPendingRequests()
+					panic(fmt.Sprintf("asyncFlushManager stuck: inode(%v) oldestAge(%v) noProgressFor(%v) pendingReqs(%v) asyncFlushChLen(%v) dirtyListLen(%v) oldestHandler(%v) oldestInflight(%v) oldestRequeue(%v) completed(%v)",
+						s.inode, oldestAge, time.Since(stalledSince), pendingReqs, len(s.asyncFlushCh), s.dirtylist.Len(),
+						oldestID, oldestInflight, oldestRequeue, completed))
+				}
+			}
 			if s.rdonly {
 				log.LogDebugf("rdonly stream no need to start asyncFlushManager routine. ino %d", s.inode)
 				return
@@ -679,10 +726,10 @@ func (s *Streamer) requestAsyncFlush(handler *ExtentHandler, clearFunc func()) *
 	}
 
 	req := &AsyncFlushRequest{
-		handler:   handler,
-		done:      make(chan struct{}),
+		handler:        handler,
+		done:           make(chan struct{}),
 		firstEnqueueAt: time.Now().UnixNano(),
-		clearFunc: clearFunc,
+		clearFunc:      clearFunc,
 	}
 
 	// Add to pending map using handler.id as key (both for sequencing and duplicate prevention)
@@ -741,6 +788,9 @@ func (s *Streamer) addPendingAsyncFlush(handlerID uint64, req *AsyncFlushRequest
 func (s *Streamer) removePendingAsyncFlush(handlerID uint64) {
 	value, exists := s.pendingAsyncFlushMap.Load(handlerID)
 	s.pendingAsyncFlushMap.Delete(handlerID)
+	if exists {
+		atomic.AddUint64(&s.asyncFlushCompleted, 1)
+	}
 	if log.EnableDebug() {
 		if exists {
 			req := value.(*AsyncFlushRequest)
