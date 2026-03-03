@@ -546,9 +546,10 @@ type LcNodeRuleTaskResponse struct {
 }
 
 type LcNodeRuleTaskStatistics struct {
-	TotalFileScannedNum int64
-	TotalFileExpiredNum int64
-	TotalDirScannedNum  int64
+	TotalFileScannedNum    int64
+	TotalFileExpiredNum    int64
+	TotalDirScannedNum     int64
+	TotalMPScannedInodeNum int64
 
 	ExpiredDeleteNum         int64
 	ExpiredMToHddNum         int64

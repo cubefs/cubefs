@@ -65,6 +65,7 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 					TotalFileScannedNum:      atomic.LoadInt64(&scanner.currentStat.TotalFileScannedNum),
 					TotalFileExpiredNum:      atomic.LoadInt64(&scanner.currentStat.TotalFileExpiredNum),
 					TotalDirScannedNum:       atomic.LoadInt64(&scanner.currentStat.TotalDirScannedNum),
+					TotalMPScannedInodeNum:   atomic.LoadInt64(&scanner.currentStat.TotalMPScannedInodeNum),
 					ExpiredDeleteNum:         atomic.LoadInt64(&scanner.currentStat.ExpiredDeleteNum),
 					ExpiredMToHddNum:         atomic.LoadInt64(&scanner.currentStat.ExpiredMToHddNum),
 					ExpiredMToBlobstoreNum:   atomic.LoadInt64(&scanner.currentStat.ExpiredMToBlobstoreNum),

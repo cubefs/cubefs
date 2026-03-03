@@ -22,7 +22,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -2818,18 +2817,9 @@ func parseRequestToCreateStoragePool(r *http.Request) (poolInfo *proto.StoragePo
 
 	// Parse pool name
 	poolInfo.Name = r.FormValue(nameKey)
-	// Validate pool name: only letters and numbers, max 32 characters
-	if poolInfo.Name != "" {
-		if len(poolInfo.Name) > 32 {
-			return nil, fmt.Errorf("pool name must not exceed 32 characters, got %d", len(poolInfo.Name))
-		}
-		matched, err := regexp.MatchString("^[a-zA-Z0-9]+$", poolInfo.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to validate pool name: %v", err)
-		}
-		if !matched {
-			return nil, fmt.Errorf("pool name must contain only letters and numbers, got: %s", poolInfo.Name)
-		}
+	err = validatePoolName(poolInfo.Name)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse storage class
@@ -2885,15 +2875,8 @@ func parseRequestToUpdateStoragePool(r *http.Request) (poolId uint8, poolInfo *p
 	poolInfo.Name = r.FormValue(nameKey)
 	// Validate pool name: only letters and numbers, max 32 characters
 	if poolInfo.Name != "" {
-		if len(poolInfo.Name) > 32 {
-			return 0, nil, fmt.Errorf("pool name must not exceed 32 characters, got %d", len(poolInfo.Name))
-		}
-		matched, err := regexp.MatchString("^[a-zA-Z0-9]+$", poolInfo.Name)
-		if err != nil {
-			return 0, nil, fmt.Errorf("failed to validate pool name: %v", err)
-		}
-		if !matched {
-			return 0, nil, fmt.Errorf("pool name must contain only letters and numbers, got: %s", poolInfo.Name)
+		if err = validatePoolName(poolInfo.Name); err != nil {
+			return 0, nil, err
 		}
 	}
 

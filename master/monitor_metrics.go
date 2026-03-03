@@ -1373,7 +1373,7 @@ func (mm *monitorMetrics) setLcMetrics() {
 		mm.lcId[id] = struct{}{}
 		mm.lcVolScanned.SetWithLabelValues(float64(stat.TotalFileScannedNum), id, "file")
 		mm.lcVolScanned.SetWithLabelValues(float64(stat.TotalDirScannedNum), id, "dir")
-
+		mm.lcVolScanned.SetWithLabelValues(float64(stat.TotalMPScannedInodeNum), id, "mpInode")
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredDeleteNum), id, "delete")
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredMToHddNum), id, "hdd")
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredMNum), id, "expired")

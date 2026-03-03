@@ -237,6 +237,8 @@ func (s *LcScanner) Start() (err error) {
 	go s.handleFileChan()
 	go s.handleDirChan()
 
+	response.StartTime = &s.now
+
 	if s.rule.Filter != nil && s.rule.Filter.ByMp == proto.ScanByMp {
 		go s.scanInodesByMp()
 		go s.checkScanning()
@@ -253,7 +255,7 @@ func (s *LcScanner) Start() (err error) {
 		Path:  strings.TrimPrefix(currentPath, pathSep),
 		Type:  uint32(os.ModeDir),
 	}
-	response.StartTime = &s.now
+	// response.StartTime = &s.now
 
 	s.firstIn(firstDentry)
 
@@ -405,8 +407,15 @@ func (s *LcScanner) scanInodesByMpAndPool(partitionID uint64, poolId uint8, minS
 			return
 		}
 
-		if resp == nil || len(resp.Inodes) == 0 {
-			log.LogDebugf("scanInodesByMpAndPool: no more inodes partitionID(%v) poolId(%v)", partitionID, poolId)
+		if resp == nil {
+			log.LogDebugf("scanInodesByMpAndPool: no response partitionID(%v) poolId(%v)", partitionID, poolId)
+			return
+		}
+
+		atomic.AddInt64(&s.currentStat.TotalMPScannedInodeNum, int64(resp.TotalScanned))
+
+		if len(resp.Inodes) == 0 {
+			log.LogDebugf("scanInodesByMpAndPool: no inodes found partitionID(%v) poolId(%v), resp(%v)", partitionID, poolId, resp.String())
 			return
 		}
 
@@ -555,12 +564,6 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		return
 	}
 
-	if info.IsDeletingMigrationExtent() {
-		log.LogInfof("handleFile: %+v, is deleting migration extent, skip", dentry)
-		atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
-		return
-	}
-
 	op := s.inodeExpired(info, s.rule.Expiration, s.rule.Transitions, dentry)
 	dentry.Op = op
 
@@ -576,6 +579,13 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		auditlog.LogLcNodeOp(op, s.Volume, dentry.Name, dentry.Path, dentry.ParentId, dentry.Inode, dentry.Size, dentry.LeaseExpire,
 			dentry.HasMek, dentry.SrcPoolId, dentry.DstPoolId, time.Since(start).Milliseconds(), err)
 	}()
+
+	if info.IsDeletingMigrationExtent() {
+		log.LogInfof("handleFile: %+v, is deleting migration extent, skip", dentry)
+		err = fmt.Errorf("skip (%v), inode is deleting migration extent", info.String())
+		atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
+		return
+	}
 
 	switch op {
 	case proto.OpTypeDelete:
@@ -945,6 +955,7 @@ func (s *LcScanner) checkScanning() {
 			response.TotalFileScannedNum = s.currentStat.TotalFileScannedNum
 			response.TotalFileExpiredNum = s.currentStat.TotalFileExpiredNum
 			response.TotalDirScannedNum = s.currentStat.TotalDirScannedNum
+			response.TotalMPScannedInodeNum = s.currentStat.TotalMPScannedInodeNum
 			response.ErrorDeleteNum = s.currentStat.ErrorDeleteNum
 			response.ErrorMToHddNum = s.currentStat.ErrorMToHddNum
 			response.ErrorMNum = s.currentStat.ErrorMNum
@@ -982,6 +993,7 @@ func (s *LcScanner) checkScanning() {
 				response.TotalFileScannedNum = s.currentStat.TotalFileScannedNum
 				response.TotalFileExpiredNum = s.currentStat.TotalFileExpiredNum
 				response.TotalDirScannedNum = s.currentStat.TotalDirScannedNum
+				response.TotalMPScannedInodeNum = s.currentStat.TotalMPScannedInodeNum
 				response.ErrorDeleteNum = s.currentStat.ErrorDeleteNum
 				response.ErrorMToHddNum = s.currentStat.ErrorMToHddNum
 				response.ErrorMToBlobstoreNum = s.currentStat.ErrorMToBlobstoreNum

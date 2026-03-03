@@ -7993,10 +7993,13 @@ func validatePoolName(name string) error {
 	if len(name) > MaxPoolNameLength {
 		return fmt.Errorf("pool name must be at most %d characters long", MaxPoolNameLength)
 	}
-	// Only allow alphanumeric characters
-	matched, _ := regexp.MatchString("^[a-zA-Z0-9]+$", name)
+	// Must start with a letter, end with a letter or number, and can contain letters, numbers, hyphens, or underscores in between
+	// Pattern: ^[a-zA-Z]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$
+	// - Single character: must be a letter
+	// - Multiple characters: starts with letter, middle can be letters/numbers/hyphens/underscores, ends with letter/number
+	matched, _ := regexp.MatchString("^[a-zA-Z]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$", name)
 	if !matched {
-		return fmt.Errorf("pool name can only contain letters and numbers")
+		return fmt.Errorf("pool name must start with a letter, end with a letter or number, and can only contain letters, numbers, hyphens, or underscores")
 	}
 	return nil
 }
