@@ -215,10 +215,19 @@ func (s *ManualScanner) checkScanning() {
 				response.EndTime = &t
 				response.Status = proto.TaskSucceeds
 				response.Done = true
-				log.LogInfof("checkScanning completed response(%+v)", response)
-				s.Stop()
-				msg := fmt.Sprintf("vol(%v) path(%v) topo(%v) task(%+v) produce completed", s.manualTask.VolName, s.manualTask.ManualTaskConfig.Prefix, s.manualTask.TopoName, response)
-				auditlog.LogFlashNodeOp("Warmup", msg, nil)
+				if response.TotalFileCachedNum == 0 && response.ErrorCacheNum+response.ErrorReadDirNum > 0 {
+					response.Status = proto.TaskFailed
+					response.StartErr = fmt.Sprintf("no file cached, errorCacheNum: %d, errorReadDirNum: %d", response.ErrorCacheNum, response.ErrorReadDirNum)
+					log.LogInfof("checkScanning failed response(%+v)", response)
+					go s.Stop()
+					msg := fmt.Sprintf("vol(%v) path(%v) topo(%v) task(%+v) produce failed", s.manualTask.VolName, s.manualTask.ManualTaskConfig.Prefix, s.manualTask.TopoName, response)
+					auditlog.LogFlashNodeOp("Warmup", msg, nil)
+				} else {
+					log.LogInfof("checkScanning completed response(%+v)", response)
+					s.Stop()
+					msg := fmt.Sprintf("vol(%v) path(%v) topo(%v) task(%+v) produce completed", s.manualTask.VolName, s.manualTask.ManualTaskConfig.Prefix, s.manualTask.TopoName, response)
+					auditlog.LogFlashNodeOp("Warmup", msg, nil)
+				}
 				s.flashNode.manualScanners.Delete(s.ID)
 				s.flashNode.respondToMaster(s.adminTask)
 				return
