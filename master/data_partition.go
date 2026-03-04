@@ -2833,9 +2833,14 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster, allowPre
 				// select data nodes from the other zone
 				zones = partition.getLiveZones(partition.DecommissionSrcAddr)
 				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", param); err != nil {
-					log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from other zone failed:%v",
+					log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from other zone excluding the zones containing the other two replicas failed:%v",
 						partition.PartitionID, err.Error())
-					goto errHandler
+					zones = []string{zone.name}
+					if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, 1, "", param); err != nil {
+						log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from other zone excluding the zone containing the decommissionSrcAddr failed:%v",
+							partition.PartitionID, err.Error())
+						goto errHandler
+					}
 				}
 			}
 			// get nodeset for target host
