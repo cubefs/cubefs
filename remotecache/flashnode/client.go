@@ -1,6 +1,9 @@
 package flashnode
 
-import "github.com/cubefs/cubefs/proto"
+import (
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+)
 
 type MetaWrapper interface {
 	Lookup_ll(parentID uint64, name string, isAsync bool) (inode uint64, mode uint32, err error)
@@ -18,4 +21,5 @@ type ExtentApi interface {
 	Flush(inode uint64) error
 	Close() error
 	ForceRefreshExtentsCache(inode uint64) error
+	GetStreamer(inode uint64) *stream.Streamer
 }

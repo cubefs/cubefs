@@ -480,6 +480,9 @@ func (m *Server) createFlashNodeManualTask(w http.ResponseWriter, r *http.Reques
 	if req.ManualTaskConfig.TaskTimeoutMinutes == 0 {
 		req.ManualTaskConfig.TaskTimeoutMinutes = 20
 	}
+	if req.ManualTaskConfig.RetryCount == 0 {
+		req.ManualTaskConfig.RetryCount = 3
+	}
 	// Validate file size limits
 	if req.ManualTaskConfig.MinFileSizeLimit > req.ManualTaskConfig.MaxFileSizeLimit {
 		err = fmt.Errorf("MinFileSizeLimit(%d) cannot be greater than MaxFileSizeLimit(%d)",
@@ -558,12 +561,18 @@ func (m *Server) flashManualTask(w http.ResponseWriter, r *http.Request) {
 			}
 			if rsp.Status == int(proto.Flash_Task_End) {
 				stats := rsp.ManualTaskStatistics
-				numerator := stats.TotalFileCachedNum + stats.TotalDirScannedNum
-				denominator := numerator + stats.ErrorCacheNum + stats.ErrorReadDirNum
-				if denominator == 0 {
-					stats.CompletionRate = "0%"
-				} else {
+				if stats.TotalExtentKeyNum > 0 {
+					numerator := stats.SuccessFlashKeyNum + stats.SkipFlashKeyNum
+					denominator := stats.TotalExtentKeyNum
 					stats.CompletionRate = fmt.Sprintf("%d%%", (numerator*100)/denominator)
+				} else {
+					numerator := stats.TotalFileCachedNum + stats.TotalDirScannedNum
+					denominator := numerator + stats.ErrorCacheNum + stats.ErrorReadDirNum
+					if denominator == 0 {
+						stats.CompletionRate = "0%"
+					} else {
+						stats.CompletionRate = fmt.Sprintf("%d%%", (numerator*100)/denominator)
+					}
 				}
 			} else if rsp.ManualTaskConfig.PrintProgress && rsp.ManualTaskStatistics.TotalEntryNum > 0 {
 				stats := rsp.ManualTaskStatistics
@@ -996,6 +1005,59 @@ func (m *Server) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Reques
 	}
 	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
 	sendOkReply(w, r, newSuccessHTTPReply("set WriteIOLimits for FlashNode is submit,check it later."))
+}
+
+func (m *Server) setFlashNodePreheatIOLimits(w http.ResponseWriter, r *http.Request) {
+	var (
+		flow        common.Int
+		preheatFlow int64
+		err         error
+		flashTopo   *flashgroupmanager.FlashNodeTopology
+	)
+
+	if err = parseArgs(r, flow.Flow().OmitEmpty().OnEmpty(func() error {
+		preheatFlow = -1
+		return nil
+	}).OnValue(func() error {
+		preheatFlow = flow.V
+		return nil
+	})); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// Backward Compatibility
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+	addr := r.FormValue("addr")
+
+	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	// forbid operations on markDeleted topology
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
+		return
+	}
+	log.LogDebugf("action[setFlashNodePreheatIOLimits],flow[%v] addr[%v]", preheatFlow, addr)
+	tasks := make([]*proto.AdminTask, 0)
+	flashNodes := flashTopo.GetAllActiveFlashNodes()
+	for _, flashNode := range flashNodes {
+		if addr != "" && flashNode.Addr != addr {
+			continue
+		}
+		task := flashNode.CreateSetIOLimitsTask(int(preheatFlow), -1, -1, proto.OpFlashNodeSetPreheatIOLimits)
+		tasks = append(tasks, task)
+	}
+	if len(tasks) == 0 {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("no flashnode found to set preheat IO limits")))
+		return
+	}
+	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
+	sendOkReply(w, r, newSuccessHTTPReply("set PreheatIOLimits for FlashNode is submit,check it later."))
 }
 
 func (m *Server) queryCacheVols(w http.ResponseWriter, r *http.Request) {

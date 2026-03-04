@@ -1194,6 +1194,48 @@ func (rc *RemoteCacheClient) Prepare(ctx context.Context, fg *FlashGroup, req *p
 	return
 }
 
+func (rc *RemoteCacheClient) PrepareAsync(ctx context.Context, fg *FlashGroup, req *proto.PreheatAsyncReq) (err error) {
+	var conn *net.TCPConn
+	addr := fg.getFlashHost()
+	if addr == "" {
+		err = proto.ErrorNoAvailableHost
+		log.LogWarnf("FlashGroup prepare async failed: err(%v)", err)
+		return
+	}
+	reqPacket := NewRemoteCachePacket("", proto.OpFlashNodePreheatAsync)
+	if err = reqPacket.MarshalDataPb(req); err != nil {
+		log.LogWarnf("FlashGroup PrepareAsync: failed to MarshalDataPb (%v), err(%v)", req, err)
+		return
+	}
+	if conn, err = rc.conns.GetConnect(addr); err != nil {
+		log.LogWarnf("FlashGroup prepare async: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", addr, req, err)
+		return
+	}
+	defer func() {
+		rc.EnqueueConnTask(&ConnPutTask{conn: conn, forceClose: err != nil})
+	}()
+
+	if err = reqPacket.WriteToConn(conn); err != nil {
+		log.LogWarnf("FlashGroup PrepareAsync: failed to write to addr(%v) err(%v)", addr, err)
+		return
+	}
+
+	replyPacket := NewFlashCacheReply()
+	if err = replyPacket.ReadFromConnExt(conn, proto.ReadDeadlineTime); err != nil {
+		log.LogWarnf("FlashGroup PrepareAsync: failed to ReadFromConn, replyPacket(%v), fg host(%v), err(%v)", replyPacket, addr, err)
+		return
+	}
+	if replyPacket.ResultCode != proto.OpOk {
+		log.LogWarnf("FlashGroup PrepareAsync: ResultCode NOK, replyPacket(%v), fg host(%v), ResultCode(%v)", replyPacket, addr, replyPacket.ResultCode)
+		err = fmt.Errorf(proto.ErrorResultCodeNOKTpl, replyPacket.ResultCode)
+		return
+	}
+	if log.EnableDebug() {
+		log.LogDebugf("FlashGroup PrepareAsync successful: flashGroup(%v) addr(%v) req(%v) reqPacket(%v) replyPacket(%v) err(%v)", fg, addr, req, reqPacket, replyPacket, err)
+	}
+	return
+}
+
 func (rc *RemoteCacheClient) getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, req *CacheReadRequest) (readBytes int, err error) {
 	for readBytes < int(req.Size_) {
 		replyPacket := NewFlashCacheReply()

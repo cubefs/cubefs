@@ -77,13 +77,13 @@ func (s *Streamer) sendToPrepareRomoteCacheChan(req *PrepareRemoteCacheRequest) 
 }
 
 func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, gen uint64) {
-	cReadRequests, err := s.prepareCacheRequests(ek.FileOffset, uint64(ek.Size), nil, gen)
+	cReadRequests, err := s.PrepareCacheRequests(ek.FileOffset, uint64(ek.Size), nil, gen)
 	if err != nil {
 		log.LogWarnf("Streamer prepareRemoteCache: prepareCacheRequests failed. start(%v), size(%v), err(%v)", ek.FileOffset, ek.Size, err)
 		return
 	}
 	for _, req := range cReadRequests {
-		slot, fg, ownerSlot := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
+		slot, fg, ownerSlot := s.GetFlashGroup(req.CacheRequest.FixedFileOffset)
 		if fg == nil {
 			err = proto.ErrorNoFlashGroup
 			log.LogWarnf("Streamer prepareRemoteCache failed: %v", err)
@@ -117,7 +117,7 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 			total += int(req.Size_)
 			continue
 		}
-		slot, fg, ownerSlot := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
+		slot, fg, ownerSlot := s.GetFlashGroup(req.CacheRequest.FixedFileOffset)
 		if fg == nil {
 			err = proto.ErrorNoFlashGroup
 			log.LogWarnf("readFromRemoteCache: flashGroup read failed. offset(%v) size(%v) fg(%v) req(%v) err(%v)", offset, size, fg, req, err)
@@ -139,7 +139,7 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 	return total, nil
 }
 
-func (s *Streamer) getFlashGroup(fixedFileOffset uint64) (uint32, *remotecache.FlashGroup, uint32) {
+func (s *Streamer) GetFlashGroup(fixedFileOffset uint64) (uint32, *remotecache.FlashGroup, uint32) {
 	slot := proto.ComputeCacheBlockSlot(s.client.dataWrapper.VolName, s.inode, fixedFileOffset)
 	fg, ownerSlot := s.client.RemoteCache.remoteCacheClient.GetFlashGroupBySlot(slot)
 	return slot, fg, ownerSlot
@@ -185,7 +185,7 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 	return sources, nil
 }
 
-func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte, gen uint64) ([]*remotecache.CacheReadRequest, error) {
+func (s *Streamer) PrepareCacheRequests(offset, size uint64, data []byte, gen uint64) ([]*remotecache.CacheReadRequest, error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("prepareCacheRequests", nil, bgTime, 1)

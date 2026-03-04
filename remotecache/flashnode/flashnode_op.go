@@ -39,6 +39,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/google/uuid"
+	"golang.org/x/time/rate"
 )
 
 func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
@@ -74,6 +75,8 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 		err = f.opSetReadIOLimits(conn, p)
 	case proto.OpFlashNodeSetWriteIOLimits:
 		err = f.opSetWriteIOLimits(conn, p)
+	case proto.OpFlashNodeSetPreheatIOLimits:
+		err = f.opSetPreheatIOLimits(conn, p)
 	case proto.OpFlashNodeScan:
 		err = f.opFlashNodeScan(conn, p)
 	case proto.OpFlashNodeTaskCommand:
@@ -82,6 +85,10 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 		err = f.opApplyWarmupMetaToken(conn, p)
 	case proto.OpFlashNodeCacheVols:
 		err = f.opFlashNodeCacheVols(conn, p)
+	case proto.OpFlashNodePreheatAsync:
+		err = f.opFlashNodePreheatAsync(conn, p)
+	case proto.OpFlashNodePreheatReply:
+		err = f.opFlashNodePreheatReply(conn, p)
 	default:
 		// compatibility for historical opcodes
 		switch p.Opcode {
@@ -1400,6 +1407,32 @@ func (f *FlashNode) opSetWriteIOLimits(conn net.Conn, p *proto.Packet) (err erro
 	return
 }
 
+func (f *FlashNode) opSetPreheatIOLimits(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	p.PacketOkReply()
+	_ = p.WriteToConn(conn)
+	req := &proto.FlashNodeSetIOLimitsRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err == nil {
+		log.LogDebugf("opSetPreheatIOLimits req: %v", req)
+		if req.Flow <= 0 {
+			f.preheatReadDataNodeLimiter.SetLimit(rate.Inf)
+			f.preheatReadDataNodeLimiter.SetBurst(0)
+		} else {
+			f.preheatReadDataNodeLimitFlow = int64(req.Flow)
+			f.preheatReadDataNodeLimiter.SetLimit(rate.Limit(f.preheatReadDataNodeLimitFlow))
+			f.preheatReadDataNodeLimiter.SetBurst(int(f.preheatReadDataNodeLimitFlow))
+		}
+	} else {
+		log.LogErrorf("decode opSetPreheatIOLimits error: %s", err.Error())
+	}
+	return
+}
+
 //nolint:unused // used for new read operation
 func (f *FlashNode) shouldCache(key string) error {
 	var count int32
@@ -1413,6 +1446,195 @@ func (f *FlashNode) shouldCache(key string) error {
 		return fmt.Errorf("%v, now hit %v", proto.ErrorNotExistShouldCache.Error(), count)
 	} else {
 		return fmt.Errorf("%v, now hit %v", proto.ErrorNotExistShouldNotCache.Error(), count)
+	}
+}
+
+func (f *FlashNode) opFlashNodePreheatAsync(conn net.Conn, p *proto.Packet) (err error) {
+	req := new(proto.PreheatAsyncReq)
+	if err = p.UnmarshalDataPb(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = p.WriteToConn(conn)
+		return
+	}
+	if log.EnableDebug() {
+		log.LogDebugf("opFlashNodePreheatAsync req: %v", req)
+	}
+	p.PacketOkReply()
+	_ = p.WriteToConn(conn)
+
+	f.asyncPreheatTaskCh <- req
+	return nil
+}
+
+func (f *FlashNode) opFlashNodePreheatReply(conn net.Conn, p *proto.Packet) (err error) {
+	req := new(proto.BatchPreheatReply)
+	if err = p.UnmarshalDataPb(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		_ = p.WriteToConn(conn)
+		return
+	}
+	if log.EnableDebug() {
+		log.LogDebugf("opFlashNodePreheatReply req: %v", req)
+	}
+	if value, ok := f.manualScanners.Load(req.JobId); ok {
+		scanner := value.(*ManualScanner)
+		scanner.HandlePreheatReply(req)
+	} else {
+		log.LogWarnf("opFlashNodePreheatReply: scanner not found for JobId(%v)", req.JobId)
+	}
+
+	p.PacketOkReply()
+	_ = p.WriteToConn(conn)
+	return nil
+}
+
+func (f *FlashNode) preheatWorker() {
+	for {
+		select {
+		case req, ok := <-f.asyncPreheatTaskCh:
+			if !ok {
+				return
+			}
+			if req.Req == nil || req.Req.CacheRequest == nil {
+				f.sendReplyToScanner(req, proto.OpErr, "invalid request")
+				continue
+			}
+			cacheReq := req.Req.CacheRequest
+			var processErr error
+			_, err3 := f.cacheEngine.GetCacheBlockForRead(cacheReq.Volume, cacheReq.Inode, cacheReq.FixedFileOffset, cacheReq.Version, 0)
+			if err3 == nil {
+				processErr = fmt.Errorf("already exist")
+			} else {
+				reqSize := 0
+				for _, source := range cacheReq.Sources {
+					reqSize += int(source.Size_)
+				}
+				if err := f.preheatReadDataNodeLimiter.WaitN(context.Background(), reqSize); err != nil {
+					log.LogWarnf("preheatWorker flow limit wait error: %v", err)
+				}
+				err1 := f.limitWrite.Run(reqSize, true, func() {
+					bk := cachengine.GenCacheBlockKey(cacheReq.Volume, cacheReq.Inode, cacheReq.FixedFileOffset, cacheReq.Version)
+					if _, processErr = f.cacheEngine.CreateBlock(cacheReq, req.ReplyAddr, true); processErr != nil {
+						return
+					}
+					var block *cachengine.CacheBlock
+					block, processErr = f.cacheEngine.PeekCacheBlock(bk)
+					if processErr != nil {
+						return
+					}
+					block.InitOnce(f.cacheEngine, cacheReq.Sources)
+				})
+				if err1 != nil && processErr == nil {
+					processErr = err1
+				}
+			}
+
+			resCode := proto.OpOk
+			errMsg := ""
+			if processErr != nil {
+				errMsg = processErr.Error()
+				if strings.Contains(errMsg, "already exist") || strings.Contains(errMsg, "already created") {
+					resCode = proto.OpAlreadyPreheated
+				} else {
+					resCode = proto.OpErr
+					log.LogErrorf("preheatWorker error task %v err %v", req.TaskID, processErr)
+				}
+			}
+
+			f.sendReplyToScanner(req, resCode, errMsg)
+		case <-f.stopCh:
+			return
+		}
+	}
+}
+
+func (f *FlashNode) sendReplyToScanner(req *proto.PreheatAsyncReq, resCode uint8, errMsg string) {
+	if req.ReplyAddr == "" {
+		return
+	}
+
+	item := &proto.PreheatReplyItem{
+		TaskID:     req.TaskID,
+		ResultCode: uint32(resCode),
+		ErrMsg:     errMsg,
+	}
+
+	f.asyncPreheatReplyCh <- &asyncPreheatReply{item: item, addr: req.ReplyAddr, jobId: req.JobId}
+}
+
+func (f *FlashNode) preheatReplyBatchSender() {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	type batchKey struct {
+		addr  string
+		jobId string
+	}
+	batches := make(map[batchKey]*proto.BatchPreheatReply)
+	sendBatch := func(addr string, batch *proto.BatchPreheatReply) {
+		if len(batch.Results) == 0 {
+			return
+		}
+		conn, err := f.connPool.GetConnect(addr)
+		if err != nil {
+			log.LogWarnf("preheatReplyBatchSender failed to connect to %s: %v", addr, err)
+			return
+		}
+
+		forceClose := false
+		defer func() {
+			f.connPool.PutConnect(conn, forceClose)
+		}()
+
+		packet := proto.NewPacket()
+		packet.Opcode = proto.OpFlashNodePreheatReply
+		if err = packet.MarshalDataPb(batch); err != nil {
+			log.LogWarnf("preheatReplyBatchSender failed to marshal data: %v", err)
+			return
+		}
+
+		if err = packet.WriteToConn(conn); err != nil {
+			log.LogWarnf("preheatReplyBatchSender failed to send reply: %v", err)
+			forceClose = true
+			return
+		}
+
+		replyPacket := proto.NewPacket()
+		if err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+			log.LogWarnf("preheatReplyBatchSender failed to read reply ack: %v", err)
+			forceClose = true
+			return
+		}
+	}
+
+	for {
+		select {
+		case reply, ok := <-f.asyncPreheatReplyCh:
+			if !ok {
+				return
+			}
+			key := batchKey{addr: reply.addr, jobId: reply.jobId}
+			if _, exists := batches[key]; !exists {
+				batches[key] = &proto.BatchPreheatReply{
+					Results: make([]*proto.PreheatReplyItem, 0),
+					JobId:   reply.jobId,
+				}
+			}
+			batches[key].Results = append(batches[key].Results, reply.item)
+			if len(batches[key].Results) >= f.preheatReplyBatchSize {
+				sendBatch(key.addr, batches[key])
+				delete(batches, key)
+			}
+		case <-ticker.C:
+			for key, batch := range batches {
+				if len(batch.Results) > 0 {
+					sendBatch(key.addr, batch)
+					delete(batches, key)
+				}
+			}
+		case <-f.stopCh:
+			return
+		}
 	}
 }
 

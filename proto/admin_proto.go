@@ -335,15 +335,17 @@ const (
 	AdminVolAddAllowedStorageClass = "/vol/addAllowedStorageClass"
 	AdminVolAddPool                = "/vol/addPool"
 	AdminVolUpdatePoolId           = "/vol/updatePoolId"
+
 	// FlashNode API
-	FlashNodeAdd               = "/flashNode/add"
-	FlashNodeSet               = "/flashNode/set"
-	FlashNodeRemove            = "/flashNode/remove"
-	FlashNodeRemoveAllInactive = "/flashNode/removeAllInactive"
-	FlashNodeGet               = "/flashNode/get"
-	FlashNodeList              = "/flashNode/list"
-	FlashNodeSetReadIOLimits   = "/flashNode/setReadIOLimits"
-	FlashNodeSetWriteIOLimits  = "/flashNode/SetWriteIOLimits"
+	FlashNodeAdd                = "/flashNode/add"
+	FlashNodeSet                = "/flashNode/set"
+	FlashNodeRemove             = "/flashNode/remove"
+	FlashNodeRemoveAllInactive  = "/flashNode/removeAllInactive"
+	FlashNodeGet                = "/flashNode/get"
+	FlashNodeList               = "/flashNode/list"
+	FlashNodeSetReadIOLimits    = "/flashNode/setReadIOLimits"
+	FlashNodeSetWriteIOLimits   = "/flashNode/SetWriteIOLimits"
+	FlashNodeSetPreheatIOLimits = "/flashNode/SetPreheatIOLimits"
 
 	// Flash Mannual Task
 	CreateFlashNodeManualTask = "/flashNode/createFlashManualTask"

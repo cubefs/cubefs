@@ -92,3 +92,27 @@ message BatchReadResp {
 
   repeated ReadResult Results = 1;
 }
+
+message PreheatAsyncReq {
+  option (gogoproto.goproto_stringer) = false;
+
+  uint64               TaskID    = 1;
+  string               ReplyAddr = 2;
+  string               JobId     = 3;
+  CachePrepareRequest  Req       = 4;
+}
+
+message PreheatReplyItem {
+  option (gogoproto.goproto_stringer) = false;
+
+  uint64  TaskID     = 1;
+  uint32  ResultCode = 2;
+  string  ErrMsg     = 3;
+}
+
+message BatchPreheatReply {
+  option (gogoproto.goproto_stringer) = false;
+
+  repeated PreheatReplyItem Results = 1;
+  string                    JobId   = 2;
+}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
 )
 
 type MockMetaWrapper struct{}
@@ -135,6 +136,10 @@ func (m *MockExtentClient) Read(inode uint64, data []byte, offset int, size int,
 }
 
 func (m *MockExtentClient) ForceRefreshExtentsCache(inode uint64) error { return nil }
+
+func (m *MockExtentClient) GetStreamer(inode uint64) *stream.Streamer {
+	return &stream.Streamer{}
+}
 
 func (m *MockExtentClient) Flush(inode uint64) error {
 	return nil

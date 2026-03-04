@@ -13,6 +13,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/sdk/remotecache"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/routinepool"
@@ -27,6 +28,13 @@ const (
 	maxDirChanNum                    = 100000
 	loadDirWorkerCount               = 8
 )
+
+type InflightTask struct {
+	Req        *proto.PreheatAsyncReq
+	StartTime  time.Time
+	RetryCount int
+	Fg         *remotecache.FlashGroup
+}
 
 type ManualScanner struct {
 	ID             string
@@ -56,6 +64,10 @@ type ManualScanner struct {
 	closeOnce      sync.Once
 	mu             sync.Mutex
 	loadedEntries  int32
+	inflightTasks  sync.Map
+	semaphore      chan struct{}
+	timeoutStopCh  chan struct{}
+	taskIDSeq      uint64
 }
 
 func NewManualScanner(adminTask *proto.AdminTask, f *FlashNode, metaWrapper *meta.MetaWrapper, extentClient *stream.ExtentClient) *ManualScanner {
@@ -105,6 +117,8 @@ func NewManualScanner(adminTask *proto.AdminTask, f *FlashNode, metaWrapper *met
 		receiveResumeC: make(chan struct{}),
 		pause:          0,
 		pauseCond:      sync.NewCond(&sync.Mutex{}),
+		semaphore:      make(chan struct{}, 2000),
+		timeoutStopCh:  make(chan struct{}),
 	}
 	if !scanTask.ManualTaskConfig.PrintProgress {
 		scanner.loadedEntries = 1
@@ -156,6 +170,7 @@ func (s *ManualScanner) Start() (err error) {
 		go s.loadDirTotalEntries(parentId)
 	}
 	go s.checkScanning()
+	s.startTimeoutGC()
 
 	return
 }
@@ -236,9 +251,9 @@ func (s *ManualScanner) checkScanning() {
 			curFileCachedNum := atomic.LoadInt64(&s.currentStat.TotalFileCachedNum)
 			curDirScanned := atomic.LoadInt64(&s.currentStat.TotalDirScannedNum)
 			curEntryNum := atomic.LoadInt64(&s.currentStat.TotalEntryNum)
-			log.LogInfof("checkScanning progress id(%v): curFileCachedNum(%v) lastFileCachedNum(%v) curDirScanned(%v) lastDirScannedNum(%v) curEntryNum(%v) lastEntryNum(%v) pause(%v) prepareChLen(%v)",
-				s.ID, curFileCachedNum, lastFileCachedNum, curDirScanned, lastDirScannedNum, curEntryNum, lastEntryNum, atomic.LoadInt32(&s.pause), len(s.RemoteCache.PrepareCh))
-			if curFileCachedNum != lastFileCachedNum || curDirScanned != lastDirScannedNum || curEntryNum != lastEntryNum || atomic.LoadInt32(&s.pause) == 1 || len(s.RemoteCache.PrepareCh) != 0 {
+			log.LogInfof("checkScanning progress id(%v): curFileCachedNum(%v) lastFileCachedNum(%v) curDirScanned(%v) lastDirScannedNum(%v) curEntryNum(%v) lastEntryNum(%v) pause(%v) inflightTasks(%v)",
+				s.ID, curFileCachedNum, lastFileCachedNum, curDirScanned, lastDirScannedNum, curEntryNum, lastEntryNum, atomic.LoadInt32(&s.pause), len(s.semaphore))
+			if curFileCachedNum != lastFileCachedNum || curDirScanned != lastDirScannedNum || curEntryNum != lastEntryNum || atomic.LoadInt32(&s.pause) == 1 || len(s.semaphore) != 0 {
 				lastFileCachedNum = curFileCachedNum
 				lastDirScannedNum = curDirScanned
 				lastEntryNum = curEntryNum
@@ -280,15 +295,18 @@ func (s *ManualScanner) copyResponse() *proto.FlashNodeManualTaskResponse {
 	response.TotalCacheSize = s.currentStat.TotalCacheSize
 	response.LastCacheSize = s.currentStat.LastCacheSize
 	response.TotalExtentKeyNum = s.currentStat.TotalExtentKeyNum
+	response.SuccessFlashKeyNum = s.currentStat.SuccessFlashKeyNum
+	response.SkipFlashKeyNum = s.currentStat.SkipFlashKeyNum
+	response.ErrorFlashKeyNum = s.currentStat.ErrorFlashKeyNum
 	response.TotalEntryNum = s.currentStat.TotalEntryNum
 	return response
 }
 
 func (s *ManualScanner) DoneScanning() bool {
 	loadedEntries := atomic.LoadInt32(&s.loadedEntries)
-	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v) pause(%v) loadedEntries(%v)",
-		s.dirChan.Len(), len(s.fileChan), s.fileRPool.RunningNum(), s.dirRPool.RunningNum(), s.pause, loadedEntries)
-	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && atomic.LoadInt32(&s.pause) == 0 && len(s.RemoteCache.PrepareCh) == 0 && loadedEntries == 1
+	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v) pause(%v) loadedEntries(%v) inflightTasks(%v)",
+		s.dirChan.Len(), len(s.fileChan), s.fileRPool.RunningNum(), s.dirRPool.RunningNum(), s.pause, loadedEntries, len(s.semaphore))
+	return s.dirChan.Len() == 0 && len(s.fileChan) == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0 && atomic.LoadInt32(&s.pause) == 0 && len(s.semaphore) == 0 && loadedEntries == 1
 }
 
 func (s *ManualScanner) handleFileChan() {
@@ -344,7 +362,7 @@ func (s *ManualScanner) handleFile(dentry *proto.ScanItem) {
 	s.applyPauseIfEnabled("handleFile", dentry.Name)
 	atomic.AddInt64(&s.currentStat.TotalFileScannedNum, 1)
 	s.limiter.Wait(context.Background())
-	info, err := s.mw.InodeGet_ll(dentry.Inode, true)
+	info, err := s.mw.InodeGet_ll(dentry.Inode, false)
 	if err != nil {
 		atomic.AddInt64(&s.currentStat.ErrorCacheNum, 1)
 		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
@@ -369,6 +387,24 @@ func (s *ManualScanner) handleFile(dentry *proto.ScanItem) {
 	default:
 		log.LogWarnf("invalid op: %v", dentry)
 	}
+}
+
+type CacheStreamer interface {
+	PrepareCacheRequests(offset, size uint64, data []byte, gen uint64) ([]*remotecache.CacheReadRequest, error)
+	GetFlashGroup(fixedFileOffset uint64) (uint32, *remotecache.FlashGroup, uint32)
+}
+
+var getCacheStreamer = func(ec ExtentApi, inode uint64) (CacheStreamer, error) {
+	streamer := ec.GetStreamer(inode)
+	if streamer == nil {
+		return nil, fmt.Errorf("warmUp: streamer not found for inode %v", inode)
+	}
+	return streamer, nil
+}
+
+type cacheKey struct {
+	offset  uint64
+	version uint32
 }
 
 func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
@@ -401,10 +437,8 @@ func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
 		return nil
 	}
 	defer func() {
-		if err != nil {
-			s.ec.CloseStream(i.Inode)
-			s.ec.EvictStream(i.Inode)
-		}
+		s.ec.CloseStream(i.Inode)
+		s.ec.EvictStream(i.Inode)
 	}()
 	if err = s.ec.OpenStream(i.Inode, false, false, ""); err != nil {
 		log.LogWarnf("warmUp: ec OpenStream fail, inode(%v) err: %v", i.Inode, err)
@@ -414,18 +448,145 @@ func (s *ManualScanner) warmUp(i *proto.ScanItem) error {
 		log.LogWarnf("warmUp: ec ForceRefreshExtentsCache fail, inode(%v) err: %v", i.Inode, err)
 		return err
 	}
-	eLen := len(extents)
-	for index, extent := range extents {
+
+	streamer, err := getCacheStreamer(s.ec, i.Inode)
+	if err != nil {
+		return err
+	}
+	processedBlocks := make(map[cacheKey]struct{})
+	for _, extent := range extents {
 		s.prepareLimiter.Wait(context.Background())
-		s.flowLimiter.WaitN(context.Background(), int(extent.Size))
-		prepareReq := stream.NewPrepareRemoteCacheRequest(i.Inode, extent, true, i.WriteGen, eLen-1 == index)
-		s.RemoteCache.PrepareCh <- prepareReq
-		atomic.AddInt64(&s.currentStat.TotalExtentKeyNum, 1)
-		atomic.AddInt64(&s.currentStat.TotalCacheSize, int64(extent.Size))
+
+		cReadRequests, err1 := streamer.PrepareCacheRequests(extent.FileOffset, uint64(extent.Size), nil, i.WriteGen)
+		if err1 != nil {
+			log.LogWarnf("warmUp: PrepareCacheRequests failed, inode(%v) err: %v", i.Inode, err)
+			continue
+		}
+		for _, req := range cReadRequests {
+			key := cacheKey{
+				offset:  req.CacheRequest.FixedFileOffset,
+				version: req.CacheRequest.Version,
+			}
+			if _, ok := processedBlocks[key]; ok {
+				continue
+			}
+			processedBlocks[key] = struct{}{}
+
+			slot, fg, ownerSlot := streamer.GetFlashGroup(req.CacheRequest.FixedFileOffset)
+			if fg == nil {
+				log.LogWarnf("warmUp: GetFlashGroup failed, offset(%v) err: %v", req.CacheRequest.FixedFileOffset, proto.ErrorNoFlashGroup)
+				continue
+			}
+			req.CacheRequest.Slot = uint64(slot)<<32 | uint64(ownerSlot)
+
+			prepareReq := &proto.CachePrepareRequest{
+				CacheRequest: req.CacheRequest,
+				FlashNodes:   fg.Hosts,
+			}
+
+			taskID := atomic.AddUint64(&s.taskIDSeq, 1)
+			asyncReq := &proto.PreheatAsyncReq{
+				Req:       prepareReq,
+				TaskID:    taskID,
+				ReplyAddr: s.flashNode.localAddr,
+				JobId:     s.ID,
+			}
+			s.flowLimiter.WaitN(context.Background(), int(req.Size_))
+			s.issueTask(asyncReq, fg, 0)
+			atomic.AddInt64(&s.currentStat.TotalExtentKeyNum, 1)
+			atomic.AddInt64(&s.currentStat.TotalCacheSize, int64(req.Size_))
+		}
 	}
 	atomic.AddInt64(&s.currentStat.TotalFileCachedNum, 1)
 	s.stopIfOverflow()
 	return nil
+}
+
+func (s *ManualScanner) issueTask(req *proto.PreheatAsyncReq, fg *remotecache.FlashGroup, retryCount int) {
+	select {
+	case <-s.stopC:
+		return
+	default:
+	}
+	s.semaphore <- struct{}{}
+	s.inflightTasks.Store(req.TaskID, &InflightTask{
+		Req:        req,
+		StartTime:  time.Now(),
+		RetryCount: retryCount,
+		Fg:         fg,
+	})
+
+	err := s.RemoteCache.PrepareAsync(context.Background(), fg, req)
+	if err != nil {
+		log.LogWarnf("issueTask: PrepareAsync failed taskID(%v) err: %v", req.TaskID, err)
+		if val, ok := s.inflightTasks.LoadAndDelete(req.TaskID); ok {
+			<-s.semaphore
+			t := val.(*InflightTask)
+			if t.RetryCount < s.manualTask.ManualTaskConfig.RetryCount {
+				log.LogWarnf("Task %v PrepareAsync error, retrying (%d/%d)", req.TaskID, t.RetryCount+1, s.manualTask.ManualTaskConfig.RetryCount)
+				go s.issueTask(req, fg, t.RetryCount+1)
+			} else {
+				atomic.AddInt64(&s.currentStat.ErrorFlashKeyNum, 1)
+			}
+		}
+	}
+}
+
+func (s *ManualScanner) HandlePreheatReply(reply *proto.BatchPreheatReply) {
+	for _, item := range reply.Results {
+		if val, ok := s.inflightTasks.LoadAndDelete(item.TaskID); ok {
+			<-s.semaphore
+
+			switch uint8(item.ResultCode) {
+			case proto.OpOk:
+				atomic.AddInt64(&s.currentStat.SuccessFlashKeyNum, 1)
+			case proto.OpAlreadyPreheated:
+				atomic.AddInt64(&s.currentStat.SkipFlashKeyNum, 1)
+			default:
+				t := val.(*InflightTask)
+				if t.RetryCount < s.manualTask.ManualTaskConfig.RetryCount {
+					log.LogWarnf("Task %v error (code: %v), retrying (%d/%d)", item.TaskID, item.ResultCode, t.RetryCount+1, s.manualTask.ManualTaskConfig.RetryCount)
+					go s.issueTask(t.Req, t.Fg, t.RetryCount+1)
+				} else {
+					atomic.AddInt64(&s.currentStat.ErrorFlashKeyNum, 1)
+				}
+			}
+		} else {
+			log.LogWarnf("Received late reply for task %v, ignored", item.TaskID)
+		}
+	}
+}
+
+func (s *ManualScanner) startTimeoutGC() {
+	ticker := time.NewTicker(10 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				now := time.Now()
+				s.inflightTasks.Range(func(key, value interface{}) bool {
+					task := value.(*InflightTask)
+					if now.Sub(task.StartTime) > 2*time.Minute {
+						if val, ok := s.inflightTasks.LoadAndDelete(key); ok {
+							<-s.semaphore
+							t := val.(*InflightTask)
+							if t.RetryCount < s.manualTask.ManualTaskConfig.RetryCount {
+								log.LogWarnf("Task %v timeout, retrying (%d/%d)", key, t.RetryCount+1, s.manualTask.ManualTaskConfig.RetryCount)
+								go s.issueTask(t.Req, t.Fg, t.RetryCount+1)
+							} else {
+								atomic.AddInt64(&s.currentStat.ErrorFlashKeyNum, 1)
+								log.LogWarnf("Task %v timeout, force recycled", key)
+							}
+						}
+					}
+					return true
+				})
+			case <-s.timeoutStopCh:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
 }
 
 func (s *ManualScanner) stopIfOverflow() {
@@ -492,7 +653,7 @@ func (s *ManualScanner) handleDirLimitBreadthFirst(dentry *proto.ScanItem) {
 		default:
 		}
 		s.applyPauseIfEnabled("handleDirLimitBreadthFirst", dentry.Name)
-		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit), true)
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit), false)
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
 			log.LogErrorf("handleDirLimitBreadthFirst ReadDirLimit_ll err(%v), dentry(%v), marker(%v)", err, dentry, marker)
@@ -562,7 +723,7 @@ func (s *ManualScanner) handleDirLimitDepthFirst(dentry *proto.ScanItem) {
 		}
 		s.applyPauseIfEnabled("handleDirLimitDepthFirst", dentry.Name)
 
-		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit), true)
+		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit), false)
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
 			log.LogErrorf("handleDirLimitDepthFirst ReadDirLimit_ll err(%v), dentry(%v), marker(%v)", err, dentry, marker)
@@ -653,7 +814,7 @@ func (s *ManualScanner) FindPrefixInode() (inode uint64, prefixDirs []string, er
 	}
 	parentId := proto.RootIno
 	for _, dir := range dirs {
-		curIno, curMode, err := s.mw.Lookup_ll(parentId, dir, true)
+		curIno, curMode, err := s.mw.Lookup_ll(parentId, dir, false)
 
 		// If the part except the last part does not match exactly the same dentry, there is
 		// no path matching the path prefix. An ENOENT error is returned to the caller.
@@ -700,6 +861,7 @@ func (s *ManualScanner) Stop() {
 	s.fileRPool.WaitAndClose()
 	close(s.dirChan.In)
 	close(s.fileChan)
+	close(s.timeoutStopCh)
 	s.mw.Close()
 	if s.ec != nil {
 		s.ec.Close()

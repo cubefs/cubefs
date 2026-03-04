@@ -15,6 +15,7 @@
 package stream
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"strings"
@@ -311,6 +312,13 @@ func (rc *RemoteCache) ApplyWarmupMetaToken(flashNodeAddr string, clientId strin
 	} else {
 		return rc.remoteCacheClient.ApplyWarmupMetaToken(flashNodeAddr, clientId, requestType)
 	}
+}
+
+func (rc *RemoteCache) PrepareAsync(ctx context.Context, fg *remotecache.FlashGroup, req *proto.PreheatAsyncReq) error {
+	if rc.remoteCacheClient == nil || !rc.Started {
+		return errors.New("remote cache client is nil or not started")
+	}
+	return rc.remoteCacheClient.PrepareAsync(ctx, fg, req)
 }
 
 func (rc *RemoteCache) UpdateWarmPath(data []byte, addr string) {

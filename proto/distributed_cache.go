@@ -557,6 +557,7 @@ type ManualTaskConfig struct {
 	FlowLimitPerSecond      int64
 	PrintProgress           bool
 	TaskTimeoutMinutes      int
+	RetryCount              int
 }
 
 type ManualTaskStatistics struct {
@@ -564,6 +565,9 @@ type ManualTaskStatistics struct {
 	TotalFileCachedNum  int64
 	TotalDirScannedNum  int64
 	TotalExtentKeyNum   int64
+	SuccessFlashKeyNum  int64
+	SkipFlashKeyNum     int64
+	ErrorFlashKeyNum    int64
 	ErrorCacheNum       int64
 	ErrorReadDirNum     int64
 	TotalCacheSize      int64
@@ -637,6 +641,9 @@ func (flt *FlashManualTask) SetResponse(taskRsp *FlashNodeManualTaskResponse) {
 	flt.ManualTaskStatistics.TotalExtentKeyNum = taskRsp.TotalExtentKeyNum
 	flt.ManualTaskStatistics.LastCacheSize = taskRsp.LastCacheSize
 	flt.ManualTaskStatistics.TotalEntryNum = taskRsp.TotalEntryNum
+	flt.ManualTaskStatistics.SuccessFlashKeyNum = taskRsp.SuccessFlashKeyNum
+	flt.ManualTaskStatistics.SkipFlashKeyNum = taskRsp.SkipFlashKeyNum
+	flt.ManualTaskStatistics.ErrorFlashKeyNum = taskRsp.ErrorFlashKeyNum
 	flt.Done = taskRsp.Done
 	flt.ErrMsg = taskRsp.StartErr
 }
@@ -819,4 +826,25 @@ type FlashTopologyAdminView struct {
 	Region          string
 	Status          string
 	DelayDeleteTime string
+}
+
+func (m *PreheatAsyncReq) String() string {
+	if m == nil {
+		return ""
+	}
+	return fmt.Sprintf("JobId(%v) TaskID(%v) ReplyAddr(%v) Req(%v)", m.JobId, m.TaskID, m.ReplyAddr, m.Req)
+}
+
+func (m *PreheatReplyItem) String() string {
+	if m == nil {
+		return ""
+	}
+	return fmt.Sprintf("TaskID(%v) ResultCode(%v) ErrMsg(%v)", m.TaskID, m.ResultCode, m.ErrMsg)
+}
+
+func (m *BatchPreheatReply) String() string {
+	if m == nil {
+		return ""
+	}
+	return fmt.Sprintf("JobId(%v) Results(%v)", m.JobId, m.Results)
 }

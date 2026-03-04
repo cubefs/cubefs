@@ -85,6 +85,9 @@ const (
 	_defaultReservedSpace                  = 100 * 1024 * 1024 * 1024 // 100GB
 	_defaultWarmUpPathExpire               = 60 * time.Minute
 	_defaultWarmupMetaTotalToken           = 1
+	_defaultPreheatReadDataNodeLimitFlow   = 1 * 1024 * 1024 * 1024 // 1GB
+	_defaultPreheatWorkerNum               = 20
+	_defaultPreheatReplyBatchSize          = 100
 )
 
 // Configuration keys
@@ -123,11 +126,20 @@ const (
 	cfgReservedSpace                = "reservedSpace"
 	cfgWarmupMetaTotalToken         = "warmupMetaTotalToken"
 	cfgEnableWarmUpPaths            = "enableWarmUpPaths"
+	cfgPreheatReadDataNodeLimitFlow = "preheatReadDataNodeLimitFlow"
+	cfgPreheatWorkerNum             = "preheatWorkerNum"
+	cfgPreheatReplyBatchSize        = "preheatReplyBatchSize"
 	paramIocc                       = "iocc"
 	paramFlow                       = "flow"
 	paramFactor                     = "factor"
 	cfgRegion                       = "region"
 )
+
+type asyncPreheatReply struct {
+	item  *proto.PreheatReplyItem
+	addr  string
+	jobId string
+}
 
 // The FlashNode manages the inode block cache to speed the file reading.
 type FlashNode struct {
@@ -187,6 +199,8 @@ type FlashNode struct {
 	prepareLimitPerSecond        int64
 	scannerMutex                 sync.RWMutex
 	manualScanners               sync.Map // [string]*ManualScanner
+	asyncPreheatTaskCh           chan *proto.PreheatAsyncReq
+	asyncPreheatReplyCh          chan *asyncPreheatReply
 	warmUpPaths                  sync.Map // [string]*WarmUpPathInfo
 	waitForCacheBlock            bool
 	prepareLoadRoutineNum        int
@@ -208,6 +222,11 @@ type FlashNode struct {
 	legacyMaster             int32
 	region                   string
 	remoteCacheDisableTTLMap map[string]bool // volume -> disableTTL, fetched during registration
+
+	preheatReadDataNodeLimiter   *rate.Limiter
+	preheatReadDataNodeLimitFlow int64
+	preheatWorkerNum             int
+	preheatReplyBatchSize        int
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -581,6 +600,31 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	f.prepareLimitPerSecond = prepareLimitPerSecond
 	log.LogInfof("[parseConfig] load  prepareLimitPerSecond[%v].", f.prepareLimitPerSecond)
 	log.LogInfof("[parseConfig] load  warmupMetaTotalToken[%v].", f.warmupMetaTotalToken)
+
+	preheatReadDataNodeLimitFlow := cfg.GetInt64(cfgPreheatReadDataNodeLimitFlow)
+	if preheatReadDataNodeLimitFlow <= 0 {
+		preheatReadDataNodeLimitFlow = _defaultPreheatReadDataNodeLimitFlow
+	}
+	f.preheatReadDataNodeLimitFlow = preheatReadDataNodeLimitFlow
+	log.LogInfof("[parseConfig] load  preheatReadDataNodeLimitFlow[%v].", f.preheatReadDataNodeLimitFlow)
+	f.preheatReadDataNodeLimiter = rate.NewLimiter(rate.Limit(f.preheatReadDataNodeLimitFlow), int(f.preheatReadDataNodeLimitFlow))
+
+	preheatWorkerNum := cfg.GetInt(cfgPreheatWorkerNum)
+	if preheatWorkerNum <= 0 {
+		preheatWorkerNum = _defaultPreheatWorkerNum
+	}
+	f.preheatWorkerNum = preheatWorkerNum
+	log.LogInfof("[parseConfig] load  preheatWorkerNum[%v].", f.preheatWorkerNum)
+
+	preheatReplyBatchSize := cfg.GetInt(cfgPreheatReplyBatchSize)
+	if preheatReplyBatchSize <= 0 {
+		preheatReplyBatchSize = _defaultPreheatReplyBatchSize
+	}
+	f.preheatReplyBatchSize = preheatReplyBatchSize
+	log.LogInfof("[parseConfig] load  preheatReplyBatchSize[%v].", f.preheatReplyBatchSize)
+
+	f.asyncPreheatTaskCh = make(chan *proto.PreheatAsyncReq, 2000)
+	f.asyncPreheatReplyCh = make(chan *asyncPreheatReply, 2000)
 	masters := cfg.GetStringSlice(proto.MasterAddr)
 	f.masters = masters
 	f.mc = master.NewMasterClient(masters, false)
@@ -627,6 +671,10 @@ func (f *FlashNode) startCacheEngine() (err error) {
 	}
 	f.cacheEngine.SetReadDataNodeTimeout(proto.DefaultRemoteCacheExtentReadTimeout)
 	f.cacheEngine.StartCachePrepareWorkers(f.limitWrite, f.prepareLoadRoutineNum)
+	for i := 0; i < f.preheatWorkerNum; i++ {
+		go f.preheatWorker()
+	}
+	go f.preheatReplyBatchSender()
 	return f.cacheEngine.Start()
 }
 

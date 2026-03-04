@@ -337,7 +337,7 @@ func (s *Streamer) read(data []byte, offset int, size int, poolId uint8) (total 
 					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
 						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD)
 					var cacheReadRequests []*remotecache.CacheReadRequest
-					cacheReadRequests, err = s.prepareCacheRequests(uint64(req.FileOffset), uint64(req.Size), req.Data, inodeInfo.Generation)
+					cacheReadRequests, err = s.PrepareCacheRequests(uint64(req.FileOffset), uint64(req.Size), req.Data, inodeInfo.Generation)
 					if err == nil {
 						var read int
 						remoteCacheMetric := exporter.NewCounter("readRemoteCache")
