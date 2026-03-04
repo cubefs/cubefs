@@ -7233,6 +7233,9 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 		err = errors.NewErrorf(" dataPartitionID :%v not find nodeset for addr %v", dp.PartitionID, addr)
 		return
 	}
+	if param.Tag == "" && c.IsDataPartitionTagSet(dp.VolName) {
+		param.Tag = c.GetDataNodeTag(addr)
+	}
 
 	statusParam := &DecommissionStatusParam{
 		SrcAddr:          addr,

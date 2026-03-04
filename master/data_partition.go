@@ -2797,7 +2797,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster, allowPre
 			rackLevel:       c.getRackAwareLevel(),
 			excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, excludeHosts, partition.DecommissionSrcAddr),
 		}
-		if partition.DecommissionType == proto.TagDecommission && c.IsDataPartitionTagSet(partition.VolName) {
+		if partition.DecommissionTag != DefaultTag {
 			param.selectType = proto.SelectTypeTag
 			param.tag = partition.DecommissionTag
 		}
