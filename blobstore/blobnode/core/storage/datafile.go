@@ -62,14 +62,12 @@ const (
 	_chunkVerSize         = 1
 	_chunkParentChunkSize = clustermgr.ChunkIDLength
 	_chunkCreateTimeSize  = 8
-	//_chunkPaddingSize     = _chunkHeaderSize - _chunkMagicSize - _chunkVerSize - _chunkParentChunkSize - _chunkCreateTimeSize
 
 	// chunk offset
 	_chunkMagicOffset       = 0
 	_chunkVerOffset         = _chunkMagicOffset + _chunkMagicSize
 	_chunkParentChunkOffset = _chunkVerOffset + _chunkVerSize
 	_chunkCreateTimeOffset  = _chunkParentChunkOffset + _chunkParentChunkSize
-	//_chunkPaddingOffset     = _chunkCreateTimeOffset + _chunkCreateTimeSize
 
 	_pageSize  = 4 * 1024 // 4k
 	_fullsize  = core.HeaderSize + core.CrcBlockUnitSize + core.FooterSize
@@ -84,11 +82,7 @@ var (
 	ErrChunkDataMagic       = errors.New("chunkdata: magic not match")
 	ErrChunkHeaderBufSize   = errors.New("chunkdata: buf size not match")
 
-	poolBlock = sync.Pool{
-		New: func() interface{} {
-			return make([]byte, _fullsize)
-		},
-	}
+	poolBlock = sync.Pool{New: func() any { return make([]byte, _fullsize) }}
 )
 
 type ChunkHeader struct {
@@ -339,7 +333,7 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 	body = io.TeeReader(body, crc)
 	tr := bncomm.NewTimeReader(body)
 
-	encoder := crc32block.NewSizedBlockEncoder(io.NopCloser(body), int64(shard.Size), core.CrcBlockUnitSize)
+	encoder := crc32block.NewSizedBlockEncoder(io.NopCloser(tr), int64(shard.Size), core.CrcBlockUnitSize)
 	defer func() {
 		encoder.Close()
 		span.AppendTrackLogWithDuration("net.r", tr.Duration(), err)
