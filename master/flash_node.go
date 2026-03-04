@@ -568,7 +568,14 @@ func (m *Server) flashManualTask(w http.ResponseWriter, r *http.Request) {
 			} else if rsp.ManualTaskConfig.PrintProgress && rsp.ManualTaskStatistics.TotalEntryNum > 0 {
 				stats := rsp.ManualTaskStatistics
 				numerator := stats.TotalFileCachedNum + stats.TotalDirScannedNum
-				stats.CompletionRate = fmt.Sprintf("%d%%", (numerator*100)/rsp.ManualTaskStatistics.TotalEntryNum)
+				percent := (numerator * 100) / rsp.ManualTaskStatistics.TotalEntryNum
+				if percent > 99 {
+					percent = 99
+				}
+				if percent < 0 {
+					percent = 0
+				}
+				stats.CompletionRate = fmt.Sprintf("%d%%", percent)
 			}
 			if !rsp.ManualTaskConfig.PrintProgress {
 				continue
