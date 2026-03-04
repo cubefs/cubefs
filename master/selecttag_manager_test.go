@@ -643,3 +643,119 @@ func TestEdgeCases(t *testing.T) {
 		assert.Equal(t, 0, count)
 	})
 }
+
+func TestSelectOneTargetMetaReplica(t *testing.T) {
+	const (
+		selectTag = "target-tag"
+		srcAddr   = "10.0.0.1:17210"
+	)
+
+	buildCluster := func(withSameNodeSet, withSameZoneOtherNodeSet, withOtherZone bool) *Cluster {
+		cluster := &Cluster{
+			cfg: &clusterConfig{
+				RackAwareLevel: proto.RackAwareNone,
+			},
+			ClusterTopoSubItem: ClusterTopoSubItem{
+				t:         newTopology(),
+				metaNodes: sync.Map{},
+				dataNodes: sync.Map{},
+			},
+		}
+
+		addMetaNode := func(ns *nodeSet, zoneName, addr, tag string, id uint64) {
+			metaNode := &MetaNode{
+				ID:                id,
+				Addr:              addr,
+				ZoneName:          zoneName,
+				NodeSetID:         ns.ID,
+				Tag:               tag,
+				IsActive:          true,
+				Total:             1024 * 1024 * 1024 * 10,
+				Used:              0,
+				MaxMemAvailWeight: defaultMetaNodeReservedMem * 2,
+			}
+			require.NoError(t, cluster.t.putMetaNode(metaNode))
+			cluster.metaNodes.Store(addr, metaNode)
+		}
+
+		zone1 := newZone("zone1", proto.MediaType_Unspecified)
+		ns11 := newNodeSet(nil, 1, 10, "zone1", "")
+		ns12 := newNodeSet(nil, 2, 10, "zone1", "")
+		require.NoError(t, zone1.putNodeSet(ns11))
+		require.NoError(t, zone1.putNodeSet(ns12))
+		require.NoError(t, cluster.t.putZone(zone1))
+
+		zone2 := newZone("zone2", proto.MediaType_Unspecified)
+		ns21 := newNodeSet(nil, 3, 10, "zone2", "")
+		require.NoError(t, zone2.putNodeSet(ns21))
+		require.NoError(t, cluster.t.putZone(zone2))
+
+		// Source replica node.
+		addMetaNode(ns11, "zone1", srcAddr, "src-tag", 1)
+
+		// Same nodeset candidate.
+		if withSameNodeSet {
+			addMetaNode(ns11, "zone1", "10.0.0.2:17210", selectTag, 2)
+		}
+
+		// Same zone but different nodeset candidate.
+		if withSameZoneOtherNodeSet {
+			addMetaNode(ns12, "zone1", "10.0.0.3:17210", selectTag, 3)
+		}
+
+		// Different zone candidate.
+		if withOtherZone {
+			addMetaNode(ns21, "zone2", "10.0.0.4:17210", selectTag, 4)
+		}
+
+		// Ensure there is always at least one non-target node in other nodesets/zones,
+		// so fallback path is exercised by tag filtering rather than empty topology.
+		addMetaNode(ns12, "zone1", "10.0.0.13:17210", "other-tag", 13)
+		addMetaNode(ns21, "zone2", "10.0.0.14:17210", "other-tag", 14)
+
+		return cluster
+	}
+
+	newMP := func(src *MetaNode) *MetaPartition {
+		return &MetaPartition{
+			PartitionID: 100,
+			Hosts:       []string{srcAddr},
+			Replicas: []*MetaReplica{
+				{
+					Addr:     srcAddr,
+					metaNode: src,
+				},
+			},
+		}
+	}
+
+	t.Run("select from same nodeset", func(t *testing.T) {
+		c := buildCluster(true, true, true)
+		src, err := c.metaNode(srcAddr)
+		require.NoError(t, err)
+
+		addr, err := c.selectOneTargetMetaReplica(newMP(src), srcAddr, selectTag, proto.StoreModeMem)
+		require.NoError(t, err)
+		assert.Equal(t, "10.0.0.2:17210", addr)
+	})
+
+	t.Run("select from same zone different nodeset", func(t *testing.T) {
+		c := buildCluster(false, true, true)
+		src, err := c.metaNode(srcAddr)
+		require.NoError(t, err)
+
+		addr, err := c.selectOneTargetMetaReplica(newMP(src), srcAddr, selectTag, proto.StoreModeMem)
+		require.NoError(t, err)
+		assert.Equal(t, "10.0.0.3:17210", addr)
+	})
+
+	t.Run("select from other zone", func(t *testing.T) {
+		c := buildCluster(false, false, true)
+		src, err := c.metaNode(srcAddr)
+		require.NoError(t, err)
+
+		addr, err := c.selectOneTargetMetaReplica(newMP(src), srcAddr, selectTag, proto.StoreModeMem)
+		require.NoError(t, err)
+		assert.Equal(t, "10.0.0.4:17210", addr)
+	})
+}
