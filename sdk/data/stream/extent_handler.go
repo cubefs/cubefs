@@ -191,6 +191,10 @@ type ExtentHandler struct {
 	// Channel for write data requests (data and blksize)
 	writeDataChan chan *WriteDataRequest
 	doneWriteData chan struct{}
+	writeDataWg   sync.WaitGroup
+	writeDataMu   sync.RWMutex
+	writeDataStop bool
+	pendingWrites int64
 }
 
 // WriteDataRequest represents a write data request with data and blksize
@@ -270,7 +274,11 @@ func (eh *ExtentHandler) String() string {
 }
 
 func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blksize int, direct bool,
-	retainForAsyncRelease func() func()) {
+	retainForAsyncRelease func() func()) (err error) {
+	if eh.getStatus() >= ExtentStatusClosed {
+		return errors.NewErrorf("extent handler writeWithPacket rejected by status, eh(%v)", eh)
+	}
+
 	// Get write request from pool
 	req := getWriteDataRequest()
 	if retainForAsyncRelease != nil {
@@ -288,8 +296,23 @@ func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blks
 	req.blksize = blksize
 	req.direct = direct
 
+	eh.writeDataMu.RLock()
+	if eh.writeDataStop {
+		eh.writeDataMu.RUnlock()
+		log.LogWarnf("ExtentHandler writeWithPacket: handler write channel is stopping, eh(%v)", eh)
+		if req.releaseData != nil {
+			req.releaseData()
+		}
+		putWriteDataRequest(req)
+		return errors.New("extent handler write channel is stopping")
+	}
+	eh.writeDataWg.Add(1)
+	atomic.AddInt64(&eh.pendingWrites, 1)
+	eh.writeDataMu.RUnlock()
+
 	select {
 	case eh.writeDataChan <- req:
+		return nil
 	case <-eh.doneWriteData:
 		log.LogWarnf("ExtentHandler writeWithPacket: channel closed, eh(%v)", eh)
 		if req.releaseData != nil {
@@ -297,6 +320,9 @@ func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blks
 		}
 		// Return to pool if failed to send
 		putWriteDataRequest(req)
+		atomic.AddInt64(&eh.pendingWrites, -1)
+		eh.writeDataWg.Done()
+		return errors.New("extent handler write channel closed")
 	}
 }
 
@@ -310,15 +336,12 @@ func (eh *ExtentHandler) writeDataConsumer() {
 			}
 			eh.processWriteData(req)
 		case <-eh.doneWriteData:
-			// Drain remaining requests and return them to pool
+			// Drain remaining requests and process them before exit.
 			for {
 				select {
 				case req := <-eh.writeDataChan:
 					if req != nil {
-						if req.releaseData != nil {
-							req.releaseData()
-						}
-						putWriteDataRequest(req)
+						eh.processWriteData(req)
 					}
 				default:
 					log.LogDebugf("ExtentHandler writeDataConsumer: done, eh(%v)", eh)
@@ -332,6 +355,10 @@ func (eh *ExtentHandler) writeDataConsumer() {
 // processWriteData processes the write data request
 func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
 	defer putWriteDataRequest(req) // Return to pool after processing
+	defer func() {
+		atomic.AddInt64(&eh.pendingWrites, -1)
+		eh.writeDataWg.Done()
+	}()
 	defer func() {
 		if req.releaseData != nil {
 			req.releaseData()
@@ -401,7 +428,9 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool, retai
 	}
 
 	// Send write request through channel to consumer
-	eh.writeWithPacket(data, offset, size, blksize, direct, retainForAsyncRelease)
+	if err = eh.writeWithPacket(data, offset, size, blksize, direct, retainForAsyncRelease); err != nil {
+		return nil, err
+	}
 
 	eh.size += size
 
@@ -665,9 +694,28 @@ func (eh *ExtentHandler) flush() (err error) {
 func (eh *ExtentHandler) cleanup() (err error) {
 	log.LogDebugf("cleanup: eh(%v)", eh)
 	eh.Once.Do(func() {
+		eh.writeDataMu.Lock()
+		if !eh.writeDataStop {
+			eh.writeDataStop = true
+			close(eh.doneWriteData)
+		}
+		eh.writeDataMu.Unlock()
+
+		// Strictly wait for all accepted async writes to finish, and emit
+		// periodic warnings so stalls are visible early in key path.
+		lastWarn := time.Now()
+		for atomic.LoadInt64(&eh.pendingWrites) > 0 {
+			if time.Since(lastWarn) >= time.Second {
+				lastWarn = time.Now()
+				log.LogWarnf("cleanup waiting writeData: eh(%v) pendingWrites(%v) chanLen(%v) inflight(%v)",
+					eh, atomic.LoadInt64(&eh.pendingWrites), len(eh.writeDataChan), atomic.LoadInt32(&eh.inflight))
+			}
+			time.Sleep(time.Millisecond * 10)
+		}
+		eh.writeDataWg.Wait()
+
 		eh.doneSender <- struct{}{}
 		eh.doneReceiver <- struct{}{}
-		close(eh.doneWriteData)
 		if eh.conn != nil {
 			conn := eh.conn
 			eh.conn = nil
