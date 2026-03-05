@@ -72,7 +72,7 @@ const (
 var (
 	// regexps for data validation
 	volNameRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,61}[a-zA-Z0-9]$")
-	ownerRegexp   = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_]{0,35}$")
+	ownerRegexp   = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_]{0,45}$")
 
 	useConnPool           = true // for test
 	enableDirectDeleteVol = true
