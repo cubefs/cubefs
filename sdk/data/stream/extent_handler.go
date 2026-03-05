@@ -338,6 +338,7 @@ func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
 		}
 	}()
 	eh.flushMu.Lock()
+	defer eh.flushMu.Unlock()
 	total := 0
 	for total < req.size {
 		if eh.packet == nil {
@@ -358,12 +359,19 @@ func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
 		}
 
 		if int(eh.packet.Size) >= req.blksize {
-			eh.flushMu.Unlock()
-			eh.flushPacket()
-			eh.flushMu.Lock()
+			if eh.getStatus() >= ExtentStatusClosed {
+				log.LogWarnf("ExtentHandler handler is in error status, eh(%v)", eh)
+
+				// Reuse the existing recovery path for unsent packet to avoid silent data loss.
+				eh.processReplyError(eh.packet, "handler in non-open status before send")
+				eh.packet = nil
+				return
+			}
+			eh.pushToRequest(eh.packet)
+			eh.packet = nil
+			log.LogDebugf("ExtentHandler flushPacket end: eh(%v)", eh)
 		}
 	}
-	eh.flushMu.Unlock()
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool, retainForAsyncRelease func() func()) (ek *proto.ExtentKey, err error) {
