@@ -132,6 +132,7 @@ const (
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
+	s.ebsc = make(map[uint8]*blobstore.BlobStoreClient)
 	masters := strings.Split(opt.Master, meta.HostsSeparator)
 	metaConfig := &meta.MetaConfig{
 		Volume:          opt.Volname,

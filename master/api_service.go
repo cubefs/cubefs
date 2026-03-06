@@ -9168,18 +9168,19 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	var (
 		bytes []byte
 		err   error
+		req   proto.LcConfiguration
 	)
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.SetBucketLifecycle))
 	defer func() {
 		doStatAndMetric(proto.SetBucketLifecycle, metric, err, nil)
+		AuditLog(r, "SetBucketLifecycle", fmt.Sprintf("LcConfiguration rules(%v)", req.String()), err)
 	}()
 
 	if bytes, err = io.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	req := proto.LcConfiguration{}
 	if err = json.Unmarshal(bytes, &req); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -9215,7 +9216,7 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = m.cluster.SetBucketLifecycle(&req)
-	AuditLog(r, "SetBucketLifecycle", fmt.Sprintf("LcConfiguration vol(%v)", req.VolName), err)
+	// AuditLog(r, "SetBucketLifecycle", fmt.Sprintf("LcConfiguration vol(%v)", req.VolName), err)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return

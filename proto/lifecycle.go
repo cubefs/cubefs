@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -56,6 +57,14 @@ func OpTypeToStorageType(op string) uint32 {
 type LcConfiguration struct {
 	VolName string
 	Rules   []*Rule
+}
+
+func (lc *LcConfiguration) String() string {
+	if lc == nil {
+		return "nil"
+	}
+	bytes, _ := json.Marshal(lc)
+	return string(bytes)
 }
 
 type Rule struct {
