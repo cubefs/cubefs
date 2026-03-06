@@ -116,7 +116,7 @@ var (
 	ErrDpNoSamePeer                            = errors.New("dp has no same peer between master and replicas")
 	ErrWaitForAutoAddReplica                   = errors.New("wait for auto add replica")
 	ErrBufferSizeExceedMaximum                 = errors.New("buffer size exceeds maximum")
-	ErrVolNameRegExpNotMatch                   = errors.New("name can only be number and letters")
+	ErrVolNameRegExpNotMatch                   = errors.New("invalid volume name")
 	ErrSnapshotNotEnabled                      = errors.New("cluster not enable snapshot")
 	ErrMemberChange                            = errors.New("raft prev member change is not finished.")
 	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
