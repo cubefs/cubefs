@@ -195,6 +195,14 @@ type ExtentHandler struct {
 	writeDataMu   sync.RWMutex
 	writeDataStop bool
 	pendingWrites int64
+	// writeDataOwnerEpoch defines the single valid owner for writeData consumer path.
+	// Any goroutine with stale epoch must stop consuming immediately.
+	writeDataOwnerEpoch uint64
+	writeDataConsumerWg sync.WaitGroup
+
+	// ioOwnerEpoch fences sender/receiver and packet enqueue path.
+	// cleanup handoff invalidates stale producers before shutting down io loops.
+	ioOwnerEpoch uint64
 }
 
 // WriteDataRequest represents a write data request with data and blksize
@@ -260,9 +268,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 		doneWriteData:      make(chan struct{}),
 	}
 
-	go eh.receiver()
-	go eh.sender()
-	go eh.writeDataConsumer()
+	eh.startIOWorkers()
+	eh.startWriteDataConsumer()
 
 	return eh
 }
@@ -327,12 +334,31 @@ func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blks
 }
 
 // writeDataConsumer is a consumer goroutine that processes write data requests
-func (eh *ExtentHandler) writeDataConsumer() {
+func (eh *ExtentHandler) writeDataConsumer(epoch uint64) {
+	defer eh.writeDataConsumerWg.Done()
 	for {
+		if !eh.isWriteDataOwner(epoch) {
+			log.LogWarnf("ExtentHandler writeDataConsumer: stale owner exit, eh(%v) epoch(%v) ownerEpoch(%v)",
+				eh, epoch, atomic.LoadUint64(&eh.writeDataOwnerEpoch))
+			return
+		}
 		select {
 		case req := <-eh.writeDataChan:
 			if req == nil {
 				continue
+			}
+			if !eh.isWriteDataOwner(epoch) {
+				if eh.requeueWriteDataRequest(req) {
+					log.LogWarnf("ExtentHandler writeDataConsumer: stale owner requeue and exit, eh(%v) epoch(%v) ownerEpoch(%v)",
+						eh, epoch, atomic.LoadUint64(&eh.writeDataOwnerEpoch))
+				} else {
+					// If cleanup has already started takeover, complete current request
+					// before exit to keep pendingWrites/writeDataWg accounting consistent.
+					log.LogWarnf("ExtentHandler writeDataConsumer: stale owner fallback-process and exit, eh(%v) epoch(%v) ownerEpoch(%v)",
+						eh, epoch, atomic.LoadUint64(&eh.writeDataOwnerEpoch))
+					eh.processWriteData(req)
+				}
+				return
 			}
 			eh.processWriteData(req)
 		case <-eh.doneWriteData:
@@ -341,6 +367,17 @@ func (eh *ExtentHandler) writeDataConsumer() {
 				select {
 				case req := <-eh.writeDataChan:
 					if req != nil {
+						if !eh.isWriteDataOwner(epoch) {
+							if eh.requeueWriteDataRequest(req) {
+								log.LogWarnf("ExtentHandler writeDataConsumer: stale owner while draining, eh(%v) epoch(%v) ownerEpoch(%v)",
+									eh, epoch, atomic.LoadUint64(&eh.writeDataOwnerEpoch))
+							} else {
+								log.LogWarnf("ExtentHandler writeDataConsumer: stale owner fallback-process while draining, eh(%v) epoch(%v) ownerEpoch(%v)",
+									eh, epoch, atomic.LoadUint64(&eh.writeDataOwnerEpoch))
+								eh.processWriteData(req)
+							}
+							return
+						}
 						eh.processWriteData(req)
 					}
 				default:
@@ -348,6 +385,34 @@ func (eh *ExtentHandler) writeDataConsumer() {
 					return
 				}
 			}
+		}
+	}
+}
+
+func (eh *ExtentHandler) startWriteDataConsumer() {
+	epoch := eh.handoffWriteDataOwner()
+	eh.writeDataConsumerWg.Add(1)
+	go eh.writeDataConsumer(epoch)
+}
+
+func (eh *ExtentHandler) handoffWriteDataOwner() uint64 {
+	return atomic.AddUint64(&eh.writeDataOwnerEpoch, 1)
+}
+
+func (eh *ExtentHandler) isWriteDataOwner(epoch uint64) bool {
+	return atomic.LoadUint64(&eh.writeDataOwnerEpoch) == epoch
+}
+
+func (eh *ExtentHandler) requeueWriteDataRequest(req *WriteDataRequest) bool {
+	for {
+		select {
+		case eh.writeDataChan <- req:
+			return true
+		case <-eh.doneWriteData:
+			// cleanup path is taking over, caller should finalize current request before exit.
+			return false
+		default:
+			time.Sleep(time.Millisecond)
 		}
 	}
 }
@@ -366,6 +431,7 @@ func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
 	}()
 	eh.flushMu.Lock()
 	defer eh.flushMu.Unlock()
+	ioEpoch := atomic.LoadUint64(&eh.ioOwnerEpoch)
 	total := 0
 	for total < req.size {
 		if eh.packet == nil {
@@ -394,7 +460,12 @@ func (eh *ExtentHandler) processWriteData(req *WriteDataRequest) {
 				eh.packet = nil
 				return
 			}
-			eh.pushToRequest(eh.packet)
+			if err := eh.pushToRequest(eh.packet, ioEpoch); err != nil {
+				log.LogWarnf("ExtentHandler processWriteData push failed: eh(%v) err(%v)", eh, err)
+				eh.processReplyError(eh.packet, err.Error())
+				eh.packet = nil
+				return
+			}
 			eh.packet = nil
 			log.LogDebugf("ExtentHandler flushPacket end: eh(%v)", eh)
 		}
@@ -443,13 +514,24 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool, retai
 	return ek, nil
 }
 
-func (eh *ExtentHandler) sender() {
+func (eh *ExtentHandler) sender(epoch uint64) {
 	var err error
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 	for {
+		if !eh.isIOOwner(epoch) {
+			log.LogWarnf("sender stale owner exit: eh(%v) epoch(%v) ownerEpoch(%v)",
+				eh, epoch, atomic.LoadUint64(&eh.ioOwnerEpoch))
+			return
+		}
 		select {
 		case packet := <-eh.request:
+			if !eh.isIOOwner(epoch) {
+				log.LogWarnf("sender stale owner drop packet: eh(%v) epoch(%v) ownerEpoch(%v) packet(%v)",
+					eh, epoch, atomic.LoadUint64(&eh.ioOwnerEpoch), packet)
+				eh.finishDroppedPacket(packet)
+				continue
+			}
 			// log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
 			if eh.getStatus() >= ExtentStatusRecovery {
 				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
@@ -517,10 +599,21 @@ func (eh *ExtentHandler) sender() {
 	}
 }
 
-func (eh *ExtentHandler) receiver() {
+func (eh *ExtentHandler) receiver(epoch uint64) {
 	for {
+		if !eh.isIOOwner(epoch) {
+			log.LogWarnf("receiver stale owner exit: eh(%v) epoch(%v) ownerEpoch(%v)",
+				eh, epoch, atomic.LoadUint64(&eh.ioOwnerEpoch))
+			return
+		}
 		select {
 		case packet := <-eh.reply:
+			if !eh.isIOOwner(epoch) {
+				log.LogWarnf("receiver stale owner drop packet: eh(%v) epoch(%v) ownerEpoch(%v) packet(%v)",
+					eh, epoch, atomic.LoadUint64(&eh.ioOwnerEpoch), packet)
+				eh.finishDroppedPacket(packet)
+				continue
+			}
 			eh.processReply(packet)
 		case <-eh.doneReceiver:
 			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
@@ -668,7 +761,18 @@ func (eh *ExtentHandler) flush() (err error) {
 	if log.EnableDebug() {
 		log.LogDebugf("ExtentHandler flush begin: eh(%s) trace(%v)", eh.String(), string(debug.Stack()))
 	}
-	eh.flushPacket()
+	if eh.isCleaned() {
+		log.LogWarnf("ExtentHandler flush skip: handler already cleaned, eh(%v)", eh)
+		return nil
+	}
+	epoch := atomic.LoadUint64(&eh.ioOwnerEpoch)
+	if err = eh.flushPacket(epoch); err != nil {
+		if eh.isCleaned() {
+			log.LogWarnf("ExtentHandler flush skip after handoff: eh(%v) err(%v)", eh, err)
+			return nil
+		}
+		return err
+	}
 	err = eh.waitForFlush()
 	if err != nil {
 		log.LogErrorf("ExtentHandler flush failed, eh(%s), err %s", eh.String(), err.Error())
@@ -694,12 +798,34 @@ func (eh *ExtentHandler) flush() (err error) {
 func (eh *ExtentHandler) cleanup() (err error) {
 	log.LogDebugf("cleanup: eh(%v)", eh)
 	eh.Once.Do(func() {
+		ioCleanupEpoch := eh.handoffIOOwner()
+		log.LogDebugf("cleanup: handoff io owner to cleanup epoch(%v), eh(%v)", ioCleanupEpoch, eh)
+
+		// Preempt owner before cleanup to enforce single owner semantics.
+		cleanupEpoch := eh.handoffWriteDataOwner()
+		log.LogDebugf("cleanup: handoff writeData owner to cleanup epoch(%v), eh(%v)", cleanupEpoch, eh)
+
 		eh.writeDataMu.Lock()
 		if !eh.writeDataStop {
 			eh.writeDataStop = true
 			close(eh.doneWriteData)
 		}
 		eh.writeDataMu.Unlock()
+		eh.writeDataConsumerWg.Wait()
+
+		// Drain requests in cleanup goroutine after owner preemption.
+		for {
+			select {
+			case req := <-eh.writeDataChan:
+				if req != nil {
+					eh.processWriteData(req)
+				}
+			default:
+				goto waitPendingWrites
+			}
+		}
+
+	waitPendingWrites:
 
 		// Strictly wait for all accepted async writes to finish, and emit
 		// periodic warnings so stalls are visible early in key path.
@@ -714,8 +840,9 @@ func (eh *ExtentHandler) cleanup() (err error) {
 		}
 		eh.writeDataWg.Wait()
 
-		eh.doneSender <- struct{}{}
-		eh.doneReceiver <- struct{}{}
+		// Use close-notify to avoid deadlock when io workers already exited.
+		close(eh.doneSender)
+		close(eh.doneReceiver)
 		if eh.conn != nil {
 			conn := eh.conn
 			eh.conn = nil
@@ -900,7 +1027,9 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0, eh.storageClass, eh.isMigration)
 		handler.setClosed()
 	}
-	handler.pushToRequest(packet)
+	if err := handler.pushToRequest(packet, atomic.LoadUint64(&handler.ioOwnerEpoch)); err != nil {
+		return err
+	}
 	if eh.recoverHandler == nil {
 		eh.recoverHandler = handler
 		// Note: put it to dirty list after packet is sent, so this
@@ -1037,30 +1166,86 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 }
 
 // Handler lock is held by the caller.
-func (eh *ExtentHandler) flushPacket() {
+func (eh *ExtentHandler) flushPacket(epoch uint64) (err error) {
 	eh.flushMu.Lock()
 	defer eh.flushMu.Unlock()
 
 	if eh.packet == nil {
 		log.LogDebugf("ExtentHandler flushPacket nil, return: eh(%v)", eh)
-		return
+		return nil
 	}
 
-	eh.pushToRequest(eh.packet)
+	if err = eh.pushToRequest(eh.packet, epoch); err != nil {
+		return err
+	}
 	eh.packet = nil
 	log.LogDebugf("ExtentHandler flushPacket end: eh(%v)", eh)
+	return nil
 }
 
-func (eh *ExtentHandler) pushToRequest(packet *Packet) {
+func (eh *ExtentHandler) pushToRequest(packet *Packet, epoch uint64) error {
+	if !eh.isIOOwner(epoch) {
+		return errors.NewErrorf("pushToRequest rejected by stale io owner, eh(%v) epoch(%v) ownerEpoch(%v)",
+			eh, epoch, atomic.LoadUint64(&eh.ioOwnerEpoch))
+	}
 	// Increase before sending the packet, because inflight is used
 	// to determine if the handler has finished.
 	inflight := atomic.AddInt32(&eh.inflight, 1)
 	log.LogWarnf("pushToRequest: eh(%v) packetReqID(%v) inflightAfterInc(%v)", eh, packet.ReqID, inflight)
-	eh.request <- packet
+	select {
+	case eh.request <- packet:
+		return nil
+	case <-eh.doneSender:
+		atomic.AddInt32(&eh.inflight, -1)
+		return errors.NewErrorf("pushToRequest rejected: sender closed, eh(%v)", eh)
+	case <-eh.stop:
+		atomic.AddInt32(&eh.inflight, -1)
+		return errors.NewErrorf("pushToRequest rejected: handler cleaned, eh(%v)", eh)
+	}
 }
 
 func (eh *ExtentHandler) getStatus() int32 {
 	return atomic.LoadInt32(&eh.status)
+}
+
+func (eh *ExtentHandler) isCleaned() bool {
+	select {
+	case <-eh.stop:
+		return true
+	default:
+		return false
+	}
+}
+
+func (eh *ExtentHandler) startIOWorkers() {
+	epoch := eh.handoffIOOwner()
+	go eh.receiver(epoch)
+	go eh.sender(epoch)
+}
+
+func (eh *ExtentHandler) handoffIOOwner() uint64 {
+	return atomic.AddUint64(&eh.ioOwnerEpoch, 1)
+}
+
+func (eh *ExtentHandler) isIOOwner(epoch uint64) bool {
+	return atomic.LoadUint64(&eh.ioOwnerEpoch) == epoch
+}
+
+func (eh *ExtentHandler) finishDroppedPacket(packet *Packet) {
+	if packet == nil {
+		return
+	}
+	if packet.Data != nil {
+		proto.Buffers.Put(packet.Data)
+		packet.Data = nil
+	}
+	inflight := atomic.AddInt32(&eh.inflight, -1)
+	if inflight <= 0 {
+		select {
+		case eh.empty <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (eh *ExtentHandler) setClosed() bool {

@@ -346,7 +346,8 @@ func TestExtentClientReadBlockedByStalledReplyAndResumed(t *testing.T) {
 	pkt.Data = make([]byte, 0)
 	pkt.errCount = MaxPacketErrorCount
 	atomic.StoreInt32(&eh.inflight, 1)
-	go eh.receiver()
+	epoch := eh.handoffIOOwner()
+	go eh.receiver(epoch)
 	eh.reply <- pkt
 
 	go s.asyncFlushManager()
@@ -379,4 +380,77 @@ func TestExtentClientReadBlockedByStalledReplyAndResumed(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatalf("Read should resume after stalled reply path is released")
 	}
+}
+
+func TestExtentHandlerCleanupOwnerHandoffDrainsPendingWrites(t *testing.T) {
+	ensurePacketBufferPool()
+
+	eh := &ExtentHandler{
+		inode:         5005,
+		storeMode:     proto.NormalExtentType,
+		writeDataChan: make(chan *WriteDataRequest, 4),
+		doneWriteData: make(chan struct{}),
+		doneSender:    make(chan struct{}, 1),
+		doneReceiver:  make(chan struct{}, 1),
+		stop:          make(chan struct{}),
+	}
+
+	req := getWriteDataRequest()
+	req.data = []byte("abc")
+	req.offset = 0
+	req.size = 3
+	req.blksize = 4
+	eh.writeDataWg.Add(1)
+	atomic.AddInt64(&eh.pendingWrites, 1)
+	eh.writeDataChan <- req
+
+	done := make(chan struct{})
+	go func() {
+		_ = eh.cleanup()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("cleanup should complete after owner handoff and draining pending writes")
+	}
+
+	require.EqualValues(t, 0, atomic.LoadInt64(&eh.pendingWrites))
+	waitDone := make(chan struct{})
+	go func() {
+		eh.writeDataWg.Wait()
+		close(waitDone)
+	}()
+	select {
+	case <-waitDone:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("writeDataWg should be fully released after cleanup drains pending writes")
+	}
+}
+
+func TestExtentHandlerCleanupDoesNotBlockWithoutIOWorkers(t *testing.T) {
+	eh := &ExtentHandler{
+		storeMode:      proto.NormalExtentType,
+		writeDataChan:  make(chan *WriteDataRequest, 1),
+		doneWriteData:  make(chan struct{}),
+		doneSender:     make(chan struct{}),
+		doneReceiver:   make(chan struct{}),
+		stop:           make(chan struct{}),
+	}
+
+	done := make(chan struct{})
+	go func() {
+		_ = eh.cleanup()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("cleanup should not block when io workers have already exited")
+	}
+
+	// cleanup is idempotent via Once and should return immediately.
+	require.NoError(t, eh.cleanup())
 }
