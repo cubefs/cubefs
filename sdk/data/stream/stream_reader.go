@@ -589,9 +589,11 @@ func (s *Streamer) asyncFlushManager() {
 				oldestAge := time.Since(time.Unix(0, oldestReq.firstEnqueueAt))
 				if oldestAge >= stuckAgeThreshold && !stalledSince.IsZero() && time.Since(stalledSince) >= noProgressPanicTimeout {
 					pendingReqs := s.getPendingRequests()
-					panic(fmt.Sprintf("asyncFlushManager stuck: inode(%v) oldestAge(%v) noProgressFor(%v) pendingReqs(%v) asyncFlushChLen(%v) dirtyListLen(%v) oldestHandler(%v) oldestInflight(%v) oldestRequeue(%v) completed(%v)",
+					log.LogWarnf("asyncFlushManager stuck: inode(%v) oldestAge(%v) noProgressFor(%v) pendingReqs(%v) asyncFlushChLen(%v) dirtyListLen(%v) oldestHandler(%v) oldestInflight(%v) oldestRequeue(%v) completed(%v)",
 						s.inode, oldestAge, time.Since(stalledSince), pendingReqs, len(s.asyncFlushCh), s.dirtylist.Len(),
-						oldestID, oldestInflight, oldestRequeue, completed))
+						oldestID, oldestInflight, oldestRequeue, completed)
+					// Rate limit repeated stuck warnings for the same no-progress window.
+					stalledSince = time.Now()
 				}
 			}
 			if s.rdonly {
@@ -652,14 +654,18 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 
 	handler := req.handler
 	log.LogDebugf("completeAsyncFlush: streamer(%v) eh(%v) start", s.inode, handler)
-	nextReq := s.getNextPendingAsyncFlush()
-	if nextReq == nil {
-		log.LogWarnf("completeAsyncFlush: No pending async flush requests found for streamer(%v) handler(%v)",
-			s.inode, handler)
-		s.removePendingAsyncFlush(handler.id)
-		req.finish(errors.New("no pending async flush requests"))
+	if !s.isActiveHandlerFlushRequest(handler.id, req) {
+		s.finishStaleAsyncFlushRequest(req, "entry-check")
 		return
 	}
+
+	nextReq := s.getNextPendingAsyncFlush()
+	if nextReq == nil {
+		// Avoid false negatives caused by concurrent map updates/racing completion.
+		s.requeueAsyncFlushRequestOrFinish(req, "empty-pending-snapshot")
+		return
+	}
+
 	if nextReq.handler.id > handler.id {
 		log.LogWarnf("completeAsyncFlush: streamer(%v) handler(%v) is skipped, nextReq(%v)",
 			s.inode, handler, nextReq.handler.id)
@@ -685,10 +691,11 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 			default:
 				nextReq = s.getNextPendingAsyncFlush()
 				if nextReq == nil {
-					log.LogErrorf("completeAsyncFlush: No pending async flush requests found while waiting for "+
-						"streamer(%v) handler(%v)", s.inode, handler)
-					s.removePendingAsyncFlush(handler.id)
-					req.finish(errors.New("no pending async flush requests"))
+					if !s.isActiveHandlerFlushRequest(handler.id, req) {
+						s.finishStaleAsyncFlushRequest(req, "wait-loop-check")
+						return
+					}
+					s.requeueAsyncFlushRequestOrFinish(req, "wait-loop-empty-pending-snapshot")
 					return
 				}
 				if nextReq.handler.id >= handler.id {
@@ -699,6 +706,13 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 		}
 	}
 end:
+	if handler.isCleaned() {
+		log.LogWarnf("completeAsyncFlush: handler already cleaned, skip flush for streamer(%v) handler(%v)",
+			s.inode, handler)
+		s.removePendingAsyncFlush(handler.id)
+		req.finish(nil)
+		return
+	}
 	err := handler.flush()
 	if err != nil {
 		log.LogWarnf("completeAsyncFlush: completed failed for handler(%v)", handler)
@@ -710,6 +724,28 @@ end:
 	}
 	s.removePendingAsyncFlush(handler.id)
 	req.finish(err)
+}
+
+func (s *Streamer) finishStaleAsyncFlushRequest(req *AsyncFlushRequest, phase string) {
+	log.LogWarnf("completeAsyncFlush: stale request ignored for streamer(%v) handler(%v) phase(%v)",
+		s.inode, req.handler, phase)
+	req.finish(nil)
+}
+
+func (s *Streamer) requeueAsyncFlushRequestOrFinish(req *AsyncFlushRequest, reason string) {
+	select {
+	case s.asyncFlushCh <- req:
+		cnt := req.markRequeue()
+		if cnt <= 3 || cnt%1000 == 0 {
+			log.LogWarnf("completeAsyncFlush:re-queued handler(%v) reason(%v) requeueCount(%v)",
+				req.handler, reason, cnt)
+		}
+	default:
+		log.LogWarnf("completeAsyncFlush: queue full, fallback finish for streamer(%v) handler(%v) reason(%v)",
+			s.inode, req.handler, reason)
+		s.removePendingAsyncFlush(req.handler.id)
+		req.finish(nil)
+	}
 }
 
 // requestAsyncFlush initiates an asynchronous flush for a handler
@@ -773,6 +809,13 @@ func (s *Streamer) getActiveHandlerFlush(handlerID uint64) *AsyncFlushRequest {
 		return value.(*AsyncFlushRequest)
 	}
 	return nil
+}
+
+func (s *Streamer) isActiveHandlerFlushRequest(handlerID uint64, req *AsyncFlushRequest) bool {
+	if value, exists := s.pendingAsyncFlushMap.Load(handlerID); exists {
+		return value.(*AsyncFlushRequest) == req
+	}
+	return false
 }
 
 // addPendingAsyncFlush adds a request to the pending map using handler.id as key

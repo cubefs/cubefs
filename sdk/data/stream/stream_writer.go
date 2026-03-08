@@ -1129,7 +1129,9 @@ func (s *Streamer) traverse() (err error) {
 		if eh.getStatus() >= ExtentStatusClosed {
 			// handler can be in different status such as close, recovery, and error,
 			// and therefore there can be packet that has not been flushed yet.
-			eh.flushPacket()
+			if err = eh.flushPacket(atomic.LoadUint64(&eh.ioOwnerEpoch)); err != nil {
+				log.LogWarnf("Streamer traverse flushPacket skipped: eh(%v) err(%v)", eh, err)
+			}
 			if atomic.LoadInt32(&eh.inflight) > 0 {
 				log.LogDebugf("Streamer traverse skipped: non-zero inflight, eh(%v)", eh)
 				continue
