@@ -454,3 +454,49 @@ func TestExtentHandlerCleanupDoesNotBlockWithoutIOWorkers(t *testing.T) {
 	// cleanup is idempotent via Once and should return immediately.
 	require.NoError(t, eh.cleanup())
 }
+
+func TestExtentHandlerFlushReturnsErrorForCleanedUnresolvedState(t *testing.T) {
+	eh := &ExtentHandler{
+		inode:       6006,
+		storeMode:   proto.NormalExtentType,
+		empty:       make(chan struct{}, 1),
+		stop:        make(chan struct{}),
+		doneSender:  make(chan struct{}),
+		doneReceiver: make(chan struct{}),
+	}
+	eh.size = 128
+	// Simulate cleaned state with unresolved write metadata.
+	close(eh.stop)
+
+	err := eh.flush()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cleaned before flush completion")
+}
+
+func TestExtentHandlerFlushWaitsForPendingWriteData(t *testing.T) {
+	eh := &ExtentHandler{
+		inode:         7007,
+		storeMode:     proto.NormalExtentType,
+		empty:         make(chan struct{}, 1),
+		stop:          make(chan struct{}),
+		doneSender:    make(chan struct{}),
+		doneReceiver:  make(chan struct{}),
+		writeDataChan: make(chan *WriteDataRequest, 1),
+		doneWriteData: make(chan struct{}),
+	}
+	eh.writeDataWg.Add(1)
+	atomic.AddInt64(&eh.pendingWrites, 1)
+
+	go func() {
+		time.Sleep(60 * time.Millisecond)
+		atomic.AddInt64(&eh.pendingWrites, -1)
+		eh.writeDataWg.Done()
+	}()
+
+	start := time.Now()
+	err := eh.flush()
+	require.NoError(t, err)
+	if time.Since(start) < 50*time.Millisecond {
+		t.Fatalf("flush should wait for pending writeData drain")
+	}
+}
