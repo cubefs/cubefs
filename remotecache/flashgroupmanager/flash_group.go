@@ -356,17 +356,16 @@ func (fg *FlashGroup) UpdateSlots(topology *FlashNodeTopology, needDeleteFgFlag 
 	var newSlotStatus proto.SlotStatus
 	var newPendingSlots []uint32
 
-	leftPendingSlotsNum := uint32(len(fg.PendingSlots)) - fg.Step
 	oldSlots := fg.Slots
 	oldPendingSlots := fg.PendingSlots
 	oldSlotStatus := fg.SlotStatus
 	oldStatus := fg.Status
-	if leftPendingSlotsNum > 0 { // previous steps
+	if uint32(len(oldPendingSlots)) > fg.Step { // previous steps
 		updatedSlotsNum = fg.Step
 		newPendingSlots = oldPendingSlots[updatedSlotsNum:]
 		newSlotStatus = oldSlotStatus
 	} else { // final step
-		updatedSlotsNum = uint32(len(fg.PendingSlots))
+		updatedSlotsNum = uint32(len(oldPendingSlots))
 		newPendingSlots = nil
 		newSlotStatus = proto.SlotStatus_Completed
 	}

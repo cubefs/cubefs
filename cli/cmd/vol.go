@@ -1075,8 +1075,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, 0, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value(default 5)")
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, proto.DefaultRemoteCacheSameZoneTimeout, "Remote cache same zone timeout microsecond(must > 0),default 400")
 	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout, "Remote cache same region timeout millisecond(must > 0),default 100")
-	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, 0, "Remote cache same zone timeout microsecond(must > 0),default 400")
-	cmd.Flags().Int64Var(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, 0, "Remote cache same region timeout millisecond(must > 0),default 2")
 	cmd.Flags().StringVar(&optStoreMode, CliFlagStoreMode, "", "Specify default store mode of mp: memory, rocksdb")
 	cmd.Flags().StringVar(&optDpTag, CliFlagDpTag, "", proto.ValidateTagFormat)
 	cmd.Flags().StringVar(&optMpTag, CliFlagMpTag, "", proto.ValidateTagFormat)

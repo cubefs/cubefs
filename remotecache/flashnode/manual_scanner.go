@@ -790,7 +790,7 @@ func (s *ManualScanner) loadDirTotalEntriesRecursive(inode uint64, signalChan ch
 		}
 
 		s.applyPauseIfEnabled("loadDirTotalEntriesRecursive", fmt.Sprintf("%d:%s", inode, marker))
-		children, err := s.mw.ReadDirLimit_ll(inode, marker, uint64(defaultReadDirLimit))
+		children, err := s.mw.ReadDirLimit_ll(inode, marker, uint64(defaultReadDirLimit), false)
 		if err != nil && err != syscall.ENOENT {
 			log.LogErrorf("loadDirTotalEntriesRecursive ReadDirLimit_ll err(%v), inode(%v), marker(%v)", err, inode, marker)
 			return
