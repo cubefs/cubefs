@@ -761,8 +761,17 @@ func (eh *ExtentHandler) flush() (err error) {
 	if log.EnableDebug() {
 		log.LogDebugf("ExtentHandler flush begin: eh(%s) trace(%v)", eh.String(), string(debug.Stack()))
 	}
+	if err = eh.waitForWriteDataDrain(); err != nil {
+		return err
+	}
 	if eh.isCleaned() {
-		log.LogWarnf("ExtentHandler flush skip: handler already cleaned, eh(%v)", eh)
+		// cleaned handlers are safe to skip only when no unresolved write state remains.
+		if eh.size > 0 && (eh.key == nil || eh.dirty) {
+			err = errors.NewErrorf("extent handler cleaned before flush completion, eh(%v)", eh)
+			log.LogWarnf("ExtentHandler flush failed on cleaned unresolved handler, err(%v)", err)
+			return err
+		}
+		log.LogWarnf("ExtentHandler flush skip: handler already cleaned and clean state, eh(%v)", eh)
 		return nil
 	}
 	epoch := atomic.LoadUint64(&eh.ioOwnerEpoch)
@@ -791,6 +800,9 @@ func (eh *ExtentHandler) flush() (err error) {
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
 		err = errors.New(fmt.Sprintf("StreamWriter flush: extent handler in error status, eh(%v) size(%v)", eh, eh.size))
+	}
+	if err == nil && eh.size > 0 && eh.key == nil {
+		err = errors.NewErrorf("extent handler flush unresolved key, eh(%v)", eh)
 	}
 	return
 }
@@ -1215,6 +1227,26 @@ func (eh *ExtentHandler) isCleaned() bool {
 	default:
 		return false
 	}
+}
+
+func (eh *ExtentHandler) waitForWriteDataDrain() error {
+	if atomic.LoadInt64(&eh.pendingWrites) <= 0 {
+		return nil
+	}
+	lastWarn := time.Now()
+	for atomic.LoadInt64(&eh.pendingWrites) > 0 {
+		if eh.isCleaned() {
+			return errors.NewErrorf("extent handler cleaned while waiting write data drain, eh(%v)", eh)
+		}
+		if time.Since(lastWarn) >= time.Second {
+			lastWarn = time.Now()
+			log.LogWarnf("waitForWriteDataDrain waiting: eh(%v) pendingWrites(%v) chanLen(%v)",
+				eh, atomic.LoadInt64(&eh.pendingWrites), len(eh.writeDataChan))
+		}
+		time.Sleep(time.Millisecond)
+	}
+	eh.writeDataWg.Wait()
+	return nil
 }
 
 func (eh *ExtentHandler) startIOWorkers() {

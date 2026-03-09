@@ -706,13 +706,6 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 		}
 	}
 end:
-	if handler.isCleaned() {
-		log.LogWarnf("completeAsyncFlush: handler already cleaned, skip flush for streamer(%v) handler(%v)",
-			s.inode, handler)
-		s.removePendingAsyncFlush(handler.id)
-		req.finish(nil)
-		return
-	}
 	err := handler.flush()
 	if err != nil {
 		log.LogWarnf("completeAsyncFlush: completed failed for handler(%v)", handler)
