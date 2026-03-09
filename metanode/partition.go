@@ -875,6 +875,10 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	}
 	log.LogWarnf("[after raft] get mp[%v] applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
+	if mp.HasRocksDBStore() {
+		go mp.ScanRocksdb()
+	}
+
 	mp.updateSize()
 
 	if proto.IsHot(mp.volType) && mp.manager.metaNode.clusterEnableSnapshot {
@@ -1276,11 +1280,6 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 			log.LogErrorf("[load] failed to load apply id, mp(%v) err(%v)", mp.config.PartitionId, err)
 			return
 		}
-		err = mp.ScanRocksdb()
-		if err != nil {
-			log.LogErrorf("[load] failed to scan rocksdb, mp(%v) err(%v)", mp.config.PartitionId, err)
-			return err
-		}
 		if log.EnableDebug() {
 			log.LogDebugf("[load] mp(%v) is create(%v)", mp.config.PartitionId, isCreate)
 			log.LogDebugf("[load] mp(%v) apply id(%v)", mp.config.PartitionId, mp.applyID)
@@ -1295,7 +1294,6 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 			log.LogDebugf("[load] mp(%v) tx rb inode real len(%v)", mp.config.PartitionId, txRbInoTree.RealCount())
 			log.LogDebugf("[load] mp(%v) tx rb dentry real len(%v)", mp.config.PartitionId, txRbDenTree.RealCount())
 		}
-
 		return
 	}
 

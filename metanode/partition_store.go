@@ -1609,7 +1609,7 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 	thresholds, _, enable := mp.manager.GetFileStatsConfig()
 	fileRange := make([]int64, len(thresholds)+1)
 
-	inodeCnt := uint64(0)
+	// inodeCnt := uint64(0)
 	maxInode := mp.config.Start
 	err = snap.Range(InodeType, func(i interface{}) bool {
 		ino := i.(*Inode)
@@ -1631,7 +1631,7 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 		}
 
 		totalSize += ino.Size
-		inodeCnt++
+		// inodeCnt++
 
 		if ino.Inode > maxInode {
 			maxInode = ino.Inode
@@ -1645,17 +1645,17 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 	}
 	mp.size = totalSize
 	mp.fileRange = fileRange
-	if inodeCnt != mp.inodeTree.Count() {
-		log.LogWarnf("loadRocksdbInode mp[%d] inodeCnt(%v) != storeInodeCnt(%v)", mp.config.PartitionId, inodeCnt, mp.inodeTree.Count())
-		if inodeCnt > mp.inodeTree.Count() {
-			mp.inodeTree.SetInodeCount(inodeCnt)
-			err = mp.inodeTree.PersistBaseInfo()
-			if err != nil {
-				log.LogErrorf("loadRocksdbInode mp[%d] persist base info failed: %s", mp.config.PartitionId, err.Error())
-				return maxInode, err
-			}
-		}
-	}
+	// if inodeCnt != mp.inodeTree.Count() {
+	// 	log.LogWarnf("loadRocksdbInode mp[%d] inodeCnt(%v) != storeInodeCnt(%v)", mp.config.PartitionId, inodeCnt, mp.inodeTree.Count())
+	// 	if inodeCnt > mp.inodeTree.Count() {
+	// 		mp.inodeTree.SetInodeCount(inodeCnt)
+	// 		err = mp.inodeTree.PersistBaseInfo()
+	// 		if err != nil {
+	// 			log.LogErrorf("loadRocksdbInode mp[%d] persist base info failed: %s", mp.config.PartitionId, err.Error())
+	// 			return maxInode, err
+	// 		}
+	// 	}
+	// }
 
 	return maxInode, nil
 }
