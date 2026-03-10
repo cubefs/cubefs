@@ -698,6 +698,10 @@ func (f *FlashNode) smallObjectGet(req *proto.BatchReadItem, connAddr string, de
 			result.Data = buf[:req.Size_]
 			f.metrics.updateReadCountMetric(block.GetRootPath())
 			f.metrics.updateReadBytesMetric(req.Size_, block.GetRootPath())
+			// Update volume-level read statistics
+			if block.GetVolume() != "" {
+				f.cacheEngine.UpdateVolReadStats(block.GetVolume(), req.Size_)
+			}
 		}
 	}
 	if uint64(readDiskSize) > req.Size_ {
@@ -998,6 +1002,10 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		} else {
 			f.metrics.updateReadCountMetric(block.GetRootPath())
 			f.metrics.updateReadBytesMetric(req.Size_, block.GetRootPath())
+			// Update volume-level read statistics
+			if block.GetVolume() != "" {
+				f.cacheEngine.UpdateVolReadStats(block.GetVolume(), req.Size_)
+			}
 		}
 	}()
 
@@ -1072,6 +1080,10 @@ func (f *FlashNode) doObjectReadRequest(ctx context.Context, conn net.Conn, req 
 		} else {
 			f.metrics.updateReadCountMetric(block.GetRootPath())
 			f.metrics.updateReadBytesMetric(req.Size_, block.GetRootPath())
+			// Update volume-level read statistics
+			if block.GetVolume() != "" {
+				f.cacheEngine.UpdateVolReadStats(block.GetVolume(), req.Size_)
+			}
 		}
 	}()
 

@@ -105,6 +105,10 @@ func (cb *CacheBlock) GetBlockKey() string {
 	return cb.blockKey
 }
 
+func (cb *CacheBlock) GetVolume() string {
+	return cb.volume
+}
+
 // Close this extent and release FD.
 func (cb *CacheBlock) Close() (err error) {
 	cb.notifyClose()
@@ -470,6 +474,7 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 		cb.ttl = int64(time.Until(expiredTime).Seconds())
 		file.Close()
 		cb.notifyReady()
+		cb.cacheEngine.incrementVolCounter(cb.volume, usedSize)
 	}
 	return
 }
@@ -719,6 +724,10 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 			offset += size
 			UpdateWriteBytesMetric(uint64(size), cb.GetRootPath())
 			UpdateWriteCountMetric(cb.GetRootPath())
+			// Update volume-level write statistics
+			if cb.cacheEngine != nil && cb.volume != "" {
+				cb.cacheEngine.UpdateVolWriteStats(cb.volume, uint64(size))
+			}
 			return nil
 		}
 		logPrefix := func() string {
@@ -757,6 +766,7 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 		log.LogInfof("action[InitForCacheRead], block:%s, sources:\n%s", cb.blockKey, sb.String())
 	}
 	cb.notifyReady()
+	cb.cacheEngine.incrementVolCounter(cb.volume, cb.getUsedSize())
 }
 
 func (cb *CacheBlock) info() string {
@@ -880,7 +890,7 @@ func (c *CacheEngine) createCacheBlockV2(pDir string, uniKey string, ttl int64, 
 		if _, err = cacheItem.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
 			return
 		}
-		c.setCacheItem(key, cacheItem, block.volume, block.getAllocSize())
+		c.setCacheItem(key, cacheItem, block.volume, block.getUsedSize())
 		ci = cacheItem
 	}
 
@@ -929,10 +939,6 @@ func (c *CacheEngine) createCacheBlockFromExistV2(dataPath string, volume string
 		return
 	}
 	block.initKeyLimiter(c.keyRateLimitThreshold, c.keyLimiterFlow)
-	// Update cache size after block is loaded from disk
-	if block.volume != "" {
-		c.incrementVolCounter(block.volume, block.getAllocSize())
-	}
 	return
 }
 

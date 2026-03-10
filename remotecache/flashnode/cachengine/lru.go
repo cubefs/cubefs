@@ -39,6 +39,7 @@ const (
 	StatHit = iota
 	StatMiss
 	StatEvict
+	StatSize
 )
 
 type StatUpdate struct {

@@ -51,6 +51,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/setDiskCacheCapacity", f.handleSetDiskCacheCapacity)
 	http.HandleFunc("/queryCacheVols", f.handleQueryCacheVols)
 	http.HandleFunc("/queryDisableTTLVols", f.handleQueryDisableTTLVols)
+	http.HandleFunc("/resetLocalFlowChange", f.handleResetLocalFlowChange)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -590,4 +591,57 @@ func (f *FlashNode) handleQueryDisableTTLVols(w http.ResponseWriter, r *http.Req
 		"volumes": volumes,
 		"map":     disableTTLMap,
 	})
+}
+
+func (f *FlashNode) handleResetLocalFlowChange(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+
+	ioType := r.FormValue("ioType")
+	if ioType == "" {
+		replyErr(w, r, proto.ErrCodeParamError, "ioType parameter cannot be empty, must be 'read' or 'write' or 'all'", nil)
+		return
+	}
+
+	resetRead := false
+	resetWrite := false
+
+	switch strings.ToLower(ioType) {
+	case "read":
+		resetRead = true
+	case "write":
+		resetWrite = true
+	case "all":
+		resetRead = true
+		resetWrite = true
+	default:
+		replyErr(w, r, proto.ErrCodeParamError, "invalid ioType, must be 'read', 'write', or 'all'", nil)
+		return
+	}
+
+	result := make(map[string]interface{})
+
+	if resetRead {
+		oldValue := f.localChangeReadFlow
+		f.localChangeReadFlow = false
+		result["read"] = map[string]interface{}{
+			"oldValue": oldValue,
+			"newValue": false,
+		}
+		log.LogInfof("handleResetLocalFlowChange: reset localChangeReadFlow from %v to false", oldValue)
+	}
+
+	if resetWrite {
+		oldValue := f.localChangeWriteFlow
+		f.localChangeWriteFlow = false
+		result["write"] = map[string]interface{}{
+			"oldValue": oldValue,
+			"newValue": false,
+		}
+		log.LogInfof("handleResetLocalFlowChange: reset localChangeWriteFlow from %v to false", oldValue)
+	}
+
+	replyOK(w, r, result)
 }
