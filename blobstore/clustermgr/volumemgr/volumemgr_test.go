@@ -834,6 +834,69 @@ func TestVolumeMgr_ApplyAdminUpdateVolumeUnit(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestVolumeMgr_ApplyAdminUpdateVolumeUnit_RouteVersion(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "adminUpdateVolumeUnitRouteVersion")
+
+	initialRouteVersion := mockVolumeMgr.routeMgr.GetRouteVersion()
+	vol := mockVolumeMgr.all.getVol(1)
+	initialVolRouteVersion := vol.volInfoBase.RouteVersion
+	oldDiskID := vol.vUnits[1].vuInfo.DiskID
+
+	// test case 1: update with same DiskID, RouteVersion should NOT change
+	unitInfoSameDisk := &clustermgr.AdminUpdateUnitArgs{
+		Epoch:     1,
+		NextEpoch: 2,
+		VolumeUnitInfo: clustermgr.VolumeUnitInfo{
+			Vuid:       proto.EncodeVuid(proto.EncodeVuidPrefix(1, 1), 1),
+			DiskID:     oldDiskID, // same disk
+			Compacting: true,
+		},
+	}
+	err := mockVolumeMgr.applyAdminUpdateVolumeUnit(ctx, unitInfoSameDisk)
+	require.NoError(t, err)
+
+	vol = mockVolumeMgr.all.getVol(1)
+	require.Equal(t, initialVolRouteVersion, vol.volInfoBase.RouteVersion)
+	require.Equal(t, initialRouteVersion, mockVolumeMgr.routeMgr.GetRouteVersion())
+
+	// test case 2: update with different DiskID, RouteVersion should change
+	newDiskID := proto.DiskID(99)
+	unitInfoDiffDisk := &clustermgr.AdminUpdateUnitArgs{
+		Epoch:     1,
+		NextEpoch: 3,
+		VolumeUnitInfo: clustermgr.VolumeUnitInfo{
+			Vuid:       proto.EncodeVuid(proto.EncodeVuidPrefix(1, 1), 1),
+			DiskID:     newDiskID, // different disk
+			Compacting: false,
+		},
+	}
+	err = mockVolumeMgr.applyAdminUpdateVolumeUnit(ctx, unitInfoDiffDisk)
+	require.NoError(t, err)
+
+	vol = mockVolumeMgr.all.getVol(1)
+	newRouteVersion := mockVolumeMgr.routeMgr.GetRouteVersion()
+	require.Greater(t, newRouteVersion, initialRouteVersion)
+	require.Equal(t, proto.RouteVersion(newRouteVersion), vol.volInfoBase.RouteVersion)
+	require.Equal(t, newDiskID, vol.vUnits[1].vuInfo.DiskID)
+
+	ret, err := mockVolumeMgr.GetVolumeRoutes(ctx, &clustermgr.GetVolumeRoutesArgs{
+		RouteVersion: proto.RouteVersion(initialRouteVersion),
+	})
+	require.NoError(t, err)
+	require.Greater(t, len(ret.Items), 0)
+
+	found := false
+	for _, item := range ret.Items {
+		if item.Type == proto.RouteItemTypeUpdateVolume {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "should have RouteItemTypeUpdateVolume in route items")
+}
+
 func TestVolumeMgr_LockVolume(t *testing.T) {
 	mockVolumeMgr, clean := initMockVolumeMgr(t)
 	defer clean()

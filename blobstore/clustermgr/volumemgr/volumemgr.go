@@ -733,7 +733,16 @@ func (v *VolumeMgr) applyAdminUpdateVolumeUnit(ctx context.Context, unitInfo *cm
 	}
 	vol.lock.RUnlock()
 
+	diskInfo, err := v.diskMgr.GetDiskInfo(ctx, unitInfo.DiskID)
+	if err != nil {
+		return err
+	}
+
 	vol.lock.Lock()
+	defer vol.lock.Unlock()
+
+	oldDiskID := vol.vUnits[index].vuInfo.DiskID
+
 	if proto.IsValidEpoch(unitInfo.Epoch) {
 		vol.vUnits[index].epoch = unitInfo.Epoch
 		vol.vUnits[index].vuInfo.Vuid = proto.EncodeVuid(vol.vUnits[index].vuidPrefix, unitInfo.Epoch)
@@ -741,19 +750,27 @@ func (v *VolumeMgr) applyAdminUpdateVolumeUnit(ctx context.Context, unitInfo *cm
 	if proto.IsValidEpoch(unitInfo.NextEpoch) {
 		vol.vUnits[index].nextEpoch = unitInfo.NextEpoch
 	}
-	diskInfo, err := v.diskMgr.GetDiskInfo(ctx, unitInfo.DiskID)
-	if err != nil {
-		vol.lock.Unlock()
-		return err
-	}
 	vol.vUnits[index].vuInfo.DiskID = diskInfo.DiskID
 	vol.vUnits[index].vuInfo.Host = diskInfo.Host
 	vol.vUnits[index].vuInfo.Compacting = unitInfo.Compacting
 
 	unitRecord := vol.vUnits[index].ToVolumeUnitRecord()
-	err = v.volumeTbl.PutVolumeUnit(unitInfo.Vuid.VuidPrefix(), unitRecord)
-	vol.lock.Unlock()
-	return err
+	if oldDiskID != diskInfo.DiskID { // if DiskID changed, generate RouteVersion
+		newRouteVersion := v.routeMgr.GenRouteVersion(ctx, 1)
+		route := &base.RouteItem{
+			RouteVersion: proto.RouteVersion(newRouteVersion),
+			Type:         proto.RouteItemTypeUpdateVolume,
+			ItemDetail:   &routeItemVolumeUpdate{VuidPrefix: unitInfo.Vuid.VuidPrefix()},
+		}
+		vol.volInfoBase.RouteVersion = proto.RouteVersion(newRouteVersion)
+		v.routeMgr.InsertRouteItems(ctx, []*base.RouteItem{route})
+
+		volRecord := vol.ToRecord()
+		routeRecord := routeItemToRouteRecord(route)
+		return v.volumeTbl.UpdateVolumeUnitAndPutVolumeAndRoute(unitRecord, volRecord, routeRecord)
+	}
+
+	return v.volumeTbl.PutVolumeUnit(unitInfo.Vuid.VuidPrefix(), unitRecord)
 }
 
 // only leader node can create volume and check expire volume

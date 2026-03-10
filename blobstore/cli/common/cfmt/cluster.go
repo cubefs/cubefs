@@ -44,6 +44,9 @@ func VolumeInfoF(vol *clustermgr.VolumeInfo) []string {
 		fmt.Sprintf("Total      : %-16d (%s)", vol.Total, humanize.IBytes(vol.Total)),
 		fmt.Sprintf("Free       : %-16d (%s)", vol.Free, freeC.Sprint(humanize.IBytes(vol.Free))),
 		fmt.Sprintf("Used       : %-16d (%s)", vol.Used, usedC.Sprint(humanize.IBytes(vol.Used))),
+		fmt.Sprintf("CreateBy   : %d", vol.CreateByNodeID),
+		fmt.Sprintf("Epoch      : %d", vol.Epoch),
+		fmt.Sprintf("RouteVer   : %d", vol.RouteVersion),
 		fmt.Sprintf("Uints: (%d) [", len(vol.Units)),
 	}...)
 	alterColor := common.NewAlternateColor(3)
