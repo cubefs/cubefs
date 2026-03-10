@@ -147,7 +147,7 @@ func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (body io.Read
 	ctx = acapi.ClientWithReqidContext(ctx)
 	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
 		auditline.Method = "Get"
-		auditline.ReqParams = requestParams(args)
+		auditline.ReqParams = jsonString(args)
 
 		body, err = s._get(ctx, args)
 		return err
@@ -186,7 +186,7 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 	ctx = acapi.ClientWithReqidContext(ctx)
 	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
 		auditline.Method = "Delete"
-		auditline.ReqParams = requestParams(args)
+		auditline.ReqParams = jsonString(args)
 
 		failedLocations, err = s._delete(ctx, args)
 		return err
@@ -238,9 +238,21 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 	ctx = acapi.ClientWithReqidContext(ctx)
 	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
 		auditline.Method = "Put"
-		auditline.ReqParams = requestParams(args)
+		auditline.ReqParams = jsonString(args)
 
 		lc, hm, err = s._put(ctx, args)
+
+		if err == nil {
+			auditline.RespBody = jsonString(acapi.PutResp{
+				Location:   lc,
+				HashSumMap: hm,
+			})
+		} else {
+			auditline.RespBody = jsonString(rpc.ErrorResponse{
+				Error: err.Error(),
+			})
+		}
+		auditline.RespLength = int64(len(auditline.RespBody))
 		return err
 	})
 	return
@@ -295,7 +307,7 @@ func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (re
 
 	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
 		auditline.Method = "ListBlob"
-		auditline.ReqParams = requestParams(args)
+		auditline.ReqParams = jsonString(args)
 
 		if !args.IsValid() {
 			err = errcode.ErrIllegalArguments
@@ -319,7 +331,7 @@ func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) (e
 
 	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
 		auditline.Method = "DeleteBlob"
-		auditline.ReqParams = requestParams(args)
+		auditline.ReqParams = jsonString(args)
 
 		if !args.IsValid() {
 			err = errcode.ErrIllegalArguments
@@ -340,7 +352,7 @@ func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (body
 
 	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
 		auditline.Method = "GetBlob"
-		auditline.ReqParams = requestParams(args)
+		auditline.ReqParams = jsonString(args)
 
 		if !args.IsValid() {
 			err = errcode.ErrIllegalArguments
@@ -374,7 +386,7 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	s.auditor.Audit(ctx, func(ctx context.Context, auditline *auditlog.AuditLog) error {
 		auditline.Method = "PutBlob"
-		auditline.ReqParams = requestParams(args)
+		auditline.ReqParams = jsonString(args)
 
 		cid, hashes, err = s._putBlob(ctx, args)
 		return err
@@ -1336,7 +1348,7 @@ func fixLocationSize(loc proto.Location, size uint64) (proto.Location, error) {
 	return loc, nil
 }
 
-func requestParams(args any) string {
+func jsonString(args any) string {
 	data, err := json.Marshal(args)
 	if err != nil {
 		return fmt.Sprintf(`{"error":"marshal args: %v"}`, err)
