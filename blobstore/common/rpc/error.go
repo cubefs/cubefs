@@ -31,9 +31,9 @@ type (
 		Err    error  // error
 	}
 
-	// errorResponse response error with json
+	// ErrorResponse response error with json
 	// internal type between server and client
-	errorResponse struct {
+	ErrorResponse struct {
 		Error string `json:"error"`
 		Code  string `json:"code,omitempty"`
 	}
