@@ -62,6 +62,7 @@ type Super struct {
 	orphan      *OrphanInodeList
 	enSyncWrite bool
 	keepCache   bool
+	disableDirectIO bool
 
 	nodeCache map[uint64]fs.Node
 	fslock    sync.Mutex
@@ -228,6 +229,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	s.keepCache = opt.KeepCache
+	s.disableDirectIO = opt.DisableDirectIO
 	s.ic = NewInodeCache(inodeExpiration, int(opt.InodeLruLimit), s.metaCacheAcceleration)
 	s.inodeLruLimit = opt.InodeLruLimit
 	if opt.MaxStreamerLimit > 0 || !opt.StopWarmMeta {
