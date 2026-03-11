@@ -113,7 +113,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  LegacyDataMediaType                      : %v\n", cv.LegacyDataMediaType))
 	sb.WriteString(fmt.Sprintf("  RaftPartitionCanUsingDifferentPortEnabled: %v\n", cv.RaftPartitionCanUsingDifferentPortEnabled))
 	sb.WriteString(fmt.Sprintf("  RackAwareLevel                           : %v\n", cv.RackAwareLevel.String()))
-	sb.WriteString(fmt.Sprintf("  AutoFixTag                               : %v\n", cv.AutoFixTag))
+	sb.WriteString(fmt.Sprintf("  AutoMigrateByTag                         : %v\n", cv.AutoFixTag))
 	sb.WriteString(fmt.Sprintf("  DpTagMapRules                            : %v\n", cv.DefaultDpTag))
 	sb.WriteString(fmt.Sprintf("  MpTagMapRules                            : %v\n", cv.DefaultMpTag))
 
