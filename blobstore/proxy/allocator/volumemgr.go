@@ -378,11 +378,12 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 			totalVolNumThreshold: uint64(volNumThreshold),
 		}
 		v.modeInfos[codeMode] = info
-		span.Infof("codeMode: %v, defaultAllocVolsNum: %v, threshold: %v", codeModeConfig.ModeName, modeCfg.DefaultAllocVolsNum, threshold)
+		span.Infof("codeMode: %v, defaultAllocVolsNum: %v, threshold: %v, volNumThreshold: %v", codeModeConfig.ModeName, modeCfg.DefaultAllocVolsNum, threshold, volNumThreshold)
 	}
 
 	for mode := range v.allocChs {
 		modeCfg := v.getCodeModeConfig(mode)
+		span.Infof("codeMode: %v, config: %+v", mode, modeCfg)
 		applyArg := &allocArgs{
 			isInit:   true,
 			codeMode: mode,
