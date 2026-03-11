@@ -238,6 +238,9 @@ func ValidateTag(tag string) bool {
 		return true
 	}
 	rules := strings.Split(tag, ";")
+	if len(rules) == 0 || len(rules) > TagReplicaRuleNum {
+		return false
+	}
 	srcTagSet := make(map[string]struct{}, 0)
 	for _, rule := range rules {
 		groups := strings.Split(rule, "->")
@@ -270,6 +273,7 @@ func ValidateTag(tag string) bool {
 const (
 	ValidateTagFormat = "Example: 'tag1->tag2', 'tag1,tag1->tag2,tag2;tag3->tag4' or 'null' to clear tag."
 	TagFormatErr      = "tag format error. " + ValidateTagFormat
+	TagReplicaRuleNum = 3
 )
 
 type VolTagSummary struct {
