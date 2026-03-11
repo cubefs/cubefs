@@ -16,6 +16,7 @@ package stream
 
 import (
 	"context"
+	stderrs "errors"
 	"fmt"
 	"hash/crc32"
 	"net"
@@ -46,6 +47,8 @@ const (
 	StreamerError
 	LastEKVersionNotEqual
 )
+
+var errUnresolvedExtentKey = stderrs.New("unresolved extent key (partition id 0)")
 
 const (
 	streamWriterFlushPeriod       = 3
@@ -366,8 +369,9 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 	storageClass uint32, isMigration bool, retainForAsyncRelease func() func(),
 ) (total int, err error) {
 	var (
-		direct     bool
-		retryTimes int8
+		direct               bool
+		retryTimes           int8
+		unresolvedRetryTimes int8
 	)
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
@@ -444,6 +448,21 @@ begin:
 					time.Sleep(time.Millisecond * 100)
 					retryTimes++
 					log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
+					goto begin
+				}
+				if err == errUnresolvedExtentKey {
+					if unresolvedRetryTimes >= int8(MaxNewHandlerRetry) {
+						err = errors.New(fmt.Sprintf("action[streamer.write] unresolved extent key retry exhausted, ino(%v) req(%v)", s.inode, req))
+						log.LogErrorf("action[streamer.write] err %v unresolvedRetryTimes %v", err, unresolvedRetryTimes)
+						return
+					}
+					unresolvedRetryTimes++
+					log.LogWarnf("action[streamer.write] unresolved extent key, retry flush and rebuild requests. ino(%v) retry(%v) req(%v)",
+						s.inode, unresolvedRetryTimes, req)
+					if err = s.flush(true, uuid.New().String()); err != nil {
+						log.LogErrorf("action[streamer.write] unresolved retry flush failed, ino(%v) err(%v)", s.inode, err)
+						return
+					}
 					goto begin
 				}
 				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
@@ -698,6 +717,11 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uin
 	req.ExtentKey = s.extents.Get(uint64(offset))
 	if req.ExtentKey == nil {
 		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ek(%v)", s.inode, req.ExtentKey))
+		return
+	}
+	if req.ExtentKey.PartitionId == 0 {
+		log.LogWarnf("doOverwrite: unresolved extent key(partition=0), ino(%v) req(%v)", s.inode, req)
+		err = errUnresolvedExtentKey
 		return
 	}
 
