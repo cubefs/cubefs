@@ -299,17 +299,14 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		f.super.ec.RefreshExtentsCache(ino)
 	}
 
-	// Set OpenDirectIO or OpenKeepCache based on configuration
-	// OpenDirectIO bypasses page cache for better write performance when direct=0
-	// This avoids the overhead of balance_dirty_pages when WritebackCache is enabled
-	// OpenDirectIO only affects kernel behavior and doesn't interfere with req.Flags checks
+	// Set open response flags based on configuration.
+	// disableDirectIO=true (default): keep compatibility by avoiding OpenDirectIO.
+	// disableDirectIO=false: allow OpenDirectIO on hot/replica volumes for direct I/O path.
 	if resp != nil {
 		if f.super.keepCache {
 			// If keepCache is enabled, use OpenKeepCache to preserve page cache
 			resp.Flags |= fuse.OpenKeepCache
-		} else {
-			// If keepCache is disabled, set OpenDirectIO for hot volumes to bypass page cache
-			// This improves performance in direct=0 scenarios by avoiding WritebackCache overhead
+		} else if !f.super.disableDirectIO {
 			if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
 				resp.Flags |= fuse.OpenDirectIO
 			}
