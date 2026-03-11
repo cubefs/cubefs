@@ -99,6 +99,13 @@ func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*c
 
 	var result *clustermgr.VolumeInfo
 	if err := c.withVolumeLock(vid, func() error {
+		if cached := c.getVolume(span, vid); cached != nil && cached.RouteVersion > volume.RouteVersion {
+			span.Infof("skip storing stale cm volume vid:%d since cached route version %d > %d",
+				vid, cached.RouteVersion, volume.RouteVersion)
+			result = &cached.VolumeInfo
+			return nil
+		}
+
 		vol := c.newExpiryVolume(*volume)
 		c.storeVolume(ctx, vid, vol)
 		result = &vol.VolumeInfo

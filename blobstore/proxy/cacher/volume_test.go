@@ -103,6 +103,41 @@ func TestProxyCacherVolumeFlush(t *testing.T) {
 	}
 }
 
+func TestProxyCacherVolumeFlushSkipStaleCMVolume(t *testing.T) {
+	c, cmCli, clean := newCacher(t, 0, nil)
+	defer clean()
+
+	cc := c.(*cacher)
+	newer := clustermgr.VolumeInfo{
+		VolumeInfoBase: clustermgr.VolumeInfoBase{
+			Vid:          1,
+			RouteVersion: proto.RouteVersion(11),
+		},
+		Units: []clustermgr.Unit{{Vuid: proto.Vuid(1), DiskID: proto.DiskID(2), Host: "new-host"}},
+	}
+	cc.storeVolume(context.Background(), 1, cc.newExpiryVolume(newer))
+
+	older := &clustermgr.VolumeInfo{
+		VolumeInfoBase: clustermgr.VolumeInfoBase{
+			Vid:          1,
+			RouteVersion: proto.RouteVersion(10),
+		},
+		Units: []clustermgr.Unit{{Vuid: proto.Vuid(1), DiskID: proto.DiskID(1), Host: "old-host"}},
+	}
+	cmCli.EXPECT().GetVolumeInfo(A, A).Return(older, nil).Times(1)
+
+	vol, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1, Flush: true})
+	require.NoError(t, err)
+	require.Equal(t, newer.RouteVersion, vol.RouteVersion)
+	require.Equal(t, newer.Units, vol.Units)
+
+	span := trace.SpanFromContextSafe(context.Background())
+	cached := cc.getVolume(span, proto.Vid(1))
+	require.NotNil(t, cached)
+	require.Equal(t, newer.RouteVersion, cached.RouteVersion)
+	require.Equal(t, newer.Units, cached.Units)
+}
+
 func TestProxyCacherVolumeSingle(t *testing.T) {
 	c, cmCli, clean := newCacher(t, 0, nil)
 	defer clean()
