@@ -230,6 +230,13 @@ func applyTagRulesToPeers(tagRules *TagRulesInfo, peers []proto.Peer, replicas [
 		if ok && currentTag != dst {
 			setPeerTag(replica.addr, dst)
 			changed = true
+			continue
+		}
+		// No rule matches this source tag: clear stale peer tag to default
+		// so historical mappings can converge instead of lingering forever.
+		if !ok && currentTag != DefaultTag {
+			setPeerTag(replica.addr, DefaultTag)
+			changed = true
 		}
 	}
 	return changed
@@ -254,8 +261,14 @@ func (vol *Vol) FixDataPartitionTag(c *Cluster) {
 			}
 			dataNode := replica.getReplicaNode()
 			if dataNode == nil {
-				replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, hasNodeTag: false, isLearner: false})
-				continue
+				var err error
+				dataNode, err = c.dataNode(replica.Addr)
+				if err != nil {
+					log.LogWarnf("FixDataPartitionTag,vol[%v] partition[%v] get datanode failed, addr[%v] err[%v]",
+						vol.Name, partition.PartitionID, replica.Addr, err)
+					replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, hasNodeTag: false, isLearner: false})
+					continue
+				}
 			}
 			replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, nodeTag: dataNode.Tag, hasNodeTag: true, isLearner: false})
 		}
@@ -591,6 +604,7 @@ func (c *Cluster) checkMpTag() {
 	if len(selectedGroup) == 0 {
 		tagStateMu.Lock()
 		LastMpQuitReason = ReasonSelectTagEmpty
+		MpFailedKeys = make([]string, 0)
 		tagStateMu.Unlock()
 		return
 	}
@@ -816,10 +830,18 @@ func (vol *Vol) FixMetaPartitionTag(c *Cluster) {
 				replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, isLearner: true})
 				continue
 			}
-			if replica.metaNode == nil {
-				continue
+			metaNode := replica.metaNode
+			if metaNode == nil {
+				var err error
+				metaNode, err = c.metaNode(replica.Addr)
+				if err != nil {
+					log.LogWarnf("FixMetaPartitionTag,vol[%v] partition[%v] get metanode failed, addr[%v] err[%v]",
+						vol.Name, partition.PartitionID, replica.Addr, err)
+					replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, hasNodeTag: false, isLearner: false})
+					continue
+				}
 			}
-			replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, nodeTag: replica.metaNode.Tag, hasNodeTag: true, isLearner: false})
+			replicaInfos = append(replicaInfos, tagReplicaInfo{addr: replica.Addr, nodeTag: metaNode.Tag, hasNodeTag: true, isLearner: false})
 		}
 		changed := applyTagRulesToPeers(mpTagRules, partition.Peers, replicaInfos)
 		partition.Unlock()
@@ -1236,6 +1258,7 @@ func (c *Cluster) getVolTagSummary(name string) (summary *proto.VolTagSummary, e
 		UnmatchMpNum:     0,
 		UnmatchDpSamples: make([]proto.TagMismatchSample, 0, MaxTagSampleNum),
 		UnmatchMpSamples: make([]proto.TagMismatchSample, 0, MaxTagSampleNum),
+		FailedMpKeys:     make([]string, 0),
 	}
 
 	for _, dp := range dps {
@@ -1301,6 +1324,8 @@ func (c *Cluster) getVolTagSummary(name string) (summary *proto.VolTagSummary, e
 	summary.UnmatchMpNum = len(UnmatchMps)
 	summary.UnmatchDps = joinUint64(UnmatchDps)
 	summary.UnmatchMps = joinUint64(UnmatchMps)
+	_, _, _, _, _, _, failedKeys := snapshotTagState()
+	summary.FailedMpKeys = append(summary.FailedMpKeys, failedKeys...)
 
 	return summary, nil
 }

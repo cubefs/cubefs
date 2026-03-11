@@ -287,4 +287,5 @@ type VolTagSummary struct {
 	UnmatchMps       string              `json:"unmatchMps"`
 	UnmatchDpSamples []TagMismatchSample `json:"unmatchDpSamples"`
 	UnmatchMpSamples []TagMismatchSample `json:"unmatchMpSamples"`
+	FailedMpKeys     []string            `json:"failedMpKeys,omitempty"`
 }

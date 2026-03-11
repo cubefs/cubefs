@@ -169,6 +169,7 @@ func newShowSelectTagVolSummaryCmd(client *master.MasterClient) *cobra.Command {
 					output["unmatchMps"] = task.UnmatchMps
 					output["unmatchMpSamples"] = task.UnmatchMpSamples
 				}
+				output["failedMpKeys"] = task.FailedMpKeys
 			} else if optData {
 				output["volume"] = task.Vol
 				output["volStatus"] = task.VolStatus
