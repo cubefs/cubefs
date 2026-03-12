@@ -914,6 +914,9 @@ func (v *VolumeMgr) getModeUnitCount(mode codemode.CodeMode) int {
 func (v *VolumeMgr) getWeightedDataUnitCount() float64 {
 	var weightedUnitCount float64
 	for _, modeConf := range v.codeMode {
+		if !modeConf.enable {
+			continue
+		}
 		weightedUnitCount += float64(modeConf.tactic.N) * modeConf.sizeRatio
 	}
 	return weightedUnitCount
