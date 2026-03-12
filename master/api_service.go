@@ -2268,19 +2268,10 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
+		// Note: Manual add replica in non-learner mode does not set RestoreStatus
+		// to avoid permanent blocking when replica fails. This is deprecated in favor
+		// of learner mode which has proper timeout and failure handling.
 		if err = m.cluster.CheckMetaPartitionDecommissionLimit(proto.ManualAddReplica); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-		if !mp.setRestoreReplicaForbidden() {
-			currentStatus := atomic.LoadUint32(&mp.RestoreReplicaMeta)
-			message := ""
-			if currentStatus == RestoreReplicaMetaForbidden {
-				message = "mp is decommissioning, please wait for the decommission to complete"
-			} else {
-				message = "mp is autoHealing, please wait for the autoHealing to complete"
-			}
-			err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, %s", message)
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -2288,6 +2279,8 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
+		// Note: IsRecover and RecoverStartTime are still set for monitoring purposes,
+		// but RestoreReplicaMeta status is not changed
 		mp.DecommissionType = proto.ManualAddReplica
 		mp.IsRecover.Store(true)
 		mp.RecoverStartTime = time.Now().Unix()

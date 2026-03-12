@@ -129,27 +129,9 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 	log.LogWarnf("action[migrateMetaPartition],volName[%v], migrate from src[%s] to target[%s],partitionID[%v] begin",
 		mp.volName, srcAddr, targetAddr, mp.PartitionID)
 
-	if !mp.setRestoreReplicaForbidden() {
-		currentStatus := atomic.LoadUint32(&mp.RestoreReplicaMeta)
-		message := ""
-		if currentStatus == RestoreReplicaMetaForbidden {
-			message = "mp is decommissioning, please wait for the decommission to complete"
-		} else {
-			message = "mp is autoHealing, please wait for the autoHealing to complete"
-		}
-		err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed, %s", message)
-		return
-	}
-
-	defer func() {
-		if !mp.IsRecover.Load() {
-			mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
-		}
-
-		mp.RLock()
-		c.syncUpdateMetaPartition(mp)
-		mp.RUnlock()
-	}()
+	// Note: Non-learner migration does not set RestoreStatus to avoid permanent blocking
+	// when target node fails. This legacy migration mode will be deprecated in favor of
+	// learner mode which has proper timeout and failure handling.
 	// Prepare migration parameters
 	newPeers, finalDstStoreMode, err = c.prepareMetaPartitionMigration(srcAddr, targetAddr, mp, dstStoreMode)
 	if err != nil {

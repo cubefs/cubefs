@@ -548,6 +548,10 @@ func (c *Cluster) scheduleToCheckMetaReplicaMeta() {
 		tickTime: time.Second * time.Duration(c.cfg.IntervalToCheckMetaPartition),
 		name:     "scheduleToCheckMetaReplicaMeta",
 		function: func() (fin bool) {
+			// Replica meta check and auto-healing only works in learner mode
+			if !c.EnableMpDecommissionByLearner {
+				return
+			}
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkMetaReplicaMeta()
 			}

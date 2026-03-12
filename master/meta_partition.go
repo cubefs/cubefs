@@ -1492,6 +1492,12 @@ func (mp *MetaPartition) removeRedundantPeersFromMaster(c *Cluster) (err error) 
 
 // Automatically add a replica when non-learner count < ReplicaNum
 func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
+	// Auto add replica only works in learner mode
+	if !c.EnableMpDecommissionByLearner {
+		log.LogDebugf("action[autoAddReplica]mp(%v) skip: learner mode is not enabled", mp.PartitionID)
+		return nil
+	}
+
 	// Limit the number of autoAddReplica
 	if c.CheckMetaPartitionDecommissionLimit(proto.AutoAddReplica) != nil {
 		return errors.NewErrorf("autoAddReplica throttled: meta partition decommission limit reached for type AutoAddReplica")
@@ -1553,21 +1559,10 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 		return errors.NewErrorf("mp(%v) selectTargetMetaPeer returns empty peers", mp.PartitionID)
 	}
 
-	if c.EnableMpDecommissionByLearner {
-		mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
-		if err = c.addMetaReplicaLearner(mp, selectPeers[0].Addr, storeMode, "", false, proto.AutoAddReplica); err != nil {
-			return err
-		}
-	} else {
-		if err = c.addMetaReplica(mp, selectPeers[0].Addr, storeMode); err != nil {
-			return err
-		}
-		addedAddr = selectPeers[0].Addr
-		mp.DecommissionType = proto.AutoAddReplica
-		mp.IsRecover.Store(true)
-		mp.RecoverStartTime = time.Now().Unix()
-		mp.setRestoreReplicaStatus(RestoreReplicaMetaForbidden)
-		c.putBadMetaPartitions(addedAddr, mp.PartitionID)
+	// Add replica using learner mode
+	mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
+	if err = c.addMetaReplicaLearner(mp, selectPeers[0].Addr, storeMode, "", false, proto.AutoAddReplica); err != nil {
+		return err
 	}
 
 	return nil
