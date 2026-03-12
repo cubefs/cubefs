@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/textproto"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -350,8 +351,10 @@ func (j *jsonAuditlog) Audit(ctx context.Context, handler func(context.Context, 
 	}
 
 	auditLog := &AuditLog{
-		ReqType: "AUDIT",
-		Module:  j.module,
+		ReqType:    "AUDIT",
+		Module:     j.module,
+		ReqHeader:  make(M),
+		RespHeader: make(M),
 	}
 
 	startTime := time.Now()
@@ -361,9 +364,8 @@ func (j *jsonAuditlog) Audit(ctx context.Context, handler func(context.Context, 
 	auditLog.StartTime = startTime.UnixMicro()
 	auditLog.Duration = time.Since(startTime).Microseconds()
 	auditLog.StatusCode = rpc.DetectStatusCode(err)
-
-	fakeRespHeader := make(M)
-	fakeRespHeader["Trace-ID"] = span.TraceID()
+	traceIDKey := textproto.CanonicalMIMEHeaderKey(trace.GetTraceIDKey())
+	auditLog.RespHeader[traceIDKey] = span.TraceID()
 
 	if trackN := span.TrackLogN(); trackN > 0 {
 		traceLogs := make([]string, 0, trackN)
@@ -371,7 +373,7 @@ func (j *jsonAuditlog) Audit(ctx context.Context, handler func(context.Context, 
 			traceLogs = append(traceLogs, b.String())
 			return true
 		})
-		fakeRespHeader[rpc.HeaderTraceLog] = traceLogs
+		auditLog.RespHeader[rpc.HeaderTraceLog] = traceLogs
 	}
 	if tagsN := span.TagsN(); tagsN > 0 {
 		tags := make([]string, 0, tagsN)
@@ -379,10 +381,8 @@ func (j *jsonAuditlog) Audit(ctx context.Context, handler func(context.Context, 
 			tags = append(tags, key+":"+fmt.Sprint(val))
 			return true
 		})
-		fakeRespHeader[rpc.HeaderTraceTags] = tags
+		auditLog.RespHeader[rpc.HeaderTraceTags] = tags
 	}
-
-	auditLog.RespHeader = fakeRespHeader
 
 	j.filterLogging(auditLog, true)
 
