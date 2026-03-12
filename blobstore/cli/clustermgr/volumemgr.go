@@ -36,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
+	"github.com/cubefs/cubefs/blobstore/util/tablefmt"
 	"github.com/cubefs/cubefs/blobstore/util/task"
 )
 
@@ -128,9 +129,18 @@ func cmdListVolumes(c *grumble.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, vol := range volumes.Volumes {
-		fmt.Printf("%d: %+v\n", vol.Vid, vol.VolumeInfoBase)
+
+	rows := tablefmt.Table{
+		tablefmt.NewRow("Vid", "CodeMode", "Status", "HealthScore",
+			"Total", "Free", "Used", "Epoch", "RouteVersion"),
 	}
+	for _, vol := range volumes.Volumes {
+		rows = rows.Append(tablefmt.NewRow(
+			vol.Vid, vol.CodeMode.Name(), vol.Status.String(), vol.HealthScore,
+			vol.Total, vol.Free, vol.Used, vol.Epoch, vol.RouteVersion,
+		))
+	}
+	fmt.Println(tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignRight}, rows...))
 	return nil
 }
 
