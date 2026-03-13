@@ -115,6 +115,10 @@ func (mm *mockBrokenData) Destroy(ctx context.Context) (err error) {
 	return
 }
 
+func (mm *mockBrokenData) GetConfig() (config *core.Config) {
+	return nil
+}
+
 func (mm *mockBrokenData) Close() {
 	// do nothing
 }

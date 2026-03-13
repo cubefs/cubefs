@@ -88,6 +88,7 @@ type RuntimeConfig struct {
 	IOStatFileDryRun             bool    `json:"iostat_file_dryrun"`
 	SetDefaultSwitch             bool    `json:"set_default_switch"`
 	EnableDeleteShardVerify      bool    `json:"enable_delete_shard_verify"`
+	EnablePutShardVerify         bool    `json:"enable_put_shard_verify"`
 	CompactBatchSize             int     `json:"compact_batch_size"`
 	WaitPendingReqIntervalSec    int64   `json:"wait_pending_req_interval_sec"`
 	MetricReportIntervalS        int64   `json:"metric_report_interval_S"`

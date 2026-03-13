@@ -20,9 +20,11 @@ import (
 	"hash/crc32"
 	"io"
 
+	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util"
 )
 
@@ -67,14 +69,28 @@ func (stg *tinyfileStorage) writeToMemory(b *core.Shard) (body []byte, err error
 		return nil, err
 	}
 
-	b.Offset = 0                     // special offset
-	b.Inline = true                  // inline data
 	b.Crc = crc32.ChecksumIEEE(body) // calculate crc code
 
 	return body, nil
 }
 
 func (stg *tinyfileStorage) Write(ctx context.Context, b *core.Shard) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	var shardMeta core.ShardMeta
+	var shardMetaErr error
+	dataConfig := stg.data.GetConfig()
+
+	// only verify user write data io from sdk or access, not verify background io
+	// avoid to repair cannot write due to meta.Crc == this_call_data.Crc but meta.Crc != exists_old_data.Crc
+	needVerifyBeforeWrite := bnapi.GetIoType(ctx) == bnapi.WriteIO &&
+		dataConfig != nil &&
+		dataConfig.EnablePutShardVerify
+
+	if needVerifyBeforeWrite {
+		shardMeta, shardMetaErr = stg.meta.Read(ctx, b.Bid)
+	}
+
 	var buffer []byte
 	if b.NopData {
 		b.Offset = 0
@@ -83,8 +99,34 @@ func (stg *tinyfileStorage) Write(ctx context.Context, b *core.Shard) (err error
 		if buffer, err = stg.writeToMemory(b); err != nil {
 			return err
 		}
+		b.Offset = 0    // special offset
+		b.Inline = true // inline data
 	} else {
+		// pre-check before writing for Chunk IO meta/data Path
+		if needVerifyBeforeWrite && shardMetaErr == nil {
+			bodyBytes, err := stg.writeToMemory(b)
+			if err != nil {
+				return err
+			}
+			if b.Crc == shardMeta.Crc {
+				b.Offset = shardMeta.Offset
+				b.Inline = shardMeta.Inline
+				span.Debugf("bid %v already exists in meta shard_meta:%+v", b.Bid, shardMeta)
+				return nil
+			}
+
+			// CRC mismatch and reconstruct shard body, fall through
+			b.Body = bytes.NewReader(bodyBytes)
+		}
 		return stg.storage.Write(ctx, b)
+	}
+
+	// pre-check before writing for NopData and Inline IO Path
+	if needVerifyBeforeWrite && shardMetaErr == nil {
+		if b.Crc == shardMeta.Crc {
+			span.Debugf("bid %v already exists in meta shard_meta:%+v", b.Bid, shardMeta)
+			return nil
+		}
 	}
 
 	// write meta
