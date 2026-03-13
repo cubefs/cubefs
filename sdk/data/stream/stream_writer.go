@@ -334,8 +334,12 @@ func (s *Streamer) abortRequest(request interface{}) {
 
 func (s *Streamer) handleRequest(request interface{}) {
 	if atomic.LoadInt32(&s.needUpdateVer) == 1 {
-		s.closeOpenHandler(true)
-		atomic.StoreInt32(&s.needUpdateVer, 0)
+		s.writeLock.Lock()
+		if atomic.LoadInt32(&s.needUpdateVer) == 1 {
+			s.closeOpenHandler(true)
+			atomic.StoreInt32(&s.needUpdateVer, 0)
+		}
+		s.writeLock.Unlock()
 	}
 
 	switch request := request.(type) {
@@ -1251,6 +1255,12 @@ func (s *Streamer) open() {
 }
 
 func (s *Streamer) release() error {
+	// Serialize release close path with direct IssueWriteRequest path.
+	// IssueWriteRequest bypasses request channel and holds writeLock,
+	// so release must also hold writeLock to avoid handler races.
+	s.writeLock.Lock()
+	defer s.writeLock.Unlock()
+
 	if atomic.AddInt32(&s.refcnt, -1) < 0 {
 		log.LogErrorf("streamer %v refCnt error", s.inode)
 	}
