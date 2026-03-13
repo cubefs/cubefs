@@ -327,9 +327,11 @@ func (s *LcScanner) FindPrefixInode() (inode uint64, prefixDirs []string, err er
 }
 
 func (s *LcScanner) scanInodesByMp() {
+	auditlog.LogMasterOp("LcScanStart", fmt.Sprintf("ID(%v), from master(%v)", s.ID, s.lcnode.localServerAddr), nil)
 	log.LogInfof("scanInodesByMp: scan inodes by mp %v", s.ID)
 	defer func() {
 		log.LogInfof("scanInodesByMp: exit scan inodes by mp %v", s.ID)
+		auditlog.LogMasterOp("LcScanFinish", fmt.Sprintf("ID(%v), from master(%v)", s.ID, s.lcnode.localServerAddr), nil)
 		s.scanMpFinished = true
 	}()
 
@@ -986,6 +988,8 @@ func (s *LcScanner) checkScanning() {
 				response.Rule = s.rule
 				response.ExpiredDeleteNum = s.currentStat.ExpiredDeleteNum
 				response.ExpiredMToHddNum = s.currentStat.ExpiredMToHddNum
+				response.ExpiredMNum = s.currentStat.ExpiredMNum
+				response.ExpiredMBytes = s.currentStat.ExpiredMBytes
 				response.ExpiredMToBlobstoreNum = s.currentStat.ExpiredMToBlobstoreNum
 				response.ExpiredMToHddBytes = s.currentStat.ExpiredMToHddBytes
 				response.ExpiredMToBlobstoreBytes = s.currentStat.ExpiredMToBlobstoreBytes
@@ -996,6 +1000,7 @@ func (s *LcScanner) checkScanning() {
 				response.TotalMPScannedInodeNum = s.currentStat.TotalMPScannedInodeNum
 				response.ErrorDeleteNum = s.currentStat.ErrorDeleteNum
 				response.ErrorMToHddNum = s.currentStat.ErrorMToHddNum
+				response.ErrorMNum = s.currentStat.ErrorMNum
 				response.ErrorMToBlobstoreNum = s.currentStat.ErrorMToBlobstoreNum
 				response.ErrorReadDirNum = s.currentStat.ErrorReadDirNum
 				log.LogInfof("checkScanning completed response(%+v)", response)

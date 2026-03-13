@@ -40,10 +40,10 @@ type DataPartitionMap struct {
 	lastReleasedIndex      uint64 // last released partition index
 	partitions             []*DataPartition
 
-	responseCache          []byte
-	responseCachePool      []byte
-	responseCompressCache  []byte
-	ResponseCachePoolAware []byte
+	responseCache             []byte
+	responseCachePool         []byte
+	responseCompressCache     []byte
+	ResponseCompressCachePool []byte
 
 	lastAutoCreateTime    time.Time
 	volName               string
@@ -65,7 +65,7 @@ func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap.responseCache = make([]byte, 0)
 	dpMap.responseCachePool = make([]byte, 0)
 	dpMap.responseCompressCache = make([]byte, 0)
-	dpMap.ResponseCachePoolAware = make([]byte, 0)
+	dpMap.ResponseCompressCachePool = make([]byte, 0)
 	dpMap.volName = volName
 	dpMap.lastAutoCreateTime = time.Now()
 	return
@@ -264,7 +264,7 @@ func (dpMap *DataPartitionMap) getDataPartitionCompressCache(poolAware bool) []b
 	dpMap.RLock()
 	defer dpMap.RUnlock()
 	if poolAware {
-		return dpMap.ResponseCachePoolAware
+		return dpMap.ResponseCompressCachePool
 	}
 	return dpMap.responseCompressCache
 }
@@ -286,7 +286,7 @@ func (dpMap *DataPartitionMap) setDataPartitionCompressCache(responseCompress []
 	defer dpMap.Unlock()
 	if responseCompress != nil {
 		if poolAware {
-			dpMap.ResponseCachePoolAware = responseCompress
+			dpMap.ResponseCompressCachePool = responseCompress
 		} else {
 			dpMap.responseCompressCache = responseCompress
 		}
@@ -332,7 +332,7 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 					minPartitionID, err.Error()))
 				return nil, proto.ErrMarshalData
 			}
-			dpMap.setDataPartitionResponseCache(body, poolAware)
+			dpMap.setDataPartitionResponseCache(body, tmpPoolAware)
 			log.LogInfof("[updateResponseCache] update vol(%v) dp cache cnt(%v)", vol.Name, len(dpResps))
 			return body, nil
 		}

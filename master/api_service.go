@@ -3540,7 +3540,7 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 	availablePools := m.cluster.getAvailablePools(zoneName)
 	for _, poolId := range req.allowedPools {
 		if _, ok := availablePools[poolId]; !ok {
-			err = fmt.Errorf("poolId(%v) not found in available pools(%v) for zoneName(%v)", poolId, proto.PoolIdMapToString(availablePools), req.zoneName)
+			err = fmt.Errorf("poolId(%v) not found in available pools(%v) for zoneName(%v)", poolId, proto.PoolIdMapToString(availablePools), zoneName)
 			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", zoneName, err.Error())
 			return err
 		}
