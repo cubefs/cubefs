@@ -269,7 +269,9 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
 	}
 
 	eh.startIOWorkers()
-	eh.startWriteDataConsumer()
+	if eh.stream.client.enableWriteDataConsumer {
+		eh.startWriteDataConsumer()
+	}
 
 	return eh
 }
@@ -292,11 +294,15 @@ func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blks
 		req.data = data
 		req.releaseData = retainForAsyncRelease()
 	} else {
-		// If caller doesn't provide async lifetime management, make a defensive copy
-		// because writeDataConsumer processes the slice asynchronously.
-		dataCopy := make([]byte, len(data))
-		copy(dataCopy, data)
-		req.data = dataCopy
+		if eh.stream.client.enableWriteDataConsumer {
+			// If caller doesn't provide async lifetime management, make a defensive copy
+			// because writeDataConsumer processes the slice asynchronously.
+			dataCopy := make([]byte, len(data))
+			copy(dataCopy, data)
+			req.data = dataCopy
+		} else {
+			req.data = data
+		}
 	}
 	req.offset = offset
 	req.size = size
@@ -316,6 +322,11 @@ func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blks
 	eh.writeDataWg.Add(1)
 	atomic.AddInt64(&eh.pendingWrites, 1)
 	eh.writeDataMu.RUnlock()
+
+	if !eh.stream.client.enableWriteDataConsumer {
+		eh.processWriteData(req)
+		return nil
+	}
 
 	select {
 	case eh.writeDataChan <- req:

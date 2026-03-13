@@ -345,6 +345,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ForceRemoteCache:      opt.ForceRemoteCache,
 		EnableAsyncFlush:      opt.EnableAsyncFlush,
 		MetaAcceleration:      opt.MetaCacheAcceleration,
+		EnableWriteDataConsumer: !opt.DisableDirectIO,
 		RemoteCacheName:       opt.RemoteCacheName,
 	}
 

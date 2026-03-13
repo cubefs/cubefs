@@ -170,6 +170,10 @@ type ExtentConfig struct {
 	HeartBeatPing    bool
 	EnableAsyncFlush bool
 	MetaAcceleration bool
+	// EnableWriteDataConsumer controls whether extent handler starts the
+	// writeData consumer goroutine. When disabled, write path falls back to
+	// synchronous processWriteData handling.
+	EnableWriteDataConsumer bool
 
 	RemoteCacheName string
 }
@@ -227,6 +231,7 @@ type ExtentClient struct {
 	forceRemoteCache bool
 	enableAsyncFlush bool
 	metaAcceleration bool
+	enableWriteDataConsumer bool
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -361,6 +366,7 @@ retry:
 	client.forceRemoteCache = config.ForceRemoteCache
 	client.enableAsyncFlush = config.EnableAsyncFlush
 	client.metaAcceleration = config.MetaAcceleration
+	client.enableWriteDataConsumer = config.EnableWriteDataConsumer
 
 	if config.StreamRetryTimeout <= 0 || config.StreamRetryTimeout >= 600 {
 		client.streamRetryTimeout = StreamSendMaxTimeout
