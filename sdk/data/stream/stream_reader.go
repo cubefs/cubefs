@@ -250,6 +250,21 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 
 	filesize, _ := s.extents.Size()
 	log.LogDebugf("read: ino(%v) requests(%v) filesize(%v)", s.inode, requests, filesize)
+	holeBytes := 0
+	holeInFileRange := false
+	for _, req := range requests {
+		if req.ExtentKey != nil {
+			continue
+		}
+		holeBytes += req.Size
+		if req.FileOffset+req.Size <= filesize {
+			holeInFileRange = true
+		}
+	}
+	if holeInFileRange {
+		log.LogWarnf("streamer.read suspicious hole: ino(%v) offset(%v) size(%v) filesize(%v) holeBytes(%v) dirty(%v) waitForFlush(%v) reqs(%v)",
+			s.inode, offset, size, filesize, holeBytes, s.dirty, s.waitForFlush, requests)
+	}
 	for _, req := range requests {
 		log.LogDebugf("action[streamer.read] req %v", req)
 		if req.ExtentKey == nil {

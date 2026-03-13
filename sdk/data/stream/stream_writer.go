@@ -497,6 +497,15 @@ begin:
 		s.extents.SetSize(uint64(offset+total), false)
 		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 	}
+	// Post-write visibility probe for extent cache.
+	// If this misses right after write succeeds, read path may classify range as hole.
+	if total > 0 {
+		if ek := s.extents.Get(uint64(offset)); ek == nil {
+			sizeNow, genNow := s.extents.Size()
+			log.LogWarnf("streamer.write visibility miss: ino(%v) offset(%v) size(%v) total(%v) extCacheGen(%v) extCacheSize(%v)",
+				s.inode, offset, size, total, genNow, sizeNow)
+		}
+	}
 	log.LogDebugf("Streamer write exit: ino(%v) filesize(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, filesize, offset, size, total, err)
 	return
 }
