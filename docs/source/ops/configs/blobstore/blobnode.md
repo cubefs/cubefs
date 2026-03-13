@@ -69,16 +69,24 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "set_default_switch": "whether to set switch.suggest you set it to true,will set: need_compact_check,allow_force_compact,allow_clean_trash",
     "must_mount_point": "whether the data storage directory must be a mount point",
     "must_mount_point_meta": "if meta_root_prefix is ​​configured, turning on must_mount_point_meta will check if the metadata directory of each disk is a mount point, default false",
+    "iostat_file_dryrun": "whether to enable IO stat file dry run, default false",
+    "enable_delete_shard_verify": "whether to enable shard verification during deletion, default false",
+    "wait_pending_req_interval_sec": "interval for waiting pending requests, default 10 seconds",
+    "block_buffer_size": "block buffer size, default 64KB",
+    "batch_buffer_size": "batch buffer size, default 1MB",
+    "batch_buffer_hole_threshold": "batch buffer hole threshold, default 256KB",
     "write_thread_cnt": "limit the number of write threads, default 4",
     "read_thread_cnt": "limit the number of read threads, default 4",
-    "delete_thread_cnt": "limit the number of delete threads, default 1",
+    "delete_thread_cnt": "limit the number of delete threads, default 2",
+    "background_thread_cnt": "limit the number of background threads, default 2",
+    "write_queue_depth": "write queue depth, default 64",
+    "read_queue_depth": "read queue depth, default 64",
+    "delete_queue_depth": "delete queue depth, default 32",
+    "background_queue_depth": "background queue depth, default 32",
     "data_qos": {
       "read_mbps": "per disk normal read IO bandwidth",
       "write_mbps": "per disk normal write IO bandwidth",
-      "background_mbps": "per disk background IO bandwidth",
-      "write_queue_depth": "write queue depth, default 32",
-      "read_queue_depth": "read queue depth, default 64",
-      "delete_queue_depth": "delete queue depth, default 32"
+      "background_mbps": "per disk background IO bandwidth"
     }
   },
   "meta_config": {
@@ -99,10 +107,12 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
   "scheduler": {
     "host_sync_interval_ms": "backend node synchronization time for scheduler client used in background tasks"
   },
-  "chunk_protection_period_S": "protection period for expired epoch chunks based on creation time",
-  "put_qps_limit_per_disk": "concurrency control for single-disk writes",
-  "get_qps_limit_per_disk": "concurrency control for single-disk reads",
-  "get_qps_limit_per_key": "concurrency control for reads of a single shard",
+  "heartbeat_interval_S": "heartbeat interval to clustermgr, default 30 seconds",
+  "chunk_report_interval_S": "chunk report interval, default 60 seconds",
+  "chunk_gc_interval_S": "chunk gc interval, default 30 minutes",
+  "chunk_protection_period_S": "protection period for expired epoch chunks based on creation time, default 48 hours",
+  "clean_expired_stat_interval_S": "clean expired stat interval, default 60 minutes",
+  "disk_status_check_interval_S": "disk status check interval, default 2 minutes",
   "delete_qps_limit_per_disk": "concurrency control for single-disk deletions",
   "shard_repair_concurrency": "concurrency control for background task shard repair",
   "flock_filename": "process file lock path"

@@ -99,12 +99,19 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
     "blob_node_config": "",
     "ensure_index": "用来建立磁盘索引"
   },
-  
-  "cluster_report_interval_s": "上报consul的间隔",
+
+  "cluster_report_interval_s": "上报consul的间隔，默认60秒",
   "consul_agent_addr": "consul地址",
-  "heartbeat_notify_interval_s": "心跳通知间隔，用来定时处理BlobNode上报的磁盘信息，这个时间许小于BlobNode上报的时间间隔，避免磁盘心跳超时过期",
-  "max_heartbeat_notify_num": "最大心跳通知数目",
-  "chunk_size": "BlobNode中每一个chunk的大小，即创建的文件的大小  "
+  "consul_token": "consul认证token",
+  "consul_token_file": "consul认证token文件路径",
+  "heartbeat_notify_interval_s": "心跳通知间隔，用来定时处理BlobNode上报的磁盘信息，这个时间许小于BlobNode上报的时间间隔，避免磁盘心跳超时过期，默认10秒",
+  "max_heartbeat_notify_num": "最大心跳通知数目，默认2000",
+  "metric_report_interval_m": "指标上报间隔（分钟），默认2分钟",
+  "consistent_check_interval_m": "一致性检查间隔（分钟），默认360分钟",
+  "broken_volume_unit_report_num": "损坏卷单元上报数量，默认3",
+  "broken_shard_unit_report_num": "损坏分片单元上报数量，默认2",
+  "db_cache_size": "数据库缓存大小（字节）",
+  "chunk_size": "BlobNode中每一个chunk的大小，即创建的文件的大小"
 }
 ```
 

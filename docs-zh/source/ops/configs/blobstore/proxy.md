@@ -28,14 +28,16 @@ v3.3.0版本开始支持Proxy节点卷和磁盘信息的缓存
 
 ```json
 {
-  "heartbeat_interval_s": "向 Clustermgr 心跳的间隔周期， 心跳时间为heartbeatTicks * tickInterval",
-  "heartbeat_ticks": "配合heartbeat_interval_s使用",
-  "expires_ticks": "",
+  "heartbeat_interval_s": "向 Clustermgr 心跳的间隔周期， 心跳时间为heartbeatTicks * tickInterval，默认值3秒",
+  "heartbeat_ticks": "配合heartbeat_interval_s使用，默认值30",
+  "expires_ticks": "服务过期ticks，默认值60",
   "diskv_base_path": "缓存信息本地持久化路径",
+  "diskv_temp_dir": "diskv临时目录",
   "volume_capacity": "内存卷信息容量，默认为 1 M",
   "volume_expiration_seconds": "内存卷信息过期时间，默认为0，表示不过期",
   "disk_capacity": "内存磁盘信息容量，默认为 1 M",
   "disk_expiration_seconds": "内存磁盘信息过期时间，默认为0，表示不过期",
+  "volume_route_sync_interval_seconds": "卷路由同步间隔，默认值60秒",
   "clustermgr": {
     "hosts": "clustermgr的主机列表，[ `http://ip:port`,`http://ip1:port`]",
     "rpc": "参见rpc LbClient配置介绍"

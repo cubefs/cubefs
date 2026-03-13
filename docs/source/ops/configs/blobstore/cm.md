@@ -101,10 +101,17 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
     "ensure_index": "Used to establish disk index"
   },
 
-  "cluster_report_interval_s": "Interval for reporting to consul",
+  "cluster_report_interval_s": "Interval for reporting to consul, default 60s",
   "consul_agent_addr": "Consul address",
-  "heartbeat_notify_interval_s": "Interval for heartbeat notification, used to process the disk information reported by BlobNode regularly. This time should be smaller than the time interval reported by BlobNode to avoid disk heartbeat timeout expiration",
-  "max_heartbeat_notify_num": "Maximum number of heartbeat notifications",
+  "consul_token": "Consul token for authentication",
+  "consul_token_file": "Consul token file path for authentication",
+  "heartbeat_notify_interval_s": "Interval for heartbeat notification, used to process the disk information reported by BlobNode regularly. This time should be smaller than the time interval reported by BlobNode to avoid disk heartbeat timeout expiration, default 10s",
+  "max_heartbeat_notify_num": "Maximum number of heartbeat notifications, default 2000",
+  "metric_report_interval_m": "Interval for metric reporting (minutes), default 2",
+  "consistent_check_interval_m": "Interval for consistency check (minutes), default 360",
+  "broken_volume_unit_report_num": "Number of broken volume units to report, default 3",
+  "broken_shard_unit_report_num": "Number of broken shard units to report, default 2",
+  "db_cache_size": "Database cache size (bytes)",
   "chunk_size": "Size of each chunk in BlobNode, that is, the size of the created file"
 }
 ```

@@ -28,14 +28,16 @@ Starting from version v3.3.0, Proxy node supports caching of volume and disk inf
 
 ```json
 {
-  "heartbeat_interval_s": "Interval for sending heartbeat to Clustermgr. The heartbeat time is heartbeatTicks * tickInterval",
-  "heartbeat_ticks": "Used in conjunction with heartbeat_interval_s",
-  "expires_ticks": "",
+  "heartbeat_interval_s": "Interval for sending heartbeat to Clustermgr. The heartbeat time is heartbeatTicks * tickInterval, default is 3 seconds",
+  "heartbeat_ticks": "Used in conjunction with heartbeat_interval_s, default is 30",
+  "expires_ticks": "Service expiration ticks, default is 60",
   "diskv_base_path": "Local persistent path for caching information",
+  "diskv_temp_dir": "Temp directory for diskv",
   "volume_capacity": "Capacity of memory volume information, default is 1M",
   "volume_expiration_seconds": "Expiration time of memory volume information, default is 0, which means no expiration",
   "disk_capacity": "Capacity of memory disk information, default is 1M",
   "disk_expiration_seconds": "Expiration time of memory disk information, default is 0, which means no expiration",
+  "volume_route_sync_interval_seconds": "Volume route synchronization interval, default is 60 seconds",
   "clustermgr": {
     "hosts": "List of clustermgr hosts, [`http://ip:port`,`http://ip1:port`]",
     "rpc": "Refer to the rpc LbClient configuration introduction"
