@@ -988,7 +988,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.Rdonly = GlobalMountOptions[proto.Rdonly].GetBool()
 	opt.WriteCache = GlobalMountOptions[proto.WriteCache].GetBool()
 	opt.KeepCache = GlobalMountOptions[proto.KeepCache].GetBool()
-	opt.DisableDirectIO = GlobalMountOptions[proto.DisableDirectIO].GetBool()
+	opt.EnableDirectIO = GlobalMountOptions[proto.EnableDirectIO].GetBool()
 	opt.FollowerRead = GlobalMountOptions[proto.FollowerRead].GetBool()
 	opt.MaximallyRead = GlobalMountOptions[proto.MaximallyRead].GetBool()
 	opt.Authenticate = GlobalMountOptions[proto.Authenticate].GetBool()

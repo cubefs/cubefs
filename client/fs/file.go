@@ -299,14 +299,14 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		f.super.ec.RefreshExtentsCache(ino)
 	}
 
-	// Set open response flags based on configuration.
-	// disableDirectIO=true (default): keep compatibility by avoiding OpenDirectIO.
-	// disableDirectIO=false: allow OpenDirectIO on hot/replica volumes for direct I/O path.
+	// enableDirectIO=false (default): keep compatibility by avoiding OpenDirectIO.
+	// enableDirectIO=true: allow OpenDirectIO on hot/replica volumes for direct I/O path.
+	openedWithDirectIO := false
 	if resp != nil {
 		if f.super.keepCache {
 			// If keepCache is enabled, use OpenKeepCache to preserve page cache
 			resp.Flags |= fuse.OpenKeepCache
-		} else if !f.super.disableDirectIO {
+		} else if f.super.enableDirectIO {
 			if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
 				resp.Flags |= fuse.OpenDirectIO
 			}

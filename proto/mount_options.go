@@ -31,7 +31,7 @@ const (
 	Rdonly
 	WriteCache
 	KeepCache
-	DisableDirectIO
+	EnableDirectIO
 	FollowerRead
 	MaximallyRead
 	Authenticate
@@ -149,7 +149,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[Rdonly] = MountOption{"rdonly", "Mount as readonly", "", false}
 	opts[WriteCache] = MountOption{"writecache", "Enable FUSE writecache feature", "", false}
 	opts[KeepCache] = MountOption{"keepcache", "Enable FUSE keepcache feature", "", false}
-	opts[DisableDirectIO] = MountOption{"disableDirectIO", "Disable FUSE OpenDirectIO on open path", "", true}
+	opts[EnableDirectIO] = MountOption{"enableDirectIO", "Enable FUSE OpenDirectIO on open path", "", false}
 	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
 	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", true}
 	opts[MaximallyRead] = MountOption{"maximallyRead", "Enable read from other node when read quorum failed", "", false}
@@ -329,7 +329,7 @@ type MountOptions struct {
 	Rdonly                  bool
 	WriteCache              bool
 	KeepCache               bool
-	DisableDirectIO         bool
+	EnableDirectIO          bool
 	FollowerRead            bool
 	MaximallyRead           bool
 	Authenticate            bool

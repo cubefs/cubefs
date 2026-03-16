@@ -62,7 +62,7 @@ type Super struct {
 	orphan      *OrphanInodeList
 	enSyncWrite bool
 	keepCache   bool
-	disableDirectIO bool
+	enableDirectIO bool
 
 	nodeCache map[uint64]fs.Node
 	fslock    sync.Mutex
@@ -229,7 +229,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	s.keepCache = opt.KeepCache
-	s.disableDirectIO = opt.DisableDirectIO
+	s.enableDirectIO = opt.EnableDirectIO
 	s.ic = NewInodeCache(inodeExpiration, int(opt.InodeLruLimit), s.metaCacheAcceleration)
 	s.inodeLruLimit = opt.InodeLruLimit
 	if opt.MaxStreamerLimit > 0 || !opt.StopWarmMeta {
@@ -345,7 +345,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ForceRemoteCache:      opt.ForceRemoteCache,
 		EnableAsyncFlush:      opt.EnableAsyncFlush,
 		MetaAcceleration:      opt.MetaCacheAcceleration,
-		EnableWriteDataConsumer: !opt.DisableDirectIO,
+		EnableWriteDataConsumer: opt.EnableDirectIO,
 		RemoteCacheName:       opt.RemoteCacheName,
 	}
 
