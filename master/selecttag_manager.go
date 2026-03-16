@@ -176,6 +176,7 @@ func applyTagRulesToPeers(tagRules *TagRulesInfo, peers []proto.Peer, replicas [
 	}
 
 	tagRules.ClearMatch()
+	handledReplica := make(map[string]struct{}, len(replicas))
 	peerIndexMap := make(map[string]int, len(peers))
 	for i, peer := range peers {
 		peerIndexMap[peer.Addr] = i
@@ -200,6 +201,7 @@ func applyTagRulesToPeers(tagRules *TagRulesInfo, peers []proto.Peer, replicas [
 				setPeerTag(replica.addr, DefaultTag)
 				changed = true
 			}
+			handledReplica[replica.addr] = struct{}{}
 			continue
 		}
 		if !replica.hasNodeTag {
@@ -210,10 +212,8 @@ func applyTagRulesToPeers(tagRules *TagRulesInfo, peers []proto.Peer, replicas [
 				setPeerTag(replica.addr, replica.nodeTag)
 				changed = true
 			}
+			handledReplica[replica.addr] = struct{}{}
 			continue
-		}
-		if tagRules.IsRuleAllTagMarked() {
-			break
 		}
 	}
 
@@ -222,8 +222,8 @@ func applyTagRulesToPeers(tagRules *TagRulesInfo, peers []proto.Peer, replicas [
 		if replica.isLearner || !replica.hasNodeTag {
 			continue
 		}
-		if tagRules.IsRuleAllTagMarked() {
-			break
+		if _, ok := handledReplica[replica.addr]; ok {
+			continue
 		}
 		currentTag := getPeerTag(replica.addr)
 		dst, ok := tagRules.FindDst(replica.nodeTag)

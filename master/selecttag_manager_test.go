@@ -987,8 +987,8 @@ func TestApplyTagRulesToPeers(t *testing.T) {
 
 		changed := applyTagRulesToPeers(tagRules, peers, replicas)
 		assert.True(t, changed)
-		assert.Equal(t, DefaultTag, peers[0].Tag)
-		assert.Equal(t, DefaultTag, peers[1].Tag)
+		assert.Equal(t, "tag4", peers[0].Tag)
+		assert.Equal(t, "tag4", peers[1].Tag)
 		assert.Equal(t, DefaultTag, peers[2].Tag)
 		assert.Equal(t, "tag4", peers[3].Tag)
 	})
@@ -1155,5 +1155,92 @@ func TestApplyTagRulesToPeers(t *testing.T) {
 		assert.Equal(t, "tag4", peers[1].Tag)
 		assert.Equal(t, DefaultTag, peers[2].Tag)
 		assert.Equal(t, "tag6", peers[3].Tag)
+	})
+
+	t.Run("keep first pass result and skip second pass overwrite", func(t *testing.T) {
+		tagRules := &TagRulesInfo{
+			Rules: []*TagGroupInfo{
+				{
+					Groups: []*TagMapInfo{
+						{Src: "tag1", Dst: "tag2"},
+						{Src: DefaultTag, Dst: DefaultTag},
+						{Src: DefaultTag, Dst: DefaultTag},
+					},
+				},
+			},
+		}
+		peers := []proto.Peer{
+			{Addr: "10.0.0.1:17210", Tag: "legacy"},
+		}
+		replicas := []tagReplicaInfo{
+			{addr: "10.0.0.1:17210", nodeTag: "tag2", hasNodeTag: true},
+		}
+
+		changed := applyTagRulesToPeers(tagRules, peers, replicas)
+		assert.True(t, changed)
+		assert.Equal(t, "tag2", peers[0].Tag)
+	})
+
+	t.Run("set null tag", func(t *testing.T) {
+		tagRules := &TagRulesInfo{
+			Rules: []*TagGroupInfo{
+				{
+					Groups: []*TagMapInfo{
+						{Src: DefaultTag, Dst: DefaultTag},
+						{Src: DefaultTag, Dst: DefaultTag},
+						{Src: DefaultTag, Dst: DefaultTag},
+					},
+				},
+			},
+		}
+		peers := []proto.Peer{
+			{Addr: "10.0.0.1:17210", Tag: DefaultTag},
+			{Addr: "10.0.0.2:17210", Tag: DefaultTag},
+			{Addr: "10.0.0.3:17210", Tag: "group20"},
+		}
+		replicas := []tagReplicaInfo{
+			{addr: "10.0.0.1:17210", nodeTag: DefaultTag, hasNodeTag: true},
+			{addr: "10.0.0.2:17210", nodeTag: DefaultTag, hasNodeTag: true},
+			{addr: "10.0.0.3:17210", nodeTag: "groupali", hasNodeTag: true},
+		}
+
+		changed := applyTagRulesToPeers(tagRules, peers, replicas)
+		assert.True(t, changed)
+		assert.Equal(t, DefaultTag, peers[0].Tag)
+		assert.Equal(t, DefaultTag, peers[1].Tag)
+		assert.Equal(t, DefaultTag, peers[2].Tag)
+	})
+
+	t.Run("learner stale tag should be cleared even when rules are fully marked early", func(t *testing.T) {
+		tagRules := &TagRulesInfo{
+			Rules: []*TagGroupInfo{
+				{
+					Groups: []*TagMapInfo{
+						{Src: "tag1", Dst: "tag2"},
+						{Src: "tag3", Dst: "tag4"},
+						{Src: "tag5", Dst: "tag6"},
+					},
+				},
+			},
+		}
+		peers := []proto.Peer{
+			{Addr: "10.0.0.1:17210", Tag: DefaultTag},
+			{Addr: "10.0.0.2:17210", Tag: DefaultTag},
+			{Addr: "10.0.0.3:17210", Tag: DefaultTag},
+			{Addr: "10.0.0.4:17210", Tag: "stale-learner-tag"},
+		}
+		replicas := []tagReplicaInfo{
+			{addr: "10.0.0.1:17210", nodeTag: "tag2", hasNodeTag: true},
+			{addr: "10.0.0.2:17210", nodeTag: "tag4", hasNodeTag: true},
+			{addr: "10.0.0.3:17210", nodeTag: "tag6", hasNodeTag: true},
+			{addr: "10.0.0.4:17210", isLearner: true},
+		}
+
+		changed := applyTagRulesToPeers(tagRules, peers, replicas)
+		assert.True(t, changed)
+		assert.Equal(t, "tag2", peers[0].Tag)
+		assert.Equal(t, "tag4", peers[1].Tag)
+		assert.Equal(t, "tag6", peers[2].Tag)
+		assert.Equal(t, DefaultTag, peers[3].Tag)
 	})
 }
