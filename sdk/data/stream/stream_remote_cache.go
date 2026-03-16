@@ -26,7 +26,7 @@ import (
 	"github.com/cubefs/cubefs/util/stat"
 )
 
-const SIZE_GB = 1024 * 1024 * 1024
+const SIZE_MB = 1024 * 1024
 
 type PrepareRemoteCacheRequest struct {
 	ctx          context.Context
@@ -57,7 +57,7 @@ func (pr *PrepareRemoteCacheRequest) String() string {
 
 func (s *Streamer) enableRemoteCache() bool {
 	fileSize, _ := s.extents.Size()
-	enableRemoteCache := s.client.IsRemoteCacheEnabled() && int64(fileSize) <= s.client.RemoteCache.remoteCacheMaxFileSizeGB*SIZE_GB
+	enableRemoteCache := s.client.IsRemoteCacheEnabled() && int64(fileSize) <= s.client.RemoteCache.remoteCacheMaxFileSizeMB*SIZE_MB
 	bloomStatus := s.client.shouldRemoteCache(s.fullPath)
 	log.LogDebugf("Streamer inode %v fullPath %v parent %v fileSize %v enableRemoteCache %v bloomStatus %v",
 		s.inode, s.fullPath, s.parentInode, fileSize, enableRemoteCache, bloomStatus)

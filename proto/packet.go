@@ -457,6 +457,7 @@ const (
 	DefaultRemoteCacheTTL               = 5 * 24 * 3600
 	DefaultRemoteCacheClientReadTimeout = 2000 // ms
 	DefaultRemoteCacheMaxFileSizeGB     = 128
+	DefaultRemoteCacheMaxFileSizeMB     = 128 * 1024
 	DefaultFlashNodeTimeoutCount        = 5
 	DefaultRemoteCacheHandleReadTimeout = 100 // ms
 	DefaultRemoteCacheExtentReadTimeout = 3000

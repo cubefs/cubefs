@@ -314,6 +314,7 @@ func TestStreamerRead_WithHoles_Consistency(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	client.RemoteCache.VolumeEnabled = true
 	client.RemoteCache.remoteCacheMaxFileSizeGB = 100
+	client.RemoteCache.remoteCacheMaxFileSizeMB = 100 * 1024
 	client.RemoteCache.remoteCacheClient.SetClusterEnable(true)
 
 	if err := client.RemoteCache.remoteCacheClient.UpdateFlashGroups(); err != nil {

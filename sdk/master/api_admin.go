@@ -404,6 +404,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParamAny("remoteCacheTTL", vv.RemoteCacheTTL)
 	request.addParamAny("remoteCacheReadTimeout", vv.RemoteCacheReadTimeout)
 	request.addParam("remoteCacheMaxFileSizeGB", strconv.FormatInt(vv.RemoteCacheMaxFileSizeGB, 10))
+	request.addParam("remoteCacheMaxFileSizeMB", strconv.FormatInt(vv.RemoteCacheMaxFileSizeMB, 10))
 	request.addParamAny("remoteCacheOnlyForNotSSD", vv.RemoteCacheOnlyForNotSSD)
 	request.addParamAny("remoteCacheMultiRead", vv.RemoteCacheMultiRead)
 	request.addParamAny("flashNodeTimeoutCount", vv.FlashNodeTimeoutCount)
@@ -518,7 +519,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
 	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string, optMetaNearRead string, optMaximallyRead string,
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
-	remoteCacheMaxFileSizeGB int64, remoteCacheOnlyForNotSSD string, remoteCacheMultiRead string, flashNodeTimeoutCount int64,
+	remoteCacheMaxFileSizeGB int64, remoteCacheMaxFileSizeMB int64, remoteCacheOnlyForNotSSD string, remoteCacheMultiRead string, flashNodeTimeoutCount int64,
 	remoteCacheSameZoneTimeout int64, remoteCacheSameRegionTimeout int64, storeMode proto.StoreMode,
 	poolId uint8, pools string, remoteCacheDisableTTL bool,
 ) (err error) {
@@ -551,6 +552,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("remoteCacheTTL", strconv.FormatInt(remoteCacheTTL, 10))
 	request.addParam("remoteCacheReadTimeout", strconv.FormatInt(remoteCacheReadTimeout, 10))
 	request.addParam("remoteCacheMaxFileSizeGB", strconv.FormatInt(remoteCacheMaxFileSizeGB, 10))
+	request.addParam("remoteCacheMaxFileSizeMB", strconv.FormatInt(remoteCacheMaxFileSizeMB, 10))
 	request.addParam("remoteCacheOnlyForNotSSD", remoteCacheOnlyForNotSSD)
 	request.addParam("remoteCacheMultiRead", remoteCacheMultiRead)
 	request.addParamAny("flashNodeTimeoutCount", flashNodeTimeoutCount)

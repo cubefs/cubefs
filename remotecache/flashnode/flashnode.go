@@ -51,8 +51,8 @@ const (
 
 	moduleName = "flashNode"
 
-	_defaultReadBurst                      = 512
-	_defaultLRUCapacity                    = 400000
+	_defaultReadBurst                      = 200000
+	_defaultLRUCapacity                    = 40000000
 	_defaultLRUFhCapacity                  = 500000
 	_defaultDiskUnavailableCbErrorCount    = 3
 	_defaultCacheLoadWorkerNum             = 16
@@ -329,7 +329,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		return errors.New("bad zoneName config")
 	}
 	f.readRps = cfg.GetInt(cfgReadRps)
-	if f.readRps < 0 {
+	if f.readRps <= 0 {
 		f.readRps = _defaultReadBurst
 	}
 	f.hotKeyMissCount = _defaultMissCountThresholdInterval

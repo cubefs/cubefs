@@ -763,6 +763,7 @@ type createVolReq struct {
 	remoteCacheTTL               int64
 	remoteCacheReadTimeout       int64
 	remoteCacheMaxFileSizeGB     int64
+	remoteCacheMaxFileSizeMB     int64
 	remoteCacheOnlyForNotSSD     bool
 	remoteCacheMultiRead         bool
 	flashNodeTimeoutCount        int64
@@ -1004,6 +1005,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq, m *Server) (err
 	}
 
 	if req.remoteCacheMaxFileSizeGB, err = extractInt64WithDefault(r, remoteCacheMaxFileSizeGB, proto.DefaultRemoteCacheMaxFileSizeGB); err != nil {
+		return
+	}
+	if req.remoteCacheMaxFileSizeMB, err = extractInt64WithDefault(r, remoteCacheMaxFileSizeMB, proto.DefaultRemoteCacheMaxFileSizeMB); err != nil {
 		return
 	}
 	if req.remoteCacheOnlyForNotSSD, err = extractBoolWithDefault(r, remoteCacheOnlyForNotSSD, false); err != nil {

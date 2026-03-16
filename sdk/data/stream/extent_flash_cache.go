@@ -60,6 +60,7 @@ type RemoteCache struct {
 	PrepareCh     chan *PrepareRemoteCacheRequest
 
 	remoteCacheMaxFileSizeGB int64
+	remoteCacheMaxFileSizeMB int64
 	remoteCacheOnlyForNotSSD bool
 	remoteCacheClient        *remotecache.RemoteCacheClient
 	WarmUpMetaPaths          sync.Map
@@ -93,6 +94,10 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 	if rc.remoteCacheMaxFileSizeGB != view.RemoteCacheMaxFileSizeGB {
 		log.LogInfof("RcMaxFileSizeGB: %d(GB) -> %d(GB)", rc.remoteCacheMaxFileSizeGB, view.RemoteCacheMaxFileSizeGB)
 		rc.remoteCacheMaxFileSizeGB = view.RemoteCacheMaxFileSizeGB
+	}
+	if rc.remoteCacheMaxFileSizeMB != view.RemoteCacheMaxFileSizeMB {
+		log.LogInfof("RcMaxFileSizeMB: %d(MB) -> %d(MB)", rc.remoteCacheMaxFileSizeMB, view.RemoteCacheMaxFileSizeMB)
+		rc.remoteCacheMaxFileSizeMB = view.RemoteCacheMaxFileSizeMB
 	}
 	if rc.remoteCacheOnlyForNotSSD != view.RemoteCacheOnlyForNotSSD {
 		log.LogInfof("RcOnlyForNotSSD: %v -> %v", rc.remoteCacheOnlyForNotSSD, view.RemoteCacheOnlyForNotSSD)

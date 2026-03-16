@@ -1510,6 +1510,7 @@ type SimpleVolView struct {
 	RemoteCacheTTL               int64
 	RemoteCacheReadTimeout       int64 // ms
 	RemoteCacheMaxFileSizeGB     int64
+	RemoteCacheMaxFileSizeMB     int64
 	RemoteCacheOnlyForNotSSD     bool
 	RemoteCacheMultiRead         bool
 	FlashNodeTimeoutCount        int64
