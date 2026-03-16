@@ -1110,7 +1110,7 @@ func (c *Cluster) loadMultiVersion(vol *Vol) (err error) {
 		return vol.VersionMgr.init(c)
 	}
 	vol.VersionMgr.c = c
-	log.LogWarnf("action[loadMultiVersion] vol %v loadMultiVersion set cluster %v vol.VersionMgr %v", vol.Name, c, vol.VersionMgr)
+	log.LogWarnf("action[loadMultiVersion] vol %v loadMultiVersion set cluster %v vol.VersionMgr %v", vol.Name, c.Name, vol.VersionMgr)
 	for _, value := range result {
 		if err = vol.VersionMgr.loadMultiVersion(c, value); err != nil {
 			log.LogErrorf("action[loadMultiVersion] vol %v err %v", vol.Name, err)

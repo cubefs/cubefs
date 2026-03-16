@@ -403,3 +403,8 @@ func (fg *FlashGroup) UpdateSlots(topology *FlashNodeTopology, needDeleteFgFlag 
 	}
 	return
 }
+
+func (fg *FlashGroup) String() string {
+	return fmt.Sprintf("FlashGroup{ID:%v, SlotStatus:%v, Step:%v, Weight:%v, Status:%v, LostAllFlashNode:%v, ReducingSlots:%v, IncreasingSlots:%v, ReduceAllTime:%v, FlashNodeTopoName:%v, Region:%v}",
+		fg.ID, fg.SlotStatus, fg.Step, fg.Weight, fg.Status, atomic.LoadInt32(&fg.LostAllFlashNode), atomic.LoadInt32(&fg.ReducingSlots), atomic.LoadInt32(&fg.IncreasingSlots), fg.ReduceAllTime, fg.FlashNodeTopoName, fg.Region)
+}
