@@ -111,15 +111,20 @@ func (s *ServiceMgr) GetServiceInfo(sname string) (info clustermgr.ServiceInfo) 
 }
 
 func (s *ServiceMgr) ListServiceInfo() (info clustermgr.ServiceInfo, err error) {
-	s.cache.Range(func(key, value interface{}) bool {
+	s.cache.Range(func(key, value any) bool {
 		sv := value.(*service)
 		sv.RLock()
 		for _, val := range sv.nodes {
+			var expireAt int64
+			if time.Until(val.Expires) > 0 {
+				expireAt = val.Expires.Unix()
+			}
 			node := clustermgr.ServiceNode{
 				ClusterID: val.ClusterID,
 				Name:      val.Name,
 				Host:      val.Host,
 				Idc:       val.Idc,
+				ExpireAt:  expireAt,
 			}
 			info.Nodes = append(info.Nodes, node)
 		}
@@ -131,7 +136,7 @@ func (s *ServiceMgr) ListServiceInfo() (info clustermgr.ServiceInfo, err error) 
 	return
 }
 
-func (s *ServiceMgr) handleRegister(ctx context.Context, arg clustermgr.RegisterArgs) (err error) {
+func (s *ServiceMgr) handleRegister(_ context.Context, arg clustermgr.RegisterArgs) (err error) {
 	info := serviceNode{
 		ClusterID: arg.ClusterID,
 		Name:      arg.Name,
@@ -153,7 +158,7 @@ func (s *ServiceMgr) handleRegister(ctx context.Context, arg clustermgr.Register
 	return nil
 }
 
-func (s *ServiceMgr) handleUnregister(ctx context.Context, sname, host string) error {
+func (s *ServiceMgr) handleUnregister(_ context.Context, sname, host string) error {
 	key := nodeName{sname, host}
 	val, hit := s.cache.Load(sname)
 	if !hit {
@@ -161,13 +166,13 @@ func (s *ServiceMgr) handleUnregister(ctx context.Context, sname, host string) e
 	}
 	sv := val.(*service)
 	sv.Lock()
-	defer sv.Unlock()
 	delete(sv.nodes, host)
 	s.dirty.Load().(*sync.Map).Store(key, DbDelete)
+	sv.Unlock()
 	return nil
 }
 
-func (s *ServiceMgr) handleHeartbeat(ctx context.Context, sname, host string) (err error) {
+func (s *ServiceMgr) handleHeartbeat(_ context.Context, sname, host string) (err error) {
 	val, hit := s.cache.Load(sname)
 	if !hit {
 		return
