@@ -810,6 +810,7 @@ func (s *Service) metricReport(ctx context.Context) {
 	s.report(ctx)
 	s.VolumeMgr.Report(ctx, s.Region, s.ClusterID)
 	s.BlobNodeMgr.Report(ctx, s.Region, s.ClusterID, isLeader)
+	s.ServiceMgr.Report(ctx, s.Region, s.ClusterID)
 }
 
 func (s *Service) checkVolInfos(ctx context.Context, clis []*clustermgr.Client) ([]proto.Vid, error) {
