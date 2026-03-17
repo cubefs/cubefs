@@ -15,41 +15,45 @@
 package clustermgr
 
 import (
+	"time"
+
 	"github.com/desertbit/grumble"
+	"github.com/dustin/go-humanize"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/tablefmt"
 )
 
 func cmdGetService(c *grumble.Context) error {
 	ctx := common.CmdContext()
 	cli := newCMClient(c.Flags)
 
-	names := []string{
-		proto.ServiceNameProxy,
-		proto.ServiceNameBlobNode,
-		proto.ServiceNameScheduler,
-		proto.ServiceNameWorker,
+	var services clustermgr.ServiceInfo
+	var err error
+	if name := c.Args.String("name"); name != "" {
+		services, err = cli.GetService(ctx, clustermgr.GetServiceArgs{Name: name})
+	} else {
+		services, err = cli.ListService(ctx)
 	}
-	name := c.Args.String("name")
-	if name != "" {
-		names = []string{name}
+	if err != nil {
+		return err
 	}
 
-	for _, name := range names {
-		fmt.Println("Service of", name, ":")
-		info, err := cli.GetService(ctx, clustermgr.GetServiceArgs{
-			Name: name,
-		})
-		if err != nil {
-			return err
+	const timeformat = "2006-01-02 15:04:05"
+
+	rows := tablefmt.Table{tablefmt.NewRow("ClusterID", "Name", "IDC", "Host", "Expired", "ExpireAt")}
+	for _, node := range services.Nodes {
+		expireTime := ""
+		if node.ExpireAt > 0 {
+			t := time.Unix(node.ExpireAt, 0)
+			expireTime = fmt.Sprintf("%s (%s)", t.Format(timeformat), humanize.Time(t))
 		}
-		fmt.Println(common.Readable(info))
-		fmt.Println()
+		rows = rows.Append(tablefmt.NewRow(node.ClusterID, node.Name, node.Idc, node.Host,
+			node.ExpireAt > 0, expireTime))
 	}
-
+	fmt.Println(tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignCenter}, rows...))
 	return nil
 }
 
