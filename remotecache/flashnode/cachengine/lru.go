@@ -67,6 +67,7 @@ type LruCache interface {
 	GetCreateTime(key interface{}) (time.Time, bool)
 	SetCapacity(capacity int)
 	SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap map[string]bool)
+	GetRemoteCacheDisableTTLMap() map[string]bool
 	IsVolumeDisableTTL(volume string) bool
 	SetStatCh(ch chan StatUpdate)
 }
@@ -647,6 +648,19 @@ func (c *fCache) SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap map[string]bo
 		}
 		return true
 	})
+}
+
+func (c *fCache) GetRemoteCacheDisableTTLMap() map[string]bool {
+	remoteCacheDisableTTLMap := make(map[string]bool)
+	c.volMap.Range(func(key, value interface{}) bool {
+		volume := key.(string)
+		disableTTL := value.(bool)
+		if disableTTL {
+			remoteCacheDisableTTLMap[volume] = true
+		}
+		return true
+	})
+	return remoteCacheDisableTTLMap
 }
 
 // IsVolumeDisableTTL checks if remoteCacheDisableTTL is enabled for a specific volume

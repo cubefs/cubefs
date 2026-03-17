@@ -329,6 +329,24 @@ func (c *CacheEngine) SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap map[stri
 	}
 }
 
+func (c *CacheEngine) GetRemoteCacheDisableTTLMap() map[string]bool {
+	remoteCacheDisableTTLMap := make(map[string]bool)
+	found := false
+	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		cacheItem := value.(*lruCacheItem)
+		remoteCacheDisableTTLMap = cacheItem.lruCache.GetRemoteCacheDisableTTLMap()
+		found = true
+		return false
+	})
+	if !found && c.lruFhCache != nil {
+		remoteCacheDisableTTLMap = c.lruFhCache.GetRemoteCacheDisableTTLMap()
+	}
+	if remoteCacheDisableTTLMap == nil {
+		return make(map[string]bool)
+	}
+	return remoteCacheDisableTTLMap
+}
+
 // IsVolumeDisableTTL checks if remoteCacheDisableTTL is enabled for a specific volume
 func (c *CacheEngine) IsVolumeDisableTTL(volume string) bool {
 	var disableTTL bool

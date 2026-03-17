@@ -15,7 +15,6 @@
 package master
 
 import (
-	"encoding/json"
 	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
@@ -241,29 +240,15 @@ func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version, region string, i
 // Returns empty map if the API is not available (old master version)
 func (api *NodeAPI) GetRemoteCacheDisableTTLMap() (remoteCacheDisableTTLMap map[string]bool, err error) {
 	request := newRequest(get, proto.AdminGetRemoteCacheDisableTTLMap).Header(api.h)
-	val, err := api.mc.serveRequest(request)
+	remoteCacheDisableTTLMap = make(map[string]bool)
+	err = api.mc.requestWith(&remoteCacheDisableTTLMap, request)
 	if err != nil {
 		// If API is not available (404 or other errors), return empty map without error
 		// This allows compatibility with old master versions
 		return make(map[string]bool), nil
 	}
-	// Parse HTTPReply response
-	var httpReply proto.HTTPReply
-	if err = json.Unmarshal(val, &httpReply); err != nil {
-		// If parsing fails, return empty map without error
+	if remoteCacheDisableTTLMap == nil {
 		return make(map[string]bool), nil
-	}
-	// Parse Data field
-	if httpReply.Data == nil {
-		return make(map[string]bool), nil
-	}
-	remoteCacheDisableTTLMap = make(map[string]bool)
-	if dataMap, ok := httpReply.Data.(map[string]interface{}); ok {
-		for k, v := range dataMap {
-			if boolVal, ok := v.(bool); ok {
-				remoteCacheDisableTTLMap[k] = boolVal
-			}
-		}
 	}
 	return
 }

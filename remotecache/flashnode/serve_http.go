@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -49,6 +50,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/addWarmupPath", f.handleAddWarmupPath)
 	http.HandleFunc("/setDiskCacheCapacity", f.handleSetDiskCacheCapacity)
 	http.HandleFunc("/queryCacheVols", f.handleQueryCacheVols)
+	http.HandleFunc("/queryDisableTTLVols", f.handleQueryDisableTTLVols)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -572,4 +574,20 @@ func (f *FlashNode) handleSetDiskCacheCapacity(w http.ResponseWriter, r *http.Re
 func (f *FlashNode) handleQueryCacheVols(w http.ResponseWriter, r *http.Request) {
 	volCacheSizeMap := f.cacheEngine.GetVolCacheSizeMap()
 	replyOK(w, r, volCacheSizeMap)
+}
+
+func (f *FlashNode) handleQueryDisableTTLVols(w http.ResponseWriter, r *http.Request) {
+	disableTTLMap := f.cacheEngine.GetRemoteCacheDisableTTLMap()
+	volumes := make([]string, 0, len(disableTTLMap))
+	for volume, disableTTL := range disableTTLMap {
+		if disableTTL {
+			volumes = append(volumes, volume)
+		}
+	}
+	sort.Strings(volumes)
+	replyOK(w, r, map[string]interface{}{
+		"count":   len(volumes),
+		"volumes": volumes,
+		"map":     disableTTLMap,
+	})
 }
