@@ -34,6 +34,7 @@ type ServiceNode struct {
 	Name      string `json:"name"`
 	Host      string `json:"host"`
 	Idc       string `json:"idc"`
+	ExpireAt  int64  `json:"expire_at,omitempty"`
 }
 
 type RegisterArgs struct {
