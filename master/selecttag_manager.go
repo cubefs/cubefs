@@ -1024,15 +1024,21 @@ func (vol *Vol) countMpTagUnmatch(summary *proto.TagSummary) (count int) {
 }
 
 func formatMetaReplicaTag(tag string, metanode *MetaNode) string {
-	if tag == metanode.Tag || tag == DefaultTag || strings.Contains(tag, "->") {
+	if tag == metanode.Tag || strings.Contains(tag, "->") {
 		return tag
+	}
+	if tag == DefaultTag {
+		return metanode.Tag
 	}
 	return fmt.Sprintf("%s->%s", metanode.Tag, tag)
 }
 
 func formatDataReplicaTag(tag string, datanode *DataNode) string {
-	if tag == datanode.Tag || tag == DefaultTag || strings.Contains(tag, "->") {
+	if tag == datanode.Tag || strings.Contains(tag, "->") {
 		return tag
+	}
+	if tag == DefaultTag {
+		return datanode.Tag
 	}
 	return fmt.Sprintf("%s->%s", datanode.Tag, tag)
 }

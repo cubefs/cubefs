@@ -133,7 +133,7 @@ func TestFormatMetaReplicaSelectTag(t *testing.T) {
 		expected  string
 	}{
 		{"tag same as node", "node-tag", "node-tag"},
-		{"default tag", DefaultTag, DefaultTag},
+		{"default tag", DefaultTag, "node-tag"},
 		{"already contains arrow", "old-tag->new-tag", "old-tag->new-tag"},
 		{"different tag", "different-tag", "node-tag->different-tag"},
 	}
@@ -158,7 +158,7 @@ func TestFormatDataReplicaSelectTag(t *testing.T) {
 		expected  string
 	}{
 		{"tag same as node", "data-node-tag", "data-node-tag"},
-		{"default tag", DefaultTag, DefaultTag},
+		{"default tag", DefaultTag, "data-node-tag"},
 		{"already contains arrow", "old-tag->new-tag", "old-tag->new-tag"},
 		{"different tag", "different-tag", "data-node-tag->different-tag"},
 	}
