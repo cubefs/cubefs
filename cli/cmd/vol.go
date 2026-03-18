@@ -997,7 +997,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				vv.DpTag = optDpTag
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  DpTag : %v\n", vv.DpTag))
+				confirmString.WriteString(fmt.Sprintf("  DpTagMapRules              : %v\n", vv.DpTag))
 			}
 			if optMpTag != "" {
 				if !proto.ValidateTag(optMpTag) {
@@ -1006,7 +1006,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				vv.MpTag = optMpTag
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  MpTag : %v\n", vv.MpTag))
+				confirmString.WriteString(fmt.Sprintf("  MpTagMapRules              : %v\n", vv.MpTag))
 			}
 
 			if err != nil {
