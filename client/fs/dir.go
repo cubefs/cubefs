@@ -108,6 +108,7 @@ type Dir struct {
 	dctx        *DirContexts
 	parentIno   uint64
 	name        string
+	openCnt     int64
 	missCount   uint32
 	lastTime    int64
 }
@@ -119,6 +120,7 @@ var (
 	_ fs.NodeForgetter       = (*Dir)(nil)
 	_ fs.NodeMkdirer         = (*Dir)(nil)
 	_ fs.NodeMknoder         = (*Dir)(nil)
+	_ fs.NodeOpener          = (*Dir)(nil)
 	_ fs.NodeRemover         = (*Dir)(nil)
 	_ fs.NodeFsyncer         = (*Dir)(nil)
 	_ fs.NodeRequestLookuper = (*Dir)(nil)
@@ -163,6 +165,23 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+// Open handles the open request for a directory.
+func (d *Dir) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
+	bgTime := stat.BeginStat()
+	runningStat := d.super.runningMonitor.AddClientOp("diropen", req.Hdr().Pid)
+	defer func() {
+		stat.EndStat("Open:dir", err, bgTime, 1)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
+	}()
+
+	ref := atomic.AddInt64(&d.openCnt, 1)
+	if d.super.keepCache && resp != nil {
+		resp.Flags |= fuse.OpenKeepCache
+	}
+	log.LogDebugf("TRACE DirOpen: ino(%v) name(%v) openCnt(%v)", d.info.Inode, d.name, ref)
+	return d, nil
+}
+
 func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -171,13 +190,25 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 	}()
 
 	if !d.super.metaCacheAcceleration {
-		d.dctx.Clear()
+		// If all cursors are cleared, it may cause problems with concurrent access to directories,
+		// such as the creation of multiple duplicate subdirectories.
+		if req != nil {
+			d.dctx.Remove(req.Handle)
+		}
+	}
+
+	ref := atomic.AddInt64(&d.openCnt, -1)
+	if ref < 0 {
+		log.LogWarnf("DirRelease: negative openCnt detected, ino(%v) name(%v) openCnt(%v)", d.info.Inode, d.name, ref)
+		atomic.StoreInt64(&d.openCnt, 0)
+		ref = 0
+	}
+	if ref == 0 {
+		d.super.ic.Delete(d.info.Inode)
 		d.dcache.Clear()
 		d.dcacheNoEnt.Clear()
-		ino := d.info.Inode
-		d.super.ic.Delete(ino)
-
 	}
+	log.LogDebugf("TRACE DirRelease: ino(%v) name(%v) openCnt(%v)", d.info.Inode, d.name, ref)
 
 	return nil
 }
