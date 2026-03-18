@@ -1112,6 +1112,11 @@ type FlashNodeHeartbeatResponse struct {
 	Vols                    []string
 }
 
+type FlashNodeRegisterResponse struct {
+	NodeID   uint64
+	TopoName string
+}
+
 type FlashNodeLimiterStatus struct {
 	Status      util.LimiterStatus
 	DiskNum     int

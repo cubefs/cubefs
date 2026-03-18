@@ -90,7 +90,10 @@ func handleMaster(w http.ResponseWriter, r *http.Request) {
 		case 1:
 			w.Write([]byte{'{', ']'})
 		default:
-			b, _ := json.Marshal(proto.HTTPReply{Data: atomic.AddUint64(&_nodeID, 10)})
+			b, _ := json.Marshal(proto.HTTPReply{Data: &proto.FlashNodeRegisterResponse{
+				NodeID:   atomic.AddUint64(&_nodeID, 10),
+				TopoName: proto.IdleTopoName,
+			}})
 			w.Write(b)
 		}
 	default:

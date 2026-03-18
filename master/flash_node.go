@@ -146,6 +146,7 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 		version  common.String
 		nodeID   common.Uint
 		id       uint64
+		topoName string
 		err      error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.FlashNodeAdd))
@@ -170,21 +171,28 @@ func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 		region = proto.DefaultRegionName
 	}
 	// all flashnode is added to idle topo by default
-	topoName := proto.IdleTopoName
-	if id, err = m.cluster.addFlashNode(topoName, nodeAddr.V, zoneName.V, version.V, region, nodeID.V); err != nil {
+	if id, topoName, err = m.cluster.addFlashNode(proto.IdleTopoName, nodeAddr.V, zoneName.V, version.V, region, nodeID.V); err != nil {
 		log.LogWarnf("addFlashNode: fn[%v] topo %v nodeID %v region %v failed:err %v", nodeAddr.V, topoName, nodeID.V, region, err.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if detail, _ := strconv.ParseBool(r.FormValue("detail")); detail {
+		sendOkReply(w, r, newSuccessHTTPReply(&proto.FlashNodeRegisterResponse{
+			NodeID:   id,
+			TopoName: topoName,
+		}))
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
-func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version, region string, id uint64) (nodeID uint64, err error) {
+func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version, region string, id uint64) (nodeID uint64, assignedTopoName string, err error) {
 	// check if flash node is registered before
 	var (
 		flashTopo *flashgroupmanager.FlashNodeTopology
 		flashNode *flashgroupmanager.FlashNode
 	)
+	assignedTopoName = topoName
 	c.flashNodeTopo.Range(func(key, value interface{}) bool {
 		if value == nil {
 			return true
@@ -202,7 +210,7 @@ func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version, region str
 			if flashNode.Region != region {
 				err = fmt.Errorf("region is conflict: [%v]  previously registered[%v]", region, flashNode.Region)
 			}
-			topoName = topo.Name
+			assignedTopoName = topo.Name
 			return false
 		}
 		return true
@@ -212,7 +220,7 @@ func (c *Cluster) addFlashNode(topoName, nodeAddr, zoneName, version, region str
 		log.LogWarnf("addFlashNode fn[%v]:err %v", id, err.Error())
 		return
 	}
-	flashTopo, err = c.PeekFlashTopo(topoName)
+	flashTopo, err = c.PeekFlashTopo(assignedTopoName)
 	if err != nil {
 		return
 	}

@@ -156,6 +156,9 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	decode := json.NewDecoder(bytes.NewBuffer(data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err == nil {
+		if req.TopoName != "" {
+			f.setTopoName(req.TopoName)
+		}
 		if req.FlashNodeSlots != nil {
 			atomic.StoreInt32(&f.legacyMaster, 0)
 			if f.nodeID != req.FlashNodeID {
@@ -231,12 +234,12 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		return true
 	})
 	resp.Status = proto.TaskSucceeds
-	resp.TopoName = req.TopoName
+	resp.TopoName = f.getTopoName()
 	resp.Vols = f.cacheEngine.GetCacheVols()
 	resp.ZoneName = f.zoneName
 end:
 	adminTask.Response = resp
-	adminTask.TopoName = req.TopoName
+	adminTask.TopoName = f.getTopoName()
 	f.respondToMaster(adminTask)
 	if log.EnableInfo() {
 		log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout %v(ms) readDataNodeTimeout %v(ms) hotkeymisscount %v FlashNodeSlots is nil(%v)",

@@ -381,8 +381,7 @@ func (c *CacheEngine) setCacheItem(key string, cacheItem *lruCacheItem, volName 
 
 // incrementVolCounter increments the counter for a volume and updates cache size
 func (c *CacheEngine) incrementVolCounter(volume string, cacheSize int64) {
-	value, _ := c.volStatsMap.LoadOrStore(volume, &VolCacheStats{})
-	volInfo := value.(*VolCacheStats)
+	volInfo := c.getOrCreateVolStats(volume)
 	if cacheSize > 0 {
 		atomic.AddInt64(&volInfo.CacheSize, cacheSize)
 	}
@@ -410,8 +409,7 @@ func (c *CacheEngine) UpdateVolReadStats(volume string, bytes uint64) {
 	if volume == "" {
 		return
 	}
-	value, _ := c.volStatsMap.LoadOrStore(volume, &VolCacheStats{})
-	stats := value.(*VolCacheStats)
+	stats := c.getOrCreateVolStats(volume)
 	atomic.AddUint64(&stats.ReadBytes, bytes)
 	atomic.AddUint64(&stats.ReadCount, 1)
 }
@@ -421,10 +419,14 @@ func (c *CacheEngine) UpdateVolWriteStats(volume string, bytes uint64) {
 	if volume == "" {
 		return
 	}
-	value, _ := c.volStatsMap.LoadOrStore(volume, &VolCacheStats{})
-	stats := value.(*VolCacheStats)
+	stats := c.getOrCreateVolStats(volume)
 	atomic.AddUint64(&stats.WriteBytes, bytes)
 	atomic.AddUint64(&stats.WriteCount, 1)
+}
+
+func (c *CacheEngine) getOrCreateVolStats(volume string) *VolCacheStats {
+	value, _ := c.volStatsMap.LoadOrStore(volume, &VolCacheStats{Hits: 1})
+	return value.(*VolCacheStats)
 }
 
 func (c *CacheEngine) batchSetCacheItem(items []*lruCacheItem, blocks []*CacheBlock) {
@@ -1498,7 +1500,7 @@ func (c *CacheEngine) GetAndResetVolStats() map[string]*VolCacheStats {
 		vol := key.(string)
 		stats := value.(*VolCacheStats)
 		// Atomic swap to reset and get previous value
-		hits := atomic.SwapInt32(&stats.Hits, 0)
+		hits := atomic.SwapInt32(&stats.Hits, 1)
 		misses := atomic.SwapInt32(&stats.Misses, 0)
 		evicts := atomic.SwapInt32(&stats.Evicts, 0)
 		size := atomic.LoadInt64(&stats.CacheSize)

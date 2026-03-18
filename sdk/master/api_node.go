@@ -236,6 +236,15 @@ func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version, region string, i
 	return
 }
 
+func (api *NodeAPI) AddFlashNodeWithTopo(serverAddr, zoneName, version, region string, id uint64) (resp *proto.FlashNodeRegisterResponse, err error) {
+	request := newRequest(post, proto.FlashNodeAdd).Header(api.h).
+		addParam("addr", serverAddr).addParam("zoneName", zoneName).addParam("version", version).
+		addParam("id", strconv.FormatUint(id, 10)).addParam("region", region).addParam("detail", "true")
+	resp = &proto.FlashNodeRegisterResponse{}
+	err = api.mc.requestWith(resp, request)
+	return
+}
+
 // GetRemoteCacheDisableTTLMap gets remoteCacheDisableTTL configuration for all volumes
 // Returns empty map if the API is not available (old master version)
 func (api *NodeAPI) GetRemoteCacheDisableTTLMap() (remoteCacheDisableTTLMap map[string]bool, err error) {
