@@ -475,6 +475,12 @@ func (c *Cluster) checkLearnerModeRecovery(mp *MetaPartition, srcAddr, dstAddr s
 	log.LogWarnf("checkLearnerModeRecovery: vol[%v] mp[%v] src[%v] dst[%v] duration[%v]s failCount[%v]",
 		mp.volName, mp.PartitionID, srcAddr, dstAddr, recoverDuration, failCount)
 
+	// Wait at least one heartbeat interval before acting, so that the first
+	// heartbeat response has been collected and mp autoHealing can get the latest status.
+	if recoverDuration < defaultIntervalToCheckHeartbeat {
+		return fmt.Errorf("mp[%v] recovery just started, wait for next check", mp.PartitionID)
+	}
+
 	// Check timeout and failure count
 	timeoutSeconds := c.cfg.LearnerRecoverTimeoutSeconds
 	if timeoutSeconds <= 0 {
