@@ -163,6 +163,15 @@ func (s *Streamer) String() string {
 		s.inode, s.fullPath, atomic.LoadInt32(&s.refcnt), s.isOpen, s.openForWrite, len(s.request), s.handler, s.waitForFlush, s)
 }
 
+func (s *Streamer) pendingAsyncFlushCount() int {
+	count := 0
+	s.pendingAsyncFlushMap.Range(func(_, _ interface{}) bool {
+		count++
+		return true
+	})
+	return count
+}
+
 // TODO should we call it RefreshExtents instead?
 func (s *Streamer) GetExtents(isMigration bool) error {
 	if s.client.disableMetaCache || !s.needBCache {
@@ -264,6 +273,17 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 	}
 	holeBytes, holeInFileRange := calcHoleStats(requests, filesize)
 	if holeInFileRange && s.dirty && !s.waitForFlush {
+		extentsSnapshot := func() interface{} {
+			if s.extents == nil {
+				return "<nil>"
+			}
+			return s.extents.List()
+		}
+		// TEMP FLUSH_TRACE: investigate write-read visibility window in LTP iogen01.
+		log.LogWarnf("FLUSH_TRACE read_recover_pre: ino(%v) offset(%v) size(%v) filesize(%v) dirty(%v) waitForFlush(%v) reqs(%v) extents(%v)",
+			s.inode, offset, size, filesize, s.dirty, s.waitForFlush, requests, extentsSnapshot())
+		log.LogWarnf("FLUSH_TRACE_PIPE read_recover_pre: ino(%v) offset(%v) size(%v) pipe(%s)",
+			s.inode, offset, size, s.flushTracePipeSnapshot())
 		log.LogWarnf("streamer.read recover suspicious hole by flush: ino(%v) offset(%v) size(%v) filesize(%v) reqs(%v)",
 			s.inode, offset, size, filesize, requests)
 		s.writeLock.Lock()
@@ -280,6 +300,10 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 		}
 		filesize, _ = s.extents.Size()
 		holeBytes, holeInFileRange = calcHoleStats(requests, filesize)
+		log.LogWarnf("FLUSH_TRACE read_recover_post: ino(%v) offset(%v) size(%v) filesize(%v) dirty(%v) waitForFlush(%v) holeInFileRange(%v) holeBytes(%v) reqs(%v) extents(%v)",
+			s.inode, offset, size, filesize, s.dirty, s.waitForFlush, holeInFileRange, holeBytes, requests, extentsSnapshot())
+		log.LogWarnf("FLUSH_TRACE_PIPE read_recover_post: ino(%v) offset(%v) size(%v) pipe(%s)",
+			s.inode, offset, size, s.flushTracePipeSnapshot())
 	}
 	if holeInFileRange {
 		log.LogWarnf("streamer.read suspicious hole: ino(%v) offset(%v) size(%v) filesize(%v) holeBytes(%v) dirty(%v) waitForFlush(%v) reqs(%v)",

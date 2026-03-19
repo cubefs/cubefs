@@ -50,6 +50,34 @@ const (
 
 var errUnresolvedExtentKey = stderrs.New("unresolved extent key (partition id 0)")
 
+func extentHandlerPipeSnapshot(eh *ExtentHandler) string {
+	if eh == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("{id:%d off:%d size:%d status:%d inflight:%d pendingWrites:%d reqLen:%d replyLen:%d writeDataLen:%d key:%v lastKey:%v}",
+		eh.id,
+		eh.fileOffset,
+		eh.size,
+		eh.getStatus(),
+		atomic.LoadInt32(&eh.inflight),
+		atomic.LoadInt64(&eh.pendingWrites),
+		len(eh.request),
+		len(eh.reply),
+		len(eh.writeDataChan),
+		eh.key,
+		eh.lastKey)
+}
+
+func (s *Streamer) flushTracePipeSnapshot() string {
+	return fmt.Sprintf("{reqLen:%d dirty:%v dirtyListLen:%d asyncFlushChLen:%d pendingAsync:%d handler:%s}",
+		len(s.request),
+		s.dirty,
+		s.dirtylist.Len(),
+		len(s.asyncFlushCh),
+		s.pendingAsyncFlushCount(),
+		extentHandlerPipeSnapshot(s.handler))
+}
+
 const (
 	streamWriterFlushPeriod       = 3
 	streamWriterIdleTimeoutPeriod = 10
@@ -1063,6 +1091,16 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 }
 
 func (s *Streamer) flushAsync(wait bool, id string) (err error) {
+	extentsSnapshot := func() interface{} {
+		if s.extents == nil {
+			return "<nil>"
+		}
+		return s.extents.List()
+	}
+	log.LogWarnf("FLUSH_TRACE flush_async_enter: ino(%v) wait(%v) id(%v) dirty(%v) dirtylistLen(%v) handler(%v) extents(%v)",
+		s.inode, wait, id, s.dirty, s.dirtylist.Len(), s.handler, extentsSnapshot())
+	log.LogWarnf("FLUSH_TRACE_PIPE flush_async_enter: ino(%v) wait(%v) id(%v) pipe(%s)",
+		s.inode, wait, id, s.flushTracePipeSnapshot())
 	pending := make(map[*ExtentHandler]*AsyncFlushRequest)
 	asyncExtentHandler := make([]*ExtentHandler, 0)
 	for {
@@ -1080,6 +1118,10 @@ func (s *Streamer) flushAsync(wait bool, id string) (err error) {
 			}
 		}
 		log.LogDebugf("Streamer(%v) flush begin: eh(%v) id(%v)", s.inode, eh, id)
+		log.LogWarnf("FLUSH_TRACE flush_async_handler: ino(%v) wait(%v) id(%v) ehID(%v) fileOffset(%v) size(%v) status(%v) inflight(%v) key(%v) lastKey(%v)",
+			s.inode, wait, id, eh.id, eh.fileOffset, eh.size, eh.getStatus(), atomic.LoadInt32(&eh.inflight), eh.key, eh.lastKey)
+		log.LogWarnf("FLUSH_TRACE_PIPE flush_async_handler: ino(%v) wait(%v) id(%v) ehPipe(%s) streamPipe(%s)",
+			s.inode, wait, id, extentHandlerPipeSnapshot(eh), s.flushTracePipeSnapshot())
 
 		// Use async flush for better performance if enabled
 		if s.client.enableAsyncFlush {
@@ -1113,6 +1155,8 @@ func (s *Streamer) flushAsync(wait bool, id string) (err error) {
 		}
 	}
 	if !s.client.enableAsyncFlush {
+		log.LogWarnf("FLUSH_TRACE flush_async_exit_syncpath: ino(%v) wait(%v) id(%v) err(%v) dirty(%v) dirtylistLen(%v) handler(%v) extents(%v)",
+			s.inode, wait, id, err, s.dirty, s.dirtylist.Len(), s.handler, extentsSnapshot())
 		return
 	}
 	log.LogDebugf("Streamer(%v) wait(%v) pending(%v) id(%v)", s.inode, wait, pending, id)
@@ -1152,6 +1196,10 @@ func (s *Streamer) flushAsync(wait bool, id string) (err error) {
 			s.dirtylist.Put(eh)
 		}
 	}
+	log.LogWarnf("FLUSH_TRACE flush_async_exit: ino(%v) wait(%v) id(%v) err(%v) dirty(%v) dirtylistLen(%v) pendingLen(%v) handler(%v) extents(%v)",
+		s.inode, wait, id, err, s.dirty, s.dirtylist.Len(), len(pending), s.handler, extentsSnapshot())
+	log.LogWarnf("FLUSH_TRACE_PIPE flush_async_exit: ino(%v) wait(%v) id(%v) pipe(%s)",
+		s.inode, wait, id, s.flushTracePipeSnapshot())
 	return
 }
 
@@ -1409,6 +1457,16 @@ func (s *Streamer) setError() {
 }
 
 func (s *Streamer) flushSync() (err error) {
+	extentsSnapshot := func() interface{} {
+		if s.extents == nil {
+			return "<nil>"
+		}
+		return s.extents.List()
+	}
+	log.LogWarnf("FLUSH_TRACE flush_sync_enter: ino(%v) dirty(%v) dirtylistLen(%v) handler(%v) extents(%v)",
+		s.inode, s.dirty, s.dirtylist.Len(), s.handler, extentsSnapshot())
+	log.LogWarnf("FLUSH_TRACE_PIPE flush_sync_enter: ino(%v) pipe(%s)",
+		s.inode, s.flushTracePipeSnapshot())
 	for {
 		element := s.dirtylist.Get()
 		if element == nil {
@@ -1417,6 +1475,10 @@ func (s *Streamer) flushSync() (err error) {
 		eh := element.Value.(*ExtentHandler)
 
 		log.LogDebugf("Streamer flush begin: eh(%v)", eh)
+		log.LogWarnf("FLUSH_TRACE flush_sync_handler: ino(%v) ehID(%v) fileOffset(%v) size(%v) status(%v) inflight(%v) key(%v) lastKey(%v)",
+			s.inode, eh.id, eh.fileOffset, eh.size, eh.getStatus(), atomic.LoadInt32(&eh.inflight), eh.key, eh.lastKey)
+		log.LogWarnf("FLUSH_TRACE_PIPE flush_sync_handler: ino(%v) ehPipe(%s) streamPipe(%s)",
+			s.inode, extentHandlerPipeSnapshot(eh), s.flushTracePipeSnapshot())
 		err = eh.flush()
 		if err != nil {
 			log.LogErrorf("Streamer flush failed: eh(%v)", eh)
@@ -1436,10 +1498,18 @@ func (s *Streamer) flushSync() (err error) {
 		s.removePendingAsyncFlush(eh.id)
 		log.LogDebugf("Streamer flush end: eh(%v)", eh)
 	}
+	log.LogWarnf("FLUSH_TRACE flush_sync_exit: ino(%v) err(%v) dirty(%v) dirtylistLen(%v) handler(%v) extents(%v)",
+		s.inode, err, s.dirty, s.dirtylist.Len(), s.handler, extentsSnapshot())
+	log.LogWarnf("FLUSH_TRACE_PIPE flush_sync_exit: ino(%v) pipe(%s)",
+		s.inode, s.flushTracePipeSnapshot())
 	return
 }
 
 func (s *Streamer) flush(wait bool, id string) (err error) {
+	log.LogWarnf("FLUSH_TRACE flush_dispatch: ino(%v) wait(%v) id(%v) enableAsyncFlush(%v) waitForFlush(%v) dirty(%v) dirtylistLen(%v) handler(%v)",
+		s.inode, wait, id, s.client.enableAsyncFlush, s.waitForFlush, s.dirty, s.dirtylist.Len(), s.handler)
+	log.LogWarnf("FLUSH_TRACE_PIPE flush_dispatch: ino(%v) wait(%v) id(%v) pipe(%s)",
+		s.inode, wait, id, s.flushTracePipeSnapshot())
 	if s.client.enableAsyncFlush && !s.waitForFlush {
 		return s.flushAsync(wait, id)
 	} else {
