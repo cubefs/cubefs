@@ -1000,7 +1000,9 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 			ek, err = s.handler.write(data, offset, size, direct, retainForAsyncRelease)
 			if err == nil && ek != nil {
 				ek.SetSeq(s.verSeq)
-				if !s.dirty {
+				// s.dirty can stay true while dirtylist is temporarily empty (async flush/remove race).
+				// Ensure current handler is visible to subsequent flush(wait=true) before returning write.
+				if !s.dirty || s.dirtylist.Len() == 0 {
 					s.dirtylist.Put(s.handler)
 					s.dirty = true
 				}
@@ -1030,7 +1032,8 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 		} else {
 			ek, err = s.handler.write(data, offset, size, direct, retainForAsyncRelease)
 			if err == nil && ek != nil {
-				if !s.dirty {
+				// Keep current handler discoverable by flush even if dirty flag is stale true.
+				if !s.dirty || s.dirtylist.Len() == 0 {
 					s.dirtylist.Put(s.handler)
 					s.dirty = true
 				}
