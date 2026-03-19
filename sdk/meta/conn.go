@@ -62,7 +62,10 @@ func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
 	mw.conns.PutConnectEx(mc.conn, err)
 }
 
-func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.Packet, sendTimeLimit int) (*proto.Packet, error) {
+// sendToMetaPartitionLeader sends req to the leader of mp. When dirtyIno is
+// provided and the inode is in the dirty cache, nearRead is skipped so the
+// request goes straight to the leader instead of a potentially stale follower.
+func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.Packet, sendTimeLimit int, dirtyIno ...uint64) (*proto.Packet, error) {
 	var (
 		resp    *proto.Packet
 		err     error
@@ -83,16 +86,27 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 	hosts := mp.Members
 	curAddr = mp.LeaderAddr
 	isReadPkt := req.IsReadMetaPkt() && !mw.InnerReq
-	if isReadPkt && mw.FollowerRead && mw.NearRead {
-		nearHosts := mp.SortHostsByPingElapsed(mw)
-		if len(nearHosts) > 0 {
-			hosts = nearHosts
-			curAddr = nearHosts[0]
-			req.ArgLen = 1
-			req.Arg = make([]byte, req.ArgLen)
-			req.Arg[0] = proto.NearReadFlag
+	inoDirty := false
+	for _, ino := range dirtyIno {
+		if mw.dirtyInodes.isDirty(ino) {
+			inoDirty = true
+			break
 		}
-		log.LogDebugf("sendToMetaPartitionLeader: mp(%v) nearHosts(%v) curAddr(%v)", mp, nearHosts, curAddr)
+	}
+	if isReadPkt && mw.nearReadEnabled() {
+		if inoDirty {
+			log.LogDebugf("sendToMetaPartitionLeader: skip nearRead for dirty inode(%v)", dirtyIno[0])
+		} else {
+			nearHosts := mp.SortHostsByPingElapsed(mw)
+			if len(nearHosts) > 0 {
+				hosts = nearHosts
+				curAddr = nearHosts[0]
+				req.ArgLen = 1
+				req.Arg = make([]byte, req.ArgLen)
+				req.Arg[0] = proto.NearReadFlag
+			}
+			log.LogDebugf("sendToMetaPartitionLeader: mp(%v) nearHosts(%v) curAddr(%v)", mp, nearHosts, curAddr)
+		}
 	}
 
 	errs := make(map[int]error, len(hosts))
@@ -184,9 +198,9 @@ out:
 	return resp, nil
 }
 
-func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet) (*proto.Packet, error) {
+func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet, dirtyIno ...uint64) (*proto.Packet, error) {
 	if req.IsReadMetaPkt() && !mw.InnerReq {
-		return mw.sendReadToMP(mp, req)
+		return mw.sendReadToMP(mp, req, dirtyIno...)
 	}
 
 	var sendTimeLimit int
@@ -201,13 +215,13 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	return mw.sendToMetaPartitionLeader(mp, req, sendTimeLimit)
 }
 
-func (mw *MetaWrapper) sendReadToMP(mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+func (mw *MetaWrapper) sendReadToMP(mp *MetaPartition, req *proto.Packet, dirtyIno ...uint64) (resp *proto.Packet, err error) {
 	leaderRetryTimeOut := mw.leaderRetryTimeout * 1000
 	if leaderRetryTimeOut <= 0 {
 		leaderRetryTimeOut = MinRetryTime * 1000
 	}
 
-	resp, err = mw.sendToMetaPartitionLeader(mp, req, int(leaderRetryTimeOut))
+	resp, err = mw.sendToMetaPartitionLeader(mp, req, int(leaderRetryTimeOut), dirtyIno...)
 	if err == nil && !resp.ShouldRetry() {
 		return
 	}

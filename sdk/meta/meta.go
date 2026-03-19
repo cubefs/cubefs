@@ -198,6 +198,7 @@ type MetaWrapper struct {
 	FollowerRead        bool
 	NearRead            bool
 	NearReadClientCfg   bool
+	dirtyInodes         *dirtyInodeCache
 
 	HostPingStats    sync.Map // [string]*util.AddressPingStats - host address to ping stats mapping
 	HostLatency      sync.Map // [string]time.Duration - host address to average latency mapping
@@ -274,6 +275,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.InnerReq = config.InnerReq
 	mw.disableTrashByClient = config.DisableTrashByClient
 	mw.NearReadClientCfg = config.MetaNearRead
+	mw.dirtyInodes = newDirtyInodeCache(DirtyInodeTTL, MaxDirtyInodeCache)
 
 	for limit > 0 {
 		err = mw.initMetaWrapper()
@@ -364,6 +366,11 @@ func (mw *MetaWrapper) DirCacheLen() int {
 
 func (mw *MetaWrapper) enableTx(mask proto.TxOpMask) bool {
 	return mw.EnableTransaction != proto.TxPause && mw.EnableTransaction&mask > 0
+}
+
+// nearReadEnabled reports whether meta near-read is active (follower read + near read both on).
+func (mw *MetaWrapper) nearReadEnabled() bool {
+	return mw.FollowerRead && mw.NearRead
 }
 
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {

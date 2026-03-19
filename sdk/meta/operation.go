@@ -1138,7 +1138,7 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64, isAs
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendToMetaPartition(mp, packet, inode)
 	if err != nil {
 		log.LogErrorf("iget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -1193,7 +1193,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendToMetaPartition(mp, packet, inodes...)
 	if err != nil {
 		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -1392,7 +1392,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 	// for debug
 	// log.LogDebugf("getExtents req: id(%v) data(%v) stack[%v]", packet.GetReqID(), req, string(debug.Stack()))
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendToMetaPartition(mp, packet, inode)
 	if err != nil {
 		log.LogErrorf("getExtents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -1445,7 +1445,7 @@ func (mw *MetaWrapper) getObjExtents(mp *MetaPartition, inode uint64) (status in
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendToMetaPartition(mp, packet, inode)
 	if err != nil {
 		log.LogErrorf("getObjExtents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -2282,7 +2282,7 @@ func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string, is
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendToMetaPartition(mp, packet, inode)
 	if err != nil {
 		log.LogErrorf("get xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
@@ -2376,7 +2376,7 @@ func (mw *MetaWrapper) listXAttr(mp *MetaPartition, inode uint64) (keys []string
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	if packet, err = mw.sendToMetaPartition(mp, packet); err != nil {
+	if packet, err = mw.sendToMetaPartition(mp, packet, inode); err != nil {
 		log.LogErrorf("list xattr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
@@ -2482,7 +2482,7 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendToMetaPartition(mp, packet, inodes...)
 	if err != nil {
 		log.LogErrorf("batchGetXAttr: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return nil, err
