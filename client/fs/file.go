@@ -82,6 +82,10 @@ func isWriteEio(err error) bool {
 	return true
 }
 
+func isStreamerReleasingErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "streamer is being released")
+}
+
 func isReadEio(err error) bool {
 	if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP || strings.Contains(err.Error(), "ExtentNotFoundError") || strings.Contains(err.Error(), syscall.ENOENT.Error()) {
 		return false
@@ -399,7 +403,11 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 	err = f.super.ec.CloseStream(ino)
 	if err != nil {
-		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
+		if isStreamerReleasingErr(err) {
+			log.LogWarnf("Release: close writer skipped during streamer release, ino(%v) req(%v) err(%v)", ino, req, err)
+		} else {
+			log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
+		}
 		return ParseError(err)
 	}
 	if log.EnableDebug() {
@@ -652,7 +660,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		err = f.super.ec.Flush(ino)
 		if err != nil {
 			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
-			f.super.handleError("Wrtie", msg)
+			if isStreamerReleasingErr(err) {
+				log.LogWarnf("%s", msg)
+			} else {
+				f.super.handleError("Wrtie", msg)
+			}
 			// Send error metric to background goroutine
 			volname := f.super.volname
 			errType := "NOTSUP"
@@ -712,8 +724,12 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	log.LogDebugf("TRACE Flush: ino(%v) err(%v)", f.info.Inode, err)
 	if err != nil {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
-		f.super.handleError("Flush", msg)
-		log.LogErrorf("TRACE Flush err: ino(%v) err(%v)", f.info.Inode, err)
+		if isStreamerReleasingErr(err) {
+			log.LogWarnf("TRACE Flush benign err during release: ino(%v) err(%v)", f.info.Inode, err)
+		} else {
+			f.super.handleError("Flush", msg)
+			log.LogErrorf("TRACE Flush err: ino(%v) err(%v)", f.info.Inode, err)
+		}
 
 		// Send error metric to background goroutine
 		volname := f.super.volname
