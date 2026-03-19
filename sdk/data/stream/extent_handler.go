@@ -636,6 +636,9 @@ func (eh *ExtentHandler) receiver(epoch uint64) {
 
 func (eh *ExtentHandler) processReply(packet *Packet) {
 	log.LogDebugf("processReply begin: packet(%v), eh(%v)", packet, eh)
+	log.LogWarnf("FLUSH_TRACE_WR process_reply_begin: ino(%v) ehID(%v) reqID(%v) kernelOff(%v) packetSize(%v) inflightBeforeDec(%v) ehPipe(req=%v,reply=%v,writeData=%v,pendingWrites=%v)",
+		eh.inode, eh.id, packet.ReqID, packet.KernelOffset, packet.Size, atomic.LoadInt32(&eh.inflight),
+		len(eh.request), len(eh.reply), len(eh.writeDataChan), atomic.LoadInt64(&eh.pendingWrites))
 	defer func() {
 		inflight := atomic.AddInt32(&eh.inflight, -1)
 		log.LogWarnf("processReply end: packet(%v), eh(%v), inflightAfterDec(%v)", packet, eh, inflight)
@@ -665,6 +668,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		eh.processReplyError(packet, err.Error())
 		return
 	}
+	log.LogWarnf("FLUSH_TRACE_WR process_reply_result: ino(%v) ehID(%v) reqID(%v) kernelOff(%v) packetSize(%v) result(%v) verSeq(%v) replyExtentID(%v) replyExtentOff(%v)",
+		eh.inode, eh.id, packet.ReqID, packet.KernelOffset, packet.Size, reply.ResultCode, reply.VerSeq, reply.ExtentID, reply.ExtentOffset)
 
 	if reply.VerSeq > atomic.LoadUint64(&eh.stream.verSeq) || (eh.key != nil && reply.VerSeq > eh.key.GetSeq()) {
 		log.LogDebugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
@@ -899,9 +904,13 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			}
 			var status int
 			ekey := *eh.key
+			log.LogWarnf("FLUSH_TRACE_WR append_extentkey_begin: ino(%v) ehID(%v) dirty(%v) keyRange([%v,%v)) key(%v) lastKey(%v)",
+				eh.inode, eh.id, eh.dirty, ekey.FileOffset, ekey.FileOffset+uint64(ekey.Size), ekey, eh.lastKey)
 			doAppend := func() (err error) {
 				discard := eh.stream.extents.Append(&ekey, true)
 				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard, eh.stream.isCache, eh.storageClass, eh.isMigration)
+				log.LogWarnf("FLUSH_TRACE_WR append_extentkey_call: ino(%v) ehID(%v) status(%v) err(%v) keyRange([%v,%v)) key(%v) discardNum(%v)",
+					eh.inode, eh.id, status, err, ekey.FileOffset, ekey.FileOffset+uint64(ekey.Size), ekey, len(discard))
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
 					if errUpdateExtents := eh.stream.GetExtentsForceRefresh(); errUpdateExtents != nil {
 						log.LogErrorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
@@ -917,6 +926,8 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 				eh.dirty = false
 				eh.lastKey = *eh.key
 				log.LogDebugf("action[appendExtentKey] status %v, needUpdateVer %v, eh{%v}", status, eh.stream.needUpdateVer, eh)
+				log.LogWarnf("FLUSH_TRACE_WR append_extentkey_success: ino(%v) ehID(%v) keyRange([%v,%v)) key(%v) lastKey(%v)",
+					eh.inode, eh.id, eh.key.FileOffset, eh.key.FileOffset+uint64(eh.key.Size), eh.key, eh.lastKey)
 				return nil
 			}
 			// Due to the asynchronous synchronization of version numbers, the extent cache version of the client is updated first before being written to the meta.
@@ -1216,6 +1227,9 @@ func (eh *ExtentHandler) pushToRequest(packet *Packet, epoch uint64) error {
 	// to determine if the handler has finished.
 	inflight := atomic.AddInt32(&eh.inflight, 1)
 	log.LogWarnf("pushToRequest: eh(%v) packetReqID(%v) inflightAfterInc(%v)", eh, packet.ReqID, inflight)
+	log.LogWarnf("FLUSH_TRACE_WR push_to_request: ino(%v) ehID(%v) reqID(%v) kernelOff(%v) packetSize(%v) inflight(%v) reqLen(%v) replyLen(%v) writeDataLen(%v) pendingWrites(%v)",
+		eh.inode, eh.id, packet.ReqID, packet.KernelOffset, packet.Size, inflight,
+		len(eh.request), len(eh.reply), len(eh.writeDataChan), atomic.LoadInt64(&eh.pendingWrites))
 	select {
 	case eh.request <- packet:
 		return nil
