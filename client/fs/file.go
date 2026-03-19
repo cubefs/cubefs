@@ -299,9 +299,6 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		f.super.ec.RefreshExtentsCache(ino)
 	}
 
-	// enableDirectIO=false (default): keep compatibility by avoiding OpenDirectIO.
-	// enableDirectIO=true: allow OpenDirectIO on hot/replica volumes for direct I/O path.
-	openedWithDirectIO := false
 	if resp != nil {
 		if f.super.keepCache {
 			// If keepCache is enabled, use OpenKeepCache to preserve page cache

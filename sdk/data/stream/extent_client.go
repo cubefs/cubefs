@@ -228,9 +228,9 @@ type ExtentClient struct {
 	stopCh       chan struct{}
 	wg           sync.WaitGroup
 
-	forceRemoteCache bool
-	enableAsyncFlush bool
-	metaAcceleration bool
+	forceRemoteCache        bool
+	enableAsyncFlush        bool
+	metaAcceleration        bool
 	enableWriteDataConsumer bool
 }
 

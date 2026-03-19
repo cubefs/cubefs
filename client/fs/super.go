@@ -49,19 +49,19 @@ import (
 
 // Super defines the struct of a super block.
 type Super struct {
-	cluster     string
-	volname     string
-	masters     string
-	mountPoint  string
-	subDir      string
-	owner       string
-	ic          *InodeCache
-	dc          *Dcache
-	mw          *meta.MetaWrapper
-	ec          *stream.ExtentClient
-	orphan      *OrphanInodeList
-	enSyncWrite bool
-	keepCache   bool
+	cluster        string
+	volname        string
+	masters        string
+	mountPoint     string
+	subDir         string
+	owner          string
+	ic             *InodeCache
+	dc             *Dcache
+	mw             *meta.MetaWrapper
+	ec             *stream.ExtentClient
+	orphan         *OrphanInodeList
+	enSyncWrite    bool
+	keepCache      bool
 	enableDirectIO bool
 
 	nodeCache map[uint64]fs.Node
@@ -336,17 +336,17 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnGetInodeInfo:      s.InodeGet,
 		BcacheOnlyForNotSSD: opt.BcacheOnlyForNotSSD,
 
-		AheadReadEnable:       opt.AheadReadEnable,
-		AheadReadTotalMem:     opt.AheadReadTotalMem,
-		AheadReadBlockTimeOut: opt.AheadReadBlockTimeOut,
-		AheadReadWindowCnt:    opt.AheadReadWindowCnt,
-		MinReadAheadSize:      int(opt.MinReadAheadSize),
-		NeedRemoteCache:       true,
-		ForceRemoteCache:      opt.ForceRemoteCache,
-		EnableAsyncFlush:      opt.EnableAsyncFlush,
-		MetaAcceleration:      opt.MetaCacheAcceleration,
+		AheadReadEnable:         opt.AheadReadEnable,
+		AheadReadTotalMem:       opt.AheadReadTotalMem,
+		AheadReadBlockTimeOut:   opt.AheadReadBlockTimeOut,
+		AheadReadWindowCnt:      opt.AheadReadWindowCnt,
+		MinReadAheadSize:        int(opt.MinReadAheadSize),
+		NeedRemoteCache:         true,
+		ForceRemoteCache:        opt.ForceRemoteCache,
+		EnableAsyncFlush:        opt.EnableAsyncFlush,
+		MetaAcceleration:        opt.MetaCacheAcceleration,
 		EnableWriteDataConsumer: opt.EnableDirectIO,
-		RemoteCacheName:       opt.RemoteCacheName,
+		RemoteCacheName:         opt.RemoteCacheName,
 	}
 
 	log.LogInfof("ahead info enable %+v, totalMem %+v, timeout %+v, winCnt %+v", opt.AheadReadEnable, opt.AheadReadTotalMem, opt.AheadReadBlockTimeOut, opt.AheadReadWindowCnt)

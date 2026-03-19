@@ -283,7 +283,8 @@ func (eh *ExtentHandler) String() string {
 }
 
 func (eh *ExtentHandler) writeWithPacket(data []byte, offset int, size int, blksize int, direct bool,
-	retainForAsyncRelease func() func()) (err error) {
+	retainForAsyncRelease func() func(),
+) (err error) {
 	if eh.getStatus() >= ExtentStatusClosed {
 		return errors.NewErrorf("extent handler writeWithPacket rejected by status, eh(%v)", eh)
 	}

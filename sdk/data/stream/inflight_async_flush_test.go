@@ -11,8 +11,8 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
-	"golang.org/x/time/rate"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 )
 
 var initPacketBufPoolOnce sync.Once
@@ -66,15 +66,15 @@ func TestIssueFlushRequestBlockedByInflightAndResumed(t *testing.T) {
 	defer close(s.asyncFlushDone)
 
 	eh := &ExtentHandler{
-		stream:       s,
-		id:           1,
-		storeMode:    proto.NormalExtentType,
-		empty:        make(chan struct{}, 1),
-		stop:         make(chan struct{}),
-		doneSender:   make(chan struct{}, 1),
-		doneReceiver: make(chan struct{}, 1),
+		stream:        s,
+		id:            1,
+		storeMode:     proto.NormalExtentType,
+		empty:         make(chan struct{}, 1),
+		stop:          make(chan struct{}),
+		doneSender:    make(chan struct{}, 1),
+		doneReceiver:  make(chan struct{}, 1),
 		doneWriteData: make(chan struct{}),
-		dp:           &wrapper.DataPartition{},
+		dp:            &wrapper.DataPartition{},
 	}
 	atomic.StoreInt32(&eh.inflight, 1)
 	s.dirtylist.Put(eh)
@@ -431,12 +431,12 @@ func TestExtentHandlerCleanupOwnerHandoffDrainsPendingWrites(t *testing.T) {
 
 func TestExtentHandlerCleanupDoesNotBlockWithoutIOWorkers(t *testing.T) {
 	eh := &ExtentHandler{
-		storeMode:      proto.NormalExtentType,
-		writeDataChan:  make(chan *WriteDataRequest, 1),
-		doneWriteData:  make(chan struct{}),
-		doneSender:     make(chan struct{}),
-		doneReceiver:   make(chan struct{}),
-		stop:           make(chan struct{}),
+		storeMode:     proto.NormalExtentType,
+		writeDataChan: make(chan *WriteDataRequest, 1),
+		doneWriteData: make(chan struct{}),
+		doneSender:    make(chan struct{}),
+		doneReceiver:  make(chan struct{}),
+		stop:          make(chan struct{}),
 	}
 
 	done := make(chan struct{})
@@ -457,11 +457,11 @@ func TestExtentHandlerCleanupDoesNotBlockWithoutIOWorkers(t *testing.T) {
 
 func TestExtentHandlerFlushReturnsErrorForCleanedUnresolvedState(t *testing.T) {
 	eh := &ExtentHandler{
-		inode:       6006,
-		storeMode:   proto.NormalExtentType,
-		empty:       make(chan struct{}, 1),
-		stop:        make(chan struct{}),
-		doneSender:  make(chan struct{}),
+		inode:        6006,
+		storeMode:    proto.NormalExtentType,
+		empty:        make(chan struct{}, 1),
+		stop:         make(chan struct{}),
+		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
 	}
 	eh.size = 128

@@ -250,16 +250,36 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 
 	filesize, _ := s.extents.Size()
 	log.LogDebugf("read: ino(%v) requests(%v) filesize(%v)", s.inode, requests, filesize)
-	holeBytes := 0
-	holeInFileRange := false
-	for _, req := range requests {
-		if req.ExtentKey != nil {
-			continue
+	calcHoleStats := func(reqs []*ExtentRequest, currentFileSize int) (holeBytes int, holeInFileRange bool) {
+		for _, req := range reqs {
+			if req.ExtentKey != nil {
+				continue
+			}
+			holeBytes += req.Size
+			if req.FileOffset+req.Size <= currentFileSize {
+				holeInFileRange = true
+			}
 		}
-		holeBytes += req.Size
-		if req.FileOffset+req.Size <= filesize {
-			holeInFileRange = true
+		return
+	}
+	holeBytes, holeInFileRange := calcHoleStats(requests, filesize)
+	if holeInFileRange && s.dirty && !s.waitForFlush {
+		log.LogWarnf("streamer.read recover suspicious hole by flush: ino(%v) offset(%v) size(%v) filesize(%v) reqs(%v)",
+			s.inode, offset, size, filesize, requests)
+		s.writeLock.Lock()
+		if err = s.IssueFlushRequest(); err != nil {
+			log.LogErrorf("streamer.read recover flush failed: ino(%v) offset(%v) size(%v) err(%v)",
+				s.inode, offset, size, err)
+			s.writeLock.Unlock()
+			return 0, err
 		}
+		revisedRequests = s.extents.PrepareReadRequests(offset, size, data)
+		s.writeLock.Unlock()
+		if revisedRequests != nil {
+			requests = revisedRequests
+		}
+		filesize, _ = s.extents.Size()
+		holeBytes, holeInFileRange = calcHoleStats(requests, filesize)
 	}
 	if holeInFileRange {
 		log.LogWarnf("streamer.read suspicious hole: ino(%v) offset(%v) size(%v) filesize(%v) holeBytes(%v) dirty(%v) waitForFlush(%v) reqs(%v)",

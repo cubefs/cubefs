@@ -62,14 +62,14 @@ const (
 
 // AsyncFlushRequest represents an asynchronous flush request
 type AsyncFlushRequest struct {
-	handler   *ExtentHandler
-	done      chan struct{}
-	err       error
-	doneOnce  sync.Once
+	handler  *ExtentHandler
+	done     chan struct{}
+	err      error
+	doneOnce sync.Once
 	// Debug fields for tracing long-lived/requeued requests.
 	requeueCount   uint64
 	firstEnqueueAt int64
-	clearFunc func() // Function to execute cleanup operations
+	clearFunc      func() // Function to execute cleanup operations
 }
 
 func (r *AsyncFlushRequest) finish(err error) {
