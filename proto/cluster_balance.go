@@ -174,6 +174,7 @@ type DataNodeSpace struct {
 	Ratio       float64 `json:"ratio"`
 	WritableNum int     `json:"writableNum"`
 	Tag         string  `json:"tag"`
+	CanAllocNum int     `json:"canAllocNum"`
 }
 
 type MetaNodeSpace struct {
@@ -192,6 +193,8 @@ type MetaNodeSpace struct {
 	SystemMemoryTotal  uint64  `json:"systemMemoryTotal"`
 	SystemMemoryRatio  float64 `json:"systemMemoryRatio"`
 	Tag                string  `json:"tag"`
+	MemCanAllocNum     int     `json:"memCanAllocNum"`
+	RocksdbCanAllocNum int     `json:"rocksdbCanAllocNum"`
 }
 
 type TagMismatchSample struct {

@@ -1182,6 +1182,9 @@ func (c *Cluster) collectNodeSpaceInfo(summary *proto.TagSummary) {
 		if dataNode.IsWriteAble() {
 			summary.DataNodeSpace[dataNode.Tag].WritableNum++
 		}
+		if dataNode.canAlloc() && dataNode.canAllocDp() {
+			summary.DataNodeSpace[dataNode.Tag].CanAllocNum++
+		}
 		return true
 	})
 
@@ -1220,6 +1223,12 @@ func (c *Cluster) collectNodeSpaceInfo(summary *proto.TagSummary) {
 		}
 		if metaNode.IsRocksdbWriteAble() {
 			summary.MetaNodeSpace[metaNode.Tag].RocksdbWritableNum++
+		}
+		if metaNode.IsWriteAble() && metaNode.PartitionCntLimited() {
+			summary.MetaNodeSpace[metaNode.Tag].MemCanAllocNum++
+		}
+		if metaNode.IsRocksdbWriteAble() && metaNode.PartitionCntLimited() {
+			summary.MetaNodeSpace[metaNode.Tag].RocksdbCanAllocNum++
 		}
 
 		return true
