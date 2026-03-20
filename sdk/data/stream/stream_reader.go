@@ -220,6 +220,45 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, storageClass uint32) (*E
 	return reader, nil
 }
 
+func (s *Streamer) prepareReadRequestsChecked(data []byte, offset, size, maxRetry int) ([]*ExtentRequest, error) {
+	hasUnresolvedReadReq := func(reqs []*ExtentRequest) bool {
+		for _, req := range reqs {
+			if req.ExtentKey == nil {
+				continue
+			}
+			if req.ExtentKey.PartitionId == 0 || req.ExtentKey.ExtentId == 0 {
+				return true
+			}
+		}
+		return false
+	}
+
+	current := s.extents.PrepareReadRequests(offset, size, data)
+	unresolved := hasUnresolvedReadReq(current)
+	for retry := 0; unresolved && retry < maxRetry; retry++ {
+		s.writeLock.Lock()
+		flushErr := s.IssueFlushRequest()
+		if flushErr != nil {
+			s.writeLock.Unlock()
+			return nil, flushErr
+		}
+		current = s.extents.PrepareReadRequests(offset, size, data)
+		s.writeLock.Unlock()
+		unresolved = hasUnresolvedReadReq(current)
+		if unresolved {
+			// Give async write/append pipeline a short window to publish resolved extent keys.
+			time.Sleep(2 * time.Millisecond)
+			log.LogWarnf("streamer.read unresolved extentkey retry: ino(%v) offset(%v) size(%v) retry(%v/%v) reqs(%v)",
+				s.inode, offset, size, retry+1, maxRetry, current)
+		}
+	}
+	if unresolved {
+		return nil, errors.NewErrorf("streamer.read unresolved extentkey remains after retries, ino(%v) offset(%v) size(%v) retries(%v) reqs(%v)",
+			s.inode, offset, size, maxRetry, current)
+	}
+	return current, nil
+}
+
 func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) (total int, err error) {
 	var (
 		readBytes       int
@@ -235,26 +274,10 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 		s.client.readLimiter.Wait(ctx)
 	}
 	s.client.LimitManager.ReadAlloc(ctx, size)
-	requests = s.extents.PrepareReadRequests(offset, size, data)
-	for _, req := range requests {
-		if req.ExtentKey == nil {
-			continue
-		}
-		if req.ExtentKey.PartitionId == 0 || req.ExtentKey.ExtentId == 0 {
-			s.writeLock.Lock()
-			if err = s.IssueFlushRequest(); err != nil {
-				log.LogErrorf("[read] failed to issue flush request, ino(%v) offset(%v) size(%v) err(%v) req(%v)", s.inode, offset, size, err, req)
-				s.writeLock.Unlock()
-				return 0, err
-			}
-			revisedRequests = s.extents.PrepareReadRequests(offset, size, data)
-			s.writeLock.Unlock()
-			break
-		}
-	}
-
-	if revisedRequests != nil {
-		requests = revisedRequests
+	requests, err = s.prepareReadRequestsChecked(data, offset, size, 50)
+	if err != nil {
+		log.LogErrorf("[read] failed to prepare checked requests, ino(%v) offset(%v) size(%v) err(%v)", s.inode, offset, size, err)
+		return 0, err
 	}
 
 	filesize, _ := s.extents.Size()
@@ -311,6 +334,10 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 	}
 	for _, req := range requests {
 		log.LogDebugf("action[streamer.read] req %v", req)
+		if req.ExtentKey != nil && (req.ExtentKey.PartitionId == 0 || req.ExtentKey.ExtentId == 0) {
+			log.LogWarnf("streamer.read unresolved extentkey after retries: ino(%v) req(%v), treat as hole for safety", s.inode, req)
+			req.ExtentKey = nil
+		}
 		if req.ExtentKey == nil {
 			zeros := make([]byte, len(req.Data))
 			copy(req.Data, zeros)
