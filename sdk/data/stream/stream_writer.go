@@ -149,6 +149,7 @@ type WriteRequest struct {
 	checkFunc    func() error
 	storageClass uint32
 	isMigration  bool
+	retainForAsyncRelease func() func()
 }
 
 // FlushRequest defines a flush request.
@@ -194,16 +195,25 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 	}
 
 	s.writeLock.Lock()
-	defer s.writeLock.Unlock()
+	request := writeRequestPool.Get().(*WriteRequest)
+	request.data = data
+	request.fileOffset = offset
+	request.size = len(data)
+	request.flags = flags
+	request.done = make(chan struct{}, 1)
+	request.checkFunc = checkFunc
+	request.storageClass = storageClass
+	request.isMigration = isMigration
+	request.retainForAsyncRelease = retainForAsyncRelease
 
-	// Check and handle version update if needed (same as handleRequest does)
-	if atomic.LoadInt32(&s.needUpdateVer) == 1 {
-		s.closeOpenHandler(true)
-		atomic.StoreInt32(&s.needUpdateVer, 0)
-	}
+	s.request <- request
+	s.writeLock.Unlock()
 
-	// Call write directly in current goroutine to avoid channel communication overhead
-	write, err = s.write(data, offset, len(data), flags, checkFunc, storageClass, isMigration, retainForAsyncRelease)
+	<-request.done
+	err = request.err
+	write = request.writeBytes
+	request.retainForAsyncRelease = nil
+	writeRequestPool.Put(request)
 	return
 }
 
@@ -390,7 +400,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 		request.done <- struct{}{}
 	case *WriteRequest:
 		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags,
-			request.checkFunc, request.storageClass, request.isMigration, nil)
+			request.checkFunc, request.storageClass, request.isMigration, request.retainForAsyncRelease)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size, request.fullPath)
