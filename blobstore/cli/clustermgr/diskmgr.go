@@ -17,6 +17,7 @@ package clustermgr
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"github.com/desertbit/grumble"
@@ -30,7 +31,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
+	"github.com/cubefs/cubefs/blobstore/util/tablefmt"
 )
 
 func addCmdDisk(cmd *grumble.Command) {
@@ -40,6 +43,15 @@ func addCmdDisk(cmd *grumble.Command) {
 		LongHelp: "disk tools for clustermgr",
 	}
 	cmd.AddCommand(command)
+
+	command.AddCommand(&grumble.Command{
+		Name: "stats",
+		Help: "show disk statistics",
+		Run:  cmdDiskStats,
+		Flags: func(f *grumble.Flags) {
+			clusterFlags(f)
+		},
+	})
 
 	command.AddCommand(&grumble.Command{
 		Name: "get",
@@ -413,4 +425,168 @@ func readonlyAndDropDisk(ctx context.Context, cmClient *clustermgr.Client, diski
 	}
 
 	return nil
+}
+
+type diskStatEntry struct {
+	Count         int
+	Used          int64
+	Free          int64
+	Size          int64
+	MaxChunk      int64
+	FreeChunk     int64
+	UsedChunk     int64
+	OversoldChunk int64
+}
+
+func cmdDiskStats(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+
+	allDisks := make([]*clustermgr.BlobNodeDiskInfo, 0)
+	listOptionArgs := &clustermgr.ListOptionArgs{Marker: 0, Count: 200}
+	for {
+		disks, err := cmClient.ListDisk(ctx, listOptionArgs)
+		if err != nil {
+			return err
+		}
+		allDisks = append(allDisks, disks.Disks...)
+		listOptionArgs.Marker = disks.Marker
+		if disks.Marker <= proto.InvalidDiskID || len(disks.Disks) < listOptionArgs.Count {
+			break
+		}
+	}
+
+	fmt.Printf("Total disks fetched: %d\n", len(allDisks))
+
+	// Aggregate stats: status -> idc -> entry
+	stats := make(map[string]map[string]*diskStatEntry)
+
+	addDiskToEntry := func(statusName, idc string, disk *clustermgr.BlobNodeDiskInfo) {
+		if stats[statusName] == nil {
+			stats[statusName] = make(map[string]*diskStatEntry)
+		}
+		if stats[statusName][idc] == nil {
+			stats[statusName][idc] = &diskStatEntry{}
+		}
+		entry := stats[statusName][idc]
+		entry.Count++
+		entry.Used += disk.Used
+		entry.Free += disk.Free
+		entry.Size += disk.Size
+		entry.MaxChunk += disk.MaxChunkCnt
+		entry.FreeChunk += disk.FreeChunkCnt
+		entry.UsedChunk += disk.UsedChunkCnt
+		entry.OversoldChunk += disk.OversoldFreeChunkCnt
+	}
+
+	for _, disk := range allDisks { // defined status
+		addDiskToEntry(disk.Status.String(), disk.Idc, disk)
+	}
+
+	// Deduplicate disks by host+path, keeping newest (largest disk_id)
+	type hostPathKey struct{ Host, Path string }
+	newestDisk := make(map[hostPathKey]*clustermgr.BlobNodeDiskInfo)
+	for _, disk := range allDisks {
+		key := hostPathKey{disk.Host, disk.Path}
+		if existing, ok := newestDisk[key]; !ok || disk.DiskID > existing.DiskID {
+			newestDisk[key] = disk
+		}
+	}
+
+	installedStatus := map[proto.DiskStatus]bool{
+		proto.DiskStatusNormal:    true,
+		proto.DiskStatusBroken:    true,
+		proto.DiskStatusRepairing: true,
+		proto.DiskStatusRepaired:  true,
+	}
+
+	for _, disk := range newestDisk {
+		if disk.Status == proto.DiskStatusRepaired {
+			addDiskToEntry("repaired_pending", disk.Idc, disk)
+		}
+		if installedStatus[disk.Status] {
+			addDiskToEntry("installed", disk.Idc, disk)
+		}
+	}
+
+	printDiskStatsSummary(stats)
+
+	installedCount := 0
+	if idcs, ok := stats["installed"]; ok {
+		for _, entry := range idcs {
+			installedCount += entry.Count
+		}
+	}
+	fmt.Printf("\nInstalled disks: %d\n", installedCount)
+	return nil
+}
+
+func printDiskStatsSummary(stats map[string]map[string]*diskStatEntry) {
+	var statusOrder []string
+	for st := proto.DiskStatusNormal; st < proto.DiskStatusMax; st++ {
+		statusOrder = append(statusOrder, st.String())
+	}
+	statusOrder = append(statusOrder, "repaired_pending", "installed")
+
+	human := func(size int64) string { return util.HumanIBytes(size, 3) }
+
+	for _, status := range statusOrder {
+		idcs := stats[status]
+		if len(idcs) == 0 {
+			continue
+		}
+		fmt.Printf("\n[Status: %s]\n", status)
+
+		rows := tablefmt.Table{tablefmt.NewRow(
+			"IDC", "Count", "Used", "Free", "Size",
+			"MaxChunk", "FreeChunk", "UsedChunk", "OversoldChunk",
+		)}
+
+		idcList := make([]string, 0, len(idcs))
+		for idc := range idcs {
+			idcList = append(idcList, idc)
+		}
+		sort.Strings(idcList)
+
+		total := &diskStatEntry{}
+		for _, idc := range idcList {
+			entry := idcs[idc]
+
+			rows = rows.Append(tablefmt.NewRow(
+				idc, entry.Count, human(entry.Used), human(entry.Free), human(entry.Size),
+				entry.MaxChunk, entry.FreeChunk, entry.UsedChunk, entry.OversoldChunk,
+			))
+
+			total.Count += entry.Count
+			total.Used += entry.Used
+			total.Free += entry.Free
+			total.Size += entry.Size
+			total.MaxChunk += entry.MaxChunk
+			total.FreeChunk += entry.FreeChunk
+			total.UsedChunk += entry.UsedChunk
+			total.OversoldChunk += entry.OversoldChunk
+		}
+		rows = rows.Append(tablefmt.NewRow(
+			"TOTAL", total.Count, human(total.Used), human(total.Free), human(total.Size),
+			total.MaxChunk, total.FreeChunk, total.UsedChunk, total.OversoldChunk,
+		))
+
+		output := tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignRight}, rows...)
+		lines := strings.Split(strings.Trim(output, "\n"), "\n")
+		width := 0
+		for _, line := range lines {
+			if len(line) > width {
+				width = len(line)
+			}
+		}
+
+		fmt.Println(strings.Repeat("-", width))
+		fmt.Println(lines[0])
+		fmt.Println(strings.Repeat("-", width))
+		for _, line := range lines[1 : len(lines)-1] {
+			fmt.Println(line)
+		}
+		fmt.Println(strings.Repeat("-", width))
+		fmt.Println(lines[len(lines)-1])
+	}
 }
