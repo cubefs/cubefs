@@ -78,6 +78,20 @@ func (s *Streamer) flushTracePipeSnapshot() string {
 		extentHandlerPipeSnapshot(s.handler))
 }
 
+// reconcileDirtyState keeps streamer dirty flag consistent with dirtylist.
+// Some async close/flush paths may temporarily drift dirty/list state.
+func (s *Streamer) reconcileDirtyState() {
+	s.dirty = s.dirtylist.Len() > 0
+}
+
+// logDirtyInvariant only logs potential state drift and does not change behavior.
+func (s *Streamer) logDirtyInvariant(where string, wait bool, id string) {
+	if s.dirty && s.dirtylist.Len() == 0 {
+		log.LogWarnf("FLUSH_INVARIANT dirty_without_handlers: where(%v) ino(%v) wait(%v) id(%v) pipe(%s)",
+			where, s.inode, wait, id, s.flushTracePipeSnapshot())
+	}
+}
+
 const (
 	streamWriterFlushPeriod       = 3
 	streamWriterIdleTimeoutPeriod = 10
@@ -539,6 +553,7 @@ begin:
 		}
 	}
 	log.LogDebugf("Streamer write exit: ino(%v) filesize(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, filesize, offset, size, total, err)
+	s.logDirtyInvariant("write_exit", false, "")
 	return
 }
 
@@ -1130,7 +1145,9 @@ func (s *Streamer) flushAsync(wait bool, id string) (err error) {
 
 		clearFunc := func() {
 			if eh.getStatus() == ExtentStatusOpen {
-				s.dirty = false
+				if s.dirtylist.Len() == 0 {
+					s.dirty = false
+				}
 			} else {
 				eh.cleanup()
 			}
@@ -1173,6 +1190,7 @@ func (s *Streamer) flushAsync(wait bool, id string) (err error) {
 		}
 	}
 	if !s.client.enableAsyncFlush {
+		s.reconcileDirtyState()
 		log.LogWarnf("FLUSH_TRACE flush_async_exit_syncpath: ino(%v) wait(%v) id(%v) err(%v) dirty(%v) dirtylistLen(%v) handler(%v) extents(%v)",
 			s.inode, wait, id, err, s.dirty, s.dirtylist.Len(), s.handler, extentsSnapshot())
 		return
@@ -1214,6 +1232,7 @@ func (s *Streamer) flushAsync(wait bool, id string) (err error) {
 			s.dirtylist.Put(eh)
 		}
 	}
+	s.reconcileDirtyState()
 	log.LogWarnf("FLUSH_TRACE flush_async_exit: ino(%v) wait(%v) id(%v) err(%v) dirty(%v) dirtylistLen(%v) pendingLen(%v) handler(%v) extents(%v)",
 		s.inode, wait, id, err, s.dirty, s.dirtylist.Len(), len(pending), s.handler, extentsSnapshot())
 	log.LogWarnf("FLUSH_TRACE_PIPE flush_async_exit: ino(%v) wait(%v) id(%v) pipe(%s)",
@@ -1311,6 +1330,7 @@ func (s *Streamer) closeOpenHandler(wait bool) (err error) {
 	log.LogDebugf("closeOpenHandler: streamer(%v) wait for wait (%v) id(%v)", s.inode, wait, id)
 	err = s.flush(wait, id)
 	log.LogDebugf("closeOpenHandler: streamer(%v) wait (%v) id(%v) end err(%v)", s.inode, wait, id, err)
+	s.logDirtyInvariant("close_open_handler_exit", wait, id)
 	if err != nil {
 		log.LogErrorf("closeOpenHandler: flush extent failed, err %s", err.Error())
 		return err
@@ -1516,6 +1536,7 @@ func (s *Streamer) flushSync() (err error) {
 		s.removePendingAsyncFlush(eh.id)
 		log.LogDebugf("Streamer flush end: eh(%v)", eh)
 	}
+	s.reconcileDirtyState()
 	log.LogWarnf("FLUSH_TRACE flush_sync_exit: ino(%v) err(%v) dirty(%v) dirtylistLen(%v) handler(%v) extents(%v)",
 		s.inode, err, s.dirty, s.dirtylist.Len(), s.handler, extentsSnapshot())
 	log.LogWarnf("FLUSH_TRACE_PIPE flush_sync_exit: ino(%v) pipe(%s)",
@@ -1524,6 +1545,11 @@ func (s *Streamer) flushSync() (err error) {
 }
 
 func (s *Streamer) flush(wait bool, id string) (err error) {
+	defer func() {
+		if wait {
+			s.logDirtyInvariant("flush_exit", wait, id)
+		}
+	}()
 	log.LogWarnf("FLUSH_TRACE flush_dispatch: ino(%v) wait(%v) id(%v) enableAsyncFlush(%v) waitForFlush(%v) dirty(%v) dirtylistLen(%v) handler(%v)",
 		s.inode, wait, id, s.client.enableAsyncFlush, s.waitForFlush, s.dirty, s.dirtylist.Len(), s.handler)
 	log.LogWarnf("FLUSH_TRACE_PIPE flush_dispatch: ino(%v) wait(%v) id(%v) pipe(%s)",
