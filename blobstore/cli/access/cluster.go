@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/desertbit/grumble"
-	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -29,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 func showClusters(c *grumble.Context) error {
@@ -95,8 +95,8 @@ func showClusters(c *grumble.Context) error {
 			fmt.Println()
 		}
 		fmt.Printf("\tspace in region: %s (%s / %s)\n", region,
-			common.ColorizeInteger(-available, capacity).Sprint(humanize.IBytes(uint64(available))),
-			humanize.IBytes(uint64(capacity)))
+			common.ColorizeInteger(-available, capacity).Sprint(util.HumanIBytes(available, 2)),
+			util.HumanIBytes(capacity, 2))
 	}
 
 	return nil
@@ -127,8 +127,8 @@ func showClusterWithConfig() error {
 
 		fmt.Printf("\tspace in cluster: %s (%s / %s)\n", clusterID,
 			common.ColorizeInteger(-stat.BlobNodeSpaceStat.WritableSpace, stat.BlobNodeSpaceStat.TotalSpace).
-				Sprint(humanize.IBytes(uint64(stat.BlobNodeSpaceStat.WritableSpace))),
-			humanize.IBytes(uint64(stat.BlobNodeSpaceStat.TotalSpace)))
+				Sprint(util.HumanIBytes(stat.BlobNodeSpaceStat.WritableSpace, 2)),
+			util.HumanIBytes(stat.BlobNodeSpaceStat.TotalSpace, 2))
 	}
 	return nil
 }
