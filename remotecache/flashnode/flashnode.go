@@ -843,11 +843,28 @@ func (f *FlashNode) register() error {
 			id, _ := f.loadOrInitNodeID()
 			registerResp, err := f.mc.NodeAPI().AddFlashNodeWithTopo(f.localAddr, f.zoneName, "", f.region, id)
 			if err != nil {
-				log.LogErrorf("action[register] cannot register remotecache to master err(%v).", err)
 				if strings.Contains(err.Error(), "region is conflict") {
+					log.LogErrorf("action[register] cannot register remotecache to master err(%v).", err)
 					return err
 				}
-				break
+				if strings.Contains(err.Error(), "cannot unmarshal number into Go value of type proto.FlashNodeRegisterResponse") {
+					log.LogWarnf("action[register] master does not support detailed flashnode register response, fallback to legacy register: %v", err)
+					legacyID, legacyErr := f.mc.NodeAPI().AddFlashNode(f.localAddr, f.zoneName, "", f.region, id)
+					if legacyErr != nil {
+						log.LogErrorf("action[register] cannot register remotecache to legacy master err(%v).", legacyErr)
+						if strings.Contains(legacyErr.Error(), "region is conflict") {
+							return legacyErr
+						}
+						break
+					}
+					registerResp = &proto.FlashNodeRegisterResponse{
+						NodeID:   legacyID,
+						TopoName: proto.IdleTopoName,
+					}
+				} else {
+					log.LogErrorf("action[register] cannot register remotecache to master err(%v).", err)
+					break
+				}
 			}
 
 			if registerResp.NodeID > 0 {
