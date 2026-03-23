@@ -259,13 +259,79 @@ func (s *Streamer) prepareReadRequestsChecked(data []byte, offset, size, maxRetr
 	return current, nil
 }
 
+func (s *Streamer) recoverReadHoleByFlush(requests []*ExtentRequest, data []byte, offset, size, filesize int) (updated []*ExtentRequest, updatedFileSize int, err error) {
+	var holeBytes int
+	var holeInFileRange bool
+	const holeRecoverMaxRetry = 5
+	calcHoleStats := func(reqs []*ExtentRequest, currentFileSize int) (holeBytes int, holeInFileRange bool) {
+		for _, req := range reqs {
+			if req.ExtentKey != nil {
+				continue
+			}
+			holeBytes += req.Size
+			if req.FileOffset+req.Size <= currentFileSize {
+				holeInFileRange = true
+			}
+		}
+		return
+	}
+
+	updated = requests
+	updatedFileSize = filesize
+	holeBytes, holeInFileRange = calcHoleStats(updated, updatedFileSize)
+	if !holeInFileRange {
+		return
+	}
+
+	extentsSnapshot := func() interface{} {
+		if s.extents == nil {
+			return "<nil>"
+		}
+		return s.extents.List()
+	}
+	// TEMP FLUSH_TRACE: investigate write-read visibility window in LTP iogen01.
+	for retry := 0; holeInFileRange && retry < holeRecoverMaxRetry; retry++ {
+		log.LogWarnf("FLUSH_TRACE read_recover_pre: ino(%v) offset(%v) size(%v) retry(%v/%v) filesize(%v) dirty(%v) waitForFlush(%v) reqs(%v) extents(%v)",
+			s.inode, offset, size, retry+1, holeRecoverMaxRetry, updatedFileSize, s.dirty, s.waitForFlush, updated, extentsSnapshot())
+		log.LogWarnf("FLUSH_TRACE_PIPE read_recover_pre: ino(%v) offset(%v) size(%v) retry(%v/%v) pipe(%s)",
+			s.inode, offset, size, retry+1, holeRecoverMaxRetry, s.flushTracePipeSnapshot())
+		log.LogWarnf("streamer.read recover suspicious hole by flush: ino(%v) offset(%v) size(%v) retry(%v/%v) filesize(%v) reqs(%v)",
+			s.inode, offset, size, retry+1, holeRecoverMaxRetry, updatedFileSize, updated)
+
+		s.writeLock.Lock()
+		if err = s.IssueFlushRequest(); err != nil {
+			s.writeLock.Unlock()
+			return
+		}
+		updated = s.extents.PrepareReadRequests(offset, size, data)
+		s.writeLock.Unlock()
+
+		updatedFileSize, _ = s.extents.Size()
+		holeBytes, holeInFileRange = calcHoleStats(updated, updatedFileSize)
+		log.LogWarnf("FLUSH_TRACE read_recover_post: ino(%v) offset(%v) size(%v) retry(%v/%v) filesize(%v) dirty(%v) waitForFlush(%v) holeInFileRange(%v) holeBytes(%v) reqs(%v) extents(%v)",
+			s.inode, offset, size, retry+1, holeRecoverMaxRetry, updatedFileSize, s.dirty, s.waitForFlush, holeInFileRange, holeBytes, updated, extentsSnapshot())
+		log.LogWarnf("FLUSH_TRACE_PIPE read_recover_post: ino(%v) offset(%v) size(%v) retry(%v/%v) pipe(%s)",
+			s.inode, offset, size, retry+1, holeRecoverMaxRetry, s.flushTracePipeSnapshot())
+
+		if holeInFileRange && retry+1 < holeRecoverMaxRetry {
+			// Give in-flight append/extent publication a short window before next prepare.
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+
+	if holeInFileRange {
+		log.LogWarnf("streamer.read suspicious hole: ino(%v) offset(%v) size(%v) filesize(%v) holeBytes(%v) dirty(%v) waitForFlush(%v) reqs(%v)",
+			s.inode, offset, size, filesize, holeBytes, s.dirty, s.waitForFlush, requests)
+	}
+	return
+}
+
 func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) (total int, err error) {
 	var (
-		readBytes       int
-		reader          *ExtentReader
-		requests        []*ExtentRequest
-		revisedRequests []*ExtentRequest
-		inodeInfo       *proto.InodeInfo
+		readBytes int
+		reader    *ExtentReader
+		requests  []*ExtentRequest
+		inodeInfo *proto.InodeInfo
 	)
 	log.LogDebugf("action[streamer.read] ino(%v) offset %v size %v", s.inode, offset, size)
 	defer log.LogDebugf("streamer read ino(%v) offset %v size %v", s.inode, offset, size)
@@ -282,56 +348,13 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 
 	filesize, _ := s.extents.Size()
 	log.LogDebugf("read: ino(%v) requests(%v) filesize(%v)", s.inode, requests, filesize)
-	calcHoleStats := func(reqs []*ExtentRequest, currentFileSize int) (holeBytes int, holeInFileRange bool) {
-		for _, req := range reqs {
-			if req.ExtentKey != nil {
-				continue
-			}
-			holeBytes += req.Size
-			if req.FileOffset+req.Size <= currentFileSize {
-				holeInFileRange = true
-			}
-		}
-		return
+	requests, filesize, err = s.recoverReadHoleByFlush(requests, data, offset, size, filesize)
+	if err != nil {
+		log.LogErrorf("streamer.read recover flush failed: ino(%v) offset(%v) size(%v) err(%v)",
+			s.inode, offset, size, err)
+		return 0, err
 	}
-	holeBytes, holeInFileRange := calcHoleStats(requests, filesize)
-	if holeInFileRange && s.dirty && !s.waitForFlush {
-		extentsSnapshot := func() interface{} {
-			if s.extents == nil {
-				return "<nil>"
-			}
-			return s.extents.List()
-		}
-		// TEMP FLUSH_TRACE: investigate write-read visibility window in LTP iogen01.
-		log.LogWarnf("FLUSH_TRACE read_recover_pre: ino(%v) offset(%v) size(%v) filesize(%v) dirty(%v) waitForFlush(%v) reqs(%v) extents(%v)",
-			s.inode, offset, size, filesize, s.dirty, s.waitForFlush, requests, extentsSnapshot())
-		log.LogWarnf("FLUSH_TRACE_PIPE read_recover_pre: ino(%v) offset(%v) size(%v) pipe(%s)",
-			s.inode, offset, size, s.flushTracePipeSnapshot())
-		log.LogWarnf("streamer.read recover suspicious hole by flush: ino(%v) offset(%v) size(%v) filesize(%v) reqs(%v)",
-			s.inode, offset, size, filesize, requests)
-		s.writeLock.Lock()
-		if err = s.IssueFlushRequest(); err != nil {
-			log.LogErrorf("streamer.read recover flush failed: ino(%v) offset(%v) size(%v) err(%v)",
-				s.inode, offset, size, err)
-			s.writeLock.Unlock()
-			return 0, err
-		}
-		revisedRequests = s.extents.PrepareReadRequests(offset, size, data)
-		s.writeLock.Unlock()
-		if revisedRequests != nil {
-			requests = revisedRequests
-		}
-		filesize, _ = s.extents.Size()
-		holeBytes, holeInFileRange = calcHoleStats(requests, filesize)
-		log.LogWarnf("FLUSH_TRACE read_recover_post: ino(%v) offset(%v) size(%v) filesize(%v) dirty(%v) waitForFlush(%v) holeInFileRange(%v) holeBytes(%v) reqs(%v) extents(%v)",
-			s.inode, offset, size, filesize, s.dirty, s.waitForFlush, holeInFileRange, holeBytes, requests, extentsSnapshot())
-		log.LogWarnf("FLUSH_TRACE_PIPE read_recover_post: ino(%v) offset(%v) size(%v) pipe(%s)",
-			s.inode, offset, size, s.flushTracePipeSnapshot())
-	}
-	if holeInFileRange {
-		log.LogWarnf("streamer.read suspicious hole: ino(%v) offset(%v) size(%v) filesize(%v) holeBytes(%v) dirty(%v) waitForFlush(%v) reqs(%v)",
-			s.inode, offset, size, filesize, holeBytes, s.dirty, s.waitForFlush, requests)
-	}
+
 	for _, req := range requests {
 		log.LogDebugf("action[streamer.read] req %v", req)
 		if req.ExtentKey != nil && (req.ExtentKey.PartitionId == 0 || req.ExtentKey.ExtentId == 0) {
