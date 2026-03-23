@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,9 +33,11 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 	"github.com/cubefs/cubefs/blobstore/util/tablefmt"
 	"github.com/cubefs/cubefs/blobstore/util/task"
@@ -47,6 +50,15 @@ func addCmdVolume(cmd *grumble.Command) {
 		LongHelp: "volume tools for clustermgr",
 	}
 	cmd.AddCommand(command)
+
+	command.AddCommand(&grumble.Command{
+		Name: "stats",
+		Help: "show volume statistics aggregated by codemode and health score",
+		Run:  cmdVolumeStats,
+		Flags: func(f *grumble.Flags) {
+			clusterFlags(f)
+		},
+	})
 
 	command.AddCommand(&grumble.Command{
 		Name: "getVolumeUnits",
@@ -488,4 +500,115 @@ func mergeVids(listVolumeRets []clustermgr.ListVolumes) []proto.Vid {
 		ret = append(ret, k)
 	}
 	return ret
+}
+
+type volumeStatEntry struct {
+	Count int
+	Free  uint64
+	Used  uint64
+	Total uint64
+}
+
+func cmdVolumeStats(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+
+	allVolumes := make([]*clustermgr.VolumeInfo, 0)
+	listArgs := &clustermgr.ListVolumeArgs{Marker: 0, Count: 2000}
+	for {
+		volumes, err := cmClient.ListVolume(ctx, listArgs)
+		if err != nil {
+			return err
+		}
+		allVolumes = append(allVolumes, volumes.Volumes...)
+		listArgs.Marker = volumes.Marker
+		if volumes.Marker <= 0 || len(volumes.Volumes) < listArgs.Count {
+			break
+		}
+	}
+
+	fmt.Println("Volume Statistics Summary (by CodeMode, Status and Score)")
+	fmt.Printf("Total volumes: %d\n", len(allVolumes))
+
+	printVolumeStatsByScore(allVolumes)
+	return nil
+}
+
+func printVolumeStatsByScore(volumes []*clustermgr.VolumeInfo) {
+	human := func(size uint64) string { return util.HumanIBytes(size, 3) }
+
+	// Aggregate by codemode -> status -> score
+	stats := make(map[codemode.CodeMode]map[proto.VolumeStatus]map[int]*volumeStatEntry)
+	for _, vol := range volumes {
+		if stats[vol.CodeMode] == nil {
+			stats[vol.CodeMode] = make(map[proto.VolumeStatus]map[int]*volumeStatEntry)
+		}
+		if stats[vol.CodeMode][vol.Status] == nil {
+			stats[vol.CodeMode][vol.Status] = make(map[int]*volumeStatEntry)
+		}
+		if stats[vol.CodeMode][vol.Status][vol.HealthScore] == nil {
+			stats[vol.CodeMode][vol.Status][vol.HealthScore] = &volumeStatEntry{}
+		}
+		entry := stats[vol.CodeMode][vol.Status][vol.HealthScore]
+		entry.Count++
+		entry.Free += vol.Free
+		entry.Used += vol.Used
+		entry.Total += vol.Total
+	}
+
+	for cm := range stats {
+		statuses := stats[cm]
+		fmt.Printf("\n[CodeMode: %s]\n", cm.Name())
+
+		for status := proto.VolumeStatusIdle; status <= proto.VolumeStatusUnlocking; status++ {
+			scores := statuses[status]
+			if len(scores) == 0 {
+				continue
+			}
+			fmt.Printf("  [Status: %s]\n", status.String())
+
+			scoreList := make([]int, 0, len(scores))
+			for score := range scores {
+				scoreList = append(scoreList, score)
+			}
+			sort.Ints(scoreList)
+
+			rows := tablefmt.Table{tablefmt.NewRow("Score", "Count", "Free", "Used", "Total")}
+
+			subtotal := &volumeStatEntry{}
+			for _, score := range scoreList {
+				entry := scores[score]
+				rows = rows.Append(tablefmt.NewRow(
+					score, entry.Count, human(entry.Free), human(entry.Used), human(entry.Total),
+				))
+				subtotal.Count += entry.Count
+				subtotal.Free += entry.Free
+				subtotal.Used += entry.Used
+				subtotal.Total += entry.Total
+			}
+			rows = rows.Append(tablefmt.NewRow(
+				"TOTAL", subtotal.Count, human(subtotal.Free), human(subtotal.Used), human(subtotal.Total),
+			))
+
+			output := tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignRight}, rows...)
+			lines := strings.Split(strings.Trim(output, "\n"), "\n")
+
+			width := 0
+			for _, line := range lines {
+				if len(line) > width {
+					width = len(line)
+				}
+			}
+
+			fmt.Println("  " + strings.Repeat("-", width))
+			fmt.Println("  " + lines[0])
+			fmt.Println("  " + strings.Repeat("-", width))
+			for _, line := range lines[1 : len(lines)-1] {
+				fmt.Println("  " + line)
+			}
+			fmt.Println("  " + strings.Repeat("-", width))
+			fmt.Println("  " + lines[len(lines)-1])
+			fmt.Println()
+		}
+	}
 }
