@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"runtime"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -740,12 +739,7 @@ func (s *Streamer) processAsyncFlushRequest(req *AsyncFlushRequest) {
 	// Re-queue for next check
 	select {
 	case s.asyncFlushCh <- req:
-		// Successfully re-queued
-		cnt := req.markRequeue()
-		if cnt <= 3 || cnt%1000 == 0 {
-			log.LogWarnf("processAsyncFlushRequest:re-queued handler(%v) inflight(%v) requeueCount(%v)",
-				handler, currentInflight, cnt)
-		}
+		req.markRequeue()
 	default:
 		log.LogDebugf("processAsyncFlushRequest: completeAsyncFlush handler %v", handler)
 		// Channel is full or closed, process immediately
@@ -790,12 +784,7 @@ func (s *Streamer) completeAsyncFlush(req *AsyncFlushRequest) {
 		for {
 			select {
 			case s.asyncFlushCh <- req:
-				// Successfully re-queued
-				cnt := req.markRequeue()
-				if cnt <= 3 || cnt%1000 == 0 {
-					log.LogWarnf("completeAsyncFlush:re-queued handler(%v) next(%v) requeueCount(%v)",
-						handler, nextReq.handler.id, cnt)
-				}
+				req.markRequeue()
 				return
 			default:
 				nextReq = s.getNextPendingAsyncFlush()
@@ -935,29 +924,14 @@ func (s *Streamer) isActiveHandlerFlushRequest(handlerID uint64, req *AsyncFlush
 // addPendingAsyncFlush adds a request to the pending map using handler.id as key
 func (s *Streamer) addPendingAsyncFlush(handlerID uint64, req *AsyncFlushRequest) {
 	s.pendingAsyncFlushMap.Store(handlerID, req)
-	if log.EnableDebug() {
-		log.LogWarnf("addPendingAsyncFlush: streamer(%v) handler(%v) firstEnqueueAt(%v) trace(%v)",
-			s.inode, handlerID, req.firstEnqueueAt, string(debug.Stack()))
-	}
 }
 
 // removePendingAsyncFlush removes a request from the pending map
 func (s *Streamer) removePendingAsyncFlush(handlerID uint64) {
-	value, exists := s.pendingAsyncFlushMap.Load(handlerID)
+	_, exists := s.pendingAsyncFlushMap.Load(handlerID)
 	s.pendingAsyncFlushMap.Delete(handlerID)
 	if exists {
 		atomic.AddUint64(&s.asyncFlushCompleted, 1)
-	}
-	if log.EnableDebug() {
-		if exists {
-			req := value.(*AsyncFlushRequest)
-			log.LogWarnf("removePendingAsyncFlush streamer(%v) handler(%v) existed(true) requeueCount(%v) ageMs(%v) trace(%v)",
-				s.inode, handlerID, atomic.LoadUint64(&req.requeueCount),
-				time.Since(time.Unix(0, req.firstEnqueueAt)).Milliseconds(), string(debug.Stack()))
-		} else {
-			log.LogWarnf("removePendingAsyncFlush streamer(%v) handler(%v) existed(false) trace(%v)",
-				s.inode, handlerID, string(debug.Stack()))
-		}
 	}
 }
 

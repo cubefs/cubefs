@@ -997,7 +997,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 		ek        *proto.ExtentKey
 		storeMode int
 	)
-	flowID := fmt.Sprintf("%d-%d-%d-%d", s.inode, offset, size, time.Now().UnixNano())
 
 	// Small files are usually written in a single write, so use tiny extent
 	// store only for the first write operation.
@@ -1005,13 +1004,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 
 	log.LogDebugf("doWriteAppendEx enter: ino(%v) offset(%v) size(%v) storeMode(%v) storageClass(%v)",
 		s.inode, offset, size, storeMode, storageClass)
-	log.LogWarnf("FLUSH_TRACE_WR write_flow_start: flow(%v) ino(%v) offset(%v) size(%v) direct(%v) reUseEk(%v) storeMode(%v) storageClass(%v) handlerID(%v)",
-		flowID, s.inode, offset, size, direct, reUseEk, storeMode, storageClass, func() uint64 {
-			if s.handler == nil {
-				return 0
-			}
-			return s.handler.id
-		}())
 	if proto.IsHot(s.client.volumeType) || proto.IsStorageClassReplica(storageClass) {
 		if reUseEk {
 			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size, isMigration); isLastEkVerNotEqual {
@@ -1035,8 +1027,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 				s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass, isMigration)
 				log.LogDebugf("doWriteAppendEx: ino(%v) offset(%v) size(%v), new handler(%v)",
 					s.inode, offset, size, s.handler)
-				log.LogWarnf("FLUSH_TRACE_WR write_flow_new_handler: flow(%v) ino(%v) handlerID(%v) handlerOff(%v) storeMode(%v)",
-					flowID, s.inode, s.handler.id, s.handler.fileOffset, s.handler.storeMode)
 				s.dirty = false
 			} else if s.handler.storeMode != storeMode {
 				// store mode changed, so close open handler and start a new one
@@ -1060,8 +1050,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 
 			log.LogDebugf("doWriteAppendEx: handler(%v) offset(%v) size(%v)",
 				s.handler, offset, size)
-			log.LogWarnf("FLUSH_TRACE_WR write_flow_before_handler_write: flow(%v) ino(%v) handlerID(%v) writeOff(%v) writeSize(%v) handlerPipe(%s)",
-				flowID, s.inode, s.handler.id, offset, size, extentHandlerPipeSnapshot(s.handler))
 			ek, err = s.handler.write(data, offset, size, direct, retainForAsyncRelease)
 			if err == nil && ek != nil {
 				ek.SetSeq(s.verSeq)
@@ -1073,8 +1061,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 				}
 				log.LogDebugf("doWriteAppendEx: handler write success ino(%v) offset(%v) size(%v) "+
 					"storeMode(%v) handler(%v)", s.inode, offset, size, storeMode, s.handler)
-				log.LogWarnf("FLUSH_TRACE_WR write_flow_handler_write_ok: flow(%v) ino(%v) handlerID(%v) ekRange([%v,%v)) ek(%v) handlerPipe(%s)",
-					flowID, s.inode, s.handler.id, ek.FileOffset, ek.FileOffset+uint64(ek.Size), ek, extentHandlerPipeSnapshot(s.handler))
 				break
 			}
 			log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) "+
@@ -1119,16 +1105,12 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 
 	if err != nil || ek == nil {
 		log.LogErrorf("doWriteAppendEx error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
-		log.LogWarnf("FLUSH_TRACE_WR write_flow_end: flow(%v) ino(%v) offset(%v) size(%v) total(%v) err(%v) status(%v) ek(%v)",
-			flowID, s.inode, offset, size, total, err, status, ek)
 		return
 	}
 
 	// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
 	_ = s.extents.Append(ek, false)
 	total = size
-	log.LogWarnf("FLUSH_TRACE_WR write_flow_end: flow(%v) ino(%v) offset(%v) size(%v) total(%v) err(%v) status(%v) ekRange([%v,%v)) ek(%v)",
-		flowID, s.inode, offset, size, total, err, status, ek.FileOffset, ek.FileOffset+uint64(ek.Size), ek)
 
 	return
 }
