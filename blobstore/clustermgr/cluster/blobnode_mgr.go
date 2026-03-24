@@ -382,6 +382,7 @@ func (b *BlobNodeManager) GetNodeInfo(ctx context.Context, nodeID proto.NodeID) 
 
 func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(ctx, "AllocChunks", trace.SpanFromContextSafe(ctx).TraceID())
+	span = span.WithOperation("AllocChunks")
 
 	var (
 		err       error
@@ -487,6 +488,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 			go func() {
 				defer wg.Done()
 
+				span.Debugf("start to alloc chunk diskID:%d vuid:%d host:%s", disks[idx], vuids[idx], host)
 				blobNodeErr := b.blobNodeClient.CreateChunk(ctx, host,
 					&blobnode.CreateChunkArgs{DiskID: disks[idx], Vuid: vuids[idx], ChunkSize: b.cfg.ChunkSize})
 				if blobNodeErr != nil {

@@ -701,7 +701,7 @@ RETRY:
 		}
 		for i := chosenIdx; i < diskStorageNum; i++ {
 			weight := disks[i].weight()
-			span.Debugf("total free item: %d, disk(%s) free item: %d, randNum: %d", _totalWeight, disks[i].diskID, weight, randNum)
+			span.Debugf("total free item: %d, disk(%d) free item: %d, randNum: %d", _totalWeight, disks[i].diskID, weight, randNum)
 			if weight >= randNum && chosenNodeNum[disks[i].info.NodeID] <= duplicatedCount && chosenDisks[disks[i].diskID] == nil {
 				chosenDisks[disks[i].diskID] = disks[i]
 				chosenNodeStorages[nodeStorages[disks[i].info.NodeID]] += 1
