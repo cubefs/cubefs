@@ -725,7 +725,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	if err != nil {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
 		if isStreamerReleasingErr(err) {
-			log.LogWarnf("TRACE Flush benign err during release: ino(%v) err(%v)", f.info.Inode, err)
+			log.LogDebugf("TRACE Flush benign err during release: ino(%v) err(%v)", f.info.Inode, err)
 		} else {
 			f.super.handleError("Flush", msg)
 			log.LogErrorf("TRACE Flush err: ino(%v) err(%v)", f.info.Inode, err)
