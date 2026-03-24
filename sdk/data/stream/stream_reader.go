@@ -722,18 +722,6 @@ end:
 func (s *Streamer) finishStaleAsyncFlushRequest(req *AsyncFlushRequest, phase string) {
 	log.LogWarnf("completeAsyncFlush: stale request ignored for streamer(%v) handler(%v) phase(%v)",
 		s.inode, req.handler, phase)
-	if value, exists := s.pendingAsyncFlushMap.Load(req.handler.id); exists {
-		activeReq := value.(*AsyncFlushRequest)
-		if activeReq != req {
-			// Do not allow stale wait=true callers to return success early.
-			// Join active request completion to preserve flush(wait=true) semantics.
-			log.LogWarnf("completeAsyncFlush: stale request join active for streamer(%v) handler(%v) phase(%v)",
-				s.inode, req.handler, phase)
-			<-activeReq.done
-			req.finish(activeReq.err)
-			return
-		}
-	}
 	req.finish(nil)
 }
 
