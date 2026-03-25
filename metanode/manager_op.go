@@ -379,6 +379,9 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				return true
 			}
 
+			log.LogDebugf("[Trace opMasterHeartbeat] heartbeat report vol(%s) mp(%v) mp.Size(%v)",
+				mConf.VolName, mConf.PartitionId, mpr.Size)
+
 			if mConf.Cursor >= mConf.End {
 				mpr.Status = proto.ReadOnly
 				mpr.ReadOnlyReasons |= proto.MpCursorOutOfRange

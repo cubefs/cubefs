@@ -656,8 +656,9 @@ func TestUpdateSizeLoopFunc(t *testing.T) {
 	// run
 	require.NoError(t, mp.updateSizeLoopFunc())
 
-	// verify mp.size equals total migrate size (only inodeB has migration)
-	require.EqualValues(t, uint64(300), mp.size)
+	// migrateSize sums every inode at loop start (b96d64b); inode A has HybridCloudExtentsMigration nil, inode B has migration meta
+	require.EqualValues(t, uint64(400), mp.size)
+	require.NotEqual(t, uint64(0), mp.size)
 
 	// verify statByStorageClass (Replica_SSD): 2 inodes, 100+300 bytes
 	var norm *proto.StatOfStorageClass
@@ -691,6 +692,55 @@ func TestUpdateSizeLoopFunc(t *testing.T) {
 	require.EqualValues(t, 3, len(mp.fileRange))
 	require.EqualValues(t, 0, mp.fileRange[0]) // <50
 	require.EqualValues(t, 1, mp.fileRange[2]) // >=200
+}
+
+// TestUpdateSizeLoopFunc_NoMigrationNonZeroSize covers inodes with HybridCloudExtentsMigration nil (typical EC/blob data path):
+// mp.size must still be non-zero after updateSizeLoopFunc (regression: old code only added migrateSize inside migration branch).
+func TestUpdateSizeLoopFunc_NoMigrationNonZeroSize(t *testing.T) {
+	metaM := &metadataManager{
+		fileStatsConfig: &fileStatsConfig{},
+		metaNode:        &MetaNode{},
+	}
+	metaM.initFileStatsConfig()
+	metaM.fileStatsConfig.thresholds = []uint64{}
+	metaM.fileStatsConfig.fileStatsEnable = false
+
+	mpC := &MetaPartitionConfig{
+		PartitionId:   101,
+		VolName:       "test_vol_no_mig",
+		Start:         0,
+		End:           1000,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       t.TempDir(),
+		StoreMode:     proto.StoreModeMem,
+	}
+
+	partition := NewMetaPartition(mpC, metaM)
+	mp := partition.(*metaPartition)
+	require.NoError(t, mp.initObjects(true))
+	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
+
+	h, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+
+	ino := NewInode(10, 0)
+	ino.Type = 0
+	ino.NLink = 1
+	ino.Size = 4096
+	ino.PoolId = proto.DefaultSSDPoolId
+	ino.StorageClass = proto.StorageClass_BlobStore
+	// NewInode may pre-allocate migration wrapper; nil simulates inode without migration extents
+	ino.HybridCloudExtentsMigration = nil
+
+	_, _, err = mp.inodeTree.ReplaceOrInsert(h, ino, true)
+	require.NoError(t, err)
+	require.NoError(t, mp.inodeTree.CommitAndReleaseBatchWriteHandle(h, false))
+
+	require.NoError(t, mp.updateSizeLoopFunc())
+
+	require.NotEqual(t, uint64(0), mp.size)
+	require.EqualValues(t, uint64(4096), mp.size)
 }
 
 func TestScanRocksdb(t *testing.T) {

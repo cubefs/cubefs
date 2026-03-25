@@ -2115,6 +2115,10 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 	}()
 
 	err = snap.RangeReuseInode(func(inode *Inode) bool {
+		// to update metaPartition size
+		migrateInodeCnt++
+		migrateSize += inode.Size
+
 		// stat normal Extents
 		if statStorageClass, ok = statStorageClassMap[inode.StorageClass]; !ok {
 			statStorageClass = proto.NewStatOfStorageClass(inode.StorageClass)
@@ -2143,8 +2147,6 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 			statMigStorageClass = proto.NewStatOfStorageClass(migrateStorageClass)
 			statByMigStorageClassMap[migrateStorageClass] = statMigStorageClass
 		}
-		migrateInodeCnt += 1
-		migrateSize += inode.Size
 		statMigStorageClass.InodeCount++
 		statMigStorageClass.UsedSizeBytes += inode.Size
 
@@ -2169,6 +2171,8 @@ func (mp *metaPartition) updateSizeLoopFunc() error {
 		return true
 	})
 
+	log.LogDebugf("[Trace updateSizeLoopFunc] metanode vol(%s) mp(%v) migrateSize(%v) mpSize(%v) migrateInodeCnt(%v)",
+		mp.config.VolName, mp.config.PartitionId, migrateSize, mp.size, migrateInodeCnt)
 	mp.fileRange = fileRange
 	mp.acucumRebuildFin(uidRebuild)
 	mp.size = migrateSize

@@ -283,6 +283,8 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		}
 
 		mp.size += ino.Size
+		log.LogDebugf("[Trace loadInode] loadInode vol(%s) mp(%v) inodeSize(%v) mpSize(%v)",
+			mp.config.VolName, mp.config.PartitionId, ino.Size, mp.size)
 
 		mp.fsmCreateInode(handle, ino)
 		mp.checkAndInsertFreeList(ino)
@@ -1332,10 +1334,9 @@ func (mp *metaPartition) storeInode(rootDir string,
 
 	mp.acucumRebuildFin(sm.uidRebuild)
 	crc = sign.Sum32()
+	log.LogInfof("[Trace storeInode] store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v), size (%d)  mpSize(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(InodeType), crc, size, mp.size)
 	mp.size = size
-
-	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v), size (%d)",
-		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(InodeType), crc, size)
 
 	return
 }
@@ -1643,6 +1644,9 @@ func (mp *metaPartition) loadRocksdbInode() (uint64, error) {
 		log.LogErrorf("loadRocksdbInode mp[%d] err: %s", mp.config.PartitionId, err.Error())
 		return 0, err
 	}
+
+	log.LogDebugf("[Trace loadRocksdbInode] loadRocksdbInode vol(%s) mp(%v) totalSize(%v) mpSize(%v)",
+		mp.config.VolName, mp.config.PartitionId, totalSize, mp.size)
 	mp.size = totalSize
 	mp.fileRange = fileRange
 	// if inodeCnt != mp.inodeTree.Count() {
