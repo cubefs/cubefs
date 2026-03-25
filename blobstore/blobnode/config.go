@@ -117,7 +117,7 @@ func configInit(config *Config) {
 
 	defaulter.LessOrEqual(&config.InspectConf.IntervalSec, defaultInspectIntervalSec)
 	defaulter.LessOrEqual(&config.InspectConf.RateLimit, defaultInspectRate)
-	defaulter.LessOrEqual(&config.InspectConf.NexRoundSec, defaultInspectNextRoundSec)
+	defaulter.LessOrEqual(&config.InspectConf.NextRoundSec, defaultInspectNextRoundSec)
 	defaulter.LessOrEqual(&config.InspectConf.Record.ChunkBits, defaultInspectLogChunkSize)
 	defaulter.LessOrEqual(&config.InspectConf.Record.Backup, defaultInspectLogBackup)
 
