@@ -1092,6 +1092,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashNodeReadDataNodeTimeout:              m.cluster.cfg.flashNodeReadDataNodeTimeout,
 		RackAwareLevel:                            m.cluster.cfg.RackAwareLevel,
 		FlashHotKeyMissCount:                      m.cluster.cfg.flashHotKeyMissCount,
+		PreheatTotalTask:                          m.cluster.cfg.preheatTotalTask,
 		FlashReadFlowLimit:                        m.cluster.cfg.flashReadFlowLimit,
 		FlashWriteFlowLimit:                       m.cluster.cfg.flashWriteFlowLimit,
 		FlashKeyFlowLimit:                         m.cluster.cfg.flashKeyFlowLimit,
@@ -4421,6 +4422,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[flashHotKeyMissCount]; ok {
 		if v, ok := val.(int64); ok {
 			if err = m.setConfig(flashHotKeyMissCount, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[preheatTotalTask]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(preheatTotalTask, strconv.FormatInt(v, 10)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -8410,6 +8420,7 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		fnHandleReadTimeout      int
 		fnReadDataNodeTimeout    int
 		fnHotKeyMissCount        int
+		fnPreheatTotalTask       int
 		fnReadFlowLimit          int64
 		fnWriteFlowLimit         int64
 		fnKeyFlowLimit           int64
@@ -8485,6 +8496,17 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		}
 		oldIntValue = m.config.flashHotKeyMissCount
 		m.config.flashHotKeyMissCount = fnHotKeyMissCount
+
+	case preheatTotalTask:
+		fnPreheatTotalTask, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		oldIntValue = m.config.preheatTotalTask
+		m.config.preheatTotalTask = fnPreheatTotalTask
+		if m.cluster != nil && m.cluster.flashManMgr != nil {
+			m.cluster.flashManMgr.taskTotalLimit = fnPreheatTotalTask
+		}
 
 	case flashReadFlowLimit:
 		fnReadFlowLimit, err = strconv.ParseInt(value, 10, 64)
@@ -8576,6 +8598,11 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.config.mpMigrateThreads = oldIntValue
 		case flashHotKeyMissCount:
 			m.config.flashHotKeyMissCount = oldIntValue
+		case preheatTotalTask:
+			m.config.preheatTotalTask = oldIntValue
+			if m.cluster != nil && m.cluster.flashManMgr != nil {
+				m.cluster.flashManMgr.taskTotalLimit = oldIntValue
+			}
 		case flashReadFlowLimit:
 			m.config.flashReadFlowLimit = oldInt64Value
 		case flashWriteFlowLimit:
@@ -8623,6 +8650,8 @@ func (m *Server) getConfig(key string) (value string, err error) {
 		value = strconv.Itoa(m.config.mpMigrateThreads)
 	case flashHotKeyMissCount:
 		value = strconv.Itoa(m.config.flashHotKeyMissCount)
+	case preheatTotalTask:
+		value = strconv.Itoa(m.config.preheatTotalTask)
 	case flashReadFlowLimit:
 		value = strconv.FormatInt(m.config.flashReadFlowLimit, 10)
 	case flashWriteFlowLimit:

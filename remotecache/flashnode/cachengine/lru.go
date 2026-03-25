@@ -40,12 +40,13 @@ const (
 	StatMiss
 	StatEvict
 	StatSize
+	StatPreheatReadBytes
 )
 
 type StatUpdate struct {
 	Key   interface{}
 	Type  int
-	Count int32
+	Count int64
 }
 
 type LruCache interface {
@@ -185,7 +186,7 @@ func (c *fCache) SetStatCh(ch chan StatUpdate) {
 	c.statCh = ch
 }
 
-func (c *fCache) sendStat(key interface{}, statType int, count int32) {
+func (c *fCache) sendStat(key interface{}, statType int, count int64) {
 	if c.statCh != nil {
 		select {
 		case c.statCh <- StatUpdate{Key: key, Type: statType, Count: count}:

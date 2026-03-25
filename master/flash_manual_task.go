@@ -42,7 +42,7 @@ func newFlashManualTaskManager(c *Cluster) *flashManualTaskManager {
 			WorkingCount: make(map[string]int),
 		},
 		cluster:        c,
-		taskTotalLimit: 8,
+		taskTotalLimit: c.cfg.preheatTotalTask,
 	}
 	return fltMgr
 }

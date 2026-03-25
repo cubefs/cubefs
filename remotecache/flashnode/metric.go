@@ -40,6 +40,7 @@ const (
 	MetricFlashNodeVolReadCount        = "flashNodeVolReadCount"
 	MetricFlashNodeVolWriteBytes       = "flashNodeVolWriteBytes"
 	MetricFlashNodeVolWriteCount       = "flashNodeVolWriteCount"
+	MetricFlashNodePreheatReadBytes    = "flashNodePreheatReadBytes"
 )
 
 type FlashNodeMetrics struct {
@@ -49,6 +50,7 @@ type FlashNodeMetrics struct {
 	MetricReadCount           *exporter.Gauge
 	MetricWriteBytes          *exporter.Gauge
 	MetricWriteCount          *exporter.Gauge
+	MetricPreheatReadBytes    *exporter.Gauge
 	MetricEvictCount          *exporter.Gauge
 	MetricCacheErrorCount     *exporter.Gauge
 	MetricHitRate             *exporter.Gauge
@@ -80,6 +82,7 @@ func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
 	f.metrics.MetricReadCount = exporter.NewGauge(MetricFlashNodeReadCount)
 	f.metrics.MetricWriteBytes = exporter.NewGauge(MetricFlashNodeWriteBytes)
 	f.metrics.MetricWriteCount = exporter.NewGauge(MetricFlashNodeWriteCount)
+	f.metrics.MetricPreheatReadBytes = exporter.NewGauge(MetricFlashNodePreheatReadBytes)
 	f.metrics.MetricEvictCount = exporter.NewGauge(MetricFlashNodeEvictCount)
 	f.metrics.MetricCacheErrorCount = exporter.NewGauge(MetricFlashNodeCacheErrorCount)
 	f.metrics.MetricHitRate = exporter.NewGauge(MetricFlashNodeHitRate)
@@ -291,14 +294,17 @@ func (fm *FlashNodeMetrics) setVolCacheStatsMetric() {
 	log.LogDebugf("MetricVolSize: volStats %v", volStats)
 	for vol, stats := range volStats {
 		labels := fm.labelsWithVol(vol)
-		hitRate := float64(stats.Hits) / float64(stats.Hits+stats.Misses)
-		fm.MetricVolHitRate.SetWithLabels(math.Trunc(hitRate*1e4+0.5)*1e-4, labels)
+		if stats.Hits+stats.Misses > 0 {
+			hitRate := float64(stats.Hits) / float64(stats.Hits+stats.Misses)
+			fm.MetricVolHitRate.SetWithLabels(math.Trunc(hitRate*1e4+0.5)*1e-4, labels)
+		}
 		fm.MetricVolEvictCount.SetWithLabels(float64(stats.Evicts), labels)
 		fm.MetricVolSize.SetWithLabels(float64(stats.CacheSize), labels)
 		fm.MetricVolReadBytes.SetWithLabels(float64(stats.ReadBytes), labels)
 		fm.MetricVolReadCount.SetWithLabels(float64(stats.ReadCount), labels)
 		fm.MetricVolWriteBytes.SetWithLabels(float64(stats.WriteBytes), labels)
 		fm.MetricVolWriteCount.SetWithLabels(float64(stats.WriteCount), labels)
+		fm.MetricPreheatReadBytes.SetWithLabels(float64(stats.PreheatReadBytes), labels)
 		log.LogDebugf("MetricVolSize: set %v for vol %v", float64(stats.CacheSize), vol)
 	}
 }

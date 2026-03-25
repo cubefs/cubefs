@@ -1537,6 +1537,7 @@ func (f *FlashNode) preheatWorker() {
 					if processErr != nil {
 						return
 					}
+					f.cacheEngine.UpdateVolPreheatReadBytes(cacheReq.Volume, uint64(reqSize))
 					block.InitOnce(f.cacheEngine, cacheReq.Sources)
 				})
 				if err1 != nil && processErr == nil {

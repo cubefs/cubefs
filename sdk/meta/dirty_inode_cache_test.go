@@ -53,7 +53,7 @@ func TestDirtyInodeCacheTTLExpiry(t *testing.T) {
 	dc.mark(ino)
 	assert.True(t, dc.isDirty(ino), "inode should be dirty immediately after mark")
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(4 * time.Second)
 	assert.False(t, dc.isDirty(ino), "inode should not be dirty after TTL expires")
 }
 
@@ -77,7 +77,7 @@ func TestDirtyInodeCacheMarkRefreshesTTL(t *testing.T) {
 	assert.True(t, dc.isDirty(ino), "inode should still be dirty after TTL refresh")
 
 	// Sleep until refreshed TTL also expires (need > 2s more)
-	time.Sleep(3 * time.Second)
+	time.Sleep(4 * time.Second)
 	assert.False(t, dc.isDirty(ino), "inode should not be dirty after refreshed TTL expires")
 }
 

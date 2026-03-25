@@ -93,14 +93,15 @@ type cacheLoadFile struct {
 }
 
 type VolCacheStats struct {
-	Hits       int32
-	Misses     int32
-	Evicts     int32
-	CacheSize  int64  // total cache size for this volume
-	ReadBytes  uint64 // read bytes for this volume
-	ReadCount  uint64 // read count for this volume
-	WriteBytes uint64 // write bytes for this volume
-	WriteCount uint64 // write count for this volume
+	Hits             int32
+	Misses           int32
+	Evicts           int32
+	CacheSize        int64  // total cache size for this volume
+	ReadBytes        uint64 // read bytes for this volume
+	ReadCount        uint64 // read count for this volume
+	WriteBytes       uint64 // write bytes for this volume
+	WriteCount       uint64 // write count for this volume
+	PreheatReadBytes uint64
 }
 
 type lruCacheItem struct {
@@ -1482,11 +1483,13 @@ func (c *CacheEngine) startStatWorkers(workerNum int) {
 					stats := val.(*VolCacheStats)
 					switch statV.Type {
 					case StatHit:
-						atomic.AddInt32(&stats.Hits, statV.Count)
+						atomic.AddInt32(&stats.Hits, int32(statV.Count))
 					case StatMiss:
-						atomic.AddInt32(&stats.Misses, statV.Count)
+						atomic.AddInt32(&stats.Misses, int32(statV.Count))
 					case StatEvict:
-						atomic.AddInt32(&stats.Evicts, statV.Count)
+						atomic.AddInt32(&stats.Evicts, int32(statV.Count))
+					case StatPreheatReadBytes:
+						atomic.AddUint64(&stats.PreheatReadBytes, uint64(statV.Count))
 					}
 				}
 			}
@@ -1508,20 +1511,31 @@ func (c *CacheEngine) GetAndResetVolStats() map[string]*VolCacheStats {
 		readCount := atomic.SwapUint64(&stats.ReadCount, 0)
 		writeBytes := atomic.SwapUint64(&stats.WriteBytes, 0)
 		writeCount := atomic.SwapUint64(&stats.WriteCount, 0)
+		preheatReadBytes := atomic.SwapUint64(&stats.PreheatReadBytes, 0)
 
-		if hits > 0 || misses > 0 || evicts > 0 || size > 0 || readBytes > 0 || readCount > 0 || writeBytes > 0 || writeCount > 0 {
+		if hits > 0 || misses > 0 || evicts > 0 || size > 0 || readBytes > 0 || readCount > 0 || writeBytes > 0 || writeCount > 0 || preheatReadBytes > 0 {
 			result[vol] = &VolCacheStats{
-				Hits:       hits,
-				Misses:     misses,
-				Evicts:     evicts,
-				CacheSize:  size,
-				ReadBytes:  readBytes,
-				ReadCount:  readCount,
-				WriteBytes: writeBytes,
-				WriteCount: writeCount,
+				Hits:             hits,
+				Misses:           misses,
+				Evicts:           evicts,
+				CacheSize:        size,
+				ReadBytes:        readBytes,
+				ReadCount:        readCount,
+				WriteBytes:       writeBytes,
+				WriteCount:       writeCount,
+				PreheatReadBytes: preheatReadBytes,
 			}
 		}
 		return true
 	})
 	return result
+}
+
+func (c *CacheEngine) UpdateVolPreheatReadBytes(vol string, size uint64) {
+	if c.statCh != nil {
+		select {
+		case c.statCh <- StatUpdate{Key: vol, Type: StatPreheatReadBytes, Count: int64(size)}:
+		default:
+		}
+	}
 }

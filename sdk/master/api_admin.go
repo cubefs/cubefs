@@ -756,6 +756,7 @@ type ClusterParas struct {
 	RemoteCacheSameZoneTimeout             string
 	RemoteCacheSameRegionTimeout           string
 	FlashHotKeyMissCount                   string
+	PreheatTotalTask                       string
 	FlashReadFlowLimit                     string
 	FlashWriteFlowLimit                    string
 	FlashKeyFlowLimit                      string
@@ -863,6 +864,9 @@ func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
 	}
 	if params.FlashHotKeyMissCount != "" {
 		request.addParam("flashHotKeyMissCount", params.FlashHotKeyMissCount)
+	}
+	if params.PreheatTotalTask != "" {
+		request.addParam("preheatTotalTask", params.PreheatTotalTask)
 	}
 	// remoteCache config
 	if params.RemoteCacheTTL != "" {

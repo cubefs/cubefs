@@ -362,6 +362,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	optRcTTL := ""
 	optRcReadTimeout := ""
 	optFlashHotKeyMissCount := ""
+	optPreheatTotalTask := ""
 	optRemoteCacheMultiRead := ""
 	optFlashNodeTimeoutCount := ""
 	optRemoteCacheSameZoneTimeout := ""
@@ -617,6 +618,17 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if optPreheatTotalTask != "" {
+				if tmp, err = strconv.ParseInt(optPreheatTotalTask, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optPreheatTotalTask)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("param preheatTotalTask(%v) must greater than 0", optPreheatTotalTask)
+					return
+				}
+			}
+
 			if optFlashReadFlowLimit != "" {
 				if tmp, err = strconv.ParseInt(optFlashReadFlowLimit, 10, 64); err != nil {
 					err = fmt.Errorf("param (%v) failed, should be int", optFlashReadFlowLimit)
@@ -784,6 +796,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				RemoteCacheSameZoneTimeout:             optRemoteCacheSameZoneTimeout,
 				RemoteCacheSameRegionTimeout:           optRemoteCacheSameRegionTimeout,
 				FlashHotKeyMissCount:                   optFlashHotKeyMissCount,
+				PreheatTotalTask:                       optPreheatTotalTask,
 				FlashReadFlowLimit:                     optFlashReadFlowLimit,
 				FlashWriteFlowLimit:                    optFlashWriteFlowLimit,
 				FlashKeyFlowLimit:                      optFlashKeyFlowLimit,
@@ -861,6 +874,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	// cmd.Flags().StringVar(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, "", "Remote cache same zone timeout microsecond(must > 0)")
 	// cmd.Flags().StringVar(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, "", "Remote cache same region timeout millisecond(must > 0)")
 	cmd.Flags().StringVar(&optFlashHotKeyMissCount, CliFlagFlashHotKeyMissCount, "", "Flash hot key miss count(must > 0)")
+	cmd.Flags().StringVar(&optPreheatTotalTask, CliFlagPreheatTotalTask, "", "Preheat total task(must > 0)")
 	cmd.Flags().StringVar(&optFlashReadFlowLimit, CliFlagFlashReadFlowLimit, "", "Flash read flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optFlashWriteFlowLimit, CliFlagFlashWriteFlowLimit, "", "Flash write flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optFlashKeyFlowLimit, CliFlagFlashKeyFlowLimit, "", "Flash key flow limit(must >= 0)")
