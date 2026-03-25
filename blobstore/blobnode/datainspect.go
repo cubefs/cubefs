@@ -3,7 +3,11 @@ package blobnode
 import (
 	"context"
 	"errors"
+	"hash"
+	"hash/crc32"
 	"io"
+	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -24,8 +28,9 @@ import (
 )
 
 const (
-	listShardBatch = 100
-	minRateLimit   = 64 * 1024 // 64 KB/s
+	listShardBatch       = 100
+	minRateLimit         = 64 * 1024 // 64 KB/s
+	defaultBatchReadSize = 16 << 20  // 16 MB
 )
 
 var (
@@ -42,9 +47,10 @@ var (
 )
 
 type DataInspectConf struct {
-	IntervalSec int `json:"interval_sec"`   // wait switch interval
-	RateLimit   int `json:"rate_limit"`     // max rate limit per second
-	NexRoundSec int `json:"next_round_sec"` // wait next round inspect interval
+	IntervalSec   int   `json:"interval_sec"`    // wait switch interval
+	RateLimit     int   `json:"rate_limit"`      // max rate limit per second
+	NextRoundSec  int   `json:"next_round_sec"`  // wait next round inspect interval
+	BatchReadSize int64 `json:"batch_read_size"` // max data bytes per BatchRead call; default 16MB
 
 	Record recordlog.Config `json:"record"`
 }
@@ -81,6 +87,10 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch
 	}
 	if recorder, err = recordlog.NewEncoder(rConf); err != nil {
 		return nil, err
+	}
+
+	if conf.BatchReadSize <= 0 {
+		conf.BatchReadSize = defaultBatchReadSize
 	}
 
 	mgr := &DataInspectMgr{
@@ -194,6 +204,192 @@ func (mgr *DataInspectMgr) inspectDisk(ds core.DiskAPI, wg *sync.WaitGroup) {
 	}
 }
 
+// batchCRCWriter verifies the CRC of each shard's decoded data written by BatchRead.
+//
+// BatchRead writes each shard as two separate Write calls:
+//  1. Write([GetShardsHeaderSize bytes]) — the ShardsHeader; skip it.
+//  2. Write([one CRC-block payload, ≤ CrcBlockUnitSize bytes]) — repeated per block.
+//
+// A single Write call never spans two shards, so the state machine only needs to track
+// whether the next Write is a header or payload data.
+type batchCRCWriter struct {
+	shards       []*bnapi.ShardInfo
+	idx          int
+	nextIsHeader bool // true: the next Write is the 4-byte ShardsHeader for shards[idx]
+	dataLeft     int64
+	hasher       hash.Hash32
+	badBids      []proto.BlobID
+}
+
+func newBatchCRCWriter(shards []*bnapi.ShardInfo) *batchCRCWriter {
+	return &batchCRCWriter{
+		shards:       shards,
+		nextIsHeader: len(shards) > 0,
+		hasher:       crc32.NewIEEE(),
+	}
+}
+
+func (w *batchCRCWriter) Write(p []byte) (n int, _ error) {
+	n = len(p)
+	if w.idx >= len(w.shards) {
+		return n, nil
+	}
+	if w.nextIsHeader {
+		var hdr bnapi.ShardsHeader
+		copy(hdr[:], p)
+		w.nextIsHeader = false
+		if hdr.Get() != http.StatusOK {
+			return n, nil
+		}
+		w.dataLeft = w.shards[w.idx].Size
+		w.hasher.Reset()
+		return n, nil
+	}
+	w.hasher.Write(p)
+	w.dataLeft -= int64(n)
+	if w.dataLeft <= 0 {
+		if w.hasher.Sum32() != w.shards[w.idx].Crc {
+			w.badBids = append(w.badBids, w.shards[w.idx].Bid)
+		}
+		w.idx++
+		w.nextIsHeader = w.idx < len(w.shards)
+	}
+	return n, nil
+}
+
+func splitIntoBatches(shards []*bnapi.ShardInfo, maxSize int64) [][]*bnapi.ShardInfo {
+	sort.Slice(shards, func(i, j int) bool {
+		return shards[i].Offset < shards[j].Offset
+	})
+
+	var batches [][]*bnapi.ShardInfo
+	var cur []*bnapi.ShardInfo
+	var curSize int64
+	for _, si := range shards {
+		if si.NopData || si.Inline || si.Size == 0 {
+			continue
+		}
+		if len(cur) > 0 && curSize+si.Size > maxSize {
+			batches = append(batches, cur)
+			cur = nil
+			curSize = 0
+		}
+		cur = append(cur, si)
+		curSize += si.Size
+	}
+	if len(cur) > 0 {
+		batches = append(batches, cur)
+	}
+	return batches
+}
+
+// fallbackInspectShards inspects each shard individually, used when BatchRead fails.
+func (mgr *DataInspectMgr) fallbackInspectShards(ctx context.Context, cs core.ChunkAPI, ds core.DiskAPI,
+	shards []*bnapi.ShardInfo,
+) []bnapi.BadShard {
+	var badShards []bnapi.BadShard
+	for _, si := range shards {
+		if err := mgr.inspectShard(ctx, cs, si); err != nil {
+			badShards = append(badShards, bnapi.BadShard{DiskID: ds.ID(), Vuid: si.Vuid, Bid: si.Bid, Err: err})
+		}
+	}
+	return badShards
+}
+
+func (mgr *DataInspectMgr) reInspectCRCMismatches(ctx context.Context, cs core.ChunkAPI, ds core.DiskAPI, shards []*bnapi.ShardInfo, badBids []proto.BlobID, lmt *rate.Limiter) []bnapi.BadShard {
+	if len(badBids) == 0 {
+		return nil
+	}
+	span := trace.SpanFromContextSafe(ctx)
+	badBidSet := make(map[proto.BlobID]struct{}, len(badBids))
+	for _, bid := range badBids {
+		badBidSet[bid] = struct{}{}
+	}
+	var badShards []bnapi.BadShard
+	for _, si := range shards {
+		if _, isBad := badBidSet[si.Bid]; !isBad {
+			continue
+		}
+		span.Warnf("crc mismatch detected, re-inspecting shard. vuid:%d, bid:%d", cs.Vuid(), si.Bid)
+		if err := mgr.inspectShard(ctx, cs, si); err != nil {
+			badShards = append(badShards, bnapi.BadShard{DiskID: ds.ID(), Vuid: si.Vuid, Bid: si.Bid, Err: err})
+		}
+	}
+	return badShards
+}
+
+func (mgr *DataInspectMgr) inspectBatch(ctx context.Context, cs core.ChunkAPI, ds core.DiskAPI, shards []*bnapi.ShardInfo, lmt *rate.Limiter) (badShards []bnapi.BadShard, ioErr error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	// build BidInfo; shards already filtered (Size > 0) by splitIntoBatches
+	bids := make([]bnapi.BidInfo, len(shards))
+	var totalSize int64
+	for i, si := range shards {
+		bids[i] = bnapi.BidInfo{Bid: si.Bid, Size: si.Size, Offset: si.Offset, Crc: si.Crc}
+		totalSize += si.Size
+	}
+
+	// rate limit by total batch size
+	remain := totalSize
+	for remain > 0 {
+		tokenSz := lmt.Burst()
+		if remain <= int64(tokenSz) {
+			tokenSz = int(remain)
+		}
+		if err := lmt.WaitN(ctx, tokenSz); err != nil {
+			span.Errorf("fail to limit batch inspect: %+v", err)
+			return nil, err
+		}
+		remain -= int64(tokenSz)
+	}
+
+	crcWriter := newBatchCRCWriter(shards)
+	batchShard, err := core.NewBatchShardReader(bids, cs.Vuid(), crcWriter, ds.GetConfig().BatchBufferSize)
+	if err != nil {
+		// offsets not monotonically increasing or invalid param; fallback per-shard
+		span.Warnf("create batch reader failed, fallback per-shard. vuid:%d, err:%+v", cs.Vuid(), err)
+		return mgr.fallbackInspectShards(ctx, cs, ds, shards), nil
+	}
+
+	if _, err = cs.BatchRead(ctx, batchShard); err != nil {
+		if base.IsEIO(err) {
+			return nil, err
+		}
+		if err == bloberr.ErrBidNotMatch {
+			return mgr.handleBidNotMatch(ctx, cs, ds, shards, crcWriter, lmt)
+		}
+		span.Warnf("batch read failed, fallback per-shard. vuid:%d, err:%+v", cs.Vuid(), err)
+		return mgr.fallbackInspectShards(ctx, cs, ds, shards), nil
+	}
+
+	return mgr.reInspectCRCMismatches(ctx, cs, ds, shards, crcWriter.badBids, lmt), nil
+}
+
+func (mgr *DataInspectMgr) handleBidNotMatch(ctx context.Context, cs core.ChunkAPI, ds core.DiskAPI,
+	shards []*bnapi.ShardInfo, crcWriter *batchCRCWriter, lmt *rate.Limiter,
+) (badShards []bnapi.BadShard, ioErr error) {
+	span := trace.SpanFromContextSafe(ctx)
+	failIdx := crcWriter.idx
+
+	// reuse CRC results for shards already read before the failure
+	badShards = mgr.reInspectCRCMismatches(ctx, cs, ds, shards[:failIdx], crcWriter.badBids, lmt)
+
+	// the failing shard has a corrupted file header; confirm via per-shard flow
+	if failIdx < len(shards) {
+		span.Warnf("bid header mismatch, re-inspecting shard. vuid:%d, bid:%d", cs.Vuid(), shards[failIdx].Bid)
+		bads := mgr.fallbackInspectShards(ctx, cs, ds, shards[failIdx:failIdx+1])
+		badShards = append(badShards, bads...)
+	}
+
+	// continue batch inspection for shards that were never read
+	if failIdx+1 < len(shards) {
+		bads, ioErr := mgr.inspectBatch(ctx, cs, ds, shards[failIdx+1:], lmt)
+		badShards = append(badShards, bads...)
+		return badShards, ioErr
+	}
+	return badShards, nil
+}
+
 func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, error) {
 	span := trace.SpanFromContextSafe(pCtx)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -205,14 +401,9 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 	total := 0
 	badShards := make([]bnapi.BadShard, 0)
 
-	// scanFn processes shard batches, stops on errors: broken disk, ctx cancel, svr closed; records others
 	scanFn := func(batchShards []*bnapi.ShardInfo) (err error) {
 		total += len(batchShards)
-		for _, si := range batchShards {
-			if si.Size <= 0 {
-				continue
-			}
-
+		for _, batch := range splitIntoBatches(batchShards, mgr.conf.BatchReadSize) {
 			select {
 			case <-pCtx.Done():
 				span.Warnf("inspect chunk stop, upper context canceled. vuid:%d, chunk:%s.", cs.Vuid(), cs.ID())
@@ -224,11 +415,10 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 			default:
 			}
 
-			if err = mgr.inspectShard(ctx, cs, si, mgr.getLimiter(ds)); err != nil {
-				badShards = append(badShards, bnapi.BadShard{DiskID: ds.ID(), Vuid: si.Vuid, Bid: si.Bid, Err: err})
-				if base.IsEIO(err) {
-					return err
-				}
+			bads, ioErr := mgr.inspectBatch(ctx, cs, ds, batch, mgr.getLimiter(ds))
+			badShards = append(badShards, bads...)
+			if ioErr != nil {
+				span.Warnf("batch read io error, skip batch. vuid:%d, err:%+v", cs.Vuid(), ioErr)
 			}
 		}
 		return nil
@@ -241,25 +431,10 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 	return badShards, err
 }
 
-// inspectShard checks shard integrity with rate limiting and metadata double-check.
+// inspectShard checks shard integrity and metadata double-check.
 // Returns error if shard is corrupted, nil if healthy or deleted.
-func (mgr *DataInspectMgr) inspectShard(ctx context.Context, cs core.ChunkAPI, si *bnapi.ShardInfo, lmt *rate.Limiter) (err error) {
+func (mgr *DataInspectMgr) inspectShard(ctx context.Context, cs core.ChunkAPI, si *bnapi.ShardInfo) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
-
-	// Tokens of the corresponding size are obtained based on the size of the shard.
-	// If the size of shard is 1MB, you need to get 1024*1024 tokens
-	remain := si.Size
-	for remain > 0 {
-		tokenSz := lmt.Burst()
-		if remain <= int64(tokenSz) {
-			tokenSz = int(remain)
-		}
-		if err = lmt.WaitN(ctx, tokenSz); err != nil {
-			span.Errorf("Unexpected error, fail to limit inspect:%+v", err)
-			return err
-		}
-		remain -= int64(tokenSz)
-	}
 
 	// Read shard data - normally succeeds; other, record error if data fail and meta not delete
 	shardReader := core.NewShardReader(si.Bid, si.Vuid, 0, 0, io.Discard)
@@ -306,7 +481,7 @@ func (mgr *DataInspectMgr) scanShards(ctx context.Context, cs core.ChunkAPI, fn 
 }
 
 func (mgr *DataInspectMgr) waitNextRoundInspect() {
-	t := time.NewTimer(time.Duration(mgr.conf.NexRoundSec) * time.Second) // wait next round inspect
+	t := time.NewTimer(time.Duration(mgr.conf.NextRoundSec) * time.Second) // wait next round inspect
 	defer t.Stop()
 
 	select {
