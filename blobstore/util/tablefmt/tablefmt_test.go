@@ -14,7 +14,16 @@
 
 package tablefmt
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func join(lines []string) string {
+	return strings.Join(lines, "\n")
+}
 
 func TestTableFmtTableAppend(t *testing.T) {
 	tbl := Table{NewRow("Header1", "Header2")}
@@ -22,7 +31,7 @@ func TestTableFmtTableAppend(t *testing.T) {
 	tbl = tbl.Append(NewRow("Value3", "Value4")).Append(NewRow("5", "6"))
 
 	result := Align(tbl...)
-	t.Log("\n" + result)
+	t.Log("\n" + join(result))
 }
 
 func TestTableFmtAlign(t *testing.T) {
@@ -32,9 +41,9 @@ func TestTableFmtAlign(t *testing.T) {
 		NewRow("for-bar", struct{ s string }{"struct"}, 111.111, ""),
 		NewRow("bool", true, false, "1"),
 	}
-	t.Log("\n" + Align(rows...))
-	t.Log("\n" + AlignSep("\t", rows...))
-	t.Log("\n" + AlignSep(" * ", rows...))
+	t.Log("\n" + join(Align(rows...)))
+	t.Log("\n" + join(AlignSep("\t", rows...)))
+	t.Log("\n" + join(AlignSep(" * ", rows...)))
 }
 
 func TestTableFmtAlignWith(t *testing.T) {
@@ -45,13 +54,13 @@ func TestTableFmtAlignWith(t *testing.T) {
 		NewRow("Charlie", 22, 100.0),
 	}
 
-	t.Log("All left (default):\n" + Align(rows...))
+	t.Log("All left (default):\n" + join(Align(rows...)))
 
 	aligns := []Alignment{AlignLeft, AlignRight}
-	t.Log("Name left, numbers right:\n" + AlignWith(aligns, rows...))
+	t.Log("Name left, numbers right:\n" + join(AlignWith(aligns, rows...)))
 
 	aligns2 := []Alignment{AlignCenter, AlignCenter, AlignRight}
-	t.Log("Name center, age center, score right:\n" + AlignWith(aligns2, rows...))
+	t.Log("Name center, age center, score right:\n" + join(AlignWith(aligns2, rows...)))
 }
 
 func TestTableFmtAlignColumn(t *testing.T) {
@@ -62,7 +71,7 @@ func TestTableFmtAlignColumn(t *testing.T) {
 		NewRow("Any", struct{}{}),
 		NewRow("Nil", nil),
 	}
-	t.Log("\n" + AlignColumn(columns...))
+	t.Log("\n" + join(AlignColumn(columns...)))
 }
 
 func TestTableFmtAlignColumnIndex(t *testing.T) {
@@ -77,7 +86,7 @@ func TestTableFmtAlignColumnIndex(t *testing.T) {
 		{"name-2", 22, 0.0, "ooooooooooooo", t.Log},
 		{"", 0, 0.0, "", nil},
 	}
-	var all string
+	var all []string
 	for idx, s := range structs {
 		idxColumns := Table{
 			NewRow("Name", s.Name),
@@ -86,9 +95,9 @@ func TestTableFmtAlignColumnIndex(t *testing.T) {
 			NewRow("String", s.String),
 			NewRow("Any", s.Any),
 		}
-		all += AlignColumnIndex(idx+1, idxColumns...)
+		all = append(all, AlignColumnIndex(idx+1, idxColumns...)...)
 	}
-	t.Log("\n" + all)
+	t.Log("\n" + join(all))
 }
 
 func TestTableFmtAlignColumnIndent(t *testing.T) {
@@ -98,5 +107,34 @@ func TestTableFmtAlignColumnIndent(t *testing.T) {
 		NewRow("Key3", "Value3"),
 	}
 	result := AlignColumnIndent("*", rows...)
-	t.Log("\n" + result)
+	t.Log("\n" + join(result))
+}
+
+func TestTableFmtSummary(t *testing.T) {
+	rows := Table{
+		NewRow("IDC", "Count", "Used", "Free"),
+		NewRow("idc1", 100, "1.5 TiB", "500 GiB"),
+		NewRow("idc2", 200, "3.0 TiB", "1.0 TiB"),
+		NewRow("TOTAL", 300, "4.5 TiB", "1.5 TiB"),
+	}
+
+	lines := AlignWith([]Alignment{AlignRight}, rows...)
+	summary := Summary(lines)
+	t.Log("\n" + join(summary))
+
+	t.Log("\nWith indent:")
+	for _, line := range summary {
+		t.Log("\t * " + line)
+	}
+}
+
+func TestTableFmtSummaryLessThanThreeRows(t *testing.T) {
+	require.Nil(t, Summary(nil))
+	for _, lines := range [][]string{
+		{},
+		{"Header"},
+		{"Header", "Data"},
+	} {
+		require.Equal(t, lines, Summary(lines))
+	}
 }
