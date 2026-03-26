@@ -53,7 +53,9 @@ func cmdGetService(c *grumble.Context) error {
 		rows = rows.Append(tablefmt.NewRow(node.ClusterID, node.Name, node.Idc, node.Host,
 			node.ExpireAt > 0, expireTime))
 	}
-	fmt.Println(tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignCenter}, rows...))
+	for _, line := range tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignCenter}, rows...) {
+		fmt.Println(line)
+	}
 	return nil
 }
 

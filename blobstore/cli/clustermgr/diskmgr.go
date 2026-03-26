@@ -571,22 +571,9 @@ func printDiskStatsSummary(stats map[string]map[string]*diskStatEntry) {
 			total.MaxChunk, total.FreeChunk, total.UsedChunk, total.OversoldChunk,
 		))
 
-		output := tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignRight}, rows...)
-		lines := strings.Split(strings.Trim(output, "\n"), "\n")
-		width := 0
-		for _, line := range lines {
-			if len(line) > width {
-				width = len(line)
-			}
-		}
-
-		fmt.Println(strings.Repeat("-", width))
-		fmt.Println(lines[0])
-		fmt.Println(strings.Repeat("-", width))
-		for _, line := range lines[1 : len(lines)-1] {
+		lines := tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignRight}, rows...)
+		for _, line := range tablefmt.Summary(lines) {
 			fmt.Println(line)
 		}
-		fmt.Println(strings.Repeat("-", width))
-		fmt.Println(lines[len(lines)-1])
 	}
 }
