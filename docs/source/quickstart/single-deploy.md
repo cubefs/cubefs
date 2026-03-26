@@ -86,7 +86,7 @@ start blobstore service successfully, wait minutes for internal state preparatio
 $>
 ```
 
-After the erasure code subsystem is deployed successfully, modify the `ebsAddr` configuration item in the Master configuration file ([more configuration reference](../ops/configs/master.md)) to the Consul address registered by the Access node, which is `http://localhost:8500` by default.
+After the erasure code subsystem is deployed successfully, update the Master configuration file with `ebsAddr` and `ebsServicePath` ([more configuration reference](../ops/configs/master.md)): set `ebsAddr` to the Consul agent address used by Access, which must match `service_register.consul_addr` in `access.conf` (for example `127.0.0.1:8500` in a single-node setup); set `ebsServicePath` to Consul service name under which Access registers, typically `access` when not overridden.
 
 #### Stop the Cluster
 + The script will stop the server and the mount point
