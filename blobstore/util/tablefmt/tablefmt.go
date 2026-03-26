@@ -183,3 +183,108 @@ func Summary(lines []string) []string {
 	result = append(result, sep, lines[lastIdx])
 	return result
 }
+
+// Histogram generates a text-based histogram for percentage distribution.
+// Input: slice of percentage values [0-100]
+// Output: formatted lines showing distribution across 10 buckets (0-10%, 10-20%, ..., 90-100%)
+func Histogram[T util.Float | util.Integer](values []T) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	buckets := make([]int, 10)
+	for _, v := range values {
+		idx := int(float64(v) / 10)
+		if idx >= 10 {
+			idx = 9
+		}
+		if idx < 0 {
+			idx = 0
+		}
+		buckets[idx]++
+	}
+
+	maxCount := 0
+	for _, c := range buckets {
+		if c > maxCount {
+			maxCount = c
+		}
+	}
+
+	const barWidth = 50
+	lines := make([]string, 10)
+	for i, count := range buckets {
+		label := fmt.Sprintf("%3d -%3d%%", i*10, (i+1)*10)
+		barLen := 0
+		if maxCount > 0 {
+			barLen = count * barWidth / maxCount
+		}
+		bar := strings.Repeat("-", barLen)
+		lines[i] = fmt.Sprintf("%s |%-*s %d", label, barWidth, bar, count)
+	}
+	return lines
+}
+
+// HistogramRange generates a text-based histogram for value distribution.
+// Output: formatted lines showing distribution across 10 buckets based on [min, max] range.
+func HistogramRange[T util.Float | util.Integer](values []T) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	minVal, maxVal := float64(values[0]), float64(values[0])
+	for _, v := range values[1:] {
+		fv := float64(v)
+		if fv < minVal {
+			minVal = fv
+		}
+		if fv > maxVal {
+			maxVal = fv
+		}
+	}
+
+	rangeVal := maxVal - minVal
+	if rangeVal <= 0 {
+		rangeVal = 1
+	}
+	bucketWidth := rangeVal / 10
+
+	buckets := make([]int, 10)
+	for _, v := range values {
+		idx := int((float64(v) - minVal) / bucketWidth)
+		if idx >= 10 {
+			idx = 9
+		}
+		if idx < 0 {
+			idx = 0
+		}
+		buckets[idx]++
+	}
+
+	maxCount := 0
+	for _, c := range buckets {
+		if c > maxCount {
+			maxCount = c
+		}
+	}
+
+	labelWidth := len(fmt.Sprintf("%.0f", minVal))
+	if w := len(fmt.Sprintf("%.0f", maxVal)); w > labelWidth {
+		labelWidth = w
+	}
+
+	const barWidth = 50
+	lines := make([]string, 10)
+	for i, count := range buckets {
+		low := minVal + float64(i)*bucketWidth
+		high := minVal + float64(i+1)*bucketWidth
+		label := fmt.Sprintf("%*.0f-%*.0f", labelWidth, low, labelWidth, high)
+		barLen := 0
+		if maxCount > 0 {
+			barLen = count * barWidth / maxCount
+		}
+		bar := strings.Repeat("-", barLen)
+		lines[i] = fmt.Sprintf("%s |%-*s %d", label, barWidth, bar, count)
+	}
+	return lines
+}
