@@ -138,3 +138,42 @@ func TestTableFmtSummaryLessThanThreeRows(t *testing.T) {
 		require.Equal(t, lines, Summary(lines))
 	}
 }
+
+func TestHistogram(t *testing.T) {
+	require.Nil(t, Histogram([]float64(nil)))
+	require.Nil(t, Histogram([]float64{}))
+
+	values := []float64{3, 3, 4, 5, 6, 7, 10, 25, 30, 55, 88, 92, 95}
+	lines := Histogram(values)
+	require.Len(t, lines, 10)
+	t.Log("\nfloat64:\n" + join(lines))
+
+	intValues := []int{50, 51, 52, 53, 54}
+	lines = Histogram(intValues)
+	require.Len(t, lines, 10)
+	t.Log("\nint:\n" + join(lines))
+
+	lines = Histogram([]int{-1, -2, 0, 100, 100, 200, 400, 500})
+	require.Len(t, lines, 10)
+	t.Log("\nedge:\n" + join(lines))
+}
+
+func TestHistogramRange(t *testing.T) {
+	require.Nil(t, HistogramRange([]float64(nil)))
+	require.Nil(t, HistogramRange([]int{}))
+
+	values := []float64{5, 10, 15, 20, 25, 30, 50, 75, 100}
+	lines := HistogramRange(values)
+	require.Len(t, lines, 10)
+	t.Log("\nfloat64 Max=100:\n" + join(lines))
+
+	intValues := []int{1000, 1010, 1020, 1040, 1070, 1090, 1091, 1099}
+	lines = HistogramRange(intValues)
+	require.Len(t, lines, 10)
+	t.Log("\nint Max=1100:\n" + join(lines))
+
+	uint64Values := []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	lines = HistogramRange(uint64Values)
+	require.Len(t, lines, 10)
+	t.Log("\nuint64 Max=10:\n" + join(lines))
+}
