@@ -57,6 +57,7 @@ func addCmdVolume(cmd *grumble.Command) {
 		Run:  cmdVolumeStats,
 		Flags: func(f *grumble.Flags) {
 			clusterFlags(f)
+			f.IntL("topn", 10, "top N load disks to show")
 		},
 	})
 
@@ -532,7 +533,11 @@ func cmdVolumeStats(c *grumble.Context) error {
 	fmt.Println("Volume Statistics Summary (by CodeMode, Status and Score)")
 	fmt.Printf("Total volumes: %d\n", len(allVolumes))
 
+	topn := c.Flags.Int("topn")
 	printVolumeStatsByScore(allVolumes)
+	if topn > 0 {
+		printDiskLoadStats(allVolumes, topn)
+	}
 	return nil
 }
 
@@ -599,4 +604,87 @@ func printVolumeStatsByScore(volumes []*clustermgr.VolumeInfo) {
 			fmt.Println()
 		}
 	}
+}
+
+// Count disk load for active volumes only
+func printDiskLoadStats(volumes []*clustermgr.VolumeInfo, topn int) {
+	diskLoad := make(map[proto.DiskID]int)
+	diskVolumes := make(map[proto.DiskID][]proto.Vid)
+	activeCount := 0
+
+	for _, vol := range volumes {
+		if vol.Status != proto.VolumeStatusActive {
+			continue
+		}
+		activeCount++
+		for _, unit := range vol.Units {
+			diskLoad[unit.DiskID]++
+			diskVolumes[unit.DiskID] = append(diskVolumes[unit.DiskID], vol.Vid)
+		}
+	}
+	if len(diskLoad) == 0 {
+		fmt.Println("\nNo active volumes found")
+		return
+	}
+
+	type diskLoadEntry struct {
+		DiskID proto.DiskID
+		Load   int
+	}
+	entries := make([]diskLoadEntry, 0, len(diskLoad))
+	loads := make([]int, 0, len(diskLoad))
+	for diskID, load := range diskLoad {
+		entries = append(entries, diskLoadEntry{diskID, load})
+		loads = append(loads, load)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Load > entries[j].Load
+	})
+
+	fmt.Printf("\n[Active Volume Disk Load]\n")
+	fmt.Printf("Active volumes: %d, Disks involved: %d\n", activeCount, len(diskLoad))
+
+	fmt.Println("\nLoad Distribution:")
+	for _, line := range tablefmt.HistogramRange(loads) {
+		fmt.Println("  " + line)
+	}
+
+	topn = util.Min(topn, len(entries))
+	volumeDiskN := make(map[proto.Vid]int)
+
+	fmt.Printf("\nTop %d Disk Load:\n", topn)
+	rows := tablefmt.Table{tablefmt.NewRow("Rank", "DiskID", "Load", "Volumes (max 10)")}
+	for i := 0; i < topn; i++ {
+		diskID := entries[i].DiskID
+		vids := diskVolumes[diskID]
+		for _, vid := range vids {
+			volumeDiskN[vid]++
+		}
+		if len(vids) > 10 {
+			vids = vids[len(vids)-10:]
+		}
+		rows = rows.Append(tablefmt.NewRow(i+1, diskID, entries[i].Load, vids))
+	}
+	for _, line := range tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignCenter}, rows...) {
+		fmt.Println("  " + line)
+	}
+
+	topVolume := make([]struct {
+		Vid proto.Vid
+		N   int
+	}, 0, len(volumeDiskN))
+	for vid, n := range volumeDiskN {
+		topVolume = append(topVolume, struct {
+			Vid proto.Vid
+			N   int
+		}{vid, n})
+	}
+	sort.Slice(topVolume, func(i, j int) bool {
+		return topVolume[i].N > topVolume[j].N
+	})
+	fmt.Printf("\nTop %d Disk Load Volumes:", topn)
+	for _, line := range topVolume[:util.Min(topn, len(topVolume))] {
+		fmt.Printf(" %d(%d)", line.Vid, line.N)
+	}
+	fmt.Println()
 }
