@@ -48,18 +48,18 @@ func (c *Cluster) addFlashNodeHeartbeatTasks(topoName string, tasks []*proto.Adm
 	}
 }
 
-func (c *Cluster) syncFlashNodeSetIOLimitTasks(tasks []*proto.AdminTask) {
+func (c *Cluster) syncFlashNodeTasks(tasks []*proto.AdminTask) {
 	for _, t := range tasks {
 		if t == nil {
 			continue
 		}
 		node, err := c.peekFlashNode(t.TopoName, t.OperatorAddr)
 		if err != nil {
-			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			log.LogWarn(fmt.Sprintf("action[syncFlashNodeTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
 		}
 		if _, err = node.SyncSendAdminTask(t); err != nil {
-			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			log.LogWarn(fmt.Sprintf("action[syncFlashNodeTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
 		}
 	}
@@ -112,6 +112,122 @@ func (m *Server) getRemoteCacheDisableTTLMap(w http.ResponseWriter, r *http.Requ
 	sendOkReply(w, r, newSuccessHTTPReply(remoteCacheDisableTTLMap))
 }
 
+func (m *Server) setFlashTopoVolReadFlow(w http.ResponseWriter, r *http.Request) {
+	var (
+		flow      common.Int
+		err       error
+		flashTopo *flashgroupmanager.FlashNodeTopology
+	)
+
+	volName := r.FormValue(volNameKey)
+	if volName == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "missing volName"})
+		return
+	}
+	if err = parseArgs(r, flow.Key(remoteCacheReadFlow).OnValue(func() error { return nil })); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if flow.V < 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "freadFlow must be >= 0"})
+		return
+	}
+
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
+		return
+	}
+
+	_, err = m.cluster.getVol(volName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	flashTopo.SetRemoteCacheReadFlow(volName, flow.V)
+	if err = m.cluster.syncUpdateFlashTopo(flashTopo); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	tasks := make([]*proto.AdminTask, 0)
+	flashNodes := flashTopo.GetAllActiveFlashNodes()
+	for _, flashNode := range flashNodes {
+		task := flashNode.CreateSetVolReadIOLimitsTask(volName, flow.V)
+		tasks = append(tasks, task)
+	}
+	go m.cluster.syncFlashNodeTasks(tasks)
+
+	msg := fmt.Sprintf("set vol(%s) freadFlow to %d for topo(%s) and submitted to flashnodes", volName, flow.V, topoName)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) setFlashTopoVolWriteFlow(w http.ResponseWriter, r *http.Request) {
+	var (
+		flow      common.Int
+		err       error
+		flashTopo *flashgroupmanager.FlashNodeTopology
+	)
+
+	volName := r.FormValue(volNameKey)
+	if volName == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "missing volName"})
+		return
+	}
+	if err = parseArgs(r, flow.Key(remoteCacheWriteFlow).OnValue(func() error { return nil })); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if flow.V < 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "fwriteFlow must be >= 0"})
+		return
+	}
+
+	topoName := r.FormValue(nameKey)
+	if topoName == "" {
+		topoName = proto.DefaultTopoName
+	}
+	flashTopo, err = m.cluster.PeekFlashTopo(topoName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if flashTopo.IsMarkDelete() {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("topo[%v] is markDeleted, operation not allowed", topoName)))
+		return
+	}
+
+	_, err = m.cluster.getVol(volName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	flashTopo.SetRemoteCacheWriteFlow(volName, flow.V)
+	if err = m.cluster.syncUpdateFlashTopo(flashTopo); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	tasks := make([]*proto.AdminTask, 0)
+	flashNodes := flashTopo.GetAllActiveFlashNodes()
+	for _, flashNode := range flashNodes {
+		task := flashNode.CreateSetVolWriteIOLimitsTask(volName, flow.V)
+		tasks = append(tasks, task)
+	}
+	go m.cluster.syncFlashNodeTasks(tasks)
+
+	msg := fmt.Sprintf("set vol(%s) fwriteFlow to %d for topo(%s) and submitted to flashnodes", volName, flow.V, topoName)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
 func (c *Cluster) checkFlashNodeHeartbeat() {
 	// Collect remoteCacheDisableTTL for all volumes
 	remoteCacheDisableTTLMap := c.getRemoteCacheDisableTTLMap()
@@ -133,6 +249,8 @@ func (c *Cluster) checkFlashNodeHeartbeat() {
 			c.cfg.flashWriteFlowLimit,
 			c.cfg.flashKeyFlowLimit,
 			remoteCacheDisableTTLMap,
+			topo.GetRemoteCacheReadFlowMap(),
+			topo.GetRemoteCacheWriteFlowMap(),
 		)
 		c.addFlashNodeHeartbeatTasks(topo.Name, tasks)
 		return true
@@ -947,7 +1065,7 @@ func (m *Server) setFlashNodeReadIOLimits(w http.ResponseWriter, r *http.Request
 		task := flashNode.CreateSetIOLimitsTask(int(readFlow), int(readIocc), int(readFactor), proto.OpFlashNodeSetReadIOLimits)
 		tasks = append(tasks, task)
 	}
-	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
+	go m.cluster.syncFlashNodeTasks(tasks)
 	sendOkReply(w, r, newSuccessHTTPReply("set ReadIOLimits for FlashNode is submit,check it later."))
 }
 
@@ -1011,7 +1129,7 @@ func (m *Server) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Reques
 		task := flashNode.CreateSetIOLimitsTask(int(writeFlow), int(writeIocc), int(writeFactor), proto.OpFlashNodeSetWriteIOLimits)
 		tasks = append(tasks, task)
 	}
-	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
+	go m.cluster.syncFlashNodeTasks(tasks)
 	sendOkReply(w, r, newSuccessHTTPReply("set WriteIOLimits for FlashNode is submit,check it later."))
 }
 
@@ -1064,7 +1182,7 @@ func (m *Server) setFlashNodePreheatIOLimits(w http.ResponseWriter, r *http.Requ
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("no flashnode found to set preheat IO limits")))
 		return
 	}
-	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
+	go m.cluster.syncFlashNodeTasks(tasks)
 	sendOkReply(w, r, newSuccessHTTPReply("set PreheatIOLimits for FlashNode is submit,check it later."))
 }
 

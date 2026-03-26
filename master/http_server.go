@@ -1053,6 +1053,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoAdd).HandlerFunc(m.addFlashTopo)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoDel).HandlerFunc(m.deleteFlashTopo)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoRename).HandlerFunc(m.renameFlashTopo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashTopoSetVolReadFlow).HandlerFunc(m.setFlashTopoVolReadFlow)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashTopoSetVolWriteFlow).HandlerFunc(m.setFlashTopoVolWriteFlow)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.AdminFlashTopoQueryCacheVols).HandlerFunc(m.queryCacheVols)
 }
 

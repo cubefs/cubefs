@@ -73,13 +73,15 @@ func (zone *FlashNodeZone) selectFlashNodes(count int, excludeHosts []string, re
 }
 
 type FlashNodeTopologyValue struct {
-	ID                uint64
-	Name              string
-	Region            string
-	Status            uint32
-	DeleteExecTime    time.Time
-	DeleteGradualFlag bool
-	DeleteStep        uint32
+	ID                      uint64
+	Name                    string
+	Region                  string
+	Status                  uint32
+	DeleteExecTime          time.Time
+	DeleteGradualFlag       bool
+	DeleteStep              uint32
+	RemoteCacheReadFlowMap  map[string]int64
+	RemoteCacheWriteFlowMap map[string]int64
 }
 
 type FlashNodeTopology struct {
@@ -115,9 +117,57 @@ func NewFlashNodeTopology(name, region string, id uint64, status uint32) (t *Fla
 	t.Region = region
 	t.Status = status
 	t.DeleteExecTime = time.Time{}
+	t.RemoteCacheReadFlowMap = make(map[string]int64)
+	t.RemoteCacheWriteFlowMap = make(map[string]int64)
 	t.clientOff.Store([]byte(nil))
 	t.clientCache.Store([]byte(nil))
 	return t
+}
+
+func (t *FlashNodeTopology) SetRemoteCacheReadFlow(volName string, flow int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.RemoteCacheReadFlowMap == nil {
+		t.RemoteCacheReadFlowMap = make(map[string]int64)
+	}
+	if flow <= 0 {
+		delete(t.RemoteCacheReadFlowMap, volName)
+		return
+	}
+	t.RemoteCacheReadFlowMap[volName] = flow
+}
+
+func (t *FlashNodeTopology) GetRemoteCacheReadFlowMap() map[string]int64 {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	result := make(map[string]int64, len(t.RemoteCacheReadFlowMap))
+	for vol, flow := range t.RemoteCacheReadFlowMap {
+		result[vol] = flow
+	}
+	return result
+}
+
+func (t *FlashNodeTopology) SetRemoteCacheWriteFlow(volName string, flow int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.RemoteCacheWriteFlowMap == nil {
+		t.RemoteCacheWriteFlowMap = make(map[string]int64)
+	}
+	if flow <= 0 {
+		delete(t.RemoteCacheWriteFlowMap, volName)
+		return
+	}
+	t.RemoteCacheWriteFlowMap[volName] = flow
+}
+
+func (t *FlashNodeTopology) GetRemoteCacheWriteFlowMap() map[string]int64 {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	result := make(map[string]int64, len(t.RemoteCacheWriteFlowMap))
+	for vol, flow := range t.RemoteCacheWriteFlowMap {
+		result[vol] = flow
+	}
+	return result
 }
 
 func (t *FlashNodeTopology) gradualCreateFlashGroup(fgID uint64, syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc,
@@ -1115,7 +1165,7 @@ func (t *FlashNodeTopology) SaveFlashGroup(group *FlashGroup) (err error) {
 
 func (t *FlashNodeTopology) CreateFlashNodeHeartBeatTasks(leader string, handleReadTimeout, readDataNodeTimeout,
 	hotKeyMissCount int, flashReadFlowLimit int64, flashWriteFlowLimit int64, flashKeyFlowLimit int64,
-	remoteCacheDisableTTLMap map[string]bool,
+	remoteCacheDisableTTLMap map[string]bool, remoteCacheReadFlowMap map[string]int64, remoteCacheWriteFlowMap map[string]int64,
 ) []*proto.AdminTask {
 	tasks := make([]*proto.AdminTask, 0)
 	t.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
@@ -1129,7 +1179,7 @@ func (t *FlashNodeTopology) CreateFlashNodeHeartBeatTasks(leader string, handleR
 		}
 
 		task := node.createHeartbeatTask(leader, handleReadTimeout, readDataNodeTimeout, hotKeyMissCount,
-			flashReadFlowLimit, flashWriteFlowLimit, flashKeyFlowLimit, slots, remoteCacheDisableTTLMap)
+			flashReadFlowLimit, flashWriteFlowLimit, flashKeyFlowLimit, slots, remoteCacheDisableTTLMap, remoteCacheReadFlowMap, remoteCacheWriteFlowMap)
 		tasks = append(tasks, task)
 		return true
 	})
@@ -1285,8 +1335,10 @@ func (t *FlashNodeTopology) BadDiskInfos() []*FlashNodeBadDiskInfo {
 
 func (t *FlashNodeTopology) GetFlashTopoAdminView() (ftv *proto.FlashTopologyAdminView) {
 	var (
-		volsMap = make(map[string]struct{})
-		vols    = make([]string, 0)
+		volsMap           = make(map[string]struct{})
+		vols              = make([]string, 0)
+		volReadFlowInfos  = make([]proto.FlashTopologyVolFlowView, 0)
+		volWriteFlowInfos = make([]proto.FlashTopologyVolFlowView, 0)
 	)
 	t.flashNodeMap.Range(func(addr, node interface{}) bool {
 		flashNode, ok := node.(*FlashNode)
@@ -1303,12 +1355,31 @@ func (t *FlashNodeTopology) GetFlashTopoAdminView() (ftv *proto.FlashTopologyAdm
 	for volName := range volsMap {
 		vols = append(vols, volName)
 	}
+	sort.Strings(vols)
+	for volName, flow := range t.GetRemoteCacheReadFlowMap() {
+		volReadFlowInfos = append(volReadFlowInfos, proto.FlashTopologyVolFlowView{
+			VolName: volName,
+			Flow:    flow,
+		})
+	}
+	sort.Slice(volReadFlowInfos, func(i, j int) bool {
+		return volReadFlowInfos[i].VolName < volReadFlowInfos[j].VolName
+	})
+	for volName, flow := range t.GetRemoteCacheWriteFlowMap() {
+		volWriteFlowInfos = append(volWriteFlowInfos, proto.FlashTopologyVolFlowView{
+			VolName: volName,
+			Flow:    flow,
+		})
+	}
+	sort.Slice(volWriteFlowInfos, func(i, j int) bool {
+		return volWriteFlowInfos[i].VolName < volWriteFlowInfos[j].VolName
+	})
 	ddt := ""
 	if !t.DeleteExecTime.IsZero() {
 		ddt = t.DeleteExecTime.Format(proto.TimeFormat) // 或 .String()
 	}
 	ftv = &proto.FlashTopologyAdminView{
-		ID: t.ID, Name: t.Name, CacheVols: vols, Region: t.Region,
+		ID: t.ID, Name: t.Name, CacheVols: vols, VolReadFlowInfos: volReadFlowInfos, VolWriteFlowInfos: volWriteFlowInfos, Region: t.Region,
 		Status: t.GetTopoStatusMsg(), DelayDeleteTime: ddt,
 	}
 	return ftv

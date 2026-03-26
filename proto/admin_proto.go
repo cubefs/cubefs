@@ -364,11 +364,13 @@ const (
 	AdminFlashGroupList       = "/flashGroup/list"
 	ClientFlashGroups         = "/client/flashGroups"
 
-	AdminFlashTopoList           = "/flashTopo/list"
-	AdminFlashTopoAdd            = "/flashTopo/add"
-	AdminFlashTopoDel            = "/flashTopo/delete"
-	AdminFlashTopoRename         = "/flashTopo/rename"
-	AdminFlashTopoQueryCacheVols = "/flashTopo/queryCacheVols"
+	AdminFlashTopoList            = "/flashTopo/list"
+	AdminFlashTopoAdd             = "/flashTopo/add"
+	AdminFlashTopoDel             = "/flashTopo/delete"
+	AdminFlashTopoRename          = "/flashTopo/rename"
+	AdminFlashTopoSetVolReadFlow  = "/flashTopo/setVolReadFlow"
+	AdminFlashTopoSetVolWriteFlow = "/flashTopo/setVolWriteFlow"
+	AdminFlashTopoQueryCacheVols  = "/flashTopo/queryCacheVols"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -917,6 +919,8 @@ type FlashNodeHeartBeatInfos struct {
 	FlashNodeSlots               []uint32
 	FlashNodeID                  uint64
 	RemoteCacheDisableTTL        map[string]bool // volume -> disableTTL
+	RemoteCacheReadFlow          map[string]int64
+	RemoteCacheWriteFlow         map[string]int64
 }
 
 // HeartBeatRequest define the heartbeat request.
@@ -1895,6 +1899,11 @@ type FlashNodeSetIOLimitsRequest struct {
 	Iocc   int
 	Flow   int
 	Factor int
+}
+
+type FlashNodeSetVolIOLimitsRequest struct {
+	VolName string
+	Flow    int64
 }
 
 func IsFlashNodeLimitError(err error) bool {

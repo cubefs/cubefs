@@ -172,7 +172,7 @@ func (c *Cluster) handleFlashNodeHeartbeatResp(nodeAddr string, resp *proto.Flas
 func (c *Cluster) checkFlashNodeHeartbeat() {
 	// flashgroupmanager doesn't have volume concept, pass nil as remoteCacheDisableTTLMap (old master behavior)
 	tasks := c.flashNodeTopo.CreateFlashNodeHeartBeatTasks(c.masterAddr(), int(c.cfg.RemoteCacheReadTimeout),
-		c.cfg.FlashNodeReadDataNodeTimeout, c.cfg.FlashHotKeyMissCount, c.cfg.FlashReadFlowLimit, c.cfg.FlashWriteFlowLimit, c.cfg.FlashKeyFlowLimit, nil)
+		c.cfg.FlashNodeReadDataNodeTimeout, c.cfg.FlashHotKeyMissCount, c.cfg.FlashReadFlowLimit, c.cfg.FlashWriteFlowLimit, c.cfg.FlashKeyFlowLimit, nil, nil, nil)
 	c.addFlashNodeHeartbeatTasks(tasks)
 }
 

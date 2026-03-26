@@ -104,6 +104,12 @@ type VolCacheStats struct {
 	PreheatReadBytes uint64
 }
 
+type VolFlowLimit struct {
+	mu    sync.RWMutex
+	Flow  int64
+	limit *util.IoLimiter
+}
+
 type lruCacheItem struct {
 	lruCache      LruCache
 	config        CacheConfig
@@ -152,6 +158,8 @@ type CacheEngine struct {
 	keyLimiterFlow        int64
 	reservedSpace         int64    // reserved disk space
 	volStatsMap           sync.Map // volume -> *VolCacheStats
+	volReadLimitMap       sync.Map // volume -> *VolFlowLimit
+	volWriteLimitMap      sync.Map // volume -> *VolFlowLimit
 	statCh                chan StatUpdate
 }
 
@@ -316,6 +324,7 @@ func (c *CacheEngine) isCacheBlockFileName(filename string) (isCacheBlockDir boo
 }
 
 func (c *CacheEngine) SetRemoteCacheDisableTTL(remoteCacheDisableTTLMap map[string]bool) {
+	log.LogDebugf("SetRemoteCacheDisableTTL (%v)", remoteCacheDisableTTLMap)
 	// Update volMap in all lruCache instances
 	c.lruCacheMap.Range(func(key, value interface{}) bool {
 		cacheItem := value.(*lruCacheItem)
@@ -428,6 +437,158 @@ func (c *CacheEngine) UpdateVolWriteStats(volume string, bytes uint64) {
 func (c *CacheEngine) getOrCreateVolStats(volume string) *VolCacheStats {
 	value, _ := c.volStatsMap.LoadOrStore(volume, &VolCacheStats{Hits: 1})
 	return value.(*VolCacheStats)
+}
+
+func (c *CacheEngine) SetVolReadFlowMap(volReadFlowMap map[string]int64) {
+	if volReadFlowMap == nil {
+		volReadFlowMap = make(map[string]int64)
+	}
+
+	c.volReadLimitMap.Range(func(key, value interface{}) bool {
+		vol := key.(string)
+		flow, ok := volReadFlowMap[vol]
+		if !ok || flow <= 0 {
+			c.volReadLimitMap.Delete(vol)
+			log.LogDebugf("SetVolReadFlowMap delete vol: %v", vol)
+			return true
+		}
+		limit := value.(*VolFlowLimit)
+		if limit.setFlow(flow) {
+			log.LogDebugf("SetVolReadFlowMap set vol: %v readLimit %v", vol, flow)
+		}
+		return true
+	})
+
+	for vol, flow := range volReadFlowMap {
+		if flow <= 0 {
+			continue
+		}
+		if _, ok := c.volReadLimitMap.Load(vol); ok {
+			continue
+		}
+		c.SetVolReadFlow(vol, flow)
+	}
+}
+
+func (c *CacheEngine) SetVolReadFlow(volume string, flow int64) {
+	if volume == "" {
+		return
+	}
+	if flow <= 0 {
+		if _, loaded := c.volReadLimitMap.LoadAndDelete(volume); loaded {
+			log.LogDebugf("SetVolReadFlow delete vol: %v", volume)
+		}
+		return
+	}
+	value, _ := c.volReadLimitMap.LoadOrStore(volume, &VolFlowLimit{})
+	limit := value.(*VolFlowLimit)
+	if limit.setFlow(flow) {
+		log.LogDebugf("SetVolReadFlow set vol: %v readLimit %v", volume, flow)
+	}
+}
+
+func (c *CacheEngine) AcquireVolReadFlow(volume string, size int) error {
+	log.LogDebugf("action[AcquireVolReadFlow] vol(%v) size(%v)", volume, size)
+	if volume == "" || size <= 0 {
+		return nil
+	}
+	value, ok := c.volReadLimitMap.Load(volume)
+	if !ok {
+		return nil
+	}
+	limit := value.(*VolFlowLimit)
+	return limit.acquireFlow(size)
+}
+
+func (c *CacheEngine) SetVolWriteFlowMap(volWriteFlowMap map[string]int64) {
+	if volWriteFlowMap == nil {
+		volWriteFlowMap = make(map[string]int64)
+	}
+
+	c.volWriteLimitMap.Range(func(key, value interface{}) bool {
+		vol := key.(string)
+		flow, ok := volWriteFlowMap[vol]
+		if !ok || flow <= 0 {
+			c.volWriteLimitMap.Delete(vol)
+			log.LogDebugf("SetVolWriteFlowMap delete vol: %v", vol)
+			return true
+		}
+		limit := value.(*VolFlowLimit)
+		if limit.setFlow(flow) {
+			log.LogDebugf("SetVolWriteFlowMap set vol: %v writeLimit %v", vol, flow)
+		}
+		return true
+	})
+
+	for vol, flow := range volWriteFlowMap {
+		if flow <= 0 {
+			continue
+		}
+		if _, ok := c.volWriteLimitMap.Load(vol); ok {
+			continue
+		}
+		c.SetVolWriteFlow(vol, flow)
+	}
+}
+
+func (c *CacheEngine) SetVolWriteFlow(volume string, flow int64) {
+	if volume == "" {
+		return
+	}
+	if flow <= 0 {
+		if _, loaded := c.volWriteLimitMap.LoadAndDelete(volume); loaded {
+			log.LogDebugf("SetVolWriteFlow delete vol: %v", volume)
+		}
+		return
+	}
+	value, _ := c.volWriteLimitMap.LoadOrStore(volume, &VolFlowLimit{})
+	limit := value.(*VolFlowLimit)
+	if limit.setFlow(flow) {
+		log.LogDebugf("SetVolWriteFlow set vol: %v writeLimit %v", volume, flow)
+	}
+}
+
+func (c *CacheEngine) AcquireVolWriteFlow(volume string, size int) error {
+	if volume == "" || size <= 0 {
+		return nil
+	}
+	value, ok := c.volWriteLimitMap.Load(volume)
+	if !ok {
+		return nil
+	}
+	limit := value.(*VolFlowLimit)
+	return limit.acquireFlow(size)
+}
+
+func (l *VolFlowLimit) setFlow(flow int64) bool {
+	if atomic.LoadInt64(&l.Flow) == flow {
+		return false
+	}
+	atomic.StoreInt64(&l.Flow, flow)
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if flow <= 0 {
+		l.limit = nil
+		return true
+	}
+	if l.limit == nil {
+		l.limit = util.NewIOLimiter(int(flow), 0)
+		return true
+	}
+	l.limit.ResetFlow(int(flow))
+	return true
+}
+
+func (l *VolFlowLimit) acquireFlow(size int) error {
+	l.mu.RLock()
+	limiter := l.limit
+	l.mu.RUnlock()
+	if limiter == nil || size <= 0 {
+		return nil
+	}
+	return limiter.RunNoWait(size, false, func() {})
 }
 
 func (c *CacheEngine) batchSetCacheItem(items []*lruCacheItem, blocks []*CacheBlock) {

@@ -77,6 +77,10 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 		err = f.opSetWriteIOLimits(conn, p)
 	case proto.OpFlashNodeSetPreheatIOLimits:
 		err = f.opSetPreheatIOLimits(conn, p)
+	case proto.OpFlashNodeSetVolReadIOLimits:
+		err = f.opSetVolReadIOLimits(conn, p)
+	case proto.OpFlashNodeSetVolWriteIOLimits:
+		err = f.opSetVolWriteIOLimits(conn, p)
 	case proto.OpFlashNodeScan:
 		err = f.opFlashNodeScan(conn, p)
 	case proto.OpFlashNodeTaskCommand:
@@ -196,6 +200,16 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 			// Old master version: clear all disableTTL settings to use default TTL behavior
 			f.cacheEngine.SetRemoteCacheDisableTTL(make(map[string]bool))
 		}
+		if req.RemoteCacheReadFlow != nil {
+			f.cacheEngine.SetVolReadFlowMap(req.RemoteCacheReadFlow)
+		} else {
+			f.cacheEngine.SetVolReadFlowMap(make(map[string]int64))
+		}
+		if req.RemoteCacheWriteFlow != nil {
+			f.cacheEngine.SetVolWriteFlowMap(req.RemoteCacheWriteFlow)
+		} else {
+			f.cacheEngine.SetVolWriteFlowMap(make(map[string]int64))
+		}
 	} else {
 		log.LogWarnf("decode HeartBeatRequest error: %s", err.Error())
 		resp.Status = proto.TaskFailed
@@ -308,6 +322,10 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		for _, source := range req.CacheRequest.Sources {
 			reqSize += int(source.Size_)
 		}
+		if err = f.cacheEngine.AcquireVolWriteFlow(volume, reqSize); err != nil {
+			stat.EndStat("MissCacheRead:VolWriteLimit", err, bgTime2, 1)
+			return
+		}
 		if err = f.limitWrite.TryRunAsync(ctx, reqSize, f.waitForCacheBlock, func() {
 			if block2, err2 := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err2 != nil {
 				log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err2)
@@ -339,6 +357,10 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 
 	bgTime2 := stat.BeginStat()
 	// reply to client as quick as possible if hit cache
+	if err = f.cacheEngine.AcquireVolReadFlow(volume, int(req.Size_)); err != nil {
+		stat.EndStat("HitCacheRead:VolReadLimit", err, bgTime2, 1)
+		return
+	}
 	err2 := f.limitRead.RunNoWait(int(req.Size_), false, func() {
 		err = f.doStreamReadRequest(ctx, conn, req, p, block)
 	})
@@ -1445,6 +1467,40 @@ func (f *FlashNode) opSetPreheatIOLimits(conn net.Conn, p *proto.Packet) (err er
 	} else {
 		log.LogErrorf("decode opSetPreheatIOLimits error: %s", err.Error())
 	}
+	return
+}
+
+func (f *FlashNode) opSetVolReadIOLimits(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	req := &proto.FlashNodeSetVolIOLimitsRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err == nil {
+		f.cacheEngine.SetVolReadFlow(req.VolName, req.Flow)
+	} else {
+		log.LogErrorf("decode opSetVolReadIOLimits error: %s", err.Error())
+	}
+	p.PacketOkReply()
+	return
+}
+
+func (f *FlashNode) opSetVolWriteIOLimits(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	req := &proto.FlashNodeSetVolIOLimitsRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err == nil {
+		f.cacheEngine.SetVolWriteFlow(req.VolName, req.Flow)
+	} else {
+		log.LogErrorf("decode opSetVolWriteIOLimits error: %s", err.Error())
+	}
+	p.PacketOkReply()
 	return
 }
 
