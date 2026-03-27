@@ -2797,6 +2797,14 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster, allowPre
 			rackLevel:       c.getRackAwareLevel(),
 			excludeRacks:    c.GetExRacksByHosts(TypeDataPartition, excludeHosts, partition.DecommissionSrcAddr),
 		}
+		// Auto self-healing should not be constrained by manual/select-tag policy.
+		if partition.DecommissionType == AutoDecommission || partition.DecommissionType == AutoAddReplica {
+			if partition.DecommissionTag != DefaultTag {
+				log.LogWarnf("action[TryAcquireDecommissionToken] dp %v clear decommission tag(%v) for type(%v)",
+					partition.PartitionID, partition.DecommissionTag, GetDecommissionTypeMessage(partition.DecommissionType))
+			}
+			partition.DecommissionTag = DefaultTag
+		}
 		if partition.DecommissionTag != DefaultTag {
 			param.selectType = proto.SelectTypeTag
 			param.tag = partition.DecommissionTag
