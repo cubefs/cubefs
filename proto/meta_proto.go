@@ -20,6 +20,7 @@ import (
 
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/atomicutil"
 )
 
 const (
@@ -37,6 +38,22 @@ type CreateNameSpaceRequest struct {
 type CreateNameSpaceResponse struct {
 	Status int
 	Result string
+}
+
+type RecoverPair struct {
+	RecoverSrc       string
+	RecoverDst       string
+	RecoverStart     int64
+	RecoverRetryCnt  int
+	RecoverRetryTime int64
+	RecoverState     RecoverState // Learner recovery state: 0=Init, 1=Recovering, 2=Failed
+	DecommissionType uint32
+	IsRecover        atomicutil.Bool
+}
+
+func (rp *RecoverPair) String() string {
+	return fmt.Sprintf("RecoverSrc[%v], RecoverDst[%v], RecoverStart[%v], RecoverRetryCnt[%v], RecoverRetryTime[%v], RecoverState[%v], DecommissionType[%v], IsRecover[%v]",
+		rp.RecoverSrc, rp.RecoverDst, rp.RecoverStart, rp.RecoverRetryCnt, rp.RecoverRetryTime, rp.RecoverState, rp.DecommissionType, rp.IsRecover.Load())
 }
 
 // Peer defines the peer of the node id and address.

@@ -21,6 +21,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1494,6 +1495,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[nodeDeleteBatchCountKey] = batchCount
 	}
 
+	if value = r.FormValue(followerReadLeaseTimeKey); value != "" {
+		noParams = false
+		followerReadLeaseTime := uint64(0)
+		followerReadLeaseTime, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(followerReadLeaseTimeKey)
+			return
+		}
+		params[followerReadLeaseTimeKey] = followerReadLeaseTime
+	}
+
 	if value = r.FormValue(nodeMarkDeleteRateKey); value != "" {
 		noParams = false
 		val := uint64(0)
@@ -1982,11 +1994,23 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		val := uint32(0)
 		tmp, err := strconv.ParseUint(value, 10, 32)
 		if err != nil {
-			err = unmatchedKey(metaManualDecommissionLimitKey)
+			err = unmatchedKey(metaManualAddReplicaLimitKey)
 			return params, err
 		}
 		val = uint32(tmp)
-		params[metaManualDecommissionLimitKey] = val
+		params[metaManualAddReplicaLimitKey] = val
+	}
+
+	if value = r.FormValue(metaManualLearnerLimitKey); value != "" {
+		noParams = false
+		val := uint32(0)
+		tmp, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(metaManualLearnerLimitKey)
+			return params, err
+		}
+		val = uint32(tmp)
+		params[metaManualLearnerLimitKey] = val
 	}
 
 	if value = r.FormValue(flashReadFlowLimit); value != "" {
@@ -2076,7 +2100,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	return
 }
 
-func validateRequestToCreateMetaPartition(r *http.Request) (volName string, count int, err error) {
+func validateRequestToCreateMetaPartition(r *http.Request) (volName string, count int, region string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2094,6 +2118,8 @@ func validateRequestToCreateMetaPartition(r *http.Request) (volName string, coun
 	if volName, err = extractName(r); err != nil {
 		return
 	}
+	// Get optional region parameter, if not specified, will use volume's default region
+	region = r.FormValue(regionKey)
 	return
 }
 

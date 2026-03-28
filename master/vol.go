@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
@@ -92,6 +93,9 @@ type VolVarargs struct {
 	// Meta Region
 	defaultRegion  string
 	allowedRegions []string
+
+	// MP Policy
+	mpPolicy map[string]*proto.VolMpPolicy // by region
 }
 
 // nolint: structcheck
@@ -241,11 +245,13 @@ type Vol struct {
 	defaultRegion        string   // default region for this volume
 	allowedRegions       []string // allowed regions for this volume
 	lastAutoCreateMpTime time.Time
+	mpPolicy             map[string]*proto.VolMpPolicy // by region
 }
 
 func newVol(vv volValue) (vol *Vol) {
 	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition)}
 
+	vol.lastAutoCreateMpTime = time.Now()
 	vol.dataPartitions = newDataPartitionMap(vv.Name)
 	vol.VersionMgr = newVersionMgr(vol)
 	vol.dpReplicaNum = vv.DpReplicaNum
@@ -437,6 +443,17 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	}
 	vol.DpTag = vv.DpTag
 	vol.MpTag = vv.MpTag
+
+	// MP Policy
+	if vv.MpPolicy != nil && len(vv.MpPolicy) > 0 {
+		vol.mpPolicy = make(map[string]*proto.VolMpPolicy)
+		for k, v := range vv.MpPolicy {
+			if v != nil {
+				vol.mpPolicy[k] = v.Copy()
+			}
+		}
+	}
+
 	return vol
 }
 
@@ -722,7 +739,7 @@ func (vol *Vol) compareStorageClasses(other []uint32) bool {
 	return true
 }
 
-func (vol *Vol) addMetaPartitions(c *Cluster, count int) (err error) {
+func (vol *Vol) addMetaPartitions(c *Cluster, count int, region string) (err error) {
 	// add extra meta partitions at a time
 	var (
 		start uint64
@@ -731,6 +748,11 @@ func (vol *Vol) addMetaPartitions(c *Cluster, count int) (err error) {
 
 	vol.createMpMutex.Lock()
 	defer vol.createMpMutex.Unlock()
+
+	// Use specified region, or fall back to volume's default region
+	if region == "" {
+		region = vol.defaultRegion
+	}
 
 	// update End of the maxMetaPartition range
 	maxPartitionId := vol.maxMetaPartitionID()
@@ -763,7 +785,7 @@ func (vol *Vol) addMetaPartitions(c *Cluster, count int) (err error) {
 			end = defaultMaxMetaPartitionInodeID
 		}
 
-		if err = vol.createMetaPartition(c, start, end, vol.defaultRegion); err != nil {
+		if err = vol.createMetaPartition(c, start, end, region); err != nil {
 			log.LogErrorf("action[addMetaPartitions] vol[%v] add meta partition err[%v]", vol.Name, err)
 			break
 		}
@@ -2111,6 +2133,20 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 		vol.allowedRegions = make([]string, len(args.allowedRegions))
 		copy(vol.allowedRegions, args.allowedRegions)
 	}
+
+	// Update MP Policy if provided
+	if args.mpPolicy != nil {
+		if vol.mpPolicy == nil {
+			vol.mpPolicy = make(map[string]*proto.VolMpPolicy)
+		}
+		for k, v := range args.mpPolicy {
+			if v != nil {
+				vol.mpPolicy[k] = v.Copy()
+			} else {
+				delete(vol.mpPolicy, k)
+			}
+		}
+	}
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -2131,7 +2167,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		quotaByPool[c.PoolId] = c.QuotaGB
 	}
 
-	return &VolVarargs{
+	result := &VolVarargs{
 		zoneName:                 vol.zoneName,
 		crossZone:                vol.crossZone,
 		description:              vol.description,
@@ -2189,6 +2225,18 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		defaultRegion:                vol.defaultRegion,
 		allowedRegions:               append([]string{}, vol.allowedRegions...),
 	}
+
+	// MP Policy
+	if vol.mpPolicy != nil && len(vol.mpPolicy) > 0 {
+		result.mpPolicy = make(map[string]*proto.VolMpPolicy)
+		for k, v := range vol.mpPolicy {
+			if v != nil {
+				result.mpPolicy[k] = v.Copy()
+			}
+		}
+	}
+
+	return result
 }
 
 func (vol *Vol) initQuotaManager(c *Cluster) {
@@ -2456,4 +2504,315 @@ func (vol *Vol) autoCreateMetaPartitionsForRegion(c *Cluster, region string, cou
 
 		log.LogInfof("action[autoCreateMetaPartitionsForRegion] vol[%v] region[%v] create meta partition success", vol.Name, region)
 	}
+}
+
+// checkAndCreateMpLearnersByPolicy checks mpPolicy and creates learner replicas in other regions
+func (vol *Vol) checkAndCreateMpLearnersByPolicy(c *Cluster) {
+	log.LogInfof("checkAndCreateMpLearnersByPolicy: vol[%v], mpPolicy[%v]", vol.Name, vol.mpPolicy)
+
+	type replicaInfo struct {
+		peer      proto.Peer
+		storeMode proto.StoreMode
+		region    string
+	}
+
+	mps := vol.getSortMetaPartitions()
+	// Iterate through all meta partitions
+	for _, mp := range mps {
+
+		log.LogDebugf("checkAndCreateMpLearnersByPolicy: mp[%v], mpPolicy[%v]", mp.PartitionID, vol.mpPolicy)
+
+		mp.RLock()
+		mpRegion := mp.Region
+		mpID := mp.PartitionID
+		mpPeers := make([]proto.Peer, len(mp.Peers))
+		replicas := make([]*MetaReplica, len(mp.Replicas))
+		copy(mpPeers, mp.Peers)
+		copy(replicas, mp.Replicas)
+		mp.RUnlock()
+
+		policy, exists := vol.mpPolicy[mpRegion]
+		if !exists || policy == nil || len(policy.Learner) == 0 {
+			continue
+		}
+
+		regions := vol.allowedRegions
+		for _, volRegion := range regions {
+			learnerPolicy, exists := policy.Learner[volRegion]
+			if !exists || learnerPolicy == nil {
+				continue
+			}
+
+			rInfo := replicaInfo{}
+			for _, peer := range mpPeers {
+				if peer.Type != raftProto.PeerLearner || !peer.ManualPromote {
+					continue
+				}
+
+				region := c.getRegionFromMetaNodeAddr(peer.Addr)
+				if region != volRegion {
+					continue
+				}
+
+				rInfo.peer = peer
+				rInfo.region = region
+
+				for _, r := range replicas {
+					if r.metaNode.Addr == peer.Addr && r.StoreMode == learnerPolicy.Mode {
+						rInfo.storeMode = r.StoreMode
+						break
+					}
+				}
+
+				if rInfo.storeMode == learnerPolicy.Mode {
+					break
+				}
+			}
+
+			if rInfo.storeMode == learnerPolicy.Mode {
+				log.LogInfof("action[checkAndCreateMpLearnersByPolicy] vol[%v] mp[%v] already has learner in region[%v], addr[%v]",
+					vol.Name, mpID, volRegion, rInfo.peer.Addr)
+				continue
+			}
+
+			param := &selectParam{
+				replicaNum:   1,
+				rackLevel:    c.getRackAwareLevel(),
+				poolId:       proto.UnSpecifiedPoolId,
+				region:       volRegion,
+				excludeHosts: mp.Hosts,
+			}
+
+			if rInfo.peer.Addr != "" {
+				if err := c.migrateMetaPartitionByLearner(rInfo.peer.Addr, "", mp, learnerPolicy.Mode, proto.MpManumalLearner); err != nil {
+					log.LogErrorf("action[checkAndCreateMpLearnersByPolicy] vol[%v] mp[%v] failed to migrate learner in region[%v], addr[%v], err[%v]",
+						vol.Name, mpID, volRegion, rInfo.peer.Addr, err)
+					continue
+				}
+				log.LogInfof("action[checkAndCreateMpLearnersByPolicy] vol[%v] mp[%v] successfully added learner in region[%v], addr[%v]",
+					vol.Name, mpID, volRegion, rInfo.peer.Addr)
+				continue
+			}
+
+			nodeType := TypeMetaPartition
+			if learnerPolicy.Mode == proto.StoreModeRocksDb {
+				nodeType = TypeRocksdbPartition
+			}
+
+			hosts, _, err := c.getHostFromNormalZone(nodeType, nil, 1, "", param)
+			if err != nil {
+				log.LogErrorf("action[checkAndCreateMpLearnersByPolicy] vol[%v] mp[%v] failed to get metanode from region[%v], err[%v]",
+					vol.Name, mpID, volRegion, err)
+				continue
+			}
+
+			if len(hosts) == 0 {
+				log.LogErrorf("action[checkAndCreateMpLearnersByPolicy] vol[%v] mp[%v] no available metanode in region[%v]",
+					vol.Name, mpID, volRegion)
+				continue
+			}
+
+			targetAddr := hosts[0]
+			if err = c.addMetaReplicaLearner(mp, targetAddr, learnerPolicy.Mode, "", true, proto.MpManumalLearner); err != nil {
+				log.LogErrorf("action[checkAndCreateMpLearnersByPolicy] vol[%v] mp[%v] failed to migrate learner in region[%v], addr[%v], err[%v]",
+					vol.Name, mpID, volRegion, targetAddr, err)
+				continue
+			}
+			log.LogInfof("action[checkAndCreateMpLearnersByPolicy] vol[%v] mp[%v] successfully added learner in region[%v], addr[%v]",
+				vol.Name, mpID, volRegion, targetAddr)
+
+		}
+	}
+
+}
+
+// getMpRegionPolicyStatus returns the learner distribution status for each region
+func (vol *Vol) getMpRegionPolicyStatus(c *Cluster) (statuses []*proto.MpRegionPolicyStatus) {
+	statuses = make([]*proto.MpRegionPolicyStatus, 0)
+
+	// Group meta partitions by region
+	regionMps := make(map[string][]*MetaPartition)
+	vol.mpsLock.RLock()
+	for _, mp := range vol.MetaPartitions {
+		region := mp.Region
+		regionMps[region] = append(regionMps[region], mp)
+	}
+	vol.mpsLock.RUnlock()
+
+	// Process each region
+	for region, mps := range regionMps {
+		status := &proto.MpRegionPolicyStatus{
+			Region:          region,
+			TotalMp:         len(mps),
+			LearnerStatuses: make(map[string]*proto.LearnerRegionStatus),
+		}
+
+		// Get policy for this region
+		vol.volLock.RLock()
+		policy, hasPolicy := vol.mpPolicy[region]
+		vol.volLock.RUnlock()
+
+		if !hasPolicy || policy == nil || len(policy.Learner) == 0 {
+			// No policy for this region, all are remaining
+			statuses = append(statuses, status)
+			continue
+		}
+
+		// Initialize learner statuses for each target region in policy
+		for targetRegion := range policy.Learner {
+			status.LearnerStatuses[targetRegion] = &proto.LearnerRegionStatus{
+				Completed:       0,
+				InProgress:      0,
+				Remaining:       0,
+				InProgressMpIds: make([]uint64, 0),
+				RemainingMpIds:  make([]uint64, 0),
+			}
+		}
+
+		// Count status for each meta partition
+		for _, mp := range mps {
+			mp.RLock()
+
+			inProgressMps := make(map[string]*proto.RecoverPair)
+			for _, rp := range mp.RecoverLearners {
+				if rp.RecoverDst != "" && rp.RecoverSrc == "" {
+					dstRegion := c.getRegionFromMetaNodeAddr(rp.RecoverDst)
+					if dstRegion != "" {
+						inProgressMps[dstRegion] = rp
+					}
+				}
+			}
+
+			completedMps := make(map[string]bool)
+			for _, peer := range mp.Peers {
+				if peer.Type == raftProto.PeerLearner && peer.ManualPromote {
+					dstRegion := c.getRegionFromMetaNodeAddr(peer.Addr)
+					if _, exists := inProgressMps[dstRegion]; exists {
+						continue
+					}
+					completedMps[dstRegion] = true
+				}
+			}
+
+			// Check each target region in policy
+			for targetRegion, learnerStatus := range status.LearnerStatuses {
+				if _, exists := completedMps[targetRegion]; exists {
+					learnerStatus.Completed++
+				} else if _, exists := inProgressMps[targetRegion]; exists {
+					learnerStatus.InProgress++
+					learnerStatus.InProgressMpIds = append(learnerStatus.InProgressMpIds, mp.PartitionID)
+				} else {
+					learnerStatus.Remaining++
+					learnerStatus.RemainingMpIds = append(learnerStatus.RemainingMpIds, mp.PartitionID)
+				}
+			}
+			mp.RUnlock()
+		}
+
+		statuses = append(statuses, status)
+	}
+
+	return statuses
+}
+
+func (vol *Vol) checkMpLeaseTimeout(c *Cluster) bool {
+
+	mps := vol.cloneMetaPartitionMap()
+	// Check lease apply time vs report time
+	threshold := int64(atomic.LoadUint64(&c.cfg.FollowerReadLeaseTime))
+	mpTimeoutSec := c.getMetaPartitionTimeoutSec()
+	for _, mp := range mps {
+		mp.RLock()
+		for _, replica := range mp.Replicas {
+
+			manualPromote := false
+
+			for _, peer := range mp.Peers {
+				if peer.Addr == replica.Addr && peer.ManualPromote {
+					manualPromote = true
+					break
+				}
+			}
+
+			if !manualPromote {
+				continue
+			}
+
+			timeDiff := replica.ReportTime - replica.LeaseApplyTime
+			if timeDiff < 0 {
+				timeDiff = -timeDiff
+			}
+			if timeDiff > threshold || !replica.isActive(mpTimeoutSec) {
+				log.LogWarnf("checkMpLeaseTimeout: mp[%v] lease timeout, leaseApplyTime[%v], reportTime[%v]", mp.PartitionID, replica.LeaseApplyTime, replica.ReportTime)
+				mp.RUnlock()
+				return true
+			}
+
+		}
+		mp.RUnlock()
+	}
+
+	return false
+}
+
+// checkMpRegionPolicyCompliance checks if all meta partitions in this volume comply with MpRegionPolicy
+// Returns true if all MPs comply, false otherwise
+func (vol *Vol) checkMpRegionPolicyCompliance(c *Cluster) bool {
+	vol.volLock.RLock()
+	hasPolicy := vol.mpPolicy != nil && len(vol.mpPolicy) > 0
+	vol.volLock.RUnlock()
+
+	if !hasPolicy {
+		// No policy configured, consider as compliant
+		return true
+	}
+
+	vol.mpsLock.RLock()
+	mps := make([]*MetaPartition, 0, len(vol.MetaPartitions))
+	for _, mp := range vol.MetaPartitions {
+		mps = append(mps, mp)
+	}
+	vol.mpsLock.RUnlock()
+
+	// Check each meta partition
+	for _, mp := range mps {
+		mp.RLock()
+		mpRegion := mp.Region
+		mp.RUnlock()
+
+		// Get policy for this mp's region
+		vol.volLock.RLock()
+		policy, hasPolicyForRegion := vol.mpPolicy[mpRegion]
+		vol.volLock.RUnlock()
+
+		if !hasPolicyForRegion || policy == nil || len(policy.Learner) == 0 {
+			// No policy for this region, skip
+			continue
+		}
+
+		peers := make([]proto.Peer, len(mp.Peers))
+		mp.RLock()
+		copy(peers, mp.Peers)
+		mp.RUnlock()
+
+		for targetRegion := range policy.Learner {
+			// Check if this mp has completed or in-progress learner for this target region
+			exist := false
+			for _, p := range mp.Peers {
+				if p.Type == raftProto.PeerLearner && p.ManualPromote {
+					dstRegion := c.getRegionFromMetaNodeAddr(p.Addr)
+					if dstRegion == targetRegion {
+						exist = true
+						break
+					}
+				}
+			}
+			if !exist {
+				log.LogWarnf("checkMpRegionPolicyCompliance: mp[%v] region[%v] no learner for target region[%v]", mp.PartitionID, mpRegion, targetRegion)
+				return false
+			}
+		}
+	}
+
+	return true
 }

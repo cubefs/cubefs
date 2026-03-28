@@ -79,6 +79,7 @@ const (
 	MetricDpNoLeader            = "dp_no_leader"
 	MetricMissingMp             = "missing_mp"
 	MetricMpNoLeader            = "mp_no_leader"
+	MetricMpRegionInfo          = "mp_region_info"
 	MetricReplicaMissingDPCount = "replica_missing_dp_count"
 	MetricDpMissingLeaderCount  = "dp_missing_Leader_count"
 	MetricMpMissingLeaderCount  = "mp_missing_Leader_count"
@@ -140,6 +141,7 @@ type monitorMetrics struct {
 	InactiveDataNodeInfo             *exporter.GaugeVec // TODO: remove in the future
 	metaNodesInactive                *exporter.Gauge    // TODO: remove in the future
 	InactiveMetaNodeInfo             *exporter.GaugeVec // TODO: remove in the future
+	MpRegionInfo                     *exporter.GaugeVec
 	mastersInactive                  *exporter.Gauge
 	InactiveMasterInfo               *exporter.GaugeVec
 	flashNodesInactive               *exporter.Gauge
@@ -526,6 +528,7 @@ func (mm *monitorMetrics) start() {
 	mm.metaNodesNotWritable = exporter.NewGauge(MetricMetaNodesNotWritable)
 	mm.InactiveMetaNodeInfo = exporter.NewGaugeVec(MetricInactiveMetaNodeInfo, "", []string{"clusterName", "addr"})
 	mm.ReplicaMissingDPCount = exporter.NewGaugeVec(MetricReplicaMissingDPCount, "", []string{"replicaNum", "media"})
+	mm.MpRegionInfo = exporter.NewGaugeVec(MetricMpRegionInfo, "", []string{"type"})
 	mm.DpMissingLeaderCount = exporter.NewGaugeVec(MetricDpMissingLeaderCount, "", []string{"replicaNum", "media"})
 	mm.MpMissingLeaderCount = exporter.NewGauge(MetricMpMissingLeaderCount)
 	mm.MpMissingReplicaCount = exporter.NewGauge(MetricMpMissingReplicaCount)
@@ -635,6 +638,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.updateFlashNodesStat()
 	mm.setNotRocksdbWritableMetaNodesCount()
 	mm.setDistributionOptimizationMetrics()
+	mm.checkMpRegionPolicy()
 }
 
 func (mm *monitorMetrics) checkPartitionCreateMetrics() {
@@ -1207,17 +1211,18 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 			alloc = "true"
 		}
 
+		region := metaNode.Region
 		mm.nodeStat.Delete(map[string]string{"addr": mAddr})
 
-		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, mAddr, "usageRatio", zone, setId, media, writable, alloc, rack, "", tag)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, mAddr, "memTotal", zone, setId, media, writable, alloc, rack, "", tag)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, mAddr, "memUsed", zone, setId, media, writable, alloc, rack, "", tag)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc, rack, "", tag)
-		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc, rack, "", tag)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc, rack, "", tag)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsRocksdbWriteAble(), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc, rack, "", tag)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc, rack, "", tag)
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc, rack, "", tag)
+		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, mAddr, "usageRatio", zone, setId, media, writable, alloc, rack, region, tag)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, mAddr, "memTotal", zone, setId, media, writable, alloc, rack, region, tag)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, mAddr, "memUsed", zone, setId, media, writable, alloc, rack, region, tag)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, mAddr, "mpCount", zone, setId, media, writable, alloc, rack, region, tag)
+		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, mAddr, "threshold", zone, setId, media, writable, alloc, rack, region, tag)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "writable", zone, setId, media, writable, alloc, rack, region, tag)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsRocksdbWriteAble(), MetricRoleMetaNode, metaNode.Addr, "rocksdbWritable", zone, setId, media, writable, alloc, rack, region, tag)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, mAddr, "active", zone, setId, media, writable, alloc, rack, region, tag)
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.PartitionCntLimited() && metaNode.IsWriteAble(), MetricRoleMetaNode, mAddr, "alloc", zone, setId, media, writable, alloc, rack, region, tag)
 
 		return true
 	})
@@ -1325,6 +1330,36 @@ func (mm *monitorMetrics) updateFlashNodesStat() {
 	})
 
 	mm.flashNodesInactive.Set(float64(inactiveFlashNodesCount))
+}
+
+// checkMpRegionPolicy checks all volumes for MpRegionPolicy compliance
+// and logs volumes that have non-compliant meta partitions
+func (mm *monitorMetrics) checkMpRegionPolicy() {
+	c := mm.cluster
+	c.volMutex.RLock()
+	vols := make([]*Vol, 0, len(c.vols))
+	for _, vol := range c.vols {
+		vols = append(vols, vol)
+	}
+	c.volMutex.RUnlock()
+
+	mm.MpRegionInfo.Reset()
+
+	for _, vol := range vols {
+		if vol.IsDeleted() {
+			continue
+		}
+
+		if !vol.checkMpRegionPolicyCompliance(c) {
+			log.LogWarnf("checkMpRegionPolicyCompliance: volume[%v] has meta partitions that do not comply with MpRegionPolicy", vol.Name)
+			mm.MpRegionInfo.SetWithLabelValues(1, vol.Name, "to_process")
+		}
+
+		if vol.checkMpLeaseTimeout(c) {
+			log.LogWarnf("checkMpLeaseTimeout: volume[%v] has meta partitions that have lease timeout", vol.Name)
+			mm.MpRegionInfo.SetWithLabelValues(1, vol.Name, "lease_timeout")
+		}
+	}
 }
 
 func (mm *monitorMetrics) setNotWritableMetaNodesCount() {

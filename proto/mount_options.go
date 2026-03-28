@@ -47,6 +47,7 @@ const (
 	EnableXattr
 	NearRead
 	MetaNearRead
+	RegionReadCfg
 	EnablePosixACL
 	EnableUnixPermission
 	RequestTimeout
@@ -103,6 +104,7 @@ const (
 	InodeLruLimit
 	FuseServeThreads
 	PoolId
+	MetaRegion
 	MaxMountOption
 )
 
@@ -153,6 +155,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
 	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", true}
 	opts[MetaNearRead] = MountOption{"metaNearRead", "Enable meta read from nearest node", "", false}
+	opts[RegionReadCfg] = MountOption{"regionReadCfg", "Enable region read config", "", true}
 	opts[MaximallyRead] = MountOption{"maximallyRead", "Enable read from other node when read quorum failed", "", false}
 
 	opts[Authenticate] = MountOption{"authenticate", "Enable Authenticate", "", false}
@@ -215,6 +218,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[FuseServeThreads] = MountOption{"fuseServeThreads", "Fuse Serve Threads", "", int64(0)}
 	opts[RemoteCacheName] = MountOption{"remoteCacheTopoName", "name for target remote cache topology", "", "default"}
 	opts[PoolId] = MountOption{"poolId", "Storage pool ID for new inodes (0 means use volume default)", "", int64(0)}
+	opts[MetaRegion] = MountOption{"metaRegion", "Meta region for creating inodes (empty means use volume default region)", "", ""}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -360,6 +364,7 @@ type MountOptions struct {
 	EnableXattr             bool
 	NearRead                bool
 	MetaNearRead            bool
+	RegionReadCfg           bool
 	EnablePosixACL          bool
 	EnableQuota             bool
 	EnableTransaction       string
@@ -424,4 +429,5 @@ type MountOptions struct {
 	FuseServeThreads      int64
 	MinReadAheadSize      int64
 	PoolId                uint8
+	MetaRegion            string // Meta region for creating inodes, empty means use volume default region
 }

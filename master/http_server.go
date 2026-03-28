@@ -490,6 +490,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminVolUpdateDefaultRegion).
 		HandlerFunc(m.volUpdateDefaultRegion)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminVolUpdateMpRegionPolicy).
+		HandlerFunc(m.volUpdateMpRegionPolicy)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminVolGetMpRegionPolicy).
+		HandlerFunc(m.volGetMpRegionPolicy)
 
 	// multi version snapshot APIs
 	// TODO: hybrid cloud not support snapshot version yet, forbidden AdminCreateVersion until snapshot version is supported

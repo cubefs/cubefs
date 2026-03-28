@@ -441,6 +441,9 @@ func (metaNode *MetaNode) IsRocksdbWriteAble() (ok bool) {
 		ok = true
 	}
 
+	log.LogInfof("action[IsRocksdbWriteAble] metaNode[%v] isActive[%v] RocksdbRdOnly[%v] systemMemoryFreeSize[%v] metaNode.MetaPartitionCount[%v] reachesRocksdbDisksThreshold[%v] systemMemoryReachesThreshold[%v] rocksdbDiskKeyNumUnderMax[%v]",
+		metaNode.Addr, metaNode.IsActive, metaNode.RocksdbRdOnly, systemMemoryFreeSize, metaNode.MetaPartitionCount, metaNode.reachesRocksdbDisksThreshold(), metaNode.systemMemoryReachesThreshold(), metaNode.rocksdbDiskKeyNumUnderMax())
+
 	return
 }
 

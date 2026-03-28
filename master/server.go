@@ -322,6 +322,8 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		m.config.metaNodeReservedMem = defaultMetaNodeReservedMem
 	}
 
+	log.LogInfof("action[checkConfig] metaNodeReservedMem[%v]", m.config.metaNodeReservedMem)
+
 	retainLogs := cfg.GetString(CfgRetainLogs)
 	if retainLogs != "" {
 		if m.retainLogs, err = strconv.ParseUint(retainLogs, 10, 64); err != nil {
@@ -458,6 +460,29 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.config.SingleNodeMode = cfg.GetBoolWithDefault(cfgSingleNodeMode, false)
 
 	m.config.MaxWritableDataPartitionCnt = cfg.GetIntWithDefault(cfgMaxWritableDataPartitionCnt, 1000)
+
+	// Parse maxMetaPartitionLearnerNum configuration
+	maxLearnerNumStr := cfg.GetString(cfgMaxMpLearnerNum)
+	if maxLearnerNumStr != "" {
+		var maxLearnerNum uint64
+		if maxLearnerNum, err = strconv.ParseUint(maxLearnerNumStr, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+
+		if maxLearnerNum > maxAllowedMPLearnerNum {
+			m.config.MaxMPLearnerNum = maxAllowedMPLearnerNum
+			log.LogWarnf("action[checkConfig] maxMPLearnerNum[%v] exceeds maximum allowed[%v], using maximum value",
+				maxLearnerNum, maxAllowedMPLearnerNum)
+		} else {
+			m.config.MaxMPLearnerNum = maxLearnerNum
+		}
+	}
+
+	if m.config.MaxMPLearnerNum == 0 {
+		m.config.MaxMPLearnerNum = defaultMPLearnerNum
+	}
+
+	log.LogInfof("action[checkConfig] maxMetaPartitionLearnerNum[%v]", m.config.MaxMPLearnerNum)
 
 	return
 }

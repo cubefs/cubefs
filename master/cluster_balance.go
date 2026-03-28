@@ -2826,8 +2826,9 @@ func (c *Cluster) AddLearnerToDestination(migratePlan *proto.ClusterPlan, mpPlan
 	count = migratePlan.ModeCnt - count
 
 	learnerCount := GetMetaPartitionLearnerCount(mp)
-	if (count + learnerCount) > proto.MaxMetaPartitionLearnerNum {
-		count = proto.MaxMetaPartitionLearnerNum - learnerCount
+	maxLearnerNum := int(c.cfg.MaxMPLearnerNum)
+	if (count + learnerCount) > maxLearnerNum {
+		count = maxLearnerNum - learnerCount
 		mpPlan.Msg = fmt.Sprintf("mp(%d) already has (%d) learners, only add (%d) learners", mpPlan.ID, learnerCount, count)
 		log.LogWarnf(mpPlan.Msg)
 	}
@@ -3599,10 +3600,10 @@ func (c *Cluster) PromoteMetaReplicaAndWait(plan *proto.PromoteLearnerPlan, lear
 		learnerInfo.DeleteAddr = append(learnerInfo.DeleteAddr, srcAddr)
 
 		mp.IsRecover.Store(true)
-		mp.SrcAddr = srcAddr
-		mp.LearnerDstAddr = learner
-		mp.RecoverStartTime = time.Now().Unix()
-		mp.RecoverFailCount = 0
+		mp.RecoverSrc = srcAddr
+		mp.RecoverDst = learner
+		mp.RecoverStart = time.Now().Unix()
+		mp.RecoverRetryCnt = 0
 		mp.RecoverState = proto.RecoverStateRecovering
 		c.putBadMetaPartitions(srcAddr, mp.PartitionID)
 

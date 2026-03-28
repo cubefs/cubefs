@@ -339,6 +339,8 @@ const (
 	AdminVolUpdatePoolId           = "/vol/updatePoolId"
 	AdminVolAddRegion              = "/vol/addRegion"
 	AdminVolUpdateDefaultRegion    = "/vol/updateDefaultRegion"
+	AdminVolUpdateMpRegionPolicy   = "/vol/updateMpRegionPolicy"
+	AdminVolGetMpRegionPolicy      = "/vol/getMpRegionPolicy"
 
 	// FlashNode API
 	FlashNodeAdd                = "/flashNode/add"
@@ -691,6 +693,7 @@ type ClusterInfo struct {
 	Ip                                 string
 	MetaNodeDeleteBatchCount           uint64
 	MetaNodeDeleteWorkerSleepMs        uint64
+	FollowerReadLeaseTime              uint64
 	DataNodeDeleteLimitRate            uint64
 	DataNodeAutoRepairLimitRate        uint64
 	DpMaxRepairErrCnt                  uint64
@@ -1064,6 +1067,7 @@ type MetaPartitionReport struct {
 	ReadOnlyReasons           uint32
 	StoreMode                 StoreMode
 	IsLearner                 bool
+	LeaseApplyTime            int64
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -1549,6 +1553,45 @@ type SimpleVolView struct {
 	// Meta Region
 	DefaultRegion  string   `json:"defaultRegion,omitempty"`  // Default region for this volume
 	AllowedRegions []string `json:"allowedRegions,omitempty"` // Allowed regions for this volume
+
+	// MP Region Policy
+	MpRegionPolicy map[string]*VolMpPolicy `json:"mpRegionPolicy,omitempty"` // by region -> VolMpPolicy
+}
+
+// LearnerPolicy defines the learner policy for a target region
+type LearnerPolicy struct {
+	Mode StoreMode `json:"mode"`
+}
+
+// VolMpPolicy defines the MP policy for a source region
+type VolMpPolicy struct {
+	Name    string                    `json:"name"`
+	Learner map[string]*LearnerPolicy `json:"learner"` // target region -> learner policy
+}
+
+// String returns the JSON string representation of VolMpPolicy
+func (v *VolMpPolicy) String() string {
+	data, _ := json.Marshal(v)
+	return string(data)
+}
+
+// Copy returns a deep copy of VolMpPolicy
+func (v *VolMpPolicy) Copy() *VolMpPolicy {
+	if v == nil {
+		return nil
+	}
+	copy := &VolMpPolicy{
+		Name:    v.Name,
+		Learner: make(map[string]*LearnerPolicy),
+	}
+	for k, v := range v.Learner {
+		if v != nil {
+			copy.Learner[k] = &LearnerPolicy{
+				Mode: v.Mode,
+			}
+		}
+	}
+	return copy
 }
 
 type NodeSetInfo struct {
@@ -1638,7 +1681,7 @@ type ZoneView struct {
 	DataMediaType       string
 	PoolId              uint8  // storage pool ID
 	PoolName            string // storage pool name
-	Region              string // Region name, "default" if not specified
+	MetaRegion          string // Region name, "default" if not specified
 }
 
 type NodeSetView struct {
@@ -1715,7 +1758,38 @@ const (
 	DistributionOptimization
 	TagDecommission
 	MpBalance // Meta partition balance decommission type
+	MpManumalLearner
 )
+
+// FormatDecommissionType formats decommission type as "Name(Number)"
+func FormatDecommissionType(decommType uint32) string {
+	var name string
+	switch decommType {
+	case InitialDecommission:
+		name = "InitialDecommission"
+	case ManualDecommission:
+		name = "ManualDecommission"
+	case AutoDecommission:
+		name = "AutoDecommission"
+	case QueryDecommission:
+		name = "QueryDecommission"
+	case AutoAddReplica:
+		name = "AutoAddReplica"
+	case ManualAddReplica:
+		name = "ManualAddReplica"
+	case DistributionOptimization:
+		name = "DistributionOptimization"
+	case TagDecommission:
+		name = "TagDecommission"
+	case MpBalance:
+		name = "MpBalance"
+	case MpManumalLearner:
+		name = "MpManumalLearner"
+	default:
+		name = "Unknown"
+	}
+	return fmt.Sprintf("%s(%d)", name, decommType)
+}
 
 const (
 	SelectType_Normal uint32 = iota
@@ -2044,6 +2118,22 @@ const (
 	SelectTypeNone = iota
 	SelectTypeTag
 )
+
+// MpRegionPolicyStatus represents the learner distribution status for a region
+type MpRegionPolicyStatus struct {
+	Region          string                          `json:"region"`          // Source region (e.g., "default", "region2")
+	TotalMp         int                             `json:"totalMp"`         // Total meta partitions in this region
+	LearnerStatuses map[string]*LearnerRegionStatus `json:"learnerStatuses"` // Target learner region -> status
+}
+
+// LearnerRegionStatus represents the status of learners for a target region
+type LearnerRegionStatus struct {
+	Completed       int      `json:"completed"`                 // Number of completed learners
+	InProgress      int      `json:"inProgress"`                // Number of learners in progress
+	Remaining       int      `json:"remaining"`                 // Number of remaining learners (not started)
+	InProgressMpIds []uint64 `json:"inProgressMpIds,omitempty"` // MP IDs that are in progress (only when detail is requested)
+	RemainingMpIds  []uint64 `json:"remainingMpIds,omitempty"`  // MP IDs that are remaining (only when detail is requested)
+}
 
 // Default Storage Pool IDs
 const (

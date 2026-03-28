@@ -48,11 +48,29 @@ func (c *Cluster) GetMetaPartitionDecommissionCount(decommissionType uint32) uin
 		return true
 	})
 
+	c.RecoverMetaPartitionIds.Range(func(key, value interface{}) bool {
+		recoverMetaPartitionId := key.(uint64)
+		partition, err := c.getMetaPartitionByID(recoverMetaPartitionId)
+		if err != nil {
+			return true
+		}
+
+		partition.RLock()
+		defer partition.RUnlock()
+		for _, learner := range partition.RecoverLearners {
+			if learner.DecommissionType == decommissionType {
+				count++
+				break
+			}
+		}
+		return true
+	})
+
 	return count
 }
 
-// CheckMetaPartitionDecommissionLimit checks if the decommission limit is reached for the given type
-func (c *Cluster) CheckMetaPartitionDecommissionLimit(decommissionType uint32) error {
+// CheckMPDecommissionLimit checks if the decommission limit is reached for the given type
+func (c *Cluster) CheckMPDecommissionLimit(decommissionType uint32) error {
 	currentCount := c.GetMetaPartitionDecommissionCount(decommissionType)
 	limit := c.GetMetaPartitionDecommissionLimit(decommissionType)
 
@@ -84,6 +102,9 @@ func (c *Cluster) SetMetaPartitionDecommissionLimit(decommissionType uint32, lim
 	case proto.ManualAddReplica:
 		c.MetaManualAddReplicaLimit.Store(limit)
 		log.LogInfof("action[SetMetaPartitionDecommissionLimit] ManualAddReplica limit set to: %d", limit)
+	case proto.MpManumalLearner:
+		c.MetaManualLearnerLimit.Store(limit)
+		log.LogInfof("action[SetMetaPartitionDecommissionLimit] MpManumalLearner limit set to: %d", limit)
 	default:
 		return fmt.Errorf("unknown meta partition decommission type: %d", decommissionType)
 	}
@@ -105,6 +126,8 @@ func (c *Cluster) GetMetaPartitionDecommissionLimit(decommissionType uint32) uin
 		return c.MetaBalanceLimit.Load()
 	case proto.ManualAddReplica:
 		return c.MetaManualAddReplicaLimit.Load()
+	case proto.MpManumalLearner:
+		return c.MetaManualLearnerLimit.Load()
 	default:
 		return 0
 	}
@@ -121,6 +144,8 @@ func GetMetaPartitionDecommissionTypeName(decommissionType uint32) string {
 		return "MpBalance"
 	case proto.ManualAddReplica:
 		return "ManualAddReplica"
+	case proto.MpManumalLearner:
+		return "MpManumalLearner"
 	default:
 		return fmt.Sprintf("Unknown(%d)", decommissionType)
 	}

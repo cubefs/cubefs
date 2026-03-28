@@ -67,6 +67,8 @@ type MetaNodeInfo struct {
 	RocksdbKeyNumMax          uint64
 	Tag                       string
 	Region                    string // Region name, "default" if not specified
+	NodeMemTotal              uint64 // Total system memory of the node
+	NodeMemUsed               uint64 // Used system memory of the node
 }
 
 // DataNode stores all the information about a data node
@@ -132,6 +134,7 @@ type MetaPartitionInfo struct {
 	Zones                     []string
 	NodeSets                  []uint64
 	Racks                     []string
+	Regions                   []string // Region names for each replica
 	OfflinePeerID             uint64
 	MissNodes                 map[string]int64
 	LoadResponse              []*MetaPartitionLoadResponse
@@ -145,13 +148,14 @@ type MetaPartitionInfo struct {
 	MemStoreCnt               uint8
 	RockStoreCnt              uint8
 	StoreMode                 StoreMode
-	Region                    string       // Region name for this meta partition
-	SrcAddr                   string       // Source address for learner mode decommission
-	LearnerDstAddr            string       // Destination address for learner mode decommission
-	RecoverStartTime          int64        // Start time of learner mode recovery
-	RecoverFailCount          int          // Failure count for promote or deleteMetaReplica operations
-	RecoverRetryTime          int64        // Last failure time for promote or deleteMetaReplica operations
-	RecoverState              RecoverState // Learner recovery state: 0=Init, 1=Recovering, 2=Failed
+	Region                    string         // Region name for this meta partition
+	SrcAddr                   string         // Source address for learner mode decommission
+	LearnerDstAddr            string         // Destination address for learner mode decommission
+	RecoverStartTime          int64          // Start time of learner mode recovery
+	RecoverFailCount          int            // Failure count for promote or deleteMetaReplica operations
+	RecoverRetryTime          int64          // Last failure time for promote or deleteMetaReplica operations
+	RecoverState              RecoverState   // Learner recovery state: 0=Init, 1=Recovering, 2=Failed
+	RecoverLearners           []*RecoverPair // Learner recovery pairs
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -170,6 +174,8 @@ type MetaReplicaInfo struct {
 	ReadOnlyReasons uint32
 	StoreMode       StoreMode
 	Tag             string
+	LeaseApplyTime  int64 // lease apply time from leader timestamp notification
+	IsActive        bool  // replica is live per master meta partition heartbeat timeout
 }
 
 // ClusterView provides the view of a cluster.
@@ -231,6 +237,7 @@ type ClusterView struct {
 	MetaManualDecommissionLimit               uint32
 	MetaBalanceLimit                          uint32
 	MetaManualAddReplicaLimit                 uint32
+	MetaManualLearnerLimit                    uint32
 	DefaultPoolId                             uint8
 	RocksdbDiskTotal                          uint64
 	RocksdbMpCount                            uint64
@@ -425,6 +432,7 @@ type VolStatInfo struct {
 	DefaultStorageClass     uint32
 	MetaFollowerRead        bool
 	MetaNearRead            bool
+	DefaultMetaRegion       string
 	MaximallyRead           bool
 	LeaderRetryTimeOut      int
 	StatByStorageClass      []*StatOfStorageClass
@@ -449,6 +457,7 @@ type DataPartitionInfo struct {
 	Zones                    []string
 	NodeSets                 []uint64
 	Racks                    []string
+	Pools                    []uint8          // Pool IDs for each replica
 	MissingNodes             map[string]int64 // key: address of the missing node, value: when the node is missing
 	VolName                  string
 	VolID                    uint64
@@ -534,11 +543,24 @@ type MetaPartitionDiagnosis struct {
 	ManualLearnerMetaPartitionIDs              []uint64
 }
 
+type RecoverPairWithPartitionID struct {
+	PartitionID uint64
+	RecoverPair RecoverPair
+}
+
+type LeaseTimeExceededReplica struct {
+	VolName        string
+	PartitionID    uint64
+	ReplicaAddr    string
+	LeaseApplyTime int64
+	ReportTime     int64
+	IsActive       bool
+}
+
 type MetaPartitionDiagnosisV1 struct {
 	InactiveMetaNodes                []string
 	NoLeaderMetaPartitionIDs         []uint64
 	LackReplicaMetaPartitionIDs      []uint64
-	BadMetaPartitionInfos            []BadPartitionRepairView
 	UnavailableMetaPartitionIDs      []uint64
 	ExcessiveReplicaMetaPartitionIDs []uint64
 	LearnerFlagMismatchIDs           []uint64
@@ -549,6 +571,9 @@ type MetaPartitionDiagnosisV1 struct {
 	FailedRecoveryMetaPartitionIDs   []uint64
 	AutoLearnerMetaPartitionIDs      []uint64
 	ManualLearnerMetaPartitionIDs    []uint64
+	RecoverPairs                     []RecoverPairWithPartitionID
+	LearnerRecoverPairs              []RecoverPairWithPartitionID
+	LeaseTimeExceededReplicas        []LeaseTimeExceededReplica
 }
 
 type FailedDpInfo struct {

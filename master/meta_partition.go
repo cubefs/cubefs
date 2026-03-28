@@ -24,7 +24,6 @@ import (
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -57,25 +56,26 @@ type MetaReplica struct {
 	ReadOnlyReasons           uint32
 	StoreMode                 proto.StoreMode
 	IsLearner                 bool
+	LeaseApplyTime            int64
 }
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartition struct {
-	PartitionID               uint64
-	Start                     uint64
-	End                       uint64
-	MaxInodeID                uint64
-	InodeCount                uint64
-	DentryCount               uint64
-	FreeListLen               uint64
-	TxCnt                     uint64
-	TxRbInoCnt                uint64
-	TxRbDenCnt                uint64
-	Replicas                  []*MetaReplica
-	LeaderReportTime          int64
-	ReplicaNum                uint8
-	Status                    int8
-	IsRecover                 atomicutil.Bool
+	PartitionID      uint64
+	Start            uint64
+	End              uint64
+	MaxInodeID       uint64
+	InodeCount       uint64
+	DentryCount      uint64
+	FreeListLen      uint64
+	TxCnt            uint64
+	TxRbInoCnt       uint64
+	TxRbDenCnt       uint64
+	Replicas         []*MetaReplica
+	LeaderReportTime int64
+	ReplicaNum       uint8
+	Status           int8
+	// IsRecover                 atomicutil.Bool
 	Freeze                    int8
 	volID                     uint64
 	volName                   string
@@ -97,16 +97,12 @@ type MetaPartition struct {
 	sync.RWMutex
 
 	LastDelReplicaTime int64
-	SrcAddr            string             // Source address for learner mode decommission
-	LearnerDstAddr     string             // Destination address for learner mode decommission
-	RecoverStartTime   int64              // Start time of learner mode recovery
-	RecoverFailCount   int                // Failure count for promote or deleteMetaReplica operations
-	RecoverRetryTime   int64              // Last failure time for promote or deleteMetaReplica operations
-	RecoverState       proto.RecoverState // Learner recovery state: 0=Init, 1=Recovering, 2=Failed
-
 	RestoreReplicaMeta uint32
-	DecommissionType   uint32
-	Region             string // Region name for this meta partition
+	// DecommissionType   uint32
+	Region string // Region name for this meta partition
+
+	*proto.RecoverPair
+	RecoverLearners []*proto.RecoverPair
 }
 
 func (mp *MetaPartition) newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
@@ -137,6 +133,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.StatByPool = make([]*proto.StatOfStorageClass, 0)
 	mp.StatByMigratePool = make([]*proto.StatOfStorageClass, 0)
 	mp.Region = proto.DefaultRegion // Default region
+	mp.RecoverPair = &proto.RecoverPair{}
 	return
 }
 
@@ -530,6 +527,10 @@ func (mp *MetaPartition) hasMissingOneReplica(addr string, replicaNum int) (err 
 	for _, rep := range mp.Replicas {
 		if rep.Addr == addr {
 			inReplicas = true
+
+			if rep.IsLearner {
+				return nil
+			}
 			break
 		}
 	}
@@ -731,6 +732,8 @@ func (mp *MetaPartition) tryToChangeLeader(c *Cluster, metaNode *MetaNode) (err 
 	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
 		return
 	}
+
+	log.LogWarnf("action[tryToChangeLeader] vol[%v] mp[%v] try to change leader to %v success", mp.volName, mp.PartitionID, metaNode.Addr)
 	return
 }
 
@@ -918,6 +921,8 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 		mr.IsLearner = mgr.IsLearner
 		log.LogWarnf("action[updateMetric] mp [%v] meta replica[%v] is learner[%v]", mgr.PartitionID, mr.Addr, mr.IsLearner)
 	}
+
+	mr.LeaseApplyTime = mgr.LeaseApplyTime
 
 	if mgr.StoreMode == proto.StoreModeMem && mr.metaNode.RdOnly {
 		mr.ReadOnlyReasons |= proto.MetaNodeReadOnly
@@ -1333,8 +1338,8 @@ func (mp *MetaPartition) removeExcessiveReplicas(c *Cluster) (err error) {
 			leaderAddr = mp.getLeaderAddr()
 		)
 
-		if mp.SrcAddr != "" {
-			removeAddr = mp.SrcAddr
+		if mp.RecoverSrc != "" {
+			removeAddr = mp.RecoverSrc
 		} else {
 			removeAddr = nonLearnerPeers[len(nonLearnerPeers)-1].Addr
 		}
@@ -1501,7 +1506,7 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 	}
 
 	// Limit the number of autoAddReplica
-	if c.CheckMetaPartitionDecommissionLimit(proto.AutoAddReplica) != nil {
+	if c.CheckMPDecommissionLimit(proto.AutoAddReplica) != nil {
 		return errors.NewErrorf("autoAddReplica throttled: meta partition decommission limit reached for type AutoAddReplica")
 	}
 
@@ -1552,7 +1557,7 @@ func (mp *MetaPartition) autoAddReplica(c *Cluster) (err error) {
 		return err
 	}
 
-	selectPeers, storeMode, err := c.selectTargetMetaPeer(mp, "", "", vol.DefaultStoreMode)
+	selectPeers, storeMode, err := c.selectTargetMetaPeer(mp, "", "", vol.DefaultStoreMode, mp.Region)
 	if err != nil {
 		return err
 	}
@@ -1681,6 +1686,18 @@ func (mp *MetaPartition) needReplicaMetaRestore(c *Cluster) bool {
 	return false
 }
 
+func (mp *MetaPartition) hasPeersRecovering() bool {
+	if mp.IsRecover.Load() {
+		return true
+	}
+	for _, learner := range mp.RecoverLearners {
+		if learner.RecoverState != proto.RecoverStateFailed {
+			return true
+		}
+	}
+	return false
+}
+
 func (mp *MetaPartition) setRestoreReplicaRunning() bool {
 	return atomic.CompareAndSwapUint32(&mp.RestoreReplicaMeta, RestoreReplicaMetaStop, RestoreReplicaMetaRunning)
 }
@@ -1690,6 +1707,11 @@ func (mp *MetaPartition) setRestoreReplicaForbidden() bool {
 }
 
 func (mp *MetaPartition) setRestoreReplicaStatus(status uint32) {
+	if status == RestoreReplicaMetaStop && mp.hasPeersRecovering() {
+		log.LogWarnf("setRestoreReplicaStatus: mp(%v) is recovering or has learners, skip set status %v, recover %v, len(recoverLearners) %v",
+			mp.PartitionID, status, mp.IsRecover.Load(), len(mp.RecoverLearners))
+		return
+	}
 	atomic.StoreUint32(&mp.RestoreReplicaMeta, status)
 }
 

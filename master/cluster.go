@@ -134,6 +134,7 @@ type DiskToDecommissionRepairDpInfo struct {
 type ClusterDecommission struct {
 	BadDataPartitionIds                    *sync.Map
 	BadMetaPartitionIds                    *sync.Map
+	RecoverMetaPartitionIds                *sync.Map
 	DecommissionDisks                      sync.Map
 	DataNodeToDecommissionRepairDpMap      sync.Map
 	NoSamePeerDps                          sync.Map
@@ -166,6 +167,7 @@ type ClusterDecommission struct {
 	MetaManualDecommissionLimit atomicutil.Uint32
 	MetaBalanceLimit            atomicutil.Uint32
 	MetaManualAddReplicaLimit   atomicutil.Uint32
+	MetaManualLearnerLimit      atomicutil.Uint32
 }
 
 type CleanTask struct {
@@ -540,6 +542,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.t = newTopology()
 	c.BadDataPartitionIds = new(sync.Map)
 	c.BadMetaPartitionIds = new(sync.Map)
+	c.RecoverMetaPartitionIds = new(sync.Map)
 	c.dataNodeStatInfo = new(nodeStatInfo)
 	c.dataStatsByMedia = make(map[string]*proto.NodeStatInfo)
 	c.metaNodeStatInfo = new(nodeStatInfo)
@@ -559,6 +562,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.MetaManualDecommissionLimit.Store(defaultMetaManualDecommissionLimit)
 	c.MetaBalanceLimit.Store(defaultMetaBalanceLimit)
 	c.MetaManualAddReplicaLimit.Store(defaultMetaManualAddReplicaLimit)
+	c.MetaManualLearnerLimit.Store(defaultMetaManualLearnerLimit)
 	c.masterClient = masterSDK.NewMasterClient(nil, false)
 	c.masterClient.SetTransport(proto.GetHttpTransporter(&proto.HttpCfg{
 		PoolSize: int(cfg.httpPoolSize),
@@ -626,6 +630,65 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToRecalculatePreReservedSpace()
 	c.scheduleToCheckDpTag()
 	c.scheduleToCheckMpTag()
+	c.scheduleToManageMpLearnerByPolicy()
+}
+
+// scheduleToManageMpLearnerByPolicy schedules a task to manage MP learners based on volume mpPolicy
+func (c *Cluster) scheduleToManageMpLearnerByPolicy() {
+	c.runTask(
+		&cTask{
+			tickTime: 1 * time.Minute, // Check every 5 minutes
+			name:     "scheduleToManageMpLearnerByPolicy",
+			function: func() (fin bool) {
+				c.checkAndCreateMpLearnersByPolicy()
+				return false
+			},
+		},
+	)
+}
+
+// checkAndCreateMpLearnersByPolicy checks all volumes and creates learner replicas based on mpPolicy
+func (c *Cluster) checkAndCreateMpLearnersByPolicy() {
+	c.volMutex.RLock()
+	vols := make([]*Vol, 0, len(c.vols))
+	for _, vol := range c.vols {
+		vols = append(vols, vol)
+	}
+	c.volMutex.RUnlock()
+
+	for _, vol := range vols {
+		if vol.isInitializingOrInitFailed() || vol.IsDeleted() {
+			continue
+		}
+
+		if !c.EnableMpDecommissionByLearner {
+			log.LogInfof("checkAndCreateMpLearnersByPolicy: vol[%v] is not enabled to create mp learners by policy", vol.Name)
+			continue
+		}
+
+		err := c.CheckMPDecommissionLimit(proto.MpManumalLearner)
+		if err != nil {
+			log.LogWarnf("checkAndCreateMpLearnersByPolicy: vol[%v] check mp decommission limit failed, err[%v]", vol.Name, err)
+			continue
+		}
+
+		log.LogInfof("checkAndCreateMpLearnersByPolicy: vol[%v], mpPolicy[%v]", vol.Name, vol.mpPolicy)
+		if vol.mpPolicy == nil || len(vol.mpPolicy) == 0 {
+			continue
+		}
+
+		vol.checkAndCreateMpLearnersByPolicy(c)
+	}
+}
+
+// getRegionFromMetaNodeAddr gets the region of a metanode by its address
+func (c *Cluster) getRegionFromMetaNodeAddr(addr string) string {
+	value, ok := c.metaNodes.Load(addr)
+	if !ok {
+		return proto.DefaultRegion
+	}
+	metaNode := value.(*MetaNode)
+	return metaNode.Region
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -4175,6 +4238,12 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode, raftF
 	return nil
 }
 
+func (c *Cluster) putRecoverMetaPartitions(partitionID uint64) {
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+	c.RecoverMetaPartitionIds.Store(partitionID, true)
+}
+
 func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 	c.badPartitionMutex.Lock()
 	defer c.badPartitionMutex.Unlock()
@@ -4207,15 +4276,13 @@ func (c *Cluster) getBadMetaPartitionsView() (bmpvs []badPartitionView) {
 	return
 }
 
-func (c *Cluster) getBadMetaPartitionsRepairView() (bmprvs []proto.BadPartitionRepairView) {
+func (c *Cluster) getBadMetaPartitionsRepairView() (recoverPairs []proto.RecoverPairWithPartitionID) {
 	c.badPartitionMutex.RLock()
 	defer c.badPartitionMutex.RUnlock()
 
-	bmprvs = make([]proto.BadPartitionRepairView, 0)
+	recoverPairs = make([]proto.RecoverPairWithPartitionID, 0)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		badMetaPartitionIds := value.([]uint64)
-		mpRepairInfos := make([]proto.RepairInfo, 0)
-		path := key.(string)
 
 		for _, partitionID := range badMetaPartitionIds {
 			partition, err := c.getMetaPartitionByID(partitionID)
@@ -4223,20 +4290,51 @@ func (c *Cluster) getBadMetaPartitionsRepairView() (bmprvs []proto.BadPartitionR
 				log.LogDebugf("getBadMetaPartitionsRepairView: partition[%v] not found", partitionID)
 				continue
 			}
-			mpRepairInfo := proto.RepairInfo{
-				PartitionID:                partitionID,
-				DecommissionRepairProgress: 0, // Not used for MetaPartition
-				RecoverStartTime:           time.Unix(partition.RecoverStartTime, 0),
-				RecoverUpdateTime:          time.Time{}, // Not used for MetaPartition
-				DecommissionType:           partition.DecommissionType,
+			partition.RLock()
+			if partition.RecoverPair != nil {
+				recoverPair := proto.RecoverPairWithPartitionID{
+					PartitionID: partitionID,
+					RecoverPair: *partition.RecoverPair,
+				}
+				recoverPairs = append(recoverPairs, recoverPair)
+				log.LogDebugf("getBadMetaPartitionsRepairView: partitionID[%v], recoverPair[%v]",
+					partitionID, recoverPair.RecoverPair)
 			}
-			mpRepairInfos = append(mpRepairInfos, mpRepairInfo)
-			log.LogDebugf("getBadMetaPartitionsRepairView: partitionID[%v], mpRepairInfo[%v]",
-				partitionID, mpRepairInfo)
+			partition.RUnlock()
 		}
 
-		bmprv := proto.BadPartitionRepairView{Path: path, PartitionInfos: mpRepairInfos}
-		bmprvs = append(bmprvs, bmprv)
+		return true
+	})
+	return
+}
+
+func (c *Cluster) getLearnerRecoverPairs() (learnerRecoverPairs []proto.RecoverPairWithPartitionID) {
+	c.badPartitionMutex.RLock()
+	defer c.badPartitionMutex.RUnlock()
+
+	learnerRecoverPairs = make([]proto.RecoverPairWithPartitionID, 0)
+	c.RecoverMetaPartitionIds.Range(func(key, value interface{}) bool {
+		partitionID := key.(uint64)
+		partition, err := c.getMetaPartitionByID(partitionID)
+		if err != nil {
+			log.LogDebugf("getLearnerRecoverPairs: partition[%v] not found", partitionID)
+			return true
+		}
+		partition.RLock()
+		if partition.RecoverLearners != nil && len(partition.RecoverLearners) > 0 {
+			for _, learner := range partition.RecoverLearners {
+				if learner != nil {
+					learnerRecoverPair := proto.RecoverPairWithPartitionID{
+						PartitionID: partitionID,
+						RecoverPair: *learner,
+					}
+					learnerRecoverPairs = append(learnerRecoverPairs, learnerRecoverPair)
+					log.LogDebugf("getLearnerRecoverPairs: partitionID[%v], learnerRecoverPair[%v]",
+						partitionID, learner)
+				}
+			}
+		}
+		partition.RUnlock()
 		return true
 	})
 	return
@@ -4397,7 +4495,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	remainCount := 0
 	for _, mp := range toBeOfflineMps {
 		// If srcAddr is not empty in learner usage, it is doing migrating.
-		if mp.SrcAddr == "" {
+		if mp.RecoverSrc != "" {
 			tmpOfflineMps = append(tmpOfflineMps, mp)
 		} else {
 			remainCount++
@@ -5374,6 +5472,18 @@ func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setMetaNodeDeleteBatchCount] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeFollowerReadLeaseTime(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.FollowerReadLeaseTime)
+	atomic.StoreUint64(&c.cfg.FollowerReadLeaseTime, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeFollowerReadLeaseTime] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.FollowerReadLeaseTime, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

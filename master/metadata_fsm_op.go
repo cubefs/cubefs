@@ -50,6 +50,7 @@ type clusterValue struct {
 	DataNodeDeleteLimitRate                uint64
 	MetaNodeDeleteBatchCount               uint64
 	MetaNodeDeleteWorkerSleepMs            uint64
+	FollowerReadLeaseTime                  uint64
 	DataNodeAutoRepairLimitRate            uint64
 	MaxDpCntLimit                          uint64
 	MaxMpCntLimit                          uint64
@@ -111,6 +112,7 @@ type clusterValue struct {
 	MetaManualDecommissionLimit            uint32
 	MetaBalanceLimit                       uint32
 	MetaManualAddReplicaLimit              uint32
+	MetaManualLearnerLimit                 uint32
 	DefaultDpTag                           string
 	DefaultMpTag                           string
 	AutoFixTag                             atomicutil.Bool
@@ -127,6 +129,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeDeleteLimitRate:                c.cfg.DataNodeDeleteLimitRate,
 		MetaNodeDeleteBatchCount:               c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:            c.cfg.MetaNodeDeleteWorkerSleepMs,
+		FollowerReadLeaseTime:                  c.cfg.FollowerReadLeaseTime,
 		DataNodeAutoRepairLimitRate:            c.cfg.DataNodeAutoRepairLimitRate,
 		DisableAutoAllocate:                    c.DisableAutoAllocate,
 		ForbidMpDecommission:                   c.ForbidMpDecommission,
@@ -191,10 +194,12 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaManualDecommissionLimit:            c.MetaManualDecommissionLimit.Load(),
 		MetaBalanceLimit:                       c.MetaBalanceLimit.Load(),
 		MetaManualAddReplicaLimit:              c.MetaManualAddReplicaLimit.Load(),
+		MetaManualLearnerLimit:                 c.MetaManualLearnerLimit.Load(),
 		DefaultDpTag:                           c.cfg.DefaultDpTag,
 		DefaultMpTag:                           c.cfg.DefaultMpTag,
 		AutoFixTag:                             c.cfg.AutoFixTag,
 		DefaultPoolId:                          c.defaultPoolId,
+		DefaultMetaRegion:                      c.defaultMetaRegion,
 	}
 	return cv
 }
@@ -213,15 +218,12 @@ type metaPartitionValue struct {
 	IsRecover          bool
 	Freeze             int8
 	LastDelReplicaTime int64
-	SrcAddr            string
-	LearnerDstAddr     string
-	RecoverStartTime   int64
-	RecoverFailCount   int
-	RecoverRetryTime   int64
+	*proto.RecoverPair
 	RecoverState       int
 	RestoreReplicaMeta uint32
 	DecommissionType   uint32
 	Region             string // Region name for this meta partition
+	RecoverLearners    []*proto.RecoverPair
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -239,15 +241,12 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		IsRecover:          mp.IsRecover.Load(),
 		Freeze:             mp.Freeze,
 		LastDelReplicaTime: mp.LastDelReplicaTime,
-		SrcAddr:            mp.SrcAddr,
-		LearnerDstAddr:     mp.LearnerDstAddr,
-		RecoverStartTime:   mp.RecoverStartTime,
-		RecoverFailCount:   mp.RecoverFailCount,
-		RecoverRetryTime:   mp.RecoverRetryTime,
+		RecoverPair:        mp.RecoverPair,
 		RecoverState:       int(mp.RecoverState),
 		RestoreReplicaMeta: atomic.LoadUint32(&mp.RestoreReplicaMeta),
 		DecommissionType:   mp.DecommissionType,
 		Region:             mp.Region,
+		RecoverLearners:    mp.RecoverLearners,
 	}
 	return
 }
@@ -515,6 +514,9 @@ type volValue struct {
 	// Meta Region
 	DefaultRegion  string   // Default region for this volume
 	AllowedRegions []string // Allowed regions for this volume
+
+	// MP Policy by region
+	MpPolicy map[string]*proto.VolMpPolicy // by region
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -622,6 +624,16 @@ func newVolValue(vol *Vol) (vv *volValue) {
 	vv.DefaultRegion = vol.defaultRegion
 	vv.AllowedRegions = make([]string, len(vol.allowedRegions))
 	copy(vv.AllowedRegions, vol.allowedRegions)
+
+	// MP Policy
+	if vol.mpPolicy != nil && len(vol.mpPolicy) > 0 {
+		vv.MpPolicy = make(map[string]*proto.VolMpPolicy)
+		for k, v := range vol.mpPolicy {
+			if v != nil {
+				vv.MpPolicy[k] = v.Copy()
+			}
+		}
+	}
 
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, len(vol.QuotaByClass))
 	copy(vv.QuotaOfClass, vol.QuotaByClass)
@@ -1313,6 +1325,10 @@ func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
 }
 
+func (c *Cluster) updateFollowerReadLeaseTime(val uint64) {
+	atomic.StoreUint64(&c.cfg.FollowerReadLeaseTime, val)
+}
+
 func (c *Cluster) updateDataPartitionMaxRepairErrCnt(val uint64) {
 	atomic.StoreUint64(&c.cfg.DpMaxRepairErrCnt, val)
 }
@@ -1355,6 +1371,7 @@ func (c *Cluster) updateDefaultPoolId(val uint8) error {
 }
 
 func (c *Cluster) updateDefaultMetaRegion(region string) error {
+	log.LogInfof("action[updateDefaultMetaRegion] region: %v, old: %v", region, c.defaultMetaRegion)
 	// Validate region exists
 	if !c.isValidRegion(region) {
 		return fmt.Errorf("region %v does not exist in cluster", region)
@@ -1596,6 +1613,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 			cv.MetaManualAddReplicaLimit = defaultMetaManualAddReplicaLimit
 		}
 		c.MetaManualAddReplicaLimit.Store(cv.MetaManualAddReplicaLimit)
+		if cv.MetaManualLearnerLimit <= 0 {
+			cv.MetaManualLearnerLimit = defaultMetaManualLearnerLimit
+		}
+		c.MetaManualLearnerLimit.Store(cv.MetaManualLearnerLimit)
 
 		if c.DecommissionFirstHostDiskParallelLimit == 0 {
 			c.DecommissionFirstHostDiskParallelLimit = defaultDecommissionFirstHostDiskParallelLimit
@@ -1622,6 +1643,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDirChildrenNumLimit(cv.DirChildrenNumLimit)
 		c.updateMetaNodeDeleteBatchCount(cv.MetaNodeDeleteBatchCount)
 		c.updateMetaNodeDeleteWorkerSleepMs(cv.MetaNodeDeleteWorkerSleepMs)
+		c.updateFollowerReadLeaseTime(cv.FollowerReadLeaseTime)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		c.updateDataNodeAutoRepairLimit(cv.DataNodeAutoRepairLimitRate)
 		c.updateDataPartitionMaxRepairErrCnt(cv.DpMaxRepairErrCnt)
@@ -2248,11 +2270,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.IsRecover.Store(mpv.IsRecover)
 		mp.Freeze = mpv.Freeze
 		mp.LastDelReplicaTime = mpv.LastDelReplicaTime
-		mp.SrcAddr = mpv.SrcAddr
-		mp.LearnerDstAddr = mpv.LearnerDstAddr
-		mp.RecoverStartTime = mpv.RecoverStartTime
-		mp.RecoverFailCount = mpv.RecoverFailCount
-		mp.RecoverRetryTime = mpv.RecoverRetryTime
+		mp.RecoverPair = mpv.RecoverPair
 		mp.RecoverState = proto.RecoverState(mpv.RecoverState)
 		mp.RestoreReplicaMeta = mpv.RestoreReplicaMeta
 		mp.DecommissionType = mpv.DecommissionType
@@ -2274,6 +2292,11 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 }
 
 func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
+
+	if len(mp.RecoverLearners) > 0 {
+		c.putRecoverMetaPartitions(mp.PartitionID)
+	}
+
 	// mp.RecoverState = proto.RecoverStateFailed need to clear state
 	if !mp.IsRecover.Load() && mp.RecoverState != proto.RecoverStateFailed {
 		return

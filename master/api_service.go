@@ -1227,6 +1227,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaManualDecommissionLimit:               m.cluster.MetaManualDecommissionLimit.Load(),
 		MetaBalanceLimit:                          m.cluster.MetaBalanceLimit.Load(),
 		MetaManualAddReplicaLimit:                 m.cluster.MetaManualAddReplicaLimit.Load(),
+		MetaManualLearnerLimit:                    m.cluster.MetaManualLearnerLimit.Load(),
 		DefaultDpTag:                              m.cluster.cfg.DefaultDpTag,
 		DefaultMpTag:                              m.cluster.cfg.DefaultMpTag,
 		AutoFixTag:                                m.cluster.cfg.AutoFixTag.Load(),
@@ -1495,6 +1496,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	autoRepairRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeAutoRepairLimitRate)
 	dirChildrenNumLimit := atomic.LoadUint32(&m.cluster.cfg.DirChildrenNumLimit)
 	dpMaxRepairErrCnt := atomic.LoadUint64(&m.cluster.cfg.DpMaxRepairErrCnt)
+	followerReadLeaseTime := atomic.LoadUint64(&m.cluster.cfg.FollowerReadLeaseTime)
 
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,
@@ -1504,6 +1506,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DataNodeAutoRepairLimitRate: autoRepairRate,
 		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
+		FollowerReadLeaseTime:       followerReadLeaseTime,
 		FlashReadTimeout:            m.cluster.cfg.flashNodeHandleReadTimeout,
 		FlashKeyFlowLimit:           m.cluster.cfg.flashKeyFlowLimit,
 		// Ip:                          strings.Split(r.RemoteAddr, ":")[0],
@@ -1524,15 +1527,16 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 		vol     *Vol
 		volName string
 		count   int
+		region  string
 		err     error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateMetaPartition))
 	defer func() {
 		doStatAndMetric(proto.AdminCreateMetaPartition, metric, err, map[string]string{exporter.Vol: volName})
-		AuditLog(r, proto.AdminCreateMetaPartition, fmt.Sprintf("create vol(%s) meta partition %d", volName, count), err)
+		AuditLog(r, proto.AdminCreateMetaPartition, fmt.Sprintf("create vol(%s) meta partition %d, region(%v)", volName, count, region), err)
 	}()
 
-	if volName, count, err = validateRequestToCreateMetaPartition(r); err != nil {
+	if volName, count, region, err = validateRequestToCreateMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1560,7 +1564,27 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = vol.addMetaPartitions(m.cluster, count); err != nil {
+	// Use specified region, or fall back to volume's default region
+	if region == "" {
+		region = vol.defaultRegion
+	}
+
+	// Validate region exists and is in volume's allowed regions
+	if !m.cluster.isValidRegion(region) {
+		err = fmt.Errorf("region %v does not exist in cluster", region)
+		log.LogErrorf("action[createMetaPartition] vol[%v], err: %v", volName, err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if !vol.isRegionInAllowed(region) {
+		err = fmt.Errorf("region(%v) is not in vol allowed regions(%v)", region, vol.allowedRegions)
+		log.LogErrorf("action[createMetaPartition] vol[%v], err: %v", volName, err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = vol.addMetaPartitions(m.cluster, count, region); err != nil {
 		log.LogErrorf("create meta partition fail: volume(%v) err(%v)", volName, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2396,10 +2420,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		// Note: Manual add replica in non-learner mode does not set RestoreStatus
-		// to avoid permanent blocking when replica fails. This is deprecated in favor
-		// of learner mode which has proper timeout and failure handling.
-		if err = m.cluster.CheckMetaPartitionDecommissionLimit(proto.ManualAddReplica); err != nil {
+		if err = m.cluster.CheckMPDecommissionLimit(proto.ManualAddReplica); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -2411,7 +2432,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		// but RestoreReplicaMeta status is not changed
 		mp.DecommissionType = proto.ManualAddReplica
 		mp.IsRecover.Store(true)
-		mp.RecoverStartTime = time.Now().Unix()
+		mp.RecoverStart = time.Now().Unix()
 		m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
 	}
 
@@ -4008,6 +4029,16 @@ func newSimpleView(c *Cluster, vol *Vol) (view *proto.SimpleVolView) {
 		AllowedRegions:               vol.allowedRegions,
 		RemoteCacheDisableTTL:        vol.remoteCacheDisableTTL,
 	}
+
+	// MP Region Policy
+	if vol.mpPolicy != nil && len(vol.mpPolicy) > 0 {
+		view.MpRegionPolicy = make(map[string]*proto.VolMpPolicy)
+		for region, policy := range vol.mpPolicy {
+			if policy != nil {
+				view.MpRegionPolicy[region] = policy.Copy()
+			}
+		}
+	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)
 
@@ -4498,6 +4529,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if followerReadLeaseTime, ok := params[followerReadLeaseTimeKey]; ok {
+		if frt, ok := followerReadLeaseTime.(uint64); ok {
+			if err = m.cluster.setMetaNodeFollowerReadLeaseTime(frt); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	// if val, ok := params[rackAwareLevelKey]; ok {
 	// 	if v, ok := val.(uint8); ok {
 	// 		if err = m.cluster.setRackAwareLevel(proto.RackAwareLevel(v)); err != nil {
@@ -4945,7 +4985,16 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	if val, ok := params[metaManualAddReplicaLimitKey]; ok {
 		if limit, ok := val.(uint32); ok {
-			if err = m.cluster.SetMetaPartitionDecommissionLimit(proto.ManualDecommission, limit); err != nil {
+			if err = m.cluster.SetMetaPartitionDecommissionLimit(proto.ManualAddReplica, limit); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[metaManualLearnerLimitKey]; ok {
+		if limit, ok := val.(uint32); ok {
+			if err = m.cluster.SetMetaPartitionDecommissionLimit(proto.MpManumalLearner, limit); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -5816,6 +5865,7 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[dpLimitSsdFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitSsdFactor)
 	resp[dpLimitHddBaseCountKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitHddBaseCount)
 	resp[dpLimitHddFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitHddFactor)
+	resp[followerReadLeaseTimeKey] = fmt.Sprintf("%v", m.cluster.cfg.FollowerReadLeaseTime)
 	resp[poolIdKey] = fmt.Sprintf("%v", m.cluster.defaultPoolId)
 	region := m.cluster.defaultMetaRegion
 	resp[defaultMetaRegionKey] = region
@@ -5957,6 +6007,16 @@ func (m *Server) resetMetaPartitionDecommissionStatus(w http.ResponseWriter, r *
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
+	for _, learner := range mp.RecoverLearners {
+		if learner.RecoverDst == mp.RecoverDst {
+			if err = m.cluster.clearRecoveryState(mp, learner, true); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("reset decommission status for mp[%d] success", mpID)))
 }
 
@@ -6592,6 +6652,8 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		RocksdbKeyNumMax:          metaNode.RocksdbKeyNumMax,
 		Tag:                       metaNode.Tag,
 		Region:                    metaNode.Region,
+		NodeMemTotal:              metaNode.NodeMemTotal,
+		NodeMemUsed:               metaNode.NodeMemUsed,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
@@ -7341,6 +7403,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 
 	stat.TrashInterval = vol.TrashInterval
 	stat.DefaultStorageClass = vol.volStorageClass
+	stat.DefaultMetaRegion = vol.defaultRegion
 
 	stat.StatByStorageClass = vol.StatByStorageClass
 	stat.StatMigrateStorageClass = vol.StatMigrateStorageClass
@@ -7432,17 +7495,22 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		zones := make([]string, len(mp.Hosts))
 		nodeSets := make([]uint64, len(mp.Hosts))
 		racks := make([]string, len(mp.Hosts))
+		regions := make([]string, len(mp.Hosts))
 		for idx, host := range mp.Hosts {
 			metaNode, err := m.cluster.metaNode(host)
 			if err == nil {
 				zones[idx] = metaNode.ZoneName
 				nodeSets[idx] = metaNode.NodeSetID
 				racks[idx] = metaNode.Rack
+				regions[idx] = m.cluster.getRegionFromMetaNodeAddr(host)
+			} else {
+				regions[idx] = proto.DefaultRegion
 			}
 		}
 		memCnt := uint8(0)
 		rocksCnt := uint8(0)
 		storeMode := proto.StoreModeDef
+		mpTimeoutSec := m.cluster.getMetaPartitionTimeoutSec()
 		for i := 0; i < len(replicas); i++ {
 			// Check if this replica is a learner by matching with Peers
 			replicas[i] = &proto.MetaReplicaInfo{
@@ -7458,6 +7526,8 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				MaxInode:        mp.Replicas[i].MaxInodeID,
 				ReadOnlyReasons: mp.Replicas[i].ReadOnlyReasons,
 				StoreMode:       mp.Replicas[i].StoreMode,
+				LeaseApplyTime:  mp.Replicas[i].LeaseApplyTime,
+				IsActive:        mp.Replicas[i].isActive(mpTimeoutSec),
 			}
 			if mp.Replicas[i].StoreMode == proto.StoreModeMem {
 				memCnt++
@@ -7499,6 +7569,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			Zones:                     zones,
 			NodeSets:                  nodeSets,
 			Racks:                     racks,
+			Regions:                   regions,
 			MissNodes:                 mp.MissNodes,
 			OfflinePeerID:             mp.OfflinePeerID,
 			LoadResponse:              mp.LoadResponse,
@@ -7512,13 +7583,14 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			MemStoreCnt:               memCnt,
 			RockStoreCnt:              rocksCnt,
 			StoreMode:                 storeMode,
-			SrcAddr:                   mp.SrcAddr,
-			LearnerDstAddr:            mp.LearnerDstAddr,
-			RecoverStartTime:          mp.RecoverStartTime,
-			RecoverFailCount:          mp.RecoverFailCount,
+			SrcAddr:                   mp.RecoverSrc,
+			LearnerDstAddr:            mp.RecoverDst,
+			RecoverStartTime:          mp.RecoverStart,
+			RecoverFailCount:          mp.RecoverRetryCnt,
 			RecoverRetryTime:          mp.RecoverRetryTime,
 			RecoverState:              mp.RecoverState,
 			Region:                    mp.Region,
+			RecoverLearners:           mp.RecoverLearners,
 		}
 		if mpInfo.Region == "" {
 			mpInfo.Region = proto.DefaultRegion

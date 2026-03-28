@@ -43,24 +43,32 @@ func TestGetMetaPartitionDecommissionCount(t *testing.T) {
 
 	// Create meta partitions with different decommission types
 	mp1 := &MetaPartition{
-		PartitionID:      1,
-		volName:          "test-vol",
-		DecommissionType: proto.AutoAddReplica,
+		PartitionID: 1,
+		volName:     "test-vol",
+		RecoverPair: &proto.RecoverPair{
+			DecommissionType: proto.AutoAddReplica,
+		},
 	}
 	mp2 := &MetaPartition{
-		PartitionID:      2,
-		volName:          "test-vol",
-		DecommissionType: proto.AutoAddReplica,
+		PartitionID: 2,
+		volName:     "test-vol",
+		RecoverPair: &proto.RecoverPair{
+			DecommissionType: proto.AutoAddReplica,
+		},
 	}
 	mp3 := &MetaPartition{
-		PartitionID:      3,
-		volName:          "test-vol",
-		DecommissionType: proto.ManualDecommission,
+		PartitionID: 3,
+		volName:     "test-vol",
+		RecoverPair: &proto.RecoverPair{
+			DecommissionType: proto.ManualDecommission,
+		},
 	}
 	mp4 := &MetaPartition{
-		PartitionID:      4,
-		volName:          "test-vol",
-		DecommissionType: proto.MpBalance,
+		PartitionID: 4,
+		volName:     "test-vol",
+		RecoverPair: &proto.RecoverPair{
+			DecommissionType: proto.MpBalance,
+		},
 	}
 
 	vol.MetaPartitions[1] = mp1
@@ -122,65 +130,75 @@ func TestCheckMetaPartitionDecommissionLimit(t *testing.T) {
 
 	// Create 2 AutoAddReplica partitions
 	mp1 := &MetaPartition{
-		PartitionID:      1,
-		volName:          "test-vol",
-		DecommissionType: proto.AutoAddReplica,
+		PartitionID: 1,
+		volName:     "test-vol",
+		RecoverPair: &proto.RecoverPair{
+			DecommissionType: proto.AutoAddReplica,
+		},
 	}
 	mp2 := &MetaPartition{
-		PartitionID:      2,
-		volName:          "test-vol",
-		DecommissionType: proto.AutoAddReplica,
+		PartitionID: 2,
+		volName:     "test-vol",
+		RecoverPair: &proto.RecoverPair{
+			DecommissionType: proto.AutoAddReplica,
+		},
 	}
 	vol.MetaPartitions[1] = mp1
 	vol.MetaPartitions[2] = mp2
 	cluster.BadMetaPartitionIds.Store("node1", []uint64{1, 2})
 
 	// Test: should pass (2 < 3)
-	err := cluster.CheckMetaPartitionDecommissionLimit(proto.AutoAddReplica)
+	err := cluster.CheckMPDecommissionLimit(proto.AutoAddReplica)
 	if err != nil {
 		t.Errorf("Expected no error when count < limit, got: %v", err)
 	}
 
 	// Add one more AutoAddReplica partition
 	mp3 := &MetaPartition{
-		PartitionID:      3,
-		volName:          "test-vol",
-		DecommissionType: proto.AutoAddReplica,
+		PartitionID: 3,
+		volName:     "test-vol",
+		RecoverPair: &proto.RecoverPair{
+			DecommissionType: proto.AutoAddReplica,
+		},
 	}
 	vol.MetaPartitions[3] = mp3
 	cluster.BadMetaPartitionIds.Store("node2", []uint64{3})
 
 	// Test: should fail (3 >= 3, limit reached)
-	err = cluster.CheckMetaPartitionDecommissionLimit(proto.AutoAddReplica)
+	err = cluster.CheckMPDecommissionLimit(proto.AutoAddReplica)
 	if err == nil {
 		t.Error("Expected error when count >= limit, got nil")
 	}
 
 	// Add one more AutoAddReplica partition
 	mp4 := &MetaPartition{
-		PartitionID:      4,
-		volName:          "test-vol",
-		DecommissionType: proto.AutoAddReplica,
+		PartitionID: 4,
+		volName:     "test-vol",
+		RecoverPair: &proto.RecoverPair{
+			DecommissionType: proto.AutoAddReplica,
+		},
 	}
 	vol.MetaPartitions[4] = mp4
 	cluster.BadMetaPartitionIds.Store("node3", []uint64{4})
 
 	// Test: should fail (4 > 3)
-	err = cluster.CheckMetaPartitionDecommissionLimit(proto.AutoAddReplica)
+	err = cluster.CheckMPDecommissionLimit(proto.AutoAddReplica)
 	if err == nil {
 		t.Error("Expected error when count > limit, got nil")
 	}
 
 	// Test: no limit (0) should always pass
 	mp5 := &MetaPartition{
-		PartitionID:      5,
-		volName:          "test-vol",
-		DecommissionType: proto.ManualAddReplica,
+		PartitionID: 5,
+		volName:     "test-vol",
+		RecoverPair: &proto.RecoverPair{
+			DecommissionType: proto.ManualAddReplica,
+		},
 	}
 	vol.MetaPartitions[5] = mp5
 	cluster.BadMetaPartitionIds.Store("node4", []uint64{5})
 
-	err = cluster.CheckMetaPartitionDecommissionLimit(proto.ManualAddReplica)
+	err = cluster.CheckMPDecommissionLimit(proto.ManualAddReplica)
 	if err != nil {
 		t.Errorf("Expected no error when limit is 0 (no limit), got: %v", err)
 	}
@@ -195,6 +213,7 @@ func TestSetAndGetMetaPartitionDecommissionLimit(t *testing.T) {
 	cluster.MetaManualDecommissionLimit.Store(10)
 	cluster.MetaBalanceLimit.Store(15)
 	cluster.MetaManualAddReplicaLimit.Store(20)
+	cluster.MetaManualLearnerLimit.Store(25)
 
 	// Test getting AutoAddReplica limit
 	limit := cluster.GetMetaPartitionDecommissionLimit(proto.AutoAddReplica)
@@ -220,6 +239,12 @@ func TestSetAndGetMetaPartitionDecommissionLimit(t *testing.T) {
 		t.Errorf("Expected ManualAddReplica limit to be 20, got %d", limit)
 	}
 
+	// Test getting MpManumalLearner limit
+	limit = cluster.GetMetaPartitionDecommissionLimit(proto.MpManumalLearner)
+	if limit != 25 {
+		t.Errorf("Expected MpManumalLearner limit to be 25, got %d", limit)
+	}
+
 	// Test getting limit for unknown type
 	limit = cluster.GetMetaPartitionDecommissionLimit(999)
 	if limit != 0 {
@@ -236,6 +261,7 @@ func TestGetMetaPartitionDecommissionTypeName(t *testing.T) {
 		{proto.ManualDecommission, "ManualDecommission"},
 		{proto.MpBalance, "MpBalance"},
 		{proto.ManualAddReplica, "ManualAddReplica"},
+		{proto.MpManumalLearner, "MpManumalLearner"},
 		{999, "Unknown(999)"},
 		{0, "Unknown(0)"},
 	}

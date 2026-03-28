@@ -71,11 +71,13 @@ const (
 	nodeDeleteBatchCountKey                = "batchCount"
 	nodeMarkDeleteRateKey                  = "markDeleteRate"
 	nodeDeleteWorkerSleepMs                = "deleteWorkerSleepMs"
+	followerReadLeaseTimeKey               = "followerReadLeaseTime"
 	nodeAutoRepairRateKey                  = "autoRepairRate"
 	metaAutoAddReplicaLimitKey             = "metaAutoAddReplicaLimit"
 	metaManualDecommissionLimitKey         = "metaManualDecommissionLimit"
 	metaBalanceLimitKey                    = "metaBalanceLimit"
 	metaManualAddReplicaLimitKey           = "metaManualAddReplicaLimit"
+	metaManualLearnerLimitKey              = "metaManualLearnerLimit"
 	nodeDpRepairTimeOutKey                 = "dpRepairTimeOut"
 	nodeDpBackupKey                        = "dpBackupTimeout"
 	nodeDpMaxRepairErrCntKey               = "dpMaxRepairErrCnt"
@@ -304,6 +306,7 @@ const (
 	defaultMetaManualDecommissionLimit     = 5
 	defaultMetaBalanceLimit                = 10
 	defaultMetaManualAddReplicaLimit       = 5
+	defaultMetaManualLearnerLimit          = 10
 	defaultVolForbidWriteOpOfProtoVersion0 = true
 	defaultMetaNodeMemHighPer              = 0.8
 	defaultMetaNodeMemLowPer               = 0.7
@@ -323,6 +326,7 @@ const (
 
 	maxTrashInterval     = 365 * 24 * 60
 	mpReplicaDelInterval = 300 // 5 minutes
+	// mpReplicaDelInterval = 30 // 5 minutes
 
 	// Learner mode recovery constants
 	defaultLearnerRecoverTimeout = 3600 // 1 hour

@@ -90,6 +90,7 @@ const (
 	cfgDefaultDpTag        = "defaultDpTag"
 	cfgDefaultMpTag        = "defaultMpTag"
 	cfgAutoFixTag          = "autoFixTag"
+	cfgMaxMpLearnerNum     = "maxMpLearnerNum"
 )
 
 // default value
@@ -153,8 +154,11 @@ const (
 	defaultDpLimitHddBaseCount uint64 = 100
 	defaultDpLimitHddFactor    uint64 = 20
 
-	defaultMetaNodeGOGC = 100
-	defaultDataNodeGOGC = 100
+	defaultMetaNodeGOGC          = 100
+	defaultDataNodeGOGC          = 100
+	defaultMPLearnerNum          = 5  // default max learner number per meta partition
+	maxAllowedMPLearnerNum       = 16 // maximum allowed learner number per meta partition
+	defaultFollowerReadLeaseTime = 5  // default follower read lease time in seconds
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -264,6 +268,8 @@ type clusterConfig struct {
 	DefaultDpTag                 string
 	DefaultMpTag                 string
 	AutoFixTag                   atomicutil.Bool
+	MaxMPLearnerNum              uint64 // maximum learner number per meta partition, 0 means use default value 5, max allowed is 16
+	FollowerReadLeaseTime        uint64 // follower read lease time in seconds, default is 5
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -319,6 +325,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DpLimitSsdFactor = defaultDpLimitSsdFactor
 	cfg.DpLimitHddBaseCount = defaultDpLimitHddBaseCount
 	cfg.DpLimitHddFactor = defaultDpLimitHddFactor
+	cfg.MaxMPLearnerNum = defaultMPLearnerNum
+	cfg.FollowerReadLeaseTime = defaultFollowerReadLeaseTime
 	return
 }
 
