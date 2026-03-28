@@ -111,6 +111,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  MetaManualDecommissionLimit              : %v\n", cv.MetaManualDecommissionLimit))
 	sb.WriteString(fmt.Sprintf("  MetaBalanceLimit                         : %v\n", cv.MetaBalanceLimit))
 	sb.WriteString(fmt.Sprintf("  MetaManualAddReplicaLimit                : %v\n", cv.MetaManualAddReplicaLimit))
+	sb.WriteString(fmt.Sprintf("  MetaManualLearnerLimit                   : %v\n", cv.MetaManualLearnerLimit))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVersion0             : %v\n", cv.ForbidWriteOpOfProtoVer0))
 	sb.WriteString(fmt.Sprintf("  LegacyDataMediaType                      : %v\n", cv.LegacyDataMediaType))
 	sb.WriteString(fmt.Sprintf("  RaftPartitionCanUsingDifferentPortEnabled: %v\n", cv.RaftPartitionCanUsingDifferentPortEnabled))
@@ -338,6 +339,29 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	// Display allowed regions
 	if len(svv.AllowedRegions) > 0 {
 		sb.WriteString(fmt.Sprintf("  Allowed Regions                : %v\n", strings.Join(svv.AllowedRegions, ", ")))
+	}
+	// Display MP Region Policy
+	if len(svv.MpRegionPolicy) > 0 {
+		sb.WriteString("  MP Region Policy               :\n")
+		regions := make([]string, 0, len(svv.MpRegionPolicy))
+		for region := range svv.MpRegionPolicy {
+			regions = append(regions, region)
+		}
+		sort.Strings(regions)
+		for _, region := range regions {
+			policy := svv.MpRegionPolicy[region]
+			if policy != nil && policy.Learner != nil && len(policy.Learner) > 0 {
+				policyStrs := make([]string, 0, len(policy.Learner))
+				for targetRegion, learnerPolicy := range policy.Learner {
+					if learnerPolicy != nil {
+						modeStr := learnerPolicy.Mode.Str()
+						policyStrs = append(policyStrs, fmt.Sprintf("%s:%s", targetRegion, modeStr))
+					}
+				}
+				sort.Strings(policyStrs)
+				sb.WriteString(fmt.Sprintf("    Region[%s]: %s\n", region, strings.Join(policyStrs, "; ")))
+			}
+		}
 	}
 
 	if len(svv.RwDpCntByPoolId) > 0 {
@@ -977,6 +1001,11 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo, poolId uint8) s
 		sb.WriteString(fmt.Sprintf("  [%v]", rack))
 	}
 	sb.WriteString("\n")
+	sb.WriteString("Pools :\n")
+	for _, pool := range partition.Pools {
+		sb.WriteString(fmt.Sprintf("  [%v]", pool))
+	}
+	sb.WriteString("\n")
 	sb.WriteString("\n")
 	sb.WriteString("MissingNodes :\n")
 	for partitionHost, id := range partition.MissingNodes {
@@ -1030,6 +1059,36 @@ func formatMetaPartitionInfoWithPoolNames(partition *proto.MetaPartitionInfo, po
 	}
 	sb.WriteString(fmt.Sprintf("RecoverState     : %v\n", partition.RecoverState.String()))
 
+	if len(partition.RecoverLearners) > 0 {
+		sb.WriteString("\n")
+		sb.WriteString("Recover Learners:\n")
+		recoverLearnerTablePattern := "%-20v    %-20v    %-20v    %-12v    %-20v    %-10v    %-10v\n"
+		sb.WriteString(fmt.Sprintf(recoverLearnerTablePattern, "RECOVER_SRC", "RECOVER_DST", "RECOVER_START", "RETRY_CNT", "RETRY_TIME", "STATE", "DECOMM_TYPE"))
+		for _, rp := range partition.RecoverLearners {
+			if rp == nil {
+				continue
+			}
+			recoverStartTime := "N/A"
+			if rp.RecoverStart > 0 {
+				recoverStartTime = time.Unix(rp.RecoverStart, 0).Format("2006-01-02 15:04:05")
+			}
+			retryTime := "N/A"
+			if rp.RecoverRetryTime > 0 {
+				retryTime = time.Unix(rp.RecoverRetryTime, 0).Format("2006-01-02 15:04:05")
+			}
+			stateStr := rp.RecoverState.String()
+			decommTypeStr := proto.FormatDecommissionType(rp.DecommissionType)
+			sb.WriteString(fmt.Sprintf(recoverLearnerTablePattern,
+				rp.RecoverSrc,
+				rp.RecoverDst,
+				recoverStartTime,
+				rp.RecoverRetryCnt,
+				retryTime,
+				stateStr,
+				decommTypeStr))
+		}
+	}
+
 	sb.WriteString("\n")
 	sb.WriteString("Replicas : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
@@ -1068,6 +1127,11 @@ func formatMetaPartitionInfoWithPoolNames(partition *proto.MetaPartitionInfo, po
 	sb.WriteString("Racks :\n")
 	for _, rack := range partition.Racks {
 		sb.WriteString(fmt.Sprintf("  [%v]", rack))
+	}
+	sb.WriteString("\n")
+	sb.WriteString("Regions :\n")
+	for _, region := range partition.Regions {
+		sb.WriteString(fmt.Sprintf("  [%v]", region))
 	}
 	sb.WriteString("\n")
 	sb.WriteString("\n")
@@ -1438,25 +1502,35 @@ func parseDpReadOnlyReasons(mask uint32) []string {
 	return reasons
 }
 
-var metaReplicaTableRowPattern = "%-65v    %-10v    %-10v    %-9v    %-12v    %-6v    %-10v"
+var metaReplicaTableRowPattern = "%-65v    %-10v    %-10v    %-9v    %-12v    %-8v    %-6v    %-10v    %-20v"
 
 func formatMetaReplicaTableHeader() string {
-	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "MaxInodeID", "ISLEADER", "ISLEARNER", "STATUS", "StoreMode", "REPORT TIME")
+	return fmt.Sprintf(metaReplicaTableRowPattern, "ADDRESS", "MaxInodeID", "ISLEADER", "ISLEARNER", "STATUS", "ISACTIVE", "StoreMode", "REPORT TIME", "LEASEAPPLYTIME")
 }
 
 func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTable bool) string {
 	if rowTable {
+		leaseApplyTimeStr := "N/A"
+		if replica.LeaseApplyTime > 0 {
+			leaseApplyTimeStr = formatTime(replica.LeaseApplyTime)
+		}
 		return fmt.Sprintf(metaReplicaTableRowPattern, formatAddr(replica.Addr, replica.DomainAddr), replica.MaxInodeID,
-			replica.IsLeader, replica.IsLearner, formatMetaPartitionStatus(replica.Status), replica.StoreMode.Str(),
-			formatTime(replica.ReportTime))
+			replica.IsLeader, replica.IsLearner, formatMetaPartitionStatus(replica.Status), replica.IsActive, replica.StoreMode.Str(),
+			formatTime(replica.ReportTime), leaseApplyTimeStr)
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%v- Addr           : %v\n", indentation, formatAddr(replica.Addr, replica.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("%v- MaxInodeID     : %v\n", indentation, replica.MaxInodeID))
 	sb.WriteString(fmt.Sprintf("%v  Status         : %v\n", indentation, formatMetaPartitionStatus(replica.Status)))
+	sb.WriteString(fmt.Sprintf("%v  IsActive       : %v\n", indentation, replica.IsActive))
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
 	sb.WriteString(fmt.Sprintf("%v  IsLearner      : %v\n", indentation, replica.IsLearner))
 	sb.WriteString(fmt.Sprintf("%v  StoreMode      : %v\n", indentation, replica.StoreMode.Str()))
+	leaseApplyTimeStr := "N/A"
+	if replica.LeaseApplyTime > 0 {
+		leaseApplyTimeStr = formatTime(replica.LeaseApplyTime)
+	}
+	sb.WriteString(fmt.Sprintf("%v  LeaseApplyTime : %v\n", indentation, leaseApplyTimeStr))
 	sb.WriteString(fmt.Sprintf("%v  ReportTime     : %v\n", indentation, formatTime(replica.ReportTime)))
 	return sb.String()
 }
@@ -1606,6 +1680,8 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  MaxMemAvailWeight   : %v\n", formatSize(mn.MaxMemAvailWeight)))
 	sb.WriteString(fmt.Sprintf("  Allocated           : %v\n", formatSize(mn.Used)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(mn.Total)))
+	sb.WriteString(fmt.Sprintf("  NodeMemTotal        : %v\n", formatSize(mn.NodeMemTotal)))
+	sb.WriteString(fmt.Sprintf("  NodeMemUsed         : %v\n", formatSize(mn.NodeMemUsed)))
 	sb.WriteString(fmt.Sprintf("  RocksdbAllocated    : %v\n", formatSize(mn.RocksdbUsed)))
 	sb.WriteString(fmt.Sprintf("  RocksdbTotal        : %v\n", formatSize(mn.RocksdbTotal)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
@@ -1616,13 +1692,36 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
-	sb.WriteString(fmt.Sprintf("  Can alloc partition : %v\n", mn.CanAllowPartition))
-	sb.WriteString(fmt.Sprintf("  Max partition count : %v\n", mn.MaxMpCntLimit))
+	sb.WriteString(fmt.Sprintf("  Can allocate MP      : %v\n", mn.CanAllowPartition))
+	sb.WriteString(fmt.Sprintf("  Max MP count limit  : %v\n", mn.MaxMpCntLimit))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
 	sb.WriteString(fmt.Sprintf("  MemoryMpReplicas    : %v\n", mn.MemoryMpCount))
 	sb.WriteString(fmt.Sprintf("  RocksdbMpReplicas   : %v\n", mn.RocksdbMpCount))
 	sb.WriteString(fmt.Sprintf("  Tag                 : %v\n", mn.Tag))
 	sb.WriteString(fmt.Sprintf("  Region              : %v\n", mn.Region))
+
+	// Display RocksdbDisks information
+	if len(mn.RocksdbDisks) > 0 {
+		sb.WriteString("\n")
+		sb.WriteString("  RocksdbDisks:\n")
+		rocksdbDiskTablePattern := "    %-40v    %-15v    %-15v    %-10v    %-10v    %-10v    %-15v\n"
+		sb.WriteString(fmt.Sprintf(rocksdbDiskTablePattern, "PATH", "TOTAL", "USED", "USAGE_RATIO", "STATUS", "PARTITION_CNT", "KEY_NUM"))
+		for _, disk := range mn.RocksdbDisks {
+			if disk == nil {
+				continue
+			}
+			statusStr := proto.DiskStatusMap[int(disk.Status)]
+			sb.WriteString(fmt.Sprintf(rocksdbDiskTablePattern,
+				disk.Path,
+				formatSize(disk.Total),
+				formatSize(disk.Used),
+				fmt.Sprintf("%.2f%%", disk.UsageRatio*100),
+				statusStr,
+				disk.PartitionCount,
+				disk.KeyNum))
+		}
+	}
+
 	return sb.String()
 }
 
@@ -1692,25 +1791,60 @@ func formatZoneView(zv *proto.ZoneView) string {
 		}
 		sb.WriteString(fmt.Sprintf("Pool:             %v\n", poolInfo))
 	}
+	// Display region, default to "default" if empty
+	region := zv.MetaRegion
+	sb.WriteString(fmt.Sprintf("MetaRegion:       %v\n", region))
 	sb.WriteString("Nodeset Selector:\n")
 	sb.WriteString(fmt.Sprintf("       Data:%v\n", zv.DataNodesetSelector))
 	sb.WriteString(fmt.Sprintf("       Meta:%v\n", zv.MetaNodesetSelector))
 	sb.WriteString("\n")
+
+	// Prepare zone info for nodes
+	zoneName := zv.Name
+	poolInfo := "-"
+	if zv.PoolId > 0 {
+		if zv.PoolName != "" {
+			poolInfo = fmt.Sprintf("%d(%s)", zv.PoolId, zv.PoolName)
+		} else {
+			poolInfo = fmt.Sprintf("%d", zv.PoolId)
+		}
+	}
+	metaRegion := zv.MetaRegion
+	if metaRegion == "" {
+		metaRegion = "default"
+	}
+
 	for index, ns := range zv.NodeSet {
 		sb.WriteString(fmt.Sprintf("NodeSet-%v:\n", index))
 		sb.WriteString(fmt.Sprintf("  DataNodes[%v]:\n", ns.DataNodeLen))
 		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
 		for _, nv := range ns.DataNodes {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
+			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewForZone(&nv, zoneName, poolInfo)))
 		}
 		sb.WriteString("\n")
 		sb.WriteString(fmt.Sprintf("  MetaNodes[%v]:\n", ns.MetaNodeLen))
 		sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeViewTableHeader()))
 		for _, nv := range ns.MetaNodes {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeView(&nv, true)))
+			sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeViewForZone(&nv, zoneName, metaRegion)))
 		}
 	}
 	return sb.String()
+}
+
+// formatNodeViewForZone formats a DataNode view for zone info display, using zone's pool and zone name
+func formatNodeViewForZone(view *proto.NodeView, zoneName, poolInfo string) string {
+	return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
+		formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
+		zoneName, poolInfo, view.Rack,
+		formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), view.Tag)
+}
+
+// formatMetaNodeViewForZone formats a MetaNode view for zone info display, using zone's region and zone name
+func formatMetaNodeViewForZone(view *proto.NodeView, zoneName, region string) string {
+	return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
+		formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
+		view.Rack, formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
+		formatYesNo(view.IsRocksdbWritable), region, zoneName, view.Tag)
 }
 
 var quotaTableRowPattern = "%-6v %-30v %-15v %-20v     %-15v    %-10v    %-12v    %-12v    %-10v    %-10v    %-10v    %-10v"
@@ -2096,7 +2230,13 @@ func formatMetaNodeViewTableHeader() string {
 func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		region := view.Region
+		if region == "" {
+			region = "-"
+		}
 		zoneName := view.ZoneName
+		if zoneName == "" {
+			zoneName = "-"
+		}
 		return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			view.MetaPartitionCount, view.PartitionLimitCnt,
 			formatYesNo(view.IsWritable), formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
@@ -2276,4 +2416,23 @@ func formatMetaPartitionLearnerInfoRow(partition *proto.MetaPartitionInfo, manua
 	}
 	return fmt.Sprintf(partitionLearnerTablePattern,
 		partition.PartitionID, partition.VolName, strings.Join(normals, ", "), strings.Join(learners, ", "))
+}
+
+var leaseTimeExceededTablePattern = "%-28v    %-12v    %-50v    %-20v    %-20v    %-8v"
+
+func formatLeaseTimeExceededTableHeader() string {
+	return fmt.Sprintf(leaseTimeExceededTablePattern, "VOL_NAME", "PARTITION_ID", "REPLICA_ADDRESS", "LEASEAPPLYTIME", "REPORT_TIME", "ISACTIVE")
+}
+
+func formatLeaseTimeExceededRow(replica proto.LeaseTimeExceededReplica) string {
+	leaseApplyTimeStr := "N/A"
+	if replica.LeaseApplyTime > 0 {
+		leaseApplyTimeStr = formatTime(replica.LeaseApplyTime)
+	}
+	reportTimeStr := "N/A"
+	if replica.ReportTime > 0 {
+		reportTimeStr = formatTime(replica.ReportTime)
+	}
+	return fmt.Sprintf(leaseTimeExceededTablePattern,
+		replica.VolName, replica.PartitionID, replica.ReplicaAddr, leaseApplyTimeStr, reportTimeStr, replica.IsActive)
 }

@@ -162,6 +162,7 @@ const (
 	CliFlagMetaManualDecommissionLimit            = "metaManualDecommissionLimit"
 	CliFlagMetaBalanceLimit                       = "metaBalanceLimit"
 	CliFlagMetaManualAddReplicaLimit              = "metaManualAddReplicaLimit"
+	CliFlagMetaManualLearnerLimit                 = "metaManualLearnerLimit"
 	CliFlagTrashInterval                          = "trashInterval"
 	CliFlagAccessTimeValidInterval                = "accessTimeValidInterval"
 	CliFlagEnablePersistAccessTime                = "enablePersistAccessTime"

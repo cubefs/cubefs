@@ -68,6 +68,7 @@ const (
 	nodeDeleteBatchCountKey                = "batchCount"
 	nodeMarkDeleteRateKey                  = "markDeleteRate"
 	nodeDeleteWorkerSleepMs                = "deleteWorkerSleepMs"
+	followerReadLeaseTimeKey               = "followerReadLeaseTime"
 	nodeAutoRepairRateKey                  = "autoRepairRate"
 	nodeMaxDpCntLimit                      = "maxDpCntLimit"
 	nodeMaxMpCntLimit                      = "maxMpCntLimit"
@@ -133,10 +134,11 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}
 
-			stdout(fmt.Sprintf("  BatchCount         : %v\n", clusterPara[nodeDeleteBatchCountKey]))
-			stdout(fmt.Sprintf("  MarkDeleteRate     : %v\n", clusterPara[nodeMarkDeleteRateKey]))
-			stdout(fmt.Sprintf("  DeleteWorkerSleepMs: %v\n", clusterPara[nodeDeleteWorkerSleepMs]))
-			stdout(fmt.Sprintf("  AutoRepairRate     : %v\n", clusterPara[nodeAutoRepairRateKey]))
+			stdout(fmt.Sprintf("  BatchCount                    : %v\n", clusterPara[nodeDeleteBatchCountKey]))
+			stdout(fmt.Sprintf("  MarkDeleteRate                : %v\n", clusterPara[nodeMarkDeleteRateKey]))
+			stdout(fmt.Sprintf("  DeleteWorkerSleepMs           : %v\n", clusterPara[nodeDeleteWorkerSleepMs]))
+			stdout(fmt.Sprintf("  FollowerReadLeaseTime           : %v\n", clusterPara[followerReadLeaseTimeKey]))
+			stdout(fmt.Sprintf("  AutoRepairRate                : %v\n", clusterPara[nodeAutoRepairRateKey]))
 			stdout(fmt.Sprintf("  MaxDpCntLimit      : %v\n", clusterPara[nodeMaxDpCntLimit]))
 			stdout(fmt.Sprintf("  MaxMpCntLimit      : %v\n", clusterPara[nodeMaxMpCntLimit]))
 			stdout(fmt.Sprintf("  DpLimitSsdBaseCount: %v\n", clusterPara[dpLimitSsdBaseCountKey]))
@@ -324,6 +326,7 @@ func newClusterSetVolDeletionDelayTimeCmd(client *master.MasterClient) *cobra.Co
 func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
 	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs, optLoadFactor string
+	var optFollowerReadLeaseTime string
 	var tmp int64
 	// dataNodesetSelector := ""
 	// metaNodesetSelector := ""
@@ -351,6 +354,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	metaManualDecommissionLimit := ""
 	metaBalanceLimit := ""
 	metaManualAddReplicaLimit := ""
+	metaManualLearnerLimit := ""
 	forbidWriteOpOfProtoVersion0 := ""
 	dataMediaType := ""
 	handleTimeout := ""
@@ -772,11 +776,23 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
+			if optFollowerReadLeaseTime != "" {
+				var tmpUint64 uint64
+				if tmpUint64, err = strconv.ParseUint(optFollowerReadLeaseTime, 10, 64); err != nil {
+					err = fmt.Errorf("param followerReadLeaseTime(%v) failed, should be uint64", optFollowerReadLeaseTime)
+					return
+				}
+				if tmpUint64 == 0 {
+					err = fmt.Errorf("param followerReadLeaseTime(%v) must be greater than 0", optFollowerReadLeaseTime)
+					return
+				}
+			}
 
 			if err = client.AdminAPI().SetClusterParas(&master.ClusterParas{
 				BatchCount:                             optDelBatchCount,
 				MarkDeleteRate:                         optMarkDeleteRate,
 				DeleteWorkerSleepMs:                    optDelWorkerSleepMs,
+				FollowerReadLeaseTime:                  optFollowerReadLeaseTime,
 				AutoRepairRate:                         optAutoRepairRate,
 				LoadFactor:                             optLoadFactor,
 				MaxDpCntLimit:                          opMaxDpCntLimit,
@@ -822,6 +838,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				MetaManualDecommissionLimit:            metaManualDecommissionLimit,
 				MetaBalanceLimit:                       metaBalanceLimit,
 				MetaManualAddReplicaLimit:              metaManualAddReplicaLimit,
+				MetaManualLearnerLimit:                 metaManualLearnerLimit,
 				DpLimitSsdBaseCount:                    optDpLimitSsdBaseCount,
 				DpLimitSsdFactor:                       optDpLimitSsdFactor,
 				DpLimitHddBaseCount:                    optDpLimitHddBaseCount,
@@ -841,6 +858,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optMarkDeleteRate, CliFlagMarkDelRate, "", "DataNode batch mark delete limit rate. if 0 for no infinity limit")
 	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
 	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
+	cmd.Flags().StringVar(&optFollowerReadLeaseTime, "followerReadLeaseTime", "", "Follower read lease time in seconds, default is 5")
 	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
 	cmd.Flags().StringVar(&opMaxMpCntLimit, CliFlagMaxMpCntLimit, "", "Maximum number of mp on each metanode, default 300, 0 represents setting to default")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
@@ -872,6 +890,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&metaManualDecommissionLimit, CliFlagMetaManualDecommissionLimit, "", "Limit for parallel meta partition manual decommission")
 	cmd.Flags().StringVar(&metaBalanceLimit, CliFlagMetaBalanceLimit, "", "Limit for parallel meta partition balance decommission")
 	cmd.Flags().StringVar(&metaManualAddReplicaLimit, CliFlagMetaManualAddReplicaLimit, "", "Limit for parallel meta partition manual add replica decommission")
+	cmd.Flags().StringVar(&metaManualLearnerLimit, CliFlagMetaManualLearnerLimit, "", "Limit for parallel meta partition manual learner (MpManumalLearner) decommission")
 	cmd.Flags().StringVar(&forbidWriteOpOfProtoVersion0, CliForbidWriteOpOfProtoVersion0, "",
 		"set datanode and metanode whether forbid write operate of packet whose protocol version is version-0: [true | false]")
 	cmd.Flags().StringVar(&dataMediaType, "clusterDataMediaType", "", "set cluster media type, 1(ssd), 2(hdd)")

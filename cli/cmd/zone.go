@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/cubefs/cubefs/proto"
 	sdk "github.com/cubefs/cubefs/sdk/master"
@@ -61,6 +62,17 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 			if zones, err = client.AdminAPI().ListZones(); err != nil {
 				return
 			}
+			// Sort zones by PoolId and Meta Region
+			sort.Slice(zones, func(i, j int) bool {
+				// First sort by PoolId
+				if zones[i].PoolId != zones[j].PoolId {
+					return zones[i].PoolId < zones[j].PoolId
+				}
+				// If PoolId is the same, sort by Meta Region
+				regionI := zones[i].MetaRegion
+				regionJ := zones[j].MetaRegion
+				return regionI < regionJ
+			})
 			stdoutln("[Zones]")
 			zoneTablePattern := "%-12v    %-10v    %-15v    %-20v    %-20v    %-30v    %-12v\n"
 			stdout(zoneTablePattern, "ZONE", "STATUS", "DATA_NODESET_SEL", "META_NODESET_SEL", "DATA_MEDIA_TYPE", "POOL", "META_REGION")
@@ -86,7 +98,7 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 					}
 				}
 				// Get meta region, default to "default" if empty
-				metaRegion := zone.Region
+				metaRegion := zone.MetaRegion
 				if metaRegion == "" {
 					metaRegion = "default"
 				}

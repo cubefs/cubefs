@@ -17,6 +17,7 @@ package cmd
 import (
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -193,81 +194,72 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			}
 
 			stdout("\n")
-			// Group bad meta partitions by decommission type
-			typeGroups := make(map[uint32][]struct {
-				Path      string
-				Partition proto.RepairInfo
-			})
-			for _, bmpv := range diagnosis.BadMetaPartitionInfos {
-				for _, pinfo := range bmpv.PartitionInfos {
-					decommissionType := pinfo.DecommissionType
-					typeGroups[decommissionType] = append(typeGroups[decommissionType], struct {
-						Path      string
-						Partition proto.RepairInfo
-					}{bmpv.Path, pinfo})
-				}
-			}
+			// Display RecoverPairs
+			if len(diagnosis.RecoverPairs) > 0 {
+				stdout("%v\n", "[Meta Partition Recovery Pairs]:")
+				recoverPairTablePattern := "%-12v    %-20v    %-20v    %-20v    %-12v    %-20v    %-10v    %-10v\n"
+				stdout(recoverPairTablePattern, "PARTITION_ID", "RECOVER_SRC", "RECOVER_DST", "RECOVER_START", "RETRY_CNT", "RETRY_TIME", "STATE", "DECOMM_TYPE")
 
-			typeOrder := []uint32{4, 1, 7, 5} // AutoAddReplica, ManualDecommission, MpBalance, ManualAddReplica
-			typeNames := map[uint32]string{
-				1: "ManualDecommission",
-				4: "AutoAddReplica",
-				5: "ManualAddReplica",
-				7: "MpBalance",
-			}
-
-			stdout("%v\n", "[Bad meta partitions(decommission not completed)]:")
-			badPartitionTablePattern := "%-20v    %-12v    %-20v\n"
-
-			for _, dtype := range typeOrder {
-				if group, ok := typeGroups[dtype]; ok {
-					stdout("[" + typeNames[dtype] + "]:\n")
-					stdout(badPartitionTablePattern, "PATH", "PARTITIONID", "REPAIR STARTTIME")
-
-					sort.SliceStable(group, func(i, j int) bool {
-						return group[i].Partition.PartitionID < group[j].Partition.PartitionID
-					})
-
-					for _, item := range group {
-						repairStartTime := "N/A"
-						if !item.Partition.RecoverStartTime.IsZero() {
-							repairStartTime = item.Partition.RecoverStartTime.Format("2006-01-02 15:04:05")
-						}
-						stdout(badPartitionTablePattern,
-							item.Path,
-							item.Partition.PartitionID,
-							repairStartTime)
-					}
-					delete(typeGroups, dtype)
-				}
-			}
-
-			// Display any remaining types not in the predefined order
-			if len(typeGroups) > 0 {
-				stdout("\n[Other]:\n")
-				stdout(badPartitionTablePattern, "PATH", "PARTITIONID", "REPAIR STARTTIME")
-
-				var otherGroup []struct {
-					Path      string
-					Partition proto.RepairInfo
-				}
-				for _, group := range typeGroups {
-					otherGroup = append(otherGroup, group...)
-				}
-
-				sort.SliceStable(otherGroup, func(i, j int) bool {
-					return otherGroup[i].Partition.PartitionID < otherGroup[j].Partition.PartitionID
+				sort.SliceStable(diagnosis.RecoverPairs, func(i, j int) bool {
+					return diagnosis.RecoverPairs[i].RecoverPair.RecoverStart < diagnosis.RecoverPairs[j].RecoverPair.RecoverStart
 				})
 
-				for _, item := range otherGroup {
-					repairStartTime := "N/A"
-					if !item.Partition.RecoverStartTime.IsZero() {
-						repairStartTime = item.Partition.RecoverStartTime.Format("2006-01-02 15:04:05")
+				for _, rpw := range diagnosis.RecoverPairs {
+					rp := rpw.RecoverPair
+					recoverStartTime := "N/A"
+					if rp.RecoverStart > 0 {
+						recoverStartTime = time.Unix(rp.RecoverStart, 0).Format("2006-01-02 15:04:05")
 					}
-					stdout(badPartitionTablePattern,
-						item.Path,
-						item.Partition.PartitionID,
-						repairStartTime)
+					retryTime := "N/A"
+					if rp.RecoverRetryTime > 0 {
+						retryTime = time.Unix(rp.RecoverRetryTime, 0).Format("2006-01-02 15:04:05")
+					}
+					stateStr := rp.RecoverState.String()
+					decommTypeStr := proto.FormatDecommissionType(rp.DecommissionType)
+					stdout(recoverPairTablePattern,
+						rpw.PartitionID,
+						rp.RecoverSrc,
+						rp.RecoverDst,
+						recoverStartTime,
+						rp.RecoverRetryCnt,
+						retryTime,
+						stateStr,
+						decommTypeStr)
+				}
+			}
+
+			stdout("\n")
+			// Display LearnerRecoverPairs
+			if len(diagnosis.LearnerRecoverPairs) > 0 {
+				stdout("%v\n", "[Meta Partition Learner Recovery Pairs]:")
+				learnerRecoverPairTablePattern := "%-12v    %-20v    %-20v    %-20v    %-12v    %-20v    %-10v    %-10v\n"
+				stdout(learnerRecoverPairTablePattern, "PARTITION_ID", "RECOVER_SRC", "RECOVER_DST", "RECOVER_START", "RETRY_CNT", "RETRY_TIME", "STATE", "DECOMM_TYPE")
+
+				sort.SliceStable(diagnosis.LearnerRecoverPairs, func(i, j int) bool {
+					return diagnosis.LearnerRecoverPairs[i].RecoverPair.RecoverStart < diagnosis.LearnerRecoverPairs[j].RecoverPair.RecoverStart
+				})
+
+				for _, rpw := range diagnosis.LearnerRecoverPairs {
+					rp := rpw.RecoverPair
+					recoverStartTime := "N/A"
+					if rp.RecoverStart > 0 {
+						recoverStartTime = time.Unix(rp.RecoverStart, 0).Format("2006-01-02 15:04:05")
+					}
+					retryTime := "N/A"
+					if rp.RecoverRetryTime > 0 {
+						retryTime = time.Unix(rp.RecoverRetryTime, 0).Format("2006-01-02 15:04:05")
+					}
+					stateStr := rp.RecoverState.String()
+					decommTypeStr := proto.FormatDecommissionType(rp.DecommissionType)
+					stdout(learnerRecoverPairTablePattern,
+						rpw.PartitionID,
+						rp.RecoverSrc,
+						rp.RecoverDst,
+						recoverStartTime,
+						rp.RecoverRetryCnt,
+						retryTime,
+						stateStr,
+						decommTypeStr)
 				}
 			}
 
@@ -384,6 +376,23 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 				if partition != nil {
 					stdout("%v\n", formatMetaPartitionLearnerInfoRow(partition, false))
 				}
+			}
+
+			stdout("\n")
+			stdout("%v\n", "[Partition with lease time exceeded threshold]:")
+			stdout("%v\n", formatLeaseTimeExceededTableHeader())
+			sort.SliceStable(diagnosis.LeaseTimeExceededReplicas, func(i, j int) bool {
+				a, b := diagnosis.LeaseTimeExceededReplicas[i], diagnosis.LeaseTimeExceededReplicas[j]
+				if a.VolName != b.VolName {
+					return a.VolName < b.VolName
+				}
+				if a.PartitionID != b.PartitionID {
+					return a.PartitionID < b.PartitionID
+				}
+				return a.ReplicaAddr < b.ReplicaAddr
+			})
+			for _, replica := range diagnosis.LeaseTimeExceededReplicas {
+				stdout("%v\n", formatLeaseTimeExceededRow(replica))
 			}
 
 			if printManual {

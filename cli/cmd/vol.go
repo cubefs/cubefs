@@ -52,6 +52,8 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolShrinkCmd(client),
 		newVolUpdateCmd(client),
 		newVolInfoCmd(client),
+		newVolUpdateMpRegionPolicyCmd(client),
+		newVolGetMpRegionPolicyCmd(client),
 		newVolDeleteCmd(client),
 		newVolTransferCmd(client),
 		newVolAddDPCmd(client),
@@ -1476,6 +1478,7 @@ const (
 
 func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	var region string
 	cmd := &cobra.Command{
 		Use:   cmdVolAddMPCmdUse,
 		Short: cmdVolAddMPCmdShort,
@@ -1495,7 +1498,7 @@ func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
-			if err = client.AdminAPI().CreateMetaPartition(volume, count, clientIDKey); err != nil {
+			if err = client.AdminAPI().CreateMetaPartition(volume, count, clientIDKey, region); err != nil {
 				return
 			}
 			stdout("Add mp successfully.\n")
@@ -1508,6 +1511,180 @@ func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().StringVar(&region, "region", "", "Specify region for meta partitions (if not specified, use volume's default region)")
+	return cmd
+}
+
+const (
+	cmdVolUpdateMpRegionPolicyUse   = "updateMpRegionPolicy [VOLUME]"
+	cmdVolUpdateMpRegionPolicyShort = "Update MP region policy for a volume"
+)
+
+func newVolUpdateMpRegionPolicyCmd(client *master.MasterClient) *cobra.Command {
+	var region string
+	var policy string
+	var clientIDKey string
+
+	cmd := &cobra.Command{
+		Use:   cmdVolUpdateMpRegionPolicyUse,
+		Short: cmdVolUpdateMpRegionPolicyShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			volumeName := args[0]
+			defer func() {
+				errout(err)
+			}()
+
+			if region == "" || policy == "" {
+				err = fmt.Errorf("region and policy parameters are required")
+				return
+			}
+
+			var vv *proto.SimpleVolView
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				return
+			}
+
+			if err = client.AdminAPI().VolUpdateMpRegionPolicy(volumeName, region, policy, util.CalcAuthKey(vv.Owner), clientIDKey); err != nil {
+				return
+			}
+
+			if policy == "empty" {
+				stdout("Clear MP region policy for volume %v, region %v successfully.\n", volumeName, region)
+			} else {
+				stdout("Update MP region policy for volume %v, region %v successfully.\n", volumeName, region)
+			}
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+
+	cmd.Flags().StringVar(&region, "region", "", "Region name for MP policy")
+	cmd.Flags().StringVar(&policy, "policy", "", "Policy string, format: 'r2:rocksdb; r3:mem'. 'empty' to clear policy")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.MarkFlagRequired("region")
+	cmd.MarkFlagRequired("policy")
+
+	return cmd
+}
+
+const (
+	cmdVolGetMpRegionPolicyUse   = "mpRegionPolicy [VOLUME]"
+	cmdVolGetMpRegionPolicyShort = "Get MP region policy status for a volume"
+)
+
+func newVolGetMpRegionPolicyCmd(client *master.MasterClient) *cobra.Command {
+	var optDetail bool
+	cmd := &cobra.Command{
+		Use:   cmdVolGetMpRegionPolicyUse,
+		Short: cmdVolGetMpRegionPolicyShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			volumeName := args[0]
+			defer func() {
+				errout(err)
+			}()
+
+			// Get volume info to display region policy configuration
+			var svv *proto.SimpleVolView
+			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
+				return
+			}
+
+			// Display region policy configuration
+			stdout("\n[MP Region Policy Configuration for Volume: %s]\n", volumeName)
+			if len(svv.MpRegionPolicy) > 0 {
+				regions := make([]string, 0, len(svv.MpRegionPolicy))
+				for region := range svv.MpRegionPolicy {
+					regions = append(regions, region)
+				}
+				sort.Strings(regions)
+				for _, region := range regions {
+					policy := svv.MpRegionPolicy[region]
+					if policy != nil && policy.Learner != nil && len(policy.Learner) > 0 {
+						policyStrs := make([]string, 0, len(policy.Learner))
+						for targetRegion, learnerPolicy := range policy.Learner {
+							if learnerPolicy != nil {
+								modeStr := learnerPolicy.Mode.Str()
+								policyStrs = append(policyStrs, fmt.Sprintf("%s:%s", targetRegion, modeStr))
+							}
+						}
+						sort.Strings(policyStrs)
+						stdout("  Region[%s]: %s\n", region, strings.Join(policyStrs, "; "))
+					}
+				}
+			} else {
+				stdout("  No region policy configured\n")
+			}
+
+			// Get and display learner distribution status
+			var statuses []*proto.MpRegionPolicyStatus
+			if statuses, err = client.AdminAPI().VolGetMpRegionPolicy(volumeName); err != nil {
+				return
+			}
+
+			// Display learner distribution status
+			stdout("\n[MP Region Policy Status for Volume: %s]\n", volumeName)
+			for _, status := range statuses {
+				stdout("\nRegion: %s\n", status.Region)
+				stdout("  TotalMp: %d\n", status.TotalMp)
+
+				if len(status.LearnerStatuses) == 0 {
+					stdout("  No learner policy configured\n")
+					continue
+				}
+
+				// Sort target regions for consistent output
+				targetRegions := make([]string, 0, len(status.LearnerStatuses))
+				for targetRegion := range status.LearnerStatuses {
+					targetRegions = append(targetRegions, targetRegion)
+				}
+				sort.Strings(targetRegions)
+
+				for _, targetRegion := range targetRegions {
+					learnerStatus := status.LearnerStatuses[targetRegion]
+					stdout("  Learner Region %s:\n", targetRegion)
+					stdout("    Completed:   %d\n", learnerStatus.Completed)
+					stdout("    InProgress:  %d\n", learnerStatus.InProgress)
+					stdout("    Remaining:   %d\n", learnerStatus.Remaining)
+
+					// Display detail information if requested
+					if optDetail {
+						if len(learnerStatus.InProgressMpIds) > 0 {
+							mpIdStrs := make([]string, len(learnerStatus.InProgressMpIds))
+							for i, mpId := range learnerStatus.InProgressMpIds {
+								mpIdStrs[i] = fmt.Sprintf("%d", mpId)
+							}
+							stdout("    InProgress MP IDs: %s\n", strings.Join(mpIdStrs, ", "))
+						}
+						if len(learnerStatus.RemainingMpIds) > 0 {
+							mpIdStrs := make([]string, len(learnerStatus.RemainingMpIds))
+							for i, mpId := range learnerStatus.RemainingMpIds {
+								mpIdStrs[i] = fmt.Sprintf("%d", mpId)
+							}
+							stdout("    Remaining MP IDs:  %s\n", strings.Join(mpIdStrs, ", "))
+						}
+					}
+				}
+			}
+			stdout("\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+
+	cmd.Flags().BoolVarP(&optDetail, "detail", "d", false, "Show detailed MP ID lists for in-progress and remaining learners")
+
 	return cmd
 }
 
