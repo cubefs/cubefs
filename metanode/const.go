@@ -211,6 +211,9 @@ const (
 
 	// calc meta partition md5 sum
 	opFSMCalcMetaPartitionMd5Sum = 93
+
+	// notify timestamp to followers
+	opFSMNotifyTimestamp = 94
 )
 
 // New inode operation codes

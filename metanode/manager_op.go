@@ -372,6 +372,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				ReadOnlyReasons:           0,
 				StoreMode:                 partition.GetStoreMode(),
 				IsLearner:                 mConf.IsLearner(),
+				LeaseApplyTime:            partition.GetLeaseApplyTime(),
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt, err = partition.TxGetCnt()
 			if err != nil {

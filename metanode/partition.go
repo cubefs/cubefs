@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -41,6 +42,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 // NOTE: if the operation is invoked by local machine
@@ -51,6 +53,11 @@ var (
 	ErrIllegalHeartbeatAddress = errors.New("illegal heartbeat address")
 	ErrIllegalReplicateAddress = errors.New("illegal replicate address")
 	ErrSnapshotCrcMismatch     = errors.New("snapshot crc not match")
+)
+
+const (
+	NotStoreMsgFlag = iota
+	NeedStoreMsgFlag
 )
 
 // Errors
@@ -281,6 +288,7 @@ type OpPartition interface {
 	GetAppliedID() uint64
 	GetUniqId() uint64
 	IsFollowerRead() bool
+	EnableLearnerRead() bool
 	SetFollowerRead(bool)
 	GetBaseConfig() MetaPartitionConfig
 	ResponseLoadMetaPartition(p *Packet) (err error)
@@ -326,6 +334,7 @@ type MetaPartition interface {
 	GetStoreMode() proto.StoreMode
 	GetApplyID() uint64
 	CalcMetaPartitionMd5Sum() error
+	GetLeaseApplyTime() int64
 }
 
 type UidManager struct {
@@ -557,11 +566,22 @@ type metaPartition struct {
 	statByMigratePool         []*proto.StatOfStorageClass
 	syncAtimeCh               chan uint64
 
+	storeMsgFlag   int32 // 0: not store msg, 1: store msg
+	leaseApplyTime int64
+
 	rocksdbManager  RocksdbManager
 	db              *RocksdbOperator
 	multiVerApplyId uint64
 	Md5ApplyId      uint64
 	Md5Sum          string
+}
+
+func (mp *metaPartition) SetNeedStoreMsgFlag(flag int) {
+	atomic.StoreInt32(&mp.storeMsgFlag, int32(flag))
+}
+
+func (mp *metaPartition) needStoreMsg() bool {
+	return atomic.LoadInt32(&mp.storeMsgFlag) == NeedStoreMsgFlag
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -570,6 +590,23 @@ func (mp *metaPartition) SetFollowerRead(fRead bool) {
 		return
 	}
 	mp.isFollowerRead = fRead
+}
+
+func (mp *metaPartition) EnableLearnerRead() bool {
+
+	if mp.raftPartition.IsRestoring() {
+		log.LogDebugf("enable learner read failed, partition(%v) is restoring", mp.config.PartitionId)
+		return false
+	}
+
+	threshold := FollowerReadLeaseTime()
+	if math.Abs(float64(timeutil.GetCurrentTimeUnix()-mp.leaseApplyTime)) > float64(threshold) {
+		log.LogWarnf("enable learner read failed, partition(%v) lease time is too long, leaseTime(%v), currentTime(%v), threshold(%v)",
+			mp.config.PartitionId, mp.leaseApplyTime, timeutil.GetCurrentTimeUnix(), threshold)
+		return false
+	}
+
+	return true
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
@@ -825,6 +862,9 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		go mp.runVersionOp()
 	}
 
+	// Start timestamp notification goroutine
+	mp.startNotifyTimestamp()
+
 	mp.volType = volInfo.VolType
 	if !proto.IsValidStorageClass(volInfo.VolStorageClass) {
 		err = errors.NewErrorf("[onStart] vol(%v) mpId(%d), get from master invalid volStorageClass(%v)",
@@ -1032,6 +1072,49 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 	go mp.batchSyncInodeAtime()
 
 	return mp
+}
+
+// startNotifyTimestamp starts a goroutine to periodically send timestamp notifications to followers
+func (mp *metaPartition) startNotifyTimestamp() {
+	go func() {
+		log.LogInfof("[startNotifyTimestamp] mp(%v) start timestamp notification", mp.config.PartitionId)
+		interval := time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
+		timer := time.NewTimer(interval)
+		defer timer.Stop()
+
+		for {
+			select {
+			case <-mp.stopC:
+				log.LogInfof("[startNotifyTimestamp] mp(%v) stop timestamp notification", mp.config.PartitionId)
+				return
+			case <-timer.C:
+
+				interval = time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
+				timer.Reset(interval)
+
+				// Only leader sends timestamp notifications
+				if _, ok := mp.IsLeader(); !ok {
+					continue
+				}
+
+				// Get current timestamp
+				timestamp := timeutil.GetCurrentTimeUnix()
+
+				// Encode timestamp as uint64 bytes
+				buf := make([]byte, 8)
+				binary.BigEndian.PutUint64(buf, uint64(timestamp))
+				// Submit through raft
+				if _, err := mp.submit(opFSMNotifyTimestamp, buf); err != nil {
+					log.LogWarnf("[startNotifyTimestamp] mp(%v) failed to submit timestamp notification: %v, interval: %v",
+						mp.config.PartitionId, err, interval)
+				} else {
+					log.LogDebugf("[startNotifyTimestamp] mp(%v) sent timestamp notification: %v, interval: %v",
+						mp.config.PartitionId, timestamp, interval)
+				}
+
+			}
+		}
+	}()
 }
 
 func (mp *metaPartition) GetVerSeq() uint64 {
@@ -2295,4 +2378,8 @@ func (mp *metaPartition) CalcMetaPartitionMd5Sum() error {
 	}
 
 	return nil
+}
+
+func (mp *metaPartition) GetLeaseApplyTime() int64 {
+	return mp.leaseApplyTime
 }

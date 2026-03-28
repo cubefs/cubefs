@@ -62,6 +62,10 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		return
 	}
 
+	if msg.Op != opFSMNotifyTimestamp {
+		mp.SetNeedStoreMsgFlag(NeedStoreMsgFlag)
+	}
+
 	mp.inodeTree.SetApplyID(index)
 
 	// NOTE: commit changes
@@ -302,6 +306,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMSentToChanWithVer:
 		resp = mp.fsmSendToChan(msg.V, true)
 	case opFSMStoreTick:
+		mp.SetNeedStoreMsgFlag(NotStoreMsgFlag)
 		quotaRebuild := mp.mqMgr.statisticRebuildStart()
 		uidRebuild := mp.acucumRebuildStart()
 		uniqId := mp.GetUniqId()
@@ -573,6 +578,15 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			applyIndex:   index,
 		}
 		mp.storeChan <- msg
+	case opFSMNotifyTimestamp:
+		// Handle timestamp notification from leader
+		// The timestamp is already in msg.V as uint64 bytes
+		if len(msg.V) >= 8 {
+			timestamp := binary.BigEndian.Uint64(msg.V)
+			log.LogDebugf("[Apply] opFSMNotifyTimestamp: mp(%v) received timestamp %v", mp.config.PartitionId, timestamp)
+			mp.leaseApplyTime = int64(timestamp)
+			// Here you can add any logic needed when receiving timestamp notification
+		}
 	default:
 		// do nothing
 	case opFSMSyncInodeAccessTime:

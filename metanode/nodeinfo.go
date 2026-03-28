@@ -17,12 +17,16 @@ const (
 
 	// DefaultDumpWaterLevel defines the default dump water level threshold
 	DefaultDumpWaterLevel = 100
+
+	// DefaultFollowerReadLeaseTime defines the default follower read lease time in seconds
+	DefaultFollowerReadLeaseTime = 5
 )
 
 // NodeInfo holds configuration information for the meta node
 type NodeInfo struct {
-	deleteBatchCount uint64
-	dumpWaterLevel   uint64
+	deleteBatchCount      uint64
+	dumpWaterLevel        uint64
+	followerReadLeaseTime uint64
 }
 
 var (
@@ -109,6 +113,9 @@ func (m *MetaNode) updateNodeInfo() error {
 	// Update delete worker sleep time
 	updateDeleteWorkerSleepMs(clusterInfo.MetaNodeDeleteWorkerSleepMs)
 
+	// Update follower read lease time
+	updateFollowerReadLeaseTime(clusterInfo.FollowerReadLeaseTime)
+
 	// Update directory children number limit with validation
 	if err := m.updateDirChildrenNumLimit(clusterInfo.DirChildrenNumLimit); err != nil {
 		log.LogWarnf("failed to update DirChildrenNumLimit: %v", err)
@@ -148,4 +155,18 @@ func GetDirChildrenNumLimit() uint32 {
 // SetDumpWaterLevel sets the dump water level atomically
 func SetDumpWaterLevel(level uint64) {
 	atomic.StoreUint64(&nodeInfo.dumpWaterLevel, level)
+}
+
+// FollowerReadLeaseTime returns the current follower read lease time in seconds
+func FollowerReadLeaseTime() uint64 {
+	val := atomic.LoadUint64(&nodeInfo.followerReadLeaseTime)
+	if val == 0 {
+		return DefaultFollowerReadLeaseTime
+	}
+	return val
+}
+
+// updateFollowerReadLeaseTime updates the follower read lease time atomically
+func updateFollowerReadLeaseTime(val uint64) {
+	atomic.StoreUint64(&nodeInfo.followerReadLeaseTime, val)
 }

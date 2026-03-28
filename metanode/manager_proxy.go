@@ -123,16 +123,16 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		if !p.IsReadMetaPkt() {
 			return false
 		}
-		return p.IsNearReadMetaPkt()
-	}
-
-	if nearRead() {
-		log.LogDebugf("read from follower: p(%v), arg(%v)", p, mp.GetBaseConfig().PartitionId)
-		return true
+		return p.IsNearReadMetaPkt() && mp.EnableLearnerRead()
 	}
 
 	if leaderAddr, ok = mp.IsLeader(); ok {
 		return
+	}
+
+	if nearRead() {
+		log.LogDebugf("read from near follower: p(%v), arg(%v)", p, mp.GetBaseConfig().PartitionId)
+		return true
 	}
 
 	if leaderAddr == "" {
