@@ -559,6 +559,32 @@ func (api *AdminAPI) VolUpdateDefaultRegion(volName, region, authKey, clientIDKe
 	return
 }
 
+// VolGetMpRegionPolicy gets the MP region policy status for a volume
+func (api *AdminAPI) VolGetMpRegionPolicy(volName string) (statuses []*proto.MpRegionPolicyStatus, err error) {
+	statuses = make([]*proto.MpRegionPolicyStatus, 0)
+	req := newRequest(get, proto.AdminVolGetMpRegionPolicy).Header(api.h).addParam("name", volName)
+	err = api.mc.requestWith(&statuses, req)
+	return
+}
+
+// VolUpdateMpRegionPolicy updates the MP region policy for a volume
+func (api *AdminAPI) VolUpdateMpRegionPolicy(volName, region, policy, authKey, clientIDKey string) (err error) {
+	request := newRequest(http.MethodGet, proto.AdminVolUpdateMpRegionPolicy).Header(api.h)
+	request.addParam("name", volName)
+	request.addParam("region", region)
+	request.addParam("authKey", authKey)
+	if policy != "" {
+		request.addParam("policy", policy)
+	}
+	if clientIDKey != "" {
+		request.addParam("clientIDKey", clientIDKey)
+	}
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 // SetDefaultMetaRegion sets the default meta region using SetClusterParas
 func (api *AdminAPI) SetDefaultMetaRegion(region string) (err error) {
 	params := &ClusterParas{
@@ -732,11 +758,14 @@ func (api *AdminAPI) GetVerInfo(volName string) (ci *proto.VolumeVerInfo, err er
 	return
 }
 
-func (api *AdminAPI) CreateMetaPartition(volName string, count int, clientIDKey string) (err error) {
+func (api *AdminAPI) CreateMetaPartition(volName string, count int, clientIDKey string, region string) (err error) {
 	request := newRequest(get, proto.AdminCreateMetaPartition).Header(api.h)
 	request.addParam("name", volName)
 	request.addParam("count", strconv.Itoa(count))
 	request.addParam("clientIDKey", clientIDKey)
+	if region != "" {
+		request.addParam("region", region)
+	}
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -789,6 +818,7 @@ type ClusterParas struct {
 	BatchCount                             string
 	MarkDeleteRate                         string
 	DeleteWorkerSleepMs                    string
+	FollowerReadLeaseTime                  string
 	AutoRepairRate                         string
 	LoadFactor                             string
 	MaxDpCntLimit                          string
@@ -834,6 +864,7 @@ type ClusterParas struct {
 	MetaManualDecommissionLimit            string
 	MetaBalanceLimit                       string
 	MetaManualAddReplicaLimit              string
+	MetaManualLearnerLimit                 string
 	DpLimitSsdBaseCount                    string
 	DpLimitSsdFactor                       string
 	DpLimitHddBaseCount                    string
@@ -853,6 +884,9 @@ func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
 	request.addParam("batchCount", params.BatchCount)
 	request.addParam("markDeleteRate", params.MarkDeleteRate)
 	request.addParam("deleteWorkerSleepMs", params.DeleteWorkerSleepMs)
+	if params.FollowerReadLeaseTime != "" {
+		request.addParam("followerReadLeaseTime", params.FollowerReadLeaseTime)
+	}
 	request.addParam("autoRepairRate", params.AutoRepairRate)
 	request.addParam("loadFactor", params.LoadFactor)
 	request.addParam("maxDpCntLimit", params.MaxDpCntLimit)
@@ -1005,6 +1039,9 @@ func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
 	}
 	if params.MetaManualAddReplicaLimit != "" {
 		request.addParam("metaManualAddReplicaLimit", params.MetaManualAddReplicaLimit)
+	}
+	if params.MetaManualLearnerLimit != "" {
+		request.addParam("metaManualLearnerLimit", params.MetaManualLearnerLimit)
 	}
 	if params.AutoFixTag != "" {
 		request.addParam("autoFixTag", params.AutoFixTag)

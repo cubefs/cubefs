@@ -86,14 +86,16 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 	hosts := mp.Members
 	curAddr = mp.LeaderAddr
 	isReadPkt := req.IsReadMetaPkt() && !mw.InnerReq
-	inoDirty := false
-	for _, ino := range dirtyIno {
-		if mw.dirtyInodes.isDirty(ino) {
-			inoDirty = true
-			break
+
+	if isReadPkt && mw.nearReadEnabled(mp) {
+		inoDirty := false
+		for _, ino := range dirtyIno {
+			if mw.dirtyInodes.isDirty(ino) {
+				inoDirty = true
+				break
+			}
 		}
-	}
-	if isReadPkt && mw.nearReadEnabled() {
+
 		if inoDirty {
 			log.LogDebugf("sendToMetaPartitionLeader: skip nearRead for dirty inode(%v)", dirtyIno[0])
 		} else {

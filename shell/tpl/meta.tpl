@@ -12,9 +12,11 @@
   "logDir": "_dir_/logs",
   "warnLogDir": "_dir_/logs",
   "memRatio": "70",
+  "rocksdbBlockCacheSize": "1179869184",
   "region":"_region_",
   "metadataDir": "_dir_/meta",
   "raftDir": "_dir_/raft",
+"rocksDirs":["_dir_/rocksdb"],
   "masterAddr": [
  	_master_addr_
   ]

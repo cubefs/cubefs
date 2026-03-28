@@ -109,6 +109,7 @@ type MetaConfig struct {
 	InnerReq             bool
 	DisableTrashByClient bool
 	MetaNearRead         bool
+	RegionReadCfg        bool
 }
 
 type MetaWrapper struct {
@@ -198,6 +199,7 @@ type MetaWrapper struct {
 	FollowerRead        bool
 	NearRead            bool
 	NearReadClientCfg   bool
+	RegionReadCfg       bool
 	dirtyInodes         *dirtyInodeCache
 
 	HostPingStats    sync.Map // [string]*util.AddressPingStats - host address to ping stats mapping
@@ -208,6 +210,10 @@ type MetaWrapper struct {
 
 	// Client specified pool ID for new inodes (0 means use volume default)
 	clientPoolId uint8
+
+	// Client specified meta region for creating inodes (empty means use volume default region)
+	clientMetaRegionCfg string
+	defaultMetaRegion   string
 }
 
 type uniqidRange struct {
@@ -275,6 +281,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.InnerReq = config.InnerReq
 	mw.disableTrashByClient = config.DisableTrashByClient
 	mw.NearReadClientCfg = config.MetaNearRead
+	mw.RegionReadCfg = config.RegionReadCfg
 	mw.dirtyInodes = newDirtyInodeCache(DirtyInodeTTL, MaxDirtyInodeCache)
 
 	for limit > 0 {
@@ -369,8 +376,12 @@ func (mw *MetaWrapper) enableTx(mask proto.TxOpMask) bool {
 }
 
 // nearReadEnabled reports whether meta near-read is active (follower read + near read both on).
-func (mw *MetaWrapper) nearReadEnabled() bool {
-	return mw.FollowerRead && mw.NearRead
+func (mw *MetaWrapper) nearReadEnabled(mp *MetaPartition) bool {
+	if mw.defaultMetaRegion == mp.Region {
+		return mw.FollowerRead && mw.NearRead
+	}
+
+	return mw.FollowerRead && mw.NearRead || mw.RegionReadCfg
 }
 
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {

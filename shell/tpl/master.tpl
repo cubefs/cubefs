@@ -10,6 +10,7 @@
 "legacyDataMediaType":"1",
   "retainLogs": "2000",
 "checkPartitionCreateInterval":"2",
+"metaNodeReservedMem":"50000000",
   "logLevel": "debug",
   "logDir": "_dir_/logs",
   "warnLogDir": "_dir_/logs",

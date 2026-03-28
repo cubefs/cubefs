@@ -111,6 +111,8 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			result.OSSSecure.SecretKey = volView.OSSSecure.SecretKey
 		}
 		for i, mp := range volView.MetaPartitions {
+			// Get region of the meta partition
+			region := mp.Region
 			result.MetaPartitions[i] = &MetaPartition{
 				PartitionID: mp.PartitionID,
 				Start:       mp.Start,
@@ -118,6 +120,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 				Members:     mp.Members,
 				LeaderAddr:  mp.LeaderAddr,
 				Status:      mp.Status,
+				Region:      region,
 			}
 		}
 		return result
@@ -183,6 +186,9 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	atomic.StoreUint32(&mw.DefaultStorageClass, info.DefaultStorageClass)
 	mw.FollowerRead = info.MetaFollowerRead
 	mw.NearRead = mw.NearReadClientCfg || info.MetaNearRead
+	if mw.clientMetaRegionCfg == "" {
+		mw.defaultMetaRegion = info.DefaultMetaRegion
+	}
 	mw.leaderRetryTimeout = int64(info.LeaderRetryTimeOut)
 	log.LogInfof("[updateVolStatInfo]: info(%+v), defaultStorageClass(%v), followerRead(%v), metaNearRead(%v), timout(%v)",
 		info, proto.StorageClassString(info.DefaultStorageClass), mw.FollowerRead, mw.NearRead, mw.leaderRetryTimeout)

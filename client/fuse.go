@@ -1039,6 +1039,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()
 	opt.NearRead = GlobalMountOptions[proto.NearRead].GetBool()
 	opt.MetaNearRead = GlobalMountOptions[proto.MetaNearRead].GetBool()
+	opt.RegionReadCfg = GlobalMountOptions[proto.RegionReadCfg].GetBool()
 	opt.EnablePosixACL = GlobalMountOptions[proto.EnablePosixACL].GetBool()
 	opt.EnableUnixPermission = GlobalMountOptions[proto.EnableUnixPermission].GetBool()
 	opt.ReadThreads = GlobalMountOptions[proto.ReadThreads].GetInt64()
@@ -1111,6 +1112,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.InodeLruLimit = GlobalMountOptions[proto.InodeLruLimit].GetInt64()
 	opt.FuseServeThreads = GlobalMountOptions[proto.FuseServeThreads].GetInt64()
 	opt.PoolId = GlobalMountOptions[proto.PoolId].GetUint8()
+	opt.MetaRegion = GlobalMountOptions[proto.MetaRegion].GetString()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

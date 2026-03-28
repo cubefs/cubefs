@@ -526,6 +526,10 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		return statusExist, nil
 	}
 
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(parentID)
+	}
+
 	req := &proto.TxCreateDentryRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -581,6 +585,10 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 
 	if parentID == inode {
 		return statusExist, nil
+	}
+
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(parentID)
 	}
 
 	req := &proto.QuotaCreateDentryRequest{
@@ -639,6 +647,10 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 
 	if parentID == inode {
 		return statusExist, nil
+	}
+
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(parentID)
 	}
 
 	req := &proto.CreateDentryRequest{
@@ -700,6 +712,10 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 		return statusExist, 0, nil
 	}
 
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(parentID)
+	}
+
 	req := &proto.TxUpdateDentryRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -735,6 +751,10 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 
 	if parentID == newInode {
 		return statusExist, 0, nil
+	}
+
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(parentID)
 	}
 
 	req := &proto.UpdateDentryRequest{
@@ -884,6 +904,10 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, i
 	}
 	req.FullPaths = []string{fullPath}
 
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(parentID)
+	}
+
 	resp := new(proto.TxDeleteDentryResponse)
 
 	metric := exporter.NewTPCnt("OpMetaTxDeleteDentry")
@@ -906,6 +930,10 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, 
 	defer func() {
 		stat.EndStat("ddelete", err, bgTime, 1)
 	}()
+
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(parentID)
+	}
 
 	req := &proto.DeleteDentryRequest{
 		VolName:         mw.volname,

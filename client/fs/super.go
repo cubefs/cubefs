@@ -147,6 +147,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		TrashRebuildGoroutineLimit: int(opt.TrashRebuildGoroutineLimit),
 		TrashTraverseLimit:         int(opt.TrashDeleteExpiredDirGoroutineLimit),
 		MetaNearRead:               opt.MetaNearRead,
+		RegionReadCfg:              opt.RegionReadCfg,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
@@ -156,36 +157,49 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.SetTransaction(opt.EnableTransaction, opt.TxTimeout, opt.TxConflictRetryNum, opt.TxConflictRetryInterval)
 	s.mw.EnableQuota = opt.EnableQuota
 
+	mc := s.mw.GetMasterClient()
+	volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+	if err != nil {
+		log.LogErrorf("NewSuper: failed to get volume info for meta region: %v", err)
+		return nil, errors.Trace(err, "failed to get volume info for meta region")
+	}
+
 	// Validate and set client specified pool ID
 	if opt.PoolId > 0 {
 		// Get volume information to validate pool ID
-		mc := s.mw.GetMasterClient()
-		if mc != nil {
-			volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
-			if err != nil {
-				log.LogWarnf("NewSuper: failed to get volume info for poolId validation: %v", err)
-				return nil, errors.Trace(err, "failed to get volume info for poolId validation")
-			}
-			// Check if poolId is in volume's allowed pools
-			poolValid := false
-			if len(volInfo.Pools) > 0 {
-				for poolId := range volInfo.Pools {
-					if poolId == opt.PoolId {
-						poolValid = true
-						break
-					}
+		// Check if poolId is in volume's allowed pools
+		poolValid := false
+		if len(volInfo.Pools) > 0 {
+			for poolId := range volInfo.Pools {
+				if poolId == opt.PoolId {
+					poolValid = true
+					break
 				}
 			}
-			if !poolValid {
-				return nil, fmt.Errorf("poolId %d is not in volume's allowed pools", opt.PoolId)
-			}
-			s.clientPoolId = opt.PoolId
-			s.mw.SetClientPoolId(opt.PoolId)
-			log.LogInfof("NewSuper: client poolId %d validated and set", opt.PoolId)
 		}
-	} else {
-		s.clientPoolId = 0
-		s.mw.SetClientPoolId(0)
+		if !poolValid {
+			return nil, fmt.Errorf("poolId %d is not in volume's allowed pools", opt.PoolId)
+		}
+		s.clientPoolId = opt.PoolId
+		s.mw.SetClientPoolId(opt.PoolId)
+		log.LogInfof("NewSuper: client poolId %d validated and set", opt.PoolId)
+	}
+
+	// Set client specified meta region
+	if opt.MetaRegion != "" {
+		found := false
+		for _, region := range volInfo.AllowedRegions {
+			if region == opt.MetaRegion {
+				s.mw.SetClientMetaRegion(opt.MetaRegion)
+				log.LogInfof("NewSuper: client metaRegion %v set", opt.MetaRegion)
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.LogErrorf("NewSuper: client metaRegion %v not in volume allowed regions %v", opt.MetaRegion, volInfo.AllowedRegions)
+			return nil, errors.New(fmt.Sprintf("client metaRegion %v not in volume allowed regions %v", opt.MetaRegion, volInfo.AllowedRegions))
+		}
 	}
 
 	s.volname = opt.Volname

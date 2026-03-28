@@ -72,6 +72,14 @@ func (mw *MetaWrapper) SetClientPoolId(poolId uint8) {
 	mw.clientPoolId = poolId
 }
 
+// SetClientMetaRegion sets the client specified meta region for creating inodes
+func (mw *MetaWrapper) SetClientMetaRegion(region string) {
+	mw.Lock()
+	defer mw.Unlock()
+	mw.clientMetaRegionCfg = region
+	mw.defaultMetaRegion = region
+}
+
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
 	rootIno, err := mw.LookupPath(subdir, false)
 	if err != nil {
@@ -1525,7 +1533,7 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 		return statusToErrno(status)
 	}
 	log.LogDebugf("SplitExtentKey: ino(%v) ek(%v)", inode, ek)
-	if mw.nearReadEnabled() {
+	if mw.nearReadEnabled(mp) {
 		mw.dirtyInodes.mark(inode)
 	}
 	return nil
@@ -1546,7 +1554,7 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 		return status, statusToErrno(status)
 	}
 	log.LogDebugf("MetaWrapper AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
-	if mw.nearReadEnabled() {
+	if mw.nearReadEnabled(mp) {
 		mw.dirtyInodes.mark(inode)
 	}
 	return statusOK, nil
@@ -1569,7 +1577,7 @@ func (mw *MetaWrapper) AppendExtentKeys(inode uint64, eks []proto.ExtentKey, sto
 		return statusToErrno(status)
 	}
 	log.LogDebugf("AppendExtentKeys: ino(%v) extentKeys(%v)", inode, eks)
-	if mw.nearReadEnabled() {
+	if mw.nearReadEnabled(mp) {
 		mw.dirtyInodes.mark(inode)
 	}
 	return nil
@@ -1588,7 +1596,7 @@ func (mw *MetaWrapper) AppendObjExtentKeys(inode uint64, eks []proto.ObjExtentKe
 		return statusToErrno(status)
 	}
 	log.LogDebugf("AppendObjExtentKeys: ino(%v) objextentKeys(%v)", inode, eks)
-	if mw.nearReadEnabled() {
+	if mw.nearReadEnabled(mp) {
 		mw.dirtyInodes.mark(inode)
 	}
 	return nil
@@ -1649,7 +1657,7 @@ func (mw *MetaWrapper) Truncate(inode, size uint64, fullPath string) error {
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
-	if mw.nearReadEnabled() {
+	if mw.nearReadEnabled(mp) {
 		mw.dirtyInodes.mark(inode)
 	}
 	return nil
@@ -1840,7 +1848,7 @@ func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32, atime
 		log.LogErrorf("Setattr: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
 	}
-	if mw.nearReadEnabled() {
+	if mw.nearReadEnabled(mp) {
 		mw.dirtyInodes.mark(inode)
 	}
 	return nil
@@ -2168,7 +2176,7 @@ func (mw *MetaWrapper) XAttrSet_ll(inode uint64, name, value []byte, isAsync boo
 	}
 	log.LogDebugf("XAttrSet_ll: set xattr: volume(%v) inode(%v) name(%v) value(%v) status(%v) isAsync(%v)",
 		mw.volname, inode, name, value, status, isAsync)
-	if mw.nearReadEnabled() {
+	if mw.nearReadEnabled(mp) {
 		mw.dirtyInodes.mark(inode)
 	}
 	return nil
@@ -2188,7 +2196,7 @@ func (mw *MetaWrapper) BatchSetXAttr_ll(inode uint64, attrs map[string]string) e
 	}
 	log.LogDebugf("BatchSetXAttr_ll: set xattr: volume(%v) inode(%v) attrs(%v) status(%v)",
 		mw.volname, inode, attrs, status)
-	if mw.nearReadEnabled() {
+	if mw.nearReadEnabled(mp) {
 		mw.dirtyInodes.mark(inode)
 	}
 	return nil
@@ -2255,7 +2263,7 @@ func (mw *MetaWrapper) XAttrDel_ll(inode uint64, name string) error {
 		return statusToErrno(status)
 	}
 	log.LogDebugf("XAttrDel_ll: remove xattr, inode(%v) name(%v) status(%v)", inode, name, status)
-	if mw.nearReadEnabled() {
+	if mw.nearReadEnabled(mp) {
 		mw.dirtyInodes.mark(inode)
 	}
 	return nil

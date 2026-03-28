@@ -18,8 +18,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type MetaPartition struct {
@@ -29,6 +31,7 @@ type MetaPartition struct {
 	Members     []string
 	LeaderAddr  string
 	Status      int8
+	Region      string // Region name of the leader node
 
 	pingElapsedSortedHosts *util.PingElapsedSortedHosts
 }
@@ -146,6 +149,20 @@ func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 		for _, mp := range mw.partitions {
 			rwPartitions = append(rwPartitions, mp)
 		}
+	}
+	// Filter by clientMetaRegion if specified
+	if mw.defaultMetaRegion != "" {
+		filtered := make([]*MetaPartition, 0)
+		for _, mp := range rwPartitions {
+			if mp.Status == proto.ReadWrite && mp.Region == mw.defaultMetaRegion {
+				filtered = append(filtered, mp)
+			}
+		}
+		// If no partitions found in specified region, fall back to all rw partitions
+		if len(filtered) > 0 {
+			return filtered
+		}
+		log.LogWarnf("getRWPartitions: no writable partitions found in region[%v], falling back to all rw partitions", mw.defaultMetaRegion)
 	}
 	return rwPartitions
 }
