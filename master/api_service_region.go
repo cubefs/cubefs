@@ -25,6 +25,12 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+// mpRegionPolicyFormValueMeansClear reports whether the policy form/query value requests clearing policy for the source region.
+func mpRegionPolicyFormValueMeansClear(policy string) bool {
+	s := strings.TrimSpace(policy)
+	return strings.EqualFold(s, "empty")
+}
+
 func (m *Server) volAddRegion(w http.ResponseWriter, r *http.Request) {
 	var (
 		name    string
@@ -228,9 +234,9 @@ func (m *Server) volUpdateMpRegionPolicy(w http.ResponseWriter, r *http.Request)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	// Parse policy string
+	// Parse policy string (empty or "empty" clears policy for this source region)
 	var mpPolicy *proto.VolMpPolicy
-	if policy == "empty" {
+	if mpRegionPolicyFormValueMeansClear(policy) {
 		log.LogWarnf("[volUpdateMpRegionPolicy] to clear mp policy for region(%v)", region)
 	} else {
 		mpPolicy, err = parseMpRegionPolicy(policy, vol.allowedRegions, region)
@@ -262,14 +268,14 @@ func (m *Server) volUpdateMpRegionPolicy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	msg := fmt.Sprintf("update vol(%v) mp region policy successfully for region(%v)", name, region)
+	msg := fmt.Sprintf("update vol(%v) mp region policy successfully for region(%v), policy(%v)", name, region, newArgs.mpPolicy)
 	log.LogInfof("[volUpdateMpRegionPolicy] %v", msg)
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 
 // parseMpRegionPolicy parses policy string like "r2:rocksdb; r3:mem" into VolMpPolicy
 func parseMpRegionPolicy(policyStr string, allowedRegions []string, region string) (*proto.VolMpPolicy, error) {
-	if policyStr == "empty" {
+	if mpRegionPolicyFormValueMeansClear(policyStr) {
 		log.LogWarnf("[parseMpRegionPolicy] to clear mp policy")
 		return nil, nil
 	}
@@ -309,6 +315,10 @@ func parseMpRegionPolicy(policyStr string, allowedRegions []string, region strin
 		}
 		if !isAllowed {
 			return nil, fmt.Errorf("target region(%v) is not in vol allowed regions(%v)", targetRegion, allowedRegions)
+		}
+
+		if _, dup := policy.Learner[targetRegion]; dup {
+			return nil, fmt.Errorf("duplicate learner target region(%v) in policy", targetRegion)
 		}
 
 		// Parse store mode

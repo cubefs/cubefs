@@ -300,7 +300,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 
 			if isLearnerMode {
 				// Learner mode decommission check
-				if err = c.checkLearnerModeRecovery(partition, partition.RecoverPair, false); err != nil {
+				if err = c.checkLearnerModeRecovery(partition, &partition.RecoverPair, false); err != nil {
 					log.LogWarnf("checkMetaPartitionRecoveryProgress learner mode check failed,vol[%v],partitionID[%v],err[%v]",
 						partition.volName, partitionID, err)
 					newBadMpIds = append(newBadMpIds, partitionID)
@@ -369,8 +369,8 @@ func (c *Cluster) markLearnerRecoverFailed(mp *MetaPartition, info *proto.Recove
 	mp.Lock()
 	defer mp.Unlock()
 	info.IsRecover.Store(false)
-	mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 	info.RecoverState = proto.RecoverStateFailed
+	mp.setRestoreReplicaStatus(RestoreReplicaMetaStop)
 	c.syncUpdateMetaPartition(mp)
 	log.LogWarnf("markLearnerRecoverFailed mp[%v] marked as failed, recovery stopped, info[%v]", mp.PartitionID, info)
 }
@@ -530,6 +530,10 @@ func (c *Cluster) checkLearnerModeRecovery(mp *MetaPartition, info *proto.Recove
 	if !contains(mp.Hosts, info.RecoverDst) {
 		log.LogWarnf("checkLearnerModeRecovery dstAddr[%v] is not in mp[%v] hosts, info[%v]", info.RecoverDst, mp.PartitionID, info)
 		return c.clearRecoveryState(mp, info, manualPromote)
+	}
+
+	if info.RecoverState == proto.RecoverStateFailed {
+		return fmt.Errorf("learner recovery failed for mp[%v]", mp.PartitionID)
 	}
 
 	srcAddr := info.RecoverSrc

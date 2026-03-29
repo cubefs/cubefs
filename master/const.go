@@ -302,7 +302,7 @@ const (
 	defaultAutoDecommissionDiskInterval               = 10 * time.Second
 	maxMpCreationCount                                = 10
 	// Meta partition decommission limits by type
-	defaultMetaAutoAddReplicaLimit         = 5
+	defaultMetaAutoAddReplicaLimit         = 10
 	defaultMetaManualDecommissionLimit     = 5
 	defaultMetaBalanceLimit                = 10
 	defaultMetaManualAddReplicaLimit       = 5

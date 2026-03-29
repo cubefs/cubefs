@@ -45,13 +45,57 @@ func TestIsExcessiveReplicaMetaPartition(t *testing.T) {
 			{Addr: "p2", Type: raftProto.PeerNormal},
 		},
 	}
-	require.True(t, IsExcessiveReplicaMetaPartition(mp))
+	require.True(t, IsExcessiveReplicaMetaPartition(nil, mp))
 
+	// Auto learner with ReplicaNum met for voters still needs cleanup (same as needReplicaMetaRestore stage1).
 	mp.Peers = []proto.Peer{
 		{Addr: "p1", Type: raftProto.PeerNormal},
 		{Addr: "l1", Type: raftProto.PeerLearner},
 	}
-	require.False(t, IsExcessiveReplicaMetaPartition(mp))
+	require.True(t, IsExcessiveReplicaMetaPartition(nil, mp))
+}
+
+func TestIsExcessiveReplicaMetaPartition_ManualLearnerDoesNotCountAgainstReplicaNum(t *testing.T) {
+	mp := &MetaPartition{
+		ReplicaNum: 3,
+		Peers: []proto.Peer{
+			{Addr: "m1", Type: raftProto.PeerNormal},
+			{Addr: "m2", Type: raftProto.PeerNormal},
+			{Addr: "m3", Type: raftProto.PeerNormal},
+			{Addr: "learner", Type: raftProto.PeerLearner, ManualPromote: true},
+		},
+	}
+	require.False(t, IsExcessiveReplicaMetaPartition(nil, mp))
+}
+
+func TestIsExcessiveReplicaMetaPartition_RegionPolicy(t *testing.T) {
+	learnerAddr := "10.0.1.10:17210"
+	vol := &Vol{Name: "v1", mpPolicy: nil}
+	c := &Cluster{
+		ClusterVolSubItem: ClusterVolSubItem{
+			vols: map[string]*Vol{"v1": vol},
+		},
+	}
+	c.metaNodes.Store(learnerAddr, &MetaNode{Addr: learnerAddr, Region: "west"})
+
+	// Two voters + one manual learner: count == ReplicaNum, but nil mpPolicy violates region policy.
+	mp := &MetaPartition{
+		volName:    "v1",
+		Region:     "east",
+		ReplicaNum: 3,
+		Peers: []proto.Peer{
+			{Addr: "m1", Type: raftProto.PeerNormal},
+			{Addr: "m2", Type: raftProto.PeerNormal},
+			{Addr: learnerAddr, Type: raftProto.PeerLearner, ManualPromote: true},
+		},
+	}
+	require.False(t, IsExcessiveReplicaMetaPartition(nil, mp))
+	require.True(t, IsExcessiveReplicaMetaPartition(c, mp))
+
+	vol.mpPolicy = map[string]*proto.VolMpPolicy{
+		"east": {Learner: map[string]*proto.LearnerPolicy{"west": {Mode: proto.StoreModeMem}}},
+	}
+	require.False(t, IsExcessiveReplicaMetaPartition(c, mp))
 }
 
 func TestHasLearnerFlagMismatch(t *testing.T) {

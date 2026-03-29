@@ -4291,10 +4291,10 @@ func (c *Cluster) getBadMetaPartitionsRepairView() (recoverPairs []proto.Recover
 				continue
 			}
 			partition.RLock()
-			if partition.RecoverPair != nil {
+			if !partition.RecoverPair.IsEmpty() {
 				recoverPair := proto.RecoverPairWithPartitionID{
 					PartitionID: partitionID,
-					RecoverPair: *partition.RecoverPair,
+					RecoverPair: partition.RecoverPair,
 				}
 				recoverPairs = append(recoverPairs, recoverPair)
 				log.LogDebugf("getBadMetaPartitionsRepairView: partitionID[%v], recoverPair[%v]",

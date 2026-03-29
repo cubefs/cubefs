@@ -490,7 +490,8 @@ func TestGetSelectTagSummary(t *testing.T) {
 			},
 		},
 		ClusterDecommission: ClusterDecommission{
-			BadMetaPartitionIds: new(sync.Map),
+			BadMetaPartitionIds:     new(sync.Map),
+			RecoverMetaPartitionIds: new(sync.Map),
 		},
 	}
 

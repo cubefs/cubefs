@@ -1536,11 +1536,10 @@ func newVolUpdateMpRegionPolicyCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 
-			if region == "" || policy == "" {
-				err = fmt.Errorf("region and policy parameters are required")
+			if region == "" {
+				err = fmt.Errorf("region parameter is required")
 				return
 			}
-
 			var vv *proto.SimpleVolView
 			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				return
@@ -1565,10 +1564,9 @@ func newVolUpdateMpRegionPolicyCmd(client *master.MasterClient) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&region, "region", "", "Region name for MP policy")
-	cmd.Flags().StringVar(&policy, "policy", "", "Policy string, format: 'r2:rocksdb; r3:mem'. 'empty' to clear policy")
+	cmd.Flags().StringVar(&policy, "policy", "", "Policy 'r2:rocksdb; r3:memory', or 'empty' string to clear for this --region")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.MarkFlagRequired("region")
-	cmd.MarkFlagRequired("policy")
 
 	return cmd
 }

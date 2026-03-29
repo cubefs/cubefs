@@ -4030,13 +4030,16 @@ func newSimpleView(c *Cluster, vol *Vol) (view *proto.SimpleVolView) {
 		RemoteCacheDisableTTL:        vol.remoteCacheDisableTTL,
 	}
 
-	// MP Region Policy
+	// MP Region Policy (omit entries with no learner rules so cleared policy does not show stale lines)
 	if vol.mpPolicy != nil && len(vol.mpPolicy) > 0 {
 		view.MpRegionPolicy = make(map[string]*proto.VolMpPolicy)
 		for region, policy := range vol.mpPolicy {
-			if policy != nil {
+			if policy != nil && policy.Learner != nil && len(policy.Learner) > 0 {
 				view.MpRegionPolicy[region] = policy.Copy()
 			}
+		}
+		if len(view.MpRegionPolicy) == 0 {
+			view.MpRegionPolicy = nil
 		}
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
@@ -6003,18 +6006,13 @@ func (m *Server) resetMetaPartitionDecommissionStatus(w http.ResponseWriter, r *
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.clearLearnerRecoveryState(mp); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
+
+	if mp.RecoverDst != "" {
+		m.cluster.markLearnerRecoverFailed(mp, &mp.RecoverPair)
 	}
 
 	for _, learner := range mp.RecoverLearners {
-		if learner.RecoverDst == mp.RecoverDst {
-			if err = m.cluster.clearRecoveryState(mp, learner, true); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
+		m.cluster.markLearnerRecoverFailed(mp, learner)
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("reset decommission status for mp[%d] success", mpID)))

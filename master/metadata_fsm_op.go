@@ -218,7 +218,7 @@ type metaPartitionValue struct {
 	IsRecover          bool
 	Freeze             int8
 	LastDelReplicaTime int64
-	*proto.RecoverPair
+	proto.RecoverPair
 	RecoverState       int
 	RestoreReplicaMeta uint32
 	DecommissionType   uint32

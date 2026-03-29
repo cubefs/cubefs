@@ -35,6 +35,7 @@ func TestGetMetaPartitionDecommissionCount(t *testing.T) {
 	// Create a test cluster
 	cluster := &Cluster{}
 	cluster.BadMetaPartitionIds = &sync.Map{}
+	cluster.RecoverMetaPartitionIds = &sync.Map{}
 	cluster.vols = make(map[string]*Vol)
 
 	// Create test volumes and meta partitions
@@ -45,28 +46,28 @@ func TestGetMetaPartitionDecommissionCount(t *testing.T) {
 	mp1 := &MetaPartition{
 		PartitionID: 1,
 		volName:     "test-vol",
-		RecoverPair: &proto.RecoverPair{
+		RecoverPair: proto.RecoverPair{
 			DecommissionType: proto.AutoAddReplica,
 		},
 	}
 	mp2 := &MetaPartition{
 		PartitionID: 2,
 		volName:     "test-vol",
-		RecoverPair: &proto.RecoverPair{
+		RecoverPair: proto.RecoverPair{
 			DecommissionType: proto.AutoAddReplica,
 		},
 	}
 	mp3 := &MetaPartition{
 		PartitionID: 3,
 		volName:     "test-vol",
-		RecoverPair: &proto.RecoverPair{
+		RecoverPair: proto.RecoverPair{
 			DecommissionType: proto.ManualDecommission,
 		},
 	}
 	mp4 := &MetaPartition{
 		PartitionID: 4,
 		volName:     "test-vol",
-		RecoverPair: &proto.RecoverPair{
+		RecoverPair: proto.RecoverPair{
 			DecommissionType: proto.MpBalance,
 		},
 	}
@@ -116,14 +117,15 @@ func TestCheckMetaPartitionDecommissionLimit(t *testing.T) {
 	// Create a test cluster
 	cluster := &Cluster{}
 	cluster.BadMetaPartitionIds = &sync.Map{}
+	cluster.RecoverMetaPartitionIds = &sync.Map{}
 	cluster.vols = make(map[string]*Vol)
 
 	// Set limits
 	cluster.MetaAutoAddReplicaLimit.Store(3)
 	cluster.MetaManualDecommissionLimit.Store(2)
 	cluster.MetaBalanceLimit.Store(1)
-	cluster.MetaManualAddReplicaLimit.Store(0) // 0 means no limit
 
+	cluster.MetaManualAddReplicaLimit.Store(0) // 0 means no limit
 	// Create test volume and meta partitions
 	vol := createTestVolForDecommission("test-vol")
 	cluster.vols["test-vol"] = vol
@@ -132,14 +134,14 @@ func TestCheckMetaPartitionDecommissionLimit(t *testing.T) {
 	mp1 := &MetaPartition{
 		PartitionID: 1,
 		volName:     "test-vol",
-		RecoverPair: &proto.RecoverPair{
+		RecoverPair: proto.RecoverPair{
 			DecommissionType: proto.AutoAddReplica,
 		},
 	}
 	mp2 := &MetaPartition{
 		PartitionID: 2,
 		volName:     "test-vol",
-		RecoverPair: &proto.RecoverPair{
+		RecoverPair: proto.RecoverPair{
 			DecommissionType: proto.AutoAddReplica,
 		},
 	}
@@ -157,7 +159,7 @@ func TestCheckMetaPartitionDecommissionLimit(t *testing.T) {
 	mp3 := &MetaPartition{
 		PartitionID: 3,
 		volName:     "test-vol",
-		RecoverPair: &proto.RecoverPair{
+		RecoverPair: proto.RecoverPair{
 			DecommissionType: proto.AutoAddReplica,
 		},
 	}
@@ -174,7 +176,7 @@ func TestCheckMetaPartitionDecommissionLimit(t *testing.T) {
 	mp4 := &MetaPartition{
 		PartitionID: 4,
 		volName:     "test-vol",
-		RecoverPair: &proto.RecoverPair{
+		RecoverPair: proto.RecoverPair{
 			DecommissionType: proto.AutoAddReplica,
 		},
 	}
@@ -191,7 +193,7 @@ func TestCheckMetaPartitionDecommissionLimit(t *testing.T) {
 	mp5 := &MetaPartition{
 		PartitionID: 5,
 		volName:     "test-vol",
-		RecoverPair: &proto.RecoverPair{
+		RecoverPair: proto.RecoverPair{
 			DecommissionType: proto.ManualAddReplica,
 		},
 	}

@@ -444,7 +444,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.DpTag = vv.DpTag
 	vol.MpTag = vv.MpTag
 
-	// MP Policy
+	// MP Policy (explicit nil when absent or empty so cleared policy does not linger in memory)
 	if vv.MpPolicy != nil && len(vv.MpPolicy) > 0 {
 		vol.mpPolicy = make(map[string]*proto.VolMpPolicy)
 		for k, v := range vv.MpPolicy {
@@ -452,6 +452,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 				vol.mpPolicy[k] = v.Copy()
 			}
 		}
+	} else {
+		vol.mpPolicy = make(map[string]*proto.VolMpPolicy)
 	}
 
 	return vol
@@ -2134,17 +2136,14 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 		copy(vol.allowedRegions, args.allowedRegions)
 	}
 
-	// Update MP Policy if provided
+	// Update MP Policy if provided (normalize empty map to nil for persistence and views)
 	if args.mpPolicy != nil {
-		if vol.mpPolicy == nil {
-			vol.mpPolicy = make(map[string]*proto.VolMpPolicy)
-		}
-		for k, v := range args.mpPolicy {
-			if v != nil {
-				vol.mpPolicy[k] = v.Copy()
-			} else {
-				delete(vol.mpPolicy, k)
-			}
+		if len(args.mpPolicy) == 0 {
+			vol.mpPolicy = nil
+			log.LogInfof("action[setVolFromArgs] clear mp policy map for vol(%v)", vol.Name)
+		} else {
+			vol.mpPolicy = args.mpPolicy
+			log.LogInfof("action[setVolFromArgs] update mp policy for vol(%v), policy(%v)", vol.Name, args.mpPolicy)
 		}
 	}
 }
@@ -2315,7 +2314,7 @@ func (vol *Vol) checkMetaReplicaMeta(c *Cluster) (cnt int) {
 			checkMetaMpWg.Add(1)
 			checkMetaPool.Submit(func() {
 				defer checkMetaMpWg.Done()
-				log.LogDebugf("[checkMetaPartitions] check meta for vol(%v) mp(%v)", mp.volName, mp.PartitionID)
+				log.LogDebugf("[checkMetaPartitions] check meta for vol(%v) mp(%v)", localMp.volName, localMp.PartitionID)
 				localMp.checkReplicaMeta(c)
 			})
 			continue

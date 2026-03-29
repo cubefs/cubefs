@@ -51,6 +51,10 @@ type RecoverPair struct {
 	IsRecover        atomicutil.Bool
 }
 
+func (rp *RecoverPair) IsEmpty() bool {
+	return rp.RecoverDst == ""
+}
+
 func (rp *RecoverPair) String() string {
 	return fmt.Sprintf("RecoverSrc[%v], RecoverDst[%v], RecoverStart[%v], RecoverRetryCnt[%v], RecoverRetryTime[%v], RecoverState[%v], DecommissionType[%v], IsRecover[%v]",
 		rp.RecoverSrc, rp.RecoverDst, rp.RecoverStart, rp.RecoverRetryCnt, rp.RecoverRetryTime, rp.RecoverState, rp.DecommissionType, rp.IsRecover.Load())

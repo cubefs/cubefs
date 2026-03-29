@@ -573,9 +573,8 @@ func (api *AdminAPI) VolUpdateMpRegionPolicy(volName, region, policy, authKey, c
 	request.addParam("name", volName)
 	request.addParam("region", region)
 	request.addParam("authKey", authKey)
-	if policy != "" {
-		request.addParam("policy", policy)
-	}
+	// Always send policy so GET requests clear correctly when value is empty (server treats "" like "empty").
+	request.addParam("policy", policy)
 	if clientIDKey != "" {
 		request.addParam("clientIDKey", clientIDKey)
 	}

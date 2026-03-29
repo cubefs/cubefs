@@ -592,7 +592,7 @@ func (c *Cluster) checkReplicaMetaPartitionsV1() (diagnosis *proto.MetaPartition
 				diagnosis.NoLeaderMetaPartitionIDs = append(diagnosis.NoLeaderMetaPartitionIDs, mp.PartitionID)
 			}
 
-			if IsExcessiveReplicaMetaPartition(mp) {
+			if IsExcessiveReplicaMetaPartition(c, mp) {
 				diagnosis.ExcessiveReplicaMetaPartitionIDs = append(diagnosis.ExcessiveReplicaMetaPartitionIDs, mp.PartitionID)
 			}
 
@@ -778,7 +778,7 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 	var info *proto.RecoverPair
 	var manualPromote bool
 	if partition.RecoverDst == addr {
-		info = partition.RecoverPair
+		info = &partition.RecoverPair
 	} else {
 		for _, learner := range partition.RecoverLearners {
 			if learner.RecoverDst == addr {
@@ -1126,7 +1126,7 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 	newLearners := make([]*proto.RecoverPair, 0, len(oldLearners)+1)
 	copy(newLearners, oldLearners)
 
-	info := partition.RecoverPair
+	info := &partition.RecoverPair
 	if manualPromote {
 		info = &proto.RecoverPair{}
 		newLearners = append(newLearners, info)
@@ -2096,15 +2096,28 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 	return
 }
 
-func IsExcessiveReplicaMetaPartition(mp *MetaPartition) bool {
-	count := uint8(0)
+// IsExcessiveReplicaMetaPartition reports whether mp needs replica-meta attention: same criteria as
+// needReplicaMetaRestore stage1 (non-learner count vs ReplicaNum, no auto learners) plus stage1b
+// (manual learners violating MP region policy). Manual-promote learners are not counted against
+// ReplicaNum so a policy-driven extra learner (e.g. default -> region2:Memory) is not "excessive".
+// When c is nil, only stage1 runs (for tests).
+func IsExcessiveReplicaMetaPartition(c *Cluster, mp *MetaPartition) bool {
+	var nonLearnerCnt uint8
+	hasAutoLearner := false
 	for _, peer := range mp.Peers {
-		if peer.Type == raftProto.PeerLearner {
-			continue
+		if peer.Type != raftProto.PeerLearner {
+			nonLearnerCnt++
+		} else if !peer.ManualPromote {
+			hasAutoLearner = true
 		}
-		count++
 	}
-	return count > mp.ReplicaNum
+	if int(nonLearnerCnt) > int(mp.ReplicaNum) || hasAutoLearner {
+		return true
+	}
+	if c != nil && mp.manualLearnerOutsideMpRegionPolicy(c) {
+		return true
+	}
+	return false
 }
 
 func getMetaReplicaLearnerInfo(mp *MetaPartition, learnerAddr string) (isLearner bool, manualPromote bool, err error) {

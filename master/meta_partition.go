@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -101,7 +102,7 @@ type MetaPartition struct {
 	// DecommissionType   uint32
 	Region string // Region name for this meta partition
 
-	*proto.RecoverPair
+	proto.RecoverPair
 	RecoverLearners []*proto.RecoverPair
 }
 
@@ -133,7 +134,7 @@ func newMetaPartition(partitionID, start, end uint64, replicaNum uint8, volName 
 	mp.StatByPool = make([]*proto.StatOfStorageClass, 0)
 	mp.StatByMigratePool = make([]*proto.StatOfStorageClass, 0)
 	mp.Region = proto.DefaultRegion // Default region
-	mp.RecoverPair = &proto.RecoverPair{}
+	mp.RecoverPair = proto.RecoverPair{}
 	return
 }
 
@@ -1626,12 +1627,230 @@ func (mp *MetaPartition) checkReplicaMeta(c *Cluster) (err error) {
 		return err
 	}
 
+	// stage3b: remove manual learners that violate volume MP region policy for mp.Region
+	if err = mp.removeManualLearnersViolatingMpRegionPolicy(c); err != nil {
+		return err
+	}
+
 	// stage4: add missing replicas
 	if err = mp.autoAddReplica(c); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// volMpPolicyForSourceRegion returns the VolMpPolicy for meta partitions whose data source region is
+// sourceRegion. When the volume has no mpPolicy, an empty map, or no entry for sourceRegion, returns an
+// empty policy (Learner may be nil).
+func volMpPolicyForSourceRegion(vol *Vol, sourceRegion string) *proto.VolMpPolicy {
+	if vol == nil {
+		return &proto.VolMpPolicy{}
+	}
+	var mpPolicy *proto.VolMpPolicy
+	vol.volLock.RLock()
+	if vol.mpPolicy == nil || len(vol.mpPolicy) == 0 {
+		mpPolicy = &proto.VolMpPolicy{}
+	} else {
+		mpPolicy = vol.mpPolicy[sourceRegion]
+	}
+	vol.volLock.RUnlock()
+	if mpPolicy == nil {
+		return &proto.VolMpPolicy{}
+	}
+	return mpPolicy
+}
+
+// removeManualLearnersViolatingMpRegionPolicy removes manual-promote raft learners whose metanode region
+// is not listed in policy.Learner for mp.Region (same effective policy as manualLearnerOutsideMpRegionPolicy).
+func (mp *MetaPartition) removeManualLearnersViolatingMpRegionPolicy(c *Cluster) (err error) {
+	if c == nil {
+		return nil
+	}
+	vol, err := c.getVol(mp.volName)
+	if err != nil || vol == nil {
+		return nil
+	}
+	policy := volMpPolicyForSourceRegion(vol, mp.Region)
+
+	mp.RLock()
+	peers := append([]proto.Peer(nil), mp.Peers...)
+	mp.RUnlock()
+
+	var (
+		removedAddrs []string
+		auditMsg     string
+	)
+
+	defer func() {
+		if err != nil {
+			auditMsg = fmt.Sprintf("mp(%v) remove policy-violating manual learners failed, err %v", mp.PartitionID, err)
+			log.LogErrorf("action[removeManualLearnersViolatingMpRegionPolicy] %v", auditMsg)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		}
+		for _, addr := range removedAddrs {
+			auditMsg = fmt.Sprintf("mp(%v) removed policy-violating manual learner %v", mp.PartitionID, addr)
+			log.LogDebugf("action[removeManualLearnersViolatingMpRegionPolicy]%v, err %v", auditMsg, err)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		}
+	}()
+
+	for _, p := range peers {
+		if p.Type != raftProto.PeerLearner || !p.ManualPromote {
+			continue
+		}
+		dstRegion := c.getRegionFromMetaNodeAddr(p.Addr)
+		if _, allowed := policy.Learner[dstRegion]; allowed {
+			continue
+		}
+		if err = c.deleteMetaReplica(mp, p.Addr, false, false); err != nil {
+			return err
+		}
+		removedAddrs = append(removedAddrs, p.Addr)
+	}
+
+	mp.RLock()
+	peersAfter := append([]proto.Peer(nil), mp.Peers...)
+	mp.RUnlock()
+	for _, addr := range mp.addrsToTrimForMpRegionPolicyLearners(c, policy, peersAfter) {
+		if err = c.deleteMetaReplica(mp, addr, false, false); err != nil {
+			return err
+		}
+		removedAddrs = append(removedAddrs, addr)
+	}
+	return nil
+}
+
+// isManualLearnerPeerMigrating reports whether peerAddr matches RecoverDst on the partition
+// (embedded RecoverPair or RecoverLearners).
+func (mp *MetaPartition) isManualLearnerPeerMigrating(peerAddr string) bool {
+	match := func(rp *proto.RecoverPair) bool {
+		if rp == nil || rp.RecoverDst != peerAddr {
+			return false
+		}
+		if rp.RecoverSrc == peerAddr || rp.RecoverDst == peerAddr {
+			return true
+		}
+		return false
+	}
+	if match(&mp.RecoverPair) {
+		return true
+	}
+	for _, rp := range mp.RecoverLearners {
+		if match(rp) {
+			return true
+		}
+	}
+	return false
+}
+
+// addrsToTrimForMpRegionPolicyLearners returns manual learner addresses to delete so that each policy
+// target region has at most one learner. When multiple learners map to the same target region,
+// prefer removing StoreMode-mismatched replicas first (when replica mode is known), then surplus peers.
+func (mp *MetaPartition) addrsToTrimForMpRegionPolicyLearners(c *Cluster, policy *proto.VolMpPolicy, peers []proto.Peer) []string {
+	if policy == nil || len(policy.Learner) == 0 || c == nil {
+		return nil
+	}
+	type ranked struct {
+		addr   string
+		modeOk bool
+	}
+	var out []string
+	for targetRegion, lp := range policy.Learner {
+		if lp == nil {
+			continue
+		}
+		var addrs []string
+		for _, p := range peers {
+			if p.Type != raftProto.PeerLearner || !p.ManualPromote {
+				continue
+			}
+
+			if c.getRegionFromMetaNodeAddr(p.Addr) != targetRegion {
+				continue
+			}
+
+			addrs = append(addrs, p.Addr)
+		}
+		if len(addrs) <= 1 {
+			continue
+		}
+
+		rankedList := make([]ranked, 0, len(addrs))
+		for _, addr := range addrs {
+			mode, err := mp.GetMetaReplicaStoreMode(addr)
+			modeOk := err == nil && mode == lp.Mode
+			rankedList = append(rankedList, ranked{addr: addr, modeOk: modeOk})
+		}
+
+		sort.SliceStable(rankedList, func(i, j int) bool {
+			if rankedList[i].modeOk != rankedList[j].modeOk {
+				return !rankedList[i].modeOk && rankedList[j].modeOk
+			}
+			return rankedList[i].addr < rankedList[j].addr
+		})
+
+		for i := 0; i < len(rankedList)-1; i++ {
+			out = append(out, rankedList[i].addr)
+		}
+	}
+	return out
+}
+
+// manualLearnerOutsideMpRegionPolicy returns true if any manual-promote raft learner is not allowed
+// by the effective policy for mp.Region. Effective policy is empty (no Learner entries) when the volume
+// has no mpPolicy, an empty mpPolicy map, or no entry for mp.Region; then any manual learner triggers restore.
+// Otherwise each manual learner's metanode region must appear in policy.Learner.
+// It also returns true when more than one manual learner maps to the same policy.Learner target region.
+// If any manual learner matches isManualLearnerPeerMigrating, this returns false (no violation) without
+// finishing duplicate detection.
+func (mp *MetaPartition) manualLearnerOutsideMpRegionPolicy(c *Cluster) bool {
+	if c == nil {
+		return false
+	}
+	vol, err := c.getVol(mp.volName)
+	if err != nil || vol == nil {
+		return false
+	}
+	policy := volMpPolicyForSourceRegion(vol, mp.Region)
+
+	for _, p := range mp.Peers {
+		if p.Type != raftProto.PeerLearner || !p.ManualPromote {
+			continue
+		}
+
+		dstRegion := c.getRegionFromMetaNodeAddr(p.Addr)
+		if _, allowed := policy.Learner[dstRegion]; !allowed {
+			log.LogInfof("manualLearnerOutsideMpRegionPolicy: mp(%v) manual learner %v not allowed by policy %v", mp.PartitionID, p.Addr, policy)
+			return true
+		}
+	}
+
+	for targetRegion, lp := range policy.Learner {
+		if lp == nil {
+			continue
+		}
+		var addrs []string
+		for _, p := range mp.Peers {
+			if p.Type != raftProto.PeerLearner || !p.ManualPromote {
+				continue
+			}
+			if mp.isManualLearnerPeerMigrating(p.Addr) {
+				return false
+			}
+
+			if c.getRegionFromMetaNodeAddr(p.Addr) != targetRegion {
+				continue
+			}
+
+			addrs = append(addrs, p.Addr)
+		}
+		if len(addrs) > 1 {
+			log.LogInfof("manualLearnerOutsideMpRegionPolicy: mp(%v) manual learner %v has multiple learners for target region %v", mp.PartitionID, addrs, targetRegion)
+			return true
+		}
+	}
+	return false
 }
 
 func (mp *MetaPartition) needReplicaMetaRestore(c *Cluster) bool {
@@ -1649,6 +1868,11 @@ func (mp *MetaPartition) needReplicaMetaRestore(c *Cluster) bool {
 		}
 	}
 	if nonLearnerCnt > int(mp.ReplicaNum) || hasAutoLearner {
+		return true
+	}
+
+	// stage1b: manual learners not allowed by volume MP region policy for this partition's region
+	if mp.manualLearnerOutsideMpRegionPolicy(c) {
 		return true
 	}
 
