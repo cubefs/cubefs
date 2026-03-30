@@ -4399,14 +4399,9 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	default:
 	}
 
-	if limit < len(partitions) || remainCount > 0 {
-		if remainCount > 0 {
-			log.LogWarnf("action[migrateMetaNode] clusterID[%v] migrate from [%s] to [%s] cnt[%d] recovering count[%d]",
-				c.Name, srcAddr, targetAddr, limit, remainCount)
-			return
-		}
-		log.LogWarnf("action[migrateMetaNode] clusterID[%v] migrate from [%s] to [%s] cnt[%d] success",
-			c.Name, srcAddr, targetAddr, limit)
+	if limit > 0 || remainCount > 0 {
+		log.LogWarnf("action[migrateMetaNode] clusterID[%v] migrating from [%s] to [%s] cnt[%d] recovering count[%d]",
+			c.Name, srcAddr, targetAddr, limit, remainCount)
 		return
 	}
 
