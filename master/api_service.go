@@ -483,8 +483,9 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 					ID: dataNode.ID, Addr: dataNode.Addr,
 					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive,
 					IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
-					Rack: dataNode.Rack,
-					Tag:  dataNode.Tag,
+					Rack:              dataNode.Rack,
+					Tag:               dataNode.Tag,
+					CanAllocPartition: dataNode.canAlloc() && dataNode.canAllocDp(),
 				}
 
 				rackDataNodes[rackName] = append(rackDataNodes[rackName], nodeView)
