@@ -15,6 +15,8 @@
 package httpclient
 
 import (
+	"strconv"
+
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -25,6 +27,7 @@ type FlashNode interface {
 	StatAll() (proto.FlashNodeStat, error)
 	InactiveDisk(dataPath string) error
 	SlotStat() (proto.FlashNodeSlotStat, error)
+	SetPrepareLoadRoutineNum(num int) error
 }
 
 type flashNode struct {
@@ -64,4 +67,10 @@ func (f *flashNode) InactiveDisk(dataPath string) error {
 func (f *flashNode) SlotStat() (st proto.FlashNodeSlotStat, err error) {
 	err = f.client.serveWith(&st, newRequest(get, "/slotStat"))
 	return
+}
+
+func (f *flashNode) SetPrepareLoadRoutineNum(num int) error {
+	r := newRequest(post, "/setPrepareLoadRoutineNum")
+	r.params.Add("prepareLoadRoutineNum", strconv.Itoa(num))
+	return f.client.serveWith(nil, r)
 }

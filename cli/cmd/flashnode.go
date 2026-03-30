@@ -42,6 +42,7 @@ func newFlashNodeCmd(client *master.MasterClient) *cobra.Command {
 		newCmdFlashNodeHTTPStat(client),
 		newCmdFlashNodeHTTPStatAll(client),
 		newCmdFlashNodeHTTPEvict(client),
+		newCmdFlashNodeHTTPSetPrepareLoadRoutineNum(client),
 		newCmdFlashNodeHTTPInactiveDisk(client),
 		newCmdFlashNodeHTTPSlotStat(client),
 	)
@@ -317,6 +318,38 @@ func newCmdFlashNodeHTTPEvict(client *master.MasterClient) *cobra.Command {
 			volume := args[1]
 			if err = httpclient.New().Addr(addr2Prof(addr)).FlashNode().EvictVol(volume); err == nil {
 				stdoutlnf("%s evicts volume(%s) [OK]", addr, volume)
+			}
+			return
+		},
+	}
+	cmd.Flags().StringVarP(&name, "topoName", "n", proto.DefaultTopoName, "flash topology name")
+	return cmd
+}
+
+func newCmdFlashNodeHTTPSetPrepareLoadRoutineNum(client *master.MasterClient) *cobra.Command {
+	var name string
+	cmd := &cobra.Command{
+		Use:   "httpSetPrepareLoadRoutineNum" + _flashnodeAddr + " [prepareLoadRoutineNum]",
+		Short: "set flashnode cache prepare worker count",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(_ *cobra.Command, args []string) (err error) {
+			addr := args[0]
+			if name == "" {
+				name = proto.DefaultTopoName
+			}
+			_, err = client.NodeAPI().GetFlashNodeByTopo(addr, name)
+			if err != nil {
+				return
+			}
+			n, err := strconv.Atoi(args[1])
+			if err != nil {
+				return fmt.Errorf("prepareLoadRoutineNum must be an integer: %w", err)
+			}
+			if n < 0 {
+				return fmt.Errorf("prepareLoadRoutineNum must be non-negative")
+			}
+			if err = httpclient.New().Addr(addr2Prof(addr)).FlashNode().SetPrepareLoadRoutineNum(n); err == nil {
+				stdoutlnf("%s set prepareLoadRoutineNum(%d) [OK]", addr, n)
 			}
 			return
 		},

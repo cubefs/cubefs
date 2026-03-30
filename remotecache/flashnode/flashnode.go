@@ -206,6 +206,7 @@ type FlashNode struct {
 	warmUpPaths                  sync.Map // [string]*WarmUpPathInfo
 	waitForCacheBlock            bool
 	prepareLoadRoutineNum        int
+	prepareLoadRoutineMu         sync.Mutex
 	warmupMetaTotalToken         int
 	currentWarmUpWorkers         map[string]int64 // [clientId]reportTime
 	currentWarmUpWorkerMutex     sync.RWMutex

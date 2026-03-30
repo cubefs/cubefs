@@ -52,6 +52,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/queryCacheVols", f.handleQueryCacheVols)
 	http.HandleFunc("/queryDisableTTLVols", f.handleQueryDisableTTLVols)
 	http.HandleFunc("/resetLocalFlowChange", f.handleResetLocalFlowChange)
+	http.HandleFunc("/setPrepareLoadRoutineNum", f.handleSetPrepareLoadRoutineNum)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -590,6 +591,42 @@ func (f *FlashNode) handleQueryDisableTTLVols(w http.ResponseWriter, r *http.Req
 		"count":   len(volumes),
 		"volumes": volumes,
 		"map":     disableTTLMap,
+	})
+}
+
+func (f *FlashNode) handleSetPrepareLoadRoutineNum(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	s := r.FormValue("prepareLoadRoutineNum")
+	if s == "" {
+		replyErr(w, r, proto.ErrCodeParamError, "prepareLoadRoutineNum cannot be empty", nil)
+		return
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, "prepareLoadRoutineNum must be an integer", nil)
+		return
+	}
+	if n < 0 {
+		replyErr(w, r, proto.ErrCodeParamError, "prepareLoadRoutineNum must be non-negative", nil)
+		return
+	}
+	f.prepareLoadRoutineMu.Lock()
+	if f.cacheEngine == nil {
+		f.prepareLoadRoutineMu.Unlock()
+		replyErr(w, r, proto.ErrCodeParamError, "cacheEngine is not initialized", nil)
+		return
+	}
+	old := f.prepareLoadRoutineNum
+	f.prepareLoadRoutineNum = n
+	f.prepareLoadRoutineMu.Unlock()
+	f.cacheEngine.StartCachePrepareWorkers(f.limitWrite, n)
+	log.LogInfof("handleSetPrepareLoadRoutineNum: prepareLoadRoutineNum %d -> %d", old, n)
+	replyOK(w, r, map[string]interface{}{
+		"oldPrepareLoadRoutineNum": old,
+		"newPrepareLoadRoutineNum": n,
 	})
 }
 
