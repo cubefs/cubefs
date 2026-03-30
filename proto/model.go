@@ -287,6 +287,12 @@ type NodeView struct {
 	Tag                      string
 	PoolId                   uint8
 	PoolName                 string
+	// CanAllocPartition / ToBeOffline / DataPartitionCount / MaxDpCntLimit are filled only when
+	// master lists data nodes with detail=true; otherwise left zero (see Cluster.allDataNodes).
+	CanAllocPartition  bool
+	ToBeOffline        bool
+	DataPartitionCount uint32
+	MaxDpCntLimit      uint64
 }
 
 type RepairInfo struct {

@@ -81,6 +81,13 @@ func (api *AdminAPI) GetClusterDataNodes() (nodes []proto.NodeView, err error) {
 	return
 }
 
+// GetClusterDataNodesDetail requests the same path with detail=true (ToBeOffline, DP count, can-alloc, max DP limit).
+func (api *AdminAPI) GetClusterDataNodesDetail() (nodes []proto.NodeView, err error) {
+	nodes = []proto.NodeView{}
+	err = api.mc.requestWith(&nodes, newRequest(get, proto.AdminGetClusterDataNodes).Header(api.h).addParam("detail", "true"))
+	return
+}
+
 func (api *AdminAPI) GetClusterMetaNodes() (nodes []proto.NodeView, err error) {
 	nodes = []proto.NodeView{}
 	err = api.mc.requestWith(&nodes, newRequest(get, proto.AdminGetClusterMetaNodes).Header(api.h))

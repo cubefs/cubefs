@@ -5029,11 +5029,11 @@ func (c *Cluster) lcNodeCount() (len int) {
 	return
 }
 
-func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
+func (c *Cluster) allDataNodes(detail bool) (dataNodes []proto.NodeView) {
 	dataNodes = make([]proto.NodeView, 0)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		dataNodes = append(dataNodes, proto.NodeView{
+		nv := proto.NodeView{
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
 			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
 			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0, Rack: dataNode.Rack,
@@ -5042,7 +5042,14 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 			Tag:       dataNode.Tag,
 			PoolId:    dataNode.PoolId,
 			PoolName:  c.getPoolNameById(dataNode.PoolId),
-		})
+		}
+		if detail {
+			nv.CanAllocPartition = dataNode.canAlloc() && dataNode.canAllocDp()
+			nv.ToBeOffline = dataNode.ToBeOffline
+			nv.DataPartitionCount = dataNode.DataPartitionCount
+			nv.MaxDpCntLimit = dataNode.GetPartitionLimitCnt()
+		}
+		dataNodes = append(dataNodes, nv)
 		return true
 	})
 	return

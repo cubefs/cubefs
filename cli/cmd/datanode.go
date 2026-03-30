@@ -70,12 +70,21 @@ const (
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 	var optFilterStatus string
 	var optFilterWritable string
+	var optDetail bool
 	cmd := &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdDataNodeListShort,
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dataNodes, err := client.AdminAPI().GetClusterDataNodes()
+			var (
+				dataNodes []proto.NodeView
+				err       error
+			)
+			if optDetail {
+				dataNodes, err = client.AdminAPI().GetClusterDataNodesDetail()
+			} else {
+				dataNodes, err = client.AdminAPI().GetClusterDataNodes()
+			}
 			if err != nil {
 				return err
 			}
@@ -87,7 +96,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 				return dataNodes[i].ID < dataNodes[j].ID
 			})
 			stdoutln("[Data nodes]")
-			stdoutln(formatNodeViewTableHeader())
+			stdoutln(formatNodeViewTableHeader(optDetail))
 			for _, node := range dataNodes {
 				if optFilterStatus != "" &&
 					!strings.Contains(formatNodeStatus(node.Status), optFilterStatus) {
@@ -97,11 +106,12 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 					!strings.Contains(formatYesNo(node.IsWritable), optFilterWritable) {
 					continue
 				}
-				stdoutln(formatNodeView(&node, true))
+				stdoutln(formatNodeView(&node, true, optDetail))
 			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVarP(&optDetail, "detail", "d", false, "Show ToBeOffline, DP count, allocatable, max DP limit (master computes extra fields)")
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")
 	cmd.Flags().StringVar(&optFilterStatus, "filter-status", "", "Filter node status [Active, Inactive]")
 	return cmd

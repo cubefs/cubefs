@@ -630,7 +630,7 @@ func (m *ClusterService) makeClusterView() *proto.ClusterView {
 
 	vols := m.cluster.allVolNames()
 	cv.MetaNodes = m.cluster.allMetaNodes()
-	cv.DataNodes = m.cluster.allDataNodes()
+	cv.DataNodes = m.cluster.allDataNodes(false)
 	cv.FlashNodes = m.cluster.allFlashNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
