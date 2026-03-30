@@ -134,7 +134,7 @@ func newShowSelectTagVolSummaryCmd(client *master.MasterClient) *cobra.Command {
 	var optMeta bool
 	var optData bool
 	cmd := &cobra.Command{
-		Use:   cmdShowSelectTagVolSummary,
+		Use:   cmdShowSelectTagVolSummary + " [VOLUME NAME]",
 		Short: cmdShowSelectTagVolSummaryShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
