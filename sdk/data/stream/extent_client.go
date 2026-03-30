@@ -931,6 +931,14 @@ func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRemoteCacheRequest
 			log.LogWarnf("servePrepareRequest: panic occurs, stack(%v)", string(debug.Stack()))
 		}
 	}()
+	if prepareReq.warmUp && prepareReq.remain != nil {
+		defer func() {
+			if atomic.AddInt64(prepareReq.remain, -1) == 0 {
+				c.CloseStream(prepareReq.inode)
+				c.EvictStream(prepareReq.inode)
+			}
+		}()
+	}
 	s := c.GetStreamer(prepareReq.inode)
 	if s == nil {
 		log.LogWarnf("servePrepareRequest: streamer is nil, prepare request: (%v)", prepareReq)
@@ -938,10 +946,6 @@ func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRemoteCacheRequest
 	}
 	if prepareReq.warmUp {
 		s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek, prepareReq.gen)
-		if prepareReq.triggerClean {
-			s.client.CloseStream(prepareReq.inode)
-			s.client.EvictStream(prepareReq.inode)
-		}
 	} else {
 		inodeInfo, err := s.client.getInodeInfo(prepareReq.inode)
 		if err != nil {
