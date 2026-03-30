@@ -298,23 +298,25 @@ const (
 	OpWriteOpOfProtoVerForbidden        uint8 = 0x88
 	OpMetaForbiddenMigration            uint8 = 0x89
 	// Distributed cache related OP codes.
-	OpFlashNodeHeartbeat          uint8 = 0xC1
-	OpFlashNodeCachePrepare       uint8 = 0xC2
-	OpFlashNodeCacheRead          uint8 = 0xC3
-	OpFlashNodeCachePutBlock      uint8 = 0xC4
-	OpFlashNodeCacheDelete        uint8 = 0xC5
-	OpFlashNodeCacheReadObject    uint8 = 0xC6
-	OpFlashNodeSetReadIOLimits    uint8 = 0xC7
-	OpFlashNodeSetWriteIOLimits   uint8 = 0xC8
-	OpFlashNodeScan               uint8 = 0xC9
-	OpFlashNodeTaskCommand        uint8 = 0xCA
-	OpFlashNodeBatchReadObject    uint8 = 0xCC
-	OpApplyWarmupMetaToken        uint8 = 0xCD
-	OpFlashNodeCacheVols          uint8 = 0xCE
-	OpFlashNodePreheatAsync       uint8 = 0xBD
-	OpFlashNodePreheatReply       uint8 = 0xBE
-	OpFlashNodeSetPreheatIOLimits uint8 = 0xBC
+	OpFlashNodeHeartbeat        uint8 = 0xC1
+	OpFlashNodeCachePrepare     uint8 = 0xC2
+	OpFlashNodeCacheRead        uint8 = 0xC3
+	OpFlashNodeCachePutBlock    uint8 = 0xC4
+	OpFlashNodeCacheDelete      uint8 = 0xC5
+	OpFlashNodeCacheReadObject  uint8 = 0xC6
+	OpFlashNodeSetReadIOLimits  uint8 = 0xC7
+	OpFlashNodeSetWriteIOLimits uint8 = 0xC8
+	OpFlashNodeScan             uint8 = 0xC9
+	OpFlashNodeTaskCommand      uint8 = 0xCA
 
+	OpFlashNodeBatchReadObject     uint8 = 0xCC
+	OpApplyWarmupMetaToken         uint8 = 0xCD
+	OpFlashNodeCacheVols           uint8 = 0xCE
+	OpFlashNodeSetVolReadIOLimits  uint8 = 0xCF
+	OpFlashNodePreheatAsync        uint8 = 0xBD
+	OpFlashNodePreheatReply        uint8 = 0xBE
+	OpFlashNodeSetPreheatIOLimits  uint8 = 0xBC
+	OpFlashNodeSetVolWriteIOLimits uint8 = 0xDB
 	// meta&data&falshnode ping operation
 	OpPing uint8 = 0xCB
 
@@ -895,6 +897,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpFlashNodeTaskCommand"
 	case OpFlashNodeCacheVols:
 		m = "OpFlashNodeCacheVols"
+	case OpFlashNodeSetVolReadIOLimits:
+		m = "OpFlashNodeSetVolReadIOLimits"
+	case OpFlashNodeSetVolWriteIOLimits:
+		m = "OpFlashNodeSetVolWriteIOLimits"
 	case OpSetRepairingStatus:
 		m = "OpSetRepairingStatus"
 	case OpFreezeEmptyMetaPartition:

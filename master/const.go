@@ -191,6 +191,8 @@ const (
 	remoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	remoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
 	remoteCacheDisableTTL        = "remoteCacheDisableTTL"
+	remoteCacheReadFlow          = "freadFlow"
+	remoteCacheWriteFlow         = "fwriteFlow"
 	newNameKey                   = "newName"
 	regionKey                    = "region"
 

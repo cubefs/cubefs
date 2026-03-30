@@ -1509,6 +1509,30 @@ func (api *AdminAPI) RenameFlashTopo(srcName, dstName string) (result string, er
 	return string(data), nil
 }
 
+func (api *AdminAPI) SetFlashTopoVolReadLimit(topoName, volName string, readFlow int64) (result string, err error) {
+	req := newRequest(post, proto.AdminFlashTopoSetVolReadFlow).Header(api.h)
+	req.addParam("name", topoName)
+	req.addParam("volName", volName)
+	req.addParam("freadFlow", strconv.FormatInt(readFlow, 10))
+	var data []byte
+	if data, err = api.mc.serveRequest(req); err != nil {
+		return
+	}
+	return string(data), nil
+}
+
+func (api *AdminAPI) SetFlashTopoVolWriteLimit(topoName, volName string, writeFlow int64) (result string, err error) {
+	req := newRequest(post, proto.AdminFlashTopoSetVolWriteFlow).Header(api.h)
+	req.addParam("name", topoName)
+	req.addParam("volName", volName)
+	req.addParam("fwriteFlow", strconv.FormatInt(writeFlow, 10))
+	var data []byte
+	if data, err = api.mc.serveRequest(req); err != nil {
+		return
+	}
+	return string(data), nil
+}
+
 func (api *AdminAPI) CancelDeleteFlashTopo(name string) (result string, err error) {
 	req := newRequest(get, proto.AdminFlashTopoCancelDelete).Header(api.h)
 	req.addParam("name", name)

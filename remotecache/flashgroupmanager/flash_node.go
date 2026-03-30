@@ -176,7 +176,7 @@ func (flashNode *FlashNode) checkLiveliness() {
 func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHandleReadTimeout int,
 	flashNodeReadDataNodeTimeout int, flashHotKeyMissCount int,
 	flashReadFlowLimit int64, flashWriteFlowLimit int64, flashKeyFlowLimit int64, slots []uint32,
-	remoteCacheDisableTTLMap map[string]bool,
+	remoteCacheDisableTTLMap map[string]bool, remoteCacheReadFlowMap map[string]int64, remoteCacheWriteFlowMap map[string]int64,
 ) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
@@ -192,6 +192,8 @@ func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHand
 	request.FlashNodeID = flashNode.ID
 	request.TopoName = flashNode.FlashNodeTopoName
 	request.RemoteCacheDisableTTL = remoteCacheDisableTTLMap
+	request.RemoteCacheReadFlow = remoteCacheReadFlowMap
+	request.RemoteCacheWriteFlow = remoteCacheWriteFlowMap
 	log.LogDebugf("createHeartbeatTask, flashNode:%v, topo:%v", flashNode.Addr, flashNode.FlashNodeTopoName)
 	task = proto.NewAdminTask(proto.OpFlashNodeHeartbeat, flashNode.Addr, request)
 	return
@@ -204,6 +206,26 @@ func (flashNode *FlashNode) CreateSetIOLimitsTask(flow, iocc, factor int, opCode
 		Factor: factor,
 	}
 	task = proto.NewAdminTask(opCode, flashNode.Addr, request)
+	task.TopoName = flashNode.FlashNodeTopoName
+	return
+}
+
+func (flashNode *FlashNode) CreateSetVolReadIOLimitsTask(volName string, flow int64) (task *proto.AdminTask) {
+	request := &proto.FlashNodeSetVolIOLimitsRequest{
+		VolName: volName,
+		Flow:    flow,
+	}
+	task = proto.NewAdminTask(proto.OpFlashNodeSetVolReadIOLimits, flashNode.Addr, request)
+	task.TopoName = flashNode.FlashNodeTopoName
+	return
+}
+
+func (flashNode *FlashNode) CreateSetVolWriteIOLimitsTask(volName string, flow int64) (task *proto.AdminTask) {
+	request := &proto.FlashNodeSetVolIOLimitsRequest{
+		VolName: volName,
+		Flow:    flow,
+	}
+	task = proto.NewAdminTask(proto.OpFlashNodeSetVolWriteIOLimits, flashNode.Addr, request)
 	task.TopoName = flashNode.FlashNodeTopoName
 	return
 }

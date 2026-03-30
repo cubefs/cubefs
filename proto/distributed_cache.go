@@ -819,13 +819,20 @@ type FlashToposAdminView struct {
 	FlashTopos []FlashTopologyAdminView
 }
 
+type FlashTopologyVolFlowView struct {
+	VolName string
+	Flow    int64
+}
+
 type FlashTopologyAdminView struct {
-	ID              uint64
-	Name            string
-	CacheVols       []string
-	Region          string
-	Status          string
-	DelayDeleteTime string
+	ID                uint64
+	Name              string
+	CacheVols         []string
+	VolReadFlowInfos  []FlashTopologyVolFlowView
+	VolWriteFlowInfos []FlashTopologyVolFlowView
+	Region            string
+	Status            string
+	DelayDeleteTime   string
 }
 
 func (m *PreheatAsyncReq) String() string {

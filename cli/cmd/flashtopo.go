@@ -18,6 +18,8 @@ func newFlashTopoCmd(client *master.MasterClient) *cobra.Command {
 		newCmdFlashTopoAdd(client),
 		newCmdFlashTopoDel(client),
 		newCmdFlashTopoRename(client),
+		newCmdFlashTopoSetVolReadLimit(client),
+		newCmdFlashTopoSetVolWriteLimit(client),
 		newCmdFlashTopoCancelDel(client),
 		newCmdFlashTopoSetDelayDeleteTime(client),
 	)
@@ -112,6 +114,68 @@ func newCmdFlashTopoRename(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+}
+
+func newCmdFlashTopoSetVolReadLimit(client *master.MasterClient) *cobra.Command {
+	var topoName string
+	var volName string
+	var readFlow int64
+	cmd := &cobra.Command{
+		Use:   "setVolReadLimit",
+		Short: "set volume read limit for a flash topology",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			if strings.TrimSpace(topoName) == "" {
+				topoName = "default"
+			}
+			if strings.TrimSpace(volName) == "" {
+				return fmt.Errorf("vol should not be empty")
+			}
+			if readFlow < 0 {
+				return fmt.Errorf("freadFlow must be >= 0")
+			}
+			result, err := client.AdminAPI().SetFlashTopoVolReadLimit(topoName, volName, readFlow)
+			if err != nil {
+				return err
+			}
+			stdoutln(result)
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&topoName, "name", "n", "default", "flash topology name")
+	cmd.Flags().StringVar(&volName, "vol", "", "volume name")
+	cmd.Flags().Int64Var(&readFlow, "freadFlow", 0, "volume read flow limit in bytes")
+	return cmd
+}
+
+func newCmdFlashTopoSetVolWriteLimit(client *master.MasterClient) *cobra.Command {
+	var topoName string
+	var volName string
+	var writeFlow int64
+	cmd := &cobra.Command{
+		Use:   "setVolWriteLimit",
+		Short: "set volume write limit for a flash topology",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			if strings.TrimSpace(topoName) == "" {
+				topoName = "default"
+			}
+			if strings.TrimSpace(volName) == "" {
+				return fmt.Errorf("vol should not be empty")
+			}
+			if writeFlow < 0 {
+				return fmt.Errorf("fwriteFlow must be >= 0")
+			}
+			result, err := client.AdminAPI().SetFlashTopoVolWriteLimit(topoName, volName, writeFlow)
+			if err != nil {
+				return err
+			}
+			stdoutln(result)
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&topoName, "name", "n", "default", "flash topology name")
+	cmd.Flags().StringVar(&volName, "vol", "", "volume name")
+	cmd.Flags().Int64Var(&writeFlow, "fwriteFlow", 0, "volume write flow limit in bytes")
+	return cmd
 }
 
 func newCmdFlashTopoDel(client *master.MasterClient) *cobra.Command {

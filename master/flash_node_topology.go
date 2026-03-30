@@ -132,6 +132,12 @@ func (c *Cluster) loadFlashTopos() (err error) {
 			topo.DeleteExecTime = ftv.DeleteExecTime
 			topo.DeleteStep = ftv.DeleteStep
 			topo.DeleteGradualFlag = ftv.DeleteGradualFlag
+			if ftv.RemoteCacheReadFlowMap != nil {
+				topo.RemoteCacheReadFlowMap = ftv.RemoteCacheReadFlowMap
+			}
+			if ftv.RemoteCacheWriteFlowMap != nil {
+				topo.RemoteCacheWriteFlowMap = ftv.RemoteCacheWriteFlowMap
+			}
 			topo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
 			c.flashNodeTopo.Store(ftv.Name, topo)
 			// collect markDeleted topos
