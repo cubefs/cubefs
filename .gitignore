@@ -20,3 +20,4 @@ java/src/main/resources/*.so
 /cubefs_unittest.output
 .version
 .cursorrules
+.cursor

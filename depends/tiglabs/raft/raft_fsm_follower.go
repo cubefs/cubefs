@@ -146,11 +146,6 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 }
 
 func (r *raftFsm) tickElection() {
-	if !r.promotable() {
-		r.electionElapsed = 0
-		return
-	}
-
 	r.electionElapsed++
 	timeout := false
 	// check follower lease (2 * electiontimeout)
@@ -159,7 +154,7 @@ func (r *raftFsm) tickElection() {
 	} else {
 		timeout = r.pastElectionTimeout()
 	}
-	if timeout {
+	if timeout && r.promotable() {
 		logger.Debug("raft[%v] election timeout at term[%d] leader[%d], electionElapsed[%d], config.ElectionTick[%d], pastElectionTimeout[%v].",
 			r.id, r.term, r.leader, r.electionElapsed, r.config.ElectionTick, r.pastElectionTimeout())
 		r.electionElapsed = 0
