@@ -593,7 +593,6 @@ func (mp *metaPartition) SetFollowerRead(fRead bool) {
 }
 
 func (mp *metaPartition) EnableLearnerRead() bool {
-
 	if mp.raftPartition.IsRestoring() {
 		log.LogDebugf("enable learner read failed, partition(%v) is restoring", mp.config.PartitionId)
 		return false

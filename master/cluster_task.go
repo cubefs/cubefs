@@ -189,7 +189,6 @@ errHandler:
 func (c *Cluster) selectTargetMetaPeer(mp *MetaPartition, srcAddr, targetAddr string, dstStoreMode proto.StoreMode, region string) (
 	peers []proto.Peer, finalDstStoreMode proto.StoreMode, err error,
 ) {
-
 	log.LogInfof("action[selectTargetMetaPeer] vol[%v] partitionID[%v] srcAddr[%v] targetAddr[%v] region[%v] dstStoreMode[%v]",
 		mp.volName, mp.PartitionID, srcAddr, targetAddr, region, dstStoreMode)
 	mp.RLock()

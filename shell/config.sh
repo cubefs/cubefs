@@ -11,7 +11,7 @@ export NETWORK_START_IP=101
 # Node Count Configuration
 export MASTER_COUNT=3          # Number of master nodes (usually 3)
 export DATA_COUNT=14            # Number of data nodes
-export META_COUNT=12            # Number of meta nodes
+export META_COUNT=14            # Number of meta nodes
 export LC_COUNT=1            # Number of lc nodes
 
 # Port Configuration
@@ -121,10 +121,10 @@ IP_CONFIG_172_16_1_107="rack=r1,zone=z2,mediaType=2,poolId=2,region=region2"
 IP_CONFIG_172_16_1_108="rack=r1,zone=z2,mediaType=2,poolId=2,region=region2"
 IP_CONFIG_172_16_1_109="rack=r1,zone=z2,mediaType=2,poolId=2,region=region2"
 IP_CONFIG_172_16_1_110="rack=r1,zone=z2,mediaType=2,poolId=2,region=region2"
-IP_CONFIG_172_16_1_111="rack=r1,zone=z3,mediaType=2,poolId=4,region=region2"
-IP_CONFIG_172_16_1_112="rack=r1,zone=z3,mediaType=2,poolId=4,region=region2"
-IP_CONFIG_172_16_1_113="rack=r1,zone=z3,mediaType=2,poolId=4"
-IP_CONFIG_172_16_1_114="rack=r1,zone=z3,mediaType=2,poolId=4"
+IP_CONFIG_172_16_1_111="rack=r1,zone=z4,mediaType=2,poolId=4,region=region3"
+IP_CONFIG_172_16_1_112="rack=r1,zone=z4,mediaType=2,poolId=4,region=region3"
+IP_CONFIG_172_16_1_113="rack=r1,zone=z4,mediaType=2,poolId=4,region=region3"
+IP_CONFIG_172_16_1_114="rack=r1,zone=z4,mediaType=2,poolId=4,region=region3"
 IP_CONFIG_172_16_1_115="rack=r1,zone=z1,mediaType=1,poolId=1"
 
 # Function to get IP-specific configuration

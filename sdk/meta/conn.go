@@ -97,7 +97,7 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 		}
 
 		if inoDirty {
-			log.LogDebugf("sendToMetaPartitionLeader: skip nearRead for dirty inode(%v)", dirtyIno[0])
+			log.LogDebugf("sendToMetaPartitionLeader: skip nearRead for dirty inode(%v), req(%v)", dirtyIno[0], req.ReqID)
 		} else {
 			nearHosts := mp.SortHostsByPingElapsed(mw)
 			if len(nearHosts) > 0 {
@@ -107,7 +107,7 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 				req.Arg = make([]byte, req.ArgLen)
 				req.Arg[0] = proto.NearReadFlag
 			}
-			log.LogDebugf("sendToMetaPartitionLeader: mp(%v) nearHosts(%v) curAddr(%v)", mp, nearHosts, curAddr)
+			log.LogDebugf("sendToMetaPartitionLeader: mp(%v) nearHosts(%v) curAddr(%v), req(%v)", mp, nearHosts, curAddr, req.ReqID)
 		}
 	}
 

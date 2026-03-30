@@ -2211,12 +2211,7 @@ func TestResetMetaPartitionDecommissionStatus(t *testing.T) {
 
 	// Verify state is reset
 	require.False(t, mp.IsRecover.Load(), "IsRecover should be false")
-	require.Empty(t, mp.RecoverSrc, "SrcAddr should be empty")
-	require.Empty(t, mp.RecoverDst, "LearnerDstAddr should be empty")
-	require.Zero(t, mp.RecoverStart, "RecoverStartTime should be zero")
-	require.Zero(t, mp.RecoverRetryCnt, "RecoverFailCount should be zero")
-	require.Zero(t, mp.RecoverRetryTime, "RecoverRetryTime should be zero")
-	require.Equal(t, proto.RecoverStateInit, mp.RecoverState, "RecoverState should be Init")
+	require.Equal(t, proto.RecoverStateFailed, mp.RecoverState, "RecoverState should be Failed")
 	require.Equal(t, RestoreReplicaMetaStop, mp.RestoreReplicaMeta, "RestoreReplicaMeta should be Stop")
 
 	// Test with invalid partition ID

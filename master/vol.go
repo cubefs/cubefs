@@ -2622,7 +2622,6 @@ func (vol *Vol) checkAndCreateMpLearnersByPolicy(c *Cluster) {
 
 		}
 	}
-
 }
 
 // getMpRegionPolicyStatus returns the learner distribution status for each region
@@ -2715,7 +2714,6 @@ func (vol *Vol) getMpRegionPolicyStatus(c *Cluster) (statuses []*proto.MpRegionP
 }
 
 func (vol *Vol) checkMpLeaseTimeout(c *Cluster) bool {
-
 	mps := vol.cloneMetaPartitionMap()
 	// Check lease apply time vs report time
 	threshold := int64(atomic.LoadUint64(&c.cfg.FollowerReadLeaseTime))

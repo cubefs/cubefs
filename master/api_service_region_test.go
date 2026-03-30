@@ -6,18 +6,11 @@
 package master
 
 import (
-	"bytes"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"sort"
 	"testing"
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
-	raftstore_db "github.com/cubefs/cubefs/raftstore/raftstore_db"
-	"github.com/stretchr/testify/require"
 )
 
 func TestParseMpRegionPolicy(t *testing.T) {
@@ -275,67 +268,4 @@ func TestVolGetMpRegionPolicyStatus(t *testing.T) {
 	if st2[0].LearnerStatuses != nil && len(st2[0].LearnerStatuses) > 0 {
 		t.Fatalf("expected no learner status map for region without policy")
 	}
-}
-
-const testRegionAPIAuthKey = "test-region-api-auth"
-
-// newRegionAPIHTTPServer builds a Server whose topology exposes DefaultRegion and "west"
-// for isValidRegion, with an empty in-memory vol map (tests register volumes as needed).
-func newRegionAPIHTTPServer(t *testing.T) *Server {
-	t.Helper()
-	dir := t.TempDir()
-	db, err := raftstore_db.NewRocksDBStoreAndRecovery(dir, LRUCacheSize, WriteBufferSize)
-	require.NoError(t, err)
-	topo := newTopology()
-	z1 := newZone("z-default", proto.MediaType_Unspecified)
-	require.NoError(t, topo.putZone(z1))
-	z2 := newZone("z-west", proto.MediaType_Unspecified)
-	z2.MetaRegion = "west"
-	require.NoError(t, topo.putZone(z2))
-	c := &Cluster{
-		ClusterVolSubItem: ClusterVolSubItem{
-			vols: make(map[string]*Vol),
-		},
-		ClusterTopoSubItem: ClusterTopoSubItem{t: topo},
-		fsm:                &MetadataFsm{store: db},
-	}
-	return &Server{cluster: c}
-}
-
-func putVolForRegionAPITest(c *Cluster, v *Vol) {
-	c.volMutex.Lock()
-	defer c.volMutex.Unlock()
-	c.vols[v.Name] = v
-}
-
-func newVolForRegionAPITest(name string, allowed []string) *Vol {
-	return &Vol{
-		Name:           name,
-		Owner:          testRegionAPIAuthKey,
-		Capacity:       100,
-		allowedRegions: allowed,
-		defaultRegion:  proto.DefaultRegion,
-		MetaPartitions: make(map[uint64]*MetaPartition),
-		mpsLock:        &mpsLockManager{},
-		TopoSubItem:    TopoSubItem{crossZone: true},
-	}
-}
-
-func postRegionAPIForm(t *testing.T, s *Server, h func(http.ResponseWriter, *http.Request), form url.Values) *http.Response {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w := httptest.NewRecorder()
-	h(w, req)
-	return w.Result()
-}
-
-func readHTTPReplyCode(t *testing.T, resp *http.Response) (code int32, msg string) {
-	t.Helper()
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	var raw proto.HTTPReplyRaw
-	require.NoError(t, raw.Unmarshal(body))
-	return raw.Code, raw.Msg
 }

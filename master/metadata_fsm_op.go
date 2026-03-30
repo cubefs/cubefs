@@ -2292,7 +2292,6 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 }
 
 func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
-
 	if len(mp.RecoverLearners) > 0 {
 		c.putRecoverMetaPartitions(mp.PartitionID)
 	}

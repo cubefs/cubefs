@@ -4495,7 +4495,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	remainCount := 0
 	for _, mp := range toBeOfflineMps {
 		// If srcAddr is not empty in learner usage, it is doing migrating.
-		if mp.RecoverSrc != "" {
+		if mp.RecoverSrc == "" {
 			tmpOfflineMps = append(tmpOfflineMps, mp)
 		} else {
 			remainCount++

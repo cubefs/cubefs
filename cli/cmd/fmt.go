@@ -1190,11 +1190,11 @@ func formatMetaPartitionInfoWithPoolNames(partition *proto.MetaPartitionInfo, po
 	return sb.String()
 }
 
-var (
-	metaPartitionTablePattern = "%-8v    %-12v    %-10v    %-12v    %-12v    %-12v    %-8v    %-12v    %-18v    %-12v"
-	metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
-		"ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "STATUS", "LEADER", "MEMBERS", "REGION")
-)
+// var (
+// metaPartitionTablePattern = "%-8v    %-12v    %-10v    %-12v    %-12v    %-12v    %-8v    %-12v    %-18v    %-12v"
+// metaPartitionTableHeader  = fmt.Sprintf(metaPartitionTablePattern,
+// "ID", "MAX INODE", "DENTRY COUNT", "INODE COUNT", "START", "END", "STATUS", "LEADER", "MEMBERS", "REGION")
+// )
 
 // formatMetaPartitionTableWithAutoAlign formats meta partition table with auto-aligned columns
 func formatMetaPartitionTableWithAutoAlign(views []*proto.MetaPartitionView) string {

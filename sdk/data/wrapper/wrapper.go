@@ -19,6 +19,7 @@ import (
 	syslog "log"
 	"math"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -422,12 +423,15 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 	ssdDpWritableCount := 0
 	hddDpCount := 0
 	hddDpWritableCount := 0
+	dpCountByPool := make(map[uint8]int)
+	rwCountByPool := make(map[uint8]int)
 	rwPartitionGroups := make([]*DataPartition, 0)
 	for index, partition := range DataPartitions {
 		if partition == nil {
 			log.LogErrorf("[updateDataPartitionByRsp] index [%v] is nil", index)
 			continue
 		}
+		dpCountByPool[partition.PoolId]++
 		dp := convert(partition)
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
@@ -451,15 +455,29 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 			} else if dp.MediaType == proto.MediaType_HDD {
 				hddDpWritableCount += 1
 			}
+			rwCountByPool[partition.PoolId]++
 		}
+	}
+
+	poolIDs := make([]uint8, 0, len(dpCountByPool))
+	for pid := range dpCountByPool {
+		poolIDs = append(poolIDs, pid)
+	}
+	sort.Slice(poolIDs, func(i, j int) bool { return poolIDs[i] < poolIDs[j] })
+	var poolDetail strings.Builder
+	for i, pid := range poolIDs {
+		if i > 0 {
+			poolDetail.WriteString("; ")
+		}
+		fmt.Fprintf(&poolDetail, "poolId=%d:total=%d,rw=%d", pid, dpCountByPool[pid], rwCountByPool[pid])
 	}
 
 	// if not forceUpdate, at least keep 1 rw dp in the selector to avoid can't do write
 	if forceUpdate || len(rwPartitionGroups) >= 1 {
 		log.LogInfof("updateDataPartition: volume(%v) refresh dpSelector, forceUpdate(%v) policy(%v), "+
-			"allDp(%v) allWritableDp(%v), SsdDp(%v) SsdWritableDp(%v), hddDp(%v) hddWritableDp(%v)",
+			"allDp(%v) allWritableDp(%v), SsdDp(%v) SsdWritableDp(%v), hddDp(%v) hddWritableDp(%v), byPool[%v]",
 			w.VolName, forceUpdate, refreshPolicy, len(DataPartitions), len(rwPartitionGroups),
-			ssdDpCount, ssdDpWritableCount, hddDpCount, hddDpWritableCount)
+			ssdDpCount, ssdDpWritableCount, hddDpCount, hddDpWritableCount, poolDetail.String())
 		w.refreshDpSelector(refreshPolicy, rwPartitionGroups)
 	} else {
 		if len(DataPartitions) == 0 && (proto.IsCold(w.volType) || proto.IsStorageClassBlobStore(w.volStorageClass)) {

@@ -574,7 +574,8 @@ func (api *AdminAPI) VolUpdateMpRegionPolicy(volName, region, policy, authKey, c
 	request.addParam("region", region)
 	request.addParam("authKey", authKey)
 	// Always send policy so GET requests clear correctly when value is empty (server treats "" like "empty").
-	request.addParam("policy", policy)
+	// Encode policy: semicolons in the value must not appear raw in the query string (Go 1.22+ ParseForm rejects them).
+	request.addParam("policy", url.QueryEscape(policy))
 	if clientIDKey != "" {
 		request.addParam("clientIDKey", clientIDKey)
 	}
@@ -612,7 +613,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
 	remoteCacheMaxFileSizeGB int64, remoteCacheMaxFileSizeMB int64, remoteCacheOnlyForNotSSD string, remoteCacheMultiRead string, flashNodeTimeoutCount int64,
 	remoteCacheSameZoneTimeout int64, remoteCacheSameRegionTimeout int64, storeMode proto.StoreMode,
-	poolId uint8, pools string, remoteCacheDisableTTL bool,
+	poolId uint8, pools string, remoteCacheDisableTTL bool, defaultRegion string,
 ) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
 	request.addParam("name", volName)
@@ -670,6 +671,9 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	}
 	if pools != "" {
 		request.addParam("allowedPools", pools)
+	}
+	if defaultRegion != "" {
+		request.addParam("defaultRegion", defaultRegion)
 	}
 	_, err = api.mc.serveRequest(request)
 	return

@@ -528,7 +528,7 @@ func (mm *monitorMetrics) start() {
 	mm.metaNodesNotWritable = exporter.NewGauge(MetricMetaNodesNotWritable)
 	mm.InactiveMetaNodeInfo = exporter.NewGaugeVec(MetricInactiveMetaNodeInfo, "", []string{"clusterName", "addr"})
 	mm.ReplicaMissingDPCount = exporter.NewGaugeVec(MetricReplicaMissingDPCount, "", []string{"replicaNum", "media"})
-	mm.MpRegionInfo = exporter.NewGaugeVec(MetricMpRegionInfo, "", []string{"type"})
+	mm.MpRegionInfo = exporter.NewGaugeVec(MetricMpRegionInfo, "", []string{"volume", "type"})
 	mm.DpMissingLeaderCount = exporter.NewGaugeVec(MetricDpMissingLeaderCount, "", []string{"replicaNum", "media"})
 	mm.MpMissingLeaderCount = exporter.NewGauge(MetricMpMissingLeaderCount)
 	mm.MpMissingReplicaCount = exporter.NewGauge(MetricMpMissingReplicaCount)

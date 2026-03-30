@@ -163,6 +163,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optPoolId uint8
 	var optPools string
 	var optRemoteCacheDisableTTL string
+	var optDefaultRegion string
 
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -268,6 +269,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  followerRead             : %v\n", followerRead)
 				stdout("  readOnlyWhenFull         : %v\n", dpReadOnlyWhenVolFull)
 				stdout("  zoneName                 : %v\n", optZoneName)
+				if optDefaultRegion != "" {
+					stdout("  defaultRegion            : %v\n", optDefaultRegion)
+				}
 				stdout("  ebsBlkSize               : %v byte\n", optEbsBlkSize)
 				stdout("  TransactionMask          : %v\n", optTxMask)
 				stdout("  TransactionTimeout       : %v min\n", optTxTimeout)
@@ -325,7 +329,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				proto.StorageClass_Unspecified, "", optMetaFollowerRead, optMetaNearRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB, optRemoteCacheMaxFileSizeMB,
 				optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
-				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, storeMode, optPoolId, optPools, remoteCacheDisableTTL)
+				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, storeMode, optPoolId, optPools, remoteCacheDisableTTL, optDefaultRegion)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -346,6 +350,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optMetaNearRead, CliFlagMetaNearRead, "", "Enable meta read from nearest node (true|false), default false")
 	cmd.Flags().StringVar(&optMaximallyRead, CliFlagMaximallyRead, "", "Enable read form mp follower, (true|false), default false")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
+	cmd.Flags().StringVar(&optDefaultRegion, CliFlagDefaultRegion, "", "Default meta region for the volume (empty uses cluster default)")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlk Size[Unit: byte]")
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
 		"Enable volume becomes read only when it is full")
