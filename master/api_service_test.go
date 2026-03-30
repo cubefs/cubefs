@@ -391,11 +391,6 @@ func TestGetClusterDataNodes(t *testing.T) {
 	process(reqURL, t)
 }
 
-func TestGetClusterDataNodesDetail(t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?detail=true", hostAddr, proto.AdminGetClusterDataNodes)
-	process(reqURL, t)
-}
-
 func TestGetClusterMetaNodes(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetClusterMetaNodes)
 	process(reqURL, t)

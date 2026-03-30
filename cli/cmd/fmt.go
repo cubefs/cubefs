@@ -226,19 +226,13 @@ func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) stri
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v 	%-8v   %-8v     %-24v     %-10v    %-10v    %-24v"
+var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-11v    %-8v 	%-8v   %-8v     %-24v     %-10v    %-10v    %-24v"
 
-// detail: TO_OFFLINE, DP_CNT, ALLOC, MAX_DP (aligns with datanode info).
-var nodeViewDetailTableRowPattern = "%-6v    %-46v    %-8v    %-10v    %-7v    %-7v    %-8v    %-8v 	%-8v   %-8v     %-16v     %-8v    %-10v    %-18v"
-
-func formatNodeViewTableHeader(detail bool) string {
-	if !detail {
-		return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOpOfProtoVer0", "TAG")
-	}
-	return fmt.Sprintf(nodeViewDetailTableRowPattern, "ID", "ADDRESS", "WRITABLE", "TO_OFFLINE", "DP_CNT", "ALLOC", "MAX_DP", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOpOfProtoVer0", "TAG")
+func formatNodeViewTableHeader() string {
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOpOfProtoVer0", "TAG")
 }
 
-func formatNodeView(view *proto.NodeView, tableRow bool, detail bool) string {
+func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		poolInfo := "-"
 		if view.PoolId > 0 {
@@ -252,16 +246,8 @@ func formatNodeView(view *proto.NodeView, tableRow bool, detail bool) string {
 		if zoneInfo == "" {
 			zoneInfo = "-"
 		}
-		if !detail {
-			return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-				formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-				zoneInfo, poolInfo, view.Rack,
-				formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), view.Tag)
-		}
-		return fmt.Sprintf(nodeViewDetailTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			formatYesNo(view.IsWritable), formatYesNo(view.ToBeOffline), view.DataPartitionCount,
-			formatYesNo(view.CanAllocPartition), view.MaxDpCntLimit,
-			formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
+		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
+			formatYesNo(view.IsWritable), formatYesNo(view.CanAllocPartition), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
 			zoneInfo, poolInfo, view.Rack,
 			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), view.Tag)
 	}
@@ -269,12 +255,7 @@ func formatNodeView(view *proto.NodeView, tableRow bool, detail bool) string {
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
-	if detail {
-		sb.WriteString(fmt.Sprintf("  ToBeOffline      : %v\n", formatYesNo(view.ToBeOffline)))
-		sb.WriteString(fmt.Sprintf("  Partition count  : %v\n", view.DataPartitionCount))
-		sb.WriteString(fmt.Sprintf("  Can alloc partition: %v\n", formatYesNo(view.CanAllocPartition)))
-		sb.WriteString(fmt.Sprintf("  Max partition count: %v\n", view.MaxDpCntLimit))
-	}
+	sb.WriteString(fmt.Sprintf("  Allocatable: %v\n", formatYesNo(view.CanAllocPartition)))
 	sb.WriteString(fmt.Sprintf("  Active  : %v\n", formatNodeStatus(view.Status)))
 	sb.WriteString(fmt.Sprintf("  MEDIA   : %v\n", formatNodeMediaType(view.MediaType)))
 	if view.ZoneName != "" {
@@ -1619,9 +1600,9 @@ func formatZoneView(zv *proto.ZoneView) string {
 	for index, ns := range zv.NodeSet {
 		sb.WriteString(fmt.Sprintf("NodeSet-%v:\n", index))
 		sb.WriteString(fmt.Sprintf("  DataNodes[%v]:\n", ns.DataNodeLen))
-		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader(false)))
+		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
 		for _, nv := range ns.DataNodes {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true, false)))
+			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
 		}
 		sb.WriteString("\n")
 		sb.WriteString(fmt.Sprintf("  MetaNodes[%v]:\n", ns.MetaNodeLen))
@@ -2007,16 +1988,16 @@ func formatMetaPartitionFreeze(freeze int8) string {
 	}
 }
 
-var metaNodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v    %-8v    %-24v    %-8v    %-8v"
+var metaNodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-11v    %-8v    %-8v    %-24v    %-8v    %-8v"
 
 func formatMetaNodeViewTableHeader() string {
-	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "TAG")
+	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "TAG")
 }
 
 func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
+			formatYesNo(view.IsWritable), formatYesNo(view.CanAllocPartition), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
 			view.Rack, formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
 			formatYesNo(view.IsRocksdbWritable), view.Tag)
 	}
@@ -2024,6 +2005,7 @@ func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	sb.WriteString(fmt.Sprintf("  ID              : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address         : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable        : %v\n", formatYesNo(view.IsWritable)))
+	sb.WriteString(fmt.Sprintf("  Allocatable     : %v\n", formatYesNo(view.CanAllocPartition)))
 	sb.WriteString(fmt.Sprintf("  Active          : %v", formatNodeStatus(view.Status)))
 	sb.WriteString(fmt.Sprintf("  MEDIA           : %v", formatNodeMediaType(view.MediaType)))
 	sb.WriteString(fmt.Sprintf("  Rack            : %v", view.Rack))

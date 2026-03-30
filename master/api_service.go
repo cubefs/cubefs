@@ -1110,7 +1110,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	vols := m.cluster.allVolNames()
 	cv.MasterNodes = m.cluster.allMasterNodes()
 	cv.MetaNodes = m.cluster.allMetaNodes()
-	cv.DataNodes = m.cluster.allDataNodes(false)
+	cv.DataNodes = m.cluster.allDataNodes()
 	cv.FlashNodes = m.cluster.allFlashNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
@@ -9939,13 +9939,7 @@ func (m *Server) getAllDataNodes(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.AdminGetClusterDataNodes, metric, nil, nil)
 	}()
-	detail := false
-	if v := r.FormValue("detail"); v != "" {
-		if b, err := strconv.ParseBool(v); err == nil {
-			detail = b
-		}
-	}
-	dataNodes := m.cluster.allDataNodes(detail)
+	dataNodes := m.cluster.allDataNodes()
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodes))
 }
 
