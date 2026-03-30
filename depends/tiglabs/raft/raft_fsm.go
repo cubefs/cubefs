@@ -363,11 +363,12 @@ func (r *raftFsm) Step(m *proto.Message) {
 			// the message (it ignores all out of date messages).
 			// The term in the original message and current local term are the
 			// same in the case of regular votes, but different for pre-votes.
-			r.send(&proto.Message{To: m.From, Term: m.Term, Type: respType})
-			if m.Type == proto.ReqMsgVote {
-				// Only record real votes.
-				r.electionElapsed = 0
-				r.vote = m.From
+			if r.send(&proto.Message{To: m.From, Term: m.Term, Type: respType}) {
+				if m.Type == proto.ReqMsgVote {
+					// Only record real votes after the response is queued.
+					r.electionElapsed = 0
+					r.vote = m.From
+				}
 			}
 		} else {
 			if logger.IsEnableDebug() {
@@ -545,7 +546,19 @@ func (r *raftFsm) quorum() int {
 	return voters/2 + 1
 }
 
-func (r *raftFsm) send(m *proto.Message) {
+// send enqueues an outbound message for the next Ready. It returns false if the
+// recipient is not in the current configuration (message is returned to the pool).
+// send enqueues an outbound message for the next Ready. It returns false if the
+// recipient is not in the current configuration (message is returned to the pool).
+func (r *raftFsm) send(m *proto.Message) bool {
+	if _, ok := r.replicas[m.To]; !ok {
+		if logger.IsEnableWarn() {
+			logger.Warn("raft[%v] skip send %s to peer [%v] not in current replicas[%s]",
+				r.id, m.Type.String(), m.To, r.getReplicas())
+		}
+		proto.ReturnMessage(m)
+		return false
+	}
 	m.ID = r.id
 	m.From = r.config.NodeID
 	// ReqMsgPreVote's message should add one
@@ -553,6 +566,7 @@ func (r *raftFsm) send(m *proto.Message) {
 		m.Term = r.term
 	}
 	r.msgs = append(r.msgs, m)
+	return true
 }
 
 func (r *raftFsm) reset(term, lasti uint64, isLeader bool) {
