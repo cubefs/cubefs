@@ -226,10 +226,10 @@ func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) stri
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-42v    %-8v 	%-8v   %-8v     %-24v     %-10v    %-10v    %-6v    %-8v    %-10v    %-24v"
+var nodeViewTableRowPattern = "%-6v    %-48v    %-6v    %-8v    %-8v    %-42v    %-8v 	%-8v     %-24v     %-10v    %-10v    %-10v    %-24v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "DP", "MAX_DP", "ForbidWriteOpOfProtoVer0", "TAG")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "DP", "MAX_DP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOpOfProtoVer0", "TAG")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
@@ -247,8 +247,9 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 			zoneInfo = "-"
 		}
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
+			view.DataPartitionCount, view.PartitionLimitCnt,
 			formatYesNo(view.IsWritable), formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-			zoneInfo, poolInfo, view.Rack, view.DataPartitionCount, view.PartitionLimitCnt,
+			zoneInfo, poolInfo, view.Rack,
 			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), view.Tag)
 	}
 	sb := strings.Builder{}
