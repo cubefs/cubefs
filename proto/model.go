@@ -289,6 +289,14 @@ type NodeView struct {
 	PoolName                 string
 	// CanAllocPartition: for data nodes, canAlloc && canAllocDp; for meta nodes, same meaning as MetaNodeInfo.CanAllowPartition.
 	CanAllocPartition bool
+	// DataPartitionCount is filled for data nodes in cluster list APIs; 0 otherwise.
+	DataPartitionCount uint32
+	// MetaPartitionCount is filled for meta nodes in cluster list APIs; 0 otherwise.
+	MetaPartitionCount uint32
+	// PartitionLimitCnt: max DP per data node or max MP per meta node (master-computed limit).
+	PartitionLimitCnt uint64
+	// CanAllocReason: when CanAllocPartition is false, brief codes joined by "/" (e.g. countLimit/notWritable); empty if allocatable.
+	CanAllocReason string
 }
 
 type RepairInfo struct {

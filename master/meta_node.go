@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -259,6 +260,23 @@ func (metaNode *MetaNode) PartitionCntLimited() bool {
 
 func (metaNode *MetaNode) PartitionCntLimitedEx(threshold float64) bool {
 	return float64(metaNode.MetaPartitionCount) <= float64(metaNode.GetPartitionLimitCnt())*threshold
+}
+
+// canAllocPartitionReason summarizes why the node cannot allocate new meta partitions (empty if allocatable).
+func (metaNode *MetaNode) canAllocPartitionReason() string {
+	writable := metaNode.IsWriteAble() || metaNode.IsRocksdbWriteAble()
+	limited := metaNode.PartitionCntLimited()
+	if writable && limited {
+		return ""
+	}
+	var reasons []string
+	if !limited {
+		reasons = append(reasons, "countLimit")
+	}
+	if !writable {
+		reasons = append(reasons, "notWritable")
+	}
+	return strings.Join(reasons, "/")
 }
 
 func (metaNode *MetaNode) IsOffline() bool {

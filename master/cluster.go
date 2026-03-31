@@ -5037,12 +5037,15 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
 			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
 			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0, Rack: dataNode.Rack,
-			NodeSetID:         dataNode.NodeSetID,
-			ZoneName:          dataNode.ZoneName,
-			Tag:               dataNode.Tag,
-			PoolId:            dataNode.PoolId,
-			PoolName:          c.getPoolNameById(dataNode.PoolId),
-			CanAllocPartition: dataNode.canAlloc() && dataNode.canAllocDp(),
+			NodeSetID:          dataNode.NodeSetID,
+			ZoneName:           dataNode.ZoneName,
+			Tag:                dataNode.Tag,
+			PoolId:             dataNode.PoolId,
+			PoolName:           c.getPoolNameById(dataNode.PoolId),
+			CanAllocPartition:  dataNode.canAlloc() && dataNode.canAllocDp(),
+			DataPartitionCount: dataNode.DataPartitionCount,
+			PartitionLimitCnt:  dataNode.GetPartitionLimitCnt(),
+			CanAllocReason:     dataNode.canAllocPartitionReason(),
 		})
 		return true
 	})
@@ -5063,6 +5066,9 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 			ZoneName:                 metaNode.ZoneName,
 			Tag:                      metaNode.Tag,
 			CanAllocPartition:        (metaNode.IsWriteAble() || metaNode.IsRocksdbWriteAble()) && metaNode.PartitionCntLimited(),
+			MetaPartitionCount:       uint32(metaNode.MetaPartitionCount),
+			PartitionLimitCnt:        metaNode.GetPartitionLimitCnt(),
+			CanAllocReason:           metaNode.canAllocPartitionReason(),
 		})
 		return true
 	})

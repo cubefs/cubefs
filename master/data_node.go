@@ -391,6 +391,30 @@ func (dataNode *DataNode) canAllocDp() bool {
 	return true
 }
 
+// canAllocPartitionReason summarizes why the node cannot allocate new data partitions (empty if allocatable).
+func (dataNode *DataNode) canAllocPartitionReason() string {
+	if dataNode.canAlloc() && dataNode.canAllocDp() {
+		return ""
+	}
+	var reasons []string
+	if !dataNode.canAlloc() {
+		reasons = append(reasons, "overSold")
+	}
+	if !dataNode.IsWriteAble() {
+		reasons = append(reasons, "notWritable")
+	}
+	if dataNode.ToBeOffline {
+		reasons = append(reasons, "offline")
+	}
+	if len(dataNode.AllDisks) != 0 && dataNode.availableDiskCount() == 0 {
+		reasons = append(reasons, "noAvailableDisk")
+	}
+	if !dataNode.PartitionCntLimited() {
+		reasons = append(reasons, "countLimit")
+	}
+	return strings.Join(reasons, "/")
+}
+
 func (dataNode *DataNode) GetPartitionLimitCnt() uint64 {
 	if dataNode.DpCntLimit != 0 {
 		return dataNode.DpCntLimit
