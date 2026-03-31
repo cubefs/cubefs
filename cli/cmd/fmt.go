@@ -226,7 +226,7 @@ func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) stri
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-48v    %-6v    %-8v    %-8v    %-42v    %-8v 	%-8v     %-24v     %-10v    %-10v    %-10v    %-24v"
+var nodeViewTableRowPattern = "%-6v    %-32v    %-6v    %-8v    %-8v    %-42v    %-8v 	%-8v     %-24v     %-10v    %-10v    %-10v    %-24v"
 
 func formatNodeViewTableHeader() string {
 	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "DP", "MAX_DP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOpOfProtoVer0", "TAG")
@@ -2002,17 +2002,18 @@ func formatMetaPartitionFreeze(freeze int8) string {
 	}
 }
 
-var metaNodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-42v    %-8v    %-8v    %-24v    %-6v    %-8v    %-8v    %-8v    %-16v"
+var metaNodeViewTableRowPattern = "%-6v    %-32v    %-6v    %-8v    %-8v    %-42v    %-8v    %-8v    %-24v    %-8v    %-8v    %-16v"
 
 func formatMetaNodeViewTableHeader() string {
-	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "RACK", "MP", "MAX_MP", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "TAG")
+	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "MP", "MAX_MP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "TAG")
 }
 
 func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
+			view.MetaPartitionCount, view.PartitionLimitCnt,
 			formatYesNo(view.IsWritable), formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-			view.Rack, view.MetaPartitionCount, view.PartitionLimitCnt, formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
+			view.Rack, formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
 			formatYesNo(view.IsRocksdbWritable), view.Tag)
 	}
 	sb := strings.Builder{}
