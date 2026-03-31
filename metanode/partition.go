@@ -1997,13 +1997,7 @@ func (mp *metaPartition) initRocksDBTree() (err error) {
 }
 
 func (mp *metaPartition) selectRocksDBDir() (err error) {
-	maxUsedPercent := getMemModeMaxFsUsedPercent()
-	if mp.HasRocksDBStore() {
-		maxUsedPercent = getRocksDBModeMaxFsUsedPercent()
-	}
-	factor := float64(maxUsedPercent) / float64(100)
-
-	dir, err := mp.manager.rocksdbManager.SelectRocksdbDisk(factor)
+	dir, err := mp.manager.rocksdbManager.SelectRocksdbDisk(mp.manager.rocksDBDiskUsageThreshold)
 	if err != nil {
 		log.LogErrorf("[selectRocksDBDir] mp(%v) select failed(%v)",
 			mp.config.PartitionId, err)

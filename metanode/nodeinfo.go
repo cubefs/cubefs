@@ -15,12 +15,6 @@ const (
 	// DefaultDeleteBatchCounts defines the default batch count for delete operations
 	DefaultDeleteBatchCounts = 128
 
-	// DefaultRocksDBModeMaxFsUsedPercent defines the default max filesystem usage for RocksDB mode
-	DefaultRocksDBModeMaxFsUsedPercent = 60
-
-	// DefaultMemModeMaxFsUsedFactorPercent defines the default max filesystem usage for memory mode
-	DefaultMemModeMaxFsUsedFactorPercent = 80
-
 	// DefaultDumpWaterLevel defines the default dump water level threshold
 	DefaultDumpWaterLevel = 100
 )
@@ -43,12 +37,6 @@ var (
 
 	// Directory children number limit
 	dirChildrenNumLimit uint32 = proto.DefaultDirChildrenNumLimit
-
-	// RocksDB mode maximum filesystem usage percentage
-	RocksDBModeMaxFsUsedPercent uint64 = DefaultRocksDBModeMaxFsUsedPercent
-
-	// Memory mode maximum filesystem usage percentage
-	MemModeMaxFsUsedPercent uint64 = DefaultMemModeMaxFsUsedFactorPercent
 )
 
 // DeleteBatchCount returns the current delete batch count
@@ -141,16 +129,6 @@ func (m *MetaNode) updateDirChildrenNumLimit(limit uint32) error {
 	atomic.StoreUint32(&dirChildrenNumLimit, limit)
 	log.LogInfof("DirChildrenNumLimit updated to %v", limit)
 	return nil
-}
-
-// getRocksDBModeMaxFsUsedPercent returns the RocksDB mode maximum filesystem usage percentage
-func getRocksDBModeMaxFsUsedPercent() uint64 {
-	return atomic.LoadUint64(&RocksDBModeMaxFsUsedPercent)
-}
-
-// getMemModeMaxFsUsedPercent returns the memory mode maximum filesystem usage percentage
-func getMemModeMaxFsUsedPercent() uint64 {
-	return atomic.LoadUint64(&MemModeMaxFsUsedPercent)
 }
 
 // GetDumpWaterLevel returns the current dump water level with minimum threshold
