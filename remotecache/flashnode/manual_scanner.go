@@ -527,6 +527,7 @@ func (s *ManualScanner) issueTask(req *proto.PreheatAsyncReq, fg *remotecache.Fl
 				go s.issueTask(req, fg, t.RetryCount+1)
 			} else {
 				atomic.AddInt64(&s.currentStat.ErrorFlashKeyNum, 1)
+				s.flashNode.cacheEngine.UpdateVolPreheatErrorCount(s.Volume)
 			}
 		}
 	}
@@ -549,6 +550,7 @@ func (s *ManualScanner) HandlePreheatReply(reply *proto.BatchPreheatReply) {
 					go s.issueTask(t.Req, t.Fg, t.RetryCount+1)
 				} else {
 					atomic.AddInt64(&s.currentStat.ErrorFlashKeyNum, 1)
+					s.flashNode.cacheEngine.UpdateVolPreheatErrorCount(s.Volume)
 				}
 			}
 		} else {
@@ -575,6 +577,7 @@ func (s *ManualScanner) startTimeoutGC() {
 								go s.issueTask(t.Req, t.Fg, t.RetryCount+1)
 							} else {
 								atomic.AddInt64(&s.currentStat.ErrorFlashKeyNum, 1)
+								s.flashNode.cacheEngine.UpdateVolPreheatErrorCount(s.Volume)
 								log.LogWarnf("Task %v timeout, force recycled", key)
 							}
 						}

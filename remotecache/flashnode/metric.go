@@ -41,6 +41,7 @@ const (
 	MetricFlashNodeVolWriteBytes       = "flashNodeVolWriteBytes"
 	MetricFlashNodeVolWriteCount       = "flashNodeVolWriteCount"
 	MetricFlashNodePreheatReadBytes    = "flashNodePreheatReadBytes"
+	MetricFlashNodePreheatErrorCount   = "flashNodePreheatErrorCount"
 )
 
 type FlashNodeMetrics struct {
@@ -70,6 +71,7 @@ type FlashNodeMetrics struct {
 	MetricVolReadCount        *exporter.Gauge
 	MetricVolWriteBytes       *exporter.Gauge
 	MetricVolWriteCount       *exporter.Gauge
+	MetricPreheatErrorCount   *exporter.Gauge
 }
 
 func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
@@ -102,6 +104,7 @@ func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
 	f.metrics.MetricVolReadCount = exporter.NewGauge(MetricFlashNodeVolReadCount)
 	f.metrics.MetricVolWriteBytes = exporter.NewGauge(MetricFlashNodeVolWriteBytes)
 	f.metrics.MetricVolWriteCount = exporter.NewGauge(MetricFlashNodeVolWriteCount)
+	f.metrics.MetricPreheatErrorCount = exporter.NewGauge(MetricFlashNodePreheatErrorCount)
 	for _, d := range disks {
 		cachengine.StatMap[path.Join(d.Path, cachengine.DefaultCacheDirName)] = new(cachengine.MetricStat)
 	}
@@ -305,6 +308,7 @@ func (fm *FlashNodeMetrics) setVolCacheStatsMetric() {
 		fm.MetricVolWriteBytes.SetWithLabels(float64(stats.WriteBytes), labels)
 		fm.MetricVolWriteCount.SetWithLabels(float64(stats.WriteCount), labels)
 		fm.MetricPreheatReadBytes.SetWithLabels(float64(stats.PreheatReadBytes), labels)
+		fm.MetricPreheatErrorCount.SetWithLabels(float64(stats.PreheatErrorNum), labels)
 		log.LogDebugf("MetricVolSize: set %v for vol %v", float64(stats.CacheSize), vol)
 	}
 }

@@ -102,6 +102,7 @@ type VolCacheStats struct {
 	WriteBytes       uint64 // write bytes for this volume
 	WriteCount       uint64 // write count for this volume
 	PreheatReadBytes uint64
+	PreheatErrorNum  uint64
 }
 
 type VolFlowLimit struct {
@@ -1677,6 +1678,8 @@ func (c *CacheEngine) startStatWorkers(workerNum int) {
 						atomic.AddInt32(&stats.Evicts, int32(statV.Count))
 					case StatPreheatReadBytes:
 						atomic.AddUint64(&stats.PreheatReadBytes, uint64(statV.Count))
+					case StatPreheatErrorCount:
+						atomic.AddUint64(&stats.PreheatErrorNum, uint64(statV.Count))
 					}
 				}
 			}
@@ -1699,8 +1702,9 @@ func (c *CacheEngine) GetAndResetVolStats() map[string]*VolCacheStats {
 		writeBytes := atomic.SwapUint64(&stats.WriteBytes, 0)
 		writeCount := atomic.SwapUint64(&stats.WriteCount, 0)
 		preheatReadBytes := atomic.SwapUint64(&stats.PreheatReadBytes, 0)
+		preheatErrorNum := atomic.SwapUint64(&stats.PreheatErrorNum, 0)
 
-		if hits > 0 || misses > 0 || evicts > 0 || size > 0 || readBytes > 0 || readCount > 0 || writeBytes > 0 || writeCount > 0 || preheatReadBytes > 0 {
+		if hits > 0 || misses > 0 || evicts > 0 || size > 0 || readBytes > 0 || readCount > 0 || writeBytes > 0 || writeCount > 0 || preheatReadBytes > 0 || preheatErrorNum > 0 {
 			result[vol] = &VolCacheStats{
 				Hits:             hits,
 				Misses:           misses,
@@ -1711,6 +1715,7 @@ func (c *CacheEngine) GetAndResetVolStats() map[string]*VolCacheStats {
 				WriteBytes:       writeBytes,
 				WriteCount:       writeCount,
 				PreheatReadBytes: preheatReadBytes,
+				PreheatErrorNum:  preheatErrorNum,
 			}
 		}
 		return true
@@ -1722,6 +1727,15 @@ func (c *CacheEngine) UpdateVolPreheatReadBytes(vol string, size uint64) {
 	if c.statCh != nil {
 		select {
 		case c.statCh <- StatUpdate{Key: vol, Type: StatPreheatReadBytes, Count: int64(size)}:
+		default:
+		}
+	}
+}
+
+func (c *CacheEngine) UpdateVolPreheatErrorCount(vol string) {
+	if c.statCh != nil {
+		select {
+		case c.statCh <- StatUpdate{Key: vol, Type: StatPreheatErrorCount, Count: 1}:
 		default:
 		}
 	}

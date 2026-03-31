@@ -41,6 +41,7 @@ const (
 	StatEvict
 	StatSize
 	StatPreheatReadBytes
+	StatPreheatErrorCount
 )
 
 type StatUpdate struct {
