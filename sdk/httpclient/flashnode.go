@@ -28,6 +28,7 @@ type FlashNode interface {
 	InactiveDisk(dataPath string) error
 	SlotStat() (proto.FlashNodeSlotStat, error)
 	SetPrepareLoadRoutineNum(num int) error
+	SetPreheatWorkerNum(num int) error
 }
 
 type flashNode struct {
@@ -72,5 +73,11 @@ func (f *flashNode) SlotStat() (st proto.FlashNodeSlotStat, err error) {
 func (f *flashNode) SetPrepareLoadRoutineNum(num int) error {
 	r := newRequest(post, "/setPrepareLoadRoutineNum")
 	r.params.Add("prepareLoadRoutineNum", strconv.Itoa(num))
+	return f.client.serveWith(nil, r)
+}
+
+func (f *flashNode) SetPreheatWorkerNum(num int) error {
+	r := newRequest(post, "/setPreheatWorkerNum")
+	r.params.Add("preheatWorkerNum", strconv.Itoa(num))
 	return f.client.serveWith(nil, r)
 }

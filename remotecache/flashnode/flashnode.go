@@ -230,6 +230,9 @@ type FlashNode struct {
 	preheatReadDataNodeLimitFlow int64
 	preheatWorkerNum             int
 	preheatReplyBatchSize        int
+	preheatWorkersMu             sync.Mutex
+	preheatWorkerQuit            chan struct{}
+	preheatWorkerWg              sync.WaitGroup
 }
 
 func (f *FlashNode) setTopoName(topoName string) {
@@ -324,6 +327,7 @@ func (f *FlashNode) shutdown() {
 	f.stopOnce.Do(func() {
 		close(f.stopCh)
 	})
+	f.resizePreheatWorkers(0)
 	// shutdown node and release the resource
 	f.stopServer()
 	f.stopBatchReadPool()
@@ -693,11 +697,33 @@ func (f *FlashNode) startCacheEngine() (err error) {
 	}
 	f.cacheEngine.SetReadDataNodeTimeout(proto.DefaultRemoteCacheExtentReadTimeout)
 	f.cacheEngine.StartCachePrepareWorkers(f.limitWrite, f.prepareLoadRoutineNum)
-	for i := 0; i < f.preheatWorkerNum; i++ {
-		go f.preheatWorker()
-	}
+	f.resizePreheatWorkers(f.preheatWorkerNum)
 	go f.preheatReplyBatchSender()
 	return f.cacheEngine.Start()
+}
+
+func (f *FlashNode) resizePreheatWorkers(workerNum int) {
+	f.preheatWorkersMu.Lock()
+	defer f.preheatWorkersMu.Unlock()
+
+	if f.preheatWorkerQuit != nil {
+		close(f.preheatWorkerQuit)
+	}
+	f.preheatWorkerWg.Wait()
+	f.preheatWorkerQuit = nil
+
+	if workerNum <= 0 {
+		log.LogInfof("resizePreheatWorkers: stop all workers")
+		return
+	}
+
+	quitCh := make(chan struct{})
+	f.preheatWorkerQuit = quitCh
+	for i := 0; i < workerNum; i++ {
+		f.preheatWorkerWg.Add(1)
+		go f.preheatWorker(i, quitCh)
+	}
+	log.LogInfof("resizePreheatWorkers: workerNum=%d", workerNum)
 }
 
 func (f *FlashNode) initLimiter() {

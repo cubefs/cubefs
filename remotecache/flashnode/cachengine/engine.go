@@ -141,7 +141,7 @@ type CacheEngine struct {
 	creatingCacheBlockMap sync.Map
 	cachePrepareTaskCh    chan cachePrepareTask
 	prepareWorkersMu      sync.Mutex
-	prepareWorkerQuit     []chan struct{}
+	prepareWorkerQuit     chan struct{}
 	prepareWorkerWg       sync.WaitGroup
 	cacheLoadWorkerNum    int
 	cacheEvictWorkerNum   int
@@ -1188,8 +1188,8 @@ func (c *CacheEngine) StartCachePrepareWorkers(flw *util.IoLimiter, prepareWorke
 	c.prepareWorkersMu.Lock()
 	defer c.prepareWorkersMu.Unlock()
 
-	for _, quitCh := range c.prepareWorkerQuit {
-		close(quitCh)
+	if c.prepareWorkerQuit != nil {
+		close(c.prepareWorkerQuit)
 	}
 	c.prepareWorkerWg.Wait()
 	c.prepareWorkerQuit = nil
@@ -1198,9 +1198,9 @@ func (c *CacheEngine) StartCachePrepareWorkers(flw *util.IoLimiter, prepareWorke
 		return
 	}
 
+	quitCh := make(chan struct{})
+	c.prepareWorkerQuit = quitCh
 	for ii := 0; ii < prepareWorkers; ii++ {
-		quitCh := make(chan struct{})
-		c.prepareWorkerQuit = append(c.prepareWorkerQuit, quitCh)
 		c.prepareWorkerWg.Add(1)
 		go func(workerID int, quit <-chan struct{}, limiter *util.IoLimiter) {
 			defer c.prepareWorkerWg.Done()

@@ -53,6 +53,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/queryDisableTTLVols", f.handleQueryDisableTTLVols)
 	http.HandleFunc("/resetLocalFlowChange", f.handleResetLocalFlowChange)
 	http.HandleFunc("/setPrepareLoadRoutineNum", f.handleSetPrepareLoadRoutineNum)
+	http.HandleFunc("/setPreheatWorkerNum", f.handleSetPreheatWorkerNum)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -374,6 +375,7 @@ func (f *FlashNode) handleScannerCommand(w http.ResponseWriter, r *http.Request)
 			"task":             resp,
 			"dirChanLen":       scanner.dirChan.Len(),
 			"fileChanLen":      len(scanner.fileChan),
+			"inflightTasks":    len(scanner.semaphore),
 			"fileRPoolRunning": scanner.fileRPool.RunningNum(),
 			"dirRPoolRunning":  scanner.dirRPool.RunningNum(),
 			"pause":            scanner.pause,
@@ -627,6 +629,37 @@ func (f *FlashNode) handleSetPrepareLoadRoutineNum(w http.ResponseWriter, r *htt
 	replyOK(w, r, map[string]interface{}{
 		"oldPrepareLoadRoutineNum": old,
 		"newPrepareLoadRoutineNum": n,
+	})
+}
+
+func (f *FlashNode) handleSetPreheatWorkerNum(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	s := r.FormValue("preheatWorkerNum")
+	if s == "" {
+		replyErr(w, r, proto.ErrCodeParamError, "preheatWorkerNum cannot be empty", nil)
+		return
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, "preheatWorkerNum must be an integer", nil)
+		return
+	}
+	if n < 0 {
+		replyErr(w, r, proto.ErrCodeParamError, "preheatWorkerNum must be non-negative", nil)
+		return
+	}
+
+	old := f.preheatWorkerNum
+	f.preheatWorkerNum = n
+	f.resizePreheatWorkers(n)
+
+	log.LogInfof("handleSetPreheatWorkerNum: preheatWorkerNum %d -> %d", old, n)
+	replyOK(w, r, map[string]interface{}{
+		"oldPreheatWorkerNum": old,
+		"newPreheatWorkerNum": n,
 	})
 }
 

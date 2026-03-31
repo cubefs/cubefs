@@ -1559,9 +1559,13 @@ func (f *FlashNode) opFlashNodePreheatReply(conn net.Conn, p *proto.Packet) (err
 	return nil
 }
 
-func (f *FlashNode) preheatWorker() {
+func (f *FlashNode) preheatWorker(workerID int, quit <-chan struct{}) {
+	defer f.preheatWorkerWg.Done()
 	for {
 		select {
+		case <-quit:
+			log.LogInfof("preheatWorker(%d) quit for resize", workerID)
+			return
 		case req, ok := <-f.asyncPreheatTaskCh:
 			if !ok {
 				return
