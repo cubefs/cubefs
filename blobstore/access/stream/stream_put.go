@@ -38,6 +38,14 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
+type putPipeTask struct {
+	ident   blobIdent
+	shards  [][]byte
+	empties map[int]struct{}
+	buffer  *ec.Buffer
+	err     error
+}
+
 // Put put one object
 //
 //	required: size, file size
@@ -104,80 +112,189 @@ func (h *Handler) Put(ctx context.Context,
 		}
 	}()
 
-	var buffer *ec.Buffer
 	putTime := new(timeReadWrite)
 	defer func() {
-		// release ec buffer which have not takeover
-		buffer.Release()
 		span.AppendRPCTrackLog([]string{putTime.String()})
 		putTime.Report(clusterID.ToString(), h.IDC, true)
 	}()
 
-	// concurrent buffer in per request
+	// Fast path: only one blob (size <= blobSize). Pipeline brings no overlap
+	// in this case, run sequentially to avoid extra goroutine/channel/drain.
+	if size <= int64(blobSize) {
+		if err := h.putSequential(ctx, location, limitReader, selectedCodeMode, putTime); err != nil {
+			return nil, err
+		}
+		uploadSucc = true
+		return location, nil
+	}
+
+	closeCh := make(chan struct{})
+
+	pipeline := func() <-chan putPipeTask {
+		ch := make(chan putPipeTask, 1)
+		go func() {
+			defer close(ch)
+
+			encoder := h.encoder[selectedCodeMode]
+			tactic := selectedCodeMode.Tactic()
+			for _, blob := range location.Spread() {
+				select {
+				case <-closeCh:
+					return
+				default:
+				}
+
+				task := h.prepareBlob(ctx, encoder, tactic, limitReader, blob, clusterID, putTime)
+				if task.err != nil {
+					select {
+					case <-closeCh:
+					case ch <- task:
+					}
+					return
+				}
+
+				span.Debug("to write", task.ident)
+				select {
+				case <-closeCh:
+					task.buffer.Release()
+					return
+				case ch <- task:
+				}
+			}
+		}()
+		return ch
+	}()
+
 	const concurrence = 4
 	ready := make(chan struct{}, concurrence)
 	for range [concurrence]struct{}{} {
 		ready <- struct{}{}
 	}
 
-	encoder := h.encoder[selectedCodeMode]
-	tactic := selectedCodeMode.Tactic()
-	for _, blob := range location.Spread() {
-		vid, bid, bsize := blob.Vid, blob.Bid, int(blob.Size)
-
-		// new an empty ec buffer for per blob
-		var err error
-		st := time.Now()
-		buffer, err = ec.NewBuffer(bsize, tactic, h.memPool)
-		putTime.IncA(time.Since(st))
-		if err != nil {
-			return nil, err
-		}
-		empties := emptyDataShardIndexes(buffer.BufferSizes)
-
-		readBuff := buffer.DataBuf[:bsize]
-		shards, err := encoder.Split(buffer.ECDataBuf)
-		if err != nil {
-			return nil, err
+	var putErr error
+	for task := range pipeline {
+		if task.err != nil {
+			putErr = task.err
+			break
 		}
 
-		startRead := time.Now()
-		n, err := io.ReadFull(limitReader, readBuff)
-		putTime.IncR(time.Since(startRead))
-		if err != nil && err != io.EOF {
-			span.Infof("read blob data failed want:%d read:%d %s", bsize, n, err.Error())
-			return nil, errcode.ErrAccessReadRequestBody
-		}
-		if n != bsize {
-			span.Infof("read blob less data want:%d but:%d", bsize, n)
-			return nil, errcode.ErrAccessReadRequestBody
-		}
-
-		// ec encode
-		if err = encoder.Encode(shards); err != nil {
-			return nil, err
-		}
-
-		blobident := blobIdent{clusterID, vid, bid}
-		span.Debug("to write", blobident)
-
-		// takeover the buffer, release to pool in function writeToBlobnodes
-		takeoverBuffer := buffer
-		buffer = nil
+		buffer := task.buffer
 		<-ready
 		startWrite := time.Now()
-		err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, empties, func() {
-			takeoverBuffer.Release()
+		err := h.writeToBlobnodesWithHystrix(ctx, task.ident, task.shards, task.empties, func() {
+			buffer.Release()
 			ready <- struct{}{}
 		})
 		putTime.IncW(time.Since(startWrite))
 		if err != nil {
-			return nil, errors.Info(err, "write to blobnode failed")
+			putErr = errors.Info(err, "write to blobnode failed")
+			close(closeCh)
+			break
 		}
+	}
+
+	if putErr != nil {
+		go func() {
+			for task := range pipeline {
+				if task.buffer != nil {
+					task.buffer.Release()
+				}
+			}
+		}()
+		return nil, putErr
 	}
 
 	uploadSucc = true
 	return location, nil
+}
+
+// putSequential handles the single-blob case (size <= blobSize). It performs
+// alloc-buffer / read-body / EC-encode / write-to-blobnodes inline, avoiding
+// the goroutine/channel/drain overhead of the pipeline path. Caller (Put) is
+// responsible for clearGarbage on failure and uploadSucc bookkeeping.
+func (h *Handler) putSequential(
+	ctx context.Context,
+	location *proto.Location,
+	limitReader io.Reader,
+	selectedCodeMode codemode.CodeMode,
+	putTime *timeReadWrite,
+) error {
+	span := trace.SpanFromContextSafe(ctx)
+	encoder := h.encoder[selectedCodeMode]
+	tactic := selectedCodeMode.Tactic()
+
+	task := h.prepareBlob(ctx, encoder, tactic, limitReader, location.Spread()[0], location.ClusterID, putTime)
+	if task.err != nil {
+		return task.err
+	}
+
+	span.Debug("to write", task.ident)
+	startWrite := time.Now()
+	err := h.writeToBlobnodesWithHystrix(ctx, task.ident, task.shards, task.empties, func() {
+		task.buffer.Release()
+	})
+	putTime.IncW(time.Since(startWrite))
+	if err != nil {
+		return errors.Info(err, "write to blobnode failed")
+	}
+	return nil
+}
+
+// prepareBlob reads one blob from limitReader and EC-encodes it, packing the
+// result into a putPipeTask. On any error inside, the internal buffer is
+// released and the error is set in task.err. On success the caller owns task.buffer
+// and must release it (typically via the writeToBlobnodes callback).
+func (h *Handler) prepareBlob(
+	ctx context.Context,
+	encoder ec.Encoder, tactic codemode.Tactic,
+	limitReader io.Reader, blob proto.BlobUnit,
+	clusterID proto.ClusterID, putTime *timeReadWrite,
+) putPipeTask {
+	span := trace.SpanFromContextSafe(ctx)
+	vid, bid, bsize := blob.Vid, blob.Bid, int(blob.Size)
+
+	st := time.Now()
+	buf, err := ec.NewBuffer(bsize, tactic, h.memPool)
+	putTime.IncA(time.Since(st))
+	if err != nil {
+		return putPipeTask{err: err}
+	}
+
+	empties := emptyDataShardIndexes(buf.BufferSizes)
+	readBuff := buf.DataBuf[:bsize]
+
+	shards, err := encoder.Split(buf.ECDataBuf)
+	if err != nil {
+		buf.Release()
+		return putPipeTask{err: err}
+	}
+
+	startRead := time.Now()
+	n, err := io.ReadFull(limitReader, readBuff)
+	putTime.IncR(time.Since(startRead))
+	if err != nil && err != io.EOF {
+		span.Infof("read blob data failed want:%d read:%d %s", bsize, n, err.Error())
+		buf.Release()
+		return putPipeTask{err: errcode.ErrAccessReadRequestBody}
+	}
+	if n != bsize {
+		span.Infof("read blob less data want:%d but:%d", bsize, n)
+		buf.Release()
+		return putPipeTask{err: errcode.ErrAccessReadRequestBody}
+	}
+
+	// ec encode
+	if err = encoder.Encode(shards); err != nil {
+		buf.Release()
+		return putPipeTask{err: err}
+	}
+
+	return putPipeTask{
+		ident:   blobIdent{clusterID, vid, bid},
+		shards:  shards,
+		empties: empties,
+		buffer:  buf,
+	}
 }
 
 func (h *Handler) writeToBlobnodesWithHystrix(ctx context.Context,
