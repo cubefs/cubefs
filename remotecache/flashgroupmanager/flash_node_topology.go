@@ -863,8 +863,7 @@ func (t *FlashNodeTopology) RemoveFlashGroup(clusterName string, idleTopo *Flash
 		err = fmt.Errorf("the flashGroup(%v) is in slotDeleting status, it cannot be deleted repeatedly", flashGroup.ID)
 		return
 	}
-	remainingSlotsNum := uint32(flashGroup.GetSlotsCount()) - step
-	if gradualFlag && remainingSlotsNum > 0 {
+	if gradualFlag && uint32(flashGroup.GetSlotsCount()) > step {
 		err = t.GradualRemoveFlashGroup(flashGroup, syncUpdateFlashGroupFunc, step)
 		return
 	}
@@ -1324,8 +1323,7 @@ func (t *FlashNodeTopology) checkShrinkOrDeleteFlashGroup(clusterName string, id
 	syncUpdateFlashNodeFunc SyncUpdateFlashNodeFunc, syncDeleteFlashNodeFunc SyncDeleteFlashNodeFunc,
 	syncAddFlashNodeFunc SyncAddFlashNodeFunc, syncMoveFlashNodeFunc SyncMoveFlashNodeFunc,
 ) (needDeleteFgFlag bool, err error) {
-	leftPendingSlotsNum := uint32(flashGroup.GetPendingSlotsCount()) - flashGroup.Step
-	if (leftPendingSlotsNum <= 0) && (flashGroup.GetPendingSlotsCount() == flashGroup.GetSlotsCount()) {
+	if uint32(flashGroup.GetPendingSlotsCount()) <= flashGroup.Step && flashGroup.GetPendingSlotsCount() == flashGroup.GetSlotsCount() {
 		needDeleteFgFlag = true
 		// if slots num is reduced to 0, the fn of fg need to be removed
 		if err = t.removeAllFlashNodeFromFlashGroup(clusterName, idleTopo, flashGroup, syncUpdateFlashNodeFunc,
