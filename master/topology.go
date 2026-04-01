@@ -1082,11 +1082,11 @@ func (ns *nodeSet) dataNodeLen() (count int) {
 }
 
 func (ns *nodeSet) putMetaNode(metaNode *MetaNode) {
-	ns.metaNodes.Store(metaNode.Addr, metaNode)
+	ns.metaNodes.Store(metaNode.ID, metaNode)
 }
 
 func (ns *nodeSet) deleteMetaNode(metaNode *MetaNode) {
-	ns.metaNodes.Delete(metaNode.Addr)
+	ns.metaNodes.Delete(metaNode.ID)
 }
 
 func (ns *nodeSet) canWriteForNode(nodes *sync.Map, replicaNum int) bool {
@@ -1118,11 +1118,39 @@ func (ns *nodeSet) calcNodesForAlloc(nodes *sync.Map) (cnt int) {
 }
 
 func (ns *nodeSet) putDataNode(dataNode *DataNode) {
-	ns.dataNodes.Store(dataNode.Addr, dataNode)
+	ns.dataNodes.Store(dataNode.ID, dataNode)
 }
 
 func (ns *nodeSet) deleteDataNode(dataNode *DataNode) {
-	ns.dataNodes.Delete(dataNode.Addr)
+	ns.dataNodes.Delete(dataNode.ID)
+}
+
+// getDataNodeByAddr returns the DataNode in this nodeSet with the given Addr (for tests and addr-based lookup).
+func (ns *nodeSet) getDataNodeByAddr(addr string) *DataNode {
+	var found *DataNode
+	ns.dataNodes.Range(func(_, value interface{}) bool {
+		n := value.(*DataNode)
+		if n.Addr == addr {
+			found = n
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// getMetaNodeByAddr returns the MetaNode in this nodeSet with the given Addr (for tests and addr-based lookup).
+func (ns *nodeSet) getMetaNodeByAddr(addr string) *MetaNode {
+	var found *MetaNode
+	ns.metaNodes.Range(func(_, value interface{}) bool {
+		n := value.(*MetaNode)
+		if n.Addr == addr {
+			found = n
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 func (ns *nodeSet) AddToDecommissionDataPartitionList(dp *DataPartition, c *Cluster) {
@@ -1745,7 +1773,7 @@ func (zone *Zone) putDataNode(dataNode *DataNode) (err error) {
 		return
 	}
 	ns.putDataNode(dataNode)
-	zone.dataNodes.Store(dataNode.Addr, dataNode)
+	zone.dataNodes.Store(dataNode.ID, dataNode)
 	return
 }
 
@@ -1756,7 +1784,7 @@ func (zone *Zone) deleteDataNode(dataNode *DataNode) {
 		return
 	}
 	ns.deleteDataNode(dataNode)
-	zone.dataNodes.Delete(dataNode.Addr)
+	zone.dataNodes.Delete(dataNode.ID)
 }
 
 func (zone *Zone) putMetaNode(metaNode *MetaNode) (err error) {
@@ -1766,7 +1794,7 @@ func (zone *Zone) putMetaNode(metaNode *MetaNode) (err error) {
 		return
 	}
 	ns.putMetaNode(metaNode)
-	zone.metaNodes.Store(metaNode.Addr, metaNode)
+	zone.metaNodes.Store(metaNode.ID, metaNode)
 	return
 }
 
@@ -1777,7 +1805,7 @@ func (zone *Zone) deleteMetaNode(metaNode *MetaNode) (err error) {
 		return
 	}
 	ns.deleteMetaNode(metaNode)
-	zone.metaNodes.Delete(metaNode.Addr)
+	zone.metaNodes.Delete(metaNode.ID)
 	return
 }
 

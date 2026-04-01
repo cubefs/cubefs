@@ -72,6 +72,7 @@ type MetaPartition struct {
 	volName                   string
 	Hosts                     []string
 	Peers                     []proto.Peer
+	AddrEpoch                 uint64 // incremented when any replica address (Hosts/Peers) changes
 	OfflinePeerID             uint64
 	MissNodes                 map[string]int64
 	LoadResponse              []*proto.MetaPartitionLoadResponse

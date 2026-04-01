@@ -38,10 +38,15 @@ type MockMetaServer struct {
 }
 
 func NewMockMetaServer(addr string, zoneName string) *MockMetaServer {
+	return NewMockMetaServerWithMaster(addr, zoneName, hostAddr)
+}
+
+// NewMockMetaServerWithMaster creates a mock meta server that registers with the given master address (e.g. "127.0.0.1:8081" for isolated E2E).
+func NewMockMetaServerWithMaster(addr string, zoneName string, masterAddr string) *MockMetaServer {
 	mms := &MockMetaServer{
 		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition),
 		ZoneName: zoneName,
-		mc:       master.NewMasterClient([]string{hostAddr}, false),
+		mc:       master.NewMasterClient([]string{masterAddr}, false),
 	}
 	return mms
 }

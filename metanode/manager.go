@@ -659,8 +659,7 @@ func (m *metadataManager) loadPartition(fileName string) (err error) {
 func (m *metadataManager) loadPartitions() (err error) {
 	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
-		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.metaNode.localAddr,
-			m.metaNode.listen)); err != nil {
+		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(m.metaNode.getRegisterAddress()); err != nil {
 			log.LogWarnf("loadPartitions: get MetaNode info fail: err(%v)", err)
 			continue
 		}

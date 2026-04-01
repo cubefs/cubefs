@@ -228,6 +228,14 @@ func (dpMap *DataPartitionMap) setDataPartitionResponseCache(responseCache []byt
 	}
 }
 
+// clearResponseCache invalidates DP view cache (e.g. after node address update). Fix-J.
+func (dpMap *DataPartitionMap) clearResponseCache() {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+	dpMap.responseCache = nil
+	dpMap.responseCompressCache = nil
+}
+
 func (dpMap *DataPartitionMap) setDataPartitionCompressCache(responseCompress []byte) {
 	dpMap.Lock()
 	defer dpMap.Unlock()

@@ -65,6 +65,11 @@ func (rs *RaftServer) RemoveRaftForce(raftId uint64, cc *proto.ConfChange) {
 	}
 }
 
+// InvalidateSender removes the cached transport sender for nodeID so the next send will re-resolve the address (e.g. after peer address update).
+func (rs *RaftServer) InvalidateSender(nodeID uint64) {
+	rs.config.transport.InvalidateSender(nodeID)
+}
+
 func NewRaftServer(config *Config) (*RaftServer, error) {
 	if err := config.validate(); err != nil {
 		return nil, err

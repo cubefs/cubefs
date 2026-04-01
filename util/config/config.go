@@ -29,6 +29,7 @@ const (
 	DefaultConstConfigFile = "constcfg"
 	ClusterVersionFile     = "CLUSTER-VERSION"
 	ClusterUUID            = "ClusterUUID"
+	NodeIDFile             = ".node_id"
 )
 
 // Config defines the struct of a configuration in general.
@@ -391,4 +392,56 @@ func CheckOrStoreClusterUuid(dirPath, id string, force bool) (err error) {
 		}
 	}
 	return
+}
+
+// LoadNodeIDFromFile loads the persisted node ID from raftDir/.node_id.
+// Returns (nodeID, true) if the file exists and contains a valid node ID, otherwise (0, false).
+func LoadNodeIDFromFile(dirPath string) (uint64, bool) {
+	filePath := path.Join(dirPath, NodeIDFile)
+	buf, err := os.ReadFile(filePath)
+	if err != nil || len(buf) == 0 {
+		return 0, false
+	}
+	nodeID, err := strconv.ParseUint(strings.TrimSpace(string(buf)), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return nodeID, true
+}
+
+// PersistNodeIDToFile persists the node ID to raftDir/.node_id.
+// Should be called immediately after first successful registration.
+func PersistNodeIDToFile(dirPath string, nodeID uint64) error {
+	filePath := path.Join(dirPath, NodeIDFile)
+	data := strconv.FormatUint(nodeID, 10)
+	if err := os.MkdirAll(dirPath, 0o755); err != nil {
+		return fmt.Errorf("make directory %v failed: %v", dirPath, err)
+	}
+	tmpFile, err := os.CreateTemp(dirPath, NodeIDFile+".tmp.")
+	if err != nil {
+		return fmt.Errorf("create temporary node id file in %v failed: %v", dirPath, err)
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+	if _, err = tmpFile.WriteString(data); err != nil {
+		_ = tmpFile.Close()
+		return fmt.Errorf("write temporary node id file %v failed: %v", tmpPath, err)
+	}
+	if err = tmpFile.Chmod(0o644); err != nil {
+		_ = tmpFile.Close()
+		return fmt.Errorf("chmod temporary node id file %v failed: %v", tmpPath, err)
+	}
+	if err = tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return fmt.Errorf("sync temporary node id file %v failed: %v", tmpPath, err)
+	}
+	if err = tmpFile.Close(); err != nil {
+		return fmt.Errorf("close temporary node id file %v failed: %v", tmpPath, err)
+	}
+	if err = os.Rename(tmpPath, filePath); err != nil {
+		return fmt.Errorf("rename temporary node id file %v to %v failed: %v", tmpPath, filePath, err)
+	}
+	return nil
 }

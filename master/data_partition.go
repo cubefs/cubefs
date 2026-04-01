@@ -42,6 +42,7 @@ type DataPartition struct {
 	LeaderReportTime int64
 	Hosts            []string // host addresses
 	Peers            []proto.Peer
+	AddrEpoch        uint64 // incremented when any replica address (Hosts/Peers) changes; client can use to decide refresh
 	offlineMutex     sync.RWMutex
 	sync.RWMutex
 
@@ -480,6 +481,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
+	dpr.Epoch = partition.AddrEpoch
 	dpr.IsRecover = partition.isRecover
 	dpr.IsDiscard = partition.IsDiscard
 	dpr.MediaType = partition.MediaType
@@ -1046,6 +1048,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		Replicas:                 replicas,
 		Hosts:                    partition.Hosts,
 		Peers:                    partition.Peers,
+		AddrEpoch:                partition.AddrEpoch,
 		Zones:                    zones,
 		NodeSets:                 nodeSets,
 		MissingNodes:             missNodes,

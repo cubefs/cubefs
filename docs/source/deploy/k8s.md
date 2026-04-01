@@ -169,3 +169,12 @@ The key logs of each component will be output in the container standard output, 
 - The total available memory of the configured MetaNode is greater than the actual physical memory
 
 Specific problems need to be analyzed in conjunction with specific scenarios. For more difficult problems, you can try to seek help from the community.
+
+## Pod IP stability (optional)
+
+When CubeFS runs in Kubernetes, pod IPs can change after restarts or rescheduling. To keep node identity and partition replica mapping stable across IP changes:
+
+- **Master**: set `enableDynamicAddr: true` in config so that nodes can re-register with the same NodeID and a new address.
+- **DataNode / MetaNode**: set `registerAddr` to the pod DNS name (e.g. from a Headless Service), so the cluster uses a stable name instead of the pod IP for registration.
+
+For the full deployment pattern (Headless Service, StatefulSet, and config examples), see [K8S_POD_IP_STABILITY_DEPLOY.md](../../K8S_POD_IP_STABILITY_DEPLOY.md) in the repo docs. The actual Helm chart changes (templates, values) are done in the [cubefs-helm](https://github.com/cubefs/cubefs-helm) repository.

@@ -61,6 +61,11 @@ func (t *MultiTransport) SendSnapshot(m *proto.Message, rs *snapshotStatus) {
 	t.replicate.sendSnapshot(m, rs)
 }
 
+func (t *MultiTransport) InvalidateSender(nodeID uint64) {
+	t.heartbeat.invalidateSender(nodeID)
+	t.replicate.invalidateSender(nodeID)
+}
+
 func reciveMessage(r *util.BufferReader) (msg *proto.Message, err error) {
 	msg = proto.GetMessage()
 	if err = msg.Decode(r); err != nil {

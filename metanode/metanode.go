@@ -69,6 +69,8 @@ type MetaNode struct {
 	raftDir                            string // root dir of the raftStore log
 	metadataManager                    MetadataManager
 	localAddr                          string
+	registerAddr                       string // optional; if set, used as host for Master registration (e.g. K8s DNS name)
+	requireRegisterAddr                bool   // when true, do not register with IP if registerAddr is empty; retry and log error
 	clusterId                          string
 	raftStore                          raftstore.RaftStore
 	raftHeartbeatPort                  string
@@ -107,10 +109,18 @@ func (m *MetaNode) Shutdown() {
 	m.control.Shutdown(m, doShutdown)
 }
 
+// getRegisterAddress returns the address used when registering with Master (and for querying self); when registerAddr is set that is used (e.g. K8s DNS), else localAddr:listen.
+func (m *MetaNode) getRegisterAddress() string {
+	if m.registerAddr != "" {
+		return m.registerAddr + ":" + m.listen
+	}
+	return m.localAddr + ":" + m.listen
+}
+
 func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	var metaNodeInfo *proto.MetaNodeInfo
 	for i := 0; i < 3; i++ {
-		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.localAddr, m.listen)); err != nil {
+		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(m.getRegisterAddress()); err != nil {
 			log.LogErrorf("checkLocalPartitionMatchWithMaster: get MetaNode info fail: err(%v)", err)
 			continue
 		}
@@ -136,10 +146,10 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 	}
 	m.metrics.MetricMetaFailedPartition.SetWithLabels(float64(1), map[string]string{
 		"partids": fmt.Sprintf("%v", lackPartitions),
-		"node":    m.localAddr + ":" + m.listen,
+		"node":    m.getRegisterAddress(),
 		"nodeid":  fmt.Sprintf("%d", m.nodeId),
 	})
-	log.LogErrorf("LackPartitions %v on metanode %v, please deal quickly", lackPartitions, m.localAddr+":"+m.listen)
+	log.LogErrorf("LackPartitions %v on metanode %v, please deal quickly", lackPartitions, m.getRegisterAddress())
 	return
 }
 
@@ -158,6 +168,20 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.startRaftServer(cfg); err != nil {
 		return
 	}
+	// Fix-A: Ensure self (nodeID, currentAddr) is in Raft resolver before loading partitions.
+	// On re-registration after IP change, META files may still contain old addresses;
+	// adding self here avoids self-reference with stale addr before first heartbeat delivers PeerAddrUpdates.
+	regAddr := m.getRegisterAddress()
+	host := regAddr
+	if idx := strings.Index(regAddr, ":"); idx >= 0 {
+		host = regAddr[:idx]
+	}
+	if hb, e1 := strconv.Atoi(m.raftHeartbeatPort); e1 == nil {
+		if rep, e2 := strconv.Atoi(m.raftReplicatePort); e2 == nil {
+			m.raftStore.AddNodeWithPort(m.nodeId, host, hb, rep)
+		}
+	}
+
 	if err = m.newMetaManager(cfg); err != nil {
 		return
 	}
@@ -216,6 +240,8 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	m.localAddr = cfg.GetString(cfgLocalIP)
+	m.registerAddr = strings.TrimSpace(cfg.GetString(cfgRegisterAddr))
+	m.requireRegisterAddr = cfg.GetBool(cfgRequireRegisterAddr)
 	m.listen = cfg.GetString(proto.ListenPort)
 	m.bindIp = cfg.GetBool(proto.BindIpKey)
 	serverPort = m.listen
@@ -503,7 +529,7 @@ func (m *MetaNode) register() (err error) {
 			time.Sleep(3 * time.Second)
 			continue
 		}
-		if m.localAddr == "" {
+		if m.localAddr == "" && m.registerAddr == "" {
 			m.localAddr = gClusterInfo.Ip
 		}
 		m.clusterUuid = gClusterInfo.ClusterUuid
@@ -512,7 +538,17 @@ func (m *MetaNode) register() (err error) {
 		clusterEnableSnapshot = m.clusterEnableSnapshot
 		m.clusterId = gClusterInfo.Cluster
 		m.raftPartitionCanUsingDifferentPort = gClusterInfo.RaftPartitionCanUsingDifferentPort
-		nodeAddress = m.localAddr + ":" + m.listen
+		if m.registerAddr != "" {
+			nodeAddress = m.registerAddr + ":" + m.listen
+		} else if m.requireRegisterAddr {
+			// requireRegisterAddr set but registerAddr empty (e.g. init timing or merge): do not register with IP
+			log.LogErrorf("[register] requireRegisterAddr is true but registerAddr is empty; " +
+				"refusing to register with IP (would cause partition Hosts to use IP). Check init container / config. Retry in 5s.")
+			time.Sleep(5 * time.Second)
+			continue
+		} else {
+			nodeAddress = m.localAddr + ":" + m.listen
+		}
 
 		var settingsFromMaster *proto.UpgradeCompatibleSettings
 		if settingsFromMaster, err = getUpgradeCompatibleSettings(); err != nil {
@@ -553,13 +589,37 @@ func (m *MetaNode) register() (err error) {
 		}
 		m.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
 
+		// Only load existing node ID when enableDynamicAddr is on (K8s pod IP stability mode)
+		var existingNodeID uint64
+		var hasExistingNodeID bool
+		if gClusterInfo.EnableDynamicAddr {
+			existingNodeID, hasExistingNodeID = config.LoadNodeIDFromFile(m.raftDir)
+		}
+
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.raftHeartbeatPort, m.raftReplicatePort, m.zoneName, m.serviceIDKey); err != nil {
+		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNodeEx(nodeAddress, m.raftHeartbeatPort, m.raftReplicatePort, m.zoneName, m.serviceIDKey, hasExistingNodeID, existingNodeID); err != nil {
 			log.LogErrorf("[register] tryCnt(%v), register to master fail: address(%v) err(%s)", tryCnt, nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
 		m.nodeId = nodeID
+		// Only persist node ID when enableDynamicAddr is on (K8s pod IP stability mode)
+		if gClusterInfo.EnableDynamicAddr {
+			var persistErr error
+			for retry := 0; retry < 3; retry++ {
+				if persistErr = config.PersistNodeIDToFile(m.raftDir, nodeID); persistErr == nil {
+					break
+				}
+				log.LogWarnf("[register] persist nodeID to %v/.node_id failed (attempt %d/3): %v", m.raftDir, retry+1, persistErr)
+				if retry < 2 {
+					time.Sleep(time.Second)
+				}
+			}
+			if persistErr != nil {
+				err = fmt.Errorf("persist nodeID to %v/.node_id failed after 3 retries: %w", m.raftDir, persistErr)
+				return
+			}
+		}
 
 		if proto.IsStorageClassReplica(legacyReplicaStorageClass) {
 			legacyReplicaStorageClassMsg = fmt.Sprintf("[register] from master, legacyReplicaStorageClass(%v)",

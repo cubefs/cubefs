@@ -230,6 +230,8 @@ const (
 // Configuration keys
 const (
 	cfgLocalIP                   = "localIP"
+	cfgRegisterAddr              = "registerAddr"        // optional; for K8s: DNS name used when registering with Master
+	cfgRequireRegisterAddr       = "requireRegisterAddr" // when true, refuse to register with IP if registerAddr is empty (retry and log error)
 	cfgMetadataDir               = "metadataDir"
 	cfgRaftDir                   = "raftDir"
 	cfgRaftHeartbeatPort         = "raftHeartbeatPort"

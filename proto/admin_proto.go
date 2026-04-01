@@ -642,6 +642,7 @@ type ClusterInfo struct {
 	ClusterUuidEnable                  bool
 	ClusterEnableSnapshot              bool
 	RaftPartitionCanUsingDifferentPort bool
+	EnableDynamicAddr                  bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -845,6 +846,14 @@ type FlashNodeHeartBeatInfos struct {
 	FlashKeyFlowLimit            int64
 }
 
+// PeerAddrUpdate carries a single peer's new address for Raft resolver update (e.g. after pod IP change).
+type PeerAddrUpdate struct {
+	NodeID        uint64 `json:"nodeId"`
+	Addr          string `json:"addr"`
+	HeartbeatPort string `json:"heartbeatPort"`
+	ReplicaPort   string `json:"replicaPort"`
+}
+
 // HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
@@ -870,6 +879,9 @@ type HeartBeatRequest struct {
 	MetaNodeGOGC                   int
 	DataNodeGOGC                   int
 	FlashNodeHeartBeatInfos
+
+	// PeerAddrUpdates notifies this node of peer address changes (e.g. K8s pod IP change) for Raft resolver.
+	PeerAddrUpdates []PeerAddrUpdate `json:"peerAddrUpdates,omitempty"`
 }
 
 // DataPartitionReport defines the partition report.
@@ -1174,6 +1186,7 @@ type MetaPartitionView struct {
 	Status             int8
 	Freeze             int8
 	LastDelReplicaTime int64
+	AddrEpoch          uint64 // incremented when any replica address changes; client can use to decide refresh
 }
 
 type DataNodeDisksRequest struct{}

@@ -30,11 +30,20 @@ import (
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
+	"golang.org/x/time/rate"
 )
 
 var (
 	LocalIP                            string
 	DefaultMinWritableDataPartitionCnt = 10
+)
+
+const (
+	/*
+	 * Minimum interval of forceUpdateDataPartitions in seconds,
+	 * i.e. only one force update request is allowed every 5 sec.
+	 */
+	MinForceUpdateDataPartitionsInterval = 5
 )
 
 type DataPartitionView struct {
@@ -73,6 +82,8 @@ type Wrapper struct {
 	mc                     *masterSDK.MasterClient
 	stopOnce               sync.Once
 	stopC                  chan struct{}
+	forceUpdate            chan struct{}
+	forceUpdateLimit       *rate.Limiter
 
 	dpSelector DataPartitionSelector
 
@@ -103,6 +114,8 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
+	w.forceUpdate = make(chan struct{}, 1)
+	w.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateDataPartitionsInterval)
 	w.masters = masters
 	w.mc = masterSDK.NewMasterClient(masters, false)
 	w.VolName = volName
@@ -155,6 +168,7 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 	w.readFailedHosts = make(map[uint64]map[string]time.Time)
 	go w.uploadFlowInfoByTick(client)
 	go w.update(client)
+	go w.consumeForceUpdateDataPartitions()
 	return
 }
 
@@ -301,6 +315,35 @@ func (w *Wrapper) update(clientInfo SimpleClientInfo) {
 	}
 }
 
+func (w *Wrapper) forceUpdateDataPartitions() error {
+	if ok := w.forceUpdateLimit.AllowN(time.Now(), MinForceUpdateDataPartitionsInterval); !ok {
+		return fmt.Errorf("force update data partitions throttled")
+	}
+	return w.UpdateDataPartition()
+}
+
+func (w *Wrapper) consumeForceUpdateDataPartitions() {
+	for {
+		select {
+		case <-w.forceUpdate:
+			if err := w.forceUpdateDataPartitions(); err != nil {
+				log.LogWarnf("consumeForceUpdateDataPartitions: %v", err)
+			}
+		case <-w.stopC:
+			return
+		}
+	}
+}
+
+// TriggerForceUpdateDataPartitionsAsync triggers an async refresh of data partitions from Master (e.g. on connection failure when node address may have changed in K8s). Non-blocking.
+func (w *Wrapper) TriggerForceUpdateDataPartitionsAsync() {
+	select {
+	case w.forceUpdate <- struct{}{}:
+		log.LogDebugf("TriggerForceUpdateDataPartitionsAsync: triggered")
+	default:
+	}
+}
+
 func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (work bool, err error) {
 	var (
 		limitRsp *proto.LimitRsp2Client
@@ -426,17 +469,17 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}
 		// log.LogInfof("[updateDataPartitionByRsp]: dp(%v)", dp)
-		w.replaceOrInsertPartition(dp)
+		inMap := w.replaceOrInsertPartition(dp)
 
-		if dp.MediaType == proto.MediaType_SSD {
+		if inMap.MediaType == proto.MediaType_SSD {
 			ssdDpCount += 1
-		} else if dp.MediaType == proto.MediaType_HDD {
+		} else if inMap.MediaType == proto.MediaType_HDD {
 			hddDpCount += 1
 		}
 
-		if dp.Status == proto.ReadWrite {
-			dp.MetricsRefresh()
-			rwPartitionGroups = append(rwPartitionGroups, dp)
+		if inMap.Status == proto.ReadWrite {
+			inMap.MetricsRefresh()
+			rwPartitionGroups = append(rwPartitionGroups, inMap)
 			// log.LogInfof("updateDataPartition: dpId(%v) mediaType(%v) address(%p) insert to rwPartitionGroups",
 			//	dp.PartitionID, proto.MediaTypeString(dp.MediaType), dp)
 			if dp.MediaType == proto.MediaType_SSD {
@@ -473,6 +516,11 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 		return
 	}
 	var dpv *proto.DataPartitionsView
+	if w.mc == nil {
+		err = fmt.Errorf("updateDataPartition: master client is nil")
+		log.LogErrorf("%v", err)
+		return
+	}
 	if dpv, err = w.mc.ClientAPI().EncodingGzip().GetDataPartitions(w.VolName); err != nil {
 		log.LogErrorf("updateDataPartition: get data partitions fail: volume(%v) err(%v)", w.VolName, err)
 		return
@@ -555,10 +603,29 @@ func (w *Wrapper) clearPartitions() {
 	w.partitions = make(map[uint64]*DataPartition)
 }
 
-func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
+// replaceOrInsertPartition updates or inserts the data partition. When the partition already exists
+// and Epoch is unchanged (no address change from Master), only Status/ReplicaNum/IsDiscard are updated
+// to avoid unnecessary churn; otherwise the partition is replaced with the new one (e.g. after connection
+// failure refresh when address may have changed). Returns the partition that is now in the map.
+func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) *DataPartition {
 	var oldstatus int8
 	w.Lock.Lock()
 	old, ok := w.partitions[dp.PartitionID]
+	if ok && old.Epoch == dp.Epoch {
+		// Fix-M: Still update LeaderAddr and Hosts when Epoch equal (e.g. follower-read or refresh may have new leader/hosts)
+		oldstatus = old.Status
+		old.Status = dp.Status
+		old.ReplicaNum = dp.ReplicaNum
+		old.IsDiscard = dp.IsDiscard
+		old.LeaderAddr = dp.LeaderAddr
+		old.Hosts = dp.Hosts
+		old.NearHosts = dp.NearHosts
+		w.Lock.Unlock()
+		if oldstatus != dp.Status {
+			log.LogInfof("partition:dp[%v] status change (%v) -> (%v)", dp.PartitionID, oldstatus, dp.Status)
+		}
+		return old
+	}
 	if ok {
 		oldstatus = old.Status
 		old.Status = dp.Status
@@ -576,6 +643,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	if ok && oldstatus != dp.Status {
 		log.LogInfof("partition:dp[%v] address %p status change (%v) -> (%v)", dp.PartitionID, &old, oldstatus, dp.Status)
 	}
+	return dp
 }
 
 // GetDataPartition returns the data partition based on the given partition ID.

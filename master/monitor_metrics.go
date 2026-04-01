@@ -789,7 +789,7 @@ func (mm *monitorMetrics) setVolMetrics() {
 		freeListLen := uint64(0)
 		txCnt := uint64(0)
 
-		for _, mpv := range vol.getMetaPartitionsView() {
+		for _, mpv := range vol.getMetaPartitionsView(mm.cluster) {
 			inodeCount += mpv.InodeCount
 			dentryCount += mpv.DentryCount
 			mpCount += 1

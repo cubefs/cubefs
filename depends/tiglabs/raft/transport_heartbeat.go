@@ -131,3 +131,12 @@ func (t *heartbeatTransport) getSender(nodeId uint64) *transportSender {
 	}
 	return sender
 }
+
+func (t *heartbeatTransport) invalidateSender(nodeID uint64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if sender, ok := t.senders[nodeID]; ok {
+		delete(t.senders, nodeID)
+		sender.stop()
+	}
+}

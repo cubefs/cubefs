@@ -36,10 +36,15 @@ type MockFlashServer struct {
 }
 
 func NewMockFlashServer(addr, zoneName string) *MockFlashServer {
+	return NewMockFlashServerWithMaster(addr, zoneName, hostAddr)
+}
+
+// NewMockFlashServerWithMaster creates a mock flash server that registers with the given master address (e.g. "127.0.0.1:8081" for isolated E2E).
+func NewMockFlashServerWithMaster(addr, zoneName, masterAddr string) *MockFlashServer {
 	return &MockFlashServer{
 		TCPAddr:  addr,
 		zoneName: zoneName,
-		mc:       master.NewMasterClient([]string{hostAddr}, false),
+		mc:       master.NewMasterClient([]string{masterAddr}, false),
 		stopCh:   make(chan struct{}),
 	}
 }

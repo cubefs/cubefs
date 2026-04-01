@@ -1190,6 +1190,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		ClusterUuidEnable:                  m.cluster.clusterUuidEnable,
 		ClusterEnableSnapshot:              m.cluster.cfg.EnableSnapshot,
 		RaftPartitionCanUsingDifferentPort: m.cluster.RaftPartitionCanUsingDifferentPortEnabled(),
+		EnableDynamicAddr:                  m.cluster.cfg.EnableDynamicAddr,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
@@ -3275,6 +3276,8 @@ func checkIp(addr string) bool {
 	return false
 }
 
+// checkIpPort validates "host:port". Host may be IPv4 or FQDN (e.g. K8s pod DNS name).
+// Port must be in [1024, 65535]. Used by addDataNode/addMetaNode so that registerAddr can be FQDN in K8s.
 func checkIpPort(addr string) bool {
 	var arr []string
 	if arr = strings.Split(addr, ":"); len(arr) < 2 {
@@ -3283,12 +3286,19 @@ func checkIpPort(addr string) bool {
 	if id, err := strconv.ParseUint(arr[1], 10, 64); err != nil || id > 65535 || id < 1024 {
 		return false
 	}
-	ip := strings.Trim(addr, " ")
-	regStr := `^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.)(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){2}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])`
-	if match, _ := regexp.MatchString(regStr, ip); match {
+	host := strings.TrimSpace(arr[0])
+	if host == "" {
+		return false
+	}
+	// IPv4
+	ipv4Regex := `^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.)(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){2}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$`
+	if match, _ := regexp.MatchString(ipv4Regex, host); match {
 		return true
 	}
-	return false
+	// FQDN / hostname (e.g. datanode-0.datanode-svc.cubefs.svc.cluster.local)
+	fqdnRegex := `^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$`
+	match, _ := regexp.MatchString(fqdnRegex, host)
+	return match
 }
 
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
@@ -3316,16 +3326,22 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
 		return
 	}
-	var value string
-	if value = r.FormValue(idKey); value == "" {
-		nodesetId = 0
-	} else {
-		if nodesetId, err = strconv.ParseUint(value, 10, 64); err != nil {
+	var existingNodeID uint64
+	if value := r.FormValue(nodeIdKey); value != "" {
+		if existingNodeID, err = strconv.ParseUint(value, 10, 64); err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, nodesetId, mediaType); err != nil {
+	if existingNodeID == 0 {
+		if value := r.FormValue(idKey); value != "" {
+			if nodesetId, err = strconv.ParseUint(value, 10, 64); err != nil {
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
+		}
+	}
+	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, nodesetId, mediaType, existingNodeID); err != nil {
 		log.LogErrorf("addDataNode: add failed, addr %s, zone %s, set %d, type %d, err %s",
 			nodeAddr, zoneName, nodesetId, mediaType, err.Error())
 		err = errors.NewErrorf("add datanode failed, err %s, hint %s", err.Error(), proto.ErrDataNodeAdd.Error())
@@ -4008,17 +4024,25 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 		return fmt.Errorf("%v destNodesetId not found", destNodesetId)
 	}
 	if nodeType == uint64(TypeDataPartition) {
-		value, ok = zone.dataNodes.Load(addr)
-		if !ok {
-			return fmt.Errorf("addr %v not found", addr)
+		dataNode, err = m.cluster.dataNode(addr)
+		if err != nil {
+			return fmt.Errorf("addr %v not found: %w", addr, err)
 		}
-		nsId = value.(*DataNode).NodeSetID
+		_, ok = zone.dataNodes.Load(dataNode.ID)
+		if !ok {
+			return fmt.Errorf("addr %v not found in zone", addr)
+		}
+		nsId = dataNode.NodeSetID
 	} else if nodeType == uint64(TypeMetaPartition) {
-		value, ok = zone.metaNodes.Load(addr)
-		if !ok {
-			return fmt.Errorf("addr %v not found", addr)
+		metaNode, err = m.cluster.metaNode(addr)
+		if err != nil {
+			return fmt.Errorf("addr %v not found: %w", addr, err)
 		}
-		nsId = value.(*MetaNode).NodeSetID
+		_, ok = zone.metaNodes.Load(metaNode.ID)
+		if !ok {
+			return fmt.Errorf("addr %v not found in zone", addr)
+		}
+		nsId = metaNode.NodeSetID
 	} else {
 		return fmt.Errorf("%v wrong type", nodeType)
 	}
@@ -4049,7 +4073,7 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 		nodeTypeUint32 = math.MaxUint32
 	}
 	if nodeTypeUint32 == TypeDataPartition {
-		if value, ok = srcNs.dataNodes.Load(addr); !ok {
+		if value, ok = srcNs.dataNodes.Load(dataNode.ID); !ok {
 			return fmt.Errorf("addr not found in srcNs.dataNodes")
 		}
 		dataNode = value.(*DataNode)
@@ -4061,8 +4085,8 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 			return
 		}
 	} else {
-		if value, ok = srcNs.metaNodes.Load(addr); !ok {
-			return fmt.Errorf("ddr not found in srcNs.metaNodes")
+		if value, ok = srcNs.metaNodes.Load(metaNode.ID); !ok {
+			return fmt.Errorf("addr not found in srcNs.metaNodes")
 		}
 		metaNode = value.(*MetaNode)
 		metaNode.NodeSetID = dstNs.ID
@@ -4178,12 +4202,10 @@ func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err e
 	if nodeType == TypeDataPartition {
 		m.cluster.dnMutex.Lock()
 		defer m.cluster.dnMutex.Unlock()
-		value, ok := m.cluster.dataNodes.Load(addr)
-		if !ok {
+		dataNode, e := m.cluster.dataNode(addr)
+		if e != nil {
 			return fmt.Errorf("[setNodeRdOnly] data node %s is not exist", addr)
 		}
-
-		dataNode := value.(*DataNode)
 		oldRdOnly := dataNode.RdOnly
 		dataNode.RdOnly = rdOnly
 
@@ -4198,12 +4220,10 @@ func (m *Server) setNodeRdOnly(addr string, nodeType uint32, rdOnly bool) (err e
 	m.cluster.mnMutex.Lock()
 	defer m.cluster.mnMutex.Unlock()
 
-	value, ok := m.cluster.metaNodes.Load(addr)
-	if !ok {
+	metaNode, e := m.cluster.metaNode(addr)
+	if e != nil {
 		return fmt.Errorf("[setNodeRdOnly] meta node %s is not exist", addr)
 	}
-
-	metaNode := value.(*MetaNode)
 	oldRdOnly := metaNode.RdOnly
 	metaNode.RdOnly = rdOnly
 
@@ -5274,16 +5294,22 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
 		return
 	}
-	var value string
-	if value = r.FormValue(idKey); value == "" {
-		nodesetId = 0
-	} else {
-		if nodesetId, err = strconv.ParseUint(value, 10, 64); err != nil {
+	var existingNodeID uint64
+	if value := r.FormValue(nodeIdKey); value != "" {
+		if existingNodeID, err = strconv.ParseUint(value, 10, 64); err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
 	}
-	if id, err = m.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, nodesetId); err != nil {
+	if existingNodeID == 0 {
+		if value := r.FormValue(idKey); value != "" {
+			if nodesetId, err = strconv.ParseUint(value, 10, 64); err != nil {
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
+		}
+	}
+	if id, err = m.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, nodesetId, existingNodeID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -6168,6 +6194,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.IsRecover = mp.IsRecover
 	mpView.Freeze = mp.Freeze
 	mpView.LastDelReplicaTime = mp.LastDelReplicaTime
+	mpView.AddrEpoch = mp.AddrEpoch
 	return
 }
 
@@ -6241,6 +6268,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			IsRecover:                 mp.IsRecover,
 			Hosts:                     mp.Hosts,
 			Peers:                     mp.Peers,
+			AddrEpoch:                 mp.AddrEpoch,
 			Zones:                     zones,
 			NodeSets:                  nodeSets,
 			MissNodes:                 mp.MissNodes,

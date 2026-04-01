@@ -326,6 +326,7 @@ run_test_cover() {
 }
 
 run_test_cover_cubefs() {
+    [ -z "$SrcPath" ] && SrcPath=$RootPath
     pushd $SrcPath >/dev/null
     ulimit -n 65536
     echo -n "${TPATH}"

@@ -1290,8 +1290,8 @@ func TestGetLowMemPressureTopology(t *testing.T) {
 			},
 		},
 	}
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.1, IsActive: true, MaxMemAvailWeight: size10GB})
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node2", &MetaNode{ID: 102, Ratio: 0.2, IsActive: true, MaxMemAvailWeight: size10GB})
+	cluster.t.zones[0].nodeSetMap[1].putMetaNode(&MetaNode{Addr: "node1", ID: 101, Ratio: 0.1, IsActive: true, MaxMemAvailWeight: size10GB})
+	cluster.t.zones[0].nodeSetMap[1].putMetaNode(&MetaNode{Addr: "node2", ID: 102, Ratio: 0.2, IsActive: true, MaxMemAvailWeight: size10GB})
 	cluster.t.zoneMap.Store(cluster.t.zones[0].name, cluster.t.zones[0])
 
 	migratePlan := &proto.ClusterPlan{
@@ -1364,8 +1364,8 @@ func TestVerifyMetaNodeExceedMemMid(t *testing.T) {
 	size10GB := uint64(10 * 1024 * 1024 * 1024)
 	// 测试用例1: Ratio 大于等于 metaNodeMemMidPer
 	cluster := &Cluster{}
-	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8, IsActive: true, MaxMemAvailWeight: size10GB})
-	cluster.metaNodes.Store("node2", &MetaNode{ID: 102, Ratio: 0.5, IsActive: true, MaxMemAvailWeight: size10GB})
+	cluster.putMetaNode(&MetaNode{Addr: "node1", ID: 101, Ratio: 0.8, IsActive: true, MaxMemAvailWeight: size10GB})
+	cluster.putMetaNode(&MetaNode{Addr: "node2", ID: 102, Ratio: 0.5, IsActive: true, MaxMemAvailWeight: size10GB})
 
 	result1, err1 := cluster.VerifyMetaNodeExceedMemMid("node1")
 	if err1 != nil || !result1 {
@@ -1407,17 +1407,17 @@ func TestUpdateMigrateDestination(t *testing.T) {
 			},
 		},
 	}
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{
+	cluster.t.zones[0].nodeSetMap[1].putMetaNode(&MetaNode{
 		ID: 101, Addr: "node1", Ratio: 0.1, Total: totalSize,
 		NodeMemTotal: totalSize, ZoneName: "zone1", NodeSetID: 1,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node2", &MetaNode{
+	cluster.t.zones[0].nodeSetMap[1].putMetaNode(&MetaNode{
 		ID: 102, Addr: "node2", Ratio: 0.2, Total: totalSize,
 		NodeMemTotal: totalSize, ZoneName: "zone1", NodeSetID: 1,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node3", &MetaNode{
+	cluster.t.zones[0].nodeSetMap[1].putMetaNode(&MetaNode{
 		ID: 103, Addr: "node3", Ratio: 0.2, Total: totalSize,
 		NodeMemTotal: totalSize, ZoneName: "zone1", NodeSetID: 1,
 		IsActive: true, MaxMemAvailWeight: size10GB,
@@ -1583,7 +1583,7 @@ func TestAddMetaPartitionIntoPlan(t *testing.T) {
 			},
 		},
 	}
-	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8})
+	cluster.putMetaNode(&MetaNode{Addr: "node1", ID: 101, Ratio: 0.8})
 	metaNode := &proto.MetaNodeBalanceInfo{
 		Addr:     "node1",
 		Estimate: 1,
@@ -1607,7 +1607,7 @@ func TestAddMetaPartitionIntoPlan(t *testing.T) {
 func TestCreateMetaPartitionMigratePlan(t *testing.T) {
 	// Create a cluster instance
 	cluster := &Cluster{}
-	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8, NodeMemTotal: 1000000, NodeMemUsed: 900000, MetaPartitionCount: 1000})
+	cluster.putMetaNode(&MetaNode{Addr: "node1", ID: 101, Ratio: 0.8, NodeMemTotal: 1000000, NodeMemUsed: 900000, MetaPartitionCount: 1000})
 
 	// Create a mock migrate plan
 	migratePlan := &proto.ClusterPlan{}
@@ -1695,64 +1695,64 @@ func TestGetMetaNodePressureView(t *testing.T) {
 		},
 	}
 	totalSize := uint64(metaNodeReserveMemorySize * 2)
-	cluster.metaNodes.Store("node4", &MetaNode{
+	cluster.putMetaNode(&MetaNode{
 		ID: 201, Addr: "node4", NodeSetID: 20,
 		MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.8,
 		NodeMemTotal: totalSize, NodeMemUsed: 8192,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.metaNodes.Store("node5", &MetaNode{
+	cluster.putMetaNode(&MetaNode{
 		ID: 202, Addr: "node5", NodeSetID: 20,
 		MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.0001,
 		NodeMemTotal: totalSize, NodeMemUsed: 8192,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.metaNodes.Store("node6", &MetaNode{
+	cluster.putMetaNode(&MetaNode{
 		ID: 203, Addr: "node6", NodeSetID: 20,
 		MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.0001,
 		NodeMemTotal: totalSize, NodeMemUsed: 8192,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
 
-	cluster.t.zones[1].nodeSetMap[20].metaNodes.Store("node10", &MetaNode{
+	cluster.t.zones[1].nodeSetMap[20].putMetaNode(&MetaNode{
 		ID: 110, Addr: "node10", Ratio: 0.1,
 		Total: totalSize, NodeMemTotal: totalSize,
 		NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 20,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
 
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node7", &MetaNode{
+	cluster.t.zones[1].nodeSetMap[30].putMetaNode(&MetaNode{
 		ID: 107, Addr: "node7", Ratio: 0.1,
 		Total: totalSize, NodeMemTotal: totalSize,
 		NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 30,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node8", &MetaNode{
+	cluster.t.zones[1].nodeSetMap[30].putMetaNode(&MetaNode{
 		ID: 108, Addr: "node8", Ratio: 0.1,
 		Total: totalSize, NodeMemTotal: totalSize,
 		NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 30,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node9", &MetaNode{
+	cluster.t.zones[1].nodeSetMap[30].putMetaNode(&MetaNode{
 		ID: 109, Addr: "node9", Ratio: 0.1,
 		Total: totalSize, NodeMemTotal: totalSize,
 		NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 30,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
 
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{
+	cluster.t.zones[0].nodeSetMap[1].putMetaNode(&MetaNode{
 		ID: 101, Addr: "node1", Ratio: 0.1,
 		Total: totalSize, NodeMemTotal: totalSize,
 		NodeMemUsed: 8192, ZoneName: "zone1", NodeSetID: 1,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node2", &MetaNode{
+	cluster.t.zones[0].nodeSetMap[1].putMetaNode(&MetaNode{
 		ID: 102, Addr: "node2", Ratio: 0.2,
 		Total: totalSize, NodeMemTotal: totalSize,
 		NodeMemUsed: 8192, ZoneName: "zone1", NodeSetID: 1,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node3", &MetaNode{
+	cluster.t.zones[0].nodeSetMap[1].putMetaNode(&MetaNode{
 		ID: 103, Addr: "node3", Ratio: 0.2,
 		Total: totalSize, NodeMemTotal: totalSize,
 		NodeMemUsed: 8192, ZoneName: "zone1", NodeSetID: 1,
@@ -1782,7 +1782,7 @@ func TestGetMetaNodePressureView(t *testing.T) {
 	}
 
 	// Case 2: find meta node under different node set under the same zone.
-	cluster.t.zones[1].nodeSetMap[20].metaNodes.Delete("node10")
+	cluster.t.zones[1].nodeSetMap[20].metaNodes.Delete(uint64(110))
 	result, err = cluster.GetMetaNodePressureView()
 	// Check for errors
 	if err != nil {
@@ -1798,7 +1798,7 @@ func TestGetMetaNodePressureView(t *testing.T) {
 	}
 
 	// Case 3: find meta node in different zone.
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Delete("node7")
+	cluster.t.zones[1].nodeSetMap[30].metaNodes.Delete(uint64(107))
 	result, err = cluster.GetMetaNodePressureView()
 	// Check for errors
 	if err != nil {
@@ -1817,20 +1817,20 @@ func TestGetMetaNodePressureView(t *testing.T) {
 
 	// Case 4: test CrossZone == true. Find meta node under the same node set.
 	cluster.vols["vol1"].crossZone = true
-	cluster.t.zones[1].nodeSetMap[20].metaNodes.Store("node10", &MetaNode{
+	cluster.t.zones[1].nodeSetMap[20].putMetaNode(&MetaNode{
 		ID: 110, Addr: "node10", Ratio: 0.1,
 		Total: metaNodeReserveMemorySize * 2, NodeMemTotal: totalSize,
 		NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 20,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node7", &MetaNode{
+	cluster.t.zones[1].nodeSetMap[30].putMetaNode(&MetaNode{
 		ID: 107, Addr: "node7", Ratio: 0.1,
 		Total: metaNodeReserveMemorySize * 2, NodeMemTotal: totalSize,
 		NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 30,
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
-	cluster.metaNodes.Delete("node6")
-	cluster.metaNodes.Store("node6", &MetaNode{
+	cluster.deleteMetaNodeByAddr("node6")
+	cluster.putMetaNode(&MetaNode{
 		ID: 203, Addr: "node6", NodeSetID: 50,
 		MetaPartitionCount: 10, ZoneName: "zone3",
 		Ratio: 0.0001, NodeMemTotal: totalSize, NodeMemUsed: 8192,
@@ -1854,7 +1854,7 @@ func TestGetMetaNodePressureView(t *testing.T) {
 	}
 
 	// Case 5: test CrossZone == true. Find meta node under the same zone.
-	cluster.t.zones[1].nodeSetMap[20].metaNodes.Delete("node10")
+	cluster.t.zones[1].nodeSetMap[20].metaNodes.Delete(uint64(110))
 
 	result, err = cluster.GetMetaNodePressureView()
 	// Check for errors
@@ -1873,8 +1873,8 @@ func TestGetMetaNodePressureView(t *testing.T) {
 	}
 
 	// Case 6: test CrossZone == true. Not find low memory usage meta node.
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Delete("node7")
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Delete("node8")
+	cluster.t.zones[1].nodeSetMap[30].metaNodes.Delete(uint64(107))
+	cluster.t.zones[1].nodeSetMap[30].metaNodes.Delete(uint64(108))
 
 	_, err = cluster.GetMetaNodePressureView()
 	// Check for errors

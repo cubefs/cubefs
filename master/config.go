@@ -66,6 +66,7 @@ const (
 	cfgLegacyDataMediaType = "legacyDataMediaType" // for hybrid cloud upgrade
 
 	cfgRaftPartitionCanUseDifferentPort   = "raftPartitionCanUseDifferentPort"
+	cfgEnableDynamicAddr                  = "enableDynamicAddr"
 	cfgAllowMultipleReplicasOnSameMachine = "allowMultipleReplicasOnSameMachine"
 	cfgMetaNodeMemoryHighPer              = "metaNodeMemoryHighPer"
 	cfgMetaNodeMemoryLowPer               = "metaNodeMemoryLowPer"
@@ -219,6 +220,8 @@ type clusterConfig struct {
 	// if so we can deploy multiple datanode/metanode on single machine
 	raftPartitionCanUseDifferentPort     atomicutil.Bool
 	raftPartitionAlreadyUseDifferentPort atomicutil.Bool
+
+	EnableDynamicAddr bool // allow node re-registration with existing NodeID when addr changes (e.g. K8s pod IP)
 
 	AllowMultipleReplicasOnSameMachine bool // whether dp/mp replicas can locate on same machine, default true
 

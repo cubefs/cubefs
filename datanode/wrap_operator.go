@@ -563,6 +563,25 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			marshaled, _ := json.Marshal(task.Request)
 			_ = json.Unmarshal(marshaled, request)
 			response.Status = proto.TaskSucceeds
+			// Apply peer address updates from master (e.g. after pod IP change) to Raft resolver
+			for _, u := range request.PeerAddrUpdates {
+				host := u.Addr
+				if idx := strings.Index(u.Addr, ":"); idx >= 0 {
+					host = u.Addr[:idx]
+				}
+				hb, err := strconv.Atoi(u.HeartbeatPort)
+				if err != nil {
+					log.LogWarnf("action[handleHeartbeatPacket] skip peer addr update for node %v: invalid heartbeat port %q: %v", u.NodeID, u.HeartbeatPort, err)
+					continue
+				}
+				rep, err := strconv.Atoi(u.ReplicaPort)
+				if err != nil {
+					log.LogWarnf("action[handleHeartbeatPacket] skip peer addr update for node %v: invalid replica port %q: %v", u.NodeID, u.ReplicaPort, err)
+					continue
+				}
+				s.space.GetRaftStore().AddNodeWithPort(u.NodeID, host, hb, rep)
+				s.space.GetRaftStore().RaftServer().InvalidateSender(u.NodeID)
+			}
 			if !s.useLocalGOGC {
 				if s.gogcValue != request.DataNodeGOGC && request.DataNodeGOGC >= defaultGOGCLowerLimit && request.DataNodeGOGC <= defaultGOGCUpperLimit {
 					oldGOGC := s.gogcValue

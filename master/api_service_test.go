@@ -132,12 +132,20 @@ func rangeMockMetaServers(fun func(*mocktest.MockMetaServer) bool) (count int, p
 	return
 }
 
+// getTestPprofPort returns pprof port for master test; use MASTER_TEST_PPROF_PORT to avoid "address already in use" when running parallel or after a previous run.
+func getTestPprofPort() string {
+	if p := os.Getenv("MASTER_TEST_PPROF_PORT"); p != "" {
+		return p
+	}
+	return "10088"
+}
+
 func createDefaultMasterServerForTest() *Server {
-	cfgJSON := `{
+	cfgJSON := fmt.Sprintf(`{
 		"role": "master",
 		"ip": "127.0.0.1",
 		"listen": "8080",
-		"prof":"10088",
+		"prof":"%s",
 		"id":"1",
 		"peers": "1:127.0.0.1:8080",
 		"retainLogs":"20000",
@@ -152,14 +160,13 @@ func createDefaultMasterServerForTest() *Server {
 		"bStoreServicePath":"access",
         "enableDirectDeleteVol":true,
 		"legacyDataMediaType": 1
-	}`
+	}`, getTestPprofPort())
 
 	testServer, err := createMasterServer(cfgJSON)
-	testServer.cluster.cfg.volForceDeletion = true
-
 	if err != nil {
 		panic(err)
 	}
+	testServer.cluster.cfg.volForceDeletion = true
 	// add data node
 	mockDataServers = make([]*mocktest.MockDataServer, 0)
 	mockDataServers = append(mockDataServers, addDataServer(mds1Addr, testZone1, defaultMediaType))
@@ -344,6 +351,172 @@ func addFlashServer(addr, zoneName string) *mocktest.MockFlashServer {
 	mms := mocktest.NewMockFlashServer(addr, zoneName)
 	mms.Start()
 	return mms
+}
+
+// addDataServerWithMaster creates a mock data server that registers with the given master address (for isolated E2E).
+func addDataServerWithMaster(addr, zoneName, masterAddr string, mediaType uint32) *mocktest.MockDataServer {
+	mds := mocktest.NewMockDataServerWithMaster(addr, zoneName, mediaType, masterAddr)
+	mds.Start()
+	return mds
+}
+
+// addMetaServerWithMaster creates a mock meta server that registers with the given master address (for isolated E2E).
+func addMetaServerWithMaster(addr, zoneName, masterAddr string) *mocktest.MockMetaServer {
+	mms := mocktest.NewMockMetaServerWithMaster(addr, zoneName, masterAddr)
+	mms.Start()
+	return mms
+}
+
+// addFlashServerWithMaster creates a mock flash server that registers with the given master address (for isolated E2E).
+func addFlashServerWithMaster(addr, zoneName, masterAddr string) *mocktest.MockFlashServer {
+	mfs := mocktest.NewMockFlashServerWithMaster(addr, zoneName, masterAddr)
+	mfs.Start()
+	return mfs
+}
+
+// createIsolatedMasterServerForE2E starts a separate Master and mocks on the given port so E2E tests do not share state with the global server.
+// Mock addresses are derived from port so each test (8081/8082/8083) uses a unique port range and does not conflict.
+// Returns (server, hostAddr, firstDataAddr, firstMetaAddr, cleanup). cleanup stops E2E mock flash servers and should be deferred by the caller.
+func createIsolatedMasterServerForE2E(port string) (*Server, string, string, string, func()) {
+	p, _ := strconv.Atoi(port)
+	if p < 8081 || p > 8099 {
+		p = 8081
+	}
+	offset := (p - 8080) * 100
+	profPort := strconv.Itoa(10000 + (p - 8080))
+	raftHeartbeat := 15901 + (p-8080)*2
+	raftReplica := 15902 + (p-8080)*2
+
+	// Unique mock port range per E2E port so tests can run sequentially without address-in-use.
+	e2eMds1 := fmt.Sprintf("127.0.0.1:%d", 9201+offset)
+	e2eMds2 := fmt.Sprintf("127.0.0.1:%d", 9202+offset)
+	e2eMds3 := fmt.Sprintf("127.0.0.1:%d", 9203+offset)
+	e2eMds4 := fmt.Sprintf("127.0.0.1:%d", 9204+offset)
+	e2eMds5 := fmt.Sprintf("127.0.0.1:%d", 9205+offset)
+	e2eMds6 := fmt.Sprintf("127.0.0.1:%d", 9206+offset)
+	e2eMds1Hdd := fmt.Sprintf("127.0.0.1:%d", 9211+offset)
+	e2eMds2Hdd := fmt.Sprintf("127.0.0.1:%d", 9212+offset)
+	e2eMds3Hdd := fmt.Sprintf("127.0.0.1:%d", 9213+offset)
+	e2eMms1 := fmt.Sprintf("127.0.0.1:%d", 8201+offset)
+	e2eMms2 := fmt.Sprintf("127.0.0.1:%d", 8202+offset)
+	e2eMms3 := fmt.Sprintf("127.0.0.1:%d", 8203+offset)
+	e2eMms4 := fmt.Sprintf("127.0.0.1:%d", 8204+offset)
+	e2eMms5 := fmt.Sprintf("127.0.0.1:%d", 8205+offset)
+	e2eMms6 := fmt.Sprintf("127.0.0.1:%d", 8206+offset)
+	e2eMfs1 := fmt.Sprintf("127.0.0.1:%d", 10601+offset)
+	e2eMfs2 := fmt.Sprintf("127.0.0.1:%d", 10602+offset)
+	e2eMfs3 := fmt.Sprintf("127.0.0.1:%d", 10603+offset)
+	e2eMfs4 := fmt.Sprintf("127.0.0.1:%d", 10604+offset)
+	e2eMfs5 := fmt.Sprintf("127.0.0.1:%d", 10605+offset)
+	e2eMfs6 := fmt.Sprintf("127.0.0.1:%d", 10606+offset)
+	e2eMfs7 := fmt.Sprintf("127.0.0.1:%d", 10607+offset)
+
+	portStr := strconv.Itoa(p)
+	baseDir := "/tmp/cubefs_e2e_" + portStr
+	cfgJSON := fmt.Sprintf(`{
+		"role": "master",
+		"ip": "127.0.0.1",
+		"listen": "%s",
+		"prof":"%s",
+		"id":"1",
+		"peers": "1:127.0.0.1:%s",
+		"heartbeatPort": %d,
+		"replicaPort": %d,
+		"retainLogs":"20000",
+		"tickInterval":500,
+		"electionTick":6,
+		"logDir": "%s/Logs",
+		"logLevel":"DEBUG",
+		"walDir": "%s/raft",
+		"storeDir": "%s/rocksdbstore",
+		"clusterName":"cubefs",
+		"bStoreAddr":"127.0.0.1:8500",
+		"bStoreServicePath":"access",
+        "enableDirectDeleteVol":true,
+		"legacyDataMediaType": 1
+	}`, portStr, profPort, portStr, raftHeartbeat, raftReplica, baseDir, baseDir, baseDir)
+
+	testServer, err := createMasterServer(cfgJSON)
+	if err != nil {
+		panic(err)
+	}
+	testServer.cluster.cfg.volForceDeletion = true
+	masterAddr := "127.0.0.1:" + portStr
+
+	var e2eMockFlashServers []*mocktest.MockFlashServer
+
+	_ = []*mocktest.MockDataServer{
+		addDataServerWithMaster(e2eMds1, testZone1, masterAddr, defaultMediaType),
+		addDataServerWithMaster(e2eMds2, testZone1, masterAddr, defaultMediaType),
+		addDataServerWithMaster(e2eMds3, testZone2, masterAddr, defaultMediaType),
+		addDataServerWithMaster(e2eMds4, testZone2, masterAddr, defaultMediaType),
+		addDataServerWithMaster(e2eMds5, testZone2, masterAddr, defaultMediaType),
+		addDataServerWithMaster(e2eMds6, testZone2, masterAddr, defaultMediaType),
+		addDataServerWithMaster(e2eMds1Hdd, testHddZone1, masterAddr, proto.MediaType_HDD),
+		addDataServerWithMaster(e2eMds2Hdd, testHddZone1, masterAddr, proto.MediaType_HDD),
+		addDataServerWithMaster(e2eMds3Hdd, testHddZone1, masterAddr, proto.MediaType_HDD),
+	}
+
+	_ = []*mocktest.MockMetaServer{
+		addMetaServerWithMaster(e2eMms1, testZone1, masterAddr),
+		addMetaServerWithMaster(e2eMms2, testZone1, masterAddr),
+		addMetaServerWithMaster(e2eMms3, testZone2, masterAddr),
+		addMetaServerWithMaster(e2eMms4, testZone2, masterAddr),
+		addMetaServerWithMaster(e2eMms5, testZone2, masterAddr),
+		addMetaServerWithMaster(e2eMms6, testZone2, masterAddr),
+	}
+
+	e2eMockFlashServers = append(e2eMockFlashServers, addFlashServerWithMaster(e2eMfs1, testZone1, masterAddr))
+	e2eMockFlashServers = append(e2eMockFlashServers, addFlashServerWithMaster(e2eMfs2, testZone1, masterAddr))
+	e2eMockFlashServers = append(e2eMockFlashServers, addFlashServerWithMaster(e2eMfs3, testZone2, masterAddr))
+	e2eMockFlashServers = append(e2eMockFlashServers, addFlashServerWithMaster(e2eMfs4, testZone2, masterAddr))
+	e2eMockFlashServers = append(e2eMockFlashServers, addFlashServerWithMaster(e2eMfs5, testZone3, masterAddr))
+	e2eMockFlashServers = append(e2eMockFlashServers, addFlashServerWithMaster(e2eMfs6, testZone3, masterAddr))
+	e2eMockFlashServers = append(e2eMockFlashServers, addFlashServerWithMaster(e2eMfs7, testZone3, masterAddr))
+
+	time.Sleep(5 * time.Second)
+	testServer.cluster.checkDataNodeHeartbeat()
+	testServer.cluster.checkMetaNodeHeartbeat()
+	testServer.cluster.checkFlashNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+	testServer.cluster.scheduleToUpdateStatInfo()
+	if err := testServer.cluster.setClusterLoadFactor(100); err != nil {
+		panic("set load factor fail " + err.Error())
+	}
+
+	req := &createVolReq{
+		name:             commonVolName,
+		owner:            "cfs",
+		dpSize:           11,
+		mpCount:          3,
+		dpReplicaNum:     3,
+		capacity:         300,
+		followerRead:     false,
+		authenticate:     false,
+		crossZone:        false,
+		normalZonesFirst: false,
+		zoneName:         testZone2,
+		description:      "",
+		qosLimitArgs:     &qosArgs{},
+		volStorageClass:  defaultVolStorageClass,
+	}
+	if err := testServer.checkCreateVolReq(req); err != nil {
+		panic("checkCreateVolReq failed: " + err.Error())
+	}
+	if _, err := testServer.cluster.createVol(req); err != nil {
+		log.LogFlush()
+		panic(err)
+	}
+	if err := createUserWithPolicy(testServer); err != nil {
+		panic(err)
+	}
+
+	cleanup := func() {
+		for _, mfs := range e2eMockFlashServers {
+			mfs.Stop()
+		}
+	}
+	return testServer, "http://" + masterAddr, e2eMds1, e2eMms1, cleanup
 }
 
 func TestSetMetaNodeThreshold(t *testing.T) {

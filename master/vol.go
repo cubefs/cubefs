@@ -658,7 +658,7 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 		start uint64
 		end   uint64
 	)
-	if count < defaultInitMetaPartitionCount {
+	if count <= 0 {
 		count = defaultInitMetaPartitionCount
 	}
 	if count > defaultMaxInitMetaPartitionCount {
@@ -1318,7 +1318,7 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime, vol.VolType, vol.DeleteLockTime)
 	view.SetOwner(vol.Owner)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
-	mpViews := vol.getMetaPartitionsView()
+	mpViews := vol.getMetaPartitionsView(c)
 	view.MetaPartitions = mpViews
 	mpViewsReply := newSuccessHTTPReply(mpViews)
 	mpsBody, err := json.Marshal(mpViewsReply)
@@ -1339,7 +1339,7 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 	vol.setViewCache(body)
 }
 
-func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
+func (vol *Vol) getMetaPartitionsView(c *Cluster) (mpViews []*proto.MetaPartitionView) {
 	mps := make(map[uint64]*MetaPartition)
 	vol.mpsLock.RLock()
 	for key, mp := range vol.MetaPartitions {
@@ -1349,7 +1349,7 @@ func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
 
 	mpViews = make([]*proto.MetaPartitionView, 0)
 	for _, mp := range mps {
-		mpViews = append(mpViews, getMetaPartitionView(mp))
+		mpViews = append(mpViews, c.getMetaPartitionViewForClient(mp))
 	}
 	return
 }
@@ -1376,6 +1376,16 @@ func (vol *Vol) getViewCache() []byte {
 	vol.volLock.RLock()
 	defer vol.volLock.RUnlock()
 	return vol.viewCache
+}
+
+// clearViewCache invalidates the volume view cache so the next ClientVol request will rebuild from current partition state (e.g. after node address cascade update in K8s).
+// Fix-J: Also clear dataPartitions.responseCache so getDataPartitions returns fresh addresses.
+func (vol *Vol) clearViewCache() {
+	vol.volLock.Lock()
+	defer vol.volLock.Unlock()
+	vol.viewCache = nil
+	vol.mpsCache = nil
+	vol.dataPartitions.clearResponseCache()
 }
 
 func (vol *Vol) deleteDataPartition(c *Cluster, dp *DataPartition) {

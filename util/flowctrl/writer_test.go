@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"io"
 	"log"
-	"math"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -38,7 +37,7 @@ func TestRateWriter(t *testing.T) {
 		n, err := wc.Write(b)
 		elapsed := time.Since(now).Seconds()
 		log.Println(elapsed)
-		assert.True(t, math.Abs(4-elapsed) < 0.5)
+		assertRateLimitedElapsed(t, elapsed, 4)
 		assert.NoError(t, err)
 		assert.Equal(t, size, n)
 		assert.Equal(t, b, w.Bytes())
@@ -54,7 +53,7 @@ func TestRateWriter(t *testing.T) {
 		n, err := io.Copy(wc, bytes.NewBuffer(b))
 		elapsed := time.Since(now).Seconds()
 		log.Println(elapsed)
-		assert.True(t, math.Abs(4-elapsed) < 0.5)
+		assertRateLimitedElapsed(t, elapsed, 4)
 		assert.NoError(t, err)
 		assert.Equal(t, size, n)
 		assert.Equal(t, b, w.Bytes())
