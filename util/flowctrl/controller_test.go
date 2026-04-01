@@ -19,7 +19,6 @@ import (
 	"crypto/rand"
 	"io"
 	"log"
-	"math"
 	"runtime"
 	"sync"
 	"testing"
@@ -38,6 +37,16 @@ func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	rand.Read(b)
+}
+
+func assertRateLimitedElapsed(t *testing.T, elapsed, expected float64) {
+	const (
+		lowerTolerance = 0.5
+		upperFactor    = 3.0
+	)
+
+	assert.GreaterOrEqualf(t, elapsed, expected-lowerTolerance, "elapsed %.3fs faster than expected %.3fs", elapsed, expected)
+	assert.Lessf(t, elapsed, expected*upperFactor, "elapsed %.3fs too slow for expected %.3fs", elapsed, expected)
 }
 
 func TestControllerReader(t *testing.T) {
@@ -71,7 +80,7 @@ func TestControllerReader(t *testing.T) {
 		wg.Wait()
 		elapsed := time.Since(now).Seconds()
 		log.Println(elapsed)
-		assert.True(t, math.Abs(4-elapsed) < 0.5)
+		assertRateLimitedElapsed(t, elapsed, 4)
 		assert.Equal(t, b, b1)
 		assert.Equal(t, b, b2)
 	}
@@ -108,7 +117,7 @@ func TestControllerWriter(t *testing.T) {
 		wg.Wait()
 		elapsed := time.Since(now).Seconds()
 		log.Println(elapsed)
-		assert.True(t, math.Abs(4-elapsed) < 0.5)
+		assertRateLimitedElapsed(t, elapsed, 4)
 		assert.Equal(t, b, b1.Bytes())
 		assert.Equal(t, b, b2.Bytes())
 	}

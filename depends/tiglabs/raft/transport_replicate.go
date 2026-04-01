@@ -96,6 +96,15 @@ func (t *replicateTransport) getSender(nodeId uint64) *transportSender {
 	return sender
 }
 
+func (t *replicateTransport) invalidateSender(nodeID uint64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if sender, ok := t.senders[nodeID]; ok {
+		delete(t.senders, nodeID)
+		sender.stop()
+	}
+}
+
 func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) {
 	var (
 		conn *util.ConnTimeout

@@ -83,6 +83,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.cluster.lcMgr.startLcScanHandleLeaderChange()
 		m.cluster.flashManMgr.startFlashScanHandleLeaderChange()
 		m.cluster.followerReadManager.reSet()
+		go m.cluster.runPendingOldKeyCleanup() // Fix-E: cleanup old-format node keys once after becoming Leader
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))

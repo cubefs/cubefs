@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"io"
 	"log"
-	"math"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -38,7 +37,7 @@ func TestRateReader(t *testing.T) {
 		n, err := io.ReadFull(rc, b2)
 		elapsed := time.Since(now).Seconds()
 		log.Println(elapsed)
-		assert.True(t, math.Abs(4-elapsed) < 0.5)
+		assertRateLimitedElapsed(t, elapsed, 4)
 		assert.NoError(t, err)
 		assert.Equal(t, size, n)
 		assert.Equal(t, b, b2)
@@ -54,7 +53,7 @@ func TestRateReader(t *testing.T) {
 		n, err := io.Copy(b2, rc)
 		elapsed := time.Since(now).Seconds()
 		log.Println(elapsed)
-		assert.True(t, math.Abs(4-elapsed) < 0.5)
+		assertRateLimitedElapsed(t, elapsed, 4)
 		assert.NoError(t, err)
 		assert.Equal(t, size, n)
 		assert.Equal(t, b, b2.Bytes())

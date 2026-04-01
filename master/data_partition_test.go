@@ -106,9 +106,11 @@ func TestAcquireDecommissionFirstHostToken(t *testing.T) {
 		ClusterDecommission: ClusterDecommission{DecommissionFirstHostDiskParallelLimit: 0},
 	}
 	dataNode := &DataNode{
+		Addr:                               "host0",
+		ID:                                 1,
 		DecommissionFirstHostParallelLimit: 1,
 	}
-	cluster.dataNodes.Store("host0", dataNode)
+	cluster.putDataNode(dataNode)
 	dataNodeInfo := &DataNodeToDecommissionRepairDpInfo{
 		mu:          sync.Mutex{},
 		Addr:        "host0",
@@ -165,9 +167,11 @@ func TestReleaseDecommissionFirstHostToken(t *testing.T) {
 		ClusterDecommission: ClusterDecommission{DecommissionFirstHostDiskParallelLimit: 2},
 	}
 	dataNode := &DataNode{
+		Addr:                               "host0",
+		ID:                                 1,
 		DecommissionFirstHostParallelLimit: 2,
 	}
-	cluster.dataNodes.Store("host0", dataNode)
+	cluster.putDataNode(dataNode)
 
 	dataNodeInfo := &DataNodeToDecommissionRepairDpInfo{
 		mu:          sync.Mutex{},

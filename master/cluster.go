@@ -60,9 +60,12 @@ type ClusterVolSubItem struct {
 
 // nolint: structcheck
 type ClusterTopoSubItem struct {
-	dataNodes sync.Map
-	metaNodes sync.Map
-	lcNodes   sync.Map
+	dataNodes sync.Map // key: NodeID (uint64), value: *DataNode
+	metaNodes sync.Map // key: NodeID (uint64), value: *MetaNode
+	// Reverse index Addr -> NodeID for lookup by address (e.g. API by addr, heartbeat response).
+	dataNodesByAddr sync.Map // key: Addr (string), value: NodeID (uint64)
+	metaNodesByAddr sync.Map // key: Addr (string), value: NodeID (uint64)
+	lcNodes         sync.Map
 
 	idAlloc            *IDAllocator
 	t                  *topology
@@ -137,6 +140,19 @@ type CleanTask struct {
 	Freezed   int       `json:"freezed"`
 }
 
+// pendingAddrUpdate holds one peer's new address to be pushed to nodes via heartbeat.
+// Fix-D: TTL + deliveredTo so all target peers receive the update before the entry is removed.
+type pendingAddrUpdate struct {
+	nodeID        uint64
+	addr          string
+	hbPort        string
+	repPort       string
+	nodeType      string // "data" or "meta"
+	createdAt     time.Time
+	targetPeerIDs map[uint64]struct{} // peer node IDs that must receive this update
+	deliveredTo   map[uint64]bool     // peer node IDs that have received it
+}
+
 // Cluster stores all the cluster-level information.
 type Cluster struct {
 	Name            string
@@ -185,6 +201,18 @@ type Cluster struct {
 	mu          sync.Mutex
 	PlanRun     bool
 	flashManMgr *flashManualTaskManager
+
+	// pendingAddrUpdates queues peer address updates to be sent via heartbeat (for Raft resolver sync).
+	pendingAddrUpdates   []pendingAddrUpdate
+	pendingAddrUpdatesMu sync.Mutex
+
+	// pendingOldKeyCleanup collects old-format RocksDB keys (#dn#id#addr, #mn#id#addr) during load; Leader runs cleanup. Fix-E.
+	pendingOldKeyCleanup   []string
+	pendingOldKeyCleanupMu sync.Mutex
+
+	// putDnMu/putMnMu ensure dataNodes+dataNodesByAddr and metaNodes+metaNodesByAddr updates are atomic. Fix-P.
+	putDnMu sync.Mutex
+	putMnMu sync.Mutex
 }
 
 type cTask struct {
@@ -934,12 +962,229 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 				hbReq.VolsForbidWriteOpOfProtoVer0 = append(hbReq.VolsForbidWriteOpOfProtoVer0, vol.Name)
 			}
 		}
+		c.fillHeartbeatRequestPeerAddrUpdates(hbReq, node.Addr, "data")
 		tasks = append(tasks, task)
 		return true
 	})
 	log.LogDebugf("checkDataNodeHeartbeat add task %v", id.String())
 	c.addDataNodeTasks(tasks)
 	log.LogDebugf("checkDataNodeHeartbeat end %v", id.String())
+}
+
+const (
+	maxPeerAddrUpdatesPerHeartbeat = 100
+	pendingAddrUpdateTTL           = 5 * time.Minute
+	maxPendingAddrUpdates          = 10000
+)
+
+func (c *Cluster) addPendingAddrUpdate(nodeID uint64, addr, hbPort, repPort, nodeType string, targetPeerIDs map[uint64]struct{}) {
+	if len(targetPeerIDs) == 0 {
+		return
+	}
+	c.pendingAddrUpdatesMu.Lock()
+	defer c.pendingAddrUpdatesMu.Unlock()
+	// Fix-N: Cap queue size; drop oldest if over limit
+	for len(c.pendingAddrUpdates) >= maxPendingAddrUpdates {
+		dropped := c.pendingAddrUpdates[0]
+		c.pendingAddrUpdates = c.pendingAddrUpdates[1:]
+		log.LogWarnf("action[addPendingAddrUpdate] queue full, dropped oldest entry (nodeID %v)", dropped.nodeID)
+	}
+	// Copy set so caller can reuse
+	targetCopy := make(map[uint64]struct{}, len(targetPeerIDs))
+	for id := range targetPeerIDs {
+		targetCopy[id] = struct{}{}
+	}
+	c.pendingAddrUpdates = append(c.pendingAddrUpdates, pendingAddrUpdate{
+		nodeID:        nodeID,
+		addr:          addr,
+		hbPort:        hbPort,
+		repPort:       repPort,
+		nodeType:      nodeType,
+		createdAt:     time.Now(),
+		targetPeerIDs: targetCopy,
+		deliveredTo:   make(map[uint64]bool),
+	})
+}
+
+func replaceAddrInHosts(hosts []string, oldAddr, newAddr string) []string {
+	newHosts := make([]string, len(hosts))
+	for i, host := range hosts {
+		if host == oldAddr {
+			newHosts[i] = newAddr
+			continue
+		}
+		newHosts[i] = host
+	}
+	return newHosts
+}
+
+func replaceAddrInPeers(peers []proto.Peer, nodeID uint64, newAddr, heartbeatPort, replicaPort string) []proto.Peer {
+	newPeers := make([]proto.Peer, len(peers))
+	for i, peer := range peers {
+		newPeers[i] = peer
+		if peer.ID != nodeID {
+			continue
+		}
+		newPeers[i].Addr = newAddr
+		newPeers[i].HeartbeatPort = heartbeatPort
+		newPeers[i].ReplicaPort = replicaPort
+	}
+	return newPeers
+}
+
+func (c *Cluster) buildDataPartitionAddrUpdateCmd(dp *DataPartition, oldAddr, newAddr string, nodeID uint64, heartbeatPort, replicaPort string) (cmd *RaftCmd, err error) {
+	dp.Lock()
+	defer dp.Unlock()
+
+	oldHosts, oldPeers, oldEpoch := dp.Hosts, dp.Peers, dp.AddrEpoch
+	oldReplicaAddrs := make([]string, len(dp.Replicas))
+	for i, replica := range dp.Replicas {
+		oldReplicaAddrs[i] = replica.Addr
+	}
+
+	dp.Hosts = replaceAddrInHosts(dp.Hosts, oldAddr, newAddr)
+	dp.Peers = replaceAddrInPeers(dp.Peers, nodeID, newAddr, heartbeatPort, replicaPort)
+	dp.AddrEpoch = oldEpoch + 1
+	for _, replica := range dp.Replicas {
+		if replica.Addr == oldAddr {
+			replica.Addr = newAddr
+		}
+	}
+
+	cmd, err = c.buildDataPartitionRaftCmd(opSyncUpdateDataPartition, dp)
+
+	dp.Hosts, dp.Peers, dp.AddrEpoch = oldHosts, oldPeers, oldEpoch
+	for i, replica := range dp.Replicas {
+		replica.Addr = oldReplicaAddrs[i]
+	}
+	return
+}
+
+func (c *Cluster) applyDataPartitionAddrUpdate(dp *DataPartition, oldAddr, newAddr string, nodeID uint64, heartbeatPort, replicaPort string) {
+	dp.Lock()
+	defer dp.Unlock()
+
+	dp.Hosts = replaceAddrInHosts(dp.Hosts, oldAddr, newAddr)
+	dp.Peers = replaceAddrInPeers(dp.Peers, nodeID, newAddr, heartbeatPort, replicaPort)
+	dp.AddrEpoch++
+	for _, replica := range dp.Replicas {
+		if replica.Addr == oldAddr {
+			replica.Addr = newAddr
+		}
+	}
+	if ts, ok := dp.MissingNodes[oldAddr]; ok {
+		delete(dp.MissingNodes, oldAddr)
+		dp.MissingNodes[newAddr] = ts
+	}
+}
+
+func (c *Cluster) buildMetaPartitionAddrUpdateCmd(mp *MetaPartition, oldAddr, newAddr string, nodeID uint64, heartbeatPort, replicaPort string) (cmd *RaftCmd, err error) {
+	mp.Lock()
+	defer mp.Unlock()
+
+	oldHosts, oldPeers, oldEpoch := mp.Hosts, mp.Peers, mp.AddrEpoch
+	mp.Hosts = replaceAddrInHosts(mp.Hosts, oldAddr, newAddr)
+	mp.Peers = replaceAddrInPeers(mp.Peers, nodeID, newAddr, heartbeatPort, replicaPort)
+	mp.AddrEpoch = oldEpoch + 1
+
+	cmd, err = c.buildMetaPartitionRaftCmd(opSyncUpdateMetaPartition, mp)
+
+	mp.Hosts, mp.Peers, mp.AddrEpoch = oldHosts, oldPeers, oldEpoch
+	return
+}
+
+func (c *Cluster) applyMetaPartitionAddrUpdate(mp *MetaPartition, oldAddr, newAddr string, nodeID uint64, heartbeatPort, replicaPort string) {
+	mp.Lock()
+	defer mp.Unlock()
+
+	mp.Hosts = replaceAddrInHosts(mp.Hosts, oldAddr, newAddr)
+	mp.Peers = replaceAddrInPeers(mp.Peers, nodeID, newAddr, heartbeatPort, replicaPort)
+	mp.AddrEpoch++
+	for _, replica := range mp.Replicas {
+		if replica.nodeID == nodeID {
+			replica.Addr = newAddr
+		}
+	}
+	if ts, ok := mp.MissNodes[oldAddr]; ok {
+		delete(mp.MissNodes, oldAddr)
+		mp.MissNodes[newAddr] = ts
+	}
+}
+
+// runPendingOldKeyCleanup submits batch deletes for old-format node keys (#dn#id#addr, #mn#id#addr). Fix-E. Call once after becoming Leader.
+func (c *Cluster) runPendingOldKeyCleanup() {
+	c.pendingOldKeyCleanupMu.Lock()
+	keys := c.pendingOldKeyCleanup
+	c.pendingOldKeyCleanup = nil
+	c.pendingOldKeyCleanupMu.Unlock()
+	if len(keys) == 0 {
+		return
+	}
+	cmds := make(map[string]*RaftCmd)
+	for _, key := range keys {
+		op := opSyncDeleteDataNode
+		if strings.HasPrefix(key, metaNodePrefix) {
+			op = opSyncDeleteMetaNode
+		}
+		cmds[key] = &RaftCmd{Op: op, K: key}
+	}
+	if err := c.syncBatchCommitCmd(cmds); err != nil {
+		log.LogErrorf("action[runPendingOldKeyCleanup] batch delete old keys failed: %v", err)
+		c.pendingOldKeyCleanupMu.Lock()
+		c.pendingOldKeyCleanup = append(c.pendingOldKeyCleanup, keys...)
+		c.pendingOldKeyCleanupMu.Unlock()
+		return
+	}
+	log.LogInfof("action[runPendingOldKeyCleanup] deleted %v old-format node keys", len(keys))
+}
+
+func (c *Cluster) fillHeartbeatRequestPeerAddrUpdates(hbReq *proto.HeartBeatRequest, nodeAddr, nodeType string) {
+	var currentNodeID uint64
+	if nodeType == "data" {
+		if idVal, ok := c.dataNodesByAddr.Load(nodeAddr); ok {
+			currentNodeID = idVal.(uint64)
+		}
+	} else {
+		if idVal, ok := c.metaNodesByAddr.Load(nodeAddr); ok {
+			currentNodeID = idVal.(uint64)
+		}
+	}
+	c.pendingAddrUpdatesMu.Lock()
+	defer c.pendingAddrUpdatesMu.Unlock()
+	n := 0
+	for i := range c.pendingAddrUpdates {
+		u := &c.pendingAddrUpdates[i]
+		if u.nodeType != nodeType {
+			continue
+		}
+		if _, needReceive := u.targetPeerIDs[currentNodeID]; !needReceive {
+			continue
+		}
+		if n >= maxPeerAddrUpdatesPerHeartbeat {
+			break
+		}
+		hbReq.PeerAddrUpdates = append(hbReq.PeerAddrUpdates, proto.PeerAddrUpdate{
+			NodeID: u.nodeID, Addr: u.addr, HeartbeatPort: u.hbPort, ReplicaPort: u.repPort,
+		})
+		u.deliveredTo[currentNodeID] = true
+		n++
+	}
+	// Prune: remove entries that are complete (all targets received) or expired (TTL)
+	newPending := make([]pendingAddrUpdate, 0, len(c.pendingAddrUpdates))
+	for _, u := range c.pendingAddrUpdates {
+		allDelivered := true
+		for id := range u.targetPeerIDs {
+			if !u.deliveredTo[id] {
+				allDelivered = false
+				break
+			}
+		}
+		expired := time.Since(u.createdAt) > pendingAddrUpdateTTL
+		if !allDelivered && !expired {
+			newPending = append(newPending, u)
+		}
+	}
+	c.pendingAddrUpdates = newPending
 }
 
 func (c *Cluster) checkMetaNodeHeartbeat() {
@@ -988,6 +1233,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 		for _, info := range hbReq.QuotaHbInfos {
 			log.LogDebugf("checkMetaNodeHeartbeat info [%v]", info)
 		}
+		c.fillHeartbeatRequestPeerAddrUpdates(hbReq, node.Addr, "meta")
 		tasks = append(tasks, task)
 		return true
 	})
@@ -1119,7 +1365,12 @@ func (c *Cluster) hasNotConsistentIDDataPartitions(datanode *DataNode) (notConsi
 func (c *Cluster) updateDataNodeBaseInfo(nodeAddr string, id uint64) (err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
-	value, ok := c.dataNodes.Load(nodeAddr)
+	idVal, ok := c.dataNodesByAddr.Load(nodeAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", nodeAddr)
+		return
+	}
+	value, ok := c.dataNodes.Load(idVal.(uint64))
 	if !ok {
 		err = fmt.Errorf("node %v is not exist", nodeAddr)
 		return
@@ -1150,7 +1401,12 @@ func (c *Cluster) updateDataNodeBaseInfo(nodeAddr string, id uint64) (err error)
 func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
-	value, ok := c.metaNodes.Load(nodeAddr)
+	idVal, ok := c.metaNodesByAddr.Load(nodeAddr)
+	if !ok {
+		err = fmt.Errorf("node %v is not exist", nodeAddr)
+		return
+	}
+	value, ok := c.metaNodes.Load(idVal.(uint64))
 	if !ok {
 		err = fmt.Errorf("node %v is not exist", nodeAddr)
 		return
@@ -1233,14 +1489,119 @@ func (c *Cluster) RaftPartitionCanUsingDifferentPortEnabled() bool {
 	return enabled
 }
 
-func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName string, nodesetId uint64) (id uint64, err error) {
+func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName string, nodesetId uint64, existingNodeID uint64) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
 
+	// Re-registration: node carries existing NodeID (e.g. after pod IP change)
+	if existingNodeID > 0 {
+		// Fix-L: Load by NodeID (O(1)) instead of Range
+		val, ok := c.metaNodes.Load(existingNodeID)
+		if !ok {
+			// NodeID not found in cluster - treat as new registration (backward compatibility)
+			// If addr has old node, remove it first to allow re-registration
+			if idVal, ok := c.metaNodesByAddr.Load(nodeAddr); ok {
+				if oldNode, ok2 := c.metaNodes.Load(idVal.(uint64)); ok2 {
+					log.LogWarnf("[addMetaNode] NodeID %v not found but addr %v has old node %v, removing old node", existingNodeID, nodeAddr, idVal.(uint64))
+					c.t.deleteMetaNode(oldNode.(*MetaNode))
+					c.deleteMetaNodeByAddr(nodeAddr)
+				}
+			}
+		} else if !c.cfg.EnableDynamicAddr {
+			return 0, fmt.Errorf("enableDynamicAddr is disabled")
+		} else {
+			metaNode := val.(*MetaNode)
+			oldAddr := metaNode.Addr
+			if oldAddr == nodeAddr {
+				return metaNode.ID, nil
+			}
+			// Fix-I: Reject if target address is already used by another active node
+			if idVal, ok := c.metaNodesByAddr.Load(nodeAddr); ok {
+				if otherID := idVal.(uint64); otherID != existingNodeID {
+					if otherVal, ok2 := c.metaNodes.Load(otherID); ok2 {
+						if other := otherVal.(*MetaNode); other.IsActiveNode() {
+							return 0, fmt.Errorf("address %v already in use by active metaNode (nodeId %v)", nodeAddr, otherID)
+						}
+					}
+				}
+			}
+			// Fix-B: Persist node and cascaded partition updates in a single batch so the address switch is atomic.
+			metaNode.Lock()
+			metaNodeForPut := &MetaNode{
+				ID: metaNode.ID, NodeSetID: metaNode.NodeSetID, Addr: nodeAddr, HeartbeatPort: heartbeatPort, ReplicaPort: replicaPort,
+				ZoneName: metaNode.ZoneName, RdOnly: metaNode.RdOnly, MpCntLimit: metaNode.MpCntLimit,
+			}
+			metaNode.Unlock()
+			cmds := make(map[string]*RaftCmd)
+			oldMetaNode := &MetaNode{ID: metaNode.ID, Addr: oldAddr, ZoneName: metaNode.ZoneName, NodeSetID: metaNode.NodeSetID}
+			if !c.cfg.EnableDynamicAddr {
+				delCmd, e := c.buildDeleteMetaNodeCmd(oldMetaNode)
+				if e != nil {
+					err = e
+					return
+				}
+				cmds[delCmd.K] = delCmd
+			}
+			putCmd, e := c.buildPutMetaNodeCmd(opSyncUpdateMetaNode, metaNodeForPut)
+			if e != nil {
+				err = e
+				return
+			}
+			cmds[putCmd.K] = putCmd
+			volNames := make(map[string]struct{})
+			cascadeMPs := c.getAllMetaPartitionByMetaNode(oldAddr)
+			for _, mp := range cascadeMPs {
+				volNames[mp.volName] = struct{}{}
+				cmd, e := c.buildMetaPartitionAddrUpdateCmd(mp, oldAddr, nodeAddr, existingNodeID, heartbeatPort, replicaPort)
+				if e != nil {
+					log.LogErrorf("action[addMetaNode] build cascade cmd mp %v failed: %v", mp.PartitionID, e)
+					err = e
+					return
+				}
+				cmds[cmd.K] = cmd
+			}
+			if err = c.syncBatchCommitCmd(cmds); err != nil {
+				log.LogErrorf("action[addMetaNode] batch persist failed: %v", err)
+				return
+			}
+			metaNode.Lock()
+			metaNode.Addr = nodeAddr
+			metaNode.HeartbeatPort = heartbeatPort
+			metaNode.ReplicaPort = replicaPort
+			metaNode.Unlock()
+			c.t.deleteMetaNode(oldMetaNode)
+			c.t.putMetaNode(metaNode)
+			c.replaceMetaNodeAddr(oldAddr, metaNode)
+			for _, mp := range cascadeMPs {
+				c.applyMetaPartitionAddrUpdate(mp, oldAddr, nodeAddr, existingNodeID, heartbeatPort, replicaPort)
+			}
+			// Invalidate volume view cache so clients get fresh partition addresses on next request
+			for volName := range volNames {
+				if vol, e := c.getVol(volName); e == nil {
+					vol.clearViewCache()
+					log.LogInfof("action[addMetaNode] cleared view cache for vol %v after addr update", volName)
+				}
+			}
+			targetPeerIDs := make(map[uint64]struct{})
+			for _, mp := range cascadeMPs {
+				for _, p := range mp.Peers {
+					targetPeerIDs[p.ID] = struct{}{}
+				}
+			}
+			c.addPendingAddrUpdate(existingNodeID, nodeAddr, heartbeatPort, replicaPort, "meta", targetPeerIDs)
+			log.LogInfof("action[addMetaNode] re-register nodeId %v oldAddr %v newAddr %v", existingNodeID, oldAddr, nodeAddr)
+			return metaNode.ID, nil
+		}
+	}
+
 	var metaNode *MetaNode
-	if value, ok := c.metaNodes.Load(nodeAddr); ok {
-		metaNode = value.(*MetaNode)
-		if nodesetId > 0 && nodesetId != metaNode.ID {
+	if idVal, ok := c.metaNodesByAddr.Load(nodeAddr); ok {
+		if value, ok2 := c.metaNodes.Load(idVal.(uint64)); ok2 {
+			metaNode = value.(*MetaNode)
+		}
+	}
+	if metaNode != nil {
+		if nodesetId > 0 && nodesetId != metaNode.NodeSetID {
 			return metaNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
 		}
 
@@ -1307,7 +1668,7 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 	// nodeset be avaliable first time can be put into nodesetGrp
 
 	c.addNodeSetGrp(ns, false)
-	c.metaNodes.Store(nodeAddr, metaNode)
+	c.putMetaNode(metaNode)
 	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.Capacity)
 	return
@@ -1369,7 +1730,7 @@ func (c *Cluster) checkSetZoneMediaTypePersist(zone *Zone, mediaType uint32) (ch
 	return true, nil
 }
 
-func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName string, nodesetId uint64, mediaType uint32) (id uint64, err error) {
+func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName string, nodesetId uint64, mediaType uint32, existingNodeID uint64) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
@@ -1381,6 +1742,111 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 
 	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
 		nodeAddr, zoneName, nodesetId, mediaType)
+
+	// Re-registration: node carries existing NodeID (e.g. after pod IP change)
+	if existingNodeID > 0 {
+		// Fix-L: Load by NodeID (O(1)) instead of Range
+		val, ok := c.dataNodes.Load(existingNodeID)
+		if !ok {
+			// NodeID not found in cluster - treat as new registration (backward compatibility)
+			// If addr has old node, remove it first to allow re-registration
+			if idVal, ok := c.dataNodesByAddr.Load(nodeAddr); ok {
+				if oldNode, ok2 := c.dataNodes.Load(idVal.(uint64)); ok2 {
+					log.LogWarnf("[addDataNode] NodeID %v not found but addr %v has old node %v, removing old node", existingNodeID, nodeAddr, idVal.(uint64))
+					c.t.deleteDataNode(oldNode.(*DataNode))
+					c.deleteDataNodeByAddr(nodeAddr)
+				}
+			}
+		} else if !c.cfg.EnableDynamicAddr {
+			return 0, fmt.Errorf("enableDynamicAddr is disabled")
+		} else {
+			dataNode = val.(*DataNode)
+			oldAddr := dataNode.Addr
+			if oldAddr == nodeAddr {
+				return dataNode.ID, nil
+			}
+			// Fix-I: Reject if target address is already used by another active node
+			if idVal, ok := c.dataNodesByAddr.Load(nodeAddr); ok {
+				if otherID := idVal.(uint64); otherID != existingNodeID {
+					if otherVal, ok2 := c.dataNodes.Load(otherID); ok2 {
+						if other := otherVal.(*DataNode); other.IsActiveNode() {
+							return 0, fmt.Errorf("address %v already in use by active dataNode (nodeId %v)", nodeAddr, otherID)
+						}
+					}
+				}
+			}
+			// Fix-B: Persist node and cascaded partition updates in a single batch so the address switch is atomic.
+			cmds := make(map[string]*RaftCmd)
+			oldDataNode := &DataNode{ID: dataNode.ID, Addr: oldAddr, ZoneName: dataNode.ZoneName, NodeSetID: dataNode.NodeSetID}
+			if !c.cfg.EnableDynamicAddr {
+				delCmd, e := c.buildDeleteDataNodeCmd(oldDataNode)
+				if e != nil {
+					err = e
+					return
+				}
+				cmds[delCmd.K] = delCmd
+			}
+			putCmd, e := c.buildPutDataNodeCmdWithNewAddr(opSyncUpdateDataNode, dataNode, nodeAddr, raftHeartbeatPort, raftReplicaPort)
+			if e != nil {
+				err = e
+				return
+			}
+			cmds[putCmd.K] = putCmd
+			volNames := make(map[string]struct{})
+			cascadeDPs := c.getAllDataPartitionByDataNode(oldAddr)
+			affectedDPs := make([]*DataPartition, 0, len(cascadeDPs))
+			for _, dp := range cascadeDPs {
+				affectedDPs = append(affectedDPs, dp)
+				volNames[dp.VolName] = struct{}{}
+				cmd, e := c.buildDataPartitionAddrUpdateCmd(dp, oldAddr, nodeAddr, existingNodeID, raftHeartbeatPort, raftReplicaPort)
+				if e != nil {
+					log.LogErrorf("action[addDataNode] build cascade cmd dp %v failed: %v", dp.PartitionID, e)
+					err = e
+					return
+				}
+				cmds[cmd.K] = cmd
+			}
+			if err = c.syncBatchCommitCmd(cmds); err != nil {
+				log.LogErrorf("action[addDataNode] batch persist failed: %v", err)
+				return
+			}
+			dataNode.Lock()
+			dataNode.Addr = nodeAddr
+			dataNode.HeartbeatPort = raftHeartbeatPort
+			dataNode.ReplicaPort = raftReplicaPort
+			dataNode.Unlock()
+			c.t.deleteDataNode(oldDataNode)
+			c.t.putDataNode(dataNode)
+			c.replaceDataNodeAddr(oldAddr, dataNode)
+			for _, dp := range cascadeDPs {
+				c.applyDataPartitionAddrUpdate(dp, oldAddr, nodeAddr, existingNodeID, raftHeartbeatPort, raftReplicaPort)
+			}
+			// Invalidate volume view cache so clients get fresh partition addresses on next request
+			for volName := range volNames {
+				if vol, e := c.getVol(volName); e == nil {
+					vol.clearViewCache()
+					log.LogInfof("action[addDataNode] cleared view cache for vol %v after addr update", volName)
+				}
+			}
+			targetPeerIDs := make(map[uint64]struct{})
+			for _, dp := range cascadeDPs {
+				for _, p := range dp.Peers {
+					targetPeerIDs[p.ID] = struct{}{}
+				}
+			}
+			c.addPendingAddrUpdate(existingNodeID, nodeAddr, raftHeartbeatPort, raftReplicaPort, "data", targetPeerIDs)
+			// Push updated Hosts/Peers to each replica so DataNode local META file is updated (e.g. IP -> FQDN)
+			for _, dp := range affectedDPs {
+				for _, host := range dp.Hosts {
+					if e := dp.recoverDataReplicaMeta(host, c); e != nil {
+						log.LogWarnf("action[addDataNode] push meta to %v dp %v: %v", host, dp.PartitionID, e)
+					}
+				}
+			}
+			log.LogInfof("action[addDataNode] re-register nodeId %v oldAddr %v newAddr %v", existingNodeID, oldAddr, nodeAddr)
+			return dataNode.ID, nil
+		}
+	}
 
 	if !proto.IsValidMediaType(mediaType) {
 		if !proto.IsValidMediaType(c.legacyDataMediaType) {
@@ -1395,9 +1861,13 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 	}
 
 	// datanode existed
-	if node, ok := c.dataNodes.Load(nodeAddr); ok {
+	if idVal, ok := c.dataNodesByAddr.Load(nodeAddr); ok {
+		if node, ok2 := c.dataNodes.Load(idVal.(uint64)); ok2 {
+			dataNode = node.(*DataNode)
+		}
+	}
+	if dataNode != nil {
 		log.LogInfof("[addDataNode] addr(%v) exists, will check if its info is consistent with the exist one", nodeAddr)
-		dataNode = node.(*DataNode)
 		if nodesetId > 0 && nodesetId != dataNode.NodeSetID {
 			return dataNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
 		}
@@ -1496,7 +1966,7 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 	// nodeset be available first time can be put into nodesetGrp
 	c.addNodeSetGrp(ns, false)
 
-	c.dataNodes.Store(nodeAddr, dataNode)
+	c.putDataNode(dataNode)
 	log.LogInfof("action[addDataNode] clusterID[%v] dataNodeAddr:%v, nodeSetId[%v], capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.Capacity)
 	return
@@ -2304,7 +2774,7 @@ result:
 }
 
 func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
-	value, ok := c.dataNodes.Load(addr)
+	idVal, ok := c.dataNodesByAddr.Load(addr)
 	if !ok {
 		if !c.IsLeader() {
 			err = errors.New("meta data for data nodes is cleared due to leader change!")
@@ -2313,13 +2783,30 @@ func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
 		}
 		return
 	}
-
+	value, ok := c.dataNodes.Load(idVal.(uint64))
+	if !ok {
+		if !c.IsLeader() {
+			err = errors.New("meta data for data nodes is cleared due to leader change!")
+		} else {
+			err = errors.Trace(dataNodeNotFound(addr), "%v not found", addr)
+		}
+		return
+	}
 	dataNode = value.(*DataNode)
 	return
 }
 
 func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
-	value, ok := c.metaNodes.Load(addr)
+	idVal, ok := c.metaNodesByAddr.Load(addr)
+	if !ok {
+		if !c.IsLeader() {
+			err = errors.New("meta data for meta nodes is cleared due to leader change!")
+		} else {
+			err = errors.Trace(metaNodeNotFound(addr), "%v not found", addr)
+		}
+		return
+	}
+	value, ok := c.metaNodes.Load(idVal.(uint64))
 	if !ok {
 		if !c.IsLeader() {
 			err = errors.New("meta data for meta nodes is cleared due to leader change!")
@@ -2332,6 +2819,52 @@ func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	return
 }
 
+// getMetaNodeByID returns the MetaNode by NodeID (for resolving current Addr when building client view).
+func (c *Cluster) getMetaNodeByID(id uint64) (mn *MetaNode, ok bool) {
+	val, ok := c.metaNodes.Load(id)
+	if !ok {
+		return nil, false
+	}
+	return val.(*MetaNode), true
+}
+
+// getMetaPartitionViewForClient builds MetaPartitionView with current node addrs resolved by NodeID,
+// so clients get up-to-date addresses even if partition Hosts in store are stale (e.g. after K8s pod IP change without re-register).
+func (c *Cluster) getMetaPartitionViewForClient(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
+	mpView = proto.NewMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
+	mp.RLock()
+	defer mp.RUnlock()
+	members := make([]string, 0, len(mp.Peers))
+	for _, p := range mp.Peers {
+		if mn, ok := c.getMetaNodeByID(p.ID); ok {
+			members = append(members, mn.Addr)
+		} else {
+			members = append(members, p.Addr)
+		}
+	}
+	mpView.Members = members
+	mr, err := mp.getMetaReplicaLeader()
+	if err == nil {
+		if mn, ok := c.getMetaNodeByID(mr.nodeID); ok {
+			mpView.LeaderAddr = mn.Addr
+		} else {
+			mpView.LeaderAddr = mr.Addr
+		}
+	}
+	mpView.MaxInodeID = mp.MaxInodeID
+	mpView.InodeCount = mp.InodeCount
+	mpView.DentryCount = mp.DentryCount
+	mpView.FreeListLen = mp.FreeListLen
+	mpView.TxCnt = mp.TxCnt
+	mpView.TxRbInoCnt = mp.TxRbInoCnt
+	mpView.TxRbDenCnt = mp.TxRbDenCnt
+	mpView.IsRecover = mp.IsRecover
+	mpView.Freeze = mp.Freeze
+	mpView.LastDelReplicaTime = mp.LastDelReplicaTime
+	mpView.AddrEpoch = mp.AddrEpoch
+	return
+}
+
 func (c *Cluster) lcNode(addr string) (lcNode *LcNode, err error) {
 	value, ok := c.lcNodes.Load(addr)
 	if !ok {
@@ -2340,6 +2873,60 @@ func (c *Cluster) lcNode(addr string) (lcNode *LcNode, err error) {
 	}
 	lcNode = value.(*LcNode)
 	return
+}
+
+// putDataNode stores dataNode by NodeID and maintains Addr->NodeID reverse index.
+func (c *Cluster) putDataNode(dataNode *DataNode) {
+	c.putDnMu.Lock()
+	defer c.putDnMu.Unlock()
+	c.dataNodes.Store(dataNode.ID, dataNode)
+	c.dataNodesByAddr.Store(dataNode.Addr, dataNode.ID)
+}
+
+// putMetaNode stores metaNode by NodeID and maintains Addr->NodeID reverse index.
+func (c *Cluster) putMetaNode(metaNode *MetaNode) {
+	c.putMnMu.Lock()
+	defer c.putMnMu.Unlock()
+	c.metaNodes.Store(metaNode.ID, metaNode)
+	c.metaNodesByAddr.Store(metaNode.Addr, metaNode.ID)
+}
+
+func (c *Cluster) replaceDataNodeAddr(oldAddr string, dataNode *DataNode) {
+	c.putDnMu.Lock()
+	defer c.putDnMu.Unlock()
+	c.dataNodes.Store(dataNode.ID, dataNode)
+	c.dataNodesByAddr.Delete(oldAddr)
+	c.dataNodesByAddr.Store(dataNode.Addr, dataNode.ID)
+}
+
+func (c *Cluster) replaceMetaNodeAddr(oldAddr string, metaNode *MetaNode) {
+	c.putMnMu.Lock()
+	defer c.putMnMu.Unlock()
+	c.metaNodes.Store(metaNode.ID, metaNode)
+	c.metaNodesByAddr.Delete(oldAddr)
+	c.metaNodesByAddr.Store(metaNode.Addr, metaNode.ID)
+}
+
+// deleteDataNodeByAddr removes a dataNode from cluster maps by address (e.g. decommission).
+// Caller must call c.t.deleteDataNode(node) first if topology update is needed.
+func (c *Cluster) deleteDataNodeByAddr(addr string) {
+	c.putDnMu.Lock()
+	defer c.putDnMu.Unlock()
+	if idVal, ok := c.dataNodesByAddr.Load(addr); ok {
+		c.dataNodesByAddr.Delete(addr)
+		c.dataNodes.Delete(idVal.(uint64))
+	}
+}
+
+// deleteMetaNodeByAddr removes a metaNode from cluster maps by address.
+// Caller must call c.t.deleteMetaNode(node) first if topology update is needed.
+func (c *Cluster) deleteMetaNodeByAddr(addr string) {
+	c.putMnMu.Lock()
+	defer c.putMnMu.Unlock()
+	if idVal, ok := c.metaNodesByAddr.Load(addr); ok {
+		c.metaNodesByAddr.Delete(addr)
+		c.metaNodes.Delete(idVal.(uint64))
+	}
 }
 
 func (c *Cluster) getAllDataPartitionByDataNode(addr string) (partitions []*DataPartition) {
@@ -2539,8 +3126,8 @@ func (c *Cluster) decommissionDataNode(dataNode *DataNode, force bool) (err erro
 }
 
 func (c *Cluster) delDataNodeFromCache(dataNode *DataNode) {
-	c.dataNodes.Delete(dataNode.Addr)
 	c.t.deleteDataNode(dataNode)
+	c.deleteDataNodeByAddr(dataNode.Addr)
 	go dataNode.clean()
 }
 
@@ -3736,8 +4323,8 @@ func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) (err error) {
 }
 
 func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
-	c.metaNodes.Delete(metaNode.Addr)
 	c.t.deleteMetaNode(metaNode)
+	c.deleteMetaNodeByAddr(metaNode.Addr)
 	go metaNode.clean()
 }
 
@@ -3943,8 +4530,11 @@ func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, targetDpCount int, me
 		return 0, err
 	}
 
-	if targetDpCount < defaultInitDataPartitionCnt {
+	if targetDpCount < defaultInitDataPartitionCnt && !c.cfg.SingleNodeMode {
 		targetDpCount = defaultInitDataPartitionCnt
+	}
+	if c.cfg.SingleNodeMode && targetDpCount > 1 {
+		targetDpCount = 1
 	}
 
 	for retryCount := 0; dpCountOfMediaType < targetDpCount && retryCount < 3; retryCount++ {
@@ -3966,9 +4556,13 @@ func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, targetDpCount int, me
 			vol.Name, proto.MediaTypeString(mediaType), retryCount, dpCountOfMediaType-oldDpCountOfMediaType, dpCountOfMediaType)
 	}
 
-	if dpCountOfMediaType < defaultInitDataPartitionCnt {
+	minDpRequired := defaultInitDataPartitionCnt
+	if c.cfg.SingleNodeMode {
+		minDpRequired = 1
+	}
+	if dpCountOfMediaType < minDpRequired {
 		err = fmt.Errorf("action[initDataPartitionsForCreateVol] vol[%v] mediaType[%v] initDataPartitions failed, createdCount(%v), less than minLimit(%d)",
-			vol.Name, proto.MediaTypeString(mediaType), dpCountOfMediaType, defaultInitDataPartitionCnt)
+			vol.Name, proto.MediaTypeString(mediaType), dpCountOfMediaType, minDpRequired)
 
 		oldVolStatus := vol.Status
 		vol.Status = proto.VolStatusMarkDelete
@@ -3996,7 +4590,10 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	var readWriteDataPartitions int
-
+	mpCount := req.mpCount
+	if c.cfg.SingleNodeMode && mpCount > 1 {
+		mpCount = 1
+	}
 	if req.zoneName, err = c.checkZoneName(req.name, req.crossZone, req.normalZonesFirst, req.zoneName, req.domainId); err != nil {
 		return
 	}
@@ -4012,7 +4609,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		log.LogError("init dataPartition error in verMgr init", err.Error())
 	}
 
-	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
+	if err = vol.initMetaPartitions(c, mpCount); err != nil {
 		vol.Status = proto.VolStatusMarkDelete
 
 		if e := vol.deleteVolFromStore(c); e != nil {
@@ -4755,6 +5352,7 @@ func (c *Cluster) clearTopology() {
 func (c *Cluster) clearDataNodes() {
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
+		c.dataNodesByAddr.Delete(dataNode.Addr)
 		c.dataNodes.Delete(key)
 		dataNode.clean()
 		return true
@@ -4764,6 +5362,7 @@ func (c *Cluster) clearDataNodes() {
 func (c *Cluster) clearMetaNodes() {
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
+		c.metaNodesByAddr.Delete(metaNode.Addr)
 		c.metaNodes.Delete(key)
 		metaNode.clean()
 		return true

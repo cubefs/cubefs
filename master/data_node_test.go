@@ -34,7 +34,7 @@ func TestDataNode(t *testing.T) {
 	if err != nil {
 		t.Errorf("decommission datanode [%v] failed", addr)
 	}
-	server.cluster.dataNodes.Delete(addr)
+	server.cluster.deleteDataNodeByAddr(addr)
 }
 
 func getDataNodeInfo(addr string, t *testing.T) {

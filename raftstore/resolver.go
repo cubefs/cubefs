@@ -87,6 +87,8 @@ func (r *nodeResolver) AddNode(nodeID uint64, addr string) {
 }
 
 // AddNodeWithPort adds node address with specified port.
+// The addr may be an IP (e.g. "10.0.1.5") or a DNS name (e.g. "dn-0.dn-svc.cubefs.svc" for K8s).
+// Go's net.Dial resolves hostnames transparently, so using DNS names allows address changes (e.g. Pod IP) without updating the resolver.
 func (r *nodeResolver) AddNodeWithPort(nodeID uint64, addr string, heartbeat int, replicate int) {
 	if heartbeat == 0 {
 		heartbeat = DefaultHeartbeatPort

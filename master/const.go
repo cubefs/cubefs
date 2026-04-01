@@ -28,6 +28,7 @@ const (
 	diskPathKey             = "disk"
 	nameKey                 = "name"
 	idKey                   = "id"
+	nodeIdKey               = "nodeId" // for re-registration with existing NodeID (addr update)
 	countKey                = "count"
 	enableKey               = "enable"
 	thresholdKey            = "threshold"

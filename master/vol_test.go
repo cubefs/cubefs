@@ -147,33 +147,27 @@ func TestCreateColdVol(t *testing.T) {
 
 	delVol(volName3, t)
 
-	// NOTE: check all vols
-	timeout := time.Now().Add(100 * time.Second)
-	for time.Now().Before(timeout) {
+	// NOTE: wait longer here because full coverage runs can delay the asynchronous mark-delete cleanup.
+	require.Eventually(t, func() bool {
 		_, err = server.cluster.getVol(volName1)
 		if err == nil {
-			time.Sleep(1 * time.Second)
-			continue
+			return false
 		}
 		require.ErrorIs(t, err, proto.ErrVolNotExists)
 
 		_, err = server.cluster.getVol(volName2)
 		if err == nil {
-			time.Sleep(1 * time.Second)
-			continue
+			return false
 		}
 		require.ErrorIs(t, err, proto.ErrVolNotExists)
 
 		_, err = server.cluster.getVol(volName3)
 		if err == nil {
-			time.Sleep(1 * time.Second)
-			continue
+			return false
 		}
 		require.ErrorIs(t, err, proto.ErrVolNotExists)
-		return
-	}
-
-	t.Errorf("Delete cold vols timeout")
+		return true
+	}, 180*time.Second, time.Second, "Delete cold vols timeout")
 }
 
 func checkCreateVolParam(key string, req map[string]interface{}, wrong, correct interface{}, t *testing.T) {

@@ -286,11 +286,20 @@ func (sc *StreamConn) sendToDataPartitionByAddr(req *Packet, getReply GetReplyFu
 		}
 		log.LogWarnf("sendToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnectEx(conn, err)
+		sc.triggerDataPartitionRefreshOnFailure()
 		return
-	} else {
-		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
-		return TryOtherAddrError
 	}
+	log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+	sc.triggerDataPartitionRefreshOnFailure()
+	return TryOtherAddrError
+}
+
+// triggerDataPartitionRefreshOnFailure triggers an async refresh of data partition list from Master on connection failure (e.g. node address changed in K8s).
+func (sc *StreamConn) triggerDataPartitionRefreshOnFailure() {
+	if sc.dp == nil || sc.dp.ClientWrapper == nil {
+		return
+	}
+	sc.dp.ClientWrapper.TriggerForceUpdateDataPartitionsAsync()
 }
 
 func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetReplyFunc) (err error) {

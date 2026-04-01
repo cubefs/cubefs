@@ -91,6 +91,7 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 	mc, err = mw.getConn(mp.PartitionID, addr)
 	if err != nil {
 		log.LogWarnf("sendToMetaPartitionLeader: getConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+		mw.TriggerForceUpdateMetaPartitionsAsync() // refresh partition list on connection failure (e.g. K8s node address change)
 		goto retry
 	}
 	if mw.Client != nil { // compatible lcNode not init Client
@@ -131,6 +132,7 @@ retry:
 			errs[j] = err
 			if err != nil {
 				log.LogWarnf("sendToMetaPartitionLeader: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+				mw.TriggerForceUpdateMetaPartitionsAsync() // refresh on connection failure (e.g. K8s address change)
 				continue
 			}
 			resp, err = mc.send(req)

@@ -79,17 +79,19 @@ const (
 )
 
 const (
-	ConfigKeyLocalIP       = "localIP"         // string
-	ConfigKeyPort          = "port"            // int
-	ConfigKeyMasterAddr    = "masterAddr"      // array
-	ConfigKeyZone          = "zoneName"        // string
-	ConfigKeyDisks         = "disks"           // array
-	ConfigKeyRaftDir       = "raftDir"         // string
-	ConfigKeyRaftHeartbeat = "raftHeartbeat"   // string
-	ConfigKeyRaftReplica   = "raftReplica"     // string
-	CfgTickInterval        = "tickInterval"    // int
-	CfgRaftRecvBufSize     = "raftRecvBufSize" // int
-	ConfigKeyLogDir        = "logDir"          // string
+	ConfigKeyLocalIP             = "localIP"             // string
+	ConfigKeyRegisterAddr        = "registerAddr"        // string; optional, for K8s: DNS name (e.g. dn-0.dn-svc.cubefs.svc) used when registering with Master; if set, not validated as IPv4
+	ConfigKeyRequireRegisterAddr = "requireRegisterAddr" // bool; when true, refuse to register with IP if registerAddr is empty (retry and log error until config is fixed)
+	ConfigKeyPort                = "port"                // int
+	ConfigKeyMasterAddr          = "masterAddr"          // array
+	ConfigKeyZone                = "zoneName"            // string
+	ConfigKeyDisks               = "disks"               // array
+	ConfigKeyRaftDir             = "raftDir"             // string
+	ConfigKeyRaftHeartbeat       = "raftHeartbeat"       // string
+	ConfigKeyRaftReplica         = "raftReplica"         // string
+	CfgTickInterval              = "tickInterval"        // int
+	CfgRaftRecvBufSize           = "raftRecvBufSize"     // int
+	ConfigKeyLogDir              = "logDir"              // string
 
 	ConfigKeyDiskPath         = "diskPath"            // string
 	configNameResolveInterval = "nameResolveInterval" // int
@@ -168,6 +170,8 @@ type DataNode struct {
 	zoneName                           string
 	clusterID                          string
 	bindIp                             bool
+	registerAddr                       string // optional; if set, used as host for Master registration (e.g. K8s DNS name)
+	requireRegisterAddr                bool   // when true, do not register with IP if registerAddr is empty; retry and log error
 	localServerAddr                    string
 	nodeID                             uint64
 	raftPartitionCanUsingDifferentPort bool
@@ -315,6 +319,18 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err = s.startRaftServer(cfg); err != nil {
 		return
 	}
+	// Fix-A: Ensure self (nodeID, currentAddr) is in Raft resolver before loading partitions.
+	// On re-registration after IP change, META files may still contain old addresses;
+	// adding self here avoids self-reference with stale addr before first heartbeat delivers PeerAddrUpdates.
+	host := s.localServerAddr
+	if idx := strings.Index(host, ":"); idx >= 0 {
+		host = host[:idx]
+	}
+	if hb, e1 := strconv.Atoi(s.raftHeartbeat); e1 == nil {
+		if rep, e2 := strconv.Atoi(s.raftReplica); e2 == nil {
+			s.raftStore.AddNodeWithPort(s.nodeID, host, hb, rep)
+		}
+	}
 
 	if err = s.newSpaceManager(cfg); err != nil {
 		return
@@ -408,6 +424,8 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		regexpPort *regexp.Regexp
 	)
 	LocalIP = cfg.GetString(ConfigKeyLocalIP)
+	s.registerAddr = strings.TrimSpace(cfg.GetString(ConfigKeyRegisterAddr))
+	s.requireRegisterAddr = cfg.GetBool(ConfigKeyRequireRegisterAddr)
 	port = cfg.GetString(proto.ListenPort)
 	s.bindIp = cfg.GetBool(proto.BindIpKey)
 	if regexpPort, err = regexp.Compile(`^(\d)+$`); err != nil {
@@ -792,13 +810,25 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			if LocalIP == "" {
 				LocalIP = string(ci.Ip)
 			}
-
-			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
-			if !util.IsIPV4(LocalIP) {
-				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
-					LocalIP, masterAddr)
-				timer.Reset(2 * time.Second)
+			var registerHost string
+			if s.registerAddr != "" {
+				registerHost = s.registerAddr
+				s.localServerAddr = fmt.Sprintf("%s:%v", registerHost, s.port)
+			} else if s.requireRegisterAddr {
+				// requireRegisterAddr set but registerAddr empty (e.g. init timing or merge overwrote it): do not register with IP
+				log.LogErrorf("action[registerToMaster] requireRegisterAddr is true but registerAddr is empty; " +
+					"refusing to register with IP (would cause partition Hosts to use IP). Check init container / config. Retry in 5s.")
+				timer.Reset(5 * time.Second)
 				continue
+			} else {
+				registerHost = LocalIP
+				s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
+				if !util.IsIPV4(LocalIP) {
+					log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
+						LocalIP, masterAddr)
+					timer.Reset(2 * time.Second)
+					continue
+				}
 			}
 
 			volListForbidWriteOpOfProtoVer0 := make([]string, 0)
@@ -830,10 +860,18 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			}
 			s.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
 
+			// Only load existing node ID when enableDynamicAddr is on (K8s pod IP stability mode)
+			var existingNodeID uint64
+			var hasExistingNodeID bool
+			if ci.EnableDynamicAddr {
+				existingNodeID, hasExistingNodeID = config.LoadNodeIDFromFile(s.raftDir)
+			}
+
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.raftHeartbeat, s.raftReplica,
-				s.zoneName, s.serviceIDKey, s.mediaType); err != nil {
+			addrForMaster := fmt.Sprintf("%s:%v", registerHost, s.port)
+			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNodeEx(addrForMaster, s.raftHeartbeat, s.raftReplica,
+				s.zoneName, s.serviceIDKey, s.mediaType, hasExistingNodeID, existingNodeID); err != nil {
 				if strings.Contains(err.Error(), proto.ErrDataNodeAdd.Error()) {
 					failMsg := fmt.Sprintf("[register] register to master[%v] failed: %v",
 						masterAddr, err)
@@ -849,6 +887,23 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			}
 			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
 			s.nodeID = nodeID
+			// Only persist node ID when enableDynamicAddr is on (K8s pod IP stability mode)
+			if ci.EnableDynamicAddr {
+				var persistErr error
+				for retry := 0; retry < 3; retry++ {
+					if persistErr = config.PersistNodeIDToFile(s.raftDir, nodeID); persistErr == nil {
+						break
+					}
+					log.LogWarnf("register: persist nodeID to %v/.node_id failed (attempt %d/3): %v", s.raftDir, retry+1, persistErr)
+					if retry < 2 {
+						time.Sleep(time.Second)
+					}
+				}
+				if persistErr != nil {
+					err = fmt.Errorf("persist nodeID to %v/.node_id failed after 3 retries: %w", s.raftDir, persistErr)
+					return
+				}
+			}
 			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
 			syslog.Printf("register: register DataNode: nodeID(%v) %v \n", s.nodeID, s.localServerAddr)
 

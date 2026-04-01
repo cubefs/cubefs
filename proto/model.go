@@ -105,6 +105,7 @@ type MetaPartitionInfo struct {
 	IsRecover                 bool
 	Hosts                     []string
 	Peers                     []Peer
+	AddrEpoch                 uint64 // incremented when any replica address changes; client can use to decide refresh
 	Zones                     []string
 	NodeSets                  []uint64
 	OfflinePeerID             uint64
@@ -342,6 +343,7 @@ type DataPartitionInfo struct {
 	Replicas                 []*DataReplica
 	Hosts                    []string // host addresses
 	Peers                    []Peer
+	AddrEpoch                uint64 // incremented when any replica address changes; client can use to decide refresh
 	Zones                    []string
 	NodeSets                 []uint64
 	MissingNodes             map[string]int64 // key: address of the missing node, value: when the node is missing

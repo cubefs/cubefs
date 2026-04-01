@@ -172,20 +172,18 @@ func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Dat
 	}
 	mocktest.Log(t, "List selected nodes:")
 	for i := 0; i < len(peer); i++ {
-		nodeVal, ok := nset.dataNodes.Load(peer[i].Addr)
-		if !ok {
+		node := nset.getDataNodeByAddr(peer[i].Addr)
+		if node == nil {
 			t.Errorf("%v select wrong node", selector.GetName())
 			return nil
 		}
-		node := nodeVal.(*DataNode)
 		printDataNode(t, node)
 	}
-	nodeVal, ok := nset.dataNodes.Load(peer[0].Addr)
-	if !ok {
+	node := nset.getDataNodeByAddr(peer[0].Addr)
+	if node == nil {
 		t.Errorf("%v failed to select nodes", selector.GetName())
 		return nil
 	}
-	node := nodeVal.(*DataNode)
 	if expectedNode != nil && node.ID != expectedNode.ID {
 		t.Errorf("%v select wrong node, expected: %v actually: %v", selector.GetName(), expectedNode.ID, node.ID)
 		return nil
@@ -213,20 +211,18 @@ func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Met
 	}
 	mocktest.Log(t, "List selected nodes:")
 	for i := 0; i < len(peer); i++ {
-		nodeVal, ok := nset.metaNodes.Load(peer[i].Addr)
-		if !ok {
+		node := nset.getMetaNodeByAddr(peer[i].Addr)
+		if node == nil {
 			t.Errorf("%v select wrong node", selector.GetName())
 			return nil
 		}
-		node := nodeVal.(*MetaNode)
 		printMetaNode(t, node)
 	}
-	nodeVal, ok := nset.metaNodes.Load(peer[0].Addr)
-	if !ok {
+	node := nset.getMetaNodeByAddr(peer[0].Addr)
+	if node == nil {
 		t.Errorf("%v failed to select nodes", selector.GetName())
 		return nil
 	}
-	node := nodeVal.(*MetaNode)
 	if expectedNode != nil && node.ID != expectedNode.ID {
 		t.Errorf("%v select wrong node, expected: %v actually: %v", selector.GetName(), expectedNode.ID, node.ID)
 		return nil
@@ -492,9 +488,10 @@ func dataNodeSelectorBench(t *testing.T, selector NodeSelector) error {
 	nset := prepareDataNodesForBench(4, 100*util.GB, 100*util.GB)
 	random := rand.New(rand.NewSource(time.Now().Unix()))
 	times, err := nodeSelectorBench(selector, nset, func(addr string) {
-		val, _ := nset.dataNodes.Load(addr)
-		node := val.(*DataNode)
-		node.AvailableSpace -= uint64(random.Float64() * util.GB * 10)
+		node := nset.getDataNodeByAddr(addr)
+		if node != nil {
+			node.AvailableSpace -= uint64(random.Float64() * util.GB * 10)
+		}
 	})
 	if err != nil {
 		t.Errorf("%v failed to Bench %v", selector.GetName(), err)
@@ -513,9 +510,10 @@ func metaNodeSelectorBench(t *testing.T, selector NodeSelector) error {
 	nset := prepareMetaNodesForBench(4, 100*util.GB, 100*util.GB)
 	random := rand.New(rand.NewSource(time.Now().Unix()))
 	times, err := nodeSelectorBench(selector, nset, func(addr string) {
-		val, _ := nset.metaNodes.Load(addr)
-		node := val.(*MetaNode)
-		node.Used += uint64(random.Float64() * util.GB * 10)
+		node := nset.getMetaNodeByAddr(addr)
+		if node != nil {
+			node.Used += uint64(random.Float64() * util.GB * 10)
+		}
 	})
 	if err != nil {
 		t.Errorf("%v failed to Bench %v", selector.GetName(), err)

@@ -51,6 +51,13 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string, mediaType uint32) (
 }
 
 func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicaPort, zoneName, clientIDKey string, mediaType uint32) (id uint64, err error) {
+	return api.AddDataNodeWithAuthNodeEx(serverAddr, raftHeartbeatPort, raftReplicaPort, zoneName, clientIDKey, mediaType, false, 0)
+}
+
+// AddDataNodeWithAuthNodeEx extends AddDataNodeWithAuthNode with optional existingNodeID for re-registration.
+// When hasExistingNodeID is true and existingNodeID > 0, the master treats this as an address update (re-registration)
+// rather than a new node registration.
+func (api *NodeAPI) AddDataNodeWithAuthNodeEx(serverAddr, raftHeartbeatPort, raftReplicaPort, zoneName, clientIDKey string, mediaType uint32, hasExistingNodeID bool, existingNodeID uint64) (id uint64, err error) {
 	request := newRequest(get, proto.AddDataNode).Header(api.h)
 	request.addParam("addr", serverAddr)
 	request.addParam("heartbeatPort", raftHeartbeatPort)
@@ -58,6 +65,9 @@ func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftR
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
 	request.addParam("mediaType", strconv.Itoa(int(mediaType)))
+	if hasExistingNodeID && existingNodeID > 0 {
+		request.addParam("nodeId", strconv.FormatUint(existingNodeID, 10))
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -79,12 +89,22 @@ func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err err
 }
 
 func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicatePort, zoneName, clientIDKey string) (id uint64, err error) {
+	return api.AddMetaNodeWithAuthNodeEx(serverAddr, raftHeartbeatPort, raftReplicatePort, zoneName, clientIDKey, false, 0)
+}
+
+// AddMetaNodeWithAuthNodeEx extends AddMetaNodeWithAuthNode with optional existingNodeID for re-registration.
+// When hasExistingNodeID is true and existingNodeID > 0, the master treats this as an address update (re-registration)
+// rather than a new node registration.
+func (api *NodeAPI) AddMetaNodeWithAuthNodeEx(serverAddr, raftHeartbeatPort, raftReplicatePort, zoneName, clientIDKey string, hasExistingNodeID bool, existingNodeID uint64) (id uint64, err error) {
 	request := newRequest(get, proto.AddMetaNode).Header(api.h)
 	request.addParam("heartbeatPort", raftHeartbeatPort)
 	request.addParam("replicaPort", raftReplicatePort)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
+	if hasExistingNodeID && existingNodeID > 0 {
+		request.addParam("nodeId", strconv.FormatUint(existingNodeID, 10))
+	}
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return

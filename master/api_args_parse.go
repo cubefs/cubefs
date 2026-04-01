@@ -1139,6 +1139,9 @@ func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 		err = keyNotFound(addrKey)
 		return
 	}
+	if checkIpPort(nodeAddr) {
+		return
+	}
 	if ipAddr, ok := util.ParseAddrToIpAddr(nodeAddr); ok {
 		nodeAddr = ipAddr
 	}

@@ -253,6 +253,16 @@ func (mw *MetaWrapper) forceUpdateMetaPartitions() error {
 	return mw.updateMetaPartitions()
 }
 
+// TriggerForceUpdateMetaPartitionsAsync triggers an async refresh of meta partitions from Master (e.g. on connection failure when node address may have changed in K8s). Non-blocking.
+func (mw *MetaWrapper) TriggerForceUpdateMetaPartitionsAsync() {
+	select {
+	case mw.forceUpdate <- struct{}{}:
+		log.LogDebugf("TriggerForceUpdateMetaPartitionsAsync: triggered")
+	default:
+		// Refresh already pending or in progress
+	}
+}
+
 // Should be protected by partMutex, otherwise the caller might not be signaled.
 func (mw *MetaWrapper) triggerAndWaitForceUpdate() {
 	mw.partMutex.Lock()

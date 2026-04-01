@@ -138,6 +138,26 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			}
 		}
 
+		// Apply peer address updates from master (e.g. after pod IP change) to Raft resolver
+		for _, u := range req.PeerAddrUpdates {
+			host := u.Addr
+			if idx := strings.Index(u.Addr, ":"); idx >= 0 {
+				host = u.Addr[:idx]
+			}
+			hb, err := strconv.Atoi(u.HeartbeatPort)
+			if err != nil {
+				log.LogWarnf("[opMasterHeartbeat] skip peer addr update for node %v: invalid heartbeat port %q: %v", u.NodeID, u.HeartbeatPort, err)
+				continue
+			}
+			rep, err := strconv.Atoi(u.ReplicaPort)
+			if err != nil {
+				log.LogWarnf("[opMasterHeartbeat] skip peer addr update for node %v: invalid replica port %q: %v", u.NodeID, u.ReplicaPort, err)
+				continue
+			}
+			m.raftStore.AddNodeWithPort(u.NodeID, host, hb, rep)
+			m.raftStore.RaftServer().InvalidateSender(u.NodeID)
+		}
+
 		if m.fileStatsConfig != nil {
 			m.fileStatsConfig.Lock()
 			fileStatsEnableChange = !m.fileStatsConfig.fileStatsEnable && req.FileStatsEnable

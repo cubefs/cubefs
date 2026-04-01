@@ -51,14 +51,18 @@ type MockDataServer struct {
 }
 
 func NewMockDataServer(addr string, zoneName string, mediaType uint32) *MockDataServer {
+	return NewMockDataServerWithMaster(addr, zoneName, mediaType, hostAddr)
+}
+
+// NewMockDataServerWithMaster creates a mock data server that registers with the given master address (e.g. "127.0.0.1:8081" for isolated E2E).
+func NewMockDataServerWithMaster(addr string, zoneName string, mediaType uint32, masterAddr string) *MockDataServer {
 	mds := &MockDataServer{
 		TcpAddr:    addr,
 		zoneName:   zoneName,
 		partitions: make([]*MockDataPartition, 0),
-		mc:         master.NewMasterClient([]string{hostAddr}, false),
+		mc:         master.NewMasterClient([]string{masterAddr}, false),
 		mediaType:  mediaType,
 	}
-
 	return mds
 }
 

@@ -1527,15 +1527,8 @@ func (c *Cluster) CreateOfflineMetaNodePlan(offLineAddr string) (*proto.ClusterP
 func (c *Cluster) FillOffLineAddrToPlan(offLineAddr string, migratePlan *proto.ClusterPlan) (err error) {
 	// Get the meta node list that memory usage percent larger than metaNodeMemHighThresPer
 	overLoadNodes := make([]*proto.MetaNodeBalanceInfo, 0, 1)
-	value, ok := c.metaNodes.Load(offLineAddr)
-	if !ok {
-		err = fmt.Errorf("Failed to load %s from c.metaNodes", offLineAddr)
-		log.LogError(err.Error())
-		return err
-	}
-	metanode, ok := value.(*MetaNode)
-	if !ok {
-		err = fmt.Errorf("Failed to convert to metanode for %s", offLineAddr)
+	metanode, err := c.metaNode(offLineAddr)
+	if err != nil {
 		log.LogError(err.Error())
 		return err
 	}

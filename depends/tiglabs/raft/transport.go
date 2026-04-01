@@ -23,4 +23,6 @@ type Transport interface {
 	Send(m *proto.Message)
 	SendSnapshot(m *proto.Message, rs *snapshotStatus)
 	Stop()
+	// InvalidateSender removes the cached sender for nodeID so the next send will re-resolve the address (e.g. after peer address update).
+	InvalidateSender(nodeID uint64)
 }

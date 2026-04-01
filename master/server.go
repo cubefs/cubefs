@@ -420,6 +420,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		return err
 	}
 	m.config.AllowMultipleReplicasOnSameMachine = cfg.GetBoolWithDefault(cfgAllowMultipleReplicasOnSameMachine, true)
+	m.config.EnableDynamicAddr = cfg.GetBoolWithDefault(cfgEnableDynamicAddr, false)
 
 	memPercent := cfg.GetString(cfgMetaNodeMemoryHighPer)
 	if memPercent != "" {

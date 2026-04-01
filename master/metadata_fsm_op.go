@@ -158,6 +158,7 @@ type metaPartitionValue struct {
 	Hosts              string
 	OfflinePeerID      uint64
 	Peers              []proto.Peer
+	AddrEpoch          uint64
 	IsRecover          bool
 	Freeze             int8
 	LastDelReplicaTime int64
@@ -174,6 +175,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		VolName:            mp.volName,
 		Hosts:              mp.hostsToString(),
 		Peers:              mp.Peers,
+		AddrEpoch:          mp.AddrEpoch,
 		OfflinePeerID:      mp.OfflinePeerID,
 		IsRecover:          mp.IsRecover,
 		Freeze:             mp.Freeze,
@@ -187,6 +189,7 @@ type dataPartitionValue struct {
 	ReplicaNum                      uint8
 	Hosts                           string
 	Peers                           []proto.Peer
+	AddrEpoch                       uint64
 	Status                          int8
 	VolID                           uint64
 	VolName                         string
@@ -224,15 +227,16 @@ type dataPartitionValue struct {
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	for i := 0; i < len(dpv.Peers); i++ {
-		dn, ok := c.dataNodes.Load(dpv.Peers[i].Addr)
-		if ok && dn.(*DataNode).ID != dpv.Peers[i].ID {
-			dpv.Peers[i].ID = dn.(*DataNode).ID
+		dn, err := c.dataNode(dpv.Peers[i].Addr)
+		if err == nil && dn.ID != dpv.Peers[i].ID {
+			dpv.Peers[i].ID = dn.ID
 		}
 	}
 	dp = newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID,
 		dpv.PartitionType, dpv.MediaType)
 	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 	dp.Peers = dpv.Peers
+	dp.AddrEpoch = dpv.AddrEpoch
 	dp.OfflinePeerID = dpv.OfflinePeerID
 	dp.isRecover = dpv.IsRecover
 	dp.RdOnly = dpv.RdOnly
@@ -288,6 +292,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		ReplicaNum:                      dp.ReplicaNum,
 		Hosts:                           dp.hostsToString(),
 		Peers:                           dp.Peers,
+		AddrEpoch:                       dp.AddrEpoch,
 		Status:                          dp.Status,
 		VolID:                           dp.VolID,
 		VolName:                         dp.VolName,
@@ -1053,7 +1058,11 @@ func (c *Cluster) syncUpdateMetaNode(metaNode *MetaNode) (err error) {
 func (c *Cluster) buildPutMetaNodeCmd(opType uint32, metaNode *MetaNode) (metadata *RaftCmd, err error) {
 	metadata = new(RaftCmd)
 	metadata.Op = opType
-	metadata.K = metaNodePrefix + strconv.FormatUint(metaNode.ID, 10) + keySeparator + metaNode.Addr
+	if c.cfg.EnableDynamicAddr {
+		metadata.K = metaNodePrefix + strconv.FormatUint(metaNode.ID, 10)
+	} else {
+		metadata.K = metaNodePrefix + strconv.FormatUint(metaNode.ID, 10) + keySeparator + metaNode.Addr
+	}
 	mnv := newMetaNodeValue(metaNode)
 	metadata.V, err = json.Marshal(mnv)
 	return
@@ -1101,10 +1110,22 @@ func (c *Cluster) buildUpdateDataNodeCmd(dataNode *DataNode) (metadata *RaftCmd,
 }
 
 func (c *Cluster) buildPutDataNodeCmd(opType uint32, dataNode *DataNode) (metadata *RaftCmd, err error) {
+	return c.buildPutDataNodeCmdWithNewAddr(opType, dataNode, dataNode.Addr, dataNode.HeartbeatPort, dataNode.ReplicaPort)
+}
+
+// buildPutDataNodeCmdWithNewAddr builds put cmd with overridden address (for re-registration: persist new addr before updating memory).
+func (c *Cluster) buildPutDataNodeCmdWithNewAddr(opType uint32, dataNode *DataNode, newAddr, newHbPort, newRepPort string) (metadata *RaftCmd, err error) {
 	metadata = new(RaftCmd)
 	metadata.Op = opType
-	metadata.K = dataNodePrefix + strconv.FormatUint(dataNode.ID, 10) + keySeparator + dataNode.Addr
+	if c.cfg.EnableDynamicAddr {
+		metadata.K = dataNodePrefix + strconv.FormatUint(dataNode.ID, 10)
+	} else {
+		metadata.K = dataNodePrefix + strconv.FormatUint(dataNode.ID, 10) + keySeparator + newAddr
+	}
 	dnv := newDataNodeValue(dataNode)
+	dnv.Addr = newAddr
+	dnv.HeartbeatPort = newHbPort
+	dnv.ReplicaPort = newRepPort
 	metadata.V, err = json.Marshal(dnv)
 	if err != nil {
 		return
@@ -1647,13 +1668,27 @@ func (c *Cluster) loadDataNodes() (err error) {
 		err = fmt.Errorf("action[loadDataNodes],err:%v", err.Error())
 		return
 	}
-
-	for _, value := range result {
+	// Support both key formats: new #dn#id and old #dn#id#addr; prefer new when same ID appears twice
+	seenIDs := make(map[uint64]bool)
+	for key, value := range result {
 		dnv := &dataNodeValue{}
 		if err = json.Unmarshal(value, dnv); err != nil {
 			err = fmt.Errorf("action[loadDataNodes],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
+		// Old key = #dn#id#addr (4 parts), new key = #dn#id (3 parts)
+		parts := strings.Split(key, keySeparator)
+		isOldKey := len(parts) >= 4
+		if c.cfg.EnableDynamicAddr && isOldKey {
+			c.pendingOldKeyCleanupMu.Lock()
+			c.pendingOldKeyCleanup = append(c.pendingOldKeyCleanup, key)
+			c.pendingOldKeyCleanupMu.Unlock()
+		}
+		if seenIDs[dnv.ID] && isOldKey {
+			continue
+		}
+		seenIDs[dnv.ID] = true
+
 		if dnv.ZoneName == "" {
 			dnv.ZoneName = DefaultZoneName
 		}
@@ -1688,14 +1723,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.BadDisks = dnv.BadDisks
 		dataNode.AllDisks = dnv.AllDisks
 		dataNode.DpCntLimit = dnv.MaxDpCntLimit
-		olddn, ok := c.dataNodes.Load(dataNode.Addr)
-		if ok {
-			if olddn.(*DataNode).ID <= dataNode.ID {
-				log.LogDebugf("action[loadDataNodes]: skip addr %v old %v current %v", dataNode.Addr, olddn.(*DataNode).ID, dataNode.ID)
-				continue
-			}
-		}
-		c.dataNodes.Store(dataNode.Addr, dataNode)
+		c.putDataNode(dataNode)
 
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],MediaType[%v],zone[%v],ns[%v] DecommissionStatus [%v] "+
 			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v] DecommissionWeight[%v] DecommissionFirstHostParallelLimit[%v] DpCntLimit[%v]"+
@@ -1716,12 +1744,25 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		err = fmt.Errorf("action[loadMetaNodes],err:%v", err.Error())
 		return err
 	}
-	for _, value := range result {
+	// Support both key formats: new #mn#id and old #mn#id#addr; prefer new when same ID appears twice
+	seenIDs := make(map[uint64]bool)
+	for key, value := range result {
 		mnv := &metaNodeValue{}
 		if err = json.Unmarshal(value, mnv); err != nil {
 			err = fmt.Errorf("action[loadMetaNodes],unmarshal err:%v", err.Error())
 			return err
 		}
+		parts := strings.Split(key, keySeparator)
+		isOldKey := len(parts) >= 4
+		if c.cfg.EnableDynamicAddr && isOldKey {
+			c.pendingOldKeyCleanupMu.Lock()
+			c.pendingOldKeyCleanup = append(c.pendingOldKeyCleanup, key)
+			c.pendingOldKeyCleanupMu.Unlock()
+		}
+		if seenIDs[mnv.ID] && isOldKey {
+			continue
+		}
+		seenIDs[mnv.ID] = true
 
 		if mnv.ZoneName == "" {
 			mnv.ZoneName = DefaultZoneName
@@ -1733,13 +1774,7 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		metaNode.NodeSetID = mnv.NodeSetID
 		metaNode.RdOnly = mnv.RdOnly
 
-		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
-		if ok {
-			if oldmn.(*MetaNode).ID <= metaNode.ID {
-				continue
-			}
-		}
-		c.metaNodes.Store(metaNode.Addr, metaNode)
+		c.putMetaNode(metaNode)
 		log.LogInfof("action[loadMetaNodes],metaNode[%v], metaNodeID[%v],zone[%v],ns[%v]", metaNode.Addr, metaNode.ID, mnv.ZoneName, mnv.NodeSetID)
 	}
 	return
@@ -1864,14 +1899,15 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			continue
 		}
 		for i := 0; i < len(mpv.Peers); i++ {
-			mn, ok := c.metaNodes.Load(mpv.Peers[i].Addr)
-			if ok && mn.(*MetaNode).ID != mpv.Peers[i].ID {
-				mpv.Peers[i].ID = mn.(*MetaNode).ID
+			mn, err := c.metaNode(mpv.Peers[i].Addr)
+			if err == nil && mn.ID != mpv.Peers[i].ID {
+				mpv.Peers[i].ID = mn.ID
 			}
 		}
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, vol.Name, mpv.VolID, 0)
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
+		mp.AddrEpoch = mpv.AddrEpoch
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
 		mp.Freeze = mpv.Freeze
