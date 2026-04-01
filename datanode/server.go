@@ -160,6 +160,9 @@ const (
 	ConfigKeyCacheCap                           = "cacheCap"
 	ConfigExtentCacheTtlByMin                   = "extentCacheTtlByMin"
 
+	// enable periodic disk IO util sampling (for QoS/metrics); default off
+	ConfigEnableDiskIoSample = "enableDiskIoSample"
+
 	// storage device media type, for hybrid cloud, in string: SDD or HDD
 	ConfigMediaType = "mediaType"
 	// storage pool ID for datanode
@@ -252,9 +255,10 @@ type DataNode struct {
 	useLocalGOGC bool
 	gogcValue    int
 
-	enableGcTimer    bool
-	gcRecyclePercent float64
-	gcTimer          *util.RecycleTimer
+	enableDiskIoSample bool
+	enableGcTimer      bool
+	gcRecyclePercent   float64
+	gcTimer            *util.RecycleTimer
 
 	diskUnavailableErrorCount          uint64 // disk status becomes unavailable when disk error count reaches this value
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
@@ -474,6 +478,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 	s.serviceIDKey = cfg.GetString(ConfigServiceIDKey)
 
+	s.enableDiskIoSample = cfg.GetBoolWithDefault(ConfigEnableDiskIoSample, false)
 	s.enableGcTimer = cfg.GetBoolWithDefault(ConfigEnableGcTimer, false)
 	gcRecyclePercentStr := cfg.GetString(ConfigGcRecyclePercent)
 	if gcRecyclePercentStr == "" {
@@ -770,8 +775,9 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	// start check disk lost
 	s.space.StartCheckDiskLost()
 
-	// start async sample
-	s.space.StartDiskSample()
+	if s.enableDiskIoSample {
+		s.space.StartDiskSample()
+	}
 	s.updateQosLimit() // load from config
 	s.markAllDiskLoaded()
 

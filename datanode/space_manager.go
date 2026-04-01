@@ -112,7 +112,9 @@ func (manager *SpaceManager) Stop() {
 		recover()
 	}()
 	close(manager.stopC)
-	close(manager.samplerDone)
+	if manager.samplerDone != nil {
+		close(manager.samplerDone)
+	}
 
 	// Close raft store.
 	partitions := manager.getPartitions()

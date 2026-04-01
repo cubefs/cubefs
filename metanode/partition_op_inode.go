@@ -1539,7 +1539,6 @@ func (mp *metaPartition) ScanInodeByPool(req *proto.ScanInodeByPoolRequest, resp
 
 		return true
 	})
-
 	if err != nil {
 		log.LogWarnf("ScanInodeByPool: mp[%d] poolId[%d] startInode[%d] pageSize[%d] found[%d] totalScanned[%d] nextInode[%d] hasMore[%v] error[%v]",
 			mp.config.PartitionId, req.PoolId, req.StartInode, pageSize, len(inodes), totalScanned, nextInode, resp.HasMore, err)

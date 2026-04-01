@@ -704,6 +704,9 @@ func (m *MetaNode) register() (err error) {
 		var nodeID uint64
 		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.raftHeartbeatPort, m.raftReplicatePort, m.rack, m.zoneName, m.serviceIDKey, m.region); err != nil {
 			log.LogErrorf("[register] tryCnt(%v), register to master fail: address(%v) err(%s)", tryCnt, nodeAddress, err)
+			if strings.Contains(err.Error(), proto.ErrMetaNodeAddFailed) {
+				return err
+			}
 			time.Sleep(3 * time.Second)
 			continue
 		}

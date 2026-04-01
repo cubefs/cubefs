@@ -1832,7 +1832,16 @@ func TestSetAutoDpMetaRepairParallelCnt(t *testing.T) {
 func TestSetEnableAutoMpMetaRepair(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
 	oldVal := server.cluster.getEnableAutoMpMetaRepair()
+	oldLearner := server.cluster.EnableMpDecommissionByLearner
 	setVal := !oldVal
+	if setVal && !oldLearner {
+		learnerOnUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, enableMpDecommissionByLearnerKey, true)
+		process(learnerOnUrl, t)
+		defer func() {
+			learnerRestoreUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, enableMpDecommissionByLearnerKey, oldLearner)
+			process(learnerRestoreUrl, t)
+		}()
+	}
 	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoMpMetaRepairKey, setVal)
 	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoMpMetaRepairKey, oldVal)
 	process(setUrl, t)
@@ -2000,7 +2009,16 @@ func TestUpdateVolAutoMpMetaRepair(t *testing.T) {
 	}()
 	reqUrl := fmt.Sprintf("%v%v?%v=%v&%v=%v", hostAddr, proto.AdminUpdateVol, nameKey, vol.Name, volAuthKey, buildAuthKey(testOwner))
 	oldVal := vol.EnableAutoMpMetaRepair.Load()
+	oldLearner := server.cluster.EnableMpDecommissionByLearner
 	setVal := !oldVal
+	if setVal && !oldLearner {
+		cfgUrl := fmt.Sprintf("%v%v?%v=%v&dirSizeLimit=0", hostAddr, proto.AdminSetNodeInfo, enableMpDecommissionByLearnerKey, true)
+		process(cfgUrl, t)
+		defer func() {
+			restoreUrl := fmt.Sprintf("%v%v?%v=%v&dirSizeLimit=0", hostAddr, proto.AdminSetNodeInfo, enableMpDecommissionByLearnerKey, oldLearner)
+			process(restoreUrl, t)
+		}()
+	}
 	setUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoMpMetaRepairKey, setVal)
 	unsetUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoMpMetaRepairKey, oldVal)
 

@@ -1202,6 +1202,22 @@ func formatMetaPartitionTableWithAutoAlign(views []*proto.MetaPartitionView) str
 		return ""
 	}
 
+	// Sort by region (empty -> default), then partition ID (vol info -m).
+	views = append([]*proto.MetaPartitionView(nil), views...)
+	sort.SliceStable(views, func(i, j int) bool {
+		ri, rj := views[i].Region, views[j].Region
+		if ri == "" {
+			ri = proto.DefaultRegion
+		}
+		if rj == "" {
+			rj = proto.DefaultRegion
+		}
+		if ri != rj {
+			return ri < rj
+		}
+		return views[i].PartitionID < views[j].PartitionID
+	})
+
 	rangeToString := func(num uint64) string {
 		if num >= math.MaxInt64 {
 			return "unlimited"

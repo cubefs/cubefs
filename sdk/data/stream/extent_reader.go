@@ -114,7 +114,6 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 		}
 		return nil, false
 	})
-
 	if err != nil {
 		// if cold vol and cach is invaild
 		if !reader.retryRead && (err == TryOtherAddrError || strings.Contains(err.Error(), "ExistErr")) {

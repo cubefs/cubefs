@@ -158,11 +158,11 @@ func (mw *MetaWrapper) getRWPartitions() []*MetaPartition {
 				filtered = append(filtered, mp)
 			}
 		}
-		// If no partitions found in specified region, fall back to all rw partitions
 		if len(filtered) > 0 {
 			return filtered
 		}
-		log.LogWarnf("getRWPartitions: no writable partitions found in region[%v], falling back to all rw partitions", mw.defaultMetaRegion)
+
+		log.LogWarnf("getRWPartitions: no writable partitions in region[%v], picking one arbitrary ReadWrite mp", mw.defaultMetaRegion)
 	}
 	return rwPartitions
 }

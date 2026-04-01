@@ -234,6 +234,15 @@ func (m *Server) volUpdateMpRegionPolicy(w http.ResponseWriter, r *http.Request)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	// Setting or changing mp region policy requires cluster enableMpDecommissionByLearner; clearing (policy=empty) is still allowed when off.
+	if !m.cluster.EnableMpDecommissionByLearner && !mpRegionPolicyFormValueMeansClear(policy) {
+		err = fmt.Errorf("enableMpDecommissionByLearner is false: enable the cluster switch before updating mp region policy")
+		log.LogErrorf("[volUpdateMpRegionPolicy] vol(%v), err: %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	// Parse policy string (empty or "empty" clears policy for this source region)
 	var mpPolicy *proto.VolMpPolicy
 	if mpRegionPolicyFormValueMeansClear(policy) {

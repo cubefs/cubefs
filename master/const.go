@@ -20,7 +20,13 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/errors"
 )
+
+// errMsgAutoMpMetaRepairNeedsLearnerDecommission is the user-visible reason when enabling auto MP meta repair without learner decommission.
+const errMsgAutoMpMetaRepairNeedsLearnerDecommission = "enableAutoMpMetaRepair requires enableMpDecommissionByLearner to be enabled on the cluster first"
+
+var errAutoMpMetaRepairNeedsLearnerDecommission = errors.New(errMsgAutoMpMetaRepairNeedsLearnerDecommission)
 
 // Keys in the request
 const (

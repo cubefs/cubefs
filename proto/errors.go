@@ -18,6 +18,7 @@ import "github.com/cubefs/cubefs/util/errors"
 
 const (
 	ErrDataNodeAddFailed = "add datanode failed"
+	ErrMetaNodeAddFailed = "add metanode failed"
 )
 
 // err
@@ -80,6 +81,7 @@ var (
 	ErrDuplicateAccessKey                      = errors.New("duplicate access key")
 	ErrHaveNoPolicy                            = errors.New("no vol policy")
 	ErrZoneNotExists                           = errors.New("zone not exists")
+	ErrRegionNotExists                         = errors.New("region not exists")
 	ErrOwnVolExists                            = errors.New("own vols not empty")
 	ErrSuperAdminExists                        = errors.New("super administrator exists ")
 	ErrInvalidUserID                           = errors.New("invalid user ID")

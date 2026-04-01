@@ -4606,6 +4606,10 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		return proto.ErrVolAuthKeyNotMatch
 	}
 
+	if newArgs.enableAutoMpMetaRepair && !c.EnableMpDecommissionByLearner {
+		return errAutoMpMetaRepairNeedsLearnerDecommission
+	}
+
 	volUsedSpace = vol.totalUsedSpace()
 	if float64(newArgs.capacity*util.GB) < float64(volUsedSpace)*1.01 && newArgs.capacity != vol.Capacity {
 		err = fmt.Errorf("capacity[%v] has to be 1 percent larger than the used space[%v]", newArgs.capacity,
@@ -8123,6 +8127,9 @@ func (c *Cluster) updateDistributionOptimizationStatus() {
 }
 
 func (c *Cluster) setEnableAutoMpMetaRepair(val bool) (err error) {
+	if val && !c.EnableMpDecommissionByLearner {
+		return errAutoMpMetaRepairNeedsLearnerDecommission
+	}
 	oldVal := c.EnableAutoMpMetaRepair.Load()
 	c.EnableAutoMpMetaRepair.Store(val)
 	if err = c.syncPutCluster(); err != nil {
@@ -8182,13 +8189,13 @@ func (s *StoragePool) String() string {
 		s.Id, s.Name, proto.StorageClassString(uint32(s.StorageClass)), s.CId, s.ECAddr, s.CreateTime, s.UpdateTime, s.Status)
 }
 
-// validatePoolName validates pool name format and length
-func validatePoolName(name string) error {
+// validateResourceName validates name format and length (same rules as storage pool name).
+func validateResourceName(name string, label string) error {
 	if len(name) < MinPoolNameLength {
-		return fmt.Errorf("pool name must be at least %d characters long", MinPoolNameLength)
+		return fmt.Errorf("%s must be at least %d characters long", label, MinPoolNameLength)
 	}
 	if len(name) > MaxPoolNameLength {
-		return fmt.Errorf("pool name must be at most %d characters long", MaxPoolNameLength)
+		return fmt.Errorf("%s must be at most %d characters long", label, MaxPoolNameLength)
 	}
 	// Must start with a letter, end with a letter or number, and can contain letters, numbers, hyphens, or underscores in between
 	// Pattern: ^[a-zA-Z]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$
@@ -8196,9 +8203,14 @@ func validatePoolName(name string) error {
 	// - Multiple characters: starts with letter, middle can be letters/numbers/hyphens/underscores, ends with letter/number
 	matched, _ := regexp.MatchString("^[a-zA-Z]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$", name)
 	if !matched {
-		return fmt.Errorf("pool name must start with a letter, end with a letter or number, and can only contain letters, numbers, hyphens, or underscores")
+		return fmt.Errorf("%s must start with a letter, end with a letter or number, and can only contain letters, numbers, hyphens, or underscores", label)
 	}
 	return nil
+}
+
+// validatePoolName validates pool name format and length
+func validatePoolName(name string) error {
+	return validateResourceName(name, "pool name")
 }
 
 // createStoragePool creates a new storage pool
@@ -8417,10 +8429,11 @@ func (c *Cluster) isValidRegion(region string) bool {
 		region = proto.DefaultRegion
 	}
 
-	// Check zones
+	// Check zones: region exists iff at least one zone uses this MetaRegion (empty MetaRegion means default).
 	zones := c.t.getAllZones()
 	for _, zone := range zones {
-		if zone.MetaRegion == region {
+		zr := zone.MetaRegion
+		if zr == region {
 			return true
 		}
 	}

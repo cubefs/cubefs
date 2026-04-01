@@ -17,11 +17,11 @@ package master
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -2333,6 +2333,10 @@ func newErrHTTPReply(err error) *proto.HTTPReply {
 		return newSuccessHTTPReply("")
 	}
 
+	if errors.Is(err, errAutoMpMetaRepairNeedsLearnerDecommission) {
+		return &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: errMsgAutoMpMetaRepairNeedsLearnerDecommission}
+	}
+
 	code, ok := proto.Err2CodeMap[err]
 	if ok {
 		return &proto.HTTPReply{Code: code, Msg: err.Error()}
@@ -2963,20 +2967,10 @@ func parseRequestToUpdateStoragePool(r *http.Request) (poolId uint8, poolInfo *p
 	return
 }
 
-// validateRegionName validates region name: only letters and numbers, max 32 characters
+// validateRegionName validates region name format and length (same rules as pool name).
 func validateRegionName(region string) error {
 	if region == "" {
-		return nil // Empty region is allowed (will default to "default")
+		return nil // Empty region is allowed (callers may substitute default before add)
 	}
-	if len(region) > 32 {
-		return fmt.Errorf("region name must not exceed 32 characters, got %d", len(region))
-	}
-	matched, err := regexp.MatchString("^[a-zA-Z0-9]+$", region)
-	if err != nil {
-		return fmt.Errorf("failed to validate region name: %v", err)
-	}
-	if !matched {
-		return fmt.Errorf("region name must contain only letters and numbers, got: %s", region)
-	}
-	return nil
+	return validateResourceName(region, "region name")
 }

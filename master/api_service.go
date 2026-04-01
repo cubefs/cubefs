@@ -682,6 +682,12 @@ func (m *Server) getRegionInfo(w http.ResponseWriter, r *http.Request) {
 		regionName = "default"
 	}
 
+	if !m.cluster.isValidRegion(regionName) {
+		err = proto.ErrRegionNotExists
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("region not exists: %s", regionName)})
+		return
+	}
+
 	// Get all meta nodes
 	metaNodes := m.cluster.allMetaNodes()
 
@@ -4822,15 +4828,6 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if val, ok := params[autoDpMetaRepairKey]; ok {
-		if autoRepair, ok := val.(bool); ok {
-			if err = m.cluster.setEnableAutoDpMetaRepair(autoRepair); err != nil {
-				sendErrReply(w, r, newErrHTTPReply(err))
-				return
-			}
-		}
-	}
-
 	if val, ok := params[enableMpDecommissionByLearnerKey]; ok {
 		if enable, ok := val.(bool); ok {
 			if err = m.cluster.setEnableMpDecommissionByLearner(enable); err != nil {
@@ -4840,18 +4837,27 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if val, ok := params[autoDpMetaRepairParallelCntKey]; ok {
-		if cnt, ok := val.(int); ok {
-			if err = m.cluster.setAutoDpMetaRepairParallelCnt(cnt); err != nil {
+	if val, ok := params[autoMpMetaRepairKey]; ok {
+		if autoRepair, ok := val.(bool); ok {
+			if err = m.cluster.setEnableAutoMpMetaRepair(autoRepair); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
 		}
 	}
 
-	if val, ok := params[autoMpMetaRepairKey]; ok {
+	if val, ok := params[autoDpMetaRepairKey]; ok {
 		if autoRepair, ok := val.(bool); ok {
-			if err = m.cluster.setEnableAutoMpMetaRepair(autoRepair); err != nil {
+			if err = m.cluster.setEnableAutoDpMetaRepair(autoRepair); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[autoDpMetaRepairParallelCntKey]; ok {
+		if cnt, ok := val.(int); ok {
+			if err = m.cluster.setAutoDpMetaRepairParallelCnt(cnt); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -6438,25 +6444,34 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	if nodeAddr, heartbeatPort, replicaPort, zoneName, rack, _, _, err = parseRequestForAddNode(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		err = fmt.Errorf("%s, err %s,", proto.ErrMetaNodeAddFailed, err.Error())
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	if !checkIpPort(nodeAddr) {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+		err = fmt.Errorf("%s, err %s,", proto.ErrMetaNodeAddFailed, "addr not legal")
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	// Parse region parameter
+	// Parse region parameter (same naming rules as pool name; cluster.addMetaNode also validates)
 	region = extractStrWithDefault(r, regionKey, proto.DefaultRegion)
+	if err = validateRegionName(region); err != nil {
+		err = fmt.Errorf("%s, err %s,", proto.ErrMetaNodeAddFailed, err.Error())
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	var value string
 	if value = r.FormValue(idKey); value == "" {
 		nodesetId = 0
 	} else {
 		if nodesetId, err = strconv.ParseUint(value, 10, 64); err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			err = fmt.Errorf("%s, err %s,", proto.ErrMetaNodeAddFailed, err.Error())
+			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 	}
 	if id, err = m.cluster.addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, rack, nodesetId, region); err != nil {
+		err = fmt.Errorf("%s, err %s,", proto.ErrMetaNodeAddFailed, err.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

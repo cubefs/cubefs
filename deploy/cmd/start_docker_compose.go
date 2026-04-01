@@ -15,7 +15,6 @@ func startALLFromDockerCompose(disk string) error {
 		log.Fatal(err)
 	}
 	err = runScript(scriptPath, args...)
-
 	if err != nil {
 		log.Fatal(err)
 	}

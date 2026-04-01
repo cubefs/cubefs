@@ -15,6 +15,7 @@ func TestMetaWrapperGetRWPartitionsByRegion(t *testing.T) {
 	mpEast1 := &MetaPartition{PartitionID: 1, Status: proto.ReadWrite, Region: "east"}
 	mpEast2 := &MetaPartition{PartitionID: 2, Status: proto.ReadWrite, Region: "east"}
 	mpWest := &MetaPartition{PartitionID: 3, Status: proto.ReadWrite, Region: "west"}
+	mpEastRO := &MetaPartition{PartitionID: 4, Status: proto.ReadOnly, Region: "east"}
 
 	t.Run("filters to default meta region when set", func(t *testing.T) {
 		mw := &MetaWrapper{
@@ -35,7 +36,21 @@ func TestMetaWrapperGetRWPartitionsByRegion(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back when region has no rw partition", func(t *testing.T) {
+	t.Run("read-only in region is excluded from filtered list", func(t *testing.T) {
+		mw := &MetaWrapper{
+			partitions: map[uint64]*MetaPartition{
+				1: mpEast1, 4: mpEastRO,
+			},
+			rwPartitions: []*MetaPartition{mpEast1, mpEastRO},
+		}
+		mw.defaultMetaRegion = "east"
+		out := mw.getRWPartitions()
+		if len(out) != 1 || out[0] != mpEast1 {
+			t.Fatalf("want only rw mpEast1, got %v", out)
+		}
+	})
+
+	t.Run("no rw match in region falls back to full rwPartitions slice", func(t *testing.T) {
 		mw := &MetaWrapper{
 			partitions: map[uint64]*MetaPartition{
 				1: mpEast1, 3: mpWest,
@@ -45,7 +60,55 @@ func TestMetaWrapperGetRWPartitionsByRegion(t *testing.T) {
 		mw.defaultMetaRegion = "unknown-region"
 		out := mw.getRWPartitions()
 		if len(out) != 2 {
-			t.Fatalf("fallback want 2, got %d", len(out))
+			t.Fatalf("fallback returns full cache, want len 2, got %d", len(out))
+		}
+		seen := map[uint64]bool{}
+		for _, mp := range out {
+			seen[mp.PartitionID] = true
+		}
+		if !seen[1] || !seen[3] {
+			t.Fatalf("expected mp 1 and 3 in result, seen=%v", seen)
+		}
+	})
+
+	t.Run("only read-only in target region falls back to full rwPartitions", func(t *testing.T) {
+		mw := &MetaWrapper{
+			partitions: map[uint64]*MetaPartition{
+				4: mpEastRO, 3: mpWest,
+			},
+			rwPartitions: []*MetaPartition{mpEastRO, mpWest},
+		}
+		mw.defaultMetaRegion = "east"
+		out := mw.getRWPartitions()
+		if len(out) != 2 {
+			t.Fatalf("want full cache len 2, got %d", len(out))
+		}
+	})
+
+	t.Run("empty rwPartitions rebuilds from partitions then applies region filter", func(t *testing.T) {
+		mw := &MetaWrapper{
+			partitions: map[uint64]*MetaPartition{
+				1: mpEast1, 2: mpEast2, 3: mpWest,
+			},
+			rwPartitions: nil,
+		}
+		mw.defaultMetaRegion = "east"
+		out := mw.getRWPartitions()
+		if len(out) != 2 {
+			t.Fatalf("want 2 east RW from rebuilt list, got %d", len(out))
+		}
+	})
+
+	t.Run("empty rwPartitions no region returns all partitions from map", func(t *testing.T) {
+		mw := &MetaWrapper{
+			partitions: map[uint64]*MetaPartition{
+				1: mpEast1, 3: mpWest,
+			},
+			rwPartitions: nil,
+		}
+		out := mw.getRWPartitions()
+		if len(out) != 2 {
+			t.Fatalf("want 2 from partitions map, got %d", len(out))
 		}
 	})
 
