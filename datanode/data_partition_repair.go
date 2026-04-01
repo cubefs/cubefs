@@ -862,9 +862,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *RepairExtentInfo,
 				if sizeLen < dataLen {
 					dataLen = sizeLen
 				}
-				err = errors.Trace(fmt.Errorf("unknow result code"),
-					"streamRepairExtent dp %v extent %v receive opcode error(%v) ,localExtentSize(%v) remoteExtentSize(%v)",
-					dp.partitionID, remoteExtentInfo.FileID, string(reply.GetData()[:dataLen]), currFixOffset, dstOffset)
+				err = fmt.Errorf("streamRepairExtent dp %v extent %v error(%v), localExtentSize(%v) remoteExtentSize(%v), result code(%d)",
+					dp.partitionID, remoteExtentInfo.FileID, string(reply.GetData()[:dataLen]), currFixOffset, dstOffset, reply.GetResultCode())
 				log.LogWarnf("%v", err.Error())
 				return
 			}
