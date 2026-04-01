@@ -544,6 +544,7 @@ func cmdVolumeStats(c *grumble.Context) error {
 func printVolumeStatsByScore(volumes []*clustermgr.VolumeInfo) {
 	human := func(size uint64) string { return util.HumanIBytes(size, 3) }
 
+	freeGiB := make(map[codemode.CodeMode][]float64) // by codemode
 	// Aggregate by codemode -> status -> score
 	stats := make(map[codemode.CodeMode]map[proto.VolumeStatus]map[int]*volumeStatEntry)
 	for _, vol := range volumes {
@@ -561,6 +562,8 @@ func printVolumeStatsByScore(volumes []*clustermgr.VolumeInfo) {
 		entry.Free += vol.Free
 		entry.Used += vol.Used
 		entry.Total += vol.Total
+
+		freeGiB[vol.CodeMode] = append(freeGiB[vol.CodeMode], float64(vol.Free)/(1<<30))
 	}
 
 	for cm := range stats {
@@ -602,6 +605,11 @@ func printVolumeStatsByScore(volumes []*clustermgr.VolumeInfo) {
 				fmt.Println("  " + line)
 			}
 			fmt.Println()
+		}
+
+		fmt.Println("  [Free Histogram (GiB)]")
+		for _, line := range tablefmt.HistogramRange(freeGiB[cm]) {
+			fmt.Println("    " + line)
 		}
 	}
 }
