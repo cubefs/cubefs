@@ -60,6 +60,7 @@ func (m *FlashGroupManager) getCluster(w http.ResponseWriter, r *http.Request) {
 		FlashNodeHandleReadTimeout:   m.cluster.cfg.FlashNodeHandleReadTimeout,
 		FlashNodeReadDataNodeTimeout: m.cluster.cfg.FlashNodeReadDataNodeTimeout,
 		FlashHotKeyMissCount:         m.cluster.cfg.FlashHotKeyMissCount,
+		MaxDisableFlashGroupPercent:  m.cluster.cfg.MaxDisableFlashGroupPercent,
 		FlashReadFlowLimit:           m.cluster.cfg.FlashReadFlowLimit,
 		FlashWriteFlowLimit:          m.cluster.cfg.FlashWriteFlowLimit,
 		FlashKeyFlowLimit:            m.cluster.cfg.FlashKeyFlowLimit,
@@ -730,6 +731,15 @@ func (m *FlashGroupManager) setNodeInfoHandler(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	if val, ok := params[cfgMaxDisableFlashGroupPercent]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(cfgMaxDisableFlashGroupPercent, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	if val, ok := params[cfgFlashReadFlowLimit]; ok {
 		if v, ok := val.(int64); ok {
 			if err = m.setConfig(cfgFlashReadFlowLimit, strconv.FormatInt(v, 10)); err != nil {
@@ -784,6 +794,7 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		flashWriteFlowLimit          int64
 		flashKeyFlowLimit            int64
 		remoteClientFlowLimit        int64
+		maxDisableFlashGroupPercent  int
 		oldIntValue                  int
 		oldInt64Value                int64
 		oldBoolValue                 bool
@@ -862,6 +873,17 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		oldIntValue = m.config.FlashHotKeyMissCount
 		m.config.FlashHotKeyMissCount = flashHotKeyMissCount
 
+	case cfgMaxDisableFlashGroupPercent:
+		maxDisableFlashGroupPercent, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		if maxDisableFlashGroupPercent < 1 || maxDisableFlashGroupPercent > 100 {
+			return fmt.Errorf("maxDisableFlashGroupPercent must be between 1 and 100, got %d", maxDisableFlashGroupPercent)
+		}
+		oldIntValue = m.config.MaxDisableFlashGroupPercent
+		m.config.MaxDisableFlashGroupPercent = maxDisableFlashGroupPercent
+
 	case cfgFlashReadFlowLimit:
 		flashReadFlowLimit, err = strconv.ParseInt(value, 10, 64)
 		if err != nil {
@@ -919,6 +941,8 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 			m.config.RemoteCacheSameRegionTimeout = oldInt64Value
 		case cfgFlashHotKeyMissCount:
 			m.config.FlashHotKeyMissCount = oldIntValue
+		case cfgMaxDisableFlashGroupPercent:
+			m.config.MaxDisableFlashGroupPercent = oldIntValue
 		case cfgFlashReadFlowLimit:
 			m.config.FlashReadFlowLimit = oldInt64Value
 		case cfgFlashWriteFlowLimit:
@@ -928,6 +952,9 @@ func (m *FlashGroupManager) setConfig(key string, value string) (err error) {
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
+	}
+	if key == cfgMaxDisableFlashGroupPercent {
+		m.cluster.flashNodeTopo.SetMaxDisableFlashGroupPercent(m.config.MaxDisableFlashGroupPercent)
 	}
 	return err
 }

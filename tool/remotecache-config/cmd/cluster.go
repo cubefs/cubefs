@@ -61,6 +61,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	optRemoteCacheSameZoneTimeout := ""
 	optRemoteCacheSameRegionTimeout := ""
 	optFlashHotKeyMissCount := ""
+	optMaxDisableFlashGroupPercent := ""
 	optFlashReadFlowLimit := ""
 	optFlashWriteFlowLimit := ""
 	optFlashKeyFlowLimit := ""
@@ -162,6 +163,17 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if optMaxDisableFlashGroupPercent != "" {
+				if tmp, err = strconv.ParseInt(optMaxDisableFlashGroupPercent, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", optMaxDisableFlashGroupPercent)
+					return
+				}
+				if tmp < 1 || tmp > 100 {
+					err = fmt.Errorf("param maxDisableFlashGroupPercent(%v) must be between 1 and 100", optMaxDisableFlashGroupPercent)
+					return
+				}
+			}
+
 			if optFlashReadFlowLimit != "" {
 				if tmp, err = strconv.ParseInt(optFlashReadFlowLimit, 10, 64); err != nil {
 					err = fmt.Errorf("param (%v) failed, should be int", optFlashReadFlowLimit)
@@ -217,6 +229,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				RemoteCacheSameZoneTimeout:   optRemoteCacheSameZoneTimeout,
 				RemoteCacheSameRegionTimeout: optRemoteCacheSameRegionTimeout,
 				FlashHotKeyMissCount:         optFlashHotKeyMissCount,
+				MaxDisableFlashGroupPercent:  optMaxDisableFlashGroupPercent,
 				FlashReadFlowLimit:           optFlashReadFlowLimit,
 				FlashWriteFlowLimit:          optFlashWriteFlowLimit,
 				FlashKeyFlowLimit:            optFlashKeyFlowLimit,
@@ -237,6 +250,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, "", "Remote cache same zone timeout microsecond(must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, "", "Remote cache same region timeout millisecond(must > 0)")
 	cmd.Flags().StringVar(&optFlashHotKeyMissCount, CliFlagFlashHotKeyMissCount, "", "Flash hot key miss count(must > 0)")
+	cmd.Flags().StringVar(&optMaxDisableFlashGroupPercent, CliFlagMaxDisableFlashGroupPercent, "", "Percent (1-100) for max empty-slot flash groups before recovering reserved slots: threshold = fgCount * X / 100")
 	cmd.Flags().StringVar(&optFlashReadFlowLimit, CliFlagFlashReadFlowLimit, "", "Flash read flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optFlashWriteFlowLimit, CliFlagFlashWriteFlowLimit, "", "Flash write flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optFlashKeyFlowLimit, CliFlagFlashKeyFlowLimit, "", "Flash key flow limit(must >= 0)")

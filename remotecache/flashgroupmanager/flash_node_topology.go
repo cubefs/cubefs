@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	defaultFlashGroupSlotsCount = 32
-	twoDaysInSeconds            = 2 * 24 * 60 * 60
+	defaultFlashGroupSlotsCount        = 32
+	twoDaysInSeconds                   = 2 * 24 * 60 * 60
+	DefaultMaxDisableFlashGroupPercent = 66
 )
 
 type (
@@ -95,10 +96,11 @@ type FlashNodeTopology struct {
 	flashNodeIDMap sync.Map // key: FlashNodeID, value: *FlashNode
 	zoneMap        sync.Map // key: zoneName, value: *FlashNodeZone
 
-	clientEmpty        []byte       // empty response cache
-	clientOff          atomic.Value // []byte, default nil (on)
-	clientCache        atomic.Value // []byte te client response cache
-	SyncFlashGroupFunc SyncUpdateFlashGroupFunc
+	maxDisableFlashGroupPercent uint32
+	clientEmpty                 []byte       // empty response cache
+	clientOff                   atomic.Value // []byte, default nil (on)
+	clientCache                 atomic.Value // []byte te client response cache
+	SyncFlashGroupFunc          SyncUpdateFlashGroupFunc
 
 	FlashNodeTopologyValue // support multi-region
 }
@@ -121,7 +123,18 @@ func NewFlashNodeTopology(name, region string, id uint64, status uint32) (t *Fla
 	t.RemoteCacheWriteFlowMap = make(map[string]int64)
 	t.clientOff.Store([]byte(nil))
 	t.clientCache.Store([]byte(nil))
+	atomic.StoreUint32(&t.maxDisableFlashGroupPercent, DefaultMaxDisableFlashGroupPercent)
 	return t
+}
+
+func (t *FlashNodeTopology) SetMaxDisableFlashGroupPercent(percent int) {
+	if percent < 1 {
+		percent = DefaultMaxDisableFlashGroupPercent
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	atomic.StoreUint32(&t.maxDisableFlashGroupPercent, uint32(percent))
 }
 
 func (t *FlashNodeTopology) SetRemoteCacheReadFlow(volName string, flow int64) {
@@ -273,7 +286,14 @@ func (t *FlashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 		return true
 	})
 	disableFlashGroupNum := 0
-	maxDisableFlashGroupCount := fgCount * 2 / 3
+	percent := int(atomic.LoadUint32(&t.maxDisableFlashGroupPercent))
+	if percent < 1 {
+		percent = DefaultMaxDisableFlashGroupPercent
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	maxDisableFlashGroupCount := fgCount * percent / 100
 
 	t.flashGroupMap.Range(func(_, value interface{}) bool {
 		fg := value.(*FlashGroup)

@@ -41,6 +41,7 @@ type clusterValue struct {
 	RemoteCacheSameZoneTimeout   int64
 	RemoteCacheSameRegionTimeout int64
 	FlashHotKeyMissCount         int
+	MaxDisableFlashGroupPercent  int
 	FlashReadFlowLimit           int64
 	FlashWriteFlowLimit          int64
 	FlashKeyFlowLimit            int64
@@ -59,6 +60,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		RemoteCacheSameZoneTimeout:   c.cfg.RemoteCacheSameZoneTimeout,
 		RemoteCacheSameRegionTimeout: c.cfg.RemoteCacheSameRegionTimeout,
 		FlashHotKeyMissCount:         c.cfg.FlashHotKeyMissCount,
+		MaxDisableFlashGroupPercent:  c.cfg.MaxDisableFlashGroupPercent,
 		FlashReadFlowLimit:           c.cfg.FlashReadFlowLimit,
 		FlashWriteFlowLimit:          c.cfg.FlashWriteFlowLimit,
 		FlashKeyFlowLimit:            c.cfg.FlashKeyFlowLimit,
@@ -98,16 +100,21 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.FlashHotKeyMissCount == 0 {
 			cv.FlashHotKeyMissCount = defaultFlashHotKeyMissCount
 		}
+		if cv.MaxDisableFlashGroupPercent == 0 {
+			cv.MaxDisableFlashGroupPercent = defaultMaxDisableFlashGroupPercent
+		}
 		c.cfg.FlashHotKeyMissCount = cv.FlashHotKeyMissCount
+		c.cfg.MaxDisableFlashGroupPercent = cv.MaxDisableFlashGroupPercent
 
 		c.cfg.FlashReadFlowLimit = cv.FlashReadFlowLimit
 		c.cfg.FlashWriteFlowLimit = cv.FlashWriteFlowLimit
 		c.cfg.RemoteClientFlowLimit = cv.RemoteClientFlowLimit
 		c.cfg.FlashKeyFlowLimit = cv.FlashKeyFlowLimit
+		c.flashNodeTopo.SetMaxDisableFlashGroupPercent(cv.MaxDisableFlashGroupPercent)
 
 		c.cfg.FlashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
-		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms), flashHotKeyMissCount(%v), flashReadFlowLimit(%v), flashWriteFlowLimit(%v), remoteClientFlowLimit(%v), flashKeyFlowLimit(%v)",
-			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount, cv.FlashReadFlowLimit, cv.FlashWriteFlowLimit, cv.RemoteClientFlowLimit, cv.FlashKeyFlowLimit)
+		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms), flashHotKeyMissCount(%v), maxDisableFlashGroupPercent(%v), flashReadFlowLimit(%v), flashWriteFlowLimit(%v), remoteClientFlowLimit(%v), flashKeyFlowLimit(%v)",
+			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout, cv.FlashHotKeyMissCount, cv.MaxDisableFlashGroupPercent, cv.FlashReadFlowLimit, cv.FlashWriteFlowLimit, cv.RemoteClientFlowLimit, cv.FlashKeyFlowLimit)
 
 		if cv.RemoteCacheTTL == 0 {
 			cv.RemoteCacheTTL = proto.DefaultRemoteCacheTTL

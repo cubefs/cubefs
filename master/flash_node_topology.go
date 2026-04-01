@@ -170,7 +170,23 @@ func (c *Cluster) loadFlashTopos() (err error) {
 			c.deleteFlashTopoMutex.Unlock()
 		}
 	}
+	c.syncMaxDisableFlashGroupPercentToFlashTopos()
 	return
+}
+
+func (c *Cluster) syncMaxDisableFlashGroupPercentToFlashTopos() {
+	if c == nil || c.cfg == nil {
+		return
+	}
+	p := c.cfg.maxDisableFlashGroupPercent
+	c.flashNodeTopo.Range(func(_, value interface{}) bool {
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok {
+			return true
+		}
+		topo.SetMaxDisableFlashGroupPercent(p)
+		return true
+	})
 }
 
 func (c *Cluster) loadFlashTopology() (err error) {

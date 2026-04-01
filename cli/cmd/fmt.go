@@ -127,6 +127,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	// sb.WriteString(fmt.Sprintf("  RemoteCacheSameRegionTimeout     : %v millisecond\n", cv.RemoteCacheSameRegionTimeout))
 	sb.WriteString(fmt.Sprintf("  FlashHotKeyMissCount             : %v\n", cv.FlashHotKeyMissCount))
 	sb.WriteString(fmt.Sprintf("  PreheatTotalTask                 : %v\n", cv.PreheatTotalTask))
+	sb.WriteString(fmt.Sprintf("  MaxDisableFlashGroupPercent      : %v\n", cv.MaxDisableFlashGroupPercent))
 	sb.WriteString(fmt.Sprintf("  FlashReadFlowLimit               : %v\n", cv.FlashReadFlowLimit))
 	sb.WriteString(fmt.Sprintf("  FlashWriteFlowLimit              : %v\n", cv.FlashWriteFlowLimit))
 	sb.WriteString(fmt.Sprintf("  FlashKeyFlowLimit                : %v\n", cv.FlashKeyFlowLimit))

@@ -242,6 +242,7 @@ type ClusterView struct {
 	RemoteCacheSameRegionTimeout              int64
 	FlashHotKeyMissCount                      int
 	PreheatTotalTask                          int
+	MaxDisableFlashGroupPercent               int
 	FlashReadFlowLimit                        int64
 	FlashWriteFlowLimit                       int64
 	FlashKeyFlowLimit                         int64

@@ -1693,6 +1693,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[preheatTotalTask] = val
 	}
 
+	if value = r.FormValue(maxDisableFlashGroupPercent); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(maxDisableFlashGroupPercent)
+			return
+		}
+		params[maxDisableFlashGroupPercent] = val
+	}
+
 	if value = r.FormValue(flashNodeReadDataNodeTimeout); value != "" {
 		noParams = false
 		val := int64(0)
@@ -2419,6 +2430,7 @@ func parseSetConfigParam(r *http.Request) (config map[string]string, err error) 
 		cfsMpMigrateThreads,
 		flashHotKeyMissCount,
 		preheatTotalTask,
+		maxDisableFlashGroupPercent,
 		flashReadFlowLimit,
 		flashWriteFlowLimit,
 		cfgDefaultVolStoreMode,

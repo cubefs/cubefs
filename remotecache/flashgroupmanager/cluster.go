@@ -41,6 +41,7 @@ func newCluster(name string, cfg *clusterConfig, leaderInfo *LeaderInfo, fsm *Me
 	// TODO
 	c.flashNodeTopo = NewFlashNodeTopology(proto.DefaultTopoName, proto.DefaultRegionName, 0, proto.TopoStatusNormal)
 	c.flashNodeTopo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
+	c.flashNodeTopo.SetMaxDisableFlashGroupPercent(c.cfg.MaxDisableFlashGroupPercent)
 	return
 }
 

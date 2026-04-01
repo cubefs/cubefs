@@ -1094,6 +1094,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		RackAwareLevel:                            m.cluster.cfg.RackAwareLevel,
 		FlashHotKeyMissCount:                      m.cluster.cfg.flashHotKeyMissCount,
 		PreheatTotalTask:                          m.cluster.cfg.preheatTotalTask,
+		MaxDisableFlashGroupPercent:               m.cluster.cfg.maxDisableFlashGroupPercent,
 		FlashReadFlowLimit:                        m.cluster.cfg.flashReadFlowLimit,
 		FlashWriteFlowLimit:                       m.cluster.cfg.flashWriteFlowLimit,
 		FlashKeyFlowLimit:                         m.cluster.cfg.flashKeyFlowLimit,
@@ -4432,6 +4433,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[preheatTotalTask]; ok {
 		if v, ok := val.(int64); ok {
 			if err = m.setConfig(preheatTotalTask, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[maxDisableFlashGroupPercent]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(maxDisableFlashGroupPercent, strconv.FormatInt(v, 10)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -8509,6 +8519,18 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.cluster.flashManMgr.taskTotalLimit = fnPreheatTotalTask
 		}
 
+	case maxDisableFlashGroupPercent:
+		var p int
+		p, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		if p < 1 || p > 100 {
+			return fmt.Errorf("maxDisableFlashGroupPercent must be between 1 and 100, got %d", p)
+		}
+		oldIntValue = m.config.maxDisableFlashGroupPercent
+		m.config.maxDisableFlashGroupPercent = p
+
 	case flashReadFlowLimit:
 		fnReadFlowLimit, err = strconv.ParseInt(value, 10, 64)
 		if err != nil {
@@ -8604,6 +8626,8 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			if m.cluster != nil && m.cluster.flashManMgr != nil {
 				m.cluster.flashManMgr.taskTotalLimit = oldIntValue
 			}
+		case maxDisableFlashGroupPercent:
+			m.config.maxDisableFlashGroupPercent = oldIntValue
 		case flashReadFlowLimit:
 			m.config.flashReadFlowLimit = oldInt64Value
 		case flashWriteFlowLimit:
@@ -8623,6 +8647,10 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
+	}
+
+	if key == maxDisableFlashGroupPercent && m.cluster != nil {
+		m.cluster.syncMaxDisableFlashGroupPercentToFlashTopos()
 	}
 
 	// update the middle value
@@ -8653,6 +8681,8 @@ func (m *Server) getConfig(key string) (value string, err error) {
 		value = strconv.Itoa(m.config.flashHotKeyMissCount)
 	case preheatTotalTask:
 		value = strconv.Itoa(m.config.preheatTotalTask)
+	case maxDisableFlashGroupPercent:
+		value = strconv.Itoa(m.config.maxDisableFlashGroupPercent)
 	case flashReadFlowLimit:
 		value = strconv.FormatInt(m.config.flashReadFlowLimit, 10)
 	case flashWriteFlowLimit:

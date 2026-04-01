@@ -164,6 +164,7 @@ const (
 	CliFlagRemoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	CliFlagRemoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
 	CliFlagFlashHotKeyMissCount         = "flashHotKeyMissCount"
+	CliFlagMaxDisableFlashGroupPercent  = "maxDisableFlashGroupPercent"
 	CliFlagFlashReadFlowLimit           = "flashReadFlowLimit"
 	CliFlagFlashWriteFlowLimit          = "flashWriteFlowLimit"
 	CliFlagFlashKeyFlowLimit            = "flashKeyFlowLimit"

@@ -145,6 +145,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[cfgFlashHotKeyMissCount] = val
 	}
 
+	if value = r.FormValue(cfgMaxDisableFlashGroupPercent); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(cfgMaxDisableFlashGroupPercent)
+			return
+		}
+		params[cfgMaxDisableFlashGroupPercent] = val
+	}
+
 	if value = r.FormValue(cfgFlashReadFlowLimit); value != "" {
 		noParams = false
 		val := int64(0)

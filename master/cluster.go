@@ -7750,6 +7750,7 @@ func (c *Cluster) AddFlashTopo(name, region string) (err error) {
 	}
 	topo := flashgroupmanager.NewFlashNodeTopology(name, region, id, proto.TopoStatusNormal)
 	topo.SyncFlashGroupFunc = c.syncUpdateFlashGroup
+	topo.SetMaxDisableFlashGroupPercent(c.cfg.maxDisableFlashGroupPercent)
 	c.flashNodeTopo.Store(name, topo)
 	if err = c.syncAddFlashTopo(topo); err != nil {
 		return err

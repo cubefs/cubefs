@@ -757,6 +757,7 @@ type ClusterParas struct {
 	RemoteCacheSameRegionTimeout           string
 	FlashHotKeyMissCount                   string
 	PreheatTotalTask                       string
+	MaxDisableFlashGroupPercent            string
 	FlashReadFlowLimit                     string
 	FlashWriteFlowLimit                    string
 	FlashKeyFlowLimit                      string
@@ -867,6 +868,9 @@ func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
 	}
 	if params.PreheatTotalTask != "" {
 		request.addParam("preheatTotalTask", params.PreheatTotalTask)
+	}
+	if params.MaxDisableFlashGroupPercent != "" {
+		request.addParam("maxDisableFlashGroupPercent", params.MaxDisableFlashGroupPercent)
 	}
 	// remoteCache config
 	if params.RemoteCacheTTL != "" {

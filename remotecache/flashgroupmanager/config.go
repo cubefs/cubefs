@@ -22,6 +22,7 @@ const (
 	defaultHttpReversePoolSize          = 1024
 	defaultRetainLogs                   = 20000
 	defaultFlashHotKeyMissCount         = 5
+	defaultMaxDisableFlashGroupPercent  = DefaultMaxDisableFlashGroupPercent
 	defaultFlashReadFlowLimit           = 2147483648
 	defaultFlashWriteFlowLimit          = 2147483648
 	defaultFlashKeyFlowLimit            = 0
@@ -38,6 +39,7 @@ const (
 	cfgRemoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
 	cfgRemoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
 	cfgFlashHotKeyMissCount         = "flashHotKeyMissCount"
+	cfgMaxDisableFlashGroupPercent  = "maxDisableFlashGroupPercent"
 	cfgFlashReadFlowLimit           = "flashReadFlowLimit"
 	cfgFlashWriteFlowLimit          = "flashWriteFlowLimit"
 	cfgFlashKeyFlowLimit            = "flashKeyFlowLimit"
@@ -48,11 +50,13 @@ var AddrDatabase = make(map[uint64]string)
 
 type clusterConfig struct {
 	cfsProto.RemoteCacheConfig
-	httpProxyPoolSize int
-	heartbeatPort     int64
-	replicaPort       int64
-	peerAddrs         []string
-	peers             []raftstore.PeerAddress
+
+	MaxDisableFlashGroupPercent int
+	httpProxyPoolSize           int
+	heartbeatPort               int64
+	replicaPort                 int64
+	peerAddrs                   []string
+	peers                       []raftstore.PeerAddress
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -66,6 +70,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.RemoteCacheSameZoneTimeout = cfsProto.DefaultRemoteCacheSameZoneTimeout
 	cfg.RemoteCacheSameRegionTimeout = cfsProto.DefaultRemoteCacheSameRegionTimeout
 	cfg.FlashHotKeyMissCount = defaultFlashHotKeyMissCount
+	cfg.MaxDisableFlashGroupPercent = defaultMaxDisableFlashGroupPercent
 	cfg.FlashReadFlowLimit = defaultFlashReadFlowLimit
 	cfg.FlashWriteFlowLimit = defaultFlashWriteFlowLimit
 	cfg.FlashKeyFlowLimit = defaultFlashKeyFlowLimit

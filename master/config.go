@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	pt "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/remotecache/flashgroupmanager"
 )
 
 // config key
@@ -79,6 +80,7 @@ const (
 	flashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
 	flashHotKeyMissCount         = "flashHotKeyMissCount"
 	preheatTotalTask             = "preheatTotalTask"
+	maxDisableFlashGroupPercent  = "maxDisableFlashGroupPercent"
 	flashReadFlowLimit           = "flashReadFlowLimit"
 	flashWriteFlowLimit          = "flashWriteFlowLimit"
 	flashKeyFlowLimit            = "flashKeyFlowLimit"
@@ -138,6 +140,7 @@ const (
 	defaultFlashNodeReadDataNodeTimeout = 3000
 	defaultFlashHotKeyMissCount         = 5
 	defaultPreheatTotalTask             = 8
+	defaultMaxDisableFlashGroupPercent  = flashgroupmanager.DefaultMaxDisableFlashGroupPercent
 	defaultFlashReadFlowLimit           = 2147483648
 	defaultFlashWriteFlowLimit          = 2147483648
 	defaultFlashKeyFlowLimit            = 0
@@ -232,6 +235,7 @@ type clusterConfig struct {
 	flashNodeReadDataNodeTimeout int
 	flashHotKeyMissCount         int
 	preheatTotalTask             int
+	maxDisableFlashGroupPercent  int // numerator for fgCount * X / 100, valid 1..100
 	flashReadFlowLimit           int64
 	flashWriteFlowLimit          int64
 	flashKeyFlowLimit            int64
@@ -297,6 +301,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.flashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
 	cfg.flashHotKeyMissCount = defaultFlashHotKeyMissCount
 	cfg.preheatTotalTask = defaultPreheatTotalTask
+	cfg.maxDisableFlashGroupPercent = defaultMaxDisableFlashGroupPercent
 	cfg.flashReadFlowLimit = defaultFlashReadFlowLimit
 	cfg.flashWriteFlowLimit = defaultFlashWriteFlowLimit
 	cfg.flashKeyFlowLimit = defaultFlashKeyFlowLimit
