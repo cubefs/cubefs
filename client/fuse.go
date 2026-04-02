@@ -1039,7 +1039,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()
 	opt.NearRead = GlobalMountOptions[proto.NearRead].GetBool()
 	opt.MetaNearRead = GlobalMountOptions[proto.MetaNearRead].GetBool()
-	opt.RegionReadCfg = GlobalMountOptions[proto.RegionReadCfg].GetBool()
+	opt.RegionNearRead = GlobalMountOptions[proto.RegionNearRead].GetBool()
 	opt.EnablePosixACL = GlobalMountOptions[proto.EnablePosixACL].GetBool()
 	opt.EnableUnixPermission = GlobalMountOptions[proto.EnableUnixPermission].GetBool()
 	opt.ReadThreads = GlobalMountOptions[proto.ReadThreads].GetInt64()

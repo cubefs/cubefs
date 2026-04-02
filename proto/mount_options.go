@@ -47,7 +47,7 @@ const (
 	EnableXattr
 	NearRead
 	MetaNearRead
-	RegionReadCfg
+	RegionNearRead
 	EnablePosixACL
 	EnableUnixPermission
 	RequestTimeout
@@ -155,7 +155,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
 	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", true}
 	opts[MetaNearRead] = MountOption{"metaNearRead", "Enable meta read from nearest node", "", false}
-	opts[RegionReadCfg] = MountOption{"regionReadCfg", "Enable region read config", "", true}
+	opts[RegionNearRead] = MountOption{"regionNearRead", "Enable region near read", "", true}
 	opts[MaximallyRead] = MountOption{"maximallyRead", "Enable read from other node when read quorum failed", "", false}
 
 	opts[Authenticate] = MountOption{"authenticate", "Enable Authenticate", "", false}
@@ -364,7 +364,7 @@ type MountOptions struct {
 	EnableXattr             bool
 	NearRead                bool
 	MetaNearRead            bool
-	RegionReadCfg           bool
+	RegionNearRead          bool
 	EnablePosixACL          bool
 	EnableQuota             bool
 	EnableTransaction       string

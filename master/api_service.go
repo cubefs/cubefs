@@ -3822,6 +3822,15 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	zoneName := req.zoneName
+	if zoneName == "" && !req.crossZone {
+		zoneName = DefaultZoneName
+	}
+	if err = m.cluster.validateVolZoneNamesForMetaRegion(zoneName, req.defaultRegion); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if vol, err = m.cluster.createVol(req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return

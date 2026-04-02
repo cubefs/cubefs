@@ -155,6 +155,9 @@ func (metaNode *MetaNode) IsWriteAble() (ok bool) {
 		!metaNode.RdOnly {
 		ok = true
 	}
+
+	log.LogInfof("action[IsWriteAble] metaNode[%v] isActive[%v] MaxMemAvailWeight[%v] reachesThreshold[%v] MetaPartitionCount[%v] RdOnly[%v]",
+		metaNode.Addr, metaNode.IsActive, metaNode.MaxMemAvailWeight, metaNode.reachesThreshold(), metaNode.MetaPartitionCount, metaNode.RdOnly)
 	return
 }
 

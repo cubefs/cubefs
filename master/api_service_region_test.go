@@ -166,6 +166,88 @@ func TestClusterIsValidRegion(t *testing.T) {
 	}
 }
 
+func TestValidateVolZoneNamesForMetaRegion(t *testing.T) {
+	topo := newTopology()
+	zEast := newZone("z-east", proto.MediaType_Unspecified)
+	zEast.MetaRegion = "east"
+	if err := topo.putZone(zEast); err != nil {
+		t.Fatal(err)
+	}
+	zWest := newZone("z-west", proto.MediaType_Unspecified)
+	zWest.MetaRegion = "west"
+	if err := topo.putZone(zWest); err != nil {
+		t.Fatal(err)
+	}
+	c := &Cluster{ClusterTopoSubItem: ClusterTopoSubItem{t: topo}}
+
+	t.Run("empty zoneName skips", func(t *testing.T) {
+		if err := c.validateVolZoneNamesForMetaRegion("  ", "east"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("single name matches MetaRegion", func(t *testing.T) {
+		if err := c.validateVolZoneNamesForMetaRegion("z-east", "east"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("reject when no listed zone has target MetaRegion", func(t *testing.T) {
+		if err := c.validateVolZoneNamesForMetaRegion("z-east", "west"); err == nil {
+			t.Fatal("expected error when no zone in list has MetaRegion west")
+		}
+	})
+
+	t.Run("reject unknown zone name", func(t *testing.T) {
+		if err := c.validateVolZoneNamesForMetaRegion("no-such-zone", "east"); err == nil {
+			t.Fatal("expected error for unknown zone")
+		}
+	})
+
+	t.Run("comma list succeeds if any zone matches", func(t *testing.T) {
+		if err := c.validateVolZoneNamesForMetaRegion("z-west,z-east", "east"); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.validateVolZoneNamesForMetaRegion("z-east,z-west", "west"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("comma list fails when none match target", func(t *testing.T) {
+		if err := c.validateVolZoneNamesForMetaRegion("z-west,z-east", "north"); err == nil {
+			t.Fatal("expected error when target region matches no zone in list")
+		}
+	})
+
+	t.Run("unknown name in list fails before later match", func(t *testing.T) {
+		if err := c.validateVolZoneNamesForMetaRegion("missing,z-east", "east"); err == nil {
+			t.Fatal("expected error for unknown zone even if later name would match")
+		}
+	})
+
+	t.Run("only commas after trim yields error", func(t *testing.T) {
+		if err := c.validateVolZoneNamesForMetaRegion(",,", "east"); err == nil {
+			t.Fatal("expected error when no resolvable zone names")
+		}
+	})
+
+	t.Run("empty MetaRegion matches empty target only", func(t *testing.T) {
+		topo2 := newTopology()
+		z := newZone("z-empty-mr", proto.MediaType_Unspecified)
+		z.MetaRegion = ""
+		if err := topo2.putZone(z); err != nil {
+			t.Fatal(err)
+		}
+		c2 := &Cluster{ClusterTopoSubItem: ClusterTopoSubItem{t: topo2}}
+		if err := c2.validateVolZoneNamesForMetaRegion("z-empty-mr", ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := c2.validateVolZoneNamesForMetaRegion("z-empty-mr", proto.DefaultRegion); err == nil {
+			t.Fatal("empty zone MetaRegion is not equal to default region string unless normalized by caller")
+		}
+	})
+}
+
 func TestClusterGetRegionFromMetaNodeAddr(t *testing.T) {
 	c := &Cluster{}
 	addr := "192.168.1.10:17210"

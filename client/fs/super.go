@@ -147,7 +147,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		TrashRebuildGoroutineLimit: int(opt.TrashRebuildGoroutineLimit),
 		TrashTraverseLimit:         int(opt.TrashDeleteExpiredDirGoroutineLimit),
 		MetaNearRead:               opt.MetaNearRead,
-		RegionReadCfg:              opt.RegionReadCfg,
+		RegionNearRead:             opt.RegionNearRead,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {

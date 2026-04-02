@@ -78,6 +78,12 @@ func (m *Server) volAddRegion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err = m.cluster.validateVolZoneNamesForMetaRegion(vol.zoneName, region); err != nil {
+		log.LogErrorf("[volUpdateDefaultRegion] vol(%v), err: %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	// Check if region already exists in allowed regions
 	if vol.isRegionInAllowed(region) {
 		err = fmt.Errorf("region(%v) already in vol allowed regions(%v)", region, vol.allowedRegions)

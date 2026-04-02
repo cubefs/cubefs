@@ -2620,6 +2620,39 @@ func (c *Cluster) getZoneListFromVolZoneName(vol *Vol, poolId uint8, region stri
 	return
 }
 
+// validateVolZoneNamesForMetaRegion checks comma-separated zone names: each non-empty token must resolve to an existing zone;
+// at least one listed zone must have MetaRegion exactly equal to targetRegion.
+func (c *Cluster) validateVolZoneNamesForMetaRegion(zoneName, targetRegion string) error {
+	log.LogInfof("action[validateVolZoneNamesForMetaRegion] zoneName %q, targetRegion %q", zoneName, targetRegion)
+	zn := strings.TrimSpace(zoneName)
+	if zn == "" {
+		return nil
+	}
+
+	found := false
+	for _, raw := range strings.Split(zn, ",") {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		zone, err := c.t.getZone(name)
+		if err != nil {
+			return fmt.Errorf("vol zoneName references unknown zone %q: %v", name, err)
+		}
+
+		if zone.MetaRegion == targetRegion {
+			log.LogInfof("action[validateVolZoneNamesForMetaRegion] found zone %q with MetaRegion %q", name, targetRegion)
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("zoneName %q has no zone with MetaRegion %q, configure a zone with this name bound to that region (or change vol zoneName)", zoneName, targetRegion)
+	}
+	return nil
+}
+
 // decideZoneNum
 // if vol is not cross zone, return 1
 // if vol enable cross zone and the zone number of cluster less than defaultReplicaNum return 2
@@ -4491,6 +4524,10 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 		toBeOfflineMps = partitions
 	}
 
+	if len(toBeOfflineMps) <= 0 && len(partitions) != 0 {
+		return fmt.Errorf("migrateMataNode no partition can migrate from [%s] to [%s] limit [%v]", srcAddr, targetAddr, limit)
+	}
+
 	tmpOfflineMps := make([]*MetaPartition, 0, len(toBeOfflineMps))
 	remainCount := 0
 	for _, mp := range toBeOfflineMps {
@@ -4502,10 +4539,6 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 		}
 	}
 	toBeOfflineMps = tmpOfflineMps
-
-	if len(toBeOfflineMps) <= 0 && len(partitions) != 0 {
-		return fmt.Errorf("migrateMataNode no partition can migrate from [%s] to [%s] limit [%v]", srcAddr, targetAddr, limit)
-	}
 
 	if limit <= 0 {
 		limit = util.DefaultMigrateMpCnt

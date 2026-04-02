@@ -943,6 +943,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq, m *Server) (err
 	// Parse default region (use cluster default if not specified)
 	req.defaultRegion = extractStrWithDefault(r, defaultRegionKey, m.cluster.defaultMetaRegion)
 	req.allowedRegions = []string{req.defaultRegion}
+	if !m.cluster.isValidRegion(req.defaultRegion) {
+		return fmt.Errorf("defaultRegion %q does not exist in cluster (no zone uses this meta region)", req.defaultRegion)
+	}
 
 	req.domainId, err = extractUint64WithDefault(r, domainIdKey, 0)
 	if err != nil {

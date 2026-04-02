@@ -133,11 +133,11 @@ func TestMetaWrapperSetClientMetaRegion(t *testing.T) {
 }
 
 func TestMetaWrapperNearReadEnabledByRegion(t *testing.T) {
-	// nearReadEnabled: same region -> FR && NR; else -> (FR && NR) || RegionReadCfg
+	// nearReadEnabled: same region -> FR && NR; else -> (FR && NR) || RegionNearRead
 	mw := &MetaWrapper{
 		FollowerRead:      true,
 		NearRead:          true,
-		RegionReadCfg:     false,
+		RegionNearRead:    false,
 		defaultMetaRegion: "home",
 	}
 	if !mw.nearReadEnabled(&MetaPartition{Region: "home"}) {
@@ -148,10 +148,10 @@ func TestMetaWrapperNearReadEnabledByRegion(t *testing.T) {
 	}
 	mw.NearRead = false
 	if mw.nearReadEnabled(&MetaPartition{Region: "other"}) {
-		t.Fatal("other: without NR and RegionReadCfg should be off")
+		t.Fatal("other: without NR and RegionNearRead should be off")
 	}
-	mw.RegionReadCfg = true
+	mw.RegionNearRead = true
 	if !mw.nearReadEnabled(&MetaPartition{Region: "other"}) {
-		t.Fatal("other: RegionReadCfg alone should enable")
+		t.Fatal("other: RegionNearRead alone should enable")
 	}
 }

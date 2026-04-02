@@ -109,7 +109,7 @@ type MetaConfig struct {
 	InnerReq             bool
 	DisableTrashByClient bool
 	MetaNearRead         bool
-	RegionReadCfg        bool
+	RegionNearRead       bool
 }
 
 type MetaWrapper struct {
@@ -199,7 +199,7 @@ type MetaWrapper struct {
 	FollowerRead        bool
 	NearRead            bool
 	NearReadClientCfg   bool
-	RegionReadCfg       bool
+	RegionNearRead      bool
 	dirtyInodes         *dirtyInodeCache
 
 	HostPingStats    sync.Map // [string]*util.AddressPingStats - host address to ping stats mapping
@@ -281,7 +281,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.InnerReq = config.InnerReq
 	mw.disableTrashByClient = config.DisableTrashByClient
 	mw.NearReadClientCfg = config.MetaNearRead
-	mw.RegionReadCfg = config.RegionReadCfg
+	mw.RegionNearRead = config.RegionNearRead
 	mw.dirtyInodes = newDirtyInodeCache(DirtyInodeTTL, MaxDirtyInodeCache)
 
 	for limit > 0 {
@@ -381,7 +381,7 @@ func (mw *MetaWrapper) nearReadEnabled(mp *MetaPartition) bool {
 		return mw.FollowerRead && mw.NearRead
 	}
 
-	return mw.FollowerRead && mw.NearRead || mw.RegionReadCfg
+	return mw.FollowerRead && mw.NearRead || mw.RegionNearRead
 }
 
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
